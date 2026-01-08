@@ -7,6 +7,12 @@ library(purrr); library(jsonlite); library(lubridate)
 library(janitor); library(digest); library(stringr)
 library(pool)
 
+APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
+PROD_SCHEMA <- "basketball"
+TEST_SCHEMA <- "basketball_test"
+SCHEMA      <- if (APP_ENV == "prod") PROD_SCHEMA else TEST_SCHEMA
+
+
 pg <- DBI::dbConnect(drv = Postgres(), 
                      host = Sys.getenv("PG_HOST"),
                      port = as.integer(Sys.getenv("PG_PORT", "6543")),  # pooled port recommended
@@ -15,22 +21,7 @@ pg <- DBI::dbConnect(drv = Postgres(),
                      password = Sys.getenv("PG_PASS"),
                      sslmode = Sys.getenv("PG_SSLMODE", "require"))
 
-APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
-PROD_SCHEMA <- "basketball"
-TEST_SCHEMA <- "basketball_test"
-SCHEMA      <- if (APP_ENV == "prod") PROD_SCHEMA else TEST_SCHEMA
 
-pg <- dbPool(
-  drv = Postgres(),
-  host = Sys.getenv("PG_HOST"),
-  port = as.integer(Sys.getenv("PG_PORT", "6543")),
-  dbname = Sys.getenv("PG_DB"),
-  user = Sys.getenv("PG_USER"),
-  password = Sys.getenv("PG_PASS"),
-  sslmode = Sys.getenv("PG_SSLMODE", "require"),
-  minSize = 0, maxSize = as.integer(Sys.getenv("POOL_MAX", "3")),
-  idleTimeout = 15000
-)
 DBI::dbExecute(pg, paste0("SET search_path TO ", DBI::dbQuoteIdentifier(pg, "SCHEMA"), ", public;"))
 
 # =========================
@@ -226,16 +217,6 @@ upsert_by_like <- function(pg, schema = SCHEMA, table, df) {
 }
 
 # =========================
-# Migrations (safe, additive)
-# =========================
-run_migrations <- function(pg, schema = SCHEMA) {
-  DBI::dbExecute(pg, sprintf('ALTER TABLE "%s"."schedule" ADD COLUMN IF NOT EXISTS season TEXT;', schema))
-  DBI::dbExecute(pg, sprintf('ALTER TABLE "%s"."schedule" ADD COLUMN IF NOT EXISTS competition TEXT;', schema))
-  DBI::dbExecute(pg, sprintf('CREATE INDEX IF NOT EXISTS idx_%s_schedule_season_comp ON "%s"."schedule"(season, competition);', schema, schema))
-}
-run_migrations(pg, SCHEMA)
-
-# =========================
 # Fetch & normalize JSON (archived link per your request)
 # =========================
 fetch_israel_schedule <- function() {
@@ -374,31 +355,6 @@ compute_possessions <- function(actions_tbl) {
     select(-eoq_override, -final_end_poss_base)
 }
 
-poss_stage %>%
-  #filter(game_id %in% sample(poss_stage$game_id, 1)) %>%
-  arrange(id) %>%
-  relocate(c(type, final_end_poss), .after = parameters_type) %>%
-  group_by(game_id, team_id) %>%
-  summarise(total_pts = sum(team_score, na.rm = TRUE),
-            total_poss = sum(final_end_poss, na.rm  = TRUE ),
-            ppp = total_pts / total_poss) %>%
-  arrange(game_id) %>%
-  left_join(full_rosters %>% collect() %>%
-              distinct(team_id, game_id, team_name), by = c("team_id", "game_id")) %>%
-  filter(total_poss > 0) %>%
-  ggplot(aes(x=ppp)) + geom_histogram()
-view()
-
-
-
-full_rosters <- tbl(pg, dbplyr::in_schema(SCHEMA, "full_rosters"))
-
-schedule <- tbl(pg, dbplyr::in_schema(SCHEMA, "schedule"))
-
-
-subs_df <- actions_df %>%
-  filter(type == "substitution")
-
 compute_lineups_lookup <- function(pg) {
   actions <- tbl(pg, in_schema(SCHEMA, "actions_clean")) |> filter(game_id %in% sched_subset$game_id)
   subs <- actions |> filter(type == "substitution") |>    mutate(parameters_player_in = if_else(!is.na(parameters_player_in), player_id, NA), 
@@ -452,15 +408,6 @@ compute_lineups_lookup <- function(pg) {
     mutate(lineup_hash = dbplyr::sql("md5(lineup_id)"))
 }
 
-
-
-compute_lineup_dims <- function(pg) {
-  ll <- tbl(pg, in_schema(SCHEMA, "lineups_lookup"))
-  list(
-    dim     = ll |> distinct(lineup_hash, lineup_id),
-    players = ll |> filter(is_on_verdict == TRUE) |> distinct(lineup_hash, player_id)
-  )
-}
 
 compute_stints <- function(pg) {
   poss <- tbl(pg, in_schema(SCHEMA, "possessions"))
@@ -582,19 +529,6 @@ etl_update <- function(game_ids = NULL, season = NULL, competition = NULL) {
   upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df)
   
   
-  # lineup_dim / lineup_players for affected
-  affected_hashes <- unique(na.omit(df_lineups_df$lineup_hash))
-  if (length(affected_hashes)) {
-    dims <- compute_lineup_dims(pg)
-    dim_df     <- dims$dim    |> collect() |> filter(lineup_hash %in% affected_hashes)
-    players_df <- dims$players |> collect() |> filter(lineup_hash %in% affected_hashes)
-    if (nrow(dim_df))     upsert_by_like(pg, SCHEMA, "lineup_dim",     dim_df)
-    if (nrow(players_df)) upsert_by_like(pg, SCHEMA, "lineup_players", players_df)
-    
-    # sub-lineups (2/3/4)
-    compute_sub_lineups_from_lineups_lookup(pg, affected_hashes, ks = c(2,3,4))
-  }
-  
   # stints
   stints_df <- compute_stints(pg) |> filter(game_id %in% sched_subset$game_id) |> collect() %>% 
     select(team_id_offense, game_id, final_start_seg, final_end_seg,
@@ -611,16 +545,7 @@ etl_update <- function(game_ids = NULL, season = NULL, competition = NULL) {
   
   
   upsert_by_like(pg, SCHEMA, "pws", pws_stage)
-  
-  pws_stage %>%
-    select(game_id)
-  
-  sched_subset$game_id
-  
-  # ppp long
-  ppp_df <- compute_ppp_long(pg) |> filter(game_id %in% ids) |> collect()
-  upsert_by_like(pg, SCHEMA, "df_pts_poss_lineups_longer", ppp_df)
-  
+
   DBI::dbExecute(pg, "ANALYZE;")
   DBI::dbExecute(pg, "COMMIT;")
   on.exit(NULL, add = FALSE)
