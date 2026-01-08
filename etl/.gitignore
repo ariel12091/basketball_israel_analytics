@@ -1,0 +1,21 @@
+# ---- R / renv ----
+.Rhistory
+.RData
+.Rproj.user/
+
+renv/library/
+renv/staging/
+renv/python/
+
+# ---- Environment / secrets ----
+.Renviron
+.env
+.env.*
+
+# ---- ETL ----
+etl/logs/
+etl/output/
+
+# ---- OS ----
+.DS_Store
+Thumbs.db
