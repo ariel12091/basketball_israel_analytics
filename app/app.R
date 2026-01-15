@@ -7,6 +7,7 @@ library(pool)
 library(RPostgres)
 library(DT)
 library(purrr)
+library(bslib)
 
 # ---------------- Defaults ----------------
 DEFAULT_START <- as.Date("2024-10-01")
@@ -49,6 +50,7 @@ schedule_tbl <- tbl(pg_pool, in_schema("basketball_test","schedule"))
 ui <- navbarPage(
   id = "main_tabs",
   title = "Player Analytics",
+  theme = bslib::bs_theme(version = 5), # Required for accordion support
   
   # -------- Tab 1: On/Off Impact --------
   tabPanel(
@@ -60,6 +62,7 @@ ui <- navbarPage(
           th.sub-head   { background:#fafafa !important; font-weight:700; }
           table.dataTable thead th.sep-left { box-shadow: inset 3px 0 0 #222 !important; }
           table.dataTable tbody td.block-start { box-shadow: inset 3px 0 0 #222 !important; }
+          .accordion-button { padding: 0.5rem 1rem; font-weight: 600; background-color: #f8f9fa; }
         "))
       ),
       titlePanel("Player ON/OFF Impact (PostgreSQL + dbplyr + DT)"),
@@ -68,7 +71,6 @@ ui <- navbarPage(
           actionButton("reset_defaults", "Reset to defaults"),
           tags$hr(),
           
-          # Season selector (maps to schedule.game_year)
           selectInput(
             "game_year", "Season",
             choices  = c("2025-26" = "2026",
@@ -78,11 +80,73 @@ ui <- navbarPage(
           
           uiOutput("date_filter_ui"),
           uiOutput("team_filter_ui"),
+          
+          tags$hr(),
+          
+          # Clickable Menus for Tab 1
+          bslib::accordion(
+            bslib::accordion_panel(
+              "Game Filters",
+              selectizeInput(
+                "on_game_type", "Game type",
+                choices = c(
+                  "All" = "",
+                  "Regular season" = "5",
+                  "Playoffs – Quarterfinals" = "16",
+                  "Playoffs – Finals" = "17",
+                  "Playoffs – Semifinals" = "26",
+                  "Play-in" = "33",
+                  "Winner Cup" = "34"
+                ),
+                selected = "",
+                multiple = TRUE,
+                options = list(placeholder = "All game types")
+              ),
+              selectizeInput(
+                "on_opponents", "Opponents",
+                choices = NULL,
+                selected = character(0),
+                multiple = TRUE,
+                options = list(placeholder = "All opponents")
+              ),
+              selectInput(
+                "on_home_away", "Home/Away",
+                choices = c("All" = "", "Home" = "home", "Away" = "away"),
+                selected = ""
+              ),
+              selectInput(
+                "on_outcome", "Outcome",
+                choices = c("All" = "", "Win" = "win", "Loss" = "loss"),
+                selected = ""
+              )
+            ),
+            bslib::accordion_panel(
+              "Opponent Strength",
+              selectInput(
+                "on_opp_rank_side", "Top / Bottom",
+                choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"),
+                selected = ""
+              ),
+              selectInput(
+                "on_opp_rank_n", "Rank N",
+                choices = c("—" = "", as.character(1:12)),
+                selected = ""
+              ),
+              selectInput(
+                "on_opp_rank_metric", "Metric",
+                choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"),
+                selected = ""
+              )
+            ),
+            open = FALSE # Closed by default
+          ),
+          
           tags$hr(),
           sliderInput("min_all_poss", "Min possessions per side (eligibility):",
                       min = 0, max = 2000, value = DEFAULT_MIN_ALL, step = 10),
           sliderInput("min_on_poss", "Min ON possessions (eligibility):",
                       min = 0, max = 3000, value = DEFAULT_MIN_ON, step = 10),
+          
           tags$hr(),
           downloadButton("download_csv", "Download CSV")
         ),
@@ -99,18 +163,25 @@ ui <- navbarPage(
     fluidPage(
       sidebarLayout(
         sidebarPanel(
-          # *** moved to top ***
           actionButton("ld_reset", "Reset Lineup Filters"),
           tags$hr(),
           
-          # Season selector (shared inputId, same default)
+          # Players On/Off moved higher (above Game Filters)
+          selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
+          helpText("Pick a team to enable player filtering."),
+          selectizeInput("ld_players_on",  "Players On (exact/contains)", choices = NULL, multiple = TRUE,
+                         options = list(placeholder = "Select a team first…")),
+          selectizeInput("ld_players_off", "Players Off (exclude any)",   choices = NULL, multiple = TRUE,
+                         options = list(placeholder = "Select a team first…")),
+          
+          tags$hr(),
+          
           selectInput(
-            "game_year", "Season",
+            "game_year_ld", "Season",
             choices  = c("2025-26" = "2026",
                          "2024-25" = "2025"),
             selected = DEFAULT_GAME_YEAR
           ),
-          tags$hr(),
           
           radioButtons("ld_num", "Group size",
                        choices = c("2","3","4","5"),
@@ -118,15 +189,67 @@ ui <- navbarPage(
           
           dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
           
-          # Team: single-select (default is empty -> all teams)
-          selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
+          tags$hr(),
           
-          helpText("Pick a team to enable player filtering."),
-          # Players ON / OFF (both disabled until a team is chosen)
-          selectizeInput("ld_players_on",  "Players On (exact/contains)", choices = NULL, multiple = TRUE,
-                         options = list(placeholder = "Select a team first…")),
-          selectizeInput("ld_players_off", "Players Off (exclude any)",   choices = NULL, multiple = TRUE,
-                         options = list(placeholder = "Select a team first…")),
+          # Clickable Menus for Tab 2
+          bslib::accordion(
+            bslib::accordion_panel(
+              "Game Filters",
+              selectizeInput(
+                "ld_game_type", "Game type",
+                choices = c(
+                  "All" = "",
+                  "Regular season" = "5",
+                  "Playoffs – Quarterfinals" = "16",
+                  "Playoffs – Finals" = "17",
+                  "Playoffs – Semifinals" = "26",
+                  "Play-in" = "33",
+                  "Winner Cup" = "34"
+                ),
+                selected = "",
+                multiple = TRUE,
+                options = list(placeholder = "All game types")
+              ),
+              selectizeInput(
+                "ld_opponents", "Opponents",
+                choices = NULL,
+                selected = character(0),
+                multiple = TRUE,
+                options = list(placeholder = "All opponents")
+              ),
+              selectInput(
+                "ld_home_away", "Home/Away",
+                choices = c("All" = "", "Home" = "home", "Away" = "away"),
+                selected = ""
+              ),
+              selectInput(
+                "ld_outcome", "Outcome",
+                choices = c("All" = "", "Win" = "win", "Loss" = "loss"),
+                selected = ""
+              )
+            ),
+            bslib::accordion_panel(
+              "Opponent Strength",
+              selectInput(
+                "ld_opp_rank_side", "Top / Bottom",
+                choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"),
+                selected = ""
+              ),
+              selectInput(
+                "ld_opp_rank_n", "Rank N",
+                choices = c("—" = "", as.character(1:12)),
+                selected = ""
+              ),
+              selectInput(
+                "ld_opp_rank_metric", "Metric",
+                choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"),
+                selected = ""
+              )
+            ),
+            open = FALSE # Closed by default
+          ),
+          
+          tags$hr(),
           
           sliderInput("ld_minposs", "Min possessions (sum of Off/Def)",
                       min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10)
@@ -143,45 +266,77 @@ ui <- navbarPage(
 server <- function(input, output, session) {
   
   # ---- Season helpers -------------------------------------------------------
-  # Map a game_year to its default date window
   season_date_bounds <- function(gy) {
     if (identical(gy, "2026")) {
-      list(
-        start = as.Date("2025-10-01"),
-        end   = as.Date("2026-07-01")
-      )
+      list(start = as.Date("2025-10-01"), end = as.Date("2026-07-01"))
     } else {
-      # 2024-25 (game_year 2025) → original window
-      list(
-        start = DEFAULT_START,
-        end   = DEFAULT_END
-      )
+      list(start = DEFAULT_START, end = DEFAULT_END)
     }
   }
   
-  # Reactive wrapper for the currently selected game_year,
-  # with a fallback to DEFAULT_GAME_YEAR
   selected_game_year <- reactive({
     gy <- input$game_year
     if (is.null(gy) || !nzchar(gy)) DEFAULT_GAME_YEAR else gy
   })
   
+  # helper
+  `%||%` <- function(a, b) if (!is.null(a)) a else b
+  
+  # ===== Opponents dropdown choices: ALL teams in season (non-null menu) =====
+  teams_for_year_df <- reactive({
+    gy_int <- as.integer(selected_game_year())
+    req(gy_int)
+    
+    full_rosters %>%
+      filter(game_year == !!gy_int) %>%
+      distinct(team_id, team_name) %>%
+      arrange(team_name) %>%
+      collect()
+  })
+  
+  observeEvent(selected_game_year(), {
+    td <- teams_for_year_df()
+    
+    updateSelectizeInput(session, "on_opponents",
+                         choices  = td$team_name,
+                         selected = character(0),
+                         server   = TRUE)
+    
+    updateSelectizeInput(session, "ld_opponents",
+                         choices  = td$team_name,
+                         selected = character(0),
+                         server   = TRUE)
+  }, ignoreInit = FALSE)
+  
+  # helper: names -> ids
+  selected_opp_ids_on <- reactive({
+    td  <- teams_for_year_df()
+    sel <- input$on_opponents
+    if (is.null(sel) || !length(sel)) return(NULL)
+    td %>% filter(team_name %in% sel) %>% pull(team_id)
+  })
+  
+  selected_opp_ids_ld <- reactive({
+    td  <- teams_for_year_df()
+    sel <- input$ld_opponents
+    if (is.null(sel) || !length(sel)) return(NULL)
+    td %>% filter(team_name %in% sel) %>% pull(team_id)
+  })
+  
   # ======== On/Off tab ===================================
   
-  # Date range UI reacts to selected season
   output$date_filter_ui <- renderUI({
     gy     <- selected_game_year()
     bounds <- season_date_bounds(gy)
     
     dateRangeInput(
       "date_range", "Game Date Range",
-      start = bounds$start, end   = bounds$end,
+      start = bounds$start, end = bounds$end,
       min   = bounds$start, max   = bounds$end,
       format = "yyyy-mm-dd", weekstart = 0
     )
   })
   
-  # Year-aware teams: only teams that appear in games for the selected game_year
   teams_for_year <- reactive({
     gy_int <- as.integer(selected_game_year())
     req(gy_int)
@@ -196,13 +351,30 @@ server <- function(input, output, session) {
   output$team_filter_ui <- renderUI({
     teams <- teams_for_year()
     selectizeInput("teams", "Teams",
-                   choices = teams$team_name,
+                   choices  = teams$team_name,
                    multiple = TRUE,
                    options  = list(placeholder = "All teams"))
   })
   
   debounced_range <- reactive(input$date_range) %>% debounce(300)
-  debounced_teams <- reactive(input$teams)       %>% debounce(300)
+  debounced_teams <- reactive(input$teams)        %>% debounce(300)
+  
+  debounced_on_filters <- reactive(list(
+    game_type = input$on_game_type,
+    opp_names = input$on_opponents,
+    home_away = input$on_home_away,
+    outcome   = input$on_outcome,
+    rank_side = input$on_opp_rank_side,
+    rank_n    = input$on_opp_rank_n,
+    metric    = input$on_opp_rank_metric
+  )) %>% debounce(300)
+  
+  selected_team_ids <- reactive({
+    teams <- teams_for_year()
+    teams_in <- debounced_teams()
+    if (is.null(teams_in) || !length(teams_in)) return(NULL)
+    teams %>% filter(team_name %in% teams_in) %>% pull(team_id)
+  })
   
   fallback_needed <- reactive({
     rng <- debounced_range()
@@ -219,22 +391,38 @@ server <- function(input, output, session) {
       (isTruthy(input$min_on_poss)  && input$min_on_poss  != DEFAULT_MIN_ON)
     date_changed <- (start_d != season_bounds$start) || (end_d != season_bounds$end)
     
-    team_changed || elig_changed || date_changed
+    f <- debounced_on_filters()
+    has_game_type <- !is.null(f$game_type) && length(f$game_type) && any(nzchar(f$game_type))
+    has_opp       <- !is.null(f$opp_names) && length(f$opp_names) > 0
+    has_homeaway  <- nzchar(f$home_away %||% "")
+    has_outcome   <- nzchar(f$outcome   %||% "")
+    has_rank_side <- nzchar(f$rank_side %||% "")
+    has_rank_n    <- nzchar(f$rank_n    %||% "")
+    has_metric    <- nzchar(f$metric    %||% "")
+    
+    extra_filters <- has_game_type || has_opp || has_homeaway || has_outcome ||
+      has_rank_side || has_rank_n || has_metric
+    
+    team_changed || elig_changed || date_changed || extra_filters
   })
   
-  selected_team_ids <- reactive({
-    teams <- teams_for_year()
-    teams_in <- debounced_teams()
-    if (is.null(teams_in) || !length(teams_in)) return(NULL)
-    teams %>% filter(team_name %in% teams_in) %>% pull(team_id)
-  })
-  
-  # DB function must accept game_year as 7th parameter
-  run_onoff_compute <- function(pool, start_d, end_d, team_ids, min_all, min_on, min_net, game_year) {
+  # ---------------- On/Off compute (14 params) ----------------
+  run_onoff_compute_14 <- function(pool,
+                                   start_d, end_d,
+                                   team_ids, min_all, min_on, min_net, game_year,
+                                   game_type_csv, opp_ids_csv, home_away, outcome,
+                                   opp_rank_side, opp_rank_n, opp_rank_metric) {
+    
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
+    
     DBI::dbGetQuery(
       pool,
-      "SELECT * FROM basketball_test.onoff_compute($1,$2,$3,$4,$5,$6,$7)",
+      paste0(
+        "SELECT * FROM basketball_test.onoff_compute(",
+        "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,",
+        "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text",
+        ")"
+      ),
       params = list(
         as.Date(start_d),
         as.Date(end_d),
@@ -242,7 +430,15 @@ server <- function(input, output, session) {
         as.integer(min_all),
         as.integer(min_on),
         as.numeric(min_net),
-        as.character(game_year)
+        as.character(game_year),
+        
+        game_type_csv,
+        opp_ids_csv,
+        home_away,
+        outcome,
+        opp_rank_side,
+        opp_rank_n,
+        opp_rank_metric
       )
     )
   }
@@ -252,16 +448,44 @@ server <- function(input, output, session) {
     rng  <- debounced_range(); req(rng)
     tids <- selected_team_ids()
     gy   <- selected_game_year()
+    f    <- debounced_on_filters()
     
-    run_onoff_compute(
+    game_type_csv <- {
+      x <- f$game_type
+      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_
+      else paste(x[nzchar(x)], collapse = ",")
+    }
+    
+    opp_ids_csv <- {
+      ids <- selected_opp_ids_on()
+      if (is.null(ids) || !length(ids)) NA_character_
+      else paste(ids, collapse = ",")
+    }
+    
+    home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
+    outcome   <- if (!nzchar(f$outcome   %||% "")) NA_character_ else f$outcome
+    
+    opp_rank_side   <- if (!nzchar(f$rank_side %||% "")) NA_character_ else f$rank_side
+    opp_rank_n      <- suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n))
+    opp_rank_metric <- if (!nzchar(f$metric %||% "")) NA_character_ else f$metric
+    
+    run_onoff_compute_14(
       pg_pool,
-      start_d   = as.Date(rng[1]),
-      end_d     = as.Date(rng[2]),
-      team_ids  = tids,
-      min_all   = input$min_all_poss,
-      min_on    = input$min_on_poss,
-      min_net   = DEFAULT_MIN_NET,   # no UI filter, keep DB signature
-      game_year = gy
+      start_d = as.Date(rng[1]),
+      end_d   = as.Date(rng[2]),
+      team_ids = tids,
+      min_all  = input$min_all_poss,
+      min_on   = input$min_on_poss,
+      min_net  = DEFAULT_MIN_NET,
+      game_year = gy,
+      
+      game_type_csv   = game_type_csv,
+      opp_ids_csv      = opp_ids_csv,
+      home_away        = home_away,
+      outcome          = outcome,
+      opp_rank_side    = opp_rank_side,
+      opp_rank_n       = opp_rank_n,
+      opp_rank_metric = opp_rank_metric
     )
   })
   
@@ -277,16 +501,18 @@ server <- function(input, output, session) {
   result_df <- reactive({
     if (isTRUE(fallback_needed())) live_result_df() else mv_result_df()
   }) %>% bindEvent(
-    debounced_range(), debounced_teams(),
+    debounced_range(), debounced_teams(), debounced_on_filters(),
     input$min_all_poss, input$min_on_poss,
     input$game_year
   )
   
   output$onoff_dt <- renderDT({
     df <- result_df()
+    
     if (!"Player" %in% names(df) && all(c("First Name","Last Name") %in% names(df))) {
       df <- df %>% mutate(Player = paste(`First Name`, `Last Name`))
     }
+    
     keep_cols <- c(
       "Team","Player",
       "Net RTG Diff","Off ON Diff","Def ON Diff",
@@ -298,6 +524,7 @@ server <- function(input, output, session) {
       "pr_def_on_d","pr_off_on_d","pr_def_on_inv","pr_def_off_inv","pr_def_on_d_inv"
     )
     df <- df[, intersect(keep_cols, names(df))]
+    
     sketch <- htmltools::withTags(table(
       class = 'display',
       thead(
@@ -325,12 +552,15 @@ server <- function(input, output, session) {
         )
       )
     ))
+    
     idx_on_start  <- which(names(df) == "Off ON PPP")  - 1
     idx_off_start <- which(names(df) == "Off OFF PPP") - 1
+    
     pr_cols  <- c("pr_net","pr_off_on","pr_def_on","pr_on_net",
                   "pr_off_off","pr_def_off","pr_off_net",
                   "pr_def_on_d","pr_off_on_d","pr_def_on_inv","pr_def_off_inv","pr_def_on_d_inv")
     hide_idx <- which(names(df) %in% pr_cols) - 1
+    
     cuts      <- seq(0.05, 0.95, by = 0.05)
     cols_grad <- colorRampPalette(c("#d73027","#fee08b","#1a9850"))(20)
     
@@ -364,6 +594,7 @@ server <- function(input, output, session) {
       c("Off Net RTG","pr_off_net"),
       c("Off ON Diff","pr_off_on_d")
     )) dt <- formatStyle(dt, m[1], backgroundColor = styleInterval(cuts, cols_grad), valueColumns = m[2])
+    
     for (m in list(
       c("Def ON PPP","pr_def_on_inv"),
       c("Def OFF PPP","pr_def_off_inv"),
@@ -371,19 +602,28 @@ server <- function(input, output, session) {
     )) dt <- formatStyle(dt, m[1], backgroundColor = styleInterval(cuts, cols_grad), valueColumns = m[2])
     
     dt
-  }) %>% bindEvent(debounced_range(), debounced_teams(),
-                   input$min_all_poss, input$min_on_poss,
-                   input$game_year)
+  }) %>% bindEvent(
+    debounced_range(), debounced_teams(), debounced_on_filters(),
+    input$min_all_poss, input$min_on_poss,
+    input$game_year
+  )
   
   observeEvent(input$reset_defaults, {
     gy     <- selected_game_year()
     bounds <- season_date_bounds(gy)
     
-    updateDateRangeInput(session, "date_range",
-                         start = bounds$start, end = bounds$end)
+    updateDateRangeInput(session, "date_range", start = bounds$start, end = bounds$end)
     updateSelectizeInput(session, "teams", selected = character(0))
     updateSliderInput(session, "min_all_poss", value = DEFAULT_MIN_ALL)
     updateSliderInput(session, "min_on_poss",  value = DEFAULT_MIN_ON)
+    
+    updateSelectizeInput(session, "on_game_type", selected = "")
+    updateSelectizeInput(session, "on_opponents", selected = character(0))
+    updateSelectInput(session, "on_home_away", selected = "")
+    updateSelectInput(session, "on_outcome", selected = "")
+    updateSelectInput(session, "on_opp_rank_side", selected = "")
+    updateSelectInput(session, "on_opp_rank_n", selected = "")
+    updateSelectInput(session, "on_opp_rank_metric", selected = "")
   })
   
   output$download_csv <- downloadHandler(
@@ -406,16 +646,13 @@ server <- function(input, output, session) {
   
   # ======== Lineup Data tab =========================================================
   
-  # Storage for team & player name maps (used to present names in UI table)
   ld_ref <- reactiveValues(teams=NULL, players=NULL)
   
-  # init teams & name maps when tab opens OR season changes
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "lineup_data")) return(NULL)
     
     gy_int <- as.integer(selected_game_year())
     
-    # teams for this season
     teams_ld <- DBI::dbGetQuery(
       pg_pool,
       "SELECT DISTINCT team_id, MIN(team_name) AS team_name
@@ -427,7 +664,6 @@ server <- function(input, output, session) {
     )
     ld_ref$teams <- teams_ld
     
-    # add an explicit empty option at the top
     team_values <- c("", as.character(teams_ld$team_id))
     names(team_values) <- c("— All teams —", teams_ld$team_name)
     
@@ -435,7 +671,6 @@ server <- function(input, output, session) {
                          choices  = team_values,
                          selected = "", server = TRUE)
     
-    # full player name map (team_id + player_id -> name), season-aware
     players_map <- DBI::dbGetQuery(
       pg_pool,
       "SELECT team_id, player_id,
@@ -448,20 +683,14 @@ server <- function(input, output, session) {
     )
     ld_ref$players <- players_map
     
-    # clear players on init/season change
-    updateSelectizeInput(
-      session, "ld_players_on",
-      choices  = setNames(integer(0), character(0)),
-      selected = character(0), server = TRUE
-    )
-    updateSelectizeInput(
-      session, "ld_players_off",
-      choices  = setNames(integer(0), character(0)),
-      selected = character(0), server = TRUE
-    )
+    updateSelectizeInput(session, "ld_players_on",
+                         choices  = setNames(integer(0), character(0)),
+                         selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "ld_players_off",
+                         choices  = setNames(integer(0), character(0)),
+                         selected = character(0), server = TRUE)
   })
   
-  # update Players ON/OFF lists when a specific team is chosen; clear if "All teams"
   observeEvent(input$ld_team, {
     req(identical(input$main_tabs, "lineup_data"))
     
@@ -486,7 +715,6 @@ server <- function(input, output, session) {
                          selected = character(0), server = TRUE)
   }, ignoreInit = TRUE)
   
-  # Optional: prevent overlaps (if a player is ON, drop from OFF and vice versa)
   observeEvent(input$ld_players_on, {
     on_sel  <- input$ld_players_on  %||% character(0)
     off_sel <- input$ld_players_off %||% character(0)
@@ -496,6 +724,7 @@ server <- function(input, output, session) {
                            selected = setdiff(off_sel, inter), server = TRUE)
     }
   }, ignoreInit = TRUE)
+  
   observeEvent(input$ld_players_off, {
     on_sel  <- input$ld_players_on  %||% character(0)
     off_sel <- input$ld_players_off %||% character(0)
@@ -506,12 +735,10 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
   
-  # RESET button (Lineup Data) – restore defaults
   observeEvent(input$ld_reset, {
     updateRadioButtons(session, "ld_num", selected = LD_DEFAULT_NUM)
     updateDateRangeInput(session, "ld_dates", start = NA, end = NA)
     
-    # keep the same choices but select the empty option
     if (!is.null(ld_ref$teams)) {
       team_values <- c("", as.character(ld_ref$teams$team_id))
       names(team_values) <- c("— All teams —", ld_ref$teams$team_name)
@@ -520,109 +747,165 @@ server <- function(input, output, session) {
     } else {
       updateSelectizeInput(session, "ld_team", selected = "", server = TRUE)
     }
+    
     updateSelectizeInput(session, "ld_players_on",
                          choices = setNames(integer(0), character(0)),
                          selected = character(0), server = TRUE)
     updateSelectizeInput(session, "ld_players_off",
                          choices = setNames(integer(0), character(0)),
                          selected = character(0), server = TRUE)
+    
     updateSliderInput(session, "ld_minposs", value = LD_DEFAULT_MIN_POSS)
+    
+    updateSelectizeInput(session, "ld_game_type", selected = "")
+    updateSelectizeInput(session, "ld_opponents", selected = character(0))
+    updateSelectInput(session, "ld_home_away", selected = "")
+    updateSelectInput(session, "ld_outcome", selected = "")
+    updateSelectInput(session, "ld_opp_rank_side", selected = "")
+    updateSelectInput(session, "ld_opp_rank_n", selected = "")
+    updateSelectInput(session, "ld_opp_rank_metric", selected = "")
   })
   
-  # Build params continuously (no Apply button)
+  # ----------- Lineup DB call (16 params: 9 old + 7 new) ---------------------
+  run_fetch_lineups_16 <- function(pool,
+                                   num, team_csv, player_csv, player_off_csv,
+                                   exact, start_date, end_date, min_poss, game_year,
+                                   game_type_csv, opp_ids_csv, home_away, outcome,
+                                   opp_rank_side, opp_rank_n, opp_rank_metric) {
+    
+    DBI::dbGetQuery(
+      pool,
+      paste0(
+        "SELECT * FROM basketball_test.fetch_lineups_csv_v2(",
+        "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
+        "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text",
+        ")"
+      ),
+      params = list(
+        as.integer(num),
+        team_csv,
+        player_csv,
+        player_off_csv,
+        as.logical(exact),
+        as.Date(start_date),
+        as.Date(end_date),
+        as.integer(min_poss),
+        as.integer(game_year),
+        game_type_csv,
+        opp_ids_csv,
+        home_away,
+        outcome,
+        opp_rank_side,
+        opp_rank_n,
+        opp_rank_metric
+      )
+    )
+  }
+  
   ld_params <- reactive({
     req(identical(input$main_tabs, "lineup_data"))
     
-    # team: empty string => no filter (NULL)
     team_id <- if (!is.null(input$ld_team) && !is.na(input$ld_team) && nzchar(input$ld_team)) {
       as.integer(input$ld_team)
     } else {
       NA_integer_
     }
-    # players: only valid when a concrete team is chosen
+    
     player_on_ids  <- if (!is.na(team_id)) as.integer(input$ld_players_on)  else integer(0)
     player_off_ids <- if (!is.na(team_id)) as.integer(input$ld_players_off) else integer(0)
+    
+    ld_game_type_csv <- {
+      x <- input$ld_game_type
+      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_
+      else paste(x[nzchar(x)], collapse = ",")
+    }
+    
+    ld_opp_ids_csv <- {
+      ids <- selected_opp_ids_ld()
+      if (is.null(ids) || !length(ids)) NA_character_
+      else paste(ids, collapse = ",")
+    }
+    
+    ld_home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
+    ld_outcome   <- if (!nzchar(input$ld_outcome   %||% "")) NA_character_ else input$ld_outcome
+    
+    ld_rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
+    ld_rank_n    <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
+    ld_metric    <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
     
     list(
       num            = as.integer(input$ld_num),
       team_csv       = if (!is.na(team_id)) as.character(team_id) else NA_character_,
       player_csv     = if (length(player_on_ids))  paste(player_on_ids,  collapse = ",") else NA_character_,
       player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_,
-      exact      = TRUE,   # hybrid semantics implemented in SQL (set-equality when full set)
+      exact      = TRUE,
       start_date = if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA,
       end_date   = if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA,
-      min_poss   = as.integer(input$ld_minposs)
+      min_poss   = as.integer(input$ld_minposs),
+      
+      game_type_csv   = ld_game_type_csv,
+      opp_ids_csv      = ld_opp_ids_csv,
+      home_away        = ld_home_away,
+      outcome          = ld_outcome,
+      opp_rank_side    = ld_rank_side,
+      opp_rank_n       = ld_rank_n,
+      opp_rank_metric = ld_metric
     )
-  }) %>% bindEvent(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off,
-                   input$ld_dates, input$ld_minposs, input$main_tabs)
+  }) %>% bindEvent(
+    input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off,
+    input$ld_dates, input$ld_minposs, input$main_tabs,
+    input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome,
+    input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric
+  )
   
-  # Query DB (9-arg CSV wrapper; season-aware)
-  # Requires SQL function: basketball_test.fetch_lineups_csv_v2(..., p_game_year)
   ld_data <- reactive({
     req(ld_params())
     p  <- ld_params()
     gy <- as.integer(selected_game_year())
     
-    df <- DBI::dbGetQuery(
+    df <- run_fetch_lineups_16(
       pg_pool,
-      "SELECT * FROM basketball_test.fetch_lineups_csv_v2($1,$2,$3,$4,$5,$6,$7,$8,$9)",
-      params = list(
-        p$num, p$team_csv, p$player_csv, p$player_off_csv,
-        p$exact, as.Date(p$start_date), as.Date(p$end_date), p$min_poss,
-        gy
-      )
+      num            = p$num,
+      team_csv       = p$team_csv,
+      player_csv     = p$player_csv,
+      player_off_csv = p$player_off_csv,
+      exact          = p$exact,
+      start_date     = p$start_date,
+      end_date       = p$end_date,
+      min_poss       = p$min_poss,
+      game_year      = gy,
+      
+      game_type_csv   = p$game_type_csv,
+      opp_ids_csv      = p$opp_ids_csv,
+      home_away        = p$home_away,
+      outcome          = p$outcome,
+      opp_rank_side    = p$opp_rank_side,
+      opp_rank_n       = p$opp_rank_n,
+      opp_rank_metric = p$opp_rank_metric
     )
+    
     if (is.null(df) || NROW(df) == 0L) return(df[0, , drop = FALSE])
     
-    # Total possessions (sum)
     df$total_poss <- dplyr::coalesce(df$off_poss, 0L) + dplyr::coalesce(df$def_poss, 0L)
-    
-    # NEW: Plus/Minus = Off Pts - Def Pts
-    df$plus_minus <- dplyr::coalesce(df$off_pts, 0) - dplyr::coalesce(df$def_pts, 0)
-    
-    # "Initial" means: no team/players/dates, min poss is default (20). Group size can vary.
-    no_team  <- is.null(input$ld_team) || is.na(input$ld_team) || !nzchar(input$ld_team)
-    no_p_on  <- is.null(input$ld_players_on)  || length(input$ld_players_on)  == 0
-    no_p_off <- is.null(input$ld_players_off) || length(input$ld_players_off) == 0
-    no_dates <- is.null(input$ld_dates) || all(is.na(input$ld_dates))
-    is_def_mp <- isTRUE(all.equal(as.integer(input$ld_minposs), LD_DEFAULT_MIN_POSS))  # 20
-    
-    is_initial <- no_team && no_p_on && no_p_off && no_dates && is_def_mp
-    
-    if (is_initial) {
-      # Pick the set by total_poss (desc), keep only top 50; table still orders by Net RTG.
-      ord <- order(-df$total_poss)
-      take <- min(50L, NROW(df))
-      df <- df[ord[seq_len(take)], , drop = FALSE]
-    }
+    df$plus_minus <- dplyr::coalesce(df$off_pts, 0)  - dplyr::coalesce(df$def_pts, 0)
     
     df
   })
   
-  # Helper: map team_id -> team_name (vector)
   team_name_vec <- reactive({
     tdf <- isolate(ld_ref$teams)
     if (is.null(tdf)) return(character(0))
     setNames(tdf$team_name, as.character(tdf$team_id))
   })
   
-  # Render DT for Lineup Data with requested column order + percentile coloring
   output$ld_table <- DT::renderDataTable({
     req(ld_params())
     df <- ld_data()
     
-    # Resolve team names
     tmap <- team_name_vec()
-    if ("team_id" %in% names(df)) {
-      df$Team <- unname(tmap[as.character(df$team_id)])
-    }
+    if ("team_id" %in% names(df)) df$Team <- unname(tmap[as.character(df$team_id)])
+    if ("player_names_str" %in% names(df)) df$Players <- df$player_names_str
     
-    # Player names (already a single string)
-    if ("player_names_str" %in% names(df)) {
-      df$Players <- df$player_names_str
-    }
-    
-    # Requested display order (added plus_minus)
     show_cols <- c(
       "Team","Players","total_poss",
       "off_ppp","def_ppp","net_rtg","plus_minus",
@@ -630,7 +913,6 @@ server <- function(input, output, session) {
       "sub_lineup_hash"
     )
     
-    # ---- Percentile helpers (like On/Off, but computed client-side) ----
     pr_safe <- function(x, invert = FALSE) {
       n <- sum(!is.na(x))
       if (n <= 1) return(rep(NA_real_, length(x)))
@@ -640,17 +922,14 @@ server <- function(input, output, session) {
       as.numeric(p)
     }
     
-    # Compute percentiles on the full df
-    df$pr_ld_net       <- pr_safe(df$net_rtg,  invert = FALSE)  # higher better
-    df$pr_ld_off_ppp   <- pr_safe(df$off_ppp,  invert = FALSE)  # higher better
-    df$pr_ld_def_ppp_i <- pr_safe(df$def_ppp,  invert = TRUE)   # lower better -> invert
+    df$pr_ld_net       <- pr_safe(df$net_rtg,  invert = FALSE)
+    df$pr_ld_off_ppp   <- pr_safe(df$off_ppp,  invert = FALSE)
+    df$pr_ld_def_ppp_i <- pr_safe(df$def_ppp,  invert = TRUE)
     
-    # Keep display + hidden percentile columns
     pr_cols <- c("pr_ld_net","pr_ld_off_ppp","pr_ld_def_ppp_i")
     keep    <- intersect(show_cols, names(df))
     df      <- df[, unique(c(keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
     
-    # Friendly headers (added plus_minus)
     pretty_labels <- c(
       Team            = "Team",
       Players         = "Players",
@@ -670,8 +949,7 @@ server <- function(input, output, session) {
     
     cuts      <- seq(0.05, 0.95, by = 0.05)
     cols_grad <- colorRampPalette(c("#d73027","#fee08b","#1a9850"))(20)
-    
-    hide_idx <- which(colnames(df) %in% pr_cols) - 1L  # 0-based for DT
+    hide_idx  <- which(colnames(df) %in% pr_cols) - 1L
     
     dt <- DT::datatable(
       df,
@@ -685,9 +963,7 @@ server <- function(input, output, session) {
         deferRender = TRUE,
         scrollX     = TRUE,
         processing  = TRUE,
-        columnDefs  = list(
-          list(targets = hide_idx, visible = FALSE)
-        )
+        columnDefs  = list(list(targets = hide_idx, visible = FALSE))
       )
     ) |>
       DT::formatRound(
