@@ -1,10 +1,10 @@
 name: onoff-shiny
-title: on_off_israel_pbp
+title:
 username: ibpl-stats
 account: ibpl-stats
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15323246
-bundleId: 11331406
+bundleId:
 url: https://ibpl-stats.shinyapps.io/onoff-shiny/
 version: 1
