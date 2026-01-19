@@ -46,6 +46,9 @@ full_rosters <- tbl(pg_pool, in_schema("basketball_test","full_rosters"))
 onoff_mv     <- tbl(pg_pool, in_schema("basketball_test","onoff_default_mv"))
 schedule_tbl <- tbl(pg_pool, in_schema("basketball_test","schedule"))
 
+# --- NEW TABLE REFERENCE ---
+team_ratings_mv <- tbl(pg_pool, in_schema("basketball_test", "team_ppp_ratings_mv"))
+
 # ---------------- UI ----------------
 ui <- navbarPage(
   id = "main_tabs",
@@ -166,7 +169,6 @@ ui <- navbarPage(
           actionButton("ld_reset", "Reset Lineup Filters"),
           tags$hr(),
           
-          # Players On/Off moved higher (above Game Filters)
           selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
           helpText("Pick a team to enable player filtering."),
           selectizeInput("ld_players_on",  "Players On (exact/contains)", choices = NULL, multiple = TRUE,
@@ -256,6 +258,29 @@ ui <- navbarPage(
         ),
         mainPanel(
           DTOutput("ld_table")
+        )
+      )
+    )
+  ),
+  
+  # -------- Tab 3: Team Ratings (NEW) --------
+  tabPanel(
+    title = "Team Ratings", value = "team_ratings",
+    fluidPage(
+      sidebarLayout(
+        sidebarPanel(
+          width = 3,
+          selectInput(
+            "tr_game_year", "Season",
+            choices  = c("2025-26" = "2026",
+                         "2024-25" = "2025"),
+            selected = DEFAULT_GAME_YEAR
+          ),
+          helpText("Displays team-level PPP stats and league rankings.")
+        ),
+        mainPanel(
+          width = 9,
+          DTOutput("tr_table")
         )
       )
     )
@@ -383,7 +408,7 @@ server <- function(input, output, session) {
     start_d <- as.Date(rng[1])
     end_d   <- as.Date(rng[2])
     
-    gy            <- selected_game_year()
+    gy             <- selected_game_year()
     season_bounds <- season_date_bounds(gy)
     
     team_changed <- !is.null(debounced_teams()) && length(debounced_teams()) > 0
@@ -465,8 +490,8 @@ server <- function(input, output, session) {
     home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
     outcome   <- if (!nzchar(f$outcome   %||% "")) NA_character_ else f$outcome
     
-    opp_rank_side   <- if (!nzchar(f$rank_side %||% "")) NA_character_ else f$rank_side
-    opp_rank_n      <- suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n))
+    opp_rank_side    <- if (!nzchar(f$rank_side %||% "")) NA_character_ else f$rank_side
+    opp_rank_n       <- suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n))
     opp_rank_metric <- if (!nzchar(f$metric %||% "")) NA_character_ else f$metric
     
     run_onoff_compute_14(
@@ -479,7 +504,7 @@ server <- function(input, output, session) {
       min_net  = DEFAULT_MIN_NET,
       game_year = gy,
       
-      game_type_csv   = game_type_csv,
+      game_type_csv    = game_type_csv,
       opp_ids_csv      = opp_ids_csv,
       home_away        = home_away,
       outcome          = outcome,
@@ -834,16 +859,16 @@ server <- function(input, output, session) {
     ld_metric    <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
     
     list(
-      num            = as.integer(input$ld_num),
-      team_csv       = if (!is.na(team_id)) as.character(team_id) else NA_character_,
-      player_csv     = if (length(player_on_ids))  paste(player_on_ids,  collapse = ",") else NA_character_,
+      num              = as.integer(input$ld_num),
+      team_csv         = if (!is.na(team_id)) as.character(team_id) else NA_character_,
+      player_csv       = if (length(player_on_ids))  paste(player_on_ids,  collapse = ",") else NA_character_,
       player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_,
-      exact      = TRUE,
+      exact        = TRUE,
       start_date = if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA,
       end_date   = if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA,
       min_poss   = as.integer(input$ld_minposs),
       
-      game_type_csv   = ld_game_type_csv,
+      game_type_csv    = ld_game_type_csv,
       opp_ids_csv      = ld_opp_ids_csv,
       home_away        = ld_home_away,
       outcome          = ld_outcome,
@@ -875,7 +900,7 @@ server <- function(input, output, session) {
       min_poss       = p$min_poss,
       game_year      = gy,
       
-      game_type_csv   = p$game_type_csv,
+      game_type_csv    = p$game_type_csv,
       opp_ids_csv      = p$opp_ids_csv,
       home_away        = p$home_away,
       outcome          = p$outcome,
@@ -922,8 +947,8 @@ server <- function(input, output, session) {
       as.numeric(p)
     }
     
-    df$pr_ld_net       <- pr_safe(df$net_rtg,  invert = FALSE)
-    df$pr_ld_off_ppp   <- pr_safe(df$off_ppp,  invert = FALSE)
+    df$pr_ld_net        <- pr_safe(df$net_rtg,  invert = FALSE)
+    df$pr_ld_off_ppp    <- pr_safe(df$off_ppp,  invert = FALSE)
     df$pr_ld_def_ppp_i <- pr_safe(df$def_ppp,  invert = TRUE)
     
     pr_cols <- c("pr_ld_net","pr_ld_off_ppp","pr_ld_def_ppp_i")
@@ -931,18 +956,18 @@ server <- function(input, output, session) {
     df      <- df[, unique(c(keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
     
     pretty_labels <- c(
-      Team            = "Team",
-      Players         = "Players",
-      num_lineup      = "Size",
-      total_poss      = "Total Poss",
-      net_rtg         = "Net RTG",
-      plus_minus      = "+/- (Off-Def)",
-      off_ppp         = "Off PPP",
-      def_ppp         = "Def PPP",
-      off_poss        = "Off Poss",
-      off_pts         = "Off Pts",
-      def_poss        = "Def Poss",
-      def_pts         = "Def Pts",
+      Team                = "Team",
+      Players             = "Players",
+      num_lineup          = "Size",
+      total_poss          = "Total Poss",
+      net_rtg             = "Net RTG",
+      plus_minus          = "+/- (Off-Def)",
+      off_ppp             = "Off PPP",
+      def_ppp             = "Def PPP",
+      off_poss            = "Off Poss",
+      off_pts             = "Off Pts",
+      def_poss            = "Def Poss",
+      def_pts             = "Def Pts",
       sub_lineup_hash = "Lineup ID"
     )
     col_labels <- unname(pretty_labels[colnames(df)[colnames(df) %in% names(pretty_labels)]])
@@ -994,6 +1019,66 @@ server <- function(input, output, session) {
                             backgroundColor = styleInterval(cuts, cols_grad),
                             valueColumns    = "pr_ld_def_ppp_i")
     }
+    
+    dt
+  })
+  
+  # ======== Tab 3: Team Ratings Logic (NEW) =================================
+  
+  output$tr_table <- renderDT({
+    req(input$tr_game_year)
+    gy <- as.integer(input$tr_game_year)
+    
+    # 1. Fetch data
+    df <- team_ratings_mv %>%
+      filter(game_year == !!gy) %>%
+      select(game_year, team_name, off_ppp, def_ppp, net_rtg, 
+             rank_net_rtg, rank_off_ppp, rank_def_ppp) %>%
+      arrange(rank_net_rtg) %>%
+      collect()
+    
+    if (nrow(df) == 0) return(NULL)
+    
+    # 2. Pretty Names map
+    # Cols: game_year, team_name, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp
+    pretty_names <- c(
+      "Season", "Team", 
+      "Off PPP", "Def PPP", "Net Rtg",
+      "Net Rank", "Off Rank", "Def Rank"
+    )
+    
+    # 3. Create Color Palette for Ranks (1=Green ... 30=Red)
+    # We'll make cuts for ranks 1..29 to get 30 intervals (assuming ~30 teams)
+    # Actually, let's just make it dynamic based on max rank found
+    max_rank <- max(c(df$rank_net_rtg, df$rank_off_ppp, df$rank_def_ppp), na.rm = TRUE)
+    if (max_rank < 2) max_rank <- 2
+    
+    # Cuts: 1.5, 2.5, ... max_rank - 0.5
+    cuts <- seq(1.5, max_rank - 0.5, 1)
+    
+    # Values: Green -> Yellow -> Red
+    # e.g., Rank 1 (low) gets Green, Rank 30 (high) gets Red
+    cols_rank <- colorRampPalette(c("#1a9850", "#fee08b", "#d73027"))(length(cuts) + 1)
+    
+    # 4. Render
+    dt <- datatable(
+      df,
+      colnames = pretty_names,
+      rownames = FALSE,
+      options = list(
+        dom = "t", # just the table, no paging controls needed if list is short
+        pageLength = 50,
+        scrollX = TRUE,
+        columnDefs = list(
+          list(className = 'dt-center', targets = "_all")
+        )
+      )
+    ) %>%
+      formatRound(c("off_ppp", "def_ppp", "net_rtg"), 1) %>%
+      formatStyle(
+        columns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"),
+        backgroundColor = styleInterval(cuts, cols_rank)
+      )
     
     dt
   })
