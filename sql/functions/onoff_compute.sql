@@ -1,13 +1,13 @@
--- DROP FUNCTION basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text);
+-- DROP FUNCTION basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text, text, text, text, text, text, int4, text);
 
-CREATE OR REPLACE FUNCTION basketball_test.onoff_compute(p_start_date date, p_end_date date, p_team_ids text, p_min_all integer, p_min_on integer, p_min_net numeric, p_game_year text)
+CREATE OR REPLACE FUNCTION basketball_test.onoff_compute(p_start_date date, p_end_date date, p_team_ids text, p_min_all integer, p_min_on integer, p_min_net numeric, p_game_year text, p_game_type_csv text DEFAULT NULL::text, p_opp_ids_csv text DEFAULT NULL::text, p_home_away text DEFAULT 'all'::text, p_outcome text DEFAULT 'all'::text, p_opp_rank_side text DEFAULT NULL::text, p_opp_rank_n integer DEFAULT NULL::integer, p_opp_rank_metric text DEFAULT NULL::text)
  RETURNS TABLE("Team" text, "First Name" text, "Last Name" text, "Net RTG Diff" numeric, "Off ON Diff" numeric, "Def ON Diff" numeric, "Off ON PPP" numeric, "Def ON PPP" numeric, "On Net RTG" numeric, "Off OFF PPP" numeric, "Def OFF PPP" numeric, "Off Net RTG" numeric, "ON Poss" numeric, "OFF Poss" numeric, pr_net numeric, pr_off_on numeric, pr_off_off numeric, pr_def_on_inv numeric, pr_def_off_inv numeric, pr_off_on_d numeric, pr_def_on_d numeric, pr_def_on_d_inv numeric, pr_on_net numeric, pr_off_net numeric, player_id integer, team_id integer)
  LANGUAGE sql
 AS $function$
 WITH
 -- optional team filter from CSV
 team_filter AS (
-  SELECT NULLIF(p_team_ids,'') AS csv
+  SELECT NULLIF(regexp_replace(p_team_ids, '\s+', '', 'g'), '') AS csv
 ),
 teams AS (
   SELECT unnest(string_to_array(csv, ','))::int AS team_id
@@ -15,15 +15,153 @@ teams AS (
   WHERE csv IS NOT NULL
 ),
 
--- schedule filtered by date and optional game_year
+-- NEW: parse game_type/opponent CSVs
+game_type_filter AS (
+  SELECT NULLIF(regexp_replace(p_game_type_csv, '\s+', '', 'g'), '') AS csv
+),
+game_types AS (
+  SELECT unnest(string_to_array(csv, ','))::int AS game_type
+  FROM game_type_filter
+  WHERE csv IS NOT NULL
+),
+opp_filter AS (
+  SELECT NULLIF(regexp_replace(p_opp_ids_csv, '\s+', '', 'g'), '') AS csv
+),
+opps AS (
+  SELECT unnest(string_to_array(csv, ','))::int AS opp_team_id
+  FROM opp_filter
+  WHERE csv IS NOT NULL
+),
+
+/* ------------------------------------------------------------
+   Opponent strength ranking (computed from possessions/points)
+   We rank teams within the selected date window + game_year (+ game_type filter),
+   using df_pts_poss_lineups_longer_mv:
+   - off_ppp = points / poss * 100 (type_lineup='offense')
+   - def_ppp = points allowed / poss * 100 (type_lineup='defense')
+   - net_ppp = off_ppp - def_ppp
+------------------------------------------------------------ */
+sched_base_for_ranks AS (
+  SELECT DISTINCT
+    fs.game_id,
+    fs.game_year,
+    fs.game_date,
+    fs.game_type
+  FROM basketball_test.final_schedule_mv fs
+  WHERE fs.game_date BETWEEN p_start_date AND p_end_date
+    AND (p_game_year IS NULL OR fs.game_year::text = p_game_year)
+    AND (
+      NOT EXISTS (SELECT 1 FROM game_type_filter gtf WHERE gtf.csv IS NOT NULL)
+      OR fs.game_type IN (SELECT game_type FROM game_types)
+    )
+),
+team_game_raw AS (
+  SELECT
+    d.game_id,
+    d.team_id,
+    d.type_lineup,
+    SUM(d.team_score) AS pts,
+    SUM(CASE WHEN COALESCE(d.final_end_poss, false) THEN 1 ELSE 0 END) AS poss
+  FROM basketball_test.df_pts_poss_lineups_longer_mv d
+  JOIN sched_base_for_ranks sb
+    ON sb.game_id = d.game_id
+  GROUP BY d.game_id, d.team_id, d.type_lineup
+),
+team_game_ppp AS (
+  SELECT
+    tgr.game_id,
+    tgr.team_id,
+    MAX(CASE WHEN tgr.type_lineup = 'offense'
+             THEN ROUND(tgr.pts / NULLIF(tgr.poss,0)::numeric * 100, 2) END) AS off_ppp,
+    MAX(CASE WHEN tgr.type_lineup = 'defense'
+             THEN ROUND(tgr.pts / NULLIF(tgr.poss,0)::numeric * 100, 2) END) AS def_ppp
+  FROM team_game_raw tgr
+  GROUP BY tgr.game_id, tgr.team_id
+),
+opp_season_metrics AS (
+  SELECT
+    tgp.team_id,
+    ROUND(AVG(tgp.off_ppp), 2) AS off_ppp,
+    ROUND(AVG(tgp.def_ppp), 2) AS def_ppp,
+    ROUND(AVG(tgp.off_ppp - tgp.def_ppp), 2) AS net_ppp
+  FROM team_game_ppp tgp
+  GROUP BY tgp.team_id
+),
+opp_ranked AS (
+  SELECT
+    osm.*,
+    CASE
+      WHEN COALESCE(p_opp_rank_metric,'') = 'off' THEN osm.off_ppp
+      WHEN COALESCE(p_opp_rank_metric,'') = 'def' THEN -osm.def_ppp   -- lower def_ppp is better => flip sign
+      ELSE osm.net_ppp
+    END AS metric_for_rank
+  FROM opp_season_metrics osm
+),
+opp_topbottom AS (
+  SELECT team_id
+  FROM opp_ranked
+  WHERE p_opp_rank_side IS NOT NULL
+    AND p_opp_rank_n IS NOT NULL
+    AND p_opp_rank_metric IS NOT NULL
+  ORDER BY
+    CASE WHEN p_opp_rank_side = 'bottom' THEN metric_for_rank END ASC NULLS LAST,
+    CASE WHEN p_opp_rank_side = 'top'    THEN metric_for_rank END DESC NULLS LAST
+  LIMIT CASE WHEN p_opp_rank_n IS NULL OR p_opp_rank_n <= 0 THEN 0 ELSE p_opp_rank_n END
+),
+
+-- schedule filtered by date/year + NEW filters
+-- NOTE: final_schedule_mv is team-long (one row per team per game)
 sched AS (
   SELECT DISTINCT
-    s.game_id,
-    s.game_date,
-    s.game_year
-  FROM basketball_test.schedule s
-  WHERE s.game_date BETWEEN p_start_date AND p_end_date
-    AND (p_game_year IS NULL OR s.game_year::text = p_game_year)
+    fs.game_id,
+    fs.team_id,
+    fs.opp_team_id,
+    fs.game_date,
+    fs.game_year,
+    fs.game_type,
+    fs.is_home,
+    fs.has_won
+  FROM basketball_test.final_schedule_mv fs
+  WHERE fs.game_date BETWEEN p_start_date AND p_end_date
+    AND (p_game_year IS NULL OR fs.game_year::text = p_game_year)
+
+    -- team filter
+    AND (
+      NOT EXISTS (SELECT 1 FROM team_filter tf WHERE tf.csv IS NOT NULL)
+      OR fs.team_id IN (SELECT team_id FROM teams)
+    )
+
+    -- game type filter
+    AND (
+      NOT EXISTS (SELECT 1 FROM game_type_filter gtf WHERE gtf.csv IS NOT NULL)
+      OR fs.game_type IN (SELECT game_type FROM game_types)
+    )
+
+    -- explicit opponent filter
+    AND (
+      NOT EXISTS (SELECT 1 FROM opp_filter ofl WHERE ofl.csv IS NOT NULL)
+      OR fs.opp_team_id IN (SELECT opp_team_id FROM opps)
+    )
+
+    -- opponent rank filter (top/bottom N)
+    AND (
+      p_opp_rank_side IS NULL OR p_opp_rank_n IS NULL OR p_opp_rank_metric IS NULL
+      OR fs.opp_team_id IN (SELECT team_id FROM opp_topbottom)
+    )
+
+    -- home/away filter
+    AND (
+      COALESCE(p_home_away,'all') = 'all'
+      OR (p_home_away = 'home' AND fs.is_home IS TRUE)
+      OR (p_home_away = 'away' AND fs.is_home IS FALSE)
+    )
+
+    -- outcome filter
+    AND (
+      COALESCE(p_outcome,'all') = 'all'
+      OR (p_outcome = 'win'  AND fs.has_won IS TRUE)
+      OR (p_outcome = 'loss' AND fs.has_won IS FALSE)
+    )
 ),
 
 -- base player–team–lineup–on/off
@@ -34,11 +172,10 @@ base0 AS (
     ll.lineup_hash,
     COALESCE(ll.is_on_verdict, 0::numeric)::integer AS is_on_key
   FROM basketball_test.lineups_lookup ll
-  WHERE NOT EXISTS (SELECT 1 FROM team_filter tf WHERE tf.csv IS NOT NULL)
-     OR ll.team_id IN (SELECT team_id FROM teams)
 ),
 
 -- attach possessions + scores + season
+-- IMPORTANT CHANGE: join sched by (game_id, team_id) so filters (home/opp/win/type) apply correctly per team
 base AS (
   SELECT
     b0.player_id,
@@ -51,8 +188,11 @@ base AS (
     CASE WHEN COALESCE(d.final_end_poss, false) THEN 1 ELSE 0 END AS final_end_flag,
     s.game_year
   FROM base0 b0
-  JOIN basketball_test.df_pts_poss_lineups_longer_mv d USING (lineup_hash)
-  JOIN sched s USING (game_id)
+  JOIN basketball_test.df_pts_poss_lineups_longer_mv d
+    USING (lineup_hash)
+  JOIN sched s
+    ON s.game_id = d.game_id
+   AND s.team_id = b0.team_id
 ),
 
 -- per player–team–ON/OFF–type–year totals + PPP
@@ -98,7 +238,7 @@ ppp_ranked AS (
   FROM ppp_rank_base p
 ),
 
--- attach names + team_name + game_year (like MV)
+-- attach names + team_name + game_year (join via final_schedule_mv by game_id + team_id)
 with_names AS (
   SELECT
     a.player_id,
@@ -122,9 +262,11 @@ with_names AS (
       fr.firstname,
       fr.lastname,
       fr.team_name,
-      s.game_year
+      fs.game_year
     FROM basketball_test.full_rosters fr
-    JOIN basketball_test.schedule s ON fr.game_id = s.game_id
+    JOIN basketball_test.final_schedule_mv fs
+      ON fs.game_id = fr.game_id
+     AND fs.team_id = fr.team_id
   ) r USING (player_id, team_id, game_year)
 ),
 
@@ -337,35 +479,22 @@ final_rows AS (
     s2j.firstname,
     s2j.lastname,
 
-    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1
-             THEN s2j.ppp_calc END) AS offense_on_ppp,
-    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 0
-             THEN s2j.ppp_calc END) AS offense_off_ppp,
-    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1
-             THEN s2j.ppp_calc END) AS defense_on_ppp,
-    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 0
-             THEN s2j.ppp_calc END) AS defense_off_ppp,
+    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.ppp_calc END) AS offense_on_ppp,
+    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 0 THEN s2j.ppp_calc END) AS offense_off_ppp,
+    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.ppp_calc END) AS defense_on_ppp,
+    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 0 THEN s2j.ppp_calc END) AS defense_off_ppp,
 
-    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1
-             THEN s2j.pr_ppp_better END) AS pr_off_on,
-    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 0
-             THEN s2j.pr_ppp_better END) AS pr_off_off,
-    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1
-             THEN s2j.pr_ppp_better END) AS pr_def_on_inv,
-    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 0
-             THEN s2j.pr_ppp_better END) AS pr_def_off_inv,
+    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better END) AS pr_off_on,
+    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better END) AS pr_off_off,
+    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better END) AS pr_def_on_inv,
+    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better END) AS pr_def_off_inv,
 
-    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1
-             THEN s2j.net_rtg END) AS offense_on_diff,
-    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1
-             THEN s2j.net_rtg END) AS defense_on_diff,
+    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.net_rtg END) AS offense_on_diff,
+    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.net_rtg END) AS defense_on_diff,
 
-    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1
-             THEN s2j.pr_net_rtg_better END) AS pr_off_on_d,
-    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1
-             THEN s2j.pr_net_rtg_raw END)    AS pr_def_on_d,
-    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1
-             THEN s2j.pr_net_rtg_better END) AS pr_def_on_d_inv,
+    MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better END) AS pr_off_on_d,
+    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_raw END)    AS pr_def_on_d,
+    MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better END) AS pr_def_on_d_inv,
 
     MAX(s2j.total_net_rtg) AS total_net_rtg,
     MAX(s2j.pr_total_net)  AS pr_net,
