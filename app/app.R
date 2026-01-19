@@ -1035,7 +1035,7 @@ server <- function(input, output, session) {
       select(game_year, team_name, off_ppp, def_ppp, net_rtg, 
              rank_net_rtg, rank_off_ppp, rank_def_ppp) %>%
       arrange(rank_net_rtg) %>%
-      collect()
+      collect() #
     
     if (nrow(df) == 0) return(NULL)
     
