@@ -1,6 +1,6 @@
 -- basketball_test.onoff_default_mv source
 
-CREATE or replace MATERIALIZED VIEW basketball_test.onoff_default_mv
+CREATE MATERIALIZED VIEW basketball_test.onoff_default_mv
 TABLESPACE pg_default
 AS WITH sched AS (
          SELECT DISTINCT schedule.game_id,
@@ -355,6 +355,6 @@ AS WITH sched AS (
     player_id,
     team_id
    FROM final_scored
-  WHERE total_net_rtg >= '-50'::integer::numeric
+  WHERE on_poss >= 300::integer::numeric
   ORDER BY total_net_rtg DESC, team_name, lastname, firstname
 WITH DATA;
