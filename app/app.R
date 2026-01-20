@@ -45,8 +45,6 @@ onStop(function() poolClose(pg_pool))
 full_rosters <- tbl(pg_pool, in_schema("basketball_test","full_rosters"))
 onoff_mv     <- tbl(pg_pool, in_schema("basketball_test","onoff_default_mv"))
 schedule_tbl <- tbl(pg_pool, in_schema("basketball_test","schedule"))
-
-# --- NEW TABLE REFERENCE ---
 team_ratings_mv <- tbl(pg_pool, in_schema("basketball_test", "team_ppp_ratings_mv"))
 
 # ---------------- UI ----------------
@@ -263,20 +261,83 @@ ui <- navbarPage(
     )
   ),
   
-  # -------- Tab 3: Team Ratings (NEW) --------
+  # -------- Tab 3: Team Ratings (NEW with Filters) --------
   tabPanel(
     title = "Team Ratings", value = "team_ratings",
     fluidPage(
       sidebarLayout(
         sidebarPanel(
           width = 3,
+          actionButton("tr_reset", "Reset Filters"),
+          tags$hr(),
           selectInput(
             "tr_game_year", "Season",
             choices  = c("2025-26" = "2026",
                          "2024-25" = "2025"),
             selected = DEFAULT_GAME_YEAR
           ),
-          helpText("Displays team-level PPP stats and league rankings.")
+          
+          dateRangeInput("tr_dates", "Date range", start = NA, end = NA),
+          
+          tags$hr(),
+          
+          # Clickable Menus for Tab 3
+          bslib::accordion(
+            bslib::accordion_panel(
+              "Game Filters",
+              selectizeInput(
+                "tr_game_type", "Game type",
+                choices = c(
+                  "All" = "",
+                  "Regular season" = "5",
+                  "Playoffs – Quarterfinals" = "16",
+                  "Playoffs – Finals" = "17",
+                  "Playoffs – Semifinals" = "26",
+                  "Play-in" = "33",
+                  "Winner Cup" = "34"
+                ),
+                selected = "",
+                multiple = TRUE,
+                options = list(placeholder = "All game types")
+              ),
+              selectizeInput(
+                "tr_opponents", "Opponents",
+                choices = NULL,
+                selected = character(0),
+                multiple = TRUE,
+                options = list(placeholder = "All opponents")
+              ),
+              selectInput(
+                "tr_home_away", "Home/Away",
+                choices = c("All" = "", "Home" = "home", "Away" = "away"),
+                selected = ""
+              ),
+              selectInput(
+                "tr_outcome", "Outcome",
+                choices = c("All" = "", "Win" = "win", "Loss" = "loss"),
+                selected = ""
+              )
+            ),
+            bslib::accordion_panel(
+              "Opponent Strength",
+              selectInput(
+                "tr_opp_rank_side", "Top / Bottom",
+                choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"),
+                selected = ""
+              ),
+              selectInput(
+                "tr_opp_rank_n", "Rank N",
+                choices = c("—" = "", as.character(1:12)),
+                selected = ""
+              ),
+              selectInput(
+                "tr_opp_rank_metric", "Metric",
+                choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"),
+                selected = ""
+              )
+            ),
+            open = FALSE 
+          )
         ),
         mainPanel(
           width = 9,
@@ -331,6 +392,9 @@ server <- function(input, output, session) {
                          choices  = td$team_name,
                          selected = character(0),
                          server   = TRUE)
+    
+    # Update Tab 3 opponents (using current game year, though tab has its own input)
+    # Note: Logic below handles Tab 3 specific updates based on its own year selector
   }, ignoreInit = FALSE)
   
   # helper: names -> ids
@@ -1023,50 +1087,195 @@ server <- function(input, output, session) {
     dt
   })
   
-  # ======== Tab 3: Team Ratings Logic (NEW) =================================
+  # ======== Tab 3: Team Ratings Logic (Updated) =================================
+  
+  observeEvent(input$tr_reset, {
+    updateDateRangeInput(session, "tr_dates", start = NA, end = NA)
+    updateSelectizeInput(session, "tr_game_type", selected = "")
+    updateSelectizeInput(session, "tr_opponents", selected = character(0))
+    updateSelectInput(session, "tr_home_away", selected = "")
+    updateSelectInput(session, "tr_outcome", selected = "")
+    updateSelectInput(session, "tr_opp_rank_side", selected = "")
+    updateSelectInput(session, "tr_opp_rank_n", selected = "")
+    updateSelectInput(session, "tr_opp_rank_metric", selected = "")
+  })
+  
+  observeEvent(list(input$tr_game_year, input$main_tabs), {
+    # Update Tab 3 opponents when its season changes or tab is opened
+    req(input$tr_game_year)
+    gy_int <- as.integer(input$tr_game_year)
+    
+    # We fetch teams for the year selected in Tab 3 specifically
+    td <- full_rosters %>%
+      filter(game_year == !!gy_int) %>%
+      distinct(team_id, team_name) %>%
+      arrange(team_name) %>%
+      collect()
+    
+    updateSelectizeInput(session, "tr_opponents",
+                         choices  = td$team_name,
+                         selected = character(0),
+                         server   = TRUE)
+  })
+  
+  # New Function: Dynamic Team Ratings
+  run_team_ratings_dynamic <- function(pool, 
+                                       game_year, start_d, end_d,
+                                       game_type_csv, opp_ids_csv, home_away, outcome,
+                                       opp_rank_side, opp_rank_n, opp_rank_metric) {
+    DBI::dbGetQuery(
+      pool,
+      paste0(
+        "SELECT * FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text",
+        ")"
+      ),
+      params = list(
+        as.integer(game_year),
+        if (!is.na(start_d)) as.Date(start_d) else NA,
+        if (!is.na(end_d)) as.Date(end_d) else NA,
+        game_type_csv,
+        opp_ids_csv,
+        home_away,
+        outcome,
+        opp_rank_side,
+        opp_rank_n,
+        opp_rank_metric
+      )
+    )
+  }
+  
+  tr_params <- reactive({
+    gy <- as.integer(input$tr_game_year)
+    req(gy)
+    
+    start_d <- if (!is.null(input$tr_dates[1]) && !is.na(input$tr_dates[1])) as.Date(input$tr_dates[1]) else NA
+    end_d   <- if (!is.null(input$tr_dates[2]) && !is.na(input$tr_dates[2])) as.Date(input$tr_dates[2]) else NA
+    
+    tr_game_type_csv <- {
+      x <- input$tr_game_type
+      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_
+      else paste(x[nzchar(x)], collapse = ",")
+    }
+    
+    # Need to map Opponent Names -> IDs for Tab 3
+    # Helper to get map for current tab 3 year
+    td_map <- full_rosters %>%
+      filter(game_year == !!gy) %>%
+      distinct(team_id, team_name) %>%
+      collect()
+    
+    tr_opp_ids_csv <- {
+      sel <- input$tr_opponents
+      if (is.null(sel) || !length(sel)) NA_character_
+      else {
+        ids <- td_map %>% filter(team_name %in% sel) %>% pull(team_id)
+        paste(ids, collapse = ",")
+      }
+    }
+    
+    tr_home_away <- if (!nzchar(input$tr_home_away %||% "")) NA_character_ else input$tr_home_away
+    tr_outcome   <- if (!nzchar(input$tr_outcome   %||% "")) NA_character_ else input$tr_outcome
+    
+    tr_rank_side <- if (!nzchar(input$tr_opp_rank_side %||% "")) NA_character_ else input$tr_opp_rank_side
+    tr_rank_n    <- suppressWarnings(as.integer(if (!nzchar(input$tr_opp_rank_n %||% "")) NA_character_ else input$tr_opp_rank_n))
+    tr_metric    <- if (!nzchar(input$tr_opp_rank_metric %||% "")) NA_character_ else input$tr_opp_rank_metric
+    
+    list(
+      game_year = gy,
+      start_d = start_d,
+      end_d = end_d,
+      game_type_csv = tr_game_type_csv,
+      opp_ids_csv = tr_opp_ids_csv,
+      home_away = tr_home_away,
+      outcome = tr_outcome,
+      rank_side = tr_rank_side,
+      rank_n = tr_rank_n,
+      metric = tr_metric
+    )
+  }) %>% debounce(300)
+  
+  # Determine if we need fallback (Dynamic) or default (Static MV)
+  tr_fallback_needed <- reactive({
+    p <- tr_params()
+    
+    has_dates <- !is.na(p$start_d) || !is.na(p$end_d)
+    has_gt    <- !is.na(p$game_type_csv)
+    has_opp   <- !is.na(p$opp_ids_csv)
+    has_ha    <- !is.na(p$home_away)
+    has_out   <- !is.na(p$outcome)
+    has_rank  <- !is.na(p$rank_side) || !is.na(p$rank_n)
+    
+    has_dates || has_gt || has_opp || has_ha || has_out || has_rank
+  })
+  
+  tr_data <- reactive({
+    p <- tr_params()
+    
+    if (tr_fallback_needed()) {
+      # Use Dynamic Function
+      run_team_ratings_dynamic(
+        pg_pool,
+        game_year = p$game_year,
+        start_d   = p$start_d,
+        end_d     = p$end_d,
+        game_type_csv = p$game_type_csv,
+        opp_ids_csv   = p$opp_ids_csv,
+        home_away     = p$home_away,
+        outcome       = p$outcome,
+        opp_rank_side = p$rank_side,
+        opp_rank_n    = p$rank_n,
+        opp_rank_metric = p$metric
+      )
+    } else {
+      # Use Static Materialized View (Fast)
+      team_ratings_mv %>%
+        filter(game_year == !!p$game_year) %>%
+        select(game_year, team_name, off_ppp, def_ppp, net_rtg, 
+               rank_net_rtg, rank_off_ppp, rank_def_ppp) %>%
+        arrange(rank_net_rtg) %>%
+        collect()
+    }
+  })
   
   output$tr_table <- renderDT({
-    req(input$tr_game_year)
-    gy <- as.integer(input$tr_game_year)
+    df <- tr_data()
     
-    # 1. Fetch data
-    df <- team_ratings_mv %>%
-      filter(game_year == !!gy) %>%
-      select(game_year, team_name, off_ppp, def_ppp, net_rtg, 
-             rank_net_rtg, rank_off_ppp, rank_def_ppp) %>%
-      arrange(rank_net_rtg) %>%
-      collect() #
-    
-    if (nrow(df) == 0) return(NULL)
+    if (is.null(df) || nrow(df) == 0) return(NULL)
     
     # 2. Pretty Names map
     # Cols: game_year, team_name, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp
+    # Note: Dynamic function returns team_id, static select didn't. 
+    # Adjust logic: Just display the common columns.
     pretty_names <- c(
       "Season", "Team", 
       "Off PPP", "Def PPP", "Net Rtg",
       "Net Rank", "Off Rank", "Def Rank"
     )
     
+    # Ensure columns match for display
+    # Dynamic func returns: game_year, team_id, team_name, off_ppp, def_ppp, net_rtg, rank_net...
+    # Static logic above selects: game_year, team_name, ...
+    
+    # Normalize for display
+    disp_df <- df %>%
+      select(game_year, team_name, off_ppp, def_ppp, net_rtg, 
+             rank_net_rtg, rank_off_ppp, rank_def_ppp)
+    
     # 3. Create Color Palette for Ranks (1=Green ... 30=Red)
-    # We'll make cuts for ranks 1..29 to get 30 intervals (assuming ~30 teams)
-    # Actually, let's just make it dynamic based on max rank found
-    max_rank <- max(c(df$rank_net_rtg, df$rank_off_ppp, df$rank_def_ppp), na.rm = TRUE)
+    max_rank <- max(c(disp_df$rank_net_rtg, disp_df$rank_off_ppp, disp_df$rank_def_ppp), na.rm = TRUE)
     if (max_rank < 2) max_rank <- 2
     
-    # Cuts: 1.5, 2.5, ... max_rank - 0.5
     cuts <- seq(1.5, max_rank - 0.5, 1)
-    
-    # Values: Green -> Yellow -> Red
-    # e.g., Rank 1 (low) gets Green, Rank 30 (high) gets Red
     cols_rank <- colorRampPalette(c("#1a9850", "#fee08b", "#d73027"))(length(cuts) + 1)
     
     # 4. Render
     dt <- datatable(
-      df,
+      disp_df,
       colnames = pretty_names,
       rownames = FALSE,
       options = list(
-        dom = "t", # just the table, no paging controls needed if list is short
+        dom = "t", 
         pageLength = 50,
         scrollX = TRUE,
         columnDefs = list(
