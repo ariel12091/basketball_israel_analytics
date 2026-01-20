@@ -261,7 +261,7 @@ ui <- navbarPage(
     )
   ),
   
-  # -------- Tab 3: Team Ratings (NEW with Filters) --------
+  # -------- Tab 3: Team Ratings --------
   tabPanel(
     title = "Team Ratings", value = "team_ratings",
     fluidPage(
@@ -1003,11 +1003,12 @@ server <- function(input, output, session) {
     df <- df %>% select(any_of(keep_cols))
     
     # 3. Add hidden sort helper (1 for data rows)
-    df$is_total <- 1
+    # FIX: Use rep() to handle 0-row dataframe safely
+    df$is_total <- rep(1, nrow(df))
     
     # 4. Sort Data in R (by Net RTG descending)
     if ("net_rtg" %in% names(df)) {
-      df <- df %>% arrange(desc(net_rtg))
+      df <- df %>% arrange(desc(total_poss))
     }
     
     # 5. Calculate and Prepend Total Row
