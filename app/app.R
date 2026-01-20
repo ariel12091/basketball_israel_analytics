@@ -167,6 +167,11 @@ ui <- navbarPage(
           actionButton("ld_reset", "Reset Lineup Filters"),
           tags$hr(),
           
+          # --- Slider at top ---
+          sliderInput("ld_minposs", "Min possessions (sum of Off/Def)",
+                      min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
+          tags$hr(),
+          
           selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
           helpText("Pick a team to enable player filtering."),
           selectizeInput("ld_players_on",  "Players On (exact/contains)", choices = NULL, multiple = TRUE,
@@ -247,12 +252,7 @@ ui <- navbarPage(
               )
             ),
             open = FALSE # Closed by default
-          ),
-          
-          tags$hr(),
-          
-          sliderInput("ld_minposs", "Min possessions (sum of Off/Def)",
-                      min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10)
+          )
         ),
         mainPanel(
           DTOutput("ld_table")
@@ -393,8 +393,7 @@ server <- function(input, output, session) {
                          selected = character(0),
                          server   = TRUE)
     
-    # Update Tab 3 opponents (using current game year, though tab has its own input)
-    # Note: Logic below handles Tab 3 specific updates based on its own year selector
+    # Update Tab 3 opponents handled separately via observeEvent on tr_game_year
   }, ignoreInit = FALSE)
   
   # helper: names -> ids
@@ -991,9 +990,60 @@ server <- function(input, output, session) {
     req(ld_params())
     df <- ld_data()
     
+    # 1. Map Names
     tmap <- team_name_vec()
     if ("team_id" %in% names(df)) df$Team <- unname(tmap[as.character(df$team_id)])
     if ("player_names_str" %in% names(df)) df$Players <- df$player_names_str
+    
+    # 2. SELECT display columns only (prevents crash on array types)
+    keep_cols <- c("Team", "Players", "total_poss", "plus_minus", 
+                   "off_poss", "def_poss", "off_pts", "def_pts", 
+                   "off_ppp", "def_ppp", "net_rtg", 
+                   "num_lineup", "sub_lineup_hash")
+    df <- df %>% select(any_of(keep_cols))
+    
+    # 3. Add hidden sort helper (1 for data rows)
+    df$is_total <- 1
+    
+    # 4. Sort Data in R (by Net RTG descending)
+    if ("net_rtg" %in% names(df)) {
+      df <- df %>% arrange(desc(net_rtg))
+    }
+    
+    # 5. Calculate and Prepend Total Row
+    if (nrow(df) > 0) {
+      sum_off_poss <- sum(df$off_poss, na.rm = TRUE)
+      sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
+      sum_off_pts  <- sum(df$off_pts, na.rm = TRUE)
+      sum_def_pts  <- sum(df$def_pts, na.rm = TRUE)
+      
+      tot_off_ppp <- if (sum_off_poss > 0) (sum_off_pts / sum_off_poss) * 100 else 0
+      tot_def_ppp <- if (sum_def_poss > 0) (sum_def_pts / sum_def_poss) * 100 else 0
+      tot_net_rtg <- tot_off_ppp - tot_def_ppp
+      
+      total_row <- data.frame(
+        Team            = "TOTAL",
+        Players         = "— All Lineups —",
+        total_poss      = sum_off_poss + sum_def_poss,
+        off_ppp         = tot_off_ppp,
+        def_ppp         = tot_def_ppp,
+        net_rtg         = tot_net_rtg,
+        plus_minus      = sum_off_pts - sum_def_pts,
+        off_poss        = sum_off_poss,
+        off_pts         = sum_off_pts,
+        def_poss        = sum_def_poss,
+        def_pts         = sum_def_pts,
+        num_lineup      = NA_integer_,
+        sub_lineup_hash = "TOTAL",
+        is_total        = 0, # <--- 0 for Total
+        stringsAsFactors = FALSE
+      )
+      
+      df <- dplyr::bind_rows(total_row, df)
+    }
+    
+    # 6. Move helper to first column (Index 0 in JS)
+    df <- df %>% select(is_total, everything())
     
     show_cols <- c(
       "Team","Players","total_poss",
@@ -1002,22 +1052,31 @@ server <- function(input, output, session) {
       "sub_lineup_hash"
     )
     
+    # Safe ranking ignoring TOTAL row
+    is_data <- if (nrow(df) > 0) df$Team != "TOTAL" else logical(0)
+    
     pr_safe <- function(x, invert = FALSE) {
-      n <- sum(!is.na(x))
+      vals <- x[is_data]
+      n <- sum(!is.na(vals))
       if (n <= 1) return(rep(NA_real_, length(x)))
-      r <- rank(x, na.last = "keep", ties.method = "average")
+      r <- rank(vals, na.last = "keep", ties.method = "average")
       p <- (r - 1) / (n - 1)
       if (invert) p <- 1 - p
-      as.numeric(p)
+      
+      out <- rep(NA_real_, length(x))
+      out[is_data] <- as.numeric(p)
+      out
     }
     
     df$pr_ld_net        <- pr_safe(df$net_rtg,  invert = FALSE)
     df$pr_ld_off_ppp    <- pr_safe(df$off_ppp,  invert = FALSE)
-    df$pr_ld_def_ppp_i <- pr_safe(df$def_ppp,  invert = TRUE)
+    df$pr_ld_def_ppp_i  <- pr_safe(df$def_ppp,  invert = TRUE)
     
     pr_cols <- c("pr_ld_net","pr_ld_off_ppp","pr_ld_def_ppp_i")
+    # Note: Keep "is_total" separate from "keep" calculation
     keep    <- intersect(show_cols, names(df))
-    df      <- df[, unique(c(keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
+    # Final DF structure: is_total | Display Cols | PR Cols
+    df      <- df[, unique(c("is_total", keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
     
     pretty_labels <- c(
       Team                = "Team",
@@ -1032,27 +1091,42 @@ server <- function(input, output, session) {
       off_pts             = "Off Pts",
       def_poss            = "Def Poss",
       def_pts             = "Def Pts",
-      sub_lineup_hash = "Lineup ID"
+      sub_lineup_hash     = "Lineup ID"
     )
-    col_labels <- unname(pretty_labels[colnames(df)[colnames(df) %in% names(pretty_labels)]])
+    # The actual data column names (excluding is_total and PR cols)
+    data_col_names <- colnames(df)[-1] 
+    # Remove PR cols from that list for labeling
+    data_col_names <- setdiff(data_col_names, pr_cols)
+    
+    col_labels <- unname(pretty_labels[data_col_names])
+    # Add blank label for the hidden "is_total" column (first col)
+    final_labels <- c("", col_labels) 
     
     cuts      <- seq(0.05, 0.95, by = 0.05)
     cols_grad <- colorRampPalette(c("#d73027","#fee08b","#1a9850"))(20)
-    hide_idx  <- which(colnames(df) %in% pr_cols) - 1L
+    
+    # Calculate indices to hide (is_total + PR cols)
+    # is_total is index 0
+    # PR cols are at the end
+    pr_indices <- which(colnames(df) %in% pr_cols) - 1L
+    hidden_indices <- c(0, pr_indices)
     
     dt <- DT::datatable(
       df,
-      colnames = col_labels,
+      colnames = final_labels,
       rownames = FALSE,
       filter   = "top",
       options  = list(
         pageLength  = 50,
         lengthMenu  = c(25, 50, 100, 200, 1000),
-        order       = list(list(which(colnames(df)=="net_rtg")-1L, "desc")),
+        # FREEZE TOTAL ROW: Sort by is_total (asc) first, then allow user sorting
+        orderFixed  = list(list(0, 'asc')), 
         deferRender = TRUE,
         scrollX     = TRUE,
         processing  = TRUE,
-        columnDefs  = list(list(targets = hide_idx, visible = FALSE))
+        columnDefs  = list(
+          list(targets = hidden_indices, visible = FALSE)
+        )
       )
     ) |>
       DT::formatRound(
@@ -1067,6 +1141,14 @@ server <- function(input, output, session) {
         c("off_pts","def_pts","plus_minus")[c("off_pts","def_pts","plus_minus") %in% names(df)],
         currency = "", interval = 3, mark = ",", digits = 0
       )
+    
+    # Style for TOTAL row
+    dt <- DT::formatStyle(
+      dt, "Team",
+      target = "row",
+      backgroundColor = styleEqual("TOTAL", "#f0f0f0"),
+      fontWeight      = styleEqual("TOTAL", "bold")
+    )
     
     if (all(c("net_rtg","pr_ld_net") %in% colnames(df))) {
       dt <- DT::formatStyle(dt, "net_rtg",
