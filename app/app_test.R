@@ -593,7 +593,7 @@ server <- function(input, output, session) {
         "Off ON PPP", "Def ON PPP", "On Net RTG", 
         "Off OFF PPP", "Def OFF PPP", "Off Net RTG", 
         "ON Poss", "OFF Poss",
-        "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_off_off", "pr_def_off_inv", "pr_def_on_d_inv"
+        "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
       )
       df <- df[, intersect(keep_cols, names(df))]
       
@@ -640,7 +640,12 @@ server <- function(input, output, session) {
       
       if("pr_off_on" %in% names(df)) dt <- formatStyle(dt, "Off ON PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_on")
       if("pr_def_on_inv" %in% names(df)) dt <- formatStyle(dt, "Def ON PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_on_inv")
-      
+      if("pr_on_net" %in% names(df)) dt <- formatStyle(dt, "On Net RTG", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_on_net")
+
+      if("pr_off_off" %in% names(df)) dt <- formatStyle(dt, "Off OFF PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_off")
+      if("pr_def_off_inv" %in% names(df)) dt <- formatStyle(dt, "Def OFF PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_off_inv")
+      if("pr_off_net" %in% names(df)) dt <- formatStyle(dt, "Off Net RTG", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_net")
+
       return(dt)
       
     } else {
