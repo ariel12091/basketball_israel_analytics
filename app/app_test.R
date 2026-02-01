@@ -235,6 +235,13 @@ ui <- navbarPage(
         sidebarPanel(
           actionButton("ld_reset", "Reset Lineup Filters"),
           tags$hr(),
+          div(
+            class = "view-mode-container",
+            radioButtons("ld_view_mode", label = "View:",
+                         choices = c("Summary", "Four Factors"),
+                         selected = "Summary", inline = TRUE)
+          ),
+          tags$hr(),
           sliderInput("ld_minposs", "Min possessions (sum of Off/Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
           tags$hr(),
           selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
@@ -956,6 +963,7 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
   
   observeEvent(input$ld_reset, {
+    updateRadioButtons(session, "ld_view_mode", selected = "Summary")
     updateRadioButtons(session, "ld_num", selected = LD_DEFAULT_NUM)
     updateDateRangeInput(session, "ld_dates", start = NA, end = NA)
     if (!is.null(ld_ref$teams)) {
@@ -980,7 +988,84 @@ server <- function(input, output, session) {
   run_fetch_lineups_16 <- function(pool, num, team_csv, player_csv, player_off_csv, exact, start_date, end_date, min_poss, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric) {
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_csv_v2(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric))
   }
-  
+
+  run_fetch_lineups_ff_16 <- function(pool, num, team_csv, player_csv, player_off_csv, exact, start_date, end_date, min_poss, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric) {
+    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric))
+  }
+
+  # --- Full ranked FF data (ranks computed BEFORE any local filtering) ---
+  # Only re-fetches when game filters or group size change.
+  # Team, players on/off, min poss are applied locally afterward.
+  ld_ff_ranked_df <- reactive({
+    req(identical(input$main_tabs, "lineup_data"))
+    gy <- as.integer(input$game_year_ld)
+    num <- as.integer(input$ld_num)
+
+    # Extract game filter params (same logic as ld_params)
+    game_type_csv <- {
+      x <- input$ld_game_type
+      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
+    }
+    opp_ids_csv <- {
+      ids <- selected_opp_ids_ld()
+      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
+    }
+    home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
+    outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
+    rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
+    rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
+    metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
+
+    start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
+    end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
+
+    # Fetch ALL lineups for group size + game filters (no team/player/min_poss)
+    df <- run_fetch_lineups_ff_16(pg_pool,
+      num = num, team_csv = NA_character_, player_csv = NA_character_,
+      player_off_csv = NA_character_, exact = TRUE,
+      start_date = start_date, end_date = end_date,
+      min_poss = 0L, game_year = gy,
+      game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
+      home_away = home_away, outcome = outcome,
+      opp_rank_side = rank_side, opp_rank_n = rank_n, opp_rank_metric = metric)
+
+    if (is.null(df) || NROW(df) == 0L) return(df)
+
+    df$total_poss <- dplyr::coalesce(df$off_poss, 0L) + dplyr::coalesce(df$def_poss, 0L)
+
+    # Compute percentile ranks on the FULL unfiltered dataset.
+    # Only lineups with >= RANKING_BASELINE total poss are ranked;
+    # below-threshold lineups get NA (appear unranked/gray).
+    qualified <- df$total_poss >= RANKING_BASELINE
+
+    pr_vec <- function(x, invert = FALSE) {
+      vals <- ifelse(qualified, x, NA_real_)
+      n <- sum(!is.na(vals))
+      if (n <= 1) return(rep(NA_real_, length(vals)))
+      r <- rank(vals, na.last = "keep", ties.method = "average")
+      p <- (r - 1) / (n - 1)
+      if (invert) p <- 1 - p
+      as.numeric(p)
+    }
+
+    if ("off_ppp"  %in% names(df)) df$pr_off_ppp  <- pr_vec(df$off_ppp)
+    if ("off_ts"   %in% names(df)) df$pr_off_ts   <- pr_vec(df$off_ts)
+    if ("off_oreb" %in% names(df)) df$pr_off_oreb <- pr_vec(df$off_oreb)
+    if ("off_tov"  %in% names(df)) df$pr_off_tov  <- pr_vec(df$off_tov, invert = TRUE)
+    if ("off_ftr"  %in% names(df)) df$pr_off_ftr  <- pr_vec(df$off_ftr)
+    if ("def_ppp"  %in% names(df)) df$pr_def_ppp  <- pr_vec(df$def_ppp, invert = TRUE)
+    if ("def_ts"   %in% names(df)) df$pr_def_ts   <- pr_vec(df$def_ts, invert = TRUE)
+    if ("def_oreb" %in% names(df)) df$pr_def_oreb <- pr_vec(df$def_oreb, invert = TRUE)
+    if ("def_tov"  %in% names(df)) df$pr_def_tov  <- pr_vec(df$def_tov)
+    if ("def_ftr"  %in% names(df)) df$pr_def_ftr  <- pr_vec(df$def_ftr, invert = TRUE)
+    if ("net_rtg"  %in% names(df)) df$pr_net      <- pr_vec(df$net_rtg)
+
+    df
+  }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year_ld,
+                    input$ld_game_type, input$ld_opponents, input$ld_home_away,
+                    input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n,
+                    input$ld_opp_rank_metric, input$main_tabs, input$ld_view_mode)
+
   ld_params <- reactive({
     req(identical(input$main_tabs, "lineup_data"))
     team_id <- if (!is.null(input$ld_team) && !is.na(input$ld_team) && nzchar(input$ld_team)) as.integer(input$ld_team) else NA_integer_
@@ -1001,40 +1086,79 @@ server <- function(input, output, session) {
     ld_metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
     
     list(num = as.integer(input$ld_num), team_csv = if (!is.na(team_id)) as.character(team_id) else NA_character_, player_csv = if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_, player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_, exact = TRUE, start_date = if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA, end_date = if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA, min_poss = as.integer(input$ld_minposs), game_type_csv = ld_game_type_csv, opp_ids_csv = ld_opp_ids_csv, home_away = ld_home_away, outcome = ld_outcome, opp_rank_side = ld_rank_side, opp_rank_n = ld_rank_n, opp_rank_metric = ld_metric)
-  }) %>% bindEvent(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off, input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric)
+  }) %>% bindEvent(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off, input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode)
   
   ld_data <- reactive({
     req(ld_params())
     p <- ld_params()
-    gy <- as.integer(input$game_year_ld) # Use specific year input
-    df <- run_fetch_lineups_16(pg_pool, num = p$num, team_csv = p$team_csv, player_csv = p$player_csv, player_off_csv = p$player_off_csv, exact = p$exact, start_date = p$start_date, end_date = p$end_date, min_poss = p$min_poss, game_year = gy, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$opp_rank_side, opp_rank_n = p$opp_rank_n, opp_rank_metric = p$opp_rank_metric)
-    
-    # ------------------
-    # FIX for Empty Data
-    # ------------------
-    if (is.null(df) || NROW(df) == 0L) {
-      # Return valid empty df with required columns to prevent downstream crashes
-      return(data.frame(
-        team_id = integer(0),
-        player_names_str = character(0),
-        total_poss = integer(0),
-        plus_minus = numeric(0),
-        off_poss = integer(0),
-        def_poss = integer(0),
-        off_pts = numeric(0),
-        def_pts = numeric(0),
-        off_ppp = numeric(0),
-        def_ppp = numeric(0),
-        net_rtg = numeric(0),
-        num_lineup = integer(0),
-        sub_lineup_hash = character(0),
-        stringsAsFactors = FALSE
-      ))
+    gy <- as.integer(input$game_year_ld)
+    mode <- input$ld_view_mode
+
+    if (identical(mode, "Four Factors")) {
+      # Get pre-ranked data (ranks computed on full unfiltered population)
+      df <- ld_ff_ranked_df()
+
+      if (is.null(df) || NROW(df) == 0L) {
+        return(data.frame(
+          team_id = integer(0), player_names_str = character(0),
+          off_ts = numeric(0), off_oreb = numeric(0), off_tov = numeric(0), off_ftr = numeric(0),
+          off_poss = integer(0), off_pts = integer(0), off_ppp = numeric(0),
+          def_ts = numeric(0), def_oreb = numeric(0), def_tov = numeric(0), def_ftr = numeric(0),
+          def_poss = integer(0), def_pts = integer(0), def_ppp = numeric(0),
+          net_rtg = numeric(0), num_lineup = integer(0), sub_lineup_hash = character(0),
+          total_poss = integer(0),
+          stringsAsFactors = FALSE
+        ))
+      }
+
+      # --- Filter LOCALLY (ranks already computed on full data) ---
+
+      # Filter by team
+      if (!is.na(p$team_csv) && nzchar(p$team_csv)) {
+        team_ids <- as.integer(strsplit(p$team_csv, ",")[[1]])
+        df <- df %>% filter(team_id %in% team_ids)
+      }
+
+      # Filter by players on (lineup must contain all selected players)
+      if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
+        on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
+        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
+        keep <- vapply(pid_list, function(x) all(on_ids %in% x), logical(1))
+        df <- df[keep, , drop = FALSE]
+      }
+
+      # Filter by players off (lineup must NOT contain any excluded players)
+      if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
+        off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
+        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
+        keep <- vapply(pid_list, function(x) !any(off_ids %in% x), logical(1))
+        df <- df[keep, , drop = FALSE]
+      }
+
+      # Filter by min poss
+      df <- df %>% filter(total_poss >= !!p$min_poss)
+
+      df
+    } else {
+      df <- run_fetch_lineups_16(pg_pool, num = p$num, team_csv = p$team_csv, player_csv = p$player_csv, player_off_csv = p$player_off_csv, exact = p$exact, start_date = p$start_date, end_date = p$end_date, min_poss = p$min_poss, game_year = gy, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$opp_rank_side, opp_rank_n = p$opp_rank_n, opp_rank_metric = p$opp_rank_metric)
+
+      if (is.null(df) || NROW(df) == 0L) {
+        return(data.frame(
+          team_id = integer(0), player_names_str = character(0),
+          total_poss = integer(0), plus_minus = numeric(0),
+          off_poss = integer(0), def_poss = integer(0),
+          off_pts = numeric(0), def_pts = numeric(0),
+          off_ppp = numeric(0), def_ppp = numeric(0),
+          net_rtg = numeric(0), num_lineup = integer(0),
+          sub_lineup_hash = character(0),
+          stringsAsFactors = FALSE
+        ))
+      }
+
+      df$total_poss <- dplyr::coalesce(df$off_poss, 0L) + dplyr::coalesce(df$def_poss, 0L)
+      df$plus_minus <- dplyr::coalesce(df$off_pts, 0) - dplyr::coalesce(df$def_pts, 0)
+      df
     }
-    
-    df$total_poss <- dplyr::coalesce(df$off_poss, 0L) + dplyr::coalesce(df$def_poss, 0L)
-    df$plus_minus <- dplyr::coalesce(df$off_pts, 0) - dplyr::coalesce(df$def_pts, 0)
-    df
   })
   
   team_name_vec <- reactive({
@@ -1046,35 +1170,22 @@ server <- function(input, output, session) {
   output$ld_table <- DT::renderDataTable({
     req(ld_params())
     df <- ld_data()
+    mode <- input$ld_view_mode
     tmap <- team_name_vec()
+
+    # Common: Map team names and create Players column
     if ("team_id" %in% names(df)) {
       df$Team <- unname(tmap[as.character(df$team_id)])
-      # Fallback for NAs
       df$Team[is.na(df$Team)] <- as.character(df$team_id[is.na(df$Team)])
     }
     if ("player_names_str" %in% names(df)) df$Players <- df$player_names_str
-    keep_cols <- c("Team", "Players", "total_poss", "plus_minus", "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_lineup", "sub_lineup_hash")
-    df <- df %>% select(any_of(keep_cols))
-    df$is_total <- rep(1, nrow(df))
-    if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
-    if (nrow(df) > 0) {
-      sum_off_poss <- sum(df$off_poss, na.rm = TRUE)
-      sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
-      sum_off_pts <- sum(df$off_pts, na.rm = TRUE)
-      sum_def_pts <- sum(df$def_pts, na.rm = TRUE)
-      tot_off_ppp <- if (sum_off_poss > 0) (sum_off_pts / sum_off_poss) * 100 else 0
-      tot_def_ppp <- if (sum_def_poss > 0) (sum_def_pts / sum_def_poss) * 100 else 0
-      tot_net_rtg <- tot_off_ppp - tot_def_ppp
-      total_row <- data.frame(Team = "TOTAL", Players = "— All Lineups —", total_poss = sum_off_poss + sum_def_poss, off_ppp = tot_off_ppp, def_ppp = tot_def_ppp, net_rtg = tot_net_rtg, plus_minus = sum_off_pts - sum_def_pts, off_poss = sum_off_poss, off_pts = sum_off_pts, def_poss = sum_def_poss, def_pts = sum_def_pts, num_lineup = NA_integer_, sub_lineup_hash = "TOTAL", is_total = 0, stringsAsFactors = FALSE)
-      df <- dplyr::bind_rows(total_row, df)
-    }
-    df <- df %>% select(is_total, everything())
-    show_cols <- c("Team", "Players", "total_poss", "off_ppp", "def_ppp", "net_rtg", "plus_minus", "off_poss", "off_pts", "def_poss", "def_pts", "num_lineup", "sub_lineup_hash")
-    
-    # Safe check for ranks
-    is_data <- if (nrow(df) > 0) { !is.na(df$Team) & df$Team != "TOTAL" } else { logical(0) }
-    
-    pr_safe <- function(x, invert = FALSE) {
+
+    cuts <- seq(0.05, 0.95, by = 0.05)
+    cols_grad <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
+    cols_rev  <- rev(cols_grad)
+
+    # Safe percentile rank helper (excludes TOTAL row)
+    pr_safe <- function(x, is_data, invert = FALSE) {
       vals <- x[is_data]
       n <- sum(!is.na(vals))
       if (n <= 1) return(rep(NA_real_, length(x)))
@@ -1085,33 +1196,175 @@ server <- function(input, output, session) {
       out[is_data] <- as.numeric(p)
       out
     }
-    
-    if("net_rtg" %in% names(df)) df$pr_ld_net <- pr_safe(df$net_rtg, invert = FALSE)
-    if("off_ppp" %in% names(df)) df$pr_ld_off_ppp <- pr_safe(df$off_ppp, invert = FALSE)
-    if("def_ppp" %in% names(df)) df$pr_ld_def_ppp_i <- pr_safe(df$def_ppp, invert = TRUE)
-    
-    pr_cols <- c("pr_ld_net", "pr_ld_off_ppp", "pr_ld_def_ppp_i")
-    keep <- intersect(show_cols, names(df))
-    df <- df[, unique(c("is_total", keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
-    pretty_labels <- c(Team = "Team", Players = "Players", num_lineup = "Size", total_poss = "Total Poss", net_rtg = "Net RTG", plus_minus = "+/-", off_ppp = "Off PPP", def_ppp = "Def PPP", off_poss = "Off Poss", off_pts = "Off Pts", def_poss = "Def Poss", def_pts = "Def Pts", sub_lineup_hash = "Lineup ID")
-    data_col_names <- colnames(df)[-1]
-    data_col_names <- setdiff(data_col_names, pr_cols)
-    col_labels <- unname(pretty_labels[data_col_names])
-    final_labels <- c("", col_labels)
-    cuts <- seq(0.05, 0.95, by = 0.05)
-    cols_grad <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
-    pr_indices <- which(colnames(df) %in% pr_cols) - 1L
-    hidden_indices <- c(0, pr_indices)
-    
-    dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, filter = "top", options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, processing = TRUE, columnDefs = list(list(targets = hidden_indices, visible = FALSE)))) |>
-      DT::formatRound(c("off_ppp", "def_ppp", "net_rtg")[c("off_ppp", "def_ppp", "net_rtg") %in% names(df)], 1) |>
-      DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
-      DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
-    dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#f0f0f0"), fontWeight = styleEqual("TOTAL", "bold"))
-    if (all(c("net_rtg", "pr_ld_net") %in% colnames(df))) dt <- DT::formatStyle(dt, "net_rtg", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_net")
-    if (all(c("off_ppp", "pr_ld_off_ppp") %in% colnames(df))) dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_off_ppp")
-    if (all(c("def_ppp", "pr_ld_def_ppp_i") %in% colnames(df))) dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_def_ppp_i")
-    dt
+
+    if (identical(mode, "Four Factors")) {
+      # ============================================================
+      # FOUR FACTORS LINEUP TABLE
+      # Ranks are pre-computed on the full unfiltered population
+      # in ld_ff_ranked_df(), so colors stay stable across local filters.
+      # ============================================================
+
+      pr_cols <- c("pr_off_ppp", "pr_off_ts", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
+                   "pr_def_ppp", "pr_def_ts", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
+
+      keep_cols <- c("Team", "Players",
+                     "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr", "off_poss",
+                     "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr", "def_poss",
+                     "total_poss", "net_rtg")
+      df <- df %>% select(any_of(c(keep_cols, pr_cols)))
+      df$is_total <- rep(1, nrow(df))
+      df <- df %>% arrange(desc(total_poss))
+
+      # --- TOTAL row ---
+      if (nrow(df) > 0) {
+        sum_off_poss <- sum(df$off_poss, na.rm = TRUE)
+        sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
+        sum_off_pts  <- sum(ld_data()$off_pts, na.rm = TRUE)
+        sum_def_pts  <- sum(ld_data()$def_pts, na.rm = TRUE)
+        tot_off_ppp <- if (sum_off_poss > 0) round((sum_off_pts / sum_off_poss) * 100, 1) else NA_real_
+        tot_def_ppp <- if (sum_def_poss > 0) round((sum_def_pts / sum_def_poss) * 100, 1) else NA_real_
+        tot_net_rtg <- if (!is.na(tot_off_ppp) && !is.na(tot_def_ppp)) round(tot_off_ppp - tot_def_ppp, 1) else NA_real_
+
+        total_row <- data.frame(
+          Team = "TOTAL", Players = "— All Lineups —",
+          off_ppp = tot_off_ppp, off_ts = NA_real_, off_oreb = NA_real_, off_tov = NA_real_, off_ftr = NA_real_,
+          off_poss = sum_off_poss,
+          def_ppp = tot_def_ppp, def_ts = NA_real_, def_oreb = NA_real_, def_tov = NA_real_, def_ftr = NA_real_,
+          def_poss = sum_def_poss,
+          total_poss = sum_off_poss + sum_def_poss,
+          net_rtg = tot_net_rtg,
+          is_total = 0, stringsAsFactors = FALSE
+        )
+        df <- dplyr::bind_rows(total_row, df)
+      }
+
+      df <- df %>% select(is_total, everything())
+
+      # Build custom sketch header
+      # Note: first th("") in each row accounts for hidden is_total column at position 0
+      sketch_ff <- htmltools::withTags(table(class = 'display', thead(
+        tr(
+          th(""),
+          th(class = "group-head", colspan = 2, ""),
+          th(class = "group-head section-left-border", colspan = 6, "Offense"),
+          th(class = "group-head section-left-border", colspan = 6, "Defense"),
+          th(class = "group-head section-left-border", colspan = 2, "Usage")
+        ),
+        tr(
+          th(""),
+          th(class = "sub-head", "Team"), th(class = "sub-head", "Players"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
+          th(class = "sub-head section-left-border", "Total"), th(class = "sub-head", "Net")
+        )
+      )))
+
+      # Column indices for section borders
+      hide_idx <- c(0, which(colnames(df) %in% pr_cols) - 1L)
+      off_ppp_idx  <- which(names(df) == "off_ppp") - 1L
+      def_ppp_idx  <- which(names(df) == "def_ppp") - 1L
+      total_idx    <- which(names(df) == "total_poss") - 1L
+
+      col_defs <- list(
+        list(targets = hide_idx, visible = FALSE),
+        list(targets = "_all", className = "dt-center")
+      )
+      if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_ppp_idx, className = "section-left-border dt-center")
+      if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
+      if (length(total_idx))   col_defs[[length(col_defs) + 1]] <- list(targets = total_idx, className = "section-left-border dt-center")
+
+      dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
+                          options = list(
+                            dom = "tip", pageLength = 50,
+                            lengthMenu = c(25, 50, 100, 200),
+                            orderFixed = list(list(0, 'asc')),
+                            deferRender = TRUE, scrollX = TRUE,
+                            columnDefs = col_defs
+                          ))
+
+      # Format numbers
+      rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(df))
+      ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(df))
+      poss_cols <- intersect(c("off_poss", "def_poss", "total_poss"), names(df))
+
+      if (length(rate_cols)) dt <- DT::formatRound(dt, rate_cols, 1)
+      if (length(ppp_cols))  dt <- DT::formatRound(dt, ppp_cols, 1)
+      if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
+
+      # TOTAL row styling
+      dt <- DT::formatStyle(dt, "Team", target = "row",
+                            backgroundColor = styleEqual("TOTAL", "#f0f0f0"),
+                            fontWeight = styleEqual("TOTAL", "bold"))
+
+      # Color logic
+      if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ppp")
+      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ts")
+      if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_oreb")
+      if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_tov")
+      if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ftr")
+      if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ppp")
+      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ts")
+      if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_oreb")
+      if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_tov")
+      if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ftr")
+      if ("pr_net"      %in% names(df)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_net")
+
+      return(dt)
+
+    } else {
+      # ============================================================
+      # SUMMARY LINEUP TABLE (existing behavior)
+      # ============================================================
+
+      keep_cols <- c("Team", "Players", "total_poss", "plus_minus", "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_lineup", "sub_lineup_hash")
+      df <- df %>% select(any_of(keep_cols))
+      df$is_total <- rep(1, nrow(df))
+      if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
+      if (nrow(df) > 0) {
+        sum_off_poss <- sum(df$off_poss, na.rm = TRUE)
+        sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
+        sum_off_pts <- sum(df$off_pts, na.rm = TRUE)
+        sum_def_pts <- sum(df$def_pts, na.rm = TRUE)
+        tot_off_ppp <- if (sum_off_poss > 0) (sum_off_pts / sum_off_poss) * 100 else 0
+        tot_def_ppp <- if (sum_def_poss > 0) (sum_def_pts / sum_def_poss) * 100 else 0
+        tot_net_rtg <- tot_off_ppp - tot_def_ppp
+        total_row <- data.frame(Team = "TOTAL", Players = "— All Lineups —", total_poss = sum_off_poss + sum_def_poss, off_ppp = tot_off_ppp, def_ppp = tot_def_ppp, net_rtg = tot_net_rtg, plus_minus = sum_off_pts - sum_def_pts, off_poss = sum_off_poss, off_pts = sum_off_pts, def_poss = sum_def_poss, def_pts = sum_def_pts, num_lineup = NA_integer_, sub_lineup_hash = "TOTAL", is_total = 0, stringsAsFactors = FALSE)
+        df <- dplyr::bind_rows(total_row, df)
+      }
+      df <- df %>% select(is_total, everything())
+      show_cols <- c("Team", "Players", "total_poss", "off_ppp", "def_ppp", "net_rtg", "plus_minus", "off_poss", "off_pts", "def_poss", "def_pts", "num_lineup", "sub_lineup_hash")
+
+      is_data <- if (nrow(df) > 0) { !is.na(df$Team) & df$Team != "TOTAL" } else { logical(0) }
+
+      if("net_rtg" %in% names(df)) df$pr_ld_net <- pr_safe(df$net_rtg, is_data)
+      if("off_ppp" %in% names(df)) df$pr_ld_off_ppp <- pr_safe(df$off_ppp, is_data)
+      if("def_ppp" %in% names(df)) df$pr_ld_def_ppp_i <- pr_safe(df$def_ppp, is_data, invert = TRUE)
+
+      pr_cols <- c("pr_ld_net", "pr_ld_off_ppp", "pr_ld_def_ppp_i")
+      keep <- intersect(show_cols, names(df))
+      df <- df[, unique(c("is_total", keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
+      pretty_labels <- c(Team = "Team", Players = "Players", num_lineup = "Size", total_poss = "Total Poss", net_rtg = "Net RTG", plus_minus = "+/-", off_ppp = "Off PPP", def_ppp = "Def PPP", off_poss = "Off Poss", off_pts = "Off Pts", def_poss = "Def Poss", def_pts = "Def Pts", sub_lineup_hash = "Lineup ID")
+      data_col_names <- colnames(df)[-1]
+      data_col_names <- setdiff(data_col_names, pr_cols)
+      col_labels <- unname(pretty_labels[data_col_names])
+      final_labels <- c("", col_labels)
+      pr_indices <- which(colnames(df) %in% pr_cols) - 1L
+      hidden_indices <- c(0, pr_indices)
+
+      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, filter = "top", options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, processing = TRUE, columnDefs = list(list(targets = hidden_indices, visible = FALSE)))) |>
+        DT::formatRound(c("off_ppp", "def_ppp", "net_rtg")[c("off_ppp", "def_ppp", "net_rtg") %in% names(df)], 1) |>
+        DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
+        DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
+      dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#f0f0f0"), fontWeight = styleEqual("TOTAL", "bold"))
+      if (all(c("net_rtg", "pr_ld_net") %in% colnames(df))) dt <- DT::formatStyle(dt, "net_rtg", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_net")
+      if (all(c("off_ppp", "pr_ld_off_ppp") %in% colnames(df))) dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_off_ppp")
+      if (all(c("def_ppp", "pr_ld_def_ppp_i") %in% colnames(df))) dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_def_ppp_i")
+      return(dt)
+    }
   })
   
   # -------------------------------------------------------------
