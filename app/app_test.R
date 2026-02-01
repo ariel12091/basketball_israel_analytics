@@ -21,7 +21,18 @@ LD_DEFAULT_MIN_POSS <- 20L
 LD_DEFAULT_NUM      <- "5"
 
 # Players with fewer possessions than this won't get a color/rank bar
-RANKING_BASELINE <- 100 
+RANKING_BASELINE <- 100
+RANKING_MIN_PCT  <- 0.25   # at least 25% of rows should be ranked
+
+# Adaptive baseline: use RANKING_BASELINE when enough data qualifies,
+# otherwise lower to the 75th-percentile so ~25% still get colored.
+adaptive_baseline <- function(poss_vec) {
+  n <- sum(!is.na(poss_vec))
+  if (n == 0) return(0)
+  pct_above <- sum(poss_vec >= RANKING_BASELINE, na.rm = TRUE) / n
+  if (pct_above >= RANKING_MIN_PCT) return(RANKING_BASELINE)
+  unname(quantile(poss_vec, 1 - RANKING_MIN_PCT, na.rm = TRUE))
+}
 
 # ---------------- PostgreSQL pool ----------------
 pg_pool <- dbPool(
@@ -584,30 +595,33 @@ server <- function(input, output, session) {
     )
     
     # Calculate ALL ranks on full unfiltered dataset
+    # Adaptive baseline: lower threshold when data is sparse (narrow date ranges)
+    rank_thresh <- adaptive_baseline(df$off_on_poss)
+
     # Background color ranks (pr_ prefix)
     df <- df %>% mutate(
-      pr_net_diff = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, coalesce(`Net Diff`, -999), NA_real_)),
-      pr_off_rtg  = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, coalesce(`Off Rtg Diff`, -999), NA_real_)),
-      pr_def_rtg  = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, coalesce(`Def Rtg Diff`, 999), NA_real_)),
-      
-      pr_diff_off_ts   = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, off_on_ts - off_off_ts, NA_real_)),
-      pr_diff_off_oreb = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, off_on_oreb - off_off_oreb, NA_real_)),
-      pr_diff_off_ftr  = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, off_on_ftr - off_off_ftr, NA_real_)),
-      pr_diff_off_tov  = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, off_on_tov - off_off_tov, NA_real_)),
-      
-      pr_diff_def_ts   = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, def_on_ts - def_off_ts, NA_real_)),
-      pr_diff_def_oreb = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, def_on_oreb - def_off_oreb, NA_real_)),
-      pr_diff_def_ftr  = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, def_on_ftr - def_off_ftr, NA_real_)),
-      pr_diff_def_tov  = percent_rank(if_else(off_on_poss >= RANKING_BASELINE, def_on_tov - def_off_tov, NA_real_))
+      pr_net_diff = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Net Diff`, -999), NA_real_)),
+      pr_off_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Off Rtg Diff`, -999), NA_real_)),
+      pr_def_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Def Rtg Diff`, 999), NA_real_)),
+
+      pr_diff_off_ts   = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_ts - off_off_ts, NA_real_)),
+      pr_diff_off_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_oreb - off_off_oreb, NA_real_)),
+      pr_diff_off_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_ftr - off_off_ftr, NA_real_)),
+      pr_diff_off_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_tov - off_off_tov, NA_real_)),
+
+      pr_diff_def_ts   = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_ts - def_off_ts, NA_real_)),
+      pr_diff_def_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_oreb - def_off_oreb, NA_real_)),
+      pr_diff_def_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_ftr - def_off_ftr, NA_real_)),
+      pr_diff_def_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_tov - def_off_tov, NA_real_))
     )
-    
+
     # Dot position ranks (_rank suffix) for range bar visuals
     raw_cols <- c("off_on_ts", "off_off_ts", "off_on_oreb", "off_off_oreb",
                   "off_on_tov", "off_off_tov", "off_on_ftr", "off_off_ftr",
                   "def_on_ts", "def_off_ts", "def_on_oreb", "def_off_oreb",
                   "def_on_tov", "def_off_tov", "def_on_ftr", "def_off_ftr")
     for (col in intersect(raw_cols, names(df))) {
-      vals <- if_else(df$off_on_poss >= RANKING_BASELINE, coalesce(df[[col]], 0), NA_real_)
+      vals <- if_else(df$off_on_poss >= rank_thresh, coalesce(df[[col]], 0), NA_real_)
       df[[paste0(col, "_rank")]] <- percent_rank(vals) * 100
     }
     
@@ -1034,9 +1048,9 @@ server <- function(input, output, session) {
     df$total_poss <- dplyr::coalesce(df$off_poss, 0L) + dplyr::coalesce(df$def_poss, 0L)
 
     # Compute percentile ranks on the FULL unfiltered dataset.
-    # Only lineups with >= RANKING_BASELINE total poss are ranked;
-    # below-threshold lineups get NA (appear unranked/gray).
-    qualified <- df$total_poss >= RANKING_BASELINE
+    # Adaptive baseline: lowers threshold when data is sparse.
+    rank_thresh <- adaptive_baseline(df$total_poss)
+    qualified <- df$total_poss >= rank_thresh
 
     pr_vec <- function(x, invert = FALSE) {
       vals <- ifelse(qualified, x, NA_real_)
@@ -1059,6 +1073,68 @@ server <- function(input, output, session) {
     if ("def_tov"  %in% names(df)) df$pr_def_tov  <- pr_vec(df$def_tov)
     if ("def_ftr"  %in% names(df)) df$pr_def_ftr  <- pr_vec(df$def_ftr, invert = TRUE)
     if ("net_rtg"  %in% names(df)) df$pr_net      <- pr_vec(df$net_rtg)
+
+    df
+  }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year_ld,
+                    input$ld_game_type, input$ld_opponents, input$ld_home_away,
+                    input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n,
+                    input$ld_opp_rank_metric, input$main_tabs, input$ld_view_mode)
+
+  # --- Full ranked Summary data (ranks computed BEFORE any local filtering) ---
+  # Same pattern as ld_ff_ranked_df but for the Summary view.
+  ld_summary_ranked_df <- reactive({
+    req(identical(input$main_tabs, "lineup_data"))
+    gy <- as.integer(input$game_year_ld)
+    num <- as.integer(input$ld_num)
+
+    game_type_csv <- {
+      x <- input$ld_game_type
+      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
+    }
+    opp_ids_csv <- {
+      ids <- selected_opp_ids_ld()
+      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
+    }
+    home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
+    outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
+    rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
+    rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
+    metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
+
+    start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
+    end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
+
+    df <- run_fetch_lineups_16(pg_pool,
+      num = num, team_csv = NA_character_, player_csv = NA_character_,
+      player_off_csv = NA_character_, exact = TRUE,
+      start_date = start_date, end_date = end_date,
+      min_poss = 0L, game_year = gy,
+      game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
+      home_away = home_away, outcome = outcome,
+      opp_rank_side = rank_side, opp_rank_n = rank_n, opp_rank_metric = metric)
+
+    if (is.null(df) || NROW(df) == 0L) return(df)
+
+    df$total_poss <- dplyr::coalesce(df$off_poss, 0L) + dplyr::coalesce(df$def_poss, 0L)
+    df$plus_minus <- dplyr::coalesce(df$off_pts, 0) - dplyr::coalesce(df$def_pts, 0)
+
+    # Adaptive baseline: lowers threshold when data is sparse
+    rank_thresh <- adaptive_baseline(df$total_poss)
+    qualified <- df$total_poss >= rank_thresh
+
+    pr_vec <- function(x, invert = FALSE) {
+      vals <- ifelse(qualified, x, NA_real_)
+      n <- sum(!is.na(vals))
+      if (n <= 1) return(rep(NA_real_, length(vals)))
+      r <- rank(vals, na.last = "keep", ties.method = "average")
+      p <- (r - 1) / (n - 1)
+      if (invert) p <- 1 - p
+      as.numeric(p)
+    }
+
+    if ("net_rtg" %in% names(df)) df$pr_ld_net       <- pr_vec(df$net_rtg)
+    if ("off_ppp" %in% names(df)) df$pr_ld_off_ppp   <- pr_vec(df$off_ppp)
+    if ("def_ppp" %in% names(df)) df$pr_ld_def_ppp_i <- pr_vec(df$def_ppp, invert = TRUE)
 
     df
   }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year_ld,
@@ -1140,7 +1216,8 @@ server <- function(input, output, session) {
 
       df
     } else {
-      df <- run_fetch_lineups_16(pg_pool, num = p$num, team_csv = p$team_csv, player_csv = p$player_csv, player_off_csv = p$player_off_csv, exact = p$exact, start_date = p$start_date, end_date = p$end_date, min_poss = p$min_poss, game_year = gy, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$opp_rank_side, opp_rank_n = p$opp_rank_n, opp_rank_metric = p$opp_rank_metric)
+      # Get pre-ranked data (ranks computed on full unfiltered population)
+      df <- ld_summary_ranked_df()
 
       if (is.null(df) || NROW(df) == 0L) {
         return(data.frame(
@@ -1155,8 +1232,33 @@ server <- function(input, output, session) {
         ))
       }
 
-      df$total_poss <- dplyr::coalesce(df$off_poss, 0L) + dplyr::coalesce(df$def_poss, 0L)
-      df$plus_minus <- dplyr::coalesce(df$off_pts, 0) - dplyr::coalesce(df$def_pts, 0)
+      # --- Filter LOCALLY (ranks already computed on full data) ---
+
+      # Filter by team
+      if (!is.na(p$team_csv) && nzchar(p$team_csv)) {
+        team_ids <- as.integer(strsplit(p$team_csv, ",")[[1]])
+        df <- df %>% filter(team_id %in% team_ids)
+      }
+
+      # Filter by players on (lineup must contain all selected players)
+      if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
+        on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
+        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
+        keep <- vapply(pid_list, function(x) all(on_ids %in% x), logical(1))
+        df <- df[keep, , drop = FALSE]
+      }
+
+      # Filter by players off (lineup must NOT contain any excluded players)
+      if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
+        off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
+        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
+        keep <- vapply(pid_list, function(x) !any(off_ids %in% x), logical(1))
+        df <- df[keep, , drop = FALSE]
+      }
+
+      # Filter by min poss
+      df <- df %>% filter(total_poss >= !!p$min_poss)
+
       df
     }
   })
@@ -1184,19 +1286,6 @@ server <- function(input, output, session) {
     cols_grad <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
     cols_rev  <- rev(cols_grad)
 
-    # Safe percentile rank helper (excludes TOTAL row)
-    pr_safe <- function(x, is_data, invert = FALSE) {
-      vals <- x[is_data]
-      n <- sum(!is.na(vals))
-      if (n <= 1) return(rep(NA_real_, length(x)))
-      r <- rank(vals, na.last = "keep", ties.method = "average")
-      p <- (r - 1) / (n - 1)
-      if (invert) p <- 1 - p
-      out <- rep(NA_real_, length(x))
-      out[is_data] <- as.numeric(p)
-      out
-    }
-
     if (identical(mode, "Four Factors")) {
       # ============================================================
       # FOUR FACTORS LINEUP TABLE
@@ -1215,21 +1304,45 @@ server <- function(input, output, session) {
       df$is_total <- rep(1, nrow(df))
       df <- df %>% arrange(desc(total_poss))
 
-      # --- TOTAL row ---
+      # --- TOTAL row (rates from summed raw counts) ---
       if (nrow(df) > 0) {
+        raw <- ld_data()
         sum_off_poss <- sum(df$off_poss, na.rm = TRUE)
         sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
-        sum_off_pts  <- sum(ld_data()$off_pts, na.rm = TRUE)
-        sum_def_pts  <- sum(ld_data()$def_pts, na.rm = TRUE)
+        sum_off_pts  <- sum(raw$off_pts, na.rm = TRUE)
+        sum_def_pts  <- sum(raw$def_pts, na.rm = TRUE)
         tot_off_ppp <- if (sum_off_poss > 0) round((sum_off_pts / sum_off_poss) * 100, 1) else NA_real_
         tot_def_ppp <- if (sum_def_poss > 0) round((sum_def_pts / sum_def_poss) * 100, 1) else NA_real_
         tot_net_rtg <- if (!is.na(tot_off_ppp) && !is.na(tot_def_ppp)) round(tot_off_ppp - tot_def_ppp, 1) else NA_real_
 
+        # Sum raw counts for four-factor rates
+        s_off_ts_poss   <- sum(raw$off_ts_poss, na.rm = TRUE)
+        s_off_oreb_cnt  <- sum(raw$off_oreb_cnt, na.rm = TRUE)
+        s_off_oreb_opps <- sum(raw$off_oreb_opps, na.rm = TRUE)
+        s_off_tov_cnt   <- sum(raw$off_tov_cnt, na.rm = TRUE)
+        s_off_fta       <- sum(raw$off_fta, na.rm = TRUE)
+        s_off_fga       <- sum(raw$off_fga_cnt, na.rm = TRUE)
+        s_def_ts_poss   <- sum(raw$def_ts_poss, na.rm = TRUE)
+        s_def_oreb_cnt  <- sum(raw$def_oreb_cnt, na.rm = TRUE)
+        s_def_oreb_opps <- sum(raw$def_oreb_opps, na.rm = TRUE)
+        s_def_tov_cnt   <- sum(raw$def_tov_cnt, na.rm = TRUE)
+        s_def_fta       <- sum(raw$def_fta, na.rm = TRUE)
+        s_def_fga       <- sum(raw$def_fga_cnt, na.rm = TRUE)
+
+        tot_off_ts   <- if (s_off_ts_poss > 0) round(sum_off_pts / (2 * s_off_ts_poss) * 100, 1) else NA_real_
+        tot_off_oreb <- if (s_off_oreb_opps > 0) round(s_off_oreb_cnt / s_off_oreb_opps * 100, 1) else NA_real_
+        tot_off_tov  <- if (sum_off_poss > 0) round(s_off_tov_cnt / sum_off_poss * 100, 1) else NA_real_
+        tot_off_ftr  <- if (s_off_fga > 0) round(s_off_fta / s_off_fga * 100, 1) else NA_real_
+        tot_def_ts   <- if (s_def_ts_poss > 0) round(sum_def_pts / (2 * s_def_ts_poss) * 100, 1) else NA_real_
+        tot_def_oreb <- if (s_def_oreb_opps > 0) round(s_def_oreb_cnt / s_def_oreb_opps * 100, 1) else NA_real_
+        tot_def_tov  <- if (sum_def_poss > 0) round(s_def_tov_cnt / sum_def_poss * 100, 1) else NA_real_
+        tot_def_ftr  <- if (s_def_fga > 0) round(s_def_fta / s_def_fga * 100, 1) else NA_real_
+
         total_row <- data.frame(
           Team = "TOTAL", Players = "— All Lineups —",
-          off_ppp = tot_off_ppp, off_ts = NA_real_, off_oreb = NA_real_, off_tov = NA_real_, off_ftr = NA_real_,
+          off_ppp = tot_off_ppp, off_ts = tot_off_ts, off_oreb = tot_off_oreb, off_tov = tot_off_tov, off_ftr = tot_off_ftr,
           off_poss = sum_off_poss,
-          def_ppp = tot_def_ppp, def_ts = NA_real_, def_oreb = NA_real_, def_tov = NA_real_, def_ftr = NA_real_,
+          def_ppp = tot_def_ppp, def_ts = tot_def_ts, def_oreb = tot_def_oreb, def_tov = tot_def_tov, def_ftr = tot_def_ftr,
           def_poss = sum_def_poss,
           total_poss = sum_off_poss + sum_def_poss,
           net_rtg = tot_net_rtg,
@@ -1320,8 +1433,9 @@ server <- function(input, output, session) {
       # SUMMARY LINEUP TABLE (existing behavior)
       # ============================================================
 
+      pr_cols <- c("pr_ld_net", "pr_ld_off_ppp", "pr_ld_def_ppp_i")
       keep_cols <- c("Team", "Players", "total_poss", "plus_minus", "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_lineup", "sub_lineup_hash")
-      df <- df %>% select(any_of(keep_cols))
+      df <- df %>% select(any_of(c(keep_cols, pr_cols)))
       df$is_total <- rep(1, nrow(df))
       if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
       if (nrow(df) > 0) {
@@ -1338,13 +1452,6 @@ server <- function(input, output, session) {
       df <- df %>% select(is_total, everything())
       show_cols <- c("Team", "Players", "total_poss", "off_ppp", "def_ppp", "net_rtg", "plus_minus", "off_poss", "off_pts", "def_poss", "def_pts", "num_lineup", "sub_lineup_hash")
 
-      is_data <- if (nrow(df) > 0) { !is.na(df$Team) & df$Team != "TOTAL" } else { logical(0) }
-
-      if("net_rtg" %in% names(df)) df$pr_ld_net <- pr_safe(df$net_rtg, is_data)
-      if("off_ppp" %in% names(df)) df$pr_ld_off_ppp <- pr_safe(df$off_ppp, is_data)
-      if("def_ppp" %in% names(df)) df$pr_ld_def_ppp_i <- pr_safe(df$def_ppp, is_data, invert = TRUE)
-
-      pr_cols <- c("pr_ld_net", "pr_ld_off_ppp", "pr_ld_def_ppp_i")
       keep <- intersect(show_cols, names(df))
       df <- df[, unique(c("is_total", keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
       pretty_labels <- c(Team = "Team", Players = "Players", num_lineup = "Size", total_poss = "Total Poss", net_rtg = "Net RTG", plus_minus = "+/-", off_ppp = "Off PPP", def_ppp = "Def PPP", off_poss = "Off Poss", off_pts = "Off Pts", def_poss = "Def Poss", def_pts = "Def Pts", sub_lineup_hash = "Lineup ID")
