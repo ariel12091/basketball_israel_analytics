@@ -255,6 +255,7 @@ ui <- navbarPage(
           ),
           tags$hr(),
           sliderInput("ld_minposs", "Min possessions (sum of Off/Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
+          radioButtons("ld_num", "Group size", choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
           tags$hr(),
           selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
           helpText("Pick a team to enable player filtering."),
@@ -262,7 +263,6 @@ ui <- navbarPage(
           selectizeInput("ld_players_off", "Players Off (exclude any)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
           tags$hr(),
           selectInput("game_year_ld", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
-          radioButtons("ld_num", "Group size", choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
           dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
           tags$hr(),
           bslib::accordion(
@@ -893,8 +893,8 @@ server <- function(input, output, session) {
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head", "Diff"),
-          th(class = "sub-head section-left-border", "RTG"), th(class = "sub-head", "TS%"), th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
-          th(class = "sub-head section-left-border", "RTG"), th(class = "sub-head", "TS%"), th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "TS%"), th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "TS%"), th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
           th(class = "sub-head section-left-border", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))
