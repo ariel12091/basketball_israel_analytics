@@ -55,6 +55,7 @@ onoff_mv          <- tbl(pg_pool, in_schema("basketball_test", "onoff_default_mv
 advanced_stats_mv <- tbl(pg_pool, in_schema("basketball_test", "player_advanced_stats_mv"))
 schedule_tbl      <- tbl(pg_pool, in_schema("basketball_test", "schedule"))
 team_ratings_mv   <- tbl(pg_pool, in_schema("basketball_test", "team_ppp_ratings_mv"))
+team_ff_mv        <- tbl(pg_pool, in_schema("basketball_test", "team_four_factors_mv"))
 
 # ---------------- UI ----------------
 ui <- navbarPage(
@@ -295,6 +296,13 @@ ui <- navbarPage(
         sidebarPanel(
           width = 3,
           actionButton("tr_reset", "Reset Filters"),
+          tags$hr(),
+          div(
+            class = "view-mode-container",
+            radioButtons("tr_view_mode", label = "View:",
+                         choices = c("Summary", "Four Factors"),
+                         selected = "Summary", inline = TRUE)
+          ),
           tags$hr(),
           selectInput("tr_game_year", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
           dateRangeInput("tr_dates", "Date range", start = NA, end = NA),
@@ -1478,6 +1486,7 @@ server <- function(input, output, session) {
   # Tab 3: Team Ratings (Fully Expanded Logic)
   # -------------------------------------------------------------
   observeEvent(input$tr_reset, {
+    updateRadioButtons(session, "tr_view_mode", selected = "Summary")
     updateDateRangeInput(session, "tr_dates", start = NA, end = NA)
     updateSelectizeInput(session, "tr_game_type", selected = "")
     updateSelectizeInput(session, "tr_opponents", selected = character(0))
@@ -1501,6 +1510,10 @@ server <- function(input, output, session) {
   
   run_team_ratings_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric) {
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_ratings_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric))
+  }
+
+  run_team_ff_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric) {
+    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric))
   }
   
   tr_params <- reactive({
@@ -1555,21 +1568,148 @@ server <- function(input, output, session) {
         collect()
     }
   })
-  
+
+  tr_ff_data <- reactive({
+    p <- tr_params()
+    if (tr_fallback_needed()) {
+      df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric)
+    } else {
+      df <- team_ff_mv %>%
+        filter(game_year == !!p$game_year) %>%
+        collect()
+    }
+
+    if (is.null(df) || nrow(df) == 0) return(df)
+
+    # Compute percentile ranks — all teams qualify (>>100 poss)
+    pr_vec <- function(x, invert = FALSE) {
+      n <- sum(!is.na(x))
+      if (n <= 1) return(rep(NA_real_, length(x)))
+      r <- rank(x, na.last = "keep", ties.method = "average")
+      p <- (r - 1) / (n - 1)
+      if (invert) p <- 1 - p
+      as.numeric(p)
+    }
+
+    df$pr_off_ppp  <- pr_vec(df$off_ppp)
+    df$pr_off_ts   <- pr_vec(df$off_ts)
+    df$pr_off_oreb <- pr_vec(df$off_oreb)
+    df$pr_off_tov  <- pr_vec(df$off_tov, invert = TRUE)
+    df$pr_off_ftr  <- pr_vec(df$off_ftr)
+    df$pr_def_ppp  <- pr_vec(df$def_ppp, invert = TRUE)
+    df$pr_def_ts   <- pr_vec(df$def_ts, invert = TRUE)
+    df$pr_def_oreb <- pr_vec(df$def_oreb, invert = TRUE)
+    df$pr_def_tov  <- pr_vec(df$def_tov)
+    df$pr_def_ftr  <- pr_vec(df$def_ftr, invert = TRUE)
+    df$pr_net      <- pr_vec(df$net_rtg)
+
+    df
+  })
+
   output$tr_table <- renderDT({
-    df <- tr_data()
-    if (is.null(df) || nrow(df) == 0) return(NULL)
-    pretty_names <- c("Season", "Team", "Off PPP", "Def PPP", "Net Rtg", "Net Rank", "Off Rank", "Def Rank")
-    disp_df <- df %>% select(game_year, team_name, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp)
-    max_rank <- max(c(disp_df$rank_net_rtg, disp_df$rank_off_ppp, disp_df$rank_def_ppp), na.rm = TRUE)
-    if (max_rank < 2) max_rank <- 2
-    cuts <- seq(1.5, max_rank - 0.5, 1)
-    cols_rank <- colorRampPalette(c("#1a9850", "#fee08b", "#d73027"))(length(cuts) + 1)
-    
-    dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
-      formatRound(c("off_ppp", "def_ppp", "net_rtg"), 1) %>%
-      formatStyle(columns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
-    dt
+    mode <- input$tr_view_mode
+
+    if (identical(mode, "Four Factors")) {
+      # ============================================================
+      # FOUR FACTORS TEAM TABLE
+      # ============================================================
+      df <- tr_ff_data()
+      if (is.null(df) || nrow(df) == 0) return(NULL)
+
+      pr_cols <- c("pr_off_ppp", "pr_off_ts", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
+                    "pr_def_ppp", "pr_def_ts", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
+
+      keep_cols <- c("team_name",
+                      "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr", "off_poss",
+                      "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr", "def_poss",
+                      "net_rtg")
+      df <- df %>% select(any_of(c(keep_cols, pr_cols)))
+      df <- df %>% arrange(desc(net_rtg))
+
+      cuts <- seq(0.05, 0.95, by = 0.05)
+      cols_grad <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
+
+      sketch_ff <- htmltools::withTags(table(class = 'display', thead(
+        tr(
+          th(class = "group-head", ""),
+          th(class = "group-head section-left-border", colspan = 6, "Offense"),
+          th(class = "group-head section-left-border", colspan = 6, "Defense"),
+          th(class = "group-head section-left-border", "")
+        ),
+        tr(
+          th(class = "sub-head", "Team"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
+          th(class = "sub-head section-left-border", "Net")
+        )
+      )))
+
+      hide_idx <- which(colnames(df) %in% pr_cols) - 1L
+      off_ppp_idx <- which(names(df) == "off_ppp") - 1L
+      def_ppp_idx <- which(names(df) == "def_ppp") - 1L
+      net_idx     <- which(names(df) == "net_rtg") - 1L
+
+      col_defs <- list(
+        list(targets = hide_idx, visible = FALSE),
+        list(targets = "_all", className = "dt-center")
+      )
+      if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_ppp_idx, className = "section-left-border dt-center")
+      if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
+      if (length(net_idx))     col_defs[[length(col_defs) + 1]] <- list(targets = net_idx, className = "section-left-border dt-center")
+
+      dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
+                          options = list(
+                            dom = "t", pageLength = 50,
+                            deferRender = TRUE, scrollX = TRUE,
+                            order = list(list(net_idx, "desc")),
+                            columnDefs = col_defs
+                          ))
+
+      rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(df))
+      ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(df))
+      poss_cols <- intersect(c("off_poss", "def_poss"), names(df))
+
+      if (length(rate_cols)) dt <- DT::formatRound(dt, rate_cols, 1)
+      if (length(ppp_cols))  dt <- DT::formatRound(dt, ppp_cols, 1)
+      if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
+
+      # Color logic — same polarity as Tab 2 FF
+      if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ppp")
+      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ts")
+      if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_oreb")
+      if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_tov")
+      if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ftr")
+      if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ppp")
+      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ts")
+      if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_oreb")
+      if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_tov")
+      if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ftr")
+      if ("pr_net"      %in% names(df)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_net")
+
+      return(dt)
+
+    } else {
+      # ============================================================
+      # SUMMARY TEAM TABLE (existing behavior)
+      # ============================================================
+      df <- tr_data()
+      if (is.null(df) || nrow(df) == 0) return(NULL)
+      pretty_names <- c("Season", "Team", "Off PPP", "Def PPP", "Net Rtg", "Net Rank", "Off Rank", "Def Rank")
+      disp_df <- df %>% select(game_year, team_name, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp)
+      max_rank <- max(c(disp_df$rank_net_rtg, disp_df$rank_off_ppp, disp_df$rank_def_ppp), na.rm = TRUE)
+      if (max_rank < 2) max_rank <- 2
+      cuts <- seq(1.5, max_rank - 0.5, 1)
+      cols_rank <- colorRampPalette(c("#1a9850", "#fee08b", "#d73027"))(length(cuts) + 1)
+
+      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
+        formatRound(c("off_ppp", "def_ppp", "net_rtg"), 1) %>%
+        formatStyle(columns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
+      return(dt)
+    }
   })
 }
 
