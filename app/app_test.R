@@ -440,6 +440,21 @@ server <- function(input, output, session) {
                     params = list(as.Date(start_d), as.Date(end_d), team_csv, as.integer(min_all), as.integer(min_on), as.numeric(min_net), as.character(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric))
   }
   
+  # --- Four Factors Compute Function ---
+  run_four_factors_compute <- function(pool, game_year, start_d, end_d, team_ids,
+                                       game_type_csv, opp_ids_csv, home_away, outcome,
+                                       opp_rank_side, opp_rank_n, opp_rank_metric) {
+    team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
+    DBI::dbGetQuery(pool,
+      paste0("SELECT * FROM basketball_test.four_factors_compute(",
+             "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
+             "$7::text,$8::text,$9::text,$10::int4,$11::text",
+             ")"),
+      params = list(as.integer(game_year), start_d, end_d, team_csv,
+                    game_type_csv, opp_ids_csv, home_away, outcome,
+                    opp_rank_side, opp_rank_n, opp_rank_metric))
+  }
+
   # --- Live Calculation (Summary) ---
   live_result_df <- reactive({
     req(input$min_all_poss, input$min_on_poss)
@@ -460,6 +475,35 @@ server <- function(input, output, session) {
     run_onoff_compute_14(pg_pool, start_d = as.Date(rng[1]), end_d = as.Date(rng[2]), team_ids = tids, min_all = input$min_all_poss, min_on = input$min_on_poss, min_net = DEFAULT_MIN_NET, game_year = gy, game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv, home_away = home_away, outcome = outcome, opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side, opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)), opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric)
   })
   
+  # --- Live Calculation (Four Factors) ---
+  live_ff_result_df <- reactive({
+    rng <- debounced_range()
+    req(rng)
+    gy <- selected_game_year()
+    f <- debounced_on_filters()
+
+    game_type_csv <- if (is.null(f$game_type) || !any(nzchar(f$game_type))) NA_character_ else paste(f$game_type[nzchar(f$game_type)], collapse = ",")
+    opp_ids_csv <- {
+      ids <- selected_opp_ids_on()
+      if (is.null(ids)) NA_character_ else paste(ids, collapse = ",")
+    }
+    home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
+    outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
+
+    run_four_factors_compute(pg_pool,
+      game_year = gy,
+      start_d = as.Date(rng[1]),
+      end_d = as.Date(rng[2]),
+      team_ids = NULL,
+      game_type_csv = game_type_csv,
+      opp_ids_csv = opp_ids_csv,
+      home_away = home_away,
+      outcome = outcome,
+      opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side,
+      opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)),
+      opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric)
+  })
+
   # --- MV Fetch (Summary - LOAD FULL DATA) ---
   # Only load raw MV here. Filtering happens later in result_df.
   mv_result_df <- reactive({
@@ -480,17 +524,49 @@ server <- function(input, output, session) {
   
   # --- Full ranked Four Factors data (ranks computed BEFORE any user filtering) ---
   ff_ranked_df <- reactive({
-    df_adv <- advanced_result_df()
-    
-    # Join with Summary Stats to get Ratings (Net/Off/Def Diff)
-    if (!"Net RTG Diff" %in% names(df_adv)) {
-      df_sum <- mv_result_df() %>%
-        select(player_id, team_id, "Year", `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`)
-      
+    if (isTRUE(fallback_needed())) {
+      # Dynamic SQL path: use four_factors_compute + onoff_compute for rating diffs
+      df_adv <- live_ff_result_df()
+
+      # Get RTG diffs for ALL players (no min_poss or team filter)
+      # Min-poss and team filtering is applied later in result_df()
+      rng <- debounced_range()
+      gy <- selected_game_year()
+      f <- debounced_on_filters()
+      game_type_csv <- if (is.null(f$game_type) || !any(nzchar(f$game_type))) NA_character_ else paste(f$game_type[nzchar(f$game_type)], collapse = ",")
+      opp_ids_csv <- {
+        ids <- selected_opp_ids_on()
+        if (is.null(ids)) NA_character_ else paste(ids, collapse = ",")
+      }
+      home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
+      outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
+
+      df_sum <- run_onoff_compute_14(pg_pool,
+        start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+        team_ids = NULL, min_all = 0L, min_on = 0L, min_net = DEFAULT_MIN_NET,
+        game_year = gy, game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
+        home_away = home_away, outcome = outcome,
+        opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side,
+        opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)),
+        opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric) %>%
+        select(player_id, team_id, `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`)
+
       df <- df_adv %>%
-        left_join(df_sum, by = c("player_id", "team_id", "game_year" = "Year"))
+        left_join(df_sum, by = c("player_id", "team_id"))
     } else {
-      df <- df_adv
+      # MV path (existing behavior)
+      df_adv <- advanced_result_df()
+
+      # Join with Summary Stats to get Ratings (Net/Off/Def Diff)
+      if (!"Net RTG Diff" %in% names(df_adv)) {
+        df_sum <- mv_result_df() %>%
+          select(player_id, team_id, "Year", `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`)
+
+        df <- df_adv %>%
+          left_join(df_sum, by = c("player_id", "team_id", "game_year" = "Year"))
+      } else {
+        df <- df_adv
+      }
     }
     
     # Derived display columns
@@ -669,9 +745,12 @@ server <- function(input, output, session) {
       df <- df %>% mutate(across(all_of(intersect(names(metric_map), names(df))), ~ round(as.numeric(.), 1)))
       
       # Dot position ranks (_rank columns) already computed in ff_ranked_df()
-      
+
+      # Rename poss columns for display
+      df <- df %>% rename(`ON Poss` = off_on_poss, `OFF Poss` = off_off_poss)
+
       # 3. SELECT & ORDER COLUMNS
-      vis_cols <- c("Team", "Player", "Net Diff", "Off Rtg Diff", "Def Rtg Diff", intersect(names(metric_map), names(df)))
+      vis_cols <- c("Team", "Player", "Net Diff", "Off Rtg Diff", "Def Rtg Diff", intersect(names(metric_map), names(df)), "ON Poss", "OFF Poss")
       
       rank_cols <- intersect(c(
         "pr_net_diff", "pr_off_rtg", "pr_def_rtg",
@@ -682,9 +761,10 @@ server <- function(input, output, session) {
       df_final <- df %>% select(all_of(vis_cols), any_of(rank_cols), ends_with("_rank"), all_of(raw_cols_all))
       
       final_vis_order <- c(
-        "Team", "Player", "Net Diff", 
+        "Team", "Player", "Net Diff",
         "Off Rtg Diff", "Off TS% Diff", "Off OREB% Diff", "Off TOV% Diff", "Off FTR Diff",
-        "Def Rtg Diff", "Def TS% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff"
+        "Def Rtg Diff", "Def TS% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff",
+        "ON Poss", "OFF Poss"
       )
       
       final_vis_order <- intersect(final_vis_order, names(df_final))
@@ -757,7 +837,10 @@ server <- function(input, output, session) {
       
       def_rtg_idx <- which(names(df_final) == "Def Rtg Diff") - 1L
       if(length(def_rtg_idx)) defs[[length(defs) + 1]] <- list(targets = def_rtg_idx, className = "section-left-border")
-      
+
+      on_poss_idx <- which(names(df_final) == "ON Poss") - 1L
+      if(length(on_poss_idx)) defs[[length(defs) + 1]] <- list(targets = on_poss_idx, className = "section-left-border")
+
       # Net Diff Style
       net_diff_idx <- which(names(df_final) == "Net Diff") - 1L
       if(length(net_diff_idx)) {
@@ -775,13 +858,15 @@ server <- function(input, output, session) {
           th(class = "group-head", colspan = 2, ""),
           th(class = "group-head", "Total"),
           th(class = "group-head section-left-border", colspan = 5, "Offense Impact (On-Off)"),
-          th(class = "group-head section-left-border", colspan = 5, "Defense Impact (On-Off)")
+          th(class = "group-head section-left-border", colspan = 5, "Defense Impact (On-Off)"),
+          th(class = "group-head section-left-border", colspan = 2, "Usage")
         ),
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head", "Diff"),
           th(class = "sub-head section-left-border", "RTG"), th(class = "sub-head", "TS%"), th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
-          th(class = "sub-head section-left-border", "RTG"), th(class = "sub-head", "TS%"), th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR")
+          th(class = "sub-head section-left-border", "RTG"), th(class = "sub-head", "TS%"), th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
+          th(class = "sub-head section-left-border", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))
       
@@ -794,6 +879,9 @@ server <- function(input, output, session) {
                       )
       )
       
+      # --- FORMAT POSS COLUMNS ---
+      dt <- formatCurrency(dt, c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
+
       # --- COLOR LOGIC ---
       if ("pr_net_diff" %in% names(df_final)) dt <- formatStyle(dt, "Net Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_net_diff")
       
