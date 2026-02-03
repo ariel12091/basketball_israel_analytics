@@ -24,6 +24,11 @@ LD_DEFAULT_NUM      <- "5"
 RANKING_BASELINE <- 100
 RANKING_MIN_PCT  <- 0.25   # at least 25% of rows should be ranked
 
+# Color scale constants (shared across all renderDT calls)
+CUTS      <- seq(0.05, 0.95, by = 0.05)
+COLS_GRAD <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
+COLS_REV  <- rev(COLS_GRAD)
+
 # Adaptive baseline: use RANKING_BASELINE when enough data qualifies,
 # otherwise lower to the 75th-percentile so ~25% still get colored.
 adaptive_baseline <- function(poss_vec) {
@@ -69,7 +74,9 @@ ui <- navbarPage(
     value = "onoff",
     fluidPage(
       tags$head(
-        tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"),
+        tags$meta(name = "viewport", content = "width=device-width, initial-scale=1, maximum-scale=1"),
+        tags$link(rel = "preload", href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap", as = "style", onload = "this.rel='stylesheet'"),
+        tags$noscript(tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap")),
         tags$style(HTML("
           /* Global Font */
           body, .container-fluid, .form-control, .btn, table.dataTable {
@@ -152,64 +159,94 @@ ui <- navbarPage(
           .legend-icon-off { width: 8px; height: 8px; background: #fff; border: 2px solid #6c757d; border-radius: 50%; }
           .legend-bar { position: relative; width: 60px; height: 6px; background: #e9ecef; border-radius: 3px; }
           .legend-tick { position: absolute; top: -2px; bottom: -2px; width: 1px; background: #999; }
+
+          /* ---- Mobile Responsive ---- */
+          @media (max-width: 768px) {
+            /* Smaller table fonts */
+            table.dataTable tbody td { font-size: 0.8rem; padding: 4px 6px !important; }
+            table.dataTable thead th { font-size: 0.75rem; padding-top: 8px !important; padding-bottom: 8px !important; }
+
+            /* Navbar title */
+            .navbar-brand { font-size: 0.9rem !important; }
+
+            /* Full-width DT container */
+            .dataTables_wrapper { width: 100% !important; overflow-x: auto; }
+
+            /* Touchable slider handles */
+            .irs-handle { width: 32px !important; height: 32px !important; top: -8px !important; }
+            .irs-bar, .irs-line { height: 8px !important; }
+
+            /* Legend compact */
+            .legend-box { flex-wrap: wrap; gap: 10px; padding: 8px 12px; font-size: 0.75rem; }
+          }
         "))
       ),
-      
-      titlePanel("Player ON/OFF Impact"),
-      
+
       sidebarLayout(
         sidebarPanel(
+          width = 3,
+          tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
+                      `data-bs-toggle` = "collapse", `data-bs-target` = "#onoff-filters",
+                      "Show Filters"),
           div(
-            class = "view-mode-container",
-            radioButtons("onoff_view_mode", label = "Select View:",
-                         choices = c("Summary", "Four Factors"),
-                         selected = "Summary",
-                         inline = TRUE)
-          ),
-          tags$hr(),
-          
-          actionButton("reset_defaults", "Reset to defaults"),
-          tags$hr(),
-          
-          selectInput(
-            "game_year", "Season",
-            choices = c("2025-26" = "2026", "2024-25" = "2025"),
-            selected = DEFAULT_GAME_YEAR
-          ),
-          
-          uiOutput("date_filter_ui"),
-          uiOutput("team_filter_ui"),
-          tags$hr(),
-          
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput("on_game_type", "Game type",
-                             choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16",
-                                         "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26",
-                                         "Play-in" = "33", "Winner Cup" = "34"),
-                             selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
-              selectizeInput("on_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
-              selectInput("on_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("on_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = "")
+            id = "onoff-filters", class = "collapse d-md-block",
+            div(
+              class = "view-mode-container",
+              radioButtons("onoff_view_mode", label = "Select View:",
+                           choices = c("Summary", "Four Factors"),
+                           selected = "Summary",
+                           inline = TRUE)
             ),
-            bslib::accordion_panel(
-              "Opponent Strength",
-              selectInput("on_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
-              selectInput("on_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
-              selectInput("on_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
+            tags$hr(),
+
+            actionButton("reset_defaults", "Reset to defaults"),
+            tags$hr(),
+
+            selectInput(
+              "game_year", "Season",
+              choices = c("2025-26" = "2026", "2024-25" = "2025"),
+              selected = DEFAULT_GAME_YEAR
             ),
-            open = FALSE
-          ),
-          
-          tags$hr(),
-          sliderInput("min_all_poss", "Min possessions per side (eligibility):", min = 0, max = 2000, value = DEFAULT_MIN_ALL, step = 10),
-          sliderInput("min_on_poss", "Min ON possessions (eligibility):", min = 0, max = 3000, value = DEFAULT_MIN_ON, step = 10),
-          tags$hr(),
-          downloadButton("download_csv", "Download CSV")
+
+            dateRangeInput("date_range", "Game Date Range",
+                           start = as.Date("2025-10-01"), end = as.Date("2026-07-01"),
+                           min = as.Date("2025-10-01"), max = as.Date("2026-07-01"),
+                           format = "yyyy-mm-dd"),
+            selectizeInput("teams", "Teams", choices = NULL, multiple = TRUE,
+                           options = list(placeholder = "All teams")),
+            tags$hr(),
+
+            bslib::accordion(
+              bslib::accordion_panel(
+                "Game Filters",
+                selectizeInput("on_game_type", "Game type",
+                               choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16",
+                                           "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26",
+                                           "Play-in" = "33", "Winner Cup" = "34"),
+                               selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
+                selectizeInput("on_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
+                selectInput("on_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
+                selectInput("on_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = "")
+              ),
+              bslib::accordion_panel(
+                "Opponent Strength",
+                selectInput("on_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
+                selectInput("on_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
+                selectInput("on_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
+              ),
+              open = FALSE
+            ),
+
+            tags$hr(),
+            sliderInput("min_all_poss", "Min possessions per side (eligibility):", min = 0, max = 2000, value = DEFAULT_MIN_ALL, step = 10),
+            sliderInput("min_on_poss", "Min ON possessions (eligibility):", min = 0, max = 3000, value = DEFAULT_MIN_ON, step = 10),
+            tags$hr(),
+            downloadButton("download_csv", "Download CSV")
+          )
         ),
         
         mainPanel(
+          width = 9,
           # --- LEGEND (Only visible in Four Factors mode) ---
           conditionalPanel(
             condition = "input.onoff_view_mode == 'Four Factors'",
@@ -245,44 +282,51 @@ ui <- navbarPage(
     fluidPage(
       sidebarLayout(
         sidebarPanel(
-          actionButton("ld_reset", "Reset Lineup Filters"),
-          tags$hr(),
+          width = 3,
+          tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
+                      `data-bs-toggle` = "collapse", `data-bs-target` = "#ld-filters",
+                      "Show Filters"),
           div(
-            class = "view-mode-container",
-            radioButtons("ld_view_mode", label = "View:",
-                         choices = c("Summary", "Four Factors"),
-                         selected = "Summary", inline = TRUE)
-          ),
-          tags$hr(),
-          sliderInput("ld_minposs", "Min possessions (sum of Off/Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
-          radioButtons("ld_num", "Group size", choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
-          tags$hr(),
-          selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
-          helpText("Pick a team to enable player filtering."),
-          selectizeInput("ld_players_on", "Players On (exact/contains)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
-          selectizeInput("ld_players_off", "Players Off (exclude any)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
-          tags$hr(),
-          selectInput("game_year_ld", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
-          dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
-          tags$hr(),
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput("ld_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
-              selectizeInput("ld_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
-              selectInput("ld_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("ld_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = "")
+            id = "ld-filters", class = "collapse d-md-block",
+            actionButton("ld_reset", "Reset Lineup Filters"),
+            tags$hr(),
+            div(
+              class = "view-mode-container",
+              radioButtons("ld_view_mode", label = "View:",
+                           choices = c("Summary", "Four Factors"),
+                           selected = "Summary", inline = TRUE)
             ),
-            bslib::accordion_panel(
-              "Opponent Strength",
-              selectInput("ld_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
-              selectInput("ld_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
-              selectInput("ld_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            open = FALSE
+            tags$hr(),
+            sliderInput("ld_minposs", "Min possessions (sum of Off/Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
+            radioButtons("ld_num", "Group size", choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
+            tags$hr(),
+            selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
+            helpText("Pick a team to enable player filtering."),
+            selectizeInput("ld_players_on", "Players On (exact/contains)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
+            selectizeInput("ld_players_off", "Players Off (exclude any)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
+            tags$hr(),
+            selectInput("game_year_ld", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
+            dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
+            tags$hr(),
+            bslib::accordion(
+              bslib::accordion_panel(
+                "Game Filters",
+                selectizeInput("ld_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
+                selectizeInput("ld_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
+                selectInput("ld_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
+                selectInput("ld_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = "")
+              ),
+              bslib::accordion_panel(
+                "Opponent Strength",
+                selectInput("ld_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
+                selectInput("ld_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
+                selectInput("ld_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
+              ),
+              open = FALSE
+            )
           )
         ),
-        mainPanel(DTOutput("ld_table"))
+        mainPanel(width = 9, DTOutput("ld_table"))
       )
     )
   ),
@@ -295,33 +339,39 @@ ui <- navbarPage(
       sidebarLayout(
         sidebarPanel(
           width = 3,
-          actionButton("tr_reset", "Reset Filters"),
-          tags$hr(),
+          tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
+                      `data-bs-toggle` = "collapse", `data-bs-target` = "#tr-filters",
+                      "Show Filters"),
           div(
-            class = "view-mode-container",
-            radioButtons("tr_view_mode", label = "View:",
-                         choices = c("Summary", "Four Factors"),
-                         selected = "Summary", inline = TRUE)
-          ),
-          tags$hr(),
-          selectInput("tr_game_year", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
-          dateRangeInput("tr_dates", "Date range", start = NA, end = NA),
-          tags$hr(),
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput("tr_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
-              selectizeInput("tr_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
-              selectInput("tr_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("tr_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = "")
+            id = "tr-filters", class = "collapse d-md-block",
+            actionButton("tr_reset", "Reset Filters"),
+            tags$hr(),
+            div(
+              class = "view-mode-container",
+              radioButtons("tr_view_mode", label = "View:",
+                           choices = c("Summary", "Four Factors"),
+                           selected = "Summary", inline = TRUE)
             ),
-            bslib::accordion_panel(
-              "Opponent Strength",
-              selectInput("tr_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
-              selectInput("tr_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
-              selectInput("tr_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            open = FALSE
+            tags$hr(),
+            selectInput("tr_game_year", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
+            dateRangeInput("tr_dates", "Date range", start = NA, end = NA),
+            tags$hr(),
+            bslib::accordion(
+              bslib::accordion_panel(
+                "Game Filters",
+                selectizeInput("tr_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
+                selectizeInput("tr_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
+                selectInput("tr_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
+                selectInput("tr_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = "")
+              ),
+              bslib::accordion_panel(
+                "Opponent Strength",
+                selectInput("tr_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
+                selectInput("tr_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
+                selectInput("tr_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
+              ),
+              open = FALSE
+            )
           )
         ),
         mainPanel(width = 9, DTOutput("tr_table"))
@@ -361,6 +411,7 @@ server <- function(input, output, session) {
   
   observeEvent(selected_game_year(), {
     td <- teams_for_year_df()
+    updateSelectizeInput(session, "teams", choices = td$team_name, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "on_opponents", choices = td$team_name, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "ld_opponents", choices = td$team_name, selected = character(0), server = TRUE)
   }, ignoreInit = FALSE)
@@ -380,26 +431,13 @@ server <- function(input, output, session) {
   })
   
   # ======== On/Off tab Logic ===================================
-  output$date_filter_ui <- renderUI({
-    gy <- selected_game_year()
-    bounds <- season_date_bounds(gy)
-    dateRangeInput("date_range", "Game Date Range", start = bounds$start, end = bounds$end, min = bounds$start, max = bounds$end, format = "yyyy-mm-dd", weekstart = 0)
-  })
-  
-  teams_for_year <- reactive({
-    gy_int <- as.integer(selected_game_year())
-    req(gy_int)
-    full_rosters %>%
-      filter(game_year == !!gy_int) %>%
-      distinct(team_id, team_name) %>%
-      arrange(team_name) %>%
-      collect()
-  })
-  
-  output$team_filter_ui <- renderUI({
-    teams <- teams_for_year()
-    selectizeInput("teams", "Teams", choices = teams$team_name, multiple = TRUE, options = list(placeholder = "All teams"))
-  })
+  observeEvent(selected_game_year(), {
+    bounds <- season_date_bounds(selected_game_year())
+    updateDateRangeInput(session, "date_range",
+                         start = bounds$start, end = bounds$end,
+                         min = bounds$start, max = bounds$end)
+  }, ignoreInit = TRUE)
+
   
   # --- Reset Logic (RESTORED) ---
   observeEvent(input$reset_defaults, {
@@ -431,17 +469,17 @@ server <- function(input, output, session) {
   )) %>% debounce(300)
   
   selected_team_ids <- reactive({
-    teams <- teams_for_year()
+    td <- teams_for_year_df()
     teams_in <- debounced_teams()
     if (is.null(teams_in) || !length(teams_in)) return(NULL)
-    teams %>% filter(team_name %in% teams_in) %>% pull(team_id)
+    td %>% filter(team_name %in% teams_in) %>% pull(team_id)
   })
   
   # --- UPDATED: Fallback Logic ---
   # We do NOT return true if only team/min_poss changed.
   fallback_needed <- reactive({
     rng <- debounced_range()
-    if (is.null(rng)) return(TRUE)
+    if (is.null(rng)) return(FALSE)
     start_d <- as.Date(rng[1])
     end_d <- as.Date(rng[2])
     gy <- selected_game_year()
@@ -687,10 +725,6 @@ server <- function(input, output, session) {
     }
     if ("team_name" %in% names(df)) df <- df %>% rename(Team = team_name)
     
-    cuts <- seq(0.05, 0.95, by = 0.05)
-    cols_grad <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
-    cols_rev  <- rev(cols_grad)
-    
     if (identical(mode, "Summary")) {
       keep_cols <- c(
         "Team", "Player", 
@@ -706,6 +740,9 @@ server <- function(input, output, session) {
       idx_on  <- which(names(df) == "Off ON PPP") - 1
       idx_off <- which(names(df) == "Off OFF PPP") - 1
       idx_use <- which(names(df) == "ON Poss") - 1
+
+      diff_cols <- c("Net RTG Diff", "Off ON Diff", "Def ON Diff", "On Net RTG", "Off Net RTG")
+      idx_diff <- which(names(df) %in% diff_cols) - 1
       
       pr_cols <- names(df)[grep("^pr_", names(df))]
       hide_idx <- which(names(df) %in% pr_cols) - 1
@@ -727,29 +764,40 @@ server <- function(input, output, session) {
         )
       )))
       
-      dt <- datatable(df, container = sketch_summary, rownames = FALSE, 
+      dt <- datatable(df, container = sketch_summary, rownames = FALSE,
+                      extensions = c("FixedColumns", "FixedHeader"),
                       options = list(dom = "tip", pageLength = 30, scrollX = TRUE,
+                                     fixedColumns = list(leftColumns = 3),
+                                     fixedHeader = TRUE,
                                      order = list(list(which(names(df) == "Net RTG Diff") - 1, "desc")),
                                      columnDefs = list(
                                        list(targets = c(idx_net, idx_on, idx_off, idx_use), className = "section-left-border"),
                                        list(targets = hide_idx, visible = FALSE),
-                                       list(targets = "_all", className = "dt-center")
+                                       list(targets = "_all", className = "dt-center"),
+                                       list(targets = idx_diff, render = DT::JS(
+                                         "function(data, type, row, meta) {",
+                                         "  if (type !== 'display' || data === null) return data;",
+                                         "  var val = parseFloat(data);",
+                                         "  if (isNaN(val)) return data;",
+                                         "  var formatted = val.toFixed(2);",
+                                         "  return val > 0 ? '+' + formatted : formatted;",
+                                         "}"
+                                       ))
                                      ))) |>
-        formatRound(c("Net RTG Diff", "Off ON Diff", "Def ON Diff", "On Net RTG", "Off Net RTG"), 2) |>
         formatRound(c("Off ON PPP", "Def ON PPP", "Off OFF PPP", "Def OFF PPP"), 1) |>
         formatCurrency(c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
       
-      if("pr_net" %in% names(df)) dt <- formatStyle(dt, "Net RTG Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_net")
-      if("pr_off_on_d" %in% names(df)) dt <- formatStyle(dt, "Off ON Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_on_d")
-      if("pr_def_on_d" %in% names(df)) dt <- formatStyle(dt, "Def ON Diff", backgroundColor = styleInterval(cuts, cols_rev), valueColumns = "pr_def_on_d")
+      if("pr_net" %in% names(df)) dt <- formatStyle(dt, "Net RTG Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
+      if("pr_off_on_d" %in% names(df)) dt <- formatStyle(dt, "Off ON Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_on_d")
+      if("pr_def_on_d" %in% names(df)) dt <- formatStyle(dt, "Def ON Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_def_on_d")
       
-      if("pr_off_on" %in% names(df)) dt <- formatStyle(dt, "Off ON PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_on")
-      if("pr_def_on_inv" %in% names(df)) dt <- formatStyle(dt, "Def ON PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_on_inv")
-      if("pr_on_net" %in% names(df)) dt <- formatStyle(dt, "On Net RTG", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_on_net")
+      if("pr_off_on" %in% names(df)) dt <- formatStyle(dt, "Off ON PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_on")
+      if("pr_def_on_inv" %in% names(df)) dt <- formatStyle(dt, "Def ON PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_on_inv")
+      if("pr_on_net" %in% names(df)) dt <- formatStyle(dt, "On Net RTG", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_on_net")
       
-      if("pr_off_off" %in% names(df)) dt <- formatStyle(dt, "Off OFF PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_off")
-      if("pr_def_off_inv" %in% names(df)) dt <- formatStyle(dt, "Def OFF PPP", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_off_inv")
-      if("pr_off_net" %in% names(df)) dt <- formatStyle(dt, "Off Net RTG", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_net")
+      if("pr_off_off" %in% names(df)) dt <- formatStyle(dt, "Off OFF PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_off")
+      if("pr_def_off_inv" %in% names(df)) dt <- formatStyle(dt, "Def OFF PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_off_inv")
+      if("pr_off_net" %in% names(df)) dt <- formatStyle(dt, "Off Net RTG", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_net")
       
       return(dt)
       
@@ -819,7 +867,7 @@ server <- function(input, output, session) {
           js_func <- JS(sprintf(
             "function(data, type, row, meta) {
                if (type === 'display') {
-                 var diffVal = (data === null) ? '-' : data;
+                 var diffVal = (data === null) ? '-' : (parseFloat(data) > 0 ? '+' + data : data);
                  var onVal   = row[%d] || '-';
                  var offVal  = row[%d] || '-';
                  var onPct   = row[%d];
@@ -875,13 +923,30 @@ server <- function(input, output, session) {
       if(length(net_diff_idx)) {
         defs[[length(defs) + 1]] <- list(targets = net_diff_idx, className = "dt-center",
                                          render = JS("function(data, type, row) {
-                                            if(type === 'display') return '<div style=\"font-weight:800; font-size:1.05em;\">' + data + '</div>';
+                                            if(type === 'display') {
+                                              var v = (data !== null && parseFloat(data) > 0) ? '+' + data : data;
+                                              return '<div style=\"font-weight:800; font-size:1.05em;\">' + v + '</div>';
+                                            }
                                             return data;
                                          }"))
       }
       
+      # '+' sign for Off Rtg Diff and Def Rtg Diff
+      plus_sign_js <- JS(
+        "function(data, type, row, meta) {",
+        "  if (type !== 'display' || data === null) return data;",
+        "  var val = parseFloat(data);",
+        "  if (isNaN(val)) return data;",
+        "  return val > 0 ? '+' + data : data;",
+        "}"
+      )
+      off_rtg_diff_idx <- which(names(df_final) == "Off Rtg Diff") - 1L
+      def_rtg_diff_idx <- which(names(df_final) == "Def Rtg Diff") - 1L
+      rtg_diff_idx <- c(off_rtg_diff_idx, def_rtg_diff_idx)
+      if (length(rtg_diff_idx)) defs[[length(defs) + 1]] <- list(targets = rtg_diff_idx, render = plus_sign_js)
+
       defs[[length(defs) + 1]] <- list(targets = "_all", className = "dt-center")
-      
+
       sketch_ff <- htmltools::withTags(table(class = 'display', thead(
         tr(
           th(class = "group-head", colspan = 2, ""),
@@ -901,8 +966,11 @@ server <- function(input, output, session) {
       
       dt <- datatable(df_final,
                       container = sketch_ff, rownames = FALSE, escape = FALSE,
+                      extensions = c("FixedColumns", "FixedHeader"),
                       options = list(
                         dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE,
+                        fixedColumns = list(leftColumns = 2),
+                        fixedHeader = TRUE,
                         order = list(list(2, "desc")),
                         columnDefs = defs
                       )
@@ -912,26 +980,25 @@ server <- function(input, output, session) {
       dt <- formatCurrency(dt, c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
       
       # --- COLOR LOGIC ---
-      if ("pr_net_diff" %in% names(df_final)) dt <- formatStyle(dt, "Net Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_net_diff")
+      if ("pr_net_diff" %in% names(df_final)) dt <- formatStyle(dt, "Net Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net_diff")
       
       # Offense Ratings (High Diff = Good)
-      if ("pr_off_rtg" %in% names(df_final)) dt <- formatStyle(dt, "Off Rtg Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_rtg")
+      if ("pr_off_rtg" %in% names(df_final)) dt <- formatStyle(dt, "Off Rtg Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_rtg")
       
       # Defense Ratings (High Diff = Bad -> Reverse)
-      cols_grad_rev <- rev(cols_grad)
-      if ("pr_def_rtg" %in% names(df_final)) dt <- formatStyle(dt, "Def Rtg Diff", backgroundColor = styleInterval(cuts, cols_grad_rev), valueColumns = "pr_def_rtg")
+      if ("pr_def_rtg" %in% names(df_final)) dt <- formatStyle(dt, "Def Rtg Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_def_rtg")
       
       # Offense Factors
-      if ("pr_diff_off_ts" %in% names(df_final)) dt <- formatStyle(dt, "Off TS% Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_diff_off_ts")
-      if ("pr_diff_off_oreb" %in% names(df_final)) dt <- formatStyle(dt, "Off OREB% Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_diff_off_oreb")
-      if ("pr_diff_off_ftr" %in% names(df_final)) dt <- formatStyle(dt, "Off FTR Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_diff_off_ftr")
-      if ("pr_diff_off_tov" %in% names(df_final)) dt <- formatStyle(dt, "Off TOV% Diff", backgroundColor = styleInterval(cuts, cols_grad_rev), valueColumns = "pr_diff_off_tov")
+      if ("pr_diff_off_ts" %in% names(df_final)) dt <- formatStyle(dt, "Off TS% Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_off_ts")
+      if ("pr_diff_off_oreb" %in% names(df_final)) dt <- formatStyle(dt, "Off OREB% Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_off_oreb")
+      if ("pr_diff_off_ftr" %in% names(df_final)) dt <- formatStyle(dt, "Off FTR Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_off_ftr")
+      if ("pr_diff_off_tov" %in% names(df_final)) dt <- formatStyle(dt, "Off TOV% Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_off_tov")
       
       # Defense Factors
-      if ("pr_diff_def_ts" %in% names(df_final)) dt <- formatStyle(dt, "Def TS% Diff", backgroundColor = styleInterval(cuts, cols_grad_rev), valueColumns = "pr_diff_def_ts")
-      if ("pr_diff_def_oreb" %in% names(df_final)) dt <- formatStyle(dt, "Def OREB% Diff", backgroundColor = styleInterval(cuts, cols_grad_rev), valueColumns = "pr_diff_def_oreb")
-      if ("pr_diff_def_ftr" %in% names(df_final)) dt <- formatStyle(dt, "Def FTR Diff", backgroundColor = styleInterval(cuts, cols_grad_rev), valueColumns = "pr_diff_def_ftr")
-      if ("pr_diff_def_tov" %in% names(df_final)) dt <- formatStyle(dt, "Def TOV% Diff", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_diff_def_tov")
+      if ("pr_diff_def_ts" %in% names(df_final)) dt <- formatStyle(dt, "Def TS% Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_def_ts")
+      if ("pr_diff_def_oreb" %in% names(df_final)) dt <- formatStyle(dt, "Def OREB% Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_def_oreb")
+      if ("pr_diff_def_ftr" %in% names(df_final)) dt <- formatStyle(dt, "Def FTR Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_def_ftr")
+      if ("pr_diff_def_tov" %in% names(df_final)) dt <- formatStyle(dt, "Def TOV% Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_def_tov")
       
       return(dt)
     }
@@ -1290,10 +1357,6 @@ server <- function(input, output, session) {
     }
     if ("player_names_str" %in% names(df)) df$Players <- df$player_names_str
     
-    cuts <- seq(0.05, 0.95, by = 0.05)
-    cols_grad <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
-    cols_rev  <- rev(cols_grad)
-    
     if (identical(mode, "Four Factors")) {
       # ============================================================
       # FOUR FACTORS LINEUP TABLE
@@ -1399,11 +1462,14 @@ server <- function(input, output, session) {
       if (length(total_idx))   col_defs[[length(col_defs) + 1]] <- list(targets = total_idx, className = "section-left-border dt-center")
       
       dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
+                          extensions = c("FixedColumns", "FixedHeader"),
                           options = list(
                             dom = "tip", pageLength = 50,
                             lengthMenu = c(25, 50, 100, 200),
                             orderFixed = list(list(0, 'asc')),
                             deferRender = TRUE, scrollX = TRUE,
+                            fixedColumns = list(leftColumns = 2),
+                            fixedHeader = TRUE,
                             columnDefs = col_defs
                           ))
       
@@ -1422,17 +1488,17 @@ server <- function(input, output, session) {
                             fontWeight = styleEqual("TOTAL", "bold"))
       
       # Color logic
-      if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ppp")
-      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ts")
-      if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_oreb")
-      if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_tov")
-      if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ftr")
-      if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ppp")
-      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ts")
-      if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_oreb")
-      if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_tov")
-      if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ftr")
-      if ("pr_net"      %in% names(df)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_net")
+      if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
+      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ts")
+      if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_oreb")
+      if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_tov")
+      if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ftr")
+      if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ppp")
+      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ts")
+      if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_oreb")
+      if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_tov")
+      if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ftr")
+      if ("pr_net"      %in% names(df)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
       
       return(dt)
       
@@ -1470,14 +1536,14 @@ server <- function(input, output, session) {
       pr_indices <- which(colnames(df) %in% pr_cols) - 1L
       hidden_indices <- c(0, pr_indices)
       
-      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, filter = "top", options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, processing = TRUE, columnDefs = list(list(targets = hidden_indices, visible = FALSE)))) |>
+      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, filter = "top", extensions = c("FixedColumns", "FixedHeader"), options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, fixedColumns = list(leftColumns = 2), fixedHeader = TRUE, processing = TRUE, columnDefs = list(list(targets = hidden_indices, visible = FALSE)))) |>
         DT::formatRound(c("off_ppp", "def_ppp", "net_rtg")[c("off_ppp", "def_ppp", "net_rtg") %in% names(df)], 1) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
       dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#f0f0f0"), fontWeight = styleEqual("TOTAL", "bold"))
-      if (all(c("net_rtg", "pr_ld_net") %in% colnames(df))) dt <- DT::formatStyle(dt, "net_rtg", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_net")
-      if (all(c("off_ppp", "pr_ld_off_ppp") %in% colnames(df))) dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_off_ppp")
-      if (all(c("def_ppp", "pr_ld_def_ppp_i") %in% colnames(df))) dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_ld_def_ppp_i")
+      if (all(c("net_rtg", "pr_ld_net") %in% colnames(df))) dt <- DT::formatStyle(dt, "net_rtg", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_net")
+      if (all(c("off_ppp", "pr_ld_off_ppp") %in% colnames(df))) dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_off_ppp")
+      if (all(c("def_ppp", "pr_ld_def_ppp_i") %in% colnames(df))) dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_def_ppp_i")
       return(dt)
     }
   })
@@ -1497,14 +1563,19 @@ server <- function(input, output, session) {
     updateSelectInput(session, "tr_opp_rank_metric", selected = "")
   })
   
-  observeEvent(list(input$tr_game_year, input$main_tabs), {
-    req(input$tr_game_year)
+  tr_teams_for_year <- reactive({
     gy_int <- as.integer(input$tr_game_year)
-    td <- full_rosters %>%
+    req(gy_int)
+    full_rosters %>%
       filter(game_year == !!gy_int) %>%
       distinct(team_id, team_name) %>%
       arrange(team_name) %>%
       collect()
+  })
+
+  observeEvent(list(input$tr_game_year, input$main_tabs), {
+    req(input$tr_game_year)
+    td <- tr_teams_for_year()
     updateSelectizeInput(session, "tr_opponents", choices = td$team_name, selected = character(0), server = TRUE)
   })
   
@@ -1525,10 +1596,7 @@ server <- function(input, output, session) {
       x <- input$tr_game_type
       if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
     }
-    td_map <- full_rosters %>%
-      filter(game_year == !!gy) %>%
-      distinct(team_id, team_name) %>%
-      collect()
+    td_map <- tr_teams_for_year()
     tr_opp_ids_csv <- {
       sel <- input$tr_opponents
       if (is.null(sel) || !length(sel)) NA_character_ else {
@@ -1626,9 +1694,6 @@ server <- function(input, output, session) {
       df <- df %>% select(any_of(c(keep_cols, pr_cols)))
       df <- df %>% arrange(desc(net_rtg))
       
-      cuts <- seq(0.05, 0.95, by = 0.05)
-      cols_grad <- colorRampPalette(c("#d73027", "#fee08b", "#1a9850"))(20)
-      
       sketch_ff <- htmltools::withTags(table(class = 'display', thead(
         tr(
           th(class = "group-head", ""),
@@ -1662,9 +1727,12 @@ server <- function(input, output, session) {
       if (length(net_idx))     col_defs[[length(col_defs) + 1]] <- list(targets = net_idx, className = "section-left-border dt-center")
       
       dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
+                          extensions = c("FixedColumns", "FixedHeader"),
                           options = list(
                             dom = "t", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
+                            fixedColumns = list(leftColumns = 1),
+                            fixedHeader = TRUE,
                             order = list(list(net_idx, "desc")),
                             columnDefs = col_defs
                           ))
@@ -1678,17 +1746,17 @@ server <- function(input, output, session) {
       if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
       
       # Color logic — same polarity as Tab 2 FF
-      if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ppp")
-      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ts")
-      if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_oreb")
-      if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_tov")
-      if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_off_ftr")
-      if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ppp")
-      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ts")
-      if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_oreb")
-      if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_tov")
-      if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_def_ftr")
-      if ("pr_net"      %in% names(df)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(cuts, cols_grad), valueColumns = "pr_net")
+      if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
+      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ts")
+      if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_oreb")
+      if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_tov")
+      if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ftr")
+      if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ppp")
+      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ts")
+      if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_oreb")
+      if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_tov")
+      if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ftr")
+      if ("pr_net"      %in% names(df)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
       
       return(dt)
       
@@ -1705,7 +1773,7 @@ server <- function(input, output, session) {
       cuts <- seq(1.5, max_rank - 0.5, 1)
       cols_rank <- colorRampPalette(c("#1a9850", "#fee08b", "#d73027"))(length(cuts) + 1)
       
-      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
+      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, extensions = c("FixedColumns", "FixedHeader"), options = list(dom = "t", pageLength = 50, scrollX = TRUE, fixedColumns = list(leftColumns = 1), fixedHeader = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
         formatRound(c("off_ppp", "def_ppp", "net_rtg"), 1) %>%
         formatStyle(columns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
       return(dt)
