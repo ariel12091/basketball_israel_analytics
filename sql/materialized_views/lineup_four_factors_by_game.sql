@@ -73,7 +73,7 @@ SELECT
       END)                 AS ts_poss_count,
   count(CASE WHEN cd.type = 'rebound' AND cd.parameters_type = 'offensive' THEN 1 END) AS oreb_count,
   count(CASE
-    WHEN cd.type = 'shot' AND cd.parameters_made = 'missed' THEN 1
+    WHEN cd.type = 'shot' AND cd.parameters_made IN ('missed', 'blocked') THEN 1
     WHEN cd.type = 'freeThrow' AND cd.parameters_made = 'missed'
       AND cd.pct_ft = 1::numeric
       AND cd.parent_type = 'foul' AND cd.parent_param = 'personal' THEN 1

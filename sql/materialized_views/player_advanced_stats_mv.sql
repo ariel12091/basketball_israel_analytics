@@ -79,7 +79,7 @@ AS WITH sched AS (
                 END) AS oreb_count,
             count(
                 CASE
-                    WHEN cd.type = 'shot'::text AND cd.parameters_made = 'missed'::text THEN 1
+                    WHEN cd.type = 'shot'::text AND cd.parameters_made = ANY(ARRAY['missed'::text, 'blocked'::text]) THEN 1
                     WHEN cd.type = 'freeThrow'::text AND cd.parameters_made = 'missed'::text AND cd.pct_ft = 1::numeric AND cd.parent_type = 'foul'::text AND cd.parent_param = 'personal'::text THEN 1
                     ELSE NULL::integer
                 END) AS oreb_opportunities,
