@@ -185,20 +185,19 @@ ui <- navbarPage(
       sidebarLayout(
         sidebarPanel(
           width = 3,
+          div(
+            class = "view-mode-container",
+            radioButtons("onoff_view_mode", label = "Select View:",
+                         choices = c("Summary", "Four Factors"),
+                         selected = "Summary",
+                         inline = TRUE)
+          ),
+          tags$hr(),
           tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
                       `data-bs-toggle` = "collapse", `data-bs-target` = "#onoff-filters",
                       "Show Filters"),
           div(
             id = "onoff-filters", class = "collapse d-md-block",
-            div(
-              class = "view-mode-container",
-              radioButtons("onoff_view_mode", label = "Select View:",
-                           choices = c("Summary", "Four Factors"),
-                           selected = "Summary",
-                           inline = TRUE)
-            ),
-            tags$hr(),
-
             actionButton("reset_defaults", "Reset to defaults"),
             tags$hr(),
 
@@ -283,19 +282,19 @@ ui <- navbarPage(
       sidebarLayout(
         sidebarPanel(
           width = 3,
+          div(
+            class = "view-mode-container",
+            radioButtons("ld_view_mode", label = "View:",
+                         choices = c("Summary", "Four Factors"),
+                         selected = "Summary", inline = TRUE)
+          ),
+          tags$hr(),
           tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
                       `data-bs-toggle` = "collapse", `data-bs-target` = "#ld-filters",
                       "Show Filters"),
           div(
             id = "ld-filters", class = "collapse d-md-block",
             actionButton("ld_reset", "Reset Lineup Filters"),
-            tags$hr(),
-            div(
-              class = "view-mode-container",
-              radioButtons("ld_view_mode", label = "View:",
-                           choices = c("Summary", "Four Factors"),
-                           selected = "Summary", inline = TRUE)
-            ),
             tags$hr(),
             sliderInput("ld_minposs", "Min possessions (sum of Off/Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
             radioButtons("ld_num", "Group size", choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
@@ -339,19 +338,19 @@ ui <- navbarPage(
       sidebarLayout(
         sidebarPanel(
           width = 3,
+          div(
+            class = "view-mode-container",
+            radioButtons("tr_view_mode", label = "View:",
+                         choices = c("Summary", "Four Factors"),
+                         selected = "Summary", inline = TRUE)
+          ),
+          tags$hr(),
           tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
                       `data-bs-toggle` = "collapse", `data-bs-target` = "#tr-filters",
                       "Show Filters"),
           div(
             id = "tr-filters", class = "collapse d-md-block",
             actionButton("tr_reset", "Reset Filters"),
-            tags$hr(),
-            div(
-              class = "view-mode-container",
-              radioButtons("tr_view_mode", label = "View:",
-                           choices = c("Summary", "Four Factors"),
-                           selected = "Summary", inline = TRUE)
-            ),
             tags$hr(),
             selectInput("tr_game_year", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
             dateRangeInput("tr_dates", "Date range", start = NA, end = NA),
@@ -765,10 +764,8 @@ server <- function(input, output, session) {
       )))
       
       dt <- datatable(df, container = sketch_summary, rownames = FALSE,
-                      extensions = c("FixedColumns", "FixedHeader"),
                       options = list(dom = "tip", pageLength = 30, scrollX = TRUE,
-                                     fixedColumns = list(leftColumns = 3),
-                                     fixedHeader = TRUE,
+                                     scrollY = "70vh", scrollCollapse = TRUE,
                                      order = list(list(which(names(df) == "Net RTG Diff") - 1, "desc")),
                                      columnDefs = list(
                                        list(targets = c(idx_net, idx_on, idx_off, idx_use), className = "section-left-border"),
@@ -966,11 +963,9 @@ server <- function(input, output, session) {
       
       dt <- datatable(df_final,
                       container = sketch_ff, rownames = FALSE, escape = FALSE,
-                      extensions = c("FixedColumns", "FixedHeader"),
                       options = list(
                         dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE,
-                        fixedColumns = list(leftColumns = 2),
-                        fixedHeader = TRUE,
+                        scrollY = "70vh", scrollCollapse = TRUE,
                         order = list(list(2, "desc")),
                         columnDefs = defs
                       )
@@ -1462,14 +1457,12 @@ server <- function(input, output, session) {
       if (length(total_idx))   col_defs[[length(col_defs) + 1]] <- list(targets = total_idx, className = "section-left-border dt-center")
       
       dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
-                          extensions = c("FixedColumns", "FixedHeader"),
                           options = list(
                             dom = "tip", pageLength = 50,
                             lengthMenu = c(25, 50, 100, 200),
                             orderFixed = list(list(0, 'asc')),
                             deferRender = TRUE, scrollX = TRUE,
-                            fixedColumns = list(leftColumns = 2),
-                            fixedHeader = TRUE,
+                            scrollY = "70vh", scrollCollapse = TRUE,
                             columnDefs = col_defs
                           ))
       
@@ -1536,7 +1529,7 @@ server <- function(input, output, session) {
       pr_indices <- which(colnames(df) %in% pr_cols) - 1L
       hidden_indices <- c(0, pr_indices)
       
-      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, filter = "top", extensions = c("FixedColumns", "FixedHeader"), options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, fixedColumns = list(leftColumns = 2), fixedHeader = TRUE, processing = TRUE, columnDefs = list(list(targets = hidden_indices, visible = FALSE)))) |>
+      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, filter = "top", options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = list(list(targets = hidden_indices, visible = FALSE)))) |>
         DT::formatRound(c("off_ppp", "def_ppp", "net_rtg")[c("off_ppp", "def_ppp", "net_rtg") %in% names(df)], 1) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
@@ -1727,12 +1720,10 @@ server <- function(input, output, session) {
       if (length(net_idx))     col_defs[[length(col_defs) + 1]] <- list(targets = net_idx, className = "section-left-border dt-center")
       
       dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
-                          extensions = c("FixedColumns", "FixedHeader"),
                           options = list(
                             dom = "t", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
-                            fixedColumns = list(leftColumns = 1),
-                            fixedHeader = TRUE,
+                            scrollY = "70vh", scrollCollapse = TRUE,
                             order = list(list(net_idx, "desc")),
                             columnDefs = col_defs
                           ))
@@ -1773,7 +1764,7 @@ server <- function(input, output, session) {
       cuts <- seq(1.5, max_rank - 0.5, 1)
       cols_rank <- colorRampPalette(c("#1a9850", "#fee08b", "#d73027"))(length(cuts) + 1)
       
-      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, extensions = c("FixedColumns", "FixedHeader"), options = list(dom = "t", pageLength = 50, scrollX = TRUE, fixedColumns = list(leftColumns = 1), fixedHeader = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
+      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
         formatRound(c("off_ppp", "def_ppp", "net_rtg"), 1) %>%
         formatStyle(columns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
       return(dt)
