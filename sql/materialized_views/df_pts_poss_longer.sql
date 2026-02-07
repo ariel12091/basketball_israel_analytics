@@ -2,7 +2,13 @@
 
 CREATE or replace MATERIALIZED VIEW basketball_test.df_pts_poss_lineups_longer_mv
 TABLESPACE pg_default
-AS SELECT quarter,
+AS WITH cum_scores AS (
+    SELECT game_id, id,
+      SUM(COALESCE(team_score, 0)) OVER (PARTITION BY game_id ORDER BY id) AS total_cum,
+      SUM(COALESCE(team_score, 0)) OVER (PARTITION BY game_id, team_id ORDER BY id) AS team_cum
+    FROM possessions
+)
+SELECT quarter,
     parameters_team,
     parameters_player,
     parameters_type,
@@ -51,6 +57,8 @@ AS SELECT quarter,
     segment_id,
     final_start_id,
     final_end_id,
+    own_team_score,
+    opp_team_score,
     type_lineup,
     lineup_hash
    FROM ( SELECT pws.quarter,
@@ -102,9 +110,12 @@ AS SELECT quarter,
             pws.segment_id,
             pws.final_start_id,
             pws.final_end_id,
+            cs.team_cum AS own_team_score,
+            cs.total_cum - cs.team_cum AS opp_team_score,
             'offense'::text AS type_lineup,
             pws.lineup_hash_offense AS lineup_hash
            FROM pws
+           LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id
           WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])
         UNION ALL
          SELECT pws.quarter,
@@ -156,9 +167,12 @@ AS SELECT quarter,
             pws.segment_id,
             pws.final_start_id,
             pws.final_end_id,
+            cs.total_cum - cs.team_cum AS own_team_score,
+            cs.team_cum AS opp_team_score,
             'defense'::text AS type_lineup,
             pws.lineup_hash_defense AS lineup_hash
            FROM pws
+           LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id
           WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])) longer
   WHERE lineup_hash IS NOT NULL
 WITH DATA;
