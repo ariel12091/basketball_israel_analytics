@@ -47,6 +47,7 @@ RETURNS TABLE (
   def_pts           INT,
   def_ppp           NUMERIC,
   net_rtg           NUMERIC,
+  minutes           NUMERIC,
   -- Raw counts for client-side TOTAL row aggregation
   off_ts_poss       INT,
   off_oreb_cnt      INT,
@@ -183,20 +184,39 @@ BEGIN
       AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
   ),
   -- Clutch-filtered raw data from df_pts_poss_lineups_longer_mv
+  -- NOTE: Use pre-shot margin (subtract points scored from current score)
   clean_stats AS (
     SELECT
       d.id, d.game_id, d.lineup_hash, d.team_id, d.team_score, d.type,
       d.parameters_type, d.parameters_made, d.pct_ft,
       d.parent_action_id, d.type_lineup,
+      d.segment_id, d.end_game_seconds_remaining,
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
     WHERE (p_game_year IS NULL OR gf.game_year = p_game_year)
-      AND (p_max_margin IS NULL OR ABS(d.own_team_score - d.opp_team_score) <= p_max_margin OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+      AND (p_max_margin IS NULL
+           OR ABS(CASE WHEN d.type_lineup = 'offense'
+                       THEN (d.own_team_score - COALESCE(d.team_score, 0)) - d.opp_team_score
+                       ELSE d.own_team_score - (d.opp_team_score - COALESCE(d.team_score, 0))
+                  END) <= p_max_margin
+           OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (v_margin_status = 'all'
-           OR (v_margin_status = 'leading'  AND d.own_team_score > d.opp_team_score)
-           OR (v_margin_status = 'trailing' AND d.own_team_score < d.opp_team_score)
-           OR (v_margin_status = 'tied'     AND d.own_team_score = d.opp_team_score)
+           OR (v_margin_status = 'leading'  AND
+               CASE WHEN d.type_lineup = 'offense'
+                    THEN (d.own_team_score - COALESCE(d.team_score, 0)) > d.opp_team_score
+                    ELSE d.own_team_score > (d.opp_team_score - COALESCE(d.team_score, 0))
+               END)
+           OR (v_margin_status = 'trailing' AND
+               CASE WHEN d.type_lineup = 'offense'
+                    THEN (d.own_team_score - COALESCE(d.team_score, 0)) < d.opp_team_score
+                    ELSE d.own_team_score < (d.opp_team_score - COALESCE(d.team_score, 0))
+               END)
+           OR (v_margin_status = 'tied'     AND
+               CASE WHEN d.type_lineup = 'offense'
+                    THEN (d.own_team_score - COALESCE(d.team_score, 0)) = d.opp_team_score
+                    ELSE d.own_team_score = (d.opp_team_score - COALESCE(d.team_score, 0))
+               END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
   ),
@@ -220,6 +240,8 @@ BEGIN
       cs.team_id,
       cs.game_id,
       cs.type_lineup,
+      cs.segment_id,
+      cs.end_game_seconds_remaining,
       cs.team_score,
       cs.final_end_flag,
       cs.type,
@@ -232,10 +254,25 @@ BEGIN
     FROM clean_stats cs
     LEFT JOIN complex_flags cf ON cs.id = cf.main_id
   ),
-  lineup_ff AS (
+  -- Stint duration per segment (no type_lineup - captures full floor time)
+  segment_times AS (
     SELECT
+      cd.team_id,
       cd.lineup_hash::text AS lineup_hash,
+      cd.game_id,
+      cd.segment_id,
+      MAX(cd.end_game_seconds_remaining) - MIN(cd.end_game_seconds_remaining) AS stint_seconds
+    FROM combined_data cd
+    GROUP BY cd.team_id, cd.lineup_hash, cd.game_id, cd.segment_id
+  ),
+  -- Four-factor stats per segment per type_lineup
+  segment_stats AS (
+    SELECT
+      cd.team_id,
+      cd.lineup_hash::text AS lineup_hash,
+      cd.game_id,
       cd.type_lineup,
+      cd.segment_id,
       SUM(cd.team_score)       AS total_points,
       SUM(cd.final_end_flag)   AS total_poss,
       COUNT(CASE WHEN cd.type = 'shot' THEN 1 END)
@@ -256,7 +293,30 @@ BEGIN
       COUNT(CASE WHEN cd.type = 'freeThrow' THEN 1 END) AS total_ft_attempts,
       COUNT(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga
     FROM combined_data cd
-    GROUP BY cd.lineup_hash, cd.type_lineup
+    GROUP BY cd.team_id, cd.lineup_hash, cd.game_id, cd.type_lineup, cd.segment_id
+  ),
+  lineup_ff AS (
+    SELECT
+      ss.team_id,
+      ss.lineup_hash,
+      ss.type_lineup,
+      SUM(ss.total_points)       AS total_points,
+      SUM(ss.total_poss)         AS total_poss,
+      SUM(ss.ts_poss_count)      AS ts_poss_count,
+      SUM(ss.oreb_count)         AS oreb_count,
+      SUM(ss.oreb_opportunities) AS oreb_opportunities,
+      SUM(ss.tov_count)          AS tov_count,
+      SUM(ss.total_ft_attempts)  AS total_ft_attempts,
+      SUM(ss.total_fga)          AS total_fga,
+      -- Minutes from segment_times, count once per segment (use offense filter)
+      SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+    FROM segment_stats ss
+    JOIN segment_times st
+      ON st.team_id = ss.team_id
+      AND st.lineup_hash = ss.lineup_hash
+      AND st.game_id = ss.game_id
+      AND st.segment_id = ss.segment_id
+    GROUP BY ss.team_id, ss.lineup_hash, ss.type_lineup
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -278,6 +338,7 @@ BEGIN
       (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
       (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
     , 1) AS net_rtg,
+    ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
     COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
     COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
     COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
@@ -292,7 +353,7 @@ BEGIN
     COALESCE(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt,
     si.game_year
   FROM sub_identity si
-  JOIN lineup_ff cr ON cr.lineup_hash = si.lineup_hash::text
+  JOIN lineup_ff cr ON cr.team_id = si.team_id AND cr.lineup_hash = si.lineup_hash::text
   LEFT JOIN basketball_test.sub_lineups_stats sls
     ON sls.team_id = si.team_id AND sls.sub_lineup_hash::text = si.sub_lineup_hash::text AND sls.game_year = si.game_year
   GROUP BY si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str, si.game_year
@@ -382,7 +443,8 @@ BEGIN
            SUM(lf.oreb_opportunities) AS oreb_opportunities,
            SUM(lf.tov_count)          AS tov_count,
            SUM(lf.total_ft_attempts)  AS total_ft_attempts,
-           SUM(lf.total_fga)          AS total_fga
+           SUM(lf.total_fga)          AS total_fga,
+           SUM(lf.minutes)            AS minutes
     FROM basketball_test.lineup_four_factors_by_game lf
     JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
     WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
@@ -408,6 +470,7 @@ BEGIN
       (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
       (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
     , 1) AS net_rtg,
+    ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
     COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
     COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
     COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
@@ -480,6 +543,7 @@ RETURNS TABLE (
   def_pts           INT,
   def_ppp           NUMERIC,
   net_rtg           NUMERIC,
+  minutes           NUMERIC,
   off_ts_poss       INT,
   off_oreb_cnt      INT,
   off_oreb_opps     INT,

@@ -116,7 +116,15 @@ rebuild_all_mvs(skip = "final_schedule_mv")  # skip specific MVs
 - `fetch_lineups_*` → `mv_lineup_totals_by_day`, `final_schedule_mv`
 - `get_team_*_dynamic` → `lineup_four_factors_by_game`, `final_schedule_mv`
 
-**`team_ppp_ratings_mv` columns:** `game_year`, `team_id`, `team_name`, `off_ppp`, `def_ppp`, `net_rtg`, `games_played`, `off_poss`, `def_poss`, `rank_net_rtg`, `rank_off_ppp`, `rank_def_ppp`
+**`team_ppp_ratings_mv` columns:** `game_year`, `team_id`, `team_name`, `off_ppp`, `def_ppp`, `net_rtg`, `games_played`, `wins`, `losses`, `off_poss`, `def_poss`, `rank_net_rtg`, `rank_off_ppp`, `rank_def_ppp`
+
+**Wins/Losses in Team Ratings:** `get_team_ratings_dynamic()` returns `wins` and `losses`. When clutch filter is active, wins/losses only count games that have qualifying clutch possessions (not all filtered games). Uses `qualifying_games` CTE which applies clutch WHERE clause to identify games, then counts wins/losses from that subset.
+
+**Minutes Calculation (Tab 2):** Computed from `end_game_seconds_remaining` using segment-level aggregation:
+1. `segment_times`: `MAX(end_game_seconds_remaining) - MIN(end_game_seconds_remaining)` per segment across ALL rows (no type_lineup filter - captures full floor time including defense-to-offense transitions)
+2. `segment_stats`: poss/pts per segment per type_lineup (offense vs defense stats differ)
+3. Join and sum: `SUM(stint_seconds) FILTER (WHERE type_lineup = 'offense')` to avoid double-counting (each segment counted once)
+Sources: `mv_lineup_totals_by_day.minutes`, `lineup_four_factors_by_game.minutes`, `sub_lineups_stats.minutes` (via `refresh_sub_lineups_stats()`)
 
 ### SQL Functions (params)
 
@@ -124,9 +132,9 @@ rebuild_all_mvs(skip = "final_schedule_mv")  # skip specific MVs
 |----------|--------|---------|
 | `onoff_compute` | 14 | Player on/off PPP with percentile ranks |
 | `four_factors_compute` | 11 | Player TS%, OREB%, TOV%, FTR on/off splits |
-| `fetch_lineups_csv_v2` | 20 | Lineup combos (Summary) + clutch filters |
-| `fetch_lineups_four_factors_csv` | 20 | Lineup combos (Four Factors) + clutch filters |
-| `get_team_ratings_dynamic` | 14 | Team PPP ratings + clutch filters |
+| `fetch_lineups_csv_v2` | 20 | Lineup combos (Summary) + clutch filters + minutes |
+| `fetch_lineups_four_factors_csv` | 20 | Lineup combos (Four Factors) + clutch filters + minutes |
+| `get_team_ratings_dynamic` | 14 | Team PPP ratings + wins/losses + clutch filters |
 | `get_team_four_factors_dynamic` | 14 | Team four-factor rates + clutch filters |
 
 ### ETL
@@ -177,14 +185,22 @@ p_ot_margin_filter   BOOLEAN DEFAULT FALSE  -- TRUE = apply margin to OT
 ```
 
 **WHERE clause pattern (used in all clutch-enabled functions):**
+
+Uses **pre-shot margin** to correctly include possessions that started in clutch time. The `own_team_score` includes points just scored, so we subtract `team_score` to get the score before the basket:
+- Offense: `(own_team_score - team_score) - opp_team_score`
+- Defense: `own_team_score - (opp_team_score - team_score)`
+
 ```sql
 AND (p_max_margin IS NULL
-     OR ABS(own_team_score - opp_team_score) <= p_max_margin
+     OR ABS(CASE WHEN type_lineup = 'offense'
+                 THEN (own_team_score - COALESCE(team_score, 0)) - opp_team_score
+                 ELSE own_team_score - (opp_team_score - COALESCE(team_score, 0))
+            END) <= p_max_margin
      OR (quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
 AND (v_margin_status = 'all'
-     OR (v_margin_status = 'leading'  AND own_team_score > opp_team_score)
-     OR (v_margin_status = 'trailing' AND own_team_score < opp_team_score)
-     OR (v_margin_status = 'tied'     AND own_team_score = opp_team_score)
+     OR (v_margin_status = 'leading' AND pre_shot_own > pre_shot_opp)
+     OR (v_margin_status = 'trailing' AND pre_shot_own < pre_shot_opp)
+     OR (v_margin_status = 'tied' AND pre_shot_own = pre_shot_opp)
      OR (quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
 AND (p_max_time_remaining IS NULL
      OR end_game_seconds_remaining <= p_max_time_remaining
@@ -272,6 +288,8 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 - `ANALYZE;` without table fails on Supabase — scope to specific tables
 - `score` column from raw JSON is unreliable — use `own_team_score`/`opp_team_score` (cumulative) instead
 - Clutch filtering uses IF/ELSE branching in PL/pgSQL: non-clutch path uses pre-aggregated MVs, clutch path queries raw `df_pts_poss_lineups_longer_mv` with inline aggregation (can't use pre-agg MVs because score/time are action-level)
+- **segment_id repeats across games** — always include `game_id` in GROUP BY when aggregating by segment_id, otherwise `MAX - MIN` time calculations will be wrong
+- **Floor time vs offense-only time** — to get accurate floor time (stint duration), compute `MAX - MIN` of `end_game_seconds_remaining` across ALL rows per segment (no `type_lineup` filter). Within a segment, offense and defense actions interleave, so filtering to offense-only misses defensive possessions' time contribution. Use offense filter only at final SUM to avoid double-counting
 
 ### R / Shiny / DT
 - `bigint` → R `numeric`; use `sprintf("%.0f", ...)` not `%d`
@@ -289,3 +307,9 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 - For MV DDL: read SQL files with `readLines()` + `paste(collapse="\n")`, strip comment header, execute as single string
 - When rebuilding all MVs after CASCADE: use a helper `run_sql(label, sql)` with tryCatch for progress logging
 - Always test DB logic on a single `game_id` first before deploying MV changes
+- **Function boundary detection:** For `$function$`-delimited SQL, find end with `grep("^\\$function\\$;$")` — don't use `LANGUAGE plpgsql` which precedes the body
+
+### Clutch Path CTEs
+- **Propagate `team_id` through all CTEs** — `segment_times`, `segment_stats`, and `lineup_totals`/`lineup_ff` must include `team_id` in SELECT, GROUP BY, and JOIN conditions. Different teams can share the same `lineup_hash`, causing "column team_id is ambiguous" errors if omitted
+- **Always use table aliases in PL/pgSQL CTEs** — Unqualified column names like `SELECT team_id FROM clutch_actions` cause "ambiguous" errors because PostgreSQL can't distinguish between column references and PL/pgSQL variables. Always use aliases: `SELECT ca.team_id FROM clutch_actions ca`
+- **Parallel file consistency** — `fetch_lineups_all.sql` and `fetch_lineups_four_factors.sql` have near-identical clutch path structures. When fixing one, verify the other matches. Reference `fetch_lineups_all.sql` as the canonical pattern
