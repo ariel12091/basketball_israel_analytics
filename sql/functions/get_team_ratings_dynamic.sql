@@ -10,7 +10,11 @@ CREATE OR REPLACE FUNCTION basketball_test.get_team_ratings_dynamic(
     p_outcome         TEXT DEFAULT 'all',
     p_opp_rank_side   TEXT DEFAULT 'all',
     p_opp_rank_n      INT  DEFAULT NULL,
-    p_opp_rank_metric TEXT DEFAULT 'net'
+    p_opp_rank_metric TEXT DEFAULT 'net',
+    p_max_margin      INT  DEFAULT NULL,
+    p_margin_status   TEXT DEFAULT 'all',
+    p_max_time_remaining INT DEFAULT NULL,
+    p_ot_margin_filter BOOLEAN DEFAULT FALSE
 )
 RETURNS TABLE (
     game_year      INT,
@@ -19,6 +23,11 @@ RETURNS TABLE (
     off_ppp        NUMERIC,
     def_ppp        NUMERIC,
     net_rtg        NUMERIC,
+    games_played   INT,
+    wins           INT,
+    losses         INT,
+    off_poss       INT,
+    def_poss       INT,
     rank_net_rtg   BIGINT,
     rank_off_ppp   BIGINT,
     rank_def_ppp   BIGINT
@@ -33,12 +42,14 @@ DECLARE
   v_outcome         text;
   v_opp_rank_side   text;
   v_opp_rank_metric text;
+  v_margin_status   text;
 BEGIN
   -- [Input Normalization]
   v_home_away       := COALESCE(NULLIF(btrim(p_home_away), ''), 'all');
   v_outcome         := COALESCE(NULLIF(btrim(p_outcome), ''), 'all');
   v_opp_rank_side   := COALESCE(NULLIF(btrim(p_opp_rank_side), ''), 'all');
   v_opp_rank_metric := COALESCE(NULLIF(btrim(p_opp_rank_metric), ''), 'net');
+  v_margin_status   := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
 
   -- Parse CSVs
   IF p_game_type_csv IS NOT NULL AND length(btrim(p_game_type_csv)) > 0 THEN
@@ -53,7 +64,7 @@ BEGIN
   WITH 
   -- CTE 1: Games Base (Filter Schedule)
   games_base AS (
-    SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id
+    SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.has_won
     FROM basketball_test.final_schedule_mv fs
     WHERE fs.game_year = p_game_year
       AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
@@ -66,84 +77,133 @@ BEGIN
 
   -- CTE 2: Games Ranked (Join Ratings MV to get Opponent Ranks)
   games_ranked AS (
-    SELECT gb.game_id, gb.team_id, gb.game_year,
+    SELECT gb.game_id, gb.team_id, gb.game_year, gb.has_won,
            CASE WHEN v_opp_rank_side IN ('top', 'bottom') THEN
-             CASE v_opp_rank_metric 
-               WHEN 'off' THEN r.rank_off_ppp 
-               WHEN 'def' THEN r.rank_def_ppp 
-               ELSE r.rank_net_rtg 
+             CASE v_opp_rank_metric
+               WHEN 'off' THEN r.rank_off_ppp
+               WHEN 'def' THEN r.rank_def_ppp
+               ELSE r.rank_net_rtg
              END
            ELSE NULL END AS opp_rank,
-           
+
            CASE WHEN v_opp_rank_side = 'bottom' THEN
-             MAX(CASE v_opp_rank_metric 
-                   WHEN 'off' THEN r.rank_off_ppp 
-                   WHEN 'def' THEN r.rank_def_ppp 
-                   ELSE r.rank_net_rtg 
+             MAX(CASE v_opp_rank_metric
+                   WHEN 'off' THEN r.rank_off_ppp
+                   WHEN 'def' THEN r.rank_def_ppp
+                   ELSE r.rank_net_rtg
                  END) OVER (PARTITION BY gb.game_year)
            ELSE NULL END AS max_rank
     FROM games_base gb
-    LEFT JOIN basketball_test.team_ppp_ratings_mv r 
-      ON r.game_year::integer = gb.game_year 
+    LEFT JOIN basketball_test.team_ppp_ratings_mv r
+      ON r.game_year::integer = gb.game_year
       AND r.team_id::integer  = gb.opp_team_id
       AND v_opp_rank_side IN ('top', 'bottom')
   ),
 
   -- CTE 3: Games Filtered (Apply Rank Filter)
   games_filtered AS (
-    SELECT gr.game_id, gr.team_id, gr.game_year
+    SELECT gr.game_id, gr.team_id, gr.game_year, gr.has_won
     FROM games_ranked gr
     WHERE v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL
        OR (v_opp_rank_side = 'top'    AND gr.opp_rank <= p_opp_rank_n)
        OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
   ),
 
-  -- CTE 4: Base Aggregation (Join Valid Games to Stats Table)
-  base_agg AS (
-      SELECT 
-        gf.game_year,
-        gf.team_id,
-        dppllm.type_lineup,
-        sum(dppllm.team_score) / NULLIF(sum(dppllm.final_end_poss::integer), 0)::numeric AS ppp
+  -- CTE 4: Qualifying Games (games with possessions matching clutch criteria)
+  qualifying_games AS (
+      SELECT DISTINCT gf.game_year, gf.team_id, gf.game_id, gf.has_won
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN games_filtered gf ON gf.game_id = dppllm.game_id AND gf.team_id = dppllm.team_id
-      GROUP BY gf.game_year, gf.team_id, dppllm.type_lineup
+      WHERE (p_max_margin IS NULL OR ABS(dppllm.own_team_score - dppllm.opp_team_score) <= p_max_margin OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+        AND (v_margin_status = 'all'
+             OR (v_margin_status = 'leading'  AND dppllm.own_team_score > dppllm.opp_team_score)
+             OR (v_margin_status = 'trailing' AND dppllm.own_team_score < dppllm.opp_team_score)
+             OR (v_margin_status = 'tied'     AND dppllm.own_team_score = dppllm.opp_team_score)
+             OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+        AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
   ),
 
-  -- CTE 5: Pivot (Offense/Defense)
+  -- CTE 4b: Win/Loss counts (from qualifying games only)
+  win_loss AS (
+    SELECT qg.game_year,
+           qg.team_id,
+           COUNT(*) FILTER (WHERE qg.has_won = TRUE) AS wins,
+           COUNT(*) FILTER (WHERE qg.has_won = FALSE) AS losses
+    FROM qualifying_games qg
+    GROUP BY qg.game_year, qg.team_id
+  ),
+
+  -- CTE 5: Base Aggregation (Join Valid Games to Stats Table)
+  base_agg AS (
+      SELECT
+        qg.game_year,
+        qg.team_id,
+        dppllm.type_lineup,
+        sum(dppllm.team_score) / NULLIF(sum(dppllm.final_end_poss::integer), 0)::numeric AS ppp,
+        sum(dppllm.final_end_poss::integer) AS total_poss,
+        COUNT(DISTINCT dppllm.game_id) AS games_count
+      FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
+      JOIN qualifying_games qg ON qg.game_id = dppllm.game_id AND qg.team_id = dppllm.team_id
+      WHERE (p_max_margin IS NULL OR ABS(dppllm.own_team_score - dppllm.opp_team_score) <= p_max_margin OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+        AND (v_margin_status = 'all'
+             OR (v_margin_status = 'leading'  AND dppllm.own_team_score > dppllm.opp_team_score)
+             OR (v_margin_status = 'trailing' AND dppllm.own_team_score < dppllm.opp_team_score)
+             OR (v_margin_status = 'tied'     AND dppllm.own_team_score = dppllm.opp_team_score)
+             OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+        AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
+      GROUP BY qg.game_year, qg.team_id, dppllm.type_lineup
+  ),
+
+  -- CTE 6: Pivot (Offense/Defense)
   pivoted AS (
-      SELECT 
+      SELECT
         base_agg.game_year,
         base_agg.team_id,
         max(base_agg.ppp) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_ppp_raw,
-        max(base_agg.ppp) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_ppp_raw
+        max(base_agg.ppp) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_ppp_raw,
+        max(base_agg.games_count) AS games_played,
+        wl.wins,
+        wl.losses,
+        max(base_agg.total_poss) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_poss,
+        max(base_agg.total_poss) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_poss
       FROM base_agg
-      GROUP BY base_agg.game_year, base_agg.team_id
+      LEFT JOIN win_loss wl ON wl.game_year = base_agg.game_year AND wl.team_id = base_agg.team_id
+      GROUP BY base_agg.game_year, base_agg.team_id, wl.wins, wl.losses
   ),
 
-  -- CTE 6: Final Calculation & Naming
+  -- CTE 7: Final Calculation & Naming
   final_calc AS (
-      SELECT 
+      SELECT
         p.game_year,
         p.team_id,
         fr.team_name,
         round(p.off_ppp_raw, 3) * 100::numeric AS off_ppp,
         round(p.def_ppp_raw, 3) * 100::numeric AS def_ppp,
-        round(p.off_ppp_raw - p.def_ppp_raw, 3) * 100::numeric AS net_rtg
+        round(p.off_ppp_raw - p.def_ppp_raw, 3) * 100::numeric AS net_rtg,
+        p.games_played,
+        p.wins,
+        p.losses,
+        p.off_poss,
+        p.def_poss
       FROM pivoted p
-      JOIN basketball_test.full_rosters fr 
+      JOIN basketball_test.full_rosters fr
         ON fr.game_year = p.game_year AND fr.team_id = p.team_id
-      GROUP BY p.game_year, p.team_id, fr.team_name, p.off_ppp_raw, p.def_ppp_raw
+      GROUP BY p.game_year, p.team_id, fr.team_name, p.off_ppp_raw, p.def_ppp_raw, p.games_played, p.wins, p.losses, p.off_poss, p.def_poss
   )
 
   -- Final Select with Ranks
-  SELECT 
+  SELECT
     fc.game_year,
     fc.team_id,
     fc.team_name,
     fc.off_ppp,
     fc.def_ppp,
     fc.net_rtg,
+    fc.games_played::int,
+    COALESCE(fc.wins, 0)::int AS wins,
+    COALESCE(fc.losses, 0)::int AS losses,
+    fc.off_poss::int,
+    fc.def_poss::int,
     dense_rank() OVER (PARTITION BY fc.game_year ORDER BY fc.net_rtg DESC NULLS LAST) AS rank_net_rtg,
     dense_rank() OVER (PARTITION BY fc.game_year ORDER BY fc.off_ppp DESC NULLS LAST) AS rank_off_ppp,
     dense_rank() OVER (PARTITION BY fc.game_year ORDER BY fc.def_ppp ASC NULLS LAST)  AS rank_def_ppp

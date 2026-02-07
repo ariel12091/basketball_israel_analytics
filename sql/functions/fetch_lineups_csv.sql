@@ -1,6 +1,6 @@
--- DROP FUNCTION basketball_test.fetch_lineups_csv_v2(int4, text, text, text, bool, date, date, int4, int4, text, text, text, text, text, int4, text);
+-- DROP FUNCTION basketball_test.fetch_lineups_csv_v2(int4, text, text, text, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4);
 
-CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_csv_v2(p_num_lineup integer, p_team_ids_csv text, p_player_ids_csv text, p_player_off_csv text, p_exact boolean, p_start_date date, p_end_date date, p_min_poss integer, p_game_year integer DEFAULT NULL::integer, p_game_type_csv text DEFAULT NULL::text, p_opp_team_ids_csv text DEFAULT NULL::text, p_home_away text DEFAULT 'all'::text, p_outcome text DEFAULT 'all'::text, p_opp_rank_side text DEFAULT 'all'::text, p_opp_rank_n integer DEFAULT NULL::integer, p_opp_rank_metric text DEFAULT 'net'::text)
+CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_csv_v2(p_num_lineup integer, p_team_ids_csv text, p_player_ids_csv text, p_player_off_csv text, p_exact boolean, p_start_date date, p_end_date date, p_min_poss integer, p_game_year integer DEFAULT NULL::integer, p_game_type_csv text DEFAULT NULL::text, p_opp_team_ids_csv text DEFAULT NULL::text, p_home_away text DEFAULT 'all'::text, p_outcome text DEFAULT 'all'::text, p_opp_rank_side text DEFAULT 'all'::text, p_opp_rank_n integer DEFAULT NULL::integer, p_opp_rank_metric text DEFAULT 'net'::text, p_max_margin integer DEFAULT NULL::integer, p_margin_status text DEFAULT 'all'::text, p_max_time_remaining integer DEFAULT NULL::integer, p_ot_margin_filter boolean DEFAULT false)
  RETURNS TABLE(team_id integer, sub_lineup_hash text, num_lineup smallint, player_ids integer[], player_names text[], player_names_str text, off_poss integer, off_pts integer, off_ppp numeric, def_poss integer, def_pts integer, def_ppp numeric, net_rtg numeric, game_year integer)
  LANGUAGE plpgsql
  STABLE
@@ -63,7 +63,11 @@ BEGIN
     p_outcome,
     p_opp_rank_side,
     p_opp_rank_n,
-    p_opp_rank_metric
+    p_opp_rank_metric,
+    p_max_margin,
+    p_margin_status,
+    p_max_time_remaining,
+    p_ot_margin_filter
   );
 END;
 $function$

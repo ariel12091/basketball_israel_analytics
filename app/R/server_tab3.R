@@ -98,7 +98,7 @@ server_tab3 <- function(input, output, session, shared) {
     } else {
       team_ratings_mv %>%
         filter(game_year == !!p$game_year) %>%
-        select(game_year, team_name, off_ppp, def_ppp, net_rtg, games_played, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp) %>%
+        select(game_year, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp) %>%
         arrange(rank_net_rtg) %>%
         collect()
     }
@@ -231,8 +231,8 @@ server_tab3 <- function(input, output, session, shared) {
       # ============================================================
       df <- tr_data()
       if (is.null(df) || nrow(df) == 0) return(NULL)
-      pretty_names <- c("Season", "Team", "Off PPP", "Def PPP", "Net Rtg", "GP", "Off Poss", "Def Poss", "Net Rank", "Off Rank", "Def Rank")
-      disp_df <- df %>% select(game_year, team_name, off_ppp, def_ppp, net_rtg, games_played, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp)
+      pretty_names <- c("Season", "Team", "GP", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Net Rank", "Off Rank", "Def Rank", "Off Poss", "Def Poss")
+      disp_df <- df %>% select(game_year, team_name, games_played, wins, losses, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp, off_poss, def_poss)
       max_rank <- max(c(disp_df$rank_net_rtg, disp_df$rank_off_ppp, disp_df$rank_def_ppp), na.rm = TRUE)
       if (max_rank < 2) max_rank <- 2
       cuts <- seq(1.5, max_rank - 0.5, 1)
