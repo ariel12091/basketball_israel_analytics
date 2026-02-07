@@ -2,488 +2,290 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Token Efficiency
+
+This file is updated after every session. **Trust this context** — avoid re-reading files or spawning exploration agents when the answer is documented here. Use `replace_all=true` for repetitive edits, read files in large chunks (limit=300+), and batch similar operations.
+
 ## Project Overview
 
-Basketball Israel Analytics — an R/Shiny dashboard for analyzing Israeli basketball player on/off court impact, lineup combinations, and team efficiency ratings. Data is sourced from play-by-play JSON feeds (basket.co.il / stats.segevstats.com), processed through an ETL pipeline, stored in PostgreSQL (Supabase), and displayed via an interactive Shiny web app.
+Basketball Israel Analytics — R/Shiny dashboard for player on/off impact, lineup combos, and team ratings. Data from play-by-play JSON (basket.co.il / stats.segevstats.com) → ETL → PostgreSQL (Supabase) → Shiny app.
 
 **Live app:** https://ibpl-stats.shinyapps.io/onoff-shiny/
 
-## Tech Stack
-
-- **R 4.4.2** with renv for dependency management
-- **Shiny** (Bootstrap 5 via bslib) for the web UI
-- **PostgreSQL** on Supabase (pooled connection, port 6543)
-- **Schemas:** `basketball` (prod), `basketball_test` (test/dev)
-- **Deployment:** shinyapps.io (account: ibpl-stats)
+**Tech:** R 4.4.2, Shiny (bslib/BS5), PostgreSQL on Supabase (port 6543), schema `basketball_test`, deployed to shinyapps.io
 
 ## Commands
 
-R is not on PATH. Use the full path to Rscript:
-
 ```bash
 RSCRIPT="/c/Program Files/R/R-4.4.2/bin/Rscript.exe"
-
-# Restore R dependencies
-"$RSCRIPT" -e "renv::restore()"
-
-# Run the Shiny app locally
-"$RSCRIPT" -e "shiny::runApp('app')"
-
-# Run ETL (test environment)
-"$RSCRIPT" -e "Sys.setenv(APP_ENV='test'); source('etl/etl_onoff.R'); etl_update()"
-
-# Deploy to shinyapps.io
-"$RSCRIPT" -e "rsconnect::deployApp('app')"
-
-# Snapshot new R dependencies
-"$RSCRIPT" -e "renv::snapshot()"
-
-# Run full ETL pipeline (base tables + sub-lineups + MV refresh + validation)
-"$RSCRIPT" -e "Sys.setenv(APP_ENV='test'); source('etl/etl_full.R'); etl_full()"
-
-# Run full ETL dry run (preview without writes)
-"$RSCRIPT" -e "Sys.setenv(APP_ENV='test'); source('etl/etl_full.R'); etl_full(dry_run=TRUE)"
-
-# Run a deploy/test script
-"$RSCRIPT" deploy_team_ff.R
+"$RSCRIPT" -e "shiny::runApp('app')"                    # Run app locally
+"$RSCRIPT" -e "rsconnect::deployApp('app')"             # Deploy
+"$RSCRIPT" -e "Sys.setenv(APP_ENV='test'); source('etl/etl_full.R'); etl_full()"  # Full ETL
 ```
 
 ## Architecture
 
 ```
-app/app.R          Shiny UI + server (3 tabs: On/Off Impact, Lineup Data, Team Ratings)
-    │
-    ▼ (DBI/pool — connection-pooled PostgreSQL queries)
-    │
-sql/functions/     PL/pgSQL stored functions for dynamic filtered queries
-    │              - onoff_compute.sql: player on/off impact (14 params)
-    │              - four_factors_compute.sql: player four-factors on/off splits (11 params)
-    │              - fetch_lineups_all.sql: lineup queries with rank filtering
-    │              - fetch_lineups_csv.sql: CSV-param wrapper for lineups
-    │              - get_team_ratings_dynamic.sql: team efficiency ratings
-    │              - get_team_four_factors_dynamic.sql: team four-factor rates (10 params)
-    │              - refresh_sub_lineups.sql: refresh sub-lineup stats
-    │
-sql/materialized_views/   Pre-computed views for fast unfiltered queries
-    │              - onoff_mv.sql: default on/off metrics
-    │              - team_ppp_ratings_mv.sql: team PPP ratings with ranks
-    │              - df_pts_poss_longer.sql: df_pts_poss_lineups_longer_mv (pivoted points/possessions)
-    │              - sub_lineups_by_day.sql: sub-lineups grouped by day
-    │              - final_schedule_mv.sql: schedule with margin/win/home flags
-    │              - player_advanced_stats_mv.sql: player four-factors on/off splits
-    │              - player_onoff_by_game.sql: pre-aggregated player on/off stats per game
-    │              - lineup_four_factors_by_game.sql: lineup four-factor counts per game
-    │              - team_four_factors_mv.sql: team four-factor rates (TS%, OREB%, TOV%, FTR, PPP)
-    │
-etl/               ETL pipeline (R scripts)
-    ├── etl_onoff.R      Main orchestrator: fetch schedule → PBP → clean → possessions → lineups → upsert
-    └── etl_lineups.R    Generates C(5,k) sub-lineup combinations (k=2,3,4), MD5-hashed
+app/
+├── app.R                  Entry point - sources modules, assembles UI/server
+├── R/
+│   ├── global.R           Libraries, constants, DB pool, CSS, helpers
+│   ├── ui_tab1_onoff.R    Tab 1 UI (On/Off Impact)
+│   ├── ui_tab2_lineup.R   Tab 2 UI (Lineup Data)
+│   ├── ui_tab3_team.R     Tab 3 UI (Team Ratings)
+│   ├── server_tab1.R      Tab 1 server logic (~400 lines)
+│   ├── server_tab2.R      Tab 2 server logic (~500 lines)
+│   └── server_tab3.R      Tab 3 server logic (~250 lines)
+├── app_backup.R           Original monolithic file (backup)
+sql/functions/             PL/pgSQL for filtered queries
+sql/materialized_views/    Pre-computed fast-path views
+etl/                       etl_full.R (orchestrator), etl_onoff.R, etl_lineups.R
 ```
 
-### Shiny app diagram
+### Modular App Pattern
 
-```
-navbarPage ("Player Analytics")
-│
-├── Tab 1: On/Off Impact
-│   Filters: season, date range, team, game type, opponents,
-│            home/away, outcome, opponent strength (rank side/n/metric),
-│            min possessions (all sides + ON)
-│   Output:  DTOutput("onoff_dt") — player on/off PPP table with percentile coloring
-│   Data:
-│     No filters → onoff_default_mv (materialized view via dbplyr)
-│     Filters    → onoff_compute() (PL/pgSQL, 14 params)
-│
-├── Tab 2: Lineup Data
-│   Filters: season, team, players on/off, group size (2-5), date range,
-│            min possessions, game type, opponents, home/away, outcome,
-│            opponent strength, view mode (Summary / Four Factors)
-│   Output:  DTOutput("ld_table") — lineup combos with TOTAL row pinned at top
-│   Data:
-│     Summary view      → fetch_lineups_csv_v2() (PL/pgSQL, 16 params)
-│     Four Factors view → fetch_lineups_four_factors_csv() (PL/pgSQL, 16 params)
-│
-└── Tab 3: Team Ratings
-    Filters: season, date range, game type, opponents, home/away,
-             outcome, opponent strength, view mode (Summary / Four Factors)
-    Output:  DTOutput("tr_table") — team off/def/net PPP with rank coloring
-    Data:
-      Summary view:
-        No filters → team_ppp_ratings_mv (materialized view via dbplyr)
-        Filters    → get_team_ratings_dynamic() (PL/pgSQL, 10 params)
-      Four Factors view:
-        No filters → team_four_factors_mv (materialized view via dbplyr)
-        Filters    → get_team_four_factors_dynamic() (PL/pgSQL, 10 params)
+**Entry point (`app.R`):** Sources all `R/*.R` files, defines `ui` (assembles tab panels), defines `server` (calls tab server functions with shared context).
+
+**Shared state:** Tab servers receive a `shared` list containing common reactives:
+```r
+shared <- list(
+  season_date_bounds = season_date_bounds,
+  selected_game_year = selected_game_year,
+  teams_for_year_df = teams_for_year_df,
+  selected_opp_ids_on = selected_opp_ids_on,
+  selected_opp_ids_ld = selected_opp_ids_ld
+)
+server_tab1(input, output, session, shared)
 ```
 
-### Dual-path query strategy
+**Deferred table initialization:** Database tables are initialized on first server request (not at source time) to avoid connection issues with Supabase pooler:
+```r
+# In global.R
+init_tables <- function() {
+  full_rosters <<- get_tbl("full_rosters")
+  # ...
+}
+# In app.R server function
+init_tables()
+```
 
-The app uses materialized views for default/unfiltered queries (fast path) and calls PL/pgSQL stored functions when the user applies filters (dynamic path). This pattern appears in all three tabs.
+### Shiny Tabs
 
-### Key database tables
+All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse behind "Show Filters"
 
-| Table | Purpose |
-|-------|---------|
-| `schedule` | Game metadata (dates, teams, game type) |
-| `actions_clean` | Play-by-play events |
-| `full_rosters` | Player-team-game mappings |
-| `possessions` | Processed possession data |
-| `pws` | Possessions joined to stints (on/off segments) |
-| `lineups_lookup` | Player on/off status per stint |
-| `stints` | Game segments for lineup tracking |
-| `sub_lineups` | 2-3-4 man sub-combinations with MD5 hashes |
+| Tab | Filters | Fast Path (MV) | Filtered Path (SQL) |
+|-----|---------|----------------|---------------------|
+| 1: On/Off Impact | season, dates, team, game filters, min poss | `onoff_default_mv` / `player_advanced_stats_mv` | `onoff_compute()` / `four_factors_compute()` |
+| 2: Lineup Data | + players on/off, group size 2-5, clutch time | — (always SQL) | `fetch_lineups_csv_v2()` / `fetch_lineups_four_factors_csv()` |
+| 3: Team Ratings | season, dates, game filters, clutch time | `team_ppp_ratings_mv` / `team_four_factors_mv` | `get_team_ratings_dynamic()` / `get_team_four_factors_dynamic()` |
 
-### Key materialized views
+### Key Tables & MVs
 
-| View | Key Columns | Purpose |
-|------|-------------|---------|
-| `df_pts_poss_lineups_longer_mv` | lineup_hash, type_lineup (offense/defense), game_id, team_id, team_score, final_end_poss | Core view — UNIONs pws offense + defense rows with lineup hashes; base for all other MVs |
-| `onoff_default_mv` | player_id, team_id, game_year, Off/Def ON/OFF PPP, net_rtg diffs, percentile ranks, on_poss, off_poss | Pre-computed player on/off impact with percentile rankings; used as fast path for On/Off tab |
-| `team_ppp_ratings_mv` | game_year, team_id, team_name, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp | Team-level efficiency ratings with dense_rank per season |
-| `mv_lineup_totals_by_day` | team_id, lineup_hash, type_lineup, g_date, game_id, game_year, total_poss, total_pts | Daily aggregated lineup stats (points/possessions per lineup per game) |
-| `final_schedule_mv` | game_id, game_year, game_date, game_type, team_id, team_name, opp_team_id, opp_team_name, team_score, opp_score, margin, has_won, is_home | Materialized from `sched_long` with computed margin, win flag, and home flag; indexed on date, team, opponent, and filter columns |
-| `player_advanced_stats_mv` | player_id, team_id, game_year, off/def on/off TS%, OREB%, TOV%, FTR, poss counts, diff columns, percentile ranks | Player four-factors on/off splits (TS%, OREB%, TOV%, FT rate) with on-minus-off diffs and percentile rankings |
-| `lineup_four_factors_by_game` | lineup_hash, team_id, game_id, game_year, type_lineup, total_points, total_poss, ts_poss_count, oreb_count, oreb_opportunities, tov_count, total_ft_attempts, total_fga | Pre-aggregated four-factor counts per lineup_hash per game; same logic as player_four_factors_by_game but without player-level grouping |
-| `player_onoff_by_game` | player_id, team_id, game_id, game_year, is_on_key, type_lineup, total_pts, total_poss | Pre-aggregated player on/off stats per game; joins lineups_lookup × mv_lineup_totals_by_day; used by `onoff_compute()` for ~24x speedup; refreshed during ETL |
-| `team_four_factors_mv` | team_id, game_year, team_name, off/def TS%, OREB%, TOV%, FTR, PPP, poss, raw counts, net_rtg | Team-level four-factor rates aggregated from lineup_four_factors_by_game; used as fast path for Tab 3 Four Factors view |
+**Base tables:** `schedule`, `actions_clean`, `full_rosters`, `possessions`, `pws`, `lineups_lookup`, `stints`, `sub_lineups`
 
-### SQL function signatures
+**Key column inventory:**
 
-**`onoff_compute`** (14 params, LANGUAGE plpgsql) — player on/off impact
-Called from Tab 1 via `run_onoff_compute_14()` (app.R:498). Only when filters are active; otherwise `onoff_default_mv` is used.
+| Table | From JSON PBP | Computed in ETL |
+|-------|--------------|-----------------|
+| `actions_clean` | `quarter`, `parameters_*` (team, player, type, quarter, player_in/out, current_quarter, current_quarter_time, coord_x/y, points, fast_break, second_chance_points, points_from_turnover, made, kind, fouled_on, free_throws, free_throws_awarded, free_throw_number, is_coach_foul, is_bench_foul), `id`, `parent_action_id`, `user_time`, `quarter_time`, `type`, `player_id`, `team_id`, `score` (raw JSON — unreliable), `total_player_points`, `game_id`, `row_num` | `end_quarter_seconds_remaining`, `end_game_seconds_remaining`, `team_score` (points on made shots, else NA) |
+| `possessions` | All `actions_clean` columns | + `pct_ft`, `q_bucket`, `end_poss`, `sum_poss_poss`, `sum_block`, `sum_tech`, `final_end_poss` |
+| `pws` | All `possessions` columns | + stint fields: `lineup_hash_offense`, `lineup_hash_defense`, `team_id_defense`, `segment_id`, `final_start_seg`, `final_end_seg`, `final_start_id`, `final_end_id` |
+| `df_pts_poss_lineups_longer_mv` | Most `pws` columns (team_id flipped per branch) | + `own_team_score`, `opp_team_score` (cumulative), `type_lineup` ('offense'/'defense'), `lineup_hash` |
+
+**`own_team_score` / `opp_team_score`:** Cumulative game scores computed via `cum_scores` CTE on `possessions`. Uses `total_cum - team_cum` pattern (no schedule join needed). Offense branch: own = acting team's cum score. Defense branch: own = total minus acting team's (i.e., defending team's cum score). Scores mirror each other — same pattern as `sched_long`.
+
+**MV dependency tree** (refresh in this order):
+```
+L1: final_schedule_mv, df_pts_poss_lineups_longer_mv (depends on: possessions, pws)
+L2: mv_lineup_totals_by_day, team_ppp_ratings_mv, onoff_default_mv
+L3: player_onoff_by_game, player_four_factors_by_game, lineup_four_factors_by_game, player_advanced_stats_mv
+L4: team_four_factors_mv
+```
+
+**CASCADE warning:** `DROP MATERIALIZED VIEW df_pts_poss_lineups_longer_mv CASCADE` drops all 8 dependent MVs (L2–L4). Use `sql/rebuild_all_mvs.R` to rebuild:
+```r
+source("sql/rebuild_all_mvs.R")
+rebuild_all_mvs()                        # rebuild all L1-L4
+rebuild_all_mvs(from_level = 2)          # skip L1, rebuild L2-L4 only
+rebuild_all_mvs(skip = "final_schedule_mv")  # skip specific MVs
+```
+
+**Function → MV mapping:**
+- `onoff_compute` → `player_onoff_by_game`, `final_schedule_mv`
+- `four_factors_compute` → `lineup_four_factors_by_game`, `final_schedule_mv`
+- `fetch_lineups_*` → `mv_lineup_totals_by_day`, `final_schedule_mv`
+- `get_team_*_dynamic` → `lineup_four_factors_by_game`, `final_schedule_mv`
+
+**`team_ppp_ratings_mv` columns:** `game_year`, `team_id`, `team_name`, `off_ppp`, `def_ppp`, `net_rtg`, `games_played`, `off_poss`, `def_poss`, `rank_net_rtg`, `rank_off_ppp`, `rank_def_ppp`
+
+### SQL Functions (params)
+
+| Function | Params | Purpose |
+|----------|--------|---------|
+| `onoff_compute` | 14 | Player on/off PPP with percentile ranks |
+| `four_factors_compute` | 11 | Player TS%, OREB%, TOV%, FTR on/off splits |
+| `fetch_lineups_csv_v2` | 20 | Lineup combos (Summary) + clutch filters |
+| `fetch_lineups_four_factors_csv` | 20 | Lineup combos (Four Factors) + clutch filters |
+| `get_team_ratings_dynamic` | 14 | Team PPP ratings + clutch filters |
+| `get_team_four_factors_dynamic` | 14 | Team four-factor rates + clutch filters |
+
+### ETL
+
+**Use `etl_full.R`** — runs: base tables → sub-lineups → MV refresh → validation. Logs to `etl/logs/`.
+
+Key helpers: `upsert_by_like()` (schema-driven upsert), `fetch_israel_schedule()`, `compute_possessions()`, `compute_lineups_lookup()`
+
+**ETL needs write access** — switch `.Renviron` from `app_readonly` to `postgres` user before running.
+
+## Environment
+
+```
+PG_HOST=<supabase-pooler>  PG_PORT=6543  PG_DB=postgres
+PG_USER=<user>  PG_PASS=<pass>  PG_SSLMODE=require  POOL_MAX=3
+```
+
+- Port 6543 = pooler (app/ETL), Port 5432 = direct (DDL)
+- DDL uses **same pooler host** on port 5432 (not `db.<ref>.supabase.co` — that doesn't resolve)
+- `SET search_path` doesn't persist on pooler — use `SET LOCAL` in transaction
+- On port 5432 direct, `SET search_path` persists normally for the session
+
+## Four Factors View
+
+Now in main `app/app.R` (not app_test.R). Toggle between Summary/Four Factors in each tab. Four Factors shows TS%, OREB%, TOV%, FTR on/off splits with visual range bars.
+
+**Ranking:** Players with <100 poss appear unranked/gray. Ranks computed in R via `percent_rank()`.
+
+**Color polarity:** Offense metrics green-high (except TOV% red-high). Defense metrics red-high (except TOV% green-high).
+
+## Clutch Time Filter
+
+Available in Tab 2 (Lineup Data) and Tab 3 (Team Ratings). Not in Tab 1 (On/Off Impact).
+
+**UI Controls:**
+- Enable checkbox → conditionalPanel with:
+  - Max margin slider (0–10, default 5)
+  - Score status dropdown (All/Leading/Trailing/Tied)
+  - Max minutes remaining slider (1–5, default 5)
+  - "Exclude OT if margin exceeded" checkbox
+
+**SQL Parameters (4 new params per function):**
 ```sql
-onoff_compute(
-  p_start_date DATE, p_end_date DATE, p_team_ids TEXT,
-  p_min_all INT, p_min_on INT, p_min_net NUMERIC, p_game_year TEXT,
-  p_game_type_csv TEXT, p_opp_ids_csv TEXT, p_home_away TEXT, p_outcome TEXT,
-  p_opp_rank_side TEXT, p_opp_rank_n INT, p_opp_rank_metric TEXT
-)
-RETURNS TABLE (
-  "Team", "First Name", "Last Name",
-  "Net RTG Diff", "Off ON Diff", "Def ON Diff",
-  "Off ON PPP", "Def ON PPP", "On Net RTG",
-  "Off OFF PPP", "Def OFF PPP", "Off Net RTG",
-  "ON Poss", "OFF Poss",
-  pr_net, pr_off_on, pr_off_off, pr_def_on_inv, pr_def_off_inv,
-  pr_off_on_d, pr_def_on_d, pr_def_on_d_inv, pr_on_net, pr_off_net,
-  player_id, team_id
-)
+p_max_margin         INT     DEFAULT NULL   -- ABS(own - opp) <= this
+p_margin_status      TEXT    DEFAULT 'all'  -- 'all'|'leading'|'trailing'|'tied'
+p_max_time_remaining INT     DEFAULT NULL   -- seconds; R converts minutes*60
+p_ot_margin_filter   BOOLEAN DEFAULT FALSE  -- TRUE = apply margin to OT
 ```
 
-**`fetch_lineups_csv_v2`** (16 params, LANGUAGE plpgsql) — lineup combos
-Called from Tab 2 via `run_fetch_lineups_16()` (app.R:858). Always used — no materialized view fast path for this tab.
+**WHERE clause pattern (used in all clutch-enabled functions):**
 ```sql
-fetch_lineups_csv_v2(
-  p_num_lineup INT, p_team_ids_csv TEXT, p_player_ids_csv TEXT,
-  p_player_off_csv TEXT, p_exact BOOL, p_start_date DATE, p_end_date DATE,
-  p_min_poss INT, p_game_year INT,
-  p_game_type_csv TEXT, p_opp_team_ids_csv TEXT, p_home_away TEXT, p_outcome TEXT,
-  p_opp_rank_side TEXT, p_opp_rank_n INT, p_opp_rank_metric TEXT
-)
-RETURNS TABLE (
-  team_id, sub_lineup_hash, num_lineup, player_ids INT[],
-  player_names TEXT[], player_names_str,
-  off_poss, off_pts, off_ppp, def_poss, def_pts, def_ppp, net_rtg, game_year
-)
+AND (p_max_margin IS NULL
+     OR ABS(own_team_score - opp_team_score) <= p_max_margin
+     OR (quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+AND (v_margin_status = 'all'
+     OR (v_margin_status = 'leading'  AND own_team_score > opp_team_score)
+     OR (v_margin_status = 'trailing' AND own_team_score < opp_team_score)
+     OR (v_margin_status = 'tied'     AND own_team_score = opp_team_score)
+     OR (quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+AND (p_max_time_remaining IS NULL
+     OR end_game_seconds_remaining <= p_max_time_remaining
+     OR quarter > 4)
 ```
 
-**`fetch_lineups_all`** (16 params, LANGUAGE plpgsql) — same as csv_v2 but accepts arrays instead of CSV strings
-Not called from the app. Array-based variant for direct SQL queries or other tooling.
-```sql
-fetch_lineups_all(
-  p_num_lineup SMALLINT, p_team_ids INT[], p_player_ids INT[],
-  p_player_off_ids INT[], p_exact BOOL, p_start_date DATE, p_end_date DATE,
-  p_min_poss INT, p_game_year INT,
-  p_game_type_csv TEXT, p_opp_team_ids_csv TEXT, p_home_away TEXT, p_outcome TEXT,
-  p_opp_rank_side TEXT, p_opp_rank_n INT, p_opp_rank_metric TEXT
-)
-RETURNS TABLE (same as fetch_lineups_csv_v2)
+**Overtime handling:**
+- By default (`p_ot_margin_filter = FALSE`): OT always qualifies as clutch (bypasses margin AND status filters)
+- When checked (`p_ot_margin_filter = TRUE`): OT must also satisfy margin/status filters
+- Time filter always bypasses OT (no "time remaining" concept in OT)
+
+**R wrapper extraction pattern:**
+```r
+clutch_enabled <- isTRUE(input$ld_clutch_enabled)
+max_margin <- if (clutch_enabled) as.integer(input$ld_clutch_margin) else NA_integer_
+margin_status <- if (clutch_enabled) input$ld_clutch_status else NA_character_
+max_time_remaining <- if (clutch_enabled) as.integer(input$ld_clutch_minutes) * 60L else NA_integer_
+ot_margin_filter <- if (clutch_enabled) isTRUE(input$ld_clutch_ot_margin) else FALSE
 ```
 
-**`four_factors_compute`** (11 params, LANGUAGE plpgsql) — player four-factors on/off splits
-Called from Tab 1 (Four Factors view) via `run_four_factors_compute()` (app_test.R). Only when game filters are active; otherwise `player_advanced_stats_mv` is used.
-```sql
-four_factors_compute(
-  p_game_year INT, p_start_date DATE, p_end_date DATE,
-  p_team_ids_csv TEXT, p_game_type_csv TEXT, p_opp_ids_csv TEXT,
-  p_home_away TEXT, p_outcome TEXT,
-  p_opp_rank_side TEXT, p_opp_rank_n INT, p_opp_rank_metric TEXT
-)
-RETURNS TABLE (
-  player_id, team_id, firstname, lastname, team_name, game_year,
-  off_on_ts, off_off_ts, def_on_ts, def_off_ts,
-  off_on_oreb, off_off_oreb, def_on_oreb, def_off_oreb,
-  off_on_tov, off_off_tov, def_on_tov, def_off_tov,
-  off_on_ftr, off_off_ftr, def_on_ftr, def_off_ftr,
-  off_on_poss, off_off_poss, def_on_poss, def_off_poss,
-  "Off TS% Diff", "Off OREB% Diff", "Off TOV% Diff", "Off FTR Diff",
-  "Def TS% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff"
-)
-```
+**Deploy script:** `deploy_clutch.R` deploys all 5 clutch-enabled functions to Supabase (port 5432).
 
-**`fetch_lineups_four_factors_csv`** (16 params, LANGUAGE plpgsql) — lineup four-factors
-Called from Tab 2 (Four Factors view) via `run_fetch_lineups_ff_16()` (app_test.R). CSV wrapper delegates to `fetch_lineups_four_factors()`.
-```sql
-fetch_lineups_four_factors_csv(
-  p_num_lineup INT, p_team_ids_csv TEXT, p_player_ids_csv TEXT,
-  p_player_off_csv TEXT, p_exact BOOL, p_start_date DATE, p_end_date DATE,
-  p_min_poss INT, p_game_year INT,
-  p_game_type_csv TEXT, p_opp_team_ids_csv TEXT, p_home_away TEXT, p_outcome TEXT,
-  p_opp_rank_side TEXT, p_opp_rank_n INT, p_opp_rank_metric TEXT
-)
-RETURNS TABLE (
-  team_id, sub_lineup_hash, num_lineup, player_ids INT[], player_names TEXT[], player_names_str,
-  off_ts, off_oreb, off_tov, off_ftr, off_poss, off_pts, off_ppp,
-  def_ts, def_oreb, def_tov, def_ftr, def_poss, def_pts, def_ppp,
-  net_rtg, game_year
-)
-```
+### Possession Computation (`etl_onoff.R` → `compute_possessions()`)
 
-**`get_team_ratings_dynamic`** (10 params, LANGUAGE plpgsql) — team efficiency
-Called from Tab 3 via `run_team_ratings_dynamic()` (app.R:1205). Only when filters are active; otherwise `team_ppp_ratings_mv` is used.
-```sql
-get_team_ratings_dynamic(
-  p_game_year INT, p_start_date DATE, p_end_date DATE,
-  p_game_type_csv TEXT, p_opp_team_ids_csv TEXT, p_home_away TEXT, p_outcome TEXT,
-  p_opp_rank_side TEXT, p_opp_rank_n INT, p_opp_rank_metric TEXT
-)
-RETURNS TABLE (
-  game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,
-  rank_net_rtg, rank_off_ppp, rank_def_ppp
-)
-```
+A possession ends (`end_poss = TRUE`) when:
+1. Made shot
+2. Next action is a defensive rebound (miss → DREB)
+3. Made last free throw (`pct_ft == 1`, where `pct_ft = ft_number / ft_awarded`)
+4. Turnover
 
-**`get_team_four_factors_dynamic`** (10 params, LANGUAGE plpgsql) — team four-factor rates
-Called from Tab 3 (Four Factors view) via `run_team_ff_dynamic()` (app_test.R). Only when filters are active; otherwise `team_four_factors_mv` is used.
-```sql
-get_team_four_factors_dynamic(
-  p_game_year INT, p_start_date DATE, p_end_date DATE,
-  p_game_type_csv TEXT, p_opp_team_ids_csv TEXT, p_home_away TEXT, p_outcome TEXT,
-  p_opp_rank_side TEXT, p_opp_rank_n INT, p_opp_rank_metric TEXT
-)
-RETURNS TABLE (
-  team_id, game_year, team_name,
-  off_ts, off_oreb, off_tov, off_ftr, off_ppp, off_poss,
-  off_pts, off_ts_poss, off_oreb_cnt, off_oreb_opps, off_tov_cnt, off_fta, off_fga_cnt,
-  def_ts, def_oreb, def_tov, def_ftr, def_ppp, def_poss,
-  def_pts, def_ts_poss, def_oreb_cnt, def_oreb_opps, def_tov_cnt, def_fta, def_fga_cnt,
-  net_rtg
-)
-```
+Post-processing (`final_end_poss`):
+- **Blocked shots:** possession end shifts to the next row (`lead(end_poss)`)
+- **Technical fouls:** suppressed (don't end possessions)
+- **Double possession flags** (`sum_poss_poss >= 2`): suppressed when `id == parent_action_id`
+- **End-of-quarter override** (`eoq_targets`): forces `final_end_poss = TRUE` for missed shots, OREBs, or blocks immediately before an `end-of-quarter` action
 
-**`refresh_sub_lineups_stats`** (no params, LANGUAGE sql) — recomputes `sub_lineups_stats` from `mv_lineup_totals_by_day`; returns void
-Not called from the app. Invoked during ETL after data loads.
+### Four Factors Metric Formulas
 
-### ETL data flow
+Computed in MVs `player_four_factors_by_game` / `lineup_four_factors_by_game`, then aggregated by dynamic SQL functions. All rates × 100 in final output.
 
-The ETL consists of two scripts that run independently:
+| Metric | Formula | Numerator | Denominator |
+|--------|---------|-----------|-------------|
+| **TS%** | `total_points / (2 × ts_poss_count)` | Points scored | 2 × (FGA + distinct personal-foul FT trips) |
+| **TOV%** | `tov_count / total_poss` | All turnovers | Possession count (`sum(final_end_poss)`) |
+| **OREB%** | `oreb_count / oreb_opportunities` | Offensive rebounds | Missed + blocked shots + missed last FTs (personal fouls only) |
+| **FTR** | `total_ft_attempts / total_fga` | All FTs (including technical/flagrant) | All FGA |
 
-#### `etl_onoff.R` — Main pipeline (`etl_update()`)
+**FTR note:** Intentionally includes all FT types — measures overall FT-to-FGA ratio, not just personal-foul FTs.
 
-Entry point: `etl_update(game_ids = NULL, season = NULL, competition = NULL)`
+### Raw Count Definitions (MV CASE logic)
 
-Runs inside a single transaction with ROLLBACK on error. Schema is selected by `APP_ENV` (`"prod"` → `basketball`, `"test"` → `basketball_test`). Test schema is auto-cloned from prod on startup if tables are missing.
+Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT clause. Both use identical CASE expressions. `player_advanced_stats_mv` has its own inline copy.
 
-| Step | Function | Upserts to | Description |
-|------|----------|-----------|-------------|
-| 1 | `fetch_israel_schedule()` | `schedule` | Fetch JSON from `basket.co.il/pbp/json/games_all.json`, filter to games with score > 0 |
-| 2 | — | — | Determine new games: game_ids not yet in `actions_clean` |
-| 3 | `fetch_game_pbp()` | — | Fetch PBP JSON from `stats.segevstats.com` per game |
-| 4 | `clean_actions()` | `actions_clean` | Unnest actions, compute end-of-quarter seconds, normalize IDs, deduplicate |
-| 5 | — | `subs` | Filter actions to type="substitution" |
-| 6 | `extract_roster()` | `full_rosters` | Extract home/away rosters from PBP, set game_year |
-| 7 | `compute_possessions()` | `possessions` | 3-phase possession tracking: base end-of-poss detection → end-of-quarter override → final flag |
-| 8 | `compute_lineups_lookup()` | `lineups_lookup` | Track player on/off status via substitutions, build lineup_hash (MD5 of sorted player IDs) |
-| 9 | `compute_stints()` | `stints` | Offensive/defensive segments: cross-join offense × defense lineups within aligned quarters |
-| 10 | — | `pws` | Left-join possessions to stints (possessions-within-stints) |
-| 11 | `ANALYZE` | — | Update query planner statistics |
+| Column | SQL CASE logic | Notes |
+|--------|---------------|-------|
+| `total_points` | `sum(team_score)` | `team_score` = `parameters_points` when made, else NULL |
+| `total_poss` | `sum(final_end_flag)` | `1` when `final_end_poss IS TRUE`, else `0` |
+| `ts_poss_count` | `count(type='shot') + count(DISTINCT parent_action_id WHERE type='freeThrow' AND parent is personal foul)` | FGA + distinct personal-foul FT trips (and-1 = 1 trip) |
+| `oreb_count` | `count(type='rebound' AND parameters_type='offensive')` | All OREBs including team rebounds |
+| `oreb_opportunities` | `count(type='shot' AND parameters_made IN ('missed','blocked'))` + `count(type='freeThrow' AND missed AND pct_ft=1 AND personal foul)` | Missed/blocked shots + missed last personal-foul FTs |
+| `tov_count` | `count(type='turnover')` | All turnovers |
+| `total_ft_attempts` | `count(type='freeThrow')` | All FTs, no foul-type filter |
+| `total_fga` | `count(type='shot')` | All shots including blocked |
 
-**Key helper: `upsert_by_like(pg, schema, table, df)`** — Schema-driven upsert that auto-creates missing test tables by cloning from prod, stages data in a temp table, and uses `INSERT ... ON CONFLICT DO UPDATE`.
+**`complex_flags` CTE:** LEFT JOINs each action to its parent foul via `parent_action_id` to get `parent_type` and `parent_param`. Only matches `type='foul'` parents. Actions without a foul parent get NULL → excluded from personal-foul filters (affects `ts_poss_count` and `oreb_opportunities` FT conditions).
 
-**MV refreshes are NOT called by `etl_onoff.R`** — they must be run manually or via a separate script after the ETL completes.
+**`pct_ft`:** `parameters_free_throw_number / parameters_free_throws_awarded` (computed in ETL `compute_possessions()`). `pct_ft = 1` means last FT in the sequence.
 
-#### `etl_lineups.R` — Sub-lineup generation (manual, not called by `etl_onoff.R`)
+**Architecture note:** SQL functions (`four_factors_compute`, `fetch_lineups_four_factors`, `get_team_four_factors_dynamic`) only aggregate (`SUM`) pre-computed columns from MVs — they don't recompute raw counts. Fixes to metric formulas only need to touch the base MVs (`player_four_factors_by_game`, `lineup_four_factors_by_game`, `player_advanced_stats_mv`). `team_four_factors_mv` aggregates from `lineup_four_factors_by_game` so it picks up fixes automatically on refresh.
 
-Generates C(5,k) sub-lineup combinations (k=2,3,4) from full 5-man lineups already in `lineups_lookup`. Run manually after `etl_onoff.R` for specific game_ids.
-
-| Step | Description | Table |
-|------|-------------|-------|
-| 1 | Pull ON lineups from `lineups_lookup` (where `is_on_verdict = 1`) | reads `lineups_lookup` |
-| 2 | Anti-join against existing `lineups_lookup_on` to find new rows | reads `lineups_lookup_on` |
-| 3 | Insert new ON-lineup rows | writes `lineups_lookup_on` |
-| 4 | `build_sub_lineups_all()` — for each 5-man lineup, generate all C(5,2) + C(5,3) + C(5,4) = 25 sub-combos | — |
-| 5 | Each sub-lineup gets: underscore-separated player IDs (`sub_lineup_id`), MD5 hash (`sub_lineup_hash`), size (`num_lineup`) | — |
-| 6 | Insert into `sub_lineups` table (`player_ids` column is GENERATED in Postgres from `lineup_id`) | writes `sub_lineups` |
-
-#### Full ETL + refresh sequence
-
-```
-1. Run etl_update()          → upserts 8 base tables
-2. Run etl_lineups.R         → generates sub_lineups (manual, as needed)
-3. Refresh MVs in order      → see MV refresh order below
-```
-
-### MV refresh order
-
-MVs must be refreshed in dependency order. The `search_path` must be set to `basketball_test` (or `basketball` for prod) before refreshing, since most MV definitions use unqualified table names.
-
-```
-Level 1 — depend only on base tables:
-  1. REFRESH MATERIALIZED VIEW final_schedule_mv;
-  2. REFRESH MATERIALIZED VIEW df_pts_poss_lineups_longer_mv;
-
-Level 2 — depend on Level 1 MVs + base tables:
-  3. REFRESH MATERIALIZED VIEW mv_lineup_totals_by_day;
-  4. REFRESH MATERIALIZED VIEW team_ppp_ratings_mv;
-  5. REFRESH MATERIALIZED VIEW onoff_default_mv;
-
-Level 3 — depend on Level 2 MVs + base tables:
-  6. REFRESH MATERIALIZED VIEW player_onoff_by_game;
-  7. REFRESH MATERIALIZED VIEW player_four_factors_by_game;
-  8. REFRESH MATERIALIZED VIEW lineup_four_factors_by_game;
-  9. REFRESH MATERIALIZED VIEW player_advanced_stats_mv;
-
-Level 4 — depend on Level 3 MVs:
- 10. REFRESH MATERIALIZED VIEW team_four_factors_mv;
-```
-
-### MV dependency graph
-
-```
-base tables (pws, schedule, lineups_lookup, full_rosters)
-│
-├─► df_pts_poss_lineups_longer_mv
-│   ├─► mv_lineup_totals_by_day
-│   │   └─► player_onoff_by_game  (+ lineups_lookup)
-│   ├─► onoff_default_mv          (+ lineups_lookup, schedule)
-│   ├─► team_ppp_ratings_mv       (+ schedule, full_rosters)
-│   ├─► player_four_factors_by_game (+ lineups_lookup, schedule)
-│   ├─► player_advanced_stats_mv  (+ lineups_lookup, schedule, full_rosters)
-│   └─► lineup_four_factors_by_game (+ schedule)
-│       └─► team_four_factors_mv
-│
-└─► final_schedule_mv (via sched_long VIEW)
-```
-
-### Which functions use which MVs
-
-| Function | Reads from MV | Purpose |
-|----------|--------------|---------|
-| `onoff_compute` | `player_onoff_by_game`, `mv_lineup_totals_by_day`, `final_schedule_mv` | Player on/off impact (Tab 1) |
-| `four_factors_compute` | `lineup_four_factors_by_game`, `final_schedule_mv` | Player four-factors (Tab 1 FF) |
-| `fetch_lineups_csv_v2` | `mv_lineup_totals_by_day`, `final_schedule_mv` | Lineup combos (Tab 2) |
-| `fetch_lineups_four_factors_csv` | `lineup_four_factors_by_game`, `final_schedule_mv` | Lineup four-factors (Tab 2 FF) |
-| `get_team_ratings_dynamic` | `df_pts_poss_lineups_longer_mv`, `team_ppp_ratings_mv`, `final_schedule_mv` | Team ratings (Tab 3) |
-| `get_team_four_factors_dynamic` | `lineup_four_factors_by_game`, `final_schedule_mv` | Team four-factors (Tab 3 FF) |
-
-## Environment Variables
-
-Database credentials are read from `.Renviron` (git-ignored). Required variables:
-
-```
-PG_HOST=<supabase-pooler-host>
-PG_DB=postgres
-PG_USER=<user>
-PG_PASS=<password>
-PG_PORT=6543
-PG_SSLMODE=require
-POOL_MAX=3
-```
-
-The ETL uses `APP_ENV` (`"prod"` or `"test"`) to select the database schema.
-
-## In-Development: Four Factors View (app/app_test.R)
-
-`app/app_test.R` is the development version of the app. It adds a **"Four Factors" view mode** to Tab 1 (On/Off Impact). This feature is working but buggy.
-
-### What it adds
-
-Tab 1 gets a radio button toggle (`onoff_view_mode`) switching between "Summary" (existing behavior) and "Four Factors". The Four Factors view shows on/off splits for four efficiency metrics: **TS% (true shooting), OREB% (offensive rebound rate), TOV% (turnover rate), FTR (free throw rate)** — for both offense and defense.
-
-### Data flow (Four Factors mode)
-
-**MV path (no game filters active):**
-1. Reads from `player_advanced_stats_mv` via lazy table `advanced_stats_mv`
-2. Joins with `onoff_default_mv` to get Net RTG Diff, Off ON Diff, Def ON Diff (these columns don't exist in the advanced stats MV)
-3. Filters locally by team (`selected_team_ids()`) and min ON possessions
-4. Computes percentile ranks in R (not SQL) using `percent_rank()` with a `RANKING_BASELINE` of 100 possessions — players below this threshold get `NA` ranks and appear unranked/gray
-
-**Dynamic SQL path (game filters active — `fallback_needed()` is TRUE):**
-1. Calls `four_factors_compute()` via `live_ff_result_df()` — computes four-factor splits for the filtered game set
-2. Calls `onoff_compute()` via `live_result_df()` — gets Net RTG Diff, Off ON Diff, Def ON Diff for the same filtered game set
-3. Joins the two results by (player_id, team_id)
-4. Filters locally by team and min ON possessions; computes percentile ranks in R (same as MV path)
-
-### Fallback logic difference from production
-
-In `app_test.R`, the `fallback_needed()` logic is changed: team selection and min-possession changes do **not** trigger the dynamic SQL path. Instead, the MV data is filtered locally in R. Only date range changes and game filter changes (game type, opponents, home/away, outcome, opponent strength) trigger `onoff_compute()`.
-
-### Visual rendering (Four Factors columns)
-
-Each four-factor column renders a custom visual via JS `columnDefs.render`:
-- **Diff value** at top (bold number, gray if unranked)
-- **Range bar** (90px wide): shows on-court and off-court percentile positions as dots connected by a line
-  - Filled black dot (`dot-on`) = on-court rank position
-  - Hollow dot (`dot-off`) = off-court rank position
-  - Gray connector line between them
-- **Sub-text** below: on-value (bold) | off-value
-
-### Color logic
-
-- Offense factors (TS%, OREB%, FTR): higher diff = better → green-high gradient
-- Offense TOV%: higher diff = worse → reversed gradient (red-high)
-- Defense factors (TS%, OREB%, FTR): higher diff = worse → reversed gradient (red-high)
-- Defense TOV%: higher diff = better → green-high gradient
-- Net Diff, Off Rtg Diff: green-high; Def Rtg Diff: reversed (red-high)
-
-### Table layout (Four Factors mode)
-
-```
-Header row 1:  [empty x2] | Total | Offense Impact (On-Off) x5 | Defense Impact (On-Off) x5
-Header row 2:  Team | Player | Diff | RTG | TS% | OREB% | TOV% | FTR | RTG | TS% | OREB% | TOV% | FTR
-```
-
-### Key differences from app.R (production)
-
-- Adds `htmltools` library import
-- Adds `RANKING_BASELINE <- 100` constant
-- Adds lazy table: `advanced_stats_mv <- tbl(pg_pool, in_schema("basketball_test", "player_advanced_stats_mv"))`
-- Adds `onoff_view_mode` radio button in Tab 1 sidebar
-- Adds `conditionalPanel` legend (visible only in Four Factors mode)
-- `result_df()` reactive branches on `input$onoff_view_mode`
-- `renderDT` branches on mode: Summary uses the existing sketch/coloring; Four Factors uses custom JS render with `metric_map` loop
-- Custom CSS for `diff-val`, `rank-bar-container`, `dot-on`, `dot-off`, `range-connect`, `sub-text`, `view-mode-container`, `legend-box`
-- Uses Google Fonts (Inter) via external stylesheet link
+**Deploy note:** Use `etl/.Renviron` (postgres user) for DDL. Port 5432 on same pooler host. Set `search_path` for MVs that reference unqualified tables (`player_advanced_stats_mv`, `onoff_default_mv`, `team_ppp_ratings_mv`, `df_pts_poss_lineups_longer_mv`). SQL files contain multiple statements (CREATE + indexes) — split on `;` and execute individually.
 
 ## Code Conventions
 
-- R code uses 2-space indentation (per .Rproj settings)
-- Database queries use parameterized `params = list(...)` — never paste user input into SQL
-- The app references schema `basketball_test` directly via `in_schema()`; ETL uses a configurable `SCHEMA` variable
-- Column/table naming is snake_case throughout
+- 2-space indent, snake_case, parameterized SQL queries
+- Schema `basketball_test` via `in_schema()`; ETL uses `SCHEMA` variable
 
 ## Lessons Learned
 
-### Deploy script patterns
+### PostgreSQL / Supabase
+- `LANGUAGE plpgsql` requires exact return types; `PERCENT_RANK()` returns `double precision`
+- `REFRESH MATERIALIZED VIEW` re-runs stored definition — must DROP+CREATE to change query
+- `DROP MATERIALIZED VIEW ... CASCADE` propagates — always rebuild dependents in L2→L3→L4 order
+- `SET search_path` needs `SET LOCAL` in transaction on pooler
+- `ANALYZE;` without table fails on Supabase — scope to specific tables
+- `score` column from raw JSON is unreliable — use `own_team_score`/`opp_team_score` (cumulative) instead
+- Clutch filtering uses IF/ELSE branching in PL/pgSQL: non-clutch path uses pre-aggregated MVs, clutch path queries raw `df_pts_poss_lineups_longer_mv` with inline aggregation (can't use pre-agg MVs because score/time are action-level)
 
-- **Deploying `$$`-quoted functions**: Do NOT regex-split the SQL file — the `$$` body confuses the splitter. Instead, use `DROP FUNCTION IF EXISTS schema.func_name;` (no signature = drops all overloads) as a separate `dbExecute`, then extract the CREATE statement with `grep("^CREATE OR REPLACE", sql_lines)` and send it as one string. See `deploy_team_ff.R` for the reference pattern.
-- **Deploying MVs**: MV SQL files have no dollar-quoting, so splitting on `\n(?=CREATE )` works fine to separate the CREATE MATERIALIZED VIEW from the CREATE INDEX statements.
-- **Long inline R scripts**: `Rscript -e '...'` segfaults when the script is too long. Write to a `.R` file and run that instead.
+### R / Shiny / DT
+- `bigint` → R `numeric`; use `sprintf("%.0f", ...)` not `%d`
+- `formatRound()` clobbers JS `columnDefs` render — do all formatting in JS if using custom render
+- `uiOutput`/`renderUI` causes NULL window on startup — use static inputs + `update*Input()`
+- Hoist `colorRampPalette()`, `seq()` to global constants
+- `FixedColumns` takes too much space on mobile — use `FixedHeader` only
+- Mobile sidebar: wrap in `collapse d-md-block`, button with `d-md-none`; keep view mode toggles outside collapse
+- **Deferred table init:** `tbl(pool, in_schema(...))` queries metadata at source time, which fails on Supabase pooler. Wrap in `init_tables()` called from server function instead
+- **Modular refactor:** Use `source("R/file.R", local = TRUE)` pattern. Tab servers are functions receiving `(input, output, session, shared)`. Shared reactives passed via list to avoid duplication
 
-### PostgreSQL: `LANGUAGE plpgsql` vs `LANGUAGE sql`
-
-- `LANGUAGE sql` auto-casts return types (e.g., `double precision` → `numeric`). `LANGUAGE plpgsql` is **strict** — return types must match exactly or the function errors at call time, not at creation time.
-- `PERCENT_RANK()` and other window ranking functions return `double precision`, not `numeric`. Declare return columns accordingly.
-
-### Materialized view gotchas
-
-- `REFRESH MATERIALIZED VIEW` re-runs the **stored query definition** — it does NOT update the definition to match the SQL file. To change the query (e.g., add a WHERE clause), you must `DROP` and `CREATE` the MV.
-- MVs using **unqualified table names** (e.g., `schedule` instead of `basketball_test.schedule`) depend on `search_path` at creation time. On Supabase (PgBouncer in transaction mode), `SET search_path` does not persist across statements. Use `dbBegin` + `SET LOCAL search_path TO basketball_test, public` + `dbCommit` to keep it within a single transaction.
-
-### R / RPostgres type handling
-
-- PostgreSQL `bigint` (`int8`) maps to R `numeric` (double), not `integer`. `sprintf("%d", ...)` fails — use `sprintf("%.0f", ...)`, `format(n, big.mark = ",")`, or cast to `::int` in the SQL query (safe when values are small).
-
-### Optimization pattern: pre-aggregated MVs
-
-- All fast dynamic functions (`four_factors_compute`, `fetch_lineups_*`, `get_team_*_dynamic`) avoid scanning raw tables by reading from pre-aggregated MVs (`lineup_four_factors_by_game`, `mv_lineup_totals_by_day`). The `onoff_compute` function was the only one that still joined raw `lineups_lookup` × `df_pts_poss_lineups_longer_mv` at query time. Adding `player_onoff_by_game` brought it in line with the same pattern — **24x speedup** (22s → 0.8s).
+### Deploy Scripts
+- `$$`-quoted SQL: don't regex-split — use `DROP FUNCTION` then single CREATE string
+- Long `Rscript -e` segfaults — write to temp .R file instead
+- For MV DDL: read SQL files with `readLines()` + `paste(collapse="\n")`, strip comment header, execute as single string
+- When rebuilding all MVs after CASCADE: use a helper `run_sql(label, sql)` with tryCatch for progress logging
+- Always test DB logic on a single `game_id` first before deploying MV changes
