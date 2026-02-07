@@ -130,11 +130,36 @@ needed_lineups AS (
   FROM sub_map sm
 ),
 
-lineup_totals AS (
+-- Stint duration per segment (no type_lineup - captures full floor time)
+-- Note: segment_id repeats across games, so must include game_id in GROUP BY
+segment_times AS (
   SELECT
     f.lineup_hash,
+    f.game_id,
+    sc.game_year,
+    f.segment_id,
+    MAX(f.end_game_seconds_remaining) - MIN(f.end_game_seconds_remaining) AS stint_seconds
+  FROM basketball_test.df_pts_poss_lineups_longer_mv f
+  JOIN sched sc
+    ON sc.game_id = f.game_id
+  JOIN needed_lineups nl
+    ON nl.lineup_hash = f.lineup_hash
+   AND nl.game_year   = sc.game_year
+  GROUP BY
+    f.lineup_hash,
+    f.game_id,
+    sc.game_year,
+    f.segment_id
+),
+
+-- Poss/pts per segment per type_lineup
+segment_stats AS (
+  SELECT
+    f.lineup_hash,
+    f.game_id,
     sc.game_year,
     f.type_lineup,
+    f.segment_id,
     SUM(CASE WHEN COALESCE(f.final_end_poss, FALSE) THEN 1 ELSE 0 END) AS total_poss,
     COALESCE(SUM(f.team_score), 0)                                      AS total_pts
   FROM basketball_test.df_pts_poss_lineups_longer_mv f
@@ -145,8 +170,31 @@ lineup_totals AS (
    AND nl.game_year   = sc.game_year
   GROUP BY
     f.lineup_hash,
+    f.game_id,
     sc.game_year,
-    f.type_lineup
+    f.type_lineup,
+    f.segment_id
+),
+
+lineup_totals AS (
+  SELECT
+    ss.lineup_hash,
+    ss.game_year,
+    ss.type_lineup,
+    SUM(ss.total_poss) AS total_poss,
+    SUM(ss.total_pts) AS total_pts,
+    -- Minutes from segment_times, count once per segment (use offense filter)
+    SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+  FROM segment_stats ss
+  JOIN segment_times st
+    ON st.lineup_hash = ss.lineup_hash
+    AND st.game_id = ss.game_id
+    AND st.game_year = ss.game_year
+    AND st.segment_id = ss.segment_id
+  GROUP BY
+    ss.lineup_hash,
+    ss.game_year,
+    ss.type_lineup
 ),
 
 -- totals per (team, sub_lineup_hash, game_year, type)
@@ -157,7 +205,8 @@ per_type AS (
     sm.game_year,
     lt.type_lineup,
     SUM(lt.total_poss) AS total_poss,
-    SUM(lt.total_pts)  AS total_pts
+    SUM(lt.total_pts)  AS total_pts,
+    SUM(lt.minutes)    AS minutes
   FROM sub_map sm
   JOIN lineup_totals lt
     ON lt.lineup_hash = sm.lineup_hash
@@ -194,7 +243,10 @@ final_rows AS (
       NULLIF(SUM(p.total_pts)  FILTER (WHERE p.type_lineup = 'defense'), 0)::numeric
       / NULLIF(SUM(p.total_poss) FILTER (WHERE p.type_lineup = 'defense'), 0) * 100,
       1
-    ) AS def_ppp
+    ) AS def_ppp,
+
+    -- Minutes: sum from both offense and defense (they cover the same time, so just take one)
+    ROUND(COALESCE(SUM(p.minutes) FILTER (WHERE p.type_lineup = 'offense'), 0)::numeric, 1) AS minutes
 
   FROM sub_dedup d
   JOIN names_by_sub n
@@ -228,6 +280,7 @@ INSERT INTO basketball_test.sub_lineups_stats (
   def_poss,
   def_pts,
   def_ppp,
+  minutes,
   game_year
 )
 SELECT
@@ -243,6 +296,7 @@ SELECT
   def_poss,
   def_pts,
   def_ppp,
+  minutes,
   game_year
 FROM final_rows
 ON CONFLICT (team_id, sub_lineup_hash, game_year) DO UPDATE
@@ -256,6 +310,7 @@ SET
   off_ppp          = EXCLUDED.off_ppp,
   def_poss         = EXCLUDED.def_poss,
   def_pts          = EXCLUDED.def_pts,
-  def_ppp          = EXCLUDED.def_ppp;
+  def_ppp          = EXCLUDED.def_ppp,
+  minutes          = EXCLUDED.minutes;
 $function$
 ;

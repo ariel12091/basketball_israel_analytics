@@ -1,22 +1,59 @@
 -- basketball_test.mv_lineup_totals_by_day source
+-- Minutes computed per segment across ALL rows (not filtered by type_lineup)
+-- to capture full floor time including defense-to-offense transitions.
 
 CREATE MATERIALIZED VIEW basketball_test.mv_lineup_totals_by_day
 TABLESPACE pg_default
-AS SELECT d.team_id,
-    d.lineup_hash,
-    d.type_lineup,
-    s.game_date AS g_date,
-    d.game_id,
-    s.game_year,
-    sum(
-        CASE
-            WHEN COALESCE(d.final_end_poss, false) THEN 1
-            ELSE 0
-        END) AS total_poss,
-    COALESCE(sum(d.team_score), 0::numeric) AS total_pts
-   FROM df_pts_poss_lineups_longer_mv d
-     JOIN schedule s USING (game_id)
-  GROUP BY d.team_id, d.lineup_hash, d.type_lineup, s.game_date, d.game_id, s.game_year
+AS
+WITH
+-- Stint duration per segment (no type_lineup - captures full floor time)
+segment_times AS (
+    SELECT
+        d.team_id,
+        d.lineup_hash,
+        d.game_id,
+        s.game_date AS g_date,
+        s.game_year,
+        d.segment_id,
+        MAX(d.end_game_seconds_remaining) - MIN(d.end_game_seconds_remaining) AS stint_seconds
+    FROM df_pts_poss_lineups_longer_mv d
+    JOIN schedule s USING (game_id)
+    GROUP BY d.team_id, d.lineup_hash, d.game_id, s.game_date, s.game_year, d.segment_id
+),
+-- Poss/pts per segment per type_lineup
+segment_stats AS (
+    SELECT
+        d.team_id,
+        d.lineup_hash,
+        d.type_lineup,
+        d.game_id,
+        s.game_date AS g_date,
+        s.game_year,
+        d.segment_id,
+        SUM(CASE WHEN COALESCE(d.final_end_poss, false) THEN 1 ELSE 0 END) AS total_poss,
+        COALESCE(SUM(d.team_score), 0) AS total_pts
+    FROM df_pts_poss_lineups_longer_mv d
+    JOIN schedule s USING (game_id)
+    GROUP BY d.team_id, d.lineup_hash, d.type_lineup, d.game_id, s.game_date, s.game_year, d.segment_id
+)
+SELECT
+    ss.team_id,
+    ss.lineup_hash,
+    ss.type_lineup,
+    ss.g_date,
+    ss.game_id,
+    ss.game_year,
+    SUM(ss.total_poss) AS total_poss,
+    SUM(ss.total_pts) AS total_pts,
+    -- Minutes from segment_times, but only count once per segment (use offense to avoid double)
+    SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+FROM segment_stats ss
+JOIN segment_times st
+  ON st.team_id = ss.team_id
+  AND st.lineup_hash = ss.lineup_hash
+  AND st.game_id = ss.game_id
+  AND st.segment_id = ss.segment_id
+GROUP BY ss.team_id, ss.lineup_hash, ss.type_lineup, ss.g_date, ss.game_id, ss.game_year
 WITH DATA;
 
 -- View indexes:
