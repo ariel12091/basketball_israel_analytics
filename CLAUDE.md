@@ -143,7 +143,7 @@ Sources: `mv_lineup_totals_by_day.minutes`, `lineup_four_factors_by_game.minutes
 
 Key helpers: `upsert_by_like()` (schema-driven upsert), `fetch_israel_schedule()`, `compute_possessions()`, `compute_lineups_lookup()`
 
-**ETL needs write access** — switch `.Renviron` from `app_readonly` to `postgres` user before running.
+**ETL needs write access** — uses `etl/.Renviron` (postgres user with write access), separate from `app/.Renviron` (readonly).
 
 ## Environment
 
