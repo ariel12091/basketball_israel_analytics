@@ -122,7 +122,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg(sprintf("Log file: %s", logger$log_file))
 
   # Load environment variables
-  env_file <- file.path("app", ".Renviron")
+  env_file <- file.path("etl", ".Renviron")
   if (file.exists(env_file)) {
     readRenviron(env_file)
     log_msg(sprintf("Loaded env from %s", env_file))

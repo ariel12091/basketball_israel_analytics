@@ -465,16 +465,11 @@ compute_stints <- function(pg) {
 # =========================
 # Orchestrator
 # =========================
-etl_update <- function(game_ids = NULL, season = NULL, competition = NULL) {
+etl_update <- function() {
   # schedule (with optional season / competition)
   sched_df <- fetch_israel_schedule() %>%
     filter(score_team1 > 0)
   
-  
-  if (!is.null(season))      sched_df$season <- season
-  if (!is.null(competition)) sched_df$competition <- competition
-  if (!"season" %in% names(sched_df))      sched_df$season <- NA_character_
-  if (!"competition" %in% names(sched_df)) sched_df$competition <- NA_character_
   upsert_by_like(pg, SCHEMA, "schedule", sched_subset)
   
   # which games to process

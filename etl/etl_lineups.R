@@ -90,15 +90,6 @@ build_sub_lineups_all <- function(players_df, ks = c(2, 3, 4)) {
 }
 
 # ============================================================
-# SET YOUR TEST GAME IDS HERE
-# ============================================================
-
-game_ids <- c(
-  # put real game_ids from basketball_test.lineups_lookup
-  # e.g. 302501, 302502
-)
-
-# ============================================================
 # STEP 1: pull ON lineups for these games from lineups_lookup
 # ============================================================
 
