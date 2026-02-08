@@ -147,9 +147,20 @@ Key helpers: `upsert_by_like()` (schema-driven upsert), `fetch_israel_schedule()
 
 ## Environment
 
+**Credentials setup:** Create two `.Renviron` files (gitignored, not tracked):
+
+1. `app/.Renviron` — readonly user for Shiny app
+2. `etl/.Renviron` — postgres user with write access for ETL
+
+Both files use the same format:
 ```
-PG_HOST=<supabase-pooler>  PG_PORT=6543  PG_DB=postgres
-PG_USER=<user>  PG_PASS=<pass>  PG_SSLMODE=require  POOL_MAX=3
+PG_HOST=<supabase-pooler>
+PG_PORT=6543
+PG_DB=postgres
+PG_USER=<user>
+PG_PASS=<pass>
+PG_SSLMODE=require
+POOL_MAX=3
 ```
 
 - Port 6543 = pooler (app/ETL), Port 5432 = direct (DDL)
