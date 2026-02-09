@@ -25,11 +25,9 @@ server_tab3 <- function(input, output, session, shared) {
   tr_teams_for_year <- reactive({
     gy_int <- as.integer(input$tr_game_year)
     req(gy_int)
-    full_rosters %>%
-      filter(game_year == !!gy_int) %>%
-      distinct(team_id, team_name) %>%
-      arrange(team_name) %>%
-      collect()
+    DBI::dbGetQuery(pg_pool,
+      "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = $1 ORDER BY team_name",
+      params = list(gy_int))
   })
 
   observeEvent(list(input$tr_game_year, input$main_tabs), {
@@ -96,11 +94,9 @@ server_tab3 <- function(input, output, session, shared) {
     if (tr_fallback_needed()) {
       run_team_ratings_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter)
     } else {
-      team_ratings_mv %>%
-        filter(game_year == !!p$game_year) %>%
-        select(game_year, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp) %>%
-        arrange(rank_net_rtg) %>%
-        collect()
+      DBI::dbGetQuery(pg_pool,
+        "SELECT game_year, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp FROM basketball_test.team_ppp_ratings_mv WHERE game_year = $1 ORDER BY rank_net_rtg",
+        params = list(p$game_year))
     }
   })
 
@@ -109,9 +105,9 @@ server_tab3 <- function(input, output, session, shared) {
     if (tr_fallback_needed()) {
       df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter)
     } else {
-      df <- team_ff_mv %>%
-        filter(game_year == !!p$game_year) %>%
-        collect()
+      df <- DBI::dbGetQuery(pg_pool,
+        "SELECT * FROM basketball_test.team_four_factors_mv WHERE game_year = $1",
+        params = list(p$game_year))
     }
 
     if (is.null(df) || nrow(df) == 0) return(df)
