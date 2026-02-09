@@ -9,6 +9,8 @@ source("R/ui_tab3_team.R", local = TRUE)
 source("R/server_tab1.R", local = TRUE)
 source("R/server_tab2.R", local = TRUE)
 source("R/server_tab3.R", local = TRUE)
+source("R/ui_tab4_gamelogs.R", local = TRUE)
+source("R/server_tab4.R", local = TRUE)
 
 # ---------------- UI ----------------
 ui <- navbarPage(
@@ -17,7 +19,8 @@ ui <- navbarPage(
   theme = bslib::bs_theme(version = 5),
   ui_tab1_onoff,
   ui_tab2_lineup,
-  ui_tab3_team
+  ui_tab3_team,
+  ui_tab4_gamelogs
 )
 
 # ---------------- Server ----------------
@@ -85,6 +88,7 @@ server <- function(input, output, session) {
   server_tab1(input, output, session, shared)
   server_tab2(input, output, session, shared)
   server_tab3(input, output, session, shared)
+  server_tab4(input, output, session, shared)
 }
 
 shinyApp(ui, server)

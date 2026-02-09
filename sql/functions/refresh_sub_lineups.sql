@@ -161,7 +161,11 @@ segment_stats AS (
     f.type_lineup,
     f.segment_id,
     SUM(CASE WHEN COALESCE(f.final_end_poss, FALSE) THEN 1 ELSE 0 END) AS total_poss,
-    COALESCE(SUM(f.team_score), 0)                                      AS total_pts
+    COALESCE(SUM(f.team_score), 0)                                      AS total_pts,
+    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 2 AND f.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
+    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 2 THEN 1 ELSE 0 END) AS fg2_att,
+    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 AND f.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
+    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att
   FROM basketball_test.df_pts_poss_lineups_longer_mv f
   JOIN sched sc
     ON sc.game_id = f.game_id
@@ -183,6 +187,10 @@ lineup_totals AS (
     ss.type_lineup,
     SUM(ss.total_poss) AS total_poss,
     SUM(ss.total_pts) AS total_pts,
+    SUM(ss.fg2_made) AS fg2_made,
+    SUM(ss.fg2_att) AS fg2_att,
+    SUM(ss.fg3_made) AS fg3_made,
+    SUM(ss.fg3_att) AS fg3_att,
     -- Minutes from segment_times, count once per segment (use offense filter)
     SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
   FROM segment_stats ss
@@ -206,6 +214,10 @@ per_type AS (
     lt.type_lineup,
     SUM(lt.total_poss) AS total_poss,
     SUM(lt.total_pts)  AS total_pts,
+    SUM(lt.fg2_made) AS fg2_made,
+    SUM(lt.fg2_att) AS fg2_att,
+    SUM(lt.fg3_made) AS fg3_made,
+    SUM(lt.fg3_att) AS fg3_att,
     SUM(lt.minutes)    AS minutes
   FROM sub_map sm
   JOIN lineup_totals lt
@@ -246,7 +258,16 @@ final_rows AS (
     ) AS def_ppp,
 
     -- Minutes: sum from both offense and defense (they cover the same time, so just take one)
-    ROUND(COALESCE(SUM(p.minutes) FILTER (WHERE p.type_lineup = 'offense'), 0)::numeric, 1) AS minutes
+    ROUND(COALESCE(SUM(p.minutes) FILTER (WHERE p.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+
+    COALESCE(SUM(p.fg2_made) FILTER (WHERE p.type_lineup = 'offense'), 0) AS off_fg2_made,
+    COALESCE(SUM(p.fg2_att)  FILTER (WHERE p.type_lineup = 'offense'), 0) AS off_fg2_att,
+    COALESCE(SUM(p.fg3_made) FILTER (WHERE p.type_lineup = 'offense'), 0) AS off_fg3_made,
+    COALESCE(SUM(p.fg3_att)  FILTER (WHERE p.type_lineup = 'offense'), 0) AS off_fg3_att,
+    COALESCE(SUM(p.fg2_made) FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg2_made,
+    COALESCE(SUM(p.fg2_att)  FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg2_att,
+    COALESCE(SUM(p.fg3_made) FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg3_made,
+    COALESCE(SUM(p.fg3_att)  FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg3_att
 
   FROM sub_dedup d
   JOIN names_by_sub n
@@ -281,7 +302,15 @@ INSERT INTO basketball_test.sub_lineups_stats (
   def_pts,
   def_ppp,
   minutes,
-  game_year
+  game_year,
+  off_fg2_made,
+  off_fg2_att,
+  off_fg3_made,
+  off_fg3_att,
+  def_fg2_made,
+  def_fg2_att,
+  def_fg3_made,
+  def_fg3_att
 )
 SELECT
   team_id,
@@ -297,7 +326,15 @@ SELECT
   def_pts,
   def_ppp,
   minutes,
-  game_year
+  game_year,
+  off_fg2_made,
+  off_fg2_att,
+  off_fg3_made,
+  off_fg3_att,
+  def_fg2_made,
+  def_fg2_att,
+  def_fg3_made,
+  def_fg3_att
 FROM final_rows
 ON CONFLICT (team_id, sub_lineup_hash, game_year) DO UPDATE
 SET
@@ -311,6 +348,14 @@ SET
   def_poss         = EXCLUDED.def_poss,
   def_pts          = EXCLUDED.def_pts,
   def_ppp          = EXCLUDED.def_ppp,
-  minutes          = EXCLUDED.minutes;
+  minutes          = EXCLUDED.minutes,
+  off_fg2_made     = EXCLUDED.off_fg2_made,
+  off_fg2_att      = EXCLUDED.off_fg2_att,
+  off_fg3_made     = EXCLUDED.off_fg3_made,
+  off_fg3_att      = EXCLUDED.off_fg3_att,
+  def_fg2_made     = EXCLUDED.def_fg2_made,
+  def_fg2_att      = EXCLUDED.def_fg2_att,
+  def_fg3_made     = EXCLUDED.def_fg3_made,
+  def_fg3_att      = EXCLUDED.def_fg3_att;
 $function$
 ;

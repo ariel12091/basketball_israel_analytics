@@ -23,7 +23,11 @@ SELECT
   b0.is_on_key,
   m.type_lineup,
   SUM(m.total_pts)  AS total_pts,
-  SUM(m.total_poss) AS total_poss
+  SUM(m.total_poss) AS total_poss,
+  SUM(m.fg2_made) AS fg2_made,
+  SUM(m.fg2_att)  AS fg2_att,
+  SUM(m.fg3_made) AS fg3_made,
+  SUM(m.fg3_att)  AS fg3_att
 FROM base0 b0
 JOIN basketball_test.mv_lineup_totals_by_day m
   ON m.lineup_hash = b0.lineup_hash

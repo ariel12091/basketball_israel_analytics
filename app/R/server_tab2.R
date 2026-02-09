@@ -31,6 +31,9 @@ server_tab2 <- function(input, output, session, shared) {
     team_id <- as.integer(input$ld_team)
     players <- ld_ref$players %>% filter(team_id == !!team_id)
     choices <- setNames(players$player_id, players$name)
+    # Clear old tags first, then set new choices
+    updateSelectizeInput(session, "ld_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "ld_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
     updateSelectizeInput(session, "ld_players_on", choices = choices, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "ld_players_off", choices = choices, selected = character(0), server = TRUE)
   }, ignoreInit = TRUE)
@@ -39,14 +42,14 @@ server_tab2 <- function(input, output, session, shared) {
     on_sel <- input$ld_players_on %||% character(0)
     off_sel <- input$ld_players_off %||% character(0)
     inter <- intersect(on_sel, off_sel)
-    if (length(inter)) updateSelectizeInput(session, "ld_players_off", selected = setdiff(off_sel, inter), server = TRUE)
+    if (length(inter)) updateSelectizeInput(session, "ld_players_off", selected = setdiff(off_sel, inter))
   }, ignoreInit = TRUE)
 
   observeEvent(input$ld_players_off, {
     on_sel <- input$ld_players_on %||% character(0)
     off_sel <- input$ld_players_off %||% character(0)
     inter <- intersect(on_sel, off_sel)
-    if (length(inter)) updateSelectizeInput(session, "ld_players_on", selected = setdiff(on_sel, inter), server = TRUE)
+    if (length(inter)) updateSelectizeInput(session, "ld_players_on", selected = setdiff(on_sel, inter))
   }, ignoreInit = TRUE)
 
   observeEvent(input$ld_reset, {
@@ -393,7 +396,7 @@ server_tab2 <- function(input, output, session, shared) {
       keep_cols <- c("Team", "Players",
                      "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr", "off_poss",
                      "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr", "def_poss",
-                     "total_poss", "net_rtg")
+                     "minutes", "total_poss", "net_rtg", "team_id", "sub_lineup_hash")
       df <- df %>% select(any_of(c(keep_cols, pr_cols)))
       df$is_total <- rep(1, nrow(df))
       df <- df %>% arrange(desc(total_poss))
@@ -432,14 +435,17 @@ server_tab2 <- function(input, output, session, shared) {
         tot_def_tov  <- if (sum_def_poss > 0) round(s_def_tov_cnt / sum_def_poss * 100, 1) else NA_real_
         tot_def_ftr  <- if (s_def_fga > 0) round(s_def_fta / s_def_fga * 100, 1) else NA_real_
 
+        sum_minutes <- sum(raw$minutes, na.rm = TRUE)
         total_row <- data.frame(
           Team = "TOTAL", Players = "— All Lineups —",
           off_ppp = tot_off_ppp, off_ts = tot_off_ts, off_oreb = tot_off_oreb, off_tov = tot_off_tov, off_ftr = tot_off_ftr,
           off_poss = sum_off_poss,
           def_ppp = tot_def_ppp, def_ts = tot_def_ts, def_oreb = tot_def_oreb, def_tov = tot_def_tov, def_ftr = tot_def_ftr,
           def_poss = sum_def_poss,
+          minutes = sum_minutes,
           total_poss = sum_off_poss + sum_def_poss,
           net_rtg = tot_net_rtg,
+          team_id = NA_integer_, sub_lineup_hash = NA_character_,
           is_total = 0, stringsAsFactors = FALSE
         )
         df <- dplyr::bind_rows(total_row, df)
@@ -455,7 +461,7 @@ server_tab2 <- function(input, output, session, shared) {
           th(class = "group-head", colspan = 2, ""),
           th(class = "group-head section-left-border", colspan = 6, "Offense"),
           th(class = "group-head section-left-border", colspan = 6, "Defense"),
-          th(class = "group-head section-left-border", colspan = 2, "Usage")
+          th(class = "group-head section-left-border", colspan = 3, "Usage")
         ),
         tr(
           th(""),
@@ -466,25 +472,39 @@ server_tab2 <- function(input, output, session, shared) {
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
           th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
-          th(class = "sub-head section-left-border", "Total"), th(class = "sub-head", "Net")
+          th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "Poss"), th(class = "sub-head", "Net")
         )
       )))
 
       # Column indices for section borders
-      hide_idx <- c(0, which(colnames(df) %in% pr_cols) - 1L)
+      ff_hash_idx <- which(names(df) == "sub_lineup_hash") - 1L
+      ff_tid_idx  <- which(names(df) == "team_id") - 1L
+      hide_idx <- c(0, which(colnames(df) %in% pr_cols) - 1L, ff_hash_idx, ff_tid_idx)
       off_ppp_idx  <- which(names(df) == "off_ppp") - 1L
       def_ppp_idx  <- which(names(df) == "def_ppp") - 1L
-      total_idx    <- which(names(df) == "total_poss") - 1L
+      minutes_idx  <- which(names(df) == "minutes") - 1L
+
+      # Clickable Players column
+      ff_players_idx <- which(names(df) == "Players") - 1L
+      ff_players_render <- DT::JS(sprintf(
+        "function(data, type, row, meta) {
+           if (type !== 'display' || !row) return data;
+           if (row[0] === 0) return data;
+           var hash = row[%d];
+           var tid = row[%d];
+           return '<a href=\"#\" style=\"color:#0d6efd;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
+         }", ff_hash_idx, ff_tid_idx))
 
       col_defs <- list(
         list(targets = hide_idx, visible = FALSE),
-        list(targets = "_all", className = "dt-center")
+        list(targets = "_all", className = "dt-center"),
+        list(targets = ff_players_idx, render = ff_players_render)
       )
       if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_ppp_idx, className = "section-left-border dt-center")
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
-      if (length(total_idx))   col_defs[[length(col_defs) + 1]] <- list(targets = total_idx, className = "section-left-border dt-center")
+      if (length(minutes_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = minutes_idx, className = "section-left-border dt-center")
 
-      dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
+      dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE, escape = FALSE,
                           options = list(
                             dom = "tip", pageLength = 50,
                             lengthMenu = c(25, 50, 100, 200),
@@ -498,10 +518,12 @@ server_tab2 <- function(input, output, session, shared) {
       rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(df))
       ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(df))
       poss_cols <- intersect(c("off_poss", "def_poss", "total_poss"), names(df))
+      min_cols  <- intersect(c("minutes"), names(df))
 
       if (length(rate_cols)) dt <- DT::formatRound(dt, rate_cols, 1)
       if (length(ppp_cols))  dt <- DT::formatRound(dt, ppp_cols, 1)
       if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
+      if (length(min_cols))  dt <- DT::formatRound(dt, min_cols, 1)
 
       # TOTAL row styling
       dt <- DT::formatStyle(dt, "Team", target = "row",
@@ -529,8 +551,20 @@ server_tab2 <- function(input, output, session, shared) {
       # ============================================================
 
       pr_cols <- c("pr_ld_net", "pr_ld_off_ppp", "pr_ld_def_ppp_i")
-      keep_cols <- c("Team", "Players", "total_poss", "plus_minus", "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_lineup", "sub_lineup_hash")
-      df <- df %>% select(any_of(c(keep_cols, pr_cols)))
+      shot_raw_cols <- c("off_fg2_made", "off_fg2_att", "off_fg3_made", "off_fg3_att",
+                         "def_fg2_made", "def_fg2_att", "def_fg3_made", "def_fg3_att")
+      has_shots <- all(c("off_fg2_att", "off_fg3_att") %in% names(df))
+
+      # Create display columns for sorting (total FGA)
+      if (has_shots) {
+        df[["Off Shot"]] <- dplyr::coalesce(df$off_fg2_att, 0L) + dplyr::coalesce(df$off_fg3_att, 0L)
+        df[["Def Shot"]] <- dplyr::coalesce(df$def_fg2_att, 0L) + dplyr::coalesce(df$def_fg3_att, 0L)
+      }
+
+      keep_cols <- c("Team", "Players", "minutes", "total_poss", "plus_minus",
+                     if (has_shots) c("Off Shot", "Def Shot"),
+                     "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_lineup", "sub_lineup_hash", "team_id")
+      df <- df %>% select(any_of(c(keep_cols, shot_raw_cols, pr_cols)))
       df$is_total <- rep(1, nrow(df))
       if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
       if (nrow(df) > 0) {
@@ -538,27 +572,138 @@ server_tab2 <- function(input, output, session, shared) {
         sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
         sum_off_pts <- sum(df$off_pts, na.rm = TRUE)
         sum_def_pts <- sum(df$def_pts, na.rm = TRUE)
+        sum_minutes <- sum(df$minutes, na.rm = TRUE)
         tot_off_ppp <- if (sum_off_poss > 0) (sum_off_pts / sum_off_poss) * 100 else 0
         tot_def_ppp <- if (sum_def_poss > 0) (sum_def_pts / sum_def_poss) * 100 else 0
         tot_net_rtg <- tot_off_ppp - tot_def_ppp
-        total_row <- data.frame(Team = "TOTAL", Players = "— All Lineups —", total_poss = sum_off_poss + sum_def_poss, off_ppp = tot_off_ppp, def_ppp = tot_def_ppp, net_rtg = tot_net_rtg, plus_minus = sum_off_pts - sum_def_pts, off_poss = sum_off_poss, off_pts = sum_off_pts, def_poss = sum_def_poss, def_pts = sum_def_pts, num_lineup = NA_integer_, sub_lineup_hash = "TOTAL", is_total = 0, stringsAsFactors = FALSE)
+        total_row <- data.frame(Team = "TOTAL", Players = "— All Lineups —", minutes = sum_minutes, total_poss = sum_off_poss + sum_def_poss, off_ppp = tot_off_ppp, def_ppp = tot_def_ppp, net_rtg = tot_net_rtg, plus_minus = sum_off_pts - sum_def_pts, off_poss = sum_off_poss, off_pts = sum_off_pts, def_poss = sum_def_poss, def_pts = sum_def_pts, num_lineup = NA_integer_, sub_lineup_hash = "TOTAL", team_id = NA_integer_, is_total = 0, stringsAsFactors = FALSE)
+        # Add shooting totals
+        if (has_shots) {
+          for (sc in shot_raw_cols) total_row[[sc]] <- sum(df[[sc]], na.rm = TRUE)
+          total_row[["Off Shot"]] <- total_row$off_fg2_att + total_row$off_fg3_att
+          total_row[["Def Shot"]] <- total_row$def_fg2_att + total_row$def_fg3_att
+        }
         df <- dplyr::bind_rows(total_row, df)
       }
       df <- df %>% select(is_total, everything())
-      show_cols <- c("Team", "Players", "total_poss", "off_ppp", "def_ppp", "net_rtg", "plus_minus", "off_poss", "off_pts", "def_poss", "def_pts", "num_lineup", "sub_lineup_hash")
+      show_cols <- c("Team", "Players", "minutes", "total_poss", "off_ppp", "def_ppp", "net_rtg", "plus_minus",
+                     if (has_shots) c("Off Shot", "Def Shot"),
+                     "off_poss", "off_pts", "def_poss", "def_pts", "num_lineup", "sub_lineup_hash", "team_id")
 
       keep <- intersect(show_cols, names(df))
-      df <- df[, unique(c("is_total", keep, pr_cols[pr_cols %in% names(df)])), drop = FALSE]
-      pretty_labels <- c(Team = "Team", Players = "Players", num_lineup = "Size", total_poss = "Total Poss", net_rtg = "Net RTG", plus_minus = "+/-", off_ppp = "Off PPP", def_ppp = "Def PPP", off_poss = "Off Poss", off_pts = "Off Pts", def_poss = "Def Poss", def_pts = "Def Pts", sub_lineup_hash = "Lineup ID")
+      df <- df[, unique(c("is_total", keep, shot_raw_cols[shot_raw_cols %in% names(df)], pr_cols[pr_cols %in% names(df)])), drop = FALSE]
+      pretty_labels <- c(Team = "Team", Players = "Players", minutes = "Min", num_lineup = "Size", total_poss = "Total Poss", net_rtg = "Net RTG", `plus_minus` = "+/-", off_ppp = "Off PPP", def_ppp = "Def PPP", off_poss = "Off Poss", off_pts = "Off Pts", def_poss = "Def Poss", def_pts = "Def Pts", sub_lineup_hash = "Lineup ID", team_id = "team_id", `Off Shot` = "Off Shot", `Def Shot` = "Def Shot")
+
+      # Shooting column JS render function factory (same pattern as Tab 1)
+      make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
+                                   is_defense = FALSE, min_fga = 50, avg2 = 53, avg3 = 34) {
+        fg2m_idx <- which(names(df) == fg2m_col) - 1
+        fg2a_idx <- which(names(df) == fg2a_col) - 1
+        fg3m_idx <- which(names(df) == fg3m_col) - 1
+        fg3a_idx <- which(names(df) == fg3a_col) - 1
+        sign_mult <- if (is_defense) -1 else 1
+        js_str <- sprintf(
+          "function(data, type, row, meta) {
+             if (type !== 'display' || !row) return data;
+             var fg2m = row[%d] || 0, fg2a = row[%d] || 0;
+             var fg3m = row[%d] || 0, fg3a = row[%d] || 0;
+             var totalFGA = fg2a + fg3a;
+             if (!totalFGA) return '<div class=\"shot-acc-label\" style=\"color:#aaa;\">-</div>';
+             var fg2pct = fg2a ? Math.round(fg2m / fg2a * 100) : 0;
+             var fg3pct = fg3a ? Math.round(fg3m / fg3a * 100) : 0;
+             var fg2freq = Math.round(fg2a / totalFGA * 100);
+             var fg3freq = 100 - fg2freq;
+             var minFGA = %d;
+             var sign = %d;
+             var avg2 = %d, avg3 = %d;
+             function accColor(pct, avg) {
+               var d = sign * (pct - avg) / avg;
+               d = Math.max(-1, Math.min(1, d * 3));
+               var r, g;
+               if (d < 0) { r = 200; g = Math.round(200 + d * 120); }
+               else       { g = 170; r = Math.round(200 - d * 150); }
+               return 'rgb(' + r + ',' + g + ',60)';
+             }
+             var muted = totalFGA < minFGA;
+             var c2 = muted ? '#bbb' : accColor(fg2pct, avg2);
+             var c3 = muted ? '#bbb' : accColor(fg3pct, avg3);
+             var barOpacity = muted ? 'opacity:0.3;' : '';
+             return '<div class=\"shot-acc-label\">' +
+               '<span style=\"color:' + c2 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg2pct + '%%</span>' +
+               ' <span style=\"opacity:0.3;\">|</span> ' +
+               '<span style=\"color:' + c3 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg3pct + '%%</span>' +
+               '</div>' +
+               '<div class=\"shot-bar-container\" style=\"' + barOpacity + '\">' +
+               '<div class=\"shot-bar-2pt\" style=\"width:' + fg2freq + '%%\">' + fg2freq + '%%</div>' +
+               '<div class=\"shot-bar-3pt\" style=\"width:' + fg3freq + '%%\">' + fg3freq + '%%</div>' +
+               '</div>';
+           }", fg2m_idx, fg2a_idx, fg3m_idx, fg3a_idx, min_fga, sign_mult, avg2, avg3
+        )
+        DT::JS(js_str)
+      }
+
+      # Build shot column defs with dynamic thresholds
+      shot_col_defs <- list()
+      if (has_shots) {
+        shot_col_map <- list(
+          "Off Shot" = c("off_fg2_made", "off_fg2_att", "off_fg3_made", "off_fg3_att"),
+          "Def Shot" = c("def_fg2_made", "def_fg2_att", "def_fg3_made", "def_fg3_att")
+        )
+        SHOT_MIN_FGA <- 50L
+        shot_avgs <- list()
+        for (dn in names(shot_col_map)) {
+          cols <- shot_col_map[[dn]]
+          fga <- df[[dn]]
+          qual <- if (is.null(fga)) rep(FALSE, nrow(df)) else (!is.na(fga) & fga >= SHOT_MIN_FGA)
+          fg2a_sum <- sum(df[[cols[2]]][qual], na.rm = TRUE)
+          fg3a_sum <- sum(df[[cols[4]]][qual], na.rm = TRUE)
+          a2 <- if (fg2a_sum > 0) as.integer(round(sum(df[[cols[1]]][qual], na.rm = TRUE) / fg2a_sum * 100)) else 53L
+          a3 <- if (fg3a_sum > 0) as.integer(round(sum(df[[cols[3]]][qual], na.rm = TRUE) / fg3a_sum * 100)) else 34L
+          shot_avgs[[dn]] <- list(avg2 = a2, avg3 = a3)
+        }
+        for (disp_name in names(shot_col_map)) {
+          cols <- shot_col_map[[disp_name]]
+          target_idx <- which(names(df) == disp_name) - 1
+          is_def <- grepl("^Def", disp_name)
+          avgs <- shot_avgs[[disp_name]]
+          if (length(target_idx) && all(cols %in% names(df))) {
+            shot_col_defs[[length(shot_col_defs) + 1]] <- list(
+              targets = target_idx,
+              render = make_shot_render(cols[1], cols[2], cols[3], cols[4],
+                                        is_defense = is_def, min_fga = SHOT_MIN_FGA,
+                                        avg2 = avgs$avg2, avg3 = avgs$avg3)
+            )
+          }
+        }
+      }
+
       data_col_names <- colnames(df)[-1]
-      data_col_names <- setdiff(data_col_names, pr_cols)
+      data_col_names <- setdiff(data_col_names, c(pr_cols, shot_raw_cols))
       col_labels <- unname(pretty_labels[data_col_names])
       final_labels <- c("", col_labels)
       pr_indices <- which(colnames(df) %in% pr_cols) - 1L
-      hidden_indices <- c(0, pr_indices)
+      shot_raw_indices <- which(colnames(df) %in% shot_raw_cols) - 1L
+      sum_hash_idx <- which(names(df) == "sub_lineup_hash") - 1L
+      sum_tid_idx <- which(names(df) == "team_id") - 1L
+      hidden_indices <- c(0, pr_indices, shot_raw_indices, sum_hash_idx, sum_tid_idx)
 
-      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, filter = "top", options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = list(list(targets = hidden_indices, visible = FALSE)))) |>
-        DT::formatRound(c("off_ppp", "def_ppp", "net_rtg")[c("off_ppp", "def_ppp", "net_rtg") %in% names(df)], 1) |>
+      # Clickable Players column
+      sum_players_idx <- which(names(df) == "Players") - 1L
+      sum_players_render <- DT::JS(sprintf(
+        "function(data, type, row, meta) {
+           if (type !== 'display' || !row) return data;
+           if (row[0] === 0) return data;
+           var hash = row[%d];
+           var tid = row[%d];
+           return '<a href=\"#\" style=\"color:#0d6efd;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
+         }", sum_hash_idx, sum_tid_idx))
+
+      all_col_defs <- c(list(list(targets = hidden_indices, visible = FALSE),
+                             list(targets = sum_players_idx, render = sum_players_render)),
+                        shot_col_defs)
+
+      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, escape = FALSE, filter = "top", options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)) |>
+        DT::formatRound(c("off_ppp", "def_ppp", "net_rtg", "minutes")[c("off_ppp", "def_ppp", "net_rtg", "minutes") %in% names(df)], 1) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
       dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#f0f0f0"), fontWeight = styleEqual("TOTAL", "bold"))
@@ -567,5 +712,238 @@ server_tab2 <- function(input, output, session, shared) {
       if (all(c("def_ppp", "pr_ld_def_ppp_i") %in% colnames(df))) dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_def_ppp_i")
       return(dt)
     }
+  })
+
+  # ============================================================
+  # LINEUP CLICK → MODAL GAME LOG
+  # ============================================================
+  observeEvent(input$ld_lineup_click, {
+    click <- input$ld_lineup_click
+    req(click$hash, click$team_id)
+
+    sub_hash <- as.character(click$hash)
+    team_id_val <- as.integer(click$team_id)
+    gy <- as.integer(input$game_year_ld)
+
+    # Resolve sub_lineup_hash → lineup_hash(es)
+    lineup_hashes <- DBI::dbGetQuery(pg_pool,
+      "SELECT DISTINCT lineup_hash FROM basketball_test.sub_lineups
+       WHERE sub_lineup_hash = $1 AND team_id = $2 AND game_year = $3",
+      params = list(sub_hash, team_id_val, gy))$lineup_hash
+
+    # If empty (5-man case), the sub_lineup_hash IS the lineup_hash
+    if (length(lineup_hashes) == 0) lineup_hashes <- sub_hash
+
+    # Query per-game stats
+    hash_arr <- paste0("'{", paste(lineup_hashes, collapse = ","), "}'")
+    game_data <- DBI::dbGetQuery(pg_pool, sprintf(
+      "SELECT game_id, type_lineup,
+              SUM(total_poss) AS poss, SUM(total_pts) AS pts,
+              SUM(fg2_made) AS fg2m, SUM(fg2_att) AS fg2a,
+              SUM(fg3_made) AS fg3m, SUM(fg3_att) AS fg3a,
+              SUM(minutes) AS mins
+       FROM basketball_test.mv_lineup_totals_by_day
+       WHERE lineup_hash = ANY(%s) AND team_id = %d AND game_year = %d
+       GROUP BY game_id, type_lineup", hash_arr, team_id_val, gy))
+
+    if (nrow(game_data) == 0) {
+      showModal(modalDialog(title = "No game data", "No games found for this lineup.", easyClose = TRUE))
+      return()
+    }
+
+    # Pivot off/def
+    off <- game_data %>% filter(type_lineup == "offense") %>%
+      rename(off_poss = poss, off_pts = pts, off_fg2m = fg2m, off_fg2a = fg2a,
+             off_fg3m = fg3m, off_fg3a = fg3a, off_mins = mins) %>%
+      select(-type_lineup)
+    def <- game_data %>% filter(type_lineup == "defense") %>%
+      rename(def_poss = poss, def_pts = pts, def_fg2m = fg2m, def_fg2a = fg2a,
+             def_fg3m = fg3m, def_fg3a = fg3a) %>%
+      select(game_id, def_poss, def_pts, def_fg2m, def_fg2a, def_fg3m, def_fg3a)
+
+    combined <- off %>% full_join(def, by = "game_id") %>% mutate(
+      off_poss = coalesce(off_poss, 0), def_poss = coalesce(def_poss, 0),
+      off_pts = coalesce(off_pts, 0), def_pts = coalesce(def_pts, 0),
+      off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
+      def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
+      net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1),
+      minutes = round(coalesce(off_mins, 0), 1)
+    )
+
+    # Join schedule
+    sched <- DBI::dbGetQuery(pg_pool, sprintf(
+      "SELECT game_id, gn, game_date, opp_team_name, team_score, opp_score,
+              team_score > opp_score AS has_won
+       FROM basketball_test.final_schedule_mv
+       WHERE team_id = %d AND game_year = %d", team_id_val, gy))
+
+    sched <- sched %>% mutate(
+      result = ifelse(has_won, "W", "L"),
+      score_display = paste0(team_score, "-", opp_score)
+    )
+
+    combined <- combined %>%
+      inner_join(sched %>% select(game_id, gn, game_date, opp_team_name, result, score_display),
+                 by = "game_id") %>%
+      arrange(gn)
+
+    # Get lineup name
+    lineup_name <- DBI::dbGetQuery(pg_pool,
+      "SELECT player_names_str FROM basketball_test.sub_lineups_stats
+       WHERE sub_lineup_hash = $1 AND team_id = $2 AND game_year = $3 LIMIT 1",
+      params = list(sub_hash, team_id_val, gy))$player_names_str
+    if (length(lineup_name) == 0 || is.na(lineup_name)) lineup_name <- sub_hash
+
+    # Build display table
+    shot_raw_cols_m <- c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a",
+                         "def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
+    has_shots_m <- all(c("off_fg2a", "off_fg3a") %in% names(combined))
+    if (has_shots_m) {
+      combined[["Off Shot"]] <- coalesce(combined$off_fg2a, 0) + coalesce(combined$off_fg3a, 0)
+      combined[["Def Shot"]] <- coalesce(combined$def_fg2a, 0) + coalesce(combined$def_fg3a, 0)
+    }
+
+    disp_m <- combined %>% select(
+      gn, game_date, opp_team_name, result, score_display,
+      off_ppp, def_ppp, net_rtg,
+      any_of(c("Off Shot", "Def Shot")),
+      off_poss, def_poss, minutes,
+      any_of(shot_raw_cols_m)
+    )
+
+    output$ld_modal_table <- DT::renderDataTable({
+      hide_idx_m <- which(names(disp_m) %in% shot_raw_cols_m) - 1L
+
+      # Shooting column JS render
+      make_shot_render_m <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
+                                     is_defense = FALSE, min_fga = 10, avg2 = 53, avg3 = 34) {
+        fg2m_i <- which(names(disp_m) == fg2m_col) - 1
+        fg2a_i <- which(names(disp_m) == fg2a_col) - 1
+        fg3m_i <- which(names(disp_m) == fg3m_col) - 1
+        fg3a_i <- which(names(disp_m) == fg3a_col) - 1
+        sign_mult <- if (is_defense) -1 else 1
+        DT::JS(sprintf(
+          "function(data, type, row, meta) {
+             if (type !== 'display' || !row) return data;
+             var fg2m = row[%d] || 0, fg2a = row[%d] || 0;
+             var fg3m = row[%d] || 0, fg3a = row[%d] || 0;
+             var totalFGA = fg2a + fg3a;
+             if (!totalFGA) return '<div class=\"shot-acc-label\" style=\"color:#aaa;\">-</div>';
+             var fg2pct = fg2a ? Math.round(fg2m / fg2a * 100) : 0;
+             var fg3pct = fg3a ? Math.round(fg3m / fg3a * 100) : 0;
+             var fg2freq = Math.round(fg2a / totalFGA * 100);
+             var fg3freq = 100 - fg2freq;
+             var minFGA = %d;
+             var sign = %d;
+             var avg2 = %d, avg3 = %d;
+             function accColor(pct, avg) {
+               var d = sign * (pct - avg) / avg;
+               d = Math.max(-1, Math.min(1, d * 3));
+               var r, g;
+               if (d < 0) { r = 200; g = Math.round(200 + d * 120); }
+               else       { g = 170; r = Math.round(200 - d * 150); }
+               return 'rgb(' + r + ',' + g + ',60)';
+             }
+             var muted = totalFGA < minFGA;
+             var c2 = muted ? '#bbb' : accColor(fg2pct, avg2);
+             var c3 = muted ? '#bbb' : accColor(fg3pct, avg3);
+             var barOpacity = muted ? 'opacity:0.3;' : '';
+             return '<div class=\"shot-acc-label\">' +
+               '<span style=\"color:' + c2 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg2pct + '%%</span>' +
+               ' <span style=\"opacity:0.3;\">|</span> ' +
+               '<span style=\"color:' + c3 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg3pct + '%%</span>' +
+               '</div>' +
+               '<div class=\"shot-bar-container\" style=\"' + barOpacity + '\">' +
+               '<div class=\"shot-bar-2pt\" style=\"width:' + fg2freq + '%%\">' + fg2freq + '%%</div>' +
+               '<div class=\"shot-bar-3pt\" style=\"width:' + fg3freq + '%%\">' + fg3freq + '%%</div>' +
+               '</div>';
+           }", fg2m_i, fg2a_i, fg3m_i, fg3a_i, min_fga, sign_mult, avg2, avg3))
+      }
+
+      shot_col_defs_m <- list()
+      if (has_shots_m) {
+        shot_col_map_m <- list(
+          "Off Shot" = c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a"),
+          "Def Shot" = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
+        )
+        for (dn in names(shot_col_map_m)) {
+          cols_m <- shot_col_map_m[[dn]]
+          tgt <- which(names(disp_m) == dn) - 1
+          is_def <- grepl("^Def", dn)
+          fg2a_s <- sum(disp_m[[cols_m[2]]], na.rm = TRUE)
+          fg3a_s <- sum(disp_m[[cols_m[4]]], na.rm = TRUE)
+          a2 <- if (fg2a_s > 0) as.integer(round(sum(disp_m[[cols_m[1]]], na.rm = TRUE) / fg2a_s * 100)) else 53L
+          a3 <- if (fg3a_s > 0) as.integer(round(sum(disp_m[[cols_m[3]]], na.rm = TRUE) / fg3a_s * 100)) else 34L
+          if (length(tgt) && all(cols_m %in% names(disp_m))) {
+            shot_col_defs_m[[length(shot_col_defs_m) + 1]] <- list(
+              targets = tgt,
+              render = make_shot_render_m(cols_m[1], cols_m[2], cols_m[3], cols_m[4],
+                                          is_defense = is_def, min_fga = 10L, avg2 = a2, avg3 = a3))
+          }
+        }
+      }
+
+      # Result column color
+      result_idx_m <- which(names(disp_m) == "result") - 1L
+      result_render_m <- DT::JS(
+        "function(data, type, row, meta) {
+           if (type !== 'display' || !row) return data;
+           var color = data === 'W' ? '#1a9850' : '#d73027';
+           return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
+         }")
+
+      col_defs_m <- c(
+        list(
+          list(targets = hide_idx_m, visible = FALSE),
+          list(targets = "_all", className = "dt-center"),
+          list(targets = result_idx_m, render = result_render_m)
+        ),
+        shot_col_defs_m
+      )
+
+      off_ppp_idx_m <- which(names(disp_m) == "off_ppp") - 1L
+      off_poss_idx_m <- which(names(disp_m) == "off_poss") - 1L
+      off_shot_idx_m <- if (has_shots_m) which(names(disp_m) == "Off Shot") - 1L else integer(0)
+      if (length(off_ppp_idx_m)) col_defs_m[[length(col_defs_m) + 1]] <- list(targets = off_ppp_idx_m, className = "section-left-border dt-center")
+      if (length(off_poss_idx_m)) col_defs_m[[length(col_defs_m) + 1]] <- list(targets = off_poss_idx_m, className = "section-left-border dt-center")
+      if (length(off_shot_idx_m)) col_defs_m[[length(col_defs_m) + 1]] <- list(targets = off_shot_idx_m, className = "section-left-border dt-center")
+
+      sketch_m <- htmltools::withTags(table(class = 'display', thead(
+        tr(
+          th(class = "sub-head", "GN"),
+          th(class = "sub-head", "Date"),
+          th(class = "sub-head", "Opponent"),
+          th(class = "sub-head", "W/L"),
+          th(class = "sub-head", "Score"),
+          th(class = "sub-head section-left-border", "Off PPP"),
+          th(class = "sub-head", "Def PPP"),
+          th(class = "sub-head", "Net"),
+          if (has_shots_m) th(class = "sub-head section-left-border", "Off Shot"),
+          if (has_shots_m) th(class = "sub-head", "Def Shot"),
+          th(class = "sub-head section-left-border", "Off Poss"),
+          th(class = "sub-head", "Def Poss"),
+          th(class = "sub-head", "Min")
+        )
+      )))
+
+      dt_m <- DT::datatable(disp_m, container = sketch_m, rownames = FALSE, escape = FALSE,
+                            options = list(
+                              dom = "tip", pageLength = 50,
+                              deferRender = TRUE, scrollX = TRUE,
+                              scrollY = "60vh", scrollCollapse = TRUE,
+                              order = list(list(0, "asc")),
+                              columnDefs = col_defs_m
+                            ))
+      dt_m <- DT::formatRound(dt_m, c("off_ppp", "def_ppp", "net_rtg", "minutes"), 1)
+      dt_m <- DT::formatCurrency(dt_m, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
+      dt_m
+    })
+
+    showModal(modalDialog(
+      title = lineup_name,
+      DTOutput("ld_modal_table"),
+      size = "xl",
+      easyClose = TRUE
+    ))
   })
 }

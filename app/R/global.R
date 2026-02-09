@@ -46,6 +46,7 @@ adaptive_baseline <- function(poss_vec) {
 # ---------------- PostgreSQL pool ----------------
 pg_pool <- dbPool(
   drv      = Postgres(),
+  bigint   = "numeric",
   host     = Sys.getenv("PG_HOST"),
   port     = as.integer(Sys.getenv("PG_PORT", "6543")),
   dbname   = Sys.getenv("PG_DB"),
@@ -72,20 +73,20 @@ get_tbl <- function(name) {
 
 # Table accessors (called on demand, not at source time)
 full_rosters      <- NULL  # Will be set in server
-onoff_mv          <- NULL
 advanced_stats_mv <- NULL
 schedule_tbl      <- NULL
 team_ratings_mv   <- NULL
 team_ff_mv        <- NULL
+gl_schedule_mv    <- NULL
 
 # Initialize tables function - call from server
 init_tables <- function() {
   full_rosters      <<- get_tbl("full_rosters")
-  onoff_mv          <<- get_tbl("onoff_default_mv")
   advanced_stats_mv <<- get_tbl("player_advanced_stats_mv")
   schedule_tbl      <<- get_tbl("schedule")
   team_ratings_mv   <<- get_tbl("team_ppp_ratings_mv")
   team_ff_mv        <<- get_tbl("team_four_factors_mv")
+  gl_schedule_mv    <<- get_tbl("final_schedule_mv")
 }
 
 # ---------------- Shared CSS ----------------
@@ -171,6 +172,12 @@ shared_css <- HTML("
   .legend-icon-off { width: 8px; height: 8px; background: #fff; border: 2px solid #6c757d; border-radius: 50%; }
   .legend-bar { position: relative; width: 60px; height: 6px; background: #e9ecef; border-radius: 3px; }
   .legend-tick { position: absolute; top: -2px; bottom: -2px; width: 1px; background: #999; }
+
+  /* Shot Split Stacked Bars */
+  .shot-acc-label { font-size:0.85em; text-align:center; margin-bottom:1px; letter-spacing:-0.3px; }
+  .shot-bar-container { display:flex; width:110px; height:16px; border-radius:3px; overflow:hidden; margin:2px auto 0; background:#eee; }
+  .shot-bar-2pt { background:#5b8abd; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.65em; font-weight:600; }
+  .shot-bar-3pt { background:#d4843e; display:flex; align-items:center; justify-content:center; color:#fff; font-size:0.65em; font-weight:600; }
 
   /* ---- Mobile Responsive ---- */
   @media (max-width: 768px) {

@@ -31,7 +31,11 @@ segment_stats AS (
         s.game_year,
         d.segment_id,
         SUM(CASE WHEN COALESCE(d.final_end_poss, false) THEN 1 ELSE 0 END) AS total_poss,
-        COALESCE(SUM(d.team_score), 0) AS total_pts
+        COALESCE(SUM(d.team_score), 0) AS total_pts,
+        SUM(CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
+        SUM(CASE WHEN d.type = 'shot' AND d.parameters_points = 2 THEN 1 ELSE 0 END) AS fg2_att,
+        SUM(CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
+        SUM(CASE WHEN d.type = 'shot' AND d.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att
     FROM df_pts_poss_lineups_longer_mv d
     JOIN schedule s USING (game_id)
     GROUP BY d.team_id, d.lineup_hash, d.type_lineup, d.game_id, s.game_date, s.game_year, d.segment_id
@@ -45,6 +49,10 @@ SELECT
     ss.game_year,
     SUM(ss.total_poss) AS total_poss,
     SUM(ss.total_pts) AS total_pts,
+    SUM(ss.fg2_made) AS fg2_made,
+    SUM(ss.fg2_att) AS fg2_att,
+    SUM(ss.fg3_made) AS fg3_made,
+    SUM(ss.fg3_att) AS fg3_att,
     -- Minutes from segment_times, but only count once per segment (use offense to avoid double)
     SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
 FROM segment_stats ss

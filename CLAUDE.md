@@ -83,11 +83,19 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
 
 **Base tables:** `schedule`, `actions_clean`, `full_rosters`, `possessions`, `pws`, `lineups_lookup`, `stints`, `sub_lineups`
 
+**`lineups_lookup` schema:** Individual rows per player (not array). Columns: `id`, `game_id`, `player_id` (single int), `team_id`, `quarter`, `quarter_time`, `end_game_seconds_remaining`, `end_quarter_seconds_remaining`, `is_on_verdict`, `lineup_id`, `n_on`, `lineup_hash`, `game_year`. To get player names for a lineup hash, join to `full_rosters` and aggregate, or use `sub_lineups_stats.player_names_str`.
+
 **Key column inventory:**
 
 | Table | From JSON PBP | Computed in ETL |
 |-------|--------------|-----------------|
 | `actions_clean` | `quarter`, `parameters_*` (team, player, type, quarter, player_in/out, current_quarter, current_quarter_time, coord_x/y, points, fast_break, second_chance_points, points_from_turnover, made, kind, fouled_on, free_throws, free_throws_awarded, free_throw_number, is_coach_foul, is_bench_foul), `id`, `parent_action_id`, `user_time`, `quarter_time`, `type`, `player_id`, `team_id`, `score` (raw JSON — unreliable), `total_player_points`, `game_id`, `row_num` | `end_quarter_seconds_remaining`, `end_game_seconds_remaining`, `team_score` (points on made shots, else NA) |
+
+**Shot column naming (important):**
+- `parameters_points` = point value (2 or 3) — used for 2pt/3pt split in CASE expressions
+- `parameters_type` = shot type string ("lay-up", "jump-shot", "dunk") — NOT "2pt"/"3pt"
+- `parameters_made` = outcome string ("made", "missed", "blocked")
+- `type` = action type ("shot", "freeThrow", "rebound", "turnover", "foul", etc.)
 | `possessions` | All `actions_clean` columns | + `pct_ft`, `q_bucket`, `end_poss`, `sum_poss_poss`, `sum_block`, `sum_tech`, `final_end_poss` |
 | `pws` | All `possessions` columns | + stint fields: `lineup_hash_offense`, `lineup_hash_defense`, `team_id_defense`, `segment_id`, `final_start_seg`, `final_end_seg`, `final_start_id`, `final_end_id` |
 | `df_pts_poss_lineups_longer_mv` | Most `pws` columns (team_id flipped per branch) | + `own_team_score`, `opp_team_score` (cumulative), `type_lineup` ('offense'/'defense'), `lineup_hash` |
@@ -109,6 +117,10 @@ rebuild_all_mvs()                        # rebuild all L1-L4
 rebuild_all_mvs(from_level = 2)          # skip L1, rebuild L2-L4 only
 rebuild_all_mvs(skip = "final_schedule_mv")  # skip specific MVs
 ```
+
+**`onoff_default_mv` design:** No `WHERE` pre-filter on possessions — stores ALL players (559 rows for 2026 season). Min-poss filtering is done locally in R (`filter(ON Poss >= input$min_on_poss)`). Includes 16 shooting split columns (off/def × on/off × fg2/fg3 × made/att) via a `shot_agg` CTE that LEFT JOINs in `final_rows` to avoid passing columns through 7 intermediate CTEs. See "Shooting Splits" section for details.
+
+**`sub_lineups_stats` design:** Pre-computed table for fast-path lineup queries. Populated by `refresh_sub_lineups_stats()` (called in ETL). Includes 8 shooting split columns (off/def × fg2/fg3 × made/att). Unique key: `(team_id, sub_lineup_hash, game_year)`.
 
 **Function → MV mapping:**
 - `onoff_compute` → `player_onoff_by_game`, `final_schedule_mv`
@@ -132,7 +144,7 @@ Sources: `mv_lineup_totals_by_day.minutes`, `lineup_four_factors_by_game.minutes
 |----------|--------|---------|
 | `onoff_compute` | 14 | Player on/off PPP with percentile ranks |
 | `four_factors_compute` | 11 | Player TS%, OREB%, TOV%, FTR on/off splits |
-| `fetch_lineups_csv_v2` | 20 | Lineup combos (Summary) + clutch filters + minutes |
+| `fetch_lineups_csv_v2` | 20 | Lineup combos (Summary) + clutch filters + minutes + shooting splits |
 | `fetch_lineups_four_factors_csv` | 20 | Lineup combos (Four Factors) + clutch filters + minutes |
 | `get_team_ratings_dynamic` | 14 | Team PPP ratings + wins/losses + clutch filters |
 | `get_team_four_factors_dynamic` | 14 | Team four-factor rates + clutch filters |
@@ -175,6 +187,19 @@ Now in main `app/app.R` (not app_test.R). Toggle between Summary/Four Factors in
 **Ranking:** Players with <100 poss appear unranked/gray. Ranks computed in R via `percent_rank()`.
 
 **Color polarity:** Offense metrics green-high (except TOV% red-high). Defense metrics red-high (except TOV% green-high).
+
+## Shooting Splits (2PT/3PT)
+
+Available in Tab 1 (On/Off Impact) Summary and Tab 2 (Lineup Data) Summary. Not in Four Factors views or Tab 3.
+
+**Tab 1:** 16 columns (off/def × on/off × fg2/fg3 × made/att). Source: `onoff_default_mv` via `shot_agg` CTE, or `onoff_compute()` via `player_onoff_by_game`.
+
+**Tab 2:** 8 columns (off/def × fg2/fg3 × made/att) — no on/off split since Tab 2 shows lineup-level stats. Columns: `off_fg2_made`, `off_fg2_att`, `off_fg3_made`, `off_fg3_att`, `def_fg2_made`, `def_fg2_att`, `def_fg3_made`, `def_fg3_att`.
+- **Fast path:** reads from `sub_lineups_stats` (8 shooting columns populated by `refresh_sub_lineups_stats()`)
+- **Non-clutch filtered path:** SUMs `fg2_made/att`, `fg3_made/att` from `mv_lineup_totals_by_day` (which already has these columns), then FILTER by offense/defense
+- **Clutch path:** CASE expressions in `clutch_actions` CTE compute shot flags from raw `df_pts_poss_lineups_longer_mv`, propagated through `segment_stats` → `lineup_totals`, FILTER in final SELECT
+- **R rendering:** "Off Shot" / "Def Shot" display columns after +/-, JS stacked bar visualization (same `make_shot_render` pattern as Tab 1), dynamic weighted averages for color thresholds (min 50 FGA)
+- **Deploy:** `deploy_shooting_tab2.R` — ALTER TABLE + deploy functions + refresh
 
 ## Clutch Time Filter
 
@@ -303,7 +328,9 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 - **Floor time vs offense-only time** — to get accurate floor time (stint duration), compute `MAX - MIN` of `end_game_seconds_remaining` across ALL rows per segment (no `type_lineup` filter). Within a segment, offense and defense actions interleave, so filtering to offense-only misses defensive possessions' time contribution. Use offense filter only at final SUM to avoid double-counting
 
 ### R / Shiny / DT
-- `bigint` → R `numeric`; use `sprintf("%.0f", ...)` not `%d`
+- **`bigint = "numeric"` in `dbPool()`** — RPostgres returns PostgreSQL `bigint` as R `integer64` by default, which is incompatible with dplyr `coalesce()`, `+`, and many tidyverse operations. Fix: add `bigint = "numeric"` to the pool connection. Safe for basketball stats (precision loss only for values > 2^53). `SUM()` on integer in PostgreSQL returns `bigint`, so even flag columns (CASE 0/1) produce bigint sums
+- **dateRangeInput NA pitfall** — `updateDateRangeInput()` with `start` outside the input's `min` produces `NA`. The "reset to defaults" button must use season-appropriate dates (from `season_date_bounds()`), not global `DEFAULT_START`/`DEFAULT_END`. Also guard `fallback_needed()` and `live_result_df()` against NA dates: `if (is.na(start_d) || is.na(end_d)) return(FALSE)` and `req(!is.na(rng[1]), !is.na(rng[2]))`
+- **MV fast path via `dbGetQuery`** — replaced `tbl() %>% collect()` for `onoff_default_mv` with direct `dbGetQuery(pg_pool, sprintf(...))`, eliminating 2.2s metadata query. Requires `bigint = "numeric"` in pool
 - `formatRound()` clobbers JS `columnDefs` render — do all formatting in JS if using custom render
 - `uiOutput`/`renderUI` causes NULL window on startup — use static inputs + `update*Input()`
 - Hoist `colorRampPalette()`, `seq()` to global constants
@@ -311,6 +338,8 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 - Mobile sidebar: wrap in `collapse d-md-block`, button with `d-md-none`; keep view mode toggles outside collapse
 - **Deferred table init:** `tbl(pool, in_schema(...))` queries metadata at source time, which fails on Supabase pooler. Wrap in `init_tables()` called from server function instead
 - **Modular refactor:** Use `source("R/file.R", local = TRUE)` pattern. Tab servers are functions receiving `(input, output, session, shared)`. Shared reactives passed via list to avoid duplication
+- **DT JS render `row` guard:** When `filter = "top"` is used, DT calls render functions during filter init with no `row` arg. Always guard: `if (type !== 'display' || !row) return data;`. A TypeError here crashes the entire page and blocks ALL Shiny client-side processing (selectize, inputs, etc.)
+- **`server = TRUE` in `updateSelectizeInput`:** Only use when setting `choices`. Omit when only updating `selected` — it re-registers the server callback without choices, causing stale dropdowns. To clear old tags on team switch (multi-select + server mode), send empty-choices update first, then set new choices
 
 ### Deploy Scripts
 - `$$`-quoted SQL: don't regex-split — use `DROP FUNCTION` then single CREATE string
@@ -318,9 +347,17 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 - For MV DDL: read SQL files with `readLines()` + `paste(collapse="\n")`, strip comment header, execute as single string
 - When rebuilding all MVs after CASCADE: use a helper `run_sql(label, sql)` with tryCatch for progress logging
 - Always test DB logic on a single `game_id` first before deploying MV changes
+- **DROP FUNCTION signature must be exact** — when changing RETURNS TABLE, the old function must be dropped first with its exact parameter signature. The `-- DROP FUNCTION` comment in SQL files may have stale signatures from before clutch params were added. Always verify against the actual CREATE OR REPLACE parameter list (count of params must match)
 - **Function boundary detection:** For `$function$`-delimited SQL, find end with `grep("^\\$function\\$;$")` — don't use `LANGUAGE plpgsql` which precedes the body
 
 ### Clutch Path CTEs
 - **Propagate `team_id` through all CTEs** — `segment_times`, `segment_stats`, and `lineup_totals`/`lineup_ff` must include `team_id` in SELECT, GROUP BY, and JOIN conditions. Different teams can share the same `lineup_hash`, causing "column team_id is ambiguous" errors if omitted
 - **Always use table aliases in PL/pgSQL CTEs** — Unqualified column names like `SELECT team_id FROM clutch_actions` cause "ambiguous" errors because PostgreSQL can't distinguish between column references and PL/pgSQL variables. Always use aliases: `SELECT ca.team_id FROM clutch_actions ca`
 - **Parallel file consistency** — `fetch_lineups_all.sql` and `fetch_lineups_four_factors.sql` have near-identical clutch path structures. When fixing one, verify the other matches. Reference `fetch_lineups_all.sql` as the canonical pattern
+
+### Debugging Process
+- **Check data before code.** When a UI element "doesn't work," first verify what the data pipeline actually returns (`SELECT MIN/MAX/COUNT` on the MV, check column types with `class()`). Don't analyze rendering code or reactive chains until you've confirmed the data is correct. A simple diagnostic query is worth more than 10 minutes of static analysis.
+- **MVs bake in parameters — always check what's fixed.** When an MV is the "fast path" for a parameterized function, the MV has equivalent built-in filters (WHERE clauses). If the function takes `min_on` as a param, the MV has a `WHERE on_poss >= X`. Before adding UI controls that interact with MV data, read the MV SQL to understand its constraints. This applies to any pre-computed view.
+- **Trace the full type chain.** When adding new columns that flow through SQL → R → dplyr → DT/JS, trace the types at each stage. PostgreSQL `SUM(integer)` → `bigint` → R `integer64` → incompatible with dplyr. Catching this requires thinking about the pipeline, not just the code at each layer.
+- **Test incrementally, not all at once.** Multi-file changes (SQL MVs + SQL functions + R rendering + CSS + UI) should be deployed and tested one layer at a time. Deploy SQL, verify with a query. Add R code, test the app. Don't stack 7 file changes and deploy everything, then debug a cascade of interacting failures.
+- **Use your own documentation during debugging.** CLAUDE.md documents how the MV/function architecture works. Consulting it during debugging — not just during implementation — would immediately point to the right layer (e.g., "the function takes min_on → the MV must pre-filter → that's why the slider has no effect below 300").
