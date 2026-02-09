@@ -155,9 +155,9 @@ server_tab1 <- function(input, output, session, shared) {
   # --- MV Fetch (Four Factors - LOAD FULL DATA) ---
   advanced_result_df <- reactive({
     gy <- as.integer(shared$selected_game_year())
-    advanced_stats_mv %>%
-      filter(game_year == !!gy) %>%
-      collect()
+    DBI::dbGetQuery(pg_pool,
+      "SELECT * FROM basketball_test.player_advanced_stats_mv WHERE game_year = $1",
+      params = list(gy))
   })
 
   # --- Full ranked Four Factors data (ranks computed BEFORE any user filtering) ---

@@ -3,7 +3,6 @@
 library(shiny)
 library(DBI)
 library(dplyr)
-library(dbplyr)
 library(pool)
 library(RPostgres)
 library(DT)
@@ -59,35 +58,8 @@ pg_pool <- dbPool(
 )
 onStop(function() poolClose(pg_pool))
 
-# Lazy tables - initialized on first access to avoid connection issues at source time
-# Using local() to create memoized table references
-.table_cache <- new.env(parent = emptyenv())
-
-get_tbl <- function(name) {
-
-  if (!exists(name, envir = .table_cache)) {
-    .table_cache[[name]] <- tbl(pg_pool, in_schema("basketball_test", name))
-  }
-  .table_cache[[name]]
-}
-
-# Table accessors (called on demand, not at source time)
-full_rosters      <- NULL  # Will be set in server
-advanced_stats_mv <- NULL
-schedule_tbl      <- NULL
-team_ratings_mv   <- NULL
-team_ff_mv        <- NULL
-gl_schedule_mv    <- NULL
-
-# Initialize tables function - call from server
-init_tables <- function() {
-  full_rosters      <<- get_tbl("full_rosters")
-  advanced_stats_mv <<- get_tbl("player_advanced_stats_mv")
-  schedule_tbl      <<- get_tbl("schedule")
-  team_ratings_mv   <<- get_tbl("team_ppp_ratings_mv")
-  team_ff_mv        <<- get_tbl("team_four_factors_mv")
-  gl_schedule_mv    <<- get_tbl("final_schedule_mv")
-}
+# Pre-warm the connection pool (force SSL handshake at source time)
+tryCatch(DBI::dbGetQuery(pg_pool, "SELECT 1"), error = function(e) NULL)
 
 # ---------------- Shared CSS ----------------
 shared_css <- HTML("

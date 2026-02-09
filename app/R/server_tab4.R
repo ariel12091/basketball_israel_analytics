@@ -44,9 +44,9 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$gl_game_year)
     req(gy_int)
-    gl_schedule_mv %>%
-      filter(game_year == !!gy_int) %>%
-      collect()
+    DBI::dbGetQuery(pg_pool,
+      "SELECT * FROM basketball_test.final_schedule_mv WHERE game_year = $1",
+      params = list(gy_int))
   }) %>% bindEvent(input$gl_game_year, input$main_tabs)
 
   # --- Filtered schedule rows (team is optional) ---

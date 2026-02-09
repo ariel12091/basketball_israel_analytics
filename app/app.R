@@ -26,10 +26,6 @@ ui <- navbarPage(
 # ---------------- Server ----------------
 server <- function(input, output, session) {
 
-  # Initialize database tables on first server start
-
-  init_tables()
-
   # ---- Shared helpers & reactives ----
   season_date_bounds <- function(gy) {
     if (identical(gy, "2026")) {
@@ -47,11 +43,9 @@ server <- function(input, output, session) {
   teams_for_year_df <- reactive({
     gy_int <- as.integer(selected_game_year())
     req(gy_int)
-    full_rosters %>%
-      filter(game_year == !!gy_int) %>%
-      distinct(team_id, team_name) %>%
-      arrange(team_name) %>%
-      collect()
+    DBI::dbGetQuery(pg_pool,
+      "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = $1 ORDER BY team_name",
+      params = list(gy_int))
   })
 
   observeEvent(selected_game_year(), {
