@@ -12,7 +12,7 @@ Basketball Israel Analytics — R/Shiny dashboard for player on/off impact, line
 
 **Live app:** https://ibpl-stats.shinyapps.io/onoff-shiny/
 
-**Tech:** R 4.4.2, Shiny (bslib/BS5), PostgreSQL on Supabase (port 6543), schema `basketball_test`, deployed to shinyapps.io
+**Tech:** R 4.4.2, Shiny (bslib/BS5), DBI/RPostgres (no dbplyr), PostgreSQL on Supabase (port 6543), schema `basketball_test`, deployed to shinyapps.io
 
 ## Commands
 
@@ -33,9 +33,11 @@ app/
 │   ├── ui_tab1_onoff.R    Tab 1 UI (On/Off Impact)
 │   ├── ui_tab2_lineup.R   Tab 2 UI (Lineup Data)
 │   ├── ui_tab3_team.R     Tab 3 UI (Team Ratings)
+│   ├── ui_tab4_gamelogs.R Tab 4 UI (Game Logs)
 │   ├── server_tab1.R      Tab 1 server logic (~400 lines)
-│   ├── server_tab2.R      Tab 2 server logic (~500 lines)
-│   └── server_tab3.R      Tab 3 server logic (~250 lines)
+│   ├── server_tab2.R      Tab 2 server logic (~600 lines)
+│   ├── server_tab3.R      Tab 3 server logic (~250 lines)
+│   └── server_tab4.R      Tab 4 server logic (~300 lines)
 ├── app_backup.R           Original monolithic file (backup)
 sql/functions/             PL/pgSQL for filtered queries
 sql/materialized_views/    Pre-computed fast-path views
@@ -58,16 +60,7 @@ shared <- list(
 server_tab1(input, output, session, shared)
 ```
 
-**Deferred table initialization:** Database tables are initialized on first server request (not at source time) to avoid connection issues with Supabase pooler:
-```r
-# In global.R
-init_tables <- function() {
-  full_rosters <<- get_tbl("full_rosters")
-  # ...
-}
-# In app.R server function
-init_tables()
-```
+**Direct SQL queries (no dbplyr lazy tables):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with parameterized SQL. No `tbl()`/`in_schema()` calls — eliminates metadata round trips. Pool is pre-warmed at source time with `SELECT 1` to force the SSL handshake before any user session.
 
 ### Shiny Tabs
 
@@ -78,6 +71,7 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
 | 1: On/Off Impact | season, dates, team, game filters, min poss | `onoff_default_mv` / `player_advanced_stats_mv` | `onoff_compute()` / `four_factors_compute()` |
 | 2: Lineup Data | + players on/off, group size 2-5, clutch time | — (always SQL) | `fetch_lineups_csv_v2()` / `fetch_lineups_four_factors_csv()` |
 | 3: Team Ratings | season, dates, game filters, clutch time | `team_ppp_ratings_mv` / `team_four_factors_mv` | `get_team_ratings_dynamic()` / `get_team_four_factors_dynamic()` |
+| 4: Game Logs | season, team (optional), dates, game filters | `mv_lineup_totals_by_day` + `final_schedule_mv` / `lineup_four_factors_by_game` | — (direct MV queries) |
 
 ### Key Tables & MVs
 
@@ -190,7 +184,7 @@ Now in main `app/app.R` (not app_test.R). Toggle between Summary/Four Factors in
 
 ## Shooting Splits (2PT/3PT)
 
-Available in Tab 1 (On/Off Impact) Summary and Tab 2 (Lineup Data) Summary. Not in Four Factors views or Tab 3.
+Available in Tab 1 (On/Off Impact) Summary, Tab 2 (Lineup Data) Summary, and Tab 4 (Game Logs) Summary. Not in Four Factors views or Tab 3. Tabs 1, 2, and 4 show the shot splits legend box (conditionally visible in Summary mode only).
 
 **Tab 1:** 16 columns (off/def × on/off × fg2/fg3 × made/att). Source: `onoff_default_mv` via `shot_agg` CTE, or `onoff_compute()` via `player_onoff_by_game`.
 
@@ -200,6 +194,32 @@ Available in Tab 1 (On/Off Impact) Summary and Tab 2 (Lineup Data) Summary. Not 
 - **Clutch path:** CASE expressions in `clutch_actions` CTE compute shot flags from raw `df_pts_poss_lineups_longer_mv`, propagated through `segment_stats` → `lineup_totals`, FILTER in final SELECT
 - **R rendering:** "Off Shot" / "Def Shot" display columns after +/-, JS stacked bar visualization (same `make_shot_render` pattern as Tab 1), dynamic weighted averages for color thresholds (min 50 FGA)
 - **Deploy:** `deploy_shooting_tab2.R` — ALTER TABLE + deploy functions + refresh
+
+## Tab 4: Game Logs
+
+Teams-only per-game log with Summary and Four Factors views. Displays all games immediately on tab click (no team selection required). Team dropdown defaults to "All teams" and is optional.
+
+**Data sources:** `mv_lineup_totals_by_day` (Summary) / `lineup_four_factors_by_game` (FF), joined with `final_schedule_mv` for schedule info.
+
+**Ordering:** `gn` (game number from schedule), `game_id`, `game_date`, `team_name`. DT sorts by GN ascending (column 0).
+
+**Columns:** GN, Date, Team, Opponent, W/L, Score, Off/Def PPP, Net, Off/Def Shot splits, Off/Def Poss, Min (Summary) or Four Factors rates.
+
+**Multi-team pattern:** Uses `sched_pairs` (game_id + team_id) `inner_join` to support all-teams display — no single `team_id` filter required.
+
+## Tab 2: Clickable Lineup → Modal Game Log
+
+In Tab 2 (Lineup Data), player name columns are clickable links (both Summary and Four Factors views). TOTAL row is not clickable (guarded by `row[0] === 0` / `is_total` check).
+
+**Click handler:** JS `onclick` → `Shiny.setInputValue('ld_lineup_click', {hash, team_id, ts}, {priority: 'event'})`. Hidden columns `team_id` and `sub_lineup_hash` are appended to the DT data and hidden via `columnDefs`.
+
+**Modal handler (`observeEvent(input$ld_lineup_click)`):**
+1. Resolves `sub_lineup_hash` → `lineup_hash(es)` via `sub_lineups` table (5-man case: hash used directly)
+2. Queries `mv_lineup_totals_by_day` with `lineup_hash = ANY(ARRAY[...])` for per-game stats
+3. Pivots offense/defense → one row per game
+4. Joins `final_schedule_mv` for GN, date, opponent, score, result
+5. Gets lineup name from `sub_lineups_stats.player_names_str`
+6. Renders DT in `modalDialog(size = "xl")` with shot splits, W/L coloring, ordered by GN
 
 ## Clutch Time Filter
 
@@ -330,13 +350,12 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 ### R / Shiny / DT
 - **`bigint = "numeric"` in `dbPool()`** — RPostgres returns PostgreSQL `bigint` as R `integer64` by default, which is incompatible with dplyr `coalesce()`, `+`, and many tidyverse operations. Fix: add `bigint = "numeric"` to the pool connection. Safe for basketball stats (precision loss only for values > 2^53). `SUM()` on integer in PostgreSQL returns `bigint`, so even flag columns (CASE 0/1) produce bigint sums
 - **dateRangeInput NA pitfall** — `updateDateRangeInput()` with `start` outside the input's `min` produces `NA`. The "reset to defaults" button must use season-appropriate dates (from `season_date_bounds()`), not global `DEFAULT_START`/`DEFAULT_END`. Also guard `fallback_needed()` and `live_result_df()` against NA dates: `if (is.na(start_d) || is.na(end_d)) return(FALSE)` and `req(!is.na(rng[1]), !is.na(rng[2]))`
-- **MV fast path via `dbGetQuery`** — replaced `tbl() %>% collect()` for `onoff_default_mv` with direct `dbGetQuery(pg_pool, sprintf(...))`, eliminating 2.2s metadata query. Requires `bigint = "numeric"` in pool
+- **All DB access uses `dbGetQuery()`** — no `tbl()`/`in_schema()` anywhere in active code. Eliminates metadata round trips (~200-400ms each to Supabase). Pool pre-warmed with `SELECT 1` at source time. Requires `bigint = "numeric"` in pool
 - `formatRound()` clobbers JS `columnDefs` render — do all formatting in JS if using custom render
 - `uiOutput`/`renderUI` causes NULL window on startup — use static inputs + `update*Input()`
 - Hoist `colorRampPalette()`, `seq()` to global constants
 - `FixedColumns` takes too much space on mobile — use `FixedHeader` only
 - Mobile sidebar: wrap in `collapse d-md-block`, button with `d-md-none`; keep view mode toggles outside collapse
-- **Deferred table init:** `tbl(pool, in_schema(...))` queries metadata at source time, which fails on Supabase pooler. Wrap in `init_tables()` called from server function instead
 - **Modular refactor:** Use `source("R/file.R", local = TRUE)` pattern. Tab servers are functions receiving `(input, output, session, shared)`. Shared reactives passed via list to avoid duplication
 - **DT JS render `row` guard:** When `filter = "top"` is used, DT calls render functions during filter init with no `row` arg. Always guard: `if (type !== 'display' || !row) return data;`. A TypeError here crashes the entire page and blocks ALL Shiny client-side processing (selectize, inputs, etc.)
 - **`server = TRUE` in `updateSelectizeInput`:** Only use when setting `choices`. Omit when only updating `selected` — it re-registers the server callback without choices, causing stale dropdowns. To clear old tags on team switch (multi-select + server mode), send empty-choices update first, then set new choices
