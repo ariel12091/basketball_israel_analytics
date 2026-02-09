@@ -125,6 +125,7 @@ BEGIN
        OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
   ),
   -- Clutch-filtered raw data from df_pts_poss_lineups_longer_mv
+  -- NOTE: Use pre-shot margin (subtract points scored from current score)
   clean_stats AS (
     SELECT
       d.id, d.game_id, d.team_id, d.team_score, d.type,
@@ -133,11 +134,28 @@ BEGIN
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
-    WHERE (p_max_margin IS NULL OR ABS(d.own_team_score - d.opp_team_score) <= p_max_margin OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+    WHERE (p_max_margin IS NULL
+           OR ABS(CASE WHEN d.type_lineup = 'offense'
+                       THEN (d.own_team_score - COALESCE(d.team_score, 0)) - d.opp_team_score
+                       ELSE d.own_team_score - (d.opp_team_score - COALESCE(d.team_score, 0))
+                  END) <= p_max_margin
+           OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (v_margin_status = 'all'
-           OR (v_margin_status = 'leading'  AND d.own_team_score > d.opp_team_score)
-           OR (v_margin_status = 'trailing' AND d.own_team_score < d.opp_team_score)
-           OR (v_margin_status = 'tied'     AND d.own_team_score = d.opp_team_score)
+           OR (v_margin_status = 'leading'  AND
+               CASE WHEN d.type_lineup = 'offense'
+                    THEN (d.own_team_score - COALESCE(d.team_score, 0)) > d.opp_team_score
+                    ELSE d.own_team_score > (d.opp_team_score - COALESCE(d.team_score, 0))
+               END)
+           OR (v_margin_status = 'trailing' AND
+               CASE WHEN d.type_lineup = 'offense'
+                    THEN (d.own_team_score - COALESCE(d.team_score, 0)) < d.opp_team_score
+                    ELSE d.own_team_score < (d.opp_team_score - COALESCE(d.team_score, 0))
+               END)
+           OR (v_margin_status = 'tied'     AND
+               CASE WHEN d.type_lineup = 'offense'
+                    THEN (d.own_team_score - COALESCE(d.team_score, 0)) = d.opp_team_score
+                    ELSE d.own_team_score = (d.opp_team_score - COALESCE(d.team_score, 0))
+               END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
   ),

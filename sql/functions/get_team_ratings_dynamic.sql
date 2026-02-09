@@ -110,15 +110,33 @@ BEGIN
   ),
 
   -- CTE 4: Qualifying Games (games with possessions matching clutch criteria)
+  -- NOTE: Use pre-shot margin (subtract points scored from current score)
   qualifying_games AS (
       SELECT DISTINCT gf.game_year, gf.team_id, gf.game_id, gf.has_won
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN games_filtered gf ON gf.game_id = dppllm.game_id AND gf.team_id = dppllm.team_id
-      WHERE (p_max_margin IS NULL OR ABS(dppllm.own_team_score - dppllm.opp_team_score) <= p_max_margin OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+      WHERE (p_max_margin IS NULL
+             OR ABS(CASE WHEN dppllm.type_lineup = 'offense'
+                         THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) - dppllm.opp_team_score
+                         ELSE dppllm.own_team_score - (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                    END) <= p_max_margin
+             OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
         AND (v_margin_status = 'all'
-             OR (v_margin_status = 'leading'  AND dppllm.own_team_score > dppllm.opp_team_score)
-             OR (v_margin_status = 'trailing' AND dppllm.own_team_score < dppllm.opp_team_score)
-             OR (v_margin_status = 'tied'     AND dppllm.own_team_score = dppllm.opp_team_score)
+             OR (v_margin_status = 'leading'  AND
+                 CASE WHEN dppllm.type_lineup = 'offense'
+                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) > dppllm.opp_team_score
+                      ELSE dppllm.own_team_score > (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                 END)
+             OR (v_margin_status = 'trailing' AND
+                 CASE WHEN dppllm.type_lineup = 'offense'
+                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) < dppllm.opp_team_score
+                      ELSE dppllm.own_team_score < (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                 END)
+             OR (v_margin_status = 'tied'     AND
+                 CASE WHEN dppllm.type_lineup = 'offense'
+                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) = dppllm.opp_team_score
+                      ELSE dppllm.own_team_score = (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                 END)
              OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
         AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
   ),
@@ -134,6 +152,7 @@ BEGIN
   ),
 
   -- CTE 5: Base Aggregation (Join Valid Games to Stats Table)
+  -- NOTE: Use pre-shot margin (subtract points scored from current score)
   base_agg AS (
       SELECT
         qg.game_year,
@@ -144,11 +163,28 @@ BEGIN
         COUNT(DISTINCT dppllm.game_id) AS games_count
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN qualifying_games qg ON qg.game_id = dppllm.game_id AND qg.team_id = dppllm.team_id
-      WHERE (p_max_margin IS NULL OR ABS(dppllm.own_team_score - dppllm.opp_team_score) <= p_max_margin OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
+      WHERE (p_max_margin IS NULL
+             OR ABS(CASE WHEN dppllm.type_lineup = 'offense'
+                         THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) - dppllm.opp_team_score
+                         ELSE dppllm.own_team_score - (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                    END) <= p_max_margin
+             OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
         AND (v_margin_status = 'all'
-             OR (v_margin_status = 'leading'  AND dppllm.own_team_score > dppllm.opp_team_score)
-             OR (v_margin_status = 'trailing' AND dppllm.own_team_score < dppllm.opp_team_score)
-             OR (v_margin_status = 'tied'     AND dppllm.own_team_score = dppllm.opp_team_score)
+             OR (v_margin_status = 'leading'  AND
+                 CASE WHEN dppllm.type_lineup = 'offense'
+                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) > dppllm.opp_team_score
+                      ELSE dppllm.own_team_score > (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                 END)
+             OR (v_margin_status = 'trailing' AND
+                 CASE WHEN dppllm.type_lineup = 'offense'
+                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) < dppllm.opp_team_score
+                      ELSE dppllm.own_team_score < (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                 END)
+             OR (v_margin_status = 'tied'     AND
+                 CASE WHEN dppllm.type_lineup = 'offense'
+                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) = dppllm.opp_team_score
+                      ELSE dppllm.own_team_score = (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
+                 END)
              OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
         AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
       GROUP BY qg.game_year, qg.team_id, dppllm.type_lineup

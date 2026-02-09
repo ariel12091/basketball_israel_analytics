@@ -70,6 +70,27 @@ ui_tab1_onoff <- tabPanel(
 
       mainPanel(
         width = 9,
+        # --- LEGEND (Summary mode: shot split legend) ---
+        conditionalPanel(
+          condition = "input.onoff_view_mode == 'Summary'",
+          div(
+            class = "legend-box",
+            span(style = "font-weight:700; margin-right:5px;", "Shot Splits:"),
+            div(class = "legend-item",
+                div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"),
+                span("2PT")),
+            div(class = "legend-item",
+                div(style = "width:14px; height:14px; background:#d4843e; border-radius:3px;"),
+                span("3PT")),
+            span(style = "margin-left:15px; color:#555;", "|"),
+            div(class = "legend-item",
+                span(style = "color:#c84040; font-weight:600;", "FG%"),
+                span(style = "color:#888; margin:0 3px;", "\u2192"),
+                span(style = "color:#3a9a3a; font-weight:600;", "FG%")),
+            span(style = "font-size:0.8em; color:#888;",
+                 "(accuracy vs league avg)")
+          )
+        ),
         # --- LEGEND (Only visible in Four Factors mode) ---
         conditionalPanel(
           condition = "input.onoff_view_mode == 'Four Factors'",
