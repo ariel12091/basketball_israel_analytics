@@ -8,7 +8,17 @@ server_tab1 <- function(input, output, session, shared) {
     updateDateRangeInput(session, "date_range",
                          start = bounds$start, end = bounds$end,
                          min = bounds$start, max = bounds$end)
-  }, ignoreInit = TRUE)
+
+    gn_df <- DBI::dbGetQuery(pg_pool,
+      "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
+      params = list(as.integer(shared$selected_game_year())))
+    gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
+    gn_choices <- c("", as.character(gn_vals))
+    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
+    updateSelectizeInput(session, "on_gn_min", choices = gn_choices, selected = "")
+    updateSelectizeInput(session, "on_gn_max", choices = gn_choices, selected = "")
+    updateSelectizeInput(session, "on_last_n", choices = last_choices, selected = "")
+  }, ignoreInit = FALSE)
 
 
   # --- Reset Logic ---
@@ -27,6 +37,9 @@ server_tab1 <- function(input, output, session, shared) {
     updateSelectInput(session, "on_opp_rank_metric", selected = "")
     updateSliderInput(session, "min_all_poss", value = DEFAULT_MIN_ALL)
     updateSliderInput(session, "min_on_poss", value = DEFAULT_MIN_ON)
+    updateSelectizeInput(session, "on_gn_min", selected = "")
+    updateSelectizeInput(session, "on_gn_max", selected = "")
+    updateSelectizeInput(session, "on_last_n", selected = "")
     # Clear teams
     updateSelectizeInput(session, "teams", selected = character(0))
   })
@@ -42,6 +55,37 @@ server_tab1 <- function(input, output, session, shared) {
     rank_n = input$on_opp_rank_n,
     metric = input$on_opp_rank_metric
   )) %>% debounce(300)
+
+  gn_params <- reactive({
+    min_gn <- if (!is.null(input$on_gn_min) && nzchar(input$on_gn_min)) as.integer(input$on_gn_min) else NA_integer_
+    max_gn <- if (!is.null(input$on_gn_max) && nzchar(input$on_gn_max)) as.integer(input$on_gn_max) else NA_integer_
+    last_n <- if (!is.null(input$on_last_n) && nzchar(input$on_last_n)) as.integer(input$on_last_n) else NA_integer_
+    if (!is.na(last_n)) {
+      min_gn <- NA_integer_
+      max_gn <- NA_integer_
+    }
+    if (!is.na(min_gn) || !is.na(max_gn)) {
+      last_n <- NA_integer_
+    }
+    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
+      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
+    }
+    list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+  }) %>% debounce(150)
+
+  observeEvent(input$on_last_n, {
+    if (!is.null(input$on_last_n) && nzchar(input$on_last_n)) {
+      updateSelectizeInput(session, "on_gn_min", selected = "")
+      updateSelectizeInput(session, "on_gn_max", selected = "")
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input$on_gn_min, input$on_gn_max), {
+    if ((nzchar(input$on_gn_min %||% "") || nzchar(input$on_gn_max %||% "")) &&
+        nzchar(input$on_last_n %||% "")) {
+      updateSelectizeInput(session, "on_last_n", selected = "")
+    }
+  }, ignoreInit = TRUE)
 
   selected_team_ids <- reactive({
     td <- shared$teams_for_year_df()
@@ -70,29 +114,39 @@ server_tab1 <- function(input, output, session, shared) {
       nzchar(f$outcome %||% "") ||
       nzchar(f$rank_side %||% "")
 
-    date_changed || extra_filters
+    gp <- gn_params()
+    gn_active <- !is.na(gp$min_gn) || !is.na(gp$max_gn) || !is.na(gp$last_n)
+    gn_raw_active <- nzchar(input$on_gn_min %||% "") ||
+      nzchar(input$on_gn_max %||% "") ||
+      nzchar(input$on_last_n %||% "")
+    gn_active <- gn_active || gn_raw_active
+
+    date_changed || extra_filters || gn_active
   })
 
   # --- On/Off Compute Function ---
-  run_onoff_compute_14 <- function(pool, start_d, end_d, team_ids, min_all, min_on, min_net, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric) {
+  run_onoff_compute_14 <- function(pool, start_d, end_d, team_ids, min_all, min_on, min_net, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_) {
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.onoff_compute(", "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,", "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text", ")"),
-                    params = list(as.Date(start_d), as.Date(end_d), team_csv, as.integer(min_all), as.integer(min_on), as.numeric(min_net), as.character(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric))
+    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.onoff_compute(", "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,", "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,", "$15::int4,$16::int4,$17::int4", ")"),
+                    params = list(as.Date(start_d), as.Date(end_d), team_csv, as.integer(min_all), as.integer(min_on), as.numeric(min_net), as.character(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, min_gn, max_gn, last_n_games))
   }
 
   # --- Four Factors Compute Function ---
   run_four_factors_compute <- function(pool, game_year, start_d, end_d, team_ids,
                                        game_type_csv, opp_ids_csv, home_away, outcome,
-                                       opp_rank_side, opp_rank_n, opp_rank_metric) {
+                                       opp_rank_side, opp_rank_n, opp_rank_metric,
+                                       min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_) {
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
     DBI::dbGetQuery(pool,
                     paste0("SELECT * FROM basketball_test.four_factors_compute(",
                            "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
-                           "$7::text,$8::text,$9::text,$10::int4,$11::text",
+                           "$7::text,$8::text,$9::text,$10::int4,$11::text,",
+                           "$12::int4,$13::int4,$14::int4",
                            ")"),
                     params = list(as.integer(game_year), start_d, end_d, team_csv,
                                   game_type_csv, opp_ids_csv, home_away, outcome,
-                                  opp_rank_side, opp_rank_n, opp_rank_metric))
+                                  opp_rank_side, opp_rank_n, opp_rank_metric,
+                                  min_gn, max_gn, last_n_games))
   }
 
   # --- Live Calculation (Summary) ---
@@ -112,7 +166,8 @@ server_tab1 <- function(input, output, session, shared) {
     home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
     outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
 
-    run_onoff_compute_14(pg_pool, start_d = as.Date(rng[1]), end_d = as.Date(rng[2]), team_ids = tids, min_all = input$min_all_poss, min_on = input$min_on_poss, min_net = DEFAULT_MIN_NET, game_year = gy, game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv, home_away = home_away, outcome = outcome, opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side, opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)), opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric)
+    gp <- gn_params()
+    run_onoff_compute_14(pg_pool, start_d = as.Date(rng[1]), end_d = as.Date(rng[2]), team_ids = tids, min_all = input$min_all_poss, min_on = input$min_on_poss, min_net = DEFAULT_MIN_NET, game_year = gy, game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv, home_away = home_away, outcome = outcome, opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side, opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)), opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric, min_gn = gp$min_gn, max_gn = gp$max_gn, last_n_games = gp$last_n)
   })
 
   # --- Live Calculation (Four Factors) ---
@@ -130,6 +185,7 @@ server_tab1 <- function(input, output, session, shared) {
     home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
     outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
 
+    gp <- gn_params()
     run_four_factors_compute(pg_pool,
                              game_year = gy,
                              start_d = as.Date(rng[1]),
@@ -141,7 +197,8 @@ server_tab1 <- function(input, output, session, shared) {
                              outcome = outcome,
                              opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side,
                              opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)),
-                             opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric)
+                             opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric,
+                             min_gn = gp$min_gn, max_gn = gp$max_gn, last_n_games = gp$last_n)
   })
 
   # --- MV Fetch (Summary - LOAD FULL DATA) ---
@@ -179,6 +236,7 @@ server_tab1 <- function(input, output, session, shared) {
       home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
       outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
 
+      gp <- gn_params()
       df_sum <- run_onoff_compute_14(pg_pool,
                                      start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
                                      team_ids = NULL, min_all = 0L, min_on = 0L, min_net = DEFAULT_MIN_NET,
@@ -186,7 +244,8 @@ server_tab1 <- function(input, output, session, shared) {
                                      home_away = home_away, outcome = outcome,
                                      opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side,
                                      opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)),
-                                     opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric) %>%
+                                     opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric,
+                                     min_gn = gp$min_gn, max_gn = gp$max_gn, last_n_games = gp$last_n) %>%
         select(player_id, team_id, `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`)
 
       df <- df_adv %>%
@@ -284,7 +343,7 @@ server_tab1 <- function(input, output, session, shared) {
         return(df)
       }
     }
-  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode)
+  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode)
 
   # --- Render Table ---
   output$onoff_dt <- renderDT({
@@ -687,5 +746,5 @@ server_tab1 <- function(input, output, session, shared) {
 
       return(dt)
     }
-  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode)
+  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode)
 }

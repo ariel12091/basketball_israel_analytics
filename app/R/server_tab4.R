@@ -20,7 +20,31 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "gl_team", choices = team_values, selected = "", server = TRUE)
     updateSelectizeInput(session, "gl_opponents", choices = teams_gl$team_name,
                          selected = character(0), server = TRUE)
+
+    gn_df <- DBI::dbGetQuery(pg_pool,
+      "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
+      params = list(gy_int))
+    gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
+    gn_choices <- c("", as.character(gn_vals))
+    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
+    updateSelectizeInput(session, "gl_gn_min", choices = gn_choices, selected = "")
+    updateSelectizeInput(session, "gl_gn_max", choices = gn_choices, selected = "")
+    updateSelectizeInput(session, "gl_last_n", choices = last_choices, selected = "")
   })
+
+  observeEvent(input$gl_last_n, {
+    if (!is.null(input$gl_last_n) && nzchar(input$gl_last_n)) {
+      updateSelectizeInput(session, "gl_gn_min", selected = "")
+      updateSelectizeInput(session, "gl_gn_max", selected = "")
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input$gl_gn_min, input$gl_gn_max), {
+    if ((nzchar(input$gl_gn_min %||% "") || nzchar(input$gl_gn_max %||% "")) &&
+        nzchar(input$gl_last_n %||% "")) {
+      updateSelectizeInput(session, "gl_last_n", selected = "")
+    }
+  }, ignoreInit = TRUE)
 
   # --- Reset ---
   observeEvent(input$gl_reset, {
@@ -37,6 +61,9 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "gl_opponents", selected = character(0))
     updateSelectInput(session, "gl_home_away", selected = "")
     updateSelectInput(session, "gl_outcome", selected = "")
+    updateSelectizeInput(session, "gl_gn_min", selected = "")
+    updateSelectizeInput(session, "gl_gn_max", selected = "")
+    updateSelectizeInput(session, "gl_last_n", selected = "")
   })
 
   # --- Schedule cache per season ---
@@ -94,6 +121,28 @@ server_tab4 <- function(input, output, session, shared) {
     if (!is.null(outcome) && nzchar(outcome)) {
       if (outcome == "win") df <- df %>% filter(has_won == TRUE)
       else df <- df %>% filter(has_won == FALSE)
+    }
+
+    # GN filter
+    min_gn <- if (!is.null(input$gl_gn_min) && nzchar(input$gl_gn_min)) as.integer(input$gl_gn_min) else NA_integer_
+    max_gn <- if (!is.null(input$gl_gn_max) && nzchar(input$gl_gn_max)) as.integer(input$gl_gn_max) else NA_integer_
+    last_n <- if (!is.null(input$gl_last_n) && nzchar(input$gl_last_n)) as.integer(input$gl_last_n) else NA_integer_
+    if (!is.na(last_n)) {
+      min_gn <- NA_integer_
+      max_gn <- NA_integer_
+    }
+    if (!is.na(min_gn) || !is.na(max_gn)) {
+      last_n <- NA_integer_
+    }
+    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
+      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
+    }
+    if (!is.na(min_gn)) df <- df %>% filter(gn >= !!min_gn)
+    if (!is.na(max_gn)) df <- df %>% filter(gn <= !!max_gn)
+    if (!is.na(last_n)) {
+      max_gns <- df %>% group_by(team_id) %>% summarise(max_gn = max(gn, na.rm = TRUE), .groups = "drop")
+      df <- df %>% inner_join(max_gns, by = "team_id") %>%
+        filter(gn >= max_gn - last_n + 1) %>% select(-max_gn)
     }
 
     df

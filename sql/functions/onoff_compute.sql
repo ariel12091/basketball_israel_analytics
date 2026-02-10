@@ -1,4 +1,4 @@
-DROP FUNCTION IF EXISTS basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text, text, text, text, text, text, int4, text);
+DROP FUNCTION IF EXISTS basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text, text, text, text, text, text, int4, text, int4, int4, int4);
 
 CREATE OR REPLACE FUNCTION basketball_test.onoff_compute(
     p_start_date      DATE,
@@ -14,7 +14,10 @@ CREATE OR REPLACE FUNCTION basketball_test.onoff_compute(
     p_outcome         TEXT DEFAULT 'all',
     p_opp_rank_side   TEXT DEFAULT NULL,
     p_opp_rank_n      INTEGER DEFAULT NULL,
-    p_opp_rank_metric TEXT DEFAULT NULL
+    p_opp_rank_metric TEXT DEFAULT NULL,
+    p_min_gn           INT DEFAULT NULL,
+    p_max_gn           INT DEFAULT NULL,
+    p_last_n_games     INT DEFAULT NULL
 )
 RETURNS TABLE (
     "Team" text, "First Name" text, "Last Name" text,
@@ -173,6 +176,13 @@ BEGIN
         OR (v_outcome = 'win'  AND fs.has_won IS TRUE)
         OR (v_outcome = 'loss' AND fs.has_won IS FALSE)
       )
+      AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
+      AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
+      AND (p_last_n_games IS NULL
+           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
+                        FROM basketball_test.final_schedule_mv fs2
+                        WHERE fs2.team_id = fs.team_id
+                          AND fs2.game_year = fs.game_year))
   ),
 
   /* ------------------------------------------------------------

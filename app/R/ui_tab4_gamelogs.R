@@ -46,7 +46,16 @@ ui_tab4_gamelogs <- tabPanel(
                           selected = ""),
               selectInput("gl_outcome", "Outcome",
                           choices = c("All" = "", "Win" = "win", "Loss" = "loss"),
-                          selected = "")
+                          selected = ""),
+              tags$hr(),
+              fluidRow(
+                column(6, selectizeInput("gl_gn_min", "From GN", choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any"))),
+                column(6, selectizeInput("gl_gn_max", "To GN", choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any")))
+              ),
+              selectizeInput("gl_last_n", "Last N games", choices = NULL, selected = "", multiple = FALSE,
+                             options = list(placeholder = "Any"))
             ),
             open = FALSE
           )

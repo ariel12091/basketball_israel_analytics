@@ -11,7 +11,10 @@ CREATE OR REPLACE FUNCTION basketball_test.four_factors_compute(
     p_outcome         TEXT DEFAULT 'all',
     p_opp_rank_side   TEXT DEFAULT 'all',
     p_opp_rank_n      INT  DEFAULT NULL,
-    p_opp_rank_metric TEXT DEFAULT 'net'
+    p_opp_rank_metric TEXT DEFAULT 'net',
+    p_min_gn           INT DEFAULT NULL,
+    p_max_gn           INT DEFAULT NULL,
+    p_last_n_games     INT DEFAULT NULL
 )
 RETURNS TABLE (
     player_id       INT,
@@ -94,6 +97,13 @@ BEGIN
       AND (v_team_ids   IS NULL OR fs.team_id = ANY(v_team_ids))
       AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
+      AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
+      AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
+      AND (p_last_n_games IS NULL
+           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
+                        FROM basketball_test.final_schedule_mv fs2
+                        WHERE fs2.team_id = fs.team_id
+                          AND fs2.game_year = fs.game_year))
   ),
 
   -- CTE 2: Games Ranked (Join Ratings MV to get Opponent Ranks)

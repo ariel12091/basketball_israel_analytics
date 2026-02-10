@@ -14,7 +14,10 @@ CREATE OR REPLACE FUNCTION basketball_test.get_team_four_factors_dynamic(
     p_max_margin       INT  DEFAULT NULL,
     p_margin_status    TEXT DEFAULT 'all',
     p_max_time_remaining INT DEFAULT NULL,
-    p_ot_margin_filter BOOLEAN DEFAULT FALSE
+    p_ot_margin_filter BOOLEAN DEFAULT FALSE,
+    p_min_gn           INT DEFAULT NULL,
+    p_max_gn           INT DEFAULT NULL,
+    p_last_n_games     INT DEFAULT NULL
 )
 RETURNS TABLE (
     team_id        INT,
@@ -94,6 +97,13 @@ BEGIN
       AND (v_opp_ids    IS NULL OR fs.opp_team_id = ANY(v_opp_ids))
       AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
+      AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
+      AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
+      AND (p_last_n_games IS NULL
+           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
+                        FROM basketball_test.final_schedule_mv fs2
+                        WHERE fs2.team_id = fs.team_id
+                          AND fs2.game_year = fs.game_year))
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,
@@ -292,6 +302,13 @@ BEGIN
       AND (v_opp_ids    IS NULL OR fs.opp_team_id = ANY(v_opp_ids))
       AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
+      AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
+      AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
+      AND (p_last_n_games IS NULL
+           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
+                        FROM basketball_test.final_schedule_mv fs2
+                        WHERE fs2.team_id = fs.team_id
+                          AND fs2.game_year = fs.game_year))
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,

@@ -1,6 +1,6 @@
--- DROP FUNCTION basketball_test.fetch_lineups_all(int2, _int4, _int4, _int4, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, bool);
+-- DROP FUNCTION basketball_test.fetch_lineups_all(int2, _int4, _int4, _int4, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, bool, int4, int4, int4);
 
-CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_all(p_num_lineup smallint, p_team_ids integer[] DEFAULT NULL::integer[], p_player_ids integer[] DEFAULT NULL::integer[], p_player_off_ids integer[] DEFAULT NULL::integer[], p_exact boolean DEFAULT true, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_min_poss integer DEFAULT 20, p_game_year integer DEFAULT NULL::integer, p_game_type_csv text DEFAULT NULL::text, p_opp_team_ids_csv text DEFAULT NULL::text, p_home_away text DEFAULT 'all'::text, p_outcome text DEFAULT 'all'::text, p_opp_rank_side text DEFAULT 'all'::text, p_opp_rank_n integer DEFAULT NULL::integer, p_opp_rank_metric text DEFAULT 'net'::text, p_max_margin integer DEFAULT NULL::integer, p_margin_status text DEFAULT 'all'::text, p_max_time_remaining integer DEFAULT NULL::integer, p_ot_margin_filter boolean DEFAULT false)
+CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_all(p_num_lineup smallint, p_team_ids integer[] DEFAULT NULL::integer[], p_player_ids integer[] DEFAULT NULL::integer[], p_player_off_ids integer[] DEFAULT NULL::integer[], p_exact boolean DEFAULT true, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_min_poss integer DEFAULT 20, p_game_year integer DEFAULT NULL::integer, p_game_type_csv text DEFAULT NULL::text, p_opp_team_ids_csv text DEFAULT NULL::text, p_home_away text DEFAULT 'all'::text, p_outcome text DEFAULT 'all'::text, p_opp_rank_side text DEFAULT 'all'::text, p_opp_rank_n integer DEFAULT NULL::integer, p_opp_rank_metric text DEFAULT 'net'::text, p_max_margin integer DEFAULT NULL::integer, p_margin_status text DEFAULT 'all'::text, p_max_time_remaining integer DEFAULT NULL::integer, p_ot_margin_filter boolean DEFAULT false, p_min_gn integer DEFAULT NULL, p_max_gn integer DEFAULT NULL, p_last_n_games integer DEFAULT NULL)
  RETURNS TABLE(team_id integer, sub_lineup_hash text, num_lineup smallint, player_ids integer[], player_names text[], player_names_str text, off_poss integer, off_pts integer, off_ppp numeric, def_poss integer, def_pts integer, def_ppp numeric, net_rtg numeric, minutes numeric, game_year integer, off_fg2_made integer, off_fg2_att integer, off_fg3_made integer, off_fg3_att integer, def_fg2_made integer, def_fg2_att integer, def_fg3_made integer, def_fg3_att integer)
  LANGUAGE plpgsql
  STABLE
@@ -53,7 +53,8 @@ BEGIN
     AND v_game_types IS NULL AND v_opp_ids IS NULL
     AND v_home_away = 'all' AND v_outcome = 'all'
     AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)
-    AND NOT v_clutch_active;
+    AND NOT v_clutch_active
+    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL;
 
   -- 1) Fast path
   IF v_use_fast_path THEN
@@ -95,6 +96,13 @@ BEGIN
       AND (v_opp_ids    IS NULL OR fs.opp_team_id = ANY(v_opp_ids))
       AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
+      AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
+      AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
+      AND (p_last_n_games IS NULL
+           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
+                        FROM basketball_test.final_schedule_mv fs2
+                        WHERE fs2.team_id = fs.team_id
+                          AND fs2.game_year = fs.game_year))
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,
@@ -275,6 +283,13 @@ BEGIN
       AND (v_opp_ids    IS NULL OR fs.opp_team_id = ANY(v_opp_ids))
       AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
+      AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
+      AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
+      AND (p_last_n_games IS NULL
+           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
+                        FROM basketball_test.final_schedule_mv fs2
+                        WHERE fs2.team_id = fs.team_id
+                          AND fs2.game_year = fs.game_year))
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,
