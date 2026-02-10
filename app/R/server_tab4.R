@@ -231,7 +231,7 @@ server_tab4 <- function(input, output, session, shared) {
 
     combined %>%
       inner_join(sched_info, by = c("game_id", "team_id")) %>%
-      arrange(gn, game_id, game_date, team_name)
+      arrange(desc(gn), desc(game_date), game_id, team_name)
   })
 
   # ============================================================
@@ -305,7 +305,7 @@ server_tab4 <- function(input, output, session, shared) {
 
     combined %>%
       inner_join(sched_info, by = c("game_id", "team_id")) %>%
-      arrange(gn, game_id, game_date, team_name)
+      arrange(desc(gn), desc(game_date), game_id, team_name)
   })
 
   # ============================================================
@@ -464,7 +464,7 @@ server_tab4 <- function(input, output, session, shared) {
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(0, "asc")),
+                            order = list(list(0, "desc"), list(1, "desc")),
                             columnDefs = col_defs
                           ))
 
@@ -541,7 +541,7 @@ server_tab4 <- function(input, output, session, shared) {
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(0, "asc")),
+                            order = list(list(0, "desc"), list(1, "desc")),
                             columnDefs = col_defs
                           ))
 
