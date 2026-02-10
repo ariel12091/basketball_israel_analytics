@@ -20,6 +20,9 @@ server_tab3 <- function(input, output, session, shared) {
     updateSelectInput(session, "tr_clutch_status", selected = "all")
     updateSliderInput(session, "tr_clutch_minutes", value = 5)
     updateCheckboxInput(session, "tr_clutch_ot_margin", value = FALSE)
+    updateSelectizeInput(session, "tr_gn_min", selected = "")
+    updateSelectizeInput(session, "tr_gn_max", selected = "")
+    updateSelectizeInput(session, "tr_last_n", selected = "")
   })
 
   tr_teams_for_year <- reactive({
@@ -34,14 +37,24 @@ server_tab3 <- function(input, output, session, shared) {
     req(input$tr_game_year)
     td <- tr_teams_for_year()
     updateSelectizeInput(session, "tr_opponents", choices = td$team_name, selected = character(0), server = TRUE)
+
+    gn_df <- DBI::dbGetQuery(pg_pool,
+      "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
+      params = list(as.integer(input$tr_game_year)))
+    gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
+    gn_choices <- c("", as.character(gn_vals))
+    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
+    updateSelectizeInput(session, "tr_gn_min", choices = gn_choices, selected = "")
+    updateSelectizeInput(session, "tr_gn_max", choices = gn_choices, selected = "")
+    updateSelectizeInput(session, "tr_last_n", choices = last_choices, selected = "")
   })
 
-  run_team_ratings_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter) {
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_ratings_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter))
+  run_team_ratings_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_) {
+    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_ratings_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games))
   }
 
-  run_team_ff_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter) {
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter))
+  run_team_ff_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_) {
+    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games))
   }
 
   tr_params <- reactive({
@@ -67,6 +80,20 @@ server_tab3 <- function(input, output, session, shared) {
     tr_rank_n <- suppressWarnings(as.integer(if (!nzchar(input$tr_opp_rank_n %||% "")) NA_character_ else input$tr_opp_rank_n))
     tr_metric <- if (!nzchar(input$tr_opp_rank_metric %||% "")) NA_character_ else input$tr_opp_rank_metric
 
+    min_gn <- if (!is.null(input$tr_gn_min) && nzchar(input$tr_gn_min)) as.integer(input$tr_gn_min) else NA_integer_
+    max_gn <- if (!is.null(input$tr_gn_max) && nzchar(input$tr_gn_max)) as.integer(input$tr_gn_max) else NA_integer_
+    last_n <- if (!is.null(input$tr_last_n) && nzchar(input$tr_last_n)) as.integer(input$tr_last_n) else NA_integer_
+    if (!is.na(last_n)) {
+      min_gn <- NA_integer_
+      max_gn <- NA_integer_
+    }
+    if (!is.na(min_gn) || !is.na(max_gn)) {
+      last_n <- NA_integer_
+    }
+    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
+      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
+    }
+
     # Extract clutch params
     clutch_enabled <- isTRUE(input$tr_clutch_enabled)
     max_margin <- if (clutch_enabled) as.integer(input$tr_clutch_margin) else NA_integer_
@@ -74,8 +101,22 @@ server_tab3 <- function(input, output, session, shared) {
     max_time_remaining <- if (clutch_enabled) as.integer(input$tr_clutch_minutes) * 60L else NA_integer_
     ot_margin_filter <- if (clutch_enabled) isTRUE(input$tr_clutch_ot_margin) else FALSE
 
-    list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter)
+    list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n)
   }) %>% debounce(300)
+
+  observeEvent(input$tr_last_n, {
+    if (!is.null(input$tr_last_n) && nzchar(input$tr_last_n)) {
+      updateSelectizeInput(session, "tr_gn_min", selected = "")
+      updateSelectizeInput(session, "tr_gn_max", selected = "")
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input$tr_gn_min, input$tr_gn_max), {
+    if ((nzchar(input$tr_gn_min %||% "") || nzchar(input$tr_gn_max %||% "")) &&
+        nzchar(input$tr_last_n %||% "")) {
+      updateSelectizeInput(session, "tr_last_n", selected = "")
+    }
+  }, ignoreInit = TRUE)
 
   tr_fallback_needed <- reactive({
     p <- tr_params()
@@ -86,13 +127,14 @@ server_tab3 <- function(input, output, session, shared) {
     has_out <- !is.na(p$outcome)
     has_rank <- !is.na(p$rank_side) || !is.na(p$rank_n)
     has_clutch <- !is.na(p$max_margin) || (!is.na(p$margin_status) && p$margin_status != "all") || !is.na(p$max_time_remaining)
-    has_dates || has_gt || has_opp || has_ha || has_out || has_rank || has_clutch
+    has_gn <- !is.na(p$min_gn) || !is.na(p$max_gn) || !is.na(p$last_n_games)
+    has_dates || has_gt || has_opp || has_ha || has_out || has_rank || has_clutch || has_gn
   })
 
   tr_data <- reactive({
     p <- tr_params()
     if (tr_fallback_needed()) {
-      run_team_ratings_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter)
+      run_team_ratings_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games)
     } else {
       DBI::dbGetQuery(pg_pool,
         "SELECT game_year, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp FROM basketball_test.team_ppp_ratings_mv WHERE game_year = $1 ORDER BY rank_net_rtg",
@@ -103,7 +145,7 @@ server_tab3 <- function(input, output, session, shared) {
   tr_ff_data <- reactive({
     p <- tr_params()
     if (tr_fallback_needed()) {
-      df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter)
+      df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games)
     } else {
       df <- DBI::dbGetQuery(pg_pool,
         "SELECT * FROM basketball_test.team_four_factors_mv WHERE game_year = $1",

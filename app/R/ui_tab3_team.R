@@ -30,7 +30,16 @@ ui_tab3_team <- tabPanel(
               selectizeInput("tr_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
               selectizeInput("tr_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
               selectInput("tr_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("tr_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = "")
+              selectInput("tr_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
+              tags$hr(),
+              fluidRow(
+                column(6, selectizeInput("tr_gn_min", "From GN", choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any"))),
+                column(6, selectizeInput("tr_gn_max", "To GN", choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any")))
+              ),
+              selectizeInput("tr_last_n", "Last N games", choices = NULL, selected = "", multiple = FALSE,
+                             options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
               "Opponent Strength",
