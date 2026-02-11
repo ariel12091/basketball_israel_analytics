@@ -1,6 +1,56 @@
 # server_tab1.R - Tab 1: On/Off Impact server logic
 
 server_tab1 <- function(input, output, session, shared) {
+  auto_min_state <- reactiveValues(
+    last_auto = NA_integer_,
+    last_auto_all = NA_integer_,
+    updating = FALSE
+  )
+  auto_enabled <- reactiveVal(TRUE)
+  resetting <- reactiveVal(FALSE)
+
+  AUTO_TOP_PCT <- 0.35
+
+  auto_min_on_from_df <- function(df, usage_col, step = 10L) {
+    if (is.null(df) || !NROW(df)) return(NA_integer_)
+    if (!usage_col %in% names(df)) return(NA_integer_)
+    n <- nrow(df)
+    top_n <- max(1L, ceiling(n * AUTO_TOP_PCT))
+    df_ord <- df %>% arrange(desc(.data[[usage_col]]))
+    df_top <- df_ord[seq_len(min(top_n, n)), , drop = FALSE]
+    min_needed <- suppressWarnings(min(df_top[[usage_col]], na.rm = TRUE))
+    if (!is.finite(min_needed)) return(NA_integer_)
+    as.integer(floor(min_needed / step) * step)
+  }
+
+  auto_min_all_from_df <- function(df, usage_col, on_col, off_col, step = 10L) {
+    if (is.null(df) || !NROW(df)) return(NA_integer_)
+    if (!usage_col %in% names(df) || !on_col %in% names(df) || !off_col %in% names(df)) return(NA_integer_)
+    n <- nrow(df)
+    top_n <- max(1L, ceiling(n * AUTO_TOP_PCT))
+    df_ord <- df %>% arrange(desc(.data[[usage_col]]))
+    df_top <- df_ord[seq_len(min(top_n, n)), , drop = FALSE]
+    poss_min <- pmin(df_top[[on_col]], df_top[[off_col]])
+    min_needed <- suppressWarnings(min(poss_min, na.rm = TRUE))
+    if (!is.finite(min_needed)) return(NA_integer_)
+    as.integer(floor(min_needed / step) * step)
+  }
+
+  resolve_poss_cols <- function(df, mode) {
+    if (identical(mode, "Four Factors")) {
+      if (all(c("off_on_poss", "off_off_poss") %in% names(df))) {
+        return(list(on = "off_on_poss", off = "off_off_poss"))
+      }
+    } else {
+      if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
+        return(list(on = "ON Poss", off = "OFF Poss"))
+      }
+      if (all(c("off_on_poss", "off_off_poss") %in% names(df))) {
+        return(list(on = "off_on_poss", off = "off_off_poss"))
+      }
+    }
+    list(on = NA_character_, off = NA_character_)
+  }
 
   # ======== On/Off tab Logic ===================================
   observeEvent(shared$selected_game_year(), {
@@ -23,6 +73,7 @@ server_tab1 <- function(input, output, session, shared) {
 
   # --- Reset Logic ---
   observeEvent(input$reset_defaults, {
+    resetting(TRUE)
     updateSelectInput(session, "game_year", selected = DEFAULT_GAME_YEAR)
     bounds <- shared$season_date_bounds(DEFAULT_GAME_YEAR)
     updateDateRangeInput(session, "date_range",
@@ -40,8 +91,12 @@ server_tab1 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "on_gn_min", selected = "")
     updateSelectizeInput(session, "on_gn_max", selected = "")
     updateSelectizeInput(session, "on_last_n", selected = "")
+    auto_min_state$last_auto <- as.integer(DEFAULT_MIN_ON)
+    auto_min_state$last_auto_all <- as.integer(DEFAULT_MIN_ALL)
+    auto_enabled(FALSE)
     # Clear teams
     updateSelectizeInput(session, "teams", selected = character(0))
+    session$onFlushed(function() resetting(FALSE), once = TRUE)
   })
 
   debounced_range <- reactive(input$date_range) %>% debounce(300)
@@ -72,6 +127,157 @@ server_tab1 <- function(input, output, session, shared) {
     }
     list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
   }) %>% debounce(150)
+
+  observeEvent(input$min_on_poss, {
+    if (isTRUE(auto_min_state$updating)) return(invisible(NULL))
+    cur_val <- as.integer(input$min_on_poss)
+    last_auto <- as.integer(auto_min_state$last_auto)
+    if (!is.na(cur_val) && !is.na(last_auto) && cur_val == last_auto) {
+      return(invisible(NULL))
+    }
+    auto_enabled(FALSE)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$min_all_poss, {
+    if (isTRUE(auto_min_state$updating)) return(invisible(NULL))
+    cur_val <- as.integer(input$min_all_poss)
+    last_auto <- as.integer(auto_min_state$last_auto_all)
+    if (!is.na(cur_val) && !is.na(last_auto) && cur_val == last_auto) {
+      return(invisible(NULL))
+    }
+    auto_enabled(FALSE)
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(debounced_range(), debounced_teams(), debounced_on_filters(),
+                    gn_params(), input$game_year, input$onoff_view_mode), {
+    if (isTRUE(resetting())) return(invisible(NULL))
+    auto_enabled(TRUE)
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(debounced_range(), debounced_teams(), debounced_on_filters(),
+                    gn_params(), input$game_year, input$onoff_view_mode, input$min_all_poss), {
+    if (!isTRUE(auto_enabled())) return(invisible(NULL))
+
+    mode <- input$onoff_view_mode
+
+    df_base <- NULL
+    if (identical(mode, "Four Factors")) {
+      df_base <- ff_ranked_df()
+      tids <- selected_team_ids()
+      if (!is.null(tids) && length(tids) > 0) df_base <- df_base %>% filter(team_id %in% !!tids)
+    } else {
+      if (isTRUE(fallback_needed())) {
+        rng <- debounced_range()
+        req(rng)
+        tids <- selected_team_ids()
+        gy <- shared$selected_game_year()
+        f <- debounced_on_filters()
+        game_type_csv <- if (is.null(f$game_type) || !any(nzchar(f$game_type))) NA_character_ else paste(f$game_type[nzchar(f$game_type)], collapse = ",")
+        opp_ids_csv <- {
+          ids <- shared$selected_opp_ids_on()
+          if (is.null(ids)) NA_character_ else paste(ids, collapse = ",")
+        }
+        home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
+        outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
+        gp <- gn_params()
+
+        df_base <- run_onoff_compute_14(
+          pg_pool,
+          start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+          team_ids = tids, min_all = 0L, min_on = 0L,
+          min_net = DEFAULT_MIN_NET, game_year = gy,
+          game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
+          home_away = home_away, outcome = outcome,
+          opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side,
+          opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)),
+          opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric,
+          min_gn = gp$min_gn, max_gn = gp$max_gn, last_n_games = gp$last_n
+        )
+      } else {
+        df_base <- mv_result_df()
+        tids_names <- input$teams
+        if (!is.null(tids_names) && length(tids_names) > 0) {
+          df_base <- df_base %>% filter(Team %in% tids_names)
+        }
+      }
+    }
+
+    poss_cols <- resolve_poss_cols(df_base, mode)
+    if (is.na(poss_cols$on)) return(invisible(NULL))
+    min_needed <- auto_min_on_from_df(df_base, usage_col = poss_cols$on, step = 10L)
+    cur_val <- as.integer(input$min_on_poss)
+    if (is.na(min_needed) || is.na(cur_val)) return(invisible(NULL))
+    if (cur_val <= min_needed) return(invisible(NULL))
+
+    auto_min_state$updating <- TRUE
+    updateSliderInput(session, "min_on_poss", value = min_needed)
+    auto_min_state$updating <- FALSE
+    auto_min_state$last_auto <- min_needed
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(debounced_range(), debounced_teams(), debounced_on_filters(),
+                    gn_params(), input$game_year, input$onoff_view_mode, input$min_on_poss), {
+    if (!isTRUE(auto_enabled())) return(invisible(NULL))
+
+    mode <- input$onoff_view_mode
+    df_base <- NULL
+    if (identical(mode, "Four Factors")) {
+      df_base <- ff_ranked_df()
+      tids <- selected_team_ids()
+      if (!is.null(tids) && length(tids) > 0) df_base <- df_base %>% filter(team_id %in% !!tids)
+      if ("off_on_poss" %in% names(df_base)) {
+        df_base <- df_base %>% filter(off_on_poss >= !!input$min_on_poss)
+      }
+    } else {
+      if (isTRUE(fallback_needed())) {
+        rng <- debounced_range()
+        req(rng)
+        tids <- selected_team_ids()
+        gy <- shared$selected_game_year()
+        f <- debounced_on_filters()
+        game_type_csv <- if (is.null(f$game_type) || !any(nzchar(f$game_type))) NA_character_ else paste(f$game_type[nzchar(f$game_type)], collapse = ",")
+        opp_ids_csv <- {
+          ids <- shared$selected_opp_ids_on()
+          if (is.null(ids)) NA_character_ else paste(ids, collapse = ",")
+        }
+        home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
+        outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
+        gp <- gn_params()
+
+        df_base <- run_onoff_compute_14(
+          pg_pool,
+          start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+          team_ids = tids, min_all = 0L, min_on = 0L,
+          min_net = DEFAULT_MIN_NET, game_year = gy,
+          game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
+          home_away = home_away, outcome = outcome,
+          opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side,
+          opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)),
+          opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric,
+          min_gn = gp$min_gn, max_gn = gp$max_gn, last_n_games = gp$last_n
+        )
+      } else {
+        df_base <- mv_result_df()
+        tids_names <- input$teams
+        if (!is.null(tids_names) && length(tids_names) > 0) {
+          df_base <- df_base %>% filter(Team %in% tids_names)
+        }
+      }
+    }
+
+    poss_cols <- resolve_poss_cols(df_base, mode)
+    if (is.na(poss_cols$on) || is.na(poss_cols$off)) return(invisible(NULL))
+
+    min_needed <- auto_min_all_from_df(df_base, usage_col = poss_cols$on, on_col = poss_cols$on, off_col = poss_cols$off, step = 10L)
+    cur_val <- as.integer(input$min_all_poss)
+    if (is.na(min_needed) || is.na(cur_val)) return(invisible(NULL))
+    if (cur_val <= min_needed) return(invisible(NULL))
+
+    auto_min_state$updating <- TRUE
+    updateSliderInput(session, "min_all_poss", value = min_needed)
+    auto_min_state$updating <- FALSE
+    auto_min_state$last_auto_all <- min_needed
+  }, ignoreInit = TRUE)
 
   observeEvent(input$on_last_n, {
     if (!is.null(input$on_last_n) && nzchar(input$on_last_n)) {
