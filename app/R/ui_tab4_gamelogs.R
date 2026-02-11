@@ -67,19 +67,29 @@ ui_tab4_gamelogs <- tabPanel(
           condition = "input.gl_view_mode == 'Summary'",
           div(
             class = "legend-box",
-            span(style = "font-weight:700; margin-right:5px;", "Shot Splits:"),
+            span(style = "font-weight:700; margin-right:10px;", "Shot Splits:"),
             div(class = "legend-item",
-                div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"),
-                span("2PT")),
+                div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
+                    span(style = "font-size:0.75em; color:#888; text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
+                    div(style = "display:flex; align-items:center; gap:8px;",
+                        div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"),
+                        span("2PT"),
+                        div(style = "width:14px; height:14px; background:#d4843e; border-radius:3px; margin-left:6px;"),
+                        span("3PT")
+                    )
+                )
+            ),
+            span(style = "margin:0 12px; color:#555;", "|"),
             div(class = "legend-item",
-                div(style = "width:14px; height:14px; background:#d4843e; border-radius:3px;"),
-                span("3PT")),
-            span(style = "margin-left:15px; color:#555;", "|"),
-            div(class = "legend-item",
-                span(style = "color:#c84040; font-weight:600;", "FG%"),
-                span(style = "color:#888; margin:0 3px;", "\u2192"),
-                span(style = "color:#3a9a3a; font-weight:600;", "FG%")),
-            span(style = "font-size:0.8em; color:#888;", "(accuracy vs league avg)")
+                div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
+                    span(style = "font-size:0.75em; color:#888; text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
+                    div(style = "display:flex; align-items:center; gap:6px;",
+                        span(style = "color:#c84040; font-weight:600;", "FG%"),
+                        span(style = "color:#888; margin:0 2px;", "\u2192"),
+                        span(style = "color:#3a9a3a; font-weight:600;", "FG%")
+                    )
+                )
+            )
           )
         ),
         DTOutput("gl_table")
