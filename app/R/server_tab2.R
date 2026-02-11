@@ -901,14 +901,24 @@ server_tab2 <- function(input, output, session, shared) {
     # If empty (5-man case), the sub_lineup_hash IS the lineup_hash
     if (length(lineup_hashes) == 0) lineup_hashes <- sub_hash
 
-    hash_arr <- paste0("'{", paste(lineup_hashes, collapse = ","), "}'")
+    lineup_hashes <- unique(as.character(lineup_hashes))
+    lineup_hashes <- lineup_hashes[!is.na(lineup_hashes) & nzchar(lineup_hashes)]
+    req(length(lineup_hashes) > 0)
+
+    hash_placeholders <- paste(sprintf("$%d", seq_along(lineup_hashes)), collapse = ",")
+    team_id_idx <- length(lineup_hashes) + 1
+    gy_idx <- length(lineup_hashes) + 2
+    hash_query_params <- c(as.list(lineup_hashes), list(team_id_val, gy))
 
     # Join schedule (shared between both views)
-    sched <- DBI::dbGetQuery(pg_pool, sprintf(
+    sched <- DBI::dbGetQuery(
+      pg_pool,
       "SELECT game_id, gn, game_date, opp_team_name, team_score, opp_score,
               team_score > opp_score AS has_won
        FROM basketball_test.final_schedule_mv
-       WHERE team_id = %d AND game_year = %d", team_id_val, gy))
+       WHERE team_id = $1 AND game_year = $2",
+      params = list(team_id_val, gy)
+    )
     sched <- sched %>% mutate(
       result = ifelse(has_won, "W", "L"),
       score_display = paste0(team_score, "-", opp_score)
@@ -925,7 +935,7 @@ server_tab2 <- function(input, output, session, shared) {
       # ============================================================
       # FOUR FACTORS MODAL GAME LOG
       # ============================================================
-      ff_data <- DBI::dbGetQuery(pg_pool, sprintf(
+      ff_query <- sprintf(
         "SELECT game_id, type_lineup,
                 SUM(total_points) AS total_points, SUM(total_poss) AS total_poss,
                 SUM(ts_poss_count) AS ts_poss_count, SUM(oreb_count) AS oreb_count,
@@ -933,8 +943,11 @@ server_tab2 <- function(input, output, session, shared) {
                 SUM(total_ft_attempts) AS total_ft_attempts, SUM(total_fga) AS total_fga,
                 SUM(minutes) AS mins
          FROM basketball_test.lineup_four_factors_by_game
-         WHERE lineup_hash = ANY(%s) AND team_id = %d AND game_year = %d
-         GROUP BY game_id, type_lineup", hash_arr, team_id_val, gy))
+         WHERE lineup_hash IN (%s) AND team_id = $%d AND game_year = $%d
+         GROUP BY game_id, type_lineup",
+        hash_placeholders, team_id_idx, gy_idx
+      )
+      ff_data <- DBI::dbGetQuery(pg_pool, ff_query, params = hash_query_params)
 
       if (nrow(ff_data) == 0) {
         showModal(modalDialog(title = "No game data", "No games found for this lineup.", easyClose = TRUE))
@@ -1057,15 +1070,18 @@ server_tab2 <- function(input, output, session, shared) {
       # ============================================================
       # SUMMARY MODAL GAME LOG
       # ============================================================
-      game_data <- DBI::dbGetQuery(pg_pool, sprintf(
+      game_query <- sprintf(
         "SELECT game_id, type_lineup,
                 SUM(total_poss) AS poss, SUM(total_pts) AS pts,
                 SUM(fg2_made) AS fg2m, SUM(fg2_att) AS fg2a,
                 SUM(fg3_made) AS fg3m, SUM(fg3_att) AS fg3a,
                 SUM(minutes) AS mins
          FROM basketball_test.mv_lineup_totals_by_day
-         WHERE lineup_hash = ANY(%s) AND team_id = %d AND game_year = %d
-         GROUP BY game_id, type_lineup", hash_arr, team_id_val, gy))
+         WHERE lineup_hash IN (%s) AND team_id = $%d AND game_year = $%d
+         GROUP BY game_id, type_lineup",
+        hash_placeholders, team_id_idx, gy_idx
+      )
+      game_data <- DBI::dbGetQuery(pg_pool, game_query, params = hash_query_params)
 
       if (nrow(game_data) == 0) {
         showModal(modalDialog(title = "No game data", "No games found for this lineup.", easyClose = TRUE))
