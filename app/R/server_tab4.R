@@ -153,11 +153,14 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$gl_game_year)
     req(gy_int)
-    DBI::dbGetQuery(pg_pool, sprintf(
+    DBI::dbGetQuery(
+      pg_pool,
       "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
               total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, minutes
        FROM basketball_test.mv_lineup_totals_by_day
-       WHERE game_year = %d", gy_int))
+       WHERE game_year = $1",
+      params = list(gy_int)
+    )
   }) %>% bindEvent(input$gl_game_year, input$main_tabs)
 
   # --- Lineup FF cache per season ---
@@ -165,12 +168,15 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$gl_game_year)
     req(gy_int)
-    DBI::dbGetQuery(pg_pool, sprintf(
+    DBI::dbGetQuery(
+      pg_pool,
       "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
               total_points, total_poss, ts_poss_count, oreb_count,
               oreb_opportunities, tov_count, total_ft_attempts, total_fga, minutes
        FROM basketball_test.lineup_four_factors_by_game
-       WHERE game_year = %d", gy_int))
+       WHERE game_year = $1",
+      params = list(gy_int)
+    )
   }) %>% bindEvent(input$gl_game_year, input$main_tabs)
 
   # ============================================================
