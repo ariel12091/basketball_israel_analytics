@@ -28,19 +28,35 @@ server_tab3 <- function(input, output, session, shared) {
   tr_teams_for_year <- reactive({
     gy_int <- as.integer(input$tr_game_year)
     req(gy_int)
-    DBI::dbGetQuery(pg_pool,
-      "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = $1 ORDER BY team_name",
-      params = list(gy_int))
+    cached_ref_query(
+      key = sprintf("tr_teams_%d", gy_int),
+      query_fun = function() {
+        DBI::dbGetQuery(
+          pg_pool,
+          "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = $1 ORDER BY team_name",
+          params = list(gy_int)
+        )
+      }
+    )
   })
 
-  observeEvent(list(input$tr_game_year, input$main_tabs), {
+  observeEvent(list(input$tr_game_year, input$main_tabs), ignoreInit = TRUE, {
+    if (!identical(input$main_tabs, "team_ratings")) return(NULL)
     req(input$tr_game_year)
     td <- tr_teams_for_year()
-    updateSelectizeInput(session, "tr_opponents", choices = td$team_name, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "tr_opponents", choices = td$team_name, selected = character(0))
 
-    gn_df <- DBI::dbGetQuery(pg_pool,
-      "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
-      params = list(as.integer(input$tr_game_year)))
+    gy_int <- as.integer(input$tr_game_year)
+    gn_df <- cached_ref_query(
+      key = sprintf("tr_gn_%d", gy_int),
+      query_fun = function() {
+        DBI::dbGetQuery(
+          pg_pool,
+          "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
+          params = list(gy_int)
+        )
+      }
+    )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     gn_choices <- c("", as.character(gn_vals))
     last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
@@ -284,3 +300,4 @@ server_tab3 <- function(input, output, session, shared) {
     }
   })
 }
+
