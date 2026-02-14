@@ -30,14 +30,14 @@ Open in browser — no build step needed. All interactions work (tab switching, 
 Enhance the static prototype to feel fully interactive with mock data.
 
 - [x] **Column sorting** — click any header to sort ascending/descending, show arrow indicator (FIXED: proper key mapping)
-- [ ] **Filter drawer → table interaction** — selecting a team in drawer filters the displayed data
-- [ ] **Min possessions slider** — live-filter rows as slider changes (Tab 1 + Tab 2)
+- [x] **Filter drawer → table interaction** — selecting a team in drawer filters the displayed data
+- [x] **Min possessions slider** — live-filter rows as slider changes (Tab 1 + Tab 2)
 - [x] **Game logs team filter** — `onchange` event filters rows to selected team (Tab 4 dropdown works)
-- [ ] **Group size pills** — switch between different mock lineup sets (2/3/4/5-man)
-- [ ] **Chip sync** — adding/removing filters updates chips bar and badge count
+- [x] **Group size pills** — switch between different mock lineup sets (2/3/4/5-man) — Tab 2 only
+- [x] **Chip sync** — adding/removing filters updates chips bar and badge count
 - [x] **CSV export** — CSV button generates + downloads table data (all tabs, both modes)
 - [x] **Keyboard shortcuts** — Escape closes modal/drawer
-- [ ] **Mobile: collapse filter sections** — sections start closed on small screens
+- [x] **Mobile: collapse filter sections** — sections start closed on small screens
 
 ## Phase 2: React Migration (~1-2 days)
 
