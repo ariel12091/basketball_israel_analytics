@@ -812,6 +812,10 @@ body {
   .filter-drawer { width: 100%; }
   .topbar-title { font-size: 13px; }
   .section-title { font-size: 16px; }
+
+  /* Collapse all filter sections by default on mobile */
+  .filter-section.open .filter-section-body { display: none; }
+  .filter-section.open .filter-section-chevron { transform: rotate(0deg); }
 }
 
 @media (max-width: 640px) {
@@ -1086,9 +1090,7 @@ body {
 
 <!-- ===================== ACTIVE FILTER CHIPS ===================== -->
 <div class="filter-chips" id="filterChips">
-  <div class="chip">2025-26 <button class="chip-remove" onclick="this.parentElement.remove(); updateChipCount();">&times;</button></div>
-  <div class="chip">Min 300 ON Poss <button class="chip-remove" onclick="this.parentElement.remove(); updateChipCount();">&times;</button></div>
-  <div class="chip">Regular Season <button class="chip-remove" onclick="this.parentElement.remove(); updateChipCount();">&times;</button></div>
+  <!-- Chips populated dynamically by updateFilterChips() -->
 </div>
 
 <!-- ===================== LAYOUT ===================== -->
@@ -1669,7 +1671,9 @@ body {
       <div class="filter-section-body">
         <div class="filter-group">
           <label class="filter-label">Teams</label>
-          <select class="filter-select"><option>All teams</option></select>
+          <select class="filter-select" id="drawerTeamsFilter">
+            <option value="">All teams</option>
+          </select>
         </div>
         <div class="filter-group">
           <label class="filter-label">Game Type</label>
@@ -1677,7 +1681,9 @@ body {
         </div>
         <div class="filter-group">
           <label class="filter-label">Opponents</label>
-          <select class="filter-select"><option>All opponents</option></select>
+          <select class="filter-select" id="drawerOpponentsFilter">
+            <option value="">All opponents</option>
+          </select>
         </div>
         <div class="filter-row">
           <div class="filter-group">
@@ -1711,13 +1717,13 @@ body {
       </div>
       <div class="filter-section-body">
         <div class="filter-group">
-          <label class="filter-label">Min ON Possessions <span style="float:right; color:var(--accent); font-family:var(--font-mono);">300</span></label>
-          <input type="range" class="filter-range" min="0" max="3000" value="300" step="10">
+          <label class="filter-label">Min ON Possessions <span id="minOnPossValue" style="float:right; color:var(--accent); font-family:var(--font-mono);">300</span></label>
+          <input type="range" class="filter-range" id="minOnPossSlider" min="0" max="3000" value="300" step="10" oninput="updateMinPoss('on', this.value)">
           <div class="filter-range-labels"><span>0</span><span>3,000</span></div>
         </div>
         <div class="filter-group">
-          <label class="filter-label">Min Poss per Side <span style="float:right; color:var(--accent); font-family:var(--font-mono);">100</span></label>
-          <input type="range" class="filter-range" min="0" max="2000" value="100" step="10">
+          <label class="filter-label">Min Poss per Side <span id="minSidePossValue" style="float:right; color:var(--accent); font-family:var(--font-mono);">100</span></label>
+          <input type="range" class="filter-range" id="minSidePossSlider" min="0" max="2000" value="100" step="10" oninput="updateMinPoss('side', this.value)">
           <div class="filter-range-labels"><span>0</span><span>2,000</span></div>
         </div>
       </div>
@@ -1804,6 +1810,78 @@ const MOCK_LINEUPS_FF = [
   { names:"Cline / Dawson / Levi / Cohen / Grant", team:"Bnei Herzliya", offTs:54.5, offOreb:29.8, offTov:12.8, offFtr:24.8, defTs:51.2, defOreb:31.0, defTov:13.2, defFtr:25.2, offPoss:220, defPoss:215, min:48.2 },
   { names:"Ragland / D.Ennis / Pnini / Okoye / Blayzer", team:"Hapoel Holon", offTs:53.8, offOreb:27.5, offTov:14.2, offFtr:23.5, defTs:52.0, defOreb:31.5, defTov:12.8, defFtr:25.8, offPoss:265, defPoss:258, min:57.6 },
   { names:"Harris / Levi / Allon / Peterson / Biran", team:"Ironi Ness Ziona", offTs:52.0, offOreb:28.2, offTov:13.8, offFtr:22.8, defTs:53.5, defOreb:32.0, defTov:12.0, defFtr:26.5, offPoss:188, defPoss:182, min:41.5 },
+];
+
+// 2-man lineups
+const MOCK_LINEUPS_2 = [
+  { names:"Ennis / Kilpatrick", team:"Hapoel Tel Aviv", offPpp:142.5, defPpp:90.2, net:52.3, fg2o:59,fg3o:41,fg2oa:63,fg3oa:46, fg2d:52,fg3d:48,fg2da:45,fg3da:28, offPoss:380, defPoss:375, min:78.5 },
+  { names:"Hoard / Jokubaitis", team:"Maccabi Tel Aviv", offPpp:135.1, defPpp:96.8, net:38.3, fg2o:54,fg3o:46,fg2oa:59,fg3oa:43, fg2d:56,fg3d:44,fg2da:48,fg3da:31, offPoss:425, defPoss:420, min:89.2 },
+  { names:"Adams / Zoosman", team:"Hapoel Jerusalem", offPpp:128.4, defPpp:95.2, net:33.2, fg2o:52,fg3o:48,fg2oa:56,fg3oa:42, fg2d:55,fg3d:45,fg2da:46,fg3da:30, offPoss:368, defPoss:362, min:82.1 },
+  { names:"Hannah / Grant", team:"Maccabi Ramat Gan", offPpp:124.2, defPpp:98.5, net:25.7, fg2o:61,fg3o:39,fg2oa:58,fg3oa:37, fg2d:59,fg3d:41,fg2da:50,fg3da:32, offPoss:295, defPoss:290, min:64.3 },
+  { names:"Scott / Brown", team:"Hapoel Tel Aviv", offPpp:130.8, defPpp:101.2, net:29.6, fg2o:57,fg3o:43,fg2oa:60,fg3oa:40, fg2d:54,fg3d:46,fg2da:48,fg3da:31, offPoss:312, defPoss:308, min:68.7 },
+  { names:"Cline / Dawson", team:"Bnei Herzliya", offPpp:121.5, defPpp:100.8, net:20.7, fg2o:55,fg3o:45,fg2oa:54,fg3oa:39, fg2d:56,fg3d:44,fg2da:47,fg3da:30, offPoss:285, defPoss:280, min:62.5 },
+  { names:"Ragland / Pnini", team:"Hapoel Holon", offPpp:118.2, defPpp:102.5, net:15.7, fg2o:58,fg3o:42,fg2oa:55,fg3oa:38, fg2d:60,fg3d:40,fg2da:51,fg3da:33, offPoss:340, defPoss:335, min:74.8 },
+  { names:"Baldwin / Rivero", team:"Maccabi Tel Aviv", offPpp:127.6, defPpp:104.3, net:23.3, fg2o:53,fg3o:47,fg2oa:51,fg3oa:41, fg2d:54,fg3d:46,fg2da:49,fg3da:34, offPoss:268, defPoss:264, min:58.9 },
+  { names:"Blatt / Levi", team:"Hapoel Jerusalem", offPpp:115.8, defPpp:105.2, net:10.6, fg2o:54,fg3o:46,fg2oa:50,fg3oa:36, fg2d:57,fg3d:43,fg2da:50,fg3da:35, offPoss:245, defPoss:240, min:54.2 },
+  { names:"Timor / Williams", team:"Maccabi Ramat Gan", offPpp:119.4, defPpp:107.8, net:11.6, fg2o:59,fg3o:41,fg2oa:54,fg3oa:34, fg2d:58,fg3d:42,fg2da:52,fg3da:36, offPoss:220, defPoss:215, min:48.3 },
+];
+
+const MOCK_LINEUPS_2_FF = [
+  { names:"Ennis / Kilpatrick", team:"Hapoel Tel Aviv", offTs:66.5, offOreb:36.2, offTov:9.8, offFtr:31.8, defTs:45.2, defOreb:25.1, defTov:17.2, defFtr:20.5, offPoss:380, defPoss:375, min:78.5 },
+  { names:"Hoard / Jokubaitis", team:"Maccabi Tel Aviv", offTs:61.8, offOreb:34.0, offTov:10.8, offFtr:28.5, defTs:48.0, defOreb:27.5, defTov:15.2, defFtr:22.8, offPoss:425, defPoss:420, min:89.2 },
+  { names:"Adams / Zoosman", team:"Hapoel Jerusalem", offTs:59.2, offOreb:31.8, offTov:11.2, offFtr:26.8, defTs:47.2, defOreb:28.8, defTov:14.5, defFtr:23.2, offPoss:368, defPoss:362, min:82.1 },
+  { names:"Hannah / Grant", team:"Maccabi Ramat Gan", offTs:57.5, offOreb:29.8, offTov:12.8, offFtr:27.2, defTs:49.5, defOreb:29.5, defTov:13.2, defFtr:24.0, offPoss:295, defPoss:290, min:64.3 },
+  { names:"Scott / Brown", team:"Hapoel Tel Aviv", offTs:60.8, offOreb:33.5, offTov:10.5, offFtr:28.0, defTs:50.2, defOreb:30.0, defTov:14.0, defFtr:23.8, offPoss:312, defPoss:308, min:68.7 },
+  { names:"Cline / Dawson", team:"Bnei Herzliya", offTs:56.2, offOreb:30.5, offTov:12.2, offFtr:25.5, defTs:50.5, defOreb:30.5, defTov:13.5, defFtr:24.5, offPoss:285, defPoss:280, min:62.5 },
+  { names:"Ragland / Pnini", team:"Hapoel Holon", offTs:55.0, offOreb:28.5, offTov:13.5, offFtr:24.2, defTs:51.2, defOreb:31.2, defTov:13.0, defFtr:25.0, offPoss:340, defPoss:335, min:74.8 },
+];
+
+// 3-man lineups
+const MOCK_LINEUPS_3 = [
+  { names:"Ennis / Scott / Kilpatrick", team:"Hapoel Tel Aviv", offPpp:140.8, defPpp:91.5, net:49.3, fg2o:58,fg3o:42,fg2oa:62,fg3oa:45, fg2d:53,fg3d:47,fg2da:46,fg3da:29, offPoss:325, defPoss:320, min:68.4 },
+  { names:"Hoard / Jokubaitis / Rivero", team:"Maccabi Tel Aviv", offPpp:134.2, defPpp:97.2, net:37.0, fg2o:54,fg3o:46,fg2oa:58,fg3oa:42, fg2d:56,fg3d:44,fg2da:49,fg3da:32, offPoss:358, defPoss:352, min:76.5 },
+  { names:"Adams / Blatt / Zoosman", team:"Hapoel Jerusalem", offPpp:127.1, defPpp:96.8, net:30.3, fg2o:52,fg3o:48,fg2oa:55,fg3oa:41, fg2d:55,fg3d:45,fg2da:47,fg3da:31, offPoss:305, defPoss:298, min:67.2 },
+  { names:"Hannah / Grant / Williams", team:"Maccabi Ramat Gan", offPpp:122.8, defPpp:100.2, net:22.6, fg2o:60,fg3o:40,fg2oa:57,fg3oa:36, fg2d:58,fg3d:42,fg2da:50,fg3da:33, offPoss:248, defPoss:242, min:54.8 },
+  { names:"Cline / Dawson / Levi", team:"Bnei Herzliya", offPpp:120.2, defPpp:101.8, net:18.4, fg2o:56,fg3o:44,fg2oa:53,fg3oa:38, fg2d:55,fg3d:45,fg2da:48,fg3da:30, offPoss:238, defPoss:232, min:52.5 },
+  { names:"Ragland / Pnini / Okoye", team:"Hapoel Holon", offPpp:116.8, defPpp:103.5, net:13.3, fg2o:57,fg3o:43,fg2oa:54,fg3oa:37, fg2d:59,fg3d:41,fg2da:51,fg3da:34, offPoss:288, defPoss:282, min:63.2 },
+  { names:"Hoard / Baldwin / Sorkin", team:"Maccabi Tel Aviv", offPpp:125.5, defPpp:105.8, net:19.7, fg2o:53,fg3o:47,fg2oa:50,fg3oa:40, fg2d:54,fg3d:46,fg2da:50,fg3da:35, offPoss:265, defPoss:260, min:57.8 },
+  { names:"Ennis / Blossomgame / Brown", team:"Hapoel Tel Aviv", offPpp:129.2, defPpp:104.2, net:25.0, fg2o:59,fg3o:41,fg2oa:59,fg3oa:39, fg2d:55,fg3d:45,fg2da:48,fg3da:31, offPoss:198, defPoss:192, min:43.5 },
+  { names:"Adams / Levi / Bender", team:"Hapoel Jerusalem", offPpp:113.5, defPpp:107.2, net:6.3, fg2o:53,fg3o:47,fg2oa:49,fg3oa:35, fg2d:57,fg3d:43,fg2da:51,fg3da:36, offPoss:215, defPoss:210, min:47.2 },
+  { names:"Timor / Ziv / Cohen", team:"Maccabi Ramat Gan", offPpp:117.8, defPpp:108.5, net:9.3, fg2o:58,fg3o:42,fg2oa:53,fg3oa:33, fg2d:57,fg3d:43,fg2da:52,fg3da:37, offPoss:185, defPoss:180, min:40.8 },
+];
+
+const MOCK_LINEUPS_3_FF = [
+  { names:"Ennis / Scott / Kilpatrick", team:"Hapoel Tel Aviv", offTs:65.5, offOreb:35.8, offTov:10.0, offFtr:31.2, defTs:45.8, defOreb:25.8, defTov:16.8, defFtr:20.8, offPoss:325, defPoss:320, min:68.4 },
+  { names:"Hoard / Jokubaitis / Rivero", team:"Maccabi Tel Aviv", offTs:61.2, offOreb:33.5, offTov:11.0, offFtr:27.8, defTs:48.5, defOreb:28.0, defTov:14.8, defFtr:23.0, offPoss:358, defPoss:352, min:76.5 },
+  { names:"Adams / Blatt / Zoosman", team:"Hapoel Jerusalem", offTs:58.8, offOreb:31.2, offTov:11.5, offFtr:26.2, defTs:47.8, defOreb:29.0, defTov:14.2, defFtr:23.5, offPoss:305, defPoss:298, min:67.2 },
+  { names:"Hannah / Grant / Williams", team:"Maccabi Ramat Gan", offTs:57.0, offOreb:29.5, offTov:13.0, offFtr:26.8, defTs:50.0, defOreb:29.8, defTov:12.8, defFtr:24.2, offPoss:248, defPoss:242, min:54.8 },
+  { names:"Cline / Dawson / Levi", team:"Bnei Herzliya", offTs:55.8, offOreb:30.0, offTov:12.5, offFtr:25.0, defTs:50.8, defOreb:30.8, defTov:13.0, defFtr:24.8, offPoss:238, defPoss:232, min:52.5 },
+  { names:"Ragland / Pnini / Okoye", team:"Hapoel Holon", offTs:54.5, offOreb:28.0, offTov:13.8, offFtr:23.8, defTs:51.5, defOreb:31.5, defTov:12.5, defFtr:25.2, offPoss:288, defPoss:282, min:63.2 },
+  { names:"Hoard / Baldwin / Sorkin", team:"Maccabi Tel Aviv", offTs:58.5, offOreb:32.0, offTov:11.8, offFtr:26.5, defTs:52.8, defOreb:32.2, defTov:12.2, defFtr:26.0, offPoss:265, defPoss:260, min:57.8 },
+];
+
+// 4-man lineups
+const MOCK_LINEUPS_4 = [
+  { names:"Ennis / Blossomgame / Scott / Kilpatrick", team:"Hapoel Tel Aviv", offPpp:139.5, defPpp:91.8, net:47.7, fg2o:58,fg3o:42,fg2oa:61,fg3oa:44, fg2d:53,fg3d:47,fg2da:46,fg3da:29, offPoss:268, defPoss:262, min:57.8 },
+  { names:"Hoard / Baldwin / Jokubaitis / Rivero", team:"Maccabi Tel Aviv", offPpp:133.5, defPpp:97.8, net:35.7, fg2o:55,fg3o:45,fg2oa:58,fg3oa:42, fg2d:57,fg3d:43,fg2da:49,fg3da:32, offPoss:328, defPoss:322, min:71.2 },
+  { names:"Adams / Blatt / Zoosman / Levi", team:"Hapoel Jerusalem", offPpp:126.2, defPpp:97.1, net:29.1, fg2o:53,fg3o:47,fg2oa:55,fg3oa:40, fg2d:56,fg3d:44,fg2da:47,fg3da:31, offPoss:292, defPoss:285, min:64.5 },
+  { names:"Hannah / Timor / Grant / Williams", team:"Maccabi Ramat Gan", offPpp:122.1, defPpp:100.8, net:21.3, fg2o:60,fg3o:40,fg2oa:56,fg3oa:35, fg2d:58,fg3d:42,fg2da:51,fg3da:33, offPoss:215, defPoss:210, min:47.8 },
+  { names:"Cline / Dawson / Levi / Cohen", team:"Bnei Herzliya", offPpp:119.5, defPpp:102.2, net:17.3, fg2o:56,fg3o:44,fg2oa:52,fg3oa:38, fg2d:55,fg3d:45,fg2da:48,fg3da:30, offPoss:228, defPoss:223, min:50.2 },
+  { names:"Ragland / D.Ennis / Pnini / Okoye", team:"Hapoel Holon", offPpp:116.2, defPpp:103.8, net:12.4, fg2o:57,fg3o:43,fg2oa:53,fg3oa:36, fg2d:59,fg3d:41,fg2da:52,fg3da:35, offPoss:278, defPoss:272, min:60.5 },
+  { names:"Harris / Levi / Allon / Peterson", team:"Ironi Ness Ziona", offPpp:113.2, defPpp:106.2, net:7.0, fg2o:54,fg3o:46,fg2oa:50,fg3oa:37, fg2d:57,fg3d:43,fg2da:50,fg3da:34, offPoss:198, defPoss:192, min:43.8 },
+  { names:"Hoard / Jokubaitis / Rivero / Sorkin", team:"Maccabi Tel Aviv", offPpp:124.8, defPpp:106.5, net:18.3, fg2o:53,fg3o:47,fg2oa:50,fg3oa:40, fg2d:55,fg3d:45,fg2da:50,fg3da:35, offPoss:248, defPoss:242, min:54.2 },
+  { names:"Ennis / Scott / Brown / Jones", team:"Hapoel Tel Aviv", offPpp:128.2, defPpp:104.8, net:23.4, fg2o:59,fg3o:41,fg2oa:58,fg3oa:38, fg2d:55,fg3d:45,fg2da:48,fg3da:31, offPoss:175, defPoss:170, min:38.5 },
+  { names:"Adams / Blatt / Sorkin / Brown", team:"Hapoel Jerusalem", offPpp:110.5, defPpp:110.8, net:-0.3, fg2o:54,fg3o:46,fg2oa:48,fg3oa:33, fg2d:58,fg3d:42,fg2da:52,fg3da:36, offPoss:162, defPoss:158, min:35.8 },
+];
+
+const MOCK_LINEUPS_4_FF = [
+  { names:"Ennis / Blossomgame / Scott / Kilpatrick", team:"Hapoel Tel Aviv", offTs:64.8, offOreb:35.5, offTov:10.1, offFtr:30.8, defTs:46.2, defOreb:26.0, defTov:16.5, defFtr:21.0, offPoss:268, defPoss:262, min:57.8 },
+  { names:"Hoard / Baldwin / Jokubaitis / Rivero", team:"Maccabi Tel Aviv", offTs:60.5, offOreb:33.2, offTov:11.2, offFtr:27.5, defTs:48.8, defOreb:28.5, defTov:14.8, defFtr:23.2, offPoss:328, defPoss:322, min:71.2 },
+  { names:"Adams / Blatt / Zoosman / Levi", team:"Hapoel Jerusalem", offTs:58.2, offOreb:30.8, offTov:11.8, offFtr:26.0, defTs:48.2, defOreb:29.2, defTov:14.0, defFtr:23.8, offPoss:292, defPoss:285, min:64.5 },
+  { names:"Hannah / Timor / Grant / Williams", team:"Maccabi Ramat Gan", offTs:56.8, offOreb:29.2, offTov:13.2, offFtr:26.8, defTs:50.5, defOreb:30.0, defTov:12.8, defFtr:24.5, offPoss:215, defPoss:210, min:47.8 },
+  { names:"Cline / Dawson / Levi / Cohen", team:"Bnei Herzliya", offTs:55.2, offOreb:29.8, offTov:12.5, offFtr:25.2, defTs:51.0, defOreb:30.8, defTov:13.2, defFtr:25.0, offPoss:228, defPoss:223, min:50.2 },
+  { names:"Ragland / D.Ennis / Pnini / Okoye", team:"Hapoel Holon", offTs:54.2, offOreb:27.8, offTov:14.0, offFtr:23.8, defTs:51.8, defOreb:31.8, defTov:12.5, defFtr:25.5, offPoss:278, defPoss:272, min:60.5 },
+  { names:"Harris / Levi / Allon / Peterson", team:"Ironi Ness Ziona", offTs:52.5, offOreb:28.5, offTov:13.5, offFtr:23.0, defTs:53.2, defOreb:31.8, defTov:12.2, defFtr:26.2, offPoss:198, defPoss:192, min:43.8 },
 ];
 
 // =================================================================
@@ -1972,7 +2050,14 @@ function scoreCell(score, result) {
 // =================================================================
 function renderSummaryTable() {
   const tbody = document.getElementById('summaryBody');
-  tbody.innerHTML = MOCK_PLAYERS.map(p => `
+  let filtered = MOCK_PLAYERS.filter(p => p.onPoss >= currentFilters.minOnPoss);
+
+  // Filter by drawer team
+  if (currentFilters.drawerTeam) {
+    filtered = filtered.filter(p => p.team === currentFilters.drawerTeam);
+  }
+
+  tbody.innerHTML = filtered.map(p => `
     <tr>
       <td style="font-size:11px; color:var(--text-secondary); font-family:var(--font-sans); min-width:80px;">${p.team}</td>
       <td style="min-width:130px;">${p.player}</td>
@@ -1993,11 +2078,24 @@ function renderSummaryTable() {
       <td style="color:var(--text-muted);">${p.offPoss.toLocaleString()}</td>
     </tr>
   `).join('');
+
+  // Update table info
+  const infoLabel = document.querySelector('#panel-onoff .onoff-summary-view .table-info');
+  if (infoLabel) {
+    infoLabel.textContent = `Showing ${filtered.length} players · sorted by Net Impact`;
+  }
 }
 
 function renderFFTable() {
   const tbody = document.getElementById('ffBody');
-  tbody.innerHTML = MOCK_FF.map(p => `
+  let filtered = MOCK_FF.filter(p => p.onPoss >= currentFilters.minOnPoss);
+
+  // Filter by drawer team
+  if (currentFilters.drawerTeam) {
+    filtered = filtered.filter(p => p.team === currentFilters.drawerTeam);
+  }
+
+  tbody.innerHTML = filtered.map(p => `
     <tr>
       <td style="font-size:11px; color:var(--text-secondary); font-family:var(--font-sans); min-width:80px;">${p.team}</td>
       <td style="min-width:130px;">${p.player}</td>
@@ -2016,21 +2114,49 @@ function renderFFTable() {
       <td style="color:var(--text-muted); font-family:var(--font-mono);">${p.offPoss.toLocaleString()}</td>
     </tr>
   `).join('');
+
+  // Update table info
+  const infoLabel = document.querySelector('#panel-onoff .onoff-ff-view .table-info');
+  if (infoLabel) {
+    infoLabel.textContent = `Showing ${filtered.length} players · sorted by Net Impact`;
+  }
 }
 
 // =================================================================
 // RENDER — Tab 2: Lineup Data
 // =================================================================
+function getLineupsData(groupSize, isFourFactors = false) {
+  if (isFourFactors) {
+    if (groupSize === 2) return MOCK_LINEUPS_2_FF;
+    if (groupSize === 3) return MOCK_LINEUPS_3_FF;
+    if (groupSize === 4) return MOCK_LINEUPS_4_FF;
+    return MOCK_LINEUPS_FF;  // 5-man
+  } else {
+    if (groupSize === 2) return MOCK_LINEUPS_2;
+    if (groupSize === 3) return MOCK_LINEUPS_3;
+    if (groupSize === 4) return MOCK_LINEUPS_4;
+    return MOCK_LINEUPS;  // 5-man
+  }
+}
+
 function renderLineupsTable() {
   const tbody = document.getElementById('lineupsBody');
-  // Total row
-  const totOff = MOCK_LINEUPS.reduce((s,l) => s + l.offPoss, 0);
-  const totDef = MOCK_LINEUPS.reduce((s,l) => s + l.defPoss, 0);
-  const totMin = MOCK_LINEUPS.reduce((s,l) => s + l.min, 0);
-  const wOffPpp = MOCK_LINEUPS.reduce((s,l) => s + l.offPpp * l.offPoss, 0) / totOff;
-  const wDefPpp = MOCK_LINEUPS.reduce((s,l) => s + l.defPpp * l.defPoss, 0) / totDef;
+  const data = getLineupsData(currentGroupSize, false);
+  let filtered = data.filter(l => l.offPoss >= currentFilters.minSidePoss && l.defPoss >= currentFilters.minSidePoss);
 
-  tbody.innerHTML = MOCK_LINEUPS.map((l, i) => `
+  // Filter by drawer team
+  if (currentFilters.drawerTeam) {
+    filtered = filtered.filter(l => l.team === currentFilters.drawerTeam);
+  }
+
+  // Total row
+  const totOff = filtered.reduce((s,l) => s + l.offPoss, 0);
+  const totDef = filtered.reduce((s,l) => s + l.defPoss, 0);
+  const totMin = filtered.reduce((s,l) => s + l.min, 0);
+  const wOffPpp = filtered.reduce((s,l) => s + l.offPpp * l.offPoss, 0) / totOff;
+  const wDefPpp = filtered.reduce((s,l) => s + l.defPpp * l.defPoss, 0) / totDef;
+
+  tbody.innerHTML = filtered.map((l, i) => `
     <tr>
       <td style="text-align:left; font-family:var(--font-sans); min-width:220px;">
         <a class="lineup-link" onclick="openLineupModal(${i})">${l.names}</a>
@@ -2059,15 +2185,29 @@ function renderLineupsTable() {
       <td>${totDef.toLocaleString()}</td>
       <td>${totMin.toFixed(1)}</td>
     </tr>`;
+
+  // Update table info
+  const infoLabels = document.querySelectorAll('#panel-lineups .lineups-summary-view .table-info');
+  infoLabels.forEach(label => {
+    label.textContent = `Showing ${filtered.length} lineups · ${currentGroupSize}-man · sorted by Net`;
+  });
 }
 
 function renderLineupsFFTable() {
   const tbody = document.getElementById('lineupsFFBody');
-  const totOff = MOCK_LINEUPS_FF.reduce((s,l) => s + l.offPoss, 0);
-  const totDef = MOCK_LINEUPS_FF.reduce((s,l) => s + l.defPoss, 0);
-  const totMin = MOCK_LINEUPS_FF.reduce((s,l) => s + l.min, 0);
+  const data = getLineupsData(currentGroupSize, true);
+  let filtered = data.filter(l => l.offPoss >= currentFilters.minSidePoss && l.defPoss >= currentFilters.minSidePoss);
 
-  tbody.innerHTML = MOCK_LINEUPS_FF.map((l, i) => `
+  // Filter by drawer team
+  if (currentFilters.drawerTeam) {
+    filtered = filtered.filter(l => l.team === currentFilters.drawerTeam);
+  }
+
+  const totOff = filtered.reduce((s,l) => s + l.offPoss, 0);
+  const totDef = filtered.reduce((s,l) => s + l.defPoss, 0);
+  const totMin = filtered.reduce((s,l) => s + l.min, 0);
+
+  tbody.innerHTML = filtered.map((l, i) => `
     <tr>
       <td style="text-align:left; font-family:var(--font-sans); min-width:220px;">
         <a class="lineup-link" onclick="openLineupModal(${i})">${l.names}</a>
@@ -2086,6 +2226,12 @@ function renderLineupsFFTable() {
       <td style="color:var(--text-muted);">${l.min.toFixed(1)}</td>
     </tr>
   `).join('');
+
+  // Update table info
+  const infoLabels = document.querySelectorAll('#panel-lineups .lineups-ff-view .table-info');
+  infoLabels.forEach(label => {
+    label.textContent = `Showing ${filtered.length} lineups · ${currentGroupSize}-man · sorted by Net`;
+  });
 }
 
 // =================================================================
@@ -2093,7 +2239,14 @@ function renderLineupsFFTable() {
 // =================================================================
 function renderTeamsTable() {
   const tbody = document.getElementById('teamsBody');
-  tbody.innerHTML = MOCK_TEAMS.map(t => `
+  let filtered = MOCK_TEAMS;
+
+  // Filter by drawer team
+  if (currentFilters.drawerTeam) {
+    filtered = filtered.filter(t => t.team === currentFilters.drawerTeam);
+  }
+
+  tbody.innerHTML = filtered.map(t => `
     <tr>
       <td style="text-align:left; font-family:var(--font-sans); font-weight:500; min-width:130px;">${t.team}</td>
       <td>${recordCell(t.w, t.l)}</td>
@@ -2111,7 +2264,14 @@ function renderTeamsTable() {
 
 function renderTeamsFFTable() {
   const tbody = document.getElementById('teamsFFBody');
-  tbody.innerHTML = MOCK_TEAMS_FF.map(t => `
+  let filtered = MOCK_TEAMS_FF;
+
+  // Filter by drawer team
+  if (currentFilters.drawerTeam) {
+    filtered = filtered.filter(t => t.team === currentFilters.drawerTeam);
+  }
+
+  tbody.innerHTML = filtered.map(t => `
     <tr>
       <td style="text-align:left; font-family:var(--font-sans); font-weight:500; min-width:130px;">${t.team}</td>
       <td>${recordCell(t.w, t.l)}</td>
@@ -2180,9 +2340,13 @@ function renderGamelogsFFTable() {
 // =================================================================
 let currentSortColumn = null;
 let currentSortDir = 'desc';
+let currentGroupSize = 5;  // Tab 2: lineup group size (2, 3, 4, or 5)
 let currentFilters = {
-  team: null,
-  minPoss: 0
+  team: null,           // Tab 4: game logs team filter
+  drawerTeam: null,     // Drawer: team filter (Tab 1/2/3)
+  drawerOpponents: [],  // Drawer: opponent filter (Tab 1/2/3)
+  minOnPoss: 300,       // Tab 1: min ON possessions for players
+  minSidePoss: 100      // Tab 2: min poss per side for lineups
 };
 
 // =================================================================
@@ -2330,17 +2494,184 @@ function switchMode(tab, mode) {
   ffViews.forEach(el => el.style.display = isSummary ? 'none' : '');
 }
 
+function setGroupSize(button, size) {
+  // Update active pill
+  document.querySelectorAll('.group-pill').forEach(p => p.classList.remove('active'));
+  button.classList.add('active');
+
+  // Update state
+  currentGroupSize = size;
+
+  // Re-render both tables
+  renderLineupsTable();
+  renderLineupsFFTable();
+
+  // Update table info labels
+  const data = getLineupsData(size, false);
+  const filtered = data.filter(l => l.offPoss >= currentFilters.minSidePoss && l.defPoss >= currentFilters.minSidePoss);
+  const count = filtered.length;
+  const infoLabels = document.querySelectorAll('#panel-lineups .table-info');
+  infoLabels.forEach(label => {
+    label.textContent = `Showing ${count} lineups · ${size}-man · sorted by Net`;
+  });
+}
+
+function updateMinPoss(type, value) {
+  const numValue = parseInt(value);
+
+  // Update state
+  if (type === 'on') {
+    currentFilters.minOnPoss = numValue;
+    document.getElementById('minOnPossValue').textContent = numValue.toLocaleString();
+    // Re-render Tab 1 tables
+    renderSummaryTable();
+    renderFFTable();
+  } else if (type === 'side') {
+    currentFilters.minSidePoss = numValue;
+    document.getElementById('minSidePossValue').textContent = numValue.toLocaleString();
+    // Re-render Tab 2 tables
+    renderLineupsTable();
+    renderLineupsFFTable();
+  }
+
+  // Update filter chips
+  updateFilterChips();
+}
+
+function updateFilterChips() {
+  const chips = [];
+
+  // Always show season
+  chips.push({ label: '2025-26', removable: false });
+
+  // Drawer team filter (Tab 1/2/3)
+  if (currentFilters.drawerTeam) {
+    chips.push({
+      label: `Team: ${currentFilters.drawerTeam}`,
+      removable: true,
+      onRemove: () => {
+        currentFilters.drawerTeam = null;
+        const sel = document.getElementById('drawerTeamsFilter');
+        if (sel) sel.value = '';
+        renderSummaryTable();
+        renderFFTable();
+        renderLineupsTable();
+        renderLineupsFFTable();
+        renderTeamsTable();
+        renderTeamsFFTable();
+        updateFilterChips();
+      }
+    });
+  }
+
+  // Drawer opponent filter (Tab 1/2/3)
+  if (currentFilters.drawerOpponents.length > 0) {
+    chips.push({
+      label: `vs ${currentFilters.drawerOpponents[0]}`,
+      removable: true,
+      onRemove: () => {
+        currentFilters.drawerOpponents = [];
+        const sel = document.getElementById('drawerOpponentsFilter');
+        if (sel) sel.value = '';
+        renderSummaryTable();
+        renderFFTable();
+        renderLineupsTable();
+        renderLineupsFFTable();
+        renderTeamsTable();
+        renderTeamsFFTable();
+        updateFilterChips();
+      }
+    });
+  }
+
+  // Min ON possessions (if not default)
+  if (currentFilters.minOnPoss > 0) {
+    chips.push({
+      label: `Min ${currentFilters.minOnPoss.toLocaleString()} ON Poss`,
+      removable: true,
+      onRemove: () => {
+        currentFilters.minOnPoss = 0;
+        document.getElementById('minOnPossSlider').value = 0;
+        document.getElementById('minOnPossValue').textContent = '0';
+        renderSummaryTable();
+        renderFFTable();
+        updateFilterChips();
+      }
+    });
+  }
+
+  // Min side possessions (if not default)
+  if (currentFilters.minSidePoss > 0) {
+    chips.push({
+      label: `Min ${currentFilters.minSidePoss.toLocaleString()} Side Poss`,
+      removable: true,
+      onRemove: () => {
+        currentFilters.minSidePoss = 0;
+        document.getElementById('minSidePossSlider').value = 0;
+        document.getElementById('minSidePossValue').textContent = '0';
+        renderLineupsTable();
+        renderLineupsFFTable();
+        updateFilterChips();
+      }
+    });
+  }
+
+  // Game logs team filter (Tab 4 only)
+  if (currentFilters.team) {
+    chips.push({
+      label: `Game Logs: ${currentFilters.team}`,
+      removable: true,
+      onRemove: () => {
+        currentFilters.team = null;
+        const sel = document.getElementById('gamelogsTeamFilter');
+        if (sel) sel.value = '';
+        filterGameLogs();
+        updateFilterChips();
+      }
+    });
+  }
+
+  // Render chips
+  const container = document.getElementById('filterChips');
+  container.innerHTML = chips.map((chip, i) => `
+    <div class="chip">
+      ${chip.label}
+      ${chip.removable ? `<button class="chip-remove" onclick="handleChipRemove(${i})">&times;</button>` : ''}
+    </div>
+  `).join('');
+
+  // Store chip handlers globally for onclick
+  window.chipHandlers = chips.map(c => c.onRemove);
+
+  // Update badge count
+  updateChipCount();
+}
+
+function handleChipRemove(index) {
+  const handler = window.chipHandlers[index];
+  if (handler) handler();
+}
+
+function updateChipCount() {
+  let count = 0;
+  if (currentFilters.drawerTeam) count++;
+  if (currentFilters.drawerOpponents.length > 0) count++;
+  if (currentFilters.minOnPoss > 0) count++;
+  if (currentFilters.minSidePoss > 0) count++;
+  if (currentFilters.team) count++;
+
+  const badge = document.querySelector('.filter-toggle-badge');
+  if (badge) {
+    badge.textContent = count;
+    badge.style.display = count > 0 ? '' : 'none';
+  }
+}
+
 function toggleExplainer(id) {
   const bar = event.currentTarget;
   const body = document.getElementById('explainer-' + id);
   bar.classList.toggle('open');
   body.classList.toggle('show');
-}
-
-function setGroupSize(el, size) {
-  document.querySelectorAll('.group-pill').forEach(p => p.classList.remove('active'));
-  el.classList.add('active');
-  // In a real app, this would re-fetch data for the group size
 }
 
 function openLineupModal(idx) {
@@ -2381,6 +2712,108 @@ function updateChipCount() {
   document.getElementById('filterCount').textContent = chips.length;
 }
 
+// Filter game logs by current team filter
+function filterGameLogs() {
+  const selectedTeam = currentFilters.team;
+  const filteredGames = selectedTeam
+    ? MOCK_GAMELOGS.filter(g => g.team === selectedTeam)
+    : MOCK_GAMELOGS;
+
+  const filteredFF = selectedTeam
+    ? MOCK_GAMELOGS_FF.filter(g => g.team === selectedTeam)
+    : MOCK_GAMELOGS_FF;
+
+  // Re-render Summary table
+  const tbody = document.getElementById('gamelogsBody');
+  tbody.innerHTML = filteredGames.map(g => `
+    <tr>
+      <td style="color:var(--text-muted); font-size:11px;">${g.gn}</td>
+      <td class="date-cell" style="text-align:left;">${g.date}</td>
+      <td style="text-align:left; font-family:var(--font-sans); font-weight:500;">${g.team}</td>
+      <td style="text-align:left; font-family:var(--font-sans); color:var(--text-secondary);">${g.opp}</td>
+      <td>${wlBadge(g.result)} ${scoreCell(g.score, g.result)}</td>
+      <td class="section-start">${g.offPpp.toFixed(1)}</td>
+      <td>${g.defPpp.toFixed(1)}</td>
+      <td class="cell-bold">${formatDiff(g.net)}</td>
+      <td class="section-start">${shotCell(g.fg2o, g.fg3o, g.fg2oa, g.fg3oa)}</td>
+      <td>${shotCell(g.fg2d, g.fg3d, g.fg2da, g.fg3da, 53, 34)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${g.offPoss}</td>
+      <td style="color:var(--text-muted);">${g.defPoss}</td>
+      <td style="color:var(--text-muted);">${g.min}</td>
+    </tr>
+  `).join('');
+
+  // Re-render Four Factors table
+  const tbodyFF = document.getElementById('gamelogsFFBody');
+  tbodyFF.innerHTML = filteredFF.map(g => `
+    <tr>
+      <td style="color:var(--text-muted); font-size:11px;">${g.gn}</td>
+      <td class="date-cell" style="text-align:left;">${g.date}</td>
+      <td style="text-align:left; font-family:var(--font-sans); font-weight:500;">${g.team}</td>
+      <td style="text-align:left; font-family:var(--font-sans); color:var(--text-secondary);">${g.opp}</td>
+      <td>${wlBadge(g.result)} ${scoreCell(g.score, g.result)}</td>
+      <td class="section-start">${ffValueCell(g.offTs, 'high', 62, 48)}</td>
+      <td>${ffValueCell(g.offOreb, 'high', 36, 24)}</td>
+      <td>${ffValueCell(g.offTov, 'low', 10, 16)}</td>
+      <td>${ffValueCell(g.offFtr, 'high', 32, 20)}</td>
+      <td class="section-start">${ffValueCell(g.defTs, 'low', 48, 56)}</td>
+      <td>${ffValueCell(g.defOreb, 'low', 26, 34)}</td>
+      <td>${ffValueCell(g.defTov, 'high', 16, 10)}</td>
+      <td>${ffValueCell(g.defFtr, 'low', 20, 28)}</td>
+      <td class="section-start" style="color:var(--text-muted);">${g.min}</td>
+    </tr>
+  `).join('');
+}
+
+// Populate drawer team/opponent filters
+function populateDrawerFilters() {
+  // Get unique teams from MOCK_TEAMS (which has all teams)
+  const teams = MOCK_TEAMS.map(t => t.team).sort();
+
+  // Populate Teams dropdown
+  const teamsSel = document.getElementById('drawerTeamsFilter');
+  teams.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    teamsSel.appendChild(opt);
+  });
+
+  // Populate Opponents dropdown (same list)
+  const oppSel = document.getElementById('drawerOpponentsFilter');
+  teams.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    oppSel.appendChild(opt);
+  });
+
+  // Add event listeners
+  teamsSel.addEventListener('change', function() {
+    currentFilters.drawerTeam = this.value || null;
+    // Re-render affected tabs
+    renderSummaryTable();
+    renderFFTable();
+    renderLineupsTable();
+    renderLineupsFFTable();
+    renderTeamsTable();
+    renderTeamsFFTable();
+    updateFilterChips();
+  });
+
+  oppSel.addEventListener('change', function() {
+    currentFilters.drawerOpponents = this.value ? [this.value] : [];
+    // Re-render affected tabs
+    renderSummaryTable();
+    renderFFTable();
+    renderLineupsTable();
+    renderLineupsFFTable();
+    renderTeamsTable();
+    renderTeamsFFTable();
+    updateFilterChips();
+  });
+}
+
 // Populate team filter dropdown for Tab 4
 function populateGamelogsTeamFilter() {
   const sel = document.getElementById('gamelogsTeamFilter');
@@ -2395,6 +2828,8 @@ function populateGamelogsTeamFilter() {
   // Add filter handler
   sel.addEventListener('change', function() {
     const selectedTeam = this.value;
+    currentFilters.team = selectedTeam || null;
+
     const filteredGames = selectedTeam
       ? MOCK_GAMELOGS.filter(g => g.team === selectedTeam)
       : MOCK_GAMELOGS;
@@ -2442,6 +2877,9 @@ function populateGamelogsTeamFilter() {
         <td class="section-start" style="color:var(--text-muted);">${g.min}</td>
       </tr>
     `).join('');
+
+    // Update filter chips
+    updateFilterChips();
   });
 }
 
@@ -2584,8 +3022,10 @@ renderTeamsTable();
 renderTeamsFFTable();
 renderGamelogsTable();
 renderGamelogsFFTable();
+populateDrawerFilters();
 populateGamelogsTeamFilter();
 makeHeadersSortable();
+updateFilterChips();
 </script>
 </body>
 </html>
