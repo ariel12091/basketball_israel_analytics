@@ -1,0 +1,2591 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IBPL Court Impact — Player Analytics</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,300;0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   DESIGN SYSTEM — IBPL Court Impact
+   Aesthetic: Dark editorial sports intelligence
+   ============================================================ */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  /* Surface palette */
+  --bg-root: #080c14;
+  --bg-surface: #0e1420;
+  --bg-card: #141c2b;
+  --bg-elevated: #1a2436;
+  --bg-hover: #1e2a3e;
+  --bg-active: #243350;
+
+  /* Text */
+  --text-primary: #e8ecf4;
+  --text-secondary: #8a96ab;
+  --text-muted: #5a6578;
+  --text-inverse: #080c14;
+
+  /* Accent */
+  --accent: #e8a435;
+  --accent-glow: rgba(232, 164, 53, 0.15);
+  --accent-dim: #c48a28;
+
+  /* Semantic */
+  --positive: #34d399;
+  --positive-bg: rgba(52, 211, 153, 0.08);
+  --negative: #f87171;
+  --negative-bg: rgba(248, 113, 113, 0.08);
+  --neutral: #60a5fa;
+
+  /* Shot splits */
+  --fg2: #5b8abd;
+  --fg3: #d4843e;
+
+  /* Borders */
+  --border-subtle: rgba(255,255,255,0.04);
+  --border-dim: rgba(255,255,255,0.08);
+  --border-accent: rgba(232, 164, 53, 0.25);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Fonts */
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Timing */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-med: 300ms;
+  --duration-slow: 500ms;
+}
+
+html { font-size: 14px; -webkit-font-smoothing: antialiased; }
+body {
+  font-family: var(--font-sans);
+  background: var(--bg-root);
+  color: var(--text-primary);
+  line-height: 1.5;
+  overflow-x: hidden;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--text-muted); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--text-secondary); }
+
+/* ============================================================
+   TOP BAR
+   ============================================================ */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  height: 56px;
+  background: rgba(8, 12, 20, 0.85);
+  backdrop-filter: blur(20px) saturate(1.8);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.topbar-brand {
+  display: flex; align-items: center; gap: 12px;
+}
+
+.topbar-logo {
+  width: 28px; height: 28px;
+  background: var(--accent);
+  border-radius: 6px;
+  display: grid; place-items: center;
+  font-family: var(--font-mono);
+  font-weight: 700; font-size: 14px;
+  color: var(--text-inverse);
+  letter-spacing: -1px;
+}
+
+.topbar-title {
+  font-size: 15px; font-weight: 600;
+  letter-spacing: -0.3px;
+  color: var(--text-primary);
+}
+
+.topbar-title span { color: var(--accent); }
+
+.topbar-right {
+  display: flex; align-items: center; gap: 16px;
+}
+
+.topbar-meta {
+  font-size: 11px; color: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.3px;
+}
+
+.topbar-meta strong { color: var(--accent-dim); font-weight: 500; }
+
+/* Filter toggle button */
+.filter-toggle-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 14px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-out);
+}
+.filter-toggle-btn:hover { background: var(--bg-hover); color: var(--text-primary); border-color: var(--border-accent); }
+.filter-toggle-btn.active { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); }
+.filter-toggle-btn svg { width: 14px; height: 14px; }
+
+.filter-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 16px; height: 16px;
+  padding: 0 5px;
+  background: var(--accent);
+  color: var(--text-inverse);
+  border-radius: 99px;
+  font-size: 10px; font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+/* ============================================================
+   TAB NAVIGATION
+   ============================================================ */
+.tab-nav {
+  display: flex; align-items: center; gap: 2px;
+  padding: 10px 24px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.tab-btn {
+  position: relative;
+  padding: 10px 20px 12px;
+  font-family: var(--font-sans);
+  font-size: 13px; font-weight: 500;
+  color: var(--text-muted);
+  background: none; border: none;
+  cursor: pointer;
+  transition: color var(--duration-fast);
+  letter-spacing: 0.2px;
+}
+.tab-btn:hover { color: var(--text-secondary); }
+.tab-btn.active { color: var(--accent); font-weight: 600; }
+.tab-btn.active::after {
+  content: '';
+  position: absolute; bottom: -1px; left: 8px; right: 8px;
+  height: 2px;
+  background: var(--accent);
+  border-radius: 2px 2px 0 0;
+}
+
+/* ============================================================
+   CONTENT AREA
+   ============================================================ */
+.content-wrap {
+  display: flex;
+  min-height: calc(100vh - 100px);
+}
+
+.main-content {
+  flex: 1;
+  padding: 20px 24px;
+  min-width: 0;
+  transition: margin-right var(--duration-med) var(--ease-out);
+}
+.main-content.with-drawer { margin-right: 340px; }
+
+/* ============================================================
+   FILTER DRAWER (slides from right)
+   ============================================================ */
+.filter-drawer {
+  position: fixed; top: 56px; right: 0; bottom: 0;
+  width: 340px;
+  background: var(--bg-surface);
+  border-left: 1px solid var(--border-subtle);
+  z-index: 90;
+  transform: translateX(100%);
+  transition: transform var(--duration-med) var(--ease-out);
+  overflow-y: auto;
+  padding: 20px;
+}
+.filter-drawer.open { transform: translateX(0); }
+
+.drawer-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 20px;
+}
+.drawer-title {
+  font-size: 13px; font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--text-secondary);
+}
+.drawer-close {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+}
+.drawer-close:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.clear-all-btn {
+  display: block; width: 100%;
+  padding: 8px;
+  margin-bottom: 16px;
+  background: none;
+  border: 1px dashed var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  font-family: var(--font-sans);
+  font-size: 12px; font-weight: 500;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.clear-all-btn:hover { border-color: var(--negative); color: var(--negative); }
+
+.filter-section {
+  margin-bottom: 16px;
+}
+.filter-section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 0;
+  cursor: pointer;
+}
+.filter-section-title {
+  font-size: 11px; font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-muted);
+}
+.filter-section-chevron {
+  color: var(--text-muted);
+  font-size: 10px;
+  transition: transform var(--duration-fast);
+}
+.filter-section.open .filter-section-chevron { transform: rotate(180deg); }
+
+.filter-section-body {
+  display: none;
+  padding-top: 8px;
+}
+.filter-section.open .filter-section-body { display: block; }
+
+.filter-group {
+  margin-bottom: 12px;
+}
+.filter-label {
+  display: block;
+  font-size: 11px; font-weight: 500;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+  letter-spacing: 0.2px;
+}
+.filter-select, .filter-input {
+  width: 100%;
+  padding: 7px 10px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  outline: none;
+  transition: border-color var(--duration-fast);
+}
+.filter-select:focus, .filter-input:focus { border-color: var(--accent); }
+.filter-select option { background: var(--bg-card); }
+
+.filter-row {
+  display: flex; gap: 8px;
+}
+.filter-row > * { flex: 1; }
+
+/* Range slider */
+.filter-range {
+  -webkit-appearance: none;
+  width: 100%; height: 4px;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  outline: none;
+  margin-top: 8px;
+}
+.filter-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 16px; height: 16px;
+  background: var(--accent);
+  border-radius: 50%;
+  cursor: pointer;
+  border: 2px solid var(--bg-card);
+}
+.filter-range-labels {
+  display: flex; justify-content: space-between;
+  margin-top: 4px;
+  font-size: 10px; color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ============================================================
+   ACTIVE FILTER CHIPS
+   ============================================================ */
+.filter-chips {
+  display: flex; flex-wrap: wrap; gap: 6px;
+  padding: 0 24px 12px;
+}
+.chip {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px 4px 8px;
+  background: var(--accent-glow);
+  border: 1px solid rgba(232, 164, 53, 0.2);
+  border-radius: 99px;
+  font-size: 11px; font-weight: 500;
+  color: var(--accent);
+  animation: chipIn var(--duration-med) var(--ease-out);
+}
+.chip-remove {
+  width: 14px; height: 14px;
+  display: grid; place-items: center;
+  background: rgba(232, 164, 53, 0.2);
+  border: none; border-radius: 50%;
+  color: var(--accent);
+  font-size: 10px;
+  cursor: pointer;
+  line-height: 1;
+}
+.chip-remove:hover { background: var(--accent); color: var(--text-inverse); }
+
+@keyframes chipIn {
+  from { opacity: 0; transform: scale(0.9); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+/* ============================================================
+   SECTION HEADER (per-tab)
+   ============================================================ */
+.section-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 16px;
+  flex-wrap: wrap; gap: 12px;
+}
+.section-title-area { display: flex; align-items: baseline; gap: 12px; }
+.section-title {
+  font-size: 20px; font-weight: 700;
+  letter-spacing: -0.5px;
+  color: var(--text-primary);
+}
+.section-subtitle {
+  font-size: 12px; color: var(--text-muted);
+  font-weight: 400;
+}
+
+/* View mode toggle (Summary / Four Factors) */
+.mode-toggle {
+  display: inline-flex;
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+.mode-btn {
+  padding: 6px 16px;
+  font-family: var(--font-sans);
+  font-size: 12px; font-weight: 500;
+  color: var(--text-muted);
+  background: none; border: none;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+  border-right: 1px solid var(--border-dim);
+}
+.mode-btn:last-child { border-right: none; }
+.mode-btn:hover { color: var(--text-secondary); background: var(--bg-elevated); }
+.mode-btn.active {
+  color: var(--accent);
+  background: var(--accent-glow);
+  font-weight: 600;
+}
+
+/* ============================================================
+   EXPLAINER / LEGEND
+   ============================================================ */
+.explainer-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 12px;
+  cursor: pointer;
+  transition: background var(--duration-fast);
+}
+.explainer-bar:hover { background: var(--bg-elevated); }
+.explainer-bar-left {
+  display: flex; align-items: center; gap: 10px;
+}
+.explainer-icon {
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  font-size: 12px;
+  color: var(--accent);
+}
+.explainer-bar-title {
+  font-size: 12px; font-weight: 500;
+  color: var(--text-secondary);
+}
+.explainer-chevron {
+  font-size: 10px; color: var(--text-muted);
+  transition: transform var(--duration-fast);
+}
+.explainer-bar.open .explainer-chevron { transform: rotate(180deg); }
+
+.explainer-body {
+  display: none;
+  padding: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-top: -8px; margin-bottom: 12px;
+  font-size: 12.5px; color: var(--text-secondary);
+  line-height: 1.6;
+  animation: slideDown var(--duration-med) var(--ease-out);
+}
+.explainer-body.show { display: block; }
+
+@keyframes slideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* Legend row */
+.legend-row {
+  display: flex; align-items: center; gap: 20px;
+  padding: 8px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  margin-bottom: 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.legend-item {
+  display: flex; align-items: center; gap: 6px;
+}
+.legend-swatch {
+  width: 12px; height: 12px;
+  border-radius: 3px;
+}
+.legend-dot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+}
+.legend-track-sample {
+  width: 50px; height: 4px;
+  background: var(--bg-hover);
+  border-radius: 2px;
+  position: relative;
+}
+.legend-track-sample .dot-on {
+  position: absolute; top: 50%; left: 70%;
+  width: 8px; height: 8px;
+  background: var(--text-primary);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  border: 1.5px solid var(--bg-card);
+}
+.legend-track-sample .dot-off {
+  position: absolute; top: 50%; left: 30%;
+  width: 6px; height: 6px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--text-muted);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+/* ============================================================
+   DATA TABLE
+   ============================================================ */
+.table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.table-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.table-info {
+  font-size: 11px; color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.table-actions {
+  display: flex; gap: 8px;
+}
+.table-action-btn {
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.table-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.data-table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 72vh;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+
+/* Grouped header */
+.data-table thead { position: sticky; top: 0; z-index: 10; }
+.data-table thead tr:first-child th {
+  background: var(--bg-elevated);
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent-dim);
+  border-bottom: 1px solid var(--border-dim);
+  white-space: nowrap;
+  text-align: center;
+}
+.data-table thead tr:first-child th.group-empty { background: var(--bg-card); }
+
+.data-table thead tr:last-child th {
+  background: var(--bg-card);
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-dim);
+  white-space: nowrap;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--duration-fast);
+}
+.data-table thead tr:last-child th:hover { color: var(--text-primary); }
+.data-table thead tr:last-child th.sorted-asc::after { content: ' \u25B2'; font-size: 8px; color: var(--accent); }
+.data-table thead tr:last-child th.sorted-desc::after { content: ' \u25BC'; font-size: 8px; color: var(--accent); }
+
+/* Section dividers */
+.section-start {
+  border-left: 2px solid var(--border-dim) !important;
+}
+
+/* Table body */
+.data-table tbody tr {
+  transition: background var(--duration-fast);
+}
+.data-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+.data-table tbody tr:hover { background: var(--bg-hover); }
+
+.data-table tbody td {
+  padding: 7px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-primary);
+  transition: background var(--duration-fast);
+}
+
+/* Sticky first two columns */
+.data-table td:nth-child(1), .data-table th:nth-child(1),
+.data-table td:nth-child(2), .data-table th:nth-child(2) {
+  position: sticky; z-index: 5;
+  font-family: var(--font-sans);
+}
+.data-table td:nth-child(1), .data-table thead tr:last-child th:nth-child(1),
+.data-table thead tr:first-child th:first-child {
+  left: 0;
+  background: var(--bg-card);
+  text-align: left;
+}
+.data-table tbody tr:nth-child(even) td:nth-child(1) { background: #151d2c; }
+.data-table tbody tr:hover td:nth-child(1),
+.data-table tbody tr:hover td:nth-child(2) { background: var(--bg-hover); }
+
+.data-table td:nth-child(2), .data-table thead tr:last-child th:nth-child(2) {
+  left: 85px;
+  text-align: left;
+  background: var(--bg-card);
+  font-weight: 500;
+  color: var(--text-primary);
+  border-right: 1px solid var(--border-dim);
+}
+.data-table tbody tr:nth-child(even) td:nth-child(2) { background: #151d2c; }
+
+/* Colored cells */
+.cell-pos { color: var(--positive); }
+.cell-neg { color: var(--negative); }
+.cell-bold { font-weight: 700; font-size: 13px; }
+
+.cell-bg-heat {
+  position: relative;
+}
+.cell-bg-heat::before {
+  content: '';
+  position: absolute; inset: 2px;
+  border-radius: 4px;
+  z-index: -1;
+  opacity: 0.5;
+}
+
+/* Heat map color stops */
+.heat-1 { background: rgba(248, 113, 113, 0.18); }
+.heat-2 { background: rgba(248, 113, 113, 0.10); }
+.heat-3 { background: rgba(248, 113, 113, 0.05); }
+.heat-4 { background: transparent; }
+.heat-5 { background: rgba(254, 224, 139, 0.10); }
+.heat-6 { background: transparent; }
+.heat-7 { background: rgba(52, 211, 153, 0.05); }
+.heat-8 { background: rgba(52, 211, 153, 0.10); }
+.heat-9 { background: rgba(52, 211, 153, 0.18); }
+
+/* ============================================================
+   SHOT SPLIT MINI-VIZ
+   ============================================================ */
+.shot-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 90px;
+}
+.shot-acc {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: -0.3px;
+}
+.shot-acc-good { color: var(--positive); font-weight: 600; }
+.shot-acc-bad { color: var(--negative); font-weight: 600; }
+.shot-acc-mid { color: var(--text-secondary); font-weight: 500; }
+.shot-acc-muted { color: var(--text-muted); font-weight: 400; }
+
+.shot-bar {
+  display: flex;
+  width: 80px; height: 10px;
+  border-radius: 3px;
+  overflow: hidden;
+  gap: 1px;
+}
+.shot-bar-2 {
+  background: var(--fg2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; color: #fff; font-weight: 600;
+  font-family: var(--font-mono);
+}
+.shot-bar-3 {
+  background: var(--fg3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; color: #fff; font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+/* ============================================================
+   FOUR FACTORS — RANGE TRACK CELL
+   ============================================================ */
+.ff-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 80px;
+  padding: 2px 4px;
+}
+.ff-diff {
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.ff-diff.unranked { color: var(--text-muted); font-weight: 400; font-size: 12px; }
+
+.ff-track {
+  position: relative;
+  width: 64px; height: 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+}
+.ff-connect {
+  position: absolute; top: 50%;
+  height: 2px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  transform: translateY(-50%);
+}
+.ff-dot-off {
+  position: absolute; top: 50%;
+  width: 6px; height: 6px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--text-muted);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.ff-dot-on {
+  position: absolute; top: 50%;
+  width: 8px; height: 8px;
+  background: var(--text-primary);
+  border: 1.5px solid var(--bg-card);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+}
+.ff-sub {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  display: flex; gap: 4px;
+}
+.ff-sub .on-val { color: var(--text-secondary); font-weight: 600; }
+
+/* ============================================================
+   SKELETON LOADING
+   ============================================================ */
+.skeleton-row {
+  display: flex; gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+  animation: pulse 1.5s infinite ease-in-out;
+}
+.skeleton-cell {
+  height: 12px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+}
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+/* ============================================================
+   ROW ENTRY ANIMATION
+   ============================================================ */
+.data-table tbody tr {
+  animation: rowFade var(--duration-med) var(--ease-out) backwards;
+}
+.data-table tbody tr:nth-child(1) { animation-delay: 0ms; }
+.data-table tbody tr:nth-child(2) { animation-delay: 20ms; }
+.data-table tbody tr:nth-child(3) { animation-delay: 40ms; }
+.data-table tbody tr:nth-child(4) { animation-delay: 60ms; }
+.data-table tbody tr:nth-child(5) { animation-delay: 80ms; }
+.data-table tbody tr:nth-child(6) { animation-delay: 100ms; }
+.data-table tbody tr:nth-child(7) { animation-delay: 120ms; }
+.data-table tbody tr:nth-child(8) { animation-delay: 140ms; }
+.data-table tbody tr:nth-child(9) { animation-delay: 160ms; }
+.data-table tbody tr:nth-child(10) { animation-delay: 180ms; }
+.data-table tbody tr:nth-child(n+11) { animation-delay: 200ms; }
+
+@keyframes rowFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   RESPONSIVE
+   ============================================================ */
+@media (max-width: 900px) {
+  .main-content.with-drawer { margin-right: 0; }
+  .filter-drawer { width: 100%; }
+  .topbar-title { font-size: 13px; }
+  .section-title { font-size: 16px; }
+}
+
+@media (max-width: 640px) {
+  .topbar { padding: 0 12px; }
+  .main-content { padding: 12px; }
+  .tab-nav { padding: 8px 12px 0; overflow-x: auto; }
+  .tab-btn { padding: 8px 14px 10px; font-size: 12px; }
+  .section-header { flex-direction: column; align-items: flex-start; }
+  .filter-chips { padding: 0 12px 8px; }
+}
+
+/* ============================================================
+   TOOLTIP (hover metric headers)
+   ============================================================ */
+.th-tip {
+  position: relative;
+}
+.th-tip::before {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  font-size: 10px; font-weight: 400;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+  z-index: 20;
+}
+.th-tip:hover::before { opacity: 1; }
+
+/* ============================================================
+   TAB PANELS — show/hide
+   ============================================================ */
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* ============================================================
+   GROUP SIZE PILLS (Tab 2)
+   ============================================================ */
+.group-size-bar {
+  display: flex; align-items: center; gap: 8px;
+  margin-bottom: 14px;
+}
+.group-size-label {
+  font-size: 11px; font-weight: 600; color: var(--text-muted);
+  text-transform: uppercase; letter-spacing: 0.5px;
+}
+.group-pill {
+  padding: 4px 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-dim);
+  border-radius: 99px;
+  font-family: var(--font-mono);
+  font-size: 12px; font-weight: 500;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.group-pill:hover { color: var(--text-secondary); border-color: var(--border-accent); }
+.group-pill.active { background: var(--accent-glow); border-color: var(--accent); color: var(--accent); font-weight: 700; }
+
+/* ============================================================
+   CLICKABLE LINEUP NAME
+   ============================================================ */
+.lineup-link {
+  color: var(--neutral);
+  cursor: pointer;
+  text-decoration: none;
+  transition: color var(--duration-fast);
+  font-family: var(--font-sans);
+  font-weight: 500;
+}
+.lineup-link:hover { color: var(--accent); text-decoration: underline; }
+
+/* ============================================================
+   TOTAL ROW (Tab 2)
+   ============================================================ */
+.data-table tbody tr.total-row {
+  background: var(--bg-elevated);
+  font-weight: 700;
+  border-top: 2px solid var(--border-dim);
+}
+.data-table tbody tr.total-row td {
+  color: var(--accent-dim);
+  font-weight: 600;
+}
+.data-table tbody tr.total-row:hover { background: var(--bg-active); }
+
+/* ============================================================
+   W/L BADGE (Tab 3, Tab 4)
+   ============================================================ */
+.wl-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.wl-w { background: rgba(52, 211, 153, 0.15); color: var(--positive); }
+.wl-l { background: rgba(248, 113, 113, 0.15); color: var(--negative); }
+
+/* ============================================================
+   RANK PILL (Tab 3)
+   ============================================================ */
+.rank-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700;
+}
+.rank-top { background: rgba(52, 211, 153, 0.12); color: var(--positive); }
+.rank-mid { background: rgba(96, 165, 250, 0.10); color: var(--neutral); }
+.rank-bot { background: rgba(248, 113, 113, 0.12); color: var(--negative); }
+
+/* Record display */
+.record-text {
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.record-text .wins { color: var(--positive); font-weight: 600; }
+.record-text .losses { color: var(--negative); font-weight: 600; }
+
+/* Score cell (Tab 4) */
+.score-cell {
+  font-family: var(--font-mono);
+  font-weight: 600;
+  font-size: 12px;
+}
+.score-cell .team-score { color: var(--text-primary); }
+.score-cell .opp-score { color: var(--text-muted); }
+
+/* Date cell */
+.date-cell {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-muted);
+  letter-spacing: -0.3px;
+}
+
+/* ============================================================
+   MODAL OVERLAY (Tab 2 lineup click)
+   ============================================================ */
+.modal-overlay {
+  display: none;
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(4px);
+  z-index: 200;
+  justify-content: center; align-items: flex-start;
+  padding-top: 60px;
+}
+.modal-overlay.show { display: flex; }
+
+.modal-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-lg);
+  width: min(95vw, 1100px);
+  max-height: 80vh;
+  overflow: hidden;
+  animation: modalIn var(--duration-med) var(--ease-out);
+}
+@keyframes modalIn {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.modal-title {
+  font-size: 14px; font-weight: 600;
+  color: var(--text-primary);
+}
+.modal-title span { color: var(--accent); }
+.modal-close-btn {
+  width: 28px; height: 28px;
+  display: grid; place-items: center;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 16px;
+}
+.modal-close-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.modal-body {
+  padding: 0;
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: calc(80vh - 50px);
+}
+
+/* ============================================================
+   TAB-SPECIFIC TABLE OVERRIDES
+   ============================================================ */
+/* Tab 2, 3, 4 tables: don't freeze second column (only Tab 1 has Team+Player) */
+#panel-lineups .data-table td:nth-child(2),
+#panel-lineups .data-table th:nth-child(2),
+#panel-teams .data-table td:nth-child(2),
+#panel-teams .data-table th:nth-child(2),
+#panel-gamelogs .data-table td:nth-child(2),
+#panel-gamelogs .data-table th:nth-child(2) {
+  position: static;
+  left: auto;
+  border-right: none;
+}
+
+/* Tab 2 lineup: first column wider, not frozen (lineup names are long) */
+#panel-lineups .data-table td:nth-child(1),
+#panel-lineups .data-table th:nth-child(1) {
+  position: static;
+  left: auto;
+}
+
+/* Tab 4 game logs: no frozen columns (5 info columns before data) */
+#panel-gamelogs .data-table td:nth-child(1),
+#panel-gamelogs .data-table th:nth-child(1) {
+  position: static;
+  left: auto;
+}
+
+/* Ensure clickable lineup stays non-mono */
+#panel-lineups .data-table td:first-child {
+  font-family: var(--font-sans);
+}
+
+/* Team ratings — team name col stays left-aligned */
+#panel-teams .data-table td:first-child {
+  font-family: var(--font-sans);
+  text-align: left;
+}
+</style>
+</head>
+<body>
+
+<!-- ===================== TOP BAR ===================== -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-logo">CI</div>
+    <div class="topbar-title">Court <span>Impact</span></div>
+  </div>
+  <div class="topbar-right">
+    <div class="topbar-meta">Season <strong>2025-26</strong> &middot; Updated Feb 14</div>
+    <button class="filter-toggle-btn" id="filterToggle" onclick="toggleDrawer()">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 3H2l8 9.46V19l4 2v-8.54L22 3z"/></svg>
+      Filters
+      <span class="filter-badge" id="filterCount">3</span>
+    </button>
+  </div>
+</div>
+
+<!-- ===================== TAB NAV ===================== -->
+<nav class="tab-nav" id="tabNav">
+  <button class="tab-btn active" data-tab="onoff" onclick="switchTab(this)">On/Off Impact</button>
+  <button class="tab-btn" data-tab="lineups" onclick="switchTab(this)">Lineup Data</button>
+  <button class="tab-btn" data-tab="teams" onclick="switchTab(this)">Team Ratings</button>
+  <button class="tab-btn" data-tab="gamelogs" onclick="switchTab(this)">Game Logs</button>
+</nav>
+
+<!-- ===================== ACTIVE FILTER CHIPS ===================== -->
+<div class="filter-chips" id="filterChips">
+  <div class="chip">2025-26 <button class="chip-remove" onclick="this.parentElement.remove(); updateChipCount();">&times;</button></div>
+  <div class="chip">Min 300 ON Poss <button class="chip-remove" onclick="this.parentElement.remove(); updateChipCount();">&times;</button></div>
+  <div class="chip">Regular Season <button class="chip-remove" onclick="this.parentElement.remove(); updateChipCount();">&times;</button></div>
+</div>
+
+<!-- ===================== LAYOUT ===================== -->
+<div class="content-wrap">
+
+  <!-- MAIN CONTENT -->
+  <div class="main-content" id="mainContent">
+
+    <!-- ===================== TAB 1: ON/OFF IMPACT ===================== -->
+    <div class="tab-panel active" id="panel-onoff">
+
+      <div class="section-header">
+        <div class="section-title-area">
+          <h2 class="section-title">On/Off Impact</h2>
+          <span class="section-subtitle">Who changes the game when they step on court?</span>
+        </div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" onclick="switchMode('onoff','summary')">Summary</button>
+          <button class="mode-btn" onclick="switchMode('onoff','ff')">Four Factors</button>
+        </div>
+      </div>
+
+      <div class="explainer-bar" onclick="toggleExplainer('onoff')">
+        <div class="explainer-bar-left">
+          <div class="explainer-icon">?</div>
+          <span class="explainer-bar-title">How to read this table</span>
+        </div>
+        <span class="explainer-chevron">&#9660;</span>
+      </div>
+      <div class="explainer-body" id="explainer-onoff">
+        <p style="margin-bottom:8px"><strong>Net Impact</strong> = Offense improvement + Defense improvement when on court. A player with Net +15.0 means their team outscores opponents by 15 more points per 100 possessions when that player is on the floor.</p>
+        <p style="margin-bottom:8px"><strong>Shooting columns</strong> show 2PT/3PT frequency and accuracy. FG% color: <span style="color:var(--positive)">green = above average</span>, <span style="color:var(--negative)">red = below average</span>.</p>
+        <p><strong>Tip:</strong> Start with Net Impact to identify high-impact players, then drill into On Court / Off Court stats to understand <em>why</em>.</p>
+      </div>
+
+      <div class="legend-row onoff-summary-legend">
+        <span style="font-weight:600; color:var(--text-secondary);">Shot Splits:</span>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--fg2);"></div><span>2PT freq</span></div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--fg3);"></div><span>3PT freq</span></div>
+        <span style="color:var(--text-muted);">|</span>
+        <div class="legend-item">
+          <span style="color:var(--negative); font-weight:600;">FG%</span>
+          <span style="color:var(--text-muted);">&rarr;</span>
+          <span style="color:var(--positive); font-weight:600;">FG%</span>
+          <span style="margin-left:2px;">(accuracy)</span>
+        </div>
+      </div>
+
+      <div class="legend-row onoff-ff-legend" style="display:none;">
+        <span style="font-weight:600; color:var(--text-secondary);">Four Factors:</span>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--text-primary); border:1.5px solid var(--bg-card);"></div><span>On-Court</span></div>
+        <div class="legend-item"><div class="legend-dot" style="background:var(--bg-card); border:1.5px solid var(--text-muted);"></div><span>Off-Court</span></div>
+        <div class="legend-item">
+          <div class="legend-track-sample"><div class="dot-off"></div><div class="dot-on"></div></div>
+          <span>Range track (0-100% rank)</span>
+        </div>
+      </div>
+
+      <!-- Summary View -->
+      <div class="table-card onoff-summary-view">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 15 players &middot; sorted by Net Impact</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table" id="mainTable">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="2"></th>
+                <th colspan="3" class="section-start">NET IMPACT</th>
+                <th colspan="5" class="section-start">ON COURT</th>
+                <th colspan="5" class="section-start">OFF COURT</th>
+                <th colspan="2" class="section-start">USAGE</th>
+              </tr>
+              <tr>
+                <th>Team</th><th>Player</th>
+                <th class="th-tip section-start sorted-desc" data-tip="Overall on-court impact per 100 poss">Net</th>
+                <th class="th-tip" data-tip="Offense points per 100 improvement">Off</th>
+                <th class="th-tip" data-tip="Defense points per 100 improvement (negative = good)">Def</th>
+                <th class="th-tip section-start" data-tip="Offensive PPP when player on court">Off PPP</th>
+                <th class="th-tip" data-tip="Defensive PPP when player on court">Def PPP</th>
+                <th class="th-tip" data-tip="Net rating on court">Net</th>
+                <th class="th-tip" data-tip="2PT/3PT shooting splits on court">Off Shot</th>
+                <th class="th-tip" data-tip="Defensive shot splits allowed on court">Def Shot</th>
+                <th class="th-tip section-start" data-tip="Offensive PPP when player off court">Off PPP</th>
+                <th class="th-tip" data-tip="Defensive PPP when player off court">Def PPP</th>
+                <th class="th-tip" data-tip="Net rating off court">Net</th>
+                <th class="th-tip" data-tip="2PT/3PT shooting splits off court">Off Shot</th>
+                <th class="th-tip" data-tip="Defensive shot splits off court">Def Shot</th>
+                <th class="th-tip section-start" data-tip="ON possessions">On</th>
+                <th class="th-tip" data-tip="OFF possessions">Off</th>
+              </tr>
+            </thead>
+            <tbody id="summaryBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Four Factors View -->
+      <div class="table-card onoff-ff-view" style="display:none;">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 15 players &middot; sorted by Net Diff</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="2"></th>
+                <th>TOTAL</th>
+                <th colspan="5" class="section-start">OFFENSE IMPACT (ON-OFF)</th>
+                <th colspan="5" class="section-start">DEFENSE IMPACT (ON-OFF)</th>
+                <th colspan="2" class="section-start">USAGE</th>
+              </tr>
+              <tr>
+                <th>Team</th><th>Player</th>
+                <th class="th-tip sorted-desc" data-tip="Overall net on-off diff">Diff</th>
+                <th class="th-tip section-start" data-tip="Rating on-off diff">Diff</th>
+                <th class="th-tip" data-tip="True shooting % on-off diff">TS%</th>
+                <th class="th-tip" data-tip="Offensive rebound % on-off diff">OREB%</th>
+                <th class="th-tip" data-tip="Turnover % on-off diff">TOV%</th>
+                <th class="th-tip" data-tip="Free throw rate on-off diff">FTR</th>
+                <th class="th-tip section-start" data-tip="Rating on-off diff">Diff</th>
+                <th class="th-tip" data-tip="Opponents TS% on-off diff">TS%</th>
+                <th class="th-tip" data-tip="Opponents OREB% on-off diff">OREB%</th>
+                <th class="th-tip" data-tip="Opponents TOV% on-off diff">TOV%</th>
+                <th class="th-tip" data-tip="Opponents FTR on-off diff">FTR</th>
+                <th class="th-tip section-start" data-tip="ON possessions">On</th>
+                <th class="th-tip" data-tip="OFF possessions">Off</th>
+              </tr>
+            </thead>
+            <tbody id="ffBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- end panel-onoff -->
+
+    <!-- ===================== TAB 2: LINEUP DATA ===================== -->
+    <div class="tab-panel" id="panel-lineups">
+
+      <div class="section-header">
+        <div class="section-title-area">
+          <h2 class="section-title">Lineup Data</h2>
+          <span class="section-subtitle">Which combos produce the best results?</span>
+        </div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" onclick="switchMode('lineups','summary')">Summary</button>
+          <button class="mode-btn" onclick="switchMode('lineups','ff')">Four Factors</button>
+        </div>
+      </div>
+
+      <!-- Group Size Pills -->
+      <div class="group-size-bar">
+        <span class="group-size-label">Group Size</span>
+        <button class="group-pill" onclick="setGroupSize(this,2)">2</button>
+        <button class="group-pill" onclick="setGroupSize(this,3)">3</button>
+        <button class="group-pill" onclick="setGroupSize(this,4)">4</button>
+        <button class="group-pill active" onclick="setGroupSize(this,5)">5</button>
+      </div>
+
+      <!-- Clutch Time Accordion -->
+      <div class="explainer-bar" onclick="toggleExplainer('lineups-clutch')">
+        <div class="explainer-bar-left">
+          <div class="explainer-icon" style="font-size:10px;">&#9201;</div>
+          <span class="explainer-bar-title">Clutch Time Filter</span>
+        </div>
+        <span class="explainer-chevron">&#9660;</span>
+      </div>
+      <div class="explainer-body" id="explainer-lineups-clutch" style="padding:14px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <input type="checkbox" id="clutchEnable" style="accent-color:var(--accent);">
+          <label for="clutchEnable" style="font-size:12px; font-weight:500; color:var(--text-secondary);">Enable clutch time filter</label>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div class="filter-group" style="flex:1; min-width:100px;">
+            <label class="filter-label">Max Margin</label>
+            <input type="range" class="filter-range" min="0" max="10" value="5" style="margin-top:4px;">
+            <div class="filter-range-labels"><span>0</span><span>10</span></div>
+          </div>
+          <div class="filter-group" style="flex:1; min-width:100px;">
+            <label class="filter-label">Score Status</label>
+            <select class="filter-select"><option>All</option><option>Leading</option><option>Trailing</option><option>Tied</option></select>
+          </div>
+          <div class="filter-group" style="flex:1; min-width:100px;">
+            <label class="filter-label">Max Min Remaining</label>
+            <input type="range" class="filter-range" min="1" max="5" value="5" style="margin-top:4px;">
+            <div class="filter-range-labels"><span>1</span><span>5</span></div>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-row lineups-summary-legend">
+        <span style="font-weight:600; color:var(--text-secondary);">Shot Splits:</span>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--fg2);"></div><span>2PT freq</span></div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--fg3);"></div><span>3PT freq</span></div>
+        <span style="color:var(--text-muted);">|</span>
+        <div class="legend-item">
+          <span style="color:var(--negative); font-weight:600;">FG%</span>
+          <span style="color:var(--text-muted);">&rarr;</span>
+          <span style="color:var(--positive); font-weight:600;">FG%</span>
+          <span style="margin-left:2px;">(accuracy)</span>
+        </div>
+      </div>
+
+      <div class="legend-row lineups-ff-legend" style="display:none;">
+        <span style="font-weight:600; color:var(--text-secondary);">Four Factors:</span>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--accent); width:12px; height:4px; border-radius:2px;"></div><span>Rate value</span></div>
+      </div>
+
+      <!-- Summary View -->
+      <div class="table-card lineups-summary-view">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 10 lineups &middot; 5-man &middot; sorted by Net</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="1"></th>
+                <th colspan="3" class="section-start">EFFICIENCY</th>
+                <th colspan="2" class="section-start">OFFENSE SHOT</th>
+                <th colspan="2" class="section-start">DEFENSE SHOT</th>
+                <th colspan="3" class="section-start">VOLUME</th>
+              </tr>
+              <tr>
+                <th style="min-width:220px; text-align:left;">Lineup</th>
+                <th class="th-tip section-start" data-tip="Offensive PPP">Off PPP</th>
+                <th class="th-tip" data-tip="Defensive PPP">Def PPP</th>
+                <th class="th-tip sorted-desc" data-tip="Net rating (Off - Def)">Net</th>
+                <th class="th-tip section-start" data-tip="Offensive shot splits">Off Shot</th>
+                <th class="th-tip" data-tip="Defensive shot splits allowed">Def Shot</th>
+                <th class="th-tip section-start" data-tip="Defensive shot splits allowed (opp)">Off Shot</th>
+                <th class="th-tip" data-tip="Defensive shot splits allowed (opp)">Def Shot</th>
+                <th class="th-tip section-start" data-tip="Offensive possessions">Off Poss</th>
+                <th class="th-tip" data-tip="Defensive possessions">Def Poss</th>
+                <th class="th-tip" data-tip="Minutes played">Min</th>
+              </tr>
+            </thead>
+            <tbody id="lineupsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Four Factors View -->
+      <div class="table-card lineups-ff-view" style="display:none;">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 10 lineups &middot; 5-man &middot; sorted by Net</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="1"></th>
+                <th colspan="4" class="section-start">OFFENSE</th>
+                <th colspan="4" class="section-start">DEFENSE</th>
+                <th colspan="3" class="section-start">VOLUME</th>
+              </tr>
+              <tr>
+                <th style="min-width:220px; text-align:left;">Lineup</th>
+                <th class="th-tip section-start" data-tip="True shooting %">TS%</th>
+                <th class="th-tip" data-tip="Offensive rebound %">OREB%</th>
+                <th class="th-tip" data-tip="Turnover %">TOV%</th>
+                <th class="th-tip" data-tip="Free throw rate">FTR</th>
+                <th class="th-tip section-start" data-tip="Opponents TS%">TS%</th>
+                <th class="th-tip" data-tip="Opponents OREB%">OREB%</th>
+                <th class="th-tip" data-tip="Opponents TOV%">TOV%</th>
+                <th class="th-tip" data-tip="Opponents FTR">FTR</th>
+                <th class="th-tip section-start" data-tip="Offensive possessions">Off Poss</th>
+                <th class="th-tip" data-tip="Defensive possessions">Def Poss</th>
+                <th class="th-tip" data-tip="Minutes played">Min</th>
+              </tr>
+            </thead>
+            <tbody id="lineupsFFBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- end panel-lineups -->
+
+    <!-- ===================== TAB 3: TEAM RATINGS ===================== -->
+    <div class="tab-panel" id="panel-teams">
+
+      <div class="section-header">
+        <div class="section-title-area">
+          <h2 class="section-title">Team Ratings</h2>
+          <span class="section-subtitle">League-wide team performance rankings</span>
+        </div>
+        <div class="mode-toggle">
+          <button class="mode-btn active" onclick="switchMode('teams','summary')">Summary</button>
+          <button class="mode-btn" onclick="switchMode('teams','ff')">Four Factors</button>
+        </div>
+      </div>
+
+      <!-- Clutch Time Accordion -->
+      <div class="explainer-bar" onclick="toggleExplainer('teams-clutch')">
+        <div class="explainer-bar-left">
+          <div class="explainer-icon" style="font-size:10px;">&#9201;</div>
+          <span class="explainer-bar-title">Clutch Time Filter</span>
+        </div>
+        <span class="explainer-chevron">&#9660;</span>
+      </div>
+      <div class="explainer-body" id="explainer-teams-clutch" style="padding:14px;">
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:10px;">
+          <input type="checkbox" id="clutchEnableTeams" style="accent-color:var(--accent);">
+          <label for="clutchEnableTeams" style="font-size:12px; font-weight:500; color:var(--text-secondary);">Enable clutch time filter</label>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap:wrap;">
+          <div class="filter-group" style="flex:1; min-width:100px;">
+            <label class="filter-label">Max Margin</label>
+            <input type="range" class="filter-range" min="0" max="10" value="5" style="margin-top:4px;">
+            <div class="filter-range-labels"><span>0</span><span>10</span></div>
+          </div>
+          <div class="filter-group" style="flex:1; min-width:100px;">
+            <label class="filter-label">Score Status</label>
+            <select class="filter-select"><option>All</option><option>Leading</option><option>Trailing</option><option>Tied</option></select>
+          </div>
+          <div class="filter-group" style="flex:1; min-width:100px;">
+            <label class="filter-label">Max Min Remaining</label>
+            <input type="range" class="filter-range" min="1" max="5" value="5" style="margin-top:4px;">
+            <div class="filter-range-labels"><span>1</span><span>5</span></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Summary View -->
+      <div class="table-card teams-summary-view">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 12 teams &middot; sorted by Net Rating</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="2"></th>
+                <th colspan="3" class="section-start">RATINGS</th>
+                <th colspan="3" class="section-start">RANKINGS</th>
+                <th colspan="2" class="section-start">VOLUME</th>
+              </tr>
+              <tr>
+                <th style="text-align:left;">Team</th>
+                <th>Record</th>
+                <th class="th-tip section-start" data-tip="Points per 100 possessions scored">Off PPP</th>
+                <th class="th-tip" data-tip="Points per 100 possessions allowed">Def PPP</th>
+                <th class="th-tip sorted-desc" data-tip="Off PPP minus Def PPP">Net</th>
+                <th class="th-tip section-start" data-tip="Offensive efficiency rank">#Off</th>
+                <th class="th-tip" data-tip="Defensive efficiency rank">#Def</th>
+                <th class="th-tip" data-tip="Net rating rank">#Net</th>
+                <th class="th-tip section-start" data-tip="Total offensive possessions">Off Poss</th>
+                <th class="th-tip" data-tip="Total defensive possessions">Def Poss</th>
+              </tr>
+            </thead>
+            <tbody id="teamsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Four Factors View -->
+      <div class="table-card teams-ff-view" style="display:none;">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 12 teams &middot; sorted by Net Rating</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="2"></th>
+                <th colspan="4" class="section-start">OFFENSE</th>
+                <th colspan="4" class="section-start">DEFENSE</th>
+                <th colspan="2" class="section-start">VOLUME</th>
+              </tr>
+              <tr>
+                <th style="text-align:left;">Team</th>
+                <th>Record</th>
+                <th class="th-tip section-start" data-tip="True shooting %">TS%</th>
+                <th class="th-tip" data-tip="Offensive rebound %">OREB%</th>
+                <th class="th-tip" data-tip="Turnover %">TOV%</th>
+                <th class="th-tip" data-tip="Free throw rate">FTR</th>
+                <th class="th-tip section-start" data-tip="Opponents TS%">TS%</th>
+                <th class="th-tip" data-tip="Opponents OREB%">OREB%</th>
+                <th class="th-tip" data-tip="Opponents TOV%">TOV%</th>
+                <th class="th-tip" data-tip="Opponents FTR">FTR</th>
+                <th class="th-tip section-start" data-tip="Offensive possessions">Off Poss</th>
+                <th class="th-tip" data-tip="Defensive possessions">Def Poss</th>
+              </tr>
+            </thead>
+            <tbody id="teamsFFBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- end panel-teams -->
+
+    <!-- ===================== TAB 4: GAME LOGS ===================== -->
+    <div class="tab-panel" id="panel-gamelogs">
+
+      <div class="section-header">
+        <div class="section-title-area">
+          <h2 class="section-title">Game Logs</h2>
+          <span class="section-subtitle">Game-by-game efficiency breakdown</span>
+        </div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <div class="filter-group" style="margin:0;">
+            <select class="filter-select" id="gamelogsTeamFilter" style="width:180px;">
+              <option value="">All Teams</option>
+            </select>
+          </div>
+          <div class="mode-toggle">
+            <button class="mode-btn active" onclick="switchMode('gamelogs','summary')">Summary</button>
+            <button class="mode-btn" onclick="switchMode('gamelogs','ff')">Four Factors</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="legend-row gamelogs-summary-legend">
+        <span style="font-weight:600; color:var(--text-secondary);">Shot Splits:</span>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--fg2);"></div><span>2PT freq</span></div>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--fg3);"></div><span>3PT freq</span></div>
+        <span style="color:var(--text-muted);">|</span>
+        <div class="legend-item">
+          <span style="color:var(--negative); font-weight:600;">FG%</span>
+          <span style="color:var(--text-muted);">&rarr;</span>
+          <span style="color:var(--positive); font-weight:600;">FG%</span>
+          <span style="margin-left:2px;">(accuracy)</span>
+        </div>
+      </div>
+
+      <div class="legend-row gamelogs-ff-legend" style="display:none;">
+        <span style="font-weight:600; color:var(--text-secondary);">Four Factors:</span>
+        <div class="legend-item"><div class="legend-swatch" style="background:var(--accent); width:12px; height:4px; border-radius:2px;"></div><span>Rate value</span></div>
+      </div>
+
+      <!-- Summary View -->
+      <div class="table-card gamelogs-summary-view">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 20 games &middot; sorted by GN</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="5"></th>
+                <th colspan="3" class="section-start">EFFICIENCY</th>
+                <th colspan="2" class="section-start">SHOTS</th>
+                <th colspan="3" class="section-start">VOLUME</th>
+              </tr>
+              <tr>
+                <th class="th-tip" data-tip="Game number" style="width:40px;">GN</th>
+                <th class="th-tip" data-tip="Game date" style="min-width:80px; text-align:left;">Date</th>
+                <th style="min-width:110px; text-align:left;">Team</th>
+                <th style="min-width:110px; text-align:left;">Opponent</th>
+                <th style="width:70px;">Result</th>
+                <th class="th-tip section-start" data-tip="Points per 100 possessions scored">Off PPP</th>
+                <th class="th-tip" data-tip="Points per 100 possessions allowed">Def PPP</th>
+                <th class="th-tip" data-tip="Net rating">Net</th>
+                <th class="th-tip section-start" data-tip="Offensive shot splits">Off Shot</th>
+                <th class="th-tip" data-tip="Defensive shot splits">Def Shot</th>
+                <th class="th-tip section-start" data-tip="Offensive possessions">Off Poss</th>
+                <th class="th-tip" data-tip="Defensive possessions">Def Poss</th>
+                <th class="th-tip" data-tip="Minutes">Min</th>
+              </tr>
+            </thead>
+            <tbody id="gamelogsBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Four Factors View -->
+      <div class="table-card gamelogs-ff-view" style="display:none;">
+        <div class="table-toolbar">
+          <div class="table-info">Showing 20 games &middot; sorted by GN</div>
+          <div class="table-actions"><button class="table-action-btn" onclick="exportTableCSV(this)">CSV</button></div>
+        </div>
+        <div class="data-table-wrap">
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th class="group-empty" colspan="5"></th>
+                <th colspan="4" class="section-start">OFFENSE</th>
+                <th colspan="4" class="section-start">DEFENSE</th>
+                <th class="section-start">VOL</th>
+              </tr>
+              <tr>
+                <th class="th-tip" data-tip="Game number" style="width:40px;">GN</th>
+                <th class="th-tip" data-tip="Game date" style="min-width:80px; text-align:left;">Date</th>
+                <th style="min-width:110px; text-align:left;">Team</th>
+                <th style="min-width:110px; text-align:left;">Opponent</th>
+                <th style="width:70px;">Result</th>
+                <th class="th-tip section-start" data-tip="True shooting %">TS%</th>
+                <th class="th-tip" data-tip="Offensive rebound %">OREB%</th>
+                <th class="th-tip" data-tip="Turnover %">TOV%</th>
+                <th class="th-tip" data-tip="Free throw rate">FTR</th>
+                <th class="th-tip section-start" data-tip="Opponents TS%">TS%</th>
+                <th class="th-tip" data-tip="Opponents OREB%">OREB%</th>
+                <th class="th-tip" data-tip="Opponents TOV%">TOV%</th>
+                <th class="th-tip" data-tip="Opponents FTR">FTR</th>
+                <th class="th-tip section-start" data-tip="Minutes">Min</th>
+              </tr>
+            </thead>
+            <tbody id="gamelogsFFBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div><!-- end panel-gamelogs -->
+
+  </div><!-- end main-content -->
+
+  <!-- ===================== LINEUP GAME LOG MODAL ===================== -->
+  <div class="modal-overlay" id="lineupModal" onclick="if(event.target===this)closeModal()">
+    <div class="modal-card">
+      <div class="modal-header">
+        <div class="modal-title" id="modalTitle">Game Log — <span>Lineup</span></div>
+        <button class="modal-close-btn" onclick="closeModal()">&times;</button>
+      </div>
+      <div class="modal-body">
+        <table class="data-table" style="font-size:12px;">
+          <thead>
+            <tr>
+              <th style="width:35px;">GN</th>
+              <th style="text-align:left;">Date</th>
+              <th style="text-align:left;">Opponent</th>
+              <th>Result</th>
+              <th class="section-start">Off PPP</th>
+              <th>Def PPP</th>
+              <th>Net</th>
+              <th class="section-start">Off Poss</th>
+              <th>Def Poss</th>
+              <th>Min</th>
+            </tr>
+          </thead>
+          <tbody id="modalBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- FILTER DRAWER -->
+  <aside class="filter-drawer" id="filterDrawer">
+    <div class="drawer-header">
+      <span class="drawer-title">Filters</span>
+      <button class="drawer-close" onclick="toggleDrawer()">&times;</button>
+    </div>
+
+    <button class="clear-all-btn">Clear all filters</button>
+
+    <!-- Time Filters -->
+    <div class="filter-section open">
+      <div class="filter-section-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="filter-section-title">Time Filters</span>
+        <span class="filter-section-chevron">&#9660;</span>
+      </div>
+      <div class="filter-section-body">
+        <div class="filter-group">
+          <label class="filter-label">Season</label>
+          <select class="filter-select">
+            <option selected>2025-26</option>
+            <option>2024-25</option>
+          </select>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">Date Range</label>
+          <div class="filter-row">
+            <input type="date" class="filter-input" value="2025-10-01">
+            <input type="date" class="filter-input" value="2026-07-01">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Game Filters -->
+    <div class="filter-section">
+      <div class="filter-section-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="filter-section-title">Game Filters</span>
+        <span class="filter-section-chevron">&#9660;</span>
+      </div>
+      <div class="filter-section-body">
+        <div class="filter-group">
+          <label class="filter-label">Teams</label>
+          <select class="filter-select"><option>All teams</option></select>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">Game Type</label>
+          <select class="filter-select"><option>All types</option><option>Regular Season</option><option>Playoffs</option></select>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">Opponents</label>
+          <select class="filter-select"><option>All opponents</option></select>
+        </div>
+        <div class="filter-row">
+          <div class="filter-group">
+            <label class="filter-label">Home/Away</label>
+            <select class="filter-select"><option>All</option><option>Home</option><option>Away</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label">Outcome</label>
+            <select class="filter-select"><option>All</option><option>Win</option><option>Loss</option></select>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">Game Number Range</label>
+          <div class="filter-row">
+            <input class="filter-input" placeholder="From GN">
+            <input class="filter-input" placeholder="To GN">
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">Last N Games</label>
+          <input class="filter-input" placeholder="e.g. 5">
+        </div>
+      </div>
+    </div>
+
+    <!-- Eligibility -->
+    <div class="filter-section open">
+      <div class="filter-section-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="filter-section-title">Eligibility</span>
+        <span class="filter-section-chevron">&#9660;</span>
+      </div>
+      <div class="filter-section-body">
+        <div class="filter-group">
+          <label class="filter-label">Min ON Possessions <span style="float:right; color:var(--accent); font-family:var(--font-mono);">300</span></label>
+          <input type="range" class="filter-range" min="0" max="3000" value="300" step="10">
+          <div class="filter-range-labels"><span>0</span><span>3,000</span></div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">Min Poss per Side <span style="float:right; color:var(--accent); font-family:var(--font-mono);">100</span></label>
+          <input type="range" class="filter-range" min="0" max="2000" value="100" step="10">
+          <div class="filter-range-labels"><span>0</span><span>2,000</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Opponent Strength -->
+    <div class="filter-section">
+      <div class="filter-section-header" onclick="this.parentElement.classList.toggle('open')">
+        <span class="filter-section-title">Opponent Strength</span>
+        <span class="filter-section-chevron">&#9660;</span>
+      </div>
+      <div class="filter-section-body">
+        <div class="filter-row">
+          <div class="filter-group">
+            <label class="filter-label">Top / Bottom</label>
+            <select class="filter-select"><option>Off</option><option>Top</option><option>Bottom</option></select>
+          </div>
+          <div class="filter-group">
+            <label class="filter-label">Rank N</label>
+            <select class="filter-select"><option>-</option><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option><option>6</option></select>
+          </div>
+        </div>
+        <div class="filter-group">
+          <label class="filter-label">Metric</label>
+          <select class="filter-select"><option>-</option><option>Offense</option><option>Defense</option><option>Net Rating</option></select>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+</div><!-- end content-wrap -->
+
+<script>
+// =================================================================
+// MOCK DATA — Tab 1: On/Off Impact
+// =================================================================
+const MOCK_PLAYERS = [
+  { team:"Hapoel Tel Aviv", player:"Tyler Ennis", net:29.5, off:15.7, def:-13.8, onOffPpp:129.4, onDefPpp:93.2, onNet:36.2, offOffPpp:113.7, offDefPpp:107.0, offNet:6.7, onPoss:842, offPoss:467, fg2on:62, fg3on:38, fg2acc:58, fg3acc:42, fg2def:55, fg3def:45, fg2dacc:48, fg3dacc:31, pr:.98 },
+  { team:"Maccabi Tel Aviv", player:"Jaylen Hoard", net:22.3, off:12.1, def:-10.2, onOffPpp:126.4, onDefPpp:104.2, onNet:22.2, offOffPpp:114.3, offDefPpp:114.4, offNet:-0.1, onPoss:1024, offPoss:520, fg2on:58, fg3on:42, fg2acc:55, fg3acc:38, fg2def:60, fg3def:40, fg2dacc:52, fg3dacc:35, pr:.95 },
+  { team:"Hapoel Jerusalem", player:"Jalen Adams", net:19.8, off:11.3, def:-8.5, onOffPpp:121.8, onDefPpp:101.0, onNet:20.8, offOffPpp:110.5, offDefPpp:109.5, offNet:1.0, onPoss:780, offPoss:530, fg2on:55, fg3on:45, fg2acc:52, fg3acc:40, fg2def:57, fg3def:43, fg2dacc:50, fg3dacc:33, pr:.92 },
+  { team:"Maccabi Ramat Gan", player:"Darius Hannah", net:18.2, off:14.0, def:-4.2, onOffPpp:119.3, onDefPpp:97.8, onNet:21.5, offOffPpp:105.3, offDefPpp:102.0, offNet:3.3, onPoss:633, offPoss:676, fg2on:60, fg3on:40, fg2acc:56, fg3acc:36, fg2def:58, fg3def:42, fg2dacc:49, fg3dacc:32, pr:.89 },
+  { team:"Bnei Herzliya", player:"TJ Cline", net:16.5, off:8.2, def:-8.3, onOffPpp:118.7, onDefPpp:102.2, onNet:16.5, offOffPpp:110.5, offDefPpp:110.5, offNet:0.0, onPoss:560, offPoss:480, fg2on:54, fg3on:46, fg2acc:51, fg3acc:39, fg2def:56, fg3def:44, fg2dacc:47, fg3dacc:30, pr:.86 },
+  { team:"Hapoel Holon", player:"Joe Ragland", net:14.9, off:10.4, def:-4.5, onOffPpp:117.2, onDefPpp:105.8, onNet:11.4, offOffPpp:106.8, offDefPpp:110.3, offNet:-3.5, onPoss:710, offPoss:410, fg2on:57, fg3on:43, fg2acc:53, fg3acc:37, fg2def:59, fg3def:41, fg2dacc:51, fg3dacc:34, pr:.82 },
+  { team:"Maccabi Tel Aviv", player:"Wade Baldwin", net:13.2, off:5.8, def:-7.4, onOffPpp:122.1, onDefPpp:108.3, onNet:13.8, offOffPpp:116.3, offDefPpp:115.7, offNet:0.6, onPoss:890, offPoss:654, fg2on:52, fg3on:48, fg2acc:50, fg3acc:41, fg2def:54, fg3def:46, fg2dacc:48, fg3dacc:33, pr:.78 },
+  { team:"Hapoel Tel Aviv", player:"Jaron Blossomgame", net:11.8, off:6.2, def:-5.6, onOffPpp:120.8, onDefPpp:106.5, onNet:14.3, offOffPpp:114.6, offDefPpp:112.1, offNet:2.5, onPoss:690, offPoss:619, fg2on:61, fg3on:39, fg2acc:57, fg3acc:35, fg2def:56, fg3def:44, fg2dacc:50, fg3dacc:32, pr:.75 },
+  { team:"Ironi Ness Ziona", player:"CJ Harris", net:10.5, off:7.8, def:-2.7, onOffPpp:115.6, onDefPpp:108.0, onNet:7.6, offOffPpp:107.8, offDefPpp:110.7, offNet:-2.9, onPoss:520, offPoss:590, fg2on:56, fg3on:44, fg2acc:52, fg3acc:38, fg2def:58, fg3def:42, fg2dacc:51, fg3dacc:35, pr:.71 },
+  { team:"Hapoel Jerusalem", player:"Tamir Blatt", net:9.1, off:3.5, def:-5.6, onOffPpp:114.0, onDefPpp:104.9, onNet:9.1, offOffPpp:110.5, offDefPpp:110.5, offNet:0.0, onPoss:810, offPoss:500, fg2on:53, fg3on:47, fg2acc:49, fg3acc:40, fg2def:55, fg3def:45, fg2dacc:48, fg3dacc:33, pr:.68 },
+  { team:"Maccabi Tel Aviv", player:"Rokas Jokubaitis", net:7.8, off:4.2, def:-3.6, onOffPpp:121.5, onDefPpp:110.1, onNet:11.4, offOffPpp:117.3, offDefPpp:113.7, offNet:3.6, onPoss:950, offPoss:594, fg2on:50, fg3on:50, fg2acc:48, fg3acc:42, fg2def:53, fg3def:47, fg2dacc:50, fg3dacc:36, pr:.64 },
+  { team:"Bnei Herzliya", player:"Shawn Dawson", net:5.4, off:1.2, def:-4.2, onOffPpp:111.7, onDefPpp:106.3, onNet:5.4, offOffPpp:110.5, offDefPpp:110.5, offNet:0.0, onPoss:410, offPoss:630, fg2on:58, fg3on:42, fg2acc:54, fg3acc:34, fg2def:57, fg3def:43, fg2dacc:49, fg3dacc:31, pr:.58 },
+  { team:"Hapoel Holon", player:"Dylan Ennis", net:3.2, off:2.8, def:-0.4, onOffPpp:109.6, onDefPpp:106.4, onNet:3.2, offOffPpp:106.8, offDefPpp:106.8, offNet:0.0, onPoss:680, offPoss:440, fg2on:55, fg3on:45, fg2acc:51, fg3acc:36, fg2def:56, fg3def:44, fg2dacc:50, fg3dacc:34, pr:.52 },
+  { team:"Ironi Ness Ziona", player:"Nimrod Levi", net:-2.1, off:-3.5, def:1.4, onOffPpp:104.3, onDefPpp:111.9, onNet:-7.6, offOffPpp:107.8, offDefPpp:110.5, offNet:-2.7, onPoss:340, offPoss:770, fg2on:52, fg3on:48, fg2acc:46, fg3acc:30, fg2def:59, fg3def:41, fg2dacc:52, fg3dacc:36, pr:.35 },
+  { team:"Maccabi Ramat Gan", player:"Bar Timor", net:-8.5, off:-5.2, def:3.3, onOffPpp:100.1, onDefPpp:108.6, onNet:-8.5, offOffPpp:105.3, offDefPpp:105.3, offNet:0.0, onPoss:380, offPoss:929, fg2on:50, fg3on:50, fg2acc:43, fg3acc:28, fg2def:60, fg3def:40, fg2dacc:53, fg3dacc:37, pr:.15 },
+];
+
+const MOCK_FF = [
+  { team:"Hapoel Tel Aviv", player:"Tyler Ennis", netDiff:29.5, offDiff:15.7, defDiff:-13.8, offTs:{diff:9.1,on:62.3,off:53.2,onR:92,offR:45}, offOreb:{diff:2.4,on:33.2,off:30.8,onR:78,offR:55}, offTov:{diff:-1.2,on:11.8,off:13.0,onR:72,offR:58}, offFtr:{diff:3.5,on:28.4,off:24.9,onR:80,offR:48}, defTs:{diff:-5.2,on:48.1,off:53.3,onR:25,offR:60}, defOreb:{diff:-3.8,on:27.0,off:30.8,onR:30,offR:62}, defTov:{diff:2.1,on:15.2,off:13.1,onR:75,offR:50}, defFtr:{diff:-1.8,on:22.0,off:23.8,onR:35,offR:55}, onPoss:842, offPoss:467 },
+  { team:"Maccabi Tel Aviv", player:"Jaylen Hoard", netDiff:22.3, offDiff:12.1, defDiff:-10.2, offTs:{diff:6.8,on:58.9,off:52.1,onR:85,offR:42}, offOreb:{diff:4.1,on:37.9,off:33.8,onR:90,offR:65}, offTov:{diff:-0.5,on:12.5,off:13.0,onR:62,offR:55}, offFtr:{diff:2.2,on:26.8,off:24.6,onR:72,offR:50}, defTs:{diff:-4.0,on:49.8,off:53.8,onR:32,offR:65}, defOreb:{diff:-2.5,on:28.5,off:31.0,onR:38,offR:60}, defTov:{diff:1.8,on:14.8,off:13.0,onR:70,offR:48}, defFtr:{diff:-0.9,on:23.5,off:24.4,onR:42,offR:52}, onPoss:1024, offPoss:520 },
+  { team:"Hapoel Jerusalem", player:"Jalen Adams", netDiff:19.8, offDiff:11.3, defDiff:-8.5, offTs:{diff:5.2,on:57.4,off:52.2,onR:78,offR:44}, offOreb:{diff:1.5,on:31.5,off:30.0,onR:65,offR:52}, offTov:{diff:-2.0,on:10.5,off:12.5,onR:82,offR:62}, offFtr:{diff:1.8,on:25.8,off:24.0,onR:68,offR:48}, defTs:{diff:-3.2,on:50.0,off:53.2,onR:35,offR:58}, defOreb:{diff:-1.8,on:29.2,off:31.0,onR:42,offR:58}, defTov:{diff:1.5,on:14.5,off:13.0,onR:68,offR:50}, defFtr:{diff:-1.2,on:23.0,off:24.2,onR:40,offR:52}, onPoss:780, offPoss:530 },
+  { team:"Maccabi Ramat Gan", player:"Darius Hannah", netDiff:18.2, offDiff:14.0, defDiff:-4.2, offTs:{diff:7.5,on:58.7,off:51.2,onR:88,offR:38}, offOreb:{diff:3.2,on:29.2,off:26.0,onR:72,offR:35}, offTov:{diff:-1.8,on:11.2,off:13.0,onR:78,offR:55}, offFtr:{diff:4.0,on:30.2,off:26.2,onR:85,offR:45}, defTs:{diff:-1.5,on:51.5,off:53.0,onR:42,offR:55}, defOreb:{diff:-0.8,on:30.0,off:30.8,onR:48,offR:55}, defTov:{diff:0.5,on:13.5,off:13.0,onR:55,offR:50}, defFtr:{diff:-0.5,on:24.0,off:24.5,onR:48,offR:52}, onPoss:633, offPoss:676 },
+  { team:"Bnei Herzliya", player:"TJ Cline", netDiff:16.5, offDiff:8.2, defDiff:-8.3, offTs:{diff:3.8,on:55.8,off:52.0,onR:70,offR:42}, offOreb:{diff:0.8,on:30.8,off:30.0,onR:58,offR:52}, offTov:{diff:-1.5,on:11.5,off:13.0,onR:75,offR:58}, offFtr:{diff:2.5,on:27.5,off:25.0,onR:75,offR:48}, defTs:{diff:-4.5,on:48.5,off:53.0,onR:28,offR:58}, defOreb:{diff:-3.0,on:28.0,off:31.0,onR:35,offR:60}, defTov:{diff:2.5,on:15.5,off:13.0,onR:78,offR:48}, defFtr:{diff:-2.0,on:22.5,off:24.5,onR:32,offR:55}, onPoss:560, offPoss:480 },
+];
+
+// =================================================================
+// MOCK DATA — Tab 2: Lineup Data
+// =================================================================
+const MOCK_LINEUPS = [
+  { names:"Ennis / Blossomgame / Scott / Brown / Kilpatrick", team:"Hapoel Tel Aviv", offPpp:138.2, defPpp:92.5, net:45.7, fg2o:58,fg3o:42,fg2oa:61,fg3oa:44, fg2d:54,fg3d:46,fg2da:47,fg3da:30, offPoss:245, defPoss:238, min:52.3 },
+  { names:"Hoard / Baldwin / Jokubaitis / Rivero / Sorkin", team:"Maccabi Tel Aviv", offPpp:132.8, defPpp:98.1, net:34.7, fg2o:55,fg3o:45,fg2oa:57,fg3oa:41, fg2d:57,fg3d:43,fg2da:50,fg3da:33, offPoss:312, defPoss:305, min:68.1 },
+  { names:"Adams / Blatt / Zoosman / Levi / Bender", team:"Hapoel Jerusalem", offPpp:125.3, defPpp:97.4, net:27.9, fg2o:53,fg3o:47,fg2oa:54,fg3oa:40, fg2d:56,fg3d:44,fg2da:48,fg3da:32, offPoss:278, defPoss:270, min:61.4 },
+  { names:"Hannah / Timor / Grant / Williams / Ziv", team:"Maccabi Ramat Gan", offPpp:121.6, defPpp:101.2, net:20.4, fg2o:60,fg3o:40,fg2oa:56,fg3oa:35, fg2d:58,fg3d:42,fg2da:51,fg3da:34, offPoss:198, defPoss:192, min:44.8 },
+  { names:"Cline / Dawson / Levi / Cohen / Grant", team:"Bnei Herzliya", offPpp:118.9, defPpp:102.8, net:16.1, fg2o:56,fg3o:44,fg2oa:52,fg3oa:38, fg2d:55,fg3d:45,fg2da:49,fg3da:31, offPoss:220, defPoss:215, min:48.2 },
+  { names:"Ragland / D.Ennis / Pnini / Okoye / Blayzer", team:"Hapoel Holon", offPpp:115.4, defPpp:104.3, net:11.1, fg2o:57,fg3o:43,fg2oa:53,fg3oa:36, fg2d:59,fg3d:41,fg2da:52,fg3da:35, offPoss:265, defPoss:258, min:57.6 },
+  { names:"Harris / Levi / Allon / Peterson / Biran", team:"Ironi Ness Ziona", offPpp:112.8, defPpp:106.5, net:6.3, fg2o:54,fg3o:46,fg2oa:50,fg3oa:37, fg2d:57,fg3d:43,fg2da:50,fg3da:34, offPoss:188, defPoss:182, min:41.5 },
+  { names:"Ennis / Blossomgame / Kilpatrick / Jones / Scott", team:"Hapoel Tel Aviv", offPpp:126.5, defPpp:105.8, net:20.7, fg2o:60,fg3o:40,fg2oa:58,fg3oa:38, fg2d:56,fg3d:44,fg2da:49,fg3da:32, offPoss:156, defPoss:150, min:34.2 },
+  { names:"Hoard / Jokubaitis / Rivero / Dibartolomeo / Ziv", team:"Maccabi Tel Aviv", offPpp:120.4, defPpp:108.2, net:12.2, fg2o:52,fg3o:48,fg2oa:49,fg3oa:40, fg2d:55,fg3d:45,fg2da:51,fg3da:36, offPoss:290, defPoss:285, min:63.8 },
+  { names:"Adams / Blatt / Sorkin / Brown / Pnini", team:"Hapoel Jerusalem", offPpp:108.2, defPpp:112.5, net:-4.3, fg2o:55,fg3o:45,fg2oa:48,fg3oa:33, fg2d:58,fg3d:42,fg2da:53,fg3da:37, offPoss:142, defPoss:138, min:31.0 },
+];
+
+const MOCK_LINEUPS_FF = [
+  { names:"Ennis / Blossomgame / Scott / Brown / Kilpatrick", team:"Hapoel Tel Aviv", offTs:64.2, offOreb:35.1, offTov:10.2, offFtr:30.5, defTs:46.8, defOreb:26.3, defTov:16.1, defFtr:21.2, offPoss:245, defPoss:238, min:52.3 },
+  { names:"Hoard / Baldwin / Jokubaitis / Rivero / Sorkin", team:"Maccabi Tel Aviv", offTs:60.1, offOreb:32.8, offTov:11.5, offFtr:27.2, defTs:49.2, defOreb:28.8, defTov:14.5, defFtr:23.5, offPoss:312, defPoss:305, min:68.1 },
+  { names:"Adams / Blatt / Zoosman / Levi / Bender", team:"Hapoel Jerusalem", offTs:57.8, offOreb:30.5, offTov:12.0, offFtr:25.8, defTs:48.5, defOreb:29.5, defTov:13.8, defFtr:24.0, offPoss:278, defPoss:270, min:61.4 },
+  { names:"Hannah / Timor / Grant / Williams / Ziv", team:"Maccabi Ramat Gan", offTs:56.2, offOreb:28.9, offTov:13.5, offFtr:26.5, defTs:50.8, defOreb:30.2, defTov:12.5, defFtr:24.8, offPoss:198, defPoss:192, min:44.8 },
+  { names:"Cline / Dawson / Levi / Cohen / Grant", team:"Bnei Herzliya", offTs:54.5, offOreb:29.8, offTov:12.8, offFtr:24.8, defTs:51.2, defOreb:31.0, defTov:13.2, defFtr:25.2, offPoss:220, defPoss:215, min:48.2 },
+  { names:"Ragland / D.Ennis / Pnini / Okoye / Blayzer", team:"Hapoel Holon", offTs:53.8, offOreb:27.5, offTov:14.2, offFtr:23.5, defTs:52.0, defOreb:31.5, defTov:12.8, defFtr:25.8, offPoss:265, defPoss:258, min:57.6 },
+  { names:"Harris / Levi / Allon / Peterson / Biran", team:"Ironi Ness Ziona", offTs:52.0, offOreb:28.2, offTov:13.8, offFtr:22.8, defTs:53.5, defOreb:32.0, defTov:12.0, defFtr:26.5, offPoss:188, defPoss:182, min:41.5 },
+];
+
+// =================================================================
+// MOCK DATA — Tab 3: Team Ratings
+// =================================================================
+const MOCK_TEAMS = [
+  { team:"Maccabi Tel Aviv", w:22, l:4, offPpp:118.5, defPpp:101.2, net:17.3, rOff:1, rDef:2, rNet:1, offPoss:4820, defPoss:4790 },
+  { team:"Hapoel Tel Aviv", w:19, l:7, offPpp:116.8, defPpp:103.5, net:13.3, rOff:2, rDef:4, rNet:2, offPoss:4650, defPoss:4620 },
+  { team:"Hapoel Jerusalem", w:17, l:9, offPpp:114.2, defPpp:105.1, net:9.1, rOff:3, rDef:5, rNet:3, offPoss:4580, defPoss:4560 },
+  { team:"Bnei Herzliya", w:15, l:11, offPpp:112.5, defPpp:106.8, net:5.7, rOff:5, rDef:6, rNet:4, offPoss:4420, defPoss:4400 },
+  { team:"Hapoel Holon", w:14, l:12, offPpp:113.1, defPpp:108.2, net:4.9, rOff:4, rDef:8, rNet:5, offPoss:4510, defPoss:4480 },
+  { team:"Maccabi Ramat Gan", w:13, l:13, offPpp:110.8, defPpp:109.5, net:1.3, rOff:6, rDef:9, rNet:6, offPoss:4380, defPoss:4350 },
+  { team:"Ironi Ness Ziona", w:12, l:14, offPpp:108.5, defPpp:108.2, net:0.3, rOff:8, rDef:7, rNet:7, offPoss:4300, defPoss:4280 },
+  { team:"Hapoel Eilat", w:11, l:15, offPpp:109.2, defPpp:110.8, net:-1.6, rOff:7, rDef:10, rNet:8, offPoss:4250, defPoss:4230 },
+  { team:"Hapoel Galil Elyon", w:10, l:16, offPpp:106.5, defPpp:100.8, net:5.7, rOff:9, rDef:1, rNet:9, offPoss:4180, defPoss:4160 },
+  { team:"Maccabi Rishon", w:9, l:17, offPpp:105.2, defPpp:102.5, net:2.7, rOff:10, rDef:3, rNet:10, offPoss:4150, defPoss:4130 },
+  { team:"Hapoel Be'er Sheva", w:7, l:19, offPpp:103.8, defPpp:111.2, net:-7.4, rOff:11, rDef:11, rNet:11, offPoss:4050, defPoss:4030 },
+  { team:"Ironi Nahariya", w:5, l:21, offPpp:101.5, defPpp:113.8, net:-12.3, rOff:12, rDef:12, rNet:12, offPoss:3980, defPoss:3960 },
+];
+
+const MOCK_TEAMS_FF = [
+  { team:"Maccabi Tel Aviv", w:22, l:4, offTs:58.2, offOreb:33.5, offTov:11.8, offFtr:28.2, defTs:49.5, defOreb:27.8, defTov:14.5, defFtr:22.8, offPoss:4820, defPoss:4790 },
+  { team:"Hapoel Tel Aviv", w:19, l:7, offTs:56.8, offOreb:31.2, offTov:12.5, offFtr:26.5, defTs:50.2, defOreb:29.0, defTov:13.8, defFtr:23.5, offPoss:4650, defPoss:4620 },
+  { team:"Hapoel Jerusalem", w:17, l:9, offTs:55.5, offOreb:30.8, offTov:12.8, offFtr:25.8, defTs:51.0, defOreb:29.5, defTov:13.2, defFtr:24.0, offPoss:4580, defPoss:4560 },
+  { team:"Bnei Herzliya", w:15, l:11, offTs:54.2, offOreb:29.5, offTov:13.2, offFtr:24.5, defTs:52.0, defOreb:30.5, defTov:12.8, defFtr:24.8, offPoss:4420, defPoss:4400 },
+  { team:"Hapoel Holon", w:14, l:12, offTs:54.8, offOreb:28.8, offTov:13.5, offFtr:25.0, defTs:52.5, defOreb:31.2, defTov:12.5, defFtr:25.2, offPoss:4510, defPoss:4480 },
+  { team:"Maccabi Ramat Gan", w:13, l:13, offTs:53.5, offOreb:27.5, offTov:14.0, offFtr:23.8, defTs:53.2, defOreb:31.8, defTov:12.0, defFtr:25.8, offPoss:4380, defPoss:4350 },
+  { team:"Ironi Ness Ziona", w:12, l:14, offTs:52.8, offOreb:28.2, offTov:13.8, offFtr:23.2, defTs:52.8, defOreb:30.8, defTov:12.5, defFtr:25.0, offPoss:4300, defPoss:4280 },
+  { team:"Hapoel Eilat", w:11, l:15, offTs:53.0, offOreb:26.8, offTov:14.5, offFtr:22.5, defTs:53.8, defOreb:32.0, defTov:11.8, defFtr:26.0, offPoss:4250, defPoss:4230 },
+  { team:"Hapoel Galil Elyon", w:10, l:16, offTs:51.5, offOreb:29.8, offTov:14.8, offFtr:21.8, defTs:49.8, defOreb:28.5, defTov:14.2, defFtr:23.0, offPoss:4180, defPoss:4160 },
+  { team:"Maccabi Rishon", w:9, l:17, offTs:51.0, offOreb:27.0, offTov:15.0, offFtr:22.0, defTs:50.5, defOreb:29.2, defTov:13.5, defFtr:23.8, offPoss:4150, defPoss:4130 },
+  { team:"Hapoel Be'er Sheva", w:7, l:19, offTs:50.2, offOreb:26.2, offTov:15.5, offFtr:21.5, defTs:54.5, defOreb:33.0, defTov:11.5, defFtr:26.5, offPoss:4050, defPoss:4030 },
+  { team:"Ironi Nahariya", w:5, l:21, offTs:49.5, offOreb:25.5, offTov:16.0, offFtr:20.8, defTs:55.2, defOreb:33.5, defTov:11.0, defFtr:27.0, offPoss:3980, defPoss:3960 },
+];
+
+// =================================================================
+// MOCK DATA — Tab 4: Game Logs
+// =================================================================
+const MOCK_GAMELOGS = [
+  { gn:1, date:"2025-10-05", team:"Maccabi Tel Aviv", opp:"Ironi Nahariya", result:"W", score:"92-74", offPpp:128.5, defPpp:98.2, net:30.3, fg2o:58,fg3o:42,fg2oa:57,fg3oa:42, fg2d:55,fg3d:45,fg2da:46,fg3da:28, offPoss:72, defPoss:75, min:40 },
+  { gn:1, date:"2025-10-05", team:"Hapoel Tel Aviv", opp:"Maccabi Ramat Gan", result:"W", score:"88-71", offPpp:122.4, defPpp:99.8, net:22.6, fg2o:60,fg3o:40,fg2oa:55,fg3oa:38, fg2d:57,fg3d:43,fg2da:49,fg3da:31, offPoss:70, defPoss:72, min:40 },
+  { gn:1, date:"2025-10-05", team:"Hapoel Jerusalem", opp:"Hapoel Eilat", result:"W", score:"85-79", offPpp:112.8, defPpp:104.5, net:8.3, fg2o:56,fg3o:44,fg2oa:53,fg3oa:39, fg2d:58,fg3d:42,fg2da:51,fg3da:34, offPoss:74, defPoss:76, min:40 },
+  { gn:2, date:"2025-10-12", team:"Maccabi Tel Aviv", opp:"Hapoel Holon", result:"W", score:"95-82", offPpp:126.8, defPpp:109.5, net:17.3, fg2o:55,fg3o:45,fg2oa:56,fg3oa:41, fg2d:56,fg3d:44,fg2da:50,fg3da:33, offPoss:75, defPoss:74, min:40 },
+  { gn:2, date:"2025-10-12", team:"Hapoel Tel Aviv", opp:"Bnei Herzliya", result:"W", score:"91-78", offPpp:121.5, defPpp:104.0, net:17.5, fg2o:59,fg3o:41,fg2oa:58,fg3oa:40, fg2d:54,fg3d:46,fg2da:48,fg3da:30, offPoss:76, defPoss:75, min:40 },
+  { gn:2, date:"2025-10-12", team:"Hapoel Jerusalem", opp:"Maccabi Rishon", result:"L", score:"78-84", offPpp:104.2, defPpp:112.0, net:-7.8, fg2o:54,fg3o:46,fg2oa:48,fg3oa:32, fg2d:59,fg3d:41,fg2da:54,fg3da:38, offPoss:73, defPoss:75, min:40 },
+  { gn:3, date:"2025-10-19", team:"Maccabi Tel Aviv", opp:"Hapoel Jerusalem", result:"W", score:"98-85", offPpp:130.5, defPpp:113.2, net:17.3, fg2o:54,fg3o:46,fg2oa:58,fg3oa:43, fg2d:57,fg3d:43,fg2da:52,fg3da:35, offPoss:75, defPoss:76, min:40 },
+  { gn:3, date:"2025-10-19", team:"Hapoel Tel Aviv", opp:"Ironi Ness Ziona", result:"W", score:"102-88", offPpp:136.0, defPpp:117.3, net:18.7, fg2o:57,fg3o:43,fg2oa:60,fg3oa:44, fg2d:56,fg3d:44,fg2da:50,fg3da:33, offPoss:74, defPoss:75, min:40 },
+  { gn:3, date:"2025-10-19", team:"Bnei Herzliya", opp:"Maccabi Ramat Gan", result:"L", score:"75-82", offPpp:100.0, defPpp:109.3, net:-9.3, fg2o:55,fg3o:45,fg2oa:47,fg3oa:30, fg2d:60,fg3d:40,fg2da:55,fg3da:38, offPoss:75, defPoss:75, min:40 },
+  { gn:4, date:"2025-10-26", team:"Maccabi Tel Aviv", opp:"Hapoel Eilat", result:"W", score:"101-79", offPpp:134.8, defPpp:105.3, net:29.5, fg2o:56,fg3o:44,fg2oa:59,fg3oa:45, fg2d:55,fg3d:45,fg2da:47,fg3da:29, offPoss:73, defPoss:75, min:40 },
+  { gn:4, date:"2025-10-26", team:"Hapoel Tel Aviv", opp:"Hapoel Galil Elyon", result:"W", score:"89-76", offPpp:118.5, defPpp:101.3, net:17.2, fg2o:61,fg3o:39,fg2oa:56,fg3oa:37, fg2d:58,fg3d:42,fg2da:48,fg3da:31, offPoss:74, defPoss:75, min:40 },
+  { gn:4, date:"2025-10-26", team:"Hapoel Holon", opp:"Ironi Nahariya", result:"W", score:"86-72", offPpp:114.8, defPpp:96.0, net:18.8, fg2o:58,fg3o:42,fg2oa:54,fg3oa:37, fg2d:56,fg3d:44,fg2da:47,fg3da:30, offPoss:74, defPoss:75, min:40 },
+  { gn:5, date:"2025-11-02", team:"Maccabi Tel Aviv", opp:"Maccabi Ramat Gan", result:"W", score:"108-85", offPpp:144.0, defPpp:113.3, net:30.7, fg2o:53,fg3o:47,fg2oa:60,fg3oa:46, fg2d:57,fg3d:43,fg2da:51,fg3da:34, offPoss:75, defPoss:74, min:40 },
+  { gn:5, date:"2025-11-02", team:"Hapoel Tel Aviv", opp:"Hapoel Be'er Sheva", result:"W", score:"94-72", offPpp:125.3, defPpp:96.0, net:29.3, fg2o:59,fg3o:41,fg2oa:57,fg3oa:39, fg2d:55,fg3d:45,fg2da:46,fg3da:28, offPoss:73, defPoss:75, min:40 },
+  { gn:5, date:"2025-11-02", team:"Hapoel Jerusalem", opp:"Bnei Herzliya", result:"W", score:"88-80", offPpp:117.3, defPpp:106.7, net:10.6, fg2o:56,fg3o:44,fg2oa:54,fg3oa:40, fg2d:57,fg3d:43,fg2da:50,fg3da:33, offPoss:76, defPoss:75, min:40 },
+  { gn:6, date:"2025-11-09", team:"Hapoel Holon", opp:"Hapoel Tel Aviv", result:"L", score:"78-92", offPpp:104.0, defPpp:122.7, net:-18.7, fg2o:57,fg3o:43,fg2oa:48,fg3oa:31, fg2d:59,fg3d:41,fg2da:56,fg3da:40, offPoss:74, defPoss:75, min:40 },
+  { gn:6, date:"2025-11-09", team:"Maccabi Tel Aviv", opp:"Bnei Herzliya", result:"W", score:"96-82", offPpp:128.0, defPpp:109.3, net:18.7, fg2o:54,fg3o:46,fg2oa:55,fg3oa:42, fg2d:56,fg3d:44,fg2da:49,fg3da:33, offPoss:76, defPoss:75, min:40 },
+  { gn:6, date:"2025-11-09", team:"Ironi Ness Ziona", opp:"Hapoel Eilat", result:"W", score:"84-78", offPpp:112.0, defPpp:104.0, net:8.0, fg2o:55,fg3o:45,fg2oa:52,fg3oa:38, fg2d:57,fg3d:43,fg2da:50,fg3da:34, offPoss:75, defPoss:75, min:40 },
+];
+
+const MOCK_GAMELOGS_FF = [
+  { gn:1, date:"2025-10-05", team:"Maccabi Tel Aviv", opp:"Ironi Nahariya", result:"W", score:"92-74", offTs:62.5, offOreb:35.2, offTov:10.5, offFtr:30.8, defTs:46.2, defOreb:25.8, defTov:16.5, defFtr:20.5, min:40 },
+  { gn:1, date:"2025-10-05", team:"Hapoel Tel Aviv", opp:"Maccabi Ramat Gan", result:"W", score:"88-71", offTs:58.8, offOreb:32.5, offTov:11.8, offFtr:28.2, defTs:48.5, defOreb:28.0, defTov:14.8, defFtr:22.5, min:40 },
+  { gn:1, date:"2025-10-05", team:"Hapoel Jerusalem", opp:"Hapoel Eilat", result:"W", score:"85-79", offTs:55.2, offOreb:30.8, offTov:12.5, offFtr:26.5, defTs:51.0, defOreb:30.2, defTov:13.2, defFtr:24.0, min:40 },
+  { gn:2, date:"2025-10-12", team:"Maccabi Tel Aviv", opp:"Hapoel Holon", result:"W", score:"95-82", offTs:61.2, offOreb:33.8, offTov:11.0, offFtr:29.5, defTs:50.5, defOreb:29.0, defTov:13.5, defFtr:23.8, min:40 },
+  { gn:2, date:"2025-10-12", team:"Hapoel Tel Aviv", opp:"Bnei Herzliya", result:"W", score:"91-78", offTs:59.5, offOreb:31.5, offTov:12.0, offFtr:27.8, defTs:49.8, defOreb:28.5, defTov:14.0, defFtr:23.0, min:40 },
+  { gn:2, date:"2025-10-12", team:"Hapoel Jerusalem", opp:"Maccabi Rishon", result:"L", score:"78-84", offTs:50.8, offOreb:27.5, offTov:14.8, offFtr:22.0, defTs:54.2, defOreb:33.0, defTov:11.5, defFtr:26.8, min:40 },
+  { gn:3, date:"2025-10-19", team:"Maccabi Tel Aviv", opp:"Hapoel Jerusalem", result:"W", score:"98-85", offTs:63.0, offOreb:34.5, offTov:10.8, offFtr:31.0, defTs:51.8, defOreb:30.5, defTov:12.8, defFtr:24.5, min:40 },
+  { gn:3, date:"2025-10-19", team:"Hapoel Tel Aviv", opp:"Ironi Ness Ziona", result:"W", score:"102-88", offTs:62.0, offOreb:33.0, offTov:11.2, offFtr:29.0, defTs:52.5, defOreb:31.0, defTov:12.5, defFtr:25.0, min:40 },
+  { gn:3, date:"2025-10-19", team:"Bnei Herzliya", opp:"Maccabi Ramat Gan", result:"L", score:"75-82", offTs:48.5, offOreb:26.0, offTov:15.5, offFtr:21.0, defTs:53.5, defOreb:32.5, defTov:11.8, defFtr:26.0, min:40 },
+];
+
+// =================================================================
+// RENDER HELPERS
+// =================================================================
+function heatClass(pr) {
+  if (pr >= .9) return 'heat-9';
+  if (pr >= .8) return 'heat-8';
+  if (pr >= .7) return 'heat-7';
+  if (pr >= .55) return 'heat-6';
+  if (pr >= .45) return 'heat-5';
+  if (pr >= .35) return 'heat-4';
+  if (pr >= .25) return 'heat-3';
+  if (pr >= .15) return 'heat-2';
+  return 'heat-1';
+}
+
+function formatDiff(v) {
+  const s = v.toFixed(1);
+  return v > 0 ? `<span class="cell-pos">+${s}</span>` : v < 0 ? `<span class="cell-neg">${s}</span>` : s;
+}
+
+function shotCell(fg2freq, fg3freq, fg2acc, fg3acc, avg2=53, avg3=34) {
+  function accClass(pct, avg) {
+    const d = pct - avg;
+    if (d >= 5) return 'shot-acc-good';
+    if (d <= -5) return 'shot-acc-bad';
+    return 'shot-acc-mid';
+  }
+  return `<div class="shot-cell">
+    <div class="shot-acc">
+      <span class="${accClass(fg2acc, avg2)}">${fg2acc}%</span>
+      <span style="opacity:0.3;margin:0 2px;">|</span>
+      <span class="${accClass(fg3acc, avg3)}">${fg3acc}%</span>
+    </div>
+    <div class="shot-bar">
+      <div class="shot-bar-2" style="width:${fg2freq}%">${fg2freq}</div>
+      <div class="shot-bar-3" style="width:${fg3freq}%">${fg3freq}</div>
+    </div>
+  </div>`;
+}
+
+function ffCell(metric) {
+  if (!metric || metric.onR === undefined) {
+    return `<div class="ff-cell"><div class="ff-diff unranked">${metric ? (metric.diff > 0 ? '+' : '') + metric.diff.toFixed(1) : '-'}</div></div>`;
+  }
+  const onPct = metric.onR;
+  const offPct = metric.offR;
+  const left = Math.min(onPct, offPct);
+  const width = Math.abs(onPct - offPct);
+  const diffStr = metric.diff > 0 ? '+' + metric.diff.toFixed(1) : metric.diff.toFixed(1);
+  const diffColor = metric.diff > 0 ? 'var(--positive)' : metric.diff < 0 ? 'var(--negative)' : 'var(--text-secondary)';
+
+  return `<div class="ff-cell">
+    <div class="ff-diff" style="color:${diffColor}">${diffStr}</div>
+    <div class="ff-track">
+      <div class="ff-connect" style="left:${left}%;width:${width}%;"></div>
+      <div class="ff-dot-off" style="left:${offPct}%;"></div>
+      <div class="ff-dot-on" style="left:${onPct}%;"></div>
+    </div>
+    <div class="ff-sub"><span class="on-val">${metric.on.toFixed(1)}</span> <span style="opacity:0.4">|</span> ${metric.off.toFixed(1)}</div>
+  </div>`;
+}
+
+function ffValueCell(val, good='high', best=60, worst=45) {
+  // Simple colored value for lineup/team/gamelog four factors (no on/off track)
+  const range = best - worst;
+  let pct = (val - worst) / range;
+  pct = Math.max(0, Math.min(1, pct));
+  if (good === 'low') pct = 1 - pct;
+  const color = pct > 0.65 ? 'var(--positive)' : pct < 0.35 ? 'var(--negative)' : 'var(--text-secondary)';
+  return `<span style="color:${color}; font-weight:600;">${val.toFixed(1)}</span>`;
+}
+
+function rankPill(rank, total=12) {
+  const cls = rank <= 4 ? 'rank-top' : rank <= 8 ? 'rank-mid' : 'rank-bot';
+  return `<span class="rank-pill ${cls}">${rank}</span>`;
+}
+
+function wlBadge(result) {
+  const cls = result === 'W' ? 'wl-w' : 'wl-l';
+  return `<span class="wl-badge ${cls}">${result}</span>`;
+}
+
+function recordCell(w, l) {
+  return `<span class="record-text"><span class="wins">${w}</span>-<span class="losses">${l}</span></span>`;
+}
+
+function scoreCell(score, result) {
+  const parts = score.split('-');
+  const cls = result === 'W' ? 'cell-pos' : 'cell-neg';
+  return `<span class="score-cell"><span class="${cls}">${parts[0]}</span><span style="color:var(--text-muted);">-</span><span class="opp-score">${parts[1]}</span></span>`;
+}
+
+// =================================================================
+// RENDER — Tab 1: On/Off Impact
+// =================================================================
+function renderSummaryTable() {
+  const tbody = document.getElementById('summaryBody');
+  tbody.innerHTML = MOCK_PLAYERS.map(p => `
+    <tr>
+      <td style="font-size:11px; color:var(--text-secondary); font-family:var(--font-sans); min-width:80px;">${p.team}</td>
+      <td style="min-width:130px;">${p.player}</td>
+      <td class="cell-bold section-start ${heatClass(p.pr)}">${formatDiff(p.net)}</td>
+      <td class="${heatClass(p.pr * 0.9)}">${formatDiff(p.off)}</td>
+      <td class="${heatClass(1 - p.pr * 0.85)}">${formatDiff(p.def)}</td>
+      <td class="section-start">${p.onOffPpp.toFixed(1)}</td>
+      <td>${p.onDefPpp.toFixed(1)}</td>
+      <td>${formatDiff(p.onNet)}</td>
+      <td>${shotCell(p.fg2on, p.fg3on, p.fg2acc, p.fg3acc)}</td>
+      <td>${shotCell(p.fg2def, p.fg3def, p.fg2dacc, p.fg3dacc, 53, 34)}</td>
+      <td class="section-start">${p.offOffPpp.toFixed(1)}</td>
+      <td>${p.offDefPpp.toFixed(1)}</td>
+      <td>${formatDiff(p.offNet)}</td>
+      <td>${shotCell(100 - p.fg2on, 100 - p.fg3on, p.fg2acc - 4, p.fg3acc - 3)}</td>
+      <td>${shotCell(100 - p.fg2def, 100 - p.fg3def, p.fg2dacc + 2, p.fg3dacc + 1)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${p.onPoss.toLocaleString()}</td>
+      <td style="color:var(--text-muted);">${p.offPoss.toLocaleString()}</td>
+    </tr>
+  `).join('');
+}
+
+function renderFFTable() {
+  const tbody = document.getElementById('ffBody');
+  tbody.innerHTML = MOCK_FF.map(p => `
+    <tr>
+      <td style="font-size:11px; color:var(--text-secondary); font-family:var(--font-sans); min-width:80px;">${p.team}</td>
+      <td style="min-width:130px;">${p.player}</td>
+      <td class="cell-bold ${heatClass(p.netDiff > 0 ? 0.5 + p.netDiff / 60 : 0.5 + p.netDiff / 60)}">${formatDiff(p.netDiff)}</td>
+      <td class="section-start">${formatDiff(p.offDiff)}</td>
+      <td>${ffCell(p.offTs)}</td>
+      <td>${ffCell(p.offOreb)}</td>
+      <td>${ffCell(p.offTov)}</td>
+      <td>${ffCell(p.offFtr)}</td>
+      <td class="section-start">${formatDiff(p.defDiff)}</td>
+      <td>${ffCell(p.defTs)}</td>
+      <td>${ffCell(p.defOreb)}</td>
+      <td>${ffCell(p.defTov)}</td>
+      <td>${ffCell(p.defFtr)}</td>
+      <td class="section-start" style="color:var(--text-secondary); font-family:var(--font-mono);">${p.onPoss.toLocaleString()}</td>
+      <td style="color:var(--text-muted); font-family:var(--font-mono);">${p.offPoss.toLocaleString()}</td>
+    </tr>
+  `).join('');
+}
+
+// =================================================================
+// RENDER — Tab 2: Lineup Data
+// =================================================================
+function renderLineupsTable() {
+  const tbody = document.getElementById('lineupsBody');
+  // Total row
+  const totOff = MOCK_LINEUPS.reduce((s,l) => s + l.offPoss, 0);
+  const totDef = MOCK_LINEUPS.reduce((s,l) => s + l.defPoss, 0);
+  const totMin = MOCK_LINEUPS.reduce((s,l) => s + l.min, 0);
+  const wOffPpp = MOCK_LINEUPS.reduce((s,l) => s + l.offPpp * l.offPoss, 0) / totOff;
+  const wDefPpp = MOCK_LINEUPS.reduce((s,l) => s + l.defPpp * l.defPoss, 0) / totDef;
+
+  tbody.innerHTML = MOCK_LINEUPS.map((l, i) => `
+    <tr>
+      <td style="text-align:left; font-family:var(--font-sans); min-width:220px;">
+        <a class="lineup-link" onclick="openLineupModal(${i})">${l.names}</a>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:1px;">${l.team}</div>
+      </td>
+      <td class="section-start">${l.offPpp.toFixed(1)}</td>
+      <td>${l.defPpp.toFixed(1)}</td>
+      <td class="cell-bold">${formatDiff(l.net)}</td>
+      <td class="section-start">${shotCell(l.fg2o, l.fg3o, l.fg2oa, l.fg3oa)}</td>
+      <td>${shotCell(l.fg2d, l.fg3d, l.fg2da, l.fg3da)}</td>
+      <td class="section-start">${shotCell(l.fg2o, l.fg3o, l.fg2oa, l.fg3oa)}</td>
+      <td>${shotCell(l.fg2d, l.fg3d, l.fg2da, l.fg3da)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${l.offPoss}</td>
+      <td style="color:var(--text-muted);">${l.defPoss}</td>
+      <td style="color:var(--text-muted);">${l.min.toFixed(1)}</td>
+    </tr>
+  `).join('') + `
+    <tr class="total-row">
+      <td style="text-align:left; font-family:var(--font-sans);">TOTAL</td>
+      <td class="section-start">${wOffPpp.toFixed(1)}</td>
+      <td>${wDefPpp.toFixed(1)}</td>
+      <td class="cell-bold">${formatDiff(wOffPpp - wDefPpp)}</td>
+      <td class="section-start">-</td><td>-</td>
+      <td class="section-start">-</td><td>-</td>
+      <td class="section-start">${totOff.toLocaleString()}</td>
+      <td>${totDef.toLocaleString()}</td>
+      <td>${totMin.toFixed(1)}</td>
+    </tr>`;
+}
+
+function renderLineupsFFTable() {
+  const tbody = document.getElementById('lineupsFFBody');
+  const totOff = MOCK_LINEUPS_FF.reduce((s,l) => s + l.offPoss, 0);
+  const totDef = MOCK_LINEUPS_FF.reduce((s,l) => s + l.defPoss, 0);
+  const totMin = MOCK_LINEUPS_FF.reduce((s,l) => s + l.min, 0);
+
+  tbody.innerHTML = MOCK_LINEUPS_FF.map((l, i) => `
+    <tr>
+      <td style="text-align:left; font-family:var(--font-sans); min-width:220px;">
+        <a class="lineup-link" onclick="openLineupModal(${i})">${l.names}</a>
+        <div style="font-size:10px; color:var(--text-muted); margin-top:1px;">${l.team}</div>
+      </td>
+      <td class="section-start">${ffValueCell(l.offTs, 'high', 62, 48)}</td>
+      <td>${ffValueCell(l.offOreb, 'high', 36, 24)}</td>
+      <td>${ffValueCell(l.offTov, 'low', 10, 16)}</td>
+      <td>${ffValueCell(l.offFtr, 'high', 32, 20)}</td>
+      <td class="section-start">${ffValueCell(l.defTs, 'low', 48, 56)}</td>
+      <td>${ffValueCell(l.defOreb, 'low', 26, 34)}</td>
+      <td>${ffValueCell(l.defTov, 'high', 16, 10)}</td>
+      <td>${ffValueCell(l.defFtr, 'low', 20, 28)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${l.offPoss}</td>
+      <td style="color:var(--text-muted);">${l.defPoss}</td>
+      <td style="color:var(--text-muted);">${l.min.toFixed(1)}</td>
+    </tr>
+  `).join('');
+}
+
+// =================================================================
+// RENDER — Tab 3: Team Ratings
+// =================================================================
+function renderTeamsTable() {
+  const tbody = document.getElementById('teamsBody');
+  tbody.innerHTML = MOCK_TEAMS.map(t => `
+    <tr>
+      <td style="text-align:left; font-family:var(--font-sans); font-weight:500; min-width:130px;">${t.team}</td>
+      <td>${recordCell(t.w, t.l)}</td>
+      <td class="section-start">${t.offPpp.toFixed(1)}</td>
+      <td>${t.defPpp.toFixed(1)}</td>
+      <td class="cell-bold">${formatDiff(t.net)}</td>
+      <td class="section-start">${rankPill(t.rOff)}</td>
+      <td>${rankPill(t.rDef)}</td>
+      <td>${rankPill(t.rNet)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${t.offPoss.toLocaleString()}</td>
+      <td style="color:var(--text-muted);">${t.defPoss.toLocaleString()}</td>
+    </tr>
+  `).join('');
+}
+
+function renderTeamsFFTable() {
+  const tbody = document.getElementById('teamsFFBody');
+  tbody.innerHTML = MOCK_TEAMS_FF.map(t => `
+    <tr>
+      <td style="text-align:left; font-family:var(--font-sans); font-weight:500; min-width:130px;">${t.team}</td>
+      <td>${recordCell(t.w, t.l)}</td>
+      <td class="section-start">${ffValueCell(t.offTs, 'high', 60, 48)}</td>
+      <td>${ffValueCell(t.offOreb, 'high', 34, 24)}</td>
+      <td>${ffValueCell(t.offTov, 'low', 10, 16)}</td>
+      <td>${ffValueCell(t.offFtr, 'high', 30, 20)}</td>
+      <td class="section-start">${ffValueCell(t.defTs, 'low', 48, 56)}</td>
+      <td>${ffValueCell(t.defOreb, 'low', 26, 34)}</td>
+      <td>${ffValueCell(t.defTov, 'high', 16, 10)}</td>
+      <td>${ffValueCell(t.defFtr, 'low', 20, 28)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${t.offPoss.toLocaleString()}</td>
+      <td style="color:var(--text-muted);">${t.defPoss.toLocaleString()}</td>
+    </tr>
+  `).join('');
+}
+
+// =================================================================
+// RENDER — Tab 4: Game Logs
+// =================================================================
+function renderGamelogsTable() {
+  const tbody = document.getElementById('gamelogsBody');
+  tbody.innerHTML = MOCK_GAMELOGS.map(g => `
+    <tr>
+      <td style="color:var(--text-muted); font-size:11px;">${g.gn}</td>
+      <td class="date-cell" style="text-align:left;">${g.date}</td>
+      <td style="text-align:left; font-family:var(--font-sans); font-weight:500;">${g.team}</td>
+      <td style="text-align:left; font-family:var(--font-sans); color:var(--text-secondary);">${g.opp}</td>
+      <td>${wlBadge(g.result)} ${scoreCell(g.score, g.result)}</td>
+      <td class="section-start">${g.offPpp.toFixed(1)}</td>
+      <td>${g.defPpp.toFixed(1)}</td>
+      <td class="cell-bold">${formatDiff(g.net)}</td>
+      <td class="section-start">${shotCell(g.fg2o, g.fg3o, g.fg2oa, g.fg3oa)}</td>
+      <td>${shotCell(g.fg2d, g.fg3d, g.fg2da, g.fg3da)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${g.offPoss}</td>
+      <td style="color:var(--text-muted);">${g.defPoss}</td>
+      <td style="color:var(--text-muted);">${g.min}</td>
+    </tr>
+  `).join('');
+}
+
+function renderGamelogsFFTable() {
+  const tbody = document.getElementById('gamelogsFFBody');
+  tbody.innerHTML = MOCK_GAMELOGS_FF.map(g => `
+    <tr>
+      <td style="color:var(--text-muted); font-size:11px;">${g.gn}</td>
+      <td class="date-cell" style="text-align:left;">${g.date}</td>
+      <td style="text-align:left; font-family:var(--font-sans); font-weight:500;">${g.team}</td>
+      <td style="text-align:left; font-family:var(--font-sans); color:var(--text-secondary);">${g.opp}</td>
+      <td>${wlBadge(g.result)} ${scoreCell(g.score, g.result)}</td>
+      <td class="section-start">${ffValueCell(g.offTs, 'high', 62, 48)}</td>
+      <td>${ffValueCell(g.offOreb, 'high', 36, 24)}</td>
+      <td>${ffValueCell(g.offTov, 'low', 10, 16)}</td>
+      <td>${ffValueCell(g.offFtr, 'high', 32, 20)}</td>
+      <td class="section-start">${ffValueCell(g.defTs, 'low', 48, 56)}</td>
+      <td>${ffValueCell(g.defOreb, 'low', 26, 34)}</td>
+      <td>${ffValueCell(g.defTov, 'high', 16, 10)}</td>
+      <td>${ffValueCell(g.defFtr, 'low', 20, 28)}</td>
+      <td class="section-start" style="color:var(--text-muted);">${g.min}</td>
+    </tr>
+  `).join('');
+}
+
+// =================================================================
+// STATE MANAGEMENT
+// =================================================================
+let currentSortColumn = null;
+let currentSortDir = 'desc';
+let currentFilters = {
+  team: null,
+  minPoss: 0
+};
+
+// =================================================================
+// SORTING
+// =================================================================
+function sortTable(key, dataArray, renderFn, headerEl) {
+  // Toggle sort direction
+  if (currentSortColumn === key) {
+    currentSortDir = currentSortDir === 'asc' ? 'desc' : 'asc';
+  } else {
+    currentSortColumn = key;
+    currentSortDir = 'desc';
+  }
+
+  // Determine if numeric
+  const firstVal = dataArray[0][key];
+  const isNumeric = typeof firstVal === 'number';
+
+  dataArray.sort((a, b) => {
+    let aVal = a[key];
+    let bVal = b[key];
+
+    // Handle undefined/null
+    if (aVal === undefined || aVal === null) aVal = isNumeric ? -Infinity : '';
+    if (bVal === undefined || bVal === null) bVal = isNumeric ? -Infinity : '';
+
+    if (isNumeric) {
+      return currentSortDir === 'asc' ? aVal - bVal : bVal - aVal;
+    } else {
+      return currentSortDir === 'asc'
+        ? String(aVal).localeCompare(String(bVal))
+        : String(bVal).localeCompare(String(aVal));
+    }
+  });
+
+  renderFn();
+  updateSortIndicators(headerEl);
+}
+
+function updateSortIndicators(clickedHeader) {
+  // Remove all sort indicators in this table
+  const table = clickedHeader.closest('table');
+  const headers = table.querySelectorAll('thead tr:last-child th');
+  headers.forEach(th => {
+    th.classList.remove('sorted-asc', 'sorted-desc');
+  });
+
+  // Add indicator to clicked header
+  clickedHeader.classList.add(currentSortDir === 'asc' ? 'sorted-asc' : 'sorted-desc');
+}
+
+// =================================================================
+// CSV EXPORT
+// =================================================================
+function exportCSV(data, filename) {
+  if (!data || data.length === 0) return;
+
+  const headers = Object.keys(data[0]);
+  const csvRows = [headers.join(',')];
+
+  data.forEach(row => {
+    const values = headers.map(header => {
+      let val = row[header];
+      if (typeof val === 'object' && val !== null) {
+        val = JSON.stringify(val);
+      }
+      val = String(val).replace(/"/g, '""');
+      return `"${val}"`;
+    });
+    csvRows.push(values.join(','));
+  });
+
+  const csvString = csvRows.join('\n');
+  const blob = new Blob([csvString], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function exportTableCSV(btn) {
+  // Find which tab and mode we're in
+  const activeTab = document.querySelector('.tab-panel.active');
+  const tabId = activeTab.id.replace('panel-', '');
+
+  const summaryActive = btn.closest('.table-card').classList.contains(`${tabId}-summary-view`) ||
+                        (!btn.closest('.table-card').classList.contains(`${tabId}-ff-view`) && tabId === 'onoff');
+
+  let data, filename;
+
+  if (tabId === 'onoff') {
+    data = summaryActive ? MOCK_PLAYERS : MOCK_FF;
+    filename = summaryActive ? 'onoff_summary.csv' : 'onoff_four_factors.csv';
+  } else if (tabId === 'lineups') {
+    data = summaryActive ? MOCK_LINEUPS : MOCK_LINEUPS_FF;
+    filename = summaryActive ? 'lineups_summary.csv' : 'lineups_four_factors.csv';
+  } else if (tabId === 'teams') {
+    data = summaryActive ? MOCK_TEAMS : MOCK_TEAMS_FF;
+    filename = summaryActive ? 'teams_summary.csv' : 'teams_four_factors.csv';
+  } else if (tabId === 'gamelogs') {
+    data = summaryActive ? MOCK_GAMELOGS : MOCK_GAMELOGS_FF;
+    filename = summaryActive ? 'gamelogs_summary.csv' : 'gamelogs_four_factors.csv';
+  }
+
+  exportCSV(data, filename);
+}
+
+// =================================================================
+// INTERACTIONS
+// =================================================================
+function toggleDrawer() {
+  const drawer = document.getElementById('filterDrawer');
+  const main = document.getElementById('mainContent');
+  const btn = document.getElementById('filterToggle');
+  const isOpen = drawer.classList.toggle('open');
+  main.classList.toggle('with-drawer', isOpen);
+  btn.classList.toggle('active', isOpen);
+}
+
+function switchTab(el) {
+  // Tab button active state
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+  el.classList.add('active');
+  // Panel visibility
+  const tab = el.dataset.tab;
+  document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+}
+
+function switchMode(tab, mode) {
+  // Find the toggle buttons within the active panel
+  const panel = document.getElementById('panel-' + tab);
+  panel.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
+  // Set clicked button active
+  event.target.classList.add('active');
+
+  const isSummary = mode === 'summary';
+
+  // Tab-specific view toggling
+  const sumViews = panel.querySelectorAll(`.${tab}-summary-view, .${tab}-summary-legend`);
+  const ffViews = panel.querySelectorAll(`.${tab}-ff-view, .${tab}-ff-legend`);
+  sumViews.forEach(el => el.style.display = isSummary ? '' : 'none');
+  ffViews.forEach(el => el.style.display = isSummary ? 'none' : '');
+}
+
+function toggleExplainer(id) {
+  const bar = event.currentTarget;
+  const body = document.getElementById('explainer-' + id);
+  bar.classList.toggle('open');
+  body.classList.toggle('show');
+}
+
+function setGroupSize(el, size) {
+  document.querySelectorAll('.group-pill').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  // In a real app, this would re-fetch data for the group size
+}
+
+function openLineupModal(idx) {
+  const lineup = MOCK_LINEUPS[idx];
+  document.getElementById('modalTitle').innerHTML = `Game Log — <span>${lineup.names}</span>`;
+  // Mock game log for this lineup
+  const mockGames = [
+    { gn:1, date:"2025-10-05", opp:"Ironi Nahariya", result:"W", offPpp:142.5, defPpp:88.2, net:54.3, offPoss:32, defPoss:30, min:7.2 },
+    { gn:3, date:"2025-10-19", opp:"Hapoel Jerusalem", result:"W", offPpp:135.0, defPpp:95.5, net:39.5, offPoss:28, defPoss:27, min:6.1 },
+    { gn:5, date:"2025-11-02", opp:"Maccabi Ramat Gan", result:"W", offPpp:148.2, defPpp:92.0, net:56.2, offPoss:25, defPoss:24, min:5.8 },
+    { gn:8, date:"2025-11-23", opp:"Hapoel Holon", result:"L", offPpp:105.5, defPpp:118.2, net:-12.7, offPoss:30, defPoss:31, min:6.8 },
+    { gn:12, date:"2025-12-21", opp:"Bnei Herzliya", result:"W", offPpp:130.8, defPpp:98.5, net:32.3, offPoss:34, defPoss:33, min:7.5 },
+  ];
+  const tbody = document.getElementById('modalBody');
+  tbody.innerHTML = mockGames.map(g => `
+    <tr>
+      <td style="color:var(--text-muted); font-size:11px;">${g.gn}</td>
+      <td class="date-cell" style="text-align:left;">${g.date}</td>
+      <td style="text-align:left; font-family:var(--font-sans); color:var(--text-secondary);">${g.opp}</td>
+      <td>${wlBadge(g.result)}</td>
+      <td class="section-start">${g.offPpp.toFixed(1)}</td>
+      <td>${g.defPpp.toFixed(1)}</td>
+      <td class="cell-bold">${formatDiff(g.net)}</td>
+      <td class="section-start" style="color:var(--text-secondary);">${g.offPoss}</td>
+      <td style="color:var(--text-muted);">${g.defPoss}</td>
+      <td style="color:var(--text-muted);">${g.min.toFixed(1)}</td>
+    </tr>
+  `).join('');
+  document.getElementById('lineupModal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('lineupModal').classList.remove('show');
+}
+
+function updateChipCount() {
+  const chips = document.querySelectorAll('.chip');
+  document.getElementById('filterCount').textContent = chips.length;
+}
+
+// Populate team filter dropdown for Tab 4
+function populateGamelogsTeamFilter() {
+  const sel = document.getElementById('gamelogsTeamFilter');
+  const teams = [...new Set(MOCK_GAMELOGS.map(g => g.team))].sort();
+  teams.forEach(t => {
+    const opt = document.createElement('option');
+    opt.value = t;
+    opt.textContent = t;
+    sel.appendChild(opt);
+  });
+
+  // Add filter handler
+  sel.addEventListener('change', function() {
+    const selectedTeam = this.value;
+    const filteredGames = selectedTeam
+      ? MOCK_GAMELOGS.filter(g => g.team === selectedTeam)
+      : MOCK_GAMELOGS;
+
+    const filteredFF = selectedTeam
+      ? MOCK_GAMELOGS_FF.filter(g => g.team === selectedTeam)
+      : MOCK_GAMELOGS_FF;
+
+    // Re-render filtered data
+    const tbody = document.getElementById('gamelogsBody');
+    tbody.innerHTML = filteredGames.map(g => `
+      <tr>
+        <td style="color:var(--text-muted); font-size:11px;">${g.gn}</td>
+        <td class="date-cell" style="text-align:left;">${g.date}</td>
+        <td style="text-align:left; font-family:var(--font-sans); font-weight:500;">${g.team}</td>
+        <td style="text-align:left; font-family:var(--font-sans); color:var(--text-secondary);">${g.opp}</td>
+        <td>${wlBadge(g.result)} ${scoreCell(g.score, g.result)}</td>
+        <td class="section-start">${g.offPpp.toFixed(1)}</td>
+        <td>${g.defPpp.toFixed(1)}</td>
+        <td class="cell-bold">${formatDiff(g.net)}</td>
+        <td class="section-start">${shotCell(g.fg2o, g.fg3o, g.fg2oa, g.fg3oa)}</td>
+        <td>${shotCell(g.fg2d, g.fg3d, g.fg2da, g.fg3da)}</td>
+        <td class="section-start" style="color:var(--text-secondary);">${g.offPoss}</td>
+        <td style="color:var(--text-muted);">${g.defPoss}</td>
+        <td style="color:var(--text-muted);">${g.min}</td>
+      </tr>
+    `).join('');
+
+    const tbodyFF = document.getElementById('gamelogsFFBody');
+    tbodyFF.innerHTML = filteredFF.map(g => `
+      <tr>
+        <td style="color:var(--text-muted); font-size:11px;">${g.gn}</td>
+        <td class="date-cell" style="text-align:left;">${g.date}</td>
+        <td style="text-align:left; font-family:var(--font-sans); font-weight:500;">${g.team}</td>
+        <td style="text-align:left; font-family:var(--font-sans); color:var(--text-secondary);">${g.opp}</td>
+        <td>${wlBadge(g.result)} ${scoreCell(g.score, g.result)}</td>
+        <td class="section-start">${ffValueCell(g.offTs, 'high', 62, 48)}</td>
+        <td>${ffValueCell(g.offOreb, 'high', 36, 24)}</td>
+        <td>${ffValueCell(g.offTov, 'low', 10, 16)}</td>
+        <td>${ffValueCell(g.offFtr, 'high', 32, 20)}</td>
+        <td class="section-start">${ffValueCell(g.defTs, 'low', 48, 56)}</td>
+        <td>${ffValueCell(g.defOreb, 'low', 26, 34)}</td>
+        <td>${ffValueCell(g.defTov, 'high', 16, 10)}</td>
+        <td>${ffValueCell(g.defFtr, 'low', 20, 28)}</td>
+        <td class="section-start" style="color:var(--text-muted);">${g.min}</td>
+      </tr>
+    `).join('');
+  });
+}
+
+// =================================================================
+// KEYBOARD SHORTCUTS
+// =================================================================
+document.addEventListener('keydown', function(e) {
+  // Escape key - close modal or drawer
+  if (e.key === 'Escape') {
+    const modal = document.getElementById('lineupModal');
+    const drawer = document.getElementById('filterDrawer');
+
+    if (modal && modal.classList.contains('show')) {
+      closeModal();
+    } else if (drawer && drawer.classList.contains('open')) {
+      toggleDrawer();
+    }
+  }
+});
+
+// =================================================================
+// MAKE HEADERS SORTABLE
+// =================================================================
+function makeHeadersSortable() {
+  // Map column text to data keys for each table type
+  const columnMaps = {
+    'onoff-summary': {
+      'Net': 'net', 'Off': 'off', 'Def': 'def',
+      'Off PPP': 'onOffPpp', 'Def PPP': 'onDefPpp',
+      'On': 'onPoss', 'Team': 'team', 'Player': 'player'
+    },
+    'onoff-ff': {
+      'Diff': 'netDiff', 'Team': 'team', 'Player': 'player',
+      'On': 'onPoss', 'Off': 'offPoss'
+    },
+    'lineups': {
+      'Off PPP': 'offPpp', 'Def PPP': 'defPpp', 'Net': 'net',
+      'Off Poss': 'offPoss', 'Def Poss': 'defPoss', 'Min': 'min'
+    },
+    'lineups-ff': {
+      'TS%': 'offTs', 'OREB%': 'offOreb', 'TOV%': 'offTov', 'FTR': 'offFtr',
+      'Off Poss': 'offPoss', 'Def Poss': 'defPoss', 'Min': 'min'
+    },
+    'teams': {
+      'Team': 'team', 'Off PPP': 'offPpp', 'Def PPP': 'defPpp', 'Net': 'net',
+      '#Off': 'rOff', '#Def': 'rDef', '#Net': 'rNet',
+      'Off Poss': 'offPoss', 'Def Poss': 'defPoss'
+    },
+    'teams-ff': {
+      'Team': 'team', 'TS%': 'offTs', 'OREB%': 'offOreb', 'TOV%': 'offTov', 'FTR': 'offFtr',
+      'Off Poss': 'offPoss', 'Def Poss': 'defPoss'
+    },
+    'gamelogs': {
+      'GN': 'gn', 'Date': 'date', 'Team': 'team', 'Opponent': 'opp',
+      'Off PPP': 'offPpp', 'Def PPP': 'defPpp', 'Net': 'net',
+      'Off Poss': 'offPoss', 'Def Poss': 'defPoss', 'Min': 'min'
+    },
+    'gamelogs-ff': {
+      'GN': 'gn', 'Date': 'date', 'Team': 'team', 'Opponent': 'opp',
+      'TS%': 'offTs', 'OREB%': 'offOreb', 'TOV%': 'offTov', 'FTR': 'offFtr', 'Min': 'min'
+    }
+  };
+
+  // Add click handlers to all sortable headers
+  document.querySelectorAll('.data-table thead tr:last-child th').forEach(th => {
+    // Skip group headers and empty cells
+    if (th.classList.contains('group-empty') || !th.textContent.trim()) return;
+
+    th.style.cursor = 'pointer';
+    th.addEventListener('click', function() {
+      const tableCard = this.closest('.table-card');
+      const panel = this.closest('.tab-panel');
+      const tabId = panel.id.replace('panel-', '');
+
+      // Determine table type
+      let tableType, dataArray, renderFn;
+
+      if (tabId === 'onoff') {
+        if (tableCard.classList.contains('onoff-summary-view')) {
+          tableType = 'onoff-summary';
+          dataArray = MOCK_PLAYERS;
+          renderFn = renderSummaryTable;
+        } else {
+          tableType = 'onoff-ff';
+          dataArray = MOCK_FF;
+          renderFn = renderFFTable;
+        }
+      } else if (tabId === 'lineups') {
+        if (tableCard.classList.contains('lineups-summary-view')) {
+          tableType = 'lineups';
+          dataArray = MOCK_LINEUPS;
+          renderFn = renderLineupsTable;
+        } else {
+          tableType = 'lineups-ff';
+          dataArray = MOCK_LINEUPS_FF;
+          renderFn = renderLineupsFFTable;
+        }
+      } else if (tabId === 'teams') {
+        if (tableCard.classList.contains('teams-summary-view')) {
+          tableType = 'teams';
+          dataArray = MOCK_TEAMS;
+          renderFn = renderTeamsTable;
+        } else {
+          tableType = 'teams-ff';
+          dataArray = MOCK_TEAMS_FF;
+          renderFn = renderTeamsFFTable;
+        }
+      } else if (tabId === 'gamelogs') {
+        if (tableCard.classList.contains('gamelogs-summary-view')) {
+          tableType = 'gamelogs';
+          dataArray = MOCK_GAMELOGS;
+          renderFn = renderGamelogsTable;
+        } else {
+          tableType = 'gamelogs-ff';
+          dataArray = MOCK_GAMELOGS_FF;
+          renderFn = renderGamelogsFFTable;
+        }
+      }
+
+      // Get the data key for this column
+      const columnText = this.textContent.trim();
+      const map = columnMaps[tableType];
+      const dataKey = map ? map[columnText] : null;
+
+      if (dataKey && dataArray && renderFn) {
+        sortTable(dataKey, dataArray, renderFn, this);
+      }
+    });
+  });
+}
+
+// =================================================================
+// INIT — render all tables
+// =================================================================
+renderSummaryTable();
+renderFFTable();
+renderLineupsTable();
+renderLineupsFFTable();
+renderTeamsTable();
+renderTeamsFFTable();
+renderGamelogsTable();
+renderGamelogsFFTable();
+populateGamelogsTeamFilter();
+makeHeadersSortable();
+</script>
+</body>
+</html>
