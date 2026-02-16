@@ -260,6 +260,35 @@ function(req, res) {
   plumber::forward()
 }
 
+#* Route alias/normalization for backward-compatible clients
+#* @filter route_aliases
+function(req, res) {
+  path <- req$PATH_INFO
+  if (!is.null(path) && nzchar(path)) {
+    normalized <- path
+    if (startsWith(normalized, "/api/") && nchar(normalized) > 5L) {
+      normalized <- sub("/+$", "", normalized)
+    }
+
+    target <- NULL
+    if (!identical(normalized, path)) target <- normalized
+    if (identical(normalized, "/api/lineups")) target <- "/api/lineups/summary"
+    if (identical(normalized, "/api/lineups/ff")) target <- "/api/lineups/four-factors"
+    if (identical(normalized, "/api/lineups/four_factors")) target <- "/api/lineups/four-factors"
+    if (identical(normalized, "/api/lineups/game_log")) target <- "/api/lineups/game-log"
+    if (identical(normalized, "/api/lineups/gamelog")) target <- "/api/lineups/game-log"
+
+    if (!is.null(target) && !identical(target, path)) {
+      qs <- req$QUERY_STRING
+      loc <- if (!is.null(qs) && nzchar(qs)) paste0(target, "?", qs) else target
+      res$status <- 307
+      res$setHeader("Location", loc)
+      return(list(error = "Redirecting to canonical route"))
+    }
+  }
+  plumber::forward()
+}
+
 # ── GET /api/meta/teams ──────────────────────────────────────
 #* @get /api/meta/teams
 #* @param game_year:int Season year (default 2026)
@@ -491,6 +520,7 @@ rename_lineup_summary <- function(df) {
     "off_poss" = "offPoss", "off_pts" = "offPts", "off_ppp" = "offPpp",
     "def_poss" = "defPoss", "def_pts" = "defPts", "def_ppp" = "defPpp",
     "net_rtg" = "netRtg", "minutes" = "minutes",
+    "total_poss" = "totalPoss", "plus_minus" = "plusMinus",
     "off_fg2_made" = "offFg2Made", "off_fg2_att" = "offFg2Att",
     "off_fg3_made" = "offFg3Made", "off_fg3_att" = "offFg3Att",
     "def_fg2_made" = "defFg2Made", "def_fg2_att" = "defFg2Att",
@@ -518,7 +548,7 @@ rename_lineup_ff <- function(df) {
     "off_poss" = "offPoss", "off_pts" = "offPts", "off_ppp" = "offPpp",
     "def_ts" = "defTs", "def_oreb" = "defOreb", "def_tov" = "defTov", "def_ftr" = "defFtr",
     "def_poss" = "defPoss", "def_pts" = "defPts", "def_ppp" = "defPpp",
-    "net_rtg" = "netRtg", "minutes" = "minutes",
+    "net_rtg" = "netRtg", "minutes" = "minutes", "total_poss" = "totalPoss",
     "off_ts_poss" = "offTsPoss", "off_oreb_cnt" = "offOrebCnt",
     "off_oreb_opps" = "offOrebOpps", "off_tov_cnt" = "offTovCnt",
     "off_fta" = "offFta", "off_fga_cnt" = "offFgaCnt",
@@ -586,6 +616,17 @@ function(req, res,
     if (col %in% names(df)) df[[col]][is.na(df[[col]])] <- 0
   }
 
+  # Ensure PPP/net columns exist for the frontend contract
+  if (!("off_ppp" %in% names(df)) && all(c("off_pts", "off_poss") %in% names(df))) {
+    df$off_ppp <- ifelse(df$off_poss > 0, round(df$off_pts / df$off_poss * 100, 1), NA_real_)
+  }
+  if (!("def_ppp" %in% names(df)) && all(c("def_pts", "def_poss") %in% names(df))) {
+    df$def_ppp <- ifelse(df$def_poss > 0, round(df$def_pts / df$def_poss * 100, 1), NA_real_)
+  }
+  if (!("net_rtg" %in% names(df)) && all(c("off_ppp", "def_ppp") %in% names(df))) {
+    df$net_rtg <- ifelse(!is.na(df$off_ppp) & !is.na(df$def_ppp), round(df$off_ppp - df$def_ppp, 1), NA_real_)
+  }
+
   df$total_poss <- df$off_poss + df$def_poss
   df$plus_minus <- df$off_pts - df$def_pts
 
@@ -593,7 +634,20 @@ function(req, res,
   df$game_year <- NULL
   df$player_names <- NULL
 
-  rename_lineup_summary(df)
+  out <- rename_lineup_summary(df)
+  if (!("offPpp" %in% names(out)) && all(c("offPts", "offPoss") %in% names(out))) {
+    out$offPpp <- ifelse(out$offPoss > 0, round(out$offPts / out$offPoss * 100, 1), 0)
+  }
+  if (!("defPpp" %in% names(out)) && all(c("defPts", "defPoss") %in% names(out))) {
+    out$defPpp <- ifelse(out$defPoss > 0, round(out$defPts / out$defPoss * 100, 1), 0)
+  }
+  if (!("netRtg" %in% names(out)) && all(c("offPpp", "defPpp") %in% names(out))) {
+    out$netRtg <- round(out$offPpp - out$defPpp, 1)
+  }
+  for (col in c("offPpp", "defPpp", "netRtg")) {
+    if (col %in% names(out)) out[[col]][is.na(out[[col]])] <- 0
+  }
+  out
 }
 
 # ── GET /api/lineups/four-factors ─────────────────────────────
@@ -651,7 +705,7 @@ function(req, res,
 
 # ── GET /api/lineups/game-log ─────────────────────────────────
 #* @get /api/lineups/game-log
-#* @serializer json
+#* @serializer unboxedJSON
 function(req, res,
          sub_hash = "", team_id = "", game_year = "2026", view_mode = "summary") {
 

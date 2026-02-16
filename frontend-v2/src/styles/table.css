@@ -1,0 +1,332 @@
+/* ============================================================
+   DATA TABLE
+   ============================================================ */
+.table-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+}
+
+.table-toolbar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.table-info {
+  font-size: 11px; color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+.table-actions {
+  display: flex; gap: 8px;
+}
+.table-action-btn {
+  padding: 4px 10px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all var(--duration-fast);
+}
+.table-action-btn:hover { background: var(--bg-hover); color: var(--text-primary); }
+
+.data-table-wrap {
+  overflow-x: auto;
+  overflow-y: auto;
+  max-height: 72vh;
+}
+
+.data-table {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 0;
+  font-size: 12.5px;
+}
+
+/* Grouped header */
+.data-table thead { position: sticky; top: 0; z-index: 10; }
+.data-table thead tr:first-child th {
+  background: var(--bg-elevated);
+  padding: 6px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: var(--accent-dim);
+  border-bottom: 1px solid var(--border-dim);
+  white-space: nowrap;
+  text-align: center;
+}
+.data-table thead tr:first-child th.group-empty { background: var(--bg-card); }
+
+.data-table thead tr:last-child th {
+  background: var(--bg-card);
+  padding: 8px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-dim);
+  white-space: nowrap;
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  transition: color var(--duration-fast);
+}
+.data-table thead tr:last-child th:hover { color: var(--text-primary); }
+.data-table thead tr:last-child th.sorted-asc::after { content: ' \25B2'; font-size: 8px; color: var(--accent); }
+.data-table thead tr:last-child th.sorted-desc::after { content: ' \25BC'; font-size: 8px; color: var(--accent); }
+
+/* Section dividers */
+.section-start {
+  border-left: 2px solid var(--border-dim) !important;
+}
+
+/* Table body */
+.data-table tbody tr {
+  transition: background var(--duration-fast);
+}
+.data-table tbody tr:nth-child(even) { background: rgba(255,255,255,0.015); }
+.data-table tbody tr:hover { background: var(--bg-hover); }
+
+.data-table tbody td {
+  padding: 7px 10px;
+  text-align: center;
+  border-bottom: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--text-primary);
+  transition: background var(--duration-fast);
+}
+
+/* Sticky first two columns (Tab 1: Team + Player) */
+.data-table td:nth-child(1), .data-table th:nth-child(1),
+.data-table td:nth-child(2), .data-table th:nth-child(2) {
+  position: sticky; z-index: 5;
+  font-family: var(--font-sans);
+}
+.data-table td:nth-child(1), .data-table thead tr:last-child th:nth-child(1),
+.data-table thead tr:first-child th:first-child {
+  left: 0;
+  background: var(--bg-card);
+  text-align: left;
+}
+.data-table tbody tr:nth-child(even) td:nth-child(1) { background: #151d2c; }
+.data-table tbody tr:hover td:nth-child(1),
+.data-table tbody tr:hover td:nth-child(2) { background: var(--bg-hover); }
+
+.data-table td:nth-child(2), .data-table thead tr:last-child th:nth-child(2) {
+  left: 85px;
+  text-align: left;
+  background: var(--bg-card);
+  font-weight: 500;
+  color: var(--text-primary);
+  border-right: 1px solid var(--border-dim);
+}
+.data-table tbody tr:nth-child(even) td:nth-child(2) { background: #151d2c; }
+
+/* Colored cells */
+.cell-pos { color: var(--positive); }
+.cell-neg { color: var(--negative); }
+.cell-bold { font-weight: 700; font-size: 13px; }
+
+/* Heat map color stops */
+.heat-1 { background: rgba(248, 113, 113, 0.18); }
+.heat-2 { background: rgba(248, 113, 113, 0.10); }
+.heat-3 { background: rgba(248, 113, 113, 0.05); }
+.heat-4 { background: transparent; }
+.heat-5 { background: rgba(254, 224, 139, 0.10); }
+.heat-6 { background: transparent; }
+.heat-7 { background: rgba(52, 211, 153, 0.05); }
+.heat-8 { background: rgba(52, 211, 153, 0.10); }
+.heat-9 { background: rgba(52, 211, 153, 0.18); }
+
+/* ============================================================
+   SHOT SPLIT MINI-VIZ
+   ============================================================ */
+.shot-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 1px;
+  min-width: 90px;
+}
+.shot-acc {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: -0.3px;
+}
+.shot-acc-good { color: var(--positive); font-weight: 600; }
+.shot-acc-bad { color: var(--negative); font-weight: 600; }
+.shot-acc-mid { color: var(--text-secondary); font-weight: 500; }
+.shot-acc-muted { color: var(--text-muted); font-weight: 400; }
+
+.shot-bar {
+  display: flex;
+  width: 80px; height: 10px;
+  border-radius: 3px;
+  overflow: hidden;
+  gap: 1px;
+}
+.shot-bar-2 {
+  background: var(--fg2);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; color: #fff; font-weight: 600;
+  font-family: var(--font-mono);
+}
+.shot-bar-3 {
+  background: var(--fg3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 7px; color: #fff; font-weight: 600;
+  font-family: var(--font-mono);
+}
+
+/* ============================================================
+   FOUR FACTORS — RANGE TRACK CELL
+   ============================================================ */
+.ff-cell {
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  min-width: 80px;
+  padding: 2px 4px;
+}
+.ff-diff {
+  font-family: var(--font-mono);
+  font-size: 13px; font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.ff-diff.unranked { color: var(--text-muted); font-weight: 400; font-size: 12px; }
+
+.ff-track {
+  position: relative;
+  width: 64px; height: 8px;
+  background: var(--bg-hover);
+  border-radius: 4px;
+}
+.ff-connect {
+  position: absolute; top: 50%;
+  height: 2px;
+  background: var(--text-muted);
+  border-radius: 1px;
+  transform: translateY(-50%);
+}
+.ff-dot-off {
+  position: absolute; top: 50%;
+  width: 6px; height: 6px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--text-muted);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 2;
+}
+.ff-dot-on {
+  position: absolute; top: 50%;
+  width: 8px; height: 8px;
+  background: var(--text-primary);
+  border: 1.5px solid var(--bg-card);
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 3;
+}
+.ff-sub {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--text-muted);
+  display: flex; gap: 4px;
+}
+.ff-sub .on-val { color: var(--text-secondary); font-weight: 600; }
+
+/* ============================================================
+   TOOLTIP (hover metric headers)
+   ============================================================ */
+.th-tip {
+  position: relative;
+}
+.th-tip::before {
+  content: attr(data-tip);
+  position: absolute; bottom: calc(100% + 6px); left: 50%;
+  transform: translateX(-50%);
+  padding: 5px 10px;
+  background: var(--bg-root);
+  border: 1px solid var(--border-dim);
+  border-radius: var(--radius-sm);
+  font-size: 10px; font-weight: 400;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--duration-fast);
+  z-index: 20;
+}
+.th-tip:hover::before { opacity: 1; }
+
+/* W/L Badge */
+.wl-badge {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 22px; height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700;
+  letter-spacing: 0.3px;
+}
+.wl-w { background: rgba(52, 211, 153, 0.15); color: var(--positive); }
+.wl-l { background: rgba(248, 113, 113, 0.15); color: var(--negative); }
+
+/* Rank Pill */
+.rank-pill {
+  display: inline-flex; align-items: center; justify-content: center;
+  min-width: 24px; height: 20px;
+  padding: 0 6px;
+  border-radius: 4px;
+  font-family: var(--font-mono);
+  font-size: 11px; font-weight: 700;
+}
+.rank-top { background: rgba(52, 211, 153, 0.12); color: var(--positive); }
+.rank-mid { background: rgba(96, 165, 250, 0.10); color: var(--neutral); }
+.rank-bot { background: rgba(248, 113, 113, 0.12); color: var(--negative); }
+
+/* ROW ENTRY ANIMATION */
+.data-table tbody tr {
+  animation: rowFade var(--duration-med) var(--ease-out) backwards;
+}
+.data-table tbody tr:nth-child(1) { animation-delay: 0ms; }
+.data-table tbody tr:nth-child(2) { animation-delay: 20ms; }
+.data-table tbody tr:nth-child(3) { animation-delay: 40ms; }
+.data-table tbody tr:nth-child(4) { animation-delay: 60ms; }
+.data-table tbody tr:nth-child(5) { animation-delay: 80ms; }
+.data-table tbody tr:nth-child(6) { animation-delay: 100ms; }
+.data-table tbody tr:nth-child(7) { animation-delay: 120ms; }
+.data-table tbody tr:nth-child(8) { animation-delay: 140ms; }
+.data-table tbody tr:nth-child(9) { animation-delay: 160ms; }
+.data-table tbody tr:nth-child(10) { animation-delay: 180ms; }
+.data-table tbody tr:nth-child(n+11) { animation-delay: 200ms; }
+
+@keyframes rowFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ============================================================
+   TAB-SPECIFIC TABLE OVERRIDES (Lineups)
+   ============================================================ */
+/* Tab 2 should not freeze second column; only Tab 1 freezes Team+Player. */
+.panel-lineups .data-table td:nth-child(2),
+.panel-lineups .data-table th:nth-child(2) {
+  position: static;
+  left: auto;
+  border-right: none;
+}
+
+/* Tab 2 first column should be normal flow (long lineup names). */
+.panel-lineups .data-table td:nth-child(1),
+.panel-lineups .data-table th:nth-child(1) {
+  position: static;
+  left: auto;
+}
+
+.panel-lineups .data-table td:first-child {
+  font-family: var(--font-sans);
+  white-space: normal;
+  line-height: 1.3;
+}
