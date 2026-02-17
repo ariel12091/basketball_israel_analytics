@@ -81,6 +81,10 @@ DECLARE
   v_opp_rank_metric text;
   v_margin_status   text;
   v_clutch_active   boolean;
+  v_use_fast_path   boolean;
+  v_season_start    date;
+  v_season_end      date;
+  v_full_window     boolean;
 BEGIN
   -- [Input Normalization]
   IF p_player_ids IS NOT NULL THEN
@@ -102,6 +106,21 @@ BEGIN
   v_margin_status   := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
   v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL);
 
+  IF p_game_year IS NOT NULL THEN
+    v_season_start := make_date(p_game_year - 1, 10, 1);
+    v_season_end   := make_date(p_game_year, 7, 1);
+  ELSE
+    v_season_start := NULL;
+    v_season_end   := NULL;
+  END IF;
+
+  v_full_window :=
+    p_game_year IS NOT NULL
+    AND p_start_date IS NOT NULL
+    AND p_end_date IS NOT NULL
+    AND p_start_date <= v_season_start
+    AND p_end_date >= v_season_end;
+
   -- Parse CSVs
   IF p_game_type_csv IS NOT NULL AND length(btrim(p_game_type_csv)) > 0 THEN
       v_game_types := ARRAY(SELECT DISTINCT x::int4 FROM unnest(string_to_array(regexp_replace(p_game_type_csv, '\s+', '', 'g'), ',')) x WHERE x <> '' ORDER BY 1);
@@ -110,6 +129,14 @@ BEGIN
   IF p_opp_team_ids_csv IS NOT NULL AND length(btrim(p_opp_team_ids_csv)) > 0 THEN
       v_opp_ids := ARRAY(SELECT DISTINCT x::int4 FROM unnest(string_to_array(regexp_replace(p_opp_team_ids_csv, '\s+', '', 'g'), ',')) x WHERE x <> '' ORDER BY 1);
   END IF;
+
+  -- Non-clutch fast path: no schedule-level filters or ranking filters.
+  v_use_fast_path := NOT v_clutch_active
+    AND ((p_start_date IS NULL AND p_end_date IS NULL) OR v_full_window)
+    AND v_game_types IS NULL AND v_opp_ids IS NULL
+    AND v_home_away = 'all' AND v_outcome = 'all'
+    AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)
+    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL;
 
   IF v_clutch_active THEN
   -- ============================================================
@@ -371,135 +398,231 @@ BEGIN
 
   ELSE
   -- ============================================================
-  -- NON-CLUTCH PATH: Use pre-aggregated lineup_four_factors_by_game MV
+  -- NON-CLUTCH PATH
   -- ============================================================
-  RETURN QUERY
-  WITH
-  games_base AS (
-    SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.is_home, fs.has_won
-    FROM basketball_test.final_schedule_mv fs
-    WHERE (p_game_year IS NULL OR fs.game_year = p_game_year)
-      AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
-      AND (p_end_date   IS NULL OR fs.game_date <= p_end_date)
-      AND (v_game_types IS NULL OR fs.game_type = ANY(v_game_types))
-      AND (v_opp_ids    IS NULL OR fs.opp_team_id = ANY(v_opp_ids))
-      AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
-      AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
-  ),
-  games_ranked AS (
-    SELECT gb.game_id, gb.team_id, gb.game_year,
-           CASE WHEN v_opp_rank_side IN ('top', 'bottom') THEN
-             CASE v_opp_rank_metric
-               WHEN 'off' THEN r.rank_off_ppp
-               WHEN 'def' THEN r.rank_def_ppp
-               ELSE r.rank_net_rtg
-             END
-           ELSE NULL END AS opp_rank,
-           CASE WHEN v_opp_rank_side = 'bottom' THEN
-             MAX(CASE v_opp_rank_metric
-                   WHEN 'off' THEN r.rank_off_ppp
-                   WHEN 'def' THEN r.rank_def_ppp
-                   ELSE r.rank_net_rtg
-                 END) OVER (PARTITION BY gb.game_year)
-           ELSE NULL END AS max_rank
-    FROM games_base gb
-    LEFT JOIN basketball_test.team_ppp_ratings_mv r
-      ON r.game_year::integer = gb.game_year
-      AND r.team_id::integer  = gb.opp_team_id
-      AND v_opp_rank_side IN ('top', 'bottom')
-  ),
-  games_filtered AS (
-    SELECT gr.game_id, gr.team_id, gr.game_year
-    FROM games_ranked gr
-    WHERE v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL
-       OR (v_opp_rank_side = 'top'    AND gr.opp_rank <= p_opp_rank_n)
-       OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
-  ),
-  sub_identity AS (
-    SELECT s.team_id, s.game_year, s.sub_lineup_hash, s.player_ids, s.num_lineup, s.lineup_hash
-    FROM basketball_test.sub_lineups s
-    WHERE p_num_lineup IN (2,3,4) AND s.num_lineup = p_num_lineup
-      AND (p_team_ids IS NULL OR s.team_id = ANY(p_team_ids))
-      AND (p_game_year IS NULL OR s.game_year = p_game_year)
-      AND (v_ids_norm IS NULL OR
-           CASE WHEN NOT p_exact THEN s.player_ids @> v_ids_norm
-                WHEN v_sel_cnt = s.num_lineup THEN s.player_ids @> v_ids_norm AND s.player_ids <@ v_ids_norm
-                WHEN v_sel_cnt < s.num_lineup THEN s.player_ids @> v_ids_norm
-                ELSE FALSE END)
-      AND (v_off_norm IS NULL OR NOT (s.player_ids && v_off_norm))
-    UNION ALL
-    SELECT l.team_id, l.game_year, l.lineup_hash::text AS sub_lineup_hash,
-           ARRAY_AGG(DISTINCT l.player_id ORDER BY l.player_id)::int4[] AS player_ids,
-           5::int2 AS num_lineup, l.lineup_hash
-    FROM basketball_test.lineups_lookup_on l
-    WHERE p_num_lineup = 5
-      AND (p_team_ids IS NULL OR l.team_id = ANY(p_team_ids))
-      AND (p_game_year IS NULL OR l.game_year = p_game_year)
-    GROUP BY l.team_id, l.game_year, l.lineup_hash
-    HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
-      AND (v_ids_norm IS NULL OR
-           CASE WHEN NOT p_exact THEN ARRAY_AGG(l.player_id) @> v_ids_norm
-                WHEN cardinality(v_ids_norm) = 5 THEN ARRAY_AGG(l.player_id) @> v_ids_norm AND ARRAY_AGG(l.player_id) <@ v_ids_norm
-                WHEN cardinality(v_ids_norm) < 5 THEN ARRAY_AGG(l.player_id) @> v_ids_norm
-                ELSE FALSE END)
-      AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
-  ),
-  lineup_ff AS (
-    SELECT lf.lineup_hash, lf.type_lineup,
-           SUM(lf.total_points)       AS total_points,
-           SUM(lf.total_poss)         AS total_poss,
-           SUM(lf.ts_poss_count)      AS ts_poss_count,
-           SUM(lf.oreb_count)         AS oreb_count,
-           SUM(lf.oreb_opportunities) AS oreb_opportunities,
-           SUM(lf.tov_count)          AS tov_count,
-           SUM(lf.total_ft_attempts)  AS total_ft_attempts,
-           SUM(lf.total_fga)          AS total_fga,
-           SUM(lf.minutes)            AS minutes
-    FROM basketball_test.lineup_four_factors_by_game lf
-    JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
-    WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
-    GROUP BY lf.lineup_hash, lf.type_lineup
-  )
-  SELECT
-    si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
-    ROUND(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense')::numeric / (2.0 * NULLIF(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric) * 100, 1) AS off_ts,
-    ROUND(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_oreb,
-    ROUND(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_tov,
-    ROUND(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_ftr,
-    COALESCE(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_poss,
-    COALESCE(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_pts,
-    ROUND(NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100, 1) AS off_ppp,
-    ROUND(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense')::numeric / (2.0 * NULLIF(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric) * 100, 1) AS def_ts,
-    ROUND(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_oreb,
-    ROUND(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_tov,
-    ROUND(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_ftr,
-    COALESCE(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_poss,
-    COALESCE(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_pts,
-    ROUND(NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100, 1) AS def_ppp,
-    ROUND(
-      (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
-      (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
-    , 1) AS net_rtg,
-    ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
-    COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
-    COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
-    COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
-    COALESCE(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_tov_cnt,
-    COALESCE(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_fta,
-    COALESCE(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_fga_cnt,
-    COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_ts_poss,
-    COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_oreb_cnt,
-    COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_oreb_opps,
-    COALESCE(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_tov_cnt,
-    COALESCE(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_fta,
-    COALESCE(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt,
-    si.game_year
-  FROM sub_identity si
-  JOIN lineup_ff cr ON cr.lineup_hash = si.lineup_hash::text
-  LEFT JOIN basketball_test.sub_lineups_stats sls
-    ON sls.team_id = si.team_id AND sls.sub_lineup_hash::text = si.sub_lineup_hash::text AND sls.game_year = si.game_year
-  GROUP BY si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str, si.game_year
-  HAVING (COALESCE(SUM(cr.total_poss), 0)) >= p_min_poss;
+  IF v_use_fast_path THEN
+    -- Fast path: aggregate directly from lineup_four_factors_by_game.
+    RETURN QUERY
+    WITH
+    sub_identity AS (
+      SELECT s.team_id, s.game_year, s.sub_lineup_hash, s.player_ids, s.num_lineup, s.lineup_hash
+      FROM basketball_test.sub_lineups s
+      WHERE p_num_lineup IN (2,3,4) AND s.num_lineup = p_num_lineup
+        AND (p_team_ids IS NULL OR s.team_id = ANY(p_team_ids))
+        AND (p_game_year IS NULL OR s.game_year = p_game_year)
+        AND (v_ids_norm IS NULL OR
+             CASE WHEN NOT p_exact THEN s.player_ids @> v_ids_norm
+                  WHEN v_sel_cnt = s.num_lineup THEN s.player_ids @> v_ids_norm AND s.player_ids <@ v_ids_norm
+                  WHEN v_sel_cnt < s.num_lineup THEN s.player_ids @> v_ids_norm
+                  ELSE FALSE END)
+        AND (v_off_norm IS NULL OR NOT (s.player_ids && v_off_norm))
+      UNION ALL
+      SELECT l.team_id, l.game_year, l.lineup_hash::text AS sub_lineup_hash,
+             ARRAY_AGG(DISTINCT l.player_id ORDER BY l.player_id)::int4[] AS player_ids,
+             5::int2 AS num_lineup, l.lineup_hash
+      FROM basketball_test.lineups_lookup_on l
+      WHERE p_num_lineup = 5
+        AND (p_team_ids IS NULL OR l.team_id = ANY(p_team_ids))
+        AND (p_game_year IS NULL OR l.game_year = p_game_year)
+      GROUP BY l.team_id, l.game_year, l.lineup_hash
+      HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
+        AND (v_ids_norm IS NULL OR
+             CASE WHEN NOT p_exact THEN ARRAY_AGG(l.player_id) @> v_ids_norm
+                  WHEN cardinality(v_ids_norm) = 5 THEN ARRAY_AGG(l.player_id) @> v_ids_norm AND ARRAY_AGG(l.player_id) <@ v_ids_norm
+                  WHEN cardinality(v_ids_norm) < 5 THEN ARRAY_AGG(l.player_id) @> v_ids_norm
+                  ELSE FALSE END)
+        AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
+    ),
+    lineup_ff AS (
+      SELECT lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup,
+             SUM(lf.total_points)       AS total_points,
+             SUM(lf.total_poss)         AS total_poss,
+             SUM(lf.ts_poss_count)      AS ts_poss_count,
+             SUM(lf.oreb_count)         AS oreb_count,
+             SUM(lf.oreb_opportunities) AS oreb_opportunities,
+             SUM(lf.tov_count)          AS tov_count,
+             SUM(lf.total_ft_attempts)  AS total_ft_attempts,
+             SUM(lf.total_fga)          AS total_fga,
+             SUM(lf.minutes)            AS minutes
+      FROM basketball_test.lineup_four_factors_by_game lf
+      WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
+        AND (p_team_ids IS NULL OR lf.team_id = ANY(p_team_ids))
+      GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup
+    )
+    SELECT
+      si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
+      ROUND(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense')::numeric / (2.0 * NULLIF(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric) * 100, 1) AS off_ts,
+      ROUND(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_oreb,
+      ROUND(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_tov,
+      ROUND(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_ftr,
+      COALESCE(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_poss,
+      COALESCE(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_pts,
+      ROUND(NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100, 1) AS off_ppp,
+      ROUND(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense')::numeric / (2.0 * NULLIF(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric) * 100, 1) AS def_ts,
+      ROUND(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_oreb,
+      ROUND(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_tov,
+      ROUND(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_ftr,
+      COALESCE(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_poss,
+      COALESCE(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_pts,
+      ROUND(NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100, 1) AS def_ppp,
+      ROUND(
+        (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
+        (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
+      , 1) AS net_rtg,
+      ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+      COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
+      COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
+      COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
+      COALESCE(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_tov_cnt,
+      COALESCE(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_fta,
+      COALESCE(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_fga_cnt,
+      COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_ts_poss,
+      COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_oreb_cnt,
+      COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_oreb_opps,
+      COALESCE(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_tov_cnt,
+      COALESCE(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_fta,
+      COALESCE(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt,
+      si.game_year
+    FROM sub_identity si
+    JOIN lineup_ff cr
+      ON cr.team_id = si.team_id AND cr.game_year = si.game_year
+      AND cr.lineup_hash = si.lineup_hash::text
+    LEFT JOIN basketball_test.sub_lineups_stats sls
+      ON sls.team_id = si.team_id AND sls.sub_lineup_hash::text = si.sub_lineup_hash::text AND sls.game_year = si.game_year
+    GROUP BY si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str, si.game_year
+    HAVING (COALESCE(SUM(cr.total_poss), 0)) >= p_min_poss;
+  ELSE
+    -- Filtered path: keep schedule/ranking filters.
+    RETURN QUERY
+    WITH
+    games_base AS (
+      SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.is_home, fs.has_won
+      FROM basketball_test.final_schedule_mv fs
+      WHERE (p_game_year IS NULL OR fs.game_year = p_game_year)
+        AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
+        AND (p_end_date   IS NULL OR fs.game_date <= p_end_date)
+        AND (v_game_types IS NULL OR fs.game_type = ANY(v_game_types))
+        AND (v_opp_ids    IS NULL OR fs.opp_team_id = ANY(v_opp_ids))
+        AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
+        AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
+    ),
+    games_ranked AS (
+      SELECT gb.game_id, gb.team_id, gb.game_year,
+             CASE WHEN v_opp_rank_side IN ('top', 'bottom') THEN
+               CASE v_opp_rank_metric
+                 WHEN 'off' THEN r.rank_off_ppp
+                 WHEN 'def' THEN r.rank_def_ppp
+                 ELSE r.rank_net_rtg
+               END
+             ELSE NULL END AS opp_rank,
+             CASE WHEN v_opp_rank_side = 'bottom' THEN
+               MAX(CASE v_opp_rank_metric
+                     WHEN 'off' THEN r.rank_off_ppp
+                     WHEN 'def' THEN r.rank_def_ppp
+                     ELSE r.rank_net_rtg
+                   END) OVER (PARTITION BY gb.game_year)
+             ELSE NULL END AS max_rank
+      FROM games_base gb
+      LEFT JOIN basketball_test.team_ppp_ratings_mv r
+        ON r.game_year::integer = gb.game_year
+        AND r.team_id::integer  = gb.opp_team_id
+        AND v_opp_rank_side IN ('top', 'bottom')
+    ),
+    games_filtered AS (
+      SELECT gr.game_id, gr.team_id, gr.game_year
+      FROM games_ranked gr
+      WHERE v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL
+         OR (v_opp_rank_side = 'top'    AND gr.opp_rank <= p_opp_rank_n)
+         OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
+    ),
+    sub_identity AS (
+      SELECT s.team_id, s.game_year, s.sub_lineup_hash, s.player_ids, s.num_lineup, s.lineup_hash
+      FROM basketball_test.sub_lineups s
+      WHERE p_num_lineup IN (2,3,4) AND s.num_lineup = p_num_lineup
+        AND (p_team_ids IS NULL OR s.team_id = ANY(p_team_ids))
+        AND (p_game_year IS NULL OR s.game_year = p_game_year)
+        AND (v_ids_norm IS NULL OR
+             CASE WHEN NOT p_exact THEN s.player_ids @> v_ids_norm
+                  WHEN v_sel_cnt = s.num_lineup THEN s.player_ids @> v_ids_norm AND s.player_ids <@ v_ids_norm
+                  WHEN v_sel_cnt < s.num_lineup THEN s.player_ids @> v_ids_norm
+                  ELSE FALSE END)
+        AND (v_off_norm IS NULL OR NOT (s.player_ids && v_off_norm))
+      UNION ALL
+      SELECT l.team_id, l.game_year, l.lineup_hash::text AS sub_lineup_hash,
+             ARRAY_AGG(DISTINCT l.player_id ORDER BY l.player_id)::int4[] AS player_ids,
+             5::int2 AS num_lineup, l.lineup_hash
+      FROM basketball_test.lineups_lookup_on l
+      WHERE p_num_lineup = 5
+        AND (p_team_ids IS NULL OR l.team_id = ANY(p_team_ids))
+        AND (p_game_year IS NULL OR l.game_year = p_game_year)
+      GROUP BY l.team_id, l.game_year, l.lineup_hash
+      HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
+        AND (v_ids_norm IS NULL OR
+             CASE WHEN NOT p_exact THEN ARRAY_AGG(l.player_id) @> v_ids_norm
+                  WHEN cardinality(v_ids_norm) = 5 THEN ARRAY_AGG(l.player_id) @> v_ids_norm AND ARRAY_AGG(l.player_id) <@ v_ids_norm
+                  WHEN cardinality(v_ids_norm) < 5 THEN ARRAY_AGG(l.player_id) @> v_ids_norm
+                  ELSE FALSE END)
+        AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
+    ),
+    lineup_ff AS (
+      SELECT lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup,
+             SUM(lf.total_points)       AS total_points,
+             SUM(lf.total_poss)         AS total_poss,
+             SUM(lf.ts_poss_count)      AS ts_poss_count,
+             SUM(lf.oreb_count)         AS oreb_count,
+             SUM(lf.oreb_opportunities) AS oreb_opportunities,
+             SUM(lf.tov_count)          AS tov_count,
+             SUM(lf.total_ft_attempts)  AS total_ft_attempts,
+             SUM(lf.total_fga)          AS total_fga,
+             SUM(lf.minutes)            AS minutes
+      FROM basketball_test.lineup_four_factors_by_game lf
+      JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
+      WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
+      GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup
+    )
+    SELECT
+      si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
+      ROUND(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense')::numeric / (2.0 * NULLIF(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric) * 100, 1) AS off_ts,
+      ROUND(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_oreb,
+      ROUND(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_tov,
+      ROUND(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'offense')::numeric / NULLIF(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_ftr,
+      COALESCE(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_poss,
+      COALESCE(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_pts,
+      ROUND(NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100, 1) AS off_ppp,
+      ROUND(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense')::numeric / (2.0 * NULLIF(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric) * 100, 1) AS def_ts,
+      ROUND(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_oreb,
+      ROUND(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_tov,
+      ROUND(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'defense')::numeric / NULLIF(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_ftr,
+      COALESCE(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_poss,
+      COALESCE(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_pts,
+      ROUND(NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100, 1) AS def_ppp,
+      ROUND(
+        (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
+        (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
+      , 1) AS net_rtg,
+      ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+      COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
+      COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
+      COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
+      COALESCE(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_tov_cnt,
+      COALESCE(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_fta,
+      COALESCE(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_fga_cnt,
+      COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_ts_poss,
+      COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_oreb_cnt,
+      COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_oreb_opps,
+      COALESCE(SUM(cr.tov_count) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_tov_cnt,
+      COALESCE(SUM(cr.total_ft_attempts) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_fta,
+      COALESCE(SUM(cr.total_fga) FILTER (WHERE cr.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt,
+      si.game_year
+    FROM sub_identity si
+    JOIN lineup_ff cr
+      ON cr.team_id = si.team_id AND cr.game_year = si.game_year
+      AND cr.lineup_hash = si.lineup_hash::text
+    LEFT JOIN basketball_test.sub_lineups_stats sls
+      ON sls.team_id = si.team_id AND sls.sub_lineup_hash::text = si.sub_lineup_hash::text AND sls.game_year = si.game_year
+    GROUP BY si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str, si.game_year
+    HAVING (COALESCE(SUM(cr.total_poss), 0)) >= p_min_poss;
+  END IF;
 
   END IF;
 END;
