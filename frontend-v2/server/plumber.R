@@ -792,39 +792,50 @@ function(req, res,
     off <- ff_data[ff_data$type_lineup == "offense", ]
     def <- ff_data[ff_data$type_lineup == "defense", ]
     combined <- merge(off, def, by = "game_id", all = TRUE, suffixes = c("_off", "_def"))
-    safe <- function(x) ifelse(is.na(x), 0, x)
+    combined <- merge(
+      combined,
+      sched[, c("game_id", "gn", "game_date", "opp_team_name", "result", "score"), drop = FALSE],
+      by = "game_id",
+      all.x = TRUE
+    )
 
-    games <- lapply(seq_len(nrow(combined)), function(i) {
-      r <- combined[i, ]
-      off_poss <- safe(r$total_poss_off); def_poss <- safe(r$total_poss_def)
-      off_pts <- safe(r$total_points_off); def_pts <- safe(r$total_points_def)
-      off_ppp <- if (off_poss > 0) round(off_pts / off_poss * 100, 1) else NA
-      def_ppp <- if (def_poss > 0) round(def_pts / def_poss * 100, 1) else NA
+    off_poss <- ifelse(is.na(combined$total_poss_off), 0, combined$total_poss_off)
+    def_poss <- ifelse(is.na(combined$total_poss_def), 0, combined$total_poss_def)
+    off_pts <- ifelse(is.na(combined$total_points_off), 0, combined$total_points_off)
+    def_pts <- ifelse(is.na(combined$total_points_def), 0, combined$total_points_def)
+    off_ppp <- ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_)
+    def_ppp <- ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_)
 
-      s <- sched[sched$game_id == r$game_id, ]
-      list(
-        gn = if (nrow(s)) s$gn[1] else NA,
-        gameDate = if (nrow(s)) as.character(s$game_date[1]) else "",
-        opponent = if (nrow(s)) s$opp_team_name[1] else "",
-        result = if (nrow(s)) s$result[1] else "",
-        score = if (nrow(s)) s$score[1] else "",
-        offPpp = off_ppp, defPpp = def_ppp,
-        netRtg = round(safe(off_ppp) - safe(def_ppp), 1),
-        offPoss = off_poss, defPoss = def_poss,
-        minutes = round(safe(r$mins_off), 1),
-        offTs = if (safe(r$ts_poss_count_off) > 0) round(off_pts / (2 * r$ts_poss_count_off) * 100, 1) else NA,
-        offOreb = if (safe(r$oreb_opportunities_off) > 0) round(safe(r$oreb_count_off) / r$oreb_opportunities_off * 100, 1) else NA,
-        offTov = if (off_poss > 0) round(safe(r$tov_count_off) / off_poss * 100, 1) else NA,
-        offFtr = if (safe(r$total_fga_off) > 0) round(safe(r$total_ft_attempts_off) / r$total_fga_off * 100, 1) else NA,
-        defTs = if (safe(r$ts_poss_count_def) > 0) round(def_pts / (2 * r$ts_poss_count_def) * 100, 1) else NA,
-        defOreb = if (safe(r$oreb_opportunities_def) > 0) round(safe(r$oreb_count_def) / r$oreb_opportunities_def * 100, 1) else NA,
-        defTov = if (def_poss > 0) round(safe(r$tov_count_def) / def_poss * 100, 1) else NA,
-        defFtr = if (safe(r$total_fga_def) > 0) round(safe(r$total_ft_attempts_def) / r$total_fga_def * 100, 1) else NA
-      )
-    })
-    # Sort by GN
-    gn_order <- order(sapply(games, function(g) ifelse(is.na(g$gn), 999, g$gn)))
-    games <- games[gn_order]
+    games <- data.frame(
+      gn = combined$gn,
+      gameDate = ifelse(is.na(combined$game_date), "", as.character(combined$game_date)),
+      opponent = ifelse(is.na(combined$opp_team_name), "", combined$opp_team_name),
+      result = ifelse(is.na(combined$result), "", combined$result),
+      score = ifelse(is.na(combined$score), "", combined$score),
+      offPpp = off_ppp,
+      defPpp = def_ppp,
+      netRtg = round(ifelse(is.na(off_ppp), 0, off_ppp) - ifelse(is.na(def_ppp), 0, def_ppp), 1),
+      offPoss = off_poss,
+      defPoss = def_poss,
+      minutes = round(ifelse(is.na(combined$mins_off), 0, combined$mins_off), 1),
+      offTs = ifelse(ifelse(is.na(combined$ts_poss_count_off), 0, combined$ts_poss_count_off) > 0,
+                     round(off_pts / (2 * combined$ts_poss_count_off) * 100, 1), NA_real_),
+      offOreb = ifelse(ifelse(is.na(combined$oreb_opportunities_off), 0, combined$oreb_opportunities_off) > 0,
+                       round(ifelse(is.na(combined$oreb_count_off), 0, combined$oreb_count_off) / combined$oreb_opportunities_off * 100, 1), NA_real_),
+      offTov = ifelse(off_poss > 0,
+                      round(ifelse(is.na(combined$tov_count_off), 0, combined$tov_count_off) / off_poss * 100, 1), NA_real_),
+      offFtr = ifelse(ifelse(is.na(combined$total_fga_off), 0, combined$total_fga_off) > 0,
+                      round(ifelse(is.na(combined$total_ft_attempts_off), 0, combined$total_ft_attempts_off) / combined$total_fga_off * 100, 1), NA_real_),
+      defTs = ifelse(ifelse(is.na(combined$ts_poss_count_def), 0, combined$ts_poss_count_def) > 0,
+                     round(def_pts / (2 * combined$ts_poss_count_def) * 100, 1), NA_real_),
+      defOreb = ifelse(ifelse(is.na(combined$oreb_opportunities_def), 0, combined$oreb_opportunities_def) > 0,
+                       round(ifelse(is.na(combined$oreb_count_def), 0, combined$oreb_count_def) / combined$oreb_opportunities_def * 100, 1), NA_real_),
+      defTov = ifelse(def_poss > 0,
+                      round(ifelse(is.na(combined$tov_count_def), 0, combined$tov_count_def) / def_poss * 100, 1), NA_real_),
+      defFtr = ifelse(ifelse(is.na(combined$total_fga_def), 0, combined$total_fga_def) > 0,
+                      round(ifelse(is.na(combined$total_ft_attempts_def), 0, combined$total_ft_attempts_def) / combined$total_fga_def * 100, 1), NA_real_)
+    )
+    games <- games[order(ifelse(is.na(games$gn), 999, games$gn)), , drop = FALSE]
 
   } else {
     # Summary path
@@ -843,34 +854,42 @@ function(req, res,
     off <- game_data[game_data$type_lineup == "offense", ]
     def <- game_data[game_data$type_lineup == "defense", ]
     combined <- merge(off, def, by = "game_id", all = TRUE, suffixes = c("_off", "_def"))
-    safe <- function(x) ifelse(is.na(x), 0, x)
+    combined <- merge(
+      combined,
+      sched[, c("game_id", "gn", "game_date", "opp_team_name", "result", "score"), drop = FALSE],
+      by = "game_id",
+      all.x = TRUE
+    )
 
-    games <- lapply(seq_len(nrow(combined)), function(i) {
-      r <- combined[i, ]
-      off_poss <- safe(r$poss_off); def_poss <- safe(r$poss_def)
-      off_pts <- safe(r$pts_off); def_pts <- safe(r$pts_def)
-      off_ppp <- if (off_poss > 0) round(off_pts / off_poss * 100, 1) else NA
-      def_ppp <- if (def_poss > 0) round(def_pts / def_poss * 100, 1) else NA
+    off_poss <- ifelse(is.na(combined$poss_off), 0, combined$poss_off)
+    def_poss <- ifelse(is.na(combined$poss_def), 0, combined$poss_def)
+    off_pts <- ifelse(is.na(combined$pts_off), 0, combined$pts_off)
+    def_pts <- ifelse(is.na(combined$pts_def), 0, combined$pts_def)
+    off_ppp <- ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_)
+    def_ppp <- ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_)
 
-      s <- sched[sched$game_id == r$game_id, ]
-      list(
-        gn = if (nrow(s)) s$gn[1] else NA,
-        gameDate = if (nrow(s)) as.character(s$game_date[1]) else "",
-        opponent = if (nrow(s)) s$opp_team_name[1] else "",
-        result = if (nrow(s)) s$result[1] else "",
-        score = if (nrow(s)) s$score[1] else "",
-        offPpp = off_ppp, defPpp = def_ppp,
-        netRtg = round(safe(off_ppp) - safe(def_ppp), 1),
-        offPoss = off_poss, defPoss = def_poss,
-        minutes = round(safe(r$mins_off), 1),
-        offFg2Made = safe(r$fg2m_off), offFg2Att = safe(r$fg2a_off),
-        offFg3Made = safe(r$fg3m_off), offFg3Att = safe(r$fg3a_off),
-        defFg2Made = safe(r$fg2m_def), defFg2Att = safe(r$fg2a_def),
-        defFg3Made = safe(r$fg3m_def), defFg3Att = safe(r$fg3a_def)
-      )
-    })
-    gn_order <- order(sapply(games, function(g) ifelse(is.na(g$gn), 999, g$gn)))
-    games <- games[gn_order]
+    games <- data.frame(
+      gn = combined$gn,
+      gameDate = ifelse(is.na(combined$game_date), "", as.character(combined$game_date)),
+      opponent = ifelse(is.na(combined$opp_team_name), "", combined$opp_team_name),
+      result = ifelse(is.na(combined$result), "", combined$result),
+      score = ifelse(is.na(combined$score), "", combined$score),
+      offPpp = off_ppp,
+      defPpp = def_ppp,
+      netRtg = round(ifelse(is.na(off_ppp), 0, off_ppp) - ifelse(is.na(def_ppp), 0, def_ppp), 1),
+      offPoss = off_poss,
+      defPoss = def_poss,
+      minutes = round(ifelse(is.na(combined$mins_off), 0, combined$mins_off), 1),
+      offFg2Made = ifelse(is.na(combined$fg2m_off), 0, combined$fg2m_off),
+      offFg2Att = ifelse(is.na(combined$fg2a_off), 0, combined$fg2a_off),
+      offFg3Made = ifelse(is.na(combined$fg3m_off), 0, combined$fg3m_off),
+      offFg3Att = ifelse(is.na(combined$fg3a_off), 0, combined$fg3a_off),
+      defFg2Made = ifelse(is.na(combined$fg2m_def), 0, combined$fg2m_def),
+      defFg2Att = ifelse(is.na(combined$fg2a_def), 0, combined$fg2a_def),
+      defFg3Made = ifelse(is.na(combined$fg3m_def), 0, combined$fg3m_def),
+      defFg3Att = ifelse(is.na(combined$fg3a_def), 0, combined$fg3a_def)
+    )
+    games <- games[order(ifelse(is.na(games$gn), 999, games$gn)), , drop = FALSE]
   }
 
   list(lineupName = lineup_name, games = games)
