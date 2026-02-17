@@ -384,9 +384,10 @@ function(req, res,
     )
   }
 
-  # Replace NAs with 0 in shot columns
-  shot_cols <- grep("fg[23]", names(df), value = TRUE)
-  for (col in shot_cols) df[[col]][is.na(df[[col]])] <- 0
+  # Replace NAs in numeric columns with 0 to avoid frontend render crashes
+  for (col in names(df)) {
+    if (is.numeric(df[[col]])) df[[col]][is.na(df[[col]])] <- 0
+  }
 
   rename_onoff(df)
 }
