@@ -18,6 +18,9 @@ DECLARE
   v_margin_status   text;
   v_clutch_active   boolean;
   v_use_fast_path boolean;
+  v_season_start    date;
+  v_season_end      date;
+  v_full_window     boolean;
 BEGIN
   -- [Input Normalization]
   IF p_player_ids IS NOT NULL THEN
@@ -39,6 +42,21 @@ BEGIN
   v_margin_status   := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
   v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL);
 
+  IF p_game_year IS NOT NULL THEN
+    v_season_start := make_date(p_game_year - 1, 10, 1);
+    v_season_end   := make_date(p_game_year, 7, 1);
+  ELSE
+    v_season_start := NULL;
+    v_season_end   := NULL;
+  END IF;
+
+  v_full_window :=
+    p_game_year IS NOT NULL
+    AND p_start_date IS NOT NULL
+    AND p_end_date IS NOT NULL
+    AND p_start_date <= v_season_start
+    AND p_end_date >= v_season_end;
+
   -- Parse CSVs
   IF p_game_type_csv IS NOT NULL AND length(btrim(p_game_type_csv)) > 0 THEN
       v_game_types := ARRAY(SELECT DISTINCT x::int4 FROM unnest(string_to_array(regexp_replace(p_game_type_csv, '\s+', '', 'g'), ',')) x WHERE x <> '' ORDER BY 1);
@@ -49,7 +67,7 @@ BEGIN
   END IF;
 
   -- Fast Path Check
-  v_use_fast_path := (p_start_date IS NULL AND p_end_date IS NULL)
+  v_use_fast_path := ((p_start_date IS NULL AND p_end_date IS NULL) OR v_full_window)
     AND v_game_types IS NULL AND v_opp_ids IS NULL
     AND v_home_away = 'all' AND v_outcome = 'all'
     AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)

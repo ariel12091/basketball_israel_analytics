@@ -891,3 +891,37 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 
 6. Lesson.
    - In clutch mode, anchoring secondary joins to already-filtered clutch rows is a high-leverage optimization.
+
+## Session Notes (2026-02-17 fetch_lineups_csv_v2 Fast-Path Activation)
+
+1. Bottleneck identified.
+   - `fetch_lineups_csv_v2` non-clutch default calls were slower than expected (~`550ms` median).
+   - Root cause: `fetch_lineups_all` fast path required `p_start_date IS NULL AND p_end_date IS NULL`.
+   - API sends explicit default season dates, so non-clutch defaults missed fast path.
+
+2. SQL fix in `sql/functions/fetch_lineups_all.sql`.
+   - Added season-window detection:
+     - `v_season_start = make_date(p_game_year - 1, 10, 1)`
+     - `v_season_end   = make_date(p_game_year, 7, 1)`
+     - `v_full_window` when explicit dates cover full window.
+   - Updated `v_use_fast_path` to allow:
+     - null dates, or
+     - explicit full-season date window.
+
+3. Benchmark result (same harness, 6 runs).
+   - Before:
+     - `summary_non_clutch`: median `550ms`, p90 `560ms`.
+     - `summary_clutch_5_all_300`: median `425ms`.
+     - `summary_clutch_8_tied_180`: median `390ms`.
+   - After:
+     - `summary_non_clutch`: median `280ms`, p90 `280ms`.
+     - `summary_clutch_5_all_300`: median `420ms`.
+     - `summary_clutch_8_tied_180`: median `390ms`.
+   - Improvement: non-clutch default summary ~`49%` faster.
+
+4. Validation.
+   - Full-season explicit dates and null-date calls are equivalent in tested case:
+     - `rows base=2514`, `rows null=2514`, `diff=0` on key columns.
+
+5. Lesson.
+   - Fast-path enablement must follow frontend/API default parameter behavior, otherwise optimized SQL branches stay inactive.
