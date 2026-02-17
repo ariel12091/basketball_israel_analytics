@@ -257,19 +257,19 @@ BEGIN
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
   ),
-  -- complex_flags joins full MV (parent foul may precede clutch window)
+  -- complex_flags: resolve parent foul only for already filtered clutch rows
   complex_flags AS (
-    SELECT DISTINCT ON (d.id)
-      d.id AS main_id,
+    SELECT DISTINCT ON (cs.id)
+      cs.id AS main_id,
       t2.type AS parent_type,
       t2.parameters_type AS parent_param
-    FROM basketball_test.df_pts_poss_lineups_longer_mv d
+    FROM clean_stats cs
     JOIN basketball_test.df_pts_poss_lineups_longer_mv t2
-      ON t2.id = d.parent_action_id
-      AND t2.game_id = d.game_id
+      ON t2.id = cs.parent_action_id
+      AND t2.game_id = cs.game_id
       AND t2.type = 'foul'::text
-    WHERE d.parent_action_id IS NOT NULL
-    ORDER BY d.id
+    WHERE cs.parent_action_id IS NOT NULL
+    ORDER BY cs.id
   ),
   combined_data AS (
     SELECT

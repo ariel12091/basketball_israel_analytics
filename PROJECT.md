@@ -860,3 +860,34 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 
 5. Lesson.
    - Fast-path predicates should align with API calling conventions (explicit default dates vs NULL dates), otherwise planned DB optimizations stay inactive.
+
+## Session Notes (2026-02-17 fetch_lineups_four_factors Clutch Path Optimization)
+
+1. Clutch bottleneck profile (pre-fix).
+   - `non_clutch` median: `390ms`.
+   - Clutch scenarios were much slower:
+     - `margin<=5, all, <=300s`: `1090ms` median.
+     - `margin<=8, tied, <=180s`: `985ms` median.
+     - `margin<=10, leading, <=240s, OT`: `975ms` median.
+
+2. Root-cause target.
+   - In clutch path, `complex_flags` read from full `df_pts_poss_lineups_longer_mv` as base (`d`) and then joined parent foul rows.
+   - This forced broader scans than needed because the expensive parent lookup should only run for already filtered clutch rows.
+
+3. SQL fix in `sql/functions/fetch_lineups_four_factors.sql`.
+   - Rewrote `complex_flags` CTE to start from `clean_stats` (already date/team/filter constrained) instead of full raw MV.
+   - Kept parent foul join semantics the same (`t2.id = parent_action_id`, same game, `t2.type='foul'`).
+
+4. Benchmark result (same harness after deploy).
+   - `non_clutch`: `410ms` median (within expected variance).
+   - Clutch improved substantially:
+     - `margin<=5, all, <=300s`: `450ms` median (from `1090ms`, ~`58.7%` faster).
+     - `margin<=8, tied, <=180s`: `390ms` median (from `985ms`, ~`60.4%` faster).
+     - `margin<=10, leading, <=240s, OT`: `440ms` median (from `975ms`, ~`54.9%` faster).
+
+5. Validation.
+   - Clutch query returned valid rows and plausible values after change.
+   - Sample checks confirmed non-empty output and normal metric ranges.
+
+6. Lesson.
+   - In clutch mode, anchoring secondary joins to already-filtered clutch rows is a high-leverage optimization.
