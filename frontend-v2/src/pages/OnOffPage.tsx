@@ -130,8 +130,13 @@ export default function OnOffPage() {
     if (filters.teamIds.length > 0) {
       data = data.filter(p => filters.teamIds.includes(p.teamId));
     }
-    return data.filter(p => p.onPoss >= filters.minOnPoss);
-  }, [summaryRaw, filters.minOnPoss, filters.teamIds]);
+    return data.filter(
+      p =>
+        p.onPoss >= filters.minOnPoss &&
+        p.onPoss >= filters.minAllPoss &&
+        p.offPoss >= filters.minAllPoss,
+    );
+  }, [summaryRaw, filters.minOnPoss, filters.minAllPoss, filters.teamIds]);
 
   // (FF filtering happens after rank computation — see ffWithRanks below)
 
@@ -228,8 +233,13 @@ export default function OnOffPage() {
     if (filters.teamIds.length > 0) {
       data = data.filter(p => filters.teamIds.includes(p.teamId));
     }
-    return data.filter(p => p.offOnPoss >= filters.minOnPoss);
-  }, [ffRanked, filters.minOnPoss, filters.teamIds]);
+    return data.filter(
+      p =>
+        p.offOnPoss >= filters.minOnPoss &&
+        p.offOnPoss >= filters.minAllPoss &&
+        p.offOffPoss >= filters.minAllPoss,
+    );
+  }, [ffRanked, filters.minOnPoss, filters.minAllPoss, filters.teamIds]);
 
   // Compute dynamic shot averages from full dataset (qualifying players >= 50 FGA)
   const summaryColumns = useMemo(() => {
@@ -526,7 +536,7 @@ export default function OnOffPage() {
           onSort={sOnSort}
           infoText={`Showing ${summarySorted.length} players · sorted by ${sSortKey === 'netDiff' ? 'Net Impact' : sSortKey}`}
           onExport={handleSummaryExport}
-          rowKey={(p) => p.playerId}
+          rowKey={(p, i) => `${p.teamId}-${p.playerId}-${p.firstName}-${p.lastName}-${i}`}
         />
       )}
 
@@ -541,7 +551,7 @@ export default function OnOffPage() {
           onSort={fOnSort}
           infoText={`Showing ${ffSorted.length} players · sorted by ${fSortKey === 'netRtgDiff' ? 'Net Diff' : fSortKey}`}
           onExport={handleFFExport}
-          rowKey={(p) => p.playerId}
+          rowKey={(p, i) => `${p.teamId}-${p.playerId}-${p.firstName}-${p.lastName}-${i}`}
         />
       )}
     </div>
