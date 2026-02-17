@@ -35,6 +35,25 @@ API_KEY <- Sys.getenv("FRONTEND_API_KEY", "")
 RATE_LIMIT_WINDOW_SEC <- max(1L, as.integer(Sys.getenv("FRONTEND_RATE_WINDOW_SEC", "60")))
 RATE_LIMIT_MAX_REQUESTS <- max(1L, as.integer(Sys.getenv("FRONTEND_RATE_MAX_REQUESTS", "180")))
 REQ_HITS <- new.env(parent = emptyenv())
+PROFILE_TIMING <- identical(tolower(Sys.getenv("FRONTEND_PROFILE_TIMING", "0")), "1")
+
+.ms_now <- function() as.numeric(proc.time()[3]) * 1000
+.ms_elapsed <- function(start_ms) .ms_now() - start_ms
+.timed <- function(fn) {
+  t0 <- .ms_now()
+  out <- fn()
+  list(value = out, ms = .ms_elapsed(t0))
+}
+perf_log <- function(req, route, total_ms, db_ms, transform_ms, rows = NA_integer_) {
+  if (!PROFILE_TIMING) return(invisible(NULL))
+  ip <- tryCatch(client_ip(req), error = function(e) "unknown")
+  message(sprintf(
+    "[perf] route=%s total_ms=%.1f db_ms=%.1f transform_ms=%.1f rows=%s ip=%s",
+    route, total_ms, db_ms, transform_ms,
+    ifelse(is.na(rows), "NA", as.character(rows)), ip
+  ))
+  invisible(NULL)
+}
 
 # ── Pool setup (mirrors app/R/global.R) ──────────────────────
 pg_pool <- dbPool(
@@ -399,19 +418,24 @@ function(req, res,
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "") {
 
+  req_t0 <- .ms_now()
+  db_ms <- 0
+  transform_t0 <- NA_real_
   gy <- as.integer(game_year)
 
   if (!needs_filtered(opp_ids, game_type, home_away, outcome,
                       gn_min, gn_max, last_n, start_date, end_date,
                       game_year = gy, opp_rank_side = opp_rank_side)) {
     # Fast path: MV
-    df <- DBI::dbGetQuery(pg_pool, sprintf(
+    q <- .timed(function() DBI::dbGetQuery(pg_pool, sprintf(
       'SELECT * FROM %s.onoff_default_mv WHERE "Year" = $1', SCHEMA
-    ), params = list(gy))
+    ), params = list(gy)))
+    df <- q$value
+    db_ms <- db_ms + q$ms
   } else {
     # Filtered path: call onoff_compute() with exact Shiny-app signature
     team_csv <- if (nzchar(team_ids)) team_ids else NA_character_
-    df <- run_onoff_compute(
+    q <- .timed(function() run_onoff_compute(
       pg_pool,
       start_d = start_date, end_d = end_date,
       team_csv = team_csv,
@@ -425,15 +449,26 @@ function(req, res,
       opp_rank_n = na_int(opp_rank_n),
       opp_rank_metric = na_chr(opp_rank_metric),
       min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
-    )
+    ))
+    df <- q$value
+    db_ms <- db_ms + q$ms
   }
+  transform_t0 <- .ms_now()
 
   # Replace NAs in numeric columns with 0 to avoid frontend render crashes
   for (col in names(df)) {
     if (is.numeric(df[[col]])) df[[col]][is.na(df[[col]])] <- 0
   }
 
-  rename_onoff(df)
+  out <- rename_onoff(df)
+  perf_log(
+    req, "/api/onoff/summary",
+    total_ms = .ms_elapsed(req_t0),
+    db_ms = db_ms,
+    transform_ms = .ms_elapsed(transform_t0),
+    rows = nrow(out)
+  )
+  out
 }
 
 # ── GET /api/onoff/four-factors ──────────────────────────────
@@ -446,6 +481,9 @@ function(req, res,
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "") {
 
+  req_t0 <- .ms_now()
+  db_ms <- 0
+  transform_t0 <- NA_real_
   gy <- as.integer(game_year)
   team_csv <- if (nzchar(team_ids)) team_ids else NA_character_
   gt_csv   <- if (nzchar(game_type)) game_type else NA_character_
@@ -457,7 +495,7 @@ function(req, res,
                       gn_min, gn_max, last_n, start_date, end_date,
                       game_year = gy, opp_rank_side = opp_rank_side)) {
     # Fast path: join MV + onoff MV for net diffs
-    df <- DBI::dbGetQuery(pg_pool, sprintf('
+    q <- .timed(function() DBI::dbGetQuery(pg_pool, sprintf('
       SELECT ff.*, o."Net RTG Diff", o."Off ON Diff", o."Def ON Diff"
       FROM %s.player_advanced_stats_mv ff
       LEFT JOIN %s.onoff_default_mv o
@@ -465,10 +503,12 @@ function(req, res,
        AND ff.team_id = o.team_id
        AND ff.game_year = o."Year"
       WHERE ff.game_year = $1
-    ', SCHEMA, SCHEMA), params = list(gy))
+    ', SCHEMA, SCHEMA), params = list(gy)))
+    df <- q$value
+    db_ms <- db_ms + q$ms
   } else {
     # Filtered path: single SQL call (DB-side join of FF + OnOff diffs)
-    df <- run_ff_with_diffs_compute(
+    q <- .timed(function() run_ff_with_diffs_compute(
       pg_pool, game_year = gy, start_d = start_date, end_d = end_date,
       team_csv = team_csv, game_type_csv = gt_csv, opp_ids_csv = opp_csv,
       home_away = ha, outcome = oc,
@@ -476,11 +516,14 @@ function(req, res,
       opp_rank_n = na_int(opp_rank_n),
       opp_rank_metric = na_chr(opp_rank_metric),
       min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
-    )
+    ))
+    df <- q$value
+    db_ms <- db_ms + q$ms
     df[["Net RTG Diff"]][is.na(df[["Net RTG Diff"]])] <- 0
     df[["Off ON Diff"]][is.na(df[["Off ON Diff"]])] <- 0
     df[["Def ON Diff"]][is.na(df[["Def ON Diff"]])] <- 0
   }
+  transform_t0 <- .ms_now()
 
   # Add net diffs
   out <- rename_ff(df)
@@ -493,6 +536,13 @@ function(req, res,
     if (is.numeric(out[[col]])) out[[col]][is.na(out[[col]])] <- 0
   }
 
+  perf_log(
+    req, "/api/onoff/four-factors",
+    total_ms = .ms_elapsed(req_t0),
+    db_ms = db_ms,
+    transform_ms = .ms_elapsed(transform_t0),
+    rows = nrow(out)
+  )
   out
 }
 
@@ -605,6 +655,8 @@ function(req, res,
          clutch_margin = "", clutch_status = "", clutch_minutes = "",
          clutch_ot_margin = "false") {
 
+  req_t0 <- .ms_now()
+  db_ms <- 0
   gy <- as.integer(game_year)
   bounds <- season_date_bounds(gy)
 
@@ -614,7 +666,7 @@ function(req, res,
   max_time_remaining <- if (nzchar(clutch_minutes)) as.integer(clutch_minutes) * 60L else NA_integer_
   ot_margin_filter <- identical(clutch_ot_margin, "true")
 
-  df <- run_fetch_lineups(
+  q <- .timed(function() run_fetch_lineups(
     pg_pool,
     num = as.integer(num),
     team_csv = NA_character_, player_csv = NA_character_,
@@ -631,9 +683,12 @@ function(req, res,
     max_time_remaining = max_time_remaining,
     ot_margin_filter = ot_margin_filter,
     min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
-  )
+  ))
+  df <- q$value
+  db_ms <- db_ms + q$ms
 
   if (is.null(df) || nrow(df) == 0) return(list())
+  transform_t0 <- .ms_now()
 
   # Replace NAs in shot/numeric columns with 0
   shot_cols <- grep("fg[23]", names(df), value = TRUE)
@@ -673,6 +728,13 @@ function(req, res,
   for (col in c("offPpp", "defPpp", "netRtg")) {
     if (col %in% names(out)) out[[col]][is.na(out[[col]])] <- 0
   }
+  perf_log(
+    req, "/api/lineups/summary",
+    total_ms = .ms_elapsed(req_t0),
+    db_ms = db_ms,
+    transform_ms = .ms_elapsed(transform_t0),
+    rows = nrow(out)
+  )
   out
 }
 
@@ -688,6 +750,8 @@ function(req, res,
          clutch_margin = "", clutch_status = "", clutch_minutes = "",
          clutch_ot_margin = "false") {
 
+  req_t0 <- .ms_now()
+  db_ms <- 0
   gy <- as.integer(game_year)
   bounds <- season_date_bounds(gy)
 
@@ -696,7 +760,7 @@ function(req, res,
   max_time_remaining <- if (nzchar(clutch_minutes)) as.integer(clutch_minutes) * 60L else NA_integer_
   ot_margin_filter <- identical(clutch_ot_margin, "true")
 
-  df <- run_fetch_lineups_ff(
+  q <- .timed(function() run_fetch_lineups_ff(
     pg_pool,
     num = as.integer(num),
     team_csv = NA_character_, player_csv = NA_character_,
@@ -713,9 +777,12 @@ function(req, res,
     max_time_remaining = max_time_remaining,
     ot_margin_filter = ot_margin_filter,
     min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
-  )
+  ))
+  df <- q$value
+  db_ms <- db_ms + q$ms
 
   if (is.null(df) || nrow(df) == 0) return(list())
+  transform_t0 <- .ms_now()
 
   for (col in names(df)) {
     if (is.numeric(df[[col]])) df[[col]][is.na(df[[col]])] <- 0
@@ -726,7 +793,15 @@ function(req, res,
   df$game_year <- NULL
   df$player_names <- NULL
 
-  rename_lineup_ff(df)
+  out <- rename_lineup_ff(df)
+  perf_log(
+    req, "/api/lineups/four-factors",
+    total_ms = .ms_elapsed(req_t0),
+    db_ms = db_ms,
+    transform_ms = .ms_elapsed(transform_t0),
+    rows = nrow(out)
+  )
+  out
 }
 
 # ── GET /api/lineups/game-log ─────────────────────────────────
@@ -735,6 +810,8 @@ function(req, res,
 function(req, res,
          sub_hash = "", team_id = "", game_year = "2026", view_mode = "summary") {
 
+  req_t0 <- .ms_now()
+  db_ms <- 0
   req_hash <- as.character(sub_hash)
   req_tid  <- as.integer(team_id)
   gy       <- as.integer(game_year)
@@ -745,9 +822,11 @@ function(req, res,
   }
 
   # Resolve sub_lineup_hash → lineup_hash(es)
-  lineup_hashes <- DBI::dbGetQuery(pg_pool,
+  q_hash <- .timed(function() DBI::dbGetQuery(pg_pool,
     sprintf("SELECT DISTINCT lineup_hash FROM %s.sub_lineups WHERE sub_lineup_hash = $1 AND team_id = $2 AND game_year = $3", SCHEMA),
-    params = list(req_hash, req_tid, gy))$lineup_hash
+    params = list(req_hash, req_tid, gy)))
+  db_ms <- db_ms + q_hash$ms
+  lineup_hashes <- q_hash$value$lineup_hash
 
   if (length(lineup_hashes) == 0) lineup_hashes <- req_hash
   lineup_hashes <- unique(as.character(lineup_hashes))
@@ -760,18 +839,22 @@ function(req, res,
   qparams <- c(as.list(lineup_hashes), list(req_tid, gy))
 
   # Get schedule
-  sched <- DBI::dbGetQuery(pg_pool, sprintf(
+  q_sched <- .timed(function() DBI::dbGetQuery(pg_pool, sprintf(
     "SELECT game_id, gn, game_date, opp_team_name, team_score, opp_score,
             team_score > opp_score AS has_won
      FROM %s.final_schedule_mv WHERE team_id = $1 AND game_year = $2", SCHEMA
-  ), params = list(req_tid, gy))
+  ), params = list(req_tid, gy)))
+  db_ms <- db_ms + q_sched$ms
+  sched <- q_sched$value
   sched$result <- ifelse(sched$has_won, "W", "L")
   sched$score <- paste0(sched$team_score, "-", sched$opp_score)
 
   # Get lineup name
-  lineup_name <- DBI::dbGetQuery(pg_pool, sprintf(
+  q_name <- .timed(function() DBI::dbGetQuery(pg_pool, sprintf(
     "SELECT player_names_str FROM %s.sub_lineups_stats WHERE sub_lineup_hash = $1 AND team_id = $2 AND game_year = $3 LIMIT 1", SCHEMA
-  ), params = list(req_hash, req_tid, gy))$player_names_str
+  ), params = list(req_hash, req_tid, gy)))
+  db_ms <- db_ms + q_name$ms
+  lineup_name <- q_name$value$player_names_str
   if (length(lineup_name) == 0 || is.na(lineup_name)) lineup_name <- req_hash
 
   if (identical(view_mode, "ff")) {
@@ -786,8 +869,11 @@ function(req, res,
        FROM %s.lineup_four_factors_by_game
        WHERE lineup_hash IN (%s) AND team_id = $%d AND game_year = $%d
        GROUP BY game_id, type_lineup", SCHEMA, hash_placeholders, tid_idx, gy_idx)
-    ff_data <- DBI::dbGetQuery(pg_pool, ff_query, params = qparams)
+    q_ff <- .timed(function() DBI::dbGetQuery(pg_pool, ff_query, params = qparams))
+    db_ms <- db_ms + q_ff$ms
+    ff_data <- q_ff$value
     if (nrow(ff_data) == 0) return(list(lineupName = lineup_name, games = list()))
+    transform_t0 <- .ms_now()
 
     off <- ff_data[ff_data$type_lineup == "offense", ]
     def <- ff_data[ff_data$type_lineup == "defense", ]
@@ -848,8 +934,11 @@ function(req, res,
        FROM %s.mv_lineup_totals_by_day
        WHERE lineup_hash IN (%s) AND team_id = $%d AND game_year = $%d
        GROUP BY game_id, type_lineup", SCHEMA, hash_placeholders, tid_idx, gy_idx)
-    game_data <- DBI::dbGetQuery(pg_pool, game_query, params = qparams)
+    q_game <- .timed(function() DBI::dbGetQuery(pg_pool, game_query, params = qparams))
+    db_ms <- db_ms + q_game$ms
+    game_data <- q_game$value
     if (nrow(game_data) == 0) return(list(lineupName = lineup_name, games = list()))
+    transform_t0 <- .ms_now()
 
     off <- game_data[game_data$type_lineup == "offense", ]
     def <- game_data[game_data$type_lineup == "defense", ]
@@ -892,7 +981,15 @@ function(req, res,
     games <- games[order(ifelse(is.na(games$gn), 999, games$gn)), , drop = FALSE]
   }
 
-  list(lineupName = lineup_name, games = games)
+  out <- list(lineupName = lineup_name, games = games)
+  perf_log(
+    req, "/api/lineups/game-log",
+    total_ms = .ms_elapsed(req_t0),
+    db_ms = db_ms,
+    transform_ms = .ms_elapsed(transform_t0),
+    rows = nrow(games)
+  )
+  out
 }
 
 # ── GET /api/meta/players ─────────────────────────────────────
