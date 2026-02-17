@@ -59,6 +59,21 @@ parse_int_csv <- function(val) {
   as.integer(strsplit(val, ",")[[1]])
 }
 
+# Parse PostgreSQL int-array text (e.g. "{1,2,3}") into list-of-vectors
+# using a single vectorized JSON decode.
+parse_pg_int_array_json <- function(x) {
+  if (is.null(x) || !length(x)) return(list())
+  s <- as.character(x)
+  s[is.na(s) | s == "" | s == "{}"] <- "[]"
+  s <- chartr("{}", "[]", s)
+  payload <- paste0("[", paste(s, collapse = ","), "]")
+  out <- tryCatch(jsonlite::fromJSON(payload, simplifyVector = FALSE), error = function(e) NULL)
+  if (!is.null(out) && length(out) == length(s)) return(out)
+
+  # Fail-safe: preserve shape without per-row parsing
+  rep(list(integer(0)), length(s))
+}
+
 # Only game-level filters trigger SQL path. Team + min_poss are applied client-side on MV data.
 season_date_bounds <- function(game_year) {
   gy <- as.integer(game_year)
@@ -115,6 +130,35 @@ run_ff_compute <- function(pool, game_year, start_d, end_d, team_csv,
     game_type_csv, opp_ids_csv, home_away, outcome,
     opp_rank_side, opp_rank_n, opp_rank_metric,
     min_gn, max_gn, last_n
+  ))
+}
+
+# Filtered FF path optimized: perform FF+OnOff join in PostgreSQL (single roundtrip)
+run_ff_with_diffs_compute <- function(pool, game_year, start_d, end_d, team_csv,
+                                      game_type_csv, opp_ids_csv, home_away, outcome,
+                                      opp_rank_side = NA_character_,
+                                      opp_rank_n = NA_integer_,
+                                      opp_rank_metric = NA_character_,
+                                      min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_) {
+  DBI::dbGetQuery(pool, paste0(
+    "SELECT ff.*, oo.\"Net RTG Diff\", oo.\"Off ON Diff\", oo.\"Def ON Diff\" ",
+    "FROM ", SCHEMA, ".four_factors_compute(",
+    "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
+    "$7::text,$8::text,$9::text,$10::int4,$11::text,",
+    "$12::int4,$13::int4,$14::int4",
+    ") ff ",
+    "LEFT JOIN ", SCHEMA, ".onoff_compute(",
+    "$2::date,$3::date,$4::text,$15::int4,$16::int4,$17::numeric,$18::text,",
+    "$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
+    "$12::int4,$13::int4,$14::int4",
+    ") oo ",
+    "ON ff.player_id = oo.player_id AND ff.team_id = oo.team_id"
+  ), params = list(
+    as.integer(game_year), as.Date(start_d), as.Date(end_d), team_csv,
+    game_type_csv, opp_ids_csv, home_away, outcome,
+    opp_rank_side, opp_rank_n, opp_rank_metric,
+    min_gn, max_gn, last_n,
+    0L, 0L, DEFAULT_MIN_NET, as.character(game_year)
   ))
 }
 
@@ -417,12 +461,14 @@ function(req, res,
       SELECT ff.*, o."Net RTG Diff", o."Off ON Diff", o."Def ON Diff"
       FROM %s.player_advanced_stats_mv ff
       LEFT JOIN %s.onoff_default_mv o
-        ON ff.player_id = o.player_id AND ff.game_year = o."Year"
+        ON ff.player_id = o.player_id
+       AND ff.team_id = o.team_id
+       AND ff.game_year = o."Year"
       WHERE ff.game_year = $1
     ', SCHEMA, SCHEMA), params = list(gy))
   } else {
-    # Filtered: call both functions with exact Shiny-app signatures, join in R
-    ff <- run_ff_compute(
+    # Filtered path: single SQL call (DB-side join of FF + OnOff diffs)
+    df <- run_ff_with_diffs_compute(
       pg_pool, game_year = gy, start_d = start_date, end_d = end_date,
       team_csv = team_csv, game_type_csv = gt_csv, opp_ids_csv = opp_csv,
       home_away = ha, outcome = oc,
@@ -431,23 +477,6 @@ function(req, res,
       opp_rank_metric = na_chr(opp_rank_metric),
       min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
     )
-
-    onoff <- run_onoff_compute(
-      pg_pool,
-      start_d = start_date, end_d = end_date,
-      team_csv = team_csv,
-      min_all = 0L, min_on = 0L, game_year = gy,
-      game_type_csv = gt_csv, opp_ids_csv = opp_csv,
-      home_away = ha, outcome = oc,
-      opp_rank_side = na_chr(opp_rank_side),
-      opp_rank_n = na_int(opp_rank_n),
-      opp_rank_metric = na_chr(opp_rank_metric),
-      min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
-    )
-
-    # Join diffs from onoff
-    onoff_lookup <- onoff[, c("player_id", "Net RTG Diff", "Off ON Diff", "Def ON Diff"), drop = FALSE]
-    df <- merge(ff, onoff_lookup, by = "player_id", all.x = TRUE)
     df[["Net RTG Diff"]][is.na(df[["Net RTG Diff"]])] <- 0
     df[["Off ON Diff"]][is.na(df[["Off ON Diff"]])] <- 0
     df[["Def ON Diff"]][is.na(df[["Def ON Diff"]])] <- 0
@@ -530,11 +559,9 @@ rename_lineup_summary <- function(df) {
   for (old in names(nms)) {
     if (old %in% names(df)) names(df)[names(df) == old] <- nms[[old]]
   }
-  # Convert player_ids from PG array string to JSON array
+  # Convert player_ids from PG array string to JSON array (vectorized, no row loop)
   if ("playerIds" %in% names(df)) {
-    df$playerIds <- lapply(df$playerIds, function(s) {
-      as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]])
-    })
+    df$playerIds <- parse_pg_int_array_json(df$playerIds)
   }
   df
 }
@@ -561,9 +588,7 @@ rename_lineup_ff <- function(df) {
     if (old %in% names(df)) names(df)[names(df) == old] <- nms[[old]]
   }
   if ("playerIds" %in% names(df)) {
-    df$playerIds <- lapply(df$playerIds, function(s) {
-      as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]])
-    })
+    df$playerIds <- parse_pg_int_array_json(df$playerIds)
   }
   df
 }
