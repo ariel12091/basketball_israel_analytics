@@ -95,7 +95,8 @@ export default function FilterDrawer() {
 
   const hasActiveFilters = needsFilteredPath(state) ||
     state.minOnPoss !== DEFAULT_FILTERS.minOnPoss ||
-    state.minAllPoss !== DEFAULT_FILTERS.minAllPoss;
+    state.minAllPoss !== DEFAULT_FILTERS.minAllPoss ||
+    state.lineupPlayersActive;
 
   // Team options for react-select
   const teamOptions: TeamOption[] = useMemo(
