@@ -768,3 +768,31 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 4. Engineering rule:
    - Do not use loops for data transformations unless absolutely necessary.
    - Prefer vectorized/batched operations first; only use loops when correctness requires sequential logic or no vectorized alternative exists.
+## Session Notes (2026-02-17 Lineup Modal Game-Log Vectorization + Real Benchmark)
+
+1. Implemented easy vectorized win in plumber Tab 2 modal backend.
+   - Endpoint: `frontend-v2/server/plumber.R` `/api/lineups/game-log`.
+   - Replaced row-by-row `lapply` game assembly and per-row schedule lookup:
+     - `sched[sched$game_id == r$game_id, ]`
+   - New path uses:
+     - one keyed `merge(..., by = "game_id")` with schedule,
+     - vectorized column calculations,
+     - one `data.frame(...)` build,
+     - vectorized GN sort.
+   - Applied to both view modes: `summary` and `ff`.
+
+2. Real endpoint benchmark (live API path, not synthetic) on `http://127.0.0.1:3002`.
+   - Request:
+     - `/api/lineups/game-log?sub_hash=d372f7ce005e03780a3adeead1feae25&team_id=14&game_year=2026`
+   - 30 requests per mode:
+     - `summary`: `p50 1124.1ms`, `p90 1143.1ms`, `mean 1130.4ms`, `min/max 1108.4/1228.3ms`
+     - `ff`: `p50 1120.6ms`, `p90 1134.5ms`, `mean 1132.4ms`, `min/max 1113.3/1428.7ms`
+
+3. Takeaway.
+   - Vectorization is still the correct implementation and removes avoidable R loop overhead.
+   - On real requests, total latency is now dominated by DB/query + network path, not R row assembly.
+   - Next optimization focus should remain SQL/function runtime and query planning.
+
+4. Benchmark execution reliability note.
+   - `Rscript -e` via PowerShell can corrupt inline R when `$` symbols are expanded and can hit encoding/BOM issues.
+   - Stable method: write benchmark to a temporary ASCII `.R` file and run `Rscript <file>`.
