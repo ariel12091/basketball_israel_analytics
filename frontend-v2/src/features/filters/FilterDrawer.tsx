@@ -9,6 +9,15 @@ interface TeamOption {
   label: string;
 }
 
+const GAME_TYPE_OPTIONS: TeamOption[] = [
+  { value: 5, label: 'Regular Season' },
+  { value: 16, label: 'Playoffs QF' },
+  { value: 26, label: 'Playoffs SF' },
+  { value: 17, label: 'Playoffs Finals' },
+  { value: 33, label: 'Play-in' },
+  { value: 34, label: 'Winner Cup' },
+];
+
 const selectStyles: StylesConfig<TeamOption, true> = {
   control: (base, state) => ({
     ...base,
@@ -107,6 +116,10 @@ export default function FilterDrawer() {
     () => teamOptions.filter(o => state.opponents.includes(o.value)),
     [teamOptions, state.opponents],
   );
+  const selectedGameTypes = useMemo(
+    () => GAME_TYPE_OPTIONS.filter(o => state.gameType.includes(o.value)),
+    [state.gameType],
+  );
 
   // Last N choices: 1..max(gn)
   const lastNChoices = useMemo(() => {
@@ -174,27 +187,42 @@ export default function FilterDrawer() {
       {/* Game Filters */}
       <FilterSection title="Game Filters">
         <div className="filter-group">
+          <label className="filter-label">Teams</label>
+          <Select<TeamOption, true>
+            isMulti
+            closeMenuOnSelect={false}
+            options={teamOptions}
+            value={teamOptions.filter(o => state.teamIds.includes(o.value))}
+            onChange={(sel) =>
+              dispatch({
+                type: 'SET_FIELD',
+                field: 'teamIds',
+                value: sel ? sel.map(s => s.value) : [],
+              })
+            }
+            placeholder="All teams"
+            styles={selectStyles}
+            classNamePrefix="rs"
+          />
+        </div>
+        <div className="filter-group">
           <label className="filter-label">Game Type</label>
-          <select
-            className="filter-select"
-            value={state.gameType.length === 1 ? state.gameType[0] : ''}
-            onChange={e => {
-              const v = e.target.value;
+          <Select<TeamOption, true>
+            isMulti
+            closeMenuOnSelect={false}
+            options={GAME_TYPE_OPTIONS}
+            value={selectedGameTypes}
+            onChange={(sel) =>
               dispatch({
                 type: 'SET_FIELD',
                 field: 'gameType',
-                value: v ? [parseInt(v)] : [],
-              });
-            }}
-          >
-            <option value="">All</option>
-            <option value="5">Regular Season</option>
-            <option value="16">Playoffs QF</option>
-            <option value="26">Playoffs SF</option>
-            <option value="17">Playoffs Finals</option>
-            <option value="33">Play-in</option>
-            <option value="34">Winner Cup</option>
-          </select>
+                value: sel ? sel.map(s => s.value) : [],
+              })
+            }
+            placeholder="All game types"
+            styles={selectStyles}
+            classNamePrefix="rs"
+          />
         </div>
         <div className="filter-group">
           <label className="filter-label">Opponents</label>

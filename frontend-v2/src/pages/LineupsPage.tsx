@@ -96,14 +96,22 @@ export default function LineupsPage() {
     setPlayersOff([]);
   }, [teamId]);
 
+  // Keep local Team and drawer Teams mutually exclusive.
+  // If drawer teams are selected, local team is cleared.
+  useEffect(() => {
+    if (filters.teamIds.length > 0 && teamId !== null) {
+      setTeamId(null);
+    }
+  }, [filters.teamIds, teamId]);
+
   // Feed tab-local Players On/Off activity into global clear-all visibility.
   useEffect(() => {
-    const active = playersOn.length > 0 || playersOff.length > 0;
+    const active = teamId !== null || playersOn.length > 0 || playersOff.length > 0;
     if (active !== prevLineupPlayersActive.current) {
       prevLineupPlayersActive.current = active;
       dispatch({ type: 'SET_FIELD', field: 'lineupPlayersActive', value: active });
     }
-  }, [playersOn, playersOff, dispatch]);
+  }, [teamId, playersOn, playersOff, dispatch]);
 
   useEffect(() => {
     return () => {
@@ -140,9 +148,9 @@ export default function LineupsPage() {
     if (!autoEnabled.current) return;
     const raw = mode === 'summary' ? summaryRaw : ffRaw;
     if (!raw?.length) return;
-    // Apply local filters first (team + players), then compute threshold
+    // Apply active filters first, then compute threshold
     let data = raw as Array<{ totalPoss: number; teamId: number; playerIds: number[] }>;
-    if (teamId) data = data.filter(d => d.teamId === teamId);
+    if (filters.teamIds.length) data = data.filter(d => filters.teamIds.includes(d.teamId));
     if (playersOn.length) data = data.filter(d => playersOn.every(id => d.playerIds.includes(id)));
     if (playersOff.length) data = data.filter(d => !playersOff.some(id => d.playerIds.includes(id)));
 
@@ -151,7 +159,7 @@ export default function LineupsPage() {
       autoUpdating.current = true;
       setMinPoss(needed);
     }
-  }, [summaryRaw, ffRaw, mode, teamId, playersOn, playersOff, minPoss]);
+  }, [summaryRaw, ffRaw, mode, teamId, playersOn, playersOff, minPoss, filters.teamIds]);
 
   // ─── Summary: rank + filter + TOTAL ────────────────────────
   const summaryRanked = useMemo(() => {
@@ -174,11 +182,11 @@ export default function LineupsPage() {
 
   const summaryFiltered = useMemo(() => {
     let data = summaryRanked;
-    if (teamId) data = data.filter(d => d.teamId === teamId);
+    if (filters.teamIds.length) data = data.filter(d => filters.teamIds.includes(d.teamId));
     if (playersOn.length) data = data.filter(d => playersOn.every(id => d.playerIds.includes(id)));
     if (playersOff.length) data = data.filter(d => !playersOff.some(id => d.playerIds.includes(id)));
     return data.filter(d => d.totalPoss >= minPoss);
-  }, [summaryRanked, teamId, playersOn, playersOff, minPoss]);
+  }, [summaryRanked, teamId, playersOn, playersOff, minPoss, filters.teamIds]);
 
   // TOTAL row for summary
   const summaryWithTotal = useMemo(() => {
@@ -249,11 +257,11 @@ export default function LineupsPage() {
 
   const ffFiltered = useMemo(() => {
     let data = ffRanked;
-    if (teamId) data = data.filter(d => d.teamId === teamId);
+    if (filters.teamIds.length) data = data.filter(d => filters.teamIds.includes(d.teamId));
     if (playersOn.length) data = data.filter(d => playersOn.every(id => d.playerIds.includes(id)));
     if (playersOff.length) data = data.filter(d => !playersOff.some(id => d.playerIds.includes(id)));
     return data.filter(d => d.totalPoss >= minPoss);
-  }, [ffRanked, teamId, playersOn, playersOff, minPoss]);
+  }, [ffRanked, teamId, playersOn, playersOff, minPoss, filters.teamIds]);
 
   const ffWithTotal = useMemo(() => {
     if (!ffFiltered.length) return [];
@@ -462,11 +470,20 @@ export default function LineupsPage() {
         {/* Team + Players */}
         <div className="lineup-filter-row">
           <div className="lineup-filter-item">
+            <span className="group-size-label">Lineup Player Selection</span>
+          </div>
+          <div className="lineup-filter-item">
             <label className="lineup-filter-label">Team</label>
             <select
               className="lineup-select"
               value={teamId ?? ''}
-              onChange={e => setTeamId(e.target.value ? Number(e.target.value) : null)}
+              onChange={e => {
+                const next = e.target.value ? Number(e.target.value) : null;
+                setTeamId(next);
+                if (next !== null && filters.teamIds.length > 0) {
+                  dispatch({ type: 'SET_FIELD', field: 'teamIds', value: [] });
+                }
+              }}
             >
               <option value="">All teams</option>
               {(teams ?? []).map(t => (
