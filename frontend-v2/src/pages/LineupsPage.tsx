@@ -485,7 +485,7 @@ export default function LineupsPage() {
                 }
               }}
             >
-              <option value="">All teams</option>
+              <option value="">Select team</option>
               {(teams ?? []).map(t => (
                 <option key={t.teamId} value={t.teamId}>{t.teamName}</option>
               ))}
