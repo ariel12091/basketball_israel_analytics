@@ -1,6 +1,4 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
-import Select from 'react-select';
-import type { StylesConfig } from 'react-select';
 import { useFilters, buildApiParams } from '../features/filters/store';
 import { useApi } from '../hooks/useApi';
 import { useSorting } from '../hooks/useSorting';
@@ -9,55 +7,10 @@ import type { ColumnGroup, Column } from '../features/tables/DataTable';
 import HeatCell from '../features/tables/HeatCell';
 import ShotCell from '../features/tables/ShotCell';
 import FFCell from '../features/tables/FFCell';
-import type { OnOffPlayer, OnOffFourFactors, Team } from '../types';
+import type { OnOffPlayer, OnOffFourFactors } from '../types';
 import { autoMinPoss, adaptiveBaseline, percentileRank, computeShotAvgs } from '../utils/ranking';
 
 type ViewMode = 'summary' | 'ff';
-interface TeamOption { value: number; label: string; }
-
-const selectStyles: StylesConfig<TeamOption, true> = {
-  control: (base, state) => ({
-    ...base,
-    background: 'var(--bg-elevated)',
-    borderColor: state.isFocused ? 'var(--accent)' : 'var(--bg-hover)',
-    boxShadow: state.isFocused ? '0 0 0 1px var(--accent)' : 'none',
-    minHeight: 32,
-    fontSize: 13,
-    '&:hover': { borderColor: 'var(--accent)' },
-  }),
-  menu: (base) => ({
-    ...base,
-    background: 'var(--bg-elevated)',
-    border: '1px solid var(--bg-hover)',
-    zIndex: 20,
-  }),
-  option: (base, state) => ({
-    ...base,
-    background: state.isFocused ? 'var(--bg-hover)' : 'transparent',
-    color: 'var(--text-primary)',
-    fontSize: 13,
-    cursor: 'pointer',
-    '&:active': { background: 'var(--bg-active)' },
-  }),
-  multiValue: (base) => ({
-    ...base,
-    background: 'var(--bg-active)',
-    borderRadius: 4,
-  }),
-  multiValueLabel: (base) => ({
-    ...base,
-    color: 'var(--text-primary)',
-    fontSize: 12,
-  }),
-  multiValueRemove: (base) => ({
-    ...base,
-    color: 'var(--text-muted)',
-    '&:hover': { background: 'var(--negative)', color: '#fff' },
-  }),
-  input: (base) => ({ ...base, color: 'var(--text-primary)' }),
-  placeholder: (base) => ({ ...base, color: 'var(--text-muted)', fontSize: 13 }),
-  noOptionsMessage: (base) => ({ ...base, color: 'var(--text-muted)' }),
-};
 
 export default function OnOffPage() {
   const [mode, setMode] = useState<ViewMode>('summary');
@@ -68,8 +21,6 @@ export default function OnOffPage() {
   const prevMinOnPoss = useRef(filters.minOnPoss);
 
   const apiParams = useMemo(() => buildApiParams(filters), [filters]);
-  const teamsParams = useMemo(() => ({ game_year: filters.gameYear }), [filters.gameYear]);
-  const { data: teams } = useApi<Team[]>('/api/meta/teams', teamsParams);
 
   const { data: summaryRaw, loading: summaryLoading, error: summaryError } = useApi<OnOffPlayer[]>(
     '/api/onoff/summary',
@@ -81,15 +32,6 @@ export default function OnOffPage() {
     '/api/onoff/four-factors',
     apiParams,
     mode === 'ff'
-  );
-
-  const teamOptions: TeamOption[] = useMemo(
-    () => (teams ?? []).map(t => ({ value: t.teamId, label: t.teamName })),
-    [teams],
-  );
-  const selectedTeams = useMemo(
-    () => teamOptions.filter(o => filters.teamIds.includes(o.value)),
-    [teamOptions, filters.teamIds],
   );
 
   // Detect manual slider changes: if minOnPoss changed and auto didn't cause it → disable auto
@@ -321,25 +263,6 @@ export default function OnOffPage() {
 
       <div className="lineup-controls">
         <div className="lineup-filter-row">
-          <div className="lineup-filter-item" style={{ minWidth: 280 }}>
-            <label className="lineup-filter-label">Teams</label>
-            <Select<TeamOption, true>
-              isMulti
-              closeMenuOnSelect={false}
-              options={teamOptions}
-              value={selectedTeams}
-              onChange={(sel) =>
-                dispatch({
-                  type: 'SET_FIELD',
-                  field: 'teamIds',
-                  value: sel ? sel.map(s => s.value) : [],
-                })
-              }
-              placeholder="All teams"
-              styles={selectStyles}
-              classNamePrefix="rs"
-            />
-          </div>
           <div className="lineup-filter-item" style={{ minWidth: 220 }}>
             <label className="lineup-filter-label">
               Min ON Poss{' '}
