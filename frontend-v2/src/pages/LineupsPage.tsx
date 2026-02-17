@@ -21,7 +21,7 @@ type GroupSize = 2 | 3 | 4 | 5;
 
 // ─── LineupsPage ────────────────────────────────────────────
 export default function LineupsPage() {
-  const { state: filters } = useFilters();
+  const { state: filters, dispatch } = useFilters();
 
   // Tab-2 local state (not in shared FilterContext)
   const [mode, setMode] = useState<ViewMode>('summary');
@@ -47,6 +47,8 @@ export default function LineupsPage() {
   // Modal state
   const [modalHash, setModalHash] = useState<string | null>(null);
   const [modalTeamId, setModalTeamId] = useState<number>(0);
+  const prevLineupPlayersActive = useRef(false);
+  const prevResetSeq = useRef(filters.resetSeq);
 
   // Build API params: shared filters + Tab 2-specific (groupSize, clutch, GN)
   // NOTE: team/player/minPoss are client-side-only filters
@@ -93,6 +95,31 @@ export default function LineupsPage() {
     setPlayersOn([]);
     setPlayersOff([]);
   }, [teamId]);
+
+  // Feed tab-local Players On/Off activity into global clear-all visibility.
+  useEffect(() => {
+    const active = playersOn.length > 0 || playersOff.length > 0;
+    if (active !== prevLineupPlayersActive.current) {
+      prevLineupPlayersActive.current = active;
+      dispatch({ type: 'SET_FIELD', field: 'lineupPlayersActive', value: active });
+    }
+  }, [playersOn, playersOff, dispatch]);
+
+  useEffect(() => {
+    return () => {
+      dispatch({ type: 'SET_FIELD', field: 'lineupPlayersActive', value: false });
+    };
+  }, [dispatch]);
+
+  // When global Clear all runs, also clear tab-local Players On/Off selections.
+  useEffect(() => {
+    if (filters.resetSeq !== prevResetSeq.current) {
+      prevResetSeq.current = filters.resetSeq;
+      setTeamId(null);
+      setPlayersOn([]);
+      setPlayersOff([]);
+    }
+  }, [filters.resetSeq]);
 
   // ─── Auto min-poss ────────────────────────────────────────
   useEffect(() => {
@@ -1075,3 +1102,7 @@ function formatTeamName(raw: string) {
   if (!raw) return '';
   return toTitleCase(raw.trim());
 }
+
+
+
+
