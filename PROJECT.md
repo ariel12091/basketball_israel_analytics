@@ -616,3 +616,155 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
      - `PLUMBER_HOST=127.0.0.1`
      - `PLUMBER_PORT=3002`
    - Override with env vars when intentionally exposing behind a proxy.
+
+## Session Lessons (2026-02-16 Lineups Modal + Filter Ownership)
+
+1. Tab 2 lineup modal failure root cause was backend JSON boxing, not click wiring.
+   - `LineupModal` expected numeric scalars (`offPpp`, `defPpp`, `minutes`, etc.) and called `toFixed()`.
+   - `/api/lineups/game-log` was returning one-element arrays for these fields under the default serializer, causing runtime `TypeError` and blank modal.
+   - Fix: switched endpoint serializer to `unboxedJSON` in `frontend-v2/server/plumber.R` for `/api/lineups/game-log`.
+
+2. Click flow parity with Shiny is structurally correct.
+   - Both Shiny and Plumber resolve `sub_lineup_hash -> lineup_hash(es)`, join schedule context, aggregate offense/defense by game, then sort by GN.
+   - Main difference is transport: Shiny renders modal table directly server-side, React consumes JSON from Plumber.
+
+3. Tab 2 drawer filter impact was partially misunderstood and had to be audited field-by-field.
+   - Drawer filters that affect Tab 2 query results: season, date range, game type, opponents, home/away, outcome, GN range, last N, opponent strength.
+   - Drawer filters that do not affect Tab 2 query results: drawer teams, drawer eligibility sliders.
+   - Tab 2-specific controls (group size, clutch, local team/players/min poss) are handled by tab-local state and/or local post-fetch filtering.
+
+4. Tab ownership of filters was clarified and adjusted.
+   - Moved Tab 1-exclusive controls (`Teams`, `Min ON Poss`, `Min All Poss`) out of global drawer and into `OnOffPage` in the same inline control style used by Tab 2.
+   - Removed those controls from `FilterDrawer` to avoid cross-tab confusion and false expectations.
+
+5. Local debugging can be invalidated by port collisions across multiple Vite apps.
+   - `frontend` and `frontend-v2` were both bound to `5173`; Playwright initially opened the wrong app.
+   - Always verify owning process for the dev port before UI diagnosis.
+## Session Lessons (2026-02-16 Tab 2 Clear Filters Visibility + Reset Scope)
+
+1. Restored original conditional visibility behavior for clear controls.
+   - Removed extra always-visible Tab 2 clear buttons.
+   - Kept global clear controls hidden until at least one active filter exists.
+
+2. Included Tab 2 local lineup player selections in active-filter detection.
+   - Added `lineupPlayersActive` to shared filter state.
+   - Set true when `Players On` or `Players Off` has selections.
+   - Reset to false on tab unmount.
+   - Result: existing clear controls appear when lineup local selections are active.
+
+3. Extended global clear action to reset Tab 2 local state.
+   - Added `resetSeq` counter in shared state, incremented on `RESET`.
+   - `LineupsPage` listens to `resetSeq` and clears local controls.
+   - Reset now includes: `teamId`, `playersOn`, and `playersOff`.
+
+4. Outcome aligns with intended UX contract.
+   - No persistent extra clear button clutter.
+   - Same conditional visibility as before.
+   - Clear action now fully clears Tab 2 lineup selectors, including Team.
+
+## Session Lessons (2026-02-17 React Tab 1/2 Filter Semantics + Stability)
+
+1. Keep Tab 2 fast-path filtering client-side unless there is a proven scaling issue.
+   - We tested adding backend params for local lineup filters, then reverted.
+   - Current preferred model: API returns the base lineup set, UI applies local team/player/min-poss filters.
+
+2. "Min All Poss" semantics must be explicit and aligned with user intent.
+   - Correct behavior in Tab 1 is NOT on + off >= threshold.
+   - Correct behavior is BOTH sides pass: on >= min_all AND off >= min_all (plus min_on as a separate gate).
+
+3. Low-threshold rows (especially min=0) require defensive rendering.
+   - Sparse rows can contain NA/null numerics and unstable keys.
+   - Hardening applied:
+     - /api/onoff/summary normalizes NA in all numeric columns before response.
+     - HeatCell is null/NaN-safe and renders - instead of crashing on 	oFixed.
+     - Tab 1 row keys use a composite key to avoid reconciliation issues that looked like "sorting not working".
+
+4. "Clear all" visibility should not depend only on visible chips.
+   - Local-only Tab 2 state (team / players on / players off) can be active even when there are no shared chips.
+   - FilterChips must still render the bar when hasActiveFilters is true, so users can clear local state.
+
+5. Final team-filter ownership model for React Tab 1/2:
+   - Drawer Teams filters Tab 1 and Tab 2 result tables.
+   - Tab 2 local Team is only for "Lineup Player Selection" (populating Players On/Off options).
+   - Local team and drawer teams are mutually exclusive:
+     - selecting local team clears drawer teams,
+     - selecting drawer teams clears local team.
+   - Local team placeholder uses Select team (not All teams) to avoid implying table filtering.
+
+6. Game Type in drawer should be multi-select with menu left open.
+   - Replaced single-select control with multi-select eact-select.
+   - Kept closeMenuOnSelect={false} for faster batch selection.
+## Session Notes (2026-02-17 Parity Audit: Shiny vs React+Plumber)
+
+1. Fixed in this session:
+   - Tab 1 FF filtered join now uses Shiny-equivalent key in plumber:
+     - `player_id + team_id` (fallback to `player_id` only if `team_id` is missing unexpectedly).
+   - Tab 1 FF fast-path MV join now also includes `team_id`:
+     - `ff.player_id = o.player_id AND ff.team_id = o.team_id AND ff.game_year = o."Year"`.
+
+2. Remaining discrepancies to track:
+   - Ranking edge case (`n <= 1`) differs:
+     - React `percentileRank()` returns `0.5` for single qualified row.
+     - Shiny `pr_vec()` returns `NA` (unranked).
+   - Adaptive baseline quantile implementation differs slightly:
+     - React uses index-based p75 approximation.
+     - Shiny uses `quantile(..., 0.75)` interpolation.
+   - API default `end_date` differs from Shiny season bound convention:
+     - Plumber defaults use `YYYY-06-30` on several endpoints.
+     - Shiny season bounds use `YYYY-07-01`.
+## Session Notes (2026-02-17 FF Filtered Bottleneck Benchmark)
+
+1. Change tested:
+   - Replaced filtered Tab 1 FF path in plumber from:
+     - `four_factors_compute` + `onoff_compute` + R `merge`
+   - To:
+     - single DB-side join query (`run_ff_with_diffs_compute`) keyed by `player_id + team_id`.
+
+2. Benchmark result (same filter params, 12 timed runs after warmup):
+   - Old path median: `0.990s`
+   - New path median: `0.780s`
+   - Speedup: `1.27x` (about `210ms` median saved)
+   - Row-count parity: both returned `266` rows.
+
+3. Conclusion:
+   - Improvement is valid but moderate.
+   - This confirms the R merge layer was not the main latency driver.
+   - Primary remaining bottleneck is inside compute SQL/function runtime.
+
+## Backlog - Performance (Tab 1/2 React+Plumber)
+
+1. Profile SQL functions directly with `EXPLAIN (ANALYZE, BUFFERS)`:
+   - `basketball_test.four_factors_compute`
+   - `basketball_test.onoff_compute`
+   - Use representative filtered cases (GN, opponent strength, game type, clutch).
+
+2. Add request-level timing instrumentation in plumber for high-cost endpoints:
+   - `/api/onoff/four-factors` (filtered)
+   - `/api/lineups/summary`
+   - `/api/lineups/four-factors`
+   - Log DB time vs serialization time separately.
+
+3. Add short TTL cache for repeated identical filtered requests (API layer).
+
+4. Audit indexes only after query-plan evidence (avoid speculative indexing).
+## Session Notes (2026-02-17 Player IDs Parsing Optimization)
+
+1. Implemented fix:
+   - Replaced row-by-row `player_ids` parsing in `frontend-v2/server/plumber.R` with vectorized parsing via a single batched JSON decode helper (`parse_pg_int_array_json`).
+   - Applied in both `rename_lineup_summary()` and `rename_lineup_ff()`.
+
+2. Benchmark (1988 lineup rows; 3 methods):
+   - Old loop parse median: `0.4700s`
+   - Vectorized parse median: `0.1900s`
+   - SQL JSON-return parse median: `0.1600s`
+   - Speedup vs old:
+     - Vectorized: `2.47x`
+     - SQL JSON-return: `2.94x`
+
+3. Conclusion:
+   - Vectorized parser is now the active implementation and removes per-row loop overhead.
+   - SQL JSON-return remains a possible incremental follow-up, but vectorized parsing already captures most of the gain.
+
+4. Engineering rule:
+   - Do not use loops for data transformations unless absolutely necessary.
+   - Prefer vectorized/batched operations first; only use loops when correctness requires sequential logic or no vectorized alternative exists.
