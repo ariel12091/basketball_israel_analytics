@@ -831,3 +831,32 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 
 6. Lesson.
    - Larger wins came from reducing repeated window/sort passes and redundant joins, not micro-optimizing R-side transformations.
+
+## Session Notes (2026-02-17 fetch_lineups_four_factors Fast-Path Activation)
+
+1. Bottleneck identified.
+   - `fetch_lineups_four_factors_csv` median latency was ~`665ms` for full-season default calls.
+   - Root cause: `fetch_lineups_four_factors` fast path required `p_start_date IS NULL AND p_end_date IS NULL`.
+   - React/plumber sends explicit season dates by default, so fast path was skipped even for full-season queries.
+
+2. SQL fix in `sql/functions/fetch_lineups_four_factors.sql`.
+   - Added season-window detection:
+     - `v_season_start = make_date(p_game_year - 1, 10, 1)`
+     - `v_season_end   = make_date(p_game_year, 7, 1)`
+     - `v_full_window` true when explicit dates cover that full window.
+   - Updated fast-path gate to allow either:
+     - null dates, or
+     - explicit full-season window (`v_full_window`).
+
+3. Benchmark result (same harness, 8 runs).
+   - Before: median `665ms`, p90 `699ms`.
+   - After: median `435ms`, p90 `452ms`.
+   - Improvement: ~`34.6%` faster.
+
+4. Validation.
+   - Full-season explicit dates and null-date calls now produce identical outputs in tested case:
+     - `rows base=2511`, `rows nullwin=2511`, diff rows on key metrics = `0`.
+   - Narrower date range still changes rows as expected (`rows shifted=2490`).
+
+5. Lesson.
+   - Fast-path predicates should align with API calling conventions (explicit default dates vs NULL dates), otherwise planned DB optimizations stay inactive.
