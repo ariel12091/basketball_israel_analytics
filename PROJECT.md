@@ -796,3 +796,38 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 4. Benchmark execution reliability note.
    - `Rscript -e` via PowerShell can corrupt inline R when `$` symbols are expanded and can hit encoding/BOM issues.
    - Stable method: write benchmark to a temporary ASCII `.R` file and run `Rscript <file>`.
+
+## Session Notes (2026-02-17 onoff_compute Bottleneck Refactor)
+
+1. Added endpoint-level timing instrumentation in `frontend-v2/server/plumber.R` (opt-in).
+   - Controlled by `FRONTEND_PROFILE_TIMING=1`.
+   - Logs `total_ms`, `db_ms`, `transform_ms`, and row count for:
+     - `/api/onoff/summary`
+     - `/api/onoff/four-factors`
+     - `/api/lineups/summary`
+     - `/api/lineups/four-factors`
+     - `/api/lineups/game-log`
+
+2. Root-cause profiling (EXPLAIN ANALYZE) findings.
+   - `onoff_compute` was the main DB hotspot (~1.23s execution in sampled run).
+   - `fetch_lineups_four_factors_csv` was the next major hotspot (~675ms).
+
+3. SQL optimizations applied to `sql/functions/onoff_compute.sql`.
+   - Replaced broad name join (`full_rosters` x `final_schedule_mv` + DISTINCT) with schedule-scoped `roster_names` CTE.
+   - Reworked analytic pipeline to avoid repeated row-level window passes:
+     - replaced `step1/step1_on_rank/step1_joined/step2` row-flow with pivoted `type_level` and ranked `type_ranked`.
+   - Removed extra rejoin to `agg` for shooting splits by carrying split columns through pipeline.
+   - Kept output contract intact (42 columns) and ranking semantics for `pr_net` via `final_net_rank` on non-null `total_net_rtg`.
+
+4. Benchmarks (same harness, same parameters).
+   - Baseline: `onoff_compute` median ~`800ms`.
+   - After scoped names fix: median ~`770ms`.
+   - After analytic refactor: median ~`390ms`.
+   - Net gain vs baseline: ~`51%` faster.
+
+5. Validation.
+   - Output shape remained stable: `rows=228`, `cols=42` in benchmark query.
+   - `pr_net` remained populated for eligible rows in tested run.
+
+6. Lesson.
+   - Larger wins came from reducing repeated window/sort passes and redundant joins, not micro-optimizing R-side transformations.

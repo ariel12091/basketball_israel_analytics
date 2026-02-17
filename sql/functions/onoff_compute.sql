@@ -230,6 +230,22 @@ BEGIN
     FROM ppp_rank_base p
   ),
 
+  -- pre-scope roster names to filtered schedule only (avoids broad full_rosters x schedule DISTINCT)
+  roster_names AS (
+    SELECT
+      fr.player_id,
+      fr.team_id,
+      s.game_year,
+      MIN(fr.firstname) AS firstname,
+      MIN(fr.lastname)  AS lastname,
+      MIN(fr.team_name) AS team_name
+    FROM basketball_test.full_rosters fr
+    JOIN sched s
+      ON s.game_id = fr.game_id
+     AND s.team_id = fr.team_id
+    GROUP BY fr.player_id, fr.team_id, s.game_year
+  ),
+
   -- attach names + team_name + game_year
   with_names AS (
     SELECT
@@ -243,23 +259,15 @@ BEGIN
       a.ppp_calc,
       a.pr_ppp_raw,
       a.pr_ppp_better,
+      a.fg2_made,
+      a.fg2_att,
+      a.fg3_made,
+      a.fg3_att,
       r.firstname,
       r.lastname,
       r.team_name
     FROM ppp_ranked a
-    JOIN (
-      SELECT DISTINCT
-        fr.player_id,
-        fr.team_id,
-        fr.firstname,
-        fr.lastname,
-        fr.team_name,
-        fs.game_year
-      FROM basketball_test.full_rosters fr
-      JOIN basketball_test.final_schedule_mv fs
-        ON fs.game_id = fr.game_id
-       AND fs.team_id = fr.team_id
-    ) r USING (player_id, team_id, game_year)
+    JOIN roster_names r USING (player_id, team_id, game_year)
   ),
 
   -- eligibility per player-team-year
@@ -287,6 +295,10 @@ BEGIN
       wn.ppp_calc,
       wn.pr_ppp_raw,
       wn.pr_ppp_better,
+      wn.fg2_made,
+      wn.fg2_att,
+      wn.fg3_made,
+      wn.fg3_att,
       wn.firstname,
       wn.lastname,
       wn.team_name
@@ -296,231 +308,136 @@ BEGIN
       AND e.max_poss_on  >= p_min_on
   ),
 
-  -- ON/OFF diff per type, per year
-  step1 AS (
+  -- Pivot to one row per (player, team, year, type_lineup) with ON/OFF stats
+  type_level AS (
     SELECT
       f.player_id,
       f.team_id,
       f.game_year,
-      f.is_on_key,
       f.type_lineup,
-      f.total_pts,
-      f.total_poss,
-      f.ppp_calc,
-      f.pr_ppp_raw,
-      f.pr_ppp_better,
-      f.firstname,
-      f.lastname,
-      f.team_name,
-      CASE
-        WHEN f.type_lineup = 'offense' THEN 1
-        WHEN f.type_lineup = 'defense' THEN 2
-        ELSE 3
-      END AS type_key,
-      f.ppp_calc
-        - LAG(f.ppp_calc) OVER (
-            PARTITION BY f.player_id, f.team_id, f.type_lineup, f.game_year
-            ORDER BY f.is_on_key
-          ) AS net_rtg
+      MIN(f.team_name) AS team_name,
+      MIN(f.firstname) AS firstname,
+      MIN(f.lastname) AS lastname,
+
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.ppp_calc END) AS ppp_on,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.ppp_calc END) AS ppp_off,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.pr_ppp_better END) AS pr_ppp_on,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.pr_ppp_better END) AS pr_ppp_off,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.total_poss END) AS poss_on,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.total_poss END) AS poss_off,
+
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.fg2_made END) AS fg2_on_made,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.fg2_att END)  AS fg2_on_att,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.fg3_made END) AS fg3_on_made,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.fg3_att END)  AS fg3_on_att,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.fg2_made END) AS fg2_off_made,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.fg2_att END)  AS fg2_off_att,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.fg3_made END) AS fg3_off_made,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.fg3_att END)  AS fg3_off_att
     FROM filtered f
+    GROUP BY f.player_id, f.team_id, f.game_year, f.type_lineup
   ),
 
-  -- rank ON net_rtg within (type_lineup, game_year)
-  step1_on_rank AS (
+  type_ranked AS (
     SELECT
-      s1.player_id,
-      s1.team_id,
-      s1.type_lineup,
-      s1.game_year,
-      s1.is_on_key,
+      tl.*,
+      (tl.ppp_on - tl.ppp_off) AS net_rtg,
       PERCENT_RANK() OVER (
-        PARTITION BY s1.type_lineup, s1.game_year
-        ORDER BY s1.net_rtg
+        PARTITION BY tl.type_lineup, tl.game_year
+        ORDER BY (tl.ppp_on - tl.ppp_off)
       ) AS pr_net_rtg_raw,
       CASE
-        WHEN s1.type_lineup = 'defense' THEN
+        WHEN tl.type_lineup = 'defense' THEN
           1 - PERCENT_RANK() OVER (
-                PARTITION BY s1.type_lineup, s1.game_year
-                ORDER BY s1.net_rtg
+                PARTITION BY tl.type_lineup, tl.game_year
+                ORDER BY (tl.ppp_on - tl.ppp_off)
               )
         ELSE
           PERCENT_RANK() OVER (
-            PARTITION BY s1.type_lineup, s1.game_year
-            ORDER BY s1.net_rtg
+            PARTITION BY tl.type_lineup, tl.game_year
+            ORDER BY (tl.ppp_on - tl.ppp_off)
           )
       END AS pr_net_rtg_better
-    FROM step1 s1
-    WHERE s1.is_on_key = 1
-      AND s1.net_rtg IS NOT NULL
-  ),
-
-  step1_joined AS (
-    SELECT
-      s1.player_id,
-      s1.team_id,
-      s1.game_year,
-      s1.is_on_key,
-      s1.type_lineup,
-      s1.total_pts,
-      s1.total_poss,
-      s1.ppp_calc,
-      s1.pr_ppp_raw,
-      s1.pr_ppp_better,
-      s1.firstname,
-      s1.lastname,
-      s1.team_name,
-      s1.type_key,
-      s1.net_rtg,
-      r.pr_net_rtg_raw,
-      r.pr_net_rtg_better
-    FROM step1 s1
-    LEFT JOIN step1_on_rank r
-      ON r.player_id   = s1.player_id
-     AND r.team_id     = s1.team_id
-     AND r.type_lineup = s1.type_lineup
-     AND r.is_on_key   = s1.is_on_key
-     AND r.game_year   = s1.game_year
-  ),
-
-  -- total_net_rtg = offense_net_rtg - defense_net_rtg
-  step2 AS (
-    SELECT
-      s1j.player_id,
-      s1j.team_id,
-      s1j.game_year,
-      s1j.is_on_key,
-      s1j.type_lineup,
-      s1j.total_pts,
-      s1j.total_poss,
-      s1j.ppp_calc,
-      s1j.pr_ppp_raw,
-      s1j.pr_ppp_better,
-      s1j.firstname,
-      s1j.lastname,
-      s1j.team_name,
-      s1j.type_key,
-      s1j.net_rtg,
-      s1j.pr_net_rtg_raw,
-      s1j.pr_net_rtg_better,
-      ROUND(
-        LAG(s1j.net_rtg) OVER (
-          PARTITION BY s1j.player_id, s1j.team_id, s1j.is_on_key, s1j.game_year
-          ORDER BY s1j.type_key
-        ) - s1j.net_rtg,
-        2
-      ) AS total_net_rtg
-    FROM step1_joined s1j
-  ),
-
-  -- percentile of total_net_rtg per game_year
-  step2_rank AS (
-    SELECT
-      s2.player_id,
-      s2.team_id,
-      s2.type_lineup,
-      s2.game_year,
-      s2.is_on_key,
-      PERCENT_RANK() OVER (
-        PARTITION BY s2.game_year
-        ORDER BY s2.total_net_rtg
-      ) AS pr_total_net
-    FROM step2 s2
-    WHERE s2.total_net_rtg IS NOT NULL
-  ),
-
-  step2_joined AS (
-    SELECT
-      s2.player_id,
-      s2.team_id,
-      s2.game_year,
-      s2.is_on_key,
-      s2.type_lineup,
-      s2.total_pts,
-      s2.total_poss,
-      s2.ppp_calc,
-      s2.pr_ppp_raw,
-      s2.pr_ppp_better,
-      s2.firstname,
-      s2.lastname,
-      s2.team_name,
-      s2.type_key,
-      s2.net_rtg,
-      s2.pr_net_rtg_raw,
-      s2.pr_net_rtg_better,
-      s2.total_net_rtg,
-      r.pr_total_net
-    FROM step2 s2
-    LEFT JOIN step2_rank r
-      ON r.player_id   = s2.player_id
-     AND r.team_id     = s2.team_id
-     AND r.type_lineup = s2.type_lineup
-     AND r.is_on_key   = s2.is_on_key
-     AND r.game_year   = s2.game_year
+    FROM type_level tl
+    WHERE (tl.ppp_on - tl.ppp_off) IS NOT NULL
   ),
 
   -- collapse to one row per (player, team, year)
   final_rows AS (
     SELECT
-      s2j.player_id,
-      s2j.team_id,
-      s2j.game_year,
-      s2j.team_name,
-      s2j.firstname,
-      s2j.lastname,
+      tr.player_id,
+      tr.team_id,
+      tr.game_year,
+      MIN(tr.team_name) AS team_name,
+      MIN(tr.firstname) AS firstname,
+      MIN(tr.lastname) AS lastname,
 
-      MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.ppp_calc END) AS offense_on_ppp,
-      MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 0 THEN s2j.ppp_calc END) AS offense_off_ppp,
-      MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.ppp_calc END) AS defense_on_ppp,
-      MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 0 THEN s2j.ppp_calc END) AS defense_off_ppp,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.ppp_on END)  AS offense_on_ppp,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.ppp_off END) AS offense_off_ppp,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.ppp_on END)  AS defense_on_ppp,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.ppp_off END) AS defense_off_ppp,
 
-      MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better END) AS pr_off_on,
-      MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better END) AS pr_off_off,
-      MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better END) AS pr_def_on_inv,
-      MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better END) AS pr_def_off_inv,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.pr_ppp_on END)  AS pr_off_on,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.pr_ppp_off END) AS pr_off_off,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.pr_ppp_on END)  AS pr_def_on_inv,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.pr_ppp_off END) AS pr_def_off_inv,
 
-      MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.net_rtg END) AS offense_on_diff,
-      MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.net_rtg END) AS defense_on_diff,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.net_rtg END) AS offense_on_diff,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.net_rtg END) AS defense_on_diff,
 
-      MAX(CASE WHEN s2j.type_lineup = 'offense' AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better END) AS pr_off_on_d,
-      MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_raw END)    AS pr_def_on_d,
-      MAX(CASE WHEN s2j.type_lineup = 'defense' AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better END) AS pr_def_on_d_inv,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.pr_net_rtg_better END) AS pr_off_on_d,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.pr_net_rtg_raw END)    AS pr_def_on_d,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.pr_net_rtg_better END) AS pr_def_on_d_inv,
 
-      MAX(s2j.total_net_rtg) AS total_net_rtg,
-      MAX(s2j.pr_total_net)  AS pr_net,
+      ROUND(
+        MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.net_rtg END)
+        - MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.net_rtg END),
+        2
+      ) AS total_net_rtg,
 
-      MAX(CASE WHEN s2j.is_on_key = 1 THEN s2j.total_poss END) AS on_poss,
-      MAX(CASE WHEN s2j.is_on_key = 0 THEN s2j.total_poss END) AS off_poss,
-      -- Shooting splits (16 columns) from agg
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 1 THEN a.fg2_made END) AS off_on_fg2_made,
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 1 THEN a.fg2_att END)  AS off_on_fg2_att,
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 1 THEN a.fg3_made END) AS off_on_fg3_made,
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 1 THEN a.fg3_att END)  AS off_on_fg3_att,
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 0 THEN a.fg2_made END) AS off_off_fg2_made,
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 0 THEN a.fg2_att END)  AS off_off_fg2_att,
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 0 THEN a.fg3_made END) AS off_off_fg3_made,
-      MAX(CASE WHEN a.type_lineup = 'offense' AND a.is_on_key = 0 THEN a.fg3_att END)  AS off_off_fg3_att,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 1 THEN a.fg2_made END) AS def_on_fg2_made,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 1 THEN a.fg2_att END)  AS def_on_fg2_att,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 1 THEN a.fg3_made END) AS def_on_fg3_made,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 1 THEN a.fg3_att END)  AS def_on_fg3_att,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 0 THEN a.fg2_made END) AS def_off_fg2_made,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 0 THEN a.fg2_att END)  AS def_off_fg2_att,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 0 THEN a.fg3_made END) AS def_off_fg3_made,
-      MAX(CASE WHEN a.type_lineup = 'defense' AND a.is_on_key = 0 THEN a.fg3_att END)  AS def_off_fg3_att
-    FROM step2_joined s2j
-    LEFT JOIN agg a
-      ON a.player_id = s2j.player_id
-     AND a.team_id = s2j.team_id
-     AND a.is_on_key = s2j.is_on_key
-     AND a.type_lineup = s2j.type_lineup
-     AND a.game_year = s2j.game_year
+      GREATEST(
+        COALESCE(MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.poss_on END), 0),
+        COALESCE(MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.poss_on END), 0)
+      ) AS on_poss,
+      GREATEST(
+        COALESCE(MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.poss_off END), 0),
+        COALESCE(MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.poss_off END), 0)
+      ) AS off_poss,
+      -- Shooting splits (16 columns) carried from agg through pipeline
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg2_on_made END) AS off_on_fg2_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg2_on_att END)  AS off_on_fg2_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg3_on_made END) AS off_on_fg3_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg3_on_att END)  AS off_on_fg3_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg2_off_made END) AS off_off_fg2_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg2_off_att END)  AS off_off_fg2_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg3_off_made END) AS off_off_fg3_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg3_off_att END)  AS off_off_fg3_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg2_on_made END) AS def_on_fg2_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg2_on_att END)  AS def_on_fg2_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg3_on_made END) AS def_on_fg3_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg3_on_att END)  AS def_on_fg3_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg2_off_made END) AS def_off_fg2_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg2_off_att END)  AS def_off_fg2_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg3_off_made END) AS def_off_fg3_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg3_off_att END)  AS def_off_fg3_att
+    FROM type_ranked tr
     GROUP BY
-      s2j.player_id,
-      s2j.team_id,
-      s2j.game_year,
-      s2j.team_name,
-      s2j.firstname,
-      s2j.lastname
+      tr.player_id,
+      tr.team_id,
+      tr.game_year
+  ),
+
+  final_net_rank AS (
+    SELECT
+      fr.player_id,
+      fr.team_id,
+      fr.game_year,
+      PERCENT_RANK() OVER (
+        PARTITION BY fr.game_year
+        ORDER BY fr.total_net_rtg
+      ) AS pr_net
+    FROM final_rows fr
+    WHERE fr.total_net_rtg IS NOT NULL
   ),
 
   final_scored AS (
@@ -545,7 +462,7 @@ BEGIN
       fr.pr_def_on_d,
       fr.pr_def_on_d_inv,
       fr.total_net_rtg,
-      fr.pr_net,
+      fnr.pr_net,
       fr.on_poss,
       fr.off_poss,
       fr.off_on_fg2_made, fr.off_on_fg2_att, fr.off_on_fg3_made, fr.off_on_fg3_att,
@@ -563,6 +480,10 @@ BEGIN
         ORDER BY (fr.offense_off_ppp - fr.defense_off_ppp)
       ) AS pr_off_net
     FROM final_rows fr
+    LEFT JOIN final_net_rank fnr
+      ON fnr.player_id = fr.player_id
+     AND fnr.team_id = fr.team_id
+     AND fnr.game_year = fr.game_year
   )
   SELECT
     fs.team_name   AS "Team",
