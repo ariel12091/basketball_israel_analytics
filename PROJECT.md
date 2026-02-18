@@ -989,3 +989,73 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
   - Pros: cleaner async state management, less custom cache code, lower duplicate-request egress risk.
   - Cons: additional dependency + query-key discipline required; stale cache windows must be tuned to data freshness expectations.
 - **Validation:** frontend build succeeds after migration (`npm run build`).
+## Git History Identity Rewrite + Local Realignment (2026-02-18)
+- Rewrote full repo commit history author/committer identity to Ariel Taieb <ariel12091@gmail.com> and force-pushed to origin/main.
+- Local repo was then realigned to rewritten origin/main while preserving uncommitted work via stash/restore flow.
+- Safety branch created before alignment: ackup/pre_rewrite_20260218_030105.
+- Important: commit SHAs changed due to history rewrite; uncommitted local edits were preserved and not included in the rewrite.
+
+## Tab 5 Bottleneck Work + Benchmarks (2026-02-18)
+- Scope: addressed selected bottlenecks for Traditional Stats (Tab 5) and measured each change.
+
+### Rebuild
+- Ran full MV rebuild (ebuild_all_mvs(from_level = 1)) with ETL credentials.
+- Rebuild completed successfully; key post-rebuild counts:
+  - df_pts_poss_lineups_longer_mv: 398,700
+  - player_traditional_stats_mv: 4,710
+  - mv_lineup_totals_by_day: 23,741
+  - lineup_four_factors_by_game: 23,741
+
+### #2 Prefilter lineups_lookup in SQL (Tab 5 live path)
+- File: pp/R/server_tab5_traditional.R
+- Change: replaced season-wide lineups_lookup fetch + R-side reduction with SQL-side filtering to the filtered game/team set.
+- Benchmark (5 runs):
+  - Old avg:  .582s
+  - New avg:  .472s
+  - Improvement: 18.9%
+  - Output parity: same rows.
+
+### #3 Remove string-based distinct key counting
+- Files:
+  - sql/materialized_views/player_traditional_stats_mv.sql
+  - pp/R/server_tab5_traditional.R
+- Change:
+  - SQL: COUNT(DISTINCT concat_ws(...)) -> COUNT(DISTINCT (game_id, team_id, poss_end_id))
+  - R: 
+_distinct(paste(...)) -> 
+_distinct(game_id, team_id, poss_end_id)
+- Benchmark (5 runs, SQL expression comparison):
+  - Old avg:  .598s
+  - New avg:  .596s
+  - Improvement:  .3% (marginal)
+  - Output parity: identical rows and values.
+
+### #6 Index consistency / activation
+- Files:
+  - sql/performance/traditional_tab_indexes.sql
+  - sql/materialized_views/df_pts_poss_longer.sql
+- Change:
+  - Removed broader duplicate lineup index definition from performance script; retained targeted partial index.
+  - Added two Tab 5-focused indexes to df_pts_poss_lineups_longer_mv definition.
+- Applied performance indexes in DB using ETL credentials.
+- Benchmark (representative filtered actions query):
+  - Before:  .326s avg
+  - After:  .292s avg
+  - Improvement: 10.4%
+
+### #1 Push recalculation filters to SQL for live path (excluding team-only mode)
+- File: pp/R/server_tab5_traditional.R
+- Change:
+  - cts and lineup_map queries now filter directly in SQL by filtered (game_id, team_id) pairs.
+  - Used pair-key filtering (game_id_team_id) to preserve exact pair semantics.
+  - Team-only filtering remains on MV path (no forced recalculation).
+- Benchmark (recalculation scenario with date/game-type/home filters):
+  - Old avg: 3.136s
+  - New avg: 1.364s
+  - Improvement: 56.5%
+  - Parity: same_rows=TRUE, same_keys=TRUE.
+
+### Takeaways
+- Biggest win came from SQL pushdown on live-path row selection (#1), then SQL prefilter of lineups_lookup (#2).
+- Distinct-count string removal (#3) improves clarity and robustness, but perf impact is small in this workload.
+- Index adjustments (#6) produce measurable gains and should remain in rebuild/index scripts to keep environments consistent.

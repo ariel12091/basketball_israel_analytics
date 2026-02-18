@@ -84,3 +84,5 @@ CREATE INDEX dfppl_team_game_idx ON basketball_test.df_pts_poss_lineups_longer_m
 CREATE INDEX dfppl_lineup_game_cover_idx ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (lineup_hash, game_id, type_lineup) INCLUDE (team_score, final_end_poss, segment_id, end_game_seconds_remaining);
 CREATE INDEX dfppl_id_game_type_idx ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (game_id, id, type);
 CREATE INDEX dfppl_parent_game_idx ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (game_id, parent_action_id) WHERE (parent_action_id IS NOT NULL);
+CREATE INDEX idx_df_longer_game_team_lineup ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (game_id, team_id, lineup_hash);
+CREATE INDEX idx_df_longer_game_team_core ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (game_id, team_id) INCLUDE (player_id, type, type_lineup, parameters_type, parameters_made, parameters_points, final_end_poss, segment_id, end_game_seconds_remaining, lineup_hash);
