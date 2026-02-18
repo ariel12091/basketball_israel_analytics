@@ -57,6 +57,7 @@ export default function LineupsPage() {
     const p: Record<string, unknown> = {
       ...base,
       num: groupSize,
+      min_poss: minPoss,
     };
     if (clutchEnabled) {
       p.clutch_margin = clutchMargin;
@@ -65,7 +66,7 @@ export default function LineupsPage() {
       if (clutchOtMargin) p.clutch_ot_margin = 'true';
     }
     return p;
-  }, [filters, groupSize, clutchEnabled, clutchMargin, clutchStatus, clutchMinutes, clutchOtMargin]);
+  }, [filters, groupSize, minPoss, clutchEnabled, clutchMargin, clutchStatus, clutchMinutes, clutchOtMargin]);
 
   // Fetch data
   const { data: summaryRaw, loading: summaryLoading, error: summaryError } = useApi<LineupSummary[]>(

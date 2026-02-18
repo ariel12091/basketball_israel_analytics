@@ -36,6 +36,8 @@ RATE_LIMIT_WINDOW_SEC <- max(1L, as.integer(Sys.getenv("FRONTEND_RATE_WINDOW_SEC
 RATE_LIMIT_MAX_REQUESTS <- max(1L, as.integer(Sys.getenv("FRONTEND_RATE_MAX_REQUESTS", "180")))
 REQ_HITS <- new.env(parent = emptyenv())
 PROFILE_TIMING <- identical(tolower(Sys.getenv("FRONTEND_PROFILE_TIMING", "0")), "1")
+CACHE_TTL_SEC <- max(1L, as.integer(Sys.getenv("FRONTEND_CACHE_TTL_SEC", "60")))
+RESP_CACHE <- new.env(parent = emptyenv())
 
 .ms_now <- function() as.numeric(proc.time()[3]) * 1000
 .ms_elapsed <- function(start_ms) .ms_now() - start_ms
@@ -53,6 +55,27 @@ perf_log <- function(req, route, total_ms, db_ms, transform_ms, rows = NA_intege
     ifelse(is.na(rows), "NA", as.character(rows)), ip
   ))
   invisible(NULL)
+}
+
+cache_key <- function(route, req = NULL, suffix = "") {
+  qs <- ""
+  if (!is.null(req) && !is.null(req$QUERY_STRING) && nzchar(req$QUERY_STRING)) qs <- req$QUERY_STRING
+  paste(route, qs, suffix, sep = "|")
+}
+
+cache_get <- function(key) {
+  v <- RESP_CACHE[[key]]
+  if (is.null(v)) return(NULL)
+  if (!is.list(v) || is.null(v$exp) || is.null(v$val) || as.numeric(Sys.time()) > v$exp) {
+    rm(list = key, envir = RESP_CACHE, inherits = FALSE)
+    return(NULL)
+  }
+  v$val
+}
+
+cache_set <- function(key, value, ttl_sec = CACHE_TTL_SEC) {
+  RESP_CACHE[[key]] <- list(exp = as.numeric(Sys.time()) + ttl_sec, val = value)
+  invisible(value)
 }
 
 # ── Pool setup (mirrors app/R/global.R) ──────────────────────
@@ -417,6 +440,9 @@ function(req, res,
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "") {
+  key <- cache_key("/api/onoff/summary", req)
+  hit <- cache_get(key)
+  if (!is.null(hit)) return(hit)
 
   req_t0 <- .ms_now()
   db_ms <- 0
@@ -468,7 +494,7 @@ function(req, res,
     transform_ms = .ms_elapsed(transform_t0),
     rows = nrow(out)
   )
-  out
+  cache_set(key, out)
 }
 
 # ── GET /api/onoff/four-factors ──────────────────────────────
@@ -480,6 +506,9 @@ function(req, res,
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "") {
+  key <- cache_key("/api/onoff/four-factors", req)
+  hit <- cache_get(key)
+  if (!is.null(hit)) return(hit)
 
   req_t0 <- .ms_now()
   db_ms <- 0
@@ -543,7 +572,7 @@ function(req, res,
     transform_ms = .ms_elapsed(transform_t0),
     rows = nrow(out)
   )
-  out
+  cache_set(key, out)
 }
 
 # ── Lineup helpers ─────────────────────────────────────────────
@@ -649,11 +678,15 @@ rename_lineup_ff <- function(df) {
 function(req, res,
          game_year = "2026", start_date = "2025-10-01", end_date = "2026-06-30",
          num = "5", game_type = "", opp_ids = "",
+         min_poss = "20",
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "",
          clutch_margin = "", clutch_status = "", clutch_minutes = "",
          clutch_ot_margin = "false") {
+  key <- cache_key("/api/lineups/summary", req)
+  hit <- cache_get(key)
+  if (!is.null(hit)) return(hit)
 
   req_t0 <- .ms_now()
   db_ms <- 0
@@ -673,7 +706,7 @@ function(req, res,
     player_off_csv = NA_character_, exact = TRUE,
     start_date = if (nzchar(start_date)) start_date else bounds$start,
     end_date = if (nzchar(end_date)) end_date else bounds$end,
-    min_poss = 0L, game_year = gy,
+    min_poss = as.integer(min_poss), game_year = gy,
     game_type_csv = na_chr(game_type), opp_ids_csv = na_chr(opp_ids),
     home_away = na_chr(home_away), outcome = na_chr(outcome),
     opp_rank_side = na_chr(opp_rank_side),
@@ -735,7 +768,7 @@ function(req, res,
     transform_ms = .ms_elapsed(transform_t0),
     rows = nrow(out)
   )
-  out
+  cache_set(key, out)
 }
 
 # ── GET /api/lineups/four-factors ─────────────────────────────
@@ -744,11 +777,15 @@ function(req, res,
 function(req, res,
          game_year = "2026", start_date = "2025-10-01", end_date = "2026-06-30",
          num = "5", game_type = "", opp_ids = "",
+         min_poss = "20",
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "",
          clutch_margin = "", clutch_status = "", clutch_minutes = "",
          clutch_ot_margin = "false") {
+  key <- cache_key("/api/lineups/four-factors", req)
+  hit <- cache_get(key)
+  if (!is.null(hit)) return(hit)
 
   req_t0 <- .ms_now()
   db_ms <- 0
@@ -767,7 +804,7 @@ function(req, res,
     player_off_csv = NA_character_, exact = TRUE,
     start_date = if (nzchar(start_date)) start_date else bounds$start,
     end_date = if (nzchar(end_date)) end_date else bounds$end,
-    min_poss = 0L, game_year = gy,
+    min_poss = as.integer(min_poss), game_year = gy,
     game_type_csv = na_chr(game_type), opp_ids_csv = na_chr(opp_ids),
     home_away = na_chr(home_away), outcome = na_chr(outcome),
     opp_rank_side = na_chr(opp_rank_side),
@@ -801,7 +838,7 @@ function(req, res,
     transform_ms = .ms_elapsed(transform_t0),
     rows = nrow(out)
   )
-  out
+  cache_set(key, out)
 }
 
 # ── GET /api/lineups/game-log ─────────────────────────────────

@@ -925,3 +925,67 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 
 5. Lesson.
    - Fast-path enablement must follow frontend/API default parameter behavior, otherwise optimized SQL branches stay inactive.
+
+## Ops Incident (2026-02-17 ETL)
+- **Symptom:** Scheduled task `onoff_etl_full_daily` showed running/stuck behavior (`0x41301`) and produced no new wrapper log for 2026-02-17; app "Last updated" stayed stale.
+- **Root cause:** `scripts/run_etl_full.ps1` used `System.Diagnostics.Process` with synchronous `StandardOutput.ReadToEnd()` / `StandardError.ReadToEnd()` before a reliable completion path. Under output pressure this can deadlock and leave wrapper/task hung.
+- **Fix applied:** Rewrote wrapper process execution to `Start-Process ... -RedirectStandardOutput ... -RedirectStandardError ... -Wait` and capture `ExitCode` directly; added single-instance lock file (`logs/etl_full_wrapper.lock`) to prevent overlap.
+- **Verification:**
+  - Manual wrapper execution completed with `exit_code=0` and full ETL output captured in `logs/etl_full_wrapper_*.log`.
+  - `etl/logs/last_success.txt` updated to `2026-02-18 00:30:37`.
+  - Triggered Windows task manually; final status became `Ready` with `LastTaskResult = 0`.
+  - New scheduler-path wrapper log created: `logs/etl_full_wrapper_20260218_003142.log`.
+- **Operational takeaway:** Prefer script wrappers + file redirection over inline process stream reads for long ETL jobs. Keep locking to avoid concurrent scheduler overlaps.
+
+## Storage Optimization (2026-02-18): Slim `df_pts_poss_lineups_longer_mv`
+- **Goal:** Bring DB storage below free-tier threshold while preserving app behavior.
+- **Change:** Reduced `basketball_test.df_pts_poss_lineups_longer_mv` to only columns used by downstream MVs/functions (Tab 1/2/3/4 paths, clutch logic, traditional stats), and replaced index set with query-relevant indexes only.
+- **File updated:** `sql/materialized_views/df_pts_poss_longer.sql`.
+- **Rebuild required:** Ran full MV dependency rebuild via `source('sql/rebuild_all_mvs.R'); rebuild_all_mvs(from_level = 1)`.
+- **Measured impact:**
+  - DB total after change: **449 MB** (`pg_database_size` = `470,690,963` bytes).
+  - `df_pts_poss_lineups_longer_mv` after change: **123 MB** (`129,269,760` bytes).
+  - This moved the project below the `<500 MB` target.
+- **Validation:** Key runtime outputs still return expected row counts:
+  - `onoff_default_mv` (561), `player_traditional_stats_mv` (4710),
+  - `fetch_lineups_csv_v2` (450), `fetch_lineups_four_factors_csv` (450),
+  - `get_team_ratings_dynamic` (14), `get_team_four_factors_dynamic` (14).
+- **Takeaway:** For storage-constrained environments, keep heavyweight “long” MVs column-minimal and index-minimal, then rebuild dependent MVs in order.
+
+## Egress Optimization (2026-02-18): Tab 1/2 API payload reduction
+- **Objective:** Reduce network egress from React + plumber app without changing user-visible functionality.
+- **Backend changes (`frontend-v2/server/plumber.R`):**
+  - Added in-memory response cache (`RESP_CACHE`) with TTL (`FRONTEND_CACHE_TTL_SEC`, default 60s) for heavy endpoints:
+    - `/api/onoff/summary`
+    - `/api/onoff/four-factors`
+    - `/api/lineups/summary`
+    - `/api/lineups/four-factors`
+  - Added `min_poss` query param to lineup endpoints (default `20`) and wired it into SQL function calls (instead of hardcoded `min_poss = 0`).
+- **Frontend changes:**
+  - `frontend-v2/src/pages/LineupsPage.tsx`: pass tab-local `min_poss` slider value in API params.
+  - `frontend-v2/src/hooks/useApi.ts`: added URL-level client cache (meta endpoints TTL 10m, other endpoints TTL 60s) to avoid duplicate fetches and rapid repeat calls.
+- **Measured payload impact (game_year=2026, group=5):**
+  - Tab 2 Summary:
+    - `min_poss=0`: 2530 rows, ~1435.9 KB JSON, ~156.7 KB gzip
+    - `min_poss=20`: 450 rows, ~258.2 KB JSON, ~35.6 KB gzip
+  - Tab 2 Four Factors:
+    - `min_poss=0`: 2527 rows, ~1848.4 KB JSON, ~221.2 KB gzip
+    - `min_poss=20`: 450 rows, ~335.4 KB JSON, ~52.5 KB gzip
+- **Result:** Default lineup payload now drops by ~77-82% compressed size on initial load (and more on raw JSON), with additional egress savings from server/client response caching.
+
+## Frontend Data Layer Update (2026-02-18): TanStack Query Adoption
+- **What changed:** React frontend moved from effect-based manual fetch/cache handling to TanStack Query-backed `useApi`.
+- **Files updated:**
+  - `frontend-v2/package.json` (added `@tanstack/react-query`)
+  - `frontend-v2/src/main.tsx` (added `QueryClientProvider`)
+  - `frontend-v2/src/hooks/useApi.ts` (rewritten to `useQuery` while keeping existing hook signature)
+  - `frontend-v2/src/features/filters/FilterDrawer.tsx` (moved metadata calls to shared `useApi`)
+- **Behavioral impact:**
+  - Automatic in-flight dedupe for identical query keys.
+  - Standardized cache/stale lifecycle (`staleTime`, `gcTime`) with request cancellation via query signal.
+  - Reduced duplicate metadata fetches across components.
+  - Existing backend cache in `frontend-v2/server/plumber.R` remains active and complementary.
+- **Tradeoffs:**
+  - Pros: cleaner async state management, less custom cache code, lower duplicate-request egress risk.
+  - Cons: additional dependency + query-key discipline required; stale cache windows must be tuned to data freshness expectations.
+- **Validation:** frontend build succeeds after migration (`npm run build`).
