@@ -1,8 +1,9 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Select from 'react-select';
 import type { StylesConfig } from 'react-select';
 import { useFilters, DEFAULT_FILTERS, needsFilteredPath } from './store';
 import type { Team } from '../../types';
+import { useApi } from '../../hooks/useApi';
 
 interface TeamOption {
   value: number;
@@ -74,24 +75,11 @@ const selectStyles: StylesConfig<TeamOption, true> = {
 
 export default function FilterDrawer() {
   const { state, dispatch, drawerOpen, setDrawerOpen } = useFilters();
-  const [teams, setTeams] = useState<Team[]>([]);
-  const [gnValues, setGnValues] = useState<number[]>([]);
-
-  // Fetch teams for dropdown
-  useEffect(() => {
-    fetch(`/api/meta/teams?game_year=${state.gameYear}`)
-      .then(r => r.json())
-      .then(setTeams)
-      .catch(() => {});
-  }, [state.gameYear]);
-
-  // Fetch game numbers for selectize
-  useEffect(() => {
-    fetch(`/api/meta/game-numbers?game_year=${state.gameYear}`)
-      .then(r => r.json())
-      .then((vals: number[]) => setGnValues(vals))
-      .catch(() => {});
-  }, [state.gameYear]);
+  const metaParams = useMemo(() => ({ game_year: state.gameYear }), [state.gameYear]);
+  const { data: teamsData } = useApi<Team[]>('/api/meta/teams', metaParams);
+  const { data: gnData } = useApi<number[]>('/api/meta/game-numbers', metaParams);
+  const teams = teamsData ?? [];
+  const gnValues = gnData ?? [];
 
   // Escape key closes drawer
   useEffect(() => {
