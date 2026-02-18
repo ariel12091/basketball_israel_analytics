@@ -1059,3 +1059,19 @@ _distinct(game_id, team_id, poss_end_id)
 - Biggest win came from SQL pushdown on live-path row selection (#1), then SQL prefilter of lineups_lookup (#2).
 - Distinct-count string removal (#3) improves clarity and robustness, but perf impact is small in this workload.
 - Index adjustments (#6) produce measurable gains and should remain in rebuild/index scripts to keep environments consistent.
+
+## Session Notes (2026-02-18 Tab 5 Index Necessity + Rscript Reliability)
+- `idx_df_longer_game_team_core` was tested as **marginal** for the Tab 5 live `acts` query.
+- A/B benchmark on the same filter window (`rows=47458`) showed only a small median difference (~2.6%), with no meaningful EXPLAIN runtime gain.
+- Decision: drop and remove the index definition from SQL sources to prevent re-creation on rebuild.
+- Files updated:
+  - `sql/materialized_views/df_pts_poss_longer.sql`
+  - `sql/performance/traditional_tab_indexes.sql`
+
+### Rscript execution reliability (PowerShell)
+- Common failure mode: inline `Rscript -e` is brittle in PowerShell because of quoting, `$` interpolation, and occasional BOM/encoding issues.
+- Recommended method for repeatable benchmarks/scripts:
+  1. Write code to a temporary ASCII/UTF-8 (no BOM) `.R` file.
+  2. Run `Rscript <temp_file.R>`.
+  3. Delete the temp file.
+- Operational note: if DDL is included (e.g., `DROP INDEX`), run on a fresh DB connection afterward before timing queries to avoid prepared-statement/session artifacts.

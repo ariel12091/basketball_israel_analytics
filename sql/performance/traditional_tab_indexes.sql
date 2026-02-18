@@ -5,12 +5,7 @@
 CREATE INDEX IF NOT EXISTS idx_df_longer_game_team_lineup
   ON basketball_test.df_pts_poss_lineups_longer_mv (game_id, team_id, lineup_hash);
 
--- 2) Covering index for action-level stats scan in Tab 5.
-CREATE INDEX IF NOT EXISTS idx_df_longer_game_team_core
-  ON basketball_test.df_pts_poss_lineups_longer_mv (game_id, team_id)
-  INCLUDE (player_id, type, type_lineup, parameters_type, parameters_made, parameters_points, final_end_poss, segment_id, end_game_seconds_remaining, lineup_hash);
-
--- 3) Narrow partial index for on-floor rows only (the query predicate used by Tab 5).
+-- 2) Narrow partial index for on-floor rows only (the query predicate used by Tab 5).
 CREATE INDEX IF NOT EXISTS idx_lineups_lookup_ts_onfloor_partial
   ON basketball_test.lineups_lookup (game_year, game_id, team_id, lineup_hash, player_id)
   WHERE COALESCE(is_on_verdict, 0)::int = 1;
