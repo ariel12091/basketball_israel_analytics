@@ -27,18 +27,18 @@ ui_tab3_team <- tabPanel(
           bslib::accordion(
             bslib::accordion_panel(
               "Game Filters",
-              selectizeInput("tr_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
+              selectizeInput("tr_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
               selectizeInput("tr_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
               selectInput("tr_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
               selectInput("tr_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
               tags$hr(),
               fluidRow(
-                column(6, selectizeInput("tr_gn_min", "From GN", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("tr_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("tr_gn_max", "To GN", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("tr_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
-              selectizeInput("tr_last_n", "Last N games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("tr_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
@@ -63,7 +63,91 @@ ui_tab3_team <- tabPanel(
           )
         )
       ),
-      mainPanel(width = 9, DTOutput("tr_table"))
+      mainPanel(
+        width = 9,
+        conditionalPanel(
+          condition = "input.tr_view_mode == 'Summary'",
+          tab_explainer(
+            id = "team_explainer_summary",
+            title = "What This Tab Answers (Summary)",
+            intro = "How strong are teams overall in offense, defense, and net rating?",
+            bullets = c(
+              "Start with Net RTG to rank teams quickly.",
+              "Then inspect Off PPP and Def PPP to see where edges come from.",
+              "Use games and W-L as context, not as replacement for possession-based rates."
+            )
+          ),
+          tags$a(
+            href = "#",
+            class = "explainer-toggle",
+            onclick = "return false;",
+            `data-bs-toggle` = "collapse",
+            `data-bs-target` = "#team-example-box",
+            "Show/Hide Example"
+          ),
+          div(
+            id = "team-example-box",
+            class = "collapse",
+            div(
+              class = "example-grid",
+              div(
+                class = "example-card",
+                div(class = "example-card-title", "How to Read Team Ratings (Real Example)"),
+                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv shows Off PPP 126.4 and Def PPP 107.2, which gives Net RTG +19.2."),
+                tags$p(style = "margin-bottom: 6px;", "So over 100 possessions, they outperform opponents by 19.2 points."),
+                tags$p(style = "margin-bottom: 0;", "The same row also shows context: 17 games and a 15-2 record.")
+              ),
+              div(
+                class = "example-snippet",
+                tags$img(src = app_image_src("team-row-snippet.png"), alt = "Team summary table snippet"),
+                div(class = "example-snippet-caption", "Real summary snippet (Team Ratings)")
+              )
+            )
+          )
+        ),
+        conditionalPanel(
+          condition = "input.tr_view_mode == 'Four Factors'",
+          tab_explainer(
+            id = "team_explainer_ff",
+            title = "What This Tab Answers (Four Factors)",
+            intro = "Which team-level factors are driving strong or weak performance?",
+            bullets = c(
+              "Read offense and defense factor profiles side by side.",
+              "Interpret TOV% with opposite polarity: lower is better on offense, higher can be better on defense.",
+              "Use Poss columns to judge sample reliability."
+            )
+          ),
+          tags$a(
+            href = "#",
+            class = "explainer-toggle",
+            onclick = "return false;",
+            `data-bs-toggle` = "collapse",
+            `data-bs-target` = "#team-ff-example-box",
+            "Show/Hide Example"
+          ),
+          div(
+            id = "team-ff-example-box",
+            class = "collapse",
+            div(
+              class = "example-grid",
+              div(
+                class = "example-card",
+                div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
+                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv combines elite offense (PPP 126.4, TS% 58.9, OREB% 37.9) with strong defense (PPP allowed 107.2)."),
+                tags$p(style = "margin-bottom: 6px;", "Their factor profile supports Net +19.2: efficient scoring, offensive rebounding, and manageable turnover rates."),
+                tags$p(style = "margin-bottom: 0;", "Possession volume is high (Off 1282, Def 1289), which strengthens confidence in this profile.")
+              ),
+              div(
+                class = "example-snippet",
+                tags$img(src = app_image_src("team-ff-row-snippet.png"), alt = "Team four factors table snippet"),
+                div(class = "example-snippet-caption", "Real Four Factors snippet (Team Ratings)")
+              )
+            )
+          )
+        ),
+        DTOutput('tr_table')
+      )
     )
   )
 )
+

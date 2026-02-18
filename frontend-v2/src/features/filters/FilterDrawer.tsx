@@ -17,6 +17,7 @@ const GAME_TYPE_OPTIONS: TeamOption[] = [
   { value: 17, label: 'Playoffs Finals' },
   { value: 33, label: 'Play-in' },
   { value: 34, label: 'Winner Cup' },
+  { value: 35, label: 'State Cup' },
 ];
 
 const selectStyles: StylesConfig<TeamOption, true> = {

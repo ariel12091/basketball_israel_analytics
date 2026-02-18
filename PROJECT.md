@@ -1075,3 +1075,62 @@ _distinct(game_id, team_id, poss_end_id)
   2. Run `Rscript <temp_file.R>`.
   3. Delete the temp file.
 - Operational note: if DDL is included (e.g., `DROP INDEX`), run on a fresh DB connection afterward before timing queries to avoid prepared-statement/session artifacts.
+
+## Session Notes (2026-02-18 Tab 2 Shiny vs Plumber Diff Snapshot)
+- Scope reviewed: `app/R/server_tab2.R` vs `frontend-v2/server/plumber.R` (lineup summary, lineup four-factors, lineup game-log).
+
+### High-level conclusion
+- Core computation is mostly in Supabase/Postgres (SQL functions + MVs), but behavior still differs by **where filters/post-processing are applied**.
+- Shiny is a single reactive pipeline; plumber is split across endpoint params, SQL calls, and frontend-local filtering.
+
+### Endpoint-by-endpoint parity status
+1. `/api/lineups/summary`
+   - SQL source parity: yes (`fetch_lineups_csv_v2`).
+   - Filter parity:
+     - Game-level filters (date, game type, opponents, home/away, outcome, opp strength, GN, clutch): aligned in SQL params.
+     - Team + players-on/off + local list behavior: split across layers in plumber (client/local) vs centralized in Shiny local post-filter path.
+     - `min_poss`: placement differs (plumber currently sends to SQL; Shiny pattern applies locally post-base).
+
+2. `/api/lineups/four-factors`
+   - SQL source parity: yes (`fetch_lineups_four_factors_csv`).
+   - Same filter placement caveats as summary endpoint.
+   - Percentile/ordering drift risk remains if rank/order semantics are computed in different layers/order than Shiny.
+
+3. `/api/lineups/game-log`
+   - Logic is close to Shiny modal click path:
+     - resolves `sub_lineup_hash -> lineup_hash(es)` from `sub_lineups`,
+     - reads `sub_lineups_stats` for display name,
+     - joins `final_schedule_mv` metadata,
+     - aggregates from `mv_lineup_totals_by_day` (summary) or `lineup_four_factors_by_game` (FF).
+   - Main risk is duplicated logic maintenance (two codepaths, one in Shiny and one in plumber), not source-table mismatch.
+
+### Documented gaps to track
+- Gap A: `min_poss` filtering stage mismatch (SQL vs local).
+- Gap B: local team / players-on / players-off behavior split between frontend and API, not single-source.
+- Gap C: percentile/rank semantics may drift if not kept rank-first then local-filter-after (Shiny behavior).
+- Gap D: duplicated game-log assembly code increases drift risk over time.
+
+### Operational takeaway
+- Even with shared Supabase SQL sources, parity depends on filter ownership/order and post-processing placement.
+- For strict parity, define one canonical ownership map per filter and keep it identical across Shiny and plumber.
+
+## Session Notes (2026-02-18 State Cup Ingestion + UI Support)
+- Added explicit-ID fallback in etl/etl_full.R:
+  - When requested game_ids are missing from etch_israel_schedule() feed, ETL now falls back to rows already present in asketball_test.schedule.
+  - Synthesizes pbp_url/ox_url from game_id for fallback rows.
+- Upserted State Cup schedule rows into asketball_test.schedule using upsert_by_like and ran ETL validation sequence.
+
+### ETL execution results (test env)
+1. Single-game live test (game_id=291) succeeded end-to-end:
+   - ctions_clean +580, ull_rosters +34, possessions +580, lineups_lookup +731, pws +580.
+   - All validation checks passed.
+2. Remaining 2026 games (292,293,294,303,304) succeeded end-to-end:
+   - ctions_clean +3052, ull_rosters +160, possessions +3052, lineups_lookup +3633, pws +3052.
+   - All validation checks passed.
+
+### Competition type mapping
+- Reserved game_type=35 for **State Cup** (distinct from existing 34 Winner Cup).
+
+### UI support added
+- Added State Cup (35) option to game-type filters in Shiny tabs 1-5 and React filter UIs.
+- Note: Existing rows with game_type=35 are included under "All" even without selection; this change enables explicit selection/isolation.

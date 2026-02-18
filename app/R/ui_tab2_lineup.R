@@ -21,7 +21,8 @@ ui_tab2_lineup <- tabPanel(
           id = "ld-filters", class = "collapse d-md-block",
           actionButton("ld_reset", "Reset Lineup Filters"),
           tags$hr(),
-          sliderInput("ld_minposs", "Min possessions (sum of Off/Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
+          sliderInput("ld_minposs", "Minimum possessions (Off + Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
+          helpText("Higher minimums improve stability but remove smaller-sample lineups."),
           radioButtons("ld_num", "Group size", choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
           tags$hr(),
           selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
@@ -35,18 +36,18 @@ ui_tab2_lineup <- tabPanel(
           bslib::accordion(
             bslib::accordion_panel(
               "Game Filters",
-              selectizeInput("ld_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
+              selectizeInput("ld_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
               selectizeInput("ld_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
               selectInput("ld_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
               selectInput("ld_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
               tags$hr(),
               fluidRow(
-                column(6, selectizeInput("ld_gn_min", "From GN", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("ld_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("ld_gn_max", "To GN", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("ld_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
-              selectizeInput("ld_last_n", "Last N games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("ld_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
@@ -73,6 +74,86 @@ ui_tab2_lineup <- tabPanel(
       ),
       mainPanel(
         width = 9,
+        conditionalPanel(
+          condition = "input.ld_view_mode == 'Summary'",
+          tab_explainer(
+            id = "lineup_explainer_summary",
+            title = "What This Tab Answers (Summary)",
+            intro = "Which player combinations perform best, and how reliable is the sample?",
+            bullets = c(
+              "Pick a team first, then use players-on / players-off filters.",
+              "Read Off PPP, Def PPP, and Net together.",
+              "Prioritize lineups with meaningful minutes and possessions."
+            )
+          ),
+          tags$a(
+            href = "#",
+            class = "explainer-toggle",
+            onclick = "return false;",
+            `data-bs-toggle` = "collapse",
+            `data-bs-target` = "#lineup-example-box",
+            "Show/Hide Example"
+          ),
+          div(
+            id = "lineup-example-box",
+            class = "collapse",
+            div(
+              class = "example-grid",
+              div(
+                class = "example-card",
+                div(class = "example-card-title", "How to Read Lineup Data (Real Example)"),
+                tags$p(style = "margin-bottom: 6px;", "This lineup (Maccabi Ramat Gan) has Off PPP 119.3 and Def PPP 97.8, so Net RTG is +21.5."),
+                tags$p(style = "margin-bottom: 6px;", "That means this five-man unit outscores opponents by 21.5 points per 100 possessions while on court."),
+                tags$p(style = "margin-bottom: 0;", "Sample size here is meaningful: 93.7 minutes and 364 total possessions.")
+              ),
+              div(
+                class = "example-snippet",
+                tags$img(src = app_image_src("lineup-row-snippet.png"), alt = "Lineup summary table snippet"),
+                div(class = "example-snippet-caption", "Real summary snippet (Lineup Data)")
+              )
+            )
+          )
+        ),
+        conditionalPanel(
+          condition = "input.ld_view_mode == 'Four Factors'",
+          tab_explainer(
+            id = "lineup_explainer_ff",
+            title = "What This Tab Answers (Four Factors)",
+            intro = "Which lineup-level factors drive good or bad results?",
+            bullets = c(
+              "Use Offense and Defense blocks separately.",
+              "Compare TS%, OREB%, TOV%, and FTR together, not one metric alone.",
+              "Keep minutes and possessions in view before concluding."
+            )
+          ),
+          tags$a(
+            href = "#",
+            class = "explainer-toggle",
+            onclick = "return false;",
+            `data-bs-toggle` = "collapse",
+            `data-bs-target` = "#lineup-ff-example-box",
+            "Show/Hide Example"
+          ),
+          div(
+            id = "lineup-ff-example-box",
+            class = "collapse",
+            div(
+              class = "example-grid",
+              div(
+                class = "example-card",
+                div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
+                tags$p(style = "margin-bottom: 6px;", "This Maccabi Ramat Gan lineup has Off PPP 119.3 vs Def PPP 97.8, giving Net +21.5."),
+                tags$p(style = "margin-bottom: 6px;", "Offense profile is strong (TS% 58.7, OREB% 29.2) while defense holds opponents to 50.9 TS% and 97.8 PPP."),
+                tags$p(style = "margin-bottom: 0;", "Workload is substantial (93.7 minutes, 364 total possessions), so factor-level interpretation is more reliable.")
+              ),
+              div(
+                class = "example-snippet",
+                tags$img(src = app_image_src("lineup-ff-row-snippet.png"), alt = "Lineup four factors table snippet"),
+                div(class = "example-snippet-caption", "Real Four Factors snippet (Lineup Data)")
+              )
+            )
+          )
+        ),
         conditionalPanel(
           condition = "input.ld_view_mode == 'Summary'",
           div(
@@ -107,3 +188,4 @@ ui_tab2_lineup <- tabPanel(
     )
   )
 )
+

@@ -107,6 +107,29 @@ setup_logging <- function() {
   list(log_msg = log_fn, log_file = log_file)
 }
 
+# ---- App meta: last successful ETL time ----
+ensure_app_meta <- function(pg, schema) {
+  DBI::dbExecute(
+    pg,
+    sprintf(
+      'CREATE TABLE IF NOT EXISTS "%s"."app_meta" (key text PRIMARY KEY, value text NOT NULL, updated_at timestamptz NOT NULL DEFAULT now())',
+      schema
+    )
+  )
+}
+
+set_last_success <- function(pg, schema, ts = Sys.time()) {
+  ensure_app_meta(pg, schema)
+  DBI::dbExecute(
+    pg,
+    sprintf(
+      'INSERT INTO "%s"."app_meta"(key, value, updated_at) VALUES ($1, $2, now()) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = now()',
+      schema
+    ),
+    params = list("etl_full_last_success", format(ts, "%Y-%m-%d %H:%M:%S"))
+  )
+}
+
 # ─── Main pipeline ───────────────────────────────────────────────────────────
 
 etl_full <- function(game_ids = NULL, dry_run = FALSE) {
@@ -179,10 +202,57 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       ids <- sort(unique(as.integer(game_ids)))
     }
 
+    # Build schedule subset for requested IDs, with DB fallback when IDs are not
+    # present in the external schedule feed (common for cup games).
+    sched_subset <- dplyr::semi_join(
+      sched_df,
+      tibble::tibble(game_id = ids),
+      by = "game_id"
+    )
+    missing_in_feed <- setdiff(ids, sched_subset$game_id)
+    if (length(missing_in_feed)) {
+      missing_csv <- paste(as.integer(missing_in_feed), collapse = ",")
+      db_subset <- DBI::dbGetQuery(
+        pg,
+        sprintf(
+          paste0(
+            'SELECT game_id, game_year, game_date, gn, game_type, team1, team2, ',
+            'team_name_eng_1, team_name_eng_2, score_team1, score_team2 ',
+            'FROM "%s"."schedule" WHERE game_id IN (%s)'
+          ),
+          SCHEMA, missing_csv
+        )
+      )
+      if (nrow(db_subset)) {
+        db_subset$game_date <- as.Date(db_subset$game_date)
+        db_subset$pbp_url <- paste0(
+          "https://stats.segevstats.com/realtimestat_heb/get_team_action.php?game_id=",
+          db_subset$game_id
+        )
+        db_subset$box_url <- paste0(
+          "https://stats.segevstats.com/realtimestat_heb/get_team_score.php?game_id=",
+          db_subset$game_id
+        )
+        sched_subset <- dplyr::bind_rows(sched_subset, db_subset) |>
+          dplyr::distinct(game_id, .keep_all = TRUE)
+        log_msg(sprintf(
+          "Added %d game(s) from %s.schedule fallback (missing from feed)",
+          nrow(db_subset), SCHEMA
+        ))
+      }
+      still_missing <- setdiff(ids, sched_subset$game_id)
+      if (length(still_missing)) {
+        log_msg(sprintf(
+          "Requested IDs still missing from both feed and %s.schedule: %s",
+          SCHEMA, paste(still_missing, collapse = ", ")
+        ), "WARN")
+      }
+    }
+
     if (!length(ids)) {
       log_msg("No new games to process")
-      return(invisible(NULL))
-    }
+      ids
+    } else {
 
     log_msg(sprintf("Games to process: %d (%s)", length(ids), paste(ids, collapse = ", ")))
 
@@ -194,7 +264,6 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       # (etl_update references these as free variables)
       assign("game_ids", ids, envir = .GlobalEnv)
 
-      sched_subset <- dplyr::semi_join(sched_df, tibble::tibble(game_id = ids), by = "game_id")
       assign("sched_subset", sched_subset, envir = .GlobalEnv)
 
       t0 <- proc.time()
@@ -203,8 +272,20 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       upsert_by_like(pg, SCHEMA, "schedule", sched_subset)
       log_msg(sprintf("  schedule: %d rows upserted", nrow(sched_subset)))
 
-      # Fetch PBP (each upsert_by_like manages its own transaction)
-      pbps <- purrr::map2(sched_subset$game_id, sched_subset$pbp_url, fetch_game_pbp)
+      # Fetch PBP only for rows with usable URLs.
+      fetchable_sched <- sched_subset |>
+        dplyr::filter(!is.na(pbp_url), nzchar(pbp_url))
+      skipped_pbp <- setdiff(sched_subset$game_id, fetchable_sched$game_id)
+      if (length(skipped_pbp)) {
+        log_msg(sprintf(
+          "Skipping %d game(s) without pbp_url: %s",
+          length(skipped_pbp), paste(skipped_pbp, collapse = ", ")
+        ), "WARN")
+      }
+      if (!nrow(fetchable_sched)) {
+        stop("No fetchable games (all requested rows missing pbp_url).", call. = FALSE)
+      }
+      pbps <- purrr::map2(fetchable_sched$game_id, fetchable_sched$pbp_url, fetch_game_pbp)
       log_msg(sprintf("Fetched PBP for %d games", length(pbps)))
 
       # actions_clean
@@ -232,7 +313,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
       # possessions
       actions_tbl <- dplyr::tbl(pg, dbplyr::in_schema(SCHEMA, "actions_clean")) |>
-        dplyr::filter(game_id %in% sched_subset$game_id)
+        dplyr::filter(game_id %in% fetchable_sched$game_id)
       poss_stage <- compute_possessions(actions_tbl) |>
         dplyr::collect() |>
         dplyr::rename(quarter = quarter.x) |>
@@ -242,14 +323,14 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
       # lineups_lookup
       df_lineups_df <- compute_lineups_lookup(pg) |>
-        dplyr::filter(game_id %in% sched_subset$game_id) |>
+        dplyr::filter(game_id %in% fetchable_sched$game_id) |>
         dplyr::collect()
       upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df)
       log_msg(sprintf("  lineups_lookup: %d rows upserted", nrow(df_lineups_df)))
 
       # stints
       stints_df <- compute_stints(pg) |>
-        dplyr::filter(game_id %in% sched_subset$game_id) |>
+        dplyr::filter(game_id %in% fetchable_sched$game_id) |>
         dplyr::collect() %>%
         dplyr::select(
           team_id_offense, game_id, final_start_seg, final_end_seg,
@@ -280,6 +361,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
       ids
     }
+    }
   }, error = function(e) {
     log_msg(sprintf("Phase 2 FAILED: %s", conditionMessage(e)), "ERROR")
     stop("Base ETL failed — aborting pipeline.", call. = FALSE)
@@ -297,9 +379,12 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     }
   }
 
-  # =========================================================================
-  # Phase 3: Sub-Lineup Generation
-  # =========================================================================
+  if (!length(processed_ids)) {
+    log_msg("No new games â€” skipping Phases 3-6")
+  } else {
+    # =========================================================================
+    # Phase 3: Sub-Lineup Generation
+    # =========================================================================
 
   log_msg("─── Phase 3: Sub-Lineup Generation ───")
 
@@ -526,6 +611,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     log_msg(sprintf("Phase 6 FAILED: %s", conditionMessage(e)), "WARN")
   })
 
+  }
+
   # =========================================================================
   # Summary
   # =========================================================================
@@ -533,6 +620,15 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   overall_elapsed <- (proc.time() - overall_start)["elapsed"]
   log_msg(sprintf("═══ ETL Full pipeline finished in %.1fs ═══", overall_elapsed))
   log_msg(sprintf("Log saved to: %s", logger$log_file))
+
+  if (!dry_run) {
+    tryCatch({
+      set_last_success(pg, SCHEMA)
+      log_msg("Recorded last_success timestamp in app_meta")
+    }, error = function(e) {
+      log_msg(sprintf("Failed to record last_success timestamp: %s", conditionMessage(e)), "WARN")
+    })
+  }
 
   invisible(list(
     game_ids = processed_ids,

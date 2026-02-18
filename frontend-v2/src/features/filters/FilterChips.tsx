@@ -13,7 +13,7 @@ export default function FilterChips() {
 
   // Game type
   if (state.gameType.length > 0) {
-    const typeMap: Record<number, string> = { 5: 'Regular', 16: 'PO QF', 26: 'PO SF', 17: 'PO Finals', 33: 'Play-in', 34: 'Winner Cup' };
+    const typeMap: Record<number, string> = { 5: 'Regular', 16: 'PO QF', 26: 'PO SF', 17: 'PO Finals', 33: 'Play-in', 34: 'Winner Cup', 35: 'State Cup' };
     const label = state.gameType.map(t => typeMap[t] ?? `Type ${t}`).join(', ');
     chips.push({
       label,

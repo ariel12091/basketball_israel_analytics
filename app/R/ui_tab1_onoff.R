@@ -45,19 +45,19 @@ ui_tab1_onoff <- tabPanel(
               selectizeInput("on_game_type", "Game type",
                              choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16",
                                          "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26",
-                                         "Play-in" = "33", "Winner Cup" = "34"),
+                                         "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
                              selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
               selectizeInput("on_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
-              selectInput("on_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("on_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
-              tags$hr(),
-              fluidRow(
-                column(6, selectizeInput("on_gn_min", "From GN", choices = NULL, selected = "", multiple = FALSE,
+          selectInput("on_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
+          selectInput("on_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
+          tags$hr(),
+          fluidRow(
+                column(6, selectizeInput("on_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("on_gn_max", "To GN", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("on_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
-              selectizeInput("on_last_n", "Last N games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("on_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
@@ -71,7 +71,8 @@ ui_tab1_onoff <- tabPanel(
 
           tags$hr(),
           sliderInput("min_all_poss", "Min possessions per side (eligibility):", min = 0, max = 2000, value = DEFAULT_MIN_ALL, step = 10),
-          sliderInput("min_on_poss", "Min ON possessions (eligibility):", min = 0, max = 3000, value = DEFAULT_MIN_ON, step = 10),
+          sliderInput("min_on_poss", "Minimum ON possessions (for ranking):", min = 0, max = 3000, value = DEFAULT_MIN_ON, step = 10),
+          helpText("If rows disappear, reduce possession minimums or widen the date range."),
           tags$hr(),
           downloadButton("download_csv", "Download CSV")
         )
@@ -79,6 +80,95 @@ ui_tab1_onoff <- tabPanel(
 
       mainPanel(
         width = 9,
+        conditionalPanel(
+          condition = "input.onoff_view_mode == 'Summary'",
+          tab_explainer(
+            id = "onoff_explainer_summary",
+            title = "What This Tab Answers (Summary)",
+            intro = "Which players change team offense and defense most when they are on the floor?",
+            bullets = c(
+              "Start broad, then add filters only if needed.",
+              "Use Net/Off/Def impact first, then compare on-court vs off-court PPP.",
+              "Validate that usage (ON/OFF possessions) is large enough."
+            )
+          ),
+          tags$a(
+            href = "#",
+            class = "explainer-toggle",
+            onclick = "return false;",
+            `data-bs-toggle` = "collapse",
+            `data-bs-target` = "#onoff-example-box",
+            "Show/Hide Example"
+          ),
+          div(
+            id = "onoff-example-box",
+            class = "collapse",
+            div(
+              class = "example-grid",
+              div(
+                class = "example-card",
+                div(class = "example-card-title", "How to Read On/Off (Real Example)"),
+                tags$p(
+                  style = "margin-bottom: 6px;",
+                  "In this example, Hapoel Tel Aviv is better with Tyler Ennis on the floor by +29.5 points per 100 possessions."
+                ),
+                tags$p(
+                  style = "margin-bottom: 6px;",
+                  "That comes from offense being +15.7 points better and defense being 13.8 points better (shown as Def Diff -13.8, because lower defensive PPP allowed is better)."
+                ),
+                tags$p(
+                  style = "margin-bottom: 0;",
+                  "With him on court, Hapoel scores 129.4 and allows 93.2. With him off court, they score 113.7 and allow 107.0."
+                )
+              ),
+              div(
+                class = "example-snippet",
+                tags$img(src = app_image_src("onoff-row-snippet.png"), alt = "On/Off summary table snippet"),
+                div(class = "example-snippet-caption", "Real summary snippet (On/Off Impact)")
+              )
+            )
+          )
+        ),
+        conditionalPanel(
+          condition = "input.onoff_view_mode == 'Four Factors'",
+          tab_explainer(
+            id = "onoff_explainer_ff",
+            title = "What This Tab Answers (Four Factors)",
+            intro = "Why is player impact happening: shooting efficiency, rebounding, turnovers, or free-throw pressure?",
+            bullets = c(
+              "Read Offense and Defense factor diffs separately.",
+              "Use TS%, OREB%, TOV%, FTR diffs to explain the Net impact.",
+              "Check ON/OFF possessions so factor diffs are not driven by tiny samples."
+            )
+          ),
+          tags$a(
+            href = "#",
+            class = "explainer-toggle",
+            onclick = "return false;",
+            `data-bs-toggle` = "collapse",
+            `data-bs-target` = "#onoff-ff-example-box",
+            "Show/Hide Example"
+          ),
+          div(
+            id = "onoff-ff-example-box",
+            class = "collapse",
+            div(
+              class = "example-grid",
+              div(
+                class = "example-card",
+                div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
+                tags$p(style = "margin-bottom: 6px;", "Darius Hannah (Kiryat Ata) shows Net Diff +23.5 with Off Diff +14.0 and Def Diff -9.5."),
+                tags$p(style = "margin-bottom: 6px;", "Offense factors: TS% Diff +9.1 and OREB% Diff +2.4 support stronger on-court offense."),
+                tags$p(style = "margin-bottom: 0;", "Usage is substantial (633 ON possessions vs 676 OFF possessions), so this is a stable directional signal.")
+              ),
+              div(
+                class = "example-snippet",
+                tags$img(src = app_image_src("onoff-ff-row-snippet.png"), alt = "On/Off four factors table snippet"),
+                div(class = "example-snippet-caption", "Real Four Factors snippet (On/Off Impact)")
+              )
+            )
+          )
+        ),
         # --- LEGEND (Summary mode: shot split legend) ---
         conditionalPanel(
           condition = "input.onoff_view_mode == 'Summary'",
@@ -136,3 +226,4 @@ ui_tab1_onoff <- tabPanel(
     )
   )
 )
+

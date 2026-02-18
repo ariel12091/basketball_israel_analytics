@@ -46,7 +46,8 @@ ui_tab5_traditional <- tabPanel(
                   "Playoffs - Finals" = "17",
                   "Playoffs - Semifinals" = "26",
                   "Play-in" = "33",
-                  "Winner Cup" = "34"
+                  "Winner Cup" = "34",
+                  "State Cup" = "35"
                 ),
                 selected = "", multiple = TRUE,
                 options = list(placeholder = "All game types")
