@@ -117,10 +117,20 @@ BEGIN
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
       AND (p_last_n_games IS NULL
-           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
-                        FROM basketball_test.final_schedule_mv fs2
-                        WHERE fs2.team_id = fs.team_id
-                          AND fs2.game_year = fs.game_year))
+           OR COALESCE((
+                SELECT fsr.rn_recent
+                FROM (
+                  SELECT fs2.game_id,
+                         ROW_NUMBER() OVER (
+                           PARTITION BY fs2.team_id, fs2.game_year
+                           ORDER BY fs2.game_date DESC NULLS LAST, fs2.game_id DESC
+                         ) AS rn_recent
+                  FROM basketball_test.final_schedule_mv fs2
+                  WHERE fs2.team_id = fs.team_id
+                    AND fs2.game_year = fs.game_year
+                ) fsr
+                WHERE fsr.game_id = fs.game_id
+              ), 2147483647) <= p_last_n_games)
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,
@@ -304,10 +314,20 @@ BEGIN
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
       AND (p_last_n_games IS NULL
-           OR fs.gn >= (SELECT MAX(fs2.gn) - p_last_n_games + 1
-                        FROM basketball_test.final_schedule_mv fs2
-                        WHERE fs2.team_id = fs.team_id
-                          AND fs2.game_year = fs.game_year))
+           OR COALESCE((
+                SELECT fsr.rn_recent
+                FROM (
+                  SELECT fs2.game_id,
+                         ROW_NUMBER() OVER (
+                           PARTITION BY fs2.team_id, fs2.game_year
+                           ORDER BY fs2.game_date DESC NULLS LAST, fs2.game_id DESC
+                         ) AS rn_recent
+                  FROM basketball_test.final_schedule_mv fs2
+                  WHERE fs2.team_id = fs.team_id
+                    AND fs2.game_year = fs.game_year
+                ) fsr
+                WHERE fsr.game_id = fs.game_id
+              ), 2147483647) <= p_last_n_games)
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,

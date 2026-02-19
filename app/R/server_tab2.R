@@ -9,18 +9,20 @@ server_tab2 <- function(input, output, session, shared) {
   )
   auto_enabled <- reactiveVal(TRUE)
   resetting <- reactiveVal(FALSE)
-  AUTO_TOP_PCT <- 0.35
+  AUTO_TARGET_ROWS <- 150L
 
-  auto_minposs_from_df <- function(df, usage_col = "total_poss", step = 10L) {
+  auto_minposs_from_df <- function(df, usage_col = "total_poss", step = 10L, target_rows = AUTO_TARGET_ROWS) {
     if (is.null(df) || !NROW(df)) return(NA_integer_)
     if (!usage_col %in% names(df)) return(NA_integer_)
-    n <- nrow(df)
-    top_n <- max(1L, ceiling(n * AUTO_TOP_PCT))
-    df_ord <- df %>% arrange(desc(.data[[usage_col]]))
-    df_top <- df_ord[seq_len(min(top_n, n)), , drop = FALSE]
-    min_needed <- suppressWarnings(min(df_top[[usage_col]], na.rm = TRUE))
-    if (!is.finite(min_needed)) return(NA_integer_)
-    as.integer(floor(min_needed / step) * step)
+    vals <- suppressWarnings(as.numeric(df[[usage_col]]))
+    vals <- vals[is.finite(vals)]
+    if (!length(vals)) return(NA_integer_)
+    vals <- sort(vals, decreasing = TRUE)
+    n <- length(vals)
+    if (n <= target_rows) return(0L)
+    kth <- vals[target_rows]
+    if (!is.finite(kth)) return(NA_integer_)
+    as.integer(ceiling(kth / step) * step)
   }
 
   observeEvent(list(input$main_tabs, input$game_year_ld), ignoreInit = TRUE, {
@@ -361,22 +363,40 @@ server_tab2 <- function(input, output, session, shared) {
     list(num = as.integer(input$ld_num), team_csv = if (!is.na(team_id)) as.character(team_id) else NA_character_, player_csv = if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_, player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_, exact = TRUE, start_date = if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA, end_date = if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA, min_poss = as.integer(input$ld_minposs), game_type_csv = ld_game_type_csv, opp_ids_csv = ld_opp_ids_csv, home_away = ld_home_away, outcome = ld_outcome, opp_rank_side = ld_rank_side, opp_rank_n = ld_rank_n, opp_rank_metric = ld_metric, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n)
   }) %>% bindEvent(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off, input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode, input$ld_gn_min, input$ld_gn_max, input$ld_last_n)
 
+  parse_player_ids <- function(x) {
+    if (is.null(x)) return(integer(0))
+    if (is.list(x)) {
+      vals <- suppressWarnings(as.integer(unlist(x, use.names = FALSE)))
+      return(vals[!is.na(vals)])
+    }
+    s <- gsub("[{}\\s]", "", as.character(x))
+    if (!nzchar(s)) return(integer(0))
+    vals <- suppressWarnings(as.integer(strsplit(s, ",", fixed = TRUE)[[1]]))
+    vals[!is.na(vals)]
+  }
+
+  ensure_player_ids_list <- function(df) {
+    if (is.null(df) || NROW(df) == 0L || !("player_ids" %in% names(df))) return(df)
+    if ("player_ids_list" %in% names(df)) return(df)
+    df$player_ids_list <- lapply(df$player_ids, parse_player_ids)
+    df
+  }
+
   apply_local_lineup_filters <- function(df, p) {
     if (is.null(df) || NROW(df) == 0L) return(df)
+    df <- ensure_player_ids_list(df)
     if (!is.na(p$team_csv) && nzchar(p$team_csv)) {
       team_ids <- as.integer(strsplit(p$team_csv, ",")[[1]])
       df <- df %>% filter(team_id %in% team_ids)
     }
     if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
       on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
-      pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
-      keep <- vapply(pid_list, function(x) all(on_ids %in% x), logical(1))
+      keep <- vapply(df$player_ids_list, function(x) all(on_ids %in% x), logical(1))
       df <- df[keep, , drop = FALSE]
     }
     if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
       off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
-      pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
-      keep <- vapply(pid_list, function(x) !any(off_ids %in% x), logical(1))
+      keep <- vapply(df$player_ids_list, function(x) !any(off_ids %in% x), logical(1))
       df <- df[keep, , drop = FALSE]
     }
     df
@@ -409,8 +429,7 @@ server_tab2 <- function(input, output, session, shared) {
                     input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode,
                     input$ld_gn_min, input$ld_gn_max, input$ld_last_n,
                     input$ld_clutch_enabled, input$ld_clutch_margin, input$ld_clutch_status,
-                    input$ld_clutch_minutes, input$ld_clutch_ot_margin, input$game_year_ld,
-                    input$ld_minposs), {
+                    input$ld_clutch_minutes, input$ld_clutch_ot_margin, input$game_year_ld), {
     req(identical(input$main_tabs, "lineup_data"))
     if (!isTRUE(auto_enabled())) return(invisible(NULL))
     p <- ld_params()
@@ -420,10 +439,10 @@ server_tab2 <- function(input, output, session, shared) {
     df_base <- if (identical(mode, "Four Factors")) ld_ff_ranked_df() else ld_summary_ranked_df()
     df_base <- apply_local_lineup_filters(df_base, p)
 
-    min_needed <- auto_minposs_from_df(df_base, usage_col = "total_poss", step = 10L)
+    min_needed <- auto_minposs_from_df(df_base, usage_col = "total_poss", step = 10L, target_rows = AUTO_TARGET_ROWS)
     cur_val <- as.integer(input$ld_minposs)
-    if (is.na(min_needed) || is.na(cur_val)) return(invisible(NULL))
-    if (cur_val <= min_needed) return(invisible(NULL))
+    if (is.na(min_needed)) return(invisible(NULL))
+    if (!is.na(cur_val) && cur_val == min_needed) return(invisible(NULL))
 
     auto_min_state$updating <- TRUE
     updateSliderInput(session, "ld_minposs", value = min_needed)
@@ -464,17 +483,17 @@ server_tab2 <- function(input, output, session, shared) {
 
       # Filter by players on (lineup must contain all selected players)
       if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
+        df <- ensure_player_ids_list(df)
         on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
-        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
-        keep <- vapply(pid_list, function(x) all(on_ids %in% x), logical(1))
+        keep <- vapply(df$player_ids_list, function(x) all(on_ids %in% x), logical(1))
         df <- df[keep, , drop = FALSE]
       }
 
       # Filter by players off (lineup must NOT contain any excluded players)
       if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
+        df <- ensure_player_ids_list(df)
         off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
-        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
-        keep <- vapply(pid_list, function(x) !any(off_ids %in% x), logical(1))
+        keep <- vapply(df$player_ids_list, function(x) !any(off_ids %in% x), logical(1))
         df <- df[keep, , drop = FALSE]
       }
 
@@ -509,17 +528,17 @@ server_tab2 <- function(input, output, session, shared) {
 
       # Filter by players on (lineup must contain all selected players)
       if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
+        df <- ensure_player_ids_list(df)
         on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
-        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
-        keep <- vapply(pid_list, function(x) all(on_ids %in% x), logical(1))
+        keep <- vapply(df$player_ids_list, function(x) all(on_ids %in% x), logical(1))
         df <- df[keep, , drop = FALSE]
       }
 
       # Filter by players off (lineup must NOT contain any excluded players)
       if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
+        df <- ensure_player_ids_list(df)
         off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
-        pid_list <- if (is.list(df$player_ids)) df$player_ids else lapply(df$player_ids, function(s) as.integer(strsplit(gsub("[{}]", "", as.character(s)), ",")[[1]]))
-        keep <- vapply(pid_list, function(x) !any(off_ids %in% x), logical(1))
+        keep <- vapply(df$player_ids_list, function(x) !any(off_ids %in% x), logical(1))
         df <- df[keep, , drop = FALSE]
       }
 

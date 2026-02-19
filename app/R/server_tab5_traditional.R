@@ -355,25 +355,39 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if (!is.na(gp$min_gn)) sched <- sched %>% filter(gn >= gp$min_gn)
     if (!is.na(gp$max_gn)) sched <- sched %>% filter(gn <= gp$max_gn)
     if (!is.na(gp$last_n)) {
-      max_gns <- sched %>% group_by(team_id) %>% summarise(max_gn = max(gn, na.rm = TRUE), .groups = "drop")
-      sched <- sched %>% inner_join(max_gns, by = "team_id") %>%
-        filter(gn >= max_gn - gp$last_n + 1) %>% select(-max_gn)
+      sched <- sched %>%
+        group_by(team_id) %>%
+        arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
+        mutate(rn_recent = row_number()) %>%
+        ungroup() %>%
+        filter(rn_recent <= gp$last_n) %>%
+        select(-rn_recent)
     }
 
     if (!nrow(sched)) return(NULL)
 
     sched_pairs <- sched %>% select(game_id, team_id) %>% distinct()
     if (!nrow(sched_pairs)) return(NULL)
-    pair_keys_csv <- paste(paste0(sched_pairs$game_id, "_", sched_pairs$team_id), collapse = ",")
+    game_ids_csv <- paste(sched_pairs$game_id, collapse = ",")
+    team_ids_csv <- paste(sched_pairs$team_id, collapse = ",")
 
     acts <- DBI::dbGetQuery(
       pg_pool,
-      "SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining,
+      "WITH pairs AS (
+         SELECT p.game_id, p.team_id
+         FROM unnest(
+           string_to_array($1, ',')::int8[],
+           string_to_array($2, ',')::int4[]
+         ) AS p(game_id, team_id)
+       )
+       SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining,
               d.type, d.parameters_type, d.parameters_made, d.parameters_points, d.player_id,
               d.type_lineup, d.final_end_poss, d.final_end_id, d.quarter, d.own_team_score, d.opp_team_score
        FROM basketball_test.df_pts_poss_lineups_longer_mv d
-       WHERE concat_ws('_', d.game_id::text, d.team_id::text) = ANY(string_to_array($1, ',')::text[])",
-      params = list(pair_keys_csv)
+       JOIN pairs p
+         ON p.game_id = d.game_id
+        AND p.team_id = d.team_id",
+      params = list(game_ids_csv, team_ids_csv)
     )
     if (clutch_enabled && nrow(acts)) {
       acts <- acts %>%
@@ -407,12 +421,21 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     lineup_map <- DBI::dbGetQuery(
       pg_pool,
-      "SELECT DISTINCT ll.game_id, ll.team_id, ll.lineup_hash, ll.player_id
+      "WITH pairs AS (
+         SELECT p.game_id, p.team_id
+         FROM unnest(
+           string_to_array($2, ',')::int8[],
+           string_to_array($3, ',')::int4[]
+         ) AS p(game_id, team_id)
+       )
+       SELECT DISTINCT ll.game_id, ll.team_id, ll.lineup_hash, ll.player_id
        FROM basketball_test.lineups_lookup ll
+       JOIN pairs p
+         ON p.game_id = ll.game_id
+        AND p.team_id = ll.team_id
        WHERE ll.game_year = $1
-         AND COALESCE(ll.is_on_verdict, 0)::int = 1
-         AND concat_ws('_', ll.game_id::text, ll.team_id::text) = ANY(string_to_array($2, ',')::text[])",
-      params = list(gy_int, pair_keys_csv)
+         AND COALESCE(ll.is_on_verdict, 0)::int = 1",
+      params = list(gy_int, game_ids_csv, team_ids_csv)
     )
     if (!nrow(lineup_map)) return(NULL)
 
@@ -499,7 +522,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       ) %>%
       clean_ts_rows() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
-  }) %>% bindEvent(
+    }) %>% bindEvent(
     input$main_tabs,
     input$ts_game_year,
     debounced_range(),

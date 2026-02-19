@@ -8,12 +8,19 @@ server_tab4 <- function(input, output, session, shared) {
   observeEvent(list(input$main_tabs, input$gl_game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "game_logs")) return(NULL)
     gy_int <- as.integer(input$gl_game_year)
-    teams_gl <- DBI::dbGetQuery(pg_pool,
-      "SELECT DISTINCT team_id, MIN(team_name) AS team_name
-       FROM basketball_test.full_rosters
-       WHERE game_year = $1
-       GROUP BY team_id ORDER BY MIN(team_name)",
-      params = list(gy_int))
+    teams_gl <- cached_ref_query(
+      key = sprintf("gl_teams_%d", gy_int),
+      query_fun = function() {
+        DBI::dbGetQuery(
+          pg_pool,
+          "SELECT DISTINCT team_id, MIN(team_name) AS team_name
+           FROM basketball_test.full_rosters
+           WHERE game_year = $1
+           GROUP BY team_id ORDER BY MIN(team_name)",
+          params = list(gy_int)
+        )
+      }
+    )
     gl_ref$teams <- teams_gl
     team_values <- c("", as.character(teams_gl$team_id))
     names(team_values) <- c("\u2014 All teams \u2014", teams_gl$team_name)
@@ -21,9 +28,16 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "gl_opponents", choices = teams_gl$team_name,
                          selected = character(0), server = TRUE)
 
-    gn_df <- DBI::dbGetQuery(pg_pool,
-      "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
-      params = list(gy_int))
+    gn_df <- cached_ref_query(
+      key = sprintf("gl_gn_%d", gy_int),
+      query_fun = function() {
+        DBI::dbGetQuery(
+          pg_pool,
+          "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
+          params = list(gy_int)
+        )
+      }
+    )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     gn_choices <- c("", as.character(gn_vals))
     last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
@@ -140,9 +154,13 @@ server_tab4 <- function(input, output, session, shared) {
     if (!is.na(min_gn)) df <- df %>% filter(gn >= !!min_gn)
     if (!is.na(max_gn)) df <- df %>% filter(gn <= !!max_gn)
     if (!is.na(last_n)) {
-      max_gns <- df %>% group_by(team_id) %>% summarise(max_gn = max(gn, na.rm = TRUE), .groups = "drop")
-      df <- df %>% inner_join(max_gns, by = "team_id") %>%
-        filter(gn >= max_gn - last_n + 1) %>% select(-max_gn)
+      df <- df %>%
+        group_by(team_id) %>%
+        arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
+        mutate(rn_recent = row_number()) %>%
+        ungroup() %>%
+        filter(rn_recent <= last_n) %>%
+        select(-rn_recent)
     }
 
     df
