@@ -42,6 +42,28 @@ adaptive_baseline <- function(poss_vec) {
 # Null coalescing operator
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+# ---------------- App-level cache & guardrails ----------------
+REF_CACHE_TTL_SEC <- as.numeric(Sys.getenv("REF_CACHE_TTL_SEC", "60"))
+if (!is.finite(REF_CACHE_TTL_SEC) || REF_CACHE_TTL_SEC < 0) REF_CACHE_TTL_SEC <- 60
+
+PG_STATEMENT_TIMEOUT_MS <- suppressWarnings(as.integer(Sys.getenv("PG_STATEMENT_TIMEOUT_MS", "8000")))
+if (!is.finite(PG_STATEMENT_TIMEOUT_MS) || PG_STATEMENT_TIMEOUT_MS <= 0) PG_STATEMENT_TIMEOUT_MS <- 8000L
+
+.ref_cache_env <- new.env(parent = emptyenv())
+
+cached_ref_query <- function(key, query_fun, ttl_sec = REF_CACHE_TTL_SEC) {
+  now <- as.numeric(Sys.time())
+  if (exists(key, envir = .ref_cache_env, inherits = FALSE)) {
+    cached <- get(key, envir = .ref_cache_env, inherits = FALSE)
+    if (!is.null(cached$ts) && !is.null(cached$val) && (now - cached$ts) <= ttl_sec) {
+      return(cached$val)
+    }
+  }
+  val <- query_fun()
+  assign(key, list(ts = now, val = val), envir = .ref_cache_env)
+  val
+}
+
 # ---------------- PostgreSQL pool ----------------
 pg_pool <- dbPool(
   drv      = Postgres(),
@@ -52,6 +74,7 @@ pg_pool <- dbPool(
   user     = Sys.getenv("PG_USER"),
   password = Sys.getenv("PG_PASS"),
   sslmode  = Sys.getenv("PG_SSLMODE", "require"),
+  options  = sprintf("-c statement_timeout=%d", PG_STATEMENT_TIMEOUT_MS),
   minSize  = 0,
   maxSize  = as.integer(Sys.getenv("POOL_MAX", "3")),
   idleTimeout = 15000
@@ -102,6 +125,92 @@ shared_css <- HTML("
   th.sub-head { background:#fafafa !important; font-weight:700; }
 
   .accordion-button { padding: 0.5rem 1rem; font-weight: 600; background-color: #f8f9fa; }
+
+  .explainer-card {
+    background: #f5f8fb;
+    border: 1px solid #d9e4ee;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+  .explainer-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+  .explainer-title {
+    font-size: 0.95rem;
+    font-weight: 700;
+    color: #23374d;
+    margin: 0;
+  }
+  .explainer-body {
+    margin-top: 8px;
+    color: #30475e;
+    font-size: 0.9rem;
+  }
+  .explainer-body.collapse:not(.show) {
+    display: none !important;
+  }
+  .explainer-body p {
+    margin-bottom: 6px;
+  }
+  .explainer-body ul {
+    margin: 0 0 0 18px;
+    padding: 0;
+  }
+  .explainer-toggle {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: #355c7d;
+    text-decoration: none;
+  }
+  .explainer-toggle:hover {
+    color: #1f3a52;
+    text-decoration: underline;
+  }
+  .nav-help-btn {
+    margin-right: 8px;
+  }
+  .example-card {
+    background: #fffaf1;
+    border: 1px solid #f0dfb8;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 14px;
+    color: #5a4a2f;
+    font-size: 0.9rem;
+  }
+  .example-card-title {
+    font-weight: 700;
+    margin-bottom: 6px;
+  }
+  .example-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    align-items: stretch;
+    margin-bottom: 14px;
+  }
+  .example-snippet {
+    background: #fff;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    padding: 4px;
+  }
+  .example-snippet img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border-radius: 4px;
+  }
+  .example-snippet-caption {
+    margin-top: 6px;
+    font-size: 0.8rem;
+    color: #6c757d;
+    text-align: center;
+  }
 
   /* Visual Range Plot Styles */
   .diff-val {
@@ -169,6 +278,7 @@ shared_css <- HTML("
 
     /* Legend compact */
     .legend-box { flex-wrap: wrap; gap: 10px; padding: 8px 12px; font-size: 0.75rem; }
+    .example-grid { grid-template-columns: 1fr; }
   }
 ")
 
@@ -180,4 +290,50 @@ shared_head_tags <- function() {
     tags$noscript(tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap")),
     tags$style(shared_css)
   )
+}
+
+tab_explainer <- function(id, title, intro, bullets) {
+  body_id <- paste0(id, "_body")
+  tags$div(
+    class = "explainer-card",
+    tags$div(
+      class = "explainer-top",
+      tags$h4(class = "explainer-title", title),
+      tags$a(
+        href = "#",
+        class = "explainer-toggle",
+        onclick = "return false;",
+        `data-bs-toggle` = "collapse",
+        `data-bs-target` = paste0("#", body_id),
+        "Show/Hide"
+      )
+    ),
+    tags$div(
+      id = body_id,
+      class = "explainer-body collapse",
+      tags$p(intro),
+      tags$ul(lapply(bullets, tags$li)),
+      tags$p(
+        style = "margin-top: 8px; margin-bottom: 0;",
+        tags$a(
+          href = "#",
+          onclick = "Shiny.setInputValue('open_glossary', Math.random(), {priority:'event'}); return false;",
+          "Open glossary"
+        )
+      )
+    )
+  )
+}
+
+app_image_src <- function(rel_path, mime = "image/png") {
+  candidates <- c(
+    file.path("www", rel_path),
+    file.path(getwd(), "www", rel_path),
+    file.path(getwd(), "app", "www", rel_path)
+  )
+  existing <- candidates[file.exists(candidates)]
+  if (length(existing)) {
+    return(base64enc::dataURI(file = existing[[1]], mime = mime))
+  }
+  rel_path
 }

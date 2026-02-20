@@ -5,6 +5,6 @@ account: ibpl-stats
 server: shinyapps.io
 hostUrl: https://api.shinyapps.io/v1
 appId: 15323246
-bundleId:
+bundleId: 11601772
 url: https://ibpl-stats.shinyapps.io/onoff-shiny/
 version: 1

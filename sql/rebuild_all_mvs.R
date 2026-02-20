@@ -11,7 +11,7 @@
 library(DBI)
 library(RPostgres)
 
-# MV dependency order — each entry: list(name, sql_file, level)
+# MV dependency order - each entry: list(name, sql_file, level)
 MV_REGISTRY <- list(
   list(name = "final_schedule_mv",              file = "sql/materialized_views/final_schedule_mv.sql",              level = 1),
   list(name = "df_pts_poss_lineups_longer_mv",  file = "sql/materialized_views/df_pts_poss_longer.sql",            level = 1),
@@ -22,12 +22,81 @@ MV_REGISTRY <- list(
   list(name = "player_four_factors_by_game",    file = "sql/materialized_views/player_four_factors_by_game.sql",   level = 3),
   list(name = "lineup_four_factors_by_game",    file = "sql/materialized_views/lineup_four_factors_by_game.sql",   level = 3),
   list(name = "player_advanced_stats_mv",       file = "sql/materialized_views/player_advanced_stats_mv.sql",      level = 3),
+  list(name = "player_traditional_stats_mv",    file = "sql/materialized_views/player_traditional_stats_mv.sql",   level = 3),
   list(name = "team_four_factors_mv",           file = "sql/materialized_views/team_four_factors_mv.sql",          level = 4)
 )
 
 SCHEMA <- "basketball_test"
 
+extract_mv_name <- function(sql_file) {
+  lines <- readLines(sql_file, warn = FALSE)
+  txt <- paste(lines, collapse = "\n")
+  m <- regexec("(?i)CREATE\\s+(OR\\s+REPLACE\\s+)?MATERIALIZED\\s+VIEW\\s+([a-zA-Z0-9_\\.]+)", txt, perl = TRUE)
+  hit <- regmatches(txt, m)[[1]]
+  if (!length(hit) || length(hit) < 3) return(NA_character_)
+  full_name <- tolower(hit[3])
+  parts <- strsplit(full_name, "\\.", fixed = FALSE)[[1]]
+  tail(parts, 1)
+}
+
+validate_mv_registry <- function(registry = MV_REGISTRY) {
+  reg_names <- vapply(registry, function(x) x$name, character(1))
+  reg_files <- vapply(registry, function(x) x$file, character(1))
+
+  missing_files <- reg_files[!file.exists(reg_files)]
+  if (length(missing_files)) {
+    stop(sprintf("Missing MV SQL files in MV_REGISTRY: %s", paste(missing_files, collapse = ", ")))
+  }
+
+  sql_files <- list.files("sql/materialized_views", pattern = "\\.sql$", full.names = TRUE)
+  discovered <- lapply(sql_files, function(f) list(file = gsub("\\\\", "/", f), name = extract_mv_name(f)))
+  discovered <- Filter(function(x) !is.na(x$name) && nzchar(x$name), discovered)
+
+  disc_names <- vapply(discovered, function(x) x$name, character(1))
+  disc_files <- vapply(discovered, function(x) x$file, character(1))
+
+  dup_names <- unique(disc_names[duplicated(disc_names)])
+  if (length(dup_names)) {
+    stop(sprintf("Duplicate MV definitions found in sql/materialized_views: %s", paste(dup_names, collapse = ", ")))
+  }
+
+  missing_in_registry <- setdiff(disc_names, reg_names)
+  if (length(missing_in_registry)) {
+    stop(sprintf(
+      "MV_REGISTRY is missing MV(s): %s. Add them to rebuild_all_mvs.R.",
+      paste(missing_in_registry, collapse = ", ")
+    ))
+  }
+
+  missing_in_sql <- setdiff(reg_names, disc_names)
+  if (length(missing_in_sql)) {
+    stop(sprintf(
+      "MV_REGISTRY references MV(s) with no CREATE MATERIALIZED VIEW SQL file: %s",
+      paste(missing_in_sql, collapse = ", ")
+    ))
+  }
+
+  # Ensure each registry row points to the file that actually defines that MV name.
+  disc_map <- setNames(disc_files, disc_names)
+  mismatches <- reg_names[normalizePath(reg_files, winslash = "/", mustWork = TRUE) != normalizePath(disc_map[reg_names], winslash = "/", mustWork = TRUE)]
+  if (length(mismatches)) {
+    msg <- vapply(
+      mismatches,
+      function(nm) {
+        reg_file <- reg_files[match(nm, reg_names)]
+        sprintf("%s (registry=%s, actual=%s)", nm, reg_file, disc_map[[nm]])
+      },
+      character(1)
+    )
+    stop(sprintf("MV_REGISTRY file mapping mismatch: %s", paste(msg, collapse = "; ")))
+  }
+
+  invisible(TRUE)
+}
+
 rebuild_all_mvs <- function(from_level = 1, skip = character(0)) {
+  validate_mv_registry(MV_REGISTRY)
+
   pg <- dbConnect(
     Postgres(),
     host     = Sys.getenv("PG_HOST"),
@@ -44,7 +113,7 @@ rebuild_all_mvs <- function(from_level = 1, skip = character(0)) {
   # Filter to requested levels and skip list
   targets <- Filter(function(mv) mv$level >= from_level && !(mv$name %in% skip), MV_REGISTRY)
 
-  # Drop in reverse order (L4 → L1) to avoid cascade surprises
+  # Drop in reverse order (L4 -> L1) to avoid cascade surprises
   cat("Dropping MVs...\n")
   for (mv in rev(targets)) {
     sql <- sprintf('DROP MATERIALIZED VIEW IF EXISTS %s.%s CASCADE;', SCHEMA, mv$name)
@@ -53,7 +122,7 @@ rebuild_all_mvs <- function(from_level = 1, skip = character(0)) {
              error = function(e) cat(sprintf("SKIP (%s)\n", conditionMessage(e))))
   }
 
-  # Create in forward order (L1 → L4)
+  # Create in forward order (L1 -> L4)
   cat("\nCreating MVs...\n")
   for (mv in targets) {
     cat(sprintf("  L%d: %s\n", mv$level, mv$name))

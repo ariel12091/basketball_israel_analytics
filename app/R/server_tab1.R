@@ -59,9 +59,17 @@ server_tab1 <- function(input, output, session, shared) {
                          start = bounds$start, end = bounds$end,
                          min = bounds$start, max = bounds$end)
 
-    gn_df <- DBI::dbGetQuery(pg_pool,
-      "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
-      params = list(as.integer(shared$selected_game_year())))
+    gy_int <- as.integer(shared$selected_game_year())
+    gn_df <- cached_ref_query(
+      key = sprintf("on_gn_%d", gy_int),
+      query_fun = function() {
+        DBI::dbGetQuery(
+          pg_pool,
+          "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
+          params = list(gy_int)
+        )
+      }
+    )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     gn_choices <- c("", as.character(gn_vals))
     last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""

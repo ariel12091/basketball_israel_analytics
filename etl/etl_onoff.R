@@ -226,6 +226,7 @@ fetch_israel_schedule <- function() {
     mutate(
       game_id   = as.integer(ExternalID),
       game_date = suppressWarnings(lubridate::dmy(game_date_txt)),
+      gn        = as.integer(GN),
       pbp_url   = paste0("https://stats.segevstats.com/realtimestat_heb/get_team_action.php?game_id=", ExternalID),
       box_url   = paste0("https://stats.segevstats.com/realtimestat_heb/get_team_score.php?game_id=", ExternalID)
     )
