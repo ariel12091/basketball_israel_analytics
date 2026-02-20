@@ -1134,3 +1134,105 @@ _distinct(game_id, team_id, poss_end_id)
 ### UI support added
 - Added State Cup (35) option to game-type filters in Shiny tabs 1-5 and React filter UIs.
 - Note: Existing rows with game_type=35 are included under "All" even without selection; this change enables explicit selection/isolation.
+
+## Session Notes (2026-02-19 Full Index Benchmark Sweep)
+- Scope: run A/B performance checks for all indexes in `basketball_test`.
+- Method:
+  - Benchmarked all **non-PK / non-UNIQUE** indexes by timing representative queries with index present vs dropped, then recreated.
+  - Listed **PK/UNIQUE** indexes as skipped for safety.
+- Artifacts:
+  - `logs/index_benchmark_ab_safe.csv` (34 safe indexes benchmarked)
+  - `logs/index_benchmark_skipped_unique_pk.csv` (22 skipped PK/UNIQUE indexes)
+
+### Results summary
+- Most indexes showed small/noise-level deltas.
+- Strongly protective indexes (do not drop):
+  - `lineups_lookup_lineup_hash_idx` (~+62% slower without)
+  - `lineups_lookup_team_player_lineup_on_idx` (~+36.6% slower without)
+  - `idx_sub_lineups_gin_players` (~+106% slower without)
+  - `idx_sub_lineups_lineup_hash` (~+42.4% slower without)
+- Low-risk drop candidates identified:
+  - `dfppl_parent_game_idx` (5864 kB, idx_scan=0, ~noise impact)
+  - `idx_lff_lineup_hash` (576 kB, idx_scan=0, ~noise impact)
+  - `player_traditional_stats_mv_year_team_name_idx` (56 kB, idx_scan=0, ~noise impact)
+- Optional tiny cleanup only (negligible storage):
+  - `final_sched_mv_opp`, `idx_tffmv_gy`, `team_ppp_ratings_mv_join_idx` (16 kB each)
+
+### Decision taken
+- No further index drops were executed in this step (not worth operational churn now).
+- Keep benchmark outputs as baseline for future storage-pressure events.
+
+## Session Notes (2026-02-20 State Cup Final 309 JSON + Team-ID Mapping)
+- Context: `etl/run_state_cup_final_etl.ps1` correctly detected final `game_id=309`, but ETL live path failed when `games_all.json` did not yet include `ExternalID=309`.
+- Verified source links:
+  - Final page row existed on `more-games.asp?cYear=2026&other_list_id=4` with stats link `game_id=309`.
+  - PBP endpoint for 309 was reachable (`get_team_action.php?game_id=309`).
+- Root mismatch clarified:
+  - Stats/roster IDs (`team_id_rosters`) for final were `2` (Maccabi Tel-Aviv) and `6` (Bnei Herzliya).
+  - Schedule uses `team_id_schedule`; mapping from `basketball_test.schedule_team_dict` (2026):
+    - `team_id_rosters=2 -> team_id_schedule=1109`
+    - `team_id_rosters=6 -> team_id_schedule=1118`
+- Canonical fallback JSON (schedule-format IDs) for final game:
+```json
+{
+  "ExternalID": "309",
+  "game_type": 35,
+  "team1": 1109,
+  "team2": 1118,
+  "team_name_1": "???? ?\"?",
+  "team_name_2": "??? ??????",
+  "team_name_eng_1": "Maccabi Tel-Aviv",
+  "team_name_eng_2": "Bnei Herzliya",
+  "game_date_txt": "19/02/2026",
+  "game_year": 2026,
+  "score_team1": 109,
+  "score_team2": 90,
+  "pbp_link": "https://stats.segevstats.com/realtimestat_heb/gameStats.php?game_id=309&lang=he"
+}
+```
+- Also saved to `docs/state_cup_final_309.json.md`.
+- Note (2026-02-20): after upserting `game_id=309` into `basketball_test.schedule` via `upsert_by_like`, the ETL fallback path in `etl_full.R` can include this game in `sched_subset` even when `games_all.json` does not yet contain `ExternalID=309`.
+
+## Session Notes (2026-02-20 ETL 309 Recovery + Phase 5 Incremental Fix)
+- Trigger: State Cup final `game_id=309` was detected by `etl/run_state_cup_final_etl.ps1`, but live ETL initially failed in Phase 2.
+- Root cause chain:
+  - `games_all.json` did not yet include `ExternalID=309`.
+  - ETL fallback in `etl_full.R` relies on `%s.schedule` containing the missing game.
+  - Before seeding schedule, fallback could not resolve 309 and live path failed.
+- Data normalization resolved during session:
+  - Stats-side IDs (`team_id_rosters`) were `2` (Maccabi Tel-Aviv) and `6` (Bnei Herzliya).
+  - Schedule requires `team_id_schedule`; mapping from `schedule_team_dict` (2026):
+    - `2 -> 1109`
+    - `6 -> 1118`
+- Applied fix for ingestion:
+  - Upserted `game_id=309` into `basketball_test.schedule` using `upsert_by_like` with schedule-format IDs (`team1=1109`, `team2=1118`) and final score/date.
+  - After this, ETL dry-run showed expected fallback message:
+    - `Added 1 game(s) from basketball_test.schedule fallback (missing from feed)`.
+- Live ETL outcome for 309 (post-upsert):
+  - Phase 2 succeeded: schedule/actions/rosters/possessions/lineups/pws all loaded.
+  - Phase 6 validation passed for game 309.
+  - Phase 5 (`refresh_sub_lineups_stats`) timed out under default statement timeout.
+- Performance fix added in this session:
+  - Added incremental SQL function:
+    - `basketball_test.refresh_sub_lineups_stats_for_games(int4[])`
+    - file: `sql/functions/refresh_sub_lineups_incremental.sql`
+  - Updated `etl/etl_full.R` Phase 5:
+    - Prefer incremental refresh for `processed_ids` when function exists.
+    - Fallback to full refresh only when incremental function is unavailable.
+  - Deployment verification:
+    - Direct call `refresh_sub_lineups_stats_for_games(array[309])` succeeded (`touched=380`).
+- Operational guidance going forward:
+  - For newly published cup/final games that are in stats endpoint but missing from `games_all.json`, seed one `schedule` row first (with mapped `team_id_schedule`) and then run single-game ETL.
+  - For single-game ETL runs, use incremental sub-lineups refresh path to avoid full-table Phase 5 timeouts.
+
+## Session Notes (2026-02-20 Tab 4 Minutes Removal + ETL Integrity Threshold)
+- Tab 4 (Game Logs) minutes column was removed from both Summary and Four Factors tables in `app/R/server_tab4.R`.
+- Tab 4 data fetches no longer pull `minutes` from `mv_lineup_totals_by_day` / `lineup_four_factors_by_game`.
+- Added ETL validation warning in Phase 6 (`etl/etl_full.R`) based on deduped team timeline minutes from `df_pts_poss_lineups_longer_mv` (offense rows):
+  - warn when `minutes < 39.0`
+  - warn when `minutes > 40.0` and `max_quarter <= 4` (no OT flag)
+- Noise comparison (2026):
+  - `<40.0`: 217 team-rows across 123 games
+  - `<39.0`: 4 team-rows across 3 games
+  - `<38.5`: 2 team-rows across 1 game
+- Final threshold set to `39.0` to reduce noisy warnings while still catching meaningful under-coverage.

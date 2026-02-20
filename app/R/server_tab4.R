@@ -174,7 +174,7 @@ server_tab4 <- function(input, output, session, shared) {
     DBI::dbGetQuery(
       pg_pool,
       "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
-              total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, minutes
+              total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att
        FROM basketball_test.mv_lineup_totals_by_day
        WHERE game_year = $1",
       params = list(gy_int)
@@ -190,7 +190,7 @@ server_tab4 <- function(input, output, session, shared) {
       pg_pool,
       "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
               total_points, total_poss, ts_poss_count, oreb_count,
-              oreb_opportunities, tov_count, total_ft_attempts, total_fga, minutes
+              oreb_opportunities, tov_count, total_ft_attempts, total_fga
        FROM basketball_test.lineup_four_factors_by_game
        WHERE game_year = $1",
       params = list(gy_int)
@@ -222,14 +222,12 @@ server_tab4 <- function(input, output, session, shared) {
         fg2a = sum(fg2_att, na.rm = TRUE),
         fg3m = sum(fg3_made, na.rm = TRUE),
         fg3a = sum(fg3_att, na.rm = TRUE),
-        mins = sum(minutes, na.rm = TRUE),
         .groups = "drop"
       )
 
     off <- game_stats %>% filter(type_lineup == "offense") %>%
       rename(off_poss = poss, off_pts = pts,
-             off_fg2m = fg2m, off_fg2a = fg2a, off_fg3m = fg3m, off_fg3a = fg3a,
-             off_mins = mins) %>%
+             off_fg2m = fg2m, off_fg2a = fg2a, off_fg3m = fg3m, off_fg3a = fg3a) %>%
       select(-type_lineup)
     def <- game_stats %>% filter(type_lineup == "defense") %>%
       rename(def_poss = poss, def_pts = pts,
@@ -241,8 +239,7 @@ server_tab4 <- function(input, output, session, shared) {
     combined <- combined %>% mutate(
       off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
       def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
-      net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1),
-      minutes = round(off_mins, 1)
+      net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1)
     )
 
     # Join schedule info (includes gn, team_name)
@@ -284,7 +281,6 @@ server_tab4 <- function(input, output, session, shared) {
         tov_count = sum(tov_count, na.rm = TRUE),
         total_ft_attempts = sum(total_ft_attempts, na.rm = TRUE),
         total_fga = sum(total_fga, na.rm = TRUE),
-        mins = sum(minutes, na.rm = TRUE),
         .groups = "drop"
       )
 
@@ -292,8 +288,7 @@ server_tab4 <- function(input, output, session, shared) {
       rename(off_pts = total_points, off_poss = total_poss,
              off_ts_poss = ts_poss_count, off_oreb = oreb_count,
              off_oreb_opp = oreb_opportunities, off_tov = tov_count,
-             off_fta = total_ft_attempts, off_fga = total_fga,
-             off_mins = mins) %>%
+             off_fta = total_ft_attempts, off_fga = total_fga) %>%
       select(-type_lineup)
     def <- game_ff %>% filter(type_lineup == "defense") %>%
       rename(def_pts = total_points, def_poss = total_poss,
@@ -315,8 +310,7 @@ server_tab4 <- function(input, output, session, shared) {
       def_ts_pct = ifelse(def_ts_poss > 0, round(def_pts / (2 * def_ts_poss) * 100, 1), NA_real_),
       def_oreb_pct = ifelse(def_oreb_opp > 0, round(def_oreb / def_oreb_opp * 100, 1), NA_real_),
       def_tov_pct = ifelse(def_poss > 0, round(def_tov / def_poss * 100, 1), NA_real_),
-      def_ftr_pct = ifelse(def_fga > 0, round(def_fta / def_fga * 100, 1), NA_real_),
-      minutes = round(off_mins, 1)
+      def_ftr_pct = ifelse(def_fga > 0, round(def_fta / def_fga * 100, 1), NA_real_)
     )
 
     # Join schedule info (includes gn, team_name)
@@ -357,7 +351,7 @@ server_tab4 <- function(input, output, session, shared) {
         gn, game_date, team_name, opp_team_name, result, score_display,
         off_ppp, def_ppp, net_rtg,
         any_of(c("Off Shot", "Def Shot")),
-        off_poss, def_poss, minutes,
+        off_poss, def_poss,
         any_of(shot_raw_cols)
       )
 
@@ -470,8 +464,7 @@ server_tab4 <- function(input, output, session, shared) {
           if (has_shots) th(class = "sub-head section-left-border", "Off Shot"),
           if (has_shots) th(class = "sub-head", "Def Shot"),
           th(class = "sub-head section-left-border", "Off Poss"),
-          th(class = "sub-head", "Def Poss"),
-          th(class = "sub-head", "Min")
+          th(class = "sub-head", "Def Poss")
         )
       )))
 
@@ -492,7 +485,7 @@ server_tab4 <- function(input, output, session, shared) {
                             columnDefs = col_defs
                           ))
 
-      dt <- DT::formatRound(dt, c("off_ppp", "def_ppp", "net_rtg", "minutes"), 1)
+      dt <- DT::formatRound(dt, c("off_ppp", "def_ppp", "net_rtg"), 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
 
       return(dt)
@@ -506,7 +499,7 @@ server_tab4 <- function(input, output, session, shared) {
         gn, game_date, team_name, opp_team_name, result, score_display,
         off_ppp, off_ts_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
         def_ppp, def_ts_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
-        off_poss, def_poss, minutes
+        off_poss, def_poss
       )
 
       # Result column color
@@ -535,7 +528,7 @@ server_tab4 <- function(input, output, session, shared) {
           th(class = "group-head", colspan = 6, ""),
           th(class = "group-head section-left-border", colspan = 5, "Offense"),
           th(class = "group-head section-left-border", colspan = 5, "Defense"),
-          th(class = "group-head section-left-border", colspan = 3, "Usage")
+          th(class = "group-head section-left-border", colspan = 2, "Usage")
         ),
         tr(
           th(class = "sub-head", "GN"),
@@ -555,8 +548,7 @@ server_tab4 <- function(input, output, session, shared) {
           th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"),
           th(class = "sub-head section-left-border", "Off Poss"),
-          th(class = "sub-head", "Def Poss"),
-          th(class = "sub-head", "Min")
+          th(class = "sub-head", "Def Poss")
         )
       )))
 
@@ -573,7 +565,7 @@ server_tab4 <- function(input, output, session, shared) {
                      "def_ts_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct")
       ppp_cols <- c("off_ppp", "def_ppp")
 
-      dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols, "minutes"), names(disp)), 1)
+      dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols), names(disp)), 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
 
       return(dt)

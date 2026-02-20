@@ -535,7 +535,14 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg("─── Phase 5: Sub-Lineup Stats Refresh ───")
 
   if (dry_run) {
-    log_msg("[DRY RUN] Would call refresh_sub_lineups_stats()")
+    if (length(processed_ids)) {
+      log_msg(sprintf(
+        "[DRY RUN] Would call refresh_sub_lineups_stats_for_games() for %d game(s): %s",
+        length(processed_ids), paste(processed_ids, collapse = ", ")
+      ))
+    } else {
+      log_msg("[DRY RUN] Would call refresh_sub_lineups_stats()")
+    }
   } else {
     tryCatch({
       t0 <- proc.time()
@@ -548,7 +555,37 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       DBI::dbExecute(
         pg, sprintf('SET search_path TO %s, public;', SCHEMA)
       )
-      DBI::dbExecute(pg, "SELECT refresh_sub_lineups_stats();")
+
+      # Prefer incremental refresh for processed game IDs when function exists.
+      incr_exists <- DBI::dbGetQuery(
+        pg,
+        "SELECT EXISTS (
+           SELECT 1
+           FROM pg_proc p
+           JOIN pg_namespace n ON n.oid = p.pronamespace
+           WHERE n.nspname = $1
+             AND p.proname = 'refresh_sub_lineups_stats_for_games'
+         ) AS ok",
+        params = list(SCHEMA)
+      )$ok[[1]]
+
+      if (length(processed_ids) && isTRUE(incr_exists)) {
+        touched <- DBI::dbGetQuery(
+          pg,
+          "SELECT refresh_sub_lineups_stats_for_games($1::int4[]) AS n",
+          params = list(as.integer(processed_ids))
+        )$n[[1]]
+        log_msg(sprintf(
+          "  Used incremental refresh for %d game(s); touched %s sub-lineup rows",
+          length(processed_ids), format(as.integer(touched), big.mark = ",")
+        ))
+      } else {
+        if (length(processed_ids) && !isTRUE(incr_exists)) {
+          log_msg("  Incremental refresh function not found; falling back to full refresh", "WARN")
+        }
+        DBI::dbExecute(pg, "SELECT refresh_sub_lineups_stats();")
+        log_msg("  Used full refresh_sub_lineups_stats()")
+      }
 
       after_cnt <- DBI::dbGetQuery(
         pg, sprintf('SELECT count(*) AS n FROM "%s"."sub_lineups_stats"', SCHEMA)
@@ -582,6 +619,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     )
 
     warn_count <- 0
+    minute_floor_warn <- 39.0
 
     for (gid in processed_ids) {
       for (chk in checks) {
@@ -595,6 +633,92 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
           log_msg(sprintf("  game %d: %s has %d rows (expected >= %d)",
                           gid, chk$table, cnt, chk$min_rows), "WARN")
           warn_count <- warn_count + 1
+        }
+      }
+
+      # Team-minute integrity check (deduped timeline seconds):
+      #  - warn if under 40 minutes
+      #  - warn if over 40 minutes without OT
+      minute_rows <- DBI::dbGetQuery(
+        pg,
+        sprintf(
+          "WITH per_second AS (
+             SELECT DISTINCT
+               game_id,
+               team_id,
+               end_game_seconds_remaining
+             FROM \"%s\".\"df_pts_poss_lineups_longer_mv\"
+             WHERE game_id = $1
+               AND type_lineup = 'offense'
+               AND end_game_seconds_remaining IS NOT NULL
+           ),
+           stitched AS (
+             SELECT
+               game_id,
+               team_id,
+               end_game_seconds_remaining,
+               LAG(end_game_seconds_remaining) OVER (
+                 PARTITION BY game_id, team_id
+                 ORDER BY end_game_seconds_remaining DESC
+               ) AS prev_egr
+             FROM per_second
+           ),
+           team_minutes AS (
+             SELECT
+               game_id,
+               team_id,
+               COALESCE(SUM(prev_egr - end_game_seconds_remaining), 0) / 60.0 AS minutes
+             FROM stitched
+             WHERE prev_egr IS NOT NULL
+             GROUP BY game_id, team_id
+           ),
+           qtr AS (
+             SELECT game_id, MAX(quarter)::int AS max_quarter
+             FROM \"%s\".\"df_pts_poss_lineups_longer_mv\"
+             WHERE game_id = $1
+             GROUP BY game_id
+           )
+           SELECT
+             tm.team_id,
+             tm.minutes,
+             COALESCE(qtr.max_quarter, 4) AS max_quarter,
+             (COALESCE(qtr.max_quarter, 4) > 4) AS has_ot
+           FROM team_minutes tm
+           LEFT JOIN qtr USING (game_id)
+           ORDER BY tm.team_id",
+          SCHEMA, SCHEMA
+        ),
+        params = list(as.integer(gid))
+      )
+
+      if (!nrow(minute_rows)) {
+        log_msg(sprintf("  game %d: minute integrity check has no team rows", gid), "WARN")
+        warn_count <- warn_count + 1
+      } else {
+        for (i in seq_len(nrow(minute_rows))) {
+          team_id_i <- minute_rows$team_id[[i]]
+          mins_i    <- as.numeric(minute_rows$minutes[[i]])
+          has_ot_i  <- isTRUE(minute_rows$has_ot[[i]])
+
+          if (!is.finite(mins_i)) {
+            log_msg(sprintf(
+              "  game %d team %d: minute integrity check returned invalid minutes",
+              gid, team_id_i
+            ), "WARN")
+            warn_count <- warn_count + 1
+          } else if (mins_i < minute_floor_warn) {
+            log_msg(sprintf(
+              "  game %d team %d: minutes %.1f < %.1f",
+              gid, team_id_i, mins_i, minute_floor_warn
+            ), "WARN")
+            warn_count <- warn_count + 1
+          } else if (mins_i > 40 && !has_ot_i) {
+            log_msg(sprintf(
+              "  game %d team %d: minutes %.1f > 40.0 with no OT flag",
+              gid, team_id_i, mins_i
+            ), "WARN")
+            warn_count <- warn_count + 1
+          }
         }
       }
     }
