@@ -1236,3 +1236,7 @@ _distinct(game_id, team_id, poss_end_id)
   - `<39.0`: 4 team-rows across 3 games
   - `<38.5`: 2 team-rows across 1 game
 - Final threshold set to `39.0` to reduce noisy warnings while still catching meaningful under-coverage.
+- ETL implementation detail:
+  - Phase 6 variable `minute_floor_warn <- 39.0` controls the under-minute threshold.
+  - Minute check is game/team-level and runs only for `processed_ids`.
+  - Purpose is data-integrity alerting (warnings only); ETL continues and does not fail on these checks.
