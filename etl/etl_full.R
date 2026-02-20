@@ -255,6 +255,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     } else {
 
     log_msg(sprintf("Games to process: %d (%s)", length(ids), paste(ids, collapse = ", ")))
+    ensure_pws_num_starters_cols(pg, SCHEMA)
 
     if (dry_run) {
       log_msg("[DRY RUN] Would run etl_update() for the above games")
@@ -304,10 +305,23 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       log_msg(sprintf("  subs: %d rows upserted", nrow(subs_df)))
 
       # full_rosters
-      roster_df <- purrr::map(pbps, extract_roster) |>
+      box_sched <- fetchable_sched |>
+        dplyr::mutate(
+          box_url = dplyr::if_else(
+            is.na(box_url) | box_url == "",
+            paste0(
+              "https://stats.segevstats.com/realtimestat_heb/get_team_score.php?game_id=",
+              game_id
+            ),
+            box_url
+          )
+        )
+      box_payloads <- purrr::map2(box_sched$game_id, box_sched$box_url, fetch_game_box)
+      roster_df <- purrr::map(box_payloads, extract_roster) |>
         purrr::list_rbind() |>
         dplyr::rename_with(tolower) |>
         dplyr::mutate(game_year = as.integer(format(Sys.Date(), "%Y")))
+      roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
       upsert_by_like(pg, SCHEMA, "full_rosters", roster_df)
       log_msg(sprintf("  full_rosters: %d rows upserted", nrow(roster_df)))
 
@@ -327,6 +341,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         dplyr::collect()
       upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df)
       log_msg(sprintf("  lineups_lookup: %d rows upserted", nrow(df_lineups_df)))
+      lineup_starters <- df_lineups_df %>%
+        dplyr::select(game_id, team_id, lineup_hash, num_starters) %>%
+        dplyr::distinct(game_id, team_id, lineup_hash, .keep_all = TRUE)
 
       # stints
       stints_df <- compute_stints(pg) |>
@@ -351,6 +368,24 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         stints_df,
         by
       )
+      pws_stage <- pws_stage %>%
+        dplyr::left_join(
+          lineup_starters %>%
+            dplyr::rename(
+              lineup_hash_offense = lineup_hash,
+              num_starters_offense = num_starters
+            ),
+          by = c("game_id", "team_id", "lineup_hash_offense")
+        ) %>%
+        dplyr::left_join(
+          lineup_starters %>%
+            dplyr::rename(
+              team_id_defense = team_id,
+              lineup_hash_defense = lineup_hash,
+              num_starters_defense = num_starters
+            ),
+          by = c("game_id", "team_id_defense", "lineup_hash_defense")
+        )
       upsert_by_like(pg, SCHEMA, "pws", pws_stage)
       log_msg(sprintf("  pws: %d rows upserted", nrow(pws_stage)))
 

@@ -1240,3 +1240,16 @@ _distinct(game_id, team_id, poss_end_id)
   - Phase 6 variable `minute_floor_warn <- 39.0` controls the under-minute threshold.
   - Minute check is game/team-level and runs only for `processed_ids`.
   - Purpose is data-integrity alerting (warnings only); ETL continues and does not fail on these checks.
+
+## Session Notes (2026-02-20): Starters + Lineup Lineage
+
+- Starter source: in ETL, starter flags are extracted from the boxscore payload (`box_url`, `get_team_score.php`) inside `extract_roster()`.
+- `lineups_lookup` now carries `num_starters` per `(game_id, team_id, lineup_hash)`.
+- `pws` is the source of truth for downstream lineup MV starter counts:
+  - `pws.num_starters_offense` joined from lineup hash on offense side.
+  - `pws.num_starters_defense` joined from lineup hash on defense side.
+- `df_pts_poss_lineups_longer_mv.num_starters` now comes directly from `pws`:
+  - offense rows use `num_starters_offense`
+  - defense rows use `num_starters_defense`
+- Integrity guard added: preserve roster names before `full_rosters` upsert via `enrich_roster_names_from_existing()` to avoid null-name overwrite from partial backfill payloads.
+- Root-cause lesson: always join roster identity with `game_year` plus team/player keys where relevant; avoid rebuilding lookup grain when a direct join to existing lookup output is available.

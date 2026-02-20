@@ -27,7 +27,8 @@ SELECT quarter,
     own_team_score,
     opp_team_score,
     type_lineup,
-    lineup_hash
+    lineup_hash,
+    num_starters
    FROM ( SELECT pws.quarter,
             pws.parameters_type,
             pws.parameters_points,
@@ -47,7 +48,8 @@ SELECT quarter,
             cs.team_cum AS own_team_score,
             cs.total_cum - cs.team_cum AS opp_team_score,
             'offense'::text AS type_lineup,
-            pws.lineup_hash_offense AS lineup_hash
+            pws.lineup_hash_offense AS lineup_hash,
+            pws.num_starters_offense AS num_starters
            FROM pws
            LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id
           WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])
@@ -71,7 +73,8 @@ SELECT quarter,
             cs.total_cum - cs.team_cum AS own_team_score,
             cs.team_cum AS opp_team_score,
             'defense'::text AS type_lineup,
-            pws.lineup_hash_defense AS lineup_hash
+            pws.lineup_hash_defense AS lineup_hash,
+            pws.num_starters_defense AS num_starters
            FROM pws
            LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id
           WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])) longer
