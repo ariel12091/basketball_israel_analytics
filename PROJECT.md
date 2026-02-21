@@ -1253,3 +1253,93 @@ _distinct(game_id, team_id, poss_end_id)
   - defense rows use `num_starters_defense`
 - Integrity guard added: preserve roster names before `full_rosters` upsert via `enrich_roster_names_from_existing()` to avoid null-name overwrite from partial backfill payloads.
 - Root-cause lesson: always join roster identity with `game_year` plus team/player keys where relevant; avoid rebuilding lookup grain when a direct join to existing lookup output is available.
+
+## Session Notes (2026-02-20): `extract_roster` Compatibility Fix + Postmortem
+
+- Required rule: keep legacy roster identity extraction logic unchanged; add only starter enrichment.
+- Why this mattered: switching roster extraction to boxscore changed/nullified identity fields (names/team labels) and caused downstream `NA NA` display regressions.
+
+### Old / required `extract_roster` logic (legacy-compatible)
+```r
+extract_roster <- function(pbp) {
+  gi <- pbp$result$gameInfo
+  if (is.null(gi$homeTeam) || is.null(gi$awayTeam)) return(tibble::tibble())
+  home <- tibble::as_tibble(gi$homeTeam$players) |>
+    mutate(team_id = gi$homeTeam$id, game_id = gi$gameId,
+           team_name = gi$homeTeam$name, team_name_local = gi$homeTeam$nameLocal)
+  away <- tibble::as_tibble(gi$awayTeam$players) |>
+    mutate(team_id = gi$awayTeam$id, game_id = gi$gameId,
+           team_name = gi$awayTeam$name, team_name_local = gi$awayTeam$nameLocal)
+  dplyr::bind_rows(away, home) |>
+    rename(player_id = id) |>
+    mutate(across(c(game_id, team_id, player_id), as.integer)) |>
+    distinct(game_id, team_id, player_id, .keep_all = TRUE)
+}
+```
+
+### Added function for starter only (do not replace roster extraction)
+```r
+extract_starters <- function(box) {
+  bs <- box$result$boxscore
+  gi <- bs$gameInfo
+  if (is.null(bs$homeTeam) || is.null(bs$awayTeam)) return(tibble::tibble())
+
+  home <- tibble::as_tibble(bs$homeTeam$players) |>
+    rename(player_id = playerId) |>
+    mutate(team_id = as.integer(gi$homeTeamId), game_id = as.integer(gi$gameId))
+  away <- tibble::as_tibble(bs$awayTeam$players) |>
+    rename(player_id = playerId) |>
+    mutate(team_id = as.integer(gi$awayTeamId), game_id = as.integer(gi$gameId))
+
+  out <- dplyr::bind_rows(away, home)
+  if (!"starter" %in% names(out) && "isStarter" %in% names(out)) out$starter <- out$isStarter
+  if (!"starter" %in% names(out) && "starterSign" %in% names(out)) out$starter <- out$starterSign
+  if (!"starter" %in% names(out)) out$starter <- FALSE
+
+  out |>
+    mutate(
+      across(c(game_id, team_id, player_id), as.integer),
+      starter = dplyr::coalesce(as.logical(starter), FALSE)
+    ) |>
+    distinct(game_id, team_id, player_id, .keep_all = TRUE) |>
+    dplyr::select(game_id, team_id, player_id, starter)
+}
+```
+
+### ETL flow rule (current)
+- Build `roster_df` from PBP: `map(pbps, extract_roster)`.
+- Build `starters_df` from boxscore: `map(boxes, extract_starters)`.
+- `left_join` on `(game_id, team_id, player_id)`, default `starter=FALSE` if missing.
+
+### Postmortem: mistakes in this session and why they were harmful
+- Mistake: replaced `extract_roster` source from PBP to boxscore.
+- Harm: broke compatibility with legacy identity/name fields and propagated `NA NA` names in app outputs.
+- Mistake: changed function signature/behavior without preserving existing ETL contracts.
+- Harm: increased regression risk in downstream joins and made debugging harder.
+- Mistake: rebuilt lookup-related paths instead of using direct joins where already available.
+- Harm: created duplicate-variant risk and unnecessary complexity.
+- Rule going forward: when extending ETL, prefer additive enrichment to existing trusted functions; do not change source semantics unless explicitly requested.
+
+
+## Session Notes (2026-02-21): full_rosters Backfill + lineups_lookup Rebuild
+- Updated ETL roster year assignment to use `schedule.game_year` by `game_id` (instead of `Sys.Date()` / hardcoded year):
+  - `etl/etl_full.R`
+  - `etl/etl_onoff.R`
+- Kept roster identity source on PBP (`extract_roster`) and starter source on boxscore (`extract_starters`), joined on `(game_id, team_id, player_id)`.
+- Added `extract_starters` guard for one-sided/empty boxscore player arrays so ingestion does not fail when one side is blank.
+- Ran full `full_rosters` backfill across scored schedule games in `basketball_test` using constructed Segev URLs:
+  - `pbp_url = get_team_action.php?game_id=<id>`
+  - `box_url = get_team_score.php?game_id=<id>`
+- Known exceptions (left as-is for now): `62522`, `62527`, `62541`.
+- Rebuilt only `lineups_lookup` from current `actions_clean` + `full_rosters` for all available game IDs.
+- Compatibility audit after rebuild:
+  - `lineups_lookup` vs `full_rosters` key mismatch rows: `0`
+  - `game_year` mismatch rows: `0`
+  - null `game_year` in both tables: `0`
+- `pws` integrity check against rebuilt `lineups_lookup`:
+  - offense/defense lineup-hash missing in `lineups_lookup`: `0`
+  - offense/defense `num_starters` mismatch: `0`
+  - only out-of-sync game_ids are the known exceptions: `62522`, `62527`, `62541`
+- Operational takeaway:
+  - No full `pws` rebuild required right now for normal games.
+  - Revisit the 3 known exception games later with a dedicated workaround.

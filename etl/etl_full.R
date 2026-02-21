@@ -316,11 +316,21 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
             box_url
           )
         )
-      box_payloads <- purrr::map2(box_sched$game_id, box_sched$box_url, fetch_game_box)
-      roster_df <- purrr::map(box_payloads, extract_roster) |>
+      boxes <- purrr::map2(box_sched$game_id, box_sched$box_url, fetch_game_box)
+      game_year_map <- fetchable_sched |>
+        dplyr::select(game_id, game_year) |>
+        dplyr::distinct() |>
+        dplyr::mutate(game_year = as.integer(game_year))
+      roster_df <- purrr::map(pbps, extract_roster) |>
         purrr::list_rbind() |>
         dplyr::rename_with(tolower) |>
-        dplyr::mutate(game_year = as.integer(format(Sys.Date(), "%Y")))
+        dplyr::left_join(game_year_map, by = "game_id")
+      starters_df <- purrr::map(boxes, extract_starters) |>
+        purrr::list_rbind() |>
+        dplyr::rename_with(tolower)
+      roster_df <- roster_df |>
+        dplyr::left_join(starters_df, by = c("game_id", "team_id", "player_id")) |>
+        dplyr::mutate(starter = dplyr::coalesce(as.logical(starter), FALSE))
       roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
       upsert_by_like(pg, SCHEMA, "full_rosters", roster_df)
       log_msg(sprintf("  full_rosters: %d rows upserted", nrow(roster_df)))

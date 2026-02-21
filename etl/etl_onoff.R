@@ -280,36 +280,72 @@ clean_actions <- function(pbp) {
 
 
 
-extract_roster <- function(box) {
+extract_roster <- function(pbp) {
+  gi <- pbp$result$gameInfo
+  if (is.null(gi$homeTeam) || is.null(gi$awayTeam)) return(tibble::tibble())
+  home <- tibble::as_tibble(gi$homeTeam$players) |>
+    mutate(team_id = gi$homeTeam$id, game_id = gi$gameId,
+           team_name = gi$homeTeam$name, team_name_local = gi$homeTeam$nameLocal)
+  away <- tibble::as_tibble(gi$awayTeam$players) |>
+    mutate(team_id = gi$awayTeam$id, game_id = gi$gameId,
+           team_name = gi$awayTeam$name, team_name_local = gi$awayTeam$nameLocal)
+  dplyr::bind_rows(away, home) |>
+    rename(player_id = id) |>
+    mutate(across(c(game_id, team_id, player_id), as.integer)) |>
+    distinct(game_id, team_id, player_id, .keep_all = TRUE)
+}
+
+extract_starters <- function(box) {
   bs <- box$result$boxscore
   gi <- bs$gameInfo
   if (is.null(bs$homeTeam) || is.null(bs$awayTeam)) return(tibble::tibble())
-  home <- tibble::as_tibble(bs$homeTeam$players) |>
-    rename(player_id = playerId) |>
-    mutate(
-      team_id = as.integer(gi$homeTeamId),
-      game_id = as.integer(gi$gameId),
-      team_name = NA_character_,
-      team_name_local = NA_character_
-    )
-  away <- tibble::as_tibble(bs$awayTeam$players) |>
-    rename(player_id = playerId) |>
-    mutate(
-      team_id = as.integer(gi$awayTeamId),
-      game_id = as.integer(gi$gameId),
-      team_name = NA_character_,
-      team_name_local = NA_character_
-    )
-  roster <- dplyr::bind_rows(away, home)
-  if (!"starter" %in% names(roster)) {
-    roster$starter <- FALSE
+
+  normalize_side <- function(players_tbl, team_id, game_id) {
+    side <- tibble::as_tibble(players_tbl)
+    if (!nrow(side)) {
+      return(tibble::tibble(
+        game_id = integer(0),
+        team_id = integer(0),
+        player_id = integer(0),
+        starter = logical(0)
+      ))
+    }
+    if (!"player_id" %in% names(side) && "playerId" %in% names(side)) {
+      side <- dplyr::rename(side, player_id = playerId)
+    }
+    if (!"player_id" %in% names(side) && "id" %in% names(side)) {
+      side <- dplyr::rename(side, player_id = id)
+    }
+    if (!"player_id" %in% names(side)) {
+      return(tibble::tibble(
+        game_id = integer(0),
+        team_id = integer(0),
+        player_id = integer(0),
+        starter = logical(0)
+      ))
+    }
+    side |>
+      dplyr::mutate(
+        team_id = as.integer(team_id),
+        game_id = as.integer(game_id)
+      )
   }
-  roster |>
+
+  home <- normalize_side(bs$homeTeam$players, gi$homeTeamId, gi$gameId)
+  away <- normalize_side(bs$awayTeam$players, gi$awayTeamId, gi$gameId)
+
+  out <- dplyr::bind_rows(away, home)
+  if (!"starter" %in% names(out) && "isStarter" %in% names(out)) out$starter <- out$isStarter
+  if (!"starter" %in% names(out) && "starterSign" %in% names(out)) out$starter <- out$starterSign
+  if (!"starter" %in% names(out)) out$starter <- FALSE
+
+  out |>
     mutate(
       across(c(game_id, team_id, player_id), as.integer),
       starter = dplyr::coalesce(as.logical(starter), FALSE)
     ) |>
-    distinct(game_id, team_id, player_id, .keep_all = TRUE)
+    distinct(game_id, team_id, player_id, .keep_all = TRUE) |>
+    dplyr::select(game_id, team_id, player_id, starter)
 }
 
 # Keep existing roster identity fields when source payload lacks them.
@@ -591,10 +627,21 @@ etl_update <- function() {
   
   subs_df %>%
     select(parameters_player_in)
-  # full_rosters
+  # full_rosters (names from PBP, starter sign from box)
   boxes <- purrr::map2(sched_subset$game_id, sched_subset$box_url, fetch_game_box)
-  roster_df <- purrr::map(boxes, extract_roster) |> list_rbind() |> rename_with(tolower) %>%
-    mutate(game_year = 2026)
+  game_year_map <- sched_subset |>
+    dplyr::select(game_id, game_year) |>
+    dplyr::distinct() |>
+    dplyr::mutate(game_year = as.integer(game_year))
+  roster_df <- purrr::map(pbps, extract_roster) |> list_rbind() |> rename_with(tolower) %>%
+    dplyr::left_join(game_year_map, by = "game_id")
+  starters_df <- purrr::map(boxes, extract_starters) |> list_rbind() |> rename_with(tolower)
+  if (nrow(starters_df)) {
+    roster_df <- roster_df |>
+      dplyr::left_join(starters_df, by = c("game_id", "team_id", "player_id"))
+  }
+  if (!"starter" %in% names(roster_df)) roster_df$starter <- FALSE
+  roster_df$starter <- dplyr::coalesce(as.logical(roster_df$starter), FALSE)
   roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
   
   upsert_by_like(pg, SCHEMA, "full_rosters", roster_df)
