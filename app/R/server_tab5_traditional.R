@@ -96,6 +96,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateSelectInput(session, "ts_opp_rank_n", selected = "")
     updateSelectInput(session, "ts_opp_rank_metric", selected = "")
     updateSelectInput(session, "ts_display_mode", selected = "Totals")
+    updateSliderInput(session, "ts_min_gp_slider", value = 1, min = 1, max = 40)
+    updateNumericInput(session, "ts_min_gp", value = 1, min = 1, max = 40)
     updateCheckboxInput(session, "ts_show_ineligible", value = FALSE)
     updateCheckboxInput(session, "ts_clutch_enabled", value = FALSE)
     updateSliderInput(session, "ts_clutch_margin", value = 5)
@@ -105,6 +107,24 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateSelectizeInput(session, "ts_gn_min", selected = "")
     updateSelectizeInput(session, "ts_gn_max", selected = "")
     updateSelectizeInput(session, "ts_last_n", selected = "")
+  })
+
+  observeEvent(input$ts_min_gp_slider, ignoreInit = TRUE, {
+    s <- suppressWarnings(as.integer(input$ts_min_gp_slider))
+    n <- suppressWarnings(as.integer(input$ts_min_gp))
+    if (is.na(s)) return(NULL)
+    if (is.na(n) || s != n) {
+      updateNumericInput(session, "ts_min_gp", value = s)
+    }
+  })
+
+  observeEvent(input$ts_min_gp, ignoreInit = TRUE, {
+    n <- suppressWarnings(as.integer(input$ts_min_gp))
+    s <- suppressWarnings(as.integer(input$ts_min_gp_slider))
+    if (is.na(n)) return(NULL)
+    if (is.na(s) || n != s) {
+      updateSliderInput(session, "ts_min_gp_slider", value = n)
+    }
   })
 
   apply_ts_mode <- function(df, mode, x_poss = NA_real_, x_min = NA_real_) {
@@ -211,6 +231,42 @@ server_tab5_traditional <- function(input, output, session, shared) {
     td %>% filter(team_name %in% opp_names) %>% pull(team_id)
   })
 
+  run_player_traditional_dynamic <- function(pool, game_year, start_d, end_d,
+                                             team_ids_csv, game_type_csv, opp_ids_csv,
+                                             home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
+                                             max_margin, margin_status, max_time_remaining, ot_margin_filter,
+                                             min_gn, max_gn, last_n_games) {
+    DBI::dbGetQuery(
+      pool,
+      paste0(
+        "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
+        "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
+        ")"
+      ),
+      params = list(
+        as.integer(game_year),
+        if (!is.na(start_d)) as.Date(start_d) else NA,
+        if (!is.na(end_d)) as.Date(end_d) else NA,
+        team_ids_csv,
+        game_type_csv,
+        opp_ids_csv,
+        home_away,
+        outcome,
+        opp_rank_side,
+        opp_rank_n,
+        opp_rank_metric,
+        max_margin,
+        margin_status,
+        max_time_remaining,
+        ot_margin_filter,
+        min_gn,
+        max_gn,
+        last_n_games
+      )
+    )
+  }
+
   fallback_needed <- reactive({
     rng <- debounced_range()
     if (is.null(rng)) return(FALSE)
@@ -288,238 +344,48 @@ server_tab5_traditional <- function(input, output, session, shared) {
     margin_status <- if (clutch_enabled) (f$clutch_status %||% "all") else NA_character_
     max_time_remaining <- if (clutch_enabled) suppressWarnings(as.integer(f$clutch_minutes)) * 60L else NA_integer_
     ot_margin_filter <- if (clutch_enabled) isTRUE(f$clutch_ot_margin) else FALSE
-
-    sched <- DBI::dbGetQuery(
-      pg_pool,
-      "SELECT game_id, game_date, team_id, team_name, opp_team_id, opp_team_name,
-              game_type, is_home, has_won, gn
-       FROM basketball_test.final_schedule_mv
-       WHERE game_year = $1",
-      params = list(gy_int)
-    )
-    if (!nrow(sched)) return(NULL)
-
-    start_d <- as.Date(rng[1])
-    end_d <- as.Date(rng[2])
-    sched <- sched %>% filter(game_date >= !!start_d, game_date <= !!end_d)
-
-    if (!is.null(tids) && length(tids) > 0) {
-      sched <- sched %>% filter(team_id %in% tids)
+    team_ids_csv <- if (!is.null(tids) && length(tids) > 0) paste(as.integer(tids), collapse = ",") else NA_character_
+    game_type_csv <- if (!is.null(f$game_type) && any(nzchar(f$game_type))) {
+      paste(as.integer(f$game_type[nzchar(f$game_type)]), collapse = ",")
+    } else {
+      NA_character_
     }
-
-    if (!is.null(f$game_type) && any(nzchar(f$game_type))) {
-      gt_vals <- as.integer(f$game_type[nzchar(f$game_type)])
-      sched <- sched %>% filter(game_type %in% gt_vals)
-    }
-
-    if (!is.null(opp_ids) && length(opp_ids) > 0) {
-      sched <- sched %>% filter(opp_team_id %in% opp_ids)
-    }
-
-    ha <- f$home_away %||% ""
-    if (nzchar(ha)) {
-      sched <- if (identical(ha, "home")) sched %>% filter(is_home == TRUE) else sched %>% filter(is_home == FALSE)
-    }
-
-    outcome <- f$outcome %||% ""
-    if (nzchar(outcome)) {
-      sched <- if (identical(outcome, "win")) sched %>% filter(has_won == TRUE) else sched %>% filter(has_won == FALSE)
-    }
-
-    rank_side <- f$rank_side %||% ""
+    opp_ids_csv <- if (!is.null(opp_ids) && length(opp_ids) > 0) paste(as.integer(opp_ids), collapse = ",") else NA_character_
+    rank_side <- if (nzchar(f$rank_side %||% "")) f$rank_side else NA_character_
     rank_n <- suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n))
-    rank_metric <- f$metric %||% ""
-    if (nzchar(rank_side) && !is.na(rank_n) && nzchar(rank_metric)) {
-      team_ranks <- DBI::dbGetQuery(
+    rank_metric <- if (nzchar(f$metric %||% "")) f$metric else NA_character_
+    home_away <- if (nzchar(f$home_away %||% "")) f$home_away else NA_character_
+    outcome <- if (nzchar(f$outcome %||% "")) f$outcome else NA_character_
+
+    out <- tryCatch(
+      run_player_traditional_dynamic(
         pg_pool,
-        "SELECT team_id,
-                rank() OVER (ORDER BY off_ppp DESC) AS rank_off,
-                rank() OVER (ORDER BY def_ppp ASC) AS rank_def,
-                rank() OVER (ORDER BY net_rtg DESC) AS rank_net
-         FROM basketball_test.team_ppp_ratings_mv
-         WHERE game_year = $1",
-        params = list(gy_int)
-      )
-      if (nrow(team_ranks)) {
-        rank_col <- if (rank_metric == "off") "rank_off" else if (rank_metric == "def") "rank_def" else "rank_net"
-        opp_keep <- if (rank_side == "top") {
-          team_ranks %>% filter(.data[[rank_col]] <= rank_n) %>% pull(team_id)
-        } else {
-          max_rank <- suppressWarnings(max(team_ranks[[rank_col]], na.rm = TRUE))
-          team_ranks %>% filter(.data[[rank_col]] >= (max_rank - rank_n + 1)) %>% pull(team_id)
-        }
-        sched <- sched %>% filter(opp_team_id %in% opp_keep)
-      }
-    }
-
-    if (!is.na(gp$min_gn)) sched <- sched %>% filter(gn >= gp$min_gn)
-    if (!is.na(gp$max_gn)) sched <- sched %>% filter(gn <= gp$max_gn)
-    if (!is.na(gp$last_n)) {
-      sched <- sched %>%
-        group_by(team_id) %>%
-        arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-        mutate(rn_recent = row_number()) %>%
-        ungroup() %>%
-        filter(rn_recent <= gp$last_n) %>%
-        select(-rn_recent)
-    }
-
-    if (!nrow(sched)) return(NULL)
-
-    sched_pairs <- sched %>% select(game_id, team_id) %>% distinct()
-    if (!nrow(sched_pairs)) return(NULL)
-    game_ids_csv <- paste(sched_pairs$game_id, collapse = ",")
-    team_ids_csv <- paste(sched_pairs$team_id, collapse = ",")
-
-    acts <- DBI::dbGetQuery(
-      pg_pool,
-      "WITH pairs AS (
-         SELECT p.game_id, p.team_id
-         FROM unnest(
-           string_to_array($1, ',')::int8[],
-           string_to_array($2, ',')::int4[]
-         ) AS p(game_id, team_id)
-       )
-       SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining,
-              d.type, d.parameters_type, d.parameters_made, d.parameters_points, d.player_id,
-              d.type_lineup, d.final_end_poss, d.final_end_id, d.quarter, d.own_team_score, d.opp_team_score
-       FROM basketball_test.df_pts_poss_lineups_longer_mv d
-       JOIN pairs p
-         ON p.game_id = d.game_id
-        AND p.team_id = d.team_id",
-      params = list(game_ids_csv, team_ids_csv)
+        game_year = gy_int,
+        start_d = as.Date(rng[1]),
+        end_d = as.Date(rng[2]),
+        team_ids_csv = team_ids_csv,
+        game_type_csv = game_type_csv,
+        opp_ids_csv = opp_ids_csv,
+        home_away = home_away,
+        outcome = outcome,
+        opp_rank_side = rank_side,
+        opp_rank_n = rank_n,
+        opp_rank_metric = rank_metric,
+        max_margin = max_margin,
+        margin_status = margin_status,
+        max_time_remaining = max_time_remaining,
+        ot_margin_filter = ot_margin_filter,
+        min_gn = gp$min_gn,
+        max_gn = gp$max_gn,
+        last_n_games = gp$last_n
+      ),
+      error = function(e) NULL
     )
-    if (clutch_enabled && nrow(acts)) {
-      acts <- acts %>%
-        mutate(
-          quarter = suppressWarnings(as.integer(quarter)),
-          margin_abs = abs(coalesce(own_team_score, 0) - coalesce(opp_team_score, 0)),
-          score_diff = coalesce(own_team_score, 0) - coalesce(opp_team_score, 0)
-        )
 
-      if (!is.na(max_margin)) {
-        acts <- acts %>%
-          filter(margin_abs <= max_margin | (quarter > 4 & !ot_margin_filter))
-      }
+    if (is.null(out) || !nrow(out)) return(NULL)
 
-      if (!is.na(margin_status) && !identical(margin_status, "all")) {
-        if (identical(margin_status, "leading")) {
-          acts <- acts %>% filter(score_diff > 0 | (quarter > 4 & !ot_margin_filter))
-        } else if (identical(margin_status, "trailing")) {
-          acts <- acts %>% filter(score_diff < 0 | (quarter > 4 & !ot_margin_filter))
-        } else if (identical(margin_status, "tied")) {
-          acts <- acts %>% filter(score_diff == 0 | (quarter > 4 & !ot_margin_filter))
-        }
-      }
-
-      if (!is.na(max_time_remaining)) {
-        acts <- acts %>%
-          filter(end_game_seconds_remaining <= max_time_remaining | quarter > 4)
-      }
-    }
-    if (!nrow(acts)) return(NULL)
-
-    lineup_map <- DBI::dbGetQuery(
-      pg_pool,
-      "WITH pairs AS (
-         SELECT p.game_id, p.team_id
-         FROM unnest(
-           string_to_array($2, ',')::int8[],
-           string_to_array($3, ',')::int4[]
-         ) AS p(game_id, team_id)
-       )
-       SELECT DISTINCT ll.game_id, ll.team_id, ll.lineup_hash, ll.player_id
-       FROM basketball_test.lineups_lookup ll
-       JOIN pairs p
-         ON p.game_id = ll.game_id
-        AND p.team_id = ll.team_id
-       WHERE ll.game_year = $1
-         AND COALESCE(ll.is_on_verdict, 0)::int = 1",
-      params = list(gy_int, game_ids_csv, team_ids_csv)
-    )
-    if (!nrow(lineup_map)) return(NULL)
-
-    poss_end <- acts %>%
-      filter(
-        type_lineup == "offense",
-        final_end_poss,
-        !is.na(id),
-        !is.na(lineup_hash)
-      ) %>%
-      distinct(game_id, team_id, lineup_hash, poss_end_id = id)
-
-    player_usage <- poss_end %>%
-      inner_join(
-        lineup_map %>% rename(on_floor_player_id = player_id),
-        by = c("game_id", "team_id", "lineup_hash"),
-        relationship = "many-to-many"
-      ) %>%
-      group_by(player_id = on_floor_player_id, team_id) %>%
-      summarise(
-        gp = n_distinct(game_id),
-        poss_on_floor = n_distinct(game_id, team_id, poss_end_id),
-        .groups = "drop"
-      )
-
-    seg_times <- acts %>%
-      filter(!is.na(lineup_hash), !is.na(segment_id), !is.na(end_game_seconds_remaining)) %>%
-      group_by(game_id, team_id, lineup_hash, segment_id) %>%
-      summarise(seg_seconds = max(end_game_seconds_remaining, na.rm = TRUE) - min(end_game_seconds_remaining, na.rm = TRUE), .groups = "drop")
-
-    player_minutes <- seg_times %>%
-      inner_join(
-        lineup_map,
-        by = c("game_id", "team_id", "lineup_hash"),
-        relationship = "many-to-many"
-      ) %>%
-      group_by(player_id, team_id) %>%
-      summarise(minutes = round(sum(seg_seconds, na.rm = TRUE) / 60, 1), .groups = "drop")
-
-    stats <- acts %>%
-      filter(!is.na(player_id), player_id > 0) %>%
-      group_by(player_id, team_id) %>%
-      summarise(
-        pts = sum(ifelse(type == "shot" & parameters_made == "made" & type_lineup == "offense", coalesce(parameters_points, 0), 0), na.rm = TRUE) +
-          sum(ifelse(type == "freeThrow" & parameters_made == "made" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        reb = sum(ifelse(type == "rebound" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        ast = sum(ifelse(type == "assist" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        stl = sum(ifelse(type == "steal" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        blk = sum(ifelse(type == "block" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        tov = sum(ifelse(type == "turnover" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        fgm = sum(ifelse(type == "shot" & parameters_made == "made" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        fga = sum(ifelse(type == "shot" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        `3pm` = sum(ifelse(type == "shot" & parameters_made == "made" & parameters_points == 3 & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        `3pa` = sum(ifelse(type == "shot" & parameters_points == 3 & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        ftm = sum(ifelse(type == "freeThrow" & parameters_made == "made" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        fta = sum(ifelse(type == "freeThrow" & type_lineup == "offense", 1, 0), na.rm = TRUE),
-        .groups = "drop"
-      ) %>%
-      mutate(
-        fg_pct = ifelse(fga > 0, round(fgm / fga * 100, 1), NA_real_),
-        tp_pct = ifelse(`3pa` > 0, round(`3pm` / `3pa` * 100, 1), NA_real_),
-        ft_pct = ifelse(fta > 0, round(ftm / fta * 100, 1), NA_real_),
-        efg = ifelse(fga > 0, round((fgm + 0.5 * `3pm`) / fga * 100, 1), NA_real_),
-        ts = ifelse((fga + 0.44 * fta) > 0, round(pts / (2 * (fga + 0.44 * fta)) * 100, 1), NA_real_)
-      )
-
-    names_df <- DBI::dbGetQuery(
-      pg_pool,
-      "SELECT DISTINCT player_id, team_id, team_name, firstname, lastname
-       FROM basketball_test.full_rosters
-       WHERE game_year = $1",
-      params = list(gy_int)
-    ) %>%
-      mutate(Player = paste(firstname, lastname))
-
-    stats %>%
-      left_join(player_minutes, by = c("player_id", "team_id")) %>%
-      left_join(player_usage, by = c("player_id", "team_id")) %>%
-      left_join(names_df %>% select(player_id, team_id, team_name, Player), by = c("player_id", "team_id")) %>%
-      mutate(
-        minutes = coalesce(minutes, 0),
-        gp = coalesce(gp, 0L),
-        poss_on_floor = coalesce(poss_on_floor, 0L)
-      ) %>%
+    out %>%
+      rename(Player = player_name) %>%
       clean_ts_rows() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
     }) %>% bindEvent(
@@ -546,6 +412,20 @@ server_tab5_traditional <- function(input, output, session, shared) {
     debounced_ts_filters(),
     gn_params()
   )
+
+  observeEvent(result_df(), ignoreInit = FALSE, {
+    df <- result_df()
+    max_gp <- 1L
+    if (!is.null(df) && nrow(df) && "gp" %in% names(df)) {
+      max_gp <- suppressWarnings(as.integer(max(df$gp, na.rm = TRUE)))
+      if (!is.finite(max_gp) || is.na(max_gp) || max_gp < 1L) max_gp <- 1L
+    }
+    cur_num <- suppressWarnings(as.integer(input$ts_min_gp))
+    cur_sld <- suppressWarnings(as.integer(input$ts_min_gp_slider))
+    target <- max(1L, min(max_gp, dplyr::coalesce(cur_num, cur_sld, 1L)))
+    updateSliderInput(session, "ts_min_gp_slider", min = 1, max = max_gp, value = target)
+    updateNumericInput(session, "ts_min_gp", min = 1, max = max_gp, value = target)
+  })
 
   ts_mode_context <- reactive({
     base_df <- result_df()
@@ -599,6 +479,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
       return(list(df = df, mode = mode, removed = 0L, ineligible = 0L, threshold = poss_threshold, show_ineligible = show_ineligible))
     }
 
+    min_gp <- suppressWarnings(as.integer(input$ts_min_gp))
+    if (!is.finite(min_gp) || is.na(min_gp) || min_gp < 1L) min_gp <- 1L
+    df <- df %>% filter(coalesce(gp, 0L) >= min_gp)
+    if (is.null(df) || !nrow(df)) {
+      return(list(df = df, mode = mode, removed = 0L, ineligible = 0L, threshold = poss_threshold, show_ineligible = show_ineligible))
+    }
+
     removed <- 0L
     ineligible <- 0L
     df$rate_eligible <- TRUE
@@ -615,7 +502,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     df <- apply_ts_mode(df, mode, x_poss = ctx$x_poss, x_min = ctx$x_min)
 
     list(df = df, mode = mode, removed = removed, ineligible = ineligible, threshold = poss_threshold, show_ineligible = show_ineligible)
-  }) %>% bindEvent(ts_mode_context(), input$ts_display_mode, input$ts_show_ineligible)
+  }) %>% bindEvent(ts_mode_context(), input$ts_display_mode, input$ts_show_ineligible, input$ts_min_gp, input$ts_min_gp_slider)
 
   output$ts_mode_warning <- renderUI({
     disp_ctx <- ts_display_context()

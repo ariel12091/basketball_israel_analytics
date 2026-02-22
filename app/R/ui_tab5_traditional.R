@@ -32,8 +32,28 @@ ui_tab5_traditional <- tabPanel(
             choices = c("Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"),
             selected = "Totals"
           ),
+          fluidRow(
+            column(
+              7,
+              sliderInput("ts_min_gp_slider", "Min GP", min = 1, max = 40, value = 1, step = 1)
+            ),
+            column(
+              5,
+              numericInput("ts_min_gp", "Min GP (type)", value = 1, min = 1, max = 40, step = 1)
+            )
+          ),
           checkboxInput("ts_show_ineligible", "Show non-eligible players in rate modes", value = FALSE),
           tags$hr(),
+          tags$div(
+            class = "text-end mb-2",
+            tags$a(
+              href = "#",
+              class = "small text-muted fw-bold",
+              style = "text-decoration: none;",
+              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
+              "Collapse/Expand All"
+            )
+          ),
           bslib::accordion(
             bslib::accordion_panel(
               "Game Filters",
@@ -90,7 +110,7 @@ ui_tab5_traditional <- tabPanel(
                 helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
               )
             ),
-            open = FALSE
+            open = TRUE
           ),
           tags$hr(),
           downloadButton("ts_download_csv", "Download CSV")

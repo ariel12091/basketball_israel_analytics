@@ -41,6 +41,16 @@ ui_tab2_lineup <- tabPanel(
           selectInput("game_year_ld", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
           dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
           tags$hr(),
+          tags$div(
+            class = "text-end mb-2",
+            tags$a(
+              href = "#",
+              class = "small text-muted fw-bold",
+              style = "text-decoration: none;",
+              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
+              "Collapse/Expand All"
+            )
+          ),
           bslib::accordion(
             bslib::accordion_panel(
               "Game Filters",
@@ -76,7 +86,7 @@ ui_tab2_lineup <- tabPanel(
                 helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
               )
             ),
-            open = FALSE
+            open = TRUE
           )
         )
       ),

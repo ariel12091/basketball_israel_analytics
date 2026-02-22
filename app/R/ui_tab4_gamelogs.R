@@ -35,6 +35,16 @@ ui_tab4_gamelogs <- tabPanel(
             column(6, selectInput("gl_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
+          tags$div(
+            class = "text-end mb-2",
+            tags$a(
+              href = "#",
+              class = "small text-muted fw-bold",
+              style = "text-decoration: none;",
+              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
+              "Collapse/Expand All"
+            )
+          ),
           bslib::accordion(
             bslib::accordion_panel(
               "Game Filters",
@@ -65,7 +75,7 @@ ui_tab4_gamelogs <- tabPanel(
               selectizeInput("gl_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
-            open = FALSE
+            open = TRUE
           )
         )
       ),
