@@ -40,6 +40,121 @@ server_tab3 <- function(input, output, session, shared) {
     opp_rank_side <- if (is.null(p$rank_side)) NA_character_ else p$rank_side
     opp_rank_metric <- if (is.null(p$metric)) NA_character_ else p$metric
 
+    poss_scope_active <- (!is.na(p$max_margin)) ||
+      (!is.na(p$margin_status) && !identical(p$margin_status, "all")) ||
+      (!is.na(p$max_time_remaining)) ||
+      isTRUE(p$ot_margin_filter) ||
+      any(!is.na(c(
+        p$num_starters_off, p$num_starters_def,
+        p$num_starters_off_min, p$num_starters_off_max,
+        p$num_starters_def_min, p$num_starters_def_max
+      )))
+
+    if (!isTRUE(poss_scope_active)) {
+      return(DBI::dbGetQuery(
+        pool,
+        "WITH params AS (
+           SELECT
+             CASE WHEN $4::text IS NULL OR btrim($4::text) = '' THEN NULL::int4[]
+                  ELSE string_to_array(regexp_replace($4::text, '\\s+', '', 'g'), ',')::int4[] END AS game_types,
+             CASE WHEN $5::text IS NULL OR btrim($5::text) = '' THEN NULL::int4[]
+                  ELSE string_to_array(regexp_replace($5::text, '\\s+', '', 'g'), ',')::int4[] END AS opp_ids
+         ),
+         sched_base AS (
+           SELECT
+             fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.game_date, fs.gn,
+             fs.is_home, fs.has_won,
+             ROW_NUMBER() OVER (
+               PARTITION BY fs.team_id, fs.game_year
+               ORDER BY fs.game_date DESC NULLS LAST, fs.game_id DESC
+             ) AS rn_recent
+           FROM basketball_test.final_schedule_mv fs
+           CROSS JOIN params p0
+           WHERE fs.game_year = $1::int4
+             AND ($2::date IS NULL OR fs.game_date >= $2::date)
+             AND ($3::date IS NULL OR fs.game_date <= $3::date)
+             AND (p0.game_types IS NULL OR fs.game_type = ANY(p0.game_types))
+             AND (p0.opp_ids IS NULL OR fs.opp_team_id = ANY(p0.opp_ids))
+             AND ($6::text IS NULL OR $6::text = '' OR ($6::text = 'home' AND fs.is_home) OR ($6::text = 'away' AND NOT fs.is_home))
+             AND ($7::text IS NULL OR $7::text = '' OR ($7::text = 'win' AND fs.has_won IS TRUE) OR ($7::text = 'loss' AND fs.has_won IS FALSE))
+             AND ($11::int4 IS NULL OR fs.gn >= $11::int4)
+             AND ($12::int4 IS NULL OR fs.gn <= $12::int4)
+         ),
+         sched_last_n AS (
+           SELECT *
+           FROM sched_base
+           WHERE ($13::int4 IS NULL OR rn_recent <= $13::int4)
+         ),
+         sched_ranked AS (
+           SELECT
+             sb.*,
+             CASE
+               WHEN $8::text IN ('top','bottom') THEN
+                 CASE COALESCE($10::text, 'net')
+                   WHEN 'off' THEN r.rank_off_ppp
+                   WHEN 'def' THEN r.rank_def_ppp
+                   ELSE r.rank_net_rtg
+                 END
+               ELSE NULL
+             END AS opp_rank,
+             CASE
+               WHEN $8::text = 'bottom' THEN
+                 MAX(
+                   CASE COALESCE($10::text, 'net')
+                     WHEN 'off' THEN r.rank_off_ppp
+                     WHEN 'def' THEN r.rank_def_ppp
+                     ELSE r.rank_net_rtg
+                   END
+                 ) OVER (PARTITION BY sb.game_year)
+               ELSE NULL
+             END AS max_rank
+           FROM sched_last_n sb
+           LEFT JOIN basketball_test.team_ppp_ratings_mv r
+             ON r.game_year::int4 = sb.game_year
+            AND r.team_id::int4 = sb.opp_team_id
+            AND $8::text IN ('top','bottom')
+         ),
+         sched_filtered AS (
+           SELECT game_id, team_id
+           FROM sched_ranked
+           WHERE $8::text IS NULL OR $8::text = '' OR $9::int4 IS NULL
+              OR ($8::text = 'top' AND opp_rank <= $9::int4)
+              OR ($8::text = 'bottom' AND opp_rank >= (max_rank - $9::int4 + 1))
+         ),
+         game_quarters AS (
+           SELECT
+             sf.team_id,
+             sf.game_id,
+             GREATEST(MAX(COALESCE(d.quarter, 4)), 4) AS max_q
+           FROM sched_filtered sf
+           JOIN basketball_test.df_pts_poss_lineups_longer_mv d
+             ON d.game_id = sf.game_id
+            AND d.team_id = sf.team_id
+           GROUP BY sf.team_id, sf.game_id
+         )
+         SELECT
+           team_id,
+           SUM(40 + 5 * GREATEST(max_q - 4, 0))::numeric AS game_minutes
+         FROM game_quarters
+         GROUP BY team_id",
+        params = list(
+          as.integer(p$game_year),
+          if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
+          if (!is.na(p$end_d)) as.Date(p$end_d) else NA,
+          game_type_csv,
+          opp_ids_csv,
+          home_away,
+          outcome,
+          opp_rank_side,
+          p$rank_n,
+          opp_rank_metric,
+          p$min_gn,
+          p$max_gn,
+          p$last_n_games
+        )
+      ))
+    }
+
     DBI::dbGetQuery(
       pool,
       "WITH params AS (
@@ -103,29 +218,74 @@ server_tab3 <- function(input, output, session, shared) {
           AND r.team_id::int4 = sb.opp_team_id
           AND $8::text IN ('top','bottom')
        ),
-       sched_filtered AS (
-         SELECT game_id, team_id
-         FROM sched_ranked
-         WHERE $8::text IS NULL OR $8::text = '' OR $9::int4 IS NULL
-            OR ($8::text = 'top' AND opp_rank <= $9::int4)
-            OR ($8::text = 'bottom' AND opp_rank >= (max_rank - $9::int4 + 1))
-       ),
-       game_quarters AS (
-         SELECT
-           sf.team_id,
-           sf.game_id,
-           GREATEST(MAX(COALESCE(d.quarter, 4)), 4) AS max_q
-         FROM sched_filtered sf
-         JOIN basketball_test.df_pts_poss_lineups_longer_mv d
-           ON d.game_id = sf.game_id
-          AND d.team_id = sf.team_id
-         GROUP BY sf.team_id, sf.game_id
-       )
-       SELECT
-         team_id,
-         SUM(40 + 5 * GREATEST(max_q - 4, 0))::numeric AS game_minutes
-       FROM game_quarters
-       GROUP BY team_id",
+        sched_filtered AS (
+          SELECT game_id, team_id
+          FROM sched_ranked
+          WHERE $8::text IS NULL OR $8::text = '' OR $9::int4 IS NULL
+             OR ($8::text = 'top' AND opp_rank <= $9::int4)
+             OR ($8::text = 'bottom' AND opp_rank >= (max_rank - $9::int4 + 1))
+        ),
+        filtered_rows AS (
+          SELECT
+            d.team_id,
+            d.game_id,
+            d.lineup_hash,
+            d.segment_id,
+            d.end_game_seconds_remaining
+          FROM basketball_test.df_pts_poss_lineups_longer_mv d
+          JOIN sched_filtered sf
+            ON sf.game_id = d.game_id
+           AND sf.team_id = d.team_id
+          WHERE (COALESCE($14::int4, NULL) IS NULL
+                 OR ABS(CASE WHEN d.type_lineup = 'offense'
+                             THEN (d.own_team_score - COALESCE(d.team_score, 0)) - d.opp_team_score
+                             ELSE d.own_team_score - (d.opp_team_score - COALESCE(d.team_score, 0))
+                        END) <= $14::int4
+                 OR (d.quarter > 4 AND NOT COALESCE($17::bool, FALSE)))
+            AND ($15::text IS NULL OR $15::text = '' OR $15::text = 'all'
+                 OR ($15::text = 'leading'  AND
+                     CASE WHEN d.type_lineup = 'offense'
+                          THEN (d.own_team_score - COALESCE(d.team_score, 0)) > d.opp_team_score
+                          ELSE d.own_team_score > (d.opp_team_score - COALESCE(d.team_score, 0))
+                     END)
+                 OR ($15::text = 'trailing' AND
+                     CASE WHEN d.type_lineup = 'offense'
+                          THEN (d.own_team_score - COALESCE(d.team_score, 0)) < d.opp_team_score
+                          ELSE d.own_team_score < (d.opp_team_score - COALESCE(d.team_score, 0))
+                     END)
+                 OR ($15::text = 'tied' AND
+                     CASE WHEN d.type_lineup = 'offense'
+                          THEN (d.own_team_score - COALESCE(d.team_score, 0)) = d.opp_team_score
+                          ELSE d.own_team_score = (d.opp_team_score - COALESCE(d.team_score, 0))
+                     END)
+                 OR (d.quarter > 4 AND NOT COALESCE($17::bool, FALSE)))
+            AND ($16::int4 IS NULL OR d.end_game_seconds_remaining <= $16::int4 OR d.quarter > 4)
+            AND (COALESCE($20::int4, $18::int4) IS NULL OR d.own_starters >= COALESCE($20::int4, $18::int4))
+            AND (COALESCE($21::int4, $18::int4) IS NULL OR d.own_starters <= COALESCE($21::int4, $18::int4))
+            AND (COALESCE($22::int4, $19::int4) IS NULL OR d.opp_starters >= COALESCE($22::int4, $19::int4))
+            AND (COALESCE($23::int4, $19::int4) IS NULL OR d.opp_starters <= COALESCE($23::int4, $19::int4))
+            AND d.lineup_hash IS NOT NULL
+            AND d.segment_id IS NOT NULL
+            AND d.end_game_seconds_remaining IS NOT NULL
+        ),
+        filtered_segments AS (
+          SELECT
+            team_id,
+            game_id,
+            lineup_hash,
+            segment_id,
+            GREATEST(
+              MAX(end_game_seconds_remaining) - MIN(end_game_seconds_remaining),
+              0
+            )::numeric AS seg_seconds
+          FROM filtered_rows
+          GROUP BY team_id, game_id, lineup_hash, segment_id
+        )
+        SELECT
+          team_id,
+          ROUND(SUM(seg_seconds) / 60.0, 3)::numeric AS game_minutes
+        FROM filtered_segments
+        GROUP BY team_id",
       params = list(
         as.integer(p$game_year),
         if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
@@ -139,7 +299,17 @@ server_tab3 <- function(input, output, session, shared) {
         opp_rank_metric,
         p$min_gn,
         p$max_gn,
-        p$last_n_games
+        p$last_n_games,
+        p$max_margin,
+        p$margin_status,
+        p$max_time_remaining,
+        isTRUE(p$ot_margin_filter),
+        p$num_starters_off,
+        p$num_starters_def,
+        p$num_starters_off_min,
+        p$num_starters_off_max,
+        p$num_starters_def_min,
+        p$num_starters_def_max
       )
     )
   }
@@ -372,7 +542,9 @@ server_tab3 <- function(input, output, session, shared) {
 
       keep_cols <- c("team_name",
                      "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr", "off_pace",
+                     "off_poss",
                      "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr", "def_pace",
+                     "def_poss",
                      "net_rtg")
       df <- add_team_pace_cols(df, minutes_map = mins_map)
       df <- df %>% select(any_of(c(keep_cols, pr_cols)))
@@ -381,18 +553,18 @@ server_tab3 <- function(input, output, session, shared) {
       sketch_ff <- htmltools::withTags(table(class = 'display', thead(
         tr(
           th(class = "group-head", ""),
-          th(class = "group-head section-left-border", colspan = 6, "Offense"),
-          th(class = "group-head section-left-border", colspan = 6, "Defense"),
+          th(class = "group-head section-left-border", colspan = 7, "Offense"),
+          th(class = "group-head section-left-border", colspan = 7, "Defense"),
           th(class = "group-head section-left-border", "")
         ),
         tr(
           th(class = "sub-head", "Team"),
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
           th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
-          th(class = "sub-head", "FTR"), th(class = "sub-head", "Pace"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Pace"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
           th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
-          th(class = "sub-head", "FTR"), th(class = "sub-head", "Pace"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Pace"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "Net")
         )
       )))
@@ -422,10 +594,12 @@ server_tab3 <- function(input, output, session, shared) {
       rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(df))
       ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(df))
       pace_cols <- intersect(c("off_pace", "def_pace"), names(df))
+      poss_cols <- intersect(c("off_poss", "def_poss"), names(df))
 
       if (length(rate_cols)) dt <- DT::formatRound(dt, rate_cols, 1)
       if (length(ppp_cols))  dt <- DT::formatRound(dt, ppp_cols, 1)
       if (length(pace_cols)) dt <- DT::formatRound(dt, pace_cols, 1)
+      if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
 
       # Color logic — same polarity as Tab 2 FF
       if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
@@ -449,18 +623,18 @@ server_tab3 <- function(input, output, session, shared) {
       df <- tr_data()
       if (is.null(df) || nrow(df) == 0) return(NULL)
       df <- add_team_pace_cols(df, minutes_map = mins_map)
-      pretty_names <- c("Season", "Team", "GP", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Net Rank", "Off Rank", "Def Rank", "Off Pace", "Def Pace")
-      disp_df <- df %>% select(game_year, team_name, games_played, wins, losses, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp, off_pace, def_pace)
+      pretty_names <- c("Season", "Team", "GP", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Net Rank", "Off Rank", "Def Rank", "Off Pace", "Def Pace", "Off Poss", "Def Poss")
+      disp_df <- df %>% select(game_year, team_name, games_played, wins, losses, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp, off_pace, def_pace, off_poss, def_poss)
       max_rank <- max(c(disp_df$rank_net_rtg, disp_df$rank_off_ppp, disp_df$rank_def_ppp), na.rm = TRUE)
       if (max_rank < 2) max_rank <- 2
       cuts <- seq(1.5, max_rank - 0.5, 1)
-      cols_rank <- colorRampPalette(c("#1a9850", "#fee08b", "#d73027"))(length(cuts) + 1)
+      cols_rank <- colorRampPalette(c("#1a6b38", "#6b5a20", "#8b2020"))(length(cuts) + 1)
 
       dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
         formatRound(c("off_ppp", "def_ppp", "net_rtg", "off_pace", "def_pace"), 1) %>%
+        formatCurrency(c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0) %>%
         formatStyle(columns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
       return(dt)
     }
   })
 }
-
