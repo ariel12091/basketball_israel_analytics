@@ -1372,3 +1372,35 @@ extract_starters <- function(box) {
 - Practical implication:
   - `Own starters` filter asks: “When we were in this lineup-starter state, how did we perform?”
   - `Opp starters` filter asks: “Against opponent lineups in this starter state, how did we perform?”
+
+## Session Notes (2026-02-22): Read-Only RLS Rollout (Supabase)
+- Added SQL migration: `sql/security/enable_readonly_rls.sql`.
+- Migration behavior:
+  - Enables RLS on base tables (`relkind in ('r','p')`) in schemas `basketball_test` and `basketball`.
+  - Creates idempotent read policy `rls_read_all` with `USING (true)` for roles:
+    - `anon`
+    - `authenticated`
+    - `service_role`
+  - Grants schema/table read access and default read privileges for those roles.
+- Deployment/verification:
+  - Applied on Supabase direct connection (port `5432`) using ETL credentials.
+  - In `basketball_test`, RLS is enabled on `19` tables.
+  - Strict before/after validation used row-count + content digest checks over key MVs and function outputs:
+    - `final_schedule_mv`
+    - `df_pts_poss_lineups_longer_mv`
+    - `mv_lineup_totals_by_day`
+    - `player_onoff_by_game`
+    - `player_four_factors_by_game`
+    - `lineup_four_factors_by_game`
+    - `onoff_default_mv`
+    - `team_ppp_ratings_mv`
+    - `onoff_compute(...)`
+    - `four_factors_compute(...)`
+    - `fetch_lineups_csv_v2(...)`
+    - `fetch_lineups_four_factors_csv(...)`
+    - `get_team_ratings_dynamic(...)`
+    - `get_team_four_factors_dynamic(...)`
+  - Outcome: all checks identical (`OVERALL_IDENTICAL=TRUE`).
+- ETL permission check after RLS:
+  - ETL user (`postgres.jfmxhveitknfwqpjoamn`) retains write capability (rollback-safe INSERT/UPDATE smoke tests passed).
+  - Role has `rolbypassrls = true`, so ETL pipelines are not blocked by RLS.
