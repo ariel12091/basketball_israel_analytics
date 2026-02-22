@@ -1,8 +1,128 @@
 # Frontend v2 Progress
 
-## Latest Updates (Session 3)
+## Latest Updates (Session 6) — Server-Side Ranking + Parity Fixes
 
-### 🎉 PHASE 1 COMPLETE — All 9 Features Done! 🎉
+### Tab 2 Parity Audit Fixes
+- Fixed critical two-tier ranking bug: API was sending `min_poss: minPoss` to SQL, pre-filtering data before ranking. Now server fetches with `min_poss=0` for full-population ranking.
+- Fixed auto min-poss algorithm: Tab 2 uses 150-row target cap (`autoMinPossTarget`, raises AND lowers) — NOT Tab 1's top-35% algorithm.
+- Added missing Summary columns: Def Poss, Off Pts, Def Pts (USAGE group span 4→7).
+
+### Server-Side Ranking (egress optimization)
+Moved all ranking + local filtering to Plumber server to reduce client data transfer:
+
+**Plumber changes (`server/plumber.R`):**
+- Added ranking helpers: `adaptive_baseline_r()`, `pr_rank()`, `auto_minposs_target_r()`
+- Added two-layer caching: `RANKED_CACHE` (game-level key, excludes local filters) + `RESP_CACHE` (full query string)
+- Added `apply_lineup_local_filters()` — filters by team/player containment/min_poss, computes autoMinPoss
+- `/api/lineups/summary` and `/api/lineups/four-factors` endpoints:
+  - Fetch full dataset with `min_poss=0`, compute percentile ranks on full population
+  - Cache ranked dataset per game-level filter key (60s TTL)
+  - Apply local filters (team, players on/off, min_poss) on cached data
+  - Return `{rows: [...], meta: {autoMinPoss: N}}`
+  - Summary: 3 PR columns (prNet, prOffPpp, prDefPppInv)
+  - FF: 11 PR columns with correct inversions (def_ppp, def_ts, def_oreb, def_ftr, off_tov inverted)
+- Fixed `playerIds` serialization: kept as list column (not JSON string) for proper array serialization via `@serializer unboxedJSON`
+
+**Frontend changes:**
+- Added `LineupApiResponse<T>` wrapper type (`{rows, meta}`)
+- PR fields changed from optional to required-but-nullable (`prNet: number | null`)
+- `LineupsPage.tsx` simplified:
+  - Removed client-side ranking (~70 lines: `summaryRanked`, `ffRanked` useMemos)
+  - Removed client-side filtering (~10 lines: `summaryFiltered`, `ffFiltered` useMemos)
+  - Sends local filters to API: `filter_team_ids`, `players_on`, `players_off`, `min_poss`
+  - Uses server-provided `meta.autoMinPoss` instead of client computation
+  - `datasetKey` memo excludes minPoss to avoid auto re-enable on slider drag
+  - Removed imports: `adaptiveBaseline`, `percentileRank`, `autoMinPossTarget`
+
+**Architecture:**
+```
+Client                          Server (Plumber)
+├─ apiParams (all filters)  →   ├─ RANKED_CACHE hit?
+│                               │   ├─ miss: SQL(min_poss=0) → rank → cache
+│                               │   └─ hit: use cached ranked data
+│                               ├─ apply_lineup_local_filters()
+│                               │   ├─ filter by team/players
+│                               │   ├─ compute autoMinPoss
+│                               │   └─ filter by min_poss
+├─ {rows, meta} ←              └─ return {rows, meta: {autoMinPoss}}
+├─ TOTAL row computation
+├─ sorting
+└─ render
+```
+
+**Current state:** Tab 1 + Tab 2 complete with server-side ranking. Build passes clean.
+
+---
+
+## Previous Updates (Session 5) — Backend & Infrastructure Catch-up
+
+### Summary of 20+ commits between Sessions 4 and 5
+
+**Infrastructure:**
+- Plumber port changed from 8787 to **3002** with new `server/run.R` launcher
+- React upgraded to **19.2**, added **TanStack Query** (`@tanstack/react-query`)
+- `useApi.ts` rewritten from manual fetch to `useQuery` (staleTime, gcTime, debounce, dedup)
+- `main.tsx` wraps app in `QueryClientProvider`
+- API hardening: CORS allowlist, optional API key, IP rate limiting (env var driven)
+- Vite proxy target updated to `localhost:3002`
+
+**SQL Optimizations (benchmarked):**
+- `onoff_compute`: 51% faster (800ms to 390ms) — scoped roster names, reduced analytic passes
+- `fetch_lineups_four_factors_csv`: non-clutch 35% faster, clutch 55-60% faster — fast-path gate for explicit dates, filtered `complex_flags` CTE
+- `fetch_lineups_csv_v2`: non-clutch 49% faster (550ms to 280ms) — same fast-path gate
+- Fast-path rule: SQL must accept both NULL dates and explicit full-season window
+
+**Storage & Egress:**
+- `df_pts_poss_lineups_longer_mv` slimmed (123 MB), total DB <500 MB
+- `min_poss=20` default to SQL reduces lineup payload 77-82% gzip
+- Plumber in-memory response cache (60s TTL) + TanStack client-side cache
+
+**Plumber Fixes:**
+- Lineup modal: switched to `unboxedJSON` serializer (fixed scalar-as-array bug)
+- Game-log assembly vectorized (merge + vectorized columns, no lapply)
+- Player IDs parsing vectorized via `parse_pg_int_array_json()` (2.5x faster)
+- Filter ownership clarified: drawer teams filter table rows, local team for player dropdown only
+- Tab 1 controls (Teams, Min ON/All Poss) moved from global drawer into OnOffPage inline
+
+**Shiny-only additions:**
+- Tab 5 (Player Stats / Traditional) with `player_traditional_stats_mv` + live recalculation
+- State Cup (game_type=35) added to all tab filters
+- Tab 4 minutes column removed (integrity concerns)
+- Last-N recency logic fixed; Tab 2 default lineup cap ~150 rows
+
+**ETL enhancements:**
+- Starters lineage: `extract_starters()` from boxscore, `num_starters` in `lineups_lookup` / `pws` / MVs
+- Incremental sub_lineups refresh: `refresh_sub_lineups_stats_for_games(int4[])`
+- Roster `game_year` derived from `schedule.game_year` (not `Sys.Date()`)
+- ETL wrapper deadlock fix (Start-Process + lock file), Phase 6 minute integrity warnings
+
+**Current state:** Tab 1 + Tab 2 complete. Tabs 3-4 placeholder. Tab 5 Shiny-only. Next: Tab 3 (Team Ratings) or Tab 4 (Game Logs) React migration.
+
+---
+
+## Previous Updates (Session 4)
+
+### Tab 2 (Lineup Data) — React Migration COMPLETE
+
+**All Shiny Tab 2 features implemented with full parity.** Build passes.
+
+**Files created:**
+- `src/pages/LineupsPage.tsx` (~1131 lines) — Main Tab 2 component
+- `src/features/tables/LineupModal.tsx` — Game log modal for clicked lineups
+- `src/utils/ranking.ts` — Shared utilities extracted from OnOffPage
+
+**Files modified:**
+- `src/types/index.ts` — Added LineupSummary, LineupFourFactors, LineupGameLog, Player interfaces
+- `server/plumber.R` — Added 4 endpoints + rename helpers
+- `src/pages/OnOffPage.tsx` — Refactored to import from shared `utils/ranking.ts`
+- `src/app/layout/AppShell.tsx` — Wired LineupsPage (replaced placeholder)
+- `src/styles/layout.css` — Added ~200 lines for Tab 2 controls, modals, multi-select
+
+---
+
+## Previous Updates (Session 3)
+
+### PHASE 1 COMPLETE — All 9 Features Done!
 
 ---
 
@@ -274,3 +394,36 @@ The static prototype now has:
 - `index.html` — added sorting, CSV export, keyboard shortcuts, team filter
 - `PLAN.md` — updated checklist
 - `PROGRESS.md` — this file
+
+---
+
+## Latest Updates (2026-02-17)
+
+### Tab 1 Stability + Filter Semantics
+
+- Fixed low-possession blank-table behavior when Min ON Poss = 0:
+  - Backend /api/onoff/summary now normalizes NA in numeric columns before response.
+  - HeatCell now handles null/NaN safely and renders - fallback.
+- Fixed apparent non-sorting in Tab 1 under sparse rows by using stable composite row keys.
+- Wired Min All Poss to client filtering with correct semantics:
+  - requires BOTH sides (on and off) to meet threshold, plus minOnPoss.
+
+### Tab 1/2 Drawer + Local Filter Ownership
+
+- Drawer Game Type converted to multi-select (eact-select, menu stays open).
+- Drawer Teams now applies to Tab 1 and Tab 2 table filtering.
+- Tab 2 local Team remains local and is used only for Players On/Off option pool.
+- Added mutual exclusivity between Tab 2 local Team and drawer Teams:
+  - selecting one clears the other.
+- Tab 2 local team label changed from All teams to Select team to reduce confusion.
+- Added section label Lineup Player Selection next to local team selector.
+
+### Clear-All Behavior
+
+- Clear control now appears even when only Tab 2 local state is active (no standard chips shown), by honoring hasActiveFilters visibility.
+
+### Commits in this cycle
+
+- 9ae8cf0 Fix Tab 1 low-possession rendering and min-poss filters
+- b83a1f Refine Tab 1/2 filters, stability, and team-selection behavior
+- e26b175 Clarify Tab 2 local team selector label

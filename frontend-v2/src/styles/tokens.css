@@ -1,0 +1,57 @@
+/* ============================================================
+   DESIGN SYSTEM TOKENS — IBPL Court Impact
+   Aesthetic: Dark editorial sports intelligence
+   ============================================================ */
+
+:root {
+  /* Surface palette */
+  --bg-root: #080c14;
+  --bg-surface: #0e1420;
+  --bg-card: #141c2b;
+  --bg-elevated: #1a2436;
+  --bg-hover: #1e2a3e;
+  --bg-active: #243350;
+
+  /* Text */
+  --text-primary: #e8ecf4;
+  --text-secondary: #8a96ab;
+  --text-muted: #5a6578;
+  --text-inverse: #080c14;
+
+  /* Accent */
+  --accent: #e8a435;
+  --accent-glow: rgba(232, 164, 53, 0.15);
+  --accent-dim: #c48a28;
+
+  /* Semantic */
+  --positive: #34d399;
+  --positive-bg: rgba(52, 211, 153, 0.08);
+  --negative: #f87171;
+  --negative-bg: rgba(248, 113, 113, 0.08);
+  --neutral: #60a5fa;
+
+  /* Shot splits */
+  --fg2: #5b8abd;
+  --fg3: #d4843e;
+
+  /* Borders */
+  --border-subtle: rgba(255,255,255,0.04);
+  --border-dim: rgba(255,255,255,0.08);
+  --border-accent: rgba(232, 164, 53, 0.25);
+
+  /* Radii */
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-xl: 20px;
+
+  /* Fonts */
+  --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SF Mono', monospace;
+
+  /* Timing */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
+  --duration-med: 300ms;
+  --duration-slow: 500ms;
+}

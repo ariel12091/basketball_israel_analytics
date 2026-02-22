@@ -124,54 +124,154 @@ season_date_bounds <- function(game_year) {
 
 needs_filtered <- function(opp_ids, game_type, home_away, outcome,
                            gn_min, gn_max, last_n, start_date, end_date,
-                           game_year = 2026, opp_rank_side = "") {
+                           game_year = 2026, opp_rank_side = "",
+                           num_starters_off_mode = "", num_starters_off = "",
+                           num_starters_def_mode = "", num_starters_def = "") {
   bounds <- season_date_bounds(game_year)
+  has_starters <- (nzchar(num_starters_off_mode) && nzchar(num_starters_off)) ||
+    (nzchar(num_starters_def_mode) && nzchar(num_starters_def))
   nzchar(opp_ids) || nzchar(game_type) ||
   nzchar(home_away) || nzchar(outcome) ||
   nzchar(gn_min) || nzchar(gn_max) || nzchar(last_n) ||
   nzchar(opp_rank_side) ||
+  has_starters ||
   start_date != bounds$start || end_date != bounds$end
 }
 
-# Mirrors run_onoff_compute_14 from server_tab1.R — 17 params with explicit casts
+# ── Ranking helpers (mirrors frontend-v2/src/utils/ranking.ts) ─
+RANKING_BASELINE <- 100
+RANKING_MIN_PCT <- 0.25
+AUTO_TARGET_ROWS <- 150L
+
+adaptive_baseline_r <- function(poss_vec) {
+  n <- length(poss_vec)
+  if (n == 0L) return(0)
+  pct_above <- sum(poss_vec >= RANKING_BASELINE, na.rm = TRUE) / n
+  if (pct_above >= RANKING_MIN_PCT) return(RANKING_BASELINE)
+  sorted <- sort(poss_vec)
+  idx <- floor(n * (1 - RANKING_MIN_PCT)) + 1L
+  sorted[min(idx, n)]
+}
+
+pr_rank <- function(vals) {
+  valid <- !is.na(vals)
+  n <- sum(valid)
+  result <- rep(NA_real_, length(vals))
+  if (n == 0L) return(result)
+  if (n == 1L) { result[valid] <- 0.5; return(result) }
+  r <- rank(vals[valid], ties.method = "average")
+  result[valid] <- (r - 1) / (n - 1)
+  result
+}
+
+auto_minposs_target_r <- function(poss_vec, step = 10L, target_rows = AUTO_TARGET_ROWS) {
+  vals <- poss_vec[is.finite(poss_vec)]
+  if (!length(vals)) return(0L)
+  vals <- sort(vals, decreasing = TRUE)
+  if (length(vals) <= target_rows) return(0L)
+  kth <- vals[target_rows]
+  as.integer(ceiling(kth / step) * step)
+}
+
+# ── Ranked-data cache (full dataset, keyed by game-level filters only) ─
+RANKED_CACHE <- new.env(parent = emptyenv())
+
+ranked_key_from_qs <- function(route, qs) {
+  # Strip local filter params from query string for cache key
+  qs <- gsub("&?min_poss=[^&]*", "", qs)
+  qs <- gsub("&?filter_team_ids=[^&]*", "", qs)
+  qs <- gsub("&?players_on=[^&]*", "", qs)
+  qs <- gsub("&?players_off=[^&]*", "", qs)
+  qs <- gsub("^[&?]+", "", qs)
+  paste(route, qs, sep = "|")
+}
+
+ranked_cache_get <- function(key) {
+  v <- RANKED_CACHE[[key]]
+  if (is.null(v)) return(NULL)
+  if (as.numeric(Sys.time()) > v$exp) {
+    rm(list = key, envir = RANKED_CACHE, inherits = FALSE)
+    return(NULL)
+  }
+  v$val
+}
+
+ranked_cache_set <- function(key, value, ttl_sec = CACHE_TTL_SEC) {
+  RANKED_CACHE[[key]] <- list(exp = as.numeric(Sys.time()) + ttl_sec, val = value)
+  invisible(value)
+}
+
+# Apply local lineup filters on ranked data (team, players, min_poss)
+apply_lineup_local_filters <- function(df, team_ids, players_on, players_off, min_poss) {
+  if (length(team_ids) > 0) {
+    df <- df[df$teamId %in% team_ids, , drop = FALSE]
+  }
+  if (length(players_on) > 0) {
+    keep <- vapply(df$playerIds, function(ids) all(players_on %in% ids), logical(1))
+    df <- df[keep, , drop = FALSE]
+  }
+  if (length(players_off) > 0) {
+    keep <- vapply(df$playerIds, function(ids) !any(players_off %in% ids), logical(1))
+    df <- df[keep, , drop = FALSE]
+  }
+  auto_val <- auto_minposs_target_r(df$totalPoss)
+  if (!is.na(min_poss) && min_poss > 0L) {
+    df <- df[df$totalPoss >= min_poss, , drop = FALSE]
+  }
+  list(rows = df, autoMinPoss = auto_val)
+}
+
+# Mirrors run_onoff_compute_14 from server_tab1.R — 23 params with explicit casts
 run_onoff_compute <- function(pool, start_d, end_d, team_csv, min_all, min_on,
                                game_year, game_type_csv, opp_ids_csv,
                                home_away, outcome,
                                opp_rank_side = NA_character_,
                                opp_rank_n = NA_integer_,
                                opp_rank_metric = NA_character_,
-                               min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_) {
+                               min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_,
+                               num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+                               num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_,
+                               num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
   DBI::dbGetQuery(pool, paste0(
     "SELECT * FROM ", SCHEMA, ".onoff_compute(",
     "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,",
     "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,",
-    "$15::int4,$16::int4,$17::int4", ")"
+    "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"
   ), params = list(
     as.Date(start_d), as.Date(end_d), team_csv,
     as.integer(min_all), as.integer(min_on), DEFAULT_MIN_NET, as.character(game_year),
     game_type_csv, opp_ids_csv, home_away, outcome,
     opp_rank_side, opp_rank_n, opp_rank_metric,
-    min_gn, max_gn, last_n
+    min_gn, max_gn, last_n,
+    num_starters_off, num_starters_def,
+    num_starters_off_min, num_starters_off_max,
+    num_starters_def_min, num_starters_def_max
   ))
 }
 
-# Mirrors run_four_factors_compute from server_tab1.R — 14 params with explicit casts
+# Mirrors run_four_factors_compute from server_tab1.R — 20 params with explicit casts
 run_ff_compute <- function(pool, game_year, start_d, end_d, team_csv,
                             game_type_csv, opp_ids_csv, home_away, outcome,
                             opp_rank_side = NA_character_,
                             opp_rank_n = NA_integer_,
                             opp_rank_metric = NA_character_,
-                            min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_) {
+                            min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_,
+                            num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+                            num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_,
+                            num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
   DBI::dbGetQuery(pool, paste0(
     "SELECT * FROM ", SCHEMA, ".four_factors_compute(",
     "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
     "$7::text,$8::text,$9::text,$10::int4,$11::text,",
-    "$12::int4,$13::int4,$14::int4", ")"
+    "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4", ")"
   ), params = list(
     as.integer(game_year), as.Date(start_d), as.Date(end_d), team_csv,
     game_type_csv, opp_ids_csv, home_away, outcome,
     opp_rank_side, opp_rank_n, opp_rank_metric,
-    min_gn, max_gn, last_n
+    min_gn, max_gn, last_n,
+    num_starters_off, num_starters_def,
+    num_starters_off_min, num_starters_off_max,
+    num_starters_def_min, num_starters_def_max
   ))
 }
 
@@ -181,18 +281,21 @@ run_ff_with_diffs_compute <- function(pool, game_year, start_d, end_d, team_csv,
                                       opp_rank_side = NA_character_,
                                       opp_rank_n = NA_integer_,
                                       opp_rank_metric = NA_character_,
-                                      min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_) {
+                                      min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_,
+                                      num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+                                      num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_,
+                                      num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
   DBI::dbGetQuery(pool, paste0(
     "SELECT ff.*, oo.\"Net RTG Diff\", oo.\"Off ON Diff\", oo.\"Def ON Diff\" ",
     "FROM ", SCHEMA, ".four_factors_compute(",
     "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
     "$7::text,$8::text,$9::text,$10::int4,$11::text,",
-    "$12::int4,$13::int4,$14::int4",
+    "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4",
     ") ff ",
     "LEFT JOIN ", SCHEMA, ".onoff_compute(",
-    "$2::date,$3::date,$4::text,$15::int4,$16::int4,$17::numeric,$18::text,",
+    "$2::date,$3::date,$4::text,$21::int4,$22::int4,$23::numeric,$24::text,",
     "$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
-    "$12::int4,$13::int4,$14::int4",
+    "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4",
     ") oo ",
     "ON ff.player_id = oo.player_id AND ff.team_id = oo.team_id"
   ), params = list(
@@ -200,6 +303,9 @@ run_ff_with_diffs_compute <- function(pool, game_year, start_d, end_d, team_csv,
     game_type_csv, opp_ids_csv, home_away, outcome,
     opp_rank_side, opp_rank_n, opp_rank_metric,
     min_gn, max_gn, last_n,
+    num_starters_off, num_starters_def,
+    num_starters_off_min, num_starters_off_max,
+    num_starters_def_min, num_starters_def_max,
     0L, 0L, DEFAULT_MIN_NET, as.character(game_year)
   ))
 }
@@ -434,12 +540,14 @@ function() {
 #* @get /api/onoff/summary
 #* @serializer json
 function(req, res,
-         game_year = "2026", start_date = "2025-10-01", end_date = "2026-06-30",
+         game_year = "2026", start_date = "2025-10-01", end_date = "2026-07-01",
          team_ids = "", min_on = "0", min_all = "0",
          game_type = "", opp_ids = "",
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
-         opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "") {
+         opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "",
+         num_starters_off_mode = "", num_starters_off = "",
+         num_starters_def_mode = "", num_starters_def = "") {
   key <- cache_key("/api/onoff/summary", req)
   hit <- cache_get(key)
   if (!is.null(hit)) return(hit)
@@ -451,7 +559,11 @@ function(req, res,
 
   if (!needs_filtered(opp_ids, game_type, home_away, outcome,
                       gn_min, gn_max, last_n, start_date, end_date,
-                      game_year = gy, opp_rank_side = opp_rank_side)) {
+                      game_year = gy, opp_rank_side = opp_rank_side,
+                      num_starters_off_mode = num_starters_off_mode,
+                      num_starters_off = num_starters_off,
+                      num_starters_def_mode = num_starters_def_mode,
+                      num_starters_def = num_starters_def)) {
     # Fast path: MV
     q <- .timed(function() DBI::dbGetQuery(pg_pool, sprintf(
       'SELECT * FROM %s.onoff_default_mv WHERE "Year" = $1', SCHEMA
@@ -461,6 +573,8 @@ function(req, res,
   } else {
     # Filtered path: call onoff_compute() with exact Shiny-app signature
     team_csv <- if (nzchar(team_ids)) team_ids else NA_character_
+    off_val <- if (nzchar(num_starters_off_mode) && nzchar(num_starters_off)) as.integer(num_starters_off) else NA_integer_
+    def_val <- if (nzchar(num_starters_def_mode) && nzchar(num_starters_def)) as.integer(num_starters_def) else NA_integer_
     q <- .timed(function() run_onoff_compute(
       pg_pool,
       start_d = start_date, end_d = end_date,
@@ -474,7 +588,12 @@ function(req, res,
       opp_rank_side = na_chr(opp_rank_side),
       opp_rank_n = na_int(opp_rank_n),
       opp_rank_metric = na_chr(opp_rank_metric),
-      min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
+      min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n),
+      num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+      num_starters_off_min = if (identical(num_starters_off_mode, "gte")) off_val else NA_integer_,
+      num_starters_off_max = if (identical(num_starters_off_mode, "lte")) off_val else NA_integer_,
+      num_starters_def_min = if (identical(num_starters_def_mode, "gte")) def_val else NA_integer_,
+      num_starters_def_max = if (identical(num_starters_def_mode, "lte")) def_val else NA_integer_
     ))
     df <- q$value
     db_ms <- db_ms + q$ms
@@ -501,11 +620,13 @@ function(req, res,
 #* @get /api/onoff/four-factors
 #* @serializer json
 function(req, res,
-         game_year = "2026", start_date = "2025-10-01", end_date = "2026-06-30",
+         game_year = "2026", start_date = "2025-10-01", end_date = "2026-07-01",
          team_ids = "", game_type = "", opp_ids = "",
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
-         opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "") {
+         opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "",
+         num_starters_off_mode = "", num_starters_off = "",
+         num_starters_def_mode = "", num_starters_def = "") {
   key <- cache_key("/api/onoff/four-factors", req)
   hit <- cache_get(key)
   if (!is.null(hit)) return(hit)
@@ -522,7 +643,11 @@ function(req, res,
 
   if (!needs_filtered(opp_ids, game_type, home_away, outcome,
                       gn_min, gn_max, last_n, start_date, end_date,
-                      game_year = gy, opp_rank_side = opp_rank_side)) {
+                      game_year = gy, opp_rank_side = opp_rank_side,
+                      num_starters_off_mode = num_starters_off_mode,
+                      num_starters_off = num_starters_off,
+                      num_starters_def_mode = num_starters_def_mode,
+                      num_starters_def = num_starters_def)) {
     # Fast path: join MV + onoff MV for net diffs
     q <- .timed(function() DBI::dbGetQuery(pg_pool, sprintf('
       SELECT ff.*, o."Net RTG Diff", o."Off ON Diff", o."Def ON Diff"
@@ -537,6 +662,8 @@ function(req, res,
     db_ms <- db_ms + q$ms
   } else {
     # Filtered path: single SQL call (DB-side join of FF + OnOff diffs)
+    off_val <- if (nzchar(num_starters_off_mode) && nzchar(num_starters_off)) as.integer(num_starters_off) else NA_integer_
+    def_val <- if (nzchar(num_starters_def_mode) && nzchar(num_starters_def)) as.integer(num_starters_def) else NA_integer_
     q <- .timed(function() run_ff_with_diffs_compute(
       pg_pool, game_year = gy, start_d = start_date, end_d = end_date,
       team_csv = team_csv, game_type_csv = gt_csv, opp_ids_csv = opp_csv,
@@ -544,7 +671,12 @@ function(req, res,
       opp_rank_side = na_chr(opp_rank_side),
       opp_rank_n = na_int(opp_rank_n),
       opp_rank_metric = na_chr(opp_rank_metric),
-      min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
+      min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n),
+      num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+      num_starters_off_min = if (identical(num_starters_off_mode, "gte")) off_val else NA_integer_,
+      num_starters_off_max = if (identical(num_starters_off_mode, "lte")) off_val else NA_integer_,
+      num_starters_def_min = if (identical(num_starters_def_mode, "gte")) def_val else NA_integer_,
+      num_starters_def_max = if (identical(num_starters_def_mode, "lte")) def_val else NA_integer_
     ))
     df <- q$value
     db_ms <- db_ms + q$ms
@@ -581,12 +713,16 @@ run_fetch_lineups <- function(pool, num, team_csv, player_csv, player_off_csv,
                                game_type_csv, opp_ids_csv, home_away, outcome,
                                opp_rank_side, opp_rank_n, opp_rank_metric,
                                max_margin, margin_status, max_time_remaining,
-                               ot_margin_filter, min_gn, max_gn, last_n) {
+                               ot_margin_filter, min_gn, max_gn, last_n,
+                               num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+                               num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_,
+                               num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
   DBI::dbGetQuery(pool, paste0(
     "SELECT * FROM ", SCHEMA, ".fetch_lineups_csv_v2(",
     "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
     "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,",
-    "$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4", ")"
+    "$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,",
+    "$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"
   ), params = list(
     as.integer(num), team_csv, player_csv, player_off_csv,
     as.logical(exact), as.Date(start_date), as.Date(end_date),
@@ -594,7 +730,10 @@ run_fetch_lineups <- function(pool, num, team_csv, player_csv, player_off_csv,
     game_type_csv, opp_ids_csv, home_away, outcome,
     opp_rank_side, opp_rank_n, opp_rank_metric,
     max_margin, margin_status, max_time_remaining, ot_margin_filter,
-    min_gn, max_gn, last_n
+    min_gn, max_gn, last_n,
+    num_starters_off, num_starters_def,
+    num_starters_off_min, num_starters_off_max,
+    num_starters_def_min, num_starters_def_max
   ))
 }
 
@@ -603,12 +742,16 @@ run_fetch_lineups_ff <- function(pool, num, team_csv, player_csv, player_off_csv
                                   game_type_csv, opp_ids_csv, home_away, outcome,
                                   opp_rank_side, opp_rank_n, opp_rank_metric,
                                   max_margin, margin_status, max_time_remaining,
-                                  ot_margin_filter, min_gn, max_gn, last_n) {
+                                  ot_margin_filter, min_gn, max_gn, last_n,
+                                  num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+                                  num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_,
+                                  num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
   DBI::dbGetQuery(pool, paste0(
     "SELECT * FROM ", SCHEMA, ".fetch_lineups_four_factors_csv(",
     "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
     "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,",
-    "$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4", ")"
+    "$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,",
+    "$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"
   ), params = list(
     as.integer(num), team_csv, player_csv, player_off_csv,
     as.logical(exact), as.Date(start_date), as.Date(end_date),
@@ -616,7 +759,10 @@ run_fetch_lineups_ff <- function(pool, num, team_csv, player_csv, player_off_csv
     game_type_csv, opp_ids_csv, home_away, outcome,
     opp_rank_side, opp_rank_n, opp_rank_metric,
     max_margin, margin_status, max_time_remaining, ot_margin_filter,
-    min_gn, max_gn, last_n
+    min_gn, max_gn, last_n,
+    num_starters_off, num_starters_def,
+    num_starters_off_min, num_starters_off_max,
+    num_starters_def_min, num_starters_def_max
   ))
 }
 
@@ -638,9 +784,10 @@ rename_lineup_summary <- function(df) {
   for (old in names(nms)) {
     if (old %in% names(df)) names(df)[names(df) == old] <- nms[[old]]
   }
-  # Convert player_ids from PG array string to JSON array (vectorized, no row loop)
+  # Parse player_ids from PG array string to integer vector list column
+  # (serializes as JSON array; unlist ensures proper %in% matching in apply_lineup_local_filters)
   if ("playerIds" %in% names(df)) {
-    df$playerIds <- parse_pg_int_array_json(df$playerIds)
+    df$playerIds <- lapply(parse_pg_int_array_json(df$playerIds), function(x) as.integer(unlist(x)))
   }
   df
 }
@@ -666,179 +813,279 @@ rename_lineup_ff <- function(df) {
   for (old in names(nms)) {
     if (old %in% names(df)) names(df)[names(df) == old] <- nms[[old]]
   }
+  # Parse player_ids from PG array string to integer vector list column
   if ("playerIds" %in% names(df)) {
-    df$playerIds <- parse_pg_int_array_json(df$playerIds)
+    df$playerIds <- lapply(parse_pg_int_array_json(df$playerIds), function(x) as.integer(unlist(x)))
   }
   df
 }
 
 # ── GET /api/lineups/summary ──────────────────────────────────
 #* @get /api/lineups/summary
-#* @serializer json
+#* @serializer unboxedJSON
 function(req, res,
-         game_year = "2026", start_date = "2025-10-01", end_date = "2026-06-30",
+         game_year = "2026", start_date = "2025-10-01", end_date = "2026-07-01",
          num = "5", game_type = "", opp_ids = "",
          min_poss = "20",
+         filter_team_ids = "", players_on = "", players_off = "",
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "",
          clutch_margin = "", clutch_status = "", clutch_minutes = "",
-         clutch_ot_margin = "false") {
-  key <- cache_key("/api/lineups/summary", req)
-  hit <- cache_get(key)
-  if (!is.null(hit)) return(hit)
+         clutch_ot_margin = "false",
+         num_starters_off_mode = "", num_starters_off = "",
+         num_starters_def_mode = "", num_starters_def = "") {
+  # Response cache (full query string key, including local filters)
+  resp_key <- cache_key("/api/lineups/summary", req)
+  resp_hit <- cache_get(resp_key)
+  if (!is.null(resp_hit)) return(resp_hit)
 
   req_t0 <- .ms_now()
   db_ms <- 0
   gy <- as.integer(game_year)
   bounds <- season_date_bounds(gy)
 
-  # Clutch params
-  max_margin <- na_int(clutch_margin)
-  margin_status <- na_chr(clutch_status)
-  max_time_remaining <- if (nzchar(clutch_minutes)) as.integer(clutch_minutes) * 60L else NA_integer_
-  ot_margin_filter <- identical(clutch_ot_margin, "true")
+  # Ranked-data cache (game-level filters only, excludes local filters)
+  qs <- req$QUERY_STRING %||% ""
+  rk_key <- ranked_key_from_qs("/api/lineups/summary", qs)
+  ranked <- ranked_cache_get(rk_key)
 
-  q <- .timed(function() run_fetch_lineups(
-    pg_pool,
-    num = as.integer(num),
-    team_csv = NA_character_, player_csv = NA_character_,
-    player_off_csv = NA_character_, exact = TRUE,
-    start_date = if (nzchar(start_date)) start_date else bounds$start,
-    end_date = if (nzchar(end_date)) end_date else bounds$end,
-    min_poss = as.integer(min_poss), game_year = gy,
-    game_type_csv = na_chr(game_type), opp_ids_csv = na_chr(opp_ids),
-    home_away = na_chr(home_away), outcome = na_chr(outcome),
-    opp_rank_side = na_chr(opp_rank_side),
-    opp_rank_n = na_int(opp_rank_n),
-    opp_rank_metric = na_chr(opp_rank_metric),
-    max_margin = max_margin, margin_status = margin_status,
-    max_time_remaining = max_time_remaining,
-    ot_margin_filter = ot_margin_filter,
-    min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
-  ))
-  df <- q$value
-  db_ms <- db_ms + q$ms
+  if (is.null(ranked)) {
+    # Clutch params
+    max_margin <- na_int(clutch_margin)
+    margin_status <- na_chr(clutch_status)
+    max_time_remaining <- if (nzchar(clutch_minutes)) as.integer(clutch_minutes) * 60L else NA_integer_
+    ot_margin_filter <- identical(clutch_ot_margin, "true")
+    off_val <- if (nzchar(num_starters_off_mode) && nzchar(num_starters_off)) as.integer(num_starters_off) else NA_integer_
+    def_val <- if (nzchar(num_starters_def_mode) && nzchar(num_starters_def)) as.integer(num_starters_def) else NA_integer_
 
-  if (is.null(df) || nrow(df) == 0) return(list())
-  transform_t0 <- .ms_now()
+    # Fetch full dataset from DB with min_poss=0 for correct ranking
+    q <- .timed(function() run_fetch_lineups(
+      pg_pool,
+      num = as.integer(num),
+      team_csv = NA_character_, player_csv = NA_character_,
+      player_off_csv = NA_character_, exact = TRUE,
+      start_date = if (nzchar(start_date)) start_date else bounds$start,
+      end_date = if (nzchar(end_date)) end_date else bounds$end,
+      min_poss = 0L, game_year = gy,
+      game_type_csv = na_chr(game_type), opp_ids_csv = na_chr(opp_ids),
+      home_away = na_chr(home_away), outcome = na_chr(outcome),
+      opp_rank_side = na_chr(opp_rank_side),
+      opp_rank_n = na_int(opp_rank_n),
+      opp_rank_metric = na_chr(opp_rank_metric),
+      max_margin = max_margin, margin_status = margin_status,
+      max_time_remaining = max_time_remaining,
+      ot_margin_filter = ot_margin_filter,
+      min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n),
+      num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+      num_starters_off_min = if (identical(num_starters_off_mode, "gte")) off_val else NA_integer_,
+      num_starters_off_max = if (identical(num_starters_off_mode, "lte")) off_val else NA_integer_,
+      num_starters_def_min = if (identical(num_starters_def_mode, "gte")) def_val else NA_integer_,
+      num_starters_def_max = if (identical(num_starters_def_mode, "lte")) def_val else NA_integer_
+    ))
+    df <- q$value
+    db_ms <- db_ms + q$ms
 
-  # Replace NAs in shot/numeric columns with 0
-  shot_cols <- grep("fg[23]", names(df), value = TRUE)
-  for (col in shot_cols) df[[col]][is.na(df[[col]])] <- 0
-  for (col in c("off_poss", "off_pts", "def_poss", "def_pts", "minutes")) {
-    if (col %in% names(df)) df[[col]][is.na(df[[col]])] <- 0
+    if (is.null(df) || nrow(df) == 0) return(list(rows = list(), meta = list(autoMinPoss = 0L)))
+
+    # Replace NAs in shot/numeric columns with 0
+    shot_cols <- grep("fg[23]", names(df), value = TRUE)
+    for (col in shot_cols) df[[col]][is.na(df[[col]])] <- 0
+    for (col in c("off_poss", "off_pts", "def_poss", "def_pts", "minutes")) {
+      if (col %in% names(df)) df[[col]][is.na(df[[col]])] <- 0
+    }
+
+    # Ensure PPP/net columns exist
+    if (!("off_ppp" %in% names(df)) && all(c("off_pts", "off_poss") %in% names(df))) {
+      df$off_ppp <- ifelse(df$off_poss > 0, round(df$off_pts / df$off_poss * 100, 1), NA_real_)
+    }
+    if (!("def_ppp" %in% names(df)) && all(c("def_pts", "def_poss") %in% names(df))) {
+      df$def_ppp <- ifelse(df$def_poss > 0, round(df$def_pts / df$def_poss * 100, 1), NA_real_)
+    }
+    if (!("net_rtg" %in% names(df)) && all(c("off_ppp", "def_ppp") %in% names(df))) {
+      df$net_rtg <- ifelse(!is.na(df$off_ppp) & !is.na(df$def_ppp), round(df$off_ppp - df$def_ppp, 1), NA_real_)
+    }
+
+    df$total_poss <- df$off_poss + df$def_poss
+    df$plus_minus <- df$off_pts - df$def_pts
+
+    # Compute percentile ranks on full population (two-tier ranking)
+    thresh <- adaptive_baseline_r(df$total_poss)
+    qualify <- df$total_poss >= thresh
+    df$pr_net     <- pr_rank(ifelse(qualify, df$net_rtg, NA_real_))
+    df$pr_off_ppp <- pr_rank(ifelse(qualify, df$off_ppp, NA_real_))
+    pr_def_raw    <- pr_rank(ifelse(qualify, df$def_ppp, NA_real_))
+    df$pr_def_ppp_inv <- ifelse(is.na(pr_def_raw), NA_real_, 1 - pr_def_raw)
+
+    df$game_year <- NULL
+    df$player_names <- NULL
+
+    out <- rename_lineup_summary(df)
+    # Map rank columns to camelCase
+    names(out)[names(out) == "pr_net"]         <- "prNet"
+    names(out)[names(out) == "pr_off_ppp"]     <- "prOffPpp"
+    names(out)[names(out) == "pr_def_ppp_inv"] <- "prDefPppInv"
+
+    for (col in c("offPpp", "defPpp", "netRtg")) {
+      if (col %in% names(out)) out[[col]][is.na(out[[col]])] <- 0
+    }
+
+    ranked <- out
+    ranked_cache_set(rk_key, ranked)
   }
 
-  # Ensure PPP/net columns exist for the frontend contract
-  if (!("off_ppp" %in% names(df)) && all(c("off_pts", "off_poss") %in% names(df))) {
-    df$off_ppp <- ifelse(df$off_poss > 0, round(df$off_pts / df$off_poss * 100, 1), NA_real_)
-  }
-  if (!("def_ppp" %in% names(df)) && all(c("def_pts", "def_poss") %in% names(df))) {
-    df$def_ppp <- ifelse(df$def_poss > 0, round(df$def_pts / df$def_poss * 100, 1), NA_real_)
-  }
-  if (!("net_rtg" %in% names(df)) && all(c("off_ppp", "def_ppp") %in% names(df))) {
-    df$net_rtg <- ifelse(!is.na(df$off_ppp) & !is.na(df$def_ppp), round(df$off_ppp - df$def_ppp, 1), NA_real_)
-  }
+  # Apply local filters on cached ranked data
+  team_ids_vec  <- parse_int_csv(filter_team_ids)
+  players_on_vec  <- parse_int_csv(players_on)
+  players_off_vec <- parse_int_csv(players_off)
+  min_p <- as.integer(min_poss)
 
-  df$total_poss <- df$off_poss + df$def_poss
-  df$plus_minus <- df$off_pts - df$def_pts
+  result <- apply_lineup_local_filters(ranked, team_ids_vec, players_on_vec, players_off_vec, min_p)
 
-  # Drop game_year, player_names (array) columns before rename
-  df$game_year <- NULL
-  df$player_names <- NULL
-
-  out <- rename_lineup_summary(df)
-  if (!("offPpp" %in% names(out)) && all(c("offPts", "offPoss") %in% names(out))) {
-    out$offPpp <- ifelse(out$offPoss > 0, round(out$offPts / out$offPoss * 100, 1), 0)
-  }
-  if (!("defPpp" %in% names(out)) && all(c("defPts", "defPoss") %in% names(out))) {
-    out$defPpp <- ifelse(out$defPoss > 0, round(out$defPts / out$defPoss * 100, 1), 0)
-  }
-  if (!("netRtg" %in% names(out)) && all(c("offPpp", "defPpp") %in% names(out))) {
-    out$netRtg <- round(out$offPpp - out$defPpp, 1)
-  }
-  for (col in c("offPpp", "defPpp", "netRtg")) {
-    if (col %in% names(out)) out[[col]][is.na(out[[col]])] <- 0
-  }
   perf_log(
     req, "/api/lineups/summary",
     total_ms = .ms_elapsed(req_t0),
     db_ms = db_ms,
-    transform_ms = .ms_elapsed(transform_t0),
-    rows = nrow(out)
+    transform_ms = .ms_elapsed(req_t0) - db_ms,
+    rows = nrow(result$rows)
   )
-  cache_set(key, out)
+  resp <- list(rows = result$rows, meta = list(autoMinPoss = result$autoMinPoss))
+  cache_set(resp_key, resp)
 }
 
 # ── GET /api/lineups/four-factors ─────────────────────────────
 #* @get /api/lineups/four-factors
-#* @serializer json
+#* @serializer unboxedJSON
 function(req, res,
-         game_year = "2026", start_date = "2025-10-01", end_date = "2026-06-30",
+         game_year = "2026", start_date = "2025-10-01", end_date = "2026-07-01",
          num = "5", game_type = "", opp_ids = "",
          min_poss = "20",
+         filter_team_ids = "", players_on = "", players_off = "",
          home_away = "", outcome = "",
          gn_min = "", gn_max = "", last_n = "",
          opp_rank_side = "", opp_rank_n = "", opp_rank_metric = "",
          clutch_margin = "", clutch_status = "", clutch_minutes = "",
-         clutch_ot_margin = "false") {
-  key <- cache_key("/api/lineups/four-factors", req)
-  hit <- cache_get(key)
-  if (!is.null(hit)) return(hit)
+         clutch_ot_margin = "false",
+         num_starters_off_mode = "", num_starters_off = "",
+         num_starters_def_mode = "", num_starters_def = "") {
+  # Response cache (full query string key, including local filters)
+  resp_key <- cache_key("/api/lineups/four-factors", req)
+  resp_hit <- cache_get(resp_key)
+  if (!is.null(resp_hit)) return(resp_hit)
 
   req_t0 <- .ms_now()
   db_ms <- 0
   gy <- as.integer(game_year)
   bounds <- season_date_bounds(gy)
 
-  max_margin <- na_int(clutch_margin)
-  margin_status <- na_chr(clutch_status)
-  max_time_remaining <- if (nzchar(clutch_minutes)) as.integer(clutch_minutes) * 60L else NA_integer_
-  ot_margin_filter <- identical(clutch_ot_margin, "true")
+  # Ranked-data cache (game-level filters only)
+  qs <- req$QUERY_STRING %||% ""
+  rk_key <- ranked_key_from_qs("/api/lineups/four-factors", qs)
+  ranked <- ranked_cache_get(rk_key)
 
-  q <- .timed(function() run_fetch_lineups_ff(
-    pg_pool,
-    num = as.integer(num),
-    team_csv = NA_character_, player_csv = NA_character_,
-    player_off_csv = NA_character_, exact = TRUE,
-    start_date = if (nzchar(start_date)) start_date else bounds$start,
-    end_date = if (nzchar(end_date)) end_date else bounds$end,
-    min_poss = as.integer(min_poss), game_year = gy,
-    game_type_csv = na_chr(game_type), opp_ids_csv = na_chr(opp_ids),
-    home_away = na_chr(home_away), outcome = na_chr(outcome),
-    opp_rank_side = na_chr(opp_rank_side),
-    opp_rank_n = na_int(opp_rank_n),
-    opp_rank_metric = na_chr(opp_rank_metric),
-    max_margin = max_margin, margin_status = margin_status,
-    max_time_remaining = max_time_remaining,
-    ot_margin_filter = ot_margin_filter,
-    min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n)
-  ))
-  df <- q$value
-  db_ms <- db_ms + q$ms
+  if (is.null(ranked)) {
+    max_margin <- na_int(clutch_margin)
+    margin_status <- na_chr(clutch_status)
+    max_time_remaining <- if (nzchar(clutch_minutes)) as.integer(clutch_minutes) * 60L else NA_integer_
+    ot_margin_filter <- identical(clutch_ot_margin, "true")
+    off_val <- if (nzchar(num_starters_off_mode) && nzchar(num_starters_off)) as.integer(num_starters_off) else NA_integer_
+    def_val <- if (nzchar(num_starters_def_mode) && nzchar(num_starters_def)) as.integer(num_starters_def) else NA_integer_
 
-  if (is.null(df) || nrow(df) == 0) return(list())
-  transform_t0 <- .ms_now()
+    # Fetch full dataset from DB with min_poss=0 for correct ranking
+    q <- .timed(function() run_fetch_lineups_ff(
+      pg_pool,
+      num = as.integer(num),
+      team_csv = NA_character_, player_csv = NA_character_,
+      player_off_csv = NA_character_, exact = TRUE,
+      start_date = if (nzchar(start_date)) start_date else bounds$start,
+      end_date = if (nzchar(end_date)) end_date else bounds$end,
+      min_poss = 0L, game_year = gy,
+      game_type_csv = na_chr(game_type), opp_ids_csv = na_chr(opp_ids),
+      home_away = na_chr(home_away), outcome = na_chr(outcome),
+      opp_rank_side = na_chr(opp_rank_side),
+      opp_rank_n = na_int(opp_rank_n),
+      opp_rank_metric = na_chr(opp_rank_metric),
+      max_margin = max_margin, margin_status = margin_status,
+      max_time_remaining = max_time_remaining,
+      ot_margin_filter = ot_margin_filter,
+      min_gn = na_int(gn_min), max_gn = na_int(gn_max), last_n = na_int(last_n),
+      num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+      num_starters_off_min = if (identical(num_starters_off_mode, "gte")) off_val else NA_integer_,
+      num_starters_off_max = if (identical(num_starters_off_mode, "lte")) off_val else NA_integer_,
+      num_starters_def_min = if (identical(num_starters_def_mode, "gte")) def_val else NA_integer_,
+      num_starters_def_max = if (identical(num_starters_def_mode, "lte")) def_val else NA_integer_
+    ))
+    df <- q$value
+    db_ms <- db_ms + q$ms
 
-  for (col in names(df)) {
-    if (is.numeric(df[[col]])) df[[col]][is.na(df[[col]])] <- 0
+    if (is.null(df) || nrow(df) == 0) return(list(rows = list(), meta = list(autoMinPoss = 0L)))
+
+    for (col in names(df)) {
+      if (is.numeric(df[[col]])) df[[col]][is.na(df[[col]])] <- 0
+    }
+
+    df$total_poss <- df$off_poss + df$def_poss
+
+    # Compute 11 percentile ranks on full population (two-tier ranking)
+    thresh <- adaptive_baseline_r(df$total_poss)
+    qualify <- df$total_poss >= thresh
+    qval <- function(v) ifelse(qualify, v, NA_real_)
+
+    df$pr_net      <- pr_rank(qval(df$net_rtg))
+    df$pr_off_ppp  <- pr_rank(qval(df$off_ppp))
+    df$pr_off_ts   <- pr_rank(qval(df$off_ts))
+    df$pr_off_oreb <- pr_rank(qval(df$off_oreb))
+    pr_off_tov_raw <- pr_rank(qval(df$off_tov))
+    df$pr_off_tov  <- ifelse(is.na(pr_off_tov_raw), NA_real_, 1 - pr_off_tov_raw)  # inverted
+    df$pr_off_ftr  <- pr_rank(qval(df$off_ftr))
+    pr_def_ppp_raw <- pr_rank(qval(df$def_ppp))
+    df$pr_def_ppp  <- ifelse(is.na(pr_def_ppp_raw), NA_real_, 1 - pr_def_ppp_raw)  # inverted
+    pr_def_ts_raw  <- pr_rank(qval(df$def_ts))
+    df$pr_def_ts   <- ifelse(is.na(pr_def_ts_raw), NA_real_, 1 - pr_def_ts_raw)    # inverted
+    pr_def_oreb_raw <- pr_rank(qval(df$def_oreb))
+    df$pr_def_oreb <- ifelse(is.na(pr_def_oreb_raw), NA_real_, 1 - pr_def_oreb_raw) # inverted
+    df$pr_def_tov  <- pr_rank(qval(df$def_tov))  # NOT inverted (opponent TOV = good)
+    pr_def_ftr_raw <- pr_rank(qval(df$def_ftr))
+    df$pr_def_ftr  <- ifelse(is.na(pr_def_ftr_raw), NA_real_, 1 - pr_def_ftr_raw)  # inverted
+
+    df$game_year <- NULL
+    df$player_names <- NULL
+
+    out <- rename_lineup_ff(df)
+    # Map rank columns to camelCase
+    rank_map <- c(
+      "pr_net" = "prNet", "pr_off_ppp" = "prOffPpp",
+      "pr_off_ts" = "prOffTs", "pr_off_oreb" = "prOffOreb",
+      "pr_off_tov" = "prOffTov", "pr_off_ftr" = "prOffFtr",
+      "pr_def_ppp" = "prDefPpp", "pr_def_ts" = "prDefTs",
+      "pr_def_oreb" = "prDefOreb", "pr_def_tov" = "prDefTov",
+      "pr_def_ftr" = "prDefFtr"
+    )
+    for (old in names(rank_map)) {
+      if (old %in% names(out)) names(out)[names(out) == old] <- rank_map[[old]]
+    }
+
+    ranked <- out
+    ranked_cache_set(rk_key, ranked)
   }
 
-  df$total_poss <- df$off_poss + df$def_poss
+  # Apply local filters on cached ranked data
+  team_ids_vec  <- parse_int_csv(filter_team_ids)
+  players_on_vec  <- parse_int_csv(players_on)
+  players_off_vec <- parse_int_csv(players_off)
+  min_p <- as.integer(min_poss)
 
-  df$game_year <- NULL
-  df$player_names <- NULL
+  result <- apply_lineup_local_filters(ranked, team_ids_vec, players_on_vec, players_off_vec, min_p)
 
-  out <- rename_lineup_ff(df)
   perf_log(
     req, "/api/lineups/four-factors",
     total_ms = .ms_elapsed(req_t0),
     db_ms = db_ms,
-    transform_ms = .ms_elapsed(transform_t0),
-    rows = nrow(out)
+    transform_ms = .ms_elapsed(req_t0) - db_ms,
+    rows = nrow(result$rows)
   )
-  cache_set(key, out)
+  resp <- list(rows = result$rows, meta = list(autoMinPoss = result$autoMinPoss))
+  cache_set(resp_key, resp)
 }
 
 # ── GET /api/lineups/game-log ─────────────────────────────────

@@ -375,12 +375,18 @@
    EXPLAINER / LEGEND
    ============================================================ */
 .explainer-bar {
+  appearance: none;
+  -webkit-appearance: none;
   display: flex; align-items: center; justify-content: space-between;
+  width: 100%;
   padding: 8px 14px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   margin-bottom: 12px;
+  color: inherit;
+  font: inherit;
+  text-align: left;
   cursor: pointer;
   transition: background var(--duration-fast);
 }
@@ -608,6 +614,14 @@
 }
 
 .lineup-link {
+  appearance: none;
+  -webkit-appearance: none;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  text-align: left;
   color: var(--neutral);
   text-decoration: none;
   cursor: pointer;

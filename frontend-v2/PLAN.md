@@ -39,9 +39,11 @@ Enhance the static prototype to feel fully interactive with mock data.
 - [x] **Keyboard shortcuts** — Escape closes modal/drawer
 - [x] **Mobile: collapse filter sections** — sections start closed on small screens
 
-## Phase 2: React Migration (~1-2 days)
+## Phase 2: React Migration (~1-2 days) — IN PROGRESS
 
 Convert prototype into a proper React + TypeScript app with component architecture.
+
+**Status:** Tab 1 (On/Off Impact) COMPLETE. Tab 2 (Lineup Data) COMPLETE (pending live testing). Tabs 3-4 remaining.
 
 ```
 frontend-v2/

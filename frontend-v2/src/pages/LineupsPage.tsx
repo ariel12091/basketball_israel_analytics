@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useId } from 'react';
 import { useFilters, buildApiParams } from '../features/filters/store';
 import { useApi } from '../hooks/useApi';
 import { useSorting } from '../hooks/useSorting';
@@ -7,11 +7,8 @@ import type { ColumnGroup, Column } from '../features/tables/DataTable';
 import HeatCell from '../features/tables/HeatCell';
 import ShotCell from '../features/tables/ShotCell';
 import LineupModal from '../features/tables/LineupModal';
-import type { LineupSummary, LineupFourFactors, Team, Player } from '../types';
+import type { LineupSummary, LineupFourFactors, LineupApiResponse, Team, Player } from '../types';
 import {
-  autoMinPoss,
-  adaptiveBaseline,
-  percentileRank,
   computeShotAvgs,
   SHOT_MIN_FGA,
 } from '../utils/ranking';
@@ -22,6 +19,9 @@ type GroupSize = 2 | 3 | 4 | 5;
 // ─── LineupsPage ────────────────────────────────────────────
 export default function LineupsPage() {
   const { state: filters, dispatch } = useFilters();
+  const teamSelectId = useId();
+  const playersOnId = useId();
+  const playersOffId = useId();
 
   // Tab-2 local state (not in shared FilterContext)
   const [mode, setMode] = useState<ViewMode>('summary');
@@ -50,8 +50,8 @@ export default function LineupsPage() {
   const prevLineupPlayersActive = useRef(false);
   const prevResetSeq = useRef(filters.resetSeq);
 
-  // Build API params: shared filters + Tab 2-specific (groupSize, clutch, GN)
-  // NOTE: team/player/minPoss are client-side-only filters
+  // Build API params: shared filters + Tab 2-specific + local filters
+  // Server handles ranking on full population, then applies local filters (team/player/minPoss)
   const apiParams = useMemo(() => {
     const base = buildApiParams(filters);
     const p: Record<string, unknown> = {
@@ -59,6 +59,9 @@ export default function LineupsPage() {
       num: groupSize,
       min_poss: minPoss,
     };
+    if (filters.teamIds.length) p.filter_team_ids = filters.teamIds.join(',');
+    if (playersOn.length) p.players_on = playersOn.join(',');
+    if (playersOff.length) p.players_off = playersOff.join(',');
     if (clutchEnabled) {
       p.clutch_margin = clutchMargin;
       p.clutch_status = clutchStatus;
@@ -66,15 +69,17 @@ export default function LineupsPage() {
       if (clutchOtMargin) p.clutch_ot_margin = 'true';
     }
     return p;
-  }, [filters, groupSize, minPoss, clutchEnabled, clutchMargin, clutchStatus, clutchMinutes, clutchOtMargin]);
+  }, [filters, groupSize, minPoss, playersOn, playersOff, clutchEnabled, clutchMargin, clutchStatus, clutchMinutes, clutchOtMargin]);
 
-  // Fetch data
-  const { data: summaryRaw, loading: summaryLoading, error: summaryError } = useApi<LineupSummary[]>(
+  // Fetch data (server returns {rows, meta} with server-side ranking + filtering)
+  const { data: summaryResp, loading: summaryLoading, error: summaryError } = useApi<LineupApiResponse<LineupSummary>>(
     '/api/lineups/summary', apiParams, mode === 'summary',
   );
-  const { data: ffRaw, loading: ffLoading, error: ffError } = useApi<LineupFourFactors[]>(
+  const { data: ffResp, loading: ffLoading, error: ffError } = useApi<LineupApiResponse<LineupFourFactors>>(
     '/api/lineups/four-factors', apiParams, mode === 'ff',
   );
+  const summaryRows = summaryResp?.rows ?? [];
+  const ffRows = ffResp?.rows ?? [];
 
   // Fetch teams and players for filters
   const teamsParams = useMemo(() => ({ game_year: filters.gameYear }), [filters.gameYear]);
@@ -91,17 +96,13 @@ export default function LineupsPage() {
     [teams],
   );
 
-  // When team changes, clear player selections
-  useEffect(() => {
-    setPlayersOn([]);
-    setPlayersOff([]);
-  }, [teamId]);
-
   // Keep local Team and drawer Teams mutually exclusive.
   // If drawer teams are selected, local team is cleared.
   useEffect(() => {
     if (filters.teamIds.length > 0 && teamId !== null) {
       setTeamId(null);
+      setPlayersOn([]);
+      setPlayersOff([]);
     }
   }, [filters.teamIds, teamId]);
 
@@ -130,7 +131,7 @@ export default function LineupsPage() {
     }
   }, [filters.resetSeq]);
 
-  // ─── Auto min-poss ────────────────────────────────────────
+  // ─── Auto min-poss (uses server-provided value) ────────────
   useEffect(() => {
     if (minPoss !== prevMinPoss.current) {
       if (!autoUpdating.current) autoEnabled.current = false;
@@ -139,64 +140,42 @@ export default function LineupsPage() {
     }
   }, [minPoss]);
 
-  // Re-enable auto when filters change
+  // Key of params that affect dataset shape (excludes minPoss to avoid re-enable on slider drag)
+  const datasetKey = useMemo(() => JSON.stringify({
+    base: buildApiParams(filters),
+    num: groupSize,
+    filter_team_ids: filters.teamIds,
+    players_on: playersOn,
+    players_off: playersOff,
+    clutch: clutchEnabled ? { clutchMargin, clutchStatus, clutchMinutes, clutchOtMargin } : null,
+  }), [filters, groupSize, playersOn, playersOff, clutchEnabled, clutchMargin, clutchStatus, clutchMinutes, clutchOtMargin]);
+
+  // Re-enable auto when dataset shape changes (NOT when minPoss changes)
   useEffect(() => {
     autoEnabled.current = true;
-  }, [apiParams, teamId, playersOn, playersOff]);
+  }, [datasetKey]);
 
-  // Compute auto threshold
+  // Apply server-provided autoMinPoss when auto is enabled
   useEffect(() => {
     if (!autoEnabled.current) return;
-    const raw = mode === 'summary' ? summaryRaw : ffRaw;
-    if (!raw?.length) return;
-    // Apply active filters first, then compute threshold
-    let data = raw as Array<{ totalPoss: number; teamId: number; playerIds: number[] }>;
-    if (filters.teamIds.length) data = data.filter(d => filters.teamIds.includes(d.teamId));
-    if (playersOn.length) data = data.filter(d => playersOn.every(id => d.playerIds.includes(id)));
-    if (playersOff.length) data = data.filter(d => !playersOff.some(id => d.playerIds.includes(id)));
-
-    const needed = autoMinPoss(data.map(d => ({ poss: d.totalPoss })));
-    if (minPoss > needed) {
+    const resp = mode === 'summary' ? summaryResp : ffResp;
+    if (!resp) return;
+    const needed = resp.meta.autoMinPoss;
+    if (minPoss !== needed) {
       autoUpdating.current = true;
       setMinPoss(needed);
     }
-  }, [summaryRaw, ffRaw, mode, teamId, playersOn, playersOff, minPoss, filters.teamIds]);
+  }, [summaryResp, ffResp, mode, minPoss]);
 
-  // ─── Summary: rank + filter + TOTAL ────────────────────────
-  const summaryRanked = useMemo(() => {
-    if (!summaryRaw?.length) return [];
-    const possVec = summaryRaw.map(d => d.totalPoss);
-    const thresh = adaptiveBaseline(possVec);
-    const qualify = (vals: number[]) => vals.map((v, i) => possVec[i] >= thresh ? v : null);
-
-    const prNet = percentileRank(qualify(summaryRaw.map(d => d.netRtg)));
-    const prOffPpp = percentileRank(qualify(summaryRaw.map(d => d.offPpp)));
-    const prDefPpp = percentileRank(qualify(summaryRaw.map(d => d.defPpp)));
-
-    return summaryRaw.map((d, i) => ({
-      ...d,
-      prNet: prNet[i],
-      prOffPpp: prOffPpp[i],
-      prDefPppInv: prDefPpp[i] === null ? null : 1 - prDefPpp[i]!,
-    }));
-  }, [summaryRaw]);
-
-  const summaryFiltered = useMemo(() => {
-    let data = summaryRanked;
-    if (filters.teamIds.length) data = data.filter(d => filters.teamIds.includes(d.teamId));
-    if (playersOn.length) data = data.filter(d => playersOn.every(id => d.playerIds.includes(id)));
-    if (playersOff.length) data = data.filter(d => !playersOff.some(id => d.playerIds.includes(id)));
-    return data.filter(d => d.totalPoss >= minPoss);
-  }, [summaryRanked, teamId, playersOn, playersOff, minPoss, filters.teamIds]);
-
-  // TOTAL row for summary
+  // ─── Summary: TOTAL row ────────────────────────────────────
+  // Rows arrive pre-ranked and pre-filtered from the server
   const summaryWithTotal = useMemo(() => {
-    if (!summaryFiltered.length) return [];
-    const sumOffPts = summaryFiltered.reduce((s, l) => s + l.offPts, 0);
-    const sumOffPoss = summaryFiltered.reduce((s, l) => s + l.offPoss, 0);
-    const sumDefPts = summaryFiltered.reduce((s, l) => s + l.defPts, 0);
-    const sumDefPoss = summaryFiltered.reduce((s, l) => s + l.defPoss, 0);
-    const sumMins = summaryFiltered.reduce((s, l) => s + l.minutes, 0);
+    if (!summaryRows.length) return [];
+    const sumOffPts = summaryRows.reduce((s, l) => s + l.offPts, 0);
+    const sumOffPoss = summaryRows.reduce((s, l) => s + l.offPoss, 0);
+    const sumDefPts = summaryRows.reduce((s, l) => s + l.defPts, 0);
+    const sumDefPoss = summaryRows.reduce((s, l) => s + l.defPoss, 0);
+    const sumMins = summaryRows.reduce((s, l) => s + l.minutes, 0);
     const totOffPpp = sumOffPoss > 0 ? (sumOffPts / sumOffPoss) * 100 : 0;
     const totDefPpp = sumDefPoss > 0 ? (sumDefPts / sumDefPoss) * 100 : 0;
 
@@ -208,85 +187,45 @@ export default function LineupsPage() {
       netRtg: totOffPpp - totDefPpp, minutes: sumMins,
       totalPoss: sumOffPoss + sumDefPoss,
       plusMinus: sumOffPts - sumDefPts,
-      offFg2Made: summaryFiltered.reduce((s, l) => s + l.offFg2Made, 0),
-      offFg2Att: summaryFiltered.reduce((s, l) => s + l.offFg2Att, 0),
-      offFg3Made: summaryFiltered.reduce((s, l) => s + l.offFg3Made, 0),
-      offFg3Att: summaryFiltered.reduce((s, l) => s + l.offFg3Att, 0),
-      defFg2Made: summaryFiltered.reduce((s, l) => s + l.defFg2Made, 0),
-      defFg2Att: summaryFiltered.reduce((s, l) => s + l.defFg2Att, 0),
-      defFg3Made: summaryFiltered.reduce((s, l) => s + l.defFg3Made, 0),
-      defFg3Att: summaryFiltered.reduce((s, l) => s + l.defFg3Att, 0),
+      offFg2Made: summaryRows.reduce((s, l) => s + l.offFg2Made, 0),
+      offFg2Att: summaryRows.reduce((s, l) => s + l.offFg2Att, 0),
+      offFg3Made: summaryRows.reduce((s, l) => s + l.offFg3Made, 0),
+      offFg3Att: summaryRows.reduce((s, l) => s + l.offFg3Att, 0),
+      defFg2Made: summaryRows.reduce((s, l) => s + l.defFg2Made, 0),
+      defFg2Att: summaryRows.reduce((s, l) => s + l.defFg2Att, 0),
+      defFg3Made: summaryRows.reduce((s, l) => s + l.defFg3Made, 0),
+      defFg3Att: summaryRows.reduce((s, l) => s + l.defFg3Att, 0),
+      prNet: null, prOffPpp: null, prDefPppInv: null,
       isTotal: true,
     };
-    return [total, ...summaryFiltered];
-  }, [summaryFiltered]);
+    return [total, ...summaryRows];
+  }, [summaryRows]);
 
-  // ─── FF: rank + filter + TOTAL ─────────────────────────────
-  const ffRanked = useMemo(() => {
-    if (!ffRaw?.length) return [];
-    const possVec = ffRaw.map(d => d.totalPoss);
-    const thresh = adaptiveBaseline(possVec);
-    const qualify = (vals: number[]) => vals.map((v, i) => possVec[i] >= thresh ? v : null);
-
-    const prNet = percentileRank(qualify(ffRaw.map(d => d.netRtg)));
-    const prOffPpp = percentileRank(qualify(ffRaw.map(d => d.offPpp)));
-    const prOffTs = percentileRank(qualify(ffRaw.map(d => d.offTs)));
-    const prOffOreb = percentileRank(qualify(ffRaw.map(d => d.offOreb)));
-    const prOffTov = percentileRank(qualify(ffRaw.map(d => d.offTov)));
-    const prOffFtr = percentileRank(qualify(ffRaw.map(d => d.offFtr)));
-    const prDefPpp = percentileRank(qualify(ffRaw.map(d => d.defPpp)));
-    const prDefTs = percentileRank(qualify(ffRaw.map(d => d.defTs)));
-    const prDefOreb = percentileRank(qualify(ffRaw.map(d => d.defOreb)));
-    const prDefTov = percentileRank(qualify(ffRaw.map(d => d.defTov)));
-    const prDefFtr = percentileRank(qualify(ffRaw.map(d => d.defFtr)));
-
-    return ffRaw.map((d, i) => ({
-      ...d,
-      prNet: prNet[i],
-      prOffPpp: prOffPpp[i],
-      prOffTs: prOffTs[i],
-      prOffOreb: prOffOreb[i],
-      prOffTov: prOffTov[i] === null ? null : 1 - prOffTov[i]!,  // inverted
-      prOffFtr: prOffFtr[i],
-      prDefPpp: prDefPpp[i] === null ? null : 1 - prDefPpp[i]!,  // inverted
-      prDefTs: prDefTs[i] === null ? null : 1 - prDefTs[i]!,     // inverted
-      prDefOreb: prDefOreb[i] === null ? null : 1 - prDefOreb[i]!,// inverted
-      prDefTov: prDefTov[i],  // NOT inverted (opponent TOV = good)
-      prDefFtr: prDefFtr[i] === null ? null : 1 - prDefFtr[i]!,  // inverted
-    }));
-  }, [ffRaw]);
-
-  const ffFiltered = useMemo(() => {
-    let data = ffRanked;
-    if (filters.teamIds.length) data = data.filter(d => filters.teamIds.includes(d.teamId));
-    if (playersOn.length) data = data.filter(d => playersOn.every(id => d.playerIds.includes(id)));
-    if (playersOff.length) data = data.filter(d => !playersOff.some(id => d.playerIds.includes(id)));
-    return data.filter(d => d.totalPoss >= minPoss);
-  }, [ffRanked, teamId, playersOn, playersOff, minPoss, filters.teamIds]);
-
+  // ─── FF: TOTAL row ─────────────────────────────────────────
+  // Rows arrive pre-ranked and pre-filtered from the server
   const ffWithTotal = useMemo(() => {
-    if (!ffFiltered.length) return [];
-    const sumOffPts = ffFiltered.reduce((s, l) => s + l.offPts, 0);
-    const sumOffPoss = ffFiltered.reduce((s, l) => s + l.offPoss, 0);
-    const sumDefPts = ffFiltered.reduce((s, l) => s + l.defPts, 0);
-    const sumDefPoss = ffFiltered.reduce((s, l) => s + l.defPoss, 0);
-    const sumMins = ffFiltered.reduce((s, l) => s + l.minutes, 0);
+    if (!ffRows.length) return [];
+    const sumOffPts = ffRows.reduce((s, l) => s + l.offPts, 0);
+    const sumOffPoss = ffRows.reduce((s, l) => s + l.offPoss, 0);
+    const sumDefPts = ffRows.reduce((s, l) => s + l.defPts, 0);
+    const sumDefPoss = ffRows.reduce((s, l) => s + l.defPoss, 0);
+    const sumMins = ffRows.reduce((s, l) => s + l.minutes, 0);
     const totOffPpp = sumOffPoss > 0 ? (sumOffPts / sumOffPoss) * 100 : 0;
     const totDefPpp = sumDefPoss > 0 ? (sumDefPts / sumDefPoss) * 100 : 0;
 
     // Sum raw counts for FF rates
-    const sOffTsPoss = ffFiltered.reduce((s, l) => s + l.offTsPoss, 0);
-    const sOffOrebCnt = ffFiltered.reduce((s, l) => s + l.offOrebCnt, 0);
-    const sOffOrebOpps = ffFiltered.reduce((s, l) => s + l.offOrebOpps, 0);
-    const sOffTovCnt = ffFiltered.reduce((s, l) => s + l.offTovCnt, 0);
-    const sOffFta = ffFiltered.reduce((s, l) => s + l.offFta, 0);
-    const sOffFga = ffFiltered.reduce((s, l) => s + l.offFgaCnt, 0);
-    const sDefTsPoss = ffFiltered.reduce((s, l) => s + l.defTsPoss, 0);
-    const sDefOrebCnt = ffFiltered.reduce((s, l) => s + l.defOrebCnt, 0);
-    const sDefOrebOpps = ffFiltered.reduce((s, l) => s + l.defOrebOpps, 0);
-    const sDefTovCnt = ffFiltered.reduce((s, l) => s + l.defTovCnt, 0);
-    const sDefFta = ffFiltered.reduce((s, l) => s + l.defFta, 0);
-    const sDefFga = ffFiltered.reduce((s, l) => s + l.defFgaCnt, 0);
+    const sOffTsPoss = ffRows.reduce((s, l) => s + l.offTsPoss, 0);
+    const sOffOrebCnt = ffRows.reduce((s, l) => s + l.offOrebCnt, 0);
+    const sOffOrebOpps = ffRows.reduce((s, l) => s + l.offOrebOpps, 0);
+    const sOffTovCnt = ffRows.reduce((s, l) => s + l.offTovCnt, 0);
+    const sOffFta = ffRows.reduce((s, l) => s + l.offFta, 0);
+    const sOffFga = ffRows.reduce((s, l) => s + l.offFgaCnt, 0);
+    const sDefTsPoss = ffRows.reduce((s, l) => s + l.defTsPoss, 0);
+    const sDefOrebCnt = ffRows.reduce((s, l) => s + l.defOrebCnt, 0);
+    const sDefOrebOpps = ffRows.reduce((s, l) => s + l.defOrebOpps, 0);
+    const sDefTovCnt = ffRows.reduce((s, l) => s + l.defTovCnt, 0);
+    const sDefFta = ffRows.reduce((s, l) => s + l.defFta, 0);
+    const sDefFga = ffRows.reduce((s, l) => s + l.defFgaCnt, 0);
 
     const total: LineupFourFactors = {
       teamId: 0, subLineupHash: 'TOTAL', numLineup: 0,
@@ -307,10 +246,13 @@ export default function LineupsPage() {
       offTovCnt: sOffTovCnt, offFta: sOffFta, offFgaCnt: sOffFga,
       defTsPoss: sDefTsPoss, defOrebCnt: sDefOrebCnt, defOrebOpps: sDefOrebOpps,
       defTovCnt: sDefTovCnt, defFta: sDefFta, defFgaCnt: sDefFga,
+      prNet: null, prOffPpp: null, prOffTs: null, prOffOreb: null,
+      prOffTov: null, prOffFtr: null, prDefPpp: null, prDefTs: null,
+      prDefOreb: null, prDefTov: null, prDefFtr: null,
       isTotal: true,
     };
-    return [total, ...ffFiltered];
-  }, [ffFiltered]);
+    return [total, ...ffRows];
+  }, [ffRows]);
 
   // ─── Sorting (pin TOTAL row at top) ──────────────────────
   const {
@@ -318,7 +260,7 @@ export default function LineupsPage() {
     sortKey: sSortKey,
     sortDir: sSortDir,
     onSort: sOnSort,
-  } = useSorting(summaryFiltered, 'totalPoss', 'desc');
+  } = useSorting(summaryRows, 'totalPoss', 'desc');
 
   const summarySorted = useMemo(() => {
     if (!summaryWithTotal.length) return [];
@@ -331,7 +273,7 @@ export default function LineupsPage() {
     sortKey: fSortKey,
     sortDir: fSortDir,
     onSort: fOnSort,
-  } = useSorting(ffFiltered, 'totalPoss', 'desc');
+  } = useSorting(ffRows, 'totalPoss', 'desc');
 
   const ffSorted = useMemo(() => {
     if (!ffWithTotal.length) return [];
@@ -341,10 +283,9 @@ export default function LineupsPage() {
 
   // ─── Shot averages (summary) ──────────────────────────────
   const summaryColumns = useMemo(() => {
-    const raw = summaryRaw ?? [];
     return buildSummaryColumns(
-      computeShotAvgs(raw, 'offFg2Made', 'offFg2Att', 'offFg3Made', 'offFg3Att', SHOT_MIN_FGA),
-      computeShotAvgs(raw, 'defFg2Made', 'defFg2Att', 'defFg3Made', 'defFg3Att', SHOT_MIN_FGA),
+      computeShotAvgs(summaryRows, 'offFg2Made', 'offFg2Att', 'offFg3Made', 'offFg3Att', SHOT_MIN_FGA),
+      computeShotAvgs(summaryRows, 'defFg2Made', 'defFg2Att', 'defFg3Made', 'defFg3Att', SHOT_MIN_FGA),
       teamNameById,
       (row: LineupSummary) => {
         if (row.isTotal) return;
@@ -352,7 +293,7 @@ export default function LineupsPage() {
         setModalTeamId(row.teamId);
       },
     );
-  }, [summaryRaw, teamNameById]);
+  }, [summaryRows, teamNameById]);
 
   const ffColumnsBuilt = useMemo(() => buildFFColumns(
     teamNameById,
@@ -365,11 +306,13 @@ export default function LineupsPage() {
 
   // ─── CSV export ───────────────────────────────────────────
   const handleSummaryExport = useCallback(() => {
-    const keys = ['playerNamesStr', 'offPpp', 'defPpp', 'netRtg', 'offPoss', 'defPoss',
+    const keys = ['playerNamesStr', 'offPpp', 'defPpp', 'netRtg',
+      'offPoss', 'offPts', 'defPoss', 'defPts',
       'minutes', 'totalPoss', 'plusMinus',
       'offFg2Made', 'offFg2Att', 'offFg3Made', 'offFg3Att',
       'defFg2Made', 'defFg2Att', 'defFg3Made', 'defFg3Att'];
-    const headers = ['Players', 'Off PPP', 'Def PPP', 'Net RTG', 'Off Poss', 'Def Poss',
+    const headers = ['Players', 'Off PPP', 'Def PPP', 'Net RTG',
+      'Off Poss', 'Off Pts', 'Def Poss', 'Def Pts',
       'Min', 'Total Poss', '+/-',
       'Off FG2 Made', 'Off FG2 Att', 'Off FG3 Made', 'Off FG3 Att',
       'Def FG2 Made', 'Def FG2 Att', 'Def FG3 Made', 'Def FG3 Att'];
@@ -414,13 +357,17 @@ export default function LineupsPage() {
       </div>
 
       {/* Explainer */}
-      <div className={`explainer-bar ${explainerOpen ? 'open' : ''}`} onClick={() => setExplainerOpen(!explainerOpen)}>
+      <button
+        type="button"
+        className={`explainer-bar ${explainerOpen ? 'open' : ''}`}
+        onClick={() => setExplainerOpen(!explainerOpen)}
+      >
         <div className="explainer-bar-left">
           <div className="explainer-icon">?</div>
           <span className="explainer-bar-title">How to read this table</span>
         </div>
         <span className="explainer-chevron">&#9660;</span>
-      </div>
+      </button>
       {explainerOpen && (
         <div className="explainer-body show">
           {mode === 'summary' ? (
@@ -474,13 +421,16 @@ export default function LineupsPage() {
             <span className="group-size-label">Lineup Player Selection</span>
           </div>
           <div className="lineup-filter-item">
-            <label className="lineup-filter-label">Team</label>
+            <label className="lineup-filter-label" htmlFor={teamSelectId}>Team</label>
             <select
+              id={teamSelectId}
               className="lineup-select"
               value={teamId ?? ''}
               onChange={e => {
                 const next = e.target.value ? Number(e.target.value) : null;
                 setTeamId(next);
+                setPlayersOn([]);
+                setPlayersOff([]);
                 if (next !== null && filters.teamIds.length > 0) {
                   dispatch({ type: 'SET_FIELD', field: 'teamIds', value: [] });
                 }
@@ -493,8 +443,9 @@ export default function LineupsPage() {
             </select>
           </div>
           <div className="lineup-filter-item">
-            <label className="lineup-filter-label">Players On</label>
+            <label className="lineup-filter-label" htmlFor={playersOnId}>Players On</label>
             <MultiSelect
+              inputId={playersOnId}
               options={teamPlayers.filter(p => !playersOff.includes(p.playerId))}
               selected={playersOn}
               onChange={handlePlayerOnChange}
@@ -503,8 +454,9 @@ export default function LineupsPage() {
             />
           </div>
           <div className="lineup-filter-item">
-            <label className="lineup-filter-label">Players Off</label>
+            <label className="lineup-filter-label" htmlFor={playersOffId}>Players Off</label>
             <MultiSelect
+              inputId={playersOffId}
               options={teamPlayers.filter(p => !playersOn.includes(p.playerId))}
               selected={playersOff}
               onChange={handlePlayerOffChange}
@@ -614,8 +566,8 @@ export default function LineupsPage() {
         </div>
       )}
       {!loading && !error && (
-        (mode === 'summary' && summarySorted.length === 0 && summaryRaw !== null) ||
-        (mode === 'ff' && ffSorted.length === 0 && ffRaw !== null)
+        (mode === 'summary' && summarySorted.length === 0 && summaryResp !== null) ||
+        (mode === 'ff' && ffSorted.length === 0 && ffResp !== null)
       ) && (
         <div className="table-card" style={{ padding: '32px 0', textAlign: 'center' }}>
           <p style={{ color: 'var(--text-muted)' }}>
@@ -670,12 +622,14 @@ export default function LineupsPage() {
 
 // ─── Simple MultiSelect (no react-select dependency) ────────
 function MultiSelect({
+  inputId,
   options,
   selected,
   onChange,
   placeholder,
   disabled = false,
 }: {
+  inputId: string;
   options: Player[];
   selected: number[];
   onChange: (ids: number[]) => void;
@@ -714,14 +668,9 @@ function MultiSelect({
 
   return (
     <div className="multi-select" ref={ref}>
-      <div
-        className="multi-select-display"
-        onClick={() => {
-          if (disabled) return;
-          setOpen(true);
-        }}
-      >
+      <div className="multi-select-display">
         <input
+          id={inputId}
           type="text"
           className="multi-select-input"
           value={search}
@@ -767,7 +716,7 @@ const SUMMARY_GROUPS: ColumnGroup[] = [
   { label: 'PERFORMANCE', span: 3, sectionStart: true },
   { label: 'OFF SHOT', span: 1, sectionStart: true },
   { label: 'DEF SHOT', span: 1 },
-  { label: 'USAGE', span: 4, sectionStart: true },
+  { label: 'USAGE', span: 7, sectionStart: true },
 ];
 
 function buildSummaryColumns(
@@ -786,10 +735,10 @@ function buildSummaryColumns(
           {row.isTotal ? (
             <span style={{ fontWeight: 700 }}>{row.playerNamesStr}</span>
           ) : (
-            <a className="lineup-link" onClick={() => onClick(row)}>
+            <button type="button" className="lineup-link" onClick={() => onClick(row)}>
               <div className="lineup-name">{formatLineupNames(row.playerNamesStr)}</div>
               <div className="lineup-team">{formatTeamName(teamNameById.get(row.teamId) ?? '')}</div>
-            </a>
+            </button>
           )}
         </td>
       ),
@@ -869,6 +818,36 @@ function buildSummaryColumns(
       ),
     },
     {
+      key: 'offPts',
+      header: 'Off Pts',
+      tip: 'Offensive points scored',
+      render: (row) => (
+        <td key="offPts" className={row.isTotal ? 'total-cell' : ''} style={{ color: 'var(--text-secondary)' }}>
+          {row.offPts.toLocaleString()}
+        </td>
+      ),
+    },
+    {
+      key: 'defPoss',
+      header: 'Def Poss',
+      tip: 'Defensive possessions',
+      render: (row) => (
+        <td key="defPoss" className={row.isTotal ? 'total-cell' : ''} style={{ color: 'var(--text-secondary)' }}>
+          {row.defPoss.toLocaleString()}
+        </td>
+      ),
+    },
+    {
+      key: 'defPts',
+      header: 'Def Pts',
+      tip: 'Defensive points allowed',
+      render: (row) => (
+        <td key="defPts" className={row.isTotal ? 'total-cell' : ''} style={{ color: 'var(--text-secondary)' }}>
+          {row.defPts.toLocaleString()}
+        </td>
+      ),
+    },
+    {
       key: 'minutes',
       header: 'Min',
       tip: 'Minutes played',
@@ -922,10 +901,10 @@ function buildFFColumns(
           {row.isTotal ? (
             <span style={{ fontWeight: 700 }}>{row.playerNamesStr}</span>
           ) : (
-            <a className="lineup-link" onClick={() => onClick(row)}>
+            <button type="button" className="lineup-link" onClick={() => onClick(row)}>
               <div className="lineup-name">{formatLineupNames(row.playerNamesStr)}</div>
               <div className="lineup-team">{formatTeamName(teamNameById.get(row.teamId) ?? '')}</div>
-            </a>
+            </button>
           )}
         </td>
       ),
