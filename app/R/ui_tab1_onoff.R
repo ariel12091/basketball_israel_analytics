@@ -37,6 +37,14 @@ ui_tab1_onoff <- tabPanel(
                          format = "yyyy-mm-dd"),
           selectizeInput("teams", "Teams", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All teams")),
+          fluidRow(
+            column(6, selectInput("on_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("on_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
+          ),
+          fluidRow(
+            column(6, selectInput("on_num_starters_def_mode", "Opponent lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("on_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
+          ),
           tags$hr(),
 
           bslib::accordion(

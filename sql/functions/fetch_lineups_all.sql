@@ -1,7 +1,7 @@
--- DROP FUNCTION basketball_test.fetch_lineups_all(int2, _int4, _int4, _int4, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, bool, int4, int4, int4);
+-- DROP FUNCTION basketball_test.fetch_lineups_all(int2, _int4, _int4, _int4, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, bool, int4, int4, int4, int4, int4);
 
-CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_all(p_num_lineup smallint, p_team_ids integer[] DEFAULT NULL::integer[], p_player_ids integer[] DEFAULT NULL::integer[], p_player_off_ids integer[] DEFAULT NULL::integer[], p_exact boolean DEFAULT true, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_min_poss integer DEFAULT 20, p_game_year integer DEFAULT NULL::integer, p_game_type_csv text DEFAULT NULL::text, p_opp_team_ids_csv text DEFAULT NULL::text, p_home_away text DEFAULT 'all'::text, p_outcome text DEFAULT 'all'::text, p_opp_rank_side text DEFAULT 'all'::text, p_opp_rank_n integer DEFAULT NULL::integer, p_opp_rank_metric text DEFAULT 'net'::text, p_max_margin integer DEFAULT NULL::integer, p_margin_status text DEFAULT 'all'::text, p_max_time_remaining integer DEFAULT NULL::integer, p_ot_margin_filter boolean DEFAULT false, p_min_gn integer DEFAULT NULL, p_max_gn integer DEFAULT NULL, p_last_n_games integer DEFAULT NULL)
- RETURNS TABLE(team_id integer, sub_lineup_hash text, num_lineup smallint, player_ids integer[], player_names text[], player_names_str text, off_poss integer, off_pts integer, off_ppp numeric, def_poss integer, def_pts integer, def_ppp numeric, net_rtg numeric, minutes numeric, game_year integer, off_fg2_made integer, off_fg2_att integer, off_fg3_made integer, off_fg3_att integer, def_fg2_made integer, def_fg2_att integer, def_fg3_made integer, def_fg3_att integer)
+CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_all(p_num_lineup smallint, p_team_ids integer[] DEFAULT NULL::integer[], p_player_ids integer[] DEFAULT NULL::integer[], p_player_off_ids integer[] DEFAULT NULL::integer[], p_exact boolean DEFAULT true, p_start_date date DEFAULT NULL::date, p_end_date date DEFAULT NULL::date, p_min_poss integer DEFAULT 20, p_game_year integer DEFAULT NULL::integer, p_game_type_csv text DEFAULT NULL::text, p_opp_team_ids_csv text DEFAULT NULL::text, p_home_away text DEFAULT 'all'::text, p_outcome text DEFAULT 'all'::text, p_opp_rank_side text DEFAULT 'all'::text, p_opp_rank_n integer DEFAULT NULL::integer, p_opp_rank_metric text DEFAULT 'net'::text, p_max_margin integer DEFAULT NULL::integer, p_margin_status text DEFAULT 'all'::text, p_max_time_remaining integer DEFAULT NULL::integer, p_ot_margin_filter boolean DEFAULT false, p_min_gn integer DEFAULT NULL, p_max_gn integer DEFAULT NULL, p_last_n_games integer DEFAULT NULL, p_num_starters_off integer DEFAULT NULL, p_num_starters_def integer DEFAULT NULL, p_num_starters_off_min integer DEFAULT NULL, p_num_starters_off_max integer DEFAULT NULL, p_num_starters_def_min integer DEFAULT NULL, p_num_starters_def_max integer DEFAULT NULL)
+ RETURNS TABLE(team_id integer, sub_lineup_hash text, num_lineup smallint, player_ids integer[], player_names text[], player_names_str text, off_poss integer, off_pts integer, off_ppp numeric, def_poss integer, def_pts integer, def_ppp numeric, net_rtg numeric, minutes numeric, num_starters numeric, game_year integer, off_fg2_made integer, off_fg2_att integer, off_fg3_made integer, off_fg3_att integer, def_fg2_made integer, def_fg2_att integer, def_fg3_made integer, def_fg3_att integer)
  LANGUAGE plpgsql
  STABLE
 AS $function$
@@ -40,7 +40,10 @@ BEGIN
   v_opp_rank_side   := COALESCE(NULLIF(btrim(p_opp_rank_side), ''), 'all');
   v_opp_rank_metric := COALESCE(NULLIF(btrim(p_opp_rank_metric), ''), 'net');
   v_margin_status   := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
-  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL);
+  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL
+                        OR p_num_starters_off IS NOT NULL OR p_num_starters_def IS NOT NULL
+                        OR p_num_starters_off_min IS NOT NULL OR p_num_starters_off_max IS NOT NULL
+                        OR p_num_starters_def_min IS NOT NULL OR p_num_starters_def_max IS NOT NULL);
 
   IF p_game_year IS NOT NULL THEN
     v_season_start := make_date(p_game_year - 1, 10, 1);
@@ -72,7 +75,10 @@ BEGIN
     AND v_home_away = 'all' AND v_outcome = 'all'
     AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)
     AND NOT v_clutch_active
-    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL;
+    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL
+    AND p_num_starters_off IS NULL AND p_num_starters_def IS NULL
+    AND p_num_starters_off_min IS NULL AND p_num_starters_off_max IS NULL
+    AND p_num_starters_def_min IS NULL AND p_num_starters_def_max IS NULL;
 
   -- 1) Fast path
   IF v_use_fast_path THEN
@@ -80,7 +86,7 @@ BEGIN
     SELECT
       s.team_id, s.sub_lineup_hash::text, s.num_lineup, s.player_ids, s.player_names, s.player_names_str,
       s.off_poss, s.off_pts, s.off_ppp, s.def_poss, s.def_pts, s.def_ppp,
-      ROUND(s.off_ppp - s.def_ppp, 1) AS net_rtg, s.minutes, s.game_year,
+      ROUND(s.off_ppp - s.def_ppp, 1) AS net_rtg, s.minutes, s.num_lineup::numeric AS num_starters, s.game_year,
       s.off_fg2_made, s.off_fg2_att, s.off_fg3_made, s.off_fg3_att,
       s.def_fg2_made, s.def_fg2_att, s.def_fg3_made, s.def_fg3_att
     FROM basketball_test.sub_lineups_stats s
@@ -198,6 +204,7 @@ BEGIN
            d.type_lineup, d.segment_id, d.end_game_seconds_remaining,
            CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag,
            d.team_score,
+           d.num_starters,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg2_made,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 THEN 1 ELSE 0 END AS fg2_att,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg3_made,
@@ -229,6 +236,10 @@ BEGIN
                END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
+      AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
   ),
   -- Stint duration per segment (no type_lineup - captures full floor time)
   segment_times AS (
@@ -240,15 +251,16 @@ BEGIN
   -- Poss/pts per segment per type_lineup
   segment_stats AS (
     SELECT ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.type_lineup, ca.segment_id,
+           ca.num_starters,
            SUM(ca.final_end_flag) AS total_poss,
            SUM(ca.team_score) AS total_pts,
            SUM(ca.fg2_made) AS fg2_made, SUM(ca.fg2_att) AS fg2_att,
            SUM(ca.fg3_made) AS fg3_made, SUM(ca.fg3_att) AS fg3_att
     FROM clutch_actions ca
-    GROUP BY ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.type_lineup, ca.segment_id
+    GROUP BY ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.type_lineup, ca.segment_id, ca.num_starters
   ),
   lineup_totals AS (
-    SELECT ss.team_id, ss.game_year, ss.lineup_hash, ss.type_lineup,
+    SELECT ss.team_id, ss.game_year, ss.lineup_hash, ss.type_lineup, ss.num_starters,
            SUM(ss.total_poss) AS total_poss,
            SUM(ss.total_pts) AS total_pts,
            SUM(ss.fg2_made) AS fg2_made, SUM(ss.fg2_att) AS fg2_att,
@@ -262,7 +274,7 @@ BEGIN
       AND st.lineup_hash = ss.lineup_hash
       AND st.game_id = ss.game_id
       AND st.segment_id = ss.segment_id
-    GROUP BY ss.team_id, ss.game_year, ss.lineup_hash, ss.type_lineup
+    GROUP BY ss.team_id, ss.game_year, ss.lineup_hash, ss.type_lineup, ss.num_starters
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -277,6 +289,7 @@ BEGIN
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='defense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='defense'),0)*100), 1
     ) AS net_rtg,
     ROUND(COALESCE(SUM(lt.minutes) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+    ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,
     COALESCE(SUM(lt.fg2_att)  FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_att,
@@ -388,7 +401,7 @@ BEGIN
       AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
   ),
   lineup_totals AS (
-    SELECT lt.team_id, lt.game_year, lt.lineup_hash, lt.type_lineup,
+    SELECT lt.team_id, lt.game_year, lt.lineup_hash, lt.type_lineup, lt.num_starters,
            SUM(lt.total_poss) AS total_poss, SUM(lt.total_pts) AS total_pts,
            SUM(lt.fg2_made) AS fg2_made, SUM(lt.fg2_att) AS fg2_att,
            SUM(lt.fg3_made) AS fg3_made, SUM(lt.fg3_att) AS fg3_att,
@@ -396,7 +409,16 @@ BEGIN
     FROM basketball_test.mv_lineup_totals_by_day lt
     JOIN games_filtered gf ON gf.game_id = lt.game_id AND gf.team_id = lt.team_id
     WHERE (p_game_year IS NULL OR lt.game_year = p_game_year)
-    GROUP BY lt.team_id, lt.game_year, lt.lineup_hash, lt.type_lineup
+      AND (
+        (lt.type_lineup = 'offense'
+          AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR lt.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+          AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lt.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
+        OR
+        (lt.type_lineup = 'defense'
+          AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lt.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+          AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lt.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
+      )
+    GROUP BY lt.team_id, lt.game_year, lt.lineup_hash, lt.type_lineup, lt.num_starters
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -411,6 +433,7 @@ BEGIN
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='defense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='defense'),0)*100), 1
     ) AS net_rtg,
     ROUND(COALESCE(SUM(lt.minutes) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+    ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,
     COALESCE(SUM(lt.fg2_att)  FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_att,

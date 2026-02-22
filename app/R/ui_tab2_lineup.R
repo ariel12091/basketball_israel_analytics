@@ -29,6 +29,14 @@ ui_tab2_lineup <- tabPanel(
           helpText("Pick a team to enable player filtering."),
           selectizeInput("ld_players_on", "Players On (exact/contains)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
           selectizeInput("ld_players_off", "Players Off (exclude any)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
+          fluidRow(
+            column(6, selectInput("ld_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("ld_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
+          ),
+          fluidRow(
+            column(6, selectInput("ld_num_starters_def_mode", "Opponent lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("ld_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
+          ),
           tags$hr(),
           selectInput("game_year_ld", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
           dateRangeInput("ld_dates", "Date range", start = NA, end = NA),

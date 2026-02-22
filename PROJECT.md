@@ -1343,3 +1343,22 @@ extract_starters <- function(box) {
 - Operational takeaway:
   - No full `pws` rebuild required right now for normal games.
   - Revisit the 3 known exception games later with a dedicated workaround.
+
+## Session Notes (2026-02-22): Starters Filter Semantics + Lineup Data num_starters
+- Updated starters filter labels across tabs to match own/opponent semantics and expose explicit reset choice:
+  - `ALL` option now shown in starters mode selects on Tabs 1/2/3/4.
+  - Labels use `Own lineup starters` / `Opponent lineup starters` and `Own value` / `Opp value`.
+- Lineup Data (Summary) now shows `# Starters` instead of `Size`:
+  - UI table switched to `num_starters` display column.
+  - Safe fallback kept in app server: if SQL response lacks `num_starters`, use `num_lineup` temporarily.
+- SQL function output updated to return `num_starters` natively:
+  - `basketball_test.fetch_lineups_all(...)`
+  - `basketball_test.fetch_lineups_csv_v2(...)`
+- `num_starters` computation details:
+  - fast/default branch (`sub_lineups_stats` path): `num_starters = num_lineup::numeric`
+  - dynamic branches (clutch and non-clutch): possession-weighted average using
+    `SUM(num_starters * total_poss) / SUM(total_poss)`.
+- After function deploy and MV rebuild, row-count consistency check passed:
+  - `df_pts_poss_lineups_longer_mv = 411,602`
+  - `player_onoff_by_game = player_four_factors_by_game = 414,784`
+  - `mv_lineup_totals_by_day = lineup_four_factors_by_game = 24,507`
