@@ -1362,3 +1362,13 @@ extract_starters <- function(box) {
   - `df_pts_poss_lineups_longer_mv = 411,602`
   - `player_onoff_by_game = player_four_factors_by_game = 414,784`
   - `mv_lineup_totals_by_day = lineup_four_factors_by_game = 24,507`
+
+### Clarification: Offense/Defense vs Own/Opp Starters Intent
+- Previous interpretation (`offense starters` / `defense starters`) could imply filtering only by possession side.
+- Current intended business meaning is lineup-context based, not possession-side based:
+  - `Own starters` = number of starters in the player's/team lineup context.
+  - `Opp starters` = number of starters in the opposing lineup context.
+- This is evaluated for the possessions where the player/lineup is on court, using own-vs-opponent lineup composition semantics rather than “offensive possession only” or “defensive possession only” semantics.
+- Practical implication:
+  - `Own starters` filter asks: “When we were in this lineup-starter state, how did we perform?”
+  - `Opp starters` filter asks: “Against opponent lineups in this starter state, how did we perform?”
