@@ -20,6 +20,7 @@ WITH clean_stats AS (
     d.pct_ft,
     d.parent_action_id,
     d.type_lineup,
+    d.num_starters,
     d.segment_id,
     d.end_game_seconds_remaining,
     CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
@@ -45,6 +46,7 @@ combined_data AS (
     cs.game_id,
     s.game_year,
     cs.type_lineup,
+    cs.num_starters,
     cs.segment_id,
     cs.end_game_seconds_remaining,
     cs.team_score,
@@ -80,6 +82,7 @@ segment_stats AS (
     cd.game_id,
     cd.game_year,
     cd.type_lineup,
+    cd.num_starters,
     cd.segment_id,
     sum(cd.team_score)       AS total_points,
     sum(cd.final_end_flag)   AS total_poss,
@@ -101,7 +104,7 @@ segment_stats AS (
     count(CASE WHEN cd.type = 'freeThrow' THEN 1 END) AS total_ft_attempts,
     count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga
   FROM combined_data cd
-  GROUP BY cd.lineup_hash, cd.team_id, cd.game_id, cd.game_year, cd.type_lineup, cd.segment_id
+  GROUP BY cd.lineup_hash, cd.team_id, cd.game_id, cd.game_year, cd.type_lineup, cd.num_starters, cd.segment_id
 )
 SELECT
   ss.lineup_hash,
@@ -109,6 +112,7 @@ SELECT
   ss.game_id,
   ss.game_year,
   ss.type_lineup,
+  ss.num_starters,
   SUM(ss.total_points)::numeric       AS total_points,
   SUM(ss.total_poss)::bigint          AS total_poss,
   SUM(ss.ts_poss_count)::bigint       AS ts_poss_count,
@@ -125,11 +129,11 @@ JOIN segment_times st
   AND st.team_id = ss.team_id
   AND st.game_id = ss.game_id
   AND st.segment_id = ss.segment_id
-GROUP BY ss.lineup_hash, ss.team_id, ss.game_id, ss.game_year, ss.type_lineup
+GROUP BY ss.lineup_hash, ss.team_id, ss.game_id, ss.game_year, ss.type_lineup, ss.num_starters
 WITH DATA;
 
 -- Indexes for the dynamic function
 CREATE INDEX idx_lff_game_id ON basketball_test.lineup_four_factors_by_game USING btree (game_id);
 CREATE INDEX idx_lff_lineup_hash ON basketball_test.lineup_four_factors_by_game USING btree (lineup_hash);
 CREATE UNIQUE INDEX idx_lff_pk ON basketball_test.lineup_four_factors_by_game
-  USING btree (lineup_hash, team_id, game_id, type_lineup);
+  USING btree (lineup_hash, team_id, game_id, type_lineup, num_starters);

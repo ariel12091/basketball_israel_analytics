@@ -115,15 +115,22 @@ minutes_totals AS (
   GROUP BY st.game_year, lm.team_id, lm.player_id
 ),
 roster_names AS (
-  SELECT DISTINCT
+  SELECT
     fr.game_year,
     fr.team_id,
     fr.player_id,
-    fr.team_name,
-    fr.firstname,
-    fr.lastname,
-    trim(coalesce(fr.firstname, '') || ' ' || coalesce(fr.lastname, '')) AS player_name
+    MAX(fr.team_name) AS team_name,
+    -- Canonicalize punctuation spacing so variants like "D. J." and "D.J."
+    -- collapse to the same identity during MV rebuild.
+    MIN(NULLIF(regexp_replace(trim(coalesce(fr.firstname, '')), '\\s*\\.\\s*', '.', 'g'), '')) AS firstname,
+    MIN(NULLIF(regexp_replace(trim(coalesce(fr.lastname,  '')), '\\s*\\.\\s*', '.', 'g'), '')) AS lastname,
+    trim(
+      coalesce(MIN(NULLIF(regexp_replace(trim(coalesce(fr.firstname, '')), '\\s*\\.\\s*', '.', 'g'), '')), '') ||
+      ' ' ||
+      coalesce(MIN(NULLIF(regexp_replace(trim(coalesce(fr.lastname,  '')), '\\s*\\.\\s*', '.', 'g'), '')), '')
+    ) AS player_name
   FROM basketball_test.full_rosters fr
+  GROUP BY fr.game_year, fr.team_id, fr.player_id
 )
 SELECT
   bt.game_year,

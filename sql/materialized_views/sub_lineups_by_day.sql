@@ -30,6 +30,7 @@ segment_stats AS (
         s.game_date AS g_date,
         s.game_year,
         d.segment_id,
+        MAX(d.num_starters) AS num_starters,
         SUM(CASE WHEN COALESCE(d.final_end_poss, false) THEN 1 ELSE 0 END) AS total_poss,
         COALESCE(SUM(d.team_score), 0) AS total_pts,
         SUM(CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
@@ -53,6 +54,7 @@ SELECT
     SUM(ss.fg2_att) AS fg2_att,
     SUM(ss.fg3_made) AS fg3_made,
     SUM(ss.fg3_att) AS fg3_att,
+    MAX(ss.num_starters) AS num_starters,
     -- Minutes from segment_times, but only count once per segment (use offense to avoid double)
     SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
 FROM segment_stats ss
@@ -66,4 +68,4 @@ WITH DATA;
 
 -- View indexes:
 CREATE INDEX idx_mv_ltotals_day_date ON basketball_test.mv_lineup_totals_by_day USING btree (g_date, lineup_hash, type_lineup);
-CREATE UNIQUE INDEX idx_mv_ltotals_day_pk ON basketball_test.mv_lineup_totals_by_day USING btree (lineup_hash, type_lineup, g_date);
+CREATE UNIQUE INDEX idx_mv_ltotals_day_pk ON basketball_test.mv_lineup_totals_by_day USING btree (lineup_hash, type_lineup, g_date, num_starters);

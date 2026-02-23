@@ -17,7 +17,13 @@ CREATE OR REPLACE FUNCTION basketball_test.get_team_four_factors_dynamic(
     p_ot_margin_filter BOOLEAN DEFAULT FALSE,
     p_min_gn           INT DEFAULT NULL,
     p_max_gn           INT DEFAULT NULL,
-    p_last_n_games     INT DEFAULT NULL
+    p_last_n_games     INT DEFAULT NULL,
+    p_num_starters_off INT DEFAULT NULL,
+    p_num_starters_def INT DEFAULT NULL,
+    p_num_starters_off_min INT DEFAULT NULL,
+    p_num_starters_off_max INT DEFAULT NULL,
+    p_num_starters_def_min INT DEFAULT NULL,
+    p_num_starters_def_max INT DEFAULT NULL
 )
 RETURNS TABLE (
     team_id        INT,
@@ -70,7 +76,10 @@ BEGIN
   v_opp_rank_side   := COALESCE(NULLIF(btrim(p_opp_rank_side), ''), 'all');
   v_opp_rank_metric := COALESCE(NULLIF(btrim(p_opp_rank_metric), ''), 'net');
   v_margin_status   := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
-  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL);
+  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL
+                        OR p_num_starters_off IS NOT NULL OR p_num_starters_def IS NOT NULL
+                        OR p_num_starters_off_min IS NOT NULL OR p_num_starters_off_max IS NOT NULL
+                        OR p_num_starters_def_min IS NOT NULL OR p_num_starters_def_max IS NOT NULL);
 
   -- Parse CSVs
   IF p_game_type_csv IS NOT NULL AND length(btrim(p_game_type_csv)) > 0 THEN
@@ -178,6 +187,10 @@ BEGIN
                END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
+      AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
   ),
   -- complex_flags joins full MV (parent foul may precede clutch window)
   complex_flags AS (
@@ -375,6 +388,15 @@ BEGIN
     FROM basketball_test.lineup_four_factors_by_game lf
     JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
     WHERE lf.game_year = p_game_year
+      AND (
+        (lf.type_lineup = 'offense'
+          AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR lf.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+          AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
+        OR
+        (lf.type_lineup = 'defense'
+          AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lf.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+          AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
+      )
     GROUP BY gf.team_id, gf.game_year, lf.type_lineup
   ),
   pivoted AS (

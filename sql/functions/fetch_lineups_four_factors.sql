@@ -1,7 +1,7 @@
 -- fetch_lineups_four_factors: array-based inner function
 -- fetch_lineups_four_factors_csv: CSV wrapper (called from the Shiny app)
 
-DROP FUNCTION IF EXISTS basketball_test.fetch_lineups_four_factors(int2, _int4, _int4, _int4, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, int4, int4, int4);
+DROP FUNCTION IF EXISTS basketball_test.fetch_lineups_four_factors(int2, _int4, _int4, _int4, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, int4, int4, int4, int4, int4);
 
 CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_four_factors(
   p_num_lineup      SMALLINT,
@@ -26,7 +26,13 @@ CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_four_factors(
   p_ot_margin_filter BOOLEAN DEFAULT FALSE,
   p_min_gn           INT DEFAULT NULL,
   p_max_gn           INT DEFAULT NULL,
-  p_last_n_games     INT DEFAULT NULL
+  p_last_n_games     INT DEFAULT NULL,
+  p_num_starters_off INT DEFAULT NULL,
+  p_num_starters_def INT DEFAULT NULL,
+  p_num_starters_off_min INT DEFAULT NULL,
+  p_num_starters_off_max INT DEFAULT NULL,
+  p_num_starters_def_min INT DEFAULT NULL,
+  p_num_starters_def_max INT DEFAULT NULL
 )
 RETURNS TABLE (
   team_id           INT,
@@ -104,7 +110,10 @@ BEGIN
   v_opp_rank_side   := COALESCE(NULLIF(btrim(p_opp_rank_side), ''), 'all');
   v_opp_rank_metric := COALESCE(NULLIF(btrim(p_opp_rank_metric), ''), 'net');
   v_margin_status   := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
-  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL);
+  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL
+                        OR p_num_starters_off IS NOT NULL OR p_num_starters_def IS NOT NULL
+                        OR p_num_starters_off_min IS NOT NULL OR p_num_starters_off_max IS NOT NULL
+                        OR p_num_starters_def_min IS NOT NULL OR p_num_starters_def_max IS NOT NULL);
 
   IF p_game_year IS NOT NULL THEN
     v_season_start := make_date(p_game_year - 1, 10, 1);
@@ -136,7 +145,10 @@ BEGIN
     AND v_game_types IS NULL AND v_opp_ids IS NULL
     AND v_home_away = 'all' AND v_outcome = 'all'
     AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)
-    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL;
+    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL
+    AND p_num_starters_off IS NULL AND p_num_starters_def IS NULL
+    AND p_num_starters_off_min IS NULL AND p_num_starters_off_max IS NULL
+    AND p_num_starters_def_min IS NULL AND p_num_starters_def_max IS NULL;
 
   IF v_clutch_active THEN
   -- ============================================================
@@ -236,7 +248,7 @@ BEGIN
     SELECT
       d.id, d.game_id, d.lineup_hash, d.team_id, d.team_score, d.type,
       d.parameters_type, d.parameters_made, d.pct_ft,
-      d.parent_action_id, d.type_lineup,
+      d.parent_action_id, d.type_lineup, d.num_starters,
       d.segment_id, d.end_game_seconds_remaining,
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
@@ -266,6 +278,15 @@ BEGIN
                END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
+      AND (
+        (d.type_lineup = 'offense'
+          AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+          AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
+        OR
+        (d.type_lineup = 'defense'
+          AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+          AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
+      )
   ),
   -- complex_flags: resolve parent foul only for already filtered clutch rows
   complex_flags AS (
@@ -457,6 +478,15 @@ BEGIN
       FROM basketball_test.lineup_four_factors_by_game lf
       WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
         AND (p_team_ids IS NULL OR lf.team_id = ANY(p_team_ids))
+        AND (
+          (lf.type_lineup = 'offense'
+            AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR lf.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+            AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
+          OR
+          (lf.type_lineup = 'defense'
+            AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lf.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+            AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
+        )
       GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup
     )
     SELECT
@@ -588,6 +618,15 @@ BEGIN
       FROM basketball_test.lineup_four_factors_by_game lf
       JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
       WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
+        AND (
+          (lf.type_lineup = 'offense'
+            AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR lf.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+            AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
+          OR
+          (lf.type_lineup = 'defense'
+            AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lf.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+            AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
+        )
       GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup
     )
     SELECT
@@ -640,7 +679,7 @@ $function$;
 
 
 -- CSV wrapper function (called from the Shiny app)
-DROP FUNCTION IF EXISTS basketball_test.fetch_lineups_four_factors_csv(int4, text, text, text, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, bool, int4, int4, int4);
+DROP FUNCTION IF EXISTS basketball_test.fetch_lineups_four_factors_csv(int4, text, text, text, bool, date, date, int4, int4, text, text, text, text, text, int4, text, int4, text, int4, bool, int4, int4, int4, int4, int4);
 
 CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_four_factors_csv(
   p_num_lineup      INT,
@@ -665,7 +704,13 @@ CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_four_factors_csv(
   p_ot_margin_filter BOOLEAN DEFAULT FALSE,
   p_min_gn          INT      DEFAULT NULL,
   p_max_gn          INT      DEFAULT NULL,
-  p_last_n_games    INT      DEFAULT NULL
+  p_last_n_games    INT      DEFAULT NULL,
+  p_num_starters_off INT     DEFAULT NULL,
+  p_num_starters_def INT     DEFAULT NULL,
+  p_num_starters_off_min INT DEFAULT NULL,
+  p_num_starters_off_max INT DEFAULT NULL,
+  p_num_starters_def_min INT DEFAULT NULL,
+  p_num_starters_def_max INT DEFAULT NULL
 )
 RETURNS TABLE (
   team_id           INT,
@@ -770,7 +815,13 @@ BEGIN
     p_ot_margin_filter,
     p_min_gn,
     p_max_gn,
-    p_last_n_games
+    p_last_n_games,
+    p_num_starters_off,
+    p_num_starters_def,
+    p_num_starters_off_min,
+    p_num_starters_off_max,
+    p_num_starters_def_min,
+    p_num_starters_def_max
   );
 END;
 $function$;

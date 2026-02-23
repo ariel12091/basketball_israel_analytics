@@ -17,7 +17,13 @@ CREATE OR REPLACE FUNCTION basketball_test.get_team_ratings_dynamic(
     p_ot_margin_filter BOOLEAN DEFAULT FALSE,
     p_min_gn           INT DEFAULT NULL,
     p_max_gn           INT DEFAULT NULL,
-    p_last_n_games     INT DEFAULT NULL
+    p_last_n_games     INT DEFAULT NULL,
+    p_num_starters_off INT DEFAULT NULL,
+    p_num_starters_def INT DEFAULT NULL,
+    p_num_starters_off_min INT DEFAULT NULL,
+    p_num_starters_off_max INT DEFAULT NULL,
+    p_num_starters_def_min INT DEFAULT NULL,
+    p_num_starters_def_max INT DEFAULT NULL
 )
 RETURNS TABLE (
     game_year      INT,
@@ -159,6 +165,10 @@ BEGIN
                  END)
              OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
         AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
+        AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR dppllm.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+        AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR dppllm.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+        AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR dppllm.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+        AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR dppllm.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
   ),
 
   -- CTE 4b: Win/Loss counts (from qualifying games only)
@@ -207,6 +217,10 @@ BEGIN
                  END)
              OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
         AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
+        AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR dppllm.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+        AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR dppllm.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+        AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR dppllm.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+        AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR dppllm.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
       GROUP BY qg.game_year, qg.team_id, dppllm.type_lineup
   ),
 

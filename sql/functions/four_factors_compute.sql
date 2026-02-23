@@ -14,7 +14,13 @@ CREATE OR REPLACE FUNCTION basketball_test.four_factors_compute(
     p_opp_rank_metric TEXT DEFAULT 'net',
     p_min_gn           INT DEFAULT NULL,
     p_max_gn           INT DEFAULT NULL,
-    p_last_n_games     INT DEFAULT NULL
+    p_last_n_games     INT DEFAULT NULL,
+    p_num_starters_off INT DEFAULT NULL,
+    p_num_starters_def INT DEFAULT NULL,
+    p_num_starters_off_min INT DEFAULT NULL,
+    p_num_starters_off_max INT DEFAULT NULL,
+    p_num_starters_def_min INT DEFAULT NULL,
+    p_num_starters_def_max INT DEFAULT NULL
 )
 RETURNS TABLE (
     player_id       INT,
@@ -169,6 +175,10 @@ BEGIN
     JOIN games_filtered gf
       ON gf.game_id = pf.game_id
       AND gf.team_id = pf.team_id
+    WHERE (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR pf.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR pf.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR pf.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR pf.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
     GROUP BY pf.player_id, pf.team_id, gf.game_year, pf.is_on_key, pf.type_lineup
   ),
 

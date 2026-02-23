@@ -1,4 +1,4 @@
-DROP FUNCTION IF EXISTS basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text, text, text, text, text, text, int4, text, int4, int4, int4);
+DROP FUNCTION IF EXISTS basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text, text, text, text, text, text, int4, text, int4, int4, int4, int4, int4);
 
 CREATE OR REPLACE FUNCTION basketball_test.onoff_compute(
     p_start_date      DATE,
@@ -17,7 +17,13 @@ CREATE OR REPLACE FUNCTION basketball_test.onoff_compute(
     p_opp_rank_metric TEXT DEFAULT NULL,
     p_min_gn           INT DEFAULT NULL,
     p_max_gn           INT DEFAULT NULL,
-    p_last_n_games     INT DEFAULT NULL
+    p_last_n_games     INT DEFAULT NULL,
+    p_num_starters_off INT DEFAULT NULL,
+    p_num_starters_def INT DEFAULT NULL,
+    p_num_starters_off_min INT DEFAULT NULL,
+    p_num_starters_off_max INT DEFAULT NULL,
+    p_num_starters_def_min INT DEFAULT NULL,
+    p_num_starters_def_max INT DEFAULT NULL
 )
 RETURNS TABLE (
     "Team" text, "First Name" text, "Last Name" text,
@@ -87,15 +93,19 @@ BEGIN
   ),
   team_game_raw AS (
     SELECT
-      m.game_id,
-      m.team_id,
-      m.type_lineup,
-      SUM(m.total_pts)  AS pts,
-      SUM(m.total_poss) AS poss
-    FROM basketball_test.mv_lineup_totals_by_day m
+      d.game_id,
+      d.team_id,
+      d.type_lineup,
+      SUM(d.team_score) AS pts,
+      SUM(CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END) AS poss
+    FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN sched_base_for_ranks sb
-      ON sb.game_id = m.game_id
-    GROUP BY m.game_id, m.team_id, m.type_lineup
+      ON sb.game_id = d.game_id
+    WHERE (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
+    GROUP BY d.game_id, d.team_id, d.type_lineup
   ),
   team_game_ppp AS (
     SELECT
@@ -217,6 +227,10 @@ BEGIN
       SUM(p.fg3_att)::bigint  AS fg3_att
     FROM basketball_test.player_onoff_by_game p
     JOIN sched s ON s.game_id = p.game_id AND s.team_id = p.team_id
+    WHERE (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR p.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR p.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR p.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR p.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
     GROUP BY p.player_id, p.team_id, p.is_on_key, p.type_lineup, p.game_year
   ),
 

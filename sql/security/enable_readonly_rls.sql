@@ -5,11 +5,13 @@ DECLARE
   has_anon boolean;
   has_authenticated boolean;
   has_service_role boolean;
+  has_app_readonly boolean;
   read_roles text;
 BEGIN
   SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'anon') INTO has_anon;
   SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'authenticated') INTO has_authenticated;
   SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'service_role') INTO has_service_role;
+  SELECT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_readonly') INTO has_app_readonly;
 
   read_roles := NULL;
   IF has_anon THEN
@@ -20,6 +22,9 @@ BEGIN
   END IF;
   IF has_service_role THEN
     read_roles := COALESCE(read_roles || ', ', '') || 'service_role';
+  END IF;
+  IF has_app_readonly THEN
+    read_roles := COALESCE(read_roles || ', ', '') || 'app_readonly';
   END IF;
 
   FOR v_schema IN
@@ -43,6 +48,11 @@ BEGIN
       EXECUTE format('GRANT USAGE ON SCHEMA %I TO service_role', v_schema);
       EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO service_role', v_schema);
       EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT ON TABLES TO service_role', v_schema);
+    END IF;
+    IF has_app_readonly THEN
+      EXECUTE format('GRANT USAGE ON SCHEMA %I TO app_readonly', v_schema);
+      EXECUTE format('GRANT SELECT ON ALL TABLES IN SCHEMA %I TO app_readonly', v_schema);
+      EXECUTE format('ALTER DEFAULT PRIVILEGES IN SCHEMA %I GRANT SELECT ON TABLES TO app_readonly', v_schema);
     END IF;
 
     FOR v_table IN
