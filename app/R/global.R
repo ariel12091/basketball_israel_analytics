@@ -531,6 +531,35 @@ shared_css <- HTML("
 
   /* Recalculating overlay */
   .recalculating { opacity: 0.4 !important; transition: opacity 0.2s ease; }
+
+  /* ---- Filter Chips ---- */
+  .filter-chips {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+    padding: 8px 0; margin-bottom: 10px;
+  }
+  .filter-chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 4px 10px; border-radius: 16px;
+    font-size: 0.78rem; font-weight: 600; line-height: 1.3;
+    border: 1px solid #30363d; background: #1c2333; color: #c9d1d9;
+    white-space: nowrap;
+  }
+  .filter-chip.chip-season {
+    background: #21262d; color: #e8a435; border-color: #e8a435;
+  }
+  .filter-chip.chip-game { border-color: #3a6fa0; color: #7db8e8; }
+  .filter-chip.chip-clutch { border-color: #e8a435; color: #e8a435; }
+  .filter-chip .chip-x {
+    cursor: pointer; margin-left: 2px; font-size: 0.9em; opacity: 0.6;
+    color: inherit; background: none; border: none; padding: 0; line-height: 1;
+  }
+  .filter-chip .chip-x:hover { opacity: 1; }
+  .chip-clear-all {
+    cursor: pointer; font-size: 0.75rem; font-weight: 600; color: #f87171;
+    background: none; border: 1px solid #f87171; border-radius: 16px;
+    padding: 4px 10px; white-space: nowrap; transition: all 0.2s;
+  }
+  .chip-clear-all:hover { background: rgba(248,113,113,0.1); }
 ")
 
 # Shared head tags
@@ -574,6 +603,260 @@ tab_explainer <- function(id, title, intro, bullets) {
       )
     )
   )
+}
+
+# ---------------- Filter Chips Builder ----------------
+GAME_TYPE_LABELS <- c("5" = "Regular", "16" = "PO QF", "26" = "PO SF",
+                       "17" = "PO Finals", "33" = "Play-in", "34" = "Winner Cup", "35" = "State Cup")
+
+make_chip <- function(label, clear_id, css_class = "") {
+  tags$span(
+    class = paste("filter-chip", css_class),
+    label,
+    tags$button(
+      class = "chip-x",
+      onclick = sprintf("Shiny.setInputValue('%s', Math.random(), {priority:'event'}); return false;", clear_id),
+      HTML("&times;")
+    )
+  )
+}
+
+make_season_chip <- function(gy) {
+  label <- if (identical(gy, "2026")) "2025-26" else if (identical(gy, "2025")) "2024-25" else gy
+  tags$span(class = "filter-chip chip-season", label)
+}
+
+build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL) {
+  get_input <- function(suffix) input[[paste0(prefix, suffix)]]
+  chips <- list()
+
+  # Season chip (always visible, not dismissable)
+  gy <- get_input("game_year") %||% get_input("_game_year") %||% DEFAULT_GAME_YEAR
+  # Handle different naming: Tab 1 uses "game_year", others use prefix-specific names
+  if (prefix == "on") gy <- input$game_year %||% DEFAULT_GAME_YEAR
+  if (prefix == "ld") gy <- input$game_year_ld %||% DEFAULT_GAME_YEAR
+  if (prefix == "tr") gy <- input$tr_game_year %||% DEFAULT_GAME_YEAR
+  if (prefix == "gl") gy <- input$gl_game_year %||% DEFAULT_GAME_YEAR
+  if (prefix == "ts") gy <- input$ts_game_year %||% DEFAULT_GAME_YEAR
+  chips[[length(chips) + 1]] <- make_season_chip(gy)
+
+  # Date range (non-default)
+  date_input <- if (prefix == "on") input$date_range else input[[paste0(prefix, "_dates")]]
+  if (!is.null(date_input) && length(date_input) == 2) {
+    start_d <- tryCatch(as.Date(date_input[1]), error = function(e) NA)
+    end_d <- tryCatch(as.Date(date_input[2]), error = function(e) NA)
+    if (!is.na(start_d) && !is.na(end_d)) {
+      bounds <- season_bounds_fn(gy)
+      if (start_d != bounds$start || end_d != bounds$end) {
+        lbl <- paste(format(start_d, "%b %d"), "\u2013", format(end_d, "%b %d"))
+        chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_dates"), "chip-game")
+      }
+    }
+  }
+
+  # Game type
+  gt <- get_input("_game_type")
+  if (prefix == "on") gt <- input$on_game_type
+  if (!is.null(gt) && length(gt) && any(nzchar(gt))) {
+    labels <- vapply(gt[nzchar(gt)], function(x) GAME_TYPE_LABELS[x] %||% x, "")
+    chips[[length(chips) + 1]] <- make_chip(paste(labels, collapse = ", "), paste0(prefix, "_clear_game_type"), "chip-game")
+  }
+
+  # Teams
+  if (prefix == "on") {
+    teams_val <- input$teams
+  } else if (prefix == "ts") {
+    teams_val <- input$ts_teams
+  } else if (prefix %in% c("ld", "gl")) {
+    tv <- input[[paste0(prefix, "_team")]]
+    teams_val <- if (!is.null(tv) && nzchar(tv %||% "")) tv else NULL
+  } else {
+    teams_val <- NULL
+  }
+  if (!is.null(teams_val) && length(teams_val) && any(nzchar(teams_val))) {
+    lbl <- if (length(teams_val) == 1) teams_val[1] else paste0(length(teams_val), " teams")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_teams"), "chip-game")
+  }
+
+  # Opponents
+  opp_val <- get_input("_opponents")
+  if (prefix == "on") opp_val <- input$on_opponents
+  if (!is.null(opp_val) && length(opp_val)) {
+    lbl <- if (length(opp_val) == 1) paste("vs", opp_val[1]) else paste0("vs ", length(opp_val), " opps")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_opponents"), "chip-game")
+  }
+
+  # Home/Away
+  ha <- get_input("_home_away")
+  if (prefix == "on") ha <- input$on_home_away
+  if (!is.null(ha) && nzchar(ha)) {
+    chips[[length(chips) + 1]] <- make_chip(if (ha == "home") "Home" else "Away", paste0(prefix, "_clear_home_away"), "chip-game")
+  }
+
+  # Outcome
+  out_val <- get_input("_outcome")
+  if (prefix == "on") out_val <- input$on_outcome
+  if (!is.null(out_val) && nzchar(out_val)) {
+    chips[[length(chips) + 1]] <- make_chip(if (out_val == "win") "Wins" else "Losses", paste0(prefix, "_clear_outcome"), "chip-game")
+  }
+
+  # GN range
+  gn_min <- get_input("_gn_min")
+  gn_max <- get_input("_gn_max")
+  if (prefix == "on") { gn_min <- input$on_gn_min; gn_max <- input$on_gn_max }
+  if ((!is.null(gn_min) && nzchar(gn_min)) || (!is.null(gn_max) && nzchar(gn_max))) {
+    parts <- c()
+    if (!is.null(gn_min) && nzchar(gn_min)) parts <- c(parts, paste0("GN\u2265", gn_min))
+    if (!is.null(gn_max) && nzchar(gn_max)) parts <- c(parts, paste0("GN\u2264", gn_max))
+    chips[[length(chips) + 1]] <- make_chip(paste(parts, collapse = " "), paste0(prefix, "_clear_gn"), "chip-game")
+  }
+
+  # Last N
+  last_n <- get_input("_last_n")
+  if (prefix == "on") last_n <- input$on_last_n
+  if (!is.null(last_n) && nzchar(last_n)) {
+    chips[[length(chips) + 1]] <- make_chip(paste("Last", last_n, "games"), paste0(prefix, "_clear_last_n"), "chip-game")
+  }
+
+  # Opponent strength
+  opp_side <- get_input("_opp_rank_side")
+  if (prefix == "on") opp_side <- input$on_opp_rank_side
+  if (!is.null(opp_side) && nzchar(opp_side)) {
+    rank_n <- get_input("_opp_rank_n")
+    rank_m <- get_input("_opp_rank_metric")
+    if (prefix == "on") { rank_n <- input$on_opp_rank_n; rank_m <- input$on_opp_rank_metric }
+    parts <- paste0("vs ", opp_side)
+    if (!is.null(rank_n) && nzchar(rank_n)) parts <- paste0(parts, " ", rank_n)
+    if (!is.null(rank_m) && nzchar(rank_m)) parts <- paste0(parts, " ", rank_m)
+    chips[[length(chips) + 1]] <- make_chip(parts, paste0(prefix, "_clear_opp_rank"), "chip-game")
+  }
+
+  # Clutch (Tab 2, 3, 5 only)
+  clutch_enabled <- get_input("_clutch_enabled")
+  if (isTRUE(clutch_enabled)) {
+    margin <- get_input("_clutch_margin") %||% 5
+    mins <- get_input("_clutch_minutes") %||% 5
+    status <- get_input("_clutch_status") %||% "all"
+    lbl <- paste0("Clutch \u226440sec margin\u2264", margin)
+    if (!identical(status, "all")) lbl <- paste0(lbl, " ", status)
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_clutch"), "chip-clutch")
+  }
+
+  # Starters filter
+  off_mode <- input[[paste0(prefix, "_num_starters_off_mode")]]
+  off_val <- input[[paste0(prefix, "_num_starters_off")]]
+  def_mode <- input[[paste0(prefix, "_num_starters_def_mode")]]
+  def_val <- input[[paste0(prefix, "_num_starters_def")]]
+  starters_parts <- c()
+  if (!is.null(off_mode) && nzchar(off_mode) && !is.null(off_val) && nzchar(off_val)) {
+    sym <- if (off_mode == "gte") "\u2265" else "\u2264"
+    starters_parts <- c(starters_parts, paste0("Own ", sym, off_val))
+  }
+  if (!is.null(def_mode) && nzchar(def_mode) && !is.null(def_val) && nzchar(def_val)) {
+    sym <- if (def_mode == "gte") "\u2265" else "\u2264"
+    starters_parts <- c(starters_parts, paste0("Opp ", sym, def_val))
+  }
+  if (length(starters_parts)) {
+    chips[[length(chips) + 1]] <- make_chip(
+      paste("Starters:", paste(starters_parts, collapse = ", ")),
+      paste0(prefix, "_clear_starters"), "chip-game")
+  }
+
+  # Players on/off (Tab 2)
+  if (prefix == "ld") {
+    pon <- input$ld_players_on
+    if (!is.null(pon) && length(pon)) {
+      lbl <- if (length(pon) == 1) paste("On:", pon[1]) else paste0("On: ", length(pon), " players")
+      chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_on", "chip-game")
+    }
+    poff <- input$ld_players_off
+    if (!is.null(poff) && length(poff)) {
+      lbl <- if (length(poff) == 1) paste("Off:", poff[1]) else paste0("Off: ", length(poff), " players")
+      chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_off", "chip-game")
+    }
+  }
+
+  # Only show "Clear all" if there are removable chips (more than just season)
+  has_active <- length(chips) > 1
+
+  tags$div(
+    class = "filter-chips",
+    chips,
+    if (has_active) {
+      clear_js <- if (!is.null(reset_btn_id)) {
+        sprintf("document.getElementById('%s').click(); return false;", reset_btn_id)
+      } else {
+        sprintf("Shiny.setInputValue('%s_reset_all_chips', Math.random(), {priority:'event'}); return false;", prefix)
+      }
+      tags$button(class = "chip-clear-all", onclick = clear_js, "Clear all")
+    }
+  )
+}
+
+setup_chip_clears <- function(prefix, session, input, shared,
+                              game_type_id, opponents_id, home_away_id, outcome_id,
+                              gn_min_id, gn_max_id, last_n_id, opp_rank_ids,
+                              date_id, gy_input_id,
+                              teams_ids = NULL, starters_ids = NULL,
+                              clutch_enabled_id = NULL) {
+  observeEvent(input[[paste0(prefix, "_clear_game_type")]], {
+    updateSelectizeInput(session, game_type_id, selected = "")
+  }, ignoreInit = TRUE)
+
+  if (!is.null(teams_ids)) {
+    observeEvent(input[[paste0(prefix, "_clear_teams")]], {
+      for (tid in teams_ids) {
+        if (tid %in% c("teams", "ts_teams")) {
+          updateSelectizeInput(session, tid, selected = character(0))
+        } else {
+          updateSelectizeInput(session, tid, selected = "")
+        }
+      }
+    }, ignoreInit = TRUE)
+  }
+
+  observeEvent(input[[paste0(prefix, "_clear_opponents")]], {
+    updateSelectizeInput(session, opponents_id, selected = character(0))
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[[paste0(prefix, "_clear_home_away")]], {
+    updateSelectInput(session, home_away_id, selected = "")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[[paste0(prefix, "_clear_outcome")]], {
+    updateSelectInput(session, outcome_id, selected = "")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[[paste0(prefix, "_clear_gn")]], {
+    updateSelectizeInput(session, gn_min_id, selected = "")
+    updateSelectizeInput(session, gn_max_id, selected = "")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[[paste0(prefix, "_clear_last_n")]], {
+    updateSelectizeInput(session, last_n_id, selected = "")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[[paste0(prefix, "_clear_opp_rank")]], {
+    for (rid in opp_rank_ids) updateSelectInput(session, rid, selected = "")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[[paste0(prefix, "_clear_dates")]], {
+    gy <- input[[gy_input_id]] %||% DEFAULT_GAME_YEAR
+    bounds <- shared$season_date_bounds(gy)
+    updateDateRangeInput(session, date_id, start = bounds$start, end = bounds$end)
+  }, ignoreInit = TRUE)
+
+  if (!is.null(starters_ids) && length(starters_ids) == 4) {
+    observeEvent(input[[paste0(prefix, "_clear_starters")]], {
+      for (sid in starters_ids) updateSelectInput(session, sid, selected = "")
+    }, ignoreInit = TRUE)
+  }
+
+  if (!is.null(clutch_enabled_id)) {
+    observeEvent(input[[paste0(prefix, "_clear_clutch")]], {
+      updateCheckboxInput(session, clutch_enabled_id, value = FALSE)
+    }, ignoreInit = TRUE)
+  }
 }
 
 app_image_src <- function(rel_path, mime = "image/png") {

@@ -163,6 +163,7 @@ ui_tab3_team <- tabPanel(
             )
           )
         ),
+        uiOutput("tr_filter_chips"),
         DTOutput('tr_table')
       )
     )

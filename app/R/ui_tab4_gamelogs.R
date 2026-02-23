@@ -190,6 +190,7 @@ ui_tab4_gamelogs <- tabPanel(
             )
           )
         ),
+        uiOutput("gl_filter_chips"),
         DTOutput("gl_table")
       )
     )

@@ -201,6 +201,7 @@ ui_tab2_lineup <- tabPanel(
             )
           )
         ),
+        uiOutput("ld_filter_chips"),
         DTOutput("ld_table")
       )
     )

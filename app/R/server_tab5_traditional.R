@@ -630,5 +630,18 @@ server_tab5_traditional <- function(input, output, session, shared) {
       write.csv(out, file, row.names = FALSE)
     }
   )
+
+  # ---- Filter Chips ----
+  output$ts_filter_chips <- renderUI({
+    build_filter_chips("ts", input, shared$season_date_bounds, reset_btn_id = "ts_reset")
+  })
+  setup_chip_clears("ts", session, input, shared,
+    game_type_id = "ts_game_type", opponents_id = "ts_opponents",
+    home_away_id = "ts_home_away", outcome_id = "ts_outcome",
+    gn_min_id = "ts_gn_min", gn_max_id = "ts_gn_max", last_n_id = "ts_last_n",
+    opp_rank_ids = c("ts_opp_rank_side", "ts_opp_rank_n", "ts_opp_rank_metric"),
+    date_id = "ts_dates", gy_input_id = "ts_game_year",
+    teams_ids = "ts_teams",
+    clutch_enabled_id = "ts_clutch_enabled")
 }
 

@@ -637,4 +637,18 @@ server_tab3 <- function(input, output, session, shared) {
       return(dt)
     }
   })
+
+  # ---- Filter Chips ----
+  output$tr_filter_chips <- renderUI({
+    build_filter_chips("tr", input, shared$season_date_bounds, reset_btn_id = "tr_reset")
+  })
+  setup_chip_clears("tr", session, input, shared,
+    game_type_id = "tr_game_type", opponents_id = "tr_opponents",
+    home_away_id = "tr_home_away", outcome_id = "tr_outcome",
+    gn_min_id = "tr_gn_min", gn_max_id = "tr_gn_max", last_n_id = "tr_last_n",
+    opp_rank_ids = c("tr_opp_rank_side", "tr_opp_rank_n", "tr_opp_rank_metric"),
+    date_id = "tr_dates", gy_input_id = "tr_game_year",
+    starters_ids = c("tr_num_starters_off_mode", "tr_num_starters_off",
+                     "tr_num_starters_def_mode", "tr_num_starters_def"),
+    clutch_enabled_id = "tr_clutch_enabled")
 }

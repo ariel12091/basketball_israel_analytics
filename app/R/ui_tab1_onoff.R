@@ -239,6 +239,7 @@ ui_tab1_onoff <- tabPanel(
             span(style="margin-left: 15px; font-size: 0.8em; color: #6e7681;", paste0("(Ranked Players: > ", RANKING_BASELINE, " poss)"))
           )
         ),
+        uiOutput("on_filter_chips"),
         DTOutput("onoff_dt")
       )
     )

@@ -128,6 +128,7 @@ ui_tab5_traditional <- tabPanel(
             "Use eFG% and TS% to compare scoring efficiency alongside volume."
           )
         ),
+        uiOutput("ts_filter_chips"),
         uiOutput("ts_mode_warning"),
         DTOutput("ts_table")
       )

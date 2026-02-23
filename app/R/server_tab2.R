@@ -1328,4 +1328,26 @@ server_tab2 <- function(input, output, session, shared) {
       easyClose = TRUE
     ))
   })
+
+  # ---- Filter Chips ----
+  output$ld_filter_chips <- renderUI({
+    build_filter_chips("ld", input, shared$season_date_bounds, reset_btn_id = "ld_reset")
+  })
+  setup_chip_clears("ld", session, input, shared,
+    game_type_id = "ld_game_type", opponents_id = "ld_opponents",
+    home_away_id = "ld_home_away", outcome_id = "ld_outcome",
+    gn_min_id = "ld_gn_min", gn_max_id = "ld_gn_max", last_n_id = "ld_last_n",
+    opp_rank_ids = c("ld_opp_rank_side", "ld_opp_rank_n", "ld_opp_rank_metric"),
+    date_id = "ld_dates", gy_input_id = "game_year_ld",
+    teams_ids = "ld_team",
+    starters_ids = c("ld_num_starters_off_mode", "ld_num_starters_off",
+                     "ld_num_starters_def_mode", "ld_num_starters_def"),
+    clutch_enabled_id = "ld_clutch_enabled")
+  # Tab 2 specific: players on/off clear
+  observeEvent(input$ld_clear_players_on, {
+    updateSelectizeInput(session, "ld_players_on", selected = character(0))
+  }, ignoreInit = TRUE)
+  observeEvent(input$ld_clear_players_off, {
+    updateSelectizeInput(session, "ld_players_off", selected = character(0))
+  }, ignoreInit = TRUE)
 }
