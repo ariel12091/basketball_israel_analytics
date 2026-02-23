@@ -588,8 +588,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
       DT::formatStyle(
         columns = style_cols,
         valueColumns = ".eligible_rate",
-        color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "#9aa0a6")),
-        backgroundColor = DT::styleEqual(c(TRUE, FALSE), c(NA, "#f8f9fb"))
+        color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "#6e7681")),
+        backgroundColor = DT::styleEqual(c(TRUE, FALSE), c(NA, "#0d1117"))
       )
   }) %>% bindEvent(ts_display_context(), input$main_tabs)
 

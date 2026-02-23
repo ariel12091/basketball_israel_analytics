@@ -75,6 +75,10 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "gl_opponents", selected = character(0))
     updateSelectInput(session, "gl_home_away", selected = "")
     updateSelectInput(session, "gl_outcome", selected = "")
+    updateSelectInput(session, "gl_num_starters_off_mode", selected = "")
+    updateSelectInput(session, "gl_num_starters_off", selected = "")
+    updateSelectInput(session, "gl_num_starters_def_mode", selected = "")
+    updateSelectInput(session, "gl_num_starters_def", selected = "")
     updateSelectizeInput(session, "gl_gn_min", selected = "")
     updateSelectizeInput(session, "gl_gn_max", selected = "")
     updateSelectizeInput(session, "gl_last_n", selected = "")
@@ -166,6 +170,19 @@ server_tab4 <- function(input, output, session, shared) {
     df
   })
 
+  gl_starters_filter <- reactive({
+    off_mode <- input$gl_num_starters_off_mode %||% ""
+    def_mode <- input$gl_num_starters_def_mode %||% ""
+    off_val <- if (nzchar(off_mode) && nzchar(input$gl_num_starters_off %||% "")) as.integer(input$gl_num_starters_off) else NA_integer_
+    def_val <- if (nzchar(def_mode) && nzchar(input$gl_num_starters_def %||% "")) as.integer(input$gl_num_starters_def) else NA_integer_
+    list(
+      off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
+      off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
+      def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
+      def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+    )
+  })
+
   # --- Lineup totals cache per season ---
   gl_lineup_totals <- reactive({
     req(identical(input$main_tabs, "game_logs"))
@@ -174,7 +191,7 @@ server_tab4 <- function(input, output, session, shared) {
     DBI::dbGetQuery(
       pg_pool,
       "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
-              total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att
+              total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, num_starters
        FROM basketball_test.mv_lineup_totals_by_day
        WHERE game_year = $1",
       params = list(gy_int)
@@ -190,7 +207,7 @@ server_tab4 <- function(input, output, session, shared) {
       pg_pool,
       "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
               total_points, total_poss, ts_poss_count, oreb_count,
-              oreb_opportunities, tov_count, total_ft_attempts, total_fga
+              oreb_opportunities, tov_count, total_ft_attempts, total_fga, num_starters
        FROM basketball_test.lineup_four_factors_by_game
        WHERE game_year = $1",
       params = list(gy_int)
@@ -209,6 +226,15 @@ server_tab4 <- function(input, output, session, shared) {
 
     lt <- gl_lineup_totals()
     lt <- lt %>% inner_join(sched_pairs, by = c("game_id", "team_id"))
+    ns <- gl_starters_filter()
+    lt <- lt %>% filter(
+      (type_lineup == "offense" &
+         (is.na(ns$off_min) | num_starters >= ns$off_min) &
+         (is.na(ns$off_max) | num_starters <= ns$off_max)) |
+      (type_lineup == "defense" &
+         (is.na(ns$def_min) | num_starters >= ns$def_min) &
+         (is.na(ns$def_max) | num_starters <= ns$def_max))
+    )
 
     if (nrow(lt) == 0) return(NULL)
 
@@ -266,6 +292,15 @@ server_tab4 <- function(input, output, session, shared) {
 
     ff <- gl_lineup_ff()
     ff <- ff %>% inner_join(sched_pairs, by = c("game_id", "team_id"))
+    ns <- gl_starters_filter()
+    ff <- ff %>% filter(
+      (type_lineup == "offense" &
+         (is.na(ns$off_min) | num_starters >= ns$off_min) &
+         (is.na(ns$off_max) | num_starters <= ns$off_max)) |
+      (type_lineup == "defense" &
+         (is.na(ns$def_min) | num_starters >= ns$def_min) &
+         (is.na(ns$def_max) | num_starters <= ns$def_max))
+    )
 
     if (nrow(ff) == 0) return(NULL)
 
@@ -437,7 +472,7 @@ server_tab4 <- function(input, output, session, shared) {
       result_render <- DT::JS(
         "function(data, type, row, meta) {
            if (type !== 'display' || !row) return data;
-           var color = data === 'W' ? '#1a9850' : '#d73027';
+           var color = data === 'W' ? '#34d399' : '#f87171';
            return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
          }")
 
@@ -507,7 +542,7 @@ server_tab4 <- function(input, output, session, shared) {
       result_render <- DT::JS(
         "function(data, type, row, meta) {
            if (type !== 'display' || !row) return data;
-           var color = data === 'W' ? '#1a9850' : '#d73027';
+           var color = data === 'W' ? '#34d399' : '#f87171';
            return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
          }")
 

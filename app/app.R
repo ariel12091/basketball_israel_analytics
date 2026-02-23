@@ -17,12 +17,33 @@ source("R/server_tab5_traditional.R", local = TRUE)
 # ---------------- UI ----------------
 ui <- navbarPage(
   id = "main_tabs",
-  title = "Player Analytics",
-  theme = bslib::bs_theme(version = 5),
+  title = tags$span(
+    tags$i(class = "bi bi-activity", style = "margin-right: 6px;"),
+    "IBPL Analytics"
+  ),
+  theme = bslib::bs_theme(
+    version = 5,
+    bg = "#0d1117",
+    fg = "#e6edf3",
+    primary = "#e8a435",
+    secondary = "#21262d",
+    success = "#34d399",
+    danger = "#f87171",
+    info = "#60a5fa",
+    base_font = "DM Sans, Inter, -apple-system, sans-serif",
+    code_font = "JetBrains Mono, monospace",
+    "navbar-bg" = "#0d1117"
+  ),
   header = tags$div(
-    style = "position: fixed; right: 16px; top: 8px; font-size: 0.85rem; color: #666; z-index: 9999; display: flex; align-items: center;",
-    actionButton("open_glossary", "Glossary", class = "btn btn-sm btn-outline-secondary nav-help-btn"),
-    textOutput("last_updated", inline = TRUE)
+    style = "position: fixed; right: 16px; top: 8px; font-size: 0.82rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 8px;",
+    actionButton("open_glossary",
+                 tags$span(tags$i(class = "bi bi-book"), " Glossary"),
+                 class = "btn btn-sm btn-outline-secondary nav-help-btn"),
+    tags$span(
+      style = "display: inline-flex; align-items: center; gap: 4px;",
+      tags$span(style = "width: 6px; height: 6px; background: #34d399; border-radius: 50%; display: inline-block;"),
+      textOutput("last_updated", inline = TRUE)
+    )
   ),
   ui_tab1_onoff,
   ui_tab2_lineup,

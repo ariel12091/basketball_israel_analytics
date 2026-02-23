@@ -718,7 +718,7 @@ server_tab2 <- function(input, output, session, shared) {
            if (row[0] === 0) return data;
            var hash = row[%d];
            var tid = row[%d];
-           return '<a href=\"#\" style=\"color:#0d6efd;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
+           return '<a href=\"#\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
          }", ff_hash_idx, ff_tid_idx))
 
       col_defs <- list(
@@ -753,7 +753,7 @@ server_tab2 <- function(input, output, session, shared) {
 
       # TOTAL row styling
       dt <- DT::formatStyle(dt, "Team", target = "row",
-                            backgroundColor = styleEqual("TOTAL", "#f0f0f0"),
+                            backgroundColor = styleEqual("TOTAL", "#1a1f2b"),
                             fontWeight = styleEqual("TOTAL", "bold"))
 
       # Color logic
@@ -924,7 +924,7 @@ server_tab2 <- function(input, output, session, shared) {
            if (row[0] === 0) return data;
            var hash = row[%d];
            var tid = row[%d];
-           return '<a href=\"#\" style=\"color:#0d6efd;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
+           return '<a href=\"#\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
          }", sum_hash_idx, sum_tid_idx))
 
       all_col_defs <- c(list(list(targets = hidden_indices, visible = FALSE),
@@ -935,7 +935,7 @@ server_tab2 <- function(input, output, session, shared) {
         DT::formatRound(c("off_ppp", "def_ppp", "net_rtg", "minutes")[c("off_ppp", "def_ppp", "net_rtg", "minutes") %in% names(df)], 1) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
-      dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#f0f0f0"), fontWeight = styleEqual("TOTAL", "bold"))
+      dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#1a1f2b"), fontWeight = styleEqual("TOTAL", "bold"))
       if (all(c("net_rtg", "pr_ld_net") %in% colnames(df))) dt <- DT::formatStyle(dt, "net_rtg", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_net")
       if (all(c("off_ppp", "pr_ld_off_ppp") %in% colnames(df))) dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_off_ppp")
       if (all(c("def_ppp", "pr_ld_def_ppp_i") %in% colnames(df))) dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_def_ppp_i")
@@ -1065,7 +1065,7 @@ server_tab2 <- function(input, output, session, shared) {
         result_render_ff <- DT::JS(
           "function(data, type, row, meta) {
              if (type !== 'display' || !row) return data;
-             var color = data === 'W' ? '#1a9850' : '#d73027';
+             var color = data === 'W' ? '#34d399' : '#f87171';
              return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
            }")
 
@@ -1269,7 +1269,7 @@ server_tab2 <- function(input, output, session, shared) {
         result_render_m <- DT::JS(
           "function(data, type, row, meta) {
              if (type !== 'display' || !row) return data;
-             var color = data === 'W' ? '#1a9850' : '#d73027';
+             var color = data === 'W' ? '#34d399' : '#f87171';
              return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
            }")
 

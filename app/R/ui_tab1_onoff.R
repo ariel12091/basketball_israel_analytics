@@ -1,7 +1,7 @@
 # ui_tab1_onoff.R - Tab 1: On/Off Impact UI
 
 ui_tab1_onoff <- tabPanel(
-  title = "On/Off Impact",
+  title = tags$span(tags$i(class = "bi bi-toggles"), "On/Off Impact"),
   value = "onoff",
   fluidPage(
     shared_head_tags(),
@@ -195,7 +195,7 @@ ui_tab1_onoff <- tabPanel(
             span(style = "font-weight:700; margin-right:10px;", "Shot Splits:"),
             div(class = "legend-item",
                 div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-                    span(style = "font-size:0.75em; color:#888; text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
+                    span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
                     div(style = "display:flex; align-items:center; gap:8px;",
                         div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"),
                         span("2PT"),
@@ -204,14 +204,14 @@ ui_tab1_onoff <- tabPanel(
                     )
                 )
             ),
-            span(style = "margin:0 12px; color:#555;", "|"),
+            span(style = "margin:0 12px; color:#30363d;", "|"),
             div(class = "legend-item",
                 div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-                    span(style = "font-size:0.75em; color:#888; text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
+                    span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
                     div(style = "display:flex; align-items:center; gap:6px;",
-                        span(style = "color:#c84040; font-weight:600;", "FG%"),
-                        span(style = "color:#888; margin:0 2px;", "\u2192"),
-                        span(style = "color:#3a9a3a; font-weight:600;", "FG%")
+                        span(style = "color:#f87171; font-weight:600;", "FG%"),
+                        span(style = "color:#6e7681; margin:0 2px;", "\u2192"),
+                        span(style = "color:#34d399; font-weight:600;", "FG%")
                     )
                 )
             )
@@ -231,12 +231,12 @@ ui_tab1_onoff <- tabPanel(
               div(
                 class = "legend-bar",
                 div(class = "legend-tick", style = "left:0;"),
-                div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:#888;"),
+                div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:#6e7681;"),
                 div(class = "legend-tick", style = "right:0;")
               ),
               span("100% Rank")
             ),
-            span(style="margin-left: 15px; font-size: 0.8em; color: #888;", paste0("(Ranked Players: > ", RANKING_BASELINE, " poss)"))
+            span(style="margin-left: 15px; font-size: 0.8em; color: #6e7681;", paste0("(Ranked Players: > ", RANKING_BASELINE, " poss)"))
           )
         ),
         DTOutput("onoff_dt")
