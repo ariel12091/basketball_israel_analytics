@@ -36,6 +36,12 @@ ui <- navbarPage(
   ),
   header = tags$div(
     style = "position: fixed; right: 16px; top: 8px; font-size: 0.82rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 8px;",
+    tags$div(
+      class = "navbar-season-select",
+      selectInput("game_year", NULL,
+                  choices = c("2025-26" = "2026", "2024-25" = "2025"),
+                  selected = DEFAULT_GAME_YEAR)
+    ),
     actionButton("open_glossary",
                  tags$span(tags$i(class = "bi bi-book"), " Glossary"),
                  class = "btn btn-sm btn-outline-secondary nav-help-btn"),

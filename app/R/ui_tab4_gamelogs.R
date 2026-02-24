@@ -21,9 +21,6 @@ ui_tab4_gamelogs <- tabPanel(
           id = "gl-filters", class = "collapse d-md-block",
           actionButton("gl_reset", "Reset Filters"),
           tags$hr(),
-          selectInput("gl_game_year", "Season",
-                      choices = c("2025-26" = "2026", "2024-25" = "2025"),
-                      selected = DEFAULT_GAME_YEAR),
           selectizeInput("gl_team", "Team", choices = NULL, multiple = FALSE),
           dateRangeInput("gl_dates", "Date range", start = NA, end = NA),
           fluidRow(

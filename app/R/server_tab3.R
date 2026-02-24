@@ -342,7 +342,7 @@ server_tab3 <- function(input, output, session, shared) {
   })
 
   tr_teams_for_year <- reactive({
-    gy_int <- as.integer(input$tr_game_year)
+    gy_int <- as.integer(input$game_year)
     req(gy_int)
     cached_ref_query(
       key = sprintf("tr_teams_%d", gy_int),
@@ -356,13 +356,13 @@ server_tab3 <- function(input, output, session, shared) {
     )
   })
 
-  observeEvent(list(input$tr_game_year, input$main_tabs), ignoreInit = TRUE, {
+  observeEvent(list(input$game_year, input$main_tabs), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "team_ratings")) return(NULL)
-    req(input$tr_game_year)
+    req(input$game_year)
     td <- tr_teams_for_year()
     updateSelectizeInput(session, "tr_opponents", choices = td$team_name, selected = character(0))
 
-    gy_int <- as.integer(input$tr_game_year)
+    gy_int <- as.integer(input$game_year)
     gn_df <- cached_ref_query(
       key = sprintf("tr_gn_%d", gy_int),
       query_fun = function() {
@@ -390,7 +390,7 @@ server_tab3 <- function(input, output, session, shared) {
   }
 
   tr_params <- reactive({
-    gy <- as.integer(input$tr_game_year)
+    gy <- as.integer(input$game_year)
     req(gy)
     start_d <- if (!is.null(input$tr_dates[1]) && !is.na(input$tr_dates[1])) as.Date(input$tr_dates[1]) else NA
     end_d <- if (!is.null(input$tr_dates[2]) && !is.na(input$tr_dates[2])) as.Date(input$tr_dates[2]) else NA
@@ -647,7 +647,7 @@ server_tab3 <- function(input, output, session, shared) {
     home_away_id = "tr_home_away", outcome_id = "tr_outcome",
     gn_min_id = "tr_gn_min", gn_max_id = "tr_gn_max", last_n_id = "tr_last_n",
     opp_rank_ids = c("tr_opp_rank_side", "tr_opp_rank_n", "tr_opp_rank_metric"),
-    date_id = "tr_dates", gy_input_id = "tr_game_year",
+    date_id = "tr_dates", gy_input_id = "game_year",
     starters_ids = c("tr_num_starters_off_mode", "tr_num_starters_off",
                      "tr_num_starters_def_mode", "tr_num_starters_def"),
     clutch_enabled_id = "tr_clutch_enabled")

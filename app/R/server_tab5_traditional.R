@@ -22,9 +22,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   ts_ref <- reactiveValues(teams = NULL)
 
-  observeEvent(list(input$main_tabs, input$ts_game_year), ignoreInit = TRUE, {
+  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "traditional_stats")) return(NULL)
-    gy_int <- as.integer(input$ts_game_year)
+    gy_int <- as.integer(input$game_year)
     req(gy_int)
 
     teams_df <- cached_ref_query(
@@ -65,8 +65,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateSelectizeInput(session, "ts_last_n", choices = last_choices, selected = "")
   })
 
-  observeEvent(input$ts_game_year, {
-    b <- shared$season_date_bounds(input$ts_game_year)
+  observeEvent(input$game_year, {
+    b <- shared$season_date_bounds(input$game_year)
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
   }, ignoreInit = FALSE)
 
@@ -85,7 +85,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   }, ignoreInit = TRUE)
 
   observeEvent(input$ts_reset, {
-    b <- shared$season_date_bounds(input$ts_game_year %||% DEFAULT_GAME_YEAR)
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateSelectizeInput(session, "ts_teams", selected = character(0))
     updateSelectizeInput(session, "ts_game_type", selected = "")
@@ -275,7 +275,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     end_d <- as.Date(rng[2])
     if (is.na(start_d) || is.na(end_d)) return(FALSE)
 
-    gy <- as.integer(input$ts_game_year)
+    gy <- as.integer(input$game_year)
     season_bounds <- shared$season_date_bounds(gy)
     date_changed <- (start_d != season_bounds$start) || (end_d != season_bounds$end)
 
@@ -298,7 +298,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   mv_result_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
-    gy_int <- as.integer(input$ts_game_year)
+    gy_int <- as.integer(input$game_year)
     req(gy_int)
 
     out <- tryCatch(
@@ -324,12 +324,12 @@ server_tab5_traditional <- function(input, output, session, shared) {
     out %>%
       clean_ts_rows() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
-  }) %>% bindEvent(input$main_tabs, input$ts_game_year, debounced_teams())
+  }) %>% bindEvent(input$main_tabs, input$game_year, debounced_teams())
 
   live_result_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
 
-    gy_int <- as.integer(input$ts_game_year)
+    gy_int <- as.integer(input$game_year)
     req(gy_int)
     rng <- debounced_range()
     req(rng)
@@ -390,7 +390,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       arrange(desc(pts), desc(minutes), team_name, Player)
     }) %>% bindEvent(
     input$main_tabs,
-    input$ts_game_year,
+    input$game_year,
     debounced_range(),
     debounced_teams(),
     debounced_ts_filters(),
@@ -406,7 +406,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     live_result_df()
   }) %>% bindEvent(
     input$main_tabs,
-    input$ts_game_year,
+    input$game_year,
     debounced_range(),
     debounced_teams(),
     debounced_ts_filters(),
@@ -640,7 +640,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     home_away_id = "ts_home_away", outcome_id = "ts_outcome",
     gn_min_id = "ts_gn_min", gn_max_id = "ts_gn_max", last_n_id = "ts_last_n",
     opp_rank_ids = c("ts_opp_rank_side", "ts_opp_rank_n", "ts_opp_rank_metric"),
-    date_id = "ts_dates", gy_input_id = "ts_game_year",
+    date_id = "ts_dates", gy_input_id = "game_year",
     teams_ids = "ts_teams",
     clutch_enabled_id = "ts_clutch_enabled")
 }

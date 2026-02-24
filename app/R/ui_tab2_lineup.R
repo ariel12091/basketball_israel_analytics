@@ -38,7 +38,6 @@ ui_tab2_lineup <- tabPanel(
             column(6, selectInput("ld_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
-          selectInput("game_year_ld", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
           dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
           tags$hr(),
           tags$div(

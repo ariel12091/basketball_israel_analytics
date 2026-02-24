@@ -65,8 +65,7 @@ server_tab1 <- function(input, output, session, shared) {
       query_fun = function() {
         DBI::dbGetQuery(
           pg_pool,
-          "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
-          params = list(gy_int)
+          sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
         )
       }
     )
@@ -481,8 +480,7 @@ server_tab1 <- function(input, output, session, shared) {
   advanced_result_df <- reactive({
     gy <- as.integer(shared$selected_game_year())
     DBI::dbGetQuery(pg_pool,
-      "SELECT * FROM basketball_test.player_advanced_stats_mv WHERE game_year = $1",
-      params = list(gy))
+      sprintf("SELECT * FROM basketball_test.player_advanced_stats_mv WHERE game_year = %d", gy))
   })
 
   # --- Full ranked Four Factors data (ranks computed BEFORE any user filtering) ---
@@ -598,6 +596,17 @@ server_tab1 <- function(input, output, session, shared) {
       if (!is.null(tids) && length(tids) > 0) {
         df <- df %>% filter(team_id %in% !!tids)
       }
+      if (all(c("off_on_poss", "off_off_poss", "def_on_poss", "def_off_poss") %in% names(df))) {
+        df <- df %>%
+          filter(
+            pmin(
+              dplyr::coalesce(off_on_poss, 0),
+              dplyr::coalesce(off_off_poss, 0),
+              dplyr::coalesce(def_on_poss, 0),
+              dplyr::coalesce(def_off_poss, 0)
+            ) >= !!input$min_all_poss
+          )
+      }
       df <- df %>% filter(off_on_poss >= !!input$min_on_poss)
 
       return(df)
@@ -614,6 +623,17 @@ server_tab1 <- function(input, output, session, shared) {
         tids_names <- input$teams
         if (!is.null(tids_names) && length(tids_names) > 0) {
           df <- df %>% filter(Team %in% tids_names)
+        }
+
+        # Enforce minimum possessions on both ON/OFF sides in MV path
+        if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
+          df <- df %>%
+            filter(
+              pmin(
+                dplyr::coalesce(`ON Poss`, 0),
+                dplyr::coalesce(`OFF Poss`, 0)
+              ) >= !!input$min_all_poss
+            )
         }
 
         # Filter Min Poss (Summary MV uses 'ON Poss')

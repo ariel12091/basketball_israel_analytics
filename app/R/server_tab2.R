@@ -25,9 +25,9 @@ server_tab2 <- function(input, output, session, shared) {
     as.integer(ceiling(kth / step) * step)
   }
 
-  observeEvent(list(input$main_tabs, input$game_year_ld), ignoreInit = TRUE, {
+  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "lineup_data")) return(NULL)
-    gy_int <- as.integer(input$game_year_ld)
+    gy_int <- as.integer(input$game_year)
 
     teams_ld <- DBI::dbGetQuery(pg_pool, "SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = $1 GROUP BY team_id ORDER BY MIN(team_name)", params = list(gy_int))
     ld_ref$teams <- teams_ld
@@ -149,7 +149,7 @@ server_tab2 <- function(input, output, session, shared) {
   # Team, players on/off, min poss are applied locally afterward.
   ld_ff_ranked_df <- reactive({
     req(identical(input$main_tabs, "lineup_data"))
-    gy <- as.integer(input$game_year_ld)
+    gy <- as.integer(input$game_year)
     num <- as.integer(input$ld_num)
 
     # Extract game filter params (same logic as ld_params)
@@ -248,7 +248,7 @@ server_tab2 <- function(input, output, session, shared) {
     if ("net_rtg"  %in% names(df)) df$pr_net      <- pr_vec(df$net_rtg)
 
     df
-  }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year_ld,
+  }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year,
                    input$ld_game_type, input$ld_opponents, input$ld_home_away,
                    input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n,
                    input$ld_opp_rank_metric, input$main_tabs, input$ld_view_mode,
@@ -260,7 +260,7 @@ server_tab2 <- function(input, output, session, shared) {
   # Same pattern as ld_ff_ranked_df but for the Summary view.
   ld_summary_ranked_df <- reactive({
     req(identical(input$main_tabs, "lineup_data"))
-    gy <- as.integer(input$game_year_ld)
+    gy <- as.integer(input$game_year)
     num <- as.integer(input$ld_num)
 
     game_type_csv <- {
@@ -349,7 +349,7 @@ server_tab2 <- function(input, output, session, shared) {
     if ("def_ppp" %in% names(df)) df$pr_ld_def_ppp_i <- pr_vec(df$def_ppp, invert = TRUE)
 
     df
-  }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year_ld,
+  }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year,
                    input$ld_game_type, input$ld_opponents, input$ld_home_away,
                    input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n,
                    input$ld_opp_rank_metric, input$main_tabs, input$ld_view_mode,
@@ -458,7 +458,7 @@ server_tab2 <- function(input, output, session, shared) {
                     input$ld_num_starters_off_mode, input$ld_num_starters_off, input$ld_num_starters_def_mode, input$ld_num_starters_def,
                     input$ld_gn_min, input$ld_gn_max, input$ld_last_n,
                     input$ld_clutch_enabled, input$ld_clutch_margin, input$ld_clutch_status,
-                    input$ld_clutch_minutes, input$ld_clutch_ot_margin, input$game_year_ld), {
+                    input$ld_clutch_minutes, input$ld_clutch_ot_margin, input$game_year), {
     if (isTRUE(resetting())) return(invisible(NULL))
     auto_enabled(TRUE)
   }, ignoreInit = TRUE)
@@ -470,7 +470,7 @@ server_tab2 <- function(input, output, session, shared) {
                     input$ld_num_starters_off_mode, input$ld_num_starters_off, input$ld_num_starters_def_mode, input$ld_num_starters_def,
                     input$ld_gn_min, input$ld_gn_max, input$ld_last_n,
                     input$ld_clutch_enabled, input$ld_clutch_margin, input$ld_clutch_status,
-                    input$ld_clutch_minutes, input$ld_clutch_ot_margin, input$game_year_ld), {
+                    input$ld_clutch_minutes, input$ld_clutch_ot_margin, input$game_year), {
     req(identical(input$main_tabs, "lineup_data"))
     if (!isTRUE(auto_enabled())) return(invisible(NULL))
     p <- ld_params()
@@ -494,7 +494,7 @@ server_tab2 <- function(input, output, session, shared) {
   ld_data <- reactive({
     req(ld_params())
     p <- ld_params()
-    gy <- as.integer(input$game_year_ld)
+    gy <- as.integer(input$game_year)
     mode <- input$ld_view_mode
 
     if (identical(mode, "Four Factors")) {
@@ -952,7 +952,7 @@ server_tab2 <- function(input, output, session, shared) {
 
     sub_hash <- as.character(click$hash)
     team_id_val <- as.integer(click$team_id)
-    gy <- as.integer(input$game_year_ld)
+    gy <- as.integer(input$game_year)
     view_mode <- input$ld_view_mode
 
     # Resolve sub_lineup_hash → lineup_hash(es)
@@ -1338,7 +1338,7 @@ server_tab2 <- function(input, output, session, shared) {
     home_away_id = "ld_home_away", outcome_id = "ld_outcome",
     gn_min_id = "ld_gn_min", gn_max_id = "ld_gn_max", last_n_id = "ld_last_n",
     opp_rank_ids = c("ld_opp_rank_side", "ld_opp_rank_n", "ld_opp_rank_metric"),
-    date_id = "ld_dates", gy_input_id = "game_year_ld",
+    date_id = "ld_dates", gy_input_id = "game_year",
     teams_ids = "ld_team",
     starters_ids = c("ld_num_starters_off_mode", "ld_num_starters_off",
                      "ld_num_starters_def_mode", "ld_num_starters_def"),

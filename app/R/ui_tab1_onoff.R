@@ -25,12 +25,6 @@ ui_tab1_onoff <- tabPanel(
           actionButton("reset_defaults", "Reset to defaults"),
           tags$hr(),
 
-          selectInput(
-            "game_year", "Season",
-            choices = c("2025-26" = "2026", "2024-25" = "2025"),
-            selected = DEFAULT_GAME_YEAR
-          ),
-
           dateRangeInput("date_range", "Game Date Range",
                          start = as.Date("2025-10-01"), end = as.Date("2026-07-01"),
                          min = as.Date("2025-10-01"), max = as.Date("2026-07-01"),

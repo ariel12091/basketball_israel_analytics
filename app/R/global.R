@@ -481,6 +481,24 @@ shared_css <- HTML("
     border-color: #e8a435 !important;
   }
 
+  /* ---- Global Season Selector (navbar) ---- */
+  .navbar-season-select { display: inline-flex; align-items: center; }
+  .navbar-season-select .form-group { margin: 0 !important; }
+  .navbar-season-select .form-select,
+  .navbar-season-select select {
+    height: 30px !important; min-height: 30px !important;
+    padding: 2px 28px 2px 10px !important;
+    font-size: 0.82rem !important; font-weight: 700 !important;
+    background: #161b22 !important; color: #e8a435 !important;
+    border: 1px solid #e8a435 !important; border-radius: 6px !important;
+    cursor: pointer;
+  }
+  .navbar-season-select .form-select:focus,
+  .navbar-season-select select:focus {
+    box-shadow: 0 0 0 2px rgba(232,164,53,0.2) !important;
+  }
+  .navbar-season-select label { display: none !important; }
+
   /* ---- Tab Icon styling ---- */
   .nav-link .bi { margin-right: 5px; font-size: 0.9em; opacity: 0.7; }
   .nav-link.active .bi, .nav-item.active .nav-link .bi { opacity: 1; }
@@ -630,14 +648,8 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
   chips <- list()
 
-  # Season chip (always visible, not dismissable)
-  gy <- get_input("game_year") %||% get_input("_game_year") %||% DEFAULT_GAME_YEAR
-  # Handle different naming: Tab 1 uses "game_year", others use prefix-specific names
-  if (prefix == "on") gy <- input$game_year %||% DEFAULT_GAME_YEAR
-  if (prefix == "ld") gy <- input$game_year_ld %||% DEFAULT_GAME_YEAR
-  if (prefix == "tr") gy <- input$tr_game_year %||% DEFAULT_GAME_YEAR
-  if (prefix == "gl") gy <- input$gl_game_year %||% DEFAULT_GAME_YEAR
-  if (prefix == "ts") gy <- input$ts_game_year %||% DEFAULT_GAME_YEAR
+  # Season chip (always visible, not dismissable) — single global input
+  gy <- input$game_year %||% DEFAULT_GAME_YEAR
   chips[[length(chips) + 1]] <- make_season_chip(gy)
 
   # Date range (non-default)

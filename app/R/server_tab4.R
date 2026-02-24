@@ -5,9 +5,9 @@ server_tab4 <- function(input, output, session, shared) {
   gl_ref <- reactiveValues(teams = NULL)
 
   # --- Team list for the season ---
-  observeEvent(list(input$main_tabs, input$gl_game_year), ignoreInit = TRUE, {
+  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "game_logs")) return(NULL)
-    gy_int <- as.integer(input$gl_game_year)
+    gy_int <- as.integer(input$game_year)
     teams_gl <- cached_ref_query(
       key = sprintf("gl_teams_%d", gy_int),
       query_fun = function() {
@@ -87,12 +87,12 @@ server_tab4 <- function(input, output, session, shared) {
   # --- Schedule cache per season ---
   gl_schedule <- reactive({
     req(identical(input$main_tabs, "game_logs"))
-    gy_int <- as.integer(input$gl_game_year)
+    gy_int <- as.integer(input$game_year)
     req(gy_int)
     DBI::dbGetQuery(pg_pool,
       "SELECT * FROM basketball_test.final_schedule_mv WHERE game_year = $1",
       params = list(gy_int))
-  }) %>% bindEvent(input$gl_game_year, input$main_tabs)
+  }) %>% bindEvent(input$game_year, input$main_tabs)
 
   # --- Filtered schedule rows (team is optional) ---
   gl_filtered_schedule <- reactive({
@@ -186,7 +186,7 @@ server_tab4 <- function(input, output, session, shared) {
   # --- Lineup totals cache per season ---
   gl_lineup_totals <- reactive({
     req(identical(input$main_tabs, "game_logs"))
-    gy_int <- as.integer(input$gl_game_year)
+    gy_int <- as.integer(input$game_year)
     req(gy_int)
     DBI::dbGetQuery(
       pg_pool,
@@ -196,12 +196,12 @@ server_tab4 <- function(input, output, session, shared) {
        WHERE game_year = $1",
       params = list(gy_int)
     )
-  }) %>% bindEvent(input$gl_game_year, input$main_tabs)
+  }) %>% bindEvent(input$game_year, input$main_tabs)
 
   # --- Lineup FF cache per season ---
   gl_lineup_ff <- reactive({
     req(identical(input$main_tabs, "game_logs"))
-    gy_int <- as.integer(input$gl_game_year)
+    gy_int <- as.integer(input$game_year)
     req(gy_int)
     DBI::dbGetQuery(
       pg_pool,
@@ -212,7 +212,7 @@ server_tab4 <- function(input, output, session, shared) {
        WHERE game_year = $1",
       params = list(gy_int)
     )
-  }) %>% bindEvent(input$gl_game_year, input$main_tabs)
+  }) %>% bindEvent(input$game_year, input$main_tabs)
 
   # ============================================================
   # TEAMS SUMMARY
@@ -278,7 +278,7 @@ server_tab4 <- function(input, output, session, shared) {
 
     combined %>%
       inner_join(sched_info, by = c("game_id", "team_id")) %>%
-      arrange(desc(gn), desc(game_date), game_id, team_name)
+      arrange(desc(game_date), desc(gn), game_id, team_name)
   })
 
   # ============================================================
@@ -358,7 +358,7 @@ server_tab4 <- function(input, output, session, shared) {
 
     combined %>%
       inner_join(sched_info, by = c("game_id", "team_id")) %>%
-      arrange(desc(gn), desc(game_date), game_id, team_name)
+      arrange(desc(game_date), desc(gn), game_id, team_name)
   })
 
   # ============================================================
@@ -516,7 +516,7 @@ server_tab4 <- function(input, output, session, shared) {
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(0, "desc"), list(1, "desc")),
+                            order = list(list(1, "desc"), list(0, "desc")),
                             columnDefs = col_defs
                           ))
 
@@ -592,7 +592,7 @@ server_tab4 <- function(input, output, session, shared) {
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(0, "desc"), list(1, "desc")),
+                            order = list(list(1, "desc"), list(0, "desc")),
                             columnDefs = col_defs
                           ))
 
@@ -616,7 +616,7 @@ server_tab4 <- function(input, output, session, shared) {
     home_away_id = "gl_home_away", outcome_id = "gl_outcome",
     gn_min_id = "gl_gn_min", gn_max_id = "gl_gn_max", last_n_id = "gl_last_n",
     opp_rank_ids = c(),
-    date_id = "gl_dates", gy_input_id = "gl_game_year",
+    date_id = "gl_dates", gy_input_id = "game_year",
     teams_ids = "gl_team",
     starters_ids = c("gl_num_starters_off_mode", "gl_num_starters_off",
                      "gl_num_starters_def_mode", "gl_num_starters_def"))

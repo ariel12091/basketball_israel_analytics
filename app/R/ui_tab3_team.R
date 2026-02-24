@@ -21,7 +21,6 @@ ui_tab3_team <- tabPanel(
           id = "tr-filters", class = "collapse d-md-block",
           actionButton("tr_reset", "Reset Filters"),
           tags$hr(),
-          selectInput("tr_game_year", "Season", choices = c("2025-26" = "2026", "2024-25" = "2025"), selected = DEFAULT_GAME_YEAR),
           dateRangeInput("tr_dates", "Date range", start = NA, end = NA),
           fluidRow(
             column(6, selectInput("tr_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),

@@ -18,11 +18,6 @@ ui_tab5_traditional <- tabPanel(
           class = "collapse d-md-block",
           actionButton("ts_reset", "Reset Filters"),
           tags$hr(),
-          selectInput(
-            "ts_game_year", "Season",
-            choices = c("2025-26" = "2026", "2024-25" = "2025"),
-            selected = DEFAULT_GAME_YEAR
-          ),
           dateRangeInput("ts_dates", "Date range", start = NA, end = NA),
           selectizeInput("ts_teams", "Teams", choices = NULL, selected = character(0), multiple = TRUE,
                          options = list(placeholder = "All teams")),
