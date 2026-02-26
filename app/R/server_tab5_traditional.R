@@ -236,6 +236,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
                                              home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
                                              max_margin, margin_status, max_time_remaining, ot_margin_filter,
                                              min_gn, max_gn, last_n_games) {
+    allowed <- guard_heavy_request(
+      session, key = "tab5_player_traditional",
+      start_d = start_d, end_d = end_d,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
     DBI::dbGetQuery(
       pool,
       paste0(

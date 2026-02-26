@@ -371,6 +371,13 @@ server_tab1 <- function(input, output, session, shared) {
 
   # --- On/Off Compute Function ---
   run_onoff_compute_14 <- function(pool, start_d, end_d, team_ids, min_all, min_on, min_net, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
+    allowed <- guard_heavy_request(
+      session, key = "tab1_onoff_compute",
+      start_d = start_d, end_d = end_d,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.onoff_compute(", "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,", "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,", "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"),
                     params = list(as.Date(start_d), as.Date(end_d), team_csv, as.integer(min_all), as.integer(min_on), as.numeric(min_net), as.character(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
@@ -384,6 +391,13 @@ server_tab1 <- function(input, output, session, shared) {
                                        num_starters_off = NA_integer_, num_starters_def = NA_integer_,
                                        num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_,
                                        num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
+    allowed <- guard_heavy_request(
+      session, key = "tab1_ff_compute",
+      start_d = start_d, end_d = end_d,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
     DBI::dbGetQuery(pool,
                     paste0("SELECT * FROM basketball_test.four_factors_compute(",

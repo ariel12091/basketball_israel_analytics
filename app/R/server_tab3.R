@@ -381,10 +381,24 @@ server_tab3 <- function(input, output, session, shared) {
   })
 
   run_team_ratings_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
+    allowed <- guard_heavy_request(
+      session, key = "tab3_team_summary",
+      start_d = start_d, end_d = end_d,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_ratings_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
   run_team_ff_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
+    allowed <- guard_heavy_request(
+      session, key = "tab3_team_ff",
+      start_d = start_d, end_d = end_d,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
@@ -392,6 +406,13 @@ server_tab3 <- function(input, output, session, shared) {
     end_d <- if (is.na(end_override)) p$end_d else as.Date(end_override)
     start_d <- p$start_d
     if (!is.na(end_d) && !is.na(start_d) && end_d < start_d) return(data.frame())
+    allowed <- guard_heavy_request(
+      session, key = "tab3_team_traditional",
+      start_d = start_d, end_d = end_d,
+      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
 
     DBI::dbGetQuery(
       pool,
@@ -1239,12 +1260,12 @@ server_tab3 <- function(input, output, session, shared) {
         TOV = make_cell(df$tov, df$rank_tov, "tov"),
         FGM = make_cell(df$fgm, df$rank_fgm, "fgm"),
         FGA = make_cell(df$fga, df$rank_fga, "fga"),
+        `FG%` = make_cell(df$fg_pct, df$rank_fg_pct, "fg_pct"),
         `3PM` = make_cell(df$`3pm`, df$`rank_3pm`, "3pm"),
         `3PA` = make_cell(df$`3pa`, df$`rank_3pa`, "3pa"),
+        `3P%` = make_cell(df$tp_pct, df$rank_tp_pct, "tp_pct"),
         FTM = make_cell(df$ftm, df$rank_ftm, "ftm"),
         FTA = make_cell(df$fta, df$rank_fta, "fta"),
-        `FG%` = make_cell(df$fg_pct, df$rank_fg_pct, "fg_pct"),
-        `3P%` = make_cell(df$tp_pct, df$rank_tp_pct, "tp_pct"),
         `FT%` = make_cell(df$ft_pct, df$rank_ft_pct, "ft_pct"),
         `eFG%` = make_cell(df$efg, df$rank_efg, "efg"),
         `TS%` = make_cell(df$ts, df$rank_ts, "ts"),
@@ -1255,14 +1276,14 @@ server_tab3 <- function(input, output, session, shared) {
       )
       sort_map <- c(
         PTS = "pts", REB = "reb", AST = "ast", STL = "stl", BLK = "blk",
-        TOV = "tov", FGM = "fgm", FGA = "fga", `3PM` = "3pm", `3PA` = "3pa",
-        FTM = "ftm", FTA = "fta", `FG%` = "fg_pct", `3P%` = "tp_pct", `FT%` = "ft_pct",
+        TOV = "tov", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct", `3PM` = "3pm", `3PA` = "3pa",
+        `3P%` = "tp_pct", FTM = "ftm", FTA = "fta", `FT%` = "ft_pct",
         `eFG%` = "efg", `TS%` = "ts"
       )
       sort_dir_map <- c(
         PTS = "desc", REB = "desc", AST = "desc", STL = "desc", BLK = "desc",
-        TOV = "asc", FGM = "desc", FGA = "desc", `3PM` = "desc", `3PA` = "desc",
-        FTM = "desc", FTA = "desc", `FG%` = "desc", `3P%` = "desc", `FT%` = "desc",
+        TOV = "asc", FGM = "desc", FGA = "desc", `FG%` = "desc", `3PM` = "desc", `3PA` = "desc",
+        `3P%` = "desc", FTM = "desc", FTA = "desc", `FT%` = "desc",
         `eFG%` = "desc", `TS%` = "desc"
       )
       for (nm in names(sort_map)) {
@@ -1277,16 +1298,18 @@ server_tab3 <- function(input, output, session, shared) {
       }
       pr_map <- c(
         PTS = "pr_pts", REB = "pr_reb", AST = "pr_ast", STL = "pr_stl", BLK = "pr_blk",
-        TOV = "pr_tov", FGM = "pr_fgm", FGA = "pr_fga", `3PM` = "pr_3pm", `3PA` = "pr_3pa",
-        FTM = "pr_ftm", FTA = "pr_fta", `FG%` = "pr_fg_pct", `3P%` = "pr_tp_pct", `FT%` = "pr_ft_pct",
+        TOV = "pr_tov", FGM = "pr_fgm", FGA = "pr_fga", `FG%` = "pr_fg_pct", `3PM` = "pr_3pm", `3PA` = "pr_3pa",
+        `3P%` = "pr_tp_pct", FTM = "pr_ftm", FTA = "pr_fta", `FT%` = "pr_ft_pct",
         `eFG%` = "pr_efg", `TS%` = "pr_ts"
       )
       sort_col_names <- paste0("sort__", make.names(names(sort_map)))
       sort_order_defs <- lapply(names(sort_map), function(nm) {
+        dir_best <- sort_dir_map[[nm]]
+        dir_seq <- if (identical(dir_best, "desc")) list("desc", "asc") else list("asc", "desc")
         list(
           targets = which(names(disp) == nm) - 1L,
           orderData = which(names(disp) == paste0("sort__", make.names(nm))) - 1L,
-          orderSequence = list(sort_dir_map[[nm]])
+          orderSequence = dir_seq
         )
       })
       hidden_targets <- which(names(disp) %in% c(unname(pr_map), sort_col_names)) - 1L
@@ -1460,10 +1483,12 @@ server_tab3 <- function(input, output, session, shared) {
         disp_ff[[paste0("sort__", nm)]] <- vals
       }
       ff_sort_order_defs <- lapply(names(ff_sort_map), function(nm) {
+        dir_best <- ff_sort_dir_map[[nm]]
+        dir_seq <- if (identical(dir_best, "desc")) list("desc", "asc") else list("asc", "desc")
         list(
           targets = which(names(disp_ff) == nm) - 1L,
           orderData = which(names(disp_ff) == paste0("sort__", nm)) - 1L,
-          orderSequence = list(ff_sort_dir_map[[nm]])
+          orderSequence = dir_seq
         )
       })
 
@@ -1589,9 +1614,9 @@ server_tab3 <- function(input, output, session, shared) {
 
       summary_hidden <- which(names(disp_df) %in% c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp", "sort_off_ppp", "sort_def_ppp", "sort_net_rtg")) - 1L
       summary_order_defs <- list(
-        list(targets = which(names(disp_df) == "off_ppp") - 1L, orderData = which(names(disp_df) == "sort_off_ppp") - 1L, orderSequence = list("desc")),
-        list(targets = which(names(disp_df) == "def_ppp") - 1L, orderData = which(names(disp_df) == "sort_def_ppp") - 1L, orderSequence = list("asc")),
-        list(targets = which(names(disp_df) == "net_rtg") - 1L, orderData = which(names(disp_df) == "sort_net_rtg") - 1L, orderSequence = list("desc"))
+        list(targets = which(names(disp_df) == "off_ppp") - 1L, orderData = which(names(disp_df) == "sort_off_ppp") - 1L, orderSequence = list("desc", "asc")),
+        list(targets = which(names(disp_df) == "def_ppp") - 1L, orderData = which(names(disp_df) == "sort_def_ppp") - 1L, orderSequence = list("asc", "desc")),
+        list(targets = which(names(disp_df) == "net_rtg") - 1L, orderData = which(names(disp_df) == "sort_net_rtg") - 1L, orderSequence = list("desc", "asc"))
       )
       dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, escape = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = c(list(list(className = 'dt-center', targets = "_all"), list(visible = FALSE, targets = summary_hidden)), summary_order_defs))) %>%
         formatRound(c("off_pace", "def_pace"), 1) %>%

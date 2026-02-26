@@ -29,21 +29,20 @@ server_tab2 <- function(input, output, session, shared) {
     if (!identical(input$main_tabs, "lineup_data")) return(NULL)
     gy_int <- as.integer(input$game_year)
 
-    teams_ld <- DBI::dbGetQuery(pg_pool, "SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = $1 GROUP BY team_id ORDER BY MIN(team_name)", params = list(gy_int))
+    teams_ld <- DBI::dbGetQuery(pg_pool, sprintf("SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int))
     ld_ref$teams <- teams_ld
     team_values <- c("", as.character(teams_ld$team_id))
     names(team_values) <- c("— All teams —", teams_ld$team_name)
     updateSelectizeInput(session, "ld_team", choices = team_values, selected = "", server = TRUE)
 
-    players_map <- DBI::dbGetQuery(pg_pool, "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = $1 GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", params = list(gy_int))
+    players_map <- DBI::dbGetQuery(pg_pool, sprintf("SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
     ld_ref$players <- players_map
 
     updateSelectizeInput(session, "ld_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
     updateSelectizeInput(session, "ld_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
 
     gn_df <- DBI::dbGetQuery(pg_pool,
-      "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
-      params = list(gy_int))
+      sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     gn_choices <- c("", as.character(gn_vals))
     last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
@@ -137,10 +136,24 @@ server_tab2 <- function(input, output, session, shared) {
   }, ignoreInit = TRUE)
 
   run_fetch_lineups_20 <- function(pool, num, team_csv, player_csv, player_off_csv, exact, start_date, end_date, min_poss, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
+    allowed <- guard_heavy_request(
+      session, key = "tab2_lineups_summary",
+      start_d = start_date, end_d = end_date,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 40L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_csv_v2(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
   run_fetch_lineups_ff_20 <- function(pool, num, team_csv, player_csv, player_off_csv, exact, start_date, end_date, min_poss, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
+    allowed <- guard_heavy_request(
+      session, key = "tab2_lineups_ff",
+      start_d = start_date, end_d = end_date,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 40L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
@@ -1331,7 +1344,23 @@ server_tab2 <- function(input, output, session, shared) {
 
   # ---- Filter Chips ----
   output$ld_filter_chips <- renderUI({
-    build_filter_chips("ld", input, shared$season_date_bounds, reset_btn_id = "ld_reset")
+    team_map <- NULL
+    if (!is.null(ld_ref$teams) && nrow(ld_ref$teams)) {
+      team_map <- setNames(ld_ref$teams$team_name, as.character(ld_ref$teams$team_id))
+    }
+    player_map <- NULL
+    if (!is.null(ld_ref$players) && nrow(ld_ref$players)) {
+      team_id <- suppressWarnings(as.integer(input$ld_team))
+      pmap <- ld_ref$players
+      if (!is.na(team_id)) pmap <- pmap %>% filter(team_id == !!team_id)
+      player_map <- setNames(pmap$name, as.character(pmap$player_id))
+    }
+    build_filter_chips(
+      "ld", input, shared$season_date_bounds,
+      reset_btn_id = "ld_reset",
+      team_label_map = team_map,
+      player_label_map = player_map
+    )
   })
   setup_chip_clears("ld", session, input, shared,
     game_type_id = "ld_game_type", opponents_id = "ld_opponents",

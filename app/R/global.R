@@ -43,7 +43,7 @@ adaptive_baseline <- function(poss_vec) {
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
 # ---------------- App-level cache & guardrails ----------------
-REF_CACHE_TTL_SEC <- as.numeric(Sys.getenv("REF_CACHE_TTL_SEC", "60"))
+REF_CACHE_TTL_SEC <- as.numeric(Sys.getenv("REF_CACHE_TTL_SEC", "300"))
 if (!is.finite(REF_CACHE_TTL_SEC) || REF_CACHE_TTL_SEC < 0) REF_CACHE_TTL_SEC <- 60
 
 PG_STATEMENT_TIMEOUT_MS <- suppressWarnings(as.integer(Sys.getenv("PG_STATEMENT_TIMEOUT_MS", "8000")))
@@ -62,6 +62,78 @@ cached_ref_query <- function(key, query_fun, ttl_sec = REF_CACHE_TTL_SEC) {
   val <- query_fun()
   assign(key, list(ts = now, val = val), envir = .ref_cache_env)
   val
+}
+
+# ---------------- Session safety guards ----------------
+init_session_request_guard <- function(session) {
+  if (is.null(session$userData$request_guard)) {
+    env <- new.env(parent = emptyenv())
+    env$last_notice_at <- 0
+    session$userData$request_guard <- env
+  }
+  invisible(TRUE)
+}
+
+guard_query_window <- function(start_d = NA, end_d = NA, min_gn = NA_integer_, max_gn = NA_integer_,
+                               last_n = NA_integer_, max_days = 430L, max_last_n = 80L, max_gn_span = 80L) {
+  if (!is.na(last_n) && as.integer(last_n) > as.integer(max_last_n)) {
+    return(list(ok = FALSE, reason = sprintf("Last N is capped at %d.", as.integer(max_last_n))))
+  }
+  if (!is.na(min_gn) && !is.na(max_gn)) {
+    span <- as.integer(max_gn) - as.integer(min_gn) + 1L
+    if (is.finite(span) && span > as.integer(max_gn_span)) {
+      return(list(ok = FALSE, reason = sprintf("GN range is capped at %d games.", as.integer(max_gn_span))))
+    }
+  }
+  s <- suppressWarnings(as.Date(start_d))
+  e <- suppressWarnings(as.Date(end_d))
+  if (!is.na(s) && !is.na(e) && e < s) {
+    return(list(ok = FALSE, reason = "End date must be on or after start date."))
+  }
+  if (!is.na(s) && !is.na(e)) {
+    span_days <- as.integer(e - s) + 1L
+    if (is.finite(span_days) && span_days > as.integer(max_days)) {
+      return(list(ok = FALSE, reason = sprintf("Date window is capped at %d days.", as.integer(max_days))))
+    }
+  }
+  list(ok = TRUE, reason = "")
+}
+
+guard_heavy_request <- function(session, key,
+                                start_d = NA, end_d = NA,
+                                min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_,
+                                max_calls = 30L, window_sec = 60L,
+                                max_days = 430L, max_last_n = 80L, max_gn_span = 80L) {
+  init_session_request_guard(session)
+  env <- session$userData$request_guard
+  now <- as.numeric(Sys.time())
+  bucket <- paste0("hits_", key)
+  hits <- env[[bucket]]
+  if (is.null(hits)) hits <- numeric(0)
+  hits <- hits[hits >= (now - as.numeric(window_sec))]
+  if (length(hits) >= as.integer(max_calls)) {
+    if ((now - env$last_notice_at) > 2) {
+      showNotification("Too many requests. Please wait a few seconds and try again.", type = "warning", duration = 4)
+      env$last_notice_at <- now
+    }
+    env[[bucket]] <- hits
+    return(FALSE)
+  }
+  env[[bucket]] <- c(hits, now)
+
+  chk <- guard_query_window(
+    start_d = start_d, end_d = end_d,
+    min_gn = min_gn, max_gn = max_gn, last_n = last_n,
+    max_days = max_days, max_last_n = max_last_n, max_gn_span = max_gn_span
+  )
+  if (!isTRUE(chk$ok)) {
+    if ((now - env$last_notice_at) > 2) {
+      showNotification(chk$reason, type = "warning", duration = 4)
+      env$last_notice_at <- now
+    }
+    return(FALSE)
+  }
+  TRUE
 }
 
 # ---------------- PostgreSQL pool ----------------
@@ -482,12 +554,21 @@ shared_css <- HTML("
   }
 
   /* ---- Global Season Selector (navbar) ---- */
-  .navbar-season-select { display: inline-flex; align-items: center; }
+  .navbar-season-select {
+    display: inline-flex;
+    align-items: center;
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
+  }
   .navbar-season-select .form-group { margin: 0 !important; }
   .navbar-season-select .form-select,
   .navbar-season-select select {
     height: 30px !important; min-height: 30px !important;
-    padding: 2px 28px 2px 10px !important;
+    width: 72px !important;
+    min-width: 72px !important;
+    max-width: 72px !important;
+    padding: 2px 20px 2px 8px !important;
     font-size: 0.82rem !important; font-weight: 700 !important;
     background: #161b22 !important; color: #e8a435 !important;
     border: 1px solid #e8a435 !important; border-radius: 6px !important;
@@ -644,8 +725,23 @@ make_season_chip <- function(gy) {
   tags$span(class = "filter-chip chip-season", label)
 }
 
-build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL) {
+build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
+                               team_label_map = NULL, player_label_map = NULL) {
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
+  map_label <- function(x, label_map) {
+    if (is.null(label_map) || is.null(x)) return(x)
+    key <- as.character(x)
+    out <- unname(label_map[key])
+    out[is.na(out) | !nzchar(out)] <- key[is.na(out) | !nzchar(out)]
+    out
+  }
+  same_date <- function(a, b) {
+    if (is.null(a) || is.null(b)) return(FALSE)
+    a <- tryCatch(as.Date(a), error = function(e) NA)
+    b <- tryCatch(as.Date(b), error = function(e) NA)
+    if (is.na(a) || is.na(b)) return(FALSE)
+    identical(a, b)
+  }
   chips <- list()
 
   # Season chip (always visible, not dismissable) — single global input
@@ -655,11 +751,24 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   # Date range (non-default)
   date_input <- if (prefix == "on") input$date_range else input[[paste0(prefix, "_dates")]]
   if (!is.null(date_input) && length(date_input) == 2) {
-    start_d <- tryCatch(as.Date(date_input[1]), error = function(e) NA)
-    end_d <- tryCatch(as.Date(date_input[2]), error = function(e) NA)
-    if (!is.na(start_d) && !is.na(end_d)) {
-      bounds <- season_bounds_fn(gy)
-      if (start_d != bounds$start || end_d != bounds$end) {
+    raw_start <- date_input[1]
+    raw_end <- date_input[2]
+    has_raw_start <- !is.null(raw_start) && nzchar(as.character(raw_start)) && !identical(as.character(raw_start), "NA")
+    has_raw_end <- !is.null(raw_end) && nzchar(as.character(raw_end)) && !identical(as.character(raw_end), "NA")
+    has_any_raw <- has_raw_start || has_raw_end
+
+    start_d <- tryCatch(as.Date(raw_start), error = function(e) NA)
+    end_d <- tryCatch(as.Date(raw_end), error = function(e) NA)
+
+    bounds <- season_bounds_fn(gy)
+    if (is.na(start_d)) start_d <- bounds$start
+    if (is.na(end_d)) end_d <- bounds$end
+
+    resolved_set <- !is.na(start_d) && !is.na(end_d)
+    if (resolved_set) {
+      show_when_set <- prefix %in% c("ld", "tr", "gl")
+      is_non_default <- !same_date(start_d, bounds$start) || !same_date(end_d, bounds$end)
+      if ((show_when_set && has_any_raw) || (!show_when_set && is_non_default)) {
         lbl <- paste(format(start_d, "%b %d"), "\u2013", format(end_d, "%b %d"))
         chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_dates"), "chip-game")
       }
@@ -686,7 +795,8 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     teams_val <- NULL
   }
   if (!is.null(teams_val) && length(teams_val) && any(nzchar(teams_val))) {
-    lbl <- if (length(teams_val) == 1) teams_val[1] else paste0(length(teams_val), " teams")
+    mapped_teams <- map_label(teams_val, team_label_map)
+    lbl <- if (length(mapped_teams) == 1) mapped_teams[1] else paste0(length(mapped_teams), " teams")
     chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_teams"), "chip-game")
   }
 
@@ -778,12 +888,14 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   if (prefix == "ld") {
     pon <- input$ld_players_on
     if (!is.null(pon) && length(pon)) {
-      lbl <- if (length(pon) == 1) paste("On:", pon[1]) else paste0("On: ", length(pon), " players")
+      mapped_on <- map_label(pon, player_label_map)
+      lbl <- if (length(mapped_on) == 1) paste("On:", mapped_on[1]) else paste0("On: ", length(mapped_on), " players")
       chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_on", "chip-game")
     }
     poff <- input$ld_players_off
     if (!is.null(poff) && length(poff)) {
-      lbl <- if (length(poff) == 1) paste("Off:", poff[1]) else paste0("Off: ", length(poff), " players")
+      mapped_off <- map_label(poff, player_label_map)
+      lbl <- if (length(mapped_off) == 1) paste("Off:", mapped_off[1]) else paste0("Off: ", length(mapped_off), " players")
       chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_off", "chip-game")
     }
   }

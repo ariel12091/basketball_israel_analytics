@@ -39,7 +39,7 @@ ui <- navbarPage(
     tags$div(
       class = "navbar-season-select",
       selectInput("game_year", NULL,
-                  choices = c("2025-26" = "2026", "2024-25" = "2025"),
+                  choices = c("25-26" = "2026", "24-25" = "2025"),
                   selected = DEFAULT_GAME_YEAR)
     ),
     actionButton("open_glossary",
@@ -60,6 +60,13 @@ ui <- navbarPage(
 
 # ---------------- Server ----------------
 server <- function(input, output, session) {
+  startup_t0 <- proc.time()[["elapsed"]]
+  init_session_request_guard(session)
+  log_startup <- function(step) {
+    elapsed <- proc.time()[["elapsed"]] - startup_t0
+    message(sprintf("[startup] %s (%.3fs)", step, elapsed))
+  }
+
   # ---- Shared helpers & reactives ----
   season_date_bounds <- function(gy) {
     if (identical(gy, "2026")) {
@@ -82,12 +89,37 @@ server <- function(input, output, session) {
       query_fun = function() {
         DBI::dbGetQuery(
           pg_pool,
-          "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = $1 ORDER BY team_name",
-          params = list(gy_int)
+          sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
         )
       }
     )
   })
+
+  prewarm_for_year <- function(gy_chr) {
+    gy_int <- suppressWarnings(as.integer(gy_chr))
+    if (!is.finite(gy_int) || is.na(gy_int)) return(invisible(NULL))
+
+    # Warm teams cache used across tabs.
+    invisible(cached_ref_query(
+      key = sprintf("teams_for_year_%d", gy_int),
+      query_fun = function() {
+        DBI::dbGetQuery(
+          pg_pool,
+          sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
+        )
+      }
+    ))
+
+    # Warm ON tab GN cache (primary first-view path).
+    # Avoid running duplicate GN queries for every tab at startup.
+    gn_query <- function() {
+      DBI::dbGetQuery(
+        pg_pool,
+        sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
+      )
+    }
+    invisible(cached_ref_query(key = sprintf("on_gn_%d", gy_int), query_fun = gn_query))
+  }
 
   observeEvent(selected_game_year(), {
     td <- teams_for_year_df()
@@ -129,16 +161,40 @@ server <- function(input, output, session) {
     }, error = function(e) NA_character_)
   }
 
-  output$last_updated <- renderText({
+  last_updated_cache <- reactiveVal(NA_character_)
+
+  refresh_last_updated <- function() {
     ts <- last_success_db()
     if (is.na(ts)) {
       p <- last_success_path()
-      if (is.na(p)) return("Last updated: unavailable")
+      if (is.na(p)) {
+        last_updated_cache("Last updated: unavailable")
+        return(invisible(NULL))
+      }
       lines <- tryCatch(readLines(p, warn = FALSE), error = function(e) character(0))
       ts <- if (length(lines)) trimws(lines[[1]]) else ""
     }
-    if (!nzchar(ts)) "Last updated: unavailable" else paste("Last updated:", ts)
+    txt <- if (!nzchar(ts)) "Last updated: unavailable" else paste("Last updated:", ts)
+    last_updated_cache(txt)
+    invisible(NULL)
+  }
+
+  observe({
+    invalidateLater(60000, session)
+    refresh_last_updated()
   })
+
+  output$last_updated <- renderText({
+    last_updated_cache() %||% "Last updated: unavailable"
+  })
+
+  prewarm_enabled <- tolower(Sys.getenv("APP_PREWARM_ENABLED", "1")) %in% c("1", "true", "yes")
+  if (isTRUE(prewarm_enabled)) {
+    observeEvent(selected_game_year(), {
+      prewarm_for_year(selected_game_year())
+      log_startup(sprintf("prewarm complete for season %s", selected_game_year()))
+    }, ignoreInit = FALSE)
+  }
 
   observeEvent(input$open_glossary, {
     showModal(
@@ -176,6 +232,7 @@ server <- function(input, output, session) {
   server_tab3(input, output, session, shared)
   server_tab4(input, output, session, shared)
   server_tab5_traditional(input, output, session, shared)
+  log_startup("server modules initialized")
 }
 
 shinyApp(ui, server)
