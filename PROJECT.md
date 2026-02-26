@@ -79,6 +79,13 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
 - GN filter changes did not update Tab 1 output because `gn_params()` was not included in the `bindEvent` triggers for `result_df()`. Fix: add `gn_params()` to the `bindEvent` list in `app/R/server_tab1.R`.
 - `attempt to use zero-length variable name` error on app load came from named selectize choices like `c("" = "")`. Fix: use unnamed choices (e.g., `c("", as.character(gn_vals))`) for GN selectize inputs in server tabs.
 - GN selectize inputs appeared to do nothing because fallback stayed on MV when GN changes didn’t trigger recompute. Fix is the `bindEvent` update above (and ensuring GN raw inputs are non-empty when selected).
+## Session Update (Tab 3 Sorting)
+- Team Ratings sort behavior now enforces best-first order on rated metric columns so top rank remains first when sorting (#1 at top for the selected metric).
+- Sorting uses hidden numeric columns mapped via DataTables orderData, so displayed HTML rank/value/delta cells still sort by raw numeric metric.
+- One-direction orderSequence is set per metric (for example: desc for off_ppp, asc for def_ppp, asc for off_tov) to prevent accidental reversed ranking order.
+- NA sort values are pushed to the bottom using direction-aware sentinels (-Inf for descending metrics, Inf for ascending metrics).
+- Applied in all Team Ratings modes in app/R/server_tab3.R: Summary, Four Factors, and Traditional.
+
 ## Session Summary (Plan)
 1. Read the GN implementation plan and existing server logic
    - Verified intended GN behavior and noted that dynamic SQL path must be triggered when GN filters are set.
@@ -1404,3 +1411,31 @@ extract_starters <- function(box) {
 - ETL permission check after RLS:
   - ETL user (`postgres.jfmxhveitknfwqpjoamn`) retains write capability (rollback-safe INSERT/UPDATE smoke tests passed).
   - Role has `rolbypassrls = true`, so ETL pipelines are not blocked by RLS.
+
+## Session Notes (2026-02-23): App Compatibility + SQL Function Version Verification
+- App code compatibility check:
+  - Parsed successfully: `app/app.R` and all files under `app/R/*.R`.
+  - Runtime source smoke test passed (`SOURCE_OK`) without launch-time object errors.
+  - Filter-chip wiring is complete across tabs (UI `uiOutput(...)` + server `renderUI(...)` + shared `build_filter_chips(...)` in `global.R`).
+- DB compatibility check with app credentials (`app/.Renviron`):
+  - Successful calls (signature-compatible and readable):
+    - `onoff_compute(...)`
+    - `four_factors_compute(...)`
+    - `get_team_ratings_dynamic(...)`
+    - `get_team_four_factors_dynamic(...)`
+    - `fetch_lineups_csv_v2(...)`
+    - `fetch_lineups_four_factors_csv(...)`
+    - `get_player_traditional_dynamic(...)`
+    - `player_traditional_stats_mv`, `full_rosters`
+- SQL version verification (active DB definitions):
+  - Database contains both legacy and extended overloaded signatures for several functions.
+  - App call-sites use the extended/latest arities (including starters-range params), so PostgreSQL resolves to the latest overloads at runtime.
+  - Confirmed for:
+    - `onoff_compute`
+    - `four_factors_compute`
+    - `get_team_ratings_dynamic`
+    - `get_team_four_factors_dynamic`
+    - `fetch_lineups_csv_v2`
+    - `fetch_lineups_four_factors_csv`
+
+
