@@ -1439,3 +1439,8 @@ extract_starters <- function(box) {
     - `fetch_lineups_four_factors_csv`
 
 
+
+## Session Update (2026-02-26)
+- Fixed Game Logs filter-chip crash in pp/R/server_tab4.R by guarding 	eam_label_map creation (avoid setNames() on invalid/empty team data).
+- Set Player Stats default display mode to Per Game in pp/R/ui_tab5_traditional.R and aligned server fallbacks/resets in pp/R/server_tab5_traditional.R.
+- Commit reference: cc6583.
