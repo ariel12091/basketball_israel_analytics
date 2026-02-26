@@ -319,6 +319,7 @@ server_tab3 <- function(input, output, session, shared) {
   # -------------------------------------------------------------
   observeEvent(input$tr_reset, {
     updateRadioButtons(session, "tr_view_mode", selected = "Summary")
+    updateSelectInput(session, "tr_trad_display_mode", selected = "Per Game")
     updateDateRangeInput(session, "tr_dates", start = NA, end = NA)
     updateSelectizeInput(session, "tr_game_type", selected = "")
     updateSelectizeInput(session, "tr_opponents", selected = character(0))
@@ -349,8 +350,7 @@ server_tab3 <- function(input, output, session, shared) {
       query_fun = function() {
         DBI::dbGetQuery(
           pg_pool,
-          "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = $1 ORDER BY team_name",
-          params = list(gy_int)
+          sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
         )
       }
     )
@@ -368,8 +368,7 @@ server_tab3 <- function(input, output, session, shared) {
       query_fun = function() {
         DBI::dbGetQuery(
           pg_pool,
-          "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
-          params = list(gy_int)
+          sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
         )
       }
     )
@@ -387,6 +386,201 @@ server_tab3 <- function(input, output, session, shared) {
 
   run_team_ff_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
     DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
+  }
+
+  run_team_traditional_dynamic <- function(pool, p, end_override = NA) {
+    end_d <- if (is.na(end_override)) p$end_d else as.Date(end_override)
+    start_d <- p$start_d
+    if (!is.na(end_d) && !is.na(start_d) && end_d < start_d) return(data.frame())
+
+    DBI::dbGetQuery(
+      pool,
+      "WITH params AS (
+         SELECT
+           CASE WHEN $4::text IS NULL OR btrim($4::text) = '' THEN NULL::int4[]
+                ELSE string_to_array(regexp_replace($4::text, '\\s+', '', 'g'), ',')::int4[] END AS game_types,
+           CASE WHEN $5::text IS NULL OR btrim($5::text) = '' THEN NULL::int4[]
+                ELSE string_to_array(regexp_replace($5::text, '\\s+', '', 'g'), ',')::int4[] END AS opp_ids
+       ),
+       games_base AS (
+         SELECT
+           fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.game_date,
+           ROW_NUMBER() OVER (PARTITION BY fs.team_id, fs.game_year ORDER BY fs.game_date DESC NULLS LAST, fs.game_id DESC) AS rn_recent
+         FROM basketball_test.final_schedule_mv fs
+         CROSS JOIN params p0
+         WHERE fs.game_year = $1::int4
+           AND ($2::date IS NULL OR fs.game_date >= $2::date)
+           AND ($3::date IS NULL OR fs.game_date <= $3::date)
+           AND (p0.game_types IS NULL OR fs.game_type = ANY(p0.game_types))
+           AND (p0.opp_ids IS NULL OR fs.opp_team_id = ANY(p0.opp_ids))
+           AND ($6::text IS NULL OR $6::text = '' OR ($6::text = 'home' AND fs.is_home) OR ($6::text = 'away' AND NOT fs.is_home))
+           AND ($7::text IS NULL OR $7::text = '' OR ($7::text = 'win' AND fs.has_won IS TRUE) OR ($7::text = 'loss' AND fs.has_won IS FALSE))
+           AND ($15::int4 IS NULL OR fs.gn >= $15::int4)
+           AND ($16::int4 IS NULL OR fs.gn <= $16::int4)
+       ),
+       games_last_n AS (
+         SELECT *
+         FROM games_base
+         WHERE ($17::int4 IS NULL OR rn_recent <= $17::int4)
+       ),
+       games_ranked AS (
+         SELECT
+           gb.game_id, gb.team_id, gb.game_year,
+           CASE
+             WHEN $8::text IN ('top','bottom') THEN
+               CASE COALESCE($10::text, 'net')
+                 WHEN 'off' THEN r.rank_off_ppp
+                 WHEN 'def' THEN r.rank_def_ppp
+                 ELSE r.rank_net_rtg
+               END
+             ELSE NULL
+           END AS opp_rank,
+           CASE
+             WHEN $8::text = 'bottom' THEN
+               MAX(
+                 CASE COALESCE($10::text, 'net')
+                   WHEN 'off' THEN r.rank_off_ppp
+                   WHEN 'def' THEN r.rank_def_ppp
+                   ELSE r.rank_net_rtg
+                 END
+               ) OVER (PARTITION BY gb.game_year)
+             ELSE NULL
+           END AS max_rank
+         FROM games_last_n gb
+         LEFT JOIN basketball_test.team_ppp_ratings_mv r
+           ON r.game_year::int4 = gb.game_year
+          AND r.team_id::int4 = gb.opp_team_id
+          AND $8::text IN ('top','bottom')
+       ),
+       games_filtered AS (
+         SELECT gr.game_id, gr.team_id
+         FROM games_ranked gr
+         WHERE $8::text IS NULL OR $8::text = '' OR $9::int4 IS NULL
+            OR ($8::text = 'top' AND gr.opp_rank <= $9::int4)
+            OR ($8::text = 'bottom' AND gr.opp_rank >= (gr.max_rank - $9::int4 + 1))
+       ),
+       acts AS (
+         SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining,
+                d.type, d.parameters_made, d.parameters_points, d.type_lineup, d.final_end_poss, d.quarter,
+                d.own_team_score, d.opp_team_score
+         FROM basketball_test.df_pts_poss_lineups_longer_mv d
+         JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
+         WHERE (
+           $11::int4 IS NULL
+           OR ABS(COALESCE(d.own_team_score, 0) - COALESCE(d.opp_team_score, 0)) <= $11::int4
+           OR (d.quarter > 4 AND NOT COALESCE($14::bool, FALSE))
+         )
+         AND (
+           $12::text IS NULL OR $12::text = '' OR $12::text = 'all'
+           OR ($12::text = 'leading' AND COALESCE(d.own_team_score, 0) > COALESCE(d.opp_team_score, 0))
+           OR ($12::text = 'trailing' AND COALESCE(d.own_team_score, 0) < COALESCE(d.opp_team_score, 0))
+           OR ($12::text = 'tied' AND COALESCE(d.own_team_score, 0) = COALESCE(d.opp_team_score, 0))
+           OR (d.quarter > 4 AND NOT COALESCE($14::bool, FALSE))
+         )
+         AND ($13::int4 IS NULL OR d.end_game_seconds_remaining <= $13::int4 OR d.quarter > 4)
+       ),
+       team_stats AS (
+         SELECT
+           a.team_id,
+           (
+             SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN COALESCE(a.parameters_points, 0) ELSE 0 END)
+             + SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)
+           )::int AS pts,
+           SUM(CASE WHEN a.type = 'rebound' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS reb,
+           SUM(CASE WHEN a.type = 'assist' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ast,
+           SUM(CASE WHEN a.type = 'steal' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS stl,
+           SUM(CASE WHEN a.type = 'block' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS blk,
+           SUM(CASE WHEN a.type = 'turnover' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS tov,
+           SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fgm,
+           SUM(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fga,
+           SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS \"3pm\",
+           SUM(CASE WHEN a.type = 'shot' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS \"3pa\",
+           SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ftm,
+           SUM(CASE WHEN a.type = 'freeThrow' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fta
+         FROM acts a
+         GROUP BY a.team_id
+       ),
+       poss_end AS (
+         SELECT DISTINCT a.game_id, a.team_id, a.id AS poss_end_id
+         FROM acts a
+         WHERE a.type_lineup = 'offense' AND a.final_end_poss AND a.id IS NOT NULL
+       ),
+       team_usage AS (
+         SELECT
+           pe.team_id,
+           COUNT(DISTINCT pe.game_id)::int AS gp,
+           COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::int AS poss_on_floor
+         FROM poss_end pe
+         GROUP BY pe.team_id
+       ),
+       seg_times AS (
+         SELECT
+           a.team_id, a.game_id, a.lineup_hash, a.segment_id,
+           MAX(a.end_game_seconds_remaining) - MIN(a.end_game_seconds_remaining) AS seg_seconds
+         FROM acts a
+         WHERE a.lineup_hash IS NOT NULL AND a.segment_id IS NOT NULL AND a.end_game_seconds_remaining IS NOT NULL
+         GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id
+       ),
+       team_minutes AS (
+         SELECT st.team_id, ROUND(SUM(COALESCE(st.seg_seconds, 0))::numeric / 60.0, 1) AS minutes
+         FROM seg_times st
+         GROUP BY st.team_id
+       ),
+       team_names AS (
+         SELECT fr.team_id, MIN(btrim(fr.team_name)) AS team_name
+         FROM basketball_test.full_rosters fr
+         WHERE fr.game_year = $1::int4
+         GROUP BY fr.team_id
+       )
+       SELECT
+         ts.team_id, tn.team_name,
+         COALESCE(tu.gp, 0)::int AS gp,
+         COALESCE(tu.poss_on_floor, 0)::int AS poss_on_floor,
+         COALESCE(tm.minutes, 0)::numeric AS minutes,
+         ts.pts, ts.reb, ts.ast, ts.stl, ts.blk, ts.tov, ts.fgm, ts.fga, ts.\"3pm\", ts.\"3pa\", ts.ftm, ts.fta,
+         CASE WHEN ts.fga > 0 THEN ROUND((ts.fgm::numeric / ts.fga::numeric) * 100, 1) ELSE NULL END AS fg_pct,
+         CASE WHEN ts.\"3pa\" > 0 THEN ROUND((ts.\"3pm\"::numeric / ts.\"3pa\"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
+         CASE WHEN ts.fta > 0 THEN ROUND((ts.ftm::numeric / ts.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
+         CASE WHEN ts.fga > 0 THEN ROUND(((ts.fgm::numeric + 0.5 * ts.\"3pm\"::numeric) / ts.fga::numeric) * 100, 1) ELSE NULL END AS efg,
+         CASE WHEN (ts.fga + 0.44 * ts.fta) > 0 THEN ROUND((ts.pts::numeric / (2.0 * (ts.fga::numeric + 0.44 * ts.fta::numeric))) * 100, 1) ELSE NULL END AS ts
+       FROM team_stats ts
+       LEFT JOIN team_usage tu ON tu.team_id = ts.team_id
+       LEFT JOIN team_minutes tm ON tm.team_id = ts.team_id
+       LEFT JOIN team_names tn ON tn.team_id = ts.team_id
+       WHERE tn.team_name IS NOT NULL
+       ORDER BY ts.pts DESC, tm.minutes DESC, tn.team_name",
+      params = list(
+        p$game_year, p$start_d, end_d,
+        p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+        p$rank_side, p$rank_n, p$metric,
+        p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
+        p$min_gn, p$max_gn, p$last_n_games
+      )
+    )
+  }
+
+  apply_tr_trad_mode <- function(df, mode) {
+    if (is.null(df) || !nrow(df)) return(df)
+    count_cols <- c("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta")
+    mode <- mode %||% "Per Game"
+    if (identical(mode, "Per Game")) {
+      for (col in count_cols) if (col %in% names(df)) df[[col]] <- ifelse(df$gp > 0, df[[col]] / df$gp, NA_real_)
+      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$gp > 0, df$poss_on_floor / df$gp, NA_real_)
+      if ("minutes" %in% names(df)) df$minutes <- ifelse(df$gp > 0, df$minutes / df$gp, NA_real_)
+      return(df)
+    }
+    if (identical(mode, "Per 100 Possessions")) {
+      for (col in count_cols) if (col %in% names(df)) df[[col]] <- ifelse(df$poss_on_floor > 0, df[[col]] / df$poss_on_floor * 100, NA_real_)
+      if ("minutes" %in% names(df)) df$minutes <- ifelse(df$poss_on_floor > 0, df$minutes / df$poss_on_floor * 100, NA_real_)
+      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$poss_on_floor > 0, 100, NA_real_)
+      return(df)
+    }
+    if (identical(mode, "Per 40 Minutes")) {
+      for (col in count_cols) if (col %in% names(df)) df[[col]] <- ifelse(df$minutes > 0, df[[col]] / df$minutes * 40, NA_real_)
+      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$minutes > 0, df$poss_on_floor / df$minutes * 40, NA_real_)
+      return(df)
+    }
+    df
   }
 
   tr_params <- reactive({
@@ -444,6 +638,81 @@ server_tab3 <- function(input, output, session, shared) {
     list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = num_starters_off_min, num_starters_off_max = num_starters_off_max, num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max)
   }) %>% debounce(300)
 
+  tr_delta_enabled <- reactive({
+    p <- tr_params()
+    bounds <- shared$season_date_bounds(as.character(p$game_year))
+    has_custom_gn <- !is.na(p$min_gn) || !is.na(p$max_gn) || !is.na(p$last_n_games)
+    if (has_custom_gn) return(FALSE)
+    # Baseline-only:
+    # - both dates empty (default), or
+    # - exactly season bounds.
+    if (is.na(p$start_d) && is.na(p$end_d)) return(TRUE)
+    if (is.na(p$start_d) || is.na(p$end_d)) return(FALSE)
+    identical(as.Date(p$start_d), as.Date(bounds$start)) && identical(as.Date(p$end_d), as.Date(bounds$end))
+  })
+
+  tr_effective_anchor <- reactive({
+    p <- tr_params()
+    end_d <- if (is.na(p$end_d)) shared$season_date_bounds(as.character(p$game_year))$end else as.Date(p$end_d)
+    q <- tryCatch(
+      DBI::dbGetQuery(
+        pg_pool,
+        "WITH params AS (
+           SELECT
+             CASE WHEN $4::text IS NULL OR btrim($4::text) = '' THEN NULL::int4[]
+                  ELSE string_to_array(regexp_replace($4::text, '\\s+', '', 'g'), ',')::int4[] END AS game_types,
+             CASE WHEN $5::text IS NULL OR btrim($5::text) = '' THEN NULL::int4[]
+                  ELSE string_to_array(regexp_replace($5::text, '\\s+', '', 'g'), ',')::int4[] END AS opp_ids
+         )
+         SELECT
+           MAX(fs.game_date)::date AS max_game_date,
+           MAX(fs.gn)::int AS max_gn
+         FROM basketball_test.final_schedule_mv fs
+         CROSS JOIN params p0
+         WHERE fs.game_year = $1::int4
+           AND ($2::date IS NULL OR fs.game_date >= $2::date)
+           AND ($3::date IS NULL OR fs.game_date <= $3::date)
+           AND (p0.game_types IS NULL OR fs.game_type = ANY(p0.game_types))
+           AND (p0.opp_ids IS NULL OR fs.opp_team_id = ANY(p0.opp_ids))
+           AND ($6::text IS NULL OR $6::text = '' OR ($6::text = 'home' AND fs.is_home) OR ($6::text = 'away' AND NOT fs.is_home))
+           AND ($7::text IS NULL OR $7::text = '' OR ($7::text = 'win' AND fs.has_won IS TRUE) OR ($7::text = 'loss' AND fs.has_won IS FALSE))
+           AND ($8::int4 IS NULL OR fs.gn >= $8::int4)
+           AND ($9::int4 IS NULL OR fs.gn <= $9::int4)",
+        params = list(
+          p$game_year, p$start_d, end_d, p$game_type_csv, p$opp_ids_csv,
+          p$home_away, p$outcome, p$min_gn, p$max_gn
+        )
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(q) || !nrow(q)) {
+      return(list(end_date = end_d, max_gn = NA_integer_))
+    }
+    list(
+      end_date = if (!is.na(q$max_game_date[1])) as.Date(q$max_game_date[1]) else end_d,
+      max_gn = suppressWarnings(as.integer(q$max_gn[1]))
+    )
+  })
+
+  tr_prev_match_end <- reactive({
+    if (!isTRUE(tr_delta_enabled())) return(as.Date(NA))
+    p <- tr_params()
+    anchor <- tr_effective_anchor()
+    end_d <- anchor$end_date
+    q <- tryCatch(
+      DBI::dbGetQuery(
+        pg_pool,
+        "SELECT MAX(game_date)::date AS d
+         FROM basketball_test.final_schedule_mv
+         WHERE game_year = $1::int4
+           AND game_date < $2::date",
+        params = list(p$game_year, end_d)
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(q) || !nrow(q) || is.na(q$d[1])) as.Date(NA) else as.Date(q$d[1])
+  })
+
   observeEvent(input$tr_last_n, {
     if (!is.null(input$tr_last_n) && nzchar(input$tr_last_n)) {
       updateSelectizeInput(session, "tr_gn_min", selected = "")
@@ -478,8 +747,7 @@ server_tab3 <- function(input, output, session, shared) {
       run_team_ratings_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
     } else {
       DBI::dbGetQuery(pg_pool,
-        "SELECT game_year, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp FROM basketball_test.team_ppp_ratings_mv WHERE game_year = $1 ORDER BY rank_net_rtg",
-        params = list(p$game_year))
+        sprintf("SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp FROM basketball_test.team_ppp_ratings_mv WHERE game_year = %d ORDER BY rank_net_rtg", as.integer(p$game_year)))
     }
   })
 
@@ -489,8 +757,7 @@ server_tab3 <- function(input, output, session, shared) {
       df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
     } else {
       df <- DBI::dbGetQuery(pg_pool,
-        "SELECT * FROM basketball_test.team_four_factors_mv WHERE game_year = $1",
-        params = list(p$game_year))
+        sprintf("SELECT * FROM basketball_test.team_four_factors_mv WHERE game_year = %d", as.integer(p$game_year)))
     }
 
     if (is.null(df) || nrow(df) == 0) return(df)
@@ -520,6 +787,289 @@ server_tab3 <- function(input, output, session, shared) {
     df
   })
 
+  tr_prev_data <- reactive({
+    prev_end <- tr_prev_match_end()
+    if (is.na(prev_end)) return(NULL)
+    p <- tr_params()
+    tryCatch(
+      run_team_ratings_dynamic(
+        pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = prev_end,
+        game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away,
+        outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric,
+        max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining,
+        ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games,
+        num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def,
+        num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max,
+        num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max
+      ),
+      error = function(e) NULL
+    )
+  })
+
+  tr_prev_summary_ranks_from_mv <- reactive({
+    if (isTRUE(tr_fallback_needed())) return(NULL)
+    if (!isTRUE(tr_delta_enabled())) return(NULL)
+    prev_end <- tr_prev_match_end()
+    if (is.na(prev_end)) return(NULL)
+    p <- tr_params()
+    bounds <- shared$season_date_bounds(as.character(p$game_year))
+    start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
+    roll <- tryCatch(
+      DBI::dbGetQuery(
+        pg_pool,
+        "SELECT
+           tm.team_id,
+           COUNT(DISTINCT tm.game_id)::int AS gp,
+           COALESCE(SUM(tm.off_poss), 0)::numeric AS poss_on_floor,
+           COALESCE(SUM(tm.off_minutes), 0)::numeric AS minutes,
+           COALESCE(SUM(tm.off_points_raw), 0)::numeric AS off_points_raw,
+           COALESCE(SUM(tm.def_points_raw), 0)::numeric AS def_points_raw,
+           COALESCE(SUM(tm.off_poss_raw), 0)::numeric AS off_poss_raw,
+           COALESCE(SUM(tm.def_poss_raw), 0)::numeric AS def_poss_raw,
+           COALESCE(SUM(tm.off_ts_poss_raw), 0)::numeric AS off_ts_poss_raw,
+           COALESCE(SUM(tm.def_ts_poss_raw), 0)::numeric AS def_ts_poss_raw,
+           COALESCE(SUM(tm.off_oreb_count_raw), 0)::numeric AS off_oreb_count_raw,
+           COALESCE(SUM(tm.def_oreb_count_raw), 0)::numeric AS def_oreb_count_raw,
+           COALESCE(SUM(tm.off_oreb_opp_raw), 0)::numeric AS off_oreb_opp_raw,
+           COALESCE(SUM(tm.def_oreb_opp_raw), 0)::numeric AS def_oreb_opp_raw,
+           COALESCE(SUM(tm.off_tov_raw), 0)::numeric AS off_tov_raw,
+           COALESCE(SUM(tm.def_tov_raw), 0)::numeric AS def_tov_raw,
+           COALESCE(SUM(tm.off_fta_raw), 0)::numeric AS off_fta_raw,
+           COALESCE(SUM(tm.def_fta_raw), 0)::numeric AS def_fta_raw,
+           COALESCE(SUM(tm.off_fga_raw), 0)::numeric AS off_fga_raw,
+           COALESCE(SUM(tm.def_fga_raw), 0)::numeric AS def_fga_raw,
+           COALESCE(SUM(tm.pts), 0)::numeric AS pts,
+           COALESCE(SUM(tm.reb), 0)::numeric AS reb,
+           COALESCE(SUM(tm.ast), 0)::numeric AS ast,
+           COALESCE(SUM(tm.stl), 0)::numeric AS stl,
+           COALESCE(SUM(tm.blk), 0)::numeric AS blk,
+           COALESCE(SUM(tm.tov), 0)::numeric AS tov,
+           COALESCE(SUM(tm.fgm), 0)::numeric AS fgm,
+           COALESCE(SUM(tm.fga), 0)::numeric AS fga,
+           COALESCE(SUM(tm.\"3pm\"), 0)::numeric AS \"3pm\",
+           COALESCE(SUM(tm.\"3pa\"), 0)::numeric AS \"3pa\",
+           COALESCE(SUM(tm.ftm), 0)::numeric AS ftm,
+           COALESCE(SUM(tm.fta), 0)::numeric AS fta
+         FROM basketball_test.team_metrics_by_game_mv tm
+         WHERE tm.game_year = $1::int4
+           AND tm.game_date >= $2::date
+           AND tm.game_date <= $3::date
+         GROUP BY tm.team_id",
+        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(prev_end))
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(roll) || !nrow(roll)) return(NULL)
+    roll$off_ppp <- ifelse(roll$off_poss_raw > 0, round((roll$off_points_raw / roll$off_poss_raw) * 100, 1), NA_real_)
+    roll$def_ppp <- ifelse(roll$def_poss_raw > 0, round((roll$def_points_raw / roll$def_poss_raw) * 100, 1), NA_real_)
+    roll$net_rtg <- round(roll$off_ppp - roll$def_ppp, 1)
+    list(
+      off = setNames(dplyr::dense_rank(dplyr::desc(roll$off_ppp)), as.character(roll$team_id)),
+      def = setNames(dplyr::dense_rank(roll$def_ppp), as.character(roll$team_id)),
+      net = setNames(dplyr::dense_rank(dplyr::desc(roll$net_rtg)), as.character(roll$team_id))
+    )
+  })
+
+  tr_prev_ff_ranks_from_mv <- reactive({
+    if (isTRUE(tr_fallback_needed())) return(NULL)
+    if (!isTRUE(tr_delta_enabled())) return(NULL)
+    prev_end <- tr_prev_match_end()
+    if (is.na(prev_end)) return(NULL)
+    p <- tr_params()
+    bounds <- shared$season_date_bounds(as.character(p$game_year))
+    start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
+    roll <- tryCatch(
+      DBI::dbGetQuery(
+        pg_pool,
+        "SELECT
+           tm.team_id,
+           COALESCE(SUM(tm.off_points_raw), 0)::numeric AS off_points_raw,
+           COALESCE(SUM(tm.def_points_raw), 0)::numeric AS def_points_raw,
+           COALESCE(SUM(tm.off_poss_raw), 0)::numeric AS off_poss_raw,
+           COALESCE(SUM(tm.def_poss_raw), 0)::numeric AS def_poss_raw,
+           COALESCE(SUM(tm.off_ts_poss_raw), 0)::numeric AS off_ts_poss_raw,
+           COALESCE(SUM(tm.def_ts_poss_raw), 0)::numeric AS def_ts_poss_raw,
+           COALESCE(SUM(tm.off_oreb_count_raw), 0)::numeric AS off_oreb_count_raw,
+           COALESCE(SUM(tm.def_oreb_count_raw), 0)::numeric AS def_oreb_count_raw,
+           COALESCE(SUM(tm.off_oreb_opp_raw), 0)::numeric AS off_oreb_opp_raw,
+           COALESCE(SUM(tm.def_oreb_opp_raw), 0)::numeric AS def_oreb_opp_raw,
+           COALESCE(SUM(tm.off_tov_raw), 0)::numeric AS off_tov_raw,
+           COALESCE(SUM(tm.def_tov_raw), 0)::numeric AS def_tov_raw,
+           COALESCE(SUM(tm.off_fta_raw), 0)::numeric AS off_fta_raw,
+           COALESCE(SUM(tm.def_fta_raw), 0)::numeric AS def_fta_raw,
+           COALESCE(SUM(tm.off_fga_raw), 0)::numeric AS off_fga_raw,
+           COALESCE(SUM(tm.def_fga_raw), 0)::numeric AS def_fga_raw
+         FROM basketball_test.team_metrics_by_game_mv tm
+         WHERE tm.game_year = $1::int4
+           AND tm.game_date >= $2::date
+           AND tm.game_date <= $3::date
+         GROUP BY tm.team_id",
+        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(prev_end))
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(roll) || !nrow(roll)) return(NULL)
+    ff <- data.frame(team_id = roll$team_id)
+    ff$off_ppp  <- ifelse(roll$off_poss_raw > 0, round((roll$off_points_raw / roll$off_poss_raw) * 100, 1), NA_real_)
+    ff$def_ppp  <- ifelse(roll$def_poss_raw > 0, round((roll$def_points_raw / roll$def_poss_raw) * 100, 1), NA_real_)
+    ff$net_rtg  <- round(ff$off_ppp - ff$def_ppp, 1)
+    ff$off_ts   <- ifelse(roll$off_ts_poss_raw > 0, round((roll$off_points_raw / (2 * roll$off_ts_poss_raw)) * 100, 1), NA_real_)
+    ff$off_oreb <- ifelse(roll$off_oreb_opp_raw > 0, round((roll$off_oreb_count_raw / roll$off_oreb_opp_raw) * 100, 1), NA_real_)
+    ff$off_tov  <- ifelse(roll$off_poss_raw > 0, round((roll$off_tov_raw / roll$off_poss_raw) * 100, 1), NA_real_)
+    ff$off_ftr  <- ifelse(roll$off_fga_raw > 0, round((roll$off_fta_raw / roll$off_fga_raw) * 100, 1), NA_real_)
+    ff$def_ts   <- ifelse(roll$def_ts_poss_raw > 0, round((roll$def_points_raw / (2 * roll$def_ts_poss_raw)) * 100, 1), NA_real_)
+    ff$def_oreb <- ifelse(roll$def_oreb_opp_raw > 0, round((roll$def_oreb_count_raw / roll$def_oreb_opp_raw) * 100, 1), NA_real_)
+    ff$def_tov  <- ifelse(roll$def_poss_raw > 0, round((roll$def_tov_raw / roll$def_poss_raw) * 100, 1), NA_real_)
+    ff$def_ftr  <- ifelse(roll$def_fga_raw > 0, round((roll$def_fta_raw / roll$def_fga_raw) * 100, 1), NA_real_)
+
+    list(
+      off = setNames(dplyr::dense_rank(dplyr::desc(ff$off_ppp)), as.character(ff$team_id)),
+      def = setNames(dplyr::dense_rank(ff$def_ppp), as.character(ff$team_id)),
+      net = setNames(dplyr::dense_rank(dplyr::desc(ff$net_rtg)), as.character(ff$team_id)),
+      off_ts = setNames(dplyr::dense_rank(dplyr::desc(ff$off_ts)), as.character(ff$team_id)),
+      off_oreb = setNames(dplyr::dense_rank(dplyr::desc(ff$off_oreb)), as.character(ff$team_id)),
+      off_tov = setNames(dplyr::dense_rank(ff$off_tov), as.character(ff$team_id)),
+      off_ftr = setNames(dplyr::dense_rank(dplyr::desc(ff$off_ftr)), as.character(ff$team_id)),
+      def_ts = setNames(dplyr::dense_rank(ff$def_ts), as.character(ff$team_id)),
+      def_oreb = setNames(dplyr::dense_rank(ff$def_oreb), as.character(ff$team_id)),
+      def_tov = setNames(dplyr::dense_rank(dplyr::desc(ff$def_tov)), as.character(ff$team_id)),
+      def_ftr = setNames(dplyr::dense_rank(ff$def_ftr), as.character(ff$team_id))
+    )
+  })
+
+  tr_prev_traditional_ranks_from_mv <- reactive({
+    if (isTRUE(tr_fallback_needed())) return(NULL)
+    if (!isTRUE(tr_delta_enabled())) return(NULL)
+    prev_end <- tr_prev_match_end()
+    if (is.na(prev_end)) return(NULL)
+    p <- tr_params()
+    bounds <- shared$season_date_bounds(as.character(p$game_year))
+    start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
+    mode <- input$tr_trad_display_mode %||% "Per Game"
+    q <- tryCatch(
+      DBI::dbGetQuery(
+        pg_pool,
+        "SELECT
+           tm.team_id,
+           COUNT(DISTINCT tm.game_id)::int AS gp,
+           COALESCE(SUM(tm.off_poss), 0)::numeric AS poss_on_floor,
+           COALESCE(SUM(tm.off_minutes), 0)::numeric AS minutes,
+           COALESCE(SUM(tm.pts), 0)::numeric AS pts,
+           COALESCE(SUM(tm.reb), 0)::numeric AS reb,
+           COALESCE(SUM(tm.ast), 0)::numeric AS ast,
+           COALESCE(SUM(tm.stl), 0)::numeric AS stl,
+           COALESCE(SUM(tm.blk), 0)::numeric AS blk,
+           COALESCE(SUM(tm.tov), 0)::numeric AS tov,
+           COALESCE(SUM(tm.fgm), 0)::numeric AS fgm,
+           COALESCE(SUM(tm.fga), 0)::numeric AS fga,
+           COALESCE(SUM(tm.\"3pm\"), 0)::numeric AS \"3pm\",
+           COALESCE(SUM(tm.\"3pa\"), 0)::numeric AS \"3pa\",
+           COALESCE(SUM(tm.ftm), 0)::numeric AS ftm,
+           COALESCE(SUM(tm.fta), 0)::numeric AS fta
+         FROM basketball_test.team_metrics_by_game_mv tm
+         WHERE tm.game_year = $1::int4
+           AND tm.game_date >= $2::date
+           AND tm.game_date <= $3::date
+         GROUP BY tm.team_id",
+        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(prev_end))
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(q) || !nrow(q)) return(NULL)
+    minutes_q <- tryCatch(
+      DBI::dbGetQuery(
+        pg_pool,
+        "WITH acts AS (
+           SELECT d.team_id, d.game_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining
+           FROM basketball_test.df_pts_poss_lineups_longer_mv d
+           JOIN basketball_test.final_schedule_mv fs
+             ON fs.game_id = d.game_id
+            AND fs.team_id = d.team_id
+           WHERE fs.game_year = $1::int4
+             AND fs.game_date >= $2::date
+             AND fs.game_date <= $3::date
+         ),
+         seg_times AS (
+           SELECT
+             a.team_id, a.game_id, a.lineup_hash, a.segment_id,
+             MAX(a.end_game_seconds_remaining) - MIN(a.end_game_seconds_remaining) AS seg_seconds
+           FROM acts a
+           WHERE a.lineup_hash IS NOT NULL
+             AND a.segment_id IS NOT NULL
+             AND a.end_game_seconds_remaining IS NOT NULL
+           GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id
+         )
+         SELECT
+           st.team_id,
+           ROUND(SUM(COALESCE(st.seg_seconds, 0))::numeric / 60.0, 1) AS minutes
+         FROM seg_times st
+         GROUP BY st.team_id",
+        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(prev_end))
+      ),
+      error = function(e) NULL
+    )
+    if (!is.null(minutes_q) && nrow(minutes_q)) {
+      min_map <- setNames(as.numeric(minutes_q$minutes), as.character(minutes_q$team_id))
+      q$minutes <- as.numeric(min_map[as.character(q$team_id)])
+      q$minutes[is.na(q$minutes)] <- 0
+    }
+    q$fg_pct <- ifelse(q$fga > 0, round((q$fgm / q$fga) * 100, 1), NA_real_)
+    q$tp_pct <- ifelse(q$`3pa` > 0, round((q$`3pm` / q$`3pa`) * 100, 1), NA_real_)
+    q$ft_pct <- ifelse(q$fta > 0, round((q$ftm / q$fta) * 100, 1), NA_real_)
+    q$efg <- ifelse(q$fga > 0, round(((q$fgm + 0.5 * q$`3pm`) / q$fga) * 100, 1), NA_real_)
+    q$ts <- ifelse((q$fga + 0.44 * q$fta) > 0, round((q$pts / (2 * (q$fga + 0.44 * q$fta))) * 100, 1), NA_real_)
+    q <- apply_tr_trad_mode(q, mode)
+
+    metric_cfg <- c(
+      pts = FALSE, reb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
+      fgm = FALSE, fga = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
+      fg_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
+    )
+    ranks <- list()
+    for (m in names(metric_cfg)) {
+      if (!m %in% names(q)) next
+      inv <- isTRUE(metric_cfg[[m]])
+      rk <- if (inv) dplyr::dense_rank(q[[m]]) else dplyr::dense_rank(dplyr::desc(q[[m]]))
+      ranks[[m]] <- setNames(rk, as.character(q$team_id))
+    }
+    ranks
+  })
+
+  tr_prev_ff_data <- reactive({
+    prev_end <- tr_prev_match_end()
+    if (is.na(prev_end)) return(NULL)
+    p <- tr_params()
+    tryCatch(
+      run_team_ff_dynamic(
+        pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = prev_end,
+        game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away,
+        outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric,
+        max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining,
+        ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games,
+        num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def,
+        num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max,
+        num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max
+      ),
+      error = function(e) NULL
+    )
+  })
+
+  tr_traditional_data <- reactive({
+    p <- tr_params()
+    df <- tryCatch(run_team_traditional_dynamic(pg_pool, p), error = function(e) NULL)
+    if (is.null(df) || !nrow(df)) return(df)
+    apply_tr_trad_mode(df, input$tr_trad_display_mode %||% "Per Game")
+  })
+
+  tr_prev_traditional_data <- reactive({
+    prev_end <- tr_prev_match_end()
+    if (is.na(prev_end)) return(NULL)
+    p <- tr_params()
+    df <- tryCatch(run_team_traditional_dynamic(pg_pool, p, end_override = prev_end), error = function(e) NULL)
+    if (is.null(df) || !nrow(df)) return(df)
+    apply_tr_trad_mode(df, input$tr_trad_display_mode %||% "Per Game")
+  })
+
   tr_game_minutes <- reactive({
     p <- tr_params()
     fetch_team_game_minutes(pg_pool, p)
@@ -529,8 +1079,124 @@ server_tab3 <- function(input, output, session, shared) {
     mode <- input$tr_view_mode
     mins_df <- tr_game_minutes()
     mins_map <- if (!is.null(mins_df) && nrow(mins_df)) setNames(mins_df$game_minutes, as.character(mins_df$team_id)) else NULL
+    show_delta <- isTRUE(tr_delta_enabled())
 
-    if (identical(mode, "Four Factors")) {
+    fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1) {
+      v <- suppressWarnings(as.numeric(value))
+      r <- suppressWarnings(as.integer(rank_now))
+      d <- suppressWarnings(as.integer(delta))
+      value_txt <- ifelse(is.na(v), "NA", format(round(v, digits), nsmall = digits, trim = TRUE))
+      rank_txt <- ifelse(is.na(r), "#NA", paste0("#", r))
+      delta_txt <- ifelse(
+        !show_delta | is.na(d),
+        "\u2014",
+        ifelse(d > 0, paste0("\u25b2", abs(d)), ifelse(d < 0, paste0("\u25bc", abs(d)), "\u2194"))
+      )
+      paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
+    }
+
+    if (identical(mode, "Traditional")) {
+      df <- tr_traditional_data()
+      if (is.null(df) || !nrow(df)) return(NULL)
+
+      pr_vec_local <- function(x, invert = FALSE) {
+        n <- sum(!is.na(x))
+        if (n <= 1) return(rep(NA_real_, length(x)))
+        r <- rank(x, na.last = "keep", ties.method = "average")
+        p <- (r - 1) / (n - 1)
+        if (invert) p <- 1 - p
+        as.numeric(p)
+      }
+      rank_vec_local <- function(x, invert = FALSE) {
+        if (invert) dplyr::dense_rank(x) else dplyr::dense_rank(dplyr::desc(x))
+      }
+      metric_cfg <- c(
+        pts = FALSE, reb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
+        fgm = FALSE, fga = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
+        fg_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
+      )
+      for (m in names(metric_cfg)) {
+        if (!m %in% names(df)) next
+        inv <- isTRUE(metric_cfg[[m]])
+        df[[paste0("rank_", m)]] <- rank_vec_local(df[[m]], invert = inv)
+        df[[paste0("pr_", m)]] <- pr_vec_local(df[[m]], invert = inv)
+      }
+
+      prev_rank_map <- tr_prev_traditional_ranks_from_mv()
+      if (is.null(prev_rank_map)) {
+        prev <- if (isTRUE(tr_delta_enabled())) tr_prev_traditional_data() else NULL
+        prev_rank_map <- list()
+        if (!is.null(prev) && nrow(prev)) {
+          for (m in names(metric_cfg)) {
+            if (!m %in% names(prev)) next
+            inv <- isTRUE(metric_cfg[[m]])
+            rk <- rank_vec_local(prev[[m]], invert = inv)
+            prev_rank_map[[m]] <- setNames(rk, as.character(prev$team_id))
+          }
+        }
+      }
+      make_cell <- function(vals, ranks_now, metric_name) {
+        prev_r <- if (!is.null(prev_rank_map[[metric_name]])) as.integer(prev_rank_map[[metric_name]][as.character(df$team_id)]) else rep(NA_integer_, nrow(df))
+        delta <- prev_r - as.integer(ranks_now)
+        fmt_rank_cell(vals, ranks_now, delta, digits = 1)
+      }
+
+      disp <- data.frame(
+        Team = df$team_name,
+        GP = df$gp,
+        `Poss On Floor` = df$poss_on_floor,
+        Min = df$minutes,
+        PTS = make_cell(df$pts, df$rank_pts, "pts"),
+        REB = make_cell(df$reb, df$rank_reb, "reb"),
+        AST = make_cell(df$ast, df$rank_ast, "ast"),
+        STL = make_cell(df$stl, df$rank_stl, "stl"),
+        BLK = make_cell(df$blk, df$rank_blk, "blk"),
+        TOV = make_cell(df$tov, df$rank_tov, "tov"),
+        FGM = make_cell(df$fgm, df$rank_fgm, "fgm"),
+        FGA = make_cell(df$fga, df$rank_fga, "fga"),
+        `3PM` = make_cell(df$`3pm`, df$`rank_3pm`, "3pm"),
+        `3PA` = make_cell(df$`3pa`, df$`rank_3pa`, "3pa"),
+        FTM = make_cell(df$ftm, df$rank_ftm, "ftm"),
+        FTA = make_cell(df$fta, df$rank_fta, "fta"),
+        `FG%` = make_cell(df$fg_pct, df$rank_fg_pct, "fg_pct"),
+        `3P%` = make_cell(df$tp_pct, df$rank_tp_pct, "tp_pct"),
+        `FT%` = make_cell(df$ft_pct, df$rank_ft_pct, "ft_pct"),
+        `eFG%` = make_cell(df$efg, df$rank_efg, "efg"),
+        `TS%` = make_cell(df$ts, df$rank_ts, "ts"),
+        pr_pts = df$pr_pts, pr_reb = df$pr_reb, pr_ast = df$pr_ast, pr_stl = df$pr_stl, pr_blk = df$pr_blk, pr_tov = df$pr_tov,
+        pr_fgm = df$pr_fgm, pr_fga = df$pr_fga, pr_3pm = df$pr_3pm, pr_3pa = df$pr_3pa, pr_ftm = df$pr_ftm, pr_fta = df$pr_fta,
+        pr_fg_pct = df$pr_fg_pct, pr_tp_pct = df$pr_tp_pct, pr_ft_pct = df$pr_ft_pct, pr_efg = df$pr_efg, pr_ts = df$pr_ts,
+        check.names = FALSE
+      )
+      pr_map <- c(
+        PTS = "pr_pts", REB = "pr_reb", AST = "pr_ast", STL = "pr_stl", BLK = "pr_blk",
+        TOV = "pr_tov", FGM = "pr_fgm", FGA = "pr_fga", `3PM` = "pr_3pm", `3PA` = "pr_3pa",
+        FTM = "pr_ftm", FTA = "pr_fta", `FG%` = "pr_fg_pct", `3P%` = "pr_tp_pct", `FT%` = "pr_ft_pct",
+        `eFG%` = "pr_efg", `TS%` = "pr_ts"
+      )
+
+      dt <- datatable(
+        disp, rownames = FALSE,
+        escape = FALSE,
+        options = list(
+          dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
+          columnDefs = list(
+            list(className = "dt-center", targets = "_all"),
+            list(visible = FALSE, targets = (which(names(disp) %in% unname(pr_map)) - 1L))
+          )
+        )
+      ) %>%
+        formatRound(c("GP", "Poss On Floor", "Min"), 1)
+
+      for (nm in names(pr_map)) {
+        pr_col <- pr_map[[nm]]
+        if (nm %in% names(disp) && pr_col %in% names(disp)) {
+          dt <- DT::formatStyle(dt, nm, backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = pr_col)
+        }
+      }
+      return(dt)
+
+    } else if (identical(mode, "Four Factors")) {
       # ============================================================
       # FOUR FACTORS TEAM TABLE
       # ============================================================
@@ -541,14 +1207,123 @@ server_tab3 <- function(input, output, session, shared) {
                    "pr_def_ppp", "pr_def_ts", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
 
       keep_cols <- c("team_name",
-                     "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr", "off_pace",
+                     "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr",
                      "off_poss",
-                     "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr", "def_pace",
+                     "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr",
                      "def_poss",
                      "net_rtg")
       df <- add_team_pace_cols(df, minutes_map = mins_map)
-      df <- df %>% select(any_of(c(keep_cols, pr_cols)))
+
+      # Rank deltas vs last matchday (baseline scope only), and rank labels in-cell
+      rk_off_now <- dplyr::dense_rank(dplyr::desc(df$off_ppp))
+      rk_def_now <- dplyr::dense_rank(df$def_ppp)
+      rk_net_now <- dplyr::dense_rank(dplyr::desc(df$net_rtg))
+      rk_off_ts_now <- dplyr::dense_rank(dplyr::desc(df$off_ts))
+      rk_off_oreb_now <- dplyr::dense_rank(dplyr::desc(df$off_oreb))
+      rk_off_tov_now <- dplyr::dense_rank(df$off_tov)
+      rk_off_ftr_now <- dplyr::dense_rank(dplyr::desc(df$off_ftr))
+      rk_def_ts_now <- dplyr::dense_rank(df$def_ts)
+      rk_def_oreb_now <- dplyr::dense_rank(df$def_oreb)
+      rk_def_tov_now <- dplyr::dense_rank(dplyr::desc(df$def_tov))
+      rk_def_ftr_now <- dplyr::dense_rank(df$def_ftr)
+
+      d_off <- rep(NA_integer_, nrow(df))
+      d_def <- rep(NA_integer_, nrow(df))
+      d_net <- rep(NA_integer_, nrow(df))
+      d_off_ts <- rep(NA_integer_, nrow(df))
+      d_off_oreb <- rep(NA_integer_, nrow(df))
+      d_off_tov <- rep(NA_integer_, nrow(df))
+      d_off_ftr <- rep(NA_integer_, nrow(df))
+      d_def_ts <- rep(NA_integer_, nrow(df))
+      d_def_oreb <- rep(NA_integer_, nrow(df))
+      d_def_tov <- rep(NA_integer_, nrow(df))
+      d_def_ftr <- rep(NA_integer_, nrow(df))
+
+      if (show_delta) {
+        key <- as.character(df$team_id)
+        mv_prev <- tr_prev_ff_ranks_from_mv()
+        if (!is.null(mv_prev)) {
+          d_off <- as.integer(mv_prev$off[key]) - as.integer(rk_off_now)
+          d_def <- as.integer(mv_prev$def[key]) - as.integer(rk_def_now)
+          d_net <- as.integer(mv_prev$net[key]) - as.integer(rk_net_now)
+          d_off_ts <- as.integer(mv_prev$off_ts[key]) - as.integer(rk_off_ts_now)
+          d_off_oreb <- as.integer(mv_prev$off_oreb[key]) - as.integer(rk_off_oreb_now)
+          d_off_tov <- as.integer(mv_prev$off_tov[key]) - as.integer(rk_off_tov_now)
+          d_off_ftr <- as.integer(mv_prev$off_ftr[key]) - as.integer(rk_off_ftr_now)
+          d_def_ts <- as.integer(mv_prev$def_ts[key]) - as.integer(rk_def_ts_now)
+          d_def_oreb <- as.integer(mv_prev$def_oreb[key]) - as.integer(rk_def_oreb_now)
+          d_def_tov <- as.integer(mv_prev$def_tov[key]) - as.integer(rk_def_tov_now)
+          d_def_ftr <- as.integer(mv_prev$def_ftr[key]) - as.integer(rk_def_ftr_now)
+        } else {
+          prev <- tr_prev_ff_data()
+          if (!is.null(prev) && nrow(prev)) {
+            rk_off_prev <- setNames(dplyr::dense_rank(dplyr::desc(prev$off_ppp)), as.character(prev$team_id))
+            rk_def_prev <- setNames(dplyr::dense_rank(prev$def_ppp), as.character(prev$team_id))
+            rk_net_prev <- setNames(dplyr::dense_rank(dplyr::desc(prev$net_rtg)), as.character(prev$team_id))
+            rk_off_ts_prev <- setNames(dplyr::dense_rank(dplyr::desc(prev$off_ts)), as.character(prev$team_id))
+            rk_off_oreb_prev <- setNames(dplyr::dense_rank(dplyr::desc(prev$off_oreb)), as.character(prev$team_id))
+            rk_off_tov_prev <- setNames(dplyr::dense_rank(prev$off_tov), as.character(prev$team_id))
+            rk_off_ftr_prev <- setNames(dplyr::dense_rank(dplyr::desc(prev$off_ftr)), as.character(prev$team_id))
+            rk_def_ts_prev <- setNames(dplyr::dense_rank(prev$def_ts), as.character(prev$team_id))
+            rk_def_oreb_prev <- setNames(dplyr::dense_rank(prev$def_oreb), as.character(prev$team_id))
+            rk_def_tov_prev <- setNames(dplyr::dense_rank(dplyr::desc(prev$def_tov)), as.character(prev$team_id))
+            rk_def_ftr_prev <- setNames(dplyr::dense_rank(prev$def_ftr), as.character(prev$team_id))
+            d_off <- as.integer(rk_off_prev[key]) - as.integer(rk_off_now)
+            d_def <- as.integer(rk_def_prev[key]) - as.integer(rk_def_now)
+            d_net <- as.integer(rk_net_prev[key]) - as.integer(rk_net_now)
+            d_off_ts <- as.integer(rk_off_ts_prev[key]) - as.integer(rk_off_ts_now)
+            d_off_oreb <- as.integer(rk_off_oreb_prev[key]) - as.integer(rk_off_oreb_now)
+            d_off_tov <- as.integer(rk_off_tov_prev[key]) - as.integer(rk_off_tov_now)
+            d_off_ftr <- as.integer(rk_off_ftr_prev[key]) - as.integer(rk_off_ftr_now)
+            d_def_ts <- as.integer(rk_def_ts_prev[key]) - as.integer(rk_def_ts_now)
+            d_def_oreb <- as.integer(rk_def_oreb_prev[key]) - as.integer(rk_def_oreb_now)
+            d_def_tov <- as.integer(rk_def_tov_prev[key]) - as.integer(rk_def_tov_now)
+            d_def_ftr <- as.integer(rk_def_ftr_prev[key]) - as.integer(rk_def_ftr_now)
+          }
+        }
+      }
+
+      df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1)
+      df$off_ts_lbl <- fmt_rank_cell(df$off_ts, rk_off_ts_now, d_off_ts, 1)
+      df$off_oreb_lbl <- fmt_rank_cell(df$off_oreb, rk_off_oreb_now, d_off_oreb, 1)
+      df$off_tov_lbl <- fmt_rank_cell(df$off_tov, rk_off_tov_now, d_off_tov, 1)
+      df$off_ftr_lbl <- fmt_rank_cell(df$off_ftr, rk_off_ftr_now, d_off_ftr, 1)
+      df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1)
+      df$def_ts_lbl <- fmt_rank_cell(df$def_ts, rk_def_ts_now, d_def_ts, 1)
+      df$def_oreb_lbl <- fmt_rank_cell(df$def_oreb, rk_def_oreb_now, d_def_oreb, 1)
+      df$def_tov_lbl <- fmt_rank_cell(df$def_tov, rk_def_tov_now, d_def_tov, 1)
+      df$def_ftr_lbl <- fmt_rank_cell(df$def_ftr, rk_def_ftr_now, d_def_ftr, 1)
+      df$net_rtg_lbl <- fmt_rank_cell(df$net_rtg, rk_net_now, d_net, 1)
+
       df <- df %>% arrange(desc(net_rtg))
+      disp_ff <- data.frame(
+        team_name = df$team_name,
+        off_ppp = df$off_ppp_lbl,
+        off_ts = df$off_ts_lbl,
+        off_oreb = df$off_oreb_lbl,
+        off_tov = df$off_tov_lbl,
+        off_ftr = df$off_ftr_lbl,
+        off_poss = df$off_poss,
+        def_ppp = df$def_ppp_lbl,
+        def_ts = df$def_ts_lbl,
+        def_oreb = df$def_oreb_lbl,
+        def_tov = df$def_tov_lbl,
+        def_ftr = df$def_ftr_lbl,
+        def_poss = df$def_poss,
+        net_rtg = df$net_rtg_lbl,
+        pr_off_ppp = df$pr_off_ppp,
+        pr_off_ts = df$pr_off_ts,
+        pr_off_oreb = df$pr_off_oreb,
+        pr_off_tov = df$pr_off_tov,
+        pr_off_ftr = df$pr_off_ftr,
+        pr_def_ppp = df$pr_def_ppp,
+        pr_def_ts = df$pr_def_ts,
+        pr_def_oreb = df$pr_def_oreb,
+        pr_def_tov = df$pr_def_tov,
+        pr_def_ftr = df$pr_def_ftr,
+        pr_net = df$pr_net,
+        check.names = FALSE
+      )
 
       sketch_ff <- htmltools::withTags(table(class = 'display', thead(
         tr(
@@ -561,18 +1336,18 @@ server_tab3 <- function(input, output, session, shared) {
           th(class = "sub-head", "Team"),
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
           th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
-          th(class = "sub-head", "FTR"), th(class = "sub-head", "Pace"), th(class = "sub-head", "Poss"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
           th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
-          th(class = "sub-head", "FTR"), th(class = "sub-head", "Pace"), th(class = "sub-head", "Poss"),
+          th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "Net")
         )
       )))
 
-      hide_idx <- which(colnames(df) %in% pr_cols) - 1L
-      off_ppp_idx <- which(names(df) == "off_ppp") - 1L
-      def_ppp_idx <- which(names(df) == "def_ppp") - 1L
-      net_idx     <- which(names(df) == "net_rtg") - 1L
+      hide_idx <- which(colnames(disp_ff) %in% pr_cols) - 1L
+      off_ppp_idx <- which(names(disp_ff) == "off_ppp") - 1L
+      def_ppp_idx <- which(names(disp_ff) == "def_ppp") - 1L
+      net_idx     <- which(names(disp_ff) == "net_rtg") - 1L
 
       col_defs <- list(
         list(targets = hide_idx, visible = FALSE),
@@ -582,7 +1357,7 @@ server_tab3 <- function(input, output, session, shared) {
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
       if (length(net_idx))     col_defs[[length(col_defs) + 1]] <- list(targets = net_idx, className = "section-left-border dt-center")
 
-      dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE,
+      dt <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE, escape = FALSE,
                           options = list(
                             dom = "t", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
@@ -591,28 +1366,24 @@ server_tab3 <- function(input, output, session, shared) {
                             columnDefs = col_defs
                           ))
 
-      rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(df))
-      ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(df))
-      pace_cols <- intersect(c("off_pace", "def_pace"), names(df))
-      poss_cols <- intersect(c("off_poss", "def_poss"), names(df))
+      rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(disp_ff))
+      ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(disp_ff))
+      poss_cols <- intersect(c("off_poss", "def_poss"), names(disp_ff))
 
-      if (length(rate_cols)) dt <- DT::formatRound(dt, rate_cols, 1)
-      if (length(ppp_cols))  dt <- DT::formatRound(dt, ppp_cols, 1)
-      if (length(pace_cols)) dt <- DT::formatRound(dt, pace_cols, 1)
       if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
 
       # Color logic — same polarity as Tab 2 FF
-      if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
-      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ts")
-      if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_oreb")
-      if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_tov")
-      if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ftr")
-      if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ppp")
-      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ts")
-      if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_oreb")
-      if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_tov")
-      if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ftr")
-      if ("pr_net"      %in% names(df)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
+      if ("pr_off_ppp"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
+      if ("pr_off_ts"   %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ts")
+      if ("pr_off_oreb" %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_oreb")
+      if ("pr_off_tov"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_tov")
+      if ("pr_off_ftr"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ftr")
+      if ("pr_def_ppp"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ppp")
+      if ("pr_def_ts"   %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ts")
+      if ("pr_def_oreb" %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_oreb")
+      if ("pr_def_tov"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_tov")
+      if ("pr_def_ftr"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ftr")
+      if ("pr_net"      %in% names(disp_ff)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
 
       return(dt)
 
@@ -623,17 +1394,53 @@ server_tab3 <- function(input, output, session, shared) {
       df <- tr_data()
       if (is.null(df) || nrow(df) == 0) return(NULL)
       df <- add_team_pace_cols(df, minutes_map = mins_map)
-      pretty_names <- c("Season", "Team", "GP", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Net Rank", "Off Rank", "Def Rank", "Off Pace", "Def Pace", "Off Poss", "Def Poss")
-      disp_df <- df %>% select(game_year, team_name, games_played, wins, losses, off_ppp, def_ppp, net_rtg, rank_net_rtg, rank_off_ppp, rank_def_ppp, off_pace, def_pace, off_poss, def_poss)
-      max_rank <- max(c(disp_df$rank_net_rtg, disp_df$rank_off_ppp, disp_df$rank_def_ppp), na.rm = TRUE)
+      rk_net_now <- dplyr::dense_rank(dplyr::desc(df$net_rtg))
+      rk_off_now <- dplyr::dense_rank(dplyr::desc(df$off_ppp))
+      rk_def_now <- dplyr::dense_rank(df$def_ppp)
+      d_net <- rep(NA_integer_, nrow(df))
+      d_off <- rep(NA_integer_, nrow(df))
+      d_def <- rep(NA_integer_, nrow(df))
+      if (show_delta) {
+        key <- as.character(df$team_id)
+        mv_prev <- tr_prev_summary_ranks_from_mv()
+        if (!is.null(mv_prev)) {
+          d_net <- as.integer(mv_prev$net[key]) - as.integer(rk_net_now)
+          d_off <- as.integer(mv_prev$off[key]) - as.integer(rk_off_now)
+          d_def <- as.integer(mv_prev$def[key]) - as.integer(rk_def_now)
+        } else {
+          prev <- tr_prev_data()
+          if (!is.null(prev) && nrow(prev)) {
+            pkey <- if ("team_id" %in% names(prev)) as.character(prev$team_id) else as.character(prev$team_name)
+            key <- if ("team_id" %in% names(df) && "team_id" %in% names(prev)) as.character(df$team_id) else as.character(df$team_name)
+            prv_net <- setNames(dplyr::dense_rank(dplyr::desc(prev$net_rtg)), pkey)
+            prv_off <- setNames(dplyr::dense_rank(dplyr::desc(prev$off_ppp)), pkey)
+            prv_def <- setNames(dplyr::dense_rank(prev$def_ppp), pkey)
+            d_net <- as.integer(prv_net[key]) - as.integer(rk_net_now)
+            d_off <- as.integer(prv_off[key]) - as.integer(rk_off_now)
+            d_def <- as.integer(prv_def[key]) - as.integer(rk_def_now)
+          }
+        }
+      }
+      df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1)
+      df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1)
+      df$net_rtg_lbl <- fmt_rank_cell(df$net_rtg, rk_net_now, d_net, 1)
+      pretty_names <- c("Season", "Team", "GP", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Off Pace", "Def Pace", "Off Poss", "Def Poss")
+      disp_df <- df %>% select(game_year, team_name, games_played, wins, losses, off_ppp_lbl, def_ppp_lbl, net_rtg_lbl, off_pace, def_pace, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp)
+      names(disp_df)[names(disp_df) == "off_ppp_lbl"] <- "off_ppp"
+      names(disp_df)[names(disp_df) == "def_ppp_lbl"] <- "def_ppp"
+      names(disp_df)[names(disp_df) == "net_rtg_lbl"] <- "net_rtg"
+      disp_df$rank_net_rtg <- rk_net_now
+      disp_df$rank_off_ppp <- rk_off_now
+      disp_df$rank_def_ppp <- rk_def_now
+      max_rank <- max(c(rk_net_now, rk_off_now, rk_def_now), na.rm = TRUE)
       if (max_rank < 2) max_rank <- 2
       cuts <- seq(1.5, max_rank - 0.5, 1)
       cols_rank <- colorRampPalette(c("#1a6b38", "#6b5a20", "#8b2020"))(length(cuts) + 1)
 
-      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all")))) %>%
-        formatRound(c("off_ppp", "def_ppp", "net_rtg", "off_pace", "def_pace"), 1) %>%
+      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, escape = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = list(list(className = 'dt-center', targets = "_all"), list(visible = FALSE, targets = (which(names(disp_df) %in% c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp")) - 1L))))) %>%
+        formatRound(c("off_pace", "def_pace"), 1) %>%
         formatCurrency(c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0) %>%
-        formatStyle(columns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
+        formatStyle(columns = c("net_rtg", "off_ppp", "def_ppp"), valueColumns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
       return(dt)
     }
   })
