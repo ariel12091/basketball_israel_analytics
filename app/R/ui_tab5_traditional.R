@@ -25,7 +25,7 @@ ui_tab5_traditional <- tabPanel(
             "ts_display_mode",
             "Display mode",
             choices = c("Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"),
-            selected = "Totals"
+            selected = "Per Game"
           ),
           fluidRow(
             column(

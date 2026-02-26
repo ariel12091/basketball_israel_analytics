@@ -609,7 +609,24 @@ server_tab4 <- function(input, output, session, shared) {
 
   # ---- Filter Chips ----
   output$gl_filter_chips <- renderUI({
-    build_filter_chips("gl", input, shared$season_date_bounds, reset_btn_id = "gl_reset")
+    team_map <- NULL
+    tdf <- gl_ref$teams
+    if (is.data.frame(tdf) && nrow(tdf) > 0 &&
+        all(c("team_id", "team_name") %in% names(tdf))) {
+      ids <- as.character(tdf$team_id)
+      lbls <- as.character(tdf$team_name)
+      keep <- !is.na(ids) & nzchar(ids)
+      ids <- ids[keep]
+      lbls <- lbls[keep]
+      if (length(ids) > 0) {
+        team_map <- stats::setNames(lbls, ids)
+      }
+    }
+    build_filter_chips(
+      "gl", input, shared$season_date_bounds,
+      reset_btn_id = "gl_reset",
+      team_label_map = team_map
+    )
   })
   setup_chip_clears("gl", session, input, shared,
     game_type_id = "gl_game_type", opponents_id = "gl_opponents",

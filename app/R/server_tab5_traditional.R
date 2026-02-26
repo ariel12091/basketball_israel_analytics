@@ -95,7 +95,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateSelectInput(session, "ts_opp_rank_side", selected = "")
     updateSelectInput(session, "ts_opp_rank_n", selected = "")
     updateSelectInput(session, "ts_opp_rank_metric", selected = "")
-    updateSelectInput(session, "ts_display_mode", selected = "Totals")
+    updateSelectInput(session, "ts_display_mode", selected = "Per Game")
     updateSliderInput(session, "ts_min_gp_slider", value = 1, min = 1, max = 40)
     updateNumericInput(session, "ts_min_gp", value = 1, min = 1, max = 40)
     updateCheckboxInput(session, "ts_show_ineligible", value = FALSE)
@@ -131,7 +131,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if (is.null(df) || !nrow(df)) return(df)
 
     count_cols <- c("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta")
-    mode <- mode %||% "Totals"
+    mode <- mode %||% "Per Game"
 
     if (identical(mode, "Per Game")) {
       for (col in count_cols) {
@@ -472,7 +472,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   ts_display_context <- reactive({
     ctx <- ts_mode_context()
     df <- ctx$df
-    mode <- input$ts_display_mode %||% "Totals"
+    mode <- input$ts_display_mode %||% "Per Game"
     show_ineligible <- isTRUE(input$ts_show_ineligible)
     poss_threshold <- as.numeric(ctx$rate_threshold %||% 0)
     if (is.null(df) || !nrow(df)) {
