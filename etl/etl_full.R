@@ -5,7 +5,7 @@
 #   Phase 1: Setup + connection
 #   Phase 2: Base table ETL (etl_update)
 #   Phase 3: Sub-lineup generation
-#   Phase 4: MV refresh (10 MVs, 4 dependency levels)
+#   Phase 4: MV refresh (12 MVs, 4 dependency levels)
 #   Phase 5: Sub-lineup stats refresh
 #   Phase 6: Validation (per-game row count checks)
 #
@@ -140,6 +140,15 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
   logger  <- setup_logging()
   log_msg <- logger$log_msg
+  pipeline_ok <- TRUE
+  phase_failures <- character(0)
+  mark_phase_failed <- function(phase, msg = NULL) {
+    pipeline_ok <<- FALSE
+    phase_failures <<- c(
+      phase_failures,
+      if (is.null(msg) || !nzchar(msg)) phase else sprintf("%s: %s", phase, msg)
+    )
+  }
 
   log_msg(sprintf("ETL Full pipeline started (dry_run = %s)", dry_run))
   log_msg(sprintf("Log file: %s", logger$log_file))
@@ -517,19 +526,22 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
   }, error = function(e) {
     log_msg(sprintf("Phase 3 FAILED: %s — continuing to Phase 4", conditionMessage(e)), "ERROR")
+    mark_phase_failed("Phase 3", conditionMessage(e))
   })
 
   # =========================================================================
-  # Phase 4: MV Refresh (10 MVs, 4 dependency levels)
+  # Phase 4: MV Refresh (12 MVs, 4 dependency levels)
   # =========================================================================
 
   log_msg("─── Phase 4: MV Refresh ───")
 
   mv_levels <- list(
     list(level = 1, mvs = c("final_schedule_mv", "df_pts_poss_lineups_longer_mv")),
-    list(level = 2, mvs = c("mv_lineup_totals_by_day", "team_ppp_ratings_mv", "onoff_default_mv")),
+    list(level = 2, mvs = c("mv_lineup_totals_by_day", "team_ppp_ratings_mv", "onoff_default_mv",
+                            "team_metrics_by_game_mv")),
     list(level = 3, mvs = c("player_onoff_by_game", "player_four_factors_by_game",
-                            "lineup_four_factors_by_game", "player_advanced_stats_mv")),
+                            "lineup_four_factors_by_game", "player_advanced_stats_mv",
+                            "team_metrics_rolling_mv")),
     list(level = 4, mvs = c("team_four_factors_mv"))
   )
 
@@ -564,12 +576,14 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       DBI::dbCommit(pg)
 
       elapsed <- (proc.time() - t0)["elapsed"]
-      log_msg(sprintf("Phase 4 complete. All 10 MVs refreshed in %.1fs", elapsed))
+      total_mvs <- sum(vapply(mv_levels, function(x) length(x$mvs), integer(1)))
+      log_msg(sprintf("Phase 4 complete. All %d MVs refreshed in %.1fs", total_mvs, elapsed))
 
     }, error = function(e) {
       log_msg(sprintf("Phase 4 FAILED on MV refresh: %s", conditionMessage(e)), "ERROR")
       try(DBI::dbRollback(pg), silent = TRUE)
       log_msg("  Transaction rolled back — MV state unchanged", "ERROR")
+      mark_phase_failed("Phase 4", conditionMessage(e))
     })
   }
 
@@ -615,10 +629,13 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       )$ok[[1]]
 
       if (length(processed_ids) && isTRUE(incr_exists)) {
+        ids_sql <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
         touched <- DBI::dbGetQuery(
           pg,
-          "SELECT refresh_sub_lineups_stats_for_games($1::int4[]) AS n",
-          params = list(as.integer(processed_ids))
+          sprintf(
+            "SELECT refresh_sub_lineups_stats_for_games(ARRAY[%s]::int4[]) AS n",
+            ids_sql
+          )
         )$n[[1]]
         log_msg(sprintf(
           "  Used incremental refresh for %d game(s); touched %s sub-lineup rows",
@@ -645,6 +662,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
     }, error = function(e) {
       log_msg(sprintf("Phase 5 FAILED: %s — continuing to Phase 6", conditionMessage(e)), "ERROR")
+      mark_phase_failed("Phase 5", conditionMessage(e))
     })
   }
 
@@ -778,6 +796,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
   }, error = function(e) {
     log_msg(sprintf("Phase 6 FAILED: %s", conditionMessage(e)), "WARN")
+    mark_phase_failed("Phase 6", conditionMessage(e))
   })
 
   }
@@ -790,13 +809,16 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg(sprintf("═══ ETL Full pipeline finished in %.1fs ═══", overall_elapsed))
   log_msg(sprintf("Log saved to: %s", logger$log_file))
 
-  if (!dry_run) {
+  if (!dry_run && isTRUE(pipeline_ok)) {
     tryCatch({
       set_last_success(pg, SCHEMA)
       log_msg("Recorded last_success timestamp in app_meta")
     }, error = function(e) {
       log_msg(sprintf("Failed to record last_success timestamp: %s", conditionMessage(e)), "WARN")
     })
+  } else if (!dry_run) {
+    reason <- if (length(phase_failures)) paste(phase_failures, collapse = " | ") else "unknown failure"
+    log_msg(sprintf("Skipped last_success update due to failures: %s", reason), "WARN")
   }
 
   invisible(list(
