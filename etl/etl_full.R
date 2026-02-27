@@ -1,11 +1,11 @@
 # =============================================================================
-# etl/etl_full.R — Full automated ETL pipeline
+# etl/etl_full.R â€” Full automated ETL pipeline
 #
 # Orchestrates:
 #   Phase 1: Setup + connection
 #   Phase 2: Base table ETL (etl_update)
 #   Phase 3: Sub-lineup generation
-#   Phase 4: MV refresh (12 MVs, 4 dependency levels)
+#   Phase 4: MV refresh + incremental game-grain table refresh
 #   Phase 5: Sub-lineup stats refresh
 #   Phase 6: Validation (per-game row count checks)
 #
@@ -17,7 +17,7 @@
 #   etl_full(game_ids = c(12345)) # specific games
 # =============================================================================
 
-# ─── Sub-lineup helper functions (extracted from etl_lineups.R) ──────────────
+# â”€â”€â”€ Sub-lineup helper functions (extracted from etl_lineups.R) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 make_subs_for_one <- function(lineup_df, ks = c(2, 3, 4)) {
   lineup_hash <- unique(lineup_df$lineup_hash)
@@ -88,7 +88,7 @@ build_sub_lineups_all <- function(players_df, ks = c(2, 3, 4)) {
   purrr::map_dfr(groups, make_subs_for_one, ks = ks)
 }
 
-# ─── Logging ─────────────────────────────────────────────────────────────────
+# â”€â”€â”€ Logging â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 setup_logging <- function() {
   log_dir <- file.path("etl", "logs")
@@ -130,7 +130,7 @@ set_last_success <- function(pg, schema, ts = Sys.time()) {
   )
 }
 
-# ─── Main pipeline ───────────────────────────────────────────────────────────
+# â”€â”€â”€ Main pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
 etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
@@ -159,7 +159,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     readRenviron(env_file)
     log_msg(sprintf("Loaded env from %s", env_file))
   } else {
-    log_msg(sprintf("No .Renviron found at %s — using existing env vars", env_file), "WARN")
+    log_msg(sprintf("No .Renviron found at %s â€” using existing env vars", env_file), "WARN")
   }
 
   # Source etl_onoff.R to get pg connection, SCHEMA, and all helper functions.
@@ -192,7 +192,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   # Phase 2: Base Table ETL
   # =========================================================================
 
-  log_msg("─── Phase 2: Base Table ETL ───")
+  log_msg("â”€â”€â”€ Phase 2: Base Table ETL â”€â”€â”€")
 
   processed_ids <- tryCatch({
     # Fetch schedule
@@ -337,9 +337,34 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       starters_df <- purrr::map(boxes, extract_starters) |>
         purrr::list_rbind() |>
         dplyr::rename_with(tolower)
+      team_name_map <- fetchable_sched |>
+        dplyr::transmute(
+          game_id,
+          team_id = as.integer(team1),
+          team_name_sched = as.character(team_name_eng_1)
+        ) |>
+        dplyr::bind_rows(
+          fetchable_sched |>
+            dplyr::transmute(
+              game_id,
+              team_id = as.integer(team2),
+              team_name_sched = as.character(team_name_eng_2)
+            )
+        )
       roster_df <- roster_df |>
         dplyr::left_join(starters_df, by = c("game_id", "team_id", "player_id")) |>
-        dplyr::mutate(starter = dplyr::coalesce(as.logical(starter), FALSE))
+        dplyr::left_join(team_name_map, by = c("game_id", "team_id")) |>
+        dplyr::mutate(
+          firstname = trimws(gsub("\\s+", " ", as.character(firstname))),
+          lastname = trimws(gsub("\\s+", " ", as.character(lastname))),
+          lastname = gsub("\\.\\s+", ".", lastname),
+          team_name = dplyr::coalesce(team_name_sched, team_name),
+          team_name = trimws(gsub("\\s+", " ", as.character(team_name))),
+          firstname = dplyr::if_else(player_id == 29543L & firstname == "ירון", "YARON", firstname),
+          lastname = dplyr::if_else(player_id == 29543L & lastname == "גולדמן", "GOLDMAN", lastname),
+          starter = dplyr::coalesce(as.logical(starter), FALSE)
+        ) |>
+        dplyr::select(-team_name_sched)
       roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
       upsert_by_like(pg, SCHEMA, "full_rosters", roster_df)
       log_msg(sprintf("  full_rosters: %d rows upserted", nrow(roster_df)))
@@ -418,7 +443,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     }
   }, error = function(e) {
     log_msg(sprintf("Phase 2 FAILED: %s", conditionMessage(e)), "ERROR")
-    stop("Base ETL failed — aborting pipeline.", call. = FALSE)
+    stop("Base ETL failed â€” aborting pipeline.", call. = FALSE)
   })
 
   # Guardrail: verify key tables have rows
@@ -434,13 +459,13 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   }
 
   if (!length(processed_ids)) {
-    log_msg("No new games â€” skipping Phases 3-6")
+    log_msg("No new games Ã¢â‚¬â€ skipping Phases 3-6")
   } else {
     # =========================================================================
     # Phase 3: Sub-Lineup Generation
     # =========================================================================
 
-  log_msg("─── Phase 3: Sub-Lineup Generation ───")
+  log_msg("â”€â”€â”€ Phase 3: Sub-Lineup Generation â”€â”€â”€")
 
   tryCatch({
     t0 <- proc.time()
@@ -458,7 +483,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     log_msg(sprintf("  ON lineup rows from processed games: %d", nrow(src_rows)))
 
     if (nrow(src_rows) == 0) {
-      log_msg("  No ON lineups found — skipping sub-lineup generation")
+      log_msg("  No ON lineups found â€” skipping sub-lineup generation")
     } else {
       # Anti-join against existing lineups_lookup_on
       ll_on <- dplyr::tbl(pg, dbplyr::in_schema(SCHEMA, "lineups_lookup_on"))
@@ -480,7 +505,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       log_msg(sprintf("  New ON lineup rows: %d (existing: %d)", nrow(new_rows_on), nrow(existing_rows)))
 
       if (nrow(new_rows_on) == 0) {
-        log_msg("  All lineups already in lineups_lookup_on — skipping")
+        log_msg("  All lineups already in lineups_lookup_on â€” skipping")
       } else if (dry_run) {
         log_msg(sprintf("[DRY RUN] Would insert %d rows into lineups_lookup_on", nrow(new_rows_on)))
 
@@ -525,24 +550,21 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     log_msg(sprintf("Phase 3 complete in %.1fs", elapsed))
 
   }, error = function(e) {
-    log_msg(sprintf("Phase 3 FAILED: %s — continuing to Phase 4", conditionMessage(e)), "ERROR")
+    log_msg(sprintf("Phase 3 FAILED: %s â€” continuing to Phase 4", conditionMessage(e)), "ERROR")
     mark_phase_failed("Phase 3", conditionMessage(e))
   })
 
   # =========================================================================
-  # Phase 4: MV Refresh (12 MVs, 4 dependency levels)
+  # Phase 4: MV Refresh + Incremental Table Refresh
   # =========================================================================
 
-  log_msg("─── Phase 4: MV Refresh ───")
+  log_msg("â”€â”€â”€ Phase 4: MV Refresh â”€â”€â”€")
 
   mv_levels <- list(
     list(level = 1, mvs = c("final_schedule_mv", "df_pts_poss_lineups_longer_mv")),
-    list(level = 2, mvs = c("mv_lineup_totals_by_day", "team_ppp_ratings_mv", "onoff_default_mv",
-                            "team_metrics_by_game_mv")),
-    list(level = 3, mvs = c("player_onoff_by_game", "player_four_factors_by_game",
-                            "lineup_four_factors_by_game", "player_advanced_stats_mv",
-                            "team_metrics_rolling_mv")),
-    list(level = 4, mvs = c("team_four_factors_mv"))
+    list(level = 2, mvs = c("mv_lineup_totals_by_day", "team_ppp_ratings_mv")),
+    list(level = 3, mvs = c("player_onoff_by_game", "lineup_four_factors_by_game")),
+    list(level = 4, mvs = c("team_metrics_rolling_mv", "team_four_factors_mv"))
   )
 
   if (dry_run) {
@@ -551,6 +573,22 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         log_msg(sprintf("[DRY RUN] Would refresh: %s (level %d)", mv, lv$level))
       }
     }
+    log_msg(sprintf(
+      "[DRY RUN] Would incrementally refresh table: player_four_factors_by_game for %d game(s)",
+      length(processed_ids)
+    ))
+    log_msg(sprintf(
+      "[DRY RUN] Would incrementally refresh table: team_metrics_by_game_mv for %d game(s)",
+      length(processed_ids)
+    ))
+    log_msg(sprintf(
+      "[DRY RUN] Would incrementally refresh table: onoff_default_mv for %d game(s)",
+      length(processed_ids)
+    ))
+    log_msg(sprintf(
+      "[DRY RUN] Would incrementally refresh table: player_advanced_stats_mv for %d game(s)",
+      length(processed_ids)
+    ))
   } else {
     tryCatch({
       t0 <- proc.time()
@@ -568,21 +606,122 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
           cnt <- DBI::dbGetQuery(pg, sprintf("SELECT count(*) AS n FROM %s;", mv))$n
           mv_elapsed <- (proc.time() - mv_t0)["elapsed"]
-          log_msg(sprintf("  [L%d] %s refreshed — %s rows (%.1fs)",
+          log_msg(sprintf("  [L%d] %s refreshed - %s rows (%.1fs)",
                           lv$level, mv, format(cnt, big.mark = ","), mv_elapsed))
+        }
+
+        if (lv$level == 3) {
+          ids_csv <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
+
+          fn_exists <- function(name) {
+            DBI::dbGetQuery(
+              pg,
+              "SELECT EXISTS (
+                 SELECT 1
+                 FROM pg_proc p
+                 JOIN pg_namespace n ON n.oid = p.pronamespace
+                 WHERE n.nspname = $1 AND p.proname = $2
+               ) AS ok",
+              params = list(SCHEMA, name)
+            )$ok[[1]]
+          }
+
+          if (!isTRUE(fn_exists("refresh_player_four_factors_by_game_for_games"))) {
+            stop("Missing function basketball_test.refresh_player_four_factors_by_game_for_games(int4[])")
+          }
+          if (!isTRUE(fn_exists("refresh_team_metrics_by_game_for_games"))) {
+            stop("Missing function basketball_test.refresh_team_metrics_by_game_for_games(int4[])")
+          }
+          if (!isTRUE(fn_exists("refresh_onoff_default_for_games"))) {
+            stop("Missing function basketball_test.refresh_onoff_default_for_games(int4[])")
+          }
+          if (!isTRUE(fn_exists("refresh_player_advanced_stats_for_games"))) {
+            stop("Missing function basketball_test.refresh_player_advanced_stats_for_games(int4[])")
+          }
+
+          pff_t0 <- proc.time()
+          pff_touch <- DBI::dbGetQuery(
+            pg,
+            sprintf(
+              "SELECT refresh_player_four_factors_by_game_for_games(ARRAY[%s]::int4[]) AS n",
+              ids_csv
+            )
+          )$n[[1]]
+          pff_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM player_four_factors_by_game")$n[[1]]
+          pff_elapsed <- (proc.time() - pff_t0)["elapsed"]
+          log_msg(sprintf(
+            "  [INC] player_four_factors_by_game refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
+            length(processed_ids),
+            format(as.integer(pff_touch), big.mark = ","),
+            format(as.integer(pff_cnt), big.mark = ","),
+            pff_elapsed
+          ))
+
+          tm_t0 <- proc.time()
+          tm_touch <- DBI::dbGetQuery(
+            pg,
+            sprintf(
+              "SELECT refresh_team_metrics_by_game_for_games(ARRAY[%s]::int4[]) AS n",
+              ids_csv
+            )
+          )$n[[1]]
+          tm_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM team_metrics_by_game_mv")$n[[1]]
+          tm_elapsed <- (proc.time() - tm_t0)["elapsed"]
+          log_msg(sprintf(
+            "  [INC] team_metrics_by_game_mv refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
+            length(processed_ids),
+            format(as.integer(tm_touch), big.mark = ","),
+            format(as.integer(tm_cnt), big.mark = ","),
+            tm_elapsed
+          ))
+
+          onoff_t0 <- proc.time()
+          onoff_touch <- DBI::dbGetQuery(
+            pg,
+            sprintf(
+              "SELECT refresh_onoff_default_for_games(ARRAY[%s]::int4[]) AS n",
+              ids_csv
+            )
+          )$n[[1]]
+          onoff_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM onoff_default_mv")$n[[1]]
+          onoff_elapsed <- (proc.time() - onoff_t0)["elapsed"]
+          log_msg(sprintf(
+            "  [INC] onoff_default_mv refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
+            length(processed_ids),
+            format(as.integer(onoff_touch), big.mark = ","),
+            format(as.integer(onoff_cnt), big.mark = ","),
+            onoff_elapsed
+          ))
+
+          pas_t0 <- proc.time()
+          pas_touch <- DBI::dbGetQuery(
+            pg,
+            sprintf(
+              "SELECT refresh_player_advanced_stats_for_games(ARRAY[%s]::int4[]) AS n",
+              ids_csv
+            )
+          )$n[[1]]
+          pas_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM player_advanced_stats_mv")$n[[1]]
+          pas_elapsed <- (proc.time() - pas_t0)["elapsed"]
+          log_msg(sprintf(
+            "  [INC] player_advanced_stats_mv refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
+            length(processed_ids),
+            format(as.integer(pas_touch), big.mark = ","),
+            format(as.integer(pas_cnt), big.mark = ","),
+            pas_elapsed
+          ))
         }
       }
 
       DBI::dbCommit(pg)
-
       elapsed <- (proc.time() - t0)["elapsed"]
       total_mvs <- sum(vapply(mv_levels, function(x) length(x$mvs), integer(1)))
-      log_msg(sprintf("Phase 4 complete. All %d MVs refreshed in %.1fs", total_mvs, elapsed))
+      log_msg(sprintf("Phase 4 complete. %d MVs refreshed + 4 incremental tables updated in %.1fs", total_mvs, elapsed))
 
     }, error = function(e) {
       log_msg(sprintf("Phase 4 FAILED on MV refresh: %s", conditionMessage(e)), "ERROR")
       try(DBI::dbRollback(pg), silent = TRUE)
-      log_msg("  Transaction rolled back — MV state unchanged", "ERROR")
+      log_msg("  Transaction rolled back â€” MV state unchanged", "ERROR")
       mark_phase_failed("Phase 4", conditionMessage(e))
     })
   }
@@ -591,7 +730,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   # Phase 5: Sub-Lineup Stats Refresh
   # =========================================================================
 
-  log_msg("─── Phase 5: Sub-Lineup Stats Refresh ───")
+  log_msg("â”€â”€â”€ Phase 5: Sub-Lineup Stats Refresh â”€â”€â”€")
 
   if (dry_run) {
     if (length(processed_ids)) {
@@ -661,7 +800,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
                       if (delta >= 0) "+" else "", as.integer(delta)))
 
     }, error = function(e) {
-      log_msg(sprintf("Phase 5 FAILED: %s — continuing to Phase 6", conditionMessage(e)), "ERROR")
+      log_msg(sprintf("Phase 5 FAILED: %s â€” continuing to Phase 6", conditionMessage(e)), "ERROR")
       mark_phase_failed("Phase 5", conditionMessage(e))
     })
   }
@@ -670,7 +809,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   # Phase 6: Validation (per-game row count checks)
   # =========================================================================
 
-  log_msg("─── Phase 6: Validation ───")
+  log_msg("â”€â”€â”€ Phase 6: Validation â”€â”€â”€")
 
   tryCatch({
     checks <- list(
@@ -786,6 +925,45 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       }
     }
 
+    # Integrity guardrails for incremental tables: keys must remain unique.
+    dup_onoff <- DBI::dbGetQuery(
+      pg,
+      sprintf(
+        "SELECT count(*) AS n
+         FROM (
+           SELECT \"Year\", team_id, player_id
+           FROM \"%s\".\"onoff_default_mv\"
+           GROUP BY 1,2,3
+           HAVING count(*) > 1
+         ) d",
+        SCHEMA
+      )
+    )$n[[1]]
+    if (dup_onoff > 0) {
+      msg <- sprintf("  Integrity FAILED: %s duplicate key group(s) in %s.onoff_default_mv (Year, team_id, player_id)", dup_onoff, SCHEMA)
+      log_msg(msg, "ERROR")
+      mark_phase_failed("Phase 6", msg)
+    }
+
+    dup_pas <- DBI::dbGetQuery(
+      pg,
+      sprintf(
+        "SELECT count(*) AS n
+         FROM (
+           SELECT game_year, team_id, player_id
+           FROM \"%s\".\"player_advanced_stats_mv\"
+           GROUP BY 1,2,3
+           HAVING count(*) > 1
+         ) d",
+        SCHEMA
+      )
+    )$n[[1]]
+    if (dup_pas > 0) {
+      msg <- sprintf("  Integrity FAILED: %s duplicate key group(s) in %s.player_advanced_stats_mv (game_year, team_id, player_id)", dup_pas, SCHEMA)
+      log_msg(msg, "ERROR")
+      mark_phase_failed("Phase 6", msg)
+    }
+
     if (warn_count == 0) {
       log_msg(sprintf("  All %d games passed validation checks", length(processed_ids)))
     } else {
@@ -806,7 +984,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   # =========================================================================
 
   overall_elapsed <- (proc.time() - overall_start)["elapsed"]
-  log_msg(sprintf("═══ ETL Full pipeline finished in %.1fs ═══", overall_elapsed))
+  log_msg(sprintf("â•â•â• ETL Full pipeline finished in %.1fs â•â•â•", overall_elapsed))
   log_msg(sprintf("Log saved to: %s", logger$log_file))
 
   if (!dry_run && isTRUE(pipeline_ok)) {
@@ -827,3 +1005,4 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     dry_run  = dry_run
   ))
 }
+

@@ -1,10 +1,10 @@
 -- Pre-aggregated four-factor counts per player per game per on/off per type.
--- The dynamic function four_factors_compute() sums from this MV
--- instead of re-scanning df_pts_poss_lineups_longer_mv + lineups_lookup each time.
+-- Stored as a physical table for incremental refresh by game_id.
 
-CREATE MATERIALIZED VIEW basketball_test.player_four_factors_by_game
-TABLESPACE pg_default
-AS
+DROP MATERIALIZED VIEW IF EXISTS basketball_test.player_four_factors_by_game;
+DROP TABLE IF EXISTS basketball_test.player_four_factors_by_game;
+
+CREATE TABLE basketball_test.player_four_factors_by_game AS
 WITH base0 AS (
   SELECT DISTINCT
     ll.player_id,
@@ -100,7 +100,7 @@ SELECT
   count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga
 FROM combined_data cd
 GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year, cd.is_on_key, cd.type_lineup, cd.num_starters, cd.own_starters, cd.opp_starters
-WITH DATA;
+;
 
 -- Indexes for the dynamic function
 CREATE INDEX idx_pff_game_id ON basketball_test.player_four_factors_by_game USING btree (game_id);

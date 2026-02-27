@@ -1,20 +1,46 @@
--- basketball_test.onoff_default_mv source
+CREATE OR REPLACE FUNCTION basketball_test.refresh_onoff_default_for_games(game_ids int4[])
+RETURNS bigint
+LANGUAGE plpgsql
+AS $$
+DECLARE
+  inserted_count bigint := 0;
+BEGIN
+  WITH affected_years AS (
+    SELECT DISTINCT s.game_year
+    FROM basketball_test.schedule s
+    WHERE game_ids IS NULL OR s.game_id = ANY(game_ids)
+  )
+  DELETE FROM basketball_test.onoff_default_mv o
+  WHERE o."Year" IN (SELECT game_year FROM affected_years);
 
-DROP MATERIALIZED VIEW IF EXISTS basketball_test.onoff_default_mv;
-DROP TABLE IF EXISTS basketball_test.onoff_default_mv;
-
-CREATE TABLE basketball_test.onoff_default_mv AS
-WITH sched AS (
+  INSERT INTO basketball_test.onoff_default_mv (
+    "Team","Year","First Name","Last Name","Net RTG Diff","Off ON Diff","Def ON Diff",
+    "Off ON PPP","Def ON PPP","On Net RTG","Off OFF PPP","Def OFF PPP","Off Net RTG",
+    "ON Poss","OFF Poss",pr_net,pr_off_on,pr_off_off,pr_def_on_inv,pr_def_off_inv,
+    pr_off_on_d,pr_def_on_d,pr_def_on_d_inv,pr_on_net,pr_off_net,
+    off_on_fg2_made,off_on_fg2_att,off_on_fg3_made,off_on_fg3_att,
+    off_off_fg2_made,off_off_fg2_att,off_off_fg3_made,off_off_fg3_att,
+    def_on_fg2_made,def_on_fg2_att,def_on_fg3_made,def_on_fg3_att,
+    def_off_fg2_made,def_off_fg2_att,def_off_fg3_made,def_off_fg3_att,
+    player_id,team_id
+  )
+  WITH affected_years AS (
+         SELECT DISTINCT s.game_year
+         FROM basketball_test.schedule s
+         WHERE game_ids IS NULL OR s.game_id = ANY(game_ids)
+       ),
+       sched AS (
          SELECT DISTINCT schedule.game_id,
             schedule.game_date,
             schedule.game_year
-           FROM schedule
+           FROM basketball_test.schedule
+           JOIN affected_years ay ON ay.game_year = schedule.game_year
         ), base0 AS (
          SELECT DISTINCT lineups_lookup.player_id,
             lineups_lookup.team_id,
             lineups_lookup.lineup_hash,
             COALESCE(lineups_lookup.is_on_verdict, 0::numeric)::integer AS is_on_key
-           FROM lineups_lookup
+           FROM basketball_test.lineups_lookup
         ), base AS (
          SELECT b0.player_id,
             b0.team_id,
@@ -33,7 +59,7 @@ WITH sched AS (
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg3_made_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 THEN 1 ELSE 0 END AS fg3_att_flag
            FROM base0 b0
-             JOIN df_pts_poss_lineups_longer_mv d USING (lineup_hash)
+             JOIN basketball_test.df_pts_poss_lineups_longer_mv d USING (lineup_hash)
              JOIN sched s USING (game_id)
         ), agg AS (
          SELECT base.player_id,
@@ -86,8 +112,8 @@ WITH sched AS (
               max(trim(regexp_replace(regexp_replace(full_rosters.lastname, '\.\s+', '.', 'g'), '\s+', ' ', 'g')))
             ) AS lastname,
             max(trim(regexp_replace(full_rosters.team_name, '\s+', ' ', 'g'))) AS team_name
-           FROM full_rosters
-             JOIN schedule ON full_rosters.game_id = schedule.game_id
+           FROM basketball_test.full_rosters
+             JOIN basketball_test.schedule ON full_rosters.game_id = schedule.game_id
           GROUP BY full_rosters.player_id, full_rosters.team_id, schedule.game_year
         ), with_names AS (
          SELECT a.player_id,
@@ -245,84 +271,23 @@ WITH sched AS (
             s2j.team_name,
             s2j.firstname,
             s2j.lastname,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.ppp_calc
-                    ELSE NULL::numeric
-                END) AS offense_on_ppp,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 0 THEN s2j.ppp_calc
-                    ELSE NULL::numeric
-                END) AS offense_off_ppp,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.ppp_calc
-                    ELSE NULL::numeric
-                END) AS defense_on_ppp,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 0 THEN s2j.ppp_calc
-                    ELSE NULL::numeric
-                END) AS defense_off_ppp,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better
-                    ELSE NULL::double precision
-                END) AS pr_off_on,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better
-                    ELSE NULL::double precision
-                END) AS pr_off_off,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better
-                    ELSE NULL::double precision
-                END) AS pr_def_on_inv,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better
-                    ELSE NULL::double precision
-                END) AS pr_def_off_inv,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.net_rtg
-                    ELSE NULL::numeric
-                END) AS offense_on_diff,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.net_rtg
-                    ELSE NULL::numeric
-                END) AS defense_on_diff,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better
-                    ELSE NULL::double precision
-                END) AS pr_off_on_d,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_raw
-                    ELSE NULL::double precision
-                END) AS pr_def_on_d,
-            max(
-                CASE
-                    WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better
-                    ELSE NULL::double precision
-                END) AS pr_def_on_d_inv,
+            max(CASE WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.ppp_calc END) AS offense_on_ppp,
+            max(CASE WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 0 THEN s2j.ppp_calc END) AS offense_off_ppp,
+            max(CASE WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.ppp_calc END) AS defense_on_ppp,
+            max(CASE WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 0 THEN s2j.ppp_calc END) AS defense_off_ppp,
+            max(CASE WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better END) AS pr_off_on,
+            max(CASE WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better END) AS pr_off_off,
+            max(CASE WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.pr_ppp_better END) AS pr_def_on_inv,
+            max(CASE WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 0 THEN s2j.pr_ppp_better END) AS pr_def_off_inv,
+            max(CASE WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.net_rtg END) AS offense_on_diff,
+            max(CASE WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.net_rtg END) AS defense_on_diff,
+            max(CASE WHEN s2j.type_lineup = 'offense'::text AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better END) AS pr_off_on_d,
+            max(CASE WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_raw END) AS pr_def_on_d,
+            max(CASE WHEN s2j.type_lineup = 'defense'::text AND s2j.is_on_key = 1 THEN s2j.pr_net_rtg_better END) AS pr_def_on_d_inv,
             max(s2j.total_net_rtg) AS total_net_rtg,
             max(s2j.pr_total_net) AS pr_net,
-            max(
-                CASE
-                    WHEN s2j.is_on_key = 1 THEN s2j.total_poss
-                    ELSE NULL::bigint
-                END) AS on_poss,
-            max(
-                CASE
-                    WHEN s2j.is_on_key = 0 THEN s2j.total_poss
-                    ELSE NULL::bigint
-                END) AS off_poss,
-            -- Shooting splits (16 columns)
+            max(CASE WHEN s2j.is_on_key = 1 THEN s2j.total_poss END) AS on_poss,
+            max(CASE WHEN s2j.is_on_key = 0 THEN s2j.total_poss END) AS off_poss,
             MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.fg2_made END) AS off_on_fg2_made,
             MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.fg2_att END)  AS off_on_fg2_att,
             MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.fg3_made END) AS off_on_fg3_made,
@@ -381,7 +346,7 @@ WITH sched AS (
             percent_rank() OVER (PARTITION BY fr.game_year ORDER BY (fr.offense_off_ppp - fr.defense_off_ppp)) AS pr_off_net
            FROM final_rows fr
         )
-SELECT team_name AS "Team",
+ SELECT team_name AS "Team",
     game_year AS "Year",
     firstname AS "First Name",
     lastname AS "Last Name",
@@ -410,11 +375,12 @@ SELECT team_name AS "Team",
     off_off_fg2_made, off_off_fg2_att, off_off_fg3_made, off_off_fg3_att,
     def_on_fg2_made, def_on_fg2_att, def_on_fg3_made, def_on_fg3_att,
     def_off_fg2_made, def_off_fg2_att, def_off_fg3_made, def_off_fg3_att,
-   player_id,
-   team_id
-  FROM final_scored
-  ORDER BY total_net_rtg DESC, team_name, lastname, firstname
-;
+    player_id,
+    team_id
+   FROM final_scored
+  ORDER BY total_net_rtg DESC, team_name, lastname, firstname;
 
-CREATE INDEX idx_onoff_default_year ON basketball_test.onoff_default_mv ("Year");
-CREATE INDEX idx_onoff_default_team_player ON basketball_test.onoff_default_mv (team_id, player_id);
+  GET DIAGNOSTICS inserted_count = ROW_COUNT;
+  RETURN inserted_count;
+END;
+$$;

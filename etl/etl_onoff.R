@@ -636,12 +636,38 @@ etl_update <- function() {
   roster_df <- purrr::map(pbps, extract_roster) |> list_rbind() |> rename_with(tolower) %>%
     dplyr::left_join(game_year_map, by = "game_id")
   starters_df <- purrr::map(boxes, extract_starters) |> list_rbind() |> rename_with(tolower)
+  team_name_map <- sched_subset |>
+    dplyr::transmute(
+      game_id,
+      team_id = as.integer(team1),
+      team_name_sched = as.character(team_name_eng_1)
+    ) |>
+    dplyr::bind_rows(
+      sched_subset |>
+        dplyr::transmute(
+          game_id,
+          team_id = as.integer(team2),
+          team_name_sched = as.character(team_name_eng_2)
+        )
+    )
   if (nrow(starters_df)) {
     roster_df <- roster_df |>
       dplyr::left_join(starters_df, by = c("game_id", "team_id", "player_id"))
   }
   if (!"starter" %in% names(roster_df)) roster_df$starter <- FALSE
-  roster_df$starter <- dplyr::coalesce(as.logical(roster_df$starter), FALSE)
+  roster_df <- roster_df |>
+    dplyr::left_join(team_name_map, by = c("game_id", "team_id")) |>
+    dplyr::mutate(
+      firstname = trimws(gsub("\\s+", " ", as.character(firstname))),
+      lastname = trimws(gsub("\\s+", " ", as.character(lastname))),
+      lastname = gsub("\\.\\s+", ".", lastname),
+      team_name = dplyr::coalesce(team_name_sched, team_name),
+      team_name = trimws(gsub("\\s+", " ", as.character(team_name))),
+      firstname = dplyr::if_else(player_id == 29543L & firstname == "ירון", "YARON", firstname),
+      lastname = dplyr::if_else(player_id == 29543L & lastname == "גולדמן", "GOLDMAN", lastname),
+      starter = dplyr::coalesce(as.logical(starter), FALSE)
+    ) |>
+    dplyr::select(-team_name_sched)
   roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
   
   upsert_by_like(pg, SCHEMA, "full_rosters", roster_df)

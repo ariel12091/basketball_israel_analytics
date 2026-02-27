@@ -1444,3 +1444,26 @@ extract_starters <- function(box) {
 - Fixed Game Logs filter-chip crash in pp/R/server_tab4.R by guarding 	eam_label_map creation (avoid setNames() on invalid/empty team data).
 - Set Player Stats default display mode to Per Game in pp/R/ui_tab5_traditional.R and aligned server fallbacks/resets in pp/R/server_tab5_traditional.R.
 - Commit reference: cc6583.
+## Session Notes (2026-02-27): Incremental Analytics Tables + Name Canonicalization
+- Phase 4 now uses mixed refresh mode:
+  - Refresh MVs by dependency level.
+  - Refresh incremental tables by `game_id` set:
+    - `player_four_factors_by_game` via `refresh_player_four_factors_by_game_for_games(int4[])`
+    - `team_metrics_by_game_mv` via `refresh_team_metrics_by_game_for_games(int4[])`
+    - `onoff_default_mv` via `refresh_onoff_default_for_games(int4[])`
+    - `player_advanced_stats_mv` via `refresh_player_advanced_stats_for_games(int4[])`
+- `onoff_default_mv` and `player_advanced_stats_mv` are now physical tables (not materialized views) and are refreshed by affected `game_year` derived from input `game_ids` because ranking fields are season-scoped.
+- Name/root-cause fix for duplicate player rows:
+  - Canonicalized roster-name aggregation in SQL by `(player_id, team_id, game_year)`.
+  - Normalized ETL name fields (trim/collapse whitespace, normalize dotted initials) and mapped `team_name` from schedule-side team names.
+  - Explicit canonical mapping retained for `player_id=29543` (`???? ??????` -> `YARON GOLDMAN`).
+- Added unique indexes:
+  - `onoff_default_mv`: `("Year", team_id, player_id)`
+  - `player_advanced_stats_mv`: `(game_year, team_id, player_id)`
+- Added Phase 6 integrity assertions in `etl/etl_full.R`:
+  - duplicate-key check for `onoff_default_mv` on `("Year", team_id, player_id)`
+  - duplicate-key check for `player_advanced_stats_mv` on `(game_year, team_id, player_id)`
+  - on violation, Phase 6 is marked failed.
+- Verification snapshot after rebuild + ETL smoke on game_ids `161,162,164`:
+  - duplicate groups in `onoff_default_mv`: `0`
+  - duplicate groups in `player_advanced_stats_mv`: `0`

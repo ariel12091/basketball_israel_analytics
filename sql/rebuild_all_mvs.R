@@ -1,5 +1,6 @@
 # rebuild_all_mvs.R
-# Drops and recreates ALL materialized views in dependency order.
+# Drops and recreates all registry objects (materialized views + tables)
+# in dependency order.
 # Use after schema changes that require DROP CASCADE on a base MV.
 #
 # Usage:
@@ -11,18 +12,19 @@
 library(DBI)
 library(RPostgres)
 
-# MV dependency order - each entry: list(name, sql_file, level)
+# Dependency order - each entry: list(name, sql_file, level, type)
+# type defaults to "matview". Use "table" for incrementally maintained objects.
 MV_REGISTRY <- list(
   list(name = "final_schedule_mv",              file = "sql/materialized_views/final_schedule_mv.sql",              level = 1),
   list(name = "df_pts_poss_lineups_longer_mv",  file = "sql/materialized_views/df_pts_poss_longer.sql",            level = 1),
   list(name = "mv_lineup_totals_by_day",        file = "sql/materialized_views/sub_lineups_by_day.sql",            level = 2),
   list(name = "team_ppp_ratings_mv",            file = "sql/materialized_views/team_ppp_ratings_mv.sql",           level = 2),
-  list(name = "onoff_default_mv",               file = "sql/materialized_views/onoff_mv.sql",                      level = 2),
-  list(name = "team_metrics_by_game_mv",        file = "sql/materialized_views/team_metrics_by_game_mv.sql",       level = 2),
+  list(name = "onoff_default_mv",               file = "sql/materialized_views/onoff_mv.sql",                      level = 2, type = "table"),
   list(name = "player_onoff_by_game",           file = "sql/materialized_views/player_onoff_by_game.sql",          level = 3),
-  list(name = "player_four_factors_by_game",    file = "sql/materialized_views/player_four_factors_by_game.sql",   level = 3),
+  list(name = "player_four_factors_by_game",    file = "sql/materialized_views/player_four_factors_by_game.sql",   level = 3, type = "table"),
   list(name = "lineup_four_factors_by_game",    file = "sql/materialized_views/lineup_four_factors_by_game.sql",   level = 3),
-  list(name = "player_advanced_stats_mv",       file = "sql/materialized_views/player_advanced_stats_mv.sql",      level = 3),
+  list(name = "team_metrics_by_game_mv",        file = "sql/materialized_views/team_metrics_by_game_mv.sql",       level = 3, type = "table"),
+  list(name = "player_advanced_stats_mv",       file = "sql/materialized_views/player_advanced_stats_mv.sql",      level = 3, type = "table"),
   list(name = "player_traditional_stats_mv",    file = "sql/materialized_views/player_traditional_stats_mv.sql",   level = 3),
   list(name = "team_metrics_rolling_mv",        file = "sql/materialized_views/team_metrics_rolling_mv.sql",       level = 3),
   list(name = "team_four_factors_mv",           file = "sql/materialized_views/team_four_factors_mv.sql",          level = 4)
@@ -30,13 +32,19 @@ MV_REGISTRY <- list(
 
 SCHEMA <- "basketball_test"
 
-extract_mv_name <- function(sql_file) {
+extract_registry_name <- function(sql_file) {
   lines <- readLines(sql_file, warn = FALSE)
   txt <- paste(lines, collapse = "\n")
   m <- regexec("(?i)CREATE\\s+(OR\\s+REPLACE\\s+)?MATERIALIZED\\s+VIEW\\s+([a-zA-Z0-9_\\.]+)", txt, perl = TRUE)
   hit <- regmatches(txt, m)[[1]]
-  if (!length(hit) || length(hit) < 3) return(NA_character_)
-  full_name <- tolower(hit[3])
+  if (!length(hit) || length(hit) < 3) {
+    m2 <- regexec("(?i)CREATE\\s+(OR\\s+REPLACE\\s+)?TABLE\\s+([a-zA-Z0-9_\\.]+)", txt, perl = TRUE)
+    hit2 <- regmatches(txt, m2)[[1]]
+    if (!length(hit2) || length(hit2) < 3) return(NA_character_)
+    full_name <- tolower(hit2[3])
+  } else {
+    full_name <- tolower(hit[3])
+  }
   parts <- strsplit(full_name, "\\.", fixed = FALSE)[[1]]
   tail(parts, 1)
 }
@@ -51,7 +59,7 @@ validate_mv_registry <- function(registry = MV_REGISTRY) {
   }
 
   sql_files <- list.files("sql/materialized_views", pattern = "\\.sql$", full.names = TRUE)
-  discovered <- lapply(sql_files, function(f) list(file = gsub("\\\\", "/", f), name = extract_mv_name(f)))
+  discovered <- lapply(sql_files, function(f) list(file = gsub("\\\\", "/", f), name = extract_registry_name(f)))
   discovered <- Filter(function(x) !is.na(x$name) && nzchar(x$name), discovered)
 
   disc_names <- vapply(discovered, function(x) x$name, character(1))
@@ -59,13 +67,13 @@ validate_mv_registry <- function(registry = MV_REGISTRY) {
 
   dup_names <- unique(disc_names[duplicated(disc_names)])
   if (length(dup_names)) {
-    stop(sprintf("Duplicate MV definitions found in sql/materialized_views: %s", paste(dup_names, collapse = ", ")))
+    stop(sprintf("Duplicate object definitions found in sql/materialized_views: %s", paste(dup_names, collapse = ", ")))
   }
 
   missing_in_registry <- setdiff(disc_names, reg_names)
   if (length(missing_in_registry)) {
     stop(sprintf(
-      "MV_REGISTRY is missing MV(s): %s. Add them to rebuild_all_mvs.R.",
+      "MV_REGISTRY is missing object(s): %s. Add them to rebuild_all_mvs.R.",
       paste(missing_in_registry, collapse = ", ")
     ))
   }
@@ -73,7 +81,7 @@ validate_mv_registry <- function(registry = MV_REGISTRY) {
   missing_in_sql <- setdiff(reg_names, disc_names)
   if (length(missing_in_sql)) {
     stop(sprintf(
-      "MV_REGISTRY references MV(s) with no CREATE MATERIALIZED VIEW SQL file: %s",
+      "MV_REGISTRY references object(s) with no CREATE SQL file: %s",
       paste(missing_in_sql, collapse = ", ")
     ))
   }
@@ -116,16 +124,30 @@ rebuild_all_mvs <- function(from_level = 1, skip = character(0)) {
   targets <- Filter(function(mv) mv$level >= from_level && !(mv$name %in% skip), MV_REGISTRY)
 
   # Drop in reverse order (L4 -> L1) to avoid cascade surprises
-  cat("Dropping MVs...\n")
+  cat("Dropping registry objects...\n")
   for (mv in rev(targets)) {
-    sql <- sprintf('DROP MATERIALIZED VIEW IF EXISTS %s.%s CASCADE;', SCHEMA, mv$name)
-    cat(sprintf("  DROP %s ... ", mv$name))
-    tryCatch({ dbExecute(pg, sql); cat("OK\n") },
-             error = function(e) cat(sprintf("SKIP (%s)\n", conditionMessage(e))))
+    obj_type <- if (!is.null(mv$type)) mv$type else "matview"
+    cat(sprintf("  DROP %s (%s) ... ", mv$name, obj_type))
+    if (identical(obj_type, "table")) {
+      ok <- TRUE
+      tryCatch(
+        dbExecute(pg, sprintf('DROP MATERIALIZED VIEW IF EXISTS %s.%s CASCADE;', SCHEMA, mv$name)),
+        error = function(e) { ok <<- FALSE; cat(sprintf("SKIP_MV (%s) ", conditionMessage(e))) }
+      )
+      tryCatch(
+        dbExecute(pg, sprintf('DROP TABLE IF EXISTS %s.%s CASCADE;', SCHEMA, mv$name)),
+        error = function(e) { ok <<- FALSE; cat(sprintf("SKIP_TBL (%s) ", conditionMessage(e))) }
+      )
+      cat(if (ok) "OK\n" else "\n")
+    } else {
+      sql <- sprintf('DROP MATERIALIZED VIEW IF EXISTS %s.%s CASCADE;', SCHEMA, mv$name)
+      tryCatch({ dbExecute(pg, sql); cat("OK\n") },
+               error = function(e) cat(sprintf("SKIP (%s)\n", conditionMessage(e))))
+    }
   }
 
   # Create in forward order (L1 -> L4)
-  cat("\nCreating MVs...\n")
+  cat("\nCreating registry objects...\n")
   for (mv in targets) {
     cat(sprintf("  L%d: %s\n", mv$level, mv$name))
 

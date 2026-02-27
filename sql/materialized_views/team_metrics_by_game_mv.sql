@@ -1,10 +1,10 @@
--- Draft: team-level game-grain metrics to support rolling trends and per-team deltas.
--- Extends existing game-level aggregates (lineup_four_factors_by_game + df_pts_poss_lineups_longer_mv)
--- and keeps formulas aligned with team_ppp_ratings_mv / team_four_factors_mv.
+-- Team-level game-grain metrics to support rolling trends and per-team deltas.
+-- Stored as a physical table for incremental refresh by game_id.
 
-CREATE MATERIALIZED VIEW basketball_test.team_metrics_by_game_mv
-TABLESPACE pg_default
-AS
+DROP MATERIALIZED VIEW IF EXISTS basketball_test.team_metrics_by_game_mv;
+DROP TABLE IF EXISTS basketball_test.team_metrics_by_game_mv;
+
+CREATE TABLE basketball_test.team_metrics_by_game_mv AS
 WITH lffg_team_game AS (
   SELECT
     lf.team_id,
@@ -210,7 +210,7 @@ LEFT JOIN pivot_ff ff
 LEFT JOIN traditional_game tg
   ON tg.game_id = fs.game_id
  AND tg.team_id = fs.team_id
-WITH DATA;
+;
 
 CREATE UNIQUE INDEX team_metrics_by_game_mv_pk
   ON basketball_test.team_metrics_by_game_mv (game_year, game_id, team_id);
