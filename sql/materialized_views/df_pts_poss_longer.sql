@@ -1,8 +1,10 @@
 -- basketball_test.df_pts_poss_lineups_longer_mv source
 
-CREATE MATERIALIZED VIEW basketball_test.df_pts_poss_lineups_longer_mv
-TABLESPACE pg_default
-AS WITH cum_scores AS (
+DROP MATERIALIZED VIEW IF EXISTS basketball_test.df_pts_poss_lineups_longer_mv;
+DROP TABLE IF EXISTS basketball_test.df_pts_poss_lineups_longer_mv;
+
+CREATE TABLE basketball_test.df_pts_poss_lineups_longer_mv AS
+WITH cum_scores AS (
     SELECT game_id, id,
       SUM(COALESCE(team_score, 0)) OVER (PARTITION BY game_id ORDER BY id) AS total_cum,
       SUM(COALESCE(team_score, 0)) OVER (PARTITION BY game_id, team_id ORDER BY id) AS team_cum
@@ -85,9 +87,9 @@ SELECT quarter,
            LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id
           WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])) longer
   WHERE lineup_hash IS NOT NULL
-WITH DATA;
+;
 
--- View indexes:
+-- Table indexes:
 CREATE INDEX dfppl_game_id_idx ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (game_id);
 CREATE INDEX dfppl_team_game_idx ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (team_id, game_id);
 CREATE INDEX dfppl_id_game_type_idx ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (game_id, id, type);

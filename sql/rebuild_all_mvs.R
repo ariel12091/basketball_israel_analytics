@@ -16,7 +16,7 @@ library(RPostgres)
 # type defaults to "matview". Use "table" for incrementally maintained objects.
 MV_REGISTRY <- list(
   list(name = "final_schedule_mv",              file = "sql/materialized_views/final_schedule_mv.sql",              level = 1),
-  list(name = "df_pts_poss_lineups_longer_mv",  file = "sql/materialized_views/df_pts_poss_longer.sql",            level = 1),
+  list(name = "df_pts_poss_lineups_longer_mv",  file = "sql/materialized_views/df_pts_poss_longer.sql",            level = 1, type = "table"),
   list(name = "mv_lineup_totals_by_day",        file = "sql/materialized_views/sub_lineups_by_day.sql",            level = 2),
   list(name = "team_ppp_ratings_mv",            file = "sql/materialized_views/team_ppp_ratings_mv.sql",           level = 2),
   list(name = "onoff_default_mv",               file = "sql/materialized_views/onoff_mv.sql",                      level = 2, type = "table"),

@@ -561,7 +561,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg("â”€â”€â”€ Phase 4: MV Refresh â”€â”€â”€")
 
   mv_levels <- list(
-    list(level = 1, mvs = c("final_schedule_mv", "df_pts_poss_lineups_longer_mv")),
+    list(level = 1, mvs = c("final_schedule_mv")),
     list(level = 2, mvs = c("mv_lineup_totals_by_day", "team_ppp_ratings_mv")),
     list(level = 3, mvs = c("player_onoff_by_game", "lineup_four_factors_by_game")),
     list(level = 4, mvs = c("team_metrics_rolling_mv", "team_four_factors_mv"))
@@ -573,6 +573,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         log_msg(sprintf("[DRY RUN] Would refresh: %s (level %d)", mv, lv$level))
       }
     }
+    log_msg(sprintf(
+      "[DRY RUN] Would incrementally refresh table: df_pts_poss_lineups_longer_mv for %d game(s)",
+      length(processed_ids)
+    ))
     log_msg(sprintf(
       "[DRY RUN] Would incrementally refresh table: player_four_factors_by_game for %d game(s)",
       length(processed_ids)
@@ -597,6 +601,19 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       DBI::dbExecute(pg, sprintf("SET LOCAL search_path TO %s, public;", SCHEMA))
       log_msg(sprintf("  search_path set to %s, public (within transaction)", SCHEMA))
 
+      fn_exists <- function(name) {
+        DBI::dbGetQuery(
+          pg,
+          "SELECT EXISTS (
+             SELECT 1
+             FROM pg_proc p
+             JOIN pg_namespace n ON n.oid = p.pronamespace
+             WHERE n.nspname = $1 AND p.proname = $2
+           ) AS ok",
+          params = list(SCHEMA, name)
+        )$ok[[1]]
+      }
+
       for (lv in mv_levels) {
         for (mv in lv$mvs) {
           mv_t0 <- proc.time()
@@ -610,21 +627,34 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
                           lv$level, mv, format(cnt, big.mark = ","), mv_elapsed))
         }
 
-        if (lv$level == 3) {
+        if (lv$level == 1) {
           ids_csv <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
 
-          fn_exists <- function(name) {
-            DBI::dbGetQuery(
-              pg,
-              "SELECT EXISTS (
-                 SELECT 1
-                 FROM pg_proc p
-                 JOIN pg_namespace n ON n.oid = p.pronamespace
-                 WHERE n.nspname = $1 AND p.proname = $2
-               ) AS ok",
-              params = list(SCHEMA, name)
-            )$ok[[1]]
+          if (!isTRUE(fn_exists("refresh_df_pts_poss_lineups_longer_for_games"))) {
+            stop("Missing function basketball_test.refresh_df_pts_poss_lineups_longer_for_games(int4[])")
           }
+
+          df_t0 <- proc.time()
+          df_touch <- DBI::dbGetQuery(
+            pg,
+            sprintf(
+              "SELECT refresh_df_pts_poss_lineups_longer_for_games(ARRAY[%s]::int4[]) AS n",
+              ids_csv
+            )
+          )$n[[1]]
+          df_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM df_pts_poss_lineups_longer_mv")$n[[1]]
+          df_elapsed <- (proc.time() - df_t0)["elapsed"]
+          log_msg(sprintf(
+            "  [INC] df_pts_poss_lineups_longer_mv refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
+            length(processed_ids),
+            format(as.integer(df_touch), big.mark = ","),
+            format(as.integer(df_cnt), big.mark = ","),
+            df_elapsed
+          ))
+        }
+
+        if (lv$level == 3) {
+          ids_csv <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
 
           if (!isTRUE(fn_exists("refresh_player_four_factors_by_game_for_games"))) {
             stop("Missing function basketball_test.refresh_player_four_factors_by_game_for_games(int4[])")
@@ -716,7 +746,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       DBI::dbCommit(pg)
       elapsed <- (proc.time() - t0)["elapsed"]
       total_mvs <- sum(vapply(mv_levels, function(x) length(x$mvs), integer(1)))
-      log_msg(sprintf("Phase 4 complete. %d MVs refreshed + 4 incremental tables updated in %.1fs", total_mvs, elapsed))
+      log_msg(sprintf("Phase 4 complete. %d MVs refreshed + 5 incremental tables updated in %.1fs", total_mvs, elapsed))
 
     }, error = function(e) {
       log_msg(sprintf("Phase 4 FAILED on MV refresh: %s", conditionMessage(e)), "ERROR")

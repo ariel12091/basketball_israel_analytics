@@ -366,3 +366,4 @@ SELECT player_id,
 
 CREATE INDEX idx_pas_year ON basketball_test.player_advanced_stats_mv (game_year);
 CREATE INDEX idx_pas_team_player ON basketball_test.player_advanced_stats_mv (team_id, player_id);
+CREATE UNIQUE INDEX idx_pas_pk ON basketball_test.player_advanced_stats_mv (game_year, team_id, player_id);

@@ -418,3 +418,4 @@ SELECT team_name AS "Team",
 
 CREATE INDEX idx_onoff_default_year ON basketball_test.onoff_default_mv ("Year");
 CREATE INDEX idx_onoff_default_team_player ON basketball_test.onoff_default_mv (team_id, player_id);
+CREATE UNIQUE INDEX idx_onoff_default_pk ON basketball_test.onoff_default_mv ("Year", team_id, player_id);
