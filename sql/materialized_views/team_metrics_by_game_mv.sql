@@ -123,10 +123,13 @@ traditional_game AS (
       SUM(CASE WHEN d.type = 'shot' AND d.parameters_made = 'made' AND d.type_lineup = 'offense' THEN COALESCE(d.parameters_points, 0) ELSE 0 END)
       + SUM(CASE WHEN d.type = 'freeThrow' AND d.parameters_made = 'made' AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)
     )::int4 AS pts,
-    SUM(CASE WHEN d.type = 'rebound'  AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS reb,
+    SUM(CASE WHEN d.type = 'rebound' AND (
+              (d.type_lineup = 'offense' AND d.parameters_type = 'offensive')
+              OR (d.type_lineup = 'defense' AND d.parameters_type = 'defensive')
+            ) THEN 1 ELSE 0 END)::int4 AS reb,
     SUM(CASE WHEN d.type = 'assist'   AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS ast,
-    SUM(CASE WHEN d.type = 'steal'    AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS stl,
-    SUM(CASE WHEN d.type = 'block'    AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS blk,
+    SUM(CASE WHEN d.type = 'steal'    AND d.type_lineup = 'defense' THEN 1 ELSE 0 END)::int4 AS stl,
+    SUM(CASE WHEN d.type = 'block'    AND d.type_lineup = 'defense' THEN 1 ELSE 0 END)::int4 AS blk,
     SUM(CASE WHEN d.type = 'turnover' AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS tov,
     SUM(CASE WHEN d.type = 'shot' AND d.parameters_made = 'made' AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS fgm,
     SUM(CASE WHEN d.type = 'shot' AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS fga,

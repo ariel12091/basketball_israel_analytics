@@ -184,9 +184,11 @@ BEGIN
       d.segment_id,
       d.end_game_seconds_remaining,
       d.type,
+      d.parameters_type,
       d.parameters_made,
       d.parameters_points,
       d.player_id,
+      d.event_owner_side,
       d.type_lineup,
       d.final_end_poss,
       d.quarter,
@@ -287,10 +289,13 @@ BEGIN
         + SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense'
                    THEN 1 ELSE 0 END)
       )::int AS pts,
-      SUM(CASE WHEN a.type = 'rebound' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS reb,
+      SUM(CASE WHEN a.type = 'rebound' AND (
+                (a.type_lineup = 'offense' AND a.parameters_type = 'offensive')
+                OR (a.type_lineup = 'defense' AND a.parameters_type = 'defensive')
+              ) THEN 1 ELSE 0 END)::int AS reb,
       SUM(CASE WHEN a.type = 'assist' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ast,
-      SUM(CASE WHEN a.type = 'steal' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS stl,
-      SUM(CASE WHEN a.type = 'block' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS blk,
+      SUM(CASE WHEN a.type = 'steal' AND a.type_lineup = 'defense' THEN 1 ELSE 0 END)::int AS stl,
+      SUM(CASE WHEN a.type = 'block' AND a.type_lineup = 'defense' THEN 1 ELSE 0 END)::int AS blk,
       SUM(CASE WHEN a.type = 'turnover' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS tov,
       SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fgm,
       SUM(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fga,

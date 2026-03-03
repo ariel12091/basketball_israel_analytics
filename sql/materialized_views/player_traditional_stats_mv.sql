@@ -30,6 +30,7 @@ actions_with_year AS (
     d.parameters_made,
     d.parameters_points,
     d.player_id,
+    d.event_owner_side,
     d.type_lineup,
     d.final_end_poss,
     d.final_end_id,
@@ -45,10 +46,13 @@ box_totals AS (
     awy.player_id,
     SUM(CASE WHEN awy.type = 'shot' AND awy.parameters_made = 'made' AND awy.type_lineup = 'offense' THEN COALESCE(awy.parameters_points, 0) ELSE 0 END) +
       SUM(CASE WHEN awy.type = 'freeThrow' AND awy.parameters_made = 'made' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS pts,
-    SUM(CASE WHEN awy.type = 'rebound'  AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS reb,
+    SUM(CASE WHEN awy.type = 'rebound' AND (
+              (awy.type_lineup = 'offense' AND awy.parameters_type = 'offensive')
+              OR (awy.type_lineup = 'defense' AND awy.parameters_type = 'defensive')
+            ) THEN 1 ELSE 0 END) AS reb,
     SUM(CASE WHEN awy.type = 'assist'   AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS ast,
-    SUM(CASE WHEN awy.type = 'steal' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS stl,
-    SUM(CASE WHEN awy.type = 'block' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS blk,
+    SUM(CASE WHEN awy.type = 'steal'    AND awy.type_lineup = 'defense' THEN 1 ELSE 0 END) AS stl,
+    SUM(CASE WHEN awy.type = 'block'    AND awy.type_lineup = 'defense' THEN 1 ELSE 0 END) AS blk,
     SUM(CASE WHEN awy.type = 'turnover' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS tov,
     SUM(CASE WHEN awy.type = 'shot' AND awy.parameters_made = 'made' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS fgm,
     SUM(CASE WHEN awy.type = 'shot' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS fga,
@@ -188,6 +192,9 @@ LEFT JOIN roster_names rn
   ON rn.game_year = bt.game_year
  AND rn.team_id = bt.team_id
  AND rn.player_id = bt.player_id
+WHERE COALESCE(ut.gp, 0) > 0
+   OR COALESCE(ut.poss_on_floor, 0) > 0
+   OR COALESCE(mt.minutes, 0) > 0
 ORDER BY bt.game_year DESC, bt.pts DESC, rn.team_name, rn.lastname, rn.firstname
 WITH DATA;
 
