@@ -593,6 +593,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       "[DRY RUN] Would incrementally refresh table: player_advanced_stats_mv for %d game(s)",
       length(processed_ids)
     ))
+    log_msg("[DRY RUN] Would refresh materialized view: player_traditional_stats_mv (if exists)")
   } else {
     tryCatch({
       t0 <- proc.time()
@@ -609,6 +610,18 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
              FROM pg_proc p
              JOIN pg_namespace n ON n.oid = p.pronamespace
              WHERE n.nspname = $1 AND p.proname = $2
+           ) AS ok",
+          params = list(SCHEMA, name)
+        )$ok[[1]]
+      }
+
+      matview_exists <- function(name) {
+        DBI::dbGetQuery(
+          pg,
+          "SELECT EXISTS (
+             SELECT 1
+             FROM pg_matviews
+             WHERE schemaname = $1 AND matviewname = $2
            ) AS ok",
           params = list(SCHEMA, name)
         )$ok[[1]]
@@ -740,13 +753,27 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
             format(as.integer(pas_cnt), big.mark = ","),
             pas_elapsed
           ))
+
+          if (isTRUE(matview_exists("player_traditional_stats_mv"))) {
+            pts_t0 <- proc.time()
+            DBI::dbExecute(pg, "REFRESH MATERIALIZED VIEW player_traditional_stats_mv;")
+            pts_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM player_traditional_stats_mv")$n[[1]]
+            pts_elapsed <- (proc.time() - pts_t0)["elapsed"]
+            log_msg(sprintf(
+              "  [INC] player_traditional_stats_mv refreshed - total %s rows (%.1fs)",
+              format(as.integer(pts_cnt), big.mark = ","),
+              pts_elapsed
+            ))
+          } else {
+            log_msg("  [INC] player_traditional_stats_mv not found as materialized view - skipping")
+          }
         }
       }
 
       DBI::dbCommit(pg)
       elapsed <- (proc.time() - t0)["elapsed"]
       total_mvs <- sum(vapply(mv_levels, function(x) length(x$mvs), integer(1)))
-      log_msg(sprintf("Phase 4 complete. %d MVs refreshed + 5 incremental tables updated in %.1fs", total_mvs, elapsed))
+      log_msg(sprintf("Phase 4 complete. %d MVs refreshed + incremental table updates completed in %.1fs", total_mvs, elapsed))
 
     }, error = function(e) {
       log_msg(sprintf("Phase 4 FAILED on MV refresh: %s", conditionMessage(e)), "ERROR")
