@@ -1256,7 +1256,7 @@ server_tab3 <- function(input, output, session, shared) {
   output$tr_table <- renderDT({
     mode <- input$tr_view_mode
     mins_map <- NULL
-    show_delta <- FALSE
+    show_delta <- isTRUE(tr_delta_enabled())
     empty_dt <- function(msg = "No data returned for current filters") {
       DT::datatable(
         data.frame(Info = msg, check.names = FALSE),
