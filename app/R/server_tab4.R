@@ -53,6 +53,11 @@ server_tab4 <- function(input, output, session, shared) {
     }
   }, ignoreInit = TRUE)
 
+  observeEvent(input$game_year, {
+    b <- shared$season_date_bounds(input$game_year)
+    updateDateRangeInput(session, "gl_dates", start = b$start, end = b$end, min = b$start, max = b$end)
+  }, ignoreInit = FALSE)
+
   observeEvent(list(input$gl_gn_min, input$gl_gn_max), {
     if ((nzchar(input$gl_gn_min %||% "") || nzchar(input$gl_gn_max %||% "")) &&
         nzchar(input$gl_last_n %||% "")) {
@@ -63,7 +68,8 @@ server_tab4 <- function(input, output, session, shared) {
   # --- Reset ---
   observeEvent(input$gl_reset, {
     updateRadioButtons(session, "gl_view_mode", selected = "Summary")
-    updateDateRangeInput(session, "gl_dates", start = NA, end = NA)
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+    updateDateRangeInput(session, "gl_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     if (!is.null(gl_ref$teams)) {
       team_values <- c("", as.character(gl_ref$teams$team_id))
       names(team_values) <- c("\u2014 All teams \u2014", gl_ref$teams$team_name)
