@@ -8,6 +8,8 @@ import { FilterContext, filterReducer, DEFAULT_FILTERS } from '../../features/fi
 import { useApi } from '../../hooks/useApi';
 import OnOffPage from '../../pages/OnOffPage';
 import LineupsPage from '../../pages/LineupsPage';
+import TeamRatingsPage from '../../pages/TeamRatingsPage';
+import GameLogsPage from '../../pages/GameLogsPage';
 
 export default function AppShell() {
   const [activeTab, setActiveTab] = useState<TabId>('onoff');
@@ -31,6 +33,8 @@ export default function AppShell() {
     (filterState.lastN ? 1 : 0) +
     (filterState.gnMin !== null || filterState.gnMax !== null ? 1 : 0) +
     (filterState.oppRankSide ? 1 : 0) +
+    (filterState.startersOffMode && filterState.startersOffValue !== null ? 1 : 0) +
+    (filterState.startersDefMode && filterState.startersDefValue !== null ? 1 : 0) +
     (filterState.startDate !== DEFAULT_FILTERS.startDate ||
     filterState.endDate !== DEFAULT_FILTERS.endDate
       ? 1
@@ -85,8 +89,8 @@ export default function AppShell() {
         <div className={`main-content ${drawerOpen ? 'with-drawer' : ''}`}>
           {activeTab === 'onoff' && <OnOffPage />}
           {activeTab === 'lineups' && <LineupsPage />}
-          {activeTab === 'teams' && <PlaceholderTab name="Team Ratings" />}
-          {activeTab === 'gamelogs' && <PlaceholderTab name="Game Logs" />}
+          {activeTab === 'teams' && <TeamRatingsPage />}
+          {activeTab === 'gamelogs' && <GameLogsPage />}
         </div>
 
         <FilterDrawer />
@@ -97,16 +101,4 @@ export default function AppShell() {
   );
 }
 
-function PlaceholderTab({ name }: { name: string }) {
-  return (
-    <div style={{ padding: '40px 0', textAlign: 'center' }}>
-      <h2 className="section-title" style={{ marginBottom: 8 }}>
-        {name}
-      </h2>
-      <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>
-        Coming in Phase 2 â€” Tab 2, 3, 4
-      </p>
-    </div>
-  );
-}
 

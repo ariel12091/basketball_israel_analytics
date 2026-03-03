@@ -319,6 +319,7 @@ server_tab3 <- function(input, output, session, shared) {
   # -------------------------------------------------------------
   observeEvent(input$tr_reset, {
     updateRadioButtons(session, "tr_view_mode", selected = "Summary")
+    bslib::update_switch(session, "tr_trad_defense_mode", value = FALSE)
     updateSelectInput(session, "tr_trad_display_mode", selected = "Per Game")
     updateDateRangeInput(session, "tr_dates", start = NA, end = NA)
     updateSelectizeInput(session, "tr_game_type", selected = "")
@@ -359,6 +360,16 @@ server_tab3 <- function(input, output, session, shared) {
   observeEvent(list(input$game_year, input$main_tabs), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "team_ratings")) return(NULL)
     req(input$game_year)
+    # First touch behavior: if Tab 3 still has static UI defaults, align to season bounds.
+    cur_start <- if (!is.null(input$tr_dates[1]) && !is.na(input$tr_dates[1])) as.Date(input$tr_dates[1]) else as.Date(NA)
+    cur_end <- if (!is.null(input$tr_dates[2]) && !is.na(input$tr_dates[2])) as.Date(input$tr_dates[2]) else as.Date(NA)
+    if (!is.na(cur_start) && !is.na(cur_end) &&
+        identical(cur_start, as.Date(DEFAULT_START)) &&
+        identical(cur_end, as.Date(DEFAULT_END))) {
+      b <- shared$season_date_bounds(as.character(input$game_year))
+      updateDateRangeInput(session, "tr_dates", start = b$start, end = b$end)
+    }
+
     td <- tr_teams_for_year()
     updateSelectizeInput(session, "tr_opponents", choices = td$team_name, selected = character(0))
 
@@ -481,9 +492,9 @@ server_tab3 <- function(input, output, session, shared) {
             OR ($8::text = 'bottom' AND gr.opp_rank >= (gr.max_rank - $9::int4 + 1))
        ),
        acts AS (
-         SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining,
-                d.type, d.parameters_made, d.parameters_points, d.type_lineup, d.final_end_poss, d.quarter,
-                d.own_team_score, d.opp_team_score
+          SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining,
+                 d.type, d.parameters_type, d.parameters_made, d.parameters_points, d.event_owner_side, d.type_lineup, d.final_end_poss, d.quarter,
+                 d.own_team_score, d.opp_team_score
          FROM basketball_test.df_pts_poss_lineups_longer_mv d
          JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
          WHERE (
@@ -504,27 +515,70 @@ server_tab3 <- function(input, output, session, shared) {
          SELECT
            a.team_id,
            (
-             SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN COALESCE(a.parameters_points, 0) ELSE 0 END)
-             + SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)
-           )::int AS pts,
-           SUM(CASE WHEN a.type = 'rebound' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS reb,
-           SUM(CASE WHEN a.type = 'assist' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ast,
-           SUM(CASE WHEN a.type = 'steal' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS stl,
-           SUM(CASE WHEN a.type = 'block' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS blk,
-           SUM(CASE WHEN a.type = 'turnover' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS tov,
-           SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fgm,
-           SUM(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fga,
-           SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS \"3pm\",
-           SUM(CASE WHEN a.type = 'shot' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS \"3pa\",
-           SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ftm,
-           SUM(CASE WHEN a.type = 'freeThrow' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fta
+              SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                  ) THEN COALESCE(a.parameters_points, 0) ELSE 0 END)
+              + SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                  ) THEN 1 ELSE 0 END)
+             )::int AS pts,
+             SUM(CASE WHEN a.type = 'rebound' AND (
+                     ($18::text = 'offense' AND a.parameters_type = 'offensive' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.parameters_type = 'offensive' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS oreb,
+             SUM(CASE WHEN a.type = 'rebound' AND (
+                     ($18::text = 'offense' AND a.parameters_type = 'defensive' AND a.type_lineup = 'defense') OR
+                     ($18::text = 'defense' AND a.parameters_type = 'defensive' AND a.type_lineup = 'offense')
+                   ) THEN 1 ELSE 0 END)::int AS dreb,
+            SUM(CASE WHEN a.type = 'assist' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS ast,
+             SUM(CASE WHEN a.type = 'steal' AND (
+                      ($18::text = 'offense' AND a.type_lineup = 'defense') OR
+                      ($18::text = 'defense' AND a.type_lineup = 'offense')
+                    ) THEN 1 ELSE 0 END)::int AS stl,
+             SUM(CASE WHEN a.type = 'block' AND (
+                      ($18::text = 'offense' AND a.type_lineup = 'defense') OR
+                      ($18::text = 'defense' AND a.type_lineup = 'offense')
+                    ) THEN 1 ELSE 0 END)::int AS blk,
+            SUM(CASE WHEN a.type = 'turnover' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS tov,
+            SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS fgm,
+            SUM(CASE WHEN a.type = 'shot' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS fga,
+            SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.parameters_points = 3 AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS \"3pm\",
+            SUM(CASE WHEN a.type = 'shot' AND a.parameters_points = 3 AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS \"3pa\",
+            SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS ftm,
+            SUM(CASE WHEN a.type = 'freeThrow' AND (
+                     ($18::text = 'offense' AND a.type_lineup = 'offense') OR
+                     ($18::text = 'defense' AND a.type_lineup = 'defense')
+                   ) THEN 1 ELSE 0 END)::int AS fta
          FROM acts a
          GROUP BY a.team_id
        ),
        poss_end AS (
          SELECT DISTINCT a.game_id, a.team_id, a.id AS poss_end_id
          FROM acts a
-         WHERE a.type_lineup = 'offense' AND a.final_end_poss AND a.id IS NOT NULL
+         WHERE a.type_lineup = $18::text AND a.final_end_poss AND a.id IS NOT NULL
        ),
        team_usage AS (
          SELECT
@@ -558,7 +612,7 @@ server_tab3 <- function(input, output, session, shared) {
          COALESCE(tu.gp, 0)::int AS gp,
          COALESCE(tu.poss_on_floor, 0)::int AS poss_on_floor,
          COALESCE(tm.minutes, 0)::numeric AS minutes,
-         ts.pts, ts.reb, ts.ast, ts.stl, ts.blk, ts.tov, ts.fgm, ts.fga, ts.\"3pm\", ts.\"3pa\", ts.ftm, ts.fta,
+         ts.pts, (ts.oreb + ts.dreb)::int AS reb, ts.oreb, ts.dreb, ts.ast, ts.stl, ts.blk, ts.tov, ts.fgm, ts.fga, ts.\"3pm\", ts.\"3pa\", ts.ftm, ts.fta,
          CASE WHEN ts.fga > 0 THEN ROUND((ts.fgm::numeric / ts.fga::numeric) * 100, 1) ELSE NULL END AS fg_pct,
          CASE WHEN ts.\"3pa\" > 0 THEN ROUND((ts.\"3pm\"::numeric / ts.\"3pa\"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
          CASE WHEN ts.fta > 0 THEN ROUND((ts.ftm::numeric / ts.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
@@ -575,14 +629,14 @@ server_tab3 <- function(input, output, session, shared) {
         p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
         p$rank_side, p$rank_n, p$metric,
         p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-        p$min_gn, p$max_gn, p$last_n_games
+        p$min_gn, p$max_gn, p$last_n_games, p$trad_side
       )
     )
   }
 
   apply_tr_trad_mode <- function(df, mode) {
     if (is.null(df) || !nrow(df)) return(df)
-    count_cols <- c("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta")
+    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta")
     mode <- mode %||% "Per Game"
     if (identical(mode, "Per Game")) {
       for (col in count_cols) if (col %in% names(df)) df[[col]] <- ifelse(df$gp > 0, df[[col]] / df$gp, NA_real_)
@@ -656,7 +710,9 @@ server_tab3 <- function(input, output, session, shared) {
     num_starters_def_min <- if (identical(def_mode, "gte")) def_val else NA_integer_
     num_starters_def_max <- if (identical(def_mode, "lte")) def_val else NA_integer_
 
-    list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = num_starters_off_min, num_starters_off_max = num_starters_off_max, num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max)
+    trad_side <- if (isTRUE(input$tr_trad_defense_mode)) "defense" else "offense"
+
+    list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = num_starters_off_min, num_starters_off_max = num_starters_off_max, num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max, trad_side = trad_side)
   }) %>% debounce(300)
 
   tr_delta_enabled <- reactive({
@@ -750,7 +806,22 @@ server_tab3 <- function(input, output, session, shared) {
 
   tr_fallback_needed <- reactive({
     p <- tr_params()
-    has_dates <- !is.na(p$start_d) || !is.na(p$end_d)
+    bounds <- shared$season_date_bounds(as.character(p$game_year))
+    is_static_ui_default <- !is.na(p$start_d) && !is.na(p$end_d) &&
+      identical(as.Date(p$start_d), as.Date(DEFAULT_START)) &&
+      identical(as.Date(p$end_d), as.Date(DEFAULT_END))
+    has_dates <- {
+      if (is.na(p$start_d) && is.na(p$end_d)) {
+        FALSE
+      } else if (is_static_ui_default) {
+        FALSE
+      } else if (is.na(p$start_d) || is.na(p$end_d)) {
+        TRUE
+      } else {
+        !(identical(as.Date(p$start_d), as.Date(bounds$start)) &&
+            identical(as.Date(p$end_d), as.Date(bounds$end)))
+      }
+    }
     has_gt <- !is.na(p$game_type_csv)
     has_opp <- !is.na(p$opp_ids_csv)
     has_ha <- !is.na(p$home_away)
@@ -1001,9 +1072,10 @@ server_tab3 <- function(input, output, session, shared) {
   })
 
   tr_prev_traditional_ranks_from_mv <- reactive({
+    p <- tr_params()
+    if (identical(p$trad_side, "defense")) return(NULL)
     if (isTRUE(tr_fallback_needed())) return(NULL)
     if (!isTRUE(tr_delta_enabled())) return(NULL)
-    p <- tr_params()
     bounds <- shared$season_date_bounds(as.character(p$game_year))
     start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
     end_d <- if (!is.na(p$end_d)) as.Date(p$end_d) else as.Date(bounds$end)
@@ -1183,9 +1255,15 @@ server_tab3 <- function(input, output, session, shared) {
 
   output$tr_table <- renderDT({
     mode <- input$tr_view_mode
-    mins_df <- tr_game_minutes()
-    mins_map <- if (!is.null(mins_df) && nrow(mins_df)) setNames(mins_df$game_minutes, as.character(mins_df$team_id)) else NULL
-    show_delta <- isTRUE(tr_delta_enabled())
+    mins_map <- NULL
+    show_delta <- FALSE
+    empty_dt <- function(msg = "No data returned for current filters") {
+      DT::datatable(
+        data.frame(Info = msg, check.names = FALSE),
+        rownames = FALSE,
+        options = list(dom = "t")
+      )
+    }
 
     fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1) {
       v <- suppressWarnings(as.numeric(value))
@@ -1201,9 +1279,11 @@ server_tab3 <- function(input, output, session, shared) {
       paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
     }
 
+    tryCatch({
     if (identical(mode, "Traditional")) {
       df <- tr_traditional_data()
-      if (is.null(df) || !nrow(df)) return(NULL)
+      if (is.null(df) || !nrow(df)) return(empty_dt("Traditional: no data for current filters"))
+      is_defense_trad <- identical((tr_params()$trad_side %||% "offense"), "defense")
 
       pr_vec_local <- function(x, invert = FALSE) {
         n <- sum(!is.na(x))
@@ -1216,11 +1296,19 @@ server_tab3 <- function(input, output, session, shared) {
       rank_vec_local <- function(x, invert = FALSE) {
         if (invert) dplyr::min_rank(x) else dplyr::min_rank(dplyr::desc(x))
       }
-      metric_cfg <- c(
-        pts = FALSE, reb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
-        fgm = FALSE, fga = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
-        fg_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
-      )
+      metric_cfg <- if (!is_defense_trad) {
+        c(
+          pts = FALSE, reb = FALSE, oreb = FALSE, dreb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
+          fgm = FALSE, fga = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
+          fg_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
+        )
+      } else {
+        c(
+          pts = TRUE, reb = TRUE, oreb = TRUE, dreb = TRUE, ast = TRUE, stl = TRUE, blk = TRUE, tov = FALSE,
+          fgm = TRUE, fga = TRUE, `3pm` = TRUE, `3pa` = TRUE, ftm = TRUE, fta = TRUE,
+          fg_pct = TRUE, tp_pct = TRUE, ft_pct = TRUE, efg = TRUE, ts = TRUE
+        )
+      }
       for (m in names(metric_cfg)) {
         if (!m %in% names(df)) next
         inv <- isTRUE(metric_cfg[[m]])
@@ -1254,6 +1342,8 @@ server_tab3 <- function(input, output, session, shared) {
         Min = df$minutes,
         PTS = make_cell(df$pts, df$rank_pts, "pts"),
         REB = make_cell(df$reb, df$rank_reb, "reb"),
+        OREB = make_cell(df$oreb, df$rank_oreb, "oreb"),
+        DREB = make_cell(df$dreb, df$rank_dreb, "dreb"),
         AST = make_cell(df$ast, df$rank_ast, "ast"),
         STL = make_cell(df$stl, df$rank_stl, "stl"),
         BLK = make_cell(df$blk, df$rank_blk, "blk"),
@@ -1269,23 +1359,32 @@ server_tab3 <- function(input, output, session, shared) {
         `FT%` = make_cell(df$ft_pct, df$rank_ft_pct, "ft_pct"),
         `eFG%` = make_cell(df$efg, df$rank_efg, "efg"),
         `TS%` = make_cell(df$ts, df$rank_ts, "ts"),
-        pr_pts = df$pr_pts, pr_reb = df$pr_reb, pr_ast = df$pr_ast, pr_stl = df$pr_stl, pr_blk = df$pr_blk, pr_tov = df$pr_tov,
+        pr_pts = df$pr_pts, pr_reb = df$pr_reb, pr_oreb = df$pr_oreb, pr_dreb = df$pr_dreb, pr_ast = df$pr_ast, pr_stl = df$pr_stl, pr_blk = df$pr_blk, pr_tov = df$pr_tov,
         pr_fgm = df$pr_fgm, pr_fga = df$pr_fga, pr_3pm = df$pr_3pm, pr_3pa = df$pr_3pa, pr_ftm = df$pr_ftm, pr_fta = df$pr_fta,
         pr_fg_pct = df$pr_fg_pct, pr_tp_pct = df$pr_tp_pct, pr_ft_pct = df$pr_ft_pct, pr_efg = df$pr_efg, pr_ts = df$pr_ts,
         check.names = FALSE
       )
       sort_map <- c(
-        PTS = "pts", REB = "reb", AST = "ast", STL = "stl", BLK = "blk",
+        PTS = "pts", REB = "reb", OREB = "oreb", DREB = "dreb", AST = "ast", STL = "stl", BLK = "blk",
         TOV = "tov", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct", `3PM` = "3pm", `3PA` = "3pa",
         `3P%` = "tp_pct", FTM = "ftm", FTA = "fta", `FT%` = "ft_pct",
         `eFG%` = "efg", `TS%` = "ts"
       )
-      sort_dir_map <- c(
-        PTS = "desc", REB = "desc", AST = "desc", STL = "desc", BLK = "desc",
-        TOV = "asc", FGM = "desc", FGA = "desc", `FG%` = "desc", `3PM` = "desc", `3PA` = "desc",
-        `3P%` = "desc", FTM = "desc", FTA = "desc", `FT%` = "desc",
-        `eFG%` = "desc", `TS%` = "desc"
-      )
+      sort_dir_map <- if (!is_defense_trad) {
+        c(
+          PTS = "desc", REB = "desc", OREB = "desc", DREB = "desc", AST = "desc", STL = "desc", BLK = "desc",
+          TOV = "asc", FGM = "desc", FGA = "desc", `FG%` = "desc", `3PM` = "desc", `3PA` = "desc",
+          `3P%` = "desc", FTM = "desc", FTA = "desc", `FT%` = "desc",
+          `eFG%` = "desc", `TS%` = "desc"
+        )
+      } else {
+        c(
+          PTS = "asc", REB = "asc", OREB = "asc", DREB = "asc", AST = "asc", STL = "asc", BLK = "asc",
+          TOV = "desc", FGM = "asc", FGA = "asc", `FG%` = "asc", `3PM` = "asc", `3PA` = "asc",
+          `3P%` = "asc", FTM = "asc", FTA = "asc", `FT%` = "asc",
+          `eFG%` = "asc", `TS%` = "asc"
+        )
+      }
       for (nm in names(sort_map)) {
         sort_col <- paste0("sort__", make.names(nm))
         vals <- suppressWarnings(as.numeric(df[[sort_map[[nm]]]]))
@@ -1297,7 +1396,7 @@ server_tab3 <- function(input, output, session, shared) {
         disp[[sort_col]] <- vals
       }
       pr_map <- c(
-        PTS = "pr_pts", REB = "pr_reb", AST = "pr_ast", STL = "pr_stl", BLK = "pr_blk",
+        PTS = "pr_pts", REB = "pr_reb", OREB = "pr_oreb", DREB = "pr_dreb", AST = "pr_ast", STL = "pr_stl", BLK = "pr_blk",
         TOV = "pr_tov", FGM = "pr_fgm", FGA = "pr_fga", `FG%` = "pr_fg_pct", `3PM` = "pr_3pm", `3PA` = "pr_3pa",
         `3P%` = "pr_tp_pct", FTM = "pr_ftm", FTA = "pr_fta", `FT%` = "pr_ft_pct",
         `eFG%` = "pr_efg", `TS%` = "pr_ts"
@@ -1340,7 +1439,7 @@ server_tab3 <- function(input, output, session, shared) {
       # FOUR FACTORS TEAM TABLE
       # ============================================================
       df <- tr_ff_data()
-      if (is.null(df) || nrow(df) == 0) return(NULL)
+      if (is.null(df) || nrow(df) == 0) return(empty_dt("Four Factors: no data for current filters"))
 
       pr_cols <- c("pr_off_ppp", "pr_off_ts", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
                    "pr_def_ppp", "pr_def_ts", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
@@ -1561,7 +1660,7 @@ server_tab3 <- function(input, output, session, shared) {
       # SUMMARY TEAM TABLE (existing behavior)
       # ============================================================
       df <- tr_data()
-      if (is.null(df) || nrow(df) == 0) return(NULL)
+      if (is.null(df) || nrow(df) == 0) return(empty_dt("Summary: no data for current filters"))
       df <- add_team_pace_cols(df, minutes_map = mins_map)
       rk_net_now <- dplyr::min_rank(dplyr::desc(df$net_rtg))
       rk_off_now <- dplyr::min_rank(dplyr::desc(df$off_ppp))
@@ -1624,6 +1723,15 @@ server_tab3 <- function(input, output, session, shared) {
         formatStyle(columns = c("net_rtg", "off_ppp", "def_ppp"), valueColumns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
       return(dt)
     }
+    }, error = function(e) {
+      msg <- paste0("Team Ratings render error: ", conditionMessage(e))
+      showNotification(msg, type = "error", duration = 8)
+      DT::datatable(
+        data.frame(Error = msg, check.names = FALSE),
+        rownames = FALSE,
+        options = list(dom = "t")
+      )
+    })
   })
 
   # ---- Filter Chips ----

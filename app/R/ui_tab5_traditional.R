@@ -18,7 +18,7 @@ ui_tab5_traditional <- tabPanel(
           class = "collapse d-md-block",
           actionButton("ts_reset", "Reset Filters"),
           tags$hr(),
-          dateRangeInput("ts_dates", "Date range", start = NA, end = NA),
+          dateRangeInput("ts_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
           selectizeInput("ts_teams", "Teams", choices = NULL, selected = character(0), multiple = TRUE,
                          options = list(placeholder = "All teams")),
           selectInput(

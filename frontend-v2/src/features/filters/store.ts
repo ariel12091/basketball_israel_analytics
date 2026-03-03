@@ -29,6 +29,10 @@ export const DEFAULT_FILTERS: FilterState = {
   oppRankSide: '',
   oppRankN: null,
   oppRankMetric: '',
+  startersOffMode: '',
+  startersOffValue: null,
+  startersDefMode: '',
+  startersDefValue: null,
   lineupPlayersActive: false,
   resetSeq: 0,
 };
@@ -70,6 +74,10 @@ export function filterReducer(state: FilterState, action: FilterAction): FilterS
         gameYear: state.gameYear,
         startDate: bounds.start,
         endDate: bounds.end,
+        startersOffMode: '',
+        startersOffValue: null,
+        startersDefMode: '',
+        startersDefValue: null,
         resetSeq: state.resetSeq + 1,
       };
     }
@@ -109,6 +117,8 @@ export function needsFilteredPath(state: FilterState): boolean {
     state.gnMax !== null ||
     state.lastN !== null ||
     state.oppRankSide !== '' ||
+    (state.startersOffMode !== '' && state.startersOffValue !== null) ||
+    (state.startersDefMode !== '' && state.startersDefValue !== null) ||
     state.startDate !== bounds.start ||
     state.endDate !== bounds.end
   );
@@ -131,5 +141,9 @@ export function buildApiParams(state: FilterState): Record<string, unknown> {
     opp_rank_side: state.oppRankSide || undefined,
     opp_rank_n: state.oppRankN ?? undefined,
     opp_rank_metric: state.oppRankMetric || undefined,
+    num_starters_off_mode: state.startersOffMode || undefined,
+    num_starters_off: state.startersOffValue ?? undefined,
+    num_starters_def_mode: state.startersDefMode || undefined,
+    num_starters_def: state.startersDefValue ?? undefined,
   };
 }

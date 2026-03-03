@@ -10,8 +10,27 @@ ui_tab3_team <- tabPanel(
         div(
           class = "view-mode-container",
           radioButtons("tr_view_mode", label = "View:",
-                       choices = c("Summary", "Four Factors"),
+                       choices = c("Summary", "Four Factors", "Traditional"),
                        selected = "Summary", inline = TRUE)
+        ),
+        conditionalPanel(
+          condition = "input.tr_view_mode == 'Traditional'",
+            tags$div(
+              class = "d-flex align-items-center gap-2 mb-2",
+              tags$span("Team"),
+              bslib::input_switch(
+                "tr_trad_defense_mode",
+                label = NULL,
+                value = FALSE
+              ),
+              tags$span("Opponent")
+            ),
+          selectInput(
+            "tr_trad_display_mode",
+            "Traditional display mode",
+            choices = c("Per Game", "Per 75 Possessions", "Per 40 Minutes"),
+            selected = "Per Game"
+          )
         ),
         tags$hr(),
         tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
@@ -21,7 +40,16 @@ ui_tab3_team <- tabPanel(
           id = "tr-filters", class = "collapse d-md-block",
           actionButton("tr_reset", "Reset Filters"),
           tags$hr(),
-          dateRangeInput("tr_dates", "Date range", start = NA, end = NA),
+          dateRangeInput("tr_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
+          checkboxInput("tr_clutch_enabled", "Clutch", value = FALSE),
+          conditionalPanel(
+            condition = "input.tr_clutch_enabled == true",
+            sliderInput("tr_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
+            selectInput("tr_clutch_status", "Score status", choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"), selected = "all"),
+            sliderInput("tr_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
+            checkboxInput("tr_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
+            helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
+          ),
           fluidRow(
             column(6, selectInput("tr_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("tr_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
@@ -63,18 +91,6 @@ ui_tab3_team <- tabPanel(
               selectInput("tr_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("tr_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
               selectInput("tr_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            bslib::accordion_panel(
-              "Clutch Time",
-              checkboxInput("tr_clutch_enabled", "Enable clutch filter", value = FALSE),
-              conditionalPanel(
-                condition = "input.tr_clutch_enabled == true",
-                sliderInput("tr_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
-                selectInput("tr_clutch_status", "Score status", choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"), selected = "all"),
-                sliderInput("tr_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
-                checkboxInput("tr_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
-                helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
-              )
             ),
             open = TRUE
           )
@@ -159,6 +175,19 @@ ui_tab3_team <- tabPanel(
                 tags$img(src = app_image_src("team-ff-row-snippet.png"), alt = "Team four factors table snippet"),
                 div(class = "example-snippet-caption", "Real Four Factors snippet (Team Ratings)")
               )
+            )
+          )
+        ),
+        conditionalPanel(
+          condition = "input.tr_view_mode == 'Traditional'",
+          tab_explainer(
+            id = "team_explainer_traditional",
+            title = "What This Tab Answers (Traditional)",
+            intro = "How do teams produce in traditional box-score terms under your selected filters?",
+            bullets = c(
+              "Shows team-level counting and shooting stats using the same game/clutch filters.",
+              "Ranks are season-contextual inside the filtered sample.",
+              "Rank delta is vs previous matchday only, and shown only on baseline date/GN scope."
             )
           )
         ),

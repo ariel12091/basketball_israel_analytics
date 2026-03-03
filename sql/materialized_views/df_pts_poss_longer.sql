@@ -28,12 +28,27 @@ SELECT quarter,
     final_end_id,
     own_team_score,
     opp_team_score,
+    CASE
+      WHEN type = 'rebound' THEN
+        CASE parameters_type
+          WHEN 'offensive' THEN 'offense'
+          WHEN 'defensive' THEN 'defense'
+          ELSE NULL
+        END
+      WHEN type IN ('shot', 'freeThrow', 'assist', 'turnover', 'foul-drawn') THEN 'offense'
+      WHEN type IN ('steal', 'block', 'deflection', 'foul') THEN 'defense'
+      ELSE NULL
+    END AS event_owner_side,
     type_lineup,
     lineup_hash,
     num_starters,
     own_starters,
     opp_starters
-   FROM ( SELECT pws.quarter,
+   FROM ( -- Base row: keep the original event team perspective from pws.team_id.
+          -- type_lineup is assigned dynamically by event type/parameters_type ownership.
+          -- Mirrored row duplicates the same event for the opposite team (pws.team_id_defense)
+          -- and flips type_lineup to the opposite side.
+          SELECT pws.quarter,
             pws.parameters_type,
             pws.parameters_points,
             pws.parameters_made,
@@ -51,7 +66,17 @@ SELECT quarter,
             pws.final_end_id,
             cs.team_cum AS own_team_score,
             cs.total_cum - cs.team_cum AS opp_team_score,
-            'offense'::text AS type_lineup,
+            CASE
+              WHEN pws.type = 'rebound' THEN
+                CASE pws.parameters_type
+                  WHEN 'offensive' THEN 'offense'
+                  WHEN 'defensive' THEN 'defense'
+                  ELSE NULL
+                END
+              WHEN pws.type IN ('shot', 'freeThrow', 'assist', 'turnover', 'foul-drawn') THEN 'offense'
+              WHEN pws.type IN ('steal', 'block', 'deflection', 'foul') THEN 'defense'
+              ELSE NULL
+            END AS type_lineup,
             pws.lineup_hash_offense AS lineup_hash,
             pws.num_starters_offense AS num_starters,
             pws.num_starters_offense AS own_starters,
@@ -78,7 +103,17 @@ SELECT quarter,
             pws.final_end_id,
             cs.total_cum - cs.team_cum AS own_team_score,
             cs.team_cum AS opp_team_score,
-            'defense'::text AS type_lineup,
+            CASE
+              WHEN pws.type = 'rebound' THEN
+                CASE pws.parameters_type
+                  WHEN 'offensive' THEN 'defense'
+                  WHEN 'defensive' THEN 'offense'
+                  ELSE NULL
+                END
+              WHEN pws.type IN ('shot', 'freeThrow', 'assist', 'turnover', 'foul-drawn') THEN 'defense'
+              WHEN pws.type IN ('steal', 'block', 'deflection', 'foul') THEN 'offense'
+              ELSE NULL
+            END AS type_lineup,
             pws.lineup_hash_defense AS lineup_hash,
             pws.num_starters_defense AS num_starters,
             pws.num_starters_defense AS own_starters,

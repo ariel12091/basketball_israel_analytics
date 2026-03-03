@@ -94,7 +94,9 @@ export default function FilterDrawer() {
   const hasActiveFilters = needsFilteredPath(state) ||
     state.minOnPoss !== DEFAULT_FILTERS.minOnPoss ||
     state.minAllPoss !== DEFAULT_FILTERS.minAllPoss ||
-    state.lineupPlayersActive;
+    state.lineupPlayersActive ||
+    (state.startersOffMode !== '' && state.startersOffValue !== null) ||
+    (state.startersDefMode !== '' && state.startersDefValue !== null);
 
   // Team options for react-select
   const teamOptions: TeamOption[] = useMemo(
@@ -317,6 +319,78 @@ export default function FilterDrawer() {
               <option key={n} value={n}>{n}</option>
             ))}
           </select>
+        </div>
+      </FilterSection>
+
+      {/* Lineup Starters */}
+      <FilterSection title="Lineup Starters">
+        <div className="filter-group">
+          <label className="filter-label">Own Lineup</label>
+          <div className="filter-row">
+            <select
+              className="filter-select"
+              value={state.startersOffMode}
+              onChange={e => {
+                dispatch({ type: 'SET_FIELD', field: 'startersOffMode', value: e.target.value });
+                if (!e.target.value) dispatch({ type: 'SET_FIELD', field: 'startersOffValue', value: null });
+              }}
+            >
+              <option value="">All</option>
+              <option value="gte">&ge;</option>
+              <option value="lte">&le;</option>
+            </select>
+            <select
+              className="filter-select"
+              value={state.startersOffValue ?? ''}
+              disabled={!state.startersOffMode}
+              onChange={e =>
+                dispatch({
+                  type: 'SET_FIELD',
+                  field: 'startersOffValue',
+                  value: e.target.value ? parseInt(e.target.value) : null,
+                })
+              }
+            >
+              <option value="">—</option>
+              {[0, 1, 2, 3, 4, 5].map(n => (
+                <option key={n} value={n}>{n} starters</option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <div className="filter-group">
+          <label className="filter-label">Opponent Lineup</label>
+          <div className="filter-row">
+            <select
+              className="filter-select"
+              value={state.startersDefMode}
+              onChange={e => {
+                dispatch({ type: 'SET_FIELD', field: 'startersDefMode', value: e.target.value });
+                if (!e.target.value) dispatch({ type: 'SET_FIELD', field: 'startersDefValue', value: null });
+              }}
+            >
+              <option value="">All</option>
+              <option value="gte">&ge;</option>
+              <option value="lte">&le;</option>
+            </select>
+            <select
+              className="filter-select"
+              value={state.startersDefValue ?? ''}
+              disabled={!state.startersDefMode}
+              onChange={e =>
+                dispatch({
+                  type: 'SET_FIELD',
+                  field: 'startersDefValue',
+                  value: e.target.value ? parseInt(e.target.value) : null,
+                })
+              }
+            >
+              <option value="">—</option>
+              {[0, 1, 2, 3, 4, 5].map(n => (
+                <option key={n} value={n}>{n} starters</option>
+              ))}
+            </select>
+          </div>
         </div>
       </FilterSection>
 

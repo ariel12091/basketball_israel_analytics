@@ -39,6 +39,15 @@ ui_tab2_lineup <- tabPanel(
           ),
           tags$hr(),
           dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
+          checkboxInput("ld_clutch_enabled", "Clutch", value = FALSE),
+          conditionalPanel(
+            condition = "input.ld_clutch_enabled == true",
+            sliderInput("ld_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
+            selectInput("ld_clutch_status", "Score status", choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"), selected = "all"),
+            sliderInput("ld_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
+            checkboxInput("ld_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
+            helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
+          ),
           tags$hr(),
           tags$div(
             class = "text-end mb-2",
@@ -72,18 +81,6 @@ ui_tab2_lineup <- tabPanel(
               selectInput("ld_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("ld_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
               selectInput("ld_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            bslib::accordion_panel(
-              "Clutch Time",
-              checkboxInput("ld_clutch_enabled", "Enable clutch filter", value = FALSE),
-              conditionalPanel(
-                condition = "input.ld_clutch_enabled == true",
-                sliderInput("ld_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
-                selectInput("ld_clutch_status", "Score status", choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"), selected = "all"),
-                sliderInput("ld_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
-                checkboxInput("ld_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
-                helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
-              )
             ),
             open = TRUE
           )

@@ -34,21 +34,43 @@ ui <- navbarPage(
     code_font = "JetBrains Mono, monospace",
     "navbar-bg" = "#0d1117"
   ),
-  header = tags$div(
-    style = "position: fixed; right: 16px; top: 8px; font-size: 0.82rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 8px;",
+  header = tagList(
+    tags$script(HTML(
+      "(function() {
+         if (!window.console || typeof window.console.warn !== 'function') return;
+         var origWarn = window.console.warn.bind(window.console);
+         var blocked = [
+           'DEPRECATED: This filename',
+           'The language code \"kh\" is deprecated',
+           'The language code \"kr\" is deprecated',
+           'This language code \"rs-latin\" is deprecated',
+           'This language code \"rs\" is deprecated'
+         ];
+         window.console.warn = function() {
+           var msg = arguments.length ? String(arguments[0]) : '';
+           for (var i = 0; i < blocked.length; i++) {
+             if (msg.indexOf(blocked[i]) !== -1) return;
+           }
+           return origWarn.apply(window.console, arguments);
+         };
+       })();"
+    )),
     tags$div(
-      class = "navbar-season-select",
-      selectInput("game_year", NULL,
-                  choices = c("25-26" = "2026", "24-25" = "2025"),
-                  selected = DEFAULT_GAME_YEAR)
-    ),
-    actionButton("open_glossary",
-                 tags$span(tags$i(class = "bi bi-book"), " Glossary"),
-                 class = "btn btn-sm btn-outline-secondary nav-help-btn"),
-    tags$span(
-      style = "display: inline-flex; align-items: center; gap: 4px;",
-      tags$span(style = "width: 6px; height: 6px; background: #34d399; border-radius: 50%; display: inline-block;"),
-      textOutput("last_updated", inline = TRUE)
+      style = "position: fixed; right: 16px; top: 8px; font-size: 0.82rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 8px;",
+      tags$div(
+        class = "navbar-season-select",
+        selectInput("game_year", NULL,
+                    choices = c("25-26" = "2026", "24-25" = "2025"),
+                    selected = DEFAULT_GAME_YEAR)
+      ),
+      actionButton("open_glossary",
+                   tags$span(tags$i(class = "bi bi-book"), " Glossary"),
+                   class = "btn btn-sm btn-outline-secondary nav-help-btn"),
+      tags$span(
+        style = "display: inline-flex; align-items: center; gap: 4px;",
+        tags$span(style = "width: 6px; height: 6px; background: #34d399; border-radius: 50%; display: inline-block;"),
+        textOutput("last_updated", inline = TRUE)
+      )
     )
   ),
   ui_tab1_onoff,

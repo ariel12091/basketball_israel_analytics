@@ -121,6 +121,34 @@ export default function FilterChips() {
     });
   }
 
+  // Starters (own)
+  if (state.startersOffMode && state.startersOffValue !== null) {
+    const sym = state.startersOffMode === 'gte' ? '\u2265' : '\u2264';
+    chips.push({
+      label: `Own ${sym}${state.startersOffValue} starters`,
+      removable: true,
+      onRemove: () =>
+        dispatch({
+          type: 'SET_MULTIPLE',
+          payload: { startersOffMode: '', startersOffValue: null },
+        }),
+    });
+  }
+
+  // Starters (opp)
+  if (state.startersDefMode && state.startersDefValue !== null) {
+    const sym = state.startersDefMode === 'gte' ? '\u2265' : '\u2264';
+    chips.push({
+      label: `Opp ${sym}${state.startersDefValue} starters`,
+      removable: true,
+      onRemove: () =>
+        dispatch({
+          type: 'SET_MULTIPLE',
+          payload: { startersDefMode: '', startersDefValue: null },
+        }),
+    });
+  }
+
   const hasActiveFilters = needsFilteredPath(state) ||
     state.minOnPoss !== DEFAULT_FILTERS.minOnPoss ||
     state.minAllPoss !== DEFAULT_FILTERS.minAllPoss ||

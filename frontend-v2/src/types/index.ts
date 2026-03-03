@@ -105,8 +105,113 @@ export interface FilterState {
   oppRankSide: string;   // '' | 'top' | 'bottom'
   oppRankN: number | null;    // 1-12
   oppRankMetric: string; // '' | 'off' | 'def' | 'net'
+  startersOffMode: string;    // '' | 'gte' | 'lte'
+  startersOffValue: number | null;  // 0-5
+  startersDefMode: string;    // '' | 'gte' | 'lte'
+  startersDefValue: number | null;  // 0-5
   lineupPlayersActive: boolean;
   resetSeq: number;
+}
+
+// Tab 3 Summary — from team_ppp_ratings_mv / get_team_ratings_dynamic
+export interface TeamRating {
+  teamId: number;
+  teamName: string;
+  gamesPlayed: number;
+  wins: number;
+  losses: number;
+  offPpp: number;
+  defPpp: number;
+  netRtg: number;
+  rankNet: number;
+  rankOff: number;
+  rankDef: number;
+  offPace: number;
+  defPace: number;
+  offPoss: number;
+  defPoss: number;
+}
+
+// Tab 3 Four Factors — from team_four_factors_mv / get_team_four_factors_dynamic
+export interface TeamFourFactors {
+  teamId: number;
+  teamName: string;
+  offPpp: number;
+  defPpp: number;
+  netRtg: number;
+  offTs: number;
+  offOreb: number;
+  offTov: number;
+  offFtr: number;
+  defTs: number;
+  defOreb: number;
+  defTov: number;
+  defFtr: number;
+  offPace: number;
+  defPace: number;
+  offPoss: number;
+  defPoss: number;
+  // PR columns (0-1)
+  prOffPpp: number;
+  prOffTs: number;
+  prOffOreb: number;
+  prOffTov: number;
+  prOffFtr: number;
+  prDefPpp: number;
+  prDefTs: number;
+  prDefOreb: number;
+  prDefTov: number;
+  prDefFtr: number;
+  prNet: number;
+}
+
+// Tab 4 Summary — game-level lineup totals
+export interface GameLogSummary {
+  gn: number;
+  gameDate: string;
+  teamName: string;
+  opponent: string;
+  result: string;
+  score: string;
+  offPpp: number;
+  defPpp: number;
+  netRtg: number;
+  offPoss: number;
+  defPoss: number;
+  offFg2Made: number;
+  offFg2Att: number;
+  offFg3Made: number;
+  offFg3Att: number;
+  defFg2Made: number;
+  defFg2Att: number;
+  defFg3Made: number;
+  defFg3Att: number;
+  gameId: number;
+  teamId: number;
+}
+
+// Tab 4 Four Factors — game-level four factors
+export interface GameLogFourFactors {
+  gn: number;
+  gameDate: string;
+  teamName: string;
+  opponent: string;
+  result: string;
+  score: string;
+  offPpp: number;
+  offTsPct: number;
+  offOrebPct: number;
+  offTovPct: number;
+  offFtrPct: number;
+  defPpp: number;
+  defTsPct: number;
+  defOrebPct: number;
+  defTovPct: number;
+  defFtrPct: number;
+  offPoss: number;
+  defPoss: number;
+  gameId: number;
+  teamId: number;
 }
 
 export interface Team {

@@ -22,7 +22,7 @@ ui_tab4_gamelogs <- tabPanel(
           actionButton("gl_reset", "Reset Filters"),
           tags$hr(),
           selectizeInput("gl_team", "Team", choices = NULL, multiple = FALSE),
-          dateRangeInput("gl_dates", "Date range", start = NA, end = NA),
+          dateRangeInput("gl_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
           fluidRow(
             column(6, selectInput("gl_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("gl_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
