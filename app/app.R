@@ -210,7 +210,7 @@ server <- function(input, output, session) {
     last_updated_cache() %||% "Last updated: unavailable"
   })
 
-  prewarm_enabled <- tolower(Sys.getenv("APP_PREWARM_ENABLED", "1")) %in% c("1", "true", "yes")
+  prewarm_enabled <- tolower(Sys.getenv("APP_PREWARM_ENABLED", "0")) %in% c("1", "true", "yes")
   if (isTRUE(prewarm_enabled)) {
     observeEvent(selected_game_year(), {
       prewarm_for_year(selected_game_year())

@@ -165,23 +165,23 @@ shared_css <- HTML("
     font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   }
   body {
-    background: #0d1117 !important;
-    color: #e6edf3 !important;
+    background: #0d1117;
+    color: #e6edf3;
   }
 
   /* ---- Navbar ---- */
   .navbar {
-    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%) !important;
-    border-bottom: 1px solid #21262d !important;
+    background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+    border-bottom: 1px solid #21262d;
     box-shadow: 0 1px 8px rgba(0,0,0,0.4);
-    padding-top: 6px !important;
-    padding-bottom: 6px !important;
+    padding-top: 6px;
+    padding-bottom: 6px;
   }
   .navbar-brand {
-    font-weight: 700 !important;
-    color: #e8a435 !important;
+    font-weight: 700;
+    color: #e8a435;
     letter-spacing: 0.5px;
-    font-size: 1.1rem !important;
+    font-size: 1.1rem;
   }
   .navbar-nav .nav-link {
     color: #8b949e !important;
@@ -201,14 +201,14 @@ shared_css <- HTML("
   }
   .nav-tabs { border-bottom: none !important; }
   .nav-tabs .nav-link { border: none !important; }
-  .tab-content { background: transparent !important; }
+  .tab-content { background: transparent; }
 
   /* ---- Sidebar ---- */
   .well, .sidebar, div[class*='col-sm-3'] > div, .card {
-    background: #161b22 !important;
-    border: 1px solid #21262d !important;
+    background: #161b22;
+    border: 1px solid #21262d;
     border-radius: 10px;
-    color: #c9d1d9 !important;
+    color: #c9d1d9;
   }
 
   /* ---- Form Controls ---- */
@@ -236,26 +236,26 @@ shared_css <- HTML("
 
   /* Buttons */
   .btn-outline-secondary {
-    color: #8b949e !important;
-    border-color: #30363d !important;
+    color: #8b949e;
+    border-color: #30363d;
   }
   .btn-outline-secondary:hover {
-    background: #21262d !important;
-    color: #e6edf3 !important;
-    border-color: #e8a435 !important;
+    background: #21262d;
+    color: #e6edf3;
+    border-color: #e8a435;
   }
   .btn-default, .action-button {
-    background: #21262d !important;
-    color: #c9d1d9 !important;
-    border-color: #30363d !important;
+    background: #21262d;
+    color: #c9d1d9;
+    border-color: #30363d;
   }
-  .action-button:hover { background: #30363d !important; color: #e8a435 !important; }
+  .action-button:hover { background: #30363d; color: #e8a435; }
 
   /* Checkboxes */
   .checkbox label, .radio label, .shiny-input-container > label, .control-label, label {
     color: #c9d1d9 !important;
   }
-  .help-block { color: #6e7681 !important; }
+  .help-block { color: #6e7681; }
 
   /* ---- Tables (DataTables) ---- */
   table.dataTable {
@@ -355,25 +355,25 @@ shared_css <- HTML("
   .accordion-button {
     padding: 0.5rem 1rem;
     font-weight: 600;
-    background-color: #1c2333 !important;
-    color: #c9d1d9 !important;
+    background-color: #1c2333;
+    color: #c9d1d9;
     border: none;
   }
   .accordion-button:not(.collapsed) {
-    background-color: #1c2333 !important;
-    color: #e8a435 !important;
-    box-shadow: none !important;
+    background-color: #1c2333;
+    color: #e8a435;
+    box-shadow: none;
   }
   .accordion-button::after {
     filter: invert(0.7);
   }
   .accordion-item {
-    background: #161b22 !important;
-    border-color: #21262d !important;
+    background: #161b22;
+    border-color: #21262d;
   }
   .accordion-body {
-    background: #161b22 !important;
-    color: #c9d1d9 !important;
+    background: #161b22;
+    color: #c9d1d9;
   }
 
   /* ---- Explainer Card ---- */
@@ -402,7 +402,7 @@ shared_css <- HTML("
     font-size: 0.9rem;
   }
   .explainer-body.collapse:not(.show) {
-    display: none !important;
+    display: none;
   }
   .explainer-body p {
     margin-bottom: 6px;
@@ -423,8 +423,8 @@ shared_css <- HTML("
   }
   .nav-help-btn {
     margin-right: 8px;
-    color: #8b949e !important;
-    border-color: #30363d !important;
+    color: #8b949e;
+    border-color: #30363d;
   }
 
   /* ---- Example Card ---- */
@@ -501,7 +501,7 @@ shared_css <- HTML("
     transition: all 0.2s; color: #8b949e;
   }
   .view-mode-container .radio label:hover { background: #1c2333; color: #e6edf3; }
-  .view-mode-container .radio input[type='radio']:checked + span { color: #e8a435 !important; }
+  .view-mode-container .radio input[type='radio']:checked + span { color: #e8a435; }
 
   /* ---- Legend ---- */
   .legend-box {
@@ -523,34 +523,34 @@ shared_css <- HTML("
 
   /* ---- Modal ---- */
   .modal-content {
-    background: #161b22 !important;
-    border: 1px solid #30363d !important;
-    color: #e6edf3 !important;
+    background: #161b22;
+    border: 1px solid #30363d;
+    color: #e6edf3;
   }
-  .modal-header { border-bottom-color: #21262d !important; }
-  .modal-header .modal-title { color: #e8a435 !important; }
+  .modal-header { border-bottom-color: #21262d; }
+  .modal-header .modal-title { color: #e8a435; }
   .modal-header .btn-close { filter: invert(0.8); }
-  .modal-footer { border-top-color: #21262d !important; }
-  .modal-footer .btn { background: #21262d !important; color: #c9d1d9 !important; border-color: #30363d !important; }
+  .modal-footer { border-top-color: #21262d; }
+  .modal-footer .btn { background: #21262d; color: #c9d1d9; border-color: #30363d; }
 
   /* ---- Misc ---- */
-  hr { border-color: #21262d !important; }
+  hr { border-color: #21262d; }
   a { color: #e8a435; }
   a:hover { color: #f0c060; }
-  .container-fluid { background: #0d1117 !important; }
-  .tab-pane { background: #0d1117 !important; }
-  .help-text, .shiny-text-output { color: #8b949e !important; }
+  .container-fluid { background: #0d1117; }
+  .tab-pane { background: #0d1117; }
+  .help-text, .shiny-text-output { color: #8b949e; }
 
   /* Download button */
   .btn-default.shiny-download-link {
-    background: #1c2333 !important;
-    color: #e8a435 !important;
-    border: 1px solid #30363d !important;
+    background: #1c2333;
+    color: #e8a435;
+    border: 1px solid #30363d;
     font-weight: 600;
   }
   .btn-default.shiny-download-link:hover {
-    background: #242d3d !important;
-    border-color: #e8a435 !important;
+    background: #242d3d;
+    border-color: #e8a435;
   }
 
   /* ---- Global Season Selector (navbar) ---- */
@@ -561,24 +561,24 @@ shared_css <- HTML("
     min-width: 72px;
     max-width: 72px;
   }
-  .navbar-season-select .form-group { margin: 0 !important; }
+  .navbar-season-select .form-group { margin: 0; }
   .navbar-season-select .form-select,
   .navbar-season-select select {
-    height: 30px !important; min-height: 30px !important;
-    width: 72px !important;
-    min-width: 72px !important;
-    max-width: 72px !important;
-    padding: 2px 20px 2px 8px !important;
-    font-size: 0.82rem !important; font-weight: 700 !important;
-    background: #161b22 !important; color: #e8a435 !important;
-    border: 1px solid #e8a435 !important; border-radius: 6px !important;
+    height: 30px; min-height: 30px;
+    width: 72px;
+    min-width: 72px;
+    max-width: 72px;
+    padding: 2px 20px 2px 8px;
+    font-size: 0.82rem; font-weight: 700;
+    background: #161b22; color: #e8a435;
+    border: 1px solid #e8a435; border-radius: 6px;
     cursor: pointer;
   }
   .navbar-season-select .form-select:focus,
   .navbar-season-select select:focus {
-    box-shadow: 0 0 0 2px rgba(232,164,53,0.2) !important;
+    box-shadow: 0 0 0 2px rgba(232,164,53,0.2);
   }
-  .navbar-season-select label { display: none !important; }
+  .navbar-season-select label { display: none; }
 
   /* ---- Tab Icon styling ---- */
   .nav-link .bi { margin-right: 5px; font-size: 0.9em; opacity: 0.7; }
@@ -588,7 +588,7 @@ shared_css <- HTML("
   @media (max-width: 768px) {
     table.dataTable tbody td { font-size: 0.8rem; padding: 4px 6px !important; }
     table.dataTable thead th { font-size: 0.75rem; padding-top: 8px !important; padding-bottom: 8px !important; }
-    .navbar-brand { font-size: 0.9rem !important; }
+    .navbar-brand { font-size: 0.9rem; }
     .dataTables_wrapper { width: 100% !important; overflow-x: auto; }
     .irs-handle { width: 32px !important; height: 32px !important; top: -8px !important; }
     .irs-bar, .irs-line { height: 8px !important; }
@@ -742,6 +742,15 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     if (is.na(a) || is.na(b)) return(FALSE)
     identical(a, b)
   }
+  safe_date_token <- function(x, idx = 1L) {
+    if (is.null(x) || is.environment(x)) return(NA_character_)
+    i <- suppressWarnings(as.integer(idx))
+    if (is.na(i) || i < 1L) i <- 1L
+    if (length(x) < i) return(NA_character_)
+    val <- tryCatch(x[[i]], error = function(e) NA_character_)
+    if (is.environment(val)) return(NA_character_)
+    as.character(val %||% NA_character_)
+  }
   chips <- list()
 
   # Season chip (always visible, not dismissable) — single global input
@@ -750,9 +759,9 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
 
   # Date range (non-default)
   date_input <- if (prefix == "on") input$date_range else input[[paste0(prefix, "_dates")]]
-  if (!is.null(date_input) && length(date_input) == 2) {
-    raw_start <- date_input[1]
-    raw_end <- date_input[2]
+  if (!is.null(date_input) && !is.environment(date_input) && length(date_input) == 2) {
+    raw_start <- safe_date_token(date_input, 1L)
+    raw_end <- safe_date_token(date_input, 2L)
     has_raw_start <- !is.null(raw_start) && nzchar(as.character(raw_start)) && !identical(as.character(raw_start), "NA")
     has_raw_end <- !is.null(raw_end) && nzchar(as.character(raw_end)) && !identical(as.character(raw_end), "NA")
     has_any_raw <- has_raw_start || has_raw_end

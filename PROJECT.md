@@ -1467,3 +1467,91 @@ extract_starters <- function(box) {
 - Verification snapshot after rebuild + ETL smoke on game_ids `161,162,164`:
   - duplicate groups in `onoff_default_mv`: `0`
   - duplicate groups in `player_advanced_stats_mv`: `0`
+
+## Session Notes (2026-02-28): Incremental `df_pts_poss_lineups_longer` + Safety/Parity
+- Added targeted pre-change backup artifacts under:
+  - `backups/pre_dfppllm_incremental_20260227/`
+  - includes metadata snapshots (`row_counts.csv`, `signatures.csv`, `index_defs.csv`, `object_defs.csv`) and targeted pg_dump (`basketball_test_targeted_pre_dfppllm.dump`).
+- Converted `basketball_test.df_pts_poss_lineups_longer_mv` from materialized view to incremental table-maintained object.
+  - Build SQL updated: `sql/materialized_views/df_pts_poss_longer.sql`.
+  - New incremental function:
+    - `basketball_test.refresh_df_pts_poss_lineups_longer_for_games(int4[])`
+    - file: `sql/functions/refresh_df_pts_poss_lineups_longer_for_games.sql`
+- ETL Phase 4 updated in `etl/etl_full.R`:
+  - L1 now refreshes `final_schedule_mv` as MV.
+  - `df_pts_poss_lineups_longer_mv` refreshed incrementally by `processed_ids` via new function.
+  - Phase 4 summary now reflects `7 MVs + 5 incremental tables`.
+- Rebuild registry updated for mixed object type:
+  - `df_pts_poss_lineups_longer_mv` marked as `type = "table"` in `sql/rebuild_all_mvs.R`.
+- Post-conversion parity checks:
+  - Pre signature: `eac162dac28930f20412a6ad0b44a23f`
+  - Post signature: `eac162dac28930f20412a6ad0b44a23f` (exact match)
+  - Row count unchanged: `415,298`.
+- Performance snapshot:
+  - Full refresh via function (`NULL`): ~`44.84s`
+  - Incremental refresh for 3 recent games (`164,162,161`): ~`1.04s`, touched `3,696` rows.
+- End-to-end ETL smoke (`etl_full(game_ids=c(161,162,164))`) succeeded:
+  - Phase 4 logged `[INC] df_pts_poss_lineups_longer_mv ... touched 3,696 rows`.
+  - Downstream incremental tables and Phase 6 validations passed.
+- Index persistence fix:
+  - Re-added and persisted unique key indexes in table-build SQL for:
+    - `onoff_default_mv` -> `idx_onoff_default_pk ("Year", team_id, player_id)`
+    - `player_advanced_stats_mv` -> `idx_pas_pk (game_year, team_id, player_id)`
+  - Duplicate checks remain clean (`0` groups) for both tables.
+
+## Session Notes (2026-02-28): Storage Cleanup (Orphan Tables + Index Audit)
+- Performed targeted cleanup of obsolete helper/orphan tables in `basketball_test` (no internal dependencies found):
+  - dropped: `onoff_default`, `lineup_dim`, `lineup_players`, `two_man`, `schedule_stage_load`.
+- Code/reference audit (app/etl/sql/frontend) did not find active usage of those dropped objects.
+- Ran index-usage audit for high-volume upstream tables:
+  - `actions_clean`
+  - `pws`
+  - `lineups_lookup`
+- Audit result:
+  - no non-unique zero-scan indexes eligible for safe drop.
+  - all remaining indexes on those tables show usage (`idx_scan > 0`) or are PK/unique.
+- Size impact from orphan-table drop was minimal (`~73 KB`).
+- Earlier `VACUUM FULL` on top 20 `basketball_test` relations reduced DB size by ~`114.3 MB`.
+
+## Session Update (Traditional Mirror + Rebounds)
+- df_pts_poss_lineups_longer_mv now follows dynamic type_lineup semantics from the duplication flow (mirrored offense/defense context rows).
+- Traditional rebound rule aligned across team/player traditional pipelines:
+  - OREB: type='rebound' AND type_lineup='offense' AND parameters_type='offensive'
+  - DREB: type='rebound' AND type_lineup='defense' AND parameters_type='defensive'
+  - REB = OREB + DREB
+- Updated SQL objects:
+  - sql/functions/get_player_traditional_dynamic.sql
+  - sql/functions/refresh_team_metrics_by_game_for_games.sql
+  - sql/materialized_views/player_traditional_stats_mv.sql
+  - sql/materialized_views/team_metrics_by_game_mv.sql
+- Team Ratings traditional mode uses mirrored opponent logic (defense-mode stats mirror offense-mode stats from the opponent perspective).
+- ETL Phase 4 (incremental) now refreshes player_traditional_stats_mv when the materialized view exists (guarded in etl/etl_full.R).
+
+## Session Update (Tab 4 Date Bounds)
+- Game Logs tab defaulted to static `DEFAULT_START/DEFAULT_END` while season default is `2026`, causing empty results and a perceived load failure.
+- Fix in `app/R/server_tab4.R`: on `input$game_year` change, `gl_dates` is now reset to `shared$season_date_bounds(...)`.
+- Reset flow now also restores season bounds (with min/max limits) instead of clearing dates to `NA`.
+
+## Session Update (2026-03-03)
+- Fixed Game Logs tab date-range mismatch in `app/R/server_tab4.R`.
+- Root cause: the tab used static defaults (`DEFAULT_START`/`DEFAULT_END`) while the active default season is `2026`.
+- Change: `gl_dates` now syncs to `shared$season_date_bounds(input$game_year)` on season change.
+- Change: reset now restores season bounds (with min/max) instead of setting dates to `NA`.
+- Impact: Game Logs loads correctly on default season without manual date adjustment.
+
+- Fixed Traditional rank-delta rendering in `app/R/server_tab3.R`.
+- Change: `show_delta` now follows `tr_delta_enabled()` instead of being hard-disabled.
+- Impact: delta arrows are shown in Traditional mode (team/opponent) when baseline rules allow deltas.
+
+## Session Update (2026-03-05): Team Ratings Reset Crash Fix
+- Fixed Team Ratings reset crash (`Error in unclass(x) : cannot unclass an environment`) triggered after clicking "Reset to defaults".
+- Root cause was in Shiny output flush/JSON serialization for reset update payloads (not SQL/data logic).
+- Stabilization changes:
+  - `app/R/server_tab3.R`
+    - reset now uses canonical scalar/vector payloads
+    - `tr_trad_defense_mode` reset switched from `bslib::update_switch(...)` to `updateCheckboxInput(...)`
+    - selectize resets normalized to `selected = character(0)`
+    - date reset uses season bounds (`start/end`) without extra reset payload fields
+  - `app/app.R`
+    - removed temporary global debug error-hook overrides to avoid handler side effects during runtime errors
+- Result: Team Ratings reset no longer crashes; app stays responsive.
