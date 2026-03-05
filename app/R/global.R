@@ -161,7 +161,10 @@ shared_css <- HTML("
   /* ============ DARK EDITORIAL THEME ============ */
 
   /* Global Font & Base Colors */
-  body, .container-fluid, .form-control, .btn, table.dataTable {
+  body, .container-fluid, .form-control, .btn {
+    font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  }
+  table.dataTable {
     font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif !important;
   }
   body {
@@ -183,24 +186,24 @@ shared_css <- HTML("
     letter-spacing: 0.5px;
     font-size: 1.1rem;
   }
-  .navbar-nav .nav-link {
-    color: #8b949e !important;
+  .navbar .navbar-nav .nav-link {
+    color: #8b949e;
     font-weight: 600;
     font-size: 0.88rem;
-    padding: 8px 14px !important;
+    padding: 8px 14px;
     border-bottom: 2px solid transparent;
     transition: color 0.2s, border-color 0.3s;
   }
-  .navbar-nav .nav-link:hover {
-    color: #e6edf3 !important;
+  .navbar .navbar-nav .nav-link:hover {
+    color: #e6edf3;
   }
-  .navbar-nav .nav-link.active,
-  .navbar-nav .nav-item.active > .nav-link {
-    color: #e8a435 !important;
+  .navbar .navbar-nav .nav-link.active,
+  .navbar .navbar-nav .nav-item.active > .nav-link {
+    color: #e8a435;
     border-bottom: 2px solid #e8a435;
   }
-  .nav-tabs { border-bottom: none !important; }
-  .nav-tabs .nav-link { border: none !important; }
+  .nav-tabs { border-bottom: none; }
+  .nav-tabs .nav-link { border: none; }
   .tab-content { background: transparent; }
 
   /* ---- Sidebar ---- */
@@ -212,7 +215,12 @@ shared_css <- HTML("
   }
 
   /* ---- Form Controls ---- */
-  .form-control, .form-select, .selectize-input, .selectize-dropdown {
+  .form-control, .form-select {
+    background: #0d1117;
+    color: #e6edf3;
+    border-color: #30363d;
+  }
+  .selectize-input, .selectize-dropdown {
     background: #0d1117 !important;
     color: #e6edf3 !important;
     border-color: #30363d !important;
@@ -253,7 +261,7 @@ shared_css <- HTML("
 
   /* Checkboxes */
   .checkbox label, .radio label, .shiny-input-container > label, .control-label, label {
-    color: #c9d1d9 !important;
+    color: #c9d1d9;
   }
   .help-block { color: #6e7681; }
 
