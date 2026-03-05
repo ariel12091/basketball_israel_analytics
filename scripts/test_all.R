@@ -1,0 +1,6 @@
+cat("[tests] running app testthat suite\n")
+owd <- getwd()
+on.exit(setwd(owd), add = TRUE)
+setwd("app")
+source("tests/testthat.R")
+cat("[tests] done\n")
