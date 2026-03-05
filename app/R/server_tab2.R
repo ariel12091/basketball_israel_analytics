@@ -84,9 +84,10 @@ server_tab2 <- function(input, output, session, shared) {
 
   observeEvent(input$ld_reset, {
     resetting(TRUE)
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
     updateRadioButtons(session, "ld_view_mode", selected = "Summary")
     updateRadioButtons(session, "ld_num", selected = LD_DEFAULT_NUM)
-    updateDateRangeInput(session, "ld_dates", start = NA, end = NA)
+    updateDateRangeInput(session, "ld_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     if (!is.null(ld_ref$teams)) {
       team_values <- c("", as.character(ld_ref$teams$team_id))
       names(team_values) <- c("— All teams —", ld_ref$teams$team_name)
