@@ -1,0 +1,70 @@
+name: ETL Full
+
+on:
+  workflow_dispatch:
+    inputs:
+      app_env:
+        description: "APP_ENV passed to ETL (e.g. test/prod)"
+        required: false
+        default: "test"
+      dry_run_only:
+        description: "Run dry-run phase only"
+        required: false
+        type: boolean
+        default: false
+      skip_dry_run:
+        description: "Skip dry-run and run write phase only"
+        required: false
+        type: boolean
+        default: false
+  schedule:
+    - cron: '15 2 * * *'
+
+jobs:
+  etl:
+    runs-on: windows-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.2'
+
+      - name: Install ETL deps
+        shell: pwsh
+        run: |
+          Rscript -e "install.packages(c('DBI','RPostgres','dplyr','dbplyr','glue','digest','tidyr','purrr','withr','pool'), repos='https://cloud.r-project.org')"
+
+      - name: Run ETL wrapper
+        shell: pwsh
+        env:
+          APP_ENV: test
+          PG_HOST: ${{ secrets.PG_HOST }}
+          PG_PORT: ${{ secrets.PG_PORT }}
+          PG_DB: ${{ secrets.PG_DB }}
+          PG_USER: ${{ secrets.PG_USER }}
+          PG_PASS: ${{ secrets.PG_PASS }}
+          PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+        run: |
+          $args = @()
+          if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
+            if (-not [string]::IsNullOrWhiteSpace('${{ inputs.app_env }}')) {
+              $env:APP_ENV = '${{ inputs.app_env }}'
+            }
+            if ('${{ inputs.dry_run_only }}' -eq 'true') { $args += '-DryRunOnly' }
+            if ('${{ inputs.skip_dry_run }}' -eq 'true') { $args += '-SkipDryRun' }
+          }
+          & ./scripts/run_etl_full.ps1 @args
+
+      - name: Upload ETL logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: etl-logs-${{ github.run_id }}
+          path: |
+            logs/etl_full_wrapper_*.log
+            etl/logs/etl_full_*.log
+            etl/logs/last_success.txt
+          if-no-files-found: warn

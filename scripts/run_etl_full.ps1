@@ -1,6 +1,18 @@
-﻿$ErrorActionPreference = 'Stop'
+$ErrorActionPreference = 'Stop'
 
-$base = 'C:\Users\ariel\Documents\on_off_israel_pbp'
+param(
+  [string]$BaseDir = "",
+  [switch]$SkipDryRun,
+  [switch]$DryRunOnly
+)
+
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+if ([string]::IsNullOrWhiteSpace($BaseDir)) {
+  $base = (Resolve-Path (Join-Path $scriptDir "..")).Path
+} else {
+  $base = (Resolve-Path $BaseDir).Path
+}
+
 $logDir = Join-Path $base 'logs'
 if (-not (Test-Path $logDir)) { New-Item -ItemType Directory -Path $logDir | Out-Null }
 $runStamp = Get-Date -Format 'yyyyMMdd_HHmmss'
@@ -8,8 +20,26 @@ $logFile = Join-Path $logDir ("etl_full_wrapper_{0}.log" -f $runStamp)
 $etlLogDir = Join-Path $base 'etl\logs'
 $lockFile = Join-Path $logDir 'etl_full_wrapper.lock'
 
-$exe = 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe'
-$expr = "Sys.setenv(APP_ENV='test'); source('C:/Users/ariel/Documents/on_off_israel_pbp/etl/etl_full.R'); etl_full(dry_run=TRUE); etl_full(dry_run=FALSE)"
+$exe = $env:RSCRIPT_PATH
+if ([string]::IsNullOrWhiteSpace($exe)) {
+  $cmd = Get-Command Rscript -ErrorAction SilentlyContinue
+  if ($null -ne $cmd -and -not [string]::IsNullOrWhiteSpace($cmd.Source)) {
+    $exe = $cmd.Source
+  } else {
+    throw "Rscript executable not found. Set RSCRIPT_PATH or add Rscript to PATH."
+  }
+}
+
+$appEnv = if ([string]::IsNullOrWhiteSpace($env:APP_ENV)) { 'test' } else { $env:APP_ENV }
+$etlFile = (Join-Path $base 'etl\etl_full.R').Replace('\\', '/')
+
+if ($DryRunOnly.IsPresent) {
+  $expr = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); etl_full(dry_run=TRUE)"
+} elseif ($SkipDryRun.IsPresent) {
+  $expr = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); etl_full(dry_run=FALSE)"
+} else {
+  $expr = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); etl_full(dry_run=TRUE); etl_full(dry_run=FALSE)"
+}
 
 $lockStream = $null
 $stdoutFile = Join-Path $logDir ("etl_full_wrapper_stdout_{0}.tmp" -f $runStamp)
