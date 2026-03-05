@@ -437,7 +437,48 @@ server_tab1 <- function(input, output, session, shared) {
     num_starters_def_max <- if (identical(def_mode, "lte")) def_val else NA_integer_
 
     gp <- gn_params()
-    run_onoff_compute_14(pg_pool, start_d = as.Date(rng[1]), end_d = as.Date(rng[2]), team_ids = tids, min_all = input$min_all_poss, min_on = input$min_on_poss, min_net = DEFAULT_MIN_NET, game_year = gy, game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv, home_away = home_away, outcome = outcome, opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side, opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)), opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric, min_gn = gp$min_gn, max_gn = gp$max_gn, last_n_games = gp$last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = num_starters_off_min, num_starters_off_max = num_starters_off_max, num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max)
+    df_live <- run_onoff_compute_14(
+      pg_pool,
+      start_d = as.Date(rng[1]),
+      end_d = as.Date(rng[2]),
+      team_ids = tids,
+      min_all = 0L,
+      min_on = 0L,
+      min_net = DEFAULT_MIN_NET,
+      game_year = gy,
+      game_type_csv = game_type_csv,
+      opp_ids_csv = opp_ids_csv,
+      home_away = home_away,
+      outcome = outcome,
+      opp_rank_side = if (!nzchar(f$rank_side %||% "")) NA else f$rank_side,
+      opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n)),
+      opp_rank_metric = if (!nzchar(f$metric %||% "")) NA else f$metric,
+      min_gn = gp$min_gn,
+      max_gn = gp$max_gn,
+      last_n_games = gp$last_n,
+      num_starters_off = NA_integer_,
+      num_starters_def = NA_integer_,
+      num_starters_off_min = num_starters_off_min,
+      num_starters_off_max = num_starters_off_max,
+      num_starters_def_min = num_starters_def_min,
+      num_starters_def_max = num_starters_def_max
+    )
+
+    # Keep fallback filtering behavior consistent with the MV path.
+    if (all(c("ON Poss", "OFF Poss") %in% names(df_live))) {
+      df_live <- df_live %>%
+        filter(
+          pmin(
+            dplyr::coalesce(`ON Poss`, 0),
+            dplyr::coalesce(`OFF Poss`, 0)
+          ) >= !!input$min_all_poss
+        )
+    }
+    if ("ON Poss" %in% names(df_live)) {
+      df_live <- df_live %>% filter(`ON Poss` >= !!input$min_on_poss)
+    }
+
+    df_live
   })
 
   # --- Live Calculation (Four Factors) ---
