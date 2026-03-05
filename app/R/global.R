@@ -713,7 +713,7 @@ tab_explainer <- function(id, title, intro, bullets) {
 }
 
 # ---------------- Filter Chips Builder ----------------
-GAME_TYPE_LABELS <- c("5" = "Regular", "16" = "PO QF", "26" = "PO SF",
+GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
                        "17" = "PO Finals", "33" = "Play-in", "34" = "Winner Cup", "35" = "State Cup")
 
 make_chip <- function(label, clear_id, css_class = "") {

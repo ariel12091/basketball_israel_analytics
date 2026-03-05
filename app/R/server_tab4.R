@@ -276,8 +276,9 @@ server_tab4 <- function(input, output, session, shared) {
 
     # Join schedule info (includes gn, team_name)
     sched_info <- sched %>%
-      select(game_id, team_id, team_name, gn, game_date, opp_team_name, team_score, opp_score, has_won) %>%
+      select(game_id, team_id, team_name, gn, game_type, game_date, opp_team_name, team_score, opp_score, has_won) %>%
       mutate(
+        game_type_label = dplyr::coalesce(unname(GAME_TYPE_LABELS[as.character(game_type)]), as.character(game_type)),
         result = ifelse(has_won, "W", "L"),
         score_display = paste0(team_score, "-", opp_score)
       )
@@ -356,8 +357,9 @@ server_tab4 <- function(input, output, session, shared) {
 
     # Join schedule info (includes gn, team_name)
     sched_info <- sched %>%
-      select(game_id, team_id, team_name, gn, game_date, opp_team_name, team_score, opp_score, has_won) %>%
+      select(game_id, team_id, team_name, gn, game_type, game_date, opp_team_name, team_score, opp_score, has_won) %>%
       mutate(
+        game_type_label = dplyr::coalesce(unname(GAME_TYPE_LABELS[as.character(game_type)]), as.character(game_type)),
         result = ifelse(has_won, "W", "L"),
         score_display = paste0(team_score, "-", opp_score)
       )
@@ -389,7 +391,7 @@ server_tab4 <- function(input, output, session, shared) {
       }
 
       disp <- df %>% select(
-        gn, game_date, team_name, opp_team_name, result, score_display,
+        gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
         off_ppp, def_ppp, net_rtg,
         any_of(c("Off Shot", "Def Shot")),
         off_poss, def_poss,
@@ -494,6 +496,7 @@ server_tab4 <- function(input, output, session, shared) {
       sketch <- htmltools::withTags(table(class = 'display', thead(
         tr(
           th(class = "sub-head", "GN"),
+          th(class = "sub-head", "Game Type"),
           th(class = "sub-head", "Date"),
           th(class = "sub-head", "Team"),
           th(class = "sub-head", "Opponent"),
@@ -522,7 +525,7 @@ server_tab4 <- function(input, output, session, shared) {
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(1, "desc"), list(0, "desc")),
+                            order = list(list(2, "desc"), list(0, "desc")),
                             columnDefs = col_defs
                           ))
 
@@ -537,7 +540,7 @@ server_tab4 <- function(input, output, session, shared) {
       if (is.null(df) || nrow(df) == 0) return(NULL)
 
       disp <- df %>% select(
-        gn, game_date, team_name, opp_team_name, result, score_display,
+        gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
         off_ppp, off_ts_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
         def_ppp, def_ts_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
         off_poss, def_poss
@@ -566,13 +569,14 @@ server_tab4 <- function(input, output, session, shared) {
 
       sketch <- htmltools::withTags(table(class = 'display', thead(
         tr(
-          th(class = "group-head", colspan = 6, ""),
+          th(class = "group-head", colspan = 7, ""),
           th(class = "group-head section-left-border", colspan = 5, "Offense"),
           th(class = "group-head section-left-border", colspan = 5, "Defense"),
           th(class = "group-head section-left-border", colspan = 2, "Usage")
         ),
         tr(
           th(class = "sub-head", "GN"),
+          th(class = "sub-head", "Game Type"),
           th(class = "sub-head", "Date"),
           th(class = "sub-head", "Team"),
           th(class = "sub-head", "Opponent"),
@@ -598,7 +602,7 @@ server_tab4 <- function(input, output, session, shared) {
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(1, "desc"), list(0, "desc")),
+                            order = list(list(2, "desc"), list(0, "desc")),
                             columnDefs = col_defs
                           ))
 
