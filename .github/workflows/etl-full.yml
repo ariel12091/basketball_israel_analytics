@@ -63,13 +63,14 @@ jobs:
           $runnerLog = Join-Path 'logs' ("etl_runner_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
           "Starting ETL wrapper at $(Get-Date -Format s)" | Tee-Object -FilePath $runnerLog -Append
 
-          $args = @()
+          $dryRunOnly = $false
+          $skipDryRun = $false
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
             if (-not [string]::IsNullOrWhiteSpace('${{ inputs.app_env }}')) {
               $env:APP_ENV = '${{ inputs.app_env }}'
             }
-            if ('${{ inputs.dry_run_only }}' -eq 'true') { $args += '-DryRunOnly' }
-            if ('${{ inputs.skip_dry_run }}' -eq 'true') { $args += '-SkipDryRun' }
+            if ('${{ inputs.dry_run_only }}' -eq 'true') { $dryRunOnly = $true }
+            if ('${{ inputs.skip_dry_run }}' -eq 'true') { $skipDryRun = $true }
           }
 
           try {
@@ -77,7 +78,7 @@ jobs:
             if (-not (Test-Path $psExe)) {
               throw "Windows PowerShell executable not found at $psExe"
             }
-            & $psExe -NoProfile -ExecutionPolicy Bypass -File ./scripts/run_etl_full.ps1 @args 2>&1 |
+            & $psExe -NoProfile -ExecutionPolicy Bypass -File ./scripts/run_etl_full.ps1 -BaseDir . -DryRunOnly:$dryRunOnly -SkipDryRun:$skipDryRun 2>&1 |
               Tee-Object -FilePath $runnerLog -Append
             if ($LASTEXITCODE -ne 0) {
               throw "ETL wrapper exited with code $LASTEXITCODE"
