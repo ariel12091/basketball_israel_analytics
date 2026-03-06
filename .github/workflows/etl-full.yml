@@ -72,6 +72,11 @@ jobs:
             if ('${{ inputs.dry_run_only }}' -eq 'true') { $dryRunOnly = $true }
             if ('${{ inputs.skip_dry_run }}' -eq 'true') { $skipDryRun = $true }
           }
+          $requiredEnv = @('PG_HOST','PG_PORT','PG_DB','PG_USER','PG_PASS')
+          $missingEnv = $requiredEnv | Where-Object { [string]::IsNullOrWhiteSpace([string](Get-Item "Env:$_" -ErrorAction SilentlyContinue).Value) }
+          if ($missingEnv.Count -gt 0) {
+            throw ("Missing required ETL environment variable(s): " + ($missingEnv -join ', '))
+          }
 
           try {
             $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
@@ -94,6 +99,16 @@ jobs:
             }
           } catch {
             "Wrapper launch/run failure: $($_.Exception.Message)" | Tee-Object -FilePath $runnerLog -Append
+            $latestWrapper = Get-ChildItem -Path logs -Filter 'etl_full_wrapper_*.log' -ErrorAction SilentlyContinue |
+              Sort-Object LastWriteTime -Descending |
+              Select-Object -First 1
+            if ($null -ne $latestWrapper) {
+              "---- BEGIN latest wrapper log ----" | Tee-Object -FilePath $runnerLog -Append
+              Get-Content $latestWrapper.FullName -Tail 250 | Tee-Object -FilePath $runnerLog -Append
+              "---- END latest wrapper log ----" | Tee-Object -FilePath $runnerLog -Append
+            } else {
+              "No wrapper log file found under logs/." | Tee-Object -FilePath $runnerLog -Append
+            }
             throw
           }
 
