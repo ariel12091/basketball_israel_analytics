@@ -73,7 +73,7 @@ jobs:
           }
 
           try {
-            & pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/run_etl_full.ps1 @args 2>&1 |
+            & ./scripts/run_etl_full.ps1 @args 2>&1 |
               Tee-Object -FilePath $runnerLog -Append
             if ($LASTEXITCODE -ne 0) {
               throw "ETL wrapper exited with code $LASTEXITCODE"
