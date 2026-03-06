@@ -31,7 +31,7 @@ if ([string]::IsNullOrWhiteSpace($exe)) {
 }
 
 $appEnv = if ([string]::IsNullOrWhiteSpace($env:APP_ENV)) { 'test' } else { $env:APP_ENV }
-$etlFile = (Join-Path $base 'etl\etl_full.R').Replace('\\', '/')
+$etlFile = (Join-Path $base 'etl\etl_full.R') -replace '\\', '/'
 
 if ($DryRunOnly.IsPresent) {
   $expr = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); etl_full(dry_run=TRUE)"
