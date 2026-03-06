@@ -20,9 +20,20 @@ jobs:
         with:
           r-version: '4.4.2'
 
-      - name: Install test deps
-        run: |
-          Rscript -e "install.packages(c('testthat','shiny','dplyr','DT','bslib','purrr','htmltools','shinytest2','DBI','RPostgres'), repos='https://cloud.r-project.org')"
+      - name: Install test deps (cached)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::testthat
+            any::shiny
+            any::dplyr
+            any::DT
+            any::bslib
+            any::purrr
+            any::htmltools
+            any::shinytest2
+            any::DBI
+            any::RPostgres
 
       - name: Run fast suite
         env:
@@ -42,9 +53,20 @@ jobs:
         with:
           r-version: '4.4.2'
 
-      - name: Install test deps
-        run: |
-          Rscript -e "install.packages(c('testthat','shiny','dplyr','DT','bslib','purrr','htmltools','shinytest2','DBI','RPostgres'), repos='https://cloud.r-project.org')"
+      - name: Install test deps (cached)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::testthat
+            any::shiny
+            any::dplyr
+            any::DT
+            any::bslib
+            any::purrr
+            any::htmltools
+            any::shinytest2
+            any::DBI
+            any::RPostgres
 
       - name: Run full suite (E2E + DB parity)
         env:
