@@ -1,10 +1,10 @@
-$ErrorActionPreference = 'Stop'
-
 param(
   [string]$BaseDir = "",
   [switch]$SkipDryRun,
   [switch]$DryRunOnly
 )
+
+$ErrorActionPreference = 'Stop'
 
 $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 if ([string]::IsNullOrWhiteSpace($BaseDir)) {
