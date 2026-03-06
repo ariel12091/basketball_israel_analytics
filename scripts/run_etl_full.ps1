@@ -31,6 +31,13 @@ if ([string]::IsNullOrWhiteSpace($exe)) {
 }
 
 $appEnv = if ([string]::IsNullOrWhiteSpace($env:APP_ENV)) { 'test' } else { $env:APP_ENV }
+$envVarsToTrim = @('APP_ENV', 'PG_HOST', 'PG_PORT', 'PG_DB', 'PG_USER', 'PG_PASS', 'PG_SSLMODE')
+foreach ($name in $envVarsToTrim) {
+  $raw = [System.Environment]::GetEnvironmentVariable($name)
+  if ($null -ne $raw) {
+    [System.Environment]::SetEnvironmentVariable($name, $raw.Trim())
+  }
+}
 $etlFile = (Join-Path $base 'etl\etl_full.R') -replace '\\', '/'
 
 if ($DryRunOnly.IsPresent) {
