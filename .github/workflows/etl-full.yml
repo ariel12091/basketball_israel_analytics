@@ -44,6 +44,11 @@ jobs:
             any::digest
             any::tidyr
             any::purrr
+            any::jsonlite
+            any::lubridate
+            any::janitor
+            any::stringr
+            any::tibble
             any::withr
             any::pool
 
