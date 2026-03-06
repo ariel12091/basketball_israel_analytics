@@ -128,3 +128,19 @@ jobs:
             etl/logs/etl_full_*.log
             etl/logs/last_success.txt
           if-no-files-found: warn
+
+      - name: Show ETL process log tail
+        if: always()
+        shell: pwsh
+        run: |
+          $latest = Get-ChildItem -Path etl/logs -Filter 'etl_full_*.log' -ErrorAction SilentlyContinue |
+            Sort-Object LastWriteTime -Descending |
+            Select-Object -First 1
+          if ($null -eq $latest) {
+            Write-Host "No ETL process log found under etl/logs."
+            exit 0
+          }
+          Write-Host "Showing tail of $($latest.FullName)"
+          Write-Host "----- BEGIN ETL LOG TAIL -----"
+          Get-Content $latest.FullName -Tail 200
+          Write-Host "----- END ETL LOG TAIL -----"
