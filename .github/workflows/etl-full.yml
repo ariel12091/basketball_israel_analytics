@@ -73,7 +73,11 @@ jobs:
           }
 
           try {
-            & ./scripts/run_etl_full.ps1 @args 2>&1 |
+            $psExe = Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe'
+            if (-not (Test-Path $psExe)) {
+              throw "Windows PowerShell executable not found at $psExe"
+            }
+            & $psExe -NoProfile -ExecutionPolicy Bypass -File ./scripts/run_etl_full.ps1 @args 2>&1 |
               Tee-Object -FilePath $runnerLog -Append
             if ($LASTEXITCODE -ne 0) {
               throw "ETL wrapper exited with code $LASTEXITCODE"
