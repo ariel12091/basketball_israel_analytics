@@ -48,6 +48,11 @@ jobs:
           PG_PASS: ${{ secrets.PG_PASS }}
           PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
         run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path logs | Out-Null
+          $runnerLog = Join-Path 'logs' ("etl_runner_{0}.log" -f (Get-Date -Format 'yyyyMMdd_HHmmss'))
+          "Starting ETL wrapper at $(Get-Date -Format s)" | Tee-Object -FilePath $runnerLog -Append
+
           $args = @()
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
             if (-not [string]::IsNullOrWhiteSpace('${{ inputs.app_env }}')) {
@@ -56,7 +61,17 @@ jobs:
             if ('${{ inputs.dry_run_only }}' -eq 'true') { $args += '-DryRunOnly' }
             if ('${{ inputs.skip_dry_run }}' -eq 'true') { $args += '-SkipDryRun' }
           }
-          & ./scripts/run_etl_full.ps1 @args
+
+          try {
+            & pwsh -NoProfile -ExecutionPolicy Bypass -File ./scripts/run_etl_full.ps1 @args 2>&1 |
+              Tee-Object -FilePath $runnerLog -Append
+            if ($LASTEXITCODE -ne 0) {
+              throw "ETL wrapper exited with code $LASTEXITCODE"
+            }
+          } catch {
+            "Wrapper launch/run failure: $($_.Exception.Message)" | Tee-Object -FilePath $runnerLog -Append
+            throw
+          }
 
       - name: Upload ETL logs
         if: always()
@@ -64,6 +79,7 @@ jobs:
         with:
           name: etl-logs-${{ github.run_id }}
           path: |
+            logs/etl_runner_*.log
             logs/etl_full_wrapper_*.log
             etl/logs/etl_full_*.log
             etl/logs/last_success.txt
