@@ -32,10 +32,20 @@ jobs:
         with:
           r-version: '4.4.2'
 
-      - name: Install ETL deps
-        shell: pwsh
-        run: |
-          Rscript -e "install.packages(c('DBI','RPostgres','dplyr','dbplyr','glue','digest','tidyr','purrr','withr','pool'), repos='https://cloud.r-project.org')"
+      - name: Install ETL deps (cached)
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::DBI
+            any::RPostgres
+            any::dplyr
+            any::dbplyr
+            any::glue
+            any::digest
+            any::tidyr
+            any::purrr
+            any::withr
+            any::pool
 
       - name: Run ETL wrapper
         shell: pwsh
