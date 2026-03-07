@@ -4,8 +4,9 @@ skip_if_not_installed("shinytest2")
 skip_if_not(Sys.getenv("RUN_E2E", "0") == "1")
 
 new_app <- function(name) {
+  app_root <- normalizePath(file.path("..", ".."), winslash = "/", mustWork = TRUE)
   shinytest2::AppDriver$new(
-    app_dir = ".",
+    app_dir = app_root,
     name = name,
     variant = shinytest2::platform_variant(),
     load_timeout = 30000,
