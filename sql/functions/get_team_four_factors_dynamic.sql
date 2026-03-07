@@ -192,19 +192,20 @@ BEGIN
       AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
       AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
   ),
-  -- complex_flags joins full MV (parent foul may precede clutch window)
+  -- complex_flags scoped to clutch-filtered rows; parent foul can still precede
+  -- clutch window because we only scope the child rows (clean_stats), not parent lookup.
   complex_flags AS (
-    SELECT DISTINCT ON (d.id)
-      d.id AS main_id,
+    SELECT DISTINCT ON (cs.id)
+      cs.id AS main_id,
       t2.type AS parent_type,
       t2.parameters_type AS parent_param
-    FROM basketball_test.df_pts_poss_lineups_longer_mv d
+    FROM clean_stats cs
     JOIN basketball_test.df_pts_poss_lineups_longer_mv t2
-      ON t2.id = d.parent_action_id
-      AND t2.game_id = d.game_id
+      ON t2.id = cs.parent_action_id
+      AND t2.game_id = cs.game_id
       AND t2.type = 'foul'::text
-    WHERE d.parent_action_id IS NOT NULL
-    ORDER BY d.id
+    WHERE cs.parent_action_id IS NOT NULL
+    ORDER BY cs.id
   ),
   combined_data AS (
     SELECT
