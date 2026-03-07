@@ -2,6 +2,12 @@ name: R Tests
 
 on:
   workflow_dispatch:
+    inputs:
+      run_full:
+        description: "Run full suite (E2E + DB parity)"
+        required: false
+        default: false
+        type: boolean
   push:
     branches: [ main ]
   pull_request:
@@ -11,7 +17,7 @@ on:
 
 jobs:
   fast-tests:
-    if: ${{ github.event_name != 'schedule' }}
+    if: ${{ github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.run_full == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
@@ -44,7 +50,7 @@ jobs:
           Rscript scripts/test_all.R
 
   nightly-full-tests:
-    if: ${{ github.event_name == 'schedule' }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full == 'true') }}
     runs-on: ubuntu-latest
 
     steps:
