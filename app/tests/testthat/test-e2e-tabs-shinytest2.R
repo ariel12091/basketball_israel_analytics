@@ -7,7 +7,7 @@ new_app <- function(name) {
   shinytest2::AppDriver$new(
     app_dir = ".",
     name = name,
-    variant = platform_variant(),
+    variant = shinytest2::platform_variant(),
     load_timeout = 30000,
     seed = 101
   )

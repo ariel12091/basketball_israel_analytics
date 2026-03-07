@@ -22,6 +22,7 @@ con <- DBI::dbConnect(
 on.exit(DBI::dbDisconnect(con), add = TRUE)
 
 game_ids <- c(159L, 160L, 161L, 162L, 163L)
+game_ids_sql <- paste(game_ids, collapse = ",")
 
 test_that("data parity: off oreb opportunities in team_metrics match direct lineup FF", {
   q <- "
@@ -31,7 +32,7 @@ test_that("data parity: off oreb opportunities in team_metrics match direct line
         game_id,
         COALESCE(SUM(oreb_opportunities) FILTER (WHERE type_lineup = 'offense'), 0)::numeric AS off_oreb_opp_direct
       FROM basketball_test.lineup_four_factors_by_game
-      WHERE game_id = ANY($1::int4[])
+      WHERE game_id IN (%s)
       GROUP BY team_id, game_id
     ),
     mv AS (
@@ -40,7 +41,7 @@ test_that("data parity: off oreb opportunities in team_metrics match direct line
         game_id,
         COALESCE(off_oreb_opp_raw, 0)::numeric AS off_oreb_opp_mv
       FROM basketball_test.team_metrics_by_game_mv
-      WHERE game_id = ANY($1::int4[])
+      WHERE game_id IN (%s)
     )
     SELECT
       COALESCE(mv.game_id, direct.game_id) AS game_id,
@@ -54,7 +55,8 @@ test_that("data parity: off oreb opportunities in team_metrics match direct line
     WHERE COALESCE(direct.off_oreb_opp_direct, -1) <> COALESCE(mv.off_oreb_opp_mv, -1)
     ORDER BY 1,2
   "
-  mismatches <- DBI::dbGetQuery(con, q, params = list(game_ids))
+  q <- sprintf(q, game_ids_sql, game_ids_sql)
+  mismatches <- DBI::dbGetQuery(con, q)
   expect_equal(nrow(mismatches), 0, info = paste(capture.output(print(mismatches)), collapse = "\n"))
 })
 
@@ -66,7 +68,7 @@ test_that("data parity: off oreb count in team_metrics matches direct lineup FF"
         game_id,
         COALESCE(SUM(oreb_count) FILTER (WHERE type_lineup = 'offense'), 0)::numeric AS off_oreb_cnt_direct
       FROM basketball_test.lineup_four_factors_by_game
-      WHERE game_id = ANY($1::int4[])
+      WHERE game_id IN (%s)
       GROUP BY team_id, game_id
     ),
     mv AS (
@@ -75,7 +77,7 @@ test_that("data parity: off oreb count in team_metrics matches direct lineup FF"
         game_id,
         COALESCE(off_oreb_count_raw, 0)::numeric AS off_oreb_cnt_mv
       FROM basketball_test.team_metrics_by_game_mv
-      WHERE game_id = ANY($1::int4[])
+      WHERE game_id IN (%s)
     )
     SELECT
       COALESCE(mv.game_id, direct.game_id) AS game_id,
@@ -89,6 +91,7 @@ test_that("data parity: off oreb count in team_metrics matches direct lineup FF"
     WHERE COALESCE(direct.off_oreb_cnt_direct, -1) <> COALESCE(mv.off_oreb_cnt_mv, -1)
     ORDER BY 1,2
   "
-  mismatches <- DBI::dbGetQuery(con, q, params = list(game_ids))
+  q <- sprintf(q, game_ids_sql, game_ids_sql)
+  mismatches <- DBI::dbGetQuery(con, q)
   expect_equal(nrow(mismatches), 0, info = paste(capture.output(print(mismatches)), collapse = "\n"))
 })
