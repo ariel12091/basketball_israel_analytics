@@ -876,7 +876,9 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     margin <- get_input("_clutch_margin") %||% 5
     mins <- get_input("_clutch_minutes") %||% 5
     status <- get_input("_clutch_status") %||% "all"
-    lbl <- paste0("Clutch \u226440sec margin\u2264", margin)
+    mins <- suppressWarnings(as.integer(mins))
+    if (is.na(mins) || mins < 1L) mins <- 5L
+    lbl <- paste0("Clutch \u2264", mins, "min margin\u2264", margin)
     if (!identical(status, "all")) lbl <- paste0(lbl, " ", status)
     chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_clutch"), "chip-clutch")
   }
