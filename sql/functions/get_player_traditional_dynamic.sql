@@ -192,6 +192,7 @@ BEGIN
       d.type_lineup,
       d.final_end_poss,
       d.quarter,
+      d.team_score,
       d.own_team_score,
       d.opp_team_score
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
@@ -200,14 +201,44 @@ BEGIN
      AND gf.team_id = d.team_id
     WHERE (
       p_max_margin IS NULL
-      OR ABS(COALESCE(d.own_team_score, 0) - COALESCE(d.opp_team_score, 0)) <= p_max_margin
+      OR ABS(
+        CASE
+          WHEN d.type_lineup = 'offense'
+            THEN (COALESCE(d.own_team_score, 0) - COALESCE(d.team_score, 0)) - COALESCE(d.opp_team_score, 0)
+          ELSE COALESCE(d.own_team_score, 0) - (COALESCE(d.opp_team_score, 0) - COALESCE(d.team_score, 0))
+        END
+      ) <= p_max_margin
       OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE))
     )
     AND (
       v_margin_status = 'all'
-      OR (v_margin_status = 'leading' AND COALESCE(d.own_team_score, 0) > COALESCE(d.opp_team_score, 0))
-      OR (v_margin_status = 'trailing' AND COALESCE(d.own_team_score, 0) < COALESCE(d.opp_team_score, 0))
-      OR (v_margin_status = 'tied' AND COALESCE(d.own_team_score, 0) = COALESCE(d.opp_team_score, 0))
+      OR (
+        v_margin_status = 'leading'
+        AND
+        CASE
+          WHEN d.type_lineup = 'offense'
+            THEN (COALESCE(d.own_team_score, 0) - COALESCE(d.team_score, 0)) > COALESCE(d.opp_team_score, 0)
+          ELSE COALESCE(d.own_team_score, 0) > (COALESCE(d.opp_team_score, 0) - COALESCE(d.team_score, 0))
+        END
+      )
+      OR (
+        v_margin_status = 'trailing'
+        AND
+        CASE
+          WHEN d.type_lineup = 'offense'
+            THEN (COALESCE(d.own_team_score, 0) - COALESCE(d.team_score, 0)) < COALESCE(d.opp_team_score, 0)
+          ELSE COALESCE(d.own_team_score, 0) < (COALESCE(d.opp_team_score, 0) - COALESCE(d.team_score, 0))
+        END
+      )
+      OR (
+        v_margin_status = 'tied'
+        AND
+        CASE
+          WHEN d.type_lineup = 'offense'
+            THEN (COALESCE(d.own_team_score, 0) - COALESCE(d.team_score, 0)) = COALESCE(d.opp_team_score, 0)
+          ELSE COALESCE(d.own_team_score, 0) = (COALESCE(d.opp_team_score, 0) - COALESCE(d.team_score, 0))
+        END
+      )
       OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE))
     )
     AND (
