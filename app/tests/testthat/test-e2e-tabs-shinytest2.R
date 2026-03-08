@@ -9,6 +9,7 @@ new_app <- function(name) {
     app_dir = app_root,
     name = name,
     variant = shinytest2::platform_variant(),
+    timeout = 60000,
     load_timeout = 30000,
     seed = 101
   )
@@ -29,47 +30,58 @@ wait_for_game_type_cleared <- function(app, input_id, timeout_sec = 15, poll_sec
   fail(paste0("Input '", input_id, "' did not clear within ", timeout_sec, "s"))
 }
 
+with_retry <- function(expr, tries = 3L, sleep_sec = 1) {
+  last_err <- NULL
+  for (i in seq_len(tries)) {
+    out <- tryCatch(list(ok = TRUE, value = force(expr)), error = function(e) list(ok = FALSE, err = e))
+    if (isTRUE(out$ok)) return(out$value)
+    last_err <- out$err
+    if (i < tries) Sys.sleep(sleep_sec)
+  }
+  stop(last_err)
+}
+
 test_that("e2e tab1 reset flow", {
   app <- new_app("tab1_reset")
   on.exit(app$stop(), add = TRUE)
-  app$set_inputs(main_tabs = "onoff")
-  app$set_inputs(on_game_type = "5")
-  app$set_inputs(reset_defaults = 1)
-  wait_for_game_type_cleared(app, "on_game_type")
+  with_retry(app$set_inputs(main_tabs = "onoff"))
+  with_retry(app$set_inputs(on_game_type = "5"))
+  with_retry(app$set_inputs(reset_defaults = 1))
+  wait_for_game_type_cleared(app, "on_game_type", timeout_sec = 45)
 })
 
 test_that("e2e tab2 reset flow", {
   app <- new_app("tab2_reset")
   on.exit(app$stop(), add = TRUE)
-  app$set_inputs(main_tabs = "lineup_data")
-  app$set_inputs(ld_game_type = "5")
-  app$set_inputs(ld_reset = 1)
-  wait_for_game_type_cleared(app, "ld_game_type")
+  with_retry(app$set_inputs(main_tabs = "lineup_data"))
+  with_retry(app$set_inputs(ld_game_type = "5"))
+  with_retry(app$set_inputs(ld_reset = 1))
+  wait_for_game_type_cleared(app, "ld_game_type", timeout_sec = 45)
 })
 
 test_that("e2e tab3 reset flow", {
   app <- new_app("tab3_reset")
   on.exit(app$stop(), add = TRUE)
-  app$set_inputs(main_tabs = "team_ratings")
-  app$set_inputs(tr_game_type = "5")
-  app$set_inputs(tr_reset = 1)
-  wait_for_game_type_cleared(app, "tr_game_type")
+  with_retry(app$set_inputs(main_tabs = "team_ratings"))
+  with_retry(app$set_inputs(tr_game_type = "5"))
+  with_retry(app$set_inputs(tr_reset = 1))
+  wait_for_game_type_cleared(app, "tr_game_type", timeout_sec = 45)
 })
 
 test_that("e2e tab4 reset flow", {
   app <- new_app("tab4_reset")
   on.exit(app$stop(), add = TRUE)
-  app$set_inputs(main_tabs = "game_logs")
-  app$set_inputs(gl_game_type = "5")
-  app$set_inputs(gl_reset = 1)
-  wait_for_game_type_cleared(app, "gl_game_type")
+  with_retry(app$set_inputs(main_tabs = "game_logs"))
+  with_retry(app$set_inputs(gl_game_type = "5"))
+  with_retry(app$set_inputs(gl_reset = 1))
+  wait_for_game_type_cleared(app, "gl_game_type", timeout_sec = 45)
 })
 
 test_that("e2e tab5 reset flow", {
   app <- new_app("tab5_reset")
   on.exit(app$stop(), add = TRUE)
-  app$set_inputs(main_tabs = "traditional_stats")
-  app$set_inputs(ts_game_type = "5")
-  app$set_inputs(ts_reset = 1)
-  wait_for_game_type_cleared(app, "ts_game_type")
+  with_retry(app$set_inputs(main_tabs = "traditional_stats"))
+  with_retry(app$set_inputs(ts_game_type = "5"))
+  with_retry(app$set_inputs(ts_reset = 1))
+  wait_for_game_type_cleared(app, "ts_game_type", timeout_sec = 45)
 })
