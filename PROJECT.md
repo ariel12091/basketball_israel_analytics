@@ -1555,3 +1555,100 @@ extract_starters <- function(box) {
   - `app/app.R`
     - removed temporary global debug error-hook overrides to avoid handler side effects during runtime errors
 - Result: Team Ratings reset no longer crashes; app stays responsive.
+
+## Session Update (2026-03-05): Stability + Test Infrastructure Hardening
+- Fixed Team Ratings reset crash path (`unclass(x)` during Shiny JSON flush) by stabilizing reset payloads and removing brittle runtime debug hook behavior.
+  - Updated: `app/R/server_tab3.R`, `app/R/global.R`, `app/app.R`
+- Fixed Lineup tab reset date behavior to always restore season bounds instead of `NA` date payloads.
+  - Updated: `app/R/server_tab2.R`
+- Fixed Tab 1 fallback filter behavior where applying game filters could incorrectly return empty results unless `min_all_poss = 0`.
+  - Root cause: fallback SQL path enforced possession thresholds differently from MV path.
+  - Fix: fetch fallback rows with `min_all=0`/`min_on=0`, then apply local min-possession filtering consistently with MV behavior.
+  - Updated: `app/R/server_tab1.R`
+
+### Testing System Added
+- Added a project test harness under `app/tests/testthat` and one-command runner:
+  - `scripts/test_all.R`
+- Added contract tests covering all primary tabs (1-5):
+  - UI/server wiring for reset + filter chips
+  - date-reset season-bounds contract (no `NA` reset dates)
+  - parse smoke tests for tab UI/server files
+  - filter-chip date/environment guard checks
+- Added `shiny::testServer` smoke tests for tabs 1-5 reset flows.
+- Added optional `shinytest2` E2E tab reset smoke tests (guarded by `RUN_E2E=1`).
+- Added optional DB parity tests for fixed game IDs (`159,160,161,162,163`) validating team four-factor rebound fields against direct lineup FF aggregates (guarded by `RUN_DB_TESTS=1` + DB env vars).
+
+### CI / Release Gate
+- Added/updated GitHub workflows:
+  - `.github/workflows/r-tests.yml` to run automated tests on push/PR.
+  - `.github/workflows/deploy-gated.yml` to enforce a test gate before deploy job execution.
+- Default CI mode keeps optional E2E/DB tests off unless explicitly enabled via env flags.
+
+## Session Update (2026-03-05): CI/Test Gate + ETL GitHub Workflow
+- Added multi-layer testing and release gating:
+  - `app/tests/testthat` suite for tab wiring, date reset contracts, parse checks, and filter/date guards.
+  - `shiny::testServer` smoke tests for tabs 1-5 reset flows.
+  - optional `shinytest2` E2E smoke tests (`RUN_E2E=1`).
+  - optional DB parity tests on fixed game IDs (`RUN_DB_TESTS=1`) for key four-factor rebound fields.
+  - one-command runner: `scripts/test_all.R`.
+- CI policy implemented in GitHub Actions:
+  - `.github/workflows/r-tests.yml`
+    - fast suite on every push/PR to `main`.
+    - full suite (E2E + DB parity) on nightly schedule.
+  - `.github/workflows/deploy-gated.yml`
+    - full pre-deploy test gate, deploy job runs only after gate passes.
+
+### ETL Automation Added (GitHub Actions)
+- Added ETL workflow:
+  - `.github/workflows/etl-full.yml` (name: `ETL Full`)
+  - triggers:
+    - manual (`workflow_dispatch`)
+    - nightly schedule
+  - runs on `windows-latest` and uploads ETL logs as artifacts.
+- Added portable ETL wrapper:
+  - `scripts/run_etl_full.ps1`
+  - no hardcoded machine paths; auto-resolves repo root and `Rscript` from `RSCRIPT_PATH` or `PATH`.
+  - supports flags:
+    - `-DryRunOnly`
+    - `-SkipDryRun`
+
+### ETL Workflow Inputs / Secrets
+- Manual inputs (`Run workflow`):
+  - `app_env` (default `test`)
+  - `dry_run_only` (boolean)
+  - `skip_dry_run` (boolean)
+- Required GitHub Actions secrets for DB access:
+  - `PG_HOST`, `PG_PORT`, `PG_DB`, `PG_USER`, `PG_PASS`, `PG_SSLMODE`
+- Dry-run only in GitHub Actions:
+  - set `dry_run_only = true`, `skip_dry_run = false`.
+
+## Session Update (2026-03-08): E2E CI Stabilization (shinytest2)
+- Full R workflow now follows shinytest2 CI pattern for the full run:
+  - uses `r-lib/actions/setup-pandoc@v2`
+  - uses `rstudio/shinytest2/actions/test-app@actions/v1` with `app-dir: app`
+  - fast suite remains custom `Rscript scripts/test_all.R`
+
+### Root Causes Found
+- `actionButton` reset events were triggered in tests via `set_inputs(...)` instead of real clicks.
+  - In shinytest2 this can fail to reproduce real button behavior.
+  - Fix: use `app$click("<reset_id>")` for all tab reset actions.
+- Multi-select `*_game_type` resets used `selected = ""` in app server code.
+  - For `multiple = TRUE` selectize inputs, canonical clear is `character(0)`.
+  - Fix applied across tab reset handlers and shared chip-clear helper.
+- E2E tests were reported as `empty test` when passing.
+  - Cause: helper-only checks without explicit `expect_*`.
+  - Fix: add explicit `expect_true(...)` per test.
+
+### E2E Test Method (Recommended)
+- Use `AppDriver` with explicit timeout (`timeout = 60000`).
+- For button actions, prefer `app$click(...)` over `set_inputs(...)`.
+- Use retries around flaky operations (`set_inputs`, `click`) and poll target input state.
+- Assert final state explicitly with `expect_true(...)`.
+
+### Debugging Method (Used in this session)
+- Validate UI behavior independently with Playwright on live app:
+  - set game type -> click reset -> verify it clears in UI.
+- Measure cold-run timing separately from CI:
+  - load was ~6.8s in repeated cold runs
+  - reset clear was ~5s in repeated cold runs
+- If CI still fails while UI is correct, prioritize test-harness semantics (event triggering, assertion style) before increasing timeouts further.
