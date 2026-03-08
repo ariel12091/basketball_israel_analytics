@@ -31,7 +31,7 @@ wait_for_game_type_cleared <- function(app, input_id, reset_id, timeout_sec = 15
     v <- app$get_value(input = input_id)
     if (is_cleared(v)) return(invisible(TRUE))
     if (!retriggered && as.numeric(difftime(Sys.time(), start_time, units = "secs")) >= (timeout_sec / 2)) {
-      with_retry(set_input(app, reset_id, 2L))
+      with_retry(app$click(reset_id))
       retriggered <- TRUE
     }
     if (Sys.time() >= deadline) break
@@ -56,7 +56,7 @@ test_that("e2e tab1 reset flow", {
   on.exit(app$stop(), add = TRUE)
   with_retry(set_input(app, "main_tabs", "onoff"))
   with_retry(set_input(app, "on_game_type", "5"))
-  with_retry(set_input(app, "reset_defaults", 1L))
+  with_retry(app$click("reset_defaults"))
   wait_for_game_type_cleared(app, "on_game_type", "reset_defaults", timeout_sec = 60)
 })
 
@@ -65,7 +65,7 @@ test_that("e2e tab2 reset flow", {
   on.exit(app$stop(), add = TRUE)
   with_retry(set_input(app, "main_tabs", "lineup_data"))
   with_retry(set_input(app, "ld_game_type", "5"))
-  with_retry(set_input(app, "ld_reset", 1L))
+  with_retry(app$click("ld_reset"))
   wait_for_game_type_cleared(app, "ld_game_type", "ld_reset", timeout_sec = 60)
 })
 
@@ -74,7 +74,7 @@ test_that("e2e tab3 reset flow", {
   on.exit(app$stop(), add = TRUE)
   with_retry(set_input(app, "main_tabs", "team_ratings"))
   with_retry(set_input(app, "tr_game_type", "5"))
-  with_retry(set_input(app, "tr_reset", 1L))
+  with_retry(app$click("tr_reset"))
   wait_for_game_type_cleared(app, "tr_game_type", "tr_reset", timeout_sec = 60)
 })
 
@@ -83,7 +83,7 @@ test_that("e2e tab4 reset flow", {
   on.exit(app$stop(), add = TRUE)
   with_retry(set_input(app, "main_tabs", "game_logs"))
   with_retry(set_input(app, "gl_game_type", "5"))
-  with_retry(set_input(app, "gl_reset", 1L))
+  with_retry(app$click("gl_reset"))
   wait_for_game_type_cleared(app, "gl_game_type", "gl_reset", timeout_sec = 60)
 })
 
@@ -92,6 +92,6 @@ test_that("e2e tab5 reset flow", {
   on.exit(app$stop(), add = TRUE)
   with_retry(set_input(app, "main_tabs", "traditional_stats"))
   with_retry(set_input(app, "ts_game_type", "5"))
-  with_retry(set_input(app, "ts_reset", 1L))
+  with_retry(app$click("ts_reset"))
   wait_for_game_type_cleared(app, "ts_game_type", "ts_reset", timeout_sec = 60)
 })
