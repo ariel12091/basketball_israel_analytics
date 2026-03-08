@@ -58,6 +58,7 @@ test_that("e2e tab1 reset flow", {
   with_retry(set_input(app, "on_game_type", "5"))
   with_retry(app$click("reset_defaults"))
   wait_for_game_type_cleared(app, "on_game_type", "reset_defaults", timeout_sec = 60)
+  expect_true(is_cleared(app$get_value(input = "on_game_type")))
 })
 
 test_that("e2e tab2 reset flow", {
@@ -67,6 +68,7 @@ test_that("e2e tab2 reset flow", {
   with_retry(set_input(app, "ld_game_type", "5"))
   with_retry(app$click("ld_reset"))
   wait_for_game_type_cleared(app, "ld_game_type", "ld_reset", timeout_sec = 60)
+  expect_true(is_cleared(app$get_value(input = "ld_game_type")))
 })
 
 test_that("e2e tab3 reset flow", {
@@ -76,6 +78,7 @@ test_that("e2e tab3 reset flow", {
   with_retry(set_input(app, "tr_game_type", "5"))
   with_retry(app$click("tr_reset"))
   wait_for_game_type_cleared(app, "tr_game_type", "tr_reset", timeout_sec = 60)
+  expect_true(is_cleared(app$get_value(input = "tr_game_type")))
 })
 
 test_that("e2e tab4 reset flow", {
@@ -85,6 +88,7 @@ test_that("e2e tab4 reset flow", {
   with_retry(set_input(app, "gl_game_type", "5"))
   with_retry(app$click("gl_reset"))
   wait_for_game_type_cleared(app, "gl_game_type", "gl_reset", timeout_sec = 60)
+  expect_true(is_cleared(app$get_value(input = "gl_game_type")))
 })
 
 test_that("e2e tab5 reset flow", {
@@ -94,4 +98,5 @@ test_that("e2e tab5 reset flow", {
   with_retry(set_input(app, "ts_game_type", "5"))
   with_retry(app$click("ts_reset"))
   wait_for_game_type_cleared(app, "ts_game_type", "ts_reset", timeout_sec = 60)
+  expect_true(is_cleared(app$get_value(input = "ts_game_type")))
 })
