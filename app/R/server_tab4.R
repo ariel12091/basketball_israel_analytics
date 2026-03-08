@@ -77,7 +77,7 @@ server_tab4 <- function(input, output, session, shared) {
     } else {
       updateSelectizeInput(session, "gl_team", selected = "", server = TRUE)
     }
-    updateSelectizeInput(session, "gl_game_type", selected = "")
+    updateSelectizeInput(session, "gl_game_type", selected = character(0))
     updateSelectizeInput(session, "gl_opponents", selected = character(0))
     updateSelectInput(session, "gl_home_away", selected = "")
     updateSelectInput(session, "gl_outcome", selected = "")

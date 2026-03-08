@@ -943,7 +943,7 @@ setup_chip_clears <- function(prefix, session, input, shared,
                               teams_ids = NULL, starters_ids = NULL,
                               clutch_enabled_id = NULL) {
   observeEvent(input[[paste0(prefix, "_clear_game_type")]], {
-    updateSelectizeInput(session, game_type_id, selected = "")
+    updateSelectizeInput(session, game_type_id, selected = character(0))
   }, ignoreInit = TRUE)
 
   if (!is.null(teams_ids)) {

@@ -86,7 +86,7 @@ server_tab1 <- function(input, output, session, shared) {
     updateDateRangeInput(session, "date_range",
                          start = bounds$start, end = bounds$end,
                          min = bounds$start, max = bounds$end)
-    updateSelectizeInput(session, "on_game_type", selected = "")
+    updateSelectizeInput(session, "on_game_type", selected = character(0))
     updateSelectizeInput(session, "on_opponents", selected = character(0))
     updateSelectInput(session, "on_home_away", selected = "")
     updateSelectInput(session, "on_outcome", selected = "")

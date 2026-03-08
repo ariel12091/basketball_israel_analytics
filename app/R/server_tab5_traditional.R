@@ -88,7 +88,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateSelectizeInput(session, "ts_teams", selected = character(0))
-    updateSelectizeInput(session, "ts_game_type", selected = "")
+    updateSelectizeInput(session, "ts_game_type", selected = character(0))
     updateSelectizeInput(session, "ts_opponents", selected = character(0))
     updateSelectInput(session, "ts_home_away", selected = "")
     updateSelectInput(session, "ts_outcome", selected = "")

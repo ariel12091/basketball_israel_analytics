@@ -102,7 +102,7 @@ server_tab2 <- function(input, output, session, shared) {
     updateSelectInput(session, "ld_num_starters_def_mode", selected = "")
     updateSelectInput(session, "ld_num_starters_def", selected = "")
     updateSliderInput(session, "ld_minposs", value = LD_DEFAULT_MIN_POSS)
-    updateSelectizeInput(session, "ld_game_type", selected = "")
+    updateSelectizeInput(session, "ld_game_type", selected = character(0))
     updateSelectizeInput(session, "ld_opponents", selected = character(0))
     updateSelectInput(session, "ld_home_away", selected = "")
     updateSelectInput(session, "ld_outcome", selected = "")
