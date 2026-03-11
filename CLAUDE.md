@@ -31,7 +31,12 @@ git checkout -b shiny/fix-filter-reset   # create branch
 git branch -d shiny/fix-filter-reset
 ```
 
-`main` is branch-protected — all changes go through a PR. Tags (`backup/...`) are used for snapshots instead of long-lived backup branches.
+`main` is protected by a local git hook — direct pushes are rejected. Tags (`backup/...`) are used for snapshots instead of long-lived backup branches.
+
+**One-time setup** (required after cloning):
+```bash
+git config core.hooksPath scripts/hooks
+```
 
 ## Commands
 
