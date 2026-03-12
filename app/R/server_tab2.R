@@ -33,7 +33,13 @@ server_tab2 <- function(input, output, session, shared) {
     ld_ref$teams <- teams_ld
     team_values <- c("", as.character(teams_ld$team_id))
     names(team_values) <- c("— All teams —", teams_ld$team_name)
-    updateSelectizeInput(session, "ld_team", choices = team_values, selected = "", server = TRUE)
+    pending_team <- shared$pending_ld_team()
+    if (!is.null(pending_team) && nzchar(pending_team)) {
+      shared$pending_ld_team(NULL)
+      updateSelectizeInput(session, "ld_team", choices = team_values, selected = pending_team, server = TRUE)
+    } else {
+      updateSelectizeInput(session, "ld_team", choices = team_values, selected = "", server = TRUE)
+    }
 
     players_map <- DBI::dbGetQuery(pg_pool, sprintf("SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
     ld_ref$players <- players_map

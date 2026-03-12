@@ -3,6 +3,7 @@
 
 # Source all modules
 source("R/global.R", local = TRUE)
+source("R/ui_tab0_home.R", local = TRUE)
 source("R/ui_tab1_onoff.R", local = TRUE)
 source("R/ui_tab2_lineup.R", local = TRUE)
 source("R/ui_tab3_team.R", local = TRUE)
@@ -73,6 +74,7 @@ ui <- navbarPage(
       )
     )
   ),
+  ui_tab0_home,
   ui_tab1_onoff,
   ui_tab2_lineup,
   ui_tab3_team,
@@ -245,7 +247,8 @@ server <- function(input, output, session) {
     selected_game_year = selected_game_year,
     teams_for_year_df = teams_for_year_df,
     selected_opp_ids_on = selected_opp_ids_on,
-    selected_opp_ids_ld = selected_opp_ids_ld
+    selected_opp_ids_ld = selected_opp_ids_ld,
+    pending_ld_team = reactiveVal(NULL)
   )
 
   # Call tab server modules
@@ -254,6 +257,52 @@ server <- function(input, output, session) {
   server_tab3(input, output, session, shared)
   server_tab4(input, output, session, shared)
   server_tab5_traditional(input, output, session, shared)
+
+  observe({
+    teams <- shared$teams_for_year_df()
+    req(nrow(teams) > 0)
+    choices <- c("", setNames(as.character(teams$team_id), teams$team_name))
+    updateSelectizeInput(session, "home_team", choices = choices, selected = "", server = TRUE)
+  }) |> bindEvent(shared$teams_for_year_df(), ignoreNULL = TRUE)
+
+  # Card navigation: Who is helping my team? → Tab 1
+  observeEvent(input$go_onoff, {
+    teams_df <- shared$teams_for_year_df()
+    if (!is.null(input$home_team) && input$home_team != "") {
+      team_name <- teams_df$team_name[teams_df$team_id == as.integer(input$home_team)]
+      if (length(team_name) > 0) {
+        updateSelectizeInput(session, "teams", choices = teams_df$team_name,
+                             selected = team_name, server = TRUE)
+      }
+    } else {
+      updateSelectizeInput(session, "teams", choices = teams_df$team_name,
+                           selected = character(0), server = TRUE)
+    }
+    updateTabsetPanel(session, "main_tabs", selected = "onoff")
+  })
+
+  # Card navigation: Which lineups are working? → Tab 2
+  observeEvent(input$go_lineups, {
+    if (!is.null(input$home_team) && input$home_team != "") {
+      shared$pending_ld_team(input$home_team)
+    }
+    updateRadioButtons(session, "ld_num", selected = "5")
+    updateTabsetPanel(session, "main_tabs", selected = "lineup_data")
+  })
+
+  # Card navigation: How is my team performing? → Tab 3
+  observeEvent(input$go_team, {
+    updateTabsetPanel(session, "main_tabs", selected = "team_ratings")
+  })
+
+  # Card navigation: What happened in last night's game? → Tab 4
+  observeEvent(input$go_gamelogs, {
+    if (!is.null(input$home_team) && input$home_team != "") {
+      updateSelectizeInput(session, "gl_team", selected = input$home_team)
+    }
+    updateTabsetPanel(session, "main_tabs", selected = "game_logs")
+  })
+
   log_startup("server modules initialized")
 }
 
