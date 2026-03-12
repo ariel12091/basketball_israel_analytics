@@ -27,11 +27,13 @@ Workflow:
 ```bash
 git checkout -b shiny/fix-filter-reset   # create branch
 # ... work, commit ...
-# open PR on GitHub → merge → delete branch
+git checkout main
+git merge shiny/fix-filter-reset
+git push origin main
 git branch -d shiny/fix-filter-reset
 ```
 
-`main` is protected by a local git hook — direct pushes are rejected. Tags (`backup/...`) are used for snapshots instead of long-lived backup branches.
+Tags (`backup/...`) are used for snapshots instead of long-lived backup branches.
 
 **One-time setup** (required after cloning):
 ```bash
