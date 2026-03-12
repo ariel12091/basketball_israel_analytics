@@ -29,7 +29,11 @@ server_tab2 <- function(input, output, session, shared) {
     if (!identical(input$main_tabs, "lineup_data")) return(NULL)
     gy_int <- as.integer(input$game_year)
 
-    teams_ld <- DBI::dbGetQuery(pg_pool, sprintf("SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int))
+    teams_ld <- cached_ref_query(
+      key = sprintf("ld_teams_%d", gy_int),
+      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+        "SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int))
+    )
     ld_ref$teams <- teams_ld
     team_values <- c("", as.character(teams_ld$team_id))
     names(team_values) <- c("— All teams —", teams_ld$team_name)
@@ -41,14 +45,21 @@ server_tab2 <- function(input, output, session, shared) {
       updateSelectizeInput(session, "ld_team", choices = team_values, selected = "", server = TRUE)
     }
 
-    players_map <- DBI::dbGetQuery(pg_pool, sprintf("SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
+    players_map <- cached_ref_query(
+      key = sprintf("ld_players_%d", gy_int),
+      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+        "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
+    )
     ld_ref$players <- players_map
 
     updateSelectizeInput(session, "ld_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
     updateSelectizeInput(session, "ld_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
 
-    gn_df <- DBI::dbGetQuery(pg_pool,
-      sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
+    gn_df <- cached_ref_query(
+      key = sprintf("ld_gn_%d", gy_int),
+      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+        "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
+    )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     gn_choices <- c("", as.character(gn_vals))
     last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""

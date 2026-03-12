@@ -123,26 +123,47 @@ server <- function(input, output, session) {
     gy_int <- suppressWarnings(as.integer(gy_chr))
     if (!is.finite(gy_int) || is.na(gy_int)) return(invisible(NULL))
 
-    # Warm teams cache used across tabs.
+    # Shared teams query (DISTINCT pattern used by tabs 1, 3, 5).
+    teams_distinct_q <- function() DBI::dbGetQuery(
+      pg_pool,
+      sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
+    )
+    # Teams query with MIN/GROUP BY (used by tabs 2, 4).
+    teams_min_q <- function() DBI::dbGetQuery(
+      pg_pool,
+      sprintf("SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int)
+    )
+    # GN query — shared across all tabs.
+    gn_query <- function() DBI::dbGetQuery(
+      pg_pool,
+      sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
+    )
+
+    invisible(cached_ref_query(key = sprintf("teams_for_year_%d", gy_int), query_fun = teams_distinct_q))
+    invisible(cached_ref_query(key = sprintf("on_gn_%d",  gy_int), query_fun = gn_query))
+
+    # Tab 2 (Lineups)
+    invisible(cached_ref_query(key = sprintf("ld_teams_%d",   gy_int), query_fun = teams_min_q))
+    invisible(cached_ref_query(key = sprintf("ld_gn_%d",      gy_int), query_fun = gn_query))
     invisible(cached_ref_query(
-      key = sprintf("teams_for_year_%d", gy_int),
-      query_fun = function() {
-        DBI::dbGetQuery(
-          pg_pool,
-          sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
-        )
-      }
+      key = sprintf("ld_players_%d", gy_int),
+      query_fun = function() DBI::dbGetQuery(
+        pg_pool,
+        sprintf("SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int)
+      )
     ))
 
-    # Warm ON tab GN cache (primary first-view path).
-    # Avoid running duplicate GN queries for every tab at startup.
-    gn_query <- function() {
-      DBI::dbGetQuery(
-        pg_pool,
-        sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
-      )
-    }
-    invisible(cached_ref_query(key = sprintf("on_gn_%d", gy_int), query_fun = gn_query))
+    # Tab 3 (Team Ratings)
+    invisible(cached_ref_query(key = sprintf("tr_teams_%d", gy_int), query_fun = teams_distinct_q))
+    invisible(cached_ref_query(key = sprintf("tr_gn_%d",    gy_int), query_fun = gn_query))
+
+    # Tab 4 (Game Logs)
+    invisible(cached_ref_query(key = sprintf("gl_teams_%d", gy_int), query_fun = teams_min_q))
+    invisible(cached_ref_query(key = sprintf("gl_gn_%d",    gy_int), query_fun = gn_query))
+
+    # Tab 5 (Player Stats)
+    invisible(cached_ref_query(key = sprintf("ts_teams_%d", gy_int), query_fun = teams_distinct_q))
+    invisible(cached_ref_query(key = sprintf("ts_gn_%d",    gy_int), query_fun = gn_query))
   }
 
   observeEvent(selected_game_year(), {
@@ -212,13 +233,10 @@ server <- function(input, output, session) {
     last_updated_cache() %||% "Last updated: unavailable"
   })
 
-  prewarm_enabled <- tolower(Sys.getenv("APP_PREWARM_ENABLED", "0")) %in% c("1", "true", "yes")
-  if (isTRUE(prewarm_enabled)) {
-    observeEvent(selected_game_year(), {
-      prewarm_for_year(selected_game_year())
-      log_startup(sprintf("prewarm complete for season %s", selected_game_year()))
-    }, ignoreInit = FALSE)
-  }
+  observeEvent(selected_game_year(), {
+    prewarm_for_year(selected_game_year())
+    log_startup(sprintf("prewarm complete for season %s", selected_game_year()))
+  }, ignoreInit = FALSE)
 
   observeEvent(input$open_glossary, {
     showModal(
