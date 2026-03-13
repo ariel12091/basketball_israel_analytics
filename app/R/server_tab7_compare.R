@@ -499,34 +499,32 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
       rate_mode <- input$cmp_rate_mode %||% "Per Game"
+
+      # SQL returns raw totals: pts, reb, ast, stl, gp, poss_on_floor, minutes
+      # Percentages: fg_pct, tp_pct, ft_pct, ts
       get_player_metric <- function(row, m, rate) {
-        col_map <- c(
-          "ppg" = "pts_per_game", "rpg" = "reb_per_game", "apg" = "ast_per_game", "spg" = "stl_per_game",
-          "fg_pct" = "fg_pct", "fg3_pct" = "fg3_pct", "ft_pct" = "ft_pct", "ts_pct" = "ts_pct"
-        )
-        total_map <- c(
-          "ppg" = "total_pts", "rpg" = "total_reb", "apg" = "total_ast", "spg" = "total_stl"
-        )
-        if (m %in% c("fg_pct", "fg3_pct", "ft_pct", "ts_pct")) {
-          cname <- col_map[m]
+        count_map <- c("ppg" = "pts", "rpg" = "reb", "apg" = "ast", "spg" = "stl")
+        pct_map <- c("fg_pct" = "fg_pct", "fg3_pct" = "tp_pct", "ft_pct" = "ft_pct", "ts_pct" = "ts")
+
+        if (m %in% names(pct_map)) {
+          cname <- pct_map[m]
           if (cname %in% names(row)) return(as.numeric(row[[cname]]))
           return(NA_real_)
         }
-        if (rate == "Totals") {
-          cname <- total_map[m]
-          if (!is.null(cname) && cname %in% names(row)) return(as.numeric(row[[cname]]))
-          return(NA_real_)
-        }
+
+        cname <- count_map[m]
+        if (is.null(cname) || !(cname %in% names(row))) return(NA_real_)
+        total <- as.numeric(row[[cname]])
+
+        if (rate == "Totals") return(total)
         if (rate == "Per 75 Possessions") {
-          cname_total <- total_map[m]
-          if (!is.null(cname_total) && cname_total %in% names(row) && "total_poss" %in% names(row)) {
-            poss <- as.numeric(row[["total_poss"]])
-            if (!is.na(poss) && poss > 0) return(as.numeric(row[[cname_total]]) / poss * 75)
-          }
+          poss <- if ("poss_on_floor" %in% names(row)) as.numeric(row[["poss_on_floor"]]) else NA_real_
+          if (!is.na(poss) && poss > 0) return(total / poss * 75)
           return(NA_real_)
         }
-        cname <- col_map[m]
-        if (!is.null(cname) && cname %in% names(row)) return(as.numeric(row[[cname]]))
+        # Per Game (default)
+        gp <- if ("gp" %in% names(row)) as.numeric(row[["gp"]]) else NA_real_
+        if (!is.na(gp) && gp > 0) return(total / gp)
         NA_real_
       }
 
@@ -535,8 +533,8 @@ server_tab7_compare <- function(input, output, session, shared) {
 
       val_a <- get_player_metric(res_a[1, ], metric, rate_mode)
       val_b <- get_player_metric(res_b[1, ], metric, rate_mode)
-      poss_a <- if ("total_poss" %in% names(res_a)) as.numeric(res_a$total_poss[1]) else NA_real_
-      poss_b <- if ("total_poss" %in% names(res_b)) as.numeric(res_b$total_poss[1]) else NA_real_
+      poss_a <- if ("poss_on_floor" %in% names(res_a)) as.numeric(res_a$poss_on_floor[1]) else NA_real_
+      poss_b <- if ("poss_on_floor" %in% names(res_b)) as.numeric(res_b$poss_on_floor[1]) else NA_real_
 
       data.frame(
         rank = 1L,
