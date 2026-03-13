@@ -3,12 +3,8 @@
 server_tab7_compare <- function(input, output, session, shared) {
 
   cmp_ref <- reactiveValues(
-    result_a = NULL,
-    result_b = NULL,
-    joined = NULL,
     teams = NULL,
-    players = NULL,
-    current_mode = "Teams"
+    players = NULL
   )
   selected_metric <- reactiveVal("net_rtg")
 
@@ -53,7 +49,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     clutch_on <- isTRUE(get_input("clutch"))
     max_margin <- if (clutch_on) as.integer(get_input("clutch_margin")) else NA_integer_
     margin_status <- NA_character_
-    max_time_remaining <- if (clutch_on) as.integer(get_input("clutch_minutes")) else NA_integer_
+    max_time_remaining <- if (clutch_on) as.integer(get_input("clutch_minutes")) * 60L else NA_integer_
     ot_margin_filter <- FALSE
 
     # Opponents
@@ -96,6 +92,27 @@ server_tab7_compare <- function(input, output, session, shared) {
       num_starters_off_max = num_starters_off_max,
       num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_
     )
+  }
+
+  # Build a short description of what a side's filters mean
+  side_summary <- function(side) {
+    pfx <- paste0("cmp_", side, "_")
+    get_input <- function(name) input[[paste0(pfx, name)]]
+    parts <- character(0)
+
+    st_mode <- get_input("starters_mode") %||% ""
+    st_val <- get_input("starters_val") %||% ""
+    if (nzchar(st_mode) && nzchar(st_val)) {
+      op <- if (st_mode == "gte") "\u2265" else "\u2264"
+      parts <- c(parts, paste0("Starters ", op, st_val))
+    }
+    ha <- get_input("home_away") %||% ""
+    if (nzchar(ha)) parts <- c(parts, tools::toTitleCase(ha))
+    oc <- get_input("outcome") %||% ""
+    if (nzchar(oc)) parts <- c(parts, tools::toTitleCase(oc))
+    if (isTRUE(get_input("clutch"))) parts <- c(parts, "Clutch")
+
+    if (length(parts)) paste(parts, collapse = ", ") else paste0("Side ", toupper(side))
   }
 
   # ── SQL runners ──
@@ -269,7 +286,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     do.call(tagList, chips)
   })
 
-  # Register metric chip click observers once at init (not inside observe)
+  # Register metric chip click observers once at init
   all_metrics <- unique(c(unname(TEAM_METRICS), unname(PLAYER_METRICS)))
   lapply(all_metrics, function(m) {
     observeEvent(input[[paste0("cmp_metric_", m)]], {
@@ -316,7 +333,6 @@ server_tab7_compare <- function(input, output, session, shared) {
     preset <- input$cmp_preset
     if (is.null(preset) || !nzchar(preset)) return()
 
-    # Helper to clear all filters on a side
     clear_side <- function(s) {
       updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
@@ -341,7 +357,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     } else if (preset == "clutch") {
       updateCheckboxInput(session, "cmp_a_clutch", value = TRUE)
       updateSliderInput(session, "cmp_a_clutch_margin", value = 5)
-      updateSliderInput(session, "cmp_a_clutch_minutes", value = 2)
+      updateSliderInput(session, "cmp_a_clutch_minutes", value = 5)
     } else if (preset == "home_away") {
       updateSelectInput(session, "cmp_a_home_away", selected = "home")
       updateSelectInput(session, "cmp_b_home_away", selected = "away")
@@ -377,12 +393,12 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   })
 
-  # ── Compare button ──
+  # ── Reactive comparison (auto-triggers on filter change) ──
 
-  observeEvent(input$cmp_go, {
-    req(input$cmp_mode)
+  cmp_joined <- reactive({
+    req(identical(input$main_tabs, "compare"))
     mode <- input$cmp_mode
-    cmp_ref$current_mode <- mode
+    req(mode)
 
     pa <- collect_side_params("a")
     pb <- collect_side_params("b")
@@ -397,7 +413,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         res_a <- run_team_ratings(pa)
         res_b <- run_team_ratings(pb)
       }
-      if (!nrow(res_a) || !nrow(res_b)) { cmp_ref$joined <- data.frame(); return() }
+      if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
       pick_cols <- function(df, suffix) {
         base <- c("team_id", "team_name")
@@ -420,7 +436,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       joined <- joined[order(-abs(joined$gap)), ]
       joined$rank <- seq_len(nrow(joined))
       joined$entity_name <- joined$team_name
-      cmp_ref$joined <- joined
+      joined
 
     } else if (mode == "Lineups") {
       is_ff <- metric %in% c("off_ts_pct", "off_tov_pct", "off_oreb_pct", "off_ftr")
@@ -431,7 +447,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         res_a <- run_lineups_summary(pa)
         res_b <- run_lineups_summary(pb)
       }
-      if (!nrow(res_a) || !nrow(res_b)) { cmp_ref$joined <- data.frame(); return() }
+      if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
       pick_cols_lu <- function(df, suffix) {
         key <- "sub_lineup_hash"
@@ -458,48 +474,40 @@ server_tab7_compare <- function(input, output, session, shared) {
       joined <- joined[order(-abs(joined$gap)), ]
       joined$rank <- seq_len(nrow(joined))
       joined$entity_name <- if ("player_names_str" %in% names(joined)) joined$player_names_str else joined$sub_lineup_hash
-      cmp_ref$joined <- joined
+      joined
 
     } else if (mode == "Players") {
       player_a_id <- input$cmp_player_a
       player_b_id <- input$cmp_player_b
-      if (is.null(player_a_id) || !nzchar(player_a_id)) {
-        showNotification("Select Player A", type = "warning")
-        return()
-      }
-      if (is.null(player_b_id) || !nzchar(player_b_id)) {
-        showNotification("Select Player B", type = "warning")
-        return()
-      }
+      if (is.null(player_a_id) || !nzchar(player_a_id)) return(NULL)
+      if (is.null(player_b_id) || !nzchar(player_b_id)) return(NULL)
 
       players_df <- cmp_ref$players
-      # Look up team for each player
-      team_a <- paste(unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)]), collapse = ",")
-      team_b <- paste(unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)]), collapse = ",")
+      req(!is.null(players_df), nrow(players_df) > 0)
+      team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
+      team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
+      if (!length(team_ids_a) || !length(team_ids_b)) return(NULL)
+      team_a <- paste(team_ids_a, collapse = ",")
+      team_b <- paste(team_ids_b, collapse = ",")
 
       res_a <- run_player_traditional(pa, team_a)
       res_b <- run_player_traditional(pb, team_b)
-      if (!nrow(res_a) || !nrow(res_b)) { cmp_ref$joined <- data.frame(); return() }
+      if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
-      # Filter to selected players
       res_a <- res_a[res_a$player_id == as.integer(player_a_id), , drop = FALSE]
       res_b <- res_b[res_b$player_id == as.integer(player_b_id), , drop = FALSE]
-      if (!nrow(res_a) || !nrow(res_b)) { cmp_ref$joined <- data.frame(); return() }
+      if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
-      # Map metric names to columns
       rate_mode <- input$cmp_rate_mode %||% "Per Game"
       get_player_metric <- function(row, m, rate) {
-        # Standard per-game stats from the SQL function
         col_map <- c(
           "ppg" = "pts_per_game", "rpg" = "reb_per_game", "apg" = "ast_per_game", "spg" = "stl_per_game",
           "fg_pct" = "fg_pct", "fg3_pct" = "fg3_pct", "ft_pct" = "ft_pct", "ts_pct" = "ts_pct"
         )
-        # Totals columns
         total_map <- c(
           "ppg" = "total_pts", "rpg" = "total_reb", "apg" = "total_ast", "spg" = "total_stl"
         )
         if (m %in% c("fg_pct", "fg3_pct", "ft_pct", "ts_pct")) {
-          # Percentages don't change with rate mode
           cname <- col_map[m]
           if (cname %in% names(row)) return(as.numeric(row[[cname]]))
           return(NA_real_)
@@ -510,7 +518,6 @@ server_tab7_compare <- function(input, output, session, shared) {
           return(NA_real_)
         }
         if (rate == "Per 75 Possessions") {
-          # per 75 = total / total_poss * 75
           cname_total <- total_map[m]
           if (!is.null(cname_total) && cname_total %in% names(row) && "total_poss" %in% names(row)) {
             poss <- as.numeric(row[["total_poss"]])
@@ -518,13 +525,11 @@ server_tab7_compare <- function(input, output, session, shared) {
           }
           return(NA_real_)
         }
-        # Per Game (default)
         cname <- col_map[m]
         if (!is.null(cname) && cname %in% names(row)) return(as.numeric(row[[cname]]))
         NA_real_
       }
 
-      same_player <- identical(as.character(player_a_id), as.character(player_b_id))
       player_a_name <- players_df$name[players_df$player_id == as.integer(player_a_id)][1]
       player_b_name <- players_df$name[players_df$player_id == as.integer(player_b_id)][1]
 
@@ -533,28 +538,15 @@ server_tab7_compare <- function(input, output, session, shared) {
       poss_a <- if ("total_poss" %in% names(res_a)) as.numeric(res_a$total_poss[1]) else NA_real_
       poss_b <- if ("total_poss" %in% names(res_b)) as.numeric(res_b$total_poss[1]) else NA_real_
 
-      if (same_player) {
-        joined <- data.frame(
-          rank = 1L,
-          entity_name = player_a_name,
-          metric_a = val_a, poss_a = poss_a,
-          metric_b = val_b, poss_b = poss_b,
-          gap = val_a - val_b,
-          stringsAsFactors = FALSE
-        )
-      } else {
-        joined <- data.frame(
-          rank = 1:2,
-          entity_name = c(player_a_name, player_b_name),
-          metric_a = c(val_a, val_b),
-          poss_a = c(poss_a, poss_b),
-          metric_b = c(val_b, val_a),
-          poss_b = c(poss_b, poss_a),
-          gap = c(val_a - val_b, val_b - val_a),
-          stringsAsFactors = FALSE
-        )
-      }
-      cmp_ref$joined <- joined
+      data.frame(
+        rank = 1L,
+        entity_name = paste0(player_a_name, " vs ", player_b_name),
+        metric_a = val_a, poss_a = poss_a,
+        metric_b = val_b, poss_b = poss_b,
+        gap = val_a - val_b, stringsAsFactors = FALSE
+      )
+    } else {
+      NULL
     }
   })
 
@@ -566,44 +558,109 @@ server_tab7_compare <- function(input, output, session, shared) {
     names(nms)[match(m, nms)] %||% m
   })
 
+  format_metric_raw <- function(x) {
+    if (is.null(x) || !is.finite(x)) return("\u2014")
+    sprintf("%.1f", x)
+  }
+
+  weighted_or_mean <- function(x, w) {
+    xv <- suppressWarnings(as.numeric(x))
+    wv <- suppressWarnings(as.numeric(w))
+    ok_w <- is.finite(xv) & is.finite(wv) & (wv > 0)
+    if (any(ok_w)) return(sum(xv[ok_w] * wv[ok_w]) / sum(wv[ok_w]))
+    ok_x <- is.finite(xv)
+    if (any(ok_x)) return(mean(xv[ok_x], na.rm = TRUE))
+    NA_real_
+  }
+
+  cmp_summary_stats <- reactive({
+    df <- cmp_joined()
+    if (is.null(df) || !nrow(df)) {
+      return(list(a = NA_real_, b = NA_real_, delta = NA_real_, gap_abs = NA_real_))
+    }
+
+    mode <- input$cmp_mode %||% ""
+    if (identical(mode, "Lineups")) {
+      a_val <- weighted_or_mean(df$metric_a, df$poss_a)
+      b_val <- weighted_or_mean(df$metric_b, df$poss_b)
+      delta <- a_val - b_val
+      return(list(a = a_val, b = b_val, delta = delta, gap_abs = abs(delta)))
+    }
+
+    a_val <- mean(df$metric_a, na.rm = TRUE)
+    b_val <- mean(df$metric_b, na.rm = TRUE)
+    delta <- mean(df$gap, na.rm = TRUE)
+    list(a = a_val, b = b_val, delta = delta, gap_abs = mean(abs(df$gap), na.rm = TRUE))
+  })
+
+  output$cmp_summary_a_title <- renderText({ side_summary("a") })
+  output$cmp_summary_b_title <- renderText({ side_summary("b") })
+
   output$cmp_summary_a <- renderText({
-    df <- cmp_ref$joined
-    if (is.null(df) || !nrow(df)) return("\u2014")
-    sprintf("%+.1f", mean(df$metric_a, na.rm = TRUE))
+    st <- cmp_summary_stats()
+    format_metric_raw(st$a)
   })
   output$cmp_summary_a_label <- renderText({ metric_label() })
+  output$cmp_summary_a_delta <- renderText({
+    st <- cmp_summary_stats()
+    if (!is.finite(st$delta)) return("\u0394 vs B: \u2014")
+    paste0("\u0394 vs B: ", sprintf("%+.1f", st$delta))
+  })
   output$cmp_summary_b <- renderText({
-    df <- cmp_ref$joined
-    if (is.null(df) || !nrow(df)) return("\u2014")
-    sprintf("%+.1f", mean(df$metric_b, na.rm = TRUE))
+    st <- cmp_summary_stats()
+    format_metric_raw(st$b)
   })
   output$cmp_summary_b_label <- renderText({ metric_label() })
+  output$cmp_summary_b_delta <- renderText({
+    st <- cmp_summary_stats()
+    if (!is.finite(st$delta)) return("\u0394 vs A: \u2014")
+    paste0("\u0394 vs A: ", sprintf("%+.1f", -st$delta))
+  })
+  output$cmp_summary_a_poss <- renderText({
+    df <- cmp_joined()
+    if (is.null(df) || !nrow(df) || !("poss_a" %in% names(df))) return("Poss A: \u2014")
+    poss <- suppressWarnings(mean(as.numeric(df$poss_a), na.rm = TRUE))
+    if (!is.finite(poss)) return("Poss A: \u2014")
+    paste0("Poss A: ", format(round(poss), big.mark = ",", scientific = FALSE))
+  })
+  output$cmp_summary_b_poss <- renderText({
+    df <- cmp_joined()
+    if (is.null(df) || !nrow(df) || !("poss_b" %in% names(df))) return("Poss B: \u2014")
+    poss <- suppressWarnings(mean(as.numeric(df$poss_b), na.rm = TRUE))
+    if (!is.finite(poss)) return("Poss B: \u2014")
+    paste0("Poss B: ", format(round(poss), big.mark = ",", scientific = FALSE))
+  })
   output$cmp_summary_gap <- renderText({
-    df <- cmp_ref$joined
-    if (is.null(df) || !nrow(df)) return("\u2014")
-    sprintf("%.1f", mean(abs(df$gap), na.rm = TRUE))
+    st <- cmp_summary_stats()
+    if (!is.finite(st$gap_abs)) return("\u2014")
+    sprintf("%.1f", st$gap_abs)
   })
 
   # ── Results table ──
 
   output$cmp_table <- DT::renderDataTable({
-    df <- cmp_ref$joined
+    df <- cmp_joined()
     req(df, nrow(df) > 0)
 
-    mode <- cmp_ref$current_mode
+    mode <- input$cmp_mode
     entity_label <- if (mode == "Players") "Player" else if (mode == "Lineups") "Lineup" else "Team"
+
+    side_a_label <- side_summary("a")
+    side_b_label <- side_summary("b")
 
     show_df <- data.frame(
       `#` = df$rank,
       Entity = df$entity_name,
-      `Side A` = sprintf("%+.1f", df$metric_a),
+      A = vapply(df$metric_a, format_metric_raw, character(1)),
       `Poss A` = if ("poss_a" %in% names(df)) as.integer(df$poss_a) else NA_integer_,
-      `Side B` = sprintf("%+.1f", df$metric_b),
+      B = vapply(df$metric_b, format_metric_raw, character(1)),
       `Poss B` = if ("poss_b" %in% names(df)) as.integer(df$poss_b) else NA_integer_,
       Gap = sprintf("%+.1f", df$gap),
       check.names = FALSE, stringsAsFactors = FALSE
     )
     names(show_df)[2] <- entity_label
+    names(show_df)[3] <- side_a_label
+    names(show_df)[5] <- side_b_label
 
     DT::datatable(
       show_df,
@@ -636,7 +693,6 @@ server_tab7_compare <- function(input, output, session, shared) {
       updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_opp_rank_n"), selected = "")
     }
-    cmp_ref$joined <- NULL
   })
 
   # ── Filter chips ──
