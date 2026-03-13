@@ -14,6 +14,8 @@ source("R/ui_tab4_gamelogs.R", local = TRUE)
 source("R/server_tab4.R", local = TRUE)
 source("R/ui_tab5_traditional.R", local = TRUE)
 source("R/server_tab5_traditional.R", local = TRUE)
+source("R/ui_tab7_compare.R", local = TRUE)
+source("R/server_tab7_compare.R", local = TRUE)
 
 # ---------------- UI ----------------
 ui <- navbarPage(
@@ -79,7 +81,8 @@ ui <- navbarPage(
   ui_tab2_lineup,
   ui_tab3_team,
   ui_tab4_gamelogs,
-  ui_tab5_traditional
+  ui_tab5_traditional,
+  ui_tab7_compare
 )
 
 # ---------------- Server ----------------
@@ -267,7 +270,8 @@ server <- function(input, output, session) {
     selected_opp_ids_on = selected_opp_ids_on,
     selected_opp_ids_ld = selected_opp_ids_ld,
     pending_ld_team = reactiveVal(NULL),
-    pending_gl_team = reactiveVal(NULL)
+    pending_gl_team = reactiveVal(NULL),
+    pending_compare_preset = reactiveVal(NULL)
   )
 
   # Call tab server modules
@@ -276,6 +280,7 @@ server <- function(input, output, session) {
   server_tab3(input, output, session, shared)
   server_tab4(input, output, session, shared)
   server_tab5_traditional(input, output, session, shared)
+  server_tab7_compare(input, output, session, shared)
 
   observe({
     teams <- shared$teams_for_year_df()
@@ -320,6 +325,12 @@ server <- function(input, output, session) {
       shared$pending_gl_team(input$home_team)
     }
     updateTabsetPanel(session, "main_tabs", selected = "game_logs")
+  })
+
+  # Card navigation: How do starters compare to the bench? → Tab 7
+  observeEvent(input$go_compare, {
+    shared$pending_compare_preset("starters_bench")
+    updateTabsetPanel(session, "main_tabs", selected = "compare")
   })
 
   log_startup("server modules initialized")

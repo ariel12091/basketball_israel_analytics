@@ -3,7 +3,8 @@ TAB_SPECS <- list(
   list(name = "tab2", ui = repo_file("R", "ui_tab2_lineup.R"), server = repo_file("R", "server_tab2.R"), reset_id = "ld_reset", chips_id = "ld_filter_chips", prefix = "ld"),
   list(name = "tab3", ui = repo_file("R", "ui_tab3_team.R"), server = repo_file("R", "server_tab3.R"), reset_id = "tr_reset", chips_id = "tr_filter_chips", prefix = "tr"),
   list(name = "tab4", ui = repo_file("R", "ui_tab4_gamelogs.R"), server = repo_file("R", "server_tab4.R"), reset_id = "gl_reset", chips_id = "gl_filter_chips", prefix = "gl"),
-  list(name = "tab5", ui = repo_file("R", "ui_tab5_traditional.R"), server = repo_file("R", "server_tab5_traditional.R"), reset_id = "ts_reset", chips_id = "ts_filter_chips", prefix = "ts")
+  list(name = "tab5", ui = repo_file("R", "ui_tab5_traditional.R"), server = repo_file("R", "server_tab5_traditional.R"), reset_id = "ts_reset", chips_id = "ts_filter_chips", prefix = "ts"),
+  list(name = "tab7", ui = repo_file("R", "ui_tab7_compare.R"), server = repo_file("R", "server_tab7_compare.R"), reset_id = "cmp_reset", chips_id = "cmp_filter_chips", prefix = "cmp")
 )
 
 test_that("each tab UI contains reset button and chips output", {
