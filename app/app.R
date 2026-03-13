@@ -266,7 +266,8 @@ server <- function(input, output, session) {
     teams_for_year_df = teams_for_year_df,
     selected_opp_ids_on = selected_opp_ids_on,
     selected_opp_ids_ld = selected_opp_ids_ld,
-    pending_ld_team = reactiveVal(NULL)
+    pending_ld_team = reactiveVal(NULL),
+    pending_gl_team = reactiveVal(NULL)
   )
 
   # Call tab server modules
@@ -316,7 +317,7 @@ server <- function(input, output, session) {
   # Card navigation: What happened in last night's game? → Tab 4
   observeEvent(input$go_gamelogs, {
     if (!is.null(input$home_team) && input$home_team != "") {
-      updateSelectizeInput(session, "gl_team", selected = input$home_team)
+      shared$pending_gl_team(input$home_team)
     }
     updateTabsetPanel(session, "main_tabs", selected = "game_logs")
   })

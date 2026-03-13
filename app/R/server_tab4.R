@@ -24,7 +24,13 @@ server_tab4 <- function(input, output, session, shared) {
     gl_ref$teams <- teams_gl
     team_values <- c("", as.character(teams_gl$team_id))
     names(team_values) <- c("\u2014 All teams \u2014", teams_gl$team_name)
-    updateSelectizeInput(session, "gl_team", choices = team_values, selected = "", server = TRUE)
+    pending_team <- shared$pending_gl_team()
+    if (!is.null(pending_team) && nzchar(pending_team)) {
+      shared$pending_gl_team(NULL)
+      updateSelectizeInput(session, "gl_team", choices = team_values, selected = pending_team, server = TRUE)
+    } else {
+      updateSelectizeInput(session, "gl_team", choices = team_values, selected = "", server = TRUE)
+    }
     updateSelectizeInput(session, "gl_opponents", choices = teams_gl$team_name,
                          selected = character(0), server = TRUE)
 
