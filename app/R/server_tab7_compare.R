@@ -296,6 +296,58 @@ server_tab7_compare <- function(input, output, session, shared) {
     ))
   }
 
+  run_four_factors <- function(p, team_ids_csv) {
+    allowed <- guard_heavy_request(
+      session, key = "cmp_four_factors",
+      start_d = p$start_d, end_d = p$end_d,
+      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
+      max_calls = 50L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
+    team_csv <- if (is.null(team_ids_csv) || is.na(team_ids_csv) || !nzchar(team_ids_csv)) NA_character_ else team_ids_csv
+    DBI::dbGetQuery(pg_pool, paste0(
+      "SELECT * FROM basketball_test.four_factors_compute(",
+      "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
+      "$7::text,$8::text,$9::text,$10::int4,$11::text,",
+      "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4",
+      ")"), params = list(
+      p$game_year,
+      as.Date(p$start_d), as.Date(p$end_d),
+      team_csv,
+      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+      p$min_gn, p$max_gn, p$last_n_games,
+      p$num_starters_off, p$num_starters_def,
+      p$num_starters_off_min, p$num_starters_off_max,
+      p$num_starters_def_min, p$num_starters_def_max
+    ))
+  }
+
+  run_onoff_impact <- function(p, team_ids_csv) {
+    allowed <- guard_heavy_request(
+      session, key = "cmp_onoff_impact",
+      start_d = p$start_d, end_d = p$end_d,
+      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
+      max_calls = 50L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
+    DBI::dbGetQuery(pg_pool, paste0(
+      "SELECT * FROM basketball_test.onoff_compute(",
+      "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,",
+      "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,",
+      "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
+      ")"), params = list(
+      as.Date(p$start_d), as.Date(p$end_d), team_ids_csv,
+      0L, 0L, as.numeric(DEFAULT_MIN_NET), as.character(p$game_year),
+      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+      p$min_gn, p$max_gn, p$last_n_games,
+      p$num_starters_off, p$num_starters_def,
+      p$num_starters_off_min, p$num_starters_off_max,
+      p$num_starters_def_min, p$num_starters_def_max
+    ))
+  }
+
   # ── Metric chip definitions per mode ──
 
   TEAM_METRICS <- c(
@@ -308,11 +360,14 @@ server_tab7_compare <- function(input, output, session, shared) {
     "FG%" = "fg_pct", "3P%" = "fg3_pct", "FT%" = "ft_pct", "TS%" = "ts_pct"
   )
 
-  output$cmp_metric_chips_ui <- renderUI({
-    if (identical(input$cmp_mode, "Players")) return(NULL)
-    metrics <- TEAM_METRICS
-    cur <- selected_metric()
-    if (!(cur %in% metrics)) cur <- metrics[[1]]
+  PLAYER_VIEWS <- c(
+    "Overall" = "overall",
+    "Four Factors" = "ff_swing"
+  )
+
+  selected_player_view <- reactiveVal("overall")
+
+  render_metric_chips <- function(metrics, cur, input_id) {
     chips <- lapply(seq_along(metrics), function(i) {
       nm <- names(metrics)[i]
       val <- metrics[[i]]
@@ -321,11 +376,25 @@ server_tab7_compare <- function(input, output, session, shared) {
         type = "button",
         class = cls,
         style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
-        onclick = sprintf("Shiny.setInputValue('cmp_metric', '%s', {priority: 'event'})", val),
+        onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})", input_id, val),
         nm
       )
     })
     do.call(tagList, chips)
+  }
+
+  output$cmp_metric_chips_ui <- renderUI({
+    if (identical(input$cmp_mode, "Players")) return(NULL)
+    metrics <- TEAM_METRICS
+    cur <- selected_metric()
+    if (!(cur %in% metrics)) cur <- metrics[[1]]
+    render_metric_chips(metrics, cur, "cmp_metric")
+  })
+
+  output$cmp_player_chips_ui <- renderUI({
+    req(identical(input$cmp_mode, "Players"))
+    cur <- selected_player_view()
+    render_metric_chips(PLAYER_VIEWS, cur, "cmp_player_view")
   })
 
   observeEvent(input$cmp_metric, {
@@ -333,6 +402,11 @@ server_tab7_compare <- function(input, output, session, shared) {
     metrics <- TEAM_METRICS
     m <- input$cmp_metric %||% ""
     if (m %in% unname(metrics)) selected_metric(m)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cmp_player_view, {
+    v <- input$cmp_player_view %||% ""
+    if (v %in% unname(PLAYER_VIEWS)) selected_player_view(v)
   }, ignoreInit = TRUE)
 
   # ── Shared filter reset helper ──
@@ -403,11 +477,12 @@ server_tab7_compare <- function(input, output, session, shared) {
     mode <- input$cmp_mode
     valid <- if (identical(mode, "Players")) PLAYER_METRICS else TEAM_METRICS
     if (!(selected_metric() %in% valid)) selected_metric(valid[[1]])
+    selected_player_view("overall")
   }, ignoreInit = TRUE)
 
   # ── Tab init: load ref data ──
 
-  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
+  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "compare")) return(NULL)
     gy_int <- as.integer(input$game_year)
 
@@ -547,6 +622,26 @@ server_tab7_compare <- function(input, output, session, shared) {
     req(identical(input$cmp_mode, "Players"))
     req(identical(input$main_tabs, "compare"))
 
+    # Fallback: ensure refs exist even if tab-init observer didn't run yet.
+    if (is.null(cmp_ref$players) || !nrow(cmp_ref$players)) {
+      gy_int <- as.integer(input$game_year)
+      players_df <- cached_ref_query(
+        key = sprintf("cmp_players_%d", gy_int),
+        query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+          "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
+      )
+      cmp_ref$players <- players_df
+    }
+    if (is.null(cmp_ref$teams) || !nrow(cmp_ref$teams)) {
+      gy_int <- as.integer(input$game_year)
+      teams_df <- cached_ref_query(
+        key = sprintf("cmp_teams_%d", gy_int),
+        query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+          "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
+      )
+      cmp_ref$teams <- teams_df
+    }
+
     player_a_id <- input$cmp_player_a
     player_b_id <- input$cmp_player_b
     req(player_a_id, nzchar(player_a_id))
@@ -584,11 +679,195 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(
       row_a = row_a[1, ], row_b = row_b[1, ],
       name_a = name_a, name_b = name_b,
-      team_a = team_name_a %||% "", team_b = team_name_b %||% ""
+      team_a = team_name_a %||% "", team_b = team_name_b %||% "",
+      team_ids_a = team_ids_a, team_ids_b = team_ids_b,
+      pa = pa, pb = pb
     )
   })
 
+  cmp_player_ff_raw <- reactive({
+    req(identical(input$cmp_mode, "Players"))
+    req(identical(selected_player_view(), "ff_swing"))
+    data <- cmp_player_raw()
+    req(data)
+
+    player_a_id <- input$cmp_player_a
+    player_b_id <- input$cmp_player_b
+
+    ff_a <- run_four_factors(data$pa, paste(data$team_ids_a, collapse = ","))
+    ff_b <- run_four_factors(data$pb, paste(data$team_ids_b, collapse = ","))
+    onoff_a <- run_onoff_impact(data$pa, paste(data$team_ids_a, collapse = ","))
+    onoff_b <- run_onoff_impact(data$pb, paste(data$team_ids_b, collapse = ","))
+    if (!nrow(ff_a) || !nrow(ff_b)) return(NULL)
+
+    row_a <- ff_a[ff_a$player_id == as.integer(player_a_id), , drop = FALSE]
+    row_b <- ff_b[ff_b$player_id == as.integer(player_b_id), , drop = FALSE]
+    if (!nrow(row_a) || !nrow(row_b)) return(NULL)
+    on_a <- onoff_a[onoff_a$player_id == as.integer(player_a_id), , drop = FALSE]
+    on_b <- onoff_b[onoff_b$player_id == as.integer(player_b_id), , drop = FALSE]
+
+    list(
+      row_a = row_a[1, ], row_b = row_b[1, ],
+      onoff_a = if (nrow(on_a)) on_a[1, ] else NULL,
+      onoff_b = if (nrow(on_b)) on_b[1, ] else NULL,
+      name_a = data$name_a, name_b = data$name_b,
+      team_a = data$team_a, team_b = data$team_b
+    )
+  })
+
+  # ── Shared PvP UI helpers ──
+
+  badge_css <- "background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;"
+  val_win_css <- "font-size: 1.05rem; font-weight: 600; color: #e6edf3;"
+  val_lose_css <- "font-size: 1.05rem; font-weight: 600; color: #8b949e;"
+
+  pvp_header <- function(name_a, team_a, info_a, name_b, team_b, info_b) {
+    tags$div(
+      style = "display: flex; align-items: center; justify-content: center; margin-bottom: 20px; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,.08);",
+      tags$div(
+        style = "flex: 1; text-align: center;",
+        tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #7b8cde;", name_a),
+        tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", team_a),
+        tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_a)
+      ),
+      tags$div(style = "font-size: .9rem; font-weight: 700; color: #484f58; padding: 0 20px;", "vs"),
+      tags$div(
+        style = "flex: 1; text-align: center;",
+        tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #e8a435;", name_b),
+        tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", team_b),
+        tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_b)
+      )
+    )
+  }
+
+  pvp_stat_row <- function(label, va, vb, fmt_fn, higher_is_better = TRUE) {
+    diff <- if (!is.na(va) && !is.na(vb)) abs(va - vb) else NA_real_
+    if (higher_is_better) {
+      a_better <- !is.na(va) && !is.na(vb) && va > vb
+      b_better <- !is.na(va) && !is.na(vb) && vb > va
+    } else {
+      a_better <- !is.na(va) && !is.na(vb) && va < vb
+      b_better <- !is.na(va) && !is.na(vb) && vb < va
+    }
+    diff_txt <- if (!is.na(diff) && diff > 0.05) sprintf("+%.1f", diff) else NULL
+    left_badge <- if (a_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
+    right_badge <- if (b_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
+
+    tags$div(
+      style = "display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06);",
+      tags$div(
+        style = "flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 10px;",
+        left_badge,
+        tags$span(style = if (a_better) val_win_css else val_lose_css, fmt_fn(va))
+      ),
+      tags$div(
+        style = "width: 130px; text-align: center; font-size: .85rem; font-weight: 600; color: #8b949e;",
+        label
+      ),
+      tags$div(
+        style = "flex: 1; display: flex; align-items: center; justify-content: flex-start; gap: 10px;",
+        tags$span(style = if (b_better) val_win_css else val_lose_css, fmt_fn(vb)),
+        right_badge
+      )
+    )
+  }
+
+  pvp_section_header <- function(label) {
+    tags$div(
+      style = "text-align: center; padding: 14px 0 6px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6e7681;",
+      label
+    )
+  }
+
+  # ── FF Swing view ──
+
+  FF_SWING_STATS <- list(
+    list(label = "Off Diff", col = "Off ON Diff", side = "off"),
+    list(label = "TS%",      col = "Off TS% Diff", side = "off"),
+    list(label = "OREB%",    col = "Off OREB% Diff", side = "off"),
+    list(label = "TOV%",     col = "Off TOV% Diff", side = "off", invert = TRUE),
+    list(label = "FTR",      col = "Off FTR Diff", side = "off"),
+    list(label = "Def Diff", col = "Def ON Diff", side = "def", invert = TRUE),
+    list(label = "TS%",      col = "Def TS% Diff", side = "def", invert = TRUE),
+    list(label = "OREB%",    col = "Def OREB% Diff", side = "def", invert = TRUE),
+    list(label = "TOV%",     col = "Def TOV% Diff", side = "def"),
+    list(label = "FTR",      col = "Def FTR Diff", side = "def", invert = TRUE)
+  )
+
+  render_ff_swing_ui <- function() {
+    data <- cmp_player_ff_raw()
+    req(data)
+
+    trad <- cmp_player_raw()
+    req(trad)
+
+    row_a <- data$row_a
+    row_b <- data$row_b
+    onoff_a <- data$onoff_a
+    onoff_b <- data$onoff_b
+
+    # GP / poss info from traditional data
+    gp_a <- as.numeric(trad$row_a[["gp"]]); gp_b <- as.numeric(trad$row_b[["gp"]])
+    poss_a <- if ("off_on_poss" %in% names(row_a)) as.numeric(row_a[["off_on_poss"]]) else NA_real_
+    poss_b <- if ("off_on_poss" %in% names(row_b)) as.numeric(row_b[["off_on_poss"]]) else NA_real_
+    info_line_ff <- function(gp, poss) {
+      parts <- c()
+      if (!is.na(gp)) parts <- c(parts, paste0(gp, " GP"))
+      if (!is.na(poss)) parts <- c(parts, paste0(round(poss), " ON Poss"))
+      paste(parts, collapse = " \u00b7 ")
+    }
+
+    fmt_swing <- function(v) {
+      if (is.na(v)) return("\u2014")
+      sprintf("%+.1f", v)
+    }
+
+    get_swing <- function(ff_row, onoff_row, stat) {
+      source_row <- if (grepl("Diff$", stat$label)) onoff_row else ff_row
+      if (is.null(source_row) || is.null(stat$col) || !(stat$col %in% names(source_row))) return(NA_real_)
+      as.numeric(source_row[[stat$col]])
+    }
+
+    # Split stats by side
+    off_stats <- FF_SWING_STATS[vapply(FF_SWING_STATS, function(s) s$side == "off", logical(1))]
+    def_stats <- FF_SWING_STATS[vapply(FF_SWING_STATS, function(s) s$side == "def", logical(1))]
+
+    make_rows <- function(stats) {
+      lapply(stats, function(stat) {
+        va <- get_swing(row_a, onoff_a, stat)
+        vb <- get_swing(row_b, onoff_b, stat)
+        higher_is_better <- !isTRUE(stat$invert)
+        pvp_stat_row(stat$label, va, vb, fmt_swing, higher_is_better)
+      })
+    }
+
+    tagList(
+      pvp_header(
+        data$name_a, data$team_a, info_line_ff(gp_a, poss_a),
+        data$name_b, data$team_b, info_line_ff(gp_b, poss_b)
+      ),
+      tags$div(
+        style = "max-width: 520px; margin: 0 auto;",
+        tags$div(
+          style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
+          "Swing values use the same diffs as Tab 1 Four Factors (plus Off/Def Diff)."
+        ),
+        pvp_section_header("Offensive Four Factors"),
+        do.call(tagList, make_rows(off_stats)),
+        pvp_section_header("Defensive Four Factors"),
+        do.call(tagList, make_rows(def_stats))
+      )
+    )
+  }
+
+  # ── Overall PvP view ──
+
   output$cmp_pvp_ui <- renderUI({
+    view <- selected_player_view()
+    if (identical(view, "ff_swing")) {
+      return(render_ff_swing_ui())
+    }
+
     data <- cmp_player_raw()
     req(data)
 
@@ -619,39 +898,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       sprintf("%.1f", v)
     }
 
-    badge_css <- "background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;"
-    val_win_css <- "font-size: 1.05rem; font-weight: 600; color: #e6edf3;"
-    val_lose_css <- "font-size: 1.05rem; font-weight: 600; color: #8b949e;"
-
     stat_rows <- lapply(PVP_STATS, function(stat) {
       va <- get_val(row_a, stat)
       vb <- get_val(row_b, stat)
-      diff <- if (!is.na(va) && !is.na(vb)) abs(va - vb) else NA_real_
-      a_better <- !is.na(va) && !is.na(vb) && va > vb
-      b_better <- !is.na(va) && !is.na(vb) && vb > va
-
-      diff_txt <- if (!is.na(diff) && diff > 0.05) sprintf("+%.1f", diff) else NULL
-
-      left_badge <- if (a_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
-      right_badge <- if (b_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
-
-      tags$div(
-        style = "display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06);",
-        tags$div(
-          style = "flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 10px;",
-          left_badge,
-          tags$span(style = if (a_better) val_win_css else val_lose_css, fmt_val(va, stat))
-        ),
-        tags$div(
-          style = "width: 110px; text-align: center; font-size: .85rem; font-weight: 600; color: #8b949e;",
-          stat$label
-        ),
-        tags$div(
-          style = "flex: 1; display: flex; align-items: center; justify-content: flex-start; gap: 10px;",
-          tags$span(style = if (b_better) val_win_css else val_lose_css, fmt_val(vb, stat)),
-          right_badge
-        )
-      )
+      pvp_stat_row(stat$label, va, vb, function(v) fmt_val(v, stat))
     })
 
     # GP / MPG info
@@ -666,24 +916,10 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
 
     tagList(
-      # Player header
-      tags$div(
-        style = "display: flex; align-items: center; justify-content: center; margin-bottom: 20px; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,.08);",
-        tags$div(
-          style = "flex: 1; text-align: center;",
-          tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #7b8cde;", data$name_a),
-          tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", data$team_a),
-          tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_line(gp_a, min_a))
-        ),
-        tags$div(style = "font-size: .9rem; font-weight: 700; color: #484f58; padding: 0 20px;", "vs"),
-        tags$div(
-          style = "flex: 1; text-align: center;",
-          tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #e8a435;", data$name_b),
-          tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", data$team_b),
-          tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_line(gp_b, min_b))
-        )
+      pvp_header(
+        data$name_a, data$team_a, info_line(gp_a, min_a),
+        data$name_b, data$team_b, info_line(gp_b, min_b)
       ),
-      # Stat rows
       tags$div(
         style = "max-width: 520px; margin: 0 auto;",
         do.call(tagList, stat_rows)
