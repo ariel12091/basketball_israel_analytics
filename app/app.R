@@ -327,6 +327,11 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "main_tabs", selected = "game_logs")
   })
 
+  # Card navigation: How are individual players performing? → Tab 5
+  observeEvent(input$go_playerstats, {
+    updateTabsetPanel(session, "main_tabs", selected = "traditional_stats")
+  })
+
   # Card navigation: How do starters compare to the bench? → Tab 7
   observeEvent(input$go_compare, {
     shared$pending_compare_preset("starters_bench")
