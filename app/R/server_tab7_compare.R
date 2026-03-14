@@ -52,10 +52,16 @@ server_tab7_compare <- function(input, output, session, shared) {
     max_time_remaining <- if (clutch_on) as.integer(get_input("clutch_minutes")) * 60L else NA_integer_
     ot_margin_filter <- FALSE
 
-    # Opponents
+    # Teams / opponents
+    team_sel <- get_input("teams") %||% character(0)
     opp_sel <- get_input("opponents") %||% character(0)
     td <- cmp_ref$teams
+    team_ids_csv <- NA_character_
     opp_ids_csv <- NA_character_
+    if (length(team_sel) && !is.null(td)) {
+      ids <- td$team_id[td$team_name %in% team_sel]
+      if (length(ids)) team_ids_csv <- paste(ids, collapse = ",")
+    }
     if (length(opp_sel) && !is.null(td)) {
       ids <- td$team_id[td$team_name %in% opp_sel]
       if (length(ids)) opp_ids_csv <- paste(ids, collapse = ",")
@@ -80,7 +86,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     list(
       game_year = gy, start_d = start_d, end_d = end_d,
-      game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
+      game_type_csv = game_type_csv, team_ids_csv = team_ids_csv, team_names = team_sel, opp_ids_csv = opp_ids_csv,
       home_away = home_away, outcome = outcome,
       opp_rank_side = opp_rank_side, opp_rank_n = opp_rank_n,
       opp_rank_metric = opp_rank_metric,
@@ -113,6 +119,37 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (isTRUE(get_input("clutch"))) parts <- c(parts, "Clutch")
 
     if (length(parts)) paste(parts, collapse = ", ") else paste0("Side ", toupper(side))
+  }
+
+  apply_side_team_filter <- function(df, p) {
+    if (is.null(df) || !nrow(df)) return(df)
+    ids <- integer(0)
+    if (!is.null(p$team_ids_csv) && !is.na(p$team_ids_csv) && nzchar(p$team_ids_csv)) {
+      ids <- suppressWarnings(as.integer(strsplit(p$team_ids_csv, ",", fixed = TRUE)[[1]]))
+      ids <- ids[is.finite(ids)]
+    }
+    if (length(ids) && ("team_id" %in% names(df))) {
+      return(df[df$team_id %in% ids, , drop = FALSE])
+    }
+    teams <- p$team_names %||% character(0)
+    if (length(teams) && ("team_name" %in% names(df))) {
+      return(df[df$team_name %in% teams, , drop = FALSE])
+    }
+    df
+  }
+
+  apply_min_poss_filter <- function(df, min_poss = 10L) {
+    if (is.null(df) || !nrow(df)) return(df)
+    keep <- rep(TRUE, nrow(df))
+    if ("poss_a" %in% names(df)) {
+      pa <- suppressWarnings(as.numeric(df$poss_a))
+      keep <- keep & is.finite(pa) & (pa >= min_poss)
+    }
+    if ("poss_b" %in% names(df)) {
+      pb <- suppressWarnings(as.numeric(df$poss_b))
+      keep <- keep & is.finite(pb) & (pb >= min_poss)
+    }
+    df[keep, , drop = FALSE]
   }
 
   # ── SQL runners ──
@@ -182,7 +219,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
       ")"), params = list(
       5L,            # num (lineup size)
-      NA_character_, # team_csv (all teams)
+      p$team_ids_csv, # team_csv
       NA_character_, # player_csv
       NA_character_, # player_off_csv
       FALSE,         # exact
@@ -214,7 +251,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
       ")"), params = list(
       5L,            # num
-      NA_character_, # team_csv
+      p$team_ids_csv, # team_csv
       NA_character_, # player_csv
       NA_character_, # player_off_csv
       FALSE,         # exact
@@ -294,27 +331,36 @@ server_tab7_compare <- function(input, output, session, shared) {
     }, ignoreInit = TRUE)
   })
 
-  # ── Mode change: reset irrelevant filters & metric ──
+  # ── Shared filter reset helper ──
+
+  reset_compare_filters <- function() {
+    updateSelectInput(session, "cmp_preset", selected = "")
+    for (s in c("a", "b")) {
+      updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_home_away"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
+      updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
+      updateSliderInput(session, paste0("cmp_", s, "_clutch_margin"), value = 5)
+      updateSliderInput(session, paste0("cmp_", s, "_clutch_minutes"), value = 5)
+      updateSelectInput(session, paste0("cmp_", s, "_cutoff_type"), selected = "")
+      updateSelectizeInput(session, paste0("cmp_", s, "_teams"), selected = character(0))
+      updateSelectizeInput(session, paste0("cmp_", s, "_opponents"), selected = character(0))
+      updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
+      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_n"), selected = "")
+    }
+    updateSelectizeInput(session, "cmp_player_a", selected = character(0))
+    updateSelectizeInput(session, "cmp_player_b", selected = character(0))
+  }
+
+  # ── Mode change: full filter reset + metric validity ──
 
   observeEvent(input$cmp_mode, {
+    reset_compare_filters()
     mode <- input$cmp_mode
-    # Reset preset when mode changes (starters_bench is irrelevant for Players)
-    updateSelectInput(session, "cmp_preset", selected = "")
-
-    # Clear starters values when switching to Players (they're hidden but still set)
-    if (identical(mode, "Players")) {
-      for (s in c("a", "b")) {
-        updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
-        updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
-      }
-    }
-
-    # Reset metric to appropriate default for the new mode
-    cur <- selected_metric()
     valid <- if (identical(mode, "Players")) PLAYER_METRICS else TEAM_METRICS
-    if (!(cur %in% valid)) {
-      selected_metric(valid[[1]])
-    }
+    if (!(selected_metric() %in% valid)) selected_metric(valid[[1]])
   }, ignoreInit = TRUE)
 
   # ── Tab init: load ref data ──
@@ -329,6 +375,8 @@ server_tab7_compare <- function(input, output, session, shared) {
         "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
     )
     cmp_ref$teams <- teams_df
+    updateSelectizeInput(session, "cmp_a_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_b_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "cmp_a_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "cmp_b_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
 
@@ -363,6 +411,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
       updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
       updateSelectInput(session, paste0("cmp_", s, "_cutoff_type"), selected = "")
+      updateSelectizeInput(session, paste0("cmp_", s, "_teams"), selected = character(0))
       updateSelectizeInput(session, paste0("cmp_", s, "_opponents"), selected = character(0))
       updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
       updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
@@ -597,6 +646,8 @@ server_tab7_compare <- function(input, output, session, shared) {
         res_a <- run_team_ratings(pa)
         res_b <- run_team_ratings(pb)
       }
+      res_a <- apply_side_team_filter(res_a, pa)
+      res_b <- apply_side_team_filter(res_b, pb)
       if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
       pick_cols <- function(df, suffix) {
@@ -613,9 +664,11 @@ server_tab7_compare <- function(input, output, session, shared) {
 
       df_a <- pick_cols(res_a, "a")
       df_b <- pick_cols(res_b, "b")
-      joined <- merge(df_a, df_b, by = c("team_id", "team_name"), suffixes = c("", ".b"))
+      joined <- dplyr::inner_join(df_a, df_b, by = c("team_id", "team_name"), suffix = c("", ".b"))
       joined$metric_a <- as.numeric(joined$metric_a)
       joined$metric_b <- as.numeric(joined$metric_b)
+      joined <- apply_min_poss_filter(joined, min_poss = 10L)
+      if (!nrow(joined)) return(NULL)
       joined$gap <- joined$metric_a - joined$metric_b
       joined <- joined[order(-abs(joined$gap)), ]
       joined$rank <- seq_len(nrow(joined))
@@ -632,19 +685,33 @@ server_tab7_compare <- function(input, output, session, shared) {
         res_a <- run_lineups_summary(pa)
         res_b <- run_lineups_summary(pb)
       }
+      res_a <- apply_side_team_filter(res_a, pa)
+      res_b <- apply_side_team_filter(res_b, pb)
       if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
       pick_cols_lu <- function(df, suffix) {
         key <- "sub_lineup_hash"
         name_col <- if ("player_names_str" %in% names(df)) "player_names_str" else NULL
         team_col <- if ("team_name" %in% names(df)) "team_name" else NULL
-        poss_col <- if ("off_poss" %in% names(df)) "off_poss" else if ("total_poss" %in% names(df)) "total_poss" else NULL
+        total_poss_col <- if ("total_poss" %in% names(df)) "total_poss" else NULL
+        off_poss_col <- if ("off_poss" %in% names(df)) "off_poss" else NULL
+        def_poss_col <- if ("def_poss" %in% names(df)) "def_poss" else NULL
         metric_col <- if (metric %in% names(df)) metric else NULL
-        cols <- c(key, name_col, team_col, metric_col, poss_col)
+        cols <- c(key, name_col, team_col, metric_col, total_poss_col, off_poss_col, def_poss_col)
         cols <- cols[!is.null(cols) & cols %in% names(df)]
         out <- df[, cols, drop = FALSE]
         if (!is.null(metric_col)) names(out)[names(out) == metric_col] <- paste0("metric_", suffix)
-        if (!is.null(poss_col)) names(out)[names(out) == poss_col] <- paste0("poss_", suffix)
+        poss_vals <- NULL
+        if (!is.null(total_poss_col) && total_poss_col %in% names(out)) {
+          poss_vals <- suppressWarnings(as.numeric(out[[total_poss_col]]))
+        } else if (!is.null(off_poss_col) && !is.null(def_poss_col) &&
+                   off_poss_col %in% names(out) && def_poss_col %in% names(out)) {
+          poss_vals <- dplyr::coalesce(suppressWarnings(as.numeric(out[[off_poss_col]])), 0) +
+            dplyr::coalesce(suppressWarnings(as.numeric(out[[def_poss_col]])), 0)
+        } else if (!is.null(off_poss_col) && off_poss_col %in% names(out)) {
+          poss_vals <- suppressWarnings(as.numeric(out[[off_poss_col]]))
+        }
+        if (!is.null(poss_vals)) out[[paste0("poss_", suffix)]] <- poss_vals
         out
       }
 
@@ -652,9 +719,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       df_b <- pick_cols_lu(res_b, "b")
       join_by <- "sub_lineup_hash"
       extra <- intersect(c("player_names_str", "team_name"), intersect(names(df_a), names(df_b)))
-      joined <- merge(df_a, df_b, by = c(join_by, extra), suffixes = c("", ".b"))
+      joined <- dplyr::inner_join(df_a, df_b, by = c(join_by, extra), suffix = c("", ".b"))
       joined$metric_a <- as.numeric(joined$metric_a)
       joined$metric_b <- as.numeric(joined$metric_b)
+      joined <- apply_min_poss_filter(joined, min_poss = 10L)
+      if (!nrow(joined)) return(NULL)
       joined$gap <- joined$metric_a - joined$metric_b
       joined <- joined[order(-abs(joined$gap)), ]
       joined$rank <- seq_len(nrow(joined))
@@ -838,9 +907,9 @@ server_tab7_compare <- function(input, output, session, shared) {
       `#` = df$rank,
       Entity = df$entity_name,
       A = vapply(df$metric_a, format_metric_raw, character(1)),
-      `Poss A` = if ("poss_a" %in% names(df)) as.integer(df$poss_a) else NA_integer_,
+      `Total Poss A` = if ("poss_a" %in% names(df)) as.integer(df$poss_a) else NA_integer_,
       B = vapply(df$metric_b, format_metric_raw, character(1)),
-      `Poss B` = if ("poss_b" %in% names(df)) as.integer(df$poss_b) else NA_integer_,
+      `Total Poss B` = if ("poss_b" %in% names(df)) as.integer(df$poss_b) else NA_integer_,
       Gap = sprintf("%+.1f", df$gap),
       check.names = FALSE, stringsAsFactors = FALSE
     )
@@ -866,19 +935,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   # ── Reset ──
 
   observeEvent(input$cmp_reset, {
-    updateSelectInput(session, "cmp_preset", selected = "")
-    for (s in c("a", "b")) {
-      updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_home_away"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
-      updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
-      updateSelectInput(session, paste0("cmp_", s, "_cutoff_type"), selected = "")
-      updateSelectizeInput(session, paste0("cmp_", s, "_opponents"), selected = character(0))
-      updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_n"), selected = "")
-    }
+    reset_compare_filters()
   })
 
   # ── Filter chips ──

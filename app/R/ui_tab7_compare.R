@@ -57,6 +57,11 @@ ui_tab7_compare <- tabPanel(
                                     choices = c("\u2014" = "", as.character(0:5)), selected = ""))
             )
           ),
+          conditionalPanel(
+            condition = "input.cmp_mode != 'Players'",
+            selectizeInput("cmp_a_teams", "Teams", choices = NULL, multiple = TRUE,
+                           options = list(placeholder = "All teams"))
+          ),
 
           selectInput("cmp_a_home_away", "Home/Away",
                       choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
@@ -113,6 +118,11 @@ ui_tab7_compare <- tabPanel(
               column(6, selectInput("cmp_b_starters_val", "Value",
                                     choices = c("\u2014" = "", as.character(0:5)), selected = ""))
             )
+          ),
+          conditionalPanel(
+            condition = "input.cmp_mode != 'Players'",
+            selectizeInput("cmp_b_teams", "Teams", choices = NULL, multiple = TRUE,
+                           options = list(placeholder = "All teams"))
           ),
 
           selectInput("cmp_b_home_away", "Home/Away",
