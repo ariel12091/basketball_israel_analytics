@@ -7,6 +7,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     players = NULL
   )
   selected_metric <- reactiveVal("net_rtg")
+  cmp_auto_default_ids <- reactiveVal(integer(0))
+  cmp_defaults_active <- reactiveVal(FALSE)
 
   # ── Helpers ──
 
@@ -280,20 +282,29 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pg_pool, paste0(
-      "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
-      "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
-      "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
-      ")"), params = list(
-      p$game_year,
-      if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
-      if (!is.na(p$end_d)) as.Date(p$end_d) else NA,
-      team_ids_csv,
-      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-      p$min_gn, p$max_gn, p$last_n_games
-    ))
+    tryCatch(
+      DBI::dbGetQuery(pg_pool, paste0(
+        "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
+        "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
+        ")"), params = list(
+        p$game_year,
+        if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
+        if (!is.na(p$end_d)) as.Date(p$end_d) else NA,
+        team_ids_csv,
+        p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+        p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+        p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
+        p$min_gn, p$max_gn, p$last_n_games
+      )),
+      error = function(e) {
+        msg <- conditionMessage(e)
+        if (grepl("statement timeout", msg, ignore.case = TRUE)) {
+          showNotification("Player compare query timed out. Narrow filters or date range.", type = "warning", duration = 5)
+        }
+        data.frame()
+      }
+    )
   }
 
   run_four_factors <- function(p, team_ids_csv) {
@@ -366,6 +377,51 @@ server_tab7_compare <- function(input, output, session, shared) {
   )
 
   selected_player_view <- reactiveVal("overall")
+
+  normalize_teams_ref <- function(df) {
+    if (is.null(df) || !nrow(df) || is.null(names(df))) return(data.frame())
+    names(df) <- tolower(names(df))
+    if (!("team_id" %in% names(df))) return(data.frame())
+    if (!("team_name" %in% names(df))) {
+      if ("name" %in% names(df)) {
+        df$team_name <- as.character(df$name)
+      } else if ("team" %in% names(df)) {
+        df$team_name <- as.character(df$team)
+      } else {
+        return(data.frame())
+      }
+    }
+    out <- df[, c("team_id", "team_name"), drop = FALSE]
+    out$team_id <- suppressWarnings(as.integer(out$team_id))
+    out$team_name <- as.character(out$team_name)
+    out <- out[is.finite(out$team_id) & nzchar(out$team_name), , drop = FALSE]
+    if (!nrow(out)) return(data.frame())
+    unique(out)
+  }
+
+  normalize_players_ref <- function(df) {
+    if (is.null(df) || !nrow(df) || is.null(names(df))) return(data.frame())
+    names(df) <- tolower(names(df))
+    if (!("player_id" %in% names(df)) || !("team_id" %in% names(df))) return(data.frame())
+    if (!("name" %in% names(df))) {
+      if (all(c("firstname", "lastname") %in% names(df))) {
+        df$name <- trimws(paste(df$firstname, df$lastname))
+      } else if (all(c("first_name", "last_name") %in% names(df))) {
+        df$name <- trimws(paste(df$first_name, df$last_name))
+      } else if ("player_name" %in% names(df)) {
+        df$name <- as.character(df$player_name)
+      } else {
+        return(data.frame())
+      }
+    }
+    out <- df[, c("team_id", "player_id", "name"), drop = FALSE]
+    out$team_id <- suppressWarnings(as.integer(out$team_id))
+    out$player_id <- suppressWarnings(as.integer(out$player_id))
+    out$name <- as.character(out$name)
+    out <- out[is.finite(out$team_id) & is.finite(out$player_id) & nzchar(out$name), , drop = FALSE]
+    if (!nrow(out)) return(data.frame())
+    unique(out)
+  }
 
   render_metric_chips <- function(metrics, cur, input_id) {
     chips <- lapply(seq_along(metrics), function(i) {
@@ -440,8 +496,8 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   refresh_player_choices <- function(side) {
-    players_df <- cmp_ref$players
-    teams_df <- cmp_ref$teams
+    players_df <- normalize_players_ref(cmp_ref$players)
+    teams_df <- normalize_teams_ref(cmp_ref$teams)
     if (is.null(players_df) || !nrow(players_df)) return(NULL)
 
     side <- match.arg(side, c("a", "b"))
@@ -449,7 +505,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     player_id <- paste0("cmp_player_", side)
     keep_val <- input[[player_id]] %||% ""
 
-    team_sel <- input[[list_filter_id]] %||% character(0)
+    team_sel <- as.character(input[[list_filter_id]] %||% character(0))
+    team_sel <- team_sel[nzchar(team_sel)]
     filtered <- players_df
     if (length(team_sel) && !is.null(teams_df) && nrow(teams_df)) {
       ids <- teams_df$team_id[teams_df$team_name %in% team_sel]
@@ -470,6 +527,63 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectizeInput(session, player_id, choices = player_choices, selected = keep_val, server = TRUE)
   }
 
+  get_default_player_ids <- function() {
+    gy_int <- as.integer(input$game_year)
+    scorer_df <- cached_ref_query(
+      key = sprintf("cmp_default_scorers_%d", gy_int),
+      query_fun = function() DBI::dbGetQuery(pg_pool, paste0(
+        "SELECT player_id, gp, pts FROM basketball_test.get_player_traditional_dynamic(",
+        "$1::int4, NULL::date, NULL::date, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, ",
+        "NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::bool, NULL::int4, NULL::int4, NULL::int4",
+        ")"
+      ), params = list(gy_int))
+    )
+    if (is.null(scorer_df) || !nrow(scorer_df)) return(integer(0))
+    scorer_df$gp <- suppressWarnings(as.numeric(scorer_df$gp))
+    scorer_df$pts <- suppressWarnings(as.numeric(scorer_df$pts))
+    scorer_df <- scorer_df[is.finite(scorer_df$gp) & scorer_df$gp > 0 & is.finite(scorer_df$pts), , drop = FALSE]
+    if (!nrow(scorer_df)) return(integer(0))
+    scorer_df$ppg <- scorer_df$pts / scorer_df$gp
+    scorer_df <- scorer_df[order(-scorer_df$ppg, -scorer_df$pts), , drop = FALSE]
+    top3 <- unique(as.integer(scorer_df$player_id[seq_len(min(3L, nrow(scorer_df)))]))
+    top3 <- top3[is.finite(top3)]
+    if (length(top3) >= 2L) return(sample(top3, size = 2L, replace = FALSE))
+    top3
+  }
+
+  apply_default_players <- function() {
+    if (!identical(input$main_tabs, "compare") || !identical(input$cmp_mode, "Players")) return(invisible(NULL))
+    if (!is.null(input$cmp_player_a) && nzchar(input$cmp_player_a %||% "")) return(invisible(NULL))
+    if (!is.null(input$cmp_player_b) && nzchar(input$cmp_player_b %||% "")) return(invisible(NULL))
+
+    players_df <- normalize_players_ref(cmp_ref$players)
+    if (is.null(players_df) || !nrow(players_df)) return(invisible(NULL))
+    players_df <- players_df[order(players_df$name), c("player_id", "name"), drop = FALSE]
+    players_df <- players_df[!duplicated(players_df$player_id), , drop = FALSE]
+
+    choice_values <- as.character(players_df$player_id)
+    player_choices <- stats::setNames(choice_values, players_df$name)
+    available_ids <- unique(suppressWarnings(as.integer(players_df$player_id)))
+    available_ids <- available_ids[is.finite(available_ids)]
+    if (length(available_ids) < 2L) return(invisible(NULL))
+
+    ids <- get_default_player_ids()
+    ids <- ids[ids %in% available_ids]
+    if (length(ids) < 2L) {
+      # Fallback to first available two players.
+      ids <- available_ids[seq_len(min(2L, length(available_ids)))]
+    }
+    if (length(ids) < 2L) return(invisible(NULL))
+
+    session$onFlushed(function() {
+      updateSelectizeInput(session, "cmp_player_a", choices = player_choices, selected = as.character(ids[[1]]), server = TRUE)
+      updateSelectizeInput(session, "cmp_player_b", choices = player_choices, selected = as.character(ids[[2]]), server = TRUE)
+    }, once = TRUE)
+    cmp_auto_default_ids(as.integer(ids))
+    cmp_defaults_active(TRUE)
+    invisible(NULL)
+  }
+
   # ── Mode change: full filter reset + metric validity ──
 
   observeEvent(input$cmp_mode, {
@@ -478,6 +592,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     valid <- if (identical(mode, "Players")) PLAYER_METRICS else TEAM_METRICS
     if (!(selected_metric() %in% valid)) selected_metric(valid[[1]])
     selected_player_view("overall")
+    if (identical(mode, "Players")) apply_default_players()
   }, ignoreInit = TRUE)
 
   # ── Tab init: load ref data ──
@@ -491,13 +606,15 @@ server_tab7_compare <- function(input, output, session, shared) {
       query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
         "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
     )
+    teams_df <- normalize_teams_ref(teams_df)
     cmp_ref$teams <- teams_df
-    updateSelectizeInput(session, "cmp_a_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_b_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_a_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_b_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_player_a_list_team_filter", choices = teams_df$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = teams_df$team_name, selected = character(0), server = TRUE)
+    team_choices <- if (nrow(teams_df)) teams_df$team_name else character(0)
+    updateSelectizeInput(session, "cmp_a_teams", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_b_teams", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_a_opponents", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_b_opponents", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_player_a_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
     gn_df <- cached_ref_query(
       key = sprintf("cmp_gn_%d", gy_int),
       query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
@@ -514,9 +631,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
         "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
     )
+    players_df <- normalize_players_ref(players_df)
     cmp_ref$players <- players_df
     refresh_player_choices("a")
     refresh_player_choices("b")
+    apply_default_players()
 
     # Apply pending preset from home tab
     pending <- shared$pending_compare_preset()
@@ -532,6 +651,68 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   observeEvent(input$cmp_player_b_list_team_filter, {
     refresh_player_choices("b")
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input$cmp_player_a, input$cmp_player_b), {
+    ids <- cmp_auto_default_ids()
+    if (length(ids) < 2L) return()
+    cur_a <- suppressWarnings(as.integer(input$cmp_player_a %||% ""))
+    cur_b <- suppressWarnings(as.integer(input$cmp_player_b %||% ""))
+    if (!((is.finite(cur_a) && cur_a %in% ids) && (is.finite(cur_b) && cur_b %in% ids))) {
+      cmp_defaults_active(FALSE)
+    }
+  }, ignoreInit = TRUE)
+
+  players_filters_pristine <- function() {
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+    dr <- input$cmp_players_dates
+    same_dates <- TRUE
+    if (!is.null(dr) && length(dr) >= 2) {
+      d_start <- suppressWarnings(as.Date(dr[[1]]))
+      d_end <- suppressWarnings(as.Date(dr[[2]]))
+      same_dates <- !is.na(d_start) && !is.na(d_end) && identical(d_start, as.Date(b$start)) && identical(d_end, as.Date(b$end))
+      same_dates <- isTRUE(same_dates)
+    }
+
+    empty_chr <- function(x) is.null(x) || !length(x) || !any(nzchar(as.character(x)))
+    is_false <- function(x) isFALSE(isTRUE(x))
+
+    same_dates &&
+      empty_chr(input$cmp_players_gn_min) &&
+      empty_chr(input$cmp_players_gn_max) &&
+      empty_chr(input$cmp_a_game_type) &&
+      empty_chr(input$cmp_b_game_type) &&
+      empty_chr(input$cmp_a_opponents) &&
+      empty_chr(input$cmp_b_opponents) &&
+      empty_chr(input$cmp_a_home_away) &&
+      empty_chr(input$cmp_b_home_away) &&
+      empty_chr(input$cmp_a_outcome) &&
+      empty_chr(input$cmp_b_outcome) &&
+      is_false(input$cmp_a_clutch) &&
+      is_false(input$cmp_b_clutch)
+  }
+
+  # Clear auto-default players once user starts changing filters.
+  observeEvent(list(
+    input$cmp_players_dates, input$cmp_players_gn_min, input$cmp_players_gn_max,
+    input$cmp_a_game_type, input$cmp_b_game_type,
+    input$cmp_a_opponents, input$cmp_b_opponents,
+    input$cmp_a_home_away, input$cmp_b_home_away,
+    input$cmp_a_outcome, input$cmp_b_outcome,
+    input$cmp_a_clutch, input$cmp_b_clutch
+  ), {
+    if (!identical(input$cmp_mode, "Players")) return()
+    if (!isTRUE(cmp_defaults_active())) return()
+    if (isTRUE(players_filters_pristine())) return()
+    ids <- cmp_auto_default_ids()
+    if (length(ids) < 2L) return()
+    cur_a <- suppressWarnings(as.integer(input$cmp_player_a %||% ""))
+    cur_b <- suppressWarnings(as.integer(input$cmp_player_b %||% ""))
+    if ((is.finite(cur_a) && cur_a %in% ids) && (is.finite(cur_b) && cur_b %in% ids)) {
+      updateSelectizeInput(session, "cmp_player_a", selected = character(0), server = TRUE)
+      updateSelectizeInput(session, "cmp_player_b", selected = character(0), server = TRUE)
+    }
+    cmp_defaults_active(FALSE)
   }, ignoreInit = TRUE)
 
   # ── Preset handler ──
@@ -578,9 +759,9 @@ server_tab7_compare <- function(input, output, session, shared) {
   # ── PvP Player Comparison (Players mode) ──
 
   player_team_choices <- function(player_id_chr) {
-    players_df <- cmp_ref$players
-    teams_df <- cmp_ref$teams
-    if (is.null(players_df) || is.null(teams_df)) return(data.frame())
+    players_df <- normalize_players_ref(cmp_ref$players)
+    teams_df <- normalize_teams_ref(cmp_ref$teams)
+    if (is.null(players_df) || is.null(teams_df) || !nrow(players_df) || !nrow(teams_df)) return(data.frame())
     if (is.null(player_id_chr) || !nzchar(player_id_chr)) return(data.frame())
     pid <- suppressWarnings(as.integer(player_id_chr))
     if (!is.finite(pid)) return(data.frame())
@@ -596,7 +777,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     td <- player_team_choices(input$cmp_player_a)
     if (nrow(td) <= 1) return(NULL)
     choices <- c("All teams" = "", setNames(as.character(td$team_id), td$team_name))
-    selectInput("cmp_player_a_team", "Team", choices = choices, selected = "")
+    selectInput("cmp_player_a_team", "Team (optional)", choices = choices, selected = "")
   })
 
   output$cmp_player_b_team_ui <- renderUI({
@@ -604,7 +785,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     td <- player_team_choices(input$cmp_player_b)
     if (nrow(td) <= 1) return(NULL)
     choices <- c("All teams" = "", setNames(as.character(td$team_id), td$team_name))
-    selectInput("cmp_player_b_team", "Team", choices = choices, selected = "")
+    selectInput("cmp_player_b_team", "Team (optional)", choices = choices, selected = "")
   })
 
   PVP_STATS <- list(
@@ -630,7 +811,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
           "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
       )
-      cmp_ref$players <- players_df
+      cmp_ref$players <- normalize_players_ref(players_df)
     }
     if (is.null(cmp_ref$teams) || !nrow(cmp_ref$teams)) {
       gy_int <- as.integer(input$game_year)
@@ -639,7 +820,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
           "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
       )
-      cmp_ref$teams <- teams_df
+      cmp_ref$teams <- normalize_teams_ref(teams_df)
     }
 
     player_a_id <- input$cmp_player_a
@@ -647,7 +828,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     req(player_a_id, nzchar(player_a_id))
     req(player_b_id, nzchar(player_b_id))
 
-    players_df <- cmp_ref$players
+    players_df <- normalize_players_ref(cmp_ref$players)
+    cmp_ref$players <- players_df
     req(!is.null(players_df), nrow(players_df) > 0)
 
     pa <- collect_side_params("a")
@@ -672,7 +854,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     name_a <- players_df$name[players_df$player_id == as.integer(player_a_id)][1]
     name_b <- players_df$name[players_df$player_id == as.integer(player_b_id)][1]
 
-    teams_df <- cmp_ref$teams
+    teams_df <- normalize_teams_ref(cmp_ref$teams)
+    cmp_ref$teams <- teams_df
     team_name_a <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_a[1]][1] else ""
     team_name_b <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_b[1]][1] else ""
 
@@ -1044,7 +1227,8 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (is.null(player_a_id) || !nzchar(player_a_id)) return(NULL)
       if (is.null(player_b_id) || !nzchar(player_b_id)) return(NULL)
 
-      players_df <- cmp_ref$players
+      players_df <- normalize_players_ref(cmp_ref$players)
+      cmp_ref$players <- players_df
       req(!is.null(players_df), nrow(players_df) > 0)
       team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
       team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
