@@ -22,8 +22,20 @@ ui_tab7_compare <- tabPanel(
                                   "Starters vs Bench" = "starters_bench",
                                   "Clutch vs Non-Clutch" = "clutch",
                                   "Home vs Away" = "home_away",
-                                  "Win vs Loss" = "win_loss"),
+                                  "Win vs Loss" = "win_loss",
+                                  "Date split" = "date_split",
+                                  "GN split" = "gn_split"),
                       selected = "")
+        ),
+        conditionalPanel(
+          condition = "input.cmp_mode != 'Players' && input.cmp_preset == 'date_split'",
+          dateInput("cmp_split_date", "Split date", value = DEFAULT_END)
+        ),
+        conditionalPanel(
+          condition = "input.cmp_mode != 'Players' && input.cmp_preset == 'gn_split'",
+          selectizeInput("cmp_split_gn", "Split GN",
+                         choices = NULL, selected = "", multiple = FALSE,
+                         options = list(placeholder = "Choose GN"))
         ),
 
         tags$hr(),
@@ -222,10 +234,18 @@ ui_tab7_compare <- tabPanel(
         conditionalPanel(
           condition = "input.cmp_mode == 'Players'",
           div(
-            class = "mb-3",
-            radioButtons("cmp_rate_mode", NULL,
-                         choices = c("Per Game", "Per 75 Possessions", "Totals"),
-                         selected = "Per Game", inline = TRUE)
+            class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
+            tags$span(class = "text-muted small text-uppercase", "View"),
+            uiOutput("cmp_player_chips_ui")
+          ),
+          conditionalPanel(
+            condition = "input.cmp_player_view != 'ff_swing'",
+            div(
+              class = "mb-3",
+              radioButtons("cmp_rate_mode", NULL,
+                           choices = c("Per Game", "Per 75 Possessions", "Totals"),
+                           selected = "Per Game", inline = TRUE)
+            )
           ),
           uiOutput("cmp_pvp_ui")
         ),
@@ -236,4 +256,3 @@ ui_tab7_compare <- tabPanel(
     )
   )
 )
-

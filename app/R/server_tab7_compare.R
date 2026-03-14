@@ -39,6 +39,28 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (is.finite(gn_min)) min_gn <- gn_min
       if (is.finite(gn_max)) max_gn <- gn_max
     }
+    if (!identical(input$cmp_mode, "Players")) {
+      preset <- input$cmp_preset %||% ""
+      if (identical(preset, "date_split")) {
+        split_date <- suppressWarnings(as.Date(input$cmp_split_date))
+        if (!is.na(split_date)) {
+          if (identical(side, "a")) {
+            end_d <- min(as.Date(end_d), split_date)
+          } else {
+            start_d <- max(as.Date(start_d), split_date + 1L)
+          }
+        }
+      } else if (identical(preset, "gn_split")) {
+        split_gn <- suppressWarnings(as.integer(input$cmp_split_gn %||% ""))
+        if (is.finite(split_gn)) {
+          if (identical(side, "a")) {
+            max_gn <- split_gn
+          } else {
+            min_gn <- split_gn + 1L
+          }
+        }
+      }
+    }
 
     # Starters
     st_mode <- get_input("starters_mode") %||% ""
@@ -124,6 +146,28 @@ server_tab7_compare <- function(input, output, session, shared) {
     oc <- get_input("outcome") %||% ""
     if (nzchar(oc)) parts <- c(parts, tools::toTitleCase(oc))
     if (isTRUE(get_input("clutch"))) parts <- c(parts, "Clutch")
+    if (!identical(input$cmp_mode, "Players")) {
+      preset <- input$cmp_preset %||% ""
+      if (identical(preset, "date_split")) {
+        split_date <- suppressWarnings(as.Date(input$cmp_split_date))
+        if (!is.na(split_date)) {
+          parts <- c(parts, if (identical(side, "a")) {
+            paste0("Before ", format(split_date, "%Y-%m-%d"))
+          } else {
+            paste0("After ", format(split_date, "%Y-%m-%d"))
+          })
+        }
+      } else if (identical(preset, "gn_split")) {
+        split_gn <- suppressWarnings(as.integer(input$cmp_split_gn %||% ""))
+        if (is.finite(split_gn)) {
+          parts <- c(parts, if (identical(side, "a")) {
+            paste0("Before GN ", split_gn)
+          } else {
+            paste0("After GN ", split_gn)
+          })
+        }
+      }
+    }
     if (length(parts)) paste(parts, collapse = ", ") else paste0("Side ", toupper(side))
   }
 
@@ -469,6 +513,8 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   reset_compare_filters <- function() {
     updateSelectInput(session, "cmp_preset", selected = "")
+    updateDateInput(session, "cmp_split_date", value = DEFAULT_END)
+    updateSelectizeInput(session, "cmp_split_gn", selected = character(0))
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
     updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateSelectizeInput(session, "cmp_players_gn_min", selected = character(0))
@@ -623,8 +669,10 @@ server_tab7_compare <- function(input, output, session, shared) {
     gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
     updateSelectizeInput(session, "cmp_players_gn_min", choices = c("", gn_choices), selected = "", server = TRUE)
     updateSelectizeInput(session, "cmp_players_gn_max", choices = c("", gn_choices), selected = "", server = TRUE)
+    updateSelectizeInput(session, "cmp_split_gn", choices = c("", gn_choices), selected = "", server = TRUE)
     b <- shared$season_date_bounds(as.character(gy_int))
     updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
+    updateDateInput(session, "cmp_split_date", value = b$end, min = b$start, max = b$end)
 
     players_df <- cached_ref_query(
       key = sprintf("cmp_players_%d", gy_int),
