@@ -17,20 +17,25 @@ server_tab7_compare <- function(input, output, session, shared) {
     gy <- as.integer(input$game_year)
     b <- shared$season_date_bounds(as.character(gy))
 
-    # Cutoff handling
-    cutoff_type <- get_input("cutoff_type") %||% ""
-    cutoff_val <- input[[paste0(pfx, "cutoff_value")]]
     start_d <- b$start
     end_d <- b$end
     min_gn <- NA_integer_
     max_gn <- NA_integer_
     last_n <- NA_integer_
 
-    if (nzchar(cutoff_type) && !is.null(cutoff_val) && nzchar(as.character(cutoff_val))) {
-      if (cutoff_type == "before_gn") max_gn <- as.integer(cutoff_val)
-      else if (cutoff_type == "after_gn") min_gn <- as.integer(cutoff_val)
-      else if (cutoff_type == "before_date") end_d <- as.Date(cutoff_val)
-      else if (cutoff_type == "after_date") start_d <- as.Date(cutoff_val)
+    # Players mode uses shared time filters so both sides are compared on the same window.
+    if (identical(input$cmp_mode, "Players")) {
+      dr <- input$cmp_players_dates
+      if (!is.null(dr) && length(dr) == 2) {
+        d1 <- suppressWarnings(as.Date(dr[[1]]))
+        d2 <- suppressWarnings(as.Date(dr[[2]]))
+        if (!is.na(d1)) start_d <- d1
+        if (!is.na(d2)) end_d <- d2
+      }
+      gn_min <- suppressWarnings(as.integer(input$cmp_players_gn_min %||% ""))
+      gn_max <- suppressWarnings(as.integer(input$cmp_players_gn_max %||% ""))
+      if (is.finite(gn_min)) min_gn <- gn_min
+      if (is.finite(gn_max)) max_gn <- gn_max
     }
 
     # Starters
@@ -117,7 +122,6 @@ server_tab7_compare <- function(input, output, session, shared) {
     oc <- get_input("outcome") %||% ""
     if (nzchar(oc)) parts <- c(parts, tools::toTitleCase(oc))
     if (isTRUE(get_input("clutch"))) parts <- c(parts, "Clutch")
-
     if (length(parts)) paste(parts, collapse = ", ") else paste0("Side ", toupper(side))
   }
 
@@ -305,36 +309,40 @@ server_tab7_compare <- function(input, output, session, shared) {
   )
 
   output$cmp_metric_chips_ui <- renderUI({
-    metrics <- if (input$cmp_mode == "Players") PLAYER_METRICS else TEAM_METRICS
-    cur <- isolate(selected_metric())
-    if (!(cur %in% metrics)) {
-      selected_metric(metrics[[1]])
-      cur <- metrics[[1]]
-    }
+    if (identical(input$cmp_mode, "Players")) return(NULL)
+    metrics <- TEAM_METRICS
+    cur <- selected_metric()
+    if (!(cur %in% metrics)) cur <- metrics[[1]]
     chips <- lapply(seq_along(metrics), function(i) {
       nm <- names(metrics)[i]
       val <- metrics[[i]]
       cls <- if (identical(val, cur)) "btn btn-sm btn-warning" else "btn btn-sm btn-outline-secondary"
-      actionButton(
-        paste0("cmp_metric_", val), nm,
-        class = cls, style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;"
+      tags$button(
+        type = "button",
+        class = cls,
+        style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
+        onclick = sprintf("Shiny.setInputValue('cmp_metric', '%s', {priority: 'event'})", val),
+        nm
       )
     })
     do.call(tagList, chips)
   })
 
-  # Register metric chip click observers once at init
-  all_metrics <- unique(c(unname(TEAM_METRICS), unname(PLAYER_METRICS)))
-  lapply(all_metrics, function(m) {
-    observeEvent(input[[paste0("cmp_metric_", m)]], {
-      selected_metric(m)
-    }, ignoreInit = TRUE)
-  })
+  observeEvent(input$cmp_metric, {
+    if (identical(input$cmp_mode, "Players")) return(NULL)
+    metrics <- TEAM_METRICS
+    m <- input$cmp_metric %||% ""
+    if (m %in% unname(metrics)) selected_metric(m)
+  }, ignoreInit = TRUE)
 
   # ── Shared filter reset helper ──
 
   reset_compare_filters <- function() {
     updateSelectInput(session, "cmp_preset", selected = "")
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+    updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
+    updateSelectizeInput(session, "cmp_players_gn_min", selected = character(0))
+    updateSelectizeInput(session, "cmp_players_gn_max", selected = character(0))
     for (s in c("a", "b")) {
       updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
@@ -343,7 +351,6 @@ server_tab7_compare <- function(input, output, session, shared) {
       updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
       updateSliderInput(session, paste0("cmp_", s, "_clutch_margin"), value = 5)
       updateSliderInput(session, paste0("cmp_", s, "_clutch_minutes"), value = 5)
-      updateSelectInput(session, paste0("cmp_", s, "_cutoff_type"), selected = "")
       updateSelectizeInput(session, paste0("cmp_", s, "_teams"), selected = character(0))
       updateSelectizeInput(session, paste0("cmp_", s, "_opponents"), selected = character(0))
       updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
@@ -352,6 +359,41 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
     updateSelectizeInput(session, "cmp_player_a", selected = character(0))
     updateSelectizeInput(session, "cmp_player_b", selected = character(0))
+    updateSelectizeInput(session, "cmp_player_a_list_team_filter", selected = character(0))
+    updateSelectizeInput(session, "cmp_player_b_list_team_filter", selected = character(0))
+    updateSelectInput(session, "cmp_player_a_team", selected = "")
+    updateSelectInput(session, "cmp_player_b_team", selected = "")
+  }
+
+  refresh_player_choices <- function(side) {
+    players_df <- cmp_ref$players
+    teams_df <- cmp_ref$teams
+    if (is.null(players_df) || !nrow(players_df)) return(NULL)
+
+    side <- match.arg(side, c("a", "b"))
+    list_filter_id <- paste0("cmp_player_", side, "_list_team_filter")
+    player_id <- paste0("cmp_player_", side)
+    keep_val <- input[[player_id]] %||% ""
+
+    team_sel <- input[[list_filter_id]] %||% character(0)
+    filtered <- players_df
+    if (length(team_sel) && !is.null(teams_df) && nrow(teams_df)) {
+      ids <- teams_df$team_id[teams_df$team_name %in% team_sel]
+      if (length(ids)) filtered <- filtered[filtered$team_id %in% ids, , drop = FALSE]
+      else filtered <- filtered[0, , drop = FALSE]
+    }
+    if (!nrow(filtered)) {
+      updateSelectizeInput(session, player_id, choices = c(), selected = character(0), server = TRUE)
+      return(NULL)
+    }
+
+    filtered <- filtered[order(filtered$name), c("player_id", "name"), drop = FALSE]
+    filtered <- filtered[!duplicated(filtered$player_id), , drop = FALSE]
+    choice_values <- as.character(filtered$player_id)
+    player_choices <- setNames(choice_values, filtered$name)
+    if (!(keep_val %in% choice_values)) keep_val <- ""
+
+    updateSelectizeInput(session, player_id, choices = player_choices, selected = keep_val, server = TRUE)
   }
 
   # ── Mode change: full filter reset + metric validity ──
@@ -379,6 +421,18 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectizeInput(session, "cmp_b_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "cmp_a_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "cmp_b_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_player_a_list_team_filter", choices = teams_df$team_name, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = teams_df$team_name, selected = character(0), server = TRUE)
+    gn_df <- cached_ref_query(
+      key = sprintf("cmp_gn_%d", gy_int),
+      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+        "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
+    )
+    gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
+    updateSelectizeInput(session, "cmp_players_gn_min", choices = c("", gn_choices), selected = "", server = TRUE)
+    updateSelectizeInput(session, "cmp_players_gn_max", choices = c("", gn_choices), selected = "", server = TRUE)
+    b <- shared$season_date_bounds(as.character(gy_int))
+    updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
 
     players_df <- cached_ref_query(
       key = sprintf("cmp_players_%d", gy_int),
@@ -386,9 +440,8 @@ server_tab7_compare <- function(input, output, session, shared) {
         "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
     )
     cmp_ref$players <- players_df
-    player_choices <- setNames(players_df$player_id, players_df$name)
-    updateSelectizeInput(session, "cmp_player_a", choices = player_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_player_b", choices = player_choices, selected = character(0), server = TRUE)
+    refresh_player_choices("a")
+    refresh_player_choices("b")
 
     # Apply pending preset from home tab
     pending <- shared$pending_compare_preset()
@@ -398,19 +451,27 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   })
 
+  observeEvent(input$cmp_player_a_list_team_filter, {
+    refresh_player_choices("a")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cmp_player_b_list_team_filter, {
+    refresh_player_choices("b")
+  }, ignoreInit = TRUE)
+
   # ── Preset handler ──
 
   observeEvent(input$cmp_preset, {
     preset <- input$cmp_preset
-    if (is.null(preset) || !nzchar(preset)) return()
-
+    if (is.null(preset) || !nzchar(preset)) {
+      return()
+    }
     clear_side <- function(s) {
       updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_home_away"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
       updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
-      updateSelectInput(session, paste0("cmp_", s, "_cutoff_type"), selected = "")
       updateSelectizeInput(session, paste0("cmp_", s, "_teams"), selected = character(0))
       updateSelectizeInput(session, paste0("cmp_", s, "_opponents"), selected = character(0))
       updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
@@ -439,33 +500,37 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   }, ignoreInit = TRUE)
 
-  # ── Before/After cutoff dynamic UI ──
-
-  output$cmp_a_cutoff_value_ui <- renderUI({
-    ct <- input$cmp_a_cutoff_type %||% ""
-    if (!nzchar(ct)) return(NULL)
-    if (grepl("gn", ct)) {
-      selectizeInput("cmp_a_cutoff_value", "GN", choices = c("", as.character(1:40)),
-                     selected = "", options = list(placeholder = "#"))
-    } else {
-      b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
-      dateInput("cmp_a_cutoff_value", "Date", value = b$start, min = b$start, max = b$end)
-    }
-  })
-
-  output$cmp_b_cutoff_value_ui <- renderUI({
-    ct <- input$cmp_b_cutoff_type %||% ""
-    if (!nzchar(ct)) return(NULL)
-    if (grepl("gn", ct)) {
-      selectizeInput("cmp_b_cutoff_value", "GN", choices = c("", as.character(1:40)),
-                     selected = "", options = list(placeholder = "#"))
-    } else {
-      b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
-      dateInput("cmp_b_cutoff_value", "Date", value = b$start, min = b$start, max = b$end)
-    }
-  })
-
   # ── PvP Player Comparison (Players mode) ──
+
+  player_team_choices <- function(player_id_chr) {
+    players_df <- cmp_ref$players
+    teams_df <- cmp_ref$teams
+    if (is.null(players_df) || is.null(teams_df)) return(data.frame())
+    if (is.null(player_id_chr) || !nzchar(player_id_chr)) return(data.frame())
+    pid <- suppressWarnings(as.integer(player_id_chr))
+    if (!is.finite(pid)) return(data.frame())
+    ids <- unique(players_df$team_id[players_df$player_id == pid])
+    ids <- ids[is.finite(ids)]
+    if (!length(ids)) return(data.frame())
+    out <- teams_df[teams_df$team_id %in% ids, c("team_id", "team_name"), drop = FALSE]
+    out[order(out$team_name), , drop = FALSE]
+  }
+
+  output$cmp_player_a_team_ui <- renderUI({
+    req(identical(input$cmp_mode, "Players"))
+    td <- player_team_choices(input$cmp_player_a)
+    if (nrow(td) <= 1) return(NULL)
+    choices <- c("All teams" = "", setNames(as.character(td$team_id), td$team_name))
+    selectInput("cmp_player_a_team", "Team", choices = choices, selected = "")
+  })
+
+  output$cmp_player_b_team_ui <- renderUI({
+    req(identical(input$cmp_mode, "Players"))
+    td <- player_team_choices(input$cmp_player_b)
+    if (nrow(td) <= 1) return(NULL)
+    choices <- c("All teams" = "", setNames(as.character(td$team_id), td$team_name))
+    selectInput("cmp_player_b_team", "Team", choices = choices, selected = "")
+  })
 
   PVP_STATS <- list(
     list(label = "Points",   col = "pts",    type = "count"),
@@ -495,6 +560,10 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
     team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
+    team_sel_a <- suppressWarnings(as.integer(input$cmp_player_a_team %||% ""))
+    team_sel_b <- suppressWarnings(as.integer(input$cmp_player_b_team %||% ""))
+    if (is.finite(team_sel_a) && (team_sel_a %in% team_ids_a)) team_ids_a <- team_sel_a
+    if (is.finite(team_sel_b) && (team_sel_b %in% team_ids_b)) team_ids_b <- team_sel_b
     if (!length(team_ids_a) || !length(team_ids_b)) return(NULL)
 
     res_a <- run_player_traditional(pa, paste(team_ids_a, collapse = ","))

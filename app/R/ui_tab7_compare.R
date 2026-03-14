@@ -14,14 +14,17 @@ ui_tab7_compare <- tabPanel(
                      choices = c("Teams", "Lineups", "Players"),
                      selected = "Teams", inline = TRUE),
 
-        # Preset dropdown
-        selectInput("cmp_preset", "Quick preset",
-                    choices = c("\u2014 Custom \u2014" = "",
-                                "Starters vs Bench" = "starters_bench",
-                                "Clutch vs Non-Clutch" = "clutch",
-                                "Home vs Away" = "home_away",
-                                "Win vs Loss" = "win_loss"),
-                    selected = ""),
+        # Preset dropdown (teams/lineups only)
+        conditionalPanel(
+          condition = "input.cmp_mode != 'Players'",
+          selectInput("cmp_preset", "Quick preset",
+                      choices = c("\u2014 Custom \u2014" = "",
+                                  "Starters vs Bench" = "starters_bench",
+                                  "Clutch vs Non-Clutch" = "clutch",
+                                  "Home vs Away" = "home_away",
+                                  "Win vs Loss" = "win_loss"),
+                      selected = "")
+        ),
 
         tags$hr(),
         tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
@@ -31,6 +34,21 @@ ui_tab7_compare <- tabPanel(
           id = "cmp-filters", class = "collapse d-md-block",
           actionButton("cmp_reset", "Reset Filters"),
           tags$hr(),
+          conditionalPanel(
+            condition = "input.cmp_mode == 'Players'",
+            tagList(
+              dateRangeInput("cmp_players_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
+              fluidRow(
+                column(6, selectizeInput("cmp_players_gn_min", "From Game Number (GN)",
+                                         choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any"))),
+                column(6, selectizeInput("cmp_players_gn_max", "To Game Number (GN)",
+                                         choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any")))
+              ),
+              tags$hr()
+            )
+          ),
 
           # ── A ──
           tags$div(
@@ -43,8 +61,14 @@ ui_tab7_compare <- tabPanel(
           # Player picker (Players mode only)
           conditionalPanel(
             condition = "input.cmp_mode == 'Players'",
-            selectizeInput("cmp_player_a", "Player", choices = NULL,
-                           options = list(placeholder = "Search player..."))
+            tagList(
+              selectizeInput("cmp_player_a_list_team_filter", "Player List Team Filter",
+                             choices = NULL, multiple = TRUE,
+                             options = list(placeholder = "All teams")),
+              selectizeInput("cmp_player_a", "Player", choices = NULL,
+                             options = list(placeholder = "Search player...")),
+              uiOutput("cmp_player_a_team_ui")
+            )
           ),
 
           # Starters filter (Teams + Lineups only)
@@ -73,12 +97,6 @@ ui_tab7_compare <- tabPanel(
             sliderInput("cmp_a_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
             sliderInput("cmp_a_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1)
           ),
-          fluidRow(
-            column(6, selectInput("cmp_a_cutoff_type", "Before/After",
-                                  choices = c("\u2014" = "", "Before GN" = "before_gn", "After GN" = "after_gn",
-                                              "Before date" = "before_date", "After date" = "after_date"), selected = "")),
-            column(6, uiOutput("cmp_a_cutoff_value_ui"))
-          ),
           selectizeInput("cmp_a_opponents", "Opponents", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All opponents")),
           selectizeInput("cmp_a_game_type", "Game type",
@@ -106,8 +124,14 @@ ui_tab7_compare <- tabPanel(
 
           conditionalPanel(
             condition = "input.cmp_mode == 'Players'",
-            selectizeInput("cmp_player_b", "Player", choices = NULL,
-                           options = list(placeholder = "Search player..."))
+            tagList(
+              selectizeInput("cmp_player_b_list_team_filter", "Player List Team Filter",
+                             choices = NULL, multiple = TRUE,
+                             options = list(placeholder = "All teams")),
+              selectizeInput("cmp_player_b", "Player", choices = NULL,
+                             options = list(placeholder = "Search player...")),
+              uiOutput("cmp_player_b_team_ui")
+            )
           ),
 
           conditionalPanel(
@@ -134,12 +158,6 @@ ui_tab7_compare <- tabPanel(
             condition = "input.cmp_b_clutch == true",
             sliderInput("cmp_b_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
             sliderInput("cmp_b_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1)
-          ),
-          fluidRow(
-            column(6, selectInput("cmp_b_cutoff_type", "Before/After",
-                                  choices = c("\u2014" = "", "Before GN" = "before_gn", "After GN" = "after_gn",
-                                              "Before date" = "before_date", "After date" = "after_date"), selected = "")),
-            column(6, uiOutput("cmp_b_cutoff_value_ui"))
           ),
           selectizeInput("cmp_b_opponents", "Opponents", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All opponents")),
@@ -218,3 +236,4 @@ ui_tab7_compare <- tabPanel(
     )
   )
 )
+
