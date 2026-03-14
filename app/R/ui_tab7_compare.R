@@ -150,14 +150,47 @@ ui_tab7_compare <- tabPanel(
       mainPanel(
         width = 9,
 
-        # Metric chips
-        div(
-          class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
-          tags$span(class = "text-muted small text-uppercase", "Metric"),
-          uiOutput("cmp_metric_chips_ui")
+        # ── Teams / Lineups mode ──
+        conditionalPanel(
+          condition = "input.cmp_mode != 'Players'",
+
+          # Metric chips
+          div(
+            class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
+            tags$span(class = "text-muted small text-uppercase", "Metric"),
+            uiOutput("cmp_metric_chips_ui")
+          ),
+
+          # Summary cards
+          fluidRow(
+            column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
+              tags$div(class = "small text-uppercase", style = "color: #7b8cde;",
+                       textOutput("cmp_summary_a_title", inline = TRUE)),
+              tags$div(class = "fs-4 fw-bold", style = "color: #4caf7d;", textOutput("cmp_summary_a", inline = TRUE)),
+              tags$div(class = "small text-muted", textOutput("cmp_summary_a_label", inline = TRUE)),
+              tags$div(class = "small text-muted", textOutput("cmp_summary_a_delta", inline = TRUE)),
+              tags$div(class = "small text-muted", textOutput("cmp_summary_a_poss", inline = TRUE))
+            )),
+            column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
+              tags$div(class = "small text-uppercase", style = "color: #e8a435;",
+                       textOutput("cmp_summary_b_title", inline = TRUE)),
+              tags$div(class = "fs-4 fw-bold", style = "color: #e05c5c;", textOutput("cmp_summary_b", inline = TRUE)),
+              tags$div(class = "small text-muted", textOutput("cmp_summary_b_label", inline = TRUE)),
+              tags$div(class = "small text-muted", textOutput("cmp_summary_b_delta", inline = TRUE)),
+              tags$div(class = "small text-muted", textOutput("cmp_summary_b_poss", inline = TRUE))
+            )),
+            column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
+              tags$div(class = "small text-uppercase text-muted", "Avg Gap"),
+              tags$div(class = "fs-4 fw-bold", style = "color: #e8a435;", textOutput("cmp_summary_gap", inline = TRUE)),
+              tags$div(class = "small text-muted", "league-wide")
+            ))
+          ),
+
+          # Results table
+          DT::dataTableOutput("cmp_table")
         ),
 
-        # Rate mode (Players mode only)
+        # ── Players mode: PvP comparison view ──
         conditionalPanel(
           condition = "input.cmp_mode == 'Players'",
           div(
@@ -165,38 +198,11 @@ ui_tab7_compare <- tabPanel(
             radioButtons("cmp_rate_mode", NULL,
                          choices = c("Per Game", "Per 75 Possessions", "Totals"),
                          selected = "Per Game", inline = TRUE)
-          )
+          ),
+          uiOutput("cmp_pvp_ui")
         ),
 
-        # Summary cards
-        fluidRow(
-          column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-            tags$div(class = "small text-uppercase", style = "color: #7b8cde;",
-                     textOutput("cmp_summary_a_title", inline = TRUE)),
-            tags$div(class = "fs-4 fw-bold", style = "color: #4caf7d;", textOutput("cmp_summary_a", inline = TRUE)),
-            tags$div(class = "small text-muted", textOutput("cmp_summary_a_label", inline = TRUE)),
-            tags$div(class = "small text-muted", textOutput("cmp_summary_a_delta", inline = TRUE)),
-            tags$div(class = "small text-muted", textOutput("cmp_summary_a_poss", inline = TRUE))
-          )),
-          column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-            tags$div(class = "small text-uppercase", style = "color: #e8a435;",
-                     textOutput("cmp_summary_b_title", inline = TRUE)),
-            tags$div(class = "fs-4 fw-bold", style = "color: #e05c5c;", textOutput("cmp_summary_b", inline = TRUE)),
-            tags$div(class = "small text-muted", textOutput("cmp_summary_b_label", inline = TRUE)),
-            tags$div(class = "small text-muted", textOutput("cmp_summary_b_delta", inline = TRUE)),
-            tags$div(class = "small text-muted", textOutput("cmp_summary_b_poss", inline = TRUE))
-          )),
-          column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-            tags$div(class = "small text-uppercase text-muted", "Avg Gap"),
-            tags$div(class = "fs-4 fw-bold", style = "color: #e8a435;", textOutput("cmp_summary_gap", inline = TRUE)),
-            tags$div(class = "small text-muted", "league-wide")
-          ))
-        ),
-
-        # Results table
-        DT::dataTableOutput("cmp_table"),
-
-        # Filter chips
+        # Filter chips (always)
         uiOutput("cmp_filter_chips")
       )
     )

@@ -294,6 +294,29 @@ server_tab7_compare <- function(input, output, session, shared) {
     }, ignoreInit = TRUE)
   })
 
+  # ── Mode change: reset irrelevant filters & metric ──
+
+  observeEvent(input$cmp_mode, {
+    mode <- input$cmp_mode
+    # Reset preset when mode changes (starters_bench is irrelevant for Players)
+    updateSelectInput(session, "cmp_preset", selected = "")
+
+    # Clear starters values when switching to Players (they're hidden but still set)
+    if (identical(mode, "Players")) {
+      for (s in c("a", "b")) {
+        updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
+        updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
+      }
+    }
+
+    # Reset metric to appropriate default for the new mode
+    cur <- selected_metric()
+    valid <- if (identical(mode, "Players")) PLAYER_METRICS else TEAM_METRICS
+    if (!(cur %in% valid)) {
+      selected_metric(valid[[1]])
+    }
+  }, ignoreInit = TRUE)
+
   # ── Tab init: load ref data ──
 
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
@@ -393,6 +416,163 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   })
 
+  # ── PvP Player Comparison (Players mode) ──
+
+  PVP_STATS <- list(
+    list(label = "Points",   col = "pts",    type = "count"),
+    list(label = "Rebounds",  col = "reb",    type = "count"),
+    list(label = "Assists",   col = "ast",    type = "count"),
+    list(label = "Steals",    col = "stl",    type = "count"),
+    list(label = "FG%",       col = "fg_pct", type = "pct"),
+    list(label = "3P%",       col = "tp_pct", type = "pct"),
+    list(label = "FT%",       col = "ft_pct", type = "pct"),
+    list(label = "TS%",       col = "ts",     type = "pct")
+  )
+
+  cmp_player_raw <- reactive({
+    req(identical(input$cmp_mode, "Players"))
+    req(identical(input$main_tabs, "compare"))
+
+    player_a_id <- input$cmp_player_a
+    player_b_id <- input$cmp_player_b
+    req(player_a_id, nzchar(player_a_id))
+    req(player_b_id, nzchar(player_b_id))
+
+    players_df <- cmp_ref$players
+    req(!is.null(players_df), nrow(players_df) > 0)
+
+    pa <- collect_side_params("a")
+    pb <- collect_side_params("b")
+
+    team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
+    team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
+    if (!length(team_ids_a) || !length(team_ids_b)) return(NULL)
+
+    res_a <- run_player_traditional(pa, paste(team_ids_a, collapse = ","))
+    res_b <- run_player_traditional(pb, paste(team_ids_b, collapse = ","))
+    if (!nrow(res_a) || !nrow(res_b)) return(NULL)
+
+    row_a <- res_a[res_a$player_id == as.integer(player_a_id), , drop = FALSE]
+    row_b <- res_b[res_b$player_id == as.integer(player_b_id), , drop = FALSE]
+    if (!nrow(row_a) || !nrow(row_b)) return(NULL)
+
+    name_a <- players_df$name[players_df$player_id == as.integer(player_a_id)][1]
+    name_b <- players_df$name[players_df$player_id == as.integer(player_b_id)][1]
+
+    teams_df <- cmp_ref$teams
+    team_name_a <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_a[1]][1] else ""
+    team_name_b <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_b[1]][1] else ""
+
+    list(
+      row_a = row_a[1, ], row_b = row_b[1, ],
+      name_a = name_a, name_b = name_b,
+      team_a = team_name_a %||% "", team_b = team_name_b %||% ""
+    )
+  })
+
+  output$cmp_pvp_ui <- renderUI({
+    data <- cmp_player_raw()
+    req(data)
+
+    rate <- input$cmp_rate_mode %||% "Per Game"
+    row_a <- data$row_a
+    row_b <- data$row_b
+
+    get_val <- function(row, stat) {
+      col <- stat$col
+      if (!(col %in% names(row))) return(NA_real_)
+      raw <- as.numeric(row[[col]])
+      if (stat$type == "pct") return(raw)
+      if (rate == "Totals") return(raw)
+      if (rate == "Per 75 Possessions") {
+        poss <- if ("poss_on_floor" %in% names(row)) as.numeric(row[["poss_on_floor"]]) else NA_real_
+        if (!is.na(poss) && poss > 0) return(raw / poss * 75)
+        return(NA_real_)
+      }
+      gp <- if ("gp" %in% names(row)) as.numeric(row[["gp"]]) else NA_real_
+      if (!is.na(gp) && gp > 0) return(raw / gp)
+      NA_real_
+    }
+
+    fmt_val <- function(v, stat) {
+      if (is.na(v)) return("\u2014")
+      if (stat$type == "pct") return(sprintf("%.1f", v))
+      if (rate == "Totals") return(sprintf("%.0f", v))
+      sprintf("%.1f", v)
+    }
+
+    badge_css <- "background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;"
+    val_win_css <- "font-size: 1.05rem; font-weight: 600; color: #e6edf3;"
+    val_lose_css <- "font-size: 1.05rem; font-weight: 600; color: #8b949e;"
+
+    stat_rows <- lapply(PVP_STATS, function(stat) {
+      va <- get_val(row_a, stat)
+      vb <- get_val(row_b, stat)
+      diff <- if (!is.na(va) && !is.na(vb)) abs(va - vb) else NA_real_
+      a_better <- !is.na(va) && !is.na(vb) && va > vb
+      b_better <- !is.na(va) && !is.na(vb) && vb > va
+
+      diff_txt <- if (!is.na(diff) && diff > 0.05) sprintf("+%.1f", diff) else NULL
+
+      left_badge <- if (a_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
+      right_badge <- if (b_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
+
+      tags$div(
+        style = "display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06);",
+        tags$div(
+          style = "flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 10px;",
+          left_badge,
+          tags$span(style = if (a_better) val_win_css else val_lose_css, fmt_val(va, stat))
+        ),
+        tags$div(
+          style = "width: 110px; text-align: center; font-size: .85rem; font-weight: 600; color: #8b949e;",
+          stat$label
+        ),
+        tags$div(
+          style = "flex: 1; display: flex; align-items: center; justify-content: flex-start; gap: 10px;",
+          tags$span(style = if (b_better) val_win_css else val_lose_css, fmt_val(vb, stat)),
+          right_badge
+        )
+      )
+    })
+
+    # GP / MPG info
+    gp_a <- as.numeric(row_a[["gp"]]); gp_b <- as.numeric(row_b[["gp"]])
+    min_a <- if ("minutes" %in% names(row_a) && !is.na(gp_a) && gp_a > 0) as.numeric(row_a[["minutes"]]) / gp_a else NA_real_
+    min_b <- if ("minutes" %in% names(row_b) && !is.na(gp_b) && gp_b > 0) as.numeric(row_b[["minutes"]]) / gp_b else NA_real_
+    info_line <- function(gp, mpg) {
+      parts <- c()
+      if (!is.na(gp)) parts <- c(parts, paste0(gp, " GP"))
+      if (!is.na(mpg)) parts <- c(parts, paste0(sprintf("%.1f", mpg), " MPG"))
+      paste(parts, collapse = " \u00b7 ")
+    }
+
+    tagList(
+      # Player header
+      tags$div(
+        style = "display: flex; align-items: center; justify-content: center; margin-bottom: 20px; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,.08);",
+        tags$div(
+          style = "flex: 1; text-align: center;",
+          tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #7b8cde;", data$name_a),
+          tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", data$team_a),
+          tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_line(gp_a, min_a))
+        ),
+        tags$div(style = "font-size: .9rem; font-weight: 700; color: #484f58; padding: 0 20px;", "vs"),
+        tags$div(
+          style = "flex: 1; text-align: center;",
+          tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #e8a435;", data$name_b),
+          tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", data$team_b),
+          tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_line(gp_b, min_b))
+        )
+      ),
+      # Stat rows
+      tags$div(
+        style = "max-width: 520px; margin: 0 auto;",
+        do.call(tagList, stat_rows)
+      )
+    )
+  })
+
   # ── Reactive comparison (auto-triggers on filter change) ──
 
   cmp_joined <- reactive({
@@ -400,11 +580,15 @@ server_tab7_compare <- function(input, output, session, shared) {
     mode <- input$cmp_mode
     req(mode)
 
+    # Players mode handled by cmp_pvp_ui — skip here
+    if (identical(mode, "Players")) return(NULL)
+
     pa <- collect_side_params("a")
     pb <- collect_side_params("b")
     metric <- selected_metric()
 
     if (mode == "Teams") {
+      req(metric %in% TEAM_METRICS)
       is_ff <- metric %in% c("off_ts_pct", "off_tov_pct", "off_oreb_pct", "off_ftr")
       if (is_ff) {
         res_a <- run_team_ff(pa)
@@ -439,6 +623,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       joined
 
     } else if (mode == "Lineups") {
+      req(metric %in% TEAM_METRICS)
       is_ff <- metric %in% c("off_ts_pct", "off_tov_pct", "off_oreb_pct", "off_ftr")
       if (is_ff) {
         res_a <- run_lineups_ff(pa)
@@ -477,6 +662,9 @@ server_tab7_compare <- function(input, output, session, shared) {
       joined
 
     } else if (mode == "Players") {
+      # Ensure metric is valid for Players mode before querying
+      req(metric %in% PLAYER_METRICS)
+
       player_a_id <- input$cmp_player_a
       player_b_id <- input$cmp_player_b
       if (is.null(player_a_id) || !nzchar(player_a_id)) return(NULL)
