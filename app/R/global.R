@@ -565,18 +565,20 @@ shared_css <- HTML("
   .navbar-season-select {
     display: inline-flex;
     align-items: center;
-    width: 72px;
-    min-width: 72px;
-    max-width: 72px;
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
   }
   .navbar-season-select .form-group { margin: 0; }
   .navbar-season-select .form-select,
   .navbar-season-select select {
     height: 30px; min-height: 30px;
-    width: 72px;
-    min-width: 72px;
-    max-width: 72px;
-    padding: 2px 20px 2px 8px;
+    width: 90px;
+    min-width: 90px;
+    max-width: 90px;
+    padding: 2px 34px 2px 10px;
+    text-align: left;
+    text-align-last: left;
     font-size: 0.82rem; font-weight: 700;
     background: #161b22; color: #e8a435;
     border: 1px solid #e8a435; border-radius: 6px;

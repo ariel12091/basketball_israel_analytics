@@ -59,7 +59,7 @@ ui <- navbarPage(
        })();"
     )),
     tags$div(
-      style = "position: fixed; right: 16px; top: 8px; font-size: 0.82rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 8px;",
+      style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
       tags$div(
         class = "navbar-season-select",
         selectInput("game_year", NULL,
@@ -70,9 +70,10 @@ ui <- navbarPage(
                    tags$span(tags$i(class = "bi bi-book"), " Glossary"),
                    class = "btn btn-sm btn-outline-secondary nav-help-btn"),
       tags$span(
-        style = "display: inline-flex; align-items: center; gap: 4px;",
+        style = "display: inline-flex; align-items: center; gap: 4px; min-width: 0;",
         tags$span(style = "width: 6px; height: 6px; background: #34d399; border-radius: 50%; display: inline-block;"),
-        textOutput("last_updated", inline = TRUE)
+        tags$span(style = "display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
+                  textOutput("last_updated", inline = TRUE))
       )
     )
   ),
@@ -125,6 +126,11 @@ server <- function(input, output, session) {
   prewarm_for_year <- function(gy_chr) {
     gy_int <- suppressWarnings(as.integer(gy_chr))
     if (!is.finite(gy_int) || is.na(gy_int)) return(invisible(NULL))
+    cache_now <- as.numeric(Sys.time())
+    cache_alias <- function(key, val) {
+      assign(key, list(ts = cache_now, val = val), envir = .ref_cache_env)
+      invisible(val)
+    }
 
     # Shared teams query (DISTINCT pattern used by tabs 1, 3, 5).
     teams_distinct_q <- function() DBI::dbGetQuery(
@@ -142,31 +148,36 @@ server <- function(input, output, session) {
       sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
     )
 
-    invisible(cached_ref_query(key = sprintf("teams_for_year_%d", gy_int), query_fun = teams_distinct_q))
-    invisible(cached_ref_query(key = sprintf("on_gn_%d",  gy_int), query_fun = gn_query))
+    teams_distinct <- cached_ref_query(key = sprintf("teams_for_year_%d", gy_int), query_fun = teams_distinct_q)
+    gn_df <- cached_ref_query(key = sprintf("on_gn_%d", gy_int), query_fun = gn_query)
 
     # Tab 2 (Lineups)
-    invisible(cached_ref_query(key = sprintf("ld_teams_%d",   gy_int), query_fun = teams_min_q))
-    invisible(cached_ref_query(key = sprintf("ld_gn_%d",      gy_int), query_fun = gn_query))
-    invisible(cached_ref_query(
+    teams_min <- cached_ref_query(key = sprintf("ld_teams_%d", gy_int), query_fun = teams_min_q)
+    cache_alias(sprintf("ld_gn_%d", gy_int), gn_df)
+    players_ld <- cached_ref_query(
       key = sprintf("ld_players_%d", gy_int),
       query_fun = function() DBI::dbGetQuery(
         pg_pool,
         sprintf("SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int)
       )
-    ))
+    )
 
     # Tab 3 (Team Ratings)
-    invisible(cached_ref_query(key = sprintf("tr_teams_%d", gy_int), query_fun = teams_distinct_q))
-    invisible(cached_ref_query(key = sprintf("tr_gn_%d",    gy_int), query_fun = gn_query))
+    cache_alias(sprintf("tr_teams_%d", gy_int), teams_distinct)
+    cache_alias(sprintf("tr_gn_%d", gy_int), gn_df)
 
     # Tab 4 (Game Logs)
-    invisible(cached_ref_query(key = sprintf("gl_teams_%d", gy_int), query_fun = teams_min_q))
-    invisible(cached_ref_query(key = sprintf("gl_gn_%d",    gy_int), query_fun = gn_query))
+    cache_alias(sprintf("gl_teams_%d", gy_int), teams_min)
+    cache_alias(sprintf("gl_gn_%d", gy_int), gn_df)
 
     # Tab 5 (Player Stats)
-    invisible(cached_ref_query(key = sprintf("ts_teams_%d", gy_int), query_fun = teams_distinct_q))
-    invisible(cached_ref_query(key = sprintf("ts_gn_%d",    gy_int), query_fun = gn_query))
+    cache_alias(sprintf("ts_teams_%d", gy_int), teams_distinct)
+    cache_alias(sprintf("ts_gn_%d", gy_int), gn_df)
+
+    # Compare tab aliases (same refs)
+    cache_alias(sprintf("cmp_teams_%d", gy_int), teams_distinct)
+    cache_alias(sprintf("cmp_players_%d", gy_int), players_ld)
+    cache_alias(sprintf("cmp_gn_%d", gy_int), gn_df)
   }
 
   observeEvent(selected_game_year(), {
@@ -237,8 +248,15 @@ server <- function(input, output, session) {
   })
 
   observeEvent(selected_game_year(), {
-    prewarm_for_year(selected_game_year())
-    log_startup(sprintf("prewarm complete for season %s", selected_game_year()))
+    tryCatch(
+      {
+        prewarm_for_year(selected_game_year())
+        log_startup(sprintf("prewarm complete for season %s", selected_game_year()))
+      },
+      error = function(e) {
+        message(sprintf("[startup] prewarm failed for season %s: %s", selected_game_year(), conditionMessage(e)))
+      }
+    )
   }, ignoreInit = FALSE)
 
   observeEvent(input$open_glossary, {
