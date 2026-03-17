@@ -13,15 +13,15 @@ COLD_TABLE_KEYS <- list(
   subs          = c("game_id", "id")
 )
 
-#' Export a single table to cumulative Parquet, then TRUNCATE.
+#' Export a single table to cumulative Parquet (no truncation — see run_cold_storage_purge).
 #'
 #' @param pg DBI connection
 #' @param schema DB schema name
 #' @param table_name One of COLD_TABLES
 #' @param cold_dir Local directory for Parquet files
 #' @param log_msg Logging function
-#' @return TRUE if purge succeeded, FALSE if skipped
-export_and_purge_table <- function(pg, schema, table_name, cold_dir, log_msg) {
+#' @return TRUE if export succeeded, FALSE if failed
+export_cold_table <- function(pg, schema, table_name, cold_dir, log_msg) {
   stopifnot(table_name %in% COLD_TABLES)
 
   # 1. Read current rows from DB
@@ -29,7 +29,7 @@ export_and_purge_table <- function(pg, schema, table_name, cold_dir, log_msg) {
     pg, sprintf('SELECT * FROM "%s"."%s"', schema, table_name)
   )
   if (nrow(new_rows) == 0) {
-    log_msg(sprintf("  [COLD] %s: 0 rows, skipping", table_name))
+    log_msg(sprintf("  [COLD] %s: 0 rows, skipping export", table_name))
     return(TRUE)
   }
 
@@ -58,39 +58,66 @@ export_and_purge_table <- function(pg, schema, table_name, cold_dir, log_msg) {
   verify <- arrow::read_parquet(parquet_path)
   if (nrow(verify) != nrow(merged)) {
     log_msg(sprintf(
-      "  [COLD] %s: VERIFICATION FAILED (expected %d rows, got %d) — skipping TRUNCATE",
+      "  [COLD] %s: VERIFICATION FAILED (expected %d rows, got %d)",
       table_name, nrow(merged), nrow(verify)
     ), "ERROR")
     return(FALSE)
   }
 
-  # 5. TRUNCATE
-  DBI::dbExecute(pg, sprintf('TRUNCATE "%s"."%s"', schema, table_name))
-  log_msg(sprintf("  [COLD] %s: truncated, exported %d rows (%.1f MB parquet)",
+  log_msg(sprintf("  [COLD] %s: exported %d rows (%.1f MB parquet)",
                   table_name, nrow(merged), file.size(parquet_path) / 1e6))
   TRUE
 }
 
-#' Run Phase 7: export and purge all cold tables.
+#' Run Phase 7: export all cold tables to Parquet, then TRUNCATE all at once.
+#'
+#' Single TRUNCATE handles FK dependencies between cold tables.
+#' lineups_lookup FK to actions_clean is dropped/re-added around the TRUNCATE.
 #'
 #' @param pg DBI connection
 #' @param schema DB schema name
 #' @param cold_dir Local Parquet directory (default: "exports/cold")
 #' @param log_msg Logging function
-#' @return Named logical vector (TRUE = purged, FALSE = skipped)
+#' @return Named logical vector (TRUE = exported, FALSE = skipped/failed)
 run_cold_storage_purge <- function(pg, schema, cold_dir = "exports/cold", log_msg) {
+  # Phase A: export each table to Parquet (no truncation yet)
   results <- vapply(COLD_TABLES, function(tbl) {
     tryCatch(
-      export_and_purge_table(pg, schema, tbl, cold_dir, log_msg),
+      export_cold_table(pg, schema, tbl, cold_dir, log_msg),
       error = function(e) {
-        log_msg(sprintf("  [COLD] %s: FAILED — %s", tbl, conditionMessage(e)), "ERROR")
+        log_msg(sprintf("  [COLD] %s: EXPORT FAILED — %s", tbl, conditionMessage(e)), "ERROR")
         FALSE
       }
     )
   }, logical(1))
 
+  if (!all(results)) {
+    log_msg("Phase 7: some exports failed, skipping TRUNCATE", "WARN")
+    return(results)
+  }
+
+  # Phase B: drop lineups_lookup FK, TRUNCATE all 5, re-add FK
+  tryCatch({
+    log_msg("  [COLD] Dropping lineups_lookup FK for TRUNCATE...")
+    DBI::dbExecute(pg, sprintf(
+      'ALTER TABLE "%s"."lineups_lookup" DROP CONSTRAINT IF EXISTS "lineups_lookup_actions_clean_fk"',
+      schema))
+
+    tbl_list <- paste(sprintf('"%s"."%s"', schema, COLD_TABLES), collapse = ", ")
+    DBI::dbExecute(pg, paste("TRUNCATE", tbl_list))
+    log_msg("  [COLD] All 5 tables truncated")
+
+    DBI::dbExecute(pg, sprintf(
+      'ALTER TABLE "%s"."lineups_lookup" ADD CONSTRAINT "lineups_lookup_actions_clean_fk"
+       FOREIGN KEY (game_id, id) REFERENCES "%s"."actions_clean" (game_id, id) NOT VALID',
+      schema, schema))
+    log_msg("  [COLD] Re-added lineups_lookup FK (NOT VALID)")
+  }, error = function(e) {
+    log_msg(sprintf("  [COLD] TRUNCATE FAILED — %s", conditionMessage(e)), "ERROR")
+  })
+
   purged <- sum(results)
-  log_msg(sprintf("Phase 7 complete: %d/%d tables purged", purged, length(COLD_TABLES)))
+  log_msg(sprintf("Phase 7 complete: %d/%d tables exported & purged", purged, length(COLD_TABLES)))
   results
 }
 

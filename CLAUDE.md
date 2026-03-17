@@ -98,7 +98,9 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader, mobile collapse behind "Show 
 
 ## Key Tables & MVs
 
-**Base tables:** `schedule`, `actions_clean`, `full_rosters`, `possessions`, `pws`, `lineups_lookup`, `stints`, `sub_lineups`
+**Base tables:** `schedule`, `actions_clean`*, `full_rosters`, `possessions`*, `pws`*, `lineups_lookup`, `stints`*, `sub_lineups`, `subs`*
+
+(*) **Cold storage tables** — truncated after each ETL run. See Cold Storage section below.
 
 **MV dependency tree** (refresh in this order):
 ```
@@ -185,13 +187,45 @@ Available in Tabs 2 and 3 only. 4 SQL params: `p_max_margin`, `p_margin_status`,
 
 ## ETL
 
-**Use `etl_full.R`** — base tables → sub-lineups → MV refresh → validation. Logs to `etl/logs/`.
+**Use `etl_full.R`** — base tables → sub-lineups → MV refresh → validation → cold storage purge. Logs to `etl/logs/`.
+
+**Phases:** 1 (schedule) → 2 (actions/possessions/pws) → 3 (sub-lineups) → 4 (MV refresh) → 5 (validation) → 6 (meta) → **7 (cold storage purge)**
 
 **Key points:**
 - `fetch_israel_schedule()`: JSON fields are mixed-case (`GN`, `ExternalID`) — must explicitly map to lowercase DB columns. `upsert_by_like()` is case-sensitive.
 - ETL needs write access (`etl/.Renviron` with postgres user), app uses readonly (`app/.Renviron`).
 - Starters lineage: `extract_starters()` → `lineups_lookup` → `pws` → MVs.
 - Incremental refresh: `refresh_sub_lineups_stats_for_games(int4[])`.
+- New-game detection uses `etl_processed_games` table (not `actions_clean` which is truncated).
+
+## Cold Storage
+
+**Purpose:** Keep Supabase DB under 500MB free tier by exporting ETL-only intermediate tables to Parquet and TRUNCATing them after each run.
+
+**Cold tables** (written in Phase 2, read in Phase 4, purged in Phase 7):
+- `actions_clean` (~32MB), `possessions` (~36MB), `pws` (~58MB), `stints` (~6MB), `subs` (~9MB) — **~140MB total**
+
+**Files:**
+- `etl/cold_storage.R` — `export_cold_table()`, `run_cold_storage_purge()`, `restore_cold_table()`
+- `scripts/restore_cold_storage.R` — standalone restore script for full MV rebuilds
+- `exports/cold/*.parquet` — cumulative Parquet files (gitignored, one per table with key-based dedup)
+
+**How it works:**
+1. Export each table to cumulative Parquet (merge with existing via key dedup + read-back verification)
+2. Drop `lineups_lookup_actions_clean_fk` (lineups_lookup FKs to actions_clean)
+3. TRUNCATE all 5 tables in one statement (handles inter-table FKs)
+4. Re-add FK as `NOT VALID`
+
+**FK constraint:** `lineups_lookup` → `actions_clean` via `lineups_lookup_actions_clean_fk`. Must be dropped before TRUNCATE and re-added after. Other FKs are all between cold tables (handled by joint TRUNCATE).
+
+**Tracking:** `etl_processed_games` table (game_id PK, game_year, processed_at) tracks which games have been ETL'd — replaces the old `SELECT DISTINCT game_id FROM actions_clean` for incremental detection. Auto-backfilled on first run.
+
+**Restore (for MV rebuilds):**
+```bash
+"$RSCRIPT" scripts/restore_cold_storage.R    # loads all 5 tables from Parquet
+```
+
+**GH Actions:** Parquet files uploaded to `cold-storage/latest` release on CI. Workflow creates the release if needed.
 
 ## Environment
 
@@ -227,6 +261,9 @@ Daily via Windows Task Scheduler → `scripts/run_etl_full.ps1`. Writes marker t
 - Floor time: compute `MAX - MIN` across ALL rows per segment (no `type_lineup` filter), then SUM with offense filter to avoid double-counting
 - Clutch CTEs: propagate `team_id` through all CTEs + always use table aliases (avoid PL/pgSQL variable ambiguity)
 - `fetch_lineups_all.sql` and `fetch_lineups_four_factors.sql` have near-identical clutch structures — keep them in sync
+
+- `TRUNCATE` on a parent table fails even if child is empty — FK existence alone blocks it. Must drop FK, truncate, re-add, or truncate all tables in one statement
+- Cold storage tables (`actions_clean`, `possessions`, `pws`, `stints`, `subs`) are empty between ETL runs — don't query them in the app
 
 ### R / Shiny / DT
 - `bigint = "numeric"` in `dbPool()` — integer64 breaks dplyr `coalesce()`, `+`, many tidyverse ops. `SUM(integer)` → bigint
