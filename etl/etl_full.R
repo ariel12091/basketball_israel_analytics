@@ -129,6 +129,35 @@ set_last_success <- function(pg, schema, ts = Sys.time()) {
     params = list("etl_full_last_success", format(ts, "%Y-%m-%d %H:%M:%S"))
   )
 }
+# ---- ETL processed games tracking ----
+ensure_etl_processed_games <- function(pg, schema) {
+  sql <- paste0(
+    'CREATE TABLE IF NOT EXISTS "', schema, '"."etl_processed_games" (',
+    ' game_id int PRIMARY KEY,',
+    ' game_year int NOT NULL,',
+    ' processed_at timestamptz DEFAULT now())'
+  )
+  DBI::dbExecute(pg, sql)
+}
+
+backfill_etl_processed_games <- function(pg, schema, log_msg) {
+  cnt <- DBI::dbGetQuery(
+    pg,
+    paste0('SELECT count(*) AS n FROM "', schema, '"."etl_processed_games"')
+  )$n
+  if (cnt > 0) return(invisible(NULL))
+
+  sql <- paste0(
+    'INSERT INTO "', schema, '"."etl_processed_games" (game_id, game_year)',
+    ' SELECT DISTINCT ac.game_id, s.game_year',
+    ' FROM "', schema, '"."actions_clean" ac',
+    ' JOIN "', schema, '"."schedule" s USING (game_id)',
+    ' ON CONFLICT DO NOTHING'
+  )
+  n <- DBI::dbExecute(pg, sql)
+  log_msg(sprintf("Backfilled etl_processed_games with %d games from actions_clean", n))
+}
+
 
 # â”€â”€â”€ Main pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
@@ -176,7 +205,12 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     etl_lines <- etl_lines[seq_len(cut_at)]
   }
   eval(parse(text = etl_lines), envir = .GlobalEnv)
+  source("etl/cold_storage.R")
+  log_msg("Sourced etl/cold_storage.R")
   log_msg(sprintf("Schema: %s (APP_ENV = %s)", SCHEMA, APP_ENV))
+
+  ensure_etl_processed_games(pg, SCHEMA)
+  backfill_etl_processed_games(pg, SCHEMA, log_msg)
 
   # Ensure cleanup on exit
   on.exit({
@@ -204,7 +238,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     # Determine which games to process
     if (is.null(game_ids)) {
       existing <- DBI::dbGetQuery(
-        pg, sprintf('SELECT DISTINCT game_id FROM "%s"."actions_clean"', SCHEMA)
+        pg, sprintf('SELECT game_id FROM "%s"."etl_processed_games"', SCHEMA)
       )
       ids <- setdiff(sched_df$game_id, existing$game_id) |> sort() |> unique()
     } else {
@@ -435,6 +469,26 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
       DBI::dbExecute(pg, sprintf('ANALYZE "%s"."pws";', SCHEMA))
 
+      # Record processed games in tracking table (only games that were actually fetched)
+      track_ids <- intersect(as.integer(ids), fetchable_sched$game_id)
+      if (length(track_ids)) {
+        track_years <- sched_subset$game_year[match(track_ids, sched_subset$game_id)]
+        vals <- paste(
+          sprintf("(%d, %d, now())", as.integer(track_ids), as.integer(track_years)),
+          collapse = ", "
+        )
+        DBI::dbExecute(
+          pg,
+          sprintf(
+            'INSERT INTO "%s"."etl_processed_games" (game_id, game_year, processed_at)
+             VALUES %s
+             ON CONFLICT (game_id) DO NOTHING',
+            SCHEMA, vals
+          )
+        )
+        log_msg(sprintf("  etl_processed_games: %d game(s) recorded", length(track_ids)))
+      }
+
       elapsed <- (proc.time() - t0)["elapsed"]
       log_msg(sprintf("Phase 2 complete. %d games processed in %.1fs", length(ids), elapsed))
 
@@ -447,7 +501,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   })
 
   # Guardrail: verify key tables have rows
-  for (tbl_name in c("schedule", "actions_clean", "lineups_lookup", "pws")) {
+  # actions_clean and pws are purged after each run; only check non-purged tables
+  for (tbl_name in c("schedule", "lineups_lookup")) {
     cnt <- DBI::dbGetQuery(
       pg, sprintf('SELECT count(*) AS n FROM "%s"."%s"', SCHEMA, tbl_name)
     )$n
@@ -1034,6 +1089,47 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     mark_phase_failed("Phase 6", conditionMessage(e))
   })
 
+  }
+
+
+  # =========================================================================
+  # Phase 7: Cold Storage Purge
+  # =========================================================================
+
+  if (!dry_run && isTRUE(pipeline_ok)) {
+    log_msg("--- Phase 7: Cold Storage Purge ---")
+    tryCatch({
+      t0 <- proc.time()
+      cold_dir <- "exports/cold"
+
+      purge_results <- run_cold_storage_purge(pg, SCHEMA, cold_dir, log_msg)
+
+      # Upload to GH release on CI
+      if (nzchar(Sys.getenv("GITHUB_ACTIONS"))) {
+        log_msg("  Uploading Parquet files to GH release cold-storage/latest ...")
+        parquet_files <- list.files(cold_dir, pattern = "\\.parquet$", full.names = TRUE)
+        if (length(parquet_files)) {
+          upload_cmd <- sprintf(
+            'gh release upload cold-storage/latest %s --clobber',
+            paste(shQuote(parquet_files), collapse = " ")
+          )
+          upload_exit <- system(upload_cmd)
+          if (upload_exit == 0) {
+            log_msg(sprintf("  Uploaded %d Parquet file(s) to cold-storage/latest", length(parquet_files)))
+          } else {
+            log_msg("  GH release upload failed (non-zero exit); Parquets saved locally", "WARN")
+          }
+        }
+      }
+
+      elapsed <- (proc.time() - t0)["elapsed"]
+      log_msg(sprintf("Phase 7 complete in %.1fs", elapsed))
+    }, error = function(e) {
+      log_msg(sprintf("Phase 7 FAILED: %s", conditionMessage(e)), "ERROR")
+      mark_phase_failed("Phase 7", conditionMessage(e))
+    })
+  } else if (!dry_run) {
+    log_msg("Skipping Phase 7 (cold storage purge) due to pipeline failures")
   }
 
   # =========================================================================

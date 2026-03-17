@@ -51,6 +51,7 @@ jobs:
             any::tibble
             any::withr
             any::pool
+            any::arrow
 
       - name: Run ETL wrapper
         shell: pwsh
@@ -62,6 +63,7 @@ jobs:
           PG_USER: ${{ secrets.PG_USER }}
           PG_PASS: ${{ secrets.PG_PASS }}
           PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           New-Item -ItemType Directory -Force -Path logs | Out-Null
@@ -116,6 +118,17 @@ jobs:
             }
             throw
           }
+
+      - name: Ensure cold-storage release exists
+        if: success()
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view cold-storage/latest > /dev/null 2>&1 || \
+            gh release create cold-storage/latest \
+              --title "Cold Storage Exports" \
+              --notes "Cumulative Parquet backups of ETL intermediate tables"
 
       - name: Upload ETL logs
         if: always()

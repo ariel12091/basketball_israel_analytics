@@ -6,3 +6,5 @@
 etl/logs/
 node_modules/
 dist/
+.superpowers/
+exports/cold/
