@@ -264,6 +264,8 @@ Daily via Windows Task Scheduler → `scripts/run_etl_full.ps1`. Writes marker t
 
 - `TRUNCATE` on a parent table fails even if child is empty — FK existence alone blocks it. Must drop FK, truncate, re-add, or truncate all tables in one statement
 - Cold storage tables (`actions_clean`, `possessions`, `pws`, `stints`, `subs`) are empty between ETL runs — don't query them in the app
+- Supabase dashboard reports ~30-40 MB more than `pg_database_size()` — account for this overhead when sizing against the 500 MB free tier
+- Dropped redundant indexes (2026-03-18): `sub_lineups_team_id_lineup_hash_lineup_id_key` (12 MB, uniqueness covered by PK via `sub_lineup_hash = md5(lineup_id)`), `idx_sub_lineups_lineup_hash` (1.5 MB), `idx_sub_lineups_gin_players` (872 KB), `lineups_lookup_lineup_hash_idx` (2.2 MB). Do NOT recreate these.
 
 ### R / Shiny / DT
 - `bigint = "numeric"` in `dbPool()` — integer64 breaks dplyr `coalesce()`, `+`, many tidyverse ops. `SUM(integer)` → bigint
