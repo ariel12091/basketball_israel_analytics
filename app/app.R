@@ -1,6 +1,7 @@
 # app.R - Main entry point
 # Sources modular files and assembles the Shiny app
 
+
 # Source all modules
 source("R/global.R", local = TRUE)
 source("R/ui_tab0_home.R", local = TRUE)
@@ -58,6 +59,34 @@ ui <- navbarPage(
          };
        })();"
     )),
+    tags$script(HTML(
+      "(function() {
+         var lastSent = 0;
+         var minIntervalMs = 15000;
+         function sendActivity() {
+           var now = Date.now();
+           if ((now - lastSent) < minIntervalMs) return;
+           lastSent = now;
+           if (!window.Shiny || typeof window.Shiny.setInputValue !== 'function') return;
+           window.Shiny.setInputValue('idle_activity_ts', now, {priority: 'event'});
+         }
+         function bindActivity() {
+           var events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
+           for (var i = 0; i < events.length; i++) {
+             document.addEventListener(events[i], sendActivity, {passive: true});
+           }
+           document.addEventListener('visibilitychange', function() {
+             if (document.visibilityState === 'visible') sendActivity();
+           });
+           sendActivity();
+         }
+         if (document.readyState === 'loading') {
+           document.addEventListener('DOMContentLoaded', bindActivity);
+         } else {
+           bindActivity();
+         }
+       })();"
+    )),
     tags$div(
       style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
       tags$div(
@@ -90,10 +119,25 @@ ui <- navbarPage(
 server <- function(input, output, session) {
   startup_t0 <- proc.time()[["elapsed"]]
   init_session_request_guard(session)
+  last_activity_at <- reactiveVal(as.numeric(Sys.time()))
+  idle_timeout_sec <- APP_IDLE_TIMEOUT_SEC
+  idle_check_sec <- APP_IDLE_CHECK_SEC
   log_startup <- function(step) {
     elapsed <- proc.time()[["elapsed"]] - startup_t0
     message(sprintf("[startup] %s (%.3fs)", step, elapsed))
   }
+
+  observeEvent(input$idle_activity_ts, {
+    last_activity_at(as.numeric(Sys.time()))
+  }, ignoreInit = TRUE)
+
+  observe({
+    invalidateLater(idle_check_sec * 1000L, session)
+    idle_for <- as.numeric(Sys.time()) - last_activity_at()
+    if (is.finite(idle_for) && idle_for >= idle_timeout_sec) {
+      session$close()
+    }
+  })
 
   # ---- Shared helpers & reactives ----
   season_date_bounds <- function(gy) {
@@ -115,7 +159,7 @@ server <- function(input, output, session) {
     cached_ref_query(
       key = sprintf("teams_for_year_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
         )
@@ -133,17 +177,17 @@ server <- function(input, output, session) {
     }
 
     # Shared teams query (DISTINCT pattern used by tabs 1, 3, 5).
-    teams_distinct_q <- function() DBI::dbGetQuery(
+    teams_distinct_q <- function() db_get_query(
       pg_pool,
       sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
     )
     # Teams query with MIN/GROUP BY (used by tabs 2, 4).
-    teams_min_q <- function() DBI::dbGetQuery(
+    teams_min_q <- function() db_get_query(
       pg_pool,
       sprintf("SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int)
     )
-    # GN query — shared across all tabs.
-    gn_query <- function() DBI::dbGetQuery(
+    # GN query - shared across all tabs.
+    gn_query <- function() db_get_query(
       pg_pool,
       sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
     )
@@ -156,7 +200,7 @@ server <- function(input, output, session) {
     cache_alias(sprintf("ld_gn_%d", gy_int), gn_df)
     players_ld <- cached_ref_query(
       key = sprintf("ld_players_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(
+      query_fun = function() db_get_query(
         pg_pool,
         sprintf("SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int)
       )
@@ -212,7 +256,7 @@ server <- function(input, output, session) {
 
   last_success_db <- function() {
     tryCatch({
-      q <- DBI::dbGetQuery(
+      q <- db_get_query(
         pg_pool,
         "SELECT value FROM basketball_test.app_meta WHERE key = 'etl_full_last_success' LIMIT 1"
       )
@@ -307,7 +351,7 @@ server <- function(input, output, session) {
     updateSelectizeInput(session, "home_team", choices = choices, selected = "", server = TRUE)
   }) |> bindEvent(shared$teams_for_year_df(), ignoreNULL = TRUE)
 
-  # Card navigation: Who is helping my team? → Tab 1
+  # Card navigation: Who is helping my team? -> Tab 1
   observeEvent(input$go_onoff, {
     teams_df <- shared$teams_for_year_df()
     if (!is.null(input$home_team) && input$home_team != "") {
@@ -323,7 +367,7 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "main_tabs", selected = "onoff")
   })
 
-  # Card navigation: Which lineups are working? → Tab 2
+  # Card navigation: Which lineups are working? -> Tab 2
   observeEvent(input$go_lineups, {
     if (!is.null(input$home_team) && input$home_team != "") {
       shared$pending_ld_team(input$home_team)
@@ -332,12 +376,12 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "main_tabs", selected = "lineup_data")
   })
 
-  # Card navigation: How is my team performing? → Tab 3
+  # Card navigation: How is my team performing? -> Tab 3
   observeEvent(input$go_team, {
     updateTabsetPanel(session, "main_tabs", selected = "team_ratings")
   })
 
-  # Card navigation: What happened in last night's game? → Tab 4
+  # Card navigation: What happened in last night's game? -> Tab 4
   observeEvent(input$go_gamelogs, {
     if (!is.null(input$home_team) && input$home_team != "") {
       shared$pending_gl_team(input$home_team)
@@ -345,12 +389,12 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "main_tabs", selected = "game_logs")
   })
 
-  # Card navigation: How are individual players performing? → Tab 5
+  # Card navigation: How are individual players performing? -> Tab 5
   observeEvent(input$go_playerstats, {
     updateTabsetPanel(session, "main_tabs", selected = "traditional_stats")
   })
 
-  # Card navigation: How do starters compare to the bench? → Tab 7
+  # Card navigation: How do starters compare to the bench? -> Tab 7
   observeEvent(input$go_compare, {
     shared$pending_compare_preset("starters_bench")
     updateTabsetPanel(session, "main_tabs", selected = "compare")
@@ -360,3 +404,4 @@ server <- function(input, output, session) {
 }
 
 shinyApp(ui, server)
+

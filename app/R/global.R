@@ -48,6 +48,14 @@ if (!is.finite(REF_CACHE_TTL_SEC) || REF_CACHE_TTL_SEC < 0) REF_CACHE_TTL_SEC <-
 
 PG_STATEMENT_TIMEOUT_MS <- suppressWarnings(as.integer(Sys.getenv("PG_STATEMENT_TIMEOUT_MS", "20000")))
 if (!is.finite(PG_STATEMENT_TIMEOUT_MS) || PG_STATEMENT_TIMEOUT_MS <= 0) PG_STATEMENT_TIMEOUT_MS <- 20000L
+APP_IDLE_TIMEOUT_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_TIMEOUT_SEC", "180")))
+if (!is.finite(APP_IDLE_TIMEOUT_SEC) || APP_IDLE_TIMEOUT_SEC <= 0) APP_IDLE_TIMEOUT_SEC <- 180L
+APP_IDLE_TIMEOUT_MIN <- suppressWarnings(as.numeric(Sys.getenv("APP_IDLE_TIMEOUT_MIN", "")))
+if (is.finite(APP_IDLE_TIMEOUT_MIN) && APP_IDLE_TIMEOUT_MIN > 0) {
+  APP_IDLE_TIMEOUT_SEC <- as.integer(round(APP_IDLE_TIMEOUT_MIN * 60))
+}
+APP_IDLE_CHECK_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_CHECK_SEC", "15")))
+if (!is.finite(APP_IDLE_CHECK_SEC) || APP_IDLE_CHECK_SEC <= 0) APP_IDLE_CHECK_SEC <- 15L
 
 .ref_cache_env <- new.env(parent = emptyenv())
 
@@ -62,6 +70,16 @@ cached_ref_query <- function(key, query_fun, ttl_sec = REF_CACHE_TTL_SEC) {
   val <- query_fun()
   assign(key, list(ts = now, val = val), envir = .ref_cache_env)
   val
+}
+
+# Central query helper used across modules.
+# Kept as a thin wrapper for pooler compatibility with parameterized queries.
+db_get_query <- function(conn_or_pool, statement, params = NULL) {
+  if (is.null(params)) {
+    DBI::dbGetQuery(conn_or_pool, statement)
+  } else {
+    DBI::dbGetQuery(conn_or_pool, statement, params = params)
+  }
 }
 
 # ---------------- Session safety guards ----------------
@@ -154,7 +172,7 @@ pg_pool <- dbPool(
 onStop(function() poolClose(pg_pool))
 
 # Pre-warm the connection pool (force SSL handshake at source time)
-tryCatch(DBI::dbGetQuery(pg_pool, "SELECT 1"), error = function(e) NULL)
+tryCatch(db_get_query(pg_pool, "SELECT 1"), error = function(e) NULL)
 
 # ---------------- Shared CSS ----------------
 shared_css <- HTML("
@@ -763,7 +781,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   }
   chips <- list()
 
-  # Season chip (always visible, not dismissable) — single global input
+  # Season chip (always visible, not dismissable) - single global input
   gy <- input$game_year %||% DEFAULT_GAME_YEAR
   chips[[length(chips) + 1]] <- make_season_chip(gy)
 
@@ -1016,3 +1034,4 @@ app_image_src <- function(rel_path, mime = "image/png") {
   }
   rel_path
 }
+

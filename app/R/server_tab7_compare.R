@@ -10,7 +10,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   cmp_auto_default_ids <- reactiveVal(integer(0))
   cmp_defaults_active <- reactiveVal(FALSE)
 
-  # ── Helpers ──
+  # -- Helpers --
 
   collect_side_params <- function(side) {
     pfx <- paste0("cmp_", side, "_")
@@ -202,7 +202,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     df[keep, , drop = FALSE]
   }
 
-  # ── SQL runners ──
+  # -- SQL runners --
 
   run_team_ratings <- function(p) {
     allowed <- guard_heavy_request(
@@ -212,7 +212,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pg_pool, paste0(
+    db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.get_team_ratings_dynamic(",
       "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
       "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
@@ -237,7 +237,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pg_pool, paste0(
+    db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.get_team_four_factors_dynamic(",
       "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
       "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
@@ -262,7 +262,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pg_pool, paste0(
+    db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.fetch_lineups_csv_v2(",
       "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
       "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
@@ -294,7 +294,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pg_pool, paste0(
+    db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(",
       "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
       "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
@@ -327,7 +327,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
     tryCatch(
-      DBI::dbGetQuery(pg_pool, paste0(
+      db_get_query(pg_pool, paste0(
         "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
         "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
         "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
@@ -345,6 +345,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         msg <- conditionMessage(e)
         if (grepl("statement timeout", msg, ignore.case = TRUE)) {
           showNotification("Player compare query timed out. Narrow filters or date range.", type = "warning", duration = 5)
+        } else {
+          message(sprintf("[tab7][player_compare] query failed: %s", msg))
+          showNotification("Player compare query failed. Try narrowing filters or retry.", type = "error", duration = 6)
         }
         data.frame()
       }
@@ -360,7 +363,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
     team_csv <- if (is.null(team_ids_csv) || is.na(team_ids_csv) || !nzchar(team_ids_csv)) NA_character_ else team_ids_csv
-    DBI::dbGetQuery(pg_pool, paste0(
+    db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.four_factors_compute(",
       "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
       "$7::text,$8::text,$9::text,$10::int4,$11::text,",
@@ -386,7 +389,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pg_pool, paste0(
+    db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.onoff_compute(",
       "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,",
       "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,",
@@ -403,7 +406,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     ))
   }
 
-  # ── Metric chip definitions per mode ──
+  # -- Metric chip definitions per mode --
 
   TEAM_METRICS <- c(
     "Net Rtg" = "net_rtg", "Offense" = "off_ppp", "Defense" = "def_ppp",
@@ -509,7 +512,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (v %in% unname(PLAYER_VIEWS)) selected_player_view(v)
   }, ignoreInit = TRUE)
 
-  # ── Shared filter reset helper ──
+  # -- Shared filter reset helper --
 
   reset_compare_filters <- function() {
     updateSelectInput(session, "cmp_preset", selected = "")
@@ -577,7 +580,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     gy_int <- as.integer(input$game_year)
     scorer_df <- cached_ref_query(
       key = sprintf("cmp_default_scorers_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(pg_pool, paste0(
+      query_fun = function() db_get_query(pg_pool, paste0(
         "SELECT player_id, gp, pts FROM basketball_test.get_player_traditional_dynamic(",
         "$1::int4, NULL::date, NULL::date, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, ",
         "NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::bool, NULL::int4, NULL::int4, NULL::int4",
@@ -630,7 +633,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     invisible(NULL)
   }
 
-  # ── Mode change: full filter reset + metric validity ──
+  # -- Mode change: full filter reset + metric validity --
 
   observeEvent(input$cmp_mode, {
     reset_compare_filters()
@@ -641,7 +644,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (identical(mode, "Players")) apply_default_players()
   }, ignoreInit = TRUE)
 
-  # ── Tab init: load ref data ──
+  # -- Tab init: load ref data --
 
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "compare")) return(NULL)
@@ -649,7 +652,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     teams_df <- cached_ref_query(
       key = sprintf("cmp_teams_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+      query_fun = function() db_get_query(pg_pool, sprintf(
         "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
     )
     teams_df <- normalize_teams_ref(teams_df)
@@ -663,7 +666,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
     gn_df <- cached_ref_query(
       key = sprintf("cmp_gn_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+      query_fun = function() db_get_query(pg_pool, sprintf(
         "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
     )
     gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
@@ -676,7 +679,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     players_df <- cached_ref_query(
       key = sprintf("cmp_players_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+      query_fun = function() db_get_query(pg_pool, sprintf(
         "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
     )
     players_df <- normalize_players_ref(players_df)
@@ -763,7 +766,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     cmp_defaults_active(FALSE)
   }, ignoreInit = TRUE)
 
-  # ── Preset handler ──
+  # -- Preset handler --
 
   observeEvent(input$cmp_preset, {
     preset <- input$cmp_preset
@@ -804,7 +807,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   }, ignoreInit = TRUE)
 
-  # ── PvP Player Comparison (Players mode) ──
+  # -- PvP Player Comparison (Players mode) --
 
   player_team_choices <- function(player_id_chr) {
     players_df <- normalize_players_ref(cmp_ref$players)
@@ -856,7 +859,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       gy_int <- as.integer(input$game_year)
       players_df <- cached_ref_query(
         key = sprintf("cmp_players_%d", gy_int),
-        query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+        query_fun = function() db_get_query(pg_pool, sprintf(
           "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
       )
       cmp_ref$players <- normalize_players_ref(players_df)
@@ -865,7 +868,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       gy_int <- as.integer(input$game_year)
       teams_df <- cached_ref_query(
         key = sprintf("cmp_teams_%d", gy_int),
-        query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+        query_fun = function() db_get_query(pg_pool, sprintf(
           "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
       )
       cmp_ref$teams <- normalize_teams_ref(teams_df)
@@ -946,7 +949,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 
-  # ── Shared PvP UI helpers ──
+  # -- Shared PvP UI helpers --
 
   badge_css <- "background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;"
   val_win_css <- "font-size: 1.05rem; font-weight: 600; color: #e6edf3;"
@@ -1010,7 +1013,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
-  # ── FF Swing view ──
+  # -- FF Swing view --
 
   FF_SWING_STATS <- list(
     list(label = "Off Diff", col = "Off ON Diff", side = "off"),
@@ -1091,9 +1094,17 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
-  # ── Overall PvP view ──
+  # -- Overall PvP view --
 
   output$cmp_pvp_ui <- renderUI({
+    if (!nzchar(input$cmp_player_a %||% "") || !nzchar(input$cmp_player_b %||% "")) {
+      return(tags$div(
+        class = "card bg-dark border-secondary p-3",
+        tags$div(class = "small text-muted",
+                 "Select Player A and Player B to run Players compare.")
+      ))
+    }
+
     view <- selected_player_view()
     if (identical(view, "ff_swing")) {
       return(render_ff_swing_ui())
@@ -1158,14 +1169,14 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 
-  # ── Reactive comparison (auto-triggers on filter change) ──
+  # -- Reactive comparison (auto-triggers on filter change) --
 
   cmp_joined <- reactive({
     req(identical(input$main_tabs, "compare"))
     mode <- input$cmp_mode
     req(mode)
 
-    # Players mode handled by cmp_pvp_ui — skip here
+    # Players mode handled by cmp_pvp_ui - skip here
     if (identical(mode, "Players")) return(NULL)
 
     pa <- collect_side_params("a")
@@ -1342,7 +1353,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   })
 
-  # ── Summary cards ──
+  # -- Summary cards --
 
   metric_label <- reactive({
     m <- selected_metric()
@@ -1428,7 +1439,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     sprintf("%.1f", st$gap_abs)
   })
 
-  # ── Results table ──
+  # -- Results table --
 
   output$cmp_table <- DT::renderDataTable({
     df <- cmp_joined()
@@ -1469,13 +1480,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }, server = FALSE)
 
-  # ── Reset ──
+  # -- Reset --
 
   observeEvent(input$cmp_reset, {
     reset_compare_filters()
   })
 
-  # ── Filter chips ──
+  # -- Filter chips --
 
   output$cmp_filter_chips <- renderUI({
     tryCatch(
@@ -1484,3 +1495,4 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 }
+
