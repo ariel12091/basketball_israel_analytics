@@ -30,7 +30,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     teams_df <- cached_ref_query(
       key = sprintf("ts_teams_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           "SELECT DISTINCT team_id, team_name
            FROM basketball_test.full_rosters
@@ -47,7 +47,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     gn_df <- cached_ref_query(
       key = sprintf("ts_gn_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           "SELECT DISTINCT gn
            FROM basketball_test.final_schedule_mv
@@ -243,7 +243,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(
+    db_get_query(
       pool,
       paste0(
         "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
@@ -309,7 +309,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     req(gy_int)
 
     out <- tryCatch(
-      DBI::dbGetQuery(
+      db_get_query(
         pg_pool,
         "SELECT player_id, team_id, team_name, player_name AS \"Player\",
                 gp, poss_on_floor, minutes,
@@ -496,6 +496,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     removed <- 0L
     ineligible <- 0L
     df$rate_eligible <- TRUE
+    df$.poss_rank_base <- suppressWarnings(as.numeric(df$poss_on_floor))
     if (identical(mode, "Per 60 Possessions") || identical(mode, "Per 30 Minutes")) {
       keep <- !is.na(df$poss_on_floor) & df$poss_on_floor >= poss_threshold
       ineligible <- sum(!keep, na.rm = TRUE)
@@ -566,15 +567,35 @@ server_tab5_traditional <- function(input, output, session, shared) {
         `FT%` = ft_pct,
         `eFG%` = efg,
         `TS%` = ts,
+        `.poss_rank_base` = coalesce(.poss_rank_base, NA_real_),
         `.eligible_rate` = coalesce(rate_eligible, TRUE)
       )
 
+    rank_thresh <- adaptive_baseline(disp$.poss_rank_base)
+    pct_mask <- coalesce(as.numeric(disp$.poss_rank_base), 0) >= rank_thresh
+    pct_mask[!is.finite(pct_mask)] <- FALSE
+
+    add_pr_col <- function(data, col_name, reverse = FALSE) {
+      if (!(col_name %in% names(data))) return(data)
+      vals <- suppressWarnings(as.numeric(data[[col_name]]))
+      vals[!pct_mask] <- NA_real_
+      pr <- dplyr::percent_rank(vals)
+      data[[paste0("pr_", gsub("[^A-Za-z0-9]+", "_", col_name))]] <- pr
+      data
+    }
+
+    heat_good <- c("PTS", "REB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%")
+    for (col_name in heat_good) disp <- add_pr_col(disp, col_name)
+    if ("TOV" %in% names(disp)) disp <- add_pr_col(disp, "TOV")
+
     order_col <- which(grepl("^PTS", names(disp)))
     if (!length(order_col)) order_col <- 6L
-    round_cols <- setdiff(names(disp), c("Team", "Player", "GP", ".eligible_rate"))
+    pr_cols <- names(disp)[grepl("^pr_", names(disp))]
+    round_cols <- setdiff(names(disp), c("Team", "Player", "GP", ".eligible_rate", ".poss_rank_base", pr_cols))
     style_cols <- setdiff(names(disp), ".eligible_rate")
+    hidden_cols <- c(".eligible_rate", ".poss_rank_base", pr_cols)
 
-    DT::datatable(
+    dt <- DT::datatable(
       disp,
       rownames = FALSE,
       options = list(
@@ -587,16 +608,31 @@ server_tab5_traditional <- function(input, output, session, shared) {
         order = list(list(order_col - 1L, "desc")),
         columnDefs = list(
           list(className = "dt-center", targets = "_all"),
-          list(visible = FALSE, targets = which(names(disp) == ".eligible_rate") - 1L)
+          list(visible = FALSE, targets = which(names(disp) %in% hidden_cols) - 1L)
         )
       )
     ) %>%
-      DT::formatRound(intersect(round_cols, names(disp)), 1) %>%
+      DT::formatRound(intersect(round_cols, names(disp)), 1)
+
+    apply_heat <- function(dt_obj, col_name, reverse = FALSE) {
+      pr_col <- paste0("pr_", gsub("[^A-Za-z0-9]+", "_", col_name))
+      if (!(col_name %in% names(disp)) || !(pr_col %in% names(disp))) return(dt_obj)
+      DT::formatStyle(
+        dt_obj,
+        col_name,
+        backgroundColor = DT::styleInterval(CUTS, if (isTRUE(reverse)) COLS_REV else COLS_GRAD),
+        valueColumns = pr_col
+      )
+    }
+
+    for (col_name in heat_good) dt <- apply_heat(dt, col_name, reverse = FALSE)
+    dt <- apply_heat(dt, "TOV", reverse = TRUE)
+
+    dt %>%
       DT::formatStyle(
         columns = style_cols,
         valueColumns = ".eligible_rate",
-        color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "#6e7681")),
-        backgroundColor = DT::styleEqual(c(TRUE, FALSE), c(NA, "#0d1117"))
+        color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "#6e7681"))
       )
   }) %>% bindEvent(ts_display_context(), input$main_tabs)
 
@@ -651,4 +687,5 @@ server_tab5_traditional <- function(input, output, session, shared) {
     teams_ids = "ts_teams",
     clutch_enabled_id = "ts_clutch_enabled")
 }
+
 
