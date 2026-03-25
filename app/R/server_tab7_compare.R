@@ -1454,6 +1454,94 @@ server_tab7_compare <- function(input, output, session, shared) {
     sprintf("%.1f", st$gap_abs)
   })
 
+  # -- Detail view: row click observer --
+
+  observeEvent(input$cmp_table_row_click, {
+    info <- input$cmp_table_row_click
+    req(info$entity_name)
+
+    mode <- input$cmp_mode
+    df <- cmp_joined()
+    req(df, nrow(df) > 0)
+
+    entity_name <- info$entity_name
+
+    if (mode == "Teams") {
+      row <- df[df$team_name == entity_name, , drop = FALSE]
+      if (nrow(row)) {
+        selected_detail_entity(list(
+          key = row$team_id[1],
+          name = row$team_name[1],
+          mode = "Teams"
+        ))
+      }
+    } else if (mode == "Lineups") {
+      row <- df[df$entity_name == entity_name, , drop = FALSE]
+      if (nrow(row)) {
+        selected_detail_entity(list(
+          key = row$sub_lineup_hash[1],
+          name = row$entity_name[1],
+          mode = "Lineups"
+        ))
+      }
+    }
+    detail_view_active(TRUE)
+  }, ignoreInit = TRUE)
+
+  # -- Detail view: entity dropdown --
+
+  output$cmp_detail_entity_dropdown_ui <- renderUI({
+    if (!isTRUE(detail_view_active())) return(NULL)
+
+    df <- cmp_joined()
+    if (is.null(df) || !nrow(df)) return(NULL)
+
+    choices <- setNames(df$entity_name, df$entity_name)
+    current <- selected_detail_entity()
+    sel <- if (!is.null(current)) current$name else ""
+
+    tags$div(
+      style = "min-width: 200px;",
+      selectizeInput("cmp_detail_entity_select", NULL,
+        choices = c("Select..." = "", choices),
+        selected = sel,
+        options = list(placeholder = "Select entity..."),
+        width = "100%"
+      )
+    )
+  })
+
+  observeEvent(input$cmp_detail_entity_select, {
+    req(nzchar(input$cmp_detail_entity_select))
+    entity_name <- input$cmp_detail_entity_select
+    # Guard: skip if already showing this entity (prevents loop when renderUI re-creates the dropdown)
+    current <- selected_detail_entity()
+    if (!is.null(current) && identical(current$name, entity_name)) return()
+    mode <- input$cmp_mode
+    df <- cmp_joined()
+    req(df, nrow(df) > 0)
+
+    if (mode == "Teams") {
+      row <- df[df$team_name == entity_name, , drop = FALSE]
+      if (nrow(row)) {
+        selected_detail_entity(list(
+          key = row$team_id[1],
+          name = row$team_name[1],
+          mode = "Teams"
+        ))
+      }
+    } else if (mode == "Lineups") {
+      row <- df[df$entity_name == entity_name, , drop = FALSE]
+      if (nrow(row)) {
+        selected_detail_entity(list(
+          key = row$sub_lineup_hash[1],
+          name = row$entity_name[1],
+          mode = "Lineups"
+        ))
+      }
+    }
+  }, ignoreInit = TRUE)
+
   # -- Results table --
 
   output$cmp_table <- DT::renderDataTable({
@@ -1482,6 +1570,17 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     DT::datatable(
       show_df,
+      callback = DT::JS("
+        table.on('click', 'tbody tr', function() {
+          var data = table.row(this).data();
+          if (data) {
+            Shiny.setInputValue('cmp_table_row_click', {
+              entity_name: data[1],
+              rand: Math.random()
+            }, {priority: 'event'});
+          }
+        });
+      "),
       options = list(
         dom = "t", paging = FALSE, ordering = TRUE,
         order = list(list(6, "desc")),
