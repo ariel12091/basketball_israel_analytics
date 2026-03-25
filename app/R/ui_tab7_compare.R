@@ -5,6 +5,28 @@ ui_tab7_compare <- tabPanel(
   value = "compare",
   fluidPage(
     shared_head_tags(),
+    tags$script(HTML("
+      Shiny.addCustomMessageHandler('toggle_cmp_view', function(msg) {
+        var league = document.getElementById('cmp_view_league_btn');
+        var detail = document.getElementById('cmp_view_detail_btn');
+        if (!league || !detail) return;
+        if (msg.detail) {
+          league.className = 'btn btn-sm btn-outline-secondary';
+          league.style.borderRadius = '20px';
+          detail.className = 'btn btn-sm btn-warning';
+          detail.style.borderRadius = '20px';
+        } else {
+          league.className = 'btn btn-sm btn-warning';
+          league.style.borderRadius = '20px';
+          detail.className = 'btn btn-sm btn-outline-secondary';
+          detail.style.borderRadius = '20px';
+        }
+        var leagueC = document.getElementById('cmp_league_container');
+        var detailC = document.getElementById('cmp_detail_container');
+        if (leagueC) leagueC.style.display = msg.detail ? 'none' : '';
+        if (detailC) detailC.style.display = msg.detail ? '' : 'none';
+      });
+    ")),
     sidebarLayout(
       sidebarPanel(
         width = 3,
@@ -194,40 +216,69 @@ ui_tab7_compare <- tabPanel(
         conditionalPanel(
           condition = "input.cmp_mode != 'Players'",
 
-          # Metric chips
+          # Toggle bar
           div(
             class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
-            tags$span(class = "text-muted small text-uppercase", "Metric"),
-            uiOutput("cmp_metric_chips_ui")
+            tags$span(class = "text-muted small text-uppercase", "View"),
+            tags$button(id = "cmp_view_league_btn", type = "button",
+              class = "btn btn-sm btn-warning",
+              style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
+              onclick = "Shiny.setInputValue('cmp_detail_toggle', 'league', {priority: 'event'})",
+              "League"),
+            tags$button(id = "cmp_view_detail_btn", type = "button",
+              class = "btn btn-sm btn-outline-secondary",
+              style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
+              onclick = "Shiny.setInputValue('cmp_detail_toggle', 'detail', {priority: 'event'})",
+              "Detail"),
+            uiOutput("cmp_detail_entity_dropdown_ui")
           ),
 
-          # Summary cards
-          fluidRow(
-            column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-              tags$div(class = "small text-uppercase", style = "color: #7b8cde;",
-                       textOutput("cmp_summary_a_title", inline = TRUE)),
-              tags$div(class = "fs-4 fw-bold", style = "color: #4caf7d;", textOutput("cmp_summary_a", inline = TRUE)),
-              tags$div(class = "small text-muted", textOutput("cmp_summary_a_label", inline = TRUE)),
-              tags$div(class = "small text-muted", textOutput("cmp_summary_a_delta", inline = TRUE)),
-              tags$div(class = "small text-muted", textOutput("cmp_summary_a_poss", inline = TRUE))
-            )),
-            column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-              tags$div(class = "small text-uppercase", style = "color: #e8a435;",
-                       textOutput("cmp_summary_b_title", inline = TRUE)),
-              tags$div(class = "fs-4 fw-bold", style = "color: #e05c5c;", textOutput("cmp_summary_b", inline = TRUE)),
-              tags$div(class = "small text-muted", textOutput("cmp_summary_b_label", inline = TRUE)),
-              tags$div(class = "small text-muted", textOutput("cmp_summary_b_delta", inline = TRUE)),
-              tags$div(class = "small text-muted", textOutput("cmp_summary_b_poss", inline = TRUE))
-            )),
-            column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-              tags$div(class = "small text-uppercase text-muted", "Avg Gap"),
-              tags$div(class = "fs-4 fw-bold", style = "color: #e8a435;", textOutput("cmp_summary_gap", inline = TRUE)),
-              tags$div(class = "small text-muted", "league-wide")
-            ))
+          # League view (existing content)
+          div(
+            id = "cmp_league_container",
+
+            # Metric chips
+            div(
+              class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
+              tags$span(class = "text-muted small text-uppercase", "Metric"),
+              uiOutput("cmp_metric_chips_ui")
+            ),
+
+            # Summary cards
+            fluidRow(
+              column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
+                tags$div(class = "small text-uppercase", style = "color: #7b8cde;",
+                         textOutput("cmp_summary_a_title", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", style = "color: #4caf7d;", textOutput("cmp_summary_a", inline = TRUE)),
+                tags$div(class = "small text-muted", textOutput("cmp_summary_a_label", inline = TRUE)),
+                tags$div(class = "small text-muted", textOutput("cmp_summary_a_delta", inline = TRUE)),
+                tags$div(class = "small text-muted", textOutput("cmp_summary_a_poss", inline = TRUE))
+              )),
+              column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
+                tags$div(class = "small text-uppercase", style = "color: #e8a435;",
+                         textOutput("cmp_summary_b_title", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", style = "color: #e05c5c;", textOutput("cmp_summary_b", inline = TRUE)),
+                tags$div(class = "small text-muted", textOutput("cmp_summary_b_label", inline = TRUE)),
+                tags$div(class = "small text-muted", textOutput("cmp_summary_b_delta", inline = TRUE)),
+                tags$div(class = "small text-muted", textOutput("cmp_summary_b_poss", inline = TRUE))
+              )),
+              column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
+                tags$div(class = "small text-uppercase text-muted", "Avg Gap"),
+                tags$div(class = "fs-4 fw-bold", style = "color: #e8a435;", textOutput("cmp_summary_gap", inline = TRUE)),
+                tags$div(class = "small text-muted", "league-wide")
+              ))
+            ),
+
+            # Results table
+            DT::dataTableOutput("cmp_table")
           ),
 
-          # Results table
-          DT::dataTableOutput("cmp_table")
+          # Detail view (hidden by default)
+          div(
+            id = "cmp_detail_container",
+            style = "display: none;",
+            uiOutput("cmp_detail_view_ui")
+          )
         ),
 
         # ── Players mode: PvP comparison view ──

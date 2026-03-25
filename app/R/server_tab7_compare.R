@@ -9,6 +9,8 @@ server_tab7_compare <- function(input, output, session, shared) {
   selected_metric <- reactiveVal("net_rtg")
   cmp_auto_default_ids <- reactiveVal(integer(0))
   cmp_defaults_active <- reactiveVal(FALSE)
+  selected_detail_entity <- reactiveVal(NULL)
+  detail_view_active <- reactiveVal(FALSE)
 
   # -- Helpers --
 
@@ -507,6 +509,17 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (m %in% unname(metrics)) selected_metric(m)
   }, ignoreInit = TRUE)
 
+  observeEvent(input$cmp_detail_toggle, {
+    is_detail <- identical(input$cmp_detail_toggle, "detail")
+    detail_view_active(is_detail)
+    if (!is_detail) selected_detail_entity(NULL)
+  }, ignoreInit = TRUE)
+
+  observe({
+    is_detail <- detail_view_active()
+    session$sendCustomMessage("toggle_cmp_view", list(detail = is_detail))
+  })
+
   observeEvent(input$cmp_player_view, {
     v <- input$cmp_player_view %||% ""
     if (v %in% unname(PLAYER_VIEWS)) selected_player_view(v)
@@ -641,6 +654,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     valid <- if (identical(mode, "Players")) PLAYER_METRICS else TEAM_METRICS
     if (!(selected_metric() %in% valid)) selected_metric(valid[[1]])
     selected_player_view("overall")
+    selected_detail_entity(NULL)
+    detail_view_active(FALSE)
     if (identical(mode, "Players")) apply_default_players()
   }, ignoreInit = TRUE)
 
