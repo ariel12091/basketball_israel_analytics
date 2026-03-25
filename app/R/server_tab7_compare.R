@@ -1396,6 +1396,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     pa <- collect_side_params("a")
     pb <- collect_side_params("b")
     metric <- selected_metric()
+    preset_now <- input$cmp_preset %||% ""
+    gap_after_minus_before <- preset_now %in% c("date_split", "gn_split")
 
     if (mode == "Teams") {
       req(metric %in% TEAM_METRICS)
@@ -1430,7 +1432,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       joined$metric_b <- as.numeric(joined$metric_b)
       joined <- apply_min_poss_filter(joined, min_poss = 10L)
       if (!nrow(joined)) return(NULL)
-      joined$gap <- joined$metric_a - joined$metric_b
+      joined$gap <- if (gap_after_minus_before) joined$metric_b - joined$metric_a else joined$metric_a - joined$metric_b
       joined <- joined[order(-abs(joined$gap)), ]
       joined$rank <- seq_len(nrow(joined))
       joined$entity_name <- joined$team_name
@@ -1485,7 +1487,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       joined$metric_b <- as.numeric(joined$metric_b)
       joined <- apply_min_poss_filter(joined, min_poss = 10L)
       if (!nrow(joined)) return(NULL)
-      joined$gap <- joined$metric_a - joined$metric_b
+      joined$gap <- if (gap_after_minus_before) joined$metric_b - joined$metric_a else joined$metric_a - joined$metric_b
       joined <- joined[order(-abs(joined$gap)), ]
       joined$rank <- seq_len(nrow(joined))
       joined$entity_name <- if ("player_names_str" %in% names(joined)) joined$player_names_str else joined$sub_lineup_hash
