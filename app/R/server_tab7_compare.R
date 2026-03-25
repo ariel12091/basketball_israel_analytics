@@ -1368,6 +1368,69 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   })
 
+  # -- Detail view: fetch all metrics for selected entity --
+
+  cmp_detail_data <- reactive({
+    entity <- selected_detail_entity()
+    req(entity)
+    req(identical(input$main_tabs, "compare"))
+
+    pa <- collect_side_params("a")
+    pb <- collect_side_params("b")
+    mode <- entity$mode
+
+    if (mode == "Teams") {
+      ratings_a <- run_team_ratings(pa)
+      ratings_b <- run_team_ratings(pb)
+      ff_a <- run_team_ff(pa)
+      ff_b <- run_team_ff(pb)
+
+      team_id <- entity$key
+      ra <- ratings_a[ratings_a$team_id == team_id, , drop = FALSE]
+      rb <- ratings_b[ratings_b$team_id == team_id, , drop = FALSE]
+      fa <- ff_a[ff_a$team_id == team_id, , drop = FALSE]
+      fb <- ff_b[ff_b$team_id == team_id, , drop = FALSE]
+
+      if (!nrow(ra) && !nrow(fa)) return(NULL)
+      if (!nrow(rb) && !nrow(fb)) return(NULL)
+
+      list(
+        mode = "Teams",
+        entity_name = entity$name,
+        ratings_a = if (nrow(ra)) ra[1, ] else NULL,
+        ratings_b = if (nrow(rb)) rb[1, ] else NULL,
+        ff_a = if (nrow(fa)) fa[1, ] else NULL,
+        ff_b = if (nrow(fb)) fb[1, ] else NULL
+      )
+
+    } else if (mode == "Lineups") {
+      summary_a <- run_lineups_summary(pa)
+      summary_b <- run_lineups_summary(pb)
+      ff_a <- run_lineups_ff(pa)
+      ff_b <- run_lineups_ff(pb)
+
+      hash <- entity$key
+      sa <- summary_a[summary_a$sub_lineup_hash == hash, , drop = FALSE]
+      sb <- summary_b[summary_b$sub_lineup_hash == hash, , drop = FALSE]
+      fa <- ff_a[ff_a$sub_lineup_hash == hash, , drop = FALSE]
+      fb <- ff_b[ff_b$sub_lineup_hash == hash, , drop = FALSE]
+
+      if (!nrow(sa) && !nrow(fa)) return(NULL)
+      if (!nrow(sb) && !nrow(fb)) return(NULL)
+
+      list(
+        mode = "Lineups",
+        entity_name = entity$name,
+        ratings_a = if (nrow(sa)) sa[1, ] else NULL,
+        ratings_b = if (nrow(sb)) sb[1, ] else NULL,
+        ff_a = if (nrow(fa)) fa[1, ] else NULL,
+        ff_b = if (nrow(fb)) fb[1, ] else NULL
+      )
+    } else {
+      NULL
+    }
+  })
+
   # -- Summary cards --
 
   metric_label <- reactive({
