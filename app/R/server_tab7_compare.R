@@ -12,6 +12,87 @@ server_tab7_compare <- function(input, output, session, shared) {
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
 
+  # -- Detail view constants --
+
+  DETAIL_CSS <- "
+.detail-container { max-width: 720px; margin: 0 auto; }
+.cmp-back-btn { font-size: .78rem; color: #7b8cde; cursor: pointer; margin-bottom: 12px; display: inline-block; }
+.cmp-back-btn:hover { text-decoration: underline; }
+.cmp-team-header { text-align: center; font-size: 1.1rem; font-weight: 700; color: #e6edf3; margin-bottom: 4px; }
+.cmp-team-subheader { text-align: center; font-size: .78rem; color: #6e7681; margin-bottom: 16px; }
+.cmp-context-bar {
+  display: flex; justify-content: space-between; align-items: center;
+  background: #161b22; border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
+  padding: 10px 20px; margin-bottom: 16px; font-size: .8rem;
+}
+.cmp-context-side { display: flex; align-items: center; gap: 6px; }
+.cmp-context-badge { font-size: .68rem; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
+.cmp-context-badge.a { background: rgba(123,140,222,.2); color: #7b8cde; border: 1px solid rgba(123,140,222,.4); }
+.cmp-context-badge.b { background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); }
+.cmp-context-info { color: #8b949e; }
+.cmp-context-info strong { color: #c9d1d9; font-weight: 600; }
+.cmp-context-sep { color: #484f58; font-size: .7rem; }
+.cmp-compare-grid { display: grid; grid-template-columns: 1fr 140px 1fr; gap: 0 12px; }
+.cmp-col-a, .cmp-col-gap, .cmp-col-b { background: #161b22; border-left: 1px solid rgba(255,255,255,.08); border-right: 1px solid rgba(255,255,255,.08); }
+.cmp-grid-top .cmp-col-a, .cmp-grid-top .cmp-col-gap, .cmp-grid-top .cmp-col-b { border-top: 1px solid rgba(255,255,255,.08); }
+.cmp-grid-top .cmp-col-a { border-radius: 8px 0 0 0; }
+.cmp-grid-top .cmp-col-b { border-radius: 0 8px 0 0; }
+.cmp-grid-bottom .cmp-col-a, .cmp-grid-bottom .cmp-col-gap, .cmp-grid-bottom .cmp-col-b { border-bottom: 1px solid rgba(255,255,255,.08); }
+.cmp-grid-bottom .cmp-col-a { border-radius: 0 0 0 8px; }
+.cmp-grid-bottom .cmp-col-b { border-radius: 0 0 8px 0; }
+.cmp-col-header { padding: 10px 16px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid rgba(255,255,255,.06); }
+.cmp-col-a .cmp-col-header { color: #7b8cde; }
+.cmp-col-b .cmp-col-header { color: #e8a435; }
+.cmp-col-gap .cmp-col-header { color: #6e7681; text-align: center; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.cmp-col-gap .cmp-col-header:hover { color: #e8a435; }
+.cmp-section-title { text-align: center; padding: 12px 0 4px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #484f58; }
+.cmp-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; border-bottom: 1px solid rgba(255,255,255,.04); min-height: 40px; }
+.cmp-stat-label { font-size: .78rem; color: #8b949e; }
+.cmp-stat-value { font-size: .92rem; font-weight: 600; }
+.cmp-stat-value.winner { color: #e6edf3; }
+.cmp-stat-value.loser { color: #8b949e; }
+.cmp-gap-row { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.04); gap: 3px; min-height: 40px; }
+.cmp-gap-num { font-size: .78rem; font-weight: 600; white-space: nowrap; }
+.cmp-gap-num.a-color { color: #7b8cde; }
+.cmp-gap-num.b-color { color: #e8a435; }
+.cmp-bar-container { width: 100%; height: 5px; background: rgba(255,255,255,.04); border-radius: 3px; position: relative; overflow: hidden; }
+.cmp-bar-center { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(255,255,255,.15); z-index: 1; }
+.cmp-bar { height: 100%; border-radius: 3px; position: absolute; top: 0; }
+.cmp-bar.toward-a { right: 50%; background: #7b8cde; }
+.cmp-bar.toward-b { left: 50%; background: #e8a435; }
+.cmp-section-sep { border-top: 1px solid rgba(255,255,255,.06); }
+"
+
+  DETAIL_METRICS <- list(
+    ratings = list(
+      title = "Ratings",
+      metrics = list(
+        list(label = "Win%", col_ratings = "win_pct", col_ff = NULL, polarity = "higher", fmt = "pct"),
+        list(label = "Net Rtg", col_ratings = "net_rtg", col_ff = NULL, polarity = "higher", fmt = "net"),
+        list(label = "Off Rtg", col_ratings = "off_ppp", col_ff = NULL, polarity = "higher", fmt = "rtg"),
+        list(label = "Def Rtg", col_ratings = "def_ppp", col_ff = NULL, polarity = "lower", fmt = "rtg")
+      )
+    ),
+    off_ff = list(
+      title = "Offensive Four Factors",
+      metrics = list(
+        list(label = "TS%", col_ratings = NULL, col_ff = "off_ts", polarity = "higher", fmt = "pct"),
+        list(label = "TOV%", col_ratings = NULL, col_ff = "off_tov", polarity = "lower", fmt = "pct"),
+        list(label = "OREB%", col_ratings = NULL, col_ff = "off_oreb", polarity = "higher", fmt = "pct"),
+        list(label = "FTR", col_ratings = NULL, col_ff = "off_ftr", polarity = "higher", fmt = "pct")
+      )
+    ),
+    def_ff = list(
+      title = "Defensive Four Factors",
+      metrics = list(
+        list(label = "Opp TS%", col_ratings = NULL, col_ff = "def_ts", polarity = "lower", fmt = "pct"),
+        list(label = "Opp TOV%", col_ratings = NULL, col_ff = "def_tov", polarity = "higher", fmt = "pct"),
+        list(label = "Opp OREB%", col_ratings = NULL, col_ff = "def_oreb", polarity = "lower", fmt = "pct"),
+        list(label = "Opp FTR", col_ratings = NULL, col_ff = "def_ftr", polarity = "lower", fmt = "pct")
+      )
+    )
+  )
+
   # -- Helpers --
 
   collect_side_params <- function(side) {
@@ -1429,6 +1510,262 @@ server_tab7_compare <- function(input, output, session, shared) {
     } else {
       NULL
     }
+  })
+
+  # -- Detail view helpers --
+
+  detail_get_value <- function(row, col) {
+    if (is.null(row) || is.null(col) || !(col %in% names(row))) return(NA_real_)
+    suppressWarnings(as.numeric(row[[col]]))
+  }
+
+  detail_fmt <- function(val, fmt) {
+    if (!is.finite(val)) return("\u2014")
+    switch(fmt,
+      pct = sprintf("%.1f%%", val * 100),
+      rtg = sprintf("%.1f", val * 100),
+      net = sprintf("%+.1f", val * 100),
+      sprintf("%.1f", val)
+    )
+  }
+
+  detail_win_pct <- function(row) {
+    gp <- detail_get_value(row, "games_played")
+    w <- detail_get_value(row, "wins")
+    if (is.finite(gp) && gp > 0 && is.finite(w)) w / gp else NA_real_
+  }
+
+  detail_extract_value <- function(data_side_ratings, data_side_ff, metric_def) {
+    if (!is.null(metric_def$col_ratings) && metric_def$col_ratings == "win_pct") {
+      return(detail_win_pct(data_side_ratings))
+    }
+    if (!is.null(metric_def$col_ratings)) {
+      return(detail_get_value(data_side_ratings, metric_def$col_ratings))
+    }
+    if (!is.null(metric_def$col_ff)) {
+      return(detail_get_value(data_side_ff, metric_def$col_ff))
+    }
+    NA_real_
+  }
+
+  detail_compute_gap <- function(val_a, val_b, polarity) {
+    if (!is.finite(val_a) || !is.finite(val_b)) {
+      return(list(gap = NA_real_, direction = "none", a_wins = NA))
+    }
+    raw_diff <- val_a - val_b
+    abs_gap <- abs(raw_diff)
+    direction <- if (raw_diff > 0) "a" else if (raw_diff < 0) "b" else "none"
+    signed_gap <- if (polarity == "higher") abs_gap else -abs_gap
+    if (abs_gap == 0) signed_gap <- 0
+    a_wins <- if (abs_gap == 0) NA else {
+      if (polarity == "higher") (val_a > val_b) else (val_a < val_b)
+    }
+    list(gap = signed_gap, direction = direction, a_wins = a_wins)
+  }
+
+  build_detail_context_bar <- function(ra, rb, mode) {
+    build_side <- function(row, badge_cls) {
+      parts <- character(0)
+      if (mode == "Teams" && !is.null(row)) {
+        gp <- detail_get_value(row, "games_played")
+        w <- detail_get_value(row, "wins")
+        l <- detail_get_value(row, "losses")
+        if (is.finite(gp)) parts <- c(parts, paste0("<strong>", round(gp), "</strong> GP"))
+        if (is.finite(w) && is.finite(l)) parts <- c(parts, paste0("<strong>", round(w), "</strong>-<strong>", round(l), "</strong>"))
+      }
+      if (!is.null(row)) {
+        poss <- detail_get_value(row, "off_poss")
+        if (!is.finite(poss)) poss <- detail_get_value(row, "total_poss")
+        if (is.finite(poss)) parts <- c(parts, paste0("<strong>", format(round(poss), big.mark = ","), "</strong> Poss"))
+      }
+      if (length(parts) == 0) return(NULL)
+      tags$div(class = "cmp-context-side",
+        tags$span(class = paste("cmp-context-badge", badge_cls),
+          if (badge_cls == "a") "A" else "B"),
+        tags$span(class = "cmp-context-info", HTML(paste(parts, collapse = " \u00b7 ")))
+      )
+    }
+    side_a <- build_side(ra, "a")
+    side_b <- build_side(rb, "b")
+    if (is.null(side_a) && is.null(side_b)) return(NULL)
+    tags$div(class = "cmp-context-bar",
+      side_a,
+      tags$div(class = "cmp-context-sep", "|"),
+      side_b
+    )
+  }
+
+  # -- Detail view: back button --
+
+  observeEvent(input$cmp_detail_back, {
+    selected_detail_entity(NULL)
+    detail_view_active(FALSE)
+  }, ignoreInit = TRUE)
+
+  # -- Detail view: main renderUI --
+
+  output$cmp_detail_view_ui <- renderUI({
+    data <- cmp_detail_data()
+    entity <- selected_detail_entity()
+
+    # No entity selected yet in detail mode → show prompt
+    if (is.null(entity) && isTRUE(detail_view_active())) {
+      return(tags$div(class = "detail-container",
+        tags$div(class = "text-muted text-center mt-4",
+                 "Select a team or lineup from the dropdown to view detailed comparison.")))
+    }
+
+    # Entity selected but no data (e.g. filters exclude it)
+    if (is.null(data) && !is.null(entity)) {
+      return(tags$div(class = "detail-container",
+        tags$div(class = "cmp-back-btn",
+          onclick = "Shiny.setInputValue('cmp_detail_back', Math.random(), {priority: 'event'})",
+          "\u2190 Back to league view"),
+        tags$div(class = "text-muted text-center mt-4",
+          "No data for this entity with current filters.")))
+    }
+
+    req(data)
+
+    mode <- data$mode
+    ra <- data$ratings_a; rb <- data$ratings_b
+    fa <- data$ff_a; fb <- data$ff_b
+    sum_a <- side_summary("a"); sum_b <- side_summary("b")
+    gy <- input$game_year
+
+    context_bar <- build_detail_context_bar(ra, rb, mode)
+
+    # Build sections
+    sections <- list()
+    section_names <- names(DETAIL_METRICS)
+    for (i in seq_along(section_names)) {
+      sec_key <- section_names[i]
+      sec <- DETAIL_METRICS[[sec_key]]
+
+      metrics_list <- sec$metrics
+      # Hide Win% for Lineups (no GP/W/L data)
+      if (mode == "Lineups" && sec_key == "ratings") {
+        metrics_list <- Filter(function(m) m$label != "Win%", metrics_list)
+      }
+      if (length(metrics_list) == 0) next
+
+      # Compute all gaps for max-gap bar scaling
+      computed <- lapply(metrics_list, function(m) {
+        va <- detail_extract_value(ra, fa, m)
+        vb <- detail_extract_value(rb, fb, m)
+        gap_info <- detail_compute_gap(va, vb, m$polarity)
+        list(m = m, va = va, vb = vb, gap = gap_info)
+      })
+
+      max_abs_gap <- max(vapply(computed, function(x) {
+        if (is.finite(x$gap$gap)) abs(x$gap$gap) else 0
+      }, numeric(1)), na.rm = TRUE)
+      if (max_abs_gap == 0) max_abs_gap <- 1
+
+      a_rows <- list(); gap_rows <- list(); b_rows <- list()
+
+      for (j in seq_along(computed)) {
+        x <- computed[[j]]
+        m <- x$m; va <- x$va; vb <- x$vb; gi <- x$gap
+
+        a_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "winner" else "loser"
+        b_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "loser" else "winner"
+
+        fmt_va <- detail_fmt(va, m$fmt)
+        fmt_vb <- detail_fmt(vb, m$fmt)
+
+        # Gap display text
+        gap_text <- if (!is.finite(gi$gap)) "\u2014" else {
+          g_display <- gi$gap * if (m$fmt == "pct") 100 else if (m$fmt %in% c("rtg", "net")) 100 else 1
+          pct_suffix <- if (m$fmt == "pct") "%" else ""
+          if (g_display >= 0) sprintf("+%.1f%s", g_display, pct_suffix)
+          else sprintf("\u2212%.1f%s", abs(g_display), pct_suffix)
+        }
+
+        gap_color_cls <- if (gi$direction == "a") "a-color" else if (gi$direction == "b") "b-color" else ""
+        bar_pct <- if (is.finite(gi$gap) && max_abs_gap > 0) round(abs(gi$gap) / max_abs_gap * 50, 1) else 0
+        bar_cls <- if (gi$direction == "a") "toward-a" else "toward-b"
+
+        a_rows[[j]] <- tags$div(class = "cmp-stat-row", `data-idx` = j - 1,
+          tags$span(class = "cmp-stat-label", m$label),
+          tags$span(class = paste("cmp-stat-value", a_cls), fmt_va))
+
+        gap_rows[[j]] <- tags$div(class = "cmp-gap-row", `data-idx` = j - 1,
+          `data-gap` = if (is.finite(gi$gap)) round(gi$gap * 100, 2) else 0,
+          tags$span(class = paste("cmp-gap-num", gap_color_cls), gap_text),
+          tags$div(class = "cmp-bar-container",
+            tags$div(class = "cmp-bar-center"),
+            if (bar_pct > 0) tags$div(class = paste("cmp-bar", bar_cls),
+              style = sprintf("width: %.1f%%;", bar_pct))))
+
+        b_rows[[j]] <- tags$div(class = "cmp-stat-row", `data-idx` = j - 1,
+          tags$span(class = "cmp-stat-label", m$label),
+          tags$span(class = paste("cmp-stat-value", b_cls), fmt_vb))
+      }
+
+      is_first <- (i == 1)
+      is_last <- (i == length(section_names))
+      grid_extra <- paste(if (is_first) "cmp-grid-top" else "", if (is_last) "cmp-grid-bottom" else "")
+      sep_cls <- if (!is_first) " cmp-section-sep" else ""
+
+      sections[[length(sections) + 1]] <- tagList(
+        tags$div(class = "cmp-section-title", sec$title),
+        tags$div(class = paste("cmp-compare-grid", grid_extra), `data-group` = sec_key,
+          tags$div(class = paste0("cmp-col-a", sep_cls),
+            if (is_first) tags$div(class = "cmp-col-header", paste0("A \u00b7 ", sum_a)),
+            do.call(tagList, a_rows)),
+          tags$div(class = paste0("cmp-col-gap", sep_cls),
+            if (is_first) tags$div(class = "cmp-col-header",
+              onclick = "Shiny.setInputValue('cmp_detail_sort', Math.random(), {priority: 'event'})",
+              "Gap ", tags$span(id = "cmp-sort-icon", "\u2195")),
+            do.call(tagList, gap_rows)),
+          tags$div(class = paste0("cmp-col-b", sep_cls),
+            if (is_first) tags$div(class = "cmp-col-header", paste0("B \u00b7 ", sum_b)),
+            do.call(tagList, b_rows))))
+    }
+
+    tagList(
+      tags$style(DETAIL_CSS),
+      tags$div(class = "detail-container",
+        tags$div(class = "cmp-back-btn",
+          onclick = "Shiny.setInputValue('cmp_detail_back', Math.random(), {priority: 'event'})",
+          "\u2190 Back to league view"),
+        tags$div(class = "cmp-team-header", data$entity_name),
+        tags$div(class = "cmp-team-subheader",
+          paste0(sum_a, " vs ", sum_b, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
+        context_bar,
+        do.call(tagList, sections),
+        # Client-side sorting JS
+        tags$script(HTML("
+          (function() {
+            var sortState = 0;
+            var icons = {0: '\\u2195', 1: '\\u2193', 2: '\\u2191'};
+            var btn = document.getElementById('cmp-sort-icon');
+            if (!btn) return;
+            btn.parentElement.onclick = function() {
+              sortState = (sortState + 1) % 3;
+              btn.textContent = icons[sortState];
+              ['ratings', 'off_ff', 'def_ff'].forEach(function(group) {
+                var grid = document.querySelector('.cmp-compare-grid[data-group=\"' + group + '\"]');
+                if (!grid) return;
+                var colA = grid.children[0], colGap = grid.children[1], colB = grid.children[2];
+                var gapRows = Array.from(colGap.querySelectorAll('.cmp-gap-row'));
+                var aRows = Array.from(colA.querySelectorAll('.cmp-stat-row'));
+                var bRows = Array.from(colB.querySelectorAll('.cmp-stat-row'));
+                var indices = gapRows.map(function(r, i) { return {idx: i, gap: parseFloat(r.dataset.gap || 0)}; });
+                if (sortState === 1) indices.sort(function(a, b) { return Math.abs(b.gap) - Math.abs(a.gap); });
+                else if (sortState === 2) indices.sort(function(a, b) { return Math.abs(a.gap) - Math.abs(b.gap); });
+                indices.forEach(function(x) {
+                  colA.appendChild(aRows[x.idx]);
+                  colGap.appendChild(gapRows[x.idx]);
+                  colB.appendChild(bRows[x.idx]);
+                });
+              });
+            };
+          })();
+        "))
+      )
+    )
   })
 
   # -- Summary cards --
