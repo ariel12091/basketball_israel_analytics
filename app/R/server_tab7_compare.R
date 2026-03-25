@@ -9,6 +9,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   selected_metric <- reactiveVal("net_rtg")
   cmp_auto_default_ids <- reactiveVal(integer(0))
   cmp_defaults_active <- reactiveVal(FALSE)
+  cmp_syncing_sides <- reactiveVal(FALSE)
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
 
@@ -95,6 +96,13 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   # -- Helpers --
 
+  parse_single_date <- function(x) {
+    if (is.null(x) || length(x) != 1) return(as.Date(NA))
+    d <- suppressWarnings(as.Date(x))
+    if (length(d) != 1 || is.na(d)) return(as.Date(NA))
+    d
+  }
+
   collect_side_params <- function(side) {
     pfx <- paste0("cmp_", side, "_")
     get_input <- function(name) input[[paste0(pfx, name)]]
@@ -125,7 +133,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (!identical(input$cmp_mode, "Players")) {
       preset <- input$cmp_preset %||% ""
       if (identical(preset, "date_split")) {
-        split_date <- suppressWarnings(as.Date(input$cmp_split_date))
+        split_date <- parse_single_date(input$cmp_split_date)
         if (!is.na(split_date)) {
           if (identical(side, "a")) {
             end_d <- min(as.Date(end_d), split_date)
@@ -232,7 +240,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (!identical(input$cmp_mode, "Players")) {
       preset <- input$cmp_preset %||% ""
       if (identical(preset, "date_split")) {
-        split_date <- suppressWarnings(as.Date(input$cmp_split_date))
+        split_date <- parse_single_date(input$cmp_split_date)
         if (!is.na(split_date)) {
           parts <- c(parts, if (identical(side, "a")) {
             paste0("Before ", format(split_date, "%Y-%m-%d"))
@@ -903,6 +911,116 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   }, ignoreInit = TRUE)
 
+  # Guide user when Date split preset is selected without a valid split date.
+  observe({
+    if (!identical(input$main_tabs, "compare")) return(invisible(NULL))
+    if (!identical(input$cmp_mode, "Players") && identical(input$cmp_preset %||% "", "date_split")) {
+      split_date <- parse_single_date(input$cmp_split_date)
+      if (is.na(split_date)) {
+        showNotification(
+          "Date split preset needs a Split date. Please pick a date to continue.",
+          type = "warning", duration = NULL, id = "cmp_split_date_missing"
+        )
+      } else {
+        removeNotification("cmp_split_date_missing")
+      }
+    } else {
+      removeNotification("cmp_split_date_missing")
+    }
+    invisible(NULL)
+  })
+
+  # -- Preset mode: mirror side filters A <-> B --
+  # Keep preset-defining contrasts independent (e.g., home vs away).
+  is_mirror_blocked <- function(preset, field) {
+    if (identical(preset, "home_away") && identical(field, "home_away")) return(TRUE)
+    if (identical(preset, "win_loss") && identical(field, "outcome")) return(TRUE)
+    if (identical(preset, "starters_bench") && field %in% c("starters_mode", "starters_val")) return(TRUE)
+    if (identical(preset, "clutch") && field %in% c("clutch", "clutch_margin", "clutch_minutes")) return(TRUE)
+    FALSE
+  }
+
+  normalize_side_field_value <- function(field, val) {
+    if (field %in% c("teams", "opponents", "game_type")) {
+      v <- as.character(val %||% character(0))
+      v <- v[nzchar(v)]
+      return(sort(unique(v)))
+    }
+    if (field %in% c("clutch")) {
+      return(isTRUE(val))
+    }
+    if (field %in% c("clutch_margin", "clutch_minutes")) {
+      n <- suppressWarnings(as.numeric(val))
+      if (!is.finite(n)) return(NA_real_)
+      return(n)
+    }
+    as.character(val %||% "")
+  }
+
+  side_field_equal <- function(field, a, b) {
+    va <- normalize_side_field_value(field, a)
+    vb <- normalize_side_field_value(field, b)
+    identical(va, vb)
+  }
+
+  mirror_side_field <- function(from_side, to_side, field) {
+    from_id <- paste0("cmp_", from_side, "_", field)
+    to_id <- paste0("cmp_", to_side, "_", field)
+    val <- input[[from_id]]
+    current_to <- input[[to_id]]
+
+    if (side_field_equal(field, val, current_to)) return(invisible(NULL))
+
+    if (field %in% c("teams", "opponents", "game_type")) {
+      updateSelectizeInput(session, to_id, selected = val %||% character(0))
+    } else if (field %in% c("clutch")) {
+      updateCheckboxInput(session, to_id, value = isTRUE(val))
+    } else if (field %in% c("clutch_margin", "clutch_minutes")) {
+      if (is.null(val) || !is.finite(as.numeric(val))) return(invisible(NULL))
+      updateSliderInput(session, to_id, value = as.numeric(val))
+    } else {
+      updateSelectInput(session, to_id, selected = val %||% "")
+    }
+    invisible(NULL)
+  }
+
+  side_fields <- c(
+    "starters_mode", "starters_val", "teams",
+    "home_away", "outcome",
+    "clutch", "clutch_margin", "clutch_minutes",
+    "opponents", "game_type",
+    "opp_rank_side", "opp_rank_n"
+  )
+
+  for (fld in side_fields) {
+    local({
+      field <- fld
+      observeEvent(input[[paste0("cmp_a_", field)]], {
+        if (isTRUE(cmp_syncing_sides())) return(invisible(NULL))
+        if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+        preset <- input$cmp_preset %||% ""
+        if (!nzchar(preset) || is_mirror_blocked(preset, field)) return(invisible(NULL))
+        if (side_field_equal(field, input[[paste0("cmp_a_", field)]], input[[paste0("cmp_b_", field)]])) {
+          return(invisible(NULL))
+        }
+        cmp_syncing_sides(TRUE); on.exit(cmp_syncing_sides(FALSE), add = TRUE)
+        mirror_side_field("a", "b", field)
+      }, ignoreInit = TRUE)
+
+      observeEvent(input[[paste0("cmp_b_", field)]], {
+        if (isTRUE(cmp_syncing_sides())) return(invisible(NULL))
+        if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+        preset <- input$cmp_preset %||% ""
+        if (!nzchar(preset) || is_mirror_blocked(preset, field)) return(invisible(NULL))
+        if (side_field_equal(field, input[[paste0("cmp_b_", field)]], input[[paste0("cmp_a_", field)]])) {
+          return(invisible(NULL))
+        }
+        cmp_syncing_sides(TRUE); on.exit(cmp_syncing_sides(FALSE), add = TRUE)
+        mirror_side_field("b", "a", field)
+      }, ignoreInit = TRUE)
+    })
+  }
+
   # -- PvP Player Comparison (Players mode) --
 
   player_team_choices <- function(player_id_chr) {
@@ -1519,20 +1637,22 @@ server_tab7_compare <- function(input, output, session, shared) {
     suppressWarnings(as.numeric(row[[col]]))
   }
 
+  # All values are already × 100 (SQL does it, Win% computed as w/gp*100 in detail_win_pct).
   detail_fmt <- function(val, fmt) {
     if (!is.finite(val)) return("\u2014")
     switch(fmt,
-      pct = sprintf("%.1f%%", val * 100),
-      rtg = sprintf("%.1f", val * 100),
-      net = sprintf("%+.1f", val * 100),
+      pct = sprintf("%.1f%%", val),   # already ×100
+      rtg = sprintf("%.1f", val),     # already ×100
+      net = sprintf("%+.1f", val),    # already ×100
       sprintf("%.1f", val)
     )
   }
 
+  # Returns Win% already × 100 (matching SQL scale for other metrics)
   detail_win_pct <- function(row) {
     gp <- detail_get_value(row, "games_played")
     w <- detail_get_value(row, "wins")
-    if (is.finite(gp) && gp > 0 && is.finite(w)) w / gp else NA_real_
+    if (is.finite(gp) && gp > 0 && is.finite(w)) (w / gp) * 100 else NA_real_
   }
 
   detail_extract_value <- function(data_side_ratings, data_side_ff, metric_def) {
@@ -1676,22 +1796,28 @@ server_tab7_compare <- function(input, output, session, shared) {
 
         # Gap display text
         gap_text <- if (!is.finite(gi$gap)) "\u2014" else {
-          g_display <- gi$gap * if (m$fmt == "pct") 100 else if (m$fmt %in% c("rtg", "net")) 100 else 1
+          g_display <- gi$gap
           pct_suffix <- if (m$fmt == "pct") "%" else ""
-          if (g_display >= 0) sprintf("+%.1f%s", g_display, pct_suffix)
-          else sprintf("\u2212%.1f%s", abs(g_display), pct_suffix)
+          if (abs(g_display) < 1e-9) {
+            sprintf("\u00b10.0%s", pct_suffix)
+          } else if (g_display > 0) {
+            sprintf("+%.1f%s", g_display, pct_suffix)
+          } else {
+            sprintf("\u2212%.1f%s", abs(g_display), pct_suffix)
+          }
         }
-
-        gap_color_cls <- if (gi$direction == "a") "a-color" else if (gi$direction == "b") "b-color" else ""
+        winner_side <- if (is.na(gi$a_wins)) "none" else if (isTRUE(gi$a_wins)) "a" else "b"
+        gap_color_cls <- if (winner_side == "a") "a-color" else if (winner_side == "b") "b-color" else ""
         bar_pct <- if (is.finite(gi$gap) && max_abs_gap > 0) round(abs(gi$gap) / max_abs_gap * 50, 1) else 0
-        bar_cls <- if (gi$direction == "a") "toward-a" else "toward-b"
+        bar_cls <- if (winner_side == "a") "toward-a" else "toward-b"
 
         a_rows[[j]] <- tags$div(class = "cmp-stat-row", `data-idx` = j - 1,
           tags$span(class = "cmp-stat-label", m$label),
           tags$span(class = paste("cmp-stat-value", a_cls), fmt_va))
 
         gap_rows[[j]] <- tags$div(class = "cmp-gap-row", `data-idx` = j - 1,
-          `data-gap` = if (is.finite(gi$gap)) round(gi$gap * 100, 2) else 0,
+          `data-default-idx` = j - 1,
+          `data-gap` = if (is.finite(gi$gap)) round(gi$gap, 4) else 0,
           tags$span(class = paste("cmp-gap-num", gap_color_cls), gap_text),
           tags$div(class = "cmp-bar-container",
             tags$div(class = "cmp-bar-center"),
@@ -1716,7 +1842,6 @@ server_tab7_compare <- function(input, output, session, shared) {
             do.call(tagList, a_rows)),
           tags$div(class = paste0("cmp-col-gap", sep_cls),
             if (is_first) tags$div(class = "cmp-col-header",
-              onclick = "Shiny.setInputValue('cmp_detail_sort', Math.random(), {priority: 'event'})",
               "Gap ", tags$span(id = "cmp-sort-icon", "\u2195")),
             do.call(tagList, gap_rows)),
           tags$div(class = paste0("cmp-col-b", sep_cls),
@@ -1752,9 +1877,16 @@ server_tab7_compare <- function(input, output, session, shared) {
                 var gapRows = Array.from(colGap.querySelectorAll('.cmp-gap-row'));
                 var aRows = Array.from(colA.querySelectorAll('.cmp-stat-row'));
                 var bRows = Array.from(colB.querySelectorAll('.cmp-stat-row'));
-                var indices = gapRows.map(function(r, i) { return {idx: i, gap: parseFloat(r.dataset.gap || 0)}; });
+                var indices = gapRows.map(function(r, i) {
+                  return {
+                    idx: i,
+                    gap: parseFloat(r.dataset.gap || 0),
+                    original: parseInt(r.dataset.defaultIdx || i, 10)
+                  };
+                });
                 if (sortState === 1) indices.sort(function(a, b) { return Math.abs(b.gap) - Math.abs(a.gap); });
                 else if (sortState === 2) indices.sort(function(a, b) { return Math.abs(a.gap) - Math.abs(b.gap); });
+                else indices.sort(function(a, b) { return a.original - b.original; });
                 indices.forEach(function(x) {
                   colA.appendChild(aRows[x.idx]);
                   colGap.appendChild(gapRows[x.idx]);
@@ -1987,6 +2119,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         columnDefs = list(
           list(className = "dt-right", targets = 2:6),
           list(className = "dt-left", targets = 1)
+        ),
+        rowCallback = DT::JS(
+          "function(row, data) { $(row).css('cursor', 'pointer'); }"
         )
       ),
       rownames = FALSE, selection = "none",
@@ -2009,4 +2144,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 }
+
+
+
+
+
 
