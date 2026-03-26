@@ -132,11 +132,12 @@ ui <- navbarPage(
     tags$script(HTML("
       (function() {
         var CFG = [
-          {tab: 'onoff',        inputId: 'onoff_view_mode', items: ['Summary', 'Four Factors'], def: 'Summary'},
-          {tab: 'lineup_data',  inputId: 'ld_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
-          {tab: 'team_ratings', inputId: 'tr_view_mode',    items: ['Summary', 'Four Factors', 'Traditional'], def: 'Summary'},
-          {tab: 'game_logs',    inputId: 'gl_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
-          {tab: 'compare',      inputId: 'cmp_mode',        items: ['Teams', 'Lineups', 'Players'], def: 'Teams'}
+          {tab: 'onoff',             inputId: 'onoff_view_mode', items: ['Summary', 'Four Factors'], def: 'Summary'},
+          {tab: 'lineup_data',       inputId: 'ld_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
+          {tab: 'team_ratings',      inputId: 'tr_view_mode',    items: ['Summary', 'Four Factors', 'Traditional'], def: 'Summary'},
+          {tab: 'game_logs',         inputId: 'gl_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
+          {tab: 'traditional_stats', inputId: 'ts_display_mode', items: ['Totals', 'Per Game', 'Per 60 Possessions', 'Per 30 Minutes'], def: 'Per Game', type: 'select'},
+          {tab: 'compare',           inputId: 'cmp_mode',        items: ['Teams', 'Lineups', 'Players'], def: 'Teams'}
         ];
 
         function init() {
@@ -162,9 +163,14 @@ ui <- navbarPage(
                 var iid = this.dataset.inputId;
                 // Navigate to this tab
                 link.click();
-                // Update hidden radio button so conditionalPanel works
-                var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
-                if (radio) { radio.click(); }
+                // Update hidden input: radio button or select
+                if (c.type === 'select') {
+                  var sel = document.getElementById(iid);
+                  if (sel) { sel.value = val; $(sel).trigger('change'); }
+                } else {
+                  var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
+                  if (radio) { radio.click(); }
+                }
                 // Update dropdown UI
                 menu.querySelectorAll('.thm-item').forEach(function(r) {
                   var isActive = r.dataset.value === val;
@@ -178,6 +184,26 @@ ui <- navbarPage(
               menu.appendChild(row);
             });
             li.appendChild(menu);
+
+            // Sync dropdown when hidden input changes (e.g. server-side reset)
+            function syncMenu() {
+              var current;
+              if (c.type === 'select') {
+                var sel = document.getElementById(c.inputId);
+                current = sel ? sel.value : c.def;
+              } else {
+                var checked = document.querySelector('input[name=\"' + c.inputId + '\"]:checked');
+                current = checked ? checked.value : c.def;
+              }
+              menu.querySelectorAll('.thm-item').forEach(function(r) {
+                var isActive = r.dataset.value === current;
+                r.className = 'thm-item' + (isActive ? ' active' : '');
+                r.querySelector('.thm-check').textContent = isActive ? '\\u2713' : '';
+              });
+            }
+            // Poll on tab activation (lightweight — only runs when user clicks a tab)
+            link.addEventListener('shown.bs.tab', syncMenu);
+            link.addEventListener('click', function() { setTimeout(syncMenu, 100); });
           });
         }
 

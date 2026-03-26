@@ -21,11 +21,13 @@ ui_tab5_traditional <- tabPanel(
           dateRangeInput("ts_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
           selectizeInput("ts_teams", "Teams", choices = NULL, selected = character(0), multiple = TRUE,
                          options = list(placeholder = "All teams")),
-          selectInput(
-            "ts_display_mode",
-            "Display mode",
-            choices = c("Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"),
-            selected = "Per Game"
+          div(style = "display: none;",
+            selectInput(
+              "ts_display_mode",
+              "Display mode",
+              choices = c("Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"),
+              selected = "Per Game"
+            )
           ),
           fluidRow(
             column(
@@ -38,6 +40,15 @@ ui_tab5_traditional <- tabPanel(
             )
           ),
           checkboxInput("ts_show_ineligible", "Show non-eligible players in rate modes", value = FALSE),
+          checkboxInput("ts_clutch_enabled", "Enable clutch filter", value = FALSE),
+          conditionalPanel(
+            condition = "input.ts_clutch_enabled == true",
+            sliderInput("ts_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
+            selectInput("ts_clutch_status", "Score status", choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"), selected = "all"),
+            sliderInput("ts_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
+            checkboxInput("ts_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
+            helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
+          ),
           tags$hr(),
           tags$div(
             class = "text-end mb-2",
@@ -92,18 +103,6 @@ ui_tab5_traditional <- tabPanel(
               selectInput("ts_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("ts_opp_rank_n", "Rank N", choices = c("-" = "", as.character(1:12)), selected = ""),
               selectInput("ts_opp_rank_metric", "Metric", choices = c("-" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            bslib::accordion_panel(
-              "Clutch Time",
-              checkboxInput("ts_clutch_enabled", "Enable clutch filter", value = FALSE),
-              conditionalPanel(
-                condition = "input.ts_clutch_enabled == true",
-                sliderInput("ts_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
-                selectInput("ts_clutch_status", "Score status", choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"), selected = "all"),
-                sliderInput("ts_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
-                checkboxInput("ts_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
-                helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
-              )
             ),
             open = TRUE
           ),
