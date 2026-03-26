@@ -45,6 +45,7 @@ ui_tab7_compare <- tabPanel(
                                   "Clutch vs Non-Clutch" = "clutch",
                                   "Home vs Away" = "home_away",
                                   "Win vs Loss" = "win_loss",
+                                  "Top vs Bottom (Opp Rank)" = "top_bottom_rank",
                                   "Date split" = "date_split",
                                   "GN split" = "gn_split"),
                       selected = "")
@@ -140,12 +141,12 @@ ui_tab7_compare <- tabPanel(
                                      "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
-            column(4, selectInput("cmp_a_opp_rank_side", "Opp rank",
+            column(4, selectInput("cmp_a_opp_rank_side", "Top / Bottom",
                                   choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = "")),
-            column(4, selectInput("cmp_a_opp_rank_n", "N",
+            column(4, selectInput("cmp_a_opp_rank_n", "Rank N",
                                   choices = c("\u2014" = "", as.character(1:12)), selected = "")),
             column(4, selectInput("cmp_a_opp_rank_metric", "Metric",
-                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net" = "net"), selected = ""))
+                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = ""))
           ),
 
           # ── vs divider ──
@@ -204,12 +205,12 @@ ui_tab7_compare <- tabPanel(
                                      "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
-            column(4, selectInput("cmp_b_opp_rank_side", "Opp rank",
+            column(4, selectInput("cmp_b_opp_rank_side", "Top / Bottom",
                                   choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = "")),
-            column(4, selectInput("cmp_b_opp_rank_n", "N",
+            column(4, selectInput("cmp_b_opp_rank_n", "Rank N",
                                   choices = c("\u2014" = "", as.character(1:12)), selected = "")),
             column(4, selectInput("cmp_b_opp_rank_metric", "Metric",
-                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net" = "net"), selected = ""))
+                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = ""))
           )
         )
       ),

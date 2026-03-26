@@ -916,6 +916,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     } else if (preset == "win_loss") {
       updateSelectInput(session, "cmp_a_outcome", selected = "win")
       updateSelectInput(session, "cmp_b_outcome", selected = "loss")
+    } else if (preset == "top_bottom_rank") {
+      updateSelectInput(session, "cmp_a_opp_rank_side", selected = "top")
+      updateSelectInput(session, "cmp_b_opp_rank_side", selected = "bottom")
+      updateSelectInput(session, "cmp_a_opp_rank_n", selected = "4")
+      updateSelectInput(session, "cmp_b_opp_rank_n", selected = "4")
+      updateSelectInput(session, "cmp_a_opp_rank_metric", selected = "net")
+      updateSelectInput(session, "cmp_b_opp_rank_metric", selected = "net")
     }
   }, ignoreInit = TRUE)
 
@@ -945,6 +952,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (identical(preset, "win_loss") && identical(field, "outcome")) return(TRUE)
     if (identical(preset, "starters_bench") && field %in% c("starters_mode", "starters_val")) return(TRUE)
     if (identical(preset, "clutch") && field %in% c("clutch", "clutch_margin", "clutch_minutes")) return(TRUE)
+    if (identical(preset, "top_bottom_rank") && identical(field, "opp_rank_side")) return(TRUE)
     FALSE
   }
 
