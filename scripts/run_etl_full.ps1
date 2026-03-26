@@ -26,7 +26,12 @@ if ([string]::IsNullOrWhiteSpace($exe)) {
   if ($null -ne $cmd -and -not [string]::IsNullOrWhiteSpace($cmd.Source)) {
     $exe = $cmd.Source
   } else {
-    throw "Rscript executable not found. Set RSCRIPT_PATH or add Rscript to PATH."
+    $defaultExe = 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe'
+    if (Test-Path $defaultExe) {
+      $exe = $defaultExe
+    } else {
+      throw "Rscript executable not found. Set RSCRIPT_PATH or add Rscript to PATH."
+    }
   }
 }
 

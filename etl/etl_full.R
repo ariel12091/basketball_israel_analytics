@@ -1096,7 +1096,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   # Phase 7: Cold Storage Purge
   # =========================================================================
 
-  if (!dry_run && isTRUE(pipeline_ok)) {
+  if (!dry_run && isTRUE(pipeline_ok) && length(processed_ids) > 0) {
     log_msg("--- Phase 7: Cold Storage Purge ---")
     tryCatch({
       t0 <- proc.time()
@@ -1128,8 +1128,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       log_msg(sprintf("Phase 7 FAILED: %s", conditionMessage(e)), "ERROR")
       mark_phase_failed("Phase 7", conditionMessage(e))
     })
-  } else if (!dry_run) {
+  } else if (!dry_run && !isTRUE(pipeline_ok)) {
     log_msg("Skipping Phase 7 (cold storage purge) due to pipeline failures")
+  } else if (!dry_run) {
+    log_msg("Skipping Phase 7 (cold storage purge): no new games processed")
   }
 
   # =========================================================================
