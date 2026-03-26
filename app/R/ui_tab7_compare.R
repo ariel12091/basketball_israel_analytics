@@ -66,7 +66,7 @@ ui_tab7_compare <- tabPanel(
                     "Show Filters"),
         div(
           id = "cmp-filters", class = "collapse d-md-block",
-          style = "max-height: calc(100vh - 200px); overflow-y: auto; padding-right: 4px;",
+          style = "max-height: calc(100vh - 160px); overflow-y: auto; padding-right: 4px; padding-bottom: 60px;",
           actionButton("cmp_reset", "Reset Filters"),
           tags$hr(),
           conditionalPanel(
