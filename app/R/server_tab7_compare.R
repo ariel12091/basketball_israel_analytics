@@ -33,20 +33,26 @@ server_tab7_compare <- function(input, output, session, shared) {
 .cmp-context-info { color: #8b949e; }
 .cmp-context-info strong { color: #c9d1d9; font-weight: 600; }
 .cmp-context-sep { color: #484f58; font-size: .7rem; }
-.cmp-compare-grid { display: grid; grid-template-columns: 1fr 140px 1fr; gap: 0 12px; }
-.cmp-col-a, .cmp-col-gap, .cmp-col-b { background: #161b22; border-left: 1px solid rgba(255,255,255,.08); border-right: 1px solid rgba(255,255,255,.08); }
-.cmp-grid-top .cmp-col-a, .cmp-grid-top .cmp-col-gap, .cmp-grid-top .cmp-col-b { border-top: 1px solid rgba(255,255,255,.08); }
-.cmp-grid-top .cmp-col-a { border-radius: 8px 0 0 0; }
-.cmp-grid-top .cmp-col-b { border-radius: 0 8px 0 0; }
-.cmp-grid-bottom .cmp-col-a, .cmp-grid-bottom .cmp-col-gap, .cmp-grid-bottom .cmp-col-b { border-bottom: 1px solid rgba(255,255,255,.08); }
-.cmp-grid-bottom .cmp-col-a { border-radius: 0 0 0 8px; }
-.cmp-grid-bottom .cmp-col-b { border-radius: 0 0 8px 0; }
+.cmp-compare-grid {
+  display: grid; grid-template-columns: 1fr 140px 1fr; gap: 0;
+  column-gap: 12px;
+}
+.cmp-cell { background: #161b22; border-left: 1px solid rgba(255,255,255,.08); border-right: 1px solid rgba(255,255,255,.08); }
+.cmp-cell.cmp-first-row { border-top: 1px solid rgba(255,255,255,.08); }
+.cmp-cell.cmp-last-row { border-bottom: 1px solid rgba(255,255,255,.08); }
+.cmp-cell.cmp-first-row.cmp-col-a { border-radius: 8px 0 0 0; }
+.cmp-cell.cmp-first-row.cmp-col-b { border-radius: 0 8px 0 0; }
+.cmp-cell.cmp-last-row.cmp-col-a { border-radius: 0 0 0 8px; }
+.cmp-cell.cmp-last-row.cmp-col-b { border-radius: 0 0 8px 0; }
+.cmp-col-a { grid-column: 1; }
+.cmp-col-gap { grid-column: 2; }
+.cmp-col-b { grid-column: 3; }
 .cmp-col-header { padding: 10px 16px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid rgba(255,255,255,.06); }
-.cmp-col-a .cmp-col-header { color: #7b8cde; }
-.cmp-col-b .cmp-col-header { color: #e8a435; }
-.cmp-col-gap .cmp-col-header { color: #6e7681; text-align: center; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.cmp-col-gap .cmp-col-header:hover { color: #e8a435; }
-.cmp-section-title { text-align: center; padding: 12px 0 4px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #484f58; }
+.cmp-col-header.cmp-col-a { color: #7b8cde; }
+.cmp-col-header.cmp-col-b { color: #e8a435; }
+.cmp-col-header.cmp-col-gap { color: #6e7681; text-align: center; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: center; gap: 4px; }
+.cmp-col-header.cmp-col-gap:hover { color: #e8a435; }
+.cmp-section-title { grid-column: 1 / -1; text-align: center; padding: 12px 0 4px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #484f58; }
 .cmp-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; border-bottom: 1px solid rgba(255,255,255,.04); min-height: 40px; }
 .cmp-stat-label { font-size: .78rem; color: #8b949e; }
 .cmp-stat-value { font-size: .92rem; font-weight: 600; }
@@ -61,7 +67,6 @@ server_tab7_compare <- function(input, output, session, shared) {
 .cmp-bar { height: 100%; border-radius: 3px; position: absolute; top: 0; }
 .cmp-bar.toward-a { right: 50%; background: #7b8cde; }
 .cmp-bar.toward-b { left: 50%; background: #e8a435; }
-.cmp-section-sep { border-top: 1px solid rgba(255,255,255,.06); }
 "
 
   DETAIL_METRICS <- list(
@@ -1757,9 +1762,26 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     context_bar <- build_detail_context_bar(ra, rb, mode)
 
-    # Build sections
-    sections <- list()
+    # Build all grid cells — flat layout, each metric = 3 sibling cells sharing one grid row
+    all_cells <- list()
     section_names <- names(DETAIL_METRICS)
+
+    # Column headers (first row of grid)
+    all_cells <- c(all_cells, list(
+      tags$div(class = "cmp-col-header cmp-col-a cmp-cell cmp-first-row", paste0("A \u00b7 ", sum_a)),
+      tags$div(class = "cmp-col-header cmp-col-gap cmp-cell cmp-first-row",
+        "Gap ", tags$span(id = "cmp-sort-icon", "\u2195")),
+      tags$div(class = "cmp-col-header cmp-col-b cmp-cell cmp-first-row", paste0("B \u00b7 ", sum_b))
+    ))
+
+    # Pre-compute which sections have data
+    active_sections <- character(0)
+    for (sk in section_names) {
+      ml <- DETAIL_METRICS[[sk]]$metrics
+      if (mode == "Lineups" && sk == "ratings") ml <- Filter(function(m) m$label != "Win%", ml)
+      if (length(ml) > 0) active_sections <- c(active_sections, sk)
+    }
+
     for (i in seq_along(section_names)) {
       sec_key <- section_names[i]
       sec <- DETAIL_METRICS[[sec_key]]
@@ -1770,6 +1792,11 @@ server_tab7_compare <- function(input, output, session, shared) {
         metrics_list <- Filter(function(m) m$label != "Win%", metrics_list)
       }
       if (length(metrics_list) == 0) next
+
+      # Section title spans all 3 columns
+      all_cells <- c(all_cells, list(
+        tags$div(class = "cmp-section-title", sec$title)
+      ))
 
       # Compute all gaps for max-gap bar scaling
       computed <- lapply(metrics_list, function(m) {
@@ -1784,7 +1811,8 @@ server_tab7_compare <- function(input, output, session, shared) {
       }, numeric(1)), na.rm = TRUE)
       if (max_abs_gap == 0) max_abs_gap <- 1
 
-      a_rows <- list(); gap_rows <- list(); b_rows <- list()
+      n_metrics <- length(computed)
+      is_last_section <- (sec_key == tail(active_sections, 1))
 
       for (j in seq_along(computed)) {
         x <- computed[[j]]
@@ -1813,42 +1841,30 @@ server_tab7_compare <- function(input, output, session, shared) {
         bar_pct <- if (is.finite(gi$gap) && max_abs_gap > 0) round(abs(gi$gap) / max_abs_gap * 50, 1) else 0
         bar_cls <- if (winner_side == "a") "toward-a" else "toward-b"
 
-        a_rows[[j]] <- tags$div(class = "cmp-stat-row", `data-idx` = j - 1,
-          tags$span(class = "cmp-stat-label", m$label),
-          tags$span(class = paste("cmp-stat-value", a_cls), fmt_va))
+        # Last-row class for bottom border/radius
+        is_last_row <- is_last_section && (j == n_metrics)
+        last_cls <- if (is_last_row) " cmp-last-row" else ""
 
-        gap_rows[[j]] <- tags$div(class = "cmp-gap-row", `data-idx` = j - 1,
-          `data-default-idx` = j - 1,
-          `data-gap` = if (is.finite(gi$gap)) round(gi$gap, 4) else 0,
-          tags$span(class = paste("cmp-gap-num", gap_color_cls), gap_text),
-          tags$div(class = "cmp-bar-container",
-            tags$div(class = "cmp-bar-center"),
-            if (bar_pct > 0) tags$div(class = paste("cmp-bar", bar_cls),
-              style = sprintf("width: %.1f%%;", bar_pct))))
-
-        b_rows[[j]] <- tags$div(class = "cmp-stat-row", `data-idx` = j - 1,
-          tags$span(class = "cmp-stat-label", m$label),
-          tags$span(class = paste("cmp-stat-value", b_cls), fmt_vb))
+        all_cells <- c(all_cells, list(
+          tags$div(class = paste0("cmp-stat-row cmp-col-a cmp-cell", last_cls),
+            `data-idx` = j - 1, `data-group` = sec_key,
+            tags$span(class = "cmp-stat-label", m$label),
+            tags$span(class = paste("cmp-stat-value", a_cls), fmt_va)),
+          tags$div(class = paste0("cmp-gap-row cmp-col-gap cmp-cell", last_cls),
+            `data-idx` = j - 1, `data-group` = sec_key,
+            `data-default-idx` = j - 1,
+            `data-gap` = if (is.finite(gi$gap)) round(gi$gap, 4) else 0,
+            tags$span(class = paste("cmp-gap-num", gap_color_cls), gap_text),
+            tags$div(class = "cmp-bar-container",
+              tags$div(class = "cmp-bar-center"),
+              if (bar_pct > 0) tags$div(class = paste("cmp-bar", bar_cls),
+                style = sprintf("width: %.1f%%;", bar_pct)))),
+          tags$div(class = paste0("cmp-stat-row cmp-col-b cmp-cell", last_cls),
+            `data-idx` = j - 1, `data-group` = sec_key,
+            tags$span(class = "cmp-stat-label", m$label),
+            tags$span(class = paste("cmp-stat-value", b_cls), fmt_vb))
+        ))
       }
-
-      is_first <- (i == 1)
-      is_last <- (i == length(section_names))
-      grid_extra <- paste(if (is_first) "cmp-grid-top" else "", if (is_last) "cmp-grid-bottom" else "")
-      sep_cls <- if (!is_first) " cmp-section-sep" else ""
-
-      sections[[length(sections) + 1]] <- tagList(
-        tags$div(class = "cmp-section-title", sec$title),
-        tags$div(class = paste("cmp-compare-grid", grid_extra), `data-group` = sec_key,
-          tags$div(class = paste0("cmp-col-a", sep_cls),
-            if (is_first) tags$div(class = "cmp-col-header", paste0("A \u00b7 ", sum_a)),
-            do.call(tagList, a_rows)),
-          tags$div(class = paste0("cmp-col-gap", sep_cls),
-            if (is_first) tags$div(class = "cmp-col-header",
-              "Gap ", tags$span(id = "cmp-sort-icon", "\u2195")),
-            do.call(tagList, gap_rows)),
-          tags$div(class = paste0("cmp-col-b", sep_cls),
-            if (is_first) tags$div(class = "cmp-col-header", paste0("B \u00b7 ", sum_b)),
-            do.call(tagList, b_rows))))
     }
 
     tagList(
@@ -1861,8 +1877,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         tags$div(class = "cmp-team-subheader",
           paste0(sum_a, " vs ", sum_b, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
         context_bar,
-        do.call(tagList, sections),
-        # Client-side sorting JS
+        tags$div(class = "cmp-compare-grid",
+          do.call(tagList, all_cells)),
+        # Client-side sorting JS — reorders triplets of cells within each section group
         tags$script(HTML("
           (function() {
             var sortState = 0;
@@ -1872,27 +1889,38 @@ server_tab7_compare <- function(input, output, session, shared) {
             btn.parentElement.onclick = function() {
               sortState = (sortState + 1) % 3;
               btn.textContent = icons[sortState];
+              var grid = document.querySelector('.cmp-compare-grid');
+              if (!grid) return;
+              // Process each section group independently
               ['ratings', 'off_ff', 'def_ff'].forEach(function(group) {
-                var grid = document.querySelector('.cmp-compare-grid[data-group=\"' + group + '\"]');
-                if (!grid) return;
-                var colA = grid.children[0], colGap = grid.children[1], colB = grid.children[2];
-                var gapRows = Array.from(colGap.querySelectorAll('.cmp-gap-row'));
-                var aRows = Array.from(colA.querySelectorAll('.cmp-stat-row'));
-                var bRows = Array.from(colB.querySelectorAll('.cmp-stat-row'));
-                var indices = gapRows.map(function(r, i) {
+                // Find all gap-row cells for this group (they carry data-gap and data-default-idx)
+                var gapCells = Array.from(grid.querySelectorAll('.cmp-gap-row[data-group=\"' + group + '\"]'));
+                if (gapCells.length === 0) return;
+                // Collect triplets: [a-cell, gap-cell, b-cell] for each metric row
+                var triplets = gapCells.map(function(gc) {
+                  var idx = gc.dataset.idx;
+                  var aCells = grid.querySelectorAll('.cmp-stat-row.cmp-col-a[data-group=\"' + group + '\"][data-idx=\"' + idx + '\"]');
+                  var bCells = grid.querySelectorAll('.cmp-stat-row.cmp-col-b[data-group=\"' + group + '\"][data-idx=\"' + idx + '\"]');
                   return {
-                    idx: i,
-                    gap: parseFloat(r.dataset.gap || 0),
-                    original: parseInt(r.dataset.defaultIdx || i, 10)
+                    a: aCells[0], gap: gc, b: bCells[0],
+                    gapVal: parseFloat(gc.dataset.gap || 0),
+                    original: parseInt(gc.dataset.defaultIdx || 0, 10)
                   };
                 });
-                if (sortState === 1) indices.sort(function(a, b) { return Math.abs(b.gap) - Math.abs(a.gap); });
-                else if (sortState === 2) indices.sort(function(a, b) { return Math.abs(a.gap) - Math.abs(b.gap); });
-                else indices.sort(function(a, b) { return a.original - b.original; });
-                indices.forEach(function(x) {
-                  colA.appendChild(aRows[x.idx]);
-                  colGap.appendChild(gapRows[x.idx]);
-                  colB.appendChild(bRows[x.idx]);
+                if (sortState === 1) triplets.sort(function(a, b) { return Math.abs(b.gapVal) - Math.abs(a.gapVal); });
+                else if (sortState === 2) triplets.sort(function(a, b) { return Math.abs(a.gapVal) - Math.abs(b.gapVal); });
+                else triplets.sort(function(a, b) { return a.original - b.original; });
+                // Find the section title preceding this group's cells
+                var firstA = grid.querySelector('.cmp-stat-row.cmp-col-a[data-group=\"' + group + '\"]');
+                if (!firstA) return;
+                var sectionTitle = firstA.previousElementSibling;
+                // Re-insert triplets in sorted order after the section title
+                var anchor = sectionTitle;
+                triplets.forEach(function(t) {
+                  grid.insertBefore(t.a, anchor.nextSibling);
+                  grid.insertBefore(t.gap, t.a.nextSibling);
+                  grid.insertBefore(t.b, t.gap.nextSibling);
+                  anchor = t.b;
                 });
               });
             };
