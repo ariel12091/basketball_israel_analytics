@@ -113,10 +113,6 @@ ui <- navbarPage(
 
       /* Dropdown on navbar tabs */
       .nav-item.tab-has-dropdown { position: relative; }
-      .nav-item.tab-has-dropdown .nav-link .tab-mode-sub {
-        display: block; font-size: .62rem; color: #8b949e; margin-top: 1px;
-        letter-spacing: .02em; line-height: 1;
-      }
       .tab-hover-menu {
         display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
         background: #161b22; border: 1px solid #30363d; border-radius: 8px;
@@ -150,13 +146,6 @@ ui <- navbarPage(
             var li = link.closest('.nav-item');
             li.classList.add('tab-has-dropdown');
 
-            // Add subtitle to tab link
-            var sub = document.createElement('span');
-            sub.className = 'tab-mode-sub';
-            sub.textContent = c.def;
-            sub.dataset.inputId = c.inputId;
-            link.appendChild(sub);
-
             // Build dropdown menu
             var menu = document.createElement('div');
             menu.className = 'tab-hover-menu';
@@ -171,6 +160,8 @@ ui <- navbarPage(
                 e.preventDefault();
                 var val = this.dataset.value;
                 var iid = this.dataset.inputId;
+                // Navigate to this tab
+                link.click();
                 // Update hidden radio button so conditionalPanel works
                 var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
                 if (radio) { radio.click(); }
@@ -180,8 +171,6 @@ ui <- navbarPage(
                   r.className = 'thm-item' + (isActive ? ' active' : '');
                   r.querySelector('.thm-check').textContent = isActive ? '\\u2713' : '';
                 });
-                // Update subtitle
-                sub.textContent = val;
                 // Close menu
                 menu.style.display = 'none';
                 setTimeout(function() { menu.style.display = ''; }, 50);
