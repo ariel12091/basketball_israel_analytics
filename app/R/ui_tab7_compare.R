@@ -66,6 +66,7 @@ ui_tab7_compare <- tabPanel(
                     "Show Filters"),
         div(
           id = "cmp-filters", class = "collapse d-md-block",
+          style = "max-height: calc(100vh - 200px); overflow-y: auto; padding-right: 4px;",
           actionButton("cmp_reset", "Reset Filters"),
           tags$hr(),
           conditionalPanel(
@@ -139,10 +140,12 @@ ui_tab7_compare <- tabPanel(
                                      "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
-            column(6, selectInput("cmp_a_opp_rank_side", "Opp rank",
+            column(4, selectInput("cmp_a_opp_rank_side", "Opp rank",
                                   choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = "")),
-            column(6, selectInput("cmp_a_opp_rank_n", "N",
-                                  choices = c("\u2014" = "", as.character(1:12)), selected = ""))
+            column(4, selectInput("cmp_a_opp_rank_n", "N",
+                                  choices = c("\u2014" = "", as.character(1:12)), selected = "")),
+            column(4, selectInput("cmp_a_opp_rank_metric", "Metric",
+                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net" = "net"), selected = ""))
           ),
 
           # ── vs divider ──
@@ -201,10 +204,12 @@ ui_tab7_compare <- tabPanel(
                                      "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
-            column(6, selectInput("cmp_b_opp_rank_side", "Opp rank",
+            column(4, selectInput("cmp_b_opp_rank_side", "Opp rank",
                                   choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = "")),
-            column(6, selectInput("cmp_b_opp_rank_n", "N",
-                                  choices = c("\u2014" = "", as.character(1:12)), selected = ""))
+            column(4, selectInput("cmp_b_opp_rank_n", "N",
+                                  choices = c("\u2014" = "", as.character(1:12)), selected = "")),
+            column(4, selectInput("cmp_b_opp_rank_metric", "Metric",
+                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net" = "net"), selected = ""))
           )
         )
       ),

@@ -207,7 +207,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (!nzchar(opp_rank_side)) opp_rank_side <- NA_character_
     opp_rank_n_val <- get_input("opp_rank_n") %||% ""
     opp_rank_n <- if (nzchar(opp_rank_n_val)) as.integer(opp_rank_n_val) else NA_integer_
-    opp_rank_metric <- NA_character_
+    opp_rank_metric <- get_input("opp_rank_metric") %||% ""
+    if (!nzchar(opp_rank_metric)) opp_rank_metric <- NA_character_
 
     list(
       game_year = gy, start_d = start_d, end_d = end_d,
@@ -642,6 +643,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
       updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_opp_rank_n"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_metric"), selected = "")
     }
     updateSelectizeInput(session, "cmp_player_a", selected = character(0))
     updateSelectizeInput(session, "cmp_player_b", selected = character(0))
@@ -893,6 +895,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
       updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_opp_rank_n"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_metric"), selected = "")
     }
 
     clear_side("a")
@@ -994,7 +997,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     "home_away", "outcome",
     "clutch", "clutch_margin", "clutch_minutes",
     "opponents", "game_type",
-    "opp_rank_side", "opp_rank_n"
+    "opp_rank_side", "opp_rank_n", "opp_rank_metric"
   )
 
   for (fld in side_fields) {
