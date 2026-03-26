@@ -104,7 +104,101 @@ ui <- navbarPage(
         tags$span(style = "display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                   textOutput("last_updated", inline = TRUE))
       )
-    )
+    ),
+    # ── Tab hover dropdown: mode selector on navbar tabs ──
+    tags$style(HTML("
+      /* Hide sidebar radio buttons — they're still in the DOM for conditionalPanel */
+      .view-mode-container { display: none !important; }
+      #cmp_mode.shiny-input-radiogroup { display: none !important; }
+
+      /* Dropdown on navbar tabs */
+      .nav-item.tab-has-dropdown { position: relative; }
+      .nav-item.tab-has-dropdown .nav-link .tab-mode-sub {
+        display: block; font-size: .62rem; color: #8b949e; margin-top: 1px;
+        letter-spacing: .02em; line-height: 1;
+      }
+      .tab-hover-menu {
+        display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+        background: #161b22; border: 1px solid #30363d; border-radius: 8px;
+        padding: 4px 0; z-index: 10000; min-width: 150px;
+        box-shadow: 0 8px 24px rgba(0,0,0,.4);
+      }
+      .nav-item.tab-has-dropdown:hover .tab-hover-menu { display: block; }
+      .tab-hover-menu .thm-item {
+        display: flex; align-items: center; gap: 8px;
+        padding: 7px 14px; font-size: .78rem; color: #c9d1d9;
+        cursor: pointer; white-space: nowrap;
+      }
+      .tab-hover-menu .thm-item:hover { background: #1c2333; color: #e6edf3; }
+      .tab-hover-menu .thm-item.active { color: #e8a435; }
+      .tab-hover-menu .thm-item .thm-check { width: 14px; text-align: center; font-size: .68rem; }
+    ")),
+    tags$script(HTML("
+      (function() {
+        var CFG = [
+          {tab: 'onoff',        inputId: 'onoff_view_mode', items: ['Summary', 'Four Factors'], def: 'Summary'},
+          {tab: 'lineup_data',  inputId: 'ld_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
+          {tab: 'team_ratings', inputId: 'tr_view_mode',    items: ['Summary', 'Four Factors', 'Traditional'], def: 'Summary'},
+          {tab: 'game_logs',    inputId: 'gl_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
+          {tab: 'compare',      inputId: 'cmp_mode',        items: ['Teams', 'Lineups', 'Players'], def: 'Teams'}
+        ];
+
+        function init() {
+          CFG.forEach(function(c) {
+            var link = document.querySelector('.nav-link[data-value=\"' + c.tab + '\"]');
+            if (!link) return;
+            var li = link.closest('.nav-item');
+            li.classList.add('tab-has-dropdown');
+
+            // Add subtitle to tab link
+            var sub = document.createElement('span');
+            sub.className = 'tab-mode-sub';
+            sub.textContent = c.def;
+            sub.dataset.inputId = c.inputId;
+            link.appendChild(sub);
+
+            // Build dropdown menu
+            var menu = document.createElement('div');
+            menu.className = 'tab-hover-menu';
+            c.items.forEach(function(item) {
+              var row = document.createElement('div');
+              row.className = 'thm-item' + (item === c.def ? ' active' : '');
+              row.innerHTML = '<span class=\"thm-check\">' + (item === c.def ? '\\u2713' : '') + '</span>' + item;
+              row.dataset.value = item;
+              row.dataset.inputId = c.inputId;
+              row.addEventListener('click', function(e) {
+                e.stopPropagation();
+                e.preventDefault();
+                var val = this.dataset.value;
+                var iid = this.dataset.inputId;
+                // Update hidden radio button so conditionalPanel works
+                var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
+                if (radio) { radio.click(); }
+                // Update dropdown UI
+                menu.querySelectorAll('.thm-item').forEach(function(r) {
+                  var isActive = r.dataset.value === val;
+                  r.className = 'thm-item' + (isActive ? ' active' : '');
+                  r.querySelector('.thm-check').textContent = isActive ? '\\u2713' : '';
+                });
+                // Update subtitle
+                sub.textContent = val;
+                // Close menu
+                menu.style.display = 'none';
+                setTimeout(function() { menu.style.display = ''; }, 50);
+              });
+              menu.appendChild(row);
+            });
+            li.appendChild(menu);
+          });
+        }
+
+        if (document.readyState === 'loading') {
+          document.addEventListener('DOMContentLoaded', init);
+        } else {
+          init();
+        }
+      })();
+    "))
   ),
   ui_tab0_home,
   ui_tab1_onoff,
