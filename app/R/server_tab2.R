@@ -153,6 +153,73 @@ server_tab2 <- function(input, output, session, shared) {
     }
   }, ignoreInit = TRUE)
 
+  build_ld_common_db_args <- function() {
+    game_type_csv <- {
+      x <- input$ld_game_type
+      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
+    }
+    opp_ids_csv <- {
+      ids <- shared$selected_opp_ids_ld()
+      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
+    }
+    home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
+    outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
+    opp_rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
+    opp_rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
+    opp_rank_metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
+
+    min_gn <- if (!is.null(input$ld_gn_min) && nzchar(input$ld_gn_min)) as.integer(input$ld_gn_min) else NA_integer_
+    max_gn <- if (!is.null(input$ld_gn_max) && nzchar(input$ld_gn_max)) as.integer(input$ld_gn_max) else NA_integer_
+    last_n <- if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) as.integer(input$ld_last_n) else NA_integer_
+    if (!is.na(last_n)) {
+      min_gn <- NA_integer_
+      max_gn <- NA_integer_
+    }
+    if (!is.na(min_gn) || !is.na(max_gn)) {
+      last_n <- NA_integer_
+    }
+    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
+      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
+    }
+
+    start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
+    end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
+
+    clutch_enabled <- isTRUE(input$ld_clutch_enabled)
+    max_margin <- if (clutch_enabled) as.integer(input$ld_clutch_margin) else NA_integer_
+    margin_status <- if (clutch_enabled) input$ld_clutch_status else NA_character_
+    max_time_remaining <- if (clutch_enabled) as.integer(input$ld_clutch_minutes) * 60L else NA_integer_
+    ot_margin_filter <- if (clutch_enabled) isTRUE(input$ld_clutch_ot_margin) else FALSE
+
+    off_mode <- input$ld_num_starters_off_mode %||% ""
+    def_mode <- input$ld_num_starters_def_mode %||% ""
+    off_val <- if (nzchar(off_mode) && nzchar(input$ld_num_starters_off %||% "")) as.integer(input$ld_num_starters_off) else NA_integer_
+    def_val <- if (nzchar(def_mode) && nzchar(input$ld_num_starters_def %||% "")) as.integer(input$ld_num_starters_def) else NA_integer_
+
+    list(
+      game_type_csv = game_type_csv,
+      opp_ids_csv = opp_ids_csv,
+      home_away = home_away,
+      outcome = outcome,
+      opp_rank_side = opp_rank_side,
+      opp_rank_n = opp_rank_n,
+      opp_rank_metric = opp_rank_metric,
+      min_gn = min_gn,
+      max_gn = max_gn,
+      last_n_games = last_n,
+      start_date = start_date,
+      end_date = end_date,
+      max_margin = max_margin,
+      margin_status = margin_status,
+      max_time_remaining = max_time_remaining,
+      ot_margin_filter = ot_margin_filter,
+      num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
+      num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
+      num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
+      num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+    )
+  }
+
   run_fetch_lineups_20 <- function(pool, num, team_csv, player_csv, player_off_csv, exact, start_date, end_date, min_poss, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
     allowed <- guard_heavy_request(
       session, key = "tab2_lineups_summary",
@@ -182,70 +249,21 @@ server_tab2 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "lineup_data"))
     gy <- as.integer(input$game_year)
     num <- as.integer(input$ld_num)
-
-    # Extract game filter params (same logic as ld_params)
-    game_type_csv <- {
-      x <- input$ld_game_type
-      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
-    }
-    opp_ids_csv <- {
-      ids <- shared$selected_opp_ids_ld()
-      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
-    }
-    home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
-    outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
-    rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
-    rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
-    metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
-
-    start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
-    end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
-
-    # Extract GN params
-    min_gn <- if (!is.null(input$ld_gn_min) && nzchar(input$ld_gn_min)) as.integer(input$ld_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$ld_gn_max) && nzchar(input$ld_gn_max)) as.integer(input$ld_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) as.integer(input$ld_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-
-    # Extract clutch params
-    clutch_enabled <- isTRUE(input$ld_clutch_enabled)
-    max_margin <- if (clutch_enabled) as.integer(input$ld_clutch_margin) else NA_integer_
-    margin_status <- if (clutch_enabled) input$ld_clutch_status else NA_character_
-    max_time_remaining <- if (clutch_enabled) as.integer(input$ld_clutch_minutes) * 60L else NA_integer_
-    ot_margin_filter <- if (clutch_enabled) isTRUE(input$ld_clutch_ot_margin) else FALSE
-
-    # Fetch ALL lineups for group size + game filters (no team/player/min_poss)
-    off_mode <- input$ld_num_starters_off_mode %||% ""
-    def_mode <- input$ld_num_starters_def_mode %||% ""
-    off_val <- if (nzchar(off_mode) && nzchar(input$ld_num_starters_off %||% "")) as.integer(input$ld_num_starters_off) else NA_integer_
-    def_val <- if (nzchar(def_mode) && nzchar(input$ld_num_starters_def %||% "")) as.integer(input$ld_num_starters_def) else NA_integer_
-    num_starters_off_min <- if (identical(off_mode, "gte")) off_val else NA_integer_
-    num_starters_off_max <- if (identical(off_mode, "lte")) off_val else NA_integer_
-    num_starters_def_min <- if (identical(def_mode, "gte")) def_val else NA_integer_
-    num_starters_def_max <- if (identical(def_mode, "lte")) def_val else NA_integer_
+    db_args <- build_ld_common_db_args()
 
     df <- run_fetch_lineups_ff_20(pg_pool,
                                   num = num, team_csv = NA_character_, player_csv = NA_character_,
                                   player_off_csv = NA_character_, exact = TRUE,
-                                  start_date = start_date, end_date = end_date,
+                                  start_date = db_args$start_date, end_date = db_args$end_date,
                                   min_poss = 0L, game_year = gy,
-                                  game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
-                                  home_away = home_away, outcome = outcome,
-                                  opp_rank_side = rank_side, opp_rank_n = rank_n, opp_rank_metric = metric,
-                                  max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining,
-                                  ot_margin_filter = ot_margin_filter, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n,
+                                  game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv,
+                                  home_away = db_args$home_away, outcome = db_args$outcome,
+                                  opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric,
+                                  max_margin = db_args$max_margin, margin_status = db_args$margin_status, max_time_remaining = db_args$max_time_remaining,
+                                  ot_margin_filter = db_args$ot_margin_filter, min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games,
                                   num_starters_off = NA_integer_, num_starters_def = NA_integer_,
-                                  num_starters_off_min = num_starters_off_min, num_starters_off_max = num_starters_off_max,
-                                  num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max)
+                                  num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
+                                  num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max)
 
     if (is.null(df) || NROW(df) == 0L) return(df)
 
@@ -293,68 +311,21 @@ server_tab2 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "lineup_data"))
     gy <- as.integer(input$game_year)
     num <- as.integer(input$ld_num)
-
-    game_type_csv <- {
-      x <- input$ld_game_type
-      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
-    }
-    opp_ids_csv <- {
-      ids <- shared$selected_opp_ids_ld()
-      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
-    }
-    home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
-    outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
-    rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
-    rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
-    metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
-
-    # Extract GN params
-    min_gn <- if (!is.null(input$ld_gn_min) && nzchar(input$ld_gn_min)) as.integer(input$ld_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$ld_gn_max) && nzchar(input$ld_gn_max)) as.integer(input$ld_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) as.integer(input$ld_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-
-    start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
-    end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
-
-    # Extract clutch params
-    clutch_enabled <- isTRUE(input$ld_clutch_enabled)
-    max_margin <- if (clutch_enabled) as.integer(input$ld_clutch_margin) else NA_integer_
-    margin_status <- if (clutch_enabled) input$ld_clutch_status else NA_character_
-    max_time_remaining <- if (clutch_enabled) as.integer(input$ld_clutch_minutes) * 60L else NA_integer_
-    ot_margin_filter <- if (clutch_enabled) isTRUE(input$ld_clutch_ot_margin) else FALSE
-
-    off_mode <- input$ld_num_starters_off_mode %||% ""
-    def_mode <- input$ld_num_starters_def_mode %||% ""
-    off_val <- if (nzchar(off_mode) && nzchar(input$ld_num_starters_off %||% "")) as.integer(input$ld_num_starters_off) else NA_integer_
-    def_val <- if (nzchar(def_mode) && nzchar(input$ld_num_starters_def %||% "")) as.integer(input$ld_num_starters_def) else NA_integer_
-    num_starters_off_min <- if (identical(off_mode, "gte")) off_val else NA_integer_
-    num_starters_off_max <- if (identical(off_mode, "lte")) off_val else NA_integer_
-    num_starters_def_min <- if (identical(def_mode, "gte")) def_val else NA_integer_
-    num_starters_def_max <- if (identical(def_mode, "lte")) def_val else NA_integer_
+    db_args <- build_ld_common_db_args()
 
     df <- run_fetch_lineups_20(pg_pool,
                                num = num, team_csv = NA_character_, player_csv = NA_character_,
                                player_off_csv = NA_character_, exact = TRUE,
-                               start_date = start_date, end_date = end_date,
+                               start_date = db_args$start_date, end_date = db_args$end_date,
                                min_poss = 0L, game_year = gy,
-                               game_type_csv = game_type_csv, opp_ids_csv = opp_ids_csv,
-                               home_away = home_away, outcome = outcome,
-                               opp_rank_side = rank_side, opp_rank_n = rank_n, opp_rank_metric = metric,
-                               max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining,
-                               ot_margin_filter = ot_margin_filter, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n,
+                               game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv,
+                               home_away = db_args$home_away, outcome = db_args$outcome,
+                               opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric,
+                               max_margin = db_args$max_margin, margin_status = db_args$margin_status, max_time_remaining = db_args$max_time_remaining,
+                               ot_margin_filter = db_args$ot_margin_filter, min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games,
                                num_starters_off = NA_integer_, num_starters_def = NA_integer_,
-                               num_starters_off_min = num_starters_off_min, num_starters_off_max = num_starters_off_max,
-                               num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max)
+                               num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
+                               num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max)
 
     if (is.null(df) || NROW(df) == 0L) return(df)
 
@@ -390,47 +361,11 @@ server_tab2 <- function(input, output, session, shared) {
 
   ld_params <- reactive({
     req(identical(input$main_tabs, "lineup_data"))
+    db_args <- build_ld_common_db_args()
     team_id <- if (!is.null(input$ld_team) && !is.na(input$ld_team) && nzchar(input$ld_team)) as.integer(input$ld_team) else NA_integer_
     player_on_ids <- if (!is.na(team_id)) as.integer(input$ld_players_on) else integer(0)
     player_off_ids <- if (!is.na(team_id)) as.integer(input$ld_players_off) else integer(0)
-    ld_game_type_csv <- {
-      x <- input$ld_game_type
-      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
-    }
-    ld_opp_ids_csv <- {
-      ids <- shared$selected_opp_ids_ld()
-      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
-    }
-    ld_home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
-    ld_outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
-    ld_rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
-    ld_rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
-    ld_metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
-
-    min_gn <- if (!is.null(input$ld_gn_min) && nzchar(input$ld_gn_min)) as.integer(input$ld_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$ld_gn_max) && nzchar(input$ld_gn_max)) as.integer(input$ld_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) as.integer(input$ld_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-
-    off_mode <- input$ld_num_starters_off_mode %||% ""
-    def_mode <- input$ld_num_starters_def_mode %||% ""
-    off_val <- if (nzchar(off_mode) && nzchar(input$ld_num_starters_off %||% "")) as.integer(input$ld_num_starters_off) else NA_integer_
-    def_val <- if (nzchar(def_mode) && nzchar(input$ld_num_starters_def %||% "")) as.integer(input$ld_num_starters_def) else NA_integer_
-    ld_num_starters_off_min <- if (identical(off_mode, "gte")) off_val else NA_integer_
-    ld_num_starters_off_max <- if (identical(off_mode, "lte")) off_val else NA_integer_
-    ld_num_starters_def_min <- if (identical(def_mode, "gte")) def_val else NA_integer_
-    ld_num_starters_def_max <- if (identical(def_mode, "lte")) def_val else NA_integer_
-
-    list(num = as.integer(input$ld_num), team_csv = if (!is.na(team_id)) as.character(team_id) else NA_character_, player_csv = if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_, player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_, exact = TRUE, start_date = if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA, end_date = if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA, min_poss = as.integer(input$ld_minposs), game_type_csv = ld_game_type_csv, opp_ids_csv = ld_opp_ids_csv, home_away = ld_home_away, outcome = ld_outcome, opp_rank_side = ld_rank_side, opp_rank_n = ld_rank_n, opp_rank_metric = ld_metric, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = ld_num_starters_off_min, num_starters_off_max = ld_num_starters_off_max, num_starters_def_min = ld_num_starters_def_min, num_starters_def_max = ld_num_starters_def_max)
+    list(num = as.integer(input$ld_num), team_csv = if (!is.na(team_id)) as.character(team_id) else NA_character_, player_csv = if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_, player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_, exact = TRUE, start_date = db_args$start_date, end_date = db_args$end_date, min_poss = as.integer(input$ld_minposs), game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv, home_away = db_args$home_away, outcome = db_args$outcome, opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric, min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max, num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max)
   }) %>% bindEvent(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off, input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode, input$ld_num_starters_off_mode, input$ld_num_starters_off, input$ld_num_starters_def_mode, input$ld_num_starters_def, input$ld_gn_min, input$ld_gn_max, input$ld_last_n)
 
   parse_player_ids <- function(x) {
@@ -546,28 +481,7 @@ server_tab2 <- function(input, output, session, shared) {
       }
 
       # --- Filter LOCALLY (ranks already computed on full data) ---
-
-      # Filter by team
-      if (!is.na(p$team_csv) && nzchar(p$team_csv)) {
-        team_ids <- as.integer(strsplit(p$team_csv, ",")[[1]])
-        df <- df %>% filter(team_id %in% team_ids)
-      }
-
-      # Filter by players on (lineup must contain all selected players)
-      if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
-        df <- ensure_player_ids_list(df)
-        on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
-        keep <- vapply(df$player_ids_list, function(x) all(on_ids %in% x), logical(1))
-        df <- df[keep, , drop = FALSE]
-      }
-
-      # Filter by players off (lineup must NOT contain any excluded players)
-      if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
-        df <- ensure_player_ids_list(df)
-        off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
-        keep <- vapply(df$player_ids_list, function(x) !any(off_ids %in% x), logical(1))
-        df <- df[keep, , drop = FALSE]
-      }
+      df <- apply_local_lineup_filters(df, p)
 
       # Filter by min poss
       df <- df %>% filter(total_poss >= !!p$min_poss)
@@ -591,28 +505,7 @@ server_tab2 <- function(input, output, session, shared) {
       }
 
       # --- Filter LOCALLY (ranks already computed on full data) ---
-
-      # Filter by team
-      if (!is.na(p$team_csv) && nzchar(p$team_csv)) {
-        team_ids <- as.integer(strsplit(p$team_csv, ",")[[1]])
-        df <- df %>% filter(team_id %in% team_ids)
-      }
-
-      # Filter by players on (lineup must contain all selected players)
-      if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
-        df <- ensure_player_ids_list(df)
-        on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
-        keep <- vapply(df$player_ids_list, function(x) all(on_ids %in% x), logical(1))
-        df <- df[keep, , drop = FALSE]
-      }
-
-      # Filter by players off (lineup must NOT contain any excluded players)
-      if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
-        df <- ensure_player_ids_list(df)
-        off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
-        keep <- vapply(df$player_ids_list, function(x) !any(off_ids %in% x), logical(1))
-        df <- df[keep, , drop = FALSE]
-      }
+      df <- apply_local_lineup_filters(df, p)
 
       # Filter by min poss
       df <- df %>% filter(total_poss >= !!p$min_poss)

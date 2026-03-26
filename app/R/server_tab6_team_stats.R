@@ -486,28 +486,43 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     td %>% filter(team_name %in% opp_names) %>% pull(team_id)
   })
 
-  query_team_stats <- function(end_override = NA) {
-    gy_int <- as.integer(input$game_year)
-    rng <- debounced_range()
-    req(gy_int, rng, !is.na(rng[1]), !is.na(rng[2]))
-
+  build_tst_db_args <- function() {
     f <- debounced_tst_filters()
     tids <- selected_team_ids()
     opp_ids <- selected_opp_ids()
     gp <- gn_params()
+
     clutch_enabled <- isTRUE(f$clutch_enabled)
     max_margin <- if (clutch_enabled) suppressWarnings(as.integer(f$clutch_margin)) else NA_integer_
     margin_status <- if (clutch_enabled) (f$clutch_status %||% "all") else NA_character_
     max_time_remaining <- if (clutch_enabled) suppressWarnings(as.integer(f$clutch_minutes)) * 60L else NA_integer_
     ot_margin_filter <- if (clutch_enabled) isTRUE(f$clutch_ot_margin) else FALSE
-    team_ids_csv <- if (!is.null(tids) && length(tids) > 0) paste(as.integer(tids), collapse = ",") else NA_character_
-    game_type_csv <- if (!is.null(f$game_type) && any(nzchar(f$game_type))) paste(as.integer(f$game_type[nzchar(f$game_type)]), collapse = ",") else NA_character_
-    opp_ids_csv <- if (!is.null(opp_ids) && length(opp_ids) > 0) paste(as.integer(opp_ids), collapse = ",") else NA_character_
-    rank_side <- if (nzchar(f$rank_side %||% "")) f$rank_side else NA_character_
-    rank_n <- suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n))
-    rank_metric <- if (nzchar(f$metric %||% "")) f$metric else NA_character_
-    home_away <- if (nzchar(f$home_away %||% "")) f$home_away else NA_character_
-    outcome <- if (nzchar(f$outcome %||% "")) f$outcome else NA_character_
+
+    list(
+      team_ids_csv = if (!is.null(tids) && length(tids) > 0) paste(as.integer(tids), collapse = ",") else NA_character_,
+      game_type_csv = if (!is.null(f$game_type) && any(nzchar(f$game_type))) paste(as.integer(f$game_type[nzchar(f$game_type)]), collapse = ",") else NA_character_,
+      opp_ids_csv = if (!is.null(opp_ids) && length(opp_ids) > 0) paste(as.integer(opp_ids), collapse = ",") else NA_character_,
+      opp_rank_side = if (nzchar(f$rank_side %||% "")) f$rank_side else NA_character_,
+      opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n)),
+      opp_rank_metric = if (nzchar(f$metric %||% "")) f$metric else NA_character_,
+      home_away = if (nzchar(f$home_away %||% "")) f$home_away else NA_character_,
+      outcome = if (nzchar(f$outcome %||% "")) f$outcome else NA_character_,
+      max_margin = max_margin,
+      margin_status = margin_status,
+      max_time_remaining = max_time_remaining,
+      ot_margin_filter = ot_margin_filter,
+      min_gn = gp$min_gn,
+      max_gn = gp$max_gn,
+      last_n_games = gp$last_n
+    )
+  }
+
+  query_team_stats <- function(end_override = NA) {
+    gy_int <- as.integer(input$game_year)
+    rng <- debounced_range()
+    req(gy_int, rng, !is.na(rng[1]), !is.na(rng[2]))
+
+    db_args <- build_tst_db_args()
 
     start_d <- as.Date(rng[1])
     end_d <- if (is.na(end_override)) as.Date(rng[2]) else as.Date(end_override)
@@ -518,21 +533,21 @@ server_tab6_team_stats <- function(input, output, session, shared) {
       game_year = gy_int,
       start_d = start_d,
       end_d = end_d,
-      team_ids_csv = team_ids_csv,
-      game_type_csv = game_type_csv,
-      opp_ids_csv = opp_ids_csv,
-      home_away = home_away,
-      outcome = outcome,
-      opp_rank_side = rank_side,
-      opp_rank_n = rank_n,
-      opp_rank_metric = rank_metric,
-      max_margin = max_margin,
-      margin_status = margin_status,
-      max_time_remaining = max_time_remaining,
-      ot_margin_filter = ot_margin_filter,
-      min_gn = gp$min_gn,
-      max_gn = gp$max_gn,
-      last_n_games = gp$last_n
+      team_ids_csv = db_args$team_ids_csv,
+      game_type_csv = db_args$game_type_csv,
+      opp_ids_csv = db_args$opp_ids_csv,
+      home_away = db_args$home_away,
+      outcome = db_args$outcome,
+      opp_rank_side = db_args$opp_rank_side,
+      opp_rank_n = db_args$opp_rank_n,
+      opp_rank_metric = db_args$opp_rank_metric,
+      max_margin = db_args$max_margin,
+      margin_status = db_args$margin_status,
+      max_time_remaining = db_args$max_time_remaining,
+      ot_margin_filter = db_args$ot_margin_filter,
+      min_gn = db_args$min_gn,
+      max_gn = db_args$max_gn,
+      last_n_games = db_args$last_n_games
     )
   }
 

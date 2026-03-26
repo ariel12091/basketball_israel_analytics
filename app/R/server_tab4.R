@@ -71,6 +71,23 @@ server_tab4 <- function(input, output, session, shared) {
     }
   }, ignoreInit = TRUE)
 
+  gl_gn_params <- reactive({
+    min_gn <- if (!is.null(input$gl_gn_min) && nzchar(input$gl_gn_min)) as.integer(input$gl_gn_min) else NA_integer_
+    max_gn <- if (!is.null(input$gl_gn_max) && nzchar(input$gl_gn_max)) as.integer(input$gl_gn_max) else NA_integer_
+    last_n <- if (!is.null(input$gl_last_n) && nzchar(input$gl_last_n)) as.integer(input$gl_last_n) else NA_integer_
+    if (!is.na(last_n)) {
+      min_gn <- NA_integer_
+      max_gn <- NA_integer_
+    }
+    if (!is.na(min_gn) || !is.na(max_gn)) {
+      last_n <- NA_integer_
+    }
+    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
+      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
+    }
+    list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+  }) %>% debounce(150)
+
   # --- Reset ---
   observeEvent(input$gl_reset, {
     updateRadioButtons(session, "gl_view_mode", selected = "Summary")
@@ -154,28 +171,16 @@ server_tab4 <- function(input, output, session, shared) {
     }
 
     # GN filter
-    min_gn <- if (!is.null(input$gl_gn_min) && nzchar(input$gl_gn_min)) as.integer(input$gl_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$gl_gn_max) && nzchar(input$gl_gn_max)) as.integer(input$gl_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$gl_last_n) && nzchar(input$gl_last_n)) as.integer(input$gl_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-    if (!is.na(min_gn)) df <- df %>% filter(gn >= !!min_gn)
-    if (!is.na(max_gn)) df <- df %>% filter(gn <= !!max_gn)
-    if (!is.na(last_n)) {
+    gp <- gl_gn_params()
+    if (!is.na(gp$min_gn)) df <- df %>% filter(gn >= !!gp$min_gn)
+    if (!is.na(gp$max_gn)) df <- df %>% filter(gn <= !!gp$max_gn)
+    if (!is.na(gp$last_n)) {
       df <- df %>%
         group_by(team_id) %>%
         arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
         mutate(rn_recent = row_number()) %>%
         ungroup() %>%
-        filter(rn_recent <= last_n) %>%
+        filter(rn_recent <= gp$last_n) %>%
         select(-rn_recent)
     }
 
