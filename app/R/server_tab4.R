@@ -11,7 +11,7 @@ server_tab4 <- function(input, output, session, shared) {
     teams_gl <- cached_ref_query(
       key = sprintf("gl_teams_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           "SELECT DISTINCT team_id, MIN(team_name) AS team_name
            FROM basketball_test.full_rosters
@@ -37,7 +37,7 @@ server_tab4 <- function(input, output, session, shared) {
     gn_df <- cached_ref_query(
       key = sprintf("gl_gn_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
           params = list(gy_int)
@@ -101,7 +101,7 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$game_year)
     req(gy_int)
-    DBI::dbGetQuery(pg_pool,
+    db_get_query(pg_pool,
       "SELECT * FROM basketball_test.final_schedule_mv WHERE game_year = $1",
       params = list(gy_int))
   }) %>% bindEvent(input$game_year, input$main_tabs)
@@ -200,7 +200,7 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$game_year)
     req(gy_int)
-    DBI::dbGetQuery(
+    db_get_query(
       pg_pool,
       "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
               total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, num_starters
@@ -215,7 +215,7 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$game_year)
     req(gy_int)
-    DBI::dbGetQuery(
+    db_get_query(
       pg_pool,
       "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
               total_points, total_poss, ts_poss_count, oreb_count,
@@ -654,3 +654,4 @@ server_tab4 <- function(input, output, session, shared) {
     starters_ids = c("gl_num_starters_off_mode", "gl_num_starters_off",
                      "gl_num_starters_def_mode", "gl_num_starters_def"))
 }
+

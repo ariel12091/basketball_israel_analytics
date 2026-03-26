@@ -93,7 +93,7 @@ server_tab3 <- function(input, output, session, shared) {
       )))
 
     if (!isTRUE(poss_scope_active)) {
-      return(DBI::dbGetQuery(
+      return(db_get_query(
         pool,
         "WITH params AS (
            SELECT
@@ -197,7 +197,7 @@ server_tab3 <- function(input, output, session, shared) {
       ))
     }
 
-    DBI::dbGetQuery(
+    db_get_query(
       pool,
       "WITH params AS (
          SELECT
@@ -403,7 +403,7 @@ server_tab3 <- function(input, output, session, shared) {
     cached_ref_query(
       key = sprintf("tr_teams_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
         )
@@ -431,7 +431,7 @@ server_tab3 <- function(input, output, session, shared) {
     gn_df <- cached_ref_query(
       key = sprintf("tr_gn_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
         )
@@ -453,7 +453,7 @@ server_tab3 <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_ratings_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
+    db_get_query(pool, paste0("SELECT * FROM basketball_test.get_team_ratings_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
   run_team_ff_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
@@ -464,7 +464,7 @@ server_tab3 <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
+    db_get_query(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
   run_team_traditional_dynamic <- function(pool, p, end_override = NA) {
@@ -479,7 +479,7 @@ server_tab3 <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
 
-    DBI::dbGetQuery(
+    db_get_query(
       pool,
       "WITH params AS (
          SELECT
@@ -802,7 +802,7 @@ server_tab3 <- function(input, output, session, shared) {
     p <- tr_params()
     end_d <- if (is.na(p$end_d)) shared$season_date_bounds(as.character(p$game_year))$end else as.Date(p$end_d)
     q <- tryCatch(
-      DBI::dbGetQuery(
+      db_get_query(
         pg_pool,
         "WITH params AS (
            SELECT
@@ -847,7 +847,7 @@ server_tab3 <- function(input, output, session, shared) {
     anchor <- tr_effective_anchor()
     end_d <- anchor$end_date
     q <- tryCatch(
-      DBI::dbGetQuery(
+      db_get_query(
         pg_pool,
         "SELECT MAX(game_date)::date AS d
          FROM basketball_test.final_schedule_mv
@@ -908,7 +908,7 @@ server_tab3 <- function(input, output, session, shared) {
     if (tr_fallback_needed()) {
       run_team_ratings_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
     } else {
-      DBI::dbGetQuery(pg_pool,
+      db_get_query(pg_pool,
         sprintf("SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp FROM basketball_test.team_ppp_ratings_mv WHERE game_year = %d ORDER BY rank_net_rtg", as.integer(p$game_year)))
     }
   })
@@ -918,13 +918,13 @@ server_tab3 <- function(input, output, session, shared) {
     if (tr_fallback_needed()) {
       df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
     } else {
-      df <- DBI::dbGetQuery(pg_pool,
+      df <- db_get_query(pg_pool,
         sprintf("SELECT * FROM basketball_test.team_four_factors_mv WHERE game_year = %d", as.integer(p$game_year)))
     }
 
     if (is.null(df) || nrow(df) == 0) return(df)
 
-    # Compute percentile ranks — all teams qualify (>>100 poss)
+    # Compute percentile ranks - all teams qualify (>>100 poss)
     pr_vec <- function(x, invert = FALSE) {
       n <- sum(!is.na(x))
       if (n <= 1) return(rep(NA_real_, length(x)))
@@ -976,7 +976,7 @@ server_tab3 <- function(input, output, session, shared) {
     start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
     end_d <- if (!is.na(p$end_d)) as.Date(p$end_d) else as.Date(bounds$end)
     roll <- tryCatch(
-      DBI::dbGetQuery(
+      db_get_query(
         pg_pool,
         "WITH scoped AS (
            SELECT tm.*
@@ -1061,7 +1061,7 @@ server_tab3 <- function(input, output, session, shared) {
     start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
     end_d <- if (!is.na(p$end_d)) as.Date(p$end_d) else as.Date(bounds$end)
     roll <- tryCatch(
-      DBI::dbGetQuery(
+      db_get_query(
         pg_pool,
         "WITH scoped AS (
            SELECT tm.*
@@ -1151,7 +1151,7 @@ server_tab3 <- function(input, output, session, shared) {
     end_d <- if (!is.na(p$end_d)) as.Date(p$end_d) else as.Date(bounds$end)
     mode <- input$tr_trad_display_mode %||% "Per Game"
     q <- tryCatch(
-      DBI::dbGetQuery(
+      db_get_query(
         pg_pool,
         "WITH scoped AS (
            SELECT tm.*
@@ -1203,7 +1203,7 @@ server_tab3 <- function(input, output, session, shared) {
     )
     if (is.null(q) || !nrow(q)) return(NULL)
     minutes_q <- tryCatch(
-      DBI::dbGetQuery(
+      db_get_query(
         pg_pool,
         "WITH acts AS (
            WITH scoped AS (
@@ -1710,7 +1710,7 @@ server_tab3 <- function(input, output, session, shared) {
 
       if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
 
-      # Color logic — same polarity as Tab 2 FF
+      # Color logic - same polarity as Tab 2 FF
       if ("pr_off_ppp"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
       if ("pr_off_ts"   %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ts")
       if ("pr_off_oreb" %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_oreb")
@@ -1827,3 +1827,4 @@ server_tab3 <- function(input, output, session, shared) {
                      "tr_num_starters_def_mode", "tr_num_starters_def"),
     clutch_enabled_id = "tr_clutch_enabled")
 }
+

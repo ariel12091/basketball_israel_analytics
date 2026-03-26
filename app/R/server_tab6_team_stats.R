@@ -35,7 +35,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
                                            home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
                                            max_margin, margin_status, max_time_remaining, ot_margin_filter,
                                            min_gn, max_gn, last_n_games) {
-    DBI::dbGetQuery(
+    db_get_query(
       pool,
       "WITH params AS (
          SELECT
@@ -350,7 +350,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     teams_df <- cached_ref_query(
       key = sprintf("tst_teams_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           sprintf(
             "SELECT DISTINCT team_id, team_name
@@ -368,7 +368,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     gn_df <- cached_ref_query(
       key = sprintf("tst_gn_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           sprintf(
             "SELECT DISTINCT gn
@@ -553,7 +553,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     basis <- input$tst_rank_change_basis %||% "week"
 
     prev_end <- if (identical(basis, "match")) {
-      q <- tryCatch(DBI::dbGetQuery(
+      q <- tryCatch(db_get_query(
         pg_pool,
         "SELECT MAX(game_date)::date AS d
          FROM basketball_test.final_schedule_mv
@@ -728,3 +728,4 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     teams_ids = "tst_teams",
     clutch_enabled_id = "tst_clutch_enabled")
 }
+

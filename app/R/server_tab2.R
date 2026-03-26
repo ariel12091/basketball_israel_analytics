@@ -31,12 +31,12 @@ server_tab2 <- function(input, output, session, shared) {
 
     teams_ld <- cached_ref_query(
       key = sprintf("ld_teams_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+      query_fun = function() db_get_query(pg_pool, sprintf(
         "SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int))
     )
     ld_ref$teams <- teams_ld
     team_values <- c("", as.character(teams_ld$team_id))
-    names(team_values) <- c("— All teams —", teams_ld$team_name)
+    names(team_values) <- c("- All teams -", teams_ld$team_name)
     pending_team <- shared$pending_ld_team()
     if (!is.null(pending_team) && nzchar(pending_team)) {
       shared$pending_ld_team(NULL)
@@ -47,7 +47,7 @@ server_tab2 <- function(input, output, session, shared) {
 
     players_map <- cached_ref_query(
       key = sprintf("ld_players_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+      query_fun = function() db_get_query(pg_pool, sprintf(
         "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
     )
     ld_ref$players <- players_map
@@ -57,7 +57,7 @@ server_tab2 <- function(input, output, session, shared) {
 
     gn_df <- cached_ref_query(
       key = sprintf("ld_gn_%d", gy_int),
-      query_fun = function() DBI::dbGetQuery(pg_pool, sprintf(
+      query_fun = function() db_get_query(pg_pool, sprintf(
         "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
@@ -107,7 +107,7 @@ server_tab2 <- function(input, output, session, shared) {
     updateDateRangeInput(session, "ld_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     if (!is.null(ld_ref$teams)) {
       team_values <- c("", as.character(ld_ref$teams$team_id))
-      names(team_values) <- c("— All teams —", ld_ref$teams$team_name)
+      names(team_values) <- c("- All teams -", ld_ref$teams$team_name)
       updateSelectizeInput(session, "ld_team", choices = team_values, selected = "", server = TRUE)
     } else {
       updateSelectizeInput(session, "ld_team", selected = "", server = TRUE)
@@ -161,7 +161,7 @@ server_tab2 <- function(input, output, session, shared) {
       max_calls = 40L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_csv_v2(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
+    db_get_query(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_csv_v2(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
   run_fetch_lineups_ff_20 <- function(pool, num, team_csv, player_csv, player_off_csv, exact, start_date, end_date, min_poss, game_year, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
@@ -172,7 +172,7 @@ server_tab2 <- function(input, output, session, shared) {
       max_calls = 40L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
+    db_get_query(pool, paste0("SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", ")"), params = list(as.integer(num), team_csv, player_csv, player_off_csv, as.logical(exact), as.Date(start_date), as.Date(end_date), as.integer(min_poss), as.integer(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
   # --- Full ranked FF data (ranks computed BEFORE any local filtering) ---
@@ -694,7 +694,7 @@ server_tab2 <- function(input, output, session, shared) {
 
         sum_minutes <- sum(raw$minutes, na.rm = TRUE)
         total_row <- data.frame(
-          Team = "TOTAL", Players = "— All Lineups —",
+          Team = "TOTAL", Players = "- All Lineups -",
           off_ppp = tot_off_ppp, off_ts = tot_off_ts, off_oreb = tot_off_oreb, off_tov = tot_off_tov, off_ftr = tot_off_ftr,
           off_poss = sum_off_poss,
           def_ppp = tot_def_ppp, def_ts = tot_def_ts, def_oreb = tot_def_oreb, def_tov = tot_def_tov, def_ftr = tot_def_ftr,
@@ -705,7 +705,7 @@ server_tab2 <- function(input, output, session, shared) {
           team_id = NA_integer_, sub_lineup_hash = NA_character_,
           is_total = 0, stringsAsFactors = FALSE
         )
-        df <- dplyr::bind_rows(total_row, df)
+        df <- dplyr::bind_rows(total_row, as.data.frame(df, stringsAsFactors = FALSE))
       }
 
       df <- df %>% select(is_total, everything())
@@ -836,14 +836,14 @@ server_tab2 <- function(input, output, session, shared) {
         tot_off_ppp <- if (sum_off_poss > 0) (sum_off_pts / sum_off_poss) * 100 else 0
         tot_def_ppp <- if (sum_def_poss > 0) (sum_def_pts / sum_def_poss) * 100 else 0
         tot_net_rtg <- tot_off_ppp - tot_def_ppp
-        total_row <- data.frame(Team = "TOTAL", Players = "— All Lineups —", minutes = sum_minutes, total_poss = sum_off_poss + sum_def_poss, off_ppp = tot_off_ppp, def_ppp = tot_def_ppp, net_rtg = tot_net_rtg, plus_minus = sum_off_pts - sum_def_pts, off_poss = sum_off_poss, off_pts = sum_off_pts, def_poss = sum_def_poss, def_pts = sum_def_pts, num_starters = NA_real_, sub_lineup_hash = "TOTAL", team_id = NA_integer_, is_total = 0, stringsAsFactors = FALSE)
+        total_row <- data.frame(Team = "TOTAL", Players = "- All Lineups -", minutes = sum_minutes, total_poss = sum_off_poss + sum_def_poss, off_ppp = tot_off_ppp, def_ppp = tot_def_ppp, net_rtg = tot_net_rtg, plus_minus = sum_off_pts - sum_def_pts, off_poss = sum_off_poss, off_pts = sum_off_pts, def_poss = sum_def_poss, def_pts = sum_def_pts, num_starters = NA_real_, sub_lineup_hash = "TOTAL", team_id = NA_integer_, is_total = 0, stringsAsFactors = FALSE)
         # Add shooting totals
         if (has_shots) {
           for (sc in shot_raw_cols) total_row[[sc]] <- sum(df[[sc]], na.rm = TRUE)
           total_row[["Off Shot"]] <- total_row$off_fg2_att + total_row$off_fg3_att
           total_row[["Def Shot"]] <- total_row$def_fg2_att + total_row$def_fg3_att
         }
-        df <- dplyr::bind_rows(total_row, df)
+        df <- dplyr::bind_rows(total_row, as.data.frame(df, stringsAsFactors = FALSE))
       }
       df <- df %>% select(is_total, everything())
       show_cols <- c("Team", "Players", "minutes", "total_poss", "off_ppp", "def_ppp", "net_rtg", "plus_minus",
@@ -975,7 +975,7 @@ server_tab2 <- function(input, output, session, shared) {
   })
 
   # ============================================================
-  # LINEUP CLICK → MODAL GAME LOG
+  # LINEUP CLICK -> MODAL GAME LOG
   # ============================================================
   observeEvent(input$ld_lineup_click, {
     click <- input$ld_lineup_click
@@ -986,8 +986,8 @@ server_tab2 <- function(input, output, session, shared) {
     gy <- as.integer(input$game_year)
     view_mode <- input$ld_view_mode
 
-    # Resolve sub_lineup_hash → lineup_hash(es)
-    lineup_hashes <- DBI::dbGetQuery(pg_pool,
+    # Resolve sub_lineup_hash -> lineup_hash(es)
+    lineup_hashes <- db_get_query(pg_pool,
       "SELECT DISTINCT lineup_hash FROM basketball_test.sub_lineups
        WHERE sub_lineup_hash = $1 AND team_id = $2 AND game_year = $3",
       params = list(sub_hash, team_id_val, gy))$lineup_hash
@@ -1005,7 +1005,7 @@ server_tab2 <- function(input, output, session, shared) {
     hash_query_params <- c(as.list(lineup_hashes), list(team_id_val, gy))
 
     # Join schedule (shared between both views)
-    sched <- DBI::dbGetQuery(
+    sched <- db_get_query(
       pg_pool,
       "SELECT game_id, gn, game_date, opp_team_name, team_score, opp_score,
               team_score > opp_score AS has_won
@@ -1019,7 +1019,7 @@ server_tab2 <- function(input, output, session, shared) {
     )
 
     # Get lineup name
-    lineup_name <- DBI::dbGetQuery(pg_pool,
+    lineup_name <- db_get_query(pg_pool,
       "SELECT player_names_str FROM basketball_test.sub_lineups_stats
        WHERE sub_lineup_hash = $1 AND team_id = $2 AND game_year = $3 LIMIT 1",
       params = list(sub_hash, team_id_val, gy))$player_names_str
@@ -1041,7 +1041,7 @@ server_tab2 <- function(input, output, session, shared) {
          GROUP BY game_id, type_lineup",
         hash_placeholders, team_id_idx, gy_idx
       )
-      ff_data <- DBI::dbGetQuery(pg_pool, ff_query, params = hash_query_params)
+      ff_data <- db_get_query(pg_pool, ff_query, params = hash_query_params)
 
       if (nrow(ff_data) == 0) {
         showModal(modalDialog(title = "No game data", "No games found for this lineup.", easyClose = TRUE))
@@ -1175,7 +1175,7 @@ server_tab2 <- function(input, output, session, shared) {
          GROUP BY game_id, type_lineup",
         hash_placeholders, team_id_idx, gy_idx
       )
-      game_data <- DBI::dbGetQuery(pg_pool, game_query, params = hash_query_params)
+      game_data <- db_get_query(pg_pool, game_query, params = hash_query_params)
 
       if (nrow(game_data) == 0) {
         showModal(modalDialog(title = "No game data", "No games found for this lineup.", easyClose = TRUE))
@@ -1398,3 +1398,4 @@ server_tab2 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "ld_players_off", selected = character(0))
   }, ignoreInit = TRUE)
 }
+

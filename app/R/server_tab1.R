@@ -63,7 +63,7 @@ server_tab1 <- function(input, output, session, shared) {
     gn_df <- cached_ref_query(
       key = sprintf("on_gn_%d", gy_int),
       query_fun = function() {
-        DBI::dbGetQuery(
+        db_get_query(
           pg_pool,
           sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
         )
@@ -379,7 +379,7 @@ server_tab1 <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
-    DBI::dbGetQuery(pool, paste0("SELECT * FROM basketball_test.onoff_compute(", "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,", "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,", "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"),
+    db_get_query(pool, paste0("SELECT * FROM basketball_test.onoff_compute(", "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,", "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,", "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"),
                     params = list(as.Date(start_d), as.Date(end_d), team_csv, as.integer(min_all), as.integer(min_on), as.numeric(min_net), as.character(game_year), game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
@@ -399,7 +399,7 @@ server_tab1 <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
-    DBI::dbGetQuery(pool,
+    db_get_query(pool,
                     paste0("SELECT * FROM basketball_test.four_factors_compute(",
                            "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
                            "$7::text,$8::text,$9::text,$10::int4,$11::text,",
@@ -527,14 +527,14 @@ server_tab1 <- function(input, output, session, shared) {
   # Only load raw MV here. Filtering happens later in result_df.
   mv_result_df <- reactive({
     gy <- as.integer(shared$selected_game_year())
-    DBI::dbGetQuery(pg_pool,
+    db_get_query(pg_pool,
       sprintf('SELECT * FROM basketball_test.onoff_default_mv WHERE "Year" = %d ORDER BY "Net RTG Diff" DESC, "Team", "Last Name", "First Name"', gy))
   })
 
   # --- MV Fetch (Four Factors - LOAD FULL DATA) ---
   advanced_result_df <- reactive({
     gy <- as.integer(shared$selected_game_year())
-    DBI::dbGetQuery(pg_pool,
+    db_get_query(pg_pool,
       sprintf("SELECT * FROM basketball_test.player_advanced_stats_mv WHERE game_year = %d", gy))
   })
 
@@ -845,7 +845,7 @@ server_tab1 <- function(input, output, session, shared) {
       idx_shot_on  <- which(names(df) == "Off Shot ON") - 1
       idx_shot_off <- which(names(df) == "Off Shot OFF") - 1
       section_borders <- c(idx_net, idx_on, idx_off, idx_use)
-      # Don't add shot borders — they sit inside on/off court groups
+      # Don't add shot borders - they sit inside on/off court groups
 
       # Header: On Court = Off PPP, Def PPP, Net Rtg, Off Shot, Def Shot (5 cols)
       # Off Court = Off PPP, Def PPP, Net Rtg, Off Shot, Def Shot (5 cols)
@@ -1116,3 +1116,4 @@ server_tab1 <- function(input, output, session, shared) {
     starters_ids = c("on_num_starters_off_mode", "on_num_starters_off",
                      "on_num_starters_def_mode", "on_num_starters_def"))
 }
+
