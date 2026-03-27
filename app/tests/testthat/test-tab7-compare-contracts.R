@@ -45,3 +45,23 @@ test_that("tab7 team four-factor chips map to actual four-factor columns", {
   expect_false(grepl('"OREB%"\\s*=\\s*"off_oreb_pct"', txt))
   expect_false(grepl('metric %in% c\\("off_ts_pct", "off_tov_pct", "off_oreb_pct", "off_ftr"\\)', txt))
 })
+
+test_that("tab7 compare table uses short side labels with custom badge header callback", {
+  txt <- server_tab7_txt()
+  expect_true(grepl('side_a_label\\s*<-\\s*side_label_short\\("a"\\)', txt))
+  expect_true(grepl('side_b_label\\s*<-\\s*side_label_short\\("b"\\)', txt))
+  expect_true(grepl("headerCallback = DT::JS", txt, fixed = TRUE))
+  expect_true(grepl("if \\(aText === 'A'\\)", txt))
+  expect_true(grepl("if \\(bText === 'B'\\)", txt))
+})
+
+test_that("tab7 detail view keeps full labels in subheader and short labels in columns", {
+  txt <- server_tab7_txt()
+  expect_true(grepl('short_a\\s*<-\\s*side_label_short\\("a"\\)', txt))
+  expect_true(grepl('short_b\\s*<-\\s*side_label_short\\("b"\\)', txt))
+  expect_true(grepl('full_a\\s*<-\\s*side_label_full\\("a"\\)', txt))
+  expect_true(grepl('full_b\\s*<-\\s*side_label_full\\("b"\\)', txt))
+  expect_true(grepl('col_a_text\\s*<-\\s*if \\(identical\\(short_a, "A"\\)\\) "A" else paste0\\("A \\\\u00b7 ", short_a\\)', txt))
+  expect_true(grepl('col_b_text\\s*<-\\s*if \\(identical\\(short_b, "B"\\)\\) "B" else paste0\\("B \\\\u00b7 ", short_b\\)', txt))
+  expect_true(grepl('paste0\\(full_a, " vs ", full_b, " \\\\u00b7 ", gy, "-", as.integer\\(substr\\(gy, 3, 4\\)\\) \\+ 1\\)', txt))
+})

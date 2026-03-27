@@ -1855,7 +1855,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     mode <- data$mode
     ra <- data$ratings_a; rb <- data$ratings_b
     fa <- data$ff_a; fb <- data$ff_b
-    sum_a <- side_label_full("a"); sum_b <- side_label_full("b")
+    short_a <- side_label_short("a"); short_b <- side_label_short("b")
+    full_a <- side_label_full("a"); full_b <- side_label_full("b")
     gy <- input$game_year
 
     context_bar <- build_detail_context_bar(ra, rb, mode)
@@ -1863,13 +1864,15 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Build all grid cells — flat layout, each metric = 3 sibling cells sharing one grid row
     all_cells <- list()
     section_names <- names(DETAIL_METRICS)
+    col_a_text <- if (identical(short_a, "A")) "A" else paste0("A \u00b7 ", short_a)
+    col_b_text <- if (identical(short_b, "B")) "B" else paste0("B \u00b7 ", short_b)
 
     # Column headers (first row of grid)
     all_cells <- c(all_cells, list(
-      tags$div(class = "cmp-col-header cmp-col-a cmp-cell cmp-first-row", paste0("A \u00b7 ", sum_a)),
+      tags$div(class = "cmp-col-header cmp-col-a cmp-cell cmp-first-row", col_a_text),
       tags$div(class = "cmp-col-header cmp-col-gap cmp-cell cmp-first-row",
         "Gap ", tags$span(id = "cmp-sort-icon", "\u2195")),
-      tags$div(class = "cmp-col-header cmp-col-b cmp-cell cmp-first-row", paste0("B \u00b7 ", sum_b))
+      tags$div(class = "cmp-col-header cmp-col-b cmp-cell cmp-first-row", col_b_text)
     ))
 
     # Pre-compute which sections have data
@@ -1965,7 +1968,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       }
     }
 
-    tagList(
+        tagList(
       tags$style(DETAIL_CSS),
       tags$div(class = "detail-container",
         tags$div(class = "cmp-back-btn",
@@ -1973,7 +1976,7 @@ server_tab7_compare <- function(input, output, session, shared) {
           "\u2190 Back to league view"),
         tags$div(class = "cmp-team-header", data$entity_name),
         tags$div(class = "cmp-team-subheader",
-          paste0(sum_a, " vs ", sum_b, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
+          paste0(full_a, " vs ", full_b, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
         context_bar,
         tags$div(class = "cmp-compare-grid",
           do.call(tagList, all_cells)),
@@ -2211,8 +2214,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     mode <- input$cmp_mode
     entity_label <- if (mode == "Players") "Player" else if (mode == "Lineups") "Lineup" else "Team"
 
-    side_a_label <- side_label_full("a")
-    side_b_label <- side_label_full("b")
+    side_a_label <- side_label_short("a")
+    side_b_label <- side_label_short("b")
 
     show_df <- data.frame(
       `#` = df$rank,
@@ -2250,7 +2253,19 @@ server_tab7_compare <- function(input, output, session, shared) {
         ),
         rowCallback = DT::JS(
           "function(row, data) { $(row).css('cursor', 'pointer'); }"
-        )
+        ),
+        headerCallback = DT::JS("
+          function(thead, data, start, end, display) {
+            var cells = $(thead).find('th');
+            var badgeStyle = 'display:inline-block;border-radius:50%;padding:2px 8px;font-size:.7rem;font-weight:600;';
+            var aStyle = badgeStyle + 'background:rgba(123,140,222,.2);color:#7b8cde;border:1px solid rgba(123,140,222,.4);';
+            var bStyle = badgeStyle + 'background:rgba(232,164,53,.15);color:#e8a435;border:1px solid rgba(232,164,53,.35);';
+            var aText = $(cells[2]).text().trim();
+            var bText = $(cells[4]).text().trim();
+            if (aText === 'A') $(cells[2]).html('<span style=\"' + aStyle + '\">A</span>');
+            if (bText === 'B') $(cells[4]).html('<span style=\"' + bStyle + '\">B</span>');
+          }
+        ")
       ),
       rownames = FALSE, selection = "none",
       class = "compact stripe nowrap"
