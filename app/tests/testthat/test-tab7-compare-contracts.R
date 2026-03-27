@@ -33,3 +33,15 @@ test_that("tab7 player metric mapping uses actual SQL column names", {
   expect_false(grepl("pts_per_game", txt))
   expect_false(grepl("total_pts", txt))
 })
+
+test_that("tab7 team four-factor chips map to actual four-factor columns", {
+  txt <- server_tab7_txt()
+  expect_true(grepl('"TS%"\\s*=\\s*"off_ts"', txt))
+  expect_true(grepl('"TOV%"\\s*=\\s*"off_tov"', txt))
+  expect_true(grepl('"OREB%"\\s*=\\s*"off_oreb"', txt))
+  expect_true(grepl('metric %in% c\\("off_ts", "off_tov", "off_oreb", "off_ftr"\\)', txt))
+  expect_false(grepl('"TS%"\\s*=\\s*"off_ts_pct"', txt))
+  expect_false(grepl('"TOV%"\\s*=\\s*"off_tov_pct"', txt))
+  expect_false(grepl('"OREB%"\\s*=\\s*"off_oreb_pct"', txt))
+  expect_false(grepl('metric %in% c\\("off_ts_pct", "off_tov_pct", "off_oreb_pct", "off_ftr"\\)', txt))
+})

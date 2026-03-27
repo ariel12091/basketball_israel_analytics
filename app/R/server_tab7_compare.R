@@ -226,8 +226,50 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
+  # Short label for DT column headers and detail grid headers
+  side_label_short <- function(side) {
+    # Players mode: presets not applicable
+    if (identical(input$cmp_mode, "Players")) return(toupper(side))
+
+    preset <- input$cmp_preset %||% ""
+    if (!nzchar(preset)) return(toupper(side))
+
+    switch(preset,
+      starters_bench = if (side == "a") "Starters" else "Bench",
+      clutch         = if (side == "a") "Clutch" else "Non-Clutch",
+      home_away      = if (side == "a") "Home" else "Away",
+      win_loss       = if (side == "a") "Win" else "Loss",
+      top_bottom_rank = {
+        n <- input[[paste0("cmp_", side, "_opp_rank_n")]] %||% ""
+        if (nzchar(n)) {
+          if (side == "a") paste0("vs Top ", n) else paste0("vs Bottom ", n)
+        } else {
+          toupper(side)
+        }
+      },
+      date_split = {
+        split_date <- parse_single_date(input$cmp_split_date)
+        if (!is.na(split_date)) {
+          d <- format(split_date, "%b %d")
+          if (side == "a") paste0("Before ", d) else paste0("From ", d)
+        } else {
+          toupper(side)
+        }
+      },
+      gn_split = {
+        gn <- suppressWarnings(as.integer(input$cmp_split_gn %||% ""))
+        if (is.finite(gn)) {
+          if (side == "a") paste0("GN 1\u2013", gn) else paste0("GN ", gn + 1L, "+")
+        } else {
+          toupper(side)
+        }
+      },
+      toupper(side)  # unknown preset fallback
+    )
+  }
+
   # Build a short description of what a side's filters mean
-  side_summary <- function(side) {
+  side_label_full <- function(side) {
     pfx <- paste0("cmp_", side, "_")
     get_input <- function(name) input[[paste0(pfx, name)]]
     parts <- character(0)
@@ -243,6 +285,51 @@ server_tab7_compare <- function(input, output, session, shared) {
     oc <- get_input("outcome") %||% ""
     if (nzchar(oc)) parts <- c(parts, tools::toTitleCase(oc))
     if (isTRUE(get_input("clutch"))) parts <- c(parts, "Clutch")
+
+    # Opp rank
+    opp_side <- get_input("opp_rank_side") %||% ""
+    opp_n <- get_input("opp_rank_n") %||% ""
+    opp_metric <- get_input("opp_rank_metric") %||% ""
+    if (nzchar(opp_side) && nzchar(opp_n)) {
+      metric_lbl <- switch(opp_metric, off = "Off", def = "Def", net = "Net", "")
+      rank_lbl <- paste0("vs ", tools::toTitleCase(opp_side), " ", opp_n)
+      if (nzchar(metric_lbl)) rank_lbl <- paste0(rank_lbl, " (", metric_lbl, ")")
+      parts <- c(parts, rank_lbl)
+    }
+
+    # Opponents
+    opps <- get_input("opponents") %||% character(0)
+    if (length(opps) && any(nzchar(opps))) {
+      opp_names <- opps[nzchar(opps)]
+      if (length(opp_names) <= 2) {
+        parts <- c(parts, paste0("vs ", paste(opp_names, collapse = ", ")))
+      } else {
+        parts <- c(parts, paste0("vs ", length(opp_names), " opps"))
+      }
+    }
+
+    # Teams
+    teams <- get_input("teams") %||% character(0)
+    if (length(teams) && any(nzchar(teams))) {
+      tm_names <- teams[nzchar(teams)]
+      if (length(tm_names) <= 2) {
+        parts <- c(parts, paste(tm_names, collapse = ", "))
+      } else {
+        parts <- c(parts, paste0(length(tm_names), " teams"))
+      }
+    }
+
+    # Game type
+    gt <- get_input("game_type") %||% character(0)
+    if (length(gt) && any(nzchar(gt))) {
+      gt_labels <- c("5" = "Regular", "16" = "QF", "17" = "Finals",
+                      "26" = "SF", "33" = "Play-in", "34" = "W.Cup", "35" = "S.Cup")
+      gt_vals <- gt[nzchar(gt)]
+      gt_names <- unname(gt_labels[gt_vals])
+      gt_names <- gt_names[!is.na(gt_names)]
+      if (length(gt_names)) parts <- c(parts, paste(gt_names, collapse = "+"))
+    }
+
     if (!identical(input$cmp_mode, "Players")) {
       preset <- input$cmp_preset %||% ""
       if (identical(preset, "date_split")) {
@@ -265,7 +352,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         }
       }
     }
-    if (length(parts)) paste(parts, collapse = ", ") else paste0("Side ", toupper(side))
+    if (length(parts)) paste(parts, collapse = " \u00b7 ") else paste0("Side ", toupper(side))
   }
 
   apply_side_team_filter <- function(df, p) {
@@ -507,7 +594,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   TEAM_METRICS <- c(
     "Net Rtg" = "net_rtg", "Offense" = "off_ppp", "Defense" = "def_ppp",
-    "TS%" = "off_ts_pct", "TOV%" = "off_tov_pct", "OREB%" = "off_oreb_pct", "FTR" = "off_ftr"
+    "TS%" = "off_ts", "TOV%" = "off_tov", "OREB%" = "off_oreb", "FTR" = "off_ftr"
   )
 
   PLAYER_METRICS <- c(
@@ -1417,7 +1504,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     if (mode == "Teams") {
       req(metric %in% TEAM_METRICS)
-      is_ff <- metric %in% c("off_ts_pct", "off_tov_pct", "off_oreb_pct", "off_ftr")
+      is_ff <- metric %in% c("off_ts", "off_tov", "off_oreb", "off_ftr")
       if (is_ff) {
         res_a <- run_team_ff(pa)
         res_b <- run_team_ff(pb)
@@ -1456,7 +1543,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     } else if (mode == "Lineups") {
       req(metric %in% TEAM_METRICS)
-      is_ff <- metric %in% c("off_ts_pct", "off_tov_pct", "off_oreb_pct", "off_ftr")
+      is_ff <- metric %in% c("off_ts", "off_tov", "off_oreb", "off_ftr")
       if (is_ff) {
         res_a <- run_lineups_ff(pa)
         res_b <- run_lineups_ff(pb)
@@ -1768,7 +1855,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     mode <- data$mode
     ra <- data$ratings_a; rb <- data$ratings_b
     fa <- data$ff_a; fb <- data$ff_b
-    sum_a <- side_summary("a"); sum_b <- side_summary("b")
+    sum_a <- side_label_full("a"); sum_b <- side_label_full("b")
     gy <- input$game_year
 
     context_bar <- build_detail_context_bar(ra, rb, mode)
@@ -1984,8 +2071,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(a = a_val, b = b_val, delta = delta, gap_abs = mean(abs(df$gap), na.rm = TRUE))
   })
 
-  output$cmp_summary_a_title <- renderText({ side_summary("a") })
-  output$cmp_summary_b_title <- renderText({ side_summary("b") })
+  output$cmp_summary_a_title <- renderText({ side_label_full("a") })
+  output$cmp_summary_b_title <- renderText({ side_label_full("b") })
 
   output$cmp_summary_a <- renderText({
     st <- cmp_summary_stats()
@@ -2124,8 +2211,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     mode <- input$cmp_mode
     entity_label <- if (mode == "Players") "Player" else if (mode == "Lineups") "Lineup" else "Team"
 
-    side_a_label <- side_summary("a")
-    side_b_label <- side_summary("b")
+    side_a_label <- side_label_full("a")
+    side_b_label <- side_label_full("b")
 
     show_df <- data.frame(
       `#` = df$rank,
