@@ -499,7 +499,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(team_csv = paste(keep_ids, collapse = ","), conflict = FALSE)
   }
 
-  run_lineups_summary <- function(p) {
+  run_lineups_summary <- function(p, min_poss = cmp_min_poss()) {
     allowed <- guard_heavy_request(
       session, key = "cmp_lineups_summary",
       start_d = p$start_d, end_d = p$end_d,
@@ -522,7 +522,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       lu$player_off_csv, # player_off_csv
       lu$exact,       # exact
       as.Date(p$start_d), as.Date(p$end_d),
-      cmp_min_poss(), # min_poss
+      min_poss,      # min_poss
       p$game_year,
       p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
       p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
@@ -534,7 +534,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     ))
   }
 
-  run_lineups_ff <- function(p) {
+  run_lineups_ff <- function(p, min_poss = cmp_min_poss()) {
     allowed <- guard_heavy_request(
       session, key = "cmp_lineups_ff",
       start_d = p$start_d, end_d = p$end_d,
@@ -557,7 +557,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       lu$player_off_csv, # player_off_csv
       lu$exact,       # exact
       as.Date(p$start_d), as.Date(p$end_d),
-      cmp_min_poss(), # min_poss
+      min_poss,      # min_poss
       p$game_year,
       p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
       p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
@@ -1597,7 +1597,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   # -- Reactive comparison (auto-triggers on filter change) --
 
-  cmp_joined_inner <- function(apply_min_poss = TRUE, limit_lineups = TRUE) {
+  cmp_joined_inner <- function(apply_min_poss = TRUE, limit_lineups = TRUE, sql_min_poss = cmp_min_poss()) {
     req(identical(input$main_tabs, "compare"))
     mode <- input$cmp_mode
     req(mode)
@@ -1655,11 +1655,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       req(metric %in% TEAM_METRICS)
       is_ff <- metric %in% c("off_ts", "off_tov", "off_oreb", "off_ftr")
       if (is_ff) {
-        res_a <- run_lineups_ff(pa)
-        res_b <- run_lineups_ff(pb)
+        res_a <- run_lineups_ff(pa, min_poss = sql_min_poss)
+        res_b <- run_lineups_ff(pb, min_poss = sql_min_poss)
       } else {
-        res_a <- run_lineups_summary(pa)
-        res_b <- run_lineups_summary(pb)
+        res_a <- run_lineups_summary(pa, min_poss = sql_min_poss)
+        res_b <- run_lineups_summary(pb, min_poss = sql_min_poss)
       }
       res_a <- apply_side_team_filter(res_a, pa)
       res_b <- apply_side_team_filter(res_b, pb)
@@ -1796,7 +1796,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
     if (!isTRUE(cmp_auto_enabled())) return(invisible(NULL))
 
-    df_base <- cmp_joined_inner(apply_min_poss = FALSE, limit_lineups = FALSE)
+    df_base <- cmp_joined_inner(apply_min_poss = FALSE, limit_lineups = FALSE, sql_min_poss = 0L)
     min_needed <- cmp_auto_minposs_from_df(df_base)
     cur_val <- suppressWarnings(as.integer(input$cmp_min_poss %||% 10L))
     if (is.na(min_needed)) return(invisible(NULL))
