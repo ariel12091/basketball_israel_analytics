@@ -10,8 +10,14 @@ server_tab7_compare <- function(input, output, session, shared) {
   cmp_auto_default_ids <- reactiveVal(integer(0))
   cmp_defaults_active <- reactiveVal(FALSE)
   cmp_syncing_sides <- reactiveVal(FALSE)
+  cmp_auto_min_state <- reactiveValues(
+    last_auto = NA_integer_,
+    updating = FALSE
+  )
+  cmp_auto_enabled <- reactiveVal(TRUE)
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
+  CMP_AUTO_TARGET_ROWS <- 50L
 
   # -- Detail view constants --
 
@@ -386,6 +392,32 @@ server_tab7_compare <- function(input, output, session, shared) {
     df[keep, , drop = FALSE]
   }
 
+  cmp_min_poss <- function() {
+    val <- suppressWarnings(as.integer(input$cmp_min_poss %||% 10L))
+    if (!is.finite(val) || val < 0L) return(10L)
+    val
+  }
+
+  cmp_auto_minposs_from_df <- function(df, target_rows = CMP_AUTO_TARGET_ROWS, step = 10L) {
+    if (is.null(df) || !NROW(df)) return(NA_integer_)
+    if ("poss_a" %in% names(df) && "poss_b" %in% names(df)) {
+      vals <- pmin(suppressWarnings(as.numeric(df$poss_a)), suppressWarnings(as.numeric(df$poss_b)))
+    } else if ("poss_a" %in% names(df)) {
+      vals <- suppressWarnings(as.numeric(df$poss_a))
+    } else if ("poss_b" %in% names(df)) {
+      vals <- suppressWarnings(as.numeric(df$poss_b))
+    } else {
+      return(NA_integer_)
+    }
+    vals <- vals[is.finite(vals)]
+    if (!length(vals)) return(NA_integer_)
+    vals <- sort(vals, decreasing = TRUE)
+    if (length(vals) <= target_rows) return(0L)
+    kth <- vals[target_rows]
+    if (!is.finite(kth)) return(NA_integer_)
+    as.integer(ceiling(kth / step) * step)
+  }
+
   # -- SQL runners --
 
   run_team_ratings <- function(p) {
@@ -447,8 +479,24 @@ server_tab7_compare <- function(input, output, session, shared) {
     player_off_ids <- if (nzchar(team_val)) as.integer(input$cmp_lu_players_off %||% character(0)) else integer(0)
     player_csv <- if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_
     player_off_csv <- if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_
-    list(num = num, player_csv = player_csv, player_off_csv = player_off_csv,
+    list(num = num, team_csv = if (nzchar(team_val)) team_val else NA_character_,
+         player_csv = player_csv, player_off_csv = player_off_csv,
          exact = length(player_on_ids) > 0L)
+  }
+
+  merge_lineup_team_csv <- function(side_team_csv, lineup_team_csv) {
+    side_team_csv <- if (is.null(side_team_csv) || is.na(side_team_csv) || !nzchar(side_team_csv)) NA_character_ else side_team_csv
+    lineup_team_csv <- if (is.null(lineup_team_csv) || is.na(lineup_team_csv) || !nzchar(lineup_team_csv)) NA_character_ else lineup_team_csv
+
+    if (is.na(side_team_csv)) return(list(team_csv = lineup_team_csv, conflict = FALSE))
+    if (is.na(lineup_team_csv)) return(list(team_csv = side_team_csv, conflict = FALSE))
+
+    side_ids <- suppressWarnings(as.integer(trimws(strsplit(side_team_csv, ",", fixed = TRUE)[[1]])))
+    lineup_ids <- suppressWarnings(as.integer(trimws(strsplit(lineup_team_csv, ",", fixed = TRUE)[[1]])))
+    keep_ids <- intersect(side_ids[is.finite(side_ids)], lineup_ids[is.finite(lineup_ids)])
+
+    if (!length(keep_ids)) return(list(team_csv = NA_character_, conflict = TRUE))
+    list(team_csv = paste(keep_ids, collapse = ","), conflict = FALSE)
   }
 
   run_lineups_summary <- function(p) {
@@ -460,19 +508,21 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
     lu <- cmp_lu_params()
+    team_filter <- merge_lineup_team_csv(p$team_ids_csv, lu$team_csv)
+    if (isTRUE(team_filter$conflict)) return(data.frame())
     db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.fetch_lineups_csv_v2(",
       "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
       "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
       "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
-      ")"), params = list(
+    ")"), params = list(
       lu$num,         # num (lineup size)
-      p$team_ids_csv, # team_csv
+      team_filter$team_csv, # team_csv
       lu$player_csv,  # player_csv
       lu$player_off_csv, # player_off_csv
       lu$exact,       # exact
       as.Date(p$start_d), as.Date(p$end_d),
-      0L,            # min_poss
+      cmp_min_poss(), # min_poss
       p$game_year,
       p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
       p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
@@ -493,19 +543,21 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
     lu <- cmp_lu_params()
+    team_filter <- merge_lineup_team_csv(p$team_ids_csv, lu$team_csv)
+    if (isTRUE(team_filter$conflict)) return(data.frame())
     db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(",
       "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
       "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
       "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
-      ")"), params = list(
+    ")"), params = list(
       lu$num,         # num
-      p$team_ids_csv, # team_csv
+      team_filter$team_csv, # team_csv
       lu$player_csv,  # player_csv
       lu$player_off_csv, # player_off_csv
       lu$exact,       # exact
       as.Date(p$start_d), as.Date(p$end_d),
-      0L,            # min_poss
+      cmp_min_poss(), # min_poss
       p$game_year,
       p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
       p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
@@ -722,10 +774,42 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (v %in% unname(PLAYER_VIEWS)) selected_player_view(v)
   }, ignoreInit = TRUE)
 
+  observeEvent(input$cmp_min_poss, {
+    if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+    if (isTRUE(cmp_auto_min_state$updating)) return(invisible(NULL))
+    cur_val <- suppressWarnings(as.integer(input$cmp_min_poss %||% 10L))
+    last_auto <- suppressWarnings(as.integer(cmp_auto_min_state$last_auto))
+    if (!is.na(cur_val) && !is.na(last_auto) && cur_val == last_auto) {
+      return(invisible(NULL))
+    }
+    cmp_auto_enabled(FALSE)
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(
+    input$cmp_mode, input$cmp_preset, input$cmp_split_date, input$cmp_split_gn,
+    input$cmp_a_starters_mode, input$cmp_a_starters_val, input$cmp_a_teams,
+    input$cmp_a_home_away, input$cmp_a_outcome, input$cmp_a_clutch,
+    input$cmp_a_clutch_margin, input$cmp_a_clutch_minutes, input$cmp_a_opponents,
+    input$cmp_a_game_type, input$cmp_a_opp_rank_side, input$cmp_a_opp_rank_n, input$cmp_a_opp_rank_metric,
+    input$cmp_b_starters_mode, input$cmp_b_starters_val, input$cmp_b_teams,
+    input$cmp_b_home_away, input$cmp_b_outcome, input$cmp_b_clutch,
+    input$cmp_b_clutch_margin, input$cmp_b_clutch_minutes, input$cmp_b_opponents,
+    input$cmp_b_game_type, input$cmp_b_opp_rank_side, input$cmp_b_opp_rank_n, input$cmp_b_opp_rank_metric,
+    input$cmp_lu_num, input$cmp_lu_team, input$cmp_lu_players_on, input$cmp_lu_players_off,
+    input$game_year, input$main_tabs
+  ), {
+    if (!identical(input$main_tabs, "compare")) return(invisible(NULL))
+    if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+    cmp_auto_enabled(TRUE)
+  }, ignoreInit = TRUE)
+
   # -- Shared filter reset helper --
 
   reset_compare_filters <- function() {
     updateSelectInput(session, "cmp_preset", selected = "")
+    updateSliderInput(session, "cmp_min_poss", value = 10)
+    cmp_auto_min_state$last_auto <- 10L
+    cmp_auto_enabled(TRUE)
     updateDateInput(session, "cmp_split_date", value = DEFAULT_END)
     updateSelectizeInput(session, "cmp_split_gn", selected = character(0))
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
@@ -1513,7 +1597,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   # -- Reactive comparison (auto-triggers on filter change) --
 
-  cmp_joined <- reactive({
+  cmp_joined_inner <- function(apply_min_poss = TRUE, limit_lineups = TRUE) {
     req(identical(input$main_tabs, "compare"))
     mode <- input$cmp_mode
     req(mode)
@@ -1526,6 +1610,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     metric <- selected_metric()
     preset_now <- input$cmp_preset %||% ""
     gap_after_minus_before <- preset_now %in% c("date_split", "gn_split")
+    min_poss <- cmp_min_poss()
 
     if (mode == "Teams") {
       req(metric %in% TEAM_METRICS)
@@ -1558,10 +1643,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       joined <- dplyr::inner_join(df_a, df_b, by = c("team_id", "team_name"), suffix = c("", ".b"))
       joined$metric_a <- as.numeric(joined$metric_a)
       joined$metric_b <- as.numeric(joined$metric_b)
-      joined <- apply_min_poss_filter(joined, min_poss = 10L)
+      if (isTRUE(apply_min_poss)) joined <- apply_min_poss_filter(joined, min_poss = min_poss)
       if (!nrow(joined)) return(NULL)
       joined$gap <- if (gap_after_minus_before) joined$metric_b - joined$metric_a else joined$metric_a - joined$metric_b
-      joined <- joined[order(-abs(joined$gap)), ]
+      joined <- joined[order(is.na(joined$gap), -joined$gap), ]
       joined$rank <- seq_len(nrow(joined))
       joined$entity_name <- joined$team_name
       joined
@@ -1582,13 +1667,14 @@ server_tab7_compare <- function(input, output, session, shared) {
 
       pick_cols_lu <- function(df, suffix) {
         key <- "sub_lineup_hash"
+        team_id_col <- if ("team_id" %in% names(df)) "team_id" else NULL
         name_col <- if ("player_names_str" %in% names(df)) "player_names_str" else NULL
         team_col <- if ("team_name" %in% names(df)) "team_name" else NULL
         total_poss_col <- if ("total_poss" %in% names(df)) "total_poss" else NULL
         off_poss_col <- if ("off_poss" %in% names(df)) "off_poss" else NULL
         def_poss_col <- if ("def_poss" %in% names(df)) "def_poss" else NULL
         metric_col <- if (metric %in% names(df)) metric else NULL
-        cols <- c(key, name_col, team_col, metric_col, total_poss_col, off_poss_col, def_poss_col)
+        cols <- c(key, team_id_col, name_col, team_col, metric_col, total_poss_col, off_poss_col, def_poss_col)
         cols <- cols[!is.null(cols) & cols %in% names(df)]
         out <- df[, cols, drop = FALSE]
         if (!is.null(metric_col)) names(out)[names(out) == metric_col] <- paste0("metric_", suffix)
@@ -1609,14 +1695,22 @@ server_tab7_compare <- function(input, output, session, shared) {
       df_a <- pick_cols_lu(res_a, "a")
       df_b <- pick_cols_lu(res_b, "b")
       join_by <- "sub_lineup_hash"
-      extra <- intersect(c("player_names_str", "team_name"), intersect(names(df_a), names(df_b)))
+      extra <- intersect(c("player_names_str", "team_id", "team_name"), intersect(names(df_a), names(df_b)))
       joined <- dplyr::inner_join(df_a, df_b, by = c(join_by, extra), suffix = c("", ".b"))
+      if (!("team_name" %in% names(joined)) && ("team_id" %in% names(joined))) {
+        teams_df <- normalize_teams_ref(cmp_ref$teams)
+        if (!is.null(teams_df) && nrow(teams_df)) {
+          team_map <- setNames(teams_df$team_name, as.character(teams_df$team_id))
+          joined$team_name <- unname(team_map[as.character(joined$team_id)])
+        }
+      }
       joined$metric_a <- as.numeric(joined$metric_a)
       joined$metric_b <- as.numeric(joined$metric_b)
-      joined <- apply_min_poss_filter(joined, min_poss = 10L)
+      if (isTRUE(apply_min_poss)) joined <- apply_min_poss_filter(joined, min_poss = min_poss)
       if (!nrow(joined)) return(NULL)
       joined$gap <- if (gap_after_minus_before) joined$metric_b - joined$metric_a else joined$metric_a - joined$metric_b
-      joined <- joined[order(-abs(joined$gap)), ]
+      joined <- joined[order(is.na(joined$gap), -joined$gap), ]
+      if (isTRUE(limit_lineups)) joined <- utils::head(joined, 50L)
       joined$rank <- seq_len(nrow(joined))
       joined$entity_name <- if ("player_names_str" %in% names(joined)) joined$player_names_str else joined$sub_lineup_hash
       joined
@@ -1695,6 +1789,28 @@ server_tab7_compare <- function(input, output, session, shared) {
     } else {
       NULL
     }
+  }
+
+  observe({
+    if (!identical(input$main_tabs, "compare")) return(invisible(NULL))
+    if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+    if (!isTRUE(cmp_auto_enabled())) return(invisible(NULL))
+
+    df_base <- cmp_joined_inner(apply_min_poss = FALSE, limit_lineups = FALSE)
+    min_needed <- cmp_auto_minposs_from_df(df_base)
+    cur_val <- suppressWarnings(as.integer(input$cmp_min_poss %||% 10L))
+    if (is.na(min_needed)) return(invisible(NULL))
+    if (!is.na(cur_val) && cur_val == min_needed) return(invisible(NULL))
+
+    cmp_auto_min_state$updating <- TRUE
+    updateSliderInput(session, "cmp_min_poss", value = min_needed)
+    cmp_auto_min_state$updating <- FALSE
+    cmp_auto_min_state$last_auto <- min_needed
+    invisible(NULL)
+  })
+
+  cmp_joined <- reactive({
+    cmp_joined_inner(apply_min_poss = TRUE, limit_lineups = TRUE)
   })
 
   # -- Detail view: fetch all metrics for selected entity --
@@ -2181,21 +2297,32 @@ server_tab7_compare <- function(input, output, session, shared) {
   output$cmp_detail_entity_dropdown_ui <- renderUI({
     if (!isTRUE(detail_view_active())) return(NULL)
 
+    tags$div(
+      style = "min-width: 200px;",
+      selectizeInput("cmp_detail_entity_select", NULL,
+        choices = NULL,
+        selected = "",
+        options = list(placeholder = "Select entity..."),
+        width = "100%"
+      )
+    )
+  })
+
+  observe({
+    if (!isTRUE(detail_view_active())) return()
+
     df <- cmp_joined()
-    if (is.null(df) || !nrow(df)) return(NULL)
+    req(df, nrow(df) > 0)
 
     choices <- setNames(df$entity_name, df$entity_name)
     current <- selected_detail_entity()
     sel <- if (!is.null(current)) current$name else ""
 
-    tags$div(
-      style = "min-width: 200px;",
-      selectizeInput("cmp_detail_entity_select", NULL,
-        choices = c("Select..." = "", choices),
-        selected = sel,
-        options = list(placeholder = "Select entity..."),
-        width = "100%"
-      )
+    updateSelectizeInput(
+      session, "cmp_detail_entity_select",
+      choices = c("Select..." = "", choices),
+      selected = sel,
+      server = TRUE
     )
   })
 
@@ -2242,63 +2369,95 @@ server_tab7_compare <- function(input, output, session, shared) {
     side_a_label <- side_label_short("a")
     side_b_label <- side_label_short("b")
 
-    # Sort NA gaps last, then by descending absolute gap
-    gap_ord <- order(is.na(df$gap), -abs(ifelse(is.na(df$gap), 0, df$gap)))
+    # Sort by descending signed gap, keeping NA rows at the bottom
+    gap_ord <- order(is.na(df$gap), -df$gap)
     df <- df[gap_ord, ]
     df$rank <- seq_len(nrow(df))
 
-    show_df <- data.frame(
-      `#` = df$rank,
-      Entity = df$entity_name,
-      A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "\u2014"),
-      `Total Poss A` = as.integer(df$poss_a),
-      B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "\u2014"),
-      `Total Poss B` = as.integer(df$poss_b),
-      Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "\u2014"),
-      gap_raw = ifelse(is.finite(df$gap), df$gap, NA_real_),
-      check.names = FALSE, stringsAsFactors = FALSE
-    )
-    names(show_df)[2] <- entity_label
-    names(show_df)[3] <- side_a_label
-    names(show_df)[5] <- side_b_label
+    if (identical(mode, "Lineups")) {
+      show_df <- data.frame(
+        `#` = df$rank,
+        Entity = df$entity_name,
+        Team = if ("team_name" %in% names(df)) df$team_name else "",
+        A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "\u2014"),
+        `Total Poss A` = as.integer(df$poss_a),
+        B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "\u2014"),
+        `Total Poss B` = as.integer(df$poss_b),
+        Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "\u2014"),
+        gap_sort = ifelse(is.finite(df$gap), df$gap, -Inf),
+        check.names = FALSE, stringsAsFactors = FALSE
+      )
+      names(show_df)[2] <- entity_label
+      names(show_df)[4] <- side_a_label
+      names(show_df)[6] <- side_b_label
+      entity_col_idx <- 1L
+      right_targets <- 3:7
+      left_targets <- 1:2
+      hidden_target <- 8L
+      gap_target <- 7L
+      a_header_idx <- 3L
+      b_header_idx <- 5L
+    } else {
+      show_df <- data.frame(
+        `#` = df$rank,
+        Entity = df$entity_name,
+        A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "\u2014"),
+        `Total Poss A` = as.integer(df$poss_a),
+        B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "\u2014"),
+        `Total Poss B` = as.integer(df$poss_b),
+        Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "\u2014"),
+        gap_sort = ifelse(is.finite(df$gap), df$gap, -Inf),
+        check.names = FALSE, stringsAsFactors = FALSE
+      )
+      names(show_df)[2] <- entity_label
+      names(show_df)[3] <- side_a_label
+      names(show_df)[5] <- side_b_label
+      entity_col_idx <- 1L
+      right_targets <- 2:6
+      left_targets <- 1L
+      hidden_target <- 7L
+      gap_target <- 6L
+      a_header_idx <- 2L
+      b_header_idx <- 4L
+    }
 
     DT::datatable(
       show_df,
-      callback = DT::JS("
+      callback = DT::JS(sprintf("
         table.on('click', 'tbody tr', function() {
           var data = table.row(this).data();
           if (data) {
             Shiny.setInputValue('cmp_table_row_click', {
-              entity_name: data[1],
+              entity_name: data[%d],
               rand: Math.random()
             }, {priority: 'event'});
           }
         });
-      "),
+      ", entity_col_idx)),
       options = list(
         dom = "t", paging = FALSE, ordering = TRUE,
-        order = list(list(6, "desc")),
+        order = list(),
         columnDefs = list(
-          list(className = "dt-right", targets = 2:6),
-          list(className = "dt-left", targets = 1),
-          list(visible = FALSE, targets = 7),
-          list(orderData = 7L, targets = 6)
+          list(className = "dt-right", targets = right_targets),
+          list(className = "dt-left", targets = left_targets),
+          list(visible = FALSE, targets = hidden_target),
+          list(orderData = hidden_target, orderSequence = c("desc"), targets = gap_target)
         ),
         rowCallback = DT::JS(
           "function(row, data) { $(row).css('cursor', 'pointer'); }"
         ),
-        headerCallback = DT::JS("
+        headerCallback = DT::JS(sprintf("
           function(thead, data, start, end, display) {
             var cells = $(thead).find('th');
-            var badgeStyle = 'display:inline-block;border-radius:50%;padding:2px 8px;font-size:.7rem;font-weight:600;';
+            var badgeStyle = 'display:inline-block;border-radius:50%%;padding:2px 8px;font-size:.7rem;font-weight:600;';
             var aStyle = badgeStyle + 'background:rgba(123,140,222,.2);color:#7b8cde;border:1px solid rgba(123,140,222,.4);';
             var bStyle = badgeStyle + 'background:rgba(232,164,53,.15);color:#e8a435;border:1px solid rgba(232,164,53,.35);';
-            var aText = $(cells[2]).text().trim();
-            var bText = $(cells[4]).text().trim();
-            if (aText === 'A') $(cells[2]).html('<span style=\"' + aStyle + '\">A</span>');
-            if (bText === 'B') $(cells[4]).html('<span style=\"' + bStyle + '\">B</span>');
+            var aText = $(cells[%d]).text().trim();
+            var bText = $(cells[%d]).text().trim();
+            if (aText === 'A') $(cells[%d]).html('<span style=\"' + aStyle + '\">A</span>');
+            if (bText === 'B') $(cells[%d]).html('<span style=\"' + bStyle + '\">B</span>');
           }
-        ")
+        ", a_header_idx, b_header_idx, a_header_idx, b_header_idx))
       ),
       rownames = FALSE, selection = "none",
       class = "compact stripe nowrap"

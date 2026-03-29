@@ -51,6 +51,10 @@ ui_tab7_compare <- tabPanel(
                       selected = "")
         ),
         conditionalPanel(
+          condition = "input.cmp_mode != 'Players'",
+          sliderInput("cmp_min_poss", "Min possessions", min = 0, max = 2000, value = 10, step = 10)
+        ),
+        conditionalPanel(
           condition = "input.cmp_mode != 'Players' && input.cmp_preset == 'date_split'",
           dateInput("cmp_split_date", "Split date", value = DEFAULT_END)
         ),
