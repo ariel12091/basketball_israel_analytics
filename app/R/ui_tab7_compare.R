@@ -275,6 +275,39 @@ ui_tab7_compare <- tabPanel(
               ))
             ),
 
+            # Lineup controls (Lineups mode only)
+            conditionalPanel(
+              condition = "input.cmp_mode == 'Lineups'",
+              div(
+                class = "d-flex align-items-center gap-3 mb-3 flex-wrap",
+                div(
+                  class = "d-flex align-items-center gap-2",
+                  tags$span(class = "text-muted small text-uppercase", "Size"),
+                  radioButtons("cmp_lu_num", NULL,
+                               choices = c("2", "3", "4", "5"), selected = "5",
+                               inline = TRUE)
+                ),
+                div(
+                  class = "d-flex align-items-center gap-2 flex-grow-1",
+                  tags$span(class = "text-muted small text-uppercase text-nowrap", "Team"),
+                  div(style = "min-width: 140px;",
+                    selectizeInput("cmp_lu_team", NULL, choices = NULL, multiple = FALSE,
+                                   options = list(placeholder = "All teams"), width = "100%")
+                  ),
+                  tags$span(class = "text-muted small text-uppercase text-nowrap", "On"),
+                  div(style = "min-width: 160px;",
+                    selectizeInput("cmp_lu_players_on", NULL, choices = NULL, multiple = TRUE,
+                                   options = list(placeholder = "Any"), width = "100%")
+                  ),
+                  tags$span(class = "text-muted small text-uppercase text-nowrap", "Off"),
+                  div(style = "min-width: 160px;",
+                    selectizeInput("cmp_lu_players_off", NULL, choices = NULL, multiple = TRUE,
+                                   options = list(placeholder = "Any"), width = "100%")
+                  )
+                )
+              )
+            ),
+
             # Results table
             DT::dataTableOutput("cmp_table")
           ),

@@ -438,6 +438,19 @@ server_tab7_compare <- function(input, output, session, shared) {
     ))
   }
 
+  # Read lineup filter controls (shared across both sides)
+  cmp_lu_params <- function() {
+    num <- suppressWarnings(as.integer(input$cmp_lu_num %||% "5"))
+    if (!is.finite(num) || num < 2L || num > 5L) num <- 5L
+    team_val <- input$cmp_lu_team %||% ""
+    player_on_ids <- if (nzchar(team_val)) as.integer(input$cmp_lu_players_on %||% character(0)) else integer(0)
+    player_off_ids <- if (nzchar(team_val)) as.integer(input$cmp_lu_players_off %||% character(0)) else integer(0)
+    player_csv <- if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_
+    player_off_csv <- if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_
+    list(num = num, player_csv = player_csv, player_off_csv = player_off_csv,
+         exact = length(player_on_ids) > 0L)
+  }
+
   run_lineups_summary <- function(p) {
     allowed <- guard_heavy_request(
       session, key = "cmp_lineups_summary",
@@ -446,17 +459,18 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
+    lu <- cmp_lu_params()
     db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.fetch_lineups_csv_v2(",
       "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
       "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
       "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
       ")"), params = list(
-      5L,            # num (lineup size)
+      lu$num,         # num (lineup size)
       p$team_ids_csv, # team_csv
-      NA_character_, # player_csv
-      NA_character_, # player_off_csv
-      FALSE,         # exact
+      lu$player_csv,  # player_csv
+      lu$player_off_csv, # player_off_csv
+      lu$exact,       # exact
       as.Date(p$start_d), as.Date(p$end_d),
       0L,            # min_poss
       p$game_year,
@@ -478,17 +492,18 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
+    lu <- cmp_lu_params()
     db_get_query(pg_pool, paste0(
       "SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(",
       "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
       "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
       "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
       ")"), params = list(
-      5L,            # num
+      lu$num,         # num
       p$team_ids_csv, # team_csv
-      NA_character_, # player_csv
-      NA_character_, # player_off_csv
-      FALSE,         # exact
+      lu$player_csv,  # player_csv
+      lu$player_off_csv, # player_off_csv
+      lu$exact,       # exact
       as.Date(p$start_d), as.Date(p$end_d),
       0L,            # min_poss
       p$game_year,
@@ -738,6 +753,11 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectizeInput(session, "cmp_player_b_list_team_filter", selected = character(0))
     updateSelectInput(session, "cmp_player_a_team", selected = "")
     updateSelectInput(session, "cmp_player_b_team", selected = "")
+    # Lineup controls
+    updateRadioButtons(session, "cmp_lu_num", selected = "5")
+    updateSelectizeInput(session, "cmp_lu_team", selected = "")
+    updateSelectizeInput(session, "cmp_lu_players_on", selected = character(0))
+    updateSelectizeInput(session, "cmp_lu_players_off", selected = character(0))
   }
 
   refresh_player_choices <- function(side) {
@@ -862,6 +882,11 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectizeInput(session, "cmp_b_opponents", choices = team_choices, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "cmp_player_a_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
+    # Lineup filter team dropdown — use team_id as values
+    lu_team_choices <- if (nrow(teams_df)) setNames(as.character(teams_df$team_id), teams_df$team_name) else character(0)
+    updateSelectizeInput(session, "cmp_lu_team", choices = c("All teams" = "", lu_team_choices), selected = "", server = TRUE)
+    updateSelectizeInput(session, "cmp_lu_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_lu_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
     gn_df <- cached_ref_query(
       key = sprintf("cmp_gn_%d", gy_int),
       query_fun = function() db_get_query(pg_pool, sprintf(
@@ -2217,14 +2242,20 @@ server_tab7_compare <- function(input, output, session, shared) {
     side_a_label <- side_label_short("a")
     side_b_label <- side_label_short("b")
 
+    # Sort NA gaps last, then by descending absolute gap
+    gap_ord <- order(is.na(df$gap), -abs(ifelse(is.na(df$gap), 0, df$gap)))
+    df <- df[gap_ord, ]
+    df$rank <- seq_len(nrow(df))
+
     show_df <- data.frame(
       `#` = df$rank,
       Entity = df$entity_name,
-      A = vapply(df$metric_a, format_metric_raw, character(1)),
-      `Total Poss A` = if ("poss_a" %in% names(df)) as.integer(df$poss_a) else NA_integer_,
-      B = vapply(df$metric_b, format_metric_raw, character(1)),
-      `Total Poss B` = if ("poss_b" %in% names(df)) as.integer(df$poss_b) else NA_integer_,
-      Gap = sprintf("%+.1f", df$gap),
+      A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "\u2014"),
+      `Total Poss A` = as.integer(df$poss_a),
+      B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "\u2014"),
+      `Total Poss B` = as.integer(df$poss_b),
+      Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "\u2014"),
+      gap_raw = ifelse(is.finite(df$gap), df$gap, NA_real_),
       check.names = FALSE, stringsAsFactors = FALSE
     )
     names(show_df)[2] <- entity_label
@@ -2249,7 +2280,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         order = list(list(6, "desc")),
         columnDefs = list(
           list(className = "dt-right", targets = 2:6),
-          list(className = "dt-left", targets = 1)
+          list(className = "dt-left", targets = 1),
+          list(visible = FALSE, targets = 7),
+          list(orderData = 7L, targets = 6)
         ),
         rowCallback = DT::JS(
           "function(row, data) { $(row).css('cursor', 'pointer'); }"
@@ -2271,6 +2304,37 @@ server_tab7_compare <- function(input, output, session, shared) {
       class = "compact stripe nowrap"
     )
   }, server = FALSE)
+
+  # -- Lineup controls: populate players when team selected --
+
+  observeEvent(input$cmp_lu_team, {
+    team_val <- input$cmp_lu_team %||% ""
+    players_df <- normalize_players_ref(cmp_ref$players)
+    if (nzchar(team_val) && nrow(players_df)) {
+      tid <- suppressWarnings(as.integer(team_val))
+      roster <- players_df[players_df$team_id == tid, , drop = FALSE]
+      choices <- if (nrow(roster)) setNames(as.character(roster$player_id), roster$name) else setNames(integer(0), character(0))
+    } else {
+      choices <- setNames(integer(0), character(0))
+    }
+    updateSelectizeInput(session, "cmp_lu_players_on", choices = choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "cmp_lu_players_off", choices = choices, selected = character(0), server = TRUE)
+  }, ignoreInit = TRUE)
+
+  # Mutual exclusion: player can't be both on and off
+  observeEvent(input$cmp_lu_players_on, {
+    on_sel <- input$cmp_lu_players_on %||% character(0)
+    off_sel <- input$cmp_lu_players_off %||% character(0)
+    inter <- intersect(on_sel, off_sel)
+    if (length(inter)) updateSelectizeInput(session, "cmp_lu_players_off", selected = setdiff(off_sel, inter))
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cmp_lu_players_off, {
+    on_sel <- input$cmp_lu_players_on %||% character(0)
+    off_sel <- input$cmp_lu_players_off %||% character(0)
+    inter <- intersect(on_sel, off_sel)
+    if (length(inter)) updateSelectizeInput(session, "cmp_lu_players_on", selected = setdiff(on_sel, inter))
+  }, ignoreInit = TRUE)
 
   # -- Reset --
 
