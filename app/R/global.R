@@ -45,7 +45,7 @@ COLUMN_TOOLTIPS <- c(
   "Diff"        = "Net PPP impact: On-court minus Off-court",
   # Four Factors
   "TS%"         = "True Shooting: pts / (2 \u00d7 (FGA + FT trips))",
-  "OREB%"       = "Off. rebound rate: OREBs / available misses",
+  "OREB%"       = "Offense: offensive rebounds / available misses. Defense: opponent offensive rebounds allowed / available misses",
   "TOV%"        = "Turnover rate: turnovers / possessions",
   "FTR"         = "Free throw rate: FTA / FGA",
   # Shooting
@@ -81,6 +81,9 @@ COLUMN_TOOLTIPS <- c(
   "3PM" = "Three-pointers made", "3PA" = "Three-point attempts",
   "FTM" = "Free throws made", "FTA" = "Free throw attempts"
 )
+
+OFF_OREB_TOOLTIP <- "Offensive rebound rate: offensive rebounds / available misses"
+DEF_OREB_TOOLTIP <- "Opponent offensive rebound rate allowed: opponent offensive rebounds / available misses"
 
 FILTER_TOOLTIPS <- c(
   "min_poss_side"     = "Minimum OFF + DEF possessions to appear in table",
@@ -118,6 +121,11 @@ HEADER_TOOLTIP_JS <- DT::JS(paste0(
   "  cells.each(function() {",
   "    var cell = $(this);",
   "    var txt = cell.text().trim();",
+  "    var existingTitle = cell.attr('title');",
+  "    if (existingTitle) {",
+  "      cell.css('cursor', 'help');",
+  "      return;",
+  "    }",
   "    if (tips[txt]) {",
   "      cell.attr('title', tips[txt]);",
   "      cell.css('cursor', 'help');",

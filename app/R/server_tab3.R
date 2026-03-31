@@ -1672,10 +1672,10 @@ server_tab3 <- function(input, output, session, shared) {
         tr(
           th(class = "sub-head", "Team"),
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
-          th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
+          th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
-          th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
+          th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "Net")
         )
