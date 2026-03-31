@@ -250,7 +250,7 @@ ui_tab7_compare <- tabPanel(
             div(
               class = "text-muted mb-2",
               style = "font-size: .72rem;",
-              "Click a row below for a detailed team or lineup breakdown."
+              "Click a row for a detailed team or lineup breakdown."
             ),
 
             # Metric chips
