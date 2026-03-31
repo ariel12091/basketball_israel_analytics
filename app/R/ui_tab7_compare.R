@@ -52,7 +52,7 @@ ui_tab7_compare <- tabPanel(
         ),
         conditionalPanel(
           condition = "input.cmp_mode != 'Players'",
-          sliderInput("cmp_min_poss", "Min possessions", min = 0, max = 2000, value = 10, step = 10)
+          sliderInput("cmp_min_poss", tt("Min possessions", "min_poss_lineup"), min = 0, max = 2000, value = 10, step = 10)
         ),
         conditionalPanel(
           condition = "input.cmp_mode != 'Players' && input.cmp_preset == 'date_split'",
@@ -79,10 +79,10 @@ ui_tab7_compare <- tabPanel(
             tagList(
               dateRangeInput("cmp_players_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
               fluidRow(
-                column(6, selectizeInput("cmp_players_gn_min", "From Game Number (GN)",
+                column(6, selectizeInput("cmp_players_gn_min", tt("From Game Number (GN)", "gn"),
                                          choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("cmp_players_gn_max", "To Game Number (GN)",
+                column(6, selectizeInput("cmp_players_gn_max", tt("To Game Number (GN)", "gn"),
                                          choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
@@ -131,7 +131,7 @@ ui_tab7_compare <- tabPanel(
                       choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
           selectInput("cmp_a_outcome", "Win/Loss",
                       choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
-          checkboxInput("cmp_a_clutch", "Clutch", value = FALSE),
+          checkboxInput("cmp_a_clutch", tt("Clutch", "clutch"), value = FALSE),
           conditionalPanel(
             condition = "input.cmp_a_clutch == true",
             sliderInput("cmp_a_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
@@ -195,7 +195,7 @@ ui_tab7_compare <- tabPanel(
                       choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
           selectInput("cmp_b_outcome", "Win/Loss",
                       choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
-          checkboxInput("cmp_b_clutch", "Clutch", value = FALSE),
+          checkboxInput("cmp_b_clutch", tt("Clutch", "clutch"), value = FALSE),
           conditionalPanel(
             condition = "input.cmp_b_clutch == true",
             sliderInput("cmp_b_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),

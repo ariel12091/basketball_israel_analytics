@@ -44,7 +44,7 @@ ui_tab6_team_stats <- tabPanel(
           dateRangeInput("tst_dates", "Date range", start = NA, end = NA),
           selectizeInput("tst_teams", "Teams", choices = NULL, selected = character(0), multiple = TRUE,
                          options = list(placeholder = "All teams")),
-          checkboxInput("tst_clutch_enabled", "Clutch", value = FALSE),
+          checkboxInput("tst_clutch_enabled", tt("Clutch", "clutch"), value = FALSE),
           conditionalPanel(
             condition = "input.tst_clutch_enabled == true",
             sliderInput("tst_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
@@ -90,20 +90,20 @@ ui_tab6_team_stats <- tabPanel(
               fluidRow(
                 column(
                   6,
-                  selectizeInput("tst_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                  selectizeInput("tst_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                  options = list(placeholder = "Any"))
                 ),
                 column(
                   6,
-                  selectizeInput("tst_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                  selectizeInput("tst_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                  options = list(placeholder = "Any"))
                 )
               ),
-              selectizeInput("tst_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("tst_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
-              "Opponent Strength",
+              tt("Opponent Strength", "opp_strength"),
               selectInput("tst_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("tst_opp_rank_n", "Rank N", choices = c("-" = "", as.character(1:12)), selected = ""),
               selectInput("tst_opp_rank_metric", "Metric", choices = c("-" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")

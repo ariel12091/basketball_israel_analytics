@@ -32,11 +32,11 @@ ui_tab1_onoff <- tabPanel(
           selectizeInput("teams", "Teams", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All teams")),
           fluidRow(
-            column(6, selectInput("on_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("on_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("on_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           fluidRow(
-            column(6, selectInput("on_num_starters_def_mode", "Opponent lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("on_num_starters_def_mode", tt("Opponent lineup starters", "opp_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("on_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
@@ -64,16 +64,16 @@ ui_tab1_onoff <- tabPanel(
           selectInput("on_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
           tags$hr(),
           fluidRow(
-                column(6, selectizeInput("on_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("on_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("on_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("on_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
-              selectizeInput("on_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("on_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
-              "Opponent Strength",
+              tt("Opponent Strength", "opp_strength"),
               selectInput("on_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("on_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
               selectInput("on_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
@@ -82,8 +82,8 @@ ui_tab1_onoff <- tabPanel(
           ),
 
           tags$hr(),
-          sliderInput("min_all_poss", "Min possessions per side (eligibility):", min = 0, max = 2000, value = DEFAULT_MIN_ALL, step = 10),
-          sliderInput("min_on_poss", "Minimum ON possessions (for ranking):", min = 0, max = 3000, value = DEFAULT_MIN_ON, step = 10),
+          sliderInput("min_all_poss", tt("Min possessions per side (eligibility):", "min_poss_side"), min = 0, max = 2000, value = DEFAULT_MIN_ALL, step = 10),
+          sliderInput("min_on_poss", tt("Minimum ON possessions (for ranking):", "min_on_poss"), min = 0, max = 3000, value = DEFAULT_MIN_ON, step = 10),
           helpText("If rows disappear, reduce possession minimums or widen the date range."),
           tags$hr(),
           downloadButton("download_csv", "Download CSV")

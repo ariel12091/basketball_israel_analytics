@@ -21,25 +21,25 @@ ui_tab2_lineup <- tabPanel(
           id = "ld-filters", class = "collapse d-md-block",
           actionButton("ld_reset", "Reset Lineup Filters"),
           tags$hr(),
-          sliderInput("ld_minposs", "Minimum possessions (Off + Def)", min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
+          sliderInput("ld_minposs", tt("Minimum possessions (Off + Def)", "min_poss_lineup"), min = 0, max = 2000, value = LD_DEFAULT_MIN_POSS, step = 10),
           helpText("Higher minimums improve stability but remove smaller-sample lineups."),
-          radioButtons("ld_num", "Group size", choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
+          radioButtons("ld_num", tt("Group size", "group_size"), choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
           tags$hr(),
           selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
           helpText("Pick a team to enable player filtering."),
-          selectizeInput("ld_players_on", "Players On (exact/contains)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
-          selectizeInput("ld_players_off", "Players Off (exclude any)", choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
+          selectizeInput("ld_players_on", tt("Players On (exact/contains)", "players_on"), choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
+          selectizeInput("ld_players_off", tt("Players Off (exclude any)", "players_off"), choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
           fluidRow(
-            column(6, selectInput("ld_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("ld_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("ld_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           fluidRow(
-            column(6, selectInput("ld_num_starters_def_mode", "Opponent lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("ld_num_starters_def_mode", tt("Opponent lineup starters", "opp_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("ld_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
           dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
-          checkboxInput("ld_clutch_enabled", "Clutch", value = FALSE),
+          checkboxInput("ld_clutch_enabled", tt("Clutch", "clutch"), value = FALSE),
           conditionalPanel(
             condition = "input.ld_clutch_enabled == true",
             sliderInput("ld_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
@@ -68,16 +68,16 @@ ui_tab2_lineup <- tabPanel(
               selectInput("ld_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
               tags$hr(),
               fluidRow(
-                column(6, selectizeInput("ld_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("ld_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("ld_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("ld_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
-              selectizeInput("ld_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("ld_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
-              "Opponent Strength",
+              tt("Opponent Strength", "opp_strength"),
               selectInput("ld_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("ld_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
               selectInput("ld_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")

@@ -24,11 +24,11 @@ ui_tab4_gamelogs <- tabPanel(
           selectizeInput("gl_team", "Team", choices = NULL, multiple = FALSE),
           dateRangeInput("gl_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
           fluidRow(
-            column(6, selectInput("gl_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("gl_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("gl_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           fluidRow(
-            column(6, selectInput("gl_num_starters_def_mode", "Opponent lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("gl_num_starters_def_mode", tt("Opponent lineup starters", "opp_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("gl_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
@@ -64,12 +64,12 @@ ui_tab4_gamelogs <- tabPanel(
                           selected = ""),
               tags$hr(),
               fluidRow(
-                column(6, selectizeInput("gl_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("gl_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("gl_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("gl_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
-              selectizeInput("gl_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("gl_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             open = TRUE

@@ -41,7 +41,7 @@ ui_tab3_team <- tabPanel(
           actionButton("tr_reset", "Reset Filters"),
           tags$hr(),
           dateRangeInput("tr_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
-          checkboxInput("tr_clutch_enabled", "Clutch", value = FALSE),
+          checkboxInput("tr_clutch_enabled", tt("Clutch", "clutch"), value = FALSE),
           conditionalPanel(
             condition = "input.tr_clutch_enabled == true",
             sliderInput("tr_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
@@ -51,11 +51,11 @@ ui_tab3_team <- tabPanel(
             helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
           ),
           fluidRow(
-            column(6, selectInput("tr_num_starters_off_mode", "Own lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("tr_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("tr_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           fluidRow(
-            column(6, selectInput("tr_num_starters_def_mode", "Opponent lineup starters", choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+            column(6, selectInput("tr_num_starters_def_mode", tt("Opponent lineup starters", "opp_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("tr_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
@@ -78,16 +78,16 @@ ui_tab3_team <- tabPanel(
               selectInput("tr_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
               tags$hr(),
               fluidRow(
-                column(6, selectizeInput("tr_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("tr_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any"))),
-                column(6, selectizeInput("tr_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                column(6, selectizeInput("tr_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                          options = list(placeholder = "Any")))
               ),
-              selectizeInput("tr_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("tr_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
-              "Opponent Strength",
+              tt("Opponent Strength", "opp_strength"),
               selectInput("tr_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("tr_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
               selectInput("tr_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")

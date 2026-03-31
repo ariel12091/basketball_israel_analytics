@@ -40,7 +40,7 @@ ui_tab5_traditional <- tabPanel(
             )
           ),
           checkboxInput("ts_show_ineligible", "Show non-eligible players in rate modes", value = FALSE),
-          checkboxInput("ts_clutch_enabled", "Enable clutch filter", value = FALSE),
+          checkboxInput("ts_clutch_enabled", tt("Enable clutch filter", "clutch"), value = FALSE),
           conditionalPanel(
             condition = "input.ts_clutch_enabled == true",
             sliderInput("ts_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
@@ -86,20 +86,20 @@ ui_tab5_traditional <- tabPanel(
               fluidRow(
                 column(
                   6,
-                  selectizeInput("ts_gn_min", "From Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                  selectizeInput("ts_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                  options = list(placeholder = "Any"))
                 ),
                 column(
                   6,
-                  selectizeInput("ts_gn_max", "To Game Number (GN)", choices = NULL, selected = "", multiple = FALSE,
+                  selectizeInput("ts_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
                                  options = list(placeholder = "Any"))
                 )
               ),
-              selectizeInput("ts_last_n", "Last N Team Games", choices = NULL, selected = "", multiple = FALSE,
+              selectizeInput("ts_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
-              "Opponent Strength",
+              tt("Opponent Strength", "opp_strength"),
               selectInput("ts_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("ts_opp_rank_n", "Rank N", choices = c("-" = "", as.character(1:12)), selected = ""),
               selectInput("ts_opp_rank_metric", "Metric", choices = c("-" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
