@@ -247,6 +247,12 @@ ui_tab7_compare <- tabPanel(
           div(
             id = "cmp_league_container",
 
+            div(
+              class = "text-muted mb-2",
+              style = "font-size: .72rem;",
+              "Click a row below for a detailed team or lineup breakdown."
+            ),
+
             # Metric chips
             div(
               class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
