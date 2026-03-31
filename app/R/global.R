@@ -111,7 +111,7 @@ HEADER_TOOLTIP_JS <- DT::JS(paste0(
   "  var tips = ", jsonlite::toJSON(as.list(COLUMN_TOOLTIPS), auto_unbox = TRUE), ";",
   "  $(thead).find('th').each(function() {",
   "    var txt = $(this).text().trim();",
-  "    if (tips[txt]) $(this).attr('data-tooltip', tips[txt]);",
+  "    if (tips[txt]) { $(this).attr('title', tips[txt]); $(this).css('cursor','help'); }",
   "  });",
   "}"
 ))
@@ -776,7 +776,7 @@ shared_css <- HTML("
   .chip-clear-all:hover { background: rgba(248,113,113,0.1); }
 
   /* ---- Tooltips ---- */
-  [data-tooltip] { position: relative; cursor: help; }
+  [data-tooltip] { position: relative; display: inline-block; cursor: help; }
   [data-tooltip]::after {
     content: attr(data-tooltip);
     position: absolute; bottom: 100%; left: 50%;
@@ -789,10 +789,8 @@ shared_css <- HTML("
     opacity: 0; transition: opacity 0.15s 0.4s;
   }
   [data-tooltip]:hover::after { opacity: 1; }
-  /* DT header tooltips: position below since headers are at top */
-  th[data-tooltip]::after {
-    bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px;
-  }
+  /* DT headers: use native title (set by JS), hide CSS tooltip */
+  th[data-tooltip]::after { display: none; }
 ")
 
 # Shared head tags
