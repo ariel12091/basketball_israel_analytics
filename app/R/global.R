@@ -29,6 +29,93 @@ CUTS      <- seq(0.05, 0.95, by = 0.05)
 COLS_GRAD <- colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
 COLS_REV  <- rev(COLS_GRAD)
 
+# ---- Tooltip definitions ----
+COLUMN_TOOLTIPS <- c(
+  # Efficiency
+  "PPP"         = "Points per 100 possessions",
+  "Off PPP"     = "Offensive points per 100 possessions",
+  "Def PPP"     = "Defensive points per 100 possessions",
+  "Net"         = "Offensive PPP minus Defensive PPP",
+  "Net Rtg"     = "Offensive PPP minus Defensive PPP",
+  "Net RTG"     = "Offensive PPP minus Defensive PPP",
+  # On/Off diffs (Tab 1 Summary Net Impact)
+  "Off"         = "Offensive PPP diff: On-court minus Off-court",
+  "Def"         = "Defensive PPP diff: On-court minus Off-court",
+  # On/Off FF total diff
+  "Diff"        = "Net PPP impact: On-court minus Off-court",
+  # Four Factors
+  "TS%"         = "True Shooting: pts / (2 \u00d7 (FGA + FT trips))",
+  "OREB%"       = "Off. rebound rate: OREBs / available misses",
+  "TOV%"        = "Turnover rate: turnovers / possessions",
+  "FTR"         = "Free throw rate: FTA / FGA",
+  # Shooting
+  "Off Shot"    = "2PT/3PT frequency and accuracy split",
+  "Def Shot"    = "2PT/3PT frequency and accuracy split",
+  "FG%"         = "Field goal percentage",
+  "3P%"         = "Three-point percentage",
+  "FT%"         = "Free throw percentage",
+  "eFG%"        = "Effective FG%: (FGM + 0.5 x 3PM) / FGA",
+  # Usage / Volume
+  "On Poss"     = "Possessions while player is on court",
+  "Off Poss"    = "Possessions while player is off court",
+  "Poss"        = "Number of possessions",
+  "Total Poss"  = "Offensive + Defensive possessions",
+  "Def Poss"    = "Defensive possessions",
+  "Min"         = "Minutes played",
+  "GP"          = "Games played",
+  "Poss On Floor" = "Total possessions while player on court",
+  "# Starters"  = "Number of starters in this lineup",
+  # Game context
+  "GN"          = "Team's sequential game number this season",
+  "W/L"         = "Win or Loss",
+  "+/-"         = "Point differential while lineup was on court",
+  "Off Pace"    = "Offensive possessions per 40 minutes",
+  "Def Pace"    = "Defensive possessions per 40 minutes",
+  # Traditional
+  "PTS" = "Points", "REB" = "Rebounds", "OREB" = "Offensive rebounds",
+  "DREB" = "Defensive rebounds", "AST" = "Assists", "STL" = "Steals",
+  "BLK" = "Blocks", "TOV" = "Turnovers",
+  "FGM" = "Field goals made", "FGA" = "Field goal attempts",
+  "3PM" = "Three-pointers made", "3PA" = "Three-point attempts",
+  "FTM" = "Free throws made", "FTA" = "Free throw attempts"
+)
+
+FILTER_TOOLTIPS <- c(
+  "min_poss_side"     = "Minimum OFF + DEF possessions to appear in table",
+  "min_on_poss"       = "Minimum ON-court possessions for percentile ranking",
+  "own_starters"      = "Filter by number of starters in the team's lineup",
+  "opp_starters"      = "Filter by number of starters in the opposing lineup",
+  "gn"                = "Team's sequential game number this season",
+  "last_n"            = "Only include the team's most recent N games",
+  "opp_strength"      = "Filter games by opponent's league ranking",
+  "clutch"            = "Close-game situations: margin, time remaining, score status",
+  "group_size"        = "Number of players in each lineup combination (2-5)",
+  "players_on"        = "Lineups must include all selected players",
+  "players_off"       = "Lineups must exclude all selected players",
+  "min_poss_lineup"   = "Minimum total possessions for lineup to appear",
+  "view_summary"      = "PPP ratings and shooting splits",
+  "view_ff"           = "TS%, OREB%, TOV%, FTR breakdown",
+  "view_traditional"  = "Box-score counting stats"
+)
+
+# Tooltip-wrapped label for sidebar inputs
+tt <- function(label, key) {
+  tip <- FILTER_TOOLTIPS[[key]]
+  if (is.null(tip)) return(label)
+  tags$span(label, `data-tooltip` = tip)
+}
+
+# Shared JS headerCallback for DT tables — injects data-tooltip on th elements
+HEADER_TOOLTIP_JS <- DT::JS(paste0(
+  "function(thead, data, start, end, display) {",
+  "  var tips = ", jsonlite::toJSON(as.list(COLUMN_TOOLTIPS), auto_unbox = TRUE), ";",
+  "  $(thead).find('th').each(function() {",
+  "    var txt = $(this).text().trim();",
+  "    if (tips[txt]) $(this).attr('data-tooltip', tips[txt]);",
+  "  });",
+  "}"
+))
+
 # Adaptive baseline: use RANKING_BASELINE when enough data qualifies,
 # otherwise lower to the 75th-percentile so ~25% still get colored.
 adaptive_baseline <- function(poss_vec) {
@@ -687,6 +774,25 @@ shared_css <- HTML("
     padding: 4px 10px; white-space: nowrap; transition: all 0.2s;
   }
   .chip-clear-all:hover { background: rgba(248,113,113,0.1); }
+
+  /* ---- Tooltips ---- */
+  [data-tooltip] { position: relative; cursor: help; }
+  [data-tooltip]::after {
+    content: attr(data-tooltip);
+    position: absolute; bottom: 100%; left: 50%;
+    transform: translateX(-50%); margin-bottom: 6px;
+    background: #1c2333; color: #e6edf3; border: 1px solid #30363d;
+    font-size: 0.72rem; font-weight: 400; line-height: 1.4;
+    padding: 5px 9px; border-radius: 6px; white-space: normal;
+    max-width: 260px; width: max-content;
+    z-index: 9999; pointer-events: none;
+    opacity: 0; transition: opacity 0.15s 0.4s;
+  }
+  [data-tooltip]:hover::after { opacity: 1; }
+  /* DT header tooltips: position below since headers are at top */
+  th[data-tooltip]::after {
+    bottom: auto; top: 100%; margin-bottom: 0; margin-top: 6px;
+  }
 ")
 
 # Shared head tags
