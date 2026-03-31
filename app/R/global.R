@@ -49,21 +49,23 @@ COLUMN_TOOLTIPS <- c(
   "TOV%"        = "Turnover rate: turnovers / possessions",
   "FTR"         = "Free throw rate: FTA / FGA",
   # Shooting
-  "Off Shot"    = "2PT/3PT frequency and accuracy split",
-  "Def Shot"    = "2PT/3PT frequency and accuracy split",
+  "Off Shot"    = "Offensive 2PT/3PT frequency and accuracy split",
+  "Def Shot"    = "Defensive 2PT/3PT frequency and accuracy split",
   "FG%"         = "Field goal percentage",
   "3P%"         = "Three-point percentage",
   "FT%"         = "Free throw percentage",
   "eFG%"        = "Effective FG%: (FGM + 0.5 x 3PM) / FGA",
   # Usage / Volume
-  "On Poss"     = "Possessions while player is on court",
-  "Off Poss"    = "Possessions while player is off court",
-  "Poss"        = "Number of possessions",
-  "Total Poss"  = "Offensive + Defensive possessions",
+  "On Poss"     = "On-court possessions for this player or split",
+  "ON Poss"     = "On-court possessions for this player or split",
+  "Off Poss"    = "Offensive possessions",
+  "OFF Poss"    = "Off-court possessions for this player or split",
+  "Poss"        = "Number of possessions in this row or split",
+  "Total Poss"  = "Total offensive plus defensive possessions",
   "Def Poss"    = "Defensive possessions",
   "Min"         = "Minutes played",
   "GP"          = "Games played",
-  "Poss On Floor" = "Total possessions while player on court",
+  "Poss On Floor" = "Total possessions while this player was on the floor",
   "# Starters"  = "Number of starters in this lineup",
   # Game context
   "GN"          = "Team's sequential game number this season",
@@ -85,14 +87,15 @@ FILTER_TOOLTIPS <- c(
   "min_on_poss"       = "Minimum ON-court possessions for percentile ranking",
   "own_starters"      = "Filter by number of starters in the team's lineup",
   "opp_starters"      = "Filter by number of starters in the opposing lineup",
-  "gn"                = "Team's sequential game number this season",
-  "last_n"            = "Only include the team's most recent N games",
-  "opp_strength"      = "Filter games by opponent's league ranking",
-  "clutch"            = "Close-game situations: margin, time remaining, score status",
+  "gn"                = "Sequential game number within a team's season; player and team views both use the team's GN",
+  "last_n"            = "Only include the most recent N games in the selected team context",
+  "opp_strength"      = "Filter games by the opponent's league ranking over the selected sample",
+  "clutch"            = "Limit results to close-game situations based on margin, time remaining, and score status",
   "group_size"        = "Number of players in each lineup combination (2-5)",
+  "quick_preset"      = "Apply a prebuilt compare split like starters vs bench, clutch vs non-clutch, or date/GN split",
   "players_on"        = "Lineups must include all selected players",
   "players_off"       = "Lineups must exclude all selected players",
-  "min_poss_lineup"   = "Minimum total possessions for lineup to appear",
+  "min_poss_lineup"   = "Minimum total possessions required for the lineup, team, or compare side to appear",
   "view_summary"      = "PPP ratings and shooting splits",
   "view_ff"           = "TS%, OREB%, TOV%, FTR breakdown",
   "view_traditional"  = "Box-score counting stats"
@@ -109,9 +112,18 @@ tt <- function(label, key) {
 HEADER_TOOLTIP_JS <- DT::JS(paste0(
   "function(thead, data, start, end, display) {",
   "  var tips = ", jsonlite::toJSON(as.list(COLUMN_TOOLTIPS), auto_unbox = TRUE), ";",
-  "  $(thead).find('th').each(function() {",
-  "    var txt = $(this).text().trim();",
-  "    if (tips[txt]) { $(this).attr('title', tips[txt]); $(this).css('cursor','help'); }",
+  "  var api = this.api();",
+  "  var container = $(api.table().container());",
+  "  var cells = container.find('thead th, .dataTables_scrollHead th');",
+  "  cells.each(function() {",
+  "    var cell = $(this);",
+  "    var txt = cell.text().trim();",
+  "    if (tips[txt]) {",
+  "      cell.attr('title', tips[txt]);",
+  "      cell.css('cursor', 'help');",
+  "    } else {",
+  "      cell.removeAttr('title');",
+  "    }",
   "  });",
   "}"
 ))
@@ -789,6 +801,13 @@ shared_css <- HTML("
     opacity: 0; transition: opacity 0.15s 0.4s;
   }
   [data-tooltip]:hover::after { opacity: 1; }
+  /* Sidebar labels sit against the viewport edge, so anchor tooltips from the left. */
+  .well [data-tooltip]::after,
+  .sidebar [data-tooltip]::after,
+  div[class*='col-sm-3'] > div [data-tooltip]::after {
+    left: 0;
+    transform: none;
+  }
   /* DT headers: use native title (set by JS), hide CSS tooltip */
   th[data-tooltip]::after { display: none; }
 ")
@@ -801,7 +820,7 @@ shared_head_tags <- function() {
     tags$link(rel = "stylesheet", href = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
     tags$style(shared_css),
     tags$script(HTML("
-      $(function() {
+      window.applyViewModeTooltips = function() {
         var viewTips = {
           'Summary': 'PPP ratings and shooting splits',
           'Four Factors': 'TS%, OREB%, TOV%, FTR breakdown',
@@ -810,6 +829,12 @@ shared_head_tags <- function() {
         $('.view-mode-container .radio label, .view-mode-container .shiny-options-group label').each(function() {
           var txt = $(this).text().trim();
           if (viewTips[txt]) $(this).attr('data-tooltip', viewTips[txt]);
+        });
+      };
+      $(function() {
+        window.applyViewModeTooltips();
+        $(document).on('shiny:connected shiny:value', function() {
+          window.applyViewModeTooltips();
         });
       });
     "))

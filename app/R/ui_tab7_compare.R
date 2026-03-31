@@ -39,7 +39,7 @@ ui_tab7_compare <- tabPanel(
         # Preset dropdown (teams/lineups only)
         conditionalPanel(
           condition = "input.cmp_mode != 'Players'",
-          selectInput("cmp_preset", "Quick preset",
+          selectInput("cmp_preset", tt("Quick preset", "quick_preset"),
                       choices = c("\u2014 Custom \u2014" = "",
                                   "Starters vs Bench" = "starters_bench",
                                   "Clutch vs Non-Clutch" = "clutch",

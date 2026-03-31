@@ -782,14 +782,18 @@ server_tab2 <- function(input, output, session, shared) {
              var c2 = muted ? '#bbb' : accColor(fg2pct, avg2);
              var c3 = muted ? '#bbb' : accColor(fg3pct, avg3);
              var barOpacity = muted ? 'opacity:0.3;' : '';
+             var title2pct = '2PT accuracy: ' + fg2pct + '%% (' + fg2m + '/' + fg2a + ')';
+             var title3pct = '3PT accuracy: ' + fg3pct + '%% (' + fg3m + '/' + fg3a + ')';
+             var title2freq = '2PT frequency: ' + fg2freq + '%% of FGA (' + fg2a + '/' + totalFGA + ')';
+             var title3freq = '3PT frequency: ' + fg3freq + '%% of FGA (' + fg3a + '/' + totalFGA + ')';
              return '<div class=\"shot-acc-label\">' +
-               '<span style=\"color:' + c2 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg2pct + '%%</span>' +
+               '<span title=\"' + title2pct + '\" style=\"color:' + c2 + '; font-weight:' + (muted ? '400' : '700') + '; cursor:help;\">' + fg2pct + '%%</span>' +
                ' <span style=\"opacity:0.3;\">|</span> ' +
-               '<span style=\"color:' + c3 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg3pct + '%%</span>' +
+               '<span title=\"' + title3pct + '\" style=\"color:' + c3 + '; font-weight:' + (muted ? '400' : '700') + '; cursor:help;\">' + fg3pct + '%%</span>' +
                '</div>' +
                '<div class=\"shot-bar-container\" style=\"' + barOpacity + '\">' +
-               '<div class=\"shot-bar-2pt\" style=\"width:' + fg2freq + '%%\">' + fg2freq + '%%</div>' +
-               '<div class=\"shot-bar-3pt\" style=\"width:' + fg3freq + '%%\">' + fg3freq + '%%</div>' +
+               '<div class=\"shot-bar-2pt\" title=\"' + title2freq + '\" style=\"width:' + fg2freq + '%%; cursor:help;\">' + fg2freq + '%%</div>' +
+               '<div class=\"shot-bar-3pt\" title=\"' + title3freq + '\" style=\"width:' + fg3freq + '%%; cursor:help;\">' + fg3freq + '%%</div>' +
                '</div>';
            }", fg2m_idx, fg2a_idx, fg3m_idx, fg3a_idx, min_fga, sign_mult, avg2, avg3
         )
@@ -1155,14 +1159,18 @@ server_tab2 <- function(input, output, session, shared) {
                var c2 = muted ? '#bbb' : accColor(fg2pct, avg2);
                var c3 = muted ? '#bbb' : accColor(fg3pct, avg3);
                var barOpacity = muted ? 'opacity:0.3;' : '';
+               var title2pct = '2PT accuracy: ' + fg2pct + '%% (' + fg2m + '/' + fg2a + ')';
+               var title3pct = '3PT accuracy: ' + fg3pct + '%% (' + fg3m + '/' + fg3a + ')';
+               var title2freq = '2PT frequency: ' + fg2freq + '%% of FGA (' + fg2a + '/' + totalFGA + ')';
+               var title3freq = '3PT frequency: ' + fg3freq + '%% of FGA (' + fg3a + '/' + totalFGA + ')';
                return '<div class=\"shot-acc-label\">' +
-                 '<span style=\"color:' + c2 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg2pct + '%%</span>' +
+                 '<span title=\"' + title2pct + '\" style=\"color:' + c2 + '; font-weight:' + (muted ? '400' : '700') + '; cursor:help;\">' + fg2pct + '%%</span>' +
                  ' <span style=\"opacity:0.3;\">|</span> ' +
-                 '<span style=\"color:' + c3 + '; font-weight:' + (muted ? '400' : '700') + ';\">' + fg3pct + '%%</span>' +
+                 '<span title=\"' + title3pct + '\" style=\"color:' + c3 + '; font-weight:' + (muted ? '400' : '700') + '; cursor:help;\">' + fg3pct + '%%</span>' +
                  '</div>' +
                  '<div class=\"shot-bar-container\" style=\"' + barOpacity + '\">' +
-                 '<div class=\"shot-bar-2pt\" style=\"width:' + fg2freq + '%%\">' + fg2freq + '%%</div>' +
-                 '<div class=\"shot-bar-3pt\" style=\"width:' + fg3freq + '%%\">' + fg3freq + '%%</div>' +
+                 '<div class=\"shot-bar-2pt\" title=\"' + title2freq + '\" style=\"width:' + fg2freq + '%%; cursor:help;\">' + fg2freq + '%%</div>' +
+                 '<div class=\"shot-bar-3pt\" title=\"' + title3freq + '\" style=\"width:' + fg3freq + '%%; cursor:help;\">' + fg3freq + '%%</div>' +
                  '</div>';
              }", fg2m_i, fg2a_i, fg3m_i, fg3a_i, min_fga, sign_mult, avg2, avg3))
         }

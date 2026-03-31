@@ -2449,15 +2449,26 @@ server_tab7_compare <- function(input, output, session, shared) {
         headerCallback = DT::JS(sprintf("
           function(thead, data, start, end, display) {
             var cells = $(thead).find('th');
+            var tips = %s;
             var badgeStyle = 'display:inline-block;border-radius:50%%;padding:2px 8px;font-size:.7rem;font-weight:600;';
             var aStyle = badgeStyle + 'background:rgba(123,140,222,.2);color:#7b8cde;border:1px solid rgba(123,140,222,.4);';
             var bStyle = badgeStyle + 'background:rgba(232,164,53,.15);color:#e8a435;border:1px solid rgba(232,164,53,.35);';
+            cells.each(function() {
+              var cell = $(this);
+              var txt = cell.text().trim();
+              if (tips[txt]) {
+                cell.attr('title', tips[txt]);
+                cell.css('cursor', 'help');
+              } else {
+                cell.removeAttr('title');
+              }
+            });
             var aText = $(cells[%d]).text().trim();
             var bText = $(cells[%d]).text().trim();
             if (aText === 'A') $(cells[%d]).html('<span style=\"' + aStyle + '\">A</span>');
             if (bText === 'B') $(cells[%d]).html('<span style=\"' + bStyle + '\">B</span>');
           }
-        ", a_header_idx, b_header_idx, a_header_idx, b_header_idx))
+        ", jsonlite::toJSON(as.list(COLUMN_TOOLTIPS), auto_unbox = TRUE), a_header_idx, b_header_idx, a_header_idx, b_header_idx))
       ),
       rownames = FALSE, selection = "none",
       class = "compact stripe nowrap"
