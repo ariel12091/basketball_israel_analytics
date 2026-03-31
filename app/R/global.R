@@ -90,6 +90,7 @@ FILTER_TOOLTIPS <- c(
   "opp_strength"      = "Filter games by opponent's league ranking",
   "clutch"            = "Close-game situations: margin, time remaining, score status",
   "group_size"        = "Number of players in each lineup combination (2-5)",
+  "quick_preset"      = "Apply a prebuilt compare split like starters vs bench, clutch vs non-clutch, or date/GN split",
   "players_on"        = "Lineups must include all selected players",
   "players_off"       = "Lineups must exclude all selected players",
   "min_poss_lineup"   = "Minimum total possessions for lineup to appear",
@@ -109,9 +110,18 @@ tt <- function(label, key) {
 HEADER_TOOLTIP_JS <- DT::JS(paste0(
   "function(thead, data, start, end, display) {",
   "  var tips = ", jsonlite::toJSON(as.list(COLUMN_TOOLTIPS), auto_unbox = TRUE), ";",
-  "  $(thead).find('th').each(function() {",
-  "    var txt = $(this).text().trim();",
-  "    if (tips[txt]) { $(this).attr('title', tips[txt]); $(this).css('cursor','help'); }",
+  "  var api = this.api();",
+  "  var container = $(api.table().container());",
+  "  var cells = container.find('thead th, .dataTables_scrollHead th');",
+  "  cells.each(function() {",
+  "    var cell = $(this);",
+  "    var txt = cell.text().trim();",
+  "    if (tips[txt]) {",
+  "      cell.attr('title', tips[txt]);",
+  "      cell.css('cursor', 'help');",
+  "    } else {",
+  "      cell.removeAttr('title');",
+  "    }",
   "  });",
   "}"
 ))
@@ -801,7 +811,7 @@ shared_head_tags <- function() {
     tags$link(rel = "stylesheet", href = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"),
     tags$style(shared_css),
     tags$script(HTML("
-      $(function() {
+      window.applyViewModeTooltips = function() {
         var viewTips = {
           'Summary': 'PPP ratings and shooting splits',
           'Four Factors': 'TS%, OREB%, TOV%, FTR breakdown',
@@ -810,6 +820,12 @@ shared_head_tags <- function() {
         $('.view-mode-container .radio label, .view-mode-container .shiny-options-group label').each(function() {
           var txt = $(this).text().trim();
           if (viewTips[txt]) $(this).attr('data-tooltip', viewTips[txt]);
+        });
+      };
+      $(function() {
+        window.applyViewModeTooltips();
+        $(document).on('shiny:connected shiny:value', function() {
+          window.applyViewModeTooltips();
         });
       });
     "))
