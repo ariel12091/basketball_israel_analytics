@@ -87,7 +87,7 @@ ui_tab3_team <- tabPanel(
                              options = list(placeholder = "Any"))
             ),
             bslib::accordion_panel(
-              tt("Opponent Strength", "opp_strength"),
+              tt("Opponent Strength", "opp_strength"), value = "Opponent Strength",
               selectInput("tr_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
               selectInput("tr_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
               selectInput("tr_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
