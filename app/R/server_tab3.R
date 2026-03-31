@@ -1331,7 +1331,7 @@ server_tab3 <- function(input, output, session, shared) {
       DT::datatable(
         data.frame(Info = msg, check.names = FALSE),
         rownames = FALSE,
-        options = list(dom = "t")
+        options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t")
       )
     }
 
@@ -1487,6 +1487,7 @@ server_tab3 <- function(input, output, session, shared) {
         disp, rownames = FALSE,
         escape = FALSE,
         options = list(
+          headerCallback = HEADER_TOOLTIP_JS,
           dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
           columnDefs = c(list(
             list(className = "dt-center", targets = "_all"),
@@ -1697,6 +1698,7 @@ server_tab3 <- function(input, output, session, shared) {
 
       dt <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE, escape = FALSE,
                           options = list(
+                            headerCallback = HEADER_TOOLTIP_JS,
                             dom = "t", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
@@ -1787,7 +1789,7 @@ server_tab3 <- function(input, output, session, shared) {
         list(targets = which(names(disp_df) == "def_ppp") - 1L, orderData = which(names(disp_df) == "sort_def_ppp") - 1L, orderSequence = list("asc", "desc")),
         list(targets = which(names(disp_df) == "net_rtg") - 1L, orderData = which(names(disp_df) == "sort_net_rtg") - 1L, orderSequence = list("desc", "asc"))
       )
-      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, escape = FALSE, options = list(dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = c(list(list(className = 'dt-center', targets = "_all"), list(visible = FALSE, targets = summary_hidden)), summary_order_defs))) %>%
+      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, escape = FALSE, options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = c(list(list(className = 'dt-center', targets = "_all"), list(visible = FALSE, targets = summary_hidden)), summary_order_defs))) %>%
         formatRound(c("off_pace", "def_pace"), 1) %>%
         formatCurrency(c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0) %>%
         formatStyle(columns = c("net_rtg", "off_ppp", "def_ppp"), valueColumns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
@@ -1802,7 +1804,7 @@ server_tab3 <- function(input, output, session, shared) {
       DT::datatable(
         data.frame(Error = msg, check.names = FALSE),
         rownames = FALSE,
-        options = list(dom = "t")
+        options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t")
       )
     })
   })

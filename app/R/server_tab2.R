@@ -656,6 +656,7 @@ server_tab2 <- function(input, output, session, shared) {
 
       dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE, escape = FALSE,
                           options = list(
+                            headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
                             lengthMenu = c(25, 50, 100, 200),
                             orderFixed = list(list(0, 'asc')),
@@ -855,7 +856,7 @@ server_tab2 <- function(input, output, session, shared) {
                              list(targets = sum_players_idx, render = sum_players_render)),
                         shot_col_defs)
 
-      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, escape = FALSE, filter = "top", options = list(pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)) |>
+      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, escape = FALSE, filter = "top", options = list(headerCallback = HEADER_TOOLTIP_JS, pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)) |>
         DT::formatRound(c("off_ppp", "def_ppp", "net_rtg", "minutes")[c("off_ppp", "def_ppp", "net_rtg", "minutes") %in% names(df)], 1) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
@@ -1036,6 +1037,7 @@ server_tab2 <- function(input, output, session, shared) {
 
         dt_ff <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE, escape = FALSE,
                               options = list(
+                                headerCallback = HEADER_TOOLTIP_JS,
                                 dom = "tip", pageLength = 50,
                                 deferRender = TRUE, scrollX = TRUE,
                                 scrollY = "60vh", scrollCollapse = TRUE,
@@ -1233,6 +1235,7 @@ server_tab2 <- function(input, output, session, shared) {
 
         dt_m <- DT::datatable(disp_m, container = sketch_m, rownames = FALSE, escape = FALSE,
                               options = list(
+                                headerCallback = HEADER_TOOLTIP_JS,
                                 dom = "tip", pageLength = 50,
                                 deferRender = TRUE, scrollX = TRUE,
                                 scrollY = "60vh", scrollCollapse = TRUE,

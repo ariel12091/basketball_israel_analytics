@@ -821,7 +821,7 @@ server_tab1 <- function(input, output, session, shared) {
       )))
 
       dt <- datatable(df, container = sketch_summary, rownames = FALSE,
-                      options = list(dom = "tip", pageLength = 30, scrollX = TRUE,
+                      options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "tip", pageLength = 30, scrollX = TRUE,
                                      scrollY = "70vh", scrollCollapse = TRUE,
                                      order = list(list(which(names(df) == "Net RTG Diff") - 1, "desc")),
                                      columnDefs = c(list(
@@ -1021,6 +1021,7 @@ server_tab1 <- function(input, output, session, shared) {
       dt <- datatable(df_final,
                       container = sketch_ff, rownames = FALSE, escape = FALSE,
                       options = list(
+                        headerCallback = HEADER_TOOLTIP_JS,
                         dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE,
                         scrollY = "70vh", scrollCollapse = TRUE,
                         order = list(list(2, "desc")),

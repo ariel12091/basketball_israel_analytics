@@ -695,6 +695,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
       rownames = FALSE,
       escape = FALSE,
       options = list(
+        headerCallback = HEADER_TOOLTIP_JS,
         dom = "tip",
         pageLength = 50,
         deferRender = TRUE,

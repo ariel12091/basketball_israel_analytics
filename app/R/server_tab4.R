@@ -533,6 +533,7 @@ server_tab4 <- function(input, output, session, shared) {
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE, escape = FALSE,
                           options = list(
+                            headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
@@ -610,6 +611,7 @@ server_tab4 <- function(input, output, session, shared) {
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE, escape = FALSE,
                           options = list(
+                            headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,

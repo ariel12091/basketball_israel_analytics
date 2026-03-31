@@ -610,6 +610,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       disp,
       rownames = FALSE,
       options = list(
+        headerCallback = HEADER_TOOLTIP_JS,
         dom = "tip",
         pageLength = 50,
         deferRender = TRUE,
