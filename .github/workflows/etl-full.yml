@@ -22,6 +22,8 @@ on:
 
 jobs:
   etl:
+    permissions:
+      contents: write
     runs-on: windows-latest
     timeout-minutes: 180
 
@@ -120,7 +122,7 @@ jobs:
           }
 
       - name: Ensure cold-storage release exists
-        if: success()
+        if: ${{ success() && hashFiles('exports/cold/*.parquet') != '' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
