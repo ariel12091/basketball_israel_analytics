@@ -248,6 +248,33 @@ ui_tab7_compare <- tabPanel(
             "Click any row in League view for a detailed breakdown of that team or lineup."
           )
         ),
+        tags$a(
+          href = "#",
+          class = "explainer-toggle",
+          onclick = "return false;",
+          `data-bs-toggle` = "collapse",
+          `data-bs-target` = "#compare-example-box",
+          "Show/Hide Example"
+        ),
+        div(
+          id = "compare-example-box",
+          class = "collapse",
+          div(
+            class = "example-grid",
+            div(
+              class = "example-card",
+              div(class = "example-card-title", "How to Read Compare (Real Example)"),
+              tags$p(style = "margin-bottom: 6px;", "Using the Starters vs Bench preset: Side A (3+ starters) averages -0.2 Net Rtg across 1,048 possessions, while Side B (2 or fewer starters) averages +1.2 across 375 possessions."),
+              tags$p(style = "margin-bottom: 6px;", "The table breaks this down per team. Maccabi Tel Aviv's starters lead the league with a +17.6 gap over their bench."),
+              tags$p(style = "margin-bottom: 0;", "Use metric chips (Offense, Defense, TS%, etc.) to switch which stat drives the comparison. Click any row for a full detail breakdown.")
+            ),
+            div(
+              class = "example-snippet",
+              tags$img(src = app_image_src("compare-row-snippet.png"), alt = "Compare tab table snippet"),
+              div(class = "example-snippet-caption", "Real Compare snippet (Starters vs Bench)")
+            )
+          )
+        ),
 
         # ── Teams / Lineups mode ──
         conditionalPanel(
