@@ -244,7 +244,7 @@ ui_tab7_compare <- tabPanel(
           intro = "How do two situations compare side-by-side: starters vs bench, home vs away, clutch vs non-clutch, or any custom split?",
           bullets = c(
             "Use presets for common splits (starters vs bench, clutch, home/away) or build your own with side A and B filters.",
-            "Switch between Teams, Lineups, and Players mode in the sidebar.",
+            "Teams and Lineups modes compare the same team/lineup to itself under two different conditions (e.g. home vs away, clutch vs non-clutch). Players mode compares different players to each other under the same conditions.",
             "Click any row in League view for a detailed breakdown of that team or lineup."
           )
         ),
