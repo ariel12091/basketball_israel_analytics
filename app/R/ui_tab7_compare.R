@@ -42,6 +42,7 @@ ui_tab7_compare <- tabPanel(
           selectInput("cmp_preset", tt("Quick preset", "quick_preset"),
                       choices = c("\u2014 Custom \u2014" = "",
                                   "Starters vs Bench" = "starters_bench",
+                                  "Vs Starters vs Vs Bench" = "opp_starters_bench",
                                   "Clutch vs Non-Clutch" = "clutch",
                                   "Home vs Away" = "home_away",
                                   "Win vs Loss" = "win_loss",
@@ -114,11 +115,19 @@ ui_tab7_compare <- tabPanel(
           # Starters filter (Teams + Lineups only)
           conditionalPanel(
             condition = "input.cmp_mode != 'Players'",
-            fluidRow(
-              column(6, selectInput("cmp_a_starters_mode", "Starters",
+            tagList(
+              fluidRow(
+                column(6, selectInput("cmp_a_starters_mode", tt("Own lineup starters", "own_starters"),
                                     choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-              column(6, selectInput("cmp_a_starters_val", "Value",
+                column(6, selectInput("cmp_a_starters_val", "Own value",
                                     choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+              ),
+              fluidRow(
+                column(6, selectInput("cmp_a_opp_starters_mode", tt("Opponent lineup starters", "opp_starters"),
+                                    choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+                column(6, selectInput("cmp_a_opp_starters_val", "Opp value",
+                                    choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+              )
             )
           ),
           conditionalPanel(
@@ -178,11 +187,19 @@ ui_tab7_compare <- tabPanel(
 
           conditionalPanel(
             condition = "input.cmp_mode != 'Players'",
-            fluidRow(
-              column(6, selectInput("cmp_b_starters_mode", "Starters",
+            tagList(
+              fluidRow(
+                column(6, selectInput("cmp_b_starters_mode", tt("Own lineup starters", "own_starters"),
                                     choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-              column(6, selectInput("cmp_b_starters_val", "Value",
+                column(6, selectInput("cmp_b_starters_val", "Own value",
                                     choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+              ),
+              fluidRow(
+                column(6, selectInput("cmp_b_opp_starters_mode", tt("Opponent lineup starters", "opp_starters"),
+                                    choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+                column(6, selectInput("cmp_b_opp_starters_val", "Opp value",
+                                    choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+              )
             )
           ),
           conditionalPanel(
@@ -221,6 +238,16 @@ ui_tab7_compare <- tabPanel(
 
       mainPanel(
         width = 9,
+        tab_explainer(
+          id = "compare_explainer",
+          title = "What This Tab Answers",
+          intro = "How do two situations compare side-by-side: starters vs bench, home vs away, clutch vs non-clutch, or any custom split?",
+          bullets = c(
+            "Use presets for common splits (starters vs bench, clutch, home/away) or build your own with side A and B filters.",
+            "Switch between Teams, Lineups, and Players mode in the sidebar.",
+            "Click any row in League view for a detailed breakdown of that team or lineup."
+          )
+        ),
 
         # ── Teams / Lineups mode ──
         conditionalPanel(

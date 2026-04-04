@@ -122,15 +122,15 @@ ui_tab1_onoff <- tabPanel(
                 div(class = "example-card-title", "How to Read On/Off (Real Example)"),
                 tags$p(
                   style = "margin-bottom: 6px;",
-                  "In this example, Hapoel Tel Aviv is better with Tyler Ennis on the floor by +29.5 points per 100 possessions."
+                  "In this example, Maccabi Tel Aviv is better with Jimmy Clark III on the floor by +28.1 points per 100 possessions."
                 ),
                 tags$p(
                   style = "margin-bottom: 6px;",
-                  "That comes from offense being +15.7 points better and defense being 13.8 points better (shown as Def Diff -13.8, because lower defensive PPP allowed is better)."
+                  "That comes from offense being +14.4 points better and defense being 13.7 points better (shown as Def -13.7, because lower defensive PPP allowed is better)."
                 ),
                 tags$p(
                   style = "margin-bottom: 0;",
-                  "With him on court, Hapoel scores 129.4 and allows 93.2. With him off court, they score 113.7 and allow 107.0."
+                  "With him on court, Maccabi scores 135.5 and allows 101.1. With him off court, they score 121.1 and allow 114.8."
                 )
               ),
               div(
@@ -169,9 +169,9 @@ ui_tab1_onoff <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "Darius Hannah (Kiryat Ata) shows Net Diff +23.5 with Off Diff +14.0 and Def Diff -9.5."),
-                tags$p(style = "margin-bottom: 6px;", "Offense factors: TS% Diff +9.1 and OREB% Diff +2.4 support stronger on-court offense."),
-                tags$p(style = "margin-bottom: 0;", "Usage is substantial (633 ON possessions vs 676 OFF possessions), so this is a stable directional signal.")
+                tags$p(style = "margin-bottom: 6px;", "Jimmy Clark III (Maccabi Tel Aviv) shows Diff +28.1 with Off Diff +14.4 and Def Diff -13.7."),
+                tags$p(style = "margin-bottom: 6px;", "Offense factors: TS% Diff +7.7 explains most of the offensive edge, while OREB% Diff -1.3 is slightly negative."),
+                tags$p(style = "margin-bottom: 0;", "Defense factors: OREB% Diff +2.2 and TOV% Diff +5.8 show opponents rebound and turn the ball over more with Clark on court.")
               ),
               div(
                 class = "example-snippet",

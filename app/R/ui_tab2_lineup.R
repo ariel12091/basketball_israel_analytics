@@ -116,9 +116,9 @@ ui_tab2_lineup <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Lineup Data (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "This lineup (Maccabi Ramat Gan) has Off PPP 119.3 and Def PPP 97.8, so Net RTG is +21.5."),
-                tags$p(style = "margin-bottom: 6px;", "That means this five-man unit outscores opponents by 21.5 points per 100 possessions while on court."),
-                tags$p(style = "margin-bottom: 0;", "Sample size here is meaningful: 93.7 minutes and 364 total possessions.")
+                tags$p(style = "margin-bottom: 6px;", "This Rishon Lezion lineup has Off PPP 109.6 and Def PPP 111.8, so Net RTG is -2.2."),
+                tags$p(style = "margin-bottom: 6px;", "That means this five-man unit is outscored by 2.2 points per 100 possessions while on court."),
+                tags$p(style = "margin-bottom: 0;", "Sample size here is meaningful: 153.8 minutes and 560 total possessions.")
               ),
               div(
                 class = "example-snippet",
@@ -156,9 +156,9 @@ ui_tab2_lineup <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "This Maccabi Ramat Gan lineup has Off PPP 119.3 vs Def PPP 97.8, giving Net +21.5."),
-                tags$p(style = "margin-bottom: 6px;", "Offense profile is strong (TS% 58.7, OREB% 29.2) while defense holds opponents to 50.9 TS% and 97.8 PPP."),
-                tags$p(style = "margin-bottom: 0;", "Workload is substantial (93.7 minutes, 364 total possessions), so factor-level interpretation is more reliable.")
+                tags$p(style = "margin-bottom: 6px;", "This Rishon Lezion lineup has Off PPP 109.6 vs Def PPP 111.8, giving Net -2.2."),
+                tags$p(style = "margin-bottom: 6px;", "Offense profile: TS% 50.5 and OREB% 33.8. Defense allows 111.8 PPP with opponents shooting 57.6 TS%."),
+                tags$p(style = "margin-bottom: 0;", "Workload is substantial (153.8 minutes, 560 total possessions), so factor-level interpretation is reliable.")
               ),
               div(
                 class = "example-snippet",

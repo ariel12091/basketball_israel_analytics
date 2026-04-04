@@ -126,9 +126,9 @@ ui_tab3_team <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Team Ratings (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv shows Off PPP 126.4 and Def PPP 107.2, which gives Net RTG +19.2."),
-                tags$p(style = "margin-bottom: 6px;", "So over 100 possessions, they outperform opponents by 19.2 points."),
-                tags$p(style = "margin-bottom: 0;", "The same row also shows context: 17 games and a 15-2 record.")
+                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv shows Off PPP 128.3 and Def PPP 108.0, which gives Net RTG +20.4."),
+                tags$p(style = "margin-bottom: 6px;", "So over 100 possessions, they outperform opponents by 20.4 points."),
+                tags$p(style = "margin-bottom: 0;", "The same row also shows context: 21 games and a 19-2 record.")
               ),
               div(
                 class = "example-snippet",
@@ -166,9 +166,9 @@ ui_tab3_team <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv combines elite offense (PPP 126.4, TS% 58.9, OREB% 37.9) with strong defense (PPP allowed 107.2)."),
-                tags$p(style = "margin-bottom: 6px;", "Their factor profile supports Net +19.2: efficient scoring, offensive rebounding, and manageable turnover rates."),
-                tags$p(style = "margin-bottom: 0;", "Possession volume is high (Off 1282, Def 1289), which strengthens confidence in this profile.")
+                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv combines elite offense (PPP 128.3 #1, TS% 59.5 #2, OREB% 38.6 #1) with strong defense (PPP allowed 108.0 #3)."),
+                tags$p(style = "margin-bottom: 6px;", "Their factor profile supports Net +20.4: efficient scoring, dominant offensive rebounding, and league-best turnover rate (14.4%)."),
+                tags$p(style = "margin-bottom: 0;", "Possession volume is high (Off 1,592, Def 1,596), which strengthens confidence in this profile.")
               ),
               div(
                 class = "example-snippet",
@@ -188,6 +188,33 @@ ui_tab3_team <- tabPanel(
               "Shows team-level counting and shooting stats using the same game/clutch filters.",
               "Ranks are season-contextual inside the filtered sample.",
               "Rank delta is vs previous matchday only, and shown only on baseline date/GN scope."
+            )
+          ),
+          tags$a(
+            href = "#",
+            class = "explainer-toggle",
+            onclick = "return false;",
+            `data-bs-toggle` = "collapse",
+            `data-bs-target` = "#team-traditional-example-box",
+            "Show/Hide Example"
+          ),
+          div(
+            id = "team-traditional-example-box",
+            class = "collapse",
+            div(
+              class = "example-grid",
+              div(
+                class = "example-card",
+                div(class = "example-card-title", "How to Read Traditional Stats (Real Example)"),
+                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv leads the league in PTS (41.6 #1), REB (27.1 #5), and AST (23.6 #2) per game."),
+                tags$p(style = "margin-bottom: 6px;", "Each cell shows the value, league rank, and rank movement arrows compared to the previous matchday."),
+                tags$p(style = "margin-bottom: 0;", "Heat colors follow the same polarity as Team Ratings: green is better, red is worse.")
+              ),
+              div(
+                class = "example-snippet",
+                tags$img(src = app_image_src("team-traditional-row-snippet.png"), alt = "Team traditional stats table snippet"),
+                div(class = "example-snippet-caption", "Real Traditional snippet (Team Ratings)")
+              )
             )
           )
         ),

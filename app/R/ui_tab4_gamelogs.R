@@ -106,8 +106,8 @@ ui_tab4_gamelogs <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Game Logs (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "For GN 11, Hapoel Tel-Aviv vs Hapoel Holon finished 114-60."),
-                tags$p(style = "margin-bottom: 6px;", "In that game, Off PPP was 146.2 and Def PPP was 75.0, so Net RTG was +71.2."),
+                tags$p(style = "margin-bottom: 6px;", "For GN 17, Bnei Herzliya vs Hapoel Galil Elion finished 105-89."),
+                tags$p(style = "margin-bottom: 6px;", "In that game, Off PPP was 128.0 and Def PPP was 107.2, so Net was +20.8."),
                 tags$p(style = "margin-bottom: 0;", "This single-game view helps you compare whether dominant results came from offense, defense, or both.")
               ),
               div(
@@ -146,9 +146,9 @@ ui_tab4_gamelogs <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "GN 11 (Hapoel Tel-Aviv vs Hapoel Holon, 114-60) shows elite offense: PPP 146.2 with TS% 67.1."),
-                tags$p(style = "margin-bottom: 6px;", "Defense was also dominant: PPP allowed 75.0 with opponent TS% 42.9."),
-                tags$p(style = "margin-bottom: 0;", "The split across TS%, OREB%, TOV%, and FTR explains why this game was so one-sided.")
+                tags$p(style = "margin-bottom: 6px;", "GN 17 (Bnei Herzliya vs Hapoel Galil Elion, 105-89) shows strong offense: PPP 128.0 with TS% 63.3."),
+                tags$p(style = "margin-bottom: 6px;", "Defense was solid too: PPP allowed 107.2 with opponent TS% 57.8 and FTR 50.8 (opponents got to the line frequently)."),
+                tags$p(style = "margin-bottom: 0;", "The split across TS%, OREB%, TOV%, and FTR shows offense carried this win, despite allowing a high free-throw rate.")
               ),
               div(
                 class = "example-snippet",

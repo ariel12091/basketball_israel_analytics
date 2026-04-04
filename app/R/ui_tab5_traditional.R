@@ -122,6 +122,33 @@ ui_tab5_traditional <- tabPanel(
             "Use eFG% and TS% to compare scoring efficiency alongside volume."
           )
         ),
+        tags$a(
+          href = "#",
+          class = "explainer-toggle",
+          onclick = "return false;",
+          `data-bs-toggle` = "collapse",
+          `data-bs-target` = "#traditional-example-box",
+          "Show/Hide Example"
+        ),
+        div(
+          id = "traditional-example-box",
+          class = "collapse",
+          div(
+            class = "example-grid",
+            div(
+              class = "example-card",
+              div(class = "example-card-title", "How to Read Player Stats (Real Example)"),
+              tags$p(style = "margin-bottom: 6px;", "Kyler Edwards (Hapoel Haemek) averages 19.4 PTS on 14.3 FGA with 43.4 FG% and 36.2 3P% across 19 games."),
+              tags$p(style = "margin-bottom: 6px;", "Heat colors show where each stat ranks league-wide: green means above average, red means below."),
+              tags$p(style = "margin-bottom: 0;", "Use Poss on Floor (58.8) and MIN (30.6) as context to judge whether production comes from high usage or efficiency.")
+            ),
+            div(
+              class = "example-snippet",
+              tags$img(src = app_image_src("player-stats-row-snippet.png"), alt = "Player traditional stats table snippet"),
+              div(class = "example-snippet-caption", "Real Player Stats snippet")
+            )
+          )
+        ),
         uiOutput("ts_filter_chips"),
         uiOutput("ts_mode_warning"),
         DTOutput("ts_table")
