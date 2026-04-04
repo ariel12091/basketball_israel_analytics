@@ -100,7 +100,7 @@ ui_tab4_gamelogs <- tabPanel(
           ),
           div(
             id = "gamelogs-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(
@@ -140,7 +140,7 @@ ui_tab4_gamelogs <- tabPanel(
           ),
           div(
             id = "gamelogs-ff-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(

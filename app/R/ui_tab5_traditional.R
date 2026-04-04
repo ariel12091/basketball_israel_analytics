@@ -132,7 +132,7 @@ ui_tab5_traditional <- tabPanel(
         ),
         div(
           id = "traditional-example-box",
-          class = "collapse",
+          class = "collapse example-wrapper",
           div(
             class = "example-grid",
             div(

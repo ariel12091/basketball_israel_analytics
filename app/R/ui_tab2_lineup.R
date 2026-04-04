@@ -110,7 +110,7 @@ ui_tab2_lineup <- tabPanel(
           ),
           div(
             id = "lineup-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(
@@ -150,7 +150,7 @@ ui_tab2_lineup <- tabPanel(
           ),
           div(
             id = "lineup-ff-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(

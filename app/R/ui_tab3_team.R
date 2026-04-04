@@ -120,7 +120,7 @@ ui_tab3_team <- tabPanel(
           ),
           div(
             id = "team-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(
@@ -160,7 +160,7 @@ ui_tab3_team <- tabPanel(
           ),
           div(
             id = "team-ff-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(
@@ -200,7 +200,7 @@ ui_tab3_team <- tabPanel(
           ),
           div(
             id = "team-traditional-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(

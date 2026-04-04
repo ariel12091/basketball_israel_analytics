@@ -114,7 +114,7 @@ ui_tab1_onoff <- tabPanel(
           ),
           div(
             id = "onoff-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(
@@ -163,7 +163,7 @@ ui_tab1_onoff <- tabPanel(
           ),
           div(
             id = "onoff-ff-example-box",
-            class = "collapse",
+            class = "collapse example-wrapper",
             div(
               class = "example-grid",
               div(

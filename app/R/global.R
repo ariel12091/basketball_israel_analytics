@@ -560,6 +560,15 @@ shared_css <- HTML("
     border-color: #30363d;
   }
 
+  /* ---- Example Wrapper (card-like border around the example section) ---- */
+  .example-wrapper {
+    background: #1c2333;
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 12px 14px;
+    margin-bottom: 14px;
+  }
+
   /* ---- Example Card ---- */
   .example-card {
     background: #1a1f2b;
@@ -859,9 +868,23 @@ tab_explainer <- function(id, title, intro, bullets) {
       tags$a(
         href = "#",
         class = "explainer-toggle",
-        onclick = "return false;",
-        `data-bs-toggle` = "collapse",
-        `data-bs-target` = paste0("#", body_id),
+        onclick = paste0(
+          "var body=document.getElementById('", body_id, "');",
+          "var bsBody=bootstrap.Collapse.getOrCreateInstance(body);",
+          "bsBody.toggle();",
+          "var card=this.closest('.explainer-card');",
+          "var sib=card.nextElementSibling;",
+          "while(sib){",
+          "  if(sib.classList.contains('collapse')){",
+          "    bootstrap.Collapse.getOrCreateInstance(sib).toggle();break;",
+          "  }",
+          "  if(sib.querySelector&&sib.querySelector('.collapse')){",
+          "    bootstrap.Collapse.getOrCreateInstance(sib.querySelector('.collapse')).toggle();break;",
+          "  }",
+          "  sib=sib.nextElementSibling;",
+          "}",
+          "return false;"
+        ),
         "Show/Hide"
       )
     ),

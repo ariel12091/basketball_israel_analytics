@@ -258,7 +258,7 @@ ui_tab7_compare <- tabPanel(
         ),
         div(
           id = "compare-example-box",
-          class = "collapse",
+          class = "collapse example-wrapper",
           div(
             class = "example-grid",
             div(
