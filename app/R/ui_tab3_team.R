@@ -143,11 +143,12 @@ ui_tab3_team <- tabPanel(
           tab_explainer(
             id = "team_explainer_ff",
             title = "What This Tab Answers (Four Factors)",
-            intro = "Which team-level factors are driving strong or weak performance?",
+            intro = "Which team-level factors are driving strong or weak performance? See each team's PPP, TS%, OREB%, TOV%, FTR, and possessions on offense and defense, plus league rank, rank delta, and net rating.",
             bullets = c(
-              "Read offense and defense factor profiles side by side.",
-              "Interpret TOV% with opposite polarity: lower is better on offense, higher can be better on defense.",
-              "Use Poss columns to judge sample reliability."
+              "Read offense and defense factor profiles side by side \u2014 ranks (#1\u2013#14) and rank deltas (\u25b2/\u25bc) help spot movement.",
+              "Interpret TOV% with opposite polarity: lower is better on offense, higher is better on defense.",
+              "Use Poss columns to judge sample reliability, especially after applying date or clutch filters.",
+              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% is driven by sustainable shot selection or a hot-hand streak."
             )
           ),
           tags$a(

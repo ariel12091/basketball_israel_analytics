@@ -133,11 +133,12 @@ ui_tab2_lineup <- tabPanel(
           tab_explainer(
             id = "lineup_explainer_ff",
             title = "What This Tab Answers (Four Factors)",
-            intro = "Which lineup-level factors drive good or bad results?",
+            intro = "Which lineup-level factors drive good or bad results? See each lineup's PPP, TS%, OREB%, TOV%, and FTR on offense and defense, plus minutes, possessions, and net rating.",
             bullets = c(
-              "Use Offense and Defense blocks separately.",
-              "Compare TS%, OREB%, TOV%, and FTR together, not one metric alone.",
-              "Keep minutes and possessions in view before concluding."
+              "The TOTAL row at the top aggregates all lineups matching your filters \u2014 use it as a baseline.",
+              "Compare TS%, OREB%, TOV%, and FTR together; a single dominant factor often explains the PPP gap.",
+              "Check MIN and POSS columns before concluding \u2014 small-sample lineups can show extreme rates.",
+              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% is driven by sustainable shot selection or a hot-hand streak."
             )
           ),
           tags$a(

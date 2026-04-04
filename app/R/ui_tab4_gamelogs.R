@@ -123,11 +123,12 @@ ui_tab4_gamelogs <- tabPanel(
           tab_explainer(
             id = "gamelogs_explainer_ff",
             title = "What This Tab Answers (Four Factors)",
-            intro = "Which four-factor components drove each single-game result?",
+            intro = "Which four-factor components drove each single-game result? Each row shows one game with GN, date, teams, W/L, score, and the full PPP + TS% + OREB% + TOV% + FTR breakdown for both offense and defense.",
             bullets = c(
-              "Use TS%, OREB%, TOV%, and FTR to diagnose each game.",
-              "Compare offense and defense factor rows together.",
-              "Use this to detect whether a result is repeatable or likely game-to-game variance."
+              "Scan TS%, OREB%, TOV%, and FTR together to diagnose why a game was won or lost.",
+              "Compare offense and defense factor columns side by side \u2014 a win can mask poor defense if offense was exceptional.",
+              "Look for patterns across games: consistent factor profiles suggest sustainability, while one-off spikes may be variance.",
+              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% game was driven by sustainable shot selection or a hot-hand streak."
             )
           ),
           tags$a(
