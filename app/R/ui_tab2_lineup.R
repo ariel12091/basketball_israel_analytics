@@ -95,9 +95,10 @@ ui_tab2_lineup <- tabPanel(
             title = "What This Tab Answers (Summary)",
             intro = "Which player combinations perform best, and how reliable is the sample?",
             bullets = c(
-              "Pick a team first, then use players-on / players-off filters.",
-              "Read Off PPP, Def PPP, and Net together.",
-              "Prioritize lineups with meaningful minutes and possessions."
+              "Each row shows a lineup's MIN, Total Poss, Off PPP, Def PPP, Net RTG, and +/- (point differential).",
+              "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy \u2014 use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
+              "Off Poss, Off Pts, Def Poss, Def Pts, and # Starters round out the row for sample-size and context.",
+              "The TOTAL row at the top aggregates all lineups matching your filters \u2014 use it as a baseline for comparison."
             )
           ),
           tags$a(

@@ -105,9 +105,10 @@ ui_tab3_team <- tabPanel(
             title = "What This Tab Answers (Summary)",
             intro = "How strong are teams overall in offense, defense, and net rating?",
             bullets = c(
-              "Start with Net RTG to rank teams quickly.",
-              "Then inspect Off PPP and Def PPP to see where edges come from.",
-              "Use games and W-L as context, not as replacement for possession-based rates."
+              "Each row shows Season, Team, GP, W, L, Off PPP, Def PPP, Net RTG (with league rank and rank delta), Off Pace, Def Pace, Off Poss, and Def Poss.",
+              "Start with Net RTG to rank teams quickly, then inspect Off PPP and Def PPP to see which end drives the edge.",
+              "Pace columns show possessions per 40 minutes \u2014 they help compare fast vs slow teams fairly.",
+              "GP, W, and L provide context, but possession-based rates are more reliable than win-loss record for evaluating strength."
             )
           ),
           tags$a(

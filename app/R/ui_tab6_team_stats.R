@@ -121,9 +121,10 @@ ui_tab6_team_stats <- tabPanel(
           title = "What This Tab Answers",
           intro = "How are teams producing in traditional box-score terms under your selected game filters?",
           bullets = c(
-            "Cells show value, current rank, and rank movement compared to the selected baseline.",
-            "Use per-game and pace-normalized views to compare teams fairly across role and tempo differences.",
-            "Heat colors follow Team Ratings polarity."
+            "Each row shows Team, GP, Poss on Floor, MIN, PTS, REB, OREB, DREB, AST, STL, BLK, TOV, FGM, FGA, FG%, 3PM, 3PA, 3P%, FTM, FTA, FT%, eFG%, and TS%.",
+            "Cells show value, current league rank, and rank movement (\u25b2/\u25bc) compared to the selected baseline.",
+            "Switch between Per Game, Per 60 Possessions, and Per 30 Minutes to compare teams fairly across tempo differences.",
+            "Heat colors follow Team Ratings polarity \u2014 green is better, red is worse."
           )
         ),
         uiOutput("tst_filter_chips"),

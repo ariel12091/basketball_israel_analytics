@@ -243,7 +243,8 @@ ui_tab7_compare <- tabPanel(
           title = "What This Tab Answers",
           intro = "How do two situations compare side-by-side: starters vs bench, home vs away, clutch vs non-clutch, or any custom split?",
           bullets = c(
-            "Use presets for common splits (starters vs bench, clutch, home/away) or build your own with side A and B filters.",
+            "Metric chips at the top (Net Rtg, Offense, Defense, TS%, TOV%, OREB%, FTR) control which stat is shown in the table and summary cards.",
+            "Summary cards show Side A value, Side B value, delta, and possessions. The table shows #, Team, Side A metric, Total Poss A, Side B metric, Total Poss B, and Gap.",
             "Teams and Lineups modes compare the same team/lineup to itself under two different conditions (e.g. home vs away, clutch vs non-clutch). Players mode compares different players to each other under the same conditions.",
             "Click any row in League view for a detailed breakdown of that team or lineup."
           )

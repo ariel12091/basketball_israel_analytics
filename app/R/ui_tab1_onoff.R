@@ -99,9 +99,10 @@ ui_tab1_onoff <- tabPanel(
             title = "What This Tab Answers (Summary)",
             intro = "Which players change team offense and defense most when they are on the floor?",
             bullets = c(
-              "Start broad, then add filters only if needed.",
-              "Use Net/Off/Def impact first, then compare on-court vs off-court PPP.",
-              "Validate that usage (ON/OFF possessions) is large enough."
+              "Net Impact shows the on-minus-off PPP gap; Off and Def break it into which end the player affects.",
+              "On Court Stats (Off PPP, Def PPP, Net RTG) and Off Court Stats show the team's actual rates with and without the player.",
+              "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy \u2014 use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
+              "ON Poss and OFF Poss (scrolled right) indicate sample size \u2014 small samples produce noisy diffs."
             )
           ),
           tags$a(

@@ -117,9 +117,9 @@ ui_tab5_traditional <- tabPanel(
           title = "What This Tab Answers",
           intro = "How do players produce in traditional box-score terms under your selected game filters?",
           bullets = c(
-            "All counting stats are attributed from offense-side player event rows in this dataset mapping.",
-            "Use minutes as context to compare high-volume production with role-sized output.",
-            "Use eFG% and TS% to compare scoring efficiency alongside volume."
+            "Each row shows Team, Player, GP, Poss on Floor, MIN, PTS, REB, AST, STL, BLK, TOV, FGM, FGA, FG%, 3PM, 3PA, 3P%, FTM, FTA, FT%, eFG%, and TS%.",
+            "Use MIN and Poss on Floor as context \u2014 high counting stats on low minutes may signal efficiency, while low stats on high minutes may signal a role player.",
+            "FG%, 3P%, FT%, eFG%, and TS% let you compare scoring efficiency alongside volume \u2014 heat colors show where each stat ranks league-wide."
           )
         ),
         tags$a(
