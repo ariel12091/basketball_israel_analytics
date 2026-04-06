@@ -1,5 +1,31 @@
 # server_tab5_traditional.R - Tab 5: Traditional Player Stats server logic
 
+# Display label -> column name in result_df()
+TS_FILTERABLE_COLS <- list(
+  "GP"    = "gp",
+  "MIN"   = "minutes",
+  "Poss"  = "poss_on_floor",
+  "PTS"   = "pts",
+  "REB"   = "reb",
+  "AST"   = "ast",
+  "STL"   = "stl",
+  "BLK"   = "blk",
+  "TOV"   = "tov",
+  "FGM"   = "fgm",
+  "FGA"   = "fga",
+  "FG%"   = "fg_pct",
+  "3PM"   = "3pm",
+  "3PA"   = "3pa",
+  "3P%"   = "tp_pct",
+  "FTM"   = "ftm",
+  "FTA"   = "fta",
+  "FT%"   = "ft_pct",
+  "eFG%"  = "efg",
+  "TS%"   = "ts"
+)
+
+TS_PERCENT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts")
+
 server_tab5_traditional <- function(input, output, session, shared) {
 
   TS_NORM_MIN_GP <- 3L

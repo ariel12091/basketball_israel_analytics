@@ -803,6 +803,20 @@ shared_css <- HTML("
     padding: 4px 10px; white-space: nowrap; transition: all 0.2s;
   }
   .chip-clear-all:hover { background: rgba(248,113,113,0.1); }
+  .filter-chip-add {
+    border: 1px dashed #6e7681 !important;
+    background: transparent !important;
+    color: #c9d1d9 !important;
+    cursor: pointer;
+  }
+  .filter-chip-add:hover {
+    border-color: #e8a435 !important;
+    color: #e8a435 !important;
+  }
+  .ts-stat-popover .form-control,
+  .ts-stat-popover .form-select {
+    margin-bottom: 6px;
+  }
 
   /* ---- Tooltips ---- */
   [data-tooltip] { position: relative; display: inline-block; cursor: help; }
