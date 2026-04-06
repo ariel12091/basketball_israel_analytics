@@ -751,7 +751,62 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   # ---- Filter Chips ----
   output$ts_filter_chips <- renderUI({
-    build_filter_chips("ts", input, shared$season_date_bounds, reset_btn_id = "ts_reset")
+    base_chips <- build_filter_chips("ts", input, shared$season_date_bounds, reset_btn_id = "ts_reset")
+
+    stat_chips <- lapply(ts_stat_filters(), function(f) {
+      op_sym <- if (identical(f$op, "ge")) "\u2265" else "\u2264"
+      val_txt <- format(f$value, big.mark = ",", trim = TRUE)
+      label <- sprintf("%s %s %s", f$label, op_sym, val_txt)
+      js <- sprintf(
+        "Shiny.setInputValue('ts_remove_stat_filter', '%d', {priority:'event'}); return false;",
+        as.integer(f$id)
+      )
+      tags$span(
+        class = "filter-chip chip-stat",
+        label, " ",
+        tags$a(href = "#", onclick = js, style = "margin-left:4px;color:inherit;", "\u00d7")
+      )
+    })
+
+    add_btn <- bslib::popover(
+      trigger = tags$span(
+        class = "filter-chip filter-chip-add",
+        id = "ts_stat_filter_add_btn",
+        tags$i(class = "bi bi-plus"), " Filter"
+      ),
+      title = "Add stat filter",
+      placement = "bottom",
+      div(
+        class = "ts-stat-popover",
+        style = "min-width: 220px;",
+        selectInput(
+          "ts_stat_filter_col", "Column",
+          choices = c("Choose..." = "", names(TS_FILTERABLE_COLS)),
+          selected = "",
+          width = "100%"
+        ),
+        radioButtons(
+          "ts_stat_filter_op", "Operator",
+          choices = c("\u2265" = "ge", "\u2264" = "le"),
+          selected = "ge",
+          inline = TRUE
+        ),
+        numericInput(
+          "ts_stat_filter_value", "Value",
+          value = NA, width = "100%"
+        ),
+        tags$div(
+          class = "small text-muted mb-2",
+          "Percent columns (FG%, 3P%, FT%, eFG%, TS%): enter as 0\u2013100."
+        ),
+        actionButton(
+          "ts_add_stat_filter", "Add",
+          class = "btn-sm btn-primary w-100"
+        )
+      )
+    )
+
+    tagList(base_chips, stat_chips, add_btn)
   })
   setup_chip_clears("ts", session, input, shared,
     game_type_id = "ts_game_type", opponents_id = "ts_opponents",
