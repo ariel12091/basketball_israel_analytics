@@ -48,6 +48,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   ts_ref <- reactiveValues(teams = NULL)
 
+  ts_stat_filters <- reactiveVal(list())
+  ts_stat_filter_next_id <- reactiveVal(1L)
+
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "traditional_stats")) return(NULL)
     gy_int <- as.integer(input$game_year)
@@ -133,7 +136,41 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateSelectizeInput(session, "ts_gn_min", selected = "")
     updateSelectizeInput(session, "ts_gn_max", selected = "")
     updateSelectizeInput(session, "ts_last_n", selected = "")
+    ts_stat_filters(list())
   })
+
+  observeEvent(input$ts_add_stat_filter, {
+    col_label <- input$ts_stat_filter_col
+    op <- input$ts_stat_filter_op %||% "ge"
+    raw_val <- input$ts_stat_filter_value
+    if (is.null(col_label) || !nzchar(col_label)) return()
+    if (is.null(raw_val) || is.na(suppressWarnings(as.numeric(raw_val)))) return()
+    if (!col_label %in% names(TS_FILTERABLE_COLS)) return()
+    if (!op %in% c("ge", "le")) return()
+
+    new_id <- ts_stat_filter_next_id()
+    ts_stat_filter_next_id(new_id + 1L)
+
+    current <- ts_stat_filters()
+    current[[length(current) + 1]] <- list(
+      id = new_id,
+      label = col_label,
+      col = TS_FILTERABLE_COLS[[col_label]],
+      op = op,
+      value = as.numeric(raw_val)
+    )
+    ts_stat_filters(current)
+
+    updateNumericInput(session, "ts_stat_filter_value", value = NA)
+  })
+
+  observeEvent(input$ts_remove_stat_filter, {
+    rm_id <- suppressWarnings(as.integer(input$ts_remove_stat_filter))
+    if (is.na(rm_id)) return()
+    current <- ts_stat_filters()
+    keep <- vapply(current, function(f) !identical(as.integer(f$id), rm_id), logical(1))
+    ts_stat_filters(current[keep])
+  }, ignoreInit = TRUE)
 
   observeEvent(input$ts_min_gp_slider, ignoreInit = TRUE, {
     s <- suppressWarnings(as.integer(input$ts_min_gp_slider))
