@@ -26,6 +26,19 @@ TS_FILTERABLE_COLS <- list(
 
 TS_PERCENT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts")
 
+apply_ts_stat_filters <- function(df, filters) {
+  if (is.null(df) || !nrow(df) || !length(filters)) return(df)
+  for (f in filters) {
+    col <- f$col
+    if (!col %in% names(df)) next
+    v <- suppressWarnings(as.numeric(df[[col]]))
+    keep <- !is.na(v) & (if (identical(f$op, "ge")) v >= f$value else v <= f$value)
+    df <- df[keep, , drop = FALSE]
+    if (!nrow(df)) break
+  }
+  df
+}
+
 server_tab5_traditional <- function(input, output, session, shared) {
 
   TS_NORM_MIN_GP <- 3L
@@ -161,6 +174,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
     )
     ts_stat_filters(current)
 
+    updateSelectInput(session, "ts_stat_filter_col", selected = "")
+    updateRadioButtons(session, "ts_stat_filter_op", selected = "ge")
     updateNumericInput(session, "ts_stat_filter_value", value = NA)
   })
 
@@ -218,6 +233,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       for (col in count_cols) {
         if (col %in% names(df)) df[[col]] <- ifelse(df$minutes > 0, df[[col]] / df$minutes * 30, NA_real_)
       }
+      if ("minutes" %in% names(df)) df$minutes <- ifelse(df$minutes > 0, df$minutes / df$minutes * 30, NA_real_)
       if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$minutes > 0, df$poss_on_floor / df$minutes * 30, NA_real_)
       return(df)
     }
@@ -583,8 +599,10 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     df <- apply_ts_mode(df, mode, x_poss = ctx$x_poss, x_min = ctx$x_min)
 
+    df <- apply_ts_stat_filters(df, ts_stat_filters())
+
     list(df = df, mode = mode, removed = removed, ineligible = ineligible, threshold = poss_threshold, show_ineligible = show_ineligible)
-  }) %>% bindEvent(ts_mode_context(), input$ts_display_mode, input$ts_show_ineligible, input$ts_min_gp, input$ts_min_gp_slider)
+  }) %>% bindEvent(ts_mode_context(), input$ts_display_mode, input$ts_show_ineligible, input$ts_min_gp, input$ts_min_gp_slider, ts_stat_filters())
 
   output$ts_mode_warning <- renderUI({
     disp_ctx <- ts_display_context()
@@ -751,8 +769,6 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   # ---- Filter Chips ----
   output$ts_filter_chips <- renderUI({
-    base_chips <- build_filter_chips("ts", input, shared$season_date_bounds, reset_btn_id = "ts_reset")
-
     stat_chips <- lapply(ts_stat_filters(), function(f) {
       op_sym <- if (identical(f$op, "ge")) "\u2265" else "\u2264"
       val_txt <- format(f$value, big.mark = ",", trim = TRUE)
@@ -806,7 +822,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
       )
     )
 
-    tagList(base_chips, stat_chips, add_btn)
+    build_filter_chips(
+      "ts",
+      input,
+      shared$season_date_bounds,
+      reset_btn_id = "ts_reset",
+      extra_children = c(stat_chips, list(add_btn))
+    )
   })
   setup_chip_clears("ts", session, input, shared,
     game_type_id = "ts_game_type", opponents_id = "ts_opponents",

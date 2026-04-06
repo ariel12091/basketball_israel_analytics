@@ -165,8 +165,16 @@ ui <- navbarPage(
                 link.click();
                 // Update hidden input: radio button or select
                 if (c.type === 'select') {
-                  var sel = document.getElementById(iid);
-                  if (sel) { sel.value = val; $(sel).trigger('change'); }
+                  setTimeout(function() {
+                    var sel = document.getElementById(iid);
+                    if (sel) {
+                      sel.value = val;
+                      sel.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+                      window.Shiny.setInputValue(iid, val, { priority: 'event' });
+                    }
+                  }, 0);
                 } else {
                   var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
                   if (radio) { radio.click(); }

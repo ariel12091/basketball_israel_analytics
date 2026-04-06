@@ -813,9 +813,32 @@ shared_css <- HTML("
     border-color: #e8a435 !important;
     color: #e8a435 !important;
   }
+  .popover {
+    background-color: #161b22 !important;
+    border: 1px solid #30363d !important;
+    z-index: 1080 !important;
+  }
+  .popover .popover-header {
+    background-color: #21262d !important;
+    color: #c9d1d9 !important;
+    border-bottom-color: #30363d !important;
+  }
+  .popover .popover-body {
+    color: #c9d1d9 !important;
+  }
+  .popover .popover-arrow::after,
+  .popover .popover-arrow::before {
+    border-bottom-color: #30363d !important;
+  }
   .ts-stat-popover .form-control,
   .ts-stat-popover .form-select {
     margin-bottom: 6px;
+  }
+  .ts-stat-popover .form-control,
+  .ts-stat-popover .form-select {
+    background-color: #0d1117 !important;
+    color: #c9d1d9 !important;
+    border-color: #30363d !important;
   }
 
   /* ---- Tooltips ---- */
@@ -941,7 +964,8 @@ make_season_chip <- function(gy) {
 }
 
 build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
-                               team_label_map = NULL, player_label_map = NULL) {
+                               team_label_map = NULL, player_label_map = NULL,
+                               extra_children = NULL) {
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
   map_label <- function(x, label_map) {
     if (is.null(label_map) || is.null(x)) return(x)
@@ -1129,9 +1153,11 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   # Only show "Clear all" if there are removable chips (more than just season)
   has_active <- length(chips) > 1
 
+  chip_children <- c(chips, extra_children %||% list())
+
   tags$div(
     class = "filter-chips",
-    chips,
+    chip_children,
     if (has_active) {
       clear_js <- if (!is.null(reset_btn_id)) {
         sprintf("document.getElementById('%s').click(); return false;", reset_btn_id)
