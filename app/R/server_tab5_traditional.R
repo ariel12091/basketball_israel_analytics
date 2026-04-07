@@ -5,6 +5,7 @@ TS_FILTERABLE_COLS <- list(
   "GP"    = "gp",
   "MIN"   = "minutes",
   "Poss"  = "poss_on_floor",
+  "Total Poss" = "total_poss",
   "PTS"   = "pts",
   "REB"   = "reb",
   "AST"   = "ast",
@@ -221,20 +222,22 @@ server_tab5_traditional <- function(input, output, session, shared) {
     }
 
     if (identical(mode, "Per 60 Possessions")) {
+      base_poss <- df$poss_on_floor
       for (col in count_cols) {
-        if (col %in% names(df)) df[[col]] <- ifelse(df$poss_on_floor > 0, df[[col]] / df$poss_on_floor * 60, NA_real_)
+        if (col %in% names(df)) df[[col]] <- ifelse(base_poss > 0, df[[col]] / base_poss * 60, NA_real_)
       }
-      if ("minutes" %in% names(df)) df$minutes <- ifelse(df$poss_on_floor > 0, df$minutes / df$poss_on_floor * 60, NA_real_)
-      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$poss_on_floor > 0, df$poss_on_floor / df$poss_on_floor * 60, NA_real_)
+      if ("minutes" %in% names(df)) df$minutes <- ifelse(base_poss > 0, df$minutes / base_poss * 60, NA_real_)
+      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(base_poss > 0, base_poss / base_poss * 60, NA_real_)
       return(df)
     }
 
     if (identical(mode, "Per 30 Minutes")) {
+      base_minutes <- df$minutes
       for (col in count_cols) {
-        if (col %in% names(df)) df[[col]] <- ifelse(df$minutes > 0, df[[col]] / df$minutes * 30, NA_real_)
+        if (col %in% names(df)) df[[col]] <- ifelse(base_minutes > 0, df[[col]] / base_minutes * 30, NA_real_)
       }
-      if ("minutes" %in% names(df)) df$minutes <- ifelse(df$minutes > 0, df$minutes / df$minutes * 30, NA_real_)
-      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$minutes > 0, df$poss_on_floor / df$minutes * 30, NA_real_)
+      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(base_minutes > 0, df$poss_on_floor / base_minutes * 30, NA_real_)
+      if ("minutes" %in% names(df)) df$minutes <- ifelse(base_minutes > 0, base_minutes / base_minutes * 30, NA_real_)
       return(df)
     }
 
@@ -586,6 +589,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     removed <- 0L
     ineligible <- 0L
     df$rate_eligible <- TRUE
+    df$total_poss <- suppressWarnings(as.numeric(df$poss_on_floor))
     df$.poss_rank_base <- suppressWarnings(as.numeric(df$poss_on_floor))
     if (identical(mode, "Per 60 Possessions") || identical(mode, "Per 30 Minutes")) {
       keep <- !is.na(df$poss_on_floor) & df$poss_on_floor >= poss_threshold
@@ -662,6 +666,10 @@ server_tab5_traditional <- function(input, output, session, shared) {
         `.poss_rank_base` = coalesce(.poss_rank_base, NA_real_),
         `.eligible_rate` = coalesce(rate_eligible, TRUE)
       )
+    if (!identical(mode, "Totals")) {
+      disp <- disp %>%
+        mutate(`Total Poss` = df$total_poss, .after = `Poss On Floor`)
+    }
 
     rank_thresh <- adaptive_baseline(disp$.poss_rank_base)
     pct_mask <- coalesce(as.numeric(disp$.poss_rank_base), 0) >= rank_thresh
@@ -763,12 +771,20 @@ server_tab5_traditional <- function(input, output, session, shared) {
           efg = efg,
           ts = ts
         )
+      if (!identical(disp_ctx$mode, "Totals")) {
+        out <- out %>%
+          mutate(total_poss = df$total_poss, .after = poss_on_floor)
+      }
       write.csv(out, file, row.names = FALSE)
     }
   )
 
   # ---- Filter Chips ----
   output$ts_filter_chips <- renderUI({
+    stat_filter_choices <- names(TS_FILTERABLE_COLS)
+    if (identical(input$ts_display_mode %||% "Per Game", "Totals")) {
+      stat_filter_choices <- setdiff(stat_filter_choices, "Total Poss")
+    }
     stat_chips <- lapply(ts_stat_filters(), function(f) {
       op_sym <- if (identical(f$op, "ge")) "\u2265" else "\u2264"
       val_txt <- format(f$value, big.mark = ",", trim = TRUE)
@@ -797,7 +813,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         style = "min-width: 220px;",
         selectInput(
           "ts_stat_filter_col", "Column",
-          choices = c("Choose..." = "", names(TS_FILTERABLE_COLS)),
+          choices = c("Choose..." = "", stat_filter_choices),
           selected = "",
           width = "100%"
         ),
