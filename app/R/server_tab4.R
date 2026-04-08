@@ -22,14 +22,12 @@ server_tab4 <- function(input, output, session, shared) {
       }
     )
     gl_ref$teams <- teams_gl
-    team_values <- c("", as.character(teams_gl$team_id))
-    names(team_values) <- c("\u2014 All teams \u2014", teams_gl$team_name)
     pending_team <- shared$pending_gl_team()
     if (!is.null(pending_team) && nzchar(pending_team)) {
       shared$pending_gl_team(NULL)
-      updateSelectizeInput(session, "gl_team", choices = team_values, selected = pending_team, server = TRUE)
+      update_single_team_selectize(session, "gl_team", teams_gl, selected = pending_team)
     } else {
-      updateSelectizeInput(session, "gl_team", choices = team_values, selected = "", server = TRUE)
+      update_single_team_selectize(session, "gl_team", teams_gl, selected = "")
     }
     updateSelectizeInput(session, "gl_opponents", choices = teams_gl$team_name,
                          selected = character(0), server = TRUE)
@@ -78,9 +76,7 @@ server_tab4 <- function(input, output, session, shared) {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
     updateDateRangeInput(session, "gl_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     if (!is.null(gl_ref$teams)) {
-      team_values <- c("", as.character(gl_ref$teams$team_id))
-      names(team_values) <- c("\u2014 All teams \u2014", gl_ref$teams$team_name)
-      updateSelectizeInput(session, "gl_team", choices = team_values, selected = "", server = TRUE)
+      update_single_team_selectize(session, "gl_team", gl_ref$teams, selected = "")
     } else {
       updateSelectizeInput(session, "gl_team", selected = "", server = TRUE)
     }

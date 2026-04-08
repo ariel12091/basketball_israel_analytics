@@ -39,14 +39,12 @@ server_tab2 <- function(input, output, session, shared) {
         "SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int))
     )
     ld_ref$teams <- teams_ld
-    team_values <- c("", as.character(teams_ld$team_id))
-    names(team_values) <- c("- All teams -", teams_ld$team_name)
     pending_team <- shared$pending_ld_team()
     if (!is.null(pending_team) && nzchar(pending_team)) {
       shared$pending_ld_team(NULL)
-      ld_lineup_filter$update_team_choices(team_values, selected = pending_team)
+      ld_lineup_filter$update_team_choices(team_select_choices_with_all(teams_ld, all_label = "- All teams -"), selected = pending_team)
     } else {
-      ld_lineup_filter$update_team_choices(team_values, selected = "")
+      ld_lineup_filter$update_team_choices(team_select_choices_with_all(teams_ld, all_label = "- All teams -"), selected = "")
     }
 
     players_map <- cached_ref_query(
@@ -74,9 +72,10 @@ server_tab2 <- function(input, output, session, shared) {
     updateRadioButtons(session, "ld_num", selected = LD_DEFAULT_NUM)
     updateDateRangeInput(session, "ld_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     if (!is.null(ld_ref$teams)) {
-      team_values <- c("", as.character(ld_ref$teams$team_id))
-      names(team_values) <- c("- All teams -", ld_ref$teams$team_name)
-      ld_lineup_filter$reset_inputs(team_choices = team_values, team_selected = "")
+      ld_lineup_filter$reset_inputs(
+        team_choices = team_select_choices_with_all(ld_ref$teams, all_label = "- All teams -"),
+        team_selected = ""
+      )
     } else {
       ld_lineup_filter$reset_inputs(team_selected = "")
     }

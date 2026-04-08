@@ -1292,6 +1292,27 @@ reset_clutch_inputs <- function(session, prefix, status_default = "all", margin_
   updateCheckboxInput(session, paste0(prefix, "_clutch_ot_margin"), value = FALSE)
 }
 
+team_select_choices_with_all <- function(teams_df, all_label = "\u2014 All teams \u2014") {
+  if (is.null(teams_df) || !nrow(teams_df)) {
+    out <- ""
+    names(out) <- all_label
+    return(out)
+  }
+  out <- c("", as.character(teams_df$team_id))
+  names(out) <- c(all_label, teams_df$team_name)
+  out
+}
+
+update_single_team_selectize <- function(session, select_id, teams_df, selected = "", all_label = "\u2014 All teams \u2014") {
+  updateSelectizeInput(
+    session,
+    select_id,
+    choices = team_select_choices_with_all(teams_df, all_label = all_label),
+    selected = selected,
+    server = TRUE
+  )
+}
+
 app_image_src <- function(rel_path, mime = "image/png") {
   candidates <- c(
     file.path("www", rel_path),
