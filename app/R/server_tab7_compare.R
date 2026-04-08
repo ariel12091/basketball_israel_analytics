@@ -798,6 +798,21 @@ server_tab7_compare <- function(input, output, session, shared) {
     players_ref = reactive(normalize_players_ref(cmp_ref$players))
   )
 
+  cmp_refs_state <- reactive({
+    ensure_cmp_refs_loaded(as.integer(input$game_year))
+    list(
+      players = normalize_players_ref(cmp_ref$players),
+      teams = normalize_teams_ref(cmp_ref$teams)
+    )
+  })
+
+  cmp_side_state <- reactive({
+    list(
+      a = collect_side_params("a"),
+      b = collect_side_params("b")
+    )
+  })
+
   render_metric_chips <- function(metrics, cur, input_id) {
     chips <- lapply(seq_along(metrics), function(i) {
       nm <- names(metrics)[i]
@@ -1272,8 +1287,9 @@ server_tab7_compare <- function(input, output, session, shared) {
   # -- PvP Player Comparison (Players mode) --
 
   player_team_choices <- function(player_id_chr) {
-    players_df <- normalize_players_ref(cmp_ref$players)
-    teams_df <- normalize_teams_ref(cmp_ref$teams)
+    refs <- cmp_refs_state()
+    players_df <- refs$players
+    teams_df <- refs$teams
     if (is.null(players_df) || is.null(teams_df) || !nrow(players_df) || !nrow(teams_df)) return(data.frame())
     if (is.null(player_id_chr) || !nzchar(player_id_chr)) return(data.frame())
     pid <- suppressWarnings(as.integer(player_id_chr))
@@ -1316,19 +1332,18 @@ server_tab7_compare <- function(input, output, session, shared) {
     req(identical(input$cmp_mode, "Players"))
     req(identical(input$main_tabs, "compare"))
 
-    ensure_cmp_refs_loaded(as.integer(input$game_year))
-
+    refs <- cmp_refs_state()
     player_a_id <- input$cmp_player_a
     player_b_id <- input$cmp_player_b
     req(player_a_id, nzchar(player_a_id))
     req(player_b_id, nzchar(player_b_id))
 
-    players_df <- normalize_players_ref(cmp_ref$players)
-    cmp_ref$players <- players_df
+    players_df <- refs$players
     req(!is.null(players_df), nrow(players_df) > 0)
 
-    pa <- collect_side_params("a")
-    pb <- collect_side_params("b")
+    side_state <- cmp_side_state()
+    pa <- side_state$a
+    pb <- side_state$b
 
     team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
     team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
@@ -1349,8 +1364,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     name_a <- players_df$name[players_df$player_id == as.integer(player_a_id)][1]
     name_b <- players_df$name[players_df$player_id == as.integer(player_b_id)][1]
 
-    teams_df <- normalize_teams_ref(cmp_ref$teams)
-    cmp_ref$teams <- teams_df
+    teams_df <- refs$teams
     team_name_a <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_a[1]][1] else ""
     team_name_b <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_b[1]][1] else ""
 
@@ -1623,8 +1637,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Players mode handled by cmp_pvp_ui - skip here
     if (identical(mode, "Players")) return(NULL)
 
-    pa <- collect_side_params("a")
-    pb <- collect_side_params("b")
+    side_state <- cmp_side_state()
+    pa <- side_state$a
+    pb <- side_state$b
     metric <- selected_metric()
     preset_now <- input$cmp_preset %||% ""
     gap_after_minus_before <- preset_now %in% c("date_split", "gn_split")
@@ -1838,8 +1853,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     req(entity)
     req(identical(input$main_tabs, "compare"))
 
-    pa <- collect_side_params("a")
-    pb <- collect_side_params("b")
+    side_state <- cmp_side_state()
+    pa <- side_state$a
+    pb <- side_state$b
     mode <- entity$mode
 
     if (mode == "Teams") {
