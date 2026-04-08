@@ -279,26 +279,27 @@ server_tab5_traditional <- function(input, output, session, shared) {
     tids <- selected_team_ids()
     opp_ids <- selected_opp_ids()
     gp <- gn_params()
-
-    clutch_enabled <- isTRUE(f$clutch_enabled)
-    max_margin <- if (clutch_enabled) suppressWarnings(as.integer(f$clutch_margin)) else NA_integer_
-    margin_status <- if (clutch_enabled) (f$clutch_status %||% "all") else NA_character_
-    max_time_remaining <- if (clutch_enabled) suppressWarnings(as.integer(f$clutch_minutes)) * 60L else NA_integer_
-    ot_margin_filter <- if (clutch_enabled) isTRUE(f$clutch_ot_margin) else FALSE
+    clutch <- resolve_clutch_params(
+      enabled = f$clutch_enabled,
+      margin = f$clutch_margin,
+      status = f$clutch_status,
+      minutes = f$clutch_minutes,
+      ot_margin = f$clutch_ot_margin
+    )
 
     list(
-      team_ids_csv = if (!is.null(tids) && length(tids) > 0) paste(as.integer(tids), collapse = ",") else NA_character_,
-      game_type_csv = if (!is.null(f$game_type) && any(nzchar(f$game_type))) paste(as.integer(f$game_type[nzchar(f$game_type)]), collapse = ",") else NA_character_,
-      opp_ids_csv = if (!is.null(opp_ids) && length(opp_ids) > 0) paste(as.integer(opp_ids), collapse = ",") else NA_character_,
-      opp_rank_side = if (nzchar(f$rank_side %||% "")) f$rank_side else NA_character_,
-      opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n)),
-      opp_rank_metric = if (nzchar(f$metric %||% "")) f$metric else NA_character_,
-      home_away = if (nzchar(f$home_away %||% "")) f$home_away else NA_character_,
-      outcome = if (nzchar(f$outcome %||% "")) f$outcome else NA_character_,
-      max_margin = max_margin,
-      margin_status = margin_status,
-      max_time_remaining = max_time_remaining,
-      ot_margin_filter = ot_margin_filter,
+      team_ids_csv = csv_if_any(tids, integerize = TRUE),
+      game_type_csv = csv_if_any(f$game_type, integerize = TRUE),
+      opp_ids_csv = csv_if_any(opp_ids, integerize = TRUE),
+      opp_rank_side = blank_to_na_character(f$rank_side),
+      opp_rank_n = blank_to_na_integer(f$rank_n),
+      opp_rank_metric = blank_to_na_character(f$metric),
+      home_away = blank_to_na_character(f$home_away),
+      outcome = blank_to_na_character(f$outcome),
+      max_margin = clutch$max_margin,
+      margin_status = clutch$margin_status,
+      max_time_remaining = clutch$max_time_remaining,
+      ot_margin_filter = clutch$ot_margin_filter,
       min_gn = gp$min_gn,
       max_gn = gp$max_gn,
       last_n_games = gp$last_n

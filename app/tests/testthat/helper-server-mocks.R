@@ -151,6 +151,46 @@ reset_clutch_inputs <- function(session, prefix, status_default = "all", margin_
   updateSliderInput(session, paste0(prefix, "_clutch_minutes"), value = minutes_default)
   updateCheckboxInput(session, paste0(prefix, "_clutch_ot_margin"), value = FALSE)
 }
+blank_to_na_character <- function(value) {
+  value <- value %||% ""
+  if (!nzchar(value)) NA_character_ else value
+}
+blank_to_na_integer <- function(value) {
+  value <- blank_to_na_character(value)
+  suppressWarnings(as.integer(value))
+}
+csv_if_any <- function(values, integerize = FALSE) {
+  if (is.null(values) || !length(values)) return(NA_character_)
+  values <- values[nzchar(as.character(values))]
+  if (!length(values)) return(NA_character_)
+  if (isTRUE(integerize)) {
+    values <- suppressWarnings(as.integer(values))
+    values <- values[is.finite(values)]
+    if (!length(values)) return(NA_character_)
+  }
+  paste(values, collapse = ",")
+}
+resolve_clutch_params <- function(enabled, margin, status, minutes, ot_margin) {
+  clutch_enabled <- isTRUE(enabled)
+  list(
+    max_margin = if (clutch_enabled) suppressWarnings(as.integer(margin)) else NA_integer_,
+    margin_status = if (clutch_enabled) blank_to_na_character(status) else NA_character_,
+    max_time_remaining = if (clutch_enabled) suppressWarnings(as.integer(minutes)) * 60L else NA_integer_,
+    ot_margin_filter = if (clutch_enabled) isTRUE(ot_margin) else FALSE
+  )
+}
+resolve_starters_bounds <- function(off_mode, off_value, def_mode, def_value) {
+  off_mode <- off_mode %||% ""
+  def_mode <- def_mode %||% ""
+  off_val <- if (nzchar(off_mode)) blank_to_na_integer(off_value) else NA_integer_
+  def_val <- if (nzchar(def_mode)) blank_to_na_integer(def_value) else NA_integer_
+  list(
+    num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
+    num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
+    num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
+    num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+  )
+}
 
 source(repo_file("R", "server_tab1.R"), local = TRUE)
 source(repo_file("R", "mod_lineup_player_filter.R"), local = TRUE)

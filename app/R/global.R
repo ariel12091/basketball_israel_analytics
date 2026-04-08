@@ -1417,6 +1417,56 @@ reset_clutch_inputs <- function(session, prefix, status_default = "all", margin_
   updateCheckboxInput(session, paste0(prefix, "_clutch_ot_margin"), value = FALSE)
 }
 
+blank_to_na_character <- function(x) {
+  val <- x %||% ""
+  if (!nzchar(val)) NA_character_ else as.character(val)
+}
+
+blank_to_na_integer <- function(x) {
+  val <- x %||% ""
+  if (!nzchar(val)) {
+    NA_integer_
+  } else {
+    suppressWarnings(as.integer(val))
+  }
+}
+
+csv_if_any <- function(x, integerize = FALSE) {
+  if (is.null(x) || !length(x)) return(NA_character_)
+  vals <- as.character(x)
+  vals <- vals[nzchar(vals)]
+  if (!length(vals)) return(NA_character_)
+  if (isTRUE(integerize)) {
+    vals <- suppressWarnings(as.integer(vals))
+    vals <- vals[!is.na(vals)]
+    if (!length(vals)) return(NA_character_)
+  }
+  paste(vals, collapse = ",")
+}
+
+resolve_clutch_params <- function(enabled, margin, status, minutes, ot_margin) {
+  clutch_enabled <- isTRUE(enabled)
+  list(
+    max_margin = if (clutch_enabled) suppressWarnings(as.integer(margin)) else NA_integer_,
+    margin_status = if (clutch_enabled) (status %||% "all") else NA_character_,
+    max_time_remaining = if (clutch_enabled) suppressWarnings(as.integer(minutes)) * 60L else NA_integer_,
+    ot_margin_filter = if (clutch_enabled) isTRUE(ot_margin) else FALSE
+  )
+}
+
+resolve_starters_bounds <- function(off_mode, off_val, def_mode, def_val) {
+  off_mode <- off_mode %||% ""
+  def_mode <- def_mode %||% ""
+  off_val <- if (nzchar(off_mode)) suppressWarnings(as.integer(off_val)) else NA_integer_
+  def_val <- if (nzchar(def_mode)) suppressWarnings(as.integer(def_val)) else NA_integer_
+  list(
+    num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
+    num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
+    num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
+    num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+  )
+}
+
 team_select_choices_with_all <- function(teams_df, all_label = "\u2014 All teams \u2014") {
   if (is.null(teams_df) || !nrow(teams_df)) {
     out <- ""

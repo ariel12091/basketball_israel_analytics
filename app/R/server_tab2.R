@@ -96,19 +96,13 @@ server_tab2 <- function(input, output, session, shared) {
   setup_gn_last_n_sync(session, input, "ld")
 
   build_ld_common_db_args <- function() {
-    game_type_csv <- {
-      x <- input$ld_game_type
-      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
-    }
-    opp_ids_csv <- {
-      ids <- shared$selected_opp_ids_ld()
-      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
-    }
-    home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
-    outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
-    opp_rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
-    opp_rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
-    opp_rank_metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
+    game_type_csv <- csv_if_any(input$ld_game_type)
+    opp_ids_csv <- csv_if_any(shared$selected_opp_ids_ld())
+    home_away <- blank_to_na_character(input$ld_home_away)
+    outcome <- blank_to_na_character(input$ld_outcome)
+    opp_rank_side <- blank_to_na_character(input$ld_opp_rank_side)
+    opp_rank_n <- blank_to_na_integer(input$ld_opp_rank_n)
+    opp_rank_metric <- blank_to_na_character(input$ld_opp_rank_metric)
 
     gn_params <- resolve_gn_last_n_params(input, "ld")
     min_gn <- gn_params$min_gn
@@ -118,16 +112,19 @@ server_tab2 <- function(input, output, session, shared) {
     start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
     end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
 
-    clutch_enabled <- isTRUE(input$ld_clutch_enabled)
-    max_margin <- if (clutch_enabled) as.integer(input$ld_clutch_margin) else NA_integer_
-    margin_status <- if (clutch_enabled) input$ld_clutch_status else NA_character_
-    max_time_remaining <- if (clutch_enabled) as.integer(input$ld_clutch_minutes) * 60L else NA_integer_
-    ot_margin_filter <- if (clutch_enabled) isTRUE(input$ld_clutch_ot_margin) else FALSE
-
-    off_mode <- input$ld_num_starters_off_mode %||% ""
-    def_mode <- input$ld_num_starters_def_mode %||% ""
-    off_val <- if (nzchar(off_mode) && nzchar(input$ld_num_starters_off %||% "")) as.integer(input$ld_num_starters_off) else NA_integer_
-    def_val <- if (nzchar(def_mode) && nzchar(input$ld_num_starters_def %||% "")) as.integer(input$ld_num_starters_def) else NA_integer_
+    clutch <- resolve_clutch_params(
+      enabled = input$ld_clutch_enabled,
+      margin = input$ld_clutch_margin,
+      status = input$ld_clutch_status,
+      minutes = input$ld_clutch_minutes,
+      ot_margin = input$ld_clutch_ot_margin
+    )
+    starters <- resolve_starters_bounds(
+      off_mode = input$ld_num_starters_off_mode,
+      off_val = input$ld_num_starters_off,
+      def_mode = input$ld_num_starters_def_mode,
+      def_val = input$ld_num_starters_def
+    )
 
     list(
       game_type_csv = game_type_csv,
@@ -142,14 +139,14 @@ server_tab2 <- function(input, output, session, shared) {
       last_n_games = last_n,
       start_date = start_date,
       end_date = end_date,
-      max_margin = max_margin,
-      margin_status = margin_status,
-      max_time_remaining = max_time_remaining,
-      ot_margin_filter = ot_margin_filter,
-      num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
-      num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
-      num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
-      num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+      max_margin = clutch$max_margin,
+      margin_status = clutch$margin_status,
+      max_time_remaining = clutch$max_time_remaining,
+      ot_margin_filter = clutch$ot_margin_filter,
+      num_starters_off_min = starters$num_starters_off_min,
+      num_starters_off_max = starters$num_starters_off_max,
+      num_starters_def_min = starters$num_starters_def_min,
+      num_starters_def_max = starters$num_starters_def_max
     )
   }
 
