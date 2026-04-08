@@ -352,23 +352,15 @@ ui_tab7_compare <- tabPanel(
                                choices = c("2", "3", "4", "5"), selected = "5",
                                inline = TRUE)
                 ),
-                div(
-                  class = "d-flex align-items-center gap-2 flex-grow-1",
-                  tags$span(class = "text-muted small text-uppercase text-nowrap", "Team"),
-                  div(style = "min-width: 140px;",
-                    selectizeInput("cmp_lu_team", NULL, choices = NULL, multiple = FALSE,
-                                   options = list(placeholder = "All teams"), width = "100%")
-                  ),
-                  tags$span(class = "text-muted small text-uppercase text-nowrap", "On"),
-                  div(style = "min-width: 160px;",
-                    selectizeInput("cmp_lu_players_on", NULL, choices = NULL, multiple = TRUE,
-                                   options = list(placeholder = "Any"), width = "100%")
-                  ),
-                  tags$span(class = "text-muted small text-uppercase text-nowrap", "Off"),
-                  div(style = "min-width: 160px;",
-                    selectizeInput("cmp_lu_players_off", NULL, choices = NULL, multiple = TRUE,
-                                   options = list(placeholder = "Any"), width = "100%")
-                  )
+                lineup_player_filter_ui(
+                  "cmp_lu_filter",
+                  layout = "inline",
+                  team_label = NULL,
+                  team_placeholder = "All teams",
+                  players_on_label = NULL,
+                  players_off_label = NULL,
+                  players_on_placeholder = "Any",
+                  players_off_placeholder = "Any"
                 )
               )
             ),

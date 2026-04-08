@@ -376,21 +376,10 @@ server_tab3 <- function(input, output, session, shared) {
       do_upd("tr_opponents", updateSelectizeInput(session, "tr_opponents", selected = character(0)))
       do_upd("tr_home_away", updateSelectInput(session, "tr_home_away", selected = ""))
       do_upd("tr_outcome", updateSelectInput(session, "tr_outcome", selected = ""))
-      do_upd("tr_opp_rank_side", updateSelectInput(session, "tr_opp_rank_side", selected = ""))
-      do_upd("tr_opp_rank_n", updateSelectInput(session, "tr_opp_rank_n", selected = ""))
-      do_upd("tr_opp_rank_metric", updateSelectInput(session, "tr_opp_rank_metric", selected = ""))
-      do_upd("tr_num_starters_off_mode", updateSelectInput(session, "tr_num_starters_off_mode", selected = ""))
-      do_upd("tr_num_starters_off", updateSelectInput(session, "tr_num_starters_off", selected = ""))
-      do_upd("tr_num_starters_def_mode", updateSelectInput(session, "tr_num_starters_def_mode", selected = ""))
-      do_upd("tr_num_starters_def", updateSelectInput(session, "tr_num_starters_def", selected = ""))
-      do_upd("tr_clutch_enabled", updateCheckboxInput(session, "tr_clutch_enabled", value = FALSE))
-      do_upd("tr_clutch_margin", updateSliderInput(session, "tr_clutch_margin", value = 5))
-      do_upd("tr_clutch_status", updateSelectInput(session, "tr_clutch_status", selected = "all"))
-      do_upd("tr_clutch_minutes", updateSliderInput(session, "tr_clutch_minutes", value = 5))
-      do_upd("tr_clutch_ot_margin", updateCheckboxInput(session, "tr_clutch_ot_margin", value = FALSE))
-      do_upd("tr_gn_min", updateSelectizeInput(session, "tr_gn_min", selected = character(0)))
-      do_upd("tr_gn_max", updateSelectizeInput(session, "tr_gn_max", selected = character(0)))
-      do_upd("tr_last_n", updateSelectizeInput(session, "tr_last_n", selected = character(0)))
+      do_upd("tr_opp_rank", reset_opp_rank_inputs(session, "tr"))
+      do_upd("tr_starters", reset_starters_inputs(session, "tr"))
+      do_upd("tr_clutch", reset_clutch_inputs(session, "tr"))
+      do_upd("tr_gn_last_n", reset_gn_last_n_inputs(session, "tr"))
     }, error = function(e) {
       log_tab3_error(paste0("tr_reset error: ", conditionMessage(e)))
       showNotification(paste("Reset failed:", conditionMessage(e)), type = "error", duration = 8)
@@ -438,11 +427,7 @@ server_tab3 <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "tr_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "tr_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "tr_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "tr", gn_vals)
   })
 
   run_team_ratings_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
@@ -736,47 +721,38 @@ server_tab3 <- function(input, output, session, shared) {
       req(gy)
       start_d <- tr_date_part(input$tr_dates, 1L)
       end_d <- tr_date_part(input$tr_dates, 2L)
-      tr_game_type_csv <- {
-        x <- input$tr_game_type
-        if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
-      }
+      tr_game_type_csv <- csv_if_any(input$tr_game_type)
       td_map <- tr_teams_for_year()
       tr_opp_ids_csv <- {
         sel <- input$tr_opponents
         if (is.null(sel) || !length(sel)) NA_character_ else {
           ids <- td_map %>% filter(team_name %in% sel) %>% pull(team_id)
-          paste(ids, collapse = ",")
+          csv_if_any(ids, integerize = TRUE)
         }
       }
-      tr_home_away <- if (!nzchar(input$tr_home_away %||% "")) NA_character_ else input$tr_home_away
-      tr_outcome <- if (!nzchar(input$tr_outcome %||% "")) NA_character_ else input$tr_outcome
-      tr_rank_side <- if (!nzchar(input$tr_opp_rank_side %||% "")) NA_character_ else input$tr_opp_rank_side
-      tr_rank_n <- suppressWarnings(as.integer(if (!nzchar(input$tr_opp_rank_n %||% "")) NA_character_ else input$tr_opp_rank_n))
-      tr_metric <- if (!nzchar(input$tr_opp_rank_metric %||% "")) NA_character_ else input$tr_opp_rank_metric
+      tr_home_away <- blank_to_na_character(input$tr_home_away)
+      tr_outcome <- blank_to_na_character(input$tr_outcome)
+      tr_rank_side <- blank_to_na_character(input$tr_opp_rank_side)
+      tr_rank_n <- blank_to_na_integer(input$tr_opp_rank_n)
+      tr_metric <- blank_to_na_character(input$tr_opp_rank_metric)
 
-      min_gn <- if (!is.null(input$tr_gn_min) && nzchar(input$tr_gn_min)) as.integer(input$tr_gn_min) else NA_integer_
-      max_gn <- if (!is.null(input$tr_gn_max) && nzchar(input$tr_gn_max)) as.integer(input$tr_gn_max) else NA_integer_
-      last_n <- if (!is.null(input$tr_last_n) && nzchar(input$tr_last_n)) as.integer(input$tr_last_n) else NA_integer_
-      if (!is.na(last_n)) { min_gn <- NA_integer_; max_gn <- NA_integer_ }
-      if (!is.na(min_gn) || !is.na(max_gn)) last_n <- NA_integer_
-      if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) { tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp }
-
-      clutch_enabled <- isTRUE(input$tr_clutch_enabled)
-      max_margin <- if (clutch_enabled) as.integer(input$tr_clutch_margin) else NA_integer_
-      margin_status <- if (clutch_enabled) input$tr_clutch_status else NA_character_
-      max_time_remaining <- if (clutch_enabled) as.integer(input$tr_clutch_minutes) * 60L else NA_integer_
-      ot_margin_filter <- if (clutch_enabled) isTRUE(input$tr_clutch_ot_margin) else FALSE
-      off_mode <- input$tr_num_starters_off_mode %||% ""
-      def_mode <- input$tr_num_starters_def_mode %||% ""
-      off_val <- if (nzchar(off_mode) && nzchar(input$tr_num_starters_off %||% "")) as.integer(input$tr_num_starters_off) else NA_integer_
-      def_val <- if (nzchar(def_mode) && nzchar(input$tr_num_starters_def %||% "")) as.integer(input$tr_num_starters_def) else NA_integer_
-      num_starters_off_min <- if (identical(off_mode, "gte")) off_val else NA_integer_
-      num_starters_off_max <- if (identical(off_mode, "lte")) off_val else NA_integer_
-      num_starters_def_min <- if (identical(def_mode, "gte")) def_val else NA_integer_
-      num_starters_def_max <- if (identical(def_mode, "lte")) def_val else NA_integer_
+      gn_params <- resolve_gn_last_n_params(input, "tr")
+      clutch <- resolve_clutch_params(
+        enabled = input$tr_clutch_enabled,
+        margin = input$tr_clutch_margin,
+        status = input$tr_clutch_status,
+        minutes = input$tr_clutch_minutes,
+        ot_margin = input$tr_clutch_ot_margin
+      )
+      starters <- resolve_starters_bounds(
+        off_mode = input$tr_num_starters_off_mode,
+        off_value = input$tr_num_starters_off,
+        def_mode = input$tr_num_starters_def_mode,
+        def_value = input$tr_num_starters_def
+      )
       trad_side <- if (isTRUE(input$tr_trad_defense_mode)) "defense" else "offense"
 
-      list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = max_margin, margin_status = margin_status, max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter, min_gn = min_gn, max_gn = max_gn, last_n_games = last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = num_starters_off_min, num_starters_off_max = num_starters_off_max, num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max, trad_side = trad_side)
+      list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = clutch$max_margin, margin_status = clutch$margin_status, max_time_remaining = clutch$max_time_remaining, ot_margin_filter = clutch$ot_margin_filter, min_gn = gn_params$min_gn, max_gn = gn_params$max_gn, last_n_games = gn_params$last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = starters$num_starters_off_min, num_starters_off_max = starters$num_starters_off_max, num_starters_def_min = starters$num_starters_def_min, num_starters_def_max = starters$num_starters_def_max, trad_side = trad_side)
     }, error = function(e) {
       log_tab3_error(paste0("tr_params error: ", conditionMessage(e)))
       tb <- tryCatch(paste(capture.output(sys.calls()), collapse = " || "), error = function(err) "")
@@ -860,19 +836,7 @@ server_tab3 <- function(input, output, session, shared) {
     if (is.null(q) || !nrow(q) || is.na(q$d[1])) as.Date(NA) else as.Date(q$d[1])
   })
 
-  observeEvent(input$tr_last_n, {
-    if (!is.null(input$tr_last_n) && nzchar(input$tr_last_n)) {
-      updateSelectizeInput(session, "tr_gn_min", selected = "")
-      updateSelectizeInput(session, "tr_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$tr_gn_min, input$tr_gn_max), {
-    if ((nzchar(input$tr_gn_min %||% "") || nzchar(input$tr_gn_max %||% "")) &&
-        nzchar(input$tr_last_n %||% "")) {
-      updateSelectizeInput(session, "tr_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "tr")
 
   tr_fallback_needed <- reactive({
     p <- tr_params()

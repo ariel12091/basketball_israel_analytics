@@ -106,8 +106,94 @@ fmt_rank_cell <- function(value, rank_now, delta, digits = 1) as.character(round
 
 build_filter_chips <- function(...) shiny::tags$div(class = "filter-chips", "chips")
 setup_chip_clears <- function(...) invisible(TRUE)
+update_gn_last_n_choices <- function(session, prefix, gn_vals) {
+  gn_vals <- suppressWarnings(as.integer(gn_vals))
+  gn_vals <- gn_vals[is.finite(gn_vals)]
+  gn_choices <- c("", as.character(gn_vals))
+  last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
+  updateSelectizeInput(session, paste0(prefix, "_gn_min"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_gn_max"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
+}
+resolve_gn_last_n_params <- function(input, prefix) {
+  min_gn <- input[[paste0(prefix, "_gn_min")]] %||% ""
+  max_gn <- input[[paste0(prefix, "_gn_max")]] %||% ""
+  last_n <- input[[paste0(prefix, "_last_n")]] %||% ""
+  min_gn <- if (nzchar(min_gn)) as.integer(min_gn) else NA_integer_
+  max_gn <- if (nzchar(max_gn)) as.integer(max_gn) else NA_integer_
+  last_n <- if (nzchar(last_n)) as.integer(last_n) else NA_integer_
+  if (!is.na(last_n)) { min_gn <- NA_integer_; max_gn <- NA_integer_ }
+  if (!is.na(min_gn) || !is.na(max_gn)) last_n <- NA_integer_
+  if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) { tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp }
+  list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+}
+setup_gn_last_n_sync <- function(session, input, prefix) invisible(TRUE)
+reset_gn_last_n_inputs <- function(session, prefix) {
+  updateSelectizeInput(session, paste0(prefix, "_gn_min"), selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_gn_max"), selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_last_n"), selected = "")
+}
+reset_opp_rank_inputs <- function(session, prefix) {
+  updateSelectInput(session, paste0(prefix, "_opp_rank_side"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_opp_rank_n"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_opp_rank_metric"), selected = "")
+}
+reset_starters_inputs <- function(session, prefix, own_prefix = "num_starters_off", opp_prefix = "num_starters_def") {
+  updateSelectInput(session, paste0(prefix, "_", own_prefix, "_mode"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", own_prefix), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", opp_prefix, "_mode"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", opp_prefix), selected = "")
+}
+reset_clutch_inputs <- function(session, prefix, status_default = "all", margin_default = 5, minutes_default = 5) {
+  updateCheckboxInput(session, paste0(prefix, "_clutch_enabled"), value = FALSE)
+  updateSliderInput(session, paste0(prefix, "_clutch_margin"), value = margin_default)
+  updateSelectInput(session, paste0(prefix, "_clutch_status"), selected = status_default)
+  updateSliderInput(session, paste0(prefix, "_clutch_minutes"), value = minutes_default)
+  updateCheckboxInput(session, paste0(prefix, "_clutch_ot_margin"), value = FALSE)
+}
+blank_to_na_character <- function(value) {
+  value <- value %||% ""
+  if (!nzchar(value)) NA_character_ else value
+}
+blank_to_na_integer <- function(value) {
+  value <- blank_to_na_character(value)
+  suppressWarnings(as.integer(value))
+}
+csv_if_any <- function(values, integerize = FALSE) {
+  if (is.null(values) || !length(values)) return(NA_character_)
+  values <- values[nzchar(as.character(values))]
+  if (!length(values)) return(NA_character_)
+  if (isTRUE(integerize)) {
+    values <- suppressWarnings(as.integer(values))
+    values <- values[is.finite(values)]
+    if (!length(values)) return(NA_character_)
+  }
+  paste(values, collapse = ",")
+}
+resolve_clutch_params <- function(enabled, margin, status, minutes, ot_margin) {
+  clutch_enabled <- isTRUE(enabled)
+  list(
+    max_margin = if (clutch_enabled) suppressWarnings(as.integer(margin)) else NA_integer_,
+    margin_status = if (clutch_enabled) blank_to_na_character(status) else NA_character_,
+    max_time_remaining = if (clutch_enabled) suppressWarnings(as.integer(minutes)) * 60L else NA_integer_,
+    ot_margin_filter = if (clutch_enabled) isTRUE(ot_margin) else FALSE
+  )
+}
+resolve_starters_bounds <- function(off_mode, off_value, def_mode, def_value) {
+  off_mode <- off_mode %||% ""
+  def_mode <- def_mode %||% ""
+  off_val <- if (nzchar(off_mode)) blank_to_na_integer(off_value) else NA_integer_
+  def_val <- if (nzchar(def_mode)) blank_to_na_integer(def_value) else NA_integer_
+  list(
+    num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
+    num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
+    num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
+    num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+  )
+}
 
 source(repo_file("R", "server_tab1.R"), local = TRUE)
+source(repo_file("R", "mod_lineup_player_filter.R"), local = TRUE)
 source(repo_file("R", "server_tab2.R"), local = TRUE)
 source(repo_file("R", "server_tab3.R"), local = TRUE)
 source(repo_file("R", "server_tab4.R"), local = TRUE)

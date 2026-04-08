@@ -70,11 +70,7 @@ server_tab1 <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "on_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "on_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "on_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "on", gn_vals)
   }, ignoreInit = FALSE)
 
 
@@ -147,27 +143,20 @@ server_tab1 <- function(input, output, session, shared) {
     f <- debounced_on_filters()
     gp <- gn_params()
 
-    game_type_csv <- if (is.null(f$game_type) || !any(nzchar(f$game_type))) {
-      NA_character_
-    } else {
-      paste(f$game_type[nzchar(f$game_type)], collapse = ",")
-    }
+    game_type_csv <- csv_if_any(f$game_type)
+    opp_ids_csv <- csv_if_any(shared$selected_opp_ids_on())
 
-    opp_ids_csv <- {
-      ids <- shared$selected_opp_ids_on()
-      if (is.null(ids)) NA_character_ else paste(ids, collapse = ",")
-    }
-
-    home_away <- if (!nzchar(f$home_away %||% "")) NA_character_ else f$home_away
-    outcome <- if (!nzchar(f$outcome %||% "")) NA_character_ else f$outcome
-    opp_rank_side <- if (!nzchar(f$rank_side %||% "")) NA_character_ else f$rank_side
-    opp_rank_n <- suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA else f$rank_n))
-    opp_rank_metric <- if (!nzchar(f$metric %||% "")) NA_character_ else f$metric
-
-    off_mode <- f$num_starters_off_mode %||% ""
-    def_mode <- f$num_starters_def_mode %||% ""
-    off_val <- if (nzchar(off_mode) && nzchar(f$num_starters_off %||% "")) as.integer(f$num_starters_off) else NA_integer_
-    def_val <- if (nzchar(def_mode) && nzchar(f$num_starters_def %||% "")) as.integer(f$num_starters_def) else NA_integer_
+    home_away <- blank_to_na_character(f$home_away)
+    outcome <- blank_to_na_character(f$outcome)
+    opp_rank_side <- blank_to_na_character(f$rank_side)
+    opp_rank_n <- blank_to_na_integer(f$rank_n)
+    opp_rank_metric <- blank_to_na_character(f$metric)
+    starters <- resolve_starters_bounds(
+      off_mode = f$num_starters_off_mode,
+      off_val = f$num_starters_off,
+      def_mode = f$num_starters_def_mode,
+      def_val = f$num_starters_def
+    )
 
     list(
       game_type_csv = game_type_csv,
@@ -180,10 +169,10 @@ server_tab1 <- function(input, output, session, shared) {
       min_gn = gp$min_gn,
       max_gn = gp$max_gn,
       last_n_games = gp$last_n,
-      num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
-      num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
-      num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
-      num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+      num_starters_off_min = starters$num_starters_off_min,
+      num_starters_off_max = starters$num_starters_off_max,
+      num_starters_def_min = starters$num_starters_def_min,
+      num_starters_def_max = starters$num_starters_def_max
     )
   }
 
@@ -324,19 +313,7 @@ server_tab1 <- function(input, output, session, shared) {
     auto_min_state$last_auto_all <- min_needed
   }, ignoreInit = TRUE)
 
-  observeEvent(input$on_last_n, {
-    if (!is.null(input$on_last_n) && nzchar(input$on_last_n)) {
-      updateSelectizeInput(session, "on_gn_min", selected = "")
-      updateSelectizeInput(session, "on_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$on_gn_min, input$on_gn_max), {
-    if ((nzchar(input$on_gn_min %||% "") || nzchar(input$on_gn_max %||% "")) &&
-        nzchar(input$on_last_n %||% "")) {
-      updateSelectizeInput(session, "on_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "on")
 
   selected_team_ids <- reactive({
     td <- shared$teams_for_year_df()

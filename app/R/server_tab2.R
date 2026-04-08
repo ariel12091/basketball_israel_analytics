@@ -3,6 +3,10 @@
 server_tab2 <- function(input, output, session, shared) {
 
   ld_ref <- reactiveValues(teams = NULL, players = NULL)
+  ld_lineup_filter <- lineup_player_filter_server(
+    "ld_lineup_filter",
+    players_ref = reactive(ld_ref$players)
+  )
   auto_min_state <- reactiveValues(
     last_auto = NA_integer_,
     updating = FALSE
@@ -35,14 +39,12 @@ server_tab2 <- function(input, output, session, shared) {
         "SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int))
     )
     ld_ref$teams <- teams_ld
-    team_values <- c("", as.character(teams_ld$team_id))
-    names(team_values) <- c("- All teams -", teams_ld$team_name)
     pending_team <- shared$pending_ld_team()
     if (!is.null(pending_team) && nzchar(pending_team)) {
       shared$pending_ld_team(NULL)
-      updateSelectizeInput(session, "ld_team", choices = team_values, selected = pending_team, server = TRUE)
+      ld_lineup_filter$update_team_choices(team_select_choices_with_all(teams_ld, all_label = "- All teams -"), selected = pending_team)
     } else {
-      updateSelectizeInput(session, "ld_team", choices = team_values, selected = "", server = TRUE)
+      ld_lineup_filter$update_team_choices(team_select_choices_with_all(teams_ld, all_label = "- All teams -"), selected = "")
     }
 
     players_map <- cached_ref_query(
@@ -52,8 +54,7 @@ server_tab2 <- function(input, output, session, shared) {
     )
     ld_ref$players <- players_map
 
-    updateSelectizeInput(session, "ld_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ld_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
+    ld_lineup_filter$clear_player_choices()
 
     gn_df <- cached_ref_query(
       key = sprintf("ld_gn_%d", gy_int),
@@ -61,43 +62,8 @@ server_tab2 <- function(input, output, session, shared) {
         "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "ld_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ld_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ld_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "ld", gn_vals)
   })
-
-  observeEvent(input$ld_team, {
-    req(identical(input$main_tabs, "lineup_data"))
-    if (is.null(input$ld_team) || is.na(input$ld_team) || !nzchar(input$ld_team)) {
-      updateSelectizeInput(session, "ld_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-      updateSelectizeInput(session, "ld_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-      return(invisible(NULL))
-    }
-    team_id <- as.integer(input$ld_team)
-    players <- ld_ref$players %>% filter(team_id == !!team_id)
-    choices <- setNames(players$player_id, players$name)
-    # Clear old tags first, then set new choices
-    updateSelectizeInput(session, "ld_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ld_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ld_players_on", choices = choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ld_players_off", choices = choices, selected = character(0), server = TRUE)
-  }, ignoreInit = TRUE)
-
-  observeEvent(input$ld_players_on, {
-    on_sel <- input$ld_players_on %||% character(0)
-    off_sel <- input$ld_players_off %||% character(0)
-    inter <- intersect(on_sel, off_sel)
-    if (length(inter)) updateSelectizeInput(session, "ld_players_off", selected = setdiff(off_sel, inter))
-  }, ignoreInit = TRUE)
-
-  observeEvent(input$ld_players_off, {
-    on_sel <- input$ld_players_on %||% character(0)
-    off_sel <- input$ld_players_off %||% character(0)
-    inter <- intersect(on_sel, off_sel)
-    if (length(inter)) updateSelectizeInput(session, "ld_players_on", selected = setdiff(on_sel, inter))
-  }, ignoreInit = TRUE)
 
   observeEvent(input$ld_reset, {
     resetting(TRUE)
@@ -106,95 +72,59 @@ server_tab2 <- function(input, output, session, shared) {
     updateRadioButtons(session, "ld_num", selected = LD_DEFAULT_NUM)
     updateDateRangeInput(session, "ld_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     if (!is.null(ld_ref$teams)) {
-      team_values <- c("", as.character(ld_ref$teams$team_id))
-      names(team_values) <- c("- All teams -", ld_ref$teams$team_name)
-      updateSelectizeInput(session, "ld_team", choices = team_values, selected = "", server = TRUE)
+      ld_lineup_filter$reset_inputs(
+        team_choices = team_select_choices_with_all(ld_ref$teams, all_label = "- All teams -"),
+        team_selected = ""
+      )
     } else {
-      updateSelectizeInput(session, "ld_team", selected = "", server = TRUE)
+      ld_lineup_filter$reset_inputs(team_selected = "")
     }
-    updateSelectizeInput(session, "ld_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ld_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-    updateSelectInput(session, "ld_num_starters_off_mode", selected = "")
-    updateSelectInput(session, "ld_num_starters_off", selected = "")
-    updateSelectInput(session, "ld_num_starters_def_mode", selected = "")
-    updateSelectInput(session, "ld_num_starters_def", selected = "")
+    reset_starters_inputs(session, "ld")
     updateSliderInput(session, "ld_minposs", value = LD_DEFAULT_MIN_POSS)
     updateSelectizeInput(session, "ld_game_type", selected = character(0))
     updateSelectizeInput(session, "ld_opponents", selected = character(0))
     updateSelectInput(session, "ld_home_away", selected = "")
     updateSelectInput(session, "ld_outcome", selected = "")
-    updateSelectInput(session, "ld_opp_rank_side", selected = "")
-    updateSelectInput(session, "ld_opp_rank_n", selected = "")
-    updateSelectInput(session, "ld_opp_rank_metric", selected = "")
-    updateCheckboxInput(session, "ld_clutch_enabled", value = FALSE)
-    updateSliderInput(session, "ld_clutch_margin", value = 5)
-    updateSelectInput(session, "ld_clutch_status", selected = "all")
-    updateSliderInput(session, "ld_clutch_minutes", value = 5)
-    updateCheckboxInput(session, "ld_clutch_ot_margin", value = FALSE)
-    updateSelectizeInput(session, "ld_gn_min", selected = "")
-    updateSelectizeInput(session, "ld_gn_max", selected = "")
-    updateSelectizeInput(session, "ld_last_n", selected = "")
+    reset_opp_rank_inputs(session, "ld")
+    reset_clutch_inputs(session, "ld")
+    reset_gn_last_n_inputs(session, "ld")
     auto_min_state$last_auto <- as.integer(LD_DEFAULT_MIN_POSS)
     auto_enabled(FALSE)
     session$onFlushed(function() resetting(FALSE), once = TRUE)
   })
 
-  observeEvent(input$ld_last_n, {
-    if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) {
-      updateSelectizeInput(session, "ld_gn_min", selected = "")
-      updateSelectizeInput(session, "ld_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$ld_gn_min, input$ld_gn_max), {
-    if ((nzchar(input$ld_gn_min %||% "") || nzchar(input$ld_gn_max %||% "")) &&
-        nzchar(input$ld_last_n %||% "")) {
-      updateSelectizeInput(session, "ld_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "ld")
 
   build_ld_common_db_args <- function() {
-    game_type_csv <- {
-      x <- input$ld_game_type
-      if (is.null(x) || !length(x) || !any(nzchar(x))) NA_character_ else paste(x[nzchar(x)], collapse = ",")
-    }
-    opp_ids_csv <- {
-      ids <- shared$selected_opp_ids_ld()
-      if (is.null(ids) || !length(ids)) NA_character_ else paste(ids, collapse = ",")
-    }
-    home_away <- if (!nzchar(input$ld_home_away %||% "")) NA_character_ else input$ld_home_away
-    outcome <- if (!nzchar(input$ld_outcome %||% "")) NA_character_ else input$ld_outcome
-    opp_rank_side <- if (!nzchar(input$ld_opp_rank_side %||% "")) NA_character_ else input$ld_opp_rank_side
-    opp_rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
-    opp_rank_metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
+    game_type_csv <- csv_if_any(input$ld_game_type)
+    opp_ids_csv <- csv_if_any(shared$selected_opp_ids_ld())
+    home_away <- blank_to_na_character(input$ld_home_away)
+    outcome <- blank_to_na_character(input$ld_outcome)
+    opp_rank_side <- blank_to_na_character(input$ld_opp_rank_side)
+    opp_rank_n <- blank_to_na_integer(input$ld_opp_rank_n)
+    opp_rank_metric <- blank_to_na_character(input$ld_opp_rank_metric)
 
-    min_gn <- if (!is.null(input$ld_gn_min) && nzchar(input$ld_gn_min)) as.integer(input$ld_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$ld_gn_max) && nzchar(input$ld_gn_max)) as.integer(input$ld_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) as.integer(input$ld_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
+    gn_params <- resolve_gn_last_n_params(input, "ld")
+    min_gn <- gn_params$min_gn
+    max_gn <- gn_params$max_gn
+    last_n <- gn_params$last_n
 
     start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
     end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
 
-    clutch_enabled <- isTRUE(input$ld_clutch_enabled)
-    max_margin <- if (clutch_enabled) as.integer(input$ld_clutch_margin) else NA_integer_
-    margin_status <- if (clutch_enabled) input$ld_clutch_status else NA_character_
-    max_time_remaining <- if (clutch_enabled) as.integer(input$ld_clutch_minutes) * 60L else NA_integer_
-    ot_margin_filter <- if (clutch_enabled) isTRUE(input$ld_clutch_ot_margin) else FALSE
-
-    off_mode <- input$ld_num_starters_off_mode %||% ""
-    def_mode <- input$ld_num_starters_def_mode %||% ""
-    off_val <- if (nzchar(off_mode) && nzchar(input$ld_num_starters_off %||% "")) as.integer(input$ld_num_starters_off) else NA_integer_
-    def_val <- if (nzchar(def_mode) && nzchar(input$ld_num_starters_def %||% "")) as.integer(input$ld_num_starters_def) else NA_integer_
+    clutch <- resolve_clutch_params(
+      enabled = input$ld_clutch_enabled,
+      margin = input$ld_clutch_margin,
+      status = input$ld_clutch_status,
+      minutes = input$ld_clutch_minutes,
+      ot_margin = input$ld_clutch_ot_margin
+    )
+    starters <- resolve_starters_bounds(
+      off_mode = input$ld_num_starters_off_mode,
+      off_val = input$ld_num_starters_off,
+      def_mode = input$ld_num_starters_def_mode,
+      def_val = input$ld_num_starters_def
+    )
 
     list(
       game_type_csv = game_type_csv,
@@ -209,14 +139,14 @@ server_tab2 <- function(input, output, session, shared) {
       last_n_games = last_n,
       start_date = start_date,
       end_date = end_date,
-      max_margin = max_margin,
-      margin_status = margin_status,
-      max_time_remaining = max_time_remaining,
-      ot_margin_filter = ot_margin_filter,
-      num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
-      num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
-      num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
-      num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+      max_margin = clutch$max_margin,
+      margin_status = clutch$margin_status,
+      max_time_remaining = clutch$max_time_remaining,
+      ot_margin_filter = clutch$ot_margin_filter,
+      num_starters_off_min = starters$num_starters_off_min,
+      num_starters_off_max = starters$num_starters_off_max,
+      num_starters_def_min = starters$num_starters_def_min,
+      num_starters_def_max = starters$num_starters_def_max
     )
   }
 
@@ -362,11 +292,12 @@ server_tab2 <- function(input, output, session, shared) {
   ld_params <- reactive({
     req(identical(input$main_tabs, "lineup_data"))
     db_args <- build_ld_common_db_args()
-    team_id <- if (!is.null(input$ld_team) && !is.na(input$ld_team) && nzchar(input$ld_team)) as.integer(input$ld_team) else NA_integer_
-    player_on_ids <- if (!is.na(team_id)) as.integer(input$ld_players_on) else integer(0)
-    player_off_ids <- if (!is.na(team_id)) as.integer(input$ld_players_off) else integer(0)
+    team_val <- ld_lineup_filter$team()
+    team_id <- if (nzchar(team_val)) as.integer(team_val) else NA_integer_
+    player_on_ids <- if (!is.na(team_id)) as.integer(ld_lineup_filter$players_on()) else integer(0)
+    player_off_ids <- if (!is.na(team_id)) as.integer(ld_lineup_filter$players_off()) else integer(0)
     list(num = as.integer(input$ld_num), team_csv = if (!is.na(team_id)) as.character(team_id) else NA_character_, player_csv = if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_, player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_, exact = TRUE, start_date = db_args$start_date, end_date = db_args$end_date, min_poss = as.integer(input$ld_minposs), game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv, home_away = db_args$home_away, outcome = db_args$outcome, opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric, min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max, num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max)
-  }) %>% bindEvent(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off, input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode, input$ld_num_starters_off_mode, input$ld_num_starters_off, input$ld_num_starters_def_mode, input$ld_num_starters_def, input$ld_gn_min, input$ld_gn_max, input$ld_last_n)
+  }) %>% bindEvent(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_off(), input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode, input$ld_num_starters_off_mode, input$ld_num_starters_off, input$ld_num_starters_def_mode, input$ld_num_starters_def, input$ld_gn_min, input$ld_gn_max, input$ld_last_n)
 
   parse_player_ids <- function(x) {
     if (is.null(x)) return(integer(0))
@@ -417,7 +348,7 @@ server_tab2 <- function(input, output, session, shared) {
     auto_enabled(FALSE)
   }, ignoreInit = TRUE)
 
-  observeEvent(list(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off,
+  observeEvent(list(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_off(),
                     input$ld_dates, input$main_tabs, input$ld_game_type, input$ld_opponents,
                     input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side,
                     input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode,
@@ -429,7 +360,7 @@ server_tab2 <- function(input, output, session, shared) {
     auto_enabled(TRUE)
   }, ignoreInit = TRUE)
 
-  observeEvent(list(input$ld_num, input$ld_team, input$ld_players_on, input$ld_players_off,
+  observeEvent(list(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_off(),
                     input$ld_dates, input$main_tabs, input$ld_game_type, input$ld_opponents,
                     input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side,
                     input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode,
@@ -1272,7 +1203,7 @@ server_tab2 <- function(input, output, session, shared) {
     }
     player_map <- NULL
     if (!is.null(ld_ref$players) && nrow(ld_ref$players)) {
-      team_id <- suppressWarnings(as.integer(input$ld_team))
+      team_id <- suppressWarnings(as.integer(ld_lineup_filter$team()))
       pmap <- ld_ref$players
       if (!is.na(team_id)) pmap <- pmap %>% filter(team_id == !!team_id)
       player_map <- setNames(pmap$name, as.character(pmap$player_id))
@@ -1281,7 +1212,10 @@ server_tab2 <- function(input, output, session, shared) {
       "ld", input, shared$season_date_bounds,
       reset_btn_id = "ld_reset",
       team_label_map = team_map,
-      player_label_map = player_map
+      player_label_map = player_map,
+      teams_value = ld_lineup_filter$team(),
+      players_on_value = ld_lineup_filter$players_on(),
+      players_off_value = ld_lineup_filter$players_off()
     )
   })
   setup_chip_clears("ld", session, input, shared,
@@ -1290,16 +1224,16 @@ server_tab2 <- function(input, output, session, shared) {
     gn_min_id = "ld_gn_min", gn_max_id = "ld_gn_max", last_n_id = "ld_last_n",
     opp_rank_ids = c("ld_opp_rank_side", "ld_opp_rank_n", "ld_opp_rank_metric"),
     date_id = "ld_dates", gy_input_id = "game_year",
-    teams_ids = "ld_team",
+    teams_ids = "ld_lineup_filter-team",
     starters_ids = c("ld_num_starters_off_mode", "ld_num_starters_off",
                      "ld_num_starters_def_mode", "ld_num_starters_def"),
     clutch_enabled_id = "ld_clutch_enabled")
   # Tab 2 specific: players on/off clear
   observeEvent(input$ld_clear_players_on, {
-    updateSelectizeInput(session, "ld_players_on", selected = character(0))
+    updateSelectizeInput(session, "ld_lineup_filter-players_on", selected = character(0))
   }, ignoreInit = TRUE)
   observeEvent(input$ld_clear_players_off, {
-    updateSelectizeInput(session, "ld_players_off", selected = character(0))
+    updateSelectizeInput(session, "ld_lineup_filter-players_off", selected = character(0))
   }, ignoreInit = TRUE)
 }
 

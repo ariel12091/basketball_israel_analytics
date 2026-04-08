@@ -4,6 +4,7 @@
 
 # Source all modules
 source("R/global.R", local = TRUE)
+source("R/mod_lineup_player_filter.R", local = TRUE)
 source("R/ui_tab0_home.R", local = TRUE)
 source("R/ui_tab1_onoff.R", local = TRUE)
 source("R/ui_tab2_lineup.R", local = TRUE)
@@ -176,8 +177,13 @@ ui <- navbarPage(
                     }
                   }, 0);
                 } else {
-                  var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
-                  if (radio) { radio.click(); }
+                  setTimeout(function() {
+                    var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
+                    if (radio) { radio.click(); }
+                    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
+                      window.Shiny.setInputValue(iid, val, { priority: 'event' });
+                    }
+                  }, 0);
                 }
                 // Update dropdown UI
                 menu.querySelectorAll('.thm-item').forEach(function(r) {

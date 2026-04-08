@@ -32,48 +32,8 @@ ui_tab4_gamelogs <- tabPanel(
             column(6, selectInput("gl_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
-          tags$div(
-            class = "text-end mb-2",
-            tags$a(
-              href = "#",
-              class = "small text-muted fw-bold",
-              style = "text-decoration: none;",
-              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
-              "Collapse/Expand All"
-            )
-          ),
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput("gl_game_type", "Game type",
-                             choices = c("All" = "", "Regular season" = "5",
-                                         "Playoffs \u2013 Quarterfinals" = "16",
-                                         "Playoffs \u2013 Finals" = "17",
-                                         "Playoffs \u2013 Semifinals" = "26",
-                                         "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
-                             selected = "", multiple = TRUE,
-                             options = list(placeholder = "All game types")),
-              selectizeInput("gl_opponents", "Opponents", choices = NULL,
-                             selected = character(0), multiple = TRUE,
-                             options = list(placeholder = "All opponents")),
-              selectInput("gl_home_away", "Home/Away",
-                          choices = c("All" = "", "Home" = "home", "Away" = "away"),
-                          selected = ""),
-              selectInput("gl_outcome", "Outcome",
-                          choices = c("All" = "", "Win" = "win", "Loss" = "loss"),
-                          selected = ""),
-              tags$hr(),
-              fluidRow(
-                column(6, selectizeInput("gl_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
-                                         options = list(placeholder = "Any"))),
-                column(6, selectizeInput("gl_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
-                                         options = list(placeholder = "Any")))
-              ),
-              selectizeInput("gl_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
-                             options = list(placeholder = "Any"))
-            ),
-            open = TRUE
-          )
+          accordion_toggle_link(),
+          game_context_filters_ui("gl", include_opp_rank = FALSE)
         )
       ),
       mainPanel(

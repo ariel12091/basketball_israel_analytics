@@ -22,14 +22,12 @@ server_tab4 <- function(input, output, session, shared) {
       }
     )
     gl_ref$teams <- teams_gl
-    team_values <- c("", as.character(teams_gl$team_id))
-    names(team_values) <- c("\u2014 All teams \u2014", teams_gl$team_name)
     pending_team <- shared$pending_gl_team()
     if (!is.null(pending_team) && nzchar(pending_team)) {
       shared$pending_gl_team(NULL)
-      updateSelectizeInput(session, "gl_team", choices = team_values, selected = pending_team, server = TRUE)
+      update_single_team_selectize(session, "gl_team", teams_gl, selected = pending_team)
     } else {
-      updateSelectizeInput(session, "gl_team", choices = team_values, selected = "", server = TRUE)
+      update_single_team_selectize(session, "gl_team", teams_gl, selected = "")
     }
     updateSelectizeInput(session, "gl_opponents", choices = teams_gl$team_name,
                          selected = character(0), server = TRUE)
@@ -45,47 +43,18 @@ server_tab4 <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "gl_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "gl_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "gl_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "gl", gn_vals)
   })
 
-  observeEvent(input$gl_last_n, {
-    if (!is.null(input$gl_last_n) && nzchar(input$gl_last_n)) {
-      updateSelectizeInput(session, "gl_gn_min", selected = "")
-      updateSelectizeInput(session, "gl_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "gl")
 
   observeEvent(input$game_year, {
     b <- shared$season_date_bounds(input$game_year)
     updateDateRangeInput(session, "gl_dates", start = b$start, end = b$end, min = b$start, max = b$end)
   }, ignoreInit = FALSE)
 
-  observeEvent(list(input$gl_gn_min, input$gl_gn_max), {
-    if ((nzchar(input$gl_gn_min %||% "") || nzchar(input$gl_gn_max %||% "")) &&
-        nzchar(input$gl_last_n %||% "")) {
-      updateSelectizeInput(session, "gl_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
   gl_gn_params <- reactive({
-    min_gn <- if (!is.null(input$gl_gn_min) && nzchar(input$gl_gn_min)) as.integer(input$gl_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$gl_gn_max) && nzchar(input$gl_gn_max)) as.integer(input$gl_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$gl_last_n) && nzchar(input$gl_last_n)) as.integer(input$gl_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-    list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+    resolve_gn_last_n_params(input, "gl")
   }) %>% debounce(150)
 
   # --- Reset ---
@@ -94,9 +63,7 @@ server_tab4 <- function(input, output, session, shared) {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
     updateDateRangeInput(session, "gl_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     if (!is.null(gl_ref$teams)) {
-      team_values <- c("", as.character(gl_ref$teams$team_id))
-      names(team_values) <- c("\u2014 All teams \u2014", gl_ref$teams$team_name)
-      updateSelectizeInput(session, "gl_team", choices = team_values, selected = "", server = TRUE)
+      update_single_team_selectize(session, "gl_team", gl_ref$teams, selected = "")
     } else {
       updateSelectizeInput(session, "gl_team", selected = "", server = TRUE)
     }
@@ -104,13 +71,8 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "gl_opponents", selected = character(0))
     updateSelectInput(session, "gl_home_away", selected = "")
     updateSelectInput(session, "gl_outcome", selected = "")
-    updateSelectInput(session, "gl_num_starters_off_mode", selected = "")
-    updateSelectInput(session, "gl_num_starters_off", selected = "")
-    updateSelectInput(session, "gl_num_starters_def_mode", selected = "")
-    updateSelectInput(session, "gl_num_starters_def", selected = "")
-    updateSelectizeInput(session, "gl_gn_min", selected = "")
-    updateSelectizeInput(session, "gl_gn_max", selected = "")
-    updateSelectizeInput(session, "gl_last_n", selected = "")
+    reset_starters_inputs(session, "gl")
+    reset_gn_last_n_inputs(session, "gl")
   })
 
   # --- Schedule cache per season ---

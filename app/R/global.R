@@ -945,6 +945,106 @@ tab_explainer <- function(id, title, intro, bullets) {
 # ---------------- Filter Chips Builder ----------------
 GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
                        "17" = "PO Finals", "33" = "Play-in", "34" = "Winner Cup", "35" = "State Cup")
+GAME_TYPE_CHOICES_UI <- c(
+  "All" = "",
+  "Regular season" = "5",
+  "Playoffs - Quarterfinals" = "16",
+  "Playoffs - Finals" = "17",
+  "Playoffs - Semifinals" = "26",
+  "Play-in" = "33",
+  "Winner Cup" = "34",
+  "State Cup" = "35"
+)
+
+accordion_toggle_link <- function() {
+  tags$div(
+    class = "text-end mb-2",
+    tags$a(
+      href = "#",
+      class = "small text-muted fw-bold",
+      style = "text-decoration: none;",
+      onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
+      "Collapse/Expand All"
+    )
+  )
+}
+
+game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_blank_label = "\u2014") {
+  panels <- list(
+    bslib::accordion_panel(
+      "Game Filters",
+      selectizeInput(
+        paste0(prefix, "_game_type"), "Game type",
+        choices = GAME_TYPE_CHOICES_UI,
+        selected = "", multiple = TRUE,
+        options = list(placeholder = "All game types")
+      ),
+      selectizeInput(
+        paste0(prefix, "_opponents"), "Opponents",
+        choices = NULL, selected = character(0), multiple = TRUE,
+        options = list(placeholder = "All opponents")
+      ),
+      selectInput(
+        paste0(prefix, "_home_away"), "Home/Away",
+        choices = c("All" = "", "Home" = "home", "Away" = "away"),
+        selected = ""
+      ),
+      selectInput(
+        paste0(prefix, "_outcome"), "Outcome",
+        choices = c("All" = "", "Win" = "win", "Loss" = "loss"),
+        selected = ""
+      ),
+      tags$hr(),
+      fluidRow(
+        column(
+          6,
+          selectizeInput(
+            paste0(prefix, "_gn_min"), tt("From Game Number (GN)", "gn"),
+            choices = NULL, selected = "", multiple = FALSE,
+            options = list(placeholder = "Any")
+          )
+        ),
+        column(
+          6,
+          selectizeInput(
+            paste0(prefix, "_gn_max"), tt("To Game Number (GN)", "gn"),
+            choices = NULL, selected = "", multiple = FALSE,
+            options = list(placeholder = "Any")
+          )
+        )
+      ),
+      selectizeInput(
+        paste0(prefix, "_last_n"), tt("Last N Team Games", "last_n"),
+        choices = NULL, selected = "", multiple = FALSE,
+        options = list(placeholder = "Any")
+      )
+    )
+  )
+
+  if (isTRUE(include_opp_rank)) {
+    blank_choice <- setNames("", opp_rank_blank_label)
+    panels[[length(panels) + 1]] <- bslib::accordion_panel(
+      tt("Opponent Strength", "opp_strength"), value = "Opponent Strength",
+      selectInput(
+        paste0(prefix, "_opp_rank_side"), "Top / Bottom",
+        choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"),
+        selected = ""
+      ),
+      selectInput(
+        paste0(prefix, "_opp_rank_n"), "Rank N",
+        choices = c(blank_choice, setNames(as.character(1:12), as.character(1:12))),
+        selected = ""
+      ),
+      selectInput(
+        paste0(prefix, "_opp_rank_metric"), "Metric",
+        choices = c(blank_choice, "Offense" = "off", "Defense" = "def", "Net rating" = "net"),
+        selected = ""
+      )
+    )
+  }
+
+  do.call(bslib::accordion, c(panels, list(open = TRUE)))
+}
 
 make_chip <- function(label, clear_id, css_class = "") {
   tags$span(
@@ -965,6 +1065,7 @@ make_season_chip <- function(gy) {
 
 build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
                                team_label_map = NULL, player_label_map = NULL,
+                               teams_value = NULL, players_on_value = NULL, players_off_value = NULL,
                                extra_children = NULL) {
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
   map_label <- function(x, label_map) {
@@ -1037,7 +1138,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   } else if (prefix == "ts") {
     teams_val <- input$ts_teams
   } else if (prefix %in% c("ld", "gl")) {
-    tv <- input[[paste0(prefix, "_team")]]
+    tv <- teams_value %||% input[[paste0(prefix, "_team")]]
     teams_val <- if (!is.null(tv) && nzchar(tv %||% "")) tv else NULL
   } else {
     teams_val <- NULL
@@ -1136,13 +1237,13 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
 
   # Players on/off (Tab 2)
   if (prefix == "ld") {
-    pon <- input$ld_players_on
+    pon <- players_on_value %||% input$ld_players_on
     if (!is.null(pon) && length(pon)) {
       mapped_on <- map_label(pon, player_label_map)
       lbl <- if (length(mapped_on) == 1) paste("On:", mapped_on[1]) else paste0("On: ", length(mapped_on), " players")
       chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_on", "chip-game")
     }
-    poff <- input$ld_players_off
+    poff <- players_off_value %||% input$ld_players_off
     if (!is.null(poff) && length(poff)) {
       mapped_off <- map_label(poff, player_label_map)
       lbl <- if (length(mapped_off) == 1) paste("Off:", mapped_off[1]) else paste0("Off: ", length(mapped_off), " players")
@@ -1233,6 +1334,158 @@ setup_chip_clears <- function(prefix, session, input, shared,
       updateCheckboxInput(session, clutch_enabled_id, value = FALSE)
     }, ignoreInit = TRUE)
   }
+}
+
+update_gn_last_n_choices <- function(session, prefix, gn_vals) {
+  gn_vals <- suppressWarnings(as.integer(gn_vals))
+  gn_vals <- gn_vals[is.finite(gn_vals)]
+  gn_choices <- c("", as.character(gn_vals))
+  last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
+  updateSelectizeInput(session, paste0(prefix, "_gn_min"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_gn_max"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
+}
+
+resolve_gn_last_n_params <- function(input, prefix) {
+  min_gn <- input[[paste0(prefix, "_gn_min")]] %||% ""
+  max_gn <- input[[paste0(prefix, "_gn_max")]] %||% ""
+  last_n <- input[[paste0(prefix, "_last_n")]] %||% ""
+
+  min_gn <- if (nzchar(min_gn)) as.integer(min_gn) else NA_integer_
+  max_gn <- if (nzchar(max_gn)) as.integer(max_gn) else NA_integer_
+  last_n <- if (nzchar(last_n)) as.integer(last_n) else NA_integer_
+
+  if (!is.na(last_n)) {
+    min_gn <- NA_integer_
+    max_gn <- NA_integer_
+  }
+  if (!is.na(min_gn) || !is.na(max_gn)) {
+    last_n <- NA_integer_
+  }
+  if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
+    tmp <- min_gn
+    min_gn <- max_gn
+    max_gn <- tmp
+  }
+
+  list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+}
+
+setup_gn_last_n_sync <- function(session, input, prefix) {
+  observeEvent(input[[paste0(prefix, "_last_n")]], {
+    last_n <- input[[paste0(prefix, "_last_n")]]
+    if (!is.null(last_n) && nzchar(last_n)) {
+      updateSelectizeInput(session, paste0(prefix, "_gn_min"), selected = "")
+      updateSelectizeInput(session, paste0(prefix, "_gn_max"), selected = "")
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input[[paste0(prefix, "_gn_min")]], input[[paste0(prefix, "_gn_max")]]), {
+    gn_min <- input[[paste0(prefix, "_gn_min")]] %||% ""
+    gn_max <- input[[paste0(prefix, "_gn_max")]] %||% ""
+    last_n <- input[[paste0(prefix, "_last_n")]] %||% ""
+    if ((nzchar(gn_min) || nzchar(gn_max)) && nzchar(last_n)) {
+      updateSelectizeInput(session, paste0(prefix, "_last_n"), selected = "")
+    }
+  }, ignoreInit = TRUE)
+}
+
+reset_gn_last_n_inputs <- function(session, prefix) {
+  updateSelectizeInput(session, paste0(prefix, "_gn_min"), selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_gn_max"), selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_last_n"), selected = "")
+}
+
+reset_opp_rank_inputs <- function(session, prefix) {
+  updateSelectInput(session, paste0(prefix, "_opp_rank_side"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_opp_rank_n"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_opp_rank_metric"), selected = "")
+}
+
+reset_starters_inputs <- function(session, prefix, own_prefix = "num_starters_off", opp_prefix = "num_starters_def") {
+  updateSelectInput(session, paste0(prefix, "_", own_prefix, "_mode"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", own_prefix), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", opp_prefix, "_mode"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", opp_prefix), selected = "")
+}
+
+reset_clutch_inputs <- function(session, prefix, status_default = "all", margin_default = 5, minutes_default = 5) {
+  updateCheckboxInput(session, paste0(prefix, "_clutch_enabled"), value = FALSE)
+  updateSliderInput(session, paste0(prefix, "_clutch_margin"), value = margin_default)
+  updateSelectInput(session, paste0(prefix, "_clutch_status"), selected = status_default)
+  updateSliderInput(session, paste0(prefix, "_clutch_minutes"), value = minutes_default)
+  updateCheckboxInput(session, paste0(prefix, "_clutch_ot_margin"), value = FALSE)
+}
+
+blank_to_na_character <- function(x) {
+  val <- x %||% ""
+  if (!nzchar(val)) NA_character_ else as.character(val)
+}
+
+blank_to_na_integer <- function(x) {
+  val <- x %||% ""
+  if (!nzchar(val)) {
+    NA_integer_
+  } else {
+    suppressWarnings(as.integer(val))
+  }
+}
+
+csv_if_any <- function(x, integerize = FALSE) {
+  if (is.null(x) || !length(x)) return(NA_character_)
+  vals <- as.character(x)
+  vals <- vals[nzchar(vals)]
+  if (!length(vals)) return(NA_character_)
+  if (isTRUE(integerize)) {
+    vals <- suppressWarnings(as.integer(vals))
+    vals <- vals[!is.na(vals)]
+    if (!length(vals)) return(NA_character_)
+  }
+  paste(vals, collapse = ",")
+}
+
+resolve_clutch_params <- function(enabled, margin, status, minutes, ot_margin) {
+  clutch_enabled <- isTRUE(enabled)
+  list(
+    max_margin = if (clutch_enabled) suppressWarnings(as.integer(margin)) else NA_integer_,
+    margin_status = if (clutch_enabled) (status %||% "all") else NA_character_,
+    max_time_remaining = if (clutch_enabled) suppressWarnings(as.integer(minutes)) * 60L else NA_integer_,
+    ot_margin_filter = if (clutch_enabled) isTRUE(ot_margin) else FALSE
+  )
+}
+
+resolve_starters_bounds <- function(off_mode, off_val, def_mode, def_val) {
+  off_mode <- off_mode %||% ""
+  def_mode <- def_mode %||% ""
+  off_val <- if (nzchar(off_mode)) suppressWarnings(as.integer(off_val)) else NA_integer_
+  def_val <- if (nzchar(def_mode)) suppressWarnings(as.integer(def_val)) else NA_integer_
+  list(
+    num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
+    num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
+    num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
+    num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+  )
+}
+
+team_select_choices_with_all <- function(teams_df, all_label = "\u2014 All teams \u2014") {
+  if (is.null(teams_df) || !nrow(teams_df)) {
+    out <- ""
+    names(out) <- all_label
+    return(out)
+  }
+  out <- c("", as.character(teams_df$team_id))
+  names(out) <- c(all_label, teams_df$team_name)
+  out
+}
+
+update_single_team_selectize <- function(session, select_id, teams_df, selected = "", all_label = "\u2014 All teams \u2014") {
+  updateSelectizeInput(
+    session,
+    select_id,
+    choices = team_select_choices_with_all(teams_df, all_label = all_label),
+    selected = selected,
+    server = TRUE
+  )
 }
 
 app_image_src <- function(rel_path, mime = "image/png") {

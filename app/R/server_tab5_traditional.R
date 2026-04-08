@@ -101,11 +101,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "ts_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ts_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ts_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "ts", gn_vals)
   })
 
   observeEvent(input$game_year, {
@@ -113,19 +109,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
   }, ignoreInit = FALSE)
 
-  observeEvent(input$ts_last_n, {
-    if (!is.null(input$ts_last_n) && nzchar(input$ts_last_n)) {
-      updateSelectizeInput(session, "ts_gn_min", selected = "")
-      updateSelectizeInput(session, "ts_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$ts_gn_min, input$ts_gn_max), {
-    if ((nzchar(input$ts_gn_min %||% "") || nzchar(input$ts_gn_max %||% "")) &&
-        nzchar(input$ts_last_n %||% "")) {
-      updateSelectizeInput(session, "ts_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "ts")
 
   observeEvent(input$ts_reset, {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
@@ -135,21 +119,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateSelectizeInput(session, "ts_opponents", selected = character(0))
     updateSelectInput(session, "ts_home_away", selected = "")
     updateSelectInput(session, "ts_outcome", selected = "")
-    updateSelectInput(session, "ts_opp_rank_side", selected = "")
-    updateSelectInput(session, "ts_opp_rank_n", selected = "")
-    updateSelectInput(session, "ts_opp_rank_metric", selected = "")
+    reset_opp_rank_inputs(session, "ts")
     updateSelectInput(session, "ts_display_mode", selected = "Per Game")
     updateSliderInput(session, "ts_min_gp_slider", value = 1, min = 1, max = 40)
     updateNumericInput(session, "ts_min_gp", value = 1, min = 1, max = 40)
     updateCheckboxInput(session, "ts_show_ineligible", value = FALSE)
-    updateCheckboxInput(session, "ts_clutch_enabled", value = FALSE)
-    updateSliderInput(session, "ts_clutch_margin", value = 5)
-    updateSelectInput(session, "ts_clutch_status", selected = "all")
-    updateSliderInput(session, "ts_clutch_minutes", value = 5)
-    updateCheckboxInput(session, "ts_clutch_ot_margin", value = FALSE)
-    updateSelectizeInput(session, "ts_gn_min", selected = "")
-    updateSelectizeInput(session, "ts_gn_max", selected = "")
-    updateSelectizeInput(session, "ts_last_n", selected = "")
+    reset_clutch_inputs(session, "ts")
+    reset_gn_last_n_inputs(session, "ts")
     ts_stat_filters(list())
   })
 
@@ -281,22 +257,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   )) %>% debounce(300)
 
   gn_params <- reactive({
-    min_gn <- if (!is.null(input$ts_gn_min) && nzchar(input$ts_gn_min)) as.integer(input$ts_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$ts_gn_max) && nzchar(input$ts_gn_max)) as.integer(input$ts_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$ts_last_n) && nzchar(input$ts_last_n)) as.integer(input$ts_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn
-      min_gn <- max_gn
-      max_gn <- tmp
-    }
-    list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+    resolve_gn_last_n_params(input, "ts")
   }) %>% debounce(150)
 
   selected_team_ids <- reactive({
@@ -318,26 +279,27 @@ server_tab5_traditional <- function(input, output, session, shared) {
     tids <- selected_team_ids()
     opp_ids <- selected_opp_ids()
     gp <- gn_params()
-
-    clutch_enabled <- isTRUE(f$clutch_enabled)
-    max_margin <- if (clutch_enabled) suppressWarnings(as.integer(f$clutch_margin)) else NA_integer_
-    margin_status <- if (clutch_enabled) (f$clutch_status %||% "all") else NA_character_
-    max_time_remaining <- if (clutch_enabled) suppressWarnings(as.integer(f$clutch_minutes)) * 60L else NA_integer_
-    ot_margin_filter <- if (clutch_enabled) isTRUE(f$clutch_ot_margin) else FALSE
+    clutch <- resolve_clutch_params(
+      enabled = f$clutch_enabled,
+      margin = f$clutch_margin,
+      status = f$clutch_status,
+      minutes = f$clutch_minutes,
+      ot_margin = f$clutch_ot_margin
+    )
 
     list(
-      team_ids_csv = if (!is.null(tids) && length(tids) > 0) paste(as.integer(tids), collapse = ",") else NA_character_,
-      game_type_csv = if (!is.null(f$game_type) && any(nzchar(f$game_type))) paste(as.integer(f$game_type[nzchar(f$game_type)]), collapse = ",") else NA_character_,
-      opp_ids_csv = if (!is.null(opp_ids) && length(opp_ids) > 0) paste(as.integer(opp_ids), collapse = ",") else NA_character_,
-      opp_rank_side = if (nzchar(f$rank_side %||% "")) f$rank_side else NA_character_,
-      opp_rank_n = suppressWarnings(as.integer(if (!nzchar(f$rank_n %||% "")) NA_character_ else f$rank_n)),
-      opp_rank_metric = if (nzchar(f$metric %||% "")) f$metric else NA_character_,
-      home_away = if (nzchar(f$home_away %||% "")) f$home_away else NA_character_,
-      outcome = if (nzchar(f$outcome %||% "")) f$outcome else NA_character_,
-      max_margin = max_margin,
-      margin_status = margin_status,
-      max_time_remaining = max_time_remaining,
-      ot_margin_filter = ot_margin_filter,
+      team_ids_csv = csv_if_any(tids, integerize = TRUE),
+      game_type_csv = csv_if_any(f$game_type, integerize = TRUE),
+      opp_ids_csv = csv_if_any(opp_ids, integerize = TRUE),
+      opp_rank_side = blank_to_na_character(f$rank_side),
+      opp_rank_n = blank_to_na_integer(f$rank_n),
+      opp_rank_metric = blank_to_na_character(f$metric),
+      home_away = blank_to_na_character(f$home_away),
+      outcome = blank_to_na_character(f$outcome),
+      max_margin = clutch$max_margin,
+      margin_status = clutch$margin_status,
+      max_time_remaining = clutch$max_time_remaining,
+      ot_margin_filter = clutch$ot_margin_filter,
       min_gn = gp$min_gn,
       max_gn = gp$max_gn,
       last_n_games = gp$last_n
