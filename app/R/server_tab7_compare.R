@@ -1079,47 +1079,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (!identical(input$main_tabs, "compare")) return(NULL)
     gy_int <- as.integer(input$game_year)
 
-    teams_df <- cached_ref_query(
-      key = sprintf("cmp_teams_%d", gy_int),
-      query_fun = function() db_get_query(pg_pool, sprintf(
-        "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
-    )
-    teams_df <- normalize_teams_ref(teams_df)
-    cmp_ref$teams <- teams_df
-    team_choices <- if (nrow(teams_df)) teams_df$team_name else character(0)
-    updateSelectizeInput(session, "cmp_a_teams", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_b_teams", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_a_opponents", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_b_opponents", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_player_a_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
-    # Lineup filter team dropdown — use team_id as values
-    lu_team_choices <- if (nrow(teams_df)) setNames(as.character(teams_df$team_id), teams_df$team_name) else character(0)
-    cmp_lu_filter$reset_inputs(team_choices = c("All teams" = "", lu_team_choices), team_selected = "")
-    gn_df <- cached_ref_query(
-      key = sprintf("cmp_gn_%d", gy_int),
-      query_fun = function() db_get_query(pg_pool, sprintf(
-        "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
-    )
-    gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
-    updateSelectizeInput(session, "cmp_players_gn_min", choices = c("", gn_choices), selected = "", server = TRUE)
-    updateSelectizeInput(session, "cmp_players_gn_max", choices = c("", gn_choices), selected = "", server = TRUE)
-    updateSelectizeInput(session, "cmp_split_gn", choices = c("", gn_choices), selected = "", server = TRUE)
-    b <- shared$season_date_bounds(as.character(gy_int))
-    updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
-    updateDateInput(session, "cmp_split_date", value = b$end, min = b$start, max = b$end)
-
-    players_df <- cached_ref_query(
-      key = sprintf("cmp_players_%d", gy_int),
-      query_fun = function() db_get_query(pg_pool, sprintf(
-        "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
-    )
-    players_df <- normalize_players_ref(players_df)
-    cmp_ref$players <- players_df
-    refresh_player_choices("a")
-    refresh_player_choices("b")
-    apply_default_players()
-
+    refresh_compare_ref_inputs(gy_int)
     # Apply pending preset from home tab
     pending <- shared$pending_compare_preset()
     if (!is.null(pending) && nzchar(pending)) {
@@ -1356,25 +1316,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     req(identical(input$cmp_mode, "Players"))
     req(identical(input$main_tabs, "compare"))
 
-    # Fallback: ensure refs exist even if tab-init observer didn't run yet.
-    if (is.null(cmp_ref$players) || !nrow(cmp_ref$players)) {
-      gy_int <- as.integer(input$game_year)
-      players_df <- cached_ref_query(
-        key = sprintf("cmp_players_%d", gy_int),
-        query_fun = function() db_get_query(pg_pool, sprintf(
-          "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
-      )
-      cmp_ref$players <- normalize_players_ref(players_df)
-    }
-    if (is.null(cmp_ref$teams) || !nrow(cmp_ref$teams)) {
-      gy_int <- as.integer(input$game_year)
-      teams_df <- cached_ref_query(
-        key = sprintf("cmp_teams_%d", gy_int),
-        query_fun = function() db_get_query(pg_pool, sprintf(
-          "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int))
-      )
-      cmp_ref$teams <- normalize_teams_ref(teams_df)
-    }
+    ensure_cmp_refs_loaded(as.integer(input$game_year))
 
     player_a_id <- input$cmp_player_a
     player_b_id <- input$cmp_player_b
@@ -2566,6 +2508,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 }
+
 
 
 
