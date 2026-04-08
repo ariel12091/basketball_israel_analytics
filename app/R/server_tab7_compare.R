@@ -813,6 +813,49 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 
+  cmp_player_selection_state <- reactive({
+    req(identical(input$cmp_mode, "Players"))
+
+    refs <- cmp_refs_state()
+    players_df <- refs$players
+    teams_df <- refs$teams
+
+    player_a_id <- input$cmp_player_a
+    player_b_id <- input$cmp_player_b
+    req(player_a_id, nzchar(player_a_id))
+    req(player_b_id, nzchar(player_b_id))
+    req(!is.null(players_df), nrow(players_df) > 0)
+
+    team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
+    team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
+    team_sel_a <- suppressWarnings(as.integer(input$cmp_player_a_team %||% ""))
+    team_sel_b <- suppressWarnings(as.integer(input$cmp_player_b_team %||% ""))
+    if (is.finite(team_sel_a) && (team_sel_a %in% team_ids_a)) team_ids_a <- team_sel_a
+    if (is.finite(team_sel_b) && (team_sel_b %in% team_ids_b)) team_ids_b <- team_sel_b
+    if (!length(team_ids_a) || !length(team_ids_b)) return(NULL)
+
+    name_a <- players_df$name[players_df$player_id == as.integer(player_a_id)][1]
+    name_b <- players_df$name[players_df$player_id == as.integer(player_b_id)][1]
+    team_name_a <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_a[1]][1] else ""
+    team_name_b <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_b[1]][1] else ""
+
+    list(
+      player_a_id = player_a_id,
+      player_b_id = player_b_id,
+      player_a_id_int = as.integer(player_a_id),
+      player_b_id_int = as.integer(player_b_id),
+      players_df = players_df,
+      team_ids_a = team_ids_a,
+      team_ids_b = team_ids_b,
+      team_csv_a = paste(team_ids_a, collapse = ","),
+      team_csv_b = paste(team_ids_b, collapse = ","),
+      name_a = name_a,
+      name_b = name_b,
+      team_name_a = team_name_a %||% "",
+      team_name_b = team_name_b %||% ""
+    )
+  })
+
   render_metric_chips <- function(metrics, cur, input_id) {
     chips <- lapply(seq_along(metrics), function(i) {
       nm <- names(metrics)[i]
@@ -1332,47 +1375,25 @@ server_tab7_compare <- function(input, output, session, shared) {
     req(identical(input$cmp_mode, "Players"))
     req(identical(input$main_tabs, "compare"))
 
-    refs <- cmp_refs_state()
-    player_a_id <- input$cmp_player_a
-    player_b_id <- input$cmp_player_b
-    req(player_a_id, nzchar(player_a_id))
-    req(player_b_id, nzchar(player_b_id))
-
-    players_df <- refs$players
-    req(!is.null(players_df), nrow(players_df) > 0)
-
+    player_state <- cmp_player_selection_state()
+    req(player_state)
     side_state <- cmp_side_state()
     pa <- side_state$a
     pb <- side_state$b
 
-    team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
-    team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
-    team_sel_a <- suppressWarnings(as.integer(input$cmp_player_a_team %||% ""))
-    team_sel_b <- suppressWarnings(as.integer(input$cmp_player_b_team %||% ""))
-    if (is.finite(team_sel_a) && (team_sel_a %in% team_ids_a)) team_ids_a <- team_sel_a
-    if (is.finite(team_sel_b) && (team_sel_b %in% team_ids_b)) team_ids_b <- team_sel_b
-    if (!length(team_ids_a) || !length(team_ids_b)) return(NULL)
-
-    res_a <- run_player_traditional(pa, paste(team_ids_a, collapse = ","))
-    res_b <- run_player_traditional(pb, paste(team_ids_b, collapse = ","))
+    res_a <- run_player_traditional(pa, player_state$team_csv_a)
+    res_b <- run_player_traditional(pb, player_state$team_csv_b)
     if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
-    row_a <- res_a[res_a$player_id == as.integer(player_a_id), , drop = FALSE]
-    row_b <- res_b[res_b$player_id == as.integer(player_b_id), , drop = FALSE]
+    row_a <- res_a[res_a$player_id == player_state$player_a_id_int, , drop = FALSE]
+    row_b <- res_b[res_b$player_id == player_state$player_b_id_int, , drop = FALSE]
     if (!nrow(row_a) || !nrow(row_b)) return(NULL)
-
-    name_a <- players_df$name[players_df$player_id == as.integer(player_a_id)][1]
-    name_b <- players_df$name[players_df$player_id == as.integer(player_b_id)][1]
-
-    teams_df <- refs$teams
-    team_name_a <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_a[1]][1] else ""
-    team_name_b <- if (!is.null(teams_df)) teams_df$team_name[teams_df$team_id == team_ids_b[1]][1] else ""
 
     list(
       row_a = row_a[1, ], row_b = row_b[1, ],
-      name_a = name_a, name_b = name_b,
-      team_a = team_name_a %||% "", team_b = team_name_b %||% "",
-      team_ids_a = team_ids_a, team_ids_b = team_ids_b,
+      name_a = player_state$name_a, name_b = player_state$name_b,
+      team_a = player_state$team_name_a, team_b = player_state$team_name_b,
+      team_ids_a = player_state$team_ids_a, team_ids_b = player_state$team_ids_b,
       pa = pa, pb = pb
     )
   })
@@ -1752,26 +1773,15 @@ server_tab7_compare <- function(input, output, session, shared) {
       # Ensure metric is valid for Players mode before querying
       req(metric %in% PLAYER_METRICS)
 
-      player_a_id <- input$cmp_player_a
-      player_b_id <- input$cmp_player_b
-      if (is.null(player_a_id) || !nzchar(player_a_id)) return(NULL)
-      if (is.null(player_b_id) || !nzchar(player_b_id)) return(NULL)
+      player_state <- cmp_player_selection_state()
+      req(player_state)
 
-      players_df <- normalize_players_ref(cmp_ref$players)
-      cmp_ref$players <- players_df
-      req(!is.null(players_df), nrow(players_df) > 0)
-      team_ids_a <- unique(players_df$team_id[players_df$player_id == as.integer(player_a_id)])
-      team_ids_b <- unique(players_df$team_id[players_df$player_id == as.integer(player_b_id)])
-      if (!length(team_ids_a) || !length(team_ids_b)) return(NULL)
-      team_a <- paste(team_ids_a, collapse = ",")
-      team_b <- paste(team_ids_b, collapse = ",")
-
-      res_a <- run_player_traditional(pa, team_a)
-      res_b <- run_player_traditional(pb, team_b)
+      res_a <- run_player_traditional(pa, player_state$team_csv_a)
+      res_b <- run_player_traditional(pb, player_state$team_csv_b)
       if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
-      res_a <- res_a[res_a$player_id == as.integer(player_a_id), , drop = FALSE]
-      res_b <- res_b[res_b$player_id == as.integer(player_b_id), , drop = FALSE]
+      res_a <- res_a[res_a$player_id == player_state$player_a_id_int, , drop = FALSE]
+      res_b <- res_b[res_b$player_id == player_state$player_b_id_int, , drop = FALSE]
       if (!nrow(res_a) || !nrow(res_b)) return(NULL)
 
       rate_mode <- input$cmp_rate_mode %||% "Per Game"
@@ -1804,9 +1814,6 @@ server_tab7_compare <- function(input, output, session, shared) {
         NA_real_
       }
 
-      player_a_name <- players_df$name[players_df$player_id == as.integer(player_a_id)][1]
-      player_b_name <- players_df$name[players_df$player_id == as.integer(player_b_id)][1]
-
       val_a <- get_player_metric(res_a[1, ], metric, rate_mode)
       val_b <- get_player_metric(res_b[1, ], metric, rate_mode)
       poss_a <- if ("poss_on_floor" %in% names(res_a)) as.numeric(res_a$poss_on_floor[1]) else NA_real_
@@ -1814,7 +1821,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
       data.frame(
         rank = 1L,
-        entity_name = paste0(player_a_name, " vs ", player_b_name),
+        entity_name = paste0(player_state$name_a, " vs ", player_state$name_b),
         metric_a = val_a, poss_a = poss_a,
         metric_b = val_b, poss_b = poss_b,
         gap = val_a - val_b, stringsAsFactors = FALSE
