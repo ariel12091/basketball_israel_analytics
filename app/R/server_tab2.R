@@ -110,19 +110,10 @@ server_tab2 <- function(input, output, session, shared) {
     opp_rank_n <- suppressWarnings(as.integer(if (!nzchar(input$ld_opp_rank_n %||% "")) NA_character_ else input$ld_opp_rank_n))
     opp_rank_metric <- if (!nzchar(input$ld_opp_rank_metric %||% "")) NA_character_ else input$ld_opp_rank_metric
 
-    min_gn <- if (!is.null(input$ld_gn_min) && nzchar(input$ld_gn_min)) as.integer(input$ld_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$ld_gn_max) && nzchar(input$ld_gn_max)) as.integer(input$ld_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) as.integer(input$ld_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
+    gn_params <- resolve_gn_last_n_params(input, "ld")
+    min_gn <- gn_params$min_gn
+    max_gn <- gn_params$max_gn
+    last_n <- gn_params$last_n
 
     start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
     end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA

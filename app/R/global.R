@@ -1246,6 +1246,31 @@ update_gn_last_n_choices <- function(session, prefix, gn_vals) {
   updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
 }
 
+resolve_gn_last_n_params <- function(input, prefix) {
+  min_gn <- input[[paste0(prefix, "_gn_min")]] %||% ""
+  max_gn <- input[[paste0(prefix, "_gn_max")]] %||% ""
+  last_n <- input[[paste0(prefix, "_last_n")]] %||% ""
+
+  min_gn <- if (nzchar(min_gn)) as.integer(min_gn) else NA_integer_
+  max_gn <- if (nzchar(max_gn)) as.integer(max_gn) else NA_integer_
+  last_n <- if (nzchar(last_n)) as.integer(last_n) else NA_integer_
+
+  if (!is.na(last_n)) {
+    min_gn <- NA_integer_
+    max_gn <- NA_integer_
+  }
+  if (!is.na(min_gn) || !is.na(max_gn)) {
+    last_n <- NA_integer_
+  }
+  if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
+    tmp <- min_gn
+    min_gn <- max_gn
+    max_gn <- tmp
+  }
+
+  list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+}
+
 setup_gn_last_n_sync <- function(session, input, prefix) {
   observeEvent(input[[paste0(prefix, "_last_n")]], {
     last_n <- input[[paste0(prefix, "_last_n")]]
