@@ -902,6 +902,37 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectInput(session, paste0("cmp_", side, "_opp_rank_metric"), selected = "")
   }
 
+  apply_compare_preset <- function(preset) {
+    if (identical(preset, "starters_bench")) {
+      updateSelectInput(session, "cmp_a_starters_mode", selected = "gte")
+      updateSelectInput(session, "cmp_a_starters_val", selected = "3")
+      updateSelectInput(session, "cmp_b_starters_mode", selected = "lte")
+      updateSelectInput(session, "cmp_b_starters_val", selected = "2")
+    } else if (identical(preset, "opp_starters_bench")) {
+      updateSelectInput(session, "cmp_a_opp_starters_mode", selected = "gte")
+      updateSelectInput(session, "cmp_a_opp_starters_val", selected = "3")
+      updateSelectInput(session, "cmp_b_opp_starters_mode", selected = "lte")
+      updateSelectInput(session, "cmp_b_opp_starters_val", selected = "2")
+    } else if (identical(preset, "clutch")) {
+      updateCheckboxInput(session, "cmp_a_clutch", value = TRUE)
+      updateSliderInput(session, "cmp_a_clutch_margin", value = 5)
+      updateSliderInput(session, "cmp_a_clutch_minutes", value = 5)
+    } else if (identical(preset, "home_away")) {
+      updateSelectInput(session, "cmp_a_home_away", selected = "home")
+      updateSelectInput(session, "cmp_b_home_away", selected = "away")
+    } else if (identical(preset, "win_loss")) {
+      updateSelectInput(session, "cmp_a_outcome", selected = "win")
+      updateSelectInput(session, "cmp_b_outcome", selected = "loss")
+    } else if (identical(preset, "top_bottom_rank")) {
+      updateSelectInput(session, "cmp_a_opp_rank_side", selected = "top")
+      updateSelectInput(session, "cmp_b_opp_rank_side", selected = "bottom")
+      updateSelectInput(session, "cmp_a_opp_rank_n", selected = "4")
+      updateSelectInput(session, "cmp_b_opp_rank_n", selected = "4")
+      updateSelectInput(session, "cmp_a_opp_rank_metric", selected = "net")
+      updateSelectInput(session, "cmp_b_opp_rank_metric", selected = "net")
+    }
+  }
+
   reset_compare_filters <- function() {
     updateSelectInput(session, "cmp_preset", selected = "")
     updateSliderInput(session, "cmp_min_poss", value = 10)
@@ -1163,35 +1194,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
     reset_compare_side_filters("a", reset_clutch_sliders = FALSE)
     reset_compare_side_filters("b", reset_clutch_sliders = FALSE)
-
-    if (preset == "starters_bench") {
-      updateSelectInput(session, "cmp_a_starters_mode", selected = "gte")
-      updateSelectInput(session, "cmp_a_starters_val", selected = "3")
-      updateSelectInput(session, "cmp_b_starters_mode", selected = "lte")
-      updateSelectInput(session, "cmp_b_starters_val", selected = "2")
-    } else if (preset == "opp_starters_bench") {
-      updateSelectInput(session, "cmp_a_opp_starters_mode", selected = "gte")
-      updateSelectInput(session, "cmp_a_opp_starters_val", selected = "3")
-      updateSelectInput(session, "cmp_b_opp_starters_mode", selected = "lte")
-      updateSelectInput(session, "cmp_b_opp_starters_val", selected = "2")
-    } else if (preset == "clutch") {
-      updateCheckboxInput(session, "cmp_a_clutch", value = TRUE)
-      updateSliderInput(session, "cmp_a_clutch_margin", value = 5)
-      updateSliderInput(session, "cmp_a_clutch_minutes", value = 5)
-    } else if (preset == "home_away") {
-      updateSelectInput(session, "cmp_a_home_away", selected = "home")
-      updateSelectInput(session, "cmp_b_home_away", selected = "away")
-    } else if (preset == "win_loss") {
-      updateSelectInput(session, "cmp_a_outcome", selected = "win")
-      updateSelectInput(session, "cmp_b_outcome", selected = "loss")
-    } else if (preset == "top_bottom_rank") {
-      updateSelectInput(session, "cmp_a_opp_rank_side", selected = "top")
-      updateSelectInput(session, "cmp_b_opp_rank_side", selected = "bottom")
-      updateSelectInput(session, "cmp_a_opp_rank_n", selected = "4")
-      updateSelectInput(session, "cmp_b_opp_rank_n", selected = "4")
-      updateSelectInput(session, "cmp_a_opp_rank_metric", selected = "net")
-      updateSelectInput(session, "cmp_b_opp_rank_metric", selected = "net")
-    }
+    apply_compare_preset(preset)
   }, ignoreInit = TRUE)
 
   # Guide user when Date split preset is selected without a valid split date.
