@@ -201,30 +201,25 @@ server_tab7_compare <- function(input, output, session, shared) {
     opp_ids_csv <- NA_character_
     if (length(team_sel) && !is.null(td)) {
       ids <- td$team_id[td$team_name %in% team_sel]
-      if (length(ids)) team_ids_csv <- paste(ids, collapse = ",")
+      team_ids_csv <- csv_if_any(ids, integerize = TRUE)
     }
     if (length(opp_sel) && !is.null(td)) {
       ids <- td$team_id[td$team_name %in% opp_sel]
-      if (length(ids)) opp_ids_csv <- paste(ids, collapse = ",")
+      opp_ids_csv <- csv_if_any(ids, integerize = TRUE)
     }
 
     # Game type
     gt <- get_input("game_type") %||% character(0)
-    game_type_csv <- if (length(gt) && any(nzchar(gt))) paste(gt[nzchar(gt)], collapse = ",") else NA_character_
+    game_type_csv <- csv_if_any(gt)
 
     # Home/away, outcome
-    home_away <- get_input("home_away") %||% ""
-    if (!nzchar(home_away)) home_away <- NA_character_
-    outcome <- get_input("outcome") %||% ""
-    if (!nzchar(outcome)) outcome <- NA_character_
+    home_away <- blank_to_na_character(get_input("home_away"))
+    outcome <- blank_to_na_character(get_input("outcome"))
 
     # Opp rank
-    opp_rank_side <- get_input("opp_rank_side") %||% ""
-    if (!nzchar(opp_rank_side)) opp_rank_side <- NA_character_
-    opp_rank_n_val <- get_input("opp_rank_n") %||% ""
-    opp_rank_n <- if (nzchar(opp_rank_n_val)) as.integer(opp_rank_n_val) else NA_integer_
-    opp_rank_metric <- get_input("opp_rank_metric") %||% ""
-    if (!nzchar(opp_rank_metric)) opp_rank_metric <- NA_character_
+    opp_rank_side <- blank_to_na_character(get_input("opp_rank_side"))
+    opp_rank_n <- blank_to_na_integer(get_input("opp_rank_n"))
+    opp_rank_metric <- blank_to_na_character(get_input("opp_rank_metric"))
 
     list(
       game_year = gy, start_d = start_d, end_d = end_d,
