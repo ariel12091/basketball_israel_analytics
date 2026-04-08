@@ -18,6 +18,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
   CMP_AUTO_TARGET_ROWS <- 50L
+  CMP_FILTER_DEBOUNCE_MS <- 250L
 
   # -- Detail view constants --
 
@@ -526,8 +527,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
-  # Read lineup filter controls (shared across both sides)
-  cmp_lu_params <- function() {
+  cmp_lu_state_raw <- reactive({
     num <- suppressWarnings(as.integer(input$cmp_lu_num %||% "5"))
     if (!is.finite(num) || num < 2L || num > 5L) num <- 5L
     team_val <- cmp_lu_filter$team()
@@ -538,6 +538,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(num = num, team_csv = if (nzchar(team_val)) team_val else NA_character_,
          player_csv = player_csv, player_off_csv = player_off_csv,
          exact = length(player_on_ids) > 0L)
+  })
+
+  cmp_lu_state <- reactive(cmp_lu_state_raw()) %>% debounce(CMP_FILTER_DEBOUNCE_MS)
+
+  # Read lineup filter controls (shared across both sides)
+  cmp_lu_params <- function() {
+    cmp_lu_state()
   }
 
   merge_lineup_team_csv <- function(side_team_csv, lineup_team_csv) {
@@ -806,14 +813,15 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 
-  cmp_side_state <- reactive({
+  cmp_side_state_raw <- reactive({
     list(
       a = collect_side_params("a"),
       b = collect_side_params("b")
     )
   })
+  cmp_side_state <- reactive(cmp_side_state_raw()) %>% debounce(CMP_FILTER_DEBOUNCE_MS)
 
-  cmp_player_selection_state <- reactive({
+  cmp_player_selection_state_raw <- reactive({
     req(identical(input$cmp_mode, "Players"))
 
     refs <- cmp_refs_state()
@@ -855,6 +863,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       team_name_b = team_name_b %||% ""
     )
   })
+  cmp_player_selection_state <- reactive(cmp_player_selection_state_raw()) %>% debounce(CMP_FILTER_DEBOUNCE_MS)
 
   render_metric_chips <- function(metrics, cur, input_id) {
     chips <- lapply(seq_along(metrics), function(i) {
