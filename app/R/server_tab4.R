@@ -88,13 +88,8 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "gl_opponents", selected = character(0))
     updateSelectInput(session, "gl_home_away", selected = "")
     updateSelectInput(session, "gl_outcome", selected = "")
-    updateSelectInput(session, "gl_num_starters_off_mode", selected = "")
-    updateSelectInput(session, "gl_num_starters_off", selected = "")
-    updateSelectInput(session, "gl_num_starters_def_mode", selected = "")
-    updateSelectInput(session, "gl_num_starters_def", selected = "")
-    updateSelectizeInput(session, "gl_gn_min", selected = "")
-    updateSelectizeInput(session, "gl_gn_max", selected = "")
-    updateSelectizeInput(session, "gl_last_n", selected = "")
+    reset_starters_inputs(session, "gl")
+    reset_gn_last_n_inputs(session, "gl")
   })
 
   # --- Schedule cache per season ---

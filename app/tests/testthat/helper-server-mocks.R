@@ -116,6 +116,29 @@ update_gn_last_n_choices <- function(session, prefix, gn_vals) {
   updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
 }
 setup_gn_last_n_sync <- function(session, input, prefix) invisible(TRUE)
+reset_gn_last_n_inputs <- function(session, prefix) {
+  updateSelectizeInput(session, paste0(prefix, "_gn_min"), selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_gn_max"), selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_last_n"), selected = "")
+}
+reset_opp_rank_inputs <- function(session, prefix) {
+  updateSelectInput(session, paste0(prefix, "_opp_rank_side"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_opp_rank_n"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_opp_rank_metric"), selected = "")
+}
+reset_starters_inputs <- function(session, prefix, own_prefix = "num_starters_off", opp_prefix = "num_starters_def") {
+  updateSelectInput(session, paste0(prefix, "_", own_prefix, "_mode"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", own_prefix), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", opp_prefix, "_mode"), selected = "")
+  updateSelectInput(session, paste0(prefix, "_", opp_prefix), selected = "")
+}
+reset_clutch_inputs <- function(session, prefix, status_default = "all", margin_default = 5, minutes_default = 5) {
+  updateCheckboxInput(session, paste0(prefix, "_clutch_enabled"), value = FALSE)
+  updateSliderInput(session, paste0(prefix, "_clutch_margin"), value = margin_default)
+  updateSelectInput(session, paste0(prefix, "_clutch_status"), selected = status_default)
+  updateSliderInput(session, paste0(prefix, "_clutch_minutes"), value = minutes_default)
+  updateCheckboxInput(session, paste0(prefix, "_clutch_ot_margin"), value = FALSE)
+}
 
 source(repo_file("R", "server_tab1.R"), local = TRUE)
 source(repo_file("R", "mod_lineup_player_filter.R"), local = TRUE)
