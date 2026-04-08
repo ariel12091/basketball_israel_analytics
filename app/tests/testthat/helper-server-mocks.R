@@ -106,6 +106,16 @@ fmt_rank_cell <- function(value, rank_now, delta, digits = 1) as.character(round
 
 build_filter_chips <- function(...) shiny::tags$div(class = "filter-chips", "chips")
 setup_chip_clears <- function(...) invisible(TRUE)
+update_gn_last_n_choices <- function(session, prefix, gn_vals) {
+  gn_vals <- suppressWarnings(as.integer(gn_vals))
+  gn_vals <- gn_vals[is.finite(gn_vals)]
+  gn_choices <- c("", as.character(gn_vals))
+  last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
+  updateSelectizeInput(session, paste0(prefix, "_gn_min"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_gn_max"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
+}
+setup_gn_last_n_sync <- function(session, input, prefix) invisible(TRUE)
 
 source(repo_file("R", "server_tab1.R"), local = TRUE)
 source(repo_file("R", "mod_lineup_player_filter.R"), local = TRUE)

@@ -70,11 +70,7 @@ server_tab1 <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "on_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "on_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "on_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "on", gn_vals)
   }, ignoreInit = FALSE)
 
 
@@ -324,19 +320,7 @@ server_tab1 <- function(input, output, session, shared) {
     auto_min_state$last_auto_all <- min_needed
   }, ignoreInit = TRUE)
 
-  observeEvent(input$on_last_n, {
-    if (!is.null(input$on_last_n) && nzchar(input$on_last_n)) {
-      updateSelectizeInput(session, "on_gn_min", selected = "")
-      updateSelectizeInput(session, "on_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$on_gn_min, input$on_gn_max), {
-    if ((nzchar(input$on_gn_min %||% "") || nzchar(input$on_gn_max %||% "")) &&
-        nzchar(input$on_last_n %||% "")) {
-      updateSelectizeInput(session, "on_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "on")
 
   selected_team_ids <- reactive({
     td <- shared$teams_for_year_df()

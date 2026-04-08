@@ -1236,6 +1236,35 @@ setup_chip_clears <- function(prefix, session, input, shared,
   }
 }
 
+update_gn_last_n_choices <- function(session, prefix, gn_vals) {
+  gn_vals <- suppressWarnings(as.integer(gn_vals))
+  gn_vals <- gn_vals[is.finite(gn_vals)]
+  gn_choices <- c("", as.character(gn_vals))
+  last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
+  updateSelectizeInput(session, paste0(prefix, "_gn_min"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_gn_max"), choices = gn_choices, selected = "")
+  updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
+}
+
+setup_gn_last_n_sync <- function(session, input, prefix) {
+  observeEvent(input[[paste0(prefix, "_last_n")]], {
+    last_n <- input[[paste0(prefix, "_last_n")]]
+    if (!is.null(last_n) && nzchar(last_n)) {
+      updateSelectizeInput(session, paste0(prefix, "_gn_min"), selected = "")
+      updateSelectizeInput(session, paste0(prefix, "_gn_max"), selected = "")
+    }
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(input[[paste0(prefix, "_gn_min")]], input[[paste0(prefix, "_gn_max")]]), {
+    gn_min <- input[[paste0(prefix, "_gn_min")]] %||% ""
+    gn_max <- input[[paste0(prefix, "_gn_max")]] %||% ""
+    last_n <- input[[paste0(prefix, "_last_n")]] %||% ""
+    if ((nzchar(gn_min) || nzchar(gn_max)) && nzchar(last_n)) {
+      updateSelectizeInput(session, paste0(prefix, "_last_n"), selected = "")
+    }
+  }, ignoreInit = TRUE)
+}
+
 app_image_src <- function(rel_path, mime = "image/png") {
   candidates <- c(
     file.path("www", rel_path),

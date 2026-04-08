@@ -64,11 +64,7 @@ server_tab2 <- function(input, output, session, shared) {
         "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "ld_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ld_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ld_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "ld", gn_vals)
   })
 
   observeEvent(input$ld_reset, {
@@ -109,19 +105,7 @@ server_tab2 <- function(input, output, session, shared) {
     session$onFlushed(function() resetting(FALSE), once = TRUE)
   })
 
-  observeEvent(input$ld_last_n, {
-    if (!is.null(input$ld_last_n) && nzchar(input$ld_last_n)) {
-      updateSelectizeInput(session, "ld_gn_min", selected = "")
-      updateSelectizeInput(session, "ld_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$ld_gn_min, input$ld_gn_max), {
-    if ((nzchar(input$ld_gn_min %||% "") || nzchar(input$ld_gn_max %||% "")) &&
-        nzchar(input$ld_last_n %||% "")) {
-      updateSelectizeInput(session, "ld_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "ld")
 
   build_ld_common_db_args <- function() {
     game_type_csv <- {

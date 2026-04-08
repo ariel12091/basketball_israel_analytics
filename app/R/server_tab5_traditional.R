@@ -101,11 +101,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "ts_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ts_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "ts_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "ts", gn_vals)
   })
 
   observeEvent(input$game_year, {
@@ -113,19 +109,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
   }, ignoreInit = FALSE)
 
-  observeEvent(input$ts_last_n, {
-    if (!is.null(input$ts_last_n) && nzchar(input$ts_last_n)) {
-      updateSelectizeInput(session, "ts_gn_min", selected = "")
-      updateSelectizeInput(session, "ts_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$ts_gn_min, input$ts_gn_max), {
-    if ((nzchar(input$ts_gn_min %||% "") || nzchar(input$ts_gn_max %||% "")) &&
-        nzchar(input$ts_last_n %||% "")) {
-      updateSelectizeInput(session, "ts_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "ts")
 
   observeEvent(input$ts_reset, {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)

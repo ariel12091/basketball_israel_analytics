@@ -438,11 +438,7 @@ server_tab3 <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "tr_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "tr_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "tr_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "tr", gn_vals)
   })
 
   run_team_ratings_dynamic <- function(pool, game_year, start_d, end_d, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_, num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
@@ -860,19 +856,7 @@ server_tab3 <- function(input, output, session, shared) {
     if (is.null(q) || !nrow(q) || is.na(q$d[1])) as.Date(NA) else as.Date(q$d[1])
   })
 
-  observeEvent(input$tr_last_n, {
-    if (!is.null(input$tr_last_n) && nzchar(input$tr_last_n)) {
-      updateSelectizeInput(session, "tr_gn_min", selected = "")
-      updateSelectizeInput(session, "tr_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$tr_gn_min, input$tr_gn_max), {
-    if ((nzchar(input$tr_gn_min %||% "") || nzchar(input$tr_gn_max %||% "")) &&
-        nzchar(input$tr_last_n %||% "")) {
-      updateSelectizeInput(session, "tr_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "tr")
 
   tr_fallback_needed <- reactive({
     p <- tr_params()

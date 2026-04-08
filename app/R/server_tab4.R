@@ -45,31 +45,15 @@ server_tab4 <- function(input, output, session, shared) {
       }
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    gn_choices <- c("", as.character(gn_vals))
-    last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-    updateSelectizeInput(session, "gl_gn_min", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "gl_gn_max", choices = gn_choices, selected = "")
-    updateSelectizeInput(session, "gl_last_n", choices = last_choices, selected = "")
+    update_gn_last_n_choices(session, "gl", gn_vals)
   })
 
-  observeEvent(input$gl_last_n, {
-    if (!is.null(input$gl_last_n) && nzchar(input$gl_last_n)) {
-      updateSelectizeInput(session, "gl_gn_min", selected = "")
-      updateSelectizeInput(session, "gl_gn_max", selected = "")
-    }
-  }, ignoreInit = TRUE)
+  setup_gn_last_n_sync(session, input, "gl")
 
   observeEvent(input$game_year, {
     b <- shared$season_date_bounds(input$game_year)
     updateDateRangeInput(session, "gl_dates", start = b$start, end = b$end, min = b$start, max = b$end)
   }, ignoreInit = FALSE)
-
-  observeEvent(list(input$gl_gn_min, input$gl_gn_max), {
-    if ((nzchar(input$gl_gn_min %||% "") || nzchar(input$gl_gn_max %||% "")) &&
-        nzchar(input$gl_last_n %||% "")) {
-      updateSelectizeInput(session, "gl_last_n", selected = "")
-    }
-  }, ignoreInit = TRUE)
 
   gl_gn_params <- reactive({
     min_gn <- if (!is.null(input$gl_gn_min) && nzchar(input$gl_gn_min)) as.integer(input$gl_gn_min) else NA_integer_
