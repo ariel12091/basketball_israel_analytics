@@ -933,6 +933,19 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
   }
 
+  PRESET_MIRROR_BLOCKS <- list(
+    home_away = c("home_away"),
+    win_loss = c("outcome"),
+    starters_bench = c("starters_mode", "starters_val"),
+    opp_starters_bench = c("opp_starters_mode", "opp_starters_val"),
+    clutch = c("clutch", "clutch_margin", "clutch_minutes"),
+    top_bottom_rank = c("opp_rank_side")
+  )
+
+  SIDE_MULTI_SELECT_FIELDS <- c("teams", "opponents", "game_type")
+  SIDE_CHECKBOX_FIELDS <- c("clutch")
+  SIDE_SLIDER_FIELDS <- c("clutch_margin", "clutch_minutes")
+
   reset_compare_filters <- function() {
     updateSelectInput(session, "cmp_preset", selected = "")
     updateSliderInput(session, "cmp_min_poss", value = 10)
@@ -1219,25 +1232,19 @@ server_tab7_compare <- function(input, output, session, shared) {
   # -- Preset mode: mirror side filters A <-> B --
   # Keep preset-defining contrasts independent (e.g., home vs away).
   is_mirror_blocked <- function(preset, field) {
-    if (identical(preset, "home_away") && identical(field, "home_away")) return(TRUE)
-    if (identical(preset, "win_loss") && identical(field, "outcome")) return(TRUE)
-    if (identical(preset, "starters_bench") && field %in% c("starters_mode", "starters_val")) return(TRUE)
-    if (identical(preset, "opp_starters_bench") && field %in% c("opp_starters_mode", "opp_starters_val")) return(TRUE)
-    if (identical(preset, "clutch") && field %in% c("clutch", "clutch_margin", "clutch_minutes")) return(TRUE)
-    if (identical(preset, "top_bottom_rank") && identical(field, "opp_rank_side")) return(TRUE)
-    FALSE
+    field %in% (PRESET_MIRROR_BLOCKS[[preset]] %||% character(0))
   }
 
   normalize_side_field_value <- function(field, val) {
-    if (field %in% c("teams", "opponents", "game_type")) {
+    if (field %in% SIDE_MULTI_SELECT_FIELDS) {
       v <- as.character(val %||% character(0))
       v <- v[nzchar(v)]
       return(sort(unique(v)))
     }
-    if (field %in% c("clutch")) {
+    if (field %in% SIDE_CHECKBOX_FIELDS) {
       return(isTRUE(val))
     }
-    if (field %in% c("clutch_margin", "clutch_minutes")) {
+    if (field %in% SIDE_SLIDER_FIELDS) {
       n <- suppressWarnings(as.numeric(val))
       if (!is.finite(n)) return(NA_real_)
       return(n)
@@ -1259,11 +1266,11 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     if (side_field_equal(field, val, current_to)) return(invisible(NULL))
 
-    if (field %in% c("teams", "opponents", "game_type")) {
+    if (field %in% SIDE_MULTI_SELECT_FIELDS) {
       updateSelectizeInput(session, to_id, selected = val %||% character(0))
-    } else if (field %in% c("clutch")) {
+    } else if (field %in% SIDE_CHECKBOX_FIELDS) {
       updateCheckboxInput(session, to_id, value = isTRUE(val))
-    } else if (field %in% c("clutch_margin", "clutch_minutes")) {
+    } else if (field %in% SIDE_SLIDER_FIELDS) {
       if (is.null(val) || !is.finite(as.numeric(val))) return(invisible(NULL))
       updateSliderInput(session, to_id, value = as.numeric(val))
     } else {
