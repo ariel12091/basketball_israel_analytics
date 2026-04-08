@@ -945,6 +945,106 @@ tab_explainer <- function(id, title, intro, bullets) {
 # ---------------- Filter Chips Builder ----------------
 GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
                        "17" = "PO Finals", "33" = "Play-in", "34" = "Winner Cup", "35" = "State Cup")
+GAME_TYPE_CHOICES_UI <- c(
+  "All" = "",
+  "Regular season" = "5",
+  "Playoffs - Quarterfinals" = "16",
+  "Playoffs - Finals" = "17",
+  "Playoffs - Semifinals" = "26",
+  "Play-in" = "33",
+  "Winner Cup" = "34",
+  "State Cup" = "35"
+)
+
+accordion_toggle_link <- function() {
+  tags$div(
+    class = "text-end mb-2",
+    tags$a(
+      href = "#",
+      class = "small text-muted fw-bold",
+      style = "text-decoration: none;",
+      onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
+      "Collapse/Expand All"
+    )
+  )
+}
+
+game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_blank_label = "\u2014") {
+  panels <- list(
+    bslib::accordion_panel(
+      "Game Filters",
+      selectizeInput(
+        paste0(prefix, "_game_type"), "Game type",
+        choices = GAME_TYPE_CHOICES_UI,
+        selected = "", multiple = TRUE,
+        options = list(placeholder = "All game types")
+      ),
+      selectizeInput(
+        paste0(prefix, "_opponents"), "Opponents",
+        choices = NULL, selected = character(0), multiple = TRUE,
+        options = list(placeholder = "All opponents")
+      ),
+      selectInput(
+        paste0(prefix, "_home_away"), "Home/Away",
+        choices = c("All" = "", "Home" = "home", "Away" = "away"),
+        selected = ""
+      ),
+      selectInput(
+        paste0(prefix, "_outcome"), "Outcome",
+        choices = c("All" = "", "Win" = "win", "Loss" = "loss"),
+        selected = ""
+      ),
+      tags$hr(),
+      fluidRow(
+        column(
+          6,
+          selectizeInput(
+            paste0(prefix, "_gn_min"), tt("From Game Number (GN)", "gn"),
+            choices = NULL, selected = "", multiple = FALSE,
+            options = list(placeholder = "Any")
+          )
+        ),
+        column(
+          6,
+          selectizeInput(
+            paste0(prefix, "_gn_max"), tt("To Game Number (GN)", "gn"),
+            choices = NULL, selected = "", multiple = FALSE,
+            options = list(placeholder = "Any")
+          )
+        )
+      ),
+      selectizeInput(
+        paste0(prefix, "_last_n"), tt("Last N Team Games", "last_n"),
+        choices = NULL, selected = "", multiple = FALSE,
+        options = list(placeholder = "Any")
+      )
+    )
+  )
+
+  if (isTRUE(include_opp_rank)) {
+    blank_choice <- setNames("", opp_rank_blank_label)
+    panels[[length(panels) + 1]] <- bslib::accordion_panel(
+      tt("Opponent Strength", "opp_strength"), value = "Opponent Strength",
+      selectInput(
+        paste0(prefix, "_opp_rank_side"), "Top / Bottom",
+        choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"),
+        selected = ""
+      ),
+      selectInput(
+        paste0(prefix, "_opp_rank_n"), "Rank N",
+        choices = c(blank_choice, setNames(as.character(1:12), as.character(1:12))),
+        selected = ""
+      ),
+      selectInput(
+        paste0(prefix, "_opp_rank_metric"), "Metric",
+        choices = c(blank_choice, "Offense" = "off", "Defense" = "def", "Net rating" = "net"),
+        selected = ""
+      )
+    )
+  }
+
+  do.call(bslib::accordion, c(panels, list(open = TRUE)))
+}
 
 make_chip <- function(label, clear_id, css_class = "") {
   tags$span(

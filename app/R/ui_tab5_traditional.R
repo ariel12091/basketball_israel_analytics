@@ -50,62 +50,8 @@ ui_tab5_traditional <- tabPanel(
             helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
           ),
           tags$hr(),
-          tags$div(
-            class = "text-end mb-2",
-            tags$a(
-              href = "#",
-              class = "small text-muted fw-bold",
-              style = "text-decoration: none;",
-              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
-              "Collapse/Expand All"
-            )
-          ),
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput(
-                "ts_game_type", "Game type",
-                choices = c(
-                  "All" = "",
-                  "Regular season" = "5",
-                  "Playoffs - Quarterfinals" = "16",
-                  "Playoffs - Finals" = "17",
-                  "Playoffs - Semifinals" = "26",
-                  "Play-in" = "33",
-                  "Winner Cup" = "34",
-                  "State Cup" = "35"
-                ),
-                selected = "", multiple = TRUE,
-                options = list(placeholder = "All game types")
-              ),
-              selectizeInput("ts_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE,
-                             options = list(placeholder = "All opponents")),
-              selectInput("ts_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("ts_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
-              tags$hr(),
-              fluidRow(
-                column(
-                  6,
-                  selectizeInput("ts_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
-                                 options = list(placeholder = "Any"))
-                ),
-                column(
-                  6,
-                  selectizeInput("ts_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
-                                 options = list(placeholder = "Any"))
-                )
-              ),
-              selectizeInput("ts_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
-                             options = list(placeholder = "Any"))
-            ),
-            bslib::accordion_panel(
-              tt("Opponent Strength", "opp_strength"), value = "Opponent Strength",
-              selectInput("ts_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
-              selectInput("ts_opp_rank_n", "Rank N", choices = c("-" = "", as.character(1:12)), selected = ""),
-              selectInput("ts_opp_rank_metric", "Metric", choices = c("-" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            open = TRUE
-          ),
+          accordion_toggle_link(),
+          game_context_filters_ui("ts", opp_rank_blank_label = "-"),
           tags$hr(),
           downloadButton("ts_download_csv", "Download CSV")
         )
