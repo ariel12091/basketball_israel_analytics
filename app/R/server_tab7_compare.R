@@ -882,6 +882,26 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   # -- Shared filter reset helper --
 
+  reset_compare_side_filters <- function(side, reset_clutch_sliders = TRUE) {
+    updateSelectInput(session, paste0("cmp_", side, "_starters_mode"), selected = "")
+    updateSelectInput(session, paste0("cmp_", side, "_starters_val"), selected = "")
+    updateSelectInput(session, paste0("cmp_", side, "_opp_starters_mode"), selected = "")
+    updateSelectInput(session, paste0("cmp_", side, "_opp_starters_val"), selected = "")
+    updateSelectInput(session, paste0("cmp_", side, "_home_away"), selected = "")
+    updateSelectInput(session, paste0("cmp_", side, "_outcome"), selected = "")
+    updateCheckboxInput(session, paste0("cmp_", side, "_clutch"), value = FALSE)
+    if (isTRUE(reset_clutch_sliders)) {
+      updateSliderInput(session, paste0("cmp_", side, "_clutch_margin"), value = 5)
+      updateSliderInput(session, paste0("cmp_", side, "_clutch_minutes"), value = 5)
+    }
+    updateSelectizeInput(session, paste0("cmp_", side, "_teams"), selected = character(0))
+    updateSelectizeInput(session, paste0("cmp_", side, "_opponents"), selected = character(0))
+    updateSelectizeInput(session, paste0("cmp_", side, "_game_type"), selected = character(0))
+    updateSelectInput(session, paste0("cmp_", side, "_opp_rank_side"), selected = "")
+    updateSelectInput(session, paste0("cmp_", side, "_opp_rank_n"), selected = "")
+    updateSelectInput(session, paste0("cmp_", side, "_opp_rank_metric"), selected = "")
+  }
+
   reset_compare_filters <- function() {
     updateSelectInput(session, "cmp_preset", selected = "")
     updateSliderInput(session, "cmp_min_poss", value = 10)
@@ -894,21 +914,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectizeInput(session, "cmp_players_gn_min", selected = character(0))
     updateSelectizeInput(session, "cmp_players_gn_max", selected = character(0))
     for (s in c("a", "b")) {
-      updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_mode"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_val"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_home_away"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
-      updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
-      updateSliderInput(session, paste0("cmp_", s, "_clutch_margin"), value = 5)
-      updateSliderInput(session, paste0("cmp_", s, "_clutch_minutes"), value = 5)
-      updateSelectizeInput(session, paste0("cmp_", s, "_teams"), selected = character(0))
-      updateSelectizeInput(session, paste0("cmp_", s, "_opponents"), selected = character(0))
-      updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_n"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_metric"), selected = "")
+      reset_compare_side_filters(s, reset_clutch_sliders = TRUE)
     }
     updateSelectizeInput(session, "cmp_player_a", selected = character(0))
     updateSelectizeInput(session, "cmp_player_b", selected = character(0))
@@ -1155,24 +1161,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (is.null(preset) || !nzchar(preset)) {
       return()
     }
-    clear_side <- function(s) {
-      updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_mode"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_val"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_home_away"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
-      updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
-      updateSelectizeInput(session, paste0("cmp_", s, "_teams"), selected = character(0))
-      updateSelectizeInput(session, paste0("cmp_", s, "_opponents"), selected = character(0))
-      updateSelectizeInput(session, paste0("cmp_", s, "_game_type"), selected = character(0))
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_side"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_n"), selected = "")
-      updateSelectInput(session, paste0("cmp_", s, "_opp_rank_metric"), selected = "")
-    }
-
-    clear_side("a")
-    clear_side("b")
+    reset_compare_side_filters("a", reset_clutch_sliders = FALSE)
+    reset_compare_side_filters("b", reset_clutch_sliders = FALSE)
 
     if (preset == "starters_bench") {
       updateSelectInput(session, "cmp_a_starters_mode", selected = "gte")
