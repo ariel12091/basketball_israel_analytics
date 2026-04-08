@@ -25,10 +25,14 @@ ui_tab2_lineup <- tabPanel(
           helpText("Higher minimums improve stability but remove smaller-sample lineups."),
           radioButtons("ld_num", tt("Group size", "group_size"), choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
           tags$hr(),
-          selectizeInput("ld_team", "Team", choices = NULL, multiple = FALSE),
-          helpText("Pick a team to enable player filtering."),
-          selectizeInput("ld_players_on", tt("Players On (exact/contains)", "players_on"), choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
-          selectizeInput("ld_players_off", tt("Players Off (exclude any)", "players_off"), choices = NULL, multiple = TRUE, options = list(placeholder = "Select a team first…")),
+          lineup_player_filter_ui(
+            "ld_lineup_filter",
+            team_label = "Team",
+            team_help = "Pick a team to enable player filtering.",
+            team_placeholder = "All teams",
+            players_on_placeholder = "Select a team first…",
+            players_off_placeholder = "Select a team first…"
+          ),
           fluidRow(
             column(6, selectInput("ld_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
             column(6, selectInput("ld_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))

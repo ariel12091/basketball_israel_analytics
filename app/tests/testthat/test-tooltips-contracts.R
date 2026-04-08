@@ -12,6 +12,7 @@ test_that("tooltip infrastructure is defined centrally", {
 
 test_that("tooltip wiring is present in compare and tooltip-heavy tabs", {
   compare_txt <- read_repo_txt("R", "server_tab7_compare.R")
+  lineup_filter_txt <- read_repo_txt("R", "mod_lineup_player_filter.R")
   tab1_ui_txt <- read_repo_txt("R", "ui_tab1_onoff.R")
   tab2_ui_txt <- read_repo_txt("R", "ui_tab2_lineup.R")
   tab7_ui_txt <- read_repo_txt("R", "ui_tab7_compare.R")
@@ -19,6 +20,7 @@ test_that("tooltip wiring is present in compare and tooltip-heavy tabs", {
   expect_true(grepl("headerCallback\\s*=\\s*DT::JS\\(sprintf\\(", compare_txt))
   expect_true(grepl("jsonlite::toJSON\\(as\\.list\\(COLUMN_TOOLTIPS\\)", compare_txt))
   expect_true(grepl("tt\\(\"Min possessions per side \\(eligibility\\):\", \"min_poss_side\"\\)", tab1_ui_txt))
-  expect_true(grepl("tt\\(\"Players On \\(exact/contains\\)\", \"players_on\"\\)", tab2_ui_txt))
+  expect_true(grepl("lineup_player_filter_ui\\(", tab2_ui_txt))
+  expect_true(grepl("tt\\(\"Players On \\(exact/contains\\)\", \"players_on\"\\)", lineup_filter_txt))
   expect_true(grepl("tt\\(\"Quick preset\", \"quick_preset\"\\)", tab7_ui_txt))
 })

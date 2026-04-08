@@ -167,13 +167,23 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Starters
     st_mode <- get_input("starters_mode") %||% ""
     st_val <- get_input("starters_val") %||% ""
+    opp_st_mode <- get_input("opp_starters_mode") %||% ""
+    opp_st_val <- get_input("opp_starters_val") %||% ""
     num_starters_off <- NA_integer_
     num_starters_off_min <- NA_integer_
     num_starters_off_max <- NA_integer_
+    num_starters_def <- NA_integer_
+    num_starters_def_min <- NA_integer_
+    num_starters_def_max <- NA_integer_
     if (nzchar(st_mode) && nzchar(st_val)) {
       v <- as.integer(st_val)
       if (st_mode == "gte") { num_starters_off_min <- v; num_starters_off_max <- 5L }
       else if (st_mode == "lte") { num_starters_off_min <- 0L; num_starters_off_max <- v }
+    }
+    if (nzchar(opp_st_mode) && nzchar(opp_st_val)) {
+      v <- as.integer(opp_st_val)
+      if (opp_st_mode == "gte") { num_starters_def_min <- v; num_starters_def_max <- 5L }
+      else if (opp_st_mode == "lte") { num_starters_def_min <- 0L; num_starters_def_max <- v }
     }
 
     # Clutch
@@ -225,10 +235,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       max_margin = max_margin, margin_status = margin_status,
       max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter,
       min_gn = min_gn, max_gn = max_gn, last_n_games = last_n,
-      num_starters_off = num_starters_off, num_starters_def = NA_integer_,
+      num_starters_off = num_starters_off, num_starters_def = num_starters_def,
       num_starters_off_min = num_starters_off_min,
       num_starters_off_max = num_starters_off_max,
-      num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_
+      num_starters_def_min = num_starters_def_min, num_starters_def_max = num_starters_def_max
     )
   }
 
@@ -242,6 +252,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     switch(preset,
       starters_bench = if (side == "a") "Starters" else "Bench",
+      opp_starters_bench = if (side == "a") "vs Starters" else "vs Bench",
       clutch         = if (side == "a") "Clutch" else "Non-Clutch",
       home_away      = if (side == "a") "Home" else "Away",
       win_loss       = if (side == "a") "Win" else "Loss",
@@ -284,7 +295,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     st_val <- get_input("starters_val") %||% ""
     if (nzchar(st_mode) && nzchar(st_val)) {
       op <- if (st_mode == "gte") "\u2265" else "\u2264"
-      parts <- c(parts, paste0("Starters ", op, st_val))
+      parts <- c(parts, paste0("Own starters ", op, st_val))
+    }
+    opp_st_mode <- get_input("opp_starters_mode") %||% ""
+    opp_st_val <- get_input("opp_starters_val") %||% ""
+    if (nzchar(opp_st_mode) && nzchar(opp_st_val)) {
+      op <- if (opp_st_mode == "gte") "\u2265" else "\u2264"
+      parts <- c(parts, paste0("Opp starters ", op, opp_st_val))
     }
     ha <- get_input("home_away") %||% ""
     if (nzchar(ha)) parts <- c(parts, tools::toTitleCase(ha))
@@ -474,9 +491,9 @@ server_tab7_compare <- function(input, output, session, shared) {
   cmp_lu_params <- function() {
     num <- suppressWarnings(as.integer(input$cmp_lu_num %||% "5"))
     if (!is.finite(num) || num < 2L || num > 5L) num <- 5L
-    team_val <- input$cmp_lu_team %||% ""
-    player_on_ids <- if (nzchar(team_val)) as.integer(input$cmp_lu_players_on %||% character(0)) else integer(0)
-    player_off_ids <- if (nzchar(team_val)) as.integer(input$cmp_lu_players_off %||% character(0)) else integer(0)
+    team_val <- cmp_lu_filter$team()
+    player_on_ids <- if (nzchar(team_val)) as.integer(cmp_lu_filter$players_on()) else integer(0)
+    player_off_ids <- if (nzchar(team_val)) as.integer(cmp_lu_filter$players_off()) else integer(0)
     player_csv <- if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_
     player_off_csv <- if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_
     list(num = num, team_csv = if (nzchar(team_val)) team_val else NA_character_,
@@ -721,6 +738,11 @@ server_tab7_compare <- function(input, output, session, shared) {
     unique(out)
   }
 
+  cmp_lu_filter <- lineup_player_filter_server(
+    "cmp_lu_filter",
+    players_ref = reactive(normalize_players_ref(cmp_ref$players))
+  )
+
   render_metric_chips <- function(metrics, cur, input_id) {
     chips <- lapply(seq_along(metrics), function(i) {
       nm <- names(metrics)[i]
@@ -787,15 +809,15 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   observeEvent(list(
     input$cmp_mode, input$cmp_preset, input$cmp_split_date, input$cmp_split_gn,
-    input$cmp_a_starters_mode, input$cmp_a_starters_val, input$cmp_a_teams,
+    input$cmp_a_starters_mode, input$cmp_a_starters_val, input$cmp_a_opp_starters_mode, input$cmp_a_opp_starters_val, input$cmp_a_teams,
     input$cmp_a_home_away, input$cmp_a_outcome, input$cmp_a_clutch,
     input$cmp_a_clutch_margin, input$cmp_a_clutch_minutes, input$cmp_a_opponents,
     input$cmp_a_game_type, input$cmp_a_opp_rank_side, input$cmp_a_opp_rank_n, input$cmp_a_opp_rank_metric,
-    input$cmp_b_starters_mode, input$cmp_b_starters_val, input$cmp_b_teams,
+    input$cmp_b_starters_mode, input$cmp_b_starters_val, input$cmp_b_opp_starters_mode, input$cmp_b_opp_starters_val, input$cmp_b_teams,
     input$cmp_b_home_away, input$cmp_b_outcome, input$cmp_b_clutch,
     input$cmp_b_clutch_margin, input$cmp_b_clutch_minutes, input$cmp_b_opponents,
     input$cmp_b_game_type, input$cmp_b_opp_rank_side, input$cmp_b_opp_rank_n, input$cmp_b_opp_rank_metric,
-    input$cmp_lu_num, input$cmp_lu_team, input$cmp_lu_players_on, input$cmp_lu_players_off,
+    input$cmp_lu_num, cmp_lu_filter$team(), cmp_lu_filter$players_on(), cmp_lu_filter$players_off(),
     input$game_year, input$main_tabs
   ), {
     if (!identical(input$main_tabs, "compare")) return(invisible(NULL))
@@ -819,6 +841,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     for (s in c("a", "b")) {
       updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_mode"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_val"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_home_away"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
       updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
@@ -839,9 +863,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectInput(session, "cmp_player_b_team", selected = "")
     # Lineup controls
     updateRadioButtons(session, "cmp_lu_num", selected = "5")
-    updateSelectizeInput(session, "cmp_lu_team", selected = "")
-    updateSelectizeInput(session, "cmp_lu_players_on", selected = character(0))
-    updateSelectizeInput(session, "cmp_lu_players_off", selected = character(0))
+    cmp_lu_filter$reset_inputs(team_selected = "")
   }
 
   refresh_player_choices <- function(side) {
@@ -968,9 +990,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = team_choices, selected = character(0), server = TRUE)
     # Lineup filter team dropdown — use team_id as values
     lu_team_choices <- if (nrow(teams_df)) setNames(as.character(teams_df$team_id), teams_df$team_name) else character(0)
-    updateSelectizeInput(session, "cmp_lu_team", choices = c("All teams" = "", lu_team_choices), selected = "", server = TRUE)
-    updateSelectizeInput(session, "cmp_lu_players_on", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_lu_players_off", choices = setNames(integer(0), character(0)), selected = character(0), server = TRUE)
+    cmp_lu_filter$reset_inputs(team_choices = c("All teams" = "", lu_team_choices), team_selected = "")
     gn_df <- cached_ref_query(
       key = sprintf("cmp_gn_%d", gy_int),
       query_fun = function() db_get_query(pg_pool, sprintf(
@@ -1083,6 +1103,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     clear_side <- function(s) {
       updateSelectInput(session, paste0("cmp_", s, "_starters_mode"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_starters_val"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_mode"), selected = "")
+      updateSelectInput(session, paste0("cmp_", s, "_opp_starters_val"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_home_away"), selected = "")
       updateSelectInput(session, paste0("cmp_", s, "_outcome"), selected = "")
       updateCheckboxInput(session, paste0("cmp_", s, "_clutch"), value = FALSE)
@@ -1102,6 +1124,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       updateSelectInput(session, "cmp_a_starters_val", selected = "3")
       updateSelectInput(session, "cmp_b_starters_mode", selected = "lte")
       updateSelectInput(session, "cmp_b_starters_val", selected = "2")
+    } else if (preset == "opp_starters_bench") {
+      updateSelectInput(session, "cmp_a_opp_starters_mode", selected = "gte")
+      updateSelectInput(session, "cmp_a_opp_starters_val", selected = "3")
+      updateSelectInput(session, "cmp_b_opp_starters_mode", selected = "lte")
+      updateSelectInput(session, "cmp_b_opp_starters_val", selected = "2")
     } else if (preset == "clutch") {
       updateCheckboxInput(session, "cmp_a_clutch", value = TRUE)
       updateSliderInput(session, "cmp_a_clutch_margin", value = 5)
@@ -1147,6 +1174,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (identical(preset, "home_away") && identical(field, "home_away")) return(TRUE)
     if (identical(preset, "win_loss") && identical(field, "outcome")) return(TRUE)
     if (identical(preset, "starters_bench") && field %in% c("starters_mode", "starters_val")) return(TRUE)
+    if (identical(preset, "opp_starters_bench") && field %in% c("opp_starters_mode", "opp_starters_val")) return(TRUE)
     if (identical(preset, "clutch") && field %in% c("clutch", "clutch_margin", "clutch_minutes")) return(TRUE)
     if (identical(preset, "top_bottom_rank") && identical(field, "opp_rank_side")) return(TRUE)
     FALSE
@@ -1197,7 +1225,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   side_fields <- c(
-    "starters_mode", "starters_val", "teams",
+    "starters_mode", "starters_val", "opp_starters_mode", "opp_starters_val", "teams",
     "home_away", "outcome",
     "clutch", "clutch_margin", "clutch_minutes",
     "opponents", "game_type",
@@ -2474,37 +2502,6 @@ server_tab7_compare <- function(input, output, session, shared) {
       class = "compact stripe nowrap"
     )
   }, server = FALSE)
-
-  # -- Lineup controls: populate players when team selected --
-
-  observeEvent(input$cmp_lu_team, {
-    team_val <- input$cmp_lu_team %||% ""
-    players_df <- normalize_players_ref(cmp_ref$players)
-    if (nzchar(team_val) && nrow(players_df)) {
-      tid <- suppressWarnings(as.integer(team_val))
-      roster <- players_df[players_df$team_id == tid, , drop = FALSE]
-      choices <- if (nrow(roster)) setNames(as.character(roster$player_id), roster$name) else setNames(integer(0), character(0))
-    } else {
-      choices <- setNames(integer(0), character(0))
-    }
-    updateSelectizeInput(session, "cmp_lu_players_on", choices = choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "cmp_lu_players_off", choices = choices, selected = character(0), server = TRUE)
-  }, ignoreInit = TRUE)
-
-  # Mutual exclusion: player can't be both on and off
-  observeEvent(input$cmp_lu_players_on, {
-    on_sel <- input$cmp_lu_players_on %||% character(0)
-    off_sel <- input$cmp_lu_players_off %||% character(0)
-    inter <- intersect(on_sel, off_sel)
-    if (length(inter)) updateSelectizeInput(session, "cmp_lu_players_off", selected = setdiff(off_sel, inter))
-  }, ignoreInit = TRUE)
-
-  observeEvent(input$cmp_lu_players_off, {
-    on_sel <- input$cmp_lu_players_on %||% character(0)
-    off_sel <- input$cmp_lu_players_off %||% character(0)
-    inter <- intersect(on_sel, off_sel)
-    if (length(inter)) updateSelectizeInput(session, "cmp_lu_players_on", selected = setdiff(on_sel, inter))
-  }, ignoreInit = TRUE)
 
   # -- Reset --
 

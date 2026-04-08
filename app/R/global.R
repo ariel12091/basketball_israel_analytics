@@ -965,6 +965,7 @@ make_season_chip <- function(gy) {
 
 build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
                                team_label_map = NULL, player_label_map = NULL,
+                               teams_value = NULL, players_on_value = NULL, players_off_value = NULL,
                                extra_children = NULL) {
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
   map_label <- function(x, label_map) {
@@ -1037,7 +1038,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   } else if (prefix == "ts") {
     teams_val <- input$ts_teams
   } else if (prefix %in% c("ld", "gl")) {
-    tv <- input[[paste0(prefix, "_team")]]
+    tv <- teams_value %||% input[[paste0(prefix, "_team")]]
     teams_val <- if (!is.null(tv) && nzchar(tv %||% "")) tv else NULL
   } else {
     teams_val <- NULL
@@ -1136,13 +1137,13 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
 
   # Players on/off (Tab 2)
   if (prefix == "ld") {
-    pon <- input$ld_players_on
+    pon <- players_on_value %||% input$ld_players_on
     if (!is.null(pon) && length(pon)) {
       mapped_on <- map_label(pon, player_label_map)
       lbl <- if (length(mapped_on) == 1) paste("On:", mapped_on[1]) else paste0("On: ", length(mapped_on), " players")
       chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_on", "chip-game")
     }
-    poff <- input$ld_players_off
+    poff <- players_off_value %||% input$ld_players_off
     if (!is.null(poff) && length(poff)) {
       mapped_off <- map_label(poff, player_label_map)
       lbl <- if (length(mapped_off) == 1) paste("Off:", mapped_off[1]) else paste0("Off: ", length(mapped_off), " players")
