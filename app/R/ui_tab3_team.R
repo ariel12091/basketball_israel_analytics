@@ -9,22 +9,26 @@ ui_tab3_team <- tabPanel(
         width = 3,
         div(
           class = "view-mode-container",
-          radioButtons("tr_view_mode", label = "View:",
-                       choices = c("Summary", "Four Factors", "Traditional"),
-                       selected = "Summary", inline = TRUE)
+          radioButtons(
+            "tr_view_mode",
+            label = "View:",
+            choices = c("Summary", "Four Factors", "Traditional"),
+            selected = "Summary",
+            inline = TRUE
+          )
         ),
         conditionalPanel(
           condition = "input.tr_view_mode == 'Traditional'",
-            tags$div(
-              class = "d-flex align-items-center gap-2 mb-2",
-              tags$span("Team"),
-              bslib::input_switch(
-                "tr_trad_defense_mode",
-                label = NULL,
-                value = FALSE
-              ),
-              tags$span("Opponent")
+          tags$div(
+            class = "d-flex align-items-center gap-2 mb-2",
+            tags$span("Team"),
+            bslib::input_switch(
+              "tr_trad_defense_mode",
+              label = NULL,
+              value = FALSE
             ),
+            tags$span("Opponent")
+          ),
           selectInput(
             "tr_trad_display_mode",
             "Traditional display mode",
@@ -33,11 +37,15 @@ ui_tab3_team <- tabPanel(
           )
         ),
         tags$hr(),
-        tags$button(class = "btn btn-outline-secondary d-md-none w-100 mb-2",
-                    `data-bs-toggle` = "collapse", `data-bs-target` = "#tr-filters",
-                    "Show Filters"),
+        tags$button(
+          class = "btn btn-outline-secondary d-md-none w-100 mb-2",
+          `data-bs-toggle` = "collapse",
+          `data-bs-target` = "#tr-filters",
+          "Show Filters"
+        ),
         div(
-          id = "tr-filters", class = "collapse d-md-block",
+          id = "tr-filters",
+          class = "collapse d-md-block",
           actionButton("tr_reset", "Reset Filters"),
           tags$hr(),
           dateRangeInput("tr_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
@@ -45,55 +53,42 @@ ui_tab3_team <- tabPanel(
           conditionalPanel(
             condition = "input.tr_clutch_enabled == true",
             sliderInput("tr_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
-            selectInput("tr_clutch_status", "Score status", choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"), selected = "all"),
+            selectInput(
+              "tr_clutch_status",
+              "Score status",
+              choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"),
+              selected = "all"
+            ),
             sliderInput("tr_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
             checkboxInput("tr_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
             helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
           ),
           fluidRow(
-            column(6, selectInput("tr_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-            column(6, selectInput("tr_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
+            column(
+              6,
+              selectInput(
+                "tr_num_starters_off_mode",
+                tt("Own lineup starters", "own_starters"),
+                choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"),
+                selected = ""
+              )
+            ),
+            column(6, selectInput("tr_num_starters_off", "Own value", choices = c("\u2014" = "", as.character(0:5)), selected = ""))
           ),
           fluidRow(
-            column(6, selectInput("tr_num_starters_def_mode", tt("Opponent lineup starters", "opp_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-            column(6, selectInput("tr_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
-          ),
-          tags$hr(),
-          tags$div(
-            class = "text-end mb-2",
-            tags$a(
-              href = "#",
-              class = "small text-muted fw-bold",
-              style = "text-decoration: none;",
-              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
-              "Collapse/Expand All"
-            )
-          ),
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput("tr_game_type", "Game type", choices = c("All" = "", "Regular season" = "5", "Playoffs – Quarterfinals" = "16", "Playoffs – Finals" = "17", "Playoffs – Semifinals" = "26", "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"), selected = "", multiple = TRUE, options = list(placeholder = "All game types")),
-              selectizeInput("tr_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
-              selectInput("tr_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("tr_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
-              tags$hr(),
-              fluidRow(
-                column(6, selectizeInput("tr_gn_min", tt("From Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
-                                         options = list(placeholder = "Any"))),
-                column(6, selectizeInput("tr_gn_max", tt("To Game Number (GN)", "gn"), choices = NULL, selected = "", multiple = FALSE,
-                                         options = list(placeholder = "Any")))
-              ),
-              selectizeInput("tr_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
-                             options = list(placeholder = "Any"))
+            column(
+              6,
+              selectInput(
+                "tr_num_starters_def_mode",
+                tt("Opponent lineup starters", "opp_starters"),
+                choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"),
+                selected = ""
+              )
             ),
-            bslib::accordion_panel(
-              tt("Opponent Strength", "opp_strength"), value = "Opponent Strength",
-              selectInput("tr_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
-              selectInput("tr_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:12)), selected = ""),
-              selectInput("tr_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            open = TRUE
-          )
+            column(6, selectInput("tr_num_starters_def", "Opp value", choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+          ),
+          accordion_toggle_link(),
+          game_context_filters_ui("tr")
         )
       ),
       mainPanel(
@@ -107,7 +102,7 @@ ui_tab3_team <- tabPanel(
             bullets = c(
               "Each row shows Season, Team, GP, W, L, Off PPP, Def PPP, Net RTG (with league rank and rank delta), Off Pace, Def Pace, Off Poss, and Def Poss.",
               "Start with Net RTG to rank teams quickly, then inspect Off PPP and Def PPP to see which end drives the edge.",
-              "Pace columns show possessions per 40 minutes \u2014 they help compare fast vs slow teams fairly.",
+              "Pace columns show possessions per 40 minutes - they help compare fast vs slow teams fairly.",
               "GP, W, and L provide context, but possession-based rates are more reliable than win-loss record for evaluating strength."
             )
           ),
@@ -146,7 +141,7 @@ ui_tab3_team <- tabPanel(
             title = "What This Tab Answers (Four Factors)",
             intro = "Which team-level factors are driving strong or weak performance? See each team's PPP, TS%, OREB%, TOV%, FTR, and possessions on offense and defense, plus league rank, rank delta, and net rating.",
             bullets = c(
-              "Read offense and defense factor profiles side by side \u2014 ranks (#1\u2013#14) and rank deltas (\u25b2/\u25bc) help spot movement.",
+              "Read offense and defense factor profiles side by side - ranks (#1-#14) and rank deltas (\u25b2/\u25bc) help spot movement.",
               "Interpret TOV% with opposite polarity: lower is better on offense, higher is better on defense.",
               "Use Poss columns to judge sample reliability, especially after applying date or clutch filters.",
               "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% is driven by sustainable shot selection or a hot-hand streak."
@@ -221,9 +216,8 @@ ui_tab3_team <- tabPanel(
           )
         ),
         uiOutput("tr_filter_chips"),
-        DTOutput('tr_table')
+        DTOutput("tr_table")
       )
     )
   )
 )
-
