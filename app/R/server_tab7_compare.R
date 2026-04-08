@@ -432,20 +432,19 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   # -- SQL runners --
 
-  run_team_ratings <- function(p) {
+  run_compare_query <- function(key, p, sql, params) {
     allowed <- guard_heavy_request(
-      session, key = "cmp_team_ratings",
+      session, key = key,
       start_d = p$start_d, end_d = p$end_d,
       min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
       max_calls = 50L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    db_get_query(pg_pool, paste0(
-      "SELECT * FROM basketball_test.get_team_ratings_dynamic(",
-      "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
-      "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
-      "$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
-      ")"), params = list(
+    db_get_query(pg_pool, sql, params = params)
+  }
+
+  cmp_team_dynamic_params <- function(p) {
+    list(
       p$game_year, as.Date(p$start_d), as.Date(p$end_d),
       p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
       p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
@@ -454,32 +453,77 @@ server_tab7_compare <- function(input, output, session, shared) {
       p$num_starters_off, p$num_starters_def,
       p$num_starters_off_min, p$num_starters_off_max,
       p$num_starters_def_min, p$num_starters_def_max
-    ))
+    )
+  }
+
+  cmp_lineup_query_args <- function(p, min_poss) {
+    lu <- cmp_lu_params()
+    team_filter <- merge_lineup_team_csv(p$team_ids_csv, lu$team_csv)
+    if (isTRUE(team_filter$conflict)) return(NULL)
+    list(
+      lu$num,
+      team_filter$team_csv,
+      lu$player_csv,
+      lu$player_off_csv,
+      lu$exact,
+      as.Date(p$start_d), as.Date(p$end_d),
+      min_poss,
+      p$game_year,
+      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
+      p$min_gn, p$max_gn, p$last_n_games,
+      p$num_starters_off, p$num_starters_def,
+      p$num_starters_off_min, p$num_starters_off_max,
+      p$num_starters_def_min, p$num_starters_def_max
+    )
+  }
+
+  cmp_player_query_params <- function(p, team_ids_csv) {
+    list(
+      p$game_year,
+      if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
+      if (!is.na(p$end_d)) as.Date(p$end_d) else NA,
+      team_ids_csv,
+      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
+      p$min_gn, p$max_gn, p$last_n_games
+    )
+  }
+
+  cmp_team_csv_or_na <- function(team_ids_csv) {
+    if (is.null(team_ids_csv) || is.na(team_ids_csv) || !nzchar(team_ids_csv)) NA_character_ else team_ids_csv
+  }
+
+  run_team_ratings <- function(p) {
+    run_compare_query(
+      key = "cmp_team_ratings",
+      p = p,
+      sql = paste0(
+        "SELECT * FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
+        "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
+        "$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
+        ")"
+      ),
+      params = cmp_team_dynamic_params(p)
+    )
   }
 
   run_team_ff <- function(p) {
-    allowed <- guard_heavy_request(
-      session, key = "cmp_team_ff",
-      start_d = p$start_d, end_d = p$end_d,
-      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
-      max_calls = 50L, window_sec = 60L
+    run_compare_query(
+      key = "cmp_team_ff",
+      p = p,
+      sql = paste0(
+        "SELECT * FROM basketball_test.get_team_four_factors_dynamic(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
+        "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
+        "$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
+        ")"
+      ),
+      params = cmp_team_dynamic_params(p)
     )
-    if (!isTRUE(allowed)) return(data.frame())
-    db_get_query(pg_pool, paste0(
-      "SELECT * FROM basketball_test.get_team_four_factors_dynamic(",
-      "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
-      "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
-      "$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
-      ")"), params = list(
-      p$game_year, as.Date(p$start_d), as.Date(p$end_d),
-      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-      p$min_gn, p$max_gn, p$last_n_games,
-      p$num_starters_off, p$num_starters_def,
-      p$num_starters_off_min, p$num_starters_off_max,
-      p$num_starters_def_min, p$num_starters_def_max
-    ))
   }
 
   # Read lineup filter controls (shared across both sides)
@@ -512,98 +556,52 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   run_lineups_summary <- function(p, min_poss = cmp_min_poss()) {
-    allowed <- guard_heavy_request(
-      session, key = "cmp_lineups_summary",
-      start_d = p$start_d, end_d = p$end_d,
-      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
-      max_calls = 50L, window_sec = 60L
+    params <- cmp_lineup_query_args(p, min_poss)
+    if (is.null(params)) return(data.frame())
+    run_compare_query(
+      key = "cmp_lineups_summary",
+      p = p,
+      sql = paste0(
+        "SELECT * FROM basketball_test.fetch_lineups_csv_v2(",
+        "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
+        "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
+        "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
+        ")"
+      ),
+      params = params
     )
-    if (!isTRUE(allowed)) return(data.frame())
-    lu <- cmp_lu_params()
-    team_filter <- merge_lineup_team_csv(p$team_ids_csv, lu$team_csv)
-    if (isTRUE(team_filter$conflict)) return(data.frame())
-    db_get_query(pg_pool, paste0(
-      "SELECT * FROM basketball_test.fetch_lineups_csv_v2(",
-      "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
-      "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
-      "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
-    ")"), params = list(
-      lu$num,         # num (lineup size)
-      team_filter$team_csv, # team_csv
-      lu$player_csv,  # player_csv
-      lu$player_off_csv, # player_off_csv
-      lu$exact,       # exact
-      as.Date(p$start_d), as.Date(p$end_d),
-      min_poss,      # min_poss
-      p$game_year,
-      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-      p$min_gn, p$max_gn, p$last_n_games,
-      p$num_starters_off, p$num_starters_def,
-      p$num_starters_off_min, p$num_starters_off_max,
-      p$num_starters_def_min, p$num_starters_def_max
-    ))
   }
 
   run_lineups_ff <- function(p, min_poss = cmp_min_poss()) {
-    allowed <- guard_heavy_request(
-      session, key = "cmp_lineups_ff",
-      start_d = p$start_d, end_d = p$end_d,
-      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
-      max_calls = 50L, window_sec = 60L
+    params <- cmp_lineup_query_args(p, min_poss)
+    if (is.null(params)) return(data.frame())
+    run_compare_query(
+      key = "cmp_lineups_ff",
+      p = p,
+      sql = paste0(
+        "SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(",
+        "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
+        "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
+        "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
+        ")"
+      ),
+      params = params
     )
-    if (!isTRUE(allowed)) return(data.frame())
-    lu <- cmp_lu_params()
-    team_filter <- merge_lineup_team_csv(p$team_ids_csv, lu$team_csv)
-    if (isTRUE(team_filter$conflict)) return(data.frame())
-    db_get_query(pg_pool, paste0(
-      "SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(",
-      "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
-      "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
-      "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
-    ")"), params = list(
-      lu$num,         # num
-      team_filter$team_csv, # team_csv
-      lu$player_csv,  # player_csv
-      lu$player_off_csv, # player_off_csv
-      lu$exact,       # exact
-      as.Date(p$start_d), as.Date(p$end_d),
-      min_poss,      # min_poss
-      p$game_year,
-      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-      p$min_gn, p$max_gn, p$last_n_games,
-      p$num_starters_off, p$num_starters_def,
-      p$num_starters_off_min, p$num_starters_off_max,
-      p$num_starters_def_min, p$num_starters_def_max
-    ))
   }
 
   run_player_traditional <- function(p, team_ids_csv) {
-    allowed <- guard_heavy_request(
-      session, key = "cmp_player_traditional",
-      start_d = p$start_d, end_d = p$end_d,
-      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
-      max_calls = 50L, window_sec = 60L
-    )
-    if (!isTRUE(allowed)) return(data.frame())
     tryCatch(
-      db_get_query(pg_pool, paste0(
-        "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
-        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
-        "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
-        ")"), params = list(
-        p$game_year,
-        if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
-        if (!is.na(p$end_d)) as.Date(p$end_d) else NA,
-        team_ids_csv,
-        p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-        p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-        p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-        p$min_gn, p$max_gn, p$last_n_games
-      )),
+      run_compare_query(
+        key = "cmp_player_traditional",
+        p = p,
+        sql = paste0(
+          "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
+          "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
+          "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
+          ")"
+        ),
+        params = cmp_player_query_params(p, team_ids_csv)
+      ),
       error = function(e) {
         msg <- conditionMessage(e)
         if (grepl("statement timeout", msg, ignore.case = TRUE)) {
@@ -618,55 +616,52 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   run_four_factors <- function(p, team_ids_csv) {
-    allowed <- guard_heavy_request(
-      session, key = "cmp_four_factors",
-      start_d = p$start_d, end_d = p$end_d,
-      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
-      max_calls = 50L, window_sec = 60L
+    run_compare_query(
+      key = "cmp_four_factors",
+      p = p,
+      sql = paste0(
+        "SELECT * FROM basketball_test.four_factors_compute(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
+        "$7::text,$8::text,$9::text,$10::int4,$11::text,",
+        "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4",
+        ")"
+      ),
+      params = list(
+        p$game_year,
+        as.Date(p$start_d), as.Date(p$end_d),
+        cmp_team_csv_or_na(team_ids_csv),
+        p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+        p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+        p$min_gn, p$max_gn, p$last_n_games,
+        p$num_starters_off, p$num_starters_def,
+        p$num_starters_off_min, p$num_starters_off_max,
+        p$num_starters_def_min, p$num_starters_def_max
+      )
     )
-    if (!isTRUE(allowed)) return(data.frame())
-    team_csv <- if (is.null(team_ids_csv) || is.na(team_ids_csv) || !nzchar(team_ids_csv)) NA_character_ else team_ids_csv
-    db_get_query(pg_pool, paste0(
-      "SELECT * FROM basketball_test.four_factors_compute(",
-      "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
-      "$7::text,$8::text,$9::text,$10::int4,$11::text,",
-      "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4",
-      ")"), params = list(
-      p$game_year,
-      as.Date(p$start_d), as.Date(p$end_d),
-      team_csv,
-      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-      p$min_gn, p$max_gn, p$last_n_games,
-      p$num_starters_off, p$num_starters_def,
-      p$num_starters_off_min, p$num_starters_off_max,
-      p$num_starters_def_min, p$num_starters_def_max
-    ))
   }
 
   run_onoff_impact <- function(p, team_ids_csv) {
-    allowed <- guard_heavy_request(
-      session, key = "cmp_onoff_impact",
-      start_d = p$start_d, end_d = p$end_d,
-      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
-      max_calls = 50L, window_sec = 60L
+    run_compare_query(
+      key = "cmp_onoff_impact",
+      p = p,
+      sql = paste0(
+        "SELECT * FROM basketball_test.onoff_compute(",
+        "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,",
+        "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,",
+        "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
+        ")"
+      ),
+      params = list(
+        as.Date(p$start_d), as.Date(p$end_d), team_ids_csv,
+        0L, 0L, as.numeric(DEFAULT_MIN_NET), as.character(p$game_year),
+        p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+        p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+        p$min_gn, p$max_gn, p$last_n_games,
+        p$num_starters_off, p$num_starters_def,
+        p$num_starters_off_min, p$num_starters_off_max,
+        p$num_starters_def_min, p$num_starters_def_max
+      )
     )
-    if (!isTRUE(allowed)) return(data.frame())
-    db_get_query(pg_pool, paste0(
-      "SELECT * FROM basketball_test.onoff_compute(",
-      "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,",
-      "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,",
-      "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
-      ")"), params = list(
-      as.Date(p$start_d), as.Date(p$end_d), team_ids_csv,
-      0L, 0L, as.numeric(DEFAULT_MIN_NET), as.character(p$game_year),
-      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-      p$min_gn, p$max_gn, p$last_n_games,
-      p$num_starters_off, p$num_starters_def,
-      p$num_starters_off_min, p$num_starters_off_max,
-      p$num_starters_def_min, p$num_starters_def_max
-    ))
   }
 
   # -- Metric chip definitions per mode --
