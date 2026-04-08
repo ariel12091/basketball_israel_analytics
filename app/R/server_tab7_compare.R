@@ -1279,6 +1279,20 @@ server_tab7_compare <- function(input, output, session, shared) {
     invisible(NULL)
   }
 
+  observe_mirror_side_field <- function(field, from_side, to_side) {
+    observeEvent(input[[paste0("cmp_", from_side, "_", field)]], {
+      if (isTRUE(cmp_syncing_sides())) return(invisible(NULL))
+      if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+      preset <- input$cmp_preset %||% ""
+      if (!nzchar(preset) || is_mirror_blocked(preset, field)) return(invisible(NULL))
+      if (side_field_equal(field, input[[paste0("cmp_", from_side, "_", field)]], input[[paste0("cmp_", to_side, "_", field)]])) {
+        return(invisible(NULL))
+      }
+      cmp_syncing_sides(TRUE); on.exit(cmp_syncing_sides(FALSE), add = TRUE)
+      mirror_side_field(from_side, to_side, field)
+    }, ignoreInit = TRUE)
+  }
+
   side_fields <- c(
     "starters_mode", "starters_val", "opp_starters_mode", "opp_starters_val", "teams",
     "home_away", "outcome",
@@ -1290,29 +1304,8 @@ server_tab7_compare <- function(input, output, session, shared) {
   for (fld in side_fields) {
     local({
       field <- fld
-      observeEvent(input[[paste0("cmp_a_", field)]], {
-        if (isTRUE(cmp_syncing_sides())) return(invisible(NULL))
-        if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
-        preset <- input$cmp_preset %||% ""
-        if (!nzchar(preset) || is_mirror_blocked(preset, field)) return(invisible(NULL))
-        if (side_field_equal(field, input[[paste0("cmp_a_", field)]], input[[paste0("cmp_b_", field)]])) {
-          return(invisible(NULL))
-        }
-        cmp_syncing_sides(TRUE); on.exit(cmp_syncing_sides(FALSE), add = TRUE)
-        mirror_side_field("a", "b", field)
-      }, ignoreInit = TRUE)
-
-      observeEvent(input[[paste0("cmp_b_", field)]], {
-        if (isTRUE(cmp_syncing_sides())) return(invisible(NULL))
-        if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
-        preset <- input$cmp_preset %||% ""
-        if (!nzchar(preset) || is_mirror_blocked(preset, field)) return(invisible(NULL))
-        if (side_field_equal(field, input[[paste0("cmp_b_", field)]], input[[paste0("cmp_a_", field)]])) {
-          return(invisible(NULL))
-        }
-        cmp_syncing_sides(TRUE); on.exit(cmp_syncing_sides(FALSE), add = TRUE)
-        mirror_side_field("b", "a", field)
-      }, ignoreInit = TRUE)
+      observe_mirror_side_field(field, "a", "b")
+      observe_mirror_side_field(field, "b", "a")
     })
   }
 
