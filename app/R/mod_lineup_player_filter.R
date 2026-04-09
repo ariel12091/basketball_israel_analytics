@@ -62,19 +62,19 @@ lineup_player_filter_server <- function(id, players_ref) {
     empty_choices <- setNames(character(0), character(0))
 
     clear_player_choices <- function() {
-      updateSelectizeInput(session, "players_on", choices = empty_choices, selected = character(0), server = TRUE)
-      updateSelectizeInput(session, "players_off", choices = empty_choices, selected = character(0), server = TRUE)
+      updateSelectizeInput(session, "players_on", choices = empty_choices, selected = character(0), server = FALSE)
+      updateSelectizeInput(session, "players_off", choices = empty_choices, selected = character(0), server = FALSE)
     }
 
     update_team_choices <- function(choices, selected = "") {
-      updateSelectizeInput(session, "team", choices = choices, selected = selected, server = TRUE)
+      updateSelectizeInput(session, "team", choices = choices, selected = selected, server = FALSE)
     }
 
     reset_inputs <- function(team_choices = NULL, team_selected = "") {
       if (!is.null(team_choices)) {
         update_team_choices(team_choices, selected = team_selected)
       } else {
-        updateSelectizeInput(session, "team", selected = team_selected, server = TRUE)
+        updateSelectizeInput(session, "team", selected = team_selected, server = FALSE)
       }
       clear_player_choices()
     }
@@ -82,7 +82,8 @@ lineup_player_filter_server <- function(id, players_ref) {
     observeEvent(input$team, {
       team_val <- input$team %||% ""
       players_df <- players_ref()
-      if (nzchar(team_val) && !is.null(players_df) && nrow(players_df)) {
+      has_player_cols <- !is.null(players_df) && all(c("team_id", "player_id", "name") %in% names(players_df))
+      if (nzchar(team_val) && isTRUE(has_player_cols) && nrow(players_df)) {
         tid <- suppressWarnings(as.integer(team_val))
         roster <- players_df[players_df$team_id == tid, , drop = FALSE]
         choices <- if (nrow(roster)) {
@@ -96,8 +97,8 @@ lineup_player_filter_server <- function(id, players_ref) {
 
       clear_player_choices()
       if (length(choices)) {
-        updateSelectizeInput(session, "players_on", choices = choices, selected = character(0), server = TRUE)
-        updateSelectizeInput(session, "players_off", choices = choices, selected = character(0), server = TRUE)
+        updateSelectizeInput(session, "players_on", choices = choices, selected = character(0), server = FALSE)
+        updateSelectizeInput(session, "players_off", choices = choices, selected = character(0), server = FALSE)
       }
     }, ignoreInit = TRUE)
 

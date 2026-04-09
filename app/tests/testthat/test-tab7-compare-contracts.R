@@ -7,7 +7,9 @@ server_tab7_txt <- function() {
 test_that("tab7 players compare guards against unloaded roster refs", {
   txt <- server_tab7_txt()
   expect_true(grepl("cmp_player_selection_state <- reactive\\(", txt))
-  expect_true(grepl("req\\(!is\\.null\\(players_df\\), nrow\\(players_df\\) > 0\\)", txt))
+  expect_true(grepl('req\\(!is\\.null\\(players_df\\), all\\(c\\("team_id", "player_id", "name"\\) %in% names\\(players_df\\)\\)\\)', txt))
+  expect_true(grepl('req\\(!is\\.null\\(teams_df\\), all\\(c\\("team_id", "team_name"\\) %in% names\\(teams_df\\)\\)\\)', txt))
+  expect_true(grepl("req\\(nrow\\(players_df\\) > 0\\)", txt))
 })
 
 test_that("tab7 clutch minutes are converted to seconds like tab3", {
