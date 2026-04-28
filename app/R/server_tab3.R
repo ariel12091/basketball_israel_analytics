@@ -746,9 +746,9 @@ server_tab3 <- function(input, output, session, shared) {
       )
       starters <- resolve_starters_bounds(
         off_mode = input$tr_num_starters_off_mode,
-        off_value = input$tr_num_starters_off,
+        off_val = input$tr_num_starters_off,
         def_mode = input$tr_num_starters_def_mode,
-        def_value = input$tr_num_starters_def
+        def_val = input$tr_num_starters_def
       )
       trad_side <- if (isTRUE(input$tr_trad_defense_mode)) "defense" else "offense"
 
