@@ -546,21 +546,21 @@ server_tab1 <- function(input, output, session, shared) {
       pr_off_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Off Rtg Diff`, -999), NA_real_)),
       pr_def_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Def Rtg Diff`, 999), NA_real_)),
 
-      pr_diff_off_ts   = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_ts - off_off_ts, NA_real_)),
+      pr_diff_off_efg  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_efg - off_off_efg, NA_real_)),
       pr_diff_off_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_oreb - off_off_oreb, NA_real_)),
       pr_diff_off_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_ftr - off_off_ftr, NA_real_)),
       pr_diff_off_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_tov - off_off_tov, NA_real_)),
 
-      pr_diff_def_ts   = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_ts - def_off_ts, NA_real_)),
+      pr_diff_def_efg  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_efg - def_off_efg, NA_real_)),
       pr_diff_def_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_oreb - def_off_oreb, NA_real_)),
       pr_diff_def_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_ftr - def_off_ftr, NA_real_)),
       pr_diff_def_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_tov - def_off_tov, NA_real_))
     )
 
     # Dot position ranks (_rank suffix) for range bar visuals
-    raw_cols <- c("off_on_ts", "off_off_ts", "off_on_oreb", "off_off_oreb",
+    raw_cols <- c("off_on_efg", "off_off_efg", "off_on_oreb", "off_off_oreb",
                   "off_on_tov", "off_off_tov", "off_on_ftr", "off_off_ftr",
-                  "def_on_ts", "def_off_ts", "def_on_oreb", "def_off_oreb",
+                  "def_on_efg", "def_off_efg", "def_on_oreb", "def_off_oreb",
                   "def_on_tov", "def_off_tov", "def_on_ftr", "def_off_ftr")
     for (col in intersect(raw_cols, names(df))) {
       vals <- if_else(df$off_on_poss >= rank_thresh, coalesce(df[[col]], 0), NA_real_)
@@ -840,11 +840,11 @@ server_tab1 <- function(input, output, session, shared) {
       # === MODE 2: FOUR FACTORS ===
 
       metric_map <- list(
-        "Off TS% Diff"   = c("off_on_ts", "off_off_ts"),
+        "Off eFG% Diff"  = c("off_on_efg", "off_off_efg"),
         "Off OREB% Diff" = c("off_on_oreb", "off_off_oreb"),
         "Off TOV% Diff"  = c("off_on_tov", "off_off_tov"),
         "Off FTR Diff"   = c("off_on_ftr", "off_off_ftr"),
-        "Def TS% Diff"   = c("def_on_ts", "def_off_ts"),
+        "Def eFG% Diff"  = c("def_on_efg", "def_off_efg"),
         "Def OREB% Diff" = c("def_on_oreb", "def_off_oreb"),
         "Def TOV% Diff"  = c("def_on_tov", "def_off_tov"),
         "Def FTR Diff"   = c("def_on_ftr", "def_off_ftr")
@@ -866,16 +866,16 @@ server_tab1 <- function(input, output, session, shared) {
 
       rank_cols <- intersect(c(
         "pr_net_diff", "pr_off_rtg", "pr_def_rtg",
-        "pr_diff_off_ts", "pr_diff_off_oreb", "pr_diff_off_tov", "pr_diff_off_ftr",
-        "pr_diff_def_ts", "pr_diff_def_oreb", "pr_diff_def_tov", "pr_diff_def_ftr"
+        "pr_diff_off_efg", "pr_diff_off_oreb", "pr_diff_off_tov", "pr_diff_off_ftr",
+        "pr_diff_def_efg", "pr_diff_def_oreb", "pr_diff_def_tov", "pr_diff_def_ftr"
       ), names(df))
 
       df_final <- df %>% select(all_of(vis_cols), any_of(rank_cols), ends_with("_rank"), all_of(raw_cols_all))
 
       final_vis_order <- c(
         "Team", "Player", "Net Diff",
-        "Off Rtg Diff", "Off TS% Diff", "Off OREB% Diff", "Off TOV% Diff", "Off FTR Diff",
-        "Def Rtg Diff", "Def TS% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff",
+        "Off Rtg Diff", "Off eFG% Diff", "Off OREB% Diff", "Off TOV% Diff", "Off FTR Diff",
+        "Def Rtg Diff", "Def eFG% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff",
         "ON Poss", "OFF Poss"
       )
 
@@ -993,8 +993,8 @@ server_tab1 <- function(input, output, session, shared) {
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head", "Diff"),
-          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "TS%"), th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
-          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "TS%"), th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
           th(class = "sub-head section-left-border", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))
@@ -1023,13 +1023,13 @@ server_tab1 <- function(input, output, session, shared) {
       if ("pr_def_rtg" %in% names(df_final)) dt <- formatStyle(dt, "Def Rtg Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_def_rtg")
 
       # Offense Factors
-      if ("pr_diff_off_ts" %in% names(df_final)) dt <- formatStyle(dt, "Off TS% Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_off_ts")
+      if ("pr_diff_off_efg" %in% names(df_final)) dt <- formatStyle(dt, "Off eFG% Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_off_efg")
       if ("pr_diff_off_oreb" %in% names(df_final)) dt <- formatStyle(dt, "Off OREB% Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_off_oreb")
       if ("pr_diff_off_ftr" %in% names(df_final)) dt <- formatStyle(dt, "Off FTR Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_off_ftr")
       if ("pr_diff_off_tov" %in% names(df_final)) dt <- formatStyle(dt, "Off TOV% Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_off_tov")
 
       # Defense Factors
-      if ("pr_diff_def_ts" %in% names(df_final)) dt <- formatStyle(dt, "Def TS% Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_def_ts")
+      if ("pr_diff_def_efg" %in% names(df_final)) dt <- formatStyle(dt, "Def eFG% Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_def_efg")
       if ("pr_diff_def_oreb" %in% names(df_final)) dt <- formatStyle(dt, "Def OREB% Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_def_oreb")
       if ("pr_diff_def_ftr" %in% names(df_final)) dt <- formatStyle(dt, "Def FTR Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_diff_def_ftr")
       if ("pr_diff_def_tov" %in% names(df_final)) dt <- formatStyle(dt, "Def TOV% Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_diff_def_tov")

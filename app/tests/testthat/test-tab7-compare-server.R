@@ -8,13 +8,13 @@ test_that("tab7 teams compare uses four-factor query for four-factor chips", {
       cmp_mode = "Teams"
     )
     session$flushReact()
-    session$setInputs(cmp_metric = "off_ts")
+    session$setInputs(cmp_metric = "off_efg")
     session$flushReact()
 
-    expect_equal(output$cmp_summary_a_label, "TS%")
-    expect_equal(output$cmp_summary_b_label, "TS%")
-    expect_equal(output$cmp_summary_a, "54.8")
-    expect_equal(output$cmp_summary_b, "54.8")
+    expect_equal(output$cmp_summary_a_label, "eFG%")
+    expect_equal(output$cmp_summary_b_label, "eFG%")
+    expect_equal(output$cmp_summary_a, "53.5")
+    expect_equal(output$cmp_summary_b, "53.5")
     expect_equal(output$cmp_summary_gap, "0.0")
   })
 })

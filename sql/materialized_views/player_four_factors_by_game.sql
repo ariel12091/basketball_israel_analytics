@@ -23,6 +23,7 @@ clean_stats AS (
     d.type,
     d.parameters_type,
     d.parameters_made,
+    d.parameters_points,
     d.pct_ft,
     d.parent_action_id,
     d.type_lineup,
@@ -60,6 +61,7 @@ combined_data AS (
     cs.type,
     cs.parameters_type,
     cs.parameters_made,
+    cs.parameters_points,
     cs.pct_ft,
     cs.parent_action_id,
     cf.parent_type,
@@ -97,7 +99,9 @@ SELECT
   END)                     AS oreb_opportunities,
   count(CASE WHEN cd.type = 'turnover' THEN 1 END) AS tov_count,
   count(CASE WHEN cd.type = 'freeThrow' THEN 1 END) AS total_ft_attempts,
-  count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga
+  count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga,
+  count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
+  count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' AND cd.parameters_points = 3 THEN 1 END) AS total_fg3_made
 FROM combined_data cd
 GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year, cd.is_on_key, cd.type_lineup, cd.num_starters, cd.own_starters, cd.opp_starters
 ;

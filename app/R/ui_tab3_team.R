@@ -139,12 +139,12 @@ ui_tab3_team <- tabPanel(
           tab_explainer(
             id = "team_explainer_ff",
             title = "What This Tab Answers (Four Factors)",
-            intro = "Which team-level factors are driving strong or weak performance? See each team's PPP, TS%, OREB%, TOV%, FTR, and possessions on offense and defense, plus league rank, rank delta, and net rating.",
+            intro = "Which team-level factors are driving strong or weak performance? See each team's PPP, eFG%, OREB%, TOV%, FTR, and possessions on offense and defense, plus league rank, rank delta, and net rating.",
             bullets = c(
               "Read offense and defense factor profiles side by side - ranks (#1-#14) and rank deltas (\u25b2/\u25bc) help spot movement.",
               "Interpret TOV% with opposite polarity: lower is better on offense, higher is better on defense.",
               "Use Poss columns to judge sample reliability, especially after applying date or clutch filters.",
-              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% is driven by sustainable shot selection or a hot-hand streak."
+              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
             )
           ),
           tags$a(
@@ -163,7 +163,7 @@ ui_tab3_team <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv combines elite offense (PPP 128.3 #1, TS% 59.5 #2, OREB% 38.6 #1) with strong defense (PPP allowed 108.0 #3)."),
+                tags$p(style = "margin-bottom: 6px;", "Maccabi Tel Aviv combines elite offense (PPP 128.3 #1, eFG% 59.5 #2, OREB% 38.6 #1) with strong defense (PPP allowed 108.0 #3)."),
                 tags$p(style = "margin-bottom: 6px;", "Their factor profile supports Net +20.4: efficient scoring, dominant offensive rebounding, and league-best turnover rate (14.4%)."),
                 tags$p(style = "margin-bottom: 0;", "Possession volume is high (Off 1,592, Def 1,596), which strengthens confidence in this profile.")
               ),

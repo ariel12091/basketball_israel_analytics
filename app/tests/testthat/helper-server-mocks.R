@@ -45,11 +45,21 @@ db_get_query <- function(pool, query, params = NULL) {
     return(data.frame(
       team_id = c(1L, 2L),
       team_name = c("Team A", "Team B"),
+      off_efg = c(54.8, 52.1),
       off_ts = c(56.1, 53.4),
+      def_efg = c(50.7, 53.3),
+      def_ts = c(52.4, 55.0),
       off_tov = c(12.8, 15.6),
       off_oreb = c(31.2, 27.5),
       off_ftr = c(28.4, 24.9),
+      def_tov = c(16.1, 13.8),
+      def_oreb = c(24.9, 28.3),
+      def_ftr = c(22.7, 27.1),
+      off_ppp = c(112.4, 108.8),
+      def_ppp = c(101.7, 105.1),
+      net_rtg = c(10.7, 3.7),
       off_poss = c(120L, 118L),
+      def_poss = c(120L, 118L),
       total_poss = c(120L, 118L)
     ))
   }
@@ -87,16 +97,45 @@ db_get_query <- function(pool, query, params = NULL) {
 
   if (grepl("fetch_lineups_four_factors_csv", q, fixed = TRUE)) {
     return(data.frame(
+      team_id = c(1L, 2L),
       sub_lineup_hash = c("lu1", "lu2"),
       player_names_str = c("A1, A2, A3, A4, A5", "B1, B2, B3, B4, B5"),
       team_name = c("Team A", "Team B"),
+      off_efg = c(57.1, 53.5),
       off_ts = c(58.7, 54.8),
+      def_efg = c(51.4, 55.2),
+      def_ts = c(53.1, 56.4),
       off_tov = c(11.2, 14.5),
       off_oreb = c(33.1, 28.6),
       off_ftr = c(29.3, 23.7),
+      def_tov = c(15.8, 12.7),
+      def_oreb = c(24.4, 29.1),
+      def_ftr = c(21.2, 26.5),
+      off_ppp = c(118.2, 109.4),
+      def_ppp = c(99.8, 104.3),
+      net_rtg = c(18.4, 5.1),
+      minutes = c(20.5, 18.0),
       total_poss = c(42L, 37L),
       off_poss = c(42L, 37L),
-      def_poss = c(42L, 37L)
+      def_poss = c(42L, 37L),
+      off_pts = c(50L, 41L),
+      def_pts = c(42L, 39L),
+      off_ts_poss = c(44L, 38L),
+      off_oreb_cnt = c(10L, 8L),
+      off_oreb_opps = c(30L, 28L),
+      off_tov_cnt = c(5L, 6L),
+      off_fta = c(12L, 9L),
+      off_fga_cnt = c(35L, 31L),
+      off_fgm_cnt = c(18L, 15L),
+      off_fg3m_cnt = c(4L, 3L),
+      def_ts_poss = c(40L, 37L),
+      def_oreb_cnt = c(7L, 9L),
+      def_oreb_opps = c(28L, 31L),
+      def_tov_cnt = c(7L, 5L),
+      def_fta = c(8L, 11L),
+      def_fga_cnt = c(33L, 32L),
+      def_fgm_cnt = c(15L, 17L),
+      def_fg3m_cnt = c(3L, 4L)
     ))
   }
 
@@ -150,6 +189,8 @@ db_get_query <- function(pool, query, params = NULL) {
       tov_count = c(18, 10, 15, 11, 12, 12, 9, 13),
       total_ft_attempts = c(12, 18, 14, 17, 16, 15, 18, 14),
       total_fga = c(70, 75, 72, 74, 74, 73, 76, 72),
+      total_fgm = c(31, 36, 34, 35, 37, 33, 39, 31),
+      total_fg3_made = c(8, 10, 9, 9, 10, 8, 11, 7),
       num_starters = rep(5L, 8)
     ))
   }

@@ -243,7 +243,7 @@ ui_tab7_compare <- tabPanel(
           title = "What This Tab Answers",
           intro = "How do two situations compare side-by-side: starters vs bench, home vs away, clutch vs non-clutch, or any custom split?",
           bullets = c(
-            "Metric chips at the top (Net Rtg, Offense, Defense, TS%, TOV%, OREB%, FTR) control which stat is shown in the table and summary cards.",
+            "Metric chips at the top (Net Rtg, Offense, Defense, eFG%, TOV%, OREB%, FTR) control which stat is shown in the table and summary cards.",
             "Summary cards show Side A value, Side B value, delta, and possessions. The table shows #, Team, Side A metric, Total Poss A, Side B metric, Total Poss B, and Gap.",
             "Teams and Lineups modes compare the same team/lineup to itself under two different conditions (e.g. home vs away, clutch vs non-clutch). Players mode compares different players to each other under the same conditions.",
             "Click any row in League view for a detailed breakdown of that team or lineup."
@@ -267,7 +267,7 @@ ui_tab7_compare <- tabPanel(
               div(class = "example-card-title", "How to Read Compare (Real Example)"),
               tags$p(style = "margin-bottom: 6px;", "Using the Starters vs Bench preset: Side A (3+ starters) averages -0.2 Net Rtg across 1,048 possessions, while Side B (2 or fewer starters) averages +1.2 across 375 possessions."),
               tags$p(style = "margin-bottom: 6px;", "The table breaks this down per team. Maccabi Tel Aviv's starters lead the league with a +17.6 gap over their bench."),
-              tags$p(style = "margin-bottom: 0;", "Use metric chips (Offense, Defense, TS%, etc.) to switch which stat drives the comparison. Click any row for a full detail breakdown.")
+              tags$p(style = "margin-bottom: 0;", "Use metric chips (Offense, Defense, eFG%, etc.) to switch which stat drives the comparison. Click any row for a full detail breakdown.")
             ),
             div(
               class = "example-snippet",

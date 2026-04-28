@@ -109,6 +109,8 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       tov_count = sum(tov_count, na.rm = TRUE),
       total_ft_attempts = sum(total_ft_attempts, na.rm = TRUE),
       total_fga = sum(total_fga, na.rm = TRUE),
+      total_fgm = sum(total_fgm, na.rm = TRUE),
+      total_fg3_made = sum(total_fg3_made, na.rm = TRUE),
       .groups = "drop"
     )
 
@@ -122,7 +124,9 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       off_oreb_opp = oreb_opportunities,
       off_tov = tov_count,
       off_fta = total_ft_attempts,
-      off_fga = total_fga
+      off_fga = total_fga,
+      off_fgm = total_fgm,
+      off_fg3m = total_fg3_made
     ) %>%
     select(-type_lineup)
   def <- game_ff %>%
@@ -135,9 +139,11 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       def_oreb_opp = oreb_opportunities,
       def_tov = tov_count,
       def_fta = total_ft_attempts,
-      def_fga = total_fga
+      def_fga = total_fga,
+      def_fgm = total_fgm,
+      def_fg3m = total_fg3_made
     ) %>%
-    select(game_id, team_id, def_pts, def_poss, def_ts_poss, def_oreb, def_oreb_opp, def_tov, def_fta, def_fga)
+    select(game_id, team_id, def_pts, def_poss, def_ts_poss, def_oreb, def_oreb_opp, def_tov, def_fta, def_fga, def_fgm, def_fg3m)
 
   off %>%
     left_join(def, by = c("game_id", "team_id")) %>%
@@ -145,10 +151,12 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
       def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
       off_ts_pct = ifelse(off_ts_poss > 0, round(off_pts / (2 * off_ts_poss) * 100, 1), NA_real_),
+      off_efg_pct = ifelse(off_fga > 0, round((off_fgm + 0.5 * off_fg3m) / off_fga * 100, 1), NA_real_),
       off_oreb_pct = ifelse(off_oreb_opp > 0, round(off_oreb / off_oreb_opp * 100, 1), NA_real_),
       off_tov_pct = ifelse(off_poss > 0, round(off_tov / off_poss * 100, 1), NA_real_),
       off_ftr_pct = ifelse(off_fga > 0, round(off_fta / off_fga * 100, 1), NA_real_),
       def_ts_pct = ifelse(def_ts_poss > 0, round(def_pts / (2 * def_ts_poss) * 100, 1), NA_real_),
+      def_efg_pct = ifelse(def_fga > 0, round((def_fgm + 0.5 * def_fg3m) / def_fga * 100, 1), NA_real_),
       def_oreb_pct = ifelse(def_oreb_opp > 0, round(def_oreb / def_oreb_opp * 100, 1), NA_real_),
       def_tov_pct = ifelse(def_poss > 0, round(def_tov / def_poss * 100, 1), NA_real_),
       def_ftr_pct = ifelse(def_fga > 0, round(def_fta / def_fga * 100, 1), NA_real_)
@@ -372,7 +380,8 @@ server_tab4 <- function(input, output, session, shared) {
       pg_pool,
       "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
               total_points, total_poss, ts_poss_count, oreb_count,
-              oreb_opportunities, tov_count, total_ft_attempts, total_fga, num_starters
+              oreb_opportunities, tov_count, total_ft_attempts, total_fga,
+              total_fgm, total_fg3_made, num_starters
        FROM basketball_test.lineup_four_factors_by_game
        WHERE game_year = $1",
       params = list(gy_int)
@@ -432,8 +441,8 @@ server_tab4 <- function(input, output, session, shared) {
         display_metrics,
         gl_teams_ff_baseline(),
         c(
-          "off_ppp", "off_ts_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
-          "def_ppp", "def_ts_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
+          "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+          "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
         )
       ),
       sched
@@ -624,12 +633,12 @@ server_tab4 <- function(input, output, session, shared) {
 
       disp <- df %>% select(
         gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
-        off_ppp, off_ts_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
-        def_ppp, def_ts_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
+        off_ppp, off_efg_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
+        def_ppp, def_efg_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
         off_poss, def_poss,
         any_of(c(
-          "pr_off_ppp", "pr_off_ts_pct", "pr_off_oreb_pct", "pr_off_tov_pct", "pr_off_ftr_pct",
-          "pr_def_ppp", "pr_def_ts_pct", "pr_def_oreb_pct", "pr_def_tov_pct", "pr_def_ftr_pct"
+          "pr_off_ppp", "pr_off_efg_pct", "pr_off_oreb_pct", "pr_off_tov_pct", "pr_off_ftr_pct",
+          "pr_def_ppp", "pr_def_efg_pct", "pr_def_oreb_pct", "pr_def_tov_pct", "pr_def_ftr_pct"
         ))
       )
 
@@ -673,12 +682,12 @@ server_tab4 <- function(input, output, session, shared) {
           th(class = "sub-head", "W/L"),
           th(class = "sub-head", "Score"),
           th(class = "sub-head section-left-border", "PPP"),
-          th(class = "sub-head", "TS%"),
+          th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"),
           th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"),
           th(class = "sub-head section-left-border", "PPP"),
-          th(class = "sub-head", "TS%"),
+          th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"),
           th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"),
@@ -697,20 +706,20 @@ server_tab4 <- function(input, output, session, shared) {
                             columnDefs = col_defs
                           ))
 
-      rate_cols <- c("off_ts_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
-                     "def_ts_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct")
+      rate_cols <- c("off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+                     "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct")
       ppp_cols <- c("off_ppp", "def_ppp")
 
       dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols), names(disp)), 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
       heat_reverse <- c(
         off_ppp = FALSE,
-        off_ts_pct = FALSE,
+        off_efg_pct = FALSE,
         off_oreb_pct = FALSE,
         off_tov_pct = TRUE,
         off_ftr_pct = FALSE,
         def_ppp = TRUE,
-        def_ts_pct = TRUE,
+        def_efg_pct = TRUE,
         def_oreb_pct = TRUE,
         def_tov_pct = FALSE,
         def_ftr_pct = TRUE

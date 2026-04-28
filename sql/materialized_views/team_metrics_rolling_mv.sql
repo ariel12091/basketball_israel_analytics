@@ -20,19 +20,25 @@ roll AS (
     AVG(b.def_ppp) OVER w3 AS def_ppp_r3,
     AVG(b.net_rtg) OVER w3 AS net_rtg_r3,
     AVG(b.off_ts)  OVER w3 AS off_ts_r3,
+    AVG(b.off_efg) OVER w3 AS off_efg_r3,
     AVG(b.def_ts)  OVER w3 AS def_ts_r3,
+    AVG(b.def_efg) OVER w3 AS def_efg_r3,
 
     AVG(b.off_ppp) OVER w5 AS off_ppp_r5,
     AVG(b.def_ppp) OVER w5 AS def_ppp_r5,
     AVG(b.net_rtg) OVER w5 AS net_rtg_r5,
     AVG(b.off_ts)  OVER w5 AS off_ts_r5,
+    AVG(b.off_efg) OVER w5 AS off_efg_r5,
     AVG(b.def_ts)  OVER w5 AS def_ts_r5,
+    AVG(b.def_efg) OVER w5 AS def_efg_r5,
 
     AVG(b.off_ppp) OVER w10 AS off_ppp_r10,
     AVG(b.def_ppp) OVER w10 AS def_ppp_r10,
     AVG(b.net_rtg) OVER w10 AS net_rtg_r10,
     AVG(b.off_ts)  OVER w10 AS off_ts_r10,
-    AVG(b.def_ts)  OVER w10 AS def_ts_r10
+    AVG(b.off_efg) OVER w10 AS off_efg_r10,
+    AVG(b.def_ts)  OVER w10 AS def_ts_r10,
+    AVG(b.def_efg) OVER w10 AS def_efg_r10
   FROM base b
   WINDOW
     w3 AS (PARTITION BY b.game_year, b.team_id ORDER BY b.game_date, b.game_id ROWS BETWEEN 2 PRECEDING AND CURRENT ROW),
@@ -51,4 +57,3 @@ CREATE UNIQUE INDEX team_metrics_rolling_mv_pk
 
 CREATE INDEX team_metrics_rolling_mv_gy_team_seq_idx
   ON basketball_test.team_metrics_rolling_mv (game_year, team_id, team_game_seq);
-
