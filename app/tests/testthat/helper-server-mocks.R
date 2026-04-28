@@ -16,6 +16,10 @@ LD_DEFAULT_NUM <- "5"
 CUTS <- seq(0.05, 0.95, by = 0.05)
 COLS_GRAD <- grDevices::colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
 COLS_REV <- rev(COLS_GRAD)
+GAME_TYPE_LABELS <- c(`1` = "League", `2` = "Cup")
+HEADER_TOOLTIP_JS <- DT::JS("function(thead) {}")
+OFF_OREB_TOOLTIP <- "Offensive rebound percentage"
+DEF_OREB_TOOLTIP <- "Defensive rebound percentage"
 
 pg_pool <- structure(list(), class = "mock_pool")
 
@@ -93,6 +97,60 @@ db_get_query <- function(pool, query, params = NULL) {
       total_poss = c(42L, 37L),
       off_poss = c(42L, 37L),
       def_poss = c(42L, 37L)
+    ))
+  }
+
+  if (grepl("final_schedule_mv", q, fixed = TRUE)) {
+    return(data.frame(
+      game_year = rep(2026L, 4),
+      game_id = c(101L, 102L, 103L, 104L),
+      team_id = rep(1L, 4),
+      team_name = rep("Team A", 4),
+      gn = 1:4,
+      game_type = c(1L, 1L, 1L, 2L),
+      game_date = as.Date(c("2025-10-10", "2025-10-17", "2025-10-24", "2025-10-31")),
+      opp_team_name = c("Team B", "Team C", "Team D", "Team E"),
+      team_score = c(90L, 100L, 110L, 120L),
+      opp_score = c(120L, 110L, 100L, 90L),
+      has_won = c(FALSE, TRUE, TRUE, TRUE),
+      is_home = c(TRUE, FALSE, TRUE, FALSE)
+    ))
+  }
+
+  if (grepl("mv_lineup_totals_by_day", q, fixed = TRUE)) {
+    return(data.frame(
+      team_id = rep(1L, 8),
+      lineup_hash = paste0("lu", seq_len(8)),
+      type_lineup = rep(c("offense", "defense"), 4),
+      g_date = rep(as.Date(c("2025-10-10", "2025-10-17", "2025-10-24", "2025-10-31")), each = 2),
+      game_id = rep(c(101L, 102L, 103L, 104L), each = 2),
+      game_year = rep(2026L, 8),
+      total_poss = rep(100, 8),
+      total_pts = c(90, 120, 100, 110, 110, 100, 120, 90),
+      fg2_made = c(20, 22, 21, 21, 23, 20, 24, 18),
+      fg2_att = c(35, 36, 34, 35, 36, 33, 37, 32),
+      fg3_made = c(8, 10, 9, 9, 10, 8, 11, 7),
+      fg3_att = c(24, 25, 23, 24, 25, 22, 26, 21),
+      num_starters = rep(5L, 8)
+    ))
+  }
+
+  if (grepl("lineup_four_factors_by_game", q, fixed = TRUE)) {
+    return(data.frame(
+      lineup_hash = paste0("ff", seq_len(8)),
+      team_id = rep(1L, 8),
+      game_id = rep(c(101L, 102L, 103L, 104L), each = 2),
+      game_year = rep(2026L, 8),
+      type_lineup = rep(c("offense", "defense"), 4),
+      total_points = c(90, 120, 100, 110, 110, 100, 120, 90),
+      total_poss = rep(100, 8),
+      ts_poss_count = c(90, 85, 88, 84, 86, 83, 84, 82),
+      oreb_count = c(8, 14, 10, 12, 12, 10, 14, 8),
+      oreb_opportunities = rep(40, 8),
+      tov_count = c(18, 10, 15, 11, 12, 12, 9, 13),
+      total_ft_attempts = c(12, 18, 14, 17, 16, 15, 18, 14),
+      total_fga = c(70, 75, 72, 74, 74, 73, 76, 72),
+      num_starters = rep(5L, 8)
     ))
   }
 

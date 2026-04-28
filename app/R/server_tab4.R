@@ -1,5 +1,177 @@
 # server_tab4.R - Tab 4: Game Logs server logic
 
+gl_pr_col_name <- function(metric_name) {
+  paste0("pr_", gsub("[^A-Za-z0-9]+", "_", metric_name))
+}
+
+gl_filter_starters <- function(data, starters_bounds) {
+  if (is.null(data) || !nrow(data) || is.null(starters_bounds)) return(data)
+
+  data %>%
+    filter(
+      (type_lineup == "offense" &
+         (is.na(starters_bounds$off_min) | num_starters >= starters_bounds$off_min) &
+         (is.na(starters_bounds$off_max) | num_starters <= starters_bounds$off_max)) |
+      (type_lineup == "defense" &
+         (is.na(starters_bounds$def_min) | num_starters >= starters_bounds$def_min) &
+         (is.na(starters_bounds$def_max) | num_starters <= starters_bounds$def_max))
+    )
+}
+
+gl_join_schedule_info <- function(metrics_df, schedule_df) {
+  if (is.null(metrics_df) || !nrow(metrics_df) || is.null(schedule_df) || !nrow(schedule_df)) return(NULL)
+
+  sched_info <- schedule_df %>%
+    select(game_id, team_id, team_name, gn, game_type, game_date, opp_team_name, team_score, opp_score, has_won) %>%
+    mutate(
+      game_type_label = dplyr::coalesce(unname(GAME_TYPE_LABELS[as.character(game_type)]), as.character(game_type)),
+      result = ifelse(has_won, "W", "L"),
+      score_display = paste0(team_score, "-", opp_score)
+    )
+
+  metrics_df %>%
+    inner_join(sched_info, by = c("game_id", "team_id")) %>%
+    arrange(desc(game_date), desc(gn), game_id, team_name)
+}
+
+gl_build_summary_metrics <- function(lineup_totals_df, schedule_df, starters_bounds = NULL, apply_starters = TRUE) {
+  if (is.null(schedule_df) || !nrow(schedule_df) || is.null(lineup_totals_df) || !nrow(lineup_totals_df)) return(NULL)
+
+  sched_pairs <- schedule_df %>% select(game_id, team_id) %>% distinct()
+  lt <- lineup_totals_df %>% inner_join(sched_pairs, by = c("game_id", "team_id"))
+  if (isTRUE(apply_starters)) {
+    lt <- gl_filter_starters(lt, starters_bounds)
+  }
+  if (!nrow(lt)) return(NULL)
+
+  game_stats <- lt %>%
+    group_by(game_id, team_id, type_lineup) %>%
+    summarise(
+      poss = sum(total_poss, na.rm = TRUE),
+      pts = sum(total_pts, na.rm = TRUE),
+      fg2m = sum(fg2_made, na.rm = TRUE),
+      fg2a = sum(fg2_att, na.rm = TRUE),
+      fg3m = sum(fg3_made, na.rm = TRUE),
+      fg3a = sum(fg3_att, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  off <- game_stats %>%
+    filter(type_lineup == "offense") %>%
+    rename(
+      off_poss = poss,
+      off_pts = pts,
+      off_fg2m = fg2m,
+      off_fg2a = fg2a,
+      off_fg3m = fg3m,
+      off_fg3a = fg3a
+    ) %>%
+    select(-type_lineup)
+  def <- game_stats %>%
+    filter(type_lineup == "defense") %>%
+    rename(
+      def_poss = poss,
+      def_pts = pts,
+      def_fg2m = fg2m,
+      def_fg2a = fg2a,
+      def_fg3m = fg3m,
+      def_fg3a = fg3a
+    ) %>%
+    select(game_id, team_id, def_poss, def_pts, def_fg2m, def_fg2a, def_fg3m, def_fg3a)
+
+  off %>%
+    left_join(def, by = c("game_id", "team_id")) %>%
+    mutate(
+      off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
+      def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
+      net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1)
+    )
+}
+
+gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NULL, apply_starters = TRUE) {
+  if (is.null(schedule_df) || !nrow(schedule_df) || is.null(lineup_ff_df) || !nrow(lineup_ff_df)) return(NULL)
+
+  sched_pairs <- schedule_df %>% select(game_id, team_id) %>% distinct()
+  ff <- lineup_ff_df %>% inner_join(sched_pairs, by = c("game_id", "team_id"))
+  if (isTRUE(apply_starters)) {
+    ff <- gl_filter_starters(ff, starters_bounds)
+  }
+  if (!nrow(ff)) return(NULL)
+
+  game_ff <- ff %>%
+    group_by(game_id, team_id, type_lineup) %>%
+    summarise(
+      total_points = sum(total_points, na.rm = TRUE),
+      total_poss = sum(total_poss, na.rm = TRUE),
+      ts_poss_count = sum(ts_poss_count, na.rm = TRUE),
+      oreb_count = sum(oreb_count, na.rm = TRUE),
+      oreb_opportunities = sum(oreb_opportunities, na.rm = TRUE),
+      tov_count = sum(tov_count, na.rm = TRUE),
+      total_ft_attempts = sum(total_ft_attempts, na.rm = TRUE),
+      total_fga = sum(total_fga, na.rm = TRUE),
+      .groups = "drop"
+    )
+
+  off <- game_ff %>%
+    filter(type_lineup == "offense") %>%
+    rename(
+      off_pts = total_points,
+      off_poss = total_poss,
+      off_ts_poss = ts_poss_count,
+      off_oreb = oreb_count,
+      off_oreb_opp = oreb_opportunities,
+      off_tov = tov_count,
+      off_fta = total_ft_attempts,
+      off_fga = total_fga
+    ) %>%
+    select(-type_lineup)
+  def <- game_ff %>%
+    filter(type_lineup == "defense") %>%
+    rename(
+      def_pts = total_points,
+      def_poss = total_poss,
+      def_ts_poss = ts_poss_count,
+      def_oreb = oreb_count,
+      def_oreb_opp = oreb_opportunities,
+      def_tov = tov_count,
+      def_fta = total_ft_attempts,
+      def_fga = total_fga
+    ) %>%
+    select(game_id, team_id, def_pts, def_poss, def_ts_poss, def_oreb, def_oreb_opp, def_tov, def_fta, def_fga)
+
+  off %>%
+    left_join(def, by = c("game_id", "team_id")) %>%
+    mutate(
+      off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
+      def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
+      off_ts_pct = ifelse(off_ts_poss > 0, round(off_pts / (2 * off_ts_poss) * 100, 1), NA_real_),
+      off_oreb_pct = ifelse(off_oreb_opp > 0, round(off_oreb / off_oreb_opp * 100, 1), NA_real_),
+      off_tov_pct = ifelse(off_poss > 0, round(off_tov / off_poss * 100, 1), NA_real_),
+      off_ftr_pct = ifelse(off_fga > 0, round(off_fta / off_fga * 100, 1), NA_real_),
+      def_ts_pct = ifelse(def_ts_poss > 0, round(def_pts / (2 * def_ts_poss) * 100, 1), NA_real_),
+      def_oreb_pct = ifelse(def_oreb_opp > 0, round(def_oreb / def_oreb_opp * 100, 1), NA_real_),
+      def_tov_pct = ifelse(def_poss > 0, round(def_tov / def_poss * 100, 1), NA_real_),
+      def_ftr_pct = ifelse(def_fga > 0, round(def_fta / def_fga * 100, 1), NA_real_)
+    )
+}
+
+gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
+  if (is.null(display_df) || !nrow(display_df) || is.null(baseline_df) || !nrow(baseline_df)) return(display_df)
+
+  metric_names <- intersect(metric_names, intersect(names(display_df), names(baseline_df)))
+  if (!length(metric_names)) return(display_df)
+
+  rank_df <- baseline_df %>% select(game_id, team_id)
+  pr_cols <- character(0)
+  for (metric_name in metric_names) {
+    pr_col <- gl_pr_col_name(metric_name)
+    rank_df[[pr_col]] <- dplyr::percent_rank(suppressWarnings(as.numeric(baseline_df[[metric_name]])))
+    pr_cols <- c(pr_cols, pr_col)
+  }
+
+  display_df %>% left_join(rank_df %>% select(game_id, team_id, all_of(pr_cols)), by = c("game_id", "team_id"))
+}
+
 server_tab4 <- function(input, output, session, shared) {
 
   gl_ref <- reactiveValues(teams = NULL)
@@ -149,6 +321,20 @@ server_tab4 <- function(input, output, session, shared) {
     df
   })
 
+  gl_percentile_schedule <- reactive({
+    sched <- gl_schedule()
+    req(nrow(sched) > 0)
+
+    df <- sched
+    team_id_str <- input$gl_team
+    if (!is.null(team_id_str) && nzchar(team_id_str)) {
+      team_id_val <- as.integer(team_id_str)
+      df <- df %>% filter(team_id == !!team_id_val)
+    }
+
+    df
+  })
+
   gl_starters_filter <- reactive({
     off_mode <- input$gl_num_starters_off_mode %||% ""
     def_mode <- input$gl_num_starters_def_mode %||% ""
@@ -196,150 +382,62 @@ server_tab4 <- function(input, output, session, shared) {
   # ============================================================
   # TEAMS SUMMARY
   # ============================================================
+  gl_teams_summary_baseline <- reactive({
+    gl_build_summary_metrics(
+      lineup_totals_df = gl_lineup_totals(),
+      schedule_df = gl_percentile_schedule(),
+      apply_starters = FALSE
+    )
+  })
+
   gl_teams_summary <- reactive({
     sched <- gl_filtered_schedule()
     req(nrow(sched) > 0)
-
-    # Build a set of (game_id, team_id) pairs from schedule
-    sched_pairs <- sched %>% select(game_id, team_id) %>% distinct()
-
-    lt <- gl_lineup_totals()
-    lt <- lt %>% inner_join(sched_pairs, by = c("game_id", "team_id"))
-    ns <- gl_starters_filter()
-    lt <- lt %>% filter(
-      (type_lineup == "offense" &
-         (is.na(ns$off_min) | num_starters >= ns$off_min) &
-         (is.na(ns$off_max) | num_starters <= ns$off_max)) |
-      (type_lineup == "defense" &
-         (is.na(ns$def_min) | num_starters >= ns$def_min) &
-         (is.na(ns$def_max) | num_starters <= ns$def_max))
+    display_metrics <- gl_build_summary_metrics(
+      lineup_totals_df = gl_lineup_totals(),
+      schedule_df = sched,
+      starters_bounds = gl_starters_filter()
     )
+    if (is.null(display_metrics) || !nrow(display_metrics)) return(NULL)
 
-    if (nrow(lt) == 0) return(NULL)
-
-    # Aggregate per (game_id, team_id, type_lineup)
-    game_stats <- lt %>%
-      group_by(game_id, team_id, type_lineup) %>%
-      summarise(
-        poss = sum(total_poss, na.rm = TRUE),
-        pts = sum(total_pts, na.rm = TRUE),
-        fg2m = sum(fg2_made, na.rm = TRUE),
-        fg2a = sum(fg2_att, na.rm = TRUE),
-        fg3m = sum(fg3_made, na.rm = TRUE),
-        fg3a = sum(fg3_att, na.rm = TRUE),
-        .groups = "drop"
-      )
-
-    off <- game_stats %>% filter(type_lineup == "offense") %>%
-      rename(off_poss = poss, off_pts = pts,
-             off_fg2m = fg2m, off_fg2a = fg2a, off_fg3m = fg3m, off_fg3a = fg3a) %>%
-      select(-type_lineup)
-    def <- game_stats %>% filter(type_lineup == "defense") %>%
-      rename(def_poss = poss, def_pts = pts,
-             def_fg2m = fg2m, def_fg2a = fg2a, def_fg3m = fg3m, def_fg3a = fg3a) %>%
-      select(game_id, team_id, def_poss, def_pts, def_fg2m, def_fg2a, def_fg3m, def_fg3a)
-
-    combined <- off %>% left_join(def, by = c("game_id", "team_id"))
-
-    combined <- combined %>% mutate(
-      off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
-      def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
-      net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1)
+    gl_join_schedule_info(
+      gl_attach_percentiles(display_metrics, gl_teams_summary_baseline(), c("off_ppp", "def_ppp")),
+      sched
     )
-
-    # Join schedule info (includes gn, team_name)
-    sched_info <- sched %>%
-      select(game_id, team_id, team_name, gn, game_type, game_date, opp_team_name, team_score, opp_score, has_won) %>%
-      mutate(
-        game_type_label = dplyr::coalesce(unname(GAME_TYPE_LABELS[as.character(game_type)]), as.character(game_type)),
-        result = ifelse(has_won, "W", "L"),
-        score_display = paste0(team_score, "-", opp_score)
-      )
-
-    combined %>%
-      inner_join(sched_info, by = c("game_id", "team_id")) %>%
-      arrange(desc(game_date), desc(gn), game_id, team_name)
   })
 
   # ============================================================
   # TEAMS FOUR FACTORS
   # ============================================================
+  gl_teams_ff_baseline <- reactive({
+    gl_build_ff_metrics(
+      lineup_ff_df = gl_lineup_ff(),
+      schedule_df = gl_percentile_schedule(),
+      apply_starters = FALSE
+    )
+  })
+
   gl_teams_ff <- reactive({
     sched <- gl_filtered_schedule()
     req(nrow(sched) > 0)
-
-    sched_pairs <- sched %>% select(game_id, team_id) %>% distinct()
-
-    ff <- gl_lineup_ff()
-    ff <- ff %>% inner_join(sched_pairs, by = c("game_id", "team_id"))
-    ns <- gl_starters_filter()
-    ff <- ff %>% filter(
-      (type_lineup == "offense" &
-         (is.na(ns$off_min) | num_starters >= ns$off_min) &
-         (is.na(ns$off_max) | num_starters <= ns$off_max)) |
-      (type_lineup == "defense" &
-         (is.na(ns$def_min) | num_starters >= ns$def_min) &
-         (is.na(ns$def_max) | num_starters <= ns$def_max))
+    display_metrics <- gl_build_ff_metrics(
+      lineup_ff_df = gl_lineup_ff(),
+      schedule_df = sched,
+      starters_bounds = gl_starters_filter()
     )
+    if (is.null(display_metrics) || !nrow(display_metrics)) return(NULL)
 
-    if (nrow(ff) == 0) return(NULL)
-
-    # Aggregate per (game_id, team_id, type_lineup)
-    game_ff <- ff %>%
-      group_by(game_id, team_id, type_lineup) %>%
-      summarise(
-        total_points = sum(total_points, na.rm = TRUE),
-        total_poss = sum(total_poss, na.rm = TRUE),
-        ts_poss_count = sum(ts_poss_count, na.rm = TRUE),
-        oreb_count = sum(oreb_count, na.rm = TRUE),
-        oreb_opportunities = sum(oreb_opportunities, na.rm = TRUE),
-        tov_count = sum(tov_count, na.rm = TRUE),
-        total_ft_attempts = sum(total_ft_attempts, na.rm = TRUE),
-        total_fga = sum(total_fga, na.rm = TRUE),
-        .groups = "drop"
-      )
-
-    off <- game_ff %>% filter(type_lineup == "offense") %>%
-      rename(off_pts = total_points, off_poss = total_poss,
-             off_ts_poss = ts_poss_count, off_oreb = oreb_count,
-             off_oreb_opp = oreb_opportunities, off_tov = tov_count,
-             off_fta = total_ft_attempts, off_fga = total_fga) %>%
-      select(-type_lineup)
-    def <- game_ff %>% filter(type_lineup == "defense") %>%
-      rename(def_pts = total_points, def_poss = total_poss,
-             def_ts_poss = ts_poss_count, def_oreb = oreb_count,
-             def_oreb_opp = oreb_opportunities, def_tov = tov_count,
-             def_fta = total_ft_attempts, def_fga = total_fga) %>%
-      select(game_id, team_id, def_pts, def_poss, def_ts_poss, def_oreb, def_oreb_opp,
-             def_tov, def_fta, def_fga)
-
-    combined <- off %>% left_join(def, by = c("game_id", "team_id"))
-
-    combined <- combined %>% mutate(
-      off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
-      def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
-      off_ts_pct = ifelse(off_ts_poss > 0, round(off_pts / (2 * off_ts_poss) * 100, 1), NA_real_),
-      off_oreb_pct = ifelse(off_oreb_opp > 0, round(off_oreb / off_oreb_opp * 100, 1), NA_real_),
-      off_tov_pct = ifelse(off_poss > 0, round(off_tov / off_poss * 100, 1), NA_real_),
-      off_ftr_pct = ifelse(off_fga > 0, round(off_fta / off_fga * 100, 1), NA_real_),
-      def_ts_pct = ifelse(def_ts_poss > 0, round(def_pts / (2 * def_ts_poss) * 100, 1), NA_real_),
-      def_oreb_pct = ifelse(def_oreb_opp > 0, round(def_oreb / def_oreb_opp * 100, 1), NA_real_),
-      def_tov_pct = ifelse(def_poss > 0, round(def_tov / def_poss * 100, 1), NA_real_),
-      def_ftr_pct = ifelse(def_fga > 0, round(def_fta / def_fga * 100, 1), NA_real_)
+    gl_join_schedule_info(
+      gl_attach_percentiles(
+        display_metrics,
+        gl_teams_ff_baseline(),
+        c(
+          "off_ppp", "off_ts_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+          "def_ppp", "def_ts_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
+        )
+      ),
+      sched
     )
-
-    # Join schedule info (includes gn, team_name)
-    sched_info <- sched %>%
-      select(game_id, team_id, team_name, gn, game_type, game_date, opp_team_name, team_score, opp_score, has_won) %>%
-      mutate(
-        game_type_label = dplyr::coalesce(unname(GAME_TYPE_LABELS[as.character(game_type)]), as.character(game_type)),
-        result = ifelse(has_won, "W", "L"),
-        score_display = paste0(team_score, "-", opp_score)
-      )
-
-    combined %>%
-      inner_join(sched_info, by = c("game_id", "team_id")) %>%
-      arrange(desc(game_date), desc(gn), game_id, team_name)
   })
 
   # ============================================================
@@ -368,10 +466,11 @@ server_tab4 <- function(input, output, session, shared) {
         off_ppp, def_ppp, net_rtg,
         any_of(c("Off Shot", "Def Shot")),
         off_poss, def_poss,
-        any_of(shot_raw_cols)
+        any_of(shot_raw_cols),
+        any_of(c("pr_off_ppp", "pr_def_ppp"))
       )
 
-      hide_idx <- which(names(disp) %in% shot_raw_cols) - 1L
+      hide_idx <- which(names(disp) %in% c(shot_raw_cols, "pr_off_ppp", "pr_def_ppp")) - 1L
 
       # Shooting column JS render
       make_shot_render_gl <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
@@ -509,6 +608,12 @@ server_tab4 <- function(input, output, session, shared) {
 
       dt <- DT::formatRound(dt, c("off_ppp", "def_ppp", "net_rtg"), 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
+      if ("pr_off_ppp" %in% names(disp)) {
+        dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = DT::styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
+      }
+      if ("pr_def_ppp" %in% names(disp)) {
+        dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = DT::styleInterval(CUTS, COLS_REV), valueColumns = "pr_def_ppp")
+      }
 
       return(dt)
 
@@ -521,8 +626,14 @@ server_tab4 <- function(input, output, session, shared) {
         gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
         off_ppp, off_ts_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
         def_ppp, def_ts_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
-        off_poss, def_poss
+        off_poss, def_poss,
+        any_of(c(
+          "pr_off_ppp", "pr_off_ts_pct", "pr_off_oreb_pct", "pr_off_tov_pct", "pr_off_ftr_pct",
+          "pr_def_ppp", "pr_def_ts_pct", "pr_def_oreb_pct", "pr_def_tov_pct", "pr_def_ftr_pct"
+        ))
       )
+
+      hidden_pr_cols <- names(disp)[grepl("^pr_", names(disp))]
 
       # Result column color
       result_idx <- which(names(disp) == "result") - 1L
@@ -539,7 +650,8 @@ server_tab4 <- function(input, output, session, shared) {
 
       col_defs <- list(
         list(targets = "_all", className = "dt-center"),
-        list(targets = result_idx, render = result_render)
+        list(targets = result_idx, render = result_render),
+        list(targets = which(names(disp) %in% hidden_pr_cols) - 1L, visible = FALSE)
       )
       if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_ppp_idx, className = "section-left-border dt-center")
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
@@ -591,6 +703,28 @@ server_tab4 <- function(input, output, session, shared) {
 
       dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols), names(disp)), 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
+      heat_reverse <- c(
+        off_ppp = FALSE,
+        off_ts_pct = FALSE,
+        off_oreb_pct = FALSE,
+        off_tov_pct = TRUE,
+        off_ftr_pct = FALSE,
+        def_ppp = TRUE,
+        def_ts_pct = TRUE,
+        def_oreb_pct = TRUE,
+        def_tov_pct = FALSE,
+        def_ftr_pct = TRUE
+      )
+      for (metric_name in names(heat_reverse)) {
+        pr_col <- gl_pr_col_name(metric_name)
+        if (!(metric_name %in% names(disp)) || !(pr_col %in% names(disp))) next
+        dt <- DT::formatStyle(
+          dt,
+          metric_name,
+          backgroundColor = DT::styleInterval(CUTS, if (isTRUE(heat_reverse[[metric_name]])) COLS_REV else COLS_GRAD),
+          valueColumns = pr_col
+        )
+      }
 
       return(dt)
     }
@@ -626,5 +760,10 @@ server_tab4 <- function(input, output, session, shared) {
     teams_ids = "gl_team",
     starters_ids = c("gl_num_starters_off_mode", "gl_num_starters_off",
                      "gl_num_starters_def_mode", "gl_num_starters_def"))
+
+  invisible(list(
+    gl_teams_summary = gl_teams_summary,
+    gl_teams_ff = gl_teams_ff
+  ))
 }
 
