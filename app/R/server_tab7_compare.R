@@ -18,6 +18,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   cmp_auto_min_bootstrapped <- reactiveVal(FALSE)
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
+  cmp_player_raw_cache <- reactiveVal(NULL)
   CMP_AUTO_TARGET_ROWS <- 50L
   CMP_FILTER_DEBOUNCE_MS <- 250L
 
@@ -869,6 +870,21 @@ server_tab7_compare <- function(input, output, session, shared) {
   })
   cmp_player_selection_state <- reactive(cmp_player_selection_state_raw()) %>% debounce(CMP_FILTER_DEBOUNCE_MS)
 
+  observeEvent(list(input$main_tabs, input$cmp_mode, input$cmp_player_a, input$cmp_player_b), {
+    if (!identical(input$main_tabs, "compare") ||
+        !identical(input$cmp_mode, "Players") ||
+        !nzchar(input$cmp_player_a %||% "") ||
+        !nzchar(input$cmp_player_b %||% "")) {
+      cmp_player_raw_cache(NULL)
+    }
+    invisible(NULL)
+  }, ignoreInit = FALSE)
+
+  observeEvent(input$game_year, {
+    cmp_player_raw_cache(NULL)
+    invisible(NULL)
+  }, ignoreInit = TRUE)
+
   render_metric_chips <- function(metrics, cur, input_id) {
     chips <- lapply(seq_along(metrics), function(i) {
       nm <- names(metrics)[i]
@@ -1384,7 +1400,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(label = "TS%",       col = "ts",     type = "pct")
   )
 
-  cmp_player_raw <- reactive({
+  cmp_player_raw_live <- reactive({
     req(identical(input$cmp_mode, "Players"))
     req(identical(input$main_tabs, "compare"))
 
@@ -1407,8 +1423,45 @@ server_tab7_compare <- function(input, output, session, shared) {
       name_a = player_state$name_a, name_b = player_state$name_b,
       team_a = player_state$team_name_a, team_b = player_state$team_name_b,
       team_ids_a = player_state$team_ids_a, team_ids_b = player_state$team_ids_b,
+      player_a_id_int = player_state$player_a_id_int,
+      player_b_id_int = player_state$player_b_id_int,
       pa = pa, pb = pb
     )
+  })
+
+  cmp_player_raw_state <- reactive({
+    if (!identical(input$cmp_mode, "Players") || !identical(input$main_tabs, "compare")) {
+      return(list(status = "idle", data = NULL))
+    }
+
+    live <- tryCatch(
+      cmp_player_raw_live(),
+      shiny.silent.error = function(e) structure(list(), class = "cmp_player_pending")
+    )
+
+    if (!inherits(live, "cmp_player_pending")) {
+      return(list(status = "ready", data = live))
+    }
+
+    cached <- cmp_player_raw_cache()
+    if (is.null(cached)) {
+      return(list(status = "pending", data = NULL))
+    }
+
+    list(status = "stale", data = cached)
+  })
+
+  cmp_player_raw <- reactive(cmp_player_raw_state()$data)
+
+  observe({
+    live <- tryCatch(
+      cmp_player_raw_live(),
+      shiny.silent.error = function(e) structure(list(), class = "cmp_player_pending")
+    )
+    if (!inherits(live, "cmp_player_pending")) {
+      cmp_player_raw_cache(live)
+    }
+    invisible(NULL)
   })
 
   cmp_player_ff_raw <- reactive({
@@ -1417,20 +1470,17 @@ server_tab7_compare <- function(input, output, session, shared) {
     data <- cmp_player_raw()
     req(data)
 
-    player_a_id <- input$cmp_player_a
-    player_b_id <- input$cmp_player_b
-
     ff_a <- run_four_factors(data$pa, paste(data$team_ids_a, collapse = ","))
     ff_b <- run_four_factors(data$pb, paste(data$team_ids_b, collapse = ","))
     onoff_a <- run_onoff_impact(data$pa, paste(data$team_ids_a, collapse = ","))
     onoff_b <- run_onoff_impact(data$pb, paste(data$team_ids_b, collapse = ","))
     if (!nrow(ff_a) || !nrow(ff_b)) return(NULL)
 
-    row_a <- ff_a[ff_a$player_id == as.integer(player_a_id), , drop = FALSE]
-    row_b <- ff_b[ff_b$player_id == as.integer(player_b_id), , drop = FALSE]
+    row_a <- ff_a[ff_a$player_id == data$player_a_id_int, , drop = FALSE]
+    row_b <- ff_b[ff_b$player_id == data$player_b_id_int, , drop = FALSE]
     if (!nrow(row_a) || !nrow(row_b)) return(NULL)
-    on_a <- onoff_a[onoff_a$player_id == as.integer(player_a_id), , drop = FALSE]
-    on_b <- onoff_b[onoff_b$player_id == as.integer(player_b_id), , drop = FALSE]
+    on_a <- onoff_a[onoff_a$player_id == data$player_a_id_int, , drop = FALSE]
+    on_b <- onoff_b[onoff_b$player_id == data$player_b_id_int, , drop = FALSE]
 
     list(
       row_a = row_a[1, ], row_b = row_b[1, ],
@@ -1505,6 +1555,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
+  cmp_player_state_card <- function(message) {
+    tags$div(
+      class = "card bg-dark border-secondary p-3",
+      tags$div(class = "small text-muted", message)
+    )
+  }
+
   # -- FF Swing view --
 
   FF_SWING_STATS <- list(
@@ -1521,11 +1578,20 @@ server_tab7_compare <- function(input, output, session, shared) {
   )
 
   render_ff_swing_ui <- function() {
-    data <- cmp_player_ff_raw()
-    req(data)
+    trad_state <- cmp_player_raw_state()
+    if (identical(trad_state$status, "pending")) {
+      return(cmp_player_state_card("Preparing player compare..."))
+    }
 
-    trad <- cmp_player_raw()
-    req(trad)
+    trad <- trad_state$data
+    if (is.null(trad)) {
+      return(cmp_player_state_card("No player data for current filters."))
+    }
+
+    data <- cmp_player_ff_raw()
+    if (is.null(data)) {
+      return(cmp_player_state_card("No player data for current filters."))
+    }
 
     row_a <- data$row_a
     row_b <- data$row_b
@@ -1590,11 +1656,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   output$cmp_pvp_ui <- renderUI({
     if (!nzchar(input$cmp_player_a %||% "") || !nzchar(input$cmp_player_b %||% "")) {
-      return(tags$div(
-        class = "card bg-dark border-secondary p-3",
-        tags$div(class = "small text-muted",
-                 "Select Player A and Player B to run Players compare.")
-      ))
+      return(cmp_player_state_card("Select Player A and Player B to run Players compare."))
     }
 
     view <- selected_player_view()
@@ -1602,8 +1664,15 @@ server_tab7_compare <- function(input, output, session, shared) {
       return(render_ff_swing_ui())
     }
 
-    data <- cmp_player_raw()
-    req(data)
+    data_state <- cmp_player_raw_state()
+    if (identical(data_state$status, "pending")) {
+      return(cmp_player_state_card("Preparing player compare..."))
+    }
+
+    data <- data_state$data
+    if (is.null(data)) {
+      return(cmp_player_state_card("No player data for current filters."))
+    }
 
     rate <- input$cmp_rate_mode %||% "Per Game"
     row_a <- data$row_a
@@ -2589,5 +2658,4 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 }
-
 
