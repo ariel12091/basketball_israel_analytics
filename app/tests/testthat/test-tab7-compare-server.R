@@ -40,6 +40,45 @@ test_that("tab7 lineups compare uses four-factor query for four-factor chips", {
   })
 })
 
+render_ui_text <- function(x) {
+  paste(capture.output(print(x)), collapse = "\n")
+}
+
+test_that("tab7 players compare keeps last successful view during debounce", {
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Players",
+      cmp_player_a = "11",
+      cmp_player_b = "21"
+    )
+    session$elapse(300)
+    session$flushReact()
+
+    before_txt <- render_ui_text(output$cmp_pvp_ui)
+    expect_true(grepl("Player A", before_txt, fixed = TRUE))
+    expect_true(grepl("Player B", before_txt, fixed = TRUE))
+
+    session$setInputs(cmp_player_a = "12")
+    session$flushReact()
+
+    during_txt <- render_ui_text(output$cmp_pvp_ui)
+    expect_true(grepl("Player A", during_txt, fixed = TRUE))
+    expect_false(grepl("Player C", during_txt, fixed = TRUE))
+    expect_false(grepl("Preparing player compare", during_txt, fixed = TRUE))
+
+    session$elapse(300)
+    session$flushReact()
+
+    after_txt <- render_ui_text(output$cmp_pvp_ui)
+    expect_true(grepl("Player C", after_txt, fixed = TRUE))
+    expect_true(grepl("Player B", after_txt, fixed = TRUE))
+  })
+})
+
 capture_input_messages <- function(session) {
   sent <- list()
   original <- session$sendInputMessage

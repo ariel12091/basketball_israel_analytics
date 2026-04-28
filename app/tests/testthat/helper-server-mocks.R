@@ -50,6 +50,23 @@ db_get_query <- function(pool, query, params = NULL) {
     ))
   }
 
+  if (grepl("get_player_traditional_dynamic", q, fixed = TRUE)) {
+    return(data.frame(
+      player_id = c(11L, 12L, 21L),
+      gp = c(5L, 4L, 5L),
+      pts = c(100, 72, 90),
+      reb = c(40, 24, 35),
+      ast = c(30, 18, 20),
+      stl = c(10, 7, 8),
+      fg_pct = c(55.0, 51.0, 50.0),
+      tp_pct = c(38.0, 36.0, 34.0),
+      ft_pct = c(84.0, 80.0, 79.0),
+      ts = c(60.0, 58.0, 57.0),
+      poss_on_floor = c(300, 220, 280),
+      minutes = c(150, 120, 145)
+    ))
+  }
+
   if (grepl("fetch_lineups_csv_v2", q, fixed = TRUE)) {
     return(data.frame(
       sub_lineup_hash = c("lu1", "lu2"),
@@ -81,10 +98,10 @@ db_get_query <- function(pool, query, params = NULL) {
 
   if (grepl("full_rosters", q, fixed = TRUE)) {
     return(data.frame(
-      team_id = c(1L, 2L),
-      player_id = c(11L, 21L),
-      name = c("Player A", "Player B"),
-      team_name = c("Team A", "Team B")
+      team_id = c(1L, 1L, 2L),
+      player_id = c(11L, 12L, 21L),
+      name = c("Player A", "Player C", "Player B"),
+      team_name = c("Team A", "Team A", "Team B")
     ))
   }
 
@@ -95,6 +112,20 @@ cached_ref_query <- function(key, query_fun, ttl_sec = 300) {
   if (grepl("_gn_", key, fixed = TRUE)) return(data.frame(gn = 1:5))
   if (grepl("teams", key, fixed = TRUE) || grepl("_teams_", key, fixed = TRUE)) {
     return(data.frame(team_id = c(1L, 2L), team_name = c("Team A", "Team B")))
+  }
+  if (grepl("_players_", key, fixed = TRUE)) {
+    return(data.frame(
+      team_id = c(1L, 1L, 2L),
+      player_id = c(11L, 12L, 21L),
+      name = c("Player A", "Player C", "Player B")
+    ))
+  }
+  if (grepl("cmp_default_scorers_", key, fixed = TRUE)) {
+    return(data.frame(
+      player_id = c(11L, 12L, 21L),
+      gp = c(5L, 4L, 5L),
+      pts = c(100, 72, 90)
+    ))
   }
   data.frame()
 }
