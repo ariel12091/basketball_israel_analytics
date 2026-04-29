@@ -17,6 +17,7 @@ WITH clean_stats AS (
     d.type,
     d.parameters_type,
     d.parameters_made,
+    d.parameters_points,
     d.pct_ft,
     d.parent_action_id,
     d.type_lineup,
@@ -54,6 +55,7 @@ combined_data AS (
     cs.type,
     cs.parameters_type,
     cs.parameters_made,
+    cs.parameters_points,
     cs.pct_ft,
     cs.parent_action_id,
     cf.parent_type,
@@ -102,7 +104,9 @@ segment_stats AS (
     END)                     AS oreb_opportunities,
     count(CASE WHEN cd.type = 'turnover' THEN 1 END) AS tov_count,
     count(CASE WHEN cd.type = 'freeThrow' THEN 1 END) AS total_ft_attempts,
-    count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga
+    count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga,
+    count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
+    count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' AND cd.parameters_points = 3 THEN 1 END) AS total_fg3_made
   FROM combined_data cd
   GROUP BY cd.lineup_hash, cd.team_id, cd.game_id, cd.game_year, cd.type_lineup, cd.num_starters, cd.segment_id
 )
@@ -121,6 +125,8 @@ SELECT
   SUM(ss.tov_count)::bigint           AS tov_count,
   SUM(ss.total_ft_attempts)::bigint   AS total_ft_attempts,
   SUM(ss.total_fga)::bigint           AS total_fga,
+  SUM(ss.total_fgm)::bigint           AS total_fgm,
+  SUM(ss.total_fg3_made)::bigint      AS total_fg3_made,
   -- Minutes from segment_times, count once per segment (use offense filter)
   SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
 FROM segment_stats ss

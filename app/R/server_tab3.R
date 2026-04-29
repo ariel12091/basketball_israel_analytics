@@ -746,9 +746,9 @@ server_tab3 <- function(input, output, session, shared) {
       )
       starters <- resolve_starters_bounds(
         off_mode = input$tr_num_starters_off_mode,
-        off_value = input$tr_num_starters_off,
+        off_val = input$tr_num_starters_off,
         def_mode = input$tr_num_starters_def_mode,
-        def_value = input$tr_num_starters_def
+        def_val = input$tr_num_starters_def
       )
       trad_side <- if (isTRUE(input$tr_trad_defense_mode)) "defense" else "offense"
 
@@ -899,12 +899,12 @@ server_tab3 <- function(input, output, session, shared) {
     }
 
     df$pr_off_ppp  <- pr_vec(df$off_ppp)
-    df$pr_off_ts   <- pr_vec(df$off_ts)
+    df$pr_off_efg  <- pr_vec(df$off_efg)
     df$pr_off_oreb <- pr_vec(df$off_oreb)
     df$pr_off_tov  <- pr_vec(df$off_tov, invert = TRUE)
     df$pr_off_ftr  <- pr_vec(df$off_ftr)
     df$pr_def_ppp  <- pr_vec(df$def_ppp, invert = TRUE)
-    df$pr_def_ts   <- pr_vec(df$def_ts, invert = TRUE)
+    df$pr_def_efg  <- pr_vec(df$def_efg, invert = TRUE)
     df$pr_def_oreb <- pr_vec(df$def_oreb, invert = TRUE)
     df$pr_def_tov  <- pr_vec(df$def_tov)
     df$pr_def_ftr  <- pr_vec(df$def_ftr, invert = TRUE)
@@ -1066,7 +1066,11 @@ server_tab3 <- function(input, output, session, shared) {
            COALESCE(SUM(s.off_fta_raw), 0)::numeric AS off_fta_raw,
            COALESCE(SUM(s.def_fta_raw), 0)::numeric AS def_fta_raw,
            COALESCE(SUM(s.off_fga_raw), 0)::numeric AS off_fga_raw,
-           COALESCE(SUM(s.def_fga_raw), 0)::numeric AS def_fga_raw
+           COALESCE(SUM(s.def_fga_raw), 0)::numeric AS def_fga_raw,
+           COALESCE(SUM(s.off_fgm_raw), 0)::numeric AS off_fgm_raw,
+           COALESCE(SUM(s.def_fgm_raw), 0)::numeric AS def_fgm_raw,
+           COALESCE(SUM(s.off_fg3m_raw), 0)::numeric AS off_fg3m_raw,
+           COALESCE(SUM(s.def_fg3m_raw), 0)::numeric AS def_fg3m_raw
          FROM scoped s
          JOIN cuts c
            ON c.team_id = s.team_id
@@ -1081,11 +1085,11 @@ server_tab3 <- function(input, output, session, shared) {
     ff$off_ppp  <- ifelse(roll$off_poss_raw > 0, round((roll$off_points_raw / roll$off_poss_raw) * 100, 1), NA_real_)
     ff$def_ppp  <- ifelse(roll$def_poss_raw > 0, round((roll$def_points_raw / roll$def_poss_raw) * 100, 1), NA_real_)
     ff$net_rtg  <- round(ff$off_ppp - ff$def_ppp, 1)
-    ff$off_ts   <- ifelse(roll$off_ts_poss_raw > 0, round((roll$off_points_raw / (2 * roll$off_ts_poss_raw)) * 100, 1), NA_real_)
+    ff$off_efg  <- ifelse(roll$off_fga_raw > 0, round((roll$off_fgm_raw + 0.5 * roll$off_fg3m_raw) / roll$off_fga_raw * 100, 1), NA_real_)
     ff$off_oreb <- ifelse(roll$off_oreb_opp_raw > 0, round((roll$off_oreb_count_raw / roll$off_oreb_opp_raw) * 100, 1), NA_real_)
     ff$off_tov  <- ifelse(roll$off_poss_raw > 0, round((roll$off_tov_raw / roll$off_poss_raw) * 100, 1), NA_real_)
     ff$off_ftr  <- ifelse(roll$off_fga_raw > 0, round((roll$off_fta_raw / roll$off_fga_raw) * 100, 1), NA_real_)
-    ff$def_ts   <- ifelse(roll$def_ts_poss_raw > 0, round((roll$def_points_raw / (2 * roll$def_ts_poss_raw)) * 100, 1), NA_real_)
+    ff$def_efg  <- ifelse(roll$def_fga_raw > 0, round((roll$def_fgm_raw + 0.5 * roll$def_fg3m_raw) / roll$def_fga_raw * 100, 1), NA_real_)
     ff$def_oreb <- ifelse(roll$def_oreb_opp_raw > 0, round((roll$def_oreb_count_raw / roll$def_oreb_opp_raw) * 100, 1), NA_real_)
     ff$def_tov  <- ifelse(roll$def_poss_raw > 0, round((roll$def_tov_raw / roll$def_poss_raw) * 100, 1), NA_real_)
     ff$def_ftr  <- ifelse(roll$def_fga_raw > 0, round((roll$def_fta_raw / roll$def_fga_raw) * 100, 1), NA_real_)
@@ -1094,11 +1098,11 @@ server_tab3 <- function(input, output, session, shared) {
       off = setNames(dplyr::min_rank(dplyr::desc(ff$off_ppp)), as.character(ff$team_id)),
       def = setNames(dplyr::min_rank(ff$def_ppp), as.character(ff$team_id)),
       net = setNames(dplyr::min_rank(dplyr::desc(ff$net_rtg)), as.character(ff$team_id)),
-      off_ts = setNames(dplyr::min_rank(dplyr::desc(ff$off_ts)), as.character(ff$team_id)),
+      off_efg = setNames(dplyr::min_rank(dplyr::desc(ff$off_efg)), as.character(ff$team_id)),
       off_oreb = setNames(dplyr::min_rank(dplyr::desc(ff$off_oreb)), as.character(ff$team_id)),
       off_tov = setNames(dplyr::min_rank(ff$off_tov), as.character(ff$team_id)),
       off_ftr = setNames(dplyr::min_rank(dplyr::desc(ff$off_ftr)), as.character(ff$team_id)),
-      def_ts = setNames(dplyr::min_rank(ff$def_ts), as.character(ff$team_id)),
+      def_efg = setNames(dplyr::min_rank(ff$def_efg), as.character(ff$team_id)),
       def_oreb = setNames(dplyr::min_rank(ff$def_oreb), as.character(ff$team_id)),
       def_tov = setNames(dplyr::min_rank(dplyr::desc(ff$def_tov)), as.character(ff$team_id)),
       def_ftr = setNames(dplyr::min_rank(ff$def_ftr), as.character(ff$team_id))
@@ -1476,13 +1480,13 @@ server_tab3 <- function(input, output, session, shared) {
       df <- tr_ff_data()
       if (is.null(df) || nrow(df) == 0) return(empty_dt("Four Factors: no data for current filters"))
 
-      pr_cols <- c("pr_off_ppp", "pr_off_ts", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
-                   "pr_def_ppp", "pr_def_ts", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
+      pr_cols <- c("pr_off_ppp", "pr_off_efg", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
+                   "pr_def_ppp", "pr_def_efg", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
 
       keep_cols <- c("team_name",
-                     "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr",
+                     "off_ppp", "off_efg", "off_oreb", "off_tov", "off_ftr",
                      "off_poss",
-                     "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr",
+                     "def_ppp", "def_efg", "def_oreb", "def_tov", "def_ftr",
                      "def_poss",
                      "net_rtg")
       df <- add_team_pace_cols(df, minutes_map = mins_map)
@@ -1491,11 +1495,11 @@ server_tab3 <- function(input, output, session, shared) {
       rk_off_now <- dplyr::min_rank(dplyr::desc(df$off_ppp))
       rk_def_now <- dplyr::min_rank(df$def_ppp)
       rk_net_now <- dplyr::min_rank(dplyr::desc(df$net_rtg))
-      rk_off_ts_now <- dplyr::min_rank(dplyr::desc(df$off_ts))
+      rk_off_efg_now <- dplyr::min_rank(dplyr::desc(df$off_efg))
       rk_off_oreb_now <- dplyr::min_rank(dplyr::desc(df$off_oreb))
       rk_off_tov_now <- dplyr::min_rank(df$off_tov)
       rk_off_ftr_now <- dplyr::min_rank(dplyr::desc(df$off_ftr))
-      rk_def_ts_now <- dplyr::min_rank(df$def_ts)
+      rk_def_efg_now <- dplyr::min_rank(df$def_efg)
       rk_def_oreb_now <- dplyr::min_rank(df$def_oreb)
       rk_def_tov_now <- dplyr::min_rank(dplyr::desc(df$def_tov))
       rk_def_ftr_now <- dplyr::min_rank(df$def_ftr)
@@ -1503,11 +1507,11 @@ server_tab3 <- function(input, output, session, shared) {
       d_off <- rep(NA_integer_, nrow(df))
       d_def <- rep(NA_integer_, nrow(df))
       d_net <- rep(NA_integer_, nrow(df))
-      d_off_ts <- rep(NA_integer_, nrow(df))
+      d_off_efg <- rep(NA_integer_, nrow(df))
       d_off_oreb <- rep(NA_integer_, nrow(df))
       d_off_tov <- rep(NA_integer_, nrow(df))
       d_off_ftr <- rep(NA_integer_, nrow(df))
-      d_def_ts <- rep(NA_integer_, nrow(df))
+      d_def_efg <- rep(NA_integer_, nrow(df))
       d_def_oreb <- rep(NA_integer_, nrow(df))
       d_def_tov <- rep(NA_integer_, nrow(df))
       d_def_ftr <- rep(NA_integer_, nrow(df))
@@ -1519,11 +1523,11 @@ server_tab3 <- function(input, output, session, shared) {
           d_off <- as.integer(mv_prev$off[key]) - as.integer(rk_off_now)
           d_def <- as.integer(mv_prev$def[key]) - as.integer(rk_def_now)
           d_net <- as.integer(mv_prev$net[key]) - as.integer(rk_net_now)
-          d_off_ts <- as.integer(mv_prev$off_ts[key]) - as.integer(rk_off_ts_now)
+          d_off_efg <- as.integer(mv_prev$off_efg[key]) - as.integer(rk_off_efg_now)
           d_off_oreb <- as.integer(mv_prev$off_oreb[key]) - as.integer(rk_off_oreb_now)
           d_off_tov <- as.integer(mv_prev$off_tov[key]) - as.integer(rk_off_tov_now)
           d_off_ftr <- as.integer(mv_prev$off_ftr[key]) - as.integer(rk_off_ftr_now)
-          d_def_ts <- as.integer(mv_prev$def_ts[key]) - as.integer(rk_def_ts_now)
+          d_def_efg <- as.integer(mv_prev$def_efg[key]) - as.integer(rk_def_efg_now)
           d_def_oreb <- as.integer(mv_prev$def_oreb[key]) - as.integer(rk_def_oreb_now)
           d_def_tov <- as.integer(mv_prev$def_tov[key]) - as.integer(rk_def_tov_now)
           d_def_ftr <- as.integer(mv_prev$def_ftr[key]) - as.integer(rk_def_ftr_now)
@@ -1533,22 +1537,22 @@ server_tab3 <- function(input, output, session, shared) {
             rk_off_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ppp)), as.character(prev$team_id))
             rk_def_prev <- setNames(dplyr::min_rank(prev$def_ppp), as.character(prev$team_id))
             rk_net_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$net_rtg)), as.character(prev$team_id))
-            rk_off_ts_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ts)), as.character(prev$team_id))
+            rk_off_efg_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_efg)), as.character(prev$team_id))
             rk_off_oreb_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_oreb)), as.character(prev$team_id))
             rk_off_tov_prev <- setNames(dplyr::min_rank(prev$off_tov), as.character(prev$team_id))
             rk_off_ftr_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ftr)), as.character(prev$team_id))
-            rk_def_ts_prev <- setNames(dplyr::min_rank(prev$def_ts), as.character(prev$team_id))
+            rk_def_efg_prev <- setNames(dplyr::min_rank(prev$def_efg), as.character(prev$team_id))
             rk_def_oreb_prev <- setNames(dplyr::min_rank(prev$def_oreb), as.character(prev$team_id))
             rk_def_tov_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$def_tov)), as.character(prev$team_id))
             rk_def_ftr_prev <- setNames(dplyr::min_rank(prev$def_ftr), as.character(prev$team_id))
             d_off <- as.integer(rk_off_prev[key]) - as.integer(rk_off_now)
             d_def <- as.integer(rk_def_prev[key]) - as.integer(rk_def_now)
             d_net <- as.integer(rk_net_prev[key]) - as.integer(rk_net_now)
-            d_off_ts <- as.integer(rk_off_ts_prev[key]) - as.integer(rk_off_ts_now)
+            d_off_efg <- as.integer(rk_off_efg_prev[key]) - as.integer(rk_off_efg_now)
             d_off_oreb <- as.integer(rk_off_oreb_prev[key]) - as.integer(rk_off_oreb_now)
             d_off_tov <- as.integer(rk_off_tov_prev[key]) - as.integer(rk_off_tov_now)
             d_off_ftr <- as.integer(rk_off_ftr_prev[key]) - as.integer(rk_off_ftr_now)
-            d_def_ts <- as.integer(rk_def_ts_prev[key]) - as.integer(rk_def_ts_now)
+            d_def_efg <- as.integer(rk_def_efg_prev[key]) - as.integer(rk_def_efg_now)
             d_def_oreb <- as.integer(rk_def_oreb_prev[key]) - as.integer(rk_def_oreb_now)
             d_def_tov <- as.integer(rk_def_tov_prev[key]) - as.integer(rk_def_tov_now)
             d_def_ftr <- as.integer(rk_def_ftr_prev[key]) - as.integer(rk_def_ftr_now)
@@ -1557,12 +1561,12 @@ server_tab3 <- function(input, output, session, shared) {
       }
 
       df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1)
-      df$off_ts_lbl <- fmt_rank_cell(df$off_ts, rk_off_ts_now, d_off_ts, 1)
+      df$off_efg_lbl <- fmt_rank_cell(df$off_efg, rk_off_efg_now, d_off_efg, 1)
       df$off_oreb_lbl <- fmt_rank_cell(df$off_oreb, rk_off_oreb_now, d_off_oreb, 1)
       df$off_tov_lbl <- fmt_rank_cell(df$off_tov, rk_off_tov_now, d_off_tov, 1)
       df$off_ftr_lbl <- fmt_rank_cell(df$off_ftr, rk_off_ftr_now, d_off_ftr, 1)
       df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1)
-      df$def_ts_lbl <- fmt_rank_cell(df$def_ts, rk_def_ts_now, d_def_ts, 1)
+      df$def_efg_lbl <- fmt_rank_cell(df$def_efg, rk_def_efg_now, d_def_efg, 1)
       df$def_oreb_lbl <- fmt_rank_cell(df$def_oreb, rk_def_oreb_now, d_def_oreb, 1)
       df$def_tov_lbl <- fmt_rank_cell(df$def_tov, rk_def_tov_now, d_def_tov, 1)
       df$def_ftr_lbl <- fmt_rank_cell(df$def_ftr, rk_def_ftr_now, d_def_ftr, 1)
@@ -1572,25 +1576,25 @@ server_tab3 <- function(input, output, session, shared) {
       disp_ff <- data.frame(
         team_name = df$team_name,
         off_ppp = df$off_ppp_lbl,
-        off_ts = df$off_ts_lbl,
+        off_efg = df$off_efg_lbl,
         off_oreb = df$off_oreb_lbl,
         off_tov = df$off_tov_lbl,
         off_ftr = df$off_ftr_lbl,
         off_poss = df$off_poss,
         def_ppp = df$def_ppp_lbl,
-        def_ts = df$def_ts_lbl,
+        def_efg = df$def_efg_lbl,
         def_oreb = df$def_oreb_lbl,
         def_tov = df$def_tov_lbl,
         def_ftr = df$def_ftr_lbl,
         def_poss = df$def_poss,
         net_rtg = df$net_rtg_lbl,
         pr_off_ppp = df$pr_off_ppp,
-        pr_off_ts = df$pr_off_ts,
+        pr_off_efg = df$pr_off_efg,
         pr_off_oreb = df$pr_off_oreb,
         pr_off_tov = df$pr_off_tov,
         pr_off_ftr = df$pr_off_ftr,
         pr_def_ppp = df$pr_def_ppp,
-        pr_def_ts = df$pr_def_ts,
+        pr_def_efg = df$pr_def_efg,
         pr_def_oreb = df$pr_def_oreb,
         pr_def_tov = df$pr_def_tov,
         pr_def_ftr = df$pr_def_ftr,
@@ -1598,13 +1602,13 @@ server_tab3 <- function(input, output, session, shared) {
         check.names = FALSE
       )
       ff_sort_map <- c(
-        off_ppp = "off_ppp", off_ts = "off_ts", off_oreb = "off_oreb", off_tov = "off_tov", off_ftr = "off_ftr",
-        def_ppp = "def_ppp", def_ts = "def_ts", def_oreb = "def_oreb", def_tov = "def_tov", def_ftr = "def_ftr",
+        off_ppp = "off_ppp", off_efg = "off_efg", off_oreb = "off_oreb", off_tov = "off_tov", off_ftr = "off_ftr",
+        def_ppp = "def_ppp", def_efg = "def_efg", def_oreb = "def_oreb", def_tov = "def_tov", def_ftr = "def_ftr",
         net_rtg = "net_rtg"
       )
       ff_sort_dir_map <- c(
-        off_ppp = "desc", off_ts = "desc", off_oreb = "desc", off_tov = "asc", off_ftr = "desc",
-        def_ppp = "asc", def_ts = "asc", def_oreb = "asc", def_tov = "desc", def_ftr = "asc",
+        off_ppp = "desc", off_efg = "desc", off_oreb = "desc", off_tov = "asc", off_ftr = "desc",
+        def_ppp = "asc", def_efg = "asc", def_oreb = "asc", def_tov = "desc", def_ftr = "asc",
         net_rtg = "desc"
       )
       for (nm in names(ff_sort_map)) {
@@ -1635,10 +1639,10 @@ server_tab3 <- function(input, output, session, shared) {
         ),
         tr(
           th(class = "sub-head", "Team"),
-          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
-          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "Net")
@@ -1670,7 +1674,7 @@ server_tab3 <- function(input, output, session, shared) {
                             columnDefs = col_defs
                           ))
 
-      rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(disp_ff))
+      rate_cols <- intersect(c("off_efg", "off_oreb", "off_tov", "off_ftr", "def_efg", "def_oreb", "def_tov", "def_ftr"), names(disp_ff))
       ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(disp_ff))
       poss_cols <- intersect(c("off_poss", "def_poss"), names(disp_ff))
 
@@ -1678,12 +1682,12 @@ server_tab3 <- function(input, output, session, shared) {
 
       # Color logic - same polarity as Tab 2 FF
       if ("pr_off_ppp"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
-      if ("pr_off_ts"   %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ts")
+      if ("pr_off_efg"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_efg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_efg")
       if ("pr_off_oreb" %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_oreb")
       if ("pr_off_tov"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_tov")
       if ("pr_off_ftr"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ftr")
       if ("pr_def_ppp"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ppp")
-      if ("pr_def_ts"   %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ts")
+      if ("pr_def_efg"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_efg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_efg")
       if ("pr_def_oreb" %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_oreb")
       if ("pr_def_tov"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_tov")
       if ("pr_def_ftr"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ftr")

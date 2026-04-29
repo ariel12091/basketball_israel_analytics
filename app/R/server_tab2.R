@@ -215,12 +215,12 @@ server_tab2 <- function(input, output, session, shared) {
     }
 
     if ("off_ppp"  %in% names(df)) df$pr_off_ppp  <- pr_vec(df$off_ppp)
-    if ("off_ts"   %in% names(df)) df$pr_off_ts   <- pr_vec(df$off_ts)
+    if ("off_efg"  %in% names(df)) df$pr_off_efg  <- pr_vec(df$off_efg)
     if ("off_oreb" %in% names(df)) df$pr_off_oreb <- pr_vec(df$off_oreb)
     if ("off_tov"  %in% names(df)) df$pr_off_tov  <- pr_vec(df$off_tov, invert = TRUE)
     if ("off_ftr"  %in% names(df)) df$pr_off_ftr  <- pr_vec(df$off_ftr)
     if ("def_ppp"  %in% names(df)) df$pr_def_ppp  <- pr_vec(df$def_ppp, invert = TRUE)
-    if ("def_ts"   %in% names(df)) df$pr_def_ts   <- pr_vec(df$def_ts, invert = TRUE)
+    if ("def_efg"  %in% names(df)) df$pr_def_efg  <- pr_vec(df$def_efg, invert = TRUE)
     if ("def_oreb" %in% names(df)) df$pr_def_oreb <- pr_vec(df$def_oreb, invert = TRUE)
     if ("def_tov"  %in% names(df)) df$pr_def_tov  <- pr_vec(df$def_tov)
     if ("def_ftr"  %in% names(df)) df$pr_def_ftr  <- pr_vec(df$def_ftr, invert = TRUE)
@@ -401,9 +401,9 @@ server_tab2 <- function(input, output, session, shared) {
       if (is.null(df) || NROW(df) == 0L) {
         return(data.frame(
           team_id = integer(0), player_names_str = character(0),
-          off_ts = numeric(0), off_oreb = numeric(0), off_tov = numeric(0), off_ftr = numeric(0),
+          off_efg = numeric(0), off_oreb = numeric(0), off_tov = numeric(0), off_ftr = numeric(0),
           off_poss = integer(0), off_pts = integer(0), off_ppp = numeric(0),
-          def_ts = numeric(0), def_oreb = numeric(0), def_tov = numeric(0), def_ftr = numeric(0),
+          def_efg = numeric(0), def_oreb = numeric(0), def_tov = numeric(0), def_ftr = numeric(0),
           def_poss = integer(0), def_pts = integer(0), def_ppp = numeric(0),
           net_rtg = numeric(0), num_lineup = integer(0), sub_lineup_hash = character(0),
           total_poss = integer(0),
@@ -471,12 +471,12 @@ server_tab2 <- function(input, output, session, shared) {
       # in ld_ff_ranked_df(), so colors stay stable across local filters.
       # ============================================================
 
-      pr_cols <- c("pr_off_ppp", "pr_off_ts", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
-                   "pr_def_ppp", "pr_def_ts", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
+      pr_cols <- c("pr_off_ppp", "pr_off_efg", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
+                   "pr_def_ppp", "pr_def_efg", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
 
       keep_cols <- c("Team", "Players",
-                     "off_ppp", "off_ts", "off_oreb", "off_tov", "off_ftr", "off_poss",
-                     "def_ppp", "def_ts", "def_oreb", "def_tov", "def_ftr", "def_poss",
+                     "off_ppp", "off_efg", "off_oreb", "off_tov", "off_ftr", "off_poss",
+                     "def_ppp", "def_efg", "def_oreb", "def_tov", "def_ftr", "def_poss",
                      "minutes", "total_poss", "net_rtg", "team_id", "sub_lineup_hash")
       df <- df %>% select(any_of(c(keep_cols, pr_cols)))
       df$is_total <- rep(1, nrow(df))
@@ -500,18 +500,22 @@ server_tab2 <- function(input, output, session, shared) {
         s_off_tov_cnt   <- sum(raw$off_tov_cnt, na.rm = TRUE)
         s_off_fta       <- sum(raw$off_fta, na.rm = TRUE)
         s_off_fga       <- sum(raw$off_fga_cnt, na.rm = TRUE)
+        s_off_fgm       <- sum(raw$off_fgm_cnt, na.rm = TRUE)
+        s_off_fg3m      <- sum(raw$off_fg3m_cnt, na.rm = TRUE)
         s_def_ts_poss   <- sum(raw$def_ts_poss, na.rm = TRUE)
         s_def_oreb_cnt  <- sum(raw$def_oreb_cnt, na.rm = TRUE)
         s_def_oreb_opps <- sum(raw$def_oreb_opps, na.rm = TRUE)
         s_def_tov_cnt   <- sum(raw$def_tov_cnt, na.rm = TRUE)
         s_def_fta       <- sum(raw$def_fta, na.rm = TRUE)
         s_def_fga       <- sum(raw$def_fga_cnt, na.rm = TRUE)
+        s_def_fgm       <- sum(raw$def_fgm_cnt, na.rm = TRUE)
+        s_def_fg3m      <- sum(raw$def_fg3m_cnt, na.rm = TRUE)
 
-        tot_off_ts   <- if (s_off_ts_poss > 0) round(sum_off_pts / (2 * s_off_ts_poss) * 100, 1) else NA_real_
+        tot_off_efg  <- if (s_off_fga > 0) round((s_off_fgm + 0.5 * s_off_fg3m) / s_off_fga * 100, 1) else NA_real_
         tot_off_oreb <- if (s_off_oreb_opps > 0) round(s_off_oreb_cnt / s_off_oreb_opps * 100, 1) else NA_real_
         tot_off_tov  <- if (sum_off_poss > 0) round(s_off_tov_cnt / sum_off_poss * 100, 1) else NA_real_
         tot_off_ftr  <- if (s_off_fga > 0) round(s_off_fta / s_off_fga * 100, 1) else NA_real_
-        tot_def_ts   <- if (s_def_ts_poss > 0) round(sum_def_pts / (2 * s_def_ts_poss) * 100, 1) else NA_real_
+        tot_def_efg  <- if (s_def_fga > 0) round((s_def_fgm + 0.5 * s_def_fg3m) / s_def_fga * 100, 1) else NA_real_
         tot_def_oreb <- if (s_def_oreb_opps > 0) round(s_def_oreb_cnt / s_def_oreb_opps * 100, 1) else NA_real_
         tot_def_tov  <- if (sum_def_poss > 0) round(s_def_tov_cnt / sum_def_poss * 100, 1) else NA_real_
         tot_def_ftr  <- if (s_def_fga > 0) round(s_def_fta / s_def_fga * 100, 1) else NA_real_
@@ -519,9 +523,9 @@ server_tab2 <- function(input, output, session, shared) {
         sum_minutes <- sum(raw$minutes, na.rm = TRUE)
         total_row <- data.frame(
           Team = "TOTAL", Players = "- All Lineups -",
-          off_ppp = tot_off_ppp, off_ts = tot_off_ts, off_oreb = tot_off_oreb, off_tov = tot_off_tov, off_ftr = tot_off_ftr,
+          off_ppp = tot_off_ppp, off_efg = tot_off_efg, off_oreb = tot_off_oreb, off_tov = tot_off_tov, off_ftr = tot_off_ftr,
           off_poss = sum_off_poss,
-          def_ppp = tot_def_ppp, def_ts = tot_def_ts, def_oreb = tot_def_oreb, def_tov = tot_def_tov, def_ftr = tot_def_ftr,
+          def_ppp = tot_def_ppp, def_efg = tot_def_efg, def_oreb = tot_def_oreb, def_tov = tot_def_tov, def_ftr = tot_def_ftr,
           def_poss = sum_def_poss,
           minutes = sum_minutes,
           total_poss = sum_off_poss + sum_def_poss,
@@ -547,10 +551,10 @@ server_tab2 <- function(input, output, session, shared) {
         tr(
           th(""),
           th(class = "sub-head", "Team"), th(class = "sub-head", "Players"),
-          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
-          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "TS%"),
+          th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "Poss"), th(class = "sub-head", "Net")
@@ -597,7 +601,7 @@ server_tab2 <- function(input, output, session, shared) {
                           ))
 
       # Format numbers
-      rate_cols <- intersect(c("off_ts", "off_oreb", "off_tov", "off_ftr", "def_ts", "def_oreb", "def_tov", "def_ftr"), names(df))
+      rate_cols <- intersect(c("off_efg", "off_oreb", "off_tov", "off_ftr", "def_efg", "def_oreb", "def_tov", "def_ftr"), names(df))
       ppp_cols  <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(df))
       poss_cols <- intersect(c("off_poss", "def_poss", "total_poss"), names(df))
       min_cols  <- intersect(c("minutes"), names(df))
@@ -614,12 +618,12 @@ server_tab2 <- function(input, output, session, shared) {
 
       # Color logic
       if ("pr_off_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
-      if ("pr_off_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "off_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ts")
+      if ("pr_off_efg"  %in% names(df)) dt <- DT::formatStyle(dt, "off_efg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_efg")
       if ("pr_off_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "off_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_oreb")
       if ("pr_off_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "off_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_tov")
       if ("pr_off_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "off_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ftr")
       if ("pr_def_ppp"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ppp")
-      if ("pr_def_ts"   %in% names(df)) dt <- DT::formatStyle(dt, "def_ts",   backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ts")
+      if ("pr_def_efg"  %in% names(df)) dt <- DT::formatStyle(dt, "def_efg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_efg")
       if ("pr_def_oreb" %in% names(df)) dt <- DT::formatStyle(dt, "def_oreb", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_oreb")
       if ("pr_def_tov"  %in% names(df)) dt <- DT::formatStyle(dt, "def_tov",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_tov")
       if ("pr_def_ftr"  %in% names(df)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ftr")
@@ -864,6 +868,7 @@ server_tab2 <- function(input, output, session, shared) {
                 SUM(ts_poss_count) AS ts_poss_count, SUM(oreb_count) AS oreb_count,
                 SUM(oreb_opportunities) AS oreb_opportunities, SUM(tov_count) AS tov_count,
                 SUM(total_ft_attempts) AS total_ft_attempts, SUM(total_fga) AS total_fga,
+                SUM(total_fgm) AS total_fgm, SUM(total_fg3_made) AS total_fg3_made,
                 SUM(minutes) AS mins
          FROM basketball_test.lineup_four_factors_by_game
          WHERE lineup_hash IN (%s) AND team_id = $%d AND game_year = $%d
@@ -881,15 +886,17 @@ server_tab2 <- function(input, output, session, shared) {
         rename(off_pts = total_points, off_poss = total_poss,
                off_ts_poss = ts_poss_count, off_oreb = oreb_count,
                off_oreb_opp = oreb_opportunities, off_tov = tov_count,
-               off_fta = total_ft_attempts, off_fga = total_fga, off_mins = mins) %>%
+               off_fta = total_ft_attempts, off_fga = total_fga, off_fgm = total_fgm,
+               off_fg3m = total_fg3_made, off_mins = mins) %>%
         select(-type_lineup)
       def <- ff_data %>% filter(type_lineup == "defense") %>%
         rename(def_pts = total_points, def_poss = total_poss,
                def_ts_poss = ts_poss_count, def_oreb = oreb_count,
                def_oreb_opp = oreb_opportunities, def_tov = tov_count,
-               def_fta = total_ft_attempts, def_fga = total_fga) %>%
+               def_fta = total_ft_attempts, def_fga = total_fga, def_fgm = total_fgm,
+               def_fg3m = total_fg3_made) %>%
         select(game_id, def_pts, def_poss, def_ts_poss, def_oreb, def_oreb_opp,
-               def_tov, def_fta, def_fga)
+               def_tov, def_fta, def_fga, def_fgm, def_fg3m)
 
       combined <- off %>% full_join(def, by = "game_id") %>% mutate(
         off_poss = coalesce(off_poss, 0), def_poss = coalesce(def_poss, 0),
@@ -897,10 +904,12 @@ server_tab2 <- function(input, output, session, shared) {
         off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
         def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
         off_ts = ifelse(coalesce(off_ts_poss, 0) > 0, round(off_pts / (2 * off_ts_poss) * 100, 1), NA_real_),
+        off_efg = ifelse(coalesce(off_fga, 0) > 0, round((coalesce(off_fgm, 0) + 0.5 * coalesce(off_fg3m, 0)) / off_fga * 100, 1), NA_real_),
         off_oreb_pct = ifelse(coalesce(off_oreb_opp, 0) > 0, round(off_oreb / off_oreb_opp * 100, 1), NA_real_),
         off_tov_pct = ifelse(off_poss > 0, round(coalesce(off_tov, 0) / off_poss * 100, 1), NA_real_),
         off_ftr = ifelse(coalesce(off_fga, 0) > 0, round(coalesce(off_fta, 0) / off_fga * 100, 1), NA_real_),
         def_ts = ifelse(coalesce(def_ts_poss, 0) > 0, round(def_pts / (2 * def_ts_poss) * 100, 1), NA_real_),
+        def_efg = ifelse(coalesce(def_fga, 0) > 0, round((coalesce(def_fgm, 0) + 0.5 * coalesce(def_fg3m, 0)) / def_fga * 100, 1), NA_real_),
         def_oreb_pct = ifelse(coalesce(def_oreb_opp, 0) > 0, round(coalesce(def_oreb, 0) / def_oreb_opp * 100, 1), NA_real_),
         def_tov_pct = ifelse(def_poss > 0, round(coalesce(def_tov, 0) / def_poss * 100, 1), NA_real_),
         def_ftr = ifelse(coalesce(def_fga, 0) > 0, round(coalesce(def_fta, 0) / def_fga * 100, 1), NA_real_),
@@ -915,8 +924,8 @@ server_tab2 <- function(input, output, session, shared) {
 
       disp_ff <- combined %>% select(
         gn, game_date, opp_team_name, result, score_display,
-        off_ppp, off_ts, off_oreb_pct, off_tov_pct, off_ftr, off_poss,
-        def_ppp, def_ts, def_oreb_pct, def_tov_pct, def_ftr, def_poss,
+        off_ppp, off_efg, off_oreb_pct, off_tov_pct, off_ftr, off_poss,
+        def_ppp, def_efg, def_oreb_pct, def_tov_pct, def_ftr, def_poss,
         minutes
       )
 
@@ -955,13 +964,13 @@ server_tab2 <- function(input, output, session, shared) {
             th(class = "sub-head", "W/L"),
             th(class = "sub-head", "Score"),
             th(class = "sub-head section-left-border", "PPP"),
-            th(class = "sub-head", "TS%"),
+            th(class = "sub-head", "eFG%"),
             th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"),
             th(class = "sub-head", "TOV%"),
             th(class = "sub-head", "FTR"),
             th(class = "sub-head", "Poss"),
             th(class = "sub-head section-left-border", "PPP"),
-            th(class = "sub-head", "TS%"),
+            th(class = "sub-head", "eFG%"),
             th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"),
             th(class = "sub-head", "TOV%"),
             th(class = "sub-head", "FTR"),
@@ -980,8 +989,8 @@ server_tab2 <- function(input, output, session, shared) {
                                 columnDefs = col_defs_ff
                               ))
 
-        rate_cols_ff <- intersect(c("off_ts", "off_oreb_pct", "off_tov_pct", "off_ftr",
-                                    "def_ts", "def_oreb_pct", "def_tov_pct", "def_ftr"), names(disp_ff))
+        rate_cols_ff <- intersect(c("off_efg", "off_oreb_pct", "off_tov_pct", "off_ftr",
+                                    "def_efg", "def_oreb_pct", "def_tov_pct", "def_ftr"), names(disp_ff))
         ppp_cols_ff <- intersect(c("off_ppp", "def_ppp", "net_rtg"), names(disp_ff))
         if (length(rate_cols_ff)) dt_ff <- DT::formatRound(dt_ff, rate_cols_ff, 1)
         if (length(ppp_cols_ff))  dt_ff <- DT::formatRound(dt_ff, ppp_cols_ff, 1)

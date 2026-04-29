@@ -30,6 +30,7 @@ RETURNS TABLE (
     game_year      INT,
     team_name      TEXT,
     off_ts         NUMERIC,
+    off_efg        NUMERIC,
     off_oreb       NUMERIC,
     off_tov        NUMERIC,
     off_ftr        NUMERIC,
@@ -42,7 +43,10 @@ RETURNS TABLE (
     off_tov_cnt    INT,
     off_fta        INT,
     off_fga_cnt    INT,
+    off_fgm_cnt    INT,
+    off_fg3m_cnt   INT,
     def_ts         NUMERIC,
+    def_efg        NUMERIC,
     def_oreb       NUMERIC,
     def_tov        NUMERIC,
     def_ftr        NUMERIC,
@@ -55,6 +59,8 @@ RETURNS TABLE (
     def_tov_cnt    INT,
     def_fta        INT,
     def_fga_cnt    INT,
+    def_fgm_cnt    INT,
+    def_fg3m_cnt   INT,
     net_rtg        NUMERIC
 )
 LANGUAGE plpgsql
@@ -158,7 +164,7 @@ BEGIN
   clean_stats AS (
     SELECT
       d.id, d.game_id, d.team_id, d.team_score, d.type,
-      d.parameters_type, d.parameters_made, d.pct_ft,
+      d.parameters_type, d.parameters_made, d.parameters_points, d.pct_ft,
       d.parent_action_id, d.type_lineup,
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
@@ -218,6 +224,7 @@ BEGIN
       cs.type,
       cs.parameters_type,
       cs.parameters_made,
+      cs.parameters_points,
       cs.pct_ft,
       cs.parent_action_id,
       cf.parent_type,
@@ -248,7 +255,9 @@ BEGIN
       END)                     AS oreb_opportunities,
       COUNT(CASE WHEN cd.type = 'turnover' THEN 1 END) AS tov_count,
       COUNT(CASE WHEN cd.type = 'freeThrow' THEN 1 END) AS total_ft_attempts,
-      COUNT(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga
+      COUNT(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga,
+      COUNT(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
+      COUNT(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' AND cd.parameters_points = 3 THEN 1 END) AS total_fg3_made
     FROM combined_data cd
     GROUP BY cd.team_id, cd.game_year, cd.type_lineup
   ),
@@ -256,6 +265,7 @@ BEGIN
     SELECT
       ta.team_id, ta.game_year,
       ROUND(SUM(ta.total_points) FILTER (WHERE ta.type_lineup = 'offense')::numeric / (2.0 * NULLIF(SUM(ta.ts_poss_count) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric) * 100, 1) AS off_ts,
+      ROUND(((SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'offense')::numeric) + 0.5 * (SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'offense')::numeric)) / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_efg,
       ROUND(SUM(ta.oreb_count) FILTER (WHERE ta.type_lineup = 'offense')::numeric / NULLIF(SUM(ta.oreb_opportunities) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_oreb,
       ROUND(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'offense')::numeric / NULLIF(SUM(ta.total_poss) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_tov,
       ROUND(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'offense')::numeric / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_ftr,
@@ -268,7 +278,10 @@ BEGIN
       COALESCE(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_tov_cnt,
       COALESCE(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fta,
       COALESCE(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fga_cnt,
+      COALESCE(SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fgm_cnt,
+      COALESCE(SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fg3m_cnt,
       ROUND(SUM(ta.total_points) FILTER (WHERE ta.type_lineup = 'defense')::numeric / (2.0 * NULLIF(SUM(ta.ts_poss_count) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric) * 100, 1) AS def_ts,
+      ROUND(((SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'defense')::numeric) + 0.5 * (SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'defense')::numeric)) / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_efg,
       ROUND(SUM(ta.oreb_count) FILTER (WHERE ta.type_lineup = 'defense')::numeric / NULLIF(SUM(ta.oreb_opportunities) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_oreb,
       ROUND(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'defense')::numeric / NULLIF(SUM(ta.total_poss) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_tov,
       ROUND(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'defense')::numeric / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_ftr,
@@ -280,33 +293,35 @@ BEGIN
       COALESCE(SUM(ta.oreb_opportunities) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_oreb_opps,
       COALESCE(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_tov_cnt,
       COALESCE(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fta,
-      COALESCE(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt
+      COALESCE(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt,
+      COALESCE(SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fgm_cnt,
+      COALESCE(SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fg3m_cnt
     FROM team_agg ta
     GROUP BY ta.team_id, ta.game_year
   ),
   final_calc AS (
     SELECT
       p.team_id, p.game_year, fr.team_name,
-      p.off_ts, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
-      p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt,
-      p.def_ts, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
-      p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt,
+      p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
+      p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
+      p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
+      p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt,
       ROUND(p.off_ppp - p.def_ppp, 1) AS net_rtg
     FROM pivoted p
     JOIN basketball_test.full_rosters fr
       ON fr.game_year = p.game_year AND fr.team_id = p.team_id
     GROUP BY p.team_id, p.game_year, fr.team_name,
-             p.off_ts, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
-             p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt,
-             p.def_ts, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
-             p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt
+             p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
+             p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
+             p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
+             p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt
   )
   SELECT
     fc.team_id, fc.game_year, fc.team_name,
-    fc.off_ts, fc.off_oreb, fc.off_tov, fc.off_ftr, fc.off_ppp, fc.off_poss,
-    fc.off_pts, fc.off_ts_poss, fc.off_oreb_cnt, fc.off_oreb_opps, fc.off_tov_cnt, fc.off_fta, fc.off_fga_cnt,
-    fc.def_ts, fc.def_oreb, fc.def_tov, fc.def_ftr, fc.def_ppp, fc.def_poss,
-    fc.def_pts, fc.def_ts_poss, fc.def_oreb_cnt, fc.def_oreb_opps, fc.def_tov_cnt, fc.def_fta, fc.def_fga_cnt,
+    fc.off_ts, fc.off_efg, fc.off_oreb, fc.off_tov, fc.off_ftr, fc.off_ppp, fc.off_poss,
+    fc.off_pts, fc.off_ts_poss, fc.off_oreb_cnt, fc.off_oreb_opps, fc.off_tov_cnt, fc.off_fta, fc.off_fga_cnt, fc.off_fgm_cnt, fc.off_fg3m_cnt,
+    fc.def_ts, fc.def_efg, fc.def_oreb, fc.def_tov, fc.def_ftr, fc.def_ppp, fc.def_poss,
+    fc.def_pts, fc.def_ts_poss, fc.def_oreb_cnt, fc.def_oreb_opps, fc.def_tov_cnt, fc.def_fta, fc.def_fga_cnt, fc.def_fgm_cnt, fc.def_fg3m_cnt,
     fc.net_rtg
   FROM final_calc fc;
 
@@ -385,7 +400,9 @@ BEGIN
       SUM(lf.oreb_opportunities) AS oreb_opportunities,
       SUM(lf.tov_count)          AS tov_count,
       SUM(lf.total_ft_attempts)  AS total_ft_attempts,
-      SUM(lf.total_fga)          AS total_fga
+      SUM(lf.total_fga)          AS total_fga,
+      SUM(lf.total_fgm)          AS total_fgm,
+      SUM(lf.total_fg3_made)     AS total_fg3_made
     FROM basketball_test.lineup_four_factors_by_game lf
     JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
     WHERE lf.game_year = p_game_year
@@ -404,6 +421,7 @@ BEGIN
     SELECT
       ta.team_id, ta.game_year,
       ROUND(SUM(ta.total_points) FILTER (WHERE ta.type_lineup = 'offense')::numeric / (2.0 * NULLIF(SUM(ta.ts_poss_count) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric) * 100, 1) AS off_ts,
+      ROUND(((SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'offense')::numeric) + 0.5 * (SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'offense')::numeric)) / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_efg,
       ROUND(SUM(ta.oreb_count) FILTER (WHERE ta.type_lineup = 'offense')::numeric / NULLIF(SUM(ta.oreb_opportunities) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_oreb,
       ROUND(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'offense')::numeric / NULLIF(SUM(ta.total_poss) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_tov,
       ROUND(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'offense')::numeric / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'offense'), 0)::numeric * 100, 1) AS off_ftr,
@@ -416,7 +434,10 @@ BEGIN
       COALESCE(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_tov_cnt,
       COALESCE(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fta,
       COALESCE(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fga_cnt,
+      COALESCE(SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fgm_cnt,
+      COALESCE(SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'offense'), 0)::int4 AS off_fg3m_cnt,
       ROUND(SUM(ta.total_points) FILTER (WHERE ta.type_lineup = 'defense')::numeric / (2.0 * NULLIF(SUM(ta.ts_poss_count) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric) * 100, 1) AS def_ts,
+      ROUND(((SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'defense')::numeric) + 0.5 * (SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'defense')::numeric)) / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_efg,
       ROUND(SUM(ta.oreb_count) FILTER (WHERE ta.type_lineup = 'defense')::numeric / NULLIF(SUM(ta.oreb_opportunities) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_oreb,
       ROUND(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'defense')::numeric / NULLIF(SUM(ta.total_poss) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_tov,
       ROUND(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'defense')::numeric / NULLIF(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::numeric * 100, 1) AS def_ftr,
@@ -428,33 +449,35 @@ BEGIN
       COALESCE(SUM(ta.oreb_opportunities) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_oreb_opps,
       COALESCE(SUM(ta.tov_count) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_tov_cnt,
       COALESCE(SUM(ta.total_ft_attempts) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fta,
-      COALESCE(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt
+      COALESCE(SUM(ta.total_fga) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fga_cnt,
+      COALESCE(SUM(ta.total_fgm) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fgm_cnt,
+      COALESCE(SUM(ta.total_fg3_made) FILTER (WHERE ta.type_lineup = 'defense'), 0)::int4 AS def_fg3m_cnt
     FROM team_agg ta
     GROUP BY ta.team_id, ta.game_year
   ),
   final_calc AS (
     SELECT
       p.team_id, p.game_year, fr.team_name,
-      p.off_ts, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
-      p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt,
-      p.def_ts, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
-      p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt,
+      p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
+      p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
+      p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
+      p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt,
       ROUND(p.off_ppp - p.def_ppp, 1) AS net_rtg
     FROM pivoted p
     JOIN basketball_test.full_rosters fr
       ON fr.game_year = p.game_year AND fr.team_id = p.team_id
     GROUP BY p.team_id, p.game_year, fr.team_name,
-             p.off_ts, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
-             p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt,
-             p.def_ts, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
-             p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt
+             p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
+             p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
+             p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
+             p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt
   )
   SELECT
     fc.team_id, fc.game_year, fc.team_name,
-    fc.off_ts, fc.off_oreb, fc.off_tov, fc.off_ftr, fc.off_ppp, fc.off_poss,
-    fc.off_pts, fc.off_ts_poss, fc.off_oreb_cnt, fc.off_oreb_opps, fc.off_tov_cnt, fc.off_fta, fc.off_fga_cnt,
-    fc.def_ts, fc.def_oreb, fc.def_tov, fc.def_ftr, fc.def_ppp, fc.def_poss,
-    fc.def_pts, fc.def_ts_poss, fc.def_oreb_cnt, fc.def_oreb_opps, fc.def_tov_cnt, fc.def_fta, fc.def_fga_cnt,
+    fc.off_ts, fc.off_efg, fc.off_oreb, fc.off_tov, fc.off_ftr, fc.off_ppp, fc.off_poss,
+    fc.off_pts, fc.off_ts_poss, fc.off_oreb_cnt, fc.off_oreb_opps, fc.off_tov_cnt, fc.off_fta, fc.off_fga_cnt, fc.off_fgm_cnt, fc.off_fg3m_cnt,
+    fc.def_ts, fc.def_efg, fc.def_oreb, fc.def_tov, fc.def_ftr, fc.def_ppp, fc.def_poss,
+    fc.def_pts, fc.def_ts_poss, fc.def_oreb_cnt, fc.def_oreb_opps, fc.def_tov_cnt, fc.def_fta, fc.def_fga_cnt, fc.def_fgm_cnt, fc.def_fg3m_cnt,
     fc.net_rtg
   FROM final_calc fc;
 

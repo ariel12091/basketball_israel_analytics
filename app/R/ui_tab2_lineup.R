@@ -141,12 +141,12 @@ ui_tab2_lineup <- tabPanel(
           tab_explainer(
             id = "lineup_explainer_ff",
             title = "What This Tab Answers (Four Factors)",
-            intro = "Which lineup-level factors drive good or bad results? See each lineup's PPP, TS%, OREB%, TOV%, and FTR on offense and defense, plus minutes, possessions, and net rating.",
+            intro = "Which lineup-level factors drive good or bad results? See each lineup's PPP, eFG%, OREB%, TOV%, and FTR on offense and defense, plus minutes, possessions, and net rating.",
             bullets = c(
               "The TOTAL row at the top aggregates all lineups matching your filters - use it as a baseline.",
-              "Compare TS%, OREB%, TOV%, and FTR together; a single dominant factor often explains the PPP gap.",
+              "Compare eFG%, OREB%, TOV%, and FTR together; a single dominant factor often explains the PPP gap.",
               "Check MIN and POSS columns before concluding - small-sample lineups can show extreme rates.",
-              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% is driven by sustainable shot selection or a hot-hand streak."
+              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
             )
           ),
           tags$a(
@@ -166,7 +166,7 @@ ui_tab2_lineup <- tabPanel(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
                 tags$p(style = "margin-bottom: 6px;", "This Rishon Lezion lineup has Off PPP 109.6 vs Def PPP 111.8, giving Net -2.2."),
-                tags$p(style = "margin-bottom: 6px;", "Offense profile: TS% 50.5 and OREB% 33.8. Defense allows 111.8 PPP with opponents shooting 57.6 TS%."),
+                tags$p(style = "margin-bottom: 6px;", "Offense profile: eFG% 50.5 and OREB% 33.8. Defense allows 111.8 PPP with opponents shooting 57.6 eFG%."),
                 tags$p(style = "margin-bottom: 0;", "Workload is substantial (153.8 minutes, 560 total possessions), so factor-level interpretation is reliable.")
               ),
               div(

@@ -100,7 +100,7 @@ FILTER_TOOLTIPS <- c(
   "players_off"       = "Lineups must exclude all selected players",
   "min_poss_lineup"   = "Minimum total possessions required for the lineup, team, or compare side to appear",
   "view_summary"      = "PPP ratings and shooting splits",
-  "view_ff"           = "TS%, OREB%, TOV%, FTR breakdown",
+  "view_ff"           = "eFG%, OREB%, TOV%, FTR breakdown",
   "view_traditional"  = "Box-score counting stats"
 )
 
@@ -877,7 +877,7 @@ shared_head_tags <- function() {
       window.applyViewModeTooltips = function() {
         var viewTips = {
           'Summary': 'PPP ratings and shooting splits',
-          'Four Factors': 'TS%, OREB%, TOV%, FTR breakdown',
+          'Four Factors': 'eFG%, OREB%, TOV%, FTR breakdown',
           'Traditional': 'Box-score counting stats'
         };
         $('.view-mode-container .radio label, .view-mode-container .shiny-options-group label').each(function() {

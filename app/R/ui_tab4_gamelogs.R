@@ -48,7 +48,7 @@ ui_tab4_gamelogs <- tabPanel(
               "Each row shows GN, Game Type, Date, Team, Opponent, W/L, Score, Off PPP, Def PPP, Net, Off Shot, Def Shot, Off Poss, and Def Poss.",
               "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy \u2014 use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
               "Compare Off PPP and Def PPP across games to spot trends; the score alone can mislead when pace varies.",
-              "Switch to Four Factors view if you need the cause-level breakdown (TS%, OREB%, TOV%, FTR)."
+              "Switch to Four Factors view if you need the cause-level breakdown (eFG%, OREB%, TOV%, FTR)."
             )
           ),
           tags$a(
@@ -84,12 +84,12 @@ ui_tab4_gamelogs <- tabPanel(
           tab_explainer(
             id = "gamelogs_explainer_ff",
             title = "What This Tab Answers (Four Factors)",
-            intro = "Which four-factor components drove each single-game result? Each row shows one game with GN, date, teams, W/L, score, and the full PPP + TS% + OREB% + TOV% + FTR breakdown for both offense and defense.",
+            intro = "Which four-factor components drove each single-game result? Each row shows one game with GN, date, teams, W/L, score, and the full PPP + eFG% + OREB% + TOV% + FTR breakdown for both offense and defense.",
             bullets = c(
-              "Scan TS%, OREB%, TOV%, and FTR together to diagnose why a game was won or lost.",
+              "Scan eFG%, OREB%, TOV%, and FTR together to diagnose why a game was won or lost.",
               "Compare offense and defense factor columns side by side \u2014 a win can mask poor defense if offense was exceptional.",
               "Look for patterns across games: consistent factor profiles suggest sustainability, while one-off spikes may be variance.",
-              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% game was driven by sustainable shot selection or a hot-hand streak."
+              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% game was driven by sustainable shot selection or a hot-hand streak."
             )
           ),
           tags$a(
@@ -108,9 +108,9 @@ ui_tab4_gamelogs <- tabPanel(
               div(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
-                tags$p(style = "margin-bottom: 6px;", "GN 17 (Bnei Herzliya vs Hapoel Galil Elion, 105-89) shows strong offense: PPP 128.0 with TS% 63.3."),
-                tags$p(style = "margin-bottom: 6px;", "Defense was solid too: PPP allowed 107.2 with opponent TS% 57.8 and FTR 50.8 (opponents got to the line frequently)."),
-                tags$p(style = "margin-bottom: 0;", "The split across TS%, OREB%, TOV%, and FTR shows offense carried this win, despite allowing a high free-throw rate.")
+                tags$p(style = "margin-bottom: 6px;", "GN 17 (Bnei Herzliya vs Hapoel Galil Elion, 105-89) shows strong offense: PPP 128.0 with eFG% 63.3."),
+                tags$p(style = "margin-bottom: 6px;", "Defense was solid too: PPP allowed 107.2 with opponent eFG% 57.8 and FTR 50.8 (opponents got to the line frequently)."),
+                tags$p(style = "margin-bottom: 0;", "The split across eFG%, OREB%, TOV%, and FTR shows offense carried this win, despite allowing a high free-throw rate.")
               ),
               div(
                 class = "example-snippet",

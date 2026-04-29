@@ -147,12 +147,12 @@ ui_tab1_onoff <- tabPanel(
           tab_explainer(
             id = "onoff_explainer_ff",
             title = "What This Tab Answers (Four Factors)",
-            intro = "Why is a player's on/off impact happening? Break down the Net diff into shooting (TS%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends.",
+            intro = "Why is a player's on/off impact happening? Break down the Net diff into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends.",
             bullets = c(
               "Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider.",
               "Read Offense Impact and Defense Impact blocks separately \u2014 a player can help on one end and hurt on the other.",
               "Gray (unranked) cells mean fewer than 100 on-court possessions; factor diffs from small samples are unreliable.",
-              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high TS% is driven by sustainable shot selection or a hot-hand streak."
+              "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
             )
           ),
           tags$a(
@@ -172,7 +172,7 @@ ui_tab1_onoff <- tabPanel(
                 class = "example-card",
                 div(class = "example-card-title", "How to Read Four Factors (Real Example)"),
                 tags$p(style = "margin-bottom: 6px;", "Jimmy Clark III (Maccabi Tel Aviv) shows Diff +28.1 with Off Diff +14.4 and Def Diff -13.7."),
-                tags$p(style = "margin-bottom: 6px;", "Offense factors: TS% Diff +7.7 explains most of the offensive edge, while OREB% Diff -1.3 is slightly negative."),
+                tags$p(style = "margin-bottom: 6px;", "Offense factors: eFG% Diff +7.7 explains most of the offensive edge, while OREB% Diff -1.3 is slightly negative."),
                 tags$p(style = "margin-bottom: 0;", "Defense factors: OREB% Diff +2.2 and TOV% Diff +5.8 show opponents rebound and turn the ball over more with Clark on court.")
               ),
               div(

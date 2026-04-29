@@ -22,6 +22,7 @@ WITH sched AS (
             d.type,
             d.parameters_type,
             d.parameters_made,
+            d.parameters_points,
             d.pct_ft,
             d.parent_action_id,
             d.type_lineup,
@@ -49,6 +50,7 @@ WITH sched AS (
             cs.type,
             cs.parameters_type,
             cs.parameters_made,
+            cs.parameters_points,
             cs.pct_ft,
             cs.parent_action_id,
             cf.parent_type,
@@ -99,7 +101,17 @@ WITH sched AS (
                 CASE
                     WHEN cd.type = 'shot'::text THEN 1
                     ELSE NULL::integer
-                END) AS total_fga
+                END) AS total_fga,
+            count(
+                CASE
+                    WHEN cd.type = 'shot'::text AND cd.parameters_made = 'made'::text THEN 1
+                    ELSE NULL::integer
+                END) AS total_fgm,
+            count(
+                CASE
+                    WHEN cd.type = 'shot'::text AND cd.parameters_made = 'made'::text AND cd.parameters_points = 3 THEN 1
+                    ELSE NULL::integer
+                END) AS total_fg3_made
            FROM combined_data cd
           GROUP BY cd.player_id, cd.team_id, cd.game_year, cd.is_on_key, cd.type_lineup
         ), calc_rates AS (
@@ -116,7 +128,10 @@ WITH sched AS (
             a.tov_count,
             a.total_ft_attempts,
             a.total_fga,
+            a.total_fgm,
+            a.total_fg3_made,
             a.total_points / (2.0 * NULLIF(a.ts_poss_count, 0)::numeric) AS ts_pct,
+            (a.total_fgm + 0.5 * a.total_fg3_made)::numeric / NULLIF(a.total_fga, 0)::numeric AS efg_pct,
             a.oreb_count::numeric / NULLIF(a.oreb_opportunities, 0)::numeric AS oreb_pct,
             a.tov_count::numeric / NULLIF(a.total_poss, 0)::numeric AS tov_pct,
             a.total_ft_attempts::numeric / NULLIF(a.total_fga, 0)::numeric AS ft_rate
@@ -155,6 +170,16 @@ WITH sched AS (
                     WHEN calc_rates.type_lineup = 'offense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.ts_pct
                     ELSE NULL::numeric
                 END) AS off_off_ts,
+            max(
+                CASE
+                    WHEN calc_rates.type_lineup = 'offense'::text AND calc_rates.is_on_key = 1 THEN calc_rates.efg_pct
+                    ELSE NULL::numeric
+                END) AS off_on_efg,
+            max(
+                CASE
+                    WHEN calc_rates.type_lineup = 'offense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.efg_pct
+                    ELSE NULL::numeric
+                END) AS off_off_efg,
             max(
                 CASE
                     WHEN calc_rates.type_lineup = 'offense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.oreb_pct
@@ -207,6 +232,16 @@ WITH sched AS (
                 END) AS def_off_ts,
             max(
                 CASE
+                    WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 1 THEN calc_rates.efg_pct
+                    ELSE NULL::numeric
+                END) AS def_on_efg,
+            max(
+                CASE
+                    WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.efg_pct
+                    ELSE NULL::numeric
+                END) AS def_off_efg,
+            max(
+                CASE
                     WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.oreb_pct
                     ELSE NULL::numeric
                 END) AS def_off_oreb,
@@ -232,35 +267,43 @@ WITH sched AS (
             p.team_id,
             p.game_year,
             p.off_on_ts,
+            p.off_on_efg,
             p.off_on_oreb,
             p.off_on_tov,
             p.off_on_ftr,
             p.off_on_poss,
             p.off_off_ts,
+            p.off_off_efg,
             p.off_off_oreb,
             p.off_off_tov,
             p.off_off_ftr,
             p.off_off_poss,
             p.def_on_ts,
+            p.def_on_efg,
             p.def_on_oreb,
             p.def_on_tov,
             p.def_on_ftr,
             p.def_on_poss,
             p.def_off_ts,
+            p.def_off_efg,
             p.def_off_oreb,
             p.def_off_tov,
             p.def_off_ftr,
             p.def_off_poss,
+            p.off_on_efg - p.off_off_efg AS diff_off_efg,
             p.off_on_ts - p.off_off_ts AS diff_off_ts,
             p.off_on_oreb - p.off_off_oreb AS diff_off_oreb,
             p.off_on_tov - p.off_off_tov AS diff_off_tov,
             p.off_on_ftr - p.off_off_ftr AS diff_off_ftr,
+            p.def_on_efg - p.def_off_efg AS diff_def_efg,
             p.def_on_ts - p.def_off_ts AS diff_def_ts,
             p.def_on_oreb - p.def_off_oreb AS diff_def_oreb,
             p.def_on_tov - p.def_off_tov AS diff_def_tov,
             p.def_on_ftr - p.def_off_ftr AS diff_def_ftr,
+            percent_rank() OVER (PARTITION BY p.game_year ORDER BY (p.off_on_efg - p.off_off_efg)) AS pr_diff_off_efg,
             percent_rank() OVER (PARTITION BY p.game_year ORDER BY (p.off_on_ts - p.off_off_ts)) AS pr_diff_off_ts,
             percent_rank() OVER (PARTITION BY p.game_year ORDER BY (p.off_on_oreb - p.off_off_oreb)) AS pr_diff_off_oreb,
+            percent_rank() OVER (PARTITION BY p.game_year ORDER BY (p.def_on_efg - p.def_off_efg) DESC) AS pr_diff_def_efg,
             percent_rank() OVER (PARTITION BY p.game_year ORDER BY (p.def_on_ts - p.def_off_ts) DESC) AS pr_diff_def_ts
            FROM pivoted p
         ), roster_names AS (
@@ -290,6 +333,10 @@ WITH sched AS (
             fr.off_off_ts,
             fr.def_on_ts,
             fr.def_off_ts,
+            fr.off_on_efg,
+            fr.off_off_efg,
+            fr.def_on_efg,
+            fr.def_off_efg,
             fr.off_on_oreb,
             fr.off_off_oreb,
             fr.def_on_oreb,
@@ -306,16 +353,20 @@ WITH sched AS (
             fr.off_off_poss,
             fr.def_on_poss,
             fr.def_off_poss,
+            round(fr.diff_off_efg * 100::numeric, 1) AS "Off eFG% Diff",
             round(fr.diff_off_ts * 100::numeric, 1) AS "Off TS% Diff",
             round(fr.diff_off_oreb * 100::numeric, 1) AS "Off OREB% Diff",
             round(fr.diff_off_tov * 100::numeric, 1) AS "Off TOV% Diff",
             round(fr.diff_off_ftr * 100::numeric, 1) AS "Off FTR Diff",
+            round(fr.diff_def_efg * 100::numeric, 1) AS "Def eFG% Diff",
             round(fr.diff_def_ts * 100::numeric, 1) AS "Def TS% Diff",
             round(fr.diff_def_oreb * 100::numeric, 1) AS "Def OREB% Diff",
             round(fr.diff_def_tov * 100::numeric, 1) AS "Def TOV% Diff",
             round(fr.diff_def_ftr * 100::numeric, 1) AS "Def FTR Diff",
+            fr.pr_diff_off_efg,
             fr.pr_diff_off_ts,
             fr.pr_diff_off_oreb,
+            fr.pr_diff_def_efg,
             fr.pr_diff_def_ts
            FROM final_rows fr
              JOIN roster_names r
@@ -333,6 +384,10 @@ SELECT player_id,
     off_off_ts,
     def_on_ts,
     def_off_ts,
+    off_on_efg,
+    off_off_efg,
+    def_on_efg,
+    def_off_efg,
     off_on_oreb,
     off_off_oreb,
     def_on_oreb,
@@ -349,19 +404,23 @@ SELECT player_id,
     off_off_poss,
     def_on_poss,
     def_off_poss,
+    "Off eFG% Diff",
     "Off TS% Diff",
     "Off OREB% Diff",
     "Off TOV% Diff",
     "Off FTR Diff",
+    "Def eFG% Diff",
     "Def TS% Diff",
     "Def OREB% Diff",
     "Def TOV% Diff",
     "Def FTR Diff",
+    pr_diff_off_efg,
     pr_diff_off_ts,
     pr_diff_off_oreb,
+    pr_diff_def_efg,
     pr_diff_def_ts
    FROM final_names
-  ORDER BY "Off TS% Diff" DESC
+  ORDER BY "Off eFG% Diff" DESC
 ;
 
 CREATE INDEX idx_pas_year ON basketball_test.player_advanced_stats_mv (game_year);
