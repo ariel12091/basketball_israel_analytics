@@ -20,6 +20,74 @@
 })();
 
 (function() {
+  function sendShinyEvent(inputId, value) {
+    if (!inputId || !window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    window.Shiny.setInputValue(inputId, value === undefined ? Math.random() : value, { priority: "event" });
+  }
+
+  document.addEventListener("click", function(e) {
+    var eventEl = e.target.closest("[data-shiny-event], .js-shiny-event");
+    if (eventEl) {
+      e.preventDefault();
+      var value = Object.prototype.hasOwnProperty.call(eventEl.dataset, "shinyValue")
+        ? eventEl.dataset.shinyValue
+        : undefined;
+      sendShinyEvent(eventEl.dataset.shinyEvent || eventEl.dataset.inputId, value);
+      return;
+    }
+
+    var clickTargetEl = e.target.closest("[data-click-target]");
+    if (clickTargetEl) {
+      e.preventDefault();
+      var target = document.getElementById(clickTargetEl.dataset.clickTarget);
+      if (target) target.click();
+      return;
+    }
+
+    var toggleAllEl = e.target.closest(".js-accordion-toggle-all");
+    if (toggleAllEl) {
+      e.preventDefault();
+      var acc = toggleAllEl.parentElement ? toggleAllEl.parentElement.nextElementSibling : null;
+      if (!acc) return;
+      var items = acc.querySelectorAll(".accordion-collapse");
+      var anyOpen = Array.prototype.some.call(items, function(el) {
+        return el.classList.contains("show");
+      });
+      items.forEach(function(el) {
+        if (anyOpen) {
+          el.classList.remove("show");
+        } else {
+          el.classList.add("show");
+        }
+      });
+      return;
+    }
+
+    var explainerEl = e.target.closest(".js-explainer-toggle");
+    if (explainerEl) {
+      e.preventDefault();
+      if (!window.bootstrap || !window.bootstrap.Collapse) return;
+      var body = document.getElementById(explainerEl.dataset.targetId);
+      if (body) window.bootstrap.Collapse.getOrCreateInstance(body).toggle();
+
+      var card = explainerEl.closest(".explainer-card");
+      var sib = card ? card.nextElementSibling : null;
+      while (sib) {
+        if (sib.classList && sib.classList.contains("collapse")) {
+          window.bootstrap.Collapse.getOrCreateInstance(sib).toggle();
+          break;
+        }
+        if (sib.querySelector && sib.querySelector(".collapse")) {
+          window.bootstrap.Collapse.getOrCreateInstance(sib.querySelector(".collapse")).toggle();
+          break;
+        }
+        sib = sib.nextElementSibling;
+      }
+    }
+  });
+})();
+
+(function() {
   var lastSent = 0;
   var minIntervalMs = 15000;
 

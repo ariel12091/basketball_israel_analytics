@@ -995,9 +995,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       cls <- if (identical(val, cur)) "btn btn-sm btn-warning" else "btn btn-sm btn-outline-secondary"
       tags$button(
         type = "button",
-        class = cls,
+        class = paste(cls, "js-shiny-event"),
         style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
-        onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})", input_id, val),
+        `data-input-id` = input_id,
+        `data-shiny-value` = val,
         nm
       )
     })
@@ -2279,8 +2280,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Entity selected but no data (e.g. filters exclude it)
     if (is.null(data) && !is.null(entity)) {
       return(tags$div(class = "detail-container",
-        tags$div(class = "cmp-back-btn",
-          onclick = "Shiny.setInputValue('cmp_detail_back', Math.random(), {priority: 'event'})",
+        tags$div(class = "cmp-back-btn js-shiny-event",
+          `data-input-id` = "cmp_detail_back",
           "\u2190 Back to league view"),
         tags$div(class = "text-muted text-center mt-4",
           "No data for this entity with current filters.")))
@@ -2407,8 +2408,8 @@ server_tab7_compare <- function(input, output, session, shared) {
         tagList(
       tags$style(DETAIL_CSS),
       tags$div(class = "detail-container",
-        tags$div(class = "cmp-back-btn",
-          onclick = "Shiny.setInputValue('cmp_detail_back', Math.random(), {priority: 'event'})",
+        tags$div(class = "cmp-back-btn js-shiny-event",
+          `data-input-id` = "cmp_detail_back",
           "\u2190 Back to league view"),
         tags$div(class = "cmp-team-header", data$entity_name),
         tags$div(class = "cmp-team-subheader",

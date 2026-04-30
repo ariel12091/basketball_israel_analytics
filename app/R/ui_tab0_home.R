@@ -39,11 +39,8 @@ ui_tab0_home <- tabPanel(
           width = 6,
           tags$button(
             type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0",
-            style = "cursor: pointer; border: 1px solid #30363d; transition: border-color .15s;",
-            onclick = "Shiny.setInputValue('go_onoff', Math.random(), {priority: 'event'})",
-            onmouseenter = "this.style.borderColor='#e8a435'",
-            onmouseleave = "this.style.borderColor='#30363d'",
+            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+            `data-input-id` = "go_onoff",
             div(
               class = "card-body d-flex flex-column gap-2",
               tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: #e8a435;"),
@@ -58,11 +55,8 @@ ui_tab0_home <- tabPanel(
           width = 6,
           tags$button(
             type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0",
-            style = "cursor: pointer; border: 1px solid #30363d; transition: border-color .15s;",
-            onclick = "Shiny.setInputValue('go_lineups', Math.random(), {priority: 'event'})",
-            onmouseenter = "this.style.borderColor='#e8a435'",
-            onmouseleave = "this.style.borderColor='#30363d'",
+            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+            `data-input-id` = "go_lineups",
             div(
               class = "card-body d-flex flex-column gap-2",
               tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: #e8a435;"),
@@ -81,11 +75,8 @@ ui_tab0_home <- tabPanel(
           width = 6,
           tags$button(
             type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0",
-            style = "cursor: pointer; border: 1px solid #30363d; transition: border-color .15s;",
-            onclick = "Shiny.setInputValue('go_team', Math.random(), {priority: 'event'})",
-            onmouseenter = "this.style.borderColor='#e8a435'",
-            onmouseleave = "this.style.borderColor='#30363d'",
+            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+            `data-input-id` = "go_team",
             div(
               class = "card-body d-flex flex-column gap-2",
               tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: #e8a435;"),
@@ -100,11 +91,8 @@ ui_tab0_home <- tabPanel(
           width = 6,
           tags$button(
             type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0",
-            style = "cursor: pointer; border: 1px solid #30363d; transition: border-color .15s;",
-            onclick = "Shiny.setInputValue('go_gamelogs', Math.random(), {priority: 'event'})",
-            onmouseenter = "this.style.borderColor='#e8a435'",
-            onmouseleave = "this.style.borderColor='#30363d'",
+            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+            `data-input-id` = "go_gamelogs",
             div(
               class = "card-body d-flex flex-column gap-2",
               tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: #e8a435;"),
@@ -123,11 +111,8 @@ ui_tab0_home <- tabPanel(
           width = 6,
           tags$button(
             type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0",
-            style = "cursor: pointer; border: 1px solid #30363d; transition: border-color .15s;",
-            onclick = "Shiny.setInputValue('go_playerstats', Math.random(), {priority: 'event'})",
-            onmouseenter = "this.style.borderColor='#e8a435'",
-            onmouseleave = "this.style.borderColor='#30363d'",
+            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+            `data-input-id` = "go_playerstats",
             div(
               class = "card-body d-flex flex-column gap-2",
               tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: #e8a435;"),
@@ -142,11 +127,8 @@ ui_tab0_home <- tabPanel(
           width = 6,
           tags$button(
             type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0",
-            style = "cursor: pointer; border: 1px solid #30363d; transition: border-color .15s;",
-            onclick = "Shiny.setInputValue('go_compare', Math.random(), {priority: 'event'})",
-            onmouseenter = "this.style.borderColor='#e8a435'",
-            onmouseleave = "this.style.borderColor='#30363d'",
+            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+            `data-input-id` = "go_compare",
             div(
               class = "card-body d-flex flex-column gap-2",
               tags$i(class = "bi bi-arrow-left-right", style = "font-size: 2rem; color: #e8a435;"),

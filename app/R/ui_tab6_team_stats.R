@@ -58,9 +58,8 @@ ui_tab6_team_stats <- tabPanel(
             class = "text-end mb-2",
             tags$a(
               href = "#",
-              class = "small text-muted fw-bold",
+              class = "small text-muted fw-bold js-accordion-toggle-all",
               style = "text-decoration: none;",
-              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
               "Collapse/Expand All"
             )
           ),
