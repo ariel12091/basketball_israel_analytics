@@ -65,7 +65,11 @@ server_tab1 <- function(input, output, session, shared) {
       query_fun = function() {
         db_get_query(
           pg_pool,
-          sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
+          "SELECT DISTINCT gn
+             FROM basketball_test.final_schedule_mv
+            WHERE game_year = $1::int4
+            ORDER BY gn",
+          params = list(gy_int)
         )
       }
     )
@@ -485,7 +489,10 @@ server_tab1 <- function(input, output, session, shared) {
   advanced_result_df <- reactive({
     gy <- as.integer(shared$selected_game_year())
     db_get_query(pg_pool,
-      sprintf("SELECT * FROM basketball_test.player_advanced_stats_mv WHERE game_year = %d", gy))
+      "SELECT *
+         FROM basketball_test.player_advanced_stats_mv
+        WHERE game_year = $1::int4",
+      params = list(gy))
   })
 
   # --- Full ranked Four Factors data (ranks computed BEFORE any user filtering) ---

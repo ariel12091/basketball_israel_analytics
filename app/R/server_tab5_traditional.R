@@ -751,14 +751,17 @@ server_tab5_traditional <- function(input, output, session, shared) {
       op_sym <- if (identical(f$op, "ge")) "\u2265" else "\u2264"
       val_txt <- format(f$value, big.mark = ",", trim = TRUE)
       label <- sprintf("%s %s %s", f$label, op_sym, val_txt)
-      js <- sprintf(
-        "Shiny.setInputValue('ts_remove_stat_filter', '%d', {priority:'event'}); return false;",
-        as.integer(f$id)
-      )
       tags$span(
         class = "filter-chip chip-stat",
         label, " ",
-        tags$a(href = "#", onclick = js, style = "margin-left:4px;color:inherit;", "\u00d7")
+        tags$a(
+          href = "#",
+          class = "js-shiny-event",
+          `data-input-id` = "ts_remove_stat_filter",
+          `data-shiny-value` = as.character(as.integer(f$id)),
+          style = "margin-left:4px;color:inherit;",
+          "\u00d7"
+        )
       )
     })
 

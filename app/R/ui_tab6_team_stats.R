@@ -41,7 +41,11 @@ ui_tab6_team_stats <- tabPanel(
             )
           ),
           tags$hr(),
-          dateRangeInput("tst_dates", "Date range", start = NA, end = NA),
+          dateRangeInput(
+            "tst_dates", "Date range",
+            start = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$start,
+            end = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$end
+          ),
           selectizeInput("tst_teams", "Teams", choices = NULL, selected = character(0), multiple = TRUE,
                          options = list(placeholder = "All teams")),
           checkboxInput("tst_clutch_enabled", tt("Clutch", "clutch"), value = FALSE),
@@ -58,9 +62,8 @@ ui_tab6_team_stats <- tabPanel(
             class = "text-end mb-2",
             tags$a(
               href = "#",
-              class = "small text-muted fw-bold",
+              class = "small text-muted fw-bold js-accordion-toggle-all",
               style = "text-decoration: none;",
-              onclick = "var acc=this.parentElement.nextElementSibling; if(!acc) return false; var items=acc.querySelectorAll('.accordion-collapse'); var anyOpen=false; items.forEach(function(el){ if(el.classList.contains('show')) anyOpen=true; }); items.forEach(function(el){ if(anyOpen){ el.classList.remove('show'); } else { el.classList.add('show'); }}); return false;",
               "Collapse/Expand All"
             )
           ),

@@ -803,8 +803,14 @@ server_tab7_compare <- function(input, output, session, shared) {
       {
         teams_df <- cached_ref_query(
           key = sprintf("cmp_teams_%d", as.integer(game_year)),
-          query_fun = function() db_get_query(pg_pool, sprintf(
-            "SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", as.integer(game_year)))
+          query_fun = function() db_get_query(
+            pg_pool,
+            "SELECT DISTINCT team_id, team_name
+               FROM basketball_test.full_rosters
+              WHERE game_year = $1::int4
+              ORDER BY team_name",
+            params = list(as.integer(game_year))
+          )
         )
         normalize_teams_ref(teams_df)
       },
@@ -818,8 +824,17 @@ server_tab7_compare <- function(input, output, session, shared) {
       {
         players_df <- cached_ref_query(
           key = sprintf("cmp_players_%d", as.integer(game_year)),
-          query_fun = function() db_get_query(pg_pool, sprintf(
-            "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", as.integer(game_year)))
+          query_fun = function() db_get_query(
+            pg_pool,
+            "SELECT team_id,
+                    player_id,
+                    MIN(btrim(firstname)||' '||btrim(lastname)) AS name
+               FROM basketball_test.full_rosters
+              WHERE game_year = $1::int4
+              GROUP BY team_id, player_id
+              ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
+            params = list(as.integer(game_year))
+          )
         )
         normalize_players_ref(players_df)
       },
@@ -832,8 +847,14 @@ server_tab7_compare <- function(input, output, session, shared) {
       "load_cmp_gn_ref",
       cached_ref_query(
         key = sprintf("cmp_gn_%d", as.integer(game_year)),
-        query_fun = function() db_get_query(pg_pool, sprintf(
-          "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", as.integer(game_year)))
+        query_fun = function() db_get_query(
+          pg_pool,
+          "SELECT DISTINCT gn
+             FROM basketball_test.final_schedule_mv
+            WHERE game_year = $1::int4
+            ORDER BY gn",
+          params = list(as.integer(game_year))
+        )
       ),
       extra = function(res) sprintf("game_year=%s;rows=%d", as.integer(game_year), NROW(res))
     )
@@ -974,9 +995,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       cls <- if (identical(val, cur)) "btn btn-sm btn-warning" else "btn btn-sm btn-outline-secondary"
       tags$button(
         type = "button",
-        class = cls,
+        class = paste(cls, "js-shiny-event"),
         style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
-        onclick = sprintf("Shiny.setInputValue('%s', '%s', {priority: 'event'})", input_id, val),
+        `data-input-id` = input_id,
+        `data-shiny-value` = val,
         nm
       )
     })
@@ -2258,8 +2280,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Entity selected but no data (e.g. filters exclude it)
     if (is.null(data) && !is.null(entity)) {
       return(tags$div(class = "detail-container",
-        tags$div(class = "cmp-back-btn",
-          onclick = "Shiny.setInputValue('cmp_detail_back', Math.random(), {priority: 'event'})",
+        tags$div(class = "cmp-back-btn js-shiny-event",
+          `data-input-id` = "cmp_detail_back",
           "\u2190 Back to league view"),
         tags$div(class = "text-muted text-center mt-4",
           "No data for this entity with current filters.")))
@@ -2386,8 +2408,8 @@ server_tab7_compare <- function(input, output, session, shared) {
         tagList(
       tags$style(DETAIL_CSS),
       tags$div(class = "detail-container",
-        tags$div(class = "cmp-back-btn",
-          onclick = "Shiny.setInputValue('cmp_detail_back', Math.random(), {priority: 'event'})",
+        tags$div(class = "cmp-back-btn js-shiny-event",
+          `data-input-id` = "cmp_detail_back",
           "\u2190 Back to league view"),
         tags$div(class = "cmp-team-header", data$entity_name),
         tags$div(class = "cmp-team-subheader",

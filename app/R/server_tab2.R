@@ -35,8 +35,15 @@ server_tab2 <- function(input, output, session, shared) {
 
     teams_ld <- cached_ref_query(
       key = sprintf("ld_teams_%d", gy_int),
-      query_fun = function() db_get_query(pg_pool, sprintf(
-        "SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int))
+      query_fun = function() db_get_query(
+        pg_pool,
+        "SELECT DISTINCT team_id, MIN(team_name) AS team_name
+           FROM basketball_test.full_rosters
+          WHERE game_year = $1::int4
+          GROUP BY team_id
+          ORDER BY MIN(team_name)",
+        params = list(gy_int)
+      )
     )
     ld_ref$teams <- teams_ld
     pending_team <- shared$pending_ld_team()
@@ -49,8 +56,17 @@ server_tab2 <- function(input, output, session, shared) {
 
     players_map <- cached_ref_query(
       key = sprintf("ld_players_%d", gy_int),
-      query_fun = function() db_get_query(pg_pool, sprintf(
-        "SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int))
+      query_fun = function() db_get_query(
+        pg_pool,
+        "SELECT team_id,
+                player_id,
+                MIN(btrim(firstname)||' '||btrim(lastname)) AS name
+           FROM basketball_test.full_rosters
+          WHERE game_year = $1::int4
+          GROUP BY team_id, player_id
+          ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
+        params = list(gy_int)
+      )
     )
     ld_ref$players <- players_map
 
@@ -58,8 +74,14 @@ server_tab2 <- function(input, output, session, shared) {
 
     gn_df <- cached_ref_query(
       key = sprintf("ld_gn_%d", gy_int),
-      query_fun = function() db_get_query(pg_pool, sprintf(
-        "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int))
+      query_fun = function() db_get_query(
+        pg_pool,
+        "SELECT DISTINCT gn
+           FROM basketball_test.final_schedule_mv
+          WHERE game_year = $1::int4
+          ORDER BY gn",
+        params = list(gy_int)
+      )
     )
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "ld", gn_vals)
@@ -577,7 +599,8 @@ server_tab2 <- function(input, output, session, shared) {
            if (row[0] === 0) return data;
            var hash = row[%d];
            var tid = row[%d];
-           return '<a href=\"#\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
+           var esc = function(x) { return $('<div/>').text(x == null ? '' : String(x)).html(); };
+           return '<a href=\"#\" class=\"ld-lineup-link\" data-hash=\"' + esc(hash) + '\" data-team-id=\"' + esc(tid) + '\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\">' + esc(data) + '</a>';
          }", ff_hash_idx, ff_tid_idx))
 
       col_defs <- list(
@@ -590,6 +613,17 @@ server_tab2 <- function(input, output, session, shared) {
       if (length(minutes_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = minutes_idx, className = "section-left-border dt-center")
 
       dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE, escape = FALSE,
+                          callback = DT::JS(
+                            "table.on('click', 'a.ld-lineup-link', function(e) {
+                               e.preventDefault();
+                               var tid = parseInt(this.dataset.teamId, 10);
+                               Shiny.setInputValue('ld_lineup_click', {
+                                 hash: this.dataset.hash,
+                                 team_id: isNaN(tid) ? null : tid,
+                                 ts: Date.now()
+                               }, {priority: 'event'});
+                             });"
+                          ),
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
@@ -788,14 +822,33 @@ server_tab2 <- function(input, output, session, shared) {
            if (row[0] === 0) return data;
            var hash = row[%d];
            var tid = row[%d];
-           return '<a href=\"#\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\" onclick=\"Shiny.setInputValue(\\'ld_lineup_click\\', {hash: \\'' + hash + '\\', team_id: ' + tid + ', ts: Date.now()}, {priority: \\'event\\'}); return false;\">' + data + '</a>';
+           var esc = function(x) { return $('<div/>').text(x == null ? '' : String(x)).html(); };
+           return '<a href=\"#\" class=\"ld-lineup-link\" data-hash=\"' + esc(hash) + '\" data-team-id=\"' + esc(tid) + '\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\">' + esc(data) + '</a>';
          }", sum_hash_idx, sum_tid_idx))
 
       all_col_defs <- c(list(list(targets = hidden_indices, visible = FALSE),
                              list(targets = sum_players_idx, render = sum_players_render)),
                         shot_col_defs)
 
-      dt <- DT::datatable(df, colnames = final_labels, rownames = FALSE, escape = FALSE, filter = "top", options = list(headerCallback = HEADER_TOOLTIP_JS, pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)) |>
+      dt <- DT::datatable(
+        df,
+        colnames = final_labels,
+        rownames = FALSE,
+        escape = FALSE,
+        filter = "top",
+        callback = DT::JS(
+          "table.on('click', 'a.ld-lineup-link', function(e) {
+             e.preventDefault();
+             var tid = parseInt(this.dataset.teamId, 10);
+             Shiny.setInputValue('ld_lineup_click', {
+               hash: this.dataset.hash,
+               team_id: isNaN(tid) ? null : tid,
+               ts: Date.now()
+             }, {priority: 'event'});
+           });"
+        ),
+        options = list(headerCallback = HEADER_TOOLTIP_JS, pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)
+      ) |>
         DT::formatRound(c("off_ppp", "def_ppp", "net_rtg", "minutes")[c("off_ppp", "def_ppp", "net_rtg", "minutes") %in% names(df)], 1) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
