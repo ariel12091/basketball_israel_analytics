@@ -95,13 +95,7 @@ server <- function(input, output, session) {
   })
 
   # ---- Shared helpers & reactives ----
-  season_date_bounds <- function(gy) {
-    if (identical(gy, "2026")) {
-      list(start = as.Date("2025-10-01"), end = as.Date("2026-07-01"))
-    } else {
-      list(start = DEFAULT_START, end = DEFAULT_END)
-    }
-  }
+  season_date_bounds <- season_date_bounds_for_year
 
   selected_game_year <- reactive({
     input$game_year %||% DEFAULT_GAME_YEAR

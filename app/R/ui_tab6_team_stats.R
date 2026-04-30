@@ -41,7 +41,11 @@ ui_tab6_team_stats <- tabPanel(
             )
           ),
           tags$hr(),
-          dateRangeInput("tst_dates", "Date range", start = NA, end = NA),
+          dateRangeInput(
+            "tst_dates", "Date range",
+            start = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$start,
+            end = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$end
+          ),
           selectizeInput("tst_teams", "Teams", choices = NULL, selected = character(0), multiple = TRUE,
                          options = list(placeholder = "All teams")),
           checkboxInput("tst_clutch_enabled", tt("Clutch", "clutch"), value = FALSE),

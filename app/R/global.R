@@ -14,6 +14,8 @@ library(htmltools)
 DEFAULT_START <- as.Date("2024-10-01")
 DEFAULT_END   <- as.Date("2025-07-01")
 DEFAULT_GAME_YEAR <- "2026"
+DEFAULT_2026_START <- as.Date("2025-10-01")
+DEFAULT_2026_END   <- as.Date("2026-07-01")
 DEFAULT_MIN_ALL <- 100L
 DEFAULT_MIN_ON  <- 300L
 DEFAULT_MIN_NET <- -1e9
@@ -23,6 +25,14 @@ LD_DEFAULT_NUM      <- "5"
 # Players with fewer possessions than this won't get a color/rank bar
 RANKING_BASELINE <- 100
 RANKING_MIN_PCT  <- 0.25   # at least 25% of rows should be ranked
+
+season_date_bounds_for_year <- function(gy = DEFAULT_GAME_YEAR) {
+  if (identical(as.character(gy), "2026")) {
+    list(start = DEFAULT_2026_START, end = DEFAULT_2026_END)
+  } else {
+    list(start = DEFAULT_START, end = DEFAULT_END)
+  }
+}
 
 # Color scale constants (shared across all renderDT calls)
 CUTS      <- seq(0.05, 0.95, by = 0.05)

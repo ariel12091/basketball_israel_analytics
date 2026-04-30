@@ -73,7 +73,11 @@ ui_tab2_lineup <- tabPanel(
             column(6, selectInput("ld_num_starters_def", "Opp value", choices = c("\u2014" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
-          dateRangeInput("ld_dates", "Date range", start = NA, end = NA),
+          dateRangeInput(
+            "ld_dates", "Date range",
+            start = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$start,
+            end = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$end
+          ),
           checkboxInput("ld_clutch_enabled", tt("Clutch", "clutch"), value = FALSE),
           conditionalPanel(
             condition = "input.ld_clutch_enabled == true",
