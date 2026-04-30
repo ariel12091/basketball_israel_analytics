@@ -40,54 +40,8 @@ ui <- navbarPage(
     "navbar-bg" = "#0d1117"
   ),
   header = tagList(
-    tags$script(HTML(
-      "(function() {
-         if (!window.console || typeof window.console.warn !== 'function') return;
-         var origWarn = window.console.warn.bind(window.console);
-         var blocked = [
-           'DEPRECATED: This filename',
-           'The language code \"kh\" is deprecated',
-           'The language code \"kr\" is deprecated',
-           'This language code \"rs-latin\" is deprecated',
-           'This language code \"rs\" is deprecated'
-         ];
-         window.console.warn = function() {
-           var msg = arguments.length ? String(arguments[0]) : '';
-           for (var i = 0; i < blocked.length; i++) {
-             if (msg.indexOf(blocked[i]) !== -1) return;
-           }
-           return origWarn.apply(window.console, arguments);
-         };
-       })();"
-    )),
-    tags$script(HTML(
-      "(function() {
-         var lastSent = 0;
-         var minIntervalMs = 15000;
-         function sendActivity() {
-           var now = Date.now();
-           if ((now - lastSent) < minIntervalMs) return;
-           lastSent = now;
-           if (!window.Shiny || typeof window.Shiny.setInputValue !== 'function') return;
-           window.Shiny.setInputValue('idle_activity_ts', now, {priority: 'event'});
-         }
-         function bindActivity() {
-           var events = ['mousemove', 'mousedown', 'keydown', 'scroll', 'touchstart', 'click'];
-           for (var i = 0; i < events.length; i++) {
-             document.addEventListener(events[i], sendActivity, {passive: true});
-           }
-           document.addEventListener('visibilitychange', function() {
-             if (document.visibilityState === 'visible') sendActivity();
-           });
-           sendActivity();
-         }
-         if (document.readyState === 'loading') {
-           document.addEventListener('DOMContentLoaded', bindActivity);
-         } else {
-           bindActivity();
-         }
-       })();"
-    )),
+    includeCSS("www/app.css"),
+    includeScript("www/app.js"),
     tags$div(
       style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
       tags$div(
@@ -105,129 +59,7 @@ ui <- navbarPage(
         tags$span(style = "display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                   textOutput("last_updated", inline = TRUE))
       )
-    ),
-    # ── Tab hover dropdown: mode selector on navbar tabs ──
-    tags$style(HTML("
-      /* Hide sidebar radio buttons — they're still in the DOM for conditionalPanel */
-      .view-mode-container { display: none !important; }
-      #cmp_mode.shiny-input-radiogroup { display: none !important; }
-
-      /* Dropdown on navbar tabs */
-      .nav-item.tab-has-dropdown { position: relative; }
-      .tab-hover-menu {
-        display: none; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-        background: #161b22; border: 1px solid #30363d; border-radius: 8px;
-        padding: 4px 0; z-index: 10000; min-width: 150px;
-        box-shadow: 0 8px 24px rgba(0,0,0,.4);
-      }
-      .nav-item.tab-has-dropdown:hover .tab-hover-menu { display: block; }
-      .tab-hover-menu .thm-item {
-        display: flex; align-items: center; gap: 8px;
-        padding: 7px 14px; font-size: .78rem; color: #c9d1d9;
-        cursor: pointer; white-space: nowrap;
-      }
-      .tab-hover-menu .thm-item:hover { background: #1c2333; color: #e6edf3; }
-      .tab-hover-menu .thm-item.active { color: #e8a435; }
-      .tab-hover-menu .thm-item .thm-check { width: 14px; text-align: center; font-size: .68rem; }
-    ")),
-    tags$script(HTML("
-      (function() {
-        var CFG = [
-          {tab: 'onoff',             inputId: 'onoff_view_mode', items: ['Summary', 'Four Factors'], def: 'Summary'},
-          {tab: 'lineup_data',       inputId: 'ld_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
-          {tab: 'team_ratings',      inputId: 'tr_view_mode',    items: ['Summary', 'Four Factors', 'Traditional'], def: 'Summary'},
-          {tab: 'game_logs',         inputId: 'gl_view_mode',    items: ['Summary', 'Four Factors'], def: 'Summary'},
-          {tab: 'traditional_stats', inputId: 'ts_display_mode', items: ['Totals', 'Per Game', 'Per 60 Possessions', 'Per 30 Minutes'], def: 'Per Game', type: 'select'},
-          {tab: 'compare',           inputId: 'cmp_mode',        items: ['Teams', 'Lineups', 'Players'], def: 'Teams'}
-        ];
-
-        function init() {
-          CFG.forEach(function(c) {
-            var link = document.querySelector('.nav-link[data-value=\"' + c.tab + '\"]');
-            if (!link) return;
-            var li = link.closest('.nav-item');
-            li.classList.add('tab-has-dropdown');
-
-            // Build dropdown menu
-            var menu = document.createElement('div');
-            menu.className = 'tab-hover-menu';
-            c.items.forEach(function(item) {
-              var row = document.createElement('div');
-              row.className = 'thm-item' + (item === c.def ? ' active' : '');
-              row.innerHTML = '<span class=\"thm-check\">' + (item === c.def ? '\\u2713' : '') + '</span>' + item;
-              row.dataset.value = item;
-              row.dataset.inputId = c.inputId;
-              row.addEventListener('click', function(e) {
-                e.stopPropagation();
-                e.preventDefault();
-                var val = this.dataset.value;
-                var iid = this.dataset.inputId;
-                // Navigate to this tab
-                link.click();
-                // Update hidden input: radio button or select
-                if (c.type === 'select') {
-                  setTimeout(function() {
-                    var sel = document.getElementById(iid);
-                    if (sel) {
-                      sel.value = val;
-                      sel.dispatchEvent(new Event('change', { bubbles: true }));
-                    }
-                    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-                      window.Shiny.setInputValue(iid, val, { priority: 'event' });
-                    }
-                  }, 0);
-                } else {
-                  setTimeout(function() {
-                    var radio = document.querySelector('input[name=\"' + iid + '\"][value=\"' + val + '\"]');
-                    if (radio) { radio.click(); }
-                    if (window.Shiny && typeof window.Shiny.setInputValue === 'function') {
-                      window.Shiny.setInputValue(iid, val, { priority: 'event' });
-                    }
-                  }, 0);
-                }
-                // Update dropdown UI
-                menu.querySelectorAll('.thm-item').forEach(function(r) {
-                  var isActive = r.dataset.value === val;
-                  r.className = 'thm-item' + (isActive ? ' active' : '');
-                  r.querySelector('.thm-check').textContent = isActive ? '\\u2713' : '';
-                });
-                // Close menu
-                menu.style.display = 'none';
-                setTimeout(function() { menu.style.display = ''; }, 50);
-              });
-              menu.appendChild(row);
-            });
-            li.appendChild(menu);
-
-            // Sync dropdown when hidden input changes (e.g. server-side reset)
-            function syncMenu() {
-              var current;
-              if (c.type === 'select') {
-                var sel = document.getElementById(c.inputId);
-                current = sel ? sel.value : c.def;
-              } else {
-                var checked = document.querySelector('input[name=\"' + c.inputId + '\"]:checked');
-                current = checked ? checked.value : c.def;
-              }
-              menu.querySelectorAll('.thm-item').forEach(function(r) {
-                var isActive = r.dataset.value === current;
-                r.className = 'thm-item' + (isActive ? ' active' : '');
-                r.querySelector('.thm-check').textContent = isActive ? '\\u2713' : '';
-              });
-            }
-            // Poll on tab activation (lightweight — only runs when user clicks a tab)
-            link.addEventListener('shown.bs.tab', syncMenu);
-            link.addEventListener('click', function() { setTimeout(syncMenu, 100); });
-          });
-        }
-
-        if (document.readyState === 'loading') {
-          document.addEventListener('DOMContentLoaded', init);
-        } else {
-          init();
-        }
-      })();
-    "))
+    )
   ),
   ui_tab0_home,
   ui_tab1_onoff,
@@ -284,7 +116,11 @@ server <- function(input, output, session) {
       query_fun = function() {
         db_get_query(
           pg_pool,
-          sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
+          "SELECT DISTINCT team_id, team_name
+             FROM basketball_test.full_rosters
+            WHERE game_year = $1::int4
+            ORDER BY team_name",
+          params = list(gy_int)
         )
       }
     )
@@ -302,17 +138,30 @@ server <- function(input, output, session) {
     # Shared teams query (DISTINCT pattern used by tabs 1, 3, 5).
     teams_distinct_q <- function() db_get_query(
       pg_pool,
-      sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
+      "SELECT DISTINCT team_id, team_name
+         FROM basketball_test.full_rosters
+        WHERE game_year = $1::int4
+        ORDER BY team_name",
+      params = list(gy_int)
     )
     # Teams query with MIN/GROUP BY (used by tabs 2, 4).
     teams_min_q <- function() db_get_query(
       pg_pool,
-      sprintf("SELECT DISTINCT team_id, MIN(team_name) AS team_name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id ORDER BY MIN(team_name)", gy_int)
+      "SELECT DISTINCT team_id, MIN(team_name) AS team_name
+         FROM basketball_test.full_rosters
+        WHERE game_year = $1::int4
+        GROUP BY team_id
+        ORDER BY MIN(team_name)",
+      params = list(gy_int)
     )
     # GN query - shared across all tabs.
     gn_query <- function() db_get_query(
       pg_pool,
-      sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
+      "SELECT DISTINCT gn
+         FROM basketball_test.final_schedule_mv
+        WHERE game_year = $1::int4
+        ORDER BY gn",
+      params = list(gy_int)
     )
 
     teams_distinct <- cached_ref_query(key = sprintf("teams_for_year_%d", gy_int), query_fun = teams_distinct_q)
@@ -325,7 +174,14 @@ server <- function(input, output, session) {
       key = sprintf("ld_players_%d", gy_int),
       query_fun = function() db_get_query(
         pg_pool,
-        sprintf("SELECT team_id, player_id, MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year = %d GROUP BY team_id, player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))", gy_int)
+        "SELECT team_id,
+                player_id,
+                MIN(btrim(firstname)||' '||btrim(lastname)) AS name
+           FROM basketball_test.full_rosters
+          WHERE game_year = $1::int4
+          GROUP BY team_id, player_id
+          ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
+        params = list(gy_int)
       )
     )
 

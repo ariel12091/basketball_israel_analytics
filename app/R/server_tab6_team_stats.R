@@ -352,12 +352,11 @@ server_tab6_team_stats <- function(input, output, session, shared) {
       query_fun = function() {
         db_get_query(
           pg_pool,
-          sprintf(
-            "SELECT DISTINCT team_id, team_name
+          "SELECT DISTINCT team_id, team_name
              FROM basketball_test.full_rosters
-             WHERE game_year = %d
-             ORDER BY team_name", gy_int
-          )
+            WHERE game_year = $1::int4
+            ORDER BY team_name",
+          params = list(gy_int)
         )
       }
     )
@@ -370,12 +369,11 @@ server_tab6_team_stats <- function(input, output, session, shared) {
       query_fun = function() {
         db_get_query(
           pg_pool,
-          sprintf(
-            "SELECT DISTINCT gn
+          "SELECT DISTINCT gn
              FROM basketball_test.final_schedule_mv
-             WHERE game_year = %d
-             ORDER BY gn", gy_int
-          )
+            WHERE game_year = $1::int4
+            ORDER BY gn",
+          params = list(gy_int)
         )
       }
     )

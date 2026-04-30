@@ -189,6 +189,23 @@ db_get_query <- function(conn_or_pool, statement, params = NULL) {
   }
 }
 
+app_log <- function(component, msg, file_env = "APP_LOG_FILE") {
+  line <- sprintf(
+    "%s [%s] %s",
+    format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+    component,
+    msg
+  )
+  message(line)
+
+  log_file <- Sys.getenv(file_env, "")
+  if (nzchar(log_file)) {
+    try(suppressWarnings(cat(line, "\n", file = log_file, append = TRUE)), silent = TRUE)
+  }
+
+  invisible(line)
+}
+
 # ---------------- Session safety guards ----------------
 init_session_request_guard <- function(session) {
   if (is.null(session$userData$request_guard)) {

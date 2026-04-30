@@ -2,8 +2,11 @@
 
 server_tab3 <- function(input, output, session, shared) {
   log_tab3_error <- function(msg) {
-    line <- paste0(format(Sys.time(), "%Y-%m-%d %H:%M:%S"), " [tab3] ", msg)
-    try(suppressWarnings(cat(line, "\n", file = "app_debug.log", append = TRUE)), silent = TRUE)
+    if (exists("app_log", mode = "function")) {
+      app_log("tab3", msg)
+    } else {
+      message(sprintf("%s [tab3] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
+    }
   }
   log_tab3_state <- function(tag = "state") {
     safe_chr <- function(x) {
@@ -394,7 +397,11 @@ server_tab3 <- function(input, output, session, shared) {
       query_fun = function() {
         db_get_query(
           pg_pool,
-          sprintf("SELECT DISTINCT team_id, team_name FROM basketball_test.full_rosters WHERE game_year = %d ORDER BY team_name", gy_int)
+          "SELECT DISTINCT team_id, team_name
+             FROM basketball_test.full_rosters
+            WHERE game_year = $1::int4
+            ORDER BY team_name",
+          params = list(gy_int)
         )
       }
     )
@@ -422,7 +429,11 @@ server_tab3 <- function(input, output, session, shared) {
       query_fun = function() {
         db_get_query(
           pg_pool,
-          sprintf("SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = %d ORDER BY gn", gy_int)
+          "SELECT DISTINCT gn
+             FROM basketball_test.final_schedule_mv
+            WHERE game_year = $1::int4
+            ORDER BY gn",
+          params = list(gy_int)
         )
       }
     )
@@ -873,7 +884,13 @@ server_tab3 <- function(input, output, session, shared) {
       run_team_ratings_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
     } else {
       db_get_query(pg_pool,
-        sprintf("SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg, games_played, wins, losses, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp FROM basketball_test.team_ppp_ratings_mv WHERE game_year = %d ORDER BY rank_net_rtg", as.integer(p$game_year)))
+        "SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,
+                games_played, wins, losses, off_poss, def_poss,
+                rank_net_rtg, rank_off_ppp, rank_def_ppp
+           FROM basketball_test.team_ppp_ratings_mv
+          WHERE game_year = $1::int4
+          ORDER BY rank_net_rtg",
+        params = list(as.integer(p$game_year)))
     }
   })
 
@@ -883,7 +900,10 @@ server_tab3 <- function(input, output, session, shared) {
       df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
     } else {
       df <- db_get_query(pg_pool,
-        sprintf("SELECT * FROM basketball_test.team_four_factors_mv WHERE game_year = %d", as.integer(p$game_year)))
+        "SELECT *
+           FROM basketball_test.team_four_factors_mv
+          WHERE game_year = $1::int4",
+        params = list(as.integer(p$game_year)))
     }
 
     if (is.null(df) || nrow(df) == 0) return(df)
