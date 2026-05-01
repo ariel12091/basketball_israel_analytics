@@ -105,9 +105,8 @@ ui_tab1_onoff <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#onoff-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#onoff-example-box",
             "Show/Hide Example"
@@ -155,9 +154,8 @@ ui_tab1_onoff <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#onoff-ff-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#onoff-ff-example-box",
             "Show/Hide Example"

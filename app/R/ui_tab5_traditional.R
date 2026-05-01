@@ -69,9 +69,8 @@ ui_tab5_traditional <- tabPanel(
           )
         ),
         tags$a(
-          href = "#",
+          href = "#traditional-example-box",
           class = "explainer-toggle",
-          onclick = "return false;",
           `data-bs-toggle` = "collapse",
           `data-bs-target` = "#traditional-example-box",
           "Show/Hide Example"

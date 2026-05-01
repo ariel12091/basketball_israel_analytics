@@ -52,9 +52,8 @@ ui_tab4_gamelogs <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#gamelogs-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#gamelogs-example-box",
             "Show/Hide Example"
@@ -93,9 +92,8 @@ ui_tab4_gamelogs <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#gamelogs-ff-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#gamelogs-ff-example-box",
             "Show/Hide Example"

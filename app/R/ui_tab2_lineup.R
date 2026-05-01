@@ -113,9 +113,8 @@ ui_tab2_lineup <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#lineup-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#lineup-example-box",
             "Show/Hide Example"
@@ -154,9 +153,8 @@ ui_tab2_lineup <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#lineup-ff-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#lineup-ff-example-box",
             "Show/Hide Example"

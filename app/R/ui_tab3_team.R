@@ -107,9 +107,8 @@ ui_tab3_team <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#team-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#team-example-box",
             "Show/Hide Example"
@@ -148,9 +147,8 @@ ui_tab3_team <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#team-ff-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#team-ff-example-box",
             "Show/Hide Example"
@@ -188,9 +186,8 @@ ui_tab3_team <- tabPanel(
             )
           ),
           tags$a(
-            href = "#",
+            href = "#team-traditional-example-box",
             class = "explainer-toggle",
-            onclick = "return false;",
             `data-bs-toggle` = "collapse",
             `data-bs-target` = "#team-traditional-example-box",
             "Show/Hide Example"
