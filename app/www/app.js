@@ -20,6 +20,35 @@
 })();
 
 (function() {
+  var viewTips = {
+    Summary: "PPP ratings and shooting splits",
+    "Four Factors": "eFG%, OREB%, TOV%, FTR breakdown",
+    Traditional: "Box-score counting stats"
+  };
+
+  window.applyViewModeTooltips = function() {
+    if (!window.jQuery) return;
+    window.jQuery(".view-mode-container .radio label, .view-mode-container .shiny-options-group label").each(function() {
+      var txt = window.jQuery(this).text().trim();
+      if (viewTips[txt]) window.jQuery(this).attr("data-tooltip", viewTips[txt]);
+    });
+  };
+
+  function bindViewModeTooltips() {
+    window.applyViewModeTooltips();
+    if (window.jQuery) {
+      window.jQuery(document).on("shiny:connected shiny:value", window.applyViewModeTooltips);
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bindViewModeTooltips);
+  } else {
+    bindViewModeTooltips();
+  }
+})();
+
+(function() {
   function registerCompareViewHandler() {
     if (!window.Shiny || typeof window.Shiny.addCustomMessageHandler !== "function") return false;
     if (window.__cmpViewHandlerRegistered) return true;

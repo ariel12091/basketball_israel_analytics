@@ -1,13 +1,14 @@
 test_that("tooltip infrastructure is defined centrally", {
   global_txt <- read_repo_txt("R", "global.R")
+  app_js_txt <- read_repo_txt("www", "app.js")
 
   expect_true(grepl("COLUMN_TOOLTIPS\\s*<-\\s*c\\(", global_txt))
   expect_true(grepl("FILTER_TOOLTIPS\\s*<-\\s*c\\(", global_txt))
   expect_true(grepl("\"quick_preset\"\\s*=\\s*\"Apply a prebuilt compare split", global_txt))
   expect_true(grepl("tt\\s*<-\\s*function\\(label, key\\)", global_txt))
   expect_true(grepl("HEADER_TOOLTIP_JS\\s*<-\\s*DT::JS", global_txt))
-  expect_true(grepl("window\\.applyViewModeTooltips\\s*=\\s*function\\(", global_txt))
-  expect_true(grepl("shiny:connected shiny:value", global_txt))
+  expect_true(grepl("window\\.applyViewModeTooltips\\s*=\\s*function\\(", app_js_txt))
+  expect_true(grepl("shiny:connected shiny:value", app_js_txt))
 })
 
 test_that("tooltip wiring is present in compare and tooltip-heavy tabs", {
