@@ -20,6 +20,102 @@
 })();
 
 (function() {
+  function registerCompareViewHandler() {
+    if (!window.Shiny || typeof window.Shiny.addCustomMessageHandler !== "function") return false;
+    if (window.__cmpViewHandlerRegistered) return true;
+    window.__cmpViewHandlerRegistered = true;
+
+    window.Shiny.addCustomMessageHandler("toggle_cmp_view", function(msg) {
+      var showDetail = !!(msg && msg.detail);
+      var league = document.getElementById("cmp_view_league_btn");
+      var detail = document.getElementById("cmp_view_detail_btn");
+      var leagueC = document.getElementById("cmp_league_container");
+      var detailC = document.getElementById("cmp_detail_container");
+
+      if (league) {
+        league.classList.toggle("btn-warning", !showDetail);
+        league.classList.toggle("btn-outline-secondary", showDetail);
+      }
+      if (detail) {
+        detail.classList.toggle("btn-warning", showDetail);
+        detail.classList.toggle("btn-outline-secondary", !showDetail);
+      }
+      if (leagueC) leagueC.classList.toggle("cmp-view-hidden", showDetail);
+      if (detailC) detailC.classList.toggle("cmp-view-hidden", !showDetail);
+    });
+
+    return true;
+  }
+
+  function initCompareViewHandler() {
+    if (registerCompareViewHandler()) return;
+    var attempts = 0;
+    var timer = window.setInterval(function() {
+      attempts += 1;
+      if (registerCompareViewHandler() || attempts >= 40) window.clearInterval(timer);
+    }, 250);
+  }
+
+  function detailSectionTitleFor(cell) {
+    var node = cell ? cell.previousElementSibling : null;
+    while (node) {
+      if (node.classList && node.classList.contains("cmp-section-title")) return node;
+      node = node.previousElementSibling;
+    }
+    return null;
+  }
+
+  function sortCompareDetailGrid(trigger) {
+    var grid = trigger.closest(".detail-container");
+    grid = grid ? grid.querySelector(".cmp-compare-grid") : document.querySelector(".cmp-compare-grid");
+    if (!grid) return;
+
+    var sortState = (parseInt(grid.dataset.sortState || "0", 10) + 1) % 3;
+    grid.dataset.sortState = String(sortState);
+
+    var icon = trigger.querySelector("#cmp-sort-icon") || document.getElementById("cmp-sort-icon");
+    var icons = ["\u2195", "\u2193", "\u2191"];
+    if (icon) icon.textContent = icons[sortState];
+
+    ["ratings", "off_ff", "def_ff"].forEach(function(group) {
+      var gapCells = Array.from(grid.querySelectorAll(".cmp-gap-row[data-group=\"" + group + "\"]"));
+      if (!gapCells.length) return;
+
+      var triplets = gapCells.map(function(gapCell) {
+        var idx = gapCell.dataset.idx;
+        return {
+          a: grid.querySelector(".cmp-stat-row.cmp-col-a[data-group=\"" + group + "\"][data-idx=\"" + idx + "\"]"),
+          gap: gapCell,
+          b: grid.querySelector(".cmp-stat-row.cmp-col-b[data-group=\"" + group + "\"][data-idx=\"" + idx + "\"]"),
+          gapVal: parseFloat(gapCell.dataset.gap || "0"),
+          original: parseInt(gapCell.dataset.defaultIdx || "0", 10)
+        };
+      }).filter(function(row) {
+        return row.a && row.gap && row.b;
+      });
+      if (!triplets.length) return;
+
+      if (sortState === 1) {
+        triplets.sort(function(a, b) { return Math.abs(b.gapVal) - Math.abs(a.gapVal); });
+      } else if (sortState === 2) {
+        triplets.sort(function(a, b) { return Math.abs(a.gapVal) - Math.abs(b.gapVal); });
+      } else {
+        triplets.sort(function(a, b) { return a.original - b.original; });
+      }
+
+      var anchor = detailSectionTitleFor(triplets[0].a);
+      if (!anchor) return;
+      triplets.forEach(function(row) {
+        grid.insertBefore(row.a, anchor.nextSibling);
+        grid.insertBefore(row.gap, row.a.nextSibling);
+        grid.insertBefore(row.b, row.gap.nextSibling);
+        anchor = row.b;
+      });
+    });
+  }
+
+  initCompareViewHandler();
+
   function sendShinyEvent(inputId, value) {
     if (!inputId || !window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
     window.Shiny.setInputValue(inputId, value === undefined ? Math.random() : value, { priority: "event" });
@@ -83,6 +179,13 @@
         }
         sib = sib.nextElementSibling;
       }
+      return;
+    }
+
+    var detailSortEl = e.target.closest(".js-cmp-detail-sort");
+    if (detailSortEl) {
+      e.preventDefault();
+      sortCompareDetailGrid(detailSortEl);
     }
   });
 })();

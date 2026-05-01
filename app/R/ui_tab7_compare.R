@@ -5,28 +5,6 @@ ui_tab7_compare <- tabPanel(
   value = "compare",
   fluidPage(
     shared_head_tags(),
-    tags$script(HTML("
-      Shiny.addCustomMessageHandler('toggle_cmp_view', function(msg) {
-        var league = document.getElementById('cmp_view_league_btn');
-        var detail = document.getElementById('cmp_view_detail_btn');
-        if (!league || !detail) return;
-        if (msg.detail) {
-          league.className = 'btn btn-sm btn-outline-secondary';
-          league.style.borderRadius = '20px';
-          detail.className = 'btn btn-sm btn-warning';
-          detail.style.borderRadius = '20px';
-        } else {
-          league.className = 'btn btn-sm btn-warning';
-          league.style.borderRadius = '20px';
-          detail.className = 'btn btn-sm btn-outline-secondary';
-          detail.style.borderRadius = '20px';
-        }
-        var leagueC = document.getElementById('cmp_league_container');
-        var detailC = document.getElementById('cmp_detail_container');
-        if (leagueC) leagueC.style.display = msg.detail ? 'none' : '';
-        if (detailC) detailC.style.display = msg.detail ? '' : 'none';
-      });
-    ")),
     sidebarLayout(
       sidebarPanel(
         width = 3,
@@ -250,9 +228,8 @@ ui_tab7_compare <- tabPanel(
           )
         ),
         tags$a(
-          href = "#",
+          href = "#compare-example-box",
           class = "explainer-toggle",
-          onclick = "return false;",
           `data-bs-toggle` = "collapse",
           `data-bs-target` = "#compare-example-box",
           "Show/Hide Example"
@@ -286,14 +263,12 @@ ui_tab7_compare <- tabPanel(
             class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
             tags$span(class = "text-muted small text-uppercase", "View"),
             tags$button(id = "cmp_view_league_btn", type = "button",
-              class = "btn btn-sm btn-warning js-shiny-event",
-              style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
+              class = "btn btn-sm btn-warning cmp-view-toggle-btn js-shiny-event",
               `data-input-id` = "cmp_detail_toggle",
               `data-shiny-value` = "league",
               "League"),
             tags$button(id = "cmp_view_detail_btn", type = "button",
-              class = "btn btn-sm btn-outline-secondary js-shiny-event",
-              style = "border-radius: 20px; padding: 2px 12px; font-size: .76rem;",
+              class = "btn btn-sm btn-outline-secondary cmp-view-toggle-btn js-shiny-event",
               `data-input-id` = "cmp_detail_toggle",
               `data-shiny-value` = "detail",
               "Detail"),
@@ -374,7 +349,7 @@ ui_tab7_compare <- tabPanel(
           # Detail view (hidden by default)
           div(
             id = "cmp_detail_container",
-            style = "display: none;",
+            class = "cmp-view-hidden",
             uiOutput("cmp_detail_view_ui")
           )
         ),

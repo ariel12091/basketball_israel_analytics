@@ -80,59 +80,6 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   # -- Detail view constants --
 
-  DETAIL_CSS <- "
-.detail-container { max-width: 720px; margin: 0 auto; }
-.cmp-back-btn { font-size: .78rem; color: #7b8cde; cursor: pointer; margin-bottom: 12px; display: inline-block; }
-.cmp-back-btn:hover { text-decoration: underline; }
-.cmp-team-header { text-align: center; font-size: 1.1rem; font-weight: 700; color: #e6edf3; margin-bottom: 4px; }
-.cmp-team-subheader { text-align: center; font-size: .78rem; color: #6e7681; margin-bottom: 16px; }
-.cmp-context-bar {
-  display: flex; justify-content: space-between; align-items: center;
-  background: #161b22; border: 1px solid rgba(255,255,255,.08); border-radius: 8px;
-  padding: 10px 20px; margin-bottom: 16px; font-size: .8rem;
-}
-.cmp-context-side { display: flex; align-items: center; gap: 6px; }
-.cmp-context-badge { font-size: .68rem; font-weight: 700; padding: 1px 8px; border-radius: 10px; }
-.cmp-context-badge.a { background: rgba(123,140,222,.2); color: #7b8cde; border: 1px solid rgba(123,140,222,.4); }
-.cmp-context-badge.b { background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); }
-.cmp-context-info { color: #8b949e; }
-.cmp-context-info strong { color: #c9d1d9; font-weight: 600; }
-.cmp-context-sep { color: #484f58; font-size: .7rem; }
-.cmp-compare-grid {
-  display: grid; grid-template-columns: 1fr 140px 1fr; gap: 0;
-  column-gap: 12px;
-}
-.cmp-cell { background: #161b22; border-left: 1px solid rgba(255,255,255,.08); border-right: 1px solid rgba(255,255,255,.08); }
-.cmp-cell.cmp-first-row { border-top: 1px solid rgba(255,255,255,.08); }
-.cmp-cell.cmp-last-row { border-bottom: 1px solid rgba(255,255,255,.08); }
-.cmp-cell.cmp-first-row.cmp-col-a { border-radius: 8px 0 0 0; }
-.cmp-cell.cmp-first-row.cmp-col-b { border-radius: 0 8px 0 0; }
-.cmp-cell.cmp-last-row.cmp-col-a { border-radius: 0 0 0 8px; }
-.cmp-cell.cmp-last-row.cmp-col-b { border-radius: 0 0 8px 0; }
-.cmp-col-a { grid-column: 1; }
-.cmp-col-gap { grid-column: 2; }
-.cmp-col-b { grid-column: 3; }
-.cmp-col-header { padding: 10px 16px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; border-bottom: 1px solid rgba(255,255,255,.06); }
-.cmp-col-header.cmp-col-a { color: #7b8cde; }
-.cmp-col-header.cmp-col-b { color: #e8a435; }
-.cmp-col-header.cmp-col-gap { color: #6e7681; text-align: center; cursor: pointer; user-select: none; display: flex; align-items: center; justify-content: center; gap: 4px; }
-.cmp-col-header.cmp-col-gap:hover { color: #e8a435; }
-.cmp-section-title { grid-column: 1 / -1; text-align: center; padding: 12px 0 4px; font-size: .72rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #484f58; }
-.cmp-stat-row { display: flex; justify-content: space-between; align-items: center; padding: 9px 16px; border-bottom: 1px solid rgba(255,255,255,.04); min-height: 40px; }
-.cmp-stat-label { font-size: .78rem; color: #8b949e; }
-.cmp-stat-value { font-size: .92rem; font-weight: 600; }
-.cmp-stat-value.winner { color: #e6edf3; }
-.cmp-stat-value.loser { color: #8b949e; }
-.cmp-gap-row { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 9px 10px; border-bottom: 1px solid rgba(255,255,255,.04); gap: 3px; min-height: 40px; }
-.cmp-gap-num { font-size: .78rem; font-weight: 600; white-space: nowrap; }
-.cmp-gap-num.a-color { color: #7b8cde; }
-.cmp-gap-num.b-color { color: #e8a435; }
-.cmp-bar-container { width: 100%; height: 5px; background: rgba(255,255,255,.04); border-radius: 3px; position: relative; overflow: hidden; }
-.cmp-bar-center { position: absolute; top: 0; bottom: 0; left: 50%; width: 1px; background: rgba(255,255,255,.15); z-index: 1; }
-.cmp-bar { height: 100%; border-radius: 3px; position: absolute; top: 0; }
-.cmp-bar.toward-a { right: 50%; background: #7b8cde; }
-.cmp-bar.toward-b { left: 50%; background: #e8a435; }
-"
 
   DETAIL_METRICS <- list(
     ratings = list(
@@ -2179,18 +2126,18 @@ server_tab7_compare <- function(input, output, session, shared) {
     suppressWarnings(as.numeric(row[[col]]))
   }
 
-  # All values are already × 100 (SQL does it, Win% computed as w/gp*100 in detail_win_pct).
+  # All values are already Ã— 100 (SQL does it, Win% computed as w/gp*100 in detail_win_pct).
   detail_fmt <- function(val, fmt) {
     if (!is.finite(val)) return("\u2014")
     switch(fmt,
-      pct = sprintf("%.1f%%", val),   # already ×100
-      rtg = sprintf("%.1f", val),     # already ×100
-      net = sprintf("%+.1f", val),    # already ×100
+      pct = sprintf("%.1f%%", val),   # already Ã—100
+      rtg = sprintf("%.1f", val),     # already Ã—100
+      net = sprintf("%+.1f", val),    # already Ã—100
       sprintf("%.1f", val)
     )
   }
 
-  # Returns Win% already × 100 (matching SQL scale for other metrics)
+  # Returns Win% already Ã— 100 (matching SQL scale for other metrics)
   detail_win_pct <- function(row) {
     gp <- detail_get_value(row, "games_played")
     w <- detail_get_value(row, "wins")
@@ -2270,7 +2217,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     data <- cmp_detail_data()
     entity <- selected_detail_entity()
 
-    # No entity selected yet in detail mode → show prompt
+    # No entity selected yet in detail mode â†’ show prompt
     if (is.null(entity) && isTRUE(detail_view_active())) {
       return(tags$div(class = "detail-container",
         tags$div(class = "text-muted text-center mt-4",
@@ -2298,7 +2245,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     context_bar <- build_detail_context_bar(ra, rb, mode)
 
-    # Build all grid cells — flat layout, each metric = 3 sibling cells sharing one grid row
+    # Build all grid cells â€” flat layout, each metric = 3 sibling cells sharing one grid row
     all_cells <- list()
     section_names <- names(DETAIL_METRICS)
     col_a_text <- if (identical(short_a, "A")) "A" else paste0("A \u00b7 ", short_a)
@@ -2307,7 +2254,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Column headers (first row of grid)
     all_cells <- c(all_cells, list(
       tags$div(class = "cmp-col-header cmp-col-a cmp-cell cmp-first-row", col_a_text),
-      tags$div(class = "cmp-col-header cmp-col-gap cmp-cell cmp-first-row",
+      tags$div(class = "cmp-col-header cmp-col-gap cmp-cell cmp-first-row js-cmp-detail-sort",
         "Gap ", tags$span(id = "cmp-sort-icon", "\u2195")),
       tags$div(class = "cmp-col-header cmp-col-b cmp-cell cmp-first-row", col_b_text)
     ))
@@ -2405,8 +2352,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       }
     }
 
-        tagList(
-      tags$style(DETAIL_CSS),
+    tagList(
       tags$div(class = "detail-container",
         tags$div(class = "cmp-back-btn js-shiny-event",
           `data-input-id` = "cmp_detail_back",
@@ -2416,54 +2362,7 @@ server_tab7_compare <- function(input, output, session, shared) {
           paste0(full_a, " vs ", full_b, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
         context_bar,
         tags$div(class = "cmp-compare-grid",
-          do.call(tagList, all_cells)),
-        # Client-side sorting JS — reorders triplets of cells within each section group
-        tags$script(HTML("
-          (function() {
-            var sortState = 0;
-            var icons = {0: '\\u2195', 1: '\\u2193', 2: '\\u2191'};
-            var btn = document.getElementById('cmp-sort-icon');
-            if (!btn) return;
-            btn.parentElement.onclick = function() {
-              sortState = (sortState + 1) % 3;
-              btn.textContent = icons[sortState];
-              var grid = document.querySelector('.cmp-compare-grid');
-              if (!grid) return;
-              // Process each section group independently
-              ['ratings', 'off_ff', 'def_ff'].forEach(function(group) {
-                // Find all gap-row cells for this group (they carry data-gap and data-default-idx)
-                var gapCells = Array.from(grid.querySelectorAll('.cmp-gap-row[data-group=\"' + group + '\"]'));
-                if (gapCells.length === 0) return;
-                // Collect triplets: [a-cell, gap-cell, b-cell] for each metric row
-                var triplets = gapCells.map(function(gc) {
-                  var idx = gc.dataset.idx;
-                  var aCells = grid.querySelectorAll('.cmp-stat-row.cmp-col-a[data-group=\"' + group + '\"][data-idx=\"' + idx + '\"]');
-                  var bCells = grid.querySelectorAll('.cmp-stat-row.cmp-col-b[data-group=\"' + group + '\"][data-idx=\"' + idx + '\"]');
-                  return {
-                    a: aCells[0], gap: gc, b: bCells[0],
-                    gapVal: parseFloat(gc.dataset.gap || 0),
-                    original: parseInt(gc.dataset.defaultIdx || 0, 10)
-                  };
-                });
-                if (sortState === 1) triplets.sort(function(a, b) { return Math.abs(b.gapVal) - Math.abs(a.gapVal); });
-                else if (sortState === 2) triplets.sort(function(a, b) { return Math.abs(a.gapVal) - Math.abs(b.gapVal); });
-                else triplets.sort(function(a, b) { return a.original - b.original; });
-                // Find the section title preceding this group's cells
-                var firstA = grid.querySelector('.cmp-stat-row.cmp-col-a[data-group=\"' + group + '\"]');
-                if (!firstA) return;
-                var sectionTitle = firstA.previousElementSibling;
-                // Re-insert triplets in sorted order after the section title
-                var anchor = sectionTitle;
-                triplets.forEach(function(t) {
-                  grid.insertBefore(t.a, anchor.nextSibling);
-                  grid.insertBefore(t.gap, t.a.nextSibling);
-                  grid.insertBefore(t.b, t.gap.nextSibling);
-                  anchor = t.b;
-                });
-              });
-            };
-          })();
-        "))
+          do.call(tagList, all_cells))
       )
     )
   })
