@@ -659,6 +659,13 @@ th[data-tooltip]::after { display: none; }
 .cmp-view-hidden {
   display: none !important;
 }
+
+.ld-lineup-link {
+  color: #e8a435;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 /* Compare detail view */
 .detail-container { max-width: 720px; margin: 0 auto; }
 .cmp-back-btn { font-size: .78rem; color: #7b8cde; cursor: pointer; margin-bottom: 12px; display: inline-block; }

@@ -2623,13 +2623,7 @@ server_tab7_compare <- function(input, output, session, shared) {
           show_df,
           callback = DT::JS(sprintf("
         table.on('click', 'tbody tr', function() {
-          var data = table.row(this).data();
-          if (data) {
-            Shiny.setInputValue('cmp_table_row_click', {
-              entity_name: data[%d],
-              rand: Math.random()
-            }, {priority: 'event'});
-          }
+          window.handleCompareTableRowClick(table, this, %d);
         });
       ", entity_col_idx)),
           options = list(

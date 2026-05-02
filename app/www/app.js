@@ -49,6 +49,26 @@
 })();
 
 (function() {
+  window.handleLineupLinkClick = function(linkEl) {
+    if (!linkEl || !window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    var teamId = parseInt(linkEl.dataset.teamId, 10);
+    window.Shiny.setInputValue("ld_lineup_click", {
+      hash: linkEl.dataset.hash,
+      team_id: Number.isNaN(teamId) ? null : teamId,
+      ts: Date.now()
+    }, { priority: "event" });
+  };
+
+  window.handleCompareTableRowClick = function(table, rowEl, entityColIdx) {
+    if (!table || !rowEl || !window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    var data = table.row(rowEl).data();
+    if (!data) return;
+    window.Shiny.setInputValue("cmp_table_row_click", {
+      entity_name: data[entityColIdx],
+      rand: Math.random()
+    }, { priority: "event" });
+  };
+
   function registerCompareViewHandler() {
     if (!window.Shiny || typeof window.Shiny.addCustomMessageHandler !== "function") return false;
     if (window.__cmpViewHandlerRegistered) return true;

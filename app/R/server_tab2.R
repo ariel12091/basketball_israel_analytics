@@ -600,7 +600,7 @@ server_tab2 <- function(input, output, session, shared) {
            var hash = row[%d];
            var tid = row[%d];
            var esc = function(x) { return $('<div/>').text(x == null ? '' : String(x)).html(); };
-           return '<a href=\"#\" class=\"ld-lineup-link\" data-hash=\"' + esc(hash) + '\" data-team-id=\"' + esc(tid) + '\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\">' + esc(data) + '</a>';
+           return '<a href=\"#\" class=\"ld-lineup-link\" data-hash=\"' + esc(hash) + '\" data-team-id=\"' + esc(tid) + '\">' + esc(data) + '</a>';
          }", ff_hash_idx, ff_tid_idx))
 
       col_defs <- list(
@@ -616,12 +616,7 @@ server_tab2 <- function(input, output, session, shared) {
                           callback = DT::JS(
                             "table.on('click', 'a.ld-lineup-link', function(e) {
                                e.preventDefault();
-                               var tid = parseInt(this.dataset.teamId, 10);
-                               Shiny.setInputValue('ld_lineup_click', {
-                                 hash: this.dataset.hash,
-                                 team_id: isNaN(tid) ? null : tid,
-                                 ts: Date.now()
-                               }, {priority: 'event'});
+                               window.handleLineupLinkClick(this);
                              });"
                           ),
                           options = list(
@@ -823,7 +818,7 @@ server_tab2 <- function(input, output, session, shared) {
            var hash = row[%d];
            var tid = row[%d];
            var esc = function(x) { return $('<div/>').text(x == null ? '' : String(x)).html(); };
-           return '<a href=\"#\" class=\"ld-lineup-link\" data-hash=\"' + esc(hash) + '\" data-team-id=\"' + esc(tid) + '\" style=\"color:#e8a435;text-decoration:underline;cursor:pointer;\">' + esc(data) + '</a>';
+           return '<a href=\"#\" class=\"ld-lineup-link\" data-hash=\"' + esc(hash) + '\" data-team-id=\"' + esc(tid) + '\">' + esc(data) + '</a>';
          }", sum_hash_idx, sum_tid_idx))
 
       all_col_defs <- c(list(list(targets = hidden_indices, visible = FALSE),
@@ -839,12 +834,7 @@ server_tab2 <- function(input, output, session, shared) {
         callback = DT::JS(
           "table.on('click', 'a.ld-lineup-link', function(e) {
              e.preventDefault();
-             var tid = parseInt(this.dataset.teamId, 10);
-             Shiny.setInputValue('ld_lineup_click', {
-               hash: this.dataset.hash,
-               team_id: isNaN(tid) ? null : tid,
-               ts: Date.now()
-             }, {priority: 'event'});
+             window.handleLineupLinkClick(this);
            });"
         ),
         options = list(headerCallback = HEADER_TOOLTIP_JS, pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)
