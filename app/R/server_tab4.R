@@ -1,5 +1,34 @@
 # server_tab4.R - Tab 4: Game Logs server logic
 
+GL_SUMMARY_FILTERABLE_COLS <- c(
+  "GN" = "gn",
+  "Min" = "minutes",
+  "Off PPP" = "off_ppp",
+  "Def PPP" = "def_ppp",
+  "Net" = "net_rtg",
+  "Off Shot" = "Off Shot",
+  "Def Shot" = "Def Shot",
+  "Off Poss" = "off_poss",
+  "Def Poss" = "def_poss"
+)
+
+GL_FF_FILTERABLE_COLS <- c(
+  "GN" = "gn",
+  "Min" = "minutes",
+  "Off PPP" = "off_ppp",
+  "Off eFG%" = "off_efg_pct",
+  "Off OREB%" = "off_oreb_pct",
+  "Off TOV%" = "off_tov_pct",
+  "Off FTR" = "off_ftr_pct",
+  "Def PPP" = "def_ppp",
+  "Def eFG%" = "def_efg_pct",
+  "Def OREB%" = "def_oreb_pct",
+  "Def TOV%" = "def_tov_pct",
+  "Def FTR" = "def_ftr_pct",
+  "Off Poss" = "off_poss",
+  "Def Poss" = "def_poss"
+)
+
 gl_pr_col_name <- function(metric_name) {
   paste0("pr_", gsub("[^A-Za-z0-9]+", "_", metric_name))
 }
@@ -43,6 +72,7 @@ gl_build_summary_metrics <- function(lineup_totals_df, schedule_df, starters_bou
     lt <- gl_filter_starters(lt, starters_bounds)
   }
   if (!nrow(lt)) return(NULL)
+  if (!"minutes" %in% names(lt)) lt$minutes <- NA_real_
 
   game_stats <- lt %>%
     group_by(game_id, team_id, type_lineup) %>%
@@ -53,6 +83,7 @@ gl_build_summary_metrics <- function(lineup_totals_df, schedule_df, starters_bou
       fg2a = sum(fg2_att, na.rm = TRUE),
       fg3m = sum(fg3_made, na.rm = TRUE),
       fg3a = sum(fg3_att, na.rm = TRUE),
+      minutes = sum(minutes, na.rm = TRUE),
       .groups = "drop"
     )
 
@@ -84,7 +115,8 @@ gl_build_summary_metrics <- function(lineup_totals_df, schedule_df, starters_bou
     mutate(
       off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
       def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
-      net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1)
+      net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1),
+      minutes = round(coalesce(minutes, 0), 1)
     )
 }
 
@@ -97,6 +129,7 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
     ff <- gl_filter_starters(ff, starters_bounds)
   }
   if (!nrow(ff)) return(NULL)
+  if (!"minutes" %in% names(ff)) ff$minutes <- NA_real_
 
   game_ff <- ff %>%
     group_by(game_id, team_id, type_lineup) %>%
@@ -111,6 +144,7 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       total_fga = sum(total_fga, na.rm = TRUE),
       total_fgm = sum(total_fgm, na.rm = TRUE),
       total_fg3_made = sum(total_fg3_made, na.rm = TRUE),
+      minutes = sum(minutes, na.rm = TRUE),
       .groups = "drop"
     )
 
@@ -126,7 +160,8 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       off_fta = total_ft_attempts,
       off_fga = total_fga,
       off_fgm = total_fgm,
-      off_fg3m = total_fg3_made
+      off_fg3m = total_fg3_made,
+      off_minutes = minutes
     ) %>%
     select(-type_lineup)
   def <- game_ff %>%
@@ -141,7 +176,8 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       def_fta = total_ft_attempts,
       def_fga = total_fga,
       def_fgm = total_fgm,
-      def_fg3m = total_fg3_made
+      def_fg3m = total_fg3_made,
+      def_minutes = minutes
     ) %>%
     select(game_id, team_id, def_pts, def_poss, def_ts_poss, def_oreb, def_oreb_opp, def_tov, def_fta, def_fga, def_fgm, def_fg3m)
 
@@ -159,7 +195,8 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
       def_efg_pct = ifelse(def_fga > 0, round((def_fgm + 0.5 * def_fg3m) / def_fga * 100, 1), NA_real_),
       def_oreb_pct = ifelse(def_oreb_opp > 0, round(def_oreb / def_oreb_opp * 100, 1), NA_real_),
       def_tov_pct = ifelse(def_poss > 0, round(def_tov / def_poss * 100, 1), NA_real_),
-      def_ftr_pct = ifelse(def_fga > 0, round(def_fta / def_fga * 100, 1), NA_real_)
+      def_ftr_pct = ifelse(def_fga > 0, round(def_fta / def_fga * 100, 1), NA_real_),
+      minutes = round(coalesce(off_minutes, 0), 1)
     )
 }
 
@@ -183,6 +220,12 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
 server_tab4 <- function(input, output, session, shared) {
 
   gl_ref <- reactiveValues(teams = NULL)
+  gl_stat_filter_state <- make_stat_filter_state()
+  gl_stat_filter_cols <- reactive({
+    if (identical(input$gl_view_mode, "Four Factors")) GL_FF_FILTERABLE_COLS else GL_SUMMARY_FILTERABLE_COLS
+  })
+
+  setup_stat_filter_handlers("gl", input, session, gl_stat_filter_cols, gl_stat_filter_state)
 
   # --- Team list for the season ---
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
@@ -253,7 +296,12 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectInput(session, "gl_outcome", selected = "")
     reset_starters_inputs(session, "gl")
     reset_gn_last_n_inputs(session, "gl")
+    reset_stat_filters(gl_stat_filter_state)
   })
+
+  observeEvent(input$gl_view_mode, {
+    reset_stat_filters(gl_stat_filter_state)
+  }, ignoreInit = TRUE)
 
   # --- Schedule cache per season ---
   gl_schedule <- reactive({
@@ -364,7 +412,7 @@ server_tab4 <- function(input, output, session, shared) {
     db_get_query(
       pg_pool,
       "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
-              total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, num_starters
+              total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, minutes, num_starters
        FROM basketball_test.mv_lineup_totals_by_day
        WHERE game_year = $1",
       params = list(gy_int)
@@ -381,7 +429,7 @@ server_tab4 <- function(input, output, session, shared) {
       "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
               total_points, total_poss, ts_poss_count, oreb_count,
               oreb_opportunities, tov_count, total_ft_attempts, total_fga,
-              total_fgm, total_fg3_made, num_starters
+              total_fgm, total_fg3_made, minutes, num_starters
        FROM basketball_test.lineup_four_factors_by_game
        WHERE game_year = $1",
       params = list(gy_int)
@@ -469,9 +517,12 @@ server_tab4 <- function(input, output, session, shared) {
         df[["Off Shot"]] <- coalesce(df$off_fg2a, 0) + coalesce(df$off_fg3a, 0)
         df[["Def Shot"]] <- coalesce(df$def_fg2a, 0) + coalesce(df$def_fg3a, 0)
       }
+      df <- apply_stat_filters(df, gl_stat_filter_state$filters())
+      if (is.null(df) || nrow(df) == 0) return(NULL)
 
       disp <- df %>% select(
         gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
+        minutes,
         off_ppp, def_ppp, net_rtg,
         any_of(c("Off Shot", "Def Shot")),
         off_poss, def_poss,
@@ -587,6 +638,7 @@ server_tab4 <- function(input, output, session, shared) {
           th(class = "sub-head", "Opponent"),
           th(class = "sub-head", "W/L"),
           th(class = "sub-head", "Score"),
+          th(class = "sub-head", "Min"),
           th(class = "sub-head section-left-border", "Off PPP"),
           th(class = "sub-head", "Def PPP"),
           th(class = "sub-head", "Net"),
@@ -616,6 +668,7 @@ server_tab4 <- function(input, output, session, shared) {
                           ))
 
       dt <- DT::formatRound(dt, c("off_ppp", "def_ppp", "net_rtg"), 1)
+      if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
       if ("pr_off_ppp" %in% names(disp)) {
         dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = DT::styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
@@ -630,9 +683,12 @@ server_tab4 <- function(input, output, session, shared) {
       # ------- TEAMS FOUR FACTORS -------
       df <- gl_teams_ff()
       if (is.null(df) || nrow(df) == 0) return(NULL)
+      df <- apply_stat_filters(df, gl_stat_filter_state$filters())
+      if (is.null(df) || nrow(df) == 0) return(NULL)
 
       disp <- df %>% select(
         gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
+        minutes,
         off_ppp, off_efg_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
         def_ppp, def_efg_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
         off_poss, def_poss,
@@ -668,7 +724,7 @@ server_tab4 <- function(input, output, session, shared) {
 
       sketch <- htmltools::withTags(table(class = 'display', thead(
         tr(
-          th(class = "group-head", colspan = 7, ""),
+          th(class = "group-head", colspan = 8, ""),
           th(class = "group-head section-left-border", colspan = 5, "Offense"),
           th(class = "group-head section-left-border", colspan = 5, "Defense"),
           th(class = "group-head section-left-border", colspan = 2, "Usage")
@@ -681,6 +737,7 @@ server_tab4 <- function(input, output, session, shared) {
           th(class = "sub-head", "Opponent"),
           th(class = "sub-head", "W/L"),
           th(class = "sub-head", "Score"),
+          th(class = "sub-head", "Min"),
           th(class = "sub-head section-left-border", "PPP"),
           th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"),
@@ -711,6 +768,7 @@ server_tab4 <- function(input, output, session, shared) {
       ppp_cols <- c("off_ppp", "def_ppp")
 
       dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols), names(disp)), 1)
+      if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
       heat_reverse <- c(
         off_ppp = FALSE,
@@ -757,7 +815,8 @@ server_tab4 <- function(input, output, session, shared) {
     build_filter_chips(
       "gl", input, shared$season_date_bounds,
       reset_btn_id = "gl_reset",
-      team_label_map = team_map
+      team_label_map = team_map,
+      extra_children = stat_filter_chips_ui("gl", gl_stat_filter_state, gl_stat_filter_cols)
     )
   })
   setup_chip_clears("gl", session, input, shared,

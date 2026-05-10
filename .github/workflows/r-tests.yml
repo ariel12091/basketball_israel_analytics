@@ -8,6 +8,15 @@ on:
         required: false
         default: false
         type: boolean
+      run_deployed_smoke:
+        description: "Check deployed app tables render data"
+        required: false
+        default: false
+        type: boolean
+      app_url:
+        description: "Deployed Shiny app URL for smoke checks"
+        required: false
+        default: "https://ibpl-stats.shinyapps.io/onoff-shiny/"
   push:
     branches: [ main ]
   pull_request:
@@ -17,7 +26,7 @@ on:
 
 jobs:
   fast-tests:
-    if: ${{ github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && github.event.inputs.run_full == 'true') }}
+    if: ${{ github.event_name != 'schedule' && !(github.event_name == 'workflow_dispatch' && (github.event.inputs.run_full == 'true' || github.event.inputs.run_deployed_smoke == 'true')) }}
     runs-on: ubuntu-latest
 
     steps:
@@ -38,6 +47,7 @@ jobs:
             any::bslib
             any::purrr
             any::htmltools
+            any::chromote
             any::shinytest2
             any::DBI
             any::pool
@@ -47,15 +57,18 @@ jobs:
         env:
           RUN_E2E: '0'
           RUN_DB_TESTS: '0'
+          RUN_DEPLOYED_SMOKE: '0'
         run: |
           Rscript scripts/test_all.R
 
   nightly-full-tests:
-    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_full == 'true') }}
+    if: ${{ github.event_name == 'schedule' || (github.event_name == 'workflow_dispatch' && (github.event.inputs.run_full == 'true' || github.event.inputs.run_deployed_smoke == 'true')) }}
     runs-on: ubuntu-latest
     env:
-      RUN_E2E: '1'
-      RUN_DB_TESTS: '1'
+      RUN_E2E: ${{ (github.event_name == 'schedule' || github.event.inputs.run_full == 'true') && '1' || '0' }}
+      RUN_DB_TESTS: ${{ (github.event_name == 'schedule' || github.event.inputs.run_full == 'true') && '1' || '0' }}
+      RUN_DEPLOYED_SMOKE: ${{ (github.event_name == 'workflow_dispatch' && github.event.inputs.run_deployed_smoke == 'true') && '1' || '0' }}
+      APP_URL: ${{ github.event.inputs.app_url || 'https://ibpl-stats.shinyapps.io/onoff-shiny/' }}
       PG_HOST: ${{ secrets.PG_HOST }}
       PG_PORT: ${{ secrets.PG_PORT }}
       PG_DB: ${{ secrets.PG_DB }}
@@ -72,6 +85,10 @@ jobs:
         with:
           r-version: '4.4.2'
 
+      - name: Set up Chrome
+        if: ${{ env.RUN_E2E == '1' || env.RUN_DEPLOYED_SMOKE == '1' }}
+        uses: browser-actions/setup-chrome@v1
+
       - name: Install test deps (cached)
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
@@ -83,6 +100,7 @@ jobs:
             any::bslib
             any::purrr
             any::htmltools
+            any::chromote
             any::shinytest2
             any::DBI
             any::pool
@@ -90,8 +108,10 @@ jobs:
 
       - name: Run full suite
         env:
-          RUN_E2E: '1'
-          RUN_DB_TESTS: '1'
+          RUN_E2E: ${{ env.RUN_E2E }}
+          RUN_DB_TESTS: ${{ env.RUN_DB_TESTS }}
+          RUN_DEPLOYED_SMOKE: ${{ env.RUN_DEPLOYED_SMOKE }}
+          APP_URL: ${{ env.APP_URL }}
           PG_HOST: ${{ secrets.PG_HOST }}
           PG_PORT: ${{ secrets.PG_PORT }}
           PG_DB: ${{ secrets.PG_DB }}

@@ -1,5 +1,41 @@
 # server_tab1.R - Tab 1: On/Off Impact server logic
 
+ON_SUMMARY_FILTERABLE_COLS <- c(
+  "Net" = "Net RTG Diff",
+  "Off" = "Off ON Diff",
+  "Def" = "Def ON Diff",
+  "On Off PPP" = "Off ON PPP",
+  "On Def PPP" = "Def ON PPP",
+  "On Net Rtg" = "On Net RTG",
+  "On Off Shot" = "Off Shot ON",
+  "On Def Shot" = "Def Shot ON",
+  "Off Off PPP" = "Off OFF PPP",
+  "Off Def PPP" = "Def OFF PPP",
+  "Off Net Rtg" = "Off Net RTG",
+  "Off Off Shot" = "Off Shot OFF",
+  "Off Def Shot" = "Def Shot OFF",
+  "Min" = "minutes",
+  "On Poss" = "ON Poss",
+  "Off Poss" = "OFF Poss"
+)
+
+ON_FF_FILTERABLE_COLS <- c(
+  "Net Diff" = "Net Diff",
+  "Off Rtg Diff" = "Off Rtg Diff",
+  "Off eFG% Diff" = "Off eFG% Diff",
+  "Off OREB% Diff" = "Off OREB% Diff",
+  "Off TOV% Diff" = "Off TOV% Diff",
+  "Off FTR Diff" = "Off FTR Diff",
+  "Def Rtg Diff" = "Def Rtg Diff",
+  "Def eFG% Diff" = "Def eFG% Diff",
+  "Def OREB% Diff" = "Def OREB% Diff",
+  "Def TOV% Diff" = "Def TOV% Diff",
+  "Def FTR Diff" = "Def FTR Diff",
+  "Min" = "minutes",
+  "On Poss" = "ON Poss",
+  "Off Poss" = "OFF Poss"
+)
+
 server_tab1 <- function(input, output, session, shared) {
   auto_min_state <- reactiveValues(
     last_auto = NA_integer_,
@@ -8,6 +44,13 @@ server_tab1 <- function(input, output, session, shared) {
   )
   auto_enabled <- reactiveVal(TRUE)
   resetting <- reactiveVal(FALSE)
+  on_stat_filter_state <- make_stat_filter_state()
+
+  on_stat_filter_cols <- reactive({
+    if (identical(input$onoff_view_mode, "Four Factors")) ON_FF_FILTERABLE_COLS else ON_SUMMARY_FILTERABLE_COLS
+  })
+
+  setup_stat_filter_handlers("on", input, session, on_stat_filter_cols, on_stat_filter_state)
 
   AUTO_TOP_PCT <- 0.35
 
@@ -102,6 +145,7 @@ server_tab1 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "on_gn_min", selected = "")
     updateSelectizeInput(session, "on_gn_max", selected = "")
     updateSelectizeInput(session, "on_last_n", selected = "")
+    reset_stat_filters(on_stat_filter_state)
     auto_min_state$last_auto <- as.integer(DEFAULT_MIN_ON)
     auto_min_state$last_auto_all <- as.integer(DEFAULT_MIN_ALL)
     auto_enabled(FALSE)
@@ -109,6 +153,10 @@ server_tab1 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "teams", selected = character(0))
     session$onFlushed(function() resetting(FALSE), once = TRUE)
   })
+
+  observeEvent(input$onoff_view_mode, {
+    reset_stat_filters(on_stat_filter_state)
+  }, ignoreInit = TRUE)
 
   debounced_range <- reactive(input$date_range) %>% debounce(300)
   debounced_teams <- reactive(input$teams) %>% debounce(300)
@@ -516,7 +564,7 @@ server_tab1 <- function(input, output, session, shared) {
                                      num_starters_off = NA_integer_, num_starters_def = NA_integer_,
                                      num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
                                      num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max) %>%
-        select(player_id, team_id, `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`)
+        select(player_id, team_id, `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, any_of("minutes"))
 
       df <- df_adv %>%
         left_join(df_sum, by = c("player_id", "team_id"))
@@ -527,7 +575,7 @@ server_tab1 <- function(input, output, session, shared) {
       # Join with Summary Stats to get Ratings (Net/Off/Def Diff)
       if (!"Net RTG Diff" %in% names(df_adv)) {
         df_sum <- mv_result_df() %>%
-          select(player_id, team_id, "Year", `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`)
+          select(player_id, team_id, "Year", `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, any_of("minutes"))
 
         df <- df_adv %>%
           left_join(df_sum, by = c("player_id", "team_id", "game_year" = "Year"))
@@ -659,6 +707,7 @@ server_tab1 <- function(input, output, session, shared) {
         "def_off_fg2_made", "def_off_fg2_att", "def_off_fg3_made", "def_off_fg3_att"
       )
       shot_display_cols <- c("Off Shot ON", "Def Shot ON", "Off Shot OFF", "Def Shot OFF")
+      if (!"minutes" %in% names(df)) df$minutes <- NA_real_
 
       # Create display columns (sortable value = total FGA)
       has_shots <- all(c("off_on_fg2_att", "off_on_fg3_att") %in% names(df))
@@ -676,16 +725,17 @@ server_tab1 <- function(input, output, session, shared) {
         "Net RTG Diff", "Off ON Diff", "Def ON Diff",
         "Off ON PPP", "Def ON PPP", "On Net RTG", "Off Shot ON", "Def Shot ON",
         "Off OFF PPP", "Def OFF PPP", "Off Net RTG", "Off Shot OFF", "Def Shot OFF",
-        "ON Poss", "OFF Poss",
+        "minutes", "ON Poss", "OFF Poss",
         shot_raw_cols,
         "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
       )
       df <- df[, intersect(keep_cols, names(df))]
+      df <- apply_stat_filters(df, on_stat_filter_state$filters())
 
       idx_net <- which(names(df) == "Net RTG Diff") - 1
       idx_on  <- which(names(df) == "Off ON PPP") - 1
       idx_off <- which(names(df) == "Off OFF PPP") - 1
-      idx_use <- which(names(df) == "ON Poss") - 1
+      idx_use <- which(names(df) == "minutes") - 1
 
       diff_cols <- c("Net RTG Diff", "Off ON Diff", "Def ON Diff", "On Net RTG", "Off Net RTG")
       idx_diff <- which(names(df) %in% diff_cols) - 1
@@ -797,14 +847,14 @@ server_tab1 <- function(input, output, session, shared) {
           th(class="group-head section-left-border", colspan=3, "Net Impact"),
           th(class="group-head section-left-border", colspan=5, "On Court Stats"),
           th(class="group-head section-left-border", colspan=5, "Off Court Stats"),
-          th(class="group-head section-left-border", colspan=2, "Usage")
+          th(class="group-head section-left-border", colspan=3, "Usage")
         ),
         tr(
           th(class="sub-head", "Team"), th(class="sub-head", "Player"),
           th(class="sub-head section-left-border", "Net"), th(class="sub-head", "Off"), th(class="sub-head", "Def"),
           th(class="sub-head section-left-border", "Off PPP"), th(class="sub-head", "Def PPP"), th(class="sub-head", "Net Rtg"), th(class="sub-head", "Off Shot"), th(class="sub-head", "Def Shot"),
           th(class="sub-head section-left-border", "Off PPP"), th(class="sub-head", "Def PPP"), th(class="sub-head", "Net Rtg"), th(class="sub-head", "Off Shot"), th(class="sub-head", "Def Shot"),
-          th(class="sub-head section-left-border", "On Poss"), th(class="sub-head", "Off Poss")
+          th(class="sub-head section-left-border", "Min"), th(class="sub-head", "On Poss"), th(class="sub-head", "Off Poss")
         )
       )))
 
@@ -827,6 +877,7 @@ server_tab1 <- function(input, output, session, shared) {
                                        ))
                                      ), shot_col_defs))) |>
         formatRound(c("Off ON PPP", "Def ON PPP", "Off OFF PPP", "Def OFF PPP"), 1) |>
+        formatRound(intersect("minutes", names(df)), 1) |>
         formatCurrency(c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
 
       if("pr_net" %in% names(df)) dt <- formatStyle(dt, "Net RTG Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
@@ -867,9 +918,10 @@ server_tab1 <- function(input, output, session, shared) {
 
       # Rename poss columns for display
       df <- df %>% rename(`ON Poss` = off_on_poss, `OFF Poss` = off_off_poss)
+      if (!"minutes" %in% names(df)) df$minutes <- NA_real_
 
       # 3. SELECT & ORDER COLUMNS
-      vis_cols <- c("Team", "Player", "Net Diff", "Off Rtg Diff", "Def Rtg Diff", intersect(names(metric_map), names(df)), "ON Poss", "OFF Poss")
+      vis_cols <- c("Team", "Player", "Net Diff", "Off Rtg Diff", "Def Rtg Diff", intersect(names(metric_map), names(df)), "minutes", "ON Poss", "OFF Poss")
 
       rank_cols <- intersect(c(
         "pr_net_diff", "pr_off_rtg", "pr_def_rtg",
@@ -883,12 +935,13 @@ server_tab1 <- function(input, output, session, shared) {
         "Team", "Player", "Net Diff",
         "Off Rtg Diff", "Off eFG% Diff", "Off OREB% Diff", "Off TOV% Diff", "Off FTR Diff",
         "Def Rtg Diff", "Def eFG% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff",
-        "ON Poss", "OFF Poss"
+        "minutes", "ON Poss", "OFF Poss"
       )
 
       final_vis_order <- intersect(final_vis_order, names(df_final))
       final_col_order <- c(final_vis_order, setdiff(names(df_final), final_vis_order))
       df_final <- df_final %>% select(all_of(final_col_order))
+      df_final <- apply_stat_filters(df_final, on_stat_filter_state$filters())
 
       defs <- list()
 
@@ -957,8 +1010,8 @@ server_tab1 <- function(input, output, session, shared) {
       def_rtg_idx <- which(names(df_final) == "Def Rtg Diff") - 1L
       if(length(def_rtg_idx)) defs[[length(defs) + 1]] <- list(targets = def_rtg_idx, className = "section-left-border")
 
-      on_poss_idx <- which(names(df_final) == "ON Poss") - 1L
-      if(length(on_poss_idx)) defs[[length(defs) + 1]] <- list(targets = on_poss_idx, className = "section-left-border")
+      minutes_idx <- which(names(df_final) == "minutes") - 1L
+      if(length(minutes_idx)) defs[[length(defs) + 1]] <- list(targets = minutes_idx, className = "section-left-border")
 
       # Net Diff Style
       net_diff_idx <- which(names(df_final) == "Net Diff") - 1L
@@ -995,14 +1048,14 @@ server_tab1 <- function(input, output, session, shared) {
           th(class = "group-head", "Total"),
           th(class = "group-head section-left-border", colspan = 5, "Offense Impact (On-Off)"),
           th(class = "group-head section-left-border", colspan = 5, "Defense Impact (On-Off)"),
-          th(class = "group-head section-left-border", colspan = 2, "Usage")
+          th(class = "group-head section-left-border", colspan = 3, "Usage")
         ),
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head", "Diff"),
           th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
           th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
-          th(class = "sub-head section-left-border", "On Poss"), th(class = "sub-head", "Off Poss")
+          th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))
 
@@ -1018,6 +1071,7 @@ server_tab1 <- function(input, output, session, shared) {
       )
 
       # --- FORMAT POSS COLUMNS ---
+      dt <- formatRound(dt, intersect("minutes", names(df_final)), 1)
       dt <- formatCurrency(dt, c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
 
       # --- COLOR LOGIC ---
@@ -1043,11 +1097,15 @@ server_tab1 <- function(input, output, session, shared) {
 
       return(dt)
     }
-  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode)
+  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode, on_stat_filter_state$filters())
 
   # ---- Filter Chips ----
   output$on_filter_chips <- renderUI({
-    build_filter_chips("on", input, shared$season_date_bounds, reset_btn_id = "reset_defaults")
+    build_filter_chips(
+      "on", input, shared$season_date_bounds,
+      reset_btn_id = "reset_defaults",
+      extra_children = stat_filter_chips_ui("on", on_stat_filter_state, on_stat_filter_cols)
+    )
   })
   setup_chip_clears("on", session, input, shared,
     game_type_id = "on_game_type", opponents_id = "on_opponents",

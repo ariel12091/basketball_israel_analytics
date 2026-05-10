@@ -1,0 +1,118 @@
+library(testthat)
+
+skip_if_not(Sys.getenv("RUN_DB_TESTS", "0") == "1")
+skip_if_not_installed("DBI")
+skip_if_not_installed("RPostgres")
+
+pg_env <- c("PG_HOST", "PG_PORT", "PG_DB", "PG_USER", "PG_PASS")
+missing_env <- pg_env[!nzchar(Sys.getenv(pg_env))]
+if (length(missing_env)) {
+  skip(paste("Missing DB env:", paste(missing_env, collapse = ", ")))
+}
+
+con <- DBI::dbConnect(
+  RPostgres::Postgres(),
+  host = Sys.getenv("PG_HOST"),
+  port = as.integer(Sys.getenv("PG_PORT")),
+  dbname = Sys.getenv("PG_DB"),
+  user = Sys.getenv("PG_USER"),
+  password = Sys.getenv("PG_PASS"),
+  sslmode = Sys.getenv("PG_SSLMODE", unset = "require")
+)
+on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+columns_for <- function(table_name) {
+  DBI::dbGetQuery(
+    con,
+    "SELECT column_name
+       FROM information_schema.columns
+      WHERE table_schema = 'basketball_test'
+        AND table_name = $1
+      ORDER BY ordinal_position",
+    params = list(table_name)
+  )$column_name
+}
+
+expect_has_columns <- function(table_name, expected) {
+  cols <- columns_for(table_name)
+  missing <- setdiff(expected, cols)
+  expect_equal(missing, character(0), info = paste(table_name, "missing:", paste(missing, collapse = ", ")))
+}
+
+expect_lacks_columns <- function(table_name, forbidden) {
+  cols <- columns_for(table_name)
+  hits <- intersect(forbidden, cols)
+  expect_equal(hits, character(0), info = paste(table_name, "unexpected:", paste(hits, collapse = ", ")))
+}
+
+expect_has_rows <- function(sql, params = list()) {
+  out <- DBI::dbGetQuery(con, sql, params = params)
+  expect_true(isTRUE(out$has_rows[[1]]), info = sql)
+}
+
+test_that("live DB has the app-required shape for default MVs", {
+  expect_has_columns("onoff_default_mv", c(
+    "Team", "Year", "First Name", "Last Name", "Net RTG Diff",
+    "Off ON Diff", "Def ON Diff", "Off ON PPP", "Def ON PPP",
+    "On Net RTG", "Off OFF PPP", "Def OFF PPP", "Off Net RTG",
+    "ON Poss", "OFF Poss", "minutes", "player_id", "team_id"
+  ))
+
+  expect_has_columns("player_onoff_by_game", c(
+    "player_id", "team_id", "game_id", "game_year", "is_on_key",
+    "type_lineup", "total_pts", "total_poss", "minutes"
+  ))
+
+  expect_has_columns("team_ppp_ratings_mv", c(
+    "game_year", "team_id", "team_name", "off_ppp", "def_ppp",
+    "net_rtg", "games_played", "wins", "losses", "off_poss", "def_poss"
+  ))
+
+  expect_has_columns("team_four_factors_mv", c(
+    "team_id", "game_year", "team_name",
+    "off_ts", "off_efg", "off_oreb", "off_tov", "off_ftr", "off_ppp", "off_poss",
+    "def_ts", "def_efg", "def_oreb", "def_tov", "def_ftr", "def_ppp", "def_poss",
+    "net_rtg"
+  ))
+
+  expect_has_columns("team_metrics_by_game_mv", c(
+    "team_id", "game_id", "game_year", "game_date",
+    "off_minutes", "def_minutes", "pts", "reb", "ast", "stl", "blk",
+    "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta"
+  ))
+
+  expect_has_columns("player_traditional_stats_mv", c(
+    "player_id", "team_id", "team_name", "player_name", "gp",
+    "poss_on_floor", "minutes", "pts", "reb", "ast", "stl", "blk",
+    "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta",
+    "fg_pct", "tp_pct", "ft_pct", "efg", "ts"
+  ))
+})
+
+test_that("live DB does not expose removed AST% experiment columns in app data sources", {
+  forbidden <- c("ast_pct", "parameters_kind", "shooting_foul_ft_trips")
+  for (table_name in c("player_traditional_stats_mv", "team_metrics_by_game_mv")) {
+    expect_lacks_columns(table_name, forbidden)
+  }
+})
+
+test_that("live DB functions used by render paths return app-required columns", {
+  player_trad <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_player_traditional_dynamic($1::int4) LIMIT 0", params = list(2026L))
+  expect_true(all(c("player_id", "team_id", "team_name", "player_name", "gp", "poss_on_floor", "minutes", "pts", "reb", "ast", "fg_pct", "efg", "ts") %in% names(player_trad)))
+  expect_false("ast_pct" %in% names(player_trad))
+
+  team_ff <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_team_four_factors_dynamic($1::int4) LIMIT 0", params = list(2026L))
+  expect_true(all(c("team_id", "game_year", "team_name", "off_efg", "off_tov", "off_ppp", "def_efg", "def_tov", "def_ppp", "net_rtg") %in% names(team_ff)))
+
+  team_ratings <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_team_ratings_dynamic($1::int4) LIMIT 0", params = list(2026L))
+  expect_true(all(c("game_year", "team_id", "team_name", "off_ppp", "def_ppp", "net_rtg", "games_played", "off_poss", "def_poss") %in% names(team_ratings)))
+})
+
+test_that("live DB has data behind the main app tabs for current season", {
+  expect_has_rows('SELECT EXISTS(SELECT 1 FROM basketball_test.onoff_default_mv WHERE "Year" = $1::int4 LIMIT 1) AS has_rows', list(2026L))
+  expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_ppp_ratings_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
+  expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_four_factors_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
+  expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.player_traditional_stats_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
+  expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_metrics_by_game_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
+  expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.final_schedule_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
+})

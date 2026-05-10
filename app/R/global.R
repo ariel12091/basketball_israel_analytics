@@ -470,6 +470,156 @@ make_season_chip <- function(gy) {
   tags$span(class = "filter-chip chip-season", label)
 }
 
+normalize_stat_filter_cols <- function(filterable_cols) {
+  cols <- if (is.function(filterable_cols)) filterable_cols() else filterable_cols
+  if (is.null(cols)) return(stats::setNames(character(0), character(0)))
+  if (is.list(cols) && !is.atomic(cols)) cols <- unlist(cols, use.names = TRUE)
+  labels <- names(cols)
+  cols <- as.character(cols)
+  if (is.null(labels)) labels <- rep("", length(cols))
+  keep <- nzchar(labels) & nzchar(cols)
+  stats::setNames(cols[keep], labels[keep])
+}
+
+make_stat_filter_state <- function() {
+  list(
+    filters = reactiveVal(list()),
+    next_id = reactiveVal(1L)
+  )
+}
+
+reset_stat_filters <- function(state) {
+  state$filters(list())
+  state$next_id(1L)
+  invisible(NULL)
+}
+
+apply_stat_filters <- function(df, filters) {
+  if (is.null(df) || !nrow(df) || !length(filters)) return(df)
+  for (f in filters) {
+    col <- f$col
+    if (!col %in% names(df)) next
+    v <- suppressWarnings(as.numeric(df[[col]]))
+    threshold <- suppressWarnings(as.numeric(f$value))
+    if (length(threshold) != 1L || !is.finite(threshold)) next
+    keep <- !is.na(v) & (if (identical(f$op, "le")) v <= threshold else v >= threshold)
+    df <- df[keep, , drop = FALSE]
+    if (!nrow(df)) break
+  }
+  df
+}
+
+setup_stat_filter_handlers <- function(prefix, input, session, filterable_cols, state) {
+  add_id <- paste0(prefix, "_add_stat_filter")
+  remove_id <- paste0(prefix, "_remove_stat_filter")
+  col_id <- paste0(prefix, "_stat_filter_col")
+  op_id <- paste0(prefix, "_stat_filter_op")
+  value_id <- paste0(prefix, "_stat_filter_value")
+
+  observeEvent(input[[add_id]], {
+    cols <- normalize_stat_filter_cols(filterable_cols)
+    col_label <- input[[col_id]] %||% ""
+    op <- input[[op_id]] %||% "ge"
+    raw_val <- input[[value_id]]
+    val <- suppressWarnings(as.numeric(raw_val))
+    if (!nzchar(col_label) || !col_label %in% names(cols)) return()
+    if (!op %in% c("ge", "le")) return()
+    if (length(val) != 1L || !is.finite(val)) return()
+
+    new_id <- state$next_id()
+    state$next_id(new_id + 1L)
+
+    current <- state$filters()
+    current[[length(current) + 1]] <- list(
+      id = new_id,
+      label = col_label,
+      col = unname(cols[[col_label]]),
+      op = op,
+      value = val
+    )
+    state$filters(current)
+
+    updateSelectInput(session, col_id, selected = "")
+    updateRadioButtons(session, op_id, selected = "ge")
+    updateNumericInput(session, value_id, value = NA)
+  })
+
+  observeEvent(input[[remove_id]], {
+    rm_id <- suppressWarnings(as.integer(input[[remove_id]]))
+    if (is.na(rm_id)) return()
+    current <- state$filters()
+    keep <- vapply(current, function(f) !identical(as.integer(f$id), rm_id), logical(1))
+    state$filters(current[keep])
+  }, ignoreInit = TRUE)
+}
+
+stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = NULL) {
+  cols <- normalize_stat_filter_cols(filterable_cols)
+  choices <- names(cols)
+  remove_id <- paste0(prefix, "_remove_stat_filter")
+  filter_chips <- lapply(state$filters(), function(f) {
+    op_sym <- if (identical(f$op, "ge")) "\u2265" else "\u2264"
+    val_txt <- format(f$value, big.mark = ",", trim = TRUE)
+    tags$span(
+      class = "filter-chip chip-stat",
+      sprintf("%s %s %s", f$label, op_sym, val_txt), " ",
+      tags$a(
+        href = "#",
+        class = "js-shiny-event",
+        `data-input-id` = remove_id,
+        `data-shiny-value` = as.character(as.integer(f$id)),
+        style = "margin-left:4px;color:inherit;",
+        HTML("&times;")
+      )
+    )
+  })
+
+  pct_msg <- percent_hint
+  if (is.null(pct_msg) && any(grepl("%", choices, fixed = TRUE))) {
+    pct_msg <- "Percent columns: enter as 0-100."
+  }
+
+  add_btn <- bslib::popover(
+    trigger = tags$span(
+      class = "filter-chip filter-chip-add",
+      id = paste0(prefix, "_stat_filter_add_btn"),
+      tags$i(class = "bi bi-plus"), " Filter"
+    ),
+    title = "Add stat filter",
+    placement = "bottom",
+    div(
+      class = paste0(prefix, "-stat-popover"),
+      style = "min-width: 220px;",
+      selectInput(
+        paste0(prefix, "_stat_filter_col"), "Column",
+        choices = c("Choose..." = "", choices),
+        selected = "",
+        width = "100%"
+      ),
+      radioButtons(
+        paste0(prefix, "_stat_filter_op"), "Operator",
+        choices = c("\u2265" = "ge", "\u2264" = "le"),
+        selected = "ge",
+        inline = TRUE
+      ),
+      numericInput(
+        paste0(prefix, "_stat_filter_value"), "Value",
+        value = NA,
+        width = "100%"
+      ),
+      if (!is.null(pct_msg) && nzchar(pct_msg)) {
+        tags$div(class = "small text-muted mb-2", pct_msg)
+      },
+      actionButton(
+        paste0(prefix, "_add_stat_filter"), "Add",
+        class = "btn-sm btn-primary w-100"
+      )
+    )
+  )
+
+  c(filter_chips, list(add_btn))
+}
+
 build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
                                team_label_map = NULL, player_label_map = NULL,
                                teams_value = NULL, players_on_value = NULL, players_off_value = NULL,

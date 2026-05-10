@@ -180,7 +180,7 @@ ui_tab3_team <- tabPanel(
             title = "What This Tab Answers (Traditional)",
             intro = "How do teams produce in traditional box-score terms under your selected filters?",
             bullets = c(
-              "Shows team-level counting and shooting stats using the same game/clutch filters.",
+              "Shows team-level counting, assist rate, and shooting stats using the same game/clutch filters.",
               "Ranks are season-contextual inside the filtered sample.",
               "Rank delta is vs previous matchday only, and shown only on baseline date/GN scope."
             )

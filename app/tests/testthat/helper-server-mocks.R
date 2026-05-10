@@ -26,6 +26,80 @@ pg_pool <- structure(list(), class = "mock_pool")
 db_get_query <- function(pool, query, params = NULL) {
   q <- paste(query, collapse = " ")
 
+  if (grepl("onoff_default_mv", q, fixed = TRUE)) {
+    return(data.frame(
+      Team = c("Team A", "Team B"),
+      Year = c(2026L, 2026L),
+      `First Name` = c("Player", "Player"),
+      `Last Name` = c("A", "B"),
+      `Net RTG Diff` = c(12.5, 8.1),
+      `Off ON Diff` = c(7.4, 3.2),
+      `Def ON Diff` = c(-5.1, -4.9),
+      `Off ON PPP` = c(116.2, 112.1),
+      `Def ON PPP` = c(101.4, 104.0),
+      `On Net RTG` = c(14.8, 8.1),
+      `Off OFF PPP` = c(108.8, 108.9),
+      `Def OFF PPP` = c(106.5, 108.9),
+      `Off Net RTG` = c(2.3, 0.0),
+      `ON Poss` = c(420L, 360L),
+      `OFF Poss` = c(220L, 240L),
+      minutes = c(180.5, 150.0),
+      pr_net = c(1, 0),
+      pr_off_on = c(1, 0),
+      pr_off_off = c(0, 1),
+      pr_def_on_inv = c(1, 0),
+      pr_def_off_inv = c(1, 0),
+      pr_off_on_d = c(1, 0),
+      pr_def_on_d = c(1, 0),
+      pr_def_on_d_inv = c(0, 1),
+      pr_on_net = c(1, 0),
+      pr_off_net = c(1, 0),
+      off_on_fg2_made = c(90L, 80L), off_on_fg2_att = c(160L, 150L),
+      off_on_fg3_made = c(38L, 32L), off_on_fg3_att = c(100L, 94L),
+      off_off_fg2_made = c(42L, 45L), off_off_fg2_att = c(90L, 95L),
+      off_off_fg3_made = c(15L, 18L), off_off_fg3_att = c(48L, 54L),
+      def_on_fg2_made = c(72L, 76L), def_on_fg2_att = c(150L, 155L),
+      def_on_fg3_made = c(30L, 35L), def_on_fg3_att = c(92L, 98L),
+      def_off_fg2_made = c(48L, 50L), def_off_fg2_att = c(95L, 100L),
+      def_off_fg3_made = c(18L, 20L), def_off_fg3_att = c(55L, 60L),
+      player_id = c(11L, 21L),
+      team_id = c(1L, 2L),
+      check.names = FALSE
+    ))
+  }
+
+  if (grepl("player_advanced_stats_mv", q, fixed = TRUE)) {
+    return(data.frame(
+      game_year = c(2026L, 2026L),
+      player_id = c(11L, 21L),
+      team_id = c(1L, 2L),
+      team_name = c("Team A", "Team B"),
+      `First Name` = c("Player", "Player"),
+      `Last Name` = c("A", "B"),
+      off_on_efg = c(0.56, 0.52),
+      off_off_efg = c(0.51, 0.50),
+      off_on_oreb = c(0.31, 0.28),
+      off_off_oreb = c(0.25, 0.24),
+      off_on_tov = c(0.12, 0.13),
+      off_off_tov = c(0.15, 0.16),
+      off_on_ftr = c(0.28, 0.25),
+      off_off_ftr = c(0.24, 0.22),
+      def_on_efg = c(0.50, 0.53),
+      def_off_efg = c(0.54, 0.55),
+      def_on_oreb = c(0.24, 0.27),
+      def_off_oreb = c(0.29, 0.30),
+      def_on_tov = c(0.16, 0.14),
+      def_off_tov = c(0.12, 0.11),
+      def_on_ftr = c(0.23, 0.26),
+      def_off_ftr = c(0.27, 0.28),
+      off_on_poss = c(420L, 360L),
+      off_off_poss = c(220L, 240L),
+      def_on_poss = c(420L, 360L),
+      def_off_poss = c(220L, 240L),
+      check.names = FALSE
+    ))
+  }
+
   if (grepl("get_team_ratings_dynamic", q, fixed = TRUE)) {
     return(data.frame(
       team_id = c(1L, 2L),
@@ -64,20 +138,87 @@ db_get_query <- function(pool, query, params = NULL) {
     ))
   }
 
+  if (grepl("team_four_factors_mv", q, fixed = TRUE)) {
+    return(data.frame(
+      game_year = c(2026L, 2026L),
+      team_id = c(1L, 2L),
+      team_name = c("Team A", "Team B"),
+      off_efg = c(54.8, 52.1),
+      off_ts = c(56.1, 53.4),
+      def_efg = c(50.7, 53.3),
+      def_ts = c(52.4, 55.0),
+      off_tov = c(12.8, 15.6),
+      off_oreb = c(31.2, 27.5),
+      off_ftr = c(28.4, 24.9),
+      def_tov = c(16.1, 13.8),
+      def_oreb = c(24.9, 28.3),
+      def_ftr = c(22.7, 27.1),
+      off_ppp = c(112.4, 108.8),
+      def_ppp = c(101.7, 105.1),
+      net_rtg = c(10.7, 3.7),
+      off_poss = c(120L, 118L),
+      def_poss = c(120L, 118L),
+      total_poss = c(120L, 118L)
+    ))
+  }
+
+  if (grepl("team_stats AS", q, fixed = TRUE) && grepl("poss_on_floor", q, fixed = TRUE)) {
+    return(data.frame(
+      team_id = c(1L, 2L),
+      team_name = c("Team A", "Team B"),
+      gp = c(4L, 4L),
+      poss_on_floor = c(320, 300),
+      minutes = c(160, 152),
+      pts = c(360, 332),
+      reb = c(150, 142),
+      oreb = c(44, 38),
+      dreb = c(106, 104),
+      ast = c(82, 71),
+      stl = c(28, 24),
+      blk = c(18, 14),
+      tov = c(45, 51),
+      fgm = c(136, 124),
+      fga = c(275, 268),
+      `3pm` = c(34, 29),
+      `3pa` = c(91, 88),
+      ftm = c(54, 55),
+      fta = c(70, 76),
+      fg_pct = c(49.5, 46.3),
+      tp_pct = c(37.4, 33.0),
+      ft_pct = c(77.1, 72.4),
+      efg = c(55.6, 51.7),
+      ts = c(58.2, 54.8),
+      check.names = FALSE
+    ))
+  }
+
   if (grepl("get_player_traditional_dynamic", q, fixed = TRUE)) {
     return(data.frame(
       player_id = c(11L, 12L, 21L),
+      team_id = c(1L, 1L, 2L),
+      team_name = c("Team A", "Team A", "Team B"),
+      player_name = c("Player A", "Player C", "Player B"),
       gp = c(5L, 4L, 5L),
       pts = c(100, 72, 90),
       reb = c(40, 24, 35),
       ast = c(30, 18, 20),
       stl = c(10, 7, 8),
+      blk = c(6, 4, 5),
+      tov = c(14, 11, 13),
+      fgm = c(38, 28, 34),
+      fga = c(70, 55, 66),
+      `3pm` = c(11, 8, 9),
+      `3pa` = c(29, 22, 26),
+      ftm = c(13, 8, 13),
+      fta = c(16, 10, 16),
       fg_pct = c(55.0, 51.0, 50.0),
       tp_pct = c(38.0, 36.0, 34.0),
       ft_pct = c(84.0, 80.0, 79.0),
+      efg = c(62.8, 58.2, 56.8),
       ts = c(60.0, 58.0, 57.0),
       poss_on_floor = c(300, 220, 280),
-      minutes = c(150, 120, 145)
+      minutes = c(150, 120, 145),
+      check.names = FALSE
     ))
   }
 
@@ -236,6 +377,57 @@ fmt_rank_cell <- function(value, rank_now, delta, digits = 1) as.character(round
 
 build_filter_chips <- function(...) shiny::tags$div(class = "filter-chips", "chips")
 setup_chip_clears <- function(...) invisible(TRUE)
+normalize_stat_filter_cols <- function(filterable_cols) {
+  cols <- if (is.function(filterable_cols)) filterable_cols() else filterable_cols
+  if (is.null(cols)) return(stats::setNames(character(0), character(0)))
+  if (is.list(cols) && !is.atomic(cols)) cols <- unlist(cols, use.names = TRUE)
+  labels <- names(cols)
+  cols <- as.character(cols)
+  if (is.null(labels)) labels <- rep("", length(cols))
+  keep <- nzchar(labels) & nzchar(cols)
+  stats::setNames(cols[keep], labels[keep])
+}
+make_stat_filter_state <- function() {
+  list(filters = shiny::reactiveVal(list()), next_id = shiny::reactiveVal(1L))
+}
+reset_stat_filters <- function(state) {
+  state$filters(list())
+  state$next_id(1L)
+  invisible(NULL)
+}
+apply_stat_filters <- function(df, filters) {
+  if (is.null(df) || !nrow(df) || !length(filters)) return(df)
+  for (f in filters) {
+    if (!f$col %in% names(df)) next
+    v <- suppressWarnings(as.numeric(df[[f$col]]))
+    threshold <- suppressWarnings(as.numeric(f$value))
+    if (length(threshold) != 1L || !is.finite(threshold)) next
+    keep <- !is.na(v) & (if (identical(f$op, "le")) v <= threshold else v >= threshold)
+    df <- df[keep, , drop = FALSE]
+  }
+  df
+}
+setup_stat_filter_handlers <- function(...) invisible(TRUE)
+stat_filter_chips_ui <- function(...) list()
+team_select_choices_with_all <- function(teams_df, all_label = "- All teams -") {
+  if (is.null(teams_df) || !nrow(teams_df)) {
+    out <- ""
+    names(out) <- all_label
+    return(out)
+  }
+  out <- c("", as.character(teams_df$team_id))
+  names(out) <- c(all_label, teams_df$team_name)
+  out
+}
+update_single_team_selectize <- function(session, select_id, teams_df, selected = "", all_label = "- All teams -") {
+  updateSelectizeInput(
+    session,
+    select_id,
+    choices = team_select_choices_with_all(teams_df, all_label = all_label),
+    selected = selected,
+    server = TRUE
+  )
+}
 update_gn_last_n_choices <- function(session, prefix, gn_vals) {
   gn_vals <- suppressWarnings(as.integer(gn_vals))
   gn_vals <- gn_vals[is.finite(gn_vals)]
@@ -328,10 +520,13 @@ source(repo_file("R", "server_tab2.R"), local = TRUE)
 source(repo_file("R", "server_tab3.R"), local = TRUE)
 source(repo_file("R", "server_tab4.R"), local = TRUE)
 source(repo_file("R", "server_tab5_traditional.R"), local = TRUE)
+source(repo_file("R", "server_tab6_team_stats.R"), local = TRUE)
 source(repo_file("R", "server_tab7_compare.R"), local = TRUE)
 
 make_shared <- function() {
   pending_compare_preset <- shiny::reactiveVal(NULL)
+  pending_ld_team <- shiny::reactiveVal(NULL)
+  pending_gl_team <- shiny::reactiveVal(NULL)
   list(
     season_date_bounds = function(gy) {
       if (identical(as.character(gy), "2026")) {
@@ -344,6 +539,8 @@ make_shared <- function() {
     teams_for_year_df = shiny::reactive({ data.frame(team_id = c(1L, 2L), team_name = c("Team A", "Team B")) }),
     selected_opp_ids_on = shiny::reactive({ NULL }),
     selected_opp_ids_ld = shiny::reactive({ NULL }),
+    pending_ld_team = pending_ld_team,
+    pending_gl_team = pending_gl_team,
     pending_compare_preset = pending_compare_preset
   )
 }

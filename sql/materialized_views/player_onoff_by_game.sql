@@ -39,6 +39,44 @@ AS WITH base0 AS (
     JOIN sched s
       ON s.game_id = d.game_id
     GROUP BY d.game_id, s.game_year, d.team_id, d.lineup_hash, d.type_lineup, d.own_starters, d.opp_starters
+  ),
+  lineup_segments AS (
+    SELECT
+      d.game_id,
+      s.game_year,
+      d.team_id,
+      d.lineup_hash,
+      d.type_lineup,
+      d.own_starters,
+      d.opp_starters,
+      d.segment_id,
+      GREATEST(
+        MAX(d.end_game_seconds_remaining) - MIN(d.end_game_seconds_remaining),
+        0
+      )::numeric AS seg_seconds
+    FROM basketball_test.df_pts_poss_lineups_longer_mv d
+    JOIN sched s
+      ON s.game_id = d.game_id
+    WHERE d.lineup_hash IS NOT NULL
+      AND d.segment_id IS NOT NULL
+      AND d.end_game_seconds_remaining IS NOT NULL
+    GROUP BY d.game_id, s.game_year, d.team_id, d.lineup_hash, d.type_lineup, d.own_starters, d.opp_starters, d.segment_id
+  ),
+  lineup_minutes AS (
+    SELECT
+      game_id,
+      game_year,
+      team_id,
+      lineup_hash,
+      type_lineup,
+      own_starters,
+      opp_starters,
+      CASE
+        WHEN type_lineup = 'offense' THEN ROUND(SUM(seg_seconds) / 60.0, 3)
+        ELSE 0::numeric
+      END AS minutes
+    FROM lineup_segments
+    GROUP BY game_id, game_year, team_id, lineup_hash, type_lineup, own_starters, opp_starters
   )
 SELECT
   b0.player_id,
@@ -55,11 +93,20 @@ SELECT
   SUM(m.fg2_made) AS fg2_made,
   SUM(m.fg2_att)  AS fg2_att,
   SUM(m.fg3_made) AS fg3_made,
-  SUM(m.fg3_att)  AS fg3_att
+  SUM(m.fg3_att)  AS fg3_att,
+  SUM(COALESCE(lm.minutes, 0)) AS minutes
 FROM base0 b0
 JOIN lineup_totals m
   ON m.lineup_hash = b0.lineup_hash
  AND m.team_id = b0.team_id
+LEFT JOIN lineup_minutes lm
+  ON lm.game_id = m.game_id
+ AND lm.game_year = m.game_year
+ AND lm.team_id = m.team_id
+ AND lm.lineup_hash = m.lineup_hash
+ AND lm.type_lineup = m.type_lineup
+ AND lm.own_starters = m.own_starters
+ AND lm.opp_starters = m.opp_starters
 GROUP BY b0.player_id, b0.team_id, m.game_id, m.game_year, b0.is_on_key, m.type_lineup, m.own_starters, m.opp_starters
 WITH DATA;
 

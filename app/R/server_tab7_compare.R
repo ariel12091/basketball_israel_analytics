@@ -1,5 +1,13 @@
 # server_tab7_compare.R - Tab 7: Compare server logic
 
+CMP_FILTERABLE_COLS <- c(
+  "A" = "metric_a",
+  "Total Poss A" = "poss_a",
+  "B" = "metric_b",
+  "Total Poss B" = "poss_b",
+  "Gap" = "gap"
+)
+
 server_tab7_compare <- function(input, output, session, shared) {
 
   cmp_ref <- reactiveValues(
@@ -19,6 +27,8 @@ server_tab7_compare <- function(input, output, session, shared) {
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
   cmp_player_raw_cache <- reactiveVal(NULL)
+  cmp_stat_filter_state <- make_stat_filter_state()
+  setup_stat_filter_handlers("cmp", input, session, CMP_FILTERABLE_COLS, cmp_stat_filter_state)
   CMP_AUTO_TARGET_ROWS <- 50L
   CMP_FILTER_DEBOUNCE_MS <- 250L
   cmp_profile_enabled <- identical(Sys.getenv("CMP_PROFILE"), "1")
@@ -1107,6 +1117,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Lineup controls
     updateRadioButtons(session, "cmp_lu_num", selected = "5")
     cmp_lu_filter$reset_inputs(team_selected = "")
+    reset_stat_filters(cmp_stat_filter_state)
   }
 
   refresh_player_choices <- function(side) {
@@ -2037,7 +2048,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         preset_now <- input$cmp_preset %||% ""
         gap_after_minus_before <- preset_now %in% c("date_split", "gn_split")
 
-        finalize_cmp_joined(
+        out <- finalize_cmp_joined(
           cmp_joined_base(),
           mode = mode,
           gap_after_minus_before = gap_after_minus_before,
@@ -2045,6 +2056,10 @@ server_tab7_compare <- function(input, output, session, shared) {
           limit_lineups = TRUE,
           min_poss = cmp_min_poss()
         )
+        out <- apply_stat_filters(out, cmp_stat_filter_state$filters())
+        if (is.null(out) || !nrow(out)) return(NULL)
+        out$rank <- seq_len(nrow(out))
+        out
       },
       extra = function(res) sprintf(
         "mode=%s;rows=%d;min_poss=%s",
@@ -2680,7 +2695,11 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   output$cmp_filter_chips <- renderUI({
     tryCatch(
-      build_filter_chips("cmp", input, shared$season_date_bounds, reset_btn_id = "cmp_reset"),
+      build_filter_chips(
+        "cmp", input, shared$season_date_bounds,
+        reset_btn_id = "cmp_reset",
+        extra_children = stat_filter_chips_ui("cmp", cmp_stat_filter_state, CMP_FILTERABLE_COLS)
+      ),
       error = function(e) NULL
     )
   })

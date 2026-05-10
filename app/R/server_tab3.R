@@ -1,6 +1,76 @@
 # server_tab3.R - Tab 3: Team Ratings server logic
 
+TR_SUMMARY_FILTERABLE_COLS <- c(
+  "GP" = "games_played",
+  "Min" = "minutes",
+  "W" = "wins",
+  "L" = "losses",
+  "Off PPP" = "off_ppp",
+  "Def PPP" = "def_ppp",
+  "Net Rtg" = "net_rtg",
+  "Off Pace" = "off_pace",
+  "Def Pace" = "def_pace",
+  "Off Poss" = "off_poss",
+  "Def Poss" = "def_poss"
+)
+
+TR_FF_FILTERABLE_COLS <- c(
+  "Off PPP" = "off_ppp",
+  "Off eFG%" = "off_efg",
+  "Off OREB%" = "off_oreb",
+  "Off TOV%" = "off_tov",
+  "Off FTR" = "off_ftr",
+  "Off Poss" = "off_poss",
+  "Def PPP" = "def_ppp",
+  "Def eFG%" = "def_efg",
+  "Def OREB%" = "def_oreb",
+  "Def TOV%" = "def_tov",
+  "Def FTR" = "def_ftr",
+  "Def Poss" = "def_poss",
+  "Min" = "minutes",
+  "Net" = "net_rtg"
+)
+
+TR_TRAD_FILTERABLE_COLS <- c(
+  "GP" = "gp",
+  "Poss On Floor" = "poss_on_floor",
+  "Min" = "minutes",
+  "PTS" = "pts",
+  "REB" = "reb",
+  "OREB" = "oreb",
+  "DREB" = "dreb",
+  "AST" = "ast",
+  "STL" = "stl",
+  "BLK" = "blk",
+  "TOV" = "tov",
+  "FGM" = "fgm",
+  "FGA" = "fga",
+  "FG%" = "fg_pct",
+  "3PM" = "3pm",
+  "3PA" = "3pa",
+  "3P%" = "tp_pct",
+  "FTM" = "ftm",
+  "FTA" = "fta",
+  "FT%" = "ft_pct",
+  "eFG%" = "efg",
+  "TS%" = "ts"
+)
+
 server_tab3 <- function(input, output, session, shared) {
+  tr_stat_filter_state <- make_stat_filter_state()
+  tr_stat_filter_cols <- reactive({
+    mode <- input$tr_view_mode %||% "Summary"
+    if (identical(mode, "Traditional")) {
+      TR_TRAD_FILTERABLE_COLS
+    } else if (identical(mode, "Four Factors")) {
+      TR_FF_FILTERABLE_COLS
+    } else {
+      TR_SUMMARY_FILTERABLE_COLS
+    }
+  })
+
+  setup_stat_filter_handlers("tr", input, session, tr_stat_filter_cols, tr_stat_filter_state)
+
   log_tab3_error <- function(msg) {
     if (exists("app_log", mode = "function")) {
       app_log("tab3", msg)
@@ -55,12 +125,7 @@ server_tab3 <- function(input, output, session, shared) {
     } else {
       NA_character_
     }
-    if (is.na(gp_col)) {
-      df$off_pace <- NA_real_
-      df$def_pace <- NA_real_
-      return(df)
-    }
-    gp <- suppressWarnings(as.numeric(df[[gp_col]]))
+    gp <- if (is.na(gp_col)) rep(NA_real_, nrow(df)) else suppressWarnings(as.numeric(df[[gp_col]]))
     gp[!is.finite(gp) | gp <= 0] <- NA_real_
     off_poss <- if ("off_poss" %in% names(df)) suppressWarnings(as.numeric(df$off_poss)) else rep(NA_real_, nrow(df))
     def_poss <- if ("def_poss" %in% names(df)) suppressWarnings(as.numeric(df$def_poss)) else rep(NA_real_, nrow(df))
@@ -70,8 +135,9 @@ server_tab3 <- function(input, output, session, shared) {
       mins[!is.finite(mins) | mins <= 0] <- NA_real_
       minutes_vec <- mins
     }
-    miss <- is.na(minutes_vec)
+    miss <- is.na(minutes_vec) & !is.na(gp)
     if (any(miss)) minutes_vec[miss] <- gp[miss] * 40
+    df$minutes <- minutes_vec
     df$off_pace <- ifelse(is.na(minutes_vec), NA_real_, (off_poss / minutes_vec) * 40)
     df$def_pace <- ifelse(is.na(minutes_vec), NA_real_, (def_poss / minutes_vec) * 40)
     df
@@ -383,11 +449,16 @@ server_tab3 <- function(input, output, session, shared) {
       do_upd("tr_starters", reset_starters_inputs(session, "tr"))
       do_upd("tr_clutch", reset_clutch_inputs(session, "tr"))
       do_upd("tr_gn_last_n", reset_gn_last_n_inputs(session, "tr"))
+      do_upd("tr_stat_filters", reset_stat_filters(tr_stat_filter_state))
     }, error = function(e) {
       log_tab3_error(paste0("tr_reset error: ", conditionMessage(e)))
       showNotification(paste("Reset failed:", conditionMessage(e)), type = "error", duration = 8)
     })
   })
+
+  observeEvent(input$tr_view_mode, {
+    reset_stat_filters(tr_stat_filter_state)
+  }, ignoreInit = TRUE)
 
   tr_teams_for_year <- reactive({
     gy_int <- as.integer(input$game_year)
@@ -1314,6 +1385,12 @@ server_tab3 <- function(input, output, session, shared) {
   output$tr_table <- renderDT({
     mode <- input$tr_view_mode
     mins_map <- NULL
+    if (!identical(mode, "Traditional")) {
+      mins_df <- tryCatch(tr_game_minutes(), error = function(e) NULL)
+      if (is.data.frame(mins_df) && nrow(mins_df) && all(c("team_id", "game_minutes") %in% names(mins_df))) {
+        mins_map <- setNames(suppressWarnings(as.numeric(mins_df$game_minutes)), as.character(mins_df$team_id))
+      }
+    }
     show_delta <- isTRUE(tr_delta_enabled())
     empty_dt <- function(msg = "No data returned for current filters") {
       DT::datatable(
@@ -1342,6 +1419,8 @@ server_tab3 <- function(input, output, session, shared) {
       df <- tr_traditional_data()
       if (is.null(df) || !nrow(df)) return(empty_dt("Traditional: no data for current filters"))
       is_defense_trad <- identical((tr_params()$trad_side %||% "offense"), "defense")
+      df <- apply_stat_filters(df, tr_stat_filter_state$filters())
+      if (is.null(df) || !nrow(df)) return(empty_dt("Traditional: no rows match stat filters"))
 
       pr_vec_local <- function(x, invert = FALSE) {
         n <- sum(!is.na(x))
@@ -1510,6 +1589,8 @@ server_tab3 <- function(input, output, session, shared) {
                      "def_poss",
                      "net_rtg")
       df <- add_team_pace_cols(df, minutes_map = mins_map)
+      df <- apply_stat_filters(df, tr_stat_filter_state$filters())
+      if (is.null(df) || !nrow(df)) return(empty_dt("Four Factors: no rows match stat filters"))
 
       # Rank deltas vs last matchday (baseline scope only), and rank labels in-cell
       rk_off_now <- dplyr::min_rank(dplyr::desc(df$off_ppp))
@@ -1595,6 +1676,7 @@ server_tab3 <- function(input, output, session, shared) {
       df <- df %>% arrange(desc(net_rtg))
       disp_ff <- data.frame(
         team_name = df$team_name,
+        minutes = df$minutes,
         off_ppp = df$off_ppp_lbl,
         off_efg = df$off_efg_lbl,
         off_oreb = df$off_oreb_lbl,
@@ -1652,13 +1734,14 @@ server_tab3 <- function(input, output, session, shared) {
 
       sketch_ff <- htmltools::withTags(table(class = 'display', thead(
         tr(
-          th(class = "group-head", ""),
-          th(class = "group-head section-left-border", colspan = 7, "Offense"),
-          th(class = "group-head section-left-border", colspan = 7, "Defense"),
+          th(class = "group-head", colspan = 2, ""),
+          th(class = "group-head section-left-border", colspan = 6, "Offense"),
+          th(class = "group-head section-left-border", colspan = 6, "Defense"),
           th(class = "group-head section-left-border", "")
         ),
         tr(
           th(class = "sub-head", "Team"),
+          th(class = "sub-head", "Min"),
           th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "eFG%"),
           th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"),
           th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
@@ -1699,6 +1782,7 @@ server_tab3 <- function(input, output, session, shared) {
       poss_cols <- intersect(c("off_poss", "def_poss"), names(disp_ff))
 
       if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "", interval = 3, mark = ",", digits = 0)
+      if ("minutes" %in% names(disp_ff)) dt <- DT::formatRound(dt, "minutes", 1)
 
       # Color logic - same polarity as Tab 2 FF
       if ("pr_off_ppp"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "off_ppp",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
@@ -1722,6 +1806,8 @@ server_tab3 <- function(input, output, session, shared) {
       df <- tr_data()
       if (is.null(df) || nrow(df) == 0) return(empty_dt("Summary: no data for current filters"))
       df <- add_team_pace_cols(df, minutes_map = mins_map)
+      df <- apply_stat_filters(df, tr_stat_filter_state$filters())
+      if (is.null(df) || !nrow(df)) return(empty_dt("Summary: no rows match stat filters"))
       rk_net_now <- dplyr::min_rank(dplyr::desc(df$net_rtg))
       rk_off_now <- dplyr::min_rank(dplyr::desc(df$off_ppp))
       rk_def_now <- dplyr::min_rank(df$def_ppp)
@@ -1752,8 +1838,8 @@ server_tab3 <- function(input, output, session, shared) {
       df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1)
       df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1)
       df$net_rtg_lbl <- fmt_rank_cell(df$net_rtg, rk_net_now, d_net, 1)
-      pretty_names <- c("Season", "Team", "GP", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Off Pace", "Def Pace", "Off Poss", "Def Poss")
-      disp_df <- df %>% select(game_year, team_name, games_played, wins, losses, off_ppp_lbl, def_ppp_lbl, net_rtg_lbl, off_pace, def_pace, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp)
+      pretty_names <- c("Season", "Team", "GP", "Min", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Off Pace", "Def Pace", "Off Poss", "Def Poss")
+      disp_df <- df %>% select(game_year, team_name, games_played, minutes, wins, losses, off_ppp_lbl, def_ppp_lbl, net_rtg_lbl, off_pace, def_pace, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp)
       names(disp_df)[names(disp_df) == "off_ppp_lbl"] <- "off_ppp"
       names(disp_df)[names(disp_df) == "def_ppp_lbl"] <- "def_ppp"
       names(disp_df)[names(disp_df) == "net_rtg_lbl"] <- "net_rtg"
@@ -1778,7 +1864,7 @@ server_tab3 <- function(input, output, session, shared) {
         list(targets = which(names(disp_df) == "net_rtg") - 1L, orderData = which(names(disp_df) == "sort_net_rtg") - 1L, orderSequence = list("desc", "asc"))
       )
       dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, escape = FALSE, options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = c(list(list(className = 'dt-center', targets = "_all"), list(visible = FALSE, targets = summary_hidden)), summary_order_defs))) %>%
-        formatRound(c("off_pace", "def_pace"), 1) %>%
+        formatRound(c("minutes", "off_pace", "def_pace"), 1) %>%
         formatCurrency(c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0) %>%
         formatStyle(columns = c("net_rtg", "off_ppp", "def_ppp"), valueColumns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
       return(dt)
@@ -1800,7 +1886,11 @@ server_tab3 <- function(input, output, session, shared) {
   # ---- Filter Chips ----
   output$tr_filter_chips <- renderUI({
     tryCatch(
-      build_filter_chips("tr", input, shared$season_date_bounds, reset_btn_id = "tr_reset"),
+      build_filter_chips(
+        "tr", input, shared$season_date_bounds,
+        reset_btn_id = "tr_reset",
+        extra_children = stat_filter_chips_ui("tr", tr_stat_filter_state, tr_stat_filter_cols)
+      ),
       error = function(e) {
         log_tab3_error(paste0("tr_filter_chips error: ", conditionMessage(e)))
         NULL

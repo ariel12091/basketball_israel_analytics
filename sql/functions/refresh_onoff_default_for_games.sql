@@ -16,7 +16,7 @@ BEGIN
   INSERT INTO basketball_test.onoff_default_mv (
     "Team","Year","First Name","Last Name","Net RTG Diff","Off ON Diff","Def ON Diff",
     "Off ON PPP","Def ON PPP","On Net RTG","Off OFF PPP","Def OFF PPP","Off Net RTG",
-    "ON Poss","OFF Poss",pr_net,pr_off_on,pr_off_off,pr_def_on_inv,pr_def_off_inv,
+    "ON Poss","OFF Poss",minutes,pr_net,pr_off_on,pr_off_off,pr_def_on_inv,pr_def_off_inv,
     pr_off_on_d,pr_def_on_d,pr_def_on_d_inv,pr_on_net,pr_off_net,
     off_on_fg2_made,off_on_fg2_att,off_on_fg3_made,off_on_fg3_att,
     off_off_fg2_made,off_off_fg2_att,off_off_fg3_made,off_off_fg3_att,
@@ -84,6 +84,40 @@ BEGIN
             sum(base.fg3_att_flag) AS fg3_att
            FROM base
           GROUP BY base.player_id, base.team_id, base.is_on_key, base.type_lineup, base.game_year
+        ), player_segments AS (
+         SELECT b0.player_id,
+            b0.team_id,
+            b0.is_on_key,
+            s.game_year,
+            d.game_id,
+            d.lineup_hash,
+            d.type_lineup,
+            d.segment_id,
+            GREATEST(
+              MAX(d.end_game_seconds_remaining) - MIN(d.end_game_seconds_remaining),
+              0
+            )::numeric AS seg_seconds
+           FROM base0 b0
+             JOIN basketball_test.df_pts_poss_lineups_longer_mv d
+               ON d.lineup_hash = b0.lineup_hash
+              AND d.team_id = b0.team_id
+             JOIN sched s USING (game_id)
+          WHERE d.segment_id IS NOT NULL
+            AND d.end_game_seconds_remaining IS NOT NULL
+          GROUP BY b0.player_id, b0.team_id, b0.is_on_key, s.game_year, d.game_id, d.lineup_hash, d.type_lineup, d.segment_id
+        ), player_minutes AS (
+         SELECT player_segments.player_id,
+            player_segments.team_id,
+            player_segments.game_year,
+            ROUND(
+              COALESCE(SUM(player_segments.seg_seconds) FILTER (
+                WHERE player_segments.is_on_key = 1
+                  AND player_segments.type_lineup = 'offense'::text
+              ), 0) / 60.0,
+              1
+            )::numeric AS minutes
+           FROM player_segments
+          GROUP BY player_segments.player_id, player_segments.team_id, player_segments.game_year
         ), ppp_ranked AS (
          SELECT a.player_id,
             a.team_id,
@@ -336,6 +370,7 @@ BEGIN
             fr.pr_net,
             fr.on_poss,
             fr.off_poss,
+            COALESCE(pm.minutes, 0)::numeric AS minutes,
             fr.off_on_fg2_made, fr.off_on_fg2_att, fr.off_on_fg3_made, fr.off_on_fg3_att,
             fr.off_off_fg2_made, fr.off_off_fg2_att, fr.off_off_fg3_made, fr.off_off_fg3_att,
             fr.def_on_fg2_made, fr.def_on_fg2_att, fr.def_on_fg3_made, fr.def_on_fg3_att,
@@ -345,6 +380,10 @@ BEGIN
             percent_rank() OVER (PARTITION BY fr.game_year ORDER BY (fr.offense_on_ppp - fr.defense_on_ppp)) AS pr_on_net,
             percent_rank() OVER (PARTITION BY fr.game_year ORDER BY (fr.offense_off_ppp - fr.defense_off_ppp)) AS pr_off_net
            FROM final_rows fr
+           LEFT JOIN player_minutes pm
+             ON pm.player_id = fr.player_id
+            AND pm.team_id = fr.team_id
+            AND pm.game_year = fr.game_year
         )
  SELECT team_name AS "Team",
     game_year AS "Year",
@@ -361,6 +400,7 @@ BEGIN
     off_net_rtg AS "Off Net RTG",
     on_poss AS "ON Poss",
     off_poss AS "OFF Poss",
+    minutes,
     pr_net,
     pr_off_on,
     pr_off_off,

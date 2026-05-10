@@ -1,5 +1,39 @@
 # server_tab2.R - Tab 2: Lineup Data server logic
 
+LD_SUMMARY_FILTERABLE_COLS <- c(
+  "Min" = "minutes",
+  "Total Poss" = "total_poss",
+  "+/-" = "plus_minus",
+  "Off PPP" = "off_ppp",
+  "Def PPP" = "def_ppp",
+  "Net RTG" = "net_rtg",
+  "Off Shot" = "Off Shot",
+  "Def Shot" = "Def Shot",
+  "Off Poss" = "off_poss",
+  "Off Pts" = "off_pts",
+  "Def Poss" = "def_poss",
+  "Def Pts" = "def_pts",
+  "# Starters" = "num_starters"
+)
+
+LD_FF_FILTERABLE_COLS <- c(
+  "Off PPP" = "off_ppp",
+  "Off eFG%" = "off_efg",
+  "Off OREB%" = "off_oreb",
+  "Off TOV%" = "off_tov",
+  "Off FTR" = "off_ftr",
+  "Off Poss" = "off_poss",
+  "Def PPP" = "def_ppp",
+  "Def eFG%" = "def_efg",
+  "Def OREB%" = "def_oreb",
+  "Def TOV%" = "def_tov",
+  "Def FTR" = "def_ftr",
+  "Def Poss" = "def_poss",
+  "Min" = "minutes",
+  "Total Poss" = "total_poss",
+  "Net" = "net_rtg"
+)
+
 server_tab2 <- function(input, output, session, shared) {
 
   ld_ref <- reactiveValues(teams = NULL, players = NULL)
@@ -13,6 +47,13 @@ server_tab2 <- function(input, output, session, shared) {
   )
   auto_enabled <- reactiveVal(TRUE)
   resetting <- reactiveVal(FALSE)
+  ld_stat_filter_state <- make_stat_filter_state()
+  ld_stat_filter_cols <- reactive({
+    if (identical(input$ld_view_mode, "Four Factors")) LD_FF_FILTERABLE_COLS else LD_SUMMARY_FILTERABLE_COLS
+  })
+
+  setup_stat_filter_handlers("ld", input, session, ld_stat_filter_cols, ld_stat_filter_state)
+
   AUTO_TARGET_ROWS <- 150L
 
   auto_minposs_from_df <- function(df, usage_col = "total_poss", step = 10L, target_rows = AUTO_TARGET_ROWS) {
@@ -110,12 +151,17 @@ server_tab2 <- function(input, output, session, shared) {
     reset_opp_rank_inputs(session, "ld")
     reset_clutch_inputs(session, "ld")
     reset_gn_last_n_inputs(session, "ld")
+    reset_stat_filters(ld_stat_filter_state)
     auto_min_state$last_auto <- as.integer(LD_DEFAULT_MIN_POSS)
     auto_enabled(FALSE)
     session$onFlushed(function() resetting(FALSE), once = TRUE)
   })
 
   setup_gn_last_n_sync(session, input, "ld")
+
+  observeEvent(input$ld_view_mode, {
+    reset_stat_filters(ld_stat_filter_state)
+  }, ignoreInit = TRUE)
 
   build_ld_common_db_args <- function() {
     game_type_csv <- csv_if_any(input$ld_game_type)
@@ -503,10 +549,19 @@ server_tab2 <- function(input, output, session, shared) {
       df <- df %>% select(any_of(c(keep_cols, pr_cols)))
       df$is_total <- rep(1, nrow(df))
       df <- df %>% arrange(desc(total_poss))
+      df <- apply_stat_filters(df, ld_stat_filter_state$filters())
 
       # --- TOTAL row (rates from summed raw counts) ---
       if (nrow(df) > 0) {
         raw <- ld_data()
+        if (all(c("team_id", "sub_lineup_hash") %in% names(raw)) &&
+            all(c("team_id", "sub_lineup_hash") %in% names(df))) {
+          raw <- raw %>%
+            semi_join(
+              df %>% select(team_id, sub_lineup_hash) %>% distinct(),
+              by = c("team_id", "sub_lineup_hash")
+            )
+        }
         sum_off_poss <- sum(df$off_poss, na.rm = TRUE)
         sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
         sum_off_pts  <- sum(raw$off_pts, na.rm = TRUE)
@@ -683,8 +738,9 @@ server_tab2 <- function(input, output, session, shared) {
                      if (has_shots) c("Off Shot", "Def Shot"),
                      "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_starters", "sub_lineup_hash", "team_id")
       df <- df %>% select(any_of(c(keep_cols, shot_raw_cols, pr_cols)))
-      df$is_total <- rep(1, nrow(df))
       if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
+      df <- apply_stat_filters(df, ld_stat_filter_state$filters())
+      df$is_total <- rep(1, nrow(df))
       if (nrow(df) > 0) {
         sum_off_poss <- sum(df$off_poss, na.rm = TRUE)
         sum_def_poss <- sum(df$def_poss, na.rm = TRUE)
@@ -1267,7 +1323,8 @@ server_tab2 <- function(input, output, session, shared) {
       player_label_map = player_map,
       teams_value = ld_lineup_filter$team(),
       players_on_value = ld_lineup_filter$players_on(),
-      players_off_value = ld_lineup_filter$players_off()
+      players_off_value = ld_lineup_filter$players_off(),
+      extra_children = stat_filter_chips_ui("ld", ld_stat_filter_state, ld_stat_filter_cols)
     )
   })
   setup_chip_clears("ld", session, input, shared,

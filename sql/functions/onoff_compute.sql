@@ -1,4 +1,4 @@
-DROP FUNCTION IF EXISTS basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text, text, text, text, text, text, int4, text, int4, int4, int4, int4, int4);
+DROP FUNCTION IF EXISTS basketball_test.onoff_compute(date, date, text, int4, int4, numeric, text, text, text, text, text, text, int4, text, int4, int4, int4, int4, int4, int4, int4, int4, int4);
 
 CREATE OR REPLACE FUNCTION basketball_test.onoff_compute(
     p_start_date      DATE,
@@ -30,7 +30,7 @@ RETURNS TABLE (
     "Net RTG Diff" numeric, "Off ON Diff" numeric, "Def ON Diff" numeric,
     "Off ON PPP" numeric, "Def ON PPP" numeric, "On Net RTG" numeric,
     "Off OFF PPP" numeric, "Def OFF PPP" numeric, "Off Net RTG" numeric,
-    "ON Poss" numeric, "OFF Poss" numeric,
+    "ON Poss" numeric, "OFF Poss" numeric, minutes numeric,
     pr_net double precision, pr_off_on double precision, pr_off_off double precision,
     pr_def_on_inv double precision, pr_def_off_inv double precision,
     pr_off_on_d double precision, pr_def_on_d double precision, pr_def_on_d_inv double precision,
@@ -224,7 +224,8 @@ BEGIN
       SUM(p.fg2_made)::bigint AS fg2_made,
       SUM(p.fg2_att)::bigint  AS fg2_att,
       SUM(p.fg3_made)::bigint AS fg3_made,
-      SUM(p.fg3_att)::bigint  AS fg3_att
+      SUM(p.fg3_att)::bigint  AS fg3_att,
+      SUM(COALESCE(p.minutes, 0))::numeric AS minutes
     FROM basketball_test.player_onoff_by_game p
     JOIN sched s ON s.game_id = p.game_id AND s.team_id = p.team_id
     WHERE (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR p.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
@@ -287,6 +288,7 @@ BEGIN
       a.fg2_att,
       a.fg3_made,
       a.fg3_att,
+      a.minutes,
       r.firstname,
       r.lastname,
       r.team_name
@@ -323,6 +325,7 @@ BEGIN
       wn.fg2_att,
       wn.fg3_made,
       wn.fg3_att,
+      wn.minutes,
       wn.firstname,
       wn.lastname,
       wn.team_name
@@ -349,6 +352,7 @@ BEGIN
       MAX(CASE WHEN f.is_on_key = 0 THEN f.pr_ppp_better END) AS pr_ppp_off,
       MAX(CASE WHEN f.is_on_key = 1 THEN f.total_poss END) AS poss_on,
       MAX(CASE WHEN f.is_on_key = 0 THEN f.total_poss END) AS poss_off,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.minutes END) AS minutes_on,
 
       MAX(CASE WHEN f.is_on_key = 1 THEN f.fg2_made END) AS fg2_on_made,
       MAX(CASE WHEN f.is_on_key = 1 THEN f.fg2_att END)  AS fg2_on_att,
@@ -427,6 +431,11 @@ BEGIN
         COALESCE(MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.poss_off END), 0),
         COALESCE(MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.poss_off END), 0)
       ) AS off_poss,
+      COALESCE(
+        MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.minutes_on END),
+        MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.minutes_on END),
+        0
+      )::numeric AS minutes,
       -- Shooting splits (16 columns) carried from agg through pipeline
       MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg2_on_made END) AS off_on_fg2_made,
       MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.fg2_on_att END)  AS off_on_fg2_att,
@@ -489,6 +498,7 @@ BEGIN
       fnr.pr_net,
       fr.on_poss,
       fr.off_poss,
+      fr.minutes,
       fr.off_on_fg2_made, fr.off_on_fg2_att, fr.off_on_fg3_made, fr.off_on_fg3_att,
       fr.off_off_fg2_made, fr.off_off_fg2_att, fr.off_off_fg3_made, fr.off_off_fg3_att,
       fr.def_on_fg2_made, fr.def_on_fg2_att, fr.def_on_fg3_made, fr.def_on_fg3_att,
@@ -524,6 +534,7 @@ BEGIN
     fs.off_net_rtg     AS "Off Net RTG",
     fs.on_poss         AS "ON Poss",
     fs.off_poss        AS "OFF Poss",
+    fs.minutes,
     fs.pr_net,
     fs.pr_off_on,
     fs.pr_off_off,
