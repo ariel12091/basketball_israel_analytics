@@ -24,11 +24,16 @@ on.exit(DBI::dbDisconnect(con), add = TRUE)
 columns_for <- function(table_name) {
   DBI::dbGetQuery(
     con,
-    "SELECT column_name
-       FROM information_schema.columns
-      WHERE table_schema = 'basketball_test'
-        AND table_name = $1
-      ORDER BY ordinal_position",
+    "SELECT a.attname AS column_name
+       FROM pg_catalog.pg_class c
+       JOIN pg_catalog.pg_namespace n ON n.oid = c.relnamespace
+       JOIN pg_catalog.pg_attribute a ON a.attrelid = c.oid
+      WHERE n.nspname = 'basketball_test'
+        AND c.relname = $1
+        AND c.relkind IN ('r', 'v', 'm', 'f', 'p')
+        AND a.attnum > 0
+        AND NOT a.attisdropped
+      ORDER BY a.attnum",
     params = list(table_name)
   )$column_name
 }
