@@ -224,6 +224,7 @@ db_get_query <- function(pool, query, params = NULL) {
 
   if (grepl("fetch_lineups_csv_v2", q, fixed = TRUE)) {
     return(data.frame(
+      team_id = c(1L, 2L),
       sub_lineup_hash = c("lu1", "lu2"),
       player_names_str = c("A1, A2, A3, A4, A5", "B1, B2, B3, B4, B5"),
       team_name = c("Team A", "Team B"),
@@ -232,7 +233,15 @@ db_get_query <- function(pool, query, params = NULL) {
       net_rtg = c(18.4, 5.1),
       total_poss = c(42L, 37L),
       off_poss = c(42L, 37L),
-      def_poss = c(42L, 37L)
+      def_poss = c(42L, 37L),
+      off_fg2_made = c(20L, 18L),
+      off_fg2_att = c(35L, 34L),
+      off_fg3_made = c(8L, 7L),
+      off_fg3_att = c(24L, 23L),
+      def_fg2_made = c(18L, 19L),
+      def_fg2_att = c(33L, 34L),
+      def_fg3_made = c(7L, 8L),
+      def_fg3_att = c(22L, 21L)
     ))
   }
 

@@ -44,6 +44,30 @@ render_ui_text <- function(x) {
   paste(capture.output(print(x)), collapse = "\n")
 }
 
+test_that("tab7 team detail view shows shooting accuracy and frequency", {
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Teams"
+    )
+    session$flushReact()
+    session$setInputs(cmp_table_row_click = list(entity_name = "Team A"))
+    session$flushReact()
+
+    detail_txt <- render_ui_text(output$cmp_detail_view_ui)
+    expect_true(grepl("Shooting", detail_txt, fixed = TRUE))
+    expect_true(grepl("2PT Acc", detail_txt, fixed = TRUE))
+    expect_true(grepl("2PT Freq", detail_txt, fixed = TRUE))
+    expect_true(grepl("3PT Acc", detail_txt, fixed = TRUE))
+    expect_true(grepl("3PT Freq", detail_txt, fixed = TRUE))
+    expect_true(grepl("57.1%", detail_txt, fixed = TRUE))
+    expect_true(grepl("40.7%", detail_txt, fixed = TRUE))
+  })
+})
+
 test_that("tab7 players compare keeps last successful view during debounce", {
   shiny::testServer(function(input, output, session) {
     server_tab7_compare(input, output, session, shared = make_shared())

@@ -118,6 +118,15 @@ server_tab7_compare <- function(input, output, session, shared) {
         list(label = "Opp OREB%", col_ratings = NULL, col_ff = "def_oreb", polarity = "lower", fmt = "pct"),
         list(label = "Opp FTR", col_ratings = NULL, col_ff = "def_ftr", polarity = "lower", fmt = "pct")
       )
+    ),
+    shooting = list(
+      title = "Shooting",
+      metrics = list(
+        list(label = "2PT Acc", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg2_acc", polarity = "higher", fmt = "pct"),
+        list(label = "2PT Freq", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg2_freq", polarity = "neutral", fmt = "pct"),
+        list(label = "3PT Acc", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg3_acc", polarity = "higher", fmt = "pct"),
+        list(label = "3PT Freq", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg3_freq", polarity = "neutral", fmt = "pct")
+      )
     )
   )
 
@@ -613,6 +622,80 @@ server_tab7_compare <- function(input, output, session, shared) {
       ),
       params = params
     )
+  }
+
+  cmp_team_shooting_params <- function(p, team_id) {
+    list(
+      5L,
+      as.character(team_id),
+      NA_character_,
+      NA_character_,
+      FALSE,
+      as.Date(p$start_d), as.Date(p$end_d),
+      0L,
+      p$game_year,
+      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
+      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
+      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
+      p$min_gn, p$max_gn, p$last_n_games,
+      p$num_starters_off, p$num_starters_def,
+      p$num_starters_off_min, p$num_starters_off_max,
+      p$num_starters_def_min, p$num_starters_def_max
+    )
+  }
+
+  add_shooting_rates <- function(row) {
+    if (is.null(row) || !nrow(row)) return(NULL)
+    pct <- function(num, den) {
+      num <- suppressWarnings(as.numeric(num))
+      den <- suppressWarnings(as.numeric(den))
+      if (is.finite(num) && is.finite(den) && den > 0) num / den * 100 else NA_real_
+    }
+    val <- function(col) if (col %in% names(row)) sum(suppressWarnings(as.numeric(row[[col]])), na.rm = TRUE) else 0
+
+    off_fg2_att <- val("off_fg2_att")
+    off_fg3_att <- val("off_fg3_att")
+    off_fga <- off_fg2_att + off_fg3_att
+
+    out <- row[1, , drop = FALSE]
+    out$off_fg2_acc <- pct(val("off_fg2_made"), off_fg2_att)
+    out$off_fg2_freq <- pct(off_fg2_att, off_fga)
+    out$off_fg3_acc <- pct(val("off_fg3_made"), off_fg3_att)
+    out$off_fg3_freq <- pct(off_fg3_att, off_fga)
+    out
+  }
+
+  run_team_shooting <- function(p, team_id) {
+    df <- run_compare_query(
+      key = "cmp_team_shooting",
+      p = p,
+      sql = paste0(
+        "SELECT * FROM basketball_test.fetch_lineups_csv_v2(",
+        "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,",
+        "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,",
+        "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4",
+        ")"
+      ),
+      params = cmp_team_shooting_params(p, team_id)
+    )
+    if (is.null(df) || !nrow(df)) return(data.frame())
+    if ("team_id" %in% names(df)) {
+      df <- df[suppressWarnings(as.integer(df$team_id)) == as.integer(team_id), , drop = FALSE]
+    }
+    if (!nrow(df)) return(data.frame())
+
+    sum_col <- function(col) if (col %in% names(df)) sum(suppressWarnings(as.numeric(df[[col]])), na.rm = TRUE) else 0
+    team_name <- if ("team_name" %in% names(df)) as.character(df$team_name[1]) else NA_character_
+    out <- data.frame(
+      team_id = as.integer(team_id),
+      team_name = team_name,
+      off_fg2_made = sum_col("off_fg2_made"),
+      off_fg2_att = sum_col("off_fg2_att"),
+      off_fg3_made = sum_col("off_fg3_made"),
+      off_fg3_att = sum_col("off_fg3_att"),
+      stringsAsFactors = FALSE
+    )
+    add_shooting_rates(out)
   }
 
   run_player_traditional <- function(p, team_ids_csv) {
@@ -2089,13 +2172,17 @@ server_tab7_compare <- function(input, output, session, shared) {
       ff_b <- run_team_ff(pb)
 
       team_id <- entity$key
+      shooting_a <- run_team_shooting(pa, team_id)
+      shooting_b <- run_team_shooting(pb, team_id)
       ra <- ratings_a[ratings_a$team_id == team_id, , drop = FALSE]
       rb <- ratings_b[ratings_b$team_id == team_id, , drop = FALSE]
       fa <- ff_a[ff_a$team_id == team_id, , drop = FALSE]
       fb <- ff_b[ff_b$team_id == team_id, , drop = FALSE]
+      sha <- if (nrow(shooting_a)) shooting_a[1, , drop = FALSE] else data.frame()
+      shb <- if (nrow(shooting_b)) shooting_b[1, , drop = FALSE] else data.frame()
 
-      if (!nrow(ra) && !nrow(fa)) return(NULL)
-      if (!nrow(rb) && !nrow(fb)) return(NULL)
+      if (!nrow(ra) && !nrow(fa) && !nrow(sha)) return(NULL)
+      if (!nrow(rb) && !nrow(fb) && !nrow(shb)) return(NULL)
 
       list(
         mode = "Teams",
@@ -2103,7 +2190,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         ratings_a = if (nrow(ra)) ra[1, ] else NULL,
         ratings_b = if (nrow(rb)) rb[1, ] else NULL,
         ff_a = if (nrow(fa)) fa[1, ] else NULL,
-        ff_b = if (nrow(fb)) fb[1, ] else NULL
+        ff_b = if (nrow(fb)) fb[1, ] else NULL,
+        shooting_a = if (nrow(sha)) sha[1, ] else NULL,
+        shooting_b = if (nrow(shb)) shb[1, ] else NULL
       )
 
     } else if (mode == "Lineups") {
@@ -2127,7 +2216,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         ratings_a = if (nrow(sa)) sa[1, ] else NULL,
         ratings_b = if (nrow(sb)) sb[1, ] else NULL,
         ff_a = if (nrow(fa)) fa[1, ] else NULL,
-        ff_b = if (nrow(fb)) fb[1, ] else NULL
+        ff_b = if (nrow(fb)) fb[1, ] else NULL,
+        shooting_a = if (nrow(sa)) add_shooting_rates(sa[1, , drop = FALSE]) else NULL,
+        shooting_b = if (nrow(sb)) add_shooting_rates(sb[1, , drop = FALSE]) else NULL
       )
     } else {
       NULL
@@ -2159,7 +2250,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (is.finite(gp) && gp > 0 && is.finite(w)) (w / gp) * 100 else NA_real_
   }
 
-  detail_extract_value <- function(data_side_ratings, data_side_ff, metric_def) {
+  detail_extract_value <- function(data_side_ratings, data_side_ff, data_side_shooting, metric_def) {
     if (!is.null(metric_def$col_ratings) && metric_def$col_ratings == "win_pct") {
       return(detail_win_pct(data_side_ratings))
     }
@@ -2168,6 +2259,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
     if (!is.null(metric_def$col_ff)) {
       return(detail_get_value(data_side_ff, metric_def$col_ff))
+    }
+    if (!is.null(metric_def$col_shooting)) {
+      return(detail_get_value(data_side_shooting, metric_def$col_shooting))
     }
     NA_real_
   }
@@ -2179,6 +2273,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     raw_diff <- val_a - val_b
     abs_gap <- abs(raw_diff)
     direction <- if (raw_diff > 0) "a" else if (raw_diff < 0) "b" else "none"
+    if (identical(polarity, "neutral")) {
+      return(list(gap = raw_diff, direction = direction, a_wins = NA))
+    }
     signed_gap <- if (polarity == "higher") abs_gap else -abs_gap
     if (abs_gap == 0) signed_gap <- 0
     a_wins <- if (abs_gap == 0) NA else {
@@ -2254,6 +2351,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     mode <- data$mode
     ra <- data$ratings_a; rb <- data$ratings_b
     fa <- data$ff_a; fb <- data$ff_b
+    sha <- data$shooting_a; shb <- data$shooting_b
     short_a <- side_label_short("a"); short_b <- side_label_short("b")
     full_a <- side_label_full("a"); full_b <- side_label_full("b")
     gy <- input$game_year
@@ -2300,8 +2398,8 @@ server_tab7_compare <- function(input, output, session, shared) {
 
       # Compute all gaps for max-gap bar scaling
       computed <- lapply(metrics_list, function(m) {
-        va <- detail_extract_value(ra, fa, m)
-        vb <- detail_extract_value(rb, fb, m)
+        va <- detail_extract_value(ra, fa, sha, m)
+        vb <- detail_extract_value(rb, fb, shb, m)
         gap_info <- detail_compute_gap(va, vb, m$polarity)
         list(m = m, va = va, vb = vb, gap = gap_info)
       })
@@ -2339,7 +2437,15 @@ server_tab7_compare <- function(input, output, session, shared) {
         winner_side <- if (is.na(gi$a_wins)) "none" else if (isTRUE(gi$a_wins)) "a" else "b"
         gap_color_cls <- if (winner_side == "a") "a-color" else if (winner_side == "b") "b-color" else ""
         bar_pct <- if (is.finite(gi$gap) && max_abs_gap > 0) round(abs(gi$gap) / max_abs_gap * 50, 1) else 0
-        bar_cls <- if (winner_side == "a") "toward-a" else "toward-b"
+        bar_cls <- if (winner_side == "a") {
+          "toward-a"
+        } else if (winner_side == "b") {
+          "toward-b"
+        } else if (identical(gi$direction, "a")) {
+          "toward-a"
+        } else {
+          "toward-b"
+        }
 
         # Last-row class for bottom border/radius
         is_last_row <- is_last_section && (j == n_metrics)
