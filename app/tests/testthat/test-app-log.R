@@ -7,7 +7,11 @@ with_env <- function(vars, expr) {
   old <- Sys.getenv(names(vars), names = TRUE, unset = NA)
   on.exit({
     for (nm in names(old)) {
-      if (is.na(old[[nm]])) Sys.unsetenv(nm) else Sys.setenv(.named = setNames(list(old[[nm]]), nm))
+      if (is.na(old[[nm]])) {
+        Sys.unsetenv(nm)
+      } else {
+        do.call(Sys.setenv, as.list(setNames(old[[nm]], nm)))
+      }
     }
   })
   do.call(Sys.setenv, as.list(vars))
@@ -42,6 +46,20 @@ test_that("APP_LOG_LEVEL gates lower-priority levels", {
     expect_length(msgs2, 1L)
     expect_match(msgs2[[1]], "\\[ERROR\\]")
   })
+})
+
+test_that("with_env restores pre-existing env vars", {
+  old <- Sys.getenv("APP_LOG_LEVEL", unset = NA)
+  on.exit({
+    if (is.na(old)) Sys.unsetenv("APP_LOG_LEVEL") else Sys.setenv(APP_LOG_LEVEL = old)
+  }, add = TRUE)
+
+  Sys.setenv(APP_LOG_LEVEL = "ERROR")
+  with_env(c(APP_LOG_LEVEL = "WARN"), {
+    expect_identical(Sys.getenv("APP_LOG_LEVEL"), "WARN")
+  })
+  expect_identical(Sys.getenv("APP_LOG_LEVEL"), "ERROR")
+  expect_identical(Sys.getenv(".named", unset = ""), "")
 })
 
 test_that("unknown level falls back to INFO", {
