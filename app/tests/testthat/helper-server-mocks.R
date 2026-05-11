@@ -514,6 +514,7 @@ resolve_starters_bounds <- function(off_mode, off_value, def_mode, def_value) {
   )
 }
 
+source(repo_file("R", "logger.R"), local = TRUE)
 source(repo_file("R", "server_tab1.R"), local = TRUE)
 source(repo_file("R", "mod_lineup_player_filter.R"), local = TRUE)
 source(repo_file("R", "server_tab2.R"), local = TRUE)

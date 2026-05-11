@@ -633,7 +633,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         if (grepl("statement timeout", msg, ignore.case = TRUE)) {
           showNotification("Player compare query timed out. Narrow filters or date range.", type = "warning", duration = 5)
         } else {
-          message(sprintf("[tab7][player_compare] query failed: %s", msg))
+          app_log("tab7", sprintf("player_compare query failed: %s", msg), level = "ERROR", session = session)
           showNotification("Player compare query failed. Try narrowing filters or retry.", type = "error", duration = 6)
         }
         data.frame()

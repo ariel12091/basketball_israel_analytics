@@ -4,6 +4,7 @@
 
 # Source all modules
 source("R/global.R", local = TRUE)
+source("R/logger.R", local = TRUE)
 source("R/mod_lineup_player_filter.R", local = TRUE)
 source("R/ui_tab0_home.R", local = TRUE)
 source("R/ui_tab1_onoff.R", local = TRUE)
@@ -79,7 +80,7 @@ server <- function(input, output, session) {
   idle_check_sec <- APP_IDLE_CHECK_SEC
   log_startup <- function(step) {
     elapsed <- proc.time()[["elapsed"]] - startup_t0
-    message(sprintf("[startup] %s (%.3fs)", step, elapsed))
+    app_log("startup", sprintf("%s (%.3fs)", step, elapsed), session = session)
   }
 
   observeEvent(input$idle_activity_ts, {
@@ -271,7 +272,12 @@ server <- function(input, output, session) {
         log_startup(sprintf("prewarm complete for season %s", selected_game_year()))
       },
       error = function(e) {
-        message(sprintf("[startup] prewarm failed for season %s: %s", selected_game_year(), conditionMessage(e)))
+        app_log(
+          "startup",
+          sprintf("prewarm failed for season %s: %s", selected_game_year(), conditionMessage(e)),
+          level = "ERROR",
+          session = session
+        )
       }
     )
   }, ignoreInit = FALSE)

@@ -71,13 +71,10 @@ server_tab3 <- function(input, output, session, shared) {
 
   setup_stat_filter_handlers("tr", input, session, tr_stat_filter_cols, tr_stat_filter_state)
 
-  log_tab3_error <- function(msg) {
-    if (exists("app_log", mode = "function")) {
-      app_log("tab3", msg)
-    } else {
-      message(sprintf("%s [tab3] %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S"), msg))
-    }
+  log_tab3 <- function(msg, level = "INFO") {
+    app_log("tab3", msg, level = level, session = session)
   }
+  log_tab3_error <- function(msg) log_tab3(msg, level = "ERROR")
   log_tab3_state <- function(tag = "state") {
     safe_chr <- function(x) {
       if (is.null(x) || is.environment(x)) return(NA_character_)
@@ -100,7 +97,7 @@ server_tab3 <- function(input, output, session, shared) {
       " trad_mode=", safe_chr(input$tr_trad_display_mode),
       " trad_side=", if (isTRUE(input$tr_trad_defense_mode)) "defense" else "offense"
     )
-    log_tab3_error(msg)
+    log_tab3(msg, level = "DEBUG")
   }
   safe_tr_date <- function(x) {
     if (is.null(x) || is.environment(x)) return(as.Date(NA))
@@ -433,9 +430,9 @@ server_tab3 <- function(input, output, session, shared) {
     tryCatch({
       b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
       do_upd <- function(step, expr) {
-        log_tab3_error(paste0("reset_step_start: ", step))
+        log_tab3(paste0("reset_step_start: ", step), level = "DEBUG")
         force(expr)
-        log_tab3_error(paste0("reset_step_ok: ", step))
+        log_tab3(paste0("reset_step_ok: ", step), level = "DEBUG")
       }
       do_upd("tr_view_mode", updateRadioButtons(session, "tr_view_mode", selected = "Summary"))
       do_upd("tr_trad_defense_mode", updateCheckboxInput(session, "tr_trad_defense_mode", value = FALSE))
