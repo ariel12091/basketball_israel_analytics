@@ -24,6 +24,12 @@ server_tab7_compare <- function(input, output, session, shared) {
   )
   cmp_auto_enabled <- reactiveVal(TRUE)
   cmp_auto_min_bootstrapped <- reactiveVal(FALSE)
+  cmp_ready <- reactiveVal(FALSE)
+  cmp_init_token <- reactiveVal(0L)
+  cmp_suppress_preset_echo <- reactiveVal(NULL)
+  cmp_teams_ref_loaded_year <- reactiveVal(NA_integer_)
+  cmp_refs_loaded_year <- reactiveVal(NA_integer_)
+  cmp_player_refs_loaded_year <- reactiveVal(NA_integer_)
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
   cmp_player_raw_cache <- reactiveVal(NULL)
@@ -900,22 +906,61 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
-  ensure_cmp_refs_loaded <- function(game_year) {
-    if (is.null(cmp_ref$players) || !nrow(cmp_ref$players)) {
-      cmp_ref$players <- load_cmp_players_ref(game_year)
-    }
-    if (is.null(cmp_ref$teams) || !nrow(cmp_ref$teams)) {
-      cmp_ref$teams <- load_cmp_teams_ref(game_year)
+  ensure_cmp_teams_ref_loaded <- function(game_year) {
+    gy_int <- as.integer(game_year)
+    loaded <- identical(cmp_teams_ref_loaded_year(), gy_int) &&
+      !is.null(cmp_ref$teams) && nrow(cmp_ref$teams)
+    if (!isTRUE(loaded)) {
+      cmp_ref$teams <- load_cmp_teams_ref(gy_int)
+      cmp_teams_ref_loaded_year(gy_int)
     }
     invisible(NULL)
   }
 
-  refresh_compare_ref_inputs <- function(game_year) {
+  ensure_cmp_player_refs_loaded <- function(game_year,
+                                            refresh_player_inputs = FALSE,
+                                            apply_defaults = FALSE) {
+    gy_int <- as.integer(game_year)
+    ensure_cmp_teams_ref_loaded(gy_int)
+    loaded <- identical(cmp_player_refs_loaded_year(), gy_int) &&
+      !is.null(cmp_ref$players) && nrow(cmp_ref$players)
+    if (!isTRUE(loaded)) {
+      cmp_ref$players <- load_cmp_players_ref(gy_int)
+      cmp_player_refs_loaded_year(gy_int)
+    }
+    if (isTRUE(refresh_player_inputs)) {
+      refresh_player_choices("a")
+      refresh_player_choices("b")
+    }
+    if (isTRUE(apply_defaults)) {
+      apply_default_players()
+    }
+    invisible(NULL)
+  }
+
+  refresh_compare_ref_inputs <- function(game_year, include_players = FALSE) {
     cmp_profile_time(
       "refresh_compare_ref_inputs",
       {
-        teams_df <- load_cmp_teams_ref(game_year)
+        gy_int <- as.integer(game_year)
+        base_loaded <- identical(cmp_refs_loaded_year(), gy_int) &&
+          !is.null(cmp_ref$teams) && nrow(cmp_ref$teams)
+
+        if (isTRUE(base_loaded)) {
+          if (isTRUE(include_players)) {
+            ensure_cmp_player_refs_loaded(
+              gy_int,
+              refresh_player_inputs = identical(input$cmp_mode, "Players"),
+              apply_defaults = identical(input$cmp_mode, "Players")
+            )
+          }
+          return(invisible(NULL))
+        }
+
+        teams_df <- load_cmp_teams_ref(gy_int)
         cmp_ref$teams <- teams_df
+        cmp_teams_ref_loaded_year(gy_int)
+        cmp_refs_loaded_year(gy_int)
         team_choices <- if (nrow(teams_df)) as.character(teams_df$team_name) else character(0)
         updateSelectizeInput(session, "cmp_a_teams", choices = team_choices, selected = character(0), server = FALSE)
         updateSelectizeInput(session, "cmp_b_teams", choices = team_choices, selected = character(0), server = FALSE)
@@ -926,21 +971,24 @@ server_tab7_compare <- function(input, output, session, shared) {
         lu_team_choices <- if (nrow(teams_df)) setNames(as.character(teams_df$team_id), teams_df$team_name) else character(0)
         cmp_lu_filter$reset_inputs(team_choices = c("All teams" = "", lu_team_choices), team_selected = "")
 
-        gn_df <- load_cmp_gn_ref(game_year)
+        gn_df <- load_cmp_gn_ref(gy_int)
         gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
         gn_choices_with_blank <- c("", gn_choices)
         updateSelectizeInput(session, "cmp_players_gn_min", choices = gn_choices_with_blank, selected = "", server = FALSE)
         updateSelectizeInput(session, "cmp_players_gn_max", choices = gn_choices_with_blank, selected = "", server = FALSE)
         updateSelectizeInput(session, "cmp_split_gn", choices = gn_choices_with_blank, selected = "", server = FALSE)
 
-        b <- shared$season_date_bounds(as.character(game_year))
+        b <- shared$season_date_bounds(as.character(gy_int))
         updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
         updateDateInput(session, "cmp_split_date", value = b$end, min = b$start, max = b$end)
 
-        cmp_ref$players <- load_cmp_players_ref(game_year)
-        refresh_player_choices("a")
-        refresh_player_choices("b")
-        apply_default_players()
+        if (isTRUE(include_players)) {
+          ensure_cmp_player_refs_loaded(
+            gy_int,
+            refresh_player_inputs = identical(input$cmp_mode, "Players"),
+            apply_defaults = identical(input$cmp_mode, "Players")
+          )
+        }
       },
       extra = sprintf("game_year=%s", as.integer(game_year))
     )
@@ -952,7 +1000,10 @@ server_tab7_compare <- function(input, output, session, shared) {
   )
 
   cmp_refs_state <- reactive({
-    ensure_cmp_refs_loaded(as.integer(input$game_year))
+    ensure_cmp_teams_ref_loaded(as.integer(input$game_year))
+    if (identical(input$cmp_mode, "Players")) {
+      ensure_cmp_player_refs_loaded(as.integer(input$game_year))
+    }
     list(
       players = normalize_players_ref(cmp_ref$players),
       teams = normalize_teams_ref(cmp_ref$teams)
@@ -1059,6 +1110,25 @@ server_tab7_compare <- function(input, output, session, shared) {
     render_metric_chips(PLAYER_VIEWS, cur, "cmp_player_view")
   })
 
+  release_compare_ready_after_flush <- function(token) {
+    if (inherits(session, "MockShinySession")) {
+      cmp_ready(TRUE)
+      return(invisible(NULL))
+    }
+
+    session$onFlushed(function() {
+      later::later(function() {
+        should_release <- isolate(
+          identical(cmp_init_token(), token) &&
+            identical(input$main_tabs, "compare")
+        )
+        if (!isTRUE(should_release)) return(invisible(NULL))
+        isolate(cmp_ready(TRUE))
+        invisible(NULL)
+      }, delay = (CMP_FILTER_DEBOUNCE_MS + 150) / 1000)
+    }, once = TRUE)
+  }
+
   observeEvent(input$cmp_metric, {
     if (identical(input$cmp_mode, "Players")) return(NULL)
     metrics <- TEAM_METRICS
@@ -1084,6 +1154,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   observeEvent(input$cmp_min_poss, {
     if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+    if (!isTRUE(cmp_ready())) return(invisible(NULL))
     if (isTRUE(cmp_auto_min_state$updating)) return(invisible(NULL))
     cur_val <- suppressWarnings(as.integer(input$cmp_min_poss %||% 10L))
     last_auto <- suppressWarnings(as.integer(cmp_auto_min_state$last_auto))
@@ -1108,6 +1179,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   ), {
     if (!identical(input$main_tabs, "compare")) return(invisible(NULL))
     if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+    if (!isTRUE(cmp_ready())) return(invisible(NULL))
     cmp_auto_enabled(TRUE)
   }, ignoreInit = TRUE)
 
@@ -1302,7 +1374,15 @@ server_tab7_compare <- function(input, output, session, shared) {
     selected_player_view("overall")
     selected_detail_entity(NULL)
     detail_view_active(FALSE)
-    if (identical(mode, "Players")) apply_default_players()
+    if (identical(input$main_tabs, "compare") && mode %in% c("Lineups", "Players")) {
+      ensure_cmp_player_refs_loaded(
+        as.integer(input$game_year),
+        refresh_player_inputs = identical(mode, "Players"),
+        apply_defaults = identical(mode, "Players")
+      )
+    } else if (identical(mode, "Players")) {
+      apply_default_players()
+    }
   }, ignoreInit = TRUE)
 
   # -- Tab init: load ref data --
@@ -1310,14 +1390,28 @@ server_tab7_compare <- function(input, output, session, shared) {
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "compare")) return(NULL)
     gy_int <- as.integer(input$game_year)
+    token <- cmp_init_token() + 1L
 
-    refresh_compare_ref_inputs(gy_int)
+    cmp_init_token(token)
+    cmp_ready(FALSE)
+    cmp_auto_min_bootstrapped(FALSE)
+
+    refresh_compare_ref_inputs(
+      gy_int,
+      include_players = (input$cmp_mode %in% c("Lineups", "Players"))
+    )
     # Apply pending preset from home tab
     pending <- shared$pending_compare_preset()
     if (!is.null(pending) && nzchar(pending)) {
       shared$pending_compare_preset(NULL)
+      reset_compare_side_filters("a", reset_clutch_sliders = FALSE)
+      reset_compare_side_filters("b", reset_clutch_sliders = FALSE)
+      apply_compare_preset(pending)
+      cmp_suppress_preset_echo(pending)
       updateSelectInput(session, "cmp_preset", selected = pending)
     }
+
+    release_compare_ready_after_flush(token)
   })
 
   observeEvent(input$cmp_player_a_list_team_filter, {
@@ -1394,6 +1488,13 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   observeEvent(input$cmp_preset, {
     preset <- input$cmp_preset
+    suppress_preset <- cmp_suppress_preset_echo()
+    if (!is.null(suppress_preset)) {
+      cmp_suppress_preset_echo(NULL)
+      if (identical(preset, suppress_preset)) {
+        return()
+      }
+    }
     if (is.null(preset) || !nzchar(preset)) {
       return()
     }
@@ -2078,6 +2179,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       "cmp_joined_base",
       {
         req(identical(input$main_tabs, "compare"))
+        req(isTRUE(cmp_ready()))
         mode <- input$cmp_mode
         req(mode)
         if (identical(mode, "Players")) return(NULL)
@@ -2097,6 +2199,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   observe({
     if (!identical(input$main_tabs, "compare")) return(invisible(NULL))
     if (identical(input$cmp_mode, "Players")) return(invisible(NULL))
+    if (!isTRUE(cmp_ready())) return(invisible(NULL))
     if (!isTRUE(cmp_auto_enabled())) return(invisible(NULL))
 
     if (!isTRUE(cmp_auto_min_bootstrapped())) {
@@ -2159,6 +2262,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     entity <- selected_detail_entity()
     req(entity)
     req(identical(input$main_tabs, "compare"))
+    req(isTRUE(cmp_ready()))
 
     side_state <- cmp_side_state()
     pa <- side_state$a
