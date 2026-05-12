@@ -73,6 +73,9 @@ server_tab2 <- function(input, output, session, shared) {
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "lineup_data")) return(NULL)
     gy_int <- as.integer(input$game_year)
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+
+    updateDateRangeInput(session, "ld_dates", start = b$start, end = b$end, min = b$start, max = b$end)
 
     teams_ld <- cached_ref_query(
       key = sprintf("ld_teams_%d", gy_int),

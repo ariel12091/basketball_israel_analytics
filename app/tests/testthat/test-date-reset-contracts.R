@@ -18,3 +18,14 @@ test_that("date reset uses concrete season bounds for every tab", {
     expect_true(grepl("season_date_bounds", txt), info = paste(s$name, "should use season bounds"))
   }
 })
+
+test_that("tab2 season change updates lineup date range", {
+  txt <- paste(readLines(repo_file("R", "server_tab2.R"), warn = FALSE), collapse = "\n")
+  expect_true(
+    grepl(
+      "observeEvent\\(list\\(input\\$main_tabs, input\\$game_year\\)[\\s\\S]*?updateDateRangeInput\\(session,\\s*\"ld_dates\"",
+      txt,
+      perl = TRUE
+    )
+  )
+})
