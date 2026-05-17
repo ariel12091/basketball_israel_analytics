@@ -241,29 +241,12 @@ restore_api_column_classes <- function(df, classes = list()) {
   df
 }
 
-api_response_to_df <- function(body) {
-  parsed <- jsonlite::fromJSON(body, simplifyDataFrame = TRUE)
-  if (!is.null(parsed$error)) stop(parsed$error, call. = FALSE)
-  columns <- parsed$columns %||% character(0)
-  classes <- parsed$classes %||% list()
-  rows <- parsed$rows
-  if (is.null(rows) || (is.list(rows) && !is.data.frame(rows) && !length(rows))) {
-    return(api_empty_df(columns, classes))
-  }
-  df <- as.data.frame(rows, stringsAsFactors = FALSE, optional = TRUE)
-  if (length(columns)) {
-    missing <- setdiff(columns, names(df))
-    for (nm in missing) df[[nm]] <- NA
-    df <- df[, columns, drop = FALSE]
-  }
-  restore_api_column_classes(df, classes)
-}
-
-api_post_df <- function(path, payload, error_label = "Plumber request") {
+api_db_get_query <- function(statement, params = NULL) {
   if (!requireNamespace("httr2", quietly = TRUE)) {
     stop("Plumber/API mode requires the httr2 package.", call. = FALSE)
   }
-  endpoint <- paste0(SHINY_API_BASE_URL, path)
+  endpoint <- paste0(SHINY_API_BASE_URL, "/api/internal/query")
+  payload <- list(statement = statement, params = api_prepare_params(params))
   req <- httr2::request(endpoint) |>
     httr2::req_method("POST") |>
     httr2::req_headers(Accept = "application/json") |>
@@ -280,90 +263,23 @@ api_post_df <- function(path, payload, error_label = "Plumber request") {
       parsed <- jsonlite::fromJSON(body, simplifyVector = FALSE)
       parsed$error %||% body
     }, error = function(e) body)
-    stop(sprintf("%s failed (%s): %s", error_label, httr2::resp_status(resp), msg), call. = FALSE)
+    stop(sprintf("Plumber query failed (%s): %s", httr2::resp_status(resp), msg), call. = FALSE)
   }
-  api_response_to_df(body)
-}
-
-api_extract_literal_year <- function(statement) {
-  hit <- regmatches(statement, regexec('\"Year\"\\s*=\\s*([0-9]+)', statement, perl = TRUE, ignore.case = TRUE))[[1]]
-  if (length(hit) >= 2L) suppressWarnings(as.integer(hit[[2]])) else NA_integer_
-}
-
-api_statement_route <- function(statement, params = NULL) {
-  if (!is.character(statement) || length(statement) != 1L) return(NULL)
-  normalized <- tolower(gsub("\\s+", " ", statement))
-  routes <- c(
-    "basketball_test.onoff_compute" = "/api/shiny/onoff/summary",
-    "basketball_test.four_factors_compute" = "/api/shiny/onoff/four-factors",
-    "basketball_test.fetch_lineups_csv_v2" = "/api/shiny/lineups/summary",
-    "basketball_test.fetch_lineups_four_factors_csv" = "/api/shiny/lineups/four-factors",
-    "basketball_test.get_team_ratings_dynamic" = "/api/shiny/teams/ratings",
-    "basketball_test.get_team_four_factors_dynamic" = "/api/shiny/teams/four-factors",
-    "basketball_test.get_player_traditional_dynamic" = "/api/shiny/players/traditional"
-  )
-  hit <- names(routes)[vapply(names(routes), function(pattern) grepl(pattern, normalized, fixed = TRUE), logical(1))]
-  if (length(hit)) return(list(path = unname(routes[[hit[[1]]]]), params = params))
-
-  route <- NULL
-  route_params <- params
-  if (grepl("from basketball_test.full_rosters", normalized, fixed = TRUE)) {
-    if (grepl("group by team_id, player_id", normalized, fixed = TRUE)) {
-      route <- "/api/shiny/meta/players"
-    } else if (grepl("min(team_name)", normalized, fixed = TRUE) && grepl("group by team_id", normalized, fixed = TRUE)) {
-      route <- "/api/shiny/meta/teams-min"
-    } else if (grepl("select distinct team_id, team_name", normalized, fixed = TRUE)) {
-      route <- "/api/shiny/meta/teams-distinct"
-    }
-  } else if (grepl("select distinct gn", normalized, fixed = TRUE) &&
-             grepl("from basketball_test.final_schedule_mv", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/meta/game-numbers"
-  } else if (grepl("from basketball_test.app_meta", normalized, fixed = TRUE) &&
-             grepl("etl_full_last_success", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/meta/last-success"
-    route_params <- list()
-  } else if (grepl("from basketball_test.onoff_default_mv", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/onoff/default"
-    if (!length(route_params %||% list())) {
-      year <- api_extract_literal_year(statement)
-      if (is.finite(year)) route_params <- list(year)
-    }
-  } else if (grepl("from basketball_test.player_advanced_stats_mv", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/onoff/player-advanced"
-  } else if (grepl("from basketball_test.player_traditional_stats_mv", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/players/traditional-default"
-  } else if (grepl("from basketball_test.team_ppp_ratings_mv", normalized, fixed = TRUE) &&
-             grepl("rank_net_rtg", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/teams/ratings-default"
-  } else if (grepl("from basketball_test.team_four_factors_mv", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/teams/four-factors-default"
-  } else if (grepl("select * from basketball_test.final_schedule_mv where game_year = $1", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/gamelogs/schedule"
-  } else if (grepl("from basketball_test.mv_lineup_totals_by_day", normalized, fixed = TRUE) &&
-             !grepl("lineup_hash in", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/gamelogs/lineup-totals"
-  } else if (grepl("from basketball_test.lineup_four_factors_by_game", normalized, fixed = TRUE) &&
-             !grepl("lineup_hash in", normalized, fixed = TRUE)) {
-    route <- "/api/shiny/gamelogs/lineup-four-factors"
+  parsed <- jsonlite::fromJSON(body, simplifyDataFrame = TRUE)
+  if (!is.null(parsed$error)) stop(parsed$error, call. = FALSE)
+  columns <- parsed$columns %||% character(0)
+  classes <- parsed$classes %||% list()
+  rows <- parsed$rows
+  if (is.null(rows) || (is.list(rows) && !is.data.frame(rows) && !length(rows))) {
+    return(api_empty_df(columns, classes))
   }
-
-  if (!is.null(route)) list(path = route, params = route_params) else NULL
-}
-
-api_db_get_query <- function(statement, params = NULL) {
-  route <- api_statement_route(statement, params)
-  if (!is.null(route)) {
-    return(api_post_df(
-      route$path,
-      list(params = api_prepare_params(route$params)),
-      error_label = sprintf("Plumber route '%s'", route$path)
-    ))
+  df <- as.data.frame(rows, stringsAsFactors = FALSE, optional = TRUE)
+  if (length(columns)) {
+    missing <- setdiff(columns, names(df))
+    for (nm in missing) df[[nm]] <- NA
+    df <- df[, columns, drop = FALSE]
   }
-  api_post_df(
-    "/api/internal/query",
-    list(statement = statement, params = api_prepare_params(params)),
-    error_label = "Plumber query"
-  )
+  restore_api_column_classes(df, classes)
 }
 
 db_get_query <- function(conn_or_pool, statement, params = NULL) {
