@@ -11,6 +11,8 @@ library(pool)
 library(RPostgres)
 library(jsonlite)
 
+`%||%` <- function(a, b) if (!is.null(a)) a else b
+
 # Load credentials from app/.Renviron (read-only user — same as Shiny)
 # Walk up from working directory to find the repo root (contains app/.Renviron)
 .find_repo_root <- function() {
@@ -399,7 +401,8 @@ request_api_key <- function(req) {
 is_internal_query_path <- function(req) {
   path <- req$PATH_INFO
   if (is.null(path) || !nzchar(path)) return(FALSE)
-  identical(sub("/+$", "", path), "/api/internal/query")
+  normalized <- sub("/+$", "", path)
+  identical(normalized, "/api/internal/query") || startsWith(normalized, "/api/shiny/")
 }
 check_rate_limit <- function(ip) {
   now <- as.numeric(Sys.time())
@@ -528,9 +531,311 @@ query_payload_to_response <- function(df) {
   )
 }
 
-# ── POST /api/internal/query ───────────────────────────────────
-# Private Shiny compatibility endpoint. It preserves the existing Shiny
-# query/post-processing code while moving DB credentials behind Plumber.
+# Shiny-specific API routes return DB-style data-frame payloads because the
+# current Shiny modules already do their own R-side post-processing.
+shiny_auth_error <- function(req, res) {
+  if (!nzchar(SHINY_INTERNAL_API_KEY)) {
+    res$status <- 403
+    return(list(error = "Shiny API routes are disabled"))
+  }
+  if (!identical(request_api_key(req), SHINY_INTERNAL_API_KEY)) {
+    res$status <- 401
+    return(list(error = "Unauthorized"))
+  }
+  NULL
+}
+
+shiny_body_params <- function(req, res, expected = NULL) {
+  body <- tryCatch(
+    jsonlite::fromJSON(req$postBody, simplifyVector = FALSE),
+    error = function(e) NULL
+  )
+  params <- body$params
+  if (is.null(params)) params <- list()
+  if (!is.list(params)) {
+    res$status <- 400
+    return(list(error = "params must be a JSON array"))
+  }
+  params <- lapply(params, function(x) if (is.null(x)) NA else x)
+  if (!is.null(expected) && length(params) != expected) {
+    res$status <- 400
+    return(list(error = sprintf("Expected %d params, got %d", expected, length(params))))
+  }
+  params
+}
+
+sql_placeholders <- function(casts) {
+  paste(sprintf("$%d::%s", seq_along(casts), casts), collapse = ",")
+}
+
+sql_function_call <- function(fn, casts) {
+  sprintf("SELECT * FROM %s.%s(%s)", SCHEMA, fn, sql_placeholders(casts))
+}
+
+shiny_query_response <- function(res, statement, params = list()) {
+  out <- tryCatch({
+    if (length(params)) {
+      DBI::dbGetQuery(pg_pool, statement, params = params)
+    } else {
+      DBI::dbGetQuery(pg_pool, statement)
+    }
+  }, error = function(e) {
+    res$status <- 500
+    list(error = e$message)
+  })
+  if (is.list(out) && !is.data.frame(out) && !is.null(out$error)) return(out)
+  query_payload_to_response(out)
+}
+
+shiny_function_route <- function(req, res, fn, casts) {
+  auth_error <- shiny_auth_error(req, res)
+  if (!is.null(auth_error)) return(auth_error)
+  params <- shiny_body_params(req, res, length(casts))
+  if (is.list(params) && !is.null(params$error)) return(params)
+  shiny_query_response(res, sql_function_call(fn, casts), params)
+}
+
+shiny_sql_route <- function(req, res, statement, expected = NULL) {
+  auth_error <- shiny_auth_error(req, res)
+  if (!is.null(auth_error)) return(auth_error)
+  params <- shiny_body_params(req, res, expected)
+  if (is.list(params) && !is.null(params$error)) return(params)
+  shiny_query_response(res, statement, params)
+}
+
+#* @post /api/shiny/meta/teams-distinct
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT DISTINCT team_id, team_name
+       FROM %s.full_rosters
+      WHERE game_year = $1::int4
+      ORDER BY team_name",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/meta/teams-min
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT DISTINCT team_id, MIN(team_name) AS team_name
+       FROM %s.full_rosters
+      WHERE game_year = $1::int4
+      GROUP BY team_id
+      ORDER BY MIN(team_name)",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/meta/players
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT team_id,
+            player_id,
+            MIN(btrim(firstname)||' '||btrim(lastname)) AS name
+       FROM %s.full_rosters
+      WHERE game_year = $1::int4
+      GROUP BY team_id, player_id
+      ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/meta/game-numbers
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT DISTINCT gn
+       FROM %s.final_schedule_mv
+      WHERE game_year = $1::int4
+      ORDER BY gn",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/meta/last-success
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT value FROM %s.app_meta WHERE key = 'etl_full_last_success' LIMIT 1",
+    SCHEMA
+  ), expected = 0L)
+}
+
+#* @post /api/shiny/onoff/default
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT *
+       FROM %s.onoff_default_mv
+      WHERE \"Year\" = $1::int4
+      ORDER BY \"Net RTG Diff\" DESC, \"Team\", \"Last Name\", \"First Name\"",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/onoff/player-advanced
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT *
+       FROM %s.player_advanced_stats_mv
+      WHERE game_year = $1::int4",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/teams/ratings-default
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,
+            games_played, wins, losses, off_poss, def_poss,
+            rank_net_rtg, rank_off_ppp, rank_def_ppp
+       FROM %s.team_ppp_ratings_mv
+      WHERE game_year = $1::int4
+      ORDER BY rank_net_rtg",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/teams/four-factors-default
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT *
+       FROM %s.team_four_factors_mv
+      WHERE game_year = $1::int4",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/players/traditional-default
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT player_id, team_id, team_name, player_name AS \"Player\",
+            gp, poss_on_floor, minutes,
+            pts, reb, ast, stl, blk, tov, fgm, fga, \"3pm\", \"3pa\", ftm, fta,
+            fg_pct, tp_pct, ft_pct, efg, ts
+       FROM %s.player_traditional_stats_mv
+      WHERE game_year = $1::int4",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/gamelogs/schedule
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT * FROM %s.final_schedule_mv WHERE game_year = $1::int4",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/gamelogs/lineup-totals
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
+            total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, minutes, num_starters
+       FROM %s.mv_lineup_totals_by_day
+      WHERE game_year = $1::int4",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/gamelogs/lineup-four-factors
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_sql_route(req, res, sprintf(
+    "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
+            total_points, total_poss, ts_poss_count, oreb_count,
+            oreb_opportunities, tov_count, total_ft_attempts, total_fga,
+            total_fgm, total_fg3_made, minutes, num_starters
+       FROM %s.lineup_four_factors_by_game
+      WHERE game_year = $1::int4",
+    SCHEMA
+  ), expected = 1L)
+}
+
+#* @post /api/shiny/onoff/summary
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_function_route(
+    req, res, "onoff_compute",
+    c("date", "date", "text", "int4", "int4", "numeric", "text",
+      "text", "text", "text", "text", "text", "int4", "text",
+      "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4")
+  )
+}
+
+#* @post /api/shiny/onoff/four-factors
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_function_route(
+    req, res, "four_factors_compute",
+    c("int4", "date", "date", "text", "text", "text", "text", "text", "text", "int4",
+      "text", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4")
+  )
+}
+
+#* @post /api/shiny/lineups/summary
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_function_route(
+    req, res, "fetch_lineups_csv_v2",
+    c("int4", "text", "text", "text", "bool", "date", "date", "int4", "int4",
+      "text", "text", "text", "text", "text", "int4", "text", "int4", "text", "int4", "bool",
+      "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4")
+  )
+}
+
+#* @post /api/shiny/lineups/four-factors
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_function_route(
+    req, res, "fetch_lineups_four_factors_csv",
+    c("int4", "text", "text", "text", "bool", "date", "date", "int4", "int4",
+      "text", "text", "text", "text", "text", "int4", "text", "int4", "text", "int4", "bool",
+      "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4")
+  )
+}
+
+#* @post /api/shiny/teams/ratings
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_function_route(
+    req, res, "get_team_ratings_dynamic",
+    c("int4", "date", "date", "text", "text", "text", "text", "text", "int4", "text",
+      "int4", "text", "int4", "bool", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4")
+  )
+}
+
+#* @post /api/shiny/teams/four-factors
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_function_route(
+    req, res, "get_team_four_factors_dynamic",
+    c("int4", "date", "date", "text", "text", "text", "text", "text", "int4", "text",
+      "int4", "text", "int4", "bool", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4", "int4")
+  )
+}
+
+#* @post /api/shiny/players/traditional
+#* @serializer unboxedJSON
+function(req, res) {
+  shiny_function_route(
+    req, res, "get_player_traditional_dynamic",
+    c("int4", "date", "date", "text", "text", "text", "text", "text", "text", "int4",
+      "text", "int4", "text", "int4", "bool", "int4", "int4", "int4")
+  )
+}
+
+# Private Shiny compatibility endpoint. It preserves legacy query paths while
+# the remaining Shiny reads move to explicit /api/shiny routes.
 #* @post /api/internal/query
 #* @serializer unboxedJSON
 function(req, res) {
