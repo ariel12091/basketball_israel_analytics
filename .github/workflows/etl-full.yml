@@ -18,7 +18,10 @@ on:
         type: boolean
         default: false
   schedule:
-    - cron: '15 2 * * *'
+    # GitHub cron is UTC. These cover 00:15 Asia/Jerusalem in both
+    # daylight (+03) and standard (+02) time; the first step gates the run.
+    - cron: '15 21 * * *'
+    - cron: '15 22 * * *'
 
 jobs:
   etl:
@@ -28,13 +31,31 @@ jobs:
     timeout-minutes: 180
 
     steps:
+      - name: Gate scheduled run to 00:15 Israel time
+        shell: pwsh
+        run: |
+          if ('${{ github.event_name }}' -ne 'schedule') {
+            "RUN_ETL=true" | Out-File -FilePath $env:GITHUB_ENV -Append
+            exit 0
+          }
+
+          $tz = [System.TimeZoneInfo]::FindSystemTimeZoneById('Israel Standard Time')
+          $israelNow = [System.TimeZoneInfo]::ConvertTime([DateTimeOffset]::UtcNow, $tz)
+          $runNow = ($israelNow.Hour -eq 0)
+          Write-Host ("Israel local time: {0}" -f $israelNow.ToString('yyyy-MM-dd HH:mm:ss zzz'))
+          Write-Host ("Run ETL: {0}" -f $runNow)
+          "RUN_ETL=$($runNow.ToString().ToLowerInvariant())" | Out-File -FilePath $env:GITHUB_ENV -Append
+
       - uses: actions/checkout@v4
+        if: env.RUN_ETL == 'true'
 
       - uses: r-lib/actions/setup-r@v2
+        if: env.RUN_ETL == 'true'
         with:
           r-version: '4.4.2'
 
       - name: Install ETL deps (cached)
+        if: env.RUN_ETL == 'true'
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           packages: |
@@ -56,6 +77,7 @@ jobs:
             any::arrow
 
       - name: Run ETL wrapper
+        if: env.RUN_ETL == 'true'
         shell: pwsh
         env:
           APP_ENV: test
@@ -122,7 +144,7 @@ jobs:
           }
 
       - name: Ensure cold-storage release exists
-        if: ${{ success() && hashFiles('exports/cold/*.parquet') != '' }}
+        if: ${{ env.RUN_ETL == 'true' && success() && hashFiles('exports/cold/*.parquet') != '' }}
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -133,7 +155,7 @@ jobs:
               --notes "Cumulative Parquet backups of ETL intermediate tables"
 
       - name: Upload ETL logs
-        if: always()
+        if: ${{ env.RUN_ETL == 'true' && always() }}
         uses: actions/upload-artifact@v4
         with:
           name: etl-logs-${{ github.run_id }}
@@ -145,7 +167,7 @@ jobs:
           if-no-files-found: warn
 
       - name: Show ETL process log tail
-        if: always()
+        if: ${{ env.RUN_ETL == 'true' && always() }}
         shell: pwsh
         run: |
           $latest = Get-ChildItem -Path etl/logs -Filter 'etl_full_*.log' -ErrorAction SilentlyContinue |
