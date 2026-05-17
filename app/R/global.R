@@ -174,6 +174,17 @@ if (is.finite(APP_IDLE_TIMEOUT_MIN) && APP_IDLE_TIMEOUT_MIN > 0) {
 APP_IDLE_CHECK_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_CHECK_SEC", "15")))
 if (!is.finite(APP_IDLE_CHECK_SEC) || APP_IDLE_CHECK_SEC <= 0) APP_IDLE_CHECK_SEC <- 15L
 
+SHINY_DATA_BACKEND <- tolower(trimws(Sys.getenv("SHINY_DATA_BACKEND", "auto")))
+SHINY_API_BASE_URL <- sub("/+$", "", trimws(Sys.getenv("SHINY_API_BASE_URL", "")))
+SHINY_API_KEY <- Sys.getenv("SHINY_API_KEY", Sys.getenv("SHINY_INTERNAL_API_KEY", ""))
+SHINY_API_TIMEOUT_SEC <- suppressWarnings(as.numeric(Sys.getenv("SHINY_API_TIMEOUT_SEC", "60")))
+if (!is.finite(SHINY_API_TIMEOUT_SEC) || SHINY_API_TIMEOUT_SEC <= 0) SHINY_API_TIMEOUT_SEC <- 60
+USE_PLUMBER_API <- SHINY_DATA_BACKEND %in% c("api", "plumber", "rest") ||
+  (identical(SHINY_DATA_BACKEND, "auto") && nzchar(SHINY_API_BASE_URL))
+if (isTRUE(USE_PLUMBER_API) && !nzchar(SHINY_API_BASE_URL)) {
+  stop("SHINY_DATA_BACKEND requests Plumber/API mode, but SHINY_API_BASE_URL is not set.", call. = FALSE)
+}
+
 .ref_cache_env <- new.env(parent = emptyenv())
 
 cached_ref_query <- function(key, query_fun, ttl_sec = REF_CACHE_TTL_SEC) {
@@ -190,8 +201,91 @@ cached_ref_query <- function(key, query_fun, ttl_sec = REF_CACHE_TTL_SEC) {
 }
 
 # Central query helper used across modules.
-# Kept as a thin wrapper for pooler compatibility with parameterized queries.
+# In Plumber mode, Shiny sends the exact same read-only query payload to the
+# API service. Otherwise it keeps the existing direct read-only DB pool path.
+api_prepare_params <- function(params) {
+  if (is.null(params)) return(list())
+  lapply(params, function(x) {
+    if (is.null(x) || length(x) == 0) return(NULL)
+    if (inherits(x, "Date")) return(format(x, "%Y-%m-%d"))
+    if (inherits(x, "POSIXt")) {
+      return(format(as.POSIXct(x, tz = "UTC"), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"))
+    }
+    x
+  })
+}
+
+api_empty_df <- function(columns, classes = list()) {
+  out <- as.data.frame(setNames(vector("list", length(columns)), columns), stringsAsFactors = FALSE)
+  out <- out[0, , drop = FALSE]
+  restore_api_column_classes(out, classes)
+}
+
+restore_api_column_classes <- function(df, classes = list()) {
+  if (is.null(classes) || !length(classes) || !length(names(classes))) return(df)
+  for (nm in intersect(names(classes), names(df))) {
+    cls <- unlist(classes[[nm]], use.names = FALSE)
+    if (!length(cls)) next
+    if ("Date" %in% cls) {
+      df[[nm]] <- as.Date(df[[nm]])
+    } else if ("POSIXct" %in% cls || "POSIXt" %in% cls) {
+      df[[nm]] <- as.POSIXct(df[[nm]], tz = "UTC")
+    } else if ("integer" %in% cls) {
+      df[[nm]] <- suppressWarnings(as.integer(df[[nm]]))
+    } else if ("numeric" %in% cls) {
+      df[[nm]] <- suppressWarnings(as.numeric(df[[nm]]))
+    } else if ("logical" %in% cls) {
+      df[[nm]] <- as.logical(df[[nm]])
+    }
+  }
+  df
+}
+
+api_db_get_query <- function(statement, params = NULL) {
+  if (!requireNamespace("httr2", quietly = TRUE)) {
+    stop("Plumber/API mode requires the httr2 package.", call. = FALSE)
+  }
+  endpoint <- paste0(SHINY_API_BASE_URL, "/api/internal/query")
+  payload <- list(statement = statement, params = api_prepare_params(params))
+  req <- httr2::request(endpoint) |>
+    httr2::req_method("POST") |>
+    httr2::req_headers(Accept = "application/json") |>
+    httr2::req_body_json(payload, auto_unbox = TRUE, null = "null", na = "null") |>
+    httr2::req_timeout(SHINY_API_TIMEOUT_SEC) |>
+    httr2::req_error(is_error = function(resp) FALSE)
+  if (nzchar(SHINY_API_KEY)) {
+    req <- httr2::req_headers(req, `X-Shiny-API-Key` = SHINY_API_KEY)
+  }
+  resp <- httr2::req_perform(req)
+  body <- httr2::resp_body_string(resp)
+  if (httr2::resp_status(resp) >= 400) {
+    msg <- tryCatch({
+      parsed <- jsonlite::fromJSON(body, simplifyVector = FALSE)
+      parsed$error %||% body
+    }, error = function(e) body)
+    stop(sprintf("Plumber query failed (%s): %s", httr2::resp_status(resp), msg), call. = FALSE)
+  }
+  parsed <- jsonlite::fromJSON(body, simplifyDataFrame = TRUE)
+  if (!is.null(parsed$error)) stop(parsed$error, call. = FALSE)
+  columns <- parsed$columns %||% character(0)
+  classes <- parsed$classes %||% list()
+  rows <- parsed$rows
+  if (is.null(rows) || (is.list(rows) && !is.data.frame(rows) && !length(rows))) {
+    return(api_empty_df(columns, classes))
+  }
+  df <- as.data.frame(rows, stringsAsFactors = FALSE, optional = TRUE)
+  if (length(columns)) {
+    missing <- setdiff(columns, names(df))
+    for (nm in missing) df[[nm]] <- NA
+    df <- df[, columns, drop = FALSE]
+  }
+  restore_api_column_classes(df, classes)
+}
+
 db_get_query <- function(conn_or_pool, statement, params = NULL) {
+  if (isTRUE(USE_PLUMBER_API)) {
+    return(api_db_get_query(statement, params))
+  }
   if (is.null(params)) {
     DBI::dbGetQuery(conn_or_pool, statement)
   } else {
@@ -273,24 +367,27 @@ guard_heavy_request <- function(session, key,
   TRUE
 }
 
-# ---------------- PostgreSQL pool ----------------
-pg_pool <- dbPool(
-  drv      = Postgres(),
-  bigint   = "numeric",
-  host     = Sys.getenv("PG_HOST"),
-  port     = as.integer(Sys.getenv("PG_PORT", "6543")),
-  dbname   = Sys.getenv("PG_DB"),
-  user     = Sys.getenv("PG_USER"),
-  password = Sys.getenv("PG_PASS"),
-  sslmode  = Sys.getenv("PG_SSLMODE", "require"),
-  options  = sprintf("-c statement_timeout=%d", PG_STATEMENT_TIMEOUT_MS),
-  minSize  = 0,
-  maxSize  = as.integer(Sys.getenv("POOL_MAX", "3")),
-  idleTimeout = 15000
-)
-onStop(function() poolClose(pg_pool))
+# ---------------- Data backend ----------------
+pg_pool <- NULL
+if (!isTRUE(USE_PLUMBER_API)) {
+  pg_pool <- dbPool(
+    drv      = Postgres(),
+    bigint   = "numeric",
+    host     = Sys.getenv("PG_HOST"),
+    port     = as.integer(Sys.getenv("PG_PORT", "6543")),
+    dbname   = Sys.getenv("PG_DB"),
+    user     = Sys.getenv("PG_USER"),
+    password = Sys.getenv("PG_PASS"),
+    sslmode  = Sys.getenv("PG_SSLMODE", "require"),
+    options  = sprintf("-c statement_timeout=%d", PG_STATEMENT_TIMEOUT_MS),
+    minSize  = 0,
+    maxSize  = as.integer(Sys.getenv("POOL_MAX", "3")),
+    idleTimeout = 15000
+  )
+  onStop(function() poolClose(pg_pool))
+}
 
-# Pre-warm the connection pool (force SSL handshake at source time)
+# Pre-warm the configured data backend.
 tryCatch(db_get_query(pg_pool, "SELECT 1"), error = function(e) NULL)
 
 # Shared head tags

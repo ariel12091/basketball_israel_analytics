@@ -32,6 +32,7 @@ ALLOWED_ORIGINS <- trimws(strsplit(
 )[[1]])
 ALLOWED_ORIGINS <- ALLOWED_ORIGINS[nzchar(ALLOWED_ORIGINS)]
 API_KEY <- Sys.getenv("FRONTEND_API_KEY", "")
+SHINY_INTERNAL_API_KEY <- Sys.getenv("SHINY_INTERNAL_API_KEY", "")
 RATE_LIMIT_WINDOW_SEC <- max(1L, as.integer(Sys.getenv("FRONTEND_RATE_WINDOW_SEC", "60")))
 RATE_LIMIT_MAX_REQUESTS <- max(1L, as.integer(Sys.getenv("FRONTEND_RATE_MAX_REQUESTS", "180")))
 REQ_HITS <- new.env(parent = emptyenv())
@@ -384,6 +385,22 @@ client_ip <- function(req) {
   if (!is.null(req$REMOTE_ADDR) && nzchar(req$REMOTE_ADDR)) return(req$REMOTE_ADDR)
   "unknown"
 }
+request_api_key <- function(req) {
+  key <- req$HTTP_X_API_KEY
+  if (is.null(key) || !nzchar(key)) key <- req$HTTP_X_SHINY_API_KEY
+  if (is.null(key) || !nzchar(key)) {
+    authz <- req$HTTP_AUTHORIZATION
+    if (!is.null(authz) && nzchar(authz)) {
+      key <- sub("^Bearer\\s+", "", authz, perl = TRUE)
+    }
+  }
+  if (is.null(key)) "" else key
+}
+is_internal_query_path <- function(req) {
+  path <- req$PATH_INFO
+  if (is.null(path) || !nzchar(path)) return(FALSE)
+  identical(sub("/+$", "", path), "/api/internal/query")
+}
 check_rate_limit <- function(ip) {
   now <- as.numeric(Sys.time())
   prev <- REQ_HITS[[ip]]
@@ -415,8 +432,8 @@ function(req, res) {
     res$setHeader("Access-Control-Allow-Origin", origin)
     res$setHeader("Vary", "Origin")
   }
-  res$setHeader("Access-Control-Allow-Methods", "GET, OPTIONS")
-  res$setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key, Authorization")
+  res$setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+  res$setHeader("Access-Control-Allow-Headers", "Content-Type, X-API-Key, X-Shiny-API-Key, Authorization")
   if (req$REQUEST_METHOD == "OPTIONS") {
     res$status <- 200
     return(list())
@@ -427,14 +444,9 @@ function(req, res) {
 #* Optional API key auth (keeps anonymous UX when key is unset)
 #* @filter auth
 function(req, res) {
+  if (is_internal_query_path(req)) return(plumber::forward())
   if (!nzchar(API_KEY)) return(plumber::forward())
-  key <- req$HTTP_X_API_KEY
-  if (is.null(key) || !nzchar(key)) {
-    authz <- req$HTTP_AUTHORIZATION
-    if (!is.null(authz) && nzchar(authz)) {
-      key <- sub("^Bearer\\s+", "", authz, perl = TRUE)
-    }
-  }
+  key <- request_api_key(req)
   if (!identical(key, API_KEY)) {
     res$status <- 401
     return(list(error = "Unauthorized"))
@@ -445,6 +457,7 @@ function(req, res) {
 #* Basic in-memory IP rate limit guard
 #* @filter rate_limit
 function(req, res) {
+  if (is_internal_query_path(req)) return(plumber::forward())
   if (!check_rate_limit(client_ip(req))) {
     res$status <- 429
     return(list(error = "Too many requests"))
@@ -479,6 +492,87 @@ function(req, res) {
     }
   }
   plumber::forward()
+}
+
+strip_sql_comments <- function(statement) {
+  no_block <- gsub("/\\*.*?\\*/", " ", statement, perl = TRUE)
+  gsub("--[^\\r\\n]*(\\r?\\n|$)", " ", no_block, perl = TRUE)
+}
+
+is_read_only_statement <- function(statement) {
+  if (!is.character(statement) || length(statement) != 1L || !nzchar(trimws(statement))) return(FALSE)
+  if (nchar(statement, type = "bytes") > 200000L) return(FALSE)
+  stripped <- strip_sql_comments(statement)
+  normalized <- tolower(trimws(gsub("\\s+", " ", stripped)))
+  if (!grepl("^(select|with)\\b", normalized, perl = TRUE)) return(FALSE)
+  if (grepl(";", normalized, fixed = TRUE)) return(FALSE)
+  denied <- paste(
+    c("insert", "update", "delete", "merge", "drop", "alter", "create",
+      "truncate", "grant", "revoke", "copy", "do", "call", "execute",
+      "refresh", "vacuum", "analyze", "set", "reset"),
+    collapse = "|"
+  )
+  !grepl(paste0("\\b(", denied, ")\\b"), normalized, perl = TRUE)
+}
+
+query_payload_to_response <- function(df) {
+  rows <- if (nrow(df)) {
+    lapply(seq_len(nrow(df)), function(i) as.list(df[i, , drop = FALSE]))
+  } else {
+    list()
+  }
+  list(
+    columns = names(df),
+    classes = lapply(df, class),
+    rows = rows
+  )
+}
+
+# ── POST /api/internal/query ───────────────────────────────────
+# Private Shiny compatibility endpoint. It preserves the existing Shiny
+# query/post-processing code while moving DB credentials behind Plumber.
+#* @post /api/internal/query
+#* @serializer unboxedJSON
+function(req, res) {
+  if (!nzchar(SHINY_INTERNAL_API_KEY)) {
+    res$status <- 403
+    return(list(error = "Internal Shiny query endpoint is disabled"))
+  }
+  if (!identical(request_api_key(req), SHINY_INTERNAL_API_KEY)) {
+    res$status <- 401
+    return(list(error = "Unauthorized"))
+  }
+
+  body <- tryCatch(
+    jsonlite::fromJSON(req$postBody, simplifyVector = FALSE),
+    error = function(e) NULL
+  )
+  statement <- body$statement
+  params <- body$params
+  if (is.null(params)) params <- list()
+  if (!is.list(params)) {
+    res$status <- 400
+    return(list(error = "params must be a JSON array"))
+  }
+  params <- lapply(params, function(x) if (is.null(x)) NA else x)
+
+  if (!is_read_only_statement(statement)) {
+    res$status <- 400
+    return(list(error = "Only single read-only SELECT/WITH statements are allowed"))
+  }
+
+  out <- tryCatch({
+    if (length(params)) {
+      DBI::dbGetQuery(pg_pool, statement, params = params)
+    } else {
+      DBI::dbGetQuery(pg_pool, statement)
+    }
+  }, error = function(e) {
+    res$status <- 500
+    list(error = e$message)
+  })
+  if (is.list(out) && !is.data.frame(out) && !is.null(out$error)) return(out)
+  query_payload_to_response(out)
 }
 
 # ── GET /api/meta/teams ──────────────────────────────────────
