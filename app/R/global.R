@@ -55,6 +55,7 @@ COLUMN_TOOLTIPS <- c(
   "Diff"        = "Net PPP impact: On-court minus Off-court",
   # Four Factors
   "TS%"         = "True Shooting: pts / (2 \u00d7 (FGA + FT trips))",
+  "USG%"        = "Usage rate: share of team shot, free-throw, and turnover possessions while on court",
   "OREB%"       = "Offense: offensive rebounds / available misses. Defense: opponent offensive rebounds allowed / available misses",
   "TOV%"        = "Turnover rate: turnovers / possessions",
   "FTR"         = "Free throw rate: FTA / FGA",

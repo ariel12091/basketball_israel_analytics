@@ -22,10 +22,11 @@ TS_FILTERABLE_COLS <- list(
   "FTA"   = "fta",
   "FT%"   = "ft_pct",
   "eFG%"  = "efg",
-  "TS%"   = "ts"
+  "TS%"   = "ts",
+  "USG%"  = "usg_pct"
 )
 
-TS_PERCENT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts")
+TS_PERCENT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct")
 
 apply_ts_stat_filters <- function(df, filters) {
   if (is.null(df) || !nrow(df) || !length(filters)) return(df)
@@ -58,6 +59,52 @@ server_tab5_traditional <- function(input, output, session, shared) {
           coalesce(poss_on_floor, 0) > 0 |
           coalesce(minutes, 0) > 0
       )
+  }
+
+  add_ts_usage_pct <- function(df) {
+    if (is.null(df) || !nrow(df)) return(df)
+    if (!("usg_pct" %in% names(df))) df$usg_pct <- NA_real_
+    needed <- c("fga", "fta", "tov", "poss_on_floor")
+    if (!all(needed %in% names(df))) return(df)
+
+    as_num <- function(col) suppressWarnings(as.numeric(df[[col]]))
+    zero_na <- function(x) {
+      x[!is.finite(x)] <- 0
+      x
+    }
+
+    fga <- zero_na(as_num("fga"))
+    fta <- zero_na(as_num("fta"))
+    tov <- zero_na(as_num("tov"))
+    poss_on_floor <- as_num("poss_on_floor")
+    pts <- if ("pts" %in% names(df)) as_num("pts") else rep(NA_real_, nrow(df))
+    ts <- if ("ts" %in% names(df)) as_num("ts") else rep(NA_real_, nrow(df))
+
+    shot_term <- fga + 0.44 * fta
+    can_imply_ts_term <- is.finite(pts) & pts > 0 & is.finite(ts) & ts > 0
+    shot_term[can_imply_ts_term] <- pts[can_imply_ts_term] / (2 * (ts[can_imply_ts_term] / 100))
+    player_term <- shot_term + tov
+
+    out <- suppressWarnings(as.numeric(df$usg_pct))
+    team_key <- if ("team_id" %in% names(df)) as.character(df$team_id) else rep("all", nrow(df))
+    team_key[is.na(team_key) | !nzchar(team_key)] <- "all"
+
+    for (key in unique(team_key)) {
+      idx <- which(team_key == key)
+      team_term <- sum(player_term[idx], na.rm = TRUE)
+      team_poss <- sum(poss_on_floor[idx], na.rm = TRUE) / 5
+      ok <- !is.finite(out[idx]) &
+        is.finite(player_term[idx]) & player_term[idx] >= 0 &
+        is.finite(poss_on_floor[idx]) & poss_on_floor[idx] > 0 &
+        is.finite(team_term) & team_term > 0 &
+        is.finite(team_poss) & team_poss > 0
+      if (any(ok)) {
+        out[idx[ok]] <- 100 * player_term[idx][ok] * team_poss / (team_term * poss_on_floor[idx][ok])
+      }
+    }
+
+    df$usg_pct <- round(out, 1)
+    df
   }
 
   ts_ref <- reactiveValues(teams = NULL)
@@ -389,7 +436,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         "SELECT player_id, team_id, team_name, player_name AS \"Player\",
                 gp, poss_on_floor, minutes,
                 pts, reb, ast, stl, blk, tov, fgm, fga, \"3pm\", \"3pa\", ftm, fta,
-                fg_pct, tp_pct, ft_pct, efg, ts
+                fg_pct, tp_pct, ft_pct, efg, ts, usg_pct
          FROM basketball_test.player_traditional_stats_mv
          WHERE game_year = $1",
         params = list(gy_int)
@@ -405,6 +452,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     out %>%
       clean_ts_rows() %>%
+      add_ts_usage_pct() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
   }) %>% bindEvent(input$main_tabs, input$game_year, debounced_teams())
 
@@ -449,6 +497,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     out %>%
       rename(Player = player_name) %>%
       clean_ts_rows() %>%
+      add_ts_usage_pct() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
     }) %>% bindEvent(
     input$main_tabs,
@@ -625,6 +674,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         `FT%` = ft_pct,
         `eFG%` = efg,
         `TS%` = ts,
+        `USG%` = usg_pct,
         `.poss_rank_base` = coalesce(.poss_rank_base, NA_real_),
         `.eligible_rate` = coalesce(rate_eligible, TRUE)
       )
@@ -646,7 +696,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       data
     }
 
-    heat_good <- c("PTS", "REB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%")
+    heat_good <- c("PTS", "REB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
     for (col_name in heat_good) disp <- add_pr_col(disp, col_name)
     if ("TOV" %in% names(disp)) disp <- add_pr_col(disp, "TOV")
 
@@ -731,7 +781,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
           tp_pct = tp_pct,
           ft_pct = ft_pct,
           efg = efg,
-          ts = ts
+          ts = ts,
+          usg_pct = usg_pct
         )
       if (!identical(disp_ctx$mode, "Totals")) {
         out <- out %>%
@@ -794,7 +845,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         ),
         tags$div(
           class = "small text-muted mb-2",
-          "Percent columns (FG%, 3P%, FT%, eFG%, TS%): enter as 0\u2013100."
+          "Percent columns (FG%, 3P%, FT%, eFG%, TS%, USG%): enter as 0\u2013100."
         ),
         actionButton(
           "ts_add_stat_filter", "Add",

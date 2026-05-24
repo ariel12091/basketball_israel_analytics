@@ -723,9 +723,55 @@ server_tab7_compare <- function(input, output, session, shared) {
     add_shooting_rates(out)
   }
 
+  add_cmp_player_usage_pct <- function(df) {
+    if (is.null(df) || !nrow(df)) return(df)
+    if (!("usg_pct" %in% names(df))) df$usg_pct <- NA_real_
+    needed <- c("fga", "fta", "tov", "poss_on_floor")
+    if (!all(needed %in% names(df))) return(df)
+
+    as_num <- function(col) suppressWarnings(as.numeric(df[[col]]))
+    zero_na <- function(x) {
+      x[!is.finite(x)] <- 0
+      x
+    }
+
+    fga <- zero_na(as_num("fga"))
+    fta <- zero_na(as_num("fta"))
+    tov <- zero_na(as_num("tov"))
+    poss_on_floor <- as_num("poss_on_floor")
+    pts <- if ("pts" %in% names(df)) as_num("pts") else rep(NA_real_, nrow(df))
+    ts <- if ("ts" %in% names(df)) as_num("ts") else rep(NA_real_, nrow(df))
+
+    shot_term <- fga + 0.44 * fta
+    can_imply_ts_term <- is.finite(pts) & pts > 0 & is.finite(ts) & ts > 0
+    shot_term[can_imply_ts_term] <- pts[can_imply_ts_term] / (2 * (ts[can_imply_ts_term] / 100))
+    player_term <- shot_term + tov
+
+    out <- suppressWarnings(as.numeric(df$usg_pct))
+    team_key <- if ("team_id" %in% names(df)) as.character(df$team_id) else rep("all", nrow(df))
+    team_key[is.na(team_key) | !nzchar(team_key)] <- "all"
+
+    for (key in unique(team_key)) {
+      idx <- which(team_key == key)
+      team_term <- sum(player_term[idx], na.rm = TRUE)
+      team_poss <- sum(poss_on_floor[idx], na.rm = TRUE) / 5
+      ok <- !is.finite(out[idx]) &
+        is.finite(player_term[idx]) & player_term[idx] >= 0 &
+        is.finite(poss_on_floor[idx]) & poss_on_floor[idx] > 0 &
+        is.finite(team_term) & team_term > 0 &
+        is.finite(team_poss) & team_poss > 0
+      if (any(ok)) {
+        out[idx[ok]] <- 100 * player_term[idx][ok] * team_poss / (team_term * poss_on_floor[idx][ok])
+      }
+    }
+
+    df$usg_pct <- round(out, 1)
+    df
+  }
+
   run_player_traditional <- function(p, team_ids_csv) {
-    tryCatch(
-      run_compare_query(
+    tryCatch({
+      out <- run_compare_query(
         key = "cmp_player_traditional",
         p = p,
         sql = paste0(
@@ -735,18 +781,18 @@ server_tab7_compare <- function(input, output, session, shared) {
           ")"
         ),
         params = cmp_player_query_params(p, team_ids_csv)
-      ),
-      error = function(e) {
-        msg <- conditionMessage(e)
-        if (grepl("statement timeout", msg, ignore.case = TRUE)) {
-          showNotification("Player compare query timed out. Narrow filters or date range.", type = "warning", duration = 5)
-        } else {
-          app_log("tab7", sprintf("player_compare query failed: %s", msg), level = "ERROR", session = session)
-          showNotification("Player compare query failed. Try narrowing filters or retry.", type = "error", duration = 6)
-        }
-        data.frame()
+      )
+      add_cmp_player_usage_pct(out)
+    }, error = function(e) {
+      msg <- conditionMessage(e)
+      if (grepl("statement timeout", msg, ignore.case = TRUE)) {
+        showNotification("Player compare query timed out. Narrow filters or date range.", type = "warning", duration = 5)
+      } else {
+        app_log("tab7", sprintf("player_compare query failed: %s", msg), level = "ERROR", session = session)
+        showNotification("Player compare query failed. Try narrowing filters or retry.", type = "error", duration = 6)
       }
-    )
+      data.frame()
+    })
   }
 
   run_four_factors <- function(p, team_ids_csv) {
@@ -807,16 +853,16 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   PLAYER_METRICS <- c(
     "PPG" = "ppg", "RPG" = "rpg", "APG" = "apg", "SPG" = "spg",
-    "FG%" = "fg_pct", "3P%" = "fg3_pct", "FT%" = "ft_pct", "TS%" = "ts_pct"
+    "FG%" = "fg_pct", "3P%" = "fg3_pct", "FT%" = "ft_pct", "TS%" = "ts_pct", "USG%" = "usg_pct"
   )
 
   TEAM_PLAYER_METRICS <- c(
     "PTS" = "pts", "REB" = "reb", "AST" = "ast", "STL" = "stl",
     "BLK" = "blk", "TOV" = "tov", "FG%" = "fg_pct", "3P%" = "tp_pct",
-    "FT%" = "ft_pct", "eFG%" = "efg", "TS%" = "ts"
+    "FT%" = "ft_pct", "eFG%" = "efg", "TS%" = "ts", "USG%" = "usg_pct"
   )
 
-  TEAM_PLAYER_PCT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts")
+  TEAM_PLAYER_PCT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct")
   TEAM_PLAYER_LOWER_BETTER <- c("tov")
 
   PLAYER_VIEWS <- c(
@@ -1732,7 +1778,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(label = "FG%",       col = "fg_pct", type = "pct"),
     list(label = "3P%",       col = "tp_pct", type = "pct"),
     list(label = "FT%",       col = "ft_pct", type = "pct"),
-    list(label = "TS%",       col = "ts",     type = "pct")
+    list(label = "TS%",       col = "ts",     type = "pct"),
+    list(label = "USG%",      col = "usg_pct", type = "pct")
   )
 
   cmp_player_raw_live <- reactive({
@@ -2188,7 +2235,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       # Percentages: fg_pct, tp_pct, ft_pct, ts
       get_player_metric <- function(row, m, rate) {
         count_map <- c("ppg" = "pts", "rpg" = "reb", "apg" = "ast", "spg" = "stl")
-        pct_map <- c("fg_pct" = "fg_pct", "fg3_pct" = "tp_pct", "ft_pct" = "ft_pct", "ts_pct" = "ts")
+        pct_map <- c("fg_pct" = "fg_pct", "fg3_pct" = "tp_pct", "ft_pct" = "ft_pct", "ts_pct" = "ts", "usg_pct" = "usg_pct")
 
         if (m %in% names(pct_map)) {
           cname <- pct_map[m]
@@ -2348,7 +2395,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     "gp", "poss_on_floor", "minutes",
     "pts", "reb", "ast", "stl", "blk", "tov",
     "fgm", "fga", "3pm", "3pa", "ftm", "fta",
-    "fg_pct", "tp_pct", "ft_pct", "efg", "ts"
+    "fg_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct"
   )
 
   empty_team_player_side <- function(suffix) {
@@ -2605,7 +2652,8 @@ server_tab7_compare <- function(input, output, session, shared) {
           metrics = list(
             list(label = "GP", col = "gp", fmt = "num", polarity = "neutral", raw = TRUE),
             list(label = "Min", col = "minutes", fmt = "num", polarity = "neutral", raw = TRUE),
-            list(label = "Poss", col = "poss_on_floor", fmt = "num", polarity = "neutral", raw = TRUE)
+            list(label = "Poss", col = "poss_on_floor", fmt = "num", polarity = "neutral", raw = TRUE),
+            list(label = "USG%", col = "usg_pct", fmt = "pct", polarity = "higher", pct = TRUE)
           )
         ),
         production = list(

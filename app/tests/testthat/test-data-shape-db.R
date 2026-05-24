@@ -68,6 +68,13 @@ test_that("live DB has the app-required shape for default MVs", {
     "type_lineup", "total_pts", "total_poss", "minutes"
   ))
 
+  expect_has_columns("player_four_factors_by_game", c(
+    "player_id", "team_id", "game_id", "game_year", "is_on_key",
+    "type_lineup", "total_points", "total_poss", "ts_poss_count",
+    "tov_count", "player_ts_poss_count", "player_tov_count",
+    "minutes", "usg_pct"
+  ))
+
   expect_has_columns("team_ppp_ratings_mv", c(
     "game_year", "team_id", "team_name", "off_ppp", "def_ppp",
     "net_rtg", "games_played", "wins", "losses", "off_poss", "def_poss"
@@ -90,7 +97,7 @@ test_that("live DB has the app-required shape for default MVs", {
     "player_id", "team_id", "team_name", "player_name", "gp",
     "poss_on_floor", "minutes", "pts", "reb", "ast", "stl", "blk",
     "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta",
-    "fg_pct", "tp_pct", "ft_pct", "efg", "ts"
+    "fg_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct"
   ))
 })
 
@@ -103,7 +110,7 @@ test_that("live DB does not expose removed AST% experiment columns in app data s
 
 test_that("live DB functions used by render paths return app-required columns", {
   player_trad <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_player_traditional_dynamic($1::int4) LIMIT 0", params = list(2026L))
-  expect_true(all(c("player_id", "team_id", "team_name", "player_name", "gp", "poss_on_floor", "minutes", "pts", "reb", "ast", "fg_pct", "efg", "ts") %in% names(player_trad)))
+  expect_true(all(c("player_id", "team_id", "team_name", "player_name", "gp", "poss_on_floor", "minutes", "pts", "reb", "ast", "fg_pct", "efg", "ts", "usg_pct") %in% names(player_trad)))
   expect_false("ast_pct" %in% names(player_trad))
 
   team_ff <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_team_four_factors_dynamic($1::int4) LIMIT 0", params = list(2026L))

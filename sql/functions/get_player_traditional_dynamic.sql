@@ -1,4 +1,7 @@
-DROP FUNCTION IF EXISTS basketball_test.get_player_traditional_dynamic;
+DROP FUNCTION IF EXISTS basketball_test.get_player_traditional_dynamic(
+    INT, DATE, DATE, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, TEXT,
+    INT, TEXT, INT, BOOLEAN, INT, INT, INT
+);
 
 CREATE OR REPLACE FUNCTION basketball_test.get_player_traditional_dynamic(
     p_game_year           INT,
@@ -44,7 +47,8 @@ RETURNS TABLE (
     tp_pct         NUMERIC,
     ft_pct         NUMERIC,
     efg            NUMERIC,
-    ts             NUMERIC
+    ts             NUMERIC,
+    usg_pct        NUMERIC
 )
 LANGUAGE plpgsql
 STABLE
@@ -191,6 +195,8 @@ BEGIN
       d.event_owner_side,
       d.type_lineup,
       d.final_end_poss,
+      d.parent_action_id,
+      d.pct_ft,
       d.quarter,
       d.team_score,
       d.own_team_score,
@@ -247,6 +253,30 @@ BEGIN
       OR d.quarter > 4
     )
   ),
+  complex_flags AS (
+    SELECT DISTINCT ON (a.id, a.game_id)
+      a.id AS main_id,
+      a.game_id,
+      t2.type AS parent_type,
+      t2.parameters_type AS parent_param
+    FROM acts a
+    JOIN basketball_test.df_pts_poss_lineups_longer_mv t2
+      ON t2.id = a.parent_action_id
+     AND t2.game_id = a.game_id
+     AND t2.type = 'foul'::text
+    WHERE a.parent_action_id IS NOT NULL
+    ORDER BY a.id, a.game_id
+  ),
+  actions_enriched AS (
+    SELECT
+      a.*,
+      cf.parent_type,
+      cf.parent_param
+    FROM acts a
+    LEFT JOIN complex_flags cf
+      ON cf.main_id = a.id
+     AND cf.game_id = a.game_id
+  ),
   lineup_map AS (
     SELECT DISTINCT
       ll.game_id,
@@ -284,6 +314,13 @@ BEGIN
      AND lm.team_id = pe.team_id
      AND lm.lineup_hash = pe.lineup_hash
     GROUP BY lm.player_id, pe.team_id
+  ),
+  team_possession_totals AS (
+    SELECT
+      pe.team_id,
+      COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::numeric AS team_poss
+    FROM poss_end pe
+    GROUP BY pe.team_id
   ),
   seg_times AS (
     SELECT
@@ -333,11 +370,38 @@ BEGIN
       SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS "3pm",
       SUM(CASE WHEN a.type = 'shot' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS "3pa",
       SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ftm,
-      SUM(CASE WHEN a.type = 'freeThrow' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fta
-    FROM acts a
+      SUM(CASE WHEN a.type = 'freeThrow' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fta,
+      (
+        COUNT(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 END)
+        + COUNT(DISTINCT CASE
+            WHEN a.type = 'freeThrow'
+              AND a.type_lineup = 'offense'
+              AND a.parent_type = 'foul'
+              AND a.parent_param = 'personal'
+            THEN a.parent_action_id
+          END)
+      )::int AS ts_poss_count
+    FROM actions_enriched a
     WHERE a.player_id IS NOT NULL
       AND a.player_id > 0
     GROUP BY a.player_id, a.team_id
+  ),
+  team_usage_totals AS (
+    SELECT
+      a.team_id,
+      (
+        COUNT(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 END)
+        + COUNT(DISTINCT CASE
+            WHEN a.type = 'freeThrow'
+              AND a.type_lineup = 'offense'
+              AND a.parent_type = 'foul'
+              AND a.parent_param = 'personal'
+            THEN a.parent_action_id
+          END)
+      )::numeric AS team_ts_poss_count,
+      SUM(CASE WHEN a.type = 'turnover' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::numeric AS team_tov
+    FROM actions_enriched a
+    GROUP BY a.team_id
   ),
   names_df AS (
     SELECT
@@ -374,11 +438,27 @@ BEGIN
       CASE WHEN s."3pa" > 0 THEN ROUND((s."3pm"::numeric / s."3pa"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
       CASE WHEN s.fta > 0 THEN ROUND((s.ftm::numeric / s.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
       CASE WHEN s.fga > 0 THEN ROUND(((s.fgm::numeric + 0.5 * s."3pm"::numeric) / s.fga::numeric) * 100, 1) ELSE NULL END AS efg,
-      CASE WHEN (s.fga + 0.44 * s.fta) > 0 THEN ROUND((s.pts::numeric / (2.0 * (s.fga::numeric + 0.44 * s.fta::numeric))) * 100, 1) ELSE NULL END AS ts
+      CASE WHEN (s.fga + 0.44 * s.fta) > 0 THEN ROUND((s.pts::numeric / (2.0 * (s.fga::numeric + 0.44 * s.fta::numeric))) * 100, 1) ELSE NULL END AS ts,
+      CASE
+        WHEN (s.ts_poss_count + s.tov) > 0
+         AND (tut.team_ts_poss_count + tut.team_tov) > 0
+         AND COALESCE(pu.poss_on_floor, 0) > 0
+         AND COALESCE(tpt.team_poss, 0) > 0
+        THEN ROUND(
+          100.0 * (s.ts_poss_count + s.tov)::numeric * tpt.team_poss::numeric
+          / NULLIF((tut.team_ts_poss_count + tut.team_tov)::numeric * pu.poss_on_floor::numeric, 0),
+          1
+        )
+        ELSE NULL
+      END AS usg_pct
     FROM stats s
+    LEFT JOIN team_usage_totals tut
+      ON tut.team_id = s.team_id
     LEFT JOIN player_usage pu
       ON pu.player_id = s.player_id
      AND pu.team_id = s.team_id
+    LEFT JOIN team_possession_totals tpt
+      ON tpt.team_id = s.team_id
     LEFT JOIN player_minutes pm
       ON pm.player_id = s.player_id
      AND pm.team_id = s.team_id
@@ -410,7 +490,8 @@ BEGIN
     fr.tp_pct,
     fr.ft_pct,
     fr.efg,
-    fr.ts
+    fr.ts,
+    fr.usg_pct
   FROM final_rows fr
   WHERE fr.player_name IS NOT NULL
     AND fr.player_name <> ''

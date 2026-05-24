@@ -34,10 +34,36 @@ actions_with_year AS (
     d.type_lineup,
     d.final_end_poss,
     d.final_end_id,
+    d.parent_action_id,
+    d.pct_ft,
     sy.game_year
   FROM basketball_test.df_pts_poss_lineups_longer_mv d
   JOIN sched_year sy
     ON sy.game_id = d.game_id
+),
+complex_flags AS (
+  SELECT DISTINCT ON (awy.id, awy.game_id)
+    awy.id AS main_id,
+    awy.game_id,
+    t2.type AS parent_type,
+    t2.parameters_type AS parent_param
+  FROM actions_with_year awy
+  JOIN basketball_test.df_pts_poss_lineups_longer_mv t2
+    ON t2.id = awy.parent_action_id
+   AND t2.game_id = awy.game_id
+   AND t2.type = 'foul'::text
+  WHERE awy.parent_action_id IS NOT NULL
+  ORDER BY awy.id, awy.game_id
+),
+actions_enriched AS (
+  SELECT
+    awy.*,
+    cf.parent_type,
+    cf.parent_param
+  FROM actions_with_year awy
+  LEFT JOIN complex_flags cf
+    ON cf.main_id = awy.id
+   AND cf.game_id = awy.game_id
 ),
 box_totals AS (
   SELECT
@@ -59,10 +85,34 @@ box_totals AS (
     SUM(CASE WHEN awy.type = 'shot' AND awy.parameters_made = 'made' AND awy.parameters_points = 3 AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS "3pm",
     SUM(CASE WHEN awy.type = 'shot' AND awy.parameters_points = 3 AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS "3pa",
     SUM(CASE WHEN awy.type = 'freeThrow' AND awy.parameters_made = 'made' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS ftm,
-    SUM(CASE WHEN awy.type = 'freeThrow' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS fta
-  FROM actions_with_year awy
+    SUM(CASE WHEN awy.type = 'freeThrow' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS fta,
+    COUNT(CASE WHEN awy.type = 'shot' AND awy.type_lineup = 'offense' THEN 1 END)
+      + COUNT(DISTINCT CASE
+          WHEN awy.type = 'freeThrow'
+            AND awy.type_lineup = 'offense'
+            AND awy.parent_type = 'foul'
+            AND awy.parent_param = 'personal'
+          THEN awy.parent_action_id
+        END) AS ts_poss_count
+  FROM actions_enriched awy
   WHERE awy.player_id IS NOT NULL AND awy.player_id > 0
   GROUP BY awy.game_year, awy.team_id, awy.player_id
+),
+team_usage_totals AS (
+  SELECT
+    awy.game_year,
+    awy.team_id,
+    COUNT(CASE WHEN awy.type = 'shot' AND awy.type_lineup = 'offense' THEN 1 END)
+      + COUNT(DISTINCT CASE
+          WHEN awy.type = 'freeThrow'
+            AND awy.type_lineup = 'offense'
+            AND awy.parent_type = 'foul'
+            AND awy.parent_param = 'personal'
+          THEN awy.parent_action_id
+        END) AS team_ts_poss_count,
+    SUM(CASE WHEN awy.type = 'turnover' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS team_tov
+  FROM actions_enriched awy
+  GROUP BY awy.game_year, awy.team_id
 ),
 poss_end AS (
   SELECT DISTINCT
@@ -90,6 +140,14 @@ usage_totals AS (
    AND lm.team_id = pe.team_id
    AND lm.lineup_hash = pe.lineup_hash
   GROUP BY pe.game_year, lm.team_id, lm.player_id
+),
+team_possession_totals AS (
+  SELECT
+    pe.game_year,
+    pe.team_id,
+    COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id)) AS team_poss
+  FROM poss_end pe
+  GROUP BY pe.game_year, pe.team_id
 ),
 segment_times AS (
   SELECT
@@ -178,12 +236,30 @@ SELECT
   CASE
     WHEN (bt.fga + 0.44 * bt.fta) > 0 THEN ROUND(bt.pts::numeric / (2 * (bt.fga + 0.44 * bt.fta)::numeric) * 100, 1)
     ELSE NULL
-  END AS ts
+  END AS ts,
+  CASE
+    WHEN (bt.ts_poss_count + bt.tov) > 0
+     AND (tut.team_ts_poss_count + tut.team_tov) > 0
+     AND COALESCE(ut.poss_on_floor, 0) > 0
+     AND COALESCE(tpt.team_poss, 0) > 0
+    THEN ROUND(
+      100.0 * (bt.ts_poss_count + bt.tov)::numeric * tpt.team_poss::numeric
+      / NULLIF((tut.team_ts_poss_count + tut.team_tov)::numeric * ut.poss_on_floor::numeric, 0),
+      1
+    )
+    ELSE NULL
+  END AS usg_pct
 FROM box_totals bt
+LEFT JOIN team_usage_totals tut
+  ON tut.game_year = bt.game_year
+ AND tut.team_id = bt.team_id
 LEFT JOIN usage_totals ut
   ON ut.game_year = bt.game_year
  AND ut.team_id = bt.team_id
  AND ut.player_id = bt.player_id
+LEFT JOIN team_possession_totals tpt
+  ON tpt.game_year = bt.game_year
+ AND tpt.team_id = bt.team_id
 LEFT JOIN minutes_totals mt
   ON mt.game_year = bt.game_year
  AND mt.team_id = bt.team_id

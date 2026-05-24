@@ -85,6 +85,7 @@ test_that("tab7 players compare keeps last successful view during debounce", {
     before_txt <- render_ui_text(output$cmp_pvp_ui)
     expect_true(grepl("Player A", before_txt, fixed = TRUE))
     expect_true(grepl("Player B", before_txt, fixed = TRUE))
+    expect_true(grepl("USG%", before_txt, fixed = TRUE))
 
     session$setInputs(cmp_player_a = "12")
     session$flushReact()
@@ -143,6 +144,7 @@ test_that("tab7 teams player compare drills from team to player detail", {
     expect_true(grepl("Shooting", player_txt, fixed = TRUE))
     expect_true(grepl("PTS", player_txt, fixed = TRUE))
     expect_true(grepl("TS%", player_txt, fixed = TRUE))
+    expect_true(grepl("USG%", player_txt, fixed = TRUE))
   })
 })
 
