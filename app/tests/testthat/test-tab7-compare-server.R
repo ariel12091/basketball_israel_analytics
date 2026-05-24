@@ -103,6 +103,98 @@ test_that("tab7 players compare keeps last successful view during debounce", {
   })
 })
 
+test_that("tab7 teams player compare drills from team to player detail", {
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Teams",
+      cmp_a_home_away = "home",
+      cmp_b_home_away = "away"
+    )
+    session$elapse(300)
+    session$flushReact()
+
+    expect_false(grepl("Players", render_ui_text(output$cmp_team_players_view_btn_ui), fixed = TRUE))
+
+    session$setInputs(cmp_table_row_click = list(entity_name = "Team A"))
+    session$flushReact()
+
+    expect_true(grepl("Players", render_ui_text(output$cmp_team_players_view_btn_ui), fixed = TRUE))
+
+    session$setInputs(cmp_detail_toggle = "players")
+    session$elapse(300)
+    session$flushReact()
+
+    players_txt <- render_ui_text(output$cmp_team_players_panel_ui)
+    expect_true(grepl("Team A", players_txt, fixed = TRUE))
+    expect_false(grepl("Player Compare", players_txt, fixed = TRUE))
+
+    session$setInputs(cmp_team_players_player_click = list(team_id = 1L, player_id = 11L, player_name = "Player A"))
+    session$flushReact()
+
+    player_txt <- render_ui_text(output$cmp_team_players_panel_ui)
+    expect_true(grepl("Player A", player_txt, fixed = TRUE))
+    expect_true(grepl("didn't play", player_txt, fixed = TRUE))
+    expect_true(grepl("0.0", player_txt, fixed = TRUE))
+    expect_true(grepl("Production", player_txt, fixed = TRUE))
+    expect_true(grepl("Shooting", player_txt, fixed = TRUE))
+    expect_true(grepl("PTS", player_txt, fixed = TRUE))
+    expect_true(grepl("TS%", player_txt, fixed = TRUE))
+  })
+})
+
+test_that("tab7 teams player compare follows preset gap direction", {
+  cases <- list(
+    list(preset = "", extra = list(), expected = "+20.0"),
+    list(preset = "starters_bench", extra = list(), expected = "+20.0"),
+    list(preset = "opp_starters_bench", extra = list(), expected = "+20.0"),
+    list(preset = "clutch", extra = list(), expected = "+20.0"),
+    list(preset = "home_away", extra = list(), expected = "+20.0"),
+    list(preset = "win_loss", extra = list(), expected = "+20.0"),
+    list(preset = "top_bottom_rank", extra = list(), expected = "+20.0"),
+    list(preset = "date_split", extra = list(cmp_split_date = as.Date("2026-01-15")), expected = "\u221220.0"),
+    list(preset = "gn_split", extra = list(cmp_split_gn = "10"), expected = "\u221220.0")
+  )
+
+  for (case in cases) {
+    shiny::testServer(function(input, output, session) {
+      server_tab7_compare(input, output, session, shared = make_shared())
+    }, {
+      inputs <- c(
+        list(
+          main_tabs = "compare",
+          game_year = "2026",
+          cmp_mode = "Teams",
+          cmp_preset = case$preset
+        ),
+        case$extra
+      )
+      do.call(session$setInputs, inputs)
+      session$flushReact()
+      session$setInputs(cmp_a_home_away = "home", cmp_b_home_away = "away")
+      session$elapse(300)
+      session$flushReact()
+
+      session$setInputs(cmp_table_row_click = list(entity_name = "Team A"))
+      session$flushReact()
+      session$setInputs(cmp_detail_toggle = "players")
+      session$elapse(300)
+      session$flushReact()
+      session$setInputs(cmp_team_players_player_click = list(team_id = 1L, player_id = 11L, player_name = "Player A"))
+      session$flushReact()
+
+      player_txt <- render_ui_text(output$cmp_team_players_panel_ui)
+      expect_true(
+        grepl(case$expected, player_txt, fixed = TRUE),
+        info = paste("preset", if (nzchar(case$preset)) case$preset else "<manual>")
+      )
+    })
+  }
+})
+
 capture_input_messages <- function(session) {
   sent <- list()
   original <- session$sendInputMessage

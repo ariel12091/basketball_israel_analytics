@@ -193,7 +193,7 @@ db_get_query <- function(pool, query, params = NULL) {
   }
 
   if (grepl("get_player_traditional_dynamic", q, fixed = TRUE)) {
-    return(data.frame(
+    out <- data.frame(
       player_id = c(11L, 12L, 21L),
       team_id = c(1L, 1L, 2L),
       team_name = c("Team A", "Team A", "Team B"),
@@ -219,7 +219,23 @@ db_get_query <- function(pool, query, params = NULL) {
       poss_on_floor = c(300, 220, 280),
       minutes = c(150, 120, 145),
       check.names = FALSE
-    ))
+    )
+    team_csv <- if (!is.null(params) && length(params) >= 4L) params[[4]] else NA_character_
+    if (!is.null(team_csv) && !is.na(team_csv) && nzchar(team_csv)) {
+      team_ids <- suppressWarnings(as.integer(strsplit(team_csv, ",", fixed = TRUE)[[1]]))
+      team_ids <- team_ids[is.finite(team_ids)]
+      out <- out[out$team_id %in% team_ids, , drop = FALSE]
+    }
+    home_away <- if (!is.null(params) && length(params) >= 7L) params[[7]] else NA_character_
+    if (!is.null(home_away) && !is.na(home_away) && identical(as.character(home_away), "home") &&
+        nrow(out) && all(out$team_id == 1L)) {
+      out <- out[out$player_id == 11L, , drop = FALSE]
+    }
+    if (!is.null(home_away) && !is.na(home_away) && identical(as.character(home_away), "away") &&
+        nrow(out) && all(out$team_id == 1L)) {
+      out <- out[out$player_id == 12L, , drop = FALSE]
+    }
+    return(out)
   }
 
   if (grepl("fetch_lineups_csv_v2", q, fixed = TRUE)) {

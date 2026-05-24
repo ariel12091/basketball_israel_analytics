@@ -75,22 +75,31 @@
     window.__cmpViewHandlerRegistered = true;
 
     window.Shiny.addCustomMessageHandler("toggle_cmp_view", function(msg) {
-      var showDetail = !!(msg && msg.detail);
+      var view = msg && msg.view ? msg.view : ((msg && msg.detail) ? "detail" : "league");
+      var showDetail = view === "detail";
+      var showPlayers = view === "players";
       var league = document.getElementById("cmp_view_league_btn");
       var detail = document.getElementById("cmp_view_detail_btn");
+      var players = document.getElementById("cmp_view_players_btn");
       var leagueC = document.getElementById("cmp_league_container");
       var detailC = document.getElementById("cmp_detail_container");
+      var playersC = document.getElementById("cmp_team_players_container");
 
       if (league) {
-        league.classList.toggle("btn-warning", !showDetail);
-        league.classList.toggle("btn-outline-secondary", showDetail);
+        league.classList.toggle("btn-warning", view === "league");
+        league.classList.toggle("btn-outline-secondary", view !== "league");
       }
       if (detail) {
         detail.classList.toggle("btn-warning", showDetail);
         detail.classList.toggle("btn-outline-secondary", !showDetail);
       }
-      if (leagueC) leagueC.classList.toggle("cmp-view-hidden", showDetail);
+      if (players) {
+        players.classList.toggle("btn-warning", showPlayers);
+        players.classList.toggle("btn-outline-secondary", !showPlayers);
+      }
+      if (leagueC) leagueC.classList.toggle("cmp-view-hidden", view !== "league");
       if (detailC) detailC.classList.toggle("cmp-view-hidden", !showDetail);
+      if (playersC) playersC.classList.toggle("cmp-view-hidden", !showPlayers);
     });
 
     return true;

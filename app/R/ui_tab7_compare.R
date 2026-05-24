@@ -272,6 +272,7 @@ ui_tab7_compare <- tabPanel(
               `data-input-id` = "cmp_detail_toggle",
               `data-shiny-value` = "detail",
               "Detail"),
+            uiOutput("cmp_team_players_view_btn_ui"),
             uiOutput("cmp_detail_entity_dropdown_ui")
           ),
 
@@ -351,6 +352,21 @@ ui_tab7_compare <- tabPanel(
             id = "cmp_detail_container",
             class = "cmp-view-hidden",
             uiOutput("cmp_detail_view_ui")
+          ),
+
+          div(
+            id = "cmp_team_players_container",
+            class = "cmp-view-hidden",
+            div(
+              class = "d-flex align-items-center gap-2 mb-3 flex-wrap",
+              tags$span(class = "text-muted small text-uppercase", "Metric"),
+              uiOutput("cmp_team_player_metric_chips_ui"),
+              tags$span(class = "text-muted small text-uppercase ms-2", "Rate"),
+              radioButtons("cmp_team_player_rate_mode", NULL,
+                           choices = c("Per Game", "Per 60 Possessions", "Per 30 Minutes", "Totals"),
+                           selected = "Per Game", inline = TRUE)
+            ),
+            uiOutput("cmp_team_players_panel_ui")
           )
         ),
 

@@ -32,6 +32,9 @@ server_tab7_compare <- function(input, output, session, shared) {
   cmp_player_refs_loaded_year <- reactiveVal(NA_integer_)
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
+  cmp_active_view <- reactiveVal("league")
+  selected_team_players_team <- reactiveVal(NULL)
+  selected_team_players_player <- reactiveVal(NULL)
   cmp_player_raw_cache <- reactiveVal(NULL)
   cmp_stat_filter_state <- make_stat_filter_state()
   setup_stat_filter_handlers("cmp", input, session, CMP_FILTERABLE_COLS, cmp_stat_filter_state)
@@ -402,6 +405,22 @@ server_tab7_compare <- function(input, output, session, shared) {
       }
     }
     if (length(parts)) paste(parts, collapse = " \u00b7 ") else paste0("Side ", toupper(side))
+  }
+
+  cmp_gap_direction <- function() {
+    switch(input$cmp_preset %||% "",
+      date_split = "b_minus_a",
+      gn_split = "b_minus_a",
+      "a_minus_b"
+    )
+  }
+
+  cmp_gap_after_minus_before <- function() {
+    identical(cmp_gap_direction(), "b_minus_a")
+  }
+
+  cmp_gap_value <- function(val_a, val_b) {
+    if (identical(cmp_gap_direction(), "b_minus_a")) val_b - val_a else val_a - val_b
   }
 
   apply_side_team_filter <- function(df, p) {
@@ -791,12 +810,22 @@ server_tab7_compare <- function(input, output, session, shared) {
     "FG%" = "fg_pct", "3P%" = "fg3_pct", "FT%" = "ft_pct", "TS%" = "ts_pct"
   )
 
+  TEAM_PLAYER_METRICS <- c(
+    "PTS" = "pts", "REB" = "reb", "AST" = "ast", "STL" = "stl",
+    "BLK" = "blk", "TOV" = "tov", "FG%" = "fg_pct", "3P%" = "tp_pct",
+    "FT%" = "ft_pct", "eFG%" = "efg", "TS%" = "ts"
+  )
+
+  TEAM_PLAYER_PCT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts")
+  TEAM_PLAYER_LOWER_BETTER <- c("tov")
+
   PLAYER_VIEWS <- c(
     "Overall" = "overall",
     "Four Factors" = "ff_swing"
   )
 
   selected_player_view <- reactiveVal("overall")
+  selected_team_player_metric <- reactiveVal("pts")
 
   normalize_teams_ref <- function(df) {
     if (is.null(df) || !nrow(df) || is.null(names(df))) return(data.frame())
@@ -1110,6 +1139,34 @@ server_tab7_compare <- function(input, output, session, shared) {
     render_metric_chips(PLAYER_VIEWS, cur, "cmp_player_view")
   })
 
+  output$cmp_team_player_metric_chips_ui <- renderUI({
+    req(identical(input$cmp_mode, "Teams"))
+    req(!is.null(selected_team_players_team()))
+    cur <- selected_team_player_metric()
+    if (!(cur %in% TEAM_PLAYER_METRICS)) cur <- TEAM_PLAYER_METRICS[[1]]
+    render_metric_chips(TEAM_PLAYER_METRICS, cur, "cmp_team_player_metric")
+  })
+
+  selected_team_detail <- function() {
+    entity <- selected_detail_entity()
+    if (is.null(entity) || !identical(entity$mode, "Teams")) return(NULL)
+    team_id <- suppressWarnings(as.integer(entity$key))
+    if (!is.finite(team_id)) return(NULL)
+    list(team_id = team_id, team_name = as.character(entity$name %||% ""))
+  }
+
+  output$cmp_team_players_view_btn_ui <- renderUI({
+    if (!identical(input$cmp_mode, "Teams")) return(NULL)
+    team <- selected_team_detail()
+    if (is.null(team)) return(NULL)
+    cls <- if (identical(cmp_active_view(), "players")) "btn btn-sm btn-warning" else "btn btn-sm btn-outline-secondary"
+    tags$button(id = "cmp_view_players_btn", type = "button",
+      class = paste(cls, "cmp-view-toggle-btn js-shiny-event"),
+      `data-input-id` = "cmp_detail_toggle",
+      `data-shiny-value` = "players",
+      "Players")
+  })
+
   release_compare_ready_after_flush <- function(token) {
     if (inherits(session, "MockShinySession")) {
       cmp_ready(TRUE)
@@ -1137,19 +1194,45 @@ server_tab7_compare <- function(input, output, session, shared) {
   }, ignoreInit = TRUE)
 
   observeEvent(input$cmp_detail_toggle, {
-    is_detail <- identical(input$cmp_detail_toggle, "detail")
+    view <- input$cmp_detail_toggle %||% "league"
+    if (!(view %in% c("league", "detail", "players"))) view <- "league"
+    if (identical(view, "players")) {
+      team <- selected_team_detail()
+      if (!identical(input$cmp_mode, "Teams") || is.null(team)) {
+        view <- "detail"
+      } else {
+        selected_team_players_team(team)
+        selected_team_players_player(NULL)
+      }
+    }
+    cmp_active_view(view)
+    is_detail <- identical(view, "detail")
     detail_view_active(is_detail)
-    if (!is_detail) selected_detail_entity(NULL)
+    if (identical(view, "league")) {
+      selected_detail_entity(NULL)
+      selected_team_players_team(NULL)
+      selected_team_players_player(NULL)
+    }
+    if (!identical(view, "players")) {
+      selected_team_players_player(NULL)
+    }
   }, ignoreInit = TRUE)
 
   observe({
-    is_detail <- detail_view_active()
-    session$sendCustomMessage("toggle_cmp_view", list(detail = is_detail))
+    view <- cmp_active_view()
+    if (identical(view, "players") && !identical(input$cmp_mode, "Teams")) view <- "league"
+    if (identical(view, "players") && is.null(selected_team_detail())) view <- "detail"
+    session$sendCustomMessage("toggle_cmp_view", list(view = view, detail = identical(view, "detail")))
   })
 
   observeEvent(input$cmp_player_view, {
     v <- input$cmp_player_view %||% ""
     if (v %in% unname(PLAYER_VIEWS)) selected_player_view(v)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cmp_team_player_metric, {
+    m <- input$cmp_team_player_metric %||% ""
+    if (m %in% unname(TEAM_PLAYER_METRICS)) selected_team_player_metric(m)
   }, ignoreInit = TRUE)
 
   observeEvent(input$cmp_min_poss, {
@@ -1272,6 +1355,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Lineup controls
     updateRadioButtons(session, "cmp_lu_num", selected = "5")
     cmp_lu_filter$reset_inputs(team_selected = "")
+    selected_detail_entity(NULL)
+    selected_team_players_team(NULL)
+    selected_team_players_player(NULL)
     reset_stat_filters(cmp_stat_filter_state)
   }
 
@@ -1374,6 +1460,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     selected_player_view("overall")
     selected_detail_entity(NULL)
     detail_view_active(FALSE)
+    cmp_active_view("league")
+    selected_team_players_team(NULL)
+    selected_team_players_player(NULL)
     if (identical(input$main_tabs, "compare") && mode %in% c("Lineups", "Players")) {
       ensure_cmp_player_refs_loaded(
         as.integer(input$game_year),
@@ -2231,13 +2320,10 @@ server_tab7_compare <- function(input, output, session, shared) {
         req(mode)
         if (identical(mode, "Players")) return(NULL)
 
-        preset_now <- input$cmp_preset %||% ""
-        gap_after_minus_before <- preset_now %in% c("date_split", "gn_split")
-
         out <- finalize_cmp_joined(
           cmp_joined_base(),
           mode = mode,
-          gap_after_minus_before = gap_after_minus_before,
+          gap_after_minus_before = cmp_gap_after_minus_before(),
           apply_min_poss = TRUE,
           limit_lineups = TRUE,
           min_poss = cmp_min_poss()
@@ -2252,6 +2338,495 @@ server_tab7_compare <- function(input, output, session, shared) {
         input$cmp_mode %||% "",
         NROW(res),
         cmp_min_poss()
+      )
+    )
+  })
+
+  # -- Teams mode: player self-compare drilldown --
+
+  TEAM_PLAYER_RAW_COLS <- c(
+    "gp", "poss_on_floor", "minutes",
+    "pts", "reb", "ast", "stl", "blk", "tov",
+    "fgm", "fga", "3pm", "3pa", "ftm", "fta",
+    "fg_pct", "tp_pct", "ft_pct", "efg", "ts"
+  )
+
+  empty_team_player_side <- function(suffix) {
+    out <- data.frame(team_id = integer(), player_id = integer(), check.names = FALSE)
+    out[[paste0("team_name_", suffix)]] <- character()
+    out[[paste0("player_name_", suffix)]] <- character()
+    for (col in TEAM_PLAYER_RAW_COLS) out[[paste0(col, "_", suffix)]] <- numeric()
+    out
+  }
+
+  normalize_team_player_rows <- function(df) {
+    if (is.null(df) || !nrow(df) || is.null(names(df))) return(data.frame())
+    if (!("player_name" %in% names(df)) && "Player" %in% names(df)) {
+      df$player_name <- as.character(df$Player)
+    }
+    req_cols <- c("team_id", "player_id", "team_name", "player_name")
+    if (!all(req_cols %in% names(df))) return(data.frame())
+
+    out <- df[, unique(c(req_cols, intersect(TEAM_PLAYER_RAW_COLS, names(df)))), drop = FALSE]
+    out$team_id <- suppressWarnings(as.integer(out$team_id))
+    out$player_id <- suppressWarnings(as.integer(out$player_id))
+    out$team_name <- as.character(out$team_name)
+    out$player_name <- as.character(out$player_name)
+    out <- out[
+      is.finite(out$team_id) & is.finite(out$player_id) &
+        nzchar(out$team_name) & nzchar(out$player_name),
+      ,
+      drop = FALSE
+    ]
+    if (!nrow(out)) return(data.frame())
+    out
+  }
+
+  prep_team_player_side <- function(df, suffix) {
+    df <- normalize_team_player_rows(df)
+    if (is.null(df) || !nrow(df)) return(empty_team_player_side(suffix))
+    id_cols <- df[, c("team_id", "player_id"), drop = FALSE]
+    label_cols <- df[, c("team_name", "player_name"), drop = FALSE]
+    names(label_cols) <- paste0(names(label_cols), "_", suffix)
+    stat_cols <- df[, intersect(TEAM_PLAYER_RAW_COLS, names(df)), drop = FALSE]
+    names(stat_cols) <- paste0(names(stat_cols), "_", suffix)
+    out <- cbind(id_cols, label_cols, stat_cols)
+    for (col in TEAM_PLAYER_RAW_COLS) {
+      nm <- paste0(col, "_", suffix)
+      if (!(nm %in% names(out))) out[[nm]] <- NA_real_
+    }
+    out
+  }
+
+  team_player_played_side <- function(df, suffix) {
+    n <- NROW(df)
+    val <- function(col) {
+      nm <- paste0(col, "_", suffix)
+      if (nm %in% names(df)) suppressWarnings(as.numeric(df[[nm]])) else rep(NA_real_, n)
+    }
+    gp <- val("gp")
+    poss <- val("poss_on_floor")
+    mins <- val("minutes")
+    (is.finite(gp) & gp > 0) | (is.finite(poss) & poss > 0) | (is.finite(mins) & mins > 0)
+  }
+
+  calc_team_player_metric <- function(row_or_df, suffix, metric, rate_mode) {
+    col <- paste0(metric, "_", suffix)
+    if (!(col %in% names(row_or_df))) return(rep(NA_real_, NROW(row_or_df)))
+    raw <- suppressWarnings(as.numeric(row_or_df[[col]]))
+    if (metric %in% TEAM_PLAYER_PCT_COLS) return(raw)
+
+    rate_mode <- rate_mode %||% "Per Game"
+    if (identical(rate_mode, "Totals")) return(raw)
+    if (identical(rate_mode, "Per 60 Possessions")) {
+      poss <- suppressWarnings(as.numeric(row_or_df[[paste0("poss_on_floor_", suffix)]]))
+      return(ifelse(is.finite(poss) & poss > 0, raw / poss * 60, NA_real_))
+    }
+    if (identical(rate_mode, "Per 30 Minutes")) {
+      mins <- suppressWarnings(as.numeric(row_or_df[[paste0("minutes_", suffix)]]))
+      return(ifelse(is.finite(mins) & mins > 0, raw / mins * 30, NA_real_))
+    }
+
+    gp <- suppressWarnings(as.numeric(row_or_df[[paste0("gp_", suffix)]]))
+    ifelse(is.finite(gp) & gp > 0, raw / gp, NA_real_)
+  }
+
+  format_team_player_metric <- function(x, metric = selected_team_player_metric()) {
+    if (!is.finite(x)) return("\u2014")
+    if (metric %in% TEAM_PLAYER_PCT_COLS) sprintf("%.1f%%", x) else sprintf("%.1f", x)
+  }
+
+  format_team_player_metric_cell <- function(x, played, metric = selected_team_player_metric()) {
+    txt <- format_team_player_metric(x, metric = metric)
+    if (!isTRUE(played)) paste0(txt, " (didn't play)") else txt
+  }
+
+  format_team_player_gap <- function(x, metric = selected_team_player_metric()) {
+    if (!is.finite(x)) return("\u2014")
+    suffix <- if (metric %in% TEAM_PLAYER_PCT_COLS) "%" else ""
+    if (abs(x) < 1e-9) return(paste0("+0.0", suffix))
+    if (x > 0) sprintf("+%.1f%s", x, suffix) else sprintf("\u2212%.1f%s", abs(x), suffix)
+  }
+
+  cmp_team_players_joined <- reactive({
+    req(identical(input$main_tabs, "compare"))
+    req(identical(input$cmp_mode, "Teams"))
+    req(identical(cmp_active_view(), "players"))
+    req(isTRUE(cmp_ready()))
+    team <- selected_team_players_team()
+    req(team)
+    team_id <- suppressWarnings(as.integer(team$team_id))
+    req(is.finite(team_id))
+    team_csv <- as.character(team_id)
+
+    side_state <- cmp_side_state()
+    pa <- side_state$a
+    pb <- side_state$b
+
+    res_a <- prep_team_player_side(run_player_traditional(pa, team_csv), "a")
+    res_b <- prep_team_player_side(run_player_traditional(pb, team_csv), "b")
+    if (!nrow(res_a) && !nrow(res_b)) return(NULL)
+
+    joined <- dplyr::full_join(res_a, res_b, by = c("team_id", "player_id"))
+    if (!nrow(joined)) return(NULL)
+
+    joined$team_name <- dplyr::coalesce(joined$team_name_a, joined$team_name_b)
+    joined$team_name <- dplyr::coalesce(joined$team_name, team$team_name)
+    joined$player_name <- dplyr::coalesce(joined$player_name_a, joined$player_name_b)
+    joined
+  })
+
+  cmp_team_players_scored <- reactive({
+    df <- cmp_team_players_joined()
+    if (is.null(df) || !nrow(df)) return(NULL)
+
+    metric <- selected_team_player_metric()
+    if (!(metric %in% TEAM_PLAYER_METRICS)) metric <- TEAM_PLAYER_METRICS[[1]]
+    rate_mode <- input$cmp_team_player_rate_mode %||% "Per Game"
+
+    df$metric_a <- calc_team_player_metric(df, "a", metric, rate_mode)
+    df$metric_b <- calc_team_player_metric(df, "b", metric, rate_mode)
+    df$played_a <- team_player_played_side(df, "a")
+    df$played_b <- team_player_played_side(df, "b")
+    df$metric_a <- ifelse(df$played_a, df$metric_a, 0)
+    df$metric_b <- ifelse(df$played_b, df$metric_b, 0)
+    df$poss_a <- dplyr::coalesce(suppressWarnings(as.numeric(df$poss_on_floor_a)), 0)
+    df$poss_b <- dplyr::coalesce(suppressWarnings(as.numeric(df$poss_on_floor_b)), 0)
+    min_poss <- cmp_min_poss()
+    keep <- pmax(df$poss_a, df$poss_b, na.rm = TRUE) >= min_poss
+    df <- df[keep, , drop = FALSE]
+    if (is.null(df) || !nrow(df)) return(NULL)
+
+    df$gap <- cmp_gap_value(df$metric_a, df$metric_b)
+    df$gap_score <- if (metric %in% TEAM_PLAYER_LOWER_BETTER) -df$gap else df$gap
+    df <- df[order(is.na(df$gap_score), -df$gap_score, df$team_name, df$player_name), , drop = FALSE]
+    df$rank <- seq_len(nrow(df))
+    df
+  })
+
+  cmp_team_players_for_selected_team <- reactive({
+    team <- selected_team_players_team()
+    df <- cmp_team_players_scored()
+    if (is.null(df) || !nrow(df)) return(NULL)
+    if (is.null(team)) return(df)
+    out <- df[df$team_id == as.integer(team$team_id), , drop = FALSE]
+    if (!nrow(out)) return(NULL)
+    out$rank <- seq_len(nrow(out))
+    out
+  })
+
+  observeEvent(input$cmp_team_players_player_click, {
+    info <- input$cmp_team_players_player_click
+    req(info$team_id, info$player_id)
+    team_id <- suppressWarnings(as.integer(info$team_id))
+    player_id <- suppressWarnings(as.integer(info$player_id))
+    if (!is.finite(team_id) || !is.finite(player_id)) return(invisible(NULL))
+    selected_team_players_player(list(
+      team_id = team_id,
+      player_id = player_id,
+      team_name = as.character(info$team_name %||% ""),
+      player_name = as.character(info$player_name %||% "")
+    ))
+    cmp_active_view("players")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cmp_team_players_back_teams, {
+    selected_team_players_player(NULL)
+    cmp_active_view("detail")
+    detail_view_active(TRUE)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cmp_team_players_back_players, {
+    selected_team_players_player(NULL)
+  }, ignoreInit = TRUE)
+
+  observeEvent(list(
+    input$cmp_preset, input$cmp_split_date, input$cmp_split_gn,
+    input$cmp_a_starters_mode, input$cmp_a_starters_val, input$cmp_a_opp_starters_mode, input$cmp_a_opp_starters_val, input$cmp_a_teams,
+    input$cmp_a_home_away, input$cmp_a_outcome, input$cmp_a_clutch,
+    input$cmp_a_clutch_margin, input$cmp_a_clutch_minutes, input$cmp_a_opponents,
+    input$cmp_a_game_type, input$cmp_a_opp_rank_side, input$cmp_a_opp_rank_n, input$cmp_a_opp_rank_metric,
+    input$cmp_b_starters_mode, input$cmp_b_starters_val, input$cmp_b_opp_starters_mode, input$cmp_b_opp_starters_val, input$cmp_b_teams,
+    input$cmp_b_home_away, input$cmp_b_outcome, input$cmp_b_clutch,
+    input$cmp_b_clutch_margin, input$cmp_b_clutch_minutes, input$cmp_b_opponents,
+    input$cmp_b_game_type, input$cmp_b_opp_rank_side, input$cmp_b_opp_rank_n, input$cmp_b_opp_rank_metric,
+    input$game_year
+  ), {
+    if (!identical(input$cmp_mode, "Teams")) return(invisible(NULL))
+    selected_team_players_player(NULL)
+  }, ignoreInit = TRUE)
+
+  output$cmp_team_players_panel_ui <- renderUI({
+    req(identical(input$main_tabs, "compare"))
+    req(identical(input$cmp_mode, "Teams"))
+
+    player <- selected_team_players_player()
+    team <- selected_team_players_team()
+    if (is.null(player) && is.null(team)) {
+      return(tags$div(class = "detail-container",
+        tags$div(class = "text-muted text-center mt-4",
+          "Select a team in Detail view before opening Players.")
+      ))
+    }
+
+    short_a <- side_label_short("a")
+    short_b <- side_label_short("b")
+    full_a <- side_label_full("a")
+    full_b <- side_label_full("b")
+    gy <- input$game_year
+
+    if (!is.null(player)) {
+      df <- cmp_team_players_for_selected_team()
+      row <- if (!is.null(df) && nrow(df)) {
+        df[df$team_id == as.integer(player$team_id) & df$player_id == as.integer(player$player_id), , drop = FALSE]
+      } else {
+        data.frame()
+      }
+
+      if (!nrow(row)) {
+        return(tags$div(class = "detail-container",
+          tags$button(class = "cmp-back-btn js-shiny-event",
+            `data-input-id` = "cmp_team_players_back_players",
+            "\u2190 Back to players"),
+          tags$div(class = "text-muted text-center mt-4", "No player data for current filters.")
+        ))
+      }
+
+      row <- row[1, , drop = FALSE]
+      team_name <- row$team_name[1] %||% player$team_name
+      player_name <- row$player_name[1] %||% player$player_name
+      rate_mode <- input$cmp_team_player_rate_mode %||% "Per Game"
+      col_a_text <- if (identical(short_a, "A")) "A" else paste0("A \u00b7 ", short_a)
+      col_b_text <- if (identical(short_b, "B")) "B" else paste0("B \u00b7 ", short_b)
+
+      detail_specs <- list(
+        usage = list(
+          title = "Usage",
+          metrics = list(
+            list(label = "GP", col = "gp", fmt = "num", polarity = "neutral", raw = TRUE),
+            list(label = "Min", col = "minutes", fmt = "num", polarity = "neutral", raw = TRUE),
+            list(label = "Poss", col = "poss_on_floor", fmt = "num", polarity = "neutral", raw = TRUE)
+          )
+        ),
+        production = list(
+          title = "Production",
+          metrics = list(
+            list(label = "PTS", col = "pts", fmt = "num", polarity = "higher"),
+            list(label = "REB", col = "reb", fmt = "num", polarity = "higher"),
+            list(label = "AST", col = "ast", fmt = "num", polarity = "higher"),
+            list(label = "STL", col = "stl", fmt = "num", polarity = "higher"),
+            list(label = "BLK", col = "blk", fmt = "num", polarity = "higher"),
+            list(label = "TOV", col = "tov", fmt = "num", polarity = "lower")
+          )
+        ),
+        shooting = list(
+          title = "Shooting",
+          metrics = list(
+            list(label = "FG%", col = "fg_pct", fmt = "pct", polarity = "higher", pct = TRUE),
+            list(label = "3P%", col = "tp_pct", fmt = "pct", polarity = "higher", pct = TRUE),
+            list(label = "FT%", col = "ft_pct", fmt = "pct", polarity = "higher", pct = TRUE),
+            list(label = "eFG%", col = "efg", fmt = "pct", polarity = "higher", pct = TRUE),
+            list(label = "TS%", col = "ts", fmt = "pct", polarity = "higher", pct = TRUE)
+          )
+        )
+      )
+
+      get_detail_val <- function(spec, suffix) {
+        played_col <- paste0("played_", suffix)
+        if (played_col %in% names(row) && !isTRUE(row[[played_col]][1])) return(0)
+        if (isTRUE(spec$raw) || isTRUE(spec$pct)) {
+          return(suppressWarnings(as.numeric(row[[paste0(spec$col, "_", suffix)]])))
+        }
+        calc_team_player_metric(row, suffix, spec$col, rate_mode)
+      }
+      fmt_detail <- function(val, spec) {
+        if (!is.finite(val)) return("\u2014")
+        if (identical(spec$fmt, "pct")) return(sprintf("%.1f%%", val))
+        if (isTRUE(spec$raw) && identical(spec$col, "gp")) return(sprintf("%.0f", val))
+        sprintf("%.1f", val)
+      }
+      compute_detail_gap <- function(val_a, val_b, polarity) {
+        if (!is.finite(val_a) || !is.finite(val_b)) {
+          return(list(gap = NA_real_, a_wins = NA))
+        }
+        raw <- cmp_gap_value(val_a, val_b)
+        if (identical(polarity, "neutral")) {
+          return(list(gap = raw, a_wins = NA))
+        }
+        a_wins <- if (identical(polarity, "lower")) val_a < val_b else val_a > val_b
+        list(gap = raw, a_wins = if (abs(raw) < 1e-9) NA else a_wins)
+      }
+
+      all_cells <- list(
+        tags$div(class = "cmp-col-header cmp-col-a cmp-cell cmp-first-row", col_a_text),
+        tags$div(class = "cmp-col-header cmp-col-gap cmp-cell cmp-first-row", "Gap"),
+        tags$div(class = "cmp-col-header cmp-col-b cmp-cell cmp-first-row", col_b_text)
+      )
+
+      active_sections <- names(detail_specs)
+      for (sec_key in active_sections) {
+        sec <- detail_specs[[sec_key]]
+        all_cells <- c(all_cells, list(tags$div(class = "cmp-section-title", sec$title)))
+
+        computed <- lapply(sec$metrics, function(m) {
+          va <- get_detail_val(m, "a")
+          vb <- get_detail_val(m, "b")
+          gi <- compute_detail_gap(va, vb, m$polarity)
+          list(m = m, va = va, vb = vb, gi = gi)
+        })
+        max_abs_gap <- max(vapply(computed, function(x) {
+          if (is.finite(x$gi$gap)) abs(x$gi$gap) else 0
+        }, numeric(1)), na.rm = TRUE)
+        if (max_abs_gap == 0) max_abs_gap <- 1
+
+        for (j in seq_along(computed)) {
+          x <- computed[[j]]
+          m <- x$m
+          gi <- x$gi
+          a_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "winner" else "loser"
+          b_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "loser" else "winner"
+          is_last_row <- identical(sec_key, tail(active_sections, 1)) && j == length(computed)
+          last_cls <- if (is_last_row) " cmp-last-row" else ""
+          gap_text <- if (!is.finite(gi$gap)) "\u2014" else {
+            suffix <- if (identical(m$fmt, "pct")) "%" else ""
+            if (abs(gi$gap) < 1e-9) paste0("+0.0", suffix)
+            else if (gi$gap > 0) sprintf("+%.1f%s", gi$gap, suffix)
+            else sprintf("\u2212%.1f%s", abs(gi$gap), suffix)
+          }
+          winner_side <- if (is.na(gi$a_wins)) "none" else if (isTRUE(gi$a_wins)) "a" else "b"
+          gap_color_cls <- if (winner_side == "a") "a-color" else if (winner_side == "b") "b-color" else ""
+          bar_pct <- if (is.finite(gi$gap) && max_abs_gap > 0) round(abs(gi$gap) / max_abs_gap * 50, 1) else 0
+          bar_cls <- if (identical(winner_side, "a")) "toward-a" else "toward-b"
+
+          all_cells <- c(all_cells, list(
+            tags$div(class = paste0("cmp-stat-row cmp-col-a cmp-cell", last_cls),
+              tags$span(class = "cmp-stat-label", m$label),
+              tags$span(class = paste("cmp-stat-value", a_cls), fmt_detail(x$va, m))),
+            tags$div(class = paste0("cmp-gap-row cmp-col-gap cmp-cell", last_cls),
+              tags$span(class = paste("cmp-gap-num", gap_color_cls), gap_text),
+              tags$div(class = "cmp-bar-container",
+                tags$div(class = "cmp-bar-center"),
+                if (bar_pct > 0) tags$div(class = paste("cmp-bar", bar_cls),
+                  style = sprintf("width: %.1f%%;", bar_pct)))),
+            tags$div(class = paste0("cmp-stat-row cmp-col-b cmp-cell", last_cls),
+              tags$span(class = "cmp-stat-label", m$label),
+              tags$span(class = paste("cmp-stat-value", b_cls), fmt_detail(x$vb, m)))
+          ))
+        }
+      }
+
+      gp_a <- if (isTRUE(row$played_a[1])) suppressWarnings(as.numeric(row$gp_a[1])) else 0
+      gp_b <- if (isTRUE(row$played_b[1])) suppressWarnings(as.numeric(row$gp_b[1])) else 0
+      poss_a <- if (isTRUE(row$played_a[1])) suppressWarnings(as.numeric(row$poss_on_floor_a[1])) else 0
+      poss_b <- if (isTRUE(row$played_b[1])) suppressWarnings(as.numeric(row$poss_on_floor_b[1])) else 0
+      note_a <- if (isTRUE(row$played_a[1])) {
+        sprintf(
+          "<strong>%s</strong> GP \u00b7 <strong>%s</strong> Poss",
+          if (is.finite(gp_a)) round(gp_a) else "\u2014",
+          if (is.finite(poss_a)) format(round(poss_a), big.mark = ",") else "\u2014"
+        )
+      } else {
+        "didn't play"
+      }
+      note_b <- if (isTRUE(row$played_b[1])) {
+        sprintf(
+          "<strong>%s</strong> GP \u00b7 <strong>%s</strong> Poss",
+          if (is.finite(gp_b)) round(gp_b) else "\u2014",
+          if (is.finite(poss_b)) format(round(poss_b), big.mark = ",") else "\u2014"
+        )
+      } else {
+        "didn't play"
+      }
+      context_bar <- tags$div(class = "cmp-context-bar",
+        tags$div(class = "cmp-context-side",
+          tags$span(class = "cmp-context-badge a", "A"),
+          tags$span(class = "cmp-context-info", HTML(note_a))),
+        tags$div(class = "cmp-context-sep", "|"),
+        tags$div(class = "cmp-context-side",
+          tags$span(class = "cmp-context-badge b", "B"),
+          tags$span(class = "cmp-context-info", HTML(note_b)))
+      )
+
+      return(tags$div(class = "detail-container",
+        tags$button(class = "cmp-back-btn js-shiny-event",
+          `data-input-id` = "cmp_team_players_back_players",
+          "\u2190 Back to players"),
+        tags$div(class = "cmp-team-header", player_name),
+        tags$div(class = "cmp-team-subheader",
+          paste0(team_name, " \u00b7 ", full_a, " vs ", full_b, " \u00b7 ", rate_mode, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
+        context_bar,
+        tags$div(class = "cmp-compare-grid", do.call(tagList, all_cells))
+      ))
+    }
+
+    if (!is.null(team)) {
+      return(tags$div(
+        tags$button(class = "cmp-back-btn js-shiny-event",
+          `data-input-id` = "cmp_team_players_back_teams",
+          "\u2190 Back to team detail"),
+        tags$div(class = "cmp-team-header", team$team_name),
+        tags$div(class = "cmp-team-subheader",
+          paste0(full_a, " vs ", full_b, " \u00b7 ", input$cmp_team_player_rate_mode %||% "Per Game")),
+        DT::dataTableOutput("cmp_team_players_table")
+      ))
+    }
+
+    NULL
+  })
+
+  output$cmp_team_players_table <- DT::renderDataTable({
+    team <- selected_team_players_team()
+    req(team)
+    df <- cmp_team_players_for_selected_team()
+    req(df, nrow(df) > 0)
+
+    metric <- selected_team_player_metric()
+    show_df <- data.frame(
+      team_id = df$team_id,
+      player_id = df$player_id,
+      `#` = df$rank,
+      Player = df$player_name,
+      `GP A` = ifelse(df$played_a, as.integer(df$gp_a), 0L),
+      A = mapply(format_team_player_metric_cell, df$metric_a, df$played_a, MoreArgs = list(metric = metric), USE.NAMES = FALSE),
+      `Total Poss A` = as.integer(df$poss_a),
+      `GP B` = ifelse(df$played_b, as.integer(df$gp_b), 0L),
+      B = mapply(format_team_player_metric_cell, df$metric_b, df$played_b, MoreArgs = list(metric = metric), USE.NAMES = FALSE),
+      `Total Poss B` = as.integer(df$poss_b),
+      Gap = vapply(df$gap, format_team_player_gap, character(1), metric = metric),
+      gap_score = ifelse(is.finite(df$gap_score), df$gap_score, -Inf),
+      check.names = FALSE,
+      stringsAsFactors = FALSE
+    )
+    names(show_df)[6] <- side_label_short("a")
+    names(show_df)[9] <- side_label_short("b")
+
+    DT::datatable(
+      show_df,
+      rownames = FALSE,
+      callback = DT::JS("
+        table.on('click', 'tbody tr', function() {
+          var data = table.row(this).data();
+          if (!data || !window.Shiny) return;
+          window.Shiny.setInputValue('cmp_team_players_player_click', {
+            team_id: data[0],
+            player_id: data[1],
+            player_name: data[3],
+            rand: Math.random()
+          }, { priority: 'event' });
+        });
+      "),
+      options = list(
+        dom = "t",
+        paging = FALSE,
+        ordering = TRUE,
+        order = list(list(11L, "desc")),
+        columnDefs = list(
+          list(visible = FALSE, targets = c(0L, 1L, 11L)),
+          list(className = "dt-left", targets = 3L),
+          list(className = "dt-right", targets = c(2L, 4L, 5L, 6L, 7L, 8L, 9L, 10L)),
+          list(orderData = 11L, orderSequence = c("desc"), targets = 10L)
+        ),
+        rowCallback = DT::JS("function(row, data) { $(row).css('cursor', 'pointer'); }")
       )
     )
   })
@@ -2424,6 +2999,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   observeEvent(input$cmp_detail_back, {
     selected_detail_entity(NULL)
+    cmp_active_view("league")
     detail_view_active(FALSE)
   }, ignoreInit = TRUE)
 
@@ -2709,6 +3285,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         ))
       }
     }
+    cmp_active_view("detail")
     detail_view_active(TRUE)
   }, ignoreInit = TRUE)
 
