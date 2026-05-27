@@ -24,9 +24,15 @@ COLD_TABLE_KEYS <- list(
 export_cold_table <- function(pg, schema, table_name, cold_dir, log_msg) {
   stopifnot(table_name %in% COLD_TABLES)
 
-  # 1. Read current rows from DB
+  # 1. Read only published rows. Failed base loads may leave historical
+  # unprocessed rows from older pipeline versions in the hot tables.
   new_rows <- DBI::dbGetQuery(
-    pg, sprintf('SELECT * FROM "%s"."%s"', schema, table_name)
+    pg,
+    sprintf(
+      'SELECT t.* FROM "%s"."%s" t
+       INNER JOIN "%s"."etl_processed_games" eg ON eg.game_id = t.game_id',
+      schema, table_name, schema
+    )
   )
   if (nrow(new_rows) == 0) {
     log_msg(sprintf("  [COLD] %s: 0 rows, skipping export", table_name))

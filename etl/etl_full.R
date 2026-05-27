@@ -171,6 +171,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg <- logger$log_msg
   pipeline_ok <- TRUE
   phase_failures <- character(0)
+  failed_base_ids <- integer(0)
+  published_ids <- integer(0)
   mark_phase_failed <- function(phase, msg = NULL) {
     pipeline_ok <<- FALSE
     phase_failures <<- c(
@@ -304,22 +306,26 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       log_msg("[DRY RUN] Would run etl_update() for the above games")
       ids
     } else {
-      # Assign game_ids + sched_subset to global env so etl_update() can see them
-      # (etl_update references these as free variables)
-      assign("game_ids", ids, envir = .GlobalEnv)
-
-      assign("sched_subset", sched_subset, envir = .GlobalEnv)
-
       t0 <- proc.time()
+      successful_ids <- integer(0)
+      for (gid in ids) {
+        game_sched <- sched_subset |>
+          dplyr::filter(game_id == .env$gid)
+        if (nrow(game_sched) != 1 || is.na(game_sched$pbp_url[[1]]) || !nzchar(game_sched$pbp_url[[1]])) {
+          failed_base_ids <- c(failed_base_ids, gid)
+          log_msg(sprintf("  game %d skipped: no usable schedule/PBP source row", gid), "ERROR")
+          next
+        }
 
-      # Upsert schedule
-      upsert_by_like(pg, SCHEMA, "schedule", sched_subset)
-      log_msg(sprintf("  schedule: %d rows upserted", nrow(sched_subset)))
-
+        # These computation helpers refer to sched_subset as a free variable.
+        assign("game_ids", gid, envir = .GlobalEnv)
+        assign("sched_subset", game_sched, envir = .GlobalEnv)
+        transaction_open <- FALSE
+        game_ok <- tryCatch({
       # Fetch PBP only for rows with usable URLs.
-      fetchable_sched <- sched_subset |>
+      fetchable_sched <- game_sched |>
         dplyr::filter(!is.na(pbp_url), nzchar(pbp_url))
-      skipped_pbp <- setdiff(sched_subset$game_id, fetchable_sched$game_id)
+      skipped_pbp <- setdiff(game_sched$game_id, fetchable_sched$game_id)
       if (length(skipped_pbp)) {
         log_msg(sprintf(
           "Skipping %d game(s) without pbp_url: %s",
@@ -334,8 +340,6 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
       # actions_clean
       actions_df <- purrr::map(pbps, clean_actions) |> purrr::list_rbind()
-      upsert_by_like(pg, SCHEMA, "actions_clean", actions_df)
-      log_msg(sprintf("  actions_clean: %d rows upserted", nrow(actions_df)))
 
       # subs
       subs_df <- actions_df %>%
@@ -344,8 +348,6 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
           parameters_player_in = dplyr::if_else(!is.na(parameters_player_in), player_id, NA),
           parameters_player_out = dplyr::if_else(!is.na(parameters_player_out), player_id, NA)
         )
-      upsert_by_like(pg, SCHEMA, "subs", subs_df)
-      log_msg(sprintf("  subs: %d rows upserted", nrow(subs_df)))
 
       # full_rosters
       box_sched <- fetchable_sched |>
@@ -400,8 +402,26 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         ) |>
         dplyr::select(-team_name_sched)
       roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
-      upsert_by_like(pg, SCHEMA, "full_rosters", roster_df)
-      log_msg(sprintf("  full_rosters: %d rows upserted", nrow(roster_df)))
+      DBI::dbBegin(pg)
+      transaction_open <- TRUE
+      # Replace a complete game snapshot so retries do not retain obsolete
+      # rows left by an older partial load. The order satisfies action FKs.
+      for (table_name in c(
+        "pws", "stints", "lineups_lookup", "possessions", "subs",
+        "actions_clean", "full_rosters"
+      )) {
+        DBI::dbExecute(
+          pg,
+          sprintf('DELETE FROM "%s"."%s" WHERE game_id = $1', SCHEMA, table_name),
+          params = list(gid)
+        )
+      }
+      upsert_by_like(pg, SCHEMA, "schedule", game_sched, manage_transaction = FALSE)
+      upsert_by_like(pg, SCHEMA, "actions_clean", actions_df, manage_transaction = FALSE)
+      upsert_by_like(pg, SCHEMA, "subs", subs_df, manage_transaction = FALSE)
+      upsert_by_like(pg, SCHEMA, "full_rosters", roster_df, manage_transaction = FALSE)
+      log_msg(sprintf("  game %d staged: schedule=%d, actions_clean=%d, subs=%d, full_rosters=%d",
+                      gid, nrow(game_sched), nrow(actions_df), nrow(subs_df), nrow(roster_df)))
 
       # possessions
       actions_tbl <- dplyr::tbl(pg, dbplyr::in_schema(SCHEMA, "actions_clean")) |>
@@ -410,15 +430,15 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         dplyr::collect() |>
         dplyr::rename(quarter = quarter.x) |>
         dplyr::select(-quarter.y)
-      upsert_by_like(pg, SCHEMA, "possessions", poss_stage)
-      log_msg(sprintf("  possessions: %d rows upserted", nrow(poss_stage)))
+      upsert_by_like(pg, SCHEMA, "possessions", poss_stage, manage_transaction = FALSE)
+      log_msg(sprintf("  possessions staged: %d rows", nrow(poss_stage)))
 
       # lineups_lookup
       df_lineups_df <- compute_lineups_lookup(pg) |>
         dplyr::filter(game_id %in% fetchable_sched$game_id) |>
         dplyr::collect()
-      upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df)
-      log_msg(sprintf("  lineups_lookup: %d rows upserted", nrow(df_lineups_df)))
+      upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df, manage_transaction = FALSE)
+      log_msg(sprintf("  lineups_lookup staged: %d rows", nrow(df_lineups_df)))
       lineup_starters <- df_lineups_df %>%
         dplyr::select(game_id, team_id, lineup_hash, num_starters) %>%
         dplyr::distinct(game_id, team_id, lineup_hash, .keep_all = TRUE)
@@ -433,8 +453,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
           q_bucket, final_start_id, final_end_id
         ) %>%
         dplyr::rename(team_id = team_id_offense)
-      upsert_by_like(pg, SCHEMA, "stints", stints_df)
-      log_msg(sprintf("  stints: %d rows upserted", nrow(stints_df)))
+      upsert_by_like(pg, SCHEMA, "stints", stints_df, manage_transaction = FALSE)
+      log_msg(sprintf("  stints staged: %d rows", nrow(stints_df)))
 
       # pws (possessions-within-stints)
       by <- dplyr::join_by(
@@ -464,35 +484,38 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
             ),
           by = c("game_id", "team_id_defense", "lineup_hash_defense")
         )
-      upsert_by_like(pg, SCHEMA, "pws", pws_stage)
-      log_msg(sprintf("  pws: %d rows upserted", nrow(pws_stage)))
+      upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
+      log_msg(sprintf("  pws staged: %d rows", nrow(pws_stage)))
 
-      DBI::dbExecute(pg, sprintf('ANALYZE "%s"."pws";', SCHEMA))
+      DBI::dbCommit(pg)
+      transaction_open <- FALSE
+      TRUE
+        }, error = function(e) {
+          if (isTRUE(transaction_open)) {
+            try(DBI::dbRollback(pg), silent = TRUE)
+          }
+          log_msg(sprintf("  game %d base load FAILED and rolled back: %s", gid, conditionMessage(e)), "ERROR")
+          FALSE
+        })
 
-      # Record processed games in tracking table (only games that were actually fetched)
-      track_ids <- intersect(as.integer(ids), fetchable_sched$game_id)
-      if (length(track_ids)) {
-        track_years <- sched_subset$game_year[match(track_ids, sched_subset$game_id)]
-        vals <- paste(
-          sprintf("(%d, %d, now())", as.integer(track_ids), as.integer(track_years)),
-          collapse = ", "
-        )
-        DBI::dbExecute(
-          pg,
-          sprintf(
-            'INSERT INTO "%s"."etl_processed_games" (game_id, game_year, processed_at)
-             VALUES %s
-             ON CONFLICT (game_id) DO NOTHING',
-            SCHEMA, vals
-          )
-        )
-        log_msg(sprintf("  etl_processed_games: %d game(s) recorded", length(track_ids)))
+        if (isTRUE(game_ok)) {
+          successful_ids <- c(successful_ids, gid)
+          log_msg(sprintf("  game %d base tables committed", gid))
+        } else {
+          failed_base_ids <- c(failed_base_ids, gid)
+        }
       }
 
+      if (length(successful_ids)) {
+        DBI::dbExecute(pg, sprintf('ANALYZE "%s"."pws";', SCHEMA))
+      }
       elapsed <- (proc.time() - t0)["elapsed"]
-      log_msg(sprintf("Phase 2 complete. %d games processed in %.1fs", length(ids), elapsed))
+      log_msg(sprintf(
+        "Phase 2 complete. %d game(s) committed, %d failed in %.1fs",
+        length(successful_ids), length(unique(failed_base_ids)), elapsed
+      ))
 
-      ids
+      successful_ids
     }
     }
   }, error = function(e) {
@@ -1092,11 +1115,39 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   }
 
 
+  # Publish only games whose base data and downstream refreshes completed.
+  if (!dry_run && isTRUE(pipeline_ok) && length(processed_ids) > 0) {
+    tryCatch({
+      track_years <- sched_subset$game_year[match(processed_ids, sched_subset$game_id)]
+      vals <- paste(
+        sprintf("(%d, %d, now())", as.integer(processed_ids), as.integer(track_years)),
+        collapse = ", "
+      )
+      DBI::dbExecute(
+        pg,
+        sprintf(
+          'INSERT INTO "%s"."etl_processed_games" (game_id, game_year, processed_at)
+           VALUES %s
+           ON CONFLICT (game_id) DO NOTHING',
+          SCHEMA, vals
+        )
+      )
+      published_ids <- processed_ids
+      log_msg(sprintf("Published %d game(s) in etl_processed_games: %s",
+                      length(published_ids), paste(published_ids, collapse = ", ")))
+    }, error = function(e) {
+      log_msg(sprintf("Publication marker FAILED: %s", conditionMessage(e)), "ERROR")
+      mark_phase_failed("Publication marker", conditionMessage(e))
+    })
+  } else if (!dry_run && length(processed_ids) > 0) {
+    log_msg("Skipping etl_processed_games publication due to pipeline failures", "WARN")
+  }
+
   # =========================================================================
   # Phase 7: Cold Storage Purge
   # =========================================================================
 
-  if (!dry_run && isTRUE(pipeline_ok) && length(processed_ids) > 0) {
+  if (!dry_run && isTRUE(pipeline_ok) && length(published_ids) > 0) {
     log_msg("--- Phase 7: Cold Storage Purge ---")
     tryCatch({
       t0 <- proc.time()
@@ -1142,22 +1193,30 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg(sprintf("â•â•â• ETL Full pipeline finished in %.1fs â•â•â•", overall_elapsed))
   log_msg(sprintf("Log saved to: %s", logger$log_file))
 
-  if (!dry_run && isTRUE(pipeline_ok)) {
+  if (!dry_run && isTRUE(pipeline_ok) &&
+      (length(published_ids) > 0 || length(failed_base_ids) == 0)) {
     tryCatch({
       set_last_success(pg, SCHEMA)
       log_msg("Recorded last_success timestamp in app_meta")
     }, error = function(e) {
       log_msg(sprintf("Failed to record last_success timestamp: %s", conditionMessage(e)), "WARN")
     })
+  } else if (!dry_run && length(failed_base_ids) > 0 && !length(published_ids)) {
+    log_msg(sprintf(
+      "Skipped last_success update: no games published; rolled back base game(s): %s",
+      paste(unique(failed_base_ids), collapse = ", ")
+    ), "WARN")
   } else if (!dry_run) {
     reason <- if (length(phase_failures)) paste(phase_failures, collapse = " | ") else "unknown failure"
     log_msg(sprintf("Skipped last_success update due to failures: %s", reason), "WARN")
   }
 
   invisible(list(
-    game_ids = processed_ids,
-    log_file = logger$log_file,
-    dry_run  = dry_run
+    game_ids             = if (dry_run) processed_ids else published_ids,
+    base_loaded_game_ids = processed_ids,
+    failed_game_ids      = unique(failed_base_ids),
+    log_file             = logger$log_file,
+    dry_run              = dry_run
   ))
 }
 

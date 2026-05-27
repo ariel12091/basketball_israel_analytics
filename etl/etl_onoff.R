@@ -170,8 +170,9 @@ ensure_table_like_from_prod <- function(pg, schema, prod_schema, table, clone_in
 # =========================
 # Stage-and-upsert (schema-driven; needs PK)
 # =========================
-upsert_by_like <- function(pg, schema = SCHEMA, table, df) {
+upsert_by_like <- function(pg, schema = SCHEMA, table, df, manage_transaction = TRUE) {
   stopifnot(is.data.frame(df))
+  # With manage_transaction = FALSE, the caller must own a surrounding transaction.
   # auto-create missing test table (and constraints + indexes) from prod
   ensure_table_like_from_prod(pg, schema, TEST_SCHEMA, table, clone_indexes = TRUE)
   
@@ -183,16 +184,10 @@ upsert_by_like <- function(pg, schema = SCHEMA, table, df) {
   missing <- setdiff(cols, names(df)); if (length(missing)) df[missing] <- NA
   df <- df[, cols, drop = FALSE]
   
-  stage <- sprintf("__stage_%s_%s", table, as.integer(as.numeric(Sys.time())))
+  stage <- sprintf("__stage_%s_%s_%s", table, Sys.getpid(), sample.int(1000000000L, 1L))
   q_stage  <- DBI::SQL(sprintf('"%s"."%s"', schema, stage))
   q_target <- DBI::SQL(sprintf('"%s"."%s"', schema, table))
-  
-  DBI::dbExecute(pg, sprintf(
-    'CREATE TABLE "%s"."%s" (LIKE "%s"."%s" INCLUDING ALL);',
-    schema, stage, schema, table
-  ))
-  DBI::dbWriteTable(pg, name = q_stage, value = df, append = TRUE, row.names = FALSE)
-  
+
   cols_csv    <- paste(sprintf('"%s"', cols), collapse = ", ")
   pk_csv      <- paste(sprintf('"%s"', pk),   collapse = ", ")
   updates_csv <- paste(sprintf('"%s" = EXCLUDED."%s"', setdiff(cols, pk), setdiff(cols, pk)), collapse = ", ")
@@ -203,17 +198,22 @@ upsert_by_like <- function(pg, schema = SCHEMA, table, df) {
     ON CONFLICT (%s) DO UPDATE SET %s;",
                  q_target, cols_csv, cols_csv, q_stage, pk_csv, updates_csv
   )
-  
-  DBI::dbExecute(pg, "BEGIN;")
+
+  if (isTRUE(manage_transaction)) DBI::dbBegin(pg)
   tryCatch({
+    DBI::dbExecute(pg, sprintf(
+      'CREATE TABLE "%s"."%s" (LIKE "%s"."%s" INCLUDING ALL);',
+      schema, stage, schema, table
+    ))
+    DBI::dbWriteTable(pg, name = q_stage, value = df, append = TRUE, row.names = FALSE)
     DBI::dbExecute(pg, sql)
     DBI::dbExecute(pg, sprintf('DROP TABLE %s;', q_stage))
-    DBI::dbExecute(pg, "COMMIT;")
+    if (isTRUE(manage_transaction)) DBI::dbCommit(pg)
   }, error = function(e) {
-    DBI::dbExecute(pg, "ROLLBACK;")
-    try(DBI::dbExecute(pg, sprintf('DROP TABLE IF EXISTS %s;', q_stage)), silent = TRUE)
+    if (isTRUE(manage_transaction)) try(DBI::dbRollback(pg), silent = TRUE)
     stop(e)
   })
+  invisible(TRUE)
 }
 
 # =========================
@@ -616,14 +616,14 @@ etl_update <- function() {
   actions_df <- purrr::map(pbps, clean_actions) |> list_rbind()
   
   
-  upsert_by_like(pg, SCHEMA, "actions_clean", actions_df)
+  upsert_by_like(pg, SCHEMA, "actions_clean", actions_df, manage_transaction = FALSE)
   
   
   # subs
   subs_df <- actions_df %>% filter(type == "substitution") |> 
     mutate(parameters_player_in = if_else(!is.na(parameters_player_in), player_id, NA), 
            parameters_player_out = if_else(!is.na(parameters_player_out), player_id, NA))
-  upsert_by_like(pg, SCHEMA, "subs", subs_df)
+  upsert_by_like(pg, SCHEMA, "subs", subs_df, manage_transaction = FALSE)
   
   subs_df %>%
     select(parameters_player_in)
@@ -670,18 +670,18 @@ etl_update <- function() {
     dplyr::select(-team_name_sched)
   roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
   
-  upsert_by_like(pg, SCHEMA, "full_rosters", roster_df)
+  upsert_by_like(pg, SCHEMA, "full_rosters", roster_df, manage_transaction = FALSE)
   
   # possessions
   actions_tbl <- tbl(pg, dbplyr::in_schema(SCHEMA, "actions_clean")) |> filter(game_id %in% sched_subset$game_id)
   poss_stage  <- compute_possessions(actions_tbl) |> collect() |> rename(quarter = quarter.x) |> 
     select(-quarter.y) 
   
-  upsert_by_like(pg, SCHEMA, "possessions", poss_stage)
+  upsert_by_like(pg, SCHEMA, "possessions", poss_stage, manage_transaction = FALSE)
   
   # lineups_lookup
   df_lineups_df <- compute_lineups_lookup(pg) |> filter(game_id %in% sched_subset$game_id) |> collect()
-  upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df)
+  upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df, manage_transaction = FALSE)
   lineup_starters <- df_lineups_df %>%
     dplyr::select(game_id, team_id, lineup_hash, num_starters) %>%
     dplyr::distinct(game_id, team_id, lineup_hash, .keep_all = TRUE)
@@ -694,7 +694,7 @@ etl_update <- function() {
            final_start_id, final_end_id) %>%
     rename(team_id = team_id_offense)
   
-  upsert_by_like(pg, SCHEMA, "stints", stints_df)
+  upsert_by_like(pg, SCHEMA, "stints", stints_df, manage_transaction = FALSE)
   
   by <- join_by(team_id, game_id, q_bucket, between(id, final_start_id, final_end_id, bounds = "[)"))
   
@@ -720,7 +720,7 @@ etl_update <- function() {
     )
   
   
-  upsert_by_like(pg, SCHEMA, "pws", pws_stage)
+  upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
 
   DBI::dbExecute(pg, "ANALYZE;")
   DBI::dbExecute(pg, "COMMIT;")
