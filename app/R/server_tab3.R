@@ -46,6 +46,9 @@ TR_TRAD_FILTERABLE_COLS <- c(
   "FGM" = "fgm",
   "FGA" = "fga",
   "FG%" = "fg_pct",
+  "2PM" = "2pm",
+  "2PA" = "2pa",
+  "2P%" = "two_pct",
   "3PM" = "3pm",
   "3PA" = "3pa",
   "3P%" = "tp_pct",
@@ -730,8 +733,11 @@ server_tab3 <- function(input, output, session, shared) {
          COALESCE(tu.gp, 0)::int AS gp,
          COALESCE(tu.poss_on_floor, 0)::int AS poss_on_floor,
          COALESCE(tm.minutes, 0)::numeric AS minutes,
-         ts.pts, (ts.oreb + ts.dreb)::int AS reb, ts.oreb, ts.dreb, ts.ast, ts.stl, ts.blk, ts.tov, ts.fgm, ts.fga, ts.\"3pm\", ts.\"3pa\", ts.ftm, ts.fta,
+         ts.pts, (ts.oreb + ts.dreb)::int AS reb, ts.oreb, ts.dreb, ts.ast, ts.stl, ts.blk, ts.tov,
+         ts.fgm, ts.fga, (ts.fgm - ts.\"3pm\")::int AS \"2pm\", (ts.fga - ts.\"3pa\")::int AS \"2pa\",
+         ts.\"3pm\", ts.\"3pa\", ts.ftm, ts.fta,
          CASE WHEN ts.fga > 0 THEN ROUND((ts.fgm::numeric / ts.fga::numeric) * 100, 1) ELSE NULL END AS fg_pct,
+         CASE WHEN (ts.fga - ts.\"3pa\") > 0 THEN ROUND(((ts.fgm - ts.\"3pm\")::numeric / (ts.fga - ts.\"3pa\")::numeric) * 100, 1) ELSE NULL END AS two_pct,
          CASE WHEN ts.\"3pa\" > 0 THEN ROUND((ts.\"3pm\"::numeric / ts.\"3pa\"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
          CASE WHEN ts.fta > 0 THEN ROUND((ts.ftm::numeric / ts.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
          CASE WHEN ts.fga > 0 THEN ROUND(((ts.fgm::numeric + 0.5 * ts.\"3pm\"::numeric) / ts.fga::numeric) * 100, 1) ELSE NULL END AS efg,
@@ -754,7 +760,7 @@ server_tab3 <- function(input, output, session, shared) {
 
   apply_tr_trad_mode <- function(df, mode) {
     if (is.null(df) || !nrow(df)) return(df)
-    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta")
+    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
     mode <- mode %||% "Per Game"
     if (identical(mode, "Per Game")) {
       for (col in count_cols) if (col %in% names(df)) df[[col]] <- ifelse(df$gp > 0, df[[col]] / df$gp, NA_real_)
@@ -1317,7 +1323,10 @@ server_tab3 <- function(input, output, session, shared) {
       q$minutes <- as.numeric(min_map[as.character(q$team_id)])
       q$minutes[is.na(q$minutes)] <- 0
     }
+    q$`2pm` <- q$fgm - q$`3pm`
+    q$`2pa` <- q$fga - q$`3pa`
     q$fg_pct <- ifelse(q$fga > 0, round((q$fgm / q$fga) * 100, 1), NA_real_)
+    q$two_pct <- ifelse(q$`2pa` > 0, round((q$`2pm` / q$`2pa`) * 100, 1), NA_real_)
     q$tp_pct <- ifelse(q$`3pa` > 0, round((q$`3pm` / q$`3pa`) * 100, 1), NA_real_)
     q$ft_pct <- ifelse(q$fta > 0, round((q$ftm / q$fta) * 100, 1), NA_real_)
     q$efg <- ifelse(q$fga > 0, round(((q$fgm + 0.5 * q$`3pm`) / q$fga) * 100, 1), NA_real_)
@@ -1326,8 +1335,8 @@ server_tab3 <- function(input, output, session, shared) {
 
     metric_cfg <- c(
       pts = FALSE, reb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
-      fgm = FALSE, fga = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
-      fg_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
+      fgm = FALSE, fga = FALSE, `2pm` = FALSE, `2pa` = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
+      fg_pct = FALSE, two_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
     )
     ranks <- list()
     for (m in names(metric_cfg)) {
@@ -1433,14 +1442,14 @@ server_tab3 <- function(input, output, session, shared) {
       metric_cfg <- if (!is_defense_trad) {
         c(
           pts = FALSE, reb = FALSE, oreb = FALSE, dreb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
-          fgm = FALSE, fga = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
-          fg_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
+          fgm = FALSE, fga = FALSE, `2pm` = FALSE, `2pa` = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
+          fg_pct = FALSE, two_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
         )
       } else {
         c(
           pts = TRUE, reb = TRUE, oreb = TRUE, dreb = TRUE, ast = TRUE, stl = TRUE, blk = TRUE, tov = FALSE,
-          fgm = TRUE, fga = TRUE, `3pm` = TRUE, `3pa` = TRUE, ftm = TRUE, fta = TRUE,
-          fg_pct = TRUE, tp_pct = TRUE, ft_pct = TRUE, efg = TRUE, ts = TRUE
+          fgm = TRUE, fga = TRUE, `2pm` = TRUE, `2pa` = TRUE, `3pm` = TRUE, `3pa` = TRUE, ftm = TRUE, fta = TRUE,
+          fg_pct = TRUE, two_pct = TRUE, tp_pct = TRUE, ft_pct = TRUE, efg = TRUE, ts = TRUE
         )
       }
       for (m in names(metric_cfg)) {
@@ -1485,6 +1494,9 @@ server_tab3 <- function(input, output, session, shared) {
         FGM = make_cell(df$fgm, df$rank_fgm, "fgm"),
         FGA = make_cell(df$fga, df$rank_fga, "fga"),
         `FG%` = make_cell(df$fg_pct, df$rank_fg_pct, "fg_pct"),
+        `2PM` = make_cell(df$`2pm`, df$`rank_2pm`, "2pm"),
+        `2PA` = make_cell(df$`2pa`, df$`rank_2pa`, "2pa"),
+        `2P%` = make_cell(df$two_pct, df$rank_two_pct, "two_pct"),
         `3PM` = make_cell(df$`3pm`, df$`rank_3pm`, "3pm"),
         `3PA` = make_cell(df$`3pa`, df$`rank_3pa`, "3pa"),
         `3P%` = make_cell(df$tp_pct, df$rank_tp_pct, "tp_pct"),
@@ -1494,27 +1506,30 @@ server_tab3 <- function(input, output, session, shared) {
         `eFG%` = make_cell(df$efg, df$rank_efg, "efg"),
         `TS%` = make_cell(df$ts, df$rank_ts, "ts"),
         pr_pts = df$pr_pts, pr_reb = df$pr_reb, pr_oreb = df$pr_oreb, pr_dreb = df$pr_dreb, pr_ast = df$pr_ast, pr_stl = df$pr_stl, pr_blk = df$pr_blk, pr_tov = df$pr_tov,
-        pr_fgm = df$pr_fgm, pr_fga = df$pr_fga, pr_3pm = df$pr_3pm, pr_3pa = df$pr_3pa, pr_ftm = df$pr_ftm, pr_fta = df$pr_fta,
-        pr_fg_pct = df$pr_fg_pct, pr_tp_pct = df$pr_tp_pct, pr_ft_pct = df$pr_ft_pct, pr_efg = df$pr_efg, pr_ts = df$pr_ts,
+        pr_fgm = df$pr_fgm, pr_fga = df$pr_fga, pr_2pm = df$pr_2pm, pr_2pa = df$pr_2pa, pr_3pm = df$pr_3pm, pr_3pa = df$pr_3pa, pr_ftm = df$pr_ftm, pr_fta = df$pr_fta,
+        pr_fg_pct = df$pr_fg_pct, pr_two_pct = df$pr_two_pct, pr_tp_pct = df$pr_tp_pct, pr_ft_pct = df$pr_ft_pct, pr_efg = df$pr_efg, pr_ts = df$pr_ts,
         check.names = FALSE
       )
       sort_map <- c(
         PTS = "pts", REB = "reb", OREB = "oreb", DREB = "dreb", AST = "ast", STL = "stl", BLK = "blk",
-        TOV = "tov", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct", `3PM` = "3pm", `3PA` = "3pa",
+        TOV = "tov", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct", `2PM` = "2pm", `2PA` = "2pa",
+        `2P%` = "two_pct", `3PM` = "3pm", `3PA` = "3pa",
         `3P%` = "tp_pct", FTM = "ftm", FTA = "fta", `FT%` = "ft_pct",
         `eFG%` = "efg", `TS%` = "ts"
       )
       sort_dir_map <- if (!is_defense_trad) {
         c(
           PTS = "desc", REB = "desc", OREB = "desc", DREB = "desc", AST = "desc", STL = "desc", BLK = "desc",
-          TOV = "asc", FGM = "desc", FGA = "desc", `FG%` = "desc", `3PM` = "desc", `3PA` = "desc",
+          TOV = "asc", FGM = "desc", FGA = "desc", `FG%` = "desc", `2PM` = "desc", `2PA` = "desc",
+          `2P%` = "desc", `3PM` = "desc", `3PA` = "desc",
           `3P%` = "desc", FTM = "desc", FTA = "desc", `FT%` = "desc",
           `eFG%` = "desc", `TS%` = "desc"
         )
       } else {
         c(
           PTS = "asc", REB = "asc", OREB = "asc", DREB = "asc", AST = "asc", STL = "asc", BLK = "asc",
-          TOV = "desc", FGM = "asc", FGA = "asc", `FG%` = "asc", `3PM` = "asc", `3PA` = "asc",
+          TOV = "desc", FGM = "asc", FGA = "asc", `FG%` = "asc", `2PM` = "asc", `2PA` = "asc",
+          `2P%` = "asc", `3PM` = "asc", `3PA` = "asc",
           `3P%` = "asc", FTM = "asc", FTA = "asc", `FT%` = "asc",
           `eFG%` = "asc", `TS%` = "asc"
         )
@@ -1531,7 +1546,8 @@ server_tab3 <- function(input, output, session, shared) {
       }
       pr_map <- c(
         PTS = "pr_pts", REB = "pr_reb", OREB = "pr_oreb", DREB = "pr_dreb", AST = "pr_ast", STL = "pr_stl", BLK = "pr_blk",
-        TOV = "pr_tov", FGM = "pr_fgm", FGA = "pr_fga", `FG%` = "pr_fg_pct", `3PM` = "pr_3pm", `3PA` = "pr_3pa",
+        TOV = "pr_tov", FGM = "pr_fgm", FGA = "pr_fga", `FG%` = "pr_fg_pct", `2PM` = "pr_2pm", `2PA` = "pr_2pa",
+        `2P%` = "pr_two_pct", `3PM` = "pr_3pm", `3PA` = "pr_3pa",
         `3P%` = "pr_tp_pct", FTM = "pr_ftm", FTA = "pr_fta", `FT%` = "pr_ft_pct",
         `eFG%` = "pr_efg", `TS%` = "pr_ts"
       )
@@ -1904,4 +1920,3 @@ server_tab3 <- function(input, output, session, shared) {
                      "tr_num_starters_def_mode", "tr_num_starters_def"),
     clutch_enabled_id = "tr_clutch_enabled")
 }
-

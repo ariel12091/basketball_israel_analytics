@@ -63,6 +63,7 @@ COLUMN_TOOLTIPS <- c(
   "Off Shot"    = "Offensive 2PT/3PT frequency and accuracy split",
   "Def Shot"    = "Defensive 2PT/3PT frequency and accuracy split",
   "FG%"         = "Field goal percentage",
+  "2P%"         = "Two-point percentage",
   "3P%"         = "Three-point percentage",
   "FT%"         = "Free throw percentage",
   "eFG%"        = "Effective FG%: (FGM + 0.5 x 3PM) / FGA",
@@ -89,6 +90,7 @@ COLUMN_TOOLTIPS <- c(
   "DREB" = "Defensive rebounds", "AST" = "Assists", "STL" = "Steals",
   "BLK" = "Blocks", "TOV" = "Turnovers",
   "FGM" = "Field goals made", "FGA" = "Field goal attempts",
+  "2PM" = "Two-pointers made", "2PA" = "Two-point attempts",
   "3PM" = "Three-pointers made", "3PA" = "Three-point attempts",
   "FTM" = "Free throws made", "FTA" = "Free throw attempts"
 )
