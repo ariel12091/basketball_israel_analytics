@@ -57,3 +57,18 @@ test_that("tab4 four-factor percentiles stay stable when visible rows are filter
     expect_equal(filtered_df$pr_def_ppp, c(2 / 3, 0))
   })
 })
+
+test_that("box score percentile colors use game-wide player ranks and exclude totals", {
+  box_display <- data.frame(
+    Player = c("A", "B", "C", "TOTAL"),
+    Poss = c(10, 12, 8, 30),
+    PTS = c(10, 20, 5, 35),
+    TOV = c(2, 0, 4, 6),
+    check.names = FALSE
+  )
+
+  ranked <- gl_add_box_score_percentiles(box_display)
+
+  expect_equal(ranked$pr_PTS, c(0.5, 1, 0, NA))
+  expect_equal(ranked$pr_TOV, c(0.5, 0, 1, NA))
+})

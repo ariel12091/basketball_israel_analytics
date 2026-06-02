@@ -217,6 +217,430 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
   display_df %>% left_join(rank_df %>% select(game_id, team_id, all_of(pr_cols)), by = c("game_id", "team_id"))
 }
 
+gl_fetch_box_score <- function(pool, game_id, game_year) {
+  db_get_query(
+    pool,
+    "WITH game_teams AS (
+       SELECT DISTINCT
+         fs.game_id,
+         fs.team_id,
+         fs.team_name,
+         fs.opp_team_name,
+         fs.team_score,
+         fs.opp_score,
+         fs.has_won,
+         fs.is_home
+       FROM basketball_test.final_schedule_mv fs
+       WHERE fs.game_id = $1::int4
+         AND fs.game_year = $2::int4
+     ),
+     acts AS (
+       SELECT
+         d.id,
+         d.game_id,
+         d.team_id,
+         d.lineup_hash,
+         d.segment_id,
+         d.end_game_seconds_remaining,
+         d.type,
+         d.parameters_type,
+         d.parameters_made,
+         d.parameters_points,
+         d.player_id,
+         d.type_lineup,
+         d.final_end_poss,
+         d.parent_action_id,
+         d.team_score
+       FROM basketball_test.df_pts_poss_lineups_longer_mv d
+       JOIN game_teams gt
+         ON gt.game_id = d.game_id
+        AND gt.team_id = d.team_id
+     ),
+     complex_flags AS (
+       SELECT DISTINCT ON (a.id, a.game_id)
+         a.id AS main_id,
+         a.game_id,
+         t2.type AS parent_type,
+         t2.parameters_type AS parent_param
+       FROM acts a
+       JOIN basketball_test.df_pts_poss_lineups_longer_mv t2
+         ON t2.id = a.parent_action_id
+        AND t2.game_id = a.game_id
+        AND t2.type = 'foul'::text
+       WHERE a.parent_action_id IS NOT NULL
+       ORDER BY a.id, a.game_id
+     ),
+     actions_enriched AS (
+       SELECT
+         a.*,
+         cf.parent_type,
+         cf.parent_param
+       FROM acts a
+       LEFT JOIN complex_flags cf
+         ON cf.main_id = a.id
+        AND cf.game_id = a.game_id
+     ),
+     lineup_map AS (
+       SELECT DISTINCT
+         ll.game_id,
+         ll.team_id,
+         ll.lineup_hash,
+         ll.player_id
+       FROM basketball_test.lineups_lookup ll
+       JOIN game_teams gt
+         ON gt.game_id = ll.game_id
+        AND gt.team_id = ll.team_id
+       WHERE COALESCE(ll.is_on_verdict, 0)::int = 1
+     ),
+     poss_end AS (
+       SELECT DISTINCT
+         a.game_id,
+         a.team_id,
+         a.lineup_hash,
+         a.id AS poss_end_id
+       FROM acts a
+       WHERE a.type_lineup = 'offense'
+         AND a.final_end_poss
+         AND a.id IS NOT NULL
+         AND a.lineup_hash IS NOT NULL
+     ),
+     player_usage AS (
+       SELECT
+         lm.player_id,
+         pe.team_id,
+         COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::int AS poss_on_floor
+       FROM poss_end pe
+       JOIN lineup_map lm
+         ON lm.game_id = pe.game_id
+        AND lm.team_id = pe.team_id
+        AND lm.lineup_hash = pe.lineup_hash
+       GROUP BY lm.player_id, pe.team_id
+     ),
+     team_possession_totals AS (
+       SELECT
+         pe.team_id,
+         COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::numeric AS team_poss
+       FROM poss_end pe
+       GROUP BY pe.team_id
+     ),
+     seg_times AS (
+       SELECT
+         a.game_id,
+         a.team_id,
+         a.lineup_hash,
+         a.segment_id,
+         MAX(a.end_game_seconds_remaining) - MIN(a.end_game_seconds_remaining) AS seg_seconds
+       FROM acts a
+       WHERE a.lineup_hash IS NOT NULL
+         AND a.segment_id IS NOT NULL
+         AND a.end_game_seconds_remaining IS NOT NULL
+       GROUP BY a.game_id, a.team_id, a.lineup_hash, a.segment_id
+     ),
+     player_minutes AS (
+       SELECT
+         lm.player_id,
+         st.team_id,
+         ROUND(SUM(COALESCE(st.seg_seconds, 0))::numeric / 60.0, 1) AS minutes
+       FROM seg_times st
+       JOIN lineup_map lm
+         ON lm.game_id = st.game_id
+        AND lm.team_id = st.team_id
+        AND lm.lineup_hash = st.lineup_hash
+       GROUP BY lm.player_id, st.team_id
+     ),
+     stats AS (
+       SELECT
+         a.player_id,
+         a.team_id,
+         (
+           SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.type_lineup = 'offense'
+                    THEN COALESCE(a.parameters_points, 0) ELSE 0 END)
+           + SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense'
+                      THEN 1 ELSE 0 END)
+         )::int AS pts,
+         SUM(CASE WHEN a.type = 'rebound' AND a.type_lineup = 'offense' AND a.parameters_type = 'offensive' THEN 1 ELSE 0 END)::int AS oreb,
+         SUM(CASE WHEN a.type = 'rebound' AND a.type_lineup = 'defense' AND a.parameters_type = 'defensive' THEN 1 ELSE 0 END)::int AS dreb,
+         SUM(CASE WHEN a.type = 'assist' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ast,
+         SUM(CASE WHEN a.type = 'steal' AND a.type_lineup = 'defense' THEN 1 ELSE 0 END)::int AS stl,
+         SUM(CASE WHEN a.type = 'block' AND a.type_lineup = 'defense' THEN 1 ELSE 0 END)::int AS blk,
+         SUM(CASE WHEN a.type = 'turnover' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS tov,
+         SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fgm,
+         SUM(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fga,
+         SUM(CASE WHEN a.type = 'shot' AND a.parameters_made = 'made' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS \"3pm\",
+         SUM(CASE WHEN a.type = 'shot' AND a.parameters_points = 3 AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS \"3pa\",
+         SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ftm,
+         SUM(CASE WHEN a.type = 'freeThrow' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS fta,
+         (
+           COUNT(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 END)
+           + COUNT(DISTINCT CASE
+               WHEN a.type = 'freeThrow'
+                 AND a.type_lineup = 'offense'
+                 AND a.parent_type = 'foul'
+                 AND a.parent_param = 'personal'
+               THEN a.parent_action_id
+             END)
+         )::int AS ts_poss_count
+       FROM actions_enriched a
+       WHERE a.player_id IS NOT NULL
+         AND a.player_id > 0
+       GROUP BY a.player_id, a.team_id
+     ),
+     player_plus_minus AS (
+       SELECT
+         lm.player_id,
+         a.team_id,
+         SUM(
+           CASE
+             WHEN a.type_lineup = 'offense' THEN COALESCE(a.team_score, 0)
+             WHEN a.type_lineup = 'defense' THEN -COALESCE(a.team_score, 0)
+             ELSE 0
+           END
+         )::int AS plus_minus
+       FROM (
+         SELECT DISTINCT game_id, team_id, lineup_hash, id, type_lineup, team_score
+         FROM acts
+         WHERE COALESCE(team_score, 0) <> 0
+           AND lineup_hash IS NOT NULL
+       ) a
+       JOIN lineup_map lm
+         ON lm.game_id = a.game_id
+        AND lm.team_id = a.team_id
+        AND lm.lineup_hash = a.lineup_hash
+       GROUP BY lm.player_id, a.team_id
+     ),
+     names_df AS (
+       SELECT
+         fr.player_id,
+         fr.team_id,
+         MIN(btrim(fr.team_name)) AS team_name,
+         MIN(btrim(CONCAT_WS(' ', fr.firstname, fr.lastname))) AS player_name,
+         BOOL_OR(COALESCE(fr.starter, FALSE)) AS starter
+       FROM basketball_test.full_rosters fr
+       JOIN game_teams gt
+         ON gt.game_id = fr.game_id
+        AND gt.team_id = fr.team_id
+       GROUP BY fr.player_id, fr.team_id
+     ),
+     player_base AS (
+       SELECT player_id, team_id FROM names_df
+       UNION
+       SELECT player_id, team_id FROM stats
+       UNION
+       SELECT player_id, team_id FROM player_usage
+       UNION
+       SELECT player_id, team_id FROM player_minutes
+     )
+     SELECT
+       gt.game_id,
+       pb.team_id,
+       COALESCE(nd.team_name, gt.team_name) AS team_name,
+       gt.opp_team_name,
+       gt.team_score,
+       gt.opp_score,
+       CASE WHEN gt.has_won THEN 'W' ELSE 'L' END AS result,
+       pb.player_id,
+       nd.player_name,
+       COALESCE(nd.starter, FALSE) AS starter,
+       COALESCE(pu.poss_on_floor, 0)::int AS poss_on_floor,
+       COALESCE(tpt.team_poss, 0)::int AS team_poss,
+       COALESCE(pm.minutes, 0)::numeric AS minutes,
+       COALESCE(s.pts, 0)::int AS pts,
+       (COALESCE(s.oreb, 0) + COALESCE(s.dreb, 0))::int AS reb,
+       COALESCE(s.oreb, 0)::int AS oreb,
+       COALESCE(s.dreb, 0)::int AS dreb,
+       COALESCE(s.ast, 0)::int AS ast,
+       COALESCE(s.stl, 0)::int AS stl,
+       COALESCE(s.blk, 0)::int AS blk,
+       COALESCE(s.tov, 0)::int AS tov,
+       COALESCE(s.fgm, 0)::int AS fgm,
+       COALESCE(s.fga, 0)::int AS fga,
+       (COALESCE(s.fgm, 0) - COALESCE(s.\"3pm\", 0))::int AS \"2pm\",
+       (COALESCE(s.fga, 0) - COALESCE(s.\"3pa\", 0))::int AS \"2pa\",
+       COALESCE(s.\"3pm\", 0)::int AS \"3pm\",
+       COALESCE(s.\"3pa\", 0)::int AS \"3pa\",
+       COALESCE(s.ftm, 0)::int AS ftm,
+       COALESCE(s.fta, 0)::int AS fta,
+       CASE WHEN COALESCE(s.fga, 0) > 0 THEN ROUND((COALESCE(s.fgm, 0)::numeric / s.fga::numeric) * 100, 1) ELSE NULL END AS fg_pct,
+       CASE WHEN (COALESCE(s.fga, 0) - COALESCE(s.\"3pa\", 0)) > 0
+         THEN ROUND(((COALESCE(s.fgm, 0) - COALESCE(s.\"3pm\", 0))::numeric / (s.fga - COALESCE(s.\"3pa\", 0))::numeric) * 100, 1)
+         ELSE NULL
+       END AS two_pct,
+       CASE WHEN COALESCE(s.\"3pa\", 0) > 0 THEN ROUND((COALESCE(s.\"3pm\", 0)::numeric / s.\"3pa\"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
+       CASE WHEN COALESCE(s.fta, 0) > 0 THEN ROUND((COALESCE(s.ftm, 0)::numeric / s.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
+       CASE WHEN COALESCE(s.fga, 0) > 0 THEN ROUND(((COALESCE(s.fgm, 0)::numeric + 0.5 * COALESCE(s.\"3pm\", 0)::numeric) / s.fga::numeric) * 100, 1) ELSE NULL END AS efg,
+       CASE WHEN (COALESCE(s.fga, 0) + 0.44 * COALESCE(s.fta, 0)) > 0
+         THEN ROUND((COALESCE(s.pts, 0)::numeric / (2.0 * (COALESCE(s.fga, 0)::numeric + 0.44 * COALESCE(s.fta, 0)::numeric))) * 100, 1)
+         ELSE NULL
+       END AS ts,
+       CASE
+         WHEN (COALESCE(s.ts_poss_count, 0) + COALESCE(s.tov, 0) + 0.33 * COALESCE(s.ast, 0)) > 0
+          AND COALESCE(pu.poss_on_floor, 0) > 0
+         THEN ROUND(
+           100.0 * (COALESCE(s.ts_poss_count, 0) + COALESCE(s.tov, 0) + 0.33 * COALESCE(s.ast, 0))::numeric
+           / NULLIF(pu.poss_on_floor::numeric, 0),
+           1
+         )
+         ELSE NULL
+       END AS usg_pct,
+       COALESCE(ppm.plus_minus, 0)::int AS plus_minus
+     FROM player_base pb
+     JOIN game_teams gt
+       ON gt.team_id = pb.team_id
+     LEFT JOIN names_df nd
+       ON nd.player_id = pb.player_id
+      AND nd.team_id = pb.team_id
+     LEFT JOIN stats s
+       ON s.player_id = pb.player_id
+      AND s.team_id = pb.team_id
+     LEFT JOIN player_usage pu
+       ON pu.player_id = pb.player_id
+      AND pu.team_id = pb.team_id
+     LEFT JOIN team_possession_totals tpt
+       ON tpt.team_id = pb.team_id
+     LEFT JOIN player_minutes pm
+       ON pm.player_id = pb.player_id
+      AND pm.team_id = pb.team_id
+     LEFT JOIN player_plus_minus ppm
+       ON ppm.player_id = pb.player_id
+      AND ppm.team_id = pb.team_id
+     WHERE COALESCE(nd.player_name, '') <> ''
+       AND (
+         COALESCE(pu.poss_on_floor, 0) > 0
+         OR COALESCE(pm.minutes, 0) > 0
+         OR COALESCE(s.pts, 0) > 0
+         OR COALESCE(s.oreb, 0) > 0
+         OR COALESCE(s.dreb, 0) > 0
+         OR COALESCE(s.ast, 0) > 0
+         OR COALESCE(s.stl, 0) > 0
+         OR COALESCE(s.blk, 0) > 0
+         OR COALESCE(s.tov, 0) > 0
+       )
+     ORDER BY gt.is_home DESC, COALESCE(nd.starter, FALSE) DESC, COALESCE(pm.minutes, 0) DESC, COALESCE(s.pts, 0) DESC, nd.player_name",
+    params = list(as.integer(game_id), as.integer(game_year))
+  )
+}
+
+gl_add_box_score_totals <- function(box_df, team_order_ids) {
+  if (is.null(box_df) || !nrow(box_df)) return(box_df)
+
+  ordered_df <- box_df %>%
+    mutate(
+      .team_order = match(as.integer(team_id), team_order_ids),
+      .team_order = ifelse(is.na(.team_order), 99L, .team_order),
+      .row_order = 1L,
+      .starter_sort = ifelse(coalesce(starter, FALSE), 1L, 0L)
+    )
+
+  totals <- ordered_df %>%
+    group_by(.team_order, team_id, team_name, team_score, opp_score, result) %>%
+    summarise(
+      player_id = NA_integer_,
+      player_name = "TOTAL",
+      starter = FALSE,
+      poss_on_floor = max(team_poss, na.rm = TRUE),
+      team_poss = max(team_poss, na.rm = TRUE),
+      minutes = sum(minutes, na.rm = TRUE),
+      pts = sum(pts, na.rm = TRUE),
+      reb = sum(reb, na.rm = TRUE),
+      oreb = sum(oreb, na.rm = TRUE),
+      dreb = sum(dreb, na.rm = TRUE),
+      ast = sum(ast, na.rm = TRUE),
+      stl = sum(stl, na.rm = TRUE),
+      blk = sum(blk, na.rm = TRUE),
+      tov = sum(tov, na.rm = TRUE),
+      fgm = sum(fgm, na.rm = TRUE),
+      fga = sum(fga, na.rm = TRUE),
+      `2pm` = sum(`2pm`, na.rm = TRUE),
+      `2pa` = sum(`2pa`, na.rm = TRUE),
+      `3pm` = sum(`3pm`, na.rm = TRUE),
+      `3pa` = sum(`3pa`, na.rm = TRUE),
+      ftm = sum(ftm, na.rm = TRUE),
+      fta = sum(fta, na.rm = TRUE),
+      plus_minus = max(team_score - opp_score, na.rm = TRUE),
+      .groups = "drop"
+    ) %>%
+    mutate(
+      game_id = unique(ordered_df$game_id)[1],
+      opp_team_name = NA_character_,
+      fg_pct = ifelse(fga > 0, round(fgm / fga * 100, 1), NA_real_),
+      two_pct = ifelse(`2pa` > 0, round(`2pm` / `2pa` * 100, 1), NA_real_),
+      tp_pct = ifelse(`3pa` > 0, round(`3pm` / `3pa` * 100, 1), NA_real_),
+      ft_pct = ifelse(fta > 0, round(ftm / fta * 100, 1), NA_real_),
+      efg = ifelse(fga > 0, round((fgm + 0.5 * `3pm`) / fga * 100, 1), NA_real_),
+      ts = ifelse((fga + 0.44 * fta) > 0, round(pts / (2 * (fga + 0.44 * fta)) * 100, 1), NA_real_),
+      usg_pct = NA_real_,
+      .row_order = 2L,
+      .starter_sort = 0L
+    )
+
+  bind_rows(ordered_df, totals) %>%
+    arrange(.team_order, .row_order, desc(.starter_sort), desc(minutes), desc(pts), player_name)
+}
+
+gl_score_link <- function(game_id, team_id, score_display) {
+  gid <- as.character(game_id)
+  tid <- as.character(team_id)
+  label <- as.character(score_display)
+  gid[is.na(gid)] <- ""
+  tid[is.na(tid)] <- ""
+  label[is.na(label)] <- ""
+
+  sprintf(
+    '<a href="#" class="gl-game-link" data-game-id="%s" data-team-id="%s" title="Open box score">%s</a>',
+    htmltools::htmlEscape(gid),
+    htmltools::htmlEscape(tid),
+    htmltools::htmlEscape(label)
+  )
+}
+
+gl_game_link_callback <- DT::JS(
+  "table.on('click', 'a.gl-game-link', function(e) {
+     e.preventDefault();
+     if (!window.Shiny || typeof window.Shiny.setInputValue !== 'function') return;
+     var gameId = parseInt(this.getAttribute('data-game-id'), 10);
+     var teamId = parseInt(this.getAttribute('data-team-id'), 10);
+     if (isNaN(gameId)) return;
+     window.Shiny.setInputValue('gl_game_click', {
+       game_id: gameId,
+       team_id: isNaN(teamId) ? null : teamId,
+       ts: Date.now()
+     }, { priority: 'event' });
+   });"
+)
+
+GL_BOX_SCORE_HEAT_GOOD <- c(
+  "PTS", "REB", "OREB", "DREB", "AST", "STL", "BLK",
+  "FGM", "FGA", "FG%", "2PM", "2PA", "2P%", "3PM", "3PA", "3P%",
+  "FTM", "FTA", "FT%", "+/-", "TS%", "USG%"
+)
+
+gl_box_score_pr_col <- function(col_name) {
+  paste0("pr_", gsub("[^A-Za-z0-9]+", "_", col_name))
+}
+
+gl_add_box_score_percentiles <- function(display_df) {
+  if (is.null(display_df) || !nrow(display_df)) return(display_df)
+
+  eligible <- display_df$Player != "TOTAL" &
+    !is.na(display_df$Player) &
+    coalesce(suppressWarnings(as.numeric(display_df$Poss)), 0) > 0
+  eligible[is.na(eligible)] <- FALSE
+
+  add_pr <- function(data, col_name) {
+    if (!(col_name %in% names(data))) return(data)
+    vals <- suppressWarnings(as.numeric(data[[col_name]]))
+    vals[!eligible] <- NA_real_
+    data[[gl_box_score_pr_col(col_name)]] <- dplyr::percent_rank(vals)
+    data
+  }
+
+  for (col_name in GL_BOX_SCORE_HEAT_GOOD) {
+    display_df <- add_pr(display_df, col_name)
+  }
+  display_df <- add_pr(display_df, "TOV")
+  display_df
+}
+
 server_tab4 <- function(input, output, session, shared) {
 
   gl_ref <- reactiveValues(teams = NULL)
@@ -519,9 +943,10 @@ server_tab4 <- function(input, output, session, shared) {
       }
       df <- apply_stat_filters(df, gl_stat_filter_state$filters())
       if (is.null(df) || nrow(df) == 0) return(NULL)
+      df <- df %>% mutate(score_link = gl_score_link(game_id, team_id, score_display))
 
       disp <- df %>% select(
-        gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
+        gn, game_type_label, game_date, team_name, opp_team_name, result, score_link,
         minutes,
         off_ppp, def_ppp, net_rtg,
         any_of(c("Off Shot", "Def Shot")),
@@ -658,6 +1083,8 @@ server_tab4 <- function(input, output, session, shared) {
       if (length(off_shot_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_shot_idx, className = "section-left-border dt-center")
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE, escape = FALSE,
+                          selection = "none",
+                          callback = gl_game_link_callback,
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
@@ -685,9 +1112,10 @@ server_tab4 <- function(input, output, session, shared) {
       if (is.null(df) || nrow(df) == 0) return(NULL)
       df <- apply_stat_filters(df, gl_stat_filter_state$filters())
       if (is.null(df) || nrow(df) == 0) return(NULL)
+      df <- df %>% mutate(score_link = gl_score_link(game_id, team_id, score_display))
 
       disp <- df %>% select(
-        gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
+        gn, game_type_label, game_date, team_name, opp_team_name, result, score_link,
         minutes,
         off_ppp, off_efg_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
         def_ppp, def_efg_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
@@ -754,6 +1182,8 @@ server_tab4 <- function(input, output, session, shared) {
       )))
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE, escape = FALSE,
+                          selection = "none",
+                          callback = gl_game_link_callback,
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
@@ -795,6 +1225,212 @@ server_tab4 <- function(input, output, session, shared) {
 
       return(dt)
     }
+  })
+
+  # ============================================================
+  # GAME CLICK -> PLAYER BOX SCORE
+  # ============================================================
+  observeEvent(input$gl_game_click, {
+    click <- input$gl_game_click
+    req(click$game_id)
+
+    game_id_val <- suppressWarnings(as.integer(click$game_id %||% NA_integer_))
+    clicked_team_id <- suppressWarnings(as.integer(click$team_id %||% NA_integer_))
+    gy <- suppressWarnings(as.integer(input$game_year))
+    req(!is.na(game_id_val), !is.na(gy))
+
+    sched <- gl_schedule()
+    game_sched <- sched %>% filter(game_id == !!game_id_val)
+    if (is.null(game_sched) || !nrow(game_sched)) {
+      showModal(modalDialog(title = "No box score", "No schedule row found for this game.", easyClose = TRUE))
+      return()
+    }
+
+    clicked_row <- if (!is.na(clicked_team_id)) {
+      game_sched %>% filter(team_id == !!clicked_team_id)
+    } else {
+      game_sched[0, , drop = FALSE]
+    }
+    if (!nrow(clicked_row)) clicked_row <- game_sched[1, , drop = FALSE]
+    clicked_row <- clicked_row[1, , drop = FALSE]
+
+    other_team_ids <- setdiff(as.integer(game_sched$team_id), as.integer(clicked_row$team_id[[1]]))
+    team_order_ids <- c(as.integer(clicked_row$team_id[[1]]), other_team_ids)
+
+    box_df <- tryCatch(
+      gl_fetch_box_score(pg_pool, game_id_val, gy),
+      error = function(e) {
+        app_log("tab4_box_score_error", conditionMessage(e))
+        NULL
+      }
+    )
+    if (is.null(box_df) || !nrow(box_df)) {
+      showModal(modalDialog(title = "No box score", "No player box score rows found for this game.", easyClose = TRUE))
+      return()
+    }
+
+    box_df <- gl_add_box_score_totals(box_df, team_order_ids)
+
+    disp <- box_df %>%
+      transmute(
+        .team_order,
+        .row_order,
+        .starter_sort,
+        .team_id = team_id,
+        Starter = ifelse(coalesce(starter, FALSE), "Y", ""),
+        Player = player_name,
+        Min = minutes,
+        PTS = pts,
+        REB = reb,
+        OREB = oreb,
+        DREB = dreb,
+        AST = ast,
+        STL = stl,
+        BLK = blk,
+        TOV = tov,
+        FGM = fgm,
+        FGA = fga,
+        `FG%` = fg_pct,
+        `2PM` = `2pm`,
+        `2PA` = `2pa`,
+        `2P%` = two_pct,
+        `3PM` = `3pm`,
+        `3PA` = `3pa`,
+        `3P%` = tp_pct,
+        FTM = ftm,
+        FTA = fta,
+        `FT%` = ft_pct,
+        `+/-` = plus_minus,
+        Poss = poss_on_floor,
+        `TS%` = ts,
+        `USG%` = usg_pct
+      )
+    disp <- gl_add_box_score_percentiles(disp)
+
+    clicked_team_id <- as.integer(clicked_row$team_id[[1]])
+    clicked_disp <- disp %>% filter(.team_id == !!clicked_team_id)
+    opponent_disp <- disp %>% filter(.team_id != !!clicked_team_id)
+
+    render_box_score_dt <- function(table_df) {
+      pr_cols <- names(table_df)[grepl("^pr_", names(table_df))]
+      hidden_cols <- c(".team_order", ".row_order", ".starter_sort", ".team_id", pr_cols)
+      hidden_idx <- which(names(table_df) %in% hidden_cols) - 1L
+      player_idx <- which(names(table_df) == "Player") - 1L
+      min_idx <- which(names(table_df) == "Min") - 1L
+      order_cols <- list(
+        list(which(names(table_df) == ".row_order") - 1L, "asc"),
+        list(which(names(table_df) == ".starter_sort") - 1L, "desc"),
+        list(min_idx, "desc")
+      )
+
+      dt <- DT::datatable(
+        table_df,
+        rownames = FALSE,
+        escape = FALSE,
+        selection = "none",
+        options = list(
+          headerCallback = HEADER_TOOLTIP_JS,
+          dom = "t",
+          paging = FALSE,
+          ordering = TRUE,
+          deferRender = TRUE,
+          scrollX = TRUE,
+          scrollY = "65vh",
+          scrollCollapse = TRUE,
+          order = order_cols,
+          columnDefs = list(
+            list(visible = FALSE, targets = hidden_idx),
+            list(className = "dt-center", targets = "_all"),
+            list(className = "dt-left", targets = player_idx)
+          )
+        )
+      )
+
+      int_cols <- intersect(c(
+        "PTS", "REB", "OREB", "DREB", "AST", "STL", "BLK", "TOV",
+        "FGM", "FGA", "2PM", "2PA", "3PM", "3PA", "FTM", "FTA", "+/-", "Poss"
+      ), names(table_df))
+      pct_cols <- intersect(c("Min", "FG%", "2P%", "3P%", "FT%", "TS%", "USG%"), names(table_df))
+
+      if (length(int_cols)) {
+        dt <- DT::formatCurrency(dt, int_cols, currency = "", interval = 3, mark = ",", digits = 0)
+      }
+      if (length(pct_cols)) {
+        dt <- DT::formatRound(dt, pct_cols, 1)
+      }
+
+      apply_heat <- function(dt_obj, col_name, reverse = FALSE) {
+        pr_col <- gl_box_score_pr_col(col_name)
+        if (!(col_name %in% names(table_df)) || !(pr_col %in% names(table_df))) return(dt_obj)
+        DT::formatStyle(
+          dt_obj,
+          col_name,
+          backgroundColor = DT::styleInterval(CUTS, if (isTRUE(reverse)) COLS_REV else COLS_GRAD),
+          valueColumns = pr_col
+        )
+      }
+
+      for (col_name in GL_BOX_SCORE_HEAT_GOOD) {
+        dt <- apply_heat(dt, col_name, reverse = FALSE)
+      }
+      dt <- apply_heat(dt, "TOV", reverse = TRUE)
+
+      dt %>%
+        DT::formatStyle(
+          "Player",
+          target = "row",
+          fontWeight = DT::styleEqual("TOTAL", "bold"),
+          backgroundColor = DT::styleEqual("TOTAL", "#1a1f2b")
+        )
+    }
+
+    output$gl_box_score_team_table <- DT::renderDataTable({
+      render_box_score_dt(clicked_disp)
+    })
+
+    output$gl_box_score_opp_table <- DT::renderDataTable({
+      render_box_score_dt(opponent_disp)
+    })
+
+    game_type_label <- unname(GAME_TYPE_LABELS[as.character(clicked_row$game_type[[1]])])
+    if (!length(game_type_label) || is.na(game_type_label) || !nzchar(game_type_label)) {
+      game_type_label <- as.character(clicked_row$game_type[[1]])
+    }
+    game_date_label <- format(as.Date(clicked_row$game_date[[1]]), "%b %d, %Y")
+    title <- sprintf(
+      "Box Score: %s %s-%s %s",
+      clicked_row$team_name[[1]],
+      clicked_row$team_score[[1]],
+      clicked_row$opp_score[[1]],
+      clicked_row$opp_team_name[[1]]
+    )
+
+    showModal(modalDialog(
+      title = title,
+      tags$div(
+        class = "gl-box-score-modal",
+        tags$div(
+          class = "text-muted small mb-2",
+          sprintf("GN %s | %s | %s", clicked_row$gn[[1]], game_date_label, game_type_label)
+        ),
+        tabsetPanel(
+          id = "gl_box_score_team_tabs",
+          type = "tabs",
+          tabPanel(
+            title = sprintf("%s %s", clicked_row$team_name[[1]], clicked_row$team_score[[1]]),
+            value = "clicked_team",
+            DTOutput("gl_box_score_team_table")
+          ),
+          tabPanel(
+            title = sprintf("%s %s", clicked_row$opp_team_name[[1]], clicked_row$opp_score[[1]]),
+            value = "opponent",
+            DTOutput("gl_box_score_opp_table")
+          )
+        )
+      ),
+      size = "l",
+      easyClose = TRUE
+    ))
   })
 
   # ---- Filter Chips ----
