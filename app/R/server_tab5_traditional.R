@@ -872,8 +872,10 @@ server_tab5_traditional <- function(input, output, session, shared) {
     dt <- DT::datatable(
       disp,
       rownames = FALSE,
+      extensions = "ColReorder",
       options = list(
         headerCallback = HEADER_TOOLTIP_JS,
+        colReorder = TRUE,
         dom = "tip",
         pageLength = 50,
         deferRender = TRUE,
