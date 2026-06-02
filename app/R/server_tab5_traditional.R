@@ -60,6 +60,93 @@ add_ts_two_point_stats <- function(df) {
   df
 }
 
+ts_player_key <- function(team_id, player_id) {
+  paste0(as.integer(team_id), ":", as.integer(player_id))
+}
+
+normalize_ts_players <- function(players_df, teams_df = NULL) {
+  if (is.null(players_df) || !nrow(players_df) || is.null(names(players_df))) {
+    return(data.frame())
+  }
+  if (!all(c("team_id", "player_id") %in% names(players_df))) {
+    return(data.frame())
+  }
+
+  player_name <- if ("player_name" %in% names(players_df)) {
+    as.character(players_df$player_name)
+  } else if ("name" %in% names(players_df)) {
+    as.character(players_df$name)
+  } else if (all(c("firstname", "lastname") %in% names(players_df))) {
+    trimws(paste(players_df$firstname, players_df$lastname))
+  } else {
+    rep("", nrow(players_df))
+  }
+
+  team_name <- if ("team_name" %in% names(players_df)) {
+    as.character(players_df$team_name)
+  } else {
+    rep("", nrow(players_df))
+  }
+  if (is.data.frame(teams_df) && nrow(teams_df) && all(c("team_id", "team_name") %in% names(teams_df))) {
+    team_map <- stats::setNames(as.character(teams_df$team_name), as.character(teams_df$team_id))
+    missing_team <- is.na(team_name) | !nzchar(team_name)
+    team_name[missing_team] <- unname(team_map[as.character(players_df$team_id[missing_team])])
+  }
+
+  out <- data.frame(
+    team_id = suppressWarnings(as.integer(players_df$team_id)),
+    player_id = suppressWarnings(as.integer(players_df$player_id)),
+    player_name = trimws(player_name),
+    team_name = trimws(team_name),
+    stringsAsFactors = FALSE
+  )
+  out <- out[
+    is.finite(out$team_id) &
+      is.finite(out$player_id) &
+      nzchar(out$player_name),
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(out)) return(out)
+  out$key <- ts_player_key(out$team_id, out$player_id)
+  out <- out[!duplicated(out$key), , drop = FALSE]
+  out[order(tolower(out$player_name), tolower(out$team_name)), , drop = FALSE]
+}
+
+ts_player_choices <- function(players_df, teams_df = NULL, team_ids = NULL) {
+  players <- normalize_ts_players(players_df, teams_df)
+  if (!nrow(players)) return(stats::setNames(character(0), character(0)))
+  if (!is.null(team_ids) && length(team_ids)) {
+    players <- players[players$team_id %in% as.integer(team_ids), , drop = FALSE]
+  }
+  if (!nrow(players)) return(stats::setNames(character(0), character(0)))
+
+  labels <- ifelse(
+    nzchar(players$team_name),
+    sprintf("%s (%s)", players$player_name, players$team_name),
+    players$player_name
+  )
+  stats::setNames(players$key, labels)
+}
+
+filter_ts_players <- function(df, selected_player_keys) {
+  if (is.null(df) || !nrow(df) || is.null(selected_player_keys) || !length(selected_player_keys)) {
+    return(df)
+  }
+  if (!all(c("team_id", "player_id") %in% names(df))) return(df)
+  row_keys <- ts_player_key(df$team_id, df$player_id)
+  df[row_keys %in% as.character(selected_player_keys), , drop = FALSE]
+}
+
+ts_no_data_message <- function(selected_player_keys) {
+  selected_player_keys <- selected_player_keys %||% character(0)
+  selected_player_keys <- selected_player_keys[nzchar(as.character(selected_player_keys))]
+  if (length(selected_player_keys)) {
+    return("NO DATA FOR PLAYER SELECTED")
+  }
+  "No data for current filters"
+}
+
 server_tab5_traditional <- function(input, output, session, shared) {
 
   TS_NORM_MIN_GP <- 3L
@@ -126,10 +213,23 @@ server_tab5_traditional <- function(input, output, session, shared) {
     df
   }
 
-  ts_ref <- reactiveValues(teams = NULL)
+  ts_ref <- reactiveValues(teams = NULL, players = NULL)
 
   ts_stat_filters <- reactiveVal(list())
   ts_stat_filter_next_id <- reactiveVal(1L)
+
+  selected_team_ids_now <- function() {
+    td <- ts_ref$teams
+    selected <- input$ts_teams %||% character(0)
+    if (is.null(td) || !nrow(td) || !length(selected)) return(NULL)
+    td %>% filter(team_name %in% selected) %>% pull(team_id)
+  }
+
+  refresh_ts_player_choices <- function() {
+    choices <- ts_player_choices(ts_ref$players, ts_ref$teams, selected_team_ids_now())
+    selected <- intersect(input$ts_players %||% character(0), unname(choices))
+    updateSelectizeInput(session, "ts_players", choices = choices, selected = selected, server = TRUE)
+  }
 
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "traditional_stats")) return(NULL)
@@ -152,6 +252,30 @@ server_tab5_traditional <- function(input, output, session, shared) {
     ts_ref$teams <- teams_df
     updateSelectizeInput(session, "ts_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "ts_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
+
+    players_df <- cached_ref_query(
+      key = sprintf("ts_players_%d", gy_int),
+      query_fun = function() {
+        db_get_query(
+          pg_pool,
+          "SELECT
+             fr.team_id,
+             fr.player_id,
+             MIN(btrim(fr.team_name)) AS team_name,
+             MIN(NULLIF(btrim(CONCAT_WS(' ', fr.firstname, fr.lastname)), '')) AS player_name
+           FROM basketball_test.full_rosters fr
+           WHERE fr.game_year = $1
+             AND fr.player_id IS NOT NULL
+             AND fr.player_id > 0
+           GROUP BY fr.team_id, fr.player_id
+           HAVING MIN(NULLIF(btrim(CONCAT_WS(' ', fr.firstname, fr.lastname)), '')) IS NOT NULL
+           ORDER BY player_name, team_name",
+          params = list(gy_int)
+        )
+      }
+    )
+    ts_ref$players <- players_df
+    refresh_ts_player_choices()
 
     gn_df <- cached_ref_query(
       key = sprintf("ts_gn_%d", gy_int),
@@ -177,10 +301,15 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   setup_gn_last_n_sync(session, input, "ts")
 
+  observeEvent(input$ts_teams, {
+    refresh_ts_player_choices()
+  }, ignoreInit = TRUE)
+
   observeEvent(input$ts_reset, {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateSelectizeInput(session, "ts_teams", selected = character(0))
+    updateSelectizeInput(session, "ts_players", selected = character(0))
     updateSelectizeInput(session, "ts_game_type", selected = character(0))
     updateSelectizeInput(session, "ts_opponents", selected = character(0))
     updateSelectInput(session, "ts_home_away", selected = "")
@@ -194,6 +323,10 @@ server_tab5_traditional <- function(input, output, session, shared) {
     reset_gn_last_n_inputs(session, "ts")
     ts_stat_filters(list())
   })
+
+  observeEvent(input$ts_clear_players, {
+    updateSelectizeInput(session, "ts_players", selected = character(0))
+  }, ignoreInit = TRUE)
 
   observeEvent(input$ts_add_stat_filter, {
     col_label <- input$ts_stat_filter_col
@@ -307,6 +440,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   debounced_range <- reactive(input$ts_dates) %>% debounce(300)
   debounced_teams <- reactive(input$ts_teams) %>% debounce(300)
+  debounced_players <- reactive(input$ts_players) %>% debounce(150)
   debounced_ts_filters <- reactive(list(
     game_type = input$ts_game_type,
     opp_names = input$ts_opponents,
@@ -531,16 +665,19 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   result_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
+    df <- NULL
     if (!isTRUE(fallback_needed())) {
       mv_df <- mv_result_df()
-      if (!is.null(mv_df)) return(mv_df)
+      if (!is.null(mv_df)) df <- mv_df
     }
-    live_result_df()
+    if (is.null(df)) df <- live_result_df()
+    filter_ts_players(df, debounced_players())
   }) %>% bindEvent(
     input$main_tabs,
     input$game_year,
     debounced_range(),
     debounced_teams(),
+    debounced_players(),
     debounced_ts_filters(),
     gn_params()
   )
@@ -668,7 +805,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "traditional_stats"))
     disp_ctx <- ts_display_context()
     df <- disp_ctx$df
-    if (is.null(df) || nrow(df) == 0) return(NULL)
+    if (is.null(df) || nrow(df) == 0) {
+      return(DT::datatable(
+        data.frame(Info = ts_no_data_message(input$ts_players), check.names = FALSE),
+        rownames = FALSE,
+        options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t", ordering = FALSE)
+      ))
+    }
     mode <- disp_ctx$mode
 
     disp <- df %>%
@@ -843,6 +986,21 @@ server_tab5_traditional <- function(input, output, session, shared) {
       )
     })
 
+    player_chips <- list()
+    selected_players <- input$ts_players %||% character(0)
+    if (length(selected_players)) {
+      choice_map <- ts_player_choices(ts_ref$players, ts_ref$teams)
+      label_map <- stats::setNames(names(choice_map), unname(choice_map))
+      selected_labels <- unname(label_map[as.character(selected_players)])
+      selected_labels[is.na(selected_labels) | !nzchar(selected_labels)] <- as.character(selected_players)[is.na(selected_labels) | !nzchar(selected_labels)]
+      chip_label <- if (length(selected_labels) == 1) {
+        paste("Player:", selected_labels[1])
+      } else {
+        paste0(length(selected_labels), " players")
+      }
+      player_chips <- list(make_chip(chip_label, "ts_clear_players", "chip-game"))
+    }
+
     add_btn <- bslib::popover(
       trigger = tags$span(
         class = "filter-chip filter-chip-add",
@@ -886,7 +1044,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       input,
       shared$season_date_bounds,
       reset_btn_id = "ts_reset",
-      extra_children = c(stat_chips, list(add_btn))
+      extra_children = c(player_chips, stat_chips, list(add_btn))
     )
   })
   setup_chip_clears("ts", session, input, shared,

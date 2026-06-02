@@ -21,6 +21,8 @@ ui_tab5_traditional <- tabPanel(
           dateRangeInput("ts_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
           selectizeInput("ts_teams", "Teams", choices = NULL, selected = character(0), multiple = TRUE,
                          options = list(placeholder = "All teams")),
+          selectizeInput("ts_players", "Players", choices = NULL, selected = character(0), multiple = TRUE,
+                         options = list(placeholder = "All players")),
           div(style = "display: none;",
             selectInput(
               "ts_display_mode",

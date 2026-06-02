@@ -13,3 +13,44 @@ test_that("tab5 calculates two-point columns from field-goal and three-point col
   expect_equal(out$`2pa`, c(10, 0))
   expect_equal(out$two_pct, c(60, NA_real_))
 })
+
+test_that("tab5 player choices narrow to selected teams", {
+  players <- data.frame(
+    team_id = c(1L, 1L, 2L),
+    player_id = c(11L, 12L, 21L),
+    name = c("Player A", "Player C", "Player B"),
+    stringsAsFactors = FALSE
+  )
+  teams <- data.frame(
+    team_id = c(1L, 2L),
+    team_name = c("Team A", "Team B"),
+    stringsAsFactors = FALSE
+  )
+
+  all_choices <- ts_player_choices(players, teams)
+  team_a_choices <- ts_player_choices(players, teams, team_ids = 1L)
+
+  expect_equal(unname(all_choices), c("1:11", "2:21", "1:12"))
+  expect_equal(names(all_choices), c("Player A (Team A)", "Player B (Team B)", "Player C (Team A)"))
+  expect_equal(unname(team_a_choices), c("1:11", "1:12"))
+  expect_equal(names(team_a_choices), c("Player A (Team A)", "Player C (Team A)"))
+})
+
+test_that("tab5 player filter uses team-player keys", {
+  df <- data.frame(
+    team_id = c(1L, 1L, 2L),
+    player_id = c(11L, 12L, 11L),
+    Player = c("Player A", "Player C", "Player A"),
+    pts = c(10, 20, 30),
+    stringsAsFactors = FALSE
+  )
+
+  filtered <- filter_ts_players(df, c("1:11", "2:11"))
+
+  expect_equal(filtered$pts, c(10, 30))
+})
+
+test_that("tab5 empty state calls out selected players without data", {
+  expect_equal(ts_no_data_message(character(0)), "No data for current filters")
+  expect_equal(ts_no_data_message("1:99"), "NO DATA FOR PLAYER SELECTED")
+})
