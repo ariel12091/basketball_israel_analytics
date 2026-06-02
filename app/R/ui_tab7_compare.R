@@ -52,9 +52,17 @@ ui_tab7_compare <- tabPanel(
           id = "cmp-filters", class = "collapse d-md-block",
           style = "max-height: calc(100vh - 160px); overflow-y: auto; padding-right: 4px; padding-bottom: 60px;",
           actionButton("cmp_reset", "Reset Filters"),
-          tags$hr(),
           conditionalPanel(
             condition = "input.cmp_mode == 'Players'",
+            radioButtons(
+              "cmp_player_compare_mode", "Compare",
+              choices = c("Other players" = "other", "Against himself" = "self"),
+              selected = "other", inline = FALSE
+            )
+          ),
+          tags$hr(),
+          conditionalPanel(
+            condition = "input.cmp_mode == 'Players' && input.cmp_player_compare_mode != 'self'",
             tagList(
               dateRangeInput("cmp_players_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
               fluidRow(
@@ -75,6 +83,22 @@ ui_tab7_compare <- tabPanel(
             tags$span(class = "badge rounded-pill",
                       style = "background: rgba(123,140,222,.2); color: #7b8cde; border: 1px solid rgba(123,140,222,.4); font-size: .7rem;",
                       "A")
+          ),
+
+          conditionalPanel(
+            condition = "input.cmp_mode == 'Players' && input.cmp_player_compare_mode == 'self'",
+            tagList(
+              dateRangeInput("cmp_player_a_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
+              fluidRow(
+                column(6, selectizeInput("cmp_player_a_gn_min", tt("From Game Number (GN)", "gn"),
+                                         choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any"))),
+                column(6, selectizeInput("cmp_player_a_gn_max", tt("To Game Number (GN)", "gn"),
+                                         choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any")))
+              ),
+              tags$hr()
+            )
           ),
 
           # Player picker (Players mode only)
@@ -152,7 +176,7 @@ ui_tab7_compare <- tabPanel(
           ),
 
           conditionalPanel(
-            condition = "input.cmp_mode == 'Players'",
+            condition = "input.cmp_mode == 'Players' && input.cmp_player_compare_mode != 'self'",
             tagList(
               selectizeInput("cmp_player_b_list_team_filter", "Player List Team Filter",
                              choices = NULL, multiple = TRUE,
@@ -160,6 +184,21 @@ ui_tab7_compare <- tabPanel(
               selectizeInput("cmp_player_b", "Player", choices = NULL,
                              options = list(placeholder = "Search player...")),
               uiOutput("cmp_player_b_team_ui")
+            )
+          ),
+
+          conditionalPanel(
+            condition = "input.cmp_mode == 'Players' && input.cmp_player_compare_mode == 'self'",
+            tagList(
+              dateRangeInput("cmp_player_b_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
+              fluidRow(
+                column(6, selectizeInput("cmp_player_b_gn_min", tt("From Game Number (GN)", "gn"),
+                                         choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any"))),
+                column(6, selectizeInput("cmp_player_b_gn_max", tt("To Game Number (GN)", "gn"),
+                                         choices = NULL, selected = "", multiple = FALSE,
+                                         options = list(placeholder = "Any")))
+              )
             )
           ),
 
@@ -223,7 +262,7 @@ ui_tab7_compare <- tabPanel(
           bullets = c(
             "Metric chips at the top (Net Rtg, Offense, Defense, eFG%, TOV%, OREB%, FTR) control which stat is shown in the table and summary cards.",
             "Summary cards show Side A value, Side B value, delta, and possessions. The table shows #, Team, Side A metric, Total Poss A, Side B metric, Total Poss B, and Gap.",
-            "Teams and Lineups modes compare the same team/lineup to itself under two different conditions (e.g. home vs away, clutch vs non-clutch). Players mode compares different players to each other under the same conditions.",
+            "Teams and Lineups modes compare the same team/lineup to itself under two different conditions (e.g. home vs away, clutch vs non-clutch). Players mode compares either two players under the same time filters or one player across separate A/B time filters.",
             "Click any row in League view for a detailed breakdown of that team or lineup."
           )
         ),

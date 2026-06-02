@@ -217,6 +217,112 @@ capture_input_messages <- function(session) {
   )
 }
 
+test_that("tab7 players list team filter uses team ids and refreshes after cleared player", {
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    sent <- capture_input_messages(session)
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Players"
+    )
+    session$flushReact()
+
+    team_filter_msg <- sent$last("cmp_player_a_list_team_filter")$message
+    expect_true(grepl('value="1">Team A', as.character(team_filter_msg$options), fixed = TRUE))
+    expect_true(grepl('value="2">Team B', as.character(team_filter_msg$options), fixed = TRUE))
+
+    session$setInputs(cmp_player_a = character(0))
+    session$flushReact()
+    before_refresh <- sent$count("cmp_player_a")
+
+    expect_warning({
+      session$setInputs(cmp_player_a_list_team_filter = "1")
+      session$flushReact()
+    }, NA)
+
+    expect_gt(sent$count("cmp_player_a"), before_refresh)
+    expect_equal(sent$last("cmp_player_a")$message$value, character(0))
+  })
+})
+
+test_that("tab7 players mode loads filters without auto-selecting example players", {
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    sent <- capture_input_messages(session)
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Players"
+    )
+    session$flushReact()
+
+    team_filter_msg <- sent$last("cmp_player_a_list_team_filter")$message
+    expect_true(grepl('value="1">Team A', as.character(team_filter_msg$options), fixed = TRUE))
+    expect_equal(sent$last("cmp_player_a")$message$value, character(0))
+    expect_equal(sent$last("cmp_player_b")$message$value, character(0))
+    expect_true(grepl("Select Player A and Player B", render_ui_text(output$cmp_pvp_ui), fixed = TRUE))
+  })
+})
+
+test_that("tab7 self player compare uses one player and side-specific time filters", {
+  query_calls <- list()
+  server_env <- environment(server_tab7_compare)
+  original_db_get_query <- get("db_get_query", envir = server_env)
+  assign("db_get_query", function(pool, query, params = NULL) {
+    q <- paste(query, collapse = " ")
+    if (grepl("get_player_traditional_dynamic", q, fixed = TRUE) &&
+        !is.null(params) && length(params) >= 18L) {
+      query_calls[[length(query_calls) + 1L]] <<- params
+    }
+    original_db_get_query(pool, query, params = params)
+  }, envir = server_env)
+  on.exit(assign("db_get_query", original_db_get_query, envir = server_env), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Players",
+      cmp_player_compare_mode = "self",
+      cmp_player_a = "11",
+      cmp_player_a_dates = c(as.Date("2026-01-01"), as.Date("2026-01-15")),
+      cmp_player_b_dates = c(as.Date("2026-02-01"), as.Date("2026-02-15")),
+      cmp_player_a_gn_min = "1",
+      cmp_player_a_gn_max = "3",
+      cmp_player_b_gn_min = "4",
+      cmp_player_b_gn_max = "5"
+    )
+    session$elapse(300)
+    session$flushReact()
+
+    pvp_txt <- render_ui_text(output$cmp_pvp_ui)
+    expect_true(grepl("Player A", pvp_txt, fixed = TRUE))
+    expect_true(grepl("2026-01-01 to 2026-01-15", pvp_txt, fixed = TRUE))
+    expect_true(grepl("2026-02-01 to 2026-02-15", pvp_txt, fixed = TRUE))
+    expect_true(grepl("GN 1-3", pvp_txt, fixed = TRUE))
+    expect_true(grepl("GN 4-5", pvp_txt, fixed = TRUE))
+
+    starts <- as.Date(vapply(query_calls, function(params) as.character(params[[2]]), character(1)))
+    ends <- as.Date(vapply(query_calls, function(params) as.character(params[[3]]), character(1)))
+    gn_min <- vapply(query_calls, function(params) as.integer(params[[16]]), integer(1))
+    gn_max <- vapply(query_calls, function(params) as.integer(params[[17]]), integer(1))
+
+    expect_true(as.Date("2026-01-01") %in% starts)
+    expect_true(as.Date("2026-02-01") %in% starts)
+    expect_true(as.Date("2026-01-15") %in% ends)
+    expect_true(as.Date("2026-02-15") %in% ends)
+    expect_true(1L %in% gn_min)
+    expect_true(4L %in% gn_min)
+    expect_true(3L %in% gn_max)
+    expect_true(5L %in% gn_max)
+  })
+})
+
 test_that("tab7 compare home away preset applies side values and keeps blocked field independent", {
   shiny::testServer(function(input, output, session) {
     server_tab7_compare(input, output, session, shared = make_shared())
