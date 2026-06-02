@@ -139,11 +139,6 @@ filter_ts_players <- function(df, selected_player_keys) {
 }
 
 ts_no_data_message <- function(selected_player_keys) {
-  selected_player_keys <- selected_player_keys %||% character(0)
-  selected_player_keys <- selected_player_keys[nzchar(as.character(selected_player_keys))]
-  if (length(selected_player_keys)) {
-    return("NO DATA FOR PLAYER SELECTED")
-  }
   "No data for current filters"
 }
 

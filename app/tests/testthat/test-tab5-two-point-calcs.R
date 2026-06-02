@@ -52,5 +52,5 @@ test_that("tab5 player filter uses team-player keys", {
 
 test_that("tab5 empty state calls out selected players without data", {
   expect_equal(ts_no_data_message(character(0)), "No data for current filters")
-  expect_equal(ts_no_data_message("1:99"), "NO DATA FOR PLAYER SELECTED")
+  expect_equal(ts_no_data_message("1:99"), "No data for current filters")
 })
