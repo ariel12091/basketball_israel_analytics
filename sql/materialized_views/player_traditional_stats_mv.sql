@@ -98,22 +98,6 @@ box_totals AS (
   WHERE awy.player_id IS NOT NULL AND awy.player_id > 0
   GROUP BY awy.game_year, awy.team_id, awy.player_id
 ),
-team_usage_totals AS (
-  SELECT
-    awy.game_year,
-    awy.team_id,
-    COUNT(CASE WHEN awy.type = 'shot' AND awy.type_lineup = 'offense' THEN 1 END)
-      + COUNT(DISTINCT CASE
-          WHEN awy.type = 'freeThrow'
-            AND awy.type_lineup = 'offense'
-            AND awy.parent_type = 'foul'
-            AND awy.parent_param = 'personal'
-          THEN awy.parent_action_id
-        END) AS team_ts_poss_count,
-    SUM(CASE WHEN awy.type = 'turnover' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS team_tov
-  FROM actions_enriched awy
-  GROUP BY awy.game_year, awy.team_id
-),
 poss_end AS (
   SELECT DISTINCT
     awy.game_year,
@@ -140,14 +124,6 @@ usage_totals AS (
    AND lm.team_id = pe.team_id
    AND lm.lineup_hash = pe.lineup_hash
   GROUP BY pe.game_year, lm.team_id, lm.player_id
-),
-team_possession_totals AS (
-  SELECT
-    pe.game_year,
-    pe.team_id,
-    COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id)) AS team_poss
-  FROM poss_end pe
-  GROUP BY pe.game_year, pe.team_id
 ),
 segment_times AS (
   SELECT
@@ -238,28 +214,20 @@ SELECT
     ELSE NULL
   END AS ts,
   CASE
-    WHEN (bt.ts_poss_count + bt.tov) > 0
-     AND (tut.team_ts_poss_count + tut.team_tov) > 0
+    WHEN (bt.ts_poss_count + bt.tov + 0.33 * bt.ast) > 0
      AND COALESCE(ut.poss_on_floor, 0) > 0
-     AND COALESCE(tpt.team_poss, 0) > 0
     THEN ROUND(
-      100.0 * (bt.ts_poss_count + bt.tov)::numeric * tpt.team_poss::numeric
-      / NULLIF((tut.team_ts_poss_count + tut.team_tov)::numeric * ut.poss_on_floor::numeric, 0),
+      100.0 * (bt.ts_poss_count + bt.tov + 0.33 * bt.ast)::numeric
+      / NULLIF(ut.poss_on_floor::numeric, 0),
       1
     )
     ELSE NULL
   END AS usg_pct
 FROM box_totals bt
-LEFT JOIN team_usage_totals tut
-  ON tut.game_year = bt.game_year
- AND tut.team_id = bt.team_id
 LEFT JOIN usage_totals ut
   ON ut.game_year = bt.game_year
  AND ut.team_id = bt.team_id
  AND ut.player_id = bt.player_id
-LEFT JOIN team_possession_totals tpt
-  ON tpt.game_year = bt.game_year
- AND tpt.team_id = bt.team_id
 LEFT JOIN minutes_totals mt
   ON mt.game_year = bt.game_year
  AND mt.team_id = bt.team_id

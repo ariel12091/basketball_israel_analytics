@@ -315,13 +315,6 @@ BEGIN
      AND lm.lineup_hash = pe.lineup_hash
     GROUP BY lm.player_id, pe.team_id
   ),
-  team_possession_totals AS (
-    SELECT
-      pe.team_id,
-      COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::numeric AS team_poss
-    FROM poss_end pe
-    GROUP BY pe.team_id
-  ),
   seg_times AS (
     SELECT
       a.game_id,
@@ -386,23 +379,6 @@ BEGIN
       AND a.player_id > 0
     GROUP BY a.player_id, a.team_id
   ),
-  team_usage_totals AS (
-    SELECT
-      a.team_id,
-      (
-        COUNT(CASE WHEN a.type = 'shot' AND a.type_lineup = 'offense' THEN 1 END)
-        + COUNT(DISTINCT CASE
-            WHEN a.type = 'freeThrow'
-              AND a.type_lineup = 'offense'
-              AND a.parent_type = 'foul'
-              AND a.parent_param = 'personal'
-            THEN a.parent_action_id
-          END)
-      )::numeric AS team_ts_poss_count,
-      SUM(CASE WHEN a.type = 'turnover' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::numeric AS team_tov
-    FROM actions_enriched a
-    GROUP BY a.team_id
-  ),
   names_df AS (
     SELECT
       fr.player_id,
@@ -440,25 +416,19 @@ BEGIN
       CASE WHEN s.fga > 0 THEN ROUND(((s.fgm::numeric + 0.5 * s."3pm"::numeric) / s.fga::numeric) * 100, 1) ELSE NULL END AS efg,
       CASE WHEN (s.fga + 0.44 * s.fta) > 0 THEN ROUND((s.pts::numeric / (2.0 * (s.fga::numeric + 0.44 * s.fta::numeric))) * 100, 1) ELSE NULL END AS ts,
       CASE
-        WHEN (s.ts_poss_count + s.tov) > 0
-         AND (tut.team_ts_poss_count + tut.team_tov) > 0
+        WHEN (s.ts_poss_count + s.tov + 0.33 * s.ast) > 0
          AND COALESCE(pu.poss_on_floor, 0) > 0
-         AND COALESCE(tpt.team_poss, 0) > 0
         THEN ROUND(
-          100.0 * (s.ts_poss_count + s.tov)::numeric * tpt.team_poss::numeric
-          / NULLIF((tut.team_ts_poss_count + tut.team_tov)::numeric * pu.poss_on_floor::numeric, 0),
+          100.0 * (s.ts_poss_count + s.tov + 0.33 * s.ast)::numeric
+          / NULLIF(pu.poss_on_floor::numeric, 0),
           1
         )
         ELSE NULL
       END AS usg_pct
     FROM stats s
-    LEFT JOIN team_usage_totals tut
-      ON tut.team_id = s.team_id
     LEFT JOIN player_usage pu
       ON pu.player_id = s.player_id
      AND pu.team_id = s.team_id
-    LEFT JOIN team_possession_totals tpt
-      ON tpt.team_id = s.team_id
     LEFT JOIN player_minutes pm
       ON pm.player_id = s.player_id
      AND pm.team_id = s.team_id

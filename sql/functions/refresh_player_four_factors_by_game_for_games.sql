@@ -159,7 +159,13 @@ BEGIN
           AND cd.type = 'turnover'
           AND cd.type_lineup = 'offense'
         THEN 1
-      END) AS player_tov_count
+      END) AS player_tov_count,
+      count(CASE
+        WHEN cd.action_player_id = cd.player_id
+          AND cd.type = 'assist'
+          AND cd.type_lineup = 'offense'
+        THEN 1
+      END) AS player_ast_count
     FROM combined_data cd
     GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year, cd.is_on_key,
              cd.type_lineup, cd.num_starters, cd.own_starters, cd.opp_starters,
@@ -192,10 +198,10 @@ BEGIN
       WHEN ss.type_lineup = 'offense'
        AND ss.is_on_key = 1
        AND SUM(ss.total_poss) > 0
-       AND SUM(ss.ts_poss_count + ss.tov_count) > 0
+       AND SUM(ss.player_ts_poss_count + ss.player_tov_count + 0.33 * ss.player_ast_count) > 0
       THEN ROUND(
-        100.0 * SUM(ss.player_ts_poss_count + ss.player_tov_count)::numeric
-        / NULLIF(SUM(ss.ts_poss_count + ss.tov_count)::numeric, 0),
+        100.0 * SUM(ss.player_ts_poss_count + ss.player_tov_count + 0.33 * ss.player_ast_count)::numeric
+        / NULLIF(SUM(ss.total_poss)::numeric, 0),
         1
       )
       ELSE NULL
