@@ -15,6 +15,9 @@ TS_FILTERABLE_COLS <- list(
   "FGM"   = "fgm",
   "FGA"   = "fga",
   "FG%"   = "fg_pct",
+  "2PM"   = "2pm",
+  "2PA"   = "2pa",
+  "2P%"   = "two_pct",
   "3PM"   = "3pm",
   "3PA"   = "3pa",
   "3P%"   = "tp_pct",
@@ -26,7 +29,7 @@ TS_FILTERABLE_COLS <- list(
   "USG%"  = "usg_pct"
 )
 
-TS_PERCENT_COLS <- c("fg_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct")
+TS_PERCENT_COLS <- c("fg_pct", "two_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct")
 
 apply_ts_stat_filters <- function(df, filters) {
   if (is.null(df) || !nrow(df) || !length(filters)) return(df)
@@ -38,6 +41,22 @@ apply_ts_stat_filters <- function(df, filters) {
     df <- df[keep, , drop = FALSE]
     if (!nrow(df)) break
   }
+  df
+}
+
+add_ts_two_point_stats <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  needed <- c("fgm", "fga", "3pm", "3pa")
+  if (!all(needed %in% names(df))) return(df)
+
+  fgm <- suppressWarnings(as.numeric(df$fgm))
+  fga <- suppressWarnings(as.numeric(df$fga))
+  fg3m <- suppressWarnings(as.numeric(df$`3pm`))
+  fg3a <- suppressWarnings(as.numeric(df$`3pa`))
+
+  df$`2pm` <- fgm - fg3m
+  df$`2pa` <- fga - fg3a
+  df$two_pct <- ifelse(df$`2pa` > 0, round((df$`2pm` / df$`2pa`) * 100, 1), NA_real_)
   df
 }
 
@@ -232,7 +251,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   apply_ts_mode <- function(df, mode, x_poss = NA_real_, x_min = NA_real_) {
     if (is.null(df) || !nrow(df)) return(df)
 
-    count_cols <- c("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta")
+    count_cols <- c("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
     mode <- mode %||% "Per Game"
 
     if (identical(mode, "Per Game")) {
@@ -452,6 +471,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     out %>%
       clean_ts_rows() %>%
+      add_ts_two_point_stats() %>%
       add_ts_usage_pct() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
   }) %>% bindEvent(input$main_tabs, input$game_year, debounced_teams())
@@ -497,6 +517,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     out %>%
       rename(Player = player_name) %>%
       clean_ts_rows() %>%
+      add_ts_two_point_stats() %>%
       add_ts_usage_pct() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
     }) %>% bindEvent(
@@ -666,6 +687,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
         FGM = fgm,
         FGA = fga,
         `FG%` = fg_pct,
+        `2PM` = `2pm`,
+        `2PA` = `2pa`,
+        `2P%` = two_pct,
         `3PM` = `3pm`,
         `3PA` = `3pa`,
         `3P%` = tp_pct,
@@ -696,7 +720,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       data
     }
 
-    heat_good <- c("PTS", "REB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
+    heat_good <- c("PTS", "REB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "2PM", "2PA", "2P%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
     for (col_name in heat_good) disp <- add_pr_col(disp, col_name)
     if ("TOV" %in% names(disp)) disp <- add_pr_col(disp, "TOV")
 
@@ -773,11 +797,14 @@ server_tab5_traditional <- function(input, output, session, shared) {
           tov = tov,
           fgm = fgm,
           fga = fga,
+          x2pm = `2pm`,
+          x2pa = `2pa`,
           x3pm = `3pm`,
           x3pa = `3pa`,
           ftm = ftm,
           fta = fta,
           fg_pct = fg_pct,
+          two_pct = two_pct,
           tp_pct = tp_pct,
           ft_pct = ft_pct,
           efg = efg,
@@ -845,7 +872,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         ),
         tags$div(
           class = "small text-muted mb-2",
-          "Percent columns (FG%, 3P%, FT%, eFG%, TS%, USG%): enter as 0\u2013100."
+          "Percent columns (FG%, 2P%, 3P%, FT%, eFG%, TS%, USG%): enter as 0\u2013100."
         ),
         actionButton(
           "ts_add_stat_filter", "Add",
