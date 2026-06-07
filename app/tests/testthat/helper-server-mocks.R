@@ -102,16 +102,21 @@ db_get_query <- function(pool, query, params = NULL) {
 
   if (grepl("get_team_ratings_dynamic", q, fixed = TRUE)) {
     return(data.frame(
+      game_year = c(2026L, 2026L),
       team_id = c(1L, 2L),
       team_name = c("Team A", "Team B"),
       off_ppp = c(112.4, 108.8),
       def_ppp = c(101.7, 105.1),
       net_rtg = c(10.7, 3.7),
       off_poss = c(120L, 118L),
+      def_poss = c(120L, 118L),
       total_poss = c(120L, 118L),
       games_played = c(4L, 4L),
       wins = c(3L, 2L),
-      losses = c(1L, 2L)
+      losses = c(1L, 2L),
+      rank_net_rtg = c(1L, 2L),
+      rank_off_ppp = c(1L, 2L),
+      rank_def_ppp = c(1L, 2L)
     ))
   }
 
@@ -179,11 +184,14 @@ db_get_query <- function(pool, query, params = NULL) {
       tov = c(45, 51),
       fgm = c(136, 124),
       fga = c(275, 268),
+      `2pm` = c(102, 95),
+      `2pa` = c(184, 180),
       `3pm` = c(34, 29),
       `3pa` = c(91, 88),
       ftm = c(54, 55),
       fta = c(70, 76),
       fg_pct = c(49.5, 46.3),
+      two_pct = c(55.4, 52.8),
       tp_pct = c(37.4, 33.0),
       ft_pct = c(77.1, 72.4),
       efg = c(55.6, 51.7),
@@ -539,6 +547,23 @@ resolve_starters_bounds <- function(off_mode, off_value, def_mode, def_value) {
     num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
     num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
   )
+}
+apply_visible_col_order <- function(df, visible_order, hidden_cols = character()) {
+  if (is.null(df) || !length(visible_order)) return(df)
+
+  all_cols <- names(df)
+  hidden_cols <- intersect(hidden_cols, all_cols)
+  visible_cols <- setdiff(all_cols, hidden_cols)
+  saved_visible <- intersect(as.character(visible_order), visible_cols)
+  if (!length(saved_visible)) return(df)
+
+  df[, c(saved_visible, setdiff(visible_cols, saved_visible), hidden_cols), drop = FALSE]
+}
+dt_col_order_init_callback <- function(...) {
+  DT::JS("function(settings, json) {}")
+}
+csv_export_stamp <- function(now = Sys.time()) {
+  format(now, "%Y%m%d_%H%M%S")
 }
 
 source(repo_file("R", "logger.R"), local = TRUE)
