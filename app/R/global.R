@@ -245,6 +245,10 @@ dt_col_order_init_callback <- function(input_id, storage_key) {
   ))
 }
 
+csv_export_stamp <- function(now = Sys.time()) {
+  format(now, "%Y%m%d_%H%M%S")
+}
+
 # ---------------- App-level cache & guardrails ----------------
 REF_CACHE_TTL_SEC <- as.numeric(Sys.getenv("REF_CACHE_TTL_SEC", "300"))
 if (!is.finite(REF_CACHE_TTL_SEC) || REF_CACHE_TTL_SEC < 0) REF_CACHE_TTL_SEC <- 60

@@ -882,7 +882,7 @@ server_tab3 <- function(input, output, session, shared) {
       list(
         extend = "csv",
         text = button_text,
-        filename = sprintf("team_ratings_%s_%s", mode_slug, Sys.Date()),
+        filename = sprintf("team_ratings_%s_%s", mode_slug, csv_export_stamp()),
         exportOptions = list(
           columns = ":visible",
           stripHtml = TRUE,

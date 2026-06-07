@@ -678,7 +678,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
           list(
             extend = "csv",
             text = "Download CSV",
-            filename = sprintf("traditional_team_stats_%s", Sys.Date()),
+            filename = sprintf("traditional_team_stats_%s", csv_export_stamp()),
             exportOptions = list(columns = ":visible", stripHtml = TRUE)
           )
         ),
