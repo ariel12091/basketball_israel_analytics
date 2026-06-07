@@ -162,6 +162,89 @@ adaptive_baseline <- function(poss_vec) {
 # Null coalescing operator
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+apply_visible_col_order <- function(df, visible_order, hidden_cols = character()) {
+  if (is.null(df) || !length(visible_order)) return(df)
+
+  all_cols <- names(df)
+  hidden_cols <- intersect(hidden_cols, all_cols)
+  visible_cols <- setdiff(all_cols, hidden_cols)
+  saved_visible <- intersect(as.character(visible_order), visible_cols)
+  if (!length(saved_visible)) return(df)
+
+  df[, c(saved_visible, setdiff(visible_cols, saved_visible), hidden_cols), drop = FALSE]
+}
+
+dt_col_order_init_callback <- function(input_id, storage_key) {
+  input_id_json <- jsonlite::toJSON(input_id, auto_unbox = TRUE)
+  restore_id_json <- jsonlite::toJSON(paste0(input_id, "_restore"), auto_unbox = TRUE)
+  storage_key_json <- jsonlite::toJSON(storage_key, auto_unbox = TRUE)
+
+  DT::JS(sprintf(
+    "function(settings, json) {
+      var api = this.api();
+      var inputId = %s;
+      var restoreId = %s;
+      var storageKey = %s;
+      var maxColumns = 80;
+
+      var cleanOrder = function(order) {
+        if (!Array.isArray(order)) return [];
+        return order.filter(function(name) {
+          return typeof name === 'string' && name.length > 0 && name.length <= 80;
+        }).slice(0, maxColumns);
+      };
+
+      var visibleColumnNames = function() {
+        return cleanOrder(api.columns(':visible').header().toArray().map(function(header) {
+          return $(header).text().replace(/\\s+/g, ' ').trim();
+        }));
+      };
+
+      var setShinyOrder = function(order) {
+        if (window.Shiny) {
+          window.Shiny.setInputValue(inputId, cleanOrder(order), {priority: 'event'});
+        }
+      };
+
+      var loadOrder = function() {
+        try {
+          var raw = window.localStorage.getItem(storageKey);
+          return cleanOrder(raw ? JSON.parse(raw) : []);
+        } catch (e) {
+          return [];
+        }
+      };
+
+      var saveOrder = function() {
+        var order = visibleColumnNames();
+        try {
+          window.localStorage.setItem(storageKey, JSON.stringify(order));
+        } catch (e) {}
+        setShinyOrder(order);
+      };
+
+      api.on('column-reorder.dt', function() {
+        window.setTimeout(saveOrder, 0);
+      });
+
+      var savedOrder = loadOrder();
+      if (!savedOrder.length || !window.Shiny) return;
+
+      window.__onoffColumnOrderSeeded = window.__onoffColumnOrderSeeded || {};
+      if (window.__onoffColumnOrderSeeded[storageKey]) return;
+      window.__onoffColumnOrderSeeded[storageKey] = true;
+
+      setShinyOrder(savedOrder);
+      window.setTimeout(function() {
+        window.Shiny.setInputValue(restoreId, new Date().getTime(), {priority: 'event'});
+      }, 0);
+    }",
+    input_id_json,
+    restore_id_json,
+    storage_key_json
+  ))
+}
+
 # ---------------- App-level cache & guardrails ----------------
 REF_CACHE_TTL_SEC <- as.numeric(Sys.getenv("REF_CACHE_TTL_SEC", "300"))
 if (!is.finite(REF_CACHE_TTL_SEC) || REF_CACHE_TTL_SEC < 0) REF_CACHE_TTL_SEC <- 60

@@ -8,6 +8,8 @@ TS_FILTERABLE_COLS <- list(
   "Total Poss" = "total_poss",
   "PTS"   = "pts",
   "REB"   = "reb",
+  "OREB"  = "oreb",
+  "DREB"  = "dreb",
   "AST"   = "ast",
   "STL"   = "stl",
   "BLK"   = "blk",
@@ -57,6 +59,22 @@ add_ts_two_point_stats <- function(df) {
   df$`2pm` <- fgm - fg3m
   df$`2pa` <- fga - fg3a
   df$two_pct <- ifelse(df$`2pa` > 0, round((df$`2pm` / df$`2pa`) * 100, 1), NA_real_)
+  df
+}
+
+normalize_ts_result_cols <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  if ("player_name" %in% names(df) && !("Player" %in% names(df))) {
+    names(df)[names(df) == "player_name"] <- "Player"
+  }
+
+  if (!("oreb" %in% names(df))) df$oreb <- NA_real_
+  if (!("dreb" %in% names(df))) df$dreb <- NA_real_
+  if (!("reb" %in% names(df))) {
+    oreb <- suppressWarnings(as.numeric(df$oreb))
+    dreb <- suppressWarnings(as.numeric(df$dreb))
+    df$reb <- ifelse(is.na(oreb) & is.na(dreb), NA_real_, coalesce(oreb, 0) + coalesce(dreb, 0))
+  }
   df
 }
 
@@ -379,7 +397,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   apply_ts_mode <- function(df, mode, x_poss = NA_real_, x_min = NA_real_) {
     if (is.null(df) || !nrow(df)) return(df)
 
-    count_cols <- c("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
+    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
     mode <- mode %||% "Per Game"
 
     if (identical(mode, "Per Game")) {
@@ -581,10 +599,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     out <- tryCatch(
       db_get_query(
         pg_pool,
-        "SELECT player_id, team_id, team_name, player_name AS \"Player\",
-                gp, poss_on_floor, minutes,
-                pts, reb, ast, stl, blk, tov, fgm, fga, \"3pm\", \"3pa\", ftm, fta,
-                fg_pct, tp_pct, ft_pct, efg, ts, usg_pct
+        "SELECT *
          FROM basketball_test.player_traditional_stats_mv
          WHERE game_year = $1",
         params = list(gy_int)
@@ -592,6 +607,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       error = function(e) NULL
     )
     if (is.null(out)) return(NULL)
+    out <- normalize_ts_result_cols(out)
 
     sel_names <- debounced_teams()
     if (!is.null(sel_names) && length(sel_names) > 0) {
@@ -644,7 +660,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if (is.null(out) || !nrow(out)) return(NULL)
 
     out %>%
-      rename(Player = player_name) %>%
+      normalize_ts_result_cols() %>%
       clean_ts_rows() %>%
       add_ts_two_point_stats() %>%
       add_ts_usage_pct() %>%
@@ -818,6 +834,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
         Min = minutes,
         PTS = pts,
         REB = reb,
+        OREB = oreb,
+        DREB = dreb,
         AST = ast,
         STL = stl,
         BLK = blk,
@@ -858,25 +876,36 @@ server_tab5_traditional <- function(input, output, session, shared) {
       data
     }
 
-    heat_good <- c("PTS", "REB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "2PM", "2PA", "2P%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
+    heat_good <- c("PTS", "REB", "OREB", "DREB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "2PM", "2PA", "2P%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
     for (col_name in heat_good) disp <- add_pr_col(disp, col_name)
     if ("TOV" %in% names(disp)) disp <- add_pr_col(disp, "TOV")
 
+    pr_cols <- names(disp)[grepl("^pr_", names(disp))]
+    hidden_cols <- c(".eligible_rate", ".poss_rank_base", pr_cols)
+    disp <- apply_visible_col_order(disp, isolate(input$ts_visible_col_order), hidden_cols)
+
     order_col <- which(grepl("^PTS", names(disp)))
     if (!length(order_col)) order_col <- 6L
-    pr_cols <- names(disp)[grepl("^pr_", names(disp))]
     round_cols <- setdiff(names(disp), c("Team", "Player", "GP", ".eligible_rate", ".poss_rank_base", pr_cols))
     style_cols <- setdiff(names(disp), ".eligible_rate")
-    hidden_cols <- c(".eligible_rate", ".poss_rank_base", pr_cols)
 
     dt <- DT::datatable(
       disp,
       rownames = FALSE,
-      extensions = "ColReorder",
+      extensions = c("Buttons", "ColReorder"),
       options = list(
         headerCallback = HEADER_TOOLTIP_JS,
+        initComplete = dt_col_order_init_callback("ts_visible_col_order", "onoff.ts.visible_col_order.v1"),
         colReorder = TRUE,
-        dom = "tip",
+        dom = "Btip",
+        buttons = list(
+          list(
+            extend = "csv",
+            text = "Download CSV",
+            filename = sprintf("traditional_player_stats_%s", Sys.Date()),
+            exportOptions = list(columns = ":visible", stripHtml = TRUE)
+          )
+        ),
         pageLength = 50,
         deferRender = TRUE,
         scrollX = TRUE,
@@ -911,53 +940,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         valueColumns = ".eligible_rate",
         color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "#6e7681"))
       )
-  }) %>% bindEvent(ts_display_context(), input$main_tabs)
-
-  output$ts_download_csv <- downloadHandler(
-    filename = function() sprintf("traditional_player_stats_%s.csv", Sys.Date()),
-    content = function(file) {
-      disp_ctx <- ts_display_context()
-      df <- disp_ctx$df
-      if (is.null(df) || !nrow(df)) {
-        write.csv(data.frame(), file, row.names = FALSE)
-        return()
-      }
-      out <- df %>%
-        transmute(
-          team = team_name,
-          player = Player,
-          gp = gp,
-          poss_on_floor = poss_on_floor,
-          minutes = minutes,
-          pts = pts,
-          reb = reb,
-          ast = ast,
-          stl = stl,
-          blk = blk,
-          tov = tov,
-          fgm = fgm,
-          fga = fga,
-          x2pm = `2pm`,
-          x2pa = `2pa`,
-          x3pm = `3pm`,
-          x3pa = `3pa`,
-          ftm = ftm,
-          fta = fta,
-          fg_pct = fg_pct,
-          two_pct = two_pct,
-          tp_pct = tp_pct,
-          ft_pct = ft_pct,
-          efg = efg,
-          ts = ts,
-          usg_pct = usg_pct
-        )
-      if (!identical(disp_ctx$mode, "Totals")) {
-        out <- out %>%
-          mutate(total_poss = df$total_poss, .after = poss_on_floor)
-      }
-      write.csv(out, file, row.names = FALSE)
-    }
-  )
+  }, server = FALSE) %>% bindEvent(ts_display_context(), input$main_tabs, input$ts_visible_col_order_restore, ignoreNULL = FALSE)
 
   # ---- Filter Chips ----
   output$ts_filter_chips <- renderUI({

@@ -72,10 +72,8 @@ box_totals AS (
     awy.player_id,
     SUM(CASE WHEN awy.type = 'shot' AND awy.parameters_made = 'made' AND awy.type_lineup = 'offense' THEN COALESCE(awy.parameters_points, 0) ELSE 0 END) +
       SUM(CASE WHEN awy.type = 'freeThrow' AND awy.parameters_made = 'made' AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS pts,
-    SUM(CASE WHEN awy.type = 'rebound' AND (
-              (awy.type_lineup = 'offense' AND awy.parameters_type = 'offensive')
-              OR (awy.type_lineup = 'defense' AND awy.parameters_type = 'defensive')
-            ) THEN 1 ELSE 0 END) AS reb,
+    SUM(CASE WHEN awy.type = 'rebound' AND awy.type_lineup = 'offense' AND awy.parameters_type = 'offensive' THEN 1 ELSE 0 END) AS oreb,
+    SUM(CASE WHEN awy.type = 'rebound' AND awy.type_lineup = 'defense' AND awy.parameters_type = 'defensive' THEN 1 ELSE 0 END) AS dreb,
     SUM(CASE WHEN awy.type = 'assist'   AND awy.type_lineup = 'offense' THEN 1 ELSE 0 END) AS ast,
     SUM(CASE WHEN awy.type = 'steal'    AND awy.type_lineup = 'defense' THEN 1 ELSE 0 END) AS stl,
     SUM(CASE WHEN awy.type = 'block'    AND awy.type_lineup = 'defense' THEN 1 ELSE 0 END) AS blk,
@@ -206,7 +204,9 @@ SELECT
   COALESCE(ut.poss_on_floor, 0)::int AS poss_on_floor,
   COALESCE(mt.minutes, 0)::numeric(10,1) AS minutes,
   bt.pts::int,
-  bt.reb::int,
+  (bt.oreb + bt.dreb)::int AS reb,
+  bt.oreb::int,
+  bt.dreb::int,
   bt.ast::int,
   bt.stl::int,
   bt.blk::int,

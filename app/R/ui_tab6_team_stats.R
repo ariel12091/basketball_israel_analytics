@@ -112,9 +112,7 @@ ui_tab6_team_stats <- tabPanel(
               selectInput("tst_opp_rank_metric", "Metric", choices = c("-" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
             ),
             open = TRUE
-          ),
-          tags$hr(),
-          downloadButton("tst_download_csv", "Download CSV")
+          )
         )
       ),
       mainPanel(

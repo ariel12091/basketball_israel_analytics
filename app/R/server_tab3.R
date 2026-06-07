@@ -859,6 +859,41 @@ server_tab3 <- function(input, output, session, shared) {
     identical(as.Date(p$start_d), as.Date(bounds$start)) && identical(as.Date(p$end_d), as.Date(bounds$end))
   })
 
+  tr_csv_slug <- function(x) {
+    x <- tolower(as.character(x %||% ""))
+    x <- gsub("[^a-z0-9]+", "_", x)
+    x <- gsub("^_+|_+$", "", x)
+    if (!nzchar(x)) "table" else x
+  }
+
+  tr_csv_button <- function(mode) {
+    mode <- mode %||% "Summary"
+    mode_slug <- tr_csv_slug(mode)
+    button_text <- "Download CSV"
+
+    if (identical(mode, "Traditional")) {
+      side_slug <- if (isTRUE(input$tr_trad_defense_mode)) "opponent" else "team"
+      display_slug <- tr_csv_slug(input$tr_trad_display_mode %||% "Per Game")
+      mode_slug <- paste("traditional", side_slug, display_slug, sep = "_")
+      button_text <- if (identical(side_slug, "opponent")) "Download Opponent CSV" else "Download Team CSV"
+    }
+
+    list(
+      list(
+        extend = "csv",
+        text = button_text,
+        filename = sprintf("team_ratings_%s_%s", mode_slug, Sys.Date()),
+        exportOptions = list(
+          columns = ":visible",
+          stripHtml = TRUE,
+          stripNewlines = TRUE,
+          trim = TRUE,
+          modifier = list(search = "applied", order = "applied")
+        )
+      )
+    )
+  }
+
   tr_effective_anchor <- reactive({
     p <- tr_params()
     end_d <- if (is.na(p$end_d)) shared$season_date_bounds(as.character(p$game_year))$end else as.Date(p$end_d)
@@ -1389,6 +1424,7 @@ server_tab3 <- function(input, output, session, shared) {
   })
 
   output$tr_table <- renderDT({
+    input$tr_traditional_visible_col_order_restore
     mode <- input$tr_view_mode
     mins_map <- NULL
     if (!identical(mode, "Traditional")) {
@@ -1552,6 +1588,9 @@ server_tab3 <- function(input, output, session, shared) {
         `eFG%` = "pr_efg", `TS%` = "pr_ts"
       )
       sort_col_names <- paste0("sort__", make.names(names(sort_map)))
+      hidden_cols <- c(unname(pr_map), sort_col_names)
+      disp <- apply_visible_col_order(disp, isolate(input$tr_traditional_visible_col_order), hidden_cols)
+
       sort_order_defs <- lapply(names(sort_map), function(nm) {
         dir_best <- sort_dir_map[[nm]]
         dir_seq <- if (identical(dir_best, "desc")) list("desc", "asc") else list("asc", "desc")
@@ -1561,14 +1600,19 @@ server_tab3 <- function(input, output, session, shared) {
           orderSequence = dir_seq
         )
       })
-      hidden_targets <- which(names(disp) %in% c(unname(pr_map), sort_col_names)) - 1L
+      hidden_targets <- which(names(disp) %in% hidden_cols) - 1L
 
       dt <- datatable(
         disp, rownames = FALSE,
         escape = FALSE,
+        extensions = c("Buttons", "ColReorder"),
         options = list(
           headerCallback = HEADER_TOOLTIP_JS,
-          dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
+          initComplete = dt_col_order_init_callback("tr_traditional_visible_col_order", "onoff.traditional_team.visible_col_order.v1"),
+          colReorder = TRUE,
+          dom = "Btip",
+          buttons = tr_csv_button(mode),
+          pageLength = 50, deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
           columnDefs = c(list(
             list(className = "dt-center", targets = "_all"),
             list(visible = FALSE, targets = hidden_targets)
@@ -1781,9 +1825,12 @@ server_tab3 <- function(input, output, session, shared) {
       col_defs <- c(col_defs, ff_sort_order_defs)
 
       dt <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE, escape = FALSE,
+                          extensions = "Buttons",
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
-                            dom = "t", pageLength = 50,
+                            dom = "Btip",
+                            buttons = tr_csv_button(mode),
+                            pageLength = 50,
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
                             order = list(list(net_idx, "desc")),
@@ -1876,7 +1923,29 @@ server_tab3 <- function(input, output, session, shared) {
         list(targets = which(names(disp_df) == "def_ppp") - 1L, orderData = which(names(disp_df) == "sort_def_ppp") - 1L, orderSequence = list("asc", "desc")),
         list(targets = which(names(disp_df) == "net_rtg") - 1L, orderData = which(names(disp_df) == "sort_net_rtg") - 1L, orderSequence = list("desc", "asc"))
       )
-      dt <- datatable(disp_df, colnames = pretty_names, rownames = FALSE, escape = FALSE, options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t", pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, columnDefs = c(list(list(className = 'dt-center', targets = "_all"), list(visible = FALSE, targets = summary_hidden)), summary_order_defs))) %>%
+      dt <- datatable(
+        disp_df,
+        colnames = pretty_names,
+        rownames = FALSE,
+        escape = FALSE,
+        extensions = "Buttons",
+        options = list(
+          headerCallback = HEADER_TOOLTIP_JS,
+          dom = "Btip",
+          buttons = tr_csv_button(mode),
+          pageLength = 50,
+          scrollX = TRUE,
+          scrollY = "70vh",
+          scrollCollapse = TRUE,
+          columnDefs = c(
+            list(
+              list(className = 'dt-center', targets = "_all"),
+              list(visible = FALSE, targets = summary_hidden)
+            ),
+            summary_order_defs
+          )
+        )
+      ) %>%
         formatRound(c("minutes", "off_pace", "def_pace"), 1) %>%
         formatCurrency(c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0) %>%
         formatStyle(columns = c("net_rtg", "off_ppp", "def_ppp"), valueColumns = c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp"), backgroundColor = styleInterval(cuts, cols_rank))
@@ -1894,7 +1963,7 @@ server_tab3 <- function(input, output, session, shared) {
         options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t")
       )
     })
-  })
+  }, server = FALSE)
 
   # ---- Filter Chips ----
   output$tr_filter_chips <- renderUI({

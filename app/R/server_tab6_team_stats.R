@@ -670,9 +670,18 @@ server_tab6_team_stats <- function(input, output, session, shared) {
       disp,
       rownames = FALSE,
       escape = FALSE,
+      extensions = "Buttons",
       options = list(
         headerCallback = HEADER_TOOLTIP_JS,
-        dom = "tip",
+        dom = "Btip",
+        buttons = list(
+          list(
+            extend = "csv",
+            text = "Download CSV",
+            filename = sprintf("traditional_team_stats_%s", Sys.Date()),
+            exportOptions = list(columns = ":visible", stripHtml = TRUE)
+          )
+        ),
         pageLength = 50,
         deferRender = TRUE,
         scrollX = TRUE,
@@ -693,20 +702,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
       dt <- DT::formatStyle(dt, nm, backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = pr_col)
     }
     dt
-  }) %>% bindEvent(tst_display_df(), previous_df(), input$main_tabs)
-
-  output$tst_download_csv <- downloadHandler(
-    filename = function() sprintf("traditional_team_stats_%s.csv", Sys.Date()),
-    content = function(file) {
-      df <- tst_display_df()
-      if (is.null(df) || !nrow(df)) {
-        write.csv(data.frame(), file, row.names = FALSE)
-        return()
-      }
-      out <- df %>% select(team_name, gp, poss_on_floor, minutes, pts, reb, ast, stl, blk, tov, fgm, fga, `3pm`, `3pa`, ftm, fta, fg_pct, tp_pct, ft_pct, efg, ts)
-      write.csv(out, file, row.names = FALSE)
-    }
-  )
+  }, server = FALSE) %>% bindEvent(tst_display_df(), previous_df(), input$main_tabs)
 
   output$tst_filter_chips <- renderUI({
     build_filter_chips("tst", input, shared$season_date_bounds, reset_btn_id = "tst_reset")

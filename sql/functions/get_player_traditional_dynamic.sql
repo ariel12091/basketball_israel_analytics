@@ -33,6 +33,8 @@ RETURNS TABLE (
     minutes        NUMERIC,
     pts            INT,
     reb            INT,
+    oreb           INT,
+    dreb           INT,
     ast            INT,
     stl            INT,
     blk            INT,
@@ -357,10 +359,8 @@ BEGIN
         + SUM(CASE WHEN a.type = 'freeThrow' AND a.parameters_made = 'made' AND a.type_lineup = 'offense'
                    THEN 1 ELSE 0 END)
       )::int AS pts,
-      SUM(CASE WHEN a.type = 'rebound' AND (
-                (a.type_lineup = 'offense' AND a.parameters_type = 'offensive')
-                OR (a.type_lineup = 'defense' AND a.parameters_type = 'defensive')
-              ) THEN 1 ELSE 0 END)::int AS reb,
+      SUM(CASE WHEN a.type = 'rebound' AND a.type_lineup = 'offense' AND a.parameters_type = 'offensive' THEN 1 ELSE 0 END)::int AS oreb,
+      SUM(CASE WHEN a.type = 'rebound' AND a.type_lineup = 'defense' AND a.parameters_type = 'defensive' THEN 1 ELSE 0 END)::int AS dreb,
       SUM(CASE WHEN a.type = 'assist' AND a.type_lineup = 'offense' THEN 1 ELSE 0 END)::int AS ast,
       SUM(CASE WHEN a.type = 'steal' AND a.type_lineup = 'defense' THEN 1 ELSE 0 END)::int AS stl,
       SUM(CASE WHEN a.type = 'block' AND a.type_lineup = 'defense' THEN 1 ELSE 0 END)::int AS blk,
@@ -423,7 +423,9 @@ BEGIN
       COALESCE(pu.poss_on_floor, 0)::int AS poss_on_floor,
       COALESCE(pm.minutes, 0)::numeric AS minutes,
       s.pts,
-      s.reb,
+      (s.oreb + s.dreb)::int AS reb,
+      s.oreb,
+      s.dreb,
       s.ast,
       s.stl,
       s.blk,
@@ -476,6 +478,8 @@ BEGIN
     fr.minutes,
     fr.pts,
     fr.reb,
+    fr.oreb,
+    fr.dreb,
     fr.ast,
     fr.stl,
     fr.blk,

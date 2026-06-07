@@ -14,6 +14,29 @@ test_that("tab5 calculates two-point columns from field-goal and three-point col
   expect_equal(out$two_pct, c(60, NA_real_))
 })
 
+test_that("tab5 normalizes player traditional rebound split columns", {
+  split_df <- data.frame(
+    player_name = c("Player A", "Player B"),
+    oreb = c(3, 5),
+    dreb = c(7, 6),
+    check.names = FALSE
+  )
+  split_out <- normalize_ts_result_cols(split_df)
+
+  expect_equal(split_out$Player, c("Player A", "Player B"))
+  expect_equal(split_out$reb, c(10, 11))
+  expect_equal(split_out$oreb, c(3, 5))
+  expect_equal(split_out$dreb, c(7, 6))
+
+  legacy_df <- data.frame(reb = c(8, 4), check.names = FALSE)
+  legacy_out <- normalize_ts_result_cols(legacy_df)
+
+  expect_true(all(c("oreb", "dreb") %in% names(legacy_out)))
+  expect_equal(legacy_out$reb, c(8, 4))
+  expect_true(all(is.na(legacy_out$oreb)))
+  expect_true(all(is.na(legacy_out$dreb)))
+})
+
 test_that("tab5 player choices narrow to selected teams", {
   players <- data.frame(
     team_id = c(1L, 1L, 2L),
