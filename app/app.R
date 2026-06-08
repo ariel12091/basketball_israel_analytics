@@ -45,7 +45,7 @@ ui <- navbarPage(
     tags$script(HTML(sprintf(
       paste0(
         "window.IBPL_IDLE_CONFIG = {",
-        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:2",
+        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:9",
         "};"
       ),
       APP_IDLE_TIMEOUT_SEC,

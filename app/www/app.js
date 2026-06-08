@@ -256,18 +256,40 @@
   var idleExpired = false;
   var saveTimer = null;
   var restoreSent = false;
+  var pendingRestoreState = null;
   var lastKnownTab = null;
+  var applyingRestoreValues = false;
+  var finalBrowserApplySent = false;
+  var suppressSaveUntil = 0;
   var cfg = window.IBPL_IDLE_CONFIG || {};
   var timeoutMs = Math.max(1, Number(cfg.timeoutSec || 360)) * 1000;
   var warningMs = Math.max(1, Number(cfg.warningSec || 60)) * 1000;
   var ttlMs = Math.max(1, Number(cfg.stateTtlHours || 24)) * 60 * 60 * 1000;
   var stateVersion = Number(cfg.stateVersion || 1);
+  var maxStateChars = Math.max(10000, Number(cfg.maxStateChars || 120000));
   warningMs = Math.min(warningMs, Math.max(1000, timeoutMs - 1000));
   var keyBase = "ibpl_idle_resume:" + location.pathname.replace(/\/+$/, "");
-  var stateKey = keyBase + ":state:v" + stateVersion;
-  var restoreIntentKey = keyBase + ":restore_intent";
-  var skipRestoreKey = keyBase + ":skip_restore";
-  var restorePending = !!safeStorageGet(restoreIntentKey) && !safeStorageGet(skipRestoreKey);
+  var tabIdKey = keyBase + ":tab_id";
+  var tabId = getOrCreateTabId();
+  var stateKey = keyBase + ":tab:" + tabId + ":state:v" + stateVersion;
+  var lastStateKey = keyBase + ":tab:" + tabId + ":last_state:v" + stateVersion;
+  var lastTabKey = keyBase + ":tab:" + tabId + ":last_tab:v" + stateVersion;
+  var restoreIntentKey = keyBase + ":tab:" + tabId + ":restore_intent";
+  var skipRestoreKey = keyBase + ":tab:" + tabId + ":skip_restore";
+  var legacyRestoreIntentKey = keyBase + ":restore_intent";
+  var legacySkipRestoreKey = keyBase + ":skip_restore";
+  var restorePending = !!safeSessionGet(restoreIntentKey) && !safeSessionGet(skipRestoreKey);
+  safeLocalRemove(legacyRestoreIntentKey);
+  safeLocalRemove(legacySkipRestoreKey);
+  var validTabValues = {
+    home: true,
+    onoff: true,
+    lineup_data: true,
+    team_ratings: true,
+    game_logs: true,
+    traditional_stats: true,
+    compare: true
+  };
   var dateRangeIds = [
     "date_range", "ld_dates", "tr_dates", "gl_dates", "ts_dates",
     "cmp_players_dates", "cmp_player_a_dates", "cmp_player_b_dates"
@@ -317,23 +339,129 @@
     "cmp_team_player_rate_mode", "cmp_rate_mode"
   ];
 
-  function safeStorageGet(key) {
+  function safeSessionGet(key) {
+    try { return window.sessionStorage.getItem(key); } catch (e) { return null; }
+  }
+
+  function safeSessionSet(key, value) {
+    try { window.sessionStorage.setItem(key, value); } catch (e) {}
+  }
+
+  function safeSessionRemove(key) {
+    try { window.sessionStorage.removeItem(key); } catch (e) {}
+  }
+
+  function safeLocalGet(key) {
     try { return window.localStorage.getItem(key); } catch (e) { return null; }
   }
 
-  function safeStorageSet(key, value) {
+  function safeLocalSet(key, value) {
     try { window.localStorage.setItem(key, value); } catch (e) {}
   }
 
-  function safeStorageRemove(key) {
+  function safeLocalRemove(key) {
     try { window.localStorage.removeItem(key); } catch (e) {}
   }
 
+  function getOrCreateTabId() {
+    var existing = safeSessionGet(tabIdKey);
+    if (existing) return existing;
+    var id = String(Date.now()) + "-" + Math.random().toString(36).slice(2, 10);
+    safeSessionSet(tabIdKey, id);
+    return id;
+  }
+
+  function runWhenIdle(fn, timeout) {
+    if (typeof window.requestIdleCallback === "function") {
+      window.requestIdleCallback(fn, { timeout: timeout || 1000 });
+      return;
+    }
+    window.setTimeout(fn, 0);
+  }
+
+  function normalizeTabValue(value) {
+    if (typeof value !== "string") return null;
+    return validTabValues[value] ? value : null;
+  }
+
+  function tabValueFromElement(el) {
+    if (!el) return null;
+    var val = normalizeTabValue(el.getAttribute("data-value"));
+    if (val) return val;
+
+    var target = el.getAttribute("data-bs-target") || el.getAttribute("href") || "";
+    if (target.charAt(0) === "#") {
+      var pane = document.querySelector(target);
+      val = pane ? normalizeTabValue(pane.getAttribute("data-value")) : null;
+      if (val) return val;
+    }
+    return null;
+  }
+
+  function rememberActiveTab(value) {
+    var tab = normalizeTabValue(value);
+    if (!tab) return false;
+    lastKnownTab = tab;
+    safeSessionSet(lastTabKey, tab);
+    return true;
+  }
+
+  function selectorValue(value) {
+    return String(value).replace(/\\/g, "\\\\").replace(/"/g, "\\\"");
+  }
+
+  function findMainTabLink(tab) {
+    var quoted = selectorValue(tab);
+    return document.querySelector([
+      ".navbar a[data-value=\"" + quoted + "\"]",
+      ".navbar button[data-value=\"" + quoted + "\"]",
+      ".navbar .nav-link[data-value=\"" + quoted + "\"]"
+    ].join(", "));
+  }
+
+  function activateMainTab(tab) {
+    tab = normalizeTabValue(tab);
+    if (!tab) return false;
+    var link = findMainTabLink(tab);
+    if (!link) return false;
+    rememberActiveTab(tab);
+
+    if (link.classList && link.classList.contains("active")) return true;
+    try {
+      if (window.bootstrap && window.bootstrap.Tab && typeof window.bootstrap.Tab.getOrCreateInstance === "function") {
+        window.bootstrap.Tab.getOrCreateInstance(link).show();
+        return true;
+      }
+    } catch (e) {}
+    try {
+      if (window.jQuery && window.jQuery.fn && typeof window.jQuery.fn.tab === "function") {
+        window.jQuery(link).tab("show");
+        return true;
+      }
+    } catch (e2) {}
+    if (typeof link.click === "function") {
+      link.click();
+      return true;
+    }
+    return false;
+  }
+
+  function activateRestoreTab(state) {
+    var tab = state && state.values ? normalizeTabValue(state.values.main_tabs) : null;
+    if (!tab) return;
+    activateMainTab(tab);
+    window.setTimeout(function() { activateMainTab(tab); }, 250);
+    window.setTimeout(function() { activateMainTab(tab); }, 1200);
+  }
+
   function activeTabValue() {
-    if (lastKnownTab) return lastKnownTab;
     var inputValues = window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.$inputValues;
-    var shinyTab = inputValues ? inputValues.main_tabs : null;
-    if (typeof shinyTab === "string" && shinyTab) return shinyTab;
+    var shinyTab = inputValues ? (inputValues.main_tabs || inputValues["main_tabs:shiny.tabinput"]) : null;
+    shinyTab = normalizeTabValue(shinyTab);
+    if (shinyTab) {
+      lastKnownTab = shinyTab;
+      return shinyTab;
+    }
 
     var active = document.querySelector([
       ".navbar .nav-link.active[data-value]",
@@ -344,14 +472,51 @@
       ".nav-tabs li.active > a[data-value]",
       ".tab-content .tab-pane.active[data-value]"
     ].join(", "));
-    return active ? active.getAttribute("data-value") : null;
+    var activeTab = tabValueFromElement(active);
+    if (activeTab) lastKnownTab = activeTab;
+    var storedTab = normalizeTabValue(safeSessionGet(lastTabKey));
+    if (storedTab) lastKnownTab = storedTab;
+    return activeTab || storedTab || lastKnownTab;
   }
 
   function isDateRangeId(id) {
     return dateRangeIds.indexOf(id) !== -1;
   }
 
+  function shinyInputValue(id) {
+    var inputValues = window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.$inputValues;
+    if (!inputValues) return undefined;
+    if (Object.prototype.hasOwnProperty.call(inputValues, id)) return inputValues[id];
+
+    var prefixes = [
+      id + ":shiny.",
+      id + ":"
+    ];
+    for (var p = 0; p < prefixes.length; p++) {
+      for (var key in inputValues) {
+        if (Object.prototype.hasOwnProperty.call(inputValues, key) && key.indexOf(prefixes[p]) === 0) {
+          return inputValues[key];
+        }
+      }
+    }
+    return undefined;
+  }
+
+  function normalizeCachedInputValue(value) {
+    if (value === undefined || value === null) return null;
+    if (Array.isArray(value)) return value;
+    if (typeof value === "boolean" || typeof value === "number") return value;
+    if (typeof value === "string") return value;
+    if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "value")) {
+      return normalizeCachedInputValue(value.value);
+    }
+    return null;
+  }
+
   function readInputValue(id) {
+    var cached = normalizeCachedInputValue(shinyInputValue(id));
+    if (cached != null) return cached;
+
     var radios = document.querySelectorAll("input[type=\"radio\"][name=\"" + id + "\"]");
     if (radios.length) {
       for (var r = 0; r < radios.length; r++) {
@@ -386,6 +551,152 @@
     return el.value;
   }
 
+  function notifyShinyInput(id, value) {
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    window.Shiny.setInputValue(id, value, { priority: "event" });
+  }
+
+  function valueArray(value) {
+    if (Array.isArray(value)) return value.map(function(v) { return String(v); });
+    if (value === null || value === undefined || value === "") return [];
+    return [String(value)];
+  }
+
+  function maybeEmitInput(id, value, emit) {
+    if (!emit) return;
+    notifyShinyInput(id, value);
+  }
+
+  function applyDateRangeValue(id, value, emit) {
+    if (!isDateRangeId(id) || !Array.isArray(value) || value.length < 2) return false;
+    var range = document.getElementById(id);
+    if (!range) return false;
+    var inputs = range.querySelectorAll("input");
+    if (inputs.length < 2) return false;
+    inputs[0].value = value[0] || "";
+    inputs[1].value = value[1] || "";
+    if (emit) notifyShinyInput(id, [inputs[0].value, inputs[1].value]);
+    return true;
+  }
+
+  function applyRadioValue(id, value, emit) {
+    var radios = document.getElementsByName(id);
+    if (!radios || !radios.length) return false;
+    var selected = String(value == null ? "" : value);
+    var applied = false;
+    for (var r = 0; r < radios.length; r++) {
+      if (radios[r].type !== "radio") continue;
+      radios[r].checked = radios[r].value === selected;
+      if (radios[r].checked) applied = true;
+    }
+    if (applied && emit) notifyShinyInput(id, selected);
+    return applied;
+  }
+
+  function ensureSelectOption(el, value) {
+    var values = valueArray(value);
+    for (var i = 0; i < values.length; i++) {
+      var val = values[i];
+      if (!val) continue;
+      var exists = false;
+      for (var j = 0; j < el.options.length; j++) {
+        if (el.options[j].value === val) {
+          exists = true;
+          break;
+        }
+      }
+      if (!exists) el.add(new Option(val, val));
+    }
+  }
+
+  function ensureSelectizeOption(selectize, value) {
+    var values = valueArray(value);
+    for (var i = 0; i < values.length; i++) {
+      var val = values[i];
+      if (!val || Object.prototype.hasOwnProperty.call(selectize.options, val)) continue;
+      selectize.addOption({ value: val, text: val });
+    }
+    selectize.refreshOptions(false);
+  }
+
+  function applyInputValue(id, value, emit) {
+    if (value === null || value === undefined) return false;
+    emit = !!emit;
+    if (applyDateRangeValue(id, value, emit)) return true;
+    if (applyRadioValue(id, value, emit)) return true;
+
+    var el = document.getElementById(id);
+    if (!el) {
+      if (emit) notifyShinyInput(id, value);
+      return false;
+    }
+
+    if (el.type === "checkbox") {
+      el.checked = value === true || String(value).toLowerCase() === "true" || String(value) === "1";
+      maybeEmitInput(id, el.checked, emit);
+      return true;
+    }
+
+    if (el.selectize) {
+      ensureSelectizeOption(el.selectize, value);
+      el.selectize.setValue(Array.isArray(value) ? value.map(String) : String(value), true);
+      if (emit) notifyShinyInput(id, Array.isArray(value) ? value.map(String) : String(value));
+      return true;
+    }
+
+    if (el.tagName === "SELECT") {
+      ensureSelectOption(el, value);
+      if (el.multiple) {
+        var vals = valueArray(value);
+        for (var o = 0; o < el.options.length; o++) {
+          el.options[o].selected = vals.indexOf(el.options[o].value) !== -1;
+        }
+        maybeEmitInput(id, vals, emit);
+      } else {
+        el.value = String(value);
+        maybeEmitInput(id, el.value, emit);
+      }
+      return true;
+    }
+
+    if (window.jQuery) {
+      var slider = window.jQuery(el).data("ionRangeSlider");
+      if (slider && typeof slider.update === "function") {
+        var sliderValue = Number(Array.isArray(value) ? value[0] : value);
+        if (isFinite(sliderValue)) {
+          slider.update({ from: sliderValue });
+          if (emit) notifyShinyInput(id, sliderValue);
+          return true;
+        }
+      }
+    }
+
+    el.value = Array.isArray(value) ? value[0] : value;
+    maybeEmitInput(id, el.value, emit);
+    return true;
+  }
+
+  function applyRestoreValues(values, emit, includeGameYear) {
+    if (!values) return;
+    applyingRestoreValues = true;
+    suppressSaveUntil = Date.now() + 1500;
+    try {
+      if (includeGameYear !== false && Object.prototype.hasOwnProperty.call(values, "game_year")) {
+        applyInputValue("game_year", values.game_year, emit);
+      }
+      if (Object.prototype.hasOwnProperty.call(values, "main_tabs")) {
+        activateMainTab(values.main_tabs);
+      }
+      for (var key in values) {
+        if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
+        if (key === "main_tabs" || key === "game_year") continue;
+        applyInputValue(key, values[key], emit);
+      }
+    } finally {
+      applyingRestoreValues = false;
+    }
+  }
+
   function compactValue(value) {
     if (value == null) return null;
     if (Array.isArray(value)) {
@@ -407,77 +718,118 @@
     return {
       version: stateVersion,
       path: location.pathname,
+      tabId: tabId,
       savedAt: Date.now(),
       values: values
     };
   }
 
-  function saveState(force) {
+  function serializeState(state) {
+    var serialized = JSON.stringify(state);
+    if (serialized.length > maxStateChars) return null;
+    return serialized;
+  }
+
+  function saveState(force, persistLast) {
     if (restorePending && !force) return;
     var state = readState();
-    safeStorageSet(stateKey, JSON.stringify(state));
+    var serialized = serializeState(state);
+    if (!serialized) return;
+    safeSessionSet(stateKey, serialized);
+    if (persistLast) safeLocalSet(lastStateKey, serialized);
   }
 
   function scheduleSave() {
+    if (applyingRestoreValues) return;
+    if (Date.now() < suppressSaveUntil) return;
     if (restorePending) return;
     if (saveTimer) window.clearTimeout(saveTimer);
-    saveTimer = window.setTimeout(saveState, 350);
+    saveTimer = window.setTimeout(function() {
+      saveTimer = null;
+      runWhenIdle(function() { saveState(false, false); }, 1000);
+    }, 350);
   }
 
-  function loadState() {
-    var raw = safeStorageGet(stateKey);
-    if (!raw) return null;
+  function parseStoredState(raw, removeFn) {
     try {
       var state = JSON.parse(raw);
       if (!state || state.version !== stateVersion || !state.savedAt || !state.values) return null;
       if ((Date.now() - Number(state.savedAt)) > ttlMs) {
-        safeStorageRemove(stateKey);
+        if (typeof removeFn === "function") removeFn();
         return null;
       }
       return state;
     } catch (e) {
-      safeStorageRemove(stateKey);
+      if (typeof removeFn === "function") removeFn();
       return null;
     }
   }
 
+  function loadState(allowLast) {
+    var raw = safeSessionGet(stateKey);
+    if (raw) {
+      var sessionState = parseStoredState(raw, function() { safeSessionRemove(stateKey); });
+      if (sessionState) return sessionState;
+    }
+    if (!allowLast) return null;
+    raw = safeLocalGet(lastStateKey);
+    if (!raw) return null;
+    return parseStoredState(raw, function() { safeLocalRemove(lastStateKey); });
+  }
+
   function clearSavedState() {
-    safeStorageRemove(stateKey);
-    safeStorageRemove(restoreIntentKey);
-    safeStorageSet(skipRestoreKey, String(Date.now()));
+    safeSessionRemove(stateKey);
+    safeLocalRemove(lastStateKey);
+    safeSessionRemove(lastTabKey);
+    safeSessionRemove(restoreIntentKey);
+    safeSessionSet(skipRestoreKey, String(Date.now()));
     restorePending = false;
   }
 
   function shouldRestoreState() {
-    if (safeStorageGet(skipRestoreKey)) {
-      safeStorageRemove(skipRestoreKey);
+    if (safeSessionGet(skipRestoreKey)) {
+      safeSessionRemove(skipRestoreKey);
       return false;
     }
-    return !!safeStorageGet(restoreIntentKey);
+    return !!safeSessionGet(restoreIntentKey);
   }
 
   function sendRestoreState(stage) {
     if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
-    var state = loadState();
+    var state = pendingRestoreState || loadState(true);
     if (!state) return;
+    activateRestoreTab(state);
     window.Shiny.setInputValue("ibpl_restore_state", {
       stage: stage || "full",
       sentAt: Date.now(),
       values: state.values
     }, { priority: "event" });
+    if (stage === "final" && !finalBrowserApplySent) {
+      finalBrowserApplySent = true;
+      window.setTimeout(function() {
+        applyRestoreValues(state.values, true, false);
+      }, 1200);
+    }
   }
 
   function requestRestore() {
     if (restoreSent || !shouldRestoreState()) return;
+    pendingRestoreState = loadState(true);
+    if (!pendingRestoreState) {
+      safeSessionRemove(restoreIntentKey);
+      restorePending = false;
+      return;
+    }
     restoreSent = true;
+    finalBrowserApplySent = false;
     restorePending = true;
-    sendRestoreState("initial");
-    window.setTimeout(function() { sendRestoreState("dependent"); }, 1800);
+    activateRestoreTab(pendingRestoreState);
     window.setTimeout(function() {
       sendRestoreState("final");
-      safeStorageRemove(restoreIntentKey);
+      safeSessionRemove(restoreIntentKey);
       restorePending = false;
-    }, 3600);
+      pendingRestoreState = null;
+    }, 2200);
   }
 
   function formatSeconds(ms) {
@@ -519,8 +871,8 @@
     }
     if (reconnectBtn) {
       reconnectBtn.addEventListener("click", function() {
-        saveState(true);
-        safeStorageSet(restoreIntentKey, String(Date.now()));
+        saveState(true, true);
+        safeSessionSet(restoreIntentKey, String(Date.now()));
         restorePending = true;
         window.location.reload();
       });
@@ -591,8 +943,8 @@
     var remainingMs = timeoutMs - idleMs;
     if (remainingMs <= 0) {
       idleExpired = true;
-      saveState(true);
-      safeStorageSet(restoreIntentKey, String(Date.now()));
+      saveState(true, true);
+      safeSessionSet(restoreIntentKey, String(Date.now()));
       restorePending = true;
       setOverlayState("expired", 0);
       return;
@@ -616,43 +968,50 @@
     document.addEventListener("input", scheduleSave, true);
     document.addEventListener("click", function(e) {
       var tabLink = e.target.closest(".nav-link[data-value], a[data-value]");
-      if (tabLink) {
-        lastKnownTab = tabLink.getAttribute("data-value");
+      if (tabLink && rememberActiveTab(tabValueFromElement(tabLink))) {
+        scheduleSave();
+      }
+    }, true);
+    document.addEventListener("shown.bs.tab", function(e) {
+      if (e && rememberActiveTab(tabValueFromElement(e.target))) {
         scheduleSave();
       }
     }, true);
     if (window.jQuery) {
       window.jQuery(document).on("shiny:inputchanged", function(evt) {
         if (!evt) return;
-        if (evt.name === "main_tabs" && typeof evt.value === "string" && evt.value) lastKnownTab = evt.value;
-        if (persistIds.indexOf(evt.name) !== -1 || evt.name === "main_tabs") scheduleSave();
+        if ((evt.name === "main_tabs" || evt.name === "main_tabs:shiny.tabinput") && rememberActiveTab(evt.value)) {
+          scheduleSave();
+          return;
+        }
+        if (persistIds.indexOf(evt.name) !== -1) scheduleSave();
       });
       window.jQuery(document).on("shiny:connected", function() {
-        saveState(false);
+        saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
       window.jQuery(document).on("shiny:disconnected", function() {
-        saveState(true);
-        safeStorageSet(restoreIntentKey, String(Date.now()));
+        saveState(true, true);
+        safeSessionSet(restoreIntentKey, String(Date.now()));
         restorePending = true;
         idleExpired = true;
         setOverlayState("expired", 0);
       });
     } else {
       document.addEventListener("shiny:connected", function() {
-        saveState(false);
+        saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
       document.addEventListener("shiny:disconnected", function() {
-        saveState(true);
-        safeStorageSet(restoreIntentKey, String(Date.now()));
+        saveState(true, true);
+        safeSessionSet(restoreIntentKey, String(Date.now()));
         restorePending = true;
         idleExpired = true;
         setOverlayState("expired", 0);
       });
     }
     markActivity(true);
-    saveState(false);
+    saveState(false, false);
     if (timerId) window.clearInterval(timerId);
     timerId = window.setInterval(checkIdleState, 1000);
   }
@@ -661,13 +1020,36 @@
     clearSavedState();
   };
 
-  window.ibplSaveSessionState = saveState;
+  window.ibplSaveSessionState = function(force) {
+    if (restorePending) return;
+    saveState(force, false);
+  };
+
+  window.ibplIsRestorePending = function() {
+    return !!restorePending;
+  };
 
   window.ibplRestoreSavedSession = function() {
-    safeStorageSet(restoreIntentKey, String(Date.now()));
+    saveState(true, true);
+    safeSessionSet(restoreIntentKey, String(Date.now()));
     restorePending = true;
     restoreSent = false;
     requestRestore();
+  };
+
+  window.ibplDebugSavedSession = function() {
+    var state = loadState(true);
+    var values = state && state.values ? state.values : {};
+    return {
+      activeTab: activeTabValue(),
+      lastKnownTab: lastKnownTab,
+      storedTab: safeSessionGet(lastTabKey),
+      restorePending: restorePending,
+      savedTab: values.main_tabs || null,
+      savedKeys: Object.keys(values),
+      savedValueCount: Object.keys(values).length,
+      state: state
+    };
   };
 
   if (document.readyState === "loading") {
@@ -683,7 +1065,6 @@
     if (window.__ibplRestoreAppliedHandlerRegistered) return true;
     window.__ibplRestoreAppliedHandlerRegistered = true;
     window.Shiny.addCustomMessageHandler("ibpl_restore_applied", function() {
-      if (typeof window.ibplSaveSessionState === "function") window.ibplSaveSessionState(true);
       var notice = document.getElementById("ibpl-restore-notice");
       if (!notice) {
         notice = document.createElement("div");
