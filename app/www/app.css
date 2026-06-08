@@ -491,6 +491,111 @@ a:hover { color: #f0c060; }
 /* Recalculating overlay */
 .recalculating { opacity: 0.4 !important; transition: opacity 0.2s ease; }
 
+/* ---- Idle Session Overlay ---- */
+.idle-overlay {
+  position: fixed;
+  inset: 0;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+  background: rgba(13,17,23,0.78);
+  backdrop-filter: blur(4px);
+  z-index: 10000;
+}
+.idle-overlay.visible { display: flex; }
+.idle-panel {
+  width: min(460px, 100%);
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 8px;
+  box-shadow: 0 18px 48px rgba(0,0,0,0.42);
+  padding: 24px;
+}
+.idle-kicker {
+  color: #e8a435;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-bottom: 8px;
+}
+.idle-panel h2 {
+  color: #e6edf3;
+  font-size: 1.35rem;
+  font-weight: 800;
+  margin: 0 0 8px;
+}
+.idle-copy {
+  color: #c9d1d9;
+  font-size: 0.95rem;
+  line-height: 1.45;
+  margin: 0;
+}
+.idle-countdown {
+  color: #e8a435;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.88rem;
+  font-weight: 700;
+  margin-top: 14px;
+}
+.idle-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 20px;
+}
+.idle-actions .btn,
+.idle-actions button {
+  min-height: 38px;
+  border-radius: 6px;
+  font-weight: 700;
+}
+.idle-keep-btn,
+.idle-reconnect-btn {
+  background: #e8a435 !important;
+  border-color: #e8a435 !important;
+  color: #0d1117 !important;
+}
+.idle-fresh-btn {
+  color: #c9d1d9 !important;
+  border-color: #30363d !important;
+}
+.idle-overlay.expired .idle-panel {
+  border-color: rgba(232,164,53,0.5);
+}
+.restore-notice {
+  position: fixed;
+  right: 16px;
+  bottom: 16px;
+  display: none;
+  align-items: center;
+  gap: 12px;
+  max-width: min(440px, calc(100vw - 32px));
+  padding: 12px 14px;
+  background: #161b22;
+  border: 1px solid rgba(232,164,53,0.55);
+  border-radius: 8px;
+  color: #e6edf3;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.35);
+  z-index: 9999;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+.restore-notice.visible { display: flex; }
+.restore-notice button {
+  flex: 0 0 auto;
+  background: transparent;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #e8a435;
+  font-weight: 700;
+  padding: 5px 9px;
+}
+.restore-notice button:hover {
+  background: #21262d;
+}
+
 /* ---- Filter Chips ---- */
 .filter-chips {
   display: flex; flex-wrap: wrap; align-items: center; gap: 6px;

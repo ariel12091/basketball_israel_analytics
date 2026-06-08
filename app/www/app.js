@@ -250,32 +250,468 @@
 
 (function() {
   var lastSent = 0;
+  var lastActivity = Date.now();
   var minIntervalMs = 15000;
+  var timerId = null;
+  var idleExpired = false;
+  var saveTimer = null;
+  var restoreSent = false;
+  var lastKnownTab = null;
+  var cfg = window.IBPL_IDLE_CONFIG || {};
+  var timeoutMs = Math.max(1, Number(cfg.timeoutSec || 360)) * 1000;
+  var warningMs = Math.max(1, Number(cfg.warningSec || 60)) * 1000;
+  var ttlMs = Math.max(1, Number(cfg.stateTtlHours || 24)) * 60 * 60 * 1000;
+  var stateVersion = Number(cfg.stateVersion || 1);
+  warningMs = Math.min(warningMs, Math.max(1000, timeoutMs - 1000));
+  var keyBase = "ibpl_idle_resume:" + location.pathname.replace(/\/+$/, "");
+  var stateKey = keyBase + ":state:v" + stateVersion;
+  var restoreIntentKey = keyBase + ":restore_intent";
+  var skipRestoreKey = keyBase + ":skip_restore";
+  var restorePending = !!safeStorageGet(restoreIntentKey) && !safeStorageGet(skipRestoreKey);
+  var dateRangeIds = [
+    "date_range", "ld_dates", "tr_dates", "gl_dates", "ts_dates",
+    "cmp_players_dates", "cmp_player_a_dates", "cmp_player_b_dates"
+  ];
+  var persistIds = [
+    "game_year", "home_team",
+    "onoff_view_mode", "date_range", "teams", "on_num_starters_off_mode", "on_num_starters_off",
+    "on_num_starters_def_mode", "on_num_starters_def", "on_game_type", "on_opponents",
+    "on_home_away", "on_outcome", "on_gn_min", "on_gn_max", "on_last_n",
+    "on_opp_rank_side", "on_opp_rank_n", "on_opp_rank_metric", "min_all_poss", "min_on_poss",
+    "ld_view_mode", "ld_minposs", "ld_num", "ld_lineup_filter-team",
+    "ld_lineup_filter-players_on", "ld_lineup_filter-players_off",
+    "ld_num_starters_off_mode", "ld_num_starters_off", "ld_num_starters_def_mode",
+    "ld_num_starters_def", "ld_dates", "ld_clutch_enabled", "ld_clutch_margin",
+    "ld_clutch_status", "ld_clutch_minutes", "ld_clutch_ot_margin", "ld_game_type",
+    "ld_opponents", "ld_home_away", "ld_outcome", "ld_gn_min", "ld_gn_max",
+    "ld_last_n", "ld_opp_rank_side", "ld_opp_rank_n", "ld_opp_rank_metric",
+    "tr_view_mode", "tr_trad_defense_mode", "tr_trad_display_mode", "tr_dates",
+    "tr_clutch_enabled", "tr_clutch_margin", "tr_clutch_status", "tr_clutch_minutes",
+    "tr_clutch_ot_margin", "tr_num_starters_off_mode", "tr_num_starters_off",
+    "tr_num_starters_def_mode", "tr_num_starters_def", "tr_game_type", "tr_opponents",
+    "tr_home_away", "tr_outcome", "tr_gn_min", "tr_gn_max", "tr_last_n",
+    "tr_opp_rank_side", "tr_opp_rank_n", "tr_opp_rank_metric",
+    "gl_view_mode", "gl_team", "gl_dates", "gl_num_starters_off_mode", "gl_num_starters_off",
+    "gl_num_starters_def_mode", "gl_num_starters_def", "gl_game_type", "gl_opponents",
+    "gl_home_away", "gl_outcome", "gl_gn_min", "gl_gn_max", "gl_last_n",
+    "ts_dates", "ts_teams", "ts_players", "ts_display_mode", "ts_min_gp_slider", "ts_min_gp",
+    "ts_show_ineligible", "ts_clutch_enabled", "ts_clutch_margin", "ts_clutch_status",
+    "ts_clutch_minutes", "ts_clutch_ot_margin", "ts_game_type", "ts_opponents",
+    "ts_home_away", "ts_outcome", "ts_gn_min", "ts_gn_max", "ts_last_n",
+    "ts_opp_rank_side", "ts_opp_rank_n", "ts_opp_rank_metric",
+    "cmp_mode", "cmp_preset", "cmp_min_poss", "cmp_split_date", "cmp_split_gn",
+    "cmp_player_compare_mode", "cmp_players_dates", "cmp_players_gn_min", "cmp_players_gn_max",
+    "cmp_player_a_dates", "cmp_player_a_gn_min", "cmp_player_a_gn_max",
+    "cmp_player_a_list_team_filter", "cmp_player_a", "cmp_player_a_team",
+    "cmp_a_starters_mode", "cmp_a_starters_val", "cmp_a_opp_starters_mode",
+    "cmp_a_opp_starters_val", "cmp_a_teams", "cmp_a_home_away", "cmp_a_outcome",
+    "cmp_a_clutch", "cmp_a_clutch_margin", "cmp_a_clutch_minutes", "cmp_a_opponents",
+    "cmp_a_game_type", "cmp_a_opp_rank_side", "cmp_a_opp_rank_n", "cmp_a_opp_rank_metric",
+    "cmp_player_b_list_team_filter", "cmp_player_b", "cmp_player_b_team",
+    "cmp_player_b_dates", "cmp_player_b_gn_min", "cmp_player_b_gn_max",
+    "cmp_b_starters_mode", "cmp_b_starters_val", "cmp_b_opp_starters_mode",
+    "cmp_b_opp_starters_val", "cmp_b_teams", "cmp_b_home_away", "cmp_b_outcome",
+    "cmp_b_clutch", "cmp_b_clutch_margin", "cmp_b_clutch_minutes", "cmp_b_opponents",
+    "cmp_b_game_type", "cmp_b_opp_rank_side", "cmp_b_opp_rank_n", "cmp_b_opp_rank_metric",
+    "cmp_lu_num", "cmp_lu_filter-team", "cmp_lu_filter-players_on", "cmp_lu_filter-players_off",
+    "cmp_team_player_rate_mode", "cmp_rate_mode"
+  ];
 
-  function sendActivity() {
-    var now = Date.now();
-    if ((now - lastSent) < minIntervalMs) return;
-    lastSent = now;
+  function safeStorageGet(key) {
+    try { return window.localStorage.getItem(key); } catch (e) { return null; }
+  }
+
+  function safeStorageSet(key, value) {
+    try { window.localStorage.setItem(key, value); } catch (e) {}
+  }
+
+  function safeStorageRemove(key) {
+    try { window.localStorage.removeItem(key); } catch (e) {}
+  }
+
+  function activeTabValue() {
+    if (lastKnownTab) return lastKnownTab;
+    var inputValues = window.Shiny && window.Shiny.shinyapp && window.Shiny.shinyapp.$inputValues;
+    var shinyTab = inputValues ? inputValues.main_tabs : null;
+    if (typeof shinyTab === "string" && shinyTab) return shinyTab;
+
+    var active = document.querySelector([
+      ".navbar .nav-link.active[data-value]",
+      ".navbar .nav-item.active > .nav-link[data-value]",
+      ".navbar li.active > a[data-value]",
+      ".nav-tabs .nav-link.active[data-value]",
+      ".nav-tabs .nav-item.active > .nav-link[data-value]",
+      ".nav-tabs li.active > a[data-value]",
+      ".tab-content .tab-pane.active[data-value]"
+    ].join(", "));
+    return active ? active.getAttribute("data-value") : null;
+  }
+
+  function isDateRangeId(id) {
+    return dateRangeIds.indexOf(id) !== -1;
+  }
+
+  function readInputValue(id) {
+    var radios = document.querySelectorAll("input[type=\"radio\"][name=\"" + id + "\"]");
+    if (radios.length) {
+      for (var r = 0; r < radios.length; r++) {
+        if (radios[r].checked) return radios[r].value;
+      }
+      return null;
+    }
+
+    if (isDateRangeId(id)) {
+      var range = document.getElementById(id);
+      if (!range) return null;
+      var rangeInputs = range.querySelectorAll("input");
+      if (rangeInputs.length < 2) return null;
+      return [rangeInputs[0].value || "", rangeInputs[1].value || ""];
+    }
+
+    var el = document.getElementById(id);
+    if (!el) return null;
+
+    if (el.type === "checkbox") return !!el.checked;
+    if (el.selectize) {
+      var value = el.selectize.getValue();
+      return Array.isArray(value) ? value : String(value || "");
+    }
+    if (el.tagName === "SELECT" && el.multiple) {
+      return Array.prototype.slice.call(el.selectedOptions).map(function(opt) { return opt.value; });
+    }
+    if (window.jQuery) {
+      var slider = window.jQuery(el).data("ionRangeSlider");
+      if (slider && slider.result) return slider.result.from;
+    }
+    return el.value;
+  }
+
+  function compactValue(value) {
+    if (value == null) return null;
+    if (Array.isArray(value)) {
+      return value.map(function(v) { return String(v).slice(0, 200); }).slice(0, 80);
+    }
+    if (typeof value === "boolean" || typeof value === "number") return value;
+    return String(value).slice(0, 200);
+  }
+
+  function readState() {
+    var values = {};
+    var tab = activeTabValue();
+    if (tab) values.main_tabs = tab;
+    persistIds.forEach(function(id) {
+      var value = compactValue(readInputValue(id));
+      if (value == null) return;
+      values[id] = value;
+    });
+    return {
+      version: stateVersion,
+      path: location.pathname,
+      savedAt: Date.now(),
+      values: values
+    };
+  }
+
+  function saveState(force) {
+    if (restorePending && !force) return;
+    var state = readState();
+    safeStorageSet(stateKey, JSON.stringify(state));
+  }
+
+  function scheduleSave() {
+    if (restorePending) return;
+    if (saveTimer) window.clearTimeout(saveTimer);
+    saveTimer = window.setTimeout(saveState, 350);
+  }
+
+  function loadState() {
+    var raw = safeStorageGet(stateKey);
+    if (!raw) return null;
+    try {
+      var state = JSON.parse(raw);
+      if (!state || state.version !== stateVersion || !state.savedAt || !state.values) return null;
+      if ((Date.now() - Number(state.savedAt)) > ttlMs) {
+        safeStorageRemove(stateKey);
+        return null;
+      }
+      return state;
+    } catch (e) {
+      safeStorageRemove(stateKey);
+      return null;
+    }
+  }
+
+  function clearSavedState() {
+    safeStorageRemove(stateKey);
+    safeStorageRemove(restoreIntentKey);
+    safeStorageSet(skipRestoreKey, String(Date.now()));
+    restorePending = false;
+  }
+
+  function shouldRestoreState() {
+    if (safeStorageGet(skipRestoreKey)) {
+      safeStorageRemove(skipRestoreKey);
+      return false;
+    }
+    return !!safeStorageGet(restoreIntentKey);
+  }
+
+  function sendRestoreState(stage) {
     if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    var state = loadState();
+    if (!state) return;
+    window.Shiny.setInputValue("ibpl_restore_state", {
+      stage: stage || "full",
+      sentAt: Date.now(),
+      values: state.values
+    }, { priority: "event" });
+  }
+
+  function requestRestore() {
+    if (restoreSent || !shouldRestoreState()) return;
+    restoreSent = true;
+    restorePending = true;
+    sendRestoreState("initial");
+    window.setTimeout(function() { sendRestoreState("dependent"); }, 1800);
+    window.setTimeout(function() {
+      sendRestoreState("final");
+      safeStorageRemove(restoreIntentKey);
+      restorePending = false;
+    }, 3600);
+  }
+
+  function formatSeconds(ms) {
+    return Math.max(0, Math.ceil(ms / 1000));
+  }
+
+  function ensureIdleOverlay() {
+    var existing = document.getElementById("ibpl-idle-overlay");
+    if (existing) return existing;
+
+    var overlay = document.createElement("div");
+    overlay.id = "ibpl-idle-overlay";
+    overlay.className = "idle-overlay";
+    overlay.setAttribute("role", "dialog");
+    overlay.setAttribute("aria-modal", "true");
+    overlay.setAttribute("aria-labelledby", "ibpl-idle-title");
+    overlay.innerHTML =
+      '<div class="idle-panel">' +
+        '<div class="idle-kicker">Session status</div>' +
+        '<h2 id="ibpl-idle-title">Still working?</h2>' +
+        '<p class="idle-copy" id="ibpl-idle-copy">This session will pause soon to keep the app responsive.</p>' +
+        '<div class="idle-countdown" id="ibpl-idle-countdown"></div>' +
+        '<div class="idle-actions">' +
+          '<button type="button" class="btn btn-primary idle-keep-btn" id="ibpl-idle-keep">Keep working</button>' +
+          '<button type="button" class="btn btn-primary idle-reconnect-btn" id="ibpl-idle-reconnect">Reconnect and restore</button>' +
+          '<button type="button" class="btn btn-outline-secondary idle-fresh-btn" id="ibpl-idle-fresh">Start fresh</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var keepBtn = document.getElementById("ibpl-idle-keep");
+    var reconnectBtn = document.getElementById("ibpl-idle-reconnect");
+    var freshBtn = document.getElementById("ibpl-idle-fresh");
+    if (keepBtn) {
+      keepBtn.addEventListener("click", function() {
+        markActivity(true);
+        keepBtn.blur();
+      });
+    }
+    if (reconnectBtn) {
+      reconnectBtn.addEventListener("click", function() {
+        saveState(true);
+        safeStorageSet(restoreIntentKey, String(Date.now()));
+        restorePending = true;
+        window.location.reload();
+      });
+    }
+    if (freshBtn) {
+      freshBtn.addEventListener("click", function() {
+        clearSavedState();
+        window.location.reload();
+      });
+    }
+    return overlay;
+  }
+
+  function setOverlayState(state, secondsLeft) {
+    var overlay = ensureIdleOverlay();
+    var title = document.getElementById("ibpl-idle-title");
+    var copy = document.getElementById("ibpl-idle-copy");
+    var countdown = document.getElementById("ibpl-idle-countdown");
+    var keepBtn = document.getElementById("ibpl-idle-keep");
+    var reconnectBtn = document.getElementById("ibpl-idle-reconnect");
+    var freshBtn = document.getElementById("ibpl-idle-fresh");
+
+    overlay.classList.add("visible");
+    overlay.classList.toggle("expired", state === "expired");
+
+    if (state === "expired") {
+      if (title) title.textContent = "Session paused";
+      if (copy) copy.textContent = "Reconnect to restore your last tab and filters, or start with a clean view.";
+      if (countdown) countdown.textContent = "";
+      if (keepBtn) keepBtn.style.display = "none";
+      if (reconnectBtn) reconnectBtn.style.display = "";
+      if (freshBtn) freshBtn.style.display = "";
+      return;
+    }
+
+    if (title) title.textContent = "Still working?";
+    if (copy) copy.textContent = "Your tab and filters are saved locally. Keep working to prevent this session from pausing.";
+    if (countdown) countdown.textContent = "Pausing in " + secondsLeft + " seconds";
+    if (keepBtn) keepBtn.style.display = "";
+    if (reconnectBtn) reconnectBtn.style.display = "none";
+    if (freshBtn) freshBtn.style.display = "none";
+  }
+
+  function hideIdleWarning() {
+    var overlay = document.getElementById("ibpl-idle-overlay");
+    if (!overlay || idleExpired) return;
+    overlay.classList.remove("visible");
+  }
+
+  function sendActivity(force) {
+    var now = Date.now();
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    if (!force && (now - lastSent) < minIntervalMs) return;
+    lastSent = now;
     window.Shiny.setInputValue("idle_activity_ts", now, { priority: "event" });
+  }
+
+  function markActivity(force) {
+    if (idleExpired) return;
+    lastActivity = Date.now();
+    hideIdleWarning();
+    sendActivity(force);
+  }
+
+  function checkIdleState() {
+    if (idleExpired) return;
+    var idleMs = Date.now() - lastActivity;
+    var remainingMs = timeoutMs - idleMs;
+    if (remainingMs <= 0) {
+      idleExpired = true;
+      saveState(true);
+      safeStorageSet(restoreIntentKey, String(Date.now()));
+      restorePending = true;
+      setOverlayState("expired", 0);
+      return;
+    }
+    if (remainingMs <= warningMs) {
+      setOverlayState("warning", formatSeconds(remainingMs));
+    } else {
+      hideIdleWarning();
+    }
   }
 
   function bindActivity() {
     var events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
     for (var i = 0; i < events.length; i++) {
-      document.addEventListener(events[i], sendActivity, { passive: true });
+      document.addEventListener(events[i], function() { markActivity(false); }, { passive: true });
     }
     document.addEventListener("visibilitychange", function() {
-      if (document.visibilityState === "visible") sendActivity();
+      if (document.visibilityState === "visible") markActivity(true);
     });
-    sendActivity();
+    document.addEventListener("change", scheduleSave, true);
+    document.addEventListener("input", scheduleSave, true);
+    document.addEventListener("click", function(e) {
+      var tabLink = e.target.closest(".nav-link[data-value], a[data-value]");
+      if (tabLink) {
+        lastKnownTab = tabLink.getAttribute("data-value");
+        scheduleSave();
+      }
+    }, true);
+    if (window.jQuery) {
+      window.jQuery(document).on("shiny:inputchanged", function(evt) {
+        if (!evt) return;
+        if (evt.name === "main_tabs" && typeof evt.value === "string" && evt.value) lastKnownTab = evt.value;
+        if (persistIds.indexOf(evt.name) !== -1 || evt.name === "main_tabs") scheduleSave();
+      });
+      window.jQuery(document).on("shiny:connected", function() {
+        saveState(false);
+        window.setTimeout(requestRestore, 900);
+      });
+      window.jQuery(document).on("shiny:disconnected", function() {
+        saveState(true);
+        safeStorageSet(restoreIntentKey, String(Date.now()));
+        restorePending = true;
+        idleExpired = true;
+        setOverlayState("expired", 0);
+      });
+    } else {
+      document.addEventListener("shiny:connected", function() {
+        saveState(false);
+        window.setTimeout(requestRestore, 900);
+      });
+      document.addEventListener("shiny:disconnected", function() {
+        saveState(true);
+        safeStorageSet(restoreIntentKey, String(Date.now()));
+        restorePending = true;
+        idleExpired = true;
+        setOverlayState("expired", 0);
+      });
+    }
+    markActivity(true);
+    saveState(false);
+    if (timerId) window.clearInterval(timerId);
+    timerId = window.setInterval(checkIdleState, 1000);
   }
+
+  window.ibplClearSavedSession = function() {
+    clearSavedState();
+  };
+
+  window.ibplSaveSessionState = saveState;
+
+  window.ibplRestoreSavedSession = function() {
+    safeStorageSet(restoreIntentKey, String(Date.now()));
+    restorePending = true;
+    restoreSent = false;
+    requestRestore();
+  };
 
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", bindActivity);
   } else {
     bindActivity();
   }
+})();
+
+(function() {
+  function registerRestoreHandler() {
+    if (!window.Shiny || typeof window.Shiny.addCustomMessageHandler !== "function") return false;
+    if (window.__ibplRestoreAppliedHandlerRegistered) return true;
+    window.__ibplRestoreAppliedHandlerRegistered = true;
+    window.Shiny.addCustomMessageHandler("ibpl_restore_applied", function() {
+      if (typeof window.ibplSaveSessionState === "function") window.ibplSaveSessionState(true);
+      var notice = document.getElementById("ibpl-restore-notice");
+      if (!notice) {
+        notice = document.createElement("div");
+        notice.id = "ibpl-restore-notice";
+        notice.className = "restore-notice";
+        notice.innerHTML =
+          '<span>Restored your last tab and filters.</span>' +
+          '<button type="button" id="ibpl-restore-clear">Start fresh</button>';
+        document.body.appendChild(notice);
+        var clearBtn = document.getElementById("ibpl-restore-clear");
+        if (clearBtn) {
+          clearBtn.addEventListener("click", function() {
+            if (typeof window.ibplClearSavedSession === "function") window.ibplClearSavedSession();
+            window.location.reload();
+          });
+        }
+      }
+      notice.classList.add("visible");
+      window.setTimeout(function() { notice.classList.remove("visible"); }, 6000);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", registerRestoreHandler);
+  } else {
+    registerRestoreHandler();
+  }
+  document.addEventListener("shiny:connected", registerRestoreHandler);
 })();
 
 (function() {

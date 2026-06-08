@@ -261,8 +261,14 @@ APP_IDLE_TIMEOUT_MIN <- suppressWarnings(as.numeric(Sys.getenv("APP_IDLE_TIMEOUT
 if (is.finite(APP_IDLE_TIMEOUT_MIN) && APP_IDLE_TIMEOUT_MIN > 0) {
   APP_IDLE_TIMEOUT_SEC <- as.integer(round(APP_IDLE_TIMEOUT_MIN * 60))
 }
+DEFAULT_IDLE_WARNING_SEC <- min(60L, max(10L, as.integer(floor(APP_IDLE_TIMEOUT_SEC / 4))))
+APP_IDLE_WARNING_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_WARNING_SEC", DEFAULT_IDLE_WARNING_SEC)))
+if (!is.finite(APP_IDLE_WARNING_SEC) || APP_IDLE_WARNING_SEC <= 0) APP_IDLE_WARNING_SEC <- DEFAULT_IDLE_WARNING_SEC
+APP_IDLE_WARNING_SEC <- min(APP_IDLE_WARNING_SEC, max(1L, APP_IDLE_TIMEOUT_SEC - 1L))
 APP_IDLE_CHECK_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_CHECK_SEC", "15")))
 if (!is.finite(APP_IDLE_CHECK_SEC) || APP_IDLE_CHECK_SEC <= 0) APP_IDLE_CHECK_SEC <- 15L
+APP_IDLE_STATE_TTL_HOURS <- suppressWarnings(as.numeric(Sys.getenv("APP_IDLE_STATE_TTL_HOURS", "24")))
+if (!is.finite(APP_IDLE_STATE_TTL_HOURS) || APP_IDLE_STATE_TTL_HOURS <= 0) APP_IDLE_STATE_TTL_HOURS <- 24
 
 .ref_cache_env <- new.env(parent = emptyenv())
 
