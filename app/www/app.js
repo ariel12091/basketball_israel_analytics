@@ -276,9 +276,15 @@
   var lastTabKey = keyBase + ":tab:" + tabId + ":last_tab:v" + stateVersion;
   var restoreIntentKey = keyBase + ":tab:" + tabId + ":restore_intent";
   var skipRestoreKey = keyBase + ":tab:" + tabId + ":skip_restore";
+  var reconnectingKey = keyBase + ":tab:" + tabId + ":reconnecting";
+  var restoreCompleteKey = keyBase + ":tab:" + tabId + ":restore_complete";
   var legacyRestoreIntentKey = keyBase + ":restore_intent";
   var legacySkipRestoreKey = keyBase + ":skip_restore";
   var restorePending = !!safeSessionGet(restoreIntentKey) && !safeSessionGet(skipRestoreKey);
+  var pageUnloading = false;
+  var suppressDisconnectUntil = 0;
+  var restoreGraceMs = 15000;
+  var reconnectIntentTtlMs = 60000;
   safeLocalRemove(legacyRestoreIntentKey);
   safeLocalRemove(legacySkipRestoreKey);
   var validTabValues = {
@@ -830,11 +836,48 @@
     return parseStoredState(raw, function() { safeLocalRemove(lastStateKey); });
   }
 
+  function sessionNumber(key) {
+    var val = Number(safeSessionGet(key));
+    return isFinite(val) ? val : 0;
+  }
+
+  function restoreCompletedRecently() {
+    var completedAt = sessionNumber(restoreCompleteKey);
+    return completedAt > 0 && (Date.now() - completedAt) < restoreGraceMs;
+  }
+
+  function markRestoreIntent() {
+    var now = String(Date.now());
+    safeSessionSet(restoreIntentKey, now);
+    safeSessionSet(reconnectingKey, now);
+    safeSessionRemove(skipRestoreKey);
+    restorePending = true;
+  }
+
+  function reconnectIntentActive() {
+    var startedAt = sessionNumber(reconnectingKey);
+    return startedAt > 0 && (Date.now() - startedAt) < reconnectIntentTtlMs;
+  }
+
+  function finishRestoreCycle() {
+    safeSessionRemove(restoreIntentKey);
+    safeSessionRemove(reconnectingKey);
+    safeSessionSet(restoreCompleteKey, String(Date.now()));
+    suppressDisconnectUntil = Date.now() + restoreGraceMs;
+    restorePending = false;
+    restoreSent = false;
+    pendingRestoreState = null;
+    clearIdleOverlay();
+    sendActivity(true);
+  }
+
   function clearSavedState() {
     safeSessionRemove(stateKey);
     safeLocalRemove(lastStateKey);
     safeSessionRemove(lastTabKey);
     safeSessionRemove(restoreIntentKey);
+    safeSessionRemove(reconnectingKey);
+    safeSessionRemove(restoreCompleteKey);
     safeSessionSet(skipRestoreKey, String(Date.now()));
     restorePending = false;
     toggleNativeDisconnectUi(false);
@@ -871,6 +914,7 @@
     pendingRestoreState = loadState(true);
     if (!pendingRestoreState) {
       safeSessionRemove(restoreIntentKey);
+      safeSessionRemove(reconnectingKey);
       restorePending = false;
       return;
     }
@@ -880,11 +924,7 @@
     activateRestoreTab(pendingRestoreState);
     window.setTimeout(function() {
       sendRestoreState("final");
-      safeSessionRemove(restoreIntentKey);
-      restorePending = false;
-      pendingRestoreState = null;
-      clearIdleOverlay();
-      sendActivity(true);
+      finishRestoreCycle();
     }, 2200);
   }
 
@@ -966,8 +1006,8 @@
     if (reconnectBtn) {
       reconnectBtn.addEventListener("click", function() {
         saveState(true, true);
-        safeSessionSet(restoreIntentKey, String(Date.now()));
-        restorePending = true;
+        markRestoreIntent();
+        pageUnloading = true;
         window.location.reload();
       });
     }
@@ -1040,8 +1080,7 @@
     if (remainingMs <= 0) {
       idleExpired = true;
       saveState(true, true);
-      safeSessionSet(restoreIntentKey, String(Date.now()));
-      restorePending = true;
+      markRestoreIntent();
       setOverlayState("expired", 0);
       return;
     }
@@ -1052,7 +1091,32 @@
     }
   }
 
+  function shouldSuppressDisconnectOverlay() {
+    return pageUnloading ||
+      restorePending ||
+      restoreSent ||
+      reconnectIntentActive() ||
+      restoreCompletedRecently() ||
+      Date.now() < suppressDisconnectUntil;
+  }
+
+  function handleDisconnected() {
+    if (shouldSuppressDisconnectOverlay()) {
+      toggleNativeDisconnectUi(true);
+      return;
+    }
+
+    saveState(true, true);
+    markRestoreIntent();
+    idleExpired = true;
+    setOverlayState("expired", 0);
+  }
+
   function bindActivity() {
+    window.addEventListener("beforeunload", function() {
+      pageUnloading = true;
+    });
+
     var events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
     for (var i = 0; i < events.length; i++) {
       document.addEventListener(events[i], function() { markActivity(false); }, { passive: true });
@@ -1083,27 +1147,23 @@
         if (persistIds.indexOf(evt.name) !== -1) scheduleSave();
       });
       window.jQuery(document).on("shiny:connected", function() {
+        pageUnloading = false;
+        clearIdleOverlay();
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
       window.jQuery(document).on("shiny:disconnected", function() {
-        saveState(true, true);
-        safeSessionSet(restoreIntentKey, String(Date.now()));
-        restorePending = true;
-        idleExpired = true;
-        setOverlayState("expired", 0);
+        handleDisconnected();
       });
     } else {
       document.addEventListener("shiny:connected", function() {
+        pageUnloading = false;
+        clearIdleOverlay();
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
       document.addEventListener("shiny:disconnected", function() {
-        saveState(true, true);
-        safeSessionSet(restoreIntentKey, String(Date.now()));
-        restorePending = true;
-        idleExpired = true;
-        setOverlayState("expired", 0);
+        handleDisconnected();
       });
     }
     markActivity(true);
@@ -1127,8 +1187,7 @@
 
   window.ibplRestoreSavedSession = function() {
     saveState(true, true);
-    safeSessionSet(restoreIntentKey, String(Date.now()));
-    restorePending = true;
+    markRestoreIntent();
     restoreSent = false;
     requestRestore();
   };
