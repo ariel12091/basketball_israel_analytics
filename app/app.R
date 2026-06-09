@@ -88,6 +88,7 @@ server <- function(input, output, session) {
   last_activity_at <- reactiveVal(as.numeric(Sys.time()))
   idle_timeout_sec <- APP_IDLE_TIMEOUT_SEC
   idle_check_sec <- APP_IDLE_CHECK_SEC
+  idle_close_session <- isTRUE(APP_IDLE_CLOSE_SESSION)
   log_startup <- function(step) {
     elapsed <- proc.time()[["elapsed"]] - startup_t0
     app_log("startup", sprintf("%s (%.3fs)", step, elapsed), session = session)
@@ -97,13 +98,15 @@ server <- function(input, output, session) {
     last_activity_at(as.numeric(Sys.time()))
   }, ignoreInit = TRUE)
 
-  observe({
-    invalidateLater(idle_check_sec * 1000L, session)
-    idle_for <- as.numeric(Sys.time()) - last_activity_at()
-    if (is.finite(idle_for) && idle_for >= idle_timeout_sec) {
-      session$close()
-    }
-  })
+  if (isTRUE(idle_close_session)) {
+    observe({
+      invalidateLater(idle_check_sec * 1000L, session)
+      idle_for <- as.numeric(Sys.time()) - last_activity_at()
+      if (is.finite(idle_for) && idle_for >= idle_timeout_sec) {
+        session$close()
+      }
+    })
+  }
 
   restore_selectize_ids <- c(
     "teams", "on_game_type", "on_opponents", "on_gn_min", "on_gn_max", "on_last_n",

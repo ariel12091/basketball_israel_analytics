@@ -269,6 +269,7 @@ APP_IDLE_CHECK_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_CHECK_SEC
 if (!is.finite(APP_IDLE_CHECK_SEC) || APP_IDLE_CHECK_SEC <= 0) APP_IDLE_CHECK_SEC <- 15L
 APP_IDLE_STATE_TTL_HOURS <- suppressWarnings(as.numeric(Sys.getenv("APP_IDLE_STATE_TTL_HOURS", "24")))
 if (!is.finite(APP_IDLE_STATE_TTL_HOURS) || APP_IDLE_STATE_TTL_HOURS <= 0) APP_IDLE_STATE_TTL_HOURS <- 24
+APP_IDLE_CLOSE_SESSION <- tolower(trimws(Sys.getenv("APP_IDLE_CLOSE_SESSION", "false"))) %in% c("1", "true", "yes", "on")
 
 .ref_cache_env <- new.env(parent = emptyenv())
 
