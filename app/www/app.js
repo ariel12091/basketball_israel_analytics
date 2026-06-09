@@ -285,6 +285,8 @@
   var suppressDisconnectUntil = 0;
   var restoreGraceMs = 15000;
   var reconnectIntentTtlMs = 60000;
+  var nativeDisconnectObserver = null;
+  var nativeDisconnectReleaseTimer = null;
   safeLocalRemove(legacyRestoreIntentKey);
   safeLocalRemove(legacySkipRestoreKey);
   var validTabValues = {
@@ -867,7 +869,10 @@
     restorePending = false;
     restoreSent = false;
     pendingRestoreState = null;
-    clearIdleOverlay();
+    idleExpired = false;
+    lastActivity = Date.now();
+    hideIdleOverlayOnly();
+    suppressNativeDisconnectUiFor(restoreGraceMs);
     sendActivity(true);
   }
 
@@ -932,42 +937,139 @@
     return Math.max(0, Math.ceil(ms / 1000));
   }
 
+  var nativeDisconnectSelectors = [
+    "#shiny-disconnected-overlay",
+    ".shiny-disconnected-overlay",
+    "#shiny-disconnected-dialog",
+    ".shiny-disconnected-dialog",
+    "#shiny-reconnect-dialog",
+    ".shiny-reconnect-dialog",
+    ".reconnect-dialog",
+    ".disconnected-dialog",
+    "[id^=\"shiny-disconnected\"]",
+    "[class*=\"shiny-disconnected\"]",
+    "[id*=\"shiny-reconnect\"]",
+    "[class*=\"shiny-reconnect\"]",
+    "[id*=\"shinyapps-disconnect\"]",
+    "[class*=\"shinyapps-disconnect\"]",
+    "[id*=\"shinyapps-reconnect\"]",
+    "[class*=\"shinyapps-reconnect\"]",
+    "[id*=\"ss-disconnect\"]",
+    "[class*=\"ss-disconnect\"]",
+    "[id*=\"ss-reconnect\"]",
+    "[class*=\"ss-reconnect\"]"
+  ];
+
+  function hideElement(el) {
+    if (!el || el.id === "ibpl-idle-overlay" || el.closest("#ibpl-idle-overlay")) return;
+    if (
+      el.getAttribute("data-ibpl-native-hidden") === "1" &&
+      el.style.display === "none" &&
+      el.style.visibility === "hidden" &&
+      el.style.pointerEvents === "none"
+    ) {
+      return;
+    }
+    el.setAttribute("data-ibpl-native-hidden", "1");
+    el.style.setProperty("display", "none", "important");
+    el.style.setProperty("visibility", "hidden", "important");
+    el.style.setProperty("pointer-events", "none", "important");
+  }
+
+  function looksLikeNativeDisconnectPrompt(el) {
+    if (!el || el.id === "ibpl-idle-overlay" || el.closest("#ibpl-idle-overlay")) return false;
+    var txt = String(el.textContent || "").replace(/\s+/g, " ").toLowerCase();
+    if (!txt || txt.length > 500) return false;
+    var hasDisconnectText = txt.indexOf("disconnected from server") !== -1 ||
+      txt.indexOf("connection to the server") !== -1 ||
+      txt.indexOf("reconnect") !== -1;
+    var hasReloadAction = txt.indexOf("reload") !== -1 || txt.indexOf("refresh") !== -1;
+    if (!hasDisconnectText || !hasReloadAction) return false;
+
+    var style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    return !style || style.position === "fixed" || style.position === "absolute" ||
+      el.getAttribute("role") === "dialog" || el.getAttribute("aria-modal") === "true";
+  }
+
   function hideNativeDisconnectNodes() {
-    [
-      "#shiny-disconnected-overlay",
-      ".shiny-disconnected-overlay",
-      "#shiny-disconnected-dialog",
-      ".shiny-disconnected-dialog",
-      "#shiny-reconnect-dialog",
-      ".shiny-reconnect-dialog",
-      ".reconnect-dialog"
-    ].forEach(function(selector) {
+    nativeDisconnectSelectors.forEach(function(selector) {
       var nodes = document.querySelectorAll(selector);
       for (var i = 0; i < nodes.length; i++) {
-        nodes[i].style.setProperty("display", "none", "important");
-        nodes[i].style.setProperty("pointer-events", "none", "important");
+        hideElement(nodes[i]);
       }
     });
+
+    var candidates = document.querySelectorAll("dialog, [role=\"dialog\"], div, section, aside");
+    for (var j = 0; j < candidates.length; j++) {
+      if (looksLikeNativeDisconnectPrompt(candidates[j])) hideElement(candidates[j]);
+    }
+  }
+
+  function startNativeDisconnectObserver() {
+    if (nativeDisconnectObserver || typeof window.MutationObserver !== "function") return;
+    nativeDisconnectObserver = new window.MutationObserver(function() {
+      hideNativeDisconnectNodes();
+    });
+    nativeDisconnectObserver.observe(document.documentElement || document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "style"]
+    });
+  }
+
+  function stopNativeDisconnectObserver() {
+    if (!nativeDisconnectObserver) return;
+    nativeDisconnectObserver.disconnect();
+    nativeDisconnectObserver = null;
+  }
+
+  function releaseNativeDisconnectUiWhenSafe() {
+    if (nativeDisconnectReleaseTimer) window.clearTimeout(nativeDisconnectReleaseTimer);
+    nativeDisconnectReleaseTimer = window.setTimeout(function() {
+      nativeDisconnectReleaseTimer = null;
+      if (!idleExpired && !restorePending && !restoreSent && Date.now() >= suppressDisconnectUntil) {
+        toggleNativeDisconnectUi(false);
+      }
+    }, Math.max(500, suppressDisconnectUntil - Date.now() + 250));
+  }
+
+  function suppressNativeDisconnectUiFor(ms) {
+    suppressDisconnectUntil = Math.max(suppressDisconnectUntil, Date.now() + Math.max(0, Number(ms) || 0));
+    toggleNativeDisconnectUi(true);
+    releaseNativeDisconnectUiWhenSafe();
   }
 
   function toggleNativeDisconnectUi(hidden) {
     if (document.body && document.body.classList) {
       document.body.classList.toggle("ibpl-idle-expired", !!hidden);
     }
-    if (!hidden) return;
+    if (!hidden) {
+      if (nativeDisconnectReleaseTimer) {
+        window.clearTimeout(nativeDisconnectReleaseTimer);
+        nativeDisconnectReleaseTimer = null;
+      }
+      stopNativeDisconnectObserver();
+      return;
+    }
 
+    startNativeDisconnectObserver();
     hideNativeDisconnectNodes();
     window.setTimeout(hideNativeDisconnectNodes, 50);
     window.setTimeout(hideNativeDisconnectNodes, 500);
   }
 
-  function clearIdleOverlay() {
-    idleExpired = false;
-    lastActivity = Date.now();
-    toggleNativeDisconnectUi(false);
+  function hideIdleOverlayOnly() {
     var overlay = document.getElementById("ibpl-idle-overlay");
     if (!overlay) return;
     overlay.classList.remove("visible", "expired");
+  }
+
+  function clearIdleOverlay(keepNativeHidden) {
+    idleExpired = false;
+    lastActivity = Date.now();
+    if (!keepNativeHidden && !shouldSuppressDisconnectOverlay()) toggleNativeDisconnectUi(false);
+    hideIdleOverlayOnly();
   }
 
   function ensureIdleOverlay() {
@@ -1055,7 +1157,7 @@
     var overlay = document.getElementById("ibpl-idle-overlay");
     if (!overlay || idleExpired) return;
     overlay.classList.remove("visible");
-    toggleNativeDisconnectUi(false);
+    if (!shouldSuppressDisconnectOverlay()) toggleNativeDisconnectUi(false);
   }
 
   function sendActivity(force) {
@@ -1091,13 +1193,16 @@
     }
   }
 
-  function shouldSuppressDisconnectOverlay() {
-    return pageUnloading ||
-      restorePending ||
-      restoreSent ||
+  function restoreCycleActive() {
+    return restorePending ||
+      !!safeSessionGet(restoreIntentKey) ||
       reconnectIntentActive() ||
       restoreCompletedRecently() ||
       Date.now() < suppressDisconnectUntil;
+  }
+
+  function shouldSuppressDisconnectOverlay() {
+    return pageUnloading || restoreSent || restoreCycleActive();
   }
 
   function handleDisconnected() {
@@ -1116,6 +1221,8 @@
     window.addEventListener("beforeunload", function() {
       pageUnloading = true;
     });
+
+    if (restoreCycleActive()) toggleNativeDisconnectUi(true);
 
     var events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
     for (var i = 0; i < events.length; i++) {
@@ -1148,7 +1255,13 @@
       });
       window.jQuery(document).on("shiny:connected", function() {
         pageUnloading = false;
-        clearIdleOverlay();
+        if (restoreCycleActive()) {
+          idleExpired = false;
+          hideIdleOverlayOnly();
+          toggleNativeDisconnectUi(true);
+        } else {
+          clearIdleOverlay();
+        }
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
@@ -1158,7 +1271,13 @@
     } else {
       document.addEventListener("shiny:connected", function() {
         pageUnloading = false;
-        clearIdleOverlay();
+        if (restoreCycleActive()) {
+          idleExpired = false;
+          hideIdleOverlayOnly();
+          toggleNativeDisconnectUi(true);
+        } else {
+          clearIdleOverlay();
+        }
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
