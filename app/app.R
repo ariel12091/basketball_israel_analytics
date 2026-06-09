@@ -168,6 +168,22 @@ server <- function(input, output, session) {
   restore_date_ids <- c("cmp_split_date")
   restore_tab_values <- c("home", "onoff", "lineup_data", "team_ratings", "game_logs", "traditional_stats", "compare")
 
+  restore_id_allowed <- function(id, tab) {
+    if (id %in% c("main_tabs", "game_year")) return(TRUE)
+    switch(
+      tab,
+      home = id %in% c("home_team"),
+      onoff = id %in% c("teams", "date_range", "min_all_poss", "min_on_poss", "onoff_view_mode") ||
+        startsWith(id, "on_"),
+      lineup_data = startsWith(id, "ld_"),
+      team_ratings = startsWith(id, "tr_"),
+      game_logs = startsWith(id, "gl_"),
+      traditional_stats = startsWith(id, "ts_"),
+      compare = startsWith(id, "cmp_"),
+      FALSE
+    )
+  }
+
   restore_chr_vec <- function(x, max_len = 80L) {
     if (is.null(x)) return(character(0))
     vals <- if (is.list(x)) unlist(x, recursive = FALSE, use.names = FALSE) else x
@@ -195,9 +211,12 @@ server <- function(input, output, session) {
 
   restore_state_values <- function(values) {
     if (is.null(values) || !is.list(values)) return(invisible(FALSE))
+    restore_target_tab <- restore_chr_one(values$main_tabs)
+    if (!restore_target_tab %in% restore_tab_values) restore_target_tab <- "home"
 
     restore_if_present <- function(id, fn) {
       if (!hasName(values, id)) return(invisible(NULL))
+      if (!isTRUE(restore_id_allowed(id, restore_target_tab))) return(invisible(NULL))
       tryCatch(fn(values[[id]]), error = function(e) {
         app_log("idle_restore", sprintf("failed to restore %s: %s", id, conditionMessage(e)), level = "WARN", session = session)
       })

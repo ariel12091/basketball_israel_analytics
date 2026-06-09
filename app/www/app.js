@@ -260,6 +260,7 @@
   var lastKnownTab = null;
   var applyingRestoreValues = false;
   var finalBrowserApplySent = false;
+  var restoreFinishFallbackId = null;
   var suppressSaveUntil = 0;
   var cfg = window.IBPL_IDLE_CONFIG || {};
   var timeoutMs = Math.max(1, Number(cfg.timeoutSec || 360)) * 1000;
@@ -860,6 +861,10 @@
   }
 
   function finishRestoreCycle() {
+    if (restoreFinishFallbackId) {
+      window.clearTimeout(restoreFinishFallbackId);
+      restoreFinishFallbackId = null;
+    }
     safeSessionRemove(restoreIntentKey);
     safeSessionRemove(reconnectingKey);
     safeSessionSet(restoreCompleteKey, String(Date.now()));
@@ -869,6 +874,11 @@
     pendingRestoreState = null;
     clearIdleOverlay();
     sendActivity(true);
+  }
+
+  function scheduleRestoreFinishFallback() {
+    if (restoreFinishFallbackId) window.clearTimeout(restoreFinishFallbackId);
+    restoreFinishFallbackId = window.setTimeout(finishRestoreCycle, 10000);
   }
 
   function clearSavedState() {
@@ -895,7 +905,6 @@
     if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
     var state = pendingRestoreState || loadState(true);
     if (!state) return;
-    activateRestoreTab(state);
     window.Shiny.setInputValue("ibpl_restore_state", {
       stage: stage || "full",
       sentAt: Date.now(),
@@ -921,10 +930,9 @@
     restoreSent = true;
     finalBrowserApplySent = false;
     restorePending = true;
-    activateRestoreTab(pendingRestoreState);
     window.setTimeout(function() {
       sendRestoreState("final");
-      finishRestoreCycle();
+      scheduleRestoreFinishFallback();
     }, 2200);
   }
 
@@ -1206,6 +1214,10 @@
     return !!restorePending;
   };
 
+  window.ibplFinishRestoreCycle = function() {
+    finishRestoreCycle();
+  };
+
   window.ibplRestoreSavedSession = function() {
     saveState(true, true);
     markRestoreIntent();
@@ -1241,6 +1253,9 @@
     if (window.__ibplRestoreAppliedHandlerRegistered) return true;
     window.__ibplRestoreAppliedHandlerRegistered = true;
     window.Shiny.addCustomMessageHandler("ibpl_restore_applied", function() {
+      if (typeof window.ibplFinishRestoreCycle === "function") {
+        window.setTimeout(window.ibplFinishRestoreCycle, 1500);
+      }
       var notice = document.getElementById("ibpl-restore-notice");
       if (!notice) {
         notice = document.createElement("div");
