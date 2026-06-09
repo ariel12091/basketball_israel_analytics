@@ -338,6 +338,17 @@
     "cmp_lu_num", "cmp_lu_filter-team", "cmp_lu_filter-players_on", "cmp_lu_filter-players_off",
     "cmp_team_player_rate_mode", "cmp_rate_mode"
   ];
+  var dependentPlayerGroups = [
+    {
+      team: "ld_lineup_filter-team",
+      players: ["ld_lineup_filter-players_on", "ld_lineup_filter-players_off"]
+    },
+    {
+      team: "cmp_lu_filter-team",
+      players: ["cmp_lu_filter-players_on", "cmp_lu_filter-players_off"]
+    }
+  ];
+  var delayedPlayerRestoreTimers = [];
 
   function safeSessionGet(key) {
     try { return window.sessionStorage.getItem(key); } catch (e) { return null; }
@@ -676,6 +687,46 @@
     return true;
   }
 
+  function clearDelayedPlayerRestores() {
+    for (var i = 0; i < delayedPlayerRestoreTimers.length; i++) {
+      window.clearTimeout(delayedPlayerRestoreTimers[i]);
+    }
+    delayedPlayerRestoreTimers = [];
+  }
+
+  function isDependentPlayerInput(id) {
+    for (var g = 0; g < dependentPlayerGroups.length; g++) {
+      if (dependentPlayerGroups[g].players.indexOf(id) !== -1) return true;
+    }
+    return false;
+  }
+
+  function reapplyDependentPlayerInputs(values, emit) {
+    if (!values) return;
+    clearDelayedPlayerRestores();
+    var delays = [700, 1600, 2800];
+    delays.forEach(function(delay) {
+      delayedPlayerRestoreTimers.push(window.setTimeout(function() {
+        applyingRestoreValues = true;
+        suppressSaveUntil = Date.now() + 1500;
+        try {
+          dependentPlayerGroups.forEach(function(group) {
+            if (Object.prototype.hasOwnProperty.call(values, group.team)) {
+              applyInputValue(group.team, values[group.team], emit);
+            }
+            group.players.forEach(function(id) {
+              if (Object.prototype.hasOwnProperty.call(values, id)) {
+                applyInputValue(id, values[id], emit);
+              }
+            });
+          });
+        } finally {
+          applyingRestoreValues = false;
+        }
+      }, delay));
+    });
+  }
+
   function applyRestoreValues(values, emit, includeGameYear) {
     if (!values) return;
     applyingRestoreValues = true;
@@ -690,8 +741,10 @@
       for (var key in values) {
         if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
         if (key === "main_tabs" || key === "game_year") continue;
+        if (isDependentPlayerInput(key)) continue;
         applyInputValue(key, values[key], emit);
       }
+      reapplyDependentPlayerInputs(values, emit);
     } finally {
       applyingRestoreValues = false;
     }
@@ -784,6 +837,7 @@
     safeSessionRemove(restoreIntentKey);
     safeSessionSet(skipRestoreKey, String(Date.now()));
     restorePending = false;
+    toggleNativeDisconnectUi(false);
   }
 
   function shouldRestoreState() {
@@ -829,11 +883,51 @@
       safeSessionRemove(restoreIntentKey);
       restorePending = false;
       pendingRestoreState = null;
+      clearIdleOverlay();
+      sendActivity(true);
     }, 2200);
   }
 
   function formatSeconds(ms) {
     return Math.max(0, Math.ceil(ms / 1000));
+  }
+
+  function hideNativeDisconnectNodes() {
+    [
+      "#shiny-disconnected-overlay",
+      ".shiny-disconnected-overlay",
+      "#shiny-disconnected-dialog",
+      ".shiny-disconnected-dialog",
+      "#shiny-reconnect-dialog",
+      ".shiny-reconnect-dialog",
+      ".reconnect-dialog"
+    ].forEach(function(selector) {
+      var nodes = document.querySelectorAll(selector);
+      for (var i = 0; i < nodes.length; i++) {
+        nodes[i].style.setProperty("display", "none", "important");
+        nodes[i].style.setProperty("pointer-events", "none", "important");
+      }
+    });
+  }
+
+  function toggleNativeDisconnectUi(hidden) {
+    if (document.body && document.body.classList) {
+      document.body.classList.toggle("ibpl-idle-expired", !!hidden);
+    }
+    if (!hidden) return;
+
+    hideNativeDisconnectNodes();
+    window.setTimeout(hideNativeDisconnectNodes, 50);
+    window.setTimeout(hideNativeDisconnectNodes, 500);
+  }
+
+  function clearIdleOverlay() {
+    idleExpired = false;
+    lastActivity = Date.now();
+    toggleNativeDisconnectUi(false);
+    var overlay = document.getElementById("ibpl-idle-overlay");
+    if (!overlay) return;
+    overlay.classList.remove("visible", "expired");
   }
 
   function ensureIdleOverlay() {
@@ -897,6 +991,7 @@
 
     overlay.classList.add("visible");
     overlay.classList.toggle("expired", state === "expired");
+    toggleNativeDisconnectUi(state === "expired");
 
     if (state === "expired") {
       if (title) title.textContent = "Session paused";
@@ -920,6 +1015,7 @@
     var overlay = document.getElementById("ibpl-idle-overlay");
     if (!overlay || idleExpired) return;
     overlay.classList.remove("visible");
+    toggleNativeDisconnectUi(false);
   }
 
   function sendActivity(force) {

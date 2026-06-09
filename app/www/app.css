@@ -501,10 +501,12 @@ a:hover { color: #f0c060; }
   padding: 20px;
   background: rgba(13,17,23,0.78);
   backdrop-filter: blur(4px);
-  z-index: 10000;
+  z-index: 2147483000;
 }
-.idle-overlay.visible { display: flex; }
+.idle-overlay.visible { display: flex !important; }
 .idle-panel {
+  position: relative;
+  z-index: 1;
   width: min(460px, 100%);
   background: #161b22;
   border: 1px solid #30363d;
@@ -563,6 +565,16 @@ a:hover { color: #f0c060; }
 }
 .idle-overlay.expired .idle-panel {
   border-color: rgba(232,164,53,0.5);
+}
+body.ibpl-idle-expired #shiny-disconnected-overlay,
+body.ibpl-idle-expired .shiny-disconnected-overlay,
+body.ibpl-idle-expired #shiny-disconnected-dialog,
+body.ibpl-idle-expired .shiny-disconnected-dialog,
+body.ibpl-idle-expired #shiny-reconnect-dialog,
+body.ibpl-idle-expired .shiny-reconnect-dialog,
+body.ibpl-idle-expired .reconnect-dialog {
+  display: none !important;
+  pointer-events: none !important;
 }
 .restore-notice {
   position: fixed;
