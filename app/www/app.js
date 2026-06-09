@@ -938,6 +938,7 @@
       ".shiny-disconnected-overlay",
       "#shiny-disconnected-dialog",
       ".shiny-disconnected-dialog",
+      "#shiny-notification-reconnect",
       "#shiny-reconnect-dialog",
       ".shiny-reconnect-dialog",
       ".reconnect-dialog"
@@ -1112,6 +1113,23 @@
     setOverlayState("expired", 0);
   }
 
+  function patchShinyDisconnectNotifier() {
+    var shinyapp = window.Shiny && window.Shiny.shinyapp;
+    if (!shinyapp || shinyapp.__ibplNotifyDisconnectedPatched) return;
+    var original = shinyapp.$notifyDisconnected;
+    if (typeof original !== "function") return;
+
+    shinyapp.__ibplNotifyDisconnectedPatched = true;
+    shinyapp.__ibplNotifyDisconnectedOriginal = original;
+    shinyapp.$notifyDisconnected = function() {
+      if (shouldSuppressDisconnectOverlay()) {
+        toggleNativeDisconnectUi(true);
+        return;
+      }
+      return original.apply(this, arguments);
+    };
+  }
+
   function bindActivity() {
     window.addEventListener("beforeunload", function() {
       pageUnloading = true;
@@ -1148,6 +1166,7 @@
       });
       window.jQuery(document).on("shiny:connected", function() {
         pageUnloading = false;
+        patchShinyDisconnectNotifier();
         clearIdleOverlay();
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
@@ -1158,6 +1177,7 @@
     } else {
       document.addEventListener("shiny:connected", function() {
         pageUnloading = false;
+        patchShinyDisconnectNotifier();
         clearIdleOverlay();
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
@@ -1166,6 +1186,7 @@
         handleDisconnected();
       });
     }
+    patchShinyDisconnectNotifier();
     markActivity(true);
     saveState(false, false);
     if (timerId) window.clearInterval(timerId);

@@ -85,6 +85,7 @@ ui <- navbarPage(
 server <- function(input, output, session) {
   startup_t0 <- proc.time()[["elapsed"]]
   init_session_request_guard(session)
+  if (is.function(session$allowReconnect)) session$allowReconnect(FALSE)
   last_activity_at <- reactiveVal(as.numeric(Sys.time()))
   idle_timeout_sec <- APP_IDLE_TIMEOUT_SEC
   idle_check_sec <- APP_IDLE_CHECK_SEC

@@ -570,6 +570,7 @@ body.ibpl-idle-expired #shiny-disconnected-overlay,
 body.ibpl-idle-expired .shiny-disconnected-overlay,
 body.ibpl-idle-expired #shiny-disconnected-dialog,
 body.ibpl-idle-expired .shiny-disconnected-dialog,
+body.ibpl-idle-expired #shiny-notification-reconnect,
 body.ibpl-idle-expired #shiny-reconnect-dialog,
 body.ibpl-idle-expired .shiny-reconnect-dialog,
 body.ibpl-idle-expired .reconnect-dialog {
