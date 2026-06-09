@@ -572,22 +572,8 @@ body.ibpl-idle-expired #shiny-disconnected-dialog,
 body.ibpl-idle-expired .shiny-disconnected-dialog,
 body.ibpl-idle-expired #shiny-reconnect-dialog,
 body.ibpl-idle-expired .shiny-reconnect-dialog,
-body.ibpl-idle-expired .reconnect-dialog,
-body.ibpl-idle-expired .disconnected-dialog,
-body.ibpl-idle-expired [id^="shiny-disconnected"],
-body.ibpl-idle-expired [class*="shiny-disconnected"],
-body.ibpl-idle-expired [id*="shiny-reconnect"],
-body.ibpl-idle-expired [class*="shiny-reconnect"],
-body.ibpl-idle-expired [id*="shinyapps-disconnect"],
-body.ibpl-idle-expired [class*="shinyapps-disconnect"],
-body.ibpl-idle-expired [id*="shinyapps-reconnect"],
-body.ibpl-idle-expired [class*="shinyapps-reconnect"],
-body.ibpl-idle-expired [id*="ss-disconnect"],
-body.ibpl-idle-expired [class*="ss-disconnect"],
-body.ibpl-idle-expired [id*="ss-reconnect"],
-body.ibpl-idle-expired [class*="ss-reconnect"] {
+body.ibpl-idle-expired .reconnect-dialog {
   display: none !important;
-  visibility: hidden !important;
   pointer-events: none !important;
 }
 .restore-notice {
