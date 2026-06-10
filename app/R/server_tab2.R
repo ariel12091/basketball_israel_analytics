@@ -90,13 +90,18 @@ server_tab2 <- function(input, output, session, shared) {
       )
     )
     ld_ref$teams <- teams_ld
-    pending_team <- shared$pending_ld_team()
-    if (!is.null(pending_team) && nzchar(pending_team)) {
+    team_choices <- team_select_choices_with_all(teams_ld, all_label = "- All teams -")
+    pending_team <- as.character(shared$pending_ld_team() %||% "")
+    pending_team <- pending_team[nzchar(pending_team)]
+    if (length(pending_team)) {
       shared$pending_ld_team(NULL)
-      ld_lineup_filter$update_team_choices(team_select_choices_with_all(teams_ld, all_label = "- All teams -"), selected = pending_team)
+      selected_team <- if (pending_team[[1]] %in% unname(team_choices)) pending_team[[1]] else ""
     } else {
-      ld_lineup_filter$update_team_choices(team_select_choices_with_all(teams_ld, all_label = "- All teams -"), selected = "")
+      current_team <- as.character(isolate(ld_lineup_filter$team()) %||% "")
+      current_team <- current_team[nzchar(current_team)]
+      selected_team <- if (length(current_team) && current_team[[1]] %in% unname(team_choices)) current_team[[1]] else ""
     }
+    ld_lineup_filter$update_team_choices(team_choices, selected = selected_team)
 
     players_map <- cached_ref_query(
       key = sprintf("ld_players_%d", gy_int),
@@ -113,8 +118,7 @@ server_tab2 <- function(input, output, session, shared) {
       )
     )
     ld_ref$players <- players_map
-
-    ld_lineup_filter$clear_player_choices()
+    ld_lineup_filter$refresh_player_choices()
 
     gn_df <- cached_ref_query(
       key = sprintf("ld_gn_%d", gy_int),

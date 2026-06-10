@@ -77,29 +77,25 @@ lineup_player_filter_server <- function(id, players_ref) {
       intersect(selected, as.character(unname(choices)))
     }
 
-    reset_inputs <- function(team_choices = NULL, team_selected = "") {
-      if (!is.null(team_choices)) {
-        update_team_choices(team_choices, selected = team_selected)
-      } else {
-        updateSelectizeInput(session, "team", selected = team_selected, server = FALSE)
+    refresh_player_choices <- function() {
+      team_val <- as.character(input$team %||% "")
+      team_val <- team_val[nzchar(team_val)]
+      if (!length(team_val)) {
+        clear_player_choices()
+        return(invisible(NULL))
       }
-      clear_player_choices()
-    }
+      team_val <- team_val[[1]]
 
-    observeEvent(input$team, {
-      team_val <- input$team %||% ""
       players_df <- players_ref()
       has_player_cols <- !is.null(players_df) && all(c("team_id", "player_id", "name") %in% names(players_df))
-      if (nzchar(team_val) && isTRUE(has_player_cols) && nrow(players_df)) {
-        tid <- suppressWarnings(as.integer(team_val))
-        roster <- players_df[players_df$team_id == tid, , drop = FALSE]
-        choices <- if (nrow(roster)) {
-          setNames(as.character(roster$player_id), roster$name)
-        } else {
-          empty_choices
-        }
+      if (!isTRUE(has_player_cols)) return(invisible(NULL))
+
+      tid <- suppressWarnings(as.integer(team_val))
+      roster <- players_df[players_df$team_id == tid, , drop = FALSE]
+      choices <- if (nrow(roster)) {
+        setNames(as.character(roster$player_id), roster$name)
       } else {
-        choices <- empty_choices
+        empty_choices
       }
 
       updateSelectizeInput(
@@ -114,7 +110,21 @@ lineup_player_filter_server <- function(id, players_ref) {
         selected = selected_in_choices(input$players_off, choices),
         server = FALSE
       )
-    }, ignoreInit = TRUE)
+      invisible(NULL)
+    }
+
+    reset_inputs <- function(team_choices = NULL, team_selected = "") {
+      if (!is.null(team_choices)) {
+        update_team_choices(team_choices, selected = team_selected)
+      } else {
+        updateSelectizeInput(session, "team", selected = team_selected, server = FALSE)
+      }
+      clear_player_choices()
+    }
+
+    observeEvent(list(input$team, players_ref()), {
+      refresh_player_choices()
+    }, ignoreInit = FALSE)
 
     observeEvent(input$players_on, {
       on_sel <- input$players_on %||% character(0)
@@ -139,6 +149,7 @@ lineup_player_filter_server <- function(id, players_ref) {
       players_on = reactive(input$players_on %||% character(0)),
       players_off = reactive(input$players_off %||% character(0)),
       update_team_choices = update_team_choices,
+      refresh_player_choices = refresh_player_choices,
       clear_player_choices = clear_player_choices,
       reset_inputs = reset_inputs
     )
