@@ -732,7 +732,7 @@
         ensureSelectizeOption(el.selectize, selectValue);
       }
       el.selectize.setValue(selectValue, true);
-      if (emit) notifyShinyInput(id, selectValue);
+      if (emit) return notifyShinyInput(id, selectValue);
       return true;
     }
 
@@ -795,7 +795,8 @@
     clearDelayedPlayerRestores();
     dependentRestoreActive = false;
     var attempts = 0;
-    var maxAttempts = 12;
+    var maxAttempts = 40;
+    var emittedValues = {};
 
     function hasRestoreValue(id) {
       return Object.prototype.hasOwnProperty.call(values, id) && valueArray(values[id]).length > 0;
@@ -825,23 +826,40 @@
     function attemptRestore() {
       attempts += 1;
       var pending = false;
+      var canEmitDependent = (emit || restorePending) && shinyReadyForRestore();
       applyingRestoreValues = true;
       suppressSaveUntil = Date.now() + 1500;
       try {
         // These choices are server-owned; wait for real options instead of creating saved values as new options.
         dependentPlayerGroups.forEach(function(group) {
+          var teamPending = false;
           if (Object.prototype.hasOwnProperty.call(values, group.team)) {
-            var teamApplied = applyInputValue(group.team, values[group.team], emit, {
+            var emitTeam = canEmitDependent && !emittedValues[group.team];
+            var teamApplied = applyInputValue(group.team, values[group.team], emitTeam, {
               requireExistingSelectizeOption: true
             });
-            if (!teamApplied && hasRestoreValue(group.team)) pending = true;
+            if (teamApplied && emitTeam) emittedValues[group.team] = true;
+            if (!teamApplied && hasRestoreValue(group.team)) {
+              pending = true;
+              teamPending = true;
+            }
+            if (teamApplied && !emittedValues[group.team] && (emit || restorePending)) {
+              pending = true;
+            }
           }
+          if (teamPending) return;
+
           group.players.forEach(function(id) {
             if (Object.prototype.hasOwnProperty.call(values, id)) {
-              var playerApplied = applyInputValue(id, values[id], emit, {
+              var emitPlayer = canEmitDependent && !emittedValues[id];
+              var playerApplied = applyInputValue(id, values[id], emitPlayer, {
                 requireExistingSelectizeOption: true
               });
+              if (playerApplied && emitPlayer) emittedValues[id] = true;
               if (!playerApplied && hasRestoreValue(id)) pending = true;
+              if (playerApplied && !emittedValues[id] && (emit || restorePending)) {
+                pending = true;
+              }
             }
           });
         });
