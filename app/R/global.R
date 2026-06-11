@@ -1079,6 +1079,31 @@ blank_to_na_integer <- function(x) {
   }
 }
 
+is_invalid_persisted_token <- function(x) {
+  if (is.null(x)) return(logical(0))
+  val <- trimws(tolower(as.character(x)))
+  is.na(val) | val %in% c("undefined", "null", "nan", "na")
+}
+
+sanitize_persisted_choices <- function(x, max_len = 80L, numeric_only = FALSE) {
+  if (is.null(x)) return(character(0))
+  vals <- if (is.list(x)) unlist(x, recursive = FALSE, use.names = FALSE) else x
+  vals <- trimws(as.character(vals))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  vals <- vals[!is_invalid_persisted_token(vals)]
+  if (isTRUE(numeric_only) && length(vals)) {
+    nums <- suppressWarnings(as.integer(vals))
+    vals <- vals[!is.na(nums)]
+  }
+  vals <- substr(vals, 1L, 200L)
+  vals[seq_len(min(length(vals), max_len))]
+}
+
+sanitize_single_choice <- function(x, numeric_only = FALSE) {
+  vals <- sanitize_persisted_choices(x, max_len = 1L, numeric_only = numeric_only)
+  if (length(vals)) vals[[1]] else ""
+}
+
 csv_if_any <- function(x, integerize = FALSE) {
   if (is.null(x) || !length(x)) return(NA_character_)
   vals <- as.character(x)

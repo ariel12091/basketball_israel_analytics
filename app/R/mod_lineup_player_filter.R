@@ -70,15 +70,22 @@ lineup_player_filter_server <- function(id, players_ref) {
       updateSelectizeInput(session, "team", choices = choices, selected = selected, server = FALSE)
     }
 
+    current_team_value <- function() {
+      sanitize_single_choice(input$team, numeric_only = TRUE)
+    }
+
+    current_player_values <- function(input_id) {
+      sanitize_persisted_choices(input[[input_id]], numeric_only = TRUE)
+    }
+
     selected_in_choices <- function(selected, choices) {
-      selected <- as.character(selected %||% character(0))
-      selected <- selected[nzchar(selected)]
+      selected <- sanitize_persisted_choices(selected, numeric_only = TRUE)
       if (!length(selected) || !length(choices)) return(character(0))
       intersect(selected, as.character(unname(choices)))
     }
 
     refresh_player_choices <- function() {
-      team_val <- as.character(input$team %||% "")
+      team_val <- current_team_value()
       team_val <- team_val[nzchar(team_val)]
       if (!length(team_val)) {
         clear_player_choices()
@@ -127,8 +134,8 @@ lineup_player_filter_server <- function(id, players_ref) {
     }, ignoreInit = FALSE)
 
     observeEvent(input$players_on, {
-      on_sel <- input$players_on %||% character(0)
-      off_sel <- input$players_off %||% character(0)
+      on_sel <- current_player_values("players_on")
+      off_sel <- current_player_values("players_off")
       inter <- intersect(on_sel, off_sel)
       if (length(inter)) {
         updateSelectizeInput(session, "players_off", selected = setdiff(off_sel, inter))
@@ -136,8 +143,8 @@ lineup_player_filter_server <- function(id, players_ref) {
     }, ignoreInit = TRUE)
 
     observeEvent(input$players_off, {
-      on_sel <- input$players_on %||% character(0)
-      off_sel <- input$players_off %||% character(0)
+      on_sel <- current_player_values("players_on")
+      off_sel <- current_player_values("players_off")
       inter <- intersect(on_sel, off_sel)
       if (length(inter)) {
         updateSelectizeInput(session, "players_on", selected = setdiff(on_sel, inter))
@@ -145,9 +152,9 @@ lineup_player_filter_server <- function(id, players_ref) {
     }, ignoreInit = TRUE)
 
     list(
-      team = reactive(input$team %||% ""),
-      players_on = reactive(input$players_on %||% character(0)),
-      players_off = reactive(input$players_off %||% character(0)),
+      team = reactive(current_team_value()),
+      players_on = reactive(current_player_values("players_on")),
+      players_off = reactive(current_player_values("players_off")),
       update_team_choices = update_team_choices,
       refresh_player_choices = refresh_player_choices,
       clear_player_choices = clear_player_choices,

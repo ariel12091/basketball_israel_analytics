@@ -520,11 +520,50 @@
     return undefined;
   }
 
+  function isInvalidPersistedToken(value) {
+    if (typeof value !== "string") return false;
+    var token = value.trim().toLowerCase();
+    return token === "undefined" || token === "null" || token === "nan" || token === "na";
+  }
+
+  function sanitizePersistedValue(value) {
+    if (value === undefined || value === null) return null;
+    if (Array.isArray(value)) {
+      var values = [];
+      for (var i = 0; i < value.length; i++) {
+        var item = sanitizePersistedValue(value[i]);
+        if (Array.isArray(item)) {
+          values = values.concat(item);
+        } else if (item !== null) {
+          values.push(item);
+        }
+      }
+      return values;
+    }
+    if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "value")) {
+      return sanitizePersistedValue(value.value);
+    }
+    if (isInvalidPersistedToken(value)) return null;
+    return value;
+  }
+
+  function sanitizeStateValues(values) {
+    var out = {};
+    if (!values) return out;
+    for (var key in values) {
+      if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
+      var value = sanitizePersistedValue(values[key]);
+      if (value === null) continue;
+      out[key] = value;
+    }
+    return out;
+  }
+
   function normalizeCachedInputValue(value) {
     if (value === undefined || value === null) return null;
-    if (Array.isArray(value)) return value;
+    if (Array.isArray(value)) return sanitizePersistedValue(value);
     if (typeof value === "boolean" || typeof value === "number") return value;
-    if (typeof value === "string") return value;
+    if (typeof value === "string") return isInvalidPersistedToken(value) ? null : value;
     if (typeof value === "object" && Object.prototype.hasOwnProperty.call(value, "value")) {
       return normalizeCachedInputValue(value.value);
     }
@@ -575,7 +614,12 @@
   }
 
   function valueArray(value) {
-    if (Array.isArray(value)) return value.map(function(v) { return String(v); });
+    value = sanitizePersistedValue(value);
+    if (Array.isArray(value)) {
+      return value.map(function(v) { return String(v); }).filter(function(v) {
+        return !isInvalidPersistedToken(v);
+      });
+    }
     if (value === null || value === undefined || value === "") return [];
     return [String(value)];
   }
@@ -637,9 +681,20 @@
     selectize.refreshOptions(false);
   }
 
-  function applyInputValue(id, value, emit) {
+  function selectizeHasValue(selectize, value) {
+    var values = valueArray(value);
+    if (!values.length) return true;
+    for (var i = 0; i < values.length; i++) {
+      if (!Object.prototype.hasOwnProperty.call(selectize.options, values[i])) return false;
+    }
+    return true;
+  }
+
+  function applyInputValue(id, value, emit, options) {
+    value = sanitizePersistedValue(value);
     if (value === null || value === undefined) return false;
     emit = !!emit;
+    options = options || {};
     if (applyDateRangeValue(id, value, emit)) return true;
     if (applyRadioValue(id, value, emit)) return true;
 
@@ -656,9 +711,16 @@
     }
 
     if (el.selectize) {
-      ensureSelectizeOption(el.selectize, value);
-      el.selectize.setValue(Array.isArray(value) ? value.map(String) : String(value), true);
-      if (emit) notifyShinyInput(id, Array.isArray(value) ? value.map(String) : String(value));
+      if (options.requireExistingSelectizeOption && !selectizeHasValue(el.selectize, value)) {
+        return false;
+      }
+      var selectValues = valueArray(value);
+      var selectValue = el.multiple ? selectValues : (selectValues.length ? selectValues[0] : "");
+      if (!options.requireExistingSelectizeOption) {
+        ensureSelectizeOption(el.selectize, selectValue);
+      }
+      el.selectize.setValue(selectValue, true);
+      if (emit) notifyShinyInput(id, selectValue);
       return true;
     }
 
@@ -701,8 +763,9 @@
     delayedPlayerRestoreTimers = [];
   }
 
-  function isDependentPlayerInput(id) {
+  function isDependentLineupInput(id) {
     for (var g = 0; g < dependentPlayerGroups.length; g++) {
+      if (dependentPlayerGroups[g].team === id) return true;
       if (dependentPlayerGroups[g].players.indexOf(id) !== -1) return true;
     }
     return false;
@@ -711,27 +774,46 @@
   function reapplyDependentPlayerInputs(values, emit) {
     if (!values) return;
     clearDelayedPlayerRestores();
-    var delays = [700, 1600, 2800];
-    delays.forEach(function(delay) {
-      delayedPlayerRestoreTimers.push(window.setTimeout(function() {
-        applyingRestoreValues = true;
-        suppressSaveUntil = Date.now() + 1500;
-        try {
-          dependentPlayerGroups.forEach(function(group) {
-            if (Object.prototype.hasOwnProperty.call(values, group.team)) {
-              applyInputValue(group.team, values[group.team], emit);
-            }
-            group.players.forEach(function(id) {
-              if (Object.prototype.hasOwnProperty.call(values, id)) {
-                applyInputValue(id, values[id], emit);
-              }
+    var attempts = 0;
+    var maxAttempts = 12;
+
+    function hasRestoreValue(id) {
+      return Object.prototype.hasOwnProperty.call(values, id) && valueArray(values[id]).length > 0;
+    }
+
+    function attemptRestore() {
+      attempts += 1;
+      var pending = false;
+      applyingRestoreValues = true;
+      suppressSaveUntil = Date.now() + 1500;
+      try {
+        // These choices are server-owned; wait for real options instead of creating saved values as new options.
+        dependentPlayerGroups.forEach(function(group) {
+          if (Object.prototype.hasOwnProperty.call(values, group.team)) {
+            var teamApplied = applyInputValue(group.team, values[group.team], emit, {
+              requireExistingSelectizeOption: true
             });
+            if (!teamApplied && hasRestoreValue(group.team)) pending = true;
+          }
+          group.players.forEach(function(id) {
+            if (Object.prototype.hasOwnProperty.call(values, id)) {
+              var playerApplied = applyInputValue(id, values[id], emit, {
+                requireExistingSelectizeOption: true
+              });
+              if (!playerApplied && hasRestoreValue(id)) pending = true;
+            }
           });
-        } finally {
-          applyingRestoreValues = false;
-        }
-      }, delay));
-    });
+        });
+      } finally {
+        applyingRestoreValues = false;
+      }
+
+      if (pending && attempts < maxAttempts) {
+        delayedPlayerRestoreTimers.push(window.setTimeout(attemptRestore, 750));
+      }
+    }
+
+    delayedPlayerRestoreTimers.push(window.setTimeout(attemptRestore, 700));
   }
 
   function applyRestoreValues(values, emit, includeGameYear) {
@@ -748,7 +830,7 @@
       for (var key in values) {
         if (!Object.prototype.hasOwnProperty.call(values, key)) continue;
         if (key === "main_tabs" || key === "game_year") continue;
-        if (isDependentPlayerInput(key)) continue;
+        if (isDependentLineupInput(key)) continue;
         applyInputValue(key, values[key], emit);
       }
       reapplyDependentPlayerInputs(values, emit);
@@ -758,12 +840,16 @@
   }
 
   function compactValue(value) {
+    value = sanitizePersistedValue(value);
     if (value == null) return null;
     if (Array.isArray(value)) {
-      return value.map(function(v) { return String(v).slice(0, 200); }).slice(0, 80);
+      return value.map(function(v) { return String(v).slice(0, 200); }).filter(function(v) {
+        return !isInvalidPersistedToken(v);
+      }).slice(0, 80);
     }
     if (typeof value === "boolean" || typeof value === "number") return value;
-    return String(value).slice(0, 200);
+    value = String(value).slice(0, 200);
+    return isInvalidPersistedToken(value) ? null : value;
   }
 
   function readState() {
@@ -818,6 +904,7 @@
         if (typeof removeFn === "function") removeFn();
         return null;
       }
+      state.values = sanitizeStateValues(state.values);
       return state;
     } catch (e) {
       if (typeof removeFn === "function") removeFn();

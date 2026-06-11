@@ -185,17 +185,11 @@ server <- function(input, output, session) {
   }
 
   restore_chr_vec <- function(x, max_len = 80L) {
-    if (is.null(x)) return(character(0))
-    vals <- if (is.list(x)) unlist(x, recursive = FALSE, use.names = FALSE) else x
-    vals <- as.character(vals)
-    vals <- vals[!is.na(vals)]
-    vals <- substr(vals, 1L, 200L)
-    vals[seq_len(min(length(vals), max_len))]
+    sanitize_persisted_choices(x, max_len = max_len)
   }
 
   restore_chr_one <- function(x) {
-    vals <- restore_chr_vec(x, max_len = 1L)
-    if (length(vals)) vals[[1]] else ""
+    sanitize_single_choice(x)
   }
 
   restore_bool <- function(x) {
