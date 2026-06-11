@@ -262,6 +262,11 @@
   var finalBrowserApplySent = false;
   var restoreFinishFallbackId = null;
   var restoreFinishRequested = false;
+  var restoreSendTimerId = null;
+  var restoreSendAttempt = 0;
+  var restoreMaxSendAttempts = 40;
+  var restoreSendPollMs = 500;
+  var restoreCompletionHoldMs = 15000;
   var dependentRestoreActive = false;
   var suppressSaveUntil = 0;
   var cfg = window.IBPL_IDLE_CONFIG || {};
@@ -611,8 +616,13 @@
   }
 
   function notifyShinyInput(id, value) {
-    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
-    window.Shiny.setInputValue(id, value, { priority: "event" });
+    if (!shinyReadyForRestore()) return false;
+    try {
+      window.Shiny.setInputValue(id, value, { priority: "event" });
+      return true;
+    } catch (e) {
+      return false;
+    }
   }
 
   function valueArray(value) {
@@ -763,6 +773,13 @@
       window.clearTimeout(delayedPlayerRestoreTimers[i]);
     }
     delayedPlayerRestoreTimers = [];
+  }
+
+  function clearRestoreSendTimer() {
+    if (restoreSendTimerId) {
+      window.clearTimeout(restoreSendTimerId);
+      restoreSendTimerId = null;
+    }
   }
 
   function isDependentLineupInput(id) {
@@ -974,7 +991,84 @@
     return startedAt > 0 && (Date.now() - startedAt) < reconnectIntentTtlMs;
   }
 
+  function shinyReadyForRestore() {
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return false;
+    var shinyapp = window.Shiny.shinyapp;
+    if (!shinyapp) return false;
+    var socket = shinyapp.$socket || shinyapp.socket;
+    if (socket && typeof socket.readyState === "number" && socket.readyState !== 1) return false;
+    return true;
+  }
+
+  function restoreTargetInputsReady(state) {
+    var values = state && state.values ? state.values : {};
+    var tab = normalizeTabValue(values.main_tabs);
+    if (tab && !findMainTabLink(tab)) return false;
+
+    function selectizeReady(id) {
+      if (!Object.prototype.hasOwnProperty.call(values, id)) return true;
+      var el = document.getElementById(id);
+      return !!(el && el.selectize);
+    }
+
+    if (tab === "lineup_data") {
+      return selectizeReady("ld_lineup_filter-team") &&
+        selectizeReady("ld_lineup_filter-players_on") &&
+        selectizeReady("ld_lineup_filter-players_off");
+    }
+
+    if (tab === "compare") {
+      return selectizeReady("cmp_lu_filter-team") &&
+        selectizeReady("cmp_lu_filter-players_on") &&
+        selectizeReady("cmp_lu_filter-players_off");
+    }
+
+    return true;
+  }
+
+  function scheduleRestoreSend(delayMs) {
+    clearRestoreSendTimer();
+    restoreSendTimerId = window.setTimeout(attemptRestoreSend, delayMs);
+  }
+
+  function attemptRestoreSend() {
+    restoreSendTimerId = null;
+    if (restoreSent || !shouldRestoreState()) return;
+    pendingRestoreState = pendingRestoreState || loadState(true);
+    if (!pendingRestoreState) {
+      safeSessionRemove(restoreIntentKey);
+      safeSessionRemove(reconnectingKey);
+      restorePending = false;
+      toggleNativeDisconnectUi(false);
+      return;
+    }
+
+    activateRestoreTab(pendingRestoreState);
+    if (!shinyReadyForRestore()) {
+      restoreSendAttempt += 1;
+      scheduleRestoreSend(restoreSendPollMs);
+      return;
+    }
+
+    if (!restoreTargetInputsReady(pendingRestoreState) && restoreSendAttempt < restoreMaxSendAttempts) {
+      restoreSendAttempt += 1;
+      scheduleRestoreSend(restoreSendPollMs);
+      return;
+    }
+
+    if (sendRestoreState("final")) {
+      scheduleRestoreFinishFallback();
+      return;
+    }
+
+    restoreSendAttempt += 1;
+    if (restoreSendAttempt < restoreMaxSendAttempts) {
+      scheduleRestoreSend(restoreSendPollMs);
+    }
+  }
+
   function finishRestoreCycle() {
+    clearRestoreSendTimer();
     if (restoreFinishFallbackId) {
       window.clearTimeout(restoreFinishFallbackId);
       restoreFinishFallbackId = null;
@@ -988,6 +1082,8 @@
     suppressDisconnectUntil = Date.now() + restoreGraceMs;
     restorePending = false;
     restoreSent = false;
+    finalBrowserApplySent = false;
+    restoreSendAttempt = 0;
     pendingRestoreState = null;
     clearIdleOverlay();
     sendActivity(true);
@@ -999,17 +1095,33 @@
       suppressSaveUntil = Date.now() + 1500;
       return;
     }
-    finishRestoreCycle();
+
+    if (restoreFinishFallbackId) {
+      window.clearTimeout(restoreFinishFallbackId);
+      restoreFinishFallbackId = null;
+    }
+
+    if (force) {
+      finishRestoreCycle();
+      return;
+    }
+
+    restoreFinishRequested = false;
+    suppressDisconnectUntil = Date.now() + restoreCompletionHoldMs + restoreGraceMs;
+    restoreFinishFallbackId = window.setTimeout(function() {
+      finishRestoreCycle();
+    }, restoreCompletionHoldMs);
   }
 
   function scheduleRestoreFinishFallback() {
     if (restoreFinishFallbackId) window.clearTimeout(restoreFinishFallbackId);
     restoreFinishFallbackId = window.setTimeout(function() {
       requestRestoreFinish(true);
-    }, 12000);
+    }, Math.max(25000, restoreCompletionHoldMs + 10000));
   }
 
   function clearSavedState() {
+    clearRestoreSendTimer();
     safeSessionRemove(stateKey);
     safeLocalRemove(lastStateKey);
     safeSessionRemove(lastTabKey);
@@ -1030,20 +1142,27 @@
   }
 
   function sendRestoreState(stage) {
-    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    if (!shinyReadyForRestore()) return false;
     var state = pendingRestoreState || loadState(true);
-    if (!state) return;
-    window.Shiny.setInputValue("ibpl_restore_state", {
-      stage: stage || "full",
-      sentAt: Date.now(),
-      values: state.values
-    }, { priority: "event" });
+    if (!state) return false;
+    try {
+      window.Shiny.setInputValue("ibpl_restore_state", {
+        stage: stage || "full",
+        sentAt: Date.now(),
+        values: state.values
+      }, { priority: "event" });
+      restoreSent = true;
+    } catch (e) {
+      restoreSent = false;
+      return false;
+    }
     if (stage === "final" && !finalBrowserApplySent) {
       finalBrowserApplySent = true;
       window.setTimeout(function() {
-        applyRestoreValues(state.values, true, false);
+        applyRestoreValues(state.values, false, false);
       }, 1200);
     }
+    return true;
   }
 
   function requestRestore() {
@@ -1057,16 +1176,15 @@
       return;
     }
     toggleNativeDisconnectUi(true);
-    restoreSent = true;
     finalBrowserApplySent = false;
     restoreFinishRequested = false;
+    restoreSendAttempt = 0;
     dependentRestoreActive = false;
     clearDelayedPlayerRestores();
+    clearRestoreSendTimer();
     restorePending = true;
-    window.setTimeout(function() {
-      sendRestoreState("final");
-      scheduleRestoreFinishFallback();
-    }, 2200);
+    activateRestoreTab(pendingRestoreState);
+    scheduleRestoreSend(700);
   }
 
   function formatSeconds(ms) {
@@ -1203,10 +1321,12 @@
 
   function sendActivity(force) {
     var now = Date.now();
-    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    if (!shinyReadyForRestore()) return;
     if (!force && (now - lastSent) < minIntervalMs) return;
     lastSent = now;
-    window.Shiny.setInputValue("idle_activity_ts", now, { priority: "event" });
+    try {
+      window.Shiny.setInputValue("idle_activity_ts", now, { priority: "event" });
+    } catch (e) {}
   }
 
   function markActivity(force) {
@@ -1246,6 +1366,10 @@
   function handleDisconnected() {
     if (shouldSuppressDisconnectOverlay()) {
       toggleNativeDisconnectUi(true);
+      if (restorePending) {
+        restoreSent = false;
+        suppressDisconnectUntil = Date.now() + restoreCompletionHoldMs + restoreGraceMs;
+      }
       return;
     }
 
