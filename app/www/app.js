@@ -261,6 +261,8 @@
   var applyingRestoreValues = false;
   var finalBrowserApplySent = false;
   var restoreFinishFallbackId = null;
+  var restoreFinishRequested = false;
+  var dependentRestoreActive = false;
   var suppressSaveUntil = 0;
   var cfg = window.IBPL_IDLE_CONFIG || {};
   var timeoutMs = Math.max(1, Number(cfg.timeoutSec || 360)) * 1000;
@@ -774,12 +776,34 @@
   function reapplyDependentPlayerInputs(values, emit) {
     if (!values) return;
     clearDelayedPlayerRestores();
+    dependentRestoreActive = false;
     var attempts = 0;
     var maxAttempts = 12;
 
     function hasRestoreValue(id) {
       return Object.prototype.hasOwnProperty.call(values, id) && valueArray(values[id]).length > 0;
     }
+
+    function hasAnyDependentRestoreValue() {
+      for (var g = 0; g < dependentPlayerGroups.length; g++) {
+        var group = dependentPlayerGroups[g];
+        if (hasRestoreValue(group.team)) return true;
+        for (var p = 0; p < group.players.length; p++) {
+          if (hasRestoreValue(group.players[p])) return true;
+        }
+      }
+      return false;
+    }
+
+    function completeDependentRestore() {
+      dependentRestoreActive = false;
+      if (restoreFinishRequested) {
+        requestRestoreFinish(false);
+      }
+    }
+
+    if (!hasAnyDependentRestoreValue()) return;
+    dependentRestoreActive = true;
 
     function attemptRestore() {
       attempts += 1;
@@ -810,6 +834,8 @@
 
       if (pending && attempts < maxAttempts) {
         delayedPlayerRestoreTimers.push(window.setTimeout(attemptRestore, 750));
+      } else {
+        completeDependentRestore();
       }
     }
 
@@ -940,6 +966,7 @@
     safeSessionSet(reconnectingKey, now);
     safeSessionRemove(skipRestoreKey);
     restorePending = true;
+    toggleNativeDisconnectUi(true);
   }
 
   function reconnectIntentActive() {
@@ -952,6 +979,9 @@
       window.clearTimeout(restoreFinishFallbackId);
       restoreFinishFallbackId = null;
     }
+    clearDelayedPlayerRestores();
+    dependentRestoreActive = false;
+    restoreFinishRequested = false;
     safeSessionRemove(restoreIntentKey);
     safeSessionRemove(reconnectingKey);
     safeSessionSet(restoreCompleteKey, String(Date.now()));
@@ -963,9 +993,20 @@
     sendActivity(true);
   }
 
+  function requestRestoreFinish(force) {
+    if (dependentRestoreActive && !force) {
+      restoreFinishRequested = true;
+      suppressSaveUntil = Date.now() + 1500;
+      return;
+    }
+    finishRestoreCycle();
+  }
+
   function scheduleRestoreFinishFallback() {
     if (restoreFinishFallbackId) window.clearTimeout(restoreFinishFallbackId);
-    restoreFinishFallbackId = window.setTimeout(finishRestoreCycle, 10000);
+    restoreFinishFallbackId = window.setTimeout(function() {
+      requestRestoreFinish(true);
+    }, 12000);
   }
 
   function clearSavedState() {
@@ -1012,10 +1053,15 @@
       safeSessionRemove(restoreIntentKey);
       safeSessionRemove(reconnectingKey);
       restorePending = false;
+      toggleNativeDisconnectUi(false);
       return;
     }
+    toggleNativeDisconnectUi(true);
     restoreSent = true;
     finalBrowserApplySent = false;
+    restoreFinishRequested = false;
+    dependentRestoreActive = false;
+    clearDelayedPlayerRestores();
     restorePending = true;
     window.setTimeout(function() {
       sendRestoreState("final");
@@ -1104,6 +1150,7 @@
         saveState(true, true);
         markRestoreIntent();
         pageUnloading = true;
+        toggleNativeDisconnectUi(true);
         window.location.reload();
       });
     }
@@ -1262,7 +1309,11 @@
       window.jQuery(document).on("shiny:connected", function() {
         pageUnloading = false;
         patchShinyDisconnectNotifier();
-        clearIdleOverlay();
+        if (restorePending) {
+          toggleNativeDisconnectUi(true);
+        } else {
+          clearIdleOverlay();
+        }
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
@@ -1273,7 +1324,11 @@
       document.addEventListener("shiny:connected", function() {
         pageUnloading = false;
         patchShinyDisconnectNotifier();
-        clearIdleOverlay();
+        if (restorePending) {
+          toggleNativeDisconnectUi(true);
+        } else {
+          clearIdleOverlay();
+        }
         saveState(false, false);
         window.setTimeout(requestRestore, 900);
       });
@@ -1283,6 +1338,7 @@
     }
     patchShinyDisconnectNotifier();
     markActivity(true);
+    if (restorePending) toggleNativeDisconnectUi(true);
     saveState(false, false);
     if (timerId) window.clearInterval(timerId);
     timerId = window.setInterval(checkIdleState, 1000);
@@ -1302,7 +1358,7 @@
   };
 
   window.ibplFinishRestoreCycle = function() {
-    finishRestoreCycle();
+    requestRestoreFinish(false);
   };
 
   window.ibplRestoreSavedSession = function() {
