@@ -5,6 +5,31 @@ library(DT)
 
 `%||%` <- function(a, b) if (!is.null(a)) a else b
 
+is_invalid_persisted_token <- function(x) {
+  if (is.null(x)) return(logical(0))
+  val <- trimws(tolower(as.character(x)))
+  is.na(val) | val %in% c("undefined", "null", "nan", "na")
+}
+
+sanitize_persisted_choices <- function(x, max_len = 80L, numeric_only = FALSE) {
+  if (is.null(x)) return(character(0))
+  vals <- if (is.list(x)) unlist(x, recursive = FALSE, use.names = FALSE) else x
+  vals <- trimws(as.character(vals))
+  vals <- vals[!is.na(vals) & nzchar(vals)]
+  vals <- vals[!is_invalid_persisted_token(vals)]
+  if (isTRUE(numeric_only) && length(vals)) {
+    nums <- suppressWarnings(as.integer(vals))
+    vals <- vals[!is.na(nums)]
+  }
+  vals <- substr(vals, 1L, 200L)
+  vals[seq_len(min(length(vals), max_len))]
+}
+
+sanitize_single_choice <- function(x, numeric_only = FALSE) {
+  vals <- sanitize_persisted_choices(x, max_len = 1L, numeric_only = numeric_only)
+  if (length(vals)) vals[[1]] else ""
+}
+
 DEFAULT_START <- as.Date("2024-10-01")
 DEFAULT_END <- as.Date("2025-07-01")
 DEFAULT_GAME_YEAR <- "2026"
