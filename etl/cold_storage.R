@@ -9,7 +9,7 @@ COLD_TABLE_KEYS <- list(
   actions_clean = c("game_id", "id"),
   possessions   = c("game_id", "id"),
   pws           = c("game_id", "id", "team_id"),
-  stints        = c("game_id", "segment_id", "team_id"),
+  stints        = c("game_id", "team_id", "final_start_id", "final_end_id"),
   subs          = c("game_id", "id")
 )
 
@@ -45,8 +45,12 @@ export_cold_table <- function(pg, schema, table_name, cold_dir, log_msg) {
   key_cols <- COLD_TABLE_KEYS[[table_name]]
 
   if (file.exists(parquet_path)) {
-    existing <- arrow::read_parquet(parquet_path)
-    merged <- rbind(existing, new_rows) |>
+    # Windows cannot overwrite a file while Arrow keeps a memory-mapped
+    # section open from a prior read of the same path.
+    existing <- arrow::read_parquet(parquet_path, mmap = FALSE)
+    # Current DB rows must win when a game is reprocessed and cold storage
+    # already contains older rows with the same keys.
+    merged <- rbind(new_rows, existing) |>
       dplyr::distinct(dplyr::across(dplyr::all_of(key_cols)), .keep_all = TRUE)
     log_msg(sprintf(
       "  [COLD] %s: merged %d existing + %d new -> %d unique rows",
@@ -61,7 +65,7 @@ export_cold_table <- function(pg, schema, table_name, cold_dir, log_msg) {
   arrow::write_parquet(merged, parquet_path)
 
   # 4. Read-back verification
-  verify <- arrow::read_parquet(parquet_path)
+  verify <- arrow::read_parquet(parquet_path, mmap = FALSE)
   if (nrow(verify) != nrow(merged)) {
     log_msg(sprintf(
       "  [COLD] %s: VERIFICATION FAILED (expected %d rows, got %d)",
@@ -139,7 +143,7 @@ restore_cold_table <- function(pg, schema, table_name, cold_dir = "exports/cold"
   parquet_path <- file.path(cold_dir, paste0(table_name, ".parquet"))
   if (!file.exists(parquet_path)) stop(sprintf("No Parquet found: %s", parquet_path))
 
-  df <- arrow::read_parquet(parquet_path)
+  df <- arrow::read_parquet(parquet_path, mmap = FALSE)
   DBI::dbWriteTable(
     pg,
     DBI::Id(schema = schema, table = table_name),

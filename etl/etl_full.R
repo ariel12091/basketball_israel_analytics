@@ -161,7 +161,7 @@ backfill_etl_processed_games <- function(pg, schema, log_msg) {
 
 # â”€â”€â”€ Main pipeline â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-etl_full <- function(game_ids = NULL, dry_run = FALSE) {
+etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_stats = FALSE) {
 
   # =========================================================================
   # Phase 1: Setup + Connection
@@ -209,10 +209,22 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   eval(parse(text = etl_lines), envir = .GlobalEnv)
   source("etl/cold_storage.R")
   log_msg("Sourced etl/cold_storage.R")
+  source("etl/player_id_aliases.R")
+  log_msg("Sourced etl/player_id_aliases.R")
+  source("etl/player_identity_dictionary.R")
+  log_msg("Sourced etl/player_identity_dictionary.R")
   log_msg(sprintf("Schema: %s (APP_ENV = %s)", SCHEMA, APP_ENV))
 
   ensure_etl_processed_games(pg, SCHEMA)
   backfill_etl_processed_games(pg, SCHEMA, log_msg)
+  ensure_player_id_corrections_tables(pg, SCHEMA)
+  identity_counts <- sync_player_identity_dictionary(pg, SCHEMA)
+  log_msg(sprintf(
+    "Player identity dictionary synced: %d identities, %d active mappings, %d active corrections",
+    identity_counts$identities[[1]],
+    identity_counts$active_mappings[[1]],
+    identity_counts$active_corrections[[1]]
+  ))
 
   # Ensure cleanup on exit
   on.exit({
@@ -301,6 +313,12 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
 
     log_msg(sprintf("Games to process: %d (%s)", length(ids), paste(ids, collapse = ", ")))
     ensure_pws_num_starters_cols(pg, SCHEMA)
+    player_aliases <- load_player_id_aliases(
+      pg,
+      SCHEMA,
+      game_years = unique(sched_subset$game_year)
+    )
+    log_msg(sprintf("Loaded %d active player_id correction mapping(s)", nrow(player_aliases)))
 
     if (dry_run) {
       log_msg("[DRY RUN] Would run etl_update() for the above games")
@@ -335,11 +353,32 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       if (!nrow(fetchable_sched)) {
         stop("No fetchable games (all requested rows missing pbp_url).", call. = FALSE)
       }
+      game_year_map <- fetchable_sched |>
+        dplyr::select(game_id, game_year) |>
+        dplyr::distinct() |>
+        dplyr::mutate(game_year = as.integer(game_year))
+      player_aliases_for_game <- player_aliases[
+        player_aliases$game_year %in% game_year_map$game_year,
+        ,
+        drop = FALSE
+      ]
       pbps <- purrr::map2(fetchable_sched$game_id, fetchable_sched$pbp_url, fetch_game_pbp)
       log_msg(sprintf("Fetched PBP for %d games", length(pbps)))
 
       # actions_clean
-      actions_df <- purrr::map(pbps, clean_actions) |> purrr::list_rbind()
+      actions_df <- purrr::map(pbps, clean_actions) |>
+        purrr::list_rbind() |>
+        dplyr::left_join(game_year_map, by = "game_id")
+      actions_df <- canonicalize_actions_player_ids(actions_df, player_aliases_for_game)
+      if (nrow(player_aliases_for_game)) {
+        assert_no_player_alias_dataframe_residue(
+          actions_df,
+          player_aliases_for_game,
+          "actions_df",
+          columns = c("player_id", "parameters_player_in", "parameters_player_out", "parameters_player", "parameters_fouled_on"),
+          log_msg = log_msg
+        )
+      }
 
       # subs
       subs_df <- actions_df %>%
@@ -362,17 +401,35 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
           )
         )
       boxes <- purrr::map2(box_sched$game_id, box_sched$box_url, fetch_game_box)
-      game_year_map <- fetchable_sched |>
-        dplyr::select(game_id, game_year) |>
-        dplyr::distinct() |>
-        dplyr::mutate(game_year = as.integer(game_year))
       roster_df <- purrr::map(pbps, extract_roster) |>
         purrr::list_rbind() |>
         dplyr::rename_with(tolower) |>
         dplyr::left_join(game_year_map, by = "game_id")
+      roster_df <- complete_roster_from_action_players(pg, SCHEMA, roster_df, actions_df, log_msg)
       starters_df <- purrr::map(boxes, extract_starters) |>
         purrr::list_rbind() |>
-        dplyr::rename_with(tolower)
+        dplyr::rename_with(tolower) |>
+        dplyr::left_join(game_year_map, by = "game_id")
+      roster_df <- canonicalize_roster_player_ids(roster_df, player_aliases_for_game)
+      starters_df <- canonicalize_starter_player_ids(starters_df, player_aliases_for_game)
+      if (nrow(player_aliases_for_game)) {
+        assert_no_player_alias_dataframe_residue(
+          roster_df,
+          player_aliases_for_game,
+          "roster_df",
+          columns = "player_id",
+          log_msg = log_msg
+        )
+        assert_no_player_alias_dataframe_residue(
+          starters_df,
+          player_aliases_for_game,
+          "starters_df",
+          columns = "player_id",
+          log_msg = log_msg
+        )
+      }
+      starters_df <- starters_df |>
+        dplyr::select(-dplyr::any_of("game_year"))
       team_name_map <- fetchable_sched |>
         dplyr::transmute(
           game_id,
@@ -400,10 +457,25 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
           lastname = dplyr::if_else(player_id == 29543L & lastname == "גולדמן", "GOLDMAN", lastname),
           starter = dplyr::coalesce(as.logical(starter), FALSE)
         ) |>
+        normalize_full_roster_fields() |>
         dplyr::select(-team_name_sched)
+      roster_df <- canonicalize_roster_player_ids(roster_df, player_aliases_for_game)
       roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
+      if (nrow(player_aliases_for_game)) {
+        assert_no_player_alias_dataframe_residue(
+          roster_df,
+          player_aliases_for_game,
+          "roster_df",
+          columns = "player_id",
+          log_msg = log_msg
+        )
+        log_msg(sprintf("  player alias pre-write guard passed for game %d", gid))
+      }
       DBI::dbBegin(pg)
       transaction_open <- TRUE
+      if (nrow(player_aliases_for_game)) {
+        cleanup_player_alias_lineup_derivatives(pg, SCHEMA, gid, log_msg)
+      }
       # Replace a complete game snapshot so retries do not retain obsolete
       # rows left by an older partial load. The order satisfies action FKs.
       for (table_name in c(
@@ -439,6 +511,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         dplyr::collect()
       upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df, manage_transaction = FALSE)
       log_msg(sprintf("  lineups_lookup staged: %d rows", nrow(df_lineups_df)))
+      if (nrow(player_aliases_for_game)) {
+        assert_no_player_alias_base_residue(pg, SCHEMA, gid, log_msg)
+        log_msg(sprintf("  player alias guard passed for game %d", gid))
+      }
       lineup_starters <- df_lineups_df %>%
         dplyr::select(game_id, team_id, lineup_hash, num_starters) %>%
         dplyr::distinct(game_id, team_id, lineup_hash, .keep_all = TRUE)
@@ -522,6 +598,24 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     log_msg(sprintf("Phase 2 FAILED: %s", conditionMessage(e)), "ERROR")
     stop("Base ETL failed â€” aborting pipeline.", call. = FALSE)
   })
+
+  if (length(processed_ids)) {
+    tryCatch({
+      identity_counts <- sync_player_identity_dictionary(pg, SCHEMA)
+      log_msg(sprintf(
+        "Player identity dictionary updated after base load: %d identities, %d active mappings, %d active corrections",
+        identity_counts$identities[[1]],
+        identity_counts$active_mappings[[1]],
+        identity_counts$active_corrections[[1]]
+      ))
+    }, error = function(e) {
+      log_msg(sprintf(
+        "Player identity dictionary refresh FAILED: %s",
+        conditionMessage(e)
+      ), "ERROR")
+      mark_phase_failed("Player identity dictionary", conditionMessage(e))
+    })
+  }
 
   # Guardrail: verify key tables have rows
   # actions_clean and pws are purged after each run; only check non-purged tables
@@ -672,6 +766,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       length(processed_ids)
     ))
     log_msg("[DRY RUN] Would refresh materialized view: player_traditional_stats_mv (if exists)")
+    if (isTRUE(force_full_sub_lineup_stats)) {
+      log_msg("[DRY RUN] Would force full sub_lineups_stats refresh")
+    }
   } else {
     tryCatch({
       t0 <- proc.time()
@@ -868,7 +965,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg("â”€â”€â”€ Phase 5: Sub-Lineup Stats Refresh â”€â”€â”€")
 
   if (dry_run) {
-    if (length(processed_ids)) {
+    if (isTRUE(force_full_sub_lineup_stats)) {
+      log_msg("[DRY RUN] Would call refresh_sub_lineups_stats()")
+    } else if (length(processed_ids)) {
       log_msg(sprintf(
         "[DRY RUN] Would call refresh_sub_lineups_stats_for_games() for %d game(s): %s",
         length(processed_ids), paste(processed_ids, collapse = ", ")
@@ -902,7 +1001,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
         params = list(SCHEMA)
       )$ok[[1]]
 
-      if (length(processed_ids) && isTRUE(incr_exists)) {
+      if (length(processed_ids) && isTRUE(incr_exists) && !isTRUE(force_full_sub_lineup_stats)) {
         ids_sql <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
         touched <- DBI::dbGetQuery(
           pg,
@@ -918,7 +1017,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       } else {
         if (length(processed_ids) && !isTRUE(incr_exists)) {
           log_msg("  Incremental refresh function not found; falling back to full refresh", "WARN")
+        } else if (isTRUE(force_full_sub_lineup_stats)) {
+          log_msg("  Forced full refresh requested for sub_lineups_stats")
         }
+        DBI::dbExecute(pg, "SET statement_timeout = 0;")
         DBI::dbExecute(pg, "SELECT refresh_sub_lineups_stats();")
         log_msg("  Used full refresh_sub_lineups_stats()")
       }
@@ -1099,6 +1201,56 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
       mark_phase_failed("Phase 6", msg)
     }
 
+    alias_residue <- player_alias_residue_summary(pg, SCHEMA, processed_ids)
+    if (nrow(alias_residue)) {
+      for (i in seq_len(nrow(alias_residue))) {
+        log_msg(sprintf(
+          "  Alias residue FAILED: %s has %d active alias row(s) for game_year=%d team_id=%d alias_player_id=%d (%d game(s))",
+          alias_residue$source_table[[i]],
+          as.integer(alias_residue$rows[[i]]),
+          as.integer(alias_residue$game_year[[i]]),
+          as.integer(alias_residue$team_id[[i]]),
+          as.integer(alias_residue$alias_player_id[[i]]),
+          as.integer(alias_residue$games[[i]])
+        ), "ERROR")
+      }
+      mark_phase_failed("Phase 6", sprintf(
+        "%d active player_id alias residue group(s) remain after refresh",
+        nrow(alias_residue)
+      ))
+    }
+
+    identity_ambiguities <- player_identity_ambiguity_summary(pg, SCHEMA)
+    if (nrow(identity_ambiguities)) {
+      for (i in seq_len(nrow(identity_ambiguities))) {
+        log_msg(sprintf(
+          "  Identity dictionary FAILED: %s for game_year=%s team_id=%s source_player_id=%s game_id=%s (%s)",
+          identity_ambiguities$problem[[i]],
+          identity_ambiguities$game_year[[i]],
+          identity_ambiguities$team_id[[i]],
+          identity_ambiguities$source_player_id[[i]],
+          ifelse(is.na(identity_ambiguities$game_id[[i]]), "season", identity_ambiguities$game_id[[i]]),
+          ifelse(is.na(identity_ambiguities$detail[[i]]), "no detail", identity_ambiguities$detail[[i]])
+        ), "ERROR")
+      }
+      mark_phase_failed("Phase 6", sprintf(
+        "%d player identity dictionary ambiguity row(s)",
+        nrow(identity_ambiguities)
+      ))
+    }
+
+    unresolved_identities <- player_identity_unresolved_summary(
+      pg,
+      SCHEMA,
+      processed_ids
+    )
+    if (nrow(unresolved_identities)) {
+      log_msg(sprintf(
+        "  Identity dictionary warning: %d unresolved source player context(s) remain in processed games",
+        nrow(unresolved_identities)
+      ), "WARN")
+    }
+
     if (warn_count == 0) {
       log_msg(sprintf("  All %d games passed validation checks", length(processed_ids)))
     } else {
@@ -1118,6 +1270,12 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   # Publish only games whose base data and downstream refreshes completed.
   if (!dry_run && isTRUE(pipeline_ok) && length(processed_ids) > 0) {
     tryCatch({
+      if (length(unique(failed_base_ids))) {
+        log_msg(sprintf(
+          "Publishing successful game(s) despite rolled back base game(s): %s",
+          paste(unique(failed_base_ids), collapse = ", ")
+        ), "WARN")
+      }
       track_years <- sched_subset$game_year[match(processed_ids, sched_subset$game_id)]
       vals <- paste(
         sprintf("(%d, %d, now())", as.integer(processed_ids), as.integer(track_years)),
@@ -1193,14 +1351,21 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
   log_msg(sprintf("â•â•â• ETL Full pipeline finished in %.1fs â•â•â•", overall_elapsed))
   log_msg(sprintf("Log saved to: %s", logger$log_file))
 
-  if (!dry_run && isTRUE(pipeline_ok) &&
-      (length(published_ids) > 0 || length(failed_base_ids) == 0)) {
+  run_success <- isTRUE(pipeline_ok) && length(unique(failed_base_ids)) == 0
+  if (!dry_run && isTRUE(run_success) &&
+      (length(published_ids) > 0 || length(processed_ids) == 0)) {
     tryCatch({
       set_last_success(pg, SCHEMA)
       log_msg("Recorded last_success timestamp in app_meta")
     }, error = function(e) {
       log_msg(sprintf("Failed to record last_success timestamp: %s", conditionMessage(e)), "WARN")
     })
+  } else if (!dry_run && length(failed_base_ids) > 0 && length(published_ids) > 0) {
+    log_msg(sprintf(
+      "Skipped last_success update: partial run published game(s) %s but rolled back base game(s): %s",
+      paste(unique(published_ids), collapse = ", "),
+      paste(unique(failed_base_ids), collapse = ", ")
+    ), "WARN")
   } else if (!dry_run && length(failed_base_ids) > 0 && !length(published_ids)) {
     log_msg(sprintf(
       "Skipped last_success update: no games published; rolled back base game(s): %s",
@@ -1215,6 +1380,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE) {
     game_ids             = if (dry_run) processed_ids else published_ids,
     base_loaded_game_ids = processed_ids,
     failed_game_ids      = unique(failed_base_ids),
+    published_game_ids   = published_ids,
+    phase_failures       = phase_failures,
+    pipeline_ok          = isTRUE(pipeline_ok),
+    success              = if (dry_run) isTRUE(pipeline_ok) else isTRUE(run_success),
     log_file             = logger$log_file,
     dry_run              = dry_run
   ))

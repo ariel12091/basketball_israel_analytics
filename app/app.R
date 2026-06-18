@@ -87,6 +87,7 @@ server <- function(input, output, session) {
   init_session_request_guard(session)
   if (is.function(session$allowReconnect)) session$allowReconnect(FALSE)
   last_activity_at <- reactiveVal(as.numeric(Sys.time()))
+  pending_ld_lineup_restore <- reactiveVal(NULL)
   idle_timeout_sec <- APP_IDLE_TIMEOUT_SEC
   idle_check_sec <- APP_IDLE_CHECK_SEC
   idle_close_session <- isTRUE(APP_IDLE_CLOSE_SESSION)
@@ -207,6 +208,15 @@ server <- function(input, output, session) {
     if (is.null(values) || !is.list(values)) return(invisible(FALSE))
     restore_target_tab <- restore_chr_one(values$main_tabs)
     if (!restore_target_tab %in% restore_tab_values) restore_target_tab <- "home"
+    defer_ld_player_restore <- identical(restore_target_tab, "lineup_data")
+    ld_player_restore_ids <- c("ld_lineup_filter-players_on", "ld_lineup_filter-players_off")
+    if (defer_ld_player_restore) {
+      pending_ld_lineup_restore(list(
+        team = restore_chr_one(values[["ld_lineup_filter-team"]]),
+        players_on = restore_chr_vec(values[["ld_lineup_filter-players_on"]]),
+        players_off = restore_chr_vec(values[["ld_lineup_filter-players_off"]])
+      ))
+    }
 
     restore_if_present <- function(id, fn) {
       if (!hasName(values, id)) return(invisible(NULL))
@@ -228,6 +238,7 @@ server <- function(input, output, session) {
       })
     }
     for (id in restore_selectize_ids) {
+      if (defer_ld_player_restore && id %in% ld_player_restore_ids) next
       restore_if_present(id, function(v) {
         freezeReactiveValue(input, id)
         updateSelectizeInput(session, id, selected = restore_chr_vec(v))
@@ -288,6 +299,31 @@ server <- function(input, output, session) {
 
     invisible(TRUE)
   }
+
+  observeEvent(input[["ld_lineup_filter-team"]], {
+    pending <- pending_ld_lineup_restore()
+    if (is.null(pending) || !is.list(pending)) return(invisible(NULL))
+
+    expected_team <- restore_chr_one(pending$team)
+    current_team <- restore_chr_one(input[["ld_lineup_filter-team"]])
+    if (nzchar(expected_team) && !identical(current_team, expected_team)) {
+      return(invisible(NULL))
+    }
+
+    session$onFlushed(function() {
+      players_on <- restore_chr_vec(pending$players_on)
+      players_off <- restore_chr_vec(pending$players_off)
+      if (length(players_on)) {
+        freezeReactiveValue(input, "ld_lineup_filter-players_on")
+        updateSelectizeInput(session, "ld_lineup_filter-players_on", selected = players_on)
+      }
+      if (length(players_off)) {
+        freezeReactiveValue(input, "ld_lineup_filter-players_off")
+        updateSelectizeInput(session, "ld_lineup_filter-players_off", selected = players_off)
+      }
+      pending_ld_lineup_restore(NULL)
+    }, once = TRUE)
+  }, ignoreInit = TRUE, priority = -100)
 
   observeEvent(input$ibpl_restore_state, {
     payload <- input$ibpl_restore_state

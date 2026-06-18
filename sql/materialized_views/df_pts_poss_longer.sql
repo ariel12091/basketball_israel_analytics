@@ -83,7 +83,6 @@ SELECT quarter,
             pws.num_starters_defense AS opp_starters
            FROM pws
            LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id
-          WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])
         UNION ALL
          SELECT pws.quarter,
             pws.parameters_type,
@@ -119,8 +118,7 @@ SELECT quarter,
             pws.num_starters_defense AS own_starters,
             pws.num_starters_offense AS opp_starters
            FROM pws
-           LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id
-          WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])) longer
+           LEFT JOIN cum_scores cs ON pws.game_id = cs.game_id AND pws.id = cs.id) longer
   WHERE lineup_hash IS NOT NULL
 ;
 

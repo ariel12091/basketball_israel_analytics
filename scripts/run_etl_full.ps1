@@ -44,13 +44,14 @@ foreach ($name in $envVarsToTrim) {
   }
 }
 $etlFile = (Join-Path $base 'etl\etl_full.R') -replace '\\', '/'
+$exprPrefix = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); "
 
 if ($DryRunOnly.IsPresent) {
-  $expr = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); etl_full(dry_run=TRUE)"
+  $expr = $exprPrefix + "result <- etl_full(dry_run=TRUE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
 } elseif ($SkipDryRun.IsPresent) {
-  $expr = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); etl_full(dry_run=FALSE)"
+  $expr = $exprPrefix + "result <- etl_full(dry_run=FALSE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
 } else {
-  $expr = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); etl_full(dry_run=TRUE); etl_full(dry_run=FALSE)"
+  $expr = $exprPrefix + "dry_result <- etl_full(dry_run=TRUE); if (!isTRUE(dry_result[['success']])) quit(status=2, save='no'); result <- etl_full(dry_run=FALSE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
 }
 
 $lockStream = $null
@@ -81,7 +82,7 @@ try {
   $stderr = if (Test-Path $stderrFile) { Get-Content -Path $stderrFile -Raw } else { '' }
   ($meta + $stdout + [Environment]::NewLine + $stderr) | Out-File -FilePath $logFile -Encoding UTF8
 
-  if ($exitCode -eq 0) {
+  if ($exitCode -eq 0 -and -not $DryRunOnly.IsPresent) {
     $lastSuccess = Join-Path $etlLogDir 'last_success.txt'
     if (-not (Test-Path $etlLogDir)) { New-Item -ItemType Directory -Path $etlLogDir | Out-Null }
     (Get-Date).ToString('yyyy-MM-dd HH:mm:ss') | Set-Content -Path $lastSuccess -Encoding UTF8

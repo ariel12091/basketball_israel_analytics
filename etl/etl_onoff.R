@@ -246,12 +246,13 @@ fetch_game_box <- function(game_id, box_url) {
 
 clean_actions <- function(pbp) {
   a <- tibble::as_tibble(pbp$result$actions) |>
+    dplyr::mutate(source_row = dplyr::row_number()) |>
     tidyr::unnest(parameters, names_sep = "_") |>
     janitor::clean_names()
   
   game_id_val <- pbp$result$gameInfo$gameId
   
-  a |>
+  out <- a |>
     filter(type != "clock") |>
     mutate(
       game_id = as.integer(game_id_val),
@@ -272,9 +273,44 @@ clean_actions <- function(pbp) {
       player_id = as.integer(player_id),
       end_game_seconds_remaining = as.numeric(end_game_seconds_remaining)
     ) %>%
-    group_by(game_id, team_id, id) %>%
-    mutate(row_num_user = row_number(user_time)) %>%
-    filter(row_num_user == 1)
+    # Known source edit in game 381: an earlier Q2 00:00 boundary block was
+    # repeated with shifted IDs. Drop only the earlier block; keep later rows.
+    dplyr::filter(
+      !(
+        game_id == 381L &
+          id >= 3810375L & id <= 3810385L &
+          quarter == 2L &
+          quarter_time == "00:00" &
+          user_time %in% c("18:37:30", "18:37:33", "18:37:34", "18:37:37")
+      )
+    ) %>%
+    dplyr::arrange(game_id, team_id, id, user_time, source_row) %>%
+    dplyr::group_by(game_id, team_id, id) %>%
+    dplyr::slice_head(n = 1) %>%
+    dplyr::ungroup() %>%
+    dplyr::select(-source_row)
+
+  duplicate_action_ids <- out %>%
+    dplyr::count(game_id, id, name = "n") %>%
+    dplyr::filter(n > 1)
+  if (nrow(duplicate_action_ids)) {
+    examples <- paste(
+      utils::head(
+        sprintf("%s/%s x%s", duplicate_action_ids$game_id, duplicate_action_ids$id, duplicate_action_ids$n),
+        10
+      ),
+      collapse = ", "
+    )
+    stop(
+      sprintf(
+        "Duplicate PBP action IDs remain after known fixes. Review source rows before choosing a collapse rule: %s",
+        examples
+      ),
+      call. = FALSE
+    )
+  }
+
+  out
 }
 
 
@@ -282,14 +318,28 @@ clean_actions <- function(pbp) {
 
 extract_roster <- function(pbp) {
   gi <- pbp$result$gameInfo
-  if (is.null(gi$homeTeam) || is.null(gi$awayTeam)) return(tibble::tibble())
-  home <- tibble::as_tibble(gi$homeTeam$players) |>
-    mutate(team_id = gi$homeTeam$id, game_id = gi$gameId,
-           team_name = gi$homeTeam$name, team_name_local = gi$homeTeam$nameLocal)
-  away <- tibble::as_tibble(gi$awayTeam$players) |>
-    mutate(team_id = gi$awayTeam$id, game_id = gi$gameId,
-           team_name = gi$awayTeam$name, team_name_local = gi$awayTeam$nameLocal)
-  dplyr::bind_rows(away, home) |>
+  if (is.null(gi)) return(tibble::tibble())
+
+  normalize_side <- function(team) {
+    if (is.null(team) || is.null(team$players) || !length(team$players)) {
+      return(tibble::tibble())
+    }
+    tibble::as_tibble(team$players) |>
+      mutate(
+        team_id = team$id,
+        game_id = gi$gameId,
+        team_name = team$name,
+        team_name_local = team$nameLocal
+      )
+  }
+
+  roster <- dplyr::bind_rows(
+    normalize_side(gi$awayTeam),
+    normalize_side(gi$homeTeam)
+  )
+  if (!nrow(roster)) return(tibble::tibble())
+
+  roster |>
     rename(player_id = id) |>
     mutate(across(c(game_id, team_id, player_id), as.integer)) |>
     distinct(game_id, team_id, player_id, .keep_all = TRUE)
@@ -327,7 +377,8 @@ extract_starters <- function(box) {
     side |>
       dplyr::mutate(
         team_id = as.integer(team_id),
-        game_id = as.integer(game_id)
+        game_id = as.integer(game_id),
+        player_id = suppressWarnings(as.integer(player_id))
       )
   }
 
@@ -346,6 +397,52 @@ extract_starters <- function(box) {
     ) |>
     distinct(game_id, team_id, player_id, .keep_all = TRUE) |>
     dplyr::select(game_id, team_id, player_id, starter)
+}
+
+roster_squish_text <- function(x) {
+  out <- trimws(gsub("\\s+", " ", as.character(x)))
+  out[!is.na(out) & out == ""] <- NA_character_
+  out
+}
+
+normalize_full_roster_fields <- function(roster_df) {
+  if (is.null(roster_df) || !nrow(roster_df)) return(roster_df)
+
+  text_cols <- intersect(
+    c(
+      "firstname", "lastname",
+      "firstnamelocal", "lastnamelocal",
+      "team_name", "team_name_local", "team_name_sched"
+    ),
+    names(roster_df)
+  )
+  for (col in text_cols) {
+    roster_df[[col]] <- roster_squish_text(roster_df[[col]])
+  }
+
+  if (all(c("team_name", "team_name_sched") %in% names(roster_df))) {
+    roster_df$team_name <- dplyr::coalesce(roster_df$team_name_sched, roster_df$team_name)
+  }
+  if ("lastname" %in% names(roster_df)) {
+    roster_df$lastname <- gsub("\\.\\s+", ".", roster_df$lastname)
+  }
+
+  if (all(c("player_id", "firstname", "lastname") %in% names(roster_df))) {
+    is_goldman <- roster_df$player_id == 29543L &
+      roster_df$firstname %in% c("\u05d9\u05e8\u05d5\u05df", "×™×¨×•×Ÿ")
+    roster_df$firstname[is_goldman] <- "YARON"
+    roster_df$lastname[is_goldman] <- "GOLDMAN"
+  }
+
+  if (all(c("game_year", "team_id", "player_id", "firstname", "lastname") %in% names(roster_df))) {
+    is_justin_edler_davis <- roster_df$game_year == 2026L &
+      roster_df$team_id == 6L &
+      roster_df$player_id == 2114L
+    roster_df$firstname[is_justin_edler_davis] <- "JUSTIN EDLER"
+    roster_df$lastname[is_justin_edler_davis] <- "DAVIS"
+  }
+
+  roster_df
 }
 
 # Keep existing roster identity fields when source payload lacks them.
@@ -380,6 +477,107 @@ enrich_roster_names_from_existing <- function(pg, schema, roster_df) {
     }
   }
 
+  out
+}
+
+complete_roster_from_action_players <- function(pg, schema, roster_df, actions_df, log_msg = message) {
+  if (is.null(actions_df) || !nrow(actions_df)) return(roster_df)
+  if (!all(c("game_id", "game_year", "team_id", "player_id") %in% names(actions_df))) return(roster_df)
+  if (is.null(roster_df) || !nrow(roster_df)) roster_df <- tibble::tibble()
+
+  collapse_value <- if (exists("first_present_value", mode = "function")) {
+    first_present_value
+  } else {
+    function(x) {
+      if (is.logical(x)) return(any(x, na.rm = TRUE))
+      if (is.numeric(x) || is.integer(x)) {
+        x <- x[!is.na(x)]
+        return(if (length(x)) x[[1]] else NA)
+      }
+      x_chr <- as.character(x)
+      x_chr <- x_chr[!is.na(x_chr) & nzchar(trimws(x_chr))]
+      if (length(x_chr)) x_chr[[1]] else NA_character_
+    }
+  }
+
+  action_players <- actions_df |>
+    dplyr::filter(!is.na(team_id), team_id != 0L, !is.na(player_id), player_id != 0L) |>
+    dplyr::distinct(game_id, game_year, team_id, player_id)
+
+  if (!nrow(action_players)) return(roster_df)
+
+  roster_keys <- if (nrow(roster_df) && all(c("game_id", "team_id", "player_id") %in% names(roster_df))) {
+    roster_df |> dplyr::distinct(game_id, team_id, player_id)
+  } else {
+    tibble::tibble(game_id = integer(), team_id = integer(), player_id = integer())
+  }
+
+  missing_players <- dplyr::anti_join(
+    action_players,
+    roster_keys,
+    by = c("game_id", "team_id", "player_id")
+  )
+  if (!nrow(missing_players)) return(roster_df)
+
+  roster_cols <- unique(c(
+    names(roster_df),
+    "player_id", "apiid", "firstname", "lastname", "firstnamelocal", "lastnamelocal",
+    "inroster", "jerseynumber", "team_id", "game_id", "team_name", "team_name_local",
+    "is_on", "game_year"
+  ))
+
+  existing <- tbl(pg, dbplyr::in_schema(schema, "full_rosters")) |>
+    dplyr::filter(
+      game_year %in% !!unique(missing_players$game_year),
+      team_id %in% !!unique(missing_players$team_id),
+      player_id %in% !!unique(missing_players$player_id)
+    ) |>
+    dplyr::select(dplyr::any_of(setdiff(roster_cols, "game_id"))) |>
+    dplyr::collect()
+
+  if (!nrow(existing)) {
+    log_msg(sprintf(
+      "  roster recovery: no existing names found for %d action player(s)",
+      nrow(missing_players)
+    ), "WARN")
+    return(roster_df)
+  }
+
+  existing <- existing |>
+    dplyr::group_by(game_year, team_id, player_id) |>
+    dplyr::summarise(
+      dplyr::across(
+        dplyr::all_of(setdiff(names(existing), c("game_year", "team_id", "player_id"))),
+        collapse_value
+      ),
+      .groups = "drop"
+    )
+
+  recovered <- missing_players |>
+    dplyr::left_join(existing, by = c("game_year", "team_id", "player_id")) |>
+    dplyr::filter(!is.na(firstname) | !is.na(lastname))
+
+  if (!nrow(recovered)) {
+    log_msg(sprintf(
+      "  roster recovery: existing rows lacked names for %d action player(s)",
+      nrow(missing_players)
+    ), "WARN")
+    return(roster_df)
+  }
+
+  for (nm in setdiff(roster_cols, names(roster_df))) roster_df[[nm]] <- NA
+  for (nm in setdiff(roster_cols, names(recovered))) recovered[[nm]] <- NA
+
+  out <- dplyr::bind_rows(
+    roster_df[, roster_cols, drop = FALSE],
+    recovered[, roster_cols, drop = FALSE]
+  ) |>
+    dplyr::distinct(game_id, team_id, player_id, .keep_all = TRUE)
+
+  log_msg(sprintf(
+    "  roster recovery: added %d missing action player row(s) from existing season rosters",
+    nrow(recovered)
+  ))
   out
 }
 
@@ -667,6 +865,7 @@ etl_update <- function() {
       lastname = dplyr::if_else(player_id == 29543L & lastname == "גולדמן", "GOLDMAN", lastname),
       starter = dplyr::coalesce(as.logical(starter), FALSE)
     ) |>
+    normalize_full_roster_fields() |>
     dplyr::select(-team_name_sched)
   roster_df <- enrich_roster_names_from_existing(pg, SCHEMA, roster_df)
   
