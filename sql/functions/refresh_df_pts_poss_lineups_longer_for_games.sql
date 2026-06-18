@@ -124,8 +124,7 @@ BEGIN
     LEFT JOIN cum_scores cs
       ON pws.game_id = cs.game_id
      AND pws.id = cs.id
-    WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])
-      AND (game_ids IS NULL OR pws.game_id = ANY(game_ids))
+    WHERE game_ids IS NULL OR pws.game_id = ANY(game_ids)
 
     UNION ALL
 
@@ -167,8 +166,7 @@ BEGIN
     LEFT JOIN cum_scores cs
       ON pws.game_id = cs.game_id
      AND pws.id = cs.id
-    WHERE pws.game_id <> ALL (ARRAY[62527, 62541, 62522])
-      AND (game_ids IS NULL OR pws.game_id = ANY(game_ids))
+    WHERE game_ids IS NULL OR pws.game_id = ANY(game_ids)
   ) longer
   WHERE lineup_hash IS NOT NULL;
 
