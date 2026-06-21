@@ -162,7 +162,7 @@ server_tab1 <- function(input, output, session, shared) {
   debounced_teams <- reactive(input$teams) %>% debounce(300)
   debounced_on_filters <- reactive(list(
     game_type = input$on_game_type,
-    opp_names = input$on_opponents,
+    opp_ids = input$on_opponents,
     home_away = input$on_home_away,
     outcome = input$on_outcome,
     rank_side = input$on_opp_rank_side,
@@ -288,9 +288,9 @@ server_tab1 <- function(input, output, session, shared) {
         )
       } else {
         df_base <- mv_result_df()
-        tids_names <- input$teams
-        if (!is.null(tids_names) && length(tids_names) > 0) {
-          df_base <- df_base %>% filter(Team %in% tids_names)
+        tids <- selected_team_ids()
+        if (!is.null(tids) && length(tids) > 0) {
+          df_base <- df_base %>% filter(team_id %in% !!tids)
         }
       }
     }
@@ -344,9 +344,9 @@ server_tab1 <- function(input, output, session, shared) {
         )
       } else {
         df_base <- mv_result_df()
-        tids_names <- input$teams
-        if (!is.null(tids_names) && length(tids_names) > 0) {
-          df_base <- df_base %>% filter(Team %in% tids_names)
+        tids <- selected_team_ids()
+        if (!is.null(tids) && length(tids) > 0) {
+          df_base <- df_base %>% filter(team_id %in% !!tids)
         }
       }
     }
@@ -368,10 +368,9 @@ server_tab1 <- function(input, output, session, shared) {
   setup_gn_last_n_sync(session, input, "on")
 
   selected_team_ids <- reactive({
-    td <- shared$teams_for_year_df()
-    teams_in <- debounced_teams()
-    if (is.null(teams_in) || !length(teams_in)) return(NULL)
-    td %>% filter(team_name %in% teams_in) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(debounced_teams()))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   })
 
   # --- Fallback Logic ---
@@ -389,7 +388,7 @@ server_tab1 <- function(input, output, session, shared) {
 
     f <- debounced_on_filters()
     extra_filters <- (!is.null(f$game_type) && any(nzchar(f$game_type))) ||
-      (!is.null(f$opp_names) && length(f$opp_names) > 0) ||
+      (!is.null(f$opp_ids) && length(f$opp_ids) > 0) ||
       nzchar(f$home_away %||% "") ||
       nzchar(f$outcome %||% "") ||
       nzchar(f$rank_side %||% "") ||
@@ -661,9 +660,9 @@ server_tab1 <- function(input, output, session, shared) {
         df <- mv_result_df()
 
         # --- FILTERING for Summary (Local) ---
-        tids_names <- input$teams
-        if (!is.null(tids_names) && length(tids_names) > 0) {
-          df <- df %>% filter(Team %in% tids_names)
+        tids <- selected_team_ids()
+        if (!is.null(tids) && length(tids) > 0) {
+          df <- df %>% filter(team_id %in% !!tids)
         }
 
         # Enforce minimum possessions on both ON/OFF sides in MV path
@@ -1060,7 +1059,8 @@ server_tab1 <- function(input, output, session, shared) {
       )))
 
       dt <- datatable(df_final,
-                      container = sketch_ff, rownames = FALSE, escape = FALSE,
+                      container = sketch_ff, rownames = FALSE,
+                      escape = dt_escape_except(df_final),
                       options = list(
                         headerCallback = HEADER_TOOLTIP_JS,
                         dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE,
@@ -1101,9 +1101,17 @@ server_tab1 <- function(input, output, session, shared) {
 
   # ---- Filter Chips ----
   output$on_filter_chips <- renderUI({
+    td <- shared$teams_for_year_df()
+    team_map <- if (!is.null(td) && nrow(td)) {
+      stats::setNames(as.character(td$team_name), as.character(td$team_id))
+    } else {
+      NULL
+    }
     build_filter_chips(
       "on", input, shared$season_date_bounds,
       reset_btn_id = "reset_defaults",
+      team_label_map = team_map,
+      opponent_label_map = team_map,
       extra_children = stat_filter_chips_ui("on", on_stat_filter_state, on_stat_filter_cols)
     )
   })

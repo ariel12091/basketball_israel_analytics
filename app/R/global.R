@@ -10,6 +10,21 @@ library(purrr)
 library(bslib)
 library(htmltools)
 
+# Fail-closed HTML escaping policy for DT tables.
+dt_escape_except <- function(data, html_cols = character()) {
+  data_cols <- names(data)
+  html_cols <- intersect(as.character(html_cols), data_cols)
+
+  if (!length(html_cols)) {
+    return(TRUE)
+  }
+
+  # DT interprets numeric values as the columns that must be escaped.
+  # Positions remain stable when replacement display headers are supplied.
+  # All callers use rownames = FALSE, so no row-name offset is required.
+  which(!data_cols %in% html_cols)
+}
+
 # ---------------- Defaults ----------------
 DEFAULT_START <- as.Date("2024-10-01")
 DEFAULT_END   <- as.Date("2025-07-01")
@@ -712,7 +727,8 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
 }
 
 build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
-                               team_label_map = NULL, player_label_map = NULL,
+                               team_label_map = NULL, opponent_label_map = NULL,
+                               player_label_map = NULL,
                                teams_value = NULL, players_on_value = NULL, players_off_value = NULL,
                                extra_children = NULL) {
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
@@ -801,7 +817,8 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   opp_val <- get_input("_opponents")
   if (prefix == "on") opp_val <- input$on_opponents
   if (!is.null(opp_val) && length(opp_val)) {
-    lbl <- if (length(opp_val) == 1) paste("vs", opp_val[1]) else paste0("vs ", length(opp_val), " opps")
+    mapped_opponents <- map_label(opp_val, opponent_label_map)
+    lbl <- if (length(mapped_opponents) == 1) paste("vs", mapped_opponents[1]) else paste0("vs ", length(mapped_opponents), " opps")
     chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_opponents"), "chip-game")
   }
 

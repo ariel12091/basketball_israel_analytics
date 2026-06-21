@@ -674,7 +674,9 @@ server_tab2 <- function(input, output, session, shared) {
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
       if (length(minutes_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = minutes_idx, className = "section-left-border dt-center")
 
-      dt <- DT::datatable(df, container = sketch_ff, rownames = FALSE, escape = FALSE,
+      dt <- DT::datatable(
+                          df, container = sketch_ff, rownames = FALSE,
+                          escape = dt_escape_except(df, c("Players", "sub_lineup_hash")),
                           callback = DT::JS(
                             "table.on('click', 'a.ld-lineup-link', function(e) {
                                e.preventDefault();
@@ -892,7 +894,7 @@ server_tab2 <- function(input, output, session, shared) {
         df,
         colnames = final_labels,
         rownames = FALSE,
-        escape = FALSE,
+        escape = dt_escape_except(df, c("Players", "sub_lineup_hash")),
         filter = "top",
         callback = DT::JS(
           "table.on('click', 'a.ld-lineup-link', function(e) {
@@ -1085,7 +1087,8 @@ server_tab2 <- function(input, output, session, shared) {
           )
         )))
 
-        dt_ff <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE, escape = FALSE,
+        dt_ff <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE,
+                              escape = dt_escape_except(disp_ff),
                               options = list(
                                 headerCallback = HEADER_TOOLTIP_JS,
                                 dom = "tip", pageLength = 50,
@@ -1287,7 +1290,8 @@ server_tab2 <- function(input, output, session, shared) {
           )
         )))
 
-        dt_m <- DT::datatable(disp_m, container = sketch_m, rownames = FALSE, escape = FALSE,
+        dt_m <- DT::datatable(disp_m, container = sketch_m, rownames = FALSE,
+                              escape = dt_escape_except(disp_m),
                               options = list(
                                 headerCallback = HEADER_TOOLTIP_JS,
                                 dom = "tip", pageLength = 50,
@@ -1327,6 +1331,7 @@ server_tab2 <- function(input, output, session, shared) {
       "ld", input, shared$season_date_bounds,
       reset_btn_id = "ld_reset",
       team_label_map = team_map,
+      opponent_label_map = team_map,
       player_label_map = player_map,
       teams_value = ld_lineup_filter$team(),
       players_on_value = ld_lineup_filter$players_on(),

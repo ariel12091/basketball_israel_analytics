@@ -46,6 +46,13 @@ HEADER_TOOLTIP_JS <- DT::JS("function(thead) {}")
 OFF_OREB_TOOLTIP <- "Offensive rebound percentage"
 DEF_OREB_TOOLTIP <- "Defensive rebound percentage"
 
+dt_escape_except <- function(data, html_cols = character()) {
+  data_cols <- names(data)
+  html_cols <- intersect(as.character(html_cols), data_cols)
+  if (!length(html_cols)) return(TRUE)
+  which(!data_cols %in% html_cols)
+}
+
 pg_pool <- structure(list(), class = "mock_pool")
 GL_DATA_CACHE <- cachem::cache_mem(max_size = 64 * 1024^2, max_age = 3600)
 
@@ -379,6 +386,7 @@ db_get_query <- function(pool, query, params = NULL) {
       game_id = c(101L, 102L, 103L, 104L),
       team_id = rep(1L, 4),
       team_name = rep("Team A", 4),
+      opp_team_id = c(2L, 3L, 4L, 5L),
       gn = 1:4,
       game_type = c(1L, 1L, 1L, 2L),
       game_date = as.Date(c("2025-10-10", "2025-10-17", "2025-10-24", "2025-10-31")),
@@ -443,6 +451,9 @@ db_get_query <- function(pool, query, params = NULL) {
 
 cached_ref_query <- function(key, query_fun, ttl_sec = 300) {
   if (grepl("_gn_", key, fixed = TRUE)) return(data.frame(gn = 1:5))
+  if (grepl("gl_teams_", key, fixed = TRUE)) {
+    return(data.frame(team_id = 1:5, team_name = paste("Team", LETTERS[1:5])))
+  }
   if (grepl("teams", key, fixed = TRUE) || grepl("_teams_", key, fixed = TRUE)) {
     return(data.frame(team_id = c(1L, 2L), team_name = c("Team A", "Team B")))
   }

@@ -250,17 +250,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Teams / opponents
     team_sel <- get_input("teams") %||% character(0)
     opp_sel <- get_input("opponents") %||% character(0)
-    td <- cmp_ref$teams
-    team_ids_csv <- NA_character_
-    opp_ids_csv <- NA_character_
-    if (length(team_sel) && !is.null(td)) {
-      ids <- td$team_id[td$team_name %in% team_sel]
-      team_ids_csv <- csv_if_any(ids, integerize = TRUE)
-    }
-    if (length(opp_sel) && !is.null(td)) {
-      ids <- td$team_id[td$team_name %in% opp_sel]
-      opp_ids_csv <- csv_if_any(ids, integerize = TRUE)
-    }
+    team_ids_csv <- csv_if_any(team_sel, integerize = TRUE)
+    opp_ids_csv <- csv_if_any(opp_sel, integerize = TRUE)
 
     # Game type
     gt <- get_input("game_type") %||% character(0)
@@ -277,7 +268,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     list(
       game_year = gy, start_d = start_d, end_d = end_d,
-      game_type_csv = game_type_csv, team_ids_csv = team_ids_csv, team_names = team_sel, opp_ids_csv = opp_ids_csv,
+      game_type_csv = game_type_csv, team_ids_csv = team_ids_csv, opp_ids_csv = opp_ids_csv,
       home_away = home_away, outcome = outcome,
       opp_rank_side = opp_rank_side, opp_rank_n = opp_rank_n,
       opp_rank_metric = opp_rank_metric,
@@ -369,10 +360,23 @@ server_tab7_compare <- function(input, output, session, shared) {
       parts <- c(parts, rank_lbl)
     }
 
+    team_label_map <- if (!is.null(cmp_ref$teams) && nrow(cmp_ref$teams)) {
+      stats::setNames(as.character(cmp_ref$teams$team_name), as.character(cmp_ref$teams$team_id))
+    } else {
+      NULL
+    }
+    map_team_labels <- function(values) {
+      values <- as.character(values)
+      if (is.null(team_label_map)) return(values)
+      labels <- unname(team_label_map[values])
+      labels[is.na(labels) | !nzchar(labels)] <- values[is.na(labels) | !nzchar(labels)]
+      labels
+    }
+
     # Opponents
     opps <- get_input("opponents") %||% character(0)
     if (length(opps) && any(nzchar(opps))) {
-      opp_names <- opps[nzchar(opps)]
+      opp_names <- map_team_labels(opps[nzchar(opps)])
       if (length(opp_names) <= 2) {
         parts <- c(parts, paste0("vs ", paste(opp_names, collapse = ", ")))
       } else {
@@ -383,7 +387,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     # Teams
     teams <- get_input("teams") %||% character(0)
     if (length(teams) && any(nzchar(teams))) {
-      tm_names <- teams[nzchar(teams)]
+      tm_names <- map_team_labels(teams[nzchar(teams)])
       if (length(tm_names) <= 2) {
         parts <- c(parts, paste(tm_names, collapse = ", "))
       } else {
@@ -453,9 +457,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (length(ids) && ("team_id" %in% names(df))) {
       return(df[df$team_id %in% ids, , drop = FALSE])
     }
-    teams <- p$team_names %||% character(0)
-    if (length(teams) && ("team_name" %in% names(df))) {
-      return(df[df$team_name %in% teams, , drop = FALSE])
+    if (length(ids)) {
+      return(df[0, , drop = FALSE])
     }
     df
   }
@@ -1056,7 +1059,11 @@ server_tab7_compare <- function(input, output, session, shared) {
         cmp_ref$teams <- teams_df
         cmp_teams_ref_loaded_year(gy_int)
         cmp_refs_loaded_year(gy_int)
-        team_choices <- if (nrow(teams_df)) as.character(teams_df$team_name) else character(0)
+        team_choices <- if (nrow(teams_df)) {
+          stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
+        } else {
+          character(0)
+        }
         updateSelectizeInput(session, "cmp_a_teams", choices = team_choices, selected = character(0), server = FALSE)
         updateSelectizeInput(session, "cmp_b_teams", choices = team_choices, selected = character(0), server = FALSE)
         updateSelectizeInput(session, "cmp_a_opponents", choices = team_choices, selected = character(0), server = FALSE)
@@ -1452,7 +1459,6 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   refresh_player_choices <- function(side) {
     players_df <- normalize_players_ref(cmp_ref$players)
-    teams_df <- normalize_teams_ref(cmp_ref$teams)
     if (is.null(players_df) || !nrow(players_df)) return(NULL)
 
     side <- match.arg(side, c("a", "b"))
@@ -1466,9 +1472,6 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (length(team_sel)) {
       ids <- suppressWarnings(as.integer(team_sel))
       ids <- ids[is.finite(ids)]
-      if (!is.null(teams_df) && nrow(teams_df)) {
-        ids <- unique(c(ids, teams_df$team_id[teams_df$team_name %in% team_sel]))
-      }
       if (length(ids)) filtered <- filtered[filtered$team_id %in% ids, , drop = FALSE]
       else filtered <- filtered[0, , drop = FALSE]
     }

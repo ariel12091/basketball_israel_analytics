@@ -361,8 +361,9 @@ server_tab6_team_stats <- function(input, output, session, shared) {
       }
     )
     tst_ref$teams <- teams_df
-    updateSelectizeInput(session, "tst_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "tst_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
+    team_choices <- stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
+    updateSelectizeInput(session, "tst_teams", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "tst_opponents", choices = team_choices, selected = character(0), server = TRUE)
 
     gn_df <- cached_ref_query(
       key = sprintf("tst_gn_%d", gy_int),
@@ -431,7 +432,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
   debounced_teams <- reactive(input$tst_teams) %>% debounce(300)
   debounced_tst_filters <- reactive(list(
     game_type = input$tst_game_type,
-    opp_names = input$tst_opponents,
+    opp_ids = input$tst_opponents,
     home_away = input$tst_home_away,
     outcome = input$tst_outcome,
     rank_side = input$tst_opp_rank_side,
@@ -449,17 +450,15 @@ server_tab6_team_stats <- function(input, output, session, shared) {
   }) %>% debounce(150)
 
   selected_team_ids <- reactive({
-    td <- tst_ref$teams
-    teams_in <- debounced_teams()
-    if (is.null(td) || !nrow(td) || is.null(teams_in) || !length(teams_in)) return(NULL)
-    td %>% filter(team_name %in% teams_in) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(debounced_teams()))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   })
 
   selected_opp_ids <- reactive({
-    td <- tst_ref$teams
-    opp_names <- debounced_tst_filters()$opp_names
-    if (is.null(td) || !nrow(td) || is.null(opp_names) || !length(opp_names)) return(NULL)
-    td %>% filter(team_name %in% opp_names) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(debounced_tst_filters()$opp_ids))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   })
 
   build_tst_db_args <- function() {
@@ -669,7 +668,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     dt <- DT::datatable(
       disp,
       rownames = FALSE,
-      escape = FALSE,
+      escape = dt_escape_except(disp, names(pr_map)),
       extensions = "Buttons",
       options = list(
         headerCallback = HEADER_TOOLTIP_JS,
@@ -705,7 +704,17 @@ server_tab6_team_stats <- function(input, output, session, shared) {
   }, server = FALSE) %>% bindEvent(tst_display_df(), previous_df(), input$main_tabs)
 
   output$tst_filter_chips <- renderUI({
-    build_filter_chips("tst", input, shared$season_date_bounds, reset_btn_id = "tst_reset")
+    team_map <- if (!is.null(tst_ref$teams) && nrow(tst_ref$teams)) {
+      stats::setNames(as.character(tst_ref$teams$team_name), as.character(tst_ref$teams$team_id))
+    } else {
+      NULL
+    }
+    build_filter_chips(
+      "tst", input, shared$season_date_bounds,
+      reset_btn_id = "tst_reset",
+      team_label_map = team_map,
+      opponent_label_map = team_map
+    )
   })
   setup_chip_clears("tst", session, input, shared,
     game_type_id = "tst_game_type", opponents_id = "tst_opponents",
