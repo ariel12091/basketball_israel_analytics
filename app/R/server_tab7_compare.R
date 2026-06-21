@@ -129,12 +129,23 @@ server_tab7_compare <- function(input, output, session, shared) {
       )
     ),
     shooting = list(
-      title = "Shooting",
+      title = "Offensive Shooting",
       metrics = list(
         list(label = "2PT Acc", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg2_acc", polarity = "higher", fmt = "pct"),
         list(label = "2PT Freq", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg2_freq", polarity = "neutral", fmt = "pct"),
         list(label = "3PT Acc", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg3_acc", polarity = "higher", fmt = "pct"),
         list(label = "3PT Freq", col_ratings = NULL, col_ff = NULL, col_shooting = "off_fg3_freq", polarity = "neutral", fmt = "pct")
+      )
+    ),
+    # Teams-only section (gated in the detail renderer); defensive polarity:
+    # lower opponent accuracy is better, frequency is neutral.
+    def_shooting = list(
+      title = "Defensive Shooting",
+      metrics = list(
+        list(label = "Opp 2PT Acc", col_ratings = NULL, col_ff = NULL, col_shooting = "def_fg2_acc", polarity = "lower", fmt = "pct"),
+        list(label = "Opp 2PT Freq", col_ratings = NULL, col_ff = NULL, col_shooting = "def_fg2_freq", polarity = "neutral", fmt = "pct"),
+        list(label = "Opp 3PT Acc", col_ratings = NULL, col_ff = NULL, col_shooting = "def_fg3_acc", polarity = "lower", fmt = "pct"),
+        list(label = "Opp 3PT Freq", col_ratings = NULL, col_ff = NULL, col_shooting = "def_fg3_freq", polarity = "neutral", fmt = "pct")
       )
     )
   )
@@ -705,11 +716,19 @@ server_tab7_compare <- function(input, output, session, shared) {
     off_fg3_att <- val("off_fg3_att")
     off_fga <- off_fg2_att + off_fg3_att
 
+    def_fg2_att <- val("def_fg2_att")
+    def_fg3_att <- val("def_fg3_att")
+    def_fga <- def_fg2_att + def_fg3_att
+
     out <- row[1, , drop = FALSE]
     out$off_fg2_acc <- pct(val("off_fg2_made"), off_fg2_att)
     out$off_fg2_freq <- pct(off_fg2_att, off_fga)
     out$off_fg3_acc <- pct(val("off_fg3_made"), off_fg3_att)
     out$off_fg3_freq <- pct(off_fg3_att, off_fga)
+    out$def_fg2_acc <- pct(val("def_fg2_made"), def_fg2_att)
+    out$def_fg2_freq <- pct(def_fg2_att, def_fga)
+    out$def_fg3_acc <- pct(val("def_fg3_made"), def_fg3_att)
+    out$def_fg3_freq <- pct(def_fg3_att, def_fga)
     out
   }
 
@@ -741,6 +760,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       off_fg2_att = sum_col("off_fg2_att"),
       off_fg3_made = sum_col("off_fg3_made"),
       off_fg3_att = sum_col("off_fg3_att"),
+      def_fg2_made = sum_col("def_fg2_made"),
+      def_fg2_att = sum_col("def_fg2_att"),
+      def_fg3_made = sum_col("def_fg3_made"),
+      def_fg3_att = sum_col("def_fg3_att"),
       stringsAsFactors = FALSE
     )
     add_shooting_rates(out)
@@ -3209,24 +3232,24 @@ server_tab7_compare <- function(input, output, session, shared) {
       tags$div(class = "cmp-col-header cmp-col-b cmp-cell cmp-first-row", col_b_text)
     ))
 
-    # Pre-compute which sections have data
-    active_sections <- character(0)
-    for (sk in section_names) {
+    # Resolve the metrics each section renders, applying mode-specific gating
+    # once (single source of truth): Defensive Shooting is Teams-only, and Win%
+    # is hidden for Lineups (no GP/W/L data). Sections left with no metrics drop.
+    section_metrics <- function(sk) {
+      if (sk == "def_shooting" && mode != "Teams") return(NULL)
       ml <- DETAIL_METRICS[[sk]]$metrics
-      if (mode == "Lineups" && sk == "ratings") ml <- Filter(function(m) m$label != "Win%", ml)
-      if (length(ml) > 0) active_sections <- c(active_sections, sk)
-    }
-
-    for (i in seq_along(section_names)) {
-      sec_key <- section_names[i]
-      sec <- DETAIL_METRICS[[sec_key]]
-
-      metrics_list <- sec$metrics
-      # Hide Win% for Lineups (no GP/W/L data)
-      if (mode == "Lineups" && sec_key == "ratings") {
-        metrics_list <- Filter(function(m) m$label != "Win%", metrics_list)
+      if (mode == "Lineups" && sk == "ratings") {
+        ml <- Filter(function(m) m$label != "Win%", ml)
       }
-      if (length(metrics_list) == 0) next
+      if (length(ml)) ml else NULL
+    }
+    section_metrics_map <- Filter(Negate(is.null),
+      stats::setNames(lapply(section_names, section_metrics), section_names))
+    active_sections <- names(section_metrics_map)
+
+    for (sec_key in active_sections) {
+      sec <- DETAIL_METRICS[[sec_key]]
+      metrics_list <- section_metrics_map[[sec_key]]
 
       # Section title spans all 3 columns
       all_cells <- c(all_cells, list(

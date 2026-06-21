@@ -381,3 +381,119 @@ test_that("tab7 compare clutch preset blocks clutch mirroring but mirrors other 
     expect_equal(sent$last("cmp_b_game_type")$message$value, "1")
   })
 })
+
+test_that("tab7 team detail view shows offensive and defensive shooting sections", {
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Teams"
+    )
+    session$flushReact()
+    session$setInputs(cmp_table_row_click = list(entity_name = "Team A"))
+    session$flushReact()
+
+    detail_txt <- render_ui_text(output$cmp_detail_view_ui)
+
+    # Both section titles present.
+    expect_true(grepl("Offensive Shooting", detail_txt, fixed = TRUE))
+    expect_true(grepl("Defensive Shooting", detail_txt, fixed = TRUE))
+
+    # All four opponent shooting labels render.
+    expect_true(grepl("Opp 2PT Acc", detail_txt, fixed = TRUE))
+    expect_true(grepl("Opp 2PT Freq", detail_txt, fixed = TRUE))
+    expect_true(grepl("Opp 3PT Acc", detail_txt, fixed = TRUE))
+    expect_true(grepl("Opp 3PT Freq", detail_txt, fixed = TRUE))
+
+    # Defensive values for Team A (def_fg2: 18/33, def_fg3: 7/22) from mock data:
+    #   2PT Acc = 18/33 = 54.5%, 3PT Acc = 7/22 = 31.8%
+    #   2PT Freq = 33/55 = 60.0%, 3PT Freq = 22/55 = 40.0%
+    expect_true(grepl("54.5%", detail_txt, fixed = TRUE))
+    expect_true(grepl("31.8%", detail_txt, fixed = TRUE))
+    expect_true(grepl("60.0%", detail_txt, fixed = TRUE))
+    expect_true(grepl("40.0%", detail_txt, fixed = TRUE))
+
+    # Offensive shooting still renders alongside.
+    expect_true(grepl("57.1%", detail_txt, fixed = TRUE))
+    expect_true(grepl("40.7%", detail_txt, fixed = TRUE))
+  })
+})
+
+test_that("tab7 defensive shooting uses lower-is-better accuracy and neutral frequency", {
+  server_env <- environment(server_tab7_compare)
+  original_db_get_query <- get("db_get_query", envir = server_env)
+  # Vary opponent shooting by side via the home/away param (index 12) so A and B
+  # differ: side A (home) holds opponents to lower accuracy than side B (away),
+  # while attempts (and thus frequency) stay equal across sides.
+  assign("db_get_query", function(pool, query, params = NULL) {
+    q <- paste(query, collapse = " ")
+    if (grepl("fetch_lineups_csv_v2", q, fixed = TRUE)) {
+      ha <- if (!is.null(params) && length(params) >= 12L) as.character(params[[12]]) else NA_character_
+      def_fg2_made <- if (identical(ha, "home")) 15L else 18L  # 75.0% vs 90.0%
+      def_fg3_made <- if (identical(ha, "home")) 3L else 4L    # 30.0% vs 40.0%
+      return(data.frame(
+        team_id = c(1L, 2L),
+        sub_lineup_hash = c("lu1", "lu2"),
+        player_names_str = c("A1, A2, A3, A4, A5", "B1, B2, B3, B4, B5"),
+        team_name = c("Team A", "Team B"),
+        off_fg2_made = c(20L, 18L), off_fg2_att = c(35L, 34L),
+        off_fg3_made = c(8L, 7L), off_fg3_att = c(24L, 23L),
+        def_fg2_made = c(def_fg2_made, 19L), def_fg2_att = c(20L, 34L),
+        def_fg3_made = c(def_fg3_made, 8L), def_fg3_att = c(10L, 21L)
+      ))
+    }
+    original_db_get_query(pool, query, params = params)
+  }, envir = server_env)
+  on.exit(assign("db_get_query", original_db_get_query, envir = server_env), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Teams",
+      cmp_a_home_away = "home",
+      cmp_b_home_away = "away"
+    )
+    session$elapse(300)
+    session$flushReact()
+    session$setInputs(cmp_table_row_click = list(entity_name = "Team A"))
+    session$flushReact()
+
+    detail_txt <- render_ui_text(output$cmp_detail_view_ui)
+
+    # Opp 2PT Acc: A=75.0% (lower) beats B=90.0% under defensive (lower) polarity.
+    expect_true(grepl('winner">75.0%', detail_txt, fixed = TRUE))
+    expect_true(grepl('loser">90.0%', detail_txt, fixed = TRUE))
+    # Opp 3PT Acc: A=30.0% (lower) beats B=40.0%.
+    expect_true(grepl('winner">30.0%', detail_txt, fixed = TRUE))
+    expect_true(grepl('loser">40.0%', detail_txt, fixed = TRUE))
+
+    # Opp 2PT Freq is neutral and equal across sides (66.7% both): no loser side.
+    expect_true(grepl("66.7%", detail_txt, fixed = TRUE))
+    expect_false(grepl('loser">66.7%', detail_txt, fixed = TRUE))
+  })
+})
+
+test_that("tab7 lineups detail view omits defensive shooting", {
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Lineups"
+    )
+    session$elapse(300)
+    session$flushReact()
+    session$setInputs(cmp_table_row_click = list(entity_name = "A1, A2, A3, A4, A5"))
+    session$flushReact()
+
+    detail_txt <- render_ui_text(output$cmp_detail_view_ui)
+    expect_true(grepl("Offensive Shooting", detail_txt, fixed = TRUE))
+    expect_false(grepl("Defensive Shooting", detail_txt, fixed = TRUE))
+  })
+})
