@@ -220,6 +220,11 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
 server_tab4 <- function(input, output, session, shared) {
 
   gl_ref <- reactiveValues(teams = NULL)
+  gl_data_version <- reactive({
+    version <- if (is.function(shared$data_version)) shared$data_version() else NA_character_
+    version <- trimws(as.character(version %||% ""))
+    if (!length(version) || is.na(version[[1]]) || !nzchar(version[[1]])) "unknown" else version[[1]]
+  })
   gl_stat_filter_state <- make_stat_filter_state()
   gl_stat_filter_cols <- reactive({
     if (identical(input$gl_view_mode, "Four Factors")) GL_FF_FILTERABLE_COLS else GL_SUMMARY_FILTERABLE_COLS
@@ -417,7 +422,9 @@ server_tab4 <- function(input, output, session, shared) {
        WHERE game_year = $1",
       params = list(gy_int)
     )
-  }) %>% bindEvent(input$game_year, input$main_tabs)
+  }) %>%
+    bindCache(as.integer(input$game_year), gl_data_version(), cache = GL_DATA_CACHE) %>%
+    bindEvent(input$game_year, input$main_tabs, gl_data_version())
 
   # --- Lineup FF cache per season ---
   gl_lineup_ff <- reactive({
@@ -434,7 +441,9 @@ server_tab4 <- function(input, output, session, shared) {
        WHERE game_year = $1",
       params = list(gy_int)
     )
-  }) %>% bindEvent(input$game_year, input$main_tabs)
+  }) %>%
+    bindCache(as.integer(input$game_year), gl_data_version(), cache = GL_DATA_CACHE) %>%
+    bindEvent(input$game_year, input$main_tabs, gl_data_version())
 
   # ============================================================
   # TEAMS SUMMARY
