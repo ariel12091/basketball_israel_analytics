@@ -47,9 +47,42 @@ OFF_OREB_TOOLTIP <- "Offensive rebound percentage"
 DEF_OREB_TOOLTIP <- "Defensive rebound percentage"
 
 pg_pool <- structure(list(), class = "mock_pool")
+GL_DATA_CACHE <- cachem::cache_mem(max_size = 64 * 1024^2, max_age = 3600)
+
+.mock_db_query_counts <- new.env(parent = emptyenv())
+
+reset_mock_db_query_counts <- function() {
+  rm(list = ls(envir = .mock_db_query_counts, all.names = TRUE), envir = .mock_db_query_counts)
+  invisible(NULL)
+}
+
+increment_mock_db_query_count <- function(name) {
+  current <- if (exists(name, envir = .mock_db_query_counts, inherits = FALSE)) {
+    get(name, envir = .mock_db_query_counts, inherits = FALSE)
+  } else {
+    0L
+  }
+  assign(name, current + 1L, envir = .mock_db_query_counts)
+  invisible(NULL)
+}
+
+mock_db_query_count <- function(name) {
+  if (exists(name, envir = .mock_db_query_counts, inherits = FALSE)) {
+    get(name, envir = .mock_db_query_counts, inherits = FALSE)
+  } else {
+    0L
+  }
+}
 
 db_get_query <- function(pool, query, params = NULL) {
   q <- paste(query, collapse = " ")
+
+  if (grepl("mv_lineup_totals_by_day", q, fixed = TRUE)) {
+    increment_mock_db_query_count("gl_lineup_totals")
+  }
+  if (grepl("lineup_four_factors_by_game", q, fixed = TRUE)) {
+    increment_mock_db_query_count("gl_lineup_ff")
+  }
 
   if (grepl("onoff_default_mv", q, fixed = TRUE)) {
     return(data.frame(
@@ -601,7 +634,7 @@ source(repo_file("R", "server_tab5_traditional.R"), local = TRUE)
 source(repo_file("R", "server_tab6_team_stats.R"), local = TRUE)
 source(repo_file("R", "server_tab7_compare.R"), local = TRUE)
 
-make_shared <- function() {
+make_shared <- function(data_version = shiny::reactiveVal("test-etl-v1")) {
   pending_compare_preset <- shiny::reactiveVal(NULL)
   pending_ld_team <- shiny::reactiveVal(NULL)
   pending_gl_team <- shiny::reactiveVal(NULL)
@@ -617,6 +650,7 @@ make_shared <- function() {
     teams_for_year_df = shiny::reactive({ data.frame(team_id = c(1L, 2L), team_name = c("Team A", "Team B")) }),
     selected_opp_ids_on = shiny::reactive({ NULL }),
     selected_opp_ids_ld = shiny::reactive({ NULL }),
+    data_version = data_version,
     pending_ld_team = pending_ld_team,
     pending_gl_team = pending_gl_team,
     pending_compare_preset = pending_compare_preset

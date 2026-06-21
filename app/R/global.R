@@ -253,6 +253,15 @@ csv_export_stamp <- function(now = Sys.time()) {
 REF_CACHE_TTL_SEC <- as.numeric(Sys.getenv("REF_CACHE_TTL_SEC", "300"))
 if (!is.finite(REF_CACHE_TTL_SEC) || REF_CACHE_TTL_SEC < 0) REF_CACHE_TTL_SEC <- 60
 
+GL_DATA_CACHE_MAX_MB <- as.numeric(Sys.getenv("GL_DATA_CACHE_MAX_MB", "64"))
+if (!is.finite(GL_DATA_CACHE_MAX_MB) || GL_DATA_CACHE_MAX_MB <= 0) GL_DATA_CACHE_MAX_MB <- 64
+GL_DATA_CACHE_MAX_AGE_SEC <- as.numeric(Sys.getenv("GL_DATA_CACHE_MAX_AGE_SEC", "3600"))
+if (!is.finite(GL_DATA_CACHE_MAX_AGE_SEC) || GL_DATA_CACHE_MAX_AGE_SEC <= 0) GL_DATA_CACHE_MAX_AGE_SEC <- 3600
+GL_DATA_CACHE <- cachem::cache_mem(
+  max_size = GL_DATA_CACHE_MAX_MB * 1024^2,
+  max_age = GL_DATA_CACHE_MAX_AGE_SEC
+)
+
 PG_STATEMENT_TIMEOUT_MS <- suppressWarnings(as.integer(Sys.getenv("PG_STATEMENT_TIMEOUT_MS", "20000")))
 if (!is.finite(PG_STATEMENT_TIMEOUT_MS) || PG_STATEMENT_TIMEOUT_MS <= 0) PG_STATEMENT_TIMEOUT_MS <- 20000L
 APP_IDLE_TIMEOUT_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_TIMEOUT_SEC", "360")))

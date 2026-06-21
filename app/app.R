@@ -479,6 +479,7 @@ server <- function(input, output, session) {
   }
 
   last_updated_cache <- reactiveVal(NA_character_)
+  data_version_cache <- reactiveVal(NA_character_)
 
   refresh_last_updated <- function() {
     ts <- last_success_db()
@@ -491,7 +492,9 @@ server <- function(input, output, session) {
       lines <- tryCatch(readLines(p, warn = FALSE), error = function(e) character(0))
       ts <- if (length(lines)) trimws(lines[[1]]) else ""
     }
-    txt <- if (!nzchar(ts)) "Last updated: unavailable" else paste("Last updated:", ts)
+    has_ts <- length(ts) > 0 && !is.na(ts[[1]]) && nzchar(trimws(ts[[1]]))
+    txt <- if (!has_ts) "Last updated: unavailable" else paste("Last updated:", ts[[1]])
+    if (has_ts) data_version_cache(trimws(ts[[1]]))
     last_updated_cache(txt)
     invisible(NULL)
   }
@@ -583,6 +586,7 @@ server <- function(input, output, session) {
     teams_for_year_df = teams_for_year_df,
     selected_opp_ids_on = selected_opp_ids_on,
     selected_opp_ids_ld = selected_opp_ids_ld,
+    data_version = data_version_cache,
     pending_ld_team = reactiveVal(NULL),
     pending_gl_team = reactiveVal(NULL),
     pending_compare_preset = reactiveVal(NULL)
