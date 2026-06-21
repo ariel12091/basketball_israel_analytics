@@ -492,7 +492,8 @@ server_tab3 <- function(input, output, session, shared) {
     }
 
     td <- tr_teams_for_year()
-    updateSelectizeInput(session, "tr_opponents", choices = td$team_name, selected = character(0))
+    opponent_choices <- stats::setNames(as.character(td$team_id), as.character(td$team_name))
+    updateSelectizeInput(session, "tr_opponents", choices = opponent_choices, selected = character(0))
 
     gy_int <- as.integer(input$game_year)
     gn_df <- cached_ref_query(
@@ -807,14 +808,7 @@ server_tab3 <- function(input, output, session, shared) {
       start_d <- tr_date_part(input$tr_dates, 1L)
       end_d <- tr_date_part(input$tr_dates, 2L)
       tr_game_type_csv <- csv_if_any(input$tr_game_type)
-      td_map <- tr_teams_for_year()
-      tr_opp_ids_csv <- {
-        sel <- input$tr_opponents
-        if (is.null(sel) || !length(sel)) NA_character_ else {
-          ids <- td_map %>% filter(team_name %in% sel) %>% pull(team_id)
-          csv_if_any(ids, integerize = TRUE)
-        }
-      }
+      tr_opp_ids_csv <- csv_if_any(input$tr_opponents, integerize = TRUE)
       tr_home_away <- blank_to_na_character(input$tr_home_away)
       tr_outcome <- blank_to_na_character(input$tr_outcome)
       tr_rank_side <- blank_to_na_character(input$tr_opp_rank_side)
@@ -1604,7 +1598,7 @@ server_tab3 <- function(input, output, session, shared) {
 
       dt <- datatable(
         disp, rownames = FALSE,
-        escape = FALSE,
+        escape = dt_escape_except(disp, names(sort_map)),
         extensions = c("Buttons", "ColReorder"),
         options = list(
           headerCallback = HEADER_TOOLTIP_JS,
@@ -1824,7 +1818,8 @@ server_tab3 <- function(input, output, session, shared) {
       if (length(net_idx))     col_defs[[length(col_defs) + 1]] <- list(targets = net_idx, className = "section-left-border dt-center")
       col_defs <- c(col_defs, ff_sort_order_defs)
 
-      dt <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE, escape = FALSE,
+      dt <- DT::datatable(disp_ff, container = sketch_ff, rownames = FALSE,
+                          escape = dt_escape_except(disp_ff, names(ff_sort_map)),
                           extensions = "Buttons",
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
@@ -1927,7 +1922,7 @@ server_tab3 <- function(input, output, session, shared) {
         disp_df,
         colnames = pretty_names,
         rownames = FALSE,
-        escape = FALSE,
+        escape = dt_escape_except(disp_df, c("off_ppp", "def_ppp", "net_rtg")),
         extensions = "Buttons",
         options = list(
           headerCallback = HEADER_TOOLTIP_JS,
@@ -1968,11 +1963,20 @@ server_tab3 <- function(input, output, session, shared) {
   # ---- Filter Chips ----
   output$tr_filter_chips <- renderUI({
     tryCatch(
-      build_filter_chips(
-        "tr", input, shared$season_date_bounds,
-        reset_btn_id = "tr_reset",
-        extra_children = stat_filter_chips_ui("tr", tr_stat_filter_state, tr_stat_filter_cols)
-      ),
+      {
+        td <- tr_teams_for_year()
+        team_map <- if (!is.null(td) && nrow(td)) {
+          stats::setNames(as.character(td$team_name), as.character(td$team_id))
+        } else {
+          NULL
+        }
+        build_filter_chips(
+          "tr", input, shared$season_date_bounds,
+          reset_btn_id = "tr_reset",
+          opponent_label_map = team_map,
+          extra_children = stat_filter_chips_ui("tr", tr_stat_filter_state, tr_stat_filter_cols)
+        )
+      },
       error = function(e) {
         log_tab3_error(paste0("tr_filter_chips error: ", conditionMessage(e)))
         NULL

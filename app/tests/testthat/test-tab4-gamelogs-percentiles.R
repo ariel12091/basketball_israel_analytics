@@ -57,3 +57,24 @@ test_that("tab4 four-factor percentiles stay stable when visible rows are filter
     expect_equal(filtered_df$pr_def_ppp, c(2 / 3, 0))
   })
 })
+
+test_that("tab4 opponent filter uses stable opponent team IDs", {
+  shiny::testServer(function(input, output, session) {
+    session$userData$tab4 <- server_tab4(input, output, session, shared = make_shared())
+  }, {
+    tab4 <- session$userData$tab4
+    session$setInputs(
+      main_tabs = "game_logs",
+      game_year = "2026",
+      gl_view_mode = "Summary",
+      gl_team = "1",
+      gl_opponents = "3"
+    )
+    session$flushReact()
+
+    filtered_schedule <- tab4$gl_filtered_schedule()
+    expect_equal(filtered_schedule$game_id, 102L)
+    expect_equal(filtered_schedule$opp_team_id, 3L)
+    expect_equal(filtered_schedule$opp_team_name, "Team C")
+  })
+})

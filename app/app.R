@@ -45,7 +45,7 @@ ui <- navbarPage(
     tags$script(HTML(sprintf(
       paste0(
         "window.IBPL_IDLE_CONFIG = {",
-        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:9",
+        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:10",
         "};"
       ),
       APP_IDLE_TIMEOUT_SEC,
@@ -440,23 +440,22 @@ server <- function(input, output, session) {
 
   observeEvent(selected_game_year(), {
     td <- teams_for_year_df()
-    updateSelectizeInput(session, "teams", choices = td$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "on_opponents", choices = td$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ld_opponents", choices = td$team_name, selected = character(0), server = TRUE)
+    team_choices <- stats::setNames(as.character(td$team_id), as.character(td$team_name))
+    updateSelectizeInput(session, "teams", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "on_opponents", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "ld_opponents", choices = team_choices, selected = character(0), server = TRUE)
   }, ignoreInit = FALSE)
 
   selected_opp_ids_on <- reactive({
-    td <- teams_for_year_df()
-    sel <- input$on_opponents
-    if (is.null(sel) || !length(sel)) return(NULL)
-    td %>% filter(team_name %in% sel) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(input$on_opponents))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   })
 
   selected_opp_ids_ld <- reactive({
-    td <- teams_for_year_df()
-    sel <- input$ld_opponents
-    if (is.null(sel) || !length(sel)) return(NULL)
-    td %>% filter(team_name %in% sel) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(input$ld_opponents))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   })
 
   last_success_path <- function() {
@@ -610,14 +609,15 @@ server <- function(input, output, session) {
   # Card navigation: Who is helping my team? -> Tab 1
   observeEvent(input$go_onoff, {
     teams_df <- shared$teams_for_year_df()
+    team_choices <- stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
     if (!is.null(input$home_team) && input$home_team != "") {
-      team_name <- teams_df$team_name[teams_df$team_id == as.integer(input$home_team)]
-      if (length(team_name) > 0) {
-        updateSelectizeInput(session, "teams", choices = teams_df$team_name,
-                             selected = team_name, server = TRUE)
+      team_id <- as.character(input$home_team)
+      if (team_id %in% unname(team_choices)) {
+        updateSelectizeInput(session, "teams", choices = team_choices,
+                             selected = team_id, server = TRUE)
       }
     } else {
-      updateSelectizeInput(session, "teams", choices = teams_df$team_name,
+      updateSelectizeInput(session, "teams", choices = team_choices,
                            selected = character(0), server = TRUE)
     }
     updateTabsetPanel(session, "main_tabs", selected = "onoff")

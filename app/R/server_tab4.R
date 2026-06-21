@@ -257,7 +257,11 @@ server_tab4 <- function(input, output, session, shared) {
     } else {
       update_single_team_selectize(session, "gl_team", teams_gl, selected = "")
     }
-    updateSelectizeInput(session, "gl_opponents", choices = teams_gl$team_name,
+    opponent_choices <- stats::setNames(
+      as.character(teams_gl$team_id),
+      as.character(teams_gl$team_name)
+    )
+    updateSelectizeInput(session, "gl_opponents", choices = opponent_choices,
                          selected = character(0), server = TRUE)
 
     gn_df <- cached_ref_query(
@@ -346,9 +350,10 @@ server_tab4 <- function(input, output, session, shared) {
     }
 
     # Opponent filter
-    opp_names <- input$gl_opponents
-    if (!is.null(opp_names) && length(opp_names) > 0) {
-      df <- df %>% filter(opp_team_name %in% !!opp_names)
+    opp_ids <- suppressWarnings(as.integer(input$gl_opponents))
+    opp_ids <- opp_ids[is.finite(opp_ids)]
+    if (length(opp_ids) > 0) {
+      df <- df %>% filter(opp_team_id %in% !!opp_ids)
     }
 
     # Home/Away filter
@@ -666,7 +671,8 @@ server_tab4 <- function(input, output, session, shared) {
       if (length(off_poss_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_poss_idx, className = "section-left-border dt-center")
       if (length(off_shot_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_shot_idx, className = "section-left-border dt-center")
 
-      dt <- DT::datatable(disp, container = sketch, rownames = FALSE, escape = FALSE,
+      dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
+                          escape = dt_escape_except(disp),
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
@@ -762,7 +768,8 @@ server_tab4 <- function(input, output, session, shared) {
         )
       )))
 
-      dt <- DT::datatable(disp, container = sketch, rownames = FALSE, escape = FALSE,
+      dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
+                          escape = dt_escape_except(disp),
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
                             dom = "tip", pageLength = 50,
@@ -825,6 +832,7 @@ server_tab4 <- function(input, output, session, shared) {
       "gl", input, shared$season_date_bounds,
       reset_btn_id = "gl_reset",
       team_label_map = team_map,
+      opponent_label_map = team_map,
       extra_children = stat_filter_chips_ui("gl", gl_stat_filter_state, gl_stat_filter_cols)
     )
   })
@@ -839,6 +847,7 @@ server_tab4 <- function(input, output, session, shared) {
                      "gl_num_starters_def_mode", "gl_num_starters_def"))
 
   invisible(list(
+    gl_filtered_schedule = gl_filtered_schedule,
     gl_teams_summary = gl_teams_summary,
     gl_teams_ff = gl_teams_ff
   ))

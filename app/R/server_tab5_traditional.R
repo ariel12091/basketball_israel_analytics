@@ -232,10 +232,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
   ts_stat_filter_next_id <- reactiveVal(1L)
 
   selected_team_ids_now <- function() {
-    td <- ts_ref$teams
-    selected <- input$ts_teams %||% character(0)
-    if (is.null(td) || !nrow(td) || !length(selected)) return(NULL)
-    td %>% filter(team_name %in% selected) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(input$ts_teams %||% character(0)))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   }
 
   refresh_ts_player_choices <- function() {
@@ -263,8 +262,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
       }
     )
     ts_ref$teams <- teams_df
-    updateSelectizeInput(session, "ts_teams", choices = teams_df$team_name, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ts_opponents", choices = teams_df$team_name, selected = character(0), server = TRUE)
+    team_choices <- stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
+    updateSelectizeInput(session, "ts_teams", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(session, "ts_opponents", choices = team_choices, selected = character(0), server = TRUE)
 
     players_df <- cached_ref_query(
       key = sprintf("ts_players_%d", gy_int),
@@ -456,7 +456,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   debounced_players <- reactive(input$ts_players) %>% debounce(150)
   debounced_ts_filters <- reactive(list(
     game_type = input$ts_game_type,
-    opp_names = input$ts_opponents,
+    opp_ids = input$ts_opponents,
     home_away = input$ts_home_away,
     outcome = input$ts_outcome,
     rank_side = input$ts_opp_rank_side,
@@ -474,17 +474,15 @@ server_tab5_traditional <- function(input, output, session, shared) {
   }) %>% debounce(150)
 
   selected_team_ids <- reactive({
-    td <- ts_ref$teams
-    teams_in <- debounced_teams()
-    if (is.null(td) || !nrow(td) || is.null(teams_in) || !length(teams_in)) return(NULL)
-    td %>% filter(team_name %in% teams_in) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(debounced_teams()))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   })
 
   selected_opp_ids <- reactive({
-    td <- ts_ref$teams
-    opp_names <- debounced_ts_filters()$opp_names
-    if (is.null(td) || !nrow(td) || is.null(opp_names) || !length(opp_names)) return(NULL)
-    td %>% filter(team_name %in% opp_names) %>% pull(team_id)
+    ids <- suppressWarnings(as.integer(debounced_ts_filters()$opp_ids))
+    ids <- ids[is.finite(ids)]
+    if (length(ids)) ids else NULL
   })
 
   build_ts_db_args <- function() {
@@ -576,7 +574,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     f <- debounced_ts_filters()
     extra_filters <- (!is.null(f$game_type) && any(nzchar(f$game_type))) ||
-      (!is.null(f$opp_names) && length(f$opp_names) > 0) ||
+      (!is.null(f$opp_ids) && length(f$opp_ids) > 0) ||
       nzchar(f$home_away %||% "") ||
       nzchar(f$outcome %||% "") ||
       nzchar(f$rank_side %||% "") ||
@@ -609,9 +607,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if (is.null(out)) return(NULL)
     out <- normalize_ts_result_cols(out)
 
-    sel_names <- debounced_teams()
-    if (!is.null(sel_names) && length(sel_names) > 0) {
-      out <- out %>% filter(team_name %in% sel_names)
+    team_ids <- selected_team_ids()
+    if (!is.null(team_ids) && length(team_ids) > 0) {
+      out <- out %>% filter(team_id %in% !!team_ids)
     }
 
     out %>%
@@ -944,6 +942,11 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   # ---- Filter Chips ----
   output$ts_filter_chips <- renderUI({
+    team_map <- if (!is.null(ts_ref$teams) && nrow(ts_ref$teams)) {
+      stats::setNames(as.character(ts_ref$teams$team_name), as.character(ts_ref$teams$team_id))
+    } else {
+      NULL
+    }
     stat_filter_choices <- names(TS_FILTERABLE_COLS)
     if (identical(input$ts_display_mode %||% "Per Game", "Totals")) {
       stat_filter_choices <- setdiff(stat_filter_choices, "Total Poss")
@@ -1024,6 +1027,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
       input,
       shared$season_date_bounds,
       reset_btn_id = "ts_reset",
+      team_label_map = team_map,
+      opponent_label_map = team_map,
       extra_children = c(player_chips, stat_chips, list(add_btn))
     )
   })
