@@ -147,13 +147,144 @@ ts_player_choices <- function(players_df, teams_df = NULL, team_ids = NULL) {
   stats::setNames(players$key, labels)
 }
 
-filter_ts_players <- function(df, selected_player_keys) {
+filter_ts_players <- function(df, selected_player_keys, lookup = NULL) {
   if (is.null(df) || !nrow(df) || is.null(selected_player_keys) || !length(selected_player_keys)) {
     return(df)
   }
   if (!all(c("team_id", "player_id") %in% names(df))) return(df)
+  sel <- as.character(selected_player_keys)
+
+  is_total <- if ("is_multi_team_total" %in% names(df)) {
+    vapply(df$is_multi_team_total, isTRUE, logical(1))
+  } else {
+    rep(FALSE, nrow(df))
+  }
+
   row_keys <- ts_player_key(df$team_id, df$player_id)
-  df[row_keys %in% as.character(selected_player_keys), , drop = FALSE]
+  keep_regular <- !is_total & (row_keys %in% sel)
+
+  # A TOTAL row is kept when ANY of its component (team, player) entries is
+  # selected, so picking a multi-team player on any one team surfaces the total.
+  keep_total <- rep(FALSE, nrow(df))
+  if (any(is_total) && ".identity_id" %in% names(df) &&
+      !is.null(lookup) && nrow(lookup) &&
+      all(c("team_id", "player_id", "identity_id") %in% names(lookup))) {
+    lkmap <- stats::setNames(as.character(lookup$identity_id),
+                             paste0(lookup$team_id, ":", lookup$player_id))
+    sel_idents <- unique(unname(lkmap[sel]))
+    sel_idents <- sel_idents[!is.na(sel_idents)]
+    if (length(sel_idents)) {
+      keep_total <- is_total & (as.character(df$.identity_id) %in% sel_idents)
+    }
+  }
+
+  df[keep_regular | keep_total, , drop = FALSE]
+}
+
+# Build a single combined row for one player identity from that identity's
+# per-team rows. Counting stats are summed; percentages are recomputed from the
+# summed counts; USG% is a possession-weighted average of the component values.
+build_ts_total_row <- function(rows, identity_id, display_name = NULL) {
+  if (is.null(rows) || !nrow(rows)) return(NULL)
+  s <- function(col) if (col %in% names(rows)) sum(suppressWarnings(as.numeric(rows[[col]])), na.rm = TRUE) else NA_real_
+  pct <- function(n, d) if (is.finite(n) && is.finite(d) && d > 0) round(n / d * 100, 1) else NA_real_
+
+  # Summed counting stats, then derived two-point and percentage columns.
+  sums <- vapply(
+    c("gp", "poss_on_floor", "minutes", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk",
+      "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta"),
+    s, numeric(1)
+  )
+  fg2m <- sums[["fgm"]] - sums[["3pm"]]
+  fg2a <- sums[["fga"]] - sums[["3pa"]]
+  derived <- c(
+    `2pm` = fg2m, `2pa` = fg2a,
+    fg_pct  = pct(sums[["fgm"]], sums[["fga"]]),
+    two_pct = pct(fg2m, fg2a),
+    tp_pct  = pct(sums[["3pm"]], sums[["3pa"]]),
+    ft_pct  = pct(sums[["ftm"]], sums[["fta"]]),
+    efg     = pct(sums[["fgm"]] + 0.5 * sums[["3pm"]], sums[["fga"]]),
+    ts      = pct(sums[["pts"]], 2 * (sums[["fga"]] + 0.44 * sums[["fta"]])),
+    usg_pct = ts_weighted_usg(rows)
+  )
+
+  name <- display_name
+  if (is.null(name) || is.na(name) || !nzchar(name)) {
+    name <- if ("Player" %in% names(rows)) as.character(rows$Player[1]) else NA_character_
+  }
+
+  out <- rows[1, , drop = FALSE]
+  out$team_id <- NA_integer_
+  out$player_id <- NA_integer_
+  out$team_name <- "TOTAL"
+  if ("Player" %in% names(out)) out$Player <- name
+  for (col in names(sums))    if (col %in% names(out)) out[[col]] <- sums[[col]]
+  for (col in names(derived)) if (col %in% names(out)) out[[col]] <- derived[[col]]
+  out$is_multi_team_total <- TRUE
+  out$.identity_id <- as.character(identity_id)
+  out
+}
+
+# Possession-weighted average of component USG% values (USG% is a rate, so it is
+# averaged by playing time rather than summed).
+ts_weighted_usg <- function(rows) {
+  if (!all(c("usg_pct", "poss_on_floor") %in% names(rows))) return(NA_real_)
+  u <- suppressWarnings(as.numeric(rows$usg_pct))
+  w <- suppressWarnings(as.numeric(rows$poss_on_floor))
+  ok <- is.finite(u) & is.finite(w) & w > 0
+  if (!any(ok)) return(NA_real_)
+  round(sum(u[ok] * w[ok]) / sum(w[ok]), 1)
+}
+
+# Append one combined TOTAL row per player identity that appears on >= min_teams
+# distinct teams in the current (already team/db-filtered) result set. Identity
+# is resolved via the stable identity dictionary; unresolved or ambiguous rows
+# are never combined. Original per-team rows are preserved.
+add_ts_multi_team_totals <- function(df, lookup, min_teams = 2L) {
+  if (is.null(df) || !nrow(df)) return(df)
+  if (!all(c("team_id", "player_id") %in% names(df))) return(df)
+  if (!("is_multi_team_total" %in% names(df))) df$is_multi_team_total <- FALSE
+  if (!(".identity_id" %in% names(df))) df$.identity_id <- NA_character_
+
+  if (is.null(lookup) || !nrow(lookup) ||
+      !all(c("team_id", "player_id", "identity_id") %in% names(lookup))) {
+    return(df)
+  }
+
+  lkmap <- stats::setNames(as.character(lookup$identity_id),
+                           paste0(lookup$team_id, ":", lookup$player_id))
+  dispmap <- NULL
+  if ("display_name" %in% names(lookup)) {
+    dl <- lookup[!duplicated(lookup$identity_id), , drop = FALSE]
+    dispmap <- stats::setNames(as.character(dl$display_name), as.character(dl$identity_id))
+  }
+
+  df$.identity_id <- unname(lkmap[paste0(df$team_id, ":", df$player_id)])
+
+  resolved <- df[!is.na(df$.identity_id), , drop = FALSE]
+  if (!nrow(resolved)) return(df)
+
+  team_counts <- tapply(resolved$team_id, resolved$.identity_id,
+                        function(t) length(unique(t[!is.na(t)])))
+  multi_ids <- names(team_counts[team_counts >= min_teams])
+  if (!length(multi_ids)) return(df)
+
+  totals <- lapply(multi_ids, function(id) {
+    id_rows <- resolved[resolved$.identity_id == id, , drop = FALSE]
+    nm <- if (!is.null(dispmap)) unname(dispmap[id]) else NULL
+    build_ts_total_row(id_rows, id, nm)
+  })
+  totals <- totals[!vapply(totals, is.null, logical(1))]
+  if (!length(totals)) return(df)
+
+  dplyr::bind_rows(df, do.call(rbind, totals))
+}
+
+# Rows excluding appended multi-team TOTAL rows. Used for the eligibility/rate
+# quantile population, where a derived TOTAL would double-count its player.
+ts_drop_totals <- function(df) {
+  if (is.null(df) || !nrow(df) || !("is_multi_team_total" %in% names(df))) return(df)
+  df[!vapply(df$is_multi_team_total, isTRUE, logical(1)), , drop = FALSE]
 }
 
 ts_no_data_message <- function(selected_player_keys) {
@@ -672,6 +803,44 @@ server_tab5_traditional <- function(input, output, session, shared) {
     gn_params()
   )
 
+  # Season-level (team, player) -> stable identity_id lookup, used to combine a
+  # player's rows across teams. Keyed on source_player_id because the MV/dynamic
+  # results carry provider (source) player ids. Ambiguous (team, player) pairs
+  # that resolve to more than one identity are dropped (fail-safe).
+  load_ts_identity_lookup <- function(gy_int) {
+    raw <- tryCatch(
+      cached_ref_query(
+        key = sprintf("ts_identity_%d", gy_int),
+        query_fun = function() {
+          db_get_query(
+            pg_pool,
+            "SELECT team_id,
+                    source_player_id AS player_id,
+                    identity_id::text AS identity_id,
+                    MIN(display_name) AS display_name
+             FROM basketball_test.resolved_player_identity_v
+             WHERE game_year = $1
+             GROUP BY team_id, source_player_id, identity_id",
+            params = list(gy_int)
+          )
+        }
+      ),
+      error = function(e) NULL
+    )
+    if (is.null(raw) || !nrow(raw) ||
+        !all(c("team_id", "player_id", "identity_id") %in% names(raw))) {
+      return(data.frame())
+    }
+    raw$team_id <- suppressWarnings(as.integer(raw$team_id))
+    raw$player_id <- suppressWarnings(as.integer(raw$player_id))
+    raw$identity_id <- as.character(raw$identity_id)
+    raw <- raw[is.finite(raw$team_id) & is.finite(raw$player_id) & !is.na(raw$identity_id), , drop = FALSE]
+    if (!nrow(raw)) return(raw)
+    tp <- paste0(raw$team_id, ":", raw$player_id)
+    ambiguous <- unique(tp[duplicated(tp)])
+    raw[!(tp %in% ambiguous), , drop = FALSE]
+  }
+
   result_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
     df <- NULL
@@ -680,7 +849,10 @@ server_tab5_traditional <- function(input, output, session, shared) {
       if (!is.null(mv_df)) df <- mv_df
     }
     if (is.null(df)) df <- live_result_df()
-    filter_ts_players(df, debounced_players())
+    gy_int <- as.integer(input$game_year)
+    lookup <- if (is.finite(gy_int)) load_ts_identity_lookup(gy_int) else data.frame()
+    df <- add_ts_multi_team_totals(df, lookup)
+    filter_ts_players(df, debounced_players(), lookup)
   }) %>% bindEvent(
     input$main_tabs,
     input$game_year,
@@ -717,7 +889,12 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if (!is.finite(pct)) pct <- 75
     pct <- max(70, min(90, pct))
 
-    df0 <- base_df %>%
+    # Derived TOTAL rows are excluded from the eligibility/rate population so a
+    # multi-team player is not counted twice (per-team rows + their TOTAL).
+    pop_df <- ts_drop_totals(base_df)
+    if (!nrow(pop_df)) pop_df <- base_df
+
+    df0 <- pop_df %>%
       mutate(
         poss_pg = ifelse(gp > 0, poss_on_floor / gp, NA_real_),
         min_pg = ifelse(gp > 0, minutes / gp, NA_real_)
@@ -733,7 +910,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     x_poss <- if (nrow(eligible)) as.numeric(stats::quantile(eligible$poss_pg, probs = pct / 100, na.rm = TRUE, type = 7)) else NA_real_
     x_min <- if (nrow(eligible)) as.numeric(stats::quantile(eligible$min_pg, probs = pct / 100, na.rm = TRUE, type = 7)) else NA_real_
-    poss_vec <- base_df$poss_on_floor
+    poss_vec <- pop_df$poss_on_floor
     poss_vec <- poss_vec[is.finite(poss_vec) & poss_vec > 0]
     rate_threshold <- if (length(poss_vec)) {
       as.numeric(stats::quantile(poss_vec, probs = 1 - TS_RATE_KEEP_PCT, na.rm = TRUE, type = 7))
@@ -822,6 +999,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       ))
     }
     mode <- disp_ctx$mode
+    if (!("is_multi_team_total" %in% names(df))) df$is_multi_team_total <- FALSE
 
     disp <- df %>%
       transmute(
@@ -854,7 +1032,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
         `TS%` = ts,
         `USG%` = usg_pct,
         `.poss_rank_base` = coalesce(.poss_rank_base, NA_real_),
-        `.eligible_rate` = coalesce(rate_eligible, TRUE)
+        `.eligible_rate` = coalesce(rate_eligible, TRUE),
+        `.is_total` = coalesce(is_multi_team_total, FALSE)
       )
     if (!identical(mode, "Totals")) {
       disp <- disp %>%
@@ -879,13 +1058,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if ("TOV" %in% names(disp)) disp <- add_pr_col(disp, "TOV")
 
     pr_cols <- names(disp)[grepl("^pr_", names(disp))]
-    hidden_cols <- c(".eligible_rate", ".poss_rank_base", pr_cols)
+    hidden_cols <- c(".eligible_rate", ".poss_rank_base", ".is_total", pr_cols)
     disp <- apply_visible_col_order(disp, isolate(input$ts_visible_col_order), hidden_cols)
 
     order_col <- which(grepl("^PTS", names(disp)))
     if (!length(order_col)) order_col <- 6L
-    round_cols <- setdiff(names(disp), c("Team", "Player", "GP", ".eligible_rate", ".poss_rank_base", pr_cols))
-    style_cols <- setdiff(names(disp), ".eligible_rate")
+    round_cols <- setdiff(names(disp), c("Team", "Player", "GP", ".eligible_rate", ".poss_rank_base", ".is_total", pr_cols))
+    style_cols <- setdiff(names(disp), c(".eligible_rate", ".is_total"))
 
     dt <- DT::datatable(
       disp,
@@ -932,12 +1111,30 @@ server_tab5_traditional <- function(input, output, session, shared) {
     for (col_name in heat_good) dt <- apply_heat(dt, col_name, reverse = FALSE)
     dt <- apply_heat(dt, "TOV", reverse = TRUE)
 
-    dt %>%
+    dt <- dt %>%
       DT::formatStyle(
         columns = style_cols,
         valueColumns = ".eligible_rate",
         color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "#6e7681"))
+      ) %>%
+      DT::formatStyle(
+        columns = style_cols,
+        valueColumns = ".is_total",
+        fontWeight = DT::styleEqual(c(TRUE, FALSE), c("bold", "normal"))
       )
+
+    # Multi-team TOTAL rows keep heat coloring but are distinguished by bold text
+    # and a subtle amber tint on the identity (Team/Player) cells.
+    tint_cols <- intersect(c("Team", "Player"), names(disp))
+    if (length(tint_cols)) {
+      dt <- dt %>%
+        DT::formatStyle(
+          columns = tint_cols,
+          valueColumns = ".is_total",
+          backgroundColor = DT::styleEqual(TRUE, "rgba(232, 164, 53, 0.18)")
+        )
+    }
+    dt
   }, server = FALSE) %>% bindEvent(ts_display_context(), input$main_tabs, input$ts_visible_col_order_restore, ignoreNULL = FALSE)
 
   # ---- Filter Chips ----
