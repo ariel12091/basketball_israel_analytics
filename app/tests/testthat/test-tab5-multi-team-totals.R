@@ -196,3 +196,40 @@ test_that("ts_group_display_order is a no-op without pts / on empty input", {
   d <- data.frame(a = 1:3)
   expect_identical(ts_group_display_order(d), d)
 })
+
+test_that("ts_player_choices uses the canonical identity name across a player's teams", {
+  players <- data.frame(
+    team_id = c(14L, 6L, 9L),
+    player_id = c(1143L, 1982L, 555L),
+    player_name = c("DJ BURNS", "D.J. BURNS", "SOLO GUY"),
+    team_name = c("Rishon", "Bnei H", "Ness Z"),
+    stringsAsFactors = FALSE
+  )
+  lookup <- data.frame(
+    team_id = c(14L, 6L), player_id = c(1143L, 1982L),
+    identity_id = c("id1", "id1"), display_name = c("DJ BURNS", "DJ BURNS"),
+    stringsAsFactors = FALSE
+  )
+
+  ch <- ts_player_choices(players, lookup = lookup)
+
+  # Keys remain one entry per (team, player).
+  expect_true(all(c("14:1143", "6:1982", "9:555") %in% unname(ch)))
+  # Both DJ Burns entries read the canonical name; no "D.J." spelling remains.
+  expect_true("DJ BURNS (Rishon)" %in% names(ch))
+  expect_true("DJ BURNS (Bnei H)" %in% names(ch))
+  expect_false(any(grepl("D\\.J\\.", names(ch))))
+  # Unmatched player keeps its original name.
+  expect_true("SOLO GUY (Ness Z)" %in% names(ch))
+})
+
+test_that("ts_player_choices without a lookup is unchanged", {
+  players <- data.frame(
+    team_id = 6L, player_id = 1982L,
+    player_name = "D.J. BURNS", team_name = "Bnei H",
+    stringsAsFactors = FALSE
+  )
+  ch <- ts_player_choices(players)
+  expect_equal(unname(ch), "6:1982")
+  expect_equal(names(ch), "D.J. BURNS (Bnei H)")
+})

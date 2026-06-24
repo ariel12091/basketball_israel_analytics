@@ -131,13 +131,25 @@ normalize_ts_players <- function(players_df, teams_df = NULL) {
   out[order(tolower(out$player_name), tolower(out$team_name)), , drop = FALSE]
 }
 
-ts_player_choices <- function(players_df, teams_df = NULL, team_ids = NULL) {
+ts_player_choices <- function(players_df, teams_df = NULL, team_ids = NULL, lookup = NULL) {
   players <- normalize_ts_players(players_df, teams_df)
   if (!nrow(players)) return(stats::setNames(character(0), character(0)))
   if (!is.null(team_ids) && length(team_ids)) {
     players <- players[players$team_id %in% as.integer(team_ids), , drop = FALSE]
   }
   if (!nrow(players)) return(stats::setNames(character(0), character(0)))
+
+  # Use the canonical identity display name when the lookup resolves a
+  # (team, player), so a player who appears under different provider ids/teams
+  # reads consistently. Keys stay "<team_id>:<player_id>".
+  if (!is.null(lookup) && nrow(lookup) &&
+      all(c("team_id", "player_id", "display_name") %in% names(lookup))) {
+    dispmap <- stats::setNames(as.character(lookup$display_name),
+                               paste0(lookup$team_id, ":", lookup$player_id))
+    canon <- unname(dispmap[players$key])
+    ok <- !is.na(canon) & nzchar(canon)
+    players$player_name[ok] <- canon[ok]
+  }
 
   labels <- ifelse(
     nzchar(players$team_name),
@@ -406,7 +418,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
   }
 
   refresh_ts_player_choices <- function() {
-    choices <- ts_player_choices(ts_ref$players, ts_ref$teams, selected_team_ids_now())
+    gy_int <- suppressWarnings(as.integer(input$game_year))
+    lk <- if (length(gy_int) && is.finite(gy_int)) load_ts_identity_lookup(gy_int) else NULL
+    choices <- ts_player_choices(ts_ref$players, ts_ref$teams, selected_team_ids_now(), lookup = lk)
     selected <- intersect(input$ts_players %||% character(0), unname(choices))
     updateSelectizeInput(session, "ts_players", choices = choices, selected = selected, server = TRUE)
   }
@@ -1205,7 +1219,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
     player_chips <- list()
     selected_players <- input$ts_players %||% character(0)
     if (length(selected_players)) {
-      choice_map <- ts_player_choices(ts_ref$players, ts_ref$teams)
+      gy_int <- suppressWarnings(as.integer(input$game_year))
+      lk <- if (length(gy_int) && is.finite(gy_int)) load_ts_identity_lookup(gy_int) else NULL
+      choice_map <- ts_player_choices(ts_ref$players, ts_ref$teams, lookup = lk)
       label_map <- stats::setNames(names(choice_map), unname(choice_map))
       selected_labels <- unname(label_map[as.character(selected_players)])
       selected_labels[is.na(selected_labels) | !nzchar(selected_labels)] <- as.character(selected_players)[is.na(selected_labels) | !nzchar(selected_labels)]
