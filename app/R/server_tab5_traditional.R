@@ -269,6 +269,19 @@ add_ts_multi_team_totals <- function(df, lookup, min_teams = 2L) {
   multi_ids <- names(team_counts[team_counts >= min_teams])
   if (!length(multi_ids)) return(df)
 
+  # Per-team rows of a multi-team identity display the canonical identity name,
+  # so the same person reads consistently across teams (and matches the TOTAL).
+  if (!is.null(dispmap) && "Player" %in% names(df)) {
+    is_total_row <- vapply(df$is_multi_team_total, isTRUE, logical(1))
+    member <- !is.na(df$.identity_id) & df$.identity_id %in% multi_ids & !is_total_row
+    if (any(member)) {
+      canon <- unname(dispmap[df$.identity_id[member]])
+      ok <- !is.na(canon) & nzchar(canon)
+      idx <- which(member)[ok]
+      df$Player[idx] <- canon[ok]
+    }
+  }
+
   totals <- lapply(multi_ids, function(id) {
     id_rows <- resolved[resolved$.identity_id == id, , drop = FALSE]
     nm <- if (!is.null(dispmap)) unname(dispmap[id]) else NULL

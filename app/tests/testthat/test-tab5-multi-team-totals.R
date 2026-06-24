@@ -106,6 +106,42 @@ test_that("add_ts_multi_team_totals leaves data unchanged when lookup is empty",
   expect_true(all(!out$is_multi_team_total))
 })
 
+test_that("add_ts_multi_team_totals normalizes per-team names to the canonical name", {
+  df <- data.frame(
+    team_id = c(14L, 6L, 9L),
+    player_id = c(1143L, 1982L, 555L),
+    Player = c("DJ BURNS", "D.J. BURNS", "SOLO GUY"),
+    team_name = c("Rishon", "Bnei H", "Ness Z"),
+    gp = c(27, 17, 20),
+    poss_on_floor = c(1448, 692, 400), minutes = c(900, 500, 600),
+    pts = c(341, 166, 200), reb = c(178, 71, 50), oreb = c(52, 24, 10),
+    dreb = c(126, 47, 40), ast = c(61, 38, 30), stl = c(25, 13, 5),
+    blk = c(8, 6, 2), tov = c(43, 29, 10),
+    fgm = c(124, 72, 80), fga = c(242, 132, 150),
+    `3pm` = c(19, 1, 10), `3pa` = c(64, 1, 30), ftm = c(74, 21, 20), fta = c(98, 32, 25),
+    fg_pct = c(51, 54, 53), tp_pct = c(30, 100, 33), ft_pct = c(75, 66, 80),
+    efg = c(55, 55, 56), ts = c(58, 60, 57), usg_pct = c(20, 23, 19),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+  # 1143 + 1982 are one identity (canonical "DJ BURNS"); 555 is single-team.
+  lookup <- data.frame(
+    team_id = c(14L, 6L, 9L), player_id = c(1143L, 1982L, 555L),
+    identity_id = c("idBurns", "idBurns", "idSolo"),
+    display_name = c("DJ BURNS", "DJ BURNS", "SOLO GUY"),
+    stringsAsFactors = FALSE
+  )
+
+  out <- add_ts_multi_team_totals(df, lookup)
+
+  burns <- out[out$.identity_id == "idBurns", , drop = FALSE]
+  # Both per-team rows AND the TOTAL row all read the canonical "DJ BURNS".
+  expect_true(all(burns$Player == "DJ BURNS"))
+  expect_false(any(grepl("D\\.J\\.", burns$Player)))
+  # Single-team player is untouched.
+  solo <- out[out$.identity_id == "idSolo" & !out$is_multi_team_total, , drop = FALSE]
+  expect_equal(solo$Player, "SOLO GUY")
+})
+
 test_that("filter_ts_players keeps a TOTAL row when any component entry is selected", {
   df <- data.frame(
     team_id = c(1L, 2L, NA_integer_),
