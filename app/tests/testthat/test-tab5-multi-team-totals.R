@@ -197,6 +197,28 @@ test_that("ts_group_display_order is a no-op without pts / on empty input", {
   expect_identical(ts_group_display_order(d), d)
 })
 
+test_that("ts_group_display_order never collapses distinct unresolved-identity rows", {
+  df <- data.frame(
+    team_id = c(1L, 2L, 3L),
+    player_id = c(11L, 22L, 33L),
+    Player = c("NA hi", "single", "NA lo"),
+    team_name = c("Nhi", "Single", "Nlo"),
+    pts = c(50, 40, 25),
+    is_multi_team_total = c(FALSE, FALSE, FALSE),
+    .identity_id = c(NA_character_, "idMid", NA_character_),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  out <- ts_group_display_order(df)
+
+  # Each unresolved (NA identity) row gets a unique token, so it forms its own
+  # group and orders purely by PTS desc -- the two NA rows must NOT clump
+  # together: the resolved single (40) sits between them (50, 40, 25).
+  expect_equal(out$team_name, c("Nhi", "Single", "Nlo"))
+  expect_gt(which(out$team_name == "Single"), which(out$team_name == "Nhi"))
+  expect_lt(which(out$team_name == "Single"), which(out$team_name == "Nlo"))
+})
+
 test_that("ts_player_choices uses the canonical identity name across a player's teams", {
   players <- data.frame(
     team_id = c(14L, 6L, 9L),
