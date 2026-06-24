@@ -300,6 +300,30 @@ ts_drop_totals <- function(df) {
   df[!vapply(df$is_multi_team_total, isTRUE, logical(1)), , drop = FALSE]
 }
 
+# Order rows for display so each player's per-team rows sit together followed by
+# its multi-team TOTAL row. The whole group is positioned at the group's combined
+# PTS (the TOTAL's PTS = sum of its parts = the group max), so single-team players
+# and multi-team groups interleave by PTS desc and the table still reads PTS-first.
+# Rows with no resolved identity never group. Pure; safe on missing columns.
+ts_group_display_order <- function(df) {
+  if (is.null(df) || !nrow(df) || !("pts" %in% names(df))) return(df)
+  n <- nrow(df)
+  ident <- if (".identity_id" %in% names(df)) as.character(df$.identity_id) else rep(NA_character_, n)
+  is_total <- if ("is_multi_team_total" %in% names(df)) {
+    vapply(df$is_multi_team_total, isTRUE, logical(1))
+  } else {
+    rep(FALSE, n)
+  }
+  # Group key: the identity when present, else a unique per-row token (so
+  # unresolved rows never collapse together).
+  g <- ifelse(is.na(ident) | !nzchar(ident), paste0(".row", seq_len(n)), ident)
+  pts <- suppressWarnings(as.numeric(df$pts))
+  pts[is.na(pts)] <- -Inf
+  grp_pts <- stats::ave(pts, g, FUN = function(p) max(p, na.rm = TRUE))
+  ord <- order(-grp_pts, g, is_total, -pts)
+  df[ord, , drop = FALSE]
+}
+
 ts_no_data_message <- function(selected_player_keys) {
   "No data for current filters"
 }
@@ -1013,6 +1037,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     }
     mode <- disp_ctx$mode
     if (!("is_multi_team_total" %in% names(df))) df$is_multi_team_total <- FALSE
+    df <- ts_group_display_order(df)
 
     disp <- df %>%
       transmute(
@@ -1074,8 +1099,6 @@ server_tab5_traditional <- function(input, output, session, shared) {
     hidden_cols <- c(".eligible_rate", ".poss_rank_base", ".is_total", pr_cols)
     disp <- apply_visible_col_order(disp, isolate(input$ts_visible_col_order), hidden_cols)
 
-    order_col <- which(grepl("^PTS", names(disp)))
-    if (!length(order_col)) order_col <- 6L
     round_cols <- setdiff(names(disp), c("Team", "Player", "GP", ".eligible_rate", ".poss_rank_base", ".is_total", pr_cols))
     style_cols <- setdiff(names(disp), c(".eligible_rate", ".is_total"))
 
@@ -1101,7 +1124,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         scrollX = TRUE,
         scrollY = "70vh",
         scrollCollapse = TRUE,
-        order = list(list(order_col - 1L, "desc")),
+        order = list(),
         columnDefs = list(
           list(className = "dt-center", targets = "_all"),
           list(visible = FALSE, targets = which(names(disp) %in% hidden_cols) - 1L)

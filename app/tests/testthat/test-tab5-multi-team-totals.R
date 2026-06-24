@@ -167,3 +167,32 @@ test_that("filter_ts_players keeps a TOTAL row when any component entry is selec
   out_no_lookup <- filter_ts_players(df, "1:11")
   expect_equal(out_no_lookup$team_name, "T1")
 })
+
+test_that("ts_group_display_order groups team rows with their TOTAL by combined PTS", {
+  df <- data.frame(
+    team_id = c(1L, 2L, NA_integer_, 5L, 6L, 7L),
+    player_id = c(11L, 11L, NA_integer_, 51L, 61L, 71L),
+    Player = c("A", "A", "A", "Hi", "Mid", "Lo"),
+    team_name = c("T1", "T2", "TOTAL", "T5", "T6", "T7"),
+    pts = c(100, 40, 140, 130, 120, 30),
+    is_multi_team_total = c(FALSE, FALSE, TRUE, FALSE, FALSE, FALSE),
+    .identity_id = c("idA", "idA", "idA", "idHi", "idMid", "idLo"),
+    check.names = FALSE, stringsAsFactors = FALSE
+  )
+
+  out <- ts_group_display_order(df)
+
+  # idA's combined PTS (140) ranks the whole group first; rows contiguous; TOTAL last.
+  expect_equal(out$team_name[1:3], c("T1", "T2", "TOTAL"))
+  expect_equal(out$pts[1:3], c(100, 40, 140))
+  # Singles follow by PTS desc.
+  expect_equal(out$pts[4:6], c(130, 120, 30))
+  # The 40-PTS team row is grouped at the top, NOT placed beside the 30-PTS single.
+  expect_lt(which(out$team_name == "T2"), which(out$team_name == "T7"))
+})
+
+test_that("ts_group_display_order is a no-op without pts / on empty input", {
+  expect_equal(nrow(ts_group_display_order(data.frame())), 0L)
+  d <- data.frame(a = 1:3)
+  expect_identical(ts_group_display_order(d), d)
+})
