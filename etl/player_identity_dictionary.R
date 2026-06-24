@@ -545,16 +545,33 @@ sync_player_identity_dictionary <- function(pg, schema = SCHEMA) {
          resolved AS (
            SELECT
              c.*,
-             COALESCE(cm.identity_id, ci.identity_id) AS identity_id
+             COALESCE(
+               CASE WHEN cm.n_identity = 1 THEN cm.identity_id END,
+               ci.identity_id
+             ) AS identity_id
            FROM corrections c
-           LEFT JOIN "%1$s"."player_identity_map" cm
-             ON cm.active
-            AND cm.provider = \'segev\'
-            AND cm.game_id IS NULL
-            AND cm.game_year = c.game_year
-            AND cm.team_id = c.team_id
-            AND cm.source_player_id = c.canonical_player_id
-            AND cm.canonical_player_id = c.canonical_player_id
+           -- Resolve the canonical id to its season self-map identity
+           -- season-wide (any team), not just on the alias row\'s own team.
+           -- This lets a re-minted, cross-team duplicate id collapse into the
+           -- canonical player\'s identity (e.g. a player who appears under a new
+           -- provider id on a second team mid-season). The n_identity guard
+           -- refuses the merge when the canonical id is itself ambiguous in that
+           -- season (a recycled id mapping to more than one person) and falls
+           -- back to a contextual identity instead of merging blindly. Only
+           -- season self-maps are considered (game_id IS NULL), so game-scoped
+           -- id reuses (player_id_game_overrides) never contaminate this.
+           LEFT JOIN LATERAL (
+             SELECT
+               min(pm.identity_id) AS identity_id,
+               count(DISTINCT pm.identity_id) AS n_identity
+             FROM "%1$s"."player_identity_map" pm
+             WHERE pm.active
+               AND pm.provider = \'segev\'
+               AND pm.game_id IS NULL
+               AND pm.game_year = c.game_year
+               AND pm.source_player_id = c.canonical_player_id
+               AND pm.canonical_player_id = c.canonical_player_id
+           ) cm ON true
            LEFT JOIN "%1$s"."player_identities" ci
              ON ci.identity_key = \'segev-context:\' || c.game_year::text || \':\' ||
                c.team_id::text || \':\' || c.canonical_player_id::text

@@ -6,17 +6,29 @@
 # so ETL and retroactive backfills use the same mapping.
 
 default_player_id_aliases <- function() {
+  same_team_reason <-
+    "same team/season duplicate display name with split lineup identity"
   tibble::tibble(
-    game_year = c(2026L, 2026L, 2025L),
-    team_id = c(15L, 7L, 13L),
-    alias_player_id = c(2136L, 2143L, 27817L),
-    canonical_player_id = c(1251L, 1262L, 3206L),
+    game_year = c(2026L, 2026L, 2025L, 2026L, 2026L, 2026L),
+    team_id = c(15L, 7L, 13L, 13L, 9L, 6L),
+    alias_player_id = c(2136L, 2143L, 27817L, 2046L, 2052L, 1982L),
+    canonical_player_id = c(1251L, 1262L, 3206L, 1165L, 1110L, 1143L),
     player_name = c(
       "SAGIV DVIR",
       "AMIR DANON",
-      "ALON DANIELI"
+      "ALON DANIELI",
+      "BEN ALTSHULER",
+      "NOAM AVIVI",
+      "DJ BURNS"
     ),
-    reason = "same team/season duplicate display name with split lineup identity"
+    reason = c(
+      same_team_reason,
+      same_team_reason,
+      same_team_reason,
+      "cross-team season re-mint: id 2046 (Maccabi Raanana) is the same person as canonical 1165 (Galil Elion)",
+      "cross-team season re-mint: id 2052 (Bnei Herzliya) is the same person as canonical 1110 (Galil Elion)",
+      "cross-team season re-mint: id 1982 (Bnei Herzliya) is the same person as canonical 1143 (Rishon Lezion)"
+    )
   )
 }
 
