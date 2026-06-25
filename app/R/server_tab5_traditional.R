@@ -50,6 +50,18 @@ ts_pr_colname <- function(display_name) {
   paste0("pr_", gsub("[^A-Za-z0-9]+", "_", display_name))
 }
 
+# Possession floor for the Per 60 / Per 30 small-sample trim: the (1 - keep_pct)
+# quantile of possessions, but only once the population is large enough that
+# trimming the noisy low-possession tail is worthwhile. Below min_n eligible
+# players the trim is disabled (returns 0), so small or heavily filtered result
+# sets show everyone instead of always dropping the bottom (1 - keep_pct).
+ts_rate_threshold <- function(poss_vec, keep_pct = 0.85, min_n = 120L) {
+  poss_vec <- suppressWarnings(as.numeric(poss_vec))
+  poss_vec <- poss_vec[is.finite(poss_vec) & poss_vec > 0]
+  if (length(poss_vec) < min_n) return(0)
+  as.numeric(stats::quantile(poss_vec, probs = 1 - keep_pct, na.rm = TRUE, type = 7))
+}
+
 # Compute percentile-rank (pr_*) columns over the FULL population passed in, so
 # coloring is league-relative and stays fixed no matter how the displayed rows are
 # later narrowed (player selection, Min GP, stat filters). Rows below the adaptive
@@ -387,6 +399,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
   TS_NORM_MIN_GP <- 3L
   TS_NORM_PCT <- 75
   TS_RATE_KEEP_PCT <- 0.85
+  # Minimum eligible-player population before the Per 60 / Per 30 bottom-tail trim
+  # engages; below this everyone is shown (small/filtered result sets).
+  TS_RATE_MIN_N <- 120L
 
   clean_ts_rows <- function(df) {
     if (is.null(df) || !nrow(df)) return(df)
@@ -1009,11 +1024,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     x_poss <- if (nrow(eligible)) as.numeric(stats::quantile(eligible$poss_pg, probs = pct / 100, na.rm = TRUE, type = 7)) else NA_real_
     x_min <- if (nrow(eligible)) as.numeric(stats::quantile(eligible$min_pg, probs = pct / 100, na.rm = TRUE, type = 7)) else NA_real_
-    poss_vec <- pop_df$poss_on_floor
-    poss_vec <- poss_vec[is.finite(poss_vec) & poss_vec > 0]
-    rate_threshold <- if (length(poss_vec)) {
-      as.numeric(stats::quantile(poss_vec, probs = 1 - TS_RATE_KEEP_PCT, na.rm = TRUE, type = 7))
-    } else 0
+    rate_threshold <- ts_rate_threshold(pop_df$poss_on_floor, TS_RATE_KEEP_PCT, TS_RATE_MIN_N)
 
     list(
       df = base_df,
