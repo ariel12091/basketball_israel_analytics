@@ -50,6 +50,22 @@ ts_pr_colname <- function(display_name) {
   paste0("pr_", gsub("[^A-Za-z0-9]+", "_", display_name))
 }
 
+# Which "actual playing-time base" context column to show for a display mode. Rate
+# modes normalize their per-rate column to a constant (Poss On Floor = 60, Min =
+# 30), hiding the real sample size, so the table surfaces the matching per-game
+# base: Min/G in minutes modes, Poss/G in possession modes. Per Game already shows
+# per-game Min and Poss On Floor, and Totals has no rate, so both return NULL.
+# Returns NULL or list(label, src column, after column).
+ts_rate_base_col <- function(mode) {
+  if (mode %in% c("Per 30 Minutes", "Per X Minutes")) {
+    return(list(label = "Min/G", src = "base_min_pg", after = "Min"))
+  }
+  if (mode %in% c("Per 60 Possessions", "Per X Possessions")) {
+    return(list(label = "Poss/G", src = "base_poss_pg", after = "Poss On Floor"))
+  }
+  NULL
+}
+
 # Possession floor for the Per 60 / Per 30 small-sample trim: the (1 - keep_pct)
 # quantile of possessions, but only once the population is large enough that
 # trimming the noisy low-possession tail is worthwhile. Below min_n eligible
@@ -1052,6 +1068,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
     df$rate_eligible <- TRUE
     df$total_poss <- suppressWarnings(as.numeric(df$poss_on_floor))
     df$.poss_rank_base <- suppressWarnings(as.numeric(df$poss_on_floor))
+    # Per-game playing-time base shown in rate modes (see ts_rate_base_col). Uses
+    # raw possessions/minutes over gp before the mode transform; for a multi-team
+    # TOTAL row gp is the summed games, so this reads as combined per-game.
+    gp_n <- suppressWarnings(as.numeric(df$gp))
+    raw_min <- suppressWarnings(as.numeric(df$minutes))
+    df$base_poss_pg <- ifelse(is.finite(gp_n) & gp_n > 0, df$total_poss / gp_n, NA_real_)
+    df$base_min_pg  <- ifelse(is.finite(gp_n) & gp_n > 0, raw_min / gp_n, NA_real_)
     if (identical(mode, "Per 60 Possessions") || identical(mode, "Per 30 Minutes")) {
       df$rate_eligible <- !is.na(df$.poss_rank_base) & df$.poss_rank_base >= poss_threshold
     }
@@ -1177,9 +1200,14 @@ server_tab5_traditional <- function(input, output, session, shared) {
         `.eligible_rate` = coalesce(rate_eligible, TRUE),
         `.is_total` = coalesce(is_multi_team_total, FALSE)
       )
-    if (!identical(mode, "Totals")) {
-      disp <- disp %>%
-        mutate(`Total Poss` = df$total_poss, .after = `Poss On Floor`)
+    # Surface the player's real accumulated base for the mode (Total Min in
+    # minutes modes, Total Poss otherwise), since rate modes normalize the
+    # per-rate column to a constant and hide the actual sample size.
+    base_col <- ts_rate_base_col(mode)
+    if (!is.null(base_col) && base_col$src %in% names(df) && base_col$after %in% names(disp)) {
+      disp[[base_col$label]] <- df[[base_col$src]]
+      disp <- dplyr::relocate(disp, dplyr::all_of(base_col$label),
+                              .after = dplyr::all_of(base_col$after))
     }
 
     # Percentile (pr_*) columns were already computed over the full population in
