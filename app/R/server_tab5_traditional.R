@@ -33,6 +33,48 @@ TS_FILTERABLE_COLS <- list(
 
 TS_PERCENT_COLS <- c("fg_pct", "two_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct")
 
+# Display column -> source (snake_case) column used for percentile/heat coloring,
+# in display order. TOV is reverse-polarity (handled at render time via COLS_REV).
+TS_HEAT_SRC <- list(
+  PTS = "pts", REB = "reb", OREB = "oreb", DREB = "dreb", AST = "ast",
+  STL = "stl", BLK = "blk", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct",
+  `2PM` = "2pm", `2PA` = "2pa", `2P%` = "two_pct", `3PM` = "3pm",
+  `3PA` = "3pa", `3P%` = "tp_pct", FTM = "ftm", FTA = "fta",
+  `FT%` = "ft_pct", `eFG%` = "efg", `TS%` = "ts", `USG%` = "usg_pct",
+  TOV = "tov"
+)
+
+# Name of the hidden percentile-rank column carrying a heat column's color value.
+# Must match the lookup used at render time (apply_heat) exactly.
+ts_pr_colname <- function(display_name) {
+  paste0("pr_", gsub("[^A-Za-z0-9]+", "_", display_name))
+}
+
+# Compute percentile-rank (pr_*) columns over the FULL population passed in, so
+# coloring is league-relative and stays fixed no matter how the displayed rows are
+# later narrowed (player selection, Min GP, stat filters). Rows below the adaptive
+# possession baseline (per `.poss_rank_base`) are set to NA before ranking, so
+# low-possession / 0-pt outliers neither receive a color nor skew the distribution
+# (dplyr::percent_rank drops NAs from the denominator). Pure; safe on missing cols.
+add_ts_percentile_cols <- function(df) {
+  if (is.null(df) || !nrow(df)) return(df)
+  base <- suppressWarnings(as.numeric(df$`.poss_rank_base`))
+  if (length(base) != nrow(df) || all(is.na(base))) base <- rep(0, nrow(df))
+  mask <- dplyr::coalesce(base, 0) >= adaptive_baseline(base)
+  mask[!is.finite(mask)] <- FALSE
+
+  present <- Filter(function(d) TS_HEAT_SRC[[d]] %in% names(df), names(TS_HEAT_SRC))
+  if (!length(present)) return(df)
+
+  # Blank out sub-threshold rows across every stat in one shot, then percent-rank
+  # the table column-wise over the full population (masked NAs drop out of each
+  # column's rank denominator, so low-possession outliers neither color nor skew).
+  src <- df[unlist(TS_HEAT_SRC[present], use.names = FALSE)]
+  src[!mask, ] <- NA_real_
+  df[vapply(present, ts_pr_colname, character(1))] <- lapply(src, dplyr::percent_rank)
+  df
+}
+
 apply_ts_stat_filters <- function(df, filters) {
   if (is.null(df) || !nrow(df) || !length(filters)) return(df)
   for (f in filters) {
@@ -496,9 +538,12 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   setup_gn_last_n_sync(session, input, "ts")
 
+  # ignoreNULL = FALSE so clearing the last team (input$ts_teams -> NULL) still
+  # fires and restores the full player list; otherwise the player dropdown stays
+  # filtered to the removed team.
   observeEvent(input$ts_teams, {
     refresh_ts_player_choices()
-  }, ignoreInit = TRUE)
+  }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
   observeEvent(input$ts_reset, {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
@@ -892,7 +937,12 @@ server_tab5_traditional <- function(input, output, session, shared) {
     raw[!(tp %in% ambiguous), , drop = FALSE]
   }
 
-  result_df <- reactive({
+  # Full ranking population for the current data scope (season + team/date/game
+  # filters), with multi-team TOTAL rows appended. The player-selection filter is
+  # deliberately NOT applied here: percentiles are computed over this population so
+  # coloring stays league-relative when the display is later narrowed to a few
+  # players. Player selection is applied downstream in ts_display_context().
+  population_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
     df <- NULL
     if (!isTRUE(fallback_needed())) {
@@ -902,20 +952,18 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if (is.null(df)) df <- live_result_df()
     gy_int <- as.integer(input$game_year)
     lookup <- if (is.finite(gy_int)) load_ts_identity_lookup(gy_int) else data.frame()
-    df <- add_ts_multi_team_totals(df, lookup)
-    filter_ts_players(df, debounced_players(), lookup)
+    add_ts_multi_team_totals(df, lookup)
   }) %>% bindEvent(
     input$main_tabs,
     input$game_year,
     debounced_range(),
     debounced_teams(),
-    debounced_players(),
     debounced_ts_filters(),
     gn_params()
   )
 
-  observeEvent(result_df(), ignoreInit = FALSE, {
-    df <- result_df()
+  observeEvent(population_df(), ignoreInit = FALSE, {
+    df <- population_df()
     max_gp <- 1L
     if (!is.null(df) && nrow(df) && "gp" %in% names(df)) {
       max_gp <- suppressWarnings(as.integer(max(df$gp, na.rm = TRUE)))
@@ -929,7 +977,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   })
 
   ts_mode_context <- reactive({
-    base_df <- result_df()
+    base_df <- population_df()
     if (is.null(base_df) || !nrow(base_df)) {
       return(list(df = base_df, x_poss = NA_real_, x_min = NA_real_, rate_threshold = 0))
     }
@@ -973,14 +1021,51 @@ server_tab5_traditional <- function(input, output, session, shared) {
       x_min = x_min,
       rate_threshold = rate_threshold
     )
-  }) %>% bindEvent(result_df())
+  }) %>% bindEvent(population_df())
 
-  ts_display_context <- reactive({
+  # Mode-transform and rank the FULL population. Percentiles (pr_* columns) are
+  # computed here, before any display narrowing, so each row's color reflects its
+  # standing in the whole league for the current data scope. Raw possessions are
+  # captured in `.poss_rank_base`/`total_poss` before the mode transform so the
+  # rate-eligibility gate and the ranking baseline use season totals, not the
+  # per-game/per-possession transformed values.
+  ts_ranked_df <- reactive({
     ctx <- ts_mode_context()
     df <- ctx$df
     mode <- input$ts_display_mode %||% "Per Game"
-    show_ineligible <- isTRUE(input$ts_show_ineligible)
     poss_threshold <- as.numeric(ctx$rate_threshold %||% 0)
+    if (is.null(df) || !nrow(df)) {
+      return(list(df = df, mode = mode, threshold = poss_threshold))
+    }
+
+    df$rate_eligible <- TRUE
+    df$total_poss <- suppressWarnings(as.numeric(df$poss_on_floor))
+    df$.poss_rank_base <- suppressWarnings(as.numeric(df$poss_on_floor))
+    if (identical(mode, "Per 60 Possessions") || identical(mode, "Per 30 Minutes")) {
+      df$rate_eligible <- !is.na(df$.poss_rank_base) & df$.poss_rank_base >= poss_threshold
+    }
+
+    df <- apply_ts_mode(df, mode, x_poss = ctx$x_poss, x_min = ctx$x_min)
+    df <- add_ts_percentile_cols(df)
+
+    list(df = df, mode = mode, threshold = poss_threshold)
+  }) %>% bindEvent(ts_mode_context(), input$ts_display_mode)
+
+  ts_display_context <- reactive({
+    ranked <- ts_ranked_df()
+    df <- ranked$df
+    mode <- ranked$mode
+    show_ineligible <- isTRUE(input$ts_show_ineligible)
+    poss_threshold <- as.numeric(ranked$threshold %||% 0)
+    if (is.null(df) || !nrow(df)) {
+      return(list(df = df, mode = mode, removed = 0L, ineligible = 0L, threshold = poss_threshold, show_ineligible = show_ineligible))
+    }
+
+    # Narrow the displayed rows (player selection, then Min GP). The pr_* columns
+    # are already baked in from the full population, so these only hide rows.
+    gy_int <- suppressWarnings(as.integer(input$game_year))
+    lookup <- if (is.finite(gy_int)) load_ts_identity_lookup(gy_int) else data.frame()
+    df <- filter_ts_players(df, debounced_players(), lookup)
     if (is.null(df) || !nrow(df)) {
       return(list(df = df, mode = mode, removed = 0L, ineligible = 0L, threshold = poss_threshold, show_ineligible = show_ineligible))
     }
@@ -994,25 +1079,19 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     removed <- 0L
     ineligible <- 0L
-    df$rate_eligible <- TRUE
-    df$total_poss <- suppressWarnings(as.numeric(df$poss_on_floor))
-    df$.poss_rank_base <- suppressWarnings(as.numeric(df$poss_on_floor))
     if (identical(mode, "Per 60 Possessions") || identical(mode, "Per 30 Minutes")) {
-      keep <- !is.na(df$poss_on_floor) & df$poss_on_floor >= poss_threshold
+      keep <- !is.na(df$rate_eligible) & df$rate_eligible
       ineligible <- sum(!keep, na.rm = TRUE)
-      df$rate_eligible <- keep
       if (!show_ineligible) {
         removed <- ineligible
         df <- df[keep, , drop = FALSE]
       }
     }
 
-    df <- apply_ts_mode(df, mode, x_poss = ctx$x_poss, x_min = ctx$x_min)
-
     df <- apply_ts_stat_filters(df, ts_stat_filters())
 
     list(df = df, mode = mode, removed = removed, ineligible = ineligible, threshold = poss_threshold, show_ineligible = show_ineligible)
-  }) %>% bindEvent(ts_mode_context(), input$ts_display_mode, input$ts_show_ineligible, input$ts_min_gp, input$ts_min_gp_slider, ts_stat_filters())
+  }) %>% bindEvent(ts_ranked_df(), input$ts_show_ineligible, input$ts_min_gp, input$ts_min_gp_slider, ts_stat_filters(), debounced_players())
 
   output$ts_mode_warning <- renderUI({
     disp_ctx <- ts_display_context()
@@ -1092,22 +1171,12 @@ server_tab5_traditional <- function(input, output, session, shared) {
         mutate(`Total Poss` = df$total_poss, .after = `Poss On Floor`)
     }
 
-    rank_thresh <- adaptive_baseline(disp$.poss_rank_base)
-    pct_mask <- coalesce(as.numeric(disp$.poss_rank_base), 0) >= rank_thresh
-    pct_mask[!is.finite(pct_mask)] <- FALSE
-
-    add_pr_col <- function(data, col_name, reverse = FALSE) {
-      if (!(col_name %in% names(data))) return(data)
-      vals <- suppressWarnings(as.numeric(data[[col_name]]))
-      vals[!pct_mask] <- NA_real_
-      pr <- dplyr::percent_rank(vals)
-      data[[paste0("pr_", gsub("[^A-Za-z0-9]+", "_", col_name))]] <- pr
-      data
-    }
-
+    # Percentile (pr_*) columns were already computed over the full population in
+    # ts_ranked_df(); carry them onto the row-aligned display frame so coloring is
+    # league-relative and unchanged by the player/Min GP/stat narrowing above.
     heat_good <- c("PTS", "REB", "OREB", "DREB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "2PM", "2PA", "2P%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
-    for (col_name in heat_good) disp <- add_pr_col(disp, col_name)
-    if ("TOV" %in% names(disp)) disp <- add_pr_col(disp, "TOV")
+    src_pr_cols <- grep("^pr_", names(df), value = TRUE)
+    disp[src_pr_cols] <- df[src_pr_cols]
 
     pr_cols <- names(disp)[grepl("^pr_", names(disp))]
     hidden_cols <- c(".eligible_rate", ".poss_rank_base", ".is_total", pr_cols)

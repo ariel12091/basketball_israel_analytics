@@ -1632,13 +1632,15 @@ server_tab7_compare <- function(input, output, session, shared) {
     release_compare_ready_after_flush(token)
   })
 
+  # ignoreNULL = FALSE so clearing the last team (multi-select -> NULL) still fires
+  # and restores the full player list, instead of leaving it filtered.
   observeEvent(input$cmp_player_a_list_team_filter, {
     refresh_player_choices("a")
-  }, ignoreInit = TRUE)
+  }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
   observeEvent(input$cmp_player_b_list_team_filter, {
     refresh_player_choices("b")
-  }, ignoreInit = TRUE)
+  }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
   observeEvent(list(input$cmp_player_a, input$cmp_player_b), {
     ids <- cmp_auto_default_ids()
