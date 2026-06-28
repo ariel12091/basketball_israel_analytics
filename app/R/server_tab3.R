@@ -478,18 +478,17 @@ server_tab3 <- function(input, output, session, shared) {
     )
   })
 
+  # Year change always re-syncs the date range to that season's bounds
+  # (matches every other date-bearing tab). The combined observer below only
+  # refreshes choice pools so it never clobbers user-picked dates on tab switch.
+  observeEvent(input$game_year, {
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+    updateDateRangeInput(session, "tr_dates", start = b$start, end = b$end, min = b$start, max = b$end)
+  }, ignoreInit = FALSE)
+
   observeEvent(list(input$game_year, input$main_tabs), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "team_ratings")) return(NULL)
     req(input$game_year)
-    # First touch behavior: if Tab 3 still has static UI defaults, align to season bounds.
-    cur_start <- tr_date_part(input$tr_dates, 1L)
-    cur_end <- tr_date_part(input$tr_dates, 2L)
-    if (!is.na(cur_start) && !is.na(cur_end) &&
-        identical(cur_start, as.Date(DEFAULT_START)) &&
-        identical(cur_end, as.Date(DEFAULT_END))) {
-      b <- shared$season_date_bounds(as.character(input$game_year))
-      updateDateRangeInput(session, "tr_dates", start = b$start, end = b$end)
-    }
 
     td <- tr_teams_for_year()
     opponent_choices <- stats::setNames(as.character(td$team_id), as.character(td$team_name))
