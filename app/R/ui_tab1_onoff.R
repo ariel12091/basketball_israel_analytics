@@ -26,8 +26,8 @@ ui_tab1_onoff <- tabPanel(
           tags$hr(),
 
           dateRangeInput("date_range", "Game Date Range",
-                         start = as.Date("2025-10-01"), end = as.Date("2026-07-01"),
-                         min = as.Date("2025-10-01"), max = as.Date("2026-07-01"),
+                         start = DEFAULT_START, end = DEFAULT_END,
+                         min = DEFAULT_START, max = DEFAULT_END,
                          format = "yyyy-mm-dd"),
           selectizeInput("teams", "Teams", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All teams")),

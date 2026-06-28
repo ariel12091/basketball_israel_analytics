@@ -26,11 +26,9 @@ dt_escape_except <- function(data, html_cols = character()) {
 }
 
 # ---------------- Defaults ----------------
-DEFAULT_START <- as.Date("2024-10-01")
-DEFAULT_END   <- as.Date("2025-07-01")
-DEFAULT_GAME_YEAR <- "2026"
-DEFAULT_2026_START <- as.Date("2025-10-01")
-DEFAULT_2026_END   <- as.Date("2026-07-01")
+# Default season shown on load. To roll to a new season, bump this and add the
+# matching label to the navbar selectInput choices in app.R — nothing else.
+DEFAULT_GAME_YEAR <- "2026"   # 25-26
 DEFAULT_MIN_ALL <- 100L
 DEFAULT_MIN_ON  <- 300L
 DEFAULT_MIN_NET <- -1e9
@@ -41,13 +39,18 @@ LD_DEFAULT_NUM      <- "5"
 RANKING_BASELINE <- 100
 RANKING_MIN_PCT  <- 0.25   # at least 25% of rows should be ranked
 
+# Season window for a given game_year: Oct 1 (Y-1) through Jul 1 (Y).
 season_date_bounds_for_year <- function(gy = DEFAULT_GAME_YEAR) {
-  if (identical(as.character(gy), "2026")) {
-    list(start = DEFAULT_2026_START, end = DEFAULT_2026_END)
-  } else {
-    list(start = DEFAULT_START, end = DEFAULT_END)
-  }
+  y <- suppressWarnings(as.integer(gy))
+  if (length(y) != 1L || is.na(y)) y <- as.integer(DEFAULT_GAME_YEAR)
+  list(start = as.Date(sprintf("%04d-10-01", y - 1L)),
+       end   = as.Date(sprintf("%04d-07-01", y)))
 }
+
+# Static UI date literals + fast-path sentinels track the default season
+# automatically, so they never go stale on a season rollover.
+DEFAULT_START <- season_date_bounds_for_year(DEFAULT_GAME_YEAR)$start
+DEFAULT_END   <- season_date_bounds_for_year(DEFAULT_GAME_YEAR)$end
 
 # Color scale constants (shared across all renderDT calls)
 CUTS      <- seq(0.05, 0.95, by = 0.05)
