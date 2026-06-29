@@ -173,6 +173,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   phase_failures <- character(0)
   failed_base_ids <- integer(0)
   published_ids <- integer(0)
+  ot_recovery_audit <- data.frame()
   mark_phase_failed <- function(phase, msg = NULL) {
     pipeline_ok <<- FALSE
     phase_failures <<- c(
@@ -213,6 +214,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   log_msg("Sourced etl/player_id_aliases.R")
   source("etl/player_identity_dictionary.R")
   log_msg("Sourced etl/player_identity_dictionary.R")
+  source("etl/ot_lineup_recovery.R")
+  log_msg("Sourced etl/ot_lineup_recovery.R")
   log_msg(sprintf("Schema: %s (APP_ENV = %s)", SCHEMA, APP_ENV))
 
   ensure_etl_processed_games(pg, SCHEMA)
@@ -515,6 +518,132 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         assert_no_player_alias_base_residue(pg, SCHEMA, gid, log_msg)
         log_msg(sprintf("  player alias guard passed for game %d", gid))
       }
+      # Build a provisional OT coverage result from the provider-derived
+      # lineups. Recovery is considered only when the first action of an OT
+      # period has no complete offense/defense stint match.
+      provisional_stints_df <- compute_stints(pg) |>
+        dplyr::filter(game_id %in% fetchable_sched$game_id) |>
+        dplyr::collect() %>%
+        dplyr::select(
+          team_id_offense, game_id, final_start_seg, final_end_seg,
+          segment_id, lineup_hash_offense, lineup_hash_defense, team_id_defense,
+          q_bucket, final_start_id, final_end_id
+        ) %>%
+        dplyr::rename(team_id = team_id_offense)
+      provisional_by <- dplyr::join_by(
+        team_id, game_id, q_bucket,
+        between(id, final_start_id, final_end_id, bounds = "[)")
+      )
+      provisional_pws <- dplyr::left_join(
+        poss_stage %>%
+          dplyr::mutate(q_bucket = dplyr::if_else(quarter < 5, 0L, quarter)),
+        provisional_stints_df,
+        provisional_by
+      )
+      ot_gap_periods <- detect_ot_leading_lineup_gaps(provisional_pws)
+      excluded_ot_periods <- ot_gap_periods[
+        ot_gap_periods$game_id %in% OT_LINEUP_RECOVERY_EXCLUDED_GAMES,
+        ,
+        drop = FALSE
+      ]
+      if (nrow(excluded_ot_periods)) {
+        log_msg(sprintf(
+          paste0(
+            "  OT lineup recovery skipped for known boundary issue: ",
+            "game %d period(s) %s"
+          ),
+          gid,
+          paste0("Q", sort(unique(excluded_ot_periods$quarter)), collapse = ", ")
+        ), "WARN")
+        ot_gap_periods <- ot_gap_periods[
+          !ot_gap_periods$game_id %in% OT_LINEUP_RECOVERY_EXCLUDED_GAMES,
+          ,
+          drop = FALSE
+        ]
+      }
+
+      if (nrow(ot_gap_periods)) {
+        log_msg(sprintf(
+          "  OT lineup recovery required for game %d period(s): %s",
+          gid,
+          paste0("Q", sort(unique(ot_gap_periods$quarter)), collapse = ", ")
+        ), "WARN")
+
+        recovery <- recover_ot_lineup_periods(
+          actions_df = actions_df,
+          roster_df = roster_df,
+          lineup_df = df_lineups_df,
+          periods = ot_gap_periods
+        )
+        ot_recovery_audit <- dplyr::bind_rows(ot_recovery_audit, recovery$audit)
+
+        if (nrow(recovery$audit)) {
+          for (audit_i in seq_len(nrow(recovery$audit))) {
+            audit_row <- recovery$audit[audit_i, , drop = FALSE]
+            log_level <- if (grepl("^accepted_", audit_row$recovery_status)) "INFO" else "ERROR"
+            log_msg(sprintf(
+              paste0(
+                "  OT lineup recovery game=%d team=%s quarter=Q%d status=%s ",
+                "reset=%s state_rows=%d ordering_warnings=%d unexplained=%d reason=%s"
+              ),
+              audit_row$game_id,
+              ifelse(is.na(audit_row$team_id), "NA", audit_row$team_id),
+              audit_row$quarter,
+              audit_row$recovery_status,
+              ifelse(is.na(audit_row$period_start_reset_type), "NA", audit_row$period_start_reset_type),
+              audit_row$recovered_action_rows,
+              audit_row$ordering_warning_count,
+              audit_row$unexplained_event_count,
+              ifelse(is.na(audit_row$reason) || !nzchar(audit_row$reason), "none", audit_row$reason)
+            ), log_level)
+          }
+        }
+
+        rejected <- recovery$audit[
+          !grepl("^accepted_", recovery$audit$recovery_status),
+          ,
+          drop = FALSE
+        ]
+        if (nrow(rejected)) {
+          stop(
+            sprintf(
+              "OT lineup recovery rejected for game %d: %s",
+              gid,
+              paste(unique(rejected$reason), collapse = " | ")
+            ),
+            call. = FALSE
+          )
+        }
+
+        # Replace only the affected OT periods. The complete game is already
+        # inside a transaction, so a later validation failure rolls this back.
+        for (period_i in seq_len(nrow(ot_gap_periods))) {
+          DBI::dbExecute(
+            pg,
+            sprintf(
+              'DELETE FROM "%s"."lineups_lookup" WHERE game_id = $1 AND quarter = $2',
+              SCHEMA
+            ),
+            params = list(
+              as.integer(ot_gap_periods$game_id[[period_i]]),
+              as.integer(ot_gap_periods$quarter[[period_i]])
+            )
+          )
+        }
+        upsert_by_like(
+          pg,
+          SCHEMA,
+          "lineups_lookup",
+          recovery$replacement_rows,
+          manage_transaction = FALSE
+        )
+        df_lineups_df <- recovery$lineups
+        log_msg(sprintf(
+          "  OT lineup recovery staged %d reconstructed lineup-player rows",
+          nrow(recovery$replacement_rows)
+        ))
+      }
+
       lineup_starters <- df_lineups_df %>%
         dplyr::select(game_id, team_id, lineup_hash, num_starters) %>%
         dplyr::distinct(game_id, team_id, lineup_hash, .keep_all = TRUE)
@@ -560,6 +689,67 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             ),
           by = c("game_id", "team_id_defense", "lineup_hash_defense")
         )
+      if (nrow(ot_gap_periods)) {
+        recovered_rows <- pws_stage %>%
+          dplyr::semi_join(ot_gap_periods, by = c("game_id", "quarter")) %>%
+          dplyr::filter(!is.na(team_id), team_id != 0)
+        invalid_recovered_rows <- recovered_rows %>%
+          dplyr::filter(
+            is.na(segment_id) |
+              is.na(team_id_defense) |
+              is.na(lineup_hash_offense) |
+              is.na(lineup_hash_defense)
+          )
+        if (nrow(invalid_recovered_rows)) {
+          invalid_examples <- utils::head(
+            invalid_recovered_rows %>%
+              dplyr::select(
+                dplyr::any_of(c(
+                  "id", "quarter", "quarter_time", "type", "team_id",
+                  "end_quarter_seconds_remaining", "segment_id",
+                  "lineup_hash_offense", "lineup_hash_defense"
+                ))
+              ),
+            10L
+          )
+          for (invalid_i in seq_len(nrow(invalid_examples))) {
+            log_msg(sprintf(
+              "  OT recovery incomplete row: %s",
+              paste(
+                sprintf(
+                  "%s=%s",
+                  names(invalid_examples),
+                  vapply(
+                    invalid_examples[invalid_i, , drop = FALSE],
+                    function(x) ifelse(is.na(x[[1]]), "NA", as.character(x[[1]])),
+                    character(1)
+                  )
+                ),
+                collapse = " "
+              )
+            ), "ERROR")
+          }
+          current_game_audit <- ot_recovery_audit$game_id == gid &
+            grepl("^accepted_", ot_recovery_audit$recovery_status)
+          ot_recovery_audit$recovery_status[current_game_audit] <- "rejected_final_coverage"
+          ot_recovery_audit$reason[current_game_audit] <- sprintf(
+            "%d OT action rows remain without complete lineup/stint coverage",
+            nrow(invalid_recovered_rows)
+          )
+          stop(
+            sprintf(
+              "OT lineup recovery final coverage failed for game %d: %d incomplete rows",
+              gid, nrow(invalid_recovered_rows)
+            ),
+            call. = FALSE
+          )
+        }
+        log_msg(sprintf(
+          "  OT lineup recovery final coverage passed: %d action rows",
+          nrow(recovered_rows)
+        ))
+      }
+
       upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
       log_msg(sprintf("  pws staged: %d rows", nrow(pws_stage)))
 
@@ -1075,6 +1265,78 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         }
       }
 
+      # Exact possession/action-row coverage through the stint/lineup join.
+      # This must run before Phase 7 purges possessions and pws.
+      lineup_match_rows <- DBI::dbGetQuery(
+        pg,
+        sprintf(
+          "WITH row_matches AS (
+             SELECT
+               p.game_id,
+               p.id,
+               count(*) FILTER (
+                 WHERE w.segment_id IS NOT NULL
+                   AND w.team_id_defense IS NOT NULL
+                   AND w.lineup_hash_offense IS NOT NULL
+                   AND w.lineup_hash_defense IS NOT NULL
+               )::int AS valid_match_count
+             FROM \"%s\".\"possessions\" p
+             LEFT JOIN \"%s\".\"pws\" w
+               ON w.game_id = p.game_id
+              AND w.id = p.id
+             WHERE p.game_id = $1
+               AND coalesce(p.team_id, 0) <> 0
+               AND p.type <> 'substitution'
+             GROUP BY p.game_id, p.id
+           )
+           SELECT
+             count(*)::bigint AS total_source_rows,
+             count(*) FILTER (WHERE valid_match_count = 0)::bigint AS zero_match_rows,
+             count(*) FILTER (WHERE valid_match_count > 1)::bigint AS multi_match_rows,
+             coalesce(sum(valid_match_count), 0)::bigint AS total_valid_matches
+           FROM row_matches",
+          SCHEMA, SCHEMA
+        ),
+        params = list(as.integer(gid))
+      )
+
+      total_source_rows <- as.numeric(lineup_match_rows$total_source_rows[[1]])
+      zero_match_rows <- as.numeric(lineup_match_rows$zero_match_rows[[1]])
+      multi_match_rows <- as.numeric(lineup_match_rows$multi_match_rows[[1]])
+      zero_match_pct <- if (total_source_rows > 0) {
+        100 * zero_match_rows / total_source_rows
+      } else {
+        NA_real_
+      }
+      multi_match_pct <- if (total_source_rows > 0) {
+        100 * multi_match_rows / total_source_rows
+      } else {
+        NA_real_
+      }
+
+      log_msg(sprintf(
+        paste0(
+          "  game %d: lineup/stint match coverage ",
+          "zero=%d/%d (%.3f%%), multiple=%d/%d (%.3f%%)"
+        ),
+        gid,
+        zero_match_rows,
+        total_source_rows,
+        zero_match_pct,
+        multi_match_rows,
+        total_source_rows,
+        multi_match_pct
+      ))
+
+      if (zero_match_rows > 0 || multi_match_rows > 0) {
+        msg <- sprintf(
+          "game %d has %d zero-match and %d multi-match rows out of %d source rows",
+          gid, zero_match_rows, multi_match_rows, total_source_rows
+        )
+        log_msg(sprintf("  Lineup/stint coverage FAILED: %s", msg), "ERROR")
+        mark_phase_failed("Phase 6", msg)
+      }
+
       # Team-minute integrity check (deduped timeline seconds):
       #  - warn if under 40 minutes
       #  - warn if over 40 minutes without OT
@@ -1385,7 +1647,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     pipeline_ok          = isTRUE(pipeline_ok),
     success              = if (dry_run) isTRUE(pipeline_ok) else isTRUE(run_success),
     log_file             = logger$log_file,
-    dry_run              = dry_run
+    dry_run              = dry_run,
+    ot_recovery_audit    = ot_recovery_audit
   ))
 }
 
