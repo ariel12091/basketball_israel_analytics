@@ -1573,7 +1573,13 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       t0 <- proc.time()
       cold_dir <- "exports/cold"
 
-      purge_results <- run_cold_storage_purge(pg, SCHEMA, cold_dir, log_msg)
+      purge_results <- run_cold_storage_purge(
+        pg,
+        SCHEMA,
+        cold_dir,
+        log_msg,
+        game_ids = published_ids
+      )
 
       # Upload to GH release on CI
       if (nzchar(Sys.getenv("GITHUB_ACTIONS"))) {

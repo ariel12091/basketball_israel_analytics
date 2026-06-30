@@ -20,20 +20,47 @@ COLD_TABLE_KEYS <- list(
 #' @param table_name One of COLD_TABLES
 #' @param cold_dir Local directory for Parquet files
 #' @param log_msg Logging function
+#' @param game_ids Optional game IDs published by the current ETL run. When
+#'   supplied, only those hot rows are merged into cold storage.
 #' @return TRUE if export succeeded, FALSE if failed
-export_cold_table <- function(pg, schema, table_name, cold_dir, log_msg) {
+export_cold_table <- function(
+  pg,
+  schema,
+  table_name,
+  cold_dir,
+  log_msg,
+  game_ids = NULL
+) {
   stopifnot(table_name %in% COLD_TABLES)
 
-  # 1. Read only published rows. Failed base loads may leave historical
-  # unprocessed rows from older pipeline versions in the hot tables.
-  new_rows <- DBI::dbGetQuery(
-    pg,
-    sprintf(
-      'SELECT t.* FROM "%s"."%s" t
-       INNER JOIN "%s"."etl_processed_games" eg ON eg.game_id = t.game_id',
-      schema, table_name, schema
+  # 1. Read only rows published by this run when scoped IDs are supplied.
+  # Failed runs can leave older, already-marked games in hot tables; exporting
+  # every processed marker would overwrite their valid cold snapshots.
+  scoped_ids <- sort(unique(as.integer(game_ids)))
+  scoped_ids <- scoped_ids[!is.na(scoped_ids)]
+  if (length(scoped_ids)) {
+    new_rows <- DBI::dbGetQuery(
+      pg,
+      sprintf(
+        'SELECT t.* FROM "%s"."%s" t
+         INNER JOIN "%s"."etl_processed_games" eg ON eg.game_id = t.game_id
+         WHERE t.game_id IN (%s)',
+        schema,
+        table_name,
+        schema,
+        paste(scoped_ids, collapse = ",")
+      )
     )
-  )
+  } else {
+    new_rows <- DBI::dbGetQuery(
+      pg,
+      sprintf(
+        'SELECT t.* FROM "%s"."%s" t
+         INNER JOIN "%s"."etl_processed_games" eg ON eg.game_id = t.game_id',
+        schema, table_name, schema
+      )
+    )
+  }
   if (nrow(new_rows) == 0) {
     log_msg(sprintf("  [COLD] %s: 0 rows, skipping export", table_name))
     return(TRUE)
@@ -88,12 +115,26 @@ export_cold_table <- function(pg, schema, table_name, cold_dir, log_msg) {
 #' @param schema DB schema name
 #' @param cold_dir Local Parquet directory (default: "exports/cold")
 #' @param log_msg Logging function
+#' @param game_ids Optional game IDs published by the current ETL run.
 #' @return Named logical vector (TRUE = exported, FALSE = skipped/failed)
-run_cold_storage_purge <- function(pg, schema, cold_dir = "exports/cold", log_msg) {
+run_cold_storage_purge <- function(
+  pg,
+  schema,
+  cold_dir = "exports/cold",
+  log_msg,
+  game_ids = NULL
+) {
   # Phase A: export each table to Parquet (no truncation yet)
   results <- vapply(COLD_TABLES, function(tbl) {
     tryCatch(
-      export_cold_table(pg, schema, tbl, cold_dir, log_msg),
+      export_cold_table(
+        pg,
+        schema,
+        tbl,
+        cold_dir,
+        log_msg,
+        game_ids = game_ids
+      ),
       error = function(e) {
         log_msg(sprintf("  [COLD] %s: EXPORT FAILED — %s", tbl, conditionMessage(e)), "ERROR")
         FALSE

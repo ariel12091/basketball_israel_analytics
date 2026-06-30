@@ -32,3 +32,4 @@ tmp_*
 app_navbar_*.png
 app_chips_*.png
 frontend-v2/server/tmp_*.R
+.positai
