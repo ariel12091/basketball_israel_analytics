@@ -512,6 +512,18 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       df_lineups_df <- compute_lineups_lookup(pg) |>
         dplyr::filter(game_id %in% fetchable_sched$game_id) |>
         dplyr::collect()
+      lineup_table_cols <- get_table_cols(pg, SCHEMA, "lineups_lookup")
+      missing_lineup_cols <- setdiff(lineup_table_cols, names(df_lineups_df))
+      if (length(missing_lineup_cols)) {
+        stop(
+          sprintf(
+            "computed lineups are missing table column(s): %s",
+            paste(missing_lineup_cols, collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+      df_lineups_df <- df_lineups_df[, lineup_table_cols, drop = FALSE]
       upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df, manage_transaction = FALSE)
       log_msg(sprintf("  lineups_lookup staged: %d rows", nrow(df_lineups_df)))
       if (nrow(player_aliases_for_game)) {
