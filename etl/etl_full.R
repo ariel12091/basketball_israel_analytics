@@ -530,6 +530,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         assert_no_player_alias_base_residue(pg, SCHEMA, gid, log_msg)
         log_msg(sprintf("  player alias guard passed for game %d", gid))
       }
+
       # Build a provisional OT coverage result from the provider-derived
       # lineups. Recovery is considered only when the first action of an OT
       # period has no complete offense/defense stint match.
@@ -701,6 +702,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             ),
           by = c("game_id", "team_id_defense", "lineup_hash_defense")
         )
+
       if (nrow(ot_gap_periods)) {
         recovered_rows <- pws_stage %>%
           dplyr::semi_join(ot_gap_periods, by = c("game_id", "quarter")) %>%
@@ -1656,7 +1658,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     log_msg(sprintf("Skipped last_success update due to failures: %s", reason), "WARN")
   }
 
-  invisible(list(
+  result <- list(
     game_ids             = if (dry_run) processed_ids else published_ids,
     base_loaded_game_ids = processed_ids,
     failed_game_ids      = unique(failed_base_ids),
@@ -1667,6 +1669,49 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     log_file             = logger$log_file,
     dry_run              = dry_run,
     ot_recovery_audit    = ot_recovery_audit
-  ))
+  )
+
+  # Generate a visual ETL + data-quality report after each write iteration.
+  # Reporting failures are surfaced in the log but do not roll back completed ETL work.
+  if (!dry_run) {
+    report_result <- tryCatch({
+      old_no_autorun <- Sys.getenv("DQ_NO_AUTORUN", unset = NA_character_)
+      on.exit({
+        if (is.na(old_no_autorun)) {
+          Sys.unsetenv("DQ_NO_AUTORUN")
+        } else {
+          Sys.setenv(DQ_NO_AUTORUN = old_no_autorun)
+        }
+      }, add = TRUE)
+      Sys.setenv(DQ_NO_AUTORUN = "true")
+      source("etl/run_data_quality_report.R")
+      source("etl/etl_run_report.R")
+
+      dq_result <- run_data_quality_report(fail_on_error = FALSE)
+      report_files <- write_etl_run_report(
+        result,
+        dq_result,
+        overall_elapsed = as.numeric(overall_elapsed)
+      )
+      log_msg(sprintf("Visual ETL report written: %s", report_files$report_path))
+      list(
+        report_file = report_files$report_path,
+        report_latest = report_files$latest_path,
+        data_quality_status = dq_result$status,
+        report_error = NA_character_
+      )
+    }, error = function(e) {
+      log_msg(sprintf("Visual ETL report FAILED: %s", conditionMessage(e)), "ERROR")
+      list(
+        report_file = NA_character_,
+        report_latest = NA_character_,
+        data_quality_status = "REPORT_ERROR",
+        report_error = conditionMessage(e)
+      )
+    })
+    result <- c(result, report_result)
+  }
+
+  invisible(result)
 }
 
