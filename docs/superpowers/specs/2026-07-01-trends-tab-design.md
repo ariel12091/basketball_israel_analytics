@@ -75,7 +75,7 @@ Each row: **rank · name · latest rolling value · inline-SVG sparkline (last N
 - `delta_net_rtg_r5`, `prev_net_rtg_r5`
 
 The board computes Δ for any metric/window in R from the rolling series, so **no schema
-change is needed for teams** beyond the §6 bug fix.
+change is needed for teams** (the §6 `net_rtg` fix is already applied).
 
 ### 5.2 Players — new MVs (mirror the team pattern)
 
@@ -114,30 +114,27 @@ plan-time decision; start with a small floor, e.g. ≥ 3 minutes, and document i
   (`player_metrics_by_game_mv` at L3 as a `type = "table"`, `player_metrics_rolling_mv`
   at L4, after its by-game source), and add them to the `etl_full.R` refresh order.
 
-## 6. Prerequisite Bug Fix — `net_rtg` precedence
+## 6. `net_rtg` precedence bug — ALREADY FIXED (prerequisite, done)
+
+Fixed separately before this feature and merged to `main` (commit `faf8941`).
 
 `net_rtg` in `team_metrics_by_game_mv.sql` **and**
-`refresh_team_metrics_by_game_for_games.sql` has an operator-precedence bug:
+`refresh_team_metrics_by_game_for_games.sql` had an operator-precedence bug:
 
 ```sql
-( off_frac ) - ( def_frac ) * 100   -- ×100 binds only to the def term
+( off_frac ) - ( def_frac ) * 100   -- ×100 bound only to the def term
 ```
 
-This yields `off_frac − (def_frac × 100)` ≈ −104 instead of `(off_frac − def_frac) ×
-100`. It propagates into `net_rtg_r*`, `prev_net_rtg_r5`, `delta_net_rtg_r5` in the
-rolling MV.
+It computed `off_frac − (def_frac × 100)` ≈ −104 instead of `(off_frac − def_frac) ×
+100`, propagating into `net_rtg_r*`, `prev_net_rtg_r5`, `delta_net_rtg_r5`. It was
+invisible because Tab 3 recomputes net rating from the `*_raw` columns and never reads
+the `net_rtg` column; the Trends tab is the first direct consumer.
 
-**Why it was invisible:** Tab 3 recomputes net rating from the `*_raw` columns and never
-reads the `net_rtg` column. The Trends tab reads `net_rtg` directly, so it must be fixed.
-
-**Fix:** correct the parenthesization (`(off_frac − def_frac) × 100`, or equivalently
-`off_ppp − def_ppp` using the already-×100 sub-expressions) in **both** files (keep them
-in sync per CLAUDE.md), then rebuild `team_metrics_by_game_mv` (physical table) and
-`team_metrics_rolling_mv` (depends on it) via `rebuild_all_mvs()` from the appropriate
-level.
-
-**Verification:** after rebuild, sample net_rtg values fall in a sane range (roughly
-±30) and `delta_net_rtg_r5` no longer carries the ~−100 structural offset.
+**Resolution:** parenthesization corrected in both files, `team_metrics_by_game_mv`
+rebuilt in place via `refresh_team_metrics_by_game_for_games(NULL)`, and
+`team_metrics_rolling_mv` refreshed. Verified: `net_rtg` now equals `off_ppp − def_ppp`
+(0 mismatch rows), range ±76, mean 0.0. **No remaining work for this feature** — team
+rolling data is correct and current.
 
 ## 7. Shiny Implementation Shape
 
@@ -180,7 +177,7 @@ Follow the existing modular pattern:
   the current season, teams by default, keyed on Net Rating momentum — no clicks needed.
 - Switching Subject, Metric, and Window re-ranks the board correctly, with correct
   offense/defense polarity.
-- `net_rtg` and derived rolling/delta values are sane (±~30) after the §6 fix.
+- `net_rtg` and derived rolling/delta values are sane (§6 fix already applied).
 - Clicking a row opens a readable line chart of that subject's rolling series.
 - New player MVs are wired into `rebuild_all_mvs.R` and `etl_full.R` and refresh
   incrementally by `game_id`.
