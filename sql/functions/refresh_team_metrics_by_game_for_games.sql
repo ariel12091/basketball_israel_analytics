@@ -84,11 +84,13 @@ BEGIN
       ) AS def_ppp,
       ROUND(
         (
-          SUM(t.total_points) FILTER (WHERE t.type_lineup = 'offense')::numeric
-          / NULLIF(SUM(t.total_poss) FILTER (WHERE t.type_lineup = 'offense'), 0)::numeric
-        ) - (
-          SUM(t.total_points) FILTER (WHERE t.type_lineup = 'defense')::numeric
-          / NULLIF(SUM(t.total_poss) FILTER (WHERE t.type_lineup = 'defense'), 0)::numeric
+          (
+            SUM(t.total_points) FILTER (WHERE t.type_lineup = 'offense')::numeric
+            / NULLIF(SUM(t.total_poss) FILTER (WHERE t.type_lineup = 'offense'), 0)::numeric
+          ) - (
+            SUM(t.total_points) FILTER (WHERE t.type_lineup = 'defense')::numeric
+            / NULLIF(SUM(t.total_poss) FILTER (WHERE t.type_lineup = 'defense'), 0)::numeric
+          )
         )
         * 100, 1
       ) AS net_rtg,
