@@ -77,18 +77,7 @@ server_tab2 <- function(input, output, session, shared) {
 
     updateDateRangeInput(session, "ld_dates", start = b$start, end = b$end, min = b$start, max = b$end)
 
-    teams_ld <- cached_ref_query(
-      key = sprintf("ld_teams_%d", gy_int),
-      query_fun = function() db_get_query(
-        pg_pool,
-        "SELECT DISTINCT team_id, MIN(team_name) AS team_name
-           FROM basketball_test.full_rosters
-          WHERE game_year = $1::int4
-          GROUP BY team_id
-          ORDER BY MIN(team_name)",
-        params = list(gy_int)
-      )
-    )
+    teams_ld <- fetch_teams_min(gy_int)
     ld_ref$teams <- teams_ld
     team_choices <- team_select_choices_with_all(teams_ld, all_label = "- All teams -")
     pending_team <- as.character(shared$pending_ld_team() %||% "")
@@ -103,34 +92,11 @@ server_tab2 <- function(input, output, session, shared) {
     }
     ld_lineup_filter$update_team_choices(team_choices, selected = selected_team)
 
-    players_map <- cached_ref_query(
-      key = sprintf("ld_players_%d", gy_int),
-      query_fun = function() db_get_query(
-        pg_pool,
-        "SELECT team_id,
-                player_id,
-                MIN(btrim(firstname)||' '||btrim(lastname)) AS name
-           FROM basketball_test.full_rosters
-          WHERE game_year = $1::int4
-          GROUP BY team_id, player_id
-          ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
-        params = list(gy_int)
-      )
-    )
+    players_map <- fetch_players_basic(gy_int)
     ld_ref$players <- players_map
     ld_lineup_filter$refresh_player_choices()
 
-    gn_df <- cached_ref_query(
-      key = sprintf("ld_gn_%d", gy_int),
-      query_fun = function() db_get_query(
-        pg_pool,
-        "SELECT DISTINCT gn
-           FROM basketball_test.final_schedule_mv
-          WHERE game_year = $1::int4
-          ORDER BY gn",
-        params = list(gy_int)
-      )
-    )
+    gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "ld", gn_vals)
   })

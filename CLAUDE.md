@@ -57,12 +57,25 @@ cd frontend-v2/server && "$RSCRIPT" run.R                # Plumber API (port 300
 
 ```
 app.R                  Entry point — sources R/*.R, assembles ui/server
-R/global.R             Libraries, constants, DB pool, CSS, helpers
-R/ui_tab{1-5}*.R       Tab UI definitions
-R/server_tab{1-5}*.R   Tab server logic (receive shared list)
+R/helpers.R            Pure helpers shared with the test suite (no side effects at source time)
+R/global.R             Libraries, constants, DB pool, caches/guards, UI builders, canonical lookups
+R/logger.R             app_log() structured logging
+R/mod_lineup_player_filter.R  Team/players-on/off filter module (Tabs 2, 7)
+R/ui_tab{0-5,7}*.R     Tab UI definitions (0=Home, 7=Compare)
+R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 ```
 
-**Modular pattern:** `app.R` calls `server_tab*(input, output, session, shared)`. Shared list contains: `season_date_bounds`, `selected_game_year`, `teams_for_year_df`, `selected_opp_ids_on`, `selected_opp_ids_ld`.
+**Note:** `ui/server_tab6_team_stats.R` exist on disk but are NOT sourced in `app.R` (unwired; team stats live in Tab 5's display modes).
+
+**Modular pattern:** `app.R` calls `server_tab*(input, output, session, shared)`. Shared list contains: `season_date_bounds`, `selected_game_year`, `teams_for_year_df`, `selected_opp_ids_on`, `selected_opp_ids_ld`, `data_version`, `pending_ld_team`, `pending_gl_team`, `pending_compare_preset`.
+
+**Cross-session caching:** season-level MV pulls (Tabs 1, 4, 5) are shared across sessions via `GL_DATA_CACHE` — `cached_season_df()` helper or `bindCache()`, keyed on `game_year` + `shared_data_version(shared)` (ETL timestamp), so caches invalidate after each ETL run. Reference dropdowns go through four canonical lookups in `global.R` — `fetch_teams_distinct()`, `fetch_teams_min()`, `fetch_gn_values()`, `fetch_players_basic()` — one `cached_ref_query()` key per dataset per season, shared by all tabs and the prewarm (never write per-tab cache keys for the same data). See `docs/shinyapps_worker_tuning.md` for deployment-side scaling settings.
+
+**Test mocks:** `tests/testthat/helper-server-mocks.R` sources `R/helpers.R` (real implementations) and stubs only the impure pieces (`db_get_query`, `cached_ref_query`, `fetch_*`, guards, chip builders). Never copy a helper implementation into the mocks — put it in `helpers.R`.
+
+**Session guardrails:** `guard_heavy_request()` (per-session rate limit + query-window caps), `statement_timeout` (`PG_STATEMENT_TIMEOUT_MS`, default 20s), idle-session timeout with client-side state restore (`APP_IDLE_CLOSE_SESSION`, enabled in deployed `.Renviron`).
+
+**DB security:** app connects as `app_readonly` (SELECT-only, EXECUTE on an explicit function allowlist, RLS enabled). Apply/audit via `scripts/apply_db_security.R` (dry-run by default) + `sql/security/*.sql`; contract tests in `test-db-security-contracts.R`.
 
 **Global season selector:** Single `input$game_year` in navbar header. All tabs read from this — no per-tab season inputs.
 
@@ -76,11 +89,13 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader, mobile collapse behind "Show 
 
 | Tab | Fast Path (MV) | Filtered Path (SQL) |
 |-----|----------------|---------------------|
+| 0: Home | — (navigation cards → tabs) | — |
 | 1: On/Off Impact | `onoff_default_mv` / `player_advanced_stats_mv` | `onoff_compute()` / `four_factors_compute()` |
 | 2: Lineup Data | — (always SQL) | `fetch_lineups_csv_v2()` / `fetch_lineups_four_factors_csv()` |
 | 3: Team Ratings | `team_ppp_ratings_mv` / `team_four_factors_mv` | `get_team_ratings_dynamic()` / `get_team_four_factors_dynamic()` |
 | 4: Game Logs | `mv_lineup_totals_by_day` + `final_schedule_mv` | — (direct MV queries) |
-| 5: Player Stats | `player_traditional_stats_mv` | SQL pushdown with pair-key filtering |
+| 5: Player Stats | `player_traditional_stats_mv` | `get_player_traditional_dynamic()` |
+| 7: Compare | reuses tab 1/2/3/5 paths per compare mode | same, two-sided (A/B splits) |
 
 ### React Frontend (`frontend-v2/`)
 
@@ -297,12 +312,33 @@ Daily via Windows Task Scheduler → `scripts/run_etl_full.ps1`. Writes marker t
 - **Trace the type chain.** SQL type → R type → dplyr → JS at each boundary
 - **Test incrementally.** Deploy/test one layer at a time (SQL → R → UI)
 
+## Shot Clock Derivation
+
+**No native shot clock in PBP data.** Can be derived from `end_game_seconds_remaining` in `df_pts_poss_lineups_longer_mv`.
+
+**Approach:** Possession start = previous possession's `final_end_poss` action time (`prev_end`). Shot clock = 24 - (poss_start - poss_end). OREB resets to 14s; defensive foul when clock < 14 resets to 14s (FIBA rule). Existing turnover type `24-seconds-violation` in `parameters_type` validates the derivation.
+
+**`type_lineup = 'offense'` action ownership:** Actions in the offense perspective are not always *by* the offensive team. Defensive actions (`deflection`, `steal`, `block`, `foul`) with `type_lineup = 'offense'` represent actions done *to* the offensive team by the defense. Only these are genuine offensive-team actions: `shot`, `turnover`, `freeThrow`, `assist`, `foul-drawn`, `rebound (offensive)`.
+
+**Limitations:**
+- PBP timestamps are whole-second precision — expect ±2-3 sec noise (dead-ball/inbound time between possessions)
+- PBP doesn't log passing/dribbling, so many possessions only record the ending action — using `first_action` as start massively underestimates duration
+- `prev_end` baseline is the most reliable proxy despite slightly overestimating (includes dead-ball time)
+- ~6-8% of possessions show negative clock values — mostly dead-ball imprecision, not real violations
+
+**Working SQL query:** `tmp_shotclock.R` (not committed) — iterates all possessions for a game with ID-based boundaries, defensive action filtering, and OREB/foul reset logic.
+
 ## Backlogs
 
 **Security/Resilience:**
-1. DB `statement_timeout` guardrail (8s) in `global.R`
-2. Short TTL cache for Tab 4 MV queries (30-60s)
-3. Click burst guard for lineup modal (~300ms)
+1. Click burst guard for lineup modal (~300ms)
+2. Vendor Google Fonts + bootstrap-icons into `www/` (or add SRI) — currently loaded from CDNs without integrity hashes
+
+(Done: `statement_timeout` guardrail — 20s via `PG_STATEMENT_TIMEOUT_MS`; Tab 4 MV cache — `GL_DATA_CACHE`; per-session rate limit — `guard_heavy_request()`.)
+
+**Scalability (Shiny):**
+1. Apply shinyapps.io worker settings from `docs/shinyapps_worker_tuning.md` (dashboard)
+2. If concurrency still hurts: `ExtendedTask` + `promises`/`mirai` for slowest filtered-path queries
 
 **Performance (React+Plumber):**
 1. Profile SQL functions with `EXPLAIN (ANALYZE, BUFFERS)` for filtered cases

@@ -347,37 +347,13 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     gy_int <- as.integer(input$game_year)
     req(gy_int)
 
-    teams_df <- cached_ref_query(
-      key = sprintf("tst_teams_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT team_id, team_name
-             FROM basketball_test.full_rosters
-            WHERE game_year = $1::int4
-            ORDER BY team_name",
-          params = list(gy_int)
-        )
-      }
-    )
+    teams_df <- fetch_teams_distinct(gy_int)
     tst_ref$teams <- teams_df
     team_choices <- stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
     updateSelectizeInput(session, "tst_teams", choices = team_choices, selected = character(0), server = TRUE)
     updateSelectizeInput(session, "tst_opponents", choices = team_choices, selected = character(0), server = TRUE)
 
-    gn_df <- cached_ref_query(
-      key = sprintf("tst_gn_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT gn
-             FROM basketball_test.final_schedule_mv
-            WHERE game_year = $1::int4
-            ORDER BY gn",
-          params = list(gy_int)
-        )
-      }
-    )
+    gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "tst", gn_vals)
   })

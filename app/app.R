@@ -3,6 +3,7 @@
 
 
 # Source all modules
+source("R/helpers.R", local = TRUE)
 source("R/global.R", local = TRUE)
 source("R/logger.R", local = TRUE)
 source("R/mod_lineup_player_filter.R", local = TRUE)
@@ -346,96 +347,18 @@ server <- function(input, output, session) {
   teams_for_year_df <- reactive({
     gy_int <- as.integer(selected_game_year())
     req(gy_int)
-    cached_ref_query(
-      key = sprintf("teams_for_year_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT team_id, team_name
-             FROM basketball_test.full_rosters
-            WHERE game_year = $1::int4
-            ORDER BY team_name",
-          params = list(gy_int)
-        )
-      }
-    )
+    fetch_teams_distinct(gy_int)
   })
 
+  # Warm the four canonical per-season lookups every tab reads from.
   prewarm_for_year <- function(gy_chr) {
     gy_int <- suppressWarnings(as.integer(gy_chr))
     if (!is.finite(gy_int) || is.na(gy_int)) return(invisible(NULL))
-    cache_now <- as.numeric(Sys.time())
-    cache_alias <- function(key, val) {
-      assign(key, list(ts = cache_now, val = val), envir = .ref_cache_env)
-      invisible(val)
-    }
-
-    # Shared teams query (DISTINCT pattern used by tabs 1, 3, 5).
-    teams_distinct_q <- function() db_get_query(
-      pg_pool,
-      "SELECT DISTINCT team_id, team_name
-         FROM basketball_test.full_rosters
-        WHERE game_year = $1::int4
-        ORDER BY team_name",
-      params = list(gy_int)
-    )
-    # Teams query with MIN/GROUP BY (used by tabs 2, 4).
-    teams_min_q <- function() db_get_query(
-      pg_pool,
-      "SELECT DISTINCT team_id, MIN(team_name) AS team_name
-         FROM basketball_test.full_rosters
-        WHERE game_year = $1::int4
-        GROUP BY team_id
-        ORDER BY MIN(team_name)",
-      params = list(gy_int)
-    )
-    # GN query - shared across all tabs.
-    gn_query <- function() db_get_query(
-      pg_pool,
-      "SELECT DISTINCT gn
-         FROM basketball_test.final_schedule_mv
-        WHERE game_year = $1::int4
-        ORDER BY gn",
-      params = list(gy_int)
-    )
-
-    teams_distinct <- cached_ref_query(key = sprintf("teams_for_year_%d", gy_int), query_fun = teams_distinct_q)
-    gn_df <- cached_ref_query(key = sprintf("on_gn_%d", gy_int), query_fun = gn_query)
-
-    # Tab 2 (Lineups)
-    teams_min <- cached_ref_query(key = sprintf("ld_teams_%d", gy_int), query_fun = teams_min_q)
-    cache_alias(sprintf("ld_gn_%d", gy_int), gn_df)
-    players_ld <- cached_ref_query(
-      key = sprintf("ld_players_%d", gy_int),
-      query_fun = function() db_get_query(
-        pg_pool,
-        "SELECT team_id,
-                player_id,
-                MIN(btrim(firstname)||' '||btrim(lastname)) AS name
-           FROM basketball_test.full_rosters
-          WHERE game_year = $1::int4
-          GROUP BY team_id, player_id
-          ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
-        params = list(gy_int)
-      )
-    )
-
-    # Tab 3 (Team Ratings)
-    cache_alias(sprintf("tr_teams_%d", gy_int), teams_distinct)
-    cache_alias(sprintf("tr_gn_%d", gy_int), gn_df)
-
-    # Tab 4 (Game Logs)
-    cache_alias(sprintf("gl_teams_%d", gy_int), teams_min)
-    cache_alias(sprintf("gl_gn_%d", gy_int), gn_df)
-
-    # Tab 5 (Player Stats)
-    cache_alias(sprintf("ts_teams_%d", gy_int), teams_distinct)
-    cache_alias(sprintf("ts_gn_%d", gy_int), gn_df)
-
-    # Compare tab aliases (same refs)
-    cache_alias(sprintf("cmp_teams_%d", gy_int), teams_distinct)
-    cache_alias(sprintf("cmp_players_%d", gy_int), players_ld)
-    cache_alias(sprintf("cmp_gn_%d", gy_int), gn_df)
+    fetch_teams_distinct(gy_int)
+    fetch_teams_min(gy_int)
+    fetch_gn_values(gy_int)
+    fetch_players_basic(gy_int)
+    invisible(NULL)
   }
 
   observeEvent(selected_game_year(), {
@@ -469,9 +392,15 @@ server <- function(input, output, session) {
 
   last_success_db <- function() {
     tryCatch({
-      q <- db_get_query(
-        pg_pool,
-        "SELECT value FROM basketball_test.app_meta WHERE key = 'etl_full_last_success' LIMIT 1"
+      # Cached process-wide (TTL just under the 60s poll) so concurrent
+      # sessions share a single app_meta query per minute.
+      q <- cached_ref_query(
+        key = "app_meta_last_success",
+        ttl_sec = 55,
+        query_fun = function() db_get_query(
+          pg_pool,
+          "SELECT value FROM basketball_test.app_meta WHERE key = 'etl_full_last_success' LIMIT 1"
+        )
       )
       if (nrow(q) && nzchar(q$value[1])) q$value[1] else NA_character_
     }, error = function(e) NA_character_)

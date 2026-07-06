@@ -967,20 +967,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   load_cmp_teams_ref <- function(game_year) {
     cmp_profile_time(
       "load_cmp_teams_ref",
-      {
-        teams_df <- cached_ref_query(
-          key = sprintf("cmp_teams_%d", as.integer(game_year)),
-          query_fun = function() db_get_query(
-            pg_pool,
-            "SELECT DISTINCT team_id, team_name
-               FROM basketball_test.full_rosters
-              WHERE game_year = $1::int4
-              ORDER BY team_name",
-            params = list(as.integer(game_year))
-          )
-        )
-        normalize_teams_ref(teams_df)
-      },
+      normalize_teams_ref(fetch_teams_distinct(game_year)),
       extra = function(res) sprintf("game_year=%s;rows=%d", as.integer(game_year), NROW(res))
     )
   }
@@ -988,23 +975,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   load_cmp_players_ref <- function(game_year) {
     cmp_profile_time(
       "load_cmp_players_ref",
-      {
-        players_df <- cached_ref_query(
-          key = sprintf("cmp_players_%d", as.integer(game_year)),
-          query_fun = function() db_get_query(
-            pg_pool,
-            "SELECT team_id,
-                    player_id,
-                    MIN(btrim(firstname)||' '||btrim(lastname)) AS name
-               FROM basketball_test.full_rosters
-              WHERE game_year = $1::int4
-              GROUP BY team_id, player_id
-              ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
-            params = list(as.integer(game_year))
-          )
-        )
-        normalize_players_ref(players_df)
-      },
+      normalize_players_ref(fetch_players_basic(game_year)),
       extra = function(res) sprintf("game_year=%s;rows=%d", as.integer(game_year), NROW(res))
     )
   }
@@ -1012,17 +983,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   load_cmp_gn_ref <- function(game_year) {
     cmp_profile_time(
       "load_cmp_gn_ref",
-      cached_ref_query(
-        key = sprintf("cmp_gn_%d", as.integer(game_year)),
-        query_fun = function() db_get_query(
-          pg_pool,
-          "SELECT DISTINCT gn
-             FROM basketball_test.final_schedule_mv
-            WHERE game_year = $1::int4
-            ORDER BY gn",
-          params = list(as.integer(game_year))
-        )
-      ),
+      fetch_gn_values(game_year),
       extra = function(res) sprintf("game_year=%s;rows=%d", as.integer(game_year), NROW(res))
     )
   }

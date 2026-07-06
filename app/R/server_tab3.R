@@ -42,6 +42,7 @@ TR_TRAD_FILTERABLE_COLS <- c(
   "AST" = "ast",
   "STL" = "stl",
   "BLK" = "blk",
+  "DFL" = "dfl",
   "TOV" = "tov",
   "FGM" = "fgm",
   "FGA" = "fga",
@@ -463,19 +464,7 @@ server_tab3 <- function(input, output, session, shared) {
   tr_teams_for_year <- reactive({
     gy_int <- as.integer(input$game_year)
     req(gy_int)
-    cached_ref_query(
-      key = sprintf("tr_teams_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT team_id, team_name
-             FROM basketball_test.full_rosters
-            WHERE game_year = $1::int4
-            ORDER BY team_name",
-          params = list(gy_int)
-        )
-      }
-    )
+    fetch_teams_distinct(gy_int)
   })
 
   # Year change always re-syncs the date range to that season's bounds
@@ -495,19 +484,7 @@ server_tab3 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "tr_opponents", choices = opponent_choices, selected = character(0))
 
     gy_int <- as.integer(input$game_year)
-    gn_df <- cached_ref_query(
-      key = sprintf("tr_gn_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT gn
-             FROM basketball_test.final_schedule_mv
-            WHERE game_year = $1::int4
-            ORDER BY gn",
-          params = list(gy_int)
-        )
-      }
-    )
+    gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "tr", gn_vals)
   })
@@ -665,6 +642,10 @@ server_tab3 <- function(input, output, session, shared) {
                       ($18::text = 'offense' AND a.type_lineup = 'defense') OR
                       ($18::text = 'defense' AND a.type_lineup = 'offense')
                     ) THEN 1 ELSE 0 END)::int AS blk,
+             SUM(CASE WHEN a.type = 'deflection' AND (
+                      ($18::text = 'offense' AND a.type_lineup = 'defense') OR
+                      ($18::text = 'defense' AND a.type_lineup = 'offense')
+                    ) THEN 1 ELSE 0 END)::int AS dfl,
             SUM(CASE WHEN a.type = 'turnover' AND (
                      ($18::text = 'offense' AND a.type_lineup = 'offense') OR
                      ($18::text = 'defense' AND a.type_lineup = 'defense')
@@ -733,7 +714,7 @@ server_tab3 <- function(input, output, session, shared) {
          COALESCE(tu.gp, 0)::int AS gp,
          COALESCE(tu.poss_on_floor, 0)::int AS poss_on_floor,
          COALESCE(tm.minutes, 0)::numeric AS minutes,
-         ts.pts, (ts.oreb + ts.dreb)::int AS reb, ts.oreb, ts.dreb, ts.ast, ts.stl, ts.blk, ts.tov,
+         ts.pts, (ts.oreb + ts.dreb)::int AS reb, ts.oreb, ts.dreb, ts.ast, ts.stl, ts.blk, ts.dfl, ts.tov,
          ts.fgm, ts.fga, (ts.fgm - ts.\"3pm\")::int AS \"2pm\", (ts.fga - ts.\"3pa\")::int AS \"2pa\",
          ts.\"3pm\", ts.\"3pa\", ts.ftm, ts.fta,
          CASE WHEN ts.fga > 0 THEN ROUND((ts.fgm::numeric / ts.fga::numeric) * 100, 1) ELSE NULL END AS fg_pct,
@@ -760,7 +741,7 @@ server_tab3 <- function(input, output, session, shared) {
 
   apply_tr_trad_mode <- function(df, mode) {
     if (is.null(df) || !nrow(df)) return(df)
-    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
+    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "dfl", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
     mode <- mode %||% "Per Game"
     if (identical(mode, "Per Game")) {
       for (col in count_cols) if (col %in% names(df)) df[[col]] <- ifelse(df$gp > 0, df[[col]] / df$gp, NA_real_)
@@ -1275,6 +1256,7 @@ server_tab3 <- function(input, output, session, shared) {
            COALESCE(SUM(s.ast), 0)::numeric AS ast,
            COALESCE(SUM(s.stl), 0)::numeric AS stl,
            COALESCE(SUM(s.blk), 0)::numeric AS blk,
+           COALESCE(SUM(s.dfl), 0)::numeric AS dfl,
            COALESCE(SUM(s.tov), 0)::numeric AS tov,
            COALESCE(SUM(s.fgm), 0)::numeric AS fgm,
            COALESCE(SUM(s.fga), 0)::numeric AS fga,
@@ -1362,7 +1344,7 @@ server_tab3 <- function(input, output, session, shared) {
     q <- apply_tr_trad_mode(q, mode)
 
     metric_cfg <- c(
-      pts = FALSE, reb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
+      pts = FALSE, reb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, dfl = FALSE, tov = TRUE,
       fgm = FALSE, fga = FALSE, `2pm` = FALSE, `2pa` = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
       fg_pct = FALSE, two_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
     )
@@ -1470,13 +1452,13 @@ server_tab3 <- function(input, output, session, shared) {
       }
       metric_cfg <- if (!is_defense_trad) {
         c(
-          pts = FALSE, reb = FALSE, oreb = FALSE, dreb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, tov = TRUE,
+          pts = FALSE, reb = FALSE, oreb = FALSE, dreb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, dfl = FALSE, tov = TRUE,
           fgm = FALSE, fga = FALSE, `2pm` = FALSE, `2pa` = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
           fg_pct = FALSE, two_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
         )
       } else {
         c(
-          pts = TRUE, reb = TRUE, oreb = TRUE, dreb = TRUE, ast = TRUE, stl = TRUE, blk = TRUE, tov = FALSE,
+          pts = TRUE, reb = TRUE, oreb = TRUE, dreb = TRUE, ast = TRUE, stl = TRUE, blk = TRUE, dfl = TRUE, tov = FALSE,
           fgm = TRUE, fga = TRUE, `2pm` = TRUE, `2pa` = TRUE, `3pm` = TRUE, `3pa` = TRUE, ftm = TRUE, fta = TRUE,
           fg_pct = TRUE, two_pct = TRUE, tp_pct = TRUE, ft_pct = TRUE, efg = TRUE, ts = TRUE
         )
@@ -1519,6 +1501,7 @@ server_tab3 <- function(input, output, session, shared) {
         AST = make_cell(df$ast, df$rank_ast, "ast"),
         STL = make_cell(df$stl, df$rank_stl, "stl"),
         BLK = make_cell(df$blk, df$rank_blk, "blk"),
+        DFL = make_cell(df$dfl, df$rank_dfl, "dfl"),
         TOV = make_cell(df$tov, df$rank_tov, "tov"),
         FGM = make_cell(df$fgm, df$rank_fgm, "fgm"),
         FGA = make_cell(df$fga, df$rank_fga, "fga"),
@@ -1534,13 +1517,13 @@ server_tab3 <- function(input, output, session, shared) {
         `FT%` = make_cell(df$ft_pct, df$rank_ft_pct, "ft_pct"),
         `eFG%` = make_cell(df$efg, df$rank_efg, "efg"),
         `TS%` = make_cell(df$ts, df$rank_ts, "ts"),
-        pr_pts = df$pr_pts, pr_reb = df$pr_reb, pr_oreb = df$pr_oreb, pr_dreb = df$pr_dreb, pr_ast = df$pr_ast, pr_stl = df$pr_stl, pr_blk = df$pr_blk, pr_tov = df$pr_tov,
+        pr_pts = df$pr_pts, pr_reb = df$pr_reb, pr_oreb = df$pr_oreb, pr_dreb = df$pr_dreb, pr_ast = df$pr_ast, pr_stl = df$pr_stl, pr_blk = df$pr_blk, pr_dfl = df$pr_dfl, pr_tov = df$pr_tov,
         pr_fgm = df$pr_fgm, pr_fga = df$pr_fga, pr_2pm = df$pr_2pm, pr_2pa = df$pr_2pa, pr_3pm = df$pr_3pm, pr_3pa = df$pr_3pa, pr_ftm = df$pr_ftm, pr_fta = df$pr_fta,
         pr_fg_pct = df$pr_fg_pct, pr_two_pct = df$pr_two_pct, pr_tp_pct = df$pr_tp_pct, pr_ft_pct = df$pr_ft_pct, pr_efg = df$pr_efg, pr_ts = df$pr_ts,
         check.names = FALSE
       )
       sort_map <- c(
-        PTS = "pts", REB = "reb", OREB = "oreb", DREB = "dreb", AST = "ast", STL = "stl", BLK = "blk",
+        PTS = "pts", REB = "reb", OREB = "oreb", DREB = "dreb", AST = "ast", STL = "stl", BLK = "blk", DFL = "dfl",
         TOV = "tov", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct", `2PM` = "2pm", `2PA` = "2pa",
         `2P%` = "two_pct", `3PM` = "3pm", `3PA` = "3pa",
         `3P%` = "tp_pct", FTM = "ftm", FTA = "fta", `FT%` = "ft_pct",
@@ -1548,7 +1531,7 @@ server_tab3 <- function(input, output, session, shared) {
       )
       sort_dir_map <- if (!is_defense_trad) {
         c(
-          PTS = "desc", REB = "desc", OREB = "desc", DREB = "desc", AST = "desc", STL = "desc", BLK = "desc",
+          PTS = "desc", REB = "desc", OREB = "desc", DREB = "desc", AST = "desc", STL = "desc", BLK = "desc", DFL = "desc",
           TOV = "asc", FGM = "desc", FGA = "desc", `FG%` = "desc", `2PM` = "desc", `2PA` = "desc",
           `2P%` = "desc", `3PM` = "desc", `3PA` = "desc",
           `3P%` = "desc", FTM = "desc", FTA = "desc", `FT%` = "desc",
@@ -1556,7 +1539,7 @@ server_tab3 <- function(input, output, session, shared) {
         )
       } else {
         c(
-          PTS = "asc", REB = "asc", OREB = "asc", DREB = "asc", AST = "asc", STL = "asc", BLK = "asc",
+          PTS = "asc", REB = "asc", OREB = "asc", DREB = "asc", AST = "asc", STL = "asc", BLK = "asc", DFL = "asc",
           TOV = "desc", FGM = "asc", FGA = "asc", `FG%` = "asc", `2PM` = "asc", `2PA` = "asc",
           `2P%` = "asc", `3PM` = "asc", `3PA` = "asc",
           `3P%` = "asc", FTM = "asc", FTA = "asc", `FT%` = "asc",
@@ -1574,7 +1557,7 @@ server_tab3 <- function(input, output, session, shared) {
         disp[[sort_col]] <- vals
       }
       pr_map <- c(
-        PTS = "pr_pts", REB = "pr_reb", OREB = "pr_oreb", DREB = "pr_dreb", AST = "pr_ast", STL = "pr_stl", BLK = "pr_blk",
+        PTS = "pr_pts", REB = "pr_reb", OREB = "pr_oreb", DREB = "pr_dreb", AST = "pr_ast", STL = "pr_stl", BLK = "pr_blk", DFL = "pr_dfl",
         TOV = "pr_tov", FGM = "pr_fgm", FGA = "pr_fga", `FG%` = "pr_fg_pct", `2PM` = "pr_2pm", `2PA` = "pr_2pa",
         `2P%` = "pr_two_pct", `3PM` = "pr_3pm", `3PA` = "pr_3pa",
         `3P%` = "pr_tp_pct", FTM = "pr_ftm", FTA = "pr_fta", `FT%` = "pr_ft_pct",

@@ -220,11 +220,7 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
 server_tab4 <- function(input, output, session, shared) {
 
   gl_ref <- reactiveValues(teams = NULL)
-  gl_data_version <- reactive({
-    version <- if (is.function(shared$data_version)) shared$data_version() else NA_character_
-    version <- trimws(as.character(version %||% ""))
-    if (!length(version) || is.na(version[[1]]) || !nzchar(version[[1]])) "unknown" else version[[1]]
-  })
+  gl_data_version <- reactive(shared_data_version(shared))
   gl_stat_filter_state <- make_stat_filter_state()
   gl_stat_filter_cols <- reactive({
     if (identical(input$gl_view_mode, "Four Factors")) GL_FF_FILTERABLE_COLS else GL_SUMMARY_FILTERABLE_COLS
@@ -236,19 +232,7 @@ server_tab4 <- function(input, output, session, shared) {
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
     if (!identical(input$main_tabs, "game_logs")) return(NULL)
     gy_int <- as.integer(input$game_year)
-    teams_gl <- cached_ref_query(
-      key = sprintf("gl_teams_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT team_id, MIN(team_name) AS team_name
-           FROM basketball_test.full_rosters
-           WHERE game_year = $1
-           GROUP BY team_id ORDER BY MIN(team_name)",
-          params = list(gy_int)
-        )
-      }
-    )
+    teams_gl <- fetch_teams_min(gy_int)
     gl_ref$teams <- teams_gl
     pending_team <- shared$pending_gl_team()
     if (!is.null(pending_team) && nzchar(pending_team)) {
@@ -264,16 +248,7 @@ server_tab4 <- function(input, output, session, shared) {
     updateSelectizeInput(session, "gl_opponents", choices = opponent_choices,
                          selected = character(0), server = TRUE)
 
-    gn_df <- cached_ref_query(
-      key = sprintf("gl_gn_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year = $1 ORDER BY gn",
-          params = list(gy_int)
-        )
-      }
-    )
+    gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "gl", gn_vals)
   })

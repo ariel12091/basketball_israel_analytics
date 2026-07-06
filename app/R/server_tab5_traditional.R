@@ -13,6 +13,7 @@ TS_FILTERABLE_COLS <- list(
   "AST"   = "ast",
   "STL"   = "stl",
   "BLK"   = "blk",
+  "DFL"   = "dfl",
   "TOV"   = "tov",
   "FGM"   = "fgm",
   "FGA"   = "fga",
@@ -37,7 +38,7 @@ TS_PERCENT_COLS <- c("fg_pct", "two_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_
 # in display order. TOV is reverse-polarity (handled at render time via COLS_REV).
 TS_HEAT_SRC <- list(
   PTS = "pts", REB = "reb", OREB = "oreb", DREB = "dreb", AST = "ast",
-  STL = "stl", BLK = "blk", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct",
+  STL = "stl", BLK = "blk", DFL = "dfl", FGM = "fgm", FGA = "fga", `FG%` = "fg_pct",
   `2PM` = "2pm", `2PA` = "2pa", `2P%` = "two_pct", `3PM` = "3pm",
   `3PA` = "3pa", `3P%` = "tp_pct", FTM = "ftm", FTA = "fta",
   `FT%` = "ft_pct", `eFG%` = "efg", `TS%` = "ts", `USG%` = "usg_pct",
@@ -273,7 +274,7 @@ build_ts_total_row <- function(rows, identity_id, display_name = NULL) {
 
   # Summed counting stats, then derived two-point and percentage columns.
   sums <- vapply(
-    c("gp", "poss_on_floor", "minutes", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk",
+    c("gp", "poss_on_floor", "minutes", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "dfl",
       "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta"),
     s, numeric(1)
   )
@@ -503,19 +504,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     gy_int <- as.integer(input$game_year)
     req(gy_int)
 
-    teams_df <- cached_ref_query(
-      key = sprintf("ts_teams_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT team_id, team_name
-           FROM basketball_test.full_rosters
-           WHERE game_year = $1
-           ORDER BY team_name",
-          params = list(gy_int)
-        )
-      }
-    )
+    teams_df <- fetch_teams_distinct(gy_int)
     ts_ref$teams <- teams_df
     team_choices <- stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
     updateSelectizeInput(session, "ts_teams", choices = team_choices, selected = character(0), server = TRUE)
@@ -545,19 +534,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     ts_ref$players <- players_df
     refresh_ts_player_choices()
 
-    gn_df <- cached_ref_query(
-      key = sprintf("ts_gn_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT gn
-           FROM basketball_test.final_schedule_mv
-           WHERE game_year = $1
-           ORDER BY gn",
-          params = list(gy_int)
-        )
-      }
-    )
+    gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "ts", gn_vals)
   })
@@ -655,7 +632,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   apply_ts_mode <- function(df, mode, x_poss = NA_real_, x_min = NA_real_) {
     if (is.null(df) || !nrow(df)) return(df)
 
-    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
+    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "dfl", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
     mode <- mode %||% "Per Game"
 
     if (identical(mode, "Per Game")) {
@@ -847,23 +824,32 @@ server_tab5_traditional <- function(input, output, session, shared) {
     date_changed || extra_filters || gn_active || gn_raw_active
   })
 
+  ts_data_version <- reactive(shared_data_version(shared))
+
   mv_result_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
     gy_int <- as.integer(input$game_year)
     req(gy_int)
 
-    out <- tryCatch(
-      db_get_query(
-        pg_pool,
-        "SELECT *
-         FROM basketball_test.player_traditional_stats_mv
-         WHERE game_year = $1",
-        params = list(gy_int)
-      ),
-      error = function(e) NULL
+    # Raw season pull shared across sessions; per-session filters run below.
+    out <- cached_season_df(
+      list("player_traditional_stats_mv", gy_int, ts_data_version()),
+      function() {
+        raw <- tryCatch(
+          db_get_query(
+            pg_pool,
+            "SELECT *
+             FROM basketball_test.player_traditional_stats_mv
+             WHERE game_year = $1",
+            params = list(gy_int)
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(raw)) return(NULL)
+        normalize_ts_result_cols(raw)
+      }
     )
     if (is.null(out)) return(NULL)
-    out <- normalize_ts_result_cols(out)
 
     team_ids <- selected_team_ids()
     if (!is.null(team_ids) && length(team_ids) > 0) {
@@ -1180,6 +1166,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         AST = ast,
         STL = stl,
         BLK = blk,
+        DFL = dfl,
         TOV = tov,
         FGM = fgm,
         FGA = fga,
@@ -1213,7 +1200,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     # Percentile (pr_*) columns were already computed over the full population in
     # ts_ranked_df(); carry them onto the row-aligned display frame so coloring is
     # league-relative and unchanged by the player/Min GP/stat narrowing above.
-    heat_good <- c("PTS", "REB", "OREB", "DREB", "AST", "STL", "BLK", "FGM", "FGA", "FG%", "2PM", "2PA", "2P%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
+    heat_good <- c("PTS", "REB", "OREB", "DREB", "AST", "STL", "BLK", "DFL", "FGM", "FGA", "FG%", "2PM", "2PA", "2P%", "3PM", "3PA", "3P%", "FTM", "FTA", "FT%", "eFG%", "TS%", "USG%")
     src_pr_cols <- grep("^pr_", names(df), value = TRUE)
     disp[src_pr_cols] <- df[src_pr_cols]
 

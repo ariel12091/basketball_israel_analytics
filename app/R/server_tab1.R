@@ -103,19 +103,7 @@ server_tab1 <- function(input, output, session, shared) {
                          min = bounds$start, max = bounds$end)
 
     gy_int <- as.integer(shared$selected_game_year())
-    gn_df <- cached_ref_query(
-      key = sprintf("on_gn_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT DISTINCT gn
-             FROM basketball_test.final_schedule_mv
-            WHERE game_year = $1::int4
-            ORDER BY gn",
-          params = list(gy_int)
-        )
-      }
-    )
+    gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "on", gn_vals)
   }, ignoreInit = FALSE)
@@ -526,20 +514,32 @@ server_tab1 <- function(input, output, session, shared) {
 
   # --- MV Fetch (Summary - LOAD FULL DATA) ---
   # Only load raw MV here. Filtering happens later in result_df.
+  # Season pulls are shared across sessions via cached_season_df; the
+  # data-version key invalidates the cache after each ETL run.
+  on_data_version <- reactive(shared_data_version(shared))
   mv_result_df <- reactive({
     gy <- as.integer(shared$selected_game_year())
-    db_get_query(pg_pool,
-      sprintf('SELECT * FROM basketball_test.onoff_default_mv WHERE "Year" = %d ORDER BY "Net RTG Diff" DESC, "Team", "Last Name", "First Name"', gy))
+    req(gy)
+    cached_season_df(
+      list("onoff_default_mv", gy, on_data_version()),
+      function() db_get_query(pg_pool,
+        'SELECT * FROM basketball_test.onoff_default_mv WHERE "Year" = $1::int4 ORDER BY "Net RTG Diff" DESC, "Team", "Last Name", "First Name"',
+        params = list(gy))
+    )
   })
 
   # --- MV Fetch (Four Factors - LOAD FULL DATA) ---
   advanced_result_df <- reactive({
     gy <- as.integer(shared$selected_game_year())
-    db_get_query(pg_pool,
-      "SELECT *
-         FROM basketball_test.player_advanced_stats_mv
-        WHERE game_year = $1::int4",
-      params = list(gy))
+    req(gy)
+    cached_season_df(
+      list("player_advanced_stats_mv", gy, on_data_version()),
+      function() db_get_query(pg_pool,
+        "SELECT *
+           FROM basketball_test.player_advanced_stats_mv
+          WHERE game_year = $1::int4",
+        params = list(gy))
+    )
   })
 
   # --- Full ranked Four Factors data (ranks computed BEFORE any user filtering) ---

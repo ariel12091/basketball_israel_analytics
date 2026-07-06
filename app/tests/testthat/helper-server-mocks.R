@@ -3,32 +3,9 @@ library(shiny)
 library(dplyr)
 library(DT)
 
-`%||%` <- function(a, b) if (!is.null(a)) a else b
-
-is_invalid_persisted_token <- function(x) {
-  if (is.null(x)) return(logical(0))
-  val <- trimws(tolower(as.character(x)))
-  is.na(val) | val %in% c("undefined", "null", "nan", "na")
-}
-
-sanitize_persisted_choices <- function(x, max_len = 80L, numeric_only = FALSE) {
-  if (is.null(x)) return(character(0))
-  vals <- if (is.list(x)) unlist(x, recursive = FALSE, use.names = FALSE) else x
-  vals <- trimws(as.character(vals))
-  vals <- vals[!is.na(vals) & nzchar(vals)]
-  vals <- vals[!is_invalid_persisted_token(vals)]
-  if (isTRUE(numeric_only) && length(vals)) {
-    nums <- suppressWarnings(as.integer(vals))
-    vals <- vals[!is.na(nums)]
-  }
-  vals <- substr(vals, 1L, 200L)
-  vals[seq_len(min(length(vals), max_len))]
-}
-
-sanitize_single_choice <- function(x, numeric_only = FALSE) {
-  vals <- sanitize_persisted_choices(x, max_len = 1L, numeric_only = numeric_only)
-  if (length(vals)) vals[[1]] else ""
-}
+# Real pure helpers — single source of truth shared with the app (R/helpers.R).
+# Only the impure pieces (DB, caches, guards, chip builders) are stubbed below.
+source(repo_file("R", "helpers.R"), local = TRUE)
 
 DEFAULT_START <- as.Date("2024-10-01")
 DEFAULT_END <- as.Date("2025-07-01")
@@ -46,15 +23,28 @@ HEADER_TOOLTIP_JS <- DT::JS("function(thead) {}")
 OFF_OREB_TOOLTIP <- "Offensive rebound percentage"
 DEF_OREB_TOOLTIP <- "Defensive rebound percentage"
 
-dt_escape_except <- function(data, html_cols = character()) {
-  data_cols <- names(data)
-  html_cols <- intersect(as.character(html_cols), data_cols)
-  if (!length(html_cols)) return(TRUE)
-  which(!data_cols %in% html_cols)
-}
-
 pg_pool <- structure(list(), class = "mock_pool")
 GL_DATA_CACHE <- cachem::cache_mem(max_size = 64 * 1024^2, max_age = 3600)
+
+# Passthrough in tests: no cross-test cache pollution, always hits the mock DB.
+cached_season_df <- function(key_parts, query_fun) query_fun()
+
+# Canonical per-season lookups (real versions live in global.R, which tests
+# don't source, so they are stubbed with mock data here).
+fetch_teams_distinct <- function(gy) {
+  data.frame(team_id = c(1L, 2L), team_name = c("Team A", "Team B"))
+}
+fetch_teams_min <- function(gy) {
+  data.frame(team_id = 1:5, team_name = paste("Team", LETTERS[1:5]))
+}
+fetch_gn_values <- function(gy) data.frame(gn = 1:5)
+fetch_players_basic <- function(gy) {
+  data.frame(
+    team_id = c(1L, 1L, 2L),
+    player_id = c(11L, 12L, 21L),
+    name = c("Player A", "Player C", "Player B")
+  )
+}
 
 .mock_db_query_counts <- new.env(parent = emptyenv())
 
@@ -246,6 +236,7 @@ db_get_query <- function(pool, query, params = NULL) {
       ast = c(82, 71),
       stl = c(28, 24),
       blk = c(18, 14),
+      dfl = c(42, 36),
       tov = c(45, 51),
       fgm = c(136, 124),
       fga = c(275, 268),
@@ -279,6 +270,7 @@ db_get_query <- function(pool, query, params = NULL) {
       ast = c(30, 18, 20),
       stl = c(10, 7, 8),
       blk = c(6, 4, 5),
+      dfl = c(5, 3, 4),
       tov = c(14, 11, 13),
       fgm = c(38, 28, 34),
       fga = c(70, 55, 66),
@@ -479,160 +471,15 @@ adaptive_baseline <- function(...) 0
 empty_dt <- function(msg = "") data.frame(message = msg)
 fmt_rank_cell <- function(value, rank_now, delta, digits = 1) as.character(round(as.numeric(value), digits = digits))
 
+# Deliberate stubs over the real helpers.R versions (observer wiring and UI
+# builders that testServer contexts don't need).
 build_filter_chips <- function(...) shiny::tags$div(class = "filter-chips", "chips")
 setup_chip_clears <- function(...) invisible(TRUE)
-normalize_stat_filter_cols <- function(filterable_cols) {
-  cols <- if (is.function(filterable_cols)) filterable_cols() else filterable_cols
-  if (is.null(cols)) return(stats::setNames(character(0), character(0)))
-  if (is.list(cols) && !is.atomic(cols)) cols <- unlist(cols, use.names = TRUE)
-  labels <- names(cols)
-  cols <- as.character(cols)
-  if (is.null(labels)) labels <- rep("", length(cols))
-  keep <- nzchar(labels) & nzchar(cols)
-  stats::setNames(cols[keep], labels[keep])
-}
-make_stat_filter_state <- function() {
-  list(filters = shiny::reactiveVal(list()), next_id = shiny::reactiveVal(1L))
-}
-reset_stat_filters <- function(state) {
-  state$filters(list())
-  state$next_id(1L)
-  invisible(NULL)
-}
-apply_stat_filters <- function(df, filters) {
-  if (is.null(df) || !nrow(df) || !length(filters)) return(df)
-  for (f in filters) {
-    if (!f$col %in% names(df)) next
-    v <- suppressWarnings(as.numeric(df[[f$col]]))
-    threshold <- suppressWarnings(as.numeric(f$value))
-    if (length(threshold) != 1L || !is.finite(threshold)) next
-    keep <- !is.na(v) & (if (identical(f$op, "le")) v <= threshold else v >= threshold)
-    df <- df[keep, , drop = FALSE]
-  }
-  df
-}
 setup_stat_filter_handlers <- function(...) invisible(TRUE)
 stat_filter_chips_ui <- function(...) list()
-team_select_choices_with_all <- function(teams_df, all_label = "- All teams -") {
-  if (is.null(teams_df) || !nrow(teams_df)) {
-    out <- ""
-    names(out) <- all_label
-    return(out)
-  }
-  out <- c("", as.character(teams_df$team_id))
-  names(out) <- c(all_label, teams_df$team_name)
-  out
-}
-update_single_team_selectize <- function(session, select_id, teams_df, selected = "", all_label = "- All teams -") {
-  updateSelectizeInput(
-    session,
-    select_id,
-    choices = team_select_choices_with_all(teams_df, all_label = all_label),
-    selected = selected,
-    server = TRUE
-  )
-}
-update_gn_last_n_choices <- function(session, prefix, gn_vals) {
-  gn_vals <- suppressWarnings(as.integer(gn_vals))
-  gn_vals <- gn_vals[is.finite(gn_vals)]
-  gn_choices <- c("", as.character(gn_vals))
-  last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-  updateSelectizeInput(session, paste0(prefix, "_gn_min"), choices = gn_choices, selected = "")
-  updateSelectizeInput(session, paste0(prefix, "_gn_max"), choices = gn_choices, selected = "")
-  updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
-}
-resolve_gn_last_n_params <- function(input, prefix) {
-  min_gn <- input[[paste0(prefix, "_gn_min")]] %||% ""
-  max_gn <- input[[paste0(prefix, "_gn_max")]] %||% ""
-  last_n <- input[[paste0(prefix, "_last_n")]] %||% ""
-  min_gn <- if (nzchar(min_gn)) as.integer(min_gn) else NA_integer_
-  max_gn <- if (nzchar(max_gn)) as.integer(max_gn) else NA_integer_
-  last_n <- if (nzchar(last_n)) as.integer(last_n) else NA_integer_
-  if (!is.na(last_n)) { min_gn <- NA_integer_; max_gn <- NA_integer_ }
-  if (!is.na(min_gn) || !is.na(max_gn)) last_n <- NA_integer_
-  if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) { tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp }
-  list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
-}
 setup_gn_last_n_sync <- function(session, input, prefix) invisible(TRUE)
-reset_gn_last_n_inputs <- function(session, prefix) {
-  updateSelectizeInput(session, paste0(prefix, "_gn_min"), selected = "")
-  updateSelectizeInput(session, paste0(prefix, "_gn_max"), selected = "")
-  updateSelectizeInput(session, paste0(prefix, "_last_n"), selected = "")
-}
-reset_opp_rank_inputs <- function(session, prefix) {
-  updateSelectInput(session, paste0(prefix, "_opp_rank_side"), selected = "")
-  updateSelectInput(session, paste0(prefix, "_opp_rank_n"), selected = "")
-  updateSelectInput(session, paste0(prefix, "_opp_rank_metric"), selected = "")
-}
-reset_starters_inputs <- function(session, prefix, own_prefix = "num_starters_off", opp_prefix = "num_starters_def") {
-  updateSelectInput(session, paste0(prefix, "_", own_prefix, "_mode"), selected = "")
-  updateSelectInput(session, paste0(prefix, "_", own_prefix), selected = "")
-  updateSelectInput(session, paste0(prefix, "_", opp_prefix, "_mode"), selected = "")
-  updateSelectInput(session, paste0(prefix, "_", opp_prefix), selected = "")
-}
-reset_clutch_inputs <- function(session, prefix, status_default = "all", margin_default = 5, minutes_default = 5) {
-  updateCheckboxInput(session, paste0(prefix, "_clutch_enabled"), value = FALSE)
-  updateSliderInput(session, paste0(prefix, "_clutch_margin"), value = margin_default)
-  updateSelectInput(session, paste0(prefix, "_clutch_status"), selected = status_default)
-  updateSliderInput(session, paste0(prefix, "_clutch_minutes"), value = minutes_default)
-  updateCheckboxInput(session, paste0(prefix, "_clutch_ot_margin"), value = FALSE)
-}
-blank_to_na_character <- function(value) {
-  value <- value %||% ""
-  if (!nzchar(value)) NA_character_ else value
-}
-blank_to_na_integer <- function(value) {
-  value <- blank_to_na_character(value)
-  suppressWarnings(as.integer(value))
-}
-csv_if_any <- function(values, integerize = FALSE) {
-  if (is.null(values) || !length(values)) return(NA_character_)
-  values <- values[nzchar(as.character(values))]
-  if (!length(values)) return(NA_character_)
-  if (isTRUE(integerize)) {
-    values <- suppressWarnings(as.integer(values))
-    values <- values[is.finite(values)]
-    if (!length(values)) return(NA_character_)
-  }
-  paste(values, collapse = ",")
-}
-resolve_clutch_params <- function(enabled, margin, status, minutes, ot_margin) {
-  clutch_enabled <- isTRUE(enabled)
-  list(
-    max_margin = if (clutch_enabled) suppressWarnings(as.integer(margin)) else NA_integer_,
-    margin_status = if (clutch_enabled) blank_to_na_character(status) else NA_character_,
-    max_time_remaining = if (clutch_enabled) suppressWarnings(as.integer(minutes)) * 60L else NA_integer_,
-    ot_margin_filter = if (clutch_enabled) isTRUE(ot_margin) else FALSE
-  )
-}
-resolve_starters_bounds <- function(off_mode, off_value, def_mode, def_value) {
-  off_mode <- off_mode %||% ""
-  def_mode <- def_mode %||% ""
-  off_val <- if (nzchar(off_mode)) blank_to_na_integer(off_value) else NA_integer_
-  def_val <- if (nzchar(def_mode)) blank_to_na_integer(def_value) else NA_integer_
-  list(
-    num_starters_off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
-    num_starters_off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
-    num_starters_def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
-    num_starters_def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
-  )
-}
-apply_visible_col_order <- function(df, visible_order, hidden_cols = character()) {
-  if (is.null(df) || !length(visible_order)) return(df)
-
-  all_cols <- names(df)
-  hidden_cols <- intersect(hidden_cols, all_cols)
-  visible_cols <- setdiff(all_cols, hidden_cols)
-  saved_visible <- intersect(as.character(visible_order), visible_cols)
-  if (!length(saved_visible)) return(df)
-
-  df[, c(saved_visible, setdiff(visible_cols, saved_visible), hidden_cols), drop = FALSE]
-}
 dt_col_order_init_callback <- function(...) {
   DT::JS("function(settings, json) {}")
-}
-csv_export_stamp <- function(now = Sys.time()) {
-  format(now, "%Y%m%d_%H%M%S")
 }
 
 source(repo_file("R", "logger.R"), local = TRUE)

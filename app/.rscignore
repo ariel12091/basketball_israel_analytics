@@ -6,8 +6,6 @@
 *.log
 *.out.log
 *.err.log
-app_backup.R
-app_test.R
 UI_UPGRADE_PLAN.md
 rsconnect/
 tests/
