@@ -113,19 +113,19 @@ server_tab7_compare <- function(input, output, session, shared) {
     off_ff = list(
       title = "Offensive Four Factors",
       metrics = list(
-        list(label = "eFG%", col_ratings = NULL, col_ff = "off_efg", polarity = "higher", fmt = "pct"),
-        list(label = "TOV%", col_ratings = NULL, col_ff = "off_tov", polarity = "lower", fmt = "pct"),
-        list(label = "OREB%", col_ratings = NULL, col_ff = "off_oreb", polarity = "higher", fmt = "pct"),
-        list(label = "FTR", col_ratings = NULL, col_ff = "off_ftr", polarity = "higher", fmt = "pct")
+        list(label = "eFG%", col_ratings = NULL, col_ff = "off_efg", polarity = "higher", fmt = "pct", factor = "efg"),
+        list(label = "TOV%", col_ratings = NULL, col_ff = "off_tov", polarity = "lower", fmt = "pct", factor = "tov"),
+        list(label = "OREB%", col_ratings = NULL, col_ff = "off_oreb", polarity = "higher", fmt = "pct", factor = "oreb"),
+        list(label = "FTR", col_ratings = NULL, col_ff = "off_ftr", polarity = "higher", fmt = "pct", factor = "ftr")
       )
     ),
     def_ff = list(
       title = "Defensive Four Factors",
       metrics = list(
-        list(label = "Opp eFG%", col_ratings = NULL, col_ff = "def_efg", polarity = "lower", fmt = "pct"),
-        list(label = "Opp TOV%", col_ratings = NULL, col_ff = "def_tov", polarity = "higher", fmt = "pct"),
-        list(label = "Opp OREB%", col_ratings = NULL, col_ff = "def_oreb", polarity = "lower", fmt = "pct"),
-        list(label = "Opp FTR", col_ratings = NULL, col_ff = "def_ftr", polarity = "lower", fmt = "pct")
+        list(label = "Opp eFG%", col_ratings = NULL, col_ff = "def_efg", polarity = "lower", fmt = "pct", factor = "efg"),
+        list(label = "Opp TOV%", col_ratings = NULL, col_ff = "def_tov", polarity = "higher", fmt = "pct", factor = "tov"),
+        list(label = "Opp OREB%", col_ratings = NULL, col_ff = "def_oreb", polarity = "lower", fmt = "pct", factor = "oreb"),
+        list(label = "Opp FTR", col_ratings = NULL, col_ff = "def_ftr", polarity = "lower", fmt = "pct", factor = "ftr")
       )
     ),
     shooting = list(
@@ -3291,6 +3291,16 @@ server_tab7_compare <- function(input, output, session, shared) {
         is_last_row <- is_last_section && (j == n_metrics)
         last_cls <- if (is_last_row) " cmp-last-row" else ""
 
+        # Estimated point size of this factor gap. Magnitude-only: direction
+        # is already encoded by the gap bar/colors (spec: detail view).
+        est_span <- NULL
+        if (!is.null(m$factor) && is.finite(va) && is.finite(vb)) {
+          est_span <- tags$span(
+            class = "ff-impact-est",
+            sprintf("est. %.1f pts", abs(ff_impact_pts(va - vb, m$factor)))
+          )
+        }
+
         all_cells <- c(all_cells, list(
           tags$div(class = paste0("cmp-stat-row cmp-col-a cmp-cell", last_cls),
             `data-idx` = j - 1, `data-group` = sec_key,
@@ -3301,6 +3311,7 @@ server_tab7_compare <- function(input, output, session, shared) {
             `data-default-idx` = j - 1,
             `data-gap` = if (is.finite(gi$gap)) round(gi$gap, 4) else 0,
             tags$span(class = paste("cmp-gap-num", gap_color_cls), gap_text),
+            est_span,
             tags$div(class = "cmp-bar-container",
               tags$div(class = "cmp-bar-center"),
               if (bar_pct > 0) tags$div(class = paste("cmp-bar", bar_cls),
@@ -3323,7 +3334,11 @@ server_tab7_compare <- function(input, output, session, shared) {
           paste0(full_a, " vs ", full_b, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
         context_bar,
         tags$div(class = "cmp-compare-grid",
-          do.call(tagList, all_cells))
+          do.call(tagList, all_cells)),
+        tags$div(
+          style = "text-align: center; font-size: .72rem; color: #6e7681; margin-top: 8px;",
+          "Estimated factor impact (est.): points per 100 poss. from league-calibrated regression weights — an approximation, not a measured stat."
+        )
       )
     )
   })
