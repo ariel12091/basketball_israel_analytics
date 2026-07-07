@@ -170,6 +170,8 @@ Computed in MVs, aggregated by SQL functions. All rates × 100 in final output.
 
 **Color polarity:** Offense green-high (except TOV% red-high). Defense red-high (except TOV% green-high). Unranked (<100 poss) = gray/null.
 
+**Estimated point impact:** FF deltas in Tabs 1/7 carry an italic `est. ±X pts` annotation = delta × `FF_IMPACT_WEIGHTS` (helpers.R: efg 1.45, tov −1.36, oreb 0.63, ftr 0.13 pts/100 per pp; league-fit, refit via `scripts/fit_ff_impact_weights.R`). Defense wording: "pts allowed". No summed impact column — it would duplicate the rating diff.
+
 ## Shooting Splits (2PT/3PT)
 
 Available in Tabs 1, 2, 4 Summary views. Not in FF views or Tab 3.
