@@ -924,6 +924,14 @@ server_tab1 <- function(input, output, session, shared) {
         "Def FTR Diff"   = c("def_on_ftr", "def_off_ftr")
       )
 
+      # Factor key per FF diff column -> impact weight + defense wording.
+      FF_METRIC_FACTOR <- c(
+        "Off eFG% Diff" = "efg", "Off OREB% Diff" = "oreb",
+        "Off TOV% Diff" = "tov", "Off FTR Diff" = "ftr",
+        "Def eFG% Diff" = "efg", "Def OREB% Diff" = "oreb",
+        "Def TOV% Diff" = "tov", "Def FTR Diff" = "ftr"
+      )
+
       raw_cols_all <- unique(unlist(metric_map))
 
       # Rounding
@@ -975,9 +983,20 @@ server_tab1 <- function(input, output, session, shared) {
           on_rank_idx <- which(names(df_final) == paste0(on_col, "_rank")) - 1L
           off_rank_idx <- which(names(df_final) == paste0(off_col, "_rank")) - 1L
 
+          impact_w <- FF_IMPACT_WEIGHTS[[FF_METRIC_FACTOR[[diff_name]]]]
+          impact_suffix <- if (startsWith(diff_name, "Def")) " pts allowed" else " pts"
+
           js_func <- JS(sprintf(
             "function(data, type, row, meta) {
                if (type === 'display') {
+                 var w = %f;
+                 var estLine = '';
+                 if (data !== null && data !== '' && !isNaN(parseFloat(data))) {
+                   var est = parseFloat(data) * w;
+                   estLine = '<div class=\"ff-impact-est\">est. ' +
+                             (est >= 0 ? '+' : '\\u2212') + Math.abs(est).toFixed(1) +
+                             '%s</div>';
+                 }
                  var diffVal = (data === null) ? '-' : (parseFloat(data) > 0 ? '+' + data : data);
                  var onVal   = row[%d] || '-';
                  var offVal  = row[%d] || '-';
@@ -987,7 +1006,8 @@ server_tab1 <- function(input, output, session, shared) {
                  if (onPct === null || onPct === undefined) {
                     return '<div class=\"diff-val unranked\">' + diffVal + '</div>' +
                            '<div class=\"rank-bar-container hidden\"></div>' +
-                           '<div class=\"sub-text\" style=\"opacity:0.5;\">' + onVal + ' | ' + offVal + '</div>';
+                           '<div class=\"sub-text\" style=\"opacity:0.5;\">' + onVal + ' | ' + offVal + '</div>' +
+                           estLine;
                  }
 
                  var rangeLineLeft  = Math.min(onPct, offPct);
@@ -1004,10 +1024,11 @@ server_tab1 <- function(input, output, session, shared) {
                           '<span style=\"font-weight:700; color:#222;\">' + onVal + '</span>' +
                           ' <span style=\"opacity:0.6;\">|</span> ' +
                           '<span style=\"color:#666;\">' + offVal + '</span>' +
-                        '</div>';
+                        '</div>' +
+                        estLine;
                }
                return data;
-             }", on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
+             }", impact_w, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
           ))
           defs[[length(defs) + 1]] <- list(targets = target_idx, render = js_func)
         }
@@ -1069,8 +1090,8 @@ server_tab1 <- function(input, output, session, shared) {
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head", "Diff"),
-          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
-          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", title = ff_impact_tooltip("efg"), "eFG%"), th(class = "sub-head", title = paste0(OFF_OREB_TOOLTIP, " — ", ff_impact_tooltip("oreb")), "OREB%"), th(class = "sub-head", title = ff_impact_tooltip("tov"), "TOV%"), th(class = "sub-head", title = ff_impact_tooltip("ftr"), "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", title = ff_impact_tooltip("efg"), "eFG%"), th(class = "sub-head", title = paste0(DEF_OREB_TOOLTIP, " — ", ff_impact_tooltip("oreb")), "OREB%"), th(class = "sub-head", title = ff_impact_tooltip("tov"), "TOV%"), th(class = "sub-head", title = ff_impact_tooltip("ftr"), "FTR"),
           th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))
@@ -1078,6 +1099,10 @@ server_tab1 <- function(input, output, session, shared) {
       dt <- datatable(df_final,
                       container = sketch_ff, rownames = FALSE,
                       escape = dt_escape_except(df_final),
+                      caption = htmltools::tags$caption(
+                        style = "caption-side: bottom; text-align: center; font-size: .72rem; color: #8b949e; padding-top: 6px;",
+                        "Estimated factor impact (est.): points per 100 poss. from league-calibrated regression weights — an approximation, not a measured stat."
+                      ),
                       options = list(
                         headerCallback = HEADER_TOOLTIP_JS,
                         dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE,

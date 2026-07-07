@@ -351,6 +351,16 @@ table.dataTable thead select {
   font-size: 0.75em; color: #6e7681; margin-top: 4px; white-space: nowrap; font-family: 'JetBrains Mono', 'Inter', monospace;
 }
 
+/* Four-factor estimated point impact annotation (Tabs 1 & 7) */
+.ff-impact-est {
+  display: block;
+  font-style: italic;
+  font-size: .72rem;
+  color: #8b949e;
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
 /* ---- View Mode Toggle ---- */
 .view-mode-container .shiny-options-group { display: flex; width: 100%; justify-content: center; gap: 10px; }
 .view-mode-container .radio label {
