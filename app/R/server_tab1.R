@@ -8,12 +8,16 @@ ON_SUMMARY_FILTERABLE_COLS <- c(
   "On Def PPP" = "Def ON PPP",
   "On Net Rtg" = "On Net RTG",
   "On Off Shot" = "Off Shot ON",
+  shot_split_metric_cols("On Off", "on_off"),
   "On Def Shot" = "Def Shot ON",
+  shot_split_metric_cols("On Def", "on_def"),
   "Off Off PPP" = "Off OFF PPP",
   "Off Def PPP" = "Def OFF PPP",
   "Off Net Rtg" = "Off Net RTG",
   "Off Off Shot" = "Off Shot OFF",
+  shot_split_metric_cols("Off Off", "off_off"),
   "Off Def Shot" = "Def Shot OFF",
+  shot_split_metric_cols("Off Def", "off_def"),
   "Min" = "minutes",
   "On Poss" = "ON Poss",
   "Off Poss" = "OFF Poss"
@@ -706,6 +710,12 @@ server_tab1 <- function(input, output, session, shared) {
         "def_off_fg2_made", "def_off_fg2_att", "def_off_fg3_made", "def_off_fg3_att"
       )
       shot_display_cols <- c("Off Shot ON", "Def Shot ON", "Off Shot OFF", "Def Shot OFF")
+      shot_filter_cols <- unname(c(
+        shot_split_metric_cols("On Off", "on_off"),
+        shot_split_metric_cols("On Def", "on_def"),
+        shot_split_metric_cols("Off Off", "off_off"),
+        shot_split_metric_cols("Off Def", "off_def")
+      ))
       if (!"minutes" %in% names(df)) df$minutes <- NA_real_
 
       # Create display columns (sortable value = total FGA)
@@ -717,6 +727,12 @@ server_tab1 <- function(input, output, session, shared) {
           `Off Shot OFF` = coalesce(off_off_fg2_att, 0L) + coalesce(off_off_fg3_att, 0L),
           `Def Shot OFF` = coalesce(def_off_fg2_att, 0L) + coalesce(def_off_fg3_att, 0L)
         )
+        df <- add_shot_split_metrics(df, list(
+          on_off = c("off_on_fg2_made", "off_on_fg2_att", "off_on_fg3_made", "off_on_fg3_att"),
+          on_def = c("def_on_fg2_made", "def_on_fg2_att", "def_on_fg3_made", "def_on_fg3_att"),
+          off_off = c("off_off_fg2_made", "off_off_fg2_att", "off_off_fg3_made", "off_off_fg3_att"),
+          off_def = c("def_off_fg2_made", "def_off_fg2_att", "def_off_fg3_made", "def_off_fg3_att")
+        ))
       }
 
       keep_cols <- c(
@@ -726,6 +742,7 @@ server_tab1 <- function(input, output, session, shared) {
         "Off OFF PPP", "Def OFF PPP", "Off Net RTG", "Off Shot OFF", "Def Shot OFF",
         "minutes", "ON Poss", "OFF Poss",
         shot_raw_cols,
+        shot_filter_cols,
         "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
       )
       df <- df[, intersect(keep_cols, names(df))]
@@ -740,7 +757,7 @@ server_tab1 <- function(input, output, session, shared) {
       idx_diff <- which(names(df) %in% diff_cols) - 1
 
       pr_cols <- names(df)[grep("^pr_", names(df))]
-      hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols)) - 1
+      hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols)) - 1
 
       # Shooting column JS render function factory
       make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,

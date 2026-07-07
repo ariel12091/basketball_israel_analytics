@@ -8,7 +8,9 @@ LD_SUMMARY_FILTERABLE_COLS <- c(
   "Def PPP" = "def_ppp",
   "Net RTG" = "net_rtg",
   "Off Shot" = "Off Shot",
+  shot_split_metric_cols("Off", "off"),
   "Def Shot" = "Def Shot",
+  shot_split_metric_cols("Def", "def"),
   "Off Poss" = "off_poss",
   "Off Pts" = "off_pts",
   "Def Poss" = "def_poss",
@@ -698,6 +700,10 @@ server_tab2 <- function(input, output, session, shared) {
       pr_cols <- c("pr_ld_net", "pr_ld_off_ppp", "pr_ld_def_ppp_i")
       shot_raw_cols <- c("off_fg2_made", "off_fg2_att", "off_fg3_made", "off_fg3_att",
                          "def_fg2_made", "def_fg2_att", "def_fg3_made", "def_fg3_att")
+      shot_filter_cols <- unname(c(
+        shot_split_metric_cols("Off", "off"),
+        shot_split_metric_cols("Def", "def")
+      ))
       has_shots <- all(c("off_fg2_att", "off_fg3_att") %in% names(df))
       if (!("num_starters" %in% names(df)) && ("num_lineup" %in% names(df))) {
         df$num_starters <- df$num_lineup
@@ -707,12 +713,16 @@ server_tab2 <- function(input, output, session, shared) {
       if (has_shots) {
         df[["Off Shot"]] <- dplyr::coalesce(df$off_fg2_att, 0L) + dplyr::coalesce(df$off_fg3_att, 0L)
         df[["Def Shot"]] <- dplyr::coalesce(df$def_fg2_att, 0L) + dplyr::coalesce(df$def_fg3_att, 0L)
+        df <- add_shot_split_metrics(df, list(
+          off = c("off_fg2_made", "off_fg2_att", "off_fg3_made", "off_fg3_att"),
+          def = c("def_fg2_made", "def_fg2_att", "def_fg3_made", "def_fg3_att")
+        ))
       }
 
       keep_cols <- c("Team", "Players", "minutes", "total_poss", "plus_minus",
                      if (has_shots) c("Off Shot", "Def Shot"),
                      "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_starters", "sub_lineup_hash", "team_id")
-      df <- df %>% select(any_of(c(keep_cols, shot_raw_cols, pr_cols)))
+      df <- df %>% select(any_of(c(keep_cols, shot_raw_cols, shot_filter_cols, pr_cols)))
       if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
       df <- apply_stat_filters(df, ld_stat_filter_state$filters())
       df$is_total <- rep(1, nrow(df))

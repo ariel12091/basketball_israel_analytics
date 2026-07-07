@@ -168,6 +168,47 @@ apply_stat_filters <- function(df, filters) {
   df
 }
 
+shot_split_metric_cols <- function(label_prefix, col_prefix) {
+  stats::setNames(
+    paste0(col_prefix, c("_fg2_pct", "_fg2_freq", "_fg3_pct", "_fg3_freq")),
+    paste(label_prefix, c("2PT%", "2PT Freq", "3PT%", "3PT Freq"))
+  )
+}
+
+add_shot_split_metrics <- function(df, specs) {
+  if (is.null(df) || !length(specs)) return(df)
+
+  pct <- function(num, den) {
+    out <- rep(NA_real_, length(den))
+    ok <- is.finite(den) & den > 0
+    out[ok] <- round(num[ok] / den[ok] * 100, 1)
+    out
+  }
+  count_col <- function(col) {
+    x <- suppressWarnings(as.numeric(df[[col]]))
+    x[is.na(x)] <- 0
+    x
+  }
+
+  for (prefix in names(specs)) {
+    cols <- specs[[prefix]]
+    if (length(cols) != 4L || !all(cols %in% names(df))) next
+
+    fg2m <- count_col(cols[[1]])
+    fg2a <- count_col(cols[[2]])
+    fg3m <- count_col(cols[[3]])
+    fg3a <- count_col(cols[[4]])
+    total_fga <- fg2a + fg3a
+
+    df[[paste0(prefix, "_fg2_pct")]] <- pct(fg2m, fg2a)
+    df[[paste0(prefix, "_fg2_freq")]] <- pct(fg2a, total_fga)
+    df[[paste0(prefix, "_fg3_pct")]] <- pct(fg3m, fg3a)
+    df[[paste0(prefix, "_fg3_freq")]] <- pct(fg3a, total_fga)
+  }
+
+  df
+}
+
 setup_stat_filter_handlers <- function(prefix, input, session, filterable_cols, state) {
   add_id <- paste0(prefix, "_add_stat_filter")
   remove_id <- paste0(prefix, "_remove_stat_filter")

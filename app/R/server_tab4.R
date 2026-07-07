@@ -7,7 +7,9 @@ GL_SUMMARY_FILTERABLE_COLS <- c(
   "Def PPP" = "def_ppp",
   "Net" = "net_rtg",
   "Off Shot" = "Off Shot",
+  shot_split_metric_cols("Off", "off"),
   "Def Shot" = "Def Shot",
+  shot_split_metric_cols("Def", "def"),
   "Off Poss" = "off_poss",
   "Def Poss" = "def_poss"
 )
@@ -505,6 +507,10 @@ server_tab4 <- function(input, output, session, shared) {
       if (has_shots) {
         df[["Off Shot"]] <- coalesce(df$off_fg2a, 0) + coalesce(df$off_fg3a, 0)
         df[["Def Shot"]] <- coalesce(df$def_fg2a, 0) + coalesce(df$def_fg3a, 0)
+        df <- add_shot_split_metrics(df, list(
+          off = c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a"),
+          def = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
+        ))
       }
       df <- apply_stat_filters(df, gl_stat_filter_state$filters())
       if (is.null(df) || nrow(df) == 0) return(NULL)
