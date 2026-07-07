@@ -1970,7 +1970,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
-  pvp_stat_row <- function(label, va, vb, fmt_fn, higher_is_better = TRUE) {
+  pvp_stat_row <- function(label, va, vb, fmt_fn, higher_is_better = TRUE,
+                           sub_a = NULL, sub_b = NULL) {
     diff <- if (!is.na(va) && !is.na(vb)) abs(va - vb) else NA_real_
     if (higher_is_better) {
       a_better <- !is.na(va) && !is.na(vb) && va > vb
@@ -1988,7 +1989,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       tags$div(
         style = "flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 10px;",
         left_badge,
-        tags$span(style = if (a_better) val_win_css else val_lose_css, fmt_fn(va))
+        tags$div(
+          style = "text-align: right;",
+          tags$span(style = if (a_better) val_win_css else val_lose_css, fmt_fn(va)),
+          sub_a
+        )
       ),
       tags$div(
         style = "width: 130px; text-align: center; font-size: .85rem; font-weight: 600; color: #8b949e;",
@@ -1996,7 +2001,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       ),
       tags$div(
         style = "flex: 1; display: flex; align-items: center; justify-content: flex-start; gap: 10px;",
-        tags$span(style = if (b_better) val_win_css else val_lose_css, fmt_fn(vb)),
+        tags$div(
+          style = "text-align: left;",
+          tags$span(style = if (b_better) val_win_css else val_lose_css, fmt_fn(vb)),
+          sub_b
+        ),
         right_badge
       )
     )
@@ -2035,15 +2044,15 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   FF_SWING_STATS <- list(
     list(label = "Off Diff", col = "Off ON Diff", side = "off"),
-    list(label = "eFG%",     col = "Off eFG% Diff", side = "off"),
-    list(label = "OREB%",    col = "Off OREB% Diff", side = "off"),
-    list(label = "TOV%",     col = "Off TOV% Diff", side = "off", invert = TRUE),
-    list(label = "FTR",      col = "Off FTR Diff", side = "off"),
+    list(label = "eFG%",     col = "Off eFG% Diff", side = "off", factor = "efg"),
+    list(label = "OREB%",    col = "Off OREB% Diff", side = "off", factor = "oreb"),
+    list(label = "TOV%",     col = "Off TOV% Diff", side = "off", invert = TRUE, factor = "tov"),
+    list(label = "FTR",      col = "Off FTR Diff", side = "off", factor = "ftr"),
     list(label = "Def Diff", col = "Def ON Diff", side = "def", invert = TRUE),
-    list(label = "eFG%",     col = "Def eFG% Diff", side = "def", invert = TRUE),
-    list(label = "OREB%",    col = "Def OREB% Diff", side = "def", invert = TRUE),
-    list(label = "TOV%",     col = "Def TOV% Diff", side = "def"),
-    list(label = "FTR",      col = "Def FTR Diff", side = "def", invert = TRUE)
+    list(label = "eFG%",     col = "Def eFG% Diff", side = "def", invert = TRUE, factor = "efg"),
+    list(label = "OREB%",    col = "Def OREB% Diff", side = "def", invert = TRUE, factor = "oreb"),
+    list(label = "TOV%",     col = "Def TOV% Diff", side = "def", factor = "tov"),
+    list(label = "FTR",      col = "Def FTR Diff", side = "def", invert = TRUE, factor = "ftr")
   )
 
   render_ff_swing_ui <- function() {
@@ -2085,6 +2094,13 @@ server_tab7_compare <- function(input, output, session, shared) {
       sprintf("%+.1f", v)
     }
 
+    est_sub <- function(v, stat) {
+      if (is.null(stat$factor) || is.na(v)) return(NULL)
+      est <- ff_impact_pts(v, stat$factor)
+      suffix <- if (identical(stat$side, "def")) " pts allowed" else " pts"
+      tags$div(class = "ff-impact-est", sprintf("est. %+.1f%s", est, suffix))
+    }
+
     get_swing <- function(ff_row, onoff_row, stat) {
       source_row <- if (grepl("Diff$", stat$label)) onoff_row else ff_row
       if (is.null(source_row) || is.null(stat$col) || !(stat$col %in% names(source_row))) return(NA_real_)
@@ -2100,7 +2116,8 @@ server_tab7_compare <- function(input, output, session, shared) {
         va <- get_swing(row_a, onoff_a, stat)
         vb <- get_swing(row_b, onoff_b, stat)
         higher_is_better <- !isTRUE(stat$invert)
-        pvp_stat_row(stat$label, va, vb, fmt_swing, higher_is_better)
+        pvp_stat_row(stat$label, va, vb, fmt_swing, higher_is_better,
+                     sub_a = est_sub(va, stat), sub_b = est_sub(vb, stat))
       })
     }
 
@@ -2113,7 +2130,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
           style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
-          "Swing values use the same diffs as Tab 1 Four Factors (plus Off/Def Diff)."
+          "Swing values use the same diffs as Tab 1 Four Factors (plus Off/Def Diff). Estimated factor impact (est.): points per 100 poss. from league-calibrated regression weights — an approximation, not a measured stat."
         ),
         pvp_section_header("Offensive Four Factors"),
         do.call(tagList, make_rows(off_stats)),
