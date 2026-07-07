@@ -496,3 +496,31 @@ update_single_team_selectize <- function(session, select_id, teams_df, selected 
     server = TRUE
   )
 }
+
+# ---- Four-factor point impact ----
+# Estimated points per 100 poss. contributed by a 1pp change in each factor.
+# Fit: weighted OLS off_ppp ~ off_efg + off_tov + off_oreb + off_ftr on
+# team_metrics_by_game_mv (878 team-games, 2025-26 seasons, weights = off_poss,
+# R^2 = 0.948). Stable per season and under team/opponent fixed effects.
+# Refit after future seasons with scripts/fit_ff_impact_weights.R and update here.
+FF_IMPACT_WEIGHTS <- c(efg = 1.45, tov = -1.36, oreb = 0.63, ftr = 0.13)
+
+# Convert factor deltas (percentage points, natural column orientation) to
+# estimated pts/100. Vectorized over delta and factor; NA in -> NA out.
+# Output is the change in that side's rating: for defense columns this is
+# points ALLOWED (negative = good) -- callers add the "allowed" wording.
+ff_impact_pts <- function(delta, factor) {
+  bad <- setdiff(unique(as.character(factor)), names(FF_IMPACT_WEIGHTS))
+  if (length(bad)) stop("Unknown four-factor name(s): ", paste(bad, collapse = ", "))
+  unname(FF_IMPACT_WEIGHTS[as.character(factor)] * delta)
+}
+
+# Header-tooltip sentence explaining the est. annotation for one factor.
+ff_impact_tooltip <- function(factor) {
+  bad <- setdiff(unique(as.character(factor)), names(FF_IMPACT_WEIGHTS))
+  if (length(bad)) stop("Unknown four-factor name(s): ", paste(bad, collapse = ", "))
+  sprintf(
+    "Estimated impact: each 1pp of this factor \u2248 %+.2f pts per 100 poss. (league-calibrated regression weight; an approximation, not a measured stat).",
+    FF_IMPACT_WEIGHTS[[as.character(factor)]]
+  )
+}
