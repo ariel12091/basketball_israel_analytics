@@ -4,7 +4,7 @@ test_that("build_ts_total_row sums counts and recomputes rates from totals", {
     Player = c("Jordan Bone", "Jordan Bone"), team_name = c("Team A", "Team B"),
     gp = c(10, 5), poss_on_floor = c(300, 150), minutes = c(150, 70),
     pts = c(100, 40), reb = c(40, 15), oreb = c(10, 5), dreb = c(30, 10),
-    ast = c(30, 12), stl = c(10, 4), blk = c(6, 2), tov = c(14, 6),
+    ast = c(30, 12), stl = c(10, 4), blk = c(6, 2), dfl = c(5, 3), tov = c(14, 6),
     fgm = c(38, 16), fga = c(70, 30), `3pm` = c(11, 5), `3pa` = c(29, 12),
     ftm = c(13, 6), fta = c(16, 8), two_pct = c(NA_real_, NA_real_),
     fg_pct = c(54.3, 53.3), tp_pct = c(37.9, 41.7), ft_pct = c(81.3, 75),
@@ -28,6 +28,7 @@ test_that("build_ts_total_row sums counts and recomputes rates from totals", {
   expect_equal(out$minutes, 220)
   expect_equal(out$pts, 140)
   expect_equal(out$reb, 55)
+  expect_equal(out$dfl, 8)
   expect_equal(out$fgm, 54)
   expect_equal(out$fga, 100)
 
@@ -54,6 +55,7 @@ test_that("add_ts_multi_team_totals appends one total per >=2-team identity only
     pts = c(100, 40, 72, 30, 30),
     reb = c(40, 15, 24, 10, 10), oreb = c(10, 5, 7, 3, 3), dreb = c(30, 10, 17, 7, 7),
     ast = c(30, 12, 18, 8, 8), stl = c(10, 4, 7, 5, 5), blk = c(6, 2, 4, 3, 3),
+    dfl = c(5, 3, 4, 2, 2),
     tov = c(14, 6, 11, 5, 5),
     fgm = c(38, 16, 28, 12, 12), fga = c(70, 30, 55, 25, 25),
     `3pm` = c(11, 5, 8, 3, 3), `3pa` = c(29, 12, 22, 10, 10),
@@ -85,6 +87,7 @@ test_that("add_ts_multi_team_totals appends one total per >=2-team identity only
   expect_equal(total$.identity_id, "idA")
   expect_equal(total$gp, 15)
   expect_equal(total$pts, 140)
+  expect_equal(total$dfl, 8)
 
   # Original rows preserved and untouched
   originals <- out[!out$is_multi_team_total, , drop = FALSE]
@@ -116,7 +119,7 @@ test_that("add_ts_multi_team_totals normalizes per-team names to the canonical n
     poss_on_floor = c(1448, 692, 400), minutes = c(900, 500, 600),
     pts = c(341, 166, 200), reb = c(178, 71, 50), oreb = c(52, 24, 10),
     dreb = c(126, 47, 40), ast = c(61, 38, 30), stl = c(25, 13, 5),
-    blk = c(8, 6, 2), tov = c(43, 29, 10),
+    blk = c(8, 6, 2), dfl = c(12, 7, 3), tov = c(43, 29, 10),
     fgm = c(124, 72, 80), fga = c(242, 132, 150),
     `3pm` = c(19, 1, 10), `3pa` = c(64, 1, 30), ftm = c(74, 21, 20), fta = c(98, 32, 25),
     fg_pct = c(51, 54, 53), tp_pct = c(30, 100, 33), ft_pct = c(75, 66, 80),

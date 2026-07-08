@@ -75,7 +75,9 @@ test_that("team ratings traditional render does not require AST% experiment fiel
     team_rating_inputs(session, "Traditional")
 
     expect_silent(rendered <- output$tr_table)
-    expect_team_rating_table(dt_output_text(rendered))
+    output_text <- dt_output_text(rendered)
+    expect_team_rating_table(output_text)
+    expect_true(grepl("DFL", output_text, fixed = TRUE))
   })
 })
 

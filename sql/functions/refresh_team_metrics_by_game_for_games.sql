@@ -22,7 +22,7 @@ BEGIN
     off_fta_raw, def_fta_raw, off_fga_raw, def_fga_raw, off_fgm_raw, def_fgm_raw,
     off_fg3m_raw, def_fg3m_raw, off_ts, off_efg, off_oreb,
     off_tov, off_ftr, def_ts, def_efg, def_oreb, def_tov, def_ftr, off_minutes,
-    def_minutes, pts, reb, ast, stl, blk, tov, fgm, fga, "3pm", "3pa",
+    def_minutes, pts, reb, ast, stl, blk, dfl, tov, fgm, fga, "3pm", "3pa",
     ftm, fta, fg_pct, tp_pct, ft_pct, efg, ts
   )
   WITH lffg_team_game AS (
@@ -175,6 +175,7 @@ BEGIN
       SUM(CASE WHEN d.type = 'assist'   AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS ast,
       SUM(CASE WHEN d.type = 'steal'    AND d.type_lineup = 'defense' THEN 1 ELSE 0 END)::int4 AS stl,
       SUM(CASE WHEN d.type = 'block'    AND d.type_lineup = 'defense' THEN 1 ELSE 0 END)::int4 AS blk,
+      SUM(CASE WHEN d.type = 'deflection' AND d.type_lineup = 'defense' THEN 1 ELSE 0 END)::int4 AS dfl,
       SUM(CASE WHEN d.type = 'turnover' AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS tov,
       SUM(CASE WHEN d.type = 'shot' AND d.parameters_made = 'made' AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS fgm,
       SUM(CASE WHEN d.type = 'shot' AND d.type_lineup = 'offense' THEN 1 ELSE 0 END)::int4 AS fga,
@@ -245,6 +246,7 @@ BEGIN
     tg.ast,
     tg.stl,
     tg.blk,
+    tg.dfl,
     tg.tov,
     tg.fgm,
     tg.fga,
