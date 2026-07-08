@@ -32,10 +32,16 @@ test_that("ff_impact_pts propagates NA and fails closed on unknown factor", {
   expect_error(ff_impact_pts(1, "ts"), "Unknown four-factor")
 })
 
-test_that("ff_impact_tooltip leads with Estimated and includes the weight", {
-  tip <- ff_impact_tooltip("efg")
-  expect_match(tip, "^Estimated")
-  expect_match(tip, "1.45", fixed = TRUE)
-  expect_match(tip, "100 poss", fixed = TRUE)
-  expect_error(ff_impact_tooltip("nope"), "Unknown four-factor")
+test_that("ff_impact_legend leads with Estimated and names all four weights", {
+  legend <- ff_impact_legend()
+  expect_match(legend, "^Estimated")
+  expect_match(legend, "+1.45", fixed = TRUE)
+  expect_match(legend, "-1.36", fixed = TRUE)
+  expect_match(legend, "+0.63", fixed = TRUE)
+  expect_match(legend, "+0.13", fixed = TRUE)
+  expect_match(legend, "100 poss", fixed = TRUE)
+})
+
+test_that("FF_IMPACT_EST_TITLE is the short Estimated hover title", {
+  expect_match(FF_IMPACT_EST_TITLE, "^Estimated")
 })

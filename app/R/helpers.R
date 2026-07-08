@@ -515,12 +515,15 @@ ff_impact_pts <- function(delta, factor) {
   unname(FF_IMPACT_WEIGHTS[as.character(factor)] * delta)
 }
 
-# Header-tooltip sentence explaining the est. annotation for one factor.
-ff_impact_tooltip <- function(factor) {
-  bad <- setdiff(unique(as.character(factor)), names(FF_IMPACT_WEIGHTS))
-  if (length(bad)) stop("Unknown four-factor name(s): ", paste(bad, collapse = ", "))
+# Short hover title for each est. annotation (full detail lives in the legend).
+FF_IMPACT_EST_TITLE <- "Estimated points per 100 possessions"
+
+# Shared legend/caption text for every four-factors surface: names all four
+# weights once, so the per-cell annotations can stay terse.
+ff_impact_legend <- function() {
   sprintf(
-    "Estimated impact: each 1pp of this factor \u2248 %+.2f pts per 100 poss. (league-calibrated regression weight; an approximation, not a measured stat).",
-    FF_IMPACT_WEIGHTS[[as.character(factor)]]
+    "Estimated factor impact (est.): each 1pp of a factor \u2248 eFG %+.2f, TOV %+.2f, OREB %+.2f, FTR %+.2f pts per 100 poss. (league-calibrated regression weights \u2014 an approximation, not a measured stat).",
+    FF_IMPACT_WEIGHTS[["efg"]], FF_IMPACT_WEIGHTS[["tov"]],
+    FF_IMPACT_WEIGHTS[["oreb"]], FF_IMPACT_WEIGHTS[["ftr"]]
   )
 }

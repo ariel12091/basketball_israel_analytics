@@ -985,7 +985,7 @@ server_tab1 <- function(input, output, session, shared) {
 
           impact_w <- FF_IMPACT_WEIGHTS[[FF_METRIC_FACTOR[[diff_name]]]]
           impact_suffix <- if (startsWith(diff_name, "Def")) " pts allowed" else " pts"
-          impact_tip <- ff_impact_tooltip(FF_METRIC_FACTOR[[diff_name]])
+          impact_tip <- FF_IMPACT_EST_TITLE
 
           js_func <- JS(sprintf(
             "function(data, type, row, meta) {
@@ -1102,7 +1102,7 @@ server_tab1 <- function(input, output, session, shared) {
                       escape = dt_escape_except(df_final),
                       caption = htmltools::tags$caption(
                         style = "caption-side: bottom; text-align: center; font-size: .72rem; color: #8b949e; padding-top: 6px;",
-                        "Estimated factor impact (est.): points per 100 poss. from league-calibrated regression weights — an approximation, not a measured stat."
+                        ff_impact_legend()
                       ),
                       options = list(
                         headerCallback = HEADER_TOOLTIP_JS,

@@ -2098,7 +2098,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (is.null(stat$factor) || is.na(v)) return(NULL)
       est <- ff_impact_pts(v, stat$factor)
       suffix <- if (identical(stat$side, "def")) " pts allowed" else " pts"
-      tags$div(class = "ff-impact-est", title = ff_impact_tooltip(stat$factor),
+      tags$div(class = "ff-impact-est", title = FF_IMPACT_EST_TITLE,
                sprintf("est. %+.1f%s", est, suffix))
     }
 
@@ -2131,7 +2131,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
           style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
-          "Swing values use the same diffs as Tab 1 Four Factors (plus Off/Def Diff). Estimated factor impact (est.): points per 100 poss. from league-calibrated regression weights — an approximation, not a measured stat."
+          paste("Swing values use the same diffs as Tab 1 Four Factors (plus Off/Def Diff).", ff_impact_legend())
         ),
         pvp_section_header("Offensive Four Factors"),
         do.call(tagList, make_rows(off_stats)),
@@ -3298,7 +3298,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         if (!is.null(m$factor) && is.finite(va) && is.finite(vb)) {
           est_span <- tags$span(
             class = "ff-impact-est",
-            title = ff_impact_tooltip(m$factor),
+            title = FF_IMPACT_EST_TITLE,
             sprintf("est. %.1f pts", abs(ff_impact_pts(va - vb, m$factor)))
           )
         }
@@ -3339,7 +3339,7 @@ server_tab7_compare <- function(input, output, session, shared) {
           do.call(tagList, all_cells)),
         tags$div(
           style = "text-align: center; font-size: .72rem; color: #6e7681; margin-top: 8px;",
-          "Estimated factor impact (est.): points per 100 poss. from league-calibrated regression weights — an approximation, not a measured stat."
+          ff_impact_legend()
         )
       )
     )
