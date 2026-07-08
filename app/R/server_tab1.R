@@ -1100,10 +1100,6 @@ server_tab1 <- function(input, output, session, shared) {
       dt <- datatable(df_final,
                       container = sketch_ff, rownames = FALSE,
                       escape = dt_escape_except(df_final),
-                      caption = htmltools::tags$caption(
-                        style = "caption-side: bottom; text-align: center; font-size: .72rem; color: #8b949e; padding-top: 6px;",
-                        ff_impact_legend()
-                      ),
                       options = list(
                         headerCallback = HEADER_TOOLTIP_JS,
                         dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE,

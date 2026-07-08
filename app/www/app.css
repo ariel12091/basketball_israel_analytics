@@ -362,6 +362,14 @@ table.dataTable thead select {
   cursor: help;
 }
 
+/* Legend line under four-factors tables explaining the est. annotations */
+.ff-impact-legend {
+  text-align: center;
+  font-size: .72rem;
+  color: #8b949e;
+  margin-top: 8px;
+}
+
 /* ---- View Mode Toggle ---- */
 .view-mode-container .shiny-options-group { display: flex; width: 100%; justify-content: center; gap: 10px; }
 .view-mode-container .radio label {

@@ -233,7 +233,11 @@ ui_tab1_onoff <- tabPanel(
           )
         ),
         uiOutput("on_filter_chips"),
-        DTOutput("onoff_dt")
+        DTOutput("onoff_dt"),
+        conditionalPanel(
+          condition = "input.onoff_view_mode == 'Four Factors'",
+          tags$div(class = "ff-impact-legend", ff_impact_legend())
+        )
       )
     )
   )
