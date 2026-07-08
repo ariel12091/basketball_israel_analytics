@@ -8,8 +8,10 @@
 read_renviron <- function(path) {
   lines <- readLines(path)
   lines <- lines[grepl("=", lines, fixed = TRUE) & !grepl("^\\s*#", lines)]
-  kv <- do.call(rbind, strsplit(lines, "=", fixed = TRUE))
-  setNames(trimws(kv[, 2]), trimws(kv[, 1]))
+  # Split on the FIRST '=' only, so values containing '=' survive intact.
+  keys <- sub("=.*$", "", lines)
+  vals <- sub("^[^=]*=", "", lines)
+  setNames(trimws(vals), trimws(keys))
 }
 
 env <- read_renviron(file.path("app", ".Renviron"))
