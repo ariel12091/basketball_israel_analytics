@@ -985,6 +985,7 @@ server_tab1 <- function(input, output, session, shared) {
 
           impact_w <- FF_IMPACT_WEIGHTS[[FF_METRIC_FACTOR[[diff_name]]]]
           impact_suffix <- if (startsWith(diff_name, "Def")) " pts allowed" else " pts"
+          impact_tip <- ff_impact_tooltip(FF_METRIC_FACTOR[[diff_name]])
 
           js_func <- JS(sprintf(
             "function(data, type, row, meta) {
@@ -993,7 +994,7 @@ server_tab1 <- function(input, output, session, shared) {
                  var estLine = '';
                  if (data !== null && data !== '' && !isNaN(parseFloat(data))) {
                    var est = parseFloat(data) * w;
-                   estLine = '<div class=\"ff-impact-est\">est. ' +
+                   estLine = '<div class=\"ff-impact-est\" title=\"%s\">est. ' +
                              (est >= 0 ? '+' : '\\u2212') + Math.abs(est).toFixed(1) +
                              '%s</div>';
                  }
@@ -1028,7 +1029,7 @@ server_tab1 <- function(input, output, session, shared) {
                         estLine;
                }
                return data;
-             }", impact_w, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
+             }", impact_w, impact_tip, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
           ))
           defs[[length(defs) + 1]] <- list(targets = target_idx, render = js_func)
         }
@@ -1090,8 +1091,8 @@ server_tab1 <- function(input, output, session, shared) {
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head", "Diff"),
-          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", title = ff_impact_tooltip("efg"), "eFG%"), th(class = "sub-head", title = paste0(OFF_OREB_TOOLTIP, " — ", ff_impact_tooltip("oreb")), "OREB%"), th(class = "sub-head", title = ff_impact_tooltip("tov"), "TOV%"), th(class = "sub-head", title = ff_impact_tooltip("ftr"), "FTR"),
-          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", title = ff_impact_tooltip("efg"), "eFG%"), th(class = "sub-head", title = paste0(DEF_OREB_TOOLTIP, " — ", ff_impact_tooltip("oreb")), "OREB%"), th(class = "sub-head", title = ff_impact_tooltip("tov"), "TOV%"), th(class = "sub-head", title = ff_impact_tooltip("ftr"), "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
+          th(class = "sub-head section-left-border", "Diff"), th(class = "sub-head", "eFG%"), th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"), th(class = "sub-head", "TOV%"), th(class = "sub-head", "FTR"),
           th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))

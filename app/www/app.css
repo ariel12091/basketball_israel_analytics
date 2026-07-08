@@ -359,6 +359,7 @@ table.dataTable thead select {
   color: #8b949e;
   margin-top: 2px;
   white-space: nowrap;
+  cursor: help;
 }
 
 /* ---- View Mode Toggle ---- */

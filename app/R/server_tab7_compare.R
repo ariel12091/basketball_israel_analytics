@@ -2098,7 +2098,8 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (is.null(stat$factor) || is.na(v)) return(NULL)
       est <- ff_impact_pts(v, stat$factor)
       suffix <- if (identical(stat$side, "def")) " pts allowed" else " pts"
-      tags$div(class = "ff-impact-est", sprintf("est. %+.1f%s", est, suffix))
+      tags$div(class = "ff-impact-est", title = ff_impact_tooltip(stat$factor),
+               sprintf("est. %+.1f%s", est, suffix))
     }
 
     get_swing <- function(ff_row, onoff_row, stat) {
@@ -3297,6 +3298,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         if (!is.null(m$factor) && is.finite(va) && is.finite(vb)) {
           est_span <- tags$span(
             class = "ff-impact-est",
+            title = ff_impact_tooltip(m$factor),
             sprintf("est. %.1f pts", abs(ff_impact_pts(va - vb, m$factor)))
           )
         }
