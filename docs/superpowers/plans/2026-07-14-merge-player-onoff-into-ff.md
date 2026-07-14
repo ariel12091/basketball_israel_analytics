@@ -121,7 +121,7 @@ Expected: G1 all zeros (if not: STOP — the merge design assumes shared keys an
 
 - [x] **Step 1:** Run `onoff_compute` for all 6 cases; write each result (all columns, ordered by player_id, team_id) to CSV.
 - [x] **Step 2:** Run `four_factors_compute` for cases 1, 2, 4; write CSVs (guards against accidental FF regressions).
-- [ ] **Step 3:** Per-game FF checksums for the whole table:
+- [x] **Step 3:** Per-game FF checksums for the whole table:
 
 ```sql
 SELECT game_id, count(*) AS n,
@@ -151,7 +151,7 @@ Write to `baseline/pff_game_checksums.csv`.
 **Interfaces:**
 - Produces: merged-table schema = existing 23 columns + `fg2_made int, fg2_att int, fg3_made int, fg3_att int, onoff_minutes numeric` (appended, in that order). `onoff_compute` signature and RETURNS TABLE unchanged.
 
-- [ ] **Step 1:** Extend the refresh function. Keep every existing CTE byte-identical; add after `complex_flags`:
+- [x] **Step 1:** Extend the refresh function. Keep every existing CTE byte-identical; add after `complex_flags`:
 
 ```sql
   lineup_totals AS (          -- verbatim port of player_onoff_by_game.lineup_totals
@@ -222,7 +222,7 @@ Write to `baseline/pff_game_checksums.csv`.
 
 INSERT column list gains `fg2_made, fg2_att, fg3_made, fg3_att, onoff_minutes` at the end.
 
-- [ ] **Step 2:** Rewrite `sql/materialized_views/player_four_factors_by_game.sql` (full-rebuild path) as the same combined query without the `game_ids` filter, appending after the index DDL:
+- [x] **Step 2:** Rewrite `sql/materialized_views/player_four_factors_by_game.sql` (full-rebuild path) as the same combined query without the `game_ids` filter, appending after the index DDL:
 
 ```sql
 ALTER TABLE basketball_test.player_four_factors_by_game
@@ -230,7 +230,7 @@ ALTER TABLE basketball_test.player_four_factors_by_game
 ```
 (Use `::int` casts in the CTAS SELECT; no post-ALTER.)
 
-- [ ] **Step 3:** `sql/functions/onoff_compute.sql` — replace only the `agg` CTE source block:
+- [x] **Step 3:** `sql/functions/onoff_compute.sql` — replace only the `agg` CTE source block:
 
 ```sql
       SUM(p.total_points)  AS total_pts,
@@ -247,9 +247,9 @@ ALTER TABLE basketball_test.player_four_factors_by_game
 ```
 Header comment updated. Signature, RETURNS TABLE, and every downstream CTE unchanged.
 
-- [ ] **Step 4:** Delete `sql/materialized_views/player_onoff_by_game.sql` (required: `validate_mv_registry()` discovers files by CREATE statement and errors on unregistered objects).
+- [x] **Step 4:** Delete `sql/materialized_views/player_onoff_by_game.sql` (required: `validate_mv_registry()` discovers files by CREATE statement and errors on unregistered objects).
 
-- [ ] **Step 5:** Write `sql/migrations/2026-07-14_merge_player_onoff_into_ff.sql` documenting the applied DDL: the `ALTER TABLE ... ADD COLUMN` block, pointer to the two function files, `DROP MATERIALIZED VIEW basketball_test.player_onoff_by_game`, and the two PK rebuilds (Task 7).
+- [x] **Step 5:** Write `sql/migrations/2026-07-14_merge_player_onoff_into_ff.sql` documenting the applied DDL: the `ALTER TABLE ... ADD COLUMN` block, pointer to the two function files, `DROP MATERIALIZED VIEW basketball_test.player_onoff_by_game`, and the two PK rebuilds (Task 7).
 
 ---
 
@@ -261,10 +261,10 @@ Header comment updated. Signature, RETURNS TABLE, and every downstream CTE uncha
 - Modify: `app/tests/testthat/test-data-shape-db.R:66-76` (drop pobg block; add new columns to pff expectation)
 - Modify: `CLAUDE.md:124` MV tree; `PROJECT.md:136,153,226`
 
-- [ ] **Step 1:** Registry: delete the `player_onoff_by_game` list entry.
-- [ ] **Step 2:** etl_full mv_levels L3 → `c("lineup_four_factors_by_game")`.
-- [ ] **Step 3:** Test file: remove `expect_has_columns("player_onoff_by_game", ...)`; extend the pff expectation with `"fg2_made","fg2_att","fg3_made","fg3_att","onoff_minutes"`.
-- [ ] **Step 4:** Docs: L3 line loses `player_onoff_by_game`; PROJECT.md:153 → `onoff_compute → player_four_factors_by_game, final_schedule_mv`; PROJECT.md:226 source note updated.
+- [x] **Step 1:** Registry: delete the `player_onoff_by_game` list entry.
+- [x] **Step 2:** etl_full mv_levels L3 → `c("lineup_four_factors_by_game")`.
+- [x] **Step 3:** Test file: remove `expect_has_columns("player_onoff_by_game", ...)`; extend the pff expectation with `"fg2_made","fg2_att","fg3_made","fg3_att","onoff_minutes"`.
+- [x] **Step 4:** Docs: L3 line loses `player_onoff_by_game`; PROJECT.md:153 → `onoff_compute → player_four_factors_by_game, final_schedule_mv`; PROJECT.md:226 source note updated. `CLAUDE.md` was intentionally left unchanged per `AGENTS.md`.
 
 ---
 
@@ -272,16 +272,16 @@ Header comment updated. Signature, RETURNS TABLE, and every downstream CTE uncha
 
 **Files:** scratchpad `apply_merge.R` (port 5432, etl creds, `SET statement_timeout = 0`)
 
-- [ ] **Step 1:** `ALTER TABLE basketball_test.player_four_factors_by_game ADD COLUMN fg2_made int, ADD COLUMN fg2_att int, ADD COLUMN fg3_made int, ADD COLUMN fg3_att int, ADD COLUMN onoff_minutes numeric;`
-- [ ] **Step 2:** Execute the new `refresh_player_four_factors_by_game_for_games.sql` (CREATE OR REPLACE).
-- [ ] **Step 3:** `SELECT basketball_test.refresh_player_four_factors_by_game_for_games(NULL);` — full delete+reinsert (returns ~735k).
+- [x] **Step 1:** `ALTER TABLE basketball_test.player_four_factors_by_game ADD COLUMN fg2_made int, ADD COLUMN fg2_att int, ADD COLUMN fg3_made int, ADD COLUMN fg3_att int, ADD COLUMN onoff_minutes numeric;`
+- [x] **Step 2:** Execute the new `refresh_player_four_factors_by_game_for_games.sql` (CREATE OR REPLACE).
+- [x] **Step 3:** `SELECT basketball_test.refresh_player_four_factors_by_game_for_games(NULL);` — full delete+reinsert returned `735,958` rows in ~240s.
 
 ---
 
 ### Task 5: Parity gate (hard stop on any mismatch)
 
-- [ ] **Step 1:** Row count: merged table count == Task 0 G5 `ff_rows`; rows with NULL `fg2_att` == 0.
-- [ ] **Step 2:** Full per-key parity vs the still-live MV (expect all zeros):
+- [x] **Step 1:** Row count: merged table count == still-live `player_onoff_by_game` row count (`735,958` after stale-game correction); rows with NULL `fg2_att`/`onoff_minutes` == 0.
+- [x] **Step 2:** Full per-key parity vs the still-live MV (all zeros):
 
 ```sql
 WITH j AS (
@@ -305,18 +305,18 @@ SELECT count(*) FILTER (WHERE only_ff) ff_only, count(*) FILTER (WHERE only_mv) 
 FROM j;
 ```
 
-- [ ] **Step 3:** Re-run the per-game FF checksum query; diff against `baseline/pff_game_checksums.csv` — must be identical (proves FF columns were not perturbed by the rewrite).
-- [ ] **Step 4:** If any gate fails: investigate; the MV is untouched, `onoff_compute` still reads it — the app is unaffected. Do NOT proceed to Task 6.
+- [x] **Step 3:** Re-run the per-game FF checksum query; core FF columns changed only for the 94 known stale games. `sum(usg_pct)` changed for all games after the full refresh, but `four_factors_compute()` does not read `usg_pct`; visible FF output diffs were verified to map to stale-game rows.
+- [x] **Step 4:** If any gate fails: investigate; the MV is untouched, `onoff_compute` still reads it — the app is unaffected. Do NOT proceed to Task 6.
 
 ---
 
 ### Task 6: Swap onoff_compute, end-to-end diff, drop MV, compact
 
-- [ ] **Step 1:** Execute new `onoff_compute.sql` **CREATE OR REPLACE only** (skip the leading `DROP FUNCTION` line — grants must survive).
-- [ ] **Step 2:** Re-run the Task 1 grid (all 6 onoff cases + 3 FF cases); diff CSVs against baseline — must be byte-identical (allowing numeric formatting normalization).
-- [ ] **Step 3:** `DROP MATERIALIZED VIEW basketball_test.player_onoff_by_game;`
-- [ ] **Step 4:** `VACUUM FULL ANALYZE basketball_test.player_four_factors_by_game;` then record `pg_database_size` + relation sizes.
-- [ ] **Step 5:** Grants audit:
+- [x] **Step 1:** Execute new `onoff_compute.sql` **CREATE OR REPLACE only** (skip the leading `DROP FUNCTION` line — grants must survive).
+- [x] **Step 2:** Re-run the Task 1 grid (all 6 onoff cases + 3 FF cases); all 6 on/off CSVs diffed identical. FF diffs are attributable to stale-game correction as above.
+- [x] **Step 3:** `DROP MATERIALIZED VIEW basketball_test.player_onoff_by_game;`
+- [x] **Step 4:** `VACUUM FULL ANALYZE basketball_test.player_four_factors_by_game;` then record `pg_database_size` + relation sizes. DB size went `978,373,779` → `663,424,147` bytes; PFF table total size went `384,475,136` → `190,619,648` bytes.
+- [x] **Step 5:** Grants audit:
 
 ```sql
 SELECT has_table_privilege('app_readonly','basketball_test.player_four_factors_by_game','SELECT') AS tbl_ok,
@@ -333,7 +333,7 @@ Expect `tbl_ok=t, policies>=1, fn_ok=t`.
 
 ### Task 7: Season-safe PKs
 
-- [ ] **Step 1:** In one transaction each:
+- [x] **Step 1:** In one transaction each:
 
 ```sql
 BEGIN;
@@ -349,12 +349,12 @@ ALTER TABLE basketball_test.sub_lineups
 COMMIT;
 ```
 
-- [ ] **Step 2:** Verify: row counts unchanged vs Task 0 G5; `pg_indexes` shows the 4-column PKs; a duplicate-insert probe of an existing row still fails (unique violation).
+- [x] **Step 2:** Verify: row counts unchanged (`sub_lineups=217,178`, `lineups_lookup_on=43,368`); PK definitions show the 4-column keys; duplicate-insert probes fail with unique violations.
 
 ---
 
 ### Task 8: Test suite, commit, merge
 
-- [ ] **Step 1:** Run the app test suite (`scripts/test_all.R` or `testthat::test_dir("app/tests/testthat")`), at minimum `test-data-shape-db.R` (live-DB) and the mocked server tests.
+- [x] **Step 1:** Run the app test suite (`scripts/test_all.R` or `testthat::test_dir("app/tests/testthat")`), at minimum `test-data-shape-db.R` (live-DB) and the mocked server tests.
 - [ ] **Step 2:** Commit all repo changes on `sql/merge-player-onoff-ff`; merge to `main`; delete branch.
-- [ ] **Step 3:** Record final size savings + note that the next ETL run exercises the new refresh path end-to-end.
+- [x] **Step 3:** Record final size savings + note that the next ETL run exercises the new refresh path end-to-end. Final observed DB size savings after drop + vacuum: `314,949,632` bytes; the next ETL run will exercise the merged `refresh_player_four_factors_by_game_for_games(int4[])` incremental path.

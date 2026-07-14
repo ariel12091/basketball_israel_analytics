@@ -206,8 +206,8 @@ BEGIN
   ),
 
   /* ------------------------------------------------------------
-     Core aggregation — reads from pre-aggregated player_onoff_by_game
-     instead of joining lineups_lookup × df_pts_poss_lineups_longer_mv
+     Core aggregation - reads from merged player_four_factors_by_game
+     instead of joining lineups_lookup x df_pts_poss_lineups_longer_mv
   ------------------------------------------------------------ */
   agg AS (
     SELECT
@@ -216,17 +216,17 @@ BEGIN
       p.is_on_key,
       p.type_lineup,
       p.game_year,
-      SUM(p.total_pts)  AS total_pts,
+      SUM(p.total_points)  AS total_pts,
       SUM(p.total_poss) AS total_poss,
       ROUND(
-        SUM(p.total_pts) / NULLIF(SUM(p.total_poss), 0)::numeric * 100, 1
+        SUM(p.total_points) / NULLIF(SUM(p.total_poss), 0)::numeric * 100, 1
       ) AS ppp_calc,
       SUM(p.fg2_made)::bigint AS fg2_made,
       SUM(p.fg2_att)::bigint  AS fg2_att,
       SUM(p.fg3_made)::bigint AS fg3_made,
       SUM(p.fg3_att)::bigint  AS fg3_att,
-      SUM(COALESCE(p.minutes, 0))::numeric AS minutes
-    FROM basketball_test.player_onoff_by_game p
+      SUM(COALESCE(p.onoff_minutes, 0))::numeric AS minutes
+    FROM basketball_test.player_four_factors_by_game p
     JOIN sched s ON s.game_id = p.game_id AND s.team_id = p.team_id
     WHERE (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR p.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
       AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR p.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))

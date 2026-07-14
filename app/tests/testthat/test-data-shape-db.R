@@ -63,16 +63,12 @@ test_that("live DB has the app-required shape for default MVs", {
     "ON Poss", "OFF Poss", "minutes", "player_id", "team_id"
   ))
 
-  expect_has_columns("player_onoff_by_game", c(
-    "player_id", "team_id", "game_id", "game_year", "is_on_key",
-    "type_lineup", "total_pts", "total_poss", "minutes"
-  ))
-
   expect_has_columns("player_four_factors_by_game", c(
     "player_id", "team_id", "game_id", "game_year", "is_on_key",
     "type_lineup", "total_points", "total_poss", "ts_poss_count",
     "tov_count", "player_ts_poss_count", "player_tov_count",
-    "minutes", "usg_pct"
+    "minutes", "usg_pct",
+    "fg2_made", "fg2_att", "fg3_made", "fg3_att", "onoff_minutes"
   ))
 
   expect_has_columns("team_ppp_ratings_mv", c(

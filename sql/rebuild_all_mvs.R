@@ -20,7 +20,6 @@ MV_REGISTRY <- list(
   list(name = "mv_lineup_totals_by_day",        file = "sql/materialized_views/sub_lineups_by_day.sql",            level = 2),
   list(name = "team_ppp_ratings_mv",            file = "sql/materialized_views/team_ppp_ratings_mv.sql",           level = 2),
   list(name = "onoff_default_mv",               file = "sql/materialized_views/onoff_mv.sql",                      level = 2, type = "table"),
-  list(name = "player_onoff_by_game",           file = "sql/materialized_views/player_onoff_by_game.sql",          level = 3),
   list(name = "player_four_factors_by_game",    file = "sql/materialized_views/player_four_factors_by_game.sql",   level = 3, type = "table"),
   list(name = "lineup_four_factors_by_game",    file = "sql/materialized_views/lineup_four_factors_by_game.sql",   level = 3),
   list(name = "team_metrics_by_game_mv",        file = "sql/materialized_views/team_metrics_by_game_mv.sql",       level = 3, type = "table"),

@@ -17,7 +17,8 @@ BEGIN
     num_starters, own_starters, opp_starters, total_points, total_poss,
     ts_poss_count, oreb_count, oreb_opportunities, tov_count,
     total_ft_attempts, total_fga, total_fgm, total_fg3_made,
-    player_ts_poss_count, player_tov_count, minutes, usg_pct
+    player_ts_poss_count, player_tov_count, minutes, usg_pct,
+    fg2_made, fg2_att, fg3_made, fg3_att, onoff_minutes
   )
   WITH base0 AS (
     SELECT DISTINCT
@@ -63,6 +64,83 @@ BEGIN
     WHERE d.parent_action_id IS NOT NULL
       AND (game_ids IS NULL OR d.game_id = ANY(game_ids))
     ORDER BY d.id
+  ),
+  lineup_totals AS (
+    SELECT
+      cs.game_id,
+      s.game_year,
+      cs.team_id,
+      cs.lineup_hash,
+      cs.type_lineup,
+      cs.own_starters,
+      cs.opp_starters,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 THEN 1 ELSE 0 END) AS fg2_att,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att
+    FROM clean_stats cs
+    JOIN basketball_test.schedule s ON s.game_id = cs.game_id
+    GROUP BY cs.game_id, s.game_year, cs.team_id, cs.lineup_hash, cs.type_lineup, cs.own_starters, cs.opp_starters
+  ),
+  onoff_lineup_segments AS (
+    SELECT
+      cs.game_id,
+      cs.team_id,
+      cs.lineup_hash,
+      cs.type_lineup,
+      cs.own_starters,
+      cs.opp_starters,
+      cs.segment_id,
+      GREATEST(MAX(cs.end_game_seconds_remaining) - MIN(cs.end_game_seconds_remaining), 0)::numeric AS seg_seconds
+    FROM clean_stats cs
+    WHERE cs.lineup_hash IS NOT NULL
+      AND cs.segment_id IS NOT NULL
+      AND cs.end_game_seconds_remaining IS NOT NULL
+    GROUP BY cs.game_id, cs.team_id, cs.lineup_hash, cs.type_lineup, cs.own_starters, cs.opp_starters, cs.segment_id
+  ),
+  onoff_lineup_minutes AS (
+    SELECT
+      game_id,
+      team_id,
+      lineup_hash,
+      type_lineup,
+      own_starters,
+      opp_starters,
+      CASE
+        WHEN type_lineup = 'offense' THEN ROUND(SUM(seg_seconds) / 60.0, 3)
+        ELSE 0::numeric
+      END AS minutes
+    FROM onoff_lineup_segments
+    GROUP BY game_id, team_id, lineup_hash, type_lineup, own_starters, opp_starters
+  ),
+  onoff_player AS (
+    SELECT
+      b0.player_id,
+      b0.team_id,
+      lt.game_id,
+      lt.game_year,
+      b0.is_on_key,
+      lt.type_lineup,
+      lt.own_starters,
+      lt.opp_starters,
+      SUM(lt.fg2_made) AS fg2_made,
+      SUM(lt.fg2_att) AS fg2_att,
+      SUM(lt.fg3_made) AS fg3_made,
+      SUM(lt.fg3_att) AS fg3_att,
+      SUM(COALESCE(lm.minutes, 0)) AS onoff_minutes
+    FROM base0 b0
+    JOIN lineup_totals lt
+      ON lt.lineup_hash = b0.lineup_hash
+     AND lt.team_id = b0.team_id
+    LEFT JOIN onoff_lineup_minutes lm
+      ON lm.game_id = lt.game_id
+     AND lm.team_id = lt.team_id
+     AND lm.lineup_hash = lt.lineup_hash
+     AND lm.type_lineup = lt.type_lineup
+     AND lm.own_starters = lt.own_starters
+     AND lm.opp_starters = lt.opp_starters
+    GROUP BY b0.player_id, b0.team_id, lt.game_id, lt.game_year, b0.is_on_key,
+             lt.type_lineup, lt.own_starters, lt.opp_starters
   ),
   combined_data AS (
     SELECT
@@ -164,7 +242,8 @@ BEGIN
     GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year, cd.is_on_key,
              cd.type_lineup, cd.num_starters, cd.own_starters, cd.opp_starters,
              cd.segment_id
-  )
+  ),
+  ff AS (
   SELECT
     ss.player_id,
     ss.team_id,
@@ -212,7 +291,46 @@ BEGIN
    AND st.opp_starters = ss.opp_starters
    AND st.segment_id = ss.segment_id
   GROUP BY ss.player_id, ss.team_id, ss.game_id, ss.game_year, ss.is_on_key,
-           ss.type_lineup, ss.num_starters, ss.own_starters, ss.opp_starters;
+           ss.type_lineup, ss.num_starters, ss.own_starters, ss.opp_starters
+  )
+  SELECT
+    ff.player_id,
+    ff.team_id,
+    ff.game_id,
+    ff.game_year,
+    ff.is_on_key,
+    ff.type_lineup,
+    ff.num_starters,
+    ff.own_starters,
+    ff.opp_starters,
+    ff.total_points,
+    ff.total_poss,
+    ff.ts_poss_count,
+    ff.oreb_count,
+    ff.oreb_opportunities,
+    ff.tov_count,
+    ff.total_ft_attempts,
+    ff.total_fga,
+    ff.total_fgm,
+    ff.total_fg3_made,
+    ff.player_ts_poss_count,
+    ff.player_tov_count,
+    ff.minutes,
+    ff.usg_pct,
+    op.fg2_made::int,
+    op.fg2_att::int,
+    op.fg3_made::int,
+    op.fg3_att::int,
+    op.onoff_minutes
+  FROM ff
+  LEFT JOIN onoff_player op
+    ON op.player_id = ff.player_id
+   AND op.team_id = ff.team_id
+   AND op.game_id = ff.game_id
+   AND op.is_on_key = ff.is_on_key
+   AND COALESCE(op.type_lineup, '~') = COALESCE(ff.type_lineup, '~')
+   AND COALESCE(op.own_starters, -1) = COALESCE(ff.own_starters, -1)
+   AND COALESCE(op.opp_starters, -1) = COALESCE(ff.opp_starters, -1);
 
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
   RETURN inserted_count;

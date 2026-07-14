@@ -939,7 +939,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   mv_levels <- list(
     list(level = 1, mvs = c("final_schedule_mv")),
     list(level = 2, mvs = c("mv_lineup_totals_by_day", "team_ppp_ratings_mv")),
-    list(level = 3, mvs = c("player_onoff_by_game", "lineup_four_factors_by_game")),
+    list(level = 3, mvs = c("lineup_four_factors_by_game")),
     list(level = 4, mvs = c("team_metrics_rolling_mv", "team_four_factors_mv"))
   )
 
