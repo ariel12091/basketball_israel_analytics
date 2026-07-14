@@ -1188,10 +1188,6 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       )$n
       log_msg(sprintf("  sub_lineups_stats before: %s rows", format(before_cnt, big.mark = ",")))
 
-      DBI::dbExecute(
-        pg, sprintf('SET search_path TO %s, public;', SCHEMA)
-      )
-
       # Prefer incremental refresh for processed game IDs when function exists.
       incr_exists <- DBI::dbGetQuery(
         pg,
@@ -1205,15 +1201,27 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         params = list(SCHEMA)
       )$ok[[1]]
 
+      # Schema-qualified calls inside a transaction with SET LOCAL: session-level
+      # SET is not reliable on the transaction pooler (port 6543).
+      refresh_tx <- function(stmt) {
+        DBI::dbBegin(pg)
+        tryCatch({
+          DBI::dbExecute(pg, "SET LOCAL statement_timeout = 0;")
+          res <- DBI::dbGetQuery(pg, stmt)
+          DBI::dbCommit(pg)
+          res
+        }, error = function(e) {
+          try(DBI::dbRollback(pg), silent = TRUE)
+          stop(e)
+        })
+      }
+
       if (length(processed_ids) && isTRUE(incr_exists) && !isTRUE(force_full_sub_lineup_stats)) {
         ids_sql <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
-        touched <- DBI::dbGetQuery(
-          pg,
-          sprintf(
-            "SELECT refresh_sub_lineups_stats_for_games(ARRAY[%s]::int4[]) AS n",
-            ids_sql
-          )
-        )$n[[1]]
+        touched <- refresh_tx(sprintf(
+          'SELECT "%s".refresh_sub_lineups_stats_for_games(ARRAY[%s]::int4[]) AS n',
+          SCHEMA, ids_sql
+        ))$n[[1]]
         log_msg(sprintf(
           "  Used incremental refresh for %d game(s); touched %s sub-lineup rows",
           length(processed_ids), format(as.integer(touched), big.mark = ",")
@@ -1224,8 +1232,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         } else if (isTRUE(force_full_sub_lineup_stats)) {
           log_msg("  Forced full refresh requested for sub_lineups_stats")
         }
-        DBI::dbExecute(pg, "SET statement_timeout = 0;")
-        DBI::dbExecute(pg, "SELECT refresh_sub_lineups_stats();")
+        refresh_tx(sprintf('SELECT "%s".refresh_sub_lineups_stats();', SCHEMA))
         log_msg("  Used full refresh_sub_lineups_stats()")
       }
 

@@ -17,7 +17,7 @@ BEGIN
     num_starters, own_starters, opp_starters, total_points, total_poss,
     ts_poss_count, oreb_count, oreb_opportunities, tov_count,
     total_ft_attempts, total_fga, total_fgm, total_fg3_made,
-    player_ts_poss_count, player_tov_count, minutes, usg_pct,
+    player_ts_poss_count, player_tov_count, minutes,
     fg2_made, fg2_att, fg3_made, fg3_att, onoff_minutes
   )
   WITH base0 AS (
@@ -266,19 +266,7 @@ BEGIN
     SUM(ss.total_fg3_made)::bigint AS total_fg3_made,
     SUM(ss.player_ts_poss_count)::bigint AS player_ts_poss_count,
     SUM(ss.player_tov_count)::bigint AS player_tov_count,
-    SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes,
-    CASE
-      WHEN ss.type_lineup = 'offense'
-       AND ss.is_on_key = 1
-       AND SUM(ss.total_poss) > 0
-       AND SUM(ss.ts_poss_count + ss.tov_count) > 0
-      THEN ROUND(
-        100.0 * SUM(ss.player_ts_poss_count + ss.player_tov_count)::numeric
-        / NULLIF(SUM(ss.ts_poss_count + ss.tov_count)::numeric, 0),
-        1
-      )
-      ELSE NULL
-    END AS usg_pct
+    SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
   FROM segment_stats ss
   LEFT JOIN segment_times st
     ON st.player_id = ss.player_id
@@ -316,7 +304,6 @@ BEGIN
     ff.player_ts_poss_count,
     ff.player_tov_count,
     ff.minutes,
-    ff.usg_pct,
     op.fg2_made::int,
     op.fg2_att::int,
     op.fg3_made::int,

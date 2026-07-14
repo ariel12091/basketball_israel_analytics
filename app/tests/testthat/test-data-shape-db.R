@@ -67,9 +67,14 @@ test_that("live DB has the app-required shape for default MVs", {
     "player_id", "team_id", "game_id", "game_year", "is_on_key",
     "type_lineup", "total_points", "total_poss", "ts_poss_count",
     "tov_count", "player_ts_poss_count", "player_tov_count",
-    "minutes", "usg_pct",
+    "minutes",
     "fg2_made", "fg2_att", "fg3_made", "fg3_att", "onoff_minutes"
   ))
+
+  # usg_pct was dropped 2026-07-15: no consumer read it (Tab 5/7 USG% is
+  # computed independently in player_traditional paths) and its stored
+  # values had drifted from the repo formula.
+  expect_lacks_columns("player_four_factors_by_game", "usg_pct")
 
   expect_has_columns("team_ppp_ratings_mv", c(
     "game_year", "team_id", "team_name", "off_ppp", "def_ppp",

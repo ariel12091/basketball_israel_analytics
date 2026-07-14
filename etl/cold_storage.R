@@ -165,6 +165,28 @@ run_cold_storage_purge <- function(
     log_msg("  [COLD] Re-added lineups_lookup FK (NOT VALID)")
   }, error = function(e) {
     log_msg(sprintf("  [COLD] TRUNCATE FAILED — %s", conditionMessage(e)), "ERROR")
+    # A failure after the DROP CONSTRAINT would otherwise silently leave the
+    # schema without the lineups_lookup -> actions_clean integrity check.
+    fk_present <- tryCatch(
+      DBI::dbGetQuery(pg, sprintf(
+        "SELECT count(*) AS n FROM pg_constraint
+         WHERE conname = 'lineups_lookup_actions_clean_fk'
+           AND conrelid = '\"%s\".\"lineups_lookup\"'::regclass",
+        schema
+      ))$n[[1]] > 0,
+      error = function(e2) NA
+    )
+    if (isFALSE(fk_present)) {
+      tryCatch({
+        DBI::dbExecute(pg, sprintf(
+          'ALTER TABLE "%s"."lineups_lookup" ADD CONSTRAINT "lineups_lookup_actions_clean_fk"
+           FOREIGN KEY (game_id, id) REFERENCES "%s"."actions_clean" (game_id, id) NOT VALID',
+          schema, schema))
+        log_msg("  [COLD] Re-added lineups_lookup FK after failed TRUNCATE")
+      }, error = function(e2) {
+        log_msg(sprintf("  [COLD] FK re-add after failure ALSO FAILED — %s", conditionMessage(e2)), "ERROR")
+      })
+    }
   })
 
   purged <- sum(results)
