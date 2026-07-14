@@ -88,7 +88,168 @@ onoff_lineup_minutes AS (
     lineup_hash,
     type_lineup,
     own_starters,
-    opp_starters
+    opp_starters,
+    CASE
+      WHEN type_lineup = 'offense' THEN ROUND(SUM(seg_seconds) / 60.0, 3)
+      ELSE 0::numeric
+    END AS minutes
+  FROM onoff_lineup_segments
+  GROUP BY game_id, team_id, lineup_hash, type_lineup, own_starters, opp_starters
+),
+onoff_player AS (
+  SELECT
+    b0.player_id,
+    b0.team_id,
+    lt.game_id,
+    lt.game_year,
+    b0.is_on_key,
+    lt.type_lineup,
+    lt.own_starters,
+    lt.opp_starters,
+    SUM(lt.fg2_made) AS fg2_made,
+    SUM(lt.fg2_att) AS fg2_att,
+    SUM(lt.fg3_made) AS fg3_made,
+    SUM(lt.fg3_att) AS fg3_att,
+    SUM(COALESCE(lm.minutes, 0)) AS onoff_minutes
+  FROM base0 b0
+  JOIN lineup_totals lt
+    ON lt.lineup_hash = b0.lineup_hash
+   AND lt.team_id = b0.team_id
+  LEFT JOIN onoff_lineup_minutes lm
+    ON lm.game_id = lt.game_id
+   AND lm.team_id = lt.team_id
+   AND lm.lineup_hash = lt.lineup_hash
+   AND lm.type_lineup = lt.type_lineup
+   AND lm.own_starters = lt.own_starters
+   AND lm.opp_starters = lt.opp_starters
+  GROUP BY b0.player_id, b0.team_id, lt.game_id, lt.game_year, b0.is_on_key,
+           lt.type_lineup, lt.own_starters, lt.opp_starters
+),
+combined_data AS (
+  SELECT
+    b0.player_id,
+    b0.team_id,
+    b0.is_on_key,
+    s.game_year,
+    cs.game_id,
+    cs.type_lineup,
+    cs.own_starters AS num_starters,
+    cs.own_starters,
+    cs.opp_starters,
+    cs.team_score,
+    cs.final_end_flag,
+    cs.type,
+    cs.parameters_type,
+    cs.parameters_made,
+    cs.parameters_points,
+    cs.action_player_id,
+    cs.pct_ft,
+    cs.parent_action_id,
+    cf.parent_type,
+    cf.parent_param,
+    cs.segment_id,
+    cs.end_game_seconds_remaining
+  FROM base0 b0
+  JOIN clean_stats cs ON b0.lineup_hash = cs.lineup_hash AND b0.team_id = cs.team_id
+  JOIN basketball_test.schedule s ON cs.game_id = s.game_id
+  LEFT JOIN complex_flags cf ON cs.id = cf.main_id
+),
+segment_times AS (
+  SELECT
+    cd.player_id,
+    cd.team_id,
+    cd.game_id,
+    cd.game_year,
+    cd.is_on_key,
+    cd.num_starters,
+    cd.own_starters,
+    cd.opp_starters,
+    cd.segment_id,
+    MAX(cd.end_game_seconds_remaining) - MIN(cd.end_game_seconds_remaining) AS stint_seconds
+  FROM combined_data cd
+  WHERE cd.segment_id IS NOT NULL
+    AND cd.end_game_seconds_remaining IS NOT NULL
+  GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year,
+           cd.is_on_key, cd.num_starters, cd.own_starters, cd.opp_starters,
+           cd.segment_id
+),
+segment_stats AS (
+  SELECT
+    cd.player_id,
+    cd.team_id,
+    cd.game_id,
+    cd.game_year,
+    cd.is_on_key,
+    cd.type_lineup,
+    cd.num_starters,
+    cd.own_starters,
+    cd.opp_starters,
+    cd.segment_id,
+    sum(cd.team_score)       AS total_points,
+    sum(cd.final_end_flag)   AS total_poss,
+    count(CASE WHEN cd.type = 'shot' THEN 1 END)
+      + count(DISTINCT CASE
+          WHEN cd.type = 'freeThrow'
+            AND cd.parent_type = 'foul'
+            AND cd.parent_param = 'personal'
+          THEN cd.parent_action_id
+        END)                 AS ts_poss_count,
+    count(CASE WHEN cd.type = 'rebound' AND cd.parameters_type = 'offensive' THEN 1 END) AS oreb_count,
+    count(CASE
+      WHEN cd.type = 'shot' AND cd.parameters_made IN ('missed', 'blocked') THEN 1
+      WHEN cd.type = 'freeThrow' AND cd.parameters_made = 'missed'
+        AND cd.pct_ft = 1::numeric
+        AND cd.parent_type = 'foul' AND cd.parent_param = 'personal' THEN 1
+    END)                     AS oreb_opportunities,
+    count(CASE WHEN cd.type = 'turnover' THEN 1 END) AS tov_count,
+    count(CASE WHEN cd.type = 'freeThrow' THEN 1 END) AS total_ft_attempts,
+    count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga,
+    count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
+    count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' AND cd.parameters_points = 3 THEN 1 END) AS total_fg3_made,
+    count(CASE WHEN cd.action_player_id = cd.player_id AND cd.type = 'shot' AND cd.type_lineup = 'offense' THEN 1 END)
+      + count(DISTINCT CASE
+          WHEN cd.action_player_id = cd.player_id
+            AND cd.type = 'freeThrow'
+            AND cd.type_lineup = 'offense'
+            AND cd.parent_type = 'foul'
+            AND cd.parent_param = 'personal'
+          THEN cd.parent_action_id
+        END) AS player_ts_poss_count,
+    count(CASE
+      WHEN cd.action_player_id = cd.player_id
+        AND cd.type = 'turnover'
+        AND cd.type_lineup = 'offense'
+      THEN 1
+    END) AS player_tov_count
+  FROM combined_data cd
+  GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year, cd.is_on_key,
+           cd.type_lineup, cd.num_starters, cd.own_starters, cd.opp_starters,
+           cd.segment_id
+),
+ff AS (
+SELECT
+  ss.player_id,
+  ss.team_id,
+  ss.game_id,
+  ss.game_year,
+  ss.is_on_key,
+  ss.type_lineup,
+  ss.num_starters,
+  ss.own_starters,
+  ss.opp_starters,
+  SUM(ss.total_points)::numeric       AS total_points,
+  SUM(ss.total_poss)::bigint          AS total_poss,
+  SUM(ss.ts_poss_count)::bigint       AS ts_poss_count,
+  SUM(ss.oreb_count)::bigint          AS oreb_count,
+  SUM(ss.oreb_opportunities)::bigint  AS oreb_opportunities,
+  SUM(ss.tov_count)::bigint           AS tov_count,
+  SUM(ss.total_ft_attempts)::bigint   AS total_ft_attempts,
+  SUM(ss.total_fga)::bigint           AS total_fga,
+  SUM(ss.total_fgm)::bigint           AS total_fgm,
+  SUM(ss.total_fg3_made)::bigint      AS total_fg3_made,
+  SUM(ss.player_ts_poss_count)::bigint AS player_ts_poss_count,
+  SUM(ss.player_tov_count)::bigint     AS player_tov_count,
+  SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
 FROM segment_stats ss
 LEFT JOIN segment_times st
   ON st.player_id = ss.player_id
