@@ -45,6 +45,8 @@ RETURNS TABLE (
     off_off_tov     NUMERIC,
     def_on_tov      NUMERIC,
     def_off_tov     NUMERIC,
+    def_on_disruptions  NUMERIC,
+    def_off_disruptions NUMERIC,
     off_on_ftr      NUMERIC,
     off_off_ftr     NUMERIC,
     def_on_ftr      NUMERIC,
@@ -62,7 +64,8 @@ RETURNS TABLE (
     "Def TS% Diff"    NUMERIC,
     "Def OREB% Diff"  NUMERIC,
     "Def TOV% Diff"   NUMERIC,
-    "Def FTR Diff"    NUMERIC
+    "Def FTR Diff"    NUMERIC,
+    "Def Disruptions/100 Diff" NUMERIC
 )
 LANGUAGE plpgsql
 STABLE
@@ -175,6 +178,8 @@ BEGIN
       sum(pf.oreb_count)         AS oreb_count,
       sum(pf.oreb_opportunities) AS oreb_opportunities,
       sum(pf.tov_count)          AS tov_count,
+      sum(pf.steal_count)        AS steal_count,
+      sum(pf.deflection_count)   AS deflection_count,
       sum(pf.total_ft_attempts)  AS total_ft_attempts,
       sum(pf.total_fga)          AS total_fga,
       sum(pf.total_fgm)          AS total_fgm,
@@ -203,6 +208,7 @@ BEGIN
       (a.total_fgm + 0.5 * a.total_fg3_made)::numeric / NULLIF(a.total_fga, 0)::numeric AS efg_pct,
       a.oreb_count::numeric / NULLIF(a.oreb_opportunities, 0)::numeric AS oreb_pct,
       a.tov_count::numeric / NULLIF(a.total_poss, 0)::numeric AS tov_pct,
+      (a.steal_count + a.deflection_count)::numeric / NULLIF(a.total_poss, 0)::numeric AS disruption_rate,
       a.total_ft_attempts::numeric / NULLIF(a.total_fga, 0)::numeric AS ft_rate
     FROM agg a
   ),
@@ -229,6 +235,8 @@ BEGIN
       max(CASE WHEN cr.type_lineup = 'offense' AND cr.is_on_key = 0 THEN cr.tov_pct END) AS off_off_tov,
       max(CASE WHEN cr.type_lineup = 'defense' AND cr.is_on_key = 1 THEN cr.tov_pct END) AS def_on_tov,
       max(CASE WHEN cr.type_lineup = 'defense' AND cr.is_on_key = 0 THEN cr.tov_pct END) AS def_off_tov,
+      max(CASE WHEN cr.type_lineup = 'defense' AND cr.is_on_key = 1 THEN cr.disruption_rate END) AS def_on_disruptions,
+      max(CASE WHEN cr.type_lineup = 'defense' AND cr.is_on_key = 0 THEN cr.disruption_rate END) AS def_off_disruptions,
       max(CASE WHEN cr.type_lineup = 'offense' AND cr.is_on_key = 1 THEN cr.ft_rate END) AS off_on_ftr,
       max(CASE WHEN cr.type_lineup = 'offense' AND cr.is_on_key = 0 THEN cr.ft_rate END) AS off_off_ftr,
       max(CASE WHEN cr.type_lineup = 'defense' AND cr.is_on_key = 1 THEN cr.ft_rate END) AS def_on_ftr,
@@ -266,6 +274,8 @@ BEGIN
       p.off_off_tov,
       p.def_on_tov,
       p.def_off_tov,
+      p.def_on_disruptions,
+      p.def_off_disruptions,
       p.off_on_ftr,
       p.off_off_ftr,
       p.def_on_ftr,
@@ -283,7 +293,8 @@ BEGIN
       round((p.def_on_ts   - p.def_off_ts)   * 100::numeric, 1) AS "Def TS% Diff",
       round((p.def_on_oreb - p.def_off_oreb) * 100::numeric, 1) AS "Def OREB% Diff",
       round((p.def_on_tov  - p.def_off_tov)  * 100::numeric, 1) AS "Def TOV% Diff",
-      round((p.def_on_ftr  - p.def_off_ftr)  * 100::numeric, 1) AS "Def FTR Diff"
+      round((p.def_on_ftr  - p.def_off_ftr)  * 100::numeric, 1) AS "Def FTR Diff",
+      round((p.def_on_disruptions - p.def_off_disruptions) * 100::numeric, 1) AS "Def Disruptions/100 Diff"
     FROM pivoted p
     JOIN (
       SELECT DISTINCT
@@ -319,6 +330,8 @@ BEGIN
     fr.off_off_tov,
     fr.def_on_tov,
     fr.def_off_tov,
+    fr.def_on_disruptions,
+    fr.def_off_disruptions,
     fr.off_on_ftr,
     fr.off_off_ftr,
     fr.def_on_ftr,
@@ -336,7 +349,8 @@ BEGIN
     fr."Def TS% Diff",
     fr."Def OREB% Diff",
     fr."Def TOV% Diff",
-    fr."Def FTR Diff"
+    fr."Def FTR Diff",
+    fr."Def Disruptions/100 Diff"
   FROM final_rows fr
   ORDER BY fr."Off TS% Diff" DESC NULLS LAST;
 END;

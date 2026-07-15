@@ -1847,6 +1847,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(label = "Rebounds",  col = "reb",    type = "count"),
     list(label = "Assists",   col = "ast",    type = "count"),
     list(label = "Steals",    col = "stl",    type = "count"),
+    list(label = "Deflections", col = "dfl", type = "count"),
+    list(label = "Disruptions", col = "disruptions", type = "count"),
     list(label = "FG%",       col = "fg_pct", type = "pct"),
     list(label = "3P%",       col = "tp_pct", type = "pct"),
     list(label = "FT%",       col = "ft_pct", type = "pct"),
@@ -2052,7 +2054,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(label = "eFG%",     col = "Def eFG% Diff", side = "def", invert = TRUE, factor = "efg"),
     list(label = "OREB%",    col = "Def OREB% Diff", side = "def", invert = TRUE, factor = "oreb"),
     list(label = "TOV%",     col = "Def TOV% Diff", side = "def", factor = "tov"),
-    list(label = "FTR",      col = "Def FTR Diff", side = "def", invert = TRUE, factor = "ftr")
+    list(label = "FTR",      col = "Def FTR Diff", side = "def", invert = TRUE, factor = "ftr"),
+    list(label = "Disruptions/100", col = "Def Disruptions/100 Diff", side = "activity", requires_def_poss = TRUE)
   )
 
   render_ff_swing_ui <- function() {
@@ -2105,12 +2108,19 @@ server_tab7_compare <- function(input, output, session, shared) {
     get_swing <- function(ff_row, onoff_row, stat) {
       source_row <- if (grepl("Diff$", stat$label)) onoff_row else ff_row
       if (is.null(source_row) || is.null(stat$col) || !(stat$col %in% names(source_row))) return(NA_real_)
+      if (isTRUE(stat$requires_def_poss)) {
+        poss_cols <- c("def_on_poss", "def_off_poss")
+        if (!all(poss_cols %in% names(source_row))) return(NA_real_)
+        poss <- suppressWarnings(as.numeric(unlist(source_row[1, poss_cols], use.names = FALSE)))
+        if (any(!is.finite(poss)) || any(poss < 300)) return(NA_real_)
+      }
       as.numeric(source_row[[stat$col]])
     }
 
     # Split stats by side
     off_stats <- FF_SWING_STATS[vapply(FF_SWING_STATS, function(s) s$side == "off", logical(1))]
     def_stats <- FF_SWING_STATS[vapply(FF_SWING_STATS, function(s) s$side == "def", logical(1))]
+    activity_stats <- FF_SWING_STATS[vapply(FF_SWING_STATS, function(s) s$side == "activity", logical(1))]
 
     make_rows <- function(stats) {
       lapply(stats, function(stat) {
@@ -2136,7 +2146,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         pvp_section_header("Offensive Four Factors"),
         do.call(tagList, make_rows(off_stats)),
         pvp_section_header("Defensive Four Factors"),
-        do.call(tagList, make_rows(def_stats))
+        do.call(tagList, make_rows(def_stats)),
+        pvp_section_header("Defensive Activity"),
+        do.call(tagList, make_rows(activity_stats))
       )
     )
   }
@@ -2173,8 +2185,13 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     get_val <- function(row, stat) {
       col <- stat$col
-      if (!(col %in% names(row))) return(NA_real_)
-      raw <- as.numeric(row[[col]])
+      raw <- if (identical(col, "disruptions")) {
+        if (!all(c("stl", "dfl") %in% names(row))) return(NA_real_)
+        as.numeric(row[["stl"]]) + as.numeric(row[["dfl"]])
+      } else {
+        if (!(col %in% names(row))) return(NA_real_)
+        as.numeric(row[[col]])
+      }
       if (stat$type == "pct") return(raw)
       if (rate == "Totals") return(raw)
       if (rate == "Per 75 Possessions") {

@@ -37,6 +37,14 @@ test_that("tab7 player metric mapping uses actual SQL column names", {
   expect_false(grepl("total_pts", txt))
 })
 
+test_that("tab7 player compare exposes defensive disruptions", {
+  txt <- server_tab7_txt()
+  expect_true(grepl('label = "Deflections", col = "dfl"', txt, fixed = TRUE))
+  expect_true(grepl('label = "Disruptions", col = "disruptions"', txt, fixed = TRUE))
+  expect_true(grepl('label = "Disruptions/100", col = "Def Disruptions/100 Diff"', txt, fixed = TRUE))
+  expect_true(grepl('poss < 300', txt, fixed = TRUE))
+})
+
 test_that("tab7 team four-factor chips map to actual four-factor columns", {
   txt <- server_tab7_txt()
   expect_true(grepl('"eFG%"\\s*=\\s*"off_efg"', txt))

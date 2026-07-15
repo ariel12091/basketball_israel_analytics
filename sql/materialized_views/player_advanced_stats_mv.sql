@@ -92,6 +92,8 @@ WITH sched AS (
                     WHEN cd.type = 'turnover'::text THEN 1
                     ELSE NULL::integer
                 END) AS tov_count,
+            count(CASE WHEN cd.type = 'steal'::text THEN 1 END) AS steal_count,
+            count(CASE WHEN cd.type = 'deflection'::text THEN 1 END) AS deflection_count,
             count(
                 CASE
                     WHEN cd.type = 'freeThrow'::text THEN 1
@@ -126,6 +128,8 @@ WITH sched AS (
             a.oreb_count,
             a.oreb_opportunities,
             a.tov_count,
+            a.steal_count,
+            a.deflection_count,
             a.total_ft_attempts,
             a.total_fga,
             a.total_fgm,
@@ -134,6 +138,7 @@ WITH sched AS (
             (a.total_fgm + 0.5 * a.total_fg3_made)::numeric / NULLIF(a.total_fga, 0)::numeric AS efg_pct,
             a.oreb_count::numeric / NULLIF(a.oreb_opportunities, 0)::numeric AS oreb_pct,
             a.tov_count::numeric / NULLIF(a.total_poss, 0)::numeric AS tov_pct,
+            (a.steal_count + a.deflection_count)::numeric / NULLIF(a.total_poss, 0)::numeric AS disruption_rate,
             a.total_ft_attempts::numeric / NULLIF(a.total_fga, 0)::numeric AS ft_rate
            FROM agg a
         ), pivoted AS (
@@ -215,6 +220,7 @@ WITH sched AS (
                     WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 1 THEN calc_rates.tov_pct
                     ELSE NULL::numeric
                 END) AS def_on_tov,
+            max(CASE WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 1 THEN calc_rates.disruption_rate END) AS def_on_disruptions,
             max(
                 CASE
                     WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 1 THEN calc_rates.ft_rate
@@ -250,6 +256,7 @@ WITH sched AS (
                     WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.tov_pct
                     ELSE NULL::numeric
                 END) AS def_off_tov,
+            max(CASE WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.disruption_rate END) AS def_off_disruptions,
             max(
                 CASE
                     WHEN calc_rates.type_lineup = 'defense'::text AND calc_rates.is_on_key = 0 THEN calc_rates.ft_rate
@@ -282,12 +289,14 @@ WITH sched AS (
             p.def_on_efg,
             p.def_on_oreb,
             p.def_on_tov,
+            p.def_on_disruptions,
             p.def_on_ftr,
             p.def_on_poss,
             p.def_off_ts,
             p.def_off_efg,
             p.def_off_oreb,
             p.def_off_tov,
+            p.def_off_disruptions,
             p.def_off_ftr,
             p.def_off_poss,
             p.off_on_efg - p.off_off_efg AS diff_off_efg,
@@ -299,6 +308,7 @@ WITH sched AS (
             p.def_on_ts - p.def_off_ts AS diff_def_ts,
             p.def_on_oreb - p.def_off_oreb AS diff_def_oreb,
             p.def_on_tov - p.def_off_tov AS diff_def_tov,
+            p.def_on_disruptions - p.def_off_disruptions AS diff_def_disruptions,
             p.def_on_ftr - p.def_off_ftr AS diff_def_ftr,
             percent_rank() OVER (PARTITION BY p.game_year ORDER BY (p.off_on_efg - p.off_off_efg)) AS pr_diff_off_efg,
             percent_rank() OVER (PARTITION BY p.game_year ORDER BY (p.off_on_ts - p.off_off_ts)) AS pr_diff_off_ts,
@@ -344,7 +354,9 @@ WITH sched AS (
             fr.off_on_tov,
             fr.off_off_tov,
             fr.def_on_tov,
+            fr.def_on_disruptions,
             fr.def_off_tov,
+            fr.def_off_disruptions,
             fr.off_on_ftr,
             fr.off_off_ftr,
             fr.def_on_ftr,
@@ -362,6 +374,7 @@ WITH sched AS (
             round(fr.diff_def_ts * 100::numeric, 1) AS "Def TS% Diff",
             round(fr.diff_def_oreb * 100::numeric, 1) AS "Def OREB% Diff",
             round(fr.diff_def_tov * 100::numeric, 1) AS "Def TOV% Diff",
+            round(fr.diff_def_disruptions * 100::numeric, 1) AS "Def Disruptions/100 Diff",
             round(fr.diff_def_ftr * 100::numeric, 1) AS "Def FTR Diff",
             fr.pr_diff_off_efg,
             fr.pr_diff_off_ts,
@@ -395,7 +408,9 @@ SELECT player_id,
     off_on_tov,
     off_off_tov,
     def_on_tov,
+    def_on_disruptions,
     def_off_tov,
+    def_off_disruptions,
     off_on_ftr,
     off_off_ftr,
     def_on_ftr,
@@ -413,6 +428,7 @@ SELECT player_id,
     "Def TS% Diff",
     "Def OREB% Diff",
     "Def TOV% Diff",
+    "Def Disruptions/100 Diff",
     "Def FTR Diff",
     pr_diff_off_efg,
     pr_diff_off_ts,

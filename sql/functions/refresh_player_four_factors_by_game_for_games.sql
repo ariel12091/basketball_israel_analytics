@@ -15,7 +15,7 @@ BEGIN
   INSERT INTO basketball_test.player_four_factors_by_game (
     player_id, team_id, game_id, game_year, is_on_key, type_lineup,
     num_starters, own_starters, opp_starters, total_points, total_poss,
-    ts_poss_count, oreb_count, oreb_opportunities, tov_count,
+    ts_poss_count, oreb_count, oreb_opportunities, tov_count, steal_count, deflection_count,
     total_ft_attempts, total_fga, total_fgm, total_fg3_made,
     player_ts_poss_count, player_tov_count, minutes,
     fg2_made, fg2_att, fg3_made, fg3_att, onoff_minutes
@@ -219,6 +219,8 @@ BEGIN
           AND cd.parent_type = 'foul' AND cd.parent_param = 'personal' THEN 1
       END) AS oreb_opportunities,
       count(CASE WHEN cd.type = 'turnover' THEN 1 END) AS tov_count,
+      count(CASE WHEN cd.type = 'steal' THEN 1 END) AS steal_count,
+      count(CASE WHEN cd.type = 'deflection' THEN 1 END) AS deflection_count,
       count(CASE WHEN cd.type = 'freeThrow' THEN 1 END) AS total_ft_attempts,
       count(CASE WHEN cd.type = 'shot' THEN 1 END) AS total_fga,
       count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
@@ -260,6 +262,8 @@ BEGIN
     SUM(ss.oreb_count)::bigint AS oreb_count,
     SUM(ss.oreb_opportunities)::bigint AS oreb_opportunities,
     SUM(ss.tov_count)::bigint AS tov_count,
+    SUM(ss.steal_count)::bigint AS steal_count,
+    SUM(ss.deflection_count)::bigint AS deflection_count,
     SUM(ss.total_ft_attempts)::bigint AS total_ft_attempts,
     SUM(ss.total_fga)::bigint AS total_fga,
     SUM(ss.total_fgm)::bigint AS total_fgm,
@@ -297,6 +301,8 @@ BEGIN
     ff.oreb_count,
     ff.oreb_opportunities,
     ff.tov_count,
+    ff.steal_count,
+    ff.deflection_count,
     ff.total_ft_attempts,
     ff.total_fga,
     ff.total_fgm,

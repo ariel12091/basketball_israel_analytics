@@ -66,7 +66,8 @@ test_that("live DB has the app-required shape for default MVs", {
   expect_has_columns("player_four_factors_by_game", c(
     "player_id", "team_id", "game_id", "game_year", "is_on_key",
     "type_lineup", "total_points", "total_poss", "ts_poss_count",
-    "tov_count", "player_ts_poss_count", "player_tov_count",
+    "tov_count", "steal_count", "deflection_count",
+    "player_ts_poss_count", "player_tov_count",
     "minutes",
     "fg2_made", "fg2_att", "fg3_made", "fg3_att", "onoff_minutes"
   ))
@@ -75,6 +76,10 @@ test_that("live DB has the app-required shape for default MVs", {
   # computed independently in player_traditional paths) and its stored
   # values had drifted from the repo formula.
   expect_lacks_columns("player_four_factors_by_game", "usg_pct")
+
+  expect_has_columns("player_advanced_stats_mv", c(
+    "def_on_disruptions", "def_off_disruptions", "Def Disruptions/100 Diff"
+  ))
 
   expect_has_columns("team_ppp_ratings_mv", c(
     "game_year", "team_id", "team_name", "off_ppp", "def_ppp",
@@ -116,6 +121,9 @@ test_that("live DB functions used by render paths return app-required columns", 
 
   team_ff <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_team_four_factors_dynamic($1::int4) LIMIT 0", params = list(2026L))
   expect_true(all(c("team_id", "game_year", "team_name", "off_efg", "off_tov", "off_ppp", "def_efg", "def_tov", "def_ppp", "net_rtg") %in% names(team_ff)))
+
+  player_ff <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.four_factors_compute($1::int4) LIMIT 0", params = list(2026L))
+  expect_true(all(c("def_on_disruptions", "def_off_disruptions", "Def Disruptions/100 Diff") %in% names(player_ff)))
 
   team_ratings <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_team_ratings_dynamic($1::int4) LIMIT 0", params = list(2026L))
   expect_true(all(c("game_year", "team_id", "team_name", "off_ppp", "def_ppp", "net_rtg", "games_played", "off_poss", "def_poss") %in% names(team_ratings)))
