@@ -33,6 +33,7 @@ pg <- DBI::dbConnect(
 )
 on.exit(DBI::dbDisconnect(pg), add = TRUE)
 
+source("etl/cold_reconcile.R")
 source("etl/cold_storage.R")
 
 cold_dir <- "exports/cold"

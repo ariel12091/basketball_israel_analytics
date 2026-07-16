@@ -33,11 +33,32 @@ export_cold_table <- function(
 ) {
   stopifnot(table_name %in% COLD_TABLES)
 
-  # 1. Read only rows published by this run when scoped IDs are supplied.
-  # Failed runs can leave older, already-marked games in hot tables; exporting
-  # every processed marker would overwrite their valid cold snapshots.
-  scoped_ids <- sort(unique(as.integer(game_ids)))
-  scoped_ids <- scoped_ids[!is.na(scoped_ids)]
+  # 1. Scope = this run's games PLUS any hot games absent from the parquet.
+  # Failed runs leave already-marked games in hot tables; a game already in
+  # parquet must not be re-exported off-run (partial hot rows would clobber
+  # its valid cold snapshot), but a game entirely MISSING from parquet must
+  # be rescued or the closing TRUNCATE destroys it (the games-365-388 bug).
+  parquet_path <- file.path(cold_dir, paste0(table_name, ".parquet"))
+  parquet_ids <- if (file.exists(parquet_path)) {
+    unique(arrow::read_parquet(parquet_path, col_select = "game_id",
+                               mmap = FALSE)$game_id)
+  } else NULL
+  hot_ids <- DBI::dbGetQuery(
+    pg,
+    sprintf(
+      'SELECT DISTINCT t.game_id FROM "%s"."%s" t
+       INNER JOIN "%s"."etl_processed_games" eg ON eg.game_id = t.game_id',
+      schema, table_name, schema
+    )
+  )$game_id
+  scoped_ids <- cold_export_scope(game_ids, hot_ids, parquet_ids)
+  rescued <- setdiff(scoped_ids, as.integer(game_ids))
+  if (length(rescued)) {
+    log_msg(sprintf(
+      "  [COLD] %s: rescuing %d hot game(s) missing from parquet: %s",
+      table_name, length(rescued), paste(rescued, collapse = ",")
+    ), "WARN")
+  }
   if (length(scoped_ids)) {
     new_rows <- DBI::dbGetQuery(
       pg,
@@ -52,14 +73,7 @@ export_cold_table <- function(
       )
     )
   } else {
-    new_rows <- DBI::dbGetQuery(
-      pg,
-      sprintf(
-        'SELECT t.* FROM "%s"."%s" t
-         INNER JOIN "%s"."etl_processed_games" eg ON eg.game_id = t.game_id',
-        schema, table_name, schema
-      )
-    )
+    new_rows <- data.frame()
   }
   if (nrow(new_rows) == 0) {
     log_msg(sprintf("  [COLD] %s: 0 rows, skipping export", table_name))
@@ -68,7 +82,6 @@ export_cold_table <- function(
 
   # 2. Merge with existing Parquet if present
   dir.create(cold_dir, recursive = TRUE, showWarnings = FALSE)
-  parquet_path <- file.path(cold_dir, paste0(table_name, ".parquet"))
   key_cols <- COLD_TABLE_KEYS[[table_name]]
 
   if (file.exists(parquet_path)) {
@@ -145,6 +158,26 @@ run_cold_storage_purge <- function(
   if (!all(results)) {
     log_msg("Phase 7: some exports failed, skipping TRUNCATE", "WARN")
     return(results)
+  }
+
+  # Coverage gate: TRUNCATE is destructive — verify every hot game now has
+  # parquet coverage (actions_clean is the canonical table for this check).
+  hot_now <- DBI::dbGetQuery(pg, sprintf(
+    'SELECT DISTINCT t.game_id FROM "%s"."actions_clean" t
+     INNER JOIN "%s"."etl_processed_games" eg ON eg.game_id = t.game_id',
+    schema, schema))$game_id
+  pq_path <- file.path(cold_dir, "actions_clean.parquet")
+  pq_now <- if (file.exists(pq_path)) {
+    unique(arrow::read_parquet(pq_path, col_select = "game_id",
+                               mmap = FALSE)$game_id)
+  } else integer(0)
+  gaps <- cold_coverage_gaps(hot_now, pq_now)
+  if (length(gaps)) {
+    log_msg(sprintf(
+      "Phase 7: COVERAGE GATE FAILED — %d hot game(s) not in parquet (%s); skipping TRUNCATE",
+      length(gaps), paste(gaps, collapse = ",")
+    ), "ERROR")
+    return(setNames(rep(FALSE, length(COLD_TABLES)), COLD_TABLES))
   }
 
   # Phase B: drop lineups_lookup FK, TRUNCATE all 5, re-add FK
