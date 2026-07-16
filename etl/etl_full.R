@@ -208,6 +208,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     etl_lines <- etl_lines[seq_len(cut_at)]
   }
   eval(parse(text = etl_lines), envir = .GlobalEnv)
+  source("etl/cold_reconcile.R")
   source("etl/cold_storage.R")
   log_msg("Sourced etl/cold_storage.R")
   source("etl/player_id_aliases.R")
