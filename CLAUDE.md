@@ -237,6 +237,8 @@ Available in Tabs 2 and 3 only. 4 SQL params: `p_max_margin`, `p_margin_status`,
 
 **Tracking:** `etl_processed_games` table (game_id PK, game_year, processed_at) tracks which games have been ETL'd — replaces the old `SELECT DISTINCT game_id FROM actions_clean` for incremental detection. Auto-backfilled on first run.
 
+**shot_zones:** persistent per-shot corner-3 flags (3PT + coords only), written at end of Phase 2 from actions_clean, backfilled from parquet (`scripts/backfill_shot_zones.R`). NOT a cold table — never truncate.
+
 **Restore (for MV rebuilds):**
 ```bash
 "$RSCRIPT" scripts/restore_cold_storage.R    # loads all 5 tables from Parquet

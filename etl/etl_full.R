@@ -822,6 +822,30 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     })
   }
 
+  # Shot zones: persist coordinate-derived corner-3 flags for this run's
+  # games BEFORE Phase 7 purges actions_clean. Corner rule = v2 cut
+  # (y <= 285 raw units = 2.85 court units). 3PT shots with coords only.
+  if (length(processed_ids)) {
+    tryCatch({
+      ids_csv <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
+      zn <- DBI::dbExecute(pg, sprintf(
+        'INSERT INTO "%s"."shot_zones" (game_id, id, is_corner3)
+         SELECT game_id, id, (parameters_coord_y::numeric <= 285)
+         FROM "%s"."actions_clean"
+         WHERE type = \'shot\' AND parameters_points = 3
+           AND parameters_coord_y IS NOT NULL
+           AND game_id IN (%s)
+         ON CONFLICT (game_id, id) DO UPDATE SET is_corner3 = EXCLUDED.is_corner3',
+        SCHEMA, SCHEMA, ids_csv
+      ))
+      log_msg(sprintf("  shot_zones: %d 3PT rows upserted for %d game(s)",
+                      zn, length(processed_ids)))
+    }, error = function(e) {
+      log_msg(sprintf("shot_zones upsert FAILED: %s", conditionMessage(e)), "ERROR")
+      mark_phase_failed("Shot zones", conditionMessage(e))
+    })
+  }
+
   # Guardrail: verify key tables have rows
   # actions_clean and pws are purged after each run; only check non-purged tables
   for (tbl_name in c("schedule", "lineups_lookup")) {
