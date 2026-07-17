@@ -16,7 +16,7 @@
 4. **PROJECT.md React-drift note deferred to Plan C** (PROJECT.md currently holds uncommitted user WIP; don't touch it).
 5. **Rim tags are constrained to 2PA.** Live validation found eight mirrored rows tagged `lay-up` with `parameters_points = 3`. Because Plan C derives `mid = fga - rim - fg3` and requires `rim <= fg2`, lay-up/dunk predicates also require `parameters_points = 2`; malformed 3-point lay-up tags remain classified only as 3PA.
 6. **League offense/defense totals reconcile to eligible source perspectives, not forced symmetry.** `df_pts_poss_lineups_longer_mv` drops a perspective when its lineup hash is NULL. Live validation found one such known non-corner 3PA, `(game_id, id) = (62452, 624520636)`, with an offense row and no defense row. Do not synthesize a team-MV defense count; audit orphan perspectives explicitly and keep fast/filtered parity strict.
-7. **The dynamic team path uses indexed 3PA-only `EXISTS` lookups, not an action-wide `LEFT JOIN`.** Transactional warm benchmarks showed the original join added roughly 48–66% to `get_team_ratings_dynamic`; PK-backed existence checks inside the two corner counters reduced the measured overhead to roughly 0.2 seconds / 22% while preserving fail-open semantics.
+7. **The dynamic team path uses indexed 3PA-only `EXISTS` lookups, not an action-wide `LEFT JOIN`.** Transactional warm benchmarks showed the original join added roughly 48–66% to `get_team_ratings_dynamic`; a focused seven-run benchmark of PK-backed existence checks inside the two corner counters measured 1.03 s versus a bracketed 1.00 s current-function median (about 0.03 s / 3% overhead) while preserving fail-open semantics.
 
 ## Global Constraints
 
@@ -1509,7 +1509,7 @@ dbDisconnect(con)
 ```
 
 Run: `& "C:\Program Files\R\R-4.4.2\bin\Rscript.exe" <scratchpad>/planb_parity.R`
-Expected: team mismatches = 0; onoff `new_col_mism` = 0 (and `control_fg3_mism` = 0 — if control > 0, the discrepancy predates this work; new_col_mism must be ≤ control); timings within 1.5× the Task 1 baseline. **If the shot_zones LEFT JOIN regresses `get_team_ratings_dynamic` badly**, check `EXPLAIN` for a seq scan on shot_zones — its PK (game_id, id) should give an index path; only add an index after plan evidence.
+Expected: team mismatches = 0; onoff `new_col_mism` = 0 (and `control_fg3_mism` = 0 — if control > 0, the discrepancy predates this work; new_col_mism must be ≤ control); timings within 1.5× the Task 1 baseline. **If the corner `EXISTS` checks regress `get_team_ratings_dynamic` badly**, check `EXPLAIN` for repeated non-indexed scans of shot_zones — its PK (game_id, id) should serve each lookup; only add an index after plan evidence.
 
 - [ ] **Step 4: Run the full app test suite (regression)**
 
