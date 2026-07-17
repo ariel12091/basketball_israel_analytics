@@ -15,6 +15,7 @@
 3. **`onoff_default_mv` and `player_four_factors_by_game` are tables with incremental refresh functions** (`refresh_onoff_default_for_games`, `refresh_player_four_factors_by_game_for_games`) that duplicate the CTAS query — they MUST be updated in lockstep or the next ETL silently writes NULLs into the new columns.
 4. **PROJECT.md React-drift note deferred to Plan C** (PROJECT.md currently holds uncommitted user WIP; don't touch it).
 5. **Rim tags are constrained to 2PA.** Live validation found eight mirrored rows tagged `lay-up` with `parameters_points = 3`. Because Plan C derives `mid = fga - rim - fg3` and requires `rim <= fg2`, lay-up/dunk predicates also require `parameters_points = 2`; malformed 3-point lay-up tags remain classified only as 3PA.
+6. **League offense/defense totals reconcile to eligible source perspectives, not forced symmetry.** `df_pts_poss_lineups_longer_mv` drops a perspective when its lineup hash is NULL. Live validation found one such known non-corner 3PA, `(game_id, id) = (62452, 624520636)`, with an offense row and no defense row. Do not synthesize a team-MV defense count; audit orphan perspectives explicitly and keep fast/filtered parity strict.
 
 ## Global Constraints
 
@@ -867,7 +868,7 @@ print(dbGetQuery(con, "
     count(*) FILTER (WHERE COALESCE(c3_att,0) > COALESCE(c3_known_att,0) OR COALESCE(c3_known_att,0) > COALESCE(fg3_att,0)) AS c3_order
   FROM basketball_test.player_four_factors_by_game"))
 
-cat("\n== D. team MV league totals (expect 2025: c3 1035 / known 11497; 2026: c3 1150 / known 12091; off = def) ==\n")
+cat("\n== D. team MV league totals (reconcile to eligible source perspectives; audit any off/def delta) ==\n")
 print(dbGetQuery(con, "
   SELECT game_year,
          SUM(off_c3_att) AS off_c3, SUM(def_c3_att) AS def_c3,
@@ -895,7 +896,7 @@ dbDisconnect(con)
 ```
 
 Run: `& "C:\Program Files\R\R-4.4.2\bin\Rscript.exe" <scratchpad>/planb_invariants.R`
-Expected: A matches Task 1 exactly; B/C all zeros; D: `off_c3` = `def_c3` and `off_c3_known` = `def_c3_known` **exactly** per year, and both within ~1% of the Plan-A parquet numbers (c3 1,035/1,150; known 11,497/12,091 — small shortfalls are legitimate: `df_pts_poss_lineups_longer_mv` omits actions without lineup attribution, while the parquet backfill counted every `actions_clean` row); E returns positive row counts; F shows `c3k_not_null > 0` (NULLs are allowed only on rows that also have NULL `fg2_att` — the no-onoff-match rows). **If D's `off_c3` is far off (e.g. ~2× the expected count or half of it):** the shot_zones join or perspective attribution is wrong — check `z.id = d.id` and the offense/defense duplication gotcha before touching anything else.
+Expected: A matches Task 1 unless new ETL rows landed after the baseline (audit any delta); B/C all zeros; D reconciles exactly to the eligible offense/defense rows in `df_pts_poss_lineups_longer_mv` and remains within ~1% of the Plan-A parquet numbers (c3 1,035/1,150; known 11,497/12,091). Small shortfalls are legitimate because the lineup source omits a perspective with no lineup attribution; audit any side delta as an orphan perspective (known exception: offense-only non-corner 3PA `(62452, 624520636)`). E returns positive row counts; F shows `c3k_not_null > 0` (NULLs are allowed only on rows that also have NULL `fg2_att` — the no-onoff-match rows). **If D's `off_c3` is far off (e.g. ~2× the expected count or half of it):** the shot_zones join or perspective attribution is wrong — check `z.id = d.id` and the offense/defense duplication gotcha before touching anything else.
 
 - [ ] **Step 3: Merge branch 1**
 
@@ -1532,7 +1533,7 @@ git branch -d sql/shot-profile-fns
 ## Completion criteria (Plan B)
 
 1. Both fast paths (`onoff_default_mv`, `team_ppp_ratings_mv`) and both filtered paths (`onoff_compute`, `get_team_ratings_dynamic`) expose the shot-profile columns with matching names.
-2. Invariants hold: rim ≤ fg2, c3 ≤ c3_known ≤ fg3; league corner totals reconcile with Plan A (1,035 / 1,150 corners; 11,497 / 12,091 known 3PA); fast = filtered on full-season parity.
+2. Invariants hold: rim ≤ fg2, c3 ≤ c3_known ≤ fg3; league corner totals reconcile with Plan A (1,035 / 1,150 corners; 11,497 / 12,091 known 3PA) and eligible source perspectives; fast = filtered on full-season parity.
 3. Incremental refresh functions fill the new columns (smoke-tested on game 388); ETL Phase 4 needs no changes.
 4. Security contract tests pass; filtered-path timings within 1.5× baseline.
 5. Plan C (Shiny Tabs 1/3/7 UI) unblocked — reads the new columns by the exact names above from either path.
