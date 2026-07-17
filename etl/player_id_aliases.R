@@ -28,7 +28,12 @@ default_player_id_aliases <- function() {
       "cross-team season re-mint: id 2046 (Maccabi Raanana) is the same person as canonical 1165 (Galil Elion)",
       "cross-team season re-mint: id 2052 (Bnei Herzliya) is the same person as canonical 1110 (Galil Elion)",
       "cross-team season re-mint: id 1982 (Bnei Herzliya) is the same person as canonical 1143 (Rishon Lezion)"
-    )
+    ),
+    # Same-team duplicates pollute that team's lineups/on-off and must be
+    # scrubbed from base data; cross-team re-mints are identity-dictionary
+    # merges only (Tab 5) — base data deliberately keeps the split ids, so
+    # the alias-residue safeguard must not treat their rows as corruption.
+    canonicalize_base = c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE)
   )
 }
 
@@ -84,11 +89,22 @@ ensure_player_id_aliases_table <- function(pg, schema = SCHEMA) {
          player_name text,
          reason text,
          active boolean NOT NULL DEFAULT true,
+         canonicalize_base boolean NOT NULL DEFAULT true,
          created_at timestamptz NOT NULL DEFAULT now(),
          updated_at timestamptz NOT NULL DEFAULT now(),
          PRIMARY KEY (game_year, team_id, alias_player_id),
          CHECK (alias_player_id <> canonical_player_id)
        )',
+      schema
+    )
+  )
+
+  # Self-migration for tables created before the flag existed.
+  DBI::dbExecute(
+    pg,
+    sprintf(
+      'ALTER TABLE "%s"."player_id_aliases"
+         ADD COLUMN IF NOT EXISTS canonicalize_base boolean NOT NULL DEFAULT true',
       schema
     )
   )
@@ -152,15 +168,17 @@ seed_default_player_id_aliases <- function(pg, schema = SCHEMA, aliases = defaul
   retired_aliases <- retired_default_player_id_aliases()
 
   if (nrow(aliases)) {
+    if (!"canonicalize_base" %in% names(aliases)) aliases$canonicalize_base <- TRUE
     sql <- sprintf(
       'INSERT INTO "%s"."player_id_aliases"
-         (game_year, team_id, alias_player_id, canonical_player_id, player_name, reason)
-       VALUES ($1, $2, $3, $4, $5, $6)
+         (game_year, team_id, alias_player_id, canonical_player_id, player_name, reason, canonicalize_base)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        ON CONFLICT (game_year, team_id, alias_player_id) DO UPDATE
        SET canonical_player_id = EXCLUDED.canonical_player_id,
            player_name = EXCLUDED.player_name,
            reason = EXCLUDED.reason,
            active = true,
+           canonicalize_base = EXCLUDED.canonicalize_base,
            updated_at = now()',
       schema
     )
@@ -175,7 +193,8 @@ seed_default_player_id_aliases <- function(pg, schema = SCHEMA, aliases = defaul
           as.integer(aliases$alias_player_id[[i]]),
           as.integer(aliases$canonical_player_id[[i]]),
           as.character(aliases$player_name[[i]]),
-          as.character(aliases$reason[[i]])
+          as.character(aliases$reason[[i]]),
+          isTRUE(aliases$canonicalize_base[[i]])
         )
       )
     }
@@ -591,9 +610,12 @@ player_alias_residue_summary <- function(pg, schema = SCHEMA, game_ids = NULL) {
     pg,
     sprintf(
       'WITH aliases AS (
+         -- Only aliases meant to be scrubbed from base data. Sync-only
+         -- cross-team merges (canonicalize_base = false) keep their split
+         -- ids in base/derived tables by design and are not residue.
          SELECT NULL::int AS game_id, game_year, team_id, alias_player_id
            FROM "%s"."player_id_aliases"
-          WHERE active
+          WHERE active AND canonicalize_base
          UNION ALL
          SELECT game_id, game_year, team_id, alias_player_id
            FROM "%s"."player_id_game_overrides"
