@@ -39,7 +39,19 @@ RETURNS TABLE (
     def_poss       INT,
     rank_net_rtg   BIGINT,
     rank_off_ppp   BIGINT,
-    rank_def_ppp   BIGINT
+    rank_def_ppp   BIGINT,
+    off_fga        INT,
+    off_layup_att  INT,
+    off_dunk_att   INT,
+    off_fg3_att    INT,
+    off_c3_att     INT,
+    off_c3_known_att INT,
+    def_fga        INT,
+    def_layup_att  INT,
+    def_dunk_att   INT,
+    def_fg3_att    INT,
+    def_c3_att     INT,
+    def_c3_known_att INT
 ) 
 LANGUAGE plpgsql
 STABLE
@@ -190,9 +202,16 @@ BEGIN
         dppllm.type_lineup,
         sum(dppllm.team_score) / NULLIF(sum(dppllm.final_end_poss::integer), 0)::numeric AS ppp,
         sum(dppllm.final_end_poss::integer) AS total_poss,
-        COUNT(DISTINCT dppllm.game_id) AS games_count
+        COUNT(DISTINCT dppllm.game_id) AS games_count,
+        SUM(CASE WHEN dppllm.type = 'shot' THEN 1 ELSE 0 END) AS fga,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN qualifying_games qg ON qg.game_id = dppllm.game_id AND qg.team_id = dppllm.team_id
+      LEFT JOIN basketball_test.shot_zones z ON z.game_id = dppllm.game_id AND z.id = dppllm.id
       WHERE (p_max_margin IS NULL
              OR ABS(CASE WHEN dppllm.type_lineup = 'offense'
                          THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) - dppllm.opp_team_score
@@ -235,7 +254,19 @@ BEGIN
         wl.wins,
         wl.losses,
         max(base_agg.total_poss) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_poss,
-        max(base_agg.total_poss) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_poss
+        max(base_agg.total_poss) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_poss,
+        max(base_agg.fga) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_fga,
+        max(base_agg.layup_att) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_layup_att,
+        max(base_agg.dunk_att) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_dunk_att,
+        max(base_agg.fg3_att) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_fg3_att,
+        max(base_agg.c3_att) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_c3_att,
+        max(base_agg.c3_known_att) FILTER (WHERE base_agg.type_lineup = 'offense'::text) AS off_c3_known_att,
+        max(base_agg.fga) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_fga,
+        max(base_agg.layup_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_layup_att,
+        max(base_agg.dunk_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_dunk_att,
+        max(base_agg.fg3_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_fg3_att,
+        max(base_agg.c3_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_c3_att,
+        max(base_agg.c3_known_att) FILTER (WHERE base_agg.type_lineup = 'defense'::text) AS def_c3_known_att
       FROM base_agg
       LEFT JOIN win_loss wl ON wl.game_year = base_agg.game_year AND wl.team_id = base_agg.team_id
       GROUP BY base_agg.game_year, base_agg.team_id, wl.wins, wl.losses
@@ -254,11 +285,25 @@ BEGIN
         p.wins,
         p.losses,
         p.off_poss,
-        p.def_poss
+        p.def_poss,
+        p.off_fga,
+        p.off_layup_att,
+        p.off_dunk_att,
+        p.off_fg3_att,
+        p.off_c3_att,
+        p.off_c3_known_att,
+        p.def_fga,
+        p.def_layup_att,
+        p.def_dunk_att,
+        p.def_fg3_att,
+        p.def_c3_att,
+        p.def_c3_known_att
       FROM pivoted p
       JOIN basketball_test.full_rosters fr
         ON fr.game_year = p.game_year AND fr.team_id = p.team_id
-      GROUP BY p.game_year, p.team_id, fr.team_name, p.off_ppp_raw, p.def_ppp_raw, p.games_played, p.wins, p.losses, p.off_poss, p.def_poss
+      GROUP BY p.game_year, p.team_id, fr.team_name, p.off_ppp_raw, p.def_ppp_raw, p.games_played, p.wins, p.losses, p.off_poss, p.def_poss,
+        p.off_fga, p.off_layup_att, p.off_dunk_att, p.off_fg3_att, p.off_c3_att, p.off_c3_known_att,
+        p.def_fga, p.def_layup_att, p.def_dunk_att, p.def_fg3_att, p.def_c3_att, p.def_c3_known_att
   )
 
   -- Final Select with Ranks
@@ -276,7 +321,19 @@ BEGIN
     fc.def_poss::int,
     dense_rank() OVER (PARTITION BY fc.game_year ORDER BY fc.net_rtg DESC NULLS LAST) AS rank_net_rtg,
     dense_rank() OVER (PARTITION BY fc.game_year ORDER BY fc.off_ppp DESC NULLS LAST) AS rank_off_ppp,
-    dense_rank() OVER (PARTITION BY fc.game_year ORDER BY fc.def_ppp ASC NULLS LAST)  AS rank_def_ppp
+    dense_rank() OVER (PARTITION BY fc.game_year ORDER BY fc.def_ppp ASC NULLS LAST)  AS rank_def_ppp,
+    fc.off_fga::int,
+    fc.off_layup_att::int,
+    fc.off_dunk_att::int,
+    fc.off_fg3_att::int,
+    fc.off_c3_att::int,
+    fc.off_c3_known_att::int,
+    fc.def_fga::int,
+    fc.def_layup_att::int,
+    fc.def_dunk_att::int,
+    fc.def_fg3_att::int,
+    fc.def_c3_att::int,
+    fc.def_c3_known_att::int
   FROM final_calc fc;
 END;
 $$;
