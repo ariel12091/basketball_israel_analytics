@@ -409,7 +409,7 @@ WITH sched AS (
             MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg2_att END)  AS def_off_fg2_att,
             MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg3_made END) AS def_off_fg3_made,
             MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg3_att END)  AS def_off_fg3_att,
-            -- Shot Profile counts (28 columns; c3_known_att = 3PA with known corner flag)
+            -- Shot Profile counts (28 columns, c3_known_att = 3PA with known corner flag)
             MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.layup_made END) AS off_on_layup_made,
             MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.layup_att END)  AS off_on_layup_att,
             MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.dunk_made END) AS off_on_dunk_made,
