@@ -52,10 +52,18 @@ WITH sched AS (
             CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg2_made_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 2 THEN 1 ELSE 0 END AS fg2_att_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg3_made_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 THEN 1 ELSE 0 END AS fg3_att_flag
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 THEN 1 ELSE 0 END AS fg3_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type = 'lay-up' AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS layup_made_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type = 'lay-up' THEN 1 ELSE 0 END AS layup_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type IN ('dunk', 'allyhoop') AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS dunk_made_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END AS dunk_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS TRUE AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS c3_made_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END AS c3_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END AS c3_known_att_flag
            FROM base0 b0
              JOIN df_pts_poss_lineups_longer_mv d USING (lineup_hash)
              JOIN sched s USING (game_id)
+             LEFT JOIN shot_zones z ON z.game_id = d.game_id AND z.id = d.id
         ), agg AS (
          SELECT base.player_id,
             base.team_id,
@@ -76,7 +84,14 @@ WITH sched AS (
             sum(base.fg2_made_flag) AS fg2_made,
             sum(base.fg2_att_flag) AS fg2_att,
             sum(base.fg3_made_flag) AS fg3_made,
-            sum(base.fg3_att_flag) AS fg3_att
+            sum(base.fg3_att_flag) AS fg3_att,
+            sum(base.layup_made_flag) AS layup_made,
+            sum(base.layup_att_flag) AS layup_att,
+            sum(base.dunk_made_flag) AS dunk_made,
+            sum(base.dunk_att_flag) AS dunk_att,
+            sum(base.c3_made_flag) AS c3_made,
+            sum(base.c3_att_flag) AS c3_att,
+            sum(base.c3_known_att_flag) AS c3_known_att
            FROM base
           GROUP BY base.player_id, base.team_id, base.is_on_key, base.type_lineup, base.game_year
         ), player_segments AS (
@@ -393,7 +408,36 @@ WITH sched AS (
             MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg2_made END) AS def_off_fg2_made,
             MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg2_att END)  AS def_off_fg2_att,
             MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg3_made END) AS def_off_fg3_made,
-            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg3_att END)  AS def_off_fg3_att
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.fg3_att END)  AS def_off_fg3_att,
+            -- Shot Profile counts (28 columns, c3_known_att = 3PA with known corner flag)
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.layup_made END) AS off_on_layup_made,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.layup_att END)  AS off_on_layup_att,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.dunk_made END) AS off_on_dunk_made,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.dunk_att END)  AS off_on_dunk_att,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.c3_made END) AS off_on_c3_made,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.c3_att END)  AS off_on_c3_att,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 1 THEN sa.c3_known_att END) AS off_on_c3_known_att,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 0 THEN sa.layup_made END) AS off_off_layup_made,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 0 THEN sa.layup_att END)  AS off_off_layup_att,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 0 THEN sa.dunk_made END) AS off_off_dunk_made,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 0 THEN sa.dunk_att END)  AS off_off_dunk_att,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 0 THEN sa.c3_made END) AS off_off_c3_made,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 0 THEN sa.c3_att END)  AS off_off_c3_att,
+            MAX(CASE WHEN sa.type_lineup = 'offense' AND sa.is_on_key = 0 THEN sa.c3_known_att END) AS off_off_c3_known_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 1 THEN sa.layup_made END) AS def_on_layup_made,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 1 THEN sa.layup_att END)  AS def_on_layup_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 1 THEN sa.dunk_made END) AS def_on_dunk_made,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 1 THEN sa.dunk_att END)  AS def_on_dunk_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 1 THEN sa.c3_made END) AS def_on_c3_made,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 1 THEN sa.c3_att END)  AS def_on_c3_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 1 THEN sa.c3_known_att END) AS def_on_c3_known_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.layup_made END) AS def_off_layup_made,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.layup_att END)  AS def_off_layup_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.dunk_made END) AS def_off_dunk_made,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.dunk_att END)  AS def_off_dunk_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.c3_made END) AS def_off_c3_made,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.c3_att END)  AS def_off_c3_att,
+            MAX(CASE WHEN sa.type_lineup = 'defense' AND sa.is_on_key = 0 THEN sa.c3_known_att END) AS def_off_c3_known_att
            FROM step2_joined s2j
            LEFT JOIN shot_agg sa
              ON sa.player_id = s2j.player_id
@@ -431,6 +475,14 @@ WITH sched AS (
             fr.off_off_fg2_made, fr.off_off_fg2_att, fr.off_off_fg3_made, fr.off_off_fg3_att,
             fr.def_on_fg2_made, fr.def_on_fg2_att, fr.def_on_fg3_made, fr.def_on_fg3_att,
             fr.def_off_fg2_made, fr.def_off_fg2_att, fr.def_off_fg3_made, fr.def_off_fg3_att,
+            fr.off_on_layup_made, fr.off_on_layup_att, fr.off_on_dunk_made, fr.off_on_dunk_att,
+            fr.off_on_c3_made, fr.off_on_c3_att, fr.off_on_c3_known_att,
+            fr.off_off_layup_made, fr.off_off_layup_att, fr.off_off_dunk_made, fr.off_off_dunk_att,
+            fr.off_off_c3_made, fr.off_off_c3_att, fr.off_off_c3_known_att,
+            fr.def_on_layup_made, fr.def_on_layup_att, fr.def_on_dunk_made, fr.def_on_dunk_att,
+            fr.def_on_c3_made, fr.def_on_c3_att, fr.def_on_c3_known_att,
+            fr.def_off_layup_made, fr.def_off_layup_att, fr.def_off_dunk_made, fr.def_off_dunk_att,
+            fr.def_off_c3_made, fr.def_off_c3_att, fr.def_off_c3_known_att,
             fr.offense_on_ppp - fr.defense_on_ppp AS on_net_rtg,
             fr.offense_off_ppp - fr.defense_off_ppp AS off_net_rtg,
             percent_rank() OVER (PARTITION BY fr.game_year ORDER BY (fr.offense_on_ppp - fr.defense_on_ppp)) AS pr_on_net,
@@ -471,6 +523,10 @@ SELECT team_name AS "Team",
     off_off_fg2_made, off_off_fg2_att, off_off_fg3_made, off_off_fg3_att,
     def_on_fg2_made, def_on_fg2_att, def_on_fg3_made, def_on_fg3_att,
     def_off_fg2_made, def_off_fg2_att, def_off_fg3_made, def_off_fg3_att,
+    off_on_layup_made, off_on_layup_att, off_on_dunk_made, off_on_dunk_att, off_on_c3_made, off_on_c3_att, off_on_c3_known_att,
+    off_off_layup_made, off_off_layup_att, off_off_dunk_made, off_off_dunk_att, off_off_c3_made, off_off_c3_att, off_off_c3_known_att,
+    def_on_layup_made, def_on_layup_att, def_on_dunk_made, def_on_dunk_att, def_on_c3_made, def_on_c3_att, def_on_c3_known_att,
+    def_off_layup_made, def_off_layup_att, def_off_dunk_made, def_off_dunk_att, def_off_c3_made, def_off_c3_att, def_off_c3_known_att,
    player_id,
    team_id
   FROM final_scored

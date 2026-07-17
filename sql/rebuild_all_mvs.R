@@ -118,6 +118,7 @@ rebuild_all_mvs <- function(from_level = 1, skip = character(0)) {
   on.exit(dbDisconnect(pg), add = TRUE)
 
   dbExecute(pg, sprintf("SET search_path TO %s, public;", SCHEMA))
+  dbExecute(pg, "SET statement_timeout TO 0;")
 
   # Filter to requested levels and skip list
   targets <- Filter(function(mv) mv$level >= from_level && !(mv$name %in% skip), MV_REGISTRY)

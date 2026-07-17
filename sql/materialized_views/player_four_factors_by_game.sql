@@ -60,9 +60,17 @@ lineup_totals AS (
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 THEN 1 ELSE 0 END) AS fg2_att,
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
-    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type = 'lay-up' AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS layup_made,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type IN ('dunk', 'allyhoop') AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS dunk_made,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS TRUE AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS c3_made,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
   FROM clean_stats cs
   JOIN basketball_test.schedule s ON s.game_id = cs.game_id
+  LEFT JOIN basketball_test.shot_zones z ON z.game_id = cs.game_id AND z.id = cs.id
   GROUP BY cs.game_id, s.game_year, cs.team_id, cs.lineup_hash, cs.type_lineup, cs.own_starters, cs.opp_starters
 ),
 onoff_lineup_segments AS (
@@ -110,6 +118,13 @@ onoff_player AS (
     SUM(lt.fg2_att) AS fg2_att,
     SUM(lt.fg3_made) AS fg3_made,
     SUM(lt.fg3_att) AS fg3_att,
+    SUM(lt.layup_made) AS layup_made,
+    SUM(lt.layup_att) AS layup_att,
+    SUM(lt.dunk_made) AS dunk_made,
+    SUM(lt.dunk_att) AS dunk_att,
+    SUM(lt.c3_made) AS c3_made,
+    SUM(lt.c3_att) AS c3_att,
+    SUM(lt.c3_known_att) AS c3_known_att,
     SUM(COALESCE(lm.minutes, 0)) AS onoff_minutes
   FROM base0 b0
   JOIN lineup_totals lt
@@ -297,6 +312,13 @@ SELECT
   op.fg2_att::int AS fg2_att,
   op.fg3_made::int AS fg3_made,
   op.fg3_att::int AS fg3_att,
+  op.layup_made::int AS layup_made,
+  op.layup_att::int AS layup_att,
+  op.dunk_made::int AS dunk_made,
+  op.dunk_att::int AS dunk_att,
+  op.c3_made::int AS c3_made,
+  op.c3_att::int AS c3_att,
+  op.c3_known_att::int AS c3_known_att,
   op.onoff_minutes
 FROM ff
 LEFT JOIN onoff_player op
