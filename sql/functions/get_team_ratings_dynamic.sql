@@ -207,11 +207,26 @@ BEGIN
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3
+                       AND EXISTS (
+                         SELECT 1
+                         FROM basketball_test.shot_zones z
+                         WHERE z.game_id = dppllm.game_id
+                           AND z.id = dppllm.id
+                           AND z.is_corner3 IS TRUE
+                       )
+                 THEN 1 ELSE 0 END) AS c3_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3
+                       AND EXISTS (
+                         SELECT 1
+                         FROM basketball_test.shot_zones z
+                         WHERE z.game_id = dppllm.game_id
+                           AND z.id = dppllm.id
+                           AND z.is_corner3 IS NOT NULL
+                       )
+                 THEN 1 ELSE 0 END) AS c3_known_att
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN qualifying_games qg ON qg.game_id = dppllm.game_id AND qg.team_id = dppllm.team_id
-      LEFT JOIN basketball_test.shot_zones z ON z.game_id = dppllm.game_id AND z.id = dppllm.id
       WHERE (p_max_margin IS NULL
              OR ABS(CASE WHEN dppllm.type_lineup = 'offense'
                          THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) - dppllm.opp_team_score
