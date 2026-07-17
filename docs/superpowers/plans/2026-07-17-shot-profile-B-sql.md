@@ -14,6 +14,7 @@
 2. **+`c3_known_att` columns** (spec's 24 onoff columns → **28**; 10 team columns → **12**). `c3_known_att` = 3PA whose corner flag is known (row exists in `shot_zones`). This implements the spec's fail-open rule at aggregate level: corner share = `c3_att / c3_known_att`, render "—" when `c3_known_att` is 0; `ab3 = c3_known_att − c3_att` (unknowns excluded from the split, never misclassified).
 3. **`onoff_default_mv` and `player_four_factors_by_game` are tables with incremental refresh functions** (`refresh_onoff_default_for_games`, `refresh_player_four_factors_by_game_for_games`) that duplicate the CTAS query — they MUST be updated in lockstep or the next ETL silently writes NULLs into the new columns.
 4. **PROJECT.md React-drift note deferred to Plan C** (PROJECT.md currently holds uncommitted user WIP; don't touch it).
+5. **Rim tags are constrained to 2PA.** Live validation found eight mirrored rows tagged `lay-up` with `parameters_points = 3`. Because Plan C derives `mid = fga - rim - fg3` and requires `rim <= fg2`, lay-up/dunk predicates also require `parameters_points = 2`; malformed 3-point lay-up tags remain classified only as 3PA.
 
 ## Global Constraints
 
@@ -22,8 +23,8 @@
 - DDL (rebuilds, CREATE FUNCTION) on **port 5432**, same pooler host; read checks can use 6543. Credentials `readRenviron("etl/.Renviron")` for DDL/write, `app/.Renviron` for read-only verification.
 - Long `Rscript -e` segfaults — write temp .R files to the scratchpad and run them (never repo root).
 - New column vocabulary (used identically everywhere):
-  - `layup_att/made`: `type = 'shot' AND parameters_type = 'lay-up'` (+ `parameters_made = 'made'`)
-  - `dunk_att/made`: `type = 'shot' AND parameters_type IN ('dunk', 'allyhoop')`
+  - `layup_att/made`: `type = 'shot' AND parameters_points = 2 AND parameters_type = 'lay-up'` (+ `parameters_made = 'made'`)
+  - `dunk_att/made`: `type = 'shot' AND parameters_points = 2 AND parameters_type IN ('dunk', 'allyhoop')`
   - `c3_att/made`: `type = 'shot' AND parameters_points = 3 AND z.is_corner3 IS TRUE`
   - `c3_known_att`: `type = 'shot' AND parameters_points = 3 AND z.is_corner3 IS NOT NULL`
   - team-side extra: `fga`: `type = 'shot'`
@@ -125,10 +126,10 @@ with:
 ```sql
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg3_made_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 THEN 1 ELSE 0 END AS fg3_att_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type = 'lay-up' AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS layup_made_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type = 'lay-up' THEN 1 ELSE 0 END AS layup_att_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type IN ('dunk', 'allyhoop') AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS dunk_made_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END AS dunk_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type = 'lay-up' AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS layup_made_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type = 'lay-up' THEN 1 ELSE 0 END AS layup_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type IN ('dunk', 'allyhoop') AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS dunk_made_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END AS dunk_att_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS TRUE AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS c3_made_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END AS c3_att_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END AS c3_known_att_flag
@@ -322,10 +323,10 @@ with:
 ```sql
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg3_made_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 THEN 1 ELSE 0 END AS fg3_att_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type = 'lay-up' AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS layup_made_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type = 'lay-up' THEN 1 ELSE 0 END AS layup_att_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type IN ('dunk', 'allyhoop') AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS dunk_made_flag,
-            CASE WHEN d.type = 'shot' AND d.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END AS dunk_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type = 'lay-up' AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS layup_made_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type = 'lay-up' THEN 1 ELSE 0 END AS layup_att_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type IN ('dunk', 'allyhoop') AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS dunk_made_flag,
+            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END AS dunk_att_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS TRUE AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS c3_made_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END AS c3_att_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END AS c3_known_att_flag
@@ -438,10 +439,10 @@ with:
 ```sql
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
-    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type = 'lay-up' AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS layup_made,
-    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
-    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type IN ('dunk', 'allyhoop') AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS dunk_made,
-    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type = 'lay-up' AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS layup_made,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type IN ('dunk', 'allyhoop') AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS dunk_made,
+    SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS TRUE AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS c3_made,
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
     SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
@@ -546,10 +547,10 @@ with:
 ```sql
       SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
       SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
-      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type = 'lay-up' AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS layup_made,
-      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
-      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type IN ('dunk', 'allyhoop') AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS dunk_made,
-      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type = 'lay-up' AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS layup_made,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type IN ('dunk', 'allyhoop') AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS dunk_made,
+      SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 2 AND cs.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
       SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS TRUE AND cs.parameters_made = 'made' THEN 1 ELSE 0 END) AS c3_made,
       SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
       SUM(CASE WHEN cs.type = 'shot' AND cs.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
@@ -656,8 +657,8 @@ AS WITH base AS (
             sum(dppllm.final_end_poss::integer) AS total_poss,
             COUNT(DISTINCT dppllm.game_id) AS games_count,
             SUM(CASE WHEN dppllm.type = 'shot' THEN 1 ELSE 0 END) AS fga,
-            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
-            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
@@ -1249,8 +1250,8 @@ with:
         sum(dppllm.final_end_poss::integer) AS total_poss,
         COUNT(DISTINCT dppllm.game_id) AS games_count,
         SUM(CASE WHEN dppllm.type = 'shot' THEN 1 ELSE 0 END) AS fga,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att

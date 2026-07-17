@@ -10,8 +10,8 @@ AS WITH base AS (
             sum(dppllm.final_end_poss::integer) AS total_poss,
             COUNT(DISTINCT dppllm.game_id) AS games_count,
             SUM(CASE WHEN dppllm.type = 'shot' THEN 1 ELSE 0 END) AS fga,
-            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
-            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+            SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
             SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
