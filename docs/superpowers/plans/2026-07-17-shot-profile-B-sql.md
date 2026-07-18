@@ -1207,7 +1207,7 @@ Replace:
     rank_net_rtg   BIGINT,
     rank_off_ppp   BIGINT,
     rank_def_ppp   BIGINT
-) 
+)
 ```
 
 with:
@@ -1228,10 +1228,10 @@ with:
     def_fg3_att    INT,
     def_c3_att     INT,
     def_c3_known_att INT
-) 
+)
 ```
 
-(Note: keep the trailing space after `)` if present in the original — copy the anchor exactly as it appears.)
+(Note: copy the surrounding anchor exactly as it appears.)
 
 - [ ] **Step 2: Add flags + join in `base_agg`**
 
