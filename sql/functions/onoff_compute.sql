@@ -39,7 +39,15 @@ RETURNS TABLE (
     off_on_fg2_made bigint, off_on_fg2_att bigint, off_on_fg3_made bigint, off_on_fg3_att bigint,
     off_off_fg2_made bigint, off_off_fg2_att bigint, off_off_fg3_made bigint, off_off_fg3_att bigint,
     def_on_fg2_made bigint, def_on_fg2_att bigint, def_on_fg3_made bigint, def_on_fg3_att bigint,
-    def_off_fg2_made bigint, def_off_fg2_att bigint, def_off_fg3_made bigint, def_off_fg3_att bigint
+    def_off_fg2_made bigint, def_off_fg2_att bigint, def_off_fg3_made bigint, def_off_fg3_att bigint,
+    off_on_layup_made bigint, off_on_layup_att bigint, off_on_dunk_made bigint, off_on_dunk_att bigint,
+    off_on_c3_made bigint, off_on_c3_att bigint, off_on_c3_known_att bigint,
+    off_off_layup_made bigint, off_off_layup_att bigint, off_off_dunk_made bigint, off_off_dunk_att bigint,
+    off_off_c3_made bigint, off_off_c3_att bigint, off_off_c3_known_att bigint,
+    def_on_layup_made bigint, def_on_layup_att bigint, def_on_dunk_made bigint, def_on_dunk_att bigint,
+    def_on_c3_made bigint, def_on_c3_att bigint, def_on_c3_known_att bigint,
+    def_off_layup_made bigint, def_off_layup_att bigint, def_off_dunk_made bigint, def_off_dunk_att bigint,
+    def_off_c3_made bigint, def_off_c3_att bigint, def_off_c3_known_att bigint
 )
 LANGUAGE plpgsql
 STABLE
@@ -225,6 +233,13 @@ BEGIN
       SUM(p.fg2_att)::bigint  AS fg2_att,
       SUM(p.fg3_made)::bigint AS fg3_made,
       SUM(p.fg3_att)::bigint  AS fg3_att,
+      SUM(p.layup_made)::bigint AS layup_made,
+      SUM(p.layup_att)::bigint  AS layup_att,
+      SUM(p.dunk_made)::bigint AS dunk_made,
+      SUM(p.dunk_att)::bigint  AS dunk_att,
+      SUM(p.c3_made)::bigint AS c3_made,
+      SUM(p.c3_att)::bigint  AS c3_att,
+      SUM(p.c3_known_att)::bigint AS c3_known_att,
       SUM(COALESCE(p.onoff_minutes, 0))::numeric AS minutes
     FROM basketball_test.player_four_factors_by_game p
     JOIN sched s ON s.game_id = p.game_id AND s.team_id = p.team_id
@@ -288,6 +303,13 @@ BEGIN
       a.fg2_att,
       a.fg3_made,
       a.fg3_att,
+      a.layup_made,
+      a.layup_att,
+      a.dunk_made,
+      a.dunk_att,
+      a.c3_made,
+      a.c3_att,
+      a.c3_known_att,
       a.minutes,
       r.firstname,
       r.lastname,
@@ -325,6 +347,13 @@ BEGIN
       wn.fg2_att,
       wn.fg3_made,
       wn.fg3_att,
+      wn.layup_made,
+      wn.layup_att,
+      wn.dunk_made,
+      wn.dunk_att,
+      wn.c3_made,
+      wn.c3_att,
+      wn.c3_known_att,
       wn.minutes,
       wn.firstname,
       wn.lastname,
@@ -361,7 +390,21 @@ BEGIN
       MAX(CASE WHEN f.is_on_key = 0 THEN f.fg2_made END) AS fg2_off_made,
       MAX(CASE WHEN f.is_on_key = 0 THEN f.fg2_att END)  AS fg2_off_att,
       MAX(CASE WHEN f.is_on_key = 0 THEN f.fg3_made END) AS fg3_off_made,
-      MAX(CASE WHEN f.is_on_key = 0 THEN f.fg3_att END)  AS fg3_off_att
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.fg3_att END)  AS fg3_off_att,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.layup_made END) AS layup_on_made,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.layup_att END)  AS layup_on_att,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.dunk_made END) AS dunk_on_made,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.dunk_att END)  AS dunk_on_att,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.c3_made END) AS c3_on_made,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.c3_att END)  AS c3_on_att,
+      MAX(CASE WHEN f.is_on_key = 1 THEN f.c3_known_att END) AS c3_known_on_att,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.layup_made END) AS layup_off_made,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.layup_att END)  AS layup_off_att,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.dunk_made END) AS dunk_off_made,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.dunk_att END)  AS dunk_off_att,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.c3_made END) AS c3_off_made,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.c3_att END)  AS c3_off_att,
+      MAX(CASE WHEN f.is_on_key = 0 THEN f.c3_known_att END) AS c3_known_off_att
     FROM filtered f
     GROUP BY f.player_id, f.team_id, f.game_year, f.type_lineup
   ),
@@ -452,7 +495,35 @@ BEGIN
       MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg2_off_made END) AS def_off_fg2_made,
       MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg2_off_att END)  AS def_off_fg2_att,
       MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg3_off_made END) AS def_off_fg3_made,
-      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg3_off_att END)  AS def_off_fg3_att
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.fg3_off_att END)  AS def_off_fg3_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.layup_on_made END) AS off_on_layup_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.layup_on_att END)  AS off_on_layup_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.dunk_on_made END) AS off_on_dunk_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.dunk_on_att END)  AS off_on_dunk_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.c3_on_made END) AS off_on_c3_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.c3_on_att END)  AS off_on_c3_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.c3_known_on_att END) AS off_on_c3_known_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.layup_off_made END) AS off_off_layup_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.layup_off_att END)  AS off_off_layup_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.dunk_off_made END) AS off_off_dunk_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.dunk_off_att END)  AS off_off_dunk_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.c3_off_made END) AS off_off_c3_made,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.c3_off_att END)  AS off_off_c3_att,
+      MAX(CASE WHEN tr.type_lineup = 'offense' THEN tr.c3_known_off_att END) AS off_off_c3_known_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.layup_on_made END) AS def_on_layup_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.layup_on_att END)  AS def_on_layup_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.dunk_on_made END) AS def_on_dunk_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.dunk_on_att END)  AS def_on_dunk_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.c3_on_made END) AS def_on_c3_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.c3_on_att END)  AS def_on_c3_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.c3_known_on_att END) AS def_on_c3_known_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.layup_off_made END) AS def_off_layup_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.layup_off_att END)  AS def_off_layup_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.dunk_off_made END) AS def_off_dunk_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.dunk_off_att END)  AS def_off_dunk_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.c3_off_made END) AS def_off_c3_made,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.c3_off_att END)  AS def_off_c3_att,
+      MAX(CASE WHEN tr.type_lineup = 'defense' THEN tr.c3_known_off_att END) AS def_off_c3_known_att
     FROM type_ranked tr
     GROUP BY
       tr.player_id,
@@ -503,6 +574,14 @@ BEGIN
       fr.off_off_fg2_made, fr.off_off_fg2_att, fr.off_off_fg3_made, fr.off_off_fg3_att,
       fr.def_on_fg2_made, fr.def_on_fg2_att, fr.def_on_fg3_made, fr.def_on_fg3_att,
       fr.def_off_fg2_made, fr.def_off_fg2_att, fr.def_off_fg3_made, fr.def_off_fg3_att,
+      fr.off_on_layup_made, fr.off_on_layup_att, fr.off_on_dunk_made, fr.off_on_dunk_att,
+      fr.off_on_c3_made, fr.off_on_c3_att, fr.off_on_c3_known_att,
+      fr.off_off_layup_made, fr.off_off_layup_att, fr.off_off_dunk_made, fr.off_off_dunk_att,
+      fr.off_off_c3_made, fr.off_off_c3_att, fr.off_off_c3_known_att,
+      fr.def_on_layup_made, fr.def_on_layup_att, fr.def_on_dunk_made, fr.def_on_dunk_att,
+      fr.def_on_c3_made, fr.def_on_c3_att, fr.def_on_c3_known_att,
+      fr.def_off_layup_made, fr.def_off_layup_att, fr.def_off_dunk_made, fr.def_off_dunk_att,
+      fr.def_off_c3_made, fr.def_off_c3_att, fr.def_off_c3_known_att,
       fr.offense_on_ppp  - fr.defense_on_ppp  AS on_net_rtg,
       fr.offense_off_ppp - fr.defense_off_ppp AS off_net_rtg,
       PERCENT_RANK() OVER (
@@ -550,7 +629,15 @@ BEGIN
     fs.off_on_fg2_made, fs.off_on_fg2_att, fs.off_on_fg3_made, fs.off_on_fg3_att,
     fs.off_off_fg2_made, fs.off_off_fg2_att, fs.off_off_fg3_made, fs.off_off_fg3_att,
     fs.def_on_fg2_made, fs.def_on_fg2_att, fs.def_on_fg3_made, fs.def_on_fg3_att,
-    fs.def_off_fg2_made, fs.def_off_fg2_att, fs.def_off_fg3_made, fs.def_off_fg3_att
+    fs.def_off_fg2_made, fs.def_off_fg2_att, fs.def_off_fg3_made, fs.def_off_fg3_att,
+    fs.off_on_layup_made, fs.off_on_layup_att, fs.off_on_dunk_made, fs.off_on_dunk_att,
+    fs.off_on_c3_made, fs.off_on_c3_att, fs.off_on_c3_known_att,
+    fs.off_off_layup_made, fs.off_off_layup_att, fs.off_off_dunk_made, fs.off_off_dunk_att,
+    fs.off_off_c3_made, fs.off_off_c3_att, fs.off_off_c3_known_att,
+    fs.def_on_layup_made, fs.def_on_layup_att, fs.def_on_dunk_made, fs.def_on_dunk_att,
+    fs.def_on_c3_made, fs.def_on_c3_att, fs.def_on_c3_known_att,
+    fs.def_off_layup_made, fs.def_off_layup_att, fs.def_off_dunk_made, fs.def_off_dunk_att,
+    fs.def_off_c3_made, fs.def_off_c3_att, fs.def_off_c3_known_att
   FROM final_scored fs
   WHERE fs.total_net_rtg >= p_min_net
   ORDER BY "Net RTG Diff" DESC, "Team", "Last Name", "First Name";

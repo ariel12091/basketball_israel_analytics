@@ -4,7 +4,7 @@
 
 **Goal:** Add shot-diet count columns (lay-up / dunk / corner-3, with a corner-known denominator) to both Tab-1 fast+filtered paths and both Tab-3 fast+filtered paths, so Plan C (Shiny UI) can render Shot Profile from either path.
 
-**Architecture:** Fast paths get new pre-computed columns: `onoff_default_mv` (a CTAS **table** with incremental refresh fn) and `team_ppp_ratings_mv` (a real MV). Filtered paths: `onoff_compute` SUMs per-game columns that must first be added to `player_four_factors_by_game` (+ its incremental refresh fn); `get_team_ratings_dynamic` aggregates action rows directly and takes the flags inline. Corner-3 comes from `LEFT JOIN basketball_test.shot_zones z ON (z.game_id, z.id) = (game_id, id)` (Plan A table, complete for all 439 games). Two branches, independently mergeable: `sql/shot-profile-mv` (Tasks 1–6), then `sql/shot-profile-fns` (Tasks 7–9).
+**Architecture:** Fast paths get new pre-computed columns: `onoff_default_mv` (a CTAS **table** with incremental refresh fn) and `team_ppp_ratings_mv` (a real MV). Filtered paths: `onoff_compute` SUMs per-game columns that must first be added to `player_four_factors_by_game` (+ its incremental refresh fn); `get_team_ratings_dynamic` aggregates action rows directly and takes the flags inline. Corner-3 comes from `basketball_test.shot_zones` keyed by `(game_id, id)` (Plan A table, complete for all 439 games): fast/precomputed paths use `LEFT JOIN`, while the dynamic team path uses PK-backed `EXISTS` checks only for 3PA. Two branches, independently mergeable: `sql/shot-profile-mv` (Tasks 1–6), then `sql/shot-profile-fns` (Tasks 7–9).
 
 **Tech Stack:** PostgreSQL (Supabase), plpgsql, R 4.4.2 (`"/c/Program Files/R/R-4.4.2/bin/Rscript.exe"`; PowerShell: `& "C:\Program Files\R\R-4.4.2\bin\Rscript.exe"`), DBI/RPostgres.
 
@@ -16,6 +16,7 @@
 4. **PROJECT.md React-drift note deferred to Plan C** (PROJECT.md currently holds uncommitted user WIP; don't touch it).
 5. **Rim tags are constrained to 2PA.** Live validation found eight mirrored rows tagged `lay-up` with `parameters_points = 3`. Because Plan C derives `mid = fga - rim - fg3` and requires `rim <= fg2`, lay-up/dunk predicates also require `parameters_points = 2`; malformed 3-point lay-up tags remain classified only as 3PA.
 6. **League offense/defense totals reconcile to eligible source perspectives, not forced symmetry.** `df_pts_poss_lineups_longer_mv` drops a perspective when its lineup hash is NULL. Live validation found one such known non-corner 3PA, `(game_id, id) = (62452, 624520636)`, with an offense row and no defense row. Do not synthesize a team-MV defense count; audit orphan perspectives explicitly and keep fast/filtered parity strict.
+7. **The dynamic team path uses indexed 3PA-only `EXISTS` lookups, not an action-wide `LEFT JOIN`.** Transactional warm benchmarks showed the original join added roughly 48–66% to `get_team_ratings_dynamic`; a focused seven-run benchmark of PK-backed existence checks inside the two corner counters measured 1.03 s versus a bracketed 1.00 s current-function median (about 0.03 s / 3% overhead) while preserving fail-open semantics.
 
 ## Global Constraints
 
@@ -1206,7 +1207,7 @@ Replace:
     rank_net_rtg   BIGINT,
     rank_off_ppp   BIGINT,
     rank_def_ppp   BIGINT
-) 
+)
 ```
 
 with:
@@ -1227,10 +1228,10 @@ with:
     def_fg3_att    INT,
     def_c3_att     INT,
     def_c3_known_att INT
-) 
+)
 ```
 
-(Note: keep the trailing space after `)` if present in the original — copy the anchor exactly as it appears.)
+(Note: copy the surrounding anchor exactly as it appears.)
 
 - [ ] **Step 2: Add flags + join in `base_agg`**
 
@@ -1254,11 +1255,26 @@ with:
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
         SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3
+                       AND EXISTS (
+                         SELECT 1
+                         FROM basketball_test.shot_zones z
+                         WHERE z.game_id = dppllm.game_id
+                           AND z.id = dppllm.id
+                           AND z.is_corner3 IS TRUE
+                       )
+                 THEN 1 ELSE 0 END) AS c3_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3
+                       AND EXISTS (
+                         SELECT 1
+                         FROM basketball_test.shot_zones z
+                         WHERE z.game_id = dppllm.game_id
+                           AND z.id = dppllm.id
+                           AND z.is_corner3 IS NOT NULL
+                       )
+                 THEN 1 ELSE 0 END) AS c3_known_att
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN qualifying_games qg ON qg.game_id = dppllm.game_id AND qg.team_id = dppllm.team_id
-      LEFT JOIN basketball_test.shot_zones z ON z.game_id = dppllm.game_id AND z.id = dppllm.id
 ```
 
 - [ ] **Step 3: Pivot in `pivoted`**
@@ -1493,7 +1509,7 @@ dbDisconnect(con)
 ```
 
 Run: `& "C:\Program Files\R\R-4.4.2\bin\Rscript.exe" <scratchpad>/planb_parity.R`
-Expected: team mismatches = 0; onoff `new_col_mism` = 0 (and `control_fg3_mism` = 0 — if control > 0, the discrepancy predates this work; new_col_mism must be ≤ control); timings within 1.5× the Task 1 baseline. **If the shot_zones LEFT JOIN regresses `get_team_ratings_dynamic` badly**, check `EXPLAIN` for a seq scan on shot_zones — its PK (game_id, id) should give an index path; only add an index after plan evidence.
+Expected: team mismatches = 0; onoff `new_col_mism` = 0 (and `control_fg3_mism` = 0 — if control > 0, the discrepancy predates this work; new_col_mism must be ≤ control); timings within 1.5× the Task 1 baseline. **If the corner `EXISTS` checks regress `get_team_ratings_dynamic` badly**, check `EXPLAIN` for repeated non-indexed scans of shot_zones — its PK (game_id, id) should serve each lookup; only add an index after plan evidence.
 
 - [ ] **Step 4: Run the full app test suite (regression)**
 
