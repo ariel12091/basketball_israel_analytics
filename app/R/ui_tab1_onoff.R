@@ -12,7 +12,7 @@ ui_tab1_onoff <- tabPanel(
         div(
           class = "view-mode-container",
           radioButtons("onoff_view_mode", label = "Select View:",
-                       choices = c("Summary", "Four Factors"),
+                       choices = c("Summary", "Four Factors", "Shot Profile"),
                        selected = "Summary",
                        inline = TRUE)
         ),
@@ -180,6 +180,20 @@ ui_tab1_onoff <- tabPanel(
             )
           )
         ),
+        conditionalPanel(
+          condition = "input.onoff_view_mode == 'Shot Profile'",
+          tab_explainer(
+            id = "onoff_explainer_sp",
+            title = "What This Tab Answers (Shot Profile)",
+            intro = "How does the team's shot diet shift with the player on vs off the floor? Each cell shows the ON-minus-OFF change in share of team FGA, with ON | OFF values below.",
+            bullets = c(
+              "Shares are descriptive — they describe how the shot mix changes, not how good the change is. Efficiency lives in the Summary and Four Factors views.",
+              "Rim = lay-ups + dunks (tag-based). Mid = everything else inside the arc. 3PA% is share of all FGA.",
+              "C3% of 3PA splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
+              "Cells gray out below 50 team FGA on the ON side — small samples produce noisy shares."
+            )
+          )
+        ),
         # --- LEGEND (Summary mode: shot split legend) ---
         conditionalPanel(
           condition = "input.onoff_view_mode == 'Summary'",
@@ -230,6 +244,15 @@ ui_tab1_onoff <- tabPanel(
               span("100% Rank")
             ),
             span(style="margin-left: 15px; font-size: 0.8em; color: #6e7681;", paste0("(Ranked Players: > ", RANKING_BASELINE, " poss)"))
+          )
+        ),
+        conditionalPanel(
+          condition = "input.onoff_view_mode == 'Shot Profile'",
+          div(
+            class = "legend-box",
+            span(style = "font-weight:700; margin-right:10px;", "Shot Profile:"),
+            span(style = "font-size:0.85em; color:#6e7681;",
+                 "Share of team FGA while the player is on/off the floor · Δ = ON − OFF (percentage points) · C3% is share of 3PA with known location (— = unknown) · descriptive only — no point-impact estimate")
           )
         ),
         uiOutput("on_filter_chips"),

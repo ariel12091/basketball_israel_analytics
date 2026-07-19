@@ -204,6 +204,10 @@ test_that("primary app tables render data-shaped output with mock data", {
     set_onoff_inputs(session, "Four Factors")
     expect_silent(rendered <- output$onoff_dt)
     expect_primary_table_rendered(rendered)
+
+    set_onoff_inputs(session, "Shot Profile")
+    expect_silent(rendered <- output$onoff_dt)
+    expect_primary_table_rendered(rendered)
   })
 
   shiny::testServer(function(input, output, session) {
