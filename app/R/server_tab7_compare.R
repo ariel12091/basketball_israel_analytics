@@ -945,7 +945,8 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   PLAYER_VIEWS <- c(
     "Overall" = "overall",
-    "Four Factors" = "ff_swing"
+    "Four Factors" = "ff_swing",
+    "Shot Profile" = "shot_profile"
   )
 
   selected_player_view <- reactiveVal("overall")
@@ -1979,6 +1980,25 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   })
 
+  cmp_player_shot_raw <- reactive({
+    req(identical(input$cmp_mode, "Players"))
+    req(identical(selected_player_view(), "shot_profile"))
+    data <- cmp_player_raw()
+    req(data)
+
+    onoff_a <- run_onoff_impact(data$pa, paste(data$team_ids_a, collapse = ","))
+    onoff_b <- run_onoff_impact(data$pb, paste(data$team_ids_b, collapse = ","))
+    on_a <- onoff_a[onoff_a$player_id == data$player_a_id_int, , drop = FALSE]
+    on_b <- onoff_b[onoff_b$player_id == data$player_b_id_int, , drop = FALSE]
+    if (!nrow(on_a) || !nrow(on_b)) return(NULL)
+
+    list(
+      onoff_a = on_a[1, , drop = FALSE], onoff_b = on_b[1, , drop = FALSE],
+      name_a = data$name_a, name_b = data$name_b,
+      team_a = data$team_a, team_b = data$team_b
+    )
+  })
+
   # -- Shared PvP UI helpers --
 
   badge_css <- "background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;"
@@ -2005,16 +2025,21 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   pvp_stat_row <- function(label, va, vb, fmt_fn, higher_is_better = TRUE,
-                           sub_a = NULL, sub_b = NULL) {
+                           sub_a = NULL, sub_b = NULL, neutral = FALSE) {
     diff <- if (!is.na(va) && !is.na(vb)) abs(va - vb) else NA_real_
-    if (higher_is_better) {
+    if (neutral) {
+      a_better <- FALSE
+      b_better <- FALSE
+    } else if (higher_is_better) {
       a_better <- !is.na(va) && !is.na(vb) && va > vb
       b_better <- !is.na(va) && !is.na(vb) && vb > va
     } else {
       a_better <- !is.na(va) && !is.na(vb) && va < vb
       b_better <- !is.na(va) && !is.na(vb) && vb < va
     }
-    diff_txt <- if (!is.na(diff) && diff > 0.05) sprintf("+%.1f", diff) else NULL
+    diff_txt <- if (!neutral && !is.na(diff) && diff > 0.05) sprintf("+%.1f", diff) else NULL
+    a_css <- if (neutral || a_better) val_win_css else val_lose_css
+    b_css <- if (neutral || b_better) val_win_css else val_lose_css
     left_badge <- if (a_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
     right_badge <- if (b_better && !is.null(diff_txt)) tags$span(style = badge_css, diff_txt) else NULL
 
@@ -2025,7 +2050,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         left_badge,
         tags$div(
           style = "text-align: right;",
-          tags$span(style = if (a_better) val_win_css else val_lose_css, fmt_fn(va)),
+          tags$span(style = a_css, fmt_fn(va)),
           sub_a
         )
       ),
@@ -2037,7 +2062,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         style = "flex: 1; display: flex; align-items: center; justify-content: flex-start; gap: 10px;",
         tags$div(
           style = "text-align: left;",
-          tags$span(style = if (b_better) val_win_css else val_lose_css, fmt_fn(vb)),
+          tags$span(style = b_css, fmt_fn(vb)),
           sub_b
         ),
         right_badge
@@ -2185,6 +2210,95 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
+  # -- Shot Profile view (descriptive shot-diet swing; no impact framing) --
+
+  add_player_shot_profile_shares <- function(row) {
+    if (is.null(row) || !nrow(row)) return(NULL)
+    prefixes <- c("off_on", "off_off", "def_on", "def_off")
+    need <- as.vector(outer(prefixes, c("_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att"), paste0))
+    if (!all(need %in% names(row))) return(NULL)
+    num0 <- function(col) {
+      x <- suppressWarnings(as.numeric(row[[col]]))
+      ifelse(is.na(x), 0, x)
+    }
+    for (p in prefixes) {
+      row[[paste0(p, "_fga_in")]] <- num0(paste0(p, "_fg2_att")) + num0(paste0(p, "_fg3_att"))
+    }
+    add_shot_profile_metrics(row, stats::setNames(lapply(prefixes, function(p) {
+      paste0(p, c("_layup_att", "_dunk_att", "_fga_in", "_fg3_att", "_c3_att", "_c3_known_att"))
+    }), prefixes))
+  }
+
+  render_shot_profile_ui <- function() {
+    trad_state <- cmp_player_raw_state()
+    if (identical(trad_state$status, "pending")) {
+      return(cmp_player_state_card("Preparing player compare..."))
+    }
+    data <- cmp_player_shot_raw()
+    if (is.null(data)) {
+      return(cmp_player_state_card("No player data for current filters."))
+    }
+
+    row_a <- add_player_shot_profile_shares(data$onoff_a)
+    row_b <- add_player_shot_profile_shares(data$onoff_b)
+    if (is.null(row_a) || is.null(row_b)) {
+      return(cmp_player_state_card("Shot Profile columns unavailable for current filters."))
+    }
+
+    poss_a <- if ("ON Poss" %in% names(row_a)) as.numeric(row_a[["ON Poss"]]) else NA_real_
+    poss_b <- if ("ON Poss" %in% names(row_b)) as.numeric(row_b[["ON Poss"]]) else NA_real_
+    info_line <- function(poss, side) {
+      parts <- character(0)
+      if (is.finite(poss)) parts <- c(parts, paste0(round(poss), " ON Poss"))
+      time_label <- player_side_time_label(side)
+      if (nzchar(time_label)) parts <- c(parts, time_label)
+      paste(parts, collapse = " · ")
+    }
+
+    sp_labels <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "C3% of 3PA", "Mid%")
+    sp_suffix <- c("layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
+
+    swing <- function(row, side, m) {
+      on_v <- suppressWarnings(as.numeric(row[[paste0(side, "_on_", m)]]))
+      off_v <- suppressWarnings(as.numeric(row[[paste0(side, "_off_", m)]]))
+      if (!is.finite(on_v) || !is.finite(off_v)) return(list(d = NA_real_, on = on_v, off = off_v))
+      list(d = round(on_v - off_v, 1), on = on_v, off = off_v)
+    }
+    fmt_swing <- function(v) if (is.na(v)) "—" else sprintf("%+.1f", v)
+    onoff_sub <- function(s) {
+      if (!is.finite(s$on) || !is.finite(s$off)) return(NULL)
+      tags$div(style = "font-size:.72rem; color:#6e7681;",
+               sprintf("on %.1f | off %.1f", s$on, s$off))
+    }
+
+    make_rows <- function(side) {
+      lapply(seq_along(sp_suffix), function(i) {
+        sa <- swing(row_a, side, sp_suffix[i])
+        sb <- swing(row_b, side, sp_suffix[i])
+        pvp_stat_row(sp_labels[i], sa$d, sb$d, fmt_swing,
+                     sub_a = onoff_sub(sa), sub_b = onoff_sub(sb), neutral = TRUE)
+      })
+    }
+
+    tagList(
+      pvp_header(
+        data$name_a, data$team_a, info_line(poss_a, "a"),
+        data$name_b, data$team_b, info_line(poss_b, "b")
+      ),
+      tags$div(
+        style = "max-width: 520px; margin: 0 auto;",
+        tags$div(
+          style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
+          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points). Descriptive — no point-impact estimate. C3% is of 3PA with known location; — = unknown."
+        ),
+        pvp_section_header("Offensive Shot Diet (ON − OFF)"),
+        do.call(tagList, make_rows("off")),
+        pvp_section_header("Defensive Shot Diet (ON − OFF)"),
+        do.call(tagList, make_rows("def"))
+      )
+    )
+  }
+
   # -- Overall PvP view --
 
   output$cmp_pvp_ui <- renderUI({
@@ -2199,6 +2313,10 @@ server_tab7_compare <- function(input, output, session, shared) {
     view <- selected_player_view()
     if (identical(view, "ff_swing")) {
       return(render_ff_swing_ui())
+    }
+
+    if (identical(view, "shot_profile")) {
+      return(render_shot_profile_ui())
     }
 
     data_state <- cmp_player_raw_state()

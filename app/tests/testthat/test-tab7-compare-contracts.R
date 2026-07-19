@@ -89,3 +89,15 @@ test_that("tab7 detail view registers Teams-only neutral shot-profile sections",
   sp_block <- substr(sp_block, 1, regexpr("# --", sp_block, fixed = TRUE))
   expect_false(grepl("factor =", strsplit(sp_block, "PLAYER_VIEWS")[[1]][1], fixed = TRUE))
 })
+
+test_that("tab7 players mode registers the shot-profile view", {
+  src <- paste(readLines(repo_file("R", "server_tab7_compare.R"), warn = FALSE), collapse = "\n")
+  expect_true(grepl('"Shot Profile" = "shot_profile"', src, fixed = TRUE))
+  expect_true(grepl("render_shot_profile_ui <- function", src, fixed = TRUE))
+  expect_true(grepl('identical(view, "shot_profile")', src, fixed = TRUE))
+  # neutral rows: the renderer must not use est/impact framing
+  sp_fn <- sub(".*render_shot_profile_ui <- function", "", src)
+  sp_fn <- strsplit(sp_fn, "# -- Overall PvP view --", fixed = TRUE)[[1]][1]
+  expect_false(grepl("ff_impact", sp_fn, fixed = TRUE))
+  expect_true(grepl("neutral = TRUE", sp_fn, fixed = TRUE))
+})
