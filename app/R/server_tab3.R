@@ -31,6 +31,14 @@ TR_FF_FILTERABLE_COLS <- c(
   "Net" = "net_rtg"
 )
 
+TR_SP_FILTERABLE_COLS <- c(
+  shot_profile_metric_cols("Off", "off"),
+  "Off Poss" = "off_poss",
+  shot_profile_metric_cols("Def", "def"),
+  "Def Poss" = "def_poss",
+  "Min" = "minutes"
+)
+
 TR_TRAD_FILTERABLE_COLS <- c(
   "GP" = "gp",
   "Poss On Floor" = "poss_on_floor",
@@ -68,6 +76,8 @@ server_tab3 <- function(input, output, session, shared) {
       TR_TRAD_FILTERABLE_COLS
     } else if (identical(mode, "Four Factors")) {
       TR_FF_FILTERABLE_COLS
+    } else if (identical(mode, "Shot Profile")) {
+      TR_SP_FILTERABLE_COLS
     } else {
       TR_SUMMARY_FILTERABLE_COLS
     }
@@ -969,7 +979,9 @@ server_tab3 <- function(input, output, session, shared) {
       db_get_query(pg_pool,
         "SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,
                 games_played, wins, losses, off_poss, def_poss,
-                rank_net_rtg, rank_off_ppp, rank_def_ppp
+                rank_net_rtg, rank_off_ppp, rank_def_ppp,
+                off_fga, off_layup_att, off_dunk_att, off_fg3_att, off_c3_att, off_c3_known_att,
+                def_fga, def_layup_att, def_dunk_att, def_fg3_att, def_c3_att, def_c3_known_att
            FROM basketball_test.team_ppp_ratings_mv
           WHERE game_year = $1::int4
           ORDER BY rank_net_rtg",
@@ -1834,6 +1846,107 @@ server_tab3 <- function(input, output, session, shared) {
       if ("pr_def_ftr"  %in% names(disp_ff)) dt <- DT::formatStyle(dt, "def_ftr",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_ftr")
       if ("pr_net"      %in% names(disp_ff)) dt <- DT::formatStyle(dt, "net_rtg",  backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
 
+      return(dt)
+
+    } else if (identical(mode, "Shot Profile")) {
+      # ============================================================
+      # SHOT PROFILE TEAM TABLE (descriptive shot-diet shares)
+      # ============================================================
+      df <- tr_data()
+      if (is.null(df) || nrow(df) == 0) return(empty_dt("Shot Profile: no data for current filters"))
+      need <- c("off_fga", "off_layup_att", "off_c3_known_att", "def_fga")
+      if (!all(need %in% names(df))) return(empty_dt("Shot Profile columns unavailable"))
+      df <- add_team_pace_cols(df, minutes_map = mins_map)
+      df <- add_shot_profile_metrics(df, list(
+        off = c("off_layup_att", "off_dunk_att", "off_fga", "off_fg3_att", "off_c3_att", "off_c3_known_att"),
+        def = c("def_layup_att", "def_dunk_att", "def_fga", "def_fg3_att", "def_c3_att", "def_c3_known_att")
+      ))
+      df <- apply_stat_filters(df, tr_stat_filter_state$filters())
+      if (is.null(df) || !nrow(df)) return(empty_dt("Shot Profile: no rows match stat filters"))
+
+      # Rank = share magnitude order (descriptive: #1 = most of that shot type)
+      sp_cols <- as.vector(outer(c("off", "def"), SHOT_PROFILE_METRIC_SUFFIXES, paste0))
+      sp_disp <- gsub("_share$|_pct3$", "", sp_cols)  # off_layup, off_c3, ...
+      fmt_share_cell <- function(vals, ranks) {
+        v <- suppressWarnings(as.numeric(vals))
+        r <- suppressWarnings(as.integer(ranks))
+        ifelse(is.na(v), "—",
+               paste0(format(round(v, 1), nsmall = 1, trim = TRUE), "%<br>",
+                      ifelse(is.na(r), "#NA", paste0("#", r))))
+      }
+
+      df <- df %>% arrange(desc(off_rim_share))
+      disp_sp <- data.frame(team_name = df$team_name, minutes = df$minutes, check.names = FALSE)
+      for (i in seq_along(sp_cols)) {
+        rk <- dplyr::min_rank(dplyr::desc(df[[sp_cols[i]]]))
+        disp_sp[[sp_disp[i]]] <- fmt_share_cell(df[[sp_cols[i]]], rk)
+      }
+      disp_sp$off_poss <- df$off_poss
+      disp_sp$def_poss <- df$def_poss
+      # column order: team, min, off block + poss, def block + poss
+      off_block <- sp_disp[startsWith(sp_disp, "off_")]
+      def_block <- sp_disp[startsWith(sp_disp, "def_")]
+      disp_sp <- disp_sp[, c("team_name", "minutes", off_block, "off_poss", def_block, "def_poss")]
+
+      for (i in seq_along(sp_cols)) {
+        vals <- suppressWarnings(as.numeric(df[[sp_cols[i]]]))
+        vals[is.na(vals)] <- -Inf
+        disp_sp[[paste0("sort__", sp_disp[i])]] <- vals
+      }
+      sp_sort_defs <- lapply(sp_disp, function(nm) {
+        list(
+          targets = which(names(disp_sp) == nm) - 1L,
+          orderData = which(names(disp_sp) == paste0("sort__", nm)) - 1L,
+          orderSequence = list("desc", "asc")
+        )
+      })
+
+      c3_title <- "Corner 3s as % of 3PA with known court location; — = location unknown"
+      sketch_sp <- htmltools::withTags(table(class = "display", thead(
+        tr(
+          th(class = "group-head", colspan = 2, ""),
+          th(class = "group-head section-left-border", colspan = 7, "Offense Shot Diet (share of FGA)"),
+          th(class = "group-head section-left-border", colspan = 7, "Defense Shot Diet (share of FGA)")
+        ),
+        tr(
+          th(class = "sub-head", "Team"), th(class = "sub-head", "Min"),
+          th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
+          th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
+          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", "Poss"),
+          th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
+          th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
+          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", "Poss")
+        )
+      )))
+
+      sp_hide_idx <- which(grepl("^sort__", names(disp_sp))) - 1L
+      off_first_idx <- which(names(disp_sp) == "off_layup") - 1L
+      def_first_idx <- which(names(disp_sp) == "def_layup") - 1L
+      col_defs <- list(
+        list(targets = sp_hide_idx, visible = FALSE),
+        list(targets = "_all", className = "dt-center")
+      )
+      if (length(off_first_idx)) col_defs[[length(col_defs) + 1L]] <- list(targets = off_first_idx, className = "section-left-border dt-center")
+      if (length(def_first_idx)) col_defs[[length(col_defs) + 1L]] <- list(targets = def_first_idx, className = "section-left-border dt-center")
+      col_defs <- c(col_defs, sp_sort_defs)
+
+      dt <- DT::datatable(disp_sp, container = sketch_sp, rownames = FALSE,
+                          escape = dt_escape_except(disp_sp, sp_disp),
+                          extensions = "Buttons",
+                          options = list(
+                            headerCallback = HEADER_TOOLTIP_JS,
+                            dom = "Btip",
+                            buttons = tr_csv_button(mode),
+                            pageLength = 50, deferRender = TRUE, scrollX = TRUE,
+                            scrollY = "70vh", scrollCollapse = TRUE,
+                            order = list(list(which(names(disp_sp) == "off_rim") - 1L, "desc")),
+                            columnDefs = col_defs
+                          ))
+      if ("minutes" %in% names(disp_sp)) dt <- DT::formatRound(dt, "minutes", 1)
+      dt <- DT::formatCurrency(dt, intersect(c("off_poss", "def_poss"), names(disp_sp)),
+                               currency = "", interval = 3, mark = ",", digits = 0)
       return(dt)
 
     } else {

@@ -12,7 +12,7 @@ ui_tab3_team <- tabPanel(
           radioButtons(
             "tr_view_mode",
             label = "View:",
-            choices = c("Summary", "Four Factors", "Traditional"),
+            choices = c("Summary", "Four Factors", "Shot Profile", "Traditional"),
             selected = "Summary",
             inline = TRUE
           )
@@ -170,6 +170,20 @@ ui_tab3_team <- tabPanel(
                 tags$img(src = app_image_src("team-ff-row-snippet.png"), alt = "Team four factors table snippet"),
                 div(class = "example-snippet-caption", "Real Four Factors snippet (Team Ratings)")
               )
+            )
+          )
+        ),
+        conditionalPanel(
+          condition = "input.tr_view_mode == 'Shot Profile'",
+          tab_explainer(
+            id = "team_explainer_sp",
+            title = "What This Tab Answers (Shot Profile)",
+            intro = "What does each team's shot diet look like, on offense and defense? Shares of FGA by shot type: lay-up, dunk, rim (lay-up + dunk), 3PA, corner-3 share of 3PA, and mid-range.",
+            bullets = c(
+              "Shares are descriptive — they describe the mix, not its quality. #1 means most of that shot type, not best.",
+              "Defense columns are the shot diet teams allow their opponents.",
+              "C3% of 3PA uses shots with known court location; — means location unknown.",
+              "The same date/clutch-free filters apply as in Summary; use Poss columns to judge sample size."
             )
           )
         ),
