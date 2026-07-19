@@ -1555,9 +1555,9 @@
 
 (function() {
   var CFG = [
-    { tab: "onoff", inputId: "onoff_view_mode", items: ["Summary", "Four Factors"], def: "Summary" },
+    { tab: "onoff", inputId: "onoff_view_mode", items: ["Summary", "Four Factors", "Shot Profile"], def: "Summary" },
     { tab: "lineup_data", inputId: "ld_view_mode", items: ["Summary", "Four Factors"], def: "Summary" },
-    { tab: "team_ratings", inputId: "tr_view_mode", items: ["Summary", "Four Factors", "Traditional"], def: "Summary" },
+    { tab: "team_ratings", inputId: "tr_view_mode", items: ["Summary", "Four Factors", "Shot Profile", "Traditional"], def: "Summary" },
     { tab: "game_logs", inputId: "gl_view_mode", items: ["Summary", "Four Factors"], def: "Summary" },
     { tab: "traditional_stats", inputId: "ts_display_mode", items: ["Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"], def: "Per Game", type: "select" },
     { tab: "compare", inputId: "cmp_mode", items: ["Teams", "Lineups", "Players"], def: "Teams" }
