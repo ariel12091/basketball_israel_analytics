@@ -187,7 +187,8 @@ ui_tab1_onoff <- tabPanel(
             title = "What This Tab Answers (Shot Profile)",
             intro = "How does the team's shot diet shift with the player on vs off the floor? Each cell shows the ON-minus-OFF change in share of team FGA, with ON | OFF values below.",
             bullets = c(
-              "Shares are descriptive — they describe how the shot mix changes, not how good the change is. Efficiency lives in the Summary and Four Factors views.",
+              "Colors follow the league value hierarchy (interior and 3s beat 2PT jumpers): green = shift toward higher-value shots, red = away; the 2PT Jumper column flips, like TOV% in Four Factors. No point-impact estimate is attached — efficiency itself lives in the Summary and Four Factors views.",
+              "Each cell mirrors Four Factors: the Δ headline, on/off percentile dots on the rank bar, and ON | OFF share values below.",
               "Columns follow the play-by-play shot-type tags: Lay+Dunk = attempts tagged lay-up or dunk (the tag describes execution, not court location — a running floater can be tagged lay-up); 2PT Jumper = attempts tagged 2-point jump-shot. 3PA% is share of all FGA.",
               "C3% of 3PA splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
               "Cells gray out below 50 team FGA on the ON side — small samples produce noisy shares."
@@ -250,9 +251,22 @@ ui_tab1_onoff <- tabPanel(
           condition = "input.onoff_view_mode == 'Shot Profile'",
           div(
             class = "legend-box",
-            span(style = "font-weight:700; margin-right:10px;", "Shot Profile:"),
-            span(style = "font-size:0.85em; color:#6e7681;",
-                 "Share of team FGA while the player is on/off the floor · Δ = ON − OFF (percentage points) · C3% is share of 3PA with known location (— = unknown) · descriptive only — no point-impact estimate")
+            span(style = "font-weight:700; margin-right:5px;", "Legend:"),
+            div(class = "legend-item", div(class = "legend-icon-on"), span("On-Court")),
+            div(class = "legend-item", div(class = "legend-icon-off"), span("Off-Court")),
+            div(
+              class = "legend-item",
+              span("0%"),
+              div(
+                class = "legend-bar",
+                div(class = "legend-tick", style = "left:0;"),
+                div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:#6e7681;"),
+                div(class = "legend-tick", style = "right:0;")
+              ),
+              span("100% Rank")
+            ),
+            span(style = "margin-left: 15px; font-size: 0.8em; color: #6e7681;",
+                 "(Ranked: ≥ 50 team FGA with player on · shares of team FGA, Δ = ON − OFF pp · C3% of known-location 3PA, — = unknown)")
           )
         ),
         uiOutput("on_filter_chips"),

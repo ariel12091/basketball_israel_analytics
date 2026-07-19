@@ -642,6 +642,68 @@ server_tab1 <- function(input, output, session, shared) {
     df
   })
 
+  # --- Full ranked Shot Profile data (ranks computed BEFORE any user filtering,
+  # mirroring ff_ranked_df: team/min-poss filters must not reshuffle percentiles) ---
+  SP_METRIC_SUFFIX <- c("layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
+  SP_FGA_GATE <- 50
+
+  sp_ranked_df <- reactive({
+    if (isTRUE(fallback_needed())) {
+      rng <- debounced_range()
+      req(rng)
+      gy <- shared$selected_game_year()
+      db_args <- build_onoff_db_args()
+      df <- run_onoff_compute_14(
+        pg_pool,
+        start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+        team_ids = NULL, min_all = 0L, min_on = 0L,
+        min_net = DEFAULT_MIN_NET, game_year = gy,
+        game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv,
+        home_away = db_args$home_away, outcome = db_args$outcome,
+        opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric,
+        min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games,
+        num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+        num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
+        num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max
+      )
+    } else {
+      df <- mv_result_df()
+    }
+
+    sp_prefixes <- c("off_on", "off_off", "def_on", "def_off")
+    need_cols <- as.vector(outer(sp_prefixes, c("_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att"), paste0))
+    if (is.null(df) || !nrow(df) || !all(need_cols %in% names(df))) return(df)
+
+    # Total FGA per split (helper takes total FGA, not fg2)
+    for (p in sp_prefixes) {
+      df[[paste0(p, "_fga_in")]] <- dplyr::coalesce(as.numeric(df[[paste0(p, "_fg2_att")]]), 0) +
+        dplyr::coalesce(as.numeric(df[[paste0(p, "_fg3_att")]]), 0)
+    }
+    sp_specs <- stats::setNames(lapply(sp_prefixes, function(p) {
+      paste0(p, c("_layup_att", "_dunk_att", "_fga_in", "_fg3_att", "_c3_att", "_c3_known_att"))
+    }), sp_prefixes)
+    df <- add_shot_profile_metrics(df, sp_specs)
+
+    # Diff display columns (ON share - OFF share, pp) + FF-style percentile
+    # ranks: pr_sp_* colors the diff cell, *_rank positions the on/off dots.
+    # Ranked only at >= SP_FGA_GATE ON-side team FGA (else gray/unranked).
+    for (i in seq_along(SP_METRIC_SUFFIX)) {
+      m <- SP_METRIC_SUFFIX[i]
+      for (side in c("off", "def")) {
+        diff_col <- paste0(ifelse(side == "off", "Off ", "Def "), ON_SP_LABELS[i], " Diff")
+        df[[diff_col]] <- round(df[[paste0(side, "_on_", m)]] - df[[paste0(side, "_off_", m)]], 1)
+        gate <- dplyr::coalesce(as.numeric(df[[paste0(side, "_on_fga")]]), 0) >= SP_FGA_GATE
+        df[[paste0("pr_sp_", side, "_", m)]] <- percent_rank(ifelse(gate, df[[diff_col]], NA_real_))
+        for (phase in c("on", "off")) {
+          sc <- paste0(side, "_", phase, "_", m)
+          df[[paste0(sc, "_rank")]] <- percent_rank(ifelse(gate, dplyr::coalesce(df[[sc]], 0), NA_real_)) * 100
+        }
+      }
+    }
+
+    df
+  })
+
   # --- Final Switcher ---
   result_df <- reactive({
     mode <- input$onoff_view_mode
@@ -666,6 +728,30 @@ server_tab1 <- function(input, output, session, shared) {
           )
       }
       df <- df %>% filter(off_on_poss >= !!input$min_on_poss)
+
+      return(df)
+
+    } else if (identical(mode, "Shot Profile")) {
+
+      df <- sp_ranked_df()
+
+      # Filter LOCALLY (ranks already computed on full data, like Four Factors)
+      tids <- selected_team_ids()
+      if (!is.null(tids) && length(tids) > 0) {
+        df <- df %>% filter(team_id %in% !!tids)
+      }
+      if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
+        df <- df %>%
+          filter(
+            pmin(
+              dplyr::coalesce(`ON Poss`, 0),
+              dplyr::coalesce(`OFF Poss`, 0)
+            ) >= !!input$min_all_poss
+          )
+      }
+      if ("ON Poss" %in% names(df)) {
+        df <- df %>% filter(`ON Poss` >= !!input$min_on_poss)
+      }
 
       return(df)
 
@@ -1150,67 +1236,66 @@ server_tab1 <- function(input, output, session, shared) {
 
       return(dt)
     } else {
-      # === MODE 3: SHOT PROFILE (descriptive shot-diet shares) ===
+      # === MODE 3: SHOT PROFILE (FF-style; shares/diffs/ranks precomputed
+      # on the full population in sp_ranked_df, filtered in result_df) ===
       sp_prefixes <- c("off_on", "off_off", "def_on", "def_off")
-      need_cols <- as.vector(outer(sp_prefixes, c("_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att"), paste0))
-      if (!all(need_cols %in% names(df))) {
+      sp_metric_suffix <- SP_METRIC_SUFFIX
+      if (!all(paste0("Off ", ON_SP_LABELS, " Diff") %in% names(df))) {
         return(DT::datatable(
           data.frame(Info = "Shot Profile columns unavailable for this dataset", check.names = FALSE),
           rownames = FALSE, options = list(dom = "t")
         ))
       }
 
-      # Total FGA per split (helper takes total FGA, not fg2)
-      for (p in sp_prefixes) {
-        df[[paste0(p, "_fga_in")]] <- dplyr::coalesce(as.numeric(df[[paste0(p, "_fg2_att")]]), 0) +
-          dplyr::coalesce(as.numeric(df[[paste0(p, "_fg3_att")]]), 0)
-      }
-      sp_specs <- stats::setNames(lapply(sp_prefixes, function(p) {
-        paste0(p, c("_layup_att", "_dunk_att", "_fga_in", "_fg3_att", "_c3_att", "_c3_known_att"))
-      }), sp_prefixes)
-      df <- add_shot_profile_metrics(df, sp_specs)
-
-      # Diff display columns: ON share - OFF share (pp), per side
-      sp_metric_suffix <- c("layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
-      for (i in seq_along(sp_metric_suffix)) {
-        m <- sp_metric_suffix[i]
-        df[[paste0("Off ", ON_SP_LABELS[i], " Diff")]] <- round(df[[paste0("off_on_", m)]] - df[[paste0("off_off_", m)]], 1)
-        df[[paste0("Def ", ON_SP_LABELS[i], " Diff")]] <- round(df[[paste0("def_on_", m)]] - df[[paste0("def_off_", m)]], 1)
-      }
-
       if (!"minutes" %in% names(df)) df$minutes <- NA_real_
       sp_diff_cols <- c(paste0("Off ", ON_SP_LABELS, " Diff"), paste0("Def ", ON_SP_LABELS, " Diff"))
       sp_share_cols <- as.vector(outer(sp_prefixes, paste0("_", sp_metric_suffix), paste0))
       sp_fga_cols <- paste0(sp_prefixes, "_fga")
+      sp_pr_cols <- as.vector(outer(paste0("pr_sp_", c("off", "def"), "_"), sp_metric_suffix, paste0))
+      sp_rank_cols <- paste0(sp_share_cols, "_rank")
       keep_cols <- c("Team", "Player", sp_diff_cols, "minutes", "ON Poss", "OFF Poss",
-                     sp_share_cols, sp_fga_cols)
+                     sp_share_cols, sp_fga_cols, sp_pr_cols, sp_rank_cols)
       df_final <- df[, intersect(keep_cols, names(df))]
       df_final <- apply_stat_filters(df_final, on_stat_filter_state$filters())
 
-      # JS render: signed diff headline + "ON | OFF" subtext; em-dash when NULL
-      # (unknown corner); mute below 50 ON-side FGA.
-      make_sp_render <- function(on_col, off_col, fga_col) {
+      # FF-style cell: signed diff headline, on/off percentile dots on a rank
+      # bar, "on | off" subtext. Em-dash when the corner flag is unknown;
+      # gray/unranked (no dots, dimmed subtext) below the FGA gate.
+      make_sp_render <- function(on_col, off_col) {
         on_idx  <- which(names(df_final) == on_col) - 1L
         off_idx <- which(names(df_final) == off_col) - 1L
-        fga_idx <- which(names(df_final) == fga_col) - 1L
+        on_rank_idx  <- which(names(df_final) == paste0(on_col, "_rank")) - 1L
+        off_rank_idx <- which(names(df_final) == paste0(off_col, "_rank")) - 1L
         DT::JS(sprintf(
           "function(data, type, row, meta) {
              if (type !== 'display' || !row) return data;
-             var onV = row[%d], offV = row[%d], fga = row[%d] || 0;
+             var onV = row[%d], offV = row[%d], onPct = row[%d], offPct = row[%d];
              if (data === null || onV === null || offV === null) {
                return '<div class=\"diff-val unranked\">—</div>';
              }
              var d = parseFloat(data);
              var head = (d > 0 ? '+' : '') + d.toFixed(1);
-             var open = fga < 50 ? '<div style=\"opacity:0.45;\">' : '<div>';
-             return open +
-               '<div class=\"diff-val\">' + head + '</div>' +
-               '<div class=\"sub-text\">' +
-                 '<span style=\"font-weight:700;\">' + parseFloat(onV).toFixed(1) + '</span>' +
-                 ' <span style=\"opacity:0.6;\">|</span> ' +
-                 '<span style=\"color:#8b949e;\">' + parseFloat(offV).toFixed(1) + '</span>' +
-               '</div></div>';
-           }", on_idx, off_idx, fga_idx))
+             var onTxt = parseFloat(onV).toFixed(1), offTxt = parseFloat(offV).toFixed(1);
+             if (onPct === null || onPct === undefined) {
+               return '<div class=\"diff-val unranked\">' + head + '</div>' +
+                      '<div class=\"rank-bar-container hidden\"></div>' +
+                      '<div class=\"sub-text\" style=\"opacity:0.5;\">' + onTxt + ' | ' + offTxt + '</div>';
+             }
+             var rangeLineLeft  = Math.min(onPct, offPct);
+             var rangeLineWidth = Math.abs(onPct - offPct);
+             return '<div class=\"diff-val\">' + head + '</div>' +
+                    '<div class=\"rank-bar-container\">' +
+                      '<div class=\"rank-track\"></div>' +
+                      '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '%%; width:' + rangeLineWidth + '%%;\"></div>' +
+                      '<div class=\"dot-off\" style=\"left:' + offPct + '%%;\" title=\"Off: ' + offTxt + '\"></div>' +
+                      '<div class=\"dot-on\" style=\"left:' + onPct + '%%;\" title=\"On: ' + onTxt + '\"></div>' +
+                    '</div>' +
+                    '<div class=\"sub-text\">' +
+                      '<span style=\"font-weight:700; color:#222;\">' + onTxt + '</span>' +
+                      ' <span style=\"opacity:0.6;\">|</span> ' +
+                      '<span style=\"color:#666;\">' + offTxt + '</span>' +
+                    '</div>';
+           }", on_idx, off_idx, on_rank_idx, off_rank_idx))
       }
 
       defs <- list()
@@ -1222,11 +1307,11 @@ server_tab1 <- function(input, output, session, shared) {
           if (!length(tgt)) next
           defs[[length(defs) + 1L]] <- list(
             targets = tgt,
-            render = make_sp_render(paste0(side, "_on_", m), paste0(side, "_off_", m), paste0(side, "_on_fga"))
+            render = make_sp_render(paste0(side, "_on_", m), paste0(side, "_off_", m))
           )
         }
       }
-      hide_idx <- which(names(df_final) %in% c(sp_share_cols, sp_fga_cols)) - 1L
+      hide_idx <- which(names(df_final) %in% c(sp_share_cols, sp_fga_cols, sp_pr_cols, sp_rank_cols)) - 1L
       if (length(hide_idx)) defs[[length(defs) + 1L]] <- list(targets = hide_idx, visible = FALSE)
       sec_idx <- which(names(df_final) %in% c("Off Lay-up Diff", "Def Lay-up Diff", "minutes")) - 1L
       if (length(sec_idx)) defs[[length(defs) + 1L]] <- list(targets = sec_idx, className = "section-left-border")
@@ -1261,6 +1346,21 @@ server_tab1 <- function(input, output, session, shared) {
         formatRound(intersect("minutes", names(df_final)), 1) |>
         formatCurrency(intersect(c("ON Poss", "OFF Poss"), names(df_final)),
                        currency = "", interval = 3, mark = ",", digits = 0)
+
+      # Gradient backgrounds by diff percentile: value-hierarchy polarity
+      # (interior/3PA/C3 green-high on offense, red-high on defense; the
+      # 2PT Jumper column flips, like TOV% in Four Factors).
+      for (i in seq_along(sp_metric_suffix)) {
+        m <- sp_metric_suffix[i]
+        for (side in c("off", "def")) {
+          disp <- paste0(ifelse(side == "off", "Off ", "Def "), ON_SP_LABELS[i], " Diff")
+          pr_col <- paste0("pr_sp_", side, "_", m)
+          if (!disp %in% names(df_final) || !pr_col %in% names(df_final)) next
+          jumper <- identical(m, "mid_share")
+          pal <- if ((side == "off") == !jumper) COLS_GRAD else COLS_REV
+          dt <- formatStyle(dt, disp, backgroundColor = styleInterval(CUTS, pal), valueColumns = pr_col)
+        }
+      }
       return(dt)
     }
   }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode, on_stat_filter_state$filters())

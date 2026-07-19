@@ -1893,6 +1893,24 @@ server_tab3 <- function(input, output, session, shared) {
         vals[is.na(vals)] <- -Inf
         disp_sp[[paste0("sort__", sp_disp[i])]] <- vals
       }
+
+      # FF-style background coloring by share percentile. Value-hierarchy
+      # polarity: interior/3PA/C3 green-high on offense, red-high on defense;
+      # the 2PT Jumper column flips (like TOV% in Four Factors).
+      pr_vec_sp <- function(x, invert = FALSE) {
+        n <- sum(!is.na(x))
+        if (n <= 1) return(rep(NA_real_, length(x)))
+        r <- rank(x, na.last = "keep", ties.method = "average")
+        p <- (r - 1) / (n - 1)
+        if (invert) p <- 1 - p
+        as.numeric(p)
+      }
+      for (i in seq_along(sp_cols)) {
+        is_jumper <- grepl("_mid_share$", sp_cols[i])
+        is_def <- startsWith(sp_cols[i], "def_")
+        inv <- (is_def == !is_jumper)
+        disp_sp[[paste0("pr_", sp_disp[i])]] <- pr_vec_sp(suppressWarnings(as.numeric(df[[sp_cols[i]]])), invert = inv)
+      }
       sp_sort_defs <- lapply(sp_disp, function(nm) {
         list(
           targets = which(names(disp_sp) == nm) - 1L,
@@ -1921,7 +1939,7 @@ server_tab3 <- function(input, output, session, shared) {
         )
       )))
 
-      sp_hide_idx <- which(grepl("^sort__", names(disp_sp))) - 1L
+      sp_hide_idx <- which(grepl("^sort__|^pr_", names(disp_sp))) - 1L
       off_first_idx <- which(names(disp_sp) == "off_layup") - 1L
       def_first_idx <- which(names(disp_sp) == "def_layup") - 1L
       col_defs <- list(
@@ -1947,6 +1965,12 @@ server_tab3 <- function(input, output, session, shared) {
       if ("minutes" %in% names(disp_sp)) dt <- DT::formatRound(dt, "minutes", 1)
       dt <- DT::formatCurrency(dt, intersect(c("off_poss", "def_poss"), names(disp_sp)),
                                currency = "", interval = 3, mark = ",", digits = 0)
+      for (nm in sp_disp) {
+        pr_col <- paste0("pr_", nm)
+        if (nm %in% names(disp_sp) && pr_col %in% names(disp_sp)) {
+          dt <- DT::formatStyle(dt, nm, backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = pr_col)
+        }
+      }
       return(dt)
 
     } else {
