@@ -208,6 +208,7 @@ test_that("primary app tables render data-shaped output with mock data", {
     set_onoff_inputs(session, "Shot Profile")
     expect_silent(rendered <- output$onoff_dt)
     expect_primary_table_rendered(rendered)
+    expect_false(grepl("columns unavailable", table_output_text(rendered), ignore.case = TRUE))
   })
 
   shiny::testServer(function(input, output, session) {
