@@ -2215,14 +2215,17 @@ server_tab7_compare <- function(input, output, session, shared) {
   add_player_shot_profile_shares <- function(row) {
     if (is.null(row) || !nrow(row)) return(NULL)
     prefixes <- c("off_on", "off_off", "def_on", "def_off")
-    need <- as.vector(outer(prefixes, c("_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att"), paste0))
+    need <- as.vector(outer(prefixes, c("_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att", "_fg2_made", "_fg3_made"), paste0))
     if (!all(need %in% names(row))) return(NULL)
     num0 <- function(col) {
       x <- suppressWarnings(as.numeric(row[[col]]))
       ifelse(is.na(x), 0, x)
     }
     for (p in prefixes) {
-      row[[paste0(p, "_fga_in")]] <- num0(paste0(p, "_fg2_att")) + num0(paste0(p, "_fg3_att"))
+      fga <- num0(paste0(p, "_fg2_att")) + num0(paste0(p, "_fg3_att"))
+      row[[paste0(p, "_fga_in")]] <- fga
+      made_w <- num0(paste0(p, "_fg2_made")) + 1.5 * num0(paste0(p, "_fg3_made"))
+      row[[paste0(p, "_efg")]] <- ifelse(fga > 0, round(made_w / fga * 100, 1), NA_real_)
     }
     add_shot_profile_metrics(row, stats::setNames(lapply(prefixes, function(p) {
       paste0(p, c("_layup_att", "_dunk_att", "_fga_in", "_fg3_att", "_c3_att", "_c3_known_att"))
@@ -2272,12 +2275,19 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
 
     make_rows <- function(side) {
-      lapply(seq_along(sp_suffix), function(i) {
+      # eFG% swing leads each side: efficiency context for the diet shares
+      # (judged — higher is better on offense, lower on defense).
+      se_a <- swing(row_a, side, "efg")
+      se_b <- swing(row_b, side, "efg")
+      efg_row <- pvp_stat_row("eFG%", se_a$d, se_b$d, fmt_swing,
+                              higher_is_better = identical(side, "off"),
+                              sub_a = onoff_sub(se_a), sub_b = onoff_sub(se_b))
+      c(list(efg_row), lapply(seq_along(sp_suffix), function(i) {
         sa <- swing(row_a, side, sp_suffix[i])
         sb <- swing(row_b, side, sp_suffix[i])
         pvp_stat_row(sp_labels[i], sa$d, sb$d, fmt_swing,
                      sub_a = onoff_sub(sa), sub_b = onoff_sub(sb), neutral = TRUE)
-      })
+      }))
     }
 
     tagList(
@@ -2289,11 +2299,11 @@ server_tab7_compare <- function(input, output, session, shared) {
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
           style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
-          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points). Descriptive — no point-impact estimate. C3% is of 3PA with known location; — = unknown."
+          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points), led by the team eFG% swing. Diet rows are descriptive — no point-impact estimate. C3% is of 3PA with known location; — = unknown."
         ),
-        pvp_section_header("Offensive Shot Diet (ON − OFF)"),
+        pvp_section_header("Offensive Shot Profile (ON − OFF)"),
         do.call(tagList, make_rows("off")),
-        pvp_section_header("Defensive Shot Diet (ON − OFF)"),
+        pvp_section_header("Defensive Shot Profile (ON − OFF)"),
         do.call(tagList, make_rows("def"))
       )
     )

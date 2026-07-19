@@ -209,6 +209,7 @@ test_that("primary app tables render data-shaped output with mock data", {
     expect_silent(rendered <- output$onoff_dt)
     expect_primary_table_rendered(rendered)
     expect_false(grepl("columns unavailable", table_output_text(rendered), ignore.case = TRUE))
+    expect_true(grepl("eFG%", table_output_text(rendered), fixed = TRUE))
   })
 
   shiny::testServer(function(input, output, session) {
@@ -230,6 +231,9 @@ test_that("primary app tables render data-shaped output with mock data", {
       set_team_ratings_inputs(session, mode)
       expect_silent(rendered <- output$tr_table)
       expect_primary_table_rendered(rendered)
+      if (identical(mode, "Shot Profile")) {
+        expect_true(grepl("eFG%", table_output_text(rendered), fixed = TRUE))
+      }
     }
   })
 

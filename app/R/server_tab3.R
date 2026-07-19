@@ -1864,9 +1864,23 @@ server_tab3 <- function(input, output, session, shared) {
       df <- apply_stat_filters(df, tr_stat_filter_state$filters())
       if (is.null(df) || !nrow(df)) return(empty_dt("Shot Profile: no rows match stat filters"))
 
-      # Rank = share magnitude order (descriptive: #1 = most of that shot type)
-      sp_cols <- as.vector(outer(c("off", "def"), SHOT_PROFILE_METRIC_SUFFIXES, paste0))
-      sp_disp <- gsub("_share$|_pct3$", "", sp_cols)  # off_layup, off_c3, ...
+      # eFG% context column (level — Tab 3 has no on/off split), joined from
+      # the four-factors data (same filter params as tr_data()).
+      df$off_efg <- NULL
+      df$def_efg <- NULL
+      ffd <- tr_ff_data()
+      if (!is.null(ffd) && nrow(ffd) && all(c("team_id", "off_efg", "def_efg") %in% names(ffd))) {
+        df <- dplyr::left_join(df, ffd[, c("team_id", "off_efg", "def_efg")], by = "team_id")
+      } else {
+        df$off_efg <- NA_real_
+        df$def_efg <- NA_real_
+      }
+
+      # Rank = share magnitude order (descriptive: #1 = most of that shot
+      # type). Exception: def_efg ranks ascending (#1 = stingiest defense).
+      sp_cols <- c("off_efg", "def_efg",
+                   as.vector(outer(c("off", "def"), SHOT_PROFILE_METRIC_SUFFIXES, paste0)))
+      sp_disp <- gsub("_share$|_pct3$", "", sp_cols)  # off_efg, off_layup, off_c3, ...
       fmt_share_cell <- function(vals, ranks) {
         v <- suppressWarnings(as.numeric(vals))
         r <- suppressWarnings(as.integer(ranks))
@@ -1878,8 +1892,9 @@ server_tab3 <- function(input, output, session, shared) {
       df <- df %>% arrange(desc(off_rim_share))
       disp_sp <- data.frame(team_name = df$team_name, minutes = df$minutes, check.names = FALSE)
       for (i in seq_along(sp_cols)) {
-        rk <- dplyr::min_rank(dplyr::desc(df[[sp_cols[i]]]))
-        disp_sp[[sp_disp[i]]] <- fmt_share_cell(df[[sp_cols[i]]], rk)
+        v <- df[[sp_cols[i]]]
+        rk <- if (identical(sp_cols[i], "def_efg")) dplyr::min_rank(v) else dplyr::min_rank(dplyr::desc(v))
+        disp_sp[[sp_disp[i]]] <- fmt_share_cell(v, rk)
       }
       disp_sp$off_poss <- df$off_poss
       disp_sp$def_poss <- df$def_poss
@@ -1895,8 +1910,8 @@ server_tab3 <- function(input, output, session, shared) {
       }
 
       # FF-style background coloring by share percentile. Value-hierarchy
-      # polarity: interior/3PA/C3 green-high on offense, red-high on defense;
-      # the 2PT Jumper column flips (like TOV% in Four Factors).
+      # polarity: eFG/interior/3PA/C3 green-high on offense, red-high on
+      # defense; the 2PT Jumper column flips (like TOV% in Four Factors).
       pr_vec_sp <- function(x, invert = FALSE) {
         n <- sum(!is.na(x))
         if (n <= 1) return(rep(NA_real_, length(x)))
@@ -1923,16 +1938,18 @@ server_tab3 <- function(input, output, session, shared) {
       sketch_sp <- htmltools::withTags(table(class = "display", thead(
         tr(
           th(class = "group-head", colspan = 2, ""),
-          th(class = "group-head section-left-border", colspan = 7, "Offense Shot Diet (share of FGA)"),
-          th(class = "group-head section-left-border", colspan = 7, "Defense Shot Diet (share of FGA)")
+          th(class = "group-head section-left-border", colspan = 8, "Offense Shot Profile (eFG% + shares of FGA)"),
+          th(class = "group-head section-left-border", colspan = 8, "Defense Shot Profile (eFG% + shares of FGA)")
         ),
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Min"),
-          th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
+          th(class = "sub-head section-left-border", "eFG%"),
+          th(class = "sub-head", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
           th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
           th(class = "sub-head", "Poss"),
-          th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
+          th(class = "sub-head section-left-border", "eFG%"),
+          th(class = "sub-head", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
           th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
           th(class = "sub-head", "Poss")
@@ -1940,8 +1957,8 @@ server_tab3 <- function(input, output, session, shared) {
       )))
 
       sp_hide_idx <- which(grepl("^sort__|^pr_", names(disp_sp))) - 1L
-      off_first_idx <- which(names(disp_sp) == "off_layup") - 1L
-      def_first_idx <- which(names(disp_sp) == "def_layup") - 1L
+      off_first_idx <- which(names(disp_sp) == "off_efg") - 1L
+      def_first_idx <- which(names(disp_sp) == "def_efg") - 1L
       col_defs <- list(
         list(targets = sp_hide_idx, visible = FALSE),
         list(targets = "_all", className = "dt-center")

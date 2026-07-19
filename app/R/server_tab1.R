@@ -40,7 +40,7 @@ ON_FF_FILTERABLE_COLS <- c(
   "Off Poss" = "OFF Poss"
 )
 
-ON_SP_LABELS <- c("Lay-up", "Dunk", "Lay+Dunk", "3PA", "C3", "2PT Jumper")
+ON_SP_LABELS <- c("eFG%", "Lay-up", "Dunk", "Lay+Dunk", "3PA", "C3", "2PT Jumper")
 
 ON_SP_FILTERABLE_COLS <- c(
   stats::setNames(paste0("Off ", ON_SP_LABELS, " Diff"), paste("Off", ON_SP_LABELS, "Δ")),
@@ -644,7 +644,7 @@ server_tab1 <- function(input, output, session, shared) {
 
   # --- Full ranked Shot Profile data (ranks computed BEFORE any user filtering,
   # mirroring ff_ranked_df: team/min-poss filters must not reshuffle percentiles) ---
-  SP_METRIC_SUFFIX <- c("layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
+  SP_METRIC_SUFFIX <- c("efg", "layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
   SP_FGA_GATE <- 50
 
   sp_ranked_df <- reactive({
@@ -671,13 +671,18 @@ server_tab1 <- function(input, output, session, shared) {
     }
 
     sp_prefixes <- c("off_on", "off_off", "def_on", "def_off")
-    need_cols <- as.vector(outer(sp_prefixes, c("_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att"), paste0))
+    need_cols <- as.vector(outer(sp_prefixes, c("_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att", "_fg2_made", "_fg3_made"), paste0))
     if (is.null(df) || !nrow(df) || !all(need_cols %in% names(df))) return(df)
 
-    # Total FGA per split (helper takes total FGA, not fg2)
+    # Total FGA per split (helper takes total FGA, not fg2) + eFG per split
+    # (same FGA denominator as the diet shares — efficiency context column)
     for (p in sp_prefixes) {
-      df[[paste0(p, "_fga_in")]] <- dplyr::coalesce(as.numeric(df[[paste0(p, "_fg2_att")]]), 0) +
+      fga <- dplyr::coalesce(as.numeric(df[[paste0(p, "_fg2_att")]]), 0) +
         dplyr::coalesce(as.numeric(df[[paste0(p, "_fg3_att")]]), 0)
+      df[[paste0(p, "_fga_in")]] <- fga
+      made_w <- dplyr::coalesce(as.numeric(df[[paste0(p, "_fg2_made")]]), 0) +
+        1.5 * dplyr::coalesce(as.numeric(df[[paste0(p, "_fg3_made")]]), 0)
+      df[[paste0(p, "_efg")]] <- ifelse(fga > 0, round(made_w / fga * 100, 1), NA_real_)
     }
     sp_specs <- stats::setNames(lapply(sp_prefixes, function(p) {
       paste0(p, c("_layup_att", "_dunk_att", "_fga_in", "_fg3_att", "_c3_att", "_c3_known_att"))
@@ -1313,7 +1318,7 @@ server_tab1 <- function(input, output, session, shared) {
       }
       hide_idx <- which(names(df_final) %in% c(sp_share_cols, sp_fga_cols, sp_pr_cols, sp_rank_cols)) - 1L
       if (length(hide_idx)) defs[[length(defs) + 1L]] <- list(targets = hide_idx, visible = FALSE)
-      sec_idx <- which(names(df_final) %in% c("Off Lay-up Diff", "Def Lay-up Diff", "minutes")) - 1L
+      sec_idx <- which(names(df_final) %in% c("Off eFG% Diff", "Def eFG% Diff", "minutes")) - 1L
       if (length(sec_idx)) defs[[length(defs) + 1L]] <- list(targets = sec_idx, className = "section-left-border")
       defs[[length(defs) + 1L]] <- list(targets = "_all", className = "dt-center")
 
@@ -1321,16 +1326,18 @@ server_tab1 <- function(input, output, session, shared) {
       sketch_sp <- htmltools::withTags(table(class = "display", thead(
         tr(
           th(class = "group-head", colspan = 2, ""),
-          th(class = "group-head section-left-border", colspan = 6, "Offense Shot Diet (share of FGA, ON − OFF)"),
-          th(class = "group-head section-left-border", colspan = 6, "Defense Shot Diet (share of FGA, ON − OFF)"),
+          th(class = "group-head section-left-border", colspan = 7, "Offense Shot Profile (ON − OFF; eFG% + shares of FGA)"),
+          th(class = "group-head section-left-border", colspan = 7, "Defense Shot Profile (ON − OFF; eFG% + shares of FGA)"),
           th(class = "group-head section-left-border", colspan = 3, "Usage")
         ),
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
-          th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
+          th(class = "sub-head section-left-border", "eFG%"),
+          th(class = "sub-head", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
           th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
-          th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
+          th(class = "sub-head section-left-border", "eFG%"),
+          th(class = "sub-head", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
           th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
           th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "On Poss"), th(class = "sub-head", "Off Poss")
@@ -1348,7 +1355,7 @@ server_tab1 <- function(input, output, session, shared) {
                        currency = "", interval = 3, mark = ",", digits = 0)
 
       # Gradient backgrounds by diff percentile: value-hierarchy polarity
-      # (interior/3PA/C3 green-high on offense, red-high on defense; the
+      # (eFG/interior/3PA/C3 green-high on offense, red-high on defense; the
       # 2PT Jumper column flips, like TOV% in Four Factors).
       for (i in seq_along(sp_metric_suffix)) {
         m <- sp_metric_suffix[i]
