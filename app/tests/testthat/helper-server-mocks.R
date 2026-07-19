@@ -184,6 +184,10 @@ db_get_query <- function(pool, query, params = NULL) {
       games_played = c(4L, 4L),
       wins = c(3L, 2L),
       losses = c(1L, 2L),
+      off_fga = c(260L, 244L), off_layup_att = c(70L, 60L), off_dunk_att = c(12L, 9L),
+      off_fg3_att = c(100L, 94L), off_c3_att = c(22L, 18L), off_c3_known_att = c(90L, 85L),
+      def_fga = c(242L, 253L), def_layup_att = c(58L, 62L), def_dunk_att = c(7L, 8L),
+      def_fg3_att = c(92L, 98L), def_c3_att = c(20L, 22L), def_c3_known_att = c(85L, 90L),
       rank_net_rtg = c(1L, 2L),
       rank_off_ppp = c(1L, 2L),
       rank_def_ppp = c(1L, 2L)
