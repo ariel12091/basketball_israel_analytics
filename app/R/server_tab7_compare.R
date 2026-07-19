@@ -155,10 +155,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       metrics = list(
         list(label = "Lay-up%", col_ratings = "off_layup_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Dunk%", col_ratings = "off_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "Rim%", col_ratings = "off_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Lay+Dunk%", col_ratings = "off_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "3PA%", col_ratings = "off_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "C3% of 3PA", col_ratings = "off_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "Mid%", col_ratings = "off_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
+        list(label = "2PT Jumper%", col_ratings = "off_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
       )
     ),
     def_shot_profile = list(
@@ -166,10 +166,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       metrics = list(
         list(label = "Opp Lay-up%", col_ratings = "def_layup_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp Dunk%", col_ratings = "def_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "Opp Rim%", col_ratings = "def_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp Lay+Dunk%", col_ratings = "def_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp 3PA%", col_ratings = "def_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp C3% of 3PA", col_ratings = "def_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "Opp Mid%", col_ratings = "def_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
+        list(label = "Opp 2PT Jumper%", col_ratings = "def_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
       )
     )
   )
@@ -2255,7 +2255,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       paste(parts, collapse = " · ")
     }
 
-    sp_labels <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "C3% of 3PA", "Mid%")
+    sp_labels <- c("Lay-up%", "Dunk%", "Lay+Dunk%", "3PA%", "C3% of 3PA", "2PT Jumper%")
     sp_suffix <- c("layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
 
     swing <- function(row, side, m) {

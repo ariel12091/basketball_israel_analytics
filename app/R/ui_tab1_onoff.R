@@ -188,7 +188,7 @@ ui_tab1_onoff <- tabPanel(
             intro = "How does the team's shot diet shift with the player on vs off the floor? Each cell shows the ON-minus-OFF change in share of team FGA, with ON | OFF values below.",
             bullets = c(
               "Shares are descriptive — they describe how the shot mix changes, not how good the change is. Efficiency lives in the Summary and Four Factors views.",
-              "Rim = lay-ups + dunks (tag-based). Mid = everything else inside the arc. 3PA% is share of all FGA.",
+              "Columns follow the play-by-play shot-type tags: Lay+Dunk = attempts tagged lay-up or dunk (the tag describes execution, not court location — a running floater can be tagged lay-up); 2PT Jumper = attempts tagged 2-point jump-shot. 3PA% is share of all FGA.",
               "C3% of 3PA splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
               "Cells gray out below 50 team FGA on the ON side — small samples produce noisy shares."
             )

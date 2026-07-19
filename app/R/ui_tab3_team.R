@@ -178,7 +178,7 @@ ui_tab3_team <- tabPanel(
           tab_explainer(
             id = "team_explainer_sp",
             title = "What This Tab Answers (Shot Profile)",
-            intro = "What does each team's shot diet look like, on offense and defense? Shares of FGA by shot type: lay-up, dunk, rim (lay-up + dunk), 3PA, corner-3 share of 3PA, and mid-range.",
+            intro = "What does each team's shot diet look like, on offense and defense? Shares of FGA by play-by-play shot-type tag: lay-up, dunk, lay+dunk combined, 3PA, corner-3 share of 3PA, and 2PT jump-shots. Tags describe execution, not court location.",
             bullets = c(
               "Shares are descriptive — they describe the mix, not its quality. #1 means most of that shot type, not best.",
               "Defense columns are the shot diet teams allow their opponents.",

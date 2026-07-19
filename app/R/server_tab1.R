@@ -40,7 +40,7 @@ ON_FF_FILTERABLE_COLS <- c(
   "Off Poss" = "OFF Poss"
 )
 
-ON_SP_LABELS <- c("Lay-up", "Dunk", "Rim", "3PA", "C3", "Mid")
+ON_SP_LABELS <- c("Lay-up", "Dunk", "Lay+Dunk", "3PA", "C3", "2PT Jumper")
 
 ON_SP_FILTERABLE_COLS <- c(
   stats::setNames(paste0("Off ", ON_SP_LABELS, " Diff"), paste("Off", ON_SP_LABELS, "Δ")),
@@ -1243,11 +1243,11 @@ server_tab1 <- function(input, output, session, shared) {
         tr(
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
-          th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
+          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
           th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
-          th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
+          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
           th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))
@@ -1256,7 +1256,7 @@ server_tab1 <- function(input, output, session, shared) {
                       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "tip",
                                      pageLength = 30, scrollX = TRUE,
                                      scrollY = "70vh", scrollCollapse = TRUE,
-                                     order = list(list(which(names(df_final) == "Off Rim Diff") - 1L, "desc")),
+                                     order = list(list(which(names(df_final) == "Off Lay+Dunk Diff") - 1L, "desc")),
                                      columnDefs = defs)) |>
         formatRound(intersect("minutes", names(df_final)), 1) |>
         formatCurrency(intersect(c("ON Poss", "OFF Poss"), names(df_final)),

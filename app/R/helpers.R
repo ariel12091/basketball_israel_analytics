@@ -216,7 +216,7 @@ add_shot_split_metrics <- function(df, specs) {
 SHOT_PROFILE_METRIC_SUFFIXES <- c(
   "_layup_share", "_dunk_share", "_rim_share", "_fg3_share", "_c3_pct3", "_mid_share"
 )
-SHOT_PROFILE_METRIC_LABELS <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "C3% of 3PA", "Mid%")
+SHOT_PROFILE_METRIC_LABELS <- c("Lay-up%", "Dunk%", "Lay+Dunk%", "3PA%", "C3% of 3PA", "2PT Jumper%")
 
 shot_profile_metric_cols <- function(label_prefix, col_prefix) {
   stats::setNames(
