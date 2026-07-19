@@ -147,6 +147,30 @@ server_tab7_compare <- function(input, output, session, shared) {
         list(label = "Opp 3PT Acc", col_ratings = NULL, col_ff = NULL, col_shooting = "def_fg3_acc", polarity = "lower", fmt = "pct"),
         list(label = "Opp 3PT Freq", col_ratings = NULL, col_ff = NULL, col_shooting = "def_fg3_freq", polarity = "neutral", fmt = "pct")
       )
+    ),
+    # Teams-only descriptive shot-diet sections (gated in section_metrics).
+    # polarity neutral: shares describe the mix, not quality — no winner, no est.±.
+    off_shot_profile = list(
+      title = "Offensive Shot Profile",
+      metrics = list(
+        list(label = "Lay-up%", col_ratings = "off_layup_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Dunk%", col_ratings = "off_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Rim%", col_ratings = "off_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "3PA%", col_ratings = "off_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "C3% of 3PA", col_ratings = "off_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Mid%", col_ratings = "off_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
+      )
+    ),
+    def_shot_profile = list(
+      title = "Defensive Shot Profile",
+      metrics = list(
+        list(label = "Opp Lay-up%", col_ratings = "def_layup_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp Dunk%", col_ratings = "def_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp Rim%", col_ratings = "def_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp 3PA%", col_ratings = "def_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp C3% of 3PA", col_ratings = "def_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp Mid%", col_ratings = "def_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
+      )
     )
   )
 
@@ -730,6 +754,14 @@ server_tab7_compare <- function(input, output, session, shared) {
     out$def_fg3_acc <- pct(val("def_fg3_made"), def_fg3_att)
     out$def_fg3_freq <- pct(def_fg3_att, def_fga)
     out
+  }
+
+  add_team_shot_profile_shares <- function(row) {
+    if (is.null(row) || !nrow(row)) return(row)
+    add_shot_profile_metrics(row, list(
+      off = c("off_layup_att", "off_dunk_att", "off_fga", "off_fg3_att", "off_c3_att", "off_c3_known_att"),
+      def = c("def_layup_att", "def_dunk_att", "def_fga", "def_fg3_att", "def_c3_att", "def_c3_known_att")
+    ))
   }
 
   run_team_shooting <- function(p, team_id) {
@@ -3044,8 +3076,8 @@ server_tab7_compare <- function(input, output, session, shared) {
       list(
         mode = "Teams",
         entity_name = entity$name,
-        ratings_a = if (nrow(ra)) ra[1, ] else NULL,
-        ratings_b = if (nrow(rb)) rb[1, ] else NULL,
+        ratings_a = if (nrow(ra)) add_team_shot_profile_shares(ra[1, , drop = FALSE])[1, ] else NULL,
+        ratings_b = if (nrow(rb)) add_team_shot_profile_shares(rb[1, , drop = FALSE])[1, ] else NULL,
         ff_a = if (nrow(fa)) fa[1, ] else NULL,
         ff_b = if (nrow(fb)) fb[1, ] else NULL,
         shooting_a = if (nrow(sha)) sha[1, ] else NULL,
@@ -3234,7 +3266,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     # once (single source of truth): Defensive Shooting is Teams-only, and Win%
     # is hidden for Lineups (no GP/W/L data). Sections left with no metrics drop.
     section_metrics <- function(sk) {
-      if (sk == "def_shooting" && mode != "Teams") return(NULL)
+      if (sk %in% c("def_shooting", "off_shot_profile", "def_shot_profile") && mode != "Teams") return(NULL)
       ml <- DETAIL_METRICS[[sk]]$metrics
       if (mode == "Lineups" && sk == "ratings") {
         ml <- Filter(function(m) m$label != "Win%", ml)

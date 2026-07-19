@@ -76,3 +76,16 @@ test_that("tab7 detail view keeps full labels in subheader and short labels in c
   expect_true(grepl('col_b_text\\s*<-\\s*if \\(identical\\(short_b, "B"\\)\\) "B" else paste0\\("B \\\\u00b7 ", short_b\\)', txt))
   expect_true(grepl('paste0\\(full_a, " vs ", full_b, " \\\\u00b7 ", gy, "-", as.integer\\(substr\\(gy, 3, 4\\)\\) \\+ 1\\)', txt))
 })
+
+test_that("tab7 detail view registers Teams-only neutral shot-profile sections", {
+  txt <- server_tab7_txt()
+  expect_true(grepl("off_shot_profile = list", txt, fixed = TRUE))
+  expect_true(grepl("def_shot_profile = list", txt, fixed = TRUE))
+  # Teams gating includes both new sections
+  expect_true(grepl('c("def_shooting", "off_shot_profile", "def_shot_profile")', txt, fixed = TRUE))
+  # corner metric reads the known-denominator column, and no est/factor framing
+  expect_true(grepl('col_ratings = "off_c3_pct3"', txt, fixed = TRUE))
+  sp_block <- sub('.*off_shot_profile = list', "", txt)
+  sp_block <- substr(sp_block, 1, regexpr("# --", sp_block, fixed = TRUE))
+  expect_false(grepl("factor =", strsplit(sp_block, "PLAYER_VIEWS")[[1]][1], fixed = TRUE))
+})
