@@ -209,6 +209,60 @@ add_shot_split_metrics <- function(df, specs) {
   df
 }
 
+# ---- Shot Profile (shot-diet) share metrics ---------------------------------
+# Descriptive shares of total FGA (Plan C). Corner-3 share is of KNOWN-location
+# 3PA (c3_known_att), never of all 3PA — unknown fails open to NA, not 0.
+
+SHOT_PROFILE_METRIC_SUFFIXES <- c(
+  "_layup_share", "_dunk_share", "_rim_share", "_fg3_share", "_c3_pct3", "_mid_share"
+)
+SHOT_PROFILE_METRIC_LABELS <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "C3% of 3PA", "Mid%")
+
+shot_profile_metric_cols <- function(label_prefix, col_prefix) {
+  stats::setNames(
+    paste0(col_prefix, SHOT_PROFILE_METRIC_SUFFIXES),
+    paste(label_prefix, SHOT_PROFILE_METRIC_LABELS)
+  )
+}
+
+add_shot_profile_metrics <- function(df, specs) {
+  if (is.null(df) || !length(specs)) return(df)
+
+  pct <- function(num, den) {
+    out <- rep(NA_real_, length(den))
+    ok <- is.finite(den) & den > 0
+    out[ok] <- round(num[ok] / den[ok] * 100, 1)
+    out
+  }
+  count_col <- function(col) {
+    x <- suppressWarnings(as.numeric(df[[col]]))
+    x[is.na(x)] <- 0
+    x
+  }
+
+  for (prefix in names(specs)) {
+    cols <- specs[[prefix]]
+    if (length(cols) != 6L || !all(cols %in% names(df))) next
+
+    layup <- count_col(cols[[1]])
+    dunk  <- count_col(cols[[2]])
+    fga   <- count_col(cols[[3]])
+    fg3a  <- count_col(cols[[4]])
+    c3a   <- count_col(cols[[5]])
+    c3k   <- count_col(cols[[6]])
+    rim   <- layup + dunk
+
+    df[[paste0(prefix, "_layup_share")]] <- pct(layup, fga)
+    df[[paste0(prefix, "_dunk_share")]]  <- pct(dunk, fga)
+    df[[paste0(prefix, "_rim_share")]]   <- pct(rim, fga)
+    df[[paste0(prefix, "_fg3_share")]]   <- pct(fg3a, fga)
+    df[[paste0(prefix, "_mid_share")]]   <- pct(pmax(fga - rim - fg3a, 0), fga)
+    df[[paste0(prefix, "_c3_pct3")]]     <- pct(c3a, c3k)
+    df[[paste0(prefix, "_fga")]]         <- fga
+  }
+  df
+}
+
 setup_stat_filter_handlers <- function(prefix, input, session, filterable_cols, state) {
   add_id <- paste0(prefix, "_add_stat_filter")
   remove_id <- paste0(prefix, "_remove_stat_filter")
