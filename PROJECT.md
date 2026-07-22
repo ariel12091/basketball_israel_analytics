@@ -125,7 +125,7 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
 - `type` = action type ("shot", "freeThrow", "rebound", "turnover", "foul", etc.)
 | `possessions` | All `actions_clean` columns | + `pct_ft`, `q_bucket`, `end_poss`, `sum_poss_poss`, `sum_block`, `sum_tech`, `final_end_poss` |
 | `pws` | All `possessions` columns | + stint fields: `lineup_hash_offense`, `lineup_hash_defense`, `team_id_defense`, `segment_id`, `final_start_seg`, `final_end_seg`, `final_start_id`, `final_end_id` |
-| `df_pts_poss_lineups_longer_mv` | Most `pws` columns (team_id flipped per branch) | + `own_team_score`, `opp_team_score` (cumulative), `type_lineup` ('offense'/'defense'), `lineup_hash` |
+| `df_pts_poss_lineups_longer_mv` | Most `pws` columns (team_id flipped per branch) | + `own_team_score`, `opp_team_score` (cumulative), `type_lineup` ('offense'/'defense'), `lineup_hash`, and canonical timing fields: `event_elapsed_seconds`, `clock_regression_seconds`, `segment_start_elapsed_seconds`, `segment_end_elapsed_seconds`, `segment_seconds` |
 
 **`own_team_score` / `opp_team_score`:** Cumulative game scores computed via `cum_scores` CTE on `possessions`. Uses `total_cum - team_cum` pattern (no schedule join needed). Offense branch: own = acting team's cum score. Defense branch: own = total minus acting team's (i.e., defending team's cum score). Scores mirror each other — same pattern as `sched_long`.
 
@@ -159,11 +159,9 @@ rebuild_all_mvs(skip = "final_schedule_mv")  # skip specific MVs
 
 **Wins/Losses in Team Ratings:** `get_team_ratings_dynamic()` returns `wins` and `losses`. When clutch filter is active, wins/losses only count games that have qualifying clutch possessions (not all filtered games). Uses `qualifying_games` CTE which applies clutch WHERE clause to identify games, then counts wins/losses from that subset.
 
-**Minutes Calculation (Tab 2):** Computed from `end_game_seconds_remaining` using segment-level aggregation:
-1. `segment_times`: `MAX(end_game_seconds_remaining) - MIN(end_game_seconds_remaining)` per segment across ALL rows (no type_lineup filter - captures full floor time including defense-to-offense transitions)
-2. `segment_stats`: poss/pts per segment per type_lineup (offense vs defense stats differ)
-3. Join and sum: `SUM(stint_seconds) FILTER (WHERE type_lineup = 'offense')` to avoid double-counting (each segment counted once)
-Sources: `mv_lineup_totals_by_day.minutes`, `lineup_four_factors_by_game.minutes`, `sub_lineups_stats.minutes` (via `refresh_sub_lineups_stats()`)
+**Canonical minutes calculation:** Raw provider clocks remain untouched for auditing. Runtime minutes use canonical elapsed time and consecutive lineup-segment boundaries, so delayed or out-of-order actions cannot inflate a stint. Consumers deduplicate `segment_seconds` at `(game_id, team_id, lineup_hash, segment_id)` and count each duration once; possession and point statistics remain split by `type_lineup`.
+
+The normal incremental ETL path calls `refresh_segment_clock_fields_for_games()` from `refresh_df_pts_poss_lineups_longer_for_games()`. See `docs/canonical_clock_minutes.md` for the formula, affected cases, integration points, and deployment constraints.
 
 ### SQL Functions (params)
 
@@ -383,8 +381,8 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 - `ANALYZE;` without table fails on Supabase — scope to specific tables
 - `score` column from raw JSON is unreliable — use `own_team_score`/`opp_team_score` (cumulative) instead
 - Clutch filtering uses IF/ELSE branching in PL/pgSQL: non-clutch path uses pre-aggregated MVs, clutch path queries raw `df_pts_poss_lineups_longer_mv` with inline aggregation (can't use pre-agg MVs because score/time are action-level)
-- **segment_id repeats across games** — always include `game_id` in GROUP BY when aggregating by segment_id, otherwise `MAX - MIN` time calculations will be wrong
-- **Floor time vs offense-only time** — to get accurate floor time (stint duration), compute `MAX - MIN` of `end_game_seconds_remaining` across ALL rows per segment (no `type_lineup` filter). Within a segment, offense and defense actions interleave, so filtering to offense-only misses defensive possessions' time contribution. Use offense filter only at final SUM to avoid double-counting
+- **segment_id repeats across games and teams** — always identify a duration by `(game_id, team_id, lineup_hash, segment_id)`.
+- **Do not derive minutes with raw clock extrema** — `MAX(end_game_seconds_remaining) - MIN(...)` is vulnerable to delayed provider actions. Use persisted canonical `segment_seconds`, deduplicated at segment grain, and count each segment once.
 
 ### R / Shiny / DT
 - **`bigint = "numeric"` in `dbPool()`** — RPostgres returns PostgreSQL `bigint` as R `integer64` by default, which is incompatible with dplyr `coalesce()`, `+`, and many tidyverse operations. Fix: add `bigint = "numeric"` to the pool connection. Safe for basketball stats (precision loss only for values > 2^53). `SUM()` on integer in PostgreSQL returns `bigint`, so even flag columns (CASE 0/1) produce bigint sums
@@ -410,6 +408,9 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 - Always test DB logic on a single `game_id` first before deploying MV changes
 - **DROP FUNCTION signature must be exact** — when changing RETURNS TABLE, the old function must be dropped first with its exact parameter signature. The `-- DROP FUNCTION` comment in SQL files may have stale signatures from before clutch params were added. Always verify against the actual CREATE OR REPLACE parameter list (count of params must match)
 - **Function boundary detection:** For `$function$`-delimited SQL, find end with `grep("^\\$function\\$;$")` — don't use `LANGUAGE plpgsql` which precedes the body
+- **Avoid long reader-blocking migration transactions** — commit metadata-only DDL quickly, build supporting indexes or replacement MVs concurrently where possible, update large tables in bounded game batches, and keep cutover transactions brief.
+- **A killed client may leave a server transaction and lock behind** — after a timeout or disconnected DDL client, inspect `pg_stat_activity` and `pg_locks`; terminate a confirmed orphan before retrying.
+- **Canonical-clock refresh planner guard** — `refresh_segment_clock_fields_for_games()` locally disables nested loops because PostgreSQL severely under-estimates its large CTE update join. Keep the guard scoped to the function and batch broad backfills.
 
 ### Clutch Path CTEs
 - **Propagate `team_id` through all CTEs** — `segment_times`, `segment_stats`, and `lineup_totals`/`lineup_ff` must include `team_id` in SELECT, GROUP BY, and JOIN conditions. Different teams can share the same `lineup_hash`, causing "column team_id is ambiguous" errors if omitted
