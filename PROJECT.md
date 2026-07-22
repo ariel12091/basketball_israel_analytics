@@ -78,7 +78,7 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
 ## Session Bug Fixes (GN)
 - GN filter changes did not update Tab 1 output because `gn_params()` was not included in the `bindEvent` triggers for `result_df()`. Fix: add `gn_params()` to the `bindEvent` list in `app/R/server_tab1.R`.
 - `attempt to use zero-length variable name` error on app load came from named selectize choices like `c("" = "")`. Fix: use unnamed choices (e.g., `c("", as.character(gn_vals))`) for GN selectize inputs in server tabs.
-- GN selectize inputs appeared to do nothing because fallback stayed on MV when GN changes didnít trigger recompute. Fix is the `bindEvent` update above (and ensuring GN raw inputs are non-empty when selected).
+- GN selectize inputs appeared to do nothing because fallback stayed on MV when GN changes didn‚Äôt trigger recompute. Fix is the `bindEvent` update above (and ensuring GN raw inputs are non-empty when selected).
 ## Session Update (Tab 3 Sorting)
 - Team Ratings sort behavior now enforces best-first order on rated metric columns so top rank remains first when sorting (#1 at top for the selected metric).
 - Sorting uses hidden numeric columns mapped via DataTables orderData, so displayed HTML rank/value/delta cells still sort by raw numeric metric.
@@ -464,15 +464,15 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 ## Backlog - Security/Resilience
 
 1. **DB statement timeout guardrail**
-   - File: pp/R/global.R
-   - Add a pooled connection statement_timeout (for example 8s) via DBI::dbExecute(...) wrapped in 	ryCatch.
+   - File: app/R/global.R
+   - Add a pooled connection statement_timeout (for example 8s) via DBI::dbExecute(...) wrapped in tryCatch.
 
 2. **Short TTL cache for Tab 4 season-heavy queries**
-   - File: pp/R/server_tab4.R
+   - File: app/R/server_tab4.R
    - Cache gl_lineup_totals and gl_lineup_ff by game_year for 30-60 seconds.
 
 3. **Click burst guard for lineup modal**
-   - File: pp/R/server_tab2.R
+   - File: app/R/server_tab2.R
    - Ignore duplicate ld_lineup_click events within ~300ms to reduce accidental query bursts.
 
 ## Session Lessons (2026-02-12 Security + Ops)
@@ -683,7 +683,7 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
    - Sparse rows can contain NA/null numerics and unstable keys.
    - Hardening applied:
      - /api/onoff/summary normalizes NA in all numeric columns before response.
-     - HeatCell is null/NaN-safe and renders - instead of crashing on 	oFixed.
+     - HeatCell is null/NaN-safe and renders - instead of crashing on toFixed.
      - Tab 1 row keys use a composite key to avoid reconciliation issues that looked like "sorting not working".
 
 4. "Clear all" visibility should not depend only on visible chips.
@@ -699,7 +699,7 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
    - Local team placeholder uses Select team (not All teams) to avoid implying table filtering.
 
 6. Game Type in drawer should be multi-select with menu left open.
-   - Replaced single-select control with multi-select eact-select.
+   - Replaced single-select control with multi-select react-select.
    - Kept closeMenuOnSelect={false} for faster batch selection.
 ## Session Notes (2026-02-17 Parity Audit: Shiny vs React+Plumber)
 
@@ -957,7 +957,7 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
   - `onoff_default_mv` (561), `player_traditional_stats_mv` (4710),
   - `fetch_lineups_csv_v2` (450), `fetch_lineups_four_factors_csv` (450),
   - `get_team_ratings_dynamic` (14), `get_team_four_factors_dynamic` (14).
-- **Takeaway:** For storage-constrained environments, keep heavyweight ìlongî MVs column-minimal and index-minimal, then rebuild dependent MVs in order.
+- **Takeaway:** For storage-constrained environments, keep heavyweight ‚Äúlong‚Äù MVs column-minimal and index-minimal, then rebuild dependent MVs in order.
 
 ## Egress Optimization (2026-02-18): Tab 1/2 API payload reduction
 - **Objective:** Reduce network egress from React + plumber app without changing user-visible functionality.
@@ -999,14 +999,14 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 ## Git History Identity Rewrite + Local Realignment (2026-02-18)
 - Rewrote full repo commit history author/committer identity to Ariel Taieb <ariel12091@gmail.com> and force-pushed to origin/main.
 - Local repo was then realigned to rewritten origin/main while preserving uncommitted work via stash/restore flow.
-- Safety branch created before alignment: ackup/pre_rewrite_20260218_030105.
+- Safety branch created before alignment: backup/pre_rewrite_20260218_030105.
 - Important: commit SHAs changed due to history rewrite; uncommitted local edits were preserved and not included in the rewrite.
 
 ## Tab 5 Bottleneck Work + Benchmarks (2026-02-18)
 - Scope: addressed selected bottlenecks for Traditional Stats (Tab 5) and measured each change.
 
 ### Rebuild
-- Ran full MV rebuild (ebuild_all_mvs(from_level = 1)) with ETL credentials.
+- Ran full MV rebuild (rebuild_all_mvs(from_level = 1)) with ETL credentials.
 - Rebuild completed successfully; key post-rebuild counts:
   - df_pts_poss_lineups_longer_mv: 398,700
   - player_traditional_stats_mv: 4,710
@@ -1014,27 +1014,25 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
   - lineup_four_factors_by_game: 23,741
 
 ### #2 Prefilter lineups_lookup in SQL (Tab 5 live path)
-- File: pp/R/server_tab5_traditional.R
+- File: app/R/server_tab5_traditional.R
 - Change: replaced season-wide lineups_lookup fetch + R-side reduction with SQL-side filtering to the filtered game/team set.
 - Benchmark (5 runs):
-  - Old avg:  .582s
-  - New avg:  .472s
+  - Old avg: 0.582s
+  - New avg: 0.472s
   - Improvement: 18.9%
   - Output parity: same rows.
 
 ### #3 Remove string-based distinct key counting
 - Files:
   - sql/materialized_views/player_traditional_stats_mv.sql
-  - pp/R/server_tab5_traditional.R
+  - app/R/server_tab5_traditional.R
 - Change:
   - SQL: COUNT(DISTINCT concat_ws(...)) -> COUNT(DISTINCT (game_id, team_id, poss_end_id))
-  - R: 
-_distinct(paste(...)) -> 
-_distinct(game_id, team_id, poss_end_id)
+  - R: n_distinct(paste(...)) -> n_distinct(game_id, team_id, poss_end_id)
 - Benchmark (5 runs, SQL expression comparison):
-  - Old avg:  .598s
-  - New avg:  .596s
-  - Improvement:  .3% (marginal)
+  - Old avg: 0.598s
+  - New avg: 0.596s
+  - Improvement: 0.3% (marginal)
   - Output parity: identical rows and values.
 
 ### #6 Index consistency / activation
@@ -1046,14 +1044,14 @@ _distinct(game_id, team_id, poss_end_id)
   - Added two Tab 5-focused indexes to df_pts_poss_lineups_longer_mv definition.
 - Applied performance indexes in DB using ETL credentials.
 - Benchmark (representative filtered actions query):
-  - Before:  .326s avg
-  - After:  .292s avg
+  - Before: 0.326s avg
+  - After: 0.292s avg
   - Improvement: 10.4%
 
 ### #1 Push recalculation filters to SQL for live path (excluding team-only mode)
-- File: pp/R/server_tab5_traditional.R
+- File: app/R/server_tab5_traditional.R
 - Change:
-  - cts and lineup_map queries now filter directly in SQL by filtered (game_id, team_id) pairs.
+  - acts and lineup_map queries now filter directly in SQL by filtered (game_id, team_id) pairs.
   - Used pair-key filtering (game_id_team_id) to preserve exact pair semantics.
   - Team-only filtering remains on MV path (no forced recalculation).
 - Benchmark (recalculation scenario with date/game-type/home filters):
@@ -1123,16 +1121,16 @@ _distinct(game_id, team_id, poss_end_id)
 
 ## Session Notes (2026-02-18 State Cup Ingestion + UI Support)
 - Added explicit-ID fallback in etl/etl_full.R:
-  - When requested game_ids are missing from etch_israel_schedule() feed, ETL now falls back to rows already present in asketball_test.schedule.
-  - Synthesizes pbp_url/ox_url from game_id for fallback rows.
-- Upserted State Cup schedule rows into asketball_test.schedule using upsert_by_like and ran ETL validation sequence.
+  - When requested game_ids are missing from fetch_israel_schedule() feed, ETL now falls back to rows already present in basketball_test.schedule.
+  - Synthesizes pbp_url/box_url from game_id for fallback rows.
+- Upserted State Cup schedule rows into basketball_test.schedule using upsert_by_like and ran ETL validation sequence.
 
 ### ETL execution results (test env)
 1. Single-game live test (game_id=291) succeeded end-to-end:
-   - ctions_clean +580, ull_rosters +34, possessions +580, lineups_lookup +731, pws +580.
+   - actions_clean +580, full_rosters +34, possessions +580, lineups_lookup +731, pws +580.
    - All validation checks passed.
 2. Remaining 2026 games (292,293,294,303,304) succeeded end-to-end:
-   - ctions_clean +3052, ull_rosters +160, possessions +3052, lineups_lookup +3633, pws +3052.
+   - actions_clean +3052, full_rosters +160, possessions +3052, lineups_lookup +3633, pws +3052.
    - All validation checks passed.
 
 ### Competition type mapping
@@ -1375,10 +1373,10 @@ extract_starters <- function(box) {
 - Current intended business meaning is lineup-context based, not possession-side based:
   - `Own starters` = number of starters in the player's/team lineup context.
   - `Opp starters` = number of starters in the opposing lineup context.
-- This is evaluated for the possessions where the player/lineup is on court, using own-vs-opponent lineup composition semantics rather than ìoffensive possession onlyî or ìdefensive possession onlyî semantics.
+- This is evaluated for the possessions where the player/lineup is on court, using own-vs-opponent lineup composition semantics rather than ‚Äúoffensive possession only‚Äù or ‚Äúdefensive possession only‚Äù semantics.
 - Practical implication:
-  - `Own starters` filter asks: ìWhen we were in this lineup-starter state, how did we perform?î
-  - `Opp starters` filter asks: ìAgainst opponent lineups in this starter state, how did we perform?î
+  - `Own starters` filter asks: ‚ÄúWhen we were in this lineup-starter state, how did we perform?‚Äù
+  - `Opp starters` filter asks: ‚ÄúAgainst opponent lineups in this starter state, how did we perform?‚Äù
 
 ## Session Notes (2026-02-22): Read-Only RLS Rollout (Supabase)
 - Added SQL migration: `sql/security/enable_readonly_rls.sql`.
@@ -1441,9 +1439,9 @@ extract_starters <- function(box) {
 
 
 ## Session Update (2026-02-26)
-- Fixed Game Logs filter-chip crash in pp/R/server_tab4.R by guarding 	eam_label_map creation (avoid setNames() on invalid/empty team data).
-- Set Player Stats default display mode to Per Game in pp/R/ui_tab5_traditional.R and aligned server fallbacks/resets in pp/R/server_tab5_traditional.R.
-- Commit reference: cc6583.
+- Fixed Game Logs filter-chip crash in app/R/server_tab4.R by guarding team_label_map creation (avoid setNames() on invalid/empty team data).
+- Set Player Stats default display mode to Per Game in app/R/ui_tab5_traditional.R and aligned server fallbacks/resets in app/R/server_tab5_traditional.R.
+- Commit reference: bcc6583.
 ## Session Notes (2026-02-27): Incremental Analytics Tables + Name Canonicalization
 - Phase 4 now uses mixed refresh mode:
   - Refresh MVs by dependency level.
