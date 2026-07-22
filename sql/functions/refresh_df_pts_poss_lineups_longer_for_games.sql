@@ -171,6 +171,7 @@ BEGIN
   WHERE lineup_hash IS NOT NULL;
 
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
+  PERFORM basketball_test.refresh_segment_clock_fields_for_games(game_ids);
   RETURN inserted_count;
 END;
 $$;

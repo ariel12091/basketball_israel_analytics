@@ -353,7 +353,8 @@ server_tab3 <- function(input, output, session, shared) {
             d.game_id,
             d.lineup_hash,
             d.segment_id,
-            d.end_game_seconds_remaining
+            d.id,
+            d.event_elapsed_seconds
           FROM basketball_test.df_pts_poss_lineups_longer_mv d
           JOIN sched_filtered sf
             ON sf.game_id = d.game_id
@@ -388,7 +389,7 @@ server_tab3 <- function(input, output, session, shared) {
             AND (COALESCE($23::int4, $19::int4) IS NULL OR d.opp_starters <= COALESCE($23::int4, $19::int4))
             AND d.lineup_hash IS NOT NULL
             AND d.segment_id IS NOT NULL
-            AND d.end_game_seconds_remaining IS NOT NULL
+            AND d.event_elapsed_seconds IS NOT NULL
         ),
         filtered_segments AS (
           SELECT
@@ -397,7 +398,8 @@ server_tab3 <- function(input, output, session, shared) {
             lineup_hash,
             segment_id,
             GREATEST(
-              MAX(end_game_seconds_remaining) - MIN(end_game_seconds_remaining),
+              (array_agg(event_elapsed_seconds ORDER BY id DESC))[1] -
+              (array_agg(event_elapsed_seconds ORDER BY id))[1],
               0
             )::numeric AS seg_seconds
           FROM filtered_rows
@@ -600,7 +602,7 @@ server_tab3 <- function(input, output, session, shared) {
             OR ($8::text = 'bottom' AND gr.opp_rank >= (gr.max_rank - $9::int4 + 1))
        ),
        acts AS (
-          SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining,
+          SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining, d.event_elapsed_seconds,
                  d.type, d.parameters_type, d.parameters_made, d.parameters_points, d.event_owner_side, d.type_lineup, d.final_end_poss, d.quarter,
                  d.own_team_score, d.opp_team_score
          FROM basketball_test.df_pts_poss_lineups_longer_mv d
@@ -703,9 +705,13 @@ server_tab3 <- function(input, output, session, shared) {
        seg_times AS (
          SELECT
            a.team_id, a.game_id, a.lineup_hash, a.segment_id,
-           MAX(a.end_game_seconds_remaining) - MIN(a.end_game_seconds_remaining) AS seg_seconds
+           GREATEST(
+             (array_agg(a.event_elapsed_seconds ORDER BY a.id DESC))[1] -
+             (array_agg(a.event_elapsed_seconds ORDER BY a.id))[1],
+             0
+           )::numeric AS seg_seconds
          FROM acts a
-         WHERE a.lineup_hash IS NOT NULL AND a.segment_id IS NOT NULL AND a.end_game_seconds_remaining IS NOT NULL
+         WHERE a.lineup_hash IS NOT NULL AND a.segment_id IS NOT NULL AND a.event_elapsed_seconds IS NOT NULL
          GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id
        ),
        team_minutes AS (
@@ -1312,7 +1318,7 @@ server_tab3 <- function(input, output, session, shared) {
              GROUP BY tg.team_id
              HAVING MAX(CASE WHEN tg.rn = 2 THEN 1 ELSE 0 END) = 1
            )
-           SELECT d.team_id, d.game_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining
+           SELECT d.team_id, d.game_id, d.lineup_hash, d.segment_id, d.segment_seconds
            FROM basketball_test.df_pts_poss_lineups_longer_mv d
            JOIN scoped s
              ON s.game_id = d.game_id
@@ -1324,11 +1330,11 @@ server_tab3 <- function(input, output, session, shared) {
          seg_times AS (
            SELECT
              a.team_id, a.game_id, a.lineup_hash, a.segment_id,
-             MAX(a.end_game_seconds_remaining) - MIN(a.end_game_seconds_remaining) AS seg_seconds
+             MAX(a.segment_seconds) AS seg_seconds
            FROM acts a
            WHERE a.lineup_hash IS NOT NULL
              AND a.segment_id IS NOT NULL
-             AND a.end_game_seconds_remaining IS NOT NULL
+             AND a.segment_seconds IS NOT NULL
            GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id
          )
          SELECT

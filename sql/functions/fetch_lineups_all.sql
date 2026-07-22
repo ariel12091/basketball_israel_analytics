@@ -202,8 +202,9 @@ BEGIN
   -- NOTE: Use pre-shot margin (subtract points scored from current score)
   -- Filter clutch-qualifying actions first
   clutch_actions AS (
-    SELECT d.team_id, d.game_id, gf.game_year, d.lineup_hash::text AS lineup_hash,
+    SELECT d.id, d.team_id, d.game_id, gf.game_year, d.lineup_hash::text AS lineup_hash,
            d.type_lineup, d.segment_id, d.end_game_seconds_remaining,
+           d.event_elapsed_seconds,
            CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag,
            d.team_score,
            d.num_starters,
@@ -246,8 +247,13 @@ BEGIN
   -- Stint duration per segment (no type_lineup - captures full floor time)
   segment_times AS (
     SELECT ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.segment_id,
-           MAX(ca.end_game_seconds_remaining) - MIN(ca.end_game_seconds_remaining) AS stint_seconds
+           greatest(
+             (array_agg(ca.event_elapsed_seconds ORDER BY ca.id DESC))[1] -
+             (array_agg(ca.event_elapsed_seconds ORDER BY ca.id))[1],
+             0
+           )::numeric AS stint_seconds
     FROM clutch_actions ca
+    WHERE ca.event_elapsed_seconds IS NOT NULL
     GROUP BY ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.segment_id
   ),
   -- Poss/pts per segment per type_lineup

@@ -15,9 +15,10 @@ segment_times AS (
         s.game_date AS g_date,
         s.game_year,
         d.segment_id,
-        MAX(d.end_game_seconds_remaining) - MIN(d.end_game_seconds_remaining) AS stint_seconds
+        MAX(d.segment_seconds) AS stint_seconds
     FROM df_pts_poss_lineups_longer_mv d
     JOIN schedule s USING (game_id)
+    WHERE d.segment_seconds IS NOT NULL
     GROUP BY d.team_id, d.lineup_hash, d.game_id, s.game_date, s.game_year, d.segment_id
 ),
 -- Poss/pts per segment per type_lineup

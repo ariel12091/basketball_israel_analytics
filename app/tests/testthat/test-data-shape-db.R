@@ -56,6 +56,12 @@ expect_has_rows <- function(sql, params = list()) {
 }
 
 test_that("live DB has the app-required shape for default MVs", {
+  expect_has_columns("df_pts_poss_lineups_longer_mv", c(
+    "event_elapsed_seconds", "clock_regression_seconds",
+    "segment_start_elapsed_seconds", "segment_end_elapsed_seconds",
+    "segment_seconds"
+  ))
+
   expect_has_columns("onoff_default_mv", c(
     "Team", "Year", "First Name", "Last Name", "Net RTG Diff",
     "Off ON Diff", "Def ON Diff", "Off ON PPP", "Def ON PPP",

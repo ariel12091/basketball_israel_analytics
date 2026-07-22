@@ -257,7 +257,7 @@ BEGIN
       d.id, d.game_id, d.lineup_hash, d.team_id, d.team_score, d.type,
       d.parameters_type, d.parameters_made, d.parameters_points, d.pct_ft,
       d.parent_action_id, d.type_lineup, d.num_starters,
-      d.segment_id, d.end_game_seconds_remaining,
+      d.segment_id, d.end_game_seconds_remaining, d.event_elapsed_seconds,
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
@@ -318,6 +318,8 @@ BEGIN
       cs.type_lineup,
       cs.segment_id,
       cs.end_game_seconds_remaining,
+      cs.id,
+      cs.event_elapsed_seconds,
       cs.team_score,
       cs.final_end_flag,
       cs.type,
@@ -338,8 +340,13 @@ BEGIN
       cd.lineup_hash::text AS lineup_hash,
       cd.game_id,
       cd.segment_id,
-      MAX(cd.end_game_seconds_remaining) - MIN(cd.end_game_seconds_remaining) AS stint_seconds
+      greatest(
+        (array_agg(cd.event_elapsed_seconds ORDER BY cd.id DESC))[1] -
+        (array_agg(cd.event_elapsed_seconds ORDER BY cd.id))[1],
+        0
+      )::numeric AS stint_seconds
     FROM combined_data cd
+    WHERE cd.event_elapsed_seconds IS NOT NULL
     GROUP BY cd.team_id, cd.lineup_hash, cd.game_id, cd.segment_id
   ),
   -- Four-factor stats per segment per type_lineup

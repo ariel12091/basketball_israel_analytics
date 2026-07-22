@@ -121,6 +121,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
            d.lineup_hash,
            d.segment_id,
            d.end_game_seconds_remaining,
+           d.event_elapsed_seconds,
             d.type,
             d.event_owner_side,
             d.parameters_type,
@@ -203,11 +204,15 @@ server_tab6_team_stats <- function(input, output, session, shared) {
            a.game_id,
            a.lineup_hash,
            a.segment_id,
-           MAX(a.end_game_seconds_remaining) - MIN(a.end_game_seconds_remaining) AS seg_seconds
+           GREATEST(
+             (array_agg(a.event_elapsed_seconds ORDER BY a.id DESC))[1] -
+             (array_agg(a.event_elapsed_seconds ORDER BY a.id))[1],
+             0
+           )::numeric AS seg_seconds
          FROM acts a
          WHERE a.lineup_hash IS NOT NULL
            AND a.segment_id IS NOT NULL
-           AND a.end_game_seconds_remaining IS NOT NULL
+           AND a.event_elapsed_seconds IS NOT NULL
          GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id
        ),
        team_minutes AS (

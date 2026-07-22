@@ -1050,6 +1050,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
           if (!isTRUE(fn_exists("refresh_df_pts_poss_lineups_longer_for_games"))) {
             stop("Missing function basketball_test.refresh_df_pts_poss_lineups_longer_for_games(int4[])")
           }
+          if (!isTRUE(fn_exists("refresh_segment_clock_fields_for_games"))) {
+            stop("Missing function basketball_test.refresh_segment_clock_fields_for_games(int4[])")
+          }
 
           df_t0 <- proc.time()
           df_touch <- DBI::dbGetQuery(
@@ -1383,40 +1386,32 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         mark_phase_failed("Phase 6", msg)
       }
 
-      # Team-minute integrity check (deduped timeline seconds):
+      # Team-minute integrity check (canonical lineup-boundary segments):
       #  - warn if under 40 minutes
       #  - warn if over 40 minutes without OT
       minute_rows <- DBI::dbGetQuery(
         pg,
         sprintf(
-          "WITH per_second AS (
-             SELECT DISTINCT
-               game_id,
-               team_id,
-               end_game_seconds_remaining
-             FROM \"%s\".\"df_pts_poss_lineups_longer_mv\"
-             WHERE game_id = $1
-               AND type_lineup = 'offense'
-               AND end_game_seconds_remaining IS NOT NULL
-           ),
-           stitched AS (
+          "WITH segment_times AS (
              SELECT
                game_id,
                team_id,
-               end_game_seconds_remaining,
-               LAG(end_game_seconds_remaining) OVER (
-                 PARTITION BY game_id, team_id
-                 ORDER BY end_game_seconds_remaining DESC
-               ) AS prev_egr
-             FROM per_second
+               lineup_hash,
+               segment_id,
+               max(segment_seconds)::numeric AS segment_seconds
+             FROM \"%s\".\"df_pts_poss_lineups_longer_mv\"
+             WHERE game_id = $1
+               AND lineup_hash IS NOT NULL
+               AND segment_id IS NOT NULL
+               AND segment_seconds IS NOT NULL
+             GROUP BY game_id, team_id, lineup_hash, segment_id
            ),
            team_minutes AS (
              SELECT
                game_id,
                team_id,
-               COALESCE(SUM(prev_egr - end_game_seconds_remaining), 0) / 60.0 AS minutes
-             FROM stitched
-             WHERE prev_egr IS NOT NULL
+               COALESCE(SUM(segment_seconds), 0) / 60.0 AS minutes
+             FROM segment_times
              GROUP BY game_id, team_id
            ),
            qtr AS (

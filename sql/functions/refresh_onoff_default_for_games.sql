@@ -112,17 +112,14 @@ BEGIN
             d.lineup_hash,
             d.type_lineup,
             d.segment_id,
-            GREATEST(
-              MAX(d.end_game_seconds_remaining) - MIN(d.end_game_seconds_remaining),
-              0
-            )::numeric AS seg_seconds
+            MAX(d.segment_seconds)::numeric AS seg_seconds
            FROM base0 b0
              JOIN basketball_test.df_pts_poss_lineups_longer_mv d
                ON d.lineup_hash = b0.lineup_hash
               AND d.team_id = b0.team_id
              JOIN sched s USING (game_id)
           WHERE d.segment_id IS NOT NULL
-            AND d.end_game_seconds_remaining IS NOT NULL
+            AND d.segment_seconds IS NOT NULL
           GROUP BY b0.player_id, b0.team_id, b0.is_on_key, s.game_year, d.game_id, d.lineup_hash, d.type_lineup, d.segment_id
         ), player_minutes AS (
          SELECT player_segments.player_id,

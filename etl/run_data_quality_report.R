@@ -170,6 +170,167 @@ run_sql_check <- function(con, schema, check, output_dir) {
   })
 }
 
+run_r_check <- function(con, schema, root, check, output_dir) {
+  tryCatch({
+    details <- check$runner(con = con, schema = schema, root = root)
+    status_override <- attr(details, "dq_status", exact = TRUE)
+    if (identical(status_override, "skipped")) {
+      detail_file <- write_detail_csv(details, output_dir, check$id)
+      return(make_check_result(check, "skipped", details, detail_file))
+    }
+
+    issue_count <- if (!is.null(check$problem_count_col)) {
+      if (!check$problem_count_col %in% names(details)) {
+        stop(sprintf(
+          "Check %s expected problem count column %s",
+          check$id,
+          check$problem_count_col
+        ))
+      }
+      sum(suppressWarnings(as.numeric(details[[check$problem_count_col]])), na.rm = TRUE)
+    } else {
+      nrow(details)
+    }
+    status <- if (issue_count > 0) {
+      if (identical(check$severity, "warning")) "warning" else "fail"
+    } else {
+      "pass"
+    }
+    detail_file <- write_detail_csv(details, output_dir, check$id)
+    make_check_result(check, status, details, detail_file, issue_count = issue_count)
+  }, error = function(e) {
+    details <- data.frame(error = conditionMessage(e), stringsAsFactors = FALSE)
+    detail_file <- write_detail_csv(details, output_dir, check$id)
+    make_check_result(check, "query_error", details, detail_file, conditionMessage(e))
+  })
+}
+
+cold_storage_snapshot_details <- function(root) {
+  cold_dir <- file.path(root, "exports", "cold")
+  required_files <- file.path(
+    cold_dir,
+    paste0(c("actions_clean", "possessions", "pws", "stints"), ".parquet")
+  )
+  missing_files <- required_files[!file.exists(required_files)]
+  if (length(missing_files) || !requireNamespace("arrow", quietly = TRUE)) {
+    note <- if (length(missing_files)) {
+      sprintf(
+        "Skipped because cold-storage file(s) are missing: %s",
+        paste(basename(missing_files), collapse = ", ")
+      )
+    } else {
+      "Skipped because the arrow package is unavailable."
+    }
+    out <- data.frame(note = note, stringsAsFactors = FALSE)
+    attr(out, "dq_status") <- "skipped"
+    return(out)
+  }
+
+  read_cols <- function(name, columns) {
+    out <- arrow::read_parquet(
+      file.path(cold_dir, paste0(name, ".parquet")),
+      mmap = FALSE
+    )
+    out[, columns, drop = FALSE]
+  }
+  key_string <- function(df, columns) {
+    do.call(paste, c(df[columns], sep = "\r"))
+  }
+  count_by_game <- function(game_id, issue_type, detail) {
+    if (!length(game_id)) return(NULL)
+    counts <- as.data.frame(table(game_id), stringsAsFactors = FALSE)
+    names(counts) <- c("game_id", "affected_rows")
+    counts$game_id <- suppressWarnings(as.integer(as.character(counts$game_id)))
+    counts$affected_rows <- as.numeric(counts$affected_rows)
+    counts$issue_type <- issue_type
+    counts$detail <- detail
+    counts[, c("issue_type", "game_id", "affected_rows", "detail")]
+  }
+
+  actions <- read_cols("actions_clean", c("game_id", "id"))
+  possessions <- read_cols("possessions", c("game_id", "id"))
+  pws <- read_cols(
+    "pws",
+    c(
+      "game_id", "id", "team_id", "segment_id", "final_start_id",
+      "final_end_id", "lineup_hash_offense", "lineup_hash_defense",
+      "team_id_defense"
+    )
+  )
+  stints <- read_cols(
+    "stints",
+    c(
+      "game_id", "team_id", "segment_id", "final_start_id",
+      "final_end_id", "lineup_hash_offense", "lineup_hash_defense",
+      "team_id_defense"
+    )
+  )
+
+  action_key <- key_string(actions, c("game_id", "id"))
+  possession_key <- key_string(possessions, c("game_id", "id"))
+  issues <- list(
+    count_by_game(
+      actions$game_id[!action_key %in% possession_key],
+      "action_missing_from_possessions",
+      "Cleaned action key is absent from the cold possessions snapshot."
+    ),
+    count_by_game(
+      possessions$game_id[!possession_key %in% action_key],
+      "possession_missing_from_actions",
+      "Possession key is absent from the cold cleaned-actions snapshot."
+    )
+  )
+
+  mapping_cols <- c(
+    "game_id", "team_id", "segment_id", "final_start_id", "final_end_id",
+    "lineup_hash_offense", "lineup_hash_defense", "team_id_defense"
+  )
+  valid_pws <- stats::complete.cases(pws[mapping_cols])
+  valid_stints <- stats::complete.cases(stints[mapping_cols])
+  pws_mapping_key <- key_string(pws[valid_pws, , drop = FALSE], mapping_cols)
+  stint_mapping_key <- unique(key_string(stints[valid_stints, , drop = FALSE], mapping_cols))
+  missing_stint_mapping <- !pws_mapping_key %in% stint_mapping_key
+  issues[[length(issues) + 1L]] <- count_by_game(
+    pws$game_id[valid_pws][missing_stint_mapping],
+    "pws_mapping_missing_from_stints",
+    "PWS row references a segment/lineup mapping absent from the cold stints snapshot."
+  )
+
+  invalid_pws_segment <- !is.na(pws$segment_id) & pws$segment_id <= 0
+  issues[[length(issues) + 1L]] <- count_by_game(
+    pws$game_id[invalid_pws_segment],
+    "nonpositive_pws_segment_id",
+    "Cold PWS row has a non-positive segment_id."
+  )
+  invalid_stint_segment <- !is.na(stints$segment_id) & stints$segment_id <= 0
+  issues[[length(issues) + 1L]] <- count_by_game(
+    stints$game_id[invalid_stint_segment],
+    "nonpositive_stint_segment_id",
+    "Cold stint row has a non-positive segment_id."
+  )
+
+  pws_key <- key_string(pws, c("game_id", "id", "team_id"))
+  duplicate_pws <- duplicated(pws_key) | duplicated(pws_key, fromLast = TRUE)
+  issues[[length(issues) + 1L]] <- count_by_game(
+    pws$game_id[duplicate_pws],
+    "duplicate_pws_storage_key",
+    "Cold PWS contains duplicate (game_id, id, team_id) storage keys."
+  )
+
+  issues <- Filter(Negate(is.null), issues)
+  if (!length(issues)) {
+    return(data.frame(
+      issue_type = character(),
+      game_id = integer(),
+      affected_rows = numeric(),
+      detail = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  out <- do.call(rbind, issues)
+  out[order(out$issue_type, out$game_id), , drop = FALSE]
+}
+
 build_checks <- function(con, schema) {
   fr <- quote_table(con, schema, "full_rosters")
   ll <- quote_table(con, schema, "lineups_lookup")
@@ -1154,42 +1315,32 @@ build_checks <- function(con, schema) {
     ),
     list(
       id = "T_invalid_team_minutes",
-      title = "Reconstructed team timelines are severely incomplete",
+      title = "App-equivalent team minutes differ materially from official duration",
       severity = "error",
-      purpose = "Flags event-bounded team timelines more than five minutes short of official duration. Game 211 is handled by the separate overlapping regulation/OT ID exception.",
+      purpose = "Sums canonical lineup-boundary segment durations and flags team-games more than one minute above or below official regulation/OT duration. Reviewed early terminations remain in P1 instead.",
       required_tables = c("df_pts_poss_lineups_longer_mv"),
       problem_count_col = "invalid_team_games",
       sql = sprintf(
-        "WITH per_second AS (
-           SELECT DISTINCT
-             game_id,
-             team_id,
-             CASE WHEN quarter <= 4 THEN 0 ELSE quarter END AS clock_period,
-             end_game_seconds_remaining
-           FROM %s
-           WHERE type_lineup = 'offense'
-             AND game_id NOT IN (184, 380)
-             AND end_game_seconds_remaining IS NOT NULL
-         ),
-         stitched AS (
+        "WITH segment_times AS (
            SELECT
              game_id,
              team_id,
-             clock_period,
-             end_game_seconds_remaining,
-             lag(end_game_seconds_remaining) OVER (
-               PARTITION BY game_id, team_id, clock_period
-               ORDER BY end_game_seconds_remaining DESC
-             ) AS prev_egr
-           FROM per_second
+             lineup_hash,
+             segment_id,
+             max(segment_seconds)::numeric AS segment_seconds
+           FROM %s
+           WHERE game_id NOT IN (184, 380)
+             AND lineup_hash IS NOT NULL
+             AND segment_id IS NOT NULL
+             AND segment_seconds IS NOT NULL
+           GROUP BY game_id, team_id, lineup_hash, segment_id
          ),
          team_minutes AS (
            SELECT
              game_id,
              team_id,
-             coalesce(sum(prev_egr - end_game_seconds_remaining), 0) / 60.0 AS minutes
-           FROM stitched
-           WHERE prev_egr IS NOT NULL
+             coalesce(sum(segment_seconds), 0)::numeric / 60.0 AS minutes
+           FROM segment_times
            GROUP BY game_id, team_id
          ),
          quarter_counts AS (
@@ -1211,10 +1362,7 @@ build_checks <- function(con, schema) {
              *,
              (
                minutes < 0
-               OR (
-                 game_id <> 211
-                 AND expected_minutes - minutes > 5.0
-               )
+               OR abs(minutes - expected_minutes) > 1.0
              ) AS invalid
            FROM quality
          ),
@@ -1451,14 +1599,11 @@ build_checks <- function(con, schema) {
              team_id,
              lineup_hash,
              segment_id,
-             greatest(
-               max(end_game_seconds_remaining) - min(end_game_seconds_remaining),
-               0
-             )::numeric / 60.0 AS lineup_minutes
+             max(segment_seconds)::numeric / 60.0 AS lineup_minutes
            FROM %s
            WHERE lineup_hash IS NOT NULL
              AND segment_id IS NOT NULL
-             AND end_game_seconds_remaining IS NOT NULL
+             AND segment_seconds IS NOT NULL
            GROUP BY game_id, team_id, lineup_hash, segment_id
          ),
          team_segment_minutes AS (
@@ -1729,6 +1874,449 @@ build_checks <- function(con, schema) {
          ORDER BY q.game_id, q.quarter, q.id, q.team_id",
         fr, ll, df_long, df_long
       )
+    ),
+    list(
+      id = "AA_material_clock_order_anomalies",
+      title = "Material game-clock or period-order anomalies reach the app table",
+      severity = "error",
+      purpose = "Flags quarter regressions, within-quarter backward clock jumps above 24 seconds, and clock values outside their legal period range. Small provider-order jitter is reported separately.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "invalid_games",
+      sql = sprintf(
+        "WITH action_grain AS (
+           SELECT
+             game_id,
+             id,
+             max(quarter)::int AS quarter,
+             max(end_game_seconds_remaining)::numeric AS game_clock
+           FROM %s
+           GROUP BY game_id, id
+         ),
+         ordered AS (
+           SELECT
+             a.*,
+             lag(id) OVER (PARTITION BY game_id ORDER BY id) AS prev_id,
+             lag(quarter) OVER (PARTITION BY game_id ORDER BY id) AS prev_quarter,
+             lag(game_clock) OVER (PARTITION BY game_id ORDER BY id) AS prev_clock
+           FROM action_grain a
+         ),
+         game_quality AS (
+           SELECT
+             game_id,
+             count(*) FILTER (
+               WHERE prev_quarter IS NOT NULL AND quarter < prev_quarter
+             )::bigint AS quarter_regression_rows,
+             count(*) FILTER (
+               WHERE quarter = prev_quarter AND game_clock - prev_clock > 24
+             )::bigint AS reversal_gt24_rows,
+             max(game_clock - prev_clock) FILTER (
+               WHERE quarter = prev_quarter
+             ) AS max_reversal_seconds,
+             count(*) FILTER (
+               WHERE quarter IS NULL
+                  OR quarter < 1
+                  OR game_clock IS NULL
+                  OR (
+                    quarter BETWEEN 1 AND 4
+                    AND game_clock NOT BETWEEN
+                      (4 - quarter) * 600 AND (5 - quarter) * 600
+                  )
+                  OR (quarter >= 5 AND game_clock NOT BETWEEN 0 AND 300)
+             )::bigint AS out_of_range_rows
+           FROM ordered
+           GROUP BY game_id
+         ),
+         marked AS (
+           SELECT
+             *,
+             (
+               quarter_regression_rows > 0
+               OR reversal_gt24_rows > 0
+               OR out_of_range_rows > 0
+             ) AS invalid
+           FROM game_quality
+         ),
+         totals AS (
+           SELECT
+             count(*)::bigint AS overall_total_games,
+             count(*) FILTER (WHERE invalid)::bigint AS overall_invalid_games
+           FROM marked
+         )
+         SELECT
+           m.game_id,
+           m.quarter_regression_rows,
+           m.reversal_gt24_rows,
+           m.max_reversal_seconds,
+           m.out_of_range_rows,
+           1::bigint AS invalid_games,
+           t.overall_total_games,
+           t.overall_invalid_games,
+           round(
+             100.0 * t.overall_invalid_games /
+               nullif(t.overall_total_games, 0),
+             4
+           ) AS overall_invalid_pct
+         FROM marked m
+         CROSS JOIN totals t
+         WHERE m.invalid
+         ORDER BY
+           m.quarter_regression_rows DESC,
+           m.max_reversal_seconds DESC NULLS LAST,
+           m.game_id",
+        df_long
+      )
+    ),
+    list(
+      id = "AB_clock_order_jitter",
+      title = "Non-trivial within-quarter clock-order jitter",
+      severity = "warning",
+      purpose = "Reports backward game-clock jumps above five and up to 24 seconds. One-to-five-second reversals are treated as common provider ordering/rounding noise.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "reversal_rows",
+      sql = sprintf(
+        "WITH action_grain AS (
+           SELECT
+             game_id,
+             id,
+             max(quarter)::int AS quarter,
+             max(end_game_seconds_remaining)::numeric AS game_clock
+           FROM %s
+           GROUP BY game_id, id
+         ),
+         ordered AS (
+           SELECT
+             a.*,
+             lag(id) OVER (PARTITION BY game_id ORDER BY id) AS prev_id,
+             lag(quarter) OVER (PARTITION BY game_id ORDER BY id) AS prev_quarter,
+             lag(game_clock) OVER (PARTITION BY game_id ORDER BY id) AS prev_clock
+           FROM action_grain a
+         ),
+         quality AS (
+           SELECT
+             game_id,
+             count(*) FILTER (
+               WHERE quarter = prev_quarter
+                 AND game_clock - prev_clock > 5
+                 AND game_clock - prev_clock <= 24
+             )::bigint AS reversal_rows,
+             max(game_clock - prev_clock) FILTER (
+               WHERE quarter = prev_quarter
+                 AND game_clock - prev_clock > 5
+                 AND game_clock - prev_clock <= 24
+             ) AS max_reversal_seconds,
+             string_agg(
+               format('%%s->%%s', prev_id, id),
+               ',' ORDER BY id
+             ) FILTER (
+               WHERE quarter = prev_quarter
+                 AND game_clock - prev_clock > 5
+                 AND game_clock - prev_clock <= 24
+             ) AS action_transitions
+           FROM ordered
+           GROUP BY game_id
+         )
+         SELECT
+           game_id,
+           reversal_rows,
+           max_reversal_seconds,
+           action_transitions
+         FROM quality
+         WHERE reversal_rows > 0
+         ORDER BY max_reversal_seconds DESC, game_id",
+        df_long
+      )
+    ),
+    list(
+      id = "AC_missing_regulation_period_coverage",
+      title = "Regulation periods are missing from the app event table",
+      severity = "error",
+      purpose = "Requires each persisted game/team to contain event rows labeled for regulation quarters 1-4. Reviewed early terminations 184 and 380 remain documented in P1.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "invalid_periods",
+      sql = sprintf(
+        "WITH game_teams AS (
+           SELECT DISTINCT game_id, team_id
+           FROM %s
+           WHERE game_id NOT IN (184, 380)
+             AND team_id IS NOT NULL
+         ),
+         required_periods AS (
+           SELECT
+             gt.game_id,
+             gt.team_id,
+             q.quarter
+           FROM game_teams gt
+           CROSS JOIN generate_series(1, 4) AS q(quarter)
+         ),
+         period_rows AS (
+           SELECT
+             game_id,
+             team_id,
+             quarter,
+             count(DISTINCT id)::bigint AS action_rows
+           FROM %s
+           WHERE quarter BETWEEN 1 AND 4
+           GROUP BY game_id, team_id, quarter
+         ),
+         missing AS (
+           SELECT
+             rp.game_id,
+             rp.team_id,
+             rp.quarter,
+             coalesce(pr.action_rows, 0)::bigint AS action_rows
+           FROM required_periods rp
+           LEFT JOIN period_rows pr
+             ON pr.game_id = rp.game_id
+            AND pr.team_id = rp.team_id
+            AND pr.quarter = rp.quarter
+           WHERE coalesce(pr.action_rows, 0) = 0
+         ),
+         totals AS (
+           SELECT
+             (SELECT count(*) FROM required_periods)::bigint AS overall_required_periods,
+             count(*)::bigint AS overall_invalid_periods
+           FROM missing
+         )
+         SELECT
+           m.game_id,
+           m.team_id,
+           m.quarter AS missing_quarter,
+           m.action_rows,
+           1::bigint AS invalid_periods,
+           t.overall_required_periods,
+           t.overall_invalid_periods,
+           round(
+             100.0 * t.overall_invalid_periods /
+               nullif(t.overall_required_periods, 0),
+             4
+           ) AS overall_invalid_pct
+         FROM missing m
+         CROSS JOIN totals t
+         ORDER BY m.game_id, m.team_id, m.quarter",
+        df_long, df_long
+      )
+    ),
+    list(
+      id = "AD_clutch_clock_exposure",
+      title = "Clock-order defects can change clutch-filter membership",
+      severity = "error",
+      purpose = "Flags Q4 action order that moves back outside the selected five-minute window or regresses from Q4/overtime to an earlier period. Missing Q4 coverage is handled separately.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "exposed_rows",
+      sql = sprintf(
+        "WITH action_grain AS (
+           SELECT
+             game_id,
+             id,
+             max(quarter)::int AS quarter,
+             max(end_game_seconds_remaining)::numeric AS game_clock
+           FROM %s
+           GROUP BY game_id, id
+         ),
+         ordered AS (
+           SELECT
+             a.*,
+             lag(id) OVER (PARTITION BY game_id ORDER BY id) AS prev_id,
+             lag(quarter) OVER (PARTITION BY game_id ORDER BY id) AS prev_quarter,
+             lag(game_clock) OVER (PARTITION BY game_id ORDER BY id) AS prev_clock
+           FROM action_grain a
+         ),
+         exposed AS (
+           SELECT
+             *,
+             CASE
+               WHEN quarter = 4 AND prev_quarter = 4
+                 AND prev_clock <= 300 AND game_clock > 300
+               THEN 'q4_reentered_outside_five_minutes'
+               WHEN prev_quarter >= 4 AND quarter < prev_quarter
+               THEN 'period_regressed_out_of_clutch_scope'
+             END AS exposure_type
+           FROM ordered
+         )
+         SELECT
+           game_id,
+           prev_id,
+           id AS action_id,
+           prev_quarter,
+           quarter,
+           prev_clock,
+           game_clock,
+           exposure_type,
+           1::bigint AS exposed_rows
+         FROM exposed
+         WHERE exposure_type IS NOT NULL
+         ORDER BY game_id, action_id",
+        df_long
+      )
+    ),
+    list(
+      id = "AE_duplicate_persisted_action_stint_keys",
+      title = "Persisted actions map to multiple app rows for one team",
+      severity = "error",
+      purpose = "Requires one df_pts_poss_lineups_longer row per (game, team, action ID). Extra rows would duplicate points, shots, and possession endings in downstream aggregates.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "extra_rows",
+      sql = sprintf(
+        "WITH duplicated AS (
+           SELECT
+             game_id,
+             team_id,
+             id,
+             count(*)::bigint AS row_copies,
+             count(DISTINCT segment_id)::int AS distinct_segments,
+             count(DISTINCT lineup_hash)::int AS distinct_lineups
+           FROM %s
+           GROUP BY game_id, team_id, id
+           HAVING count(*) > 1
+         )
+         SELECT
+           game_id,
+           team_id,
+           id AS action_id,
+           row_copies,
+           distinct_segments,
+           distinct_lineups,
+           row_copies - 1 AS extra_rows
+         FROM duplicated
+         ORDER BY row_copies DESC, game_id, team_id, id",
+        df_long
+      )
+    ),
+    list(
+      id = "AF_invalid_persisted_segment_ids",
+      title = "Persisted app rows have missing or non-positive segment IDs",
+      severity = "error",
+      purpose = "Protects segment-level minute aggregation from collapsed or missing stint identifiers.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "invalid_rows",
+      sql = sprintf(
+        "WITH quality AS (
+           SELECT
+             game_id,
+             team_id,
+             count(*)::bigint AS total_rows,
+             count(*) FILTER (
+               WHERE segment_id IS NULL OR segment_id <= 0
+             )::bigint AS invalid_rows,
+             min(segment_id)::int AS min_segment_id,
+             max(segment_id)::int AS max_segment_id
+           FROM %s
+           GROUP BY game_id, team_id
+         )
+         SELECT
+           game_id,
+           team_id,
+           total_rows,
+           invalid_rows,
+           min_segment_id,
+           max_segment_id,
+           round(100.0 * invalid_rows / nullif(total_rows, 0), 4) AS invalid_pct
+         FROM quality
+         WHERE invalid_rows > 0
+         ORDER BY invalid_rows DESC, game_id, team_id",
+        df_long
+      )
+    ),
+    list(
+      id = "AH_canonical_segment_timing",
+      title = "Canonical segment timing is complete and conserves game coverage",
+      severity = "error",
+      purpose = "Requires canonical event/segment clocks on every persisted segment row, one nonnegative duration per segment, and team segment totals within five seconds of the retained game timeline.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "affected_rows",
+      sql = sprintf(
+        "WITH row_quality AS (
+           SELECT
+             game_id,
+             team_id,
+             count(*) FILTER (
+               WHERE segment_id IS NOT NULL
+                 AND (
+                   event_elapsed_seconds IS NULL
+                   OR clock_regression_seconds IS NULL
+                   OR segment_start_elapsed_seconds IS NULL
+                   OR segment_end_elapsed_seconds IS NULL
+                   OR segment_seconds IS NULL
+                 )
+             )::bigint AS missing_timing_rows,
+             max(event_elapsed_seconds)::numeric AS game_end_elapsed_seconds
+           FROM %s
+           GROUP BY game_id, team_id
+         ),
+         segment_quality AS (
+           SELECT
+             game_id,
+             team_id,
+             lineup_hash,
+             segment_id,
+             count(DISTINCT segment_seconds)::int AS distinct_durations,
+             min(segment_seconds)::numeric AS segment_seconds,
+             min(segment_start_elapsed_seconds)::numeric AS segment_start,
+             min(segment_end_elapsed_seconds)::numeric AS segment_end
+           FROM %s
+           WHERE lineup_hash IS NOT NULL
+             AND segment_id IS NOT NULL
+           GROUP BY game_id, team_id, lineup_hash, segment_id
+         ),
+         team_segments AS (
+           SELECT
+             game_id,
+             team_id,
+             count(*) FILTER (
+               WHERE distinct_durations <> 1
+                  OR segment_seconds IS NULL
+                  OR segment_seconds < 0
+                  OR segment_end < segment_start
+             )::bigint AS invalid_segments,
+             coalesce(sum(segment_seconds), 0)::numeric AS total_segment_seconds
+           FROM segment_quality
+           GROUP BY game_id, team_id
+         ),
+         quality AS (
+           SELECT
+             r.game_id,
+             r.team_id,
+             r.missing_timing_rows,
+             coalesce(s.invalid_segments, 0)::bigint AS invalid_segments,
+             coalesce(s.total_segment_seconds, 0)::numeric AS total_segment_seconds,
+             r.game_end_elapsed_seconds,
+             abs(
+               coalesce(s.total_segment_seconds, 0) -
+               coalesce(r.game_end_elapsed_seconds, 0)
+             )::numeric AS conservation_difference_seconds
+           FROM row_quality r
+           LEFT JOIN team_segments s USING (game_id, team_id)
+         )
+         SELECT
+           game_id,
+           team_id,
+           missing_timing_rows,
+           invalid_segments,
+           total_segment_seconds,
+           game_end_elapsed_seconds,
+           conservation_difference_seconds,
+           (
+             missing_timing_rows + invalid_segments +
+             CASE WHEN conservation_difference_seconds > 5 THEN 1 ELSE 0 END
+           )::bigint AS affected_rows
+         FROM quality
+         WHERE missing_timing_rows > 0
+            OR invalid_segments > 0
+            OR conservation_difference_seconds > 5
+         ORDER BY affected_rows DESC, game_id, team_id",
+        df_long, df_long
+      )
+    ),
+    list(
+      id = "AG_cold_storage_snapshot_consistency",
+      title = "Cold-storage Parquets form a consistent latest-game snapshot",
+      severity = "warning",
+      purpose = "Checks action/possession key parity, PWS-to-stint mapping integrity, storage-key uniqueness, and positive segment IDs. Failures affect offline audits and restoration rather than the live app.",
+      required_tables = character(),
+      problem_count_col = "affected_rows",
+      runner = function(con, schema, root) {
+        cold_storage_snapshot_details(root)
+      }
     )
   )
 }
@@ -1773,6 +2361,9 @@ run_data_quality_report <- function(
   checks <- build_checks(con, schema)
 
   results <- lapply(checks, function(check) {
+    if (is.function(check$runner)) {
+      return(run_r_check(con, schema, root, check, output_dir))
+    }
     if (!is.na(check$sql[[1]])) {
       return(run_sql_check(con, schema, check, output_dir))
     }

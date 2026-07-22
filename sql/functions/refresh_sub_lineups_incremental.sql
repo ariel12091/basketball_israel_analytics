@@ -4,6 +4,7 @@
 CREATE OR REPLACE FUNCTION basketball_test.refresh_sub_lineups_stats_for_games(p_game_ids int4[])
  RETURNS bigint
  LANGUAGE sql
+ SET enable_nestloop = off
 AS $function$
 WITH
 target_lineups AS (
@@ -134,13 +135,14 @@ segment_times AS (
     f.game_id,
     sc.game_year,
     f.segment_id,
-    MAX(f.end_game_seconds_remaining) - MIN(f.end_game_seconds_remaining) AS stint_seconds
+    MAX(f.segment_seconds) AS stint_seconds
   FROM basketball_test.df_pts_poss_lineups_longer_mv f
   JOIN sched sc
     ON sc.game_id = f.game_id
   JOIN needed_lineups nl
     ON nl.lineup_hash = f.lineup_hash
    AND nl.game_year = sc.game_year
+  WHERE f.segment_seconds IS NOT NULL
   GROUP BY f.lineup_hash, f.game_id, sc.game_year, f.segment_id
 ),
 
@@ -297,4 +299,3 @@ upserted AS (
 SELECT count(*)::bigint FROM upserted;
 $function$
 ;
-

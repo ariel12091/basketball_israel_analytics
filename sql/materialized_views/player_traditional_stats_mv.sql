@@ -25,6 +25,7 @@ actions_with_year AS (
     d.lineup_hash,
     d.segment_id,
     d.end_game_seconds_remaining,
+    d.segment_seconds,
     d.type,
     d.parameters_type,
     d.parameters_made,
@@ -155,11 +156,11 @@ segment_times AS (
     awy.team_id,
     awy.lineup_hash,
     awy.segment_id,
-    MAX(awy.end_game_seconds_remaining) - MIN(awy.end_game_seconds_remaining) AS seg_seconds
+    MAX(awy.segment_seconds) AS seg_seconds
   FROM actions_with_year awy
   WHERE awy.lineup_hash IS NOT NULL
     AND awy.segment_id IS NOT NULL
-    AND awy.end_game_seconds_remaining IS NOT NULL
+    AND awy.segment_seconds IS NOT NULL
   GROUP BY awy.game_year, awy.game_id, awy.team_id, awy.lineup_hash, awy.segment_id
 ),
 minutes_totals AS (

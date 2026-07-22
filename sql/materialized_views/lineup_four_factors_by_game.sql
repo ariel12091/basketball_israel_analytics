@@ -24,6 +24,7 @@ WITH clean_stats AS (
     d.num_starters,
     d.segment_id,
     d.end_game_seconds_remaining,
+    d.segment_seconds,
     CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
   FROM basketball_test.df_pts_poss_lineups_longer_mv d
 ),
@@ -50,6 +51,7 @@ combined_data AS (
     cs.num_starters,
     cs.segment_id,
     cs.end_game_seconds_remaining,
+    cs.segment_seconds,
     cs.team_score,
     cs.final_end_flag,
     cs.type,
@@ -72,8 +74,9 @@ segment_times AS (
     cd.game_id,
     cd.game_year,
     cd.segment_id,
-    MAX(cd.end_game_seconds_remaining) - MIN(cd.end_game_seconds_remaining) AS stint_seconds
+    MAX(cd.segment_seconds) AS stint_seconds
   FROM combined_data cd
+  WHERE cd.segment_seconds IS NOT NULL
   GROUP BY cd.lineup_hash, cd.team_id, cd.game_id, cd.game_year, cd.segment_id
 ),
 -- Four-factor stats per segment per type_lineup

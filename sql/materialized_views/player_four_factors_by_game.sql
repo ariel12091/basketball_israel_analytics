@@ -32,6 +32,7 @@ clean_stats AS (
     d.opp_starters,
     d.segment_id,
     d.end_game_seconds_remaining,
+    d.segment_seconds,
     CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
   FROM basketball_test.df_pts_poss_lineups_longer_mv d
 ),
@@ -82,11 +83,11 @@ onoff_lineup_segments AS (
     cs.own_starters,
     cs.opp_starters,
     cs.segment_id,
-    GREATEST(MAX(cs.end_game_seconds_remaining) - MIN(cs.end_game_seconds_remaining), 0)::numeric AS seg_seconds
+    MAX(cs.segment_seconds)::numeric AS seg_seconds
   FROM clean_stats cs
   WHERE cs.lineup_hash IS NOT NULL
     AND cs.segment_id IS NOT NULL
-    AND cs.end_game_seconds_remaining IS NOT NULL
+    AND cs.segment_seconds IS NOT NULL
   GROUP BY cs.game_id, cs.team_id, cs.lineup_hash, cs.type_lineup, cs.own_starters, cs.opp_starters, cs.segment_id
 ),
 onoff_lineup_minutes AS (
@@ -163,7 +164,8 @@ combined_data AS (
     cf.parent_type,
     cf.parent_param,
     cs.segment_id,
-    cs.end_game_seconds_remaining
+    cs.end_game_seconds_remaining,
+    cs.segment_seconds
   FROM base0 b0
   JOIN clean_stats cs ON b0.lineup_hash = cs.lineup_hash AND b0.team_id = cs.team_id
   JOIN basketball_test.schedule s ON cs.game_id = s.game_id
@@ -180,10 +182,10 @@ segment_times AS (
     cd.own_starters,
     cd.opp_starters,
     cd.segment_id,
-    MAX(cd.end_game_seconds_remaining) - MIN(cd.end_game_seconds_remaining) AS stint_seconds
+    MAX(cd.segment_seconds) AS stint_seconds
   FROM combined_data cd
   WHERE cd.segment_id IS NOT NULL
-    AND cd.end_game_seconds_remaining IS NOT NULL
+    AND cd.segment_seconds IS NOT NULL
   GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year,
            cd.is_on_key, cd.num_starters, cd.own_starters, cd.opp_starters,
            cd.segment_id
