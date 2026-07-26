@@ -581,6 +581,72 @@ complete_roster_from_action_players <- function(pg, schema, roster_df, actions_d
   out
 }
 
+action_player_roster_gaps <- function(actions_df, roster_df) {
+  required_action_cols <- c("game_id", "team_id", "player_id", "type")
+  required_roster_cols <- c("game_id", "team_id", "player_id")
+  if (!all(required_action_cols %in% names(actions_df))) {
+    stop("actions_df is missing action-player roster guard columns", call. = FALSE)
+  }
+  if (!all(required_roster_cols %in% names(roster_df))) {
+    stop("roster_df is missing action-player roster guard columns", call. = FALSE)
+  }
+
+  action_players <- actions_df |>
+    dplyr::filter(
+      !is.na(game_id),
+      !is.na(team_id),
+      team_id != 0L,
+      !is.na(player_id),
+      player_id != 0L
+    ) |>
+    dplyr::group_by(game_id, team_id, player_id) |>
+    dplyr::summarise(
+      action_rows = dplyr::n(),
+      action_types = paste(sort(unique(type)), collapse = ","),
+      .groups = "drop"
+    )
+
+  roster_keys <- roster_df |>
+    dplyr::filter(
+      !is.na(game_id),
+      !is.na(team_id),
+      !is.na(player_id)
+    ) |>
+    dplyr::distinct(game_id, team_id, player_id)
+
+  dplyr::anti_join(
+    action_players,
+    roster_keys,
+    by = c("game_id", "team_id", "player_id")
+  ) |>
+    dplyr::arrange(game_id, team_id, player_id)
+}
+
+assert_action_players_in_roster <- function(actions_df, roster_df, log_msg = message) {
+  gaps <- action_player_roster_gaps(actions_df, roster_df)
+  if (nrow(gaps)) {
+    examples <- utils::head(sprintf(
+      "game=%s team=%s player=%s actions=%s types=%s",
+      gaps$game_id,
+      gaps$team_id,
+      gaps$player_id,
+      gaps$action_rows,
+      gaps$action_types
+    ), 10L)
+    stop(sprintf(
+      paste0(
+        "Action-player roster guard failed for %d context(s): %s. ",
+        "Recover or correct the roster before publishing this game."
+      ),
+      nrow(gaps),
+      paste(examples, collapse = "; ")
+    ), call. = FALSE)
+  }
+
+  log_msg("  action-player roster guard passed")
+  invisible(TRUE)
+}
+
 ensure_pws_num_starters_cols <- function(pg, schema = SCHEMA) {
   DBI::dbExecute(pg, sprintf(
     'ALTER TABLE "%s"."pws" ADD COLUMN IF NOT EXISTS num_starters_offense integer;',
@@ -598,7 +664,21 @@ ensure_pws_num_starters_cols <- function(pg, schema = SCHEMA) {
 compute_possessions <- function(actions_tbl) {
   poss0 <- actions_tbl |>
     mutate(
-      pct_ft = round(parameters_free_throw_number / NULLIF(parameters_free_throws_awarded, 0), 2),
+      # The provider occasionally reports an awarded total below the current
+      # attempt number (for example, attempt 2 with awarded = 1). The attempt
+      # number is a hard lower bound on trip size, so use it as the effective
+      # denominator only for that impossible combination. Raw source fields
+      # remain unchanged for auditability.
+      .effective_ft_awarded = case_when(
+        !is.na(parameters_free_throw_number) &
+          !is.na(parameters_free_throws_awarded) &
+          parameters_free_throw_number > parameters_free_throws_awarded ~
+            parameters_free_throw_number,
+        TRUE ~ parameters_free_throws_awarded
+      )
+    ) |>
+    mutate(
+      pct_ft = round(parameters_free_throw_number / NULLIF(.effective_ft_awarded, 0), 2),
       team_score = case_when(parameters_made == "made" ~ parameters_points, TRUE ~ NULL)
     ) |>
     mutate(q_bucket = if_else(quarter < 5, 0L, quarter)) %>%
@@ -657,7 +737,7 @@ compute_possessions <- function(actions_tbl) {
       eoq_override ~ TRUE,
       TRUE         ~ final_end_poss_base
     )) |>
-    select(-eoq_override, -final_end_poss_base)
+    select(-eoq_override, -final_end_poss_base, -.effective_ft_awarded)
 }
 
 compute_lineups_lookup <- function(pg) {
@@ -780,6 +860,22 @@ compute_stints <- function(pg) {
     ungroup()
 }
 
+add_terminal_stint_join_end <- function(stints_df) {
+  stints_df |>
+    dplyr::group_by(game_id, team_id, q_bucket) |>
+    dplyr::mutate(
+      # Persisted final_end_id remains a real action FK. Only the final
+      # half-open join boundary advances by one so the maximum action ID is
+      # attributable without overlapping adjacent stints.
+      .join_end_id = dplyr::if_else(
+        final_end_id == max(final_end_id),
+        final_end_id + 1L,
+        final_end_id
+      )
+    ) |>
+    dplyr::ungroup()
+}
+
 # =========================
 # Orchestrator
 # =========================
@@ -895,10 +991,12 @@ etl_update <- function() {
   
   upsert_by_like(pg, SCHEMA, "stints", stints_df, manage_transaction = FALSE)
   
-  by <- join_by(team_id, game_id, q_bucket, between(id, final_start_id, final_end_id, bounds = "[)"))
-  
+  stints_for_join <- add_terminal_stint_join_end(stints_df)
+  by <- join_by(team_id, game_id, q_bucket, between(id, final_start_id, .join_end_id, bounds = "[)"))
+
   pws_stage <- left_join(poss_stage %>%
-                           mutate(q_bucket = if_else(quarter < 5, 0L, quarter)), stints_df, by)
+                           mutate(q_bucket = if_else(quarter < 5, 0L, quarter)), stints_for_join, by) %>%
+    dplyr::select(-.join_end_id)
   pws_stage <- pws_stage %>%
     dplyr::left_join(
       lineup_starters %>%

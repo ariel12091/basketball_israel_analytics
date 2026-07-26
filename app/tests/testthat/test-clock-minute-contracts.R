@@ -38,4 +38,29 @@ test_that("data-quality report covers source clocks and canonical durations", {
   expect_true(grepl("AA_material_clock_order_anomalies", dq_r, fixed = TRUE))
   expect_true(grepl("AD_clutch_clock_exposure", dq_r, fixed = TRUE))
   expect_true(grepl("AH_canonical_segment_timing", dq_r, fixed = TRUE))
+  expect_true(grepl("AI_team_game_minute_mirror", dq_r, fixed = TRUE))
+})
+
+test_that("team offense and defense minutes mirror one canonical duration", {
+  paths <- c(
+    repo_file("..", "sql", "materialized_views", "team_metrics_by_game_mv.sql"),
+    repo_file("..", "sql", "functions", "refresh_team_metrics_by_game_for_games.sql")
+  )
+
+  for (path in paths) {
+    sql <- paste(readLines(path, warn = FALSE), collapse = "\n")
+    expect_true(grepl("SUM(lf.minutes) AS canonical_minutes", sql, fixed = TRUE))
+    expect_equal(
+      lengths(regmatches(
+        sql,
+        gregexpr("SUM(t.canonical_minutes)", sql, fixed = TRUE)
+      )),
+      2L
+    )
+    expect_false(grepl(
+      "SUM(lf.minutes) FILTER (WHERE lf.type_lineup = 'defense')",
+      sql,
+      fixed = TRUE
+    ))
+  }
 })
