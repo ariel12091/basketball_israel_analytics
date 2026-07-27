@@ -572,9 +572,25 @@ BEGIN
     -- Filtered path: keep schedule/ranking filters.
     RETURN QUERY
     WITH
+    schedule_ranked AS (
+      SELECT
+        fsr.game_id,
+        fsr.team_id,
+        fsr.game_year,
+        ROW_NUMBER() OVER (
+          PARTITION BY fsr.team_id, fsr.game_year
+          ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+        ) AS rn_recent
+      FROM basketball_test.final_schedule_mv fsr
+      WHERE (p_game_year IS NULL OR fsr.game_year = p_game_year)
+    ),
     games_base AS (
       SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.is_home, fs.has_won
       FROM basketball_test.final_schedule_mv fs
+      JOIN schedule_ranked sr
+        ON sr.game_id = fs.game_id
+       AND sr.team_id = fs.team_id
+       AND sr.game_year = fs.game_year
       WHERE (p_game_year IS NULL OR fs.game_year = p_game_year)
         AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
         AND (p_end_date   IS NULL OR fs.game_date <= p_end_date)
@@ -582,6 +598,9 @@ BEGIN
         AND (v_opp_ids    IS NULL OR fs.opp_team_id = ANY(v_opp_ids))
         AND (v_home_away = 'all' OR (v_home_away = 'home' AND fs.is_home) OR (v_home_away = 'away' AND NOT fs.is_home))
         AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
+        AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
+        AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
+        AND (p_last_n_games IS NULL OR sr.rn_recent <= p_last_n_games)
     ),
     games_ranked AS (
       SELECT gb.game_id, gb.team_id, gb.game_year,
