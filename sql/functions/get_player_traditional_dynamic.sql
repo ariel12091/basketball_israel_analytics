@@ -55,6 +55,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 STABLE
+SET plan_cache_mode = force_custom_plan
 AS $$
 DECLARE
   v_team_ids         int4[];
@@ -100,7 +101,19 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  WITH games_base AS (
+  WITH schedule_ranked AS (
+    SELECT
+      fsr.game_id,
+      fsr.team_id,
+      fsr.game_year,
+      ROW_NUMBER() OVER (
+        PARTITION BY fsr.team_id, fsr.game_year
+        ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+      ) AS rn_recent
+    FROM basketball_test.final_schedule_mv fsr
+    WHERE fsr.game_year = p_game_year
+  ),
+  games_base AS (
     SELECT
       fs.game_id,
       fs.team_id,
@@ -108,6 +121,10 @@ BEGIN
       fs.opp_team_id,
       fs.game_date
     FROM basketball_test.final_schedule_mv fs
+    JOIN schedule_ranked sr
+      ON sr.game_id = fs.game_id
+     AND sr.team_id = fs.team_id
+     AND sr.game_year = fs.game_year
     WHERE fs.game_year = p_game_year
       AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
       AND (p_end_date IS NULL OR fs.game_date <= p_end_date)
@@ -126,23 +143,7 @@ BEGIN
       )
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
-      AND (
-        p_last_n_games IS NULL OR COALESCE((
-          SELECT fsr.rn_recent
-          FROM (
-            SELECT
-              fs2.game_id,
-              ROW_NUMBER() OVER (
-                PARTITION BY fs2.team_id, fs2.game_year
-                ORDER BY fs2.game_date DESC NULLS LAST, fs2.game_id DESC
-              ) AS rn_recent
-            FROM basketball_test.final_schedule_mv fs2
-            WHERE fs2.team_id = fs.team_id
-              AND fs2.game_year = fs.game_year
-          ) fsr
-          WHERE fsr.game_id = fs.game_id
-        ), 2147483647) <= p_last_n_games
-      )
+      AND (p_last_n_games IS NULL OR sr.rn_recent <= p_last_n_games)
   ),
   games_ranked AS (
     SELECT
