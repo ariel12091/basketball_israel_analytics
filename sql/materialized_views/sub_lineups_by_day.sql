@@ -20,6 +20,8 @@ base AS (
         d.num_starters,
         d.id,
         d.event_elapsed_seconds,
+        d.segment_start_elapsed_seconds,
+        d.segment_seconds,
         d.final_end_poss,
         d.team_score,
         d.type,
@@ -34,49 +36,108 @@ base AS (
          )) AS opp_island
     FROM df_pts_poss_lineups_longer_mv d
 ),
--- Gap-exclusive stint time: one span per contiguous opp_starters window.
-window_times AS (
+-- Identify each contiguous opponent-starters window inside the canonical
+-- segment. Canonical segment_seconds remains the total time budget.
+window_bounds AS (
     SELECT
         b.team_id,
         b.lineup_hash,
         b.game_id,
-        s.game_date AS g_date,
-        s.game_year,
         b.segment_id,
         b.opp_starters,
-        GREATEST(
-            MAX(b.event_elapsed_seconds) - MIN(b.event_elapsed_seconds),
+        b.opp_island,
+        MIN(b.id) AS first_id,
+        (
+            ARRAY_AGG(b.event_elapsed_seconds ORDER BY b.id)
+            FILTER (WHERE b.event_elapsed_seconds IS NOT NULL)
+        )[1] AS first_event_elapsed_seconds,
+        COALESCE(
+            MAX(b.segment_start_elapsed_seconds),
+            MIN(b.event_elapsed_seconds),
             0
-        ) AS window_seconds
+        ) AS segment_start_elapsed_seconds,
+        MAX(b.segment_seconds) AS segment_seconds,
+        BOOL_OR(b.type_lineup = 'offense') AS has_offense
     FROM base b
-    JOIN schedule s USING (game_id)
-    WHERE b.event_elapsed_seconds IS NOT NULL
+    WHERE b.segment_seconds IS NOT NULL
     GROUP BY
         b.team_id,
         b.lineup_hash,
         b.game_id,
-        s.game_date,
-        s.game_year,
         b.segment_id,
         b.opp_starters,
         b.opp_island
+),
+ordered_windows AS (
+    SELECT
+        wb.*,
+        ROW_NUMBER() OVER (
+            PARTITION BY wb.team_id, wb.lineup_hash, wb.game_id, wb.segment_id
+            ORDER BY wb.first_id
+        ) AS window_number
+    FROM window_bounds wb
+),
+window_start_candidates AS (
+    SELECT
+        ow.*,
+        CASE
+            WHEN ow.window_number = 1 THEN ow.segment_start_elapsed_seconds
+            ELSE GREATEST(
+                ow.segment_start_elapsed_seconds,
+                LEAST(
+                    ow.segment_start_elapsed_seconds + ow.segment_seconds,
+                    COALESCE(
+                        ow.first_event_elapsed_seconds,
+                        ow.segment_start_elapsed_seconds
+                    )
+                )
+            )
+        END AS window_start_candidate
+    FROM ordered_windows ow
+),
+normalized_window_starts AS (
+    SELECT
+        wsc.*,
+        MAX(wsc.window_start_candidate) OVER (
+            PARTITION BY wsc.team_id, wsc.lineup_hash, wsc.game_id, wsc.segment_id
+            ORDER BY wsc.first_id
+            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+        ) AS window_start
+    FROM window_start_candidates wsc
+),
+window_times AS (
+    SELECT
+        nws.team_id,
+        nws.lineup_hash,
+        nws.game_id,
+        nws.segment_id,
+        nws.opp_starters,
+        nws.opp_island,
+        nws.has_offense,
+        GREATEST(
+            COALESCE(
+                LEAD(nws.window_start) OVER (
+                    PARTITION BY nws.team_id, nws.lineup_hash, nws.game_id, nws.segment_id
+                    ORDER BY nws.first_id
+                ),
+                nws.segment_start_elapsed_seconds + nws.segment_seconds
+            ) - nws.window_start,
+            0
+        ) AS window_seconds
+    FROM normalized_window_starts nws
 ),
 window_minutes AS (
     SELECT
         wt.team_id,
         wt.lineup_hash,
         wt.game_id,
-        wt.g_date,
-        wt.game_year,
         wt.opp_starters,
-        SUM(wt.window_seconds) / 60.0 AS minutes
+        SUM(wt.window_seconds) FILTER (WHERE wt.has_offense) / 60.0 AS minutes
     FROM window_times wt
     GROUP BY
         wt.team_id,
         wt.lineup_hash,
         wt.game_id,
-        wt.g_date,
-        wt.game_year,
         wt.opp_starters
 ),
 day_stats AS (
@@ -134,6 +195,16 @@ WITH DATA;
 CREATE INDEX idx_mv_ltotals_day_date
   ON basketball_test.mv_lineup_totals_by_day
   USING btree (g_date, lineup_hash, type_lineup);
+CREATE INDEX idx_mv_ltotals_day_starters
+  ON basketball_test.mv_lineup_totals_by_day
+  USING btree (
+    game_year,
+    num_starters,
+    opp_starters,
+    team_id,
+    lineup_hash,
+    type_lineup
+  );
 CREATE UNIQUE INDEX idx_mv_ltotals_day_pk
   ON basketball_test.mv_lineup_totals_by_day
   USING btree (lineup_hash, type_lineup, g_date, num_starters, opp_starters)

@@ -492,8 +492,8 @@ BEGIN
                   ELSE FALSE END)
         AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
     ),
-    lineup_ff AS (
-      SELECT lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup,
+    lineup_ff_by_game AS (
+      SELECT lf.team_id, lf.game_year, lf.lineup_hash, lf.game_id, lf.type_lineup,
              SUM(lf.total_points)       AS total_points,
              SUM(lf.total_poss)         AS total_poss,
              SUM(lf.ts_poss_count)      AS ts_poss_count,
@@ -504,7 +504,8 @@ BEGIN
              SUM(lf.total_fga)          AS total_fga,
              SUM(lf.total_fgm)          AS total_fgm,
              SUM(lf.total_fg3_made)     AS total_fg3_made,
-             SUM(lf.minutes)            AS minutes
+             SUM(ROUND(lf.minutes * 60, 5)) AS total_seconds,
+             SUM(ROUND(lf.minutes * 60, 5)) / 60.0 AS minutes
       FROM basketball_test.lineup_four_factors_by_game lf
       WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
         AND (p_team_ids IS NULL OR lf.team_id = ANY(p_team_ids))
@@ -512,7 +513,28 @@ BEGIN
         AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
         AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lf.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
         AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lf.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
-      GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup
+      GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.game_id, lf.type_lineup
+    ),
+    lineup_ff AS (
+      SELECT
+        lfg.team_id,
+        lfg.game_year,
+        lfg.lineup_hash,
+        lfg.type_lineup,
+        SUM(lfg.total_points) AS total_points,
+        SUM(lfg.total_poss) AS total_poss,
+        SUM(lfg.ts_poss_count) AS ts_poss_count,
+        SUM(lfg.oreb_count) AS oreb_count,
+        SUM(lfg.oreb_opportunities) AS oreb_opportunities,
+        SUM(lfg.tov_count) AS tov_count,
+        SUM(lfg.total_ft_attempts) AS total_ft_attempts,
+        SUM(lfg.total_fga) AS total_fga,
+        SUM(lfg.total_fgm) AS total_fgm,
+        SUM(lfg.total_fg3_made) AS total_fg3_made,
+        SUM(lfg.total_seconds) AS total_seconds,
+        SUM(lfg.minutes) AS minutes
+      FROM lineup_ff_by_game lfg
+      GROUP BY lfg.team_id, lfg.game_year, lfg.lineup_hash, lfg.type_lineup
     )
     SELECT
       si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -536,7 +558,16 @@ BEGIN
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
       , 1) AS net_rtg,
-      ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+      CASE
+        WHEN v_starters_active THEN ROUND(
+          COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
+          1
+        )
+        ELSE ROUND(
+          COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric,
+          1
+        )
+      END AS minutes,
       COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
       COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
       COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
@@ -654,8 +685,8 @@ BEGIN
                   ELSE FALSE END)
         AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
     ),
-    lineup_ff AS (
-      SELECT lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup,
+    lineup_ff_by_game AS (
+      SELECT lf.team_id, lf.game_year, lf.lineup_hash, lf.game_id, lf.type_lineup,
              SUM(lf.total_points)       AS total_points,
              SUM(lf.total_poss)         AS total_poss,
              SUM(lf.ts_poss_count)      AS ts_poss_count,
@@ -666,7 +697,8 @@ BEGIN
              SUM(lf.total_fga)          AS total_fga,
              SUM(lf.total_fgm)          AS total_fgm,
              SUM(lf.total_fg3_made)     AS total_fg3_made,
-             SUM(lf.minutes)            AS minutes
+             SUM(ROUND(lf.minutes * 60, 5)) AS total_seconds,
+             SUM(ROUND(lf.minutes * 60, 5)) / 60.0 AS minutes
       FROM basketball_test.lineup_four_factors_by_game lf
       JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
       WHERE (p_game_year IS NULL OR lf.game_year = p_game_year)
@@ -674,7 +706,28 @@ BEGIN
         AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lf.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
         AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lf.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
         AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lf.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
-      GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.type_lineup
+      GROUP BY lf.team_id, lf.game_year, lf.lineup_hash, lf.game_id, lf.type_lineup
+    ),
+    lineup_ff AS (
+      SELECT
+        lfg.team_id,
+        lfg.game_year,
+        lfg.lineup_hash,
+        lfg.type_lineup,
+        SUM(lfg.total_points) AS total_points,
+        SUM(lfg.total_poss) AS total_poss,
+        SUM(lfg.ts_poss_count) AS ts_poss_count,
+        SUM(lfg.oreb_count) AS oreb_count,
+        SUM(lfg.oreb_opportunities) AS oreb_opportunities,
+        SUM(lfg.tov_count) AS tov_count,
+        SUM(lfg.total_ft_attempts) AS total_ft_attempts,
+        SUM(lfg.total_fga) AS total_fga,
+        SUM(lfg.total_fgm) AS total_fgm,
+        SUM(lfg.total_fg3_made) AS total_fg3_made,
+        SUM(lfg.total_seconds) AS total_seconds,
+        SUM(lfg.minutes) AS minutes
+      FROM lineup_ff_by_game lfg
+      GROUP BY lfg.team_id, lfg.game_year, lfg.lineup_hash, lfg.type_lineup
     )
     SELECT
       si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -698,7 +751,16 @@ BEGIN
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
       , 1) AS net_rtg,
-      ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+      CASE
+        WHEN v_starters_active THEN ROUND(
+          COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
+          1
+        )
+        ELSE ROUND(
+          COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric,
+          1
+        )
+      END AS minutes,
       COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
       COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
       COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,

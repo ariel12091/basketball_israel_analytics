@@ -99,6 +99,16 @@ test_that("live DB has the app-required shape for default MVs", {
     "net_rtg"
   ))
 
+  expect_has_columns("mv_lineup_totals_by_day", c(
+    "team_id", "lineup_hash", "type_lineup", "game_id", "game_year",
+    "num_starters", "opp_starters", "minutes"
+  ))
+
+  expect_has_columns("lineup_four_factors_by_game", c(
+    "team_id", "lineup_hash", "type_lineup", "game_id", "game_year",
+    "num_starters", "opp_starters", "minutes"
+  ))
+
   expect_has_columns("team_metrics_by_game_mv", c(
     "team_id", "game_id", "game_year", "game_date",
     "off_minutes", "def_minutes", "pts", "reb", "ast", "stl", "blk", "dfl",

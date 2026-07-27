@@ -20,6 +20,7 @@ DECLARE
   v_clutch_active   boolean;
   v_starters_active boolean;
   v_use_fast_path   boolean;
+  v_use_starters_fast_path boolean;
   v_season_start    date;
   v_season_end      date;
   v_full_window     boolean;
@@ -78,6 +79,17 @@ BEGIN
     AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)
     AND NOT v_clutch_active
     AND NOT v_starters_active
+    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL;
+
+  -- Starters-only full-window queries can read the keyed MV directly without
+  -- building the schedule/ranking filter CTEs. sub_lineups_stats remains the
+  -- starters-free fast path above.
+  v_use_starters_fast_path := v_starters_active
+    AND NOT v_clutch_active
+    AND ((p_start_date IS NULL AND p_end_date IS NULL) OR v_full_window)
+    AND v_game_types IS NULL AND v_opp_ids IS NULL
+    AND v_home_away = 'all' AND v_outcome = 'all'
+    AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)
     AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL;
 
   -- 1) Fast path
@@ -165,9 +177,12 @@ BEGIN
   games_filtered AS (
     SELECT gr.game_id, gr.team_id, gr.game_year
     FROM games_ranked gr
-    WHERE v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL
-       OR (v_opp_rank_side = 'top'    AND gr.opp_rank <= p_opp_rank_n)
-       OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
+    WHERE NOT v_use_starters_fast_path
+      AND (
+        v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL
+        OR (v_opp_rank_side = 'top'    AND gr.opp_rank <= p_opp_rank_n)
+        OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
+      )
   ),
   sub_identity AS (
     SELECT s.team_id, s.game_year, s.sub_lineup_hash, s.player_ids, s.num_lineup, s.lineup_hash
@@ -410,20 +425,40 @@ BEGIN
                 ELSE FALSE END)
       AND (v_off_norm IS NULL OR NOT (ARRAY_AGG(l.player_id) && v_off_norm))
   ),
-  lineup_totals AS (
-    SELECT lt.team_id, lt.game_year, lt.lineup_hash, lt.type_lineup, lt.num_starters,
+  lineup_game_totals AS (
+    SELECT lt.team_id, lt.game_year, lt.lineup_hash, lt.game_id, lt.type_lineup, lt.num_starters,
            SUM(lt.total_poss) AS total_poss, SUM(lt.total_pts) AS total_pts,
            SUM(lt.fg2_made) AS fg2_made, SUM(lt.fg2_att) AS fg2_att,
            SUM(lt.fg3_made) AS fg3_made, SUM(lt.fg3_att) AS fg3_att,
-           SUM(lt.minutes) AS minutes
+           SUM(ROUND(lt.minutes * 60, 5)) AS total_seconds,
+           SUM(ROUND(lt.minutes * 60, 5)) / 60.0 AS minutes
     FROM basketball_test.mv_lineup_totals_by_day lt
-    JOIN games_filtered gf ON gf.game_id = lt.game_id AND gf.team_id = lt.team_id
+    LEFT JOIN games_filtered gf ON gf.game_id = lt.game_id AND gf.team_id = lt.team_id
     WHERE (p_game_year IS NULL OR lt.game_year = p_game_year)
+      AND (v_use_starters_fast_path OR gf.game_id IS NOT NULL)
       AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR lt.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
       AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lt.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
       AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lt.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
       AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lt.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
-    GROUP BY lt.team_id, lt.game_year, lt.lineup_hash, lt.type_lineup, lt.num_starters
+    GROUP BY lt.team_id, lt.game_year, lt.lineup_hash, lt.game_id, lt.type_lineup, lt.num_starters
+  ),
+  lineup_totals AS (
+    SELECT
+      lgt.team_id,
+      lgt.game_year,
+      lgt.lineup_hash,
+      lgt.type_lineup,
+      lgt.num_starters,
+      SUM(lgt.total_poss) AS total_poss,
+      SUM(lgt.total_pts) AS total_pts,
+      SUM(lgt.fg2_made) AS fg2_made,
+      SUM(lgt.fg2_att) AS fg2_att,
+      SUM(lgt.fg3_made) AS fg3_made,
+      SUM(lgt.fg3_att) AS fg3_att,
+      SUM(lgt.total_seconds) AS total_seconds,
+      SUM(lgt.minutes) AS minutes
+    FROM lineup_game_totals lgt
+    GROUP BY lgt.team_id, lgt.game_year, lgt.lineup_hash, lgt.type_lineup, lgt.num_starters
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -437,7 +472,16 @@ BEGIN
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='offense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='offense'),0)*100) -
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='defense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='defense'),0)*100), 1
     ) AS net_rtg,
-    ROUND(COALESCE(SUM(lt.minutes) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+    CASE
+      WHEN v_starters_active THEN ROUND(
+        COALESCE(SUM(lt.total_seconds) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric / 60.0,
+        1
+      )
+      ELSE ROUND(
+        COALESCE(SUM(lt.minutes) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric,
+        1
+      )
+    END AS minutes,
     ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,
