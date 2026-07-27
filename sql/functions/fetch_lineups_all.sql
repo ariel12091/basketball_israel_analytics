@@ -18,7 +18,8 @@ DECLARE
   v_opp_rank_metric text;
   v_margin_status   text;
   v_clutch_active   boolean;
-  v_use_fast_path boolean;
+  v_starters_active boolean;
+  v_use_fast_path   boolean;
   v_season_start    date;
   v_season_end      date;
   v_full_window     boolean;
@@ -41,8 +42,8 @@ BEGIN
   v_opp_rank_side   := COALESCE(NULLIF(btrim(p_opp_rank_side), ''), 'all');
   v_opp_rank_metric := COALESCE(NULLIF(btrim(p_opp_rank_metric), ''), 'net');
   v_margin_status   := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
-  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL
-                        OR p_num_starters_off IS NOT NULL OR p_num_starters_def IS NOT NULL
+  v_clutch_active   := (p_max_margin IS NOT NULL OR v_margin_status <> 'all' OR p_max_time_remaining IS NOT NULL);
+  v_starters_active := (p_num_starters_off IS NOT NULL OR p_num_starters_def IS NOT NULL
                         OR p_num_starters_off_min IS NOT NULL OR p_num_starters_off_max IS NOT NULL
                         OR p_num_starters_def_min IS NOT NULL OR p_num_starters_def_max IS NOT NULL);
 
@@ -76,10 +77,8 @@ BEGIN
     AND v_home_away = 'all' AND v_outcome = 'all'
     AND (v_opp_rank_side = 'all' OR p_opp_rank_n IS NULL)
     AND NOT v_clutch_active
-    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL
-    AND p_num_starters_off IS NULL AND p_num_starters_def IS NULL
-    AND p_num_starters_off_min IS NULL AND p_num_starters_off_max IS NULL
-    AND p_num_starters_def_min IS NULL AND p_num_starters_def_max IS NULL;
+    AND NOT v_starters_active
+    AND p_min_gn IS NULL AND p_max_gn IS NULL AND p_last_n_games IS NULL;
 
   -- 1) Fast path
   IF v_use_fast_path THEN
@@ -420,15 +419,10 @@ BEGIN
     FROM basketball_test.mv_lineup_totals_by_day lt
     JOIN games_filtered gf ON gf.game_id = lt.game_id AND gf.team_id = lt.team_id
     WHERE (p_game_year IS NULL OR lt.game_year = p_game_year)
-      AND (
-        (lt.type_lineup = 'offense'
-          AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR lt.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-          AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lt.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
-        OR
-        (lt.type_lineup = 'defense'
-          AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lt.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-          AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lt.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
-      )
+      AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR lt.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR lt.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR lt.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR lt.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
     GROUP BY lt.team_id, lt.game_year, lt.lineup_hash, lt.type_lineup, lt.num_starters
   )
   SELECT
