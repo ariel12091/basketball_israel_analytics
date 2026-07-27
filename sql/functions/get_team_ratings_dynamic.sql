@@ -55,6 +55,7 @@ RETURNS TABLE (
 ) 
 LANGUAGE plpgsql
 STABLE
+SET plan_cache_mode = force_custom_plan
 AS $$
 DECLARE
   v_game_types      int4[];
@@ -82,11 +83,27 @@ BEGIN
   END IF;
 
   RETURN QUERY
-  WITH 
+  WITH
+  schedule_ranked AS (
+    SELECT
+      fsr.game_id,
+      fsr.team_id,
+      fsr.game_year,
+      ROW_NUMBER() OVER (
+        PARTITION BY fsr.team_id, fsr.game_year
+        ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+      ) AS rn_recent
+    FROM basketball_test.final_schedule_mv fsr
+    WHERE fsr.game_year = p_game_year
+  ),
   -- CTE 1: Games Base (Filter Schedule)
   games_base AS (
     SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.has_won
     FROM basketball_test.final_schedule_mv fs
+    JOIN schedule_ranked sr
+      ON sr.game_id = fs.game_id
+     AND sr.team_id = fs.team_id
+     AND sr.game_year = fs.game_year
     WHERE fs.game_year = p_game_year
       AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
       AND (p_end_date   IS NULL OR fs.game_date <= p_end_date)
@@ -96,21 +113,7 @@ BEGIN
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
-      AND (p_last_n_games IS NULL
-           OR COALESCE((
-                SELECT fsr.rn_recent
-                FROM (
-                  SELECT fs2.game_id,
-                         ROW_NUMBER() OVER (
-                           PARTITION BY fs2.team_id, fs2.game_year
-                           ORDER BY fs2.game_date DESC NULLS LAST, fs2.game_id DESC
-                         ) AS rn_recent
-                  FROM basketball_test.final_schedule_mv fs2
-                  WHERE fs2.team_id = fs.team_id
-                    AND fs2.game_year = fs.game_year
-                ) fsr
-                WHERE fsr.game_id = fs.game_id
-              ), 2147483647) <= p_last_n_games)
+      AND (p_last_n_games IS NULL OR sr.rn_recent <= p_last_n_games)
   ),
 
   -- CTE 2: Games Ranked (Join Ratings MV to get Opponent Ranks)
@@ -147,12 +150,27 @@ BEGIN
        OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
   ),
 
-  -- CTE 4: Qualifying Games (games with possessions matching clutch criteria)
+  -- CTE 4: single clutch-filtered scan of the raw MV (materialized once,
+  -- consumed by qualifying_games and base_agg — replaces the former double scan)
   -- NOTE: Use pre-shot margin (subtract points scored from current score)
-  qualifying_games AS (
-      SELECT DISTINCT gf.game_year, gf.team_id, gf.game_id, gf.has_won
+  clutch_rows AS (
+      SELECT
+        gf.game_year,
+        gf.team_id,
+        gf.game_id,
+        gf.has_won,
+        dppllm.type_lineup,
+        dppllm.team_score,
+        CASE WHEN dppllm.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag,
+        dppllm.type,
+        dppllm.parameters_points,
+        dppllm.parameters_type,
+        z.is_corner3
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN games_filtered gf ON gf.game_id = dppllm.game_id AND gf.team_id = dppllm.team_id
+      LEFT JOIN basketball_test.shot_zones z
+        ON z.game_id = dppllm.game_id
+       AND z.id = dppllm.id
       WHERE (p_max_margin IS NULL
              OR ABS(CASE WHEN dppllm.type_lineup = 'offense'
                          THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) - dppllm.opp_team_score
@@ -181,6 +199,12 @@ BEGIN
         AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR dppllm.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
         AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR dppllm.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
         AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR dppllm.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
+  ),
+
+  -- CTE 4a: distinct games with at least one qualifying row
+  qualifying_games AS (
+      SELECT DISTINCT cr.game_year, cr.team_id, cr.game_id, cr.has_won
+      FROM clutch_rows cr
   ),
 
   -- CTE 4b: Win/Loss counts (from qualifying games only)
@@ -193,69 +217,23 @@ BEGIN
     GROUP BY qg.game_year, qg.team_id
   ),
 
-  -- CTE 5: Base Aggregation (Join Valid Games to Stats Table)
-  -- NOTE: Use pre-shot margin (subtract points scored from current score)
+  -- CTE 5: Base Aggregation over the pre-filtered rows
   base_agg AS (
       SELECT
-        qg.game_year,
-        qg.team_id,
-        dppllm.type_lineup,
-        sum(dppllm.team_score) / NULLIF(sum(dppllm.final_end_poss::integer), 0)::numeric AS ppp,
-        sum(dppllm.final_end_poss::integer) AS total_poss,
-        COUNT(DISTINCT dppllm.game_id) AS games_count,
-        SUM(CASE WHEN dppllm.type = 'shot' THEN 1 ELSE 0 END) AS fga,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3
-                       AND EXISTS (
-                         SELECT 1
-                         FROM basketball_test.shot_zones z
-                         WHERE z.game_id = dppllm.game_id
-                           AND z.id = dppllm.id
-                           AND z.is_corner3 IS TRUE
-                       )
-                 THEN 1 ELSE 0 END) AS c3_att,
-        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3
-                       AND EXISTS (
-                         SELECT 1
-                         FROM basketball_test.shot_zones z
-                         WHERE z.game_id = dppllm.game_id
-                           AND z.id = dppllm.id
-                           AND z.is_corner3 IS NOT NULL
-                       )
-                 THEN 1 ELSE 0 END) AS c3_known_att
-      FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
-      JOIN qualifying_games qg ON qg.game_id = dppllm.game_id AND qg.team_id = dppllm.team_id
-      WHERE (p_max_margin IS NULL
-             OR ABS(CASE WHEN dppllm.type_lineup = 'offense'
-                         THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) - dppllm.opp_team_score
-                         ELSE dppllm.own_team_score - (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
-                    END) <= p_max_margin
-             OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
-        AND (v_margin_status = 'all'
-             OR (v_margin_status = 'leading'  AND
-                 CASE WHEN dppllm.type_lineup = 'offense'
-                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) > dppllm.opp_team_score
-                      ELSE dppllm.own_team_score > (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
-                 END)
-             OR (v_margin_status = 'trailing' AND
-                 CASE WHEN dppllm.type_lineup = 'offense'
-                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) < dppllm.opp_team_score
-                      ELSE dppllm.own_team_score < (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
-                 END)
-             OR (v_margin_status = 'tied'     AND
-                 CASE WHEN dppllm.type_lineup = 'offense'
-                      THEN (dppllm.own_team_score - COALESCE(dppllm.team_score, 0)) = dppllm.opp_team_score
-                      ELSE dppllm.own_team_score = (dppllm.opp_team_score - COALESCE(dppllm.team_score, 0))
-                 END)
-             OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
-        AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
-        AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR dppllm.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-        AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR dppllm.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
-        AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR dppllm.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-        AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR dppllm.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
-      GROUP BY qg.game_year, qg.team_id, dppllm.type_lineup
+        cr.game_year,
+        cr.team_id,
+        cr.type_lineup,
+        sum(cr.team_score) / NULLIF(sum(cr.final_end_flag), 0)::numeric AS ppp,
+        sum(cr.final_end_flag) AS total_poss,
+        COUNT(DISTINCT cr.game_id) AS games_count,
+        SUM(CASE WHEN cr.type = 'shot' THEN 1 ELSE 0 END) AS fga,
+        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 2 AND cr.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 2 AND cr.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
+        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 3 AND cr.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
+        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 3 AND cr.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
+      FROM clutch_rows cr
+      GROUP BY cr.game_year, cr.team_id, cr.type_lineup
   ),
 
   -- CTE 6: Pivot (Offense/Defense)
@@ -287,12 +265,20 @@ BEGIN
       GROUP BY base_agg.game_year, base_agg.team_id, wl.wins, wl.losses
   ),
 
+  -- CTE 6b: one name per team for the requested season (1:1 join, no dedupe GROUP BY)
+  team_names AS (
+      SELECT fr.team_id, MIN(fr.team_name) AS team_name
+      FROM basketball_test.full_rosters fr
+      WHERE fr.game_year = p_game_year
+      GROUP BY fr.team_id
+  ),
+
   -- CTE 7: Final Calculation & Naming
   final_calc AS (
       SELECT
         p.game_year,
         p.team_id,
-        fr.team_name,
+        tn.team_name,
         round(p.off_ppp_raw, 3) * 100::numeric AS off_ppp,
         round(p.def_ppp_raw, 3) * 100::numeric AS def_ppp,
         round(p.off_ppp_raw - p.def_ppp_raw, 3) * 100::numeric AS net_rtg,
@@ -314,11 +300,7 @@ BEGIN
         p.def_c3_att,
         p.def_c3_known_att
       FROM pivoted p
-      JOIN basketball_test.full_rosters fr
-        ON fr.game_year = p.game_year AND fr.team_id = p.team_id
-      GROUP BY p.game_year, p.team_id, fr.team_name, p.off_ppp_raw, p.def_ppp_raw, p.games_played, p.wins, p.losses, p.off_poss, p.def_poss,
-        p.off_fga, p.off_layup_att, p.off_dunk_att, p.off_fg3_att, p.off_c3_att, p.off_c3_known_att,
-        p.def_fga, p.def_layup_att, p.def_dunk_att, p.def_fg3_att, p.def_c3_att, p.def_c3_known_att
+      JOIN team_names tn ON tn.team_id = p.team_id
   )
 
   -- Final Select with Ranks
