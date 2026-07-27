@@ -300,13 +300,15 @@ BEGIN
       round((p.def_on_disruptions - p.def_off_disruptions) * 100::numeric, 1) AS "Def Disruptions/100 Diff"
     FROM pivoted p
     JOIN (
-      SELECT DISTINCT
-        full_rosters.player_id,
-        full_rosters.team_id,
-        full_rosters.firstname,
-        full_rosters.lastname,
-        full_rosters.team_name
-      FROM basketball_test.full_rosters
+      SELECT
+        fr2.player_id,
+        fr2.team_id,
+        MIN(fr2.firstname) AS firstname,
+        MIN(fr2.lastname)  AS lastname,
+        MIN(fr2.team_name) AS team_name
+      FROM basketball_test.full_rosters fr2
+      WHERE fr2.game_year = p_game_year
+      GROUP BY fr2.player_id, fr2.team_id
     ) r ON p.player_id = r.player_id AND p.team_id = r.team_id
   )
 
