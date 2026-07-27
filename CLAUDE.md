@@ -350,3 +350,5 @@ Daily via Windows Task Scheduler → `scripts/run_etl_full.ps1`. Writes marker t
 **Performance (React+Plumber):**
 1. Profile SQL functions with `EXPLAIN (ANALYZE, BUFFERS)` for filtered cases
 2. Audit indexes only after query-plan evidence
+
+**Architecture (accepted, trigger-gated):** when a tab goes React+Plumber-only, retire its mega-signature SQL function(s) and let the route build the SQL — see `docs/adr_api_owns_query_construction.md` for trigger, migration order, and the DB-role tightening that follows. Until then the stored functions are the shared source of truth for both frontends; do NOT duplicate their logic into R query builders.
