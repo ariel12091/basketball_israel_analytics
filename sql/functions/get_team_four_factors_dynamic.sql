@@ -65,6 +65,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 STABLE
+SET plan_cache_mode = force_custom_plan
 AS $$
 DECLARE
   v_game_types      int4[];
@@ -102,9 +103,25 @@ BEGIN
   -- ============================================================
   RETURN QUERY
   WITH
+  schedule_ranked AS (
+    SELECT
+      fsr.game_id,
+      fsr.team_id,
+      fsr.game_year,
+      ROW_NUMBER() OVER (
+        PARTITION BY fsr.team_id, fsr.game_year
+        ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+      ) AS rn_recent
+    FROM basketball_test.final_schedule_mv fsr
+    WHERE fsr.game_year = p_game_year
+  ),
   games_base AS (
     SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id
     FROM basketball_test.final_schedule_mv fs
+    JOIN schedule_ranked sr
+      ON sr.game_id = fs.game_id
+     AND sr.team_id = fs.team_id
+     AND sr.game_year = fs.game_year
     WHERE fs.game_year = p_game_year
       AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
       AND (p_end_date   IS NULL OR fs.game_date <= p_end_date)
@@ -114,21 +131,7 @@ BEGIN
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
-      AND (p_last_n_games IS NULL
-           OR COALESCE((
-                SELECT fsr.rn_recent
-                FROM (
-                  SELECT fs2.game_id,
-                         ROW_NUMBER() OVER (
-                           PARTITION BY fs2.team_id, fs2.game_year
-                           ORDER BY fs2.game_date DESC NULLS LAST, fs2.game_id DESC
-                         ) AS rn_recent
-                  FROM basketball_test.final_schedule_mv fs2
-                  WHERE fs2.team_id = fs.team_id
-                    AND fs2.game_year = fs.game_year
-                ) fsr
-                WHERE fsr.game_id = fs.game_id
-              ), 2147483647) <= p_last_n_games)
+      AND (p_last_n_games IS NULL OR sr.rn_recent <= p_last_n_games)
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,
@@ -299,22 +302,22 @@ BEGIN
     FROM team_agg ta
     GROUP BY ta.team_id, ta.game_year
   ),
+  team_names AS (
+    SELECT fr.team_id, MIN(fr.team_name) AS team_name
+    FROM basketball_test.full_rosters fr
+    WHERE fr.game_year = p_game_year
+    GROUP BY fr.team_id
+  ),
   final_calc AS (
     SELECT
-      p.team_id, p.game_year, fr.team_name,
+      p.team_id, p.game_year, tn.team_name,
       p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
       p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
       p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
       p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt,
       ROUND(p.off_ppp - p.def_ppp, 1) AS net_rtg
     FROM pivoted p
-    JOIN basketball_test.full_rosters fr
-      ON fr.game_year = p.game_year AND fr.team_id = p.team_id
-    GROUP BY p.team_id, p.game_year, fr.team_name,
-             p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
-             p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
-             p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
-             p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt
+    JOIN team_names tn ON tn.team_id = p.team_id
   )
   SELECT
     fc.team_id, fc.game_year, fc.team_name,
@@ -331,9 +334,25 @@ BEGIN
   -- ============================================================
   RETURN QUERY
   WITH
+  schedule_ranked AS (
+    SELECT
+      fsr.game_id,
+      fsr.team_id,
+      fsr.game_year,
+      ROW_NUMBER() OVER (
+        PARTITION BY fsr.team_id, fsr.game_year
+        ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+      ) AS rn_recent
+    FROM basketball_test.final_schedule_mv fsr
+    WHERE fsr.game_year = p_game_year
+  ),
   games_base AS (
     SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id
     FROM basketball_test.final_schedule_mv fs
+    JOIN schedule_ranked sr
+      ON sr.game_id = fs.game_id
+     AND sr.team_id = fs.team_id
+     AND sr.game_year = fs.game_year
     WHERE fs.game_year = p_game_year
       AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
       AND (p_end_date   IS NULL OR fs.game_date <= p_end_date)
@@ -343,21 +362,7 @@ BEGIN
       AND (v_outcome = 'all'   OR (v_outcome = 'win' AND fs.has_won IS TRUE) OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
-      AND (p_last_n_games IS NULL
-           OR COALESCE((
-                SELECT fsr.rn_recent
-                FROM (
-                  SELECT fs2.game_id,
-                         ROW_NUMBER() OVER (
-                           PARTITION BY fs2.team_id, fs2.game_year
-                           ORDER BY fs2.game_date DESC NULLS LAST, fs2.game_id DESC
-                         ) AS rn_recent
-                  FROM basketball_test.final_schedule_mv fs2
-                  WHERE fs2.team_id = fs.team_id
-                    AND fs2.game_year = fs.game_year
-                ) fsr
-                WHERE fsr.game_id = fs.game_id
-              ), 2147483647) <= p_last_n_games)
+      AND (p_last_n_games IS NULL OR sr.rn_recent <= p_last_n_games)
   ),
   games_ranked AS (
     SELECT gb.game_id, gb.team_id, gb.game_year,
@@ -455,22 +460,22 @@ BEGIN
     FROM team_agg ta
     GROUP BY ta.team_id, ta.game_year
   ),
+  team_names AS (
+    SELECT fr.team_id, MIN(fr.team_name) AS team_name
+    FROM basketball_test.full_rosters fr
+    WHERE fr.game_year = p_game_year
+    GROUP BY fr.team_id
+  ),
   final_calc AS (
     SELECT
-      p.team_id, p.game_year, fr.team_name,
+      p.team_id, p.game_year, tn.team_name,
       p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
       p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
       p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
       p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt,
       ROUND(p.off_ppp - p.def_ppp, 1) AS net_rtg
     FROM pivoted p
-    JOIN basketball_test.full_rosters fr
-      ON fr.game_year = p.game_year AND fr.team_id = p.team_id
-    GROUP BY p.team_id, p.game_year, fr.team_name,
-             p.off_ts, p.off_efg, p.off_oreb, p.off_tov, p.off_ftr, p.off_ppp, p.off_poss,
-             p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
-             p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
-             p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt
+    JOIN team_names tn ON tn.team_id = p.team_id
   )
   SELECT
     fc.team_id, fc.game_year, fc.team_name,
