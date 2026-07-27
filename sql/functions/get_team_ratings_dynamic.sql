@@ -150,22 +150,25 @@ BEGIN
        OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= (gr.max_rank - p_opp_rank_n + 1))
   ),
 
-  -- CTE 4: single clutch-filtered scan of the raw MV (materialized once,
-  -- consumed by qualifying_games and base_agg — replaces the former double scan)
+  -- CTE 4: single clutch-filtered scan of the raw MV, pre-aggregated per game
+  -- (tiny materialized set — one row per game/team/type_lineup — consumed by
+  -- qualifying_games and base_agg; replaces the former double scan)
   -- NOTE: Use pre-shot margin (subtract points scored from current score)
-  clutch_rows AS (
+  game_agg AS (
       SELECT
         gf.game_year,
         gf.team_id,
         gf.game_id,
         gf.has_won,
         dppllm.type_lineup,
-        dppllm.team_score,
-        CASE WHEN dppllm.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag,
-        dppllm.type,
-        dppllm.parameters_points,
-        dppllm.parameters_type,
-        z.is_corner3
+        SUM(dppllm.team_score) AS pts,
+        SUM(CASE WHEN dppllm.final_end_poss IS TRUE THEN 1 ELSE 0 END) AS poss,
+        SUM(CASE WHEN dppllm.type = 'shot' THEN 1 ELSE 0 END) AS fga,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 2 AND dppllm.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
+        SUM(CASE WHEN dppllm.type = 'shot' AND dppllm.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
       FROM basketball_test.df_pts_poss_lineups_longer_mv dppllm
       JOIN games_filtered gf ON gf.game_id = dppllm.game_id AND gf.team_id = dppllm.team_id
       LEFT JOIN basketball_test.shot_zones z
@@ -199,12 +202,13 @@ BEGIN
         AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR dppllm.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
         AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR dppllm.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
         AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR dppllm.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
+      GROUP BY gf.game_year, gf.team_id, gf.game_id, gf.has_won, dppllm.type_lineup
   ),
 
   -- CTE 4a: distinct games with at least one qualifying row
   qualifying_games AS (
-      SELECT DISTINCT cr.game_year, cr.team_id, cr.game_id, cr.has_won
-      FROM clutch_rows cr
+      SELECT DISTINCT ga.game_year, ga.team_id, ga.game_id, ga.has_won
+      FROM game_agg ga
   ),
 
   -- CTE 4b: Win/Loss counts (from qualifying games only)
@@ -217,23 +221,23 @@ BEGIN
     GROUP BY qg.game_year, qg.team_id
   ),
 
-  -- CTE 5: Base Aggregation over the pre-filtered rows
+  -- CTE 5: Base Aggregation over the per-game pre-aggregates
   base_agg AS (
       SELECT
-        cr.game_year,
-        cr.team_id,
-        cr.type_lineup,
-        sum(cr.team_score) / NULLIF(sum(cr.final_end_flag), 0)::numeric AS ppp,
-        sum(cr.final_end_flag) AS total_poss,
-        COUNT(DISTINCT cr.game_id) AS games_count,
-        SUM(CASE WHEN cr.type = 'shot' THEN 1 ELSE 0 END) AS fga,
-        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 2 AND cr.parameters_type = 'lay-up' THEN 1 ELSE 0 END) AS layup_att,
-        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 2 AND cr.parameters_type IN ('dunk', 'allyhoop') THEN 1 ELSE 0 END) AS dunk_att,
-        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
-        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 3 AND cr.is_corner3 IS TRUE THEN 1 ELSE 0 END) AS c3_att,
-        SUM(CASE WHEN cr.type = 'shot' AND cr.parameters_points = 3 AND cr.is_corner3 IS NOT NULL THEN 1 ELSE 0 END) AS c3_known_att
-      FROM clutch_rows cr
-      GROUP BY cr.game_year, cr.team_id, cr.type_lineup
+        ga.game_year,
+        ga.team_id,
+        ga.type_lineup,
+        sum(ga.pts) / NULLIF(sum(ga.poss), 0)::numeric AS ppp,
+        sum(ga.poss) AS total_poss,
+        COUNT(DISTINCT ga.game_id) AS games_count,
+        SUM(ga.fga) AS fga,
+        SUM(ga.layup_att) AS layup_att,
+        SUM(ga.dunk_att) AS dunk_att,
+        SUM(ga.fg3_att) AS fg3_att,
+        SUM(ga.c3_att) AS c3_att,
+        SUM(ga.c3_known_att) AS c3_known_att
+      FROM game_agg ga
+      GROUP BY ga.game_year, ga.team_id, ga.type_lineup
   ),
 
   -- CTE 6: Pivot (Offense/Defense)
