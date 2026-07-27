@@ -41,8 +41,9 @@ BEGIN
       SUM(lf.total_fga) AS total_fga,
       SUM(lf.total_fgm) AS total_fgm,
       SUM(lf.total_fg3_made) AS total_fg3_made,
-      SUM(lf.minutes) FILTER (WHERE lf.type_lineup = 'offense') AS off_minutes,
-      SUM(lf.minutes) FILTER (WHERE lf.type_lineup = 'defense') AS def_minutes
+      -- The lineup fact stores every canonical segment duration once, on the
+      -- offense row. This sum is therefore neutral team floor time.
+      SUM(lf.minutes) AS canonical_minutes
     FROM basketball_test.lineup_four_factors_by_game lf
     WHERE game_ids IS NULL OR lf.game_id = ANY(game_ids)
     GROUP BY lf.team_id, lf.game_id, lf.game_year, lf.type_lineup
@@ -155,8 +156,10 @@ BEGIN
         * 100, 1
       ) AS def_ftr,
 
-      COALESCE(SUM(t.off_minutes), 0)::numeric(10, 1) AS off_minutes,
-      COALESCE(SUM(t.def_minutes), 0)::numeric(10, 1) AS def_minutes
+      -- Both perspectives cover the same team floor time. Mirroring the
+      -- once-counted duration avoids the permanently empty defense payload.
+      COALESCE(SUM(t.canonical_minutes), 0)::numeric(10, 1) AS off_minutes,
+      COALESCE(SUM(t.canonical_minutes), 0)::numeric(10, 1) AS def_minutes
     FROM lffg_team_game t
     GROUP BY t.team_id, t.game_id, t.game_year
   ),

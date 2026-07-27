@@ -475,6 +475,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         )
         log_msg(sprintf("  player alias pre-write guard passed for game %d", gid))
       }
+      assert_action_players_in_roster(actions_df, roster_df, log_msg)
       DBI::dbBegin(pg)
       transaction_open <- TRUE
       if (nrow(player_aliases_for_game)) {
@@ -676,15 +677,17 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       log_msg(sprintf("  stints staged: %d rows", nrow(stints_df)))
 
       # pws (possessions-within-stints)
+      stints_for_join <- add_terminal_stint_join_end(stints_df)
       by <- dplyr::join_by(
         team_id, game_id, q_bucket,
-        between(id, final_start_id, final_end_id, bounds = "[)")
+        between(id, final_start_id, .join_end_id, bounds = "[)")
       )
       pws_stage <- dplyr::left_join(
         poss_stage %>% dplyr::mutate(q_bucket = dplyr::if_else(quarter < 5, 0L, quarter)),
-        stints_df,
+        stints_for_join,
         by
-      )
+      ) |>
+        dplyr::select(-.join_end_id)
       pws_stage <- pws_stage %>%
         dplyr::left_join(
           lineup_starters %>%

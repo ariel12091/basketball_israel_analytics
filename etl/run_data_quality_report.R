@@ -2308,6 +2308,63 @@ build_checks <- function(con, schema) {
       )
     ),
     list(
+      id = "AI_team_game_minute_mirror",
+      title = "Team offense and defense minutes mirror canonical duration",
+      severity = "error",
+      purpose = "Ensures both team-game minute perspectives equal the once-counted canonical lineup duration.",
+      required_tables = c(
+        "lineup_four_factors_by_game",
+        "team_metrics_by_game_mv"
+      ),
+      problem_count_col = "invalid_team_games",
+      sql = sprintf(
+        "WITH canonical AS (
+           SELECT
+             game_year,
+             game_id,
+             team_id,
+             round(sum(minutes)::numeric, 1) AS canonical_minutes
+           FROM %s
+           GROUP BY game_year, game_id, team_id
+         )
+         SELECT
+           tm.game_year,
+           tm.game_id,
+           tm.team_id,
+           tm.off_minutes,
+           tm.def_minutes,
+           c.canonical_minutes,
+           1::bigint AS invalid_team_games
+         FROM %s tm
+         JOIN canonical c USING (game_year, game_id, team_id)
+         WHERE tm.off_minutes IS DISTINCT FROM c.canonical_minutes
+            OR tm.def_minutes IS DISTINCT FROM c.canonical_minutes
+         ORDER BY tm.game_year, tm.game_id, tm.team_id",
+        lff, tmg
+      )
+    ),
+    list(
+      id = "AJ_free_throw_progress_domain",
+      title = "Published free-throw progress stays within 0-1",
+      severity = "error",
+      purpose = "Prevents inconsistent provider attempt/award metadata from publishing an impossible pct_ft value or breaking final-free-throw possession logic.",
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      sql = sprintf(
+        "SELECT
+           game_id,
+           id,
+           parent_action_id,
+           team_id,
+           type_lineup,
+           parameters_made,
+           pct_ft
+         FROM %s
+         WHERE pct_ft < 0 OR pct_ft > 1
+         ORDER BY game_id, id, team_id, type_lineup",
+        df_long
+      )
+    ),
+    list(
       id = "AG_cold_storage_snapshot_consistency",
       title = "Cold-storage Parquets form a consistent latest-game snapshot",
       severity = "warning",

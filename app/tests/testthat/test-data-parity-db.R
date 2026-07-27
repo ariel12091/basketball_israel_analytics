@@ -95,3 +95,53 @@ test_that("data parity: off oreb count in team_metrics matches direct lineup FF"
   mismatches <- DBI::dbGetQuery(con, q)
   expect_equal(nrow(mismatches), 0, info = paste(capture.output(print(mismatches)), collapse = "\n"))
 })
+
+test_that("data parity: team minute perspectives mirror canonical duration", {
+  mismatches <- DBI::dbGetQuery(con, "
+    WITH canonical AS (
+      SELECT
+        game_year,
+        game_id,
+        team_id,
+        round(sum(minutes)::numeric, 1) AS canonical_minutes
+      FROM basketball_test.lineup_four_factors_by_game
+      GROUP BY game_year, game_id, team_id
+    )
+    SELECT
+      tm.game_year,
+      tm.game_id,
+      tm.team_id,
+      tm.off_minutes,
+      tm.def_minutes,
+      c.canonical_minutes
+    FROM basketball_test.team_metrics_by_game_mv tm
+    JOIN canonical c USING (game_year, game_id, team_id)
+    WHERE tm.off_minutes IS DISTINCT FROM c.canonical_minutes
+       OR tm.def_minutes IS DISTINCT FROM c.canonical_minutes
+    ORDER BY tm.game_year, tm.game_id, tm.team_id
+  ")
+
+  expect_equal(nrow(mismatches), 0, info = paste(capture.output(print(mismatches)), collapse = "\n"))
+})
+
+test_that("data parity: published free-throw progress stays within 0-1", {
+  invalid_rows <- DBI::dbGetQuery(con, "
+    SELECT
+      game_id,
+      id,
+      parent_action_id,
+      team_id,
+      type_lineup,
+      parameters_made,
+      pct_ft
+    FROM basketball_test.df_pts_poss_lineups_longer_mv
+    WHERE pct_ft < 0 OR pct_ft > 1
+    ORDER BY game_id, id, team_id, type_lineup
+  ")
+
+  expect_equal(
+    nrow(invalid_rows),
+    0,
+    info = paste(capture.output(print(invalid_rows)), collapse = "\n")
+  )
+})
