@@ -280,6 +280,9 @@ Daily via Windows Task Scheduler → `scripts/run_etl_full.ps1`. Writes marker t
 - Floor time: compute `MAX - MIN` across ALL rows per segment (no `type_lineup` filter), then SUM with offense filter to avoid double-counting
 - Clutch CTEs: propagate `team_id` through all CTEs + always use table aliases (avoid PL/pgSQL variable ambiguity)
 - `fetch_lineups_all.sql` and `fetch_lineups_four_factors.sql` have near-identical clutch structures — keep them in sync
+- Last-N-games filters: use the `schedule_ranked` windowed CTE pattern (all seven app functions do since 2026-07-27) — never a correlated per-row subquery
+- DROP FUNCTION wipes `app_readonly` EXECUTE grants — after deploying functions (`scripts/deploy_sql_functions.R`), always re-run `scripts/apply_db_security.R` with `CONFIRM_DB_SECURITY_APPLY=1`
+- App functions carry `SET plan_cache_mode = force_custom_plan` — the plpgsql generic-plan cliff was reproduced live (5s query → >120s timeout); keep the setting on new heavy functions
 
 - `TRUNCATE` on a parent table fails even if child is empty — FK existence alone blocks it. Must drop FK, truncate, re-add, or truncate all tables in one statement
 - Cold storage tables (`actions_clean`, `possessions`, `pws`, `stints`, `subs`) are empty between ETL runs — don't query them in the app
