@@ -4,6 +4,7 @@ CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_all(p_num_lineup smalli
  RETURNS TABLE(team_id integer, sub_lineup_hash text, num_lineup smallint, player_ids integer[], player_names text[], player_names_str text, off_poss integer, off_pts integer, off_ppp numeric, def_poss integer, def_pts integer, def_ppp numeric, net_rtg numeric, minutes numeric, num_starters numeric, game_year integer, off_fg2_made integer, off_fg2_att integer, off_fg3_made integer, off_fg3_att integer, def_fg2_made integer, def_fg2_att integer, def_fg3_made integer, def_fg3_att integer)
  LANGUAGE plpgsql
  STABLE
+ SET plan_cache_mode = force_custom_plan
 AS $function$
 DECLARE
   v_ids_norm  int4[];
