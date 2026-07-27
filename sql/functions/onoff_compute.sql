@@ -51,6 +51,7 @@ RETURNS TABLE (
 )
 LANGUAGE plpgsql
 STABLE
+SET plan_cache_mode = force_custom_plan
 AS $$
 DECLARE
   v_team_ids        int4[];
@@ -84,6 +85,18 @@ BEGIN
 
   RETURN QUERY
   WITH
+  schedule_ranked AS (
+    SELECT
+      fsr.game_id,
+      fsr.team_id,
+      fsr.game_year,
+      ROW_NUMBER() OVER (
+        PARTITION BY fsr.team_id, fsr.game_year
+        ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+      ) AS rn_recent
+    FROM basketball_test.final_schedule_mv fsr
+    WHERE (v_game_year IS NULL OR fsr.game_year::text = v_game_year)
+  ),
   /* ------------------------------------------------------------
      Opponent strength ranking — uses mv_lineup_totals_by_day
      (pre-aggregated) instead of df_pts_poss_lineups_longer_mv
@@ -169,6 +182,10 @@ BEGIN
       fs.is_home,
       fs.has_won
     FROM basketball_test.final_schedule_mv fs
+    JOIN schedule_ranked sr
+      ON sr.game_id = fs.game_id
+     AND sr.team_id = fs.team_id
+     AND sr.game_year = fs.game_year
     WHERE fs.game_date BETWEEN p_start_date AND p_end_date
       AND (v_game_year IS NULL OR fs.game_year::text = v_game_year)
       -- team filter
@@ -196,21 +213,7 @@ BEGIN
       )
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
-      AND (p_last_n_games IS NULL
-           OR COALESCE((
-                SELECT fsr.rn_recent
-                FROM (
-                  SELECT fs2.game_id,
-                         ROW_NUMBER() OVER (
-                           PARTITION BY fs2.team_id, fs2.game_year
-                           ORDER BY fs2.game_date DESC NULLS LAST, fs2.game_id DESC
-                         ) AS rn_recent
-                  FROM basketball_test.final_schedule_mv fs2
-                  WHERE fs2.team_id = fs.team_id
-                    AND fs2.game_year = fs.game_year
-                ) fsr
-                WHERE fsr.game_id = fs.game_id
-              ), 2147483647) <= p_last_n_games)
+      AND (p_last_n_games IS NULL OR sr.rn_recent <= p_last_n_games)
   ),
 
   /* ------------------------------------------------------------
