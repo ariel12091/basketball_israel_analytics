@@ -113,3 +113,68 @@ future optimization would require a dedicated database function or
 precomputed table that calculates all storyline contexts from fewer underlying
 scans. That would be a database/ETL design change rather than another Shiny
 request-scheduling improvement.
+
+## Suggested next optimizations (2026-07-28 review)
+
+Where the remaining ~2.2 s goes: `get_team_ratings_dynamic()` has a single
+`RETURN QUERY` with no pre-aggregate branch. Every variant scans
+`df_pts_poss_lineups_longer_mv` (action-level, whole season, all teams) with a
+`shot_zones` LEFT JOIN — six full scans per batch. Ranked by impact per
+effort:
+
+### 1. Serve last10 / top4 / bottom4 from `team_metrics_by_game_mv` in R (no DB change)
+
+These three variants only *select games*; they never filter within a game.
+`team_metrics_by_game_mv` already stores per-game team grain with
+`off_points_raw` / `def_points_raw` / `off_poss_raw` / `def_poss_raw`, `gn`,
+and `opp_team_id`:
+
+- **last10**: per team, take the 10 highest `gn` rows, sum points/poss,
+  derive net rating.
+- **top4 / bottom4**: join `opp_team_id` to `team_ppp_ratings_mv` ranks
+  (already cached in the hub), filter, sum.
+
+One small cached season pull (~500 rows) replaces three of the six UNION
+arms — the batch roughly halves. Gate: verify output-identical against the
+SQL function for a season before switching (same numbers, same qualifying
+games), and confirm `app_readonly` has SELECT on the table.
+
+### 2. Precompute the within-game contexts at ETL (removes the rest)
+
+`starters_hi/lo` and `clutch` genuinely need row-level filtering, but the hub
+uses fixed definitions (3+/≤2 starters; margin ≤5, last 5 min). Add per-game
+context columns to `team_metrics_by_game_mv` (or a sibling game-grain table):
+off/def points+poss for `starters3plus`, `bench2minus`, `clutch`. Then all six
+storylines become R-side sums over one indexed read (<100 ms), and game-grain
+composes with last-N / opponent-rank slices for free (future storylines like
+"clutch in the last 10" cost nothing). Incremental refresh already exists
+(`refresh_team_metrics_by_game_for_games`). Size impact: ~500 rows/season × a
+few numerics — negligible against the 500 MB tier.
+
+### 3. If the SQL path stays: profile, then slim the scan
+
+- `EXPLAIN (ANALYZE, BUFFERS)` each UNION arm first — data before tuning;
+  clutch and the rank variants likely dominate.
+- The scan computes 5 shot-mix columns and joins `shot_zones`, none of which
+  storylines use (only net rating + poss). A `p_include_shot_mix bool DEFAULT
+  TRUE` guard (single function preserved as shared source of truth) would cut
+  I/O per arm.
+- `force_custom_plan` means six plannings per batch — known premium, minor
+  here.
+
+### 4. Scheduling / perceived latency
+
+- **ExtendedTask (promises/mirai) for the batch**: the 2.2 s query currently
+  runs synchronously inside the single R process, blocking every concurrent
+  session's interactions, not just the loading card. This is the existing
+  scalability-backlog item; the storyline batch is its best first target.
+- **Process-level warm**: the batch is cached per season + ETL version, but
+  the first visitor after each deploy/ETL still pays it. Warming it in
+  `prewarm_for_year` (it now runs after the storylines flush, so this only
+  covers sessions that never render the hub) or via a post-ETL ping makes the
+  first paint cached for everyone.
+
+Recommended order: (1) now — pure R; (4a) if concurrency hurts before the ETL
+change lands; (2) as the real fix; (3) only if EXPLAIN shows a cheap win in
+the interim. With (1)+(2) the storyline card drops to a single ~100 ms read
+and the loading spinner becomes vestigial.
