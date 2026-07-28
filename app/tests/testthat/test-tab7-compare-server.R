@@ -217,6 +217,60 @@ capture_input_messages <- function(session) {
   )
 }
 
+test_that("tab7 pending hub preset pins both compare sides to the hub team", {
+  shared <- make_shared()
+  shared$pending_compare_preset(list(
+    preset = "starters_bench",
+    team_id = "2"
+  ))
+
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = shared)
+  }, {
+    sent <- capture_input_messages(session)
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Teams"
+    )
+    session$flushReact()
+
+    expect_equal(
+      sent$last("cmp_preset")$message$value,
+      "starters_bench"
+    )
+    expect_equal(
+      sent$last("cmp_a_teams")$message$value,
+      "2"
+    )
+    expect_equal(
+      sent$last("cmp_b_teams")$message$value,
+      "2"
+    )
+    expect_null(shiny::isolate(shared$pending_compare_preset()))
+  })
+})
+
+test_that("tab7 pending legacy string preset remains supported", {
+  shared <- make_shared()
+  shared$pending_compare_preset("clutch")
+
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = shared)
+  }, {
+    sent <- capture_input_messages(session)
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Teams"
+    )
+    session$flushReact()
+
+    expect_equal(sent$last("cmp_preset")$message$value, "clutch")
+    expect_null(shiny::isolate(shared$pending_compare_preset()))
+  })
+})
+
 test_that("tab7 players list team filter uses team ids and refreshes after cleared player", {
   shiny::testServer(function(input, output, session) {
     server_tab7_compare(input, output, session, shared = make_shared())

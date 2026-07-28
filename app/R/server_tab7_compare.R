@@ -1612,15 +1612,41 @@ server_tab7_compare <- function(input, output, session, shared) {
       gy_int,
       include_players = (input$cmp_mode %in% c("Lineups", "Players"))
     )
-    # Apply pending preset from home tab
+    # Apply pending preset from home tab. Payload is either a preset id string
+    # or list(preset = <id>, team_id = <id>) from the team hub, which also
+    # pins both sides to that team.
     pending <- shared$pending_compare_preset()
-    if (!is.null(pending) && nzchar(pending)) {
+    if (!is.null(pending)) {
       shared$pending_compare_preset(NULL)
-      reset_compare_side_filters("a", reset_clutch_sliders = FALSE)
-      reset_compare_side_filters("b", reset_clutch_sliders = FALSE)
-      apply_compare_preset(pending)
-      cmp_suppress_preset_echo(pending)
-      updateSelectInput(session, "cmp_preset", selected = pending)
+      preset_id <- if (is.list(pending)) {
+        as.character(pending$preset %||% "")
+      } else {
+        as.character(pending)
+      }
+      preset_team <- if (is.list(pending)) {
+        as.character(pending$team_id %||% "")
+      } else {
+        ""
+      }
+      if (nzchar(preset_id)) {
+        reset_compare_side_filters("a", reset_clutch_sliders = FALSE)
+        reset_compare_side_filters("b", reset_clutch_sliders = FALSE)
+        apply_compare_preset(preset_id)
+        cmp_suppress_preset_echo(preset_id)
+        updateSelectInput(session, "cmp_preset", selected = preset_id)
+        if (nzchar(preset_team)) {
+          updateSelectizeInput(
+            session,
+            "cmp_a_teams",
+            selected = preset_team
+          )
+          updateSelectizeInput(
+            session,
+            "cmp_b_teams",
+            selected = preset_team
+          )
+        }
+      }
     }
 
     release_compare_ready_after_flush(token)
