@@ -877,4 +877,10 @@ th[data-tooltip]::after { display: none; }
 .hub-lineup-players { color: #c9d1d9; flex: 1 1 100%; }
 .hub-story-line { display: block; padding: 6px 10px; border-left: 2px solid #e8a435; margin-bottom: 8px; color: #c9d1d9; font-size: .88rem; cursor: pointer; }
 .hub-story-line:hover { background: #21262d; color: #e6edf3; }
+.hub-storylines-output:not(:empty) + .hub-storylines-loading { display: none; }
+.hub-storylines-loading { min-height: 190px; }
+.hub-storylines-loading .card-body { display: flex; flex-direction: column; }
+.hub-storylines-loading-body { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; color: #8b949e; font-size: .88rem; }
+.hub-storylines-loading-body .spinner-border { color: #e8a435; }
+.hub-storylines-empty { color: #8b949e; font-size: .88rem; }
 @media (max-width: 767px) { .hub-stat-row { gap: 14px; } }

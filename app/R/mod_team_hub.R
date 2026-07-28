@@ -51,7 +51,27 @@ team_hub_ui <- function() {
       column(width = 6, uiOutput("hub_players")),
       column(width = 6, uiOutput("hub_lineups"))
     ),
-    uiOutput("hub_storylines")
+    div(
+      class = "hub-storylines-shell",
+      uiOutput("hub_storylines", class = "hub-storylines-output"),
+      div(
+        class = "card bg-dark border-secondary mb-4 hub-card-static hub-storylines-loading",
+        role = "status",
+        `aria-live` = "polite",
+        div(
+          class = "card-body",
+          tags$h6(class = "hub-block-title", "Storylines"),
+          div(
+            class = "hub-storylines-loading-body",
+            tags$span(
+              class = "spinner-border spinner-border-sm",
+              `aria-hidden` = "true"
+            ),
+            tags$span("Analyzing team splits…")
+          )
+        )
+      )
+    )
   )
 }
 
@@ -531,7 +551,21 @@ server_team_hub <- function(input, output, session, shared) {
       )
     }
     lines <- hub_storyline_lines(hub_storyline_specs(), fetch_pair)
-    if (!length(lines)) return(NULL)
+    if (!length(lines)) {
+      return(
+        div(
+          class = "card bg-dark border-secondary mb-4 hub-card-static",
+          div(
+            class = "card-body",
+            tags$h6(class = "hub-block-title", "Storylines"),
+            tags$p(
+              class = "hub-storylines-empty mb-0",
+              "No qualified storylines are available for this team."
+            )
+          )
+        )
+      )
+    }
     div(
       class = "card bg-dark border-secondary mb-4 hub-card-static",
       div(
