@@ -725,10 +725,42 @@ hub_ordinal <- function(n) {
   paste0(n, suffix)
 }
 
+# Possession-weighted league benchmark for a team-rating result set.
+hub_league_net_rtg <- function(ratings_df) {
+  need <- c("net_rtg", "off_poss", "def_poss")
+  if (is.null(ratings_df) ||
+      !nrow(ratings_df) ||
+      !all(need %in% names(ratings_df))) {
+    return(NA_real_)
+  }
+  net_rtg <- suppressWarnings(as.numeric(ratings_df$net_rtg))
+  weights <- dplyr::coalesce(
+    suppressWarnings(as.numeric(ratings_df$off_poss)),
+    0
+  ) + dplyr::coalesce(
+    suppressWarnings(as.numeric(ratings_df$def_poss)),
+    0
+  )
+  weighted <- is.finite(net_rtg) & is.finite(weights) & weights > 0
+  if (any(weighted)) {
+    return(stats::weighted.mean(net_rtg[weighted], weights[weighted]))
+  }
+  valid <- is.finite(net_rtg)
+  if (any(valid)) mean(net_rtg[valid]) else NA_real_
+}
+
 # Storyline spec list. Each entry: id, Compare preset id ("" = no Compare
 # preset; the line deep-links to Tab 3 instead), min sample size per side
 # (total possessions), and a sentence builder over two result rows.
 hub_storyline_specs <- function() {
+  league_value <- function(row) {
+    value <- suppressWarnings(as.numeric(row$league_net_rtg %||% NA_real_))
+    if (length(value) != 1L || !is.finite(value)) {
+      stop("Missing league benchmark")
+    }
+    value
+  }
+
   list(
     list(
       id = "starters_bench",
@@ -736,12 +768,18 @@ hub_storyline_specs <- function() {
       min_poss = 100,
       sentence = function(a, b) {
         delta <- as.numeric(a$net_rtg) - as.numeric(b$net_rtg)
+        league_delta <- league_value(a) - league_value(b)
         who <- if (delta >= 0) {
           "Starter-heavy lineups (3+ starters) outscore bench-heavy ones"
         } else {
           "Bench-heavy lineups (2 or fewer starters) outscore starter-heavy ones"
         }
-        sprintf("%s by %.1f pts per 100", who, abs(delta))
+        sprintf(
+          "%s by %.1f pts per 100 (league starter–bench gap %+.1f)",
+          who,
+          abs(delta),
+          league_delta
+        )
       }
     ),
     list(
@@ -750,11 +788,13 @@ hub_storyline_specs <- function() {
       min_poss = 100,
       sentence = function(a, b) {
         delta <- as.numeric(a$net_rtg) - as.numeric(b$net_rtg)
+        league_delta <- league_value(a) - league_value(b)
         sprintf(
-          "Clutch net rating %+.1f — %.1f pts per 100 %s than overall",
+          "Clutch net rating %+.1f — %.1f pts per 100 %s than overall (league change %+.1f)",
           as.numeric(a$net_rtg),
           abs(delta),
-          if (delta >= 0) "better" else "worse"
+          if (delta >= 0) "better" else "worse",
+          league_delta
         )
       }
     ),
@@ -763,10 +803,12 @@ hub_storyline_specs <- function() {
       preset = "",
       min_poss = 100,
       sentence = function(a, b) {
+        league_delta <- league_value(a) - league_value(b)
         sprintf(
-          "Last 10 games: net rating %+.1f vs %+.1f on the season",
+          "Last 10 games: net rating %+.1f vs %+.1f on the season (league change %+.1f)",
           as.numeric(a$net_rtg),
-          as.numeric(b$net_rtg)
+          as.numeric(b$net_rtg),
+          league_delta
         )
       }
     ),
@@ -776,9 +818,11 @@ hub_storyline_specs <- function() {
       min_poss = 100,
       sentence = function(a, b) {
         sprintf(
-          "Net rating vs Top 4: %+.1f · vs Bottom 4: %+.1f",
+          "Net rating vs Top 4: %+.1f · vs Bottom 4: %+.1f (league averages %+.1f / %+.1f)",
           as.numeric(a$net_rtg),
-          as.numeric(b$net_rtg)
+          as.numeric(b$net_rtg),
+          league_value(a),
+          league_value(b)
         )
       }
     )

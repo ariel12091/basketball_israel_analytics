@@ -30,6 +30,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   cmp_teams_ref_loaded_year <- reactiveVal(NA_integer_)
   cmp_refs_loaded_year <- reactiveVal(NA_integer_)
   cmp_player_refs_loaded_year <- reactiveVal(NA_integer_)
+  cmp_pending_detail_team_id <- reactiveVal(NA_integer_)
   selected_detail_entity <- reactiveVal(NULL)
   detail_view_active <- reactiveVal(FALSE)
   cmp_active_view <- reactiveVal("league")
@@ -1628,7 +1629,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       } else {
         ""
       }
+      open_detail <- is.list(pending) && isTRUE(pending$open_detail)
       if (nzchar(preset_id)) {
+        if (open_detail) {
+          updateRadioButtons(session, "cmp_mode", selected = "Teams")
+        }
         reset_compare_side_filters("a", reset_clutch_sliders = FALSE)
         reset_compare_side_filters("b", reset_clutch_sliders = FALSE)
         apply_compare_preset(preset_id)
@@ -1645,6 +1650,12 @@ server_tab7_compare <- function(input, output, session, shared) {
             "cmp_b_teams",
             selected = preset_team
           )
+          if (open_detail) {
+            detail_team_id <- suppressWarnings(as.integer(preset_team))
+            if (length(detail_team_id) == 1L && is.finite(detail_team_id)) {
+              cmp_pending_detail_team_id(detail_team_id)
+            }
+          }
         }
       }
     }
@@ -2703,6 +2714,29 @@ server_tab7_compare <- function(input, output, session, shared) {
         cmp_min_poss()
       )
     )
+  })
+
+  # Hub storyline deep links wait for the preset/team result to exist, then
+  # open that team's Detail view instead of leaving the league table visible.
+  observe({
+    team_id <- cmp_pending_detail_team_id()
+    req(is.finite(team_id))
+    req(identical(input$main_tabs, "compare"))
+    req(identical(input$cmp_mode, "Teams"))
+    req(isTRUE(cmp_ready()))
+    df <- cmp_joined()
+    req(!is.null(df), nrow(df) > 0)
+    row <- df[as.integer(df$team_id) == team_id, , drop = FALSE]
+    req(nrow(row) > 0)
+
+    selected_detail_entity(list(
+      key = row$team_id[[1]],
+      name = row$team_name[[1]],
+      mode = "Teams"
+    ))
+    cmp_active_view("detail")
+    detail_view_active(TRUE)
+    cmp_pending_detail_team_id(NA_integer_)
   })
 
   # -- Teams mode: player self-compare drilldown --

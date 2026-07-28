@@ -221,7 +221,8 @@ test_that("tab7 pending hub preset pins both compare sides to the hub team", {
   shared <- make_shared()
   shared$pending_compare_preset(list(
     preset = "starters_bench",
-    team_id = "2"
+    team_id = "2",
+    open_detail = TRUE
   ))
 
   shiny::testServer(function(input, output, session) {
@@ -247,7 +248,16 @@ test_that("tab7 pending hub preset pins both compare sides to the hub team", {
       sent$last("cmp_b_teams")$message$value,
       "2"
     )
+    expect_equal(
+      sent$last("cmp_mode")$message$value,
+      "Teams"
+    )
     expect_null(shiny::isolate(shared$pending_compare_preset()))
+
+    session$elapse(300)
+    session$flushReact()
+    detail_txt <- render_ui_text(output$cmp_detail_view_ui)
+    expect_true(grepl("Team B", detail_txt, fixed = TRUE))
   })
 })
 

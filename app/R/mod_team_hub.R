@@ -312,6 +312,14 @@ server_team_hub <- function(input, output, session, shared) {
     row[1, , drop = FALSE]
   }
 
+  hub_story_pair <- function(df_a, df_b) {
+    row_a <- hub_team_row(df_a)
+    row_b <- hub_team_row(df_b)
+    if (!is.null(row_a)) row_a$league_net_rtg <- hub_league_net_rtg(df_a)
+    if (!is.null(row_b)) row_b$league_net_rtg <- hub_league_net_rtg(df_b)
+    list(a = row_a, b = row_b)
+  }
+
   # ---- Identity card ----
   output$hub_identity <- renderUI({
     info <- hub_identity_data(hub_ratings_df(), hub_ff_df(), hub_team_id())
@@ -496,25 +504,24 @@ server_team_hub <- function(input, output, session, shared) {
   })
 
   output$hub_storylines <- renderUI({
-    overall <- hub_team_row(hub_ratings_df())
     fetch_pair <- function(id) {
       switch(
         id,
-        starters_bench = list(
-          a = hub_team_row(hub_dyn_df("starters_hi")),
-          b = hub_team_row(hub_dyn_df("starters_lo"))
+        starters_bench = hub_story_pair(
+          hub_dyn_df("starters_hi"),
+          hub_dyn_df("starters_lo")
         ),
-        clutch = list(
-          a = hub_team_row(hub_dyn_df("clutch")),
-          b = overall
+        clutch = hub_story_pair(
+          hub_dyn_df("clutch"),
+          hub_ratings_df()
         ),
-        last10 = list(
-          a = hub_team_row(hub_dyn_df("last10")),
-          b = overall
+        last10 = hub_story_pair(
+          hub_dyn_df("last10"),
+          hub_ratings_df()
         ),
-        top_bottom_4 = list(
-          a = hub_team_row(hub_dyn_df("top4")),
-          b = hub_team_row(hub_dyn_df("bottom4"))
+        top_bottom_4 = hub_story_pair(
+          hub_dyn_df("top4"),
+          hub_dyn_df("bottom4")
         ),
         NULL
       )
@@ -549,7 +556,8 @@ server_team_hub <- function(input, output, session, shared) {
     if (nzchar(spec$preset)) {
       shared$pending_compare_preset(list(
         preset = spec$preset,
-        team_id = as.character(input$home_team %||% "")
+        team_id = as.character(input$home_team %||% ""),
+        open_detail = TRUE
       ))
       updateTabsetPanel(session, "main_tabs", selected = "compare")
     } else {

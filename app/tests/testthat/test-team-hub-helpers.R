@@ -125,6 +125,16 @@ test_that("hub_ordinal formats English ordinals", {
   expect_equal(hub_ordinal(22), "22nd")
 })
 
+test_that("hub_league_net_rtg uses possession-weighted league average", {
+  expected <- stats::weighted.mean(
+    ratings_df$net_rtg,
+    ratings_df$off_poss + ratings_df$def_poss
+  )
+  expect_equal(hub_league_net_rtg(ratings_df), expected)
+  expect_true(is.na(hub_league_net_rtg(NULL)))
+  expect_true(is.na(hub_league_net_rtg(ratings_df[0, ])))
+})
+
 test_that("hub_storyline_specs returns all hub storylines", {
   specs <- hub_storyline_specs()
   expect_equal(
@@ -174,20 +184,34 @@ test_that("hub_storyline_lines qualifies on both sides' possessions and skips fa
 
 test_that("v1 storyline sentences read correctly in both directions", {
   specs <- hub_storyline_specs()
-  a <- data.frame(net_rtg = 6.0, off_poss = 200L, def_poss = 200L)
-  b <- data.frame(net_rtg = 1.9, off_poss = 200L, def_poss = 200L)
+  a <- data.frame(
+    net_rtg = 6.0,
+    off_poss = 200L,
+    def_poss = 200L,
+    league_net_rtg = 2.5
+  )
+  b <- data.frame(
+    net_rtg = 1.9,
+    off_poss = 200L,
+    def_poss = 200L,
+    league_net_rtg = 1.0
+  )
   sb <- specs[[1]]$sentence(a, b)
   expect_match(sb, "Starter-heavy")
   expect_match(sb, "4.1", fixed = TRUE)
+  expect_match(sb, "league")
   sb_rev <- specs[[1]]$sentence(b, a)
   expect_match(sb_rev, "Bench-heavy")
   cl <- specs[[2]]$sentence(a, b)
   expect_match(cl, "Clutch")
+  expect_match(cl, "league")
   l10 <- specs[[3]]$sentence(a, b)
   expect_match(l10, "Last 10")
+  expect_match(l10, "league")
   top_bottom <- specs[[4]]$sentence(a, b)
   expect_match(top_bottom, "Top 4")
   expect_match(top_bottom, "Bottom 4")
+  expect_match(top_bottom, "league")
   expect_match(top_bottom, "+6.0", fixed = TRUE)
   expect_match(top_bottom, "+1.9", fixed = TRUE)
 })
