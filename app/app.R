@@ -536,13 +536,6 @@ server <- function(input, output, session) {
   server_tab7_compare(input, output, session, shared)
   server_team_hub(input, output, session, shared)
 
-  observe({
-    teams <- shared$teams_for_year_df()
-    req(nrow(teams) > 0)
-    choices <- c("", setNames(as.character(teams$team_id), teams$team_name))
-    updateSelectizeInput(session, "home_team", choices = choices, selected = "", server = TRUE)
-  }) |> bindEvent(shared$teams_for_year_df(), ignoreNULL = TRUE)
-
   # Card navigation: Who is helping my team? -> Tab 1
   observeEvent(input$go_onoff, {
     teams_df <- shared$teams_for_year_df()

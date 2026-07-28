@@ -388,6 +388,19 @@
     try { window.localStorage.removeItem(key); } catch (e) {}
   }
 
+  var hubTeamKey = "ibplHubTeam";
+
+  document.addEventListener("shiny:connected", function() {
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    window.Shiny.setInputValue("hub_remembered_team", safeLocalGet(hubTeamKey) || "");
+  });
+
+  if (window.Shiny && typeof window.Shiny.addCustomMessageHandler === "function") {
+    window.Shiny.addCustomMessageHandler("ibpl-store-hub-team", function(msg) {
+      if (msg && msg.teamId) safeLocalSet(hubTeamKey, String(msg.teamId));
+    });
+  }
+
   function getOrCreateTabId() {
     var existing = safeSessionGet(tabIdKey);
     if (existing) return existing;

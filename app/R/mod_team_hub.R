@@ -56,6 +56,70 @@ team_hub_ui <- function() {
 }
 
 server_team_hub <- function(input, output, session, shared) {
+  hub_auto_selected <- reactiveVal("")
+  hub_remembered_seen <- reactiveVal(FALSE)
+
+  # Populate the selector and choose remembered team when it first arrives.
+  # If localStorage arrives just after the leader fallback, it may replace that
+  # automatic choice, but it never replaces a different valid user selection.
+  observe({
+    teams <- shared$teams_for_year_df()
+    req(!is.null(teams), nrow(teams) > 0)
+    team_ids <- as.character(teams$team_id)
+    choices <- c(
+      "",
+      stats::setNames(team_ids, as.character(teams$team_name))
+    )
+    current <- as.character(input$home_team %||% "")
+    current_valid <- length(current) == 1L &&
+      nzchar(current) &&
+      current %in% team_ids
+    remembered_received <- !is.null(input$hub_remembered_team)
+    may_apply_remembered <- remembered_received &&
+      !isTRUE(hub_remembered_seen()) &&
+      (!current_valid || identical(current, hub_auto_selected()))
+
+    ratings <- tryCatch(
+      hub_fetch_team_ratings(
+        as.integer(shared$selected_game_year()),
+        shared_data_version(shared)
+      ),
+      error = function(e) NULL
+    )
+    selected <- if (may_apply_remembered) {
+      hub_default_team(input$hub_remembered_team, teams, ratings)
+    } else if (current_valid) {
+      current
+    } else {
+      hub_default_team("", teams, ratings)
+    }
+
+    updateSelectizeInput(
+      session,
+      "home_team",
+      choices = choices,
+      selected = selected,
+      server = TRUE
+    )
+    if (!identical(selected, current)) hub_auto_selected(selected)
+    if (remembered_received) hub_remembered_seen(TRUE)
+  }) |>
+    bindEvent(
+      shared$teams_for_year_df(),
+      input$hub_remembered_team,
+      ignoreNULL = FALSE
+    )
+
+  observeEvent(input$home_team, {
+    tid <- as.character(input$home_team %||% "")
+    if (length(tid) == 1L && nzchar(tid)) {
+      session$sendCustomMessage(
+        "ibpl-store-hub-team",
+        list(teamId = tid)
+      )
+    }
+  }, ignoreInit = TRUE)
+
   hub_ver <- reactive(shared_data_version(shared))
   hub_gy <- reactive({
     gy <- suppressWarnings(as.integer(shared$selected_game_year()))
