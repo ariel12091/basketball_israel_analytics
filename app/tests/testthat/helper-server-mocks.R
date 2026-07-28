@@ -171,7 +171,7 @@ db_get_query <- function(pool, query, params = NULL) {
   }
 
   if (grepl("get_team_ratings_dynamic", q, fixed = TRUE)) {
-    return(data.frame(
+    ratings <- data.frame(
       game_year = c(2026L, 2026L),
       team_id = c(1L, 2L),
       team_name = c("Team A", "Team B"),
@@ -191,7 +191,24 @@ db_get_query <- function(pool, query, params = NULL) {
       rank_net_rtg = c(1L, 2L),
       rank_off_ppp = c(1L, 2L),
       rank_def_ppp = c(1L, 2L)
-    ))
+    )
+    if (grepl("AS hub_variant", q, fixed = TRUE)) {
+      increment_mock_db_query_count("hub_storylines_batch")
+      variants <- c(
+        "starters_hi",
+        "starters_lo",
+        "clutch",
+        "last10",
+        "top4",
+        "bottom4"
+      )
+      return(do.call(rbind, lapply(variants, function(variant) {
+        out <- ratings
+        out$hub_variant <- variant
+        out[, c("hub_variant", setdiff(names(out), "hub_variant")), drop = FALSE]
+      })))
+    }
+    return(ratings)
   }
 
   if (grepl("get_team_four_factors_dynamic", q, fixed = TRUE)) {

@@ -42,6 +42,52 @@ hub_fetch_team_ff <- function(gy, ver) {
   )
 }
 
+# One database round trip for all six Storyline contexts. PostgreSQL still
+# evaluates each filtered context independently, but avoids six pool checkouts
+# and five extra network round trips.
+hub_storyline_variants_sql <- function() {
+  paste(
+    c(
+      paste0(
+        "SELECT 'starters_hi'::text AS hub_variant, r.* ",
+        "FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4, p_num_starters_off_min := 3, ",
+        "p_num_starters_off_max := 5) r"
+      ),
+      paste0(
+        "SELECT 'starters_lo'::text AS hub_variant, r.* ",
+        "FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4, p_num_starters_off_min := 0, ",
+        "p_num_starters_off_max := 2) r"
+      ),
+      paste0(
+        "SELECT 'clutch'::text AS hub_variant, r.* ",
+        "FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4, p_max_margin := 5, ",
+        "p_max_time_remaining := 300) r"
+      ),
+      paste0(
+        "SELECT 'last10'::text AS hub_variant, r.* ",
+        "FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4, p_last_n_games := 10) r"
+      ),
+      paste0(
+        "SELECT 'top4'::text AS hub_variant, r.* ",
+        "FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4, p_opp_rank_side := 'top', ",
+        "p_opp_rank_n := 4, p_opp_rank_metric := 'net') r"
+      ),
+      paste0(
+        "SELECT 'bottom4'::text AS hub_variant, r.* ",
+        "FROM basketball_test.get_team_ratings_dynamic(",
+        "$1::int4, p_opp_rank_side := 'bottom', ",
+        "p_opp_rank_n := 4, p_opp_rank_metric := 'net') r"
+      )
+    ),
+    collapse = "\nUNION ALL\n"
+  )
+}
+
 team_hub_ui <- function() {
   div(
     id = "team_hub_section",
@@ -258,22 +304,11 @@ server_team_hub <- function(input, output, session, shared) {
     )
   })
 
-  # League-wide dynamic pulls: one per storyline variant, season and ETL cycle.
-  hub_dyn_variants <- list(
-    starters_hi = list(off_min = 3L, off_max = 5L),
-    starters_lo = list(off_min = 0L, off_max = 2L),
-    clutch = list(max_margin = 5L, max_time = 300L),
-    last10 = list(last_n = 10L),
-    top4 = list(opp_side = "top", opp_n = 4L, opp_metric = "net"),
-    bottom4 = list(opp_side = "bottom", opp_n = 4L, opp_metric = "net")
-  )
-
-  hub_dyn_df <- function(variant) {
+  # League-wide dynamic pulls are batched into one cached database request.
+  hub_dyn_all_df <- reactive({
     gy <- hub_gy()
-    variant_args <- hub_dyn_variants[[variant]]
-    if (is.null(variant_args)) return(NULL)
     cached_season_df(
-      list("hub_team_dyn", variant, gy, hub_ver()),
+      list("hub_team_dyn_all", gy, hub_ver()),
       function() {
         allowed <- guard_heavy_request(
           session,
@@ -285,43 +320,24 @@ server_team_hub <- function(input, output, session, shared) {
         tryCatch(
           db_get_query(
             pg_pool,
-            paste0(
-              "SELECT * FROM basketball_test.get_team_ratings_dynamic(",
-              "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
-              "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
-              "$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
-              ")"
-            ),
-            params = list(
-              gy,
-              NA,
-              NA,
-              NA_character_,
-              NA_character_,
-              NA_character_,
-              NA_character_,
-              variant_args$opp_side %||% NA_character_,
-              variant_args$opp_n %||% NA_integer_,
-              variant_args$opp_metric %||% NA_character_,
-              variant_args$max_margin %||% NA_integer_,
-              NA_character_,
-              variant_args$max_time %||% NA_integer_,
-              FALSE,
-              NA_integer_,
-              NA_integer_,
-              variant_args$last_n %||% NA_integer_,
-              NA_integer_,
-              NA_integer_,
-              variant_args$off_min %||% NA_integer_,
-              variant_args$off_max %||% NA_integer_,
-              NA_integer_,
-              NA_integer_
-            )
+            hub_storyline_variants_sql(),
+            params = list(gy)
           ),
           error = function(e) NULL
         )
       }
     )
+  })
+
+  hub_dyn_df <- function(variant) {
+    df <- hub_dyn_all_df()
+    if (is.null(df) || !nrow(df) || !("hub_variant" %in% names(df))) {
+      return(NULL)
+    }
+    out <- df[as.character(df$hub_variant) == variant, , drop = FALSE]
+    if (!nrow(out)) return(NULL)
+    out$hub_variant <- NULL
+    out
   }
 
   hub_team_row <- function(df) {

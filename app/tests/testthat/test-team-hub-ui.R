@@ -12,6 +12,7 @@ test_that("team hub reserves an accessible loading card for storylines", {
 
 test_that("team hub marks storylines ready after rendering", {
   shared <- make_shared()
+  reset_mock_db_query_counts()
 
   shiny::testServer(function(input, output, session) {
     server_team_hub(input, output, session, shared)
@@ -20,5 +21,21 @@ test_that("team hub marks storylines ready after rendering", {
     session$flushReact()
 
     expect_equal(shiny::isolate(shared$hub_storylines_ready_year()), 2026L)
+    expect_equal(mock_db_query_count("hub_storylines_batch"), 1L)
   })
+})
+
+test_that("team hub storyline SQL batches all six variants", {
+  sql <- hub_storyline_variants_sql()
+  variants <- c(
+    "starters_hi",
+    "starters_lo",
+    "clutch",
+    "last10",
+    "top4",
+    "bottom4"
+  )
+
+  expect_equal(lengths(regmatches(sql, gregexpr("get_team_ratings_dynamic", sql))), 6L)
+  expect_true(all(vapply(variants, grepl, logical(1), x = sql, fixed = TRUE)))
 })
