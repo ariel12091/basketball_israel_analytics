@@ -581,3 +581,227 @@ ff_impact_legend <- function() {
     FF_IMPACT_WEIGHTS[["oreb"]], FF_IMPACT_WEIGHTS[["ftr"]]
   )
 }
+
+# ---------------- Team hub (Tab 0) pure helpers ----------------
+
+# Resolve the hub's default team: remembered id if it exists this season,
+# else the season's net-rating leader, else the first team, else "".
+hub_default_team <- function(remembered_id, teams_df, ratings_df) {
+  rid <- trimws(as.character(remembered_id %||% ""))
+  ids <- as.character(teams_df$team_id %||% character(0))
+  if (!length(ids)) return("")
+  if (length(rid) == 1 && nzchar(rid) && rid %in% ids) return(rid)
+  if (!is.null(ratings_df) &&
+      nrow(ratings_df) > 0 &&
+      all(c("team_id", "rank_net_rtg") %in% names(ratings_df))) {
+    ranks <- suppressWarnings(as.numeric(ratings_df$rank_net_rtg))
+    if (any(is.finite(ranks))) {
+      leader <- as.character(ratings_df$team_id[which.min(ranks)])
+      if (length(leader) == 1 && leader %in% ids) return(leader)
+    }
+  }
+  ids[[1]]
+}
+
+hub_identity_data <- function(ratings_df, ff_df, team_id) {
+  tid <- suppressWarnings(as.integer(team_id))
+  if (is.null(ratings_df) ||
+      !nrow(ratings_df) ||
+      !("team_id" %in% names(ratings_df)) ||
+      !is.finite(tid)) {
+    return(NULL)
+  }
+  row <- ratings_df[as.integer(ratings_df$team_id) == tid, , drop = FALSE]
+  if (!nrow(row)) return(NULL)
+  ff_row <- NULL
+  if (!is.null(ff_df) && nrow(ff_df) && "team_id" %in% names(ff_df)) {
+    fr <- ff_df[as.integer(ff_df$team_id) == tid, , drop = FALSE]
+    if (nrow(fr)) ff_row <- fr[1, , drop = FALSE]
+  }
+  list(row = row[1, , drop = FALSE], n_teams = nrow(ratings_df), ff = ff_row)
+}
+
+# Offense four-factor mini-row with league ranks (TOV% rank inverted: low = good).
+hub_ff_mini <- function(ff_df, team_id) {
+  tid <- suppressWarnings(as.integer(team_id))
+  need <- c("team_id", "off_efg", "off_tov", "off_oreb", "off_ftr")
+  if (is.null(ff_df) ||
+      !nrow(ff_df) ||
+      !all(need %in% names(ff_df)) ||
+      !is.finite(tid)) {
+    return(NULL)
+  }
+  idx <- which(as.integer(ff_df$team_id) == tid)
+  if (!length(idx)) return(NULL)
+  cols <- c(
+    off_efg = "eFG%",
+    off_tov = "TOV%",
+    off_oreb = "OREB%",
+    off_ftr = "FTR"
+  )
+  rows <- lapply(names(cols), function(col) {
+    x <- as.numeric(ff_df[[col]])
+    ranked <- rank(
+      if (identical(col, "off_tov")) x else -x,
+      ties.method = "min",
+      na.last = "keep"
+    )
+    data.frame(
+      label = cols[[col]],
+      value = x[idx[[1]]],
+      rank = as.integer(ranked[idx[[1]]]),
+      n = sum(is.finite(x)),
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+hub_key_players <- function(onoff_df, team_id, min_on_poss = 100, top_n = 5) {
+  need <- c("team_id", "ON Poss", "Net RTG Diff", "First Name", "Last Name")
+  if (is.null(onoff_df) || !nrow(onoff_df) || !all(need %in% names(onoff_df))) {
+    return(NULL)
+  }
+  tid <- suppressWarnings(as.integer(team_id))
+  if (!is.finite(tid)) return(NULL)
+  keep <- as.integer(onoff_df$team_id) == tid &
+    dplyr::coalesce(as.numeric(onoff_df[["ON Poss"]]), 0) >= min_on_poss &
+    is.finite(as.numeric(onoff_df[["Net RTG Diff"]]))
+  df <- onoff_df[which(keep), , drop = FALSE]
+  if (!nrow(df)) return(NULL)
+  df <- df[order(-as.numeric(df[["Net RTG Diff"]])), , drop = FALSE]
+  utils::head(df, top_n)
+}
+
+hub_top_scorer <- function(ts_df, team_id, min_gp = 3) {
+  need <- c("team_id", "pts", "gp")
+  if (is.null(ts_df) || !nrow(ts_df) || !all(need %in% names(ts_df))) {
+    return(NULL)
+  }
+  tid <- suppressWarnings(as.integer(team_id))
+  if (!is.finite(tid)) return(NULL)
+  keep <- as.integer(ts_df$team_id) == tid &
+    dplyr::coalesce(as.numeric(ts_df$gp), 0) >= min_gp
+  df <- ts_df[which(keep), , drop = FALSE]
+  if (!nrow(df)) return(NULL)
+  df$ppg <- as.numeric(df$pts) / pmax(as.numeric(df$gp), 1)
+  df <- df[is.finite(df$ppg), , drop = FALSE]
+  if (!nrow(df)) return(NULL)
+  df[which.max(df$ppg), , drop = FALSE]
+}
+
+hub_best_worst_lineups <- function(lineups_df) {
+  need <- c("player_names_str", "net_rtg", "off_poss", "def_poss")
+  if (is.null(lineups_df) ||
+      !nrow(lineups_df) ||
+      !all(need %in% names(lineups_df))) {
+    return(NULL)
+  }
+  df <- lineups_df
+  df$total_poss <- dplyr::coalesce(as.numeric(df$off_poss), 0) +
+    dplyr::coalesce(as.numeric(df$def_poss), 0)
+  df <- df[is.finite(as.numeric(df$net_rtg)), , drop = FALSE]
+  if (!nrow(df)) return(NULL)
+  list(
+    best = df[which.max(as.numeric(df$net_rtg)), , drop = FALSE],
+    worst = df[which.min(as.numeric(df$net_rtg)), , drop = FALSE]
+  )
+}
+
+hub_ordinal <- function(n) {
+  n <- as.integer(n)
+  if (length(n) != 1L || is.na(n)) return("")
+  suffix <- if (n %% 100 %in% 11:13) {
+    "th"
+  } else {
+    switch(
+      as.character(n %% 10),
+      `1` = "st",
+      `2` = "nd",
+      `3` = "rd",
+      "th"
+    )
+  }
+  paste0(n, suffix)
+}
+
+# Storyline spec list. Each entry: id, Compare preset id ("" = no Compare
+# preset; the line deep-links to Tab 3 instead), min sample size per side
+# (total possessions), and a sentence builder over two result rows.
+hub_storyline_specs <- function() {
+  list(
+    list(
+      id = "starters_bench",
+      preset = "starters_bench",
+      min_poss = 100,
+      sentence = function(a, b) {
+        delta <- as.numeric(a$net_rtg) - as.numeric(b$net_rtg)
+        who <- if (delta >= 0) {
+          "Starter-heavy lineups (3+ starters) outscore bench-heavy ones"
+        } else {
+          "Bench-heavy lineups (2 or fewer starters) outscore starter-heavy ones"
+        }
+        sprintf("%s by %.1f pts per 100", who, abs(delta))
+      }
+    ),
+    list(
+      id = "clutch",
+      preset = "clutch",
+      min_poss = 100,
+      sentence = function(a, b) {
+        delta <- as.numeric(a$net_rtg) - as.numeric(b$net_rtg)
+        sprintf(
+          "Clutch net rating %+.1f — %.1f pts per 100 %s than overall",
+          as.numeric(a$net_rtg),
+          abs(delta),
+          if (delta >= 0) "better" else "worse"
+        )
+      }
+    ),
+    list(
+      id = "last10",
+      preset = "",
+      min_poss = 100,
+      sentence = function(a, b) {
+        sprintf(
+          "Last 10 games: net rating %+.1f vs %+.1f on the season",
+          as.numeric(a$net_rtg),
+          as.numeric(b$net_rtg)
+        )
+      }
+    )
+  )
+}
+
+# Render qualified storylines. fetch_pair(id) returns list(a=row, b=row) or
+# NULL; rows carry net_rtg/off_poss/def_poss. Lines that error, miss data, or
+# fall under min_poss are skipped entirely.
+hub_storyline_lines <- function(specs, fetch_pair) {
+  out <- list()
+  for (sp in specs) {
+    pair <- tryCatch(fetch_pair(sp$id), error = function(e) NULL)
+    if (is.null(pair) ||
+        is.null(pair$a) ||
+        is.null(pair$b) ||
+        !nrow(pair$a) ||
+        !nrow(pair$b)) {
+      next
+    }
+    total_poss <- function(row) {
+      dplyr::coalesce(as.numeric(row$off_poss), 0) +
+        dplyr::coalesce(as.numeric(row$def_poss), 0)
+    }
+    if (total_poss(pair$a) < sp$min_poss ||
+        total_poss(pair$b) < sp$min_poss) {
+      next
+    }
+    txt <- tryCatch(sp$sentence(pair$a, pair$b), error = function(e) NULL)
+    if (is.null(txt) || length(txt) != 1L || is.na(txt) || !nzchar(txt)) next
+    out[[length(out) + 1L]] <- list(
+      id = sp$id,
+      preset = sp$preset,
+      text = txt
+    )
+  }
+  out
+}
