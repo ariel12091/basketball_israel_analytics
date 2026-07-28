@@ -1,5 +1,27 @@
 # Session Updates
 
+## 2026-07-28
+- Completed the Tab 2 starters fast path from
+  `docs/superpowers/plans/2026-07-27-starters-fast-path.md`.
+- `mv_lineup_totals_by_day` and `lineup_four_factors_by_game` now key rows by
+  both own starters (`num_starters`) and `opp_starters`, with
+  `NULLS NOT DISTINCT` identity and starter-selective indexes.
+- Minutes retain the canonical segment-time budget and are assigned per
+  contiguous opponent-count window only when that window has offense rows.
+  The current source has zero segments with multiple opponent counts; the
+  window logic is retained for future data without changing current totals.
+- `fetch_lineups_all` and `fetch_lineups_four_factors` now treat only
+  margin/time parameters as clutch. Starters-only queries use uniform own/opp
+  predicates on the pre-aggregated MVs; the raw clutch path remains in place.
+- Execution found a plan-assumption mismatch: the old FF raw branch used the
+  wrong per-type starters mapping. Correct uniform semantics change FF starter
+  row counts (5v5: 833 to 751), matching Summary's 751 rows.
+- Verification: all 15 general cases and clutch+5v5 are byte-identical;
+  collapsed poss/points/shooting differences are zero; the team FF snapshot is
+  identical; local tests and both DB test files pass.
+- Pooler medians (3 runs): Summary 5v5 `0.998s -> 0.427s`; FF 5v5
+  `1.109s -> 0.356s`; FF own-5 `2.848s -> 0.375s`.
+
 ## 2026-03-03
 - Fixed Game Logs tab date-range mismatch in `app/R/server_tab4.R`.
 - Root cause: tab used static defaults (`DEFAULT_START`/`DEFAULT_END`) while active season default is `2026`.

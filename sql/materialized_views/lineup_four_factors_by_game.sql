@@ -1,13 +1,12 @@
 -- Pre-aggregated four-factor counts per lineup_hash per game per type_lineup.
--- Same computation logic as player_four_factors_by_game but without player-level
--- grouping (no lineups_lookup join / is_on_key split).
--- The dynamic function fetch_lineups_four_factors() sums from this MV
--- instead of re-scanning df_pts_poss_lineups_longer_mv each time.
+-- Keyed by both own starters (num_starters) and opp_starters. Minutes use the
+-- same gap-exclusive opponent-window model as mv_lineup_totals_by_day.
 
 CREATE MATERIALIZED VIEW basketball_test.lineup_four_factors_by_game
 TABLESPACE pg_default
 AS
-WITH clean_stats AS (
+WITH
+base AS (
   SELECT
     d.id,
     d.game_id,
@@ -22,10 +21,20 @@ WITH clean_stats AS (
     d.parent_action_id,
     d.type_lineup,
     d.num_starters,
+    d.opp_starters,
     d.segment_id,
     d.end_game_seconds_remaining,
+    d.event_elapsed_seconds,
+    d.segment_start_elapsed_seconds,
     d.segment_seconds,
-    CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
+    CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag,
+    (ROW_NUMBER() OVER (
+        PARTITION BY d.team_id, d.lineup_hash, d.game_id, d.segment_id
+        ORDER BY d.id
+     ) - ROW_NUMBER() OVER (
+        PARTITION BY d.team_id, d.lineup_hash, d.game_id, d.segment_id, d.opp_starters
+        ORDER BY d.id
+     )) AS opp_island
   FROM basketball_test.df_pts_poss_lineups_longer_mv d
 ),
 complex_flags AS (
@@ -43,43 +52,134 @@ complex_flags AS (
 ),
 combined_data AS (
   SELECT
-    cs.lineup_hash,
-    cs.team_id,
-    cs.game_id,
+    b.lineup_hash,
+    b.team_id,
+    b.game_id,
     s.game_year,
-    cs.type_lineup,
-    cs.num_starters,
-    cs.segment_id,
-    cs.end_game_seconds_remaining,
-    cs.segment_seconds,
-    cs.team_score,
-    cs.final_end_flag,
-    cs.type,
-    cs.parameters_type,
-    cs.parameters_made,
-    cs.parameters_points,
-    cs.pct_ft,
-    cs.parent_action_id,
+    b.type_lineup,
+    b.num_starters,
+    b.opp_starters,
+    b.segment_id,
+    b.end_game_seconds_remaining,
+    b.team_score,
+    b.final_end_flag,
+    b.type,
+    b.parameters_type,
+    b.parameters_made,
+    b.parameters_points,
+    b.pct_ft,
+    b.parent_action_id,
     cf.parent_type,
     cf.parent_param
-  FROM clean_stats cs
-  JOIN basketball_test.schedule s ON cs.game_id = s.game_id
-  LEFT JOIN complex_flags cf ON cs.id = cf.main_id
+  FROM base b
+  JOIN basketball_test.schedule s ON b.game_id = s.game_id
+  LEFT JOIN complex_flags cf ON b.id = cf.main_id
 ),
--- Stint duration per segment (no type_lineup - captures full floor time)
-segment_times AS (
+-- Identify each contiguous opponent-starters window inside the canonical
+-- segment. Canonical segment_seconds remains the total time budget.
+window_bounds AS (
   SELECT
-    cd.lineup_hash,
-    cd.team_id,
-    cd.game_id,
-    cd.game_year,
-    cd.segment_id,
-    MAX(cd.segment_seconds) AS stint_seconds
-  FROM combined_data cd
-  WHERE cd.segment_seconds IS NOT NULL
-  GROUP BY cd.lineup_hash, cd.team_id, cd.game_id, cd.game_year, cd.segment_id
+    b.lineup_hash,
+    b.team_id,
+    b.game_id,
+    b.segment_id,
+    b.opp_starters,
+    b.opp_island,
+    MIN(b.id) AS first_id,
+    (
+      ARRAY_AGG(b.event_elapsed_seconds ORDER BY b.id)
+      FILTER (WHERE b.event_elapsed_seconds IS NOT NULL)
+    )[1] AS first_event_elapsed_seconds,
+    COALESCE(
+      MAX(b.segment_start_elapsed_seconds),
+      MIN(b.event_elapsed_seconds),
+      0
+    ) AS segment_start_elapsed_seconds,
+    MAX(b.segment_seconds) AS segment_seconds,
+    BOOL_OR(b.type_lineup = 'offense') AS has_offense
+  FROM base b
+  WHERE b.segment_seconds IS NOT NULL
+  GROUP BY
+    b.lineup_hash,
+    b.team_id,
+    b.game_id,
+    b.segment_id,
+    b.opp_starters,
+    b.opp_island
 ),
--- Four-factor stats per segment per type_lineup
+ordered_windows AS (
+  SELECT
+    wb.*,
+    ROW_NUMBER() OVER (
+      PARTITION BY wb.lineup_hash, wb.team_id, wb.game_id, wb.segment_id
+      ORDER BY wb.first_id
+    ) AS window_number
+  FROM window_bounds wb
+),
+window_start_candidates AS (
+  SELECT
+    ow.*,
+    CASE
+      WHEN ow.window_number = 1 THEN ow.segment_start_elapsed_seconds
+      ELSE GREATEST(
+        ow.segment_start_elapsed_seconds,
+        LEAST(
+          ow.segment_start_elapsed_seconds + ow.segment_seconds,
+          COALESCE(
+            ow.first_event_elapsed_seconds,
+            ow.segment_start_elapsed_seconds
+          )
+        )
+      )
+    END AS window_start_candidate
+  FROM ordered_windows ow
+),
+normalized_window_starts AS (
+  SELECT
+    wsc.*,
+    MAX(wsc.window_start_candidate) OVER (
+      PARTITION BY wsc.lineup_hash, wsc.team_id, wsc.game_id, wsc.segment_id
+      ORDER BY wsc.first_id
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS window_start
+  FROM window_start_candidates wsc
+),
+window_times AS (
+  SELECT
+    nws.lineup_hash,
+    nws.team_id,
+    nws.game_id,
+    nws.segment_id,
+    nws.opp_starters,
+    nws.opp_island,
+    nws.has_offense,
+    GREATEST(
+      COALESCE(
+        LEAD(nws.window_start) OVER (
+          PARTITION BY nws.lineup_hash, nws.team_id, nws.game_id, nws.segment_id
+          ORDER BY nws.first_id
+        ),
+        nws.segment_start_elapsed_seconds + nws.segment_seconds
+      ) - nws.window_start,
+      0
+    ) AS window_seconds
+  FROM normalized_window_starts nws
+),
+window_minutes AS (
+  SELECT
+    wt.lineup_hash,
+    wt.team_id,
+    wt.game_id,
+    wt.opp_starters,
+    SUM(wt.window_seconds) FILTER (WHERE wt.has_offense) / 60.0 AS minutes
+  FROM window_times wt
+  GROUP BY
+    wt.lineup_hash,
+    wt.team_id,
+    wt.game_id,
+    wt.opp_starters
+),
+-- Four-factor stats per segment per type_lineup and opponent-starters key.
 segment_stats AS (
   SELECT
     cd.lineup_hash,
@@ -88,6 +188,7 @@ segment_stats AS (
     cd.game_year,
     cd.type_lineup,
     cd.num_starters,
+    cd.opp_starters,
     cd.segment_id,
     sum(cd.team_score)       AS total_points,
     sum(cd.final_end_flag)   AS total_poss,
@@ -111,7 +212,15 @@ segment_stats AS (
     count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
     count(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' AND cd.parameters_points = 3 THEN 1 END) AS total_fg3_made
   FROM combined_data cd
-  GROUP BY cd.lineup_hash, cd.team_id, cd.game_id, cd.game_year, cd.type_lineup, cd.num_starters, cd.segment_id
+  GROUP BY
+    cd.lineup_hash,
+    cd.team_id,
+    cd.game_id,
+    cd.game_year,
+    cd.type_lineup,
+    cd.num_starters,
+    cd.opp_starters,
+    cd.segment_id
 )
 SELECT
   ss.lineup_hash,
@@ -120,6 +229,7 @@ SELECT
   ss.game_year,
   ss.type_lineup,
   ss.num_starters,
+  ss.opp_starters,
   SUM(ss.total_points)::numeric       AS total_points,
   SUM(ss.total_poss)::bigint          AS total_poss,
   SUM(ss.ts_poss_count)::bigint       AS ts_poss_count,
@@ -130,19 +240,47 @@ SELECT
   SUM(ss.total_fga)::bigint           AS total_fga,
   SUM(ss.total_fgm)::bigint           AS total_fgm,
   SUM(ss.total_fg3_made)::bigint      AS total_fg3_made,
-  -- Minutes from segment_times, count once per segment (use offense filter)
-  SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+  CASE WHEN ss.type_lineup = 'offense' THEN wm.minutes END AS minutes
 FROM segment_stats ss
-JOIN segment_times st
-  ON st.lineup_hash = ss.lineup_hash
-  AND st.team_id = ss.team_id
-  AND st.game_id = ss.game_id
-  AND st.segment_id = ss.segment_id
-GROUP BY ss.lineup_hash, ss.team_id, ss.game_id, ss.game_year, ss.type_lineup, ss.num_starters
+LEFT JOIN window_minutes wm
+  ON wm.lineup_hash = ss.lineup_hash
+ AND wm.team_id = ss.team_id
+ AND wm.game_id = ss.game_id
+ AND wm.opp_starters IS NOT DISTINCT FROM ss.opp_starters
+GROUP BY
+  ss.lineup_hash,
+  ss.team_id,
+  ss.game_id,
+  ss.game_year,
+  ss.type_lineup,
+  ss.num_starters,
+  ss.opp_starters,
+  wm.minutes
 WITH DATA;
 
--- Indexes for the dynamic function
-CREATE INDEX idx_lff_game_id ON basketball_test.lineup_four_factors_by_game USING btree (game_id);
-CREATE INDEX idx_lff_lineup_hash ON basketball_test.lineup_four_factors_by_game USING btree (lineup_hash);
-CREATE UNIQUE INDEX idx_lff_pk ON basketball_test.lineup_four_factors_by_game
-  USING btree (lineup_hash, team_id, game_id, type_lineup, num_starters);
+-- Indexes for the dynamic function.
+CREATE INDEX idx_lff_game_id
+  ON basketball_test.lineup_four_factors_by_game USING btree (game_id);
+CREATE INDEX idx_lff_lineup_hash
+  ON basketball_test.lineup_four_factors_by_game USING btree (lineup_hash);
+CREATE INDEX idx_lff_starters
+  ON basketball_test.lineup_four_factors_by_game
+  USING btree (
+    game_year,
+    num_starters,
+    opp_starters,
+    team_id,
+    lineup_hash,
+    type_lineup
+  );
+CREATE UNIQUE INDEX idx_lff_pk
+  ON basketball_test.lineup_four_factors_by_game
+  USING btree (
+    lineup_hash,
+    team_id,
+    game_id,
+    type_lineup,
+    num_starters,
+    opp_starters
+  )
+  NULLS NOT DISTINCT;
