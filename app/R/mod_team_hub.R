@@ -243,23 +243,25 @@ server_team_hub <- function(input, output, session, shared) {
     starters_hi = list(off_min = 3L, off_max = 5L),
     starters_lo = list(off_min = 0L, off_max = 2L),
     clutch = list(max_margin = 5L, max_time = 300L),
-    last10 = list(last_n = 10L)
+    last10 = list(last_n = 10L),
+    top4 = list(opp_side = "top", opp_n = 4L, opp_metric = "net"),
+    bottom4 = list(opp_side = "bottom", opp_n = 4L, opp_metric = "net")
   )
 
   hub_dyn_df <- function(variant) {
     gy <- hub_gy()
     variant_args <- hub_dyn_variants[[variant]]
     if (is.null(variant_args)) return(NULL)
-    allowed <- guard_heavy_request(
-      session,
-      key = "hub_storylines",
-      max_calls = 20L,
-      window_sec = 60L
-    )
-    if (!isTRUE(allowed)) return(NULL)
     cached_season_df(
       list("hub_team_dyn", variant, gy, hub_ver()),
       function() {
+        allowed <- guard_heavy_request(
+          session,
+          key = "hub_storylines",
+          max_calls = 20L,
+          window_sec = 60L
+        )
+        if (!isTRUE(allowed)) return(NULL)
         tryCatch(
           db_get_query(
             pg_pool,
@@ -278,9 +280,9 @@ server_team_hub <- function(input, output, session, shared) {
               NA_character_,
               NA_character_,
               NA_character_,
-              NA_character_,
-              NA_integer_,
-              NA_character_,
+              variant_args$opp_side %||% NA_character_,
+              variant_args$opp_n %||% NA_integer_,
+              variant_args$opp_metric %||% NA_character_,
               variant_args$max_margin %||% NA_integer_,
               NA_character_,
               variant_args$max_time %||% NA_integer_,
@@ -509,6 +511,10 @@ server_team_hub <- function(input, output, session, shared) {
         last10 = list(
           a = hub_team_row(hub_dyn_df("last10")),
           b = overall
+        ),
+        top_bottom_4 = list(
+          a = hub_team_row(hub_dyn_df("top4")),
+          b = hub_team_row(hub_dyn_df("bottom4"))
         ),
         NULL
       )

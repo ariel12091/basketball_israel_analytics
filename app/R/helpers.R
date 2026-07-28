@@ -769,6 +769,18 @@ hub_storyline_specs <- function() {
           as.numeric(b$net_rtg)
         )
       }
+    ),
+    list(
+      id = "top_bottom_4",
+      preset = "top_bottom_rank",
+      min_poss = 100,
+      sentence = function(a, b) {
+        sprintf(
+          "Net rating vs Top 4: %+.1f · vs Bottom 4: %+.1f",
+          as.numeric(a$net_rtg),
+          as.numeric(b$net_rtg)
+        )
+      }
     )
   )
 }

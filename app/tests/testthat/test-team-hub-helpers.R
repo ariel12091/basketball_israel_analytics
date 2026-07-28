@@ -125,15 +125,16 @@ test_that("hub_ordinal formats English ordinals", {
   expect_equal(hub_ordinal(22), "22nd")
 })
 
-test_that("hub_storyline_specs returns the three v1 specs", {
+test_that("hub_storyline_specs returns all hub storylines", {
   specs <- hub_storyline_specs()
   expect_equal(
     vapply(specs, `[[`, "", "id"),
-    c("starters_bench", "clutch", "last10")
+    c("starters_bench", "clutch", "last10", "top_bottom_4")
   )
   expect_equal(specs[[1]]$preset, "starters_bench")
   expect_equal(specs[[2]]$preset, "clutch")
   expect_equal(specs[[3]]$preset, "")
+  expect_equal(specs[[4]]$preset, "top_bottom_rank")
 })
 
 test_that("hub_storyline_lines qualifies on both sides' possessions and skips failures", {
@@ -184,4 +185,9 @@ test_that("v1 storyline sentences read correctly in both directions", {
   expect_match(cl, "Clutch")
   l10 <- specs[[3]]$sentence(a, b)
   expect_match(l10, "Last 10")
+  top_bottom <- specs[[4]]$sentence(a, b)
+  expect_match(top_bottom, "Top 4")
+  expect_match(top_bottom, "Bottom 4")
+  expect_match(top_bottom, "+6.0", fixed = TRUE)
+  expect_match(top_bottom, "+1.9", fixed = TRUE)
 })
