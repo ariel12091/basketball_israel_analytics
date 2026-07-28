@@ -28,7 +28,11 @@ ui_tab0_home <- tabPanel(
         selectizeInput(
           "home_team",
           label = NULL,
-          choices = NULL,
+          choices = stats::setNames(
+            DEFAULT_HOME_TEAM_ID,
+            DEFAULT_HOME_TEAM_NAME
+          ),
+          selected = DEFAULT_HOME_TEAM_ID,
           options = list(placeholder = "All teams", preload = "focus")
         )
       ),

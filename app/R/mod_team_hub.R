@@ -153,8 +153,8 @@ team_hub_ui <- function() {
 }
 
 server_team_hub <- function(input, output, session, shared) {
-  hub_auto_selected <- reactiveVal("")
-  hub_resolved_team_id <- reactiveVal("")
+  hub_auto_selected <- reactiveVal(DEFAULT_HOME_TEAM_ID)
+  hub_resolved_team_id <- reactiveVal(DEFAULT_HOME_TEAM_ID)
   hub_remembered_seen <- reactiveVal(FALSE)
 
   # Populate the selector and choose remembered team when it first arrives.
@@ -173,19 +173,34 @@ server_team_hub <- function(input, output, session, shared) {
       nzchar(current) &&
       current %in% team_ids
     remembered_received <- !is.null(input$hub_remembered_team)
+    remembered <- as.character(input$hub_remembered_team %||% "")
+    remembered_valid <- length(remembered) == 1L &&
+      nzchar(remembered) &&
+      remembered %in% team_ids
     may_apply_remembered <- remembered_received &&
       !isTRUE(hub_remembered_seen()) &&
       (!current_valid || identical(current, hub_auto_selected()))
 
-    ratings <- tryCatch(
-      hub_fetch_team_ratings(
-        as.integer(shared$selected_game_year()),
-        shared_data_version(shared)
-      ),
-      error = function(e) NULL
-    )
-    selected <- if (may_apply_remembered) {
-      hub_default_team(input$hub_remembered_team, teams, ratings)
+    # The initial named choice is already valid, so avoid delaying selector
+    # synchronization on a ratings query. Ratings are only needed when the
+    # current/default/remembered team cannot be used.
+    needs_ratings <- (may_apply_remembered && !remembered_valid) ||
+      (!may_apply_remembered && !current_valid)
+    ratings <- if (needs_ratings) {
+      tryCatch(
+        hub_fetch_team_ratings(
+          as.integer(shared$selected_game_year()),
+          shared_data_version(shared)
+        ),
+        error = function(e) NULL
+      )
+    } else {
+      NULL
+    }
+    selected <- if (may_apply_remembered && remembered_valid) {
+      remembered
+    } else if (may_apply_remembered) {
+      hub_default_team("", teams, ratings)
     } else if (current_valid) {
       current
     } else {

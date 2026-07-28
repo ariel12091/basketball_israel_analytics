@@ -1,4 +1,17 @@
 source(repo_file("R", "mod_team_hub.R"), local = TRUE)
+shared_head_tags <- function() NULL
+source(repo_file("R", "ui_tab0_home.R"), local = TRUE)
+
+test_that("Home initially renders its named default team as selected", {
+  html <- htmltools::renderTags(ui_tab0_home)$html
+
+  expect_match(html, DEFAULT_HOME_TEAM_NAME, fixed = TRUE)
+  expect_match(
+    html,
+    sprintf('option value="%s" selected', DEFAULT_HOME_TEAM_ID),
+    fixed = TRUE
+  )
+})
 
 test_that("team hub reserves an accessible loading card for storylines", {
   html <- htmltools::renderTags(team_hub_ui())$html
@@ -20,7 +33,6 @@ test_that("team hub resolves its default before the selector round trip", {
     session$flushReact()
 
     expect_equal(shiny::isolate(shared$hub_storylines_ready_year()), 2026L)
-    expect_gt(mock_db_query_count("team_ppp_ratings_mv"), 0L)
     expect_equal(mock_db_query_count("team_ratings_preset_cache"), 1L)
     expect_equal(mock_db_query_count("hub_storylines_batch"), 0L)
   })
@@ -41,6 +53,24 @@ test_that("team hub keeps the resolved team in sync with manual selection", {
 
     session$setInputs(home_team = "2")
     session$flushReact()
+    expect_match(
+      paste(as.character(output$hub_identity), collapse = ""),
+      "Team B",
+      fixed = TRUE
+    )
+  })
+})
+
+test_that("a saved valid team can replace the initial default", {
+  shared <- make_shared()
+
+  shiny::testServer(function(input, output, session) {
+    server_team_hub(input, output, session, shared)
+  }, {
+    session$flushReact()
+    session$setInputs(hub_remembered_team = "2")
+    session$flushReact()
+
     expect_match(
       paste(as.character(output$hub_identity), collapse = ""),
       "Team B",

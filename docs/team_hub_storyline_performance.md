@@ -118,6 +118,12 @@ afterward, while manual selector changes continue to update the internal team.
 This removes one client/server round trip from Storylines startup without
 changing team-selection behavior.
 
+The initial HTML now includes `HAPOEL JERUSALEM` (team ID `4`) as a named,
+selected choice, and the server-side Hub state starts with that same ID.
+Storylines can therefore start before either the team-list query or selector
+synchronization. The full list still replaces the one initial choice, and a
+valid saved user preference may override the default afterward.
+
 Files:
 
 - `app/R/mod_team_hub.R`

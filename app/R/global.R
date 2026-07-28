@@ -13,6 +13,8 @@ library(htmltools)
 # Default season shown on load. To roll to a new season, bump this and add the
 # matching label to the navbar selectInput choices in app.R — nothing else.
 DEFAULT_GAME_YEAR <- "2026"   # 25-26
+DEFAULT_HOME_TEAM_ID <- "4"
+DEFAULT_HOME_TEAM_NAME <- "HAPOEL JERUSALEM"
 DEFAULT_MIN_ALL <- 100L
 DEFAULT_MIN_ON  <- 300L
 DEFAULT_MIN_NET <- -1e9
