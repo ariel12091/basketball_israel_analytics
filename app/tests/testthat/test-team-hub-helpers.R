@@ -125,14 +125,14 @@ test_that("hub_ordinal formats English ordinals", {
   expect_equal(hub_ordinal(22), "22nd")
 })
 
-test_that("hub_league_net_rtg uses possession-weighted league average", {
-  expected <- stats::weighted.mean(
-    ratings_df$net_rtg,
-    ratings_df$off_poss + ratings_df$def_poss
-  )
-  expect_equal(hub_league_net_rtg(ratings_df), expected)
-  expect_true(is.na(hub_league_net_rtg(NULL)))
-  expect_true(is.na(hub_league_net_rtg(ratings_df[0, ])))
+test_that("hub_net_rtg_rank ranks a team within a ratings result set", {
+  expect_equal(hub_net_rtg_rank(ratings_df, "10"), 1L)
+  expect_equal(hub_net_rtg_rank(ratings_df, "20"), 2L)
+  tied <- ratings_df
+  tied$net_rtg[[2]] <- tied$net_rtg[[1]]
+  expect_equal(hub_net_rtg_rank(tied, "20"), 1L)
+  expect_true(is.na(hub_net_rtg_rank(NULL, "10")))
+  expect_true(is.na(hub_net_rtg_rank(ratings_df, "999")))
 })
 
 test_that("hub_storyline_specs returns all hub storylines", {
@@ -188,30 +188,31 @@ test_that("v1 storyline sentences read correctly in both directions", {
     net_rtg = 6.0,
     off_poss = 200L,
     def_poss = 200L,
-    league_net_rtg = 2.5
+    net_rtg_rank = 2L
   )
   b <- data.frame(
     net_rtg = 1.9,
     off_poss = 200L,
     def_poss = 200L,
-    league_net_rtg = 1.0
+    net_rtg_rank = 7L
   )
   sb <- specs[[1]]$sentence(a, b)
   expect_match(sb, "Starter-heavy")
   expect_match(sb, "4.1", fixed = TRUE)
-  expect_match(sb, "league")
+  expect_false(grepl("league", sb, fixed = TRUE))
   sb_rev <- specs[[1]]$sentence(b, a)
   expect_match(sb_rev, "Bench-heavy")
   cl <- specs[[2]]$sentence(a, b)
   expect_match(cl, "Clutch")
-  expect_match(cl, "league")
+  expect_false(grepl("league", cl, fixed = TRUE))
   l10 <- specs[[3]]$sentence(a, b)
   expect_match(l10, "Last 10")
-  expect_match(l10, "league")
+  expect_false(grepl("league", l10, fixed = TRUE))
   top_bottom <- specs[[4]]$sentence(a, b)
   expect_match(top_bottom, "Top 4")
   expect_match(top_bottom, "Bottom 4")
-  expect_match(top_bottom, "league")
+  expect_match(top_bottom, "2nd in league", fixed = TRUE)
+  expect_match(top_bottom, "7th in league", fixed = TRUE)
   expect_match(top_bottom, "+6.0", fixed = TRUE)
   expect_match(top_bottom, "+1.9", fixed = TRUE)
 })

@@ -315,8 +315,12 @@ server_team_hub <- function(input, output, session, shared) {
   hub_story_pair <- function(df_a, df_b) {
     row_a <- hub_team_row(df_a)
     row_b <- hub_team_row(df_b)
-    if (!is.null(row_a)) row_a$league_net_rtg <- hub_league_net_rtg(df_a)
-    if (!is.null(row_b)) row_b$league_net_rtg <- hub_league_net_rtg(df_b)
+    if (!is.null(row_a)) {
+      row_a$net_rtg_rank <- hub_net_rtg_rank(df_a, hub_team_id())
+    }
+    if (!is.null(row_b)) {
+      row_b$net_rtg_rank <- hub_net_rtg_rank(df_b, hub_team_id())
+    }
     list(a = row_a, b = row_b)
   }
 
