@@ -610,6 +610,29 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   run_team_ratings <- function(p) {
+    season_bounds <- shared$season_date_bounds(as.character(p$game_year))
+    preset_variant <- team_ratings_preset_variant(p, season_bounds)
+    if (!is.na(preset_variant)) {
+      ver <- shared_data_version(shared)
+      cached <- if (identical(preset_variant, "overall")) {
+        hub_fetch_team_ratings(p$game_year, ver)
+      } else {
+        all_presets <- hub_fetch_team_ratings_presets(p$game_year, ver)
+        if (is.null(all_presets)) {
+          NULL
+        } else {
+          out <- all_presets[
+            as.character(all_presets$hub_variant) == preset_variant,
+            ,
+            drop = FALSE
+          ]
+          out$hub_variant <- NULL
+          out
+        }
+      }
+      if (!is.null(cached)) return(cached)
+    }
+
     run_compare_query(
       key = "cmp_team_ratings",
       p = p,

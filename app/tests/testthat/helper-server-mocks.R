@@ -71,6 +71,59 @@ mock_db_query_count <- function(name) {
   }
 }
 
+mock_team_ratings_df <- function() {
+  data.frame(
+    game_year = c(2026L, 2026L),
+    team_id = c(1L, 2L),
+    team_name = c("Team A", "Team B"),
+    off_ppp = c(112.4, 108.8),
+    def_ppp = c(101.7, 105.1),
+    net_rtg = c(10.7, 3.7),
+    off_poss = c(120L, 118L),
+    def_poss = c(120L, 118L),
+    total_poss = c(120L, 118L),
+    games_played = c(4L, 4L),
+    wins = c(3L, 2L),
+    losses = c(1L, 2L),
+    off_fga = c(260L, 244L),
+    off_layup_att = c(70L, 60L),
+    off_dunk_att = c(12L, 9L),
+    off_fg3_att = c(100L, 94L),
+    off_c3_att = c(22L, 18L),
+    off_c3_known_att = c(90L, 85L),
+    def_fga = c(242L, 253L),
+    def_layup_att = c(58L, 62L),
+    def_dunk_att = c(7L, 8L),
+    def_fg3_att = c(92L, 98L),
+    def_c3_att = c(20L, 22L),
+    def_c3_known_att = c(85L, 90L),
+    rank_net_rtg = c(1L, 2L),
+    rank_off_ppp = c(1L, 2L),
+    rank_def_ppp = c(1L, 2L)
+  )
+}
+
+# Production definitions live in mod_team_hub.R, which the compare server is
+# sourced without in these server tests.
+hub_fetch_team_ratings <- function(gy, ver) {
+  db_get_query(
+    pg_pool,
+    "SELECT * FROM basketball_test.team_ppp_ratings_mv WHERE game_year = $1::int4",
+    params = list(as.integer(gy))
+  )
+}
+
+hub_fetch_team_ratings_presets <- function(gy, ver) {
+  db_get_query(
+    pg_pool,
+    paste0(
+      "SELECT preset_variant AS hub_variant, * ",
+      "FROM basketball_test.team_ratings_preset_cache WHERE game_year = $1::int4"
+    ),
+    params = list(as.integer(gy))
+  )
+}
+
 db_get_query <- function(pool, query, params = NULL) {
   q <- paste(query, collapse = " ")
 
@@ -170,28 +223,32 @@ db_get_query <- function(pool, query, params = NULL) {
     ))
   }
 
-  if (grepl("get_team_ratings_dynamic", q, fixed = TRUE)) {
-    ratings <- data.frame(
-      game_year = c(2026L, 2026L),
-      team_id = c(1L, 2L),
-      team_name = c("Team A", "Team B"),
-      off_ppp = c(112.4, 108.8),
-      def_ppp = c(101.7, 105.1),
-      net_rtg = c(10.7, 3.7),
-      off_poss = c(120L, 118L),
-      def_poss = c(120L, 118L),
-      total_poss = c(120L, 118L),
-      games_played = c(4L, 4L),
-      wins = c(3L, 2L),
-      losses = c(1L, 2L),
-      off_fga = c(260L, 244L), off_layup_att = c(70L, 60L), off_dunk_att = c(12L, 9L),
-      off_fg3_att = c(100L, 94L), off_c3_att = c(22L, 18L), off_c3_known_att = c(90L, 85L),
-      def_fga = c(242L, 253L), def_layup_att = c(58L, 62L), def_dunk_att = c(7L, 8L),
-      def_fg3_att = c(92L, 98L), def_c3_att = c(20L, 22L), def_c3_known_att = c(85L, 90L),
-      rank_net_rtg = c(1L, 2L),
-      rank_off_ppp = c(1L, 2L),
-      rank_def_ppp = c(1L, 2L)
+  if (grepl("team_ratings_preset_cache", q, fixed = TRUE)) {
+    increment_mock_db_query_count("team_ratings_preset_cache")
+    ratings <- mock_team_ratings_df()
+    variants <- c(
+      "starters_hi",
+      "starters_lo",
+      "clutch",
+      "last10",
+      "top4",
+      "bottom4"
     )
+    return(do.call(rbind, lapply(variants, function(variant) {
+      out <- ratings
+      out$hub_variant <- variant
+      out[, c("hub_variant", setdiff(names(out), "hub_variant")), drop = FALSE]
+    })))
+  }
+
+  if (grepl("team_ppp_ratings_mv", q, fixed = TRUE)) {
+    increment_mock_db_query_count("team_ppp_ratings_mv")
+    return(mock_team_ratings_df())
+  }
+
+  if (grepl("get_team_ratings_dynamic", q, fixed = TRUE)) {
+    increment_mock_db_query_count("team_ratings_dynamic")
+    ratings <- mock_team_ratings_df()
     if (grepl("AS hub_variant", q, fixed = TRUE)) {
       increment_mock_db_query_count("hub_storylines_batch")
       variants <- c(

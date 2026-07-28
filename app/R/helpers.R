@@ -129,6 +129,102 @@ shared_data_version <- function(shared) {
   if (!length(version) || is.na(version[[1]]) || !nzchar(version[[1]])) "unknown" else version[[1]]
 }
 
+# Return the persisted rating variant for an exact full-season preset shape.
+# Team selection is intentionally ignored because Compare applies that filter
+# locally after fetching league-wide ratings. NA means the dynamic path is
+# required.
+team_ratings_preset_variant <- function(p, season_bounds) {
+  if (!is.list(p) || !is.list(season_bounds)) return(NA_character_)
+
+  text_value <- function(name) {
+    value <- as.character(p[[name]] %||% "")
+    if (!length(value) || is.na(value[[1]])) "" else tolower(trimws(value[[1]]))
+  }
+  int_value <- function(name) {
+    value <- suppressWarnings(as.integer(p[[name]] %||% NA_integer_))
+    if (!length(value) || !is.finite(value[[1]])) NA_integer_ else value[[1]]
+  }
+  date_value <- function(value) {
+    tryCatch({
+      out <- as.Date(value)
+      if (!length(out) || is.na(out[[1]])) as.Date(NA) else out[[1]]
+    }, error = function(e) as.Date(NA))
+  }
+  text_unset <- function(name, allow_all = FALSE) {
+    value <- text_value(name)
+    !nzchar(value) || (isTRUE(allow_all) && identical(value, "all"))
+  }
+  int_unset <- function(name) is.na(int_value(name))
+
+  start_d <- date_value(p$start_d)
+  end_d <- date_value(p$end_d)
+  season_start <- date_value(season_bounds$start)
+  season_end <- date_value(season_bounds$end)
+  if (is.na(start_d) || is.na(end_d) ||
+      is.na(season_start) || is.na(season_end) ||
+      !identical(start_d, season_start) ||
+      !identical(end_d, season_end)) {
+    return(NA_character_)
+  }
+
+  common_unfiltered <-
+    text_unset("game_type_csv") &&
+    text_unset("opp_ids_csv") &&
+    text_unset("home_away", allow_all = TRUE) &&
+    text_unset("outcome", allow_all = TRUE) &&
+    text_unset("margin_status", allow_all = TRUE) &&
+    !isTRUE(p$ot_margin_filter) &&
+    int_unset("min_gn") &&
+    int_unset("max_gn") &&
+    int_unset("num_starters_off") &&
+    int_unset("num_starters_def") &&
+    int_unset("num_starters_def_min") &&
+    int_unset("num_starters_def_max")
+  if (!isTRUE(common_unfiltered)) return(NA_character_)
+
+  no_rank <- text_unset("opp_rank_side", allow_all = TRUE) &&
+    int_unset("opp_rank_n") &&
+    (text_unset("opp_rank_metric") || identical(text_value("opp_rank_metric"), "net"))
+  no_clutch <- int_unset("max_margin") && int_unset("max_time_remaining")
+  no_last_n <- int_unset("last_n_games")
+  no_off_starters <- int_unset("num_starters_off_min") &&
+    int_unset("num_starters_off_max")
+
+  if (no_rank && no_clutch && no_last_n && no_off_starters) {
+    return("overall")
+  }
+  if (no_rank && no_clutch && no_last_n &&
+      identical(int_value("num_starters_off_min"), 3L) &&
+      identical(int_value("num_starters_off_max"), 5L)) {
+    return("starters_hi")
+  }
+  if (no_rank && no_clutch && no_last_n &&
+      identical(int_value("num_starters_off_min"), 0L) &&
+      identical(int_value("num_starters_off_max"), 2L)) {
+    return("starters_lo")
+  }
+  if (no_rank && no_last_n && no_off_starters &&
+      identical(int_value("max_margin"), 5L) &&
+      identical(int_value("max_time_remaining"), 300L)) {
+    return("clutch")
+  }
+  if (no_rank && no_clutch && no_off_starters &&
+      identical(int_value("last_n_games"), 10L)) {
+    return("last10")
+  }
+
+  rank_metric <- text_value("opp_rank_metric")
+  if (no_clutch && no_last_n && no_off_starters &&
+      identical(int_value("opp_rank_n"), 4L) &&
+      identical(rank_metric, "net")) {
+    rank_side <- text_value("opp_rank_side")
+    if (identical(rank_side, "top")) return("top4")
+    if (identical(rank_side, "bottom")) return("bottom4")
+  }
+
+  NA_character_
+}
+
 normalize_stat_filter_cols <- function(filterable_cols) {
   cols <- if (is.function(filterable_cols)) filterable_cols() else filterable_cols
   if (is.null(cols)) return(stats::setNames(character(0), character(0)))

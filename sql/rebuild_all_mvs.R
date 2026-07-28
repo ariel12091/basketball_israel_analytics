@@ -6,7 +6,7 @@
 # Usage:
 #   source("sql/rebuild_all_mvs.R")
 #   rebuild_all_mvs()                        # rebuild everything
-#   rebuild_all_mvs(from_level = 2)          # skip L1, rebuild L2-L4 only
+#   rebuild_all_mvs(from_level = 2)          # skip L1, rebuild L2-L5 only
 #   rebuild_all_mvs(skip = "final_schedule_mv")  # skip specific MVs
 
 library(DBI)
@@ -26,7 +26,8 @@ MV_REGISTRY <- list(
   list(name = "player_advanced_stats_mv",       file = "sql/materialized_views/player_advanced_stats_mv.sql",      level = 3, type = "table"),
   list(name = "player_traditional_stats_mv",    file = "sql/materialized_views/player_traditional_stats_mv.sql",   level = 3),
   list(name = "team_metrics_rolling_mv",        file = "sql/materialized_views/team_metrics_rolling_mv.sql",       level = 3),
-  list(name = "team_four_factors_mv",           file = "sql/materialized_views/team_four_factors_mv.sql",          level = 4)
+  list(name = "team_four_factors_mv",           file = "sql/materialized_views/team_four_factors_mv.sql",          level = 4),
+  list(name = "team_ratings_preset_cache",      file = "sql/materialized_views/team_ratings_preset_cache.sql",     level = 5, type = "table")
 )
 
 SCHEMA <- "basketball_test"
@@ -123,7 +124,7 @@ rebuild_all_mvs <- function(from_level = 1, skip = character(0)) {
   # Filter to requested levels and skip list
   targets <- Filter(function(mv) mv$level >= from_level && !(mv$name %in% skip), MV_REGISTRY)
 
-  # Drop in reverse order (L4 -> L1) to avoid cascade surprises
+  # Drop in reverse order (L5 -> L1) to avoid cascade surprises
   cat("Dropping registry objects...\n")
   for (mv in rev(targets)) {
     obj_type <- if (!is.null(mv$type)) mv$type else "matview"
@@ -146,7 +147,7 @@ rebuild_all_mvs <- function(from_level = 1, skip = character(0)) {
     }
   }
 
-  # Create in forward order (L1 -> L4)
+  # Create in forward order (L1 -> L5)
   cat("\nCreating registry objects...\n")
   for (mv in targets) {
     cat(sprintf("  L%d: %s\n", mv$level, mv$name))

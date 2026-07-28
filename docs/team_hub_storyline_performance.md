@@ -80,6 +80,32 @@ Files:
 
 Commit: `0d89a08`
 
+### 4. Persisted the six fixed rating presets during ETL
+
+`team_ratings_preset_cache` now stores the complete output of the six fixed
+rating contexts for every season. The normal ETL refreshes only the season(s)
+affected by its processed game IDs, inside the same Phase 4 transaction as the
+upstream facts and materialized views.
+
+Home reads the persisted 84-row season slice first. The batched dynamic query
+remains as a rolling-deployment fallback if the table is unavailable.
+
+Compare also uses the persisted data when a full-season side exactly matches
+one of the cached definitions. Team selection is applied locally, so a
+team-specific storyline link still shares the league-wide cached read. The
+existing `team_ppp_ratings_mv` handles an unfiltered overall side. Any custom
+date, game type, opponent, home/away, result, GN, starter, clutch, or opponent
+rank setting continues through the dynamic function.
+
+Files:
+
+- `sql/materialized_views/team_ratings_preset_cache.sql`
+- `sql/functions/refresh_team_ratings_preset_cache_for_games.sql`
+- `etl/etl_full.R`
+- `app/R/helpers.R`
+- `app/R/mod_team_hub.R`
+- `app/R/server_tab7_compare.R`
+
 ## Measured result
 
 Read-only benchmarks against the configured live database returned the same 84
@@ -92,29 +118,39 @@ rows across all six variants:
 | One batched request, run 1 | 2.190 s |
 | One batched request, run 2 | 2.160 s |
 | Exact parameterized app query | 2.160 s |
+| Persisted cache read through `app_readonly`, median of 5 | 0.230-0.250 s |
 
-The database portion is therefore approximately 2-3 times faster, depending on
-connection and database cache state. Process-wide caching means later sessions
-can reuse the completed batch until the cache expires or the ETL version
-changes.
+The first uncached app read is now approximately 9 times faster than the
+batched dynamic query and about 14-27 times faster than the former sequential
+path. Process-wide caching means later sessions can reuse the 84-row result
+until the ETL version changes.
+
+A full refresh of both stored seasons wrote 168 rows in 10.060 seconds. That
+cost now occurs in ETL, outside the interactive app request; normal ETL runs
+refresh only the season(s) containing their processed game IDs.
 
 ## Validation
 
 - Exact parameterized query returned all six expected variants and 84 rows.
-- Team Hub and Compare regression set: 178 passed, 0 failed.
+- The persisted table contains 84 rows for 2025 and 84 for 2026.
+- Every cached row and value matched a fresh dynamic-function result for both
+  seasons.
+- The primary key had zero duplicate groups.
+- `app_readonly` can select the table, cannot insert/update/delete, and cannot
+  execute the ETL refresh function.
+- Focused Team Hub, Compare, cache-contract, and source-parse checks passed.
 - R source files parsed successfully.
 - No browser smoke test was performed.
 
-## Remaining bottleneck
+## Previous bottleneck (resolved)
 
 Batching removes connection and network overhead, but PostgreSQL still runs
 `get_team_ratings_dynamic()` six times inside the single request. A larger
-future optimization would require a dedicated database function or
-precomputed table that calculates all storyline contexts from fewer underlying
-scans. That would be a database/ETL design change rather than another Shiny
-request-scheduling improvement.
+optimization required a precomputed table. The ETL-refreshed preset cache is
+that change: those six scans now happen after data ingestion instead of during
+Home or matching Compare requests.
 
-## Suggested next optimizations (2026-07-28 review)
+## Historical alternatives considered (superseded)
 
 Where the remaining ~2.2 s goes: `get_team_ratings_dynamic()` has a single
 `RETURN QUERY` with no pre-aggregate branch. Every variant scans
@@ -176,5 +212,5 @@ few numerics — negligible against the 500 MB tier.
 
 Recommended order: (1) now — pure R; (4a) if concurrency hurts before the ETL
 change lands; (2) as the real fix; (3) only if EXPLAIN shows a cheap win in
-the interim. With (1)+(2) the storyline card drops to a single ~100 ms read
-and the loading spinner becomes vestigial.
+the interim. The deployed preset cache supersedes this recommendation while
+retaining the dynamic query as a safe fallback.

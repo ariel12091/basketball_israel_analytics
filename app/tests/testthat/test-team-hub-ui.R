@@ -21,11 +21,12 @@ test_that("team hub marks storylines ready after rendering", {
     session$flushReact()
 
     expect_equal(shiny::isolate(shared$hub_storylines_ready_year()), 2026L)
-    expect_equal(mock_db_query_count("hub_storylines_batch"), 1L)
+    expect_equal(mock_db_query_count("team_ratings_preset_cache"), 1L)
+    expect_equal(mock_db_query_count("hub_storylines_batch"), 0L)
   })
 })
 
-test_that("team hub storyline SQL batches all six variants", {
+test_that("team hub storyline fallback SQL batches all six variants", {
   sql <- hub_storyline_variants_sql()
   variants <- c(
     "starters_hi",

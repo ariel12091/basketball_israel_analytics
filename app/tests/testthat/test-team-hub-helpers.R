@@ -29,6 +29,121 @@ ff_df <- data.frame(
   off_ftr = c(25, 22, 20)
 )
 
+preset_params <- function(...) {
+  base <- list(
+    game_year = 2026L,
+    start_d = as.Date("2025-10-01"),
+    end_d = as.Date("2026-07-01"),
+    game_type_csv = NA_character_,
+    team_ids_csv = NA_character_,
+    opp_ids_csv = NA_character_,
+    home_away = NA_character_,
+    outcome = NA_character_,
+    opp_rank_side = NA_character_,
+    opp_rank_n = NA_integer_,
+    opp_rank_metric = NA_character_,
+    max_margin = NA_integer_,
+    margin_status = NA_character_,
+    max_time_remaining = NA_integer_,
+    ot_margin_filter = FALSE,
+    min_gn = NA_integer_,
+    max_gn = NA_integer_,
+    last_n_games = NA_integer_,
+    num_starters_off = NA_integer_,
+    num_starters_def = NA_integer_,
+    num_starters_off_min = NA_integer_,
+    num_starters_off_max = NA_integer_,
+    num_starters_def_min = NA_integer_,
+    num_starters_def_max = NA_integer_
+  )
+  utils::modifyList(base, list(...))
+}
+
+preset_season_bounds <- list(
+  start = as.Date("2025-10-01"),
+  end = as.Date("2026-07-01")
+)
+
+test_that("team rating preset matcher recognizes exact persisted variants", {
+  expect_equal(
+    team_ratings_preset_variant(preset_params(), preset_season_bounds),
+    "overall"
+  )
+  expect_equal(
+    team_ratings_preset_variant(
+      preset_params(
+        team_ids_csv = "10",
+        num_starters_off_min = 3L,
+        num_starters_off_max = 5L
+      ),
+      preset_season_bounds
+    ),
+    "starters_hi"
+  )
+  expect_equal(
+    team_ratings_preset_variant(
+      preset_params(num_starters_off_min = 0L, num_starters_off_max = 2L),
+      preset_season_bounds
+    ),
+    "starters_lo"
+  )
+  expect_equal(
+    team_ratings_preset_variant(
+      preset_params(max_margin = 5L, max_time_remaining = 300L),
+      preset_season_bounds
+    ),
+    "clutch"
+  )
+  expect_equal(
+    team_ratings_preset_variant(
+      preset_params(last_n_games = 10L),
+      preset_season_bounds
+    ),
+    "last10"
+  )
+  expect_equal(
+    team_ratings_preset_variant(
+      preset_params(
+        opp_rank_side = "top",
+        opp_rank_n = 4L,
+        opp_rank_metric = "net"
+      ),
+      preset_season_bounds
+    ),
+    "top4"
+  )
+  expect_equal(
+    team_ratings_preset_variant(
+      preset_params(
+        opp_rank_side = "bottom",
+        opp_rank_n = 4L,
+        opp_rank_metric = "net"
+      ),
+      preset_season_bounds
+    ),
+    "bottom4"
+  )
+})
+
+test_that("team rating preset matcher rejects non-exact filters", {
+  expect_true(is.na(team_ratings_preset_variant(
+    preset_params(start_d = as.Date("2025-11-01")),
+    preset_season_bounds
+  )))
+  expect_true(is.na(team_ratings_preset_variant(
+    preset_params(home_away = "home"),
+    preset_season_bounds
+  )))
+  expect_true(is.na(team_ratings_preset_variant(
+    preset_params(
+      opp_rank_side = "top",
+      opp_rank_n = 5L,
+      opp_rank_metric = "net"
+    ),
+    preset_season_bounds
+  )))
+})
+
 test_that("hub_default_team prefers a valid remembered id", {
   expect_equal(hub_default_team("20", teams_df, ratings_df), "20")
 })

@@ -12,7 +12,11 @@ hub_fetch_team_ratings <- function(gy, ver) {
           pg_pool,
           "SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,
                   games_played, wins, losses, off_poss, def_poss,
-                  rank_net_rtg, rank_off_ppp, rank_def_ppp
+                  rank_net_rtg, rank_off_ppp, rank_def_ppp,
+                  off_fga, off_layup_att, off_dunk_att, off_fg3_att,
+                  off_c3_att, off_c3_known_att,
+                  def_fga, def_layup_att, def_dunk_att, def_fg3_att,
+                  def_c3_att, def_c3_known_att
              FROM basketball_test.team_ppp_ratings_mv
             WHERE game_year = $1::int4
             ORDER BY rank_net_rtg",
@@ -42,9 +46,36 @@ hub_fetch_team_ff <- function(gy, ver) {
   )
 }
 
-# One database round trip for all six Storyline contexts. PostgreSQL still
-# evaluates each filtered context independently, but avoids six pool checkouts
-# and five extra network round trips.
+# Shared by Team Hub and matching Compare presets. NULL means the persisted
+# table is unavailable and callers should use the dynamic fallback.
+hub_fetch_team_ratings_presets <- function(gy, ver) {
+  cached_season_df(
+    list("team_ratings_preset_cache", as.integer(gy), ver),
+    function() {
+      tryCatch(
+        db_get_query(
+          pg_pool,
+          "SELECT preset_variant AS hub_variant,
+                  game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,
+                  games_played, wins, losses, off_poss, def_poss,
+                  rank_net_rtg, rank_off_ppp, rank_def_ppp,
+                  off_fga, off_layup_att, off_dunk_att, off_fg3_att,
+                  off_c3_att, off_c3_known_att,
+                  def_fga, def_layup_att, def_dunk_att, def_fg3_att,
+                  def_c3_att, def_c3_known_att
+             FROM basketball_test.team_ratings_preset_cache
+            WHERE game_year = $1::int4
+            ORDER BY preset_variant, rank_net_rtg",
+          params = list(as.integer(gy))
+        ),
+        error = function(e) NULL
+      )
+    }
+  )
+}
+
+# Safety fallback for deployments where the persisted table has not been
+# created yet. It remains batched into one database round trip.
 hub_storyline_variants_sql <- function() {
   paste(
     c(
@@ -304,11 +335,15 @@ server_team_hub <- function(input, output, session, shared) {
     )
   })
 
-  # League-wide dynamic pulls are batched into one cached database request.
+  # Prefer the ETL-refreshed preset table. During a rolling deployment, fall
+  # back to the previous batched dynamic query if that table is unavailable.
   hub_dyn_all_df <- reactive({
     gy <- hub_gy()
+    persisted <- hub_fetch_team_ratings_presets(gy, hub_ver())
+    if (!is.null(persisted)) return(persisted)
+
     cached_season_df(
-      list("hub_team_dyn_all", gy, hub_ver()),
+      list("hub_team_dyn_all_fallback", gy, hub_ver()),
       function() {
         allowed <- guard_heavy_request(
           session,

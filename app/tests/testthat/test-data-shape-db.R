@@ -92,6 +92,16 @@ test_that("live DB has the app-required shape for default MVs", {
     "net_rtg", "games_played", "wins", "losses", "off_poss", "def_poss"
   ))
 
+  expect_has_columns("team_ratings_preset_cache", c(
+    "preset_variant", "game_year", "team_id", "team_name",
+    "off_ppp", "def_ppp", "net_rtg", "games_played", "wins", "losses",
+    "off_poss", "def_poss", "rank_net_rtg", "rank_off_ppp", "rank_def_ppp",
+    "off_fga", "off_layup_att", "off_dunk_att", "off_fg3_att",
+    "off_c3_att", "off_c3_known_att",
+    "def_fga", "def_layup_att", "def_dunk_att", "def_fg3_att",
+    "def_c3_att", "def_c3_known_att", "refreshed_at"
+  ))
+
   expect_has_columns("team_four_factors_mv", c(
     "team_id", "game_year", "team_name",
     "off_ts", "off_efg", "off_oreb", "off_tov", "off_ftr", "off_ppp", "off_poss",
@@ -148,6 +158,7 @@ test_that("live DB functions used by render paths return app-required columns", 
 test_that("live DB has data behind the main app tabs for current season", {
   expect_has_rows('SELECT EXISTS(SELECT 1 FROM basketball_test.onoff_default_mv WHERE "Year" = $1::int4 LIMIT 1) AS has_rows', list(2026L))
   expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_ppp_ratings_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
+  expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_ratings_preset_cache WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
   expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_four_factors_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
   expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.player_traditional_stats_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
   expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_metrics_by_game_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))

@@ -997,6 +997,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       "[DRY RUN] Would incrementally refresh table: player_advanced_stats_mv for %d game(s)",
       length(processed_ids)
     ))
+    log_msg(sprintf(
+      "[DRY RUN] Would refresh table: team_ratings_preset_cache for %d game(s)' affected season(s)",
+      length(processed_ids)
+    ))
     log_msg("[DRY RUN] Would refresh materialized view: player_traditional_stats_mv (if exists)")
     if (isTRUE(force_full_sub_lineup_stats)) {
       log_msg("[DRY RUN] Would force full sub_lineups_stats refresh")
@@ -1179,6 +1183,32 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
           }
         }
       }
+
+      if (!isTRUE(fn_exists("refresh_team_ratings_preset_cache_for_games"))) {
+        stop("Missing function basketball_test.refresh_team_ratings_preset_cache_for_games(int4[])")
+      }
+
+      ids_csv <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
+      preset_t0 <- proc.time()
+      preset_touch <- DBI::dbGetQuery(
+        pg,
+        sprintf(
+          "SELECT refresh_team_ratings_preset_cache_for_games(ARRAY[%s]::int4[]) AS n",
+          ids_csv
+        )
+      )$n[[1]]
+      preset_cnt <- DBI::dbGetQuery(
+        pg,
+        "SELECT count(*) AS n FROM team_ratings_preset_cache"
+      )$n[[1]]
+      preset_elapsed <- (proc.time() - preset_t0)["elapsed"]
+      log_msg(sprintf(
+        "  [INC] team_ratings_preset_cache refreshed for %d game(s)' affected season(s) - wrote %s rows, total %s (%.1fs)",
+        length(processed_ids),
+        format(as.integer(preset_touch), big.mark = ","),
+        format(as.integer(preset_cnt), big.mark = ","),
+        preset_elapsed
+      ))
 
       DBI::dbCommit(pg)
       elapsed <- (proc.time() - t0)["elapsed"]
@@ -1503,6 +1533,29 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     )$n[[1]]
     if (dup_pas > 0) {
       msg <- sprintf("  Integrity FAILED: %s duplicate key group(s) in %s.player_advanced_stats_mv (game_year, team_id, player_id)", dup_pas, SCHEMA)
+      log_msg(msg, "ERROR")
+      mark_phase_failed("Phase 6", msg)
+    }
+
+    dup_presets <- DBI::dbGetQuery(
+      pg,
+      sprintf(
+        "SELECT count(*) AS n
+         FROM (
+           SELECT game_year, preset_variant, team_id
+           FROM \"%s\".\"team_ratings_preset_cache\"
+           GROUP BY 1,2,3
+           HAVING count(*) > 1
+         ) d",
+        SCHEMA
+      )
+    )$n[[1]]
+    if (dup_presets > 0) {
+      msg <- sprintf(
+        "  Integrity FAILED: %s duplicate key group(s) in %s.team_ratings_preset_cache (game_year, preset_variant, team_id)",
+        dup_presets,
+        SCHEMA
+      )
       log_msg(msg, "ERROR")
       mark_phase_failed("Phase 6", msg)
     }
