@@ -7,6 +7,7 @@ source("R/helpers.R", local = TRUE)
 source("R/global.R", local = TRUE)
 source("R/logger.R", local = TRUE)
 source("R/mod_lineup_player_filter.R", local = TRUE)
+source("R/mod_team_hub.R", local = TRUE)
 source("R/ui_tab0_home.R", local = TRUE)
 source("R/ui_tab1_onoff.R", local = TRUE)
 source("R/ui_tab2_lineup.R", local = TRUE)
@@ -358,6 +359,12 @@ server <- function(input, output, session) {
     fetch_teams_min(gy_int)
     fetch_gn_values(gy_int)
     fetch_players_basic(gy_int)
+    ver <- tryCatch(
+      shared_data_version(list(data_version = data_version_cache)),
+      error = function(e) "unknown"
+    )
+    hub_fetch_team_ratings(gy_int, ver)
+    hub_fetch_team_ff(gy_int, ver)
     invisible(NULL)
   }
 
@@ -527,6 +534,7 @@ server <- function(input, output, session) {
   server_tab4(input, output, session, shared)
   server_tab5_traditional(input, output, session, shared)
   server_tab7_compare(input, output, session, shared)
+  server_team_hub(input, output, session, shared)
 
   observe({
     teams <- shared$teams_for_year_df()

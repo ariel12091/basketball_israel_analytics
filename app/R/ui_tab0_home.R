@@ -33,6 +33,8 @@ ui_tab0_home <- tabPanel(
         )
       ),
 
+      team_hub_ui(),
+
       # Row 1
       fluidRow(style = "align-items: stretch;",
         column(
