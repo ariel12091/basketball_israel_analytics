@@ -149,6 +149,15 @@ rebuild_all_mvs(skip = "final_schedule_mv")  # skip specific MVs
 
 **`sub_lineups_stats` design:** Pre-computed table for fast-path lineup queries. Populated by `refresh_sub_lineups_stats()` (called in ETL). Includes 8 shooting split columns (off/def × fg2/fg3 × made/att). Unique key: `(team_id, sub_lineup_hash, game_year)`.
 
+**Starters-keyed lineup MVs:** `mv_lineup_totals_by_day` and
+`lineup_four_factors_by_game` are keyed by own starters (`num_starters`) plus
+`opp_starters`. Their unique indexes use `NULLS NOT DISTINCT`, and separate
+starter-leading indexes serve season/own/opp predicates. Minutes preserve the
+canonical `segment_seconds` budget, split it across contiguous opponent-count
+windows, and attach only windows containing offense rows. After rebuilding
+`lineup_four_factors_by_game`, also rebuild `team_metrics_by_game_mv` and
+`team_metrics_rolling_mv` so their canonical-minute snapshots stay aligned.
+
 **Function → MV mapping:**
 - `onoff_compute` → `player_onoff_by_game`, `final_schedule_mv`
 - `four_factors_compute` → `lineup_four_factors_by_game`, `final_schedule_mv`
@@ -261,6 +270,14 @@ In Tab 2 (Lineup Data), player name columns are clickable links (both Summary an
 ## Clutch Time Filter
 
 Available in Tab 2 (Lineup Data) and Tab 3 (Team Ratings). Not in Tab 1 (On/Off Impact).
+
+Starter filters are not clutch filters. In the Tab 2 functions,
+`v_clutch_active` covers margin/status/time only; starters-only requests use
+the pre-aggregated lineup MVs with uniform semantics on every row:
+`num_starters` is the reporting lineup's own count and `opp_starters` is the
+opponent count. Summary's `sub_lineups_stats` fast path still requires no
+starter filters, while the Four Factors fast path supports starter predicates
+directly.
 
 **UI Controls:**
 - Enable checkbox → conditionalPanel with:
