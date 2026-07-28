@@ -10,19 +10,42 @@ test_that("team hub reserves an accessible loading card for storylines", {
   expect_match(html, 'aria-live="polite"', fixed = TRUE)
 })
 
-test_that("team hub marks storylines ready after rendering", {
+test_that("team hub resolves its default before the selector round trip", {
   shared <- make_shared()
   reset_mock_db_query_counts()
 
   shiny::testServer(function(input, output, session) {
     server_team_hub(input, output, session, shared)
   }, {
-    session$setInputs(home_team = "1")
     session$flushReact()
 
     expect_equal(shiny::isolate(shared$hub_storylines_ready_year()), 2026L)
+    expect_gt(mock_db_query_count("team_ppp_ratings_mv"), 0L)
     expect_equal(mock_db_query_count("team_ratings_preset_cache"), 1L)
     expect_equal(mock_db_query_count("hub_storylines_batch"), 0L)
+  })
+})
+
+test_that("team hub keeps the resolved team in sync with manual selection", {
+  shared <- make_shared()
+
+  shiny::testServer(function(input, output, session) {
+    server_team_hub(input, output, session, shared)
+  }, {
+    session$flushReact()
+    expect_match(
+      paste(as.character(output$hub_identity), collapse = ""),
+      "Team A",
+      fixed = TRUE
+    )
+
+    session$setInputs(home_team = "2")
+    session$flushReact()
+    expect_match(
+      paste(as.character(output$hub_identity), collapse = ""),
+      "Team B",
+      fixed = TRUE
+    )
   })
 })
 

@@ -154,6 +154,7 @@ team_hub_ui <- function() {
 
 server_team_hub <- function(input, output, session, shared) {
   hub_auto_selected <- reactiveVal("")
+  hub_resolved_team_id <- reactiveVal("")
   hub_remembered_seen <- reactiveVal(FALSE)
 
   # Populate the selector and choose remembered team when it first arrives.
@@ -191,6 +192,9 @@ server_team_hub <- function(input, output, session, shared) {
       hub_default_team("", teams, ratings)
     }
 
+    # Release Hub outputs immediately. Waiting for updateSelectizeInput() to
+    # make a browser round trip adds avoidable startup latency.
+    hub_resolved_team_id(selected)
     updateSelectizeInput(
       session,
       "home_team",
@@ -209,6 +213,15 @@ server_team_hub <- function(input, output, session, shared) {
 
   observeEvent(input$home_team, {
     tid <- as.character(input$home_team %||% "")
+    teams <- shared$teams_for_year_df()
+    team_ids <- if (!is.null(teams) && nrow(teams)) {
+      as.character(teams$team_id)
+    } else {
+      character(0)
+    }
+    if (length(tid) == 1L && (!nzchar(tid) || tid %in% team_ids)) {
+      hub_resolved_team_id(tid)
+    }
     if (length(tid) == 1L && nzchar(tid)) {
       session$sendCustomMessage(
         "ibpl-store-hub-team",
@@ -224,7 +237,7 @@ server_team_hub <- function(input, output, session, shared) {
     gy
   })
   hub_team_id <- reactive({
-    tid <- as.character(input$home_team %||% "")
+    tid <- as.character(hub_resolved_team_id() %||% "")
     req(nzchar(tid))
     tid
   })

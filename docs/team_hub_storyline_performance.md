@@ -106,6 +106,23 @@ Files:
 - `app/R/mod_team_hub.R`
 - `app/R/server_tab7_compare.R`
 
+### 5. Removed the team selector browser round trip from the critical path
+
+The Home selector starts without choices. Previously, Hub outputs waited for
+the server to load teams and overall ratings, send the default selection to the
+browser, and receive `input$home_team` back.
+
+The server now stores the resolved default or remembered team immediately and
+uses that internal value for Hub outputs. The visible selector synchronizes
+afterward, while manual selector changes continue to update the internal team.
+This removes one client/server round trip from Storylines startup without
+changing team-selection behavior.
+
+Files:
+
+- `app/R/mod_team_hub.R`
+- `app/tests/testthat/test-team-hub-ui.R`
+
 ## Measured result
 
 Read-only benchmarks against the configured live database returned the same 84
