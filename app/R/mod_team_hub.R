@@ -174,6 +174,78 @@ server_team_hub <- function(input, output, session, shared) {
     )
   })
 
+  # League-wide dynamic pulls: one per storyline variant, season and ETL cycle.
+  hub_dyn_variants <- list(
+    starters_hi = list(off_min = 3L, off_max = 5L),
+    starters_lo = list(off_min = 0L, off_max = 2L),
+    clutch = list(max_margin = 5L, max_time = 300L),
+    last10 = list(last_n = 10L)
+  )
+
+  hub_dyn_df <- function(variant) {
+    gy <- hub_gy()
+    variant_args <- hub_dyn_variants[[variant]]
+    if (is.null(variant_args)) return(NULL)
+    allowed <- guard_heavy_request(
+      session,
+      key = "hub_storylines",
+      max_calls = 20L,
+      window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(NULL)
+    cached_season_df(
+      list("hub_team_dyn", variant, gy, hub_ver()),
+      function() {
+        tryCatch(
+          db_get_query(
+            pg_pool,
+            paste0(
+              "SELECT * FROM basketball_test.get_team_ratings_dynamic(",
+              "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,",
+              "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,",
+              "$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4",
+              ")"
+            ),
+            params = list(
+              gy,
+              NA,
+              NA,
+              NA_character_,
+              NA_character_,
+              NA_character_,
+              NA_character_,
+              NA_character_,
+              NA_integer_,
+              NA_character_,
+              variant_args$max_margin %||% NA_integer_,
+              NA_character_,
+              variant_args$max_time %||% NA_integer_,
+              FALSE,
+              NA_integer_,
+              NA_integer_,
+              variant_args$last_n %||% NA_integer_,
+              NA_integer_,
+              NA_integer_,
+              variant_args$off_min %||% NA_integer_,
+              variant_args$off_max %||% NA_integer_,
+              NA_integer_,
+              NA_integer_
+            )
+          ),
+          error = function(e) NULL
+        )
+      }
+    )
+  }
+
+  hub_team_row <- function(df) {
+    tid <- suppressWarnings(as.integer(hub_team_id()))
+    if (is.null(df) || !nrow(df) || !is.finite(tid)) return(NULL)
+    row <- df[as.integer(df$team_id) == tid, , drop = FALSE]
+    if (!nrow(row)) return(NULL)
+    row[1, , drop = FALSE]
+  }
+
   # ---- Identity card ----
   output$hub_identity <- renderUI({
     info <- hub_identity_data(hub_ratings_df(), hub_ff_df(), hub_team_id())
@@ -355,5 +427,63 @@ server_team_hub <- function(input, output, session, shared) {
     if (nzchar(tid)) shared$pending_ld_team(tid)
     updateRadioButtons(session, "ld_num", selected = "5")
     updateTabsetPanel(session, "main_tabs", selected = "lineup_data")
+  })
+
+  output$hub_storylines <- renderUI({
+    overall <- hub_team_row(hub_ratings_df())
+    fetch_pair <- function(id) {
+      switch(
+        id,
+        starters_bench = list(
+          a = hub_team_row(hub_dyn_df("starters_hi")),
+          b = hub_team_row(hub_dyn_df("starters_lo"))
+        ),
+        clutch = list(
+          a = hub_team_row(hub_dyn_df("clutch")),
+          b = overall
+        ),
+        last10 = list(
+          a = hub_team_row(hub_dyn_df("last10")),
+          b = overall
+        ),
+        NULL
+      )
+    }
+    lines <- hub_storyline_lines(hub_storyline_specs(), fetch_pair)
+    if (!length(lines)) return(NULL)
+    div(
+      class = "card bg-dark border-secondary mb-4 hub-card-static",
+      div(
+        class = "card-body",
+        tags$h6(class = "hub-block-title", "Storylines"),
+        lapply(lines, function(line) {
+          tags$span(
+            class = "hub-story-line js-shiny-event",
+            `data-input-id` = "hub_story_click",
+            `data-shiny-value` = line$id,
+            line$text
+          )
+        })
+      )
+    )
+  })
+
+  observeEvent(input$hub_story_click, {
+    storyline_id <- as.character(input$hub_story_click %||% "")
+    specs <- hub_storyline_specs()
+    spec <- NULL
+    for (candidate in specs) {
+      if (identical(candidate$id, storyline_id)) spec <- candidate
+    }
+    if (is.null(spec)) return()
+    if (nzchar(spec$preset)) {
+      shared$pending_compare_preset(list(
+        preset = spec$preset,
+        team_id = as.character(input$home_team %||% "")
+      ))
+      updateTabsetPanel(session, "main_tabs", selected = "compare")
+    } else {
+      updateTabsetPanel(session, "main_tabs", selected = "team_ratings")
+    }
   })
 }
