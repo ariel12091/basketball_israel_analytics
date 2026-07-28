@@ -415,6 +415,7 @@ server <- function(input, output, session) {
 
   last_updated_cache <- reactiveVal(NA_character_)
   data_version_cache <- reactiveVal(NA_character_)
+  hub_storylines_ready_year <- reactiveVal(NA_integer_)
 
   refresh_last_updated <- function() {
     ts <- last_success_db()
@@ -443,22 +444,32 @@ server <- function(input, output, session) {
     last_updated_cache() %||% "Last updated: unavailable"
   })
 
+  # Storylines own the first expensive startup query batch. Reset the handoff
+  # whenever the season changes; the Home module releases prewarm after its
+  # Storylines output finishes for that season.
   observeEvent(selected_game_year(), {
+    hub_storylines_ready_year(NA_integer_)
+  }, ignoreInit = FALSE, priority = 200)
+
+  observe({
+    gy <- suppressWarnings(as.integer(selected_game_year()))
+    req(is.finite(gy))
+    req(identical(hub_storylines_ready_year(), gy))
     tryCatch(
       {
-        prewarm_for_year(selected_game_year())
-        log_startup(sprintf("prewarm complete for season %s", selected_game_year()))
+        prewarm_for_year(gy)
+        log_startup(sprintf("prewarm complete for season %s", gy))
       },
       error = function(e) {
         app_log(
           "startup",
-          sprintf("prewarm failed for season %s: %s", selected_game_year(), conditionMessage(e)),
+          sprintf("prewarm failed for season %s: %s", gy, conditionMessage(e)),
           level = "ERROR",
           session = session
         )
       }
     )
-  }, ignoreInit = FALSE)
+  }, priority = -100)
 
   observeEvent(input$open_glossary, {
     showModal(
@@ -522,6 +533,7 @@ server <- function(input, output, session) {
     selected_opp_ids_on = selected_opp_ids_on,
     selected_opp_ids_ld = selected_opp_ids_ld,
     data_version = data_version_cache,
+    hub_storylines_ready_year = hub_storylines_ready_year,
     pending_ld_team = reactiveVal(NULL),
     pending_gl_team = reactiveVal(NULL),
     pending_compare_preset = reactiveVal(NULL)

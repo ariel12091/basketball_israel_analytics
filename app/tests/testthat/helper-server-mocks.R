@@ -528,6 +528,7 @@ make_shared <- function(data_version = shiny::reactiveVal("test-etl-v1")) {
     selected_opp_ids_on = shiny::reactive({ NULL }),
     selected_opp_ids_ld = shiny::reactive({ NULL }),
     data_version = data_version,
+    hub_storylines_ready_year = shiny::reactiveVal(NA_integer_),
     pending_ld_team = pending_ld_team,
     pending_gl_team = pending_gl_team,
     pending_compare_preset = pending_compare_preset

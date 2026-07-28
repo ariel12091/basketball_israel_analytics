@@ -528,6 +528,19 @@ server_team_hub <- function(input, output, session, shared) {
   })
 
   output$hub_storylines <- renderUI({
+    gy <- hub_gy()
+    hub_team_id()
+    mark_storylines_ready <- shared$hub_storylines_ready_year
+    if (is.function(mark_storylines_ready)) {
+      on.exit(
+        session$onFlushed(
+          function() mark_storylines_ready(gy),
+          once = TRUE
+        ),
+        add = TRUE
+      )
+    }
+
     fetch_pair <- function(id) {
       switch(
         id,
@@ -582,6 +595,12 @@ server_team_hub <- function(input, output, session, shared) {
       )
     )
   })
+  outputOptions(
+    output,
+    "hub_storylines",
+    priority = 100,
+    suspendWhenHidden = FALSE
+  )
 
   observeEvent(input$hub_story_click, {
     storyline_id <- as.character(input$hub_story_click %||% "")
