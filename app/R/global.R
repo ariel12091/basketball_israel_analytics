@@ -10,11 +10,49 @@ library(bslib)
 library(htmltools)
 
 # ---------------- Defaults ----------------
-# Default season shown on load. To roll to a new season, bump this and add the
-# matching label to the navbar selectInput choices in app.R — nothing else.
+# Default season shown on load. To roll to a new season, add its static roster,
+# bump this value, and add the matching navbar label in app.R.
 DEFAULT_GAME_YEAR <- "2026"   # 25-26
-DEFAULT_HOME_TEAM_ID <- "4"
-DEFAULT_HOME_TEAM_NAME <- "HAPOEL JERUSALEM"
+
+# Season-aware team rosters used before the first database connection. Team IDs
+# are provider IDs and can be recycled between seasons, so each season needs an
+# explicit mapping.
+STATIC_TEAM_ROSTERS <- list(
+  `2026` = data.frame(
+    team_id = 2:15,
+    team_name = c(
+      "MACCABI TEL AVIV",
+      "HAPOEL TEL AVIV",
+      "HAPOEL JERUSALEM",
+      "HAPOEL HOLON",
+      "BNEI HERZLIYA",
+      "MACCABI RAMAT GAN",
+      "HAPOEL HAEMEK",
+      "NESS ZIONA",
+      "GALIL ELION",
+      "BEER SHEVA",
+      "KIRYAT ATA",
+      "MACCABI RAANANA",
+      "RISHON LEZION",
+      "ELIZUR NETANYA"
+    ),
+    stringsAsFactors = FALSE
+  )
+)
+
+static_team_roster <- function(gy) {
+  roster <- STATIC_TEAM_ROSTERS[[as.character(as.integer(gy))]]
+  if (is.null(roster)) return(NULL)
+  roster <- roster[order(roster$team_name), , drop = FALSE]
+  rownames(roster) <- NULL
+  roster
+}
+
+.INITIAL_HOME_TEAM <- hub_initial_team(
+  static_team_roster(DEFAULT_GAME_YEAR)
+)
+DEFAULT_HOME_TEAM_ID <- as.character(.INITIAL_HOME_TEAM$team_id[[1]])
+DEFAULT_HOME_TEAM_NAME <- as.character(.INITIAL_HOME_TEAM$team_name[[1]])
 DEFAULT_MIN_ALL <- 100L
 DEFAULT_MIN_ON  <- 300L
 DEFAULT_MIN_NET <- -1e9
@@ -230,6 +268,8 @@ db_get_query <- function(conn_or_pool, statement, params = NULL) {
 # Teams as stored (tabs 1, 3, 5, 6, 7 dropdowns).
 fetch_teams_distinct <- function(gy) {
   gy <- as.integer(gy)
+  static <- static_team_roster(gy)
+  if (!is.null(static)) return(static)
   cached_ref_query(
     key = sprintf("teams_distinct_%d", gy),
     query_fun = function() db_get_query(
@@ -246,6 +286,8 @@ fetch_teams_distinct <- function(gy) {
 # One row per team_id with a canonical name (tabs 2, 4).
 fetch_teams_min <- function(gy) {
   gy <- as.integer(gy)
+  static <- static_team_roster(gy)
+  if (!is.null(static)) return(static)
   cached_ref_query(
     key = sprintf("teams_min_%d", gy),
     query_fun = function() db_get_query(
@@ -385,9 +427,6 @@ pg_pool <- dbPool(
   idleTimeout = 15000
 )
 onStop(function() poolClose(pg_pool))
-
-# Pre-warm the connection pool (force SSL handshake at source time)
-tryCatch(db_get_query(pg_pool, "SELECT 1"), error = function(e) NULL)
 
 # Shared head tags
 shared_head_tags <- function() {

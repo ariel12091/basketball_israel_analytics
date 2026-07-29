@@ -680,6 +680,28 @@ ff_impact_legend <- function() {
 
 # ---------------- Team hub (Tab 0) pure helpers ----------------
 
+# Choose one initial Home team from a validated in-code season roster. Supplying
+# index is useful for deterministic tests; production leaves it NULL to sample.
+hub_initial_team <- function(teams_df, index = NULL) {
+  if (is.null(teams_df) ||
+      !is.data.frame(teams_df) ||
+      !nrow(teams_df) ||
+      !all(c("team_id", "team_name") %in% names(teams_df))) {
+    stop("Initial Home team roster is empty or invalid")
+  }
+  if (is.null(index)) {
+    index <- sample.int(nrow(teams_df), 1L)
+  }
+  index <- suppressWarnings(as.integer(index))
+  if (length(index) != 1L ||
+      is.na(index) ||
+      index < 1L ||
+      index > nrow(teams_df)) {
+    stop("Initial Home team index is out of range")
+  }
+  teams_df[index, c("team_id", "team_name"), drop = FALSE]
+}
+
 # Resolve the hub's default team: remembered id if it exists this season,
 # else the season's net-rating leader, else the first team, else "".
 hub_default_team <- function(remembered_id, teams_df, ratings_df) {

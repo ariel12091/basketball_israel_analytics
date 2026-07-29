@@ -11,6 +11,8 @@ test_that("Home initially renders its named default team as selected", {
     sprintf('option value="%s" selected', DEFAULT_HOME_TEAM_ID),
     fixed = TRUE
   )
+  expect_match(html, 'option value="2"', fixed = TRUE)
+  expect_match(html, "Team B", fixed = TRUE)
 })
 
 test_that("team hub reserves an accessible loading card for storylines", {

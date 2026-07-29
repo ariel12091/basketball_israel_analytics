@@ -28,9 +28,9 @@ ui_tab0_home <- tabPanel(
         selectizeInput(
           "home_team",
           label = NULL,
-          choices = stats::setNames(
-            DEFAULT_HOME_TEAM_ID,
-            DEFAULT_HOME_TEAM_NAME
+          choices = with(
+            static_team_roster(DEFAULT_GAME_YEAR),
+            stats::setNames(as.character(team_id), team_name)
           ),
           selected = DEFAULT_HOME_TEAM_ID,
           options = list(placeholder = "All teams", preload = "focus")

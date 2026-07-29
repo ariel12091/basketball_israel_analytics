@@ -12,6 +12,13 @@ DEFAULT_END <- as.Date("2025-07-01")
 DEFAULT_GAME_YEAR <- "2026"
 DEFAULT_HOME_TEAM_ID <- "1"
 DEFAULT_HOME_TEAM_NAME <- "Team A"
+static_team_roster <- function(gy) {
+  if (!identical(suppressWarnings(as.integer(gy)), 2026L)) return(NULL)
+  data.frame(
+    team_id = c(1L, 2L),
+    team_name = c("Team A", "Team B")
+  )
+}
 DEFAULT_MIN_ALL <- 100L
 DEFAULT_MIN_ON <- 300L
 DEFAULT_MIN_NET <- -1e9

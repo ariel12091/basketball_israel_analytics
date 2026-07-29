@@ -339,6 +339,9 @@ server <- function(input, output, session) {
 
   # ---- Shared helpers & reactives ----
   season_date_bounds <- season_date_bounds_for_year
+  last_updated_cache <- reactiveVal(NA_character_)
+  data_version_cache <- reactiveVal(NA_character_)
+  hub_storylines_ready_year <- reactiveVal(NA_integer_)
 
   selected_game_year <- reactive({
     input$game_year %||% DEFAULT_GAME_YEAR
@@ -348,6 +351,9 @@ server <- function(input, output, session) {
   teams_for_year_df <- reactive({
     gy_int <- as.integer(selected_game_year())
     req(gy_int)
+    if (is.null(static_team_roster(gy_int))) {
+      req(identical(hub_storylines_ready_year(), gy_int))
+    }
     fetch_teams_distinct(gy_int)
   })
 
@@ -413,9 +419,18 @@ server <- function(input, output, session) {
     }, error = function(e) NA_character_)
   }
 
-  last_updated_cache <- reactiveVal(NA_character_)
-  data_version_cache <- reactiveVal(NA_character_)
-  hub_storylines_ready_year <- reactiveVal(NA_integer_)
+  accept_data_version <- function(version) {
+    version <- trimws(as.character(version %||% ""))
+    if (!length(version) || is.na(version[[1]]) || !nzchar(version[[1]])) {
+      return(invisible(FALSE))
+    }
+    version <- version[[1]]
+    if (!identical(isolate(data_version_cache()), version)) {
+      data_version_cache(version)
+    }
+    last_updated_cache(paste("Last updated:", version))
+    invisible(TRUE)
+  }
 
   refresh_last_updated <- function() {
     ts <- last_success_db()
@@ -430,13 +445,31 @@ server <- function(input, output, session) {
     }
     has_ts <- length(ts) > 0 && !is.na(ts[[1]]) && nzchar(trimws(ts[[1]]))
     txt <- if (!has_ts) "Last updated: unavailable" else paste("Last updated:", ts[[1]])
-    if (has_ts) data_version_cache(trimws(ts[[1]]))
-    last_updated_cache(txt)
+    if (has_ts) {
+      accept_data_version(ts[[1]])
+    } else {
+      last_updated_cache(txt)
+    }
     invisible(NULL)
   }
 
+  last_updated_poll <- new.env(parent = emptyenv())
+  last_updated_poll$released <- FALSE
   observe({
+    gy <- suppressWarnings(as.integer(selected_game_year()))
+    req(is.finite(gy))
+    req(identical(hub_storylines_ready_year(), gy))
     invalidateLater(60000, session)
+
+    # Storylines normally supplies this timestamp in its first useful query.
+    # Avoid immediately querying app_meta for the same value again.
+    if (!isTRUE(last_updated_poll$released)) {
+      last_updated_poll$released <- TRUE
+      current <- isolate(data_version_cache())
+      if (length(current) && !is.na(current[[1]]) && nzchar(current[[1]])) {
+        return(invisible(NULL))
+      }
+    }
     refresh_last_updated()
   })
 
@@ -533,6 +566,7 @@ server <- function(input, output, session) {
     selected_opp_ids_on = selected_opp_ids_on,
     selected_opp_ids_ld = selected_opp_ids_ld,
     data_version = data_version_cache,
+    accept_data_version = accept_data_version,
     hub_storylines_ready_year = hub_storylines_ready_year,
     pending_ld_team = reactiveVal(NULL),
     pending_gl_team = reactiveVal(NULL),
