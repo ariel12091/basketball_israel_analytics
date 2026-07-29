@@ -48,9 +48,16 @@ static_team_roster <- function(gy) {
   roster
 }
 
-.INITIAL_HOME_TEAM <- hub_initial_team(
-  static_team_roster(DEFAULT_GAME_YEAR)
-)
+.INITIAL_HOME_ROSTER <- static_team_roster(DEFAULT_GAME_YEAR)
+if (is.null(.INITIAL_HOME_ROSTER) || !nrow(.INITIAL_HOME_ROSTER)) {
+  stop("Static team roster is missing for DEFAULT_GAME_YEAR")
+}
+.INITIAL_HOME_TEAM <- .INITIAL_HOME_ROSTER[
+  sample.int(nrow(.INITIAL_HOME_ROSTER), 1L),
+  c("team_id", "team_name"),
+  drop = FALSE
+]
+rm(.INITIAL_HOME_ROSTER)
 DEFAULT_HOME_TEAM_ID <- as.character(.INITIAL_HOME_TEAM$team_id[[1]])
 DEFAULT_HOME_TEAM_NAME <- as.character(.INITIAL_HOME_TEAM$team_name[[1]])
 DEFAULT_MIN_ALL <- 100L
