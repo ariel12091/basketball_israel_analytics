@@ -49,8 +49,22 @@ A season-specific readiness handoff coordinates startup:
 4. Release the lower-priority season-data prewarm.
 
 This prevents the general cache prewarm from taking the database connection
-before Storylines. The source-time `SELECT 1` SSL/pool handshake still happens
-first because all database-backed outputs require a live connection.
+before Storylines. The pool is created at source time, but the SSL/database
+connection is now opened lazily by the first database-backed request.
+
+The initial Home selector renders a randomly chosen team from the in-code 2026
+roster before a database connection exists. The complete 2026 team list is
+also available without a query. The other Home cards, last-updated poll, and
+general prewarming remain behind the Storylines readiness handoff. The
+preset-cache query also returns the ETL data version, avoiding a separate
+metadata request and duplicate Storylines fetch during the initial render.
+
+On a preset-cache miss, the server log records the first Storylines database
+request as `hub_storylines_perf`, with separate `checkout_ms`, `sql_ms`, and
+`total_ms` fields. `checkout_ms` covers pool checkout and any new
+DNS/TCP/TLS/authentication work; `sql_ms` covers PostgreSQL execution plus
+result transfer. This distinguishes connection startup from query cost without
+adding an extra diagnostic query.
 
 Files:
 
@@ -118,11 +132,13 @@ afterward, while manual selector changes continue to update the internal team.
 This removes one client/server round trip from Storylines startup without
 changing team-selection behavior.
 
-The initial HTML now includes `HAPOEL JERUSALEM` (team ID `4`) as a named,
-selected choice, and the server-side Hub state starts with that same ID.
-Storylines can therefore start before either the team-list query or selector
-synchronization. The full list still replaces the one initial choice, and a
-valid saved user preference may override the default afterward.
+The app now carries the complete 2026 team ID/name roster in code. Each R app
+worker chooses one team randomly at startup, and both the initial selectize
+selection and server-side Hub state start with that same ID. All 14 choices are
+present in the initial HTML, while `fetch_teams_distinct(2026)` and
+`fetch_teams_min(2026)` return the in-code roster without querying the
+database. Storylines can therefore start before selector synchronization, and
+a valid saved user preference may override the random choice afterward.
 
 Files:
 

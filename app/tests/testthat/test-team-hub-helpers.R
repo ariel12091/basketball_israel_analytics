@@ -163,6 +163,17 @@ test_that("hub_default_team returns empty string with no teams", {
   expect_equal(hub_default_team("20", teams_df[0, ], ratings_df), "")
 })
 
+test_that("hub_initial_team selects one row from an in-code roster", {
+  roster <- data.frame(
+    team_id = c(2L, 4L, 15L),
+    team_name = c("A", "B", "C")
+  )
+
+  expect_equal(hub_initial_team(roster, index = 2L)$team_id, 4L)
+  expect_error(hub_initial_team(roster, index = 4L), "out of range")
+  expect_error(hub_initial_team(NULL), "empty or invalid")
+})
+
 test_that("hub_identity_data returns team row, league size and ff row", {
   info <- hub_identity_data(ratings_df, ff_df, "20")
   expect_equal(info$row$team_name, "Beta")

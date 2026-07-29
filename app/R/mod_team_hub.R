@@ -3,6 +3,58 @@
 # because it drives top-level inputs (main_tabs, home_team, teams).
 
 # File-scope fetchers let app.R prewarm the same cache keys.
+hub_db_get_query_timed <- function(
+  statement,
+  params = NULL,
+  label,
+  session = NULL
+) {
+  # Server-test mocks are not real pool objects; preserve their normal query
+  # path while profiling production pool checkout and SQL separately.
+  if (!inherits(pg_pool, "Pool")) {
+    return(db_get_query(pg_pool, statement, params = params))
+  }
+
+  total_started <- proc.time()[["elapsed"]]
+  checkout_ms <- NA_real_
+  sql_ms <- NA_real_
+  status <- "ok"
+  conn <- NULL
+
+  on.exit({
+    total_ms <- (proc.time()[["elapsed"]] - total_started) * 1000
+    if (exists("app_log", mode = "function")) {
+      app_log(
+        "hub_storylines_perf",
+        sprintf(
+          "%s checkout_ms=%.1f sql_ms=%.1f total_ms=%.1f status=%s",
+          label,
+          checkout_ms,
+          sql_ms,
+          total_ms,
+          status
+        ),
+        session = session
+      )
+    }
+  }, add = TRUE)
+
+  tryCatch({
+    checkout_started <- proc.time()[["elapsed"]]
+    conn <- pool::poolCheckout(pg_pool)
+    checkout_ms <- (proc.time()[["elapsed"]] - checkout_started) * 1000
+    on.exit(pool::poolReturn(conn), add = TRUE)
+
+    sql_started <- proc.time()[["elapsed"]]
+    out <- db_get_query(conn, statement, params = params)
+    sql_ms <- (proc.time()[["elapsed"]] - sql_started) * 1000
+    out
+  }, error = function(e) {
+    status <<- "error"
+    stop(e)
+  })
+}
+
 hub_fetch_team_ratings <- function(gy, ver) {
   cached_season_df(
     list("team_ppp_ratings_mv", as.integer(gy), ver),
@@ -48,13 +100,13 @@ hub_fetch_team_ff <- function(gy, ver) {
 
 # Shared by Team Hub and matching Compare presets. NULL means the persisted
 # table is unavailable and callers should use the dynamic fallback.
-hub_fetch_team_ratings_presets <- function(gy, ver) {
+hub_fetch_team_ratings_presets <- function(gy, ver, session = NULL) {
+  gy <- as.integer(gy)
   cached_season_df(
-    list("team_ratings_preset_cache", as.integer(gy), ver),
+    list("team_ratings_preset_cache", gy, ver),
     function() {
-      tryCatch(
-        db_get_query(
-          pg_pool,
+      out <- tryCatch(
+        hub_db_get_query_timed(
           "SELECT preset_variant AS hub_variant,
                   game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,
                   games_played, wins, losses, off_poss, def_poss,
@@ -62,14 +114,43 @@ hub_fetch_team_ratings_presets <- function(gy, ver) {
                   off_fga, off_layup_att, off_dunk_att, off_fg3_att,
                   off_c3_att, off_c3_known_att,
                   def_fga, def_layup_att, def_dunk_att, def_fg3_att,
-                  def_c3_att, def_c3_known_att
+                  def_c3_att, def_c3_known_att,
+                  (SELECT value
+                     FROM basketball_test.app_meta
+                    WHERE key = 'etl_full_last_success'
+                    LIMIT 1) AS data_version
              FROM basketball_test.team_ratings_preset_cache
             WHERE game_year = $1::int4
             ORDER BY preset_variant, rank_net_rtg",
-          params = list(as.integer(gy))
+          params = list(gy),
+          label = sprintf("preset_cache season=%d", gy),
+          session = session
         ),
         error = function(e) NULL
       )
+      if (is.null(out)) return(NULL)
+
+      data_version <- if ("data_version" %in% names(out) && nrow(out)) {
+        trimws(as.character(out$data_version[[1]] %||% ""))
+      } else {
+        ""
+      }
+      if (length(data_version) != 1L || is.na(data_version)) data_version <- ""
+      out$data_version <- NULL
+      if (nzchar(data_version)) {
+        attr(out, "data_version") <- data_version
+
+        # The first Storylines request starts with an unknown cache version.
+        # Seed the resolved key before publishing the version so its immediate
+        # reactive rerender does not make a second database request.
+        if (!identical(data_version, as.character(ver %||% ""))) {
+          GL_DATA_CACHE$set(
+            rlang::hash(list("team_ratings_preset_cache", gy, data_version)),
+            out
+          )
+        }
+      }
+      out
     }
   )
 }
@@ -158,7 +239,7 @@ server_team_hub <- function(input, output, session, shared) {
   hub_remembered_seen <- reactiveVal(FALSE)
 
   # Populate the selector and choose remembered team when it first arrives.
-  # If localStorage arrives just after the leader fallback, it may replace that
+  # If localStorage arrives just after the random fallback, it may replace that
   # automatic choice, but it never replaces a different valid user selection.
   observe({
     teams <- shared$teams_for_year_df()
@@ -172,6 +253,10 @@ server_team_hub <- function(input, output, session, shared) {
     current_valid <- length(current) == 1L &&
       nzchar(current) &&
       current %in% team_ids
+    resolved <- as.character(hub_resolved_team_id() %||% "")
+    resolved_valid <- length(resolved) == 1L &&
+      nzchar(resolved) &&
+      resolved %in% team_ids
     remembered_received <- !is.null(input$hub_remembered_team)
     remembered <- as.character(input$hub_remembered_team %||% "")
     remembered_valid <- length(remembered) == 1L &&
@@ -184,8 +269,7 @@ server_team_hub <- function(input, output, session, shared) {
     # The initial named choice is already valid, so avoid delaying selector
     # synchronization on a ratings query. Ratings are only needed when the
     # current/default/remembered team cannot be used.
-    needs_ratings <- (may_apply_remembered && !remembered_valid) ||
-      (!may_apply_remembered && !current_valid)
+    needs_ratings <- !remembered_valid && !current_valid && !resolved_valid
     ratings <- if (needs_ratings) {
       tryCatch(
         hub_fetch_team_ratings(
@@ -199,10 +283,10 @@ server_team_hub <- function(input, output, session, shared) {
     }
     selected <- if (may_apply_remembered && remembered_valid) {
       remembered
-    } else if (may_apply_remembered) {
-      hub_default_team("", teams, ratings)
     } else if (current_valid) {
       current
+    } else if (resolved_valid) {
+      resolved
     } else {
       hub_default_team("", teams, ratings)
     }
@@ -255,6 +339,12 @@ server_team_hub <- function(input, output, session, shared) {
     tid <- as.character(hub_resolved_team_id() %||% "")
     req(nzchar(tid))
     tid
+  })
+  hub_storylines_ready <- reactive({
+    identical(
+      suppressWarnings(as.integer(shared$hub_storylines_ready_year())),
+      hub_gy()
+    )
   })
 
   hub_ratings_df <- reactive(hub_fetch_team_ratings(hub_gy(), hub_ver()))
@@ -367,8 +457,15 @@ server_team_hub <- function(input, output, session, shared) {
   # back to the previous batched dynamic query if that table is unavailable.
   hub_dyn_all_df <- reactive({
     gy <- hub_gy()
-    persisted <- hub_fetch_team_ratings_presets(gy, hub_ver())
-    if (!is.null(persisted)) return(persisted)
+    persisted <- hub_fetch_team_ratings_presets(gy, hub_ver(), session = session)
+    if (!is.null(persisted)) {
+      accept_data_version <- shared$accept_data_version
+      persisted_version <- attr(persisted, "data_version", exact = TRUE)
+      if (is.function(accept_data_version) && !is.null(persisted_version)) {
+        accept_data_version(persisted_version)
+      }
+      return(persisted)
+    }
 
     cached_season_df(
       list("hub_team_dyn_all_fallback", gy, hub_ver()),
@@ -425,6 +522,7 @@ server_team_hub <- function(input, output, session, shared) {
 
   # ---- Identity card ----
   output$hub_identity <- renderUI({
+    req(hub_storylines_ready())
     info <- hub_identity_data(hub_ratings_df(), hub_ff_df(), hub_team_id())
     if (is.null(info)) return(NULL)
     row <- info$row
@@ -495,6 +593,7 @@ server_team_hub <- function(input, output, session, shared) {
 
   # ---- Key players ----
   output$hub_players <- renderUI({
+    req(hub_storylines_ready())
     key_players <- hub_key_players(hub_onoff_df(), hub_team_id())
     scorer <- hub_top_scorer(hub_ts_df(), hub_team_id())
     if (is.null(key_players) && is.null(scorer)) return(NULL)
@@ -542,6 +641,7 @@ server_team_hub <- function(input, output, session, shared) {
 
   # ---- Best/worst lineups ----
   output$hub_lineups <- renderUI({
+    req(hub_storylines_ready())
     best_worst <- hub_best_worst_lineups(hub_lineups_df())
     if (is.null(best_worst)) return(NULL)
     lineup_row <- function(label, row, class_name) {
@@ -612,10 +712,7 @@ server_team_hub <- function(input, output, session, shared) {
     mark_storylines_ready <- shared$hub_storylines_ready_year
     if (is.function(mark_storylines_ready)) {
       on.exit(
-        session$onFlushed(
-          function() mark_storylines_ready(gy),
-          once = TRUE
-        ),
+        mark_storylines_ready(gy),
         add = TRUE
       )
     }
