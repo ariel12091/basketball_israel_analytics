@@ -1,0 +1,41 @@
+#!/bin/bash
+# Refuse to commit secret files.
+#
+# app/.Renviron and etl/.Renviron hold live database credentials. They are
+# gitignored, but .gitignore only protects against accident -- `git add -f`, an
+# edited ignore rule, or a new copy under a different directory all bypass it.
+# Once a secret is in history, removing it means a rewrite plus a credential
+# rotation, so the cheap place to stop it is here.
+#
+# Add basenames to SECRET_BASENAMES to extend. Deliberate override:
+#   git commit --no-verify
+
+set -u
+
+SECRET_BASENAMES='^\.Renviron($|\..*)|^\.env($|\..*)'
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+[ -z "$staged" ] && exit 0
+
+offenders=""
+while IFS= read -r path; do
+  [ -z "$path" ] && continue
+  base=$(basename "$path")
+  if printf '%s' "$base" | grep -Eq "$SECRET_BASENAMES"; then
+    offenders="${offenders}  ${path}"$'\n'
+  fi
+done <<< "$staged"
+
+if [ -n "$offenders" ]; then
+  echo "pre-commit: refusing to commit credential files." >&2
+  echo "" >&2
+  printf '%s' "$offenders" >&2
+  echo "" >&2
+  echo "These hold live DB credentials and must never enter git history." >&2
+  echo "Unstage with:  git reset HEAD <path>" >&2
+  echo "" >&2
+  echo "If this is genuinely intended, bypass with: git commit --no-verify" >&2
+  exit 1
+fi
+
+exit 0
