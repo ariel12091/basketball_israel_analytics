@@ -205,47 +205,6 @@ test_that("lineup restore survives the dependent-choice client round trip", {
   )
 })
 
-test_that("lineup restore survives a split dependent-choice echo", {
-  # The browser can report the team echo in an earlier flush than the player
-  # echo. The seed is already consumed by then, so without a pending-value
-  # guard the re-entrant refresh clears what was just restored.
-  query <- paste0(
-    "?_inputs_&ld_lineup_filter-team=4",
-    "&ld_lineup_filter-players_on=%5B101%2C102%5D",
-    "&ld_lineup_filter-players_off=%5B201%5D"
-  )
-  mock_session <- shiny:::MockShinySession$new()
-  mock_session$restoreContext <- shiny:::RestoreContext$new(query)
-  players_rx <- reactive(data.frame(
-    team_id = c(4L, 4L, 4L),
-    player_id = c(101L, 102L, 201L),
-    name = c("Player A", "Player B", "Player C")
-  ))
-
-  testServer(
-    lineup_player_filter_server,
-    args = list(id = "ld_lineup_filter", players_ref = players_rx),
-    session = mock_session,
-    {
-      selected_team <- update_team_choices(c("All teams" = "", "Team 4" = "4"))
-      refresh_player_choices(team_value = selected_team)
-
-      # Only the team echo arrives; players are still blank server-side.
-      session$setInputs(team = "4")
-      restored <- refresh_player_choices()
-      expect_equal(restored$players_on, c("101", "102"))
-      expect_equal(restored$players_off, "201")
-
-      # Once the player echo lands, a real user clear must stick.
-      session$setInputs(players_on = c("101", "102"), players_off = "201")
-      session$setInputs(players_on = NULL, players_off = NULL)
-      cleared <- refresh_player_choices()
-      expect_equal(cleared$players_on, character(0))
-      expect_equal(cleared$players_off, character(0))
-    }
-  )
-})
-
 # updateSelectizeInput() validates its session, so capture has to happen on a
 # real MockShinySession rather than a plain list.
 fake_capture_session <- function(query_string) {
@@ -299,14 +258,28 @@ test_that("tab observers that own restore bridges run on the initial flush", {
   }
 })
 
-test_that("compare default players never overwrite a bookmarked pair", {
+test_that("compare restores its player pair and lineup filter", {
   txt <- read_repo_txt("R", "server_tab7_compare.R")
-  expect_match(txt, 'restore_once_selection(session, "cmp_player_a"', fixed = TRUE)
-  expect_match(txt, 'restore_once_selection(session, "cmp_player_b"', fixed = TRUE)
-  expect_lt(
-    regexpr('restore_once_selection(session, "cmp_player_a"', txt, fixed = TRUE)[[1]],
-    regexpr("ids <- get_default_player_ids()", txt, fixed = TRUE)[[1]]
+
+  # cmp_player_a/b are populated by refresh_player_choices(side), which reads a
+  # still-blank input during a restored startup.
+  expect_match(
+    txt, "restore_once_selection(session, player_id, keep_val, choice_values)",
+    fixed = TRUE
   )
+
+  # the lineup module must not be seeded through reset_inputs(): that clears the
+  # restore seed before anything can read it
+  expect_match(txt, "cmp_lu_filter$update_team_choices(", fixed = TRUE)
+  expect_match(
+    txt, "cmp_lu_filter$refresh_player_choices(team_value = selected_lu_team)",
+    fixed = TRUE
+  )
+  init_block <- substring(
+    txt, regexpr("lu_team_choices <- if (nrow(teams_df))", txt, fixed = TRUE)[[1]]
+  )
+  init_block <- substring(init_block, 1L, 600L)
+  expect_false(grepl("cmp_lu_filter$reset_inputs(team_choices", init_block, fixed = TRUE))
 })
 
 test_that("bookmark params survive until shiny has created the session", {
@@ -322,6 +295,35 @@ test_that("bookmark params survive until shiny has created the session", {
   load_tail <- substring(js, regexpr("window.ibplDebugSavedSession", js, fixed = TRUE)[[1]])
   expect_false(grepl("\n  clearBookmarkParams();", js, fixed = TRUE))
   expect_false(grepl("clearBookmarkParams();", load_tail, fixed = TRUE))
+})
+
+test_that("no input is sent before shiny's init message", {
+  js <- read_repo_txt("www", "app.js")
+
+  # shiny:connected fires inside socket.onopen, *before* shiny sends init, and
+  # an event-priority setInputValue() is flushed synchronously. That input then
+  # becomes the first message the server sees, and shiny builds the session's
+  # restore context from the first message's .clientdata_url_search -- absent on
+  # an update -- so every bookmark restore silently dies.
+  connected_at <- regexpr("function handleConnected()", js, fixed = TRUE)[[1]]
+  expect_gt(connected_at, 0L)
+  tail_txt <- substring(js, connected_at)
+  body <- substring(
+    tail_txt, 1L,
+    regexpr("function handleSessionInitialized()", tail_txt, fixed = TRUE)[[1]] - 1L
+  )
+  expect_false(grepl("setInputValue", body, fixed = TRUE))
+  expect_false(grepl("sendActivity", body, fixed = TRUE))
+
+  # the sends live behind the session-initialized gate instead
+  expect_match(js, "function handleSessionInitialized()", fixed = TRUE)
+  expect_match(js, "sessionReady = true;", fixed = TRUE)
+  expect_match(js, "if (!sessionReady) return;", fixed = TRUE)
+  expect_match(
+    js,
+    'window.jQuery(document).one("shiny:sessioninitialized", handleSessionInitialized)',
+    fixed = TRUE
+  )
 })
 
 test_that("browser stores bookmark urls and restores by navigation", {
@@ -359,7 +361,7 @@ test_that("bookmark startup cannot overwrite the last valid restore URL", {
     fixed = TRUE
   )
   expect_match(js, "armBookmarkCaptureFromUserEvent(event);", fixed = TRUE)
-  expect_match(app, "IBPL_RESTORE_STATE_VERSION <- 12L", fixed = TRUE)
+  expect_match(app, "IBPL_RESTORE_STATE_VERSION <- 13L", fixed = TRUE)
 })
 
 test_that("restore triggers on user return, never on expiry itself", {

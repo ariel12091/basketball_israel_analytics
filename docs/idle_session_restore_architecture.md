@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-30  
 **Implementation:** native Shiny URL bookmarking  
-**State version:** `IBPL_RESTORE_STATE_VERSION <- 12L`
+**State version:** `IBPL_RESTORE_STATE_VERSION <- 13L`
 
 ## Purpose
 
@@ -64,7 +64,7 @@ foreground is itself treated as return activity and can begin restoration.
 | `APP_IDLE_CHECK_SEC` | `15` | R-side interval for deciding when to close an idle session. |
 | `APP_IDLE_STATE_TTL_HOURS` | `24` | Maximum age of a stored bookmark. |
 | `APP_IDLE_CLOSE_SESSION` | `false` | Enables R-side idle session closure. |
-| `IBPL_RESTORE_STATE_VERSION` | `12` | Versions browser storage keys and payloads. Increment after incompatible input changes. |
+| `IBPL_RESTORE_STATE_VERSION` | `13` | Versions browser storage keys and payloads. Increment after incompatible input changes. |
 
 The version constant is passed into `window.IBPL_IDLE_CONFIG`; R and JavaScript
 therefore use the same value.
@@ -90,6 +90,18 @@ inputs must be added to the exclusion rules.
 `onBookmarked()` sends the generated URL and state version in the
 `ibpl_bookmark_url` custom message. The address bar is unchanged during normal
 use.
+
+**Nothing may send a Shiny input before the `init` message.** Shiny builds the
+session's restore context from the *first* websocket message it receives, reading
+`.clientdata_url_search` from it, and never rebuilds it. `shiny:connected` fires
+inside `socket.onopen` *before* `init` is sent, and an event-priority
+`setInputValue()` is flushed synchronously — so an input sent there becomes the
+first message, carries no `.clientdata_url_search`, and permanently disables
+restoration. `handleConnected()` therefore sends nothing; `sendActivity()` and
+the `hub_remembered_team` set live in `handleSessionInitialized()`, bound to
+`shiny:sessioninitialized` (triggered by the server's `config` message) and
+gated by `sessionReady`. A 10-second fallback releases the gate if that event is
+ever missed, so the idle heartbeat cannot go permanently silent.
 
 **The bookmark parameters must survive until Shiny has created the session.**
 Shiny builds the server-side restore context from `.clientdata_url_search`, which
@@ -131,7 +143,11 @@ value after a user clear. They use `restore_once_selection()` instead, which
 applies the restored value on the first rebuild only and records the id as
 consumed in `session$userData`. This covers `update_gn_last_n_choices()` (the
 `*_gn_min` / `*_gn_max` / `*_last_n` trio for every prefix), Tab 4's `gl_team`,
-and Tab 7's `cmp_player_a` / `cmp_player_b` default-scorer seeding.
+and Tab 7's `cmp_player_a` / `cmp_player_b` inside `refresh_player_choices(side)`.
+
+(`apply_default_players()` looks like the place for the compare pair, but it is
+unreachable — `apply_defaults = TRUE` is never passed at any of its call sites.
+`refresh_player_choices(side)` is the only writer of those inputs.)
 
 Every tab observer that owns a restore bridge runs with `ignoreInit = FALSE`. A
 restored session lands with its tab already selected, so an observer that skips
@@ -148,12 +164,14 @@ value through `restoreInput()`, but a server-side choice observer still needs to
 read it. Module calls first resolve the full bookmarked ID through
 `session$ns()`.
 
-The Lineup Data module additionally keeps a `restore_seed$pending` record of the
-values it has pushed but the browser has not echoed back. A dependent observer
-that runs inside that window (for example the browser reporting the team echo one
-flush before the player echo) would otherwise see a blank input with the seed
-already spent and clear what was just restored. Each `observeEvent` retires its
-own pending value, with `ignoreNULL = FALSE` so a genuine user clear counts too.
+The lineup module is used twice — `ld_lineup_filter` (Tab 2) and `cmp_lu_filter`
+(Tab 7) — and **both call sites must seed it the same way**. Populating it with
+`reset_inputs()` cannot work: that function's first act is to drop the restore
+seed, so the values are gone before anything reads them. Use
+`update_team_choices()` (which returns the validated team) followed by
+`refresh_player_choices(team_value = …)`. Passing `selected = ""` keeps the
+ordinary clear-on-season-change behaviour intact, because only a restored
+session has a seed to fall back to.
 
 The Lineup Data module snapshots its namespaced team, Players On, and Players
 Off restore values into a one-shot server seed. This is necessary because

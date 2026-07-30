@@ -23,7 +23,9 @@ source("R/ui_tab7_compare.R", local = TRUE)
 source("R/server_tab7_compare.R", local = TRUE)
 
 enableBookmarking(store = "url")
-IBPL_RESTORE_STATE_VERSION <- 12L
+# 13: bookmarks captured before the .clientdata_url_search fix hold blank
+# server-populated choices; discard them instead of restoring known-bad state.
+IBPL_RESTORE_STATE_VERSION <- 13L
 
 # ---------------- UI ----------------
 ui <- function(request) {
@@ -160,6 +162,23 @@ server <- function(input, output, session) {
   startup_restore_pending <- reactiveVal(
     nzchar(restored_tab) && !identical(restored_tab, "home")
   )
+
+  # One line per session saying whether this session can restore at all. An
+  # inactive context means the bookmark never reached the server, which looks
+  # identical to "the filters did not come back".
+  local({
+    ctx <- tryCatch(session$restoreContext, error = function(e) NULL)
+    active <- !is.null(ctx) && isTRUE(ctx$active)
+    ids <- if (active) tryCatch(names(ctx$input$asList()), error = function(e) NULL) else NULL
+    search <- tryCatch(isolate(session$clientData$url_search), error = function(e) NA_character_)
+    app_log("bookmark", sprintf(
+      "restore context active=%s values=%d tab=%s lineup_team=%s url_search_len=%s has_inputs=%s",
+      active, length(ids), if (nzchar(restored_tab)) restored_tab else "-",
+      paste(restored_input_value(session, "ld_lineup_filter-team"), collapse = ","),
+      if (is.null(search)) "NULL" else nchar(search %||% ""),
+      grepl("_inputs_", search %||% "", fixed = TRUE)
+    ), session = session)
+  })
 
   # ===== Teams dropdown choices =====
   teams_for_year_df <- reactive({

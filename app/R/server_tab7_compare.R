@@ -1127,7 +1127,14 @@ server_tab7_compare <- function(input, output, session, shared) {
           )
         }
         lu_team_choices <- if (nrow(teams_df)) setNames(as.character(teams_df$team_id), teams_df$team_name) else character(0)
-        cmp_lu_filter$reset_inputs(team_choices = c("All teams" = "", lu_team_choices), team_selected = "")
+        # Not reset_inputs(): that discards the restore seed before it can be
+        # read. With selected = "" this clears exactly as before on an ordinary
+        # season/tab change, and only a restored session finds a seed to use.
+        selected_lu_team <- cmp_lu_filter$update_team_choices(
+          c("All teams" = "", lu_team_choices),
+          selected = ""
+        )
+        cmp_lu_filter$refresh_player_choices(team_value = selected_lu_team)
 
         gn_df <- load_cmp_gn_ref(gy_int)
         gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
@@ -1546,7 +1553,10 @@ server_tab7_compare <- function(input, output, session, shared) {
     filtered <- filtered[!duplicated(filtered$player_id), , drop = FALSE]
     choice_values <- as.character(filtered$player_id)
     player_choices <- setNames(choice_values, filtered$name)
-    if (!(nzchar(keep_val) && keep_val %in% choice_values)) keep_val <- character(0)
+    # Prefers the live input, falls back to the bookmark once (the input is
+    # still blank while a restored session is populating these choices), and
+    # drops anything absent from the current option pool.
+    keep_val <- restore_once_selection(session, player_id, keep_val, choice_values)
 
     updateSelectizeInput(session, player_id, choices = player_choices, selected = keep_val, server = TRUE)
   }
@@ -1591,25 +1601,6 @@ server_tab7_compare <- function(input, output, session, shared) {
     available_ids <- unique(suppressWarnings(as.integer(players_df$player_id)))
     available_ids <- available_ids[is.finite(available_ids)]
     if (length(available_ids) < 1L) return(invisible(NULL))
-
-    # A restored session reaches this point with blank player inputs, because
-    # the choices are server-populated. Seeding random default scorers first
-    # would silently discard the bookmarked pair.
-    restored_a <- restore_once_selection(session, "cmp_player_a", NULL, choice_values)
-    restored_b <- if (isTRUE(self_compare)) {
-      restore_once_selection(session, "cmp_player_b", NULL, choice_values)
-      restored_a
-    } else {
-      restore_once_selection(session, "cmp_player_b", NULL, choice_values)
-    }
-    if (length(restored_a) && length(restored_b)) {
-      session$onFlushed(function() {
-        updateSelectizeInput(session, "cmp_player_a", choices = player_choices, selected = restored_a[[1]], server = FALSE)
-        updateSelectizeInput(session, "cmp_player_b", choices = player_choices, selected = restored_b[[1]], server = FALSE)
-      }, once = TRUE)
-      cmp_defaults_active(FALSE)
-      return(invisible(NULL))
-    }
 
     ids <- get_default_player_ids()
     ids <- ids[ids %in% available_ids]

@@ -267,6 +267,7 @@
   var hubTeamKey = "ibplHubTeam";
 
   var idleExpired = false;
+  var sessionReady = false;
   var navigating = false;
   var lastActivity = Date.now();
   var lastSent = 0;
@@ -518,6 +519,9 @@
 
   function sendActivity(force) {
     var now = Date.now();
+    // Hard guard: never emit an input before shiny's init message has been
+    // answered, or we steal the restore context. See handleConnected().
+    if (!sessionReady) return;
     if (!shinyReadyForRestore()) return;
     if (!force && (now - lastSent) < minIntervalMs) return;
     lastSent = now;
@@ -578,9 +582,20 @@
     return true;
   }
 
+  // Nothing here may send an input. shiny:connected fires inside the socket's
+  // onopen handler, *before* shiny sends its own init message, and an
+  // event-priority setInputValue() is flushed synchronously. That input would
+  // then be the first message the server sees, and Shiny builds the session's
+  // restore context from the first message's `.clientdata_url_search` — absent
+  // on an update — leaving every bookmark restore dead. Input sends belong in
+  // handleSessionInitialized().
   function handleConnected() {
     registerMessageHandlers();
     toggleNativeDisconnectUi(false);
+  }
+
+  function handleSessionInitialized() {
+    sessionReady = true;
     sendActivity(true);
     if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
       window.Shiny.setInputValue(
@@ -638,6 +653,20 @@
     if (timerId) window.clearInterval(timerId);
     timerId = window.setInterval(checkIdleState, 1000);
   }
+
+  // Registered at parse time, not in bindActivity(), so the listener is in
+  // place before shiny can answer its own init message.
+  if (window.jQuery) {
+    window.jQuery(document).one("shiny:sessioninitialized", handleSessionInitialized);
+  } else {
+    document.addEventListener("shiny:sessioninitialized", handleSessionInitialized, { once: true });
+  }
+  // Safety net: if that event is ever missed the heartbeat would never start
+  // and R would close a session the user is actively using. By this point init
+  // is long past, so releasing the guard cannot steal the restore context.
+  window.setTimeout(function() {
+    if (!sessionReady && shinyReadyForRestore()) handleSessionInitialized();
+  }, 10000);
 
   scheduleBookmarkParamCleanup();
   if (safeSessionGet(skipRestoreKey)) safeSessionRemove(skipRestoreKey);
