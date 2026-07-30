@@ -36,3 +36,44 @@ test_that("bookmark exclusion handles empty and NULL input safely", {
   expect_identical(bookmark_excluded_ids(character(0)), character(0))
   expect_identical(bookmark_excluded_ids(NULL), character(0))
 })
+
+fake_restore_session <- function(query_string) {
+  ctx <- shiny:::RestoreContext$new(query_string)
+  list(restoreContext = ctx)
+}
+
+test_that("restored_input_value reads saved values even after they were used", {
+  s <- fake_restore_session('?_inputs_&teams=%5B%224%22%2C%227%22%5D&ld_minposs=120')
+
+  expect_equal(as.character(restored_input_value(s, "teams")), c("4", "7"))
+  # second read must still work: restoreInput() marks values used, so the
+  # helper has to force the read
+  expect_equal(as.character(restored_input_value(s, "teams")), c("4", "7"))
+  expect_equal(as.character(restored_input_value(s, "ld_minposs")), "120")
+})
+
+test_that("restored_input_value falls back to the default", {
+  s <- fake_restore_session('?_inputs_&teams=%5B%224%22%5D')
+  expect_identical(restored_input_value(s, "missing_id"), character(0))
+  expect_identical(restored_input_value(s, "missing_id", "fallback"), "fallback")
+
+  no_ctx <- list(restoreContext = NULL)
+  expect_identical(restored_input_value(no_ctx, "teams"), character(0))
+})
+
+test_that("restore_aware_selection prefers current, falls back to restored, filters to choices", {
+  s <- fake_restore_session('?_inputs_&teams=%5B%224%22%2C%229%22%5D')
+  choices <- c("Hapoel" = "4", "Maccabi" = "7")
+
+  # no current selection -> use restored, dropping ids absent from choices
+  expect_equal(restore_aware_selection(s, "teams", character(0), choices), "4")
+  # current selection wins
+  expect_equal(restore_aware_selection(s, "teams", "7", choices), "7")
+  # current selection not in choices -> empty, not a stale restore
+  expect_equal(restore_aware_selection(s, "teams", "99", choices), character(0))
+  # no restore context and no current -> empty
+  expect_equal(
+    restore_aware_selection(list(restoreContext = NULL), "teams", character(0), choices),
+    character(0)
+  )
+})

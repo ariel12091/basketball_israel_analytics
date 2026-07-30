@@ -618,6 +618,24 @@ bookmark_excluded_ids <- function(input_ids) {
   ids[hit]
 }
 
+# restoreContext$input$get() marks a value as used; force = TRUE lets the
+# server re-read values that the UI already consumed via restoreInput().
+restored_input_value <- function(session, id, default = character(0)) {
+  ctx <- tryCatch(session$restoreContext, error = function(e) NULL)
+  if (is.null(ctx) || !isTRUE(ctx$active)) return(default)
+  val <- tryCatch(ctx$input$get(id, force = TRUE), error = function(e) NULL)
+  if (is.null(val) || !length(val)) default else val
+}
+
+restore_aware_selection <- function(session, id, current, choices) {
+  candidate <- sanitize_persisted_choices(current)
+  if (!length(candidate)) {
+    candidate <- sanitize_persisted_choices(restored_input_value(session, id))
+  }
+  if (!length(candidate) || !length(choices)) return(character(0))
+  intersect(candidate, as.character(unname(choices)))
+}
+
 csv_if_any <- function(x, integerize = FALSE) {
   if (is.null(x) || !length(x)) return(NA_character_)
   vals <- as.character(x)
