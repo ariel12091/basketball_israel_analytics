@@ -156,6 +156,11 @@ visible URL without disturbing the already-created restore context.
 “Start fresh” clears both stored copies, sets a one-load skip marker, and
 reloads the clean location so discarded state is not immediately resurrected.
 
+While a visible page is paused, mouse movement alone does not restore it. This
+lets the user reach the explicit “Resume” and “Start fresh” controls. A click,
+touch, scroll, or non-Tab key outside the paused pill also restores the
+bookmark; events inside the pill remain available to its controls.
+
 ## Two-clock model
 
 The server and browser deliberately keep separate clocks:

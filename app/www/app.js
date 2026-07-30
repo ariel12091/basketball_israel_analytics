@@ -434,9 +434,17 @@
       pill.id = "ibpl-idle-pill";
       pill.className = "restore-notice";
       pill.innerHTML =
-        '<span>Session paused \u2014 resuming on activity.</span>' +
+        '<span>Session paused.</span>' +
+        '<button type="button" id="ibpl-idle-resume">Resume</button>' +
         '<button type="button" id="ibpl-idle-fresh">Start fresh</button>';
       document.body.appendChild(pill);
+      var resumeBtn = document.getElementById("ibpl-idle-resume");
+      if (resumeBtn) {
+        resumeBtn.addEventListener("click", function(e) {
+          e.stopPropagation();
+          restoreOnReturn();
+        });
+      }
       var freshBtn = document.getElementById("ibpl-idle-fresh");
       if (freshBtn) {
         freshBtn.addEventListener("click", function(e) {
@@ -546,11 +554,24 @@
     }
   }
 
+  function shouldRestoreFromPausedEvent(event) {
+    if (!event) return true;
+    if (event.type === "mousemove") return false;
+    if (event.type === "keydown" && event.key === "Tab") return false;
+    var target = event.target;
+    if (target && typeof target.closest === "function" &&
+        target.closest("#ibpl-idle-pill")) return false;
+    return true;
+  }
+
   function bindActivity() {
     var events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
     for (var i = 0; i < events.length; i++) {
-      document.addEventListener(events[i], function() {
-        if (idleExpired) { restoreOnReturn(); return; }
+      document.addEventListener(events[i], function(event) {
+        if (idleExpired) {
+          if (shouldRestoreFromPausedEvent(event)) restoreOnReturn();
+          return;
+        }
         markActivity(false);
       }, { passive: true });
     }

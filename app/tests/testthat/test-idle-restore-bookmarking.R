@@ -155,9 +155,21 @@ test_that("a visible disconnect stays paused until later user activity", {
   expect_false(grepl("restoreOnReturn();", disconnect_handler, fixed = TRUE))
   expect_match(
     js,
-    "if (idleExpired) { restoreOnReturn(); return; }",
+    "if (shouldRestoreFromPausedEvent(event)) restoreOnReturn();",
     fixed = TRUE
   )
+})
+
+test_that("paused controls stay reachable before deliberate resume", {
+  js <- read_repo_txt("www", "app.js")
+
+  expect_match(js, "function shouldRestoreFromPausedEvent(event)", fixed = TRUE)
+  expect_match(js, 'event.type === "mousemove"', fixed = TRUE)
+  expect_match(js, 'event.type === "keydown" && event.key === "Tab"', fixed = TRUE)
+  expect_match(js, 'target.closest("#ibpl-idle-pill")', fixed = TRUE)
+  expect_match(js, "shouldRestoreFromPausedEvent(event)", fixed = TRUE)
+  expect_match(js, 'id="ibpl-idle-resume"', fixed = TRUE)
+  expect_match(js, 'id="ibpl-idle-fresh"', fixed = TRUE)
 })
 
 test_that("the replay machinery is gone from R", {
