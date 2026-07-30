@@ -124,9 +124,17 @@ session$restoreContext$input$get(id, force = TRUE)
 The `force = TRUE` is essential. UI construction may already have consumed the
 value through `restoreInput()`, but a server-side choice observer still needs to
 read it. Module calls first resolve the full bookmarked ID through
-`session$ns()`, so values such as `ld_lineup_filter-team` are restored before
-their dependent roster choices. This is a narrow compatibility bridge for
-dynamic choices, not a general replay system.
+`session$ns()`.
+
+The Lineup Data module snapshots its namespaced team, Players On, and Players
+Off restore values into a one-shot server seed. This is necessary because
+`updateSelectizeInput()` is asynchronous: immediately rereading `input$team`
+still returns blank until the browser acknowledges the update. The module
+returns the validated team from the team-choice update and passes it directly
+into roster population, then validates Players On and Players Off against that
+roster. The seed is consumed after those dependent updates are queued, so later
+user clears cannot resurrect old restore values. This is a narrow compatibility
+bridge for dependent dynamic choices, not a general replay system.
 
 ## Startup behavior
 

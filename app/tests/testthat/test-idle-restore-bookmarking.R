@@ -126,9 +126,10 @@ test_that("choice-populating observers preserve restored selections", {
     expect_match(txt, "restore_aware_selection(", fixed = TRUE)
   }
 
-  # the lineup module intersects restored selections with real roster choices
-  expect_match(mod_txt, 'restore_aware_selection(session, "team"', fixed = TRUE)
-  expect_match(mod_txt, "restore_aware_selection(", fixed = TRUE)
+  # the lineup module carries native restore seeds through dependent choices
+  expect_match(mod_txt, "restore_seed <- new.env(", fixed = TRUE)
+  expect_match(mod_txt, 'restored_input_value(session, "team")', fixed = TRUE)
+  expect_match(mod_txt, "selection_with_restore_seed(", fixed = TRUE)
 })
 
 test_that("restored tab choice observers run initially and restore lineup players", {
@@ -146,15 +147,61 @@ test_that("restored tab choice observers run initially and restore lineup player
     "observeEvent(list(input$game_year, input$main_tabs), ignoreInit = FALSE",
     fixed = TRUE
   )
+  expect_match(mod_txt, "restore_seed$players_on", fixed = TRUE)
+  expect_match(mod_txt, "restore_seed$players_off", fixed = TRUE)
   expect_match(
-    mod_txt,
-    'restore_aware_selection\\(\\s*session, "players_on"',
-    perl = TRUE
+    tab2_txt,
+    "refresh_player_choices(team_value = selected_team)",
+    fixed = TRUE
   )
-  expect_match(
-    mod_txt,
-    'restore_aware_selection\\(\\s*session, "players_off"',
-    perl = TRUE
+})
+
+test_that("lineup restore survives the dependent-choice client round trip", {
+  query <- paste0(
+    "?_inputs_&ld_lineup_filter-team=4",
+    "&ld_lineup_filter-players_on=%5B101%2C102%5D",
+    "&ld_lineup_filter-players_off=%5B201%5D"
+  )
+  mock_session <- shiny:::MockShinySession$new()
+  mock_session$restoreContext <- shiny:::RestoreContext$new(query)
+  players_rx <- reactive(data.frame(
+    team_id = c(4L, 4L, 4L),
+    player_id = c(101L, 102L, 201L),
+    name = c("Player A", "Player B", "Player C")
+  ))
+
+  testServer(
+    lineup_player_filter_server,
+    args = list(
+      id = "ld_lineup_filter",
+      players_ref = players_rx
+    ),
+    session = mock_session,
+    {
+      team_choices <- c("All teams" = "", "Team 4" = "4")
+      selected_team <- update_team_choices(team_choices)
+
+      # updateSelectizeInput() is asynchronous. The module must retain the
+      # validated team long enough to populate its dependent roster.
+      expect_equal(selected_team, "4")
+
+      restored <- refresh_player_choices(team_value = selected_team)
+      expect_equal(restored$team, "4")
+      expect_equal(restored$players_on, c("101", "102"))
+      expect_equal(restored$players_off, "201")
+
+      # Once the browser confirms the restored values, later user clears must
+      # not fall back to the old restore seed.
+      session$setInputs(
+        team = "4",
+        players_on = c("101", "102"),
+        players_off = "201"
+      )
+      session$setInputs(team = "", players_on = NULL, players_off = NULL)
+      expect_equal(current_team_value(), "")
+      expect_equal(current_player_values("players_on"), character(0))
+      expect_equal(current_player_values("players_off"), character(0))
+    }
   )
 })
 

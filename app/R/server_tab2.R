@@ -92,11 +92,16 @@ server_tab2 <- function(input, output, session, shared) {
       current_team <- current_team[nzchar(current_team)]
       selected_team <- if (length(current_team) && current_team[[1]] %in% unname(team_choices)) current_team[[1]] else ""
     }
-    ld_lineup_filter$update_team_choices(team_choices, selected = selected_team)
+    # Carry the validated restore value directly; input$team is still blank
+    # until the browser acknowledges updateSelectizeInput().
+    selected_team <- ld_lineup_filter$update_team_choices(
+      team_choices,
+      selected = selected_team
+    )
 
     players_map <- fetch_players_basic(gy_int)
     ld_ref$players <- players_map
-    ld_lineup_filter$refresh_player_choices()
+    ld_lineup_filter$refresh_player_choices(team_value = selected_team)
 
     gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
