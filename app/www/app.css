@@ -596,6 +596,39 @@ body.ibpl-idle-expired .reconnect-dialog {
   display: none !important;
   pointer-events: none !important;
 }
+
+/* ---- Paused (idle-expired) look ---- */
+/* backdrop-filter on an overlay, never filter on the app content: a filtered
+   ancestor becomes the containing block for position:fixed descendants, which
+   would displace the fixed navbar header and DT's FixedHeader. This paints over
+   the page instead, so nothing in the layout moves.
+   pointer-events: none keeps click-anywhere-to-resume working.
+   z-index 10000 clears the fixed navbar header (9999); the paused pill sits
+   above at 10001. */
+body.ibpl-idle-expired::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  pointer-events: none;
+  -webkit-backdrop-filter: grayscale(0.9) brightness(0.7);
+  backdrop-filter: grayscale(0.9) brightness(0.7);
+  animation: ibplPausedFade 200ms ease forwards;
+}
+/* Firefox < 103 and anything else without backdrop-filter: dim only. */
+@supports not ((backdrop-filter: grayscale(1)) or (-webkit-backdrop-filter: grayscale(1))) {
+  body.ibpl-idle-expired::before {
+    background: rgba(13, 17, 23, 0.55);
+  }
+}
+@keyframes ibplPausedFade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  body.ibpl-idle-expired::before { animation: none; }
+}
+
 .restore-notice {
   position: fixed;
   right: 16px;
@@ -610,7 +643,8 @@ body.ibpl-idle-expired .reconnect-dialog {
   border-radius: 8px;
   color: #e6edf3;
   box-shadow: 0 12px 32px rgba(0,0,0,0.35);
-  z-index: 9999;
+  /* above the paused scrim (10000) so Resume / Start fresh stay legible */
+  z-index: 10001;
   font-size: 0.88rem;
   font-weight: 600;
 }
