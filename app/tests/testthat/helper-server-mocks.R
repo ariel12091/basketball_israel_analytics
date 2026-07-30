@@ -250,7 +250,13 @@ db_get_query <- function(pool, query, params = NULL) {
     })))
   }
 
-  if (grepl("team_ppp_ratings_mv", q, fixed = TRUE)) {
+  # The Traditional box-score query (tabs 3 and 6) LEFT JOINs team_ppp_ratings_mv
+  # for opponent ranks, so a bare grepl() on that name claims it and hands back
+  # the ratings frame -- no pts/reb/dfl, so no rank_* columns get derived and the
+  # display data.frame() dies on mismatched lengths. Let the team_stats branch
+  # below answer it.
+  if (grepl("team_ppp_ratings_mv", q, fixed = TRUE) &&
+      !grepl("team_stats AS", q, fixed = TRUE)) {
     increment_mock_db_query_count("team_ppp_ratings_mv")
     return(mock_team_ratings_df())
   }
