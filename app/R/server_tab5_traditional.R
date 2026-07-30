@@ -501,7 +501,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
     updateSelectizeInput(session, "ts_players", choices = choices, selected = selected, server = TRUE)
   }
 
-  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
+  # ignoreInit = FALSE: a restored session lands here with the tab already
+  # selected, and the restore bridges below only run inside this observer.
+  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "traditional_stats")) return(NULL)
     gy_int <- as.integer(input$game_year)
     req(gy_int)

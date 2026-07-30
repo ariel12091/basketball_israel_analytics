@@ -79,24 +79,36 @@ lineup_player_filter_server <- function(id, players_ref) {
       restore_seed$players_on,
       restore_seed$players_off
     )) > 0L)
+    # Values pushed with updateSelectizeInput() that the browser has not echoed
+    # back yet. Without them an observer that runs between the push and the echo
+    # sees a blank input and overwrites what was just restored.
+    restore_seed$pending <- list()
+
+    remember_pending <- function(input_id, value) {
+      restore_seed$pending[[input_id]] <- value
+      invisible(value)
+    }
+
+    clear_pending <- function(input_id) {
+      restore_seed$pending[[input_id]] <- NULL
+      invisible(NULL)
+    }
 
     clear_player_choices <- function() {
+      remember_pending("players_on", character(0))
+      remember_pending("players_off", character(0))
       updateSelectizeInput(session, "players_on", choices = empty_choices, selected = character(0), server = FALSE)
       updateSelectizeInput(session, "players_off", choices = empty_choices, selected = character(0), server = FALSE)
     }
 
     selection_with_restore_seed <- function(input_id, current, choices, max_len = 80L) {
-      selected <- sanitize_persisted_choices(
-        current,
-        max_len = max_len,
-        numeric_only = TRUE
-      )
+      pick <- function(x) {
+        sanitize_persisted_choices(x, max_len = max_len, numeric_only = TRUE)
+      }
+      selected <- pick(current)
+      if (!length(selected)) selected <- pick(restore_seed$pending[[input_id]])
       if (!length(selected) && isTRUE(restore_seed$available)) {
-        selected <- sanitize_persisted_choices(
-          restore_seed[[input_id]],
-          max_len = max_len,
-          numeric_only = TRUE
-        )
+        selected <- pick(restore_seed[[input_id]])
       }
       intersect(selected, as.character(unname(choices)))
     }
@@ -105,6 +117,7 @@ lineup_player_filter_server <- function(id, players_ref) {
       selected <- selection_with_restore_seed(
         "team", selected, choices, max_len = 1L
       )
+      remember_pending("team", selected)
       updateSelectizeInput(session, "team", choices = choices, selected = selected, server = FALSE)
       invisible(selected)
     }
@@ -150,6 +163,8 @@ lineup_player_filter_server <- function(id, players_ref) {
       )
       selected_off <- setdiff(selected_off, selected_on)
       restore_seed$available <- FALSE
+      remember_pending("players_on", selected_on)
+      remember_pending("players_off", selected_off)
 
       updateSelectizeInput(
         session, "players_on",
@@ -175,32 +190,38 @@ lineup_player_filter_server <- function(id, players_ref) {
       if (!is.null(team_choices)) {
         update_team_choices(team_choices, selected = team_selected)
       } else {
+        remember_pending("team", team_selected)
         updateSelectizeInput(session, "team", selected = team_selected, server = FALSE)
       }
       clear_player_choices()
     }
 
+    # ignoreNULL = FALSE so that clearing a multi-select still retires its
+    # pending value instead of leaving a stale one to be re-applied.
     observeEvent(input$team, {
+      clear_pending("team")
       refresh_player_choices()
-    }, ignoreInit = TRUE)
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
     observeEvent(input$players_on, {
+      clear_pending("players_on")
       on_sel <- current_player_values("players_on")
       off_sel <- current_player_values("players_off")
       inter <- intersect(on_sel, off_sel)
       if (length(inter)) {
         updateSelectizeInput(session, "players_off", selected = setdiff(off_sel, inter))
       }
-    }, ignoreInit = TRUE)
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
     observeEvent(input$players_off, {
+      clear_pending("players_off")
       on_sel <- current_player_values("players_on")
       off_sel <- current_player_values("players_off")
       inter <- intersect(on_sel, off_sel)
       if (length(inter)) {
         updateSelectizeInput(session, "players_on", selected = setdiff(on_sel, inter))
       }
-    }, ignoreInit = TRUE)
+    }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
     list(
       team = reactive(current_team_value()),

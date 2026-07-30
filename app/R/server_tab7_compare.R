@@ -1592,6 +1592,25 @@ server_tab7_compare <- function(input, output, session, shared) {
     available_ids <- available_ids[is.finite(available_ids)]
     if (length(available_ids) < 1L) return(invisible(NULL))
 
+    # A restored session reaches this point with blank player inputs, because
+    # the choices are server-populated. Seeding random default scorers first
+    # would silently discard the bookmarked pair.
+    restored_a <- restore_once_selection(session, "cmp_player_a", NULL, choice_values)
+    restored_b <- if (isTRUE(self_compare)) {
+      restore_once_selection(session, "cmp_player_b", NULL, choice_values)
+      restored_a
+    } else {
+      restore_once_selection(session, "cmp_player_b", NULL, choice_values)
+    }
+    if (length(restored_a) && length(restored_b)) {
+      session$onFlushed(function() {
+        updateSelectizeInput(session, "cmp_player_a", choices = player_choices, selected = restored_a[[1]], server = FALSE)
+        updateSelectizeInput(session, "cmp_player_b", choices = player_choices, selected = restored_b[[1]], server = FALSE)
+      }, once = TRUE)
+      cmp_defaults_active(FALSE)
+      return(invisible(NULL))
+    }
+
     ids <- get_default_player_ids()
     ids <- ids[ids %in% available_ids]
     if (isTRUE(self_compare)) {

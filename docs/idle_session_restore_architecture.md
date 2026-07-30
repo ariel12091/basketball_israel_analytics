@@ -91,6 +91,16 @@ inputs must be added to the exclusion rules.
 `ibpl_bookmark_url` custom message. The address bar is unchanged during normal
 use.
 
+**The bookmark parameters must survive until Shiny has created the session.**
+Shiny builds the server-side restore context from `.clientdata_url_search`, which
+its client reads out of `location.search` when it sends the `init` message — not
+from the HTTP request that rendered the UI. `app.js` therefore defers
+`clearBookmarkParams()` to `shiny:sessioninitialized` via
+`scheduleBookmarkParamCleanup()`. Stripping earlier leaves the session with an
+inactive restore context, and every server-populated choice silently loses its
+value while UI-time `restoreInput()` keeps working. See
+`docs/bookmark_restore_root_cause_2026-07-30.md`.
+
 A session loaded from `_inputs_` starts with browser-side bookmark capture
 disarmed. Shiny can emit partial startup bookmarks before server-populated
 choices have finished rebuilding; those messages must not replace the valid
@@ -115,6 +125,18 @@ The helper prefers the current input, falls back to the native restore value,
 sanitizes the candidate, and intersects it with the real choice values. Invalid
 or season-incompatible selections are dropped.
 
+Observers that deliberately *clear* their input on every rebuild (season change,
+tab re-entry) cannot use that helper, because it would resurrect the bookmarked
+value after a user clear. They use `restore_once_selection()` instead, which
+applies the restored value on the first rebuild only and records the id as
+consumed in `session$userData`. This covers `update_gn_last_n_choices()` (the
+`*_gn_min` / `*_gn_max` / `*_last_n` trio for every prefix), Tab 4's `gl_team`,
+and Tab 7's `cmp_player_a` / `cmp_player_b` default-scorer seeding.
+
+Every tab observer that owns a restore bridge runs with `ignoreInit = FALSE`. A
+restored session lands with its tab already selected, so an observer that skips
+the initial flush never restores anything.
+
 `restored_input_value()` reads:
 
 ```r
@@ -125,6 +147,13 @@ The `force = TRUE` is essential. UI construction may already have consumed the
 value through `restoreInput()`, but a server-side choice observer still needs to
 read it. Module calls first resolve the full bookmarked ID through
 `session$ns()`.
+
+The Lineup Data module additionally keeps a `restore_seed$pending` record of the
+values it has pushed but the browser has not echoed back. A dependent observer
+that runs inside that window (for example the browser reporting the team echo one
+flush before the player echo) would otherwise see a blank input with the seed
+already spent and clear what was just restored. Each `observeEvent` retires its
+own pending value, with `ignoreNULL = FALSE` so a genuine user clear counts too.
 
 The Lineup Data module snapshots its namespaced team, Players On, and Players
 Off restore values into a one-shot server seed. This is necessary because

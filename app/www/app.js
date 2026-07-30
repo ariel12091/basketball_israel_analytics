@@ -360,6 +360,28 @@
     window.history.replaceState(window.history.state, "", cleanLocation());
   }
 
+  // Shiny builds the server-side restore context from `.clientdata_url_search`,
+  // which its client reads out of location.search when it sends the init
+  // message. Stripping the bookmark parameters before that leaves the new
+  // session with an inactive restore context, so every server-populated choice
+  // (teams, opponents, lineup players, compare players) loses its value while
+  // UI-time restoreInput() still works. Defer the cleanup until the session
+  // exists.
+  function scheduleBookmarkParamCleanup() {
+    if (location.search.indexOf("_inputs_") === -1) return;
+    var done = false;
+    var run = function() {
+      if (done) return;
+      done = true;
+      clearBookmarkParams();
+    };
+    if (window.jQuery) {
+      window.jQuery(document).one("shiny:sessioninitialized", run);
+    } else {
+      document.addEventListener("shiny:sessioninitialized", run, { once: true });
+    }
+  }
+
   function shinyReadyForRestore() {
     return !!(window.Shiny && typeof window.Shiny.setInputValue === "function");
   }
@@ -617,7 +639,7 @@
     timerId = window.setInterval(checkIdleState, 1000);
   }
 
-  clearBookmarkParams();
+  scheduleBookmarkParamCleanup();
   if (safeSessionGet(skipRestoreKey)) safeSessionRemove(skipRestoreKey);
   if (safeSessionGet(restoredFlagKey)) {
     safeSessionRemove(restoredFlagKey);

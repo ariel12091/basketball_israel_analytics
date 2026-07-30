@@ -205,6 +205,125 @@ test_that("lineup restore survives the dependent-choice client round trip", {
   )
 })
 
+test_that("lineup restore survives a split dependent-choice echo", {
+  # The browser can report the team echo in an earlier flush than the player
+  # echo. The seed is already consumed by then, so without a pending-value
+  # guard the re-entrant refresh clears what was just restored.
+  query <- paste0(
+    "?_inputs_&ld_lineup_filter-team=4",
+    "&ld_lineup_filter-players_on=%5B101%2C102%5D",
+    "&ld_lineup_filter-players_off=%5B201%5D"
+  )
+  mock_session <- shiny:::MockShinySession$new()
+  mock_session$restoreContext <- shiny:::RestoreContext$new(query)
+  players_rx <- reactive(data.frame(
+    team_id = c(4L, 4L, 4L),
+    player_id = c(101L, 102L, 201L),
+    name = c("Player A", "Player B", "Player C")
+  ))
+
+  testServer(
+    lineup_player_filter_server,
+    args = list(id = "ld_lineup_filter", players_ref = players_rx),
+    session = mock_session,
+    {
+      selected_team <- update_team_choices(c("All teams" = "", "Team 4" = "4"))
+      refresh_player_choices(team_value = selected_team)
+
+      # Only the team echo arrives; players are still blank server-side.
+      session$setInputs(team = "4")
+      restored <- refresh_player_choices()
+      expect_equal(restored$players_on, c("101", "102"))
+      expect_equal(restored$players_off, "201")
+
+      # Once the player echo lands, a real user clear must stick.
+      session$setInputs(players_on = c("101", "102"), players_off = "201")
+      session$setInputs(players_on = NULL, players_off = NULL)
+      cleared <- refresh_player_choices()
+      expect_equal(cleared$players_on, character(0))
+      expect_equal(cleared$players_off, character(0))
+    }
+  )
+})
+
+# updateSelectizeInput() validates its session, so capture has to happen on a
+# real MockShinySession rather than a plain list.
+fake_capture_session <- function(query_string) {
+  sent <- new.env(parent = emptyenv())
+  sent$msgs <- list()
+  s <- shiny:::MockShinySession$new()
+  s$restoreContext <- shiny:::RestoreContext$new(query_string)
+  s$sendInputMessage <- function(inputId, message) {
+    sent$msgs[[length(sent$msgs) + 1L]] <-
+      paste0(inputId, "=", paste(message$value, collapse = ","))
+    invisible(NULL)
+  }
+  list(sent = sent, session = s)
+}
+
+test_that("restore_once_selection applies a bookmarked value exactly once", {
+  s <- fake_restore_session('?_inputs_&gl_team=%224%22')
+  s$userData <- new.env(parent = emptyenv())
+  s$ns <- function(id) id
+  choices <- c("All" = "", "Hapoel" = "4", "Maccabi" = "7")
+
+  expect_equal(restore_once_selection(s, "gl_team", NULL, choices), "4")
+  # a later rebuild must respect the cleared input instead of resurrecting it
+  expect_equal(restore_once_selection(s, "gl_team", NULL, choices), character(0))
+  # an explicit current value always wins
+  expect_equal(restore_once_selection(s, "gl_team", "7", choices), "7")
+})
+
+test_that("GN and last-N rebuilds seed from the bookmark once, then clear", {
+  h <- fake_capture_session('?_inputs_&ld_gn_min=%223%22&ld_last_n=%225%22')
+
+  update_gn_last_n_choices(h$session, "ld", 1:6)
+  expect_true(all(c("ld_gn_min=3", "ld_gn_max=", "ld_last_n=5") %in% h$sent$msgs))
+
+  # season change / tab re-entry keeps the historical clearing behaviour
+  h$sent$msgs <- list()
+  update_gn_last_n_choices(h$session, "ld", 1:6)
+  expect_true(all(c("ld_gn_min=", "ld_gn_max=", "ld_last_n=") %in% h$sent$msgs))
+})
+
+test_that("tab observers that own restore bridges run on the initial flush", {
+  # server_tab3.R writes the pair in the opposite order; either is fine.
+  for (f in c("server_tab2.R", "server_tab3.R", "server_tab4.R",
+              "server_tab5_traditional.R", "server_tab7_compare.R")) {
+    txt <- read_repo_txt("R", f)
+    expect_match(
+      txt,
+      "observeEvent\\(list\\(input\\$(main_tabs, input\\$game_year|game_year, input\\$main_tabs)\\), ignoreInit = FALSE",
+      info = f, all = FALSE
+    )
+  }
+})
+
+test_that("compare default players never overwrite a bookmarked pair", {
+  txt <- read_repo_txt("R", "server_tab7_compare.R")
+  expect_match(txt, 'restore_once_selection(session, "cmp_player_a"', fixed = TRUE)
+  expect_match(txt, 'restore_once_selection(session, "cmp_player_b"', fixed = TRUE)
+  expect_lt(
+    regexpr('restore_once_selection(session, "cmp_player_a"', txt, fixed = TRUE)[[1]],
+    regexpr("ids <- get_default_player_ids()", txt, fixed = TRUE)[[1]]
+  )
+})
+
+test_that("bookmark params survive until shiny has created the session", {
+  js <- read_repo_txt("www", "app.js")
+
+  # The server restore context comes from .clientdata_url_search, which shiny
+  # reads at init. Stripping the query string earlier disables restoration for
+  # every server-populated choice.
+  expect_match(js, "function scheduleBookmarkParamCleanup()", fixed = TRUE)
+  expect_match(js, '"shiny:sessioninitialized"', fixed = TRUE)
+  expect_match(js, "scheduleBookmarkParamCleanup();", fixed = TRUE)
+
+  load_tail <- substring(js, regexpr("window.ibplDebugSavedSession", js, fixed = TRUE)[[1]])
+  expect_false(grepl("\n  clearBookmarkParams();", js, fixed = TRUE))
+  expect_false(grepl("clearBookmarkParams();", load_tail, fixed = TRUE))
+})
+
 test_that("browser stores bookmark urls and restores by navigation", {
   js <- read_repo_txt("www", "app.js")
 

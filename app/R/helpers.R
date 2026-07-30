@@ -475,9 +475,19 @@ update_gn_last_n_choices <- function(session, prefix, gn_vals) {
   gn_vals <- gn_vals[is.finite(gn_vals)]
   gn_choices <- c("", as.character(gn_vals))
   last_choices <- if (length(gn_vals)) c("", as.character(seq_len(max(gn_vals, na.rm = TRUE)))) else ""
-  updateSelectizeInput(session, paste0(prefix, "_gn_min"), choices = gn_choices, selected = "")
-  updateSelectizeInput(session, paste0(prefix, "_gn_max"), choices = gn_choices, selected = "")
-  updateSelectizeInput(session, paste0(prefix, "_last_n"), choices = last_choices, selected = "")
+  # Cleared as before on every rebuild, except once in a restored session where
+  # the bookmarked value is applied instead.
+  targets <- list(gn_min = gn_choices, gn_max = gn_choices, last_n = last_choices)
+  for (suffix in names(targets)) {
+    id <- paste0(prefix, "_", suffix)
+    choices <- targets[[suffix]]
+    selected <- restore_once_selection(session, id, NULL, choices)
+    updateSelectizeInput(
+      session, id,
+      choices = choices,
+      selected = if (length(selected)) selected[[1]] else ""
+    )
+  }
 }
 
 resolve_gn_last_n_params <- function(input, prefix) {
@@ -640,6 +650,34 @@ restore_aware_selection <- function(session, id, current, choices) {
   if (!length(candidate)) {
     candidate <- sanitize_persisted_choices(restored_input_value(session, id))
   }
+  if (!length(candidate) || !length(choices)) return(character(0))
+  intersect(candidate, as.character(unname(choices)))
+}
+
+# Some choice rebuilds deliberately clear their input (season change, tab
+# re-entry). Those must still honour a bookmark once, but never resurrect it
+# afterwards, so the restored value is consumed on first use per session.
+restore_consumed_env <- function(session) {
+  ud <- tryCatch(session$userData, error = function(e) NULL)
+  if (!is.environment(ud)) return(NULL)
+  if (!exists(".ibpl_restore_consumed", envir = ud, inherits = FALSE)) {
+    assign(".ibpl_restore_consumed", new.env(parent = emptyenv()), envir = ud)
+  }
+  get(".ibpl_restore_consumed", envir = ud, inherits = FALSE)
+}
+
+restore_value_consumed <- function(session, id) {
+  env <- restore_consumed_env(session)
+  !is.null(env) && exists(id, envir = env, inherits = FALSE)
+}
+
+restore_once_selection <- function(session, id, current, choices) {
+  candidate <- sanitize_persisted_choices(current)
+  if (!length(candidate) && !restore_value_consumed(session, id)) {
+    candidate <- sanitize_persisted_choices(restored_input_value(session, id))
+  }
+  env <- restore_consumed_env(session)
+  if (!is.null(env)) assign(id, TRUE, envir = env)
   if (!length(candidate) || !length(choices)) return(character(0))
   intersect(candidate, as.character(unname(choices)))
 }

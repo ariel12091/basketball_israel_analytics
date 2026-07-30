@@ -231,7 +231,9 @@ server_tab4 <- function(input, output, session, shared) {
   setup_stat_filter_handlers("gl", input, session, gl_stat_filter_cols, gl_stat_filter_state)
 
   # --- Team list for the season ---
-  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
+  # ignoreInit = FALSE: a restored session lands here with the tab already
+  # selected, and the restore bridges below only run inside this observer.
+  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "game_logs")) return(NULL)
     gy_int <- as.integer(input$game_year)
     teams_gl <- fetch_teams_min(gy_int)
@@ -241,7 +243,12 @@ server_tab4 <- function(input, output, session, shared) {
       shared$pending_gl_team(NULL)
       update_single_team_selectize(session, "gl_team", teams_gl, selected = pending_team)
     } else {
-      update_single_team_selectize(session, "gl_team", teams_gl, selected = "")
+      team_choices <- team_select_choices_with_all(teams_gl)
+      restored_team <- restore_once_selection(session, "gl_team", NULL, team_choices)
+      update_single_team_selectize(
+        session, "gl_team", teams_gl,
+        selected = if (length(restored_team)) restored_team[[1]] else ""
+      )
     }
     opponent_choices <- stats::setNames(
       as.character(teams_gl$team_id),
