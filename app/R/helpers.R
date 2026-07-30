@@ -590,6 +590,34 @@ sanitize_single_choice <- function(x, numeric_only = FALSE) {
   if (length(vals)) vals[[1]] else ""
 }
 
+# Inputs that must never enter a bookmark: one-shot actions, the idle
+# heartbeat, and DataTable bookkeeping inputs. Everything else is filter
+# state and is bookmarked automatically.
+BOOKMARK_EXCLUDE_LITERALS <- c(
+  "open_glossary", "idle_activity_ts", "hub_remembered_team",
+  "ibpl_restore_state", "ld_lineup_click", "cmp_table_row_click"
+)
+
+BOOKMARK_EXCLUDE_PATTERNS <- c(
+  "^go_",
+  "_reset$",
+  "^ibpl_",
+  paste0(
+    "_(rows_current|rows_all|rows_selected|state|search|search_columns|",
+    "cell_clicked|cells_selected|columns_selected|row_last_clicked)$"
+  )
+)
+
+bookmark_excluded_ids <- function(input_ids) {
+  ids <- as.character(input_ids %||% character(0))
+  if (!length(ids)) return(character(0))
+  hit <- ids %in% BOOKMARK_EXCLUDE_LITERALS
+  for (pattern in BOOKMARK_EXCLUDE_PATTERNS) {
+    hit <- hit | grepl(pattern, ids)
+  }
+  ids[hit]
+}
+
 csv_if_any <- function(x, integerize = FALSE) {
   if (is.null(x) || !length(x)) return(NA_character_)
   vals <- as.character(x)
