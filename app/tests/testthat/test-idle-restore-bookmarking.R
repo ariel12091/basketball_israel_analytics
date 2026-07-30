@@ -140,3 +140,26 @@ test_that("restore triggers on user return, never on expiry itself", {
   # expiry marks state and shows the pill; it must not navigate
   expect_match(js, "showPausedPill();", fixed = TRUE)
 })
+
+test_that("the replay machinery is gone from R", {
+  app_r_txt <- read_repo_txt("app.R")
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+
+  for (dead in c(
+    "restore_state_values", "ibpl_restore_state", "pending_ld_lineup_restore",
+    "restore_selectize_ids", "restore_radio_ids", "restore_date_range_ids",
+    "ibpl_restore_tab_from_query", "ibpl_restore_applied"
+  )) {
+    expect_false(grepl(dead, app_r_txt, fixed = TRUE), info = dead)
+  }
+  expect_false(grepl("ibpl_restore_tab_from_query", helpers_txt, fixed = TRUE))
+})
+
+test_that("home storylines stay gated when a bookmark restores another tab", {
+  app_r_txt <- read_repo_txt("app.R")
+  hub_txt <- read_repo_txt("R", "mod_team_hub.R")
+
+  expect_match(app_r_txt, "startup_restore_pending", fixed = TRUE)
+  expect_match(app_r_txt, 'restored_input_value(session, "main_tabs")', fixed = TRUE)
+  expect_match(hub_txt, "suspendWhenHidden = TRUE", fixed = TRUE)
+})

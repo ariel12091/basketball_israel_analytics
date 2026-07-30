@@ -775,7 +775,7 @@ server_team_hub <- function(input, output, session, shared) {
     output,
     "hub_storylines",
     priority = 100,
-    suspendWhenHidden = FALSE
+    suspendWhenHidden = TRUE
   )
 
   observeEvent(input$hub_story_click, {

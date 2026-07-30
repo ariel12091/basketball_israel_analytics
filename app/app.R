@@ -95,7 +95,6 @@ server <- function(input, output, session) {
   init_session_request_guard(session)
   if (is.function(session$allowReconnect)) session$allowReconnect(FALSE)
   last_activity_at <- reactiveVal(as.numeric(Sys.time()))
-  pending_ld_lineup_restore <- reactiveVal(NULL)
   idle_timeout_sec <- APP_IDLE_TIMEOUT_SEC
   idle_check_sec <- APP_IDLE_CHECK_SEC
   idle_close_session <- isTRUE(APP_IDLE_CLOSE_SESSION)
@@ -147,231 +146,6 @@ server <- function(input, output, session) {
     ))
   })
 
-  restore_selectize_ids <- c(
-    "teams", "on_game_type", "on_opponents", "on_gn_min", "on_gn_max", "on_last_n",
-    "ld_lineup_filter-team", "ld_lineup_filter-players_on", "ld_lineup_filter-players_off",
-    "ld_game_type", "ld_opponents", "ld_gn_min", "ld_gn_max", "ld_last_n",
-    "tr_game_type", "tr_opponents", "tr_gn_min", "tr_gn_max", "tr_last_n",
-    "gl_team", "gl_game_type", "gl_opponents", "gl_gn_min", "gl_gn_max", "gl_last_n",
-    "ts_teams", "ts_players", "ts_game_type", "ts_opponents", "ts_gn_min", "ts_gn_max", "ts_last_n",
-    "cmp_split_gn", "cmp_players_gn_min", "cmp_players_gn_max",
-    "cmp_player_a_gn_min", "cmp_player_a_gn_max", "cmp_player_b_gn_min", "cmp_player_b_gn_max",
-    "cmp_player_a_list_team_filter", "cmp_player_a", "cmp_player_b_list_team_filter", "cmp_player_b",
-    "cmp_a_teams", "cmp_a_opponents", "cmp_a_game_type",
-    "cmp_b_teams", "cmp_b_opponents", "cmp_b_game_type",
-    "cmp_lu_filter-team", "cmp_lu_filter-players_on", "cmp_lu_filter-players_off"
-  )
-  restore_select_ids <- c(
-    "game_year", "home_team",
-    "on_num_starters_off_mode", "on_num_starters_off", "on_num_starters_def_mode", "on_num_starters_def",
-    "on_home_away", "on_outcome", "on_opp_rank_side", "on_opp_rank_n", "on_opp_rank_metric",
-    "ld_num_starters_off_mode", "ld_num_starters_off", "ld_num_starters_def_mode", "ld_num_starters_def",
-    "ld_clutch_status", "ld_home_away", "ld_outcome", "ld_opp_rank_side", "ld_opp_rank_n", "ld_opp_rank_metric",
-    "tr_trad_display_mode", "tr_clutch_status", "tr_num_starters_off_mode", "tr_num_starters_off",
-    "tr_num_starters_def_mode", "tr_num_starters_def", "tr_home_away", "tr_outcome",
-    "tr_opp_rank_side", "tr_opp_rank_n", "tr_opp_rank_metric",
-    "gl_num_starters_off_mode", "gl_num_starters_off", "gl_num_starters_def_mode", "gl_num_starters_def",
-    "gl_home_away", "gl_outcome",
-    "ts_display_mode", "ts_clutch_status", "ts_home_away", "ts_outcome",
-    "ts_opp_rank_side", "ts_opp_rank_n", "ts_opp_rank_metric",
-    "cmp_preset", "cmp_player_a_team", "cmp_player_b_team",
-    "cmp_a_starters_mode", "cmp_a_starters_val", "cmp_a_opp_starters_mode", "cmp_a_opp_starters_val",
-    "cmp_a_home_away", "cmp_a_outcome", "cmp_a_opp_rank_side", "cmp_a_opp_rank_n", "cmp_a_opp_rank_metric",
-    "cmp_b_starters_mode", "cmp_b_starters_val", "cmp_b_opp_starters_mode", "cmp_b_opp_starters_val",
-    "cmp_b_home_away", "cmp_b_outcome", "cmp_b_opp_rank_side", "cmp_b_opp_rank_n", "cmp_b_opp_rank_metric"
-  )
-  restore_radio_ids <- c(
-    "onoff_view_mode", "ld_view_mode", "ld_num", "tr_view_mode", "gl_view_mode",
-    "cmp_mode", "cmp_player_compare_mode", "cmp_lu_num", "cmp_team_player_rate_mode", "cmp_rate_mode"
-  )
-  restore_slider_ids <- c(
-    "min_all_poss", "min_on_poss",
-    "ld_minposs", "ld_clutch_margin", "ld_clutch_minutes",
-    "tr_clutch_margin", "tr_clutch_minutes",
-    "ts_min_gp_slider", "ts_clutch_margin", "ts_clutch_minutes",
-    "cmp_min_poss", "cmp_a_clutch_margin", "cmp_a_clutch_minutes",
-    "cmp_b_clutch_margin", "cmp_b_clutch_minutes"
-  )
-  restore_numeric_ids <- c("ts_min_gp")
-  restore_checkbox_ids <- c(
-    "ld_clutch_enabled", "ld_clutch_ot_margin",
-    "tr_trad_defense_mode", "tr_clutch_enabled", "tr_clutch_ot_margin",
-    "ts_show_ineligible", "ts_clutch_enabled", "ts_clutch_ot_margin",
-    "cmp_a_clutch", "cmp_b_clutch"
-  )
-  restore_date_range_ids <- c(
-    "date_range", "ld_dates", "tr_dates", "gl_dates", "ts_dates",
-    "cmp_players_dates", "cmp_player_a_dates", "cmp_player_b_dates"
-  )
-  restore_date_ids <- c("cmp_split_date")
-  restore_tab_values <- c("home", "onoff", "lineup_data", "team_ratings", "game_logs", "traditional_stats", "compare")
-
-  restore_id_allowed <- function(id, tab) {
-    if (id %in% c("main_tabs", "game_year")) return(TRUE)
-    switch(
-      tab,
-      home = id %in% c("home_team"),
-      onoff = id %in% c("teams", "date_range", "min_all_poss", "min_on_poss", "onoff_view_mode") ||
-        startsWith(id, "on_"),
-      lineup_data = startsWith(id, "ld_"),
-      team_ratings = startsWith(id, "tr_"),
-      game_logs = startsWith(id, "gl_"),
-      traditional_stats = startsWith(id, "ts_"),
-      compare = startsWith(id, "cmp_"),
-      FALSE
-    )
-  }
-
-  restore_chr_vec <- function(x, max_len = 80L) {
-    sanitize_persisted_choices(x, max_len = max_len)
-  }
-
-  restore_chr_one <- function(x) {
-    sanitize_single_choice(x)
-  }
-
-  restore_bool <- function(x) {
-    if (is.logical(x) && length(x)) return(isTRUE(x[[1]]))
-    val <- tolower(restore_chr_one(x))
-    val %in% c("true", "1", "yes", "on")
-  }
-
-  restore_num <- function(x) {
-    val <- suppressWarnings(as.numeric(restore_chr_one(x)))
-    if (is.finite(val)) val else NA_real_
-  }
-
-  restore_state_values <- function(values) {
-    if (is.null(values) || !is.list(values)) return(invisible(FALSE))
-    restore_target_tab <- restore_chr_one(values$main_tabs)
-    if (!restore_target_tab %in% restore_tab_values) restore_target_tab <- "home"
-    defer_ld_player_restore <- identical(restore_target_tab, "lineup_data")
-    ld_player_restore_ids <- c("ld_lineup_filter-players_on", "ld_lineup_filter-players_off")
-    if (defer_ld_player_restore) {
-      pending_ld_lineup_restore(list(
-        team = restore_chr_one(values[["ld_lineup_filter-team"]]),
-        players_on = restore_chr_vec(values[["ld_lineup_filter-players_on"]]),
-        players_off = restore_chr_vec(values[["ld_lineup_filter-players_off"]])
-      ))
-    }
-
-    restore_if_present <- function(id, fn) {
-      if (!hasName(values, id)) return(invisible(NULL))
-      if (!isTRUE(restore_id_allowed(id, restore_target_tab))) return(invisible(NULL))
-      tryCatch(fn(values[[id]]), error = function(e) {
-        app_log("idle_restore", sprintf("failed to restore %s: %s", id, conditionMessage(e)), level = "WARN", session = session)
-      })
-    }
-
-    restore_if_present("main_tabs", function(v) {
-      tab <- restore_chr_one(v)
-      if (tab %in% restore_tab_values) updateTabsetPanel(session, "main_tabs", selected = tab)
-    })
-
-    for (id in restore_select_ids) {
-      restore_if_present(id, function(v) {
-        freezeReactiveValue(input, id)
-        updateSelectInput(session, id, selected = restore_chr_one(v))
-      })
-    }
-    for (id in restore_selectize_ids) {
-      if (defer_ld_player_restore && id %in% ld_player_restore_ids) next
-      restore_if_present(id, function(v) {
-        freezeReactiveValue(input, id)
-        updateSelectizeInput(session, id, selected = restore_chr_vec(v))
-      })
-    }
-    for (id in restore_radio_ids) {
-      restore_if_present(id, function(v) {
-        freezeReactiveValue(input, id)
-        updateRadioButtons(session, id, selected = restore_chr_one(v))
-      })
-    }
-    for (id in restore_slider_ids) {
-      restore_if_present(id, function(v) {
-        val <- restore_num(v)
-        if (!is.na(val)) {
-          freezeReactiveValue(input, id)
-          updateSliderInput(session, id, value = val)
-        }
-      })
-    }
-    for (id in restore_numeric_ids) {
-      restore_if_present(id, function(v) {
-        val <- restore_num(v)
-        if (!is.na(val)) {
-          freezeReactiveValue(input, id)
-          updateNumericInput(session, id, value = val)
-        }
-      })
-    }
-    for (id in restore_checkbox_ids) {
-      restore_if_present(id, function(v) {
-        freezeReactiveValue(input, id)
-        updateCheckboxInput(session, id, value = restore_bool(v))
-      })
-    }
-    for (id in restore_date_range_ids) {
-      restore_if_present(id, function(v) {
-        vals <- restore_chr_vec(v, max_len = 2L)
-        if (length(vals) >= 2L) {
-          start_d <- suppressWarnings(as.Date(vals[[1]]))
-          end_d <- suppressWarnings(as.Date(vals[[2]]))
-          if (!is.na(start_d) && !is.na(end_d)) {
-            freezeReactiveValue(input, id)
-            updateDateRangeInput(session, id, start = start_d, end = end_d)
-          }
-        }
-      })
-    }
-    for (id in restore_date_ids) {
-      restore_if_present(id, function(v) {
-        val <- suppressWarnings(as.Date(restore_chr_one(v)))
-        if (!is.na(val)) {
-          freezeReactiveValue(input, id)
-          updateDateInput(session, id, value = val)
-        }
-      })
-    }
-
-    invisible(TRUE)
-  }
-
-  observeEvent(input[["ld_lineup_filter-team"]], {
-    pending <- pending_ld_lineup_restore()
-    if (is.null(pending) || !is.list(pending)) return(invisible(NULL))
-
-    expected_team <- restore_chr_one(pending$team)
-    current_team <- restore_chr_one(input[["ld_lineup_filter-team"]])
-    if (nzchar(expected_team) && !identical(current_team, expected_team)) {
-      return(invisible(NULL))
-    }
-
-    session$onFlushed(function() {
-      players_on <- restore_chr_vec(pending$players_on)
-      players_off <- restore_chr_vec(pending$players_off)
-      if (length(players_on)) {
-        freezeReactiveValue(input, "ld_lineup_filter-players_on")
-        updateSelectizeInput(session, "ld_lineup_filter-players_on", selected = players_on)
-      }
-      if (length(players_off)) {
-        freezeReactiveValue(input, "ld_lineup_filter-players_off")
-        updateSelectizeInput(session, "ld_lineup_filter-players_off", selected = players_off)
-      }
-      pending_ld_lineup_restore(NULL)
-    }, once = TRUE)
-  }, ignoreInit = TRUE, priority = -100)
-
-  observeEvent(input$ibpl_restore_state, {
-    payload <- input$ibpl_restore_state
-    if (is.null(payload) || !is.list(payload)) return(invisible(NULL))
-    values <- payload$values
-    restored <- restore_state_values(values)
-    if (isTRUE(restored)) {
-      session$sendCustomMessage("ibpl_restore_applied", list(ts = as.numeric(Sys.time())))
-    }
-  }, ignoreInit = TRUE)
-
   # ---- Shared helpers & reactives ----
   season_date_bounds <- season_date_bounds_for_year
   last_updated_cache <- reactiveVal(NA_character_)
@@ -381,6 +155,11 @@ server <- function(input, output, session) {
   selected_game_year <- reactive({
     input$game_year %||% DEFAULT_GAME_YEAR
   })
+
+  restored_tab <- sanitize_single_choice(restored_input_value(session, "main_tabs"))
+  startup_restore_pending <- reactiveVal(
+    nzchar(restored_tab) && !identical(restored_tab, "home")
+  )
 
   # ===== Teams dropdown choices =====
   teams_for_year_df <- reactive({
@@ -517,11 +296,18 @@ server <- function(input, output, session) {
     last_updated_cache() %||% "Last updated: unavailable"
   })
 
-  # Storylines own the first expensive startup query batch. Reset the handoff
-  # whenever the season changes; the Home module releases prewarm after its
-  # Storylines output finishes for that season.
+  # Storylines own the first expensive startup query batch. A restored session
+  # can start on a hidden tab, so release that handoff without waiting for Home.
   observeEvent(selected_game_year(), {
-    hub_storylines_ready_year(NA_integer_)
+    gy <- suppressWarnings(as.integer(selected_game_year()))
+    if (isTRUE(startup_restore_pending())) {
+      startup_restore_pending(FALSE)
+      hub_storylines_ready_year(gy)
+    } else if (nzchar(restored_tab)) {
+      hub_storylines_ready_year(gy)
+    } else {
+      hub_storylines_ready_year(NA_integer_)
+    }
   }, ignoreInit = FALSE, priority = 200)
 
   observe({
