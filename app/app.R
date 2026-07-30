@@ -23,7 +23,7 @@ source("R/ui_tab7_compare.R", local = TRUE)
 source("R/server_tab7_compare.R", local = TRUE)
 
 enableBookmarking(store = "url")
-IBPL_RESTORE_STATE_VERSION <- 11L
+IBPL_RESTORE_STATE_VERSION <- 12L
 
 # ---------------- UI ----------------
 ui <- function(request) {

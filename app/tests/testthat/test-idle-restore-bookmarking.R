@@ -175,6 +175,27 @@ test_that("browser stores bookmark urls and restores by navigation", {
   }
 })
 
+test_that("bookmark startup cannot overwrite the last valid restore URL", {
+  js <- read_repo_txt("www", "app.js")
+  app <- read_repo_txt("app.R")
+
+  expect_match(
+    js,
+    'var loadedFromBookmark = location.search.indexOf("_inputs_") !== -1;',
+    fixed = TRUE
+  )
+  expect_match(js, "var bookmarkCaptureArmed = !loadedFromBookmark;", fixed = TRUE)
+  expect_match(js, "function armBookmarkCaptureFromUserEvent(event)", fixed = TRUE)
+  expect_match(js, 'if (event.type === "mousemove") return;', fixed = TRUE)
+  expect_match(
+    js,
+    "if (msg && msg.url && bookmarkCaptureArmed)",
+    fixed = TRUE
+  )
+  expect_match(js, "armBookmarkCaptureFromUserEvent(event);", fixed = TRUE)
+  expect_match(app, "IBPL_RESTORE_STATE_VERSION <- 12L", fixed = TRUE)
+})
+
 test_that("restore triggers on user return, never on expiry itself", {
   js <- read_repo_txt("www", "app.js")
 

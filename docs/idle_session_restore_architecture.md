@@ -2,7 +2,7 @@
 
 **Updated:** 2026-07-30  
 **Implementation:** native Shiny URL bookmarking  
-**State version:** `IBPL_RESTORE_STATE_VERSION <- 11L`
+**State version:** `IBPL_RESTORE_STATE_VERSION <- 12L`
 
 ## Purpose
 
@@ -23,7 +23,7 @@ input state changes
   -> session$doBookmark()
   -> Shiny creates a URL bookmark
   -> onBookmarked() sends the URL to the browser
-  -> JavaScript stores it under a per-browser-tab key
+  -> JavaScript stores it under a per-browser-tab key when capture is armed
 
 idle warning
   -> JavaScript shows the countdown
@@ -64,7 +64,7 @@ foreground is itself treated as return activity and can begin restoration.
 | `APP_IDLE_CHECK_SEC` | `15` | R-side interval for deciding when to close an idle session. |
 | `APP_IDLE_STATE_TTL_HOURS` | `24` | Maximum age of a stored bookmark. |
 | `APP_IDLE_CLOSE_SESSION` | `false` | Enables R-side idle session closure. |
-| `IBPL_RESTORE_STATE_VERSION` | `11` | Versions browser storage keys and payloads. Increment after incompatible input changes. |
+| `IBPL_RESTORE_STATE_VERSION` | `12` | Versions browser storage keys and payloads. Increment after incompatible input changes. |
 
 The version constant is passed into `window.IBPL_IDLE_CONFIG`; R and JavaScript
 therefore use the same value.
@@ -90,6 +90,12 @@ inputs must be added to the exclusion rules.
 `onBookmarked()` sends the generated URL and state version in the
 `ibpl_bookmark_url` custom message. The address bar is unchanged during normal
 use.
+
+A session loaded from `_inputs_` starts with browser-side bookmark capture
+disarmed. Shiny can emit partial startup bookmarks before server-populated
+choices have finished rebuilding; those messages must not replace the valid
+pre-idle URL. Deliberate user activity re-arms capture, while mouse movement and
+programmatic events do not.
 
 ## Restore-context rule for server-populated choices
 
@@ -143,7 +149,7 @@ The bookmark payload contains:
 {
   "url": "?_inputs_&main_tabs=compare&...",
   "savedAt": 1785270000000,
-  "v": 11
+  "v": 12
 }
 ```
 
@@ -184,6 +190,7 @@ been observed or Shiny is no longer ready.
 | State version changed | Old state is ignored because its key/version no longer matches. |
 | Saved dynamic choice no longer exists | The choice intersection drops that value. |
 | `session$doBookmark()` fails | The error is logged; the previously stored bookmark remains. |
+| Restored startup emits a partial bookmark | Browser capture is disarmed until deliberate user activity, so the pre-idle URL remains. |
 | Session dies while the page is hidden | Restoration waits until the page returns to the foreground. |
 | User chooses Start fresh | Stored bookmark is removed before reloading defaults. |
 
@@ -200,7 +207,7 @@ the observed URL exceeds 6 KB.
 The browser exposes:
 
 - `window.ibplDebugSavedSession()` — returns the current bookmark URL,
-  `idleExpired`, and tab ID.
+  `idleExpired`, tab ID, and whether bookmark capture is armed.
 - `window.ibplRestoreSavedSession()` — forces the return/navigation path.
 - `window.ibplClearSavedSession()` — clears stored state and marks the next load
   to skip restoration.

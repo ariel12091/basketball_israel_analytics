@@ -255,6 +255,8 @@
   var ttlMs = Math.max(1, Number(cfg.stateTtlHours || 24)) * 60 * 60 * 1000;
   var stateVersion = Number(cfg.stateVersion || 1);
   warningMs = Math.min(warningMs, Math.max(1000, timeoutMs - 1000));
+  var loadedFromBookmark = location.search.indexOf("_inputs_") !== -1;
+  var bookmarkCaptureArmed = !loadedFromBookmark;
 
   var keyBase = "ibpl_idle_resume:" + location.pathname.replace(/\/+$/, "");
   var tabIdKey = keyBase + ":tab_id";
@@ -325,6 +327,16 @@
 
   function cleanLocation() {
     return location.pathname + location.hash;
+  }
+
+  // A restored Shiny session emits transient bookmarks while server-populated
+  // choices are rebuilding. Keep the saved pre-idle URL until the user
+  // deliberately interacts with the restored page.
+  function armBookmarkCaptureFromUserEvent(event) {
+    if (bookmarkCaptureArmed || !loadedFromBookmark || !event) return;
+    if (event.type === "mousemove") return;
+    if (event.isTrusted === false) return;
+    bookmarkCaptureArmed = true;
   }
 
   // One-shot restore navigation. The bookmark params are stripped from the
@@ -534,7 +546,9 @@
         typeof window.Shiny.addCustomMessageHandler !== "function") return false;
     handlersRegistered = true;
     window.Shiny.addCustomMessageHandler("ibpl_bookmark_url", function(msg) {
-      if (msg && msg.url) storeBookmarkUrl(msg.url + "&ibpl_v=" + stateVersion);
+      if (msg && msg.url && bookmarkCaptureArmed) {
+        storeBookmarkUrl(msg.url + "&ibpl_v=" + stateVersion);
+      }
     });
     window.Shiny.addCustomMessageHandler("ibpl-store-hub-team", function(msg) {
       if (msg && msg.teamId) safeLocalSet(hubTeamKey, String(msg.teamId));
@@ -572,6 +586,7 @@
           if (shouldRestoreFromPausedEvent(event)) restoreOnReturn();
           return;
         }
+        armBookmarkCaptureFromUserEvent(event);
         markActivity(false);
       }, { passive: true });
     }
@@ -601,7 +616,12 @@
   }
 
   window.ibplDebugSavedSession = function() {
-    return { url: loadBookmarkUrl(), idleExpired: idleExpired, tabId: tabId };
+    return {
+      url: loadBookmarkUrl(),
+      idleExpired: idleExpired,
+      tabId: tabId,
+      bookmarkCaptureArmed: bookmarkCaptureArmed
+    };
   };
   window.ibplClearSavedSession = function() {
     safeSessionRemove(urlKey);
