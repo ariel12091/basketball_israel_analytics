@@ -59,7 +59,7 @@ foreground is itself treated as return activity and can begin restoration.
 | Setting | Default | Meaning |
 | --- | ---: | --- |
 | `APP_IDLE_TIMEOUT_MIN` | unset | Preferred idle timeout in minutes; overrides the seconds setting when valid. |
-| `APP_IDLE_TIMEOUT_SEC` | `360` | Idle timeout in seconds. |
+| `APP_IDLE_TIMEOUT_SEC` | `600` | Idle timeout in seconds (10 minutes). |
 | `APP_IDLE_WARNING_SEC` | derived | Warning period, clamped below the idle timeout. |
 | `APP_IDLE_CHECK_SEC` | `15` | R-side interval for deciding when to close an idle session. |
 | `APP_IDLE_STATE_TTL_HOURS` | `24` | Maximum age of a stored bookmark. |
