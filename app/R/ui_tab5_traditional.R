@@ -1,6 +1,6 @@
 # ui_tab5_traditional.R - Tab 5: Traditional Player Stats UI
 
-ui_tab5_traditional <- tabPanel(
+ui_tab5_traditional <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-bar-chart-line"), "Player Stats"),
   value = "traditional_stats",
   fluidPage(

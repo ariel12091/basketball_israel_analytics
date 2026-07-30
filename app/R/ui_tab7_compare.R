@@ -1,6 +1,6 @@
 # ui_tab7_compare.R - Tab 7: Compare
 
-ui_tab7_compare <- tabPanel(
+ui_tab7_compare <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-arrow-left-right"), "Compare"),
   value = "compare",
   fluidPage(

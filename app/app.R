@@ -22,8 +22,12 @@ source("R/server_tab5_traditional.R", local = TRUE)
 source("R/ui_tab7_compare.R", local = TRUE)
 source("R/server_tab7_compare.R", local = TRUE)
 
+enableBookmarking(store = "url")
+IBPL_RESTORE_STATE_VERSION <- 11L
+
 # ---------------- UI ----------------
-ui <- navbarPage(
+ui <- function(request) {
+  navbarPage(
   id = "main_tabs",
   title = tags$span(
     tags$i(class = "bi bi-activity", style = "margin-right: 6px;"),
@@ -47,12 +51,13 @@ ui <- navbarPage(
     tags$script(HTML(sprintf(
       paste0(
         "window.IBPL_IDLE_CONFIG = {",
-        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:10",
+        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:%d",
         "};"
       ),
       APP_IDLE_TIMEOUT_SEC,
       APP_IDLE_WARNING_SEC,
-      format(APP_IDLE_STATE_TTL_HOURS, scientific = FALSE, trim = TRUE)
+      format(APP_IDLE_STATE_TTL_HOURS, scientific = FALSE, trim = TRUE),
+      IBPL_RESTORE_STATE_VERSION
     ))),
     includeScript("www/app.js"),
     tags$div(
@@ -74,14 +79,15 @@ ui <- navbarPage(
       )
     )
   ),
-  ui_tab0_home,
-  ui_tab1_onoff,
-  ui_tab2_lineup,
-  ui_tab3_team,
-  ui_tab4_gamelogs,
-  ui_tab5_traditional,
-  ui_tab7_compare
-)
+  ui_tab0_home(),
+  ui_tab1_onoff(),
+  ui_tab2_lineup(),
+  ui_tab3_team(),
+  ui_tab4_gamelogs(),
+  ui_tab5_traditional(),
+  ui_tab7_compare()
+  )
+}
 
 # ---------------- Server ----------------
 server <- function(input, output, session) {
@@ -111,6 +117,35 @@ server <- function(input, output, session) {
       }
     })
   }
+
+  # ---- Bookmark capture ----
+  # Snapshot every non-excluded input; re-bookmark only when that snapshot
+  # actually changes, so the idle heartbeat cannot cause bookmark churn.
+  bookmark_snapshot <- debounce(reactive({
+    vals <- reactiveValuesToList(input)
+    ids <- setdiff(names(vals), bookmark_excluded_ids(names(vals)))
+    vals[sort(ids)]
+  }), 1500)
+
+  last_bookmark_snapshot <- reactiveVal(NULL)
+
+  observe({
+    snap <- bookmark_snapshot()
+    if (identical(snap, isolate(last_bookmark_snapshot()))) return(invisible(NULL))
+    last_bookmark_snapshot(snap)
+    setBookmarkExclude(bookmark_excluded_ids(names(reactiveValuesToList(input))), session)
+    tryCatch(session$doBookmark(), error = function(e) {
+      app_log("bookmark", sprintf("doBookmark failed: %s", conditionMessage(e)),
+              level = "WARN", session = session)
+    })
+  }, priority = -200)
+
+  onBookmarked(function(url) {
+    session$sendCustomMessage("ibpl_bookmark_url", list(
+      url = url,
+      v = IBPL_RESTORE_STATE_VERSION
+    ))
+  })
 
   restore_selectize_ids <- c(
     "teams", "on_game_type", "on_opponents", "on_gn_min", "on_gn_max", "on_last_n",

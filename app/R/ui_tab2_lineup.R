@@ -1,6 +1,6 @@
 # ui_tab2_lineup.R - Tab 2: Lineup Data UI
 
-ui_tab2_lineup <- tabPanel(
+ui_tab2_lineup <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-people-fill"), "Lineup Data"),
   value = "lineup_data",
   fluidPage(

@@ -1,6 +1,6 @@
 # ui_tab1_onoff.R - Tab 1: On/Off Impact UI
 
-ui_tab1_onoff <- tabPanel(
+ui_tab1_onoff <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-toggles"), "On/Off Impact"),
   value = "onoff",
   fluidPage(

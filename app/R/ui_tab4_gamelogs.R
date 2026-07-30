@@ -1,6 +1,6 @@
 # ui_tab4_gamelogs.R - Tab 4: Game Logs UI
 
-ui_tab4_gamelogs <- tabPanel(
+ui_tab4_gamelogs <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-calendar-event"), "Game Logs"),
   value = "game_logs",
   fluidPage(

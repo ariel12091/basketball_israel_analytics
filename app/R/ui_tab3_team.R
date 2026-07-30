@@ -1,6 +1,6 @@
 # ui_tab3_team.R - Tab 3: Team Ratings UI
 
-ui_tab3_team <- tabPanel(
+ui_tab3_team <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-trophy-fill"), "Team Ratings"),
   value = "team_ratings",
   fluidPage(

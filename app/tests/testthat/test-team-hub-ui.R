@@ -3,7 +3,7 @@ shared_head_tags <- function() NULL
 source(repo_file("R", "ui_tab0_home.R"), local = TRUE)
 
 test_that("Home initially renders its named default team as selected", {
-  html <- htmltools::renderTags(ui_tab0_home)$html
+  html <- htmltools::renderTags(ui_tab0_home())$html
 
   expect_match(html, DEFAULT_HOME_TEAM_NAME, fixed = TRUE)
   expect_match(

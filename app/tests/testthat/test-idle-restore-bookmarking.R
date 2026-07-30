@@ -77,3 +77,16 @@ test_that("restore_aware_selection prefers current, falls back to restored, filt
     character(0)
   )
 })
+
+test_that("app enables url bookmarking and pushes urls without touching the address bar", {
+  app_r_txt <- read_repo_txt("app.R")
+
+  expect_match(app_r_txt, 'enableBookmarking(store = "url")', fixed = TRUE)
+  expect_match(app_r_txt, "session$doBookmark()", fixed = TRUE)
+  expect_match(app_r_txt, 'onBookmarked(function(url)', fixed = TRUE)
+  expect_match(app_r_txt, '"ibpl_bookmark_url"', fixed = TRUE)
+  expect_match(app_r_txt, "setBookmarkExclude(", fixed = TRUE)
+
+  # the bookmark must never be written into the browser address bar
+  expect_false(grepl("updateQueryString", app_r_txt, fixed = TRUE))
+})

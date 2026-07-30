@@ -1,6 +1,6 @@
 # ui_tab0_home.R - Tab 0: Home / Landing Page
 
-ui_tab0_home <- tabPanel(
+ui_tab0_home <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-house-fill"), "Home"),
   value = "home",
   fluidPage(
