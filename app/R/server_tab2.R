@@ -72,7 +72,7 @@ server_tab2 <- function(input, output, session, shared) {
     as.integer(ceiling(kth / step) * step)
   }
 
-  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = TRUE, {
+  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "lineup_data")) return(NULL)
     gy_int <- as.integer(input$game_year)
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)

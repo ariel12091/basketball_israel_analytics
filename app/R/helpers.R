@@ -623,8 +623,16 @@ bookmark_excluded_ids <- function(input_ids) {
 restored_input_value <- function(session, id, default = character(0)) {
   ctx <- tryCatch(session$restoreContext, error = function(e) NULL)
   if (is.null(ctx) || !isTRUE(ctx$active)) return(default)
-  val <- tryCatch(ctx$input$get(id, force = TRUE), error = function(e) NULL)
-  if (is.null(val) || !length(val)) default else val
+  namespaced_id <- tryCatch(session$ns(id), error = function(e) id)
+  candidate_ids <- unique(c(as.character(namespaced_id), as.character(id)))
+  for (candidate_id in candidate_ids) {
+    val <- tryCatch(
+      ctx$input$get(candidate_id, force = TRUE),
+      error = function(e) NULL
+    )
+    if (!is.null(val) && length(val)) return(val)
+  }
+  default
 }
 
 restore_aware_selection <- function(session, id, current, choices) {

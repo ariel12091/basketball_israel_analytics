@@ -61,6 +61,22 @@ test_that("restored_input_value falls back to the default", {
   expect_identical(restored_input_value(no_ctx, "teams"), character(0))
 })
 
+test_that("restored_input_value resolves module namespaces", {
+  s <- fake_restore_session(paste0(
+    "?_inputs_&ld_lineup_filter-team=4",
+    "&ld_lineup_filter-players_on=%5B%22101%22%2C%22102%22%5D",
+    "&ld_lineup_filter-players_off=%5B%22201%22%5D"
+  ))
+  s$ns <- function(id) paste0("ld_lineup_filter-", id)
+
+  expect_equal(as.character(restored_input_value(s, "team")), "4")
+  expect_equal(
+    as.character(restored_input_value(s, "players_on")),
+    c("101", "102")
+  )
+  expect_equal(as.character(restored_input_value(s, "players_off")), "201")
+})
+
 test_that("restore_aware_selection prefers current, falls back to restored, filters to choices", {
   s <- fake_restore_session('?_inputs_&teams=%5B%224%22%2C%229%22%5D')
   choices <- c("Hapoel" = "4", "Maccabi" = "7")
@@ -110,9 +126,36 @@ test_that("choice-populating observers preserve restored selections", {
     expect_match(txt, "restore_aware_selection(", fixed = TRUE)
   }
 
-  # the lineup module already intersects selections with real choices
-  expect_match(mod_txt, "selected_in_choices(input$players_on, choices)", fixed = TRUE)
+  # the lineup module intersects restored selections with real roster choices
+  expect_match(mod_txt, 'restore_aware_selection(session, "team"', fixed = TRUE)
   expect_match(mod_txt, "restore_aware_selection(", fixed = TRUE)
+})
+
+test_that("restored tab choice observers run initially and restore lineup players", {
+  tab2_txt <- read_repo_txt("R", "server_tab2.R")
+  tab3_txt <- read_repo_txt("R", "server_tab3.R")
+  mod_txt <- read_repo_txt("R", "mod_lineup_player_filter.R")
+
+  expect_match(
+    tab2_txt,
+    "observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE",
+    fixed = TRUE
+  )
+  expect_match(
+    tab3_txt,
+    "observeEvent(list(input$game_year, input$main_tabs), ignoreInit = FALSE",
+    fixed = TRUE
+  )
+  expect_match(
+    mod_txt,
+    'restore_aware_selection\\(\\s*session, "players_on"',
+    perl = TRUE
+  )
+  expect_match(
+    mod_txt,
+    'restore_aware_selection\\(\\s*session, "players_off"',
+    perl = TRUE
+  )
 })
 
 test_that("browser stores bookmark urls and restores by navigation", {

@@ -487,7 +487,7 @@ server_tab3 <- function(input, output, session, shared) {
     updateDateRangeInput(session, "tr_dates", start = b$start, end = b$end, min = b$start, max = b$end)
   }, ignoreInit = FALSE)
 
-  observeEvent(list(input$game_year, input$main_tabs), ignoreInit = TRUE, {
+  observeEvent(list(input$game_year, input$main_tabs), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "team_ratings")) return(NULL)
     req(input$game_year)
 

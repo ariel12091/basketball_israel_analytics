@@ -117,8 +117,10 @@ session$restoreContext$input$get(id, force = TRUE)
 
 The `force = TRUE` is essential. UI construction may already have consumed the
 value through `restoreInput()`, but a server-side choice observer still needs to
-read it. This is a narrow compatibility bridge for dynamic choices, not a
-general replay system.
+read it. Module calls first resolve the full bookmarked ID through
+`session$ns()`, so values such as `ld_lineup_filter-team` are restored before
+their dependent roster choices. This is a narrow compatibility bridge for
+dynamic choices, not a general replay system.
 
 ## Startup behavior
 

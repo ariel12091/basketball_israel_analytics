@@ -79,12 +79,6 @@ lineup_player_filter_server <- function(id, players_ref) {
       sanitize_persisted_choices(input[[input_id]], numeric_only = TRUE)
     }
 
-    selected_in_choices <- function(selected, choices) {
-      selected <- sanitize_persisted_choices(selected, numeric_only = TRUE)
-      if (!length(selected) || !length(choices)) return(character(0))
-      intersect(selected, as.character(unname(choices)))
-    }
-
     refresh_player_choices <- function() {
       team_val <- current_team_value()
       team_val <- team_val[nzchar(team_val)]
@@ -109,13 +103,17 @@ lineup_player_filter_server <- function(id, players_ref) {
       updateSelectizeInput(
         session, "players_on",
         choices = choices,
-        selected = selected_in_choices(input$players_on, choices),
+        selected = restore_aware_selection(
+          session, "players_on", input$players_on, choices
+        ),
         server = FALSE
       )
       updateSelectizeInput(
         session, "players_off",
         choices = choices,
-        selected = selected_in_choices(input$players_off, choices),
+        selected = restore_aware_selection(
+          session, "players_off", input$players_off, choices
+        ),
         server = FALSE
       )
       invisible(NULL)
