@@ -37,9 +37,9 @@ idle expiry / disconnect
   -> bookmark parameters are removed from the visible address bar
 ```
 
-The expiry timer itself does not navigate. If the connection is already gone
-when the page is visible, the disconnect handler can begin restoration
-immediately.
+Neither the expiry timer nor a visible disconnect navigates immediately. They
+leave the page paused until later user activity. Returning a hidden tab to the
+foreground is itself treated as return activity and can begin restoration.
 
 ## Source map
 

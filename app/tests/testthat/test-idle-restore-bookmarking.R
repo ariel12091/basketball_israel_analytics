@@ -141,6 +141,25 @@ test_that("restore triggers on user return, never on expiry itself", {
   expect_match(js, "showPausedPill();", fixed = TRUE)
 })
 
+test_that("a visible disconnect stays paused until later user activity", {
+  js <- read_repo_txt("www", "app.js")
+
+  disconnect_start <- regexpr("function handleDisconnected()", js, fixed = TRUE)[[1]]
+  handler_tail <- substring(js, disconnect_start)
+  disconnect_end <- regexpr(
+    "function registerMessageHandlers()", handler_tail, fixed = TRUE
+  )[[1]]
+  disconnect_handler <- substring(handler_tail, 1L, disconnect_end - 1L)
+
+  expect_match(disconnect_handler, "showPausedPill();", fixed = TRUE)
+  expect_false(grepl("restoreOnReturn();", disconnect_handler, fixed = TRUE))
+  expect_match(
+    js,
+    "if (idleExpired) { restoreOnReturn(); return; }",
+    fixed = TRUE
+  )
+})
+
 test_that("the replay machinery is gone from R", {
   app_r_txt <- read_repo_txt("app.R")
   helpers_txt <- read_repo_txt("R", "helpers.R")

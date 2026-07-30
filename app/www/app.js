@@ -518,7 +518,6 @@
     idleExpired = true;
     toggleNativeDisconnectUi(true);
     showPausedPill();
-    restoreOnReturn();
   }
 
   function registerMessageHandlers() {
