@@ -27,6 +27,15 @@ enableBookmarking(store = "url")
 # server-populated choices; discard them instead of restoring known-bad state.
 IBPL_RESTORE_STATE_VERSION <- 13L
 
+# Print the resolved idle settings once per worker. These can be overridden by
+# a gitignored .Renviron, so without this line a stale value (a leftover test
+# timeout, say) is invisible in both the repo and the running app.
+app_log("startup", sprintf(
+  "idle config: close_session=%s timeout=%ds warning=%ds check=%ds state_ttl=%sh",
+  APP_IDLE_CLOSE_SESSION, APP_IDLE_TIMEOUT_SEC, APP_IDLE_WARNING_SEC,
+  APP_IDLE_CHECK_SEC, format(APP_IDLE_STATE_TTL_HOURS, trim = TRUE)
+))
+
 # ---------------- UI ----------------
 ui <- function(request) {
   navbarPage(

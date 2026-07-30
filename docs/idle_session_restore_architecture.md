@@ -63,11 +63,25 @@ foreground is itself treated as return activity and can begin restoration.
 | `APP_IDLE_WARNING_SEC` | derived | Warning period, clamped below the idle timeout. |
 | `APP_IDLE_CHECK_SEC` | `15` | R-side interval for deciding when to close an idle session. |
 | `APP_IDLE_STATE_TTL_HOURS` | `24` | Maximum age of a stored bookmark. |
-| `APP_IDLE_CLOSE_SESSION` | `false` | Enables R-side idle session closure. |
+| `APP_IDLE_CLOSE_SESSION` | `true` | Enables R-side idle session closure. |
 | `IBPL_RESTORE_STATE_VERSION` | `13` | Versions browser storage keys and payloads. Increment after incompatible input changes. |
 
 The version constant is passed into `window.IBPL_IDLE_CONFIG`; R and JavaScript
 therefore use the same value.
+
+These defaults are the production settings, and they live in `global.R` rather
+than in `.Renviron`. `.Renviron` is gitignored *and* shipped in the deploy
+bundle (`.rscignore` does not exclude it), so a value set there overrides the
+committed default invisibly — which is how a leftover 1-minute test timeout
+survived in the deployed config. Keep `.Renviron` for credentials only. The
+environment variables above still work for temporary local overrides, and
+`app.R` logs the resolved values once per worker:
+
+```text
+[startup] idle config: close_session=TRUE timeout=600s warning=60s check=15s state_ttl=24h
+```
+
+Check that line before concluding a timeout is misbehaving.
 
 ## Bookmark capture
 

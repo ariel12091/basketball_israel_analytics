@@ -73,7 +73,7 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **Test mocks:** `tests/testthat/helper-server-mocks.R` sources `R/helpers.R` (real implementations) and stubs only the impure pieces (`db_get_query`, `cached_ref_query`, `fetch_*`, guards, chip builders). Never copy a helper implementation into the mocks — put it in `helpers.R`.
 
-**Session guardrails:** `guard_heavy_request()` (per-session rate limit + query-window caps), `statement_timeout` (`PG_STATEMENT_TIMEOUT_MS`, default 20s), idle-session timeout with client-side state restore (`APP_IDLE_CLOSE_SESSION`, enabled in deployed `.Renviron`).
+**Session guardrails:** `guard_heavy_request()` (per-session rate limit + query-window caps), `statement_timeout` (`PG_STATEMENT_TIMEOUT_MS`, default 20s), idle-session timeout with client-side state restore (`APP_IDLE_CLOSE_SESSION`, on by default in `global.R`; 10-min timeout). `.Renviron` is credentials only — it is gitignored *and* deployed, so tuning values there override the committed defaults invisibly. `app.R` logs the resolved idle config at startup.
 
 **DB security:** app connects as `app_readonly` (SELECT-only, EXECUTE on an explicit function allowlist, RLS enabled). Apply/audit via `scripts/apply_db_security.R` (dry-run by default) + `sql/security/*.sql`; contract tests in `test-db-security-contracts.R`.
 
