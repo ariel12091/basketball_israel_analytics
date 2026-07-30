@@ -179,8 +179,9 @@ The server and browser deliberately keep separate clocks:
   paused state promptly.
 
 While the document is hidden, the browser does not show the warning or navigate.
-When it becomes visible, it restores only if expiry/disconnection has already
-been observed or Shiny is no longer ready.
+When it becomes visible, it compares wall-clock time with the last activity
+before resetting that clock. This catches idle expiry even when background timer
+throttling delays both the JavaScript interval and Shiny's disconnect event.
 
 ## Failure handling
 

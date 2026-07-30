@@ -578,6 +578,19 @@
     return true;
   }
 
+  function handleVisibilityChange() {
+    if (document.visibilityState !== "visible") return;
+    // Background tabs throttle timers and can deliver shiny:disconnected after
+    // visibilitychange. Compare wall-clock time before activity can reset it.
+    if ((Date.now() - lastActivity) >= timeoutMs) idleExpired = true;
+    if (!shinyReadyForRestore()) idleExpired = true;
+    if (idleExpired) {
+      restoreOnReturn();
+      return;
+    }
+    markActivity(true);
+  }
+
   function bindActivity() {
     var events = ["mousemove", "mousedown", "keydown", "scroll", "touchstart", "click"];
     for (var i = 0; i < events.length; i++) {
@@ -590,11 +603,7 @@
         markActivity(false);
       }, { passive: true });
     }
-    document.addEventListener("visibilitychange", function() {
-      if (document.visibilityState !== "visible") return;
-      if (idleExpired || !shinyReadyForRestore()) { restoreOnReturn(); return; }
-      markActivity(true);
-    });
+    document.addEventListener("visibilitychange", handleVisibilityChange);
     if (window.jQuery) {
       window.jQuery(document).on("shiny:connected", handleConnected);
       window.jQuery(document).on("shiny:disconnected", handleDisconnected);

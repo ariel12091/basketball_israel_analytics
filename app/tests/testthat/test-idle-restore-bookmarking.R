@@ -205,6 +205,36 @@ test_that("restore triggers on user return, never on expiry itself", {
   expect_match(js, "showPausedPill();", fixed = TRUE)
 })
 
+test_that("foreground return detects timeout before resetting activity", {
+  js <- read_repo_txt("www", "app.js")
+
+  handler_start <- regexpr(
+    "function handleVisibilityChange()", js, fixed = TRUE
+  )[[1]]
+  handler_tail <- substring(js, handler_start)
+  handler_end <- regexpr(
+    "function bindActivity()", handler_tail, fixed = TRUE
+  )[[1]]
+  handler <- substring(handler_tail, 1L, handler_end - 1L)
+
+  expect_gt(handler_start, 0L)
+  expect_match(
+    handler,
+    "if ((Date.now() - lastActivity) >= timeoutMs) idleExpired = true;",
+    fixed = TRUE
+  )
+  expect_match(
+    handler,
+    "if (!shinyReadyForRestore()) idleExpired = true;",
+    fixed = TRUE
+  )
+  expect_match(handler, "restoreOnReturn();", fixed = TRUE)
+  expect_lt(
+    regexpr("idleExpired = true;", handler, fixed = TRUE)[[1]],
+    regexpr("markActivity(true);", handler, fixed = TRUE)[[1]]
+  )
+})
+
 test_that("a visible disconnect stays paused until later user activity", {
   js <- read_repo_txt("www", "app.js")
 
