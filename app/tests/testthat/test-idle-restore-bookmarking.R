@@ -90,3 +90,27 @@ test_that("app enables url bookmarking and pushes urls without touching the addr
   # the bookmark must never be written into the browser address bar
   expect_false(grepl("updateQueryString", app_r_txt, fixed = TRUE))
 })
+
+test_that("choice-populating observers preserve restored selections", {
+  app_r_txt <- read_repo_txt("app.R")
+  tab3_txt <- read_repo_txt("R", "server_tab3.R")
+  tab4_txt <- read_repo_txt("R", "server_tab4.R")
+  tab5_txt <- read_repo_txt("R", "server_tab5_traditional.R")
+  tab7_txt <- read_repo_txt("R", "server_tab7_compare.R")
+  mod_txt  <- read_repo_txt("R", "mod_lineup_player_filter.R")
+
+  # the startup population path must not hard-reset selections any more
+  expect_false(grepl(
+    'updateSelectizeInput(session, "teams", choices = team_choices, selected = character(0)',
+    app_r_txt, fixed = TRUE
+  ))
+  expect_match(app_r_txt, "restore_aware_selection(", fixed = TRUE)
+
+  for (txt in list(tab3_txt, tab4_txt, tab5_txt, tab7_txt)) {
+    expect_match(txt, "restore_aware_selection(", fixed = TRUE)
+  }
+
+  # the lineup module already intersects selections with real choices
+  expect_match(mod_txt, "selected_in_choices(input$players_on, choices)", fixed = TRUE)
+  expect_match(mod_txt, "restore_aware_selection(", fixed = TRUE)
+})

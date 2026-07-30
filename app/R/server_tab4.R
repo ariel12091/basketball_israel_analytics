@@ -247,8 +247,14 @@ server_tab4 <- function(input, output, session, shared) {
       as.character(teams_gl$team_id),
       as.character(teams_gl$team_name)
     )
-    updateSelectizeInput(session, "gl_opponents", choices = opponent_choices,
-                         selected = character(0), server = TRUE)
+    updateSelectizeInput(
+      session, "gl_opponents",
+      choices = opponent_choices,
+      selected = restore_aware_selection(
+        session, "gl_opponents", isolate(input$gl_opponents), opponent_choices
+      ),
+      server = TRUE
+    )
 
     gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)

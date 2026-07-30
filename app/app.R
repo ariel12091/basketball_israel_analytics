@@ -412,9 +412,14 @@ server <- function(input, output, session) {
   observeEvent(selected_game_year(), {
     td <- teams_for_year_df()
     team_choices <- stats::setNames(as.character(td$team_id), as.character(td$team_name))
-    updateSelectizeInput(session, "teams", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "on_opponents", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ld_opponents", choices = team_choices, selected = character(0), server = TRUE)
+    for (id in c("teams", "on_opponents", "ld_opponents")) {
+      updateSelectizeInput(
+        session, id,
+        choices = team_choices,
+        selected = restore_aware_selection(session, id, isolate(input[[id]]), team_choices),
+        server = TRUE
+      )
+    }
   }, ignoreInit = FALSE)
 
   selected_opp_ids_on <- reactive({

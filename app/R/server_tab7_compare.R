@@ -1105,26 +1105,47 @@ server_tab7_compare <- function(input, output, session, shared) {
         } else {
           character(0)
         }
-        updateSelectizeInput(session, "cmp_a_teams", choices = team_choices, selected = character(0), server = FALSE)
-        updateSelectizeInput(session, "cmp_b_teams", choices = team_choices, selected = character(0), server = FALSE)
-        updateSelectizeInput(session, "cmp_a_opponents", choices = team_choices, selected = character(0), server = FALSE)
-        updateSelectizeInput(session, "cmp_b_opponents", choices = team_choices, selected = character(0), server = FALSE)
+        for (id in c("cmp_a_teams", "cmp_b_teams", "cmp_a_opponents", "cmp_b_opponents")) {
+          updateSelectizeInput(
+            session, id,
+            choices = team_choices,
+            selected = restore_aware_selection(
+              session, id, isolate(input[[id]]), team_choices
+            ),
+            server = FALSE
+          )
+        }
         player_list_team_choices <- if (nrow(teams_df)) setNames(as.character(teams_df$team_id), teams_df$team_name) else character(0)
-        updateSelectizeInput(session, "cmp_player_a_list_team_filter", choices = player_list_team_choices, selected = character(0), server = FALSE)
-        updateSelectizeInput(session, "cmp_player_b_list_team_filter", choices = player_list_team_choices, selected = character(0), server = FALSE)
+        for (id in c("cmp_player_a_list_team_filter", "cmp_player_b_list_team_filter")) {
+          updateSelectizeInput(
+            session, id,
+            choices = player_list_team_choices,
+            selected = restore_aware_selection(
+              session, id, isolate(input[[id]]), player_list_team_choices
+            ),
+            server = FALSE
+          )
+        }
         lu_team_choices <- if (nrow(teams_df)) setNames(as.character(teams_df$team_id), teams_df$team_name) else character(0)
         cmp_lu_filter$reset_inputs(team_choices = c("All teams" = "", lu_team_choices), team_selected = "")
 
         gn_df <- load_cmp_gn_ref(gy_int)
         gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
         gn_choices_with_blank <- c("", gn_choices)
-        updateSelectizeInput(session, "cmp_players_gn_min", choices = gn_choices_with_blank, selected = "", server = FALSE)
-        updateSelectizeInput(session, "cmp_players_gn_max", choices = gn_choices_with_blank, selected = "", server = FALSE)
-        updateSelectizeInput(session, "cmp_player_a_gn_min", choices = gn_choices_with_blank, selected = "", server = FALSE)
-        updateSelectizeInput(session, "cmp_player_a_gn_max", choices = gn_choices_with_blank, selected = "", server = FALSE)
-        updateSelectizeInput(session, "cmp_player_b_gn_min", choices = gn_choices_with_blank, selected = "", server = FALSE)
-        updateSelectizeInput(session, "cmp_player_b_gn_max", choices = gn_choices_with_blank, selected = "", server = FALSE)
-        updateSelectizeInput(session, "cmp_split_gn", choices = gn_choices_with_blank, selected = "", server = FALSE)
+        for (id in c(
+          "cmp_players_gn_min", "cmp_players_gn_max",
+          "cmp_player_a_gn_min", "cmp_player_a_gn_max",
+          "cmp_player_b_gn_min", "cmp_player_b_gn_max", "cmp_split_gn"
+        )) {
+          updateSelectizeInput(
+            session, id,
+            choices = gn_choices_with_blank,
+            selected = restore_aware_selection(
+              session, id, isolate(input[[id]]), gn_choices_with_blank
+            ),
+            server = FALSE
+          )
+        }
 
         b <- shared$season_date_bounds(as.character(gy_int))
         updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)

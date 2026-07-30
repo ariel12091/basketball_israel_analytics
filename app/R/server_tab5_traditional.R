@@ -495,7 +495,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
     gy_int <- suppressWarnings(as.integer(input$game_year))
     lk <- if (length(gy_int) && is.finite(gy_int)) load_ts_identity_lookup(gy_int) else NULL
     choices <- ts_player_choices(ts_ref$players, ts_ref$teams, selected_team_ids_now(), lookup = lk)
-    selected <- intersect(input$ts_players %||% character(0), unname(choices))
+    selected <- restore_aware_selection(
+      session, "ts_players", isolate(input$ts_players), choices
+    )
     updateSelectizeInput(session, "ts_players", choices = choices, selected = selected, server = TRUE)
   }
 
@@ -507,8 +509,22 @@ server_tab5_traditional <- function(input, output, session, shared) {
     teams_df <- fetch_teams_distinct(gy_int)
     ts_ref$teams <- teams_df
     team_choices <- stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
-    updateSelectizeInput(session, "ts_teams", choices = team_choices, selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "ts_opponents", choices = team_choices, selected = character(0), server = TRUE)
+    updateSelectizeInput(
+      session, "ts_teams",
+      choices = team_choices,
+      selected = restore_aware_selection(
+        session, "ts_teams", isolate(input$ts_teams), team_choices
+      ),
+      server = TRUE
+    )
+    updateSelectizeInput(
+      session, "ts_opponents",
+      choices = team_choices,
+      selected = restore_aware_selection(
+        session, "ts_opponents", isolate(input$ts_opponents), team_choices
+      ),
+      server = TRUE
+    )
 
     players_df <- cached_ref_query(
       key = sprintf("ts_players_%d", gy_int),

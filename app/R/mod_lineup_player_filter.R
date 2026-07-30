@@ -67,6 +67,7 @@ lineup_player_filter_server <- function(id, players_ref) {
     }
 
     update_team_choices <- function(choices, selected = "") {
+      selected <- restore_aware_selection(session, "team", selected, choices)
       updateSelectizeInput(session, "team", choices = choices, selected = selected, server = FALSE)
     }
 

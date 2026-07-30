@@ -493,7 +493,13 @@ server_tab3 <- function(input, output, session, shared) {
 
     td <- tr_teams_for_year()
     opponent_choices <- stats::setNames(as.character(td$team_id), as.character(td$team_name))
-    updateSelectizeInput(session, "tr_opponents", choices = opponent_choices, selected = character(0))
+    updateSelectizeInput(
+      session, "tr_opponents",
+      choices = opponent_choices,
+      selected = restore_aware_selection(
+        session, "tr_opponents", isolate(input$tr_opponents), opponent_choices
+      )
+    )
 
     gy_int <- as.integer(input$game_year)
     gn_df <- fetch_gn_values(gy_int)
