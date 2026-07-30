@@ -615,6 +615,9 @@ body.ibpl-idle-expired .reconnect-dialog {
   font-weight: 600;
 }
 .restore-notice.visible { display: flex; }
+#ibpl-idle-pill {
+  border-color: rgba(232,164,53,0.45);
+}
 .restore-notice button {
   flex: 0 0 auto;
   background: transparent;

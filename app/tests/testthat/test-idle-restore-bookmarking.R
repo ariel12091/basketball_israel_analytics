@@ -114,3 +114,29 @@ test_that("choice-populating observers preserve restored selections", {
   expect_match(mod_txt, "selected_in_choices(input$players_on, choices)", fixed = TRUE)
   expect_match(mod_txt, "restore_aware_selection(", fixed = TRUE)
 })
+
+test_that("browser stores bookmark urls and restores by navigation", {
+  js <- read_repo_txt("www", "app.js")
+
+  expect_match(js, '"ibpl_bookmark_url"', fixed = TRUE)
+  expect_match(js, "window.location.replace(url)", fixed = TRUE)
+  expect_match(js, "ibpl_v", fixed = TRUE)
+
+  # the replay engine is gone
+  for (dead in c(
+    "persistIds", "sendRestoreState", "attemptRestoreSend", "applyRestoreValues",
+    "reapplyDependentPlayerInputs", "requestRestoreFinish", "ibpl_restore_applied",
+    "restoreMaxSendAttempts", "restoreTabQueryParam"
+  )) {
+    expect_false(grepl(dead, js, fixed = TRUE), info = dead)
+  }
+})
+
+test_that("restore triggers on user return, never on expiry itself", {
+  js <- read_repo_txt("www", "app.js")
+
+  expect_match(js, "function restoreOnReturn()", fixed = TRUE)
+  expect_match(js, "idleExpired = true;", fixed = TRUE)
+  # expiry marks state and shows the pill; it must not navigate
+  expect_match(js, "showPausedPill();", fixed = TRUE)
+})
