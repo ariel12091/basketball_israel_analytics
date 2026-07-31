@@ -32,10 +32,20 @@ is ever raised, re-check this product.
 
 ## Related app-side levers (already in the repo)
 
-- `APP_IDLE_CLOSE_SESSION=true` (in `app/.Renviron`, deployed with the bundle):
-  closes sessions idle past `APP_IDLE_TIMEOUT_SEC` (default 360s) so idle tabs
-  free their worker connection slot and stop consuming active hours. The
-  client-side state-restore system re-applies filters on reconnect.
+- `APP_IDLE_CLOSE_SESSION` (defaults to `true` in `app/R/global.R`): closes
+  sessions idle past `APP_IDLE_TIMEOUT_SEC` (default **600s**) so idle tabs free
+  their worker connection slot and stop consuming active hours. Returning opens
+  the stored bookmark, so filters come back. These live in code, not
+  `.Renviron` — that file is gitignored *and* deployed, so tuning values there
+  override the committed default invisibly. `app.R` logs the resolved config at
+  startup; check that line before concluding a timeout is misbehaving.
+
+  shinyapps.io also applies its own idle disconnect from the dashboard, and
+  that is fine — Shiny's native disconnect UI is suppressed unconditionally in
+  `app.css`, so whichever side drops the connection the user sees the app's own
+  paused pill, never the default overlay. The only thing the ordering changes is
+  cleanliness: when our timer fires first the session is closed deliberately and
+  the bookmark is already stored, so returning restores filters.
 - `GL_DATA_CACHE_MAX_MB` / `GL_DATA_CACHE_MAX_AGE_SEC`: size/age of the
   process-wide data cache used by the shared season-MV pulls (Tabs 1, 4, 5).
 - Escalation path if concurrency still hurts after tuning: move the slowest

@@ -585,14 +585,22 @@ a:hover { color: #f0c060; }
 .idle-overlay.expired .idle-panel {
   border-color: rgba(232,164,53,0.5);
 }
-body.ibpl-idle-expired #shiny-disconnected-overlay,
-body.ibpl-idle-expired .shiny-disconnected-overlay,
-body.ibpl-idle-expired #shiny-disconnected-dialog,
-body.ibpl-idle-expired .shiny-disconnected-dialog,
-body.ibpl-idle-expired #shiny-notification-reconnect,
-body.ibpl-idle-expired #shiny-reconnect-dialog,
-body.ibpl-idle-expired .shiny-reconnect-dialog,
-body.ibpl-idle-expired .reconnect-dialog {
+/* Shiny's native disconnect UI is suppressed unconditionally, not only once
+   we have classified the disconnect as an idle expiry. The app sets
+   allowReconnect(FALSE) and owns this moment with its own paused pill, and a
+   disconnect can arrive from something we never see coming -- the hosting
+   platform's own idle timeout, a dropped network, a frozen background tab.
+   Gating on body.ibpl-idle-expired left a window in every one of those cases
+   where the default overlay flashed up first. The grey-out below stays gated
+   on that class; only the suppression is unconditional. */
+#shiny-disconnected-overlay,
+.shiny-disconnected-overlay,
+#shiny-disconnected-dialog,
+.shiny-disconnected-dialog,
+#shiny-notification-reconnect,
+#shiny-reconnect-dialog,
+.shiny-reconnect-dialog,
+.reconnect-dialog {
   display: none !important;
   pointer-events: none !important;
 }

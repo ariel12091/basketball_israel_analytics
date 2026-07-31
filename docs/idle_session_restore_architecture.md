@@ -37,6 +37,16 @@ idle expiry / disconnect
   -> bookmark parameters are removed from the visible address bar
 ```
 
+Shiny's native disconnect UI (`#shiny-disconnected-overlay` and the reconnect
+dialogs) is suppressed **unconditionally** in `app.css`, not only once a
+disconnect has been classified as an idle expiry. The app sets
+`allowReconnect(FALSE)` and owns this moment with its own paused pill, and a
+disconnect can arrive from a source the client never anticipates — the hosting
+platform's own idle timeout, a dropped network, a frozen background tab.
+Gating the suppression on `body.ibpl-idle-expired` left the default overlay
+free to flash up first in all of those cases. Only the grey-out stays gated on
+that class.
+
 Neither the expiry timer nor a visible disconnect navigates immediately. They
 leave the page paused until later user activity. Returning a hidden tab to the
 foreground is itself treated as return activity and can begin restoration.
