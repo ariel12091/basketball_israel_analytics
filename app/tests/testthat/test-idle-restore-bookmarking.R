@@ -3,7 +3,8 @@ test_that("bookmark exclusion drops actions, heartbeats and DT internals", {
     "game_year", "main_tabs", "teams", "ld_minposs", "ld_lineup_filter-team",
     "go_onoff", "go_lineups", "go_team", "go_gamelogs", "go_playerstats", "go_compare",
     "open_glossary", "ld_reset", "cmp_reset",
-    "idle_activity_ts", "hub_remembered_team", "ibpl_restore_state",
+    "idle_activity_ts", "hub_remembered_team", "home_set_default",
+    "ibpl_restore_state",
     "ld_lineup_click", "cmp_table_row_click",
     "ld_table_rows_current", "ld_table_rows_all", "ld_table_rows_selected",
     "ld_table_state", "ld_table_search", "ld_table_cell_clicked",
@@ -23,7 +24,8 @@ test_that("bookmark exclusion drops actions, heartbeats and DT internals", {
   # dropped: everything that is an action, a heartbeat, or DT bookkeeping
   expect_true(all(c(
     "go_onoff", "go_compare", "open_glossary", "ld_reset", "cmp_reset",
-    "idle_activity_ts", "hub_remembered_team", "ibpl_restore_state",
+    "idle_activity_ts", "hub_remembered_team", "home_set_default",
+    "ibpl_restore_state",
     "ld_lineup_click", "cmp_table_row_click",
     "ld_table_rows_current", "ld_table_rows_all", "ld_table_rows_selected",
     "ld_table_state", "ld_table_search", "ld_table_cell_clicked",

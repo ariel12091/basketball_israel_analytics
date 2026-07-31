@@ -605,6 +605,7 @@ sanitize_single_choice <- function(x, numeric_only = FALSE) {
 # state and is bookmarked automatically.
 BOOKMARK_EXCLUDE_LITERALS <- c(
   "open_glossary", "idle_activity_ts", "hub_remembered_team",
+  "home_set_default",
   "ibpl_restore_state", "ld_lineup_click", "cmp_table_row_click"
 )
 

@@ -824,6 +824,29 @@ th[data-tooltip]::after { display: none; }
   border-color: #e8a435 !important;
 }
 
+.home-team-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.home-team-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.home-team-select > .shiny-input-container,
+.home-team-default > .shiny-input-container {
+  margin-bottom: 0;
+}
+.home-team-default {
+  flex: 0 0 auto;
+  color: #8b949e;
+  font-size: .82rem;
+  white-space: nowrap;
+}
+.home-team-default .form-check {
+  margin-bottom: 0;
+}
+
 .cmp-view-toggle-btn {
   border-radius: 20px;
   padding: 2px 12px;

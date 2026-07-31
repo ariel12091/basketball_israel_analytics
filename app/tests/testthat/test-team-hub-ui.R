@@ -13,6 +13,11 @@ test_that("Home initially renders its named default team as selected", {
   )
   expect_match(html, 'option value="2"', fixed = TRUE)
   expect_match(html, "Team B", fixed = TRUE)
+  expect_match(html, 'id="home_set_default"', fixed = TRUE)
+  expect_match(html, "Set as default", fixed = TRUE)
+  expect_false(grepl('id="home_set_default"[^>]* checked', html))
+  expect_match(html, "home-team-controls", fixed = TRUE)
+  expect_match(html, "ibplApplyInitialHubTeamDefault", fixed = TRUE)
 })
 
 test_that("team hub reserves an accessible loading card for storylines", {
@@ -79,6 +84,41 @@ test_that("a saved valid team can replace the initial default", {
       fixed = TRUE
     )
   })
+})
+
+test_that("the default checkbox gates the existing local-storage team", {
+  hub_r <- read_repo_txt("R", "mod_team_hub.R")
+  app_js <- read_repo_txt("www", "app.js")
+
+  expect_match(hub_r, "isTRUE(input$home_set_default)", fixed = TRUE)
+  expect_match(hub_r, "list(enabled = TRUE, teamId = tid)", fixed = TRUE)
+  expect_match(
+    app_js,
+    "if (msg && msg.enabled && msg.teamId)",
+    fixed = TRUE
+  )
+  expect_match(
+    app_js,
+    'var hubTeamDefaultKey = "ibplHubTeamDefaultEnabled";',
+    fixed = TRUE
+  )
+  expect_match(
+    app_js,
+    'safeLocalGet(hubTeamDefaultKey) === "1"',
+    fixed = TRUE
+  )
+  expect_match(
+    app_js,
+    "window.ibplApplyInitialHubTeamDefault = function()",
+    fixed = TRUE
+  )
+  expect_match(app_js, "teamSelect.value = teamId;", fixed = TRUE)
+  expect_match(
+    app_js,
+    "defaultCheckbox.checked = true;",
+    fixed = TRUE
+  )
+  expect_match(app_js, "safeLocalRemove(hubTeamKey)", fixed = TRUE)
 })
 
 test_that("team hub storyline fallback SQL batches all six variants", {

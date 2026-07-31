@@ -301,6 +301,13 @@ server_team_hub <- function(input, output, session, shared) {
       selected = selected,
       server = TRUE
     )
+    if (remembered_received) {
+      updateCheckboxInput(
+        session,
+        "home_set_default",
+        value = remembered_valid
+      )
+    }
     if (!identical(selected, current)) hub_auto_selected(selected)
     if (remembered_received) hub_remembered_seen(TRUE)
   }) |>
@@ -321,12 +328,27 @@ server_team_hub <- function(input, output, session, shared) {
     if (length(tid) == 1L && (!nzchar(tid) || tid %in% team_ids)) {
       hub_resolved_team_id(tid)
     }
-    if (length(tid) == 1L && nzchar(tid)) {
+    if (length(tid) == 1L && nzchar(tid) &&
+        isTRUE(input$home_set_default)) {
       session$sendCustomMessage(
         "ibpl-store-hub-team",
-        list(teamId = tid)
+        list(enabled = TRUE, teamId = tid)
       )
     }
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$home_set_default, {
+    tid <- as.character(input$home_team %||% "")
+    enabled <- isTRUE(input$home_set_default) &&
+      length(tid) == 1L &&
+      nzchar(tid)
+    session$sendCustomMessage(
+      "ibpl-store-hub-team",
+      list(
+        enabled = enabled,
+        teamId = if (enabled) tid else NULL
+      )
+    )
   }, ignoreInit = TRUE)
 
   hub_ver <- reactive(shared_data_version(shared))

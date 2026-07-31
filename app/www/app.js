@@ -265,6 +265,7 @@
   var skipRestoreKey = keyBase + ":tab:" + tabId + ":skip_restore";
   var restoredFlagKey = keyBase + ":tab:" + tabId + ":restored";
   var hubTeamKey = "ibplHubTeam";
+  var hubTeamDefaultKey = "ibplHubTeamDefaultEnabled";
 
   var idleExpired = false;
   var sessionReady = false;
@@ -298,6 +299,25 @@
   function safeLocalRemove(key) {
     try { window.localStorage.removeItem(key); } catch (e) {}
   }
+
+  // The Home controls are followed by an inline call to this helper. That call
+  // runs while the initial HTML is being parsed, before Shiny binds its inputs,
+  // so a saved default never flashes as the random fallback first.
+  window.ibplApplyInitialHubTeamDefault = function() {
+    if (safeLocalGet(hubTeamDefaultKey) !== "1") return;
+    var teamId = safeLocalGet(hubTeamKey);
+    var teamSelect = document.getElementById("home_team");
+    var defaultCheckbox = document.getElementById("home_set_default");
+    var hasTeam = teamSelect && Array.prototype.some.call(
+      teamSelect.options,
+      function(option) { return option.value === teamId; }
+    );
+    if (!teamId || !hasTeam) {
+      return;
+    }
+    teamSelect.value = teamId;
+    if (defaultCheckbox) defaultCheckbox.checked = true;
+  };
 
   function getOrCreateTabId() {
     var existing = safeSessionGet(tabIdKey);
@@ -577,7 +597,13 @@
       }
     });
     window.Shiny.addCustomMessageHandler("ibpl-store-hub-team", function(msg) {
-      if (msg && msg.teamId) safeLocalSet(hubTeamKey, String(msg.teamId));
+      if (msg && msg.enabled && msg.teamId) {
+        safeLocalSet(hubTeamKey, String(msg.teamId));
+        safeLocalSet(hubTeamDefaultKey, "1");
+      } else {
+        safeLocalRemove(hubTeamKey);
+        safeLocalRemove(hubTeamDefaultKey);
+      }
     });
     return true;
   }
@@ -598,9 +624,12 @@
     sessionReady = true;
     sendActivity(true);
     if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
+      var rememberedTeam = safeLocalGet(hubTeamDefaultKey) === "1"
+        ? (safeLocalGet(hubTeamKey) || "")
+        : "";
       window.Shiny.setInputValue(
         "hub_remembered_team",
-        safeLocalGet(hubTeamKey) || ""
+        rememberedTeam
       );
     }
   }

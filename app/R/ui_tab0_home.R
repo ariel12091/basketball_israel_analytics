@@ -24,17 +24,32 @@ ui_tab0_home <- function() tabPanel(
 
       # Optional team selector
       div(
-        class = "mb-4",
-        selectizeInput(
-          "home_team",
-          label = NULL,
-          choices = with(
-            static_team_roster(DEFAULT_GAME_YEAR),
-            stats::setNames(as.character(team_id), team_name)
+        class = "mb-4 home-team-controls",
+        div(
+          class = "home-team-select",
+          selectizeInput(
+            "home_team",
+            label = NULL,
+            choices = with(
+              static_team_roster(DEFAULT_GAME_YEAR),
+              stats::setNames(as.character(team_id), team_name)
+            ),
+            selected = DEFAULT_HOME_TEAM_ID,
+            options = list(placeholder = "All teams", preload = "focus")
+          )
+        ),
+        div(
+          class = "home-team-default",
+          checkboxInput(
+            "home_set_default",
+            "Set as default",
+            value = FALSE
           ),
-          selected = DEFAULT_HOME_TEAM_ID,
-          options = list(placeholder = "All teams", preload = "focus")
-        )
+          title = "Use this team on future visits"
+        ),
+        tags$script(HTML(
+          "if (window.ibplApplyInitialHubTeamDefault) window.ibplApplyInitialHubTeamDefault();"
+        ))
       ),
 
       team_hub_ui(),
