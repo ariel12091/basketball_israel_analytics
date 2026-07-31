@@ -86,12 +86,52 @@ test_that("a saved valid team can replace the initial default", {
   })
 })
 
-test_that("the default checkbox gates the existing local-storage team", {
+test_that("switching teams does not replace the saved default", {
+  shared <- make_shared()
+
+  shiny::testServer(function(input, output, session) {
+    test_state <- server_team_hub(input, output, session, shared)
+  }, {
+    session$flushReact()
+
+    session$setInputs(home_team = "1", home_set_default = TRUE)
+    session$flushReact()
+    expect_equal(shiny::isolate(test_state$saved_default_team()), "1")
+
+    session$setInputs(home_team = "2")
+    session$flushReact()
+    session$setInputs(home_set_default = FALSE)
+    session$flushReact()
+
+    expect_equal(shiny::isolate(test_state$saved_default_team()), "1")
+  })
+})
+
+test_that("the default checkbox preserves the saved team when selection changes", {
   hub_r <- read_repo_txt("R", "mod_team_hub.R")
   app_js <- read_repo_txt("www", "app.js")
 
-  expect_match(hub_r, "isTRUE(input$home_set_default)", fixed = TRUE)
+  home_observer_start <- regexpr(
+    "observeEvent(input$home_team",
+    hub_r,
+    fixed = TRUE
+  )[[1]]
+  checkbox_observer_start <- regexpr(
+    "observeEvent(input$home_set_default",
+    hub_r,
+    fixed = TRUE
+  )[[1]]
+  home_observer <- substring(
+    hub_r,
+    home_observer_start,
+    checkbox_observer_start - 1L
+  )
+
+  expect_match(hub_r, 'hub_saved_default_team <- reactiveVal("")', fixed = TRUE)
+  expect_match(home_observer, "sync_home_default_checkbox", fixed = TRUE)
+  expect_false(grepl("sendCustomMessage", home_observer, fixed = TRUE))
   expect_match(hub_r, "list(enabled = TRUE, teamId = tid)", fixed = TRUE)
+  expect_match(hub_r, "identical(tid, saved_default)", fixed = TRUE)
   expect_match(
     app_js,
     "if (msg && msg.enabled && msg.teamId)",

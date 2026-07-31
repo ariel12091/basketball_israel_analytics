@@ -237,6 +237,22 @@ server_team_hub <- function(input, output, session, shared) {
   hub_auto_selected <- reactiveVal(DEFAULT_HOME_TEAM_ID)
   hub_resolved_team_id <- reactiveVal(DEFAULT_HOME_TEAM_ID)
   hub_remembered_seen <- reactiveVal(FALSE)
+  hub_saved_default_team <- reactiveVal("")
+  hub_checkbox_sync_pending <- reactiveVal(NULL)
+
+  sync_home_default_checkbox <- function(checked) {
+    checked <- isTRUE(checked)
+    if (identical(isTRUE(isolate(input$home_set_default)), checked)) {
+      return(invisible(NULL))
+    }
+    hub_checkbox_sync_pending(checked)
+    updateCheckboxInput(
+      session,
+      "home_set_default",
+      value = checked
+    )
+    invisible(NULL)
+  }
 
   # Populate the selector and choose remembered team when it first arrives.
   # If localStorage arrives just after the random fallback, it may replace that
@@ -262,6 +278,8 @@ server_team_hub <- function(input, output, session, shared) {
     remembered_valid <- length(remembered) == 1L &&
       nzchar(remembered) &&
       remembered %in% team_ids
+    first_remembered <- remembered_received &&
+      !isTRUE(hub_remembered_seen())
     may_apply_remembered <- remembered_received &&
       !isTRUE(hub_remembered_seen()) &&
       (!current_valid || identical(current, hub_auto_selected()))
@@ -301,15 +319,19 @@ server_team_hub <- function(input, output, session, shared) {
       selected = selected,
       server = TRUE
     )
-    if (remembered_received) {
-      updateCheckboxInput(
-        session,
-        "home_set_default",
-        value = remembered_valid
+    if (first_remembered) {
+      hub_saved_default_team(
+        if (remembered_valid) remembered else ""
       )
     }
+    saved_default <- as.character(hub_saved_default_team() %||% "")
+    sync_home_default_checkbox(
+      length(saved_default) == 1L &&
+        nzchar(saved_default) &&
+        identical(selected, saved_default)
+    )
     if (!identical(selected, current)) hub_auto_selected(selected)
-    if (remembered_received) hub_remembered_seen(TRUE)
+    if (first_remembered) hub_remembered_seen(TRUE)
   }) |>
     bindEvent(
       shared$teams_for_year_df(),
@@ -328,27 +350,47 @@ server_team_hub <- function(input, output, session, shared) {
     if (length(tid) == 1L && (!nzchar(tid) || tid %in% team_ids)) {
       hub_resolved_team_id(tid)
     }
-    if (length(tid) == 1L && nzchar(tid) &&
-        isTRUE(input$home_set_default)) {
+    saved_default <- as.character(hub_saved_default_team() %||% "")
+    sync_home_default_checkbox(
+      length(tid) == 1L &&
+        nzchar(tid) &&
+        length(saved_default) == 1L &&
+        identical(tid, saved_default)
+    )
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$home_set_default, {
+    checked <- isTRUE(input$home_set_default)
+    pending <- isolate(hub_checkbox_sync_pending())
+    if (!is.null(pending) && identical(checked, pending)) {
+      hub_checkbox_sync_pending(NULL)
+      return(invisible(NULL))
+    }
+
+    tid <- as.character(input$home_team %||% "")
+    enabled <- checked &&
+      length(tid) == 1L &&
+      nzchar(tid)
+    if (enabled) {
+      hub_saved_default_team(tid)
       session$sendCustomMessage(
         "ibpl-store-hub-team",
         list(enabled = TRUE, teamId = tid)
       )
+      return(invisible(NULL))
     }
-  }, ignoreInit = TRUE)
 
-  observeEvent(input$home_set_default, {
-    tid <- as.character(input$home_team %||% "")
-    enabled <- isTRUE(input$home_set_default) &&
-      length(tid) == 1L &&
-      nzchar(tid)
-    session$sendCustomMessage(
-      "ibpl-store-hub-team",
-      list(
-        enabled = enabled,
-        teamId = if (enabled) tid else NULL
+    saved_default <- as.character(hub_saved_default_team() %||% "")
+    if (length(tid) == 1L &&
+        length(saved_default) == 1L &&
+        nzchar(saved_default) &&
+        identical(tid, saved_default)) {
+      hub_saved_default_team("")
+      session$sendCustomMessage(
+        "ibpl-store-hub-team",
+        list(enabled = FALSE, teamId = NULL)
       )
-    )
+    }
   }, ignoreInit = TRUE)
 
   hub_ver <- reactive(shared_data_version(shared))
@@ -819,4 +861,8 @@ server_team_hub <- function(input, output, session, shared) {
       updateTabsetPanel(session, "main_tabs", selected = "team_ratings")
     }
   })
+
+  invisible(list(
+    saved_default_team = hub_saved_default_team
+  ))
 }
