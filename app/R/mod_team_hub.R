@@ -591,7 +591,29 @@ server_team_hub <- function(input, output, session, shared) {
     if (is.null(info)) return(NULL)
     row <- info$row
     n_teams <- info$n_teams
-    mini <- hub_ff_mini(hub_ff_df(), hub_team_id())
+    mini_off <- hub_ff_mini(hub_ff_df(), hub_team_id(), "offense")
+    mini_def <- hub_ff_mini(hub_ff_df(), hub_team_id(), "defense")
+    ff_row <- function(label, mini) {
+      if (is.null(mini)) return(NULL)
+      div(
+        class = "hub-ff-row",
+        tags$span(class = "hub-ff-label", label),
+        div(
+          class = "hub-ff-chips",
+          lapply(seq_len(nrow(mini)), function(i) {
+            tags$span(
+              class = "hub-ff-chip",
+              sprintf(
+                "%s %.1f (%s)",
+                mini$label[[i]],
+                mini$value[[i]],
+                hub_ordinal(mini$rank[[i]])
+              )
+            )
+          })
+        )
+      )
+    }
     stat <- function(label, value, stat_rank) {
       div(
         class = "hub-stat",
@@ -635,20 +657,11 @@ server_team_hub <- function(input, output, session, shared) {
             row$rank_net_rtg
           )
         ),
-        if (!is.null(mini)) {
+        if (!is.null(mini_off) || !is.null(mini_def)) {
           div(
-            class = "hub-ff-row",
-            lapply(seq_len(nrow(mini)), function(i) {
-              tags$span(
-                class = "hub-ff-chip",
-                sprintf(
-                  "%s %.1f (%s)",
-                  mini$label[[i]],
-                  mini$value[[i]],
-                  hub_ordinal(mini$rank[[i]])
-                )
-              )
-            })
+            class = "hub-ff-groups",
+            ff_row("Offense", mini_off),
+            ff_row("Defense", mini_def)
           )
         }
       )

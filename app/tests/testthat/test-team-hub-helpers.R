@@ -26,7 +26,11 @@ ff_df <- data.frame(
   off_efg = c(55, 52, 49),
   off_tov = c(12, 14, 16),
   off_oreb = c(30, 28, 26),
-  off_ftr = c(25, 22, 20)
+  off_ftr = c(25, 22, 20),
+  def_efg = c(49, 52, 55),
+  def_tov = c(16, 14, 12),
+  def_oreb = c(26, 28, 30),
+  def_ftr = c(20, 22, 25)
 )
 
 preset_params <- function(...) {
@@ -188,6 +192,14 @@ test_that("hub_ff_mini ranks offense factors with TOV inverted", {
   expect_equal(nrow(mini), 4L)
   expect_true(all(mini$rank == 1L))
   mini30 <- hub_ff_mini(ff_df, "30")
+  expect_true(all(mini30$rank == 3L))
+})
+
+test_that("hub_ff_mini ranks defense factors with opponent rates inverted", {
+  mini <- hub_ff_mini(ff_df, "10", "defense")
+  expect_equal(nrow(mini), 4L)
+  expect_true(all(mini$rank == 1L))
+  mini30 <- hub_ff_mini(ff_df, "30", "defense")
   expect_true(all(mini30$rank == 3L))
 })
 

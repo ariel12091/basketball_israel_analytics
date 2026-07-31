@@ -810,10 +810,15 @@ hub_identity_data <- function(ratings_df, ff_df, team_id) {
   list(row = row[1, , drop = FALSE], n_teams = nrow(ratings_df), ff = ff_row)
 }
 
-# Offense four-factor mini-row with league ranks (TOV% rank inverted: low = good).
-hub_ff_mini <- function(ff_df, team_id) {
+# Four-factor mini-row with league ranks. On offense, high is good except TOV%;
+# on defense, low opponent rates are good except TOV%.
+hub_ff_mini <- function(ff_df, team_id, side = c("offense", "defense")) {
+  side <- match.arg(side)
+  prefix <- if (identical(side, "offense")) "off" else "def"
   tid <- suppressWarnings(as.integer(team_id))
-  need <- c("team_id", "off_efg", "off_tov", "off_oreb", "off_ftr")
+  factor_names <- c("efg", "tov", "oreb", "ftr")
+  metric_cols <- paste(prefix, factor_names, sep = "_")
+  need <- c("team_id", metric_cols)
   if (is.null(ff_df) ||
       !nrow(ff_df) ||
       !all(need %in% names(ff_df)) ||
@@ -822,21 +827,22 @@ hub_ff_mini <- function(ff_df, team_id) {
   }
   idx <- which(as.integer(ff_df$team_id) == tid)
   if (!length(idx)) return(NULL)
-  cols <- c(
-    off_efg = "eFG%",
-    off_tov = "TOV%",
-    off_oreb = "OREB%",
-    off_ftr = "FTR"
-  )
-  rows <- lapply(names(cols), function(col) {
+  labels <- c("eFG%", "TOV%", "OREB%", "FTR")
+  names(labels) <- metric_cols
+  rows <- lapply(metric_cols, function(col) {
     x <- as.numeric(ff_df[[col]])
+    higher_is_better <- if (identical(side, "offense")) {
+      !identical(col, "off_tov")
+    } else {
+      identical(col, "def_tov")
+    }
     ranked <- rank(
-      if (identical(col, "off_tov")) x else -x,
+      if (higher_is_better) -x else x,
       ties.method = "min",
       na.last = "keep"
     )
     data.frame(
-      label = cols[[col]],
+      label = labels[[col]],
       value = x[idx[[1]]],
       rank = as.integer(ranked[idx[[1]]]),
       n = sum(is.finite(x)),

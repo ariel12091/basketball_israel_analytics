@@ -52,11 +52,14 @@ test_that("team hub keeps the resolved team in sync with manual selection", {
     server_team_hub(input, output, session, shared)
   }, {
     session$flushReact()
+    identity_html <- paste(as.character(output$hub_identity), collapse = "")
     expect_match(
-      paste(as.character(output$hub_identity), collapse = ""),
+      identity_html,
       "Team A",
       fixed = TRUE
     )
+    expect_match(identity_html, "Offense", fixed = TRUE)
+    expect_match(identity_html, "Defense", fixed = TRUE)
 
     session$setInputs(home_team = "2")
     session$flushReact()
