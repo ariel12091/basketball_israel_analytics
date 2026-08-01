@@ -238,6 +238,7 @@ server_team_hub <- function(input, output, session, shared) {
   hub_resolved_team_id <- reactiveVal(DEFAULT_HOME_TEAM_ID)
   hub_remembered_seen <- reactiveVal(FALSE)
   hub_saved_default_team <- reactiveVal("")
+  hub_default_set_this_session <- reactiveVal(FALSE)
   hub_checkbox_sync_pending <- reactiveVal(NULL)
 
   sync_home_default_checkbox <- function(checked) {
@@ -326,6 +327,7 @@ server_team_hub <- function(input, output, session, shared) {
     }
     saved_default <- as.character(hub_saved_default_team() %||% "")
     sync_home_default_checkbox(
+      isTRUE(hub_default_set_this_session()) &&
       length(saved_default) == 1L &&
         nzchar(saved_default) &&
         identical(selected, saved_default)
@@ -352,6 +354,7 @@ server_team_hub <- function(input, output, session, shared) {
     }
     saved_default <- as.character(hub_saved_default_team() %||% "")
     sync_home_default_checkbox(
+      isTRUE(hub_default_set_this_session()) &&
       length(tid) == 1L &&
         nzchar(tid) &&
         length(saved_default) == 1L &&
@@ -372,6 +375,7 @@ server_team_hub <- function(input, output, session, shared) {
       length(tid) == 1L &&
       nzchar(tid)
     if (enabled) {
+      hub_default_set_this_session(TRUE)
       hub_saved_default_team(tid)
       session$sendCustomMessage(
         "ibpl-store-hub-team",
@@ -385,6 +389,7 @@ server_team_hub <- function(input, output, session, shared) {
         length(saved_default) == 1L &&
         nzchar(saved_default) &&
         identical(tid, saved_default)) {
+      hub_default_set_this_session(FALSE)
       hub_saved_default_team("")
       session$sendCustomMessage(
         "ibpl-store-hub-team",

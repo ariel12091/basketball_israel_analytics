@@ -86,6 +86,7 @@ test_that("a saved valid team can replace the initial default", {
       "Team B",
       fixed = TRUE
     )
+    expect_false(isTRUE(input$home_set_default))
   })
 })
 
@@ -110,7 +111,7 @@ test_that("switching teams does not replace the saved default", {
   })
 })
 
-test_that("the default checkbox preserves the saved team when selection changes", {
+test_that("the default checkbox starts unchecked and preserves the saved team", {
   hub_r <- read_repo_txt("R", "mod_team_hub.R")
   app_js <- read_repo_txt("www", "app.js")
 
@@ -131,6 +132,11 @@ test_that("the default checkbox preserves the saved team when selection changes"
   )
 
   expect_match(hub_r, 'hub_saved_default_team <- reactiveVal("")', fixed = TRUE)
+  expect_match(
+    hub_r,
+    'hub_default_set_this_session <- reactiveVal(FALSE)',
+    fixed = TRUE
+  )
   expect_match(home_observer, "sync_home_default_checkbox", fixed = TRUE)
   expect_false(grepl("sendCustomMessage", home_observer, fixed = TRUE))
   expect_match(hub_r, "list(enabled = TRUE, teamId = tid)", fixed = TRUE)
@@ -156,11 +162,7 @@ test_that("the default checkbox preserves the saved team when selection changes"
     fixed = TRUE
   )
   expect_match(app_js, "teamSelect.value = teamId;", fixed = TRUE)
-  expect_match(
-    app_js,
-    "defaultCheckbox.checked = true;",
-    fixed = TRUE
-  )
+  expect_false(grepl("defaultCheckbox.checked = true;", app_js, fixed = TRUE))
   expect_match(app_js, "safeLocalRemove(hubTeamKey)", fixed = TRUE)
 })
 

@@ -600,7 +600,17 @@ a:hover { color: #f0c060; }
 #shiny-notification-reconnect,
 #shiny-reconnect-dialog,
 .shiny-reconnect-dialog,
-.reconnect-dialog {
+.reconnect-dialog,
+/* shinyapps.io / shiny-server does NOT use Shiny's overlay above. Its hosting
+   layer (shiny-server-client.min.js) injects its own pair as direct children of
+   <body> and reveals them with an inline display, which is why every selector
+   above suppressed nothing in production while looking fine locally:
+     <div id="ss-overlay" class="ss-gray-out" style="display:none"></div>
+     <div id="ss-connect-dialog" style="display:none"></div>
+   !important is required here to beat that inline style. */
+#ss-overlay,
+.ss-gray-out,
+#ss-connect-dialog {
   display: none !important;
   pointer-events: none !important;
 }

@@ -307,7 +307,6 @@
     if (safeLocalGet(hubTeamDefaultKey) !== "1") return;
     var teamId = safeLocalGet(hubTeamKey);
     var teamSelect = document.getElementById("home_team");
-    var defaultCheckbox = document.getElementById("home_set_default");
     var hasTeam = teamSelect && Array.prototype.some.call(
       teamSelect.options,
       function(option) { return option.value === teamId; }
@@ -316,7 +315,6 @@
       return;
     }
     teamSelect.value = teamId;
-    if (defaultCheckbox) defaultCheckbox.checked = true;
   };
 
   function getOrCreateTabId() {
@@ -416,7 +414,12 @@
       "#shiny-notification-reconnect",
       "#shiny-reconnect-dialog",
       ".shiny-reconnect-dialog",
-      ".reconnect-dialog"
+      ".reconnect-dialog",
+      // shinyapps.io's hosting layer, not Shiny itself. These are the nodes
+      // that actually appear in production.
+      "#ss-overlay",
+      ".ss-gray-out",
+      "#ss-connect-dialog"
     ];
     for (var i = 0; i < selectors.length; i++) {
       var nodes = document.querySelectorAll(selectors[i]);
@@ -425,6 +428,32 @@
         nodes[j].style.setProperty("pointer-events", "none", "important");
       }
     }
+  }
+
+  // Hiding the hosting layer's dialog removes the only thing that told the user
+  // the app had stopped, so treat its reveal as a disconnect and show the pill.
+  // shiny-server-client sets an inline display on a node that already exists at
+  // page load; on a local run the node is absent and this is a no-op.
+  function watchHostingDisconnectDialog() {
+    if (typeof window.MutationObserver !== "function") return;
+    var attached = false;
+    var attach = function() {
+      var dialog = document.getElementById("ss-connect-dialog");
+      if (attached || !dialog) return false;
+      attached = true;
+      new window.MutationObserver(function() {
+        if (dialog.style.display && dialog.style.display !== "none") handleDisconnected();
+      }).observe(dialog, { attributes: true, attributeFilter: ["style"] });
+      return true;
+    };
+    // Present at page load on shinyapps.io; watch for it otherwise rather than
+    // assume the ordering, since getting this wrong means hiding the dialog and
+    // showing nothing in its place.
+    if (attach() || !document.body) return;
+    var bodyObserver = new window.MutationObserver(function() {
+      if (attach()) bodyObserver.disconnect();
+    });
+    bodyObserver.observe(document.body, { childList: true });
   }
 
   function toggleNativeDisconnectUi(hidden) {
@@ -678,6 +707,7 @@
       document.addEventListener("shiny:disconnected", handleDisconnected);
     }
     registerMessageHandlers();
+    watchHostingDisconnectDialog();
     sendActivity(true);
     if (timerId) window.clearInterval(timerId);
     timerId = window.setInterval(checkIdleState, 1000);
