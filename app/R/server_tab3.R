@@ -1958,12 +1958,12 @@ server_tab3 <- function(input, output, session, shared) {
           th(class = "sub-head section-left-border", "eFG%"),
           th(class = "sub-head", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
+          th(class = "sub-head", title = c3_title, "Corner 3 Share"), th(class = "sub-head", "2PT Jumper"),
           th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "eFG%"),
           th(class = "sub-head", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Lay+Dunk"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "2PT Jumper"),
+          th(class = "sub-head", title = c3_title, "Corner 3 Share"), th(class = "sub-head", "2PT Jumper"),
           th(class = "sub-head", "Poss")
         )
       )))

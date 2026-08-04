@@ -4,7 +4,7 @@
 test_that("shot_profile_metric_cols maps labels to suffixed column names", {
   cols <- shot_profile_metric_cols("Off", "off_on")
   expect_equal(unname(cols["Off Lay+Dunk%"]), "off_on_rim_share")
-  expect_equal(unname(cols["Off C3% of 3PA"]), "off_on_c3_pct3")
+  expect_equal(unname(cols["Off Corner 3 Share"]), "off_on_c3_pct3")
   expect_length(cols, 6L)
 })
 

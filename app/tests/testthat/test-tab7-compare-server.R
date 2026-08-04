@@ -65,6 +65,79 @@ test_that("tab7 lineups compare uses four-factor query for four-factor chips", {
   })
 })
 
+test_that("tab7 shared date and GN window applies to both non-player sides", {
+  query_capture <- new.env(parent = emptyenv())
+  query_capture$calls <- list()
+  server_env <- environment(server_tab7_compare)
+  original_db_get_query <- get("db_get_query", envir = server_env)
+  assign("db_get_query", function(pool, query, params = NULL) {
+    q <- paste(query, collapse = " ")
+    if (grepl("get_team_ratings_dynamic", q, fixed = TRUE)) {
+      query_capture$calls[[length(query_capture$calls) + 1L]] <- params
+    }
+    original_db_get_query(pool, query, params = params)
+  }, envir = server_env)
+  on.exit(assign("db_get_query", original_db_get_query, envir = server_env), add = TRUE)
+
+  shiny::testServer(function(input, output, session) {
+    server_tab7_compare(input, output, session, shared = make_shared())
+  }, {
+    session$setInputs(
+      main_tabs = "compare",
+      game_year = "2026",
+      cmp_mode = "Teams",
+      cmp_preset = "",
+      cmp_dates = c(as.Date("2026-01-01"), as.Date("2026-03-31")),
+      cmp_gn_min = "2",
+      cmp_gn_max = "7"
+    )
+    session$elapse(300)
+    session$flushReact()
+
+    shared_calls <- query_capture$calls
+    expect_gte(length(shared_calls), 2L)
+    expect_true(all(vapply(shared_calls, function(p) {
+      identical(as.Date(p[[2]]), as.Date("2026-01-01")) &&
+        identical(as.Date(p[[3]]), as.Date("2026-03-31")) &&
+        identical(p[[15]], 2L) && identical(p[[16]], 7L)
+    }, logical(1))))
+
+    query_capture$calls <- list()
+    session$setInputs(cmp_preset = "date_split", cmp_split_date = as.Date("2026-02-15"))
+    session$elapse(300)
+    session$flushReact()
+
+    date_calls <- query_capture$calls
+    expect_true(any(vapply(date_calls, function(p) {
+      identical(as.Date(p[[2]]), as.Date("2025-10-01")) &&
+        identical(as.Date(p[[3]]), as.Date("2026-02-15")) &&
+        identical(p[[15]], 2L) && identical(p[[16]], 7L)
+    }, logical(1))))
+    expect_true(any(vapply(date_calls, function(p) {
+      identical(as.Date(p[[2]]), as.Date("2026-02-16")) &&
+        identical(as.Date(p[[3]]), as.Date("2026-07-01")) &&
+        identical(p[[15]], 2L) && identical(p[[16]], 7L)
+    }, logical(1))))
+
+    query_capture$calls <- list()
+    session$setInputs(cmp_preset = "gn_split", cmp_split_gn = "4")
+    session$elapse(300)
+    session$flushReact()
+
+    gn_calls <- query_capture$calls
+    expect_true(any(vapply(gn_calls, function(p) {
+      identical(as.Date(p[[2]]), as.Date("2026-01-01")) &&
+        identical(as.Date(p[[3]]), as.Date("2026-03-31")) &&
+        is.na(p[[15]]) && identical(p[[16]], 4L)
+    }, logical(1))))
+    expect_true(any(vapply(gn_calls, function(p) {
+      identical(as.Date(p[[2]]), as.Date("2026-01-01")) &&
+        identical(as.Date(p[[3]]), as.Date("2026-03-31")) &&
+        identical(p[[15]], 5L) && is.na(p[[16]])
+    }, logical(1))))
+  })
+})
+
 render_ui_text <- function(x) {
   paste(capture.output(print(x)), collapse = "\n")
 }
@@ -510,18 +583,20 @@ test_that("tab7 team detail view shows offensive and defensive shooting sections
   })
 })
 
-test_that("tab7 defensive shooting uses lower-is-better accuracy and neutral frequency", {
+test_that("tab7 detail separates performance winner from raw-value leader", {
   server_env <- environment(server_tab7_compare)
   original_db_get_query <- get("db_get_query", envir = server_env)
   # Vary opponent shooting by side via the home/away param (index 12) so A and B
   # differ: side A (home) holds opponents to lower accuracy than side B (away),
-  # while attempts (and thus frequency) stay equal across sides.
+  # while also allowing a higher descriptive 2PT frequency.
   assign("db_get_query", function(pool, query, params = NULL) {
     q <- paste(query, collapse = " ")
     if (grepl("fetch_lineups_csv_v2", q, fixed = TRUE)) {
       ha <- if (!is.null(params) && length(params) >= 12L) as.character(params[[12]]) else NA_character_
-      def_fg2_made <- if (identical(ha, "home")) 15L else 18L  # 75.0% vs 90.0%
-      def_fg3_made <- if (identical(ha, "home")) 3L else 4L    # 30.0% vs 40.0%
+      def_fg2_made <- if (identical(ha, "home")) 15L else 9L   # 75.0% vs 90.0%
+      def_fg2_att <- if (identical(ha, "home")) 20L else 10L
+      def_fg3_made <- if (identical(ha, "home")) 3L else 8L    # 30.0% vs 40.0%
+      def_fg3_att <- if (identical(ha, "home")) 10L else 20L
       return(data.frame(
         team_id = c(1L, 2L),
         sub_lineup_hash = c("lu1", "lu2"),
@@ -529,8 +604,8 @@ test_that("tab7 defensive shooting uses lower-is-better accuracy and neutral fre
         team_name = c("Team A", "Team B"),
         off_fg2_made = c(20L, 18L), off_fg2_att = c(35L, 34L),
         off_fg3_made = c(8L, 7L), off_fg3_att = c(24L, 23L),
-        def_fg2_made = c(def_fg2_made, 19L), def_fg2_att = c(20L, 34L),
-        def_fg3_made = c(def_fg3_made, 8L), def_fg3_att = c(10L, 21L)
+        def_fg2_made = c(def_fg2_made, 19L), def_fg2_att = c(def_fg2_att, 34L),
+        def_fg3_made = c(def_fg3_made, 8L), def_fg3_att = c(def_fg3_att, 21L)
       ))
     }
     original_db_get_query(pool, query, params = params)
@@ -557,13 +632,17 @@ test_that("tab7 defensive shooting uses lower-is-better accuracy and neutral fre
     # Opp 2PT Acc: A=75.0% (lower) beats B=90.0% under defensive (lower) polarity.
     expect_true(grepl('winner">75.0%', detail_txt, fixed = TRUE))
     expect_true(grepl('loser">90.0%', detail_txt, fixed = TRUE))
+    # The gap color follows the higher raw value (B), not the lower-is-better winner (A).
+    expect_true(grepl('cmp-gap-num b-color">−15.0%', detail_txt, fixed = TRUE))
     # Opp 3PT Acc: A=30.0% (lower) beats B=40.0%.
     expect_true(grepl('winner">30.0%', detail_txt, fixed = TRUE))
     expect_true(grepl('loser">40.0%', detail_txt, fixed = TRUE))
 
-    # Opp 2PT Freq is neutral and equal across sides (66.7% both): no loser side.
-    expect_true(grepl("66.7%", detail_txt, fixed = TRUE))
-    expect_false(grepl('loser">66.7%', detail_txt, fixed = TRUE))
+    # Neutral frequency has no good/bad polarity, but still highlights and
+    # colors the side with the higher raw percentage.
+    expect_true(grepl('winner">66.7%', detail_txt, fixed = TRUE))
+    expect_true(grepl('loser">33.3%', detail_txt, fixed = TRUE))
+    expect_true(grepl('cmp-gap-num a-color">+33.3%', detail_txt, fixed = TRUE))
   })
 })
 

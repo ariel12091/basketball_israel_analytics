@@ -17,6 +17,15 @@ test_that("tab7 clutch minutes are converted to seconds like tab3", {
   expect_true(grepl("max_time_remaining <- if \\(clutch_on\\) as\\.integer\\(get_input\\(\"clutch_minutes\"\\)\\) \\* 60L else NA_integer_", txt))
 })
 
+test_that("tab7 shared date and GN filters feed both non-player sides", {
+  txt <- server_tab7_txt()
+  expect_true(grepl('dr <- input$cmp_dates', txt, fixed = TRUE))
+  expect_true(grepl('input$cmp_gn_min', txt, fixed = TRUE))
+  expect_true(grepl('input$cmp_gn_max', txt, fixed = TRUE))
+  expect_true(grepl('!identical(preset, "date_split")', txt, fixed = TRUE))
+  expect_true(grepl('!identical(preset, "gn_split")', txt, fixed = TRUE))
+})
+
 test_that("tab7 players compare uses a single row for side-specific summaries", {
   txt <- server_tab7_txt()
   expect_true(grepl("rank\\s*=\\s*1L", txt))

@@ -45,7 +45,7 @@
 test_that("shot_profile_metric_cols maps labels to suffixed column names", {
   cols <- shot_profile_metric_cols("Off", "off_on")
   expect_equal(unname(cols["Off Rim%"]), "off_on_rim_share")
-  expect_equal(unname(cols["Off C3% of 3PA"]), "off_on_c3_pct3")
+  expect_equal(unname(cols["Off Corner 3 Share"]), "off_on_c3_pct3")
   expect_length(cols, 6L)
 })
 
@@ -105,7 +105,7 @@ Expected: FAIL — `could not find function "shot_profile_metric_cols"`.
 SHOT_PROFILE_METRIC_SUFFIXES <- c(
   "_layup_share", "_dunk_share", "_rim_share", "_fg3_share", "_c3_pct3", "_mid_share"
 )
-SHOT_PROFILE_METRIC_LABELS <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "C3% of 3PA", "Mid%")
+SHOT_PROFILE_METRIC_LABELS <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "Corner 3 Share", "Mid%")
 
 shot_profile_metric_cols <- function(label_prefix, col_prefix) {
   stats::setNames(
@@ -197,7 +197,7 @@ After the Four Factors explainer `conditionalPanel` (ends ~line 182), add:
             bullets = c(
               "Shares are descriptive — they describe how the shot mix changes, not how good the change is. Efficiency lives in the Summary and Four Factors views.",
               "Rim = lay-ups + dunks (tag-based). Mid = everything else inside the arc. 3PA% is share of all FGA.",
-              "C3% of 3PA splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
+              "Corner 3 Share splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
               "Cells gray out below 50 team FGA on the ON side — small samples produce noisy shares."
             )
           )
@@ -213,7 +213,7 @@ After the Four Factors legend `conditionalPanel` (ends ~line 234), add:
             class = "legend-box",
             span(style = "font-weight:700; margin-right:10px;", "Shot Profile:"),
             span(style = "font-size:0.85em; color:#6e7681;",
-                 "Share of team FGA while the player is on/off the floor · Δ = ON − OFF (percentage points) · C3% is share of 3PA with known location (— = unknown) · descriptive only — no point-impact estimate")
+                 "Share of team FGA while the player is on/off the floor · Δ = ON − OFF (percentage points) · Corner 3 Share uses 3PA with known location (— = unknown) · descriptive only — no point-impact estimate")
           )
         ),
 ```
@@ -346,10 +346,10 @@ The renderer currently branches `if (identical(mode, "Summary")) { ... } else { 
           th(class = "sub-head", "Team"), th(class = "sub-head", "Player"),
           th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", title = c3_title, "Corner 3 Share"), th(class = "sub-head", "Mid"),
           th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", title = c3_title, "Corner 3 Share"), th(class = "sub-head", "Mid"),
           th(class = "sub-head section-left-border", "Min"), th(class = "sub-head", "On Poss"), th(class = "sub-head", "Off Poss")
         )
       )))
@@ -442,7 +442,7 @@ After the Four Factors explainer conditionalPanel (ends ~line 175), add:
             bullets = c(
               "Shares are descriptive — they describe the mix, not its quality. #1 means most of that shot type, not best.",
               "Defense columns are the shot diet teams allow their opponents.",
-              "C3% of 3PA uses shots with known court location; — means location unknown.",
+              "Corner 3 Share uses shots with known court location; — means location unknown.",
               "The same date/clutch-free filters apply as in Summary; use Poss columns to judge sample size."
             )
           )
@@ -554,11 +554,11 @@ Extend the MV query column list to:
           th(class = "sub-head", "Team"), th(class = "sub-head", "Min"),
           th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", title = c3_title, "Corner 3 Share"), th(class = "sub-head", "Mid"),
           th(class = "sub-head", "Poss"),
           th(class = "sub-head section-left-border", "Lay-up"), th(class = "sub-head", "Dunk"),
           th(class = "sub-head", "Rim"), th(class = "sub-head", "3PA"),
-          th(class = "sub-head", title = c3_title, "C3%3PA"), th(class = "sub-head", "Mid"),
+          th(class = "sub-head", title = c3_title, "Corner 3 Share"), th(class = "sub-head", "Mid"),
           th(class = "sub-head", "Poss")
         )
       )))
@@ -650,7 +650,7 @@ git commit -m "feat(shiny): tab 3 shot profile display mode"
         list(label = "Dunk%", col_ratings = "off_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Rim%", col_ratings = "off_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "3PA%", col_ratings = "off_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "C3% of 3PA", col_ratings = "off_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Corner 3 Share", col_ratings = "off_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Mid%", col_ratings = "off_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
       )
     ),
@@ -661,7 +661,7 @@ git commit -m "feat(shiny): tab 3 shot profile display mode"
         list(label = "Opp Dunk%", col_ratings = "def_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp Rim%", col_ratings = "def_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp 3PA%", col_ratings = "def_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "Opp C3% of 3PA", col_ratings = "def_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp Corner 3 Share", col_ratings = "def_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp Mid%", col_ratings = "def_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
       )
     )
@@ -841,7 +841,7 @@ git commit -m "feat(shiny): tab 7 teams detail shot-profile sections"
       paste(parts, collapse = " · ")
     }
 
-    sp_labels <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "C3% of 3PA", "Mid%")
+    sp_labels <- c("Lay-up%", "Dunk%", "Rim%", "3PA%", "Corner 3 Share", "Mid%")
     sp_suffix <- c("layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
 
     swing <- function(row, side, m) {
@@ -875,7 +875,7 @@ git commit -m "feat(shiny): tab 7 teams detail shot-profile sections"
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
           style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
-          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points). Descriptive — no point-impact estimate. C3% is of 3PA with known location; — = unknown."
+          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points). Descriptive — no point-impact estimate. Corner 3 Share is the share of known-location 3PA taken from the corners; — = unknown."
         ),
         pvp_section_header("Offensive Shot Diet (ON − OFF)"),
         do.call(tagList, make_rows("off")),
@@ -939,8 +939,8 @@ Expected: 0 failures (the four known opt-in skips are fine).
 
 Run `"/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "shiny::runApp('app', port = 7788)"` in the background, then for each of Tab 1, Tab 3, Tab 7 (Teams detail + Players view) switch to Shot Profile and verify:
 1. Tab 1: rows render; for one player, Off Rim Diff ≈ (ON rim share − OFF rim share) recomputed by hand from the MV row (`SELECT off_on_layup_att, off_on_dunk_att, off_on_fg2_att, off_on_fg3_att FROM basketball_test.onoff_default_mv WHERE "Year"=2026 LIMIT 1` etc.).
-2. C3%3PA shows `—` (not 0) for at least the known coordless cases if any appear; league-wide most cells should be populated.
-3. Tab 3: per-team rim+3PA+mid shares sum to ~100 (±0.2 rounding); offense C3% of 3PA is near the league ~9-10% corner share.
+2. Corner 3 Share shows `—` (not 0) for at least the known coordless cases if any appear; league-wide most cells should be populated.
+3. Tab 3: per-team rim+3PA+mid shares sum to ~100 (±0.2 rounding); offense Corner 3 Share is near the league ~9-10% corner share.
 4. Tab 7 Teams detail shows the two new sections only in Teams mode (not Lineups); Players mode chip "Shot Profile" renders with no est.± anywhere.
 5. Apply a date filter on Tabs 1/3 to force the SQL-function path and confirm the same columns populate (filtered/fast parity).
 

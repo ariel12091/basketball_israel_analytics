@@ -182,7 +182,7 @@ ui_tab3_team <- function() tabPanel(
             bullets = c(
               "Shares are descriptive — they describe the mix, not its quality. #1 means most of that shot type, not best.",
               "Defense columns are the shot diet teams allow their opponents.",
-              "C3% of 3PA uses shots with known court location; — means location unknown.",
+              "Corner 3 Share uses shots with known court location; — means location unknown.",
               "The same date/clutch-free filters apply as in Summary; use Poss columns to judge sample size."
             )
           )

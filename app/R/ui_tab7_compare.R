@@ -62,6 +62,25 @@ ui_tab7_compare <- function() tabPanel(
           ),
           tags$hr(),
           conditionalPanel(
+            condition = "input.cmp_mode != 'Players' && input.cmp_preset != 'date_split'",
+            dateRangeInput("cmp_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END)
+          ),
+          conditionalPanel(
+            condition = "input.cmp_mode != 'Players' && input.cmp_preset != 'gn_split'",
+            fluidRow(
+              column(6, selectizeInput("cmp_gn_min", tt("From Game Number (GN)", "gn"),
+                                       choices = NULL, selected = "", multiple = FALSE,
+                                       options = list(placeholder = "Any"))),
+              column(6, selectizeInput("cmp_gn_max", tt("To Game Number (GN)", "gn"),
+                                       choices = NULL, selected = "", multiple = FALSE,
+                                       options = list(placeholder = "Any")))
+            )
+          ),
+          conditionalPanel(
+            condition = "input.cmp_mode != 'Players'",
+            tags$hr()
+          ),
+          conditionalPanel(
             condition = "input.cmp_mode == 'Players' && input.cmp_player_compare_mode != 'self'",
             tagList(
               dateRangeInput("cmp_players_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),

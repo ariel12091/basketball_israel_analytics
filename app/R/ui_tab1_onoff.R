@@ -191,7 +191,7 @@ ui_tab1_onoff <- function() tabPanel(
               "Colors follow the league value hierarchy (interior and 3s beat 2PT jumpers): green = shift toward higher-value shots, red = away; the 2PT Jumper column flips, like TOV% in Four Factors. No point-impact estimate is attached — efficiency itself lives in the Summary and Four Factors views.",
               "Each cell mirrors Four Factors: the Δ headline, on/off percentile dots on the rank bar, and ON | OFF share values below.",
               "Columns follow the play-by-play shot-type tags: Lay+Dunk = attempts tagged lay-up or dunk (the tag describes execution, not court location — a running floater can be tagged lay-up); 2PT Jumper = attempts tagged 2-point jump-shot. 3PA% is share of all FGA.",
-              "C3% of 3PA splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
+              "Corner 3 Share splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
               "Cells gray out below 50 team FGA on the ON side — small samples produce noisy shares."
             )
           )
@@ -267,7 +267,7 @@ ui_tab1_onoff <- function() tabPanel(
               span("100% Rank")
             ),
             span(style = "margin-left: 15px; font-size: 0.8em; color: #6e7681;",
-                 "(Ranked: ≥ 50 team FGA with player on · eFG% + shares of team FGA, Δ = ON − OFF pp · C3% of known-location 3PA, — = unknown)")
+                 "(Ranked: ≥ 50 team FGA with player on · eFG% + shares of team FGA, Δ = ON − OFF pp · Corner 3 Share uses known-location 3PA, — = unknown)")
           )
         ),
         uiOutput("on_filter_chips"),

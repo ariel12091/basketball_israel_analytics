@@ -158,7 +158,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         list(label = "Dunk%", col_ratings = "off_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Lay+Dunk%", col_ratings = "off_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "3PA%", col_ratings = "off_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "C3% of 3PA", col_ratings = "off_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Corner 3 Share", col_ratings = "off_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "2PT Jumper%", col_ratings = "off_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
       )
     ),
@@ -169,7 +169,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         list(label = "Opp Dunk%", col_ratings = "def_dunk_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp Lay+Dunk%", col_ratings = "def_rim_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp 3PA%", col_ratings = "def_fg3_share", col_ff = NULL, polarity = "neutral", fmt = "pct"),
-        list(label = "Opp C3% of 3PA", col_ratings = "def_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
+        list(label = "Opp Corner 3 Share", col_ratings = "def_c3_pct3", col_ff = NULL, polarity = "neutral", fmt = "pct"),
         list(label = "Opp 2PT Jumper%", col_ratings = "def_mid_share", col_ff = NULL, polarity = "neutral", fmt = "pct")
       )
     )
@@ -209,7 +209,9 @@ server_tab7_compare <- function(input, output, session, shared) {
     last_n <- NA_integer_
 
     # Players mode uses shared time filters for different-player comparisons,
-    # and side-specific time filters for same-player comparisons.
+    # and side-specific time filters for same-player comparisons. Teams and
+    # Lineups use one shared window for both sides, except that each split
+    # preset owns its corresponding dimension.
     if (identical(input$cmp_mode, "Players")) {
       if (identical(cmp_player_compare_mode(), "self")) {
         dr <- input[[paste0("cmp_player_", side, "_dates")]]
@@ -230,9 +232,25 @@ server_tab7_compare <- function(input, output, session, shared) {
       gn_max <- suppressWarnings(as.integer(gn_max_input %||% ""))
       if (is.finite(gn_min)) min_gn <- gn_min
       if (is.finite(gn_max)) max_gn <- gn_max
-    }
-    if (!identical(input$cmp_mode, "Players")) {
+    } else {
       preset <- input$cmp_preset %||% ""
+
+      if (!identical(preset, "date_split")) {
+        dr <- input$cmp_dates
+        if (!is.null(dr) && length(dr) == 2) {
+          d1 <- suppressWarnings(as.Date(dr[[1]]))
+          d2 <- suppressWarnings(as.Date(dr[[2]]))
+          if (!is.na(d1)) start_d <- d1
+          if (!is.na(d2)) end_d <- d2
+        }
+      }
+      if (!identical(preset, "gn_split")) {
+        gn_min <- suppressWarnings(as.integer(input$cmp_gn_min %||% ""))
+        gn_max <- suppressWarnings(as.integer(input$cmp_gn_max %||% ""))
+        if (is.finite(gn_min)) min_gn <- gn_min
+        if (is.finite(gn_max)) max_gn <- gn_max
+      }
+
       if (identical(preset, "date_split")) {
         split_date <- parse_single_date(input$cmp_split_date)
         if (!is.na(split_date)) {
@@ -481,6 +499,30 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   cmp_gap_value <- function(val_a, val_b) {
     if (identical(cmp_gap_direction(), "b_minus_a")) val_b - val_a else val_a - val_b
+  }
+
+  cmp_detail_display_state <- function(gap_info) {
+    direction <- as.character(gap_info$direction %||% "none")
+    if (!length(direction) || is.na(direction[[1]]) || !(direction[[1]] %in% c("a", "b"))) {
+      direction <- "none"
+    } else {
+      direction <- direction[[1]]
+    }
+
+    a_wins <- gap_info$a_wins
+    value_leader <- if (length(a_wins) && !is.na(a_wins[[1]])) {
+      if (isTRUE(a_wins[[1]])) "a" else "b"
+    } else {
+      # Descriptive/neutral metrics have no good-vs-bad polarity, but the UI
+      # still highlights the side with the higher raw value.
+      direction
+    }
+
+    list(
+      a_cls = if (identical(value_leader, "none") || identical(value_leader, "a")) "winner" else "loser",
+      b_cls = if (identical(value_leader, "none") || identical(value_leader, "b")) "winner" else "loser",
+      gap_side = direction
+    )
   }
 
   apply_side_team_filter <- function(df, p) {
@@ -1140,6 +1182,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         gn_choices <- if (nrow(gn_df)) as.character(gn_df$gn) else character(0)
         gn_choices_with_blank <- c("", gn_choices)
         for (id in c(
+          "cmp_gn_min", "cmp_gn_max",
           "cmp_players_gn_min", "cmp_players_gn_max",
           "cmp_player_a_gn_min", "cmp_player_a_gn_max",
           "cmp_player_b_gn_min", "cmp_player_b_gn_max", "cmp_split_gn"
@@ -1155,6 +1198,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         }
 
         b <- shared$season_date_bounds(as.character(gy_int))
+        updateDateRangeInput(session, "cmp_dates", start = b$start, end = b$end, min = b$start, max = b$end)
         updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
         updateDateRangeInput(session, "cmp_player_a_dates", start = b$start, end = b$end, min = b$start, max = b$end)
         updateDateRangeInput(session, "cmp_player_b_dates", start = b$start, end = b$end, min = b$start, max = b$end)
@@ -1407,7 +1451,8 @@ server_tab7_compare <- function(input, output, session, shared) {
   }, ignoreInit = TRUE)
 
   observeEvent(list(
-    input$cmp_mode, input$cmp_preset, input$cmp_split_date, input$cmp_split_gn,
+    input$cmp_mode, input$cmp_preset, input$cmp_dates, input$cmp_gn_min, input$cmp_gn_max,
+    input$cmp_split_date, input$cmp_split_gn,
     input$cmp_a_starters_mode, input$cmp_a_starters_val, input$cmp_a_opp_starters_mode, input$cmp_a_opp_starters_val, input$cmp_a_teams,
     input$cmp_a_home_away, input$cmp_a_outcome, input$cmp_a_clutch,
     input$cmp_a_clutch_margin, input$cmp_a_clutch_minutes, input$cmp_a_opponents,
@@ -1499,9 +1544,12 @@ server_tab7_compare <- function(input, output, session, shared) {
     updateDateInput(session, "cmp_split_date", value = DEFAULT_END)
     updateSelectizeInput(session, "cmp_split_gn", selected = character(0))
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+    updateDateRangeInput(session, "cmp_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateDateRangeInput(session, "cmp_players_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateDateRangeInput(session, "cmp_player_a_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateDateRangeInput(session, "cmp_player_b_dates", start = b$start, end = b$end, min = b$start, max = b$end)
+    updateSelectizeInput(session, "cmp_gn_min", selected = character(0))
+    updateSelectizeInput(session, "cmp_gn_max", selected = character(0))
     updateSelectizeInput(session, "cmp_players_gn_min", selected = character(0))
     updateSelectizeInput(session, "cmp_players_gn_max", selected = character(0))
     updateSelectizeInput(session, "cmp_player_a_gn_min", selected = character(0))
@@ -1831,6 +1879,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
     reset_compare_side_filters("a", reset_clutch_sliders = FALSE)
     reset_compare_side_filters("b", reset_clutch_sliders = FALSE)
+    if (identical(preset, "date_split")) {
+      b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+      updateDateRangeInput(session, "cmp_dates", start = b$start, end = b$end)
+    } else if (identical(preset, "gn_split")) {
+      updateSelectizeInput(session, "cmp_gn_min", selected = character(0))
+      updateSelectizeInput(session, "cmp_gn_max", selected = character(0))
+    }
     apply_compare_preset(preset)
   }, ignoreInit = TRUE)
 
@@ -2349,7 +2404,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       paste(parts, collapse = " · ")
     }
 
-    sp_labels <- c("Lay-up%", "Dunk%", "Lay+Dunk%", "3PA%", "C3% of 3PA", "2PT Jumper%")
+    sp_labels <- c("Lay-up%", "Dunk%", "Lay+Dunk%", "3PA%", "Corner 3 Share", "2PT Jumper%")
     sp_suffix <- c("layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share")
 
     swing <- function(row, side, m) {
@@ -2390,7 +2445,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
           style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
-          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points), led by the team eFG% swing. Diet rows are descriptive — no point-impact estimate. C3% is of 3PA with known location; — = unknown."
+          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points), led by the team eFG% swing. Diet rows are descriptive — no point-impact estimate. Corner 3 Share is the share of known-location 3PA taken from the corners; — = unknown."
         ),
         pvp_section_header("Offensive Shot Profile (ON − OFF)"),
         do.call(tagList, make_rows("off")),
@@ -2992,7 +3047,8 @@ server_tab7_compare <- function(input, output, session, shared) {
   }, ignoreInit = TRUE)
 
   observeEvent(list(
-    input$cmp_preset, input$cmp_split_date, input$cmp_split_gn,
+    input$cmp_preset, input$cmp_dates, input$cmp_gn_min, input$cmp_gn_max,
+    input$cmp_split_date, input$cmp_split_gn,
     input$cmp_a_starters_mode, input$cmp_a_starters_val, input$cmp_a_opp_starters_mode, input$cmp_a_opp_starters_val, input$cmp_a_teams,
     input$cmp_a_home_away, input$cmp_a_outcome, input$cmp_a_clutch,
     input$cmp_a_clutch_margin, input$cmp_a_clutch_minutes, input$cmp_a_opponents,
@@ -3099,14 +3155,16 @@ server_tab7_compare <- function(input, output, session, shared) {
       }
       compute_detail_gap <- function(val_a, val_b, polarity) {
         if (!is.finite(val_a) || !is.finite(val_b)) {
-          return(list(gap = NA_real_, a_wins = NA))
+          return(list(gap = NA_real_, direction = "none", a_wins = NA))
         }
+        raw_diff <- val_a - val_b
+        direction <- if (raw_diff > 0) "a" else if (raw_diff < 0) "b" else "none"
         raw <- cmp_gap_value(val_a, val_b)
         if (identical(polarity, "neutral")) {
-          return(list(gap = raw, a_wins = NA))
+          return(list(gap = raw, direction = direction, a_wins = NA))
         }
         a_wins <- if (identical(polarity, "lower")) val_a < val_b else val_a > val_b
-        list(gap = raw, a_wins = if (abs(raw) < 1e-9) NA else a_wins)
+        list(gap = raw, direction = direction, a_wins = if (abs(raw) < 1e-9) NA else a_wins)
       }
 
       all_cells <- list(
@@ -3135,8 +3193,9 @@ server_tab7_compare <- function(input, output, session, shared) {
           x <- computed[[j]]
           m <- x$m
           gi <- x$gi
-          a_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "winner" else "loser"
-          b_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "loser" else "winner"
+          display_state <- cmp_detail_display_state(gi)
+          a_cls <- display_state$a_cls
+          b_cls <- display_state$b_cls
           is_last_row <- identical(sec_key, tail(active_sections, 1)) && j == length(computed)
           last_cls <- if (is_last_row) " cmp-last-row" else ""
           gap_text <- if (!is.finite(gi$gap)) "\u2014" else {
@@ -3145,10 +3204,10 @@ server_tab7_compare <- function(input, output, session, shared) {
             else if (gi$gap > 0) sprintf("+%.1f%s", gi$gap, suffix)
             else sprintf("\u2212%.1f%s", abs(gi$gap), suffix)
           }
-          winner_side <- if (is.na(gi$a_wins)) "none" else if (isTRUE(gi$a_wins)) "a" else "b"
-          gap_color_cls <- if (winner_side == "a") "a-color" else if (winner_side == "b") "b-color" else ""
+          gap_side <- display_state$gap_side
+          gap_color_cls <- if (gap_side == "a") "a-color" else if (gap_side == "b") "b-color" else ""
           bar_pct <- if (is.finite(gi$gap) && max_abs_gap > 0) round(abs(gi$gap) / max_abs_gap * 50, 1) else 0
-          bar_cls <- if (identical(winner_side, "a")) "toward-a" else "toward-b"
+          bar_cls <- if (identical(gap_side, "a")) "toward-a" else "toward-b"
 
           all_cells <- c(all_cells, list(
             tags$div(class = paste0("cmp-stat-row cmp-col-a cmp-cell", last_cls),
@@ -3548,8 +3607,9 @@ server_tab7_compare <- function(input, output, session, shared) {
         x <- computed[[j]]
         m <- x$m; va <- x$va; vb <- x$vb; gi <- x$gap
 
-        a_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "winner" else "loser"
-        b_cls <- if (is.na(gi$a_wins)) "winner" else if (gi$a_wins) "loser" else "winner"
+        display_state <- cmp_detail_display_state(gi)
+        a_cls <- display_state$a_cls
+        b_cls <- display_state$b_cls
 
         fmt_va <- detail_fmt(va, m$fmt)
         fmt_vb <- detail_fmt(vb, m$fmt)
@@ -3566,15 +3626,13 @@ server_tab7_compare <- function(input, output, session, shared) {
             sprintf("\u2212%.1f%s", abs(g_display), pct_suffix)
           }
         }
-        winner_side <- if (is.na(gi$a_wins)) "none" else if (isTRUE(gi$a_wins)) "a" else "b"
-        gap_color_cls <- if (winner_side == "a") "a-color" else if (winner_side == "b") "b-color" else ""
+        gap_side <- display_state$gap_side
+        gap_color_cls <- if (gap_side == "a") "a-color" else if (gap_side == "b") "b-color" else ""
         bar_pct <- if (is.finite(gi$gap) && max_abs_gap > 0) round(abs(gi$gap) / max_abs_gap * 50, 1) else 0
-        bar_cls <- if (winner_side == "a") {
+        bar_cls <- if (gap_side == "a") {
           "toward-a"
-        } else if (winner_side == "b") {
+        } else if (gap_side == "b") {
           "toward-b"
-        } else if (identical(gi$direction, "a")) {
-          "toward-a"
         } else {
           "toward-b"
         }
@@ -3946,16 +4004,33 @@ server_tab7_compare <- function(input, output, session, shared) {
     reset_compare_filters()
   })
 
+  observeEvent(input$cmp_clear_dates, {
+    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+    updateDateRangeInput(session, "cmp_dates", start = b$start, end = b$end)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$cmp_clear_gn, {
+    updateSelectizeInput(session, "cmp_gn_min", selected = character(0))
+    updateSelectizeInput(session, "cmp_gn_max", selected = character(0))
+  }, ignoreInit = TRUE)
+
   # -- Filter chips --
 
   output$cmp_filter_chips <- renderUI({
-    tryCatch(
+    tryCatch({
+      chip_input <- reactiveValuesToList(input)
+      if (identical(input$cmp_mode, "Players") || identical(input$cmp_preset %||% "", "date_split")) {
+        chip_input$cmp_dates <- NULL
+      }
+      if (identical(input$cmp_mode, "Players") || identical(input$cmp_preset %||% "", "gn_split")) {
+        chip_input$cmp_gn_min <- NULL
+        chip_input$cmp_gn_max <- NULL
+      }
       build_filter_chips(
-        "cmp", input, shared$season_date_bounds,
+        "cmp", chip_input, shared$season_date_bounds,
         reset_btn_id = "cmp_reset",
         extra_children = stat_filter_chips_ui("cmp", cmp_stat_filter_state, CMP_FILTERABLE_COLS)
-      ),
-      error = function(e) NULL
-    )
+      )
+    }, error = function(e) NULL)
   })
 }
