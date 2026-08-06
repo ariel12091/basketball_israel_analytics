@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "euroleague-possessions"
+version = "0.1.0"
+description = "Deterministic EuroLeague event grouping and possession counting"
+requires-python = ">=3.10"
+dependencies = [
+  "euroleague-api==0.1.1",
+  "pandas>=2.0,<3",
+  "psycopg[binary]==3.2.9",
+]
+
+[project.scripts]
+euroleague-possessions = "euroleague_possessions.cli:main"
+euroleague-boxscores = "euroleague_possessions.boxscore_collector:main"
+euroleague-pbp = "euroleague_possessions.pbp_collector:main"
+euroleague-reconcile = "euroleague_possessions.reconciliation:main"
+euroleague-package-lineups = "euroleague_possessions.package_lineups:main"
+euroleague-schema-coverage = "euroleague_possessions.schema_coverage:main"
+euroleague-load-plan = "euroleague_possessions.load_plan:main"
+euroleague-transaction-plan = "euroleague_possessions.transaction_writer:main"
+euroleague-postgres-trial = "euroleague_possessions.postgres_trial:main"
+euroleague-validate-analytics = "euroleague_possessions.analytics_validation:main"
+euroleague-batch = "euroleague_possessions.batch_pipeline:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
