@@ -663,13 +663,17 @@ server_tab8_euro <- function(input, output, session, shared) {
       # MV path (existing behavior)
       df_adv <- advanced_result_df()
 
-      # Join with Summary Stats to get Ratings (Net/Off/Def Diff)
+      # Join with Summary Stats to get Ratings (Net/Off/Def Diff).
+      # The Israeli onoff_default_mv exposes the season as "Year"; the
+      # EuroLeague one uses game_year, and carries a competition column that
+      # must be part of the key once EuroCup shares the schema.
       if (!"Net RTG Diff" %in% names(df_adv)) {
         df_sum <- mv_result_df() %>%
-          select(player_id, team_id, "Year", `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, any_of("minutes"))
+          select(player_id, team_id, competition, game_year,
+                 `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, any_of("minutes"))
 
         df <- df_adv %>%
-          left_join(df_sum, by = c("player_id", "team_id", "euro_game_year" = "Year"))
+          left_join(df_sum, by = c("player_id", "team_id", "competition", "game_year"))
       } else {
         df <- df_adv
       }
