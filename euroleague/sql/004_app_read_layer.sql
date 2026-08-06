@@ -727,7 +727,11 @@ GRANT SELECT ON
   euroleague.final_schedule_mv,
   euroleague.player_game_context,
   euroleague.player_onoff_default_mv,
-  euroleague.player_advanced_stats_mv
+  euroleague.player_advanced_stats_mv,
+  -- The app derives its cache-busting token from the newest completed load
+  -- run. Without this grant the lookup fails closed to a constant, and the
+  -- season caches never invalidate after a publication.
+  euroleague.load_runs
 TO app_readonly;
 
 GRANT EXECUTE ON FUNCTION
