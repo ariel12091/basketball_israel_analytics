@@ -17,14 +17,80 @@ ui_tab0_home <- function() tabPanel(
           "IBPL Analytics"
         ),
         tags$p(
+          class = "league-only-il",
           style = "color: #8b949e; font-size: .92rem; margin: 0;",
           "Your go-to site for Israel Basketball Premier League stats"
+        ),
+        tags$p(
+          class = "league-only-el",
+          style = "color: #8b949e; font-size: .92rem; margin: 0;",
+          "EuroLeague and EuroCup on/off impact"
         )
       ),
 
+      # League chooser. Picking one filters the navbar to that league's tabs;
+      # the compact IL/EL switch in the header does the same from any tab.
+      div(
+        class = "league-chooser",
+        tags$button(
+          type = "button", `data-league-btn` = "il",
+          tags$span(class = "league-chooser-name", "Israeli League"),
+          tags$span(class = "league-chooser-sub", "Premier League — full stats suite")
+        ),
+        tags$button(
+          type = "button", `data-league-btn` = "el",
+          tags$span(class = "league-chooser-name", "EuroLeague"),
+          tags$span(class = "league-chooser-sub", "On/off impact — more views coming")
+        )
+      ),
+
+      # ---- EuroLeague ----
+      div(
+        class = "league-only-el",
+        fluidRow(style = "align-items: stretch;",
+          column(
+            width = 6,
+            tags$button(
+              type = "button",
+              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+              `data-input-id` = "go_euro_onoff",
+              div(
+                class = "card-body d-flex flex-column gap-2",
+                tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: #e8a435;"),
+                tags$h5("Who is helping my team?", class = "card-title mb-1"),
+                tags$small(class = "text-muted", "Player impact when on vs. off the court"),
+                div(class = "mt-auto pt-2",
+                  tags$span(class = "text-warning small fw-semibold", "Go →"))
+              )
+            )
+          ),
+          column(
+            width = 6,
+            div(
+              class = "card bg-dark border-secondary mb-4 h-100 w-100",
+              style = "opacity: .55;",
+              div(
+                class = "card-body d-flex flex-column gap-2",
+                tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: #6e7681;"),
+                tags$h5("How is my team performing?", class = "card-title mb-1"),
+                tags$small(class = "text-muted", "Offense, defense, net rating vs. the league"),
+                div(class = "mt-auto pt-2",
+                  tags$span(class = "text-muted small fw-semibold", "In progress"))
+              )
+            )
+          )
+        ),
+        tags$p(
+          style = "color: #6e7681; font-size: .8rem; text-align: center; margin-top: 4px;",
+          "EuroLeague possessions come from a separate engine from the Israeli ",
+          "league. The two are never ranked against each other."
+        )
+      ),
+
+      # ---- Israeli league ----
       # Optional team selector
       div(
-        class = "mb-4 home-team-controls",
+        class = "mb-4 home-team-controls league-only-il",
         div(
           class = "home-team-select",
           selectizeInput(
@@ -51,6 +117,9 @@ ui_tab0_home <- function() tabPanel(
           "if (window.ibplApplyInitialHubTeamDefault) window.ibplApplyInitialHubTeamDefault();"
         ))
       ),
+
+      div(
+      class = "league-only-il",
 
       team_hub_ui(),
 
@@ -160,6 +229,7 @@ ui_tab0_home <- function() tabPanel(
             )
           )
         )
+      )
       )
     )
   )

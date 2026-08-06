@@ -82,6 +82,15 @@ ui <- function(request) {
                     choices = c("25-26" = "2026", "24-25" = "2025"),
                     selected = DEFAULT_GAME_YEAR)
       ),
+      # League switch. Only one league's tabs are visible at a time; the
+      # filtering itself lives in app.js so switching needs no round-trip.
+      tags$div(
+        class = "league-switch",
+        tags$button(type = "button", `data-league-btn` = "il", "IL",
+                    title = "Israel Basketball Premier League"),
+        tags$button(type = "button", `data-league-btn` = "el", "EL",
+                    title = "EuroLeague")
+      ),
       actionButton("open_glossary",
                    tags$span(tags$i(class = "bi bi-book"), " Glossary"),
                    class = "btn btn-sm btn-outline-secondary nav-help-btn"),
@@ -489,6 +498,12 @@ server <- function(input, output, session) {
   observeEvent(input$go_compare, {
     shared$pending_compare_preset("starters_bench")
     updateTabsetPanel(session, "main_tabs", selected = "compare")
+  })
+
+  # Card navigation: EuroLeague on/off -> Tab 8. The league switch itself is
+  # client-side; this only moves the tab once the card is clicked.
+  observeEvent(input$go_euro_onoff, {
+    updateTabsetPanel(session, "main_tabs", selected = "euro")
   })
 
   log_startup("server modules initialized")

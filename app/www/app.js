@@ -876,3 +876,107 @@
     init();
   }
 })();
+
+/* --------------------------------------------------------------------------
+   League scoping.
+
+   The navbar holds every league's tabs, but only one league's are visible at
+   a time -- otherwise a EuroLeague section at parity with the Israeli one
+   would make a 14-item navbar. The league lives in JS (and localStorage), so
+   switching is instant and needs no server round-trip: nav items are filtered
+   by a tab -> league map, and Home swaps its content through a body class.
+
+   A tab NOT listed here is league-neutral and always visible (e.g. "home").
+   -------------------------------------------------------------------------- */
+(function() {
+  var TAB_LEAGUE = {
+    onoff: "il", lineup_data: "il", team_ratings: "il",
+    game_logs: "il", traditional_stats: "il", compare: "il",
+    euro: "el"
+  };
+  var STORE_KEY = "ibpl_league";
+  var DEFAULT_LEAGUE = "il";
+
+  function read() {
+    try { return window.localStorage.getItem(STORE_KEY); } catch (e) { return null; }
+  }
+  function write(v) {
+    try { window.localStorage.setItem(STORE_KEY, v); } catch (e) {}
+  }
+
+  function navLinks() {
+    return Array.prototype.slice.call(
+      document.querySelectorAll('.navbar a[data-value]')
+    );
+  }
+
+  function activeTabValue() {
+    var el = document.querySelector('.navbar a[data-value].active');
+    return el ? el.getAttribute("data-value") : null;
+  }
+
+  function applyLeague(league, opts) {
+    opts = opts || {};
+    document.body.classList.toggle("league-il", league === "il");
+    document.body.classList.toggle("league-el", league === "el");
+
+    navLinks().forEach(function(a) {
+      var owner = TAB_LEAGUE[a.getAttribute("data-value")];
+      var li = a.parentNode;
+      if (!li || li.tagName !== "LI") return;
+      li.style.display = (!owner || owner === league) ? "" : "none";
+    });
+
+    Array.prototype.forEach.call(
+      document.querySelectorAll("[data-league-btn]"),
+      function(b) {
+        b.classList.toggle("active", b.getAttribute("data-league-btn") === league);
+      }
+    );
+
+    // If the tab we are on belongs to the other league it just became
+    // invisible -- go Home rather than stranding the user on a hidden tab.
+    var current = activeTabValue();
+    var owner = current ? TAB_LEAGUE[current] : null;
+    if (owner && owner !== league && !opts.noRedirect) {
+      var home = document.querySelector('.navbar a[data-value="home"]');
+      if (home) home.click();
+    }
+
+    if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
+      window.Shiny.setInputValue("league", league, { priority: "event" });
+    }
+  }
+
+  function setLeague(league) {
+    if (league !== "il" && league !== "el") return;
+    write(league);
+    applyLeague(league);
+  }
+
+  window.ibplSetLeague = setLeague;
+  window.ibplGetLeague = function() { return read() || DEFAULT_LEAGUE; };
+
+  function init() {
+    document.addEventListener("click", function(e) {
+      var btn = e.target.closest ? e.target.closest("[data-league-btn]") : null;
+      if (!btn) return;
+      e.preventDefault();
+      setLeague(btn.getAttribute("data-league-btn"));
+    });
+
+    // A restored bookmark points at a specific tab; that tab's league wins
+    // over the stored preference, or the restore lands on a hidden tab.
+    var current = activeTabValue();
+    var fromTab = current ? TAB_LEAGUE[current] : null;
+    var league = fromTab || read() || DEFAULT_LEAGUE;
+    write(league);
+    applyLeague(league, { noRedirect: true });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();

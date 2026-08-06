@@ -965,3 +965,32 @@ th[data-tooltip]::after { display: none; }
 .hub-storylines-loading-body .spinner-border { color: #e8a435; }
 .hub-storylines-empty { color: #8b949e; font-size: .88rem; }
 @media (max-width: 767px) { .hub-stat-row { gap: 14px; } }
+
+/* ---- League scoping ------------------------------------------------------
+   Home shows one league's content at a time. The body class is set by the
+   league module in app.js; blocks default to hidden so nothing flashes before
+   that runs. */
+.league-only-il, .league-only-el { display: none; }
+body.league-il .league-only-il { display: block; }
+body.league-el .league-only-el { display: block; }
+
+.league-switch { display: inline-flex; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
+.league-switch button {
+  background: transparent; border: 0; color: #8b949e; cursor: pointer;
+  font-size: .78rem; font-weight: 600; padding: 3px 10px; line-height: 1.5;
+  transition: background .15s ease, color .15s ease;
+}
+.league-switch button:hover { color: #e6edf3; background: #21262d; }
+.league-switch button.active { background: #e8a435; color: #0d1117; }
+
+.league-chooser { display: flex; gap: 16px; justify-content: center; margin-bottom: 28px; }
+.league-chooser button {
+  flex: 1 1 0; max-width: 300px; background: #161b22; border: 1px solid #30363d;
+  border-radius: 10px; color: #e6edf3; cursor: pointer; padding: 18px 16px;
+  text-align: left; transition: border-color .15s ease, transform .15s ease;
+}
+.league-chooser button:hover { border-color: #e8a435; transform: translateY(-2px); }
+.league-chooser button.active { border-color: #e8a435; box-shadow: 0 0 0 1px #e8a435 inset; }
+.league-chooser .league-chooser-name { display: block; font-weight: 700; font-size: 1rem; margin-bottom: 2px; }
+.league-chooser .league-chooser-sub { display: block; color: #8b949e; font-size: .8rem; }
+@media (max-width: 575px) { .league-chooser { flex-direction: column; } .league-chooser button { max-width: none; } }
