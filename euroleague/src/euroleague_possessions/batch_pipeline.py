@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import sys
 import time
 from dataclasses import dataclass
 from datetime import date, datetime, timezone
@@ -24,6 +25,7 @@ from .postgres_backend import (
     inspect_target,
     start_load_run,
 )
+from .schedule_collector import fetch_season_schedule_meta
 from .staging import GameBootstrap, StagedGame, build_staged_game, staged_counts
 from .transaction_writer import GameSnapshot, NaturalGameKey, write_game_snapshot
 
@@ -247,8 +249,17 @@ def stage_games(
     competition: str = "E",
     max_workers: int = 1,
     resume: bool = True,
+    schedule_meta: Mapping[int, Mapping[str, Any]] | None = None,
 ) -> list[StageRecord]:
-    """Build independent game snapshots concurrently and checkpoint each one."""
+    """Build independent game snapshots concurrently and checkpoint each one.
+
+    ``schedule_meta`` maps gamecode to the round/phase/tip-off fields that the
+    cached box score and play-by-play do not carry (see
+    ``schedule_collector.fetch_season_schedule_meta``). Fetch it once per
+    competition-season and pass it in; staging itself stays offline. Omitting it
+    leaves those columns NULL, which disables every date, round and phase filter
+    for the affected games.
+    """
 
     selected_keys = sorted(set(keys or game_keys_from_pbp(pbp)))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -295,6 +306,11 @@ def stage_games(
             season=key.season,
             gamecode=key.gamecode,
             competition=competition,
+            schedule_meta=(
+                dict(schedule_meta[key.gamecode])
+                if schedule_meta and key.gamecode in schedule_meta
+                else None
+            ),
         )
         _atomic_json_write(
             path,
@@ -507,6 +523,14 @@ def _arguments() -> argparse.Namespace:
         ),
     )
     parser.add_argument("--no-resume", action="store_true")
+    parser.add_argument(
+        "--no-schedule-meta",
+        action="store_true",
+        help=(
+            "Skip the schedule lookup, leaving round_number/phase/scheduled_at "
+            "NULL. Those columns drive every date, round and phase filter."
+        ),
+    )
     parser.add_argument("--execute", action="store_true")
     parser.add_argument(
         "--confirm-multiple-games",
@@ -540,6 +564,25 @@ def main() -> None:
     if not keys:
         raise ValueError("no games selected")
 
+    # One schedule request per competition-season covering every selected game.
+    # A failure here must not abort a stage run: the fields simply stay NULL,
+    # exactly as they were before this was collected at all.
+    schedule_meta: dict[int, Mapping[str, Any]] = {}
+    if not args.no_schedule_meta:
+        for meta_season in sorted({key.season for key in keys}):
+            try:
+                schedule_meta.update(
+                    fetch_season_schedule_meta(args.competition, meta_season)
+                )
+            except Exception as exc:  # noqa: BLE001 - advisory, never fatal
+                print(
+                    f"schedule_meta_warning season={meta_season}: {exc}",
+                    file=sys.stderr,
+                )
+    missing = [key.gamecode for key in keys if key.gamecode not in schedule_meta]
+    print(f"schedule_meta_games={len(schedule_meta)}")
+    print(f"schedule_meta_missing={len(missing)}")
+
     records = stage_games(
         pbp,
         args.boxscore_dir,
@@ -548,6 +591,7 @@ def main() -> None:
         competition=args.competition,
         max_workers=args.stage_workers,
         resume=not args.no_resume,
+        schedule_meta=schedule_meta,
     )
     failed = [record for record in records if record.status == "failed"]
     available = [record for record in records if record.staged is not None]

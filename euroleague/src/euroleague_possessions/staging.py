@@ -236,8 +236,17 @@ def build_staged_game(
     gamecode: int,
     competition: str = "E",
     retrieved_at: datetime | None = None,
+    schedule_meta: dict | None = None,
 ) -> StagedGame:
-    """Build all rows needed for one atomic shadow-schema game replacement."""
+    """Build all rows needed for one atomic shadow-schema game replacement.
+
+    ``schedule_meta`` carries the round/phase/tip-off fields for this gamecode,
+    which the cached box score and play-by-play do not record. It is passed in
+    rather than fetched here so staging stays offline and reproducible; see
+    ``schedule_collector.fetch_season_schedule_meta``. When it is absent the
+    fields stay NULL, which is what left the first three loaded games without a
+    date and disabled every date/round/phase filter downstream.
+    """
 
     game = pbp.loc[
         pbp["Season"].eq(season) & pbp["Gamecode"].eq(gamecode)
@@ -324,10 +333,11 @@ def build_staged_game(
     official_by_team = {
         str(row["_team_code"]): row for row in official_team_rows
     }
+    meta = schedule_meta or {}
     schedule_row = {
-        "round_number": None,
-        "phase": None,
-        "scheduled_at": None,
+        "round_number": meta.get("round_number"),
+        "phase": meta.get("phase"),
+        "scheduled_at": meta.get("scheduled_at"),
         "status": "played",
         "home_team_code": home_team,
         "away_team_code": away_team,
