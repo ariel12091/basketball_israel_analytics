@@ -35,17 +35,8 @@ ui_tab8_euro <- function() tabPanel(
           actionButton("euro_reset_defaults", "Reset to defaults"),
           tags$hr(),
 
-          fluidRow(
-            column(6, selectInput("euro_competition", "Competition",
-                                  choices = c("EuroLeague" = "E"),
-                                  selected = EURO_DEFAULT_COMPETITION)),
-            column(6, selectInput("euro_game_year", "Season",
-                                  choices = stats::setNames(
-                                    EURO_DEFAULT_SEASON,
-                                    euro_season_label(EURO_DEFAULT_SEASON)
-                                  ),
-                                  selected = EURO_DEFAULT_SEASON))
-          ),
+          # Competition and season are section-wide and live in the navbar,
+          # shared with every other EuroLeague tab.
 
           dateRangeInput("euro_date_range", "Game Date Range",
                          start = EURO_DEFAULT_START, end = EURO_DEFAULT_END,

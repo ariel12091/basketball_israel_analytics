@@ -78,12 +78,17 @@ ui <- function(request) {
     includeScript("www/app.js"),
     tags$div(
       style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
+      # Israeli season selector. Hidden under the EuroLeague league, which
+      # numbers seasons differently (provider season, not season-ending year).
       tags$div(
-        class = "navbar-season-select",
+        class = "navbar-season-select league-nav-il",
         selectInput("game_year", NULL,
                     choices = c("25-26" = "2026", "24-25" = "2025"),
                     selected = DEFAULT_GAME_YEAR)
       ),
+      # One EuroLeague competition + season selector shared by every tab in
+      # that section, so changing season does not have to be done per tab.
+      euro_navbar_season_ui(),
       # League switch. Only one league's tabs are visible at a time; the
       # filtering itself lives in app.js so switching needs no round-trip.
       tags$div(
@@ -442,6 +447,10 @@ server <- function(input, output, session) {
     pending_gl_team = reactiveVal(NULL),
     pending_compare_preset = reactiveVal(NULL)
   )
+
+  # One competition + season pair for the whole EuroLeague section.
+  # Populated here, never per tab -- two tabs updating the same input fight.
+  euro_init_season_inputs(input, session)
 
   # Call tab server modules
   server_tab1(input, output, session, shared)

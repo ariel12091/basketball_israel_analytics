@@ -52,43 +52,16 @@ server_tab8_euro <- function(input, output, session, shared) {
   resetting <- reactiveVal(FALSE)
   euro_stat_filter_state <- make_stat_filter_state()
 
-  # This section owns its own competition + season selectors. It deliberately
-  # does NOT read the navbar's input$game_year, which is the Israeli
-  # season-ending year (2026 = 2025-26) while EuroLeague uses the provider
-  # season (2025 = 2025-26). One selector value must never mean two seasons.
-  euro_competition <- reactive({
-    val <- input$euro_competition %||% EURO_DEFAULT_COMPETITION
-    if (!nzchar(val)) EURO_DEFAULT_COMPETITION else as.character(val)
-  })
-  euro_selected_season <- reactive({
-    val <- input$euro_game_year %||% EURO_DEFAULT_SEASON
-    if (!nzchar(val)) EURO_DEFAULT_SEASON else as.character(val)
-  })
+  # Competition and season come from the section-wide navbar selectors, shared
+  # with every other EuroLeague tab (populated once in app.R). They are NOT the
+  # navbar's input$game_year, which is the Israeli season-ending year
+  # (2026 = 2025-26) while EuroLeague uses the provider season (2025 = 2025-26).
+  # One selector value must never mean two seasons.
+  euro_competition <- reactive(euro_selected_competition(input))
+  euro_selected_season <- reactive(euro_selected_game_year(input))
   euro_teams_df <- reactive({
     euro_fetch_teams(euro_competition(), euro_selected_season())
   })
-
-  # Populate the competition and season pickers from what is actually loaded,
-  # so EuroCup appears by itself once 'U' games exist.
-  observe({
-    comps <- tryCatch(euro_fetch_competitions(), error = function(e) NULL)
-    codes <- if (!is.null(comps) && nrow(comps)) as.character(comps$competition) else EURO_DEFAULT_COMPETITION
-    labels <- unname(EURO_COMPETITION_LABELS[codes])
-    labels[is.na(labels)] <- codes[is.na(labels)]
-    updateSelectInput(session, "euro_competition",
-                      choices = stats::setNames(codes, labels),
-                      selected = isolate(euro_competition()))
-  })
-
-  observeEvent(euro_competition(), {
-    seasons <- tryCatch(euro_fetch_seasons(euro_competition()), error = function(e) NULL)
-    vals <- if (!is.null(seasons) && nrow(seasons)) as.character(seasons$game_year) else EURO_DEFAULT_SEASON
-    sel <- isolate(euro_selected_season())
-    if (!sel %in% vals) sel <- vals[[1]]
-    updateSelectInput(session, "euro_game_year",
-                      choices = stats::setNames(vals, euro_season_label(vals)),
-                      selected = sel)
-  }, ignoreInit = FALSE)
 
   # Teams / opponents / phase dropdowns follow competition + season.
   observeEvent(list(euro_competition(), euro_selected_season()), {

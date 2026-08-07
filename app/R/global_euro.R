@@ -143,6 +143,63 @@ euro_data_version <- function() {
 
 # Phase codes are provider text; label the ones we know, pass through the rest
 # so a new phase never renders as a blank option.
+# ---------------- Shared section-level selectors ----------------
+# ONE competition + season pair for the whole EuroLeague section, living in the
+# navbar beside the Israeli season selector. Every EuroLeague tab reads
+# input$euro_competition / input$euro_game_year, so changing season once
+# changes it everywhere -- the Israeli app's global-season behaviour, scoped to
+# this league. Visibility is by league class; see app.css.
+
+euro_navbar_season_ui <- function() {
+  tags$div(
+    class = "navbar-season-select league-nav-el",
+    selectInput("euro_competition", NULL,
+                choices = stats::setNames(EURO_DEFAULT_COMPETITION,
+                                          EURO_COMPETITION_LABELS[[EURO_DEFAULT_COMPETITION]]),
+                selected = EURO_DEFAULT_COMPETITION),
+    selectInput("euro_game_year", NULL,
+                choices = stats::setNames(EURO_DEFAULT_SEASON,
+                                          euro_season_label(EURO_DEFAULT_SEASON)),
+                selected = EURO_DEFAULT_SEASON)
+  )
+}
+
+# Populate those two from what is actually loaded. Called ONCE from app.R --
+# if each tab did this they would fight over the same inputs.
+euro_init_season_inputs <- function(input, session) {
+  observe({
+    comps <- tryCatch(euro_fetch_competitions(), error = function(e) NULL)
+    codes <- if (!is.null(comps) && nrow(comps)) as.character(comps$competition) else EURO_DEFAULT_COMPETITION
+    labels <- unname(EURO_COMPETITION_LABELS[codes])
+    labels[is.na(labels)] <- codes[is.na(labels)]
+    updateSelectInput(session, "euro_competition",
+                      choices = stats::setNames(codes, labels),
+                      selected = isolate(input$euro_competition) %||% EURO_DEFAULT_COMPETITION)
+  })
+
+  observeEvent(input$euro_competition, {
+    comp <- input$euro_competition %||% EURO_DEFAULT_COMPETITION
+    seasons <- tryCatch(euro_fetch_seasons(comp), error = function(e) NULL)
+    vals <- if (!is.null(seasons) && nrow(seasons)) as.character(seasons$game_year) else EURO_DEFAULT_SEASON
+    sel <- isolate(input$euro_game_year) %||% EURO_DEFAULT_SEASON
+    if (!sel %in% vals) sel <- vals[[1]]
+    updateSelectInput(session, "euro_game_year",
+                      choices = stats::setNames(vals, euro_season_label(vals)),
+                      selected = sel)
+  }, ignoreInit = FALSE)
+}
+
+# Read helpers, so no tab has to repeat the defaulting logic.
+euro_selected_competition <- function(input) {
+  val <- input$euro_competition %||% EURO_DEFAULT_COMPETITION
+  if (!nzchar(val)) EURO_DEFAULT_COMPETITION else as.character(val)
+}
+
+euro_selected_game_year <- function(input) {
+  val <- input$euro_game_year %||% EURO_DEFAULT_SEASON
+  if (!nzchar(val)) EURO_DEFAULT_SEASON else as.character(val)
+}
+
 EURO_PHASE_LABELS <- c(
   "RS" = "Regular Season",
   "PLAYOFFS" = "Playoffs",

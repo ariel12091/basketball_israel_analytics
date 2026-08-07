@@ -994,3 +994,10 @@ body.league-el .league-only-el { display: block; }
 .league-chooser .league-chooser-name { display: block; font-weight: 700; font-size: 1rem; margin-bottom: 2px; }
 .league-chooser .league-chooser-sub { display: block; color: #8b949e; font-size: .8rem; }
 @media (max-width: 575px) { .league-chooser { flex-direction: column; } .league-chooser button { max-width: none; } }
+
+/* Navbar league-scoped controls. Separate from .league-only-* because these
+   must lay out inline in the header, not as blocks. */
+.league-nav-il, .league-nav-el { display: none; }
+body.league-il .league-nav-il { display: inline-flex; align-items: center; gap: 6px; }
+body.league-el .league-nav-el { display: inline-flex; align-items: center; gap: 6px; }
+.league-nav-el .form-group, .league-nav-el .shiny-input-container { margin-bottom: 0; }

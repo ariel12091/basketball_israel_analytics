@@ -10,35 +10,12 @@
 
 server_tab9_euro_team <- function(input, output, session, shared) {
 
-  # ---- Competition + season (this section owns its own selectors) ----
-  et_competition <- reactive({
-    val <- input$euroteam_competition %||% EURO_DEFAULT_COMPETITION
-    if (!nzchar(val)) EURO_DEFAULT_COMPETITION else as.character(val)
-  })
-  et_season <- reactive({
-    val <- input$euroteam_game_year %||% EURO_DEFAULT_SEASON
-    if (!nzchar(val)) EURO_DEFAULT_SEASON else as.character(val)
-  })
+  # ---- Competition + season come from the shared navbar selectors ----
+  # Same inputs the On/Off tab reads, populated once in app.R, so changing
+  # season once changes it for the whole EuroLeague section.
+  et_competition <- reactive(euro_selected_competition(input))
+  et_season <- reactive(euro_selected_game_year(input))
   et_teams_df <- reactive(euro_fetch_teams(et_competition(), et_season()))
-
-  observe({
-    comps <- tryCatch(euro_fetch_competitions(), error = function(e) NULL)
-    codes <- if (!is.null(comps) && nrow(comps)) as.character(comps$competition) else EURO_DEFAULT_COMPETITION
-    labels <- unname(EURO_COMPETITION_LABELS[codes])
-    labels[is.na(labels)] <- codes[is.na(labels)]
-    updateSelectInput(session, "euroteam_competition",
-                      choices = stats::setNames(codes, labels),
-                      selected = isolate(et_competition()))
-  })
-
-  observeEvent(et_competition(), {
-    seasons <- tryCatch(euro_fetch_seasons(et_competition()), error = function(e) NULL)
-    vals <- if (!is.null(seasons) && nrow(seasons)) as.character(seasons$game_year) else EURO_DEFAULT_SEASON
-    sel <- isolate(et_season())
-    if (!sel %in% vals) sel <- vals[[1]]
-    updateSelectInput(session, "euroteam_game_year",
-                      choices = stats::setNames(vals, euro_season_label(vals)), selected = sel)
-  }, ignoreInit = FALSE)
 
   observeEvent(list(et_competition(), et_season()), {
     bounds <- euro_season_date_bounds(et_season())
@@ -548,7 +525,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     gn_min_id = "euroteam_gn_min", gn_max_id = "euroteam_gn_max",
     last_n_id = "euroteam_last_n",
     opp_rank_ids = c("euroteam_opp_rank_side", "euroteam_opp_rank_n", "euroteam_opp_rank_metric"),
-    date_id = "euroteam_dates", gy_input_id = "euroteam_game_year",
+    date_id = "euroteam_dates", gy_input_id = "euro_game_year",
     teams_ids = NULL,
     starters_ids = c("euroteam_num_starters_off_mode", "euroteam_num_starters_off",
                      "euroteam_num_starters_def_mode", "euroteam_num_starters_def"))
