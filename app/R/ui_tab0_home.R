@@ -66,16 +66,17 @@ ui_tab0_home <- function() tabPanel(
           ),
           column(
             width = 6,
-            div(
-              class = "card bg-dark border-secondary mb-4 h-100 w-100",
-              style = "opacity: .55;",
+            tags$button(
+              type = "button",
+              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+              `data-input-id` = "go_euro_team",
               div(
                 class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: #6e7681;"),
+                tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: #e8a435;"),
                 tags$h5("How is my team performing?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Offense, defense, net rating vs. the league"),
                 div(class = "mt-auto pt-2",
-                  tags$span(class = "text-muted small fw-semibold", "In progress"))
+                  tags$span(class = "text-warning small fw-semibold", "Go →"))
               )
             )
           )

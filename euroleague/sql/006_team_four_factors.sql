@@ -644,9 +644,13 @@ BEGIN
 END;
 $function$;
 
+-- team_ppp_ratings_mv is DROPped and recreated above, which wipes the grant
+-- migration 005 made -- exactly as DROP FUNCTION wipes EXECUTE grants. It must
+-- be re-granted here or every reader gets "permission denied".
 GRANT SELECT ON
   euroleague.team_four_factors_by_game,
-  euroleague.team_four_factors_mv
+  euroleague.team_four_factors_mv,
+  euroleague.team_ppp_ratings_mv
 TO app_readonly;
 
 GRANT EXECUTE ON FUNCTION

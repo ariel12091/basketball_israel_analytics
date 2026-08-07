@@ -24,6 +24,8 @@ source("R/server_tab7_compare.R", local = TRUE)
 source("R/global_euro.R", local = TRUE)
 source("R/ui_tab8_euro.R", local = TRUE)
 source("R/server_tab8_euro.R", local = TRUE)
+source("R/ui_tab9_euro_team.R", local = TRUE)
+source("R/server_tab9_euro_team.R", local = TRUE)
 
 enableBookmarking(store = "url")
 # 13: bookmarks captured before the .clientdata_url_search fix hold blank
@@ -109,7 +111,8 @@ ui <- function(request) {
   ui_tab4_gamelogs(),
   ui_tab5_traditional(),
   ui_tab7_compare(),
-  ui_tab8_euro()
+  ui_tab8_euro(),
+  ui_tab9_euro_team()
   )
 }
 
@@ -448,6 +451,7 @@ server <- function(input, output, session) {
   server_tab5_traditional(input, output, session, shared)
   server_tab7_compare(input, output, session, shared)
   server_tab8_euro(input, output, session, shared)
+  server_tab9_euro_team(input, output, session, shared)
   server_team_hub(input, output, session, shared)
 
   # Card navigation: Who is helping my team? -> Tab 1
@@ -502,6 +506,10 @@ server <- function(input, output, session) {
 
   # Card navigation: EuroLeague on/off -> Tab 8. The league switch itself is
   # client-side; this only moves the tab once the card is clicked.
+  observeEvent(input$go_euro_team, {
+    updateTabsetPanel(session, "main_tabs", selected = "euro_team")
+  })
+
   observeEvent(input$go_euro_onoff, {
     updateTabsetPanel(session, "main_tabs", selected = "euro")
   })
