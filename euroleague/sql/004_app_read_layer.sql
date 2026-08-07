@@ -177,20 +177,27 @@ BEGIN
     WHERE s.competition = v_competition
       AND s.season = p_game_year
   ),
-  -- Opponent strength is recomputed from the selected window, matching the
-  -- Israeli onoff_compute exception rather than a season-wide rank table.
+  -- Opponent strength reads euroleague.team_game_ratings_mv (migration 005),
+  -- the single source of truth for team offensive/defensive/net rating. It is
+  -- aggregated over the caller's date window here rather than read from the
+  -- season-level team_ppp_ratings_mv, so "top N defenses" still means top N
+  -- within the selected window -- but the DEFINITION of the rating lives in
+  -- exactly one place, shared with the Team Ratings surface.
+  --
+  -- Raw counts are summed and divided once. Never average per-game ratios.
   team_window AS (
     SELECT
-      c.team_id,
-      sum(c.total_points) FILTER (WHERE c.type_lineup = 'offense' AND c.is_on_key = 1) AS off_pts,
-      sum(c.total_poss)   FILTER (WHERE c.type_lineup = 'offense' AND c.is_on_key = 1) AS off_poss,
-      sum(c.total_points) FILTER (WHERE c.type_lineup = 'defense' AND c.is_on_key = 1) AS def_pts,
-      sum(c.total_poss)   FILTER (WHERE c.type_lineup = 'defense' AND c.is_on_key = 1) AS def_poss
-    FROM euroleague.player_game_context c
-    JOIN schedule_ranked sr ON sr.game_id = c.game_id AND sr.team_id = c.team_id
-    WHERE (p_start_date IS NULL OR sr.game_date >= p_start_date)
-      AND (p_end_date   IS NULL OR sr.game_date <= p_end_date)
-    GROUP BY c.team_id
+      g.team_id,
+      sum(g.off_pts)::numeric  AS off_pts,
+      sum(g.off_poss)::numeric AS off_poss,
+      sum(g.def_pts)::numeric  AS def_pts,
+      sum(g.def_poss)::numeric AS def_poss
+    FROM euroleague.team_game_ratings_mv g
+    WHERE g.competition = v_competition
+      AND g.game_year   = p_game_year
+      AND (p_start_date IS NULL OR g.game_date >= p_start_date)
+      AND (p_end_date   IS NULL OR g.game_date <= p_end_date)
+    GROUP BY g.team_id
   ),
   team_ranked AS (
     SELECT
@@ -455,18 +462,20 @@ BEGIN
     WHERE s.competition = v_competition
       AND s.season = p_game_year
   ),
+  -- Same single source of truth as onoff_compute; see the note there.
   team_window AS (
     SELECT
-      c.team_id,
-      sum(c.total_points) FILTER (WHERE c.type_lineup = 'offense' AND c.is_on_key = 1) AS off_pts,
-      sum(c.total_poss)   FILTER (WHERE c.type_lineup = 'offense' AND c.is_on_key = 1) AS off_poss,
-      sum(c.total_points) FILTER (WHERE c.type_lineup = 'defense' AND c.is_on_key = 1) AS def_pts,
-      sum(c.total_poss)   FILTER (WHERE c.type_lineup = 'defense' AND c.is_on_key = 1) AS def_poss
-    FROM euroleague.player_game_context c
-    JOIN schedule_ranked sr ON sr.game_id = c.game_id AND sr.team_id = c.team_id
-    WHERE (p_start_date IS NULL OR sr.game_date >= p_start_date)
-      AND (p_end_date   IS NULL OR sr.game_date <= p_end_date)
-    GROUP BY c.team_id
+      g.team_id,
+      sum(g.off_pts)::numeric  AS off_pts,
+      sum(g.off_poss)::numeric AS off_poss,
+      sum(g.def_pts)::numeric  AS def_pts,
+      sum(g.def_poss)::numeric AS def_poss
+    FROM euroleague.team_game_ratings_mv g
+    WHERE g.competition = v_competition
+      AND g.game_year   = p_game_year
+      AND (p_start_date IS NULL OR g.game_date >= p_start_date)
+      AND (p_end_date   IS NULL OR g.game_date <= p_end_date)
+    GROUP BY g.team_id
   ),
   team_ranked AS (
     SELECT
