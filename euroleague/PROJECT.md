@@ -1,7 +1,14 @@
 # EuroLeague data exploration handoff
 
-Last updated: 2026-08-06  
-Status: exploratory shadow schema with three controlled live games; no app integration
+Last updated: 2026-08-07  
+Status: 84 games loaded; two EuroLeague tabs live in the Shiny app behind a
+league switch; standalone load framework in place
+
+> **Everything below the "Operational handoff snapshot" section is design
+> history from the exploratory phase.** It remains accurate as a record of how
+> the possession engine, reconciliation and QA were validated, but it describes
+> the project as it stood at three controlled games. For current state, read the
+> snapshot section only.
 
 ## Current status summary
 
@@ -23,8 +30,8 @@ Status: exploratory shadow schema with three controlled live games; no app integ
 - **Schema:** the isolated `euroleague` schema follows the Israeli core
   layers (`schedule`, `full_rosters`, `actions_clean`, `possessions`, `stints`,
   and `pws`) while separating immutable raw evidence and avoiding wide table
-  duplication. Migrations 001 and 002 were applied on 2026-08-06; the indexed
-  app-read migration 003 is implemented and tested but not applied.
+  duplication. Migrations 001, 002, 004, 005 and 006 are applied.
+  **Migration 003 is SUPERSEDED by 004 and must never be applied.**
 - **Loadability:** the database-free schema coverage audit passes 100/100 games
   with zero blocking identity, action-key, lineup, endpoint, or offense-team
   mapping issues. Thirty-five coach/bench pseudo-actor rows remain raw-only.
@@ -39,13 +46,16 @@ Status: exploratory shadow schema with three controlled live games; no app integ
 - **Analytics:** the additive SQL compatibility layer is applied. It preserves
   raw numerators/denominators for player ON/OFF PPP, ratings, and four factors;
   the three controlled games contain 6,240 validated player/context fact rows.
-- **Controlled live batch:** `E/2025/1-3` is loaded under shared
-  `load_run_id=3` with three requested, three successful, and zero failed
-  games. Every persisted count matches its checkpoint and all analytics
-  refreshes validate; game 1's earlier rollback probe also passed.
-- **Current boundary:** the shadow schema contains only those three approved
-  games. No Israeli-schema table, production ETL flow, application query, view,
-  grant, or dependency was changed. Further live games remain behind approval.
+- **Live data:** `E/2025/1-84` (rounds 1-9) is loaded under `load_run_id=4`,
+  84 requested, 84 successful, zero failed, parser `0.2.0` throughout. Twenty
+  teams at 8-9 games each. All verification passes: box-score metrics exact on
+  84/84, score progression reconciled 84/84, lineup structure valid 84/84, team
+  four factors matching the independently derived player fact, and MV/dynamic
+  parity.
+- **Current boundary:** no Israeli-schema table, production ETL flow, or Israeli
+  application query was changed. `app_readonly` was granted SELECT on the
+  EuroLeague read layer and EXECUTE on its four functions. Further live games
+  are run through `scripts/load_games.py` and no longer need a bespoke session.
 
 ## Operational handoff snapshot
 
@@ -56,127 +66,132 @@ design history and evidence remain below it.
 
 | Concern | Repository | Live `euroleague` schema |
 |---|---|---|
-| Controlled data | Staging supports 100 cached games | Only `E/2025/1-3`, `load_run_id=3` |
-| Possession parser | `0.2.0` | Persisted rows were built with `0.1.0` |
-| Stage checkpoint format | `2`; old derived checkpoints are rejected | Existing published rows are unaffected until republished |
+| Live data | `scripts/load_games.py` loads any gamecode range | `E/2025/1-84`, `load_run_id=4` |
+| Possession parser | `0.2.0` | `0.2.0` throughout |
+| Stage checkpoint format | `2` | n/a |
 | Core schema | Migration 001 | Applied |
 | Additive per-game analytics | Migration 002 | Applied |
-| App read layer | Migration 003: three indexed MVs | Not applied |
-| App integration | No adapter or application query | None |
+| App read layer | Migration 004 (**supersedes 003**) | Applied |
+| Team ratings | Migration 005 | Applied |
+| Team four factors + dynamic team path | Migration 006 | Applied |
+| App integration | Tabs 8 and 9 in `app/` | Reads via `app_readonly` |
 
-The current publication code calls
-`euroleague.refresh_app_materialized_views()` when a load run finishes. Apply
-migration 003 before using the current code for another publication. This is a
-deliberate fail-closed dependency: a load must not be marked complete while its
-app-facing snapshots are stale.
+Apply order is **001 → 002 → 004 → 005 → 006**. Migration 003 is superseded and
+must never be applied.
 
-### Latest completed work
+The publication code calls `euroleague.refresh_app_materialized_views()` when a
+load run finishes. This is a deliberate fail-closed dependency: a load must not
+be marked complete while its app-facing snapshots are stale. Any migration that
+adds a derived table must also register it in `assert_shadow_schema_compatible()`
+(`postgres_backend.py`), or publication refuses to start.
 
-1. Audited all seven warning rows in the three published games using cached PBP,
-   cached box scores, deterministic possessions, and package lineups. The audit
-   performs no network or database writes.
-2. Confirmed that game 1 event 215 and game 2 events 437 and 486 are provider
-   assists emitted after the assister's recorded `OUT` event. Preserve the
-   package-invalid actor flags; do not rewrite the package lineups.
-3. Replaced the special-penalty QA heuristic that used an arbitrary +/-8 source
-   row window. The new post-processing QA rule uses an uninterrupted penalty
-   cluster: administrative/annotation rows are transparent, while shots,
-   rebounds, turnovers, offensive fouls, and period ends are boundaries.
-4. Confirmed that this cluster is a warning/confidence classification layer,
-   not possession state. It does not change synthetic parents, FT trips,
-   `final_end_poss`, endpoint reasons, or possession totals.
-5. Corrected game 1's warning identities from `214, 438, 443, 461` to
-   `214, 216, 438, 443`: event 216 is the second FT in the same compound trip;
-   event 461 is a separate, confirmed and-one.
-6. Revalidated the 100-game sample: 56,463 events, 14,684 possessions, 4,122
-   assigned FT rows, zero unresolved FTs, and 100/100 hard structural passes.
-   Python and R are exactly equal on parent, FT trip, endpoint, endpoint reason,
-   status, and confidence.
-7. Refined provisional-FT evidence from 267 to 235 rows. The comparison retained
-   215 old warnings, removed 52 rows separated by live boundaries, and added 20
-   rows inside the same uninterrupted penalty incident. Possession endpoints
-   remained unchanged.
-8. Versioned the corrected derived output as parser `0.2.0` and stage format
-   `2`, with a regression proving that stale checkpoints are rebuilt.
-9. Added migration `003_app_materialized_views.sql`. The ordinary views remain
-   the live semantic layer; `final_schedule_mv`,
-   `player_onoff_by_season_mv`, and `player_four_factors_by_season_mv` are the
-   indexed app-facing layer.
-10. Wired one MV refresh per finished load run, inside the same transaction as
-    the run-status update. Per-game analytical facts remain incrementally
-    refreshed physical rows.
-11. Passed all 54 Python tests, all three independent R suites, SQL statement
-    splitting for migration 003, whitespace validation, and exact 100-game
-    Python/R parity.
+### Storage
 
-No database object or persisted game was changed by the warning-rule and MV
-implementation work. The ignored warning-audit exports are under
-`euroleague/data/exports/review_warning_audit_3games/`.
+181 MB for 84 games (~2.2 MB/game), projecting to roughly 880 MB for a full
+402-game season. The instance is shared with `basketball_test`; the operator has
+confirmed 5 GB available, so storage is not currently a constraint. The largest
+per-game relations are `player_four_factors_by_game`, `actions_raw` and
+`action_lineups`.
+
+### Latest completed work (2026-08-07)
+
+Twelve commits on branch `shiny/euro-tab1`, from `6674564` to `0f0a6e0`.
+
+**Read layer.** Migration 004 (app read layer: `player_game_context`,
+`onoff_compute`, `four_factors_compute`, three MVs), 005 (team ratings:
+`team_game_ratings_mv` raw counts, `team_ppp_ratings_mv` season aggregate), and
+006 (team four factors at team grain plus `get_team_*_dynamic`). One definition
+of team rating now serves both the ratings surface and the opponent-strength
+filter; opponent ranks are season-wide.
+
+**App.** Two tabs, both league-scoped: `euro` (On/Off Impact) and `euro_team`
+(Team Ratings), each with Summary and Four Factors. Every league's tabs stay
+statically defined and only one league's are visible, so the navbar does not
+grow; the league lives in JS plus `localStorage` and is chosen from a Home
+chooser or an `IL|EL` navbar switch. One shared competition+season selector
+serves the whole EuroLeague section.
+
+**Loading.** `scripts/load_games.py` plus `RUNBOOK.md` — collect, stage, publish
+and verify in one command, runnable without an agent session, safe by default,
+resumable, exit code 1 on any failed check.
+
+**Schedule metadata.** `staging.build_staged_game` previously hardcoded
+`round_number`, `phase` and `scheduled_at` to `None`, so every date, round and
+phase predicate evaluated to NULL and filtered the game out. Any filtered query
+returned zero rows while the unfiltered season path looked correct.
+`schedule_collector.fetch_season_schedule_meta()` now supplies them at staging
+time.
+
+**Verified on the 84-game load.** Parser `0.1.0` to `0.2.0` is genuinely
+output-identical apart from lineage: re-deriving gamecodes 1-3 reproduced 432
+possessions and 6,240 analytics facts exactly.
+
+### Known issues
+
+- **70 of 84 games carry `game_qa.publication_status = 'review'`.** Every hard
+  gate passes; the flag comes from `possession_review_status`, driven by an
+  average of 0.21 same-team transitions per game plus three games whose score
+  progression was not exact but did reconcile. QA status is **not** a
+  publication filter — the season aggregates include all 84 games regardless —
+  so this count should be surfaced in the UI.
+- **Insert batching is untested against a database.** `postgres_backend.py` now
+  batches the `lineups`/`stints` `RETURNING` inserts and collapses the
+  validation counts, expected to take publication from ~20s to ~9s per game.
+  The 84 games were loaded with the previous code, so they are the baseline to
+  diff the next load against.
+- **`pws` is write-only.** Nothing reads it; both analytics derivations join
+  `action_lineups` and `possessions` directly. It survives only as an integrity
+  gate — four NOT NULL lineup/stint foreign keys mean an unattributable
+  possession fails the load. Move that assertion into `game_qa` before dropping
+  the table.
+- **EuroCup has never been collected.** No `U` data exists anywhere.
+- The four-factor `est. ±X pts` annotation is suppressed for EuroLeague because
+  the weights were fitted on Israeli data.
 
 ### Ordered upcoming plan
 
-#### 1. Apply and verify migration 003
+#### 1. Season-scoped lineup identity
 
-This is the next database action and requires explicit approval. Apply only
-`euroleague/sql/003_app_materialized_views.sql` through the established direct
-PostgreSQL port-5432 DDL procedure. It does not load or replace a game.
+`lineups.lineup_hash` hashes provider player ids, the least stable identifier in
+the system: when a provider id is re-minted next season the same five players
+hash differently and lineup history splits silently. Hash the internal
+`player_id` instead. Separately, lineup identity is per game
+(`UNIQUE (game_id, team_id, lineup_hash)`), so the same five across 30 games are
+30 rows — never aggregate on `lineup_id`. A season-scoped lineup relation is the
+prerequisite for any lineup-combos surface.
 
-Verify afterward:
+#### 2. Player identity layer, before a second season
 
-- all three `_mv` relations are populated;
-- each MV has zero duplicate groups on its unique key;
-- each MV has equal row count and bidirectional `EXCEPT` parity with its source
-  ordinary view;
-- `refresh_app_materialized_views()` succeeds;
-- migrations 001/002 tables and the three controlled games are unchanged.
+`euroleague.players` is `UNIQUE (competition, provider_player_id)` with no season
+scope and no identity dictionary. Provider ids are re-minted per season and
+recycled to different people. Build the identity layer *with* the second season,
+not after it, and add the two data-quality checks at the same time: one
+normalized name with more than one provider id, and one provider id whose name
+or team changes across seasons.
 
-Do not use the mutating `postgres_trial --apply-schema` shortcut solely to apply
-003, because that command also proceeds to a game write when `--execute` is
-present.
+#### 3. Load the rest of the season
 
-#### 2. Re-stage the three controlled games offline
+~318 games remain. Run the batching change on a small range first and diff the
+lineup and stint id mapping against the existing 84 before trusting it at scale.
 
-Rebuild `E/2025/1-3` with parser `0.2.0` and stage format `2`. Confirm the
-expected warning identities, 432 total possessions, 6,240 analytics facts,
-zero unresolved FTs, and unchanged score/box-score/lineup reconciliation. This
-step should remain database-free.
+#### 4. EuroCup viability check
 
-#### 3. Replace the same three games under a new controlled load run
+Collect a single `U` game and run schema coverage, reconciliation and possession
+QA against it. Three things decide whether EuroCup is viable at all: box-score
+`IsStarter` flags, the play-type vocabulary, and PBP completeness.
 
-This is a separate database write requiring explicit approval. Replace only
-gamecodes 1-3; do not add games. The expected material change is parser and
-warning lineage, not possession or analytics totals. Run the live/checkpoint
-audit afterward and verify the three MVs were refreshed before the new load run
-was marked complete.
+#### 5. Operations
 
-#### 4. Run the partial/interrupted recovery drill
-
-Design the drill so the validated three-game snapshots cannot be lost. Prove
-that one failed game produces accurate partial-run lineage, successful games
-remain committed, a retry replaces only the intended game, and the app MVs
-match the final committed base facts.
-
-#### 5. Broaden provider validation
-
-Validate at least one additional season before production integration. Repeat
-package extraction, box-score reconciliation, score progression, possession
-QA, lineup QA, Python/R parity, schema coverage, and restart testing. Do not
-assume the season-2025 penalty vocabulary covers older feeds.
-
-#### 6. Design the league-aware app adapter
-
-Only after the earlier gates pass, define a deliberate common subset over the
-Israeli and EuroLeague read layers. Point EuroLeague app queries at the indexed
-`*_mv` relations, retain league-specific fields below the adapter, and do not
-join the EuroLeague schema directly into existing Israeli queries.
+Scheduled collection and publication, per-run logs, a last-success marker the UI
+can display, and a game-keyed publication marker so "what is new since last
+night" can be answered without scanning `game_qa`.
 
 ### Handoff completion criteria
 
-The next milestone is complete when migration 003 is applied and parity-checked,
-the three controlled games are re-staged and—if separately approved—republished
-with parser `0.2.0`, the post-publication audit has no count mismatch, and the
-partial-run recovery drill is documented and passing. Loading additional games
-or integrating the production app remains out of scope until then.
+The next milestone is complete when season-scoped lineup identity exists and is
+hashed on internal player ids, the player identity layer is in place, and a
+second season has been validated through it without silently merging or
+splitting players.
 
 ## Executive summary
 

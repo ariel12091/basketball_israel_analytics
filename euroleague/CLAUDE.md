@@ -10,7 +10,37 @@ Last reviewed: 2026-08-06, against `PROJECT.md` at the three-game controlled
 batch (`E/2025/1-3`, `load_run_id=3`) with migration 003 prepared but not
 applied.
 
-## What the plan is
+> ## ⚠ STALENESS NOTICE (2026-08-07)
+>
+> This file was written as a review of the plan *as it stood at three games*.
+> Much of it has since been acted on. **Read `PROJECT.md` for current state
+> first.** What changed:
+>
+> - **Migration 003 was never applied and never will be** — it is superseded by
+>   004. Applied migrations are 001 → 002 → 004 → 005 → 006. Every reference
+>   below to "applying 003" is obsolete.
+> - **84 games are loaded** (`E/2025/1-84`, `load_run_id=4`), not three.
+> - **The app integration exists.** Tabs 8 (`euro`, On/Off) and 9 (`euro_team`,
+>   Team Ratings) are built. Step 6's "design a league-aware adapter" was
+>   answered differently than proposed here: there is no `analytics_common`
+>   adapter schema. The EuroLeague section owns its own tabs, its own reference
+>   lookups, and its own season selector, and no view mixes the two leagues —
+>   which achieves the same isolation the adapter was meant to provide.
+> - **Grants exist.** `app_readonly` has SELECT on the read layer and EXECUTE on
+>   four functions, so "the `euroleague` schema has no grants and no RLS" is no
+>   longer true.
+> - **Schedule metadata is collected**, so the `gn`/`game_type` remarks below
+>   are resolved: GN filters `round_number`, and phase is provider text.
+> - **Season/`game_year` was settled** the opposite way to the recommendation
+>   below: `p_game_year` is the PROVIDER season (2025 = 2025-26) with no `+1`
+>   adapter, because the section owns its own selector.
+>
+> Still open and still correct: the identity layer before a second season
+> (step 5), season-scoped lineup identity and hashing internal player ids
+> (table remarks 1-2), the event × team-perspective fact decision (remark 7),
+> the correction layer (remark 10), and the storage discipline.
+
+## What the plan was (superseded — see the notice above)
 
 Six ordered steps: apply migration 003 (app-facing MVs), re-stage the three
 controlled games offline with parser `0.2.0`, republish them under a new load
