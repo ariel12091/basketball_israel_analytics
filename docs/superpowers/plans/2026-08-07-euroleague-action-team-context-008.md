@@ -31,11 +31,11 @@
 
 | File | Responsibility |
 |---|---|
-| `euroleague/sql/008_action_team_context.sql` | Create (new) — the table, its constraints and indexes, and `refresh_action_team_context_for_games()`. |
+| `euroleague/sql/008_action_team_context.sql` | Create (new) — `matchup_segments` and `action_team_context`, their constraints and indexes, and `refresh_action_team_context_for_games()` which maintains both. |
 | `euroleague/scripts/verify_action_team_context.py` | Create (new) — the acceptance gate. Reproduces `player_four_factors_by_game` from the fact and diffs it against stored rows; also checks coverage and possession-side consistency. Standalone, read-only. |
-| `euroleague/src/euroleague_possessions/postgres_backend.py` | Modify — add the table to the `assert_shadow_schema_compatible()` allowlist; call the new refresh in `validate_game()`. |
-| `euroleague/tests/test_postgres_backend.py` | Modify — cover the allowlist entry and the refresh call order. |
-| `euroleague/scripts/probe_batched_publish.py` | Modify — add the fact to `PROJECTIONS`. |
+| `euroleague/src/euroleague_possessions/postgres_backend.py` | Modify — add both tables to the `assert_shadow_schema_compatible()` allowlist; call the new refresh in `validate_game()`. |
+| `euroleague/tests/test_postgres_backend.py` | Modify — cover the allowlist entries and the refresh call order. |
+| `euroleague/scripts/probe_batched_publish.py` | Modify — add both relations to `PROJECTIONS`. |
 | `euroleague/scripts/load_games.py` | Modify — add a coverage check to `verify()`. |
 | `euroleague/RUNBOOK.md`, `euroleague/PROJECT.md` | Modify — migration order and status. |
 
@@ -69,7 +69,7 @@ For a row `(event, perspective team T)`, `type_lineup` is:
 
 - [ ] **Step 1: Write the verification script**
 
-The three checks are: every published game has fact rows; a player-grain aggregate built from the fact matches the stored rows both ways; and no endpoint row has a `type_lineup` that contradicts its possession side.
+Eight checks: coverage, two rows per action, possession side consistency, the unmodelled columns still being zero, segment durations tiling each team-game, and the three-way diff of the rebuilt player grain against the stored rows.
 
 ```python
 #!/usr/bin/env python
@@ -118,18 +118,25 @@ exposure AS (
       ON lp.lineup_id = atc.own_lineup_id AND lp.player_id = rr.player_id
    WHERE %(game_ids)s IS NULL OR atc.game_id = ANY(%(game_ids)s)
 )
--- Minutes are NOT a per-event sum. segment_seconds repeats on every event in
--- its segment, so it must be reduced to one value per segment before summing,
--- and it is credited to the offense row only -- exactly what the current
--- player_minutes CTE does. Hence the separate DISTINCT subquery.
+-- Minutes come from matchup_segments, which holds each segment's duration
+-- exactly once. No DISTINCT and no MAX-per-segment convention: the duration
+-- cannot be double-counted because it is not repeated. This mirrors the
+-- current player_minutes CTE in 002 (lines 571-586), which joins the derived
+-- joint_segments to the roster the same way. Credited to offense only.
 minutes AS (
-  SELECT game_id, team_id, player_id, is_on_key, own_starters, opp_starters,
-         round(sum(segment_seconds) / 60.0, 3) AS minutes
-    FROM (SELECT DISTINCT game_id, team_id, player_id, is_on_key,
-                 own_starters, opp_starters, segment_id, segment_seconds
-            FROM exposure
-           WHERE segment_id IS NOT NULL AND segment_seconds IS NOT NULL) d
-   GROUP BY game_id, team_id, player_id, is_on_key, own_starters, opp_starters
+  SELECT ms.game_id, ms.team_id, rr.player_id,
+         CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END::smallint AS is_on_key,
+         ms.own_starters, ms.opp_starters,
+         round(sum(ms.segment_seconds) / 60.0, 3) AS minutes
+    FROM euroleague.matchup_segments ms
+    JOIN real_roster rr
+      ON rr.game_id = ms.game_id AND rr.team_id = ms.team_id
+    LEFT JOIN euroleague.lineup_players lp
+      ON lp.lineup_id = ms.own_lineup_id AND lp.player_id = rr.player_id
+   WHERE %(game_ids)s IS NULL OR ms.game_id = ANY(%(game_ids)s)
+   GROUP BY ms.game_id, ms.team_id, rr.player_id,
+            CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END,
+            ms.own_starters, ms.opp_starters
 )
 SELECT e.game_id, e.team_id, e.player_id, e.is_on_key, e.type_lineup,
        s.season                          AS game_year,
@@ -274,7 +281,33 @@ def verify(conn: Any, game_ids: list[int] | None) -> int:
         f"{nonzero} rows -- gate must be widened",
     )
 
-    # 5. The gate: rebuild the player grain from the fact and diff both ways.
+    # 5. Segment durations must tile the game exactly, per team. This is the
+    #    invariant the Israeli pipeline can only check by asserting its
+    #    duplicated copies agree; here it is a straight sum.
+    cur.execute(
+        "WITH per_team AS ("
+        "  SELECT m.game_id, m.team_id, sum(m.segment_seconds) AS seconds "
+        "    FROM euroleague.matchup_segments m "
+        "   WHERE %(game_ids)s IS NULL OR m.game_id = ANY(%(game_ids)s) "
+        "   GROUP BY m.game_id, m.team_id"
+        "), game_length AS ("
+        "  SELECT game_id, "
+        "         (2400 + greatest(max(period) - 4, 0) * 300)::numeric AS seconds "
+        "    FROM euroleague.actions_raw "
+        "   WHERE %(game_ids)s IS NULL OR game_id = ANY(%(game_ids)s) "
+        "   GROUP BY game_id"
+        ") SELECT count(*) FROM per_team p JOIN game_length g USING (game_id) "
+        "   WHERE p.seconds IS DISTINCT FROM g.seconds",
+        params,
+    )
+    bad_tiling = cur.fetchone()[0]
+    check(
+        "segment seconds tile the game per team",
+        bad_tiling == 0,
+        f"{bad_tiling} team-games off",
+    )
+
+    # 6. The gate: rebuild the player grain from the fact and diff both ways.
     cur.execute(f"CREATE TEMP TABLE gate_from_fact AS {PLAYER_GRAIN_FROM_FACT}", params)
     cur.execute(f"CREATE TEMP TABLE gate_stored AS {STORED_PLAYER_GRAIN}", params)
     cur.execute("SELECT count(*) FROM gate_stored")
@@ -362,7 +395,7 @@ git commit -m "Add the acceptance gate for action_team_context"
 - Create: `euroleague/sql/008_action_team_context.sql`
 
 **Interfaces:**
-- Produces: table `euroleague.action_team_context` with the columns Task 3's refresh function inserts. Column names and types are fixed here and used verbatim by Tasks 3-6.
+- Produces: tables `euroleague.matchup_segments` (one row per joint segment, holding its duration once) and `euroleague.action_team_context` (one row per action × perspective team, referencing a segment). Column names and types are fixed here and used verbatim by Tasks 3-6.
 
 - [ ] **Step 1: Write the DDL**
 
@@ -390,6 +423,42 @@ Create `euroleague/sql/008_action_team_context.sql`. The `EuroLeague shadow sche
 BEGIN;
 
 SET LOCAL search_path TO euroleague, public;
+
+-- The joint segment is an entity; its duration is an attribute of that entity,
+-- not of every event inside it. Storing the duration here rather than on each
+-- event row is a deliberate deviation from the Israeli backbone, which
+-- denormalises it and consequently needs a fill-in ETL pass, a MAX-per-segment
+-- convention repeated at four call sites, and a standing validator asserting
+-- the repeated copies have not drifted (count(DISTINCT segment_seconds) = 1).
+-- One row per segment makes all three unnecessary. Durations are identical;
+-- only the storage grain differs.
+CREATE TABLE IF NOT EXISTS euroleague.matchup_segments (
+  game_id                bigint   NOT NULL,
+  team_id                bigint   NOT NULL,
+  segment_id             integer  NOT NULL,
+  own_lineup_id          bigint   NOT NULL,
+  opp_lineup_id          bigint   NOT NULL,
+  own_starters           smallint,
+  opp_starters           smallint,
+  start_event_order      integer  NOT NULL,
+  start_elapsed_seconds  numeric,
+  end_elapsed_seconds    numeric,
+  segment_seconds        numeric  NOT NULL,
+  load_run_id            bigint,
+  derivation_version     text     NOT NULL,
+  derived_at             timestamptz NOT NULL DEFAULT now(),
+
+  PRIMARY KEY (game_id, team_id, segment_id),
+  FOREIGN KEY (game_id, own_lineup_id)
+    REFERENCES euroleague.lineups (game_id, lineup_id),
+  FOREIGN KEY (game_id, opp_lineup_id)
+    REFERENCES euroleague.lineups (game_id, lineup_id),
+  FOREIGN KEY (team_id) REFERENCES euroleague.teams (team_id),
+  CONSTRAINT matchup_segments_seconds_nonnegative
+    CHECK (segment_seconds >= 0),
+  CONSTRAINT matchup_segments_segment_id_positive
+    CHECK (segment_id >= 0)
+);
 
 CREATE TABLE IF NOT EXISTS euroleague.action_team_context (
   game_id                bigint   NOT NULL,
@@ -438,7 +507,6 @@ CREATE TABLE IF NOT EXISTS euroleague.action_team_context (
 
   event_elapsed_seconds  numeric,
   segment_id             integer,
-  segment_seconds        numeric,
 
   own_team_score         integer  NOT NULL DEFAULT 0,
   opp_team_score         integer  NOT NULL DEFAULT 0,
@@ -451,6 +519,8 @@ CREATE TABLE IF NOT EXISTS euroleague.action_team_context (
   FOREIGN KEY (game_id, source_event_order)
     REFERENCES euroleague.actions_raw (game_id, source_event_order)
     ON DELETE CASCADE,
+  FOREIGN KEY (game_id, team_id, segment_id)
+    REFERENCES euroleague.matchup_segments (game_id, team_id, segment_id),
   FOREIGN KEY (game_id, own_lineup_id)
     REFERENCES euroleague.lineups (game_id, lineup_id),
   FOREIGN KEY (game_id, opp_lineup_id)
@@ -510,7 +580,7 @@ git commit -m "Add the action_team_context table (migration 008)"
 - Modify: `euroleague/sql/008_action_team_context.sql` (append the function)
 
 **Interfaces:**
-- Produces: `euroleague.refresh_action_team_context_for_games(bigint[]) RETURNS bigint`, returning the number of rows inserted. Task 5 calls it from `validate_game()`.
+- Produces: `euroleague.refresh_action_team_context_for_games(bigint[]) RETURNS bigint`, maintaining both `matchup_segments` and `action_team_context` and returning the number of **fact** rows inserted. Task 5 calls it from `validate_game()`.
 
 **Consumes:** the measure expressions already in `euroleague/sql/002_existing_analytics_compatibility.sql`, CTE `event_metrics`, lines 317-351. Lift that block **verbatim** — twenty `CASE` expressions defining `points`, `ts_possessions`, `orebounds`, `oreb_opportunities`, `turnovers`, `steals`, `ft_attempts`, `fga`, `fgm`, `fg3_made`, `fg2_made`, `fg2_att`, `fg3_att`, `layup_made`, `layup_att`, `dunk_made`, `dunk_att`. Do not retype them; copy them. They are known-correct and the gate cannot distinguish a transcription slip in a rarely-hit branch from a design error.
 
@@ -530,26 +600,20 @@ DECLARE
 BEGIN
   PERFORM euroleague.refresh_stint_timing_for_games(game_ids);
 
+  -- Child first: action_team_context references matchup_segments.
   IF game_ids IS NULL OR array_length(game_ids, 1) IS NULL THEN
     DELETE FROM euroleague.action_team_context;
+    DELETE FROM euroleague.matchup_segments;
   ELSE
     DELETE FROM euroleague.action_team_context WHERE game_id = ANY(game_ids);
+    DELETE FROM euroleague.matchup_segments WHERE game_id = ANY(game_ids);
   END IF;
 
-  INSERT INTO euroleague.action_team_context (
-    game_id, source_event_order, team_id, opponent_team_id, period,
-    type_lineup, own_lineup_id, opp_lineup_id, own_stint_id, opp_stint_id,
-    own_starters, opp_starters,
-    event_team_id, action_player_id, play_type, play_info,
-    synthetic_ft_trip_id, parent_play_type, ft_reverse_order,
-    points, ts_possessions, orebounds, oreb_opportunities, turnovers,
-    steals, ft_attempts, fga, fgm, fg2_made, fg2_att, fg3_made, fg3_att,
-    layup_made, layup_att, dunk_made, dunk_att,
-    possession_flag, final_end_poss, endpoint_reason,
-    event_elapsed_seconds, segment_id, segment_seconds,
-    own_team_score, opp_team_score,
-    load_run_id, derivation_version
-  )
+  -- Stage the per-event sided rows ONCE. Both inserts read this. A WITH
+  -- clause cannot be shared between two statements, and duplicating the CTE
+  -- chain would mean deriving the clock and the segments twice per refresh --
+  -- the exact cost this whole migration exists to remove.
+  CREATE TEMP TABLE tmp_sided ON COMMIT DROP AS
   WITH target_games AS (
     SELECT s.* FROM euroleague.schedule s
      WHERE game_ids IS NULL OR s.game_id = ANY(game_ids)
@@ -557,7 +621,7 @@ BEGIN
   -- ... clock_parts, raw_elapsed, event_clock, game_ends, event_base,
   -- ... event_metrics: lifted verbatim from migration 002 lines 233-351,
   -- ... keeping migration 007's pushdown predicates.
-  cum_scores AS (
+  cum_scores AS MATERIALIZED (
     -- Cumulative score per team through each event, for clutch filtering.
     SELECT em.game_id, em.source_event_order, em.event_team_id,
            sum(em.points) OVER (
@@ -567,10 +631,11 @@ BEGIN
            )::integer AS team_running_score
       FROM event_metrics em
   ),
-  sided AS (
+  sided AS MATERIALIZED (
     SELECT
       em.*,
       ec.event_elapsed_seconds,
+      ge.game_end_elapsed_seconds,
       side.team_id, side.opponent_team_id,
       side.own_lineup_id, side.opp_lineup_id,
       own_lineup.starter_count AS own_starters,
@@ -592,6 +657,7 @@ BEGIN
     JOIN event_clock ec
       ON ec.game_id = em.game_id
      AND ec.source_event_order = em.source_event_order
+    JOIN game_ends ge ON ge.game_id = em.game_id
     CROSS JOIN LATERAL (
       VALUES
         (em.home_team_id, em.away_team_id, em.home_lineup_id, em.away_lineup_id),
@@ -599,11 +665,121 @@ BEGIN
     ) AS side(team_id, opponent_team_id, own_lineup_id, opp_lineup_id)
     JOIN euroleague.lineups own_lineup ON own_lineup.lineup_id = side.own_lineup_id
     JOIN euroleague.lineups opp_lineup ON opp_lineup.lineup_id = side.opp_lineup_id
+  ),
+  -- The joint segment number, from migration 002 lines 508-538. Only the
+  -- lag/mark/number part is needed here; 002's joint_starts, joint_ordered
+  -- and joint_segments are superseded by the matchup_segments INSERT below.
+  joint_lagged AS (
+    SELECT sd.*,
+      lag(sd.own_lineup_id) OVER w AS previous_own_lineup_id,
+      lag(sd.opp_lineup_id) OVER w AS previous_opp_lineup_id
+    FROM sided sd
+    WINDOW w AS (PARTITION BY sd.game_id, sd.team_id ORDER BY sd.source_event_order)
+  ),
+  joint_marked AS (
+    SELECT jl.*,
+      CASE WHEN jl.previous_own_lineup_id IS DISTINCT FROM jl.own_lineup_id
+             OR jl.previous_opp_lineup_id IS DISTINCT FROM jl.opp_lineup_id
+           THEN 1 ELSE 0 END AS new_segment
+    FROM joint_lagged jl
+  )
+  SELECT
+    jm.*,
+    sum(jm.new_segment) OVER (
+      PARTITION BY jm.game_id, jm.team_id
+      ORDER BY jm.source_event_order
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    ) AS segment_number,
+    tg.last_seen_load_run_id AS load_run_id,
+    ac.final_end_possession,
+    ac.endpoint_reason,
+    own_stint.stint_id AS own_stint_id,
+    opp_stint.stint_id AS opp_stint_id,
+    coalesce(own_score.team_running_score, 0) AS own_team_score,
+    coalesce(opp_score.team_running_score, 0) AS opp_team_score
+  FROM joint_marked jm
+  JOIN target_games tg ON tg.game_id = jm.game_id
+  JOIN euroleague.actions_clean ac
+    ON ac.game_id = jm.game_id AND ac.source_event_order = jm.source_event_order
+  LEFT JOIN euroleague.stints own_stint
+    ON own_stint.game_id = jm.game_id
+   AND own_stint.team_id = jm.team_id
+   AND jm.source_event_order >= own_stint.start_event_order
+   AND jm.source_event_order <  own_stint.end_event_order_exclusive
+  LEFT JOIN euroleague.stints opp_stint
+    ON opp_stint.game_id = jm.game_id
+   AND opp_stint.team_id = jm.opponent_team_id
+   AND jm.source_event_order >= opp_stint.start_event_order
+   AND jm.source_event_order <  opp_stint.end_event_order_exclusive
+  LEFT JOIN cum_scores own_score
+    ON own_score.game_id = jm.game_id
+   AND own_score.source_event_order = jm.source_event_order
+   AND own_score.event_team_id = jm.team_id
+  LEFT JOIN cum_scores opp_score
+    ON opp_score.game_id = jm.game_id
+   AND opp_score.source_event_order = jm.source_event_order
+   AND opp_score.event_team_id = jm.opponent_team_id;
+
+  CREATE INDEX ON tmp_sided (game_id, team_id, segment_number);
+  ANALYZE tmp_sided;
+
+  -- Parent first: one row per joint segment, its duration stored ONCE.
+  INSERT INTO euroleague.matchup_segments (
+    game_id, team_id, segment_id, own_lineup_id, opp_lineup_id,
+    own_starters, opp_starters, start_event_order,
+    start_elapsed_seconds, end_elapsed_seconds, segment_seconds,
+    load_run_id, derivation_version
+  )
+  WITH starts AS (
+    SELECT game_id, team_id, segment_number,
+           own_lineup_id, opp_lineup_id, own_starters, opp_starters,
+           min(source_event_order)      AS start_event_order,
+           min(event_elapsed_seconds)   AS start_elapsed_seconds,
+           max(game_end_elapsed_seconds) AS game_end_elapsed_seconds,
+           max(load_run_id)             AS load_run_id
+      FROM tmp_sided
+     GROUP BY game_id, team_id, segment_number,
+              own_lineup_id, opp_lineup_id, own_starters, opp_starters
+  ),
+  ordered AS (
+    SELECT s.*,
+           lead(s.start_elapsed_seconds) OVER (
+             PARTITION BY s.game_id, s.team_id ORDER BY s.segment_number
+           ) AS next_start_elapsed_seconds
+      FROM starts s
+  )
+  SELECT
+    o.game_id, o.team_id, o.segment_number,
+    o.own_lineup_id, o.opp_lineup_id, o.own_starters, o.opp_starters,
+    o.start_event_order,
+    o.start_elapsed_seconds,
+    coalesce(o.next_start_elapsed_seconds, o.game_end_elapsed_seconds),
+    greatest(
+      coalesce(o.next_start_elapsed_seconds, o.game_end_elapsed_seconds)
+      - o.start_elapsed_seconds, 0
+    )::numeric,
+    o.load_run_id,
+    'action-team-context-v1'
+  FROM ordered o;
+
+  INSERT INTO euroleague.action_team_context (
+    game_id, source_event_order, team_id, opponent_team_id, period,
+    type_lineup, own_lineup_id, opp_lineup_id, own_stint_id, opp_stint_id,
+    own_starters, opp_starters,
+    event_team_id, action_player_id, play_type, play_info,
+    synthetic_ft_trip_id, parent_play_type, ft_reverse_order,
+    points, ts_possessions, orebounds, oreb_opportunities, turnovers,
+    steals, ft_attempts, fga, fgm, fg2_made, fg2_att, fg3_made, fg3_att,
+    layup_made, layup_att, dunk_made, dunk_att,
+    possession_flag, final_end_poss, endpoint_reason,
+    event_elapsed_seconds, segment_id,
+    own_team_score, opp_team_score,
+    load_run_id, derivation_version
   )
   SELECT
     sd.game_id, sd.source_event_order, sd.team_id, sd.opponent_team_id, sd.period,
     sd.type_lineup, sd.own_lineup_id, sd.opp_lineup_id,
-    own_stint.stint_id, opp_stint.stint_id,
+    sd.own_stint_id, sd.opp_stint_id,
     sd.own_starters, sd.opp_starters,
     sd.event_team_id, sd.action_player_id, sd.play_type, sd.play_info,
     sd.synthetic_ft_trip_id, sd.parent_play_type, sd.ft_reverse_order,
@@ -612,43 +788,14 @@ BEGIN
     sd.fg2_made, sd.fg2_att, sd.fg3_made, sd.fg3_att,
     sd.layup_made, sd.layup_att, sd.dunk_made, sd.dunk_att,
     sd.possession_flag,
-    coalesce(ac.final_end_possession, false),
-    ac.endpoint_reason,
+    coalesce(sd.final_end_possession, false),
+    sd.endpoint_reason,
     sd.event_elapsed_seconds,
-    jn.segment_number,
-    jseg.segment_seconds,
-    coalesce(own_score.team_running_score, 0),
-    coalesce(opp_score.team_running_score, 0),
-    tg.last_seen_load_run_id,
+    sd.segment_number,
+    sd.own_team_score, sd.opp_team_score,
+    sd.load_run_id,
     'action-team-context-v1'
-  FROM sided sd
-  JOIN target_games tg ON tg.game_id = sd.game_id
-  JOIN euroleague.actions_clean ac
-    ON ac.game_id = sd.game_id AND ac.source_event_order = sd.source_event_order
-  JOIN joint_numbered jn
-    ON jn.game_id = sd.game_id AND jn.team_id = sd.team_id
-   AND jn.source_event_order = sd.source_event_order
-  LEFT JOIN joint_segments jseg
-    ON jseg.game_id = jn.game_id AND jseg.team_id = jn.team_id
-   AND jseg.segment_number = jn.segment_number
-  LEFT JOIN euroleague.stints own_stint
-    ON own_stint.game_id = sd.game_id
-   AND own_stint.team_id = sd.team_id
-   AND sd.source_event_order >= own_stint.start_event_order
-   AND sd.source_event_order <  own_stint.end_event_order_exclusive
-  LEFT JOIN euroleague.stints opp_stint
-    ON opp_stint.game_id = sd.game_id
-   AND opp_stint.team_id = sd.opponent_team_id
-   AND sd.source_event_order >= opp_stint.start_event_order
-   AND sd.source_event_order <  opp_stint.end_event_order_exclusive
-  LEFT JOIN cum_scores own_score
-    ON own_score.game_id = sd.game_id
-   AND own_score.source_event_order = sd.source_event_order
-   AND own_score.event_team_id = sd.team_id
-  LEFT JOIN cum_scores opp_score
-    ON opp_score.game_id = sd.game_id
-   AND opp_score.source_event_order = sd.source_event_order
-   AND opp_score.event_team_id = sd.opponent_team_id;
+  FROM tmp_sided sd;
 
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
   RETURN inserted_count;
@@ -656,10 +803,12 @@ END;
 $function$;
 ```
 
-Two notes the implementer will otherwise get wrong:
+Four notes the implementer will otherwise get wrong:
 
-1. `joint_numbered` and `joint_segments` must be carried through as CTEs from 002's chain — `joint_numbered` is what assigns `segment_number` per `(game_id, team_id, source_event_order)`, and `joint_segments` is what gives each segment its seconds. Both are already in 002 lines 508-570 and depend on `team_event_context`, which `sided` replaces. Rename the reference accordingly and check the `PARTITION BY` clauses still read `(game_id, team_id)`.
-2. Mark `sided` and `cum_scores` as `MATERIALIZED` for the same reason migration 007 did: single-reference CTEs get inlined and the planner collapses the estimate to one row. Verify with `EXPLAIN` that no node shows `loops=` in the thousands.
+1. **`sided` and `cum_scores` must stay `MATERIALIZED`,** for the reason migration 007 exists: PostgreSQL 12+ inlines a CTE referenced once, the estimate collapses to `rows=1`, and the planner picks a nested loop that re-runs the aggregate per output row. After applying, run `EXPLAIN (ANALYZE, BUFFERS)` on the `tmp_sided` build and confirm no node reports `loops=` in the thousands.
+2. **`segment_number` is 0-based.** `sum(new_segment)` over a window starting at the first row gives 0 for the first segment, because `lag()` is NULL there and `IS DISTINCT FROM` makes `new_segment` 1... **verify this against real data before trusting either reading** — run `SELECT min(segment_id), max(segment_id) FROM euroleague.matchup_segments` after the backfill. The `CHECK (segment_id >= 0)` constraint accommodates both; what matters is that the fact's `segment_id` and `matchup_segments.segment_id` agree, which the foreign key enforces.
+3. **`ON COMMIT DROP` requires the function to run inside a transaction.** It always does — publication wraps each game, and the backfill scripts in Tasks 3 and 4 open one explicitly. If a caller ever runs it in autocommit, the temp table is dropped at statement end and the second INSERT fails loudly rather than silently reading stale rows.
+4. **`inserted_count` counts fact rows only,** not `matchup_segments` rows. That matches the function's contract and the gate's expectation of ~1,134 per game.
 
 - [ ] **Step 2: Apply and backfill three games**
 
@@ -679,14 +828,25 @@ print('rows:', cur.fetchone()[0], f'in {time.perf_counter()-t:.2f}s')
 cur.execute('COMMIT'); conn.close()"
 ```
 
-Expected: roughly 3,400 rows (three games × ~1,134) and a few seconds. If it exceeds a minute, the CTE fences in note 2 above are missing.
+Expected: roughly 3,400 fact rows (three games × ~1,134) and a few seconds. Confirm `matchup_segments` also filled — about 413 rows (three games × ~137.6):
+
+```bash
+./.venv/Scripts/python.exe -c "
+import sys; from pathlib import Path; sys.path.insert(0,'src')
+from euroleague_possessions.postgres_backend import connect_from_env_file
+c=connect_from_env_file(Path('../etl/.Renviron'), direct_port=5432); cur=c.cursor()
+cur.execute('SELECT count(*), min(segment_id), max(segment_id) FROM euroleague.matchup_segments')
+print('segments, min id, max id:', cur.fetchone()); c.close()"
+```
+
+If it exceeds a minute, the `MATERIALIZED` fences in note 1 above are missing.
 
 - [ ] **Step 3: Run the gate on those three games**
 
 ```bash
 ./.venv/Scripts/python.exe scripts/verify_action_team_context.py --games 1-3
 ```
-Expected: `GATE PASSED`, all seven checks.
+Expected: `GATE PASSED`, all eight checks.
 
 This is the moment the design is proven or disproven. If `stored rows all reproduced` fails, dump a sample and compare column by column:
 
@@ -723,7 +883,7 @@ print('rows:', cur.fetchone()[0], f'in {time.perf_counter()-t:.2f}s')
 cur.execute('COMMIT'); conn.close()"
 ```
 
-Expected: ~95,200 rows (2 × 47,608).
+Expected: 95,216 fact rows (2 × 47,608) and 11,554 `matchup_segments` rows — both measured on this data, so treat a deviation as a defect, not as noise.
 
 `NULL` means all games, per the function's own branch. If this exceeds 30 minutes, kill it and backfill in batches of 20 gamecodes instead — the refresh is per-game and idempotent, so batching is safe.
 
@@ -777,6 +937,7 @@ class ActionTeamContextWiringTest(unittest.TestCase):
 
         source = inspect.getsource(postgres_backend.assert_shadow_schema_compatible)
         self.assertIn('"action_team_context"', source)
+        self.assertIn('"matchup_segments"', source)
 
     def test_validate_game_refreshes_the_fact_before_four_factors(self) -> None:
         connection = RecordingConnection()
@@ -812,6 +973,7 @@ In `postgres_backend.py`, `assert_shadow_schema_compatible()`, the `expected` se
 
 ```python
         "team_four_factors_by_game",
+        "matchup_segments",
         "action_team_context",
 ```
 
@@ -878,12 +1040,25 @@ In `probe_batched_publish.py`, add to the `PROJECTIONS` dict. Keyed by the natur
         SELECT (a.source_event_order, t.provider_team_code)::text,
                a.type_lineup, a.points, a.possession_flag,
                a.ts_possessions, a.orebounds, a.turnovers, a.steals,
-               a.own_team_score, a.opp_team_score,
+               a.own_team_score, a.opp_team_score, a.segment_id,
                (ol.team_id, ol.lineup_hash)::text
           FROM euroleague.action_team_context a
           JOIN euroleague.teams t ON t.team_id = a.team_id
           JOIN euroleague.lineups ol ON ol.lineup_id = a.own_lineup_id
          WHERE a.game_id = %(game_id)s
+    """,
+    "matchup_segments": """
+        SELECT (t.provider_team_code, m.segment_id)::text,
+               m.own_starters, m.opp_starters, m.start_event_order,
+               m.start_elapsed_seconds, m.end_elapsed_seconds,
+               m.segment_seconds,
+               (ol.team_id, ol.lineup_hash)::text,
+               (pl.team_id, pl.lineup_hash)::text
+          FROM euroleague.matchup_segments m
+          JOIN euroleague.teams t ON t.team_id = m.team_id
+          JOIN euroleague.lineups ol ON ol.lineup_id = m.own_lineup_id
+          JOIN euroleague.lineups pl ON pl.lineup_id = m.opp_lineup_id
+         WHERE m.game_id = %(game_id)s
     """,
 ```
 
@@ -925,7 +1100,7 @@ git commit -m "Check the event fact in the standing verifications"
 
 ## Done when
 
-- `verify_action_team_context.py` passes with zero rows differing either way across all 182,868 stored player four-factor rows.
+- `verify_action_team_context.py` passes all eight checks: zero rows differing either way across all 182,868 stored player four-factor rows, and segment durations tiling every team-game exactly.
 - `probe_batched_publish.py --games 1-3` passes with the fact in its projections.
 - `load_games.py --games 1-84 --verify-only` passes 11 checks.
 - The Python suite passes (64 tests).

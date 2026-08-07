@@ -78,7 +78,7 @@ and the joint segments.
 | event | `event_team_id`, `action_player_id`, `play_type`, `play_info`, `synthetic_ft_trip_id`, `parent_play_type`, `ft_reverse_order` |
 | measures | `points`, `ts_possessions`, `orebounds`, `oreb_opportunities`, `turnovers`, `steals`, `ft_attempts`, `fga`, `fgm`, `fg2_made`, `fg2_att`, `fg3_made`, `fg3_att`, `layup_made`, `layup_att`, `dunk_made`, `dunk_att` |
 | possession | `possession_flag`, `final_end_poss`, `endpoint_reason` |
-| timing | `event_elapsed_seconds`, `segment_id`, `segment_seconds` |
+| timing | `event_elapsed_seconds`, `segment_id` (FK to `matchup_segments`) |
 | clutch | `own_team_score`, `opp_team_score` (cumulative through this event) |
 | lineage | `load_run_id`, `derivation_version`, `derived_at` |
 
@@ -104,16 +104,59 @@ Three column meanings to pin down, since the names are not self-explanatory:
   `possessions`. Derived from `possessions.offense_team_id`, not from the
   endpoint event's `team_id`; see Side assignment for why, given that the two
   never disagree on current data.
-- `segment_id` — the **joint** segment: a number, dense within
-  `(game_id, team_id)`, that increments whenever *either* the own lineup or the
-  opponent lineup changes. It is finer than a team stint, which changes only
-  when that team substitutes. Minutes and the `own_starters`/`opp_starters`
-  partitioning both need the joint form, which is why the current code derives
-  it with six chained window CTEs.
-- `segment_seconds` — the duration of that joint segment, repeated on every
-  event within it. Aggregate it with `MAX` per `segment_id` and then `SUM`,
-  never `SUM` directly, or the segment is counted once per event. This is the
-  same trap the Israeli project documents for floor time.
+- `segment_id` — foreign key to `matchup_segments` (below). The **joint**
+  segment: it changes whenever *either* the own lineup or the opponent lineup
+  changes, so it is finer than a team stint, which changes only when that team
+  substitutes. Minutes and the `own_starters`/`opp_starters` partitioning both
+  need the joint form, which is why the current code derives it with six
+  chained window CTEs.
+
+Note that segment **duration** is deliberately *not* on this table. See below.
+
+## `euroleague.matchup_segments`
+
+The joint segment is an entity, and its duration is an attribute of that
+entity, not of each event inside it. It therefore gets its own relation, keyed
+`(game_id, team_id, segment_id)`:
+
+| column | meaning |
+|---|---|
+| `game_id`, `team_id`, `segment_id` | primary key; `segment_id` dense within `(game_id, team_id)` |
+| `own_lineup_id`, `opp_lineup_id` | the pair that defines the segment |
+| `own_starters`, `opp_starters` | starter counts for the partition |
+| `start_event_order` | first event in the segment |
+| `start_elapsed_seconds`, `end_elapsed_seconds` | boundaries |
+| `segment_seconds` | the duration, **once** |
+
+Measured on the 84 loaded games: 11,554 rows, 137.6 per game, ~55k for a full
+season — against ~456k for the fact. The cost is negligible.
+
+### Why this deviates from the Israeli design
+
+The Israeli pipeline stores `segment_seconds` denormalised onto every event row
+of the backbone, and needs three separate mechanisms to keep that safe:
+
+1. the backbone CTAS writes `NULL::numeric AS segment_seconds` and a separate
+   ETL pass (`etl/apply_canonical_segment_minutes_online.R`) fills the value
+   back onto every row of the segment;
+2. every consumer must reduce before summing — `MAX(segment_seconds)` grouped
+   by `segment_id`, then `SUM`. That convention appears four times across
+   `sql/materialized_views/player_four_factors_by_game.sql` (lines 86, 185) and
+   `sql/functions/refresh_player_four_factors_by_game_for_games.sql` (lines
+   105, 204). Summing directly multiplies each segment by its event count;
+3. a standing validator asserts the copies have not drifted apart —
+   `count(DISTINCT segment_seconds) AS duration_values` per segment, with
+   `duration_values <> 1` reported as an invalid segment.
+
+The third is the tell: a data-quality check whose entire purpose is to confirm
+that repeated copies of one number still agree. On a segment-grained relation
+all three disappear. `duration_values <> 1` becomes unrepresentable, the `MAX`
+convention is unnecessary, and minutes is a join and a `SUM`.
+
+This is a deliberate improvement over the Israeli original, in the same
+category as the composite same-game foreign keys and half-open stint intervals
+already listed in `euroleague/CLAUDE.md`. It is not a semantic change: the
+durations are identical, only their storage grain differs.
 
 `play_info` is carried because the layup/dunk flags read it with `ILIKE`. That
 derivation is separately questioned in `euroleague/CLAUDE.md` (free-text matching
@@ -176,11 +219,13 @@ Use `offense_team_id` regardless:
 DELETE-by-game/INSERT shape as every other `refresh_*_for_games` function in this
 schema and in the Israeli one.
 
-The table is **derived**: the loader never inserts into it. It therefore joins
-`player_four_factors_by_game` and `team_four_factors_by_game` in the
-`assert_shadow_schema_compatible()` allowlist in `postgres_backend.py`, and
-**not** `INSERT_ORDER`. That allowlist edit ships in migration 008; without it
-publication refuses to start, by design.
+One function refreshes both relations, `matchup_segments` first, since the fact
+carries a foreign key to it. Both are **derived**: the loader never inserts
+into either, so both join `player_four_factors_by_game` and
+`team_four_factors_by_game` in the `assert_shadow_schema_compatible()`
+allowlist in `postgres_backend.py`, and **neither** goes in `INSERT_ORDER`.
+That allowlist edit ships in migration 008; without it publication refuses to
+start, by design.
 
 Call order inside `PostgresTransactionBackend.validate_game()`, all within the
 single per-game transaction so a game cannot commit without its analytics:
@@ -188,13 +233,14 @@ single per-game transaction so a game cannot commit without its analytics:
 ```
 refresh_stint_timing
   → refresh_action_team_context
+      writes matchup_segments, then action_team_context
     → refresh_player_four_factors_by_game
     → refresh_team_four_factors_by_game
 ```
 
 The `PERFORM refresh_stint_timing_for_games()` currently at the top of the player
 four-factor function moves up to the fact's refresh, which is what needs stint
-ids and segment seconds.
+ids and segment boundaries.
 
 ## Rollout
 
@@ -251,9 +297,10 @@ Decide then; do not weaken the guard speculatively.
 ## Storage
 
 Additive, on top of `player_four_factors_by_game` which stays: roughly 70-115 MB
-for a full 402-game season against today's 199 MB for 84 games. Dropping `pws`
-returns a little. Acceptable on the confirmed 5 GB headroom, but it is a real
-cost and it is the price of not re-deriving.
+for a full 402-game season against today's 199 MB for 84 games. `matchup_segments`
+adds ~55k rows for a full season, which is noise beside the fact's ~456k.
+Dropping `pws` returns a little. Acceptable on the confirmed 5 GB headroom, but
+it is a real cost and it is the price of not re-deriving.
 
 ## Non-goals
 
