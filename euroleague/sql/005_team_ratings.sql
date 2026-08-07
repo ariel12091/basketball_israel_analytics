@@ -12,12 +12,14 @@
 --   team_game_ratings_mv   one row per (game_id, team_id): RAW COUNTS only
 --   team_ppp_ratings_mv    season aggregate, derived from the above
 --
--- Both compute functions now rank opponents by aggregating
--- team_game_ratings_mv over the caller's date window. That keeps the existing
--- behaviour -- opponent strength still reflects the selected window rather
--- than the whole season -- while removing the duplicate definitions. A
--- season-level table alone could not have done that without changing what the
--- filter means.
+-- Both compute functions now read their opponent ranks straight from
+-- team_ppp_ratings_mv, so the opponent-strength filter is SEASON-WIDE: "top 3
+-- defenses" means top 3 over the season, the same ranks the Team Ratings
+-- surface shows, and they do not shift underneath the user as the date range
+-- narrows. Combining a date range with an opponent-rank filter is rare.
+--
+-- team_game_ratings_mv still exists as the per-game grain underneath, and is
+-- what any window-scoped variant would aggregate if one is ever wanted.
 --
 -- Raw-count source: official box-score points (final_schedule.team_points /
 -- opp_points) and a COUNT over possessions. Deliberately NOT

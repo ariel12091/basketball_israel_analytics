@@ -177,38 +177,22 @@ BEGIN
     WHERE s.competition = v_competition
       AND s.season = p_game_year
   ),
-  -- Opponent strength reads euroleague.team_game_ratings_mv (migration 005),
-  -- the single source of truth for team offensive/defensive/net rating. It is
-  -- aggregated over the caller's date window here rather than read from the
-  -- season-level team_ppp_ratings_mv, so "top N defenses" still means top N
-  -- within the selected window -- but the DEFINITION of the rating lives in
-  -- exactly one place, shared with the Team Ratings surface.
+  -- Opponent strength is SEASON-WIDE, read straight from
+  -- euroleague.team_ppp_ratings_mv (migration 005) -- the same ranks the Team
+  -- Ratings surface shows. "Top 3 defenses" therefore means top 3 over the
+  -- whole season, which is what the phrase conventionally means, and it stays
+  -- stable as the user narrows the date range instead of re-ranking underneath
+  -- them. Combining a date range with an opponent-rank filter is rare, and the
+  -- ranks are the same object the user would see on the ratings page.
   --
-  -- Raw counts are summed and divided once. Never average per-game ratios.
-  team_window AS (
-    SELECT
-      g.team_id,
-      sum(g.off_pts)::numeric  AS off_pts,
-      sum(g.off_poss)::numeric AS off_poss,
-      sum(g.def_pts)::numeric  AS def_pts,
-      sum(g.def_poss)::numeric AS def_poss
-    FROM euroleague.team_game_ratings_mv g
-    WHERE g.competition = v_competition
-      AND g.game_year   = p_game_year
-      AND (p_start_date IS NULL OR g.game_date >= p_start_date)
-      AND (p_end_date   IS NULL OR g.game_date <= p_end_date)
-    GROUP BY g.team_id
-  ),
+  -- Note this is a deliberate difference from the Israeli onoff_compute, which
+  -- re-ranks opponents from the selected window (and averages per-game ratios
+  -- while doing it).
   team_ranked AS (
-    SELECT
-      tw.team_id,
-      dense_rank() OVER (ORDER BY 100.0 * tw.off_pts / NULLIF(tw.off_poss, 0) DESC) AS off_rank,
-      dense_rank() OVER (ORDER BY 100.0 * tw.def_pts / NULLIF(tw.def_poss, 0) ASC)  AS def_rank,
-      dense_rank() OVER (
-        ORDER BY (100.0 * tw.off_pts / NULLIF(tw.off_poss, 0))
-               - (100.0 * tw.def_pts / NULLIF(tw.def_poss, 0)) DESC
-      ) AS net_rank
-    FROM team_window tw
+    SELECT r.team_id, r.off_rank, r.def_rank, r.net_rank
+    FROM euroleague.team_ppp_ratings_mv r
+    WHERE r.competition = v_competition
+      AND r.game_year   = p_game_year
   ),
   games AS (
     SELECT sr.*
@@ -462,31 +446,12 @@ BEGIN
     WHERE s.competition = v_competition
       AND s.season = p_game_year
   ),
-  -- Same single source of truth as onoff_compute; see the note there.
-  team_window AS (
-    SELECT
-      g.team_id,
-      sum(g.off_pts)::numeric  AS off_pts,
-      sum(g.off_poss)::numeric AS off_poss,
-      sum(g.def_pts)::numeric  AS def_pts,
-      sum(g.def_poss)::numeric AS def_poss
-    FROM euroleague.team_game_ratings_mv g
-    WHERE g.competition = v_competition
-      AND g.game_year   = p_game_year
-      AND (p_start_date IS NULL OR g.game_date >= p_start_date)
-      AND (p_end_date   IS NULL OR g.game_date <= p_end_date)
-    GROUP BY g.team_id
-  ),
+  -- Season-wide ranks from the same source as onoff_compute; see the note there.
   team_ranked AS (
-    SELECT
-      tw.team_id,
-      dense_rank() OVER (ORDER BY 100.0 * tw.off_pts / NULLIF(tw.off_poss, 0) DESC) AS off_rank,
-      dense_rank() OVER (ORDER BY 100.0 * tw.def_pts / NULLIF(tw.def_poss, 0) ASC)  AS def_rank,
-      dense_rank() OVER (
-        ORDER BY (100.0 * tw.off_pts / NULLIF(tw.off_poss, 0))
-               - (100.0 * tw.def_pts / NULLIF(tw.def_poss, 0)) DESC
-      ) AS net_rank
-    FROM team_window tw
+    SELECT r.team_id, r.off_rank, r.def_rank, r.net_rank
+    FROM euroleague.team_ppp_ratings_mv r
+    WHERE r.competition = v_competition
+      AND r.game_year   = p_game_year
   ),
   games AS (
     SELECT sr.*
