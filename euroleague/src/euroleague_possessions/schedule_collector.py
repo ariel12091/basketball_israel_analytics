@@ -25,10 +25,16 @@ from euroleague_api.schedule import Schedule
 _DATE_FORMAT = "%b %d, %Y"
 
 
-def _parse_tipoff(date_str: Any, time_str: Any) -> datetime | None:
-    """Combine the provider's separate date and time columns into a UTC-naive
-    timestamp. Returns None rather than raising: a missing tip-off must not
-    fail a load, it just leaves the column NULL as before."""
+def _parse_tipoff(date_str: Any, time_str: Any) -> str | None:
+    """Combine the provider's separate date and time columns into an ISO-8601
+    UTC timestamp STRING.
+
+    A string, not a datetime: this value travels through the staging
+    checkpoint, which is JSON, and datetime is not JSON serializable. psycopg
+    resolves the string against the timestamptz column on insert. Returns None
+    rather than raising -- a missing tip-off must not fail a load, it just
+    leaves the column NULL as before.
+    """
     if not isinstance(date_str, str) or not date_str.strip():
         return None
     try:
@@ -41,7 +47,7 @@ def _parse_tipoff(date_str: Any, time_str: Any) -> datetime | None:
             day = day.replace(hour=hour, minute=minute)
         except ValueError:
             pass
-    return day.replace(tzinfo=timezone.utc)
+    return day.replace(tzinfo=timezone.utc).isoformat()
 
 
 def _coerce_round(value: Any) -> int | None:

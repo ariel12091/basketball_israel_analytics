@@ -982,6 +982,16 @@ class PostgresTransactionBackend:
                 (game_id,),
             )
             analytics_rows = int(cursor.fetchone()[0])
+            # Team-grain four factors (migration 006) are maintained the same
+            # per-game way as the player-grain fact above. Without this a newly
+            # published game has player analytics but no team analytics, and the
+            # team ratings surfaces silently omit it.
+            cursor.execute(
+                "SELECT euroleague.refresh_team_four_factors_by_game_for_games("
+                "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
             actual_counts: dict[str, int] = {}
             for table in INSERT_ORDER:
                 actual = self._count_rows(cursor, table, game_id)
