@@ -43,7 +43,7 @@ exposure AS (
     LEFT JOIN euroleague.lineup_players lp
       ON lp.lineup_id = atc.own_lineup_id AND lp.player_id = rr.player_id
    WHERE %(game_ids)s IS NULL OR atc.game_id = ANY(%(game_ids)s)
-)
+),
 -- Minutes come from matchup_segments, which holds each segment's duration
 -- exactly once. No DISTINCT and no MAX-per-segment convention: the duration
 -- cannot be double-counted because it is not repeated. This mirrors the
