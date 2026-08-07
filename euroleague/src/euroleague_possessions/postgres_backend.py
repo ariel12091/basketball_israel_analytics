@@ -414,7 +414,13 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         "players",
         "schedule",
         "source_artifacts",
+        # Derived analytics facts. Not written by the loader -- each is
+        # rebuilt by its own refresh_*_for_games() function -- but they live
+        # in the schema, so the guard has to know about them or it refuses to
+        # publish. Add any new derived table here in the same change that
+        # creates it.
         "player_four_factors_by_game",
+        "team_four_factors_by_game",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
@@ -890,15 +896,27 @@ class PostgresTransactionBackend:
             )
         return row, staged.get("_lineup_key"), staged.get("_stint_key")
 
-    def _insert_sql(self, table: str, returning: str | None = None) -> str:
+    def _insert_sql(
+        self,
+        table: str,
+        returning: str | None = None,
+        row_count: int = 1,
+    ) -> str:
+        """Build an INSERT for `row_count` rows.
+
+        Multi-row form exists because the database is remote: at ~80ms round
+        trip, inserting a game's lineups and stints one row at a time costs
+        seconds per game. One statement is one round trip.
+        """
         columns = TABLE_COLUMNS[table]
         placeholders = [
             "%s::jsonb" if column in JSON_COLUMNS else "%s"
             for column in columns
         ]
+        tuple_sql = f"({', '.join(placeholders)})"
         sql = (
             f"INSERT INTO euroleague.{table} ({', '.join(columns)}) "
-            f"VALUES ({', '.join(placeholders)})"
+            f"VALUES {', '.join([tuple_sql] * max(row_count, 1))}"
         )
         if returning:
             sql += f" RETURNING {returning}"
@@ -929,20 +947,65 @@ class PostgresTransactionBackend:
         resolved = [self._resolve_row(table, game_id, row) for row in rows]
         cursor = self.connection.cursor()
         try:
-            if table == "lineups":
-                sql = self._insert_sql(table, returning="lineup_id")
-                for row, lineup_key, _ in resolved:
-                    if lineup_key is None:
-                        raise ValueError("lineup row is missing _lineup_key")
-                    cursor.execute(sql, self._parameters(table, row))
-                    self.lineup_ids[str(lineup_key)] = int(cursor.fetchone()[0])
-            elif table == "stints":
-                sql = self._insert_sql(table, returning="stint_id")
-                for row, _, stint_key in resolved:
-                    if stint_key is None:
-                        raise ValueError("stint row is missing _stint_key")
-                    cursor.execute(sql, self._parameters(table, row))
-                    self.stint_ids[str(stint_key)] = int(cursor.fetchone()[0])
+            # lineups and stints need their generated ids back, so they cannot
+            # use plain executemany. They are inserted as ONE multi-row
+            # statement and the ids are mapped back by NATURAL KEY, not by row
+            # order: PostgreSQL does not promise RETURNING follows VALUES
+            # order, and getting that wrong would silently mis-wire every
+            # downstream lineup and stint reference. Both keys are backed by a
+            # UNIQUE constraint (lineups on game_id+team_id+lineup_hash,
+            # stints on game_id+team_id+stint_number), so the mapping is exact.
+            if table in ("lineups", "stints"):
+                if table == "lineups":
+                    id_column, key_columns = "lineup_id", ("team_id", "lineup_hash")
+                    staged_key_index, target = 1, self.lineup_ids
+                    missing_msg = "lineup row is missing _lineup_key"
+                else:
+                    id_column, key_columns = "stint_id", ("team_id", "stint_number")
+                    staged_key_index, target = 2, self.stint_ids
+                    missing_msg = "stint row is missing _stint_key"
+
+                if not resolved:
+                    return
+                keyed: list[tuple[str, tuple[Any, ...]]] = []
+                params: list[Any] = []
+                for entry in resolved:
+                    row = entry[0]
+                    staged_key = entry[staged_key_index]
+                    if staged_key is None:
+                        raise ValueError(missing_msg)
+                    keyed.append(
+                        (str(staged_key), tuple(row[c] for c in key_columns))
+                    )
+                    params.extend(self._parameters(table, row))
+
+                natural_keys = [nk for _, nk in keyed]
+                if len(set(natural_keys)) != len(natural_keys):
+                    raise ValueError(
+                        f"{table} natural keys {key_columns} are not unique within "
+                        "the game; cannot map generated ids back"
+                    )
+
+                sql = self._insert_sql(
+                    table,
+                    returning=", ".join((id_column,) + key_columns),
+                    row_count=len(resolved),
+                )
+                cursor.execute(sql, params)
+                returned = {
+                    tuple(record[1:]): int(record[0]) for record in cursor.fetchall()
+                }
+                if len(returned) != len(keyed):
+                    raise ValueError(
+                        f"{table}: inserted {len(keyed)} rows but RETURNING gave "
+                        f"{len(returned)} distinct keys"
+                    )
+                for staged_key, natural_key in keyed:
+                    if natural_key not in returned:
+                        raise ValueError(
+                            f"{table}: no generated id returned for {natural_key}"
+                        )
+                    target[staged_key] = returned[natural_key]
             else:
                 cursor.executemany(
                     self._insert_sql(table),
@@ -950,6 +1013,39 @@ class PostgresTransactionBackend:
                 )
         finally:
             cursor.close()
+
+    def _count_all_rows(self, cursor: Any, game_id: int) -> dict[str, int]:
+        """Count every insertable table for a game in ONE round trip.
+
+        Same per-table predicates as _count_rows, just gathered into a single
+        statement -- 13 serial counts cost ~1s per game against a remote
+        database. _count_rows is kept for single-table use and as the
+        definition these subqueries mirror.
+        """
+        selects = []
+        params: list[Any] = []
+        for table in INSERT_ORDER:
+            if table == "lineup_players":
+                selects.append(
+                    "(SELECT count(*) FROM euroleague.lineup_players AS lp "
+                    "JOIN euroleague.lineups AS l ON l.lineup_id = lp.lineup_id "
+                    "WHERE l.game_id = %s)"
+                )
+                params.append(game_id)
+            elif table in AUDIT_TABLES:
+                selects.append(
+                    f"(SELECT count(*) FROM euroleague.{table} "
+                    "WHERE game_id = %s AND load_run_id = %s)"
+                )
+                params.extend((game_id, self.load_run_id))
+            else:
+                selects.append(
+                    f"(SELECT count(*) FROM euroleague.{table} WHERE game_id = %s)"
+                )
+                params.append(game_id)
+        cursor.execute("SELECT " + ", ".join(selects), params)
+        record = cursor.fetchone()
+        return {table: int(record[i]) for i, table in enumerate(INSERT_ORDER)}
 
     def _count_rows(self, cursor: Any, table: str, game_id: int) -> int:
         if table == "lineup_players":
@@ -992,10 +1088,9 @@ class PostgresTransactionBackend:
                 (game_id,),
             )
             cursor.fetchone()
-            actual_counts: dict[str, int] = {}
+            actual_counts = self._count_all_rows(cursor, game_id)
             for table in INSERT_ORDER:
-                actual = self._count_rows(cursor, table, game_id)
-                actual_counts[table] = actual
+                actual = actual_counts[table]
                 expected = self.expected_counts[table]
                 if actual != expected:
                     mismatches.append(f"{table}: expected {expected}, got {actual}")
