@@ -293,6 +293,7 @@ class ConcurrentPipelineTest(unittest.TestCase):
             season: int,
             gamecode: int,
             competition: str,
+            schedule_meta: dict | None = None,
         ) -> StagedGame:
             probe.enter(gamecode)
             try:
