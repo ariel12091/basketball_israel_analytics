@@ -112,10 +112,18 @@ def _arguments() -> argparse.Namespace:
             "euroleague/sql/002_existing_analytics_compatibility.sql"
         ),
     )
+    # Migration 003 is SUPERSEDED by 004 and must never be applied. It stayed
+    # the default here after 004 landed, so --apply-schema would have applied
+    # it to the live schema.
     parser.add_argument(
-        "--app-mv-ddl",
+        "--read-layer-ddl",
         type=Path,
-        default=Path("euroleague/sql/003_app_materialized_views.sql"),
+        nargs="+",
+        default=[
+            Path("euroleague/sql/004_app_read_layer.sql"),
+            Path("euroleague/sql/005_team_ratings.sql"),
+            Path("euroleague/sql/006_team_four_factors.sql"),
+        ],
     )
     parser.add_argument(
         "--execute",
@@ -139,6 +147,13 @@ def main() -> None:
     args = _arguments()
     if args.apply_schema and not args.execute:
         raise ValueError("--apply-schema requires --execute")
+    superseded = [
+        path for path in args.read_layer_ddl if "003_app_materialized_views" in path.name
+    ]
+    if superseded:
+        raise ValueError(
+            "migration 003 is superseded by 004 and must never be applied"
+        )
 
     pbp = pd.read_csv(args.pbp_csv)
     staged = build_staged_game(
@@ -178,7 +193,8 @@ def main() -> None:
         if args.apply_schema:
             apply_shadow_schema(connection, args.ddl)
             apply_shadow_schema(connection, args.analytics_ddl)
-            apply_shadow_schema(connection, args.app_mv_ddl)
+            for path in args.read_layer_ddl:
+                apply_shadow_schema(connection, path)
             assert_shadow_schema_compatible(connection)
             print("schema_apply=complete")
         elif target["euroleague_schema"] is None:
