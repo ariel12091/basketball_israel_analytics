@@ -101,8 +101,9 @@ Three column meanings to pin down, since the names are not self-explanatory:
 - `possession_flag` — 1 when this event is a possession endpoint **and** the
   possession belongs to this row's side, else 0. Summing it over a filtered
   scan is how any consumer counts possessions, replacing the join back to
-  `possessions`. Derived from `possessions.endpoint_offense_team_id`, not from
-  `event_team_id`; see Side assignment.
+  `possessions`. Derived from `possessions.offense_team_id`, not from the
+  endpoint event's `team_id`; see Side assignment for why, given that the two
+  never disagree on current data.
 - `segment_id` — the **joint** segment: a number, dense within
   `(game_id, team_id)`, that increments whenever *either* the own lineup or the
   opponent lineup changes. It is finer than a team stint, which changes only
@@ -136,12 +137,38 @@ uniform "was this my team's event":
 The current code encodes exactly this, per metric, which is why it flips
 `off_steals`/`def_steals` relative to every other pair.
 
-Possession counting is different again: it keys off
-`possessions.endpoint_offense_team_id`, not `event_team_id`. In every sequence
-traced by hand this agrees with the type rule — a defensive rebound that ends a
-possession lands on the missing team's offense from both directions — but
-"agrees in the cases we traced" is not proof. It is settled by the 008 gate
-below, not by argument.
+Possession counting keys off `possessions.offense_team_id`, not the endpoint
+event's `team_id`. On current data the two never disagree — checked across all
+12,344 endpoints in the 84 loaded games, zero divergence:
+
+| endpoint_reason | endpoints | event by possessing team | endpoint play type |
+|---|---:|---:|---|
+| `made_field_goal` | 4,678 | 4,678 | 2FGM/3FGM |
+| `miss_defensive_rebound` | 3,402 | 3,402 | 2FGA/3FGA |
+| `turnover` | 2,138 | 2,138 | TO |
+| `ordinary_ft_trip_final_make` | 1,163 | 1,163 | FTM |
+| `final_ft_miss_defensive_rebound` | 307 | 307 | FTA |
+| `blocked_shot_defensive_rebound` | 255 | 255 | 2FGA/3FGA |
+| remaining seven reasons | 401 | 401 | |
+| **total** | **12,344** | **12,344** | |
+
+The reason is not obvious and is worth recording: for
+`miss_defensive_rebound`, `blocked_shot_defensive_rebound` and
+`final_ft_miss_defensive_rebound`, the endpoint is anchored on the **missed
+attempt**, which the possessing team took — not on the defensive rebound. So
+the endpoint event is always performed by the team in possession.
+
+Use `offense_team_id` regardless:
+
+1. It is the authoritative record of whose possession it was, produced by the
+   possession state machine. The endpoint event's `team_id` is the acting team,
+   a different concept that currently coincides.
+2. The coincidence is an emergent property of the endpoint-anchoring rule, not
+   a declared invariant, and nothing constrains it. A parser change that
+   anchored an endpoint on a defensive event would silently attribute every
+   affected possession to the wrong team.
+3. `actions_raw.team_id` is nullable — the coach/bench pseudo-actors — while
+   `offense_team_id` carries a foreign key to `teams`.
 
 ## Refresh lifecycle
 
