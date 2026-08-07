@@ -11,6 +11,7 @@ if str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 from euroleague_possessions.postgres_backend import (  # noqa: E402
+    INSERT_ORDER,
     PostgresTransactionBackend,
     _split_sql_statements,
     finish_load_run,
@@ -50,6 +51,251 @@ class LoadRunCursor(RecordingCursor):
 class LoadRunConnection(RecordingConnection):
     def cursor(self) -> LoadRunCursor:
         return LoadRunCursor(self.statements)
+
+
+class GeneratedIdCursor(RecordingCursor):
+    """Stand in for psycopg's ``executemany(..., returning=True)``.
+
+    It yields one result set per input row, in input order, read with
+    ``fetchone()`` and advanced with ``nextset()``. ``result_sets`` overrides
+    how many come back, to simulate a stream that does not line up with the
+    rows inserted.
+    """
+
+    def __init__(
+        self,
+        statements: list[tuple[str, object]],
+        first_id: int,
+        *,
+        result_sets: int | None = None,
+    ) -> None:
+        super().__init__(statements)
+        self.first_id = first_id
+        self.result_sets = result_sets
+        self.executemany_calls: list[tuple[str, int, bool]] = []
+        self._sets: list[tuple[object, ...] | None] = []
+        self._index = 0
+
+    def executemany(
+        self,
+        sql: str,
+        parameters_seq: object,
+        *,
+        returning: bool = False,
+    ) -> None:
+        rows = list(parameters_seq)  # type: ignore[arg-type]
+        self.statements.append((sql, rows))
+        self.executemany_calls.append((sql, len(rows), returning))
+        if not returning:
+            return
+        count = len(rows) if self.result_sets is None else self.result_sets
+        self._sets = [(self.first_id + index,) for index in range(count)]
+        self._index = 0
+
+    def fetchone(self) -> tuple[object, ...] | None:
+        if self._index >= len(self._sets):
+            return None
+        return self._sets[self._index]
+
+    def nextset(self) -> bool | None:
+        self._index += 1
+        return True if self._index < len(self._sets) else None
+
+
+class GeneratedIdConnection(RecordingConnection):
+    def __init__(self, **cursor_kwargs: object) -> None:
+        super().__init__()
+        self.cursor_kwargs = cursor_kwargs
+        self.cursors: list[GeneratedIdCursor] = []
+
+    def cursor(self) -> GeneratedIdCursor:
+        cursor = GeneratedIdCursor(self.statements, **self.cursor_kwargs)  # type: ignore[arg-type]
+        self.cursors.append(cursor)
+        return cursor
+
+
+def _staged_lineup(team_code: str, suffix: str) -> dict[str, object]:
+    return {
+        "_lineup_key": f"{team_code}:{suffix}",
+        "_team_code": team_code,
+        "lineup_hash": suffix * 64,
+        "player_count": 5,
+        "starter_count": 5,
+        "structure_valid": True,
+        "source_package_version": "0.1.1",
+    }
+
+
+def _staged_stint(team_code: str, number: int) -> dict[str, object]:
+    return {
+        "_stint_key": f"{team_code}:{number}",
+        "_lineup_key": f"{team_code}:a",
+        "_team_code": team_code,
+        "stint_number": number,
+        "start_event_order": number * 10,
+        "end_event_order_exclusive": number * 10 + 10,
+        "start_elapsed_seconds": 0,
+        "end_elapsed_seconds": 60,
+        "duration_seconds": 60,
+        "invalid_actor_rows": 0,
+        "lineup_structure_valid": True,
+        "qa_status": "clear",
+        "publishable": True,
+    }
+
+
+class BatchedGeneratedIdTest(unittest.TestCase):
+    """The lineups/stints pipelined insert and its generated-id mapping."""
+
+    def _backend(self, connection: object) -> PostgresTransactionBackend:
+        backend = PostgresTransactionBackend(connection, load_run_id=17)
+        backend.team_ids = {"AAA": 5, "BBB": 6}
+        return backend
+
+    def test_lineup_ids_pair_with_their_own_row_in_one_round_trip(self) -> None:
+        connection = GeneratedIdConnection(first_id=100)
+        backend = self._backend(connection)
+
+        backend.insert_rows(
+            "lineups",
+            game_id=23,
+            rows=[
+                _staged_lineup("AAA", "a"),
+                _staged_lineup("AAA", "b"),
+                _staged_lineup("BBB", "c"),
+            ],
+        )
+
+        self.assertEqual(
+            backend.lineup_ids, {"AAA:a": 100, "AAA:b": 101, "BBB:c": 102}
+        )
+        calls = connection.cursors[0].executemany_calls
+        self.assertEqual(len(calls), 1, "lineups must cost one round trip")
+        sql, row_count, returning = calls[0]
+        self.assertEqual((row_count, returning), (3, True))
+        self.assertTrue(sql.endswith(" RETURNING lineup_id"))
+        self.assertEqual(sql.count("VALUES ("), 1, "one row per parameter set")
+
+    def test_stint_ids_pair_with_their_own_row_in_one_round_trip(self) -> None:
+        connection = GeneratedIdConnection(first_id=500)
+        backend = self._backend(connection)
+        backend.lineup_ids = {"AAA:a": 100, "BBB:a": 101}
+
+        backend.insert_rows(
+            "stints",
+            game_id=23,
+            rows=[
+                _staged_stint("AAA", 1),
+                _staged_stint("BBB", 1),
+                _staged_stint("AAA", 2),
+            ],
+        )
+
+        self.assertEqual(
+            backend.stint_ids, {"AAA:1": 500, "BBB:1": 501, "AAA:2": 502}
+        )
+        calls = connection.cursors[0].executemany_calls
+        self.assertEqual(len(calls), 1, "stints must cost one round trip")
+        self.assertEqual(calls[0][1:], (3, True))
+        self.assertTrue(calls[0][0].endswith(" RETURNING stint_id"))
+
+    def test_missing_staged_key_is_refused_before_insert(self) -> None:
+        connection = GeneratedIdConnection(first_id=100)
+        backend = self._backend(connection)
+        keyless = dict(_staged_lineup("AAA", "a"), _lineup_key=None)
+
+        with self.assertRaisesRegex(ValueError, "missing _lineup_key"):
+            backend.insert_rows("lineups", game_id=23, rows=[keyless])
+
+        self.assertFalse(
+            connection.cursors[0].executemany_calls,
+            "the bad row must be caught before anything is written",
+        )
+
+    def test_too_few_result_sets_is_an_error_not_a_silent_gap(self) -> None:
+        connection = GeneratedIdConnection(first_id=100, result_sets=2)
+        backend = self._backend(connection)
+
+        with self.assertRaisesRegex(ValueError, "result sets for 3 inserted rows"):
+            backend.insert_rows(
+                "lineups",
+                game_id=23,
+                rows=[
+                    _staged_lineup("AAA", "a"),
+                    _staged_lineup("AAA", "b"),
+                    _staged_lineup("BBB", "c"),
+                ],
+            )
+
+    def test_too_many_result_sets_is_an_error(self) -> None:
+        connection = GeneratedIdConnection(first_id=100, result_sets=3)
+        backend = self._backend(connection)
+
+        with self.assertRaisesRegex(ValueError, "more result sets"):
+            backend.insert_rows(
+                "lineups",
+                game_id=23,
+                rows=[_staged_lineup("AAA", "a"), _staged_lineup("AAA", "b")],
+            )
+
+    def test_empty_batch_writes_nothing(self) -> None:
+        connection = GeneratedIdConnection(first_id=100)
+        backend = self._backend(connection)
+
+        backend.insert_rows("lineups", game_id=23, rows=[])
+
+        self.assertEqual(backend.lineup_ids, {})
+        self.assertFalse(connection.cursors[0].executemany_calls)
+
+
+class CountAllRowsTest(unittest.TestCase):
+    """The batched validation counts must mirror the per-table definition."""
+
+    class _CountCursor(RecordingCursor):
+        def __init__(self, statements: list[tuple[str, object]]) -> None:
+            super().__init__(statements)
+            self.result = tuple(range(len(INSERT_ORDER)))
+
+        def fetchone(self) -> tuple[int, ...]:
+            return self.result
+
+    def test_one_statement_carries_every_table_in_insert_order(self) -> None:
+        connection = RecordingConnection()
+        cursor = self._CountCursor(connection.statements)
+        backend = PostgresTransactionBackend(connection, load_run_id=17)
+
+        counts = backend._count_all_rows(cursor, game_id=23)
+
+        self.assertEqual(len(connection.statements), 1, "counts must be one round trip")
+        sql, parameters = connection.statements[0]
+        self.assertEqual(
+            counts, {table: index for index, table in enumerate(INSERT_ORDER)}
+        )
+        # lineup_players is counted through its lineups, audit tables are
+        # scoped to the current run, everything else is plain game_id.
+        self.assertIn("JOIN euroleague.lineups AS l ON l.lineup_id = lp.lineup_id", sql)
+        self.assertEqual(sql.count("load_run_id = %s"), 3)
+        self.assertEqual(len(parameters), len(INSERT_ORDER) + 3)
+        self.assertEqual(set(parameters), {23, 17})
+
+    def test_batched_counts_agree_with_the_per_table_counts(self) -> None:
+        """_count_rows is the definition; the batched form must mirror it."""
+        connection = RecordingConnection()
+        backend = PostgresTransactionBackend(connection, load_run_id=17)
+        batched = self._CountCursor(connection.statements)
+        backend._count_all_rows(batched, game_id=23)
+        batched_sql = connection.statements[0][0]
+
+        for table in INSERT_ORDER:
+            single = RecordingConnection()
+            cursor = self._CountCursor(single.statements)
+            backend._count_rows(cursor, table, game_id=23)
+            predicate = single.statements[0][0].split("FROM ", 1)[1]
+            self.assertIn(
+                " ".join(predicate.split()),
+                " ".join(batched_sql.split()),
+                f"{table} predicate differs between batched and single counts",
+            )
 
 
 class PostgresBackendTest(unittest.TestCase):

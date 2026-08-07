@@ -896,27 +896,15 @@ class PostgresTransactionBackend:
             )
         return row, staged.get("_lineup_key"), staged.get("_stint_key")
 
-    def _insert_sql(
-        self,
-        table: str,
-        returning: str | None = None,
-        row_count: int = 1,
-    ) -> str:
-        """Build an INSERT for `row_count` rows.
-
-        Multi-row form exists because the database is remote: at ~80ms round
-        trip, inserting a game's lineups and stints one row at a time costs
-        seconds per game. One statement is one round trip.
-        """
+    def _insert_sql(self, table: str, returning: str | None = None) -> str:
         columns = TABLE_COLUMNS[table]
         placeholders = [
             "%s::jsonb" if column in JSON_COLUMNS else "%s"
             for column in columns
         ]
-        tuple_sql = f"({', '.join(placeholders)})"
         sql = (
             f"INSERT INTO euroleague.{table} ({', '.join(columns)}) "
-            f"VALUES {', '.join([tuple_sql] * max(row_count, 1))}"
+            f"VALUES ({', '.join(placeholders)})"
         )
         if returning:
             sql += f" RETURNING {returning}"
@@ -948,64 +936,54 @@ class PostgresTransactionBackend:
         cursor = self.connection.cursor()
         try:
             # lineups and stints need their generated ids back, so they cannot
-            # use plain executemany. They are inserted as ONE multi-row
-            # statement and the ids are mapped back by NATURAL KEY, not by row
-            # order: PostgreSQL does not promise RETURNING follows VALUES
-            # order, and getting that wrong would silently mis-wire every
-            # downstream lineup and stint reference. Both keys are backed by a
-            # UNIQUE constraint (lineups on game_id+team_id+lineup_hash,
-            # stints on game_id+team_id+stint_number), so the mapping is exact.
+            # use a fire-and-forget executemany. psycopg's `returning=True`
+            # pipelines the rows -- one round trip for the batch rather than
+            # one per row, which matters because the database is remote -- and
+            # yields one result set per input row, in input order. Anything
+            # short of that is an error, never a silently skipped id: a missing
+            # entry here would mis-wire every downstream lineup/stint
+            # reference in the game.
             if table in ("lineups", "stints"):
                 if table == "lineups":
-                    id_column, key_columns = "lineup_id", ("team_id", "lineup_hash")
-                    staged_key_index, target = 1, self.lineup_ids
-                    missing_msg = "lineup row is missing _lineup_key"
+                    id_column, staged_key_index = "lineup_id", 1
+                    target, missing = self.lineup_ids, "_lineup_key"
                 else:
-                    id_column, key_columns = "stint_id", ("team_id", "stint_number")
-                    staged_key_index, target = 2, self.stint_ids
-                    missing_msg = "stint row is missing _stint_key"
+                    id_column, staged_key_index = "stint_id", 2
+                    target, missing = self.stint_ids, "_stint_key"
 
-                if not resolved:
-                    return
-                keyed: list[tuple[str, tuple[Any, ...]]] = []
-                params: list[Any] = []
+                staged_keys: list[str] = []
+                parameters: list[tuple[Any, ...]] = []
                 for entry in resolved:
-                    row = entry[0]
                     staged_key = entry[staged_key_index]
                     if staged_key is None:
-                        raise ValueError(missing_msg)
-                    keyed.append(
-                        (str(staged_key), tuple(row[c] for c in key_columns))
-                    )
-                    params.extend(self._parameters(table, row))
+                        raise ValueError(f"{table} row is missing {missing}")
+                    staged_keys.append(str(staged_key))
+                    parameters.append(self._parameters(table, entry[0]))
+                if not staged_keys:
+                    return
 
-                natural_keys = [nk for _, nk in keyed]
-                if len(set(natural_keys)) != len(natural_keys):
-                    raise ValueError(
-                        f"{table} natural keys {key_columns} are not unique within "
-                        "the game; cannot map generated ids back"
-                    )
-
-                sql = self._insert_sql(
-                    table,
-                    returning=", ".join((id_column,) + key_columns),
-                    row_count=len(resolved),
+                cursor.executemany(
+                    self._insert_sql(table, returning=id_column),
+                    parameters,
+                    returning=True,
                 )
-                cursor.execute(sql, params)
-                returned = {
-                    tuple(record[1:]): int(record[0]) for record in cursor.fetchall()
-                }
-                if len(returned) != len(keyed):
-                    raise ValueError(
-                        f"{table}: inserted {len(keyed)} rows but RETURNING gave "
-                        f"{len(returned)} distinct keys"
-                    )
-                for staged_key, natural_key in keyed:
-                    if natural_key not in returned:
+                for index, staged_key in enumerate(staged_keys):
+                    if index and not cursor.nextset():
                         raise ValueError(
-                            f"{table}: no generated id returned for {natural_key}"
+                            f"{table}: RETURNING gave {index} result sets for "
+                            f"{len(staged_keys)} inserted rows"
                         )
-                    target[staged_key] = returned[natural_key]
+                    record = cursor.fetchone()
+                    if record is None:
+                        raise ValueError(
+                            f"{table}: no generated id returned for {staged_key}"
+                        )
+                    target[staged_key] = int(record[0])
+                if cursor.nextset():
+                    raise ValueError(
+                        f"{table}: RETURNING gave more result sets than the "
+                        f"{len(staged_keys)} rows inserted"
+                    )
             else:
                 cursor.executemany(
                     self._insert_sql(table),
