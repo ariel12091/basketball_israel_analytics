@@ -74,9 +74,10 @@ design history and evidence remain below it.
 | App read layer | Migration 004 (**supersedes 003**) | Applied |
 | Team ratings | Migration 005 | Applied |
 | Team four factors + dynamic team path | Migration 006 | Applied |
+| Four-factor refresh query plan | Migration 007 | Applied |
 | App integration | Tabs 8 and 9 in `app/` | Reads via `app_readonly` |
 
-Apply order is **001 → 002 → 004 → 005 → 006**. Migration 003 is superseded and
+Apply order is **001 → 002 → 004 → 005 → 006 → 007**. Migration 003 is superseded and
 must never be applied.
 
 The publication code calls `euroleague.refresh_app_materialized_views()` when a
@@ -134,11 +135,15 @@ possessions and 6,240 analytics facts exactly.
   progression was not exact but did reconcile. QA status is **not** a
   publication filter — the season aggregates include all 84 games regardless —
   so this count should be surfaced in the UI.
-- **Insert batching is untested against a database.** `postgres_backend.py` now
-  batches the `lineups`/`stints` `RETURNING` inserts and collapses the
-  validation counts, expected to take publication from ~20s to ~9s per game.
-  The 84 games were loaded with the previous code, so they are the baseline to
-  diff the next load against.
+- **The player four-factor refresh still re-derives the event fact.** Migration
+  007 fixed its query plan (28-42s/game publication → ~5s), but the structural
+  gap remains: the Israeli pipeline reads a persisted event × team-perspective
+  fact (`df_pts_poss_lineups_longer_mv`) that already carries `type_lineup`,
+  lineup, starter context and segment seconds, while this function rebuilds all
+  of it from `actions_raw` on every refresh — regex clock parsing, a running-max
+  window, a five-way event join, the perspective expansion and six chained
+  window CTEs for segments. That is table remark 7 in `CLAUDE.md`, and it is
+  still the right next decision before more metrics are added.
 - **`pws` is write-only.** Nothing reads it; both analytics derivations join
   `action_lineups` and `possessions` directly. It survives only as an integrity
   gate — four NOT NULL lineup/stint foreign keys mean an unattributable
@@ -171,8 +176,14 @@ or team changes across seasons.
 
 #### 3. Load the rest of the season
 
-~318 games remain. Run the batching change on a small range first and diff the
-lineup and stint id mapping against the existing 84 before trusting it at scale.
+~318 games remain, at ~5s/game after migration 007 — under 30 minutes. The
+publication path was validated on
+2026-08-07: `scripts/probe_batched_publish.py` republished gamecodes 1-3
+through the real backend against the live database and rolled back, and the
+natural-key projection of every lineup, lineup member, action lineup, stint,
+pws row and downstream `player_game_context` fact was identical to what the
+previous one-row-at-a-time code had written. No id mapping is at risk, so this
+can now be run at scale.
 
 #### 4. EuroCup viability check
 
