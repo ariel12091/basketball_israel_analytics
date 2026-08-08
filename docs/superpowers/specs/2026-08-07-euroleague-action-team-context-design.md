@@ -362,11 +362,28 @@ Decide then; do not weaken the guard speculatively.
 
 ## Storage
 
-Additive, on top of `player_four_factors_by_game` which stays: roughly 70-115 MB
-for a full 402-game season against today's 199 MB for 84 games. `matchup_segments`
-adds ~55k rows for a full season, which is noise beside the fact's ~456k.
-Dropping `pws` returns a little. Acceptable on the confirmed 5 GB headroom, but
-it is a real cost and it is the price of not re-deriving.
+Measured after the 84-game backfill on 2026-08-08, superseding this section's
+original projection:
+
+| relation | rows | size |
+|---|---:|---:|
+| `action_team_context` | 95,216 | 36 MB |
+| `matchup_segments` | 11,554 | 2.2 MB |
+| `player_four_factors_by_game` | 115,034 | 109 MB |
+
+The original projection treated 008 as purely additive — roughly 70-115 MB for a
+full season on top of a 199 MB baseline. That is no longer the right framing. The
+correction to 007 (above) removed the never-occurred combinations, taking
+`player_four_factors_by_game` from 182,868 rows to 115,034 and freeing
+substantially more than the fact and segments together consume. **As built, this
+migration returns more space than it takes.**
+
+Extrapolating to a full 402-game season: the fact is on the order of 456k rows,
+`matchup_segments` ~55k — noise beside it. Comfortable on the confirmed 5 GB
+headroom. Dropping `pws` at 010 returns a little more.
+
+The cost of not re-deriving is therefore lower than the spec originally priced,
+and the storage argument against carrying the fact no longer holds.
 
 ## Non-goals
 
