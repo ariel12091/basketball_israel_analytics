@@ -24,6 +24,24 @@ from load_games import parse_games  # noqa: E402
 # Rebuilds the player_four_factors_by_game grain from the fact alone. This is
 # the prototype migration 009 promotes into the function body, so it must not
 # reference the tables the current function derives from.
+#
+# Population and floor time come from matchup_segments; measures come from
+# action_team_context. That split is the contract, not a convenience:
+# docs/database_context.md section 4 defines a segment's duration as an
+# attribute of the (game, team, lineup, segment) entity, and says floor time is
+# counted once per segment. A player can be on court for a whole segment in
+# which his team recorded no event on one side; that combination has real
+# minutes and no event, so an event-sourced grain cannot produce it.
+#
+# The shape mirrors the refresh function in migration 007 after its revision 2:
+#   player_minutes (segment-derived, the observed population)
+#     CROSS JOIN type_lineup {offense, defense}      -> complete_grid
+#     LEFT JOIN counts (event-derived measures)      -> zero where no event
+# The two sides are independent implementations of that shape -- 007 re-derives
+# segments and per-event sides from actions_raw on every call, this reads the
+# persisted matchup_segments and action_team_context -- so agreement is
+# evidence, not a tautology. Mutation tests (task 3c, change 3) confirm the
+# comparison still fails on a corrupted measure and on a flipped side.
 PLAYER_GRAIN_FROM_FACT = """
 WITH real_roster AS (
   SELECT fr.game_id, fr.team_id, fr.player_id
@@ -33,23 +51,12 @@ WITH real_roster AS (
      AND lower(p.provider_player_id) NOT IN ('team', 'total')
      AND lower(btrim(p.display_name)) NOT IN ('team', 'total')
 ),
-exposure AS (
-  SELECT atc.*,
-         rr.player_id,
-         CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END::smallint AS is_on_key
-    FROM euroleague.action_team_context atc
-    JOIN real_roster rr
-      ON rr.game_id = atc.game_id AND rr.team_id = atc.team_id
-    LEFT JOIN euroleague.lineup_players lp
-      ON lp.lineup_id = atc.own_lineup_id AND lp.player_id = rr.player_id
-   WHERE %(game_ids)s IS NULL OR atc.game_id = ANY(%(game_ids)s)
-),
 -- Minutes come from matchup_segments, which holds each segment's duration
 -- exactly once. No DISTINCT and no MAX-per-segment convention: the duration
--- cannot be double-counted because it is not repeated. This mirrors the
--- current player_minutes CTE in 002 (lines 571-586), which joins the derived
--- joint_segments to the roster the same way. Credited to offense only.
-minutes AS (
+-- cannot be double-counted because it is not repeated. is_on_key is a plain
+-- membership test of the roster player against the segment's own lineup --
+-- EuroLeague lineups are first-class, so no lineup derivation is needed here.
+player_minutes AS (
   SELECT ms.game_id, ms.team_id, rr.player_id,
          CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END::smallint AS is_on_key,
          ms.own_starters, ms.opp_starters,
@@ -63,51 +70,103 @@ minutes AS (
    GROUP BY ms.game_id, ms.team_id, rr.player_id,
             CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END,
             ms.own_starters, ms.opp_starters
+),
+-- The output grain: every observed (game, team, player, is_on_key,
+-- own_starters, opp_starters) combination, on both sides.
+complete_grid AS (
+  SELECT pm.game_id, pm.team_id, pm.player_id, pm.is_on_key,
+         pm.own_starters, pm.opp_starters, pm.minutes,
+         side.type_lineup
+    FROM player_minutes pm
+    CROSS JOIN (VALUES ('offense'::text), ('defense'::text)) AS side(type_lineup)
+),
+-- Measures, straight off the fact. Rows the contract leaves unsided
+-- (substitutions, timeouts, period markers) have type_lineup NULL, carry no
+-- measure, and are excluded here; they cost no floor time because floor time
+-- does not come from this CTE.
+counts AS (
+  SELECT atc.game_id, atc.team_id, rr.player_id,
+         CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END::smallint AS is_on_key,
+         atc.type_lineup, atc.own_starters, atc.opp_starters,
+         sum(atc.points)::numeric            AS total_points,
+         sum(atc.possession_flag)::bigint    AS total_poss,
+         sum(atc.ts_possessions)::bigint     AS ts_poss_count,
+         sum(atc.orebounds)::bigint          AS oreb_count,
+         sum(atc.oreb_opportunities)::bigint AS oreb_opportunities,
+         sum(atc.turnovers)::bigint          AS tov_count,
+         sum(atc.steals)::bigint             AS steal_count,
+         sum(atc.ft_attempts)::bigint        AS total_ft_attempts,
+         sum(atc.fga)::bigint                AS total_fga,
+         sum(atc.fgm)::bigint                AS total_fgm,
+         sum(atc.fg3_made)::bigint           AS total_fg3_made,
+         -- Player-attributed variants: only when this player took the action,
+         -- and only on offense. Mirrors off_player_ts_possessions in 002.
+         sum(CASE WHEN atc.type_lineup = 'offense'
+                   AND atc.action_player_id = rr.player_id
+                  THEN atc.ts_possessions ELSE 0 END)::bigint
+           AS player_ts_poss_count,
+         sum(CASE WHEN atc.type_lineup = 'offense'
+                   AND atc.action_player_id = rr.player_id
+                  THEN atc.turnovers ELSE 0 END)::bigint
+           AS player_tov_count,
+         sum(atc.fg2_made)::integer          AS fg2_made,
+         sum(atc.fg2_att)::integer           AS fg2_att,
+         sum(atc.fg3_made)::integer          AS fg3_made,
+         sum(atc.fg3_att)::integer           AS fg3_att,
+         sum(atc.layup_made)::integer        AS layup_made,
+         sum(atc.layup_att)::integer         AS layup_att,
+         sum(atc.dunk_made)::integer         AS dunk_made,
+         sum(atc.dunk_att)::integer          AS dunk_att
+    FROM euroleague.action_team_context atc
+    JOIN real_roster rr
+      ON rr.game_id = atc.game_id AND rr.team_id = atc.team_id
+    LEFT JOIN euroleague.lineup_players lp
+      ON lp.lineup_id = atc.own_lineup_id AND lp.player_id = rr.player_id
+   WHERE (%(game_ids)s IS NULL OR atc.game_id = ANY(%(game_ids)s))
+     AND atc.type_lineup IS NOT NULL
+   GROUP BY atc.game_id, atc.team_id, rr.player_id,
+            CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END,
+            atc.type_lineup, atc.own_starters, atc.opp_starters
 )
-SELECT e.game_id, e.team_id, e.player_id, e.is_on_key, e.type_lineup,
-       s.season                          AS game_year,
-       e.own_starters                    AS num_starters,
-       e.own_starters, e.opp_starters,
-       sum(e.points)::numeric            AS total_points,
-       sum(e.possession_flag)::bigint    AS total_poss,
-       sum(e.ts_possessions)::bigint     AS ts_poss_count,
-       sum(e.orebounds)::bigint          AS oreb_count,
-       sum(e.oreb_opportunities)::bigint AS oreb_opportunities,
-       sum(e.turnovers)::bigint          AS tov_count,
-       sum(e.steals)::bigint             AS steal_count,
-       sum(e.ft_attempts)::bigint        AS total_ft_attempts,
-       sum(e.fga)::bigint                AS total_fga,
-       sum(e.fgm)::bigint                AS total_fgm,
-       sum(e.fg3_made)::bigint           AS total_fg3_made,
-       -- Player-attributed variants: only when this player took the action,
-       -- and only on offense. Mirrors off_player_ts_possessions in 002.
-       sum(CASE WHEN e.type_lineup = 'offense'
-                 AND e.action_player_id = e.player_id
-                THEN e.ts_possessions ELSE 0 END)::bigint AS player_ts_poss_count,
-       sum(CASE WHEN e.type_lineup = 'offense'
-                 AND e.action_player_id = e.player_id
-                THEN e.turnovers ELSE 0 END)::bigint      AS player_tov_count,
-       CASE WHEN e.type_lineup = 'offense'
-            THEN coalesce(max(m.minutes), 0) ELSE 0 END::numeric AS minutes,
-       sum(e.fg2_made)::integer          AS fg2_made,
-       sum(e.fg2_att)::integer           AS fg2_att,
-       sum(e.fg3_made)::integer          AS fg3_made,
-       sum(e.fg3_att)::integer           AS fg3_att,
-       sum(e.layup_made)::integer        AS layup_made,
-       sum(e.layup_att)::integer         AS layup_att,
-       sum(e.dunk_made)::integer         AS dunk_made,
-       sum(e.dunk_att)::integer          AS dunk_att,
-       CASE WHEN e.type_lineup = 'offense'
-            THEN coalesce(max(m.minutes), 0) ELSE 0 END::numeric AS onoff_minutes
-  FROM exposure e
-  JOIN euroleague.schedule s ON s.game_id = e.game_id
-  LEFT JOIN minutes m
-    ON m.game_id = e.game_id AND m.team_id = e.team_id
-   AND m.player_id = e.player_id AND m.is_on_key = e.is_on_key
-   AND m.own_starters = e.own_starters AND m.opp_starters = e.opp_starters
- WHERE e.type_lineup IS NOT NULL
- GROUP BY e.game_id, e.team_id, e.player_id, e.is_on_key, e.type_lineup,
-          s.season, e.own_starters, e.opp_starters
+SELECT cg.game_id, cg.team_id, cg.player_id, cg.is_on_key, cg.type_lineup,
+       s.season                              AS game_year,
+       cg.own_starters                       AS num_starters,
+       cg.own_starters, cg.opp_starters,
+       coalesce(c.total_points, 0)::numeric  AS total_points,
+       coalesce(c.total_poss, 0)::bigint     AS total_poss,
+       coalesce(c.ts_poss_count, 0)::bigint  AS ts_poss_count,
+       coalesce(c.oreb_count, 0)::bigint     AS oreb_count,
+       coalesce(c.oreb_opportunities, 0)::bigint AS oreb_opportunities,
+       coalesce(c.tov_count, 0)::bigint      AS tov_count,
+       coalesce(c.steal_count, 0)::bigint    AS steal_count,
+       coalesce(c.total_ft_attempts, 0)::bigint AS total_ft_attempts,
+       coalesce(c.total_fga, 0)::bigint      AS total_fga,
+       coalesce(c.total_fgm, 0)::bigint      AS total_fgm,
+       coalesce(c.total_fg3_made, 0)::bigint AS total_fg3_made,
+       coalesce(c.player_ts_poss_count, 0)::bigint AS player_ts_poss_count,
+       coalesce(c.player_tov_count, 0)::bigint AS player_tov_count,
+       CASE WHEN cg.type_lineup = 'offense'
+            THEN coalesce(cg.minutes, 0) ELSE 0 END::numeric AS minutes,
+       coalesce(c.fg2_made, 0)::integer      AS fg2_made,
+       coalesce(c.fg2_att, 0)::integer       AS fg2_att,
+       coalesce(c.fg3_made, 0)::integer      AS fg3_made,
+       coalesce(c.fg3_att, 0)::integer       AS fg3_att,
+       coalesce(c.layup_made, 0)::integer    AS layup_made,
+       coalesce(c.layup_att, 0)::integer     AS layup_att,
+       coalesce(c.dunk_made, 0)::integer     AS dunk_made,
+       coalesce(c.dunk_att, 0)::integer      AS dunk_att,
+       CASE WHEN cg.type_lineup = 'offense'
+            THEN coalesce(cg.minutes, 0) ELSE 0 END::numeric AS onoff_minutes
+  FROM complete_grid cg
+  JOIN euroleague.schedule s ON s.game_id = cg.game_id
+  LEFT JOIN counts c
+    ON c.game_id = cg.game_id
+   AND c.team_id = cg.team_id
+   AND c.player_id = cg.player_id
+   AND c.is_on_key = cg.is_on_key
+   AND c.type_lineup = cg.type_lineup
+   AND c.own_starters = cg.own_starters
+   AND c.opp_starters = cg.opp_starters
 """
 
 # Same column list, same order. Anything present in the stored table and absent

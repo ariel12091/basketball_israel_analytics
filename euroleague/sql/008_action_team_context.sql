@@ -8,20 +8,40 @@
 -- Nothing reads this table in 008. Migration 009 switches the four-factor
 -- refreshes onto it, gated on reproducing every stored row.
 --
--- Side assignment is per event type RELATIVE to the perspective team. Steals,
--- blocks, committed fouls and defensive rebounds sit on the acting team's
--- DEFENSE; every other event type -- shots, free throws, turnovers,
--- offensive rebounds, assists, fouls drawn, and every administrative code
--- (substitutions, timeouts, jump balls and similar, which carry a team_id
--- but no offense/defense role of their own) -- sits on the acting team's
--- OFFENSE by default. Only the measure-carrying types are proven by the 008
--- gate: 2FGM/2FGA/3FGM/3FGA/FTM/FTA/TO/O on offense and ST on defense. AS,
--- RV, FV, CM, D and every administrative code carry no measure column
--- today, so their side is assigned by rule and unverified until something
--- counts them. Administrative codes still need a side (never NULL) so that
--- a segment made up only of them is not invisible to a consumer that
--- groups by type_lineup -- matchup_segments already counts these events
--- toward floor time, and the fact must agree with it.
+-- Side assignment is a CLOSED ENUMERATION, relative to the perspective team.
+-- docs/database_context.md section 4 ("Event ownership") is the contract:
+-- shots, free throws, assists, turnovers and foul-drawn events are offensive;
+-- steals, blocks, deflections and fouls are defensive; offensive rebounds are
+-- offensive and defensive rebounds are defensive. Nothing else is classified.
+-- The Israeli event_owner_side CASE in
+-- sql/functions/refresh_df_pts_poss_lineups_longer_for_games.sql implements
+-- exactly this list and ends in ELSE NULL; so does the sided CTE below.
+--
+-- EuroLeague play codes, mapped onto that list:
+--   offense  2FGM 2FGA 3FGM 3FGA (shots), FTM FTA (free throws), AS (assist),
+--            TO (turnover), RV (foul drawn), O (offensive rebound)
+--   defense  ST (steal), FV (block), D (defensive rebound), and the foul
+--            family CM CMU CMT CMTI CMD OF B C (personal, unsportsmanlike,
+--            technical, throw-in, disqualifying, offensive, bench, coach)
+--   NULL     everything else: IN OUT (substitutions), TOUT TOUT_TV (timeouts),
+--            BP EP EG (period and game markers), JB (jump ball),
+--            CCH (coach challenge), AG (shot rejected)
+--
+-- type_lineup is nullable for exactly this reason. Substitutions and timeouts
+-- are not possession events and must not be given a side; AG is the shooter
+-- side of a block, which the contract does not enumerate (the attempt itself
+-- is already recorded as 2FGA/3FGA). None of the NULL types carries a measure,
+-- so no numerator or denominator moves.
+--
+-- Floor time does NOT depend on this classification. Segment durations live in
+-- matchup_segments, one row per segment, and a consumer takes its population
+-- and its minutes from there -- never from the presence of an event. That is
+-- what lets the unclassified codes stay NULL without a segment disappearing.
+--
+-- Only the measure-carrying types are proven by the 008 gate:
+-- 2FGM/2FGA/3FGM/3FGA/FTM/FTA/TO/O on offense and ST on defense. AS, RV, FV
+-- and the rebound/foul codes carry no measure column today, so their side is
+-- asserted by the contract and unverified until something counts them.
 
 BEGIN;
 
@@ -504,27 +524,27 @@ BEGIN
       side.own_lineup_id, side.opp_lineup_id,
       own_lineup.starter_count AS own_starters,
       opp_lineup.starter_count AS opp_starters,
-      -- Side assignment, relative to the perspective team. Steals, blocks,
-      -- committed fouls and defensive rebounds sit on the acting team's
-      -- DEFENSE (a steal recorded for team X credits X's defense and the
-      -- opponent's offense). Every other event type -- shots, free throws,
-      -- turnovers, offensive rebounds, assists, fouls drawn, and every
-      -- administrative code with no basketball-role meaning of its own
-      -- (substitutions, timeouts, jump balls, and similar) -- sits on the
-      -- acting team's OFFENSE by default. Only the play types enumerated in
-      -- this file's header comment carry a proven measure column; the rest
-      -- (administrative codes included) still need a side so that a segment
-      -- containing only administrative events is not invisible to any
-      -- consumer that groups by type_lineup -- matchup_segments already
-      -- counts these events toward floor time, and the fact must agree with
-      -- it rather than silently dropping the bucket.
+      -- Side assignment, relative to the perspective team, as the closed
+      -- enumeration in docs/database_context.md section 4. Two branches, both
+      -- explicit; anything the contract does not name stays NULL. A steal
+      -- recorded for team X credits X's defense and the opponent's offense,
+      -- which is why each branch flips on event_team_id = side.team_id.
+      -- Codes outside both lists (substitutions, timeouts, period markers,
+      -- jump balls, coach challenges, shot-rejected annotations) are not
+      -- possession events and get no side. That costs nothing: they carry no
+      -- measure, and floor time is read from matchup_segments, which counts a
+      -- segment's duration once per segment rather than per event.
       CASE
         WHEN em.event_team_id IS NULL THEN NULL
-        WHEN em.play_type IN ('ST','FV','CM','D')
+        WHEN em.play_type IN (
+               '2FGM','2FGA','3FGM','3FGA','FTM','FTA','AS','TO','RV','O')
+          THEN CASE WHEN em.event_team_id = side.team_id
+                    THEN 'offense' ELSE 'defense' END
+        WHEN em.play_type IN (
+               'ST','FV','D','CM','CMU','CMT','CMTI','CMD','OF','B','C')
           THEN CASE WHEN em.event_team_id = side.team_id
                     THEN 'defense' ELSE 'offense' END
-        ELSE CASE WHEN em.event_team_id = side.team_id
-                  THEN 'offense' ELSE 'defense' END
+        ELSE NULL
       END AS type_lineup,
       CASE WHEN em.endpoint_offense_team_id IS NULL THEN 0 ELSE 1 END::smallint
         AS possession_flag
