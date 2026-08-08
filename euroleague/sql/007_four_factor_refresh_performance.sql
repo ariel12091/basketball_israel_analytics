@@ -1,11 +1,17 @@
 -- EuroLeague shadow schema -- migration 007.
--- Make the player four-factor refresh usable at season scale.
+-- Make the player four-factor refresh usable at season scale, and put its
+-- output grain back on the Israeli contract.
 --
--- Behaviour is unchanged. This migration only replaces the function body with
--- one the planner can execute sensibly. Verified by replacing the function
--- inside a transaction, re-deriving gamecodes 1-3, and running EXCEPT ALL in
--- both directions against the rows the original load had already stored:
--- 6,240 rows, zero either way, then rolled back.
+-- Applied twice. Revision 1 (2026-08-07) was a pure query-plan fix and left
+-- output untouched. Revision 2 (2026-08-08) deliberately changes output: it
+-- corrects a grain deviation from the Israeli materialized view this function
+-- was ported from. See "Revision 2" below.
+--
+-- ---------------------------------------------------------------------------
+-- Revision 1 -- query plan only. Behaviour unchanged. Verified by replacing
+-- the function inside a transaction, re-deriving gamecodes 1-3, and running
+-- EXCEPT ALL in both directions against the rows the original load had already
+-- stored: 6,240 rows, zero either way, then rolled back.
 --
 -- One column is expected to move and is excluded from that comparison:
 -- derived_at, the row's derivation timestamp. Note that comparing two fresh
@@ -47,6 +53,69 @@
 -- lineup_hash, starter context and segment seconds, while this function still
 -- re-derives all of that from actions_raw on every refresh. See
 -- euroleague/CLAUDE.md, table remark 7.
+--
+-- ---------------------------------------------------------------------------
+-- Revision 2 -- output grain. This one is intended to change stored rows.
+--
+-- Migration 008's acceptance gate rebuilds this table's grain from the new
+-- action_team_context fact and diffs both ways. It failed, and the fault was
+-- here, not in the fact: complete_grid was an unconditional cross join.
+--
+--     real_roster
+--       JOIN starter_contexts   (every (own_starters, opp_starters) pair the
+--                                team saw anywhere in the game)
+--       CROSS JOIN is_on_key {0, 1}
+--       CROSS JOIN type_lineup {offense, defense}
+--
+-- That asserts every roster player occupied every starter-count bucket in both
+-- on-court states. The measured counts then arrive by LEFT JOIN, so a
+-- (player, is_on_key, own_starters, opp_starters) combination that never
+-- happened survives as a row that is zero on every measure column. On the
+-- three controlled games the stored population was exactly
+-- players x buckets x 4 for all six team-games (912, 1248, 960) and 3,341 of
+-- the 6,240 rows -- 53.5% -- were zero on every measure.
+--
+-- The Israeli source has no cross join at all. Its grain is observation
+-- driven: base0 (player x lineup x on/off) INNER JOINs lineup_totals, so a row
+-- exists if and only if a real lineup with real totals existed in that bucket
+-- and the player was associated with it. Starter-count buckets are a
+-- consequence of which lineups actually faced each other, not a dimension to
+-- densify.
+--
+-- The fix restricts the grid to observed combinations, and does so through the
+-- join rather than by filtering all-zero rows afterwards -- the two are not the
+-- same thing. An observed combination whose events happened to measure nothing
+-- is a legitimate row and the Israeli logic emits it; only never-occurred
+-- combinations may disappear. player_minutes already carries exactly the
+-- observed set: it is built from joint_segments (the real matchup segments)
+-- joined to real_roster and lineup_players, at grain
+-- (game_id, team_id, player_id, is_on_key, own_starters, opp_starters). So
+-- complete_grid now reads player_minutes and crosses it only with the two
+-- type_lineup sides, starter_contexts is gone, and the LEFT JOIN to counts is
+-- kept so an observed-but-scoreless combination still yields its zero row.
+--
+-- complete_grid therefore has to be defined after player_minutes; a
+-- non-recursive WITH item can only reference earlier ones. That reordering is
+-- the whole of the textual change besides the removed CTE.
+--
+-- The second deviation the 008 investigation named -- player_minutes carrying
+-- floor time onto the defense row -- was already correct in revision 1 and is
+-- untouched. player_minutes has no type_lineup column and the final LEFT JOIN
+-- does not mention one, but the final SELECT wraps both minutes and
+-- onoff_minutes in CASE WHEN type_lineup = 'offense' ... ELSE 0, which is the
+-- same zeroing the Israeli onoff_lineup_minutes does. Confirmed on the stored
+-- data: zero defense rows with a non-zero minutes or onoff_minutes value.
+--
+-- Verified on gamecodes 1-3 (game_id 1, 4, 5):
+--   * every rate column of player_onoff_by_season and
+--     player_four_factors_by_season for game_year 2025 is byte-identical
+--     before and after -- the removed rows were inert;
+--   * stored rows fall 6,240 -> 3,910, the surviving set is a strict subset of
+--     the previous one with no measure changed, and all 2,330 removed rows were
+--     zero on every measure. 1,011 all-zero rows survive: those are observed
+--     combinations that simply measured nothing, and they are meant to stay;
+--   * offense-row minutes unchanged per player and bucket, defense rows still
+--     zero, player_onoff_by_season.minutes_on unmoved.
 
 BEGIN;
 
@@ -358,20 +427,6 @@ BEGIN
     GROUP BY pc.game_id, pc.team_id, pc.player_id, pc.is_on_key,
              pc.type_lineup, pc.own_starters, pc.opp_starters
   ),
-  starter_contexts AS (
-    SELECT DISTINCT game_id, team_id, own_starters, opp_starters
-    FROM team_event_context
-  ),
-  complete_grid AS (
-    SELECT
-      rr.game_id, rr.team_id, rr.player_id, state.is_on_key,
-      side.type_lineup, sc.own_starters, sc.opp_starters
-    FROM real_roster rr
-    JOIN starter_contexts sc
-      ON sc.game_id = rr.game_id AND sc.team_id = rr.team_id
-    CROSS JOIN (VALUES (0::smallint), (1::smallint)) AS state(is_on_key)
-    CROSS JOIN (VALUES ('offense'::text), ('defense'::text)) AS side(type_lineup)
-  ),
   joint_lagged AS (
     SELECT
       tec.*,
@@ -449,6 +504,18 @@ BEGIN
     GROUP BY rr.game_id, rr.team_id, rr.player_id,
              CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END,
              js.own_starters, js.opp_starters
+  ),
+  -- The output grain. One row per observed
+  -- (game, team, player, is_on_key, own_starters, opp_starters) combination
+  -- per side. player_minutes is the observed set: it comes from the real
+  -- matchup segments, so a combination appears here only if the player was in
+  -- that on-court state while the team was in that starter-count bucket.
+  complete_grid AS (
+    SELECT
+      pm.game_id, pm.team_id, pm.player_id, pm.is_on_key,
+      side.type_lineup, pm.own_starters, pm.opp_starters
+    FROM player_minutes pm
+    CROSS JOIN (VALUES ('offense'::text), ('defense'::text)) AS side(type_lineup)
   )
   SELECT
     cg.player_id,
