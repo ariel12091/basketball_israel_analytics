@@ -47,7 +47,14 @@ Measured on the live EuroLeague schema at 84 games:
 | `possessions` | 12,344 | 147 |
 | `pws` | 12,344 | 147 |
 | `stints` | 5,861 | 70 |
-| `player_four_factors_by_game` | 182,868 | 2,177 |
+| `player_four_factors_by_game` | 182,868 † | 2,177 † |
+
+† Superseded. This was measured before the 2026-08-08 correction to 007 (see
+"Correction to 007" under Rollout), which removed the never-occurred
+combinations that made up 53.5% of the table. The corrected population is on the
+order of 109,000 rows, roughly 1,300 per game. The figure is left here because
+the problem statement above is about the *pre-correction* state; do not use it as
+a target anywhere.
 
 `action_lineups` is exactly 1:1 with `actions_raw` (zero events without a
 lineup row), and `stints` tile every event (zero events uncovered by a range
@@ -93,8 +100,30 @@ Constraints and indexes:
 - `CHECK (team_id <> opponent_team_id)`
 - index on `(game_id, team_id, type_lineup)` for the aggregate path
 
-`type_lineup` is nullable: the 35 coach/bench pseudo-actor rows have no side,
-matching the Israeli `ELSE NULL`.
+`type_lineup` is nullable, and the NULL population is much larger than a first
+reading suggests. A side is assigned only to the enumerated basketball play
+types in the Side assignment table below; everything else is NULL, because
+substitutions, timeouts and administrative markers are not possession events and
+have no offensive or defensive side to take.
+
+Measured on EuroLeague gamecodes 1-3 (1,646 events):
+
+| | events | share |
+|---|---:|---|
+| Inside the enumeration (gets a side) | 1,189 | 72.2% |
+| **Outside the enumeration (NULL)** | **457** | **27.8%** |
+| …of which have no `team_id` at all | 36 | |
+| …of which **do** carry a `team_id` | **421** | |
+
+`IN`/`OUT` substitutions alone are 374 of those events. An earlier draft of this
+spec said "the 35 coach/bench pseudo-actor rows have no side", which counted only
+`team_id IS NULL` and understated the NULL population by more than an order of
+magnitude. That error is not cosmetic: it led an implementer to read the correct
+NULLs as a defect and broaden the side rule to cover substitutions and timeouts,
+which had to be reverted.
+
+Carrying a `team_id` does not make an event a possession event. The rule is the
+enumeration, not team attribution.
 
 Three column meanings to pin down, since the names are not self-explanatory:
 
@@ -251,14 +280,51 @@ Creates the table, indexes and refresh function, wires the refresh into
 games.
 
 **Gate.** Prototype the replacement player four-factor query against the fact and
-diff it against the stored rows: `EXCEPT ALL` in both directions across all
-182,868 rows of `player_four_factors_by_game`, excluding `derived_at`. Zero rows
-either way, or 008 does not land.
+diff it against the stored rows: `EXCEPT ALL` in both directions across every row
+of `player_four_factors_by_game`, excluding `derived_at`. Zero rows either way,
+or 008 does not land.
+
+The gate is the zero-diff, not a row count. An earlier draft named 182,868 rows;
+that figure was invalidated on 2026-08-08 when migration 007's refresh was
+corrected to stop generating rows for `(player, is_on_key, own_starters,
+opp_starters)` combinations that never occurred — see "Correction to 007" below.
+A stored row count legitimately moves whenever the grain is corrected, so
+asserting one would turn a valid improvement into a spurious gate failure.
 
 `derived_at` is excluded because it is meant to move on a re-derivation. Note
 that comparing two fresh runs inside one transaction will not reveal a
 `derived_at` difference, because `now()` is the transaction timestamp — compare
 against stored rows.
+
+#### Correction to 007 (2026-08-08)
+
+Building the gate exposed a defect in the reference it diffs against.
+`refresh_player_four_factors_by_game_for_games()` built its output population
+with an unconditional cross join — roster players × every starter-count bucket
+the team saw that game × `is_on_key {0,1}` × `type_lineup {offense,defense}` —
+then LEFT JOINed the real counts. Combinations that never occurred survived as
+rows zero on every measure. The stored population was exactly
+`players × buckets × 4` for every team-game, and 53.5% of it was inert.
+
+This had no Israeli counterpart to justify it. The Israeli materialized view is
+observation-driven: `SELECT DISTINCT` player↔lineup associations INNER JOINed to
+real lineup totals. Starter-count buckets are a consequence of which lineups
+actually faced each other, not a dimension to densify.
+
+The grid was restricted to genuinely observed combinations. Every season-level
+rate came out byte-identical before and after — the removed rows contributed
+zero to both numerator and denominator — so no displayed figure changed, and the
+table is roughly 37% smaller. Migration 009's rewrite inherits the corrected
+population, not the inflated one.
+
+An open question deferred to 009: `is_on_key` and the starter-bucket
+pre-aggregate are shapes the Israeli pipeline needs because it reconstructs
+lineups from substitution events. EuroLeague lineups are first-class
+(`lineups`, `lineup_players`) and every fact row already carries
+`own_lineup_id`/`opp_lineup_id`, so `is_on_key` is a plain membership test.
+Whether `player_four_factors_by_game` needs to exist as a persisted per-player
+table at all — rather than being computed from the fact at query time — should
+be decided in 009 rather than inherited by default.
 
 ### 009 — consumers read the fact
 

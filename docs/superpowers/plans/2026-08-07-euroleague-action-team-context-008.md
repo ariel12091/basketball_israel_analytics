@@ -918,7 +918,22 @@ Expected: 95,216 fact rows (2 × 47,608) and 11,554 `matchup_segments` rows — 
 ```bash
 ./.venv/Scripts/python.exe scripts/verify_action_team_context.py
 ```
-Expected: `GATE PASSED`, with `player grain row count matches  182868 vs 182868`.
+Expected: `GATE PASSED`, with the two sides of `player grain row count matches`
+equal to each other.
+
+**Do not assert a literal stored row count here.** An earlier draft of this plan
+expected `182868 vs 182868`. That figure is obsolete: migration 007's refresh was
+corrected on 2026-08-08 (Task 3b) to stop generating rows for
+`(player, is_on_key, own_starters, opp_starters)` combinations that never
+occurred, which removed roughly 37% of the table — 6,240 → 3,910 rows on the
+three pilot games. After this backfill the population is on the order of 109,000,
+but the exact figure depends on the corrected grain and must not be hardcoded.
+
+The gate's value is the **bidirectional zero-diff**, not the count. A row count
+is an artifact that legitimately moves whenever the grain is corrected, so
+asserting it converts a valid improvement into a spurious failure. Record the
+count as an output; test only that both directions of the `EXCEPT ALL` return
+zero rows.
 
 - [ ] **Step 3: Record the storage cost**
 
@@ -1126,7 +1141,7 @@ git commit -m "Check the event fact in the standing verifications"
 
 ## Done when
 
-- `verify_action_team_context.py` passes all eight checks: zero rows differing either way across all 182,868 stored player four-factor rows, and segment durations tiling every team-game exactly.
+- `verify_action_team_context.py` passes all eight checks: zero rows differing either way across every stored player four-factor row, and segment durations tiling every team-game exactly. The completion criterion is the zero-diff in both directions, not a particular row count — see Task 4 Step 2 for why no literal count is asserted.
 - `probe_batched_publish.py --games 1-3` passes with the fact in its projections.
 - `load_games.py --games 1-84 --verify-only` passes 11 checks.
 - The Python suite passes (64 tests).
