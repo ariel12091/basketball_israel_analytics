@@ -421,6 +421,8 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         # creates it.
         "player_four_factors_by_game",
         "team_four_factors_by_game",
+        "matchup_segments",
+        "action_team_context",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
@@ -772,6 +774,28 @@ class PostgresTransactionBackend:
                 "WHERE lp.lineup_id = l.lineup_id AND l.game_id = %s",
                 (game_id,),
             )
+        elif table == "lineups":
+            # action_team_context and matchup_segments are derived: they are
+            # rebuilt by refresh_action_team_context_for_games() in
+            # validate_game(), so they are deliberately absent from
+            # INSERT_ORDER and DELETE_ORDER. They do, however, carry composite
+            # foreign keys onto lineups(game_id, lineup_id), so a republish
+            # cannot remove this game's lineups while those rows survive.
+            # Clear them here, child before parent, rather than widening
+            # DELETE_ORDER -- that tuple is the loader's ordering contract for
+            # tables the loader writes, and these are not among them.
+            cursor.execute(
+                "DELETE FROM euroleague.action_team_context WHERE game_id = %s",
+                (game_id,),
+            )
+            cursor.execute(
+                "DELETE FROM euroleague.matchup_segments WHERE game_id = %s",
+                (game_id,),
+            )
+            cursor.execute(
+                "DELETE FROM euroleague.lineups WHERE game_id = %s",
+                (game_id,),
+            )
         elif table in AUDIT_TABLES:
             cursor.execute(
                 f"DELETE FROM euroleague.{table} "
@@ -1050,6 +1074,15 @@ class PostgresTransactionBackend:
         cursor = self.connection.cursor()
         try:
             mismatches: list[str] = []
+            # The event x team-perspective fact every other analytic reads.
+            # It must be refreshed first: the four-factor refreshes below are
+            # derived from it, and refresh_stint_timing runs inside it.
+            cursor.execute(
+                "SELECT euroleague.refresh_action_team_context_for_games("
+                "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
             cursor.execute(
                 "SELECT euroleague.refresh_player_four_factors_by_game_for_games("
                 "ARRAY[%s]::bigint[])",
@@ -1080,37 +1113,44 @@ class PostgresTransactionBackend:
                 mismatches.append("possession/pws counts differ")
             if actual_counts["game_qa"] != 1:
                 mismatches.append("current load run must have exactly one game_qa row")
+            # Expected player four-factor rows.
+            #
+            # This used to predict sum(players * contexts * 4) -- roster x every
+            # starter-count context the team saw x is_on_key x type_lineup. That
+            # is the unconditional cross join migration 007 was corrected to
+            # stop doing on 2026-08-08, because it manufactured rows for
+            # combinations that never occurred (53.5% of the table was zero on
+            # every measure). The prediction outlived the thing it predicted and
+            # failed a republish with "expected 1824, got 1144".
+            #
+            # The grain is now observation-driven, so the expectation is derived
+            # from the same place the refresh derives it: the observed
+            # (team, player, is_on_key, own_starters, opp_starters) combinations
+            # in matchup_segments, doubled for the two type_lineup values.
+            # matchup_segments is refreshed above, before this check, so it is
+            # current for this game. is_on_key is a plain membership test --
+            # EuroLeague lineups are first-class, so nothing is re-derived here.
             cursor.execute(
-                "WITH roster_counts AS ("
-                "  SELECT fr.team_id, count(*)::bigint AS players "
+                "WITH real_roster AS ("
+                "  SELECT fr.game_id, fr.team_id, fr.player_id "
                 "  FROM euroleague.full_rosters fr "
                 "  JOIN euroleague.players p ON p.player_id = fr.player_id "
                 "  WHERE fr.game_id = %s "
                 "    AND lower(p.provider_player_id) NOT IN ('team', 'total') "
-                "    AND lower(btrim(p.display_name)) NOT IN ('team', 'total') "
-                "  GROUP BY fr.team_id"
-                "), contexts AS ("
-                "  SELECT DISTINCT s.home_team_id AS team_id, "
-                "    hl.starter_count AS own_starters, "
-                "    al2.starter_count AS opp_starters "
-                "  FROM euroleague.schedule s "
-                "  JOIN euroleague.action_lineups al ON al.game_id = s.game_id "
-                "  JOIN euroleague.lineups hl ON hl.lineup_id = al.home_lineup_id "
-                "  JOIN euroleague.lineups al2 ON al2.lineup_id = al.away_lineup_id "
-                "  WHERE s.game_id = %s "
-                "  UNION "
-                "  SELECT DISTINCT s.away_team_id, al2.starter_count, hl.starter_count "
-                "  FROM euroleague.schedule s "
-                "  JOIN euroleague.action_lineups al ON al.game_id = s.game_id "
-                "  JOIN euroleague.lineups hl ON hl.lineup_id = al.home_lineup_id "
-                "  JOIN euroleague.lineups al2 ON al2.lineup_id = al.away_lineup_id "
-                "  WHERE s.game_id = %s"
-                "), context_counts AS ("
-                "  SELECT team_id, count(*)::bigint AS contexts "
-                "  FROM contexts GROUP BY team_id"
-                ") SELECT coalesce(sum(rc.players * cc.contexts * 4), 0)::bigint "
-                "FROM roster_counts rc JOIN context_counts cc USING (team_id)",
-                (game_id, game_id, game_id),
+                "    AND lower(btrim(p.display_name)) NOT IN ('team', 'total')"
+                "), observed AS ("
+                "  SELECT DISTINCT ms.team_id, rr.player_id, "
+                "    CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END AS is_on_key, "
+                "    ms.own_starters, ms.opp_starters "
+                "  FROM euroleague.matchup_segments ms "
+                "  JOIN real_roster rr "
+                "    ON rr.game_id = ms.game_id AND rr.team_id = ms.team_id "
+                "  LEFT JOIN euroleague.lineup_players lp "
+                "    ON lp.lineup_id = ms.own_lineup_id "
+                "   AND lp.player_id = rr.player_id "
+                "  WHERE ms.game_id = %s"
+                ") SELECT (count(*) * 2)::bigint FROM observed",
+                (game_id, game_id),
             )
             expected_analytics_rows = int(cursor.fetchone()[0])
             if analytics_rows != expected_analytics_rows:

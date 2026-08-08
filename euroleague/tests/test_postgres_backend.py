@@ -421,5 +421,61 @@ class PostgresBackendTest(unittest.TestCase):
         backend._parameters("lineups", row)
 
 
+class ActionTeamContextWiringTest(unittest.TestCase):
+    """The derived fact must be known to the guard and refreshed on publish."""
+
+    def test_schema_allowlist_knows_the_derived_fact(self) -> None:
+        import inspect
+
+        from euroleague_possessions import postgres_backend
+
+        source = inspect.getsource(postgres_backend.assert_shadow_schema_compatible)
+        self.assertIn('"action_team_context"', source)
+        self.assertIn('"matchup_segments"', source)
+
+    def test_validate_game_refreshes_the_fact_before_four_factors(self) -> None:
+        # LoadRunConnection, not RecordingConnection: RecordingCursor has no
+        # fetchone(), so the first refresh that reads its result aborts the
+        # mock with AttributeError and every later statement goes unrecorded.
+        # That would make this test pass or fail on which refresh happens to
+        # come first, rather than on their order.
+        connection = LoadRunConnection()
+        backend = PostgresTransactionBackend(connection, load_run_id=17)
+        try:
+            backend.validate_game(game_id=23)
+        except Exception:
+            pass  # RecordingConnection cannot satisfy the later count checks
+
+        executed = [sql for sql, _ in connection.statements]
+        fact = next(
+            i
+            for i, s in enumerate(executed)
+            if "refresh_action_team_context_for_games" in s
+        )
+        player = next(
+            i
+            for i, s in enumerate(executed)
+            if "refresh_player_four_factors_by_game_for_games" in s
+        )
+        self.assertLess(fact, player, "the fact must be refreshed first")
+
+    def test_deleting_lineups_clears_the_derived_fact_first(self) -> None:
+        """A republish must not be blocked by the fact's FK onto lineups.
+
+        The composite foreign keys are deliberate, so the derived rows have to
+        go before the lineups they reference. Without this the probe fails with
+        ForeignKeyViolation on matchup_segments_game_id_own_lineup_id_fkey.
+        """
+        connection = RecordingConnection()
+        backend = PostgresTransactionBackend(connection, load_run_id=17)
+        backend.delete_game_rows("lineups", game_id=23)
+
+        executed = [sql for sql, _ in connection.statements]
+        self.assertEqual(len(executed), 3, executed)
+        self.assertIn("DELETE FROM euroleague.action_team_context", executed[0])
+        self.assertIn("DELETE FROM euroleague.matchup_segments", executed[1])
+        self.assertIn("DELETE FROM euroleague.lineups", executed[2])
+
+
 if __name__ == "__main__":
     unittest.main()
