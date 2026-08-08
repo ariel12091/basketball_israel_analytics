@@ -52,6 +52,11 @@ SELECT game_id, team_id, game_year, own_starters, opp_starters,
 # moves them, and this is the check that told those apart during 008.
 # Column names verified against the live catalog on 2026-08-08 -- note it is
 # net_on_off, NOT net_rating_on/net_rating_off.
+# This grain deliberately omits the view's four shooting-split columns
+# (off_on_fg2_made/att, off_on_fg3_made/att): they are plain sums of the
+# fg2_*/fg3_* columns already captured at full fidelity in PLAYER_GRAIN, so a
+# regression in them would already show up there. This grain's job is the
+# season rates, not re-covering columns another grain already detects.
 SEASON_ONOFF = """
 SELECT game_year, team_id, player_id,
        off_on_points, off_on_poss, off_off_points, off_off_poss,
@@ -84,7 +89,14 @@ GRAINS = {
 
 def _write(conn: Any, sql: str, path: Path) -> int:
     cur = conn.cursor()
-    cur.execute("SET LOCAL statement_timeout = '15min'")
+    # connect_from_env_file() opens with autocommit=True, so a bare (non-BEGIN)
+    # call runs each execute() as its own implicit transaction -- SET LOCAL
+    # would apply only to the transaction containing it and never reach the
+    # following SELECT. Plain SET is session-scoped, so it takes effect under
+    # autocommit and is also safe when a caller (e.g. a manual verification
+    # transaction) wraps this in an explicit BEGIN/ROLLBACK: an uncommitted
+    # plain SET is unwound by ROLLBACK exactly like SET LOCAL would be.
+    cur.execute("SET statement_timeout = '15min'")
     cur.execute(sql)
     rows = cur.fetchall()
     with path.open("w", newline="", encoding="utf-8") as handle:
@@ -96,8 +108,21 @@ def _write(conn: Any, sql: str, path: Path) -> int:
     return len(rows)
 
 
-def snapshot(conn: Any, out_dir: Path) -> dict[str, int]:
+def snapshot(conn: Any, out_dir: Path, force: bool = False) -> dict[str, int]:
     out_dir.mkdir(parents=True, exist_ok=True)
+    existing = sorted(
+        name for name in GRAINS if (out_dir / f"{name}.tsv").exists()
+    )
+    if existing and not force:
+        raise SystemExit(
+            "refusing to overwrite existing snapshot(s) in "
+            f"{out_dir}: {', '.join(f'{n}.tsv' for n in existing)} would be "
+            "destroyed by --save. These are the 'before' evidence for "
+            "migration 009, they are gitignored, and there is no backup -- "
+            "once overwritten, every later --diff reports IDENTICAL no "
+            "matter what changed. Pass --force if you intend to replace "
+            "them."
+        )
     counts = {}
     for name, sql in GRAINS.items():
         counts[name] = _write(conn, sql, out_dir / f"{name}.tsv")
@@ -132,6 +157,11 @@ def main() -> None:
     parser.add_argument("--save", action="store_true")
     parser.add_argument("--diff", action="store_true")
     parser.add_argument("--dir", default=str(REPO / "exports" / "009_snapshot"))
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="allow --save to overwrite an existing snapshot",
+    )
     args = parser.parse_args()
     if args.save == args.diff:
         parser.error("pass exactly one of --save or --diff")
@@ -140,7 +170,7 @@ def main() -> None:
     out_dir = Path(args.dir)
     try:
         if args.save:
-            for name, n in snapshot(conn, out_dir).items():
+            for name, n in snapshot(conn, out_dir, force=args.force).items():
                 print(f"  saved {name}: {n:,} rows")
             print(f"\nSnapshot written to {out_dir}")
         else:
