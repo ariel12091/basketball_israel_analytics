@@ -196,7 +196,13 @@ SELECT game_id, team_id, player_id, is_on_key, type_lineup,
 
 def verify(conn: Any, game_ids: list[int] | None) -> int:
     cur = conn.cursor()
-    cur.execute("SET LOCAL statement_timeout = '15min'")
+    # Session-scoped, not SET LOCAL. connect_from_env_file opens the connection
+    # with autocommit=True, so every execute() is its own implicit transaction
+    # and a SET LOCAL would expire with the statement that set it -- leaving a
+    # dead safety net that looks live. A plain SET is valid under autocommit and
+    # covers every query this function runs, which is what the guard is for:
+    # the grain diff below builds temp tables over the whole season.
+    cur.execute("SET statement_timeout = '15min'")
     failures = 0
     params = {"game_ids": game_ids}
 
