@@ -45,7 +45,7 @@ league switch; standalone load framework in place
   PostgreSQL.
 - **Analytics:** the additive SQL compatibility layer is applied. It preserves
   raw numerators/denominators for player ON/OFF PPP, ratings, and four factors;
-  the three controlled games contain 6,240 validated player/context fact rows.
+  the three controlled games contain 3,910 validated player/context fact rows.
 - **Live data:** `E/2025/1-84` (rounds 1-9) is loaded under `load_run_id=4`,
   84 requested, 84 successful, zero failed, parser `0.2.0` throughout. Twenty
   teams at 8-9 games each. All verification passes: box-score metrics exact on
@@ -134,7 +134,10 @@ time.
 
 **Verified on the 84-game load.** Parser `0.1.0` to `0.2.0` is genuinely
 output-identical apart from lineage: re-deriving gamecodes 1-3 reproduced 432
-possessions and 6,240 analytics facts exactly.
+possessions and, under the analytics grain in force at the time, 6,240
+analytics facts exactly. That grain was corrected on 2026-08-08 and the same
+three games now yield 3,910 rows; the parser equivalence this paragraph records
+is unaffected, since both parsers are compared under one grain.
 
 ### Known issues
 
@@ -976,10 +979,18 @@ three requested, three successful, and zero failed games:
 
 | Gamecode / game ID | Actions | Possessions | Lineups / members | Stints | Analytics facts | Status | Review evidence |
 |---|---:|---:|---:|---:|---:|---|---|
-| 1 / 1 | 546 | 140 | 51 / 255 | 64 | 1,824 | `review` | 4 provisional FT rows; 1 invalid actor |
-| 2 / 4 | 603 | 154 | 56 / 280 | 74 | 2,496 | `review` | 2 invalid actors |
-| 3 / 5 | 497 | 138 | 50 / 250 | 55 | 1,920 | `clear` | None |
-| **Total** | **1,646** | **432** | **157 / 785** | **193** | **6,240** | — | 0 unresolved FTs |
+| 1 / 1 | 546 | 140 | 51 / 255 | 64 | 1,144 | `review` | 4 provisional FT rows; 1 invalid actor |
+| 2 / 4 | 603 | 154 | 56 / 280 | 74 | 1,518 | `review` | 2 invalid actors |
+| 3 / 5 | 497 | 138 | 50 / 250 | 55 | 1,248 | `clear` | None |
+| **Total** | **1,646** | **432** | **157 / 785** | **193** | **3,910** | — | 0 unresolved FTs |
+
+The analytics-fact counts were 1,824 / 2,496 / 1,920 (6,240 total) until
+2026-08-08. `refresh_player_four_factors_by_game_for_games()` built its
+population with an unconditional cross join — roster × every starter-count
+context × `is_on_key` × `type_lineup` — so it emitted rows for combinations
+that never occurred, zero on every measure. Restricting the grain to observed
+combinations removed those; every season-level rate is byte-identical either
+way. The counts above are the corrected ones.
 
 Every game has 24 normalized roster players, two team box scores, three source
 artifacts, 32 exact reconciliation metrics, one current-run QA row, and equal

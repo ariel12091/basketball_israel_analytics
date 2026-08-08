@@ -238,9 +238,20 @@ def verify(conn: Any, game_ids: list[int] | None) -> int:
         "  JOIN euroleague.possessions p "
         "    ON p.game_id = a.game_id "
         "   AND p.endpoint_source_event_order = a.source_event_order "
+        # IS DISTINCT FROM, not <>: a NULL type_lineup must count as a
+        # contradiction, not vanish. possession_flag comes from
+        # possessions.offense_team_id while the side comes from the play-type
+        # enumeration, and this check is the only thing holding the two
+        # together. If an endpoint ever lands on an unenumerated play type,
+        # both perspective rows get possession_flag = 1 with a NULL side;
+        # every consumer filters on type_lineup, so those possessions would
+        # drop out of the denominators and inflate every rate -- while a
+        # <>-based check still printed zero.
         " WHERE a.possession_flag = 1 "
-        "   AND ((a.team_id = p.offense_team_id AND a.type_lineup <> 'offense') "
-        "     OR (a.team_id <> p.offense_team_id AND a.type_lineup <> 'defense')) "
+        "   AND ((a.team_id = p.offense_team_id "
+        "         AND a.type_lineup IS DISTINCT FROM 'offense') "
+        "     OR (a.team_id <> p.offense_team_id "
+        "         AND a.type_lineup IS DISTINCT FROM 'defense')) "
         "   AND (%(game_ids)s::bigint[] IS NULL OR a.game_id = ANY(%(game_ids)s::bigint[]))",
         params,
     )

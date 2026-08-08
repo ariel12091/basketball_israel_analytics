@@ -508,13 +508,30 @@ BEGIN
   ),
   cum_scores AS MATERIALIZED (
     -- Cumulative score per team through each event, for clutch filtering.
-    SELECT em.game_id, em.source_event_order, em.event_team_id,
-           sum(em.points) OVER (
-             PARTITION BY em.game_id, em.event_team_id
-             ORDER BY em.source_event_order
-             ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
-           )::integer AS team_running_score
+    --
+    -- One row per (event, team) -- BOTH teams, not just the one that acted.
+    -- An earlier version partitioned by em.event_team_id, which emitted a
+    -- single row per event carrying only the acting team's total. Each event
+    -- becomes two fact rows, so only the acting side's join matched and the
+    -- other side fell through to coalesce(..., 0): 99.1% of rows had a wrong
+    -- score column, with errors up to 210 points. The maxima still equalled
+    -- the final score, which is why it read as plausible.
+    --
+    -- The running total has to be defined on every event for both teams, so
+    -- the sum is over a CASE that contributes only that team's points while
+    -- the window still walks every event in the game.
+    SELECT em.game_id, em.source_event_order,
+           side.team_id AS score_team_id,
+           sum(CASE WHEN em.event_team_id = side.team_id THEN em.points ELSE 0 END)
+             OVER (
+               PARTITION BY em.game_id, side.team_id
+               ORDER BY em.source_event_order
+               ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+             )::integer AS team_running_score
       FROM event_metrics em
+      JOIN euroleague.schedule s ON s.game_id = em.game_id
+      CROSS JOIN LATERAL (VALUES (s.home_team_id), (s.away_team_id))
+        AS side(team_id)
   ),
   sided AS MATERIALIZED (
     SELECT
@@ -603,11 +620,11 @@ BEGIN
   LEFT JOIN cum_scores own_score
     ON own_score.game_id = sd.game_id
    AND own_score.source_event_order = sd.source_event_order
-   AND own_score.event_team_id = sd.team_id
+   AND own_score.score_team_id = sd.team_id
   LEFT JOIN cum_scores opp_score
     ON opp_score.game_id = sd.game_id
    AND opp_score.source_event_order = sd.source_event_order
-   AND opp_score.event_team_id = sd.opponent_team_id;
+   AND opp_score.score_team_id = sd.opponent_team_id;
 
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
   RETURN inserted_count;
