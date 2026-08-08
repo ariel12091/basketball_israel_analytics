@@ -115,15 +115,31 @@ PROJECTIONS: dict[str, str] = {
          WHERE game_id = %(game_id)s
          GROUP BY 1
     """,
+    # Both sides of the wiring, and every measure. An earlier version compared
+    # only the own-side lineup and 5 of the 17 measures, which left the probe
+    # blind to exactly the defect it exists to catch: a mis-wired opponent
+    # lineup or stint moves no compared value. Stint ids are surrogates
+    # regenerated on republish, so they resolve to their natural key
+    # (team, start_event_order) the same way lineups resolve to lineup_hash.
     "action_team_context": """
         SELECT (a.source_event_order, t.provider_team_code)::text,
                a.type_lineup, a.points, a.possession_flag,
-               a.ts_possessions, a.orebounds, a.turnovers, a.steals,
+               a.own_starters, a.opp_starters,
+               a.ts_possessions, a.orebounds, a.oreb_opportunities,
+               a.turnovers, a.steals, a.ft_attempts, a.fga, a.fgm,
+               a.fg2_made, a.fg2_att, a.fg3_made, a.fg3_att,
+               a.layup_made, a.layup_att, a.dunk_made, a.dunk_att,
                a.own_team_score, a.opp_team_score, a.segment_id,
-               (ol.team_id, ol.lineup_hash)::text
+               (ol.team_id, ol.lineup_hash)::text,
+               (pl.team_id, pl.lineup_hash)::text,
+               (os.team_id, os.start_event_order)::text,
+               (ps.team_id, ps.start_event_order)::text
           FROM euroleague.action_team_context a
           JOIN euroleague.teams t ON t.team_id = a.team_id
           JOIN euroleague.lineups ol ON ol.lineup_id = a.own_lineup_id
+          JOIN euroleague.lineups pl ON pl.lineup_id = a.opp_lineup_id
+          LEFT JOIN euroleague.stints os ON os.stint_id = a.own_stint_id
+          LEFT JOIN euroleague.stints ps ON ps.stint_id = a.opp_stint_id
          WHERE a.game_id = %(game_id)s
     """,
     "matchup_segments": """

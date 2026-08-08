@@ -1039,7 +1039,7 @@ In `validate_game()`, immediately before the existing `refresh_player_four_facto
 ```bash
 ./euroleague/.venv/Scripts/python.exe -m unittest discover -s euroleague/tests
 ```
-Expected: OK, 64 tests.
+Expected: OK, 65 tests.
 
 **Expected duplication, leave it alone.** `refresh_stint_timing_for_games()` now runs twice per game — once inside the fact's refresh, once at the top of `refresh_player_four_factors_by_game_for_games()`, which 008 does not modify. It is an idempotent `UPDATE` over ~70 stint rows per game, so the cost is negligible and the result identical. Migration 009 removes the second call when it rewrites that function. Do not remove it now: doing so would change a function this plan is not verifying.
 
@@ -1144,7 +1144,7 @@ git commit -m "Check the event fact in the standing verifications"
 - `verify_action_team_context.py` passes all eight checks: zero rows differing either way across every stored player four-factor row, and segment durations tiling every team-game exactly. The completion criterion is the zero-diff in both directions, not a particular row count — see Task 4 Step 2 for why no literal count is asserted.
 - `probe_batched_publish.py --games 1-3` passes with the fact in its projections.
 - `load_games.py --games 1-84 --verify-only` passes 11 checks.
-- The Python suite passes (64 tests).
+- The Python suite passes (65 tests).
 - `main` is untouched; all work is on `shiny/euro-tab1`.
 
 ## Explicitly not in this plan

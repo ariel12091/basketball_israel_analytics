@@ -99,6 +99,13 @@ CREATE TABLE IF NOT EXISTS euroleague.action_team_context (
   type_lineup            text,
   own_lineup_id          bigint   NOT NULL,
   opp_lineup_id          bigint   NOT NULL,
+  -- Deliberately no foreign key, unlike the composite-FK lineup ids above.
+  -- stints.stint_id is globally unique (its primary key is the bare column),
+  -- and this row already carries game_id, so a bare bigint is unambiguous here
+  -- in the way the composite same-game discipline exists to prevent. Adding
+  -- the constraint would also break a republish: stints are deleted early in
+  -- DELETE_ORDER while these rows are cleared later, in delete_game_rows'
+  -- lineups branch, so the FK would fire before the fact is gone.
   own_stint_id           bigint,
   opp_stint_id           bigint,
   own_starters           smallint,
@@ -557,6 +564,15 @@ BEGIN
                '2FGM','2FGA','3FGM','3FGA','FTM','FTA','AS','TO','RV','O')
           THEN CASE WHEN em.event_team_id = side.team_id
                     THEN 'offense' ELSE 'defense' END
+        -- OF is an offensive foul, and it sits in this defence-side list on
+        -- purpose: the contract enumerates fouls as defensive without
+        -- qualification, and that is the rule this port follows rather than
+        -- basketball intuition. Nothing turns on it today -- OF carries no
+        -- measure column and is never a possession endpoint (verified across
+        -- all 84 games), so no output moves either way. It becomes wrong the
+        -- first time a consumer counts fouls by side, because an offensive
+        -- foul would land on the fouling team's defence row. Revisit when a
+        -- foul measure is added, not before.
         WHEN em.play_type IN (
                'ST','FV','D','CM','CMU','CMT','CMTI','CMD','OF','B','C')
           THEN CASE WHEN em.event_team_id = side.team_id

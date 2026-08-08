@@ -12,8 +12,10 @@ if str(SRC) not in sys.path:
 
 from euroleague_possessions.postgres_backend import (  # noqa: E402
     INSERT_ORDER,
+    TABLE_COLUMNS,
     PostgresTransactionBackend,
     _split_sql_statements,
+    assert_shadow_schema_compatible,
     finish_load_run,
     start_load_run,
 )
@@ -421,17 +423,58 @@ class PostgresBackendTest(unittest.TestCase):
         backend._parameters("lineups", row)
 
 
+class _SchemaCursor:
+    """Returns a fixed pg_tables result, so the guard can be driven directly."""
+
+    def __init__(self, tables: set[str]) -> None:
+        self._tables = tables
+
+    def execute(self, sql: str, parameters: object = None) -> None:
+        pass
+
+    def fetchall(self) -> list[tuple[str]]:
+        return [(name,) for name in sorted(self._tables)]
+
+    def close(self) -> None:
+        pass
+
+
+class _SchemaConnection:
+    def __init__(self, tables: set[str]) -> None:
+        self._tables = tables
+
+    def cursor(self) -> _SchemaCursor:
+        return _SchemaCursor(self._tables)
+
+
 class ActionTeamContextWiringTest(unittest.TestCase):
     """The derived fact must be known to the guard and refreshed on publish."""
 
-    def test_schema_allowlist_knows_the_derived_fact(self) -> None:
-        import inspect
+    def test_schema_allowlist_accepts_the_derived_fact(self) -> None:
+        """The guard must accept a schema containing the two derived tables.
 
-        from euroleague_possessions import postgres_backend
+        Asserted through behaviour, not through inspect.getsource: a text match
+        passes when the names appear only in a comment, and fails on a harmless
+        rename. Both tables are absent from INSERT_ORDER by design, so the
+        allowlist is the only thing that lets publication start.
+        """
+        existing = set(TABLE_COLUMNS) | {
+            "load_runs", "teams", "players", "schedule", "source_artifacts",
+            "player_four_factors_by_game", "team_four_factors_by_game",
+            "matchup_segments", "action_team_context",
+        }
+        assert_shadow_schema_compatible(_SchemaConnection(existing))
 
-        source = inspect.getsource(postgres_backend.assert_shadow_schema_compatible)
-        self.assertIn('"action_team_context"', source)
-        self.assertIn('"matchup_segments"', source)
+    def test_schema_allowlist_still_rejects_an_unknown_table(self) -> None:
+        """The guard is only worth having if it refuses what it does not know."""
+        existing = set(TABLE_COLUMNS) | {
+            "load_runs", "teams", "players", "schedule", "source_artifacts",
+            "player_four_factors_by_game", "team_four_factors_by_game",
+            "matchup_segments", "action_team_context", "something_unexpected",
+        }
+        with self.assertRaises(RuntimeError) as caught:
+            assert_shadow_schema_compatible(_SchemaConnection(existing))
+        self.assertIn("something_unexpected", str(caught.exception))
 
     def test_validate_game_refreshes_the_fact_before_four_factors(self) -> None:
         # LoadRunConnection, not RecordingConnection: RecordingCursor has no
