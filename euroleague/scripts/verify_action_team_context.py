@@ -47,7 +47,7 @@ WITH real_roster AS (
   SELECT fr.game_id, fr.team_id, fr.player_id
     FROM euroleague.full_rosters fr
     JOIN euroleague.players p ON p.player_id = fr.player_id
-   WHERE (%(game_ids)s IS NULL OR fr.game_id = ANY(%(game_ids)s))
+   WHERE (%(game_ids)s::bigint[] IS NULL OR fr.game_id = ANY(%(game_ids)s::bigint[]))
      AND lower(p.provider_player_id) NOT IN ('team', 'total')
      AND lower(btrim(p.display_name)) NOT IN ('team', 'total')
 ),
@@ -66,7 +66,7 @@ player_minutes AS (
       ON rr.game_id = ms.game_id AND rr.team_id = ms.team_id
     LEFT JOIN euroleague.lineup_players lp
       ON lp.lineup_id = ms.own_lineup_id AND lp.player_id = rr.player_id
-   WHERE %(game_ids)s IS NULL OR ms.game_id = ANY(%(game_ids)s)
+   WHERE %(game_ids)s::bigint[] IS NULL OR ms.game_id = ANY(%(game_ids)s::bigint[])
    GROUP BY ms.game_id, ms.team_id, rr.player_id,
             CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END,
             ms.own_starters, ms.opp_starters
@@ -122,7 +122,7 @@ counts AS (
       ON rr.game_id = atc.game_id AND rr.team_id = atc.team_id
     LEFT JOIN euroleague.lineup_players lp
       ON lp.lineup_id = atc.own_lineup_id AND lp.player_id = rr.player_id
-   WHERE (%(game_ids)s IS NULL OR atc.game_id = ANY(%(game_ids)s))
+   WHERE (%(game_ids)s::bigint[] IS NULL OR atc.game_id = ANY(%(game_ids)s::bigint[]))
      AND atc.type_lineup IS NOT NULL
    GROUP BY atc.game_id, atc.team_id, rr.player_id,
             CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END,
@@ -190,7 +190,7 @@ SELECT game_id, team_id, player_id, is_on_key, type_lineup,
        fg2_made, fg2_att, fg3_made, fg3_att,
        layup_made, layup_att, dunk_made, dunk_att, onoff_minutes
   FROM euroleague.player_four_factors_by_game
- WHERE %(game_ids)s IS NULL OR game_id = ANY(%(game_ids)s)
+ WHERE %(game_ids)s::bigint[] IS NULL OR game_id = ANY(%(game_ids)s::bigint[])
 """
 
 
@@ -209,7 +209,7 @@ def verify(conn: Any, game_ids: list[int] | None) -> int:
     # 1. Coverage: every published game has fact rows.
     cur.execute(
         "SELECT count(*) FROM euroleague.schedule s "
-        " WHERE (%(game_ids)s IS NULL OR s.game_id = ANY(%(game_ids)s)) "
+        " WHERE (%(game_ids)s::bigint[] IS NULL OR s.game_id = ANY(%(game_ids)s::bigint[])) "
         "   AND NOT EXISTS (SELECT 1 FROM euroleague.action_team_context a "
         "                    WHERE a.game_id = s.game_id)",
         params,
@@ -220,9 +220,9 @@ def verify(conn: Any, game_ids: list[int] | None) -> int:
     # 2. Two rows per action, one per perspective team.
     cur.execute(
         "SELECT (SELECT count(*) FROM euroleague.action_team_context a "
-        "         WHERE %(game_ids)s IS NULL OR a.game_id = ANY(%(game_ids)s)), "
+        "         WHERE %(game_ids)s::bigint[] IS NULL OR a.game_id = ANY(%(game_ids)s::bigint[])), "
         "       (SELECT count(*) FROM euroleague.actions_raw r "
-        "         WHERE %(game_ids)s IS NULL OR r.game_id = ANY(%(game_ids)s))",
+        "         WHERE %(game_ids)s::bigint[] IS NULL OR r.game_id = ANY(%(game_ids)s::bigint[]))",
         params,
     )
     fact_rows, action_rows = cur.fetchone()
@@ -241,7 +241,7 @@ def verify(conn: Any, game_ids: list[int] | None) -> int:
         " WHERE a.possession_flag = 1 "
         "   AND ((a.team_id = p.offense_team_id AND a.type_lineup <> 'offense') "
         "     OR (a.team_id <> p.offense_team_id AND a.type_lineup <> 'defense')) "
-        "   AND (%(game_ids)s IS NULL OR a.game_id = ANY(%(game_ids)s))",
+        "   AND (%(game_ids)s::bigint[] IS NULL OR a.game_id = ANY(%(game_ids)s::bigint[]))",
         params,
     )
     contradictions = cur.fetchone()[0]
@@ -254,7 +254,7 @@ def verify(conn: Any, game_ids: list[int] | None) -> int:
     # 4. The four columns the gate cannot compare must still be all zero.
     cur.execute(
         "SELECT count(*) FROM euroleague.player_four_factors_by_game "
-        " WHERE (%(game_ids)s IS NULL OR game_id = ANY(%(game_ids)s)) "
+        " WHERE (%(game_ids)s::bigint[] IS NULL OR game_id = ANY(%(game_ids)s::bigint[])) "
         "   AND (deflection_count <> 0 OR c3_made <> 0 "
         "     OR c3_att <> 0 OR c3_known_att <> 0)",
         params,
@@ -273,13 +273,13 @@ def verify(conn: Any, game_ids: list[int] | None) -> int:
         "WITH per_team AS ("
         "  SELECT m.game_id, m.team_id, sum(m.segment_seconds) AS seconds "
         "    FROM euroleague.matchup_segments m "
-        "   WHERE %(game_ids)s IS NULL OR m.game_id = ANY(%(game_ids)s) "
+        "   WHERE %(game_ids)s::bigint[] IS NULL OR m.game_id = ANY(%(game_ids)s::bigint[]) "
         "   GROUP BY m.game_id, m.team_id"
         "), game_length AS ("
         "  SELECT game_id, "
         "         (2400 + greatest(max(period) - 4, 0) * 300)::numeric AS seconds "
         "    FROM euroleague.actions_raw "
-        "   WHERE %(game_ids)s IS NULL OR game_id = ANY(%(game_ids)s) "
+        "   WHERE %(game_ids)s::bigint[] IS NULL OR game_id = ANY(%(game_ids)s::bigint[]) "
         "   GROUP BY game_id"
         ") SELECT count(*) FROM per_team p JOIN game_length g USING (game_id) "
         "   WHERE p.seconds IS DISTINCT FROM g.seconds",
