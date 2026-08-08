@@ -187,6 +187,13 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     )[0][0]
     check("all games have team analytics", orphan == 0, f"{orphan} games missing")
 
+    orphan_fact = q(
+        "SELECT count(*) FROM euroleague.schedule s "
+        "WHERE NOT EXISTS (SELECT 1 FROM euroleague.action_team_context a "
+        "                   WHERE a.game_id = s.game_id)"
+    )[0][0]
+    check("all games have the event fact", orphan_fact == 0, f"{orphan_fact} games missing")
+
     # Fast path must agree with the filtered path.
     parity = q(
         """SELECT count(*) FROM (

@@ -30,7 +30,7 @@ league switch; standalone load framework in place
 - **Schema:** the isolated `euroleague` schema follows the Israeli core
   layers (`schedule`, `full_rosters`, `actions_clean`, `possessions`, `stints`,
   and `pws`) while separating immutable raw evidence and avoiding wide table
-  duplication. Migrations 001, 002, 004, 005 and 006 are applied.
+  duplication. Migrations 001, 002, 004, 005, 006, 007 and 008 are applied.
   **Migration 003 is SUPERSEDED by 004 and must never be applied.**
 - **Loadability:** the database-free schema coverage audit passes 100/100 games
   with zero blocking identity, action-key, lineup, endpoint, or offense-team
@@ -75,10 +75,11 @@ design history and evidence remain below it.
 | Team ratings | Migration 005 | Applied |
 | Team four factors + dynamic team path | Migration 006 | Applied |
 | Four-factor refresh query plan | Migration 007 | Applied |
+| Event x team-perspective fact | Migration 008 | Applied |
 | App integration | Tabs 8 and 9 in `app/` | Reads via `app_readonly` |
 
-Apply order is **001 → 002 → 004 → 005 → 006 → 007**. Migration 003 is superseded and
-must never be applied.
+Apply order is **001 → 002 → 004 → 005 → 006 → 007 → 008**. Migration 003 is
+superseded and must never be applied.
 
 The publication code calls `euroleague.refresh_app_materialized_views()` when a
 load run finishes. This is a deliberate fail-closed dependency: a load must not
@@ -88,11 +89,19 @@ adds a derived table must also register it in `assert_shadow_schema_compatible()
 
 ### Storage
 
-181 MB for 84 games (~2.2 MB/game), projecting to roughly 880 MB for a full
+~280 MB for 84 games (~3.3 MB/game), projecting to roughly 1.3 GB for a full
 402-game season. The instance is shared with `basketball_test`; the operator has
 confirmed 5 GB available, so storage is not currently a constraint. The largest
 per-game relations are `player_four_factors_by_game`, `actions_raw` and
 `action_lineups`.
+
+Migration 008 is not a net storage cost. It adds `action_team_context`
+(95,216 rows / 36 MB) and `matchup_segments` (11,554 rows / 2.2 MB), but the
+007-adjacent correction to `refresh_player_four_factors_by_game_for_games()`
+(it had been cross-joining player/context combinations that never occurred)
+shrank `player_four_factors_by_game` from 182,868 to 115,034 rows — 109 MB, a
+larger reduction than the two new tables consume. Migration 008 as built
+returns more space than it takes.
 
 ### Latest completed work (2026-08-07)
 
@@ -135,15 +144,26 @@ possessions and 6,240 analytics facts exactly.
   progression was not exact but did reconcile. QA status is **not** a
   publication filter — the season aggregates include all 84 games regardless —
   so this count should be surfaced in the UI.
-- **The player four-factor refresh still re-derives the event fact.** Migration
-  007 fixed its query plan (28-42s/game publication → ~5s), but the structural
-  gap remains: the Israeli pipeline reads a persisted event × team-perspective
-  fact (`df_pts_poss_lineups_longer_mv`) that already carries `type_lineup`,
-  lineup, starter context and segment seconds, while this function rebuilds all
-  of it from `actions_raw` on every refresh — regex clock parsing, a running-max
-  window, a five-way event join, the perspective expansion and six chained
-  window CTEs for segments. That is table remark 7 in `CLAUDE.md`, and it is
-  still the right next decision before more metrics are added.
+- **The persisted event fact exists and is populated, but nothing reads it
+  yet.** Migration 008 added `euroleague.action_team_context` (one row per
+  action per team perspective) and `euroleague.matchup_segments` (joint
+  own-lineup/opp-lineup segments, duration stored once per segment), rebuilt by
+  `refresh_action_team_context_for_games()` and called from `validate_game()`
+  ahead of the four-factor refreshes on every publication — currently 95,216
+  fact rows / 36 MB and 11,554 segment rows / 2.2 MB across 84 games. This
+  closes the structural gap noted after migration 007: the Israeli pipeline
+  reads a persisted event × team-perspective fact
+  (`df_pts_poss_lineups_longer_mv`) instead of re-deriving `type_lineup`,
+  lineup, starter context and segment seconds from raw events on every refresh.
+  `refresh_player_four_factors_by_game_for_games()` still does that
+  re-derivation itself — the new fact is written and proven correct
+  (`scripts/verify_action_team_context.py`, 8/8 checks) but is not yet wired to
+  any consumer, so a problem with it cannot corrupt anything downstream.
+  Migration 009 is the switch: point the four-factor refresh (and any later
+  metric) at `action_team_context`/`matchup_segments` instead of `actions_raw`,
+  collapsing the three independent restatements of the row grain (007's
+  `complete_grid`, the verification gate's reconstruction, and
+  `validate_game()`'s expected-row-count check) into one.
 - **`pws` is write-only.** Nothing reads it; both analytics derivations join
   `action_lineups` and `possessions` directly. It survives only as an integrity
   gate — four NOT NULL lineup/stint foreign keys mean an unattributable

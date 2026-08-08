@@ -115,6 +115,30 @@ PROJECTIONS: dict[str, str] = {
          WHERE game_id = %(game_id)s
          GROUP BY 1
     """,
+    "action_team_context": """
+        SELECT (a.source_event_order, t.provider_team_code)::text,
+               a.type_lineup, a.points, a.possession_flag,
+               a.ts_possessions, a.orebounds, a.turnovers, a.steals,
+               a.own_team_score, a.opp_team_score, a.segment_id,
+               (ol.team_id, ol.lineup_hash)::text
+          FROM euroleague.action_team_context a
+          JOIN euroleague.teams t ON t.team_id = a.team_id
+          JOIN euroleague.lineups ol ON ol.lineup_id = a.own_lineup_id
+         WHERE a.game_id = %(game_id)s
+    """,
+    "matchup_segments": """
+        SELECT (t.provider_team_code, m.segment_id)::text,
+               m.own_starters, m.opp_starters, m.start_event_order,
+               m.start_elapsed_seconds, m.end_elapsed_seconds,
+               m.segment_seconds,
+               (ol.team_id, ol.lineup_hash)::text,
+               (pl.team_id, pl.lineup_hash)::text
+          FROM euroleague.matchup_segments m
+          JOIN euroleague.teams t ON t.team_id = m.team_id
+          JOIN euroleague.lineups ol ON ol.lineup_id = m.own_lineup_id
+          JOIN euroleague.lineups pl ON pl.lineup_id = m.opp_lineup_id
+         WHERE m.game_id = %(game_id)s
+    """,
 }
 
 

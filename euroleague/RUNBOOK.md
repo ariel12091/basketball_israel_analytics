@@ -59,18 +59,23 @@ it.
 
 Measured per game against the live schema at 84 games loaded:
 
-| publication phase | before migration 007 | after |
-|---|---|---|
-| `begin` (resolve schedule + dimensions) | ~0.5 s | ~0.5 s |
-| delete the game's replaceable rows | ~1.2 s | ~1.2 s |
-| insert the whole snapshot | ~1.8 s | ~1.9 s |
-| validate | 24-38 s | **~1.5 s** |
-| **total** | **~28-42 s** | **~5 s** |
+| publication phase | before migration 007 | after 007 | after 008 |
+|---|---|---|---|
+| `begin` (resolve schedule + dimensions) | ~0.5 s | ~0.5 s | ~0.5 s |
+| delete the game's replaceable rows | ~1.2 s | ~1.2 s | ~1.5 s |
+| insert the whole snapshot | ~1.8 s | ~1.9 s | ~1.9 s |
+| validate | 24-38 s | **~1.5 s** | **1.86-2.32 s** |
+| **total** | **~28-42 s** | **~5 s** | **~5-6 s** |
 
 Validation used to be ~95% of a publication, effectively all of it the single
 call to `refresh_player_four_factors_by_game_for_games()`. Migration 007 fixed
-that function's query plan; see its header for the diagnosis. Budget roughly
-**5 s/game**, so under 30 minutes for the ~318 games remaining in the season.
+that function's query plan; see its header for the diagnosis. Migration 008
+added `refresh_action_team_context_for_games()` — which rebuilds the persisted
+event x team-perspective fact and the matchup-segment table — as the first
+statement inside `validate_game()`, ahead of the four-factor refreshes it will
+eventually replace; that accounts for the small validate increase over 007.
+Budget roughly **5-6 s/game**, so still well under 30 minutes for the ~318
+games remaining in the season.
 
 Publication is now round-trip bound again. If it needs to get faster, the next
 target is the ~1.2 s spent deleting the game's replaceable rows, which is 13
@@ -90,6 +95,8 @@ serial statements.
 - possessions are symmetric between opponents
 - team four factors match the independently-derived player fact ÷ 5
 - every game has team analytics, not only player analytics
+- every game has rows in the persisted event x team-perspective fact
+  (`action_team_context`, migration 008)
 - the ratings MV agrees with the dynamic function
 
 It also prints the `game_qa` status breakdown and the schema's size per game.
@@ -105,12 +112,13 @@ committed; only id sequences advance.
 ```
 
 It compares a *natural-key projection* of everything the generated ids wire
-together — lineups, lineup members, action lineups, stints, pws and the
-downstream `player_game_context` fact — with each lineup written as
-`(team, lineup_hash)` and each stint as `(team, stint_number)`. Surrogate ids
-differ on every insert, so only that projection is comparable, and it must be
-identical to what is already stored. Run it after any change to how rows are
-inserted or how generated ids are resolved.
+together — lineups, lineup members, action lineups, stints, pws, the
+downstream `player_game_context` fact, and (since migration 008) the persisted
+`action_team_context` event fact and `matchup_segments` — with each lineup
+written as `(team, lineup_hash)` and each stint as `(team, stint_number)`.
+Surrogate ids differ on every insert, so only that projection is comparable,
+and it must be identical to what is already stored. Run it after any change to
+how rows are inserted or how generated ids are resolved.
 
 ## When something goes wrong
 
@@ -146,5 +154,5 @@ schedule endpoint.
 - `euroleague/.venv` with the project installed.
 - `etl/.Renviron` with write credentials. Publication requires the **direct**
   port 5432, not the 6543 pooler; the loader refuses otherwise.
-- Migrations applied in order: `001 → 002 → 004 → 005 → 006 → 007`. **`003` is
-  superseded and must not be applied.**
+- Migrations applied in order: `001 → 002 → 004 → 005 → 006 → 007 → 008`.
+  **`003` is superseded and must not be applied.**
