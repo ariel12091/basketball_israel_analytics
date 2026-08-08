@@ -444,7 +444,7 @@ class ActionTeamContextWiringTest(unittest.TestCase):
         try:
             backend.validate_game(game_id=23)
         except Exception:
-            pass  # RecordingConnection cannot satisfy the later count checks
+            pass  # LoadRunCursor's 1-tuple cannot satisfy the later count checks
 
         executed = [sql for sql, _ in connection.statements]
         fact = next(
