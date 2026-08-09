@@ -59,13 +59,13 @@ it.
 
 Measured per game against the live schema at 84 games loaded:
 
-| publication phase | before migration 007 | after 007 | after 008 |
-|---|---|---|---|
-| `begin` (resolve schedule + dimensions) | ~0.5 s | ~0.5 s | ~0.5 s |
-| delete the game's replaceable rows | ~1.2 s | ~1.2 s | ~1.5 s |
-| insert the whole snapshot | ~1.8 s | ~1.9 s | ~1.9 s |
-| validate | 24-38 s | **~1.5 s** | **1.86-2.32 s** |
-| **total** | **~28-42 s** | **~5 s** | **~5-6 s** |
+| publication phase | before migration 007 | after 007 | after 008 | after 009 |
+|---|---|---|---|---|
+| `begin` (resolve schedule + dimensions) | ~0.5 s | ~0.5 s | ~0.5 s | ~0.5 s |
+| delete the game's replaceable rows | ~1.2 s | ~1.2 s | ~1.5 s | ~1.5 s |
+| insert the whole snapshot | ~1.8 s | ~1.9 s | ~1.9 s | ~1.9 s |
+| validate | 24-38 s | **~1.5 s** | **1.86-2.32 s** | **1.54-2.11 s** |
+| **total** | **~28-42 s** | **~5 s** | **~5-6 s** | **~5-6 s** |
 
 Validation used to be ~95% of a publication, effectively all of it the single
 call to `refresh_player_four_factors_by_game_for_games()`. Migration 007 fixed
@@ -74,6 +74,10 @@ added `refresh_action_team_context_for_games()` — which rebuilds the persisted
 event x team-perspective fact and the matchup-segment table — as the first
 statement inside `validate_game()`, ahead of the four-factor refreshes it will
 eventually replace; that accounts for the small validate increase over 007.
+Migration 009 then made that replacement: both four-factor refreshes now read
+the fact instead of re-deriving the expansion themselves, so the derivation is
+paid once per publication rather than three times. Validate did not regress —
+the fastest of the three probe games is now below the 008 floor.
 Budget roughly **5-6 s/game**, so still well under 30 minutes for the ~318
 games remaining in the season.
 
@@ -154,5 +158,5 @@ schedule endpoint.
 - `euroleague/.venv` with the project installed.
 - `etl/.Renviron` with write credentials. Publication requires the **direct**
   port 5432, not the 6543 pooler; the loader refuses otherwise.
-- Migrations applied in order: `001 → 002 → 004 → 005 → 006 → 007 → 008`.
+- Migrations applied in order: `001 → 002 → 004 → 005 → 006 → 007 → 008 → 009`.
   **`003` is superseded and must not be applied.**

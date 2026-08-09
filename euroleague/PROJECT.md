@@ -30,7 +30,7 @@ league switch; standalone load framework in place
 - **Schema:** the isolated `euroleague` schema follows the Israeli core
   layers (`schedule`, `full_rosters`, `actions_clean`, `possessions`, `stints`,
   and `pws`) while separating immutable raw evidence and avoiding wide table
-  duplication. Migrations 001, 002, 004, 005, 006, 007 and 008 are applied.
+  duplication. Migrations 001, 002, 004, 005, 006, 007, 008 and 009 are applied.
   **Migration 003 is SUPERSEDED by 004 and must never be applied.**
 - **Loadability:** the database-free schema coverage audit passes 100/100 games
   with zero blocking identity, action-key, lineup, endpoint, or offense-team
@@ -76,9 +76,10 @@ design history and evidence remain below it.
 | Team four factors + dynamic team path | Migration 006 | Applied |
 | Four-factor refresh query plan | Migration 007 | Applied |
 | Event x team-perspective fact | Migration 008 | Applied |
+| Consumers read the event fact | Migration 009 | Applied |
 | App integration | Tabs 8 and 9 in `app/` | Reads via `app_readonly` |
 
-Apply order is **001 → 002 → 004 → 005 → 006 → 007 → 008**. Migration 003 is
+Apply order is **001 → 002 → 004 → 005 → 006 → 007 → 008 → 009**. Migration 003 is
 superseded and must never be applied.
 
 The publication code calls `euroleague.refresh_app_materialized_views()` when a
@@ -147,8 +148,8 @@ is unaffected, since both parsers are compared under one grain.
   progression was not exact but did reconcile. QA status is **not** a
   publication filter — the season aggregates include all 84 games regardless —
   so this count should be surfaced in the UI.
-- **The persisted event fact exists and is populated, but nothing reads it
-  yet.** Migration 008 added `euroleague.action_team_context` (one row per
+- **The persisted event fact is populated and both four-factor refreshes now
+  read it.** Migration 008 added `euroleague.action_team_context` (one row per
   action per team perspective) and `euroleague.matchup_segments` (joint
   own-lineup/opp-lineup segments, duration stored once per segment), rebuilt by
   `refresh_action_team_context_for_games()` and called from `validate_game()`
@@ -158,15 +159,21 @@ is unaffected, since both parsers are compared under one grain.
   reads a persisted event × team-perspective fact
   (`df_pts_poss_lineups_longer_mv`) instead of re-deriving `type_lineup`,
   lineup, starter context and segment seconds from raw events on every refresh.
-  `refresh_player_four_factors_by_game_for_games()` still does that
-  re-derivation itself — the new fact is written and proven correct
-  (`scripts/verify_action_team_context.py`, 8/8 checks) but is not yet wired to
-  any consumer, so a problem with it cannot corrupt anything downstream.
-  Migration 009 is the switch: point the four-factor refresh (and any later
-  metric) at `action_team_context`/`matchup_segments` instead of `actions_raw`,
-  collapsing the three independent restatements of the row grain (007's
-  `complete_grid`, the verification gate's reconstruction, and
-  `validate_game()`'s expected-row-count check) into one.
+  Migration 009 completed the switch. Both
+  `refresh_player_four_factors_by_game_for_games()` and
+  `refresh_team_four_factors_by_game_for_games()` now read the fact instead of
+  each re-deriving the expansion from `actions_raw`, so it is derived once per
+  publication rather than three times. Both rewrites are output-identical:
+  the player grain, the team grain and both season views are byte-for-byte
+  unchanged, verified against rows captured before the change
+  (`scripts/snapshot_four_factor_grains.py`).
+
+  Two consequences worth knowing. `verify_action_team_context.py` checks 6-8
+  now compare the fact against a table derived from the fact, so they are
+  trivially true; checks 1-5 remain independent. And `validate_game()`'s
+  expected-row-count comparison became a value against itself, so it was
+  replaced by a coverage assertion, with the real reproduction check promoted
+  into `load_games.py --verify-only` where it can still fail.
 - **`pws` is write-only.** Nothing reads it; both analytics derivations join
   `action_lineups` and `possessions` directly. It survives only as an integrity
   gate — four NOT NULL lineup/stint foreign keys mean an unattributable
