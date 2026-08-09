@@ -77,7 +77,13 @@ BEGIN
     coalesce(sum(atc.fgm)                FILTER (WHERE atc.type_lineup = 'defense'), 0)::bigint,
     coalesce(sum(atc.fg3_made)           FILTER (WHERE atc.type_lineup = 'defense'), 0)::bigint,
     coalesce(sum(atc.steals)             FILTER (WHERE atc.type_lineup = 'defense'), 0)::bigint,
-    'existing-israeli-contract-v1'
+    -- Lineage records what actually produced these rows. Migration 006 wrote
+    -- '006-team-ff'; an earlier draft of 009 wrote the tag the PLAYER refresh
+    -- uses, which both hid the change and made the two grains
+    -- indistinguishable by lineage. The measure columns are unchanged -- that
+    -- is what the output-identical gate proves -- but the derivation is not,
+    -- and lineage is the one column that is supposed to move when it changes.
+    '009-team-ff-from-fact'
   FROM euroleague.action_team_context atc
   JOIN euroleague.schedule s ON s.game_id = atc.game_id
  WHERE (game_ids IS NULL OR atc.game_id = ANY(game_ids))
