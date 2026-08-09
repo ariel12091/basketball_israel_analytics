@@ -519,6 +519,39 @@ class ActionTeamContextWiringTest(unittest.TestCase):
         self.assertIn("DELETE FROM euroleague.matchup_segments", executed[1])
         self.assertIn("DELETE FROM euroleague.lineups", executed[2])
 
+    def test_validate_game_does_not_predict_the_grain_from_segments(self) -> None:
+        """The row-count expectation must not be derived from matchup_segments.
+
+        It was a real check only while the player refresh derived its own
+        segments: the two sides then came from different sources. Once that
+        refresh reads matchup_segments, an expectation derived from the same
+        table compares a value against itself and can never fail.
+
+        Asserted on source text on purpose, unlike
+        test_schema_allowlist_accepts_the_derived_fact, which was deliberately
+        moved off inspect.getsource because it had behaviour to drive. This one
+        does not: the property is the ABSENCE of a query, and once the check is
+        gone there is nothing left to observe at runtime. A mock-based version
+        would assert over recorded SQL strings, which is the same text
+        assertion one layer removed, with more machinery.
+
+        Comment lines are stripped before the assertion. The comment that
+        replaced the deleted check necessarily names the table it explains, so
+        asserting over raw source would fail on its own rationale -- the same
+        code-versus-prose blindness that made the allowlist test worth
+        replacing, in the opposite direction. Stripping comments makes this
+        assert what it claims to: no QUERY in this function reads the table.
+        """
+        import inspect
+
+        from euroleague_possessions import postgres_backend
+
+        source = inspect.getsource(postgres_backend.PostgresTransactionBackend.validate_game)
+        code = "\n".join(
+            line for line in source.splitlines() if not line.lstrip().startswith("#")
+        )
+        self.assertNotIn("matchup_segments", code)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -194,6 +194,37 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     )[0][0]
     check("all games have the event fact", orphan_fact == 0, f"{orphan_fact} games missing")
 
+    # The team grain must still be reproducible from the fact it is derived
+    # from. This replaces the per-game row-count expectation that validate_game
+    # used to carry: that comparison derived its expectation from
+    # matchup_segments, which was a genuine cross-check only while the refresh
+    # derived its own segments. Migration 009 pointed both at the same source,
+    # so it became a value compared against itself.
+    #
+    # Deliberately the team grain, not the player grain. The team side needs no
+    # roster fan-out -- a player-level equivalent would fan every event across
+    # the roster, over a million rows for a season -- so this is cheap enough to
+    # run on every load while exercising the same fact columns.
+    fact_only = q(
+        "WITH from_fact AS ("
+        "  SELECT atc.game_id, atc.team_id, atc.own_starters, atc.opp_starters, "
+        "         coalesce(sum(atc.points) FILTER "
+        "                  (WHERE atc.type_lineup = 'offense'), 0) AS off_pts "
+        "    FROM euroleague.action_team_context atc "
+        "   GROUP BY atc.game_id, atc.team_id, atc.own_starters, atc.opp_starters"
+        ") SELECT count(*) FROM ("
+        "  SELECT game_id, team_id, own_starters, opp_starters, off_pts::numeric "
+        "    FROM from_fact "
+        "  EXCEPT ALL "
+        "  SELECT game_id, team_id, own_starters, opp_starters, off_pts::numeric "
+        "    FROM euroleague.team_four_factors_by_game) x"
+    )[0][0]
+    check(
+        "team grain reproduces from the fact",
+        fact_only == 0,
+        f"{fact_only} rows differ",
+    )
+
     # Fast path must agree with the filtered path.
     parity = q(
         """SELECT count(*) FROM (

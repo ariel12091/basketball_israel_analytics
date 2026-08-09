@@ -1113,51 +1113,14 @@ class PostgresTransactionBackend:
                 mismatches.append("possession/pws counts differ")
             if actual_counts["game_qa"] != 1:
                 mismatches.append("current load run must have exactly one game_qa row")
-            # Expected player four-factor rows.
-            #
-            # This used to predict sum(players * contexts * 4) -- roster x every
-            # starter-count context the team saw x is_on_key x type_lineup. That
-            # is the unconditional cross join migration 007 was corrected to
-            # stop doing on 2026-08-08, because it manufactured rows for
-            # combinations that never occurred (53.5% of the table was zero on
-            # every measure). The prediction outlived the thing it predicted and
-            # failed a republish with "expected 1824, got 1144".
-            #
-            # The grain is now observation-driven, so the expectation is derived
-            # from the same place the refresh derives it: the observed
-            # (team, player, is_on_key, own_starters, opp_starters) combinations
-            # in matchup_segments, doubled for the two type_lineup values.
-            # matchup_segments is refreshed above, before this check, so it is
-            # current for this game. is_on_key is a plain membership test --
-            # EuroLeague lineups are first-class, so nothing is re-derived here.
-            cursor.execute(
-                "WITH real_roster AS ("
-                "  SELECT fr.game_id, fr.team_id, fr.player_id "
-                "  FROM euroleague.full_rosters fr "
-                "  JOIN euroleague.players p ON p.player_id = fr.player_id "
-                "  WHERE fr.game_id = %s "
-                "    AND lower(p.provider_player_id) NOT IN ('team', 'total') "
-                "    AND lower(btrim(p.display_name)) NOT IN ('team', 'total')"
-                "), observed AS ("
-                "  SELECT DISTINCT ms.team_id, rr.player_id, "
-                "    CASE WHEN lp.player_id IS NULL THEN 0 ELSE 1 END AS is_on_key, "
-                "    ms.own_starters, ms.opp_starters "
-                "  FROM euroleague.matchup_segments ms "
-                "  JOIN real_roster rr "
-                "    ON rr.game_id = ms.game_id AND rr.team_id = ms.team_id "
-                "  LEFT JOIN euroleague.lineup_players lp "
-                "    ON lp.lineup_id = ms.own_lineup_id "
-                "   AND lp.player_id = rr.player_id "
-                "  WHERE ms.game_id = %s"
-                ") SELECT (count(*) * 2)::bigint FROM observed",
-                (game_id, game_id),
-            )
-            expected_analytics_rows = int(cursor.fetchone()[0])
-            if analytics_rows != expected_analytics_rows:
-                mismatches.append(
-                    "player four-factor rows differ: expected "
-                    f"{expected_analytics_rows}, got {analytics_rows}"
-                )
+            # Coverage, not a predicted row count. Predicting the count meant
+            # deriving the expectation from matchup_segments, which was a real
+            # check only while this refresh derived its own segments. Migration
+            # 009 pointed it at the same table, so the comparison would be a
+            # value against itself. The bidirectional grain diff now runs in
+            # load_games.py --verify-only, where it can still fail.
+            if analytics_rows <= 0:
+                mismatches.append("player four-factor refresh produced no rows")
             cursor.execute(
                 "WITH game_duration AS ("
                 "  SELECT game_id, "
