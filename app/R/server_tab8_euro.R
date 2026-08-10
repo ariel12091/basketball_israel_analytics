@@ -177,12 +177,15 @@ server_tab8_euro <- function(input, output, session, shared) {
     )
   }
 
-  # The population the auto-min bars measure on the filtered path: the same
-  # query live_result_df() runs, but with both bars at zero so the threshold
-  # comes from the whole population.
-  auto_min_live_df <- function() {
+  # The whole filtered-path population, with both possession bars at zero.
+  # A reactive, not a function, and that matters: the Summary table and the two
+  # auto-min bars all need this exact frame, and each used to issue the query
+  # separately -- three identical onoff_compute calls per filter change. As one
+  # reactive it is computed once per flush.
+  live_unfiltered_df <- reactive({
     rng <- debounced_range()
     req(rng)
+    req(!is.na(rng[1]), !is.na(rng[2]))
     db_args <- build_onoff_db_args()
     run_onoff_compute_14(
       pg_pool,
@@ -196,7 +199,7 @@ server_tab8_euro <- function(input, output, session, shared) {
       num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
       num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max
     )
-  }
+  })
 
   setup_onoff_auto_min(
     input, session,
@@ -211,7 +214,7 @@ server_tab8_euro <- function(input, output, session, shared) {
       fallback = function() fallback_needed(),
       ff = function() ff_ranked_df(),
       mv = function() mv_result_df(),
-      live = auto_min_live_df,
+      live = function() live_unfiltered_df(),
       team_ids = function() selected_team_ids()
     )
   )
@@ -296,43 +299,12 @@ server_tab8_euro <- function(input, output, session, shared) {
   }
 
   # --- Live Calculation (Summary) ---
+  # Reads the shared unfiltered pull rather than re-issuing the query, then
+  # applies the possession bars. Teams are already filtered in SQL there.
   live_result_df <- reactive({
     req(!is.null(input$euro_min_all_poss), !is.null(input$euro_min_on_poss))
-    rng <- debounced_range()
-    req(rng)
-    req(!is.na(rng[1]), !is.na(rng[2]))
-    tids <- selected_team_ids()
-    gy <- euro_selected_season()
-    db_args <- build_onoff_db_args()
-    df_live <- run_onoff_compute_14(
-      pg_pool,
-      start_d = as.Date(rng[1]),
-      end_d = as.Date(rng[2]),
-      team_ids = tids,
-      min_all = 0L,
-      min_on = 0L,
-      min_net = DEFAULT_MIN_NET,
-      game_year = gy,
-      phase_csv = db_args$phase_csv,
-      opp_ids_csv = db_args$opp_ids_csv,
-      home_away = db_args$home_away,
-      outcome = db_args$outcome,
-      opp_rank_side = db_args$opp_rank_side,
-      opp_rank_n = db_args$opp_rank_n,
-      opp_rank_metric = db_args$opp_rank_metric,
-      min_gn = db_args$min_gn,
-      max_gn = db_args$max_gn,
-      last_n_games = db_args$last_n_games,
-      num_starters_off_min = db_args$num_starters_off_min,
-      num_starters_off_max = db_args$num_starters_off_max,
-      num_starters_def_min = db_args$num_starters_def_min,
-      num_starters_def_max = db_args$num_starters_def_max
-    )
-
-    # Keep fallback filtering behavior consistent with the MV path. Teams are
-    # already filtered in SQL here, so only the possession bars apply.
-    onoff_filter_summary_rows(df_live, NULL, input$euro_min_all_poss,
-                              input$euro_min_on_poss)
+    onoff_filter_summary_rows(live_unfiltered_df(), NULL,
+                              input$euro_min_all_poss, input$euro_min_on_poss)
   })
 
   # --- Live Calculation (Four Factors) ---
