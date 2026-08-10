@@ -149,14 +149,100 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     )
   }
 
+  # --- Fast path ------------------------------------------------------------
+  # sub_lineups_stats_mv can serve competition, season, team, unit size and the
+  # players-on/off predicates on its own. What it cannot serve is anything that
+  # narrows the SET OF GAMES -- dates, opponent, phase, round range, last-N,
+  # home/away, outcome, opponent rank -- or the starter-context bounds, which
+  # live on lineup_totals_by_game and never reach the roll-up. Those force the
+  # dynamic function.
+  #
+  # Same gate rule the rest of the project uses: the app always sends dates, so
+  # a window equal to the full season counts as "no date filter".
+  fallback_needed <- reactive({
+    rng <- debounced_dates()
+    if (is.null(rng) || length(rng) < 2 || any(is.na(rng))) return(FALSE)
+    b <- tryCatch(euro_season_date_bounds(euro_season()), error = function(e) NULL)
+    date_changed <- !is.null(b) &&
+      (as.Date(rng[[1]]) != b$start || as.Date(rng[[2]]) != b$end)
+
+    gp <- gn_params()
+    any(c(
+      date_changed,
+      length(input$euro_ld_opponents) > 0,
+      length(input$euro_ld_phase) > 0,
+      !identical(input$euro_ld_home_away %||% "all", "all"),
+      !identical(input$euro_ld_outcome %||% "all", "all"),
+      nzchar(input$euro_ld_opp_rank_side %||% ""),
+      nzchar(input$euro_ld_num_starters_off_mode %||% "") &&
+        nzchar(input$euro_ld_num_starters_off %||% ""),
+      nzchar(input$euro_ld_num_starters_def_mode %||% "") &&
+        nzchar(input$euro_ld_num_starters_def %||% ""),
+      !is.na(gp$min_gn), !is.na(gp$max_gn), !is.na(gp$last_n)
+    ))
+  })
+
+  # The whole season's units, cached across sessions on competition + season +
+  # the EuroLeague load version -- an Israeli ETL must not invalidate this, and
+  # a EuroLeague publication must. Group-size and player filters then apply in
+  # R, so switching size costs no query.
+  #
+  # player_ids arrives as a delimited string rather than an array: PostgreSQL
+  # hands arrays back as '{1,2,3}' text that R would have to parse.
+  euro_ld_mv <- reactive({
+    comp <- euro_competition()
+    gy <- as.integer(euro_season())
+    req(gy)
+    cached_season_df(
+      list("euro_sub_lineups_stats_mv", comp, gy, euro_data_version()),
+      function() db_get_query(
+        pg_pool,
+        paste0(
+          "SELECT team_id, unit_key, unit_size, player_names_str,",
+          " player_ids,",
+          " off_poss, off_pts, off_fg2_made, off_fg2_att, off_fg3_made, off_fg3_att,",
+          " off_ts_poss, off_fgm, off_fga, off_fta, off_oreb, off_oreb_opp,",
+          " off_tov, off_steals,",
+          " def_poss, def_pts, def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att,",
+          " def_ts_poss, def_fgm, def_fga, def_fta, def_oreb, def_oreb_opp,",
+          " def_tov, def_steals, minutes",
+          " FROM euroleague.sub_lineups_stats_mv",
+          " WHERE competition = $1::text AND game_year = $2::int4"
+        ),
+        params = list(comp, gy)
+      )
+    )
+  })
+
+  # Delegates to the shared helper Tab 2 already uses in production, so the
+  # fast path's player-set semantics are the same implementation rather than a
+  # second one that merely looks equivalent: players-on is "contains all"
+  # (the SQL @>), players-off is "overlaps none" (NOT &&).
+  apply_local_unit_filters <- function(df) {
+    if (!NROW(df)) return(df)
+    size <- as.integer(input$euro_ld_group_size %||% "5")
+    df <- df[df$unit_size == size, , drop = FALSE]
+
+    team_val <- ld_filter$team()
+    team_val <- team_val[nzchar(team_val)]
+    df <- apply_local_lineup_filters(df, list(
+      team_csv       = if (length(team_val)) paste(team_val, collapse = ",") else NA_character_,
+      player_csv     = csv_if_any(ld_filter$players_on()),
+      player_off_csv = csv_if_any(ld_filter$players_off())
+    ))
+    df$player_ids <- NULL
+    df$player_ids_list <- NULL
+    df
+  }
+
   # --- Fetch ----------------------------------------------------------------
   # p_min_poss is always 0: ranks and the auto threshold need the complete
   # comparison population. The displayed minimum is applied afterwards.
   #
-  # player_ids / player_names are deliberately not selected. PostgreSQL returns
-  # them as '{1,2,3}' text, and nothing here needs them -- unit_key is the
-  # identity and player_names_str is the display form.
-  euro_ld_raw <- reactive({
+  # player_ids is deliberately not selected on the filtered path. PostgreSQL
+  # returns it as '{1,2,3}' text, and the function already applied the player
+  # predicates -- unit_key is the identity, player_names_str is the display.
+  euro_ld_filtered <- reactive({
     comp <- euro_competition()
     season <- euro_season()
     dates <- debounced_dates()
@@ -200,6 +286,13 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
         0L
       )
     )
+  })
+
+  # The branch. Both paths return the same column names, so everything
+  # downstream -- rates, ranks, TOTAL row, table -- is identical either way.
+  euro_ld_raw <- reactive({
+    if (isTRUE(fallback_needed())) return(euro_ld_filtered())
+    apply_local_unit_filters(euro_ld_mv())
   })
 
   # --- Derived rates --------------------------------------------------------

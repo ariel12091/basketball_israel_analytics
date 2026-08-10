@@ -85,7 +85,6 @@ WITH unit_totals AS (
 SELECT
   ut.competition, ut.game_year, ut.team_id, ut.unit_key, ut.unit_size,
   ut.player_ids,
-  names.player_names,
   names.player_names_str,
   ut.off_poss, ut.off_pts, ut.off_fg2_made, ut.off_fg2_att,
   ut.off_fg3_made, ut.off_fg3_att, ut.off_ts_poss, ut.off_fgm, ut.off_fga,
@@ -97,9 +96,6 @@ SELECT
 FROM unit_totals ut
 CROSS JOIN LATERAL (
   SELECT
-    array_agg(coalesce(euroleague.person_display_name(p.display_name),
-                       '#' || u.pid::text) ORDER BY u.ord)
-      AS player_names,
     string_agg(coalesce(euroleague.person_display_name(p.display_name),
                         '#' || u.pid::text), ', ' ORDER BY u.ord)
       AS player_names_str
@@ -163,7 +159,6 @@ RETURNS TABLE (
     unit_key         TEXT,
     unit_size        SMALLINT,
     player_ids       BIGINT[],
-    player_names     TEXT[],
     player_names_str TEXT,
     off_poss         BIGINT, off_pts       BIGINT,
     off_fg2_made     BIGINT, off_fg2_att   BIGINT,
@@ -336,7 +331,7 @@ BEGIN
   )
   SELECT
     a.u_team_id, a.u_unit_key, a.u_unit_size, a.u_player_ids,
-    names.p_names, names.p_names_str,
+    names.p_names_str,
     a.a_off_poss, a.a_off_pts, a.a_off_fg2_made, a.a_off_fg2_att,
     a.a_off_fg3_made, a.a_off_fg3_att, a.a_off_ts_poss, a.a_off_fgm, a.a_off_fga,
     a.a_off_fta, a.a_off_oreb, a.a_off_oreb_opp, a.a_off_tov, a.a_off_steals,
@@ -347,9 +342,6 @@ BEGIN
   FROM agg a
   CROSS JOIN LATERAL (
     SELECT
-      array_agg(coalesce(euroleague.person_display_name(p.display_name),
-                         '#' || x.pid::text) ORDER BY x.ord)
-        AS p_names,
       string_agg(coalesce(euroleague.person_display_name(p.display_name),
                           '#' || x.pid::text), ', ' ORDER BY x.ord)
         AS p_names_str

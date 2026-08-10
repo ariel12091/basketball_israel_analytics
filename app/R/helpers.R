@@ -1062,3 +1062,49 @@ auto_minposs_from_df <- function(df, usage_col = "total_poss", step = 10L,
   if (!is.finite(kth)) return(NA_integer_)
   as.integer(ceiling(kth / step) * step)
 }
+
+# Lineup player-set filtering, shared by Tab 2 (Israeli lineups) and Tab 10
+# (EuroLeague lineups). PostgreSQL hands an int array back as '{1,2,3}' text,
+# so parse_player_ids() accepts that form as well as a list column.
+#
+# Semantics match the SQL predicates they stand in for on the fast path:
+# players-on is "unit contains all of these" (@>), players-off is "unit
+# overlaps none of these" (NOT &&).
+parse_player_ids <- function(x) {
+  if (is.null(x)) return(integer(0))
+  if (is.list(x)) {
+    vals <- suppressWarnings(as.integer(unlist(x, use.names = FALSE)))
+    return(vals[!is.na(vals)])
+  }
+  s <- gsub("[{}\\s]", "", as.character(x))
+  if (!nzchar(s)) return(integer(0))
+  vals <- suppressWarnings(as.integer(strsplit(s, ",", fixed = TRUE)[[1]]))
+  vals[!is.na(vals)]
+}
+
+ensure_player_ids_list <- function(df) {
+  if (is.null(df) || NROW(df) == 0L || !("player_ids" %in% names(df))) return(df)
+  if ("player_ids_list" %in% names(df)) return(df)
+  df$player_ids_list <- lapply(df$player_ids, parse_player_ids)
+  df
+}
+
+apply_local_lineup_filters <- function(df, p) {
+  if (is.null(df) || NROW(df) == 0L) return(df)
+  df <- ensure_player_ids_list(df)
+  if (!is.na(p$team_csv) && nzchar(p$team_csv)) {
+    team_ids <- as.integer(strsplit(p$team_csv, ",")[[1]])
+    df <- df[df$team_id %in% team_ids, , drop = FALSE]
+  }
+  if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
+    on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
+    keep <- vapply(df$player_ids_list, function(x) all(on_ids %in% x), logical(1))
+    df <- df[keep, , drop = FALSE]
+  }
+  if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {
+    off_ids <- as.integer(strsplit(p$player_off_csv, ",")[[1]])
+    keep <- vapply(df$player_ids_list, function(x) !any(off_ids %in% x), logical(1))
+    df <- df[keep, , drop = FALSE]
+  }
+  df
+}
