@@ -30,9 +30,9 @@ def canonical_lineup_hash(provider_player_ids: Iterable[str]) -> str:
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
-def _run_count(values: Iterable[str]) -> int:
+def _run_count(values: Iterable[object]) -> int:
     count = 0
-    previous: str | None = None
+    previous: object | None = None
     for value in values:
         if count == 0 or value != previous:
             count += 1
@@ -118,10 +118,8 @@ def build_load_plan(
                 & possession_result.possessions["gamecode"].eq(gamecode)
             ]
 
-            home_sequence: list[str] = []
-            away_sequence: list[str] = []
-            lineup_members: dict[tuple[str, str], tuple[str, ...]] = {}
-            lineup_by_order: dict[int, tuple[str, str]] = {}
+            matchup_sequence: list[tuple[str, str]] = []
+            lineup_orders: set[int] = set()
             starter_contexts: dict[str, set[tuple[int, int]]] = {
                 home_team: set(),
                 away_team: set(),
@@ -133,14 +131,8 @@ def build_load_plan(
                 away_hash, away_ids = _lineup_identity(
                     event.Lineup_B, away_team, name_to_id
                 )
-                home_sequence.append(home_hash)
-                away_sequence.append(away_hash)
-                lineup_members[(home_team, home_hash)] = home_ids
-                lineup_members[(away_team, away_hash)] = away_ids
-                lineup_by_order[int(event.TRUE_NUMBEROFPLAY)] = (
-                    home_hash,
-                    away_hash,
-                )
+                matchup_sequence.append((home_hash, away_hash))
+                lineup_orders.add(int(event.TRUE_NUMBEROFPLAY))
                 home_starters = sum(
                     player_id in starter_ids[home_team]
                     for player_id in home_ids
@@ -159,13 +151,14 @@ def build_load_plan(
             possession_orders = set(
                 game_possessions["source_event_order"].astype(int)
             )
-            missing_pws = possession_orders.difference(lineup_by_order)
+            missing_endpoint_lineups = possession_orders.difference(lineup_orders)
             invalid_offense = set(
                 game_possessions["offense_team"].dropna().astype(str)
             ).difference({home_team, away_team})
-            if missing_pws:
+            if missing_endpoint_lineups:
                 raise ValueError(
-                    f"possession endpoints missing lineups: {sorted(missing_pws)!r}"
+                    "possession endpoints missing lineups: "
+                    f"{sorted(missing_endpoint_lineups)!r}"
                 )
             if invalid_offense:
                 raise ValueError(
@@ -192,16 +185,9 @@ def build_load_plan(
                     "full_rosters": len(roster),
                     "team_boxscores": 2,
                     "actions_raw": len(game),
-                    "actions_clean": len(game),
-                    "possessions": len(game_possessions),
-                    "lineups": len(lineup_members),
-                    "lineup_players": sum(
-                        len(members) for members in lineup_members.values()
-                    ),
-                    "action_lineups": len(game_lineups),
-                    "stints": _run_count(home_sequence)
-                    + _run_count(away_sequence),
-                    "pws": len(game_possessions),
+                    "actions": len(game),
+                    "matchup_segments_actions": 2 * _run_count(matchup_sequence),
+                    "action_team_context_actions": 2 * len(game_lineups),
                     "player_four_factors_by_game": sum(
                         int(roster["team_code"].eq(team).sum())
                         * len(starter_contexts[team])
@@ -234,13 +220,9 @@ def build_load_plan(
                     "full_rosters": 0,
                     "team_boxscores": 0,
                     "actions_raw": 0,
-                    "actions_clean": 0,
-                    "possessions": 0,
-                    "lineups": 0,
-                    "lineup_players": 0,
-                    "action_lineups": 0,
-                    "stints": 0,
-                    "pws": 0,
+                    "actions": 0,
+                    "matchup_segments_actions": 0,
+                    "action_team_context_actions": 0,
                     "player_four_factors_by_game": 0,
                     "reconciliation_metrics": 0,
                     "game_qa": 0,
@@ -256,13 +238,9 @@ def build_load_plan(
         "full_rosters",
         "team_boxscores",
         "actions_raw",
-        "actions_clean",
-        "possessions",
-        "lineups",
-        "lineup_players",
-        "action_lineups",
-        "stints",
-        "pws",
+        "actions",
+        "matchup_segments_actions",
+        "action_team_context_actions",
         "player_four_factors_by_game",
         "reconciliation_metrics",
         "game_qa",

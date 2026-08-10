@@ -2,7 +2,7 @@
 """One command to take EuroLeague games from the provider into the schema.
 
 Wraps the four steps that a load actually is -- collect box scores, collect
-play-by-play, stage (derive possessions/lineups offline), publish -- and then
+play-by-play, stage canonical actions offline, publish -- and then
 verifies the result. It shells out to the existing module CLIs rather than
 reimplementing them, so the sanctioned retry, throttle and load-run logic is
 exactly what runs.
@@ -138,7 +138,7 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     check("schedule metadata populated", nulls == 0, f"{nulls} rows missing round/phase/tipoff")
 
     # One derivation version across the schema, or aggregates mix logic.
-    versions = [r[0] for r in q("SELECT DISTINCT parser_version FROM euroleague.possessions")]
+    versions = [r[0] for r in q("SELECT DISTINCT parser_version FROM euroleague.actions")]
     check("single parser version", len(versions) <= 1, f"versions={versions}")
 
     # Points and possessions must match the official box score.
@@ -189,10 +189,66 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
 
     orphan_fact = q(
         "SELECT count(*) FROM euroleague.schedule s "
-        "WHERE NOT EXISTS (SELECT 1 FROM euroleague.action_team_context a "
+        "WHERE NOT EXISTS (SELECT 1 FROM euroleague.action_team_context_actions a "
         "                   WHERE a.game_id = s.game_id)"
     )[0][0]
     check("all games have the event fact", orphan_fact == 0, f"{orphan_fact} games missing")
+
+    canonical_missing = q(
+        "SELECT count(*) FROM euroleague.actions_raw ar "
+        "FULL JOIN euroleague.actions a "
+        "  ON a.game_id=ar.game_id "
+        " AND a.source_event_order=ar.source_event_order "
+        "WHERE ar.game_id IS NULL OR a.game_id IS NULL"
+    )[0][0]
+    check(
+        "canonical actions cover raw PBP exactly",
+        canonical_missing == 0,
+        f"{canonical_missing} missing or extra events",
+    )
+
+    package_column_mismatch = q(
+        "SELECT count(*) FROM euroleague.actions a "
+        "JOIN euroleague.actions_raw ar "
+        "  ON ar.game_id=a.game_id "
+        " AND ar.source_event_order=a.source_event_order "
+        "WHERE jsonb_build_object("
+        " 'Season',a.season, 'Gamecode',a.gamecode, "
+        " 'TYPE',a.provider_event_type, 'NUMBEROFPLAY',a.provider_play_number, "
+        " 'CODETEAM',a.provider_team_code, 'PLAYER_ID',a.provider_player_id, "
+        " 'PLAYTYPE',a.play_type, 'PLAYER',a.player_name, 'TEAM',a.team_name, "
+        " 'DORSAL',a.jersey_number, 'MINUTE',a.minute, "
+        " 'MARKERTIME',a.marker_time, 'POINTS_A',a.points_a, "
+        " 'POINTS_B',a.points_b, 'COMMENT',a.comment, 'PLAYINFO',a.play_info, "
+        " 'PERIOD',a.period, 'TRUE_NUMBEROFPLAY',a.source_event_order, "
+        " 'Lineup_A',a.lineup_a, 'Lineup_B',a.lineup_b, "
+        " 'IsHomeTeam',a.is_home_team, "
+        " 'validate_on_court_player',a.validate_on_court_player"
+        ") IS DISTINCT FROM ar.raw_event"
+    )[0][0]
+    check(
+        "all package fields match canonical columns",
+        package_column_mismatch == 0,
+        f"{package_column_mismatch} mismatched events",
+    )
+
+    endpoint_mismatch = q(
+        "WITH numbered AS ("
+        " SELECT a.*, "
+        "   row_number() OVER (PARTITION BY game_id ORDER BY source_event_order) "
+        "     AS expected_game_number, "
+        "   row_number() OVER (PARTITION BY game_id, possession_offense_team_id "
+        "                      ORDER BY source_event_order) AS expected_team_number "
+        " FROM euroleague.actions a WHERE a.end_possession"
+        ") SELECT count(*) FROM numbered "
+        "WHERE game_possession_number IS DISTINCT FROM expected_game_number "
+        "   OR team_possession_number IS DISTINCT FROM expected_team_number"
+    )[0][0]
+    check(
+        "canonical possession numbers are gap-free",
+        endpoint_mismatch == 0,
+        f"{endpoint_mismatch} mismatched events",
+    )
 
     # The team grain must still be reproducible from the fact it is derived
     # from. This replaces the per-game row-count expectation that validate_game
@@ -210,7 +266,7 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
         "  SELECT atc.game_id, atc.team_id, atc.own_starters, atc.opp_starters, "
         "         coalesce(sum(atc.points) FILTER "
         "                  (WHERE atc.type_lineup = 'offense'), 0) AS off_pts "
-        "    FROM euroleague.action_team_context atc "
+        "    FROM euroleague.action_team_context_actions atc "
         "   GROUP BY atc.game_id, atc.team_id, atc.own_starters, atc.opp_starters"
         ") SELECT count(*) FROM ("
         "  SELECT game_id, team_id, own_starters, opp_starters, off_pts::numeric "

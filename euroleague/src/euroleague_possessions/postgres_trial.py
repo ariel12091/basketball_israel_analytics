@@ -1,4 +1,4 @@
-"""CLI for an explicitly approved one-game EuroLeague shadow-schema trial."""
+"""CLI for an explicitly approved one-game EuroLeague publication trial."""
 
 from __future__ import annotations
 
@@ -10,7 +10,6 @@ import pandas as pd
 
 from .postgres_backend import (
     PostgresTransactionBackend,
-    apply_shadow_schema,
     assert_shadow_schema_compatible,
     bootstrap_game,
     connect_from_env_file,
@@ -59,30 +58,31 @@ def probe_rollback(
     connection: Any,
     load_run_id: int,
     key: NaturalGameKey,
-    expected_pws: int,
+    expected_actions: int,
 ) -> None:
-    """Delete PWS inside a transaction, roll back, and verify restoration."""
+    """Delete canonical actions in a transaction and verify rollback."""
 
     backend = PostgresTransactionBackend(connection, load_run_id)
     game_id = backend.begin(key)
     try:
-        backend.delete_game_rows("pws", game_id)
+        backend.delete_game_rows("actions", game_id)
         cursor = connection.cursor()
-        inside_count = backend._count_rows(cursor, "pws", game_id)
+        inside_count = backend._count_rows(cursor, "actions", game_id)
         cursor.close()
         if inside_count != 0:
             raise RuntimeError(
-                f"rollback probe expected zero in-transaction PWS rows, got {inside_count}"
+                "rollback probe expected zero in-transaction actions rows, "
+                f"got {inside_count}"
             )
     finally:
         backend.rollback()
 
     cursor = connection.cursor()
-    restored_count = backend._count_rows(cursor, "pws", game_id)
+    restored_count = backend._count_rows(cursor, "actions", game_id)
     cursor.close()
-    if restored_count != expected_pws:
+    if restored_count != expected_actions:
         raise RuntimeError(
-            f"rollback probe expected {expected_pws} restored PWS rows, "
+            f"rollback probe expected {expected_actions} restored actions rows, "
             f"got {restored_count}"
         )
 
@@ -101,39 +101,9 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--competition", default="E")
     parser.add_argument("--env-file", type=Path, default=Path("etl/.Renviron"))
     parser.add_argument(
-        "--ddl",
-        type=Path,
-        default=Path("euroleague/sql/001_core_shadow_schema.sql"),
-    )
-    parser.add_argument(
-        "--analytics-ddl",
-        type=Path,
-        default=Path(
-            "euroleague/sql/002_existing_analytics_compatibility.sql"
-        ),
-    )
-    # Migration 003 is SUPERSEDED by 004 and must never be applied. It stayed
-    # the default here after 004 landed, so --apply-schema would have applied
-    # it to the live schema.
-    parser.add_argument(
-        "--read-layer-ddl",
-        type=Path,
-        nargs="+",
-        default=[
-            Path("euroleague/sql/004_app_read_layer.sql"),
-            Path("euroleague/sql/005_team_ratings.sql"),
-            Path("euroleague/sql/006_team_four_factors.sql"),
-        ],
-    )
-    parser.add_argument(
         "--execute",
         action="store_true",
         help="Write the staged game; without this flag the command is offline.",
-    )
-    parser.add_argument(
-        "--apply-schema",
-        action="store_true",
-        help="Apply the reviewed non-destructive DDL before the trial write.",
     )
     parser.add_argument(
         "--probe-rollback",
@@ -145,16 +115,6 @@ def _arguments() -> argparse.Namespace:
 
 def main() -> None:
     args = _arguments()
-    if args.apply_schema and not args.execute:
-        raise ValueError("--apply-schema requires --execute")
-    superseded = [
-        path for path in args.read_layer_ddl if "003_app_materialized_views" in path.name
-    ]
-    if superseded:
-        raise ValueError(
-            "migration 003 is superseded by 004 and must never be applied"
-        )
-
     pbp = pd.read_csv(args.pbp_csv)
     staged = build_staged_game(
         pbp,
@@ -190,16 +150,9 @@ def main() -> None:
         if int(target["server_port"]) != 5432:
             raise RuntimeError("trial must use the direct PostgreSQL port 5432")
         assert_shadow_schema_compatible(connection)
-        if args.apply_schema:
-            apply_shadow_schema(connection, args.ddl)
-            apply_shadow_schema(connection, args.analytics_ddl)
-            for path in args.read_layer_ddl:
-                apply_shadow_schema(connection, path)
-            assert_shadow_schema_compatible(connection)
-            print("schema_apply=complete")
-        elif target["euroleague_schema"] is None:
+        if target["euroleague_schema"] is None:
             raise RuntimeError(
-                "euroleague schema is absent; rerun with --apply-schema"
+                "euroleague schema is absent; apply the reviewed migrations first"
             )
 
         bootstrap_result = bootstrap_game(connection, staged.bootstrap)
@@ -232,7 +185,7 @@ def main() -> None:
                 connection,
                 load_run_id=bootstrap_result.load_run_id,
                 key=staged.snapshot.key,
-                expected_pws=len(staged.snapshot.rows["pws"]),
+                expected_actions=len(staged.snapshot.rows["actions"]),
             )
             print("rollback_probe=pass")
     except Exception as exc:

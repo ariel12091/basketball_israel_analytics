@@ -26,6 +26,24 @@ APP_MV_DDL_PATH = (
     / "sql"
     / "003_app_materialized_views.sql"
 )
+CANONICAL_ACTIONS_DDL_PATH = (
+    REPO_ROOT
+    / "euroleague"
+    / "sql"
+    / "010_canonical_actions.sql"
+)
+ACTIONS_CONSUMER_DDL_PATH = (
+    REPO_ROOT
+    / "euroleague"
+    / "sql"
+    / "011_actions_consumer_candidates.sql"
+)
+ACTIONS_CUTOVER_DDL_PATH = (
+    REPO_ROOT
+    / "euroleague"
+    / "sql"
+    / "012_actions_consumer_cutover.sql"
+)
 
 
 class ShadowSchemaDraftTest(unittest.TestCase):
@@ -78,6 +96,79 @@ class ShadowSchemaDraftTest(unittest.TestCase):
         self.assertIn("publication_status <> 'clear'", self.ddl)
         self.assertIn("NOT publishable OR", self.ddl)
 
+    def test_canonical_actions_migration_is_additive_and_validated(self) -> None:
+        ddl = CANONICAL_ACTIONS_DDL_PATH.read_text(encoding="utf-8")
+        upper = ddl.upper()
+
+        self.assertIn("EUROLEAGUE SHADOW SCHEMA", upper)
+        self.assertNotRegex(upper, r"\bDROP\s+")
+        self.assertNotIn("BASKETBALL_TEST.", upper)
+        self.assertNotIn("BASKETBALL.", upper)
+        self.assertIn(
+            "CREATE TABLE IF NOT EXISTS EUROLEAGUE.ACTIONS", upper
+        )
+        self.assertIn("LINEUP_A TEXT[] NOT NULL", upper)
+        self.assertIn("LINEUP_B TEXT[] NOT NULL", upper)
+        self.assertIn("END_POSSESSION BOOLEAN NOT NULL", upper)
+        self.assertIn("POSSESSION_OFFENSE_TEAM_ID BIGINT", upper)
+        self.assertIn("FROM EUROLEAGUE.ACTIONS_RAW AR", upper)
+        self.assertIn("JOIN EUROLEAGUE.ACTIONS_CLEAN AC", upper)
+        actions_definition = upper.split(
+            "CREATE TABLE IF NOT EXISTS EUROLEAGUE.ACTIONS", 1
+        )[1].split(");", 1)[0]
+        self.assertNotIn("RAW_EVENT", actions_definition)
+
+    def test_actions_consumer_candidate_is_isolated_and_additive(self) -> None:
+        ddl = ACTIONS_CONSUMER_DDL_PATH.read_text(encoding="utf-8")
+        upper = ddl.upper()
+
+        self.assertIn("EUROLEAGUE SHADOW SCHEMA", upper)
+        self.assertNotRegex(upper, r"\bDROP\s+")
+        self.assertNotIn("BASKETBALL_TEST.", upper)
+        self.assertNotIn("BASKETBALL.", upper)
+        self.assertIn("FROM EUROLEAGUE.ACTIONS A", upper)
+        self.assertIn("OWN_LINEUP TEXT[] NOT NULL", upper)
+        self.assertIn("OPP_LINEUP TEXT[] NOT NULL", upper)
+        self.assertIn("ACTIONS-BASED EVENT FACT DIFFERS", upper)
+        self.assertIn("ACTIONS-BASED MATCHUP SEGMENTS DIFFER", upper)
+
+    def test_actions_cutover_drops_only_named_euroleague_relations(self) -> None:
+        ddl = ACTIONS_CUTOVER_DDL_PATH.read_text(encoding="utf-8")
+        upper = ddl.upper()
+
+        self.assertIn("EUROLEAGUE SHADOW SCHEMA", upper)
+        self.assertNotIn("BASKETBALL_TEST.", upper)
+        self.assertNotIn("BASKETBALL.", upper)
+        self.assertNotRegex(upper, r"\bCASCADE\b")
+        dropped_tables = set(
+            re.findall(r"DROP TABLE EUROLeague\.([a-z_]+)", ddl, re.IGNORECASE)
+        )
+        self.assertEqual(
+            dropped_tables,
+            {
+                "action_team_context",
+                "matchup_segments",
+                "pws",
+                "stints",
+                "action_lineups",
+                "lineup_players",
+                "lineups",
+                "possessions",
+                "actions_clean",
+            },
+        )
+        self.assertIn("FROM EUROLEAGUE.ACTION_TEAM_CONTEXT_ACTIONS", upper)
+        self.assertIn("FROM EUROLEAGUE.MATCHUP_SEGMENTS_ACTIONS", upper)
+        self.assertIn("LEFT JOIN EUROLEAGUE.ACTIONS A", upper)
+        self.assertIn("OUTPUT DIFFERS FROM BASELINE", upper)
+        self.assertIn("AS OFF_PPP", upper)
+        self.assertIn("AS DEF_PPP", upper)
+        self.assertIn("AS GAMES_PLAYED", upper)
+        self.assertIn("AS RANK_NET_RTG", upper)
+        self.assertNotIn("AS OFF_RTG", upper)
+        self.assertNotIn("AS DEF_RTG", upper)
+        self.assertIn("- 'DERIVED_AT'", upper)
+
     def test_player_onoff_walkthrough_is_read_only_and_action_grained(self) -> None:
         sql = ONOFF_SQL_PATH.read_text(encoding="utf-8")
         executable = "\n".join(
@@ -87,11 +178,13 @@ class ShadowSchemaDraftTest(unittest.TestCase):
             executable,
             r"\b(INSERT|UPDATE|DELETE|DROP|ALTER|TRUNCATE|CREATE)\b",
         )
-        self.assertIn("EUROLEAGUE.ACTION_LINEUPS", executable)
-        self.assertIn("EUROLEAGUE.POSSESSIONS", executable)
+        self.assertIn("EUROLEAGUE.ACTION_TEAM_CONTEXT_ACTIONS", executable)
+        self.assertIn("EUROLEAGUE.ACTIONS", executable)
         self.assertIn("EUROLEAGUE.FULL_ROSTERS", executable)
         self.assertIn("100.0 * PP.OFF_ON_POINTS", executable)
         self.assertIn("NOT IN ('TEAM', 'TOTAL')", executable)
+        self.assertNotIn("EUROLEAGUE.ACTION_LINEUPS", executable)
+        self.assertNotIn("EUROLEAGUE.POSSESSIONS", executable)
 
     def test_analytics_compatibility_layer_reuses_additive_contract(self) -> None:
         ddl = ANALYTICS_DDL_PATH.read_text(encoding="utf-8")

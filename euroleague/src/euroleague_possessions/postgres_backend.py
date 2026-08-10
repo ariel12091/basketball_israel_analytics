@@ -75,81 +75,46 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
         "play_info",
         "raw_event",
     ),
-    "actions_clean": (
+    "actions": (
         "game_id",
         "source_event_order",
+        "load_run_id",
+        "source_artifact_id",
+        "season",
+        "gamecode",
+        "provider_event_type",
+        "provider_play_number",
+        "provider_team_code",
+        "provider_player_id",
+        "play_type",
+        "player_name",
+        "team_name",
+        "jersey_number",
+        "minute",
+        "marker_time",
+        "points_a",
+        "points_b",
+        "comment",
+        "play_info",
+        "period",
+        "is_home_team",
+        "lineup_a",
+        "lineup_b",
+        "validate_on_court_player",
+        "team_id",
+        "player_id",
+        "source_package_version",
         "synthetic_parent_order",
         "synthetic_ft_trip_id",
-        "final_end_possession",
+        "end_possession",
         "endpoint_reason",
         "grouping_status",
         "grouping_confidence_pct",
         "decision_trace",
         "parser_version",
-    ),
-    "possessions": (
-        "game_id",
         "game_possession_number",
-        "offense_team_id",
+        "possession_offense_team_id",
         "team_possession_number",
-        "endpoint_source_event_order",
-        "period",
-        "endpoint_reason",
-        "grouping_status",
-        "grouping_confidence_pct",
-        "parser_version",
-    ),
-    "lineups": (
-        "game_id",
-        "team_id",
-        "lineup_hash",
-        "player_count",
-        "starter_count",
-        "structure_valid",
-        "source_package_version",
-        "load_run_id",
-    ),
-    "lineup_players": (
-        "lineup_id",
-        "player_id",
-        "package_slot",
-        "is_starter",
-    ),
-    "action_lineups": (
-        "game_id",
-        "source_event_order",
-        "home_lineup_id",
-        "away_lineup_id",
-        "validate_on_court_player",
-        "lineup_structure_valid",
-        "source_package_version",
-        "load_run_id",
-    ),
-    "stints": (
-        "game_id",
-        "team_id",
-        "lineup_id",
-        "stint_number",
-        "start_event_order",
-        "end_event_order_exclusive",
-        "start_elapsed_seconds",
-        "end_elapsed_seconds",
-        "duration_seconds",
-        "invalid_actor_rows",
-        "lineup_structure_valid",
-        "qa_status",
-        "publishable",
-    ),
-    "pws": (
-        "game_id",
-        "game_possession_number",
-        "offense_lineup_id",
-        "defense_lineup_id",
-        "offense_stint_id",
-        "defense_stint_id",
-        "num_starters_offense",
-        "num_starters_defense",
-        "lineup_validation_clear",
     ),
     "reconciliation_metrics": (
         "load_run_id",
@@ -193,21 +158,19 @@ TABLE_COLUMNS: dict[str, tuple[str, ...]] = {
 }
 
 JSON_COLUMNS = {
-    "boxscore_stats",
-    "raw_totals",
-    "raw_event",
-    "decision_trace",
-    "details",
+    ("full_rosters", "boxscore_stats"),
+    ("team_boxscores", "raw_totals"),
+    ("actions_raw", "raw_event"),
+    ("qa_incidents", "details"),
 }
 
-GAME_ID_TABLES = frozenset(TABLE_COLUMNS).difference({"lineup_players"})
+GAME_ID_TABLES = frozenset(TABLE_COLUMNS)
 LOAD_RUN_TABLES = frozenset(
     {
         "full_rosters",
         "team_boxscores",
         "actions_raw",
-        "lineups",
-        "action_lineups",
+        "actions",
         "reconciliation_metrics",
         "game_qa",
         "qa_incidents",
@@ -421,8 +384,8 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         # creates it.
         "player_four_factors_by_game",
         "team_four_factors_by_game",
-        "matchup_segments",
-        "action_team_context",
+        "matchup_segments_actions",
+        "action_team_context_actions",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
@@ -709,8 +672,6 @@ class PostgresTransactionBackend:
         self.team_ids: dict[str, int] = {}
         self.player_ids: dict[str, int] = {}
         self.artifact_ids: dict[str, int] = {}
-        self.lineup_ids: dict[str, int] = {}
-        self.stint_ids: dict[str, int] = {}
         self.expected_counts: dict[str, int] = {
             table: 0 for table in INSERT_ORDER
         }
@@ -751,8 +712,6 @@ class PostgresTransactionBackend:
             self.artifact_ids = {
                 str(code): int(identifier) for code, identifier in cursor.fetchall()
             }
-            self.lineup_ids = {}
-            self.stint_ids = {}
             self.expected_counts = {table: 0 for table in INSERT_ORDER}
         except Exception:
             try:
@@ -767,33 +726,22 @@ class PostgresTransactionBackend:
         if table not in DELETE_ORDER:
             raise ValueError(f"table is not replaceable: {table}")
         cursor = self.connection.cursor()
-        if table == "lineup_players":
+        if table == "actions":
+            # These two facts are rebuilt from canonical actions during
+            # validate_game(), so clear them child-first before replacing the
+            # action rows they reference.
             cursor.execute(
-                "DELETE FROM euroleague.lineup_players AS lp "
-                "USING euroleague.lineups AS l "
-                "WHERE lp.lineup_id = l.lineup_id AND l.game_id = %s",
-                (game_id,),
-            )
-        elif table == "lineups":
-            # action_team_context and matchup_segments are derived: they are
-            # rebuilt by refresh_action_team_context_for_games() in
-            # validate_game(), so they are deliberately absent from
-            # INSERT_ORDER and DELETE_ORDER. They do, however, carry composite
-            # foreign keys onto lineups(game_id, lineup_id), so a republish
-            # cannot remove this game's lineups while those rows survive.
-            # Clear them here, child before parent, rather than widening
-            # DELETE_ORDER -- that tuple is the loader's ordering contract for
-            # tables the loader writes, and these are not among them.
-            cursor.execute(
-                "DELETE FROM euroleague.action_team_context WHERE game_id = %s",
+                "DELETE FROM euroleague.action_team_context_actions "
+                "WHERE game_id = %s",
                 (game_id,),
             )
             cursor.execute(
-                "DELETE FROM euroleague.matchup_segments WHERE game_id = %s",
+                "DELETE FROM euroleague.matchup_segments_actions "
+                "WHERE game_id = %s",
                 (game_id,),
             )
             cursor.execute(
-                "DELETE FROM euroleague.lineups WHERE game_id = %s",
+                "DELETE FROM euroleague.actions WHERE game_id = %s",
                 (game_id,),
             )
         elif table in AUDIT_TABLES:
@@ -838,14 +786,7 @@ class PostgresTransactionBackend:
                 "_team_code",
                 "_player_provider_id",
                 "_source_key",
-                "_lineup_key",
-                "_home_lineup_key",
-                "_away_lineup_key",
-                "_stint_key",
-                "_offense_lineup_key",
-                "_defense_lineup_key",
-                "_offense_stint_key",
-                "_defense_stint_key",
+                "_possession_offense_team_code",
             }
         }
         if unknown_metadata:
@@ -858,19 +799,25 @@ class PostgresTransactionBackend:
         if table in LOAD_RUN_TABLES:
             row["load_run_id"] = self.load_run_id
         if "_team_code" in staged:
-            target = "offense_team_id" if table == "possessions" else "team_id"
-            row[target] = self._lookup(
+            row["team_id"] = self._lookup(
                 self.team_ids,
                 staged["_team_code"],
                 "team code",
-                nullable=table == "actions_raw",
+                nullable=table in {"actions_raw", "actions"},
             )
         if "_player_provider_id" in staged:
             row["player_id"] = self._lookup(
                 self.player_ids,
                 staged["_player_provider_id"],
                 "player ID",
-                nullable=table == "actions_raw",
+                nullable=table in {"actions_raw", "actions"},
+            )
+        if "_possession_offense_team_code" in staged:
+            row["possession_offense_team_id"] = self._lookup(
+                self.team_ids,
+                staged["_possession_offense_team_code"],
+                "possession offense team code",
+                nullable=True,
             )
         if "_source_key" in staged:
             row["source_artifact_id"] = self._lookup(
@@ -878,52 +825,12 @@ class PostgresTransactionBackend:
                 staged["_source_key"],
                 "source artifact",
             )
-        if table == "lineup_players":
-            row["lineup_id"] = self._lookup(
-                self.lineup_ids, staged["_lineup_key"], "lineup key"
-            )
-        elif table == "action_lineups":
-            row["home_lineup_id"] = self._lookup(
-                self.lineup_ids,
-                staged["_home_lineup_key"],
-                "home lineup key",
-            )
-            row["away_lineup_id"] = self._lookup(
-                self.lineup_ids,
-                staged["_away_lineup_key"],
-                "away lineup key",
-            )
-        elif table == "stints":
-            row["lineup_id"] = self._lookup(
-                self.lineup_ids, staged["_lineup_key"], "lineup key"
-            )
-        elif table == "pws":
-            row["offense_lineup_id"] = self._lookup(
-                self.lineup_ids,
-                staged["_offense_lineup_key"],
-                "offense lineup key",
-            )
-            row["defense_lineup_id"] = self._lookup(
-                self.lineup_ids,
-                staged["_defense_lineup_key"],
-                "defense lineup key",
-            )
-            row["offense_stint_id"] = self._lookup(
-                self.stint_ids,
-                staged["_offense_stint_key"],
-                "offense stint key",
-            )
-            row["defense_stint_id"] = self._lookup(
-                self.stint_ids,
-                staged["_defense_stint_key"],
-                "defense stint key",
-            )
-        return row, staged.get("_lineup_key"), staged.get("_stint_key")
+        return row, None, None
 
     def _insert_sql(self, table: str, returning: str | None = None) -> str:
         columns = TABLE_COLUMNS[table]
         placeholders = [
-            "%s::jsonb" if column in JSON_COLUMNS else "%s"
+            "%s::jsonb" if (table, column) in JSON_COLUMNS else "%s"
             for column in columns
         ]
         sql = (
@@ -943,7 +850,9 @@ class PostgresTransactionBackend:
                 f"extra={sorted(actual - expected)}"
             )
         return tuple(
-            _json_parameter(row[column]) if column in JSON_COLUMNS else row[column]
+            _json_parameter(row[column])
+            if (table, column) in JSON_COLUMNS
+            else row[column]
             for column in TABLE_COLUMNS[table]
         )
 
@@ -959,82 +868,23 @@ class PostgresTransactionBackend:
         resolved = [self._resolve_row(table, game_id, row) for row in rows]
         cursor = self.connection.cursor()
         try:
-            # lineups and stints need their generated ids back, so they cannot
-            # use a fire-and-forget executemany. psycopg's `returning=True`
-            # pipelines the rows -- one round trip for the batch rather than
-            # one per row, which matters because the database is remote -- and
-            # yields one result set per input row, in input order. Anything
-            # short of that is an error, never a silently skipped id: a missing
-            # entry here would mis-wire every downstream lineup/stint
-            # reference in the game.
-            if table in ("lineups", "stints"):
-                if table == "lineups":
-                    id_column, staged_key_index = "lineup_id", 1
-                    target, missing = self.lineup_ids, "_lineup_key"
-                else:
-                    id_column, staged_key_index = "stint_id", 2
-                    target, missing = self.stint_ids, "_stint_key"
-
-                staged_keys: list[str] = []
-                parameters: list[tuple[Any, ...]] = []
-                for entry in resolved:
-                    staged_key = entry[staged_key_index]
-                    if staged_key is None:
-                        raise ValueError(f"{table} row is missing {missing}")
-                    staged_keys.append(str(staged_key))
-                    parameters.append(self._parameters(table, entry[0]))
-                if not staged_keys:
-                    return
-
-                cursor.executemany(
-                    self._insert_sql(table, returning=id_column),
-                    parameters,
-                    returning=True,
-                )
-                for index, staged_key in enumerate(staged_keys):
-                    if index and not cursor.nextset():
-                        raise ValueError(
-                            f"{table}: RETURNING gave {index} result sets for "
-                            f"{len(staged_keys)} inserted rows"
-                        )
-                    record = cursor.fetchone()
-                    if record is None:
-                        raise ValueError(
-                            f"{table}: no generated id returned for {staged_key}"
-                        )
-                    target[staged_key] = int(record[0])
-                if cursor.nextset():
-                    raise ValueError(
-                        f"{table}: RETURNING gave more result sets than the "
-                        f"{len(staged_keys)} rows inserted"
-                    )
-            else:
-                cursor.executemany(
-                    self._insert_sql(table),
-                    [self._parameters(table, row) for row, _, _ in resolved],
-                )
+            cursor.executemany(
+                self._insert_sql(table),
+                [self._parameters(table, row) for row, _, _ in resolved],
+            )
         finally:
             cursor.close()
 
     def _count_all_rows(self, cursor: Any, game_id: int) -> dict[str, int]:
         """Count every insertable table for a game in ONE round trip.
 
-        Same per-table predicates as _count_rows, just gathered into a single
-        statement -- 13 serial counts cost ~1s per game against a remote
-        database. _count_rows is kept for single-table use and as the
-        definition these subqueries mirror.
+        Same per-table predicates as _count_rows, gathered into one statement
+        to avoid a remote round trip per relation.
         """
         selects = []
         params: list[Any] = []
         for table in INSERT_ORDER:
-            if table == "lineup_players":
-                selects.append(
-                    "(SELECT count(*) FROM euroleague.lineup_players AS lp "
-                    "JOIN euroleague.lineups AS l ON l.lineup_id = lp.lineup_id "
-                    "WHERE l.game_id = %s)"
-                )
-                params.append(game_id)
-            elif table in AUDIT_TABLES:
+            if table in AUDIT_TABLES:
                 selects.append(
                     f"(SELECT count(*) FROM euroleague.{table} "
                     "WHERE game_id = %s AND load_run_id = %s)"
@@ -1050,14 +900,7 @@ class PostgresTransactionBackend:
         return {table: int(record[i]) for i, table in enumerate(INSERT_ORDER)}
 
     def _count_rows(self, cursor: Any, table: str, game_id: int) -> int:
-        if table == "lineup_players":
-            cursor.execute(
-                "SELECT count(*) FROM euroleague.lineup_players AS lp "
-                "JOIN euroleague.lineups AS l ON l.lineup_id = lp.lineup_id "
-                "WHERE l.game_id = %s",
-                (game_id,),
-            )
-        elif table in AUDIT_TABLES:
+        if table in AUDIT_TABLES:
             cursor.execute(
                 f"SELECT count(*) FROM euroleague.{table} "
                 "WHERE game_id = %s AND load_run_id = %s",
@@ -1074,11 +917,10 @@ class PostgresTransactionBackend:
         cursor = self.connection.cursor()
         try:
             mismatches: list[str] = []
-            # The event x team-perspective fact every other analytic reads.
-            # It must be refreshed first: the four-factor refreshes below are
-            # derived from it, and refresh_stint_timing runs inside it.
+            # Rebuild the analytical facts directly from canonical actions
+            # before refreshing their player/team consumers.
             cursor.execute(
-                "SELECT euroleague.refresh_action_team_context_for_games("
+                "SELECT euroleague.refresh_actions_consumer_candidates("
                 "ARRAY[%s]::bigint[])",
                 (game_id,),
             )
@@ -1105,12 +947,8 @@ class PostgresTransactionBackend:
                 expected = self.expected_counts[table]
                 if actual != expected:
                     mismatches.append(f"{table}: expected {expected}, got {actual}")
-            if actual_counts["actions_raw"] != actual_counts["actions_clean"]:
-                mismatches.append("raw/clean action counts differ")
-            if actual_counts["actions_raw"] != actual_counts["action_lineups"]:
-                mismatches.append("raw/action-lineup counts differ")
-            if actual_counts["possessions"] != actual_counts["pws"]:
-                mismatches.append("possession/pws counts differ")
+            if actual_counts["actions_raw"] != actual_counts["actions"]:
+                mismatches.append("raw/canonical action counts differ")
             if actual_counts["game_qa"] != 1:
                 mismatches.append("current load run must have exactly one game_qa row")
             # Coverage, not a predicted row count. Predicting the count meant
@@ -1125,10 +963,11 @@ class PostgresTransactionBackend:
                 "WITH game_duration AS ("
                 "  SELECT game_id, "
                 "    (2400 + greatest(max(period) - 4, 0) * 300)::numeric AS seconds "
-                "  FROM euroleague.actions_raw WHERE game_id = %s GROUP BY game_id"
+                "  FROM euroleague.actions WHERE game_id = %s GROUP BY game_id"
                 "), team_time AS ("
-                "  SELECT game_id, team_id, sum(duration_seconds)::numeric AS seconds "
-                "  FROM euroleague.stints WHERE game_id = %s GROUP BY game_id, team_id"
+                "  SELECT game_id, team_id, sum(segment_seconds)::numeric AS seconds "
+                "  FROM euroleague.matchup_segments_actions "
+                "  WHERE game_id = %s GROUP BY game_id, team_id"
                 ") SELECT count(*) FROM team_time tt JOIN game_duration gd USING (game_id) "
                 "WHERE tt.seconds IS DISTINCT FROM gd.seconds",
                 (game_id, game_id),
@@ -1173,18 +1012,6 @@ class PostgresTransactionBackend:
             if invalid_partitions:
                 mismatches.append(
                     f"{invalid_partitions} player ON/OFF partitions differ"
-                )
-            cursor.execute(
-                "SELECT count(*) FROM euroleague.lineups AS l "
-                "WHERE l.game_id = %s AND l.structure_valid "
-                "AND (SELECT count(*) FROM euroleague.lineup_players AS lp "
-                "WHERE lp.lineup_id = l.lineup_id) <> 5",
-                (game_id,),
-            )
-            invalid_member_counts = int(cursor.fetchone()[0])
-            if invalid_member_counts:
-                mismatches.append(
-                    f"{invalid_member_counts} structurally valid lineups lack five members"
                 )
             if mismatches:
                 raise ValueError("database validation failed: " + "; ".join(mismatches))

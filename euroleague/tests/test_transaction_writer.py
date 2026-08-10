@@ -68,7 +68,7 @@ def snapshot_rows() -> dict[str, Sequence[Mapping[str, Any]]]:
     rows: dict[str, Sequence[Mapping[str, Any]]] = {
         table: () for table in REQUIRED_SNAPSHOT_TABLES
     }
-    rows["pws"] = ({"possession_number": 1},)
+    rows["actions"] = ({"source_event_order": 1},)
     rows["game_qa"] = ({"publishable": True},)
     return rows
 
@@ -90,19 +90,19 @@ class TransactionWriterTest(unittest.TestCase):
         )
         self.assertEqual(
             [event[1] for event in backend.events if event[0] == "insert"],
-            ["pws", "game_qa"],
+            ["actions", "game_qa"],
         )
         self.assertEqual(backend.events[-2:], [("validate", 123), ("commit",)])
         self.assertNotIn(("rollback",), backend.events)
 
     def test_insert_failure_rolls_back_without_commit(self) -> None:
-        backend = FakeBackend(fail_insert_table="pws")
+        backend = FakeBackend(fail_insert_table="actions")
         snapshot = GameSnapshot(
             key=NaturalGameKey(competition="E", season=2025, gamecode=8),
             rows=snapshot_rows(),
         )
 
-        with self.assertRaisesRegex(RuntimeError, "failed to insert pws"):
+        with self.assertRaisesRegex(RuntimeError, "failed to insert actions"):
             write_game_snapshot(backend, snapshot)
 
         self.assertEqual(backend.events[-1], ("rollback",))
@@ -125,7 +125,7 @@ class TransactionWriterTest(unittest.TestCase):
     def test_invalid_snapshot_fails_before_opening_transaction(self) -> None:
         backend = FakeBackend()
         incomplete_rows = snapshot_rows()
-        del incomplete_rows["possessions"]
+        del incomplete_rows["actions"]
 
         with self.assertRaisesRegex(
             ValueError,
@@ -185,7 +185,7 @@ class TransactionWriterTest(unittest.TestCase):
                     "gamecode": 1,
                     "loadable": True,
                     "full_rosters": 28,
-                    "pws": 140,
+                    "actions": 546,
                     "game_qa": 1,
                 },
             ]
@@ -208,7 +208,7 @@ class TransactionWriterTest(unittest.TestCase):
         ]
         self.assertEqual(
             list(inserted.itertuples(index=False, name=None)),
-            [("full_rosters", 28.0), ("pws", 140.0), ("game_qa", 1.0)],
+            [("full_rosters", 28.0), ("actions", 546.0), ("game_qa", 1.0)],
         )
         self.assertEqual(
             operations["sequence"].tolist(),

@@ -32,7 +32,7 @@ from .transaction_writer import GameSnapshot, NaturalGameKey, write_game_snapsho
 
 # Increment whenever staged derived rows must be rebuilt even if the raw PBP
 # and box-score fingerprints are unchanged.
-STAGE_FORMAT_VERSION = 2
+STAGE_FORMAT_VERSION = 5
 
 
 @dataclass(frozen=True)

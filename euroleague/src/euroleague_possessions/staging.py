@@ -13,7 +13,6 @@ from typing import Any, Mapping, Sequence
 import pandas as pd
 
 from .counter import count_possessions
-from .load_plan import canonical_lineup_hash
 from .package_lineups import audit_package_lineups, cached_boxscore_frame
 from .reconciliation import reconcile_boxscores
 from .schema_coverage import _roster_players, _team_sides
@@ -22,6 +21,35 @@ from .transaction_writer import GameSnapshot, NaturalGameKey
 
 COLLECTOR_VERSION = "0.2.0"
 PARSER_VERSION = "0.2.0"
+
+
+# Every field emitted by euroleague-api 0.1.1 after lineup enrichment must be
+# represented in the canonical actions table. A package upgrade that changes
+# this contract is intentionally blocking until its new fields are mapped.
+PACKAGE_EVENT_TO_ACTION_COLUMN = {
+    "Season": "season",
+    "Gamecode": "gamecode",
+    "TYPE": "provider_event_type",
+    "NUMBEROFPLAY": "provider_play_number",
+    "CODETEAM": "provider_team_code",
+    "PLAYER_ID": "provider_player_id",
+    "PLAYTYPE": "play_type",
+    "PLAYER": "player_name",
+    "TEAM": "team_name",
+    "DORSAL": "jersey_number",
+    "MINUTE": "minute",
+    "MARKERTIME": "marker_time",
+    "POINTS_A": "points_a",
+    "POINTS_B": "points_b",
+    "COMMENT": "comment",
+    "PLAYINFO": "play_info",
+    "PERIOD": "period",
+    "TRUE_NUMBEROFPLAY": "source_event_order",
+    "Lineup_A": "lineup_a",
+    "Lineup_B": "lineup_b",
+    "IsHomeTeam": "is_home_team",
+    "validate_on_court_player": "validate_on_court_player",
+}
 
 
 @dataclass(frozen=True)
@@ -73,6 +101,13 @@ def _text(value: Any) -> str | None:
     return result or None
 
 
+def _package_text(value: Any) -> str | None:
+    """Preserve a package string exactly while normalizing only null values."""
+
+    value = _value(value)
+    return None if value is None else str(value)
+
+
 def _integer(value: Any) -> int | None:
     value = _value(value)
     if value is None:
@@ -107,12 +142,110 @@ def _json_sha256(payload: Any) -> str:
     return hashlib.sha256(canonical).hexdigest()
 
 
-def _lineup_key(team_code: str, lineup_hash: str) -> str:
-    return f"{team_code}:{lineup_hash}"
+def _package_events_by_order(events: pd.DataFrame) -> dict[int, dict[str, Any]]:
+    """Return complete package PBP rows keyed by deterministic event order."""
+
+    required = {
+        "TRUE_NUMBEROFPLAY",
+        "Lineup_A",
+        "Lineup_B",
+        "validate_on_court_player",
+    }
+    missing = sorted(required.difference(events.columns))
+    if missing:
+        raise ValueError(
+            "package play-by-play is missing columns: " + ", ".join(missing)
+        )
+
+    rows: dict[int, dict[str, Any]] = {}
+    for event in events.to_dict("records"):
+        order = int(event["TRUE_NUMBEROFPLAY"])
+        if order in rows:
+            raise ValueError(f"package event order is not unique: {order}")
+        rows[order] = _value(event)
+    return rows
 
 
-def _stint_key(team_code: str, stint_number: int) -> str:
-    return f"{team_code}:{stint_number}"
+def _restore_package_home_team_marker(
+    events: pd.DataFrame,
+    home_team: str,
+    away_team: str,
+) -> pd.DataFrame:
+    """Restore the package-derived home marker lost by combined CSV caches."""
+
+    restored = events.copy()
+    values: list[bool | None] = []
+    for event in restored.to_dict("records"):
+        team_code = _text(event.get("CODETEAM"))
+        expected = (
+            True
+            if team_code == home_team
+            else False
+            if team_code == away_team
+            else None
+        )
+        existing = _value(event.get("IsHomeTeam"))
+        if existing is not None and bool(existing) is not expected:
+            raise ValueError(
+                "package IsHomeTeam contradicts box-score sides: "
+                f"team={team_code!r}, value={existing!r}"
+            )
+        values.append(expected)
+    restored["IsHomeTeam"] = values
+    return restored
+
+
+def _columnar_package_event(event: Mapping[str, Any]) -> dict[str, Any]:
+    """Convert one complete package event to the canonical typed columns."""
+
+    expected = set(PACKAGE_EVENT_TO_ACTION_COLUMN)
+    actual = set(event)
+    if actual != expected:
+        raise ValueError(
+            "package event columns differ from actions contract; "
+            f"missing={sorted(expected - actual)}, extra={sorted(actual - expected)}"
+        )
+
+    lineup_a = _value(event["Lineup_A"])
+    lineup_b = _value(event["Lineup_B"])
+    if not isinstance(lineup_a, list) or not isinstance(lineup_b, list):
+        raise ValueError("package lineups must be lists")
+
+    provider_team_code = _value(event["CODETEAM"])
+    play_type = _value(event["PLAYTYPE"])
+    if provider_team_code is None or play_type is None:
+        raise ValueError("package CODETEAM and PLAYTYPE must be present")
+
+    return {
+        "season": int(event["Season"]),
+        "gamecode": int(event["Gamecode"]),
+        "provider_event_type": int(event["TYPE"]),
+        "provider_play_number": int(event["NUMBEROFPLAY"]),
+        # Preserve the package's empty string for teamless events. The
+        # nullable resolved team_id is handled separately.
+        "provider_team_code": str(provider_team_code),
+        "provider_player_id": _package_text(event["PLAYER_ID"]),
+        "play_type": str(play_type),
+        "player_name": _package_text(event["PLAYER"]),
+        "team_name": _package_text(event["TEAM"]),
+        "jersey_number": _integer(event["DORSAL"]),
+        "minute": int(event["MINUTE"]),
+        "marker_time": _package_text(event["MARKERTIME"]),
+        "points_a": _integer(event["POINTS_A"]),
+        "points_b": _integer(event["POINTS_B"]),
+        "comment": _package_text(event["COMMENT"]),
+        "play_info": _package_text(event["PLAYINFO"]),
+        "period": int(event["PERIOD"]),
+        "source_event_order": int(event["TRUE_NUMBEROFPLAY"]),
+        "lineup_a": [str(player) for player in lineup_a],
+        "lineup_b": [str(player) for player in lineup_b],
+        "is_home_team": (
+            None
+            if _value(event["IsHomeTeam"]) is None
+            else bool(event["IsHomeTeam"])
+        ),
+        "validate_on_court_player": bool(event["validate_on_court_player"]),
+    }
 
 
 def _team_display_names(
@@ -167,68 +300,6 @@ def _official_team_rows(
     return rows
 
 
-def _stints_for_team(
-    lineup_events: pd.DataFrame,
-    team_code: str,
-    lineup_key_by_order: Mapping[int, Mapping[str, str]],
-) -> tuple[list[dict[str, Any]], dict[int, str]]:
-    orders = lineup_events["TRUE_NUMBEROFPLAY"].astype(int).tolist()
-    if not orders:
-        return [], {}
-
-    rows: list[dict[str, Any]] = []
-    event_stints: dict[int, str] = {}
-    start_index = 0
-    stint_number = 1
-    maximum_order = max(orders)
-
-    def emit(end_index: int) -> None:
-        nonlocal start_index, stint_number
-        start_order = orders[start_index]
-        end_order = (
-            orders[end_index] if end_index < len(orders) else maximum_order + 1
-        )
-        lineup_key = lineup_key_by_order[start_order][team_code]
-        window = lineup_events.iloc[start_index:end_index]
-        invalid_actor_rows = int(
-            (
-                ~window["validate_on_court_player"].astype(bool)
-                & window["CODETEAM"].astype("string").str.strip().eq(team_code)
-            ).sum()
-        )
-        key = _stint_key(team_code, stint_number)
-        for order in orders[start_index:end_index]:
-            event_stints[order] = key
-        rows.append(
-            {
-                "_stint_key": key,
-                "_team_code": team_code,
-                "_lineup_key": lineup_key,
-                "stint_number": stint_number,
-                "start_event_order": start_order,
-                "end_event_order_exclusive": end_order,
-                "start_elapsed_seconds": None,
-                "end_elapsed_seconds": None,
-                "duration_seconds": None,
-                "invalid_actor_rows": invalid_actor_rows,
-                "lineup_structure_valid": True,
-                "qa_status": "review" if invalid_actor_rows else "clear",
-                "publishable": invalid_actor_rows == 0,
-            }
-        )
-        stint_number += 1
-        start_index = end_index
-
-    previous_key = lineup_key_by_order[orders[0]][team_code]
-    for index, order in enumerate(orders[1:], start=1):
-        current_key = lineup_key_by_order[order][team_code]
-        if current_key != previous_key:
-            emit(index)
-            previous_key = current_key
-    emit(len(orders))
-    return rows, event_stints
-
-
 def build_staged_game(
     pbp: pd.DataFrame,
     boxscore_dir: Path,
@@ -276,13 +347,6 @@ def build_staged_game(
     roster["team_code"] = roster["team_code"].astype("string").str.strip()
     roster["player_name"] = roster["player_name"].astype("string").str.strip()
     roster_pairs = set(zip(roster["team_code"], roster["provider_player_id"]))
-    starter_ids = set(
-        roster.loc[roster["IsStarter"].eq(1), "provider_player_id"]
-    )
-    name_to_id = {
-        (str(row.team_code), str(row.player_name)): str(row.provider_player_id)
-        for row in roster.itertuples(index=False)
-    }
 
     lineup_result = audit_package_lineups(
         game,
@@ -295,6 +359,13 @@ def build_staged_game(
     lineup_events = lineup_result.events.sort_values(
         "TRUE_NUMBEROFPLAY", kind="stable"
     ).reset_index(drop=True)
+    lineup_events = _restore_package_home_team_marker(
+        lineup_events, home_team, away_team
+    )
+    package_events_by_order = _package_events_by_order(lineup_events)
+    source_orders = set(game["TRUE_NUMBEROFPLAY"].astype(int))
+    if set(package_events_by_order) != source_orders:
+        raise ValueError("package lineup output does not cover every source event")
     package_version = str(lineup_summary["package_version"])
 
     possession_result = count_possessions(game)
@@ -446,6 +517,7 @@ def build_staged_game(
     raw_rows: list[dict[str, Any]] = []
     pbp_source_key = f"pbp:{competition}:{season}:{gamecode}"
     for raw in game.to_dict("records"):
+        source_event_order = int(raw["TRUE_NUMBEROFPLAY"])
         team_code = _text(raw.get("CODETEAM"))
         provider_player_id = _text(raw.get("PLAYER_ID"))
         normalized_player_id = (
@@ -458,7 +530,7 @@ def build_staged_game(
                 "_source_key": pbp_source_key,
                 "_team_code": team_code if team_code in team_codes else None,
                 "_player_provider_id": normalized_player_id,
-                "source_event_order": int(raw["TRUE_NUMBEROFPLAY"]),
+                "source_event_order": source_event_order,
                 "period": int(raw["PERIOD"]),
                 "provider_event_type": _text(raw.get("TYPE")),
                 "provider_play_number": _text(raw.get("NUMBEROFPLAY")),
@@ -474,7 +546,7 @@ def build_staged_game(
                 "points_away": _integer(raw.get("POINTS_B")),
                 "comment": _text(raw.get("COMMENT")),
                 "play_info": _text(raw.get("PLAYINFO")),
-                "raw_event": _value(raw),
+                "raw_event": package_events_by_order[source_event_order],
             }
         )
 
@@ -512,121 +584,54 @@ def build_staged_game(
         for row in possession_result.possessions.itertuples(index=False)
     ]
 
-    lineup_rows_by_key: dict[str, dict[str, Any]] = {}
-    lineup_player_rows_by_key: dict[str, list[dict[str, Any]]] = {}
-    lineup_key_by_order: dict[int, dict[str, str]] = {}
-    lineup_ids_by_key: dict[str, tuple[str, ...]] = {}
-    action_lineup_rows: list[dict[str, Any]] = []
-
-    for event in lineup_events.itertuples(index=False):
-        order = int(event.TRUE_NUMBEROFPLAY)
-        keys: dict[str, str] = {}
-        for team_code, members in (
-            (home_team, event.Lineup_A),
-            (away_team, event.Lineup_B),
-        ):
-            if not isinstance(members, list):
-                raise ValueError(f"lineup is not a list at event {order}")
-            provider_ids = tuple(
-                name_to_id[(team_code, str(player).strip())]
-                for player in members
-            )
-            lineup_hash = canonical_lineup_hash(provider_ids)
-            key = _lineup_key(team_code, lineup_hash)
-            keys[team_code] = key
-            lineup_ids_by_key[key] = provider_ids
-            if key not in lineup_rows_by_key:
-                unique_count = len(set(provider_ids))
-                structure_valid = len(provider_ids) == 5 and unique_count == 5
-                lineup_rows_by_key[key] = {
-                    "_lineup_key": key,
-                    "_team_code": team_code,
-                    "lineup_hash": lineup_hash,
-                    "player_count": len(provider_ids),
-                    "starter_count": sum(
-                        player_id in starter_ids for player_id in provider_ids
-                    ),
-                    "structure_valid": structure_valid,
-                    "source_package_version": package_version,
-                }
-                lineup_player_rows_by_key[key] = [
-                    {
-                        "_lineup_key": key,
-                        "_player_provider_id": player_id,
-                        "package_slot": slot,
-                        "is_starter": player_id in starter_ids,
-                    }
-                    for slot, player_id in enumerate(provider_ids, start=1)
-                ]
-        lineup_key_by_order[order] = keys
-        action_lineup_rows.append(
-            {
-                "source_event_order": order,
-                "_home_lineup_key": keys[home_team],
-                "_away_lineup_key": keys[away_team],
-                "validate_on_court_player": bool(
-                    event.validate_on_court_player
-                ),
-                "lineup_structure_valid": bool(
-                    lineup_rows_by_key[keys[home_team]]["structure_valid"]
-                    and lineup_rows_by_key[keys[away_team]]["structure_valid"]
-                ),
-                "source_package_version": package_version,
-            }
+    clean_by_order = {
+        int(row["source_event_order"]): row for row in clean_rows
+    }
+    possession_by_endpoint = {
+        int(row["endpoint_source_event_order"]): row for row in possession_rows
+    }
+    action_rows: list[dict[str, Any]] = []
+    for source_event_order in sorted(package_events_by_order):
+        package_event = package_events_by_order[source_event_order]
+        package_columns = _columnar_package_event(package_event)
+        decision = clean_by_order[source_event_order]
+        possession = possession_by_endpoint.get(source_event_order)
+        team_code = _text(package_event["CODETEAM"])
+        provider_player_id = _text(package_event["PLAYER_ID"])
+        normalized_player_id = (
+            provider_player_id
+            if (team_code, provider_player_id) in roster_pairs
+            else None
         )
-
-    home_stints, home_stint_by_order = _stints_for_team(
-        lineup_events,
-        home_team,
-        lineup_key_by_order,
-    )
-    away_stints, away_stint_by_order = _stints_for_team(
-        lineup_events,
-        away_team,
-        lineup_key_by_order,
-    )
-    stint_rows = home_stints + away_stints
-    stint_by_order = {
-        home_team: home_stint_by_order,
-        away_team: away_stint_by_order,
-    }
-
-    action_validation = {
-        int(row.TRUE_NUMBEROFPLAY): bool(row.validate_on_court_player)
-        for row in lineup_events.itertuples(index=False)
-    }
-    pws_rows: list[dict[str, Any]] = []
-    for possession in possession_result.possessions.itertuples(index=False):
-        order = int(possession.source_event_order)
-        offense_team = str(possession.offense_team)
-        defense_team = away_team if offense_team == home_team else home_team
-        offense_lineup_key = lineup_key_by_order[order][offense_team]
-        defense_lineup_key = lineup_key_by_order[order][defense_team]
-        pws_rows.append(
+        action_rows.append(
             {
-                "game_possession_number": int(
-                    possession.game_possession_number
+                "_source_key": pbp_source_key,
+                "_team_code": team_code if team_code in team_codes else None,
+                "_player_provider_id": normalized_player_id,
+                "_possession_offense_team_code": (
+                    None if possession is None else possession["_team_code"]
                 ),
-                "_offense_lineup_key": offense_lineup_key,
-                "_defense_lineup_key": defense_lineup_key,
-                "_offense_stint_key": stint_by_order[offense_team][order],
-                "_defense_stint_key": stint_by_order[defense_team][order],
-                "num_starters_offense": sum(
-                    player_id in starter_ids
-                    for player_id in lineup_ids_by_key[offense_lineup_key]
+                **package_columns,
+                "source_package_version": package_version,
+                "synthetic_parent_order": decision["synthetic_parent_order"],
+                "synthetic_ft_trip_id": decision["synthetic_ft_trip_id"],
+                "end_possession": decision["final_end_possession"],
+                "endpoint_reason": decision["endpoint_reason"],
+                "grouping_status": decision["grouping_status"],
+                "grouping_confidence_pct": decision[
+                    "grouping_confidence_pct"
+                ],
+                "decision_trace": decision["decision_trace"],
+                "parser_version": decision["parser_version"],
+                "game_possession_number": (
+                    None
+                    if possession is None
+                    else possession["game_possession_number"]
                 ),
-                "num_starters_defense": sum(
-                    player_id in starter_ids
-                    for player_id in lineup_ids_by_key[defense_lineup_key]
-                ),
-                "lineup_validation_clear": bool(
-                    action_validation[order]
-                    and lineup_rows_by_key[offense_lineup_key][
-                        "structure_valid"
-                    ]
-                    and lineup_rows_by_key[defense_lineup_key][
-                        "structure_valid"
-                    ]
+                "team_possession_number": (
+                    None
+                    if possession is None
+                    else possession["team_possession_number"]
                 ),
             }
         )
@@ -704,17 +709,7 @@ def build_staged_game(
             "full_rosters": roster_rows,
             "team_boxscores": official_team_rows,
             "actions_raw": raw_rows,
-            "actions_clean": clean_rows,
-            "possessions": possession_rows,
-            "lineups": list(lineup_rows_by_key.values()),
-            "lineup_players": [
-                row
-                for key_rows in lineup_player_rows_by_key.values()
-                for row in key_rows
-            ],
-            "action_lineups": action_lineup_rows,
-            "stints": stint_rows,
-            "pws": pws_rows,
+            "actions": action_rows,
             "reconciliation_metrics": reconciliation_rows,
             "game_qa": game_qa_rows,
             "qa_incidents": (),

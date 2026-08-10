@@ -25,12 +25,9 @@ GAME_TABLES = (
     "full_rosters",
     "team_boxscores",
     "actions_raw",
-    "actions_clean",
-    "possessions",
-    "lineups",
-    "action_lineups",
-    "stints",
-    "pws",
+    "actions",
+    "matchup_segments_actions",
+    "action_team_context_actions",
 )
 RUN_SCOPED_TABLES = (
     "reconciliation_metrics",
@@ -126,13 +123,6 @@ def main() -> None:
                     f"SELECT count(*) FROM euroleague.{table} WHERE game_id = %s",
                     (game_id,),
                 )
-            actual["lineup_players"] = _count(
-                cursor,
-                "SELECT count(*) FROM euroleague.lineup_players lp "
-                "JOIN euroleague.lineups l ON l.lineup_id = lp.lineup_id "
-                "WHERE l.game_id = %s",
-                (game_id,),
-            )
             for table in RUN_SCOPED_TABLES:
                 actual[table] = _count(
                     cursor,

@@ -55,200 +55,75 @@ class LoadRunConnection(RecordingConnection):
         return LoadRunCursor(self.statements)
 
 
-class GeneratedIdCursor(RecordingCursor):
-    """Stand in for psycopg's ``executemany(..., returning=True)``.
-
-    It yields one result set per input row, in input order, read with
-    ``fetchone()`` and advanced with ``nextset()``. ``result_sets`` overrides
-    how many come back, to simulate a stream that does not line up with the
-    rows inserted.
-    """
-
-    def __init__(
-        self,
-        statements: list[tuple[str, object]],
-        first_id: int,
-        *,
-        result_sets: int | None = None,
-    ) -> None:
-        super().__init__(statements)
-        self.first_id = first_id
-        self.result_sets = result_sets
-        self.executemany_calls: list[tuple[str, int, bool]] = []
-        self._sets: list[tuple[object, ...] | None] = []
-        self._index = 0
-
-    def executemany(
-        self,
-        sql: str,
-        parameters_seq: object,
-        *,
-        returning: bool = False,
-    ) -> None:
-        rows = list(parameters_seq)  # type: ignore[arg-type]
-        self.statements.append((sql, rows))
-        self.executemany_calls.append((sql, len(rows), returning))
-        if not returning:
-            return
-        count = len(rows) if self.result_sets is None else self.result_sets
-        self._sets = [(self.first_id + index,) for index in range(count)]
-        self._index = 0
-
-    def fetchone(self) -> tuple[object, ...] | None:
-        if self._index >= len(self._sets):
-            return None
-        return self._sets[self._index]
-
-    def nextset(self) -> bool | None:
-        self._index += 1
-        return True if self._index < len(self._sets) else None
-
-
-class GeneratedIdConnection(RecordingConnection):
-    def __init__(self, **cursor_kwargs: object) -> None:
-        super().__init__()
-        self.cursor_kwargs = cursor_kwargs
-        self.cursors: list[GeneratedIdCursor] = []
-
-    def cursor(self) -> GeneratedIdCursor:
-        cursor = GeneratedIdCursor(self.statements, **self.cursor_kwargs)  # type: ignore[arg-type]
-        self.cursors.append(cursor)
-        return cursor
-
-
-def _staged_lineup(team_code: str, suffix: str) -> dict[str, object]:
-    return {
-        "_lineup_key": f"{team_code}:{suffix}",
-        "_team_code": team_code,
-        "lineup_hash": suffix * 64,
-        "player_count": 5,
-        "starter_count": 5,
-        "structure_valid": True,
-        "source_package_version": "0.1.1",
-    }
-
-
-def _staged_stint(team_code: str, number: int) -> dict[str, object]:
-    return {
-        "_stint_key": f"{team_code}:{number}",
-        "_lineup_key": f"{team_code}:a",
-        "_team_code": team_code,
-        "stint_number": number,
-        "start_event_order": number * 10,
-        "end_event_order_exclusive": number * 10 + 10,
-        "start_elapsed_seconds": 0,
-        "end_elapsed_seconds": 60,
-        "duration_seconds": 60,
-        "invalid_actor_rows": 0,
-        "lineup_structure_valid": True,
-        "qa_status": "clear",
-        "publishable": True,
-    }
-
-
-class BatchedGeneratedIdTest(unittest.TestCase):
-    """The lineups/stints pipelined insert and its generated-id mapping."""
+class CanonicalActionTest(unittest.TestCase):
+    """Canonical actions resolve dimensions while preserving package arrays."""
 
     def _backend(self, connection: object) -> PostgresTransactionBackend:
         backend = PostgresTransactionBackend(connection, load_run_id=17)
         backend.team_ids = {"AAA": 5, "BBB": 6}
         return backend
 
-    def test_lineup_ids_pair_with_their_own_row_in_one_round_trip(self) -> None:
-        connection = GeneratedIdConnection(first_id=100)
-        backend = self._backend(connection)
+    def test_canonical_action_resolves_ids_and_preserves_arrays(self) -> None:
+        backend = self._backend(RecordingConnection())
+        backend.team_ids = {"AAA": 10, "BBB": 11}
+        backend.player_ids = {"P1": 20}
+        backend.artifact_ids = {"pbp:E:2025:7": 30}
+        lineup_a = ["A1", "A2", "A3", "A4", "A5"]
+        lineup_b = ["B1", "B2", "B3", "B4", "B5"]
 
-        backend.insert_rows(
-            "lineups",
+        row, lineup_key, stint_key = backend._resolve_row(
+            "actions",
             game_id=23,
-            rows=[
-                _staged_lineup("AAA", "a"),
-                _staged_lineup("AAA", "b"),
-                _staged_lineup("BBB", "c"),
-            ],
+            staged={
+                "_source_key": "pbp:E:2025:7",
+                "_team_code": "AAA",
+                "_player_provider_id": "P1",
+                "_possession_offense_team_code": "BBB",
+                "source_event_order": 7,
+                "season": 2025,
+                "gamecode": 7,
+                "provider_event_type": 0,
+                "provider_play_number": 9,
+                "provider_team_code": "AAA",
+                "provider_player_id": "P1",
+                "play_type": "2FGM",
+                "player_name": "Player One",
+                "team_name": "Team A",
+                "jersey_number": 4,
+                "minute": 1,
+                "marker_time": "09:10",
+                "points_a": 2,
+                "points_b": None,
+                "comment": None,
+                "play_info": "Two pointer made",
+                "period": 1,
+                "is_home_team": True,
+                "lineup_a": lineup_a,
+                "lineup_b": lineup_b,
+                "validate_on_court_player": True,
+                "source_package_version": "0.1.1",
+                "synthetic_parent_order": 7,
+                "synthetic_ft_trip_id": None,
+                "end_possession": True,
+                "endpoint_reason": "made_field_goal",
+                "grouping_status": "confirmed",
+                "grouping_confidence_pct": 100,
+                "decision_trace": ["made_fg_endpoint"],
+                "parser_version": "0.2.0",
+                "game_possession_number": 1,
+                "team_possession_number": 1,
+            },
         )
 
-        self.assertEqual(
-            backend.lineup_ids, {"AAA:a": 100, "AAA:b": 101, "BBB:c": 102}
-        )
-        calls = connection.cursors[0].executemany_calls
-        self.assertEqual(len(calls), 1, "lineups must cost one round trip")
-        sql, row_count, returning = calls[0]
-        self.assertEqual((row_count, returning), (3, True))
-        self.assertTrue(sql.endswith(" RETURNING lineup_id"))
-        self.assertEqual(sql.count("VALUES ("), 1, "one row per parameter set")
-
-    def test_stint_ids_pair_with_their_own_row_in_one_round_trip(self) -> None:
-        connection = GeneratedIdConnection(first_id=500)
-        backend = self._backend(connection)
-        backend.lineup_ids = {"AAA:a": 100, "BBB:a": 101}
-
-        backend.insert_rows(
-            "stints",
-            game_id=23,
-            rows=[
-                _staged_stint("AAA", 1),
-                _staged_stint("BBB", 1),
-                _staged_stint("AAA", 2),
-            ],
-        )
-
-        self.assertEqual(
-            backend.stint_ids, {"AAA:1": 500, "BBB:1": 501, "AAA:2": 502}
-        )
-        calls = connection.cursors[0].executemany_calls
-        self.assertEqual(len(calls), 1, "stints must cost one round trip")
-        self.assertEqual(calls[0][1:], (3, True))
-        self.assertTrue(calls[0][0].endswith(" RETURNING stint_id"))
-
-    def test_missing_staged_key_is_refused_before_insert(self) -> None:
-        connection = GeneratedIdConnection(first_id=100)
-        backend = self._backend(connection)
-        keyless = dict(_staged_lineup("AAA", "a"), _lineup_key=None)
-
-        with self.assertRaisesRegex(ValueError, "missing _lineup_key"):
-            backend.insert_rows("lineups", game_id=23, rows=[keyless])
-
-        self.assertFalse(
-            connection.cursors[0].executemany_calls,
-            "the bad row must be caught before anything is written",
-        )
-
-    def test_too_few_result_sets_is_an_error_not_a_silent_gap(self) -> None:
-        connection = GeneratedIdConnection(first_id=100, result_sets=2)
-        backend = self._backend(connection)
-
-        with self.assertRaisesRegex(ValueError, "result sets for 3 inserted rows"):
-            backend.insert_rows(
-                "lineups",
-                game_id=23,
-                rows=[
-                    _staged_lineup("AAA", "a"),
-                    _staged_lineup("AAA", "b"),
-                    _staged_lineup("BBB", "c"),
-                ],
-            )
-
-    def test_too_many_result_sets_is_an_error(self) -> None:
-        connection = GeneratedIdConnection(first_id=100, result_sets=3)
-        backend = self._backend(connection)
-
-        with self.assertRaisesRegex(ValueError, "more result sets"):
-            backend.insert_rows(
-                "lineups",
-                game_id=23,
-                rows=[_staged_lineup("AAA", "a"), _staged_lineup("AAA", "b")],
-            )
-
-    def test_empty_batch_writes_nothing(self) -> None:
-        connection = GeneratedIdConnection(first_id=100)
-        backend = self._backend(connection)
-
-        backend.insert_rows("lineups", game_id=23, rows=[])
-
-        self.assertEqual(backend.lineup_ids, {})
-        self.assertFalse(connection.cursors[0].executemany_calls)
-
+        self.assertIsNone(lineup_key)
+        self.assertIsNone(stint_key)
+        self.assertEqual(row["team_id"], 10)
+        self.assertEqual(row["player_id"], 20)
+        self.assertEqual(row["possession_offense_team_id"], 11)
+        self.assertEqual(row["lineup_a"], lineup_a)
+        self.assertEqual(row["lineup_b"], lineup_b)
+        self.assertEqual(row["decision_trace"], ["made_fg_endpoint"])
+        backend._parameters("actions", row)
 
 class CountAllRowsTest(unittest.TestCase):
     """The batched validation counts must mirror the per-table definition."""
@@ -273,9 +148,9 @@ class CountAllRowsTest(unittest.TestCase):
         self.assertEqual(
             counts, {table: index for index, table in enumerate(INSERT_ORDER)}
         )
-        # lineup_players is counted through its lineups, audit tables are
-        # scoped to the current run, everything else is plain game_id.
-        self.assertIn("JOIN euroleague.lineups AS l ON l.lineup_id = lp.lineup_id", sql)
+        # Audit tables are scoped to the current run; all persisted game facts
+        # are directly keyed by game_id.
+        self.assertNotIn("lineups", sql)
         self.assertEqual(sql.count("load_run_id = %s"), 3)
         self.assertEqual(len(parameters), len(INSERT_ORDER) + 3)
         self.assertEqual(set(parameters), {23, 17})
@@ -377,16 +252,18 @@ class PostgresBackendTest(unittest.TestCase):
         self.assertIn("PERFORM 'a;b'; END;", statements[0])
         self.assertEqual(statements[1], "SELECT 1")
 
-    def test_lineup_player_delete_is_scoped_through_game_lineups(self) -> None:
+    def test_action_delete_clears_actions_based_facts_first(self) -> None:
         connection = RecordingConnection()
         backend = PostgresTransactionBackend(connection, load_run_id=17)
 
-        backend.delete_game_rows("lineup_players", game_id=23)
+        backend.delete_game_rows("actions", game_id=23)
 
-        sql, parameters = connection.statements[0]
-        self.assertIn("USING euroleague.lineups", sql)
-        self.assertIn("l.game_id = %s", sql)
-        self.assertEqual(parameters, (23,))
+        executed = [sql for sql, _ in connection.statements]
+        self.assertEqual(len(executed), 3, executed)
+        self.assertIn("DELETE FROM euroleague.action_team_context_actions", executed[0])
+        self.assertIn("DELETE FROM euroleague.matchup_segments_actions", executed[1])
+        self.assertIn("DELETE FROM euroleague.actions", executed[2])
+        self.assertTrue(all(parameters == (23,) for _, parameters in connection.statements))
 
     def test_audit_retry_deletes_only_the_current_load_run(self) -> None:
         connection = RecordingConnection()
@@ -397,31 +274,6 @@ class PostgresBackendTest(unittest.TestCase):
         sql, parameters = connection.statements[0]
         self.assertIn("load_run_id = %s", sql)
         self.assertEqual(parameters, (23, 17))
-
-    def test_staged_lineup_resolves_team_and_run_ids(self) -> None:
-        backend = PostgresTransactionBackend(RecordingConnection(), load_run_id=17)
-        backend.team_ids = {"AAA": 5}
-        row, lineup_key, stint_key = backend._resolve_row(
-            "lineups",
-            game_id=23,
-            staged={
-                "_lineup_key": "AAA:hash",
-                "_team_code": "AAA",
-                "lineup_hash": "a" * 64,
-                "player_count": 5,
-                "starter_count": 3,
-                "structure_valid": True,
-                "source_package_version": "0.1.1",
-            },
-        )
-
-        self.assertEqual(lineup_key, "AAA:hash")
-        self.assertIsNone(stint_key)
-        self.assertEqual(row["game_id"], 23)
-        self.assertEqual(row["team_id"], 5)
-        self.assertEqual(row["load_run_id"], 17)
-        backend._parameters("lineups", row)
-
 
 class _SchemaCursor:
     """Returns a fixed pg_tables result, so the guard can be driven directly."""
@@ -461,7 +313,7 @@ class ActionTeamContextWiringTest(unittest.TestCase):
         existing = set(TABLE_COLUMNS) | {
             "load_runs", "teams", "players", "schedule", "source_artifacts",
             "player_four_factors_by_game", "team_four_factors_by_game",
-            "matchup_segments", "action_team_context",
+            "matchup_segments_actions", "action_team_context_actions",
         }
         assert_shadow_schema_compatible(_SchemaConnection(existing))
 
@@ -470,7 +322,8 @@ class ActionTeamContextWiringTest(unittest.TestCase):
         existing = set(TABLE_COLUMNS) | {
             "load_runs", "teams", "players", "schedule", "source_artifacts",
             "player_four_factors_by_game", "team_four_factors_by_game",
-            "matchup_segments", "action_team_context", "something_unexpected",
+            "matchup_segments_actions", "action_team_context_actions",
+            "something_unexpected",
         }
         with self.assertRaises(RuntimeError) as caught:
             assert_shadow_schema_compatible(_SchemaConnection(existing))
@@ -493,7 +346,7 @@ class ActionTeamContextWiringTest(unittest.TestCase):
         fact = next(
             i
             for i, s in enumerate(executed)
-            if "refresh_action_team_context_for_games" in s
+            if "refresh_actions_consumer_candidates" in s
         )
         player = next(
             i
@@ -502,55 +355,14 @@ class ActionTeamContextWiringTest(unittest.TestCase):
         )
         self.assertLess(fact, player, "the fact must be refreshed first")
 
-    def test_deleting_lineups_clears_the_derived_fact_first(self) -> None:
-        """A republish must not be blocked by the fact's FK onto lineups.
-
-        The composite foreign keys are deliberate, so the derived rows have to
-        go before the lineups they reference. Without this the probe fails with
-        ForeignKeyViolation on matchup_segments_game_id_own_lineup_id_fkey.
-        """
-        connection = RecordingConnection()
-        backend = PostgresTransactionBackend(connection, load_run_id=17)
-        backend.delete_game_rows("lineups", game_id=23)
-
-        executed = [sql for sql, _ in connection.statements]
-        self.assertEqual(len(executed), 3, executed)
-        self.assertIn("DELETE FROM euroleague.action_team_context", executed[0])
-        self.assertIn("DELETE FROM euroleague.matchup_segments", executed[1])
-        self.assertIn("DELETE FROM euroleague.lineups", executed[2])
-
-    def test_validate_game_does_not_predict_the_grain_from_segments(self) -> None:
-        """The row-count expectation must not be derived from matchup_segments.
-
-        It was a real check only while the player refresh derived its own
-        segments: the two sides then came from different sources. Once that
-        refresh reads matchup_segments, an expectation derived from the same
-        table compares a value against itself and can never fail.
-
-        Asserted on source text on purpose, unlike
-        test_schema_allowlist_accepts_the_derived_fact, which was deliberately
-        moved off inspect.getsource because it had behaviour to drive. This one
-        does not: the property is the ABSENCE of a query, and once the check is
-        gone there is nothing left to observe at runtime. A mock-based version
-        would assert over recorded SQL strings, which is the same text
-        assertion one layer removed, with more machinery.
-
-        Comment lines are stripped before the assertion. The comment that
-        replaced the deleted check necessarily names the table it explains, so
-        asserting over raw source would fail on its own rationale -- the same
-        code-versus-prose blindness that made the allowlist test worth
-        replacing, in the opposite direction. Stripping comments makes this
-        assert what it claims to: no QUERY in this function reads the table.
-        """
+    def test_validate_game_uses_only_actions_based_segments(self) -> None:
         import inspect
 
         from euroleague_possessions import postgres_backend
 
         source = inspect.getsource(postgres_backend.PostgresTransactionBackend.validate_game)
-        code = "\n".join(
-            line for line in source.splitlines() if not line.lstrip().startswith("#")
-        )
-        self.assertNotIn("matchup_segments", code)
+        self.assertIn("matchup_segments_actions", source)
+        self.assertNotIn("euroleague.stints", source)
 
 
 if __name__ == "__main__":
