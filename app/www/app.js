@@ -768,7 +768,8 @@
     { tab: "traditional_stats", inputId: "ts_display_mode", items: ["Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"], def: "Per Game", type: "select" },
     { tab: "compare", inputId: "cmp_mode", items: ["Teams", "Lineups", "Players"], def: "Teams" },
     { tab: "euro", inputId: "euro_view_mode", items: ["Summary", "Four Factors"], def: "Summary" },
-    { tab: "euro_team", inputId: "euroteam_view_mode", items: ["Summary", "Four Factors"], def: "Summary" }
+    { tab: "euro_team", inputId: "euroteam_view_mode", items: ["Summary", "Four Factors"], def: "Summary" },
+    { tab: "euro_lineups", inputId: "euro_ld_view_mode", items: ["Summary", "Four Factors"], def: "Summary" }
   ];
 
   function setRowActive(row, active) {
@@ -893,7 +894,7 @@
   var TAB_LEAGUE = {
     onoff: "il", lineup_data: "il", team_ratings: "il",
     game_logs: "il", traditional_stats: "il", compare: "il",
-    euro: "el", euro_team: "el"
+    euro: "el", euro_team: "el", euro_lineups: "el"
   };
   var STORE_KEY = "ibpl_league";
   var DEFAULT_LEAGUE = "il";

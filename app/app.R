@@ -26,6 +26,8 @@ source("R/ui_tab8_euro.R", local = TRUE)
 source("R/server_tab8_euro.R", local = TRUE)
 source("R/ui_tab9_euro_team.R", local = TRUE)
 source("R/server_tab9_euro_team.R", local = TRUE)
+source("R/ui_tab10_euro_lineups.R", local = TRUE)
+source("R/server_tab10_euro_lineups.R", local = TRUE)
 
 enableBookmarking(store = "url")
 # 13: bookmarks captured before the .clientdata_url_search fix hold blank
@@ -117,7 +119,8 @@ ui <- function(request) {
   ui_tab5_traditional(),
   ui_tab7_compare(),
   ui_tab8_euro(),
-  ui_tab9_euro_team()
+  ui_tab9_euro_team(),
+  ui_tab10_euro_lineups()
   )
 }
 
@@ -461,6 +464,7 @@ server <- function(input, output, session) {
   server_tab7_compare(input, output, session, shared)
   server_tab8_euro(input, output, session, shared)
   server_tab9_euro_team(input, output, session, shared)
+  server_tab10_euro_lineups(input, output, session, shared)
   server_team_hub(input, output, session, shared)
 
   # Card navigation: Who is helping my team? -> Tab 1

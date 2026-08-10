@@ -96,7 +96,9 @@ euro_fetch_players_basic <- function(competition, season) {
     key = sprintf("euro_players_%s_%d", competition, season),
     query_fun = function() db_get_query(
       pg_pool,
-      "SELECT DISTINCT fr.player_id, p.display_name AS player_name, fr.team_id
+      # Column aliases are the lineup_player_filter module's contract: it
+      # requires team_id, player_id, and name.
+      "SELECT DISTINCT fr.player_id, p.display_name AS name, fr.team_id
          FROM euroleague.full_rosters fr
          JOIN euroleague.players p ON p.player_id = fr.player_id
          JOIN euroleague.schedule s ON s.game_id = fr.game_id
