@@ -1161,3 +1161,70 @@ resolve_poss_cols <- function(df, mode) {
   list(on = NA_character_, off = NA_character_)
 }
 
+# Four-factor ON/OFF diff cell for the on/off tabs, shared by Tab 1 (Israeli)
+# and Tab 8 (EuroLeague). Renders the diff, the on/off values, a percentile
+# range bar, and optionally an estimated points-impact line.
+#
+# show_impact is the one real league difference. The weights in
+# FF_IMPACT_WEIGHTS were fitted on Israeli-league data, so EuroLeague passes
+# FALSE: reusing those coefficients would state a points-per-100 impact that
+# league's data never supported. Restore it there only after a refit. When
+# FALSE the estimate is compiled out of the JS rather than hidden, so no
+# weight can reach the rendered page.
+#
+# The template's internal indentation is deliberately left as it was in the
+# server files: it is inside the emitted JS string, so re-indenting it would
+# change the output and stop this being a provable move.
+ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
+                            impact_w = 0, impact_suffix = "", impact_tip = "",
+                            show_impact = TRUE) {
+  guard <- if (isTRUE(show_impact)) {
+    "data !== null && data !== '' && !isNaN(parseFloat(data))"
+  } else {
+    "false"
+  }
+            JS(sprintf(
+            "function(data, type, row, meta) {
+               if (type === 'display') {
+                 var w = %f;
+                 var estLine = '';
+                 if (%s) {
+                   var est = parseFloat(data) * w;
+                   estLine = '<div class=\"ff-impact-est\" title=\"%s\">est. ' +
+                             (est >= 0 ? '+' : '\\u2212') + Math.abs(est).toFixed(1) +
+                             '%s</div>';
+                 }
+                 var diffVal = (data === null) ? '-' : (parseFloat(data) > 0 ? '+' + data : data);
+                 var onVal   = row[%d] || '-';
+                 var offVal  = row[%d] || '-';
+                 var onPct   = row[%d];
+                 var offPct  = row[%d];
+
+                 if (onPct === null || onPct === undefined) {
+                    return '<div class=\"diff-val unranked\">' + diffVal + '</div>' +
+                           '<div class=\"rank-bar-container hidden\"></div>' +
+                           '<div class=\"sub-text\" style=\"opacity:0.5;\">' + onVal + ' | ' + offVal + '</div>' +
+                           estLine;
+                 }
+
+                 var rangeLineLeft  = Math.min(onPct, offPct);
+                 var rangeLineWidth = Math.abs(onPct - offPct);
+
+                 return '<div class=\"diff-val\">' + diffVal + '</div>' +
+                        '<div class=\"rank-bar-container\">' +
+                          '<div class=\"rank-track\"></div>' +
+                          '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '%%; width:' + rangeLineWidth + '%%;\"></div>' +
+                          '<div class=\"dot-off\" style=\"left:' + offPct + '%%;\" title=\"Off: ' + offVal + '\"></div>' +
+                          '<div class=\"dot-on\" style=\"left:' + onPct + '%%;\" title=\"On: ' + onVal + '\"></div>' +
+                        '</div>' +
+                        '<div class=\"sub-text\">' +
+                          '<span style=\"font-weight:700; color:#222;\">' + onVal + '</span>' +
+                          ' <span style=\"opacity:0.6;\">|</span> ' +
+                          '<span style=\"color:#666;\">' + offVal + '</span>' +
+                        '</div>' +
+                        estLine;
+               }
+               return data;
+             }", impact_w, guard, impact_tip, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
+  ))
+}

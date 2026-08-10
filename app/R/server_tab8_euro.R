@@ -1016,50 +1016,10 @@ server_tab8_euro <- function(input, output, session, shared) {
           impact_suffix <- ""
           impact_tip <- ""
 
-          js_func <- JS(sprintf(
-            "function(data, type, row, meta) {
-               if (type === 'display') {
-                 var w = %f;
-                 var estLine = '';
-                 if (false) {
-                   var est = parseFloat(data) * w;
-                   estLine = '<div class=\"ff-impact-est\" title=\"%s\">est. ' +
-                             (est >= 0 ? '+' : '\\u2212') + Math.abs(est).toFixed(1) +
-                             '%s</div>';
-                 }
-                 var diffVal = (data === null) ? '-' : (parseFloat(data) > 0 ? '+' + data : data);
-                 var onVal   = row[%d] || '-';
-                 var offVal  = row[%d] || '-';
-                 var onPct   = row[%d];
-                 var offPct  = row[%d];
-
-                 if (onPct === null || onPct === undefined) {
-                    return '<div class=\"diff-val unranked\">' + diffVal + '</div>' +
-                           '<div class=\"rank-bar-container hidden\"></div>' +
-                           '<div class=\"sub-text\" style=\"opacity:0.5;\">' + onVal + ' | ' + offVal + '</div>' +
-                           estLine;
-                 }
-
-                 var rangeLineLeft  = Math.min(onPct, offPct);
-                 var rangeLineWidth = Math.abs(onPct - offPct);
-
-                 return '<div class=\"diff-val\">' + diffVal + '</div>' +
-                        '<div class=\"rank-bar-container\">' +
-                          '<div class=\"rank-track\"></div>' +
-                          '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '%%; width:' + rangeLineWidth + '%%;\"></div>' +
-                          '<div class=\"dot-off\" style=\"left:' + offPct + '%%;\" title=\"Off: ' + offVal + '\"></div>' +
-                          '<div class=\"dot-on\" style=\"left:' + onPct + '%%;\" title=\"On: ' + onVal + '\"></div>' +
-                        '</div>' +
-                        '<div class=\"sub-text\">' +
-                          '<span style=\"font-weight:700; color:#222;\">' + onVal + '</span>' +
-                          ' <span style=\"opacity:0.6;\">|</span> ' +
-                          '<span style=\"color:#666;\">' + offVal + '</span>' +
-                        '</div>' +
-                        estLine;
-               }
-               return data;
-             }", impact_w, impact_tip, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
-          ))
+          js_func <- ff_diff_cell_js(
+            on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
+            impact_w, impact_suffix, impact_tip, show_impact = FALSE
+          )
           defs[[length(defs) + 1]] <- list(targets = target_idx, render = js_func)
         }
       }

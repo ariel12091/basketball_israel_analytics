@@ -52,3 +52,39 @@ test_that("resolve_poss_cols picks the columns for the active view mode", {
   expect_identical(resolve_poss_cols(summary_df, "Four Factors"),
                    list(on = NA_character_, off = NA_character_))
 })
+
+test_that("ff_diff_cell_js emits the same JS both leagues rendered before extraction", {
+  # These are the exact strings server_tab1.R and server_tab8_euro.R produced
+  # from their own inline copies, captured before the extraction. They pin the
+  # move: any change to the template shows up here rather than in the browser.
+  js_on  <- ff_diff_cell_js(11L, 22L, 33L, 44L, 1.45, " pts allowed", "TIPTEXT",
+                            show_impact = TRUE)
+  js_off <- ff_diff_cell_js(11L, 22L, 33L, 44L, 1.45, " pts allowed", "TIPTEXT",
+                            show_impact = FALSE)
+
+  # The Israeli guard runs the estimate; the EuroLeague one compiles it out.
+  expect_match(js_on, "if (data !== null && data !== '' && !isNaN(parseFloat(data))) {",
+               fixed = TRUE)
+  expect_match(js_off, "if (false) {", fixed = TRUE)
+
+  # Everything else is identical between the two.
+  expect_identical(
+    sub("if (data !== null && data !== '' && !isNaN(parseFloat(data))) {", "if (false) {",
+        js_on, fixed = TRUE),
+    js_off
+  )
+
+  # Column indices land in the right slots, in order.
+  expect_match(js_off, "var onVal   = row[11]", fixed = TRUE)
+  expect_match(js_off, "var offVal  = row[22]", fixed = TRUE)
+  expect_match(js_off, "var onPct   = row[33]", fixed = TRUE)
+  expect_match(js_off, "var offPct  = row[44]", fixed = TRUE)
+
+  # The weight and its wording reach the estimate line.
+  expect_match(js_on, "var w = 1.450000;", fixed = TRUE)
+  expect_match(js_on, "title=\"TIPTEXT\"", fixed = TRUE)
+  expect_match(js_on, " pts allowed</div>", fixed = TRUE)
+
+  # Defaults keep a caller that supplies only indices safe.
+  expect_match(ff_diff_cell_js(1L, 2L, 3L, 4L), "var w = 0.000000;", fixed = TRUE)
+})
