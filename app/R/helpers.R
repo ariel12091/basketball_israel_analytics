@@ -1265,6 +1265,125 @@ onoff_filter_ff_rows <- function(df, team_ids, min_all, min_on) {
   df
 }
 
+# Auto minimum-possessions wiring for the on/off tabs, shared by Tab 1
+# (Israeli) and Tab 8 (EuroLeague), which held observer-for-observer copies of
+# it. Five observers in the order the server bodies created them, because
+# Shiny flushes observers in creation order:
+#
+#   1-2. manual override -- moving a slider by hand turns auto off, unless the
+#        value equals the one this code just wrote (state$updating and the
+#        last_auto slots exist to tell those two cases apart).
+#   3.   re-arm -- any filter change turns auto back on, except during a reset.
+#   4-5. the bars themselves, each triggered by the OTHER slider so setting one
+#        can relax the other without the two chasing each other.
+#
+# Both bars only ever LOWER the slider (cur_val <= min_needed returns early):
+# auto-min exists to stop a stale high threshold emptying the table, not to
+# overrule a deliberately loose one.
+#
+# `sources` supplies the data each league fetches its own way -- see
+# onoff_auto_min_base_df(). Every element is a function so the server body can
+# call this before the reactives it names are assigned.
+setup_onoff_auto_min <- function(input, session, min_on_id, min_all_id,
+                                 state, auto_enabled, resetting,
+                                 mode_r, triggers, sources) {
+  manual <- list(list(id = min_on_id, slot = "last_auto"),
+                 list(id = min_all_id, slot = "last_auto_all"))
+  for (m in manual) {
+    local({
+      spec <- m
+      observeEvent(input[[spec$id]], {
+        if (isTRUE(state$updating)) return(invisible(NULL))
+        cur_val <- as.integer(input[[spec$id]])
+        last_auto <- as.integer(state[[spec$slot]])
+        if (!is.na(cur_val) && !is.na(last_auto) && cur_val == last_auto) {
+          return(invisible(NULL))
+        }
+        auto_enabled(FALSE)
+      }, ignoreInit = TRUE)
+    })
+  }
+
+  observeEvent(triggers(), {
+    if (isTRUE(resetting())) return(invisible(NULL))
+    auto_enabled(TRUE)
+  }, ignoreInit = TRUE)
+
+  bars <- list(
+    list(
+      id = min_on_id, trigger_id = min_all_id, slot = "last_auto",
+      gate_min_on = FALSE,
+      ready = function(cols) !is.na(cols$on),
+      compute = function(df, cols) auto_min_on_from_df(df, usage_col = cols$on, step = 10L)
+    ),
+    list(
+      id = min_all_id, trigger_id = min_on_id, slot = "last_auto_all",
+      gate_min_on = TRUE,
+      ready = function(cols) !is.na(cols$on) && !is.na(cols$off),
+      compute = function(df, cols) {
+        auto_min_all_from_df(df, usage_col = cols$on, on_col = cols$on,
+                             off_col = cols$off, step = 10L)
+      }
+    )
+  )
+
+  for (b in bars) {
+    local({
+      spec <- b
+      observeEvent(list(triggers(), input[[spec$trigger_id]]), {
+        if (!isTRUE(auto_enabled())) return(invisible(NULL))
+
+        mode <- mode_r()
+        df_base <- onoff_auto_min_base_df(
+          mode, sources,
+          min_on = if (isTRUE(spec$gate_min_on)) input[[min_on_id]] else NULL
+        )
+
+        cols <- resolve_poss_cols(df_base, mode)
+        if (!spec$ready(cols)) return(invisible(NULL))
+        min_needed <- spec$compute(df_base, cols)
+        cur_val <- as.integer(input[[spec$id]])
+        if (is.na(min_needed) || is.na(cur_val)) return(invisible(NULL))
+        if (cur_val <= min_needed) return(invisible(NULL))
+
+        state$updating <- TRUE
+        updateSliderInput(session, spec$id, value = min_needed)
+        state$updating <- FALSE
+        state[[spec$slot]] <- min_needed
+      }, ignoreInit = TRUE)
+    })
+  }
+}
+
+# The population the auto-min bars measure, for the active view mode. Shared by
+# Tab 1 and Tab 8; the league-specific parts arrive through `sources`:
+#
+#   ff()        ranked four-factor frame       mv()    season materialized view
+#   fallback()  is the filtered path active?   live()  filtered-path pull with
+#   team_ids()  currently selected teams               BOTH bars at zero
+#
+# live() must not pre-filter on the possession bars: the threshold is derived
+# from the whole population, and a pre-filtered frame would ratchet it upward
+# every time it ran.
+onoff_auto_min_base_df <- function(mode, sources, min_on = NULL) {
+  filter_teams <- function(df) {
+    tids <- sources$team_ids()
+    if (!is.null(tids) && length(tids) > 0) df <- df %>% filter(team_id %in% !!tids)
+    df
+  }
+
+  if (identical(mode, "Four Factors")) {
+    df <- filter_teams(sources$ff())
+    if (!is.null(min_on) && "off_on_poss" %in% names(df)) {
+      df <- df %>% filter(off_on_poss >= !!min_on)
+    }
+    return(df)
+  }
+
+  if (isTRUE(sources$fallback())) return(sources$live())
+  filter_teams(sources$mv())
+}
+
 # Fast-path gate for the on/off tabs, shared by Tab 1 (Israeli) and Tab 8
 # (EuroLeague). TRUE means the season materialized view cannot answer the
 # question and the filtered SQL path has to run. Deliberately FALSE when only

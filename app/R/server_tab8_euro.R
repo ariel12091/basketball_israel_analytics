@@ -177,140 +177,44 @@ server_tab8_euro <- function(input, output, session, shared) {
     )
   }
 
-  observeEvent(input$euro_min_on_poss, {
-    if (isTRUE(auto_min_state$updating)) return(invisible(NULL))
-    cur_val <- as.integer(input$euro_min_on_poss)
-    last_auto <- as.integer(auto_min_state$last_auto)
-    if (!is.na(cur_val) && !is.na(last_auto) && cur_val == last_auto) {
-      return(invisible(NULL))
-    }
-    auto_enabled(FALSE)
-  }, ignoreInit = TRUE)
+  # The population the auto-min bars measure on the filtered path: the same
+  # query live_result_df() runs, but with both bars at zero so the threshold
+  # comes from the whole population.
+  auto_min_live_df <- function() {
+    rng <- debounced_range()
+    req(rng)
+    db_args <- build_onoff_db_args()
+    run_onoff_compute_14(
+      pg_pool,
+      start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+      team_ids = selected_team_ids(), min_all = 0L, min_on = 0L,
+      min_net = DEFAULT_MIN_NET, game_year = euro_selected_season(),
+      phase_csv = db_args$phase_csv, opp_ids_csv = db_args$opp_ids_csv,
+      home_away = db_args$home_away, outcome = db_args$outcome,
+      opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric,
+      min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games,
+      num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
+      num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max
+    )
+  }
 
-  observeEvent(input$euro_min_all_poss, {
-    if (isTRUE(auto_min_state$updating)) return(invisible(NULL))
-    cur_val <- as.integer(input$euro_min_all_poss)
-    last_auto <- as.integer(auto_min_state$last_auto_all)
-    if (!is.na(cur_val) && !is.na(last_auto) && cur_val == last_auto) {
-      return(invisible(NULL))
-    }
-    auto_enabled(FALSE)
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(debounced_range(), debounced_teams(), debounced_on_filters(),
-                    gn_params(), input$euro_game_year, input$euro_view_mode), {
-    if (isTRUE(resetting())) return(invisible(NULL))
-    auto_enabled(TRUE)
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(debounced_range(), debounced_teams(), debounced_on_filters(),
-                    gn_params(), input$euro_game_year, input$euro_view_mode, input$euro_min_all_poss), {
-    if (!isTRUE(auto_enabled())) return(invisible(NULL))
-
-    mode <- input$euro_view_mode
-
-    df_base <- NULL
-    if (identical(mode, "Four Factors")) {
-      df_base <- ff_ranked_df()
-      tids <- selected_team_ids()
-      if (!is.null(tids) && length(tids) > 0) df_base <- df_base %>% filter(team_id %in% !!tids)
-    } else {
-      if (isTRUE(fallback_needed())) {
-        rng <- debounced_range()
-        req(rng)
-        tids <- selected_team_ids()
-        gy <- euro_selected_season()
-        db_args <- build_onoff_db_args()
-
-        df_base <- run_onoff_compute_14(
-          pg_pool,
-          start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
-          team_ids = tids, min_all = 0L, min_on = 0L,
-          min_net = DEFAULT_MIN_NET, game_year = gy,
-          phase_csv = db_args$phase_csv, opp_ids_csv = db_args$opp_ids_csv,
-          home_away = db_args$home_away, outcome = db_args$outcome,
-          opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric,
-          min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games,
-          num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
-          num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max
-        )
-      } else {
-        df_base <- mv_result_df()
-        tids <- selected_team_ids()
-        if (!is.null(tids) && length(tids) > 0) {
-          df_base <- df_base %>% filter(team_id %in% !!tids)
-        }
-      }
-    }
-
-    poss_cols <- resolve_poss_cols(df_base, mode)
-    if (is.na(poss_cols$on)) return(invisible(NULL))
-    min_needed <- auto_min_on_from_df(df_base, usage_col = poss_cols$on, step = 10L)
-    cur_val <- as.integer(input$euro_min_on_poss)
-    if (is.na(min_needed) || is.na(cur_val)) return(invisible(NULL))
-    if (cur_val <= min_needed) return(invisible(NULL))
-
-    auto_min_state$updating <- TRUE
-    updateSliderInput(session, "euro_min_on_poss", value = min_needed)
-    auto_min_state$updating <- FALSE
-    auto_min_state$last_auto <- min_needed
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(debounced_range(), debounced_teams(), debounced_on_filters(),
-                    gn_params(), input$euro_game_year, input$euro_view_mode, input$euro_min_on_poss), {
-    if (!isTRUE(auto_enabled())) return(invisible(NULL))
-
-    mode <- input$euro_view_mode
-    df_base <- NULL
-    if (identical(mode, "Four Factors")) {
-      df_base <- ff_ranked_df()
-      tids <- selected_team_ids()
-      if (!is.null(tids) && length(tids) > 0) df_base <- df_base %>% filter(team_id %in% !!tids)
-      if ("off_on_poss" %in% names(df_base)) {
-        df_base <- df_base %>% filter(off_on_poss >= !!input$euro_min_on_poss)
-      }
-    } else {
-      if (isTRUE(fallback_needed())) {
-        rng <- debounced_range()
-        req(rng)
-        tids <- selected_team_ids()
-        gy <- euro_selected_season()
-        db_args <- build_onoff_db_args()
-
-        df_base <- run_onoff_compute_14(
-          pg_pool,
-          start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
-          team_ids = tids, min_all = 0L, min_on = 0L,
-          min_net = DEFAULT_MIN_NET, game_year = gy,
-          phase_csv = db_args$phase_csv, opp_ids_csv = db_args$opp_ids_csv,
-          home_away = db_args$home_away, outcome = db_args$outcome,
-          opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric,
-          min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games,
-          num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
-          num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max
-        )
-      } else {
-        df_base <- mv_result_df()
-        tids <- selected_team_ids()
-        if (!is.null(tids) && length(tids) > 0) {
-          df_base <- df_base %>% filter(team_id %in% !!tids)
-        }
-      }
-    }
-
-    poss_cols <- resolve_poss_cols(df_base, mode)
-    if (is.na(poss_cols$on) || is.na(poss_cols$off)) return(invisible(NULL))
-
-    min_needed <- auto_min_all_from_df(df_base, usage_col = poss_cols$on, on_col = poss_cols$on, off_col = poss_cols$off, step = 10L)
-    cur_val <- as.integer(input$euro_min_all_poss)
-    if (is.na(min_needed) || is.na(cur_val)) return(invisible(NULL))
-    if (cur_val <= min_needed) return(invisible(NULL))
-
-    auto_min_state$updating <- TRUE
-    updateSliderInput(session, "euro_min_all_poss", value = min_needed)
-    auto_min_state$updating <- FALSE
-    auto_min_state$last_auto_all <- min_needed
-  }, ignoreInit = TRUE)
+  setup_onoff_auto_min(
+    input, session,
+    min_on_id = "euro_min_on_poss", min_all_id = "euro_min_all_poss",
+    state = auto_min_state, auto_enabled = auto_enabled, resetting = resetting,
+    mode_r = function() input$euro_view_mode,
+    triggers = function() {
+      list(debounced_range(), debounced_teams(), debounced_on_filters(),
+           gn_params(), input$euro_game_year, input$euro_view_mode)
+    },
+    sources = list(
+      fallback = function() fallback_needed(),
+      ff = function() ff_ranked_df(),
+      mv = function() mv_result_df(),
+      live = auto_min_live_df,
+      team_ids = function() selected_team_ids()
+    )
+  )
 
   setup_gn_last_n_sync(session, input, "euro")
 
