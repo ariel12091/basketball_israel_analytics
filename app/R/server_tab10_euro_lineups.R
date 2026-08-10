@@ -218,11 +218,21 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # fast path's player-set semantics are the same implementation rather than a
   # second one that merely looks equivalent: players-on is "contains all"
   # (the SQL @>), players-off is "overlaps none" (NOT &&).
+  # Group size is part of the ranking population's definition -- a pair and a
+  # quintet are not comparable -- so it narrows BEFORE ranks are computed.
+  select_unit_size <- function(df) {
+    if (!NROW(df)) return(df)
+    df[df$unit_size == as.integer(input$euro_ld_group_size %||% "5"), , drop = FALSE]
+  }
+
+  # Team and players-on/off narrow AFTER ranking, so a unit keeps its rank
+  # against the whole league rather than against its own team. Delegates to the
+  # shared helper Tab 2 already uses in production, so the fast path's set
+  # semantics are the same implementation rather than a second one that merely
+  # looks equivalent: players-on is "contains all" (the SQL @>), players-off is
+  # "overlaps none" (NOT &&).
   apply_local_unit_filters <- function(df) {
     if (!NROW(df)) return(df)
-    size <- as.integer(input$euro_ld_group_size %||% "5")
-    df <- df[df$unit_size == size, , drop = FALSE]
-
     team_val <- ld_filter$team()
     team_val <- team_val[nzchar(team_val)]
     df <- apply_local_lineup_filters(df, list(
@@ -230,7 +240,6 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       player_csv     = csv_if_any(ld_filter$players_on()),
       player_off_csv = csv_if_any(ld_filter$players_off())
     ))
-    df$player_ids <- NULL
     df$player_ids_list <- NULL
     df
   }
@@ -277,12 +286,16 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       ),
       params = list(
         comp, as.integer(season), as.Date(dates[[1]]), as.Date(dates[[2]]),
-        a$team_csv, a$phase_csv, a$opp_ids_csv, a$home_away, a$outcome,
+        NA_character_, a$phase_csv, a$opp_ids_csv, a$home_away, a$outcome,
         a$opp_rank_side, a$opp_rank_n, a$opp_rank_metric,
         a$min_gn, a$max_gn, a$last_n_games,
         a$num_starters_off_min, a$num_starters_off_max,
         a$num_starters_def_min, a$num_starters_def_max,
-        a$unit_size, a$players_on_csv, a$players_off_csv,
+        a$unit_size,
+        # team and players-on/off are deliberately NOT sent: ranks must be
+        # computed over the full population for the selected games, exactly as
+        # Tab 2 does. They are applied locally afterwards.
+        NA_character_, NA_character_,
         0L
       )
     )
@@ -290,9 +303,10 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
 
   # The branch. Both paths return the same column names, so everything
   # downstream -- rates, ranks, TOTAL row, table -- is identical either way.
+  # Both return the FULL population for the selected games and group size.
   euro_ld_raw <- reactive({
-    if (isTRUE(fallback_needed())) return(euro_ld_filtered())
-    apply_local_unit_filters(euro_ld_mv())
+    if (isTRUE(fallback_needed())) return(select_unit_size(euro_ld_filtered()))
+    select_unit_size(euro_ld_mv())
   })
 
   # --- Derived rates --------------------------------------------------------
@@ -322,6 +336,10 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     df
   }
 
+  # Rates and percentile ranks are computed here, on the full unfiltered
+  # population, before any team/player/min-poss narrowing -- the same ordering
+  # Tab 2 uses. Ranking after filtering would silently re-scale every heat cell
+  # to whatever subset happened to be on screen.
   euro_ld_full <- reactive({
     df <- euro_ld_raw()
     if (!NROW(df)) return(df)
@@ -332,6 +350,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     } else {
       df$team_name <- as.character(df$team_id)
     }
+    df <- add_pct_ranks(df, c(SUMMARY_RANKS, FF_RANKS))
     df[order(-df$total_poss), , drop = FALSE]
   })
 
@@ -373,7 +392,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
 
   # --- Displayed rows, with the TOTAL row pinned on top ---------------------
   euro_ld_display <- reactive({
-    df <- euro_ld_full()
+    df <- apply_local_unit_filters(euro_ld_full())
     if (!NROW(df)) return(df)
     threshold <- as.numeric(input$euro_ld_minposs %||% 0)
     df <- df[!is.na(df$total_poss) & df$total_poss >= threshold, , drop = FALSE]
@@ -403,11 +422,14 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # Percentile ranks drive the heat colouring, exactly as Tabs 1/3/8 do:
   # a hidden pr_* column in [0,1] feeds formatStyle via valueColumns.
   #
-  # Units below RANKING_BASELINE possessions are left unranked (NA), so their
-  # cells render uncoloured rather than implying a confident reading of a tiny
-  # sample. The TOTAL row is never ranked.
+  # Small-sample units are left unranked (NA), so their cells render uncoloured
+  # rather than implying a confident reading. The threshold comes from
+  # adaptive_baseline(), as Tab 2 uses: a fixed RANKING_BASELINE leaves almost
+  # everything grey when the population is sparse, which 2-player units at a
+  # single group size can be. The TOTAL row is never ranked.
   add_pct_ranks <- function(df, specs) {
-    eligible <- !is.na(df$total_poss) & df$total_poss >= RANKING_BASELINE &
+    thresh <- adaptive_baseline(df$total_poss)
+    eligible <- !is.na(df$total_poss) & df$total_poss >= thresh &
       !is.na(df$unit_key)
     for (nm in names(specs)) {
       src <- specs[[nm]]
@@ -500,7 +522,6 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
                        rownames = FALSE, options = list(dom = "t")))
     }
 
-    df <- add_pct_ranks(df, ranks)
     out <- df[, names(cols), drop = FALSE]
     names(out) <- unname(cols)
     # unit_key and the pr_* columns ride along hidden. Hidden columns beyond
