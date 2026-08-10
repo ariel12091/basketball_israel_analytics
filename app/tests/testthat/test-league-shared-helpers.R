@@ -141,3 +141,68 @@ test_that("onoff_summary_datatable builds the shared Summary widget", {
     onoff_summary_datatable(df, shot_raw_cols, character(0), has_shots = FALSE),
     "datatables")
 })
+
+test_that("onoff_four_factors_datatable differs between leagues only in the impact estimate", {
+  # Globals the function reads from global.R, which the mocks do not load.
+  CUTS <- seq(0.05, 0.95, by = 0.05)
+  COLS_GRAD <- colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
+  COLS_REV <- rev(COLS_GRAD)
+  HEADER_TOOLTIP_JS <- DT::JS("function(thead, data, start, end, display) {}")
+  OFF_OREB_TOOLTIP <- "off oreb"
+  DEF_OREB_TOOLTIP <- "def oreb"
+
+  raw_cols <- as.vector(outer(c("off_on", "off_off", "def_on", "def_off"),
+                              c("efg", "oreb", "tov", "ftr"), paste, sep = "_"))
+  diff_cols <- c("Off eFG% Diff", "Off OREB% Diff", "Off TOV% Diff", "Off FTR Diff",
+                 "Def eFG% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff")
+
+  n <- 6L
+  df <- data.frame(Team = rep("T", n), Player = paste0("P", seq_len(n)),
+                   `Net Diff` = rep(1.5, n), `Off Rtg Diff` = rep(1, n),
+                   `Def Rtg Diff` = rep(-1, n), minutes = rep(500, n),
+                   off_on_poss = rep(900, n), off_off_poss = rep(800, n),
+                   check.names = FALSE)
+  for (col in raw_cols) {
+    df[[col]] <- rep(0.5, n)
+    df[[paste0(col, "_rank")]] <- seq(0, 100, length.out = n)
+  }
+  for (col in diff_cols) df[[col]] <- rep(2.5, n)
+  for (col in c("pr_net_diff", "pr_off_rtg", "pr_def_rtg",
+                paste0("pr_diff_", c("off_efg", "off_oreb", "off_tov", "off_ftr",
+                                     "def_efg", "def_oreb", "def_tov", "def_ftr")))) {
+    df[[col]] <- seq(0, 1, length.out = n)
+  }
+
+  il <- onoff_four_factors_datatable(df, NULL, show_impact = TRUE)
+  el <- onoff_four_factors_datatable(df, NULL, show_impact = FALSE)
+
+  expect_s3_class(il, "datatables")
+  expect_s3_class(el, "datatables")
+  expect_identical(nrow(il$x$data), n)
+
+  # Same table on both sides: same columns, in the same order.
+  expect_identical(names(il$x$data), names(el$x$data))
+  expect_identical(as.character(il$x$container), as.character(el$x$container))
+
+  # One diff-cell renderer per four-factor column, on both sides.
+  n_render <- function(w) sum(vapply(w$x$options$columnDefs,
+                                     function(d) !is.null(d$render), logical(1)))
+  expect_identical(n_render(il), n_render(el))
+  expect_gte(n_render(il), length(diff_cols))
+
+  js <- function(w) paste(vapply(w$x$options$columnDefs,
+                                 function(d) if (is.null(d$render)) "" else as.character(d$render),
+                                 character(1)), collapse = "\n")
+
+  # Israeli cells carry the est. +/-X pts annotation with the fitted weights and
+  # the defense wording; EuroLeague cells compile it out entirely.
+  expect_match(js(il), sprintf("var w = %f;", FF_IMPACT_WEIGHTS[["efg"]]), fixed = TRUE)
+  expect_match(js(il), " pts allowed</div>", fixed = TRUE)
+  expect_match(js(il), FF_IMPACT_EST_TITLE, fixed = TRUE)
+  expect_false(grepl("if (false) {", js(il), fixed = TRUE))
+
+  expect_match(js(el), "if (false) {", fixed = TRUE)
+  expect_match(js(el), "var w = 0.000000;", fixed = TRUE)
+  expect_false(grepl(" pts allowed", js(el), fixed = TRUE))
+  expect_false(grepl(FF_IMPACT_EST_TITLE, js(el), fixed = TRUE))
+})
