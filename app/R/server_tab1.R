@@ -1,45 +1,8 @@
 # server_tab1.R - Tab 1: On/Off Impact server logic
 
-ON_SUMMARY_FILTERABLE_COLS <- c(
-  "Net" = "Net RTG Diff",
-  "Off" = "Off ON Diff",
-  "Def" = "Def ON Diff",
-  "On Off PPP" = "Off ON PPP",
-  "On Def PPP" = "Def ON PPP",
-  "On Net Rtg" = "On Net RTG",
-  "On Off Shot" = "Off Shot ON",
-  shot_split_metric_cols("On Off", "on_off"),
-  "On Def Shot" = "Def Shot ON",
-  shot_split_metric_cols("On Def", "on_def"),
-  "Off Off PPP" = "Off OFF PPP",
-  "Off Def PPP" = "Def OFF PPP",
-  "Off Net Rtg" = "Off Net RTG",
-  "Off Off Shot" = "Off Shot OFF",
-  shot_split_metric_cols("Off Off", "off_off"),
-  "Off Def Shot" = "Def Shot OFF",
-  shot_split_metric_cols("Off Def", "off_def"),
-  "Min" = "minutes",
-  "On Poss" = "ON Poss",
-  "Off Poss" = "OFF Poss"
-)
-
-ON_FF_FILTERABLE_COLS <- c(
-  "Net Diff" = "Net Diff",
-  "Off Rtg Diff" = "Off Rtg Diff",
-  "Off eFG% Diff" = "Off eFG% Diff",
-  "Off OREB% Diff" = "Off OREB% Diff",
-  "Off TOV% Diff" = "Off TOV% Diff",
-  "Off FTR Diff" = "Off FTR Diff",
-  "Def Rtg Diff" = "Def Rtg Diff",
-  "Def eFG% Diff" = "Def eFG% Diff",
-  "Def OREB% Diff" = "Def OREB% Diff",
-  "Def TOV% Diff" = "Def TOV% Diff",
-  "Def FTR Diff" = "Def FTR Diff",
-  "Min" = "minutes",
-  "On Poss" = "ON Poss",
-  "Off Poss" = "OFF Poss"
-)
-
+# The Summary and Four Factors filter menus live in helpers.R as
+# ONOFF_SUMMARY_FILTERABLE_COLS / ONOFF_FF_FILTERABLE_COLS, shared with the
+# other league's on/off tab. Shot Profile is Israeli-only and stays here.
 ON_SP_LABELS <- c("eFG%", "Lay-up", "Dunk", "Lay+Dunk", "3PA", "C3", "2PT Jumper")
 
 ON_SP_FILTERABLE_COLS <- c(
@@ -62,9 +25,9 @@ server_tab1 <- function(input, output, session, shared) {
 
   on_stat_filter_cols <- reactive({
     switch(input$onoff_view_mode %||% "Summary",
-      "Four Factors" = ON_FF_FILTERABLE_COLS,
+      "Four Factors" = ONOFF_FF_FILTERABLE_COLS,
       "Shot Profile" = ON_SP_FILTERABLE_COLS,
-      ON_SUMMARY_FILTERABLE_COLS
+      ONOFF_SUMMARY_FILTERABLE_COLS
     )
   })
 

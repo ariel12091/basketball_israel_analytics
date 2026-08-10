@@ -1161,6 +1161,51 @@ resolve_poss_cols <- function(df, mode) {
   list(on = NA_character_, off = NA_character_)
 }
 
+# ---- Stat-filter column menus for the on/off tabs ----
+# Both leagues offer the same Summary and Four Factors menus, so these vectors
+# moved here verbatim from the two server files, which held byte-identical
+# copies. Tab 1's Shot Profile menu stays in server_tab1.R: EuroLeague has no
+# shot coordinates, so there is no second consumer to share it with.
+ONOFF_SUMMARY_FILTERABLE_COLS <- c(
+  "Net" = "Net RTG Diff",
+  "Off" = "Off ON Diff",
+  "Def" = "Def ON Diff",
+  "On Off PPP" = "Off ON PPP",
+  "On Def PPP" = "Def ON PPP",
+  "On Net Rtg" = "On Net RTG",
+  "On Off Shot" = "Off Shot ON",
+  shot_split_metric_cols("On Off", "on_off"),
+  "On Def Shot" = "Def Shot ON",
+  shot_split_metric_cols("On Def", "on_def"),
+  "Off Off PPP" = "Off OFF PPP",
+  "Off Def PPP" = "Def OFF PPP",
+  "Off Net Rtg" = "Off Net RTG",
+  "Off Off Shot" = "Off Shot OFF",
+  shot_split_metric_cols("Off Off", "off_off"),
+  "Off Def Shot" = "Def Shot OFF",
+  shot_split_metric_cols("Off Def", "off_def"),
+  "Min" = "minutes",
+  "On Poss" = "ON Poss",
+  "Off Poss" = "OFF Poss"
+)
+
+ONOFF_FF_FILTERABLE_COLS <- c(
+  "Net Diff" = "Net Diff",
+  "Off Rtg Diff" = "Off Rtg Diff",
+  "Off eFG% Diff" = "Off eFG% Diff",
+  "Off OREB% Diff" = "Off OREB% Diff",
+  "Off TOV% Diff" = "Off TOV% Diff",
+  "Off FTR Diff" = "Off FTR Diff",
+  "Def Rtg Diff" = "Def Rtg Diff",
+  "Def eFG% Diff" = "Def eFG% Diff",
+  "Def OREB% Diff" = "Def OREB% Diff",
+  "Def TOV% Diff" = "Def TOV% Diff",
+  "Def FTR Diff" = "Def FTR Diff",
+  "Min" = "minutes",
+  "On Poss" = "ON Poss",
+  "Off Poss" = "OFF Poss"
+)
+
 # Four-factor ON/OFF diff cell for the on/off tabs, shared by Tab 1 (Israeli)
 # and Tab 8 (EuroLeague). Renders the diff, the on/off values, a percentile
 # range bar, and optionally an estimated points-impact line.

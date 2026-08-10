@@ -53,6 +53,32 @@ test_that("resolve_poss_cols picks the columns for the active view mode", {
                    list(on = NA_character_, off = NA_character_))
 })
 
+test_that("the shared stat-filter menus cover every column both leagues filter on", {
+  # Summary: the nine rating/usage entries plus a shot-split group per context.
+  expect_identical(
+    unname(ONOFF_SUMMARY_FILTERABLE_COLS[c("Net", "Off", "Def")]),
+    c("Net RTG Diff", "Off ON Diff", "Def ON Diff")
+  )
+  for (p in c("on_off", "on_def", "off_off", "off_def")) {
+    expect_true(all(shot_split_metric_cols(p, p) %in% ONOFF_SUMMARY_FILTERABLE_COLS))
+  }
+  expect_true(all(c("minutes", "ON Poss", "OFF Poss") %in% ONOFF_SUMMARY_FILTERABLE_COLS))
+
+  # Four Factors: a diff column per factor per side, plus the rating diffs.
+  expect_true(all(
+    as.vector(outer(c("Off ", "Def "), c("eFG% Diff", "OREB% Diff", "TOV% Diff", "FTR Diff"), paste0))
+      %in% ONOFF_FF_FILTERABLE_COLS
+  ))
+  expect_true(all(c("Net Diff", "Off Rtg Diff", "Def Rtg Diff") %in% ONOFF_FF_FILTERABLE_COLS))
+
+  # Both menus are name -> column maps with no blank or duplicated labels: the
+  # stat-filter UI keys its controls on the names.
+  for (menu in list(ONOFF_SUMMARY_FILTERABLE_COLS, ONOFF_FF_FILTERABLE_COLS)) {
+    expect_true(all(nzchar(names(menu))))
+    expect_false(anyDuplicated(names(menu)) > 0)
+  }
+})
+
 test_that("ff_diff_cell_js emits the same JS both leagues rendered before extraction", {
   # These are the exact strings server_tab1.R and server_tab8_euro.R produced
   # from their own inline copies, captured before the extraction. They pin the
