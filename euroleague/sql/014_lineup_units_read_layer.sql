@@ -16,6 +16,25 @@ BEGIN;
 
 SET LOCAL search_path TO euroleague, public;
 
+
+-- Provider display_name is "LAST, FIRST" in caps. Migration 004 already
+-- established the presentation split for the on/off surfaces
+-- (btrim(split_part(...)) into firstname/lastname, joined with a space), so
+-- this reproduces that convention in one place instead of a third variant.
+-- Names without a comma pass through unchanged.
+CREATE OR REPLACE FUNCTION euroleague.person_display_name(raw text)
+RETURNS text
+LANGUAGE sql
+IMMUTABLE
+AS $function$
+  SELECT CASE
+    WHEN raw IS NULL THEN NULL
+    WHEN position(',' in raw) > 0
+      THEN btrim(split_part(raw, ',', 2)) || ' ' || btrim(split_part(raw, ',', 1))
+    ELSE btrim(raw)
+  END
+$function$;
+
 CREATE MATERIALIZED VIEW euroleague.sub_lineups_stats_mv AS
 WITH unit_totals AS (
   SELECT
@@ -78,9 +97,11 @@ SELECT
 FROM unit_totals ut
 CROSS JOIN LATERAL (
   SELECT
-    array_agg(coalesce(p.display_name, '#' || u.pid::text) ORDER BY u.ord)
+    array_agg(coalesce(euroleague.person_display_name(p.display_name),
+                       '#' || u.pid::text) ORDER BY u.ord)
       AS player_names,
-    string_agg(coalesce(p.display_name, '#' || u.pid::text), ', ' ORDER BY u.ord)
+    string_agg(coalesce(euroleague.person_display_name(p.display_name),
+                        '#' || u.pid::text), ', ' ORDER BY u.ord)
       AS player_names_str
   FROM unnest(ut.player_ids) WITH ORDINALITY AS u(pid, ord)
   LEFT JOIN euroleague.players p ON p.player_id = u.pid
@@ -326,9 +347,11 @@ BEGIN
   FROM agg a
   CROSS JOIN LATERAL (
     SELECT
-      array_agg(coalesce(p.display_name, '#' || x.pid::text) ORDER BY x.ord)
+      array_agg(coalesce(euroleague.person_display_name(p.display_name),
+                         '#' || x.pid::text) ORDER BY x.ord)
         AS p_names,
-      string_agg(coalesce(p.display_name, '#' || x.pid::text), ', ' ORDER BY x.ord)
+      string_agg(coalesce(euroleague.person_display_name(p.display_name),
+                          '#' || x.pid::text), ', ' ORDER BY x.ord)
         AS p_names_str
     FROM unnest(a.u_player_ids) WITH ORDINALITY AS x(pid, ord)
     LEFT JOIN euroleague.players p ON p.player_id = x.pid
