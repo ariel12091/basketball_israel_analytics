@@ -136,22 +136,9 @@ server_tab8_euro <- function(input, output, session, shared) {
     num_starters_def = input$euro_num_starters_def
   )) %>% debounce(300)
 
-  gn_params <- reactive({
-    min_gn <- if (!is.null(input$euro_gn_min) && nzchar(input$euro_gn_min)) as.integer(input$euro_gn_min) else NA_integer_
-    max_gn <- if (!is.null(input$euro_gn_max) && nzchar(input$euro_gn_max)) as.integer(input$euro_gn_max) else NA_integer_
-    last_n <- if (!is.null(input$euro_last_n) && nzchar(input$euro_last_n)) as.integer(input$euro_last_n) else NA_integer_
-    if (!is.na(last_n)) {
-      min_gn <- NA_integer_
-      max_gn <- NA_integer_
-    }
-    if (!is.na(min_gn) || !is.na(max_gn)) {
-      last_n <- NA_integer_
-    }
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-    list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
-  }) %>% debounce(150)
+  # Same GN/last-N resolution as every other tab; "GN" here is the round
+  # number, which is what euro_fetch_round_values() populates the choices from.
+  gn_params <- reactive(resolve_gn_last_n_params(input, "euro")) %>% debounce(150)
 
   build_onoff_db_args <- function() {
     f <- debounced_on_filters()
