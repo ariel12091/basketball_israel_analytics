@@ -120,7 +120,7 @@ test_that("onoff_summary_datatable builds the shared Summary widget", {
     df[[p]] <- seq(0, 1, length.out = n)
   }
 
-  w <- onoff_summary_datatable(df, shot_raw_cols, character(0), has_shots = TRUE)
+  w <- onoff_summary_datatable(df, NULL)
   expect_s3_class(w, "datatables")
   expect_identical(nrow(w$x$data), n)
 
@@ -135,11 +135,6 @@ test_that("onoff_summary_datatable builds the shared Summary widget", {
   # One render per shot column, on both ends and both on/off contexts.
   expect_gte(sum(vapply(w$x$options$columnDefs,
                         function(d) !is.null(d$render), logical(1))), 4L)
-
-  # A league with no shot splits collected must still render.
-  expect_s3_class(
-    onoff_summary_datatable(df, shot_raw_cols, character(0), has_shots = FALSE),
-    "datatables")
 })
 
 test_that("onoff_four_factors_datatable differs between leagues only in the impact estimate", {

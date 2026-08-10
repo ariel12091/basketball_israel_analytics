@@ -715,65 +715,11 @@ server_tab8_euro <- function(input, output, session, shared) {
 
   # --- Render Table ---
   output$euro_dt <- renderDT({
-    df <- result_df()
+    df <- onoff_clean_display_names(result_df())
     mode <- input$euro_view_mode
 
-    # Standard Name Cleanup
-    if (!"Player" %in% names(df) && all(c("First Name", "Last Name") %in% names(df))) {
-      df <- df %>% mutate(Player = paste(`First Name`, `Last Name`))
-    } else if (!"Player" %in% names(df) && all(c("firstname", "lastname") %in% names(df))) {
-      df <- df %>% mutate(Player = paste(firstname, lastname))
-    }
-    if ("team_name" %in% names(df)) df <- df %>% rename(Team = team_name)
-
     if (identical(mode, "Summary")) {
-      # Shooting split column names (16 raw + 4 display)
-      shot_raw_cols <- c(
-        "off_on_fg2_made", "off_on_fg2_att", "off_on_fg3_made", "off_on_fg3_att",
-        "off_off_fg2_made", "off_off_fg2_att", "off_off_fg3_made", "off_off_fg3_att",
-        "def_on_fg2_made", "def_on_fg2_att", "def_on_fg3_made", "def_on_fg3_att",
-        "def_off_fg2_made", "def_off_fg2_att", "def_off_fg3_made", "def_off_fg3_att"
-      )
-      shot_display_cols <- c("Off Shot ON", "Def Shot ON", "Off Shot OFF", "Def Shot OFF")
-      shot_filter_cols <- unname(c(
-        shot_split_metric_cols("On Off", "on_off"),
-        shot_split_metric_cols("On Def", "on_def"),
-        shot_split_metric_cols("Off Off", "off_off"),
-        shot_split_metric_cols("Off Def", "off_def")
-      ))
-      if (!"minutes" %in% names(df)) df$minutes <- NA_real_
-
-      # Create display columns (sortable value = total FGA)
-      has_shots <- all(c("off_on_fg2_att", "off_on_fg3_att") %in% names(df))
-      if (has_shots) {
-        df <- df %>% mutate(
-          `Off Shot ON`  = coalesce(off_on_fg2_att, 0L) + coalesce(off_on_fg3_att, 0L),
-          `Def Shot ON`  = coalesce(def_on_fg2_att, 0L) + coalesce(def_on_fg3_att, 0L),
-          `Off Shot OFF` = coalesce(off_off_fg2_att, 0L) + coalesce(off_off_fg3_att, 0L),
-          `Def Shot OFF` = coalesce(def_off_fg2_att, 0L) + coalesce(def_off_fg3_att, 0L)
-        )
-        df <- add_shot_split_metrics(df, list(
-          on_off = c("off_on_fg2_made", "off_on_fg2_att", "off_on_fg3_made", "off_on_fg3_att"),
-          on_def = c("def_on_fg2_made", "def_on_fg2_att", "def_on_fg3_made", "def_on_fg3_att"),
-          off_off = c("off_off_fg2_made", "off_off_fg2_att", "off_off_fg3_made", "off_off_fg3_att"),
-          off_def = c("def_off_fg2_made", "def_off_fg2_att", "def_off_fg3_made", "def_off_fg3_att")
-        ))
-      }
-
-      keep_cols <- c(
-        "Team", "Player",
-        "Net RTG Diff", "Off ON Diff", "Def ON Diff",
-        "Off ON PPP", "Def ON PPP", "On Net RTG", "Off Shot ON", "Def Shot ON",
-        "Off OFF PPP", "Def OFF PPP", "Off Net RTG", "Off Shot OFF", "Def Shot OFF",
-        "minutes", "ON Poss", "OFF Poss",
-        shot_raw_cols,
-        shot_filter_cols,
-        "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
-      )
-      df <- df[, intersect(keep_cols, names(df))]
-      df <- apply_stat_filters(df, euro_stat_filter_state$filters())
-      return(onoff_summary_datatable(df, shot_raw_cols, shot_filter_cols,
-                                     has_shots))
+      return(onoff_summary_datatable(df, euro_stat_filter_state$filters()))
 
     } else if (identical(mode, "Four Factors")) {
       return(onoff_four_factors_datatable(df, euro_stat_filter_state$filters(),
