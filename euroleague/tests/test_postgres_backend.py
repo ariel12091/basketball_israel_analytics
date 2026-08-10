@@ -365,5 +365,60 @@ class ActionTeamContextWiringTest(unittest.TestCase):
         self.assertNotIn("euroleague.stints", source)
 
 
+
+
+class LineupUnitWiringTest(unittest.TestCase):
+    """The unit relations must be known to the guard and refreshed on publish."""
+
+    BASE_TABLES = {
+        "load_runs", "teams", "players", "schedule", "source_artifacts",
+        "player_four_factors_by_game", "team_four_factors_by_game",
+        "matchup_segments_actions", "action_team_context_actions",
+        "lineup_totals_by_game", "sub_lineups",
+    }
+
+    def test_schema_allowlist_accepts_the_unit_relations(self) -> None:
+        """Publication cannot start until the guard knows both new tables.
+
+        Asserted through behaviour rather than a source text match: a text
+        match passes when the names appear only in a comment.
+        """
+        existing = set(TABLE_COLUMNS) | self.BASE_TABLES
+        assert_shadow_schema_compatible(_SchemaConnection(existing))
+
+    def test_schema_allowlist_still_rejects_an_unknown_table(self) -> None:
+        """Widening the allowlist must not turn the guard off."""
+        existing = set(TABLE_COLUMNS) | self.BASE_TABLES | {"rogue_table"}
+        with self.assertRaises(RuntimeError) as caught:
+            assert_shadow_schema_compatible(_SchemaConnection(existing))
+        self.assertIn("rogue_table", str(caught.exception))
+
+    def test_validate_game_refreshes_units_after_the_fact(self) -> None:
+        """Order matters: the units read lineup_totals, which reads the fact.
+
+        LoadRunConnection, not RecordingConnection: RecordingCursor has no
+        fetchone(), so the first refresh that reads a result would abort the
+        mock and leave every later statement unrecorded.
+        """
+        connection = LoadRunConnection()
+        backend = PostgresTransactionBackend(connection, load_run_id=17)
+        try:
+            backend.validate_game(game_id=23)
+        except Exception:
+            pass  # the 1-tuple cannot satisfy the later count checks
+
+        executed = [sql for sql, _ in connection.statements]
+
+        def index_of(needle: str) -> int:
+            return next(i for i, s in enumerate(executed) if needle in s)
+
+        fact = index_of("refresh_actions_consumer_candidates")
+        totals = index_of("refresh_lineup_totals_by_game")
+        units = index_of("refresh_sub_lineups")
+
+        self.assertLess(fact, totals, "the event fact must be refreshed first")
+        self.assertLess(totals, units, "units are expanded from lineup totals")
+
+
 if __name__ == "__main__":
     unittest.main()

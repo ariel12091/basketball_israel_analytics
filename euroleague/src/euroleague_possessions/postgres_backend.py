@@ -386,6 +386,11 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         "team_four_factors_by_game",
         "matchup_segments_actions",
         "action_team_context_actions",
+        # Lineup-unit relations (migration 013). lineup_totals_by_game is a
+        # per-game fact rebuilt like the two above; sub_lineups is additive
+        # season identity that is never deleted per game.
+        "lineup_totals_by_game",
+        "sub_lineups",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
@@ -938,6 +943,23 @@ class PostgresTransactionBackend:
             cursor.execute(
                 "SELECT euroleague.refresh_team_four_factors_by_game_for_games("
                 "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
+            # Lineup-unit facts (migration 013). Ordered after the event fact
+            # because refresh_lineup_totals_by_game reads
+            # action_team_context_actions, and refresh_sub_lineups reads
+            # lineup_totals_by_game. Without these a newly published game has
+            # player and team analytics but no lineup units, and the lineup
+            # surface silently omits it.
+            cursor.execute(
+                "SELECT euroleague.refresh_lineup_totals_by_game("
+                "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
+            cursor.execute(
+                "SELECT euroleague.refresh_sub_lineups(ARRAY[%s]::bigint[])",
                 (game_id,),
             )
             cursor.fetchone()
