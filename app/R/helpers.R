@@ -1265,6 +1265,45 @@ onoff_filter_ff_rows <- function(df, team_ids, min_all, min_on) {
   df
 }
 
+# Fast-path gate for the on/off tabs, shared by Tab 1 (Israeli) and Tab 8
+# (EuroLeague). TRUE means the season materialized view cannot answer the
+# question and the filtered SQL path has to run. Deliberately FALSE when only
+# the team or min-poss controls moved: those are applied in R, so the MV still
+# holds the answer.
+#
+# The raw GN inputs are re-read alongside the resolved ones because the
+# resolved reactive is debounced: without this the tab would serve MV numbers
+# for the moment between typing a round and the debounce firing.
+#
+# season_bounds, filters and gn are ordinary lazy arguments, and that is
+# load-bearing: they are forced only after the date guards above them, exactly
+# where the server bodies used to call them.
+onoff_fallback_needed <- function(rng, season_bounds, filters, gn, input, prefix) {
+  if (is.null(rng)) return(FALSE)
+  start_d <- as.Date(rng[1])
+  end_d <- as.Date(rng[2])
+  if (is.na(start_d) || is.na(end_d)) return(FALSE)
+
+  date_changed <- (start_d != season_bounds$start) || (end_d != season_bounds$end)
+
+  f <- filters
+  extra_filters <- (!is.null(f$game_type) && any(nzchar(f$game_type))) ||
+    (!is.null(f$opp_ids) && length(f$opp_ids) > 0) ||
+    nzchar(f$home_away %||% "") ||
+    nzchar(f$outcome %||% "") ||
+    nzchar(f$rank_side %||% "") ||
+    (nzchar(f$num_starters_off_mode %||% "") && nzchar(f$num_starters_off %||% "")) ||
+    (nzchar(f$num_starters_def_mode %||% "") && nzchar(f$num_starters_def %||% ""))
+
+  gn_active <- !is.na(gn$min_gn) || !is.na(gn$max_gn) || !is.na(gn$last_n)
+  gn_raw_active <- nzchar(input[[paste0(prefix, "_gn_min")]] %||% "") ||
+    nzchar(input[[paste0(prefix, "_gn_max")]] %||% "") ||
+    nzchar(input[[paste0(prefix, "_last_n")]] %||% "")
+  gn_active <- gn_active || gn_raw_active
+
+  date_changed || extra_filters || gn_active
+}
+
 # ---- Stat-filter column menus for the on/off tabs ----
 # Both leagues offer the same Summary and Four Factors menus, so these vectors
 # moved here verbatim from the two server files, which held byte-identical

@@ -165,6 +165,56 @@ test_that("onoff_filter_ff_rows floors on the weakest of all four possession col
   expect_identical(nrow(onoff_filter_ff_rows(bare, NULL, 999, 999)), 2L)
 })
 
+test_that("onoff_fallback_needed sends only real filter narrowing to the SQL path", {
+  bounds <- list(start = as.Date("2025-10-01"), end = as.Date("2026-07-01"))
+  full_range <- c(bounds$start, bounds$end)
+  no_filters <- list(game_type = NULL, opp_ids = NULL, home_away = "", outcome = "",
+                     rank_side = "", num_starters_off_mode = "", num_starters_off = "",
+                     num_starters_def_mode = "", num_starters_def = "")
+  no_gn <- list(min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_)
+  no_input <- list()
+
+  # The untouched full-season window stays on the materialized view.
+  expect_false(onoff_fallback_needed(full_range, bounds, no_filters, no_gn, no_input, "on"))
+
+  # A narrowed date window does not.
+  expect_true(onoff_fallback_needed(c(bounds$start + 7, bounds$end), bounds,
+                                    no_filters, no_gn, no_input, "on"))
+
+  # Missing or unparseable dates fall back to the MV rather than firing a query.
+  expect_false(onoff_fallback_needed(NULL, bounds, no_filters, no_gn, no_input, "on"))
+  expect_false(onoff_fallback_needed(c(NA, NA), bounds, no_filters, no_gn, no_input, "on"))
+
+  # Each filter on its own is enough to leave the fast path.
+  each <- list(
+    list(game_type = "1"), list(opp_ids = c("4", "5")), list(home_away = "home"),
+    list(outcome = "win"), list(rank_side = "top"),
+    list(num_starters_off_mode = "gte", num_starters_off = "3")
+  )
+  for (one in each) {
+    f <- modifyList(no_filters, one)
+    expect_true(onoff_fallback_needed(full_range, bounds, f, no_gn, no_input, "on"))
+  }
+
+  # A starters mode without its value is incomplete, so it does not count.
+  expect_false(onoff_fallback_needed(
+    full_range, bounds, modifyList(no_filters, list(num_starters_def_mode = "lte")),
+    no_gn, no_input, "on"))
+
+  # Resolved GN params leave the fast path...
+  expect_true(onoff_fallback_needed(full_range, bounds, no_filters,
+                                    list(min_gn = 5L, max_gn = NA_integer_, last_n = NA_integer_),
+                                    no_input, "on"))
+
+  # ...and so do raw prefixed inputs the debounce has not resolved yet, which is
+  # what stops the tab serving MV numbers mid-keystroke. The prefix selects the
+  # league's own input ids.
+  expect_true(onoff_fallback_needed(full_range, bounds, no_filters, no_gn,
+                                    list(euro_last_n = "5"), "euro"))
+  expect_false(onoff_fallback_needed(full_range, bounds, no_filters, no_gn,
+                                     list(euro_last_n = "5"), "on"))
+})
+
 test_that("the shared stat-filter menus cover every column both leagues filter on", {
   # Summary: the nine rating/usage entries plus a shot-split group per context.
   expect_identical(

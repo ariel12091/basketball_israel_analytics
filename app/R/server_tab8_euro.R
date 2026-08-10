@@ -321,35 +321,14 @@ server_tab8_euro <- function(input, output, session, shared) {
   })
 
   # --- Fallback Logic ---
-  # We do NOT return true if only team/min_poss changed.
+  # We do NOT return true if only team/min_poss changed. Shared with the other
+  # league's on/off tab; see onoff_fallback_needed() in helpers.R.
   fallback_needed <- reactive({
-    rng <- debounced_range()
-    if (is.null(rng)) return(FALSE)
-    start_d <- as.Date(rng[1])
-    end_d <- as.Date(rng[2])
-    if (is.na(start_d) || is.na(end_d)) return(FALSE)
-    gy <- euro_selected_season()
-    season_bounds <- euro_season_date_bounds(gy)
-
-    date_changed <- (start_d != season_bounds$start) || (end_d != season_bounds$end)
-
-    f <- debounced_on_filters()
-    extra_filters <- (!is.null(f$game_type) && any(nzchar(f$game_type))) ||
-      (!is.null(f$opp_ids) && length(f$opp_ids) > 0) ||
-      nzchar(f$home_away %||% "") ||
-      nzchar(f$outcome %||% "") ||
-      nzchar(f$rank_side %||% "") ||
-      (nzchar(f$num_starters_off_mode %||% "") && nzchar(f$num_starters_off %||% "")) ||
-      (nzchar(f$num_starters_def_mode %||% "") && nzchar(f$num_starters_def %||% ""))
-
-    gp <- gn_params()
-    gn_active <- !is.na(gp$min_gn) || !is.na(gp$max_gn) || !is.na(gp$last_n)
-    gn_raw_active <- nzchar(input$euro_gn_min %||% "") ||
-      nzchar(input$euro_gn_max %||% "") ||
-      nzchar(input$euro_last_n %||% "")
-    gn_active <- gn_active || gn_raw_active
-
-    date_changed || extra_filters || gn_active
+    onoff_fallback_needed(
+      debounced_range(),
+      euro_season_date_bounds(euro_selected_season()),
+      debounced_on_filters(), gn_params(), input, "euro"
+    )
   })
 
   # --- On/Off Compute Function ---
