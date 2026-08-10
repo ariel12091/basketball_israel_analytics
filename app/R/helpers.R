@@ -1108,3 +1108,56 @@ apply_local_lineup_filters <- function(df, p) {
   }
   df
 }
+
+# Auto minimum-possessions helpers for the on/off surfaces, shared by Tab 1
+# (Israeli) and Tab 8 (EuroLeague). Moved here verbatim from both server
+# files, which held byte-identical copies.
+#
+# auto_min_on_from_df()  keeps the top AUTO_TOP_PCT of rows by usage.
+# auto_min_all_from_df() additionally requires BOTH the on and off
+#   possession counts to clear the bar.
+# resolve_poss_cols()    picks the usage columns for the active view mode,
+#   because Summary and Four Factors label them differently.
+AUTO_TOP_PCT <- 0.35
+
+auto_min_on_from_df <- function(df, usage_col, step = 10L) {
+  if (is.null(df) || !NROW(df)) return(NA_integer_)
+  if (!usage_col %in% names(df)) return(NA_integer_)
+  n <- nrow(df)
+  top_n <- max(1L, ceiling(n * AUTO_TOP_PCT))
+  df_ord <- df %>% arrange(desc(.data[[usage_col]]))
+  df_top <- df_ord[seq_len(min(top_n, n)), , drop = FALSE]
+  min_needed <- suppressWarnings(min(df_top[[usage_col]], na.rm = TRUE))
+  if (!is.finite(min_needed)) return(NA_integer_)
+  as.integer(floor(min_needed / step) * step)
+}
+
+auto_min_all_from_df <- function(df, usage_col, on_col, off_col, step = 10L) {
+  if (is.null(df) || !NROW(df)) return(NA_integer_)
+  if (!usage_col %in% names(df) || !on_col %in% names(df) || !off_col %in% names(df)) return(NA_integer_)
+  n <- nrow(df)
+  top_n <- max(1L, ceiling(n * AUTO_TOP_PCT))
+  df_ord <- df %>% arrange(desc(.data[[usage_col]]))
+  df_top <- df_ord[seq_len(min(top_n, n)), , drop = FALSE]
+  poss_min <- pmin(df_top[[on_col]], df_top[[off_col]])
+  min_needed <- suppressWarnings(min(poss_min, na.rm = TRUE))
+  if (!is.finite(min_needed)) return(NA_integer_)
+  as.integer(floor(min_needed / step) * step)
+}
+
+resolve_poss_cols <- function(df, mode) {
+  if (identical(mode, "Four Factors")) {
+    if (all(c("off_on_poss", "off_off_poss") %in% names(df))) {
+      return(list(on = "off_on_poss", off = "off_off_poss"))
+    }
+  } else {
+    if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
+      return(list(on = "ON Poss", off = "OFF Poss"))
+    }
+    if (all(c("off_on_poss", "off_off_poss") %in% names(df))) {
+      return(list(on = "off_on_poss", off = "off_off_poss"))
+    }
+  }
+  list(on = NA_character_, off = NA_character_)
+}
+

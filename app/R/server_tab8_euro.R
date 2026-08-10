@@ -93,49 +93,9 @@ server_tab8_euro <- function(input, output, session, shared) {
 
   setup_stat_filter_handlers("euro", input, session, euro_stat_filter_cols, euro_stat_filter_state)
 
-  AUTO_TOP_PCT <- 0.35
-
-  auto_min_on_from_df <- function(df, usage_col, step = 10L) {
-    if (is.null(df) || !NROW(df)) return(NA_integer_)
-    if (!usage_col %in% names(df)) return(NA_integer_)
-    n <- nrow(df)
-    top_n <- max(1L, ceiling(n * AUTO_TOP_PCT))
-    df_ord <- df %>% arrange(desc(.data[[usage_col]]))
-    df_top <- df_ord[seq_len(min(top_n, n)), , drop = FALSE]
-    min_needed <- suppressWarnings(min(df_top[[usage_col]], na.rm = TRUE))
-    if (!is.finite(min_needed)) return(NA_integer_)
-    as.integer(floor(min_needed / step) * step)
-  }
-
-  auto_min_all_from_df <- function(df, usage_col, on_col, off_col, step = 10L) {
-    if (is.null(df) || !NROW(df)) return(NA_integer_)
-    if (!usage_col %in% names(df) || !on_col %in% names(df) || !off_col %in% names(df)) return(NA_integer_)
-    n <- nrow(df)
-    top_n <- max(1L, ceiling(n * AUTO_TOP_PCT))
-    df_ord <- df %>% arrange(desc(.data[[usage_col]]))
-    df_top <- df_ord[seq_len(min(top_n, n)), , drop = FALSE]
-    poss_min <- pmin(df_top[[on_col]], df_top[[off_col]])
-    min_needed <- suppressWarnings(min(poss_min, na.rm = TRUE))
-    if (!is.finite(min_needed)) return(NA_integer_)
-    as.integer(floor(min_needed / step) * step)
-  }
-
-  resolve_poss_cols <- function(df, mode) {
-    if (identical(mode, "Four Factors")) {
-      if (all(c("off_on_poss", "off_off_poss") %in% names(df))) {
-        return(list(on = "off_on_poss", off = "off_off_poss"))
-      }
-    } else {
-      if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
-        return(list(on = "ON Poss", off = "OFF Poss"))
-      }
-      if (all(c("off_on_poss", "off_off_poss") %in% names(df))) {
-        return(list(on = "off_on_poss", off = "off_off_poss"))
-      }
-    }
-    list(on = NA_character_, off = NA_character_)
-  }
-
+  # AUTO_TOP_PCT and the auto-min helpers (auto_min_on_from_df,
+  # auto_min_all_from_df, resolve_poss_cols) now live in helpers.R,
+  # shared with the other league's on/off tab.
   # ======== On/Off tab Logic ===================================
   observeEvent(euro_selected_season(), {
     bounds <- euro_season_date_bounds(euro_selected_season())
