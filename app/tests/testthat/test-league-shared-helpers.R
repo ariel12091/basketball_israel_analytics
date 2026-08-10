@@ -88,3 +88,56 @@ test_that("ff_diff_cell_js emits the same JS both leagues rendered before extrac
   # Defaults keep a caller that supplies only indices safe.
   expect_match(ff_diff_cell_js(1L, 2L, 3L, 4L), "var w = 0.000000;", fixed = TRUE)
 })
+
+test_that("onoff_summary_datatable builds the shared Summary widget", {
+  # Globals the function reads from global.R, which the mocks do not load.
+  CUTS <- seq(0.05, 0.95, by = 0.05)
+  COLS_GRAD <- colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
+  COLS_REV <- rev(COLS_GRAD)
+  HEADER_TOOLTIP_JS <- DT::JS("function(thead, data, start, end, display) {}")
+
+  shot_raw_cols <- c(
+    "off_on_fg2_made", "off_on_fg2_att", "off_on_fg3_made", "off_on_fg3_att",
+    "def_on_fg2_made", "def_on_fg2_att", "def_on_fg3_made", "def_on_fg3_att",
+    "off_off_fg2_made", "off_off_fg2_att", "off_off_fg3_made", "off_off_fg3_att",
+    "def_off_fg2_made", "def_off_fg2_att", "def_off_fg3_made", "def_off_fg3_att")
+
+  n <- 6L
+  mk <- function(v) rep(v, n)
+  df <- data.frame(
+    Team = mk("T"), Player = paste0("P", seq_len(n)),
+    `Net RTG Diff` = mk(1.5), `Off ON Diff` = mk(1), `Def ON Diff` = mk(-1),
+    `Off ON PPP` = mk(110), `Def ON PPP` = mk(105), `On Net RTG` = mk(5),
+    `Off Shot ON` = mk(120), `Def Shot ON` = mk(120),
+    `Off OFF PPP` = mk(108), `Def OFF PPP` = mk(107), `Off Net RTG` = mk(1),
+    `Off Shot OFF` = mk(120), `Def Shot OFF` = mk(120),
+    minutes = mk(500), `ON Poss` = mk(900), `OFF Poss` = mk(800),
+    check.names = FALSE)
+  for (col in shot_raw_cols) df[[col]] <- mk(60L)
+  for (p in c("pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on",
+              "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv",
+              "pr_off_net")) {
+    df[[p]] <- seq(0, 1, length.out = n)
+  }
+
+  w <- onoff_summary_datatable(df, shot_raw_cols, character(0), has_shots = TRUE)
+  expect_s3_class(w, "datatables")
+  expect_identical(nrow(w$x$data), n)
+
+  # The grouped two-row header both leagues rely on.
+  expect_true(grepl("group-head", as.character(w$x$container), fixed = TRUE))
+  expect_true(grepl("On Court Stats", as.character(w$x$container), fixed = TRUE))
+
+  # Percentile-rank columns are data, not display: they must be hidden.
+  expect_true(any(vapply(w$x$options$columnDefs,
+                         function(d) isFALSE(d$visible), logical(1))))
+
+  # One render per shot column, on both ends and both on/off contexts.
+  expect_gte(sum(vapply(w$x$options$columnDefs,
+                        function(d) !is.null(d$render), logical(1))), 4L)
+
+  # A league with no shot splits collected must still render.
+  expect_s3_class(
+    onoff_summary_datatable(df, shot_raw_cols, character(0), has_shots = FALSE),
+    "datatables")
+})

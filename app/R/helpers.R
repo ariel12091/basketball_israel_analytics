@@ -1228,3 +1228,180 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
              }", impact_w, guard, impact_tip, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
   ))
 }
+
+# Summary-view DataTable for the on/off tabs, shared by Tab 1 (Israeli) and
+# Tab 8 (EuroLeague). Builds the shot-split cell renderers with league averages
+# computed from the supplied data, the grouped header, the column definitions
+# and every percentile-rank heat colour, and returns the finished widget.
+#
+# Both tabs held this verbatim and byte-identical, so it moves unchanged. Its
+# only free names are the CUTS / COLS_GRAD / COLS_REV / HEADER_TOOLTIP_JS
+# globals from global.R; everything else is an argument or local.
+#
+# Indentation is left exactly as it was in the server files. make_shot_render()
+# builds its JS with a multi-line sprintf template, so re-indenting the body
+# would change the emitted JavaScript and stop this being a provable move.
+onoff_summary_datatable <- function(df, shot_raw_cols, shot_filter_cols, has_shots) {
+
+      idx_net <- which(names(df) == "Net RTG Diff") - 1
+      idx_on  <- which(names(df) == "Off ON PPP") - 1
+      idx_off <- which(names(df) == "Off OFF PPP") - 1
+      idx_use <- which(names(df) == "minutes") - 1
+
+      diff_cols <- c("Net RTG Diff", "Off ON Diff", "Def ON Diff", "On Net RTG", "Off Net RTG")
+      idx_diff <- which(names(df) %in% diff_cols) - 1
+
+      pr_cols <- names(df)[grep("^pr_", names(df))]
+      hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols)) - 1
+
+      # Shooting column JS render function factory
+      make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
+                                   is_defense = FALSE, min_fga = 50, avg2 = 53, avg3 = 34) {
+        fg2m_idx <- which(names(df) == fg2m_col) - 1
+        fg2a_idx <- which(names(df) == fg2a_col) - 1
+        fg3m_idx <- which(names(df) == fg3m_col) - 1
+        fg3a_idx <- which(names(df) == fg3a_col) - 1
+        sign_mult <- if (is_defense) -1 else 1
+        js_str <- sprintf(
+          "function(data, type, row, meta) {
+             if (type !== 'display' || !row) return data;
+             var fg2m = row[%d] || 0, fg2a = row[%d] || 0;
+             var fg3m = row[%d] || 0, fg3a = row[%d] || 0;
+             var totalFGA = fg2a + fg3a;
+             if (!totalFGA) return '<div class=\"shot-acc-label\" style=\"color:#aaa;\">-</div>';
+             var fg2pct = fg2a ? Math.round(fg2m / fg2a * 100) : 0;
+             var fg3pct = fg3a ? Math.round(fg3m / fg3a * 100) : 0;
+             var fg2freq = Math.round(fg2a / totalFGA * 100);
+             var fg3freq = 100 - fg2freq;
+             var minFGA = %d;
+             var sign = %d;
+             var avg2 = %d, avg3 = %d;
+             function accColor(pct, avg) {
+               var d = sign * (pct - avg) / avg;
+               d = Math.max(-1, Math.min(1, d * 3));
+               var r, g;
+               if (d < 0) { r = 200; g = Math.round(200 + d * 120); }
+               else       { g = 170; r = Math.round(200 - d * 150); }
+               return 'rgb(' + r + ',' + g + ',60)';
+             }
+             var muted = totalFGA < minFGA;
+             var c2 = muted ? '#bbb' : accColor(fg2pct, avg2);
+             var c3 = muted ? '#bbb' : accColor(fg3pct, avg3);
+             var barOpacity = muted ? 'opacity:0.3;' : '';
+             var title2pct = '2PT accuracy: ' + fg2pct + '%% (' + fg2m + '/' + fg2a + ')';
+             var title3pct = '3PT accuracy: ' + fg3pct + '%% (' + fg3m + '/' + fg3a + ')';
+             var title2freq = '2PT frequency: ' + fg2freq + '%% of FGA (' + fg2a + '/' + totalFGA + ')';
+             var title3freq = '3PT frequency: ' + fg3freq + '%% of FGA (' + fg3a + '/' + totalFGA + ')';
+             return '<div class=\"shot-acc-label\">' +
+               '<span title=\"' + title2pct + '\" style=\"color:' + c2 + '; font-weight:' + (muted ? '400' : '700') + '; cursor:help;\">' + fg2pct + '%%</span>' +
+               ' <span style=\"opacity:0.3;\">|</span> ' +
+               '<span title=\"' + title3pct + '\" style=\"color:' + c3 + '; font-weight:' + (muted ? '400' : '700') + '; cursor:help;\">' + fg3pct + '%%</span>' +
+               '</div>' +
+               '<div class=\"shot-bar-container\" style=\"' + barOpacity + '\">' +
+               '<div class=\"shot-bar-2pt\" title=\"' + title2freq + '\" style=\"width:' + fg2freq + '%%; cursor:help;\">' + fg2freq + '%%</div>' +
+               '<div class=\"shot-bar-3pt\" title=\"' + title3freq + '\" style=\"width:' + fg3freq + '%%; cursor:help;\">' + fg3freq + '%%</div>' +
+               '</div>';
+           }", fg2m_idx, fg2a_idx, fg3m_idx, fg3a_idx, min_fga, sign_mult, avg2, avg3
+        )
+        DT::JS(js_str)
+      }
+
+      # Build shot column defs with dynamic thresholds
+      shot_col_defs <- list()
+      if (has_shots) {
+        shot_col_map <- list(
+          "Off Shot ON"  = c("off_on_fg2_made", "off_on_fg2_att", "off_on_fg3_made", "off_on_fg3_att"),
+          "Def Shot ON"  = c("def_on_fg2_made", "def_on_fg2_att", "def_on_fg3_made", "def_on_fg3_att"),
+          "Off Shot OFF" = c("off_off_fg2_made", "off_off_fg2_att", "off_off_fg3_made", "off_off_fg3_att"),
+          "Def Shot OFF" = c("def_off_fg2_made", "def_off_fg2_att", "def_off_fg3_made", "def_off_fg3_att")
+        )
+        # Compute per-column weighted averages from qualifying players (>= 50 FGA)
+        SHOT_MIN_FGA <- 50L
+        shot_avgs <- list()
+        for (dn in names(shot_col_map)) {
+          cols <- shot_col_map[[dn]]
+          fga <- df[[dn]]
+          qual <- if (is.null(fga)) rep(FALSE, nrow(df)) else (!is.na(fga) & fga >= SHOT_MIN_FGA)
+          fg2a_sum <- sum(df[[cols[2]]][qual], na.rm = TRUE)
+          fg3a_sum <- sum(df[[cols[4]]][qual], na.rm = TRUE)
+          a2 <- if (fg2a_sum > 0) as.integer(round(sum(df[[cols[1]]][qual], na.rm = TRUE) / fg2a_sum * 100)) else 53L
+          a3 <- if (fg3a_sum > 0) as.integer(round(sum(df[[cols[3]]][qual], na.rm = TRUE) / fg3a_sum * 100)) else 34L
+          shot_avgs[[dn]] <- list(avg2 = a2, avg3 = a3)
+        }
+        for (disp_name in names(shot_col_map)) {
+          cols <- shot_col_map[[disp_name]]
+          target_idx <- which(names(df) == disp_name) - 1
+          is_def <- grepl("^Def", disp_name)
+          avgs <- shot_avgs[[disp_name]]
+          if (length(target_idx) && all(cols %in% names(df))) {
+            shot_col_defs[[length(shot_col_defs) + 1]] <- list(
+              targets = target_idx,
+              render = make_shot_render(cols[1], cols[2], cols[3], cols[4],
+                                        is_defense = is_def, min_fga = SHOT_MIN_FGA,
+                                        avg2 = avgs$avg2, avg3 = avgs$avg3)
+            )
+          }
+        }
+      }
+
+      # Section border indices for shooting columns
+      idx_shot_on  <- which(names(df) == "Off Shot ON") - 1
+      idx_shot_off <- which(names(df) == "Off Shot OFF") - 1
+      section_borders <- c(idx_net, idx_on, idx_off, idx_use)
+      # Don't add shot borders - they sit inside on/off court groups
+
+      # Header: On Court = Off PPP, Def PPP, Net Rtg, Off Shot, Def Shot (5 cols)
+      # Off Court = Off PPP, Def PPP, Net Rtg, Off Shot, Def Shot (5 cols)
+      sketch_summary <- htmltools::withTags(table(class = 'display', thead(
+        tr(
+          th(class="group-head", colspan=2, ""),
+          th(class="group-head section-left-border", colspan=3, "Net Impact"),
+          th(class="group-head section-left-border", colspan=5, "On Court Stats"),
+          th(class="group-head section-left-border", colspan=5, "Off Court Stats"),
+          th(class="group-head section-left-border", colspan=3, "Usage")
+        ),
+        tr(
+          th(class="sub-head", "Team"), th(class="sub-head", "Player"),
+          th(class="sub-head section-left-border", "Net"), th(class="sub-head", "Off"), th(class="sub-head", "Def"),
+          th(class="sub-head section-left-border", "Off PPP"), th(class="sub-head", "Def PPP"), th(class="sub-head", "Net Rtg"), th(class="sub-head", "Off Shot"), th(class="sub-head", "Def Shot"),
+          th(class="sub-head section-left-border", "Off PPP"), th(class="sub-head", "Def PPP"), th(class="sub-head", "Net Rtg"), th(class="sub-head", "Off Shot"), th(class="sub-head", "Def Shot"),
+          th(class="sub-head section-left-border", "Min"), th(class="sub-head", "On Poss"), th(class="sub-head", "Off Poss")
+        )
+      )))
+
+      dt <- datatable(df, container = sketch_summary, rownames = FALSE,
+                      options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "tip", pageLength = 30, scrollX = TRUE,
+                                     scrollY = "70vh", scrollCollapse = TRUE,
+                                     order = list(list(which(names(df) == "Net RTG Diff") - 1, "desc")),
+                                     columnDefs = c(list(
+                                       list(targets = section_borders, className = "section-left-border"),
+                                       list(targets = hide_idx, visible = FALSE),
+                                       list(targets = "_all", className = "dt-center"),
+                                       list(targets = idx_diff, render = DT::JS(
+                                         "function(data, type, row, meta) {",
+                                         "  if (type !== 'display' || data === null) return data;",
+                                         "  var val = parseFloat(data);",
+                                         "  if (isNaN(val)) return data;",
+                                         "  var formatted = val.toFixed(2);",
+                                         "  return val > 0 ? '+' + formatted : formatted;",
+                                         "}"
+                                       ))
+                                     ), shot_col_defs))) |>
+        formatRound(c("Off ON PPP", "Def ON PPP", "Off OFF PPP", "Def OFF PPP"), 1) |>
+        formatRound(intersect("minutes", names(df)), 1) |>
+        formatCurrency(c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
+
+      if("pr_net" %in% names(df)) dt <- formatStyle(dt, "Net RTG Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
+      if("pr_off_on_d" %in% names(df)) dt <- formatStyle(dt, "Off ON Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_on_d")
+      if("pr_def_on_d" %in% names(df)) dt <- formatStyle(dt, "Def ON Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_def_on_d")
+
+      if("pr_off_on" %in% names(df)) dt <- formatStyle(dt, "Off ON PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_on")
+      if("pr_def_on_inv" %in% names(df)) dt <- formatStyle(dt, "Def ON PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_on_inv")
+      if("pr_on_net" %in% names(df)) dt <- formatStyle(dt, "On Net RTG", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_on_net")
+
+      if("pr_off_off" %in% names(df)) dt <- formatStyle(dt, "Off OFF PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_off")
+      if("pr_def_off_inv" %in% names(df)) dt <- formatStyle(dt, "Def OFF PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_off_inv")
+      if("pr_off_net" %in% names(df)) dt <- formatStyle(dt, "Off Net RTG", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_net")
+
+      return(dt)
+}
