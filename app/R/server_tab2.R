@@ -58,19 +58,7 @@ server_tab2 <- function(input, output, session, shared) {
 
   AUTO_TARGET_ROWS <- 150L
 
-  auto_minposs_from_df <- function(df, usage_col = "total_poss", step = 10L, target_rows = AUTO_TARGET_ROWS) {
-    if (is.null(df) || !NROW(df)) return(NA_integer_)
-    if (!usage_col %in% names(df)) return(NA_integer_)
-    vals <- suppressWarnings(as.numeric(df[[usage_col]]))
-    vals <- vals[is.finite(vals)]
-    if (!length(vals)) return(NA_integer_)
-    vals <- sort(vals, decreasing = TRUE)
-    n <- length(vals)
-    if (n <= target_rows) return(0L)
-    kth <- vals[target_rows]
-    if (!is.finite(kth)) return(NA_integer_)
-    as.integer(ceiling(kth / step) * step)
-  }
+  # auto_minposs_from_df() now lives in helpers.R, shared with Tab 10.
 
   observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "lineup_data")) return(NULL)

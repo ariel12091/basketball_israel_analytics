@@ -86,6 +86,28 @@ euro_fetch_teams <- function(competition, season) {
   )
 }
 
+# Players for the Tab 10 players-on/off pool. Its own cache key: sharing the
+# Israeli fetch_players_basic() key would serve one league's roster to the
+# other.
+euro_fetch_players_basic <- function(competition, season) {
+  competition <- as.character(competition)
+  season <- as.integer(season)
+  cached_ref_query(
+    key = sprintf("euro_players_%s_%d", competition, season),
+    query_fun = function() db_get_query(
+      pg_pool,
+      "SELECT DISTINCT fr.player_id, p.display_name AS player_name, fr.team_id
+         FROM euroleague.full_rosters fr
+         JOIN euroleague.players p ON p.player_id = fr.player_id
+         JOIN euroleague.schedule s ON s.game_id = fr.game_id
+        WHERE s.competition = $1::text AND s.season = $2::int4
+          AND lower(p.provider_player_id) NOT IN ('team', 'total')
+        ORDER BY p.display_name",
+      params = list(competition, season)
+    )
+  )
+}
+
 # Distinct ROUND numbers for the GN / Last-N dropdowns.
 euro_fetch_round_values <- function(competition, season) {
   competition <- as.character(competition)

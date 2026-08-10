@@ -1043,3 +1043,22 @@ hub_storyline_lines <- function(specs, fetch_pair) {
   }
   out
 }
+
+# Auto minimum-possessions threshold: the kth largest usage value, rounded up
+# to `step`, where k is the row-count target. Shared by Tab 2 (Israeli lineups)
+# and Tab 10 (EuroLeague lineups). Returns 0 when the population already fits
+# under the target, and NA when there is nothing to rank.
+auto_minposs_from_df <- function(df, usage_col = "total_poss", step = 10L,
+                                 target_rows = 150L) {
+  if (is.null(df) || !NROW(df)) return(NA_integer_)
+  if (!usage_col %in% names(df)) return(NA_integer_)
+  vals <- suppressWarnings(as.numeric(df[[usage_col]]))
+  vals <- vals[is.finite(vals)]
+  if (!length(vals)) return(NA_integer_)
+  vals <- sort(vals, decreasing = TRUE)
+  n <- length(vals)
+  if (n <= target_rows) return(0L)
+  kth <- vals[target_rows]
+  if (!is.finite(kth)) return(NA_integer_)
+  as.integer(ceiling(kth / step) * step)
+}
