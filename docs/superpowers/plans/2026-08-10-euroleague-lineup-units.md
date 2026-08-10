@@ -930,7 +930,9 @@ if __name__ == "__main__":
 cd euroleague && ./.venv/Scripts/python.exe scripts/verify_lineup_units.py
 ```
 
-Expected: G8 fails (`sub_lineups` is empty, so it reports nothing) — more importantly, G3 fails, because `lineup_totals_by_game` has no rows and `team_four_factors_by_game` does. A gate that passes against an empty table is not a gate; confirm G3 reports offending rows here.
+Expected: **G3 fails**, because `lineup_totals_by_game` has no rows while `team_four_factors_by_game` does, so the `FULL JOIN` yields NULL-versus-value mismatches.
+
+Note that G1, G2, G7 and G8 will *pass* against the empty tables — they are `GROUP BY`/`HAVING` gates and a table with no rows produces no offending rows. That is expected and is exactly why G3 is the one to watch here: it is the only gate whose failure proves the harness is actually connected and reading real data. **If G3 passes at this point, the script is not seeing the database — stop and fix the harness before backfilling**, or the post-backfill run proves nothing.
 
 - [ ] **Step 3: Ask the user for approval to backfill all 84 games**
 
