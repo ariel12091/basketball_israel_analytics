@@ -148,6 +148,121 @@ GATES: list[tuple[str, str]] = [
          LIMIT 20
         """,
     ),
+    (
+        "G5 the MV agrees with an independent name-membership recomputation",
+        """
+        WITH unit_names AS (
+          -- The unit's provider names in a given game, taken from the roster
+          -- and deliberately NOT from lineup_key. This is the second,
+          -- independent derivation path.
+          SELECT DISTINCT
+                 sl.competition, sl.game_year, sl.team_id, sl.unit_key,
+                 l.game_id,
+                 ARRAY(
+                   SELECT fr.source_player_name
+                     FROM euroleague.full_rosters fr
+                    WHERE fr.game_id = l.game_id
+                      AND fr.team_id = sl.team_id
+                      AND fr.player_id = ANY(sl.player_ids)
+                    ORDER BY fr.source_player_name
+                 ) AS names
+            FROM euroleague.sub_lineups sl
+            JOIN euroleague.lineup_totals_by_game l
+              ON l.competition = sl.competition AND l.game_year = sl.game_year
+             AND l.team_id = sl.team_id AND l.lineup_key = sl.lineup_key
+        ),
+        recomputed AS (
+          SELECT
+            un.competition, un.game_year, un.team_id, un.unit_key,
+            sum(atc.possession_flag) FILTER (WHERE atc.type_lineup = 'offense')
+              AS off_poss,
+            sum(atc.points) FILTER (WHERE atc.type_lineup = 'offense')
+              AS off_pts,
+            sum(atc.possession_flag) FILTER (WHERE atc.type_lineup = 'defense')
+              AS def_poss,
+            sum(atc.points) FILTER (WHERE atc.type_lineup = 'defense')
+              AS def_pts
+          FROM unit_names un
+          JOIN euroleague.action_team_context_actions atc
+            ON atc.game_id = un.game_id
+           AND atc.team_id = un.team_id
+           AND atc.own_lineup @> un.names
+          WHERE atc.type_lineup IS NOT NULL
+          GROUP BY 1, 2, 3, 4
+        )
+        -- Three distinct failures, because the two paths do not have the same
+        -- row population by design and a naive comparison confuses them:
+        --
+        --  * the MV is built from SEGMENTS, so a unit that was on court but
+        --    recorded no typed event still gets a row with zero counts;
+        --  * the recompute is built from EVENTS, so that unit produces no
+        --    group at all, and SUM over an empty FILTER yields NULL, not 0.
+        --
+        -- Treating NULL as 0 is therefore correct here -- but only in that one
+        -- direction. A unit the recompute FOUND that the MV lacks is a real
+        -- defect, and so is an MV row carrying counts the events do not
+        -- support. Both are asserted below rather than coalesced away.
+        SELECT 'value mismatch' AS reason, m.unit_key,
+               m.off_poss, r.off_poss, m.off_pts, r.off_pts,
+               m.def_poss, r.def_poss, m.def_pts, r.def_pts
+          FROM euroleague.sub_lineups_stats_mv m
+          JOIN recomputed r
+            USING (competition, game_year, team_id, unit_key)
+         WHERE coalesce(m.off_poss, 0) IS DISTINCT FROM coalesce(r.off_poss, 0)
+            OR coalesce(m.off_pts, 0)  IS DISTINCT FROM coalesce(r.off_pts, 0)
+            OR coalesce(m.def_poss, 0) IS DISTINCT FROM coalesce(r.def_poss, 0)
+            OR coalesce(m.def_pts, 0)  IS DISTINCT FROM coalesce(r.def_pts, 0)
+
+        UNION ALL
+
+        -- A unit the events prove exists must be in the MV.
+        SELECT 'missing from MV', r.unit_key,
+               NULL, r.off_poss, NULL, r.off_pts,
+               NULL, r.def_poss, NULL, r.def_pts
+          FROM recomputed r
+          LEFT JOIN euroleague.sub_lineups_stats_mv m
+            USING (competition, game_year, team_id, unit_key)
+         WHERE m.unit_key IS NULL
+
+        UNION ALL
+
+        -- A unit with no events must carry no counts.
+        SELECT 'MV counts without events', m.unit_key,
+               m.off_poss, NULL, m.off_pts, NULL,
+               m.def_poss, NULL, m.def_pts, NULL
+          FROM euroleague.sub_lineups_stats_mv m
+          LEFT JOIN recomputed r
+            USING (competition, game_year, team_id, unit_key)
+         WHERE r.unit_key IS NULL
+           AND (m.off_poss <> 0 OR m.off_pts <> 0
+                OR m.def_poss <> 0 OR m.def_pts <> 0
+                OR m.off_fga <> 0 OR m.def_fga <> 0)
+         LIMIT 20
+        """,
+    ),
+    (
+        "G6 size-5 units reproduce team season totals",
+        """
+        WITH unit_side AS (
+          SELECT competition, game_year, team_id,
+                 sum(off_poss) AS off_poss, sum(off_pts) AS off_pts,
+                 sum(def_poss) AS def_poss, sum(def_pts) AS def_pts
+            FROM euroleague.sub_lineups_stats_mv
+           WHERE unit_size = 5
+           GROUP BY 1, 2, 3
+        )
+        SELECT u.team_id, u.off_poss, t.off_poss, u.off_pts, t.off_pts,
+               u.def_poss, t.def_poss, u.def_pts, t.def_pts
+          FROM unit_side u
+          FULL JOIN euroleague.team_ppp_ratings_mv t
+            USING (competition, game_year, team_id)
+         WHERE u.off_poss IS DISTINCT FROM t.off_poss
+            OR u.off_pts  IS DISTINCT FROM t.off_pts
+            OR u.def_poss IS DISTINCT FROM t.def_poss
+            OR u.def_pts  IS DISTINCT FROM t.def_pts
+         LIMIT 20
+        """,
+    ),
 ]
 
 
