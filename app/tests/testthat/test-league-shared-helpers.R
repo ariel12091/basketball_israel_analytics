@@ -53,6 +53,64 @@ test_that("resolve_poss_cols picks the columns for the active view mode", {
                    list(on = NA_character_, off = NA_character_))
 })
 
+test_that("onoff_add_ff_ranks derives the display columns and ranks the full population", {
+  raw_cols <- as.vector(outer(c("off_on", "off_off", "def_on", "def_off"),
+                              c("efg", "oreb", "tov", "ftr"), paste, sep = "_"))
+
+  n <- 8L
+  df <- data.frame(
+    off_on_poss = c(400, 350, 300, 250, 200, 150, 120, 110),
+    `Off ON Diff` = as.character(seq_len(n)),
+    `Def ON Diff` = as.character(-seq_len(n)),
+    `Net RTG Diff` = seq(1.04, by = 1, length.out = n),
+    check.names = FALSE
+  )
+  for (col in raw_cols) df[[col]] <- seq(0.1, 0.8, length.out = n)
+
+  out <- onoff_add_ff_ranks(df)
+
+  # Derived display columns: the rating diffs are coerced to numeric (the
+  # filtered path returns them as text) and Net Diff is rounded to 1dp.
+  expect_identical(out$`Off Rtg Diff`, as.numeric(seq_len(n)))
+  expect_identical(out$`Def Rtg Diff`, -as.numeric(seq_len(n)))
+  expect_identical(out$`Net Diff`, round(df$`Net RTG Diff`, 1))
+
+  # A pr_ colour rank per rated column, and a _rank dot position per raw
+  # column -- the two things the diff cell renderer reads.
+  expect_true(all(c("pr_net_diff", "pr_off_rtg", "pr_def_rtg") %in% names(out)))
+  expect_true(all(paste0("pr_diff_", as.vector(outer(c("off", "def"),
+                                                     c("efg", "oreb", "tov", "ftr"),
+                                                     paste, sep = "_"))) %in% names(out)))
+  expect_true(all(paste0(raw_cols, "_rank") %in% names(out)))
+  expect_true(all(out$off_on_efg_rank >= 0 & out$off_on_efg_rank <= 100))
+
+  # Defense polarity is inverted at the coalesce default: a missing Def Rtg
+  # Diff ranks as the worst value (999), a missing Off one as the best (-999).
+  gaps <- df
+  gaps$`Off ON Diff`[[1]] <- NA
+  gaps$`Def ON Diff`[[1]] <- NA
+  g <- onoff_add_ff_ranks(gaps)
+  expect_identical(g$pr_off_rtg[[1]], 0)
+  expect_identical(g$pr_def_rtg[[1]], 1)
+
+  # Rows under the ranking threshold come out unranked (NA), not zero -- that
+  # gate is what makes these "full population" ranks rather than "whatever
+  # survived the filters". The mocks stub adaptive_baseline() to 0 so every row
+  # ranks, so install a real threshold for this assertion only.
+  env <- environment(onoff_add_ff_ranks)
+  old_baseline <- get("adaptive_baseline", envir = env)
+  assign("adaptive_baseline", function(poss_vec) 250, envir = env)
+  withr::defer(assign("adaptive_baseline", old_baseline, envir = env))
+
+  s <- onoff_add_ff_ranks(df)
+  ranked <- df$off_on_poss >= 250
+  expect_identical(is.na(s$pr_net_diff), !ranked)
+  expect_identical(is.na(s$off_on_efg_rank), !ranked)
+  # The surviving percentiles span the ranked rows only, not all eight.
+  expect_identical(sum(!is.na(s$pr_net_diff)), sum(ranked))
+  expect_identical(range(s$pr_net_diff, na.rm = TRUE), c(0, 1))
+})
+
 test_that("the shared stat-filter menus cover every column both leagues filter on", {
   # Summary: the nine rating/usage entries plus a shot-split group per context.
   expect_identical(

@@ -511,45 +511,9 @@ server_tab1 <- function(input, output, session, shared) {
       }
     }
 
-    # Derived display columns
-    df <- df %>% mutate(
-      `Off Rtg Diff` = as.numeric(`Off ON Diff`),
-      `Def Rtg Diff` = as.numeric(`Def ON Diff`),
-      `Net Diff`     = round(`Net RTG Diff`, 1)
-    )
-
-    # Calculate ALL ranks on full unfiltered dataset
-    # Adaptive baseline: lower threshold when data is sparse (narrow date ranges)
-    rank_thresh <- adaptive_baseline(df$off_on_poss)
-
-    # Background color ranks (pr_ prefix)
-    df <- df %>% mutate(
-      pr_net_diff = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Net Diff`, -999), NA_real_)),
-      pr_off_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Off Rtg Diff`, -999), NA_real_)),
-      pr_def_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Def Rtg Diff`, 999), NA_real_)),
-
-      pr_diff_off_efg  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_efg - off_off_efg, NA_real_)),
-      pr_diff_off_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_oreb - off_off_oreb, NA_real_)),
-      pr_diff_off_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_ftr - off_off_ftr, NA_real_)),
-      pr_diff_off_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_tov - off_off_tov, NA_real_)),
-
-      pr_diff_def_efg  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_efg - def_off_efg, NA_real_)),
-      pr_diff_def_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_oreb - def_off_oreb, NA_real_)),
-      pr_diff_def_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_ftr - def_off_ftr, NA_real_)),
-      pr_diff_def_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_tov - def_off_tov, NA_real_))
-    )
-
-    # Dot position ranks (_rank suffix) for range bar visuals
-    raw_cols <- c("off_on_efg", "off_off_efg", "off_on_oreb", "off_off_oreb",
-                  "off_on_tov", "off_off_tov", "off_on_ftr", "off_off_ftr",
-                  "def_on_efg", "def_off_efg", "def_on_oreb", "def_off_oreb",
-                  "def_on_tov", "def_off_tov", "def_on_ftr", "def_off_ftr")
-    for (col in intersect(raw_cols, names(df))) {
-      vals <- if_else(df$off_on_poss >= rank_thresh, coalesce(df[[col]], 0), NA_real_)
-      df[[paste0(col, "_rank")]] <- percent_rank(vals) * 100
-    }
-
-    df
+    # Derived display columns and full-population percentile ranks (helpers.R,
+    # shared with the other league's on/off tab).
+    onoff_add_ff_ranks(df)
   })
 
   # --- Full ranked Shot Profile data (ranks computed BEFORE any user filtering,

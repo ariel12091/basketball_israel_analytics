@@ -1161,6 +1161,56 @@ resolve_poss_cols <- function(df, mode) {
   list(on = NA_character_, off = NA_character_)
 }
 
+# Four-factor derived display columns and percentile ranks for the on/off
+# tabs, shared by Tab 1 (Israeli) and Tab 8 (EuroLeague). Moved here verbatim
+# from both server files, which held byte-identical copies.
+#
+# Ranks are computed on the FULL population, before any team or min-poss
+# filtering, so narrowing the table never reshuffles the percentiles the cells
+# color by. adaptive_baseline() lowers the ranking threshold when the window is
+# sparse; rows under it come out NA, which the renderers show as unranked.
+onoff_add_ff_ranks <- function(df) {
+    # Derived display columns
+    df <- df %>% mutate(
+      `Off Rtg Diff` = as.numeric(`Off ON Diff`),
+      `Def Rtg Diff` = as.numeric(`Def ON Diff`),
+      `Net Diff`     = round(`Net RTG Diff`, 1)
+    )
+
+    # Calculate ALL ranks on full unfiltered dataset
+    # Adaptive baseline: lower threshold when data is sparse (narrow date ranges)
+    rank_thresh <- adaptive_baseline(df$off_on_poss)
+
+    # Background color ranks (pr_ prefix)
+    df <- df %>% mutate(
+      pr_net_diff = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Net Diff`, -999), NA_real_)),
+      pr_off_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Off Rtg Diff`, -999), NA_real_)),
+      pr_def_rtg  = percent_rank(if_else(off_on_poss >= rank_thresh, coalesce(`Def Rtg Diff`, 999), NA_real_)),
+
+      pr_diff_off_efg  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_efg - off_off_efg, NA_real_)),
+      pr_diff_off_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_oreb - off_off_oreb, NA_real_)),
+      pr_diff_off_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_ftr - off_off_ftr, NA_real_)),
+      pr_diff_off_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, off_on_tov - off_off_tov, NA_real_)),
+
+      pr_diff_def_efg  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_efg - def_off_efg, NA_real_)),
+      pr_diff_def_oreb = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_oreb - def_off_oreb, NA_real_)),
+      pr_diff_def_ftr  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_ftr - def_off_ftr, NA_real_)),
+      pr_diff_def_tov  = percent_rank(if_else(off_on_poss >= rank_thresh, def_on_tov - def_off_tov, NA_real_))
+    )
+
+    # Dot position ranks (_rank suffix) for range bar visuals
+    raw_cols <- c("off_on_efg", "off_off_efg", "off_on_oreb", "off_off_oreb",
+                  "off_on_tov", "off_off_tov", "off_on_ftr", "off_off_ftr",
+                  "def_on_efg", "def_off_efg", "def_on_oreb", "def_off_oreb",
+                  "def_on_tov", "def_off_tov", "def_on_ftr", "def_off_ftr")
+    for (col in intersect(raw_cols, names(df))) {
+      vals <- if_else(df$off_on_poss >= rank_thresh, coalesce(df[[col]], 0), NA_real_)
+      df[[paste0(col, "_rank")]] <- percent_rank(vals) * 100
+    }
+
+    df
+}
+
 # ---- Stat-filter column menus for the on/off tabs ----
 # Both leagues offer the same Summary and Four Factors menus, so these vectors
 # moved here verbatim from the two server files, which held byte-identical
