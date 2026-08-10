@@ -399,21 +399,9 @@ server_tab1 <- function(input, output, session, shared) {
       num_starters_def_max = db_args$num_starters_def_max
     )
 
-    # Keep fallback filtering behavior consistent with the MV path.
-    if (all(c("ON Poss", "OFF Poss") %in% names(df_live))) {
-      df_live <- df_live %>%
-        filter(
-          pmin(
-            dplyr::coalesce(`ON Poss`, 0),
-            dplyr::coalesce(`OFF Poss`, 0)
-          ) >= !!input$min_all_poss
-        )
-    }
-    if ("ON Poss" %in% names(df_live)) {
-      df_live <- df_live %>% filter(`ON Poss` >= !!input$min_on_poss)
-    }
-
-    df_live
+    # Keep fallback filtering behavior consistent with the MV path. Teams are
+    # already filtered in SQL here, so only the possession bars apply.
+    onoff_filter_summary_rows(df_live, NULL, input$min_all_poss, input$min_on_poss)
   })
 
   # --- Live Calculation (Four Factors) ---
@@ -588,81 +576,24 @@ server_tab1 <- function(input, output, session, shared) {
     mode <- input$onoff_view_mode
     if (identical(mode, "Four Factors")) {
 
-      df <- ff_ranked_df()
-
       # Filter LOCALLY (ranks already computed on full data)
-      tids <- selected_team_ids()
-      if (!is.null(tids) && length(tids) > 0) {
-        df <- df %>% filter(team_id %in% !!tids)
-      }
-      if (all(c("off_on_poss", "off_off_poss", "def_on_poss", "def_off_poss") %in% names(df))) {
-        df <- df %>%
-          filter(
-            pmin(
-              dplyr::coalesce(off_on_poss, 0),
-              dplyr::coalesce(off_off_poss, 0),
-              dplyr::coalesce(def_on_poss, 0),
-              dplyr::coalesce(def_off_poss, 0)
-            ) >= !!input$min_all_poss
-          )
-      }
-      df <- df %>% filter(off_on_poss >= !!input$min_on_poss)
-
-      return(df)
+      return(onoff_filter_ff_rows(ff_ranked_df(), selected_team_ids(),
+                                  input$min_all_poss, input$min_on_poss))
 
     } else if (identical(mode, "Shot Profile")) {
 
-      df <- sp_ranked_df()
-
       # Filter LOCALLY (ranks already computed on full data, like Four Factors)
-      tids <- selected_team_ids()
-      if (!is.null(tids) && length(tids) > 0) {
-        df <- df %>% filter(team_id %in% !!tids)
-      }
-      if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
-        df <- df %>%
-          filter(
-            pmin(
-              dplyr::coalesce(`ON Poss`, 0),
-              dplyr::coalesce(`OFF Poss`, 0)
-            ) >= !!input$min_all_poss
-          )
-      }
-      if ("ON Poss" %in% names(df)) {
-        df <- df %>% filter(`ON Poss` >= !!input$min_on_poss)
-      }
-
-      return(df)
+      return(onoff_filter_summary_rows(sp_ranked_df(), selected_team_ids(),
+                                       input$min_all_poss, input$min_on_poss))
 
     } else {
       # Summary Mode
       if (isTRUE(fallback_needed())) {
         return(live_result_df())
       } else {
-        # Standard View = Use MV
-        df <- mv_result_df()
-
-        # --- FILTERING for Summary (Local) ---
-        tids <- selected_team_ids()
-        if (!is.null(tids) && length(tids) > 0) {
-          df <- df %>% filter(team_id %in% !!tids)
-        }
-
-        # Enforce minimum possessions on both ON/OFF sides in MV path
-        if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
-          df <- df %>%
-            filter(
-              pmin(
-                dplyr::coalesce(`ON Poss`, 0),
-                dplyr::coalesce(`OFF Poss`, 0)
-              ) >= !!input$min_all_poss
-            )
-        }
-
-        # Filter Min Poss (Summary MV uses 'ON Poss')
-        df <- df %>% filter(`ON Poss` >= !!input$min_on_poss)
-
-        return(df)
+        # Standard View = Use MV, filtered locally
+        return(onoff_filter_summary_rows(mv_result_df(), selected_team_ids(),
+                                         input$min_all_poss, input$min_on_poss))
       }
     }
   }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode)

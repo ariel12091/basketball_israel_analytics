@@ -1211,6 +1211,60 @@ onoff_add_ff_ranks <- function(df) {
     df
 }
 
+# Local row filters for the on/off tabs, shared by Tab 1 (Israeli) and Tab 8
+# (EuroLeague). Both leagues apply the team and minimum-possession filters in R
+# rather than in SQL, because the percentile ranks must be computed on the full
+# population first -- see onoff_add_ff_ranks().
+#
+# The two view modes name their possession columns differently, hence two
+# functions: Summary carries the display names, Four Factors the raw ones. The
+# min_all bar is a floor on the WEAKEST side, so a player needs enough evidence
+# both on and off the court to appear at all.
+#
+# Every filter is guarded on the columns being present. The Summary MV branch
+# and the Four Factors branch previously left their final min_on filter
+# unguarded, which errored rather than no-op'd on a frame without the column;
+# the other call sites already guarded it, so this settles on the guarded form.
+onoff_filter_summary_rows <- function(df, team_ids, min_all, min_on) {
+  if (!is.null(team_ids) && length(team_ids) > 0) {
+    df <- df %>% filter(team_id %in% !!team_ids)
+  }
+  if (all(c("ON Poss", "OFF Poss") %in% names(df))) {
+    df <- df %>%
+      filter(
+        pmin(
+          dplyr::coalesce(`ON Poss`, 0),
+          dplyr::coalesce(`OFF Poss`, 0)
+        ) >= !!min_all
+      )
+  }
+  if ("ON Poss" %in% names(df)) {
+    df <- df %>% filter(`ON Poss` >= !!min_on)
+  }
+  df
+}
+
+onoff_filter_ff_rows <- function(df, team_ids, min_all, min_on) {
+  if (!is.null(team_ids) && length(team_ids) > 0) {
+    df <- df %>% filter(team_id %in% !!team_ids)
+  }
+  if (all(c("off_on_poss", "off_off_poss", "def_on_poss", "def_off_poss") %in% names(df))) {
+    df <- df %>%
+      filter(
+        pmin(
+          dplyr::coalesce(off_on_poss, 0),
+          dplyr::coalesce(off_off_poss, 0),
+          dplyr::coalesce(def_on_poss, 0),
+          dplyr::coalesce(def_off_poss, 0)
+        ) >= !!min_all
+      )
+  }
+  if ("off_on_poss" %in% names(df)) {
+    df <- df %>% filter(off_on_poss >= !!min_on)
+  }
+  df
+}
+
 # ---- Stat-filter column menus for the on/off tabs ----
 # Both leagues offer the same Summary and Four Factors menus, so these vectors
 # moved here verbatim from the two server files, which held byte-identical

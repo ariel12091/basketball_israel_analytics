@@ -111,6 +111,60 @@ test_that("onoff_add_ff_ranks derives the display columns and ranks the full pop
   expect_identical(range(s$pr_net_diff, na.rm = TRUE), c(0, 1))
 })
 
+test_that("onoff_filter_summary_rows floors on the weaker side and honours the team filter", {
+  df <- data.frame(
+    team_id = c(1L, 1L, 2L, 2L, 3L),
+    `ON Poss`  = c(500, 400, 300, 90, 200),
+    `OFF Poss` = c(500,  80, 300, 400, 200),
+    check.names = FALSE
+  )
+
+  # min_all is a bar on BOTH sides: row 2 clears it on ON but not on OFF,
+  # row 4 the other way round. Both drop.
+  out <- onoff_filter_summary_rows(df, NULL, 100, 0)
+  expect_identical(out$team_id, c(1L, 2L, 3L))
+
+  # min_on applies to the ON side only.
+  expect_identical(nrow(onoff_filter_summary_rows(df, NULL, 0, 250)), 3L)
+
+  # Team filter first; NULL and empty both mean "all teams".
+  expect_identical(unique(onoff_filter_summary_rows(df, 2L, 0, 0)$team_id), 2L)
+  expect_identical(nrow(onoff_filter_summary_rows(df, integer(0), 0, 0)), nrow(df))
+  expect_identical(nrow(onoff_filter_summary_rows(df, NULL, 0, 0)), nrow(df))
+
+  # NA possessions count as zero rather than dropping out of the comparison.
+  na_df <- df
+  na_df$`OFF Poss`[[1]] <- NA_real_
+  expect_identical(nrow(onoff_filter_summary_rows(na_df, NULL, 100, 0)), 2L)
+
+  # A frame without the possession columns is returned untouched, not errored:
+  # only the team filter can apply.
+  bare <- data.frame(team_id = c(1L, 2L))
+  expect_identical(nrow(onoff_filter_summary_rows(bare, NULL, 999, 999)), 2L)
+})
+
+test_that("onoff_filter_ff_rows floors on the weakest of all four possession columns", {
+  df <- data.frame(
+    team_id = c(1L, 1L, 2L, 2L),
+    off_on_poss  = c(500, 400, 300, 500),
+    off_off_poss = c(500, 400, 300, 500),
+    def_on_poss  = c(500, 400, 300, 500),
+    def_off_poss = c(500,  80, 300, 500)
+  )
+
+  # Row 2 fails on the defense-off side alone, and that is enough.
+  expect_identical(nrow(onoff_filter_ff_rows(df, NULL, 100, 0)), 3L)
+
+  # min_on reads the offense-on column, matching the Summary view's "ON Poss".
+  expect_identical(nrow(onoff_filter_ff_rows(df, NULL, 0, 350)), 3L)
+
+  expect_identical(unique(onoff_filter_ff_rows(df, 2L, 0, 0)$team_id), 2L)
+
+  # Missing four-factor columns leave the possession bars inert.
+  bare <- data.frame(team_id = c(1L, 2L))
+  expect_identical(nrow(onoff_filter_ff_rows(bare, NULL, 999, 999)), 2L)
+})
+
 test_that("the shared stat-filter menus cover every column both leagues filter on", {
   # Summary: the nine rating/usage entries plus a shot-split group per context.
   expect_identical(
