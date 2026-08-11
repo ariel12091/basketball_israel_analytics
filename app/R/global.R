@@ -705,7 +705,8 @@ onoff_tab_descriptor <- function(league = c("israel", "euroleague")) {
     gn_min_label = "From Round", gn_max_label = "To Round",
     opp_rank_metric_selected = "",
     opp_rank_max = 20L, show_shot_profile = FALSE, show_impact = FALSE,
-    show_download = FALSE, initial_min_all = 0L, initial_min_on = 0L
+    show_download = FALSE, initial_min_all = DEFAULT_MIN_ALL,
+    initial_min_on = DEFAULT_MIN_ON
   )
 }
 

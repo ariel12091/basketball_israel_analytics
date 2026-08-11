@@ -4,6 +4,19 @@
 # including when called from file scope rather than from inside a server
 # function (where dplyr was already attached by global.R).
 
+test_that("both on/off descriptors seed auto minimums above zero", {
+  global <- paste(
+    readLines(testthat::test_path("..", "..", "R", "global.R"), warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    global,
+    "show_download = FALSE, initial_min_all = DEFAULT_MIN_ALL,\\s+initial_min_on = DEFAULT_MIN_ON",
+    perl = TRUE
+  )
+})
+
 test_that("auto_min_on_from_df keeps the top AUTO_TOP_PCT by usage", {
   expect_identical(AUTO_TOP_PCT, 0.35)
 
