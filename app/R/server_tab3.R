@@ -809,15 +809,11 @@ server_tab3 <- function(input, output, session, shared) {
       req(gy)
       start_d <- tr_date_part(input$tr_dates, 1L)
       end_d <- tr_date_part(input$tr_dates, 2L)
-      tr_game_type_csv <- csv_if_any(input$tr_game_type)
-      tr_opp_ids_csv <- csv_if_any(input$tr_opponents, integerize = TRUE)
-      tr_home_away <- blank_to_na_character(input$tr_home_away)
-      tr_outcome <- blank_to_na_character(input$tr_outcome)
-      tr_rank_side <- blank_to_na_character(input$tr_opp_rank_side)
-      tr_rank_n <- blank_to_na_integer(input$tr_opp_rank_n)
-      tr_metric <- blank_to_na_character(input$tr_opp_rank_metric)
-
-      gn_params <- resolve_gn_last_n_params(input, "tr")
+      filters <- game_context_filter_values(input, "tr")
+      context <- game_context_db_args(
+        filters, resolve_gn_last_n_params(input, "tr"),
+        integerize_opponents = TRUE
+      )
       clutch <- resolve_clutch_params(
         enabled = input$tr_clutch_enabled,
         margin = input$tr_clutch_margin,
@@ -825,15 +821,25 @@ server_tab3 <- function(input, output, session, shared) {
         minutes = input$tr_clutch_minutes,
         ot_margin = input$tr_clutch_ot_margin
       )
-      starters <- resolve_starters_bounds(
-        off_mode = input$tr_num_starters_off_mode,
-        off_val = input$tr_num_starters_off,
-        def_mode = input$tr_num_starters_def_mode,
-        def_val = input$tr_num_starters_def
-      )
       trad_side <- if (isTRUE(input$tr_trad_defense_mode)) "defense" else "offense"
 
-      list(game_year = gy, start_d = start_d, end_d = end_d, game_type_csv = tr_game_type_csv, opp_ids_csv = tr_opp_ids_csv, home_away = tr_home_away, outcome = tr_outcome, rank_side = tr_rank_side, rank_n = tr_rank_n, metric = tr_metric, max_margin = clutch$max_margin, margin_status = clutch$margin_status, max_time_remaining = clutch$max_time_remaining, ot_margin_filter = clutch$ot_margin_filter, min_gn = gn_params$min_gn, max_gn = gn_params$max_gn, last_n_games = gn_params$last_n, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = starters$num_starters_off_min, num_starters_off_max = starters$num_starters_off_max, num_starters_def_min = starters$num_starters_def_min, num_starters_def_max = starters$num_starters_def_max, trad_side = trad_side)
+      list(game_year = gy, start_d = start_d, end_d = end_d,
+           game_type_csv = context$game_type_csv,
+           opp_ids_csv = context$opp_ids_csv,
+           home_away = context$home_away, outcome = context$outcome,
+           rank_side = context$opp_rank_side, rank_n = context$opp_rank_n,
+           metric = context$opp_rank_metric,
+           max_margin = clutch$max_margin, margin_status = clutch$margin_status,
+           max_time_remaining = clutch$max_time_remaining,
+           ot_margin_filter = clutch$ot_margin_filter,
+           min_gn = context$min_gn, max_gn = context$max_gn,
+           last_n_games = context$last_n_games,
+           num_starters_off = NA_integer_, num_starters_def = NA_integer_,
+           num_starters_off_min = context$num_starters_off_min,
+           num_starters_off_max = context$num_starters_off_max,
+           num_starters_def_min = context$num_starters_def_min,
+           num_starters_def_max = context$num_starters_def_max,
+           trad_side = trad_side)
     }, error = function(e) {
       log_tab3_error(paste0("tr_params error: ", conditionMessage(e)))
       tb <- tryCatch(paste(capture.output(sys.calls()), collapse = " || "), error = function(err) "")
@@ -1015,21 +1021,8 @@ server_tab3 <- function(input, output, session, shared) {
 
     if (is.null(df) || nrow(df) == 0) return(df)
 
-    # Compute percentile ranks - all teams qualify (>>100 poss)
-
-    df$pr_off_ppp  <- pr_vec(df$off_ppp)
-    df$pr_off_efg  <- pr_vec(df$off_efg)
-    df$pr_off_oreb <- pr_vec(df$off_oreb)
-    df$pr_off_tov  <- pr_vec(df$off_tov, invert = TRUE)
-    df$pr_off_ftr  <- pr_vec(df$off_ftr)
-    df$pr_def_ppp  <- pr_vec(df$def_ppp, invert = TRUE)
-    df$pr_def_efg  <- pr_vec(df$def_efg, invert = TRUE)
-    df$pr_def_oreb <- pr_vec(df$def_oreb, invert = TRUE)
-    df$pr_def_tov  <- pr_vec(df$def_tov)
-    df$pr_def_ftr  <- pr_vec(df$def_ftr, invert = TRUE)
-    df$pr_net      <- pr_vec(df$net_rtg)
-
-    df
+    # Compute percentile ranks - all teams qualify (>>100 poss).
+    add_team_metric_ranks(df)
   })
 
   tr_prev_data <- reactive({

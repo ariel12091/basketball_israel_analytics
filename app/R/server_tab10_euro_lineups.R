@@ -51,19 +51,13 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
                          choices = euro_phase_choices(comp, season),
                          selected = character(0), server = FALSE)
 
-    # This tab's GN controls are selectInput, not the selectize trio
-    # update_gn_last_n_choices() drives, so the choices are applied here.
     rounds <- tryCatch(euro_fetch_round_values(comp, season), error = function(e) NULL)
-    round_vals <- as.character(rounds$gn)
-    updateSelectInput(session, "euro_ld_gn_min",
-                      choices = c("—" = "", setNames(round_vals, round_vals)), selected = "")
-    updateSelectInput(session, "euro_ld_gn_max",
-                      choices = c("—" = "", setNames(round_vals, round_vals)), selected = "")
-    updateSelectInput(session, "euro_ld_last_n",
-                      choices = c("All" = "", setNames(round_vals, round_vals)), selected = "")
+    update_gn_last_n_choices(session, "euro_ld", rounds$gn)
 
     apply_season_date_bounds(session, "euro_ld_date_range", euro_season_date_bounds(season))
   }, ignoreInit = FALSE)
+
+  setup_gn_last_n_sync(session, input, "euro_ld")
 
   observeEvent(input$euro_ld_reset, {
     apply_season_date_bounds(session, "euro_ld_date_range", euro_season_date_bounds(euro_season()))
@@ -71,8 +65,8 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     ld_filter$reset_inputs(team_selected = "")
     updateSelectizeInput(session, "euro_ld_opponents", selected = character(0))
     updateSelectizeInput(session, "euro_ld_phase", selected = character(0))
-    for (id in c("euro_ld_gn_min", "euro_ld_gn_max", "euro_ld_last_n",
-                 "euro_ld_opp_rank_side", "euro_ld_opp_rank_n",
+    reset_gn_last_n_inputs(session, "euro_ld")
+    for (id in c("euro_ld_opp_rank_side", "euro_ld_opp_rank_n",
                  "euro_ld_num_starters_off_mode", "euro_ld_num_starters_off",
                  "euro_ld_num_starters_def_mode", "euro_ld_num_starters_def")) {
       updateSelectInput(session, id, selected = "")
@@ -84,46 +78,32 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   })
 
   # --- Filter arguments -----------------------------------------------------
-  gn_params <- reactive({
-    to_int <- function(x) if (!is.null(x) && nzchar(x)) as.integer(x) else NA_integer_
-    min_gn <- to_int(input$euro_ld_gn_min)
-    max_gn <- to_int(input$euro_ld_gn_max)
-    last_n <- to_int(input$euro_ld_last_n)
-    # GN range and last-N are mutually exclusive.
-    if (!is.na(last_n)) { min_gn <- NA_integer_; max_gn <- NA_integer_ }
-    if (!is.na(min_gn) || !is.na(max_gn)) last_n <- NA_integer_
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-    list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
-  })
+  gn_params <- reactive(resolve_gn_last_n_params(input, "euro_ld"))
 
   debounced_dates <- reactive(input$euro_ld_date_range) %>% debounce(300)
 
   build_db_args <- function() {
-    gp <- gn_params()
-    starters <- resolve_starters_bounds(
-      off_mode = input$euro_ld_num_starters_off_mode,
-      off_val  = input$euro_ld_num_starters_off,
-      def_mode = input$euro_ld_num_starters_def_mode,
-      def_val  = input$euro_ld_num_starters_def
+    filters <- game_context_filter_values(
+      input, "euro_ld", game_type_id = "euro_ld_phase"
     )
+    context <- game_context_db_args(filters, gn_params())
     team_val <- ld_filter$team()
     team_val <- team_val[nzchar(team_val)]
     list(
       team_csv = if (length(team_val)) paste(team_val, collapse = ",") else NA_character_,
-      phase_csv = csv_if_any(input$euro_ld_phase),
-      opp_ids_csv = csv_if_any(input$euro_ld_opponents),
-      home_away = blank_to_na_character(input$euro_ld_home_away),
-      outcome = blank_to_na_character(input$euro_ld_outcome),
-      opp_rank_side = blank_to_na_character(input$euro_ld_opp_rank_side),
-      opp_rank_n = blank_to_na_integer(input$euro_ld_opp_rank_n),
-      opp_rank_metric = blank_to_na_character(input$euro_ld_opp_rank_metric),
-      min_gn = gp$min_gn, max_gn = gp$max_gn, last_n_games = gp$last_n,
-      num_starters_off_min = starters$num_starters_off_min,
-      num_starters_off_max = starters$num_starters_off_max,
-      num_starters_def_min = starters$num_starters_def_min,
-      num_starters_def_max = starters$num_starters_def_max,
+      phase_csv = context$game_type_csv,
+      opp_ids_csv = context$opp_ids_csv,
+      home_away = context$home_away,
+      outcome = context$outcome,
+      opp_rank_side = context$opp_rank_side,
+      opp_rank_n = context$opp_rank_n,
+      opp_rank_metric = context$opp_rank_metric,
+      min_gn = context$min_gn, max_gn = context$max_gn,
+      last_n_games = context$last_n_games,
+      num_starters_off_min = context$num_starters_off_min,
+      num_starters_off_max = context$num_starters_off_max,
+      num_starters_def_min = context$num_starters_def_min,
+      num_starters_def_max = context$num_starters_def_max,
       players_on_csv = csv_if_any(ld_filter$players_on()),
       players_off_csv = csv_if_any(ld_filter$players_off()),
       unit_size = as.integer(input$euro_ld_group_size %||% "5")

@@ -249,6 +249,38 @@ test_that("onoff input and query mapping is shared without erasing league dimens
   expect_identical(el_args$last_n_games, NA_integer_)
 })
 
+test_that("shared game-number parsing keeps range and last-N mutually exclusive", {
+  expect_identical(
+    resolve_gn_last_n_values("10", "3", ""),
+    list(min_gn = 3L, max_gn = 10L, last_n = NA_integer_)
+  )
+  expect_identical(
+    resolve_gn_last_n_values("3", "10", "5"),
+    list(min_gn = NA_integer_, max_gn = NA_integer_, last_n = 5L)
+  )
+  expect_identical(
+    resolve_gn_last_n_values("", "", ""),
+    list(min_gn = NA_integer_, max_gn = NA_integer_, last_n = NA_integer_)
+  )
+})
+
+test_that("team rating ranks share the correct offense and defense polarity", {
+  df <- data.frame(
+    off_ppp = c(100, 110), off_efg = c(.45, .55),
+    off_oreb = c(.20, .30), off_tov = c(.20, .10), off_ftr = c(.20, .30),
+    def_ppp = c(100, 110), def_efg = c(.45, .55),
+    def_oreb = c(.20, .30), def_tov = c(.20, .10), def_ftr = c(.20, .30),
+    net_rtg = c(-5, 5)
+  )
+  out <- add_team_metric_ranks(df)
+
+  expect_identical(out$pr_off_ppp, c(0, 1))
+  expect_identical(out$pr_off_tov, c(0, 1))
+  expect_identical(out$pr_def_ppp, c(1, 0))
+  expect_identical(out$pr_def_tov, c(1, 0))
+  expect_identical(out$pr_net, c(0, 1))
+})
+
 test_that("the shared stat-filter menus cover every column both leagues filter on", {
   # Summary: the nine rating/usage entries plus a shot-split group per context.
   expect_identical(

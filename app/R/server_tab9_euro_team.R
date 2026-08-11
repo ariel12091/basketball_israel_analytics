@@ -44,24 +44,14 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   })
 
   # ---- Parameters ----
-  et_debounced <- reactive(list(
-    dates    = input$euroteam_dates,
-    teams    = input$euroteam_teams,
-    phase    = input$euroteam_phase,
-    opps     = input$euroteam_opponents,
-    home     = input$euroteam_home_away,
-    outcome  = input$euroteam_outcome,
-    rk_side  = input$euroteam_opp_rank_side,
-    rk_n     = input$euroteam_opp_rank_n,
-    rk_metric = input$euroteam_opp_rank_metric,
-    st_off_m = input$euroteam_num_starters_off_mode,
-    st_off_v = input$euroteam_num_starters_off,
-    st_def_m = input$euroteam_num_starters_def_mode,
-    st_def_v = input$euroteam_num_starters_def,
-    gn_min   = input$euroteam_gn_min,
-    gn_max   = input$euroteam_gn_max,
-    last_n   = input$euroteam_last_n
-  )) %>% debounce(300)
+  et_debounced <- reactive({
+    f <- game_context_filter_values(
+      input, "euroteam", game_type_id = "euroteam_phase"
+    )
+    f$dates <- input$euroteam_dates
+    f$teams <- input$euroteam_teams
+    f
+  }) %>% debounce(300)
 
   et_params <- reactive({
     f <- et_debounced()
@@ -70,34 +60,27 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     start_d <- if (length(rng) == 2 && !is.na(rng[1])) as.Date(rng[1]) else bounds$start
     end_d   <- if (length(rng) == 2 && !is.na(rng[2])) as.Date(rng[2]) else bounds$end
 
-    min_gn <- blank_to_na_integer(f$gn_min)
-    max_gn <- blank_to_na_integer(f$gn_max)
-    last_n <- blank_to_na_integer(f$last_n)
-    if (!is.na(last_n)) { min_gn <- NA_integer_; max_gn <- NA_integer_ }
-    if (!is.na(min_gn) || !is.na(max_gn)) last_n <- NA_integer_
-    if (!is.na(min_gn) && !is.na(max_gn) && min_gn > max_gn) {
-      tmp <- min_gn; min_gn <- max_gn; max_gn <- tmp
-    }
-    starters <- resolve_starters_bounds(
-      off_mode = f$st_off_m, off_val = f$st_off_v,
-      def_mode = f$st_def_m, def_val = f$st_def_v
-    )
+    gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
+    context <- game_context_db_args(f, gn)
 
     list(
       competition = et_competition(),
       game_year = as.integer(et_season()),
       start_d = start_d, end_d = end_d,
       team_ids_csv = csv_if_any(f$teams),
-      phase_csv = csv_if_any(f$phase),
-      opp_ids_csv = csv_if_any(f$opps),
-      home_away = blank_to_na_character(f$home),
-      outcome = blank_to_na_character(f$outcome),
-      rank_side = blank_to_na_character(f$rk_side),
-      rank_n = blank_to_na_integer(f$rk_n),
-      rank_metric = blank_to_na_character(f$rk_metric),
-      min_gn = min_gn, max_gn = max_gn, last_n = last_n,
-      st_off_min = starters$num_starters_off_min, st_off_max = starters$num_starters_off_max,
-      st_def_min = starters$num_starters_def_min, st_def_max = starters$num_starters_def_max,
+      phase_csv = context$game_type_csv,
+      opp_ids_csv = context$opp_ids_csv,
+      home_away = context$home_away,
+      outcome = context$outcome,
+      rank_side = context$opp_rank_side,
+      rank_n = context$opp_rank_n,
+      rank_metric = context$opp_rank_metric,
+      min_gn = context$min_gn, max_gn = context$max_gn,
+      last_n = context$last_n_games,
+      st_off_min = context$num_starters_off_min,
+      st_off_max = context$num_starters_off_max,
+      st_def_min = context$num_starters_def_min,
+      st_def_max = context$num_starters_def_max,
       bounds = bounds
     )
   })
@@ -189,18 +172,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     }
     if (is.null(df) || nrow(df) == 0) return(df)
 
-    df$pr_off_ppp  <- pr_vec(df$off_ppp)
-    df$pr_off_efg  <- pr_vec(df$off_efg)
-    df$pr_off_oreb <- pr_vec(df$off_oreb)
-    df$pr_off_tov  <- pr_vec(df$off_tov, invert = TRUE)
-    df$pr_off_ftr  <- pr_vec(df$off_ftr)
-    df$pr_def_ppp  <- pr_vec(df$def_ppp, invert = TRUE)
-    df$pr_def_efg  <- pr_vec(df$def_efg, invert = TRUE)
-    df$pr_def_oreb <- pr_vec(df$def_oreb, invert = TRUE)
-    df$pr_def_tov  <- pr_vec(df$def_tov)
-    df$pr_def_ftr  <- pr_vec(df$def_ftr, invert = TRUE)
-    df$pr_net      <- pr_vec(df$net_rtg)
-    df
+    add_team_metric_ranks(df)
   })
 
   # ---- Trend arrows: ranks as they stood before the most recent matchday ----

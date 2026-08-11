@@ -543,7 +543,8 @@ game_context_filters_ui <- function(prefix, include_opp_rank = TRUE,
                                     game_type_placeholder = "All game types",
                                     gn_min_label = tt("From Game Number (GN)", "gn"),
                                     gn_max_label = tt("To Game Number (GN)", "gn"),
-                                    opp_rank_max = 12L) {
+                                    opp_rank_max = 12L,
+                                    opp_rank_metric_selected = "") {
   panels <- list(
     bslib::accordion_panel(
       "Game Filters",
@@ -613,12 +614,58 @@ game_context_filters_ui <- function(prefix, include_opp_rank = TRUE,
       selectInput(
         paste0(prefix, "_opp_rank_metric"), "Metric",
         choices = c(blank_choice, "Offense" = "off", "Defense" = "def", "Net rating" = "net"),
-        selected = ""
+        selected = opp_rank_metric_selected
       )
     )
   }
 
   do.call(bslib::accordion, c(panels, list(open = TRUE)))
+}
+
+game_context_descriptor <- function(prefix, league = c("israel", "euroleague"),
+                                    opp_rank_metric_selected = "") {
+  league <- match.arg(league)
+  if (identical(league, "israel")) {
+    return(list(
+      prefix = prefix,
+      game_type_id = paste0(prefix, "_game_type"),
+      game_type_label = "Game type",
+      game_type_choices = GAME_TYPE_CHOICES_UI,
+      game_type_selected = "",
+      game_type_placeholder = "All game types",
+      gn_min_label = tt("From Game Number (GN)", "gn"),
+      gn_max_label = tt("To Game Number (GN)", "gn"),
+      opp_rank_max = 12L,
+      opp_rank_metric_selected = opp_rank_metric_selected
+    ))
+  }
+  list(
+    prefix = prefix,
+    game_type_id = paste0(prefix, "_phase"),
+    game_type_label = "Phase",
+    game_type_choices = NULL,
+    game_type_selected = character(0),
+    game_type_placeholder = "All phases",
+    gn_min_label = "From Round",
+    gn_max_label = "To Round",
+    opp_rank_max = 20L,
+    opp_rank_metric_selected = opp_rank_metric_selected
+  )
+}
+
+game_context_filters_from_descriptor <- function(descriptor) {
+  game_context_filters_ui(
+    descriptor$prefix,
+    game_type_id = descriptor$game_type_id,
+    game_type_label = descriptor$game_type_label,
+    game_type_choices = descriptor$game_type_choices,
+    game_type_selected = descriptor$game_type_selected,
+    game_type_placeholder = descriptor$game_type_placeholder,
+    gn_min_label = descriptor$gn_min_label,
+    gn_max_label = descriptor$gn_max_label,
+    opp_rank_max = descriptor$opp_rank_max,
+    opp_rank_metric_selected = descriptor$opp_rank_metric_selected
+  )
 }
 
 # The on/off pair has the same input structure. Keep the league-specific IDs,
@@ -656,12 +703,13 @@ onoff_tab_descriptor <- function(league = c("israel", "euroleague")) {
     game_type_selected = character(0),
     game_type_placeholder = "All phases",
     gn_min_label = "From Round", gn_max_label = "To Round",
+    opp_rank_metric_selected = "",
     opp_rank_max = 20L, show_shot_profile = FALSE, show_impact = FALSE,
     show_download = FALSE, initial_min_all = 0L, initial_min_on = 0L
   )
 }
 
-onoff_starter_filters_ui <- function(prefix) {
+starter_context_filters_ui <- function(prefix) {
   tagList(
     fluidRow(
       column(6, selectInput(paste0(prefix, "_num_starters_off_mode"),
@@ -680,21 +728,11 @@ onoff_starter_filters_ui <- function(prefix) {
   )
 }
 
-onoff_game_context_filters_ui <- function(descriptor) {
-  game_context_filters_ui(
-    descriptor$prefix,
-    game_type_id = descriptor$game_type_id,
-    game_type_label = descriptor$game_type_label,
-    game_type_choices = descriptor$game_type_choices,
-    game_type_selected = descriptor$game_type_selected,
-    game_type_placeholder = descriptor$game_type_placeholder,
-    gn_min_label = descriptor$gn_min_label,
-    gn_max_label = descriptor$gn_max_label,
-    opp_rank_max = descriptor$opp_rank_max
-  )
-}
+onoff_starter_filters_ui <- starter_context_filters_ui
 
-onoff_summary_legend_ui <- function(view_id) {
+onoff_game_context_filters_ui <- game_context_filters_from_descriptor
+
+shot_splits_legend_ui <- function(view_id) {
   conditionalPanel(
     condition = sprintf("input.%s == 'Summary'", view_id),
     div(
@@ -717,6 +755,8 @@ onoff_summary_legend_ui <- function(view_id) {
     )
   )
 }
+
+onoff_summary_legend_ui <- shot_splits_legend_ui
 
 onoff_rank_legend_ui <- function(view_id, mode = "Four Factors", note = NULL) {
   conditionalPanel(

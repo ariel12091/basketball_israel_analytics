@@ -54,65 +54,13 @@ ui_tab10_euro_lineups <- function() tabPanel(
                          start = EURO_DEFAULT_START, end = EURO_DEFAULT_END,
                          min = EURO_DEFAULT_START, max = EURO_DEFAULT_END,
                          format = "yyyy-mm-dd"),
-          selectizeInput("euro_ld_opponents", "Opponents", choices = NULL,
-                         multiple = TRUE,
-                         options = list(placeholder = "All opponents")),
-          selectizeInput("euro_ld_phase", "Game type (phase)", choices = NULL,
-                         multiple = TRUE,
-                         options = list(placeholder = "All phases")),
-          fluidRow(
-            column(6, selectInput("euro_ld_gn_min", "Round from",
-                                  choices = c("—" = ""), selected = "")),
-            column(6, selectInput("euro_ld_gn_max", "Round to",
-                                  choices = c("—" = ""), selected = ""))
+          accordion_toggle_link(),
+          game_context_filters_from_descriptor(
+            game_context_descriptor(
+              "euro_ld", "euroleague", opp_rank_metric_selected = "net"
+            )
           ),
-          selectInput("euro_ld_last_n", "Last N games",
-                      choices = c("All" = ""), selected = ""),
-          # "" is the blank on every other tab, and the SQL coerces it to 'all'
-          # itself, so the chip bar's blank test needs no tab-10 special case.
-          selectInput("euro_ld_home_away", "Home / Away",
-                      choices = c("All" = "", "Home" = "home",
-                                  "Away" = "away"),
-                      selected = ""),
-          selectInput("euro_ld_outcome", "Outcome",
-                      choices = c("All" = "", "Wins" = "win",
-                                  "Losses" = "loss"),
-                      selected = ""),
-          fluidRow(
-            column(4, selectInput("euro_ld_opp_rank_side", "Opp rank",
-                                  choices = c("All" = "", "Top" = "top",
-                                              "Bottom" = "bottom"),
-                                  selected = "")),
-            column(4, selectInput("euro_ld_opp_rank_n", "N",
-                                  choices = c("—" = "", as.character(1:20)),
-                                  selected = "")),
-            column(4, selectInput("euro_ld_opp_rank_metric", "By",
-                                  choices = c("Net" = "net", "Off" = "off",
-                                              "Def" = "def"),
-                                  selected = "net"))
-          ),
-          fluidRow(
-            column(6, selectInput("euro_ld_num_starters_off_mode",
-                                  tt("Own lineup starters", "own_starters"),
-                                  choices = c("ALL" = "",
-                                              "At least (>=)" = "gte",
-                                              "At most (<=)" = "lte"),
-                                  selected = "")),
-            column(6, selectInput("euro_ld_num_starters_off", "Own value",
-                                  choices = c("—" = "", as.character(0:5)),
-                                  selected = ""))
-          ),
-          fluidRow(
-            column(6, selectInput("euro_ld_num_starters_def_mode",
-                                  tt("Opponent lineup starters", "opp_starters"),
-                                  choices = c("ALL" = "",
-                                              "At least (>=)" = "gte",
-                                              "At most (<=)" = "lte"),
-                                  selected = "")),
-            column(6, selectInput("euro_ld_num_starters_def", "Opp value",
-                                  choices = c("—" = "", as.character(0:5)),
-                                  selected = ""))
-          )
+          starter_context_filters_ui("euro_ld")
         )
       ),
       mainPanel(

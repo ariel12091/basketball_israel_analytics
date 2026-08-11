@@ -485,6 +485,24 @@ pr_vec <- function(x, invert = FALSE) {
   as.numeric(p)
 }
 
+add_team_metric_ranks <- function(df) {
+  if (is.null(df) || !NROW(df)) return(df)
+  specs <- list(
+    pr_off_ppp = list("off_ppp", FALSE), pr_off_efg = list("off_efg", FALSE),
+    pr_off_oreb = list("off_oreb", FALSE), pr_off_tov = list("off_tov", TRUE),
+    pr_off_ftr = list("off_ftr", FALSE), pr_def_ppp = list("def_ppp", TRUE),
+    pr_def_efg = list("def_efg", TRUE), pr_def_oreb = list("def_oreb", TRUE),
+    pr_def_tov = list("def_tov", FALSE), pr_def_ftr = list("def_ftr", TRUE),
+    pr_net = list("net_rtg", FALSE)
+  )
+  for (target in names(specs)) {
+    source <- specs[[target]][[1]]
+    invert <- specs[[target]][[2]]
+    if (source %in% names(df)) df[[target]] <- pr_vec(df[[source]], invert = invert)
+  }
+  df
+}
+
 # Point a dateRangeInput at a season window, value and allowed range together.
 # Nothing league-specific here: the caller supplies whichever bounds its league
 # computes, Israeli season_date_bounds_for_year() or euro_season_date_bounds().
@@ -526,11 +544,10 @@ update_gn_last_n_choices <- function(session, prefix, gn_vals) {
   }
 }
 
-resolve_gn_last_n_params <- function(input, prefix) {
-  min_gn <- input[[paste0(prefix, "_gn_min")]] %||% ""
-  max_gn <- input[[paste0(prefix, "_gn_max")]] %||% ""
-  last_n <- input[[paste0(prefix, "_last_n")]] %||% ""
-
+resolve_gn_last_n_values <- function(min_gn = "", max_gn = "", last_n = "") {
+  min_gn <- min_gn %||% ""
+  max_gn <- max_gn %||% ""
+  last_n <- last_n %||% ""
   min_gn <- if (nzchar(min_gn)) as.integer(min_gn) else NA_integer_
   max_gn <- if (nzchar(max_gn)) as.integer(max_gn) else NA_integer_
   last_n <- if (nzchar(last_n)) as.integer(last_n) else NA_integer_
@@ -549,6 +566,14 @@ resolve_gn_last_n_params <- function(input, prefix) {
   }
 
   list(min_gn = min_gn, max_gn = max_gn, last_n = last_n)
+}
+
+resolve_gn_last_n_params <- function(input, prefix) {
+  resolve_gn_last_n_values(
+    input[[paste0(prefix, "_gn_min")]],
+    input[[paste0(prefix, "_gn_max")]],
+    input[[paste0(prefix, "_last_n")]]
+  )
 }
 
 setup_gn_last_n_sync <- function(session, input, prefix) {
@@ -1473,8 +1498,8 @@ onoff_fallback_needed <- function(rng, season_bounds, filters, gn, input, prefix
 # Common input-to-query mapping for the two on/off server modules. The caller
 # supplies the one genuine naming difference (`on_game_type` versus
 # `euro_phase`) and, where needed, its league-specific opponent-id reactive.
-onoff_filter_values <- function(input, prefix,
-                                game_type_id = paste0(prefix, "_game_type")) {
+game_context_filter_values <- function(input, prefix,
+                                       game_type_id = paste0(prefix, "_game_type")) {
   list(
     game_type = input[[game_type_id]],
     opp_ids = input[[paste0(prefix, "_opponents")]],
@@ -1483,6 +1508,9 @@ onoff_filter_values <- function(input, prefix,
     rank_side = input[[paste0(prefix, "_opp_rank_side")]],
     rank_n = input[[paste0(prefix, "_opp_rank_n")]],
     metric = input[[paste0(prefix, "_opp_rank_metric")]],
+    gn_min = input[[paste0(prefix, "_gn_min")]],
+    gn_max = input[[paste0(prefix, "_gn_max")]],
+    last_n = input[[paste0(prefix, "_last_n")]],
     num_starters_off_mode = input[[paste0(prefix, "_num_starters_off_mode")]],
     num_starters_off = input[[paste0(prefix, "_num_starters_off")]],
     num_starters_def_mode = input[[paste0(prefix, "_num_starters_def_mode")]],
@@ -1490,7 +1518,8 @@ onoff_filter_values <- function(input, prefix,
   )
 }
 
-onoff_db_args <- function(filters, gn, opponent_ids = filters$opp_ids) {
+game_context_db_args <- function(filters, gn, opponent_ids = filters$opp_ids,
+                                 integerize_opponents = FALSE) {
   starters <- resolve_starters_bounds(
     off_mode = filters$num_starters_off_mode,
     off_val = filters$num_starters_off,
@@ -1500,7 +1529,7 @@ onoff_db_args <- function(filters, gn, opponent_ids = filters$opp_ids) {
 
   list(
     game_type_csv = csv_if_any(filters$game_type),
-    opp_ids_csv = csv_if_any(opponent_ids),
+    opp_ids_csv = csv_if_any(opponent_ids, integerize = integerize_opponents),
     home_away = blank_to_na_character(filters$home_away),
     outcome = blank_to_na_character(filters$outcome),
     opp_rank_side = blank_to_na_character(filters$rank_side),
@@ -1515,6 +1544,12 @@ onoff_db_args <- function(filters, gn, opponent_ids = filters$opp_ids) {
     num_starters_def_max = starters$num_starters_def_max
   )
 }
+
+# Backward-compatible names for the first consumer pair. New lineup and team
+# tabs use the neutral names above; these aliases keep existing call sites and
+# bookmarks stable while the extraction proceeds incrementally.
+onoff_filter_values <- game_context_filter_values
+onoff_db_args <- game_context_db_args
 
 # ---- Stat-filter column menus for the on/off tabs ----
 # Both leagues offer the same Summary and Four Factors menus, so these vectors

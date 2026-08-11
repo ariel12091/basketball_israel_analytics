@@ -50,32 +50,9 @@ ui_tab3_team <- function() tabPanel(
           tags$hr(),
           dateRangeInput("tr_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
           clutch_filter_ui("tr"),
-          fluidRow(
-            column(
-              6,
-              selectInput(
-                "tr_num_starters_off_mode",
-                tt("Own lineup starters", "own_starters"),
-                choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"),
-                selected = ""
-              )
-            ),
-            column(6, selectInput("tr_num_starters_off", "Own value", choices = c("\u2014" = "", as.character(0:5)), selected = ""))
-          ),
-          fluidRow(
-            column(
-              6,
-              selectInput(
-                "tr_num_starters_def_mode",
-                tt("Opponent lineup starters", "opp_starters"),
-                choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"),
-                selected = ""
-              )
-            ),
-            column(6, selectInput("tr_num_starters_def", "Opp value", choices = c("\u2014" = "", as.character(0:5)), selected = ""))
-          ),
+          starter_context_filters_ui("tr"),
           accordion_toggle_link(),
-          game_context_filters_ui("tr")
+          game_context_filters_from_descriptor(game_context_descriptor("tr", "israel"))
         )
       ),
       mainPanel(

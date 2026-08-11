@@ -132,18 +132,11 @@ server_tab2 <- function(input, output, session, shared) {
   }, ignoreInit = TRUE)
 
   build_ld_common_db_args <- function() {
-    game_type_csv <- csv_if_any(input$ld_game_type)
-    opp_ids_csv <- csv_if_any(shared$selected_opp_ids_ld())
-    home_away <- blank_to_na_character(input$ld_home_away)
-    outcome <- blank_to_na_character(input$ld_outcome)
-    opp_rank_side <- blank_to_na_character(input$ld_opp_rank_side)
-    opp_rank_n <- blank_to_na_integer(input$ld_opp_rank_n)
-    opp_rank_metric <- blank_to_na_character(input$ld_opp_rank_metric)
-
-    gn_params <- resolve_gn_last_n_params(input, "ld")
-    min_gn <- gn_params$min_gn
-    max_gn <- gn_params$max_gn
-    last_n <- gn_params$last_n
+    filters <- game_context_filter_values(input, "ld")
+    context <- game_context_db_args(
+      filters, resolve_gn_last_n_params(input, "ld"),
+      opponent_ids = shared$selected_opp_ids_ld()
+    )
 
     start_date <- if (!is.null(input$ld_dates[1]) && !is.na(input$ld_dates[1])) as.Date(input$ld_dates[1]) else NA
     end_date <- if (!is.null(input$ld_dates[2]) && !is.na(input$ld_dates[2])) as.Date(input$ld_dates[2]) else NA
@@ -155,34 +148,27 @@ server_tab2 <- function(input, output, session, shared) {
       minutes = input$ld_clutch_minutes,
       ot_margin = input$ld_clutch_ot_margin
     )
-    starters <- resolve_starters_bounds(
-      off_mode = input$ld_num_starters_off_mode,
-      off_val = input$ld_num_starters_off,
-      def_mode = input$ld_num_starters_def_mode,
-      def_val = input$ld_num_starters_def
-    )
-
     list(
-      game_type_csv = game_type_csv,
-      opp_ids_csv = opp_ids_csv,
-      home_away = home_away,
-      outcome = outcome,
-      opp_rank_side = opp_rank_side,
-      opp_rank_n = opp_rank_n,
-      opp_rank_metric = opp_rank_metric,
-      min_gn = min_gn,
-      max_gn = max_gn,
-      last_n_games = last_n,
+      game_type_csv = context$game_type_csv,
+      opp_ids_csv = context$opp_ids_csv,
+      home_away = context$home_away,
+      outcome = context$outcome,
+      opp_rank_side = context$opp_rank_side,
+      opp_rank_n = context$opp_rank_n,
+      opp_rank_metric = context$opp_rank_metric,
+      min_gn = context$min_gn,
+      max_gn = context$max_gn,
+      last_n_games = context$last_n_games,
       start_date = start_date,
       end_date = end_date,
       max_margin = clutch$max_margin,
       margin_status = clutch$margin_status,
       max_time_remaining = clutch$max_time_remaining,
       ot_margin_filter = clutch$ot_margin_filter,
-      num_starters_off_min = starters$num_starters_off_min,
-      num_starters_off_max = starters$num_starters_off_max,
-      num_starters_def_min = starters$num_starters_def_min,
-      num_starters_def_max = starters$num_starters_def_max
+      num_starters_off_min = context$num_starters_off_min,
+      num_starters_off_max = context$num_starters_off_max,
+      num_starters_def_min = context$num_starters_def_min,
+      num_starters_def_max = context$num_starters_def_max
     )
   }
 

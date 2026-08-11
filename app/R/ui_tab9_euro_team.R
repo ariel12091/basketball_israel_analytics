@@ -40,63 +40,11 @@ ui_tab9_euro_team <- function() tabPanel(
                          format = "yyyy-mm-dd"),
           selectizeInput("euroteam_teams", "Teams", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All teams")),
-          fluidRow(
-            column(6, selectInput("euroteam_num_starters_off_mode",
-                                  tt("Own lineup starters", "own_starters"),
-                                  choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"),
-                                  selected = "")),
-            column(6, selectInput("euroteam_num_starters_off", "Own value",
-                                  choices = c("—" = "", as.character(0:5)), selected = ""))
-          ),
-          fluidRow(
-            column(6, selectInput("euroteam_num_starters_def_mode",
-                                  tt("Opponent lineup starters", "opp_starters"),
-                                  choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"),
-                                  selected = "")),
-            column(6, selectInput("euroteam_num_starters_def", "Opp value",
-                                  choices = c("—" = "", as.character(0:5)), selected = ""))
-          ),
+          starter_context_filters_ui("euroteam"),
           tags$hr(),
-          tags$div(
-            class = "text-end mb-2",
-            tags$a(href = "#", class = "small text-muted fw-bold js-accordion-toggle-all",
-                   style = "text-decoration: none;", "Collapse/Expand All")
-          ),
-
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput("euroteam_phase", "Phase", choices = NULL,
-                             selected = character(0), multiple = TRUE,
-                             options = list(placeholder = "All phases")),
-              selectizeInput("euroteam_opponents", "Opponents", choices = NULL,
-                             selected = character(0), multiple = TRUE,
-                             options = list(placeholder = "All opponents")),
-              selectInput("euroteam_home_away", "Home/Away",
-                          choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("euroteam_outcome", "Outcome",
-                          choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
-              tags$hr(),
-              fluidRow(
-                column(6, selectizeInput("euroteam_gn_min", "From Round", choices = NULL,
-                                         selected = "", options = list(placeholder = "Any"))),
-                column(6, selectizeInput("euroteam_gn_max", "To Round", choices = NULL,
-                                         selected = "", options = list(placeholder = "Any")))
-              ),
-              selectizeInput("euroteam_last_n", tt("Last N Team Games", "last_n"), choices = NULL,
-                             selected = "", options = list(placeholder = "Any"))
-            ),
-            bslib::accordion_panel(
-              tt("Opponent Strength", "opp_strength"), value = "Opponent Strength",
-              selectInput("euroteam_opp_rank_side", "Top / Bottom",
-                          choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
-              selectInput("euroteam_opp_rank_n", "Rank N",
-                          choices = c("—" = "", as.character(1:20)), selected = ""),
-              selectInput("euroteam_opp_rank_metric", "Metric",
-                          choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"),
-                          selected = "")
-            ),
-            open = TRUE
+          accordion_toggle_link(),
+          game_context_filters_from_descriptor(
+            game_context_descriptor("euroteam", "euroleague")
           )
         )
       ),
