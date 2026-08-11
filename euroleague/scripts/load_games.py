@@ -327,12 +327,25 @@ def main() -> None:
                     help="actually publish to the database (default: collect+stage only)")
     ap.add_argument("--verify-only", action="store_true",
                     help="skip collection/staging/publication, just re-run the checks")
+    ap.add_argument("--fetch-only", action="store_true",
+                    help="collect/cache provider payloads, then stop before staging")
+    ap.add_argument("--boxscores-only", action="store_true",
+                    help="fetch/cache box scores only, then stop")
+    ap.add_argument("--skip-fetch", action="store_true",
+                    help="reuse existing cached payloads and skip provider requests")
+    ap.add_argument("--allow-missing-inputs", action="store_true",
+                    help="skip missing cached PBP files when using --skip-fetch")
     ap.add_argument("--collect-workers", type=int, default=2)
     ap.add_argument("--stage-workers", type=int, default=2)
     ap.add_argument("--throttle", type=float, default=0.75)
+    ap.add_argument("--fetch-batch-size", type=int, default=20,
+                    help="games per provider-fetch batch (default: 20)")
+    ap.add_argument("--fetch-batch-sleep", type=float, default=30.0,
+                    help="cooldown seconds between provider-fetch batches (default: 30)")
     args = ap.parse_args()
 
     codes = parse_games(args.games)
+    verify_codes = codes
     tag = f"{args.competition}{args.season}_{codes[0]}_{codes[-1]}"
     print(f"competition={args.competition} season={args.season} "
           f"games={len(codes)} ({codes[0]}..{codes[-1]})")
@@ -358,19 +371,62 @@ def main() -> None:
     pbp_csv = raw / f"pbp_{tag}.csv"
     checkpoints = args.data_dir / "staging" / f"batch_{tag}"
 
-    run("collect box scores", [
-        py, "-m", "euroleague_possessions.boxscore_collector",
-        str(games_csv), str(boxscores),
-        "--competition", args.competition,
-        "--workers", str(args.collect_workers), "--throttle", str(args.throttle),
-    ])
-    run("collect play-by-play", [
-        py, "-m", "euroleague_possessions.pbp_collector",
-        str(games_csv), str(pbp_dir),
-        "--competition", args.competition,
-        "--workers", str(args.collect_workers), "--throttle", str(args.throttle),
-        "--combined-output", str(pbp_csv),
-    ])
+    if args.fetch_only and args.skip_fetch:
+        raise SystemExit("--fetch-only and --skip-fetch cannot be combined")
+    if args.boxscores_only and (args.skip_fetch or args.execute):
+        raise SystemExit("--boxscores-only requires fetching and cannot publish")
+    if not args.skip_fetch:
+        if not args.boxscores_only:
+            # PBP is the bottleneck; fetch it first so throttling is visible.
+            run("collect play-by-play", [
+                py, "-m", "euroleague_possessions.pbp_collector",
+                str(games_csv), str(pbp_dir),
+                "--competition", args.competition,
+                "--workers", str(args.collect_workers), "--throttle", str(args.throttle),
+                "--batch-size", str(args.fetch_batch_size),
+                "--batch-sleep", str(args.fetch_batch_sleep),
+                "--combined-output", str(pbp_csv),
+            ])
+        run("collect box scores", [
+            py, "-m", "euroleague_possessions.boxscore_collector",
+            str(games_csv), str(boxscores),
+            "--competition", args.competition,
+            "--workers", str(args.collect_workers), "--throttle", str(args.throttle),
+            "--batch-size", str(args.fetch_batch_size),
+            "--batch-sleep", str(args.fetch_batch_sleep),
+        ])
+    else:
+        print("SKIP FETCH: reusing cached provider payloads", flush=True)
+        from euroleague_possessions.boxscore_collector import game_keys_from_csv
+        from euroleague_possessions.pbp_collector import (
+            PbpCollectionRecord,
+            _filename,
+            _valid_cached_payload,
+            combined_cached_pbp,
+        )
+        cached_records = []
+        for key in game_keys_from_csv(games_csv):
+            path = pbp_dir / _filename(key, args.competition)
+            valid, rows = _valid_cached_payload(path, key)
+            if not valid:
+                if not args.allow_missing_inputs:
+                    raise SystemExit(f"missing or invalid cached PBP: {path}")
+                print(f"WARNING: skipping missing or invalid cached PBP: {path}", flush=True)
+                continue
+            cached_records.append(PbpCollectionRecord(
+                args.competition, key.season, key.gamecode, "cached", 0,
+                None, str(path), rows, None,
+            ))
+        combined_cached_pbp(cached_records).to_csv(pbp_csv, index=False)
+        print(f"rebuilt combined PBP: {pbp_csv}", flush=True)
+        if args.allow_missing_inputs:
+            verify_codes = [record.gamecode for record in cached_records]
+    if args.fetch_only:
+        print(f"\nFETCH ONLY: payloads cached for {len(codes)} games; no staging or database writes.\n")
+        return
+    if args.boxscores_only:
+        print(f"\nBOX-SCORES ONLY: box scores cached for requested games; no PBP, staging, or database writes.\n")
+        return
 
     stage_cmd = [
         py, "-m", "euroleague_possessions.batch_pipeline",
@@ -390,7 +446,7 @@ def main() -> None:
               f"the database.\nRe-run with --execute to publish.")
         raise SystemExit(0)
 
-    failures = verify(args.competition, args.season, codes)
+    failures = verify(args.competition, args.season, verify_codes)
     print(f"\n{'ALL CHECKS PASSED' if not failures else f'{failures} CHECK(S) FAILED'}")
     raise SystemExit(1 if failures else 0)
 

@@ -8,7 +8,7 @@
 #                        Israeli pace columns have no denominator here.
 
 ui_tab9_euro_team <- function() tabPanel(
-  title = tags$span(tags$i(class = "bi bi-bar-chart-fill"), "EL Team Ratings"),
+  title = tags$span(tags$i(class = "bi bi-bar-chart-fill"), "Team Ratings"),
   value = "euro_team",
   fluidPage(
     shared_head_tags(),

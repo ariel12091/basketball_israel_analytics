@@ -8,7 +8,7 @@
 # a disabled control that silently does nothing is worse than no control.
 
 ui_tab10_euro_lineups <- function() tabPanel(
-  title = tags$span(tags$i(class = "bi bi-people"), "EL Lineups"),
+  title = tags$span(tags$i(class = "bi bi-people"), "Lineup Data"),
   value = "euro_lineups",
   fluidPage(
     shared_head_tags(),

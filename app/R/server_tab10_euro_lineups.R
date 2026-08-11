@@ -309,8 +309,38 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # Computed on the team/player-filtered population BEFORE the min-poss filter.
   # Manual slider use switches to manual; a filter change returns to auto. The
   # `updating` flag stops an auto-driven slider update reading as a manual one.
-  observeEvent(euro_ld_full(), {
-    df <- euro_ld_full()
+  euro_ld_auto_inputs <- reactive({
+    list(euro_ld_full(), input$euro_ld_group_size, ld_filter$team(),
+         ld_filter$players_on(), ld_filter$players_off(),
+         debounced_dates(), input$euro_ld_opponents, input$euro_ld_phase,
+         input$euro_ld_home_away, input$euro_ld_outcome,
+         input$euro_ld_opp_rank_side, input$euro_ld_opp_rank_n,
+         input$euro_ld_opp_rank_metric, input$euro_ld_view_mode,
+         input$euro_ld_num_starters_off_mode, input$euro_ld_num_starters_off,
+         input$euro_ld_num_starters_def_mode, input$euro_ld_num_starters_def,
+         input$euro_ld_gn_min, input$euro_ld_gn_max, input$euro_ld_last_n)
+  })
+
+  # Register this before the calculation observer, matching Tab 2: a dataset-
+  # shaping filter first returns the control to auto mode, then recalculates it.
+  observeEvent(list(input$euro_ld_group_size, ld_filter$team(),
+                    ld_filter$players_on(), ld_filter$players_off(),
+                    debounced_dates(), input$euro_ld_opponents,
+                    input$euro_ld_phase, input$euro_ld_home_away,
+                    input$euro_ld_outcome, input$euro_ld_opp_rank_side,
+                    input$euro_ld_opp_rank_n, input$euro_ld_opp_rank_metric,
+                    input$euro_ld_view_mode,
+                    input$euro_ld_num_starters_off_mode,
+                    input$euro_ld_num_starters_off,
+                    input$euro_ld_num_starters_def_mode,
+                    input$euro_ld_num_starters_def,
+                    input$euro_ld_gn_min, input$euro_ld_gn_max,
+                    input$euro_ld_last_n), {
+    auto_enabled(TRUE)
+  }, ignoreInit = TRUE)
+
+  observeEvent(euro_ld_auto_inputs(), {
+    df <- apply_local_unit_filters(euro_ld_full())
     if (!NROW(df)) return(invisible(NULL))
     if (!isTRUE(auto_enabled())) return(invisible(NULL))
     target <- auto_minposs_from_df(df, usage_col = "total_poss", step = 10L)
@@ -330,15 +360,6 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       return(invisible(NULL))
     }
     auto_enabled(FALSE)
-  }, ignoreInit = TRUE)
-
-  observeEvent(list(input$euro_ld_group_size, ld_filter$team(),
-                    ld_filter$players_on(), ld_filter$players_off(),
-                    debounced_dates(), input$euro_ld_opponents,
-                    input$euro_ld_phase, input$euro_ld_home_away,
-                    input$euro_ld_outcome, input$euro_ld_gn_min,
-                    input$euro_ld_gn_max, input$euro_ld_last_n), {
-    auto_enabled(TRUE)
   }, ignoreInit = TRUE)
 
   # --- Displayed rows, with the TOTAL row pinned on top ---------------------

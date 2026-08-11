@@ -34,3 +34,32 @@ test_that("EuroLeague lineups use the shared blank-aware fast-path gate", {
   expect_false(grepl('euro_ld_home_away %\\|\\|% "all"', server))
   expect_false(grepl('euro_ld_outcome %\\|\\|% "all"', server))
 })
+
+test_that("EuroLeague auto min possessions follows the filtered Tab 2 population", {
+  server <- paste(
+    readLines(testthat::test_path("..", "..", "R", "server_tab10_euro_lineups.R"),
+              warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(
+    server,
+    "observeEvent\\(euro_ld_auto_inputs\\(\\), \\{\\s+df <- apply_local_unit_filters\\(euro_ld_full\\(\\)\\)",
+    perl = TRUE
+  )
+  for (input_id in c(
+    "euro_ld_opp_rank_side", "euro_ld_opp_rank_n", "euro_ld_opp_rank_metric",
+    "euro_ld_view_mode", "euro_ld_num_starters_off_mode",
+    "euro_ld_num_starters_off", "euro_ld_num_starters_def_mode",
+    "euro_ld_num_starters_def"
+  )) {
+    expect_match(server, paste0("input\\$", input_id), fixed = FALSE)
+  }
+
+  enable_pos <- regexpr("# Register this before the calculation observer", server,
+                        fixed = TRUE)[[1]]
+  calculate_pos <- regexpr("observeEvent(euro_ld_auto_inputs()", server,
+                           fixed = TRUE)[[1]]
+  expect_gt(enable_pos, 0L)
+  expect_gt(calculate_pos, enable_pos)
+})

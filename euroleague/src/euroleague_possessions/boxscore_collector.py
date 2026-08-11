@@ -264,6 +264,8 @@ def _arguments() -> argparse.Namespace:
     parser.add_argument("--rate-limit-backoff", type=float, default=60.0)
     parser.add_argument("--workers", type=int, default=1)
     parser.add_argument("--limit", type=int)
+    parser.add_argument("--batch-size", type=int, default=20)
+    parser.add_argument("--batch-sleep", type=float, default=30.0)
     return parser.parse_args()
 
 
@@ -272,16 +274,23 @@ def main() -> None:
     keys = game_keys_from_csv(args.games_csv)
     if args.limit is not None:
         keys = keys[: args.limit]
-    records = collect_boxscores(
-        keys,
-        args.output_dir,
-        competition=args.competition,
-        timeout_seconds=args.timeout,
-        max_attempts=args.max_attempts,
-        throttle_seconds=args.throttle,
-        rate_limit_backoff_seconds=args.rate_limit_backoff,
-        max_workers=args.workers,
-    )
+    if args.batch_size < 1 or args.batch_sleep < 0:
+        raise SystemExit("--batch-size must be positive and --batch-sleep non-negative")
+    records = []
+    for offset in range(0, len(keys), args.batch_size):
+        batch = keys[offset : offset + args.batch_size]
+        print(f"fetch batch {offset // args.batch_size + 1}: "
+              f"games={batch[0].gamecode}-{batch[-1].gamecode}", flush=True)
+        records.extend(collect_boxscores(
+            batch, args.output_dir, competition=args.competition,
+            timeout_seconds=args.timeout, max_attempts=args.max_attempts,
+            throttle_seconds=args.throttle,
+            rate_limit_backoff_seconds=args.rate_limit_backoff,
+            max_workers=args.workers,
+        ))
+        if offset + args.batch_size < len(keys):
+            print(f"API cooldown: sleeping {args.batch_sleep:.1f}s", flush=True)
+            time.sleep(args.batch_sleep)
     failed = sum(record.status == "failed" for record in records)
     print(
         f"complete games={len(records)} failed={failed} "

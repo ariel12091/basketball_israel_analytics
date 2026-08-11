@@ -13,7 +13,7 @@
 ui_tab8_euro <- function() {
   onoff_cfg <- onoff_tab_descriptor("euroleague")
   tabPanel(
-  title = tags$span(tags$i(class = "bi bi-globe2"), "EuroLeague"),
+  title = tags$span(tags$i(class = "bi bi-globe2"), "On/Off Impact"),
   value = "euro",
   fluidPage(
     shared_head_tags(),
