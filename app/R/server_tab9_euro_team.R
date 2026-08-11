@@ -437,12 +437,9 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     last_n_id = "euroteam_last_n",
     opp_rank_ids = c("euroteam_opp_rank_side", "euroteam_opp_rank_n", "euroteam_opp_rank_metric"),
     date_id = "euroteam_dates", gy_input_id = "euro_game_year",
-    teams_ids = NULL,
+    teams_ids = "euroteam_teams", teams_multiple = TRUE,
     starters_ids = c("euroteam_num_starters_off_mode", "euroteam_num_starters_off",
                      "euroteam_num_starters_def_mode", "euroteam_num_starters_def"),
     bounds_fn = euro_season_date_bounds)
 
-  observeEvent(input$euroteam_clear_teams, {
-    updateSelectizeInput(session, "euroteam_teams", selected = character(0))
-  }, ignoreInit = TRUE)
 }

@@ -1470,6 +1470,52 @@ onoff_fallback_needed <- function(rng, season_bounds, filters, gn, input, prefix
   date_changed || extra_filters || gn_active
 }
 
+# Common input-to-query mapping for the two on/off server modules. The caller
+# supplies the one genuine naming difference (`on_game_type` versus
+# `euro_phase`) and, where needed, its league-specific opponent-id reactive.
+onoff_filter_values <- function(input, prefix,
+                                game_type_id = paste0(prefix, "_game_type")) {
+  list(
+    game_type = input[[game_type_id]],
+    opp_ids = input[[paste0(prefix, "_opponents")]],
+    home_away = input[[paste0(prefix, "_home_away")]],
+    outcome = input[[paste0(prefix, "_outcome")]],
+    rank_side = input[[paste0(prefix, "_opp_rank_side")]],
+    rank_n = input[[paste0(prefix, "_opp_rank_n")]],
+    metric = input[[paste0(prefix, "_opp_rank_metric")]],
+    num_starters_off_mode = input[[paste0(prefix, "_num_starters_off_mode")]],
+    num_starters_off = input[[paste0(prefix, "_num_starters_off")]],
+    num_starters_def_mode = input[[paste0(prefix, "_num_starters_def_mode")]],
+    num_starters_def = input[[paste0(prefix, "_num_starters_def")]]
+  )
+}
+
+onoff_db_args <- function(filters, gn, opponent_ids = filters$opp_ids) {
+  starters <- resolve_starters_bounds(
+    off_mode = filters$num_starters_off_mode,
+    off_val = filters$num_starters_off,
+    def_mode = filters$num_starters_def_mode,
+    def_val = filters$num_starters_def
+  )
+
+  list(
+    game_type_csv = csv_if_any(filters$game_type),
+    opp_ids_csv = csv_if_any(opponent_ids),
+    home_away = blank_to_na_character(filters$home_away),
+    outcome = blank_to_na_character(filters$outcome),
+    opp_rank_side = blank_to_na_character(filters$rank_side),
+    opp_rank_n = blank_to_na_integer(filters$rank_n),
+    opp_rank_metric = blank_to_na_character(filters$metric),
+    min_gn = gn$min_gn,
+    max_gn = gn$max_gn,
+    last_n_games = gn$last_n,
+    num_starters_off_min = starters$num_starters_off_min,
+    num_starters_off_max = starters$num_starters_off_max,
+    num_starters_def_min = starters$num_starters_def_min,
+    num_starters_def_max = starters$num_starters_def_max
+  )
+}
+
 # ---- Stat-filter column menus for the on/off tabs ----
 # Both leagues offer the same Summary and Four Factors menus, so these vectors
 # moved here verbatim from the two server files, which held byte-identical

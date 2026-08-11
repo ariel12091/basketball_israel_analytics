@@ -28,6 +28,15 @@ CUTS <- seq(0.05, 0.95, by = 0.05)
 COLS_GRAD <- grDevices::colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
 COLS_REV <- rev(COLS_GRAD)
 GAME_TYPE_LABELS <- c(`1` = "League", `2` = "Cup")
+onoff_tab_descriptor <- function(league = c("israel", "euroleague")) {
+  league <- match.arg(league)
+  if (identical(league, "israel")) {
+    return(list(prefix = "on", game_type_id = "on_game_type", teams_id = "teams",
+                show_impact = TRUE))
+  }
+  list(prefix = "euro", game_type_id = "euro_phase", teams_id = "euro_teams",
+       show_impact = FALSE)
+}
 HEADER_TOOLTIP_JS <- DT::JS("function(thead) {}")
 OFF_OREB_TOOLTIP <- "Offensive rebound percentage"
 DEF_OREB_TOOLTIP <- "Defensive rebound percentage"

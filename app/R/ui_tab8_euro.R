@@ -10,7 +10,9 @@
 # Summary + Four Factors only; Shot Profile is deferred until shot coordinates
 # are collected.
 
-ui_tab8_euro <- function() tabPanel(
+ui_tab8_euro <- function() {
+  onoff_cfg <- onoff_tab_descriptor("euroleague")
+  tabPanel(
   title = tags$span(tags$i(class = "bi bi-globe2"), "EuroLeague"),
   value = "euro",
   fluidPage(
@@ -22,7 +24,7 @@ ui_tab8_euro <- function() tabPanel(
         div(
           class = "view-mode-container",
           radioButtons("euro_view_mode", label = "Select View:",
-                       choices = c("Summary", "Four Factors"),
+                       choices = onoff_cfg$view_choices,
                        selected = "Summary",
                        inline = TRUE)
         ),
@@ -44,56 +46,14 @@ ui_tab8_euro <- function() tabPanel(
                          format = "yyyy-mm-dd"),
           selectizeInput("euro_teams", "Teams", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All teams")),
-          fluidRow(
-            column(6, selectInput("euro_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-            column(6, selectInput("euro_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
-          ),
-          fluidRow(
-            column(6, selectInput("euro_num_starters_def_mode", tt("Opponent lineup starters", "opp_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-            column(6, selectInput("euro_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
-          ),
+          onoff_starter_filters_ui(onoff_cfg$prefix),
           tags$hr(),
-          tags$div(
-            class = "text-end mb-2",
-            tags$a(
-              href = "#",
-              class = "small text-muted fw-bold js-accordion-toggle-all",
-              style = "text-decoration: none;",
-              "Collapse/Expand All"
-            )
-          ),
-
-          bslib::accordion(
-            bslib::accordion_panel(
-              "Game Filters",
-              selectizeInput("euro_phase", "Phase", choices = NULL,
-                             selected = character(0), multiple = TRUE,
-                             options = list(placeholder = "All phases")),
-              selectizeInput("euro_opponents", "Opponents", choices = NULL, selected = character(0), multiple = TRUE, options = list(placeholder = "All opponents")),
-              selectInput("euro_home_away", "Home/Away", choices = c("All" = "", "Home" = "home", "Away" = "away"), selected = ""),
-              selectInput("euro_outcome", "Outcome", choices = c("All" = "", "Win" = "win", "Loss" = "loss"), selected = ""),
-              tags$hr(),
-              fluidRow(
-                column(6, selectizeInput("euro_gn_min", "From Round", choices = NULL, selected = "", multiple = FALSE,
-                                         options = list(placeholder = "Any"))),
-                column(6, selectizeInput("euro_gn_max", "To Round", choices = NULL, selected = "", multiple = FALSE,
-                                         options = list(placeholder = "Any")))
-              ),
-              selectizeInput("euro_last_n", tt("Last N Team Games", "last_n"), choices = NULL, selected = "", multiple = FALSE,
-                             options = list(placeholder = "Any"))
-            ),
-            bslib::accordion_panel(
-              tt("Opponent Strength", "opp_strength"), value = "Opponent Strength",
-              selectInput("euro_opp_rank_side", "Top / Bottom", choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = ""),
-              selectInput("euro_opp_rank_n", "Rank N", choices = c("—" = "", as.character(1:20)), selected = ""),
-              selectInput("euro_opp_rank_metric", "Metric", choices = c("—" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = "")
-            ),
-            open = TRUE
-          ),
+          accordion_toggle_link(),
+          onoff_game_context_filters_ui(onoff_cfg),
 
           tags$hr(),
-          sliderInput("euro_min_all_poss", tt("Min possessions per side (eligibility):", "min_poss_side"), min = 0, max = 2000, value = 0, step = 10),
-          sliderInput("euro_min_on_poss", tt("Minimum ON possessions (for ranking):", "min_on_poss"), min = 0, max = 3000, value = 0, step = 10),
+          sliderInput("euro_min_all_poss", tt("Min possessions per side (eligibility):", "min_poss_side"), min = 0, max = 2000, value = onoff_cfg$initial_min_all, step = 10),
+          sliderInput("euro_min_on_poss", tt("Minimum ON possessions (for ranking):", "min_on_poss"), min = 0, max = 3000, value = onoff_cfg$initial_min_on, step = 10),
           helpText("If rows disappear, reduce possession minimums or widen the date range.")
         )
       ),
@@ -129,62 +89,12 @@ ui_tab8_euro <- function() tabPanel(
             )
           )
         ),
-        # --- LEGEND (Summary mode: shot split legend) ---
-        conditionalPanel(
-          condition = "input.euro_view_mode == 'Summary'",
-          div(
-            class = "legend-box",
-            span(style = "font-weight:700; margin-right:10px;", "Shot Splits:"),
-            div(class = "legend-item",
-                div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-                    span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
-                    div(style = "display:flex; align-items:center; gap:8px;",
-                        div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"),
-                        span("2PT"),
-                        div(style = "width:14px; height:14px; background:#d4843e; border-radius:3px; margin-left:6px;"),
-                        span("3PT")
-                    )
-                )
-            ),
-            span(style = "margin:0 12px; color:#30363d;", "|"),
-            div(class = "legend-item",
-                div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-                    span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
-                    div(style = "display:flex; align-items:center; gap:6px;",
-                        span(style = "color:#f87171; font-weight:600;", "FG%"),
-                        span(style = "color:#6e7681; margin:0 2px;", "→"),
-                        span(style = "color:#34d399; font-weight:600;", "FG%")
-                    )
-                )
-            )
-          )
-        ),
-        # --- LEGEND (Only visible in Four Factors mode) ---
-        conditionalPanel(
-          condition = "input.euro_view_mode == 'Four Factors'",
-          div(
-            class = "legend-box",
-            span(style = "font-weight:700; margin-right:5px;", "Legend:"),
-            div(class = "legend-item", div(class = "legend-icon-on"), span("On-Court")),
-            div(class = "legend-item", div(class = "legend-icon-off"), span("Off-Court")),
-            div(
-              class = "legend-item",
-              span("0%"),
-              div(
-                class = "legend-bar",
-                div(class = "legend-tick", style = "left:0;"),
-                div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:#6e7681;"),
-                div(class = "legend-tick", style = "right:0;")
-              ),
-              span("100% Rank")
-            ),
-            span(style = "margin-left: 15px; font-size: 0.8em; color: #6e7681;",
-                 paste0("(Ranked Players: > ", RANKING_BASELINE, " poss)"))
-          )
-        ),
+        onoff_summary_legend_ui(onoff_cfg$view_id),
+        onoff_rank_legend_ui(onoff_cfg$view_id),
         uiOutput("euro_filter_chips"),
         DTOutput("euro_dt")
       )
     )
   )
-)
+  )
+}

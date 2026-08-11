@@ -14,6 +14,7 @@ ON_SP_FILTERABLE_COLS <- c(
 )
 
 server_tab1 <- function(input, output, session, shared) {
+  onoff_cfg <- onoff_tab_descriptor("israel")
   auto_min_state <- reactiveValues(
     last_auto = NA_integer_,
     last_auto_all = NA_integer_,
@@ -89,59 +90,18 @@ server_tab1 <- function(input, output, session, shared) {
 
   debounced_range <- reactive(input$date_range) %>% debounce(300)
   debounced_teams <- reactive(input$teams) %>% debounce(300)
-  debounced_on_filters <- reactive(list(
-    game_type = input$on_game_type,
-    opp_ids = input$on_opponents,
-    home_away = input$on_home_away,
-    outcome = input$on_outcome,
-    rank_side = input$on_opp_rank_side,
-    rank_n = input$on_opp_rank_n,
-    metric = input$on_opp_rank_metric,
-    num_starters_off_mode = input$on_num_starters_off_mode,
-    num_starters_off = input$on_num_starters_off,
-    num_starters_def_mode = input$on_num_starters_def_mode,
-    num_starters_def = input$on_num_starters_def
-  )) %>% debounce(300)
+  debounced_on_filters <- reactive(
+    onoff_filter_values(input, onoff_cfg$prefix,
+                        game_type_id = onoff_cfg$game_type_id)
+  ) %>% debounce(300)
 
   # resolve_gn_last_n_params() is the same GN/last-N resolution tabs 2-6 use;
   # this tab and tab 8 held their own byte-identical copies of it.
   gn_params <- reactive(resolve_gn_last_n_params(input, "on")) %>% debounce(150)
 
   build_onoff_db_args <- function() {
-    f <- debounced_on_filters()
-    gp <- gn_params()
-
-    game_type_csv <- csv_if_any(f$game_type)
-    opp_ids_csv <- csv_if_any(shared$selected_opp_ids_on())
-
-    home_away <- blank_to_na_character(f$home_away)
-    outcome <- blank_to_na_character(f$outcome)
-    opp_rank_side <- blank_to_na_character(f$rank_side)
-    opp_rank_n <- blank_to_na_integer(f$rank_n)
-    opp_rank_metric <- blank_to_na_character(f$metric)
-    starters <- resolve_starters_bounds(
-      off_mode = f$num_starters_off_mode,
-      off_val = f$num_starters_off,
-      def_mode = f$num_starters_def_mode,
-      def_val = f$num_starters_def
-    )
-
-    list(
-      game_type_csv = game_type_csv,
-      opp_ids_csv = opp_ids_csv,
-      home_away = home_away,
-      outcome = outcome,
-      opp_rank_side = opp_rank_side,
-      opp_rank_n = opp_rank_n,
-      opp_rank_metric = opp_rank_metric,
-      min_gn = gp$min_gn,
-      max_gn = gp$max_gn,
-      last_n_games = gp$last_n,
-      num_starters_off_min = starters$num_starters_off_min,
-      num_starters_off_max = starters$num_starters_off_max,
-      num_starters_def_min = starters$num_starters_def_min,
-      num_starters_def_max = starters$num_starters_def_max
-    )
+    onoff_db_args(debounced_on_filters(), gn_params(),
+                  opponent_ids = shared$selected_opp_ids_on())
   }
 
   # The whole filtered-path population, with both possession bars at zero.
@@ -461,7 +421,7 @@ server_tab1 <- function(input, output, session, shared) {
 
     } else if (identical(mode, "Four Factors")) {
       return(onoff_four_factors_datatable(df, on_stat_filter_state$filters(),
-                                          show_impact = TRUE))
+                                          show_impact = onoff_cfg$show_impact))
     } else {
       # === MODE 3: SHOT PROFILE (FF-style; shares/diffs/ranks precomputed
       # on the full population in sp_ranked_df, filtered in result_df) ===

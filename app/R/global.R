@@ -534,15 +534,24 @@ clutch_filter_ui <- function(prefix, margin_default = 5, minutes_default = 5) {
   )
 }
 
-game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_blank_label = "\u2014") {
+game_context_filters_ui <- function(prefix, include_opp_rank = TRUE,
+                                    opp_rank_blank_label = "\u2014",
+                                    game_type_id = paste0(prefix, "_game_type"),
+                                    game_type_label = "Game type",
+                                    game_type_choices = GAME_TYPE_CHOICES_UI,
+                                    game_type_selected = "",
+                                    game_type_placeholder = "All game types",
+                                    gn_min_label = tt("From Game Number (GN)", "gn"),
+                                    gn_max_label = tt("To Game Number (GN)", "gn"),
+                                    opp_rank_max = 12L) {
   panels <- list(
     bslib::accordion_panel(
       "Game Filters",
       selectizeInput(
-        paste0(prefix, "_game_type"), "Game type",
-        choices = GAME_TYPE_CHOICES_UI,
-        selected = "", multiple = TRUE,
-        options = list(placeholder = "All game types")
+        game_type_id, game_type_label,
+        choices = game_type_choices,
+        selected = game_type_selected, multiple = TRUE,
+        options = list(placeholder = game_type_placeholder)
       ),
       selectizeInput(
         paste0(prefix, "_opponents"), "Opponents",
@@ -564,7 +573,7 @@ game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_bl
         column(
           6,
           selectizeInput(
-            paste0(prefix, "_gn_min"), tt("From Game Number (GN)", "gn"),
+            paste0(prefix, "_gn_min"), gn_min_label,
             choices = NULL, selected = "", multiple = FALSE,
             options = list(placeholder = "Any")
           )
@@ -572,7 +581,7 @@ game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_bl
         column(
           6,
           selectizeInput(
-            paste0(prefix, "_gn_max"), tt("To Game Number (GN)", "gn"),
+            paste0(prefix, "_gn_max"), gn_max_label,
             choices = NULL, selected = "", multiple = FALSE,
             options = list(placeholder = "Any")
           )
@@ -597,7 +606,8 @@ game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_bl
       ),
       selectInput(
         paste0(prefix, "_opp_rank_n"), "Rank N",
-        choices = c(blank_choice, setNames(as.character(1:12), as.character(1:12))),
+        choices = c(blank_choice, setNames(as.character(seq_len(opp_rank_max)),
+                                           as.character(seq_len(opp_rank_max)))),
         selected = ""
       ),
       selectInput(
@@ -609,6 +619,121 @@ game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_bl
   }
 
   do.call(bslib::accordion, c(panels, list(open = TRUE)))
+}
+
+# The on/off pair has the same input structure. Keep the league-specific IDs,
+# labels and feature gates in one place so the two tab files only supply their
+# own explanatory copy and data access.
+onoff_tab_descriptor <- function(league = c("israel", "euroleague")) {
+  league <- match.arg(league)
+  if (identical(league, "israel")) {
+    return(list(
+      league = league, prefix = "on", view_id = "onoff_view_mode",
+      filters_id = "onoff-filters", reset_id = "reset_defaults",
+      date_id = "date_range", teams_id = "teams", game_type_id = "on_game_type",
+      table_id = "onoff_dt", chips_id = "on_filter_chips",
+      min_all_id = "min_all_poss", min_on_id = "min_on_poss",
+      view_choices = c("Summary", "Four Factors", "Shot Profile"),
+      game_type_label = "Game type", game_type_choices = GAME_TYPE_CHOICES_UI,
+      game_type_selected = "",
+      game_type_placeholder = "All game types",
+      gn_min_label = tt("From Game Number (GN)", "gn"),
+      gn_max_label = tt("To Game Number (GN)", "gn"),
+      opp_rank_max = 12L, show_shot_profile = TRUE, show_impact = TRUE,
+      show_download = TRUE, initial_min_all = DEFAULT_MIN_ALL,
+      initial_min_on = DEFAULT_MIN_ON
+    ))
+  }
+
+  list(
+    league = league, prefix = "euro", view_id = "euro_view_mode",
+    filters_id = "euro-filters", reset_id = "euro_reset_defaults",
+    date_id = "euro_date_range", teams_id = "euro_teams", game_type_id = "euro_phase",
+    table_id = "euro_dt", chips_id = "euro_filter_chips",
+    min_all_id = "euro_min_all_poss", min_on_id = "euro_min_on_poss",
+    view_choices = c("Summary", "Four Factors"),
+    game_type_label = "Phase", game_type_choices = NULL,
+    game_type_selected = character(0),
+    game_type_placeholder = "All phases",
+    gn_min_label = "From Round", gn_max_label = "To Round",
+    opp_rank_max = 20L, show_shot_profile = FALSE, show_impact = FALSE,
+    show_download = FALSE, initial_min_all = 0L, initial_min_on = 0L
+  )
+}
+
+onoff_starter_filters_ui <- function(prefix) {
+  tagList(
+    fluidRow(
+      column(6, selectInput(paste0(prefix, "_num_starters_off_mode"),
+                            tt("Own lineup starters", "own_starters"),
+                            choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+      column(6, selectInput(paste0(prefix, "_num_starters_off"), "Own value",
+                            choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+    ),
+    fluidRow(
+      column(6, selectInput(paste0(prefix, "_num_starters_def_mode"),
+                            tt("Opponent lineup starters", "opp_starters"),
+                            choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
+      column(6, selectInput(paste0(prefix, "_num_starters_def"), "Opp value",
+                            choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+    )
+  )
+}
+
+onoff_game_context_filters_ui <- function(descriptor) {
+  game_context_filters_ui(
+    descriptor$prefix,
+    game_type_id = descriptor$game_type_id,
+    game_type_label = descriptor$game_type_label,
+    game_type_choices = descriptor$game_type_choices,
+    game_type_selected = descriptor$game_type_selected,
+    game_type_placeholder = descriptor$game_type_placeholder,
+    gn_min_label = descriptor$gn_min_label,
+    gn_max_label = descriptor$gn_max_label,
+    opp_rank_max = descriptor$opp_rank_max
+  )
+}
+
+onoff_summary_legend_ui <- function(view_id) {
+  conditionalPanel(
+    condition = sprintf("input.%s == 'Summary'", view_id),
+    div(
+      class = "legend-box",
+      span(style = "font-weight:700; margin-right:10px;", "Shot Splits:"),
+      div(class = "legend-item",
+          div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
+              span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
+              div(style = "display:flex; align-items:center; gap:8px;",
+                  div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"), span("2PT"),
+                  div(style = "width:14px; height:14px; background:#d4843e; border-radius:3px; margin-left:6px;"), span("3PT")))),
+      span(style = "margin:0 12px; color:#30363d;", "|"),
+      div(class = "legend-item",
+          div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
+              span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
+              div(style = "display:flex; align-items:center; gap:6px;",
+                  span(style = "color:#f87171; font-weight:600;", "FG%"),
+                  span(style = "color:#6e7681; margin:0 2px;", "\u2192"),
+                  span(style = "color:#34d399; font-weight:600;", "FG%"))))
+    )
+  )
+}
+
+onoff_rank_legend_ui <- function(view_id, mode = "Four Factors", note = NULL) {
+  conditionalPanel(
+    condition = sprintf("input.%s == '%s'", view_id, mode),
+    div(
+      class = "legend-box",
+      span(style = "font-weight:700; margin-right:5px;", "Legend:"),
+      div(class = "legend-item", div(class = "legend-icon-on"), span("On-Court")),
+      div(class = "legend-item", div(class = "legend-icon-off"), span("Off-Court")),
+      div(class = "legend-item", span("0%"),
+          div(class = "legend-bar", div(class = "legend-tick", style = "left:0;"),
+              div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:#6e7681;"),
+              div(class = "legend-tick", style = "right:0;")), span("100% Rank")),
+      span(style = "margin-left: 15px; font-size: 0.8em; color: #6e7681;",
+           note %||% paste0("(Ranked Players: > ", RANKING_BASELINE, " poss)"))
+    )
+  )
 }
 
 make_chip <- function(label, clear_id, css_class = "") {
@@ -864,7 +989,8 @@ setup_chip_clears <- function(prefix, session, input, shared,
                               gn_min_id, gn_max_id, last_n_id, opp_rank_ids,
                               date_id, gy_input_id,
                               teams_ids = NULL, starters_ids = NULL,
-                              clutch_enabled_id = NULL, bounds_fn = NULL) {
+                              clutch_enabled_id = NULL, bounds_fn = NULL,
+                              teams_multiple = NULL) {
   # Which season the date chip resets to. Tabs 8-10 read a EuroLeague season
   # from gy_input_id, so resolving it with the Israeli bounds gave them the
   # wrong window (season 2025 -> Oct 2024-Jul 2025 instead of Sep 2025-Jul 2026).
@@ -874,9 +1000,18 @@ setup_chip_clears <- function(prefix, session, input, shared,
   }, ignoreInit = TRUE)
 
   if (!is.null(teams_ids)) {
+    # Preserve the established Israeli defaults for existing callers, while
+    # allowing league descriptors to state the selector cardinality directly.
+    if (is.null(teams_multiple)) teams_multiple <- teams_ids %in% c("teams", "ts_teams")
     observeEvent(input[[paste0(prefix, "_clear_teams")]], {
-      for (tid in teams_ids) {
-        if (tid %in% c("teams", "ts_teams")) {
+      for (i in seq_along(teams_ids)) {
+        tid <- teams_ids[[i]]
+        is_multiple <- if (length(teams_multiple) == 1L) {
+          isTRUE(teams_multiple)
+        } else {
+          isTRUE(teams_multiple[[i]])
+        }
+        if (is_multiple) {
           updateSelectizeInput(session, tid, selected = character(0))
         } else {
           updateSelectizeInput(session, tid, selected = "")

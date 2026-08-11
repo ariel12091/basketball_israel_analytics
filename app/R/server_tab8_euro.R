@@ -7,6 +7,7 @@
 # other league's on/off tab.
 
 server_tab8_euro <- function(input, output, session, shared) {
+  onoff_cfg <- onoff_tab_descriptor("euroleague")
   auto_min_state <- reactiveValues(
     last_auto = NA_integer_,
     last_auto_all = NA_integer_,
@@ -93,59 +94,19 @@ server_tab8_euro <- function(input, output, session, shared) {
 
   debounced_range <- reactive(input$euro_date_range) %>% debounce(300)
   debounced_teams <- reactive(input$euro_teams) %>% debounce(300)
-  debounced_on_filters <- reactive(list(
-    game_type = input$euro_phase,
-    opp_ids = input$euro_opponents,
-    home_away = input$euro_home_away,
-    outcome = input$euro_outcome,
-    rank_side = input$euro_opp_rank_side,
-    rank_n = input$euro_opp_rank_n,
-    metric = input$euro_opp_rank_metric,
-    num_starters_off_mode = input$euro_num_starters_off_mode,
-    num_starters_off = input$euro_num_starters_off,
-    num_starters_def_mode = input$euro_num_starters_def_mode,
-    num_starters_def = input$euro_num_starters_def
-  )) %>% debounce(300)
+  debounced_on_filters <- reactive(
+    onoff_filter_values(input, onoff_cfg$prefix,
+                        game_type_id = onoff_cfg$game_type_id)
+  ) %>% debounce(300)
 
   # Same GN/last-N resolution as every other tab; "GN" here is the round
   # number, which is what euro_fetch_round_values() populates the choices from.
   gn_params <- reactive(resolve_gn_last_n_params(input, "euro")) %>% debounce(150)
 
   build_onoff_db_args <- function() {
-    f <- debounced_on_filters()
-    gp <- gn_params()
-
-    phase_csv <- csv_if_any(f$game_type)
-    opp_ids_csv <- csv_if_any(input$euro_opponents)
-
-    home_away <- blank_to_na_character(f$home_away)
-    outcome <- blank_to_na_character(f$outcome)
-    opp_rank_side <- blank_to_na_character(f$rank_side)
-    opp_rank_n <- blank_to_na_integer(f$rank_n)
-    opp_rank_metric <- blank_to_na_character(f$metric)
-    starters <- resolve_starters_bounds(
-      off_mode = f$num_starters_off_mode,
-      off_val = f$num_starters_off,
-      def_mode = f$num_starters_def_mode,
-      def_val = f$num_starters_def
-    )
-
-    list(
-      phase_csv = phase_csv,
-      opp_ids_csv = opp_ids_csv,
-      home_away = home_away,
-      outcome = outcome,
-      opp_rank_side = opp_rank_side,
-      opp_rank_n = opp_rank_n,
-      opp_rank_metric = opp_rank_metric,
-      min_gn = gp$min_gn,
-      max_gn = gp$max_gn,
-      last_n_games = gp$last_n,
-      num_starters_off_min = starters$num_starters_off_min,
-      num_starters_off_max = starters$num_starters_off_max,
-      num_starters_def_min = starters$num_starters_def_min,
-      num_starters_def_max = starters$num_starters_def_max
-    )
+    args <- onoff_db_args(debounced_on_filters(), gn_params())
+    args$phase_csv <- args$game_type_csv
+    args
   }
 
   # The whole filtered-path population, with both possession bars at zero.
@@ -415,7 +376,7 @@ server_tab8_euro <- function(input, output, session, shared) {
 
     } else if (identical(mode, "Four Factors")) {
       return(onoff_four_factors_datatable(df, euro_stat_filter_state$filters(),
-                                          show_impact = FALSE))
+                                          show_impact = onoff_cfg$show_impact))
     }
   }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$euro_min_all_poss, input$euro_min_on_poss, input$euro_game_year, input$euro_view_mode, euro_stat_filter_state$filters())
 
@@ -452,16 +413,9 @@ server_tab8_euro <- function(input, output, session, shared) {
     gn_min_id = "euro_gn_min", gn_max_id = "euro_gn_max", last_n_id = "euro_last_n",
     opp_rank_ids = c("euro_opp_rank_side", "euro_opp_rank_n", "euro_opp_rank_metric"),
     date_id = "euro_date_range", gy_input_id = "euro_game_year",
-    teams_ids = NULL,
+    teams_ids = onoff_cfg$teams_id, teams_multiple = TRUE,
     starters_ids = c("euro_num_starters_off_mode", "euro_num_starters_off",
                      "euro_num_starters_def_mode", "euro_num_starters_def"),
     bounds_fn = euro_season_date_bounds)
 
-  # Teams is handled here rather than via setup_chip_clears' teams_ids: that
-  # helper clears anything outside its Israeli id allowlist with "", which
-  # leaves a blank option selected in a multi-select.
-  observeEvent(input$euro_clear_teams, {
-    updateSelectizeInput(session, "euro_teams", selected = character(0))
-  }, ignoreInit = TRUE)
 }
-

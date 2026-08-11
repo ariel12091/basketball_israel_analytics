@@ -215,6 +215,40 @@ test_that("onoff_fallback_needed sends only real filter narrowing to the SQL pat
                                      list(euro_last_n = "5"), "on"))
 })
 
+test_that("onoff input and query mapping is shared without erasing league dimensions", {
+  input <- list(
+    on_game_type = c("5", "16"), on_opponents = c("2", "3"),
+    on_home_away = "home", on_outcome = "win",
+    on_opp_rank_side = "top", on_opp_rank_n = "4", on_opp_rank_metric = "net",
+    on_num_starters_off_mode = "gte", on_num_starters_off = "3",
+    on_num_starters_def_mode = "lte", on_num_starters_def = "2",
+    euro_phase = c("RS", "PO"), euro_opponents = "9",
+    euro_home_away = "away", euro_outcome = "loss",
+    euro_opp_rank_side = "bottom", euro_opp_rank_n = "6", euro_opp_rank_metric = "def",
+    euro_num_starters_off_mode = "", euro_num_starters_off = "",
+    euro_num_starters_def_mode = "gte", euro_num_starters_def = "4"
+  )
+
+  il <- onoff_filter_values(input, "on")
+  el <- onoff_filter_values(input, "euro", game_type_id = "euro_phase")
+  expect_identical(il$game_type, c("5", "16"))
+  expect_identical(el$game_type, c("RS", "PO"))
+  expect_identical(el$opp_ids, "9")
+
+  gn <- list(min_gn = 2L, max_gn = 10L, last_n = NA_integer_)
+  il_args <- onoff_db_args(il, gn, opponent_ids = c("7", "8"))
+  el_args <- onoff_db_args(el, gn)
+  expect_identical(il_args$game_type_csv, "5,16")
+  expect_identical(il_args$opp_ids_csv, "7,8")
+  expect_identical(il_args$num_starters_off_min, 3L)
+  expect_identical(il_args$num_starters_def_max, 2L)
+  expect_identical(el_args$game_type_csv, "RS,PO")
+  expect_identical(el_args$opp_ids_csv, "9")
+  expect_true(is.na(el_args$num_starters_off_min))
+  expect_identical(el_args$num_starters_def_min, 4L)
+  expect_identical(el_args$last_n_games, NA_integer_)
+})
+
 test_that("the shared stat-filter menus cover every column both leagues filter on", {
   # Summary: the nine rating/usage entries plus a shot-split group per context.
   expect_identical(
