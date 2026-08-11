@@ -78,20 +78,7 @@ ui_tab2_lineup <- function() tabPanel(
             start = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$start,
             end = season_date_bounds_for_year(DEFAULT_GAME_YEAR)$end
           ),
-          checkboxInput("ld_clutch_enabled", tt("Clutch", "clutch"), value = FALSE),
-          conditionalPanel(
-            condition = "input.ld_clutch_enabled == true",
-            sliderInput("ld_clutch_margin", "Max point margin", min = 0, max = 10, value = 5, step = 1),
-            selectInput(
-              "ld_clutch_status",
-              "Score status",
-              choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"),
-              selected = "all"
-            ),
-            sliderInput("ld_clutch_minutes", "Max minutes remaining", min = 1, max = 5, value = 5, step = 1),
-            checkboxInput("ld_clutch_ot_margin", "Exclude OT if margin exceeded", value = FALSE),
-            helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
-          ),
+          clutch_filter_ui("ld"),
           tags$hr(),
           accordion_toggle_link(),
           game_context_filters_ui("ld")

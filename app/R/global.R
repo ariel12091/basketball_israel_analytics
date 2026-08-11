@@ -502,6 +502,38 @@ accordion_toggle_link <- function() {
   )
 }
 
+# Clutch-time filter controls, shared by Tab 2 (lineups) and Tab 3 (team
+# ratings), which held byte-identical copies under the "ld" and "tr" prefixes.
+# Extracted while there were still only two: the EuroLeague counterparts get
+# clutch next, and four copies of a control group whose defaults must agree is
+# how the margin bound on one tab quietly stops matching the other.
+#
+# The five inputs map onto the four SQL clutch params through
+# resolve_clutch_params() in helpers.R, which owns the minutes-to-seconds
+# conversion and the NA-when-disabled semantics. reset_clutch_inputs() resets
+# them. The defaults here must stay in step with both.
+#
+# OT wording is deliberate: overtime bypasses the margin and status filters by
+# default (p_ot_margin_filter = FALSE), and the time filter always bypasses OT.
+clutch_filter_ui <- function(prefix, margin_default = 5, minutes_default = 5) {
+  tagList(
+    checkboxInput(paste0(prefix, "_clutch_enabled"), tt("Clutch", "clutch"), value = FALSE),
+    conditionalPanel(
+      condition = sprintf("input.%s_clutch_enabled == true", prefix),
+      sliderInput(paste0(prefix, "_clutch_margin"), "Max point margin", min = 0, max = 10, value = margin_default, step = 1),
+      selectInput(
+        paste0(prefix, "_clutch_status"),
+        "Score status",
+        choices = c("All" = "all", "Leading" = "leading", "Trailing" = "trailing", "Tied" = "tied"),
+        selected = "all"
+      ),
+      sliderInput(paste0(prefix, "_clutch_minutes"), "Max minutes remaining", min = 1, max = 5, value = minutes_default, step = 1),
+      checkboxInput(paste0(prefix, "_clutch_ot_margin"), "Exclude OT if margin exceeded", value = FALSE),
+      helpText("By default, overtime always qualifies. Check above to apply margin filter to OT.")
+    )
+  )
+}
+
 game_context_filters_ui <- function(prefix, include_opp_rank = TRUE, opp_rank_blank_label = "\u2014") {
   panels <- list(
     bslib::accordion_panel(
