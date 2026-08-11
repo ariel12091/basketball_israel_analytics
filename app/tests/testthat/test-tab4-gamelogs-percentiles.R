@@ -41,6 +41,7 @@ test_that("tab4 four-factor percentiles stay stable when visible rows are filter
 
     full_df <- tab4$gl_teams_ff() %>% arrange(game_id)
     expect_equal(full_df$game_id, c(101L, 102L, 103L, 104L))
+    expect_equal(full_df$net_rtg, round(full_df$off_ppp - full_df$def_ppp, 1))
     expect_equal(full_df$pr_off_efg_pct, c(0, 1 / 3, 2 / 3, 1))
     expect_equal(full_df$pr_def_efg_pct, c(1, 2 / 3, 1 / 3, 0))
     expect_equal(full_df$pr_off_tov_pct, c(1, 2 / 3, 1 / 3, 0))

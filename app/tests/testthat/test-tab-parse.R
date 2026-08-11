@@ -3,6 +3,7 @@ TAB_FILES <- c(
   repo_file("R", "ui_tab2_lineup.R"),
   repo_file("R", "ui_tab3_team.R"),
   repo_file("R", "ui_tab4_gamelogs.R"),
+  repo_file("R", "ui_tab11_euro_gamelogs.R"),
   repo_file("R", "ui_tab5_traditional.R"),
   repo_file("R", "ui_tab7_compare.R"),
   repo_file("R", "server_tab1.R"),
@@ -16,7 +17,8 @@ TAB_FILES <- c(
   repo_file("R", "ui_tab9_euro_team.R"),
   repo_file("R", "server_tab9_euro_team.R"),
   repo_file("R", "ui_tab10_euro_lineups.R"),
-  repo_file("R", "server_tab10_euro_lineups.R")
+  repo_file("R", "server_tab10_euro_lineups.R"),
+  repo_file("R", "server_tab11_euro_gamelogs.R")
 )
 
 test_that("all tab UI/server files parse", {

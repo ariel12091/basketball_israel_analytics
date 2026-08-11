@@ -35,6 +35,30 @@ gl_pr_col_name <- function(metric_name) {
   paste0("pr_", gsub("[^A-Za-z0-9]+", "_", metric_name))
 }
 
+gl_result_cell_renderer <- function() DT::JS(
+  "function(data, type, row, meta) {
+     if (type !== 'display' || !row) return data;
+     var color = data === 'W' ? '#34d399' : '#f87171';
+     return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
+   }"
+)
+
+gl_apply_heat_styles <- function(dt, display_df, metric_map, heat_reverse) {
+  for (display_name in names(metric_map)) {
+    metric_name <- unname(metric_map[[display_name]])
+    pr_col <- gl_pr_col_name(metric_name)
+    if (!(display_name %in% names(display_df)) || !(pr_col %in% names(display_df))) next
+    dt <- DT::formatStyle(
+      dt, display_name,
+      backgroundColor = DT::styleInterval(
+        CUTS, if (isTRUE(heat_reverse[[display_name]])) COLS_REV else COLS_GRAD
+      ),
+      valueColumns = pr_col
+    )
+  }
+  dt
+}
+
 gl_filter_starters <- function(data, starters_bounds) {
   if (is.null(data) || !nrow(data) || is.null(starters_bounds)) return(data)
 
@@ -188,6 +212,7 @@ gl_build_ff_metrics <- function(lineup_ff_df, schedule_df, starters_bounds = NUL
     mutate(
       off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
       def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
+      net_rtg = round(off_ppp - def_ppp, 1),
       off_ts_pct = ifelse(off_ts_poss > 0, round(off_pts / (2 * off_ts_poss) * 100, 1), NA_real_),
       off_efg_pct = ifelse(off_fga > 0, round((off_fgm + 0.5 * off_fg3m) / off_fga * 100, 1), NA_real_),
       off_oreb_pct = ifelse(off_oreb_opp > 0, round(off_oreb / off_oreb_opp * 100, 1), NA_real_),
@@ -621,12 +646,7 @@ server_tab4 <- function(input, output, session, shared) {
 
       # Result column color
       result_idx <- which(names(disp) == "result") - 1L
-      result_render <- DT::JS(
-        "function(data, type, row, meta) {
-           if (type !== 'display' || !row) return data;
-           var color = data === 'W' ? '#34d399' : '#f87171';
-           return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
-         }")
+      result_render <- gl_result_cell_renderer()
 
       col_defs <- c(
         list(
@@ -679,12 +699,11 @@ server_tab4 <- function(input, output, session, shared) {
       dt <- DT::formatRound(dt, c("off_ppp", "def_ppp", "net_rtg"), 1)
       if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
-      if ("pr_off_ppp" %in% names(disp)) {
-        dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = DT::styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_ppp")
-      }
-      if ("pr_def_ppp" %in% names(disp)) {
-        dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = DT::styleInterval(CUTS, COLS_REV), valueColumns = "pr_def_ppp")
-      }
+      dt <- gl_apply_heat_styles(
+        dt, disp,
+        c(off_ppp = "off_ppp", def_ppp = "def_ppp"),
+        c(off_ppp = FALSE, def_ppp = TRUE)
+      )
 
       return(dt)
 
@@ -711,12 +730,7 @@ server_tab4 <- function(input, output, session, shared) {
 
       # Result column color
       result_idx <- which(names(disp) == "result") - 1L
-      result_render <- DT::JS(
-        "function(data, type, row, meta) {
-           if (type !== 'display' || !row) return data;
-           var color = data === 'W' ? '#34d399' : '#f87171';
-           return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
-         }")
+      result_render <- gl_result_cell_renderer()
 
       off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
       def_ppp_idx <- which(names(disp) == "def_ppp") - 1L
@@ -792,16 +806,11 @@ server_tab4 <- function(input, output, session, shared) {
         def_tov_pct = FALSE,
         def_ftr_pct = TRUE
       )
-      for (metric_name in names(heat_reverse)) {
-        pr_col <- gl_pr_col_name(metric_name)
-        if (!(metric_name %in% names(disp)) || !(pr_col %in% names(disp))) next
-        dt <- DT::formatStyle(
-          dt,
-          metric_name,
-          backgroundColor = DT::styleInterval(CUTS, if (isTRUE(heat_reverse[[metric_name]])) COLS_REV else COLS_GRAD),
-          valueColumns = pr_col
-        )
-      }
+      dt <- gl_apply_heat_styles(
+        dt, disp,
+        stats::setNames(names(heat_reverse), names(heat_reverse)),
+        heat_reverse
+      )
 
       return(dt)
     }
