@@ -162,18 +162,6 @@ euro_phase_choices <- function(competition, season) {
   stats::setNames(vals, euro_phase_label(vals))
 }
 
-# "GN" means the round number throughout the EuroLeague section, never the
-# provider gamecode: a gamecode range would read as "league games 5-10".
-euro_round_choices <- function(competition, season) {
-  rd <- tryCatch(euro_fetch_round_values(competition, season), error = function(e) NULL)
-  if (!is.null(rd) && nrow(rd)) as.integer(rd$gn) else integer(0)
-}
-
-euro_team_choices <- function(teams_df) {
-  if (is.null(teams_df) || !nrow(teams_df)) return(character(0))
-  stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
-}
-
 # The whole standard filter set in one observer, for the tabs whose controls
 # follow the usual shape: <prefix>_teams / _opponents / _phase selectize inputs
 # and the _gn_min / _gn_max / _last_n trio. Tab 10 drives a filter module and
@@ -188,7 +176,7 @@ setup_euro_section_filters <- function(input, session, prefix, competition, seas
   observeEvent(list(competition(), season()), {
     apply_season_date_bounds(session, date_id, euro_season_date_bounds(season()))
 
-    choices <- euro_team_choices(teams_df())
+    choices <- team_select_choices_with_all(teams_df(), all_label = NULL)
     for (id in paste0(prefix, c("_teams", "_opponents"))) {
       updateSelectizeInput(session, id, choices = choices,
                            selected = character(0), server = TRUE)
@@ -198,8 +186,10 @@ setup_euro_section_filters <- function(input, session, prefix, competition, seas
                          choices = euro_phase_choices(competition(), season()),
                          selected = character(0))
 
-    update_gn_last_n_choices(session, prefix,
-                             euro_round_choices(competition(), season()))
+    # "GN" is the round number here, never the provider gamecode. NULL from a
+    # failed lookup coerces to integer(0) inside the shared helper.
+    rd <- tryCatch(euro_fetch_round_values(competition(), season()), error = function(e) NULL)
+    update_gn_last_n_choices(session, prefix, rd$gn)
   }, ignoreInit = FALSE)
 }
 

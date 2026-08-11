@@ -173,14 +173,6 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   })
 
   # Percentile ranks, same helper and polarity as Tab 3.
-  pr_vec <- function(x, invert = FALSE) {
-    n <- sum(!is.na(x))
-    if (n <= 1) return(rep(NA_real_, length(x)))
-    r <- rank(x, na.last = "keep", ties.method = "average")
-    p <- (r - 1) / (n - 1)
-    if (invert) p <- 1 - p
-    as.numeric(p)
-  }
 
   et_ff_data <- reactive({
     p <- et_params()

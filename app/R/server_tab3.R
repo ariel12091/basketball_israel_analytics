@@ -1016,14 +1016,6 @@ server_tab3 <- function(input, output, session, shared) {
     if (is.null(df) || nrow(df) == 0) return(df)
 
     # Compute percentile ranks - all teams qualify (>>100 poss)
-    pr_vec <- function(x, invert = FALSE) {
-      n <- sum(!is.na(x))
-      if (n <= 1) return(rep(NA_real_, length(x)))
-      r <- rank(x, na.last = "keep", ties.method = "average")
-      p <- (r - 1) / (n - 1)
-      if (invert) p <- 1 - p
-      as.numeric(p)
-    }
 
     df$pr_off_ppp  <- pr_vec(df$off_ppp)
     df$pr_off_efg  <- pr_vec(df$off_efg)
@@ -1463,14 +1455,6 @@ server_tab3 <- function(input, output, session, shared) {
       df <- apply_stat_filters(df, tr_stat_filter_state$filters())
       if (is.null(df) || !nrow(df)) return(empty_dt("Traditional: no rows match stat filters"))
 
-      pr_vec_local <- function(x, invert = FALSE) {
-        n <- sum(!is.na(x))
-        if (n <= 1) return(rep(NA_real_, length(x)))
-        r <- rank(x, na.last = "keep", ties.method = "average")
-        p <- (r - 1) / (n - 1)
-        if (invert) p <- 1 - p
-        as.numeric(p)
-      }
       rank_vec_local <- function(x, invert = FALSE) {
         if (invert) dplyr::min_rank(x) else dplyr::min_rank(dplyr::desc(x))
       }
@@ -1491,7 +1475,7 @@ server_tab3 <- function(input, output, session, shared) {
         if (!m %in% names(df)) next
         inv <- isTRUE(metric_cfg[[m]])
         df[[paste0("rank_", m)]] <- rank_vec_local(df[[m]], invert = inv)
-        df[[paste0("pr_", m)]] <- pr_vec_local(df[[m]], invert = inv)
+        df[[paste0("pr_", m)]] <- pr_vec(df[[m]], invert = inv)
       }
 
       prev_rank_map <- tr_prev_traditional_ranks_from_mv()

@@ -269,6 +269,29 @@ Daily via Windows Task Scheduler → `scripts/run_etl_full.ps1`. Writes marker t
 
 2-space indent, snake_case, parameterized SQL. Schema `basketball_test`.
 
+### EuroLeague tabs REUSE the Israeli implementation — non-negotiable
+
+Every EuroLeague tab has an Israeli companion: **8↔1** (on/off), **9↔3** (team
+ratings), **10↔2** (lineups). Unless the functionality is *vastly* different,
+**use the existing helper/function/module and adapt it to the EuroLeague
+schema.** Never write a parallel `euro_` implementation of logic that already
+exists — it doubles the surface that must stay in step, and it demonstrably
+drifts (three EL tabs had already diverged three ways on identical dropdown
+wiring).
+
+- Before writing anything `euro_`-prefixed, find the Israeli function that does
+  it and ask what actually differs. Usually only the schema name, the season
+  convention, or an input prefix — all parameterisable.
+- If shared logic needs a small generalisation to serve both, **generalise the
+  existing function** (add a prefix / bounds / flag argument); don't clone it.
+  The result goes in `helpers.R` or `global.R`, never `global_euro.R`.
+- Name it neutrally — `apply_season_date_bounds(session, id, bounds)`, not
+  `euro_apply_season_dates(session, id, season)`. The league belongs in the
+  argument, not the name.
+- A `euro_` prefix is justified only for the league dimension itself:
+  schema-qualified queries, provider season convention, the competition
+  dimension, phase-vs-`game_type`, round-vs-GN.
+
 ## Pitfalls & Lessons Learned
 
 ### PostgreSQL / Supabase

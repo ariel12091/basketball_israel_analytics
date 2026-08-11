@@ -470,6 +470,21 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
   c(filter_chips, list(add_btn))
 }
 
+# Percentile rank in [0, 1], NA-preserving, with average ties. Shared by Tab 3
+# (Israeli team ratings) and Tab 9 (EuroLeague), which held three byte-identical
+# copies between them -- two inside server_tab3.R alone.
+#
+# invert = TRUE for metrics where low is good (defensive rating, turnover rate),
+# so the colour ramp can stay in one direction everywhere.
+pr_vec <- function(x, invert = FALSE) {
+  n <- sum(!is.na(x))
+  if (n <= 1) return(rep(NA_real_, length(x)))
+  r <- rank(x, na.last = "keep", ties.method = "average")
+  p <- (r - 1) / (n - 1)
+  if (invert) p <- 1 - p
+  as.numeric(p)
+}
+
 # Point a dateRangeInput at a season window, value and allowed range together.
 # Nothing league-specific here: the caller supplies whichever bounds its league
 # computes, Israeli season_date_bounds_for_year() or euro_season_date_bounds().
@@ -740,14 +755,25 @@ resolve_starters_bounds <- function(off_mode, off_val, def_mode, def_val) {
   )
 }
 
+# team_id -> team_name choices for a team selector. all_label = NULL omits the
+# leading blank "all teams" entry, which is what a multi-select wants: an empty
+# option there shows as a selectable blank tag. Both leagues use this.
 team_select_choices_with_all <- function(teams_df, all_label = "\u2014 All teams \u2014") {
   if (is.null(teams_df) || !nrow(teams_df)) {
+    if (is.null(all_label)) return(character(0))
     out <- ""
     names(out) <- all_label
     return(out)
   }
-  out <- c("", as.character(teams_df$team_id))
-  names(out) <- c(all_label, teams_df$team_name)
+  ids <- as.character(teams_df$team_id)
+  nms <- as.character(teams_df$team_name)
+  if (is.null(all_label)) {
+    out <- ids
+    names(out) <- nms
+    return(out)
+  }
+  out <- c("", ids)
+  names(out) <- c(all_label, nms)
   out
 }
 
