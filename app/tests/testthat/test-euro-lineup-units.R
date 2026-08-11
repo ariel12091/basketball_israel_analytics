@@ -22,3 +22,15 @@ test_that("auto_minposs_from_df reproduces the Tab 2 behaviour it replaces", {
   # The Tab 2 default target must survive the move to helpers.R.
   expect_identical(formals(auto_minposs_from_df)$target_rows, 150L)
 })
+
+test_that("EuroLeague lineups use the shared blank-aware fast-path gate", {
+  server <- paste(
+    readLines(testthat::test_path("..", "..", "R", "server_tab10_euro_lineups.R"),
+              warn = FALSE),
+    collapse = "\n"
+  )
+
+  expect_match(server, "onoff_fallback_needed\\(")
+  expect_false(grepl('euro_ld_home_away %\\|\\|% "all"', server))
+  expect_false(grepl('euro_ld_outcome %\\|\\|% "all"', server))
+})

@@ -122,25 +122,15 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # a window equal to the full season counts as "no date filter".
   fallback_needed <- reactive({
     rng <- debounced_dates()
-    if (is.null(rng) || length(rng) < 2 || any(is.na(rng))) return(FALSE)
     b <- tryCatch(euro_season_date_bounds(euro_season()), error = function(e) NULL)
-    date_changed <- !is.null(b) &&
-      (as.Date(rng[[1]]) != b$start || as.Date(rng[[2]]) != b$end)
-
-    gp <- gn_params()
-    any(c(
-      date_changed,
-      length(input$euro_ld_opponents) > 0,
-      length(input$euro_ld_phase) > 0,
-      !identical(input$euro_ld_home_away %||% "all", "all"),
-      !identical(input$euro_ld_outcome %||% "all", "all"),
-      nzchar(input$euro_ld_opp_rank_side %||% ""),
-      nzchar(input$euro_ld_num_starters_off_mode %||% "") &&
-        nzchar(input$euro_ld_num_starters_off %||% ""),
-      nzchar(input$euro_ld_num_starters_def_mode %||% "") &&
-        nzchar(input$euro_ld_num_starters_def %||% ""),
-      !is.na(gp$min_gn), !is.na(gp$max_gn), !is.na(gp$last_n)
-    ))
+    if (is.null(b)) return(FALSE)
+    onoff_fallback_needed(
+      rng, b,
+      game_context_filter_values(
+        input, "euro_ld", game_type_id = "euro_ld_phase"
+      ),
+      gn_params(), input, "euro_ld"
+    )
   })
 
   # The whole season's units, cached across sessions on competition + season +
