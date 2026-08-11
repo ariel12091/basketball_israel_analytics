@@ -470,6 +470,27 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
   c(filter_chips, list(add_btn))
 }
 
+# Point a dateRangeInput at a season window, value and allowed range together.
+# Nothing league-specific here: the caller supplies whichever bounds its league
+# computes, Israeli season_date_bounds_for_year() or euro_season_date_bounds().
+#
+# `bounds` is a lazy argument and is forced inside the tryCatch, so a caller
+# whose bounds lookup can fail keeps that protection.
+#
+# The guard is the documented pitfall: updateDateRangeInput() with a start
+# outside min silently yields NA rather than erroring, so bad bounds must not
+# reach it at all.
+apply_season_date_bounds <- function(session, input_id, bounds) {
+  b <- tryCatch(bounds, error = function(e) NULL)
+  if (is.null(b) || !length(b$start) || !length(b$end) ||
+      is.na(b$start) || is.na(b$end)) {
+    return(invisible(FALSE))
+  }
+  updateDateRangeInput(session, input_id, start = b$start, end = b$end,
+                       min = b$start, max = b$end)
+  invisible(TRUE)
+}
+
 update_gn_last_n_choices <- function(session, prefix, gn_vals) {
   gn_vals <- suppressWarnings(as.integer(gn_vals))
   gn_vals <- gn_vals[is.finite(gn_vals)]

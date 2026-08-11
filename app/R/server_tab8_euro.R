@@ -27,26 +27,13 @@ server_tab8_euro <- function(input, output, session, shared) {
     euro_fetch_teams(euro_competition(), euro_selected_season())
   })
 
-  # Teams / opponents / phase dropdowns follow competition + season.
-  observeEvent(list(euro_competition(), euro_selected_season()), {
-    td <- euro_teams_df()
-    choices <- if (!is.null(td) && nrow(td)) {
-      stats::setNames(as.character(td$team_id), as.character(td$team_name))
-    } else {
-      character(0)
-    }
-    updateSelectizeInput(session, "euro_teams", choices = choices,
-                         selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "euro_opponents", choices = choices,
-                         selected = character(0), server = TRUE)
-
-    ph <- tryCatch(euro_fetch_phases(euro_competition(), euro_selected_season()),
-                   error = function(e) NULL)
-    ph_vals <- if (!is.null(ph) && nrow(ph)) as.character(ph$phase) else character(0)
-    updateSelectizeInput(session, "euro_phase",
-                         choices = stats::setNames(ph_vals, euro_phase_label(ph_vals)),
-                         selected = character(0))
-  }, ignoreInit = FALSE)
+  # Teams / opponents / phase / rounds / dates all follow competition + season.
+  # Shared with the other EuroLeague tabs; see setup_euro_section_filters().
+  setup_euro_section_filters(input, session, "euro",
+                             competition = euro_competition,
+                             season = euro_selected_season,
+                             teams_df = euro_teams_df,
+                             date_id = "euro_date_range")
 
   euro_stat_filter_cols <- reactive({
     switch(input$euro_view_mode %||% "Summary",
@@ -61,19 +48,6 @@ server_tab8_euro <- function(input, output, session, shared) {
   # auto_min_all_from_df, resolve_poss_cols) now live in helpers.R,
   # shared with the other league's on/off tab.
   # ======== On/Off tab Logic ===================================
-  observeEvent(euro_selected_season(), {
-    bounds <- euro_season_date_bounds(euro_selected_season())
-    updateDateRangeInput(session, "euro_date_range",
-                         start = bounds$start, end = bounds$end,
-                         min = bounds$start, max = bounds$end)
-
-    # GN here means ROUND number, not gamecode -- a gamecode range would mean
-    # "league games 5-10", not "rounds 5-10".
-    gn_df <- euro_fetch_round_values(euro_competition(), euro_selected_season())
-    gn_vals <- if (!is.null(gn_df) && nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
-    update_gn_last_n_choices(session, "euro", gn_vals)
-  }, ignoreInit = FALSE)
-
 
   # --- Reset Logic ---
   observeEvent(input$euro_reset_defaults, {
@@ -87,10 +61,7 @@ server_tab8_euro <- function(input, output, session, shared) {
       EURO_DEFAULT_SEASON
     }
     updateSelectInput(session, "euro_game_year", selected = default_season)
-    bounds <- euro_season_date_bounds(default_season)
-    updateDateRangeInput(session, "euro_date_range",
-                         start = bounds$start, end = bounds$end,
-                         min = bounds$start, max = bounds$end)
+    apply_season_date_bounds(session, "euro_date_range", euro_season_date_bounds(default_season))
     updateSelectizeInput(session, "euro_phase", selected = character(0))
     updateSelectizeInput(session, "euro_opponents", selected = character(0))
     updateSelectInput(session, "euro_home_away", selected = "")

@@ -17,40 +17,18 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   et_season <- reactive(euro_selected_game_year(input))
   et_teams_df <- reactive(euro_fetch_teams(et_competition(), et_season()))
 
-  observeEvent(list(et_competition(), et_season()), {
-    bounds <- euro_season_date_bounds(et_season())
-    updateDateRangeInput(session, "euroteam_dates",
-                         start = bounds$start, end = bounds$end,
-                         min = bounds$start, max = bounds$end)
-
-    td <- et_teams_df()
-    choices <- if (!is.null(td) && nrow(td)) {
-      stats::setNames(as.character(td$team_id), as.character(td$team_name))
-    } else character(0)
-    updateSelectizeInput(session, "euroteam_teams", choices = choices,
-                         selected = character(0), server = TRUE)
-    updateSelectizeInput(session, "euroteam_opponents", choices = choices,
-                         selected = character(0), server = TRUE)
-
-    ph <- tryCatch(euro_fetch_phases(et_competition(), et_season()), error = function(e) NULL)
-    ph_vals <- if (!is.null(ph) && nrow(ph)) as.character(ph$phase) else character(0)
-    updateSelectizeInput(session, "euroteam_phase",
-                         choices = stats::setNames(ph_vals, euro_phase_label(ph_vals)),
-                         selected = character(0))
-
-    # GN here is ROUND number, matching the compute functions.
-    rd <- tryCatch(euro_fetch_round_values(et_competition(), et_season()), error = function(e) NULL)
-    rd_vals <- if (!is.null(rd) && nrow(rd)) as.integer(rd$gn) else integer(0)
-    update_gn_last_n_choices(session, "euroteam", rd_vals)
-  }, ignoreInit = FALSE)
+  # Teams / opponents / phase / rounds / dates all follow competition + season.
+  # Shared with the other EuroLeague tabs; see setup_euro_section_filters().
+  setup_euro_section_filters(input, session, "euroteam",
+                             competition = et_competition,
+                             season = et_season,
+                             teams_df = et_teams_df,
+                             date_id = "euroteam_dates")
 
   setup_gn_last_n_sync(session, input, "euroteam")
 
   observeEvent(input$euroteam_reset, {
-    bounds <- euro_season_date_bounds(isolate(et_season()))
-    updateDateRangeInput(session, "euroteam_dates",
-                         start = bounds$start, end = bounds$end,
-                         min = bounds$start, max = bounds$end)
+    apply_season_date_bounds(session, "euroteam_dates", euro_season_date_bounds(isolate(et_season())))
     updateSelectizeInput(session, "euroteam_teams", selected = character(0))
     updateSelectizeInput(session, "euroteam_phase", selected = character(0))
     updateSelectizeInput(session, "euroteam_opponents", selected = character(0))

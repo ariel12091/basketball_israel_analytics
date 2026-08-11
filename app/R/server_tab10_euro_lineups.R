@@ -43,25 +43,17 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     selected_team <- ld_filter$update_team_choices(team_choices)
     ld_filter$refresh_player_choices(team_value = selected_team)
 
-    opp_choices <- if (!is.null(teams) && nrow(teams)) {
-      setNames(as.character(teams$team_id), teams$team_name)
-    } else {
-      character(0)
-    }
-    updateSelectizeInput(session, "euro_ld_opponents", choices = opp_choices,
+    updateSelectizeInput(session, "euro_ld_opponents",
+                         choices = euro_team_choices(teams),
                          selected = character(0), server = FALSE)
 
-    phases <- tryCatch(euro_fetch_phases(comp, season), error = function(e) NULL)
-    phase_choices <- if (!is.null(phases) && nrow(phases)) {
-      setNames(as.character(phases[[1]]), vapply(phases[[1]], euro_phase_label, ""))
-    } else {
-      character(0)
-    }
-    updateSelectizeInput(session, "euro_ld_phase", choices = phase_choices,
+    updateSelectizeInput(session, "euro_ld_phase",
+                         choices = euro_phase_choices(comp, season),
                          selected = character(0), server = FALSE)
 
-    rounds <- tryCatch(euro_fetch_round_values(comp, season), error = function(e) NULL)
-    round_vals <- if (!is.null(rounds) && nrow(rounds)) as.character(rounds$gn) else character(0)
+    # This tab's GN controls are selectInput, not the selectize trio
+    # update_gn_last_n_choices() drives, so the choices are applied here.
+    round_vals <- as.character(euro_round_choices(comp, season))
     updateSelectInput(session, "euro_ld_gn_min",
                       choices = c("—" = "", setNames(round_vals, round_vals)), selected = "")
     updateSelectInput(session, "euro_ld_gn_max",
@@ -69,23 +61,11 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     updateSelectInput(session, "euro_ld_last_n",
                       choices = c("All" = "", setNames(round_vals, round_vals)), selected = "")
 
-    # updateDateRangeInput() with a start outside min yields NA, so the bounds
-    # are guarded before they are applied.
-    b <- tryCatch(euro_season_date_bounds(season), error = function(e) NULL)
-    if (!is.null(b) && !is.na(b$start) && !is.na(b$end)) {
-      updateDateRangeInput(session, "euro_ld_date_range",
-                           start = b$start, end = b$end,
-                           min = b$start, max = b$end)
-    }
+    apply_season_date_bounds(session, "euro_ld_date_range", euro_season_date_bounds(season))
   }, ignoreInit = FALSE)
 
   observeEvent(input$euro_ld_reset, {
-    b <- tryCatch(euro_season_date_bounds(euro_season()), error = function(e) NULL)
-    if (!is.null(b) && !is.na(b$start) && !is.na(b$end)) {
-      updateDateRangeInput(session, "euro_ld_date_range",
-                           start = b$start, end = b$end,
-                           min = b$start, max = b$end)
-    }
+    apply_season_date_bounds(session, "euro_ld_date_range", euro_season_date_bounds(euro_season()))
     updateSelectInput(session, "euro_ld_group_size", selected = "5")
     ld_filter$reset_inputs(team_selected = "")
     updateSelectizeInput(session, "euro_ld_opponents", selected = character(0))

@@ -145,6 +145,64 @@ euro_fetch_phases <- function(competition, season) {
   )
 }
 
+# ---- Section-wide filter wiring ----
+# Tabs 8, 9 and 10 each derived their dropdowns from the same navbar selectors,
+# and the three copies had already drifted apart: only tab 10 guarded
+# updateDateRangeInput() against NA bounds, only tab 10 built its round choices
+# by hand, and the three phase constructions disagreed on how to read the
+# fetched frame. These are the primitives all three now share.
+#
+# Applying the date bounds is deliberately NOT one of them: that logic is
+# league-neutral and lives in helpers.R as apply_season_date_bounds(), which
+# takes whichever bounds a league computes.
+
+euro_phase_choices <- function(competition, season) {
+  ph <- tryCatch(euro_fetch_phases(competition, season), error = function(e) NULL)
+  vals <- if (!is.null(ph) && nrow(ph)) as.character(ph[[1]]) else character(0)
+  stats::setNames(vals, euro_phase_label(vals))
+}
+
+# "GN" means the round number throughout the EuroLeague section, never the
+# provider gamecode: a gamecode range would read as "league games 5-10".
+euro_round_choices <- function(competition, season) {
+  rd <- tryCatch(euro_fetch_round_values(competition, season), error = function(e) NULL)
+  if (!is.null(rd) && nrow(rd)) as.integer(rd$gn) else integer(0)
+}
+
+euro_team_choices <- function(teams_df) {
+  if (is.null(teams_df) || !nrow(teams_df)) return(character(0))
+  stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
+}
+
+# The whole standard filter set in one observer, for the tabs whose controls
+# follow the usual shape: <prefix>_teams / _opponents / _phase selectize inputs
+# and the _gn_min / _gn_max / _last_n trio. Tab 10 drives a filter module and
+# uses selectInput for its GN controls, so it composes the primitives above
+# itself rather than calling this.
+#
+# Keyed on competition AND season together. Tab 8 previously refreshed its
+# dates and round choices on season change alone, so switching EuroLeague to
+# EuroCup left the old competition's rounds in the dropdown.
+setup_euro_section_filters <- function(input, session, prefix, competition, season,
+                                       teams_df, date_id) {
+  observeEvent(list(competition(), season()), {
+    apply_season_date_bounds(session, date_id, euro_season_date_bounds(season()))
+
+    choices <- euro_team_choices(teams_df())
+    for (id in paste0(prefix, c("_teams", "_opponents"))) {
+      updateSelectizeInput(session, id, choices = choices,
+                           selected = character(0), server = TRUE)
+    }
+
+    updateSelectizeInput(session, paste0(prefix, "_phase"),
+                         choices = euro_phase_choices(competition(), season()),
+                         selected = character(0))
+
+    update_gn_last_n_choices(session, prefix,
+                             euro_round_choices(competition(), season()))
+  }, ignoreInit = FALSE)
+}
+
 # Cache-busting token for the season-level MV pulls. The Israeli
 # shared$data_version tracks the Israeli ETL only, so a EuroLeague publication
 # would not invalidate anything keyed on it.
