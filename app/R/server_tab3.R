@@ -1433,20 +1433,6 @@ server_tab3 <- function(input, output, session, shared) {
       )
     }
 
-    fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1) {
-      v <- suppressWarnings(as.numeric(value))
-      r <- suppressWarnings(as.integer(rank_now))
-      d <- suppressWarnings(as.integer(delta))
-      value_txt <- ifelse(is.na(v), "NA", format(round(v, digits), nsmall = digits, trim = TRUE))
-      rank_txt <- ifelse(is.na(r), "#NA", paste0("#", r))
-      delta_txt <- ifelse(
-        !show_delta | is.na(d),
-        "\u2014",
-        ifelse(d > 0, paste0("\u25b2", abs(d)), ifelse(d < 0, paste0("\u25bc", abs(d)), "\u2194"))
-      )
-      paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
-    }
-
     tryCatch({
     if (identical(mode, "Traditional")) {
       df <- tr_traditional_data()
@@ -1494,7 +1480,7 @@ server_tab3 <- function(input, output, session, shared) {
       make_cell <- function(vals, ranks_now, metric_name) {
         prev_r <- if (!is.null(prev_rank_map[[metric_name]])) as.integer(prev_rank_map[[metric_name]][as.character(df$team_id)]) else rep(NA_integer_, nrow(df))
         delta <- prev_r - as.integer(ranks_now)
-        fmt_rank_cell(vals, ranks_now, delta, digits = 1)
+        fmt_rank_cell(vals, ranks_now, delta, digits = 1, show_delta)
       }
 
       disp <- data.frame(
@@ -1702,17 +1688,17 @@ server_tab3 <- function(input, output, session, shared) {
         }
       }
 
-      df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1)
-      df$off_efg_lbl <- fmt_rank_cell(df$off_efg, rk_off_efg_now, d_off_efg, 1)
-      df$off_oreb_lbl <- fmt_rank_cell(df$off_oreb, rk_off_oreb_now, d_off_oreb, 1)
-      df$off_tov_lbl <- fmt_rank_cell(df$off_tov, rk_off_tov_now, d_off_tov, 1)
-      df$off_ftr_lbl <- fmt_rank_cell(df$off_ftr, rk_off_ftr_now, d_off_ftr, 1)
-      df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1)
-      df$def_efg_lbl <- fmt_rank_cell(df$def_efg, rk_def_efg_now, d_def_efg, 1)
-      df$def_oreb_lbl <- fmt_rank_cell(df$def_oreb, rk_def_oreb_now, d_def_oreb, 1)
-      df$def_tov_lbl <- fmt_rank_cell(df$def_tov, rk_def_tov_now, d_def_tov, 1)
-      df$def_ftr_lbl <- fmt_rank_cell(df$def_ftr, rk_def_ftr_now, d_def_ftr, 1)
-      df$net_rtg_lbl <- fmt_rank_cell(df$net_rtg, rk_net_now, d_net, 1)
+      df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1, show_delta)
+      df$off_efg_lbl <- fmt_rank_cell(df$off_efg, rk_off_efg_now, d_off_efg, 1, show_delta)
+      df$off_oreb_lbl <- fmt_rank_cell(df$off_oreb, rk_off_oreb_now, d_off_oreb, 1, show_delta)
+      df$off_tov_lbl <- fmt_rank_cell(df$off_tov, rk_off_tov_now, d_off_tov, 1, show_delta)
+      df$off_ftr_lbl <- fmt_rank_cell(df$off_ftr, rk_off_ftr_now, d_off_ftr, 1, show_delta)
+      df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1, show_delta)
+      df$def_efg_lbl <- fmt_rank_cell(df$def_efg, rk_def_efg_now, d_def_efg, 1, show_delta)
+      df$def_oreb_lbl <- fmt_rank_cell(df$def_oreb, rk_def_oreb_now, d_def_oreb, 1, show_delta)
+      df$def_tov_lbl <- fmt_rank_cell(df$def_tov, rk_def_tov_now, d_def_tov, 1, show_delta)
+      df$def_ftr_lbl <- fmt_rank_cell(df$def_ftr, rk_def_ftr_now, d_def_ftr, 1, show_delta)
+      df$net_rtg_lbl <- fmt_rank_cell(df$net_rtg, rk_net_now, d_net, 1, show_delta)
 
       df <- df %>% arrange(desc(net_rtg))
       disp_ff <- data.frame(
@@ -2022,9 +2008,9 @@ server_tab3 <- function(input, output, session, shared) {
           }
         }
       }
-      df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1)
-      df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1)
-      df$net_rtg_lbl <- fmt_rank_cell(df$net_rtg, rk_net_now, d_net, 1)
+      df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1, show_delta)
+      df$def_ppp_lbl <- fmt_rank_cell(df$def_ppp, rk_def_now, d_def, 1, show_delta)
+      df$net_rtg_lbl <- fmt_rank_cell(df$net_rtg, rk_net_now, d_net, 1, show_delta)
       pretty_names <- c("Season", "Team", "GP", "Min", "W", "L", "Off PPP", "Def PPP", "Net Rtg", "Off Pace", "Def Pace", "Off Poss", "Def Poss")
       disp_df <- df %>% select(game_year, team_name, games_played, minutes, wins, losses, off_ppp_lbl, def_ppp_lbl, net_rtg_lbl, off_pace, def_pace, off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp)
       names(disp_df)[names(disp_df) == "off_ppp_lbl"] <- "off_ppp"

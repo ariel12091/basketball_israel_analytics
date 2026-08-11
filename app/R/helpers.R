@@ -1519,6 +1519,25 @@ ONOFF_FF_FILTERABLE_COLS <- c(
 # and Tab 8 (EuroLeague). Renders the diff, the on/off values, a percentile
 # range bar, and optionally an estimated points-impact line.
 #
+# Three-line team-ratings cell: value, rank, rank movement. Moved here verbatim
+# from server_tab3.R, which is why show_delta is an argument rather than a
+# closure over the render scope; Tab 9 had a second copy that differed only in
+# always showing the delta, which is what the default reproduces.
+fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1,
+                          show_delta = TRUE) {
+  v <- suppressWarnings(as.numeric(value))
+  r <- suppressWarnings(as.integer(rank_now))
+  d <- suppressWarnings(as.integer(delta))
+  value_txt <- ifelse(is.na(v), "NA", format(round(v, digits), nsmall = digits, trim = TRUE))
+  rank_txt <- ifelse(is.na(r), "#NA", paste0("#", r))
+  delta_txt <- ifelse(
+    !show_delta | is.na(d),
+    "\u2014",
+    ifelse(d > 0, paste0("\u25b2", abs(d)), ifelse(d < 0, paste0("\u25bc", abs(d)), "\u2194"))
+  )
+  paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
+}
+
 # show_impact is the one real league difference. The weights in
 # FF_IMPACT_WEIGHTS were fitted on Israeli-league data, so EuroLeague passes
 # FALSE: reusing those coefficients would state a points-per-100 impact that

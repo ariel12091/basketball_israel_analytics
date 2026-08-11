@@ -237,19 +237,6 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       data.frame(Info = msg, check.names = FALSE),
       rownames = FALSE, options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t"))
 
-    fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1) {
-      v <- suppressWarnings(as.numeric(value))
-      r <- suppressWarnings(as.integer(rank_now))
-      d <- suppressWarnings(as.integer(delta))
-      value_txt <- ifelse(is.na(v), "NA", format(round(v, digits), nsmall = digits, trim = TRUE))
-      rank_txt <- ifelse(is.na(r), "#NA", paste0("#", r))
-      delta_txt <- ifelse(
-        is.na(d), "—",
-        ifelse(d > 0, paste0("▲", abs(d)),
-               ifelse(d < 0, paste0("▼", abs(d)), "↔")))
-      paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
-    }
-
     tryCatch({
       if (identical(mode, "Four Factors")) {
         df <- et_ff_data()
@@ -421,72 +408,26 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   }, server = FALSE)
 
   # ---- Filter chips ----
+  # Tab 3's chip bar; see server_tab8_euro.R for what the league arguments do.
   output$euroteam_filter_chips <- renderUI({
     td <- et_teams_df()
     team_map <- if (!is.null(td) && nrow(td)) {
       stats::setNames(as.character(td$team_name), as.character(td$team_id))
     } else NULL
-    map_teams <- function(ids) {
-      if (is.null(ids) || !length(ids) || is.null(team_map)) return(as.character(ids))
-      out <- unname(team_map[as.character(ids)])
-      out[is.na(out)] <- as.character(ids)[is.na(out)]
-      out
-    }
-
-    chips <- list(
-      tags$span(class = "filter-chip chip-season",
-                paste(EURO_COMPETITION_LABELS[[et_competition()]] %||% et_competition(),
-                      euro_season_label(et_season())))
+    season <- et_season()
+    build_filter_chips(
+      "euroteam", input, euro_season_date_bounds,
+      reset_btn_id = "euroteam_reset",
+      team_label_map = team_map,
+      opponent_label_map = team_map,
+      season_value = season,
+      season_label = paste(EURO_COMPETITION_LABELS[[et_competition()]] %||% et_competition(),
+                           euro_season_label(season)),
+      date_input_id = "euroteam_dates",
+      game_type_input_id = "euroteam_phase",
+      game_type_labeller = euro_phase_label,
+      gn_label = "Rd"
     )
-    add <- function(label, clear_id) {
-      chips[[length(chips) + 1L]] <<- make_chip(label, clear_id, "chip-game")
-    }
-
-    p <- et_params()
-    if (p$start_d != p$bounds$start || p$end_d != p$bounds$end) {
-      add(paste(format(p$start_d, "%b %d"), "–", format(p$end_d, "%b %d")),
-          "euroteam_clear_dates")
-    }
-    if (length(input$euroteam_phase) && any(nzchar(input$euroteam_phase))) {
-      add(paste(euro_phase_label(input$euroteam_phase), collapse = ", "), "euroteam_clear_game_type")
-    }
-    if (length(input$euroteam_teams) && any(nzchar(input$euroteam_teams))) {
-      lbl <- map_teams(input$euroteam_teams)
-      add(if (length(lbl) == 1) lbl else paste(length(lbl), "teams"), "euroteam_clear_teams")
-    }
-    if (length(input$euroteam_opponents) && any(nzchar(input$euroteam_opponents))) {
-      lbl <- map_teams(input$euroteam_opponents)
-      add(paste("vs", if (length(lbl) == 1) lbl else paste(length(lbl), "teams")),
-          "euroteam_clear_opponents")
-    }
-    if (nzchar(input$euroteam_home_away %||% "")) {
-      add(if (identical(input$euroteam_home_away, "home")) "Home" else "Away", "euroteam_clear_home_away")
-    }
-    if (nzchar(input$euroteam_outcome %||% "")) {
-      add(if (identical(input$euroteam_outcome, "win")) "Wins" else "Losses", "euroteam_clear_outcome")
-    }
-    if (!is.na(p$last_n)) {
-      add(paste("Last", p$last_n, "games"), "euroteam_clear_last_n")
-    } else if (!is.na(p$min_gn) || !is.na(p$max_gn)) {
-      lo <- if (is.na(p$min_gn)) "1" else as.character(p$min_gn)
-      hi <- if (is.na(p$max_gn)) "∞" else as.character(p$max_gn)
-      add(paste0("Rounds ", lo, "–", hi), "euroteam_clear_gn")
-    }
-    for (side in c("off", "def")) {
-      mode_v <- input[[paste0("euroteam_num_starters_", side, "_mode")]]
-      val_v <- input[[paste0("euroteam_num_starters_", side)]]
-      if (nzchar(mode_v %||% "") && nzchar(val_v %||% "")) {
-        add(paste0(if (side == "off") "Own" else "Opp", " starters ",
-                   if (identical(mode_v, "gte")) "≥" else "≤", " ", val_v),
-            "euroteam_clear_starters")
-      }
-    }
-    if (nzchar(input$euroteam_opp_rank_side %||% "") && nzchar(input$euroteam_opp_rank_n %||% "")) {
-      add(paste(if (identical(input$euroteam_opp_rank_side, "top")) "vs Top" else "vs Bottom",
-                input$euroteam_opp_rank_n), "euroteam_clear_opp_rank")
-    }
-
-    div(class = "filter-chips-bar", chips)
   })
 
   setup_chip_clears("euroteam", session, input, shared,
@@ -498,7 +439,8 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     date_id = "euroteam_dates", gy_input_id = "euro_game_year",
     teams_ids = NULL,
     starters_ids = c("euroteam_num_starters_off_mode", "euroteam_num_starters_off",
-                     "euroteam_num_starters_def_mode", "euroteam_num_starters_def"))
+                     "euroteam_num_starters_def_mode", "euroteam_num_starters_def"),
+    bounds_fn = euro_season_date_bounds)
 
   observeEvent(input$euroteam_clear_teams, {
     updateSelectizeInput(session, "euroteam_teams", selected = character(0))

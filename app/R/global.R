@@ -624,16 +624,28 @@ make_chip <- function(label, clear_id, css_class = "") {
   )
 }
 
-make_season_chip <- function(gy) {
-  label <- if (identical(gy, "2026")) "2025-26" else if (identical(gy, "2025")) "2024-25" else gy
+make_season_chip <- function(gy, label = NULL) {
+  if (is.null(label)) {
+    label <- if (identical(gy, "2026")) "2025-26" else if (identical(gy, "2025")) "2024-25" else gy
+  }
   tags$span(class = "filter-chip chip-season", label)
 }
 
+# The arguments after `extra_children` exist for the league dimension: which
+# season value/label the chip bar names, which input holds the dates, whether a
+# set date range is worth a chip on its own, where the game-type filter lives
+# and how its codes read, and what a schedule position is called (Israeli game
+# number vs EuroLeague round). Every one defaults to the Israeli behaviour, so
+# the seven Israeli call sites pass none of them.
 build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
                                team_label_map = NULL, opponent_label_map = NULL,
                                player_label_map = NULL,
                                teams_value = NULL, players_on_value = NULL, players_off_value = NULL,
-                               extra_children = NULL) {
+                               extra_children = NULL,
+                               season_value = NULL, season_label = NULL,
+                               date_input_id = NULL, dates_show_when_set = NULL,
+                               game_type_input_id = NULL, game_type_labeller = NULL,
+                               gn_label = "GN") {
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
   map_label <- function(x, label_map) {
     if (is.null(label_map) || is.null(x)) return(x)
@@ -661,11 +673,12 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   chips <- list()
 
   # Season chip (always visible, not dismissable) - single global input
-  gy <- input$game_year %||% DEFAULT_GAME_YEAR
-  chips[[length(chips) + 1]] <- make_season_chip(gy)
+  gy <- season_value %||% input$game_year %||% DEFAULT_GAME_YEAR
+  chips[[length(chips) + 1]] <- make_season_chip(gy, label = season_label)
 
   # Date range (non-default)
-  date_input <- if (prefix == "on") input$date_range else input[[paste0(prefix, "_dates")]]
+  date_id <- date_input_id %||% (if (prefix == "on") "date_range" else paste0(prefix, "_dates"))
+  date_input <- input[[date_id]]
   if (!is.null(date_input) && !is.environment(date_input) && length(date_input) == 2) {
     raw_start <- safe_date_token(date_input, 1L)
     raw_end <- safe_date_token(date_input, 2L)
@@ -682,7 +695,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
 
     resolved_set <- !is.na(start_d) && !is.na(end_d)
     if (resolved_set) {
-      show_when_set <- prefix %in% c("ld", "tr", "gl")
+      show_when_set <- dates_show_when_set %||% (prefix %in% c("ld", "tr", "gl"))
       is_non_default <- !same_date(start_d, bounds$start) || !same_date(end_d, bounds$end)
       if ((show_when_set && has_any_raw) || (!show_when_set && is_non_default)) {
         lbl <- paste(format(start_d, "%b %d"), "\u2013", format(end_d, "%b %d"))
@@ -692,10 +705,11 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   }
 
   # Game type
-  gt <- get_input("_game_type")
-  if (prefix == "on") gt <- input$on_game_type
+  gt <- input[[game_type_input_id %||% paste0(prefix, "_game_type")]]
   if (!is.null(gt) && length(gt) && any(nzchar(gt))) {
-    labels <- vapply(gt[nzchar(gt)], function(x) GAME_TYPE_LABELS[x] %||% x, "")
+    labeller <- game_type_labeller %||%
+      function(x) vapply(x, function(v) GAME_TYPE_LABELS[v] %||% v, "")
+    labels <- labeller(gt[nzchar(gt)])
     chips[[length(chips) + 1]] <- make_chip(paste(labels, collapse = ", "), paste0(prefix, "_clear_game_type"), "chip-game")
   }
 
@@ -708,7 +722,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     tv <- teams_value %||% input[[paste0(prefix, "_team")]]
     teams_val <- if (!is.null(tv) && nzchar(tv %||% "")) tv else NULL
   } else {
-    teams_val <- NULL
+    teams_val <- teams_value %||% get_input("_teams")
   }
   if (!is.null(teams_val) && length(teams_val) && any(nzchar(teams_val))) {
     mapped_teams <- map_label(teams_val, team_label_map)
@@ -745,8 +759,8 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   if (prefix == "on") { gn_min <- input$on_gn_min; gn_max <- input$on_gn_max }
   if ((!is.null(gn_min) && nzchar(gn_min)) || (!is.null(gn_max) && nzchar(gn_max))) {
     parts <- c()
-    if (!is.null(gn_min) && nzchar(gn_min)) parts <- c(parts, paste0("GN\u2265", gn_min))
-    if (!is.null(gn_max) && nzchar(gn_max)) parts <- c(parts, paste0("GN\u2264", gn_max))
+    if (!is.null(gn_min) && nzchar(gn_min)) parts <- c(parts, paste0(gn_label, "\u2265", gn_min))
+    if (!is.null(gn_max) && nzchar(gn_max)) parts <- c(parts, paste0(gn_label, "\u2264", gn_max))
     chips[[length(chips) + 1]] <- make_chip(paste(parts, collapse = " "), paste0(prefix, "_clear_gn"), "chip-game")
   }
 
@@ -803,20 +817,18 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
       paste0(prefix, "_clear_starters"), "chip-game")
   }
 
-  # Players on/off (Tab 2)
-  if (prefix == "ld") {
-    pon <- players_on_value %||% input$ld_players_on
-    if (!is.null(pon) && length(pon)) {
-      mapped_on <- map_label(pon, player_label_map)
-      lbl <- if (length(mapped_on) == 1) paste("On:", mapped_on[1]) else paste0("On: ", length(mapped_on), " players")
-      chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_on", "chip-game")
-    }
-    poff <- players_off_value %||% input$ld_players_off
-    if (!is.null(poff) && length(poff)) {
-      mapped_off <- map_label(poff, player_label_map)
-      lbl <- if (length(mapped_off) == 1) paste("Off:", mapped_off[1]) else paste0("Off: ", length(mapped_off), " players")
-      chips[[length(chips) + 1]] <- make_chip(lbl, "ld_clear_players_off", "chip-game")
-    }
+  # Players on/off (the lineup tabs; no other prefix has these inputs)
+  pon <- players_on_value %||% get_input("_players_on")
+  if (!is.null(pon) && length(pon)) {
+    mapped_on <- map_label(pon, player_label_map)
+    lbl <- if (length(mapped_on) == 1) paste("On:", mapped_on[1]) else paste0("On: ", length(mapped_on), " players")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_on"), "chip-game")
+  }
+  poff <- players_off_value %||% get_input("_players_off")
+  if (!is.null(poff) && length(poff)) {
+    mapped_off <- map_label(poff, player_label_map)
+    lbl <- if (length(mapped_off) == 1) paste("Off:", mapped_off[1]) else paste0("Off: ", length(mapped_off), " players")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_off"), "chip-game")
   }
 
   # Only show "Clear all" if there are removable chips (more than just season)
@@ -852,7 +864,11 @@ setup_chip_clears <- function(prefix, session, input, shared,
                               gn_min_id, gn_max_id, last_n_id, opp_rank_ids,
                               date_id, gy_input_id,
                               teams_ids = NULL, starters_ids = NULL,
-                              clutch_enabled_id = NULL) {
+                              clutch_enabled_id = NULL, bounds_fn = NULL) {
+  # Which season the date chip resets to. Tabs 8-10 read a EuroLeague season
+  # from gy_input_id, so resolving it with the Israeli bounds gave them the
+  # wrong window (season 2025 -> Oct 2024-Jul 2025 instead of Sep 2025-Jul 2026).
+  bounds_fn <- bounds_fn %||% shared$season_date_bounds
   observeEvent(input[[paste0(prefix, "_clear_game_type")]], {
     updateSelectizeInput(session, game_type_id, selected = character(0))
   }, ignoreInit = TRUE)
@@ -896,7 +912,7 @@ setup_chip_clears <- function(prefix, session, input, shared,
 
   observeEvent(input[[paste0(prefix, "_clear_dates")]], {
     gy <- input[[gy_input_id]] %||% DEFAULT_GAME_YEAR
-    bounds <- shared$season_date_bounds(gy)
+    bounds <- bounds_fn(gy)
     updateDateRangeInput(session, date_id, start = bounds$start, end = bounds$end)
   }, ignoreInit = TRUE)
 

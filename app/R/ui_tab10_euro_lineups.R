@@ -68,14 +68,16 @@ ui_tab10_euro_lineups <- function() tabPanel(
           ),
           selectInput("euro_ld_last_n", "Last N games",
                       choices = c("All" = ""), selected = ""),
+          # "" is the blank on every other tab, and the SQL coerces it to 'all'
+          # itself, so the chip bar's blank test needs no tab-10 special case.
           selectInput("euro_ld_home_away", "Home / Away",
-                      choices = c("All" = "all", "Home" = "home",
+                      choices = c("All" = "", "Home" = "home",
                                   "Away" = "away"),
-                      selected = "all"),
+                      selected = ""),
           selectInput("euro_ld_outcome", "Outcome",
-                      choices = c("All" = "all", "Wins" = "win",
+                      choices = c("All" = "", "Wins" = "win",
                                   "Losses" = "loss"),
-                      selected = "all"),
+                      selected = ""),
           fluidRow(
             column(4, selectInput("euro_ld_opp_rank_side", "Opp rank",
                                   choices = c("All" = "", "Top" = "top",

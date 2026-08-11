@@ -77,8 +77,8 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
                  "euro_ld_num_starters_def_mode", "euro_ld_num_starters_def")) {
       updateSelectInput(session, id, selected = "")
     }
-    updateSelectInput(session, "euro_ld_home_away", selected = "all")
-    updateSelectInput(session, "euro_ld_outcome", selected = "all")
+    updateSelectInput(session, "euro_ld_home_away", selected = "")
+    updateSelectInput(session, "euro_ld_outcome", selected = "")
     updateSelectInput(session, "euro_ld_opp_rank_metric", selected = "net")
     auto_enabled(TRUE)
   })
@@ -599,31 +599,72 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   })
 
   # --- Filter chips ---------------------------------------------------------
+  # Tab 2's chip bar. This tab previously showed only a hand-rolled summary
+  # line, so the schedule filters it does send to SQL -- dates, phase,
+  # opponents, home/away, outcome, rounds, last-N, starters, opponent rank --
+  # were never visible. The unit size, row count and min-possessions readout
+  # are not filters that clear individually, so they stay as extra children.
   output$euro_ld_filter_chips <- renderUI({
-    df <- euro_ld_display()
-    n_units <- max(NROW(df) - 1L, 0L)
-    size <- input$euro_ld_group_size %||% "5"
-    bits <- c(sprintf("%s-player units", size), sprintf("%d shown", n_units))
+    teams <- euro_ld_ref$teams
+    team_map <- if (!is.null(teams) && nrow(teams)) {
+      stats::setNames(as.character(teams$team_name), as.character(teams$team_id))
+    } else NULL
+
+    player_map <- NULL
+    if (!is.null(euro_ld_ref$players) && nrow(euro_ld_ref$players)) {
+      tid <- suppressWarnings(as.integer(ld_filter$team()))
+      pmap <- euro_ld_ref$players
+      if (length(tid) == 1L && !is.na(tid)) pmap <- pmap[pmap$team_id == tid, , drop = FALSE]
+      player_map <- stats::setNames(as.character(pmap$name), as.character(pmap$player_id))
+    }
+
+    n_units <- max(NROW(euro_ld_display()) - 1L, 0L)
+    bits <- c(sprintf("%s-player units", input$euro_ld_group_size %||% "5"),
+              sprintf("%d shown", n_units))
     if (!is.null(input$euro_ld_minposs) && input$euro_ld_minposs > 0) {
       bits <- c(bits, sprintf("min %d poss%s", as.integer(input$euro_ld_minposs),
                               if (isTRUE(auto_enabled())) " (auto)" else ""))
     }
-    team_val <- ld_filter$team()
-    team_val <- team_val[nzchar(team_val)]
-    if (length(team_val)) {
-      teams <- euro_ld_ref$teams
-      nm <- if (!is.null(teams)) teams$team_name[match(as.integer(team_val), teams$team_id)] else team_val
-      bits <- c(bits, paste0("team: ", nm))
-    }
-    if (length(ld_filter$players_on())) {
-      bits <- c(bits, sprintf("%d player(s) on", length(ld_filter$players_on())))
-    }
-    if (length(ld_filter$players_off())) {
-      bits <- c(bits, sprintf("%d player(s) off", length(ld_filter$players_off())))
-    }
-    div(class = "filter-chips",
-        lapply(bits, function(b) span(class = "filter-chip", b)))
+
+    season <- euro_season()
+    build_filter_chips(
+      "euro_ld", input, euro_season_date_bounds,
+      reset_btn_id = "euro_ld_reset",
+      team_label_map = team_map,
+      opponent_label_map = team_map,
+      player_label_map = player_map,
+      teams_value = ld_filter$team(),
+      players_on_value = ld_filter$players_on(),
+      players_off_value = ld_filter$players_off(),
+      season_value = season,
+      season_label = paste(EURO_COMPETITION_LABELS[[euro_competition()]] %||% euro_competition(),
+                           euro_season_label(season)),
+      date_input_id = "euro_ld_date_range",
+      game_type_input_id = "euro_ld_phase",
+      game_type_labeller = euro_phase_label,
+      gn_label = "Rd",
+      extra_children = lapply(bits, function(b) tags$span(class = "filter-chip", b))
+    )
   })
+
+  setup_chip_clears("euro_ld", session, input, shared,
+    game_type_id = "euro_ld_phase", opponents_id = "euro_ld_opponents",
+    home_away_id = "euro_ld_home_away", outcome_id = "euro_ld_outcome",
+    gn_min_id = "euro_ld_gn_min", gn_max_id = "euro_ld_gn_max",
+    last_n_id = "euro_ld_last_n",
+    opp_rank_ids = c("euro_ld_opp_rank_side", "euro_ld_opp_rank_n"),
+    date_id = "euro_ld_date_range", gy_input_id = "euro_game_year",
+    teams_ids = "euro_ld_lineup_filter-team",
+    starters_ids = c("euro_ld_num_starters_off_mode", "euro_ld_num_starters_off",
+                     "euro_ld_num_starters_def_mode", "euro_ld_num_starters_def"),
+    bounds_fn = euro_season_date_bounds)
+
+  observeEvent(input$euro_ld_clear_players_on, {
+    updateSelectizeInput(session, "euro_ld_lineup_filter-players_on", selected = character(0))
+  }, ignoreInit = TRUE)
+  observeEvent(input$euro_ld_clear_players_off, {
+    updateSelectizeInput(session, "euro_ld_lineup_filter-players_off", selected = character(0))
+  }, ignoreInit = TRUE)
 
   # --- Lineup game log modal -----------------------------------------------
   # This is what keeping game_id in lineup_totals_by_game's key buys: the

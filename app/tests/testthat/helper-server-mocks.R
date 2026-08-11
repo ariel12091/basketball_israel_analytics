@@ -577,7 +577,7 @@ cached_ref_query <- function(key, query_fun, ttl_sec = 300) {
 guard_heavy_request <- function(...) TRUE
 adaptive_baseline <- function(...) 0
 empty_dt <- function(msg = "") data.frame(message = msg)
-fmt_rank_cell <- function(value, rank_now, delta, digits = 1) as.character(round(as.numeric(value), digits = digits))
+fmt_rank_cell <- function(value, rank_now, delta, digits = 1, show_delta = TRUE) as.character(round(as.numeric(value), digits = digits))
 
 # Deliberate stubs over the real helpers.R versions (observer wiring and UI
 # builders that testServer contexts don't need).

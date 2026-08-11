@@ -420,9 +420,9 @@ server_tab8_euro <- function(input, output, session, shared) {
   }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$euro_min_all_poss, input$euro_min_on_poss, input$euro_game_year, input$euro_view_mode, euro_stat_filter_state$filters())
 
   # ---- Filter Chips ----
-  # build_filter_chips() special-cases the Israeli prefixes and reads the global
-  # input$game_year for its season chip, so tab 8 builds its own rather than
-  # bending that helper into a league-aware shape.
+  # Tab 1's chip bar. Everything league-specific is an argument: the season
+  # value and its competition-qualified label, the date input id, the phase
+  # input and its labeller, and "Rd" for the schedule position.
   output$euro_filter_chips <- renderUI({
     td <- euro_teams_df()
     team_map <- if (!is.null(td) && nrow(td)) {
@@ -430,72 +430,20 @@ server_tab8_euro <- function(input, output, session, shared) {
     } else {
       NULL
     }
-    map_teams <- function(ids) {
-      if (is.null(ids) || !length(ids) || is.null(team_map)) return(as.character(ids))
-      out <- unname(team_map[as.character(ids)])
-      out[is.na(out)] <- as.character(ids)[is.na(out)]
-      out
-    }
-
-    chips <- list(
-      tags$span(class = "filter-chip chip-season",
-                paste(EURO_COMPETITION_LABELS[[euro_competition()]] %||% euro_competition(),
-                      euro_season_label(euro_selected_season())))
-    )
-    add <- function(label, clear_id, cls = "chip-game") {
-      chips[[length(chips) + 1L]] <<- make_chip(label, clear_id, cls)
-    }
-
-    bounds <- euro_season_date_bounds(euro_selected_season())
-    rng <- input$euro_date_range
-    if (length(rng) == 2 && !is.na(rng[1]) && !is.na(rng[2]) &&
-        (!identical(as.Date(rng[1]), bounds$start) || !identical(as.Date(rng[2]), bounds$end))) {
-      add(paste(format(as.Date(rng[1]), "%b %d"), "–", format(as.Date(rng[2]), "%b %d")),
-          "euro_clear_dates")
-    }
-    if (length(input$euro_phase) && any(nzchar(input$euro_phase))) {
-      add(paste(euro_phase_label(input$euro_phase), collapse = ", "), "euro_clear_game_type")
-    }
-    if (length(input$euro_teams) && any(nzchar(input$euro_teams))) {
-      lbl <- map_teams(input$euro_teams)
-      add(if (length(lbl) == 1) lbl else paste(length(lbl), "teams"), "euro_clear_teams")
-    }
-    if (length(input$euro_opponents) && any(nzchar(input$euro_opponents))) {
-      lbl <- map_teams(input$euro_opponents)
-      add(paste("vs", if (length(lbl) == 1) lbl else paste(length(lbl), "teams")),
-          "euro_clear_opponents")
-    }
-    if (nzchar(input$euro_home_away %||% "")) {
-      add(if (identical(input$euro_home_away, "home")) "Home" else "Away", "euro_clear_home_away")
-    }
-    if (nzchar(input$euro_outcome %||% "")) {
-      add(if (identical(input$euro_outcome, "win")) "Wins" else "Losses", "euro_clear_outcome")
-    }
-    gp <- gn_params()
-    if (!is.na(gp$last_n)) {
-      add(paste("Last", gp$last_n, "games"), "euro_clear_last_n")
-    } else if (!is.na(gp$min_gn) || !is.na(gp$max_gn)) {
-      lo <- if (is.na(gp$min_gn)) "1" else as.character(gp$min_gn)
-      hi <- if (is.na(gp$max_gn)) "∞" else as.character(gp$max_gn)
-      add(paste0("Rounds ", lo, "–", hi), "euro_clear_gn")
-    }
-    for (side in c("off", "def")) {
-      mode_v <- input[[paste0("euro_num_starters_", side, "_mode")]]
-      val_v <- input[[paste0("euro_num_starters_", side)]]
-      if (nzchar(mode_v %||% "") && nzchar(val_v %||% "")) {
-        add(paste0(if (side == "off") "Own" else "Opp", " starters ",
-                   if (identical(mode_v, "gte")) "≥" else "≤", " ", val_v),
-            "euro_clear_starters")
-      }
-    }
-    if (nzchar(input$euro_opp_rank_side %||% "") && nzchar(input$euro_opp_rank_n %||% "")) {
-      add(paste(if (identical(input$euro_opp_rank_side, "top")) "vs Top" else "vs Bottom",
-                input$euro_opp_rank_n), "euro_clear_opp_rank")
-    }
-
-    tagList(
-      div(class = "filter-chips-bar", chips),
-      stat_filter_chips_ui("euro", euro_stat_filter_state, euro_stat_filter_cols)
+    season <- euro_selected_season()
+    build_filter_chips(
+      "euro", input, euro_season_date_bounds,
+      reset_btn_id = "euro_reset_defaults",
+      team_label_map = team_map,
+      opponent_label_map = team_map,
+      season_value = season,
+      season_label = paste(EURO_COMPETITION_LABELS[[euro_competition()]] %||% euro_competition(),
+                           euro_season_label(season)),
+      date_input_id = "euro_date_range",
+      game_type_input_id = "euro_phase",
+      game_type_labeller = euro_phase_label,
+      gn_label = "Rd",
+      extra_children = stat_filter_chips_ui("euro", euro_stat_filter_state, euro_stat_filter_cols)
     )
   })
   setup_chip_clears("euro", session, input, shared,
@@ -506,7 +454,8 @@ server_tab8_euro <- function(input, output, session, shared) {
     date_id = "euro_date_range", gy_input_id = "euro_game_year",
     teams_ids = NULL,
     starters_ids = c("euro_num_starters_off_mode", "euro_num_starters_off",
-                     "euro_num_starters_def_mode", "euro_num_starters_def"))
+                     "euro_num_starters_def_mode", "euro_num_starters_def"),
+    bounds_fn = euro_season_date_bounds)
 
   # Teams is handled here rather than via setup_chip_clears' teams_ids: that
   # helper clears anything outside its Israeli id allowlist with "", which
