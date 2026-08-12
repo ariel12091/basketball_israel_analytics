@@ -294,6 +294,27 @@ test_that("team rating ranks share the correct offense and defense polarity", {
   expect_identical(out$pr_net, c(0, 1))
 })
 
+test_that("team rating rank deltas and pace use the shared league contract", {
+  current <- data.frame(
+    team_id = c(1, 2), off_ppp = c(110, 100), def_ppp = c(105, 95),
+    net_rtg = c(5, 5), games_played = c(1, 1),
+    off_poss = c(80, 70), def_poss = c(78, 72)
+  )
+  previous <- transform(current, off_ppp = rev(off_ppp))
+  ranked <- team_rating_rank_deltas(current, previous)
+  expect_identical(as.integer(ranked$current$off_ppp), c(1L, 2L))
+  expect_identical(ranked$delta$off_ppp, c(1L, -1L))
+
+  paced <- add_team_pace_cols(current, c(`1` = 45, `2` = 40))
+  expect_equal(paced$minutes, c(45, 40))
+  expect_equal(paced$off_pace, c(80 / 45 * 40, 70))
+  expect_equal(paced$def_pace, c(78 / 45 * 40, 72))
+
+  no_fallback <- add_team_pace_cols(current, NULL, fallback_to_regulation = FALSE)
+  expect_true(all(is.na(no_fallback$minutes)))
+  expect_true(all(is.na(no_fallback$off_pace)))
+})
+
 test_that("the shared stat-filter menus cover every column both leagues filter on", {
   # Summary: the nine rating/usage entries plus a shot-split group per context.
   expect_identical(

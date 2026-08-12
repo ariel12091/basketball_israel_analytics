@@ -96,6 +96,15 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       !is.na(p$st_def_min) || !is.na(p$st_def_max)
   })
 
+  # Match Tab 3: rank movement is meaningful only on the full season date/GN
+  # baseline. Other filters are carried into both current and previous calls.
+  et_delta_enabled <- reactive({
+    p <- et_params()
+    if (!is.na(p$min_gn) || !is.na(p$max_gn) || !is.na(p$last_n)) return(FALSE)
+    identical(as.Date(p$start_d), as.Date(p$bounds$start)) &&
+      identical(as.Date(p$end_d), as.Date(p$bounds$end))
+  })
+
   # ---- Data access ----
   run_team_ratings <- function(p, end_override = NULL) {
     allowed <- guard_heavy_request(
@@ -117,10 +126,10 @@ server_tab9_euro_team <- function(input, output, session, shared) {
                     p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max))
   }
 
-  run_team_ff <- function(p) {
+  run_team_ff <- function(p, end_override = NULL) {
     allowed <- guard_heavy_request(
       session, key = "tab9_euro_team_ff",
-      start_d = p$start_d, end_d = p$end_d,
+      start_d = p$start_d, end_d = end_override %||% p$end_d,
       min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n,
       max_calls = 35L, window_sec = 60L
     )
@@ -130,11 +139,31 @@ server_tab9_euro_team <- function(input, output, session, shared) {
              "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
              "$8::text,$9::text,$10::text,$11::int4,$12::text,",
              "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4)"),
-      params = list(p$competition, p$game_year, p$start_d, p$end_d,
+      params = list(p$competition, p$game_year, p$start_d, end_override %||% p$end_d,
                     p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
                     p$rank_side, p$rank_n, p$rank_metric,
                     p$min_gn, p$max_gn, p$last_n,
                     p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max))
+  }
+
+  # Team floor time already exists at canonical segment grain. Keep this query
+  # separate from the rating facts so pace remains a ratio calculated only
+  # after the selected games and starter contexts have been aggregated.
+  run_team_minutes <- function(p) {
+    db_get_query(pg_pool,
+      paste0("SELECT team_id, minutes AS game_minutes ",
+             "FROM euroleague.get_team_minutes_dynamic(",
+             "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+             "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+             "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4)"),
+      params = list(
+        p$competition, p$game_year, p$start_d, p$end_d,
+        p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
+        p$rank_side, p$rank_n, p$rank_metric,
+        p$min_gn, p$max_gn, p$last_n,
+        p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max
+      )
+    )
   }
 
   et_data_version <- reactive(euro_data_version())
@@ -196,14 +225,39 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   })
 
   et_prev_data <- reactive({
+    if (!isTRUE(et_delta_enabled())) return(NULL)
     prev_end <- et_prev_end()
     if (is.na(prev_end)) return(NULL)
     tryCatch(run_team_ratings(et_params(), end_override = prev_end), error = function(e) NULL)
   })
 
+  et_prev_ff_data <- reactive({
+    if (!isTRUE(et_delta_enabled())) return(NULL)
+    prev_end <- et_prev_end()
+    if (is.na(prev_end)) return(NULL)
+    tryCatch(run_team_ff(et_params(), end_override = prev_end), error = function(e) NULL)
+  })
+
+  et_game_minutes <- reactive({
+    run_team_minutes(et_params())
+  })
+
   # ---- Render ----
   output$euroteam_table <- renderDT({
     mode <- input$euroteam_view_mode %||% "Summary"
+    mins_df <- tryCatch(
+      et_game_minutes(),
+      error = function(e) {
+        msg <- paste0("EL Team Ratings minutes error: ", conditionMessage(e))
+        app_log("tab9_euro_team", msg, level = "ERROR", session = session)
+        showNotification(msg, type = "error", duration = 8)
+        NULL
+      }
+    )
+    mins_map <- if (is.data.frame(mins_df) && nrow(mins_df)) {
+      stats::setNames(as.numeric(mins_df$game_minutes), as.character(mins_df$team_id))
+    } else NULL
+    show_delta <- isTRUE(et_delta_enabled())
 
     empty_dt <- function(msg) DT::datatable(
       data.frame(Info = msg, check.names = FALSE),
@@ -214,22 +268,41 @@ server_tab9_euro_team <- function(input, output, session, shared) {
         df <- et_ff_data()
         if (is.null(df) || nrow(df) == 0) return(empty_dt("Four Factors: no data for current filters"))
 
+        df <- add_team_pace_cols(df, mins_map, fallback_to_regulation = FALSE)
+        ranks <- team_rating_rank_deltas(df, et_prev_ff_data(), show_delta)
+        metric_cols <- TEAM_RATING_METRICS$metric
+        for (metric in intersect(metric_cols, names(df))) {
+          df[[paste0(metric, "_label")]] <- fmt_rank_cell(
+            df[[metric]], ranks$current[[metric]], ranks$delta[[metric]], 1, show_delta
+          )
+        }
+
         pr_cols <- c("pr_off_ppp", "pr_off_efg", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
                      "pr_def_ppp", "pr_def_efg", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net")
-        disp <- df[, intersect(c("team_name",
-                                 "off_ppp", "off_efg", "off_oreb", "off_tov", "off_ftr", "off_poss",
-                                 "def_ppp", "def_efg", "def_oreb", "def_tov", "def_ftr", "def_poss",
-                                 "net_rtg", pr_cols), names(df))]
+        disp <- data.frame(
+          team_name = df$team_name, minutes = df$minutes,
+          off_ppp = df$off_ppp_label, off_efg = df$off_efg_label,
+          off_oreb = df$off_oreb_label, off_tov = df$off_tov_label,
+          off_ftr = df$off_ftr_label, off_poss = df$off_poss,
+          def_ppp = df$def_ppp_label, def_efg = df$def_efg_label,
+          def_oreb = df$def_oreb_label, def_tov = df$def_tov_label,
+          def_ftr = df$def_ftr_label, def_poss = df$def_poss,
+          net_rtg = df$net_rtg_label,
+          df[, pr_cols, drop = FALSE], check.names = FALSE
+        )
+        sorted <- team_rating_sort_columns(disp, df, metric_cols)
+        disp <- sorted$data
 
         sketch <- htmltools::withTags(table(class = "display", thead(
           tr(
-            th(class = "group-head", colspan = 1, ""),
+            th(class = "group-head", colspan = 2, ""),
             th(class = "group-head section-left-border", colspan = 6, "Offense"),
             th(class = "group-head section-left-border", colspan = 6, "Defense"),
             th(class = "group-head section-left-border", "")
           ),
           tr(
             th(class = "sub-head", "Team"),
+            th(class = "sub-head", "Min"),
             th(class = "sub-head section-left-border", "PPP"), th(class = "sub-head", "eFG%"),
             th(class = "sub-head", "OREB%"), th(class = "sub-head", "TOV%"),
             th(class = "sub-head", "FTR"), th(class = "sub-head", "Poss"),
@@ -240,12 +313,13 @@ server_tab9_euro_team <- function(input, output, session, shared) {
           )
         )))
 
-        hide_idx <- which(names(disp) %in% pr_cols) - 1L
+        hide_idx <- which(names(disp) %in% c(pr_cols, grep("^sort__", names(disp), value = TRUE))) - 1L
         net_idx <- which(names(disp) == "net_rtg") - 1L
         col_defs <- list(
           list(targets = hide_idx, visible = FALSE),
           list(targets = "_all", className = "dt-center")
         )
+        col_defs <- c(col_defs, sorted$definitions)
         for (nm in c("off_ppp", "def_ppp", "net_rtg")) {
           i <- which(names(disp) == nm) - 1L
           if (length(i)) col_defs[[length(col_defs) + 1]] <-
@@ -253,7 +327,8 @@ server_tab9_euro_team <- function(input, output, session, shared) {
         }
 
         dt <- DT::datatable(
-          disp, container = sketch, rownames = FALSE, escape = TRUE,
+          disp, container = sketch, rownames = FALSE,
+          escape = dt_escape_except(disp, metric_cols),
           extensions = "Buttons",
           options = list(
             headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
@@ -267,6 +342,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
         poss_cols <- intersect(c("off_poss", "def_poss"), names(disp))
         if (length(poss_cols)) dt <- DT::formatCurrency(dt, poss_cols, currency = "",
                                                         interval = 3, mark = ",", digits = 0)
+        dt <- DT::formatRound(dt, "minutes", digits = 1)
         # Every pr_ vector is already oriented so that high = good, so all
         # columns use the same ramp -- the polarity lives in pr_vec(invert=).
         style_map <- list(
@@ -287,31 +363,27 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       # ---------------- Summary ----------------
       df <- et_data()
       if (is.null(df) || nrow(df) == 0) return(empty_dt("Summary: no data for current filters"))
-
-      rk_net <- dplyr::min_rank(dplyr::desc(df$net_rtg))
-      rk_off <- dplyr::min_rank(dplyr::desc(df$off_ppp))
-      rk_def <- dplyr::min_rank(df$def_ppp)
-
-      d_net <- rep(NA_integer_, nrow(df))
-      d_off <- rep(NA_integer_, nrow(df))
-      d_def <- rep(NA_integer_, nrow(df))
-      prev <- et_prev_data()
-      if (!is.null(prev) && nrow(prev)) {
-        pkey <- as.character(prev$team_id)
-        key <- as.character(df$team_id)
-        d_net <- as.integer(stats::setNames(dplyr::min_rank(dplyr::desc(prev$net_rtg)), pkey)[key]) - as.integer(rk_net)
-        d_off <- as.integer(stats::setNames(dplyr::min_rank(dplyr::desc(prev$off_ppp)), pkey)[key]) - as.integer(rk_off)
-        d_def <- as.integer(stats::setNames(dplyr::min_rank(prev$def_ppp), pkey)[key]) - as.integer(rk_def)
-      }
+      df <- add_team_pace_cols(df, mins_map, fallback_to_regulation = FALSE)
+      ranks <- team_rating_rank_deltas(df, et_prev_data(), show_delta)
+      rk_net <- ranks$current$net_rtg
+      rk_off <- ranks$current$off_ppp
+      rk_def <- ranks$current$def_ppp
+      d_net <- ranks$delta$net_rtg
+      d_off <- ranks$delta$off_ppp
+      d_def <- ranks$delta$def_ppp
 
       disp <- data.frame(
+        game_year = df$game_year,
         team_name = df$team_name,
         games_played = df$games_played,
+        minutes = df$minutes,
         wins = df$wins,
         losses = df$losses,
-        off_ppp = fmt_rank_cell(df$off_ppp, rk_off, d_off, 1),
-        def_ppp = fmt_rank_cell(df$def_ppp, rk_def, d_def, 1),
-        net_rtg = fmt_rank_cell(df$net_rtg, rk_net, d_net, 1),
+        off_ppp = fmt_rank_cell(df$off_ppp, rk_off, d_off, 1, show_delta),
+        def_ppp = fmt_rank_cell(df$def_ppp, rk_def, d_def, 1, show_delta),
+        net_rtg = fmt_rank_cell(df$net_rtg, rk_net, d_net, 1, show_delta),
+        off_pace = df$off_pace,
+        def_pace = df$def_pace,
         off_poss = df$off_poss,
         def_poss = df$def_poss,
         check.names = FALSE, stringsAsFactors = FALSE
@@ -347,8 +419,8 @@ server_tab9_euro_team <- function(input, output, session, shared) {
 
       DT::datatable(
         disp,
-        colnames = c("Team", "GP", "W", "L", "Off PPP", "Def PPP", "Net Rtg",
-                     "Off Poss", "Def Poss",
+        colnames = c("Season", "Team", "GP", "Min", "W", "L", "Off PPP", "Def PPP", "Net Rtg",
+                     "Off Pace", "Def Pace", "Off Poss", "Def Poss",
                      "rank_net_rtg", "rank_off_ppp", "rank_def_ppp",
                      "sort_off_ppp", "sort_def_ppp", "sort_net_rtg"),
         rownames = FALSE,
@@ -365,6 +437,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
           ), order_defs)
         )
       ) %>%
+        DT::formatRound(c("minutes", "off_pace", "def_pace"), digits = 1) %>%
         DT::formatCurrency(c("off_poss", "def_poss"), currency = "",
                            interval = 3, mark = ",", digits = 0) %>%
         DT::formatStyle(columns = c("net_rtg", "off_ppp", "def_ppp"),

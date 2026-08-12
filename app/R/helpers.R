@@ -487,17 +487,10 @@ pr_vec <- function(x, invert = FALSE) {
 
 add_team_metric_ranks <- function(df) {
   if (is.null(df) || !NROW(df)) return(df)
-  specs <- list(
-    pr_off_ppp = list("off_ppp", FALSE), pr_off_efg = list("off_efg", FALSE),
-    pr_off_oreb = list("off_oreb", FALSE), pr_off_tov = list("off_tov", TRUE),
-    pr_off_ftr = list("off_ftr", FALSE), pr_def_ppp = list("def_ppp", TRUE),
-    pr_def_efg = list("def_efg", TRUE), pr_def_oreb = list("def_oreb", TRUE),
-    pr_def_tov = list("def_tov", FALSE), pr_def_ftr = list("def_ftr", TRUE),
-    pr_net = list("net_rtg", FALSE)
-  )
-  for (target in names(specs)) {
-    source <- specs[[target]][[1]]
-    invert <- specs[[target]][[2]]
+  for (i in seq_len(nrow(TEAM_RATING_METRICS))) {
+    source <- TEAM_RATING_METRICS$metric[[i]]
+    target <- TEAM_RATING_METRICS$percentile[[i]]
+    invert <- identical(TEAM_RATING_METRICS$best_direction[[i]], "asc")
     if (source %in% names(df)) df[[target]] <- pr_vec(df[[source]], invert = invert)
   }
   df
@@ -1617,6 +1610,100 @@ fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1,
     ifelse(d > 0, paste0("\u25b2", abs(d)), ifelse(d < 0, paste0("\u25bc", abs(d)), "\u2194"))
   )
   paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
+}
+
+# Shared Team Ratings metric contract. Both league tabs use these definitions
+# for ranks, display columns, colour polarity, and best-first sorting. League
+# modules remain responsible only for obtaining their correctly scoped facts.
+TEAM_RATING_METRICS <- data.frame(
+  metric = c(
+    "off_ppp", "off_efg", "off_oreb", "off_tov", "off_ftr",
+    "def_ppp", "def_efg", "def_oreb", "def_tov", "def_ftr", "net_rtg"
+  ),
+  percentile = c(
+    "pr_off_ppp", "pr_off_efg", "pr_off_oreb", "pr_off_tov", "pr_off_ftr",
+    "pr_def_ppp", "pr_def_efg", "pr_def_oreb", "pr_def_tov", "pr_def_ftr", "pr_net"
+  ),
+  best_direction = c(
+    "desc", "desc", "desc", "asc", "desc",
+    "asc", "asc", "asc", "desc", "asc", "desc"
+  ),
+  stringsAsFactors = FALSE
+)
+
+team_rating_rank_vectors <- function(df) {
+  if (is.null(df) || !NROW(df)) return(list())
+  out <- list()
+  for (i in seq_len(nrow(TEAM_RATING_METRICS))) {
+    metric <- TEAM_RATING_METRICS$metric[[i]]
+    if (!metric %in% names(df)) next
+    values <- suppressWarnings(as.numeric(df[[metric]]))
+    out[[metric]] <- if (identical(TEAM_RATING_METRICS$best_direction[[i]], "asc")) {
+      dplyr::min_rank(values)
+    } else {
+      dplyr::min_rank(dplyr::desc(values))
+    }
+  }
+  out
+}
+
+team_rating_rank_deltas <- function(df, previous = NULL, show_delta = TRUE) {
+  current <- team_rating_rank_vectors(df)
+  deltas <- lapply(current, function(x) rep(NA_integer_, length(x)))
+  if (!isTRUE(show_delta) || is.null(previous) || !NROW(previous) ||
+      !"team_id" %in% names(df) || !"team_id" %in% names(previous)) {
+    return(list(current = current, delta = deltas))
+  }
+  previous_ranks <- team_rating_rank_vectors(previous)
+  current_keys <- as.character(df$team_id)
+  previous_keys <- as.character(previous$team_id)
+  for (metric in intersect(names(current), names(previous_ranks))) {
+    previous_map <- stats::setNames(previous_ranks[[metric]], previous_keys)
+    deltas[[metric]] <- as.integer(previous_map[current_keys]) - as.integer(current[[metric]])
+  }
+  list(current = current, delta = deltas)
+}
+
+team_rating_sort_columns <- function(display_df, source_df, metrics) {
+  metrics <- intersect(metrics, intersect(names(display_df), names(source_df)))
+  defs <- list()
+  for (metric in metrics) {
+    direction <- TEAM_RATING_METRICS$best_direction[
+      match(metric, TEAM_RATING_METRICS$metric)
+    ]
+    sort_name <- paste0("sort__", metric)
+    values <- suppressWarnings(as.numeric(source_df[[metric]]))
+    values[is.na(values)] <- if (identical(direction, "asc")) Inf else -Inf
+    display_df[[sort_name]] <- values
+    defs[[length(defs) + 1L]] <- list(
+      targets = which(names(display_df) == metric) - 1L,
+      orderData = which(names(display_df) == sort_name) - 1L,
+      orderSequence = if (identical(direction, "asc")) list("asc", "desc") else list("desc", "asc")
+    )
+  }
+  list(data = display_df, definitions = defs)
+}
+
+add_team_pace_cols <- function(df, minutes_map = NULL, fallback_to_regulation = TRUE) {
+  if (is.null(df) || !NROW(df)) return(df)
+  gp_col <- if ("games_played" %in% names(df)) "games_played" else if ("gp" %in% names(df)) "gp" else NA_character_
+  gp <- if (is.na(gp_col)) rep(NA_real_, nrow(df)) else suppressWarnings(as.numeric(df[[gp_col]]))
+  gp[!is.finite(gp) | gp <= 0] <- NA_real_
+  off_poss <- if ("off_poss" %in% names(df)) suppressWarnings(as.numeric(df$off_poss)) else rep(NA_real_, nrow(df))
+  def_poss <- if ("def_poss" %in% names(df)) suppressWarnings(as.numeric(df$def_poss)) else rep(NA_real_, nrow(df))
+  minutes_vec <- rep(NA_real_, nrow(df))
+  if (!is.null(minutes_map) && "team_id" %in% names(df)) {
+    minutes_vec <- suppressWarnings(as.numeric(minutes_map[as.character(df$team_id)]))
+    minutes_vec[!is.finite(minutes_vec) | minutes_vec <= 0] <- NA_real_
+  }
+  missing_minutes <- is.na(minutes_vec) & !is.na(gp)
+  if (isTRUE(fallback_to_regulation) && any(missing_minutes)) {
+    minutes_vec[missing_minutes] <- gp[missing_minutes] * 40
+  }
+  df$minutes <- minutes_vec
+  df$off_pace <- ifelse(is.na(minutes_vec), NA_real_, off_poss / minutes_vec * 40)
+  df$def_pace <- ifelse(is.na(minutes_vec), NA_real_, def_poss / minutes_vec * 40)
+  df
 }
 
 # show_impact is the one real league difference. The weights in

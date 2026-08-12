@@ -58,10 +58,10 @@ test_that("team ratings four factors render without gp or minutes columns", {
 })
 
 test_that("team ratings minutes helper does not exit before adding minutes", {
-  txt <- read_repo_txt("R", "server_tab3.R")
+  txt <- read_repo_txt("R", "helpers.R")
   fn <- regmatches(
     txt,
-    regexpr("add_team_pace_cols <- function\\([\\s\\S]*?\\n  \\}", txt, perl = TRUE)
+    regexpr("add_team_pace_cols <- function\\([\\s\\S]*?\\n\\}", txt, perl = TRUE)
   )
 
   expect_true(grepl("df\\$minutes\\s*<-", fn))

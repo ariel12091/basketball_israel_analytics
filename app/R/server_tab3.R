@@ -127,33 +127,6 @@ server_tab3 <- function(input, output, session, shared) {
     safe_tr_date(x[[i]])
   }
 
-  add_team_pace_cols <- function(df, minutes_map = NULL) {
-    if (is.null(df) || !nrow(df)) return(df)
-    gp_col <- if ("games_played" %in% names(df)) {
-      "games_played"
-    } else if ("gp" %in% names(df)) {
-      "gp"
-    } else {
-      NA_character_
-    }
-    gp <- if (is.na(gp_col)) rep(NA_real_, nrow(df)) else suppressWarnings(as.numeric(df[[gp_col]]))
-    gp[!is.finite(gp) | gp <= 0] <- NA_real_
-    off_poss <- if ("off_poss" %in% names(df)) suppressWarnings(as.numeric(df$off_poss)) else rep(NA_real_, nrow(df))
-    def_poss <- if ("def_poss" %in% names(df)) suppressWarnings(as.numeric(df$def_poss)) else rep(NA_real_, nrow(df))
-    minutes_vec <- rep(NA_real_, nrow(df))
-    if (!is.null(minutes_map) && "team_id" %in% names(df)) {
-      mins <- suppressWarnings(as.numeric(minutes_map[as.character(df$team_id)]))
-      mins[!is.finite(mins) | mins <= 0] <- NA_real_
-      minutes_vec <- mins
-    }
-    miss <- is.na(minutes_vec) & !is.na(gp)
-    if (any(miss)) minutes_vec[miss] <- gp[miss] * 40
-    df$minutes <- minutes_vec
-    df$off_pace <- ifelse(is.na(minutes_vec), NA_real_, (off_poss / minutes_vec) * 40)
-    df$def_pace <- ifelse(is.na(minutes_vec), NA_real_, (def_poss / minutes_vec) * 40)
-    df
-  }
-
   fetch_team_game_minutes <- function(pool, p) {
     game_type_csv <- if (is.null(p$game_type_csv)) NA_character_ else p$game_type_csv
     opp_ids_csv <- if (is.null(p$opp_ids_csv)) NA_character_ else p$opp_ids_csv

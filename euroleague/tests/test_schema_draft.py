@@ -44,6 +44,9 @@ ACTIONS_CUTOVER_DDL_PATH = (
     / "sql"
     / "012_actions_consumer_cutover.sql"
 )
+TEAM_MINUTES_DDL_PATH = (
+    REPO_ROOT / "euroleague" / "sql" / "018_team_minutes_read_layer.sql"
+)
 
 
 class ShadowSchemaDraftTest(unittest.TestCase):
@@ -168,6 +171,20 @@ class ShadowSchemaDraftTest(unittest.TestCase):
         self.assertNotIn("AS OFF_RTG", upper)
         self.assertNotIn("AS DEF_RTG", upper)
         self.assertIn("- 'DERIVED_AT'", upper)
+
+    def test_team_minutes_read_layer_uses_canonical_game_segments(self) -> None:
+        ddl = TEAM_MINUTES_DDL_PATH.read_text(encoding="utf-8")
+        upper = ddl.upper()
+
+        self.assertNotIn("BASKETBALL_TEST.", upper)
+        self.assertNotIn("BASKETBALL.", upper)
+        self.assertIn("GET_TEAM_MINUTES_DYNAMIC", upper)
+        self.assertIn("EUROLEAGUE.MATCHUP_SEGMENTS_ACTIONS", upper)
+        self.assertIn("SUM(MS.SEGMENT_SECONDS) / 60.0", upper)
+        self.assertIn("GROUP BY MS.GAME_ID, MS.TEAM_ID", upper)
+        self.assertIn("RETURNS TABLE (TEAM_ID BIGINT, MINUTES NUMERIC)", upper)
+        self.assertIn("SECURITY DEFINER", upper)
+        self.assertIn("SET SEARCH_PATH = PG_CATALOG, EUROLEAGUE, PUBLIC", upper)
 
     def test_player_onoff_walkthrough_is_read_only_and_action_grained(self) -> None:
         sql = ONOFF_SQL_PATH.read_text(encoding="utf-8")

@@ -4,8 +4,7 @@
 #   * Clutch filter    - needs an action-level running score; deferred.
 #   * Shot Profile     - needs shot coordinates/types, never collected.
 #   * Traditional      - needs the box score promoted out of jsonb.
-#   * Min / Pace       - EuroLeague has no team-minutes fact yet, so the
-#                        Israeli pace columns have no denominator here.
+# Team minutes and pace reuse the canonical matchup-segment duration fact.
 
 ui_tab9_euro_team <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-bar-chart-fill"), "Team Ratings"),
@@ -59,6 +58,7 @@ ui_tab9_euro_team <- function() tabPanel(
             intro = "How good is each EuroLeague team, per possession, on each end?",
             bullets = c(
               "Off PPP is points scored per 100 possessions; Def PPP is points allowed per 100. Net Rtg is the gap.",
+              "Minutes are summed from each selected game's canonical lineup segments; pace is possessions per 40 minutes.",
               "Each cell shows the value, the team's rank in it, and the rank change versus the previous matchday.",
               "Colour runs by rank, green best to red worst, so Def PPP colours in reverse — allowing fewer points is better.",
               "Opponent-strength filters rank opponents over the whole season, so they do not shift as you narrow the date range."
