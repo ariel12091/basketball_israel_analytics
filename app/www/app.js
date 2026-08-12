@@ -885,9 +885,13 @@
 
    The navbar holds every league's tabs, but only one league's are visible at
    a time -- otherwise a EuroLeague section at parity with the Israeli one
-   would make a 14-item navbar. The league lives in JS (and localStorage), so
-   switching is instant and needs no server round-trip: nav items are filtered
-   by a tab -> league map, and Home swaps its content through a body class.
+   would make a 14-item navbar. Nav items are filtered by a tab -> league map,
+   and Home swaps its content through a body class.
+
+   ONE control chooses the league: the #league_select dropdown, whose value is
+   a competition code ("E", "U") or "il". Applying it is done here rather than
+   on the server so switching is instant, but the value itself is a Shiny
+   input -- so it bookmarks and restores like any other filter.
 
    A tab NOT listed here is league-neutral and always visible (e.g. "home").
    -------------------------------------------------------------------------- */
@@ -897,14 +901,57 @@
     game_logs: "il", traditional_stats: "il", compare: "il",
     euro: "el", euro_team: "el", euro_lineups: "el", euro_game_logs: "el"
   };
-  var STORE_KEY = "ibpl_league";
-  var DEFAULT_LEAGUE = "il";
+  var STORE_KEY = "ibpl_league_select";
+  var DEFAULT_VALUE = "il";
+
+  // Which league owns each league_select value. Deliberately explicit rather
+  // than "anything that is not Israeli must be EuroLeague": that assumption
+  // would silently route a new ISRAELI-side competition to the EuroLeague
+  // tabs. Keep in step with LEAGUE_SELECT_CHOICES in global.R -- an unmapped
+  // value warns rather than guessing, because neither guess is safe.
+  var VALUE_LEAGUE = { "il": "il", "E": "el", "U": "el" };
+
+  function leagueOf(value) {
+    if (Object.prototype.hasOwnProperty.call(VALUE_LEAGUE, value)) return VALUE_LEAGUE[value];
+    if (window.console && window.console.warn) {
+      window.console.warn(
+        "[ibpl] league_select value '" + value + "' is not in VALUE_LEAGUE; " +
+        "falling back to '" + DEFAULT_VALUE + "'. Update app.js to match " +
+        "LEAGUE_SELECT_CHOICES in global.R."
+      );
+    }
+    return VALUE_LEAGUE[DEFAULT_VALUE];
+  }
+
+  // First value belonging to a league -- where a tab restored into the other
+  // league lands. Derived, so adding a competition needs no second edit here.
+  function firstValueForLeague(league) {
+    for (var k in VALUE_LEAGUE) {
+      if (Object.prototype.hasOwnProperty.call(VALUE_LEAGUE, k) && VALUE_LEAGUE[k] === league) return k;
+    }
+    return DEFAULT_VALUE;
+  }
 
   function read() {
     try { return window.localStorage.getItem(STORE_KEY); } catch (e) { return null; }
   }
   function write(v) {
     try { window.localStorage.setItem(STORE_KEY, v); } catch (e) {}
+  }
+
+  function selectEl() { return document.getElementById("league_select"); }
+
+  // Guards against a stale localStorage value naming an option that no longer
+  // exists. Selectize owns the option list once it initialises, so ask it
+  // first; the raw <select> is only authoritative before that.
+  function isValidValue(v) {
+    if (!v) return false;
+    var el = selectEl();
+    if (el && el.selectize) return Object.prototype.hasOwnProperty.call(el.selectize.options, v);
+    if (el && el.options && el.options.length) {
+      return Array.prototype.some.call(el.options, function(o) { return o.value === v; });
+    }
+    return Object.prototype.hasOwnProperty.call(VALUE_LEAGUE, v);
   }
 
   function navLinks() {
@@ -918,8 +965,11 @@
     return el ? el.getAttribute("data-value") : null;
   }
 
-  function applyLeague(league, opts) {
+  // Reflects the current value into the page. Does NOT write the select --
+  // callers do that first, so the select stays the single source of truth.
+  function applyValue(value, opts) {
     opts = opts || {};
+    var league = leagueOf(value);
     document.body.classList.toggle("league-il", league === "il");
     document.body.classList.toggle("league-el", league === "el");
 
@@ -933,7 +983,7 @@
     Array.prototype.forEach.call(
       document.querySelectorAll("[data-league-btn]"),
       function(b) {
-        b.classList.toggle("active", b.getAttribute("data-league-btn") === league);
+        b.classList.toggle("active", b.getAttribute("data-league-btn") === value);
       }
     );
 
@@ -945,36 +995,87 @@
       var home = document.querySelector('.navbar a[data-value="home"]');
       if (home) home.click();
     }
+  }
 
-    if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
-      window.Shiny.setInputValue("league", league, { priority: "event" });
+  // The select is a selectize widget, so the original <select> is hidden and
+  // its change event is fired through jQuery. Write via the selectize API when
+  // it exists, and fall back to the raw element before it initialises.
+  function writeSelect(value) {
+    var el = selectEl();
+    if (!el) return;
+    if (el.selectize) {
+      if (el.selectize.getValue() !== value) el.selectize.setValue(value);
+      return;
+    }
+    if (el.value !== value) {
+      el.value = value;
+      if (window.jQuery) window.jQuery(el).trigger("change");
     }
   }
 
-  function setLeague(league) {
-    if (league !== "il" && league !== "el") return;
-    write(league);
-    applyLeague(league);
+  function currentValue() {
+    var el = selectEl();
+    if (!el) return read() || DEFAULT_VALUE;
+    return (el.selectize ? el.selectize.getValue() : el.value) || DEFAULT_VALUE;
   }
 
-  window.ibplSetLeague = setLeague;
-  window.ibplGetLeague = function() { return read() || DEFAULT_LEAGUE; };
+  // The one way to change league from anywhere: write the select, let its
+  // change event tell Shiny, then reflect it. Home's cards go through here.
+  function setValue(value) {
+    if (!isValidValue(value)) return;
+    write(value);
+    writeSelect(value);
+    applyValue(value);
+  }
+
+  // What the league SHOULD be on load: a restored bookmark points at a
+  // specific tab, and that tab's league wins over the stored preference or the
+  // restore lands on a hidden tab. Only the league is implied by a tab, so a
+  // stored competition survives when it agrees with that league.
+  function desiredValue() {
+    var stored = isValidValue(read()) ? read() : null;
+    var value = stored || DEFAULT_VALUE;
+    var current = activeTabValue();
+    var fromTab = current ? TAB_LEAGUE[current] : null;
+    if (fromTab && leagueOf(value) !== fromTab) {
+      value = firstValueForLeague(fromTab);
+    }
+    return value;
+  }
 
   function init() {
+    if (!selectEl()) return;
+
     document.addEventListener("click", function(e) {
       var btn = e.target.closest ? e.target.closest("[data-league-btn]") : null;
       if (!btn) return;
       e.preventDefault();
-      setLeague(btn.getAttribute("data-league-btn"));
+      setValue(btn.getAttribute("data-league-btn"));
     });
 
-    // A restored bookmark points at a specific tab; that tab's league wins
-    // over the stored preference, or the restore lands on a hidden tab.
-    var current = activeTabValue();
-    var fromTab = current ? TAB_LEAGUE[current] : null;
-    var league = fromTab || read() || DEFAULT_LEAGUE;
-    write(league);
-    applyLeague(league, { noRedirect: true });
+    // Delegated and via jQuery: selectize fires change with jQuery.trigger(),
+    // which addEventListener would never see.
+    if (window.jQuery) {
+      window.jQuery(document).on("change", "#league_select", function() {
+        var v = currentValue();
+        write(v);
+        applyValue(v);
+      });
+    }
+
+    // Apply the visual state immediately so the navbar never shows the wrong
+    // league's tabs, then re-assert once Shiny has bound the input -- the two
+    // orderings (selectize initialised before or after this) are both live.
+    var value = desiredValue();
+    write(value);
+    writeSelect(value);
+    applyValue(value, { noRedirect: true });
+
+    if (window.jQuery) {
+      window.jQuery(document).one("shiny:sessioninitialized", function() {
+        writeSelect(desiredValue());
+      });
+    }
   }
 
   if (document.readyState === "loading") {

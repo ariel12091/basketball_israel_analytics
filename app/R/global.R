@@ -476,6 +476,31 @@ tab_explainer <- function(id, title, intro, bullets) {
   )
 }
 
+# ---------------- League selector ----------------
+# The ONE place a league is chosen. Lives in global.R rather than global_euro.R
+# because it owns both leagues: "il" is the Israeli league, every other value is
+# a EuroLeague-side competition code fed to euro_selected_competition().
+#
+# The list is deliberately STATIC rather than read from the schedule. Deriving
+# it from what happens to be loaded made a league vanish from the navbar
+# entirely when its data was missing, which reads as a bug rather than as an
+# empty season. app.js mirrors these values; keep the two in step.
+LEAGUE_SELECT_CHOICES <- c(
+  "EuroLeague"     = "E",
+  "EuroCup"        = "U",
+  "Israeli League" = "il"
+)
+LEAGUE_SELECT_DEFAULT <- "il"
+
+navbar_league_select_ui <- function() {
+  tags$div(
+    class = "navbar-league-select",
+    selectInput("league_select", NULL,
+                choices = LEAGUE_SELECT_CHOICES,
+                selected = LEAGUE_SELECT_DEFAULT)
+  )
+}
+
 # ---------------- Filter Chips Builder ----------------
 GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
                        "17" = "PO Finals", "33" = "Play-in", "34" = "Winner Cup", "35" = "State Cup")

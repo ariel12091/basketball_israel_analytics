@@ -430,7 +430,7 @@ a:hover { color: #f0c060; }
   border-color: #e8a435;
 }
 
-/* ---- Global Season Selector (navbar) ---- */
+/* ---- Global League + Season Selectors (navbar) ---- */
 .navbar-season-select {
   display: inline-flex;
   align-items: center;
@@ -458,6 +458,36 @@ a:hover { color: #f0c060; }
   box-shadow: 0 0 0 2px rgba(232,164,53,0.2);
 }
 .navbar-season-select label { display: none; }
+
+/* League select. Same treatment as the season select beside it -- they are one
+   control pair -- but wider, because "Israeli League" does not fit in 90px. */
+.navbar-league-select {
+  display: inline-flex;
+  align-items: center;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+}
+.navbar-league-select .form-group { margin: 0; }
+.navbar-league-select label { display: none; }
+.navbar-league-select .form-select,
+.navbar-league-select select {
+  height: 30px; min-height: 30px;
+  width: 132px;
+  min-width: 132px;
+  max-width: 132px;
+  padding: 2px 34px 2px 10px;
+  text-align: left;
+  text-align-last: left;
+  font-size: 0.82rem; font-weight: 700;
+  background: #161b22; color: #e8a435;
+  border: 1px solid #e8a435; border-radius: 6px;
+  cursor: pointer;
+}
+.navbar-league-select .form-select:focus,
+.navbar-league-select select:focus {
+  box-shadow: 0 0 0 2px rgba(232,164,53,0.2);
+}
 
 /* ---- Tab Icon styling ---- */
 .nav-link .bi { margin-right: 5px; font-size: 0.9em; opacity: 0.7; }
@@ -973,15 +1003,6 @@ th[data-tooltip]::after { display: none; }
 .league-only-il, .league-only-el { display: none; }
 body.league-il .league-only-il { display: block; }
 body.league-el .league-only-el { display: block; }
-
-.league-switch { display: inline-flex; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; }
-.league-switch button {
-  background: transparent; border: 0; color: #8b949e; cursor: pointer;
-  font-size: .78rem; font-weight: 600; padding: 3px 10px; line-height: 1.5;
-  transition: background .15s ease, color .15s ease;
-}
-.league-switch button:hover { color: #e6edf3; background: #21262d; }
-.league-switch button.active { background: #e8a435; color: #0d1117; }
 
 .league-chooser { display: flex; gap: 16px; justify-content: center; margin-bottom: 28px; }
 .league-chooser button {

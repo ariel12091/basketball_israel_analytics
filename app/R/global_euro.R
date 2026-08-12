@@ -42,18 +42,6 @@ euro_season_label <- function(season) {
 # MV, never the base tables, so they stay valid while cold-storage-style
 # intermediate relations are empty.
 
-euro_fetch_competitions <- function() {
-  cached_ref_query(
-    key = "euro_competitions",
-    query_fun = function() db_get_query(
-      pg_pool,
-      "SELECT DISTINCT competition
-         FROM euroleague.final_schedule_mv
-        ORDER BY competition"
-    )
-  )
-}
-
 euro_fetch_seasons <- function(competition = EURO_DEFAULT_COMPETITION) {
   competition <- as.character(competition)
   cached_ref_query(
@@ -216,19 +204,16 @@ euro_data_version <- function() {
 # Phase codes are provider text; label the ones we know, pass through the rest
 # so a new phase never renders as a blank option.
 # ---------------- Shared section-level selectors ----------------
-# ONE competition + season pair for the whole EuroLeague section, living in the
-# navbar beside the Israeli season selector. Every EuroLeague tab reads
-# input$euro_competition / input$euro_game_year, so changing season once
-# changes it everywhere -- the Israeli app's global-season behaviour, scoped to
-# this league. Visibility is by league class; see app.css.
+# ONE season selector for the whole EuroLeague section, living in the navbar
+# next to the league select (navbar_league_select_ui() in global.R, which is
+# what chooses the competition). Every EuroLeague tab reads the competition
+# through euro_selected_competition() and the season through
+# input$euro_game_year, so changing either once changes it everywhere.
+# Visibility is by league class; see app.css.
 
 euro_navbar_season_ui <- function() {
   tags$div(
     class = "navbar-season-select league-nav-el",
-    selectInput("euro_competition", NULL,
-                choices = stats::setNames(EURO_DEFAULT_COMPETITION,
-                                          EURO_COMPETITION_LABELS[[EURO_DEFAULT_COMPETITION]]),
-                selected = EURO_DEFAULT_COMPETITION),
     selectInput("euro_game_year", NULL,
                 choices = stats::setNames(EURO_DEFAULT_SEASON,
                                           euro_season_label(EURO_DEFAULT_SEASON)),
@@ -236,21 +221,14 @@ euro_navbar_season_ui <- function() {
   )
 }
 
-# Populate those two from what is actually loaded. Called ONCE from app.R --
-# if each tab did this they would fight over the same inputs.
+# Populate the EuroLeague season list from what is actually loaded. Called ONCE
+# from app.R -- if each tab did this they would fight over the same input.
 euro_init_season_inputs <- function(input, session) {
-  observe({
-    comps <- tryCatch(euro_fetch_competitions(), error = function(e) NULL)
-    codes <- if (!is.null(comps) && nrow(comps)) as.character(comps$competition) else EURO_DEFAULT_COMPETITION
-    labels <- unname(EURO_COMPETITION_LABELS[codes])
-    labels[is.na(labels)] <- codes[is.na(labels)]
-    updateSelectInput(session, "euro_competition",
-                      choices = stats::setNames(codes, labels),
-                      selected = isolate(input$euro_competition) %||% EURO_DEFAULT_COMPETITION)
-  })
-
-  observeEvent(input$euro_competition, {
-    comp <- input$euro_competition %||% EURO_DEFAULT_COMPETITION
+  observeEvent(input$league_select, {
+    # Under the Israeli league the EuroLeague season select is hidden and its
+    # choices are meaningless; leave them alone rather than rebuilding them.
+    if (identical(input$league_select %||% "", "il")) return(invisible(NULL))
+    comp <- euro_selected_competition(input)
     seasons <- tryCatch(euro_fetch_seasons(comp), error = function(e) NULL)
     vals <- if (!is.null(seasons) && nrow(seasons)) as.character(seasons$game_year) else EURO_DEFAULT_SEASON
     sel <- isolate(input$euro_game_year) %||% EURO_DEFAULT_SEASON
@@ -262,9 +240,11 @@ euro_init_season_inputs <- function(input, session) {
 }
 
 # Read helpers, so no tab has to repeat the defaulting logic.
+# Under the Israeli league the EuroLeague tabs are hidden but still mounted, so
+# this must return a usable competition rather than NULL.
 euro_selected_competition <- function(input) {
-  val <- input$euro_competition %||% EURO_DEFAULT_COMPETITION
-  if (!nzchar(val)) EURO_DEFAULT_COMPETITION else as.character(val)
+  val <- input$league_select %||% EURO_DEFAULT_COMPETITION
+  if (!nzchar(val) || identical(val, "il")) EURO_DEFAULT_COMPETITION else as.character(val)
 }
 
 euro_selected_game_year <- function(input) {

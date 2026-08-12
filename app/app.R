@@ -82,6 +82,9 @@ ui <- function(request) {
     includeScript("www/app.js"),
     tags$div(
       style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
+      # League select first, then the season selector belonging to whichever
+      # league is showing -- so the pair always reads [league] [season].
+      navbar_league_select_ui(),
       # Israeli season selector. Hidden under the EuroLeague league, which
       # numbers seasons differently (provider season, not season-ending year).
       tags$div(
@@ -90,18 +93,10 @@ ui <- function(request) {
                     choices = c("25-26" = "2026", "24-25" = "2025"),
                     selected = DEFAULT_GAME_YEAR)
       ),
-      # One EuroLeague competition + season selector shared by every tab in
-      # that section, so changing season does not have to be done per tab.
+      # EuroLeague season selector; hidden under the Israeli league. Only one
+      # league's tabs are visible at a time and that filtering lives in
+      # app.js, so switching is instant and needs no round-trip.
       euro_navbar_season_ui(),
-      # League switch. Only one league's tabs are visible at a time; the
-      # filtering itself lives in app.js so switching needs no round-trip.
-      tags$div(
-        class = "league-switch",
-        tags$button(type = "button", `data-league-btn` = "il", "IL",
-                    title = "Israel Basketball Premier League"),
-        tags$button(type = "button", `data-league-btn` = "el", "EL",
-                    title = "EuroLeague")
-      ),
       actionButton("open_glossary",
                    tags$span(tags$i(class = "bi bi-book"), " Glossary"),
                    class = "btn btn-sm btn-outline-secondary nav-help-btn"),

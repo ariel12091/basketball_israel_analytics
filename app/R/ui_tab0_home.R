@@ -24,23 +24,29 @@ ui_tab0_home <- function() tabPanel(
         tags$p(
           class = "league-only-el",
           style = "color: #8b949e; font-size: .92rem; margin: 0;",
-          "EuroLeague and EuroCup on/off impact"
+          "EuroLeague and EuroCup on/off, team and lineup stats"
         )
       ),
 
-      # League chooser. Picking one filters the navbar to that league's tabs;
-      # the compact IL/EL switch in the header does the same from any tab.
+      # League chooser. Same three options as the navbar dropdown, in the same
+      # order; both write that dropdown, so there is one code path. Picking one
+      # filters the navbar to that league's tabs.
       div(
         class = "league-chooser",
+        tags$button(
+          type = "button", `data-league-btn` = "E",
+          tags$span(class = "league-chooser-name", "EuroLeague"),
+          tags$span(class = "league-chooser-sub", "On/off, team ratings, lineups, game logs")
+        ),
+        tags$button(
+          type = "button", `data-league-btn` = "U",
+          tags$span(class = "league-chooser-name", "EuroCup"),
+          tags$span(class = "league-chooser-sub", "On/off, team ratings, lineups, game logs")
+        ),
         tags$button(
           type = "button", `data-league-btn` = "il",
           tags$span(class = "league-chooser-name", "Israeli League"),
           tags$span(class = "league-chooser-sub", "Premier League — full stats suite")
-        ),
-        tags$button(
-          type = "button", `data-league-btn` = "el",
-          tags$span(class = "league-chooser-name", "EuroLeague"),
-          tags$span(class = "league-chooser-sub", "On/off impact — more views coming")
         )
       ),
 
