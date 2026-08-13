@@ -435,7 +435,10 @@ class LineupUnitWiringTest(unittest.TestCase):
             return next(i for i, s in enumerate(executed) if needle in s)
 
         fact = index_of("refresh_actions_consumer_candidates")
+        player_stats = index_of("refresh_player_stats_actions_for_games")
         clutch = index_of("refresh_default_clutch_for_games")
+        self.assertLess(fact, player_stats)
+        self.assertLess(player_stats, clutch)
         self.assertLess(fact, clutch, "default clutch reads the refreshed event fact")
 
     def test_batch_refresh_includes_default_clutch_after_the_fact(self) -> None:
@@ -445,8 +448,12 @@ class LineupUnitWiringTest(unittest.TestCase):
 
         fact = next(i for i, s in enumerate(executed)
                     if "refresh_actions_consumer_candidates" in s)
+        player_stats = next(i for i, s in enumerate(executed)
+                            if "refresh_player_stats_actions_for_games" in s)
         clutch = next(i for i, s in enumerate(executed)
                       if "refresh_default_clutch_for_games" in s)
+        self.assertLess(fact, player_stats)
+        self.assertLess(player_stats, clutch)
         self.assertLess(fact, clutch)
         self.assertEqual(connection.statements[clutch][1], ([23, 24],))
 

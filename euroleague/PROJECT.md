@@ -44,32 +44,49 @@ contract.
   windows, so clutch minutes and pace do not bridge excluded stretches.
   Regulation uses the selected time limit; overtime always qualifies unless
   the user opts into the margin/status restriction.
-- Migration 020 is implemented in the repository but **not yet applied**. It
+- Migration 020 is applied to the live `euroleague` schema (2026-08-13). It
   adds an incrementally refreshed per-game additive cache for the dominant
   standard preset (pre-event margin <= 5, final 5:00, all score states, and
   unrestricted overtime). Non-clutch requests continue to read
   `lineup_totals_by_game`; custom clutch definitions continue to use the exact
   action-level migration-019 path. Publication refreshes only changed games.
+- EuroLeague Player Stats is implemented as the shared Israeli/EuroLeague
+  Player Stats tab. Migrations 021-027 are applied to the live schema:
+  it adds `player_traditional_stats_mv` as the indexed season fast path and
+  `get_player_traditional_dynamic()` for date/team/phase/opponent/home-away/
+  outcome/opponent-strength/round/last-N/clutch filters. It reuses official
+  per-game `full_rosters.boxscore_stats` for counting totals, while TS% and
+  USG% use canonical PBP free-throw-trip, turnover, team-possession, and lineup
+  exposure facts; no duplicate player/game base table is introduced. The
+  provider has no deflection event, so EuroLeague DFL remains unavailable
+  rather than being inferred from steals or blocks.
+- Migration 022 adds the player-attributed standard-clutch cache used by the
+  Player Stats reader. It is refreshed per changed game alongside migration
+  020; custom clutch definitions remain action-grained.
+- Migration 027 adds the private, incrementally refreshed
+  `player_stats_actions_by_game` fact for custom Player Stats clutch requests.
+  It preserves the Israeli action/team-perspective grain and feeds the same
+  CTE calculation; it does not pre-aggregate basketball outcomes. The current
+  season has 548,644 rows and occupies about 229 MB including indexes.
 - All four EuroLeague tabs now render their filter chips through the Israeli
   `build_filter_chips()` rather than three hand-rolled builders, and
   `fmt_rank_cell()` is shared. This uncovered and fixed a wrong-season date
   reset on tabs 8 and 9 and a chip bar on tab 10 that showed none of the
   filters it was applying. The later Game Logs tab also uses the same filter
   and rank helpers.
-- The latest focused commit is `0ccaeaf` (`Expose EuroLeague team minutes and
-  pace`). Earlier commits in the same working window added Game Logs,
+- The latest focused commit is `b1c80c2` (`Optimize EuroLeague default clutch
+  filtering`). Earlier commits in the same working window added Game Logs,
   corrected EuroLeague auto possession minimums, aligned lineup filters and
   loading, fixed the lineup fast path, and extracted shared Israeli/EuroLeague
   tab plumbing. Unrelated worktree changes remain outside those commits.
 - The `euroleague` schema is now inside the repository-wide database security
   contract. RLS is enabled with the `app_readonly_select_all` read policy on all
-  18 base tables, `PUBLIC`/`anon`/`authenticated` hold nothing, and
+  19 base tables, `PUBLIC`/`anon`/`authenticated` hold nothing, and
   `app_readonly` has a curated relation list plus an eight-function EXECUTE
   allowlist. Applied to the live database on 2026-08-12; see the security
   section below.
-- Migrations 018 and 019 are applied to the isolated `euroleague` schema.
-  Migration 020 remains pending. Further live loads or DDL changes still
-  require explicit approval.
+- Migrations 018-027 are applied to the isolated `euroleague` schema.
+  Further live loads or DDL changes still require explicit approval.
 
 ## Project goal
 
@@ -86,6 +103,66 @@ analytics while preserving EuroLeague source semantics:
 Compatibility means comparable grains, lineup exposure, possession meaning,
 and metric formulas. It does not require copying the Israeli physical schema or
 its historical intermediate tables.
+
+## Player Stats performance reference and rules
+
+EuroLeague Player Stats migrations 021-027 are applied. The final interactive
+design shares the Israeli UI and calculation shape while retaining EuroLeague
+provider semantics:
+
+- ordinary totals use official box-score facts;
+- TS%, USG%, possession exposure, and clutch filters use canonical PBP;
+- the standard clutch preset reads its incremental per-game cache;
+- custom clutch reads the private, incrementally refreshed
+  `player_stats_actions_by_game` action/team-perspective fact;
+- custom minutes use the Israeli qualifying-action segment convention;
+- regulation and overtime are separate `UNION ALL` branches so regulation can
+  use the existing time/margin index without changing overtime behavior;
+- the app calls the standard or custom reader directly. Do not route interactive
+  custom requests through the generic PL/pgSQL selector because that boundary
+  hides filter values from the inner PostgreSQL planner.
+
+The decisive performance defect was a EuroLeague-only roster join inside the
+`stats` CTE. It compared filtered actions with the full season roster even
+though `type_lineup` already determines the relevant team perspective and the
+final names/roster join removes irrelevant rows. The Israeli function uses
+`stats FROM acts`; EuroLeague now does the same. Removing that join avoided
+roughly 66 million comparisons in the broad measured preset. Exact full-row
+parity was verified before and after both query-shape changes.
+
+Warm full-season reference timings measured on 2026-08-13 are:
+
+| Preset | Israeli 2026 | EuroLeague 2025 |
+|---|---:|---:|
+| Standard: margin <= 5, final 5:00, unrestricted OT | 0.76 s | about 0.8 s |
+| Custom: margin <= 3, final 4:00, unrestricted OT | 0.68 s | 1.68 s |
+| Custom: trailing, margin <= 7, final 2:00, filtered OT | 0.99 s | 1.00 s |
+
+Treat these as performance regression references, not guarantees across cold
+caches or different season sizes. For future Israeli-to-EuroLeague analytics:
+
+1. Compare the working Israeli function line by line before designing a new
+   EuroLeague path: source, joins, predicates, grouping keys, materialization,
+   function boundaries, and app routing all count as part of the reference.
+2. Match the Israeli execution shape wherever provider semantics allow. A CTE
+   with the same name or basketball grain is not sufficient evidence of parity.
+3. Document every EuroLeague-only join or intermediate relation and the source,
+   integrity, or queryability requirement that makes it necessary.
+4. Remove redundant work before adding caches, indexes, or new facts. In
+   particular, do not resolve roster or lineup membership per action when a
+   filtered fact or downstream identity join already provides the guarantee.
+5. Benchmark identical presets through the actual app-called function, both
+   cold and warm. Also benchmark direct inner functions when a wrapper exists;
+   nested PL/pgSQL boundaries can change parameter planning materially.
+6. Require exact full-row result parity for query-shape optimizations. Timing
+   parity alone is not a correctness gate.
+7. Inspect predicate shape before adding an index. Mixed regulation/overtime
+   `OR` conditions can defeat an otherwise appropriate compound index; prefer
+   mutually exclusive branches when they preserve the basketball semantics.
+8. Add a physical fact only after direct adaptation and plan inspection show it
+   is needed. Keep it at the narrowest established basketball grain, private
+   from the app role, incrementally refreshed per changed game, and additive or
+   reproducible rather than storing final ratios.
 
 ## End-to-end ETL
 
@@ -287,6 +364,7 @@ the Israeli two-perspective central fact.
 | `final_schedule_mv` | Indexed team-perspective schedule for app filters. |
 | `player_onoff_default_mv` | Default full-season player ON/OFF snapshot. |
 | `player_advanced_stats_mv` | Default player four-factor snapshot. |
+| `player_traditional_stats_mv` | Default official traditional player-stat snapshot; migration 021, applied. |
 | `team_game_ratings_mv` | One row per game and team; therefore two team rows per game. |
 | `team_ppp_ratings_mv` | Season team ratings calculated from summed points and possessions. |
 | `team_four_factors_mv` | Default team four-factor snapshot. |
@@ -740,15 +818,23 @@ All 79 EuroLeague Python tests pass, including the 31-test focused
 migration-020 schema/backend suite. The focused EuroLeague clutch/lineup R tests
 pass, and all changed R files parse.
 
-Migration 020 is repository-only as of 2026-08-13. It creates
+Migration 020 was applied to the live `euroleague` schema on 2026-08-13 and
+committed as `b1c80c2`. It creates
 `default_clutch_lineup_totals_by_game`, backfills it from the exact
 `clutch_team_game_facts(..., 5, 'all', 300, false)` result, and wires both the
 per-game and grouped publication paths to refresh changed games after the
 canonical action consumers. `select_team_game_facts()` uses explicit branches
 so the standard preset cannot accidentally fall through to the dynamic path.
-Its apply script checks bidirectional row parity and reports median cached and
-dynamic timings. The script has not been run against PostgreSQL because live
-DDL still requires explicit approval.
+The cache contains 4,433 rows and matches the full dynamic calculation exactly
+(4,433 rows; no missing or extra rows).
+
+The first apply attempts appeared stalled because the verification script
+recomputed the full-season dynamic clutch query for parity and then repeated it
+for the benchmark. The DDL had already committed successfully; the apparent
+timeout was verification cost, not a database lock or migration failure. The
+repository security audit still needs to be rerun successfully: the R wrapper
+failed with `bad_weak_ptr` while connecting, so no security conclusion should
+be inferred from that failed audit attempt.
 
 Migration 019 was applied transactionally to the live `euroleague` schema on
 2026-08-12 via `scripts/apply_019_clutch_read_layer.py`, which validates the
@@ -908,12 +994,42 @@ Migration order is:
 
 ```text
 001 -> 002 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012
-  -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020
+  -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020 -> 021 -> 022
+  -> 023 -> 024 -> 025 -> 026 -> 027
 ```
 
 Migration 003 is superseded by 004 and must not be applied.
-Migration 020 is the repository head but is not yet applied to the recorded
-live schema.
+Migrations 020 through 024 are applied to the recorded live schema as of
+2026-08-13. Migrations 023-024 give Player Stats the same explicit cached/custom
+source-selection design as the team reader. Measured full-season latency was
+0.77 seconds for the standard preset, 28.54 seconds for margin <= 3/final 4:00,
+and 9.55 seconds for trailing/margin <= 7/final 2:00; standard-cache parity was
+exact.
+Migration 025 is applied with the shared Israeli-style custom-clutch duration
+convention across player, team, and lineup readers. Standard clutch remains on
+the exact precomputed cache; custom event counts and possessions remain exact.
+Full-season Player Stats timings improved from 28.54 to 23.21 seconds for
+margin <= 3/final 4:00 and from 9.55 to 8.47 seconds for trailing/margin <= 7/
+final 2:00. Remaining custom-query cost is primarily event aggregation.
+Migration 026 is applied and directly mirrors the Israeli Player Stats CTE
+shape from one filtered action set (`lineup_map`, possession endpoints, player
+usage, team possessions, segment time, player minutes, stats, and team usage).
+Migration 027 is also applied. It stores only the narrow action/team fields
+needed by that calculation, keeps the same action grain, and is refreshed per
+changed game. Explicitly materializing the shared downstream CTE grains avoids
+PostgreSQL recomputing them per player. The migration-026 function was then
+reapplied with the Israeli `stats FROM acts` shape: `type_lineup` already
+selects the actor's correct team perspective, and the final roster/name join
+removes zero-valued opposite-perspective rows. Removing the redundant
+action-to-season-roster join eliminated roughly 66 million comparisons in the
+broad preset. Regulation and overtime are separate mutually exclusive branches
+so the existing time/margin index is usable without changing overtime
+semantics. The app calls the standard and custom functions directly because
+routing a custom request through the generic PL/pgSQL selector hid the actual
+filter values from the inner planner. Exact full-row parity was verified for
+both measured custom presets. Direct live timings are about 0.8 seconds for
+standard clutch, 1.7 seconds for margin <= 3/final 4:00, and 1.0 second for
+trailing/margin <= 7/final 2:00, comparable to the Israeli reference.
 
 After applying any migration, re-run the security pass from the repository root
 (see the security section above for why this is not optional):

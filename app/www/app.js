@@ -898,7 +898,7 @@
 (function() {
   var TAB_LEAGUE = {
     onoff: "il", lineup_data: "il", team_ratings: "il",
-    game_logs: "il", traditional_stats: "il", compare: "il",
+    game_logs: "il", compare: "il",
     euro: "el", euro_team: "el", euro_lineups: "el", euro_game_logs: "el"
   };
   var STORE_KEY = "ibpl_league_select";

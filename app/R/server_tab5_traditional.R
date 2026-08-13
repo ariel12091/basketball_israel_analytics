@@ -269,7 +269,11 @@ filter_ts_players <- function(df, selected_player_keys, lookup = NULL) {
 # summed counts; USG% is a possession-weighted average of the component values.
 build_ts_total_row <- function(rows, identity_id, display_name = NULL) {
   if (is.null(rows) || !nrow(rows)) return(NULL)
-  s <- function(col) if (col %in% names(rows)) sum(suppressWarnings(as.numeric(rows[[col]])), na.rm = TRUE) else NA_real_
+  s <- function(col) {
+    if (!col %in% names(rows)) return(NA_real_)
+    values <- suppressWarnings(as.numeric(rows[[col]]))
+    if (all(is.na(values))) NA_real_ else sum(values, na.rm = TRUE)
+  }
   pct <- function(n, d) if (is.finite(n) && is.finite(d) && d > 0) round(n / d * 100, 1) else NA_real_
 
   # Summed counting stats, then derived two-point and percentage columns.
@@ -420,6 +424,34 @@ server_tab5_traditional <- function(input, output, session, shared) {
   # engages; below this everyone is shown (small/filtered result sets).
   TS_RATE_MIN_N <- 120L
 
+  # Player Stats is one shared tab for both league sections. The presentation
+  # and post-processing stay identical; this small adapter owns only the
+  # league-specific selector, reference, and SQL contracts.
+  ts_is_euro <- reactive(!identical(input$league_select %||% "il", "il"))
+  ts_competition <- reactive(euro_selected_competition(input))
+  ts_game_year <- reactive({
+    value <- if (ts_is_euro()) euro_selected_game_year(input) else input$game_year
+    value <- suppressWarnings(as.integer(value))
+    if (length(value) != 1L || !is.finite(value)) {
+      value <- if (ts_is_euro()) as.integer(EURO_DEFAULT_SEASON) else as.integer(DEFAULT_GAME_YEAR)
+    }
+    value
+  })
+  ts_season_bounds <- function(game_year = ts_game_year()) {
+    if (ts_is_euro()) euro_season_date_bounds(game_year)
+    else shared$season_date_bounds(game_year)
+  }
+  ts_game_type_value <- reactive({
+    if (ts_is_euro()) input$ts_phase else input$ts_game_type
+  })
+
+  output$ts_game_context_filters <- renderUI({
+    descriptor <- game_context_descriptor(
+      "ts", if (ts_is_euro()) "euroleague" else "israel"
+    )
+    game_context_filters_from_descriptor(descriptor)
+  })
+
   clean_ts_rows <- function(df) {
     if (is.null(df) || !nrow(df)) return(df)
     df %>%
@@ -484,6 +516,24 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   ts_stat_filters <- reactiveVal(list())
   ts_stat_filter_next_id <- reactiveVal(1L)
+  ts_previous_league <- reactiveVal(NULL)
+
+  observeEvent(input$league_select, {
+    current <- input$league_select %||% "il"
+    previous <- ts_previous_league()
+    ts_previous_league(current)
+    if (is.null(previous) || identical(previous, current)) return(invisible(NULL))
+
+    # Numeric team/player ids are league-local. Never carry a coincidentally
+    # equal id across the navbar league switch.
+    updateSelectizeInput(session, "ts_teams", selected = character(0))
+    updateSelectizeInput(session, "ts_players", selected = character(0))
+    updateSelectizeInput(session, "ts_opponents", selected = character(0))
+    updateSelectInput(session, "ts_home_away", selected = "")
+    updateSelectInput(session, "ts_outcome", selected = "")
+    reset_opp_rank_inputs(session, "ts")
+    reset_gn_last_n_inputs(session, "ts")
+  }, ignoreInit = FALSE)
 
   selected_team_ids_now <- function() {
     ids <- suppressWarnings(as.integer(input$ts_teams %||% character(0)))
@@ -492,7 +542,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   }
 
   refresh_ts_player_choices <- function() {
-    gy_int <- suppressWarnings(as.integer(input$game_year))
+    gy_int <- suppressWarnings(as.integer(ts_game_year()))
     lk <- if (length(gy_int) && is.finite(gy_int)) load_ts_identity_lookup(gy_int) else NULL
     choices <- ts_player_choices(ts_ref$players, ts_ref$teams, selected_team_ids_now(), lookup = lk)
     selected <- restore_aware_selection(
@@ -503,12 +553,17 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
   # ignoreInit = FALSE: a restored session lands here with the tab already
   # selected, and the restore bridges below only run inside this observer.
-  observeEvent(list(input$main_tabs, input$game_year), ignoreInit = FALSE, {
+  observeEvent(list(input$main_tabs, input$league_select, input$game_year,
+                    input$euro_game_year), ignoreInit = FALSE, {
     if (!identical(input$main_tabs, "traditional_stats")) return(NULL)
-    gy_int <- as.integer(input$game_year)
+    gy_int <- ts_game_year()
     req(gy_int)
 
-    teams_df <- fetch_teams_distinct(gy_int)
+    teams_df <- if (ts_is_euro()) {
+      euro_fetch_teams(ts_competition(), gy_int)
+    } else {
+      fetch_teams_distinct(gy_int)
+    }
     ts_ref$teams <- teams_df
     team_choices <- stats::setNames(as.character(teams_df$team_id), as.character(teams_df$team_name))
     updateSelectizeInput(
@@ -528,37 +583,59 @@ server_tab5_traditional <- function(input, output, session, shared) {
       server = TRUE
     )
 
-    players_df <- cached_ref_query(
-      key = sprintf("ts_players_%d", gy_int),
-      query_fun = function() {
-        db_get_query(
-          pg_pool,
-          "SELECT
-             fr.team_id,
-             fr.player_id,
-             MIN(btrim(fr.team_name)) AS team_name,
-             MIN(NULLIF(btrim(CONCAT_WS(' ', fr.firstname, fr.lastname)), '')) AS player_name
-           FROM basketball_test.full_rosters fr
-           WHERE fr.game_year = $1
-             AND fr.player_id IS NOT NULL
-             AND fr.player_id > 0
-           GROUP BY fr.team_id, fr.player_id
-           HAVING MIN(NULLIF(btrim(CONCAT_WS(' ', fr.firstname, fr.lastname)), '')) IS NOT NULL
-           ORDER BY player_name, team_name",
-          params = list(gy_int)
-        )
-      }
-    )
+    players_df <- if (ts_is_euro()) {
+      ep <- euro_fetch_players_basic(ts_competition(), gy_int)
+      ep$team_name <- unname(stats::setNames(
+        as.character(teams_df$team_name), as.character(teams_df$team_id)
+      )[as.character(ep$team_id)])
+      ep
+    } else {
+      cached_ref_query(
+        key = sprintf("ts_players_%d", gy_int),
+        query_fun = function() {
+          db_get_query(
+            pg_pool,
+            "SELECT
+               fr.team_id,
+               fr.player_id,
+               MIN(btrim(fr.team_name)) AS team_name,
+               MIN(NULLIF(btrim(CONCAT_WS(' ', fr.firstname, fr.lastname)), '')) AS player_name
+             FROM basketball_test.full_rosters fr
+             WHERE fr.game_year = $1
+               AND fr.player_id IS NOT NULL
+               AND fr.player_id > 0
+             GROUP BY fr.team_id, fr.player_id
+             HAVING MIN(NULLIF(btrim(CONCAT_WS(' ', fr.firstname, fr.lastname)), '')) IS NOT NULL
+             ORDER BY player_name, team_name",
+            params = list(gy_int)
+          )
+        }
+      )
+    }
     ts_ref$players <- players_df
     refresh_ts_player_choices()
 
-    gn_df <- fetch_gn_values(gy_int)
+    if (ts_is_euro()) {
+      updateSelectizeInput(
+        session, "ts_phase",
+        choices = euro_phase_choices(ts_competition(), gy_int),
+        selected = restore_aware_selection(
+          session, "ts_phase", isolate(input$ts_phase),
+          euro_phase_choices(ts_competition(), gy_int)
+        )
+      )
+    }
+    gn_df <- if (ts_is_euro()) {
+      euro_fetch_round_values(ts_competition(), gy_int)
+    } else {
+      fetch_gn_values(gy_int)
+    }
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)
     update_gn_last_n_choices(session, "ts", gn_vals)
   })
 
-  observeEvent(input$game_year, {
-    b <- shared$season_date_bounds(input$game_year)
+  observeEvent(list(input$league_select, input$game_year, input$euro_game_year), {
+    b <- ts_season_bounds()
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
   }, ignoreInit = FALSE)
 
@@ -572,11 +649,12 @@ server_tab5_traditional <- function(input, output, session, shared) {
   }, ignoreInit = TRUE, ignoreNULL = FALSE)
 
   observeEvent(input$ts_reset, {
-    b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
+    b <- ts_season_bounds()
     updateDateRangeInput(session, "ts_dates", start = b$start, end = b$end, min = b$start, max = b$end)
     updateSelectizeInput(session, "ts_teams", selected = character(0))
     updateSelectizeInput(session, "ts_players", selected = character(0))
-    updateSelectizeInput(session, "ts_game_type", selected = character(0))
+    updateSelectizeInput(session, if (ts_is_euro()) "ts_phase" else "ts_game_type",
+                         selected = character(0))
     updateSelectizeInput(session, "ts_opponents", selected = character(0))
     updateSelectInput(session, "ts_home_away", selected = "")
     updateSelectInput(session, "ts_outcome", selected = "")
@@ -708,7 +786,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
   debounced_teams <- reactive(input$ts_teams) %>% debounce(300)
   debounced_players <- reactive(input$ts_players) %>% debounce(150)
   debounced_ts_filters <- reactive(list(
-    game_type = input$ts_game_type,
+    game_type = ts_game_type_value(),
     opp_ids = input$ts_opponents,
     home_away = input$ts_home_away,
     outcome = input$ts_outcome,
@@ -753,7 +831,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     list(
       team_ids_csv = csv_if_any(tids, integerize = TRUE),
-      game_type_csv = csv_if_any(f$game_type, integerize = TRUE),
+      game_type_csv = csv_if_any(f$game_type, integerize = !ts_is_euro()),
       opp_ids_csv = csv_if_any(opp_ids, integerize = TRUE),
       opp_rank_side = blank_to_na_character(f$rank_side),
       opp_rank_n = blank_to_na_integer(f$rank_n),
@@ -813,6 +891,92 @@ server_tab5_traditional <- function(input, output, session, shared) {
     )
   }
 
+  run_euro_player_traditional_dynamic <- function(pool, competition, game_year,
+                                                   start_d, end_d,
+                                                   team_ids_csv, phase_csv, opp_ids_csv,
+                                                   home_away, outcome,
+                                                   opp_rank_side, opp_rank_n, opp_rank_metric,
+                                                   max_margin, margin_status,
+                                                   max_time_remaining, ot_margin_filter,
+                                                   min_gn, max_gn, last_n_games) {
+    allowed <- guard_heavy_request(
+      session, key = "tab5_euro_player_traditional",
+      start_d = start_d, end_d = end_d,
+      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
+    has_int_value <- function(x) {
+      x <- suppressWarnings(as.integer(x))
+      length(x) == 1L && is.finite(x)
+    }
+    margin_status_value <- blank_to_na_character(margin_status)
+    clutch_active <- has_int_value(max_margin) || has_int_value(max_time_remaining) ||
+      (length(margin_status_value) == 1L && !is.na(margin_status_value) &&
+         nzchar(margin_status_value))
+    if (isTRUE(clutch_active)) {
+      standard_clutch <- identical(suppressWarnings(as.integer(max_margin)), 5L) &&
+        identical(margin_status_value %||% "all", "all") &&
+        identical(suppressWarnings(as.integer(max_time_remaining)), 300L) &&
+        !isTRUE(ot_margin_filter)
+      if (isTRUE(standard_clutch)) {
+        return(db_get_query(
+          pool,
+          paste0(
+            "SELECT * FROM euroleague.get_player_traditional_standard_clutch(",
+            "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+            "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+            "$13::int4,$14::int4,$15::int4)"
+          ),
+          params = list(
+            competition, as.integer(game_year),
+            if (!is.na(start_d)) as.Date(start_d) else NA,
+            if (!is.na(end_d)) as.Date(end_d) else NA,
+            team_ids_csv, phase_csv, opp_ids_csv, home_away, outcome,
+            opp_rank_side, opp_rank_n, opp_rank_metric,
+            min_gn, max_gn, last_n_games
+          )
+        ))
+      }
+      return(db_get_query(
+        pool,
+        paste0(
+          "SELECT * FROM euroleague.get_player_traditional_custom_clutch(",
+          "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+          "$8::text,$9::text,$10::text,$11::int4,$12::text,$13::int4,",
+          "$14::text,$15::int4,$16::bool,$17::int4,$18::int4,$19::int4)"
+        ),
+        params = list(
+          competition, as.integer(game_year),
+          if (!is.na(start_d)) as.Date(start_d) else NA,
+          if (!is.na(end_d)) as.Date(end_d) else NA,
+          team_ids_csv, phase_csv, opp_ids_csv, home_away, outcome,
+          opp_rank_side, opp_rank_n, opp_rank_metric,
+          max_margin, margin_status, max_time_remaining, ot_margin_filter,
+          min_gn, max_gn, last_n_games
+        )
+      ))
+    }
+    db_get_query(
+      pool,
+      paste0(
+        "SELECT * FROM euroleague.get_player_traditional_dynamic(",
+        "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+        "$8::text,$9::text,$10::text,$11::int4,$12::text,$13::int4,",
+        "$14::text,$15::int4,$16::bool,$17::int4,$18::int4,$19::int4)"
+      ),
+      params = list(
+        competition, as.integer(game_year),
+        if (!is.na(start_d)) as.Date(start_d) else NA,
+        if (!is.na(end_d)) as.Date(end_d) else NA,
+        team_ids_csv, phase_csv, opp_ids_csv, home_away, outcome,
+        opp_rank_side, opp_rank_n, opp_rank_metric,
+        max_margin, margin_status, max_time_remaining, ot_margin_filter,
+        min_gn, max_gn, last_n_games
+      )
+    )
+  }
+
   fallback_needed <- reactive({
     rng <- debounced_range()
     if (is.null(rng)) return(FALSE)
@@ -821,8 +985,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
     end_d <- as.Date(rng[2])
     if (is.na(start_d) || is.na(end_d)) return(FALSE)
 
-    gy <- as.integer(input$game_year)
-    season_bounds <- shared$season_date_bounds(gy)
+    gy <- ts_game_year()
+    season_bounds <- ts_season_bounds(gy)
     date_changed <- (start_d != season_bounds$start) || (end_d != season_bounds$end)
 
     f <- debounced_ts_filters()
@@ -842,25 +1006,38 @@ server_tab5_traditional <- function(input, output, session, shared) {
     date_changed || extra_filters || gn_active || gn_raw_active
   })
 
-  ts_data_version <- reactive(shared_data_version(shared))
+  ts_data_version <- reactive({
+    if (ts_is_euro()) euro_data_version() else shared_data_version(shared)
+  })
 
   mv_result_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
-    gy_int <- as.integer(input$game_year)
+    gy_int <- ts_game_year()
     req(gy_int)
 
     # Raw season pull shared across sessions; per-session filters run below.
     out <- cached_season_df(
-      list("player_traditional_stats_mv", gy_int, ts_data_version()),
+      list(if (ts_is_euro()) "euro_player_traditional_stats_mv" else "player_traditional_stats_mv",
+           ts_competition(), gy_int, ts_data_version()),
       function() {
         raw <- tryCatch(
-          db_get_query(
-            pg_pool,
-            "SELECT *
-             FROM basketball_test.player_traditional_stats_mv
-             WHERE game_year = $1",
-            params = list(gy_int)
-          ),
+          if (ts_is_euro()) {
+            db_get_query(
+              pg_pool,
+              "SELECT *
+                 FROM euroleague.player_traditional_stats_mv
+                WHERE competition = $1::text AND game_year = $2::int4",
+              params = list(ts_competition(), gy_int)
+            )
+          } else {
+            db_get_query(
+              pg_pool,
+              "SELECT *
+                 FROM basketball_test.player_traditional_stats_mv
+                WHERE game_year = $1",
+              params = list(gy_int)
+            )
+          },
           error = function(e) NULL
         )
         if (is.null(raw)) return(NULL)
@@ -879,12 +1056,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
       add_ts_two_point_stats() %>%
       add_ts_usage_pct() %>%
       arrange(desc(pts), desc(minutes), team_name, Player)
-  }) %>% bindEvent(input$main_tabs, input$game_year, debounced_teams())
+  }) %>% bindEvent(input$main_tabs, input$league_select, input$game_year,
+                   input$euro_game_year, debounced_teams())
 
   live_result_df <- reactive({
     req(identical(input$main_tabs, "traditional_stats"))
 
-    gy_int <- as.integer(input$game_year)
+    gy_int <- ts_game_year()
     req(gy_int)
     rng <- debounced_range()
     req(rng)
@@ -893,27 +1071,43 @@ server_tab5_traditional <- function(input, output, session, shared) {
     db_args <- build_ts_db_args()
 
     out <- tryCatch(
-      run_player_traditional_dynamic(
-        pg_pool,
-        game_year = gy_int,
-        start_d = as.Date(rng[1]),
-        end_d = as.Date(rng[2]),
-        team_ids_csv = db_args$team_ids_csv,
-        game_type_csv = db_args$game_type_csv,
-        opp_ids_csv = db_args$opp_ids_csv,
-        home_away = db_args$home_away,
-        outcome = db_args$outcome,
-        opp_rank_side = db_args$opp_rank_side,
-        opp_rank_n = db_args$opp_rank_n,
-        opp_rank_metric = db_args$opp_rank_metric,
-        max_margin = db_args$max_margin,
-        margin_status = db_args$margin_status,
-        max_time_remaining = db_args$max_time_remaining,
-        ot_margin_filter = db_args$ot_margin_filter,
-        min_gn = db_args$min_gn,
-        max_gn = db_args$max_gn,
-        last_n_games = db_args$last_n_games
-      ),
+      if (ts_is_euro()) {
+        run_euro_player_traditional_dynamic(
+          pg_pool, competition = ts_competition(), game_year = gy_int,
+          start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+          team_ids_csv = db_args$team_ids_csv,
+          phase_csv = db_args$game_type_csv,
+          opp_ids_csv = db_args$opp_ids_csv,
+          home_away = db_args$home_away, outcome = db_args$outcome,
+          opp_rank_side = db_args$opp_rank_side,
+          opp_rank_n = db_args$opp_rank_n,
+          opp_rank_metric = db_args$opp_rank_metric,
+          max_margin = db_args$max_margin,
+          margin_status = db_args$margin_status,
+          max_time_remaining = db_args$max_time_remaining,
+          ot_margin_filter = db_args$ot_margin_filter,
+          min_gn = db_args$min_gn, max_gn = db_args$max_gn,
+          last_n_games = db_args$last_n_games
+        )
+      } else {
+        run_player_traditional_dynamic(
+          pg_pool, game_year = gy_int,
+          start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+          team_ids_csv = db_args$team_ids_csv,
+          game_type_csv = db_args$game_type_csv,
+          opp_ids_csv = db_args$opp_ids_csv,
+          home_away = db_args$home_away, outcome = db_args$outcome,
+          opp_rank_side = db_args$opp_rank_side,
+          opp_rank_n = db_args$opp_rank_n,
+          opp_rank_metric = db_args$opp_rank_metric,
+          max_margin = db_args$max_margin,
+          margin_status = db_args$margin_status,
+          max_time_remaining = db_args$max_time_remaining,
+          ot_margin_filter = db_args$ot_margin_filter,
+          min_gn = db_args$min_gn, max_gn = db_args$max_gn,
+          last_n_games = db_args$last_n_games
+        )
+      },
       error = function(e) NULL
     )
 
@@ -927,7 +1121,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
       arrange(desc(pts), desc(minutes), team_name, Player)
     }) %>% bindEvent(
     input$main_tabs,
+    input$league_select,
     input$game_year,
+    input$euro_game_year,
     debounced_range(),
     debounced_teams(),
     debounced_ts_filters(),
@@ -939,6 +1135,28 @@ server_tab5_traditional <- function(input, output, session, shared) {
   # results carry provider (source) player ids. Ambiguous (team, player) pairs
   # that resolve to more than one identity are dropped (fail-safe).
   load_ts_identity_lookup <- function(gy_int) {
+    if (ts_is_euro()) {
+      raw <- tryCatch(
+        cached_ref_query(
+          key = sprintf("euro_ts_identity_%s_%d", ts_competition(), gy_int),
+          query_fun = function() db_get_query(
+            pg_pool,
+            "SELECT DISTINCT fr.team_id, fr.player_id,
+                    fr.player_id::text AS identity_id,
+                    euroleague.person_display_name(p.display_name) AS display_name
+               FROM euroleague.full_rosters fr
+               JOIN euroleague.players p ON p.player_id = fr.player_id
+               JOIN euroleague.schedule s ON s.game_id = fr.game_id
+              WHERE s.competition = $1::text AND s.season = $2::int4
+                AND lower(p.provider_player_id) NOT IN ('team', 'total')",
+            params = list(ts_competition(), as.integer(gy_int))
+          )
+        ),
+        error = function(e) NULL
+      )
+      if (is.null(raw)) return(data.frame())
+      return(raw)
+    }
     raw <- tryCatch(
       cached_ref_query(
         key = sprintf("ts_identity_%d", gy_int),
@@ -985,12 +1203,14 @@ server_tab5_traditional <- function(input, output, session, shared) {
       if (!is.null(mv_df)) df <- mv_df
     }
     if (is.null(df)) df <- live_result_df()
-    gy_int <- as.integer(input$game_year)
+    gy_int <- ts_game_year()
     lookup <- if (is.finite(gy_int)) load_ts_identity_lookup(gy_int) else data.frame()
     add_ts_multi_team_totals(df, lookup)
   }) %>% bindEvent(
     input$main_tabs,
+    input$league_select,
     input$game_year,
+    input$euro_game_year,
     debounced_range(),
     debounced_teams(),
     debounced_ts_filters(),
@@ -1101,7 +1321,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
 
     # Narrow the displayed rows (player selection, then Min GP). The pr_* columns
     # are already baked in from the full population, so these only hide rows.
-    gy_int <- suppressWarnings(as.integer(input$game_year))
+    gy_int <- suppressWarnings(as.integer(ts_game_year()))
     lookup <- if (is.finite(gy_int)) load_ts_identity_lookup(gy_int) else data.frame()
     df <- filter_ts_players(df, debounced_players(), lookup)
     if (is.null(df) || !nrow(df)) {
@@ -1205,6 +1425,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         `.eligible_rate` = coalesce(rate_eligible, TRUE),
         `.is_total` = coalesce(is_multi_team_total, FALSE)
       )
+    if (ts_is_euro()) disp$DFL <- NULL
     # Surface the player's real accumulated base for the mode (Total Min in
     # minutes modes, Total Poss otherwise), since rate modes normalize the
     # per-rate column to a constant and hide the actual sample size.
@@ -1235,14 +1456,21 @@ server_tab5_traditional <- function(input, output, session, shared) {
       extensions = c("Buttons", "ColReorder"),
       options = list(
         headerCallback = HEADER_TOOLTIP_JS,
-        initComplete = dt_col_order_init_callback("ts_visible_col_order", "onoff.ts.visible_col_order.v1"),
+        initComplete = dt_col_order_init_callback(
+          "ts_visible_col_order",
+          if (ts_is_euro()) "onoff.euro.ts.visible_col_order.v1" else "onoff.ts.visible_col_order.v1"
+        ),
         colReorder = TRUE,
         dom = "Btip",
         buttons = list(
           list(
             extend = "csv",
             text = "Download CSV",
-            filename = sprintf("traditional_player_stats_%s", csv_export_stamp()),
+            filename = sprintf(
+              "%s_player_stats_%s",
+              if (ts_is_euro()) "euroleague" else "israeli_league",
+              csv_export_stamp()
+            ),
             exportOptions = list(columns = ":visible", stripHtml = TRUE)
           )
         ),
@@ -1308,6 +1536,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       NULL
     }
     stat_filter_choices <- names(TS_FILTERABLE_COLS)
+    if (ts_is_euro()) stat_filter_choices <- setdiff(stat_filter_choices, "DFL")
     if (identical(input$ts_display_mode %||% "Per Game", "Totals")) {
       stat_filter_choices <- setdiff(stat_filter_choices, "Total Poss")
     }
@@ -1332,7 +1561,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     player_chips <- list()
     selected_players <- input$ts_players %||% character(0)
     if (length(selected_players)) {
-      gy_int <- suppressWarnings(as.integer(input$game_year))
+      gy_int <- suppressWarnings(as.integer(ts_game_year()))
       lk <- if (length(gy_int) && is.finite(gy_int)) load_ts_identity_lookup(gy_int) else NULL
       choice_map <- ts_player_choices(ts_ref$players, ts_ref$teams, lookup = lk)
       label_map <- stats::setNames(names(choice_map), unname(choice_map))
@@ -1387,21 +1616,32 @@ server_tab5_traditional <- function(input, output, session, shared) {
     build_filter_chips(
       "ts",
       input,
-      shared$season_date_bounds,
+      ts_season_bounds,
       reset_btn_id = "ts_reset",
       team_label_map = team_map,
       opponent_label_map = team_map,
+      season_value = ts_game_year(),
+      season_label = if (ts_is_euro()) {
+        paste(EURO_COMPETITION_LABELS[[ts_competition()]] %||% ts_competition(),
+              euro_season_label(ts_game_year()))
+      } else NULL,
+      game_type_input_id = if (ts_is_euro()) "ts_phase" else "ts_game_type",
+      game_type_labeller = if (ts_is_euro()) euro_phase_label else identity,
+      gn_label = if (ts_is_euro()) "Rd" else "GN",
       extra_children = c(player_chips, stat_chips, list(add_btn))
     )
   })
   setup_chip_clears("ts", session, input, shared,
-    game_type_id = "ts_game_type", opponents_id = "ts_opponents",
+    game_type_id = function() if (ts_is_euro()) "ts_phase" else "ts_game_type",
+    opponents_id = "ts_opponents",
     home_away_id = "ts_home_away", outcome_id = "ts_outcome",
     gn_min_id = "ts_gn_min", gn_max_id = "ts_gn_max", last_n_id = "ts_last_n",
     opp_rank_ids = c("ts_opp_rank_side", "ts_opp_rank_n", "ts_opp_rank_metric"),
     date_id = "ts_dates", gy_input_id = "game_year",
     teams_ids = "ts_teams",
-    clutch_enabled_id = "ts_clutch_enabled")
+    clutch_enabled_id = "ts_clutch_enabled",
+    bounds_fn = ts_season_bounds,
+    season_value_fn = ts_game_year)
 }
 
 

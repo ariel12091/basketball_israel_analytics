@@ -53,7 +53,7 @@ ui_tab5_traditional <- function() tabPanel(
           ),
           tags$hr(),
           accordion_toggle_link(),
-          game_context_filters_ui("ts", opp_rank_blank_label = "-")
+          uiOutput("ts_game_context_filters")
         )
       ),
       mainPanel(
@@ -63,7 +63,7 @@ ui_tab5_traditional <- function() tabPanel(
           title = "What This Tab Answers",
           intro = "How do players produce in traditional box-score terms under your selected game filters?",
           bullets = c(
-            "Each row shows Team, Player, GP, Poss on Floor, MIN, PTS, REB, OREB, DREB, AST, STL, BLK, DFL, TOV, FGM, FGA, FG%, 2PM, 2PA, 2P%, 3PM, 3PA, 3P%, FTM, FTA, FT%, eFG%, TS%, and USG%. Non-total modes also show Total Poss from the totals-mode possession count.",
+            "Each row shows Team, Player, GP, Poss on Floor, MIN, scoring, rebounding, playmaking, defensive events, shooting splits, eFG%, TS%, and USG%. Non-total modes also show Total Poss from the totals-mode possession count.",
             "Use MIN, Poss on Floor, and Total Poss where shown as context \u2014 high counting stats on low minutes may signal efficiency, while low stats on high minutes may signal a role player.",
             "FG%, 2P%, 3P%, FT%, eFG%, TS%, and USG% let you compare scoring efficiency and role alongside volume \u2014 heat colors show where each stat ranks league-wide."
           )
@@ -77,7 +77,7 @@ ui_tab5_traditional <- function() tabPanel(
         ),
         div(
           id = "traditional-example-box",
-          class = "collapse example-wrapper",
+          class = "collapse example-wrapper league-only-il",
           div(
             class = "example-grid",
             div(

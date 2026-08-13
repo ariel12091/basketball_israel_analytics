@@ -49,5 +49,18 @@ summary <- as.data.frame(
 names(summary) <- c("violation", "count")
 
 print(summary, row.names = FALSE)
+
+# Counts alone are not actionable from a CI log: the fix depends on which
+# object drifted. Print the rows, bounded so a schema-wide regression cannot
+# bury the summary above.
+max_rows <- 100L
+detail <- violations[order(violations$violation, violations$object_name), ]
+cat("\n")
+print(utils::head(detail, max_rows), row.names = FALSE)
+if (nrow(detail) > max_rows) {
+  message("... ", nrow(detail) - max_rows, " further violation(s) not shown.")
+}
+
 message("Database security audit failed with ", nrow(violations), " violation(s).")
+message("Fix with: CONFIRM_DB_SECURITY_APPLY=1 Rscript scripts/apply_db_security.R")
 quit(save = "no", status = 1L)

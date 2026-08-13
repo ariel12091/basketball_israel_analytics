@@ -250,7 +250,7 @@ test_that("GN and last-N rebuilds seed from the bookmark once, then clear", {
 test_that("tab observers that own restore bridges run on the initial flush", {
   # server_tab3.R writes the pair in the opposite order; either is fine.
   for (f in c("server_tab2.R", "server_tab3.R", "server_tab4.R",
-              "server_tab5_traditional.R", "server_tab7_compare.R")) {
+              "server_tab7_compare.R")) {
     txt <- read_repo_txt("R", f)
     expect_match(
       txt,
@@ -258,6 +258,16 @@ test_that("tab observers that own restore bridges run on the initial flush", {
       info = f, all = FALSE
     )
   }
+
+  # Player Stats is shared by both league sections, so its initial bridge also
+  # listens to the league and the two league-specific season selectors.
+  txt <- read_repo_txt("R", "server_tab5_traditional.R")
+  expect_match(
+    txt,
+    "observeEvent(list(input$main_tabs, input$league_select, input$game_year,",
+    fixed = TRUE
+  )
+  expect_match(txt, "input$euro_game_year), ignoreInit = FALSE", fixed = TRUE)
 })
 
 test_that("compare restores its player pair and lineup filter", {

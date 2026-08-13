@@ -395,6 +395,8 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         # final-five-minutes clutch preset. Rebuilt per changed game inside
         # the same publication transaction as the other derived facts.
         "default_clutch_lineup_totals_by_game",
+        "default_clutch_player_totals_by_game",
+        "player_stats_actions_by_game",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
@@ -634,7 +636,9 @@ def refresh_derived_for_games(connection: Any, game_ids: Sequence[int]) -> None:
         cursor.execute("BEGIN")
         for function_name in (
             "refresh_actions_consumer_candidates",
+            "refresh_player_stats_actions_for_games",
             "refresh_default_clutch_for_games",
+            "refresh_default_clutch_player_for_games",
             "refresh_player_four_factors_by_game_for_games",
             "refresh_team_four_factors_by_game_for_games",
             "refresh_lineup_totals_by_game",
@@ -978,11 +982,23 @@ class PostgresTransactionBackend:
                 (game_id,),
             )
             cursor.fetchone()
+            cursor.execute(
+                "SELECT euroleague.refresh_player_stats_actions_for_games("
+                "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
             # Default-clutch cache (migration 020). It reads the canonical
             # event/team fact and exact matchup segments, so it must be rebuilt
             # after refresh_actions_consumer_candidates and before commit.
             cursor.execute(
                 "SELECT euroleague.refresh_default_clutch_for_games("
+                "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
+            cursor.execute(
+                "SELECT euroleague.refresh_default_clutch_player_for_games("
                 "ARRAY[%s]::bigint[])",
                 (game_id,),
             )

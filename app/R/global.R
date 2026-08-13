@@ -1056,13 +1056,14 @@ setup_chip_clears <- function(prefix, session, input, shared,
                               date_id, gy_input_id,
                               teams_ids = NULL, starters_ids = NULL,
                               clutch_enabled_id = NULL, bounds_fn = NULL,
-                              teams_multiple = NULL) {
+                              teams_multiple = NULL, season_value_fn = NULL) {
   # Which season the date chip resets to. Tabs 8-10 read a EuroLeague season
   # from gy_input_id, so resolving it with the Israeli bounds gave them the
   # wrong window (season 2025 -> Oct 2024-Jul 2025 instead of Sep 2025-Jul 2026).
   bounds_fn <- bounds_fn %||% shared$season_date_bounds
   observeEvent(input[[paste0(prefix, "_clear_game_type")]], {
-    updateSelectizeInput(session, game_type_id, selected = character(0))
+    resolved_game_type_id <- if (is.function(game_type_id)) game_type_id() else game_type_id
+    updateSelectizeInput(session, resolved_game_type_id, selected = character(0))
   }, ignoreInit = TRUE)
 
   if (!is.null(teams_ids)) {
@@ -1112,7 +1113,8 @@ setup_chip_clears <- function(prefix, session, input, shared,
   }, ignoreInit = TRUE)
 
   observeEvent(input[[paste0(prefix, "_clear_dates")]], {
-    gy <- input[[gy_input_id]] %||% DEFAULT_GAME_YEAR
+    gy <- if (is.function(season_value_fn)) season_value_fn() else input[[gy_input_id]]
+    gy <- gy %||% DEFAULT_GAME_YEAR
     bounds <- bounds_fn(gy)
     updateDateRangeInput(session, date_id, start = bounds$start, end = bounds$end)
   }, ignoreInit = TRUE)
