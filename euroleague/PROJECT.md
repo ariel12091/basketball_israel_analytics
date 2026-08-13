@@ -270,6 +270,56 @@ Next steps, in order:
 5. Require exact full-row parity for representative team-scoped queries and a
    full-season result-key/count comparison before changing live routing.
 
+### The non-clutch routing gap (migrations 037-038, 2026-08-13)
+
+The 031-036 audit above measured **clutch presets**, where a margin/time
+predicate keeps the action scan small. Those results hold. The gap it never
+measured is a **filtered but non-clutch** request -- a phase, an opponent, a
+last-N, a narrowed date range -- which the app routed to the same `_direct`
+readers with no predicate to narrow the scan. Migrations 037 and 038 close it
+on the Team and Lineups tabs respectively. Both are additive: one or two new
+functions, no fact table, no backfill, no index.
+
+- **Migration 037** adds `get_team_ratings_pergame` and
+  `get_team_four_factors_pergame`, reading `team_four_factors_by_game`
+  (21,204 rows, 6.4 MB) instead of the 494 MB action fact. Broad filtered
+  Tab 9 went from ~26s total to ~1.3s. Parity: 30/30 full ordered-row
+  comparisons identical against the `_direct` readers across 15 non-clutch
+  presets. Team Minutes was left alone -- it has no per-game counterpart and
+  migration 033's reader is already fast at 0.77s.
+- **Migration 038** adds `fetch_lineups_pergame`. Its cause is *not* 037's.
+  A probe of the live schema showed `fetch_lineups_dynamic` never touches the
+  action fact on a non-clutch request: `select_team_game_facts` (migration 020)
+  already branches to `lineup_totals_by_game` when margin and time are absent,
+  and returns that table row for row. The 21-24s was query shape --- two nested
+  function boundaries, then a *second* join of `lineup_totals_by_game` on a
+  five-element `text[]` purely to recover `lineup_key` and `player_ids` that
+  the fact rows already carried, then expansion through `sub_lineups` even at
+  size 5. The new reader reads the fact once and groups it.
+- Measured through the app's own query as `app_readonly` on the pooler: the
+  default Tab 10 view 24.39s -> 1.22s (20x), phase 14.39 -> 1.03, own-starters
+  9.68 -> 0.44, size 3 broad 21.50 -> 5.61. Parity: 29/29 presets identical on
+  all 33 columns across all four unit sizes, both player-membership filters and
+  `min_poss`, plus 8/8 identical again through the app query shape.
+- Two grain facts were verified before the SQL was written, not assumed:
+  `own_starters` is functionally determined by (game, team, lineup) -- zero
+  violating instances -- so both starter bounds are plain row predicates; and
+  all 8,240 season lineups have exactly one size-5 `sub_lineups` row with
+  `unit_key = lineup_key` and identical `player_ids`, which makes the size-5
+  bypass a row-set identity rather than an approximation.
+- The per-game readers deliberately take fewer parameters than the clutch
+  readers (19 vs 23 for team, 23 vs 27 for lineups). The per-game facts have no
+  time or margin dimension, so a mis-routed clutch request fails at the call
+  site instead of silently returning unfiltered numbers.
+- App routing for both tabs now goes through one shared classifier,
+  `clutch_reader_kind()` in `app/R/helpers.R`: no clutch predicate ->
+  `_pergame`; exactly 5/all/5:00 -> `_dynamic` and its cache; any other clutch
+  -> `_direct`. Clutch behaviour is unchanged on both tabs.
+
+Still open after this: Tab 8's `onoff_compute` (11.88s vs the Israeli 2.06s,
+shape not yet examined), and player traditional stats, which is broken in both
+leagues (Israeli 91s live, EuroLeague over 120s).
+
 ### Optimization techniques used and lessons
 
 Use this as the playbook for future EuroLeague analytical-query work:
@@ -1195,11 +1245,11 @@ Migration order is:
 001 -> 002 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012
   -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020 -> 021 -> 022
   -> 023 -> 024 -> 025 -> 026 -> 027 -> 028 -> 029 -> 030 -> 031 -> 032
-  -> 033 -> 034 -> 035 -> 036
+  -> 033 -> 034 -> 035 -> 036 -> 037 -> 038
 ```
 
 Migration 003 is superseded by 004 and must not be applied.
-Migrations 028-036 are applied to the live schema. Migration 030 performed a
+Migrations 028-038 are applied to the live schema. Migration 030 performed a
 one-time refresh of the existing action fact; subsequent publications refresh
 only changed games.
 Migrations 020 through 024 are applied to the recorded live schema as of

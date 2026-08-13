@@ -620,6 +620,37 @@ blank_to_na_character <- function(x) {
   if (!nzchar(val)) NA_character_ else as.character(val)
 }
 
+# Which of the three EuroLeague clutch-capable readers answers a request.
+# Shared by Tabs 9 and 10 -- the two surfaces that route the same four clutch
+# parameters -- so the classification cannot drift between them.
+#
+#   "pergame" no margin/time predicate at all. The per-game facts (migrations
+#             037 and 038) answer it without an action scan.
+#   "dynamic" exactly the 5 / all / 5:00 preset, which has an incremental
+#             per-game cache behind it.
+#   "direct"  any other clutch window: an Israeli-shaped single action scan.
+#
+# The per-game readers deliberately take fewer parameters than the other two,
+# so a caller chooses signature and parameter list together, never
+# independently.
+clutch_reader_kind <- function(p) {
+  status <- blank_to_na_character(p$margin_status)
+  status <- if (length(status) == 1L && !is.na(status)) status else "all"
+  is_set <- function(x) {
+    x <- suppressWarnings(as.integer(x))
+    length(x) == 1L && is.finite(x)
+  }
+  if (!is_set(p$max_margin) && !is_set(p$max_time_remaining) &&
+      identical(status, "all")) {
+    return("pergame")
+  }
+  standard_clutch <- identical(suppressWarnings(as.integer(p$max_margin)), 5L) &&
+    identical(status, "all") &&
+    identical(suppressWarnings(as.integer(p$max_time_remaining)), 300L) &&
+    !isTRUE(p$ot_margin_filter)
+  if (isTRUE(standard_clutch)) "dynamic" else "direct"
+}
+
 blank_to_na_integer <- function(x) {
   val <- x %||% ""
   if (!nzchar(val)) {

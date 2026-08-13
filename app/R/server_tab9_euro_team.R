@@ -122,12 +122,14 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   })
 
   # ---- Data access ----
-  # Three readers, chosen by what the request actually asks for:
+  # Three readers, chosen by what the request actually asks for. The
+  # classification itself is clutch_reader_kind() in helpers.R, shared with
+  # Tab 10, which routes the same four clutch parameters:
   #   no clutch predicate -> the per-game fact (migration 037). No action scan.
   #   exact 5/all/5:00    -> the incremental cache behind the dynamic reader.
   #   any other clutch    -> the Israeli-shaped direct action scan.
   #
-  # The middle branch is the one that was missing. A filtered but non-clutch
+  # The first branch is the one that was missing. A filtered but non-clutch
   # request (a phase, an opponent, a last-N, a narrowed date range) used to
   # reach the direct reader, which then scanned the whole action fact with no
   # margin/time predicate to narrow it: 12.6s for an answer the per-game fact
@@ -137,25 +139,8 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   # Israeli companion: the EuroLeague per-game fact is keyed by own/opp
   # starters, so it answers them directly. Parity was verified for those
   # presets specifically.
-  team_reader_kind <- function(p) {
-    status <- blank_to_na_character(p$margin_status)
-    status <- if (length(status) == 1L && !is.na(status)) status else "all"
-    is_set <- function(x) {
-      x <- suppressWarnings(as.integer(x))
-      length(x) == 1L && is.finite(x)
-    }
-    if (!is_set(p$max_margin) && !is_set(p$max_time_remaining) &&
-        identical(status, "all")) {
-      return("pergame")
-    }
-    standard_clutch <- identical(suppressWarnings(as.integer(p$max_margin)), 5L) &&
-      identical(status, "all") &&
-      identical(suppressWarnings(as.integer(p$max_time_remaining)), 300L) &&
-      !isTRUE(p$ot_margin_filter)
-    if (isTRUE(standard_clutch)) "dynamic" else "direct"
-  }
 
-  # Builds the call for whichever reader team_reader_kind() selected. The
+  # Builds the call for whichever reader clutch_reader_kind() selected. The
   # per-game reader takes 19 parameters because it has no time/margin
   # dimension; the other two keep their existing 23. Signature and parameter
   # list are therefore chosen together, never independently.
@@ -193,7 +178,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    call <- team_reader_call("get_team_ratings", team_reader_kind(p), p,
+    call <- team_reader_call("get_team_ratings", clutch_reader_kind(p), p,
                              end_override %||% p$end_d)
     db_get_query(pg_pool, call$sql, params = call$params)
   }
@@ -206,7 +191,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    call <- team_reader_call("get_team_four_factors", team_reader_kind(p), p,
+    call <- team_reader_call("get_team_four_factors", clutch_reader_kind(p), p,
                              end_override %||% p$end_d)
     db_get_query(pg_pool, call$sql, params = call$params)
   }
@@ -218,7 +203,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     # Minutes has no per-game counterpart yet, so it keeps the original
     # two-way choice: only the exact 5/all/5:00 preset uses the cached dynamic
     # reader, everything else scans. Behaviour here is unchanged.
-    reader <- if (identical(team_reader_kind(p), "dynamic")) {
+    reader <- if (identical(clutch_reader_kind(p), "dynamic")) {
       "get_team_minutes_dynamic"
     } else {
       "get_team_minutes_direct"

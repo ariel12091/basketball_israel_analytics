@@ -228,16 +228,68 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
 
-    clutch_active <- !is.na(a$max_margin) || !is.na(a$max_time_remaining) ||
-      (!is.na(a$margin_status) && !identical(a$margin_status, "all"))
-    standard_clutch <- identical(suppressWarnings(as.integer(a$max_margin)), 5L) &&
-      identical(a$margin_status %||% "all", "all") &&
-      identical(suppressWarnings(as.integer(a$max_time_remaining)), 300L) &&
-      !isTRUE(a$ot_margin_filter)
-    reader <- if (isTRUE(clutch_active) && !isTRUE(standard_clutch)) {
+    # Three readers, chosen by clutch_reader_kind() in helpers.R -- the same
+    # classification Tab 9 uses, so the two surfaces cannot drift:
+    #   no clutch predicate -> fetch_lineups_pergame (migration 038)
+    #   exact 5/all/5:00    -> fetch_lineups_dynamic, which has a cached fact
+    #   any other clutch    -> fetch_lineups_direct, one action scan
+    #
+    # The first branch is new. A filtered but non-clutch request used to reach
+    # fetch_lineups_dynamic, which gets the very same per-game fact but through
+    # two nested function boundaries, then re-joins that fact on a five-element
+    # text[] just to recover columns it already had: 24s for a broad season
+    # request the per-game reader answers in 2.1s. Verified identical across 29
+    # presets covering all four unit sizes and both player-membership filters.
+    kind <- clutch_reader_kind(a)
+    reader <- switch(kind,
+      pergame = "fetch_lineups_pergame",
+      dynamic = "fetch_lineups_dynamic",
       "fetch_lineups_direct"
+    )
+
+    # The per-game reader takes 23 parameters because it has no time/margin
+    # dimension; the other two keep their existing 27. Signature and parameter
+    # list are therefore chosen together, never independently.
+    head_params <- list(
+      comp, as.integer(season), as.Date(dates[[1]]), as.Date(dates[[2]]),
+      NA_character_, a$phase_csv, a$opp_ids_csv, a$home_away, a$outcome,
+      a$opp_rank_side, a$opp_rank_n, a$opp_rank_metric
+    )
+    tail_params <- list(
+      a$min_gn, a$max_gn, a$last_n_games,
+      a$num_starters_off_min, a$num_starters_off_max,
+      a$num_starters_def_min, a$num_starters_def_max,
+      a$unit_size,
+      # team and players-on/off are deliberately NOT sent: ranks must be
+      # computed over the full population for the selected games, exactly as
+      # Tab 2 does. They are applied locally afterwards.
+      NA_character_, NA_character_,
+      0L
+    )
+    if (identical(kind, "pergame")) {
+      sig <- paste0(
+        "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+        "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+        "$13::int4,$14::int4,$15::int4,",
+        "$16::int4,$17::int4,$18::int4,$19::int4,",
+        "$20::int4,$21::text,$22::text,$23::int4"
+      )
+      params <- c(head_params, tail_params)
     } else {
-      "fetch_lineups_dynamic"
+      sig <- paste0(
+        "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+        "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+        "$13::int4,$14::text,$15::int4,$16::bool,",
+        "$17::int4,$18::int4,$19::int4,",
+        "$20::int4,$21::int4,$22::int4,$23::int4,",
+        "$24::int4,$25::text,$26::text,$27::int4"
+      )
+      params <- c(
+        head_params,
+        list(a$max_margin, a$margin_status,
+             a$max_time_remaining, a$ot_margin_filter),
+        tail_params
+      )
     }
 
     db_get_query(
@@ -250,29 +302,9 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
         " def_poss, def_pts, def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att,",
         " def_ts_poss, def_fgm, def_fga, def_fta, def_oreb, def_oreb_opp,",
         " def_tov, def_steals, minutes",
-        " FROM euroleague.", reader, "(",
-        "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
-        "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-        "$13::int4,$14::text,$15::int4,$16::bool,",
-        "$17::int4,$18::int4,$19::int4,",
-        "$20::int4,$21::int4,$22::int4,$23::int4,",
-        "$24::int4,$25::text,$26::text,$27::int4)"
+        " FROM euroleague.", reader, "(", sig, ")"
       ),
-      params = list(
-        comp, as.integer(season), as.Date(dates[[1]]), as.Date(dates[[2]]),
-        NA_character_, a$phase_csv, a$opp_ids_csv, a$home_away, a$outcome,
-        a$opp_rank_side, a$opp_rank_n, a$opp_rank_metric,
-        a$max_margin, a$margin_status, a$max_time_remaining, a$ot_margin_filter,
-        a$min_gn, a$max_gn, a$last_n_games,
-        a$num_starters_off_min, a$num_starters_off_max,
-        a$num_starters_def_min, a$num_starters_def_max,
-        a$unit_size,
-        # team and players-on/off are deliberately NOT sent: ranks must be
-        # computed over the full population for the selected games, exactly as
-        # Tab 2 does. They are applied locally afterwards.
-        NA_character_, NA_character_,
-        0L
-      )
+      params = params
     )
   })
 

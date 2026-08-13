@@ -102,7 +102,46 @@ opponent-rank, phase, last-N, date windows). App suite `FAIL 0 | PASS 1177`.
 Israeli Tab 3's equivalent is ~1.6s. Team minutes was left alone: it has no
 per-game counterpart and migration 033's `_direct` reader is already fast.
 
-## 5. Next: Lineups (analysis done, nothing written)
+## 5. Lineups — DONE (migration 038), but not for the predicted reason
+
+**Outcome:** `euroleague.fetch_lineups_pergame`, routed from
+`server_tab10_euro_lineups.R`. Measured through the app's own query as
+`app_readonly` on the pooler: default view **24.39s → 1.22s**, phase 14.39 →
+1.03, own-starters ≥4 9.68 → 0.44, size 3 broad 21.50 → 5.61. Parity 29/29
+presets on all 33 columns (four unit sizes, both player filters, `min_poss`),
+then 8/8 again through the app query shape.
+
+**The diagnosis below was wrong, and the probe is what caught it.** This
+section assumed `fetch_lineups_dynamic` scans the action fact on a non-clutch
+request, as `get_team_*_direct` did. It does not. `select_team_game_facts`
+(migration 020) already branches to `lineup_totals_by_game` when margin and
+time are absent, and returns that table row for row — 8,440 rows over a
+40-game sample, zero differing in either direction. The 21-24s was query
+*shape*, not data volume:
+
+1. the fact arrives through two nested analytical function boundaries;
+2. `lineup_identity` then joins `lineup_totals_by_game` a **second** time, on a
+   five-element `text[]` equality, purely to recover `lineup_key` and
+   `player_ids` — two columns the fact rows already carried;
+3. the result expands through `sub_lineups` even at unit size 5.
+
+The proposed fix was right anyway, which is the trap: had the probe been
+skipped, the migration would have shipped with a false explanation attached to
+it, and the next reader would have drawn the wrong lesson about where the cost
+lives. A right answer for a wrong reason still fails the next question.
+
+The three "unverified assumptions to check" resolved as: grain is
+`(game_id, team_id, lineup_key, type_lineup, opp_starters)` with `own_starters`
+functionally determined (zero violating instances), so starter bounds are plain
+row predicates; `filtered_team_game_facts()` sources the identical numbers; and
+the ghost-lineup discrepancy did not reappear — 24,701 all-zero rows exist but
+contribute zero to every aggregate, and no unit exists only as ghosts.
+
+Both tabs now share one classifier, `clutch_reader_kind()` in `app/R/helpers.R`,
+replacing the copy that lived in `server_tab9_euro_team.R`. It has its own unit
+tests in `test-euro-clutch.R`; that file passes 33/33.
+
+### Original analysis, as written before the probe
 
 `server_tab10_euro_lineups.R` has the identical structural gap:
 
@@ -166,9 +205,9 @@ request, so it is not the answer here; it needs a clutch predicate to be fast.
    27 / 2017 / 117.9 everywhere else; Dubai 27 / 1998 / 121.1 versus
    26 / 1925 / 120.9. League-wide this is the only such game. Pre-existing,
    unrelated to migration 037.
-5. **`PROJECT.md` has no entry for migration 037** — deliberately deferred.
-   It documents 028-036 in detail and that chain is what made this session
-   possible; 037 should be added under the 2026-08-13 handoff.
+5. ~~**`PROJECT.md` has no entry for migration 037**~~ — done. `PROJECT.md`
+   now carries both 037 and 038 under "The non-clutch routing gap", and the
+   migration order and applied-range lines are updated to 038.
 
 ## 7. Method notes worth reusing
 
