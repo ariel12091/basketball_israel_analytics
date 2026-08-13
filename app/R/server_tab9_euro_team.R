@@ -122,17 +122,67 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   })
 
   # ---- Data access ----
-  # The default 5/all/5:00 preset stays on the incremental cache behind the
-  # dynamic reader. Every other filtered request uses the Israeli-shaped
-  # direct action scan, avoiding the lineup/minutes fact pipeline.
-  use_direct_team_reader <- function(p) {
+  # Three readers, chosen by what the request actually asks for:
+  #   no clutch predicate -> the per-game fact (migration 037). No action scan.
+  #   exact 5/all/5:00    -> the incremental cache behind the dynamic reader.
+  #   any other clutch    -> the Israeli-shaped direct action scan.
+  #
+  # The middle branch is the one that was missing. A filtered but non-clutch
+  # request (a phase, an opponent, a last-N, a narrowed date range) used to
+  # reach the direct reader, which then scanned the whole action fact with no
+  # margin/time predicate to narrow it: 12.6s for an answer the per-game fact
+  # produces in 0.14-0.36s, verified identical across 15 presets.
+  #
+  # Starter-context filters do NOT force the clutch path here, unlike the
+  # Israeli companion: the EuroLeague per-game fact is keyed by own/opp
+  # starters, so it answers them directly. Parity was verified for those
+  # presets specifically.
+  team_reader_kind <- function(p) {
     status <- blank_to_na_character(p$margin_status)
     status <- if (length(status) == 1L && !is.na(status)) status else "all"
+    is_set <- function(x) {
+      x <- suppressWarnings(as.integer(x))
+      length(x) == 1L && is.finite(x)
+    }
+    if (!is_set(p$max_margin) && !is_set(p$max_time_remaining) &&
+        identical(status, "all")) {
+      return("pergame")
+    }
     standard_clutch <- identical(suppressWarnings(as.integer(p$max_margin)), 5L) &&
       identical(status, "all") &&
       identical(suppressWarnings(as.integer(p$max_time_remaining)), 300L) &&
       !isTRUE(p$ot_margin_filter)
-    !isTRUE(standard_clutch)
+    if (isTRUE(standard_clutch)) "dynamic" else "direct"
+  }
+
+  # Builds the call for whichever reader team_reader_kind() selected. The
+  # per-game reader takes 19 parameters because it has no time/margin
+  # dimension; the other two keep their existing 23. Signature and parameter
+  # list are therefore chosen together, never independently.
+  team_reader_call <- function(base, kind, p, end_d) {
+    head_params <- list(p$competition, p$game_year, p$start_d, end_d,
+                        p$team_ids_csv, p$phase_csv, p$opp_ids_csv,
+                        p$home_away, p$outcome,
+                        p$rank_side, p$rank_n, p$rank_metric)
+    tail_params <- list(p$min_gn, p$max_gn, p$last_n,
+                        p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max)
+    if (identical(kind, "pergame")) {
+      sig <- paste0("$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+                    "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+                    "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4")
+      params <- c(head_params, tail_params)
+    } else {
+      sig <- paste0("$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+                    "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+                    "$13::int4,$14::text,$15::int4,$16::bool,",
+                    "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4")
+      params <- c(head_params,
+                  list(p$max_margin, p$margin_status,
+                       p$max_time_remaining, p$ot_margin_filter),
+                  tail_params)
+    }
+    list(sql = paste0("SELECT * FROM euroleague.", base, "_", kind, "(", sig, ")"),
+         params = params)
   }
 
   run_team_ratings <- function(p, end_override = NULL) {
@@ -143,23 +193,9 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    reader <- if (use_direct_team_reader(p)) {
-      "get_team_ratings_direct"
-    } else {
-      "get_team_ratings_dynamic"
-    }
-    db_get_query(pg_pool,
-      paste0("SELECT * FROM euroleague.", reader, "(",
-             "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
-             "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-             "$13::int4,$14::text,$15::int4,$16::bool,",
-             "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)"),
-      params = list(p$competition, p$game_year, p$start_d, end_override %||% p$end_d,
-                    p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
-                    p$rank_side, p$rank_n, p$rank_metric,
-                    p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-                    p$min_gn, p$max_gn, p$last_n,
-                    p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max))
+    call <- team_reader_call("get_team_ratings", team_reader_kind(p), p,
+                             end_override %||% p$end_d)
+    db_get_query(pg_pool, call$sql, params = call$params)
   }
 
   run_team_ff <- function(p, end_override = NULL) {
@@ -170,33 +206,22 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    reader <- if (use_direct_team_reader(p)) {
-      "get_team_four_factors_direct"
-    } else {
-      "get_team_four_factors_dynamic"
-    }
-    db_get_query(pg_pool,
-      paste0("SELECT * FROM euroleague.", reader, "(",
-             "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
-             "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-             "$13::int4,$14::text,$15::int4,$16::bool,",
-             "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)"),
-      params = list(p$competition, p$game_year, p$start_d, end_override %||% p$end_d,
-                    p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
-                    p$rank_side, p$rank_n, p$rank_metric,
-                    p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-                    p$min_gn, p$max_gn, p$last_n,
-                    p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max))
+    call <- team_reader_call("get_team_four_factors", team_reader_kind(p), p,
+                             end_override %||% p$end_d)
+    db_get_query(pg_pool, call$sql, params = call$params)
   }
 
   # Team floor time already exists at canonical segment grain. Keep this query
   # separate from the rating facts so pace remains a ratio calculated only
   # after the selected games and starter contexts have been aggregated.
   run_team_minutes <- function(p) {
-    reader <- if (use_direct_team_reader(p)) {
-      "get_team_minutes_direct"
-    } else {
+    # Minutes has no per-game counterpart yet, so it keeps the original
+    # two-way choice: only the exact 5/all/5:00 preset uses the cached dynamic
+    # reader, everything else scans. Behaviour here is unchanged.
+    reader <- if (identical(team_reader_kind(p), "dynamic")) {
       "get_team_minutes_dynamic"
+    } else {
+      "get_team_minutes_direct"
     }
     db_get_query(pg_pool,
       paste0("SELECT team_id, minutes AS game_minutes ",

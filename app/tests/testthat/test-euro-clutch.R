@@ -22,10 +22,21 @@ test_that("EuroLeague clutch parameters reach ratings, factors, minutes, and lin
     expect_match(team_server, paste0("p$", parameter), fixed = TRUE)
     expect_match(lineup_server, paste0("a$", parameter), fixed = TRUE)
   }
-  expect_match(team_server, "get_team_ratings_dynamic", fixed = TRUE)
-  expect_match(team_server, "get_team_ratings_direct", fixed = TRUE)
-  expect_match(team_server, "get_team_four_factors_dynamic", fixed = TRUE)
-  expect_match(team_server, "get_team_four_factors_direct", fixed = TRUE)
+  # Ratings and Four Factors compose the reader name from a base plus the kind
+  # team_reader_kind() picks, so assert the pieces: the literal
+  # get_team_ratings_direct no longer appears in the source.
+  expect_match(team_server, 'paste0("SELECT * FROM euroleague.", base, "_", kind, "("',
+               fixed = TRUE)
+  expect_match(team_server, 'team_reader_call("get_team_ratings"', fixed = TRUE)
+  expect_match(team_server, 'team_reader_call("get_team_four_factors"', fixed = TRUE)
+  for (kind in c("pergame", "dynamic", "direct")) {
+    expect_match(team_server, paste0('"', kind, '"'), fixed = TRUE)
+  }
+  # The per-game branch must not carry the four clutch parameters: its tail is
+  # seven int4 slots, not the text/bool margin-status/OT pair the other two use.
+  expect_match(team_server,
+               "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4",
+               fixed = TRUE)
   expect_match(team_server, "get_team_minutes_dynamic", fixed = TRUE)
   expect_match(team_server, "get_team_minutes_direct", fixed = TRUE)
   expect_match(lineup_server, "fetch_lineups_dynamic", fixed = TRUE)
