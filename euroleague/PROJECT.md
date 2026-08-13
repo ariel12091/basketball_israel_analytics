@@ -164,6 +164,58 @@ caches or different season sizes. For future Israeli-to-EuroLeague analytics:
    from the app role, incrementally refreshed per changed game, and additive or
    reproducible rather than storing final ratios.
 
+### Team and Lineup clutch audit (2026-08-13)
+
+The Player Stats lessons were applied to the Team Ratings and Lineup readers.
+The audit separated warm computation from cold source reads and found:
+
+- standard cached Team Ratings, Four Factors, and Minutes are healthy at about
+  0.6-0.7 seconds;
+- the custom `clutch_segment_durations()` calculation itself is about 0.35
+  seconds warm, and `select_team_game_facts()` is about 0.6-0.7 seconds warm;
+- `filtered_team_game_facts()` can exceed the 10-second cap because it passes a
+  computed game array and clutch parameters through nested analytical function
+  boundaries. This is the same parameter-planning failure found in Player
+  Stats; removing only one wrapper did not fix it;
+- cold custom Team Ratings and Four Factors exceeded 10 seconds, while the
+  broad custom Team Minutes request measured 6.4 seconds before warming;
+- standard five-player Lineups measured 2.94 seconds warm in the direct parity
+  run. Restricting lineup identity resolution to the filtered fact set before
+  unit expansion reduced it to 1.12 seconds with exact 844-row full parity;
+- candidate lineup indexes greatly reduced buffer traffic but did not improve
+  elapsed time in the temporary benchmark, so they were not added.
+
+Migration 028 is pending live application. It repairs a publication-critical
+lineage bug in migration 027: after `player_stats_action_context` was repointed
+to the physical fact, the incremental refresh function would delete a changed
+game and then select from that same deleted target. Migration 028 sources the
+refresh directly from canonical `action_team_context_actions`. The currently
+loaded fact is intact because its full backfill occurred before the view was
+repointed, but migration 028 must be applied before the next EuroLeague game
+publication.
+
+Migration 029 is also pending live application. It contains only the verified
+filter-before-expand Lineups query change. It adds no index or new relation.
+
+The remaining cold custom Team/Lineup optimization requires a deliberate
+one-time backfill. Reuse and extend `player_stats_actions_by_game` at its current
+action/team-perspective grain with canonical `own_starters`, `opp_starters`,
+`fg2_made`, `fg2_att`, `orebounds`, `oreb_opportunities`, and `steals`. Then:
+
+1. implement direct public custom Team and Lineup readers that keep schedule,
+   action filtering, and aggregation in one function, as the Israeli reference
+   does;
+2. split regulation and overtime into mutually exclusive branches;
+3. route the app directly to cached-standard or direct-custom readers;
+4. make the Team tab obtain ratings, four factors, and minutes from one additive
+   result instead of scanning the same filtered facts separately;
+5. require exact output parity and cold/warm app-called benchmarks before live
+   cutover.
+
+Do not add a second custom-clutch action table. The existing narrow physical
+fact is the correct reusable grain; only its canonical additive projection is
+incomplete for Team/Lineup consumers.
+
 ## End-to-end ETL
 
 ```text
@@ -995,10 +1047,12 @@ Migration order is:
 ```text
 001 -> 002 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012
   -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020 -> 021 -> 022
-  -> 023 -> 024 -> 025 -> 026 -> 027
+  -> 023 -> 024 -> 025 -> 026 -> 027 -> 028 -> 029
 ```
 
 Migration 003 is superseded by 004 and must not be applied.
+Migrations 028-029 are implemented and tested locally but are not yet applied
+to the live schema. Migration 028 must precede the next game publication.
 Migrations 020 through 024 are applied to the recorded live schema as of
 2026-08-13. Migrations 023-024 give Player Stats the same explicit cached/custom
 source-selection design as the team reader. Measured full-season latency was

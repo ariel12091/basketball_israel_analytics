@@ -11,6 +11,7 @@ SELECTOR_MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "024_player_s
 CUSTOM_MINUTES_MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "025_custom_clutch_action_segment_minutes.sql"
 SINGLE_SCAN_MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "026_player_stats_single_action_scan.sql"
 ACTION_FACT_MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "027_player_stats_action_fact.sql"
+REFRESH_LINEAGE_MIGRATION = Path(__file__).resolve().parents[1] / "sql" / "028_player_stats_refresh_lineage.sql"
 
 
 class PlayerTraditionalMigrationTest(unittest.TestCase):
@@ -24,6 +25,7 @@ class PlayerTraditionalMigrationTest(unittest.TestCase):
         cls.custom_minutes_sql = CUSTOM_MINUTES_MIGRATION.read_text(encoding="utf-8")
         cls.single_scan_sql = SINGLE_SCAN_MIGRATION.read_text(encoding="utf-8")
         cls.action_fact_sql = ACTION_FACT_MIGRATION.read_text(encoding="utf-8")
+        cls.refresh_lineage_sql = REFRESH_LINEAGE_MIGRATION.read_text(encoding="utf-8")
 
     def test_reuses_existing_player_game_evidence(self) -> None:
         self.assertIn("EUROLEAGUE.FULL_ROSTERS", self.upper)
@@ -95,6 +97,12 @@ class PlayerTraditionalMigrationTest(unittest.TestCase):
         self.assertIn("DELETE FROM EUROLEAGUE.PLAYER_STATS_ACTIONS_BY_GAME", sql)
         self.assertIn("CREATE OR REPLACE VIEW EUROLEAGUE.PLAYER_STATS_ACTION_CONTEXT", sql)
         self.assertIn("REVOKE ALL ON TABLE EUROLEAGUE.PLAYER_STATS_ACTIONS_BY_GAME FROM APP_READONLY", sql)
+
+    def test_incremental_refresh_reads_canonical_actions_not_its_consumer_view(self) -> None:
+        sql = self.refresh_lineage_sql.upper()
+        self.assertIn("FROM EUROLEAGUE.ACTION_TEAM_CONTEXT_ACTIONS ATC", sql)
+        self.assertNotIn("FROM EUROLEAGUE.PLAYER_STATS_ACTION_CONTEXT", sql)
+        self.assertIn("DELETE FROM EUROLEAGUE.PLAYER_STATS_ACTIONS_BY_GAME", sql)
 
     def test_dynamic_path_reuses_shared_filters_and_clutch_semantics(self) -> None:
         self.assertIn("EUROLEAGUE.FILTERED_TEAM_GAME_FACTS", self.upper)
