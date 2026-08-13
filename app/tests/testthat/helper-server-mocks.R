@@ -270,7 +270,8 @@ db_get_query <- function(pool, query, params = NULL) {
     return(mock_team_ratings_df())
   }
 
-  if (grepl("get_team_ratings_dynamic", q, fixed = TRUE)) {
+  if (grepl("get_team_ratings_dynamic", q, fixed = TRUE) ||
+      grepl("get_team_ratings_direct", q, fixed = TRUE)) {
     increment_mock_db_query_count("team_ratings_dynamic")
     ratings <- mock_team_ratings_df()
     if (grepl("AS hub_variant", q, fixed = TRUE)) {
@@ -292,7 +293,8 @@ db_get_query <- function(pool, query, params = NULL) {
     return(ratings)
   }
 
-  if (grepl("get_team_four_factors_dynamic", q, fixed = TRUE)) {
+  if (grepl("get_team_four_factors_dynamic", q, fixed = TRUE) ||
+      grepl("get_team_four_factors_direct", q, fixed = TRUE)) {
     return(data.frame(
       team_id = c(1L, 2L),
       team_name = c("Team A", "Team B"),

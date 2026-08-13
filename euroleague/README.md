@@ -67,6 +67,8 @@ The typed Python implementation lives inside this sub-project:
 - `sql/028_player_stats_refresh_lineage.sql` (pending canonical-source refresh repair)
 - `sql/029_lineup_filter_before_expand.sql` (applied verified Lineups query-order fix)
 - `sql/030_team_custom_clutch_action_fact.sql` (applied additive action-fact reuse for custom Team/Lineup clutch)
+- `sql/031_direct_team_custom_readers.sql` (applied Israeli-shaped direct custom Team readers)
+- `sql/032_team_action_covering_index.sql` (applied covering index for direct Team reads)
 - `sql/analytics/player_onoff_ppp_readonly.sql` (read-only worked calculation)
 - `scripts/export_r_reference.R`
 - `scripts/compare_r_reference.py`

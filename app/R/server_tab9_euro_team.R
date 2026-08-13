@@ -1,7 +1,8 @@
 # server_tab9_euro_team.R - Tab 9: EuroLeague / EuroCup Team Ratings
 #
-# Purpose-built rather than copied from server_tab3.R: most of that file is
-# clutch, Traditional and Shot Profile handling, none of which applies here.
+# Purpose-built rather than copied from server_tab3.R: Traditional and Shot
+# Profile handling do not apply here. Clutch uses the shared controls and
+# parameter resolver, backed by the EuroLeague canonical action facts.
 # The logic that DOES apply is mirrored deliberately --
 #   * fast path (season MV) vs filtered path (dynamic SQL function), chosen by
 #     the same "has the user actually narrowed anything" test,
@@ -41,6 +42,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     for (id in c("euroteam_gn_min", "euroteam_gn_max", "euroteam_last_n")) {
       updateSelectizeInput(session, id, selected = "")
     }
+    reset_clutch_inputs(session, "euroteam")
   })
 
   # ---- Parameters ----
@@ -50,6 +52,11 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     )
     f$dates <- input$euroteam_dates
     f$teams <- input$euroteam_teams
+    f$clutch_enabled <- input$euroteam_clutch_enabled
+    f$clutch_margin <- input$euroteam_clutch_margin
+    f$clutch_status <- input$euroteam_clutch_status
+    f$clutch_minutes <- input$euroteam_clutch_minutes
+    f$clutch_ot_margin <- input$euroteam_clutch_ot_margin
     f
   }) %>% debounce(300)
 
@@ -62,6 +69,10 @@ server_tab9_euro_team <- function(input, output, session, shared) {
 
     gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
     context <- game_context_db_args(f, gn)
+    clutch <- resolve_clutch_params(
+      f$clutch_enabled, f$clutch_margin, f$clutch_status,
+      f$clutch_minutes, f$clutch_ot_margin
+    )
 
     list(
       competition = et_competition(),
@@ -75,6 +86,10 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       rank_side = context$opp_rank_side,
       rank_n = context$opp_rank_n,
       rank_metric = context$opp_rank_metric,
+      max_margin = clutch$max_margin,
+      margin_status = clutch$margin_status,
+      max_time_remaining = clutch$max_time_remaining,
+      ot_margin_filter = clutch$ot_margin_filter,
       min_gn = context$min_gn, max_gn = context$max_gn,
       last_n = context$last_n_games,
       st_off_min = context$num_starters_off_min,
@@ -91,6 +106,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     (p$start_d != p$bounds$start) || (p$end_d != p$bounds$end) ||
       !is.na(p$team_ids_csv) || !is.na(p$phase_csv) || !is.na(p$opp_ids_csv) ||
       !is.na(p$home_away) || !is.na(p$outcome) || !is.na(p$rank_side) ||
+      !is.na(p$max_margin) || !is.na(p$max_time_remaining) ||
       !is.na(p$min_gn) || !is.na(p$max_gn) || !is.na(p$last_n) ||
       !is.na(p$st_off_min) || !is.na(p$st_off_max) ||
       !is.na(p$st_def_min) || !is.na(p$st_def_max)
@@ -106,6 +122,19 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   })
 
   # ---- Data access ----
+  # The default 5/all/5:00 preset stays on the incremental cache behind the
+  # dynamic reader. Every other filtered request uses the Israeli-shaped
+  # direct action scan, avoiding the lineup/minutes fact pipeline.
+  use_direct_team_reader <- function(p) {
+    status <- blank_to_na_character(p$margin_status)
+    status <- if (length(status) == 1L && !is.na(status)) status else "all"
+    standard_clutch <- identical(suppressWarnings(as.integer(p$max_margin)), 5L) &&
+      identical(status, "all") &&
+      identical(suppressWarnings(as.integer(p$max_time_remaining)), 300L) &&
+      !isTRUE(p$ot_margin_filter)
+    !isTRUE(standard_clutch)
+  }
+
   run_team_ratings <- function(p, end_override = NULL) {
     allowed <- guard_heavy_request(
       session, key = "tab9_euro_team_ratings",
@@ -114,14 +143,21 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
+    reader <- if (use_direct_team_reader(p)) {
+      "get_team_ratings_direct"
+    } else {
+      "get_team_ratings_dynamic"
+    }
     db_get_query(pg_pool,
-      paste0("SELECT * FROM euroleague.get_team_ratings_dynamic(",
+      paste0("SELECT * FROM euroleague.", reader, "(",
              "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
              "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-             "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4)"),
+             "$13::int4,$14::text,$15::int4,$16::bool,",
+             "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)"),
       params = list(p$competition, p$game_year, p$start_d, end_override %||% p$end_d,
                     p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
                     p$rank_side, p$rank_n, p$rank_metric,
+                    p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
                     p$min_gn, p$max_gn, p$last_n,
                     p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max))
   }
@@ -134,14 +170,21 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
+    reader <- if (use_direct_team_reader(p)) {
+      "get_team_four_factors_direct"
+    } else {
+      "get_team_four_factors_dynamic"
+    }
     db_get_query(pg_pool,
-      paste0("SELECT * FROM euroleague.get_team_four_factors_dynamic(",
+      paste0("SELECT * FROM euroleague.", reader, "(",
              "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
              "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-             "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4)"),
+             "$13::int4,$14::text,$15::int4,$16::bool,",
+             "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)"),
       params = list(p$competition, p$game_year, p$start_d, end_override %||% p$end_d,
                     p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
                     p$rank_side, p$rank_n, p$rank_metric,
+                    p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
                     p$min_gn, p$max_gn, p$last_n,
                     p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max))
   }
@@ -155,11 +198,13 @@ server_tab9_euro_team <- function(input, output, session, shared) {
              "FROM euroleague.get_team_minutes_dynamic(",
              "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
              "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-             "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4)"),
+             "$13::int4,$14::text,$15::int4,$16::bool,",
+             "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)"),
       params = list(
         p$competition, p$game_year, p$start_d, p$end_d,
         p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
         p$rank_side, p$rank_n, p$rank_metric,
+        p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
         p$min_gn, p$max_gn, p$last_n,
         p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max
       )
@@ -485,6 +530,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     teams_ids = "euroteam_teams", teams_multiple = TRUE,
     starters_ids = c("euroteam_num_starters_off_mode", "euroteam_num_starters_off",
                      "euroteam_num_starters_def_mode", "euroteam_num_starters_def"),
+    clutch_enabled_id = "euroteam_clutch_enabled",
     bounds_fn = euro_season_date_bounds)
 
 }

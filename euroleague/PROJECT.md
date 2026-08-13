@@ -203,6 +203,29 @@ and routes custom clutch facts through that grain. The first bounded live
 benchmark completed in 19.7 seconds for broad custom Team Ratings, so this is
 an exactness/lineage improvement but not yet an under-10-second solution.
 
+Migration 031 fixes that remaining query-shape error by adapting the Israeli
+Team functions directly: filtered schedule, one materialized action set,
+game/team/side aggregation, then final metrics. Team Ratings and Four Factors
+no longer traverse the generic lineup/minutes fact pipeline for custom reads;
+the standard 5/all/5:00 preset remains on its incremental cache. For the broad
+margin <= 3/final 4:00 preset, Four Factors improved from 19.08 to 7.52 seconds
+cold with exact full-season parity. Warm direct timings were 4.30 seconds for
+Team Ratings and 1.10 seconds for Four Factors. The legacy full-season Ratings
+reader exceeded its 20-second cap and the first cold direct call was 17.60
+seconds; bounded one-team parity was exact and improved from 3.99 to 0.31
+seconds. Thus the direct execution shape is fixed, while truly cold broad Team
+Ratings remains above the desired ten-second ceiling.
+
+Migration 031 was then tightened to the Israeli predicate literally: one
+action-table scan per reader, with the overtime bypass embedded in the time,
+margin, and status predicates rather than separate regulation/overtime scans.
+That removed the warm execution gap (0.28 seconds for both direct readers,
+versus 0.25 seconds for the measured Israeli companions). Migration 032 adds a
+59 MB covering index for only the direct Team inputs, avoiding first-read scans
+of the 326 MB player/lineup-bearing heap. The index is used in live calls; the
+first measured post-index pass was 2.16 seconds for Team Ratings and 0.57
+seconds for Four Factors. No additional fact table or backfill was introduced.
+
 The remaining cold custom Team/Lineup optimization requires a deliberate
 one-time backfill. Reuse and extend `player_stats_actions_by_game` at its current
 action/team-perspective grain with canonical `own_starters`, `opp_starters`,
@@ -1053,11 +1076,11 @@ Migration order is:
 ```text
 001 -> 002 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012
   -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020 -> 021 -> 022
-  -> 023 -> 024 -> 025 -> 026 -> 027 -> 028 -> 029 -> 030
+  -> 023 -> 024 -> 025 -> 026 -> 027 -> 028 -> 029 -> 030 -> 031 -> 032
 ```
 
 Migration 003 is superseded by 004 and must not be applied.
-Migrations 028-030 are applied to the live schema. Migration 030 performed a
+Migrations 028-032 are applied to the live schema. Migration 030 performed a
 one-time refresh of the existing action fact; subsequent publications refresh
 only changed games.
 Migrations 020 through 024 are applied to the recorded live schema as of

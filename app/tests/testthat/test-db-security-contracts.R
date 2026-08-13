@@ -59,7 +59,9 @@ test_that("hardening covers the EuroLeague shadow schema on the same terms", {
     "four_factors_compute",
     "fetch_lineups_dynamic",
     "get_team_ratings_dynamic",
+    "get_team_ratings_direct",
     "get_team_four_factors_dynamic",
+    "get_team_four_factors_direct",
     "get_team_minutes_dynamic",
     "get_player_traditional_dynamic",
     "effective_period",
@@ -72,6 +74,11 @@ test_that("hardening covers the EuroLeague shadow schema on the same terms", {
   )
   for (function_name in euro_functions) {
     expect_match(euro_block, sprintf("'%s'", function_name), fixed = TRUE)
+  }
+
+  audit_sql <- read_repo_txt("..", "sql", "security", "audit_app_access.sql")
+  for (function_name in euro_functions) {
+    expect_match(audit_sql, sprintf("('%s')", function_name), fixed = TRUE)
   }
 
   # Publication machinery mutates the schema and must never be app-callable.
