@@ -69,6 +69,8 @@ The typed Python implementation lives inside this sub-project:
 - `sql/030_team_custom_clutch_action_fact.sql` (applied additive action-fact reuse for custom Team/Lineup clutch)
 - `sql/031_direct_team_custom_readers.sql` (applied Israeli-shaped direct custom Team readers)
 - `sql/032_team_action_covering_index.sql` (applied covering index for direct Team reads)
+- `sql/033_direct_team_minutes.sql` and `034_team_minutes_covering_index.sql` (applied direct custom minutes path)
+- `sql/035_direct_lineups_reader.sql` and `036_lineups_covering_index.sql` (applied custom Lineups path; further tuning documented in `PROJECT.md`)
 - `sql/analytics/player_onoff_ppp_readonly.sql` (read-only worked calculation)
 - `scripts/export_r_reference.R`
 - `scripts/compare_r_reference.py`

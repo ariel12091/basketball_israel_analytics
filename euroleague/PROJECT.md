@@ -226,6 +226,124 @@ of the 326 MB player/lineup-bearing heap. The index is used in live calls; the
 first measured post-index pass was 2.16 seconds for Team Ratings and 0.57
 seconds for Four Factors. No additional fact table or backfill was introduced.
 
+### Remaining over-one-second audit (2026-08-13 handoff)
+
+Work stopped here to preserve the weekly agent budget. Migrations 033-036 are
+applied live and reuse the existing action fact; they add no new fact table and
+require no backfill.
+
+- Migration 033 adds Israeli-shaped direct custom Team Minutes: one schedule
+  filter, one eligible action set, and max-minus-min duration per canonical
+  segment. Migration 034 adds its 35 MB covering index. Broad custom Minutes
+  improved from a 10-second timeout to 0.57 seconds first measured / 0.22
+  seconds warm. One-team full-row parity was exact (43.000 minutes) and timing
+  improved from 3.45 to 0.13 seconds.
+- Migration 035 adds the direct custom Lineups reader. It filters actions once,
+  derives event counts and segment duration from that set, and bypasses
+  `sub_lineups` for five-player units exactly as the Israeli function does.
+  One-team full-row parity was exact (29 rows) and improved from 2.62 to 0.36
+  seconds.
+- Migration 036 adds the Lineups covering index. `CREATE INDEX CONCURRENTLY`
+  repeatedly starved on continuous app reads; invalid shells were removed.
+  A bounded normal build then succeeded. It is compatible with SELECTs and was
+  run while no EuroLeague publication was active.
+- Full-season custom five-player Lineups improved from a 10-second timeout to
+  5.09 seconds. This is materially faster but still above the one-second goal.
+- The direct standard-clutch Lineups path exceeded 10 seconds, so the app keeps
+  the standard 5/all/5:00 preset on `fetch_lineups_dynamic` and its existing
+  cache (last measured 6.10 seconds). Only non-standard custom clutch requests
+  route to `fetch_lineups_direct`.
+
+Next steps, in order:
+
+1. Inspect `EXPLAIN (ANALYZE, BUFFERS)` for `fetch_lineups_direct` after the
+   new index; determine whether remaining time is action aggregation, lineup
+   identity resolution, or the 844/557-row name/unit output.
+2. Optimize the standard cached Lineups reader separately. It should read the
+   default-clutch per-game cache and five-player identity directly, without
+   calling `filtered_team_game_facts()` or expanding through `sub_lineups`.
+3. For custom Lineups, consider an incremental additive per-game five-player
+   clutch candidate only if plan evidence shows aggregation—not identity/name
+   rendering—is the remaining bottleneck. Do not add another raw action fact.
+4. Recheck sizes 2-4 independently; unlike size 5, they legitimately require
+   `sub_lineups` expansion and may need different performance expectations.
+5. Require exact full-row parity for representative team-scoped queries and a
+   full-season result-key/count comparison before changing live routing.
+
+### Optimization techniques used and lessons
+
+Use this as the playbook for future EuroLeague analytical-query work:
+
+1. **Start from the working Israeli companion.** Compare the complete public
+   function, not only its lowest-level fact source. The important pattern was
+   schedule filtering, one eligible action set, direct aggregation at the
+   requested output grain, then final ratios/ranks.
+2. **Remove nested analytical function boundaries.** Passing computed game-ID
+   arrays and clutch parameters through SQL -> PL/pgSQL -> SQL prevented the
+   inner planner from seeing useful constants. `force_custom_plan` alone did
+   not repair this. Direct public readers did.
+3. **Filter once and reuse the set.** A materialized eligible-action CTE feeds
+   all additive metrics and, where needed, segment duration. This prevents
+   duplicate scans and metric-semantic drift.
+4. **Use one Israeli-style regulation/OT predicate.** Time, margin, and status
+   each include the unrestricted-OT bypass. This was faster warm than separate
+   regulation/OT `UNION ALL` branches and preserved every overtime period.
+5. **Aggregate at the consumer grain.** Team Ratings and Four Factors aggregate
+   directly to game/team/side; they do not build lineup rows or calculate
+   minutes. Team Minutes groups only by game/team/segment. Lineups retain lineup
+   identity because that grain is genuinely requested.
+6. **Keep ratios late.** Facts and intermediate CTEs retain additive counts and
+   seconds. PPP, TS%, eFG%, OREB%, TOV%, FTR, pace, and ratings are calculated
+   only after the selected games are aggregated.
+7. **Reuse the existing narrow action fact.** `player_stats_actions_by_game`
+   was extended additively with starter/team-event fields. No second custom
+   clutch action table was created. Incremental publication still refreshes
+   only changed games.
+8. **Use explicit cached/direct routing.** Full-season unfiltered reads use the
+   established materialized views. The exact standard 5/all/5:00 clutch preset
+   uses its incremental cache. Other custom presets use direct readers. Do not
+   force every preset through one generic selector.
+9. **Filter identity before expansion.** Lineup identities are restricted to
+   filtered facts before unit expansion. This reduced the verified standard
+   five-player query from 2.94 to 1.12 seconds in the earlier parity run.
+10. **Bypass unnecessary unit maps.** For five-player units, `unit_key` equals
+    `lineup_key`; direct Lineups therefore bypasses `sub_lineups`. Sizes 2-4
+    retain that mapping because combinations are real required work.
+11. **Use max-minus-min segment duration for custom filters.** This mirrors the
+    Israeli interactive convention: last qualifying action minus first
+    qualifying action within each game/team/segment. The exact standard preset
+    remains on its precomputed window intersection.
+12. **Add covering indexes only after query shape is correct.** The action fact
+    is 326 MB because it carries player and lineup fields. Its pages were fully
+    visible, so index-only scans were viable. Purpose-specific covering indexes
+    reduced reads to narrower structures: 59 MB for Team metrics and 35 MB for
+    Team Minutes; Lineups needs its own identity/metrics/duration coverage.
+13. **Verify index use, not just elapsed time.** Check `pg_stat_user_indexes`
+    scan deltas and relation sizes after a call. Warm-cache timing alone can
+    falsely credit an unused index.
+14. **Protect live availability during DDL.** Prefer `CREATE INDEX
+    CONCURRENTLY`; cap statement and lock time. Continuous app reads starved
+    the Lineups concurrent build, leaving invalid shells. Those shells were
+    verified in `pg_index` and removed explicitly. A normal bounded build was
+    used only after confirming it permits SELECTs and no EuroLeague publication
+    was active.
+15. **Measure cold and warm separately with database caps.** A first read and a
+    repeated read answer different questions. Every slow benchmark used a
+    statement timeout; builds also used bounded lock/statement timeouts.
+16. **Require parity before routing.** Compare full ordered rows where feasible.
+    When the legacy full-season query times out, use a bounded team scope plus
+    algebraic eligibility checks. A 30-vs-29 Lineups mismatch exposed an extra
+    zero-exposure lineup; recreating offense/defense zero rows from duration
+    restored exact 29-row parity.
+17. **Treat unsuccessful ideas as evidence.** Candidate generic lineup indexes
+    reduced buffers but not elapsed time and were rejected. Repointing only a
+    low-level clutch function retained expensive wrappers and produced 19.7
+    seconds. Separate regulation/OT branches were slower warm. Direct standard
+    Lineups exceeded 10 seconds, so it was not routed live.
+18. **Keep security contracts synchronized.** Every new app-callable function
+    must appear in both the grant and audit allowlists. The hardening script
+    correctly rolled back when only one list was updated.
+
 The remaining cold custom Team/Lineup optimization requires a deliberate
 one-time backfill. Reuse and extend `player_stats_actions_by_game` at its current
 action/team-perspective grain with canonical `own_starters`, `opp_starters`,
@@ -1077,10 +1195,11 @@ Migration order is:
 001 -> 002 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012
   -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020 -> 021 -> 022
   -> 023 -> 024 -> 025 -> 026 -> 027 -> 028 -> 029 -> 030 -> 031 -> 032
+  -> 033 -> 034 -> 035 -> 036
 ```
 
 Migration 003 is superseded by 004 and must not be applied.
-Migrations 028-032 are applied to the live schema. Migration 030 performed a
+Migrations 028-036 are applied to the live schema. Migration 030 performed a
 one-time refresh of the existing action fact; subsequent publications refresh
 only changed games.
 Migrations 020 through 024 are applied to the recorded live schema as of

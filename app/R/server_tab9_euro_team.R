@@ -193,9 +193,14 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   # separate from the rating facts so pace remains a ratio calculated only
   # after the selected games and starter contexts have been aggregated.
   run_team_minutes <- function(p) {
+    reader <- if (use_direct_team_reader(p)) {
+      "get_team_minutes_direct"
+    } else {
+      "get_team_minutes_dynamic"
+    }
     db_get_query(pg_pool,
       paste0("SELECT team_id, minutes AS game_minutes ",
-             "FROM euroleague.get_team_minutes_dynamic(",
+             "FROM euroleague.", reader, "(",
              "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
              "$8::text,$9::text,$10::text,$11::int4,$12::text,",
              "$13::int4,$14::text,$15::int4,$16::bool,",

@@ -74,6 +74,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     updateSelectInput(session, "euro_ld_home_away", selected = "")
     updateSelectInput(session, "euro_ld_outcome", selected = "")
     updateSelectInput(session, "euro_ld_opp_rank_metric", selected = "net")
+    reset_clutch_inputs(session, "euro_ld")
     auto_enabled(TRUE)
   })
 
@@ -87,6 +88,11 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       input, "euro_ld", game_type_id = "euro_ld_phase"
     )
     context <- game_context_db_args(filters, gn_params())
+    clutch <- resolve_clutch_params(
+      input$euro_ld_clutch_enabled, input$euro_ld_clutch_margin,
+      input$euro_ld_clutch_status, input$euro_ld_clutch_minutes,
+      input$euro_ld_clutch_ot_margin
+    )
     team_val <- ld_filter$team()
     team_val <- team_val[nzchar(team_val)]
     list(
@@ -98,6 +104,10 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       opp_rank_side = context$opp_rank_side,
       opp_rank_n = context$opp_rank_n,
       opp_rank_metric = context$opp_rank_metric,
+      max_margin = clutch$max_margin,
+      margin_status = clutch$margin_status,
+      max_time_remaining = clutch$max_time_remaining,
+      ot_margin_filter = clutch$ot_margin_filter,
       min_gn = context$min_gn, max_gn = context$max_gn,
       last_n_games = context$last_n_games,
       num_starters_off_min = context$num_starters_off_min,
@@ -124,7 +134,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     rng <- debounced_dates()
     b <- tryCatch(euro_season_date_bounds(euro_season()), error = function(e) NULL)
     if (is.null(b)) return(FALSE)
-    onoff_fallback_needed(
+    isTRUE(input$euro_ld_clutch_enabled) || onoff_fallback_needed(
       rng, b,
       game_context_filter_values(
         input, "euro_ld", game_type_id = "euro_ld_phase"
@@ -218,6 +228,18 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     )
     if (!isTRUE(allowed)) return(data.frame())
 
+    clutch_active <- !is.na(a$max_margin) || !is.na(a$max_time_remaining) ||
+      (!is.na(a$margin_status) && !identical(a$margin_status, "all"))
+    standard_clutch <- identical(suppressWarnings(as.integer(a$max_margin)), 5L) &&
+      identical(a$margin_status %||% "all", "all") &&
+      identical(suppressWarnings(as.integer(a$max_time_remaining)), 300L) &&
+      !isTRUE(a$ot_margin_filter)
+    reader <- if (isTRUE(clutch_active) && !isTRUE(standard_clutch)) {
+      "fetch_lineups_direct"
+    } else {
+      "fetch_lineups_dynamic"
+    }
+
     db_get_query(
       pg_pool,
       paste0(
@@ -228,17 +250,19 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
         " def_poss, def_pts, def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att,",
         " def_ts_poss, def_fgm, def_fga, def_fta, def_oreb, def_oreb_opp,",
         " def_tov, def_steals, minutes",
-        " FROM euroleague.fetch_lineups_dynamic(",
+        " FROM euroleague.", reader, "(",
         "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
         "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-        "$13::int4,$14::int4,$15::int4,",
-        "$16::int4,$17::int4,$18::int4,$19::int4,",
-        "$20::int4,$21::text,$22::text,$23::int4)"
+        "$13::int4,$14::text,$15::int4,$16::bool,",
+        "$17::int4,$18::int4,$19::int4,",
+        "$20::int4,$21::int4,$22::int4,$23::int4,",
+        "$24::int4,$25::text,$26::text,$27::int4)"
       ),
       params = list(
         comp, as.integer(season), as.Date(dates[[1]]), as.Date(dates[[2]]),
         NA_character_, a$phase_csv, a$opp_ids_csv, a$home_away, a$outcome,
         a$opp_rank_side, a$opp_rank_n, a$opp_rank_metric,
+        a$max_margin, a$margin_status, a$max_time_remaining, a$ot_margin_filter,
         a$min_gn, a$max_gn, a$last_n_games,
         a$num_starters_off_min, a$num_starters_off_max,
         a$num_starters_def_min, a$num_starters_def_max,
@@ -318,6 +342,9 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
          input$euro_ld_opp_rank_metric, input$euro_ld_view_mode,
          input$euro_ld_num_starters_off_mode, input$euro_ld_num_starters_off,
          input$euro_ld_num_starters_def_mode, input$euro_ld_num_starters_def,
+         input$euro_ld_clutch_enabled, input$euro_ld_clutch_margin,
+         input$euro_ld_clutch_status, input$euro_ld_clutch_minutes,
+         input$euro_ld_clutch_ot_margin,
          input$euro_ld_gn_min, input$euro_ld_gn_max, input$euro_ld_last_n)
   })
 
@@ -334,6 +361,9 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
                     input$euro_ld_num_starters_off,
                     input$euro_ld_num_starters_def_mode,
                     input$euro_ld_num_starters_def,
+                    input$euro_ld_clutch_enabled, input$euro_ld_clutch_margin,
+                    input$euro_ld_clutch_status, input$euro_ld_clutch_minutes,
+                    input$euro_ld_clutch_ot_margin,
                     input$euro_ld_gn_min, input$euro_ld_gn_max,
                     input$euro_ld_last_n), {
     auto_enabled(TRUE)
@@ -648,6 +678,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     teams_ids = "euro_ld_lineup_filter-team",
     starters_ids = c("euro_ld_num_starters_off_mode", "euro_ld_num_starters_off",
                      "euro_ld_num_starters_def_mode", "euro_ld_num_starters_def"),
+    clutch_enabled_id = "euro_ld_clutch_enabled",
     bounds_fn = euro_season_date_bounds)
 
   observeEvent(input$euro_ld_clear_players_on, {
