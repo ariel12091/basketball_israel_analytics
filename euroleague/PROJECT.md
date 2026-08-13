@@ -185,7 +185,7 @@ The audit separated warm computation from cold source reads and found:
 - candidate lineup indexes greatly reduced buffer traffic but did not improve
   elapsed time in the temporary benchmark, so they were not added.
 
-Migration 028 is pending live application. It repairs a publication-critical
+Migration 028 repairs a publication-critical
 lineage bug in migration 027: after `player_stats_action_context` was repointed
 to the physical fact, the incremental refresh function would delete a changed
 game and then select from that same deleted target. Migration 028 sources the
@@ -194,8 +194,14 @@ loaded fact is intact because its full backfill occurred before the view was
 repointed, but migration 028 must be applied before the next EuroLeague game
 publication.
 
-Migration 029 is also pending live application. It contains only the verified
+Migration 029 contains only the verified
 filter-before-expand Lineups query change. It adds no index or new relation.
+
+Migration 030 is applied. It extends the existing private
+`player_stats_actions_by_game` fact with additive starter and team-event fields
+and routes custom clutch facts through that grain. The first bounded live
+benchmark completed in 19.7 seconds for broad custom Team Ratings, so this is
+an exactness/lineage improvement but not yet an under-10-second solution.
 
 The remaining cold custom Team/Lineup optimization requires a deliberate
 one-time backfill. Reuse and extend `player_stats_actions_by_game` at its current
@@ -1047,12 +1053,13 @@ Migration order is:
 ```text
 001 -> 002 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012
   -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020 -> 021 -> 022
-  -> 023 -> 024 -> 025 -> 026 -> 027 -> 028 -> 029
+  -> 023 -> 024 -> 025 -> 026 -> 027 -> 028 -> 029 -> 030
 ```
 
 Migration 003 is superseded by 004 and must not be applied.
-Migrations 028-029 are implemented and tested locally but are not yet applied
-to the live schema. Migration 028 must precede the next game publication.
+Migrations 028-030 are applied to the live schema. Migration 030 performed a
+one-time refresh of the existing action fact; subsequent publications refresh
+only changed games.
 Migrations 020 through 024 are applied to the recorded live schema as of
 2026-08-13. Migrations 023-024 give Player Stats the same explicit cached/custom
 source-selection design as the team reader. Measured full-season latency was

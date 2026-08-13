@@ -65,7 +65,8 @@ The typed Python implementation lives inside this sub-project:
 - `sql/026_player_stats_single_action_scan.sql` (Israeli-shaped single-scan custom reader)
 - `sql/027_player_stats_action_fact.sql` (narrow incremental Player Stats action fact)
 - `sql/028_player_stats_refresh_lineage.sql` (pending canonical-source refresh repair)
-- `sql/029_lineup_filter_before_expand.sql` (pending verified Lineups query-order fix)
+- `sql/029_lineup_filter_before_expand.sql` (applied verified Lineups query-order fix)
+- `sql/030_team_custom_clutch_action_fact.sql` (applied additive action-fact reuse for custom Team/Lineup clutch)
 - `sql/analytics/player_onoff_ppp_readonly.sql` (read-only worked calculation)
 - `scripts/export_r_reference.R`
 - `scripts/compare_r_reference.py`
