@@ -17,6 +17,7 @@ from euroleague_possessions.postgres_backend import (  # noqa: E402
     _split_sql_statements,
     assert_shadow_schema_compatible,
     finish_load_run,
+    refresh_derived_for_games,
     start_load_run,
 )
 from euroleague_possessions.staging import GameBootstrap  # noqa: E402
@@ -375,6 +376,7 @@ class LineupUnitWiringTest(unittest.TestCase):
         "player_four_factors_by_game", "team_four_factors_by_game",
         "matchup_segments_actions", "action_team_context_actions",
         "lineup_totals_by_game", "sub_lineups",
+        "default_clutch_lineup_totals_by_game",
     }
 
     def test_schema_allowlist_accepts_the_unit_relations(self) -> None:
@@ -418,6 +420,35 @@ class LineupUnitWiringTest(unittest.TestCase):
 
         self.assertLess(fact, totals, "the event fact must be refreshed first")
         self.assertLess(totals, units, "units are expanded from lineup totals")
+
+    def test_validate_game_refreshes_default_clutch_after_the_fact(self) -> None:
+        connection = LoadRunConnection()
+        backend = PostgresTransactionBackend(connection, load_run_id=17)
+        try:
+            backend.validate_game(game_id=23)
+        except Exception:
+            pass
+
+        executed = [sql for sql, _ in connection.statements]
+
+        def index_of(needle: str) -> int:
+            return next(i for i, s in enumerate(executed) if needle in s)
+
+        fact = index_of("refresh_actions_consumer_candidates")
+        clutch = index_of("refresh_default_clutch_for_games")
+        self.assertLess(fact, clutch, "default clutch reads the refreshed event fact")
+
+    def test_batch_refresh_includes_default_clutch_after_the_fact(self) -> None:
+        connection = LoadRunConnection()
+        refresh_derived_for_games(connection, [23, 24])
+        executed = [sql for sql, _ in connection.statements]
+
+        fact = next(i for i, s in enumerate(executed)
+                    if "refresh_actions_consumer_candidates" in s)
+        clutch = next(i for i, s in enumerate(executed)
+                      if "refresh_default_clutch_for_games" in s)
+        self.assertLess(fact, clutch)
+        self.assertEqual(connection.statements[clutch][1], ([23, 24],))
 
 
 if __name__ == "__main__":

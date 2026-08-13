@@ -47,6 +47,12 @@ ACTIONS_CUTOVER_DDL_PATH = (
 TEAM_MINUTES_DDL_PATH = (
     REPO_ROOT / "euroleague" / "sql" / "018_team_minutes_read_layer.sql"
 )
+CLUTCH_DDL_PATH = (
+    REPO_ROOT / "euroleague" / "sql" / "019_clutch_read_layer.sql"
+)
+DEFAULT_CLUTCH_DDL_PATH = (
+    REPO_ROOT / "euroleague" / "sql" / "020_default_clutch_fast_path.sql"
+)
 
 
 class ShadowSchemaDraftTest(unittest.TestCase):
@@ -185,6 +191,50 @@ class ShadowSchemaDraftTest(unittest.TestCase):
         self.assertIn("RETURNS TABLE (TEAM_ID BIGINT, MINUTES NUMERIC)", upper)
         self.assertIn("SECURITY DEFINER", upper)
         self.assertIn("SET SEARCH_PATH = PG_CATALOG, EUROLEAGUE, PUBLIC", upper)
+
+    def test_clutch_read_layer_uses_pre_event_scores_and_exact_intervals(self) -> None:
+        ddl = CLUTCH_DDL_PATH.read_text(encoding="utf-8")
+        upper = ddl.upper()
+
+        self.assertNotIn("BASKETBALL_TEST.", upper)
+        self.assertNotIn("BASKETBALL.", upper)
+        self.assertIn("CLUTCH_EVENT_QUALIFIES", upper)
+        self.assertIn("CLUTCH_SEGMENT_DURATIONS", upper)
+        self.assertIn("FILTERED_TEAM_GAME_FACTS", upper)
+        self.assertIn("ATC.OWN_TEAM_SCORE", upper)
+        self.assertIn("ATC.EVENT_TEAM_ID = ATC.TEAM_ID", upper)
+        self.assertIn("ATC.EVENT_TEAM_ID = ATC.OPPONENT_TEAM_ID", upper)
+        self.assertIn("LEAD(SS.STATE_START", upper)
+        self.assertIn("MS.START_ELAPSED_SECONDS", upper)
+        self.assertIn("MS.END_ELAPSED_SECONDS", upper)
+        self.assertIn("2400::NUMERIC", upper)
+        self.assertIn("P_PERIOD > 4", upper)
+        self.assertIn("NOT COALESCE(P_OT_MARGIN_FILTER, FALSE)", upper)
+        self.assertIn("EUROLEAGUE.ACTION_TEAM_CONTEXT_ACTIONS", upper)
+        self.assertIn("EUROLEAGUE.MATCHUP_SEGMENTS_ACTIONS", upper)
+        self.assertIn("SECURITY DEFINER", upper)
+        self.assertIn("REVOKE ALL ON FUNCTION", upper)
+
+    def test_default_clutch_cache_is_incremental_and_keeps_custom_dynamic(self) -> None:
+        ddl = DEFAULT_CLUTCH_DDL_PATH.read_text(encoding="utf-8")
+        upper = ddl.upper()
+
+        self.assertNotIn("BASKETBALL_TEST.", upper)
+        self.assertNotIn("BASKETBALL.", upper)
+        self.assertIn("CREATE TABLE EUROLEAGUE.DEFAULT_CLUTCH_LINEUP_TOTALS_BY_GAME", upper)
+        self.assertNotIn("CREATE MATERIALIZED VIEW EUROLEAGUE.DEFAULT_CLUTCH", upper)
+        self.assertIn("REFRESH_DEFAULT_CLUTCH_FOR_GAMES", upper)
+        self.assertIn("DELETE FROM EUROLEAGUE.DEFAULT_CLUTCH_LINEUP_TOTALS_BY_GAME", upper)
+        self.assertIn("TARGET_GAME_IDS, 5, 'ALL', 300, FALSE", upper)
+        self.assertIn("ELSIF P_MAX_MARGIN = 5", upper)
+        self.assertIn("P_MAX_TIME_REMAINING = 300", upper)
+        self.assertIn("FROM EUROLEAGUE.LINEUP_TOTALS_BY_GAME", upper)
+        self.assertIn("FROM EUROLEAGUE.DEFAULT_CLUTCH_LINEUP_TOTALS_BY_GAME", upper)
+        self.assertIn("FROM EUROLEAGUE.CLUTCH_TEAM_GAME_FACTS", upper)
+        self.assertIn("SECURITY DEFINER", upper)
+        self.assertIn("ENABLE ROW LEVEL SECURITY", upper)
+        self.assertIn("CREATE POLICY APP_READONLY_SELECT_ALL", upper)
+        self.assertIn("REVOKE ALL ON TABLE", upper)
 
     def test_player_onoff_walkthrough_is_read_only_and_action_grained(self) -> None:
         sql = ONOFF_SQL_PATH.read_text(encoding="utf-8")

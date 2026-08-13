@@ -1,1319 +1,981 @@
-# EuroLeague data exploration handoff
-
-Last updated: 2026-08-07  
-Status: 84 games loaded; two EuroLeague tabs live in the Shiny app behind a
-league switch; standalone load framework in place
-
-> **Everything below the "Operational handoff snapshot" section is design
-> history from the exploratory phase.** It remains accurate as a record of how
-> the possession engine, reconciliation and QA were validated, but it describes
-> the project as it stood at three controlled games. For current state, read the
-> snapshot section only.
-
-## Current status summary
-
-- **Package-first rule:** use pinned `euroleague-api==0.1.1` for schedules,
-  play-by-play, box scores, starters, and reconstructed lineups. Custom code is
-  limited to persistence/reliability, possessions, reconciliation, QA, and
-  schema mapping.
-- **Possessions:** deterministic Python and independent R implementations agree
-  exactly on all 56,463 events in the 100-game sample and both produce 14,684
-  possessions. All 4,122 free throws resolve and all games pass hard structural
-  QA.
-- **Official validation:** all 16 PBP-versus-box-score metrics match across all
-  200 team-games. Strict score progression passes 97/100 games; the remaining
-  three are exact adjacent one-event-ahead provider snapshots and pass the
-  bounded reconciliation rule, producing 100/100 reconciled games.
-- **Lineups:** the package supplies the lineup engine. All 56,463 events have
-  two unique five-player lineups; 37 package-invalid actor rows are retained as
-  QA rather than corrected by a second lineup implementation.
-- **Schema:** the isolated `euroleague` schema follows the Israeli core
-  layers (`schedule`, `full_rosters`, `actions_clean`, `possessions`, `stints`,
-  and `pws`) while separating immutable raw evidence and avoiding wide table
-  duplication. Migrations 001, 002, 004, 005, 006, 007, 008 and 009 are applied.
-  **Migration 003 is SUPERSEDED by 004 and must never be applied.**
-- **Loadability:** the database-free schema coverage audit passes 100/100 games
-  with zero blocking identity, action-key, lineup, endpoint, or offense-team
-  mapping issues. Thirty-five coach/bench pseudo-actor rows remain raw-only.
-- **Transaction contract:** the driver-independent per-game writer has commit,
-  rollback, preflight-validation, and database-validation tests. The 100-game
-  load plan expands to 2,800 deterministic operations and 100 planned commits.
-- **Batch execution:** bounded, restartable collectors and deterministic
-  per-game stage checkpoints are implemented. A fresh offline stage of all 100
-  cached games completed 100/100 in 56.544 seconds; two resumptions of the same
-  validated checkpoints took 3.874 and 7.706 seconds. No batch was written to
-  PostgreSQL.
-- **Analytics:** the additive SQL compatibility layer is applied. It preserves
-  raw numerators/denominators for player ON/OFF PPP, ratings, and four factors;
-  the three controlled games contain 3,910 validated player/context fact rows.
-- **Live data:** `E/2025/1-84` (rounds 1-9) is loaded under `load_run_id=4`,
-  84 requested, 84 successful, zero failed, parser `0.2.0` throughout. Twenty
-  teams at 8-9 games each. All verification passes: box-score metrics exact on
-  84/84, score progression reconciled 84/84, lineup structure valid 84/84, team
-  four factors matching the independently derived player fact, and MV/dynamic
-  parity.
-- **Current boundary:** no Israeli-schema table, production ETL flow, or Israeli
-  application query was changed. `app_readonly` was granted SELECT on the
-  EuroLeague read layer and EXECUTE on its four functions. Further live games
-  are run through `scripts/load_games.py` and no longer need a bespoke session.
-
-## Operational handoff snapshot
-
-This section is the starting point for the next work session. The detailed
-design history and evidence remain below it.
-
-### Repository state versus live state
-
-| Concern | Repository | Live `euroleague` schema |
-|---|---|---|
-| Live data | `scripts/load_games.py` loads any gamecode range | `E/2025/1-84`, `load_run_id=4` |
-| Possession parser | `0.2.0` | `0.2.0` throughout |
-| Stage checkpoint format | `2` | n/a |
-| Core schema | Migration 001 | Applied |
-| Additive per-game analytics | Migration 002 | Applied |
-| App read layer | Migration 004 (**supersedes 003**) | Applied |
-| Team ratings | Migration 005 | Applied |
-| Team four factors + dynamic team path | Migration 006 | Applied |
-| Four-factor refresh query plan | Migration 007 | Applied |
-| Event x team-perspective fact | Migration 008 | Applied |
-| Consumers read the event fact | Migration 009 | Applied |
-| App integration | Tabs 8 and 9 in `app/` | Reads via `app_readonly` |
-
-Apply order is **001 → 002 → 004 → 005 → 006 → 007 → 008 → 009**. Migration 003 is
-superseded and must never be applied.
-
-The publication code calls `euroleague.refresh_app_materialized_views()` when a
-load run finishes. This is a deliberate fail-closed dependency: a load must not
-be marked complete while its app-facing snapshots are stale. Any migration that
-adds a derived table must also register it in `assert_shadow_schema_compatible()`
-(`postgres_backend.py`), or publication refuses to start.
-
-### Storage
-
-~280 MB for 84 games (~3.3 MB/game), projecting to roughly 1.3 GB for a full
-402-game season. The instance is shared with `basketball_test`; the operator has
-confirmed 5 GB available, so storage is not currently a constraint. The largest
-per-game relations are `player_four_factors_by_game`, `actions_raw` and
-`action_lineups`.
-
-Migration 008 is not a net storage cost. It adds `action_team_context`
-(95,216 rows / 36 MB) and `matchup_segments` (11,554 rows / 2.2 MB), but the
-007-adjacent correction to `refresh_player_four_factors_by_game_for_games()`
-(it had been cross-joining player/context combinations that never occurred)
-shrank `player_four_factors_by_game` from 182,868 to 115,034 rows — 109 MB, a
-larger reduction than the two new tables consume. Migration 008 as built
-returns more space than it takes.
-
-### Latest completed work (2026-08-07)
-
-Twelve commits on branch `shiny/euro-tab1`, from `6674564` to `0f0a6e0`.
-
-**Read layer.** Migration 004 (app read layer: `player_game_context`,
-`onoff_compute`, `four_factors_compute`, three MVs), 005 (team ratings:
-`team_game_ratings_mv` raw counts, `team_ppp_ratings_mv` season aggregate), and
-006 (team four factors at team grain plus `get_team_*_dynamic`). One definition
-of team rating now serves both the ratings surface and the opponent-strength
-filter; opponent ranks are season-wide.
-
-**App.** Two tabs, both league-scoped: `euro` (On/Off Impact) and `euro_team`
-(Team Ratings), each with Summary and Four Factors. Every league's tabs stay
-statically defined and only one league's are visible, so the navbar does not
-grow; the league lives in JS plus `localStorage` and is chosen from a Home
-chooser or an `IL|EL` navbar switch. One shared competition+season selector
-serves the whole EuroLeague section.
-
-**Loading.** `scripts/load_games.py` plus `RUNBOOK.md` — collect, stage, publish
-and verify in one command, runnable without an agent session, safe by default,
-resumable, exit code 1 on any failed check.
-
-**Schedule metadata.** `staging.build_staged_game` previously hardcoded
-`round_number`, `phase` and `scheduled_at` to `None`, so every date, round and
-phase predicate evaluated to NULL and filtered the game out. Any filtered query
-returned zero rows while the unfiltered season path looked correct.
-`schedule_collector.fetch_season_schedule_meta()` now supplies them at staging
-time.
-
-**Verified on the 84-game load.** Parser `0.1.0` to `0.2.0` is genuinely
-output-identical apart from lineage: re-deriving gamecodes 1-3 reproduced 432
-possessions and, under the analytics grain in force at the time, 6,240
-analytics facts exactly. That grain was corrected on 2026-08-08 and the same
-three games now yield 3,910 rows; the parser equivalence this paragraph records
-is unaffected, since both parsers are compared under one grain.
-
-### Known issues
-
-- **70 of 84 games carry `game_qa.publication_status = 'review'`.** Every hard
-  gate passes; the flag comes from `possession_review_status`, driven by an
-  average of 0.21 same-team transitions per game plus three games whose score
-  progression was not exact but did reconcile. QA status is **not** a
-  publication filter — the season aggregates include all 84 games regardless —
-  so this count should be surfaced in the UI.
-- **The persisted event fact is populated and both four-factor refreshes now
-  read it.** Migration 008 added `euroleague.action_team_context` (one row per
-  action per team perspective) and `euroleague.matchup_segments` (joint
-  own-lineup/opp-lineup segments, duration stored once per segment), rebuilt by
-  `refresh_action_team_context_for_games()` and called from `validate_game()`
-  ahead of the four-factor refreshes on every publication — currently 95,216
-  fact rows / 36 MB and 11,554 segment rows / 2.2 MB across 84 games. This
-  closes the structural gap noted after migration 007: the Israeli pipeline
-  reads a persisted event × team-perspective fact
-  (`df_pts_poss_lineups_longer_mv`) instead of re-deriving `type_lineup`,
-  lineup, starter context and segment seconds from raw events on every refresh.
-  Migration 009 completed the switch. Both
-  `refresh_player_four_factors_by_game_for_games()` and
-  `refresh_team_four_factors_by_game_for_games()` now read the fact instead of
-  each re-deriving the expansion from `actions_raw`, so it is derived once per
-  publication rather than three times. Both rewrites are output-identical:
-  the player grain, the team grain and both season views are byte-for-byte
-  unchanged, verified against rows captured before the change
-  (`scripts/snapshot_four_factor_grains.py`).
-
-  Two consequences worth knowing. `verify_action_team_context.py` checks 6-8
-  now compare the fact against a table derived from the fact, so they are
-  trivially true; checks 1-5 remain independent. And `validate_game()`'s
-  expected-row-count comparison became a value against itself, so it was
-  replaced by a coverage assertion, with the real reproduction check promoted
-  into `load_games.py --verify-only` where it can still fail.
-- **`pws` is write-only.** Nothing reads it; both analytics derivations join
-  `action_lineups` and `possessions` directly. It survives only as an integrity
-  gate — four NOT NULL lineup/stint foreign keys mean an unattributable
-  possession fails the load. Move that assertion into `game_qa` before dropping
-  the table.
-- **EuroCup has never been collected.** No `U` data exists anywhere.
-- The four-factor `est. ±X pts` annotation is suppressed for EuroLeague because
-  the weights were fitted on Israeli data.
-
-### Ordered upcoming plan
-
-#### 1. Season-scoped lineup identity
-
-`lineups.lineup_hash` hashes provider player ids, the least stable identifier in
-the system: when a provider id is re-minted next season the same five players
-hash differently and lineup history splits silently. Hash the internal
-`player_id` instead. Separately, lineup identity is per game
-(`UNIQUE (game_id, team_id, lineup_hash)`), so the same five across 30 games are
-30 rows — never aggregate on `lineup_id`. A season-scoped lineup relation is the
-prerequisite for any lineup-combos surface.
-
-#### 2. Player identity layer, before a second season
-
-`euroleague.players` is `UNIQUE (competition, provider_player_id)` with no season
-scope and no identity dictionary. Provider ids are re-minted per season and
-recycled to different people. Build the identity layer *with* the second season,
-not after it, and add the two data-quality checks at the same time: one
-normalized name with more than one provider id, and one provider id whose name
-or team changes across seasons.
-
-#### 3. Load the rest of the season
-
-~318 games remain, at ~5s/game after migration 007 — under 30 minutes. The
-publication path was validated on
-2026-08-07: `scripts/probe_batched_publish.py` republished gamecodes 1-3
-through the real backend against the live database and rolled back, and the
-natural-key projection of every lineup, lineup member, action lineup, stint,
-pws row and downstream `player_game_context` fact was identical to what the
-previous one-row-at-a-time code had written. No id mapping is at risk, so this
-can now be run at scale.
-
-#### 4. EuroCup viability check
-
-Collect a single `U` game and run schema coverage, reconciliation and possession
-QA against it. Three things decide whether EuroCup is viable at all: box-score
-`IsStarter` flags, the play-type vocabulary, and PBP completeness.
-
-#### 5. Operations
-
-Scheduled collection and publication, per-run logs, a last-success marker the UI
-can display, and a game-keyed publication marker so "what is new since last
-night" can be answered without scanning `game_qa`.
-
-### Handoff completion criteria
-
-The next milestone is complete when season-scoped lineup identity exists and is
-hashed on internal player ids, the player identity layer is in place, and a
-second season has been validated through it without silently merging or
-splitting players.
-
-## Executive summary
-
-The `euroleague-api` Python package is a useful extraction layer for schedules,
-play-by-play, box scores, shots, standings, and reconstructed lineups. It should
-not be the application's live data layer or the only retained copy of the data.
-The recommended architecture is:
-
-1. use pinned Python code to fetch and checkpoint provider data;
-2. preserve immutable raw responses or lossless per-game extracts;
-3. normalize them into a separate PostgreSQL `euroleague` schema that follows
-   the grains and audit principles of the Israeli schema;
-4. derive event relationships and possessions deterministically, while using
-   the package's reconstructed lineups with retained QA fields;
-5. integrate with the app only after reconciliation gates pass.
-
-The highest-risk missing source field is `parent_action_id`. Deterministic R and
-typed Python parsers now reconstruct synthetic parents, FT trips, and possession
-endpoints without using clock as an identifier. They were tested on 100 complete
-games: all games passed hard structural QA, all 4,122 FTs were assigned, and
-both implementations returned the same 14,684 possessions and exactly the same
-decisions on all 56,463 events.
-
-This is strong enough for a shadow schema. It is not yet evidence that every
-derived possession is semantically correct, because EuroLeague does not supply
-ground-truth parent or possession identifiers.
-
-## Decisions reached
-
-### Package-first implementation rule
-
-Use the pinned `euroleague-api` package whenever it already provides the
-required source capability. This includes schedules, play-by-play, box scores,
-shots, standings, standard statistics, basic source cleanup, event ordering,
-starters, and reconstructed lineups. Do not reproduce those basketball
-transformations in project code.
-
-Custom code is limited to missing or project-specific requirements:
-restartable collection, caching, immutable persistence, throttling and retry
-policy, provenance, deterministic relationship and possession logic,
-reconciliation, QA, schema mapping, and application outputs. A collector may
-call the official endpoint directly only when the package cannot expose the
-raw response or provide the required operational guarantees. Such a wrapper
-must not create competing basketball semantics.
-
-### Store data or call the package live?
-
-Persist the data in our own schema. Continue using the package for extraction.
-
-Reasons:
-
-- reproducibility when an endpoint or package behavior changes;
-- stable keys for actions, parents, FT trips, lineups, and possessions;
-- incremental loads and audit history;
-- faster application queries without external API dependence;
-- the ability to compare EuroLeague rules with Israeli rules without forcing
-  both providers into one raw representation;
-- retention of raw evidence for ambiguous sequences.
-
-### Separate database or separate schema?
-
-Use a separate schema in the existing PostgreSQL database by default. A
-separate physical database adds operational overhead without solving a current
-problem. Schema isolation is enough to prevent EuroLeague source differences
-from contaminating canonical Israeli tables while still permitting controlled
-cross-competition analysis later.
-
-The isolated `euroleague` schema was created for the initial one-game trial on
-2026-08-06 and now contains the approved three-game controlled batch. It
-remains separate from `basketball` and `basketball_test`.
-
-### Reuse the Israeli schema exactly?
-
-Follow its principles and table grains, not every source-specific column.
-EuroLeague needs its own raw and normalized layer because its event vocabulary,
-identifiers, substitutions, penalty sequences, and relationship evidence are
-different. Cross-league views should be built only above normalized canonical
-tables.
-
-### What cross-league compatibility means
-
-Compatibility is architectural and semantic, not exact-output parity. Both
-projects should retain the same recognizable progression:
-
-1. immutable or recoverable source evidence;
-2. normalized schedule, roster, action, and lineup relations;
-3. deterministic possession and stint derivation;
-4. additive per-game analytics facts;
-5. league-aware query and application adapters.
-
-The common analytics concepts are game/team/player identity, ON/OFF state,
-offense/defense perspective, points, possessions, minutes, and the additive
-numerators and denominators needed for ratings and four factors. Each league
-may keep additional provider-specific evidence and metrics.
-
-The implementations need not use the same language or produce identical row
-eligibility and rounding. The Israeli pipeline can remain R/SQL while the
-EuroLeague pipeline uses Python and `euroleague-api`. Cross-league validation
-should verify common grains and metric meanings, then validate each league
-against its own source totals and invariants; Israeli row-for-row output parity
-is not a EuroLeague release requirement.
-
-### Python concurrency policy
-
-Independent games are valid Python concurrency units for both extraction and
-pure transformation. Concurrency must be bounded and adaptive because broad
-parallel package calls already triggered provider throttling during
-exploration.
-
-- Fetch one endpoint/game task at a time within each worker and checkpoint the
-  completed artifact immediately.
-- Use a small configurable worker limit, bounded retry/backoff, and a shared
-  cooldown that pauses request starts on `429` or equivalent
-  throttling responses.
-- Transform games independently, then sort outputs by the deterministic game
-  and event keys before validation or persistence.
-- Preserve one database transaction per game. Concurrent staging is safe;
-  publication concurrency must be limited by the connection pool and must not
-  interleave two replacements of the same game.
-- A rerun from the same cached artifacts must produce the same normalized rows
-  regardless of worker completion order.
-
-### Implemented concurrency and measured effectiveness
-
-The Python implementation follows the policy above without changing the
-Israeli R/SQL pipeline:
-
-- PBP extraction calls the package's
-  `PlayByPlay.get_game_play_by_play_data()` method and atomically checkpoints
-  one game at a time.
-- Full raw box-score collection uses a documented direct reliability wrapper
-  because package version 0.1.1 does not expose the complete raw response.
-- Both collectors support bounded workers, globally coordinated request
-  spacing/cooldown, bounded retries, isolated per-game failures, deterministic
-  manifests, and cache-aware restart.
-- Pure per-game staging can run concurrently, but publication is deliberately
-  sequential: one shared auditable load run per competition/season batch and
-  one atomic database transaction per game.
-
-Actual cached-data timings on this machine were:
-
-| Workload | Workers | Result | Throughput |
-|---|---:|---:|---:|
-| Fresh 10-game staging | 1 | 5.470 s | 1.828 games/s |
-| Fresh 10-game staging | 2 | 5.541 s | 1.805 games/s |
-| Fresh 10-game staging | 4 | 6.115 s | 1.635 games/s |
-| Fresh 100-game staging | 1 | 56.544 s, 100/100 succeeded | 1.769 games/s |
-| Resume 100 validated checkpoints | 1 | 3.874-7.706 s, 100/100 cached | 12.977-25.812 games/s |
-
-Threaded staging was slower for this CPU/DataFrame/JSON workload, so its
-measured default is one worker while the option remains configurable. Bounded
-concurrency is most useful for network-bound extraction; no fresh live fetch
-was performed for this benchmark. Restart was approximately 14.6 times faster
-at best and 7.3 times faster in the repeat run. Completion order did not affect
-manifest order or content.
-
-## Package assessment
-
-Inspected and installed version: `euroleague-api==0.1.1`, in the isolated
-project environment at `euroleague/.venv`.
-
-The package is a relatively thin wrapper around EuroLeague endpoints. Its main
-surfaces cover:
-
-- schedules and gamecodes;
-- play-by-play;
-- game, team, and player statistics;
-- box scores and starters;
-- shots;
-- standings;
-- reconstructed play-by-play lineups.
-
-The package adds `TRUE_NUMBEROFPLAY` because provider `NUMBEROFPLAY` is often
-not in chronological order. That generated sequence is the appropriate source
-ordering input, after namespacing it by competition, season, game, and period.
-
-Operational findings:
-
-- package installation is useful and simpler than reimplementing every
-  endpoint;
-- broad concurrent fetching triggered rate limiting during exploration;
-- safe ingestion should be per-game, throttled, checkpointed, retryable, and
-  restartable;
-- package output should be treated as source data, not a stable storage API;
-- the installed metadata declares GPLv3 with a commercial-license option, so
-  licensing should be reviewed before production distribution or tight code
-  integration.
-
-The dependency is pinned in `euroleague/requirements.txt` and
-`euroleague/pyproject.toml`.
-
-## Israeli and EuroLeague source comparison
-
-| Concern | Israeli pipeline | EuroLeague source/package | Decision |
-|---|---|---|---|
-| Event order | Canonical action IDs and row order | `NUMBEROFPLAY` can be unordered; package creates `TRUE_NUMBEROFPLAY` | Preserve both; use the generated source order within game and period. |
-| Parent relationship | Raw `parent_action_id` is available | No parent field | Derive `synthetic_parent_order`, retain confidence, and later map it to normalized action IDs. |
-| Substitution meaning | A substitution records player-in/player-out semantics | Provider emits separate `IN` and `OUT` rows | Treat them as the same basketball concept, but pair and validate the EuroLeague rows. |
-| Starting lineups | Reconstructed and stored by the Israeli ETL | Package reads box-score `IsStarter` rows | Preserve starter provenance and validate exactly five per team. |
-| Event lineups | Canonical lineup/stint tables | Package computes `Lineup_A`/`Lineup_B` | Use the package output as the baseline and retain its validation flags. |
-| Possessions | `compute_possessions()` has provider-specific rules and parents | No canonical possession table | Use a separate deterministic EuroLeague state machine. |
-| Clock | Context plus canonical elapsed-time corrections | Many unrelated actions can share one clock | Never use clock as an event or incident key. |
-
-## Substitutions and package lineups
-
-Both datasets contain in/out substitution semantics. The representation differs:
-EuroLeague records separate `IN` and `OUT` play types, while the Israeli action
-model exposes the paired players on a substitution action.
-
-The package's lineup method does construct lineups, but they are derived rather
-than supplied as authoritative event-level lineups. It:
-
-1. gets each team's starters from box-score `IsStarter` flags;
-2. walks play-by-play in generated source order;
-3. pairs later opposite `IN`/`OUT` rows for the same team and clock;
-4. replaces the outgoing player in the current five;
-5. optionally produces `validate_on_court_player`.
-
-The package itself documents delayed substitutions, assists credited after a
-player has been substituted, missing matching substitutions, and players not
-found in the current five. Therefore the lineups are already *constructed* and
-will be used as the EuroLeague baseline. We will retain the package validation
-evidence rather than create a second substitution engine without a measured
-need.
-
-Recommended lineup gates:
-
-- five unique players per team at every live interval;
-- starter count and identity reconcile to the box score;
-- every `IN`/`OUT` pair is traceable and same-team;
-- on-court player actions reconcile or have an explicit provider exception;
-- no negative, overlapping, or unexplained stint duration;
-- package version and `validate_on_court_player` are retained with each load.
-
-### Package-lineup audit on 100 games
-
-The package lineup method was applied offline to the existing 100-game PBP
-sample using the already cached official box scores. No new API calls and no
-independent substitution logic were used.
-
-| Diagnostic | Result |
-|---|---:|
-| Games processed | 100 / 100 |
-| Event rows enriched | 56,463 / 56,463 |
-| Games with exactly five starters per team | 100 / 100 |
-| Rows with two five-player lineups | 56,463 / 56,463 |
-| Rows with duplicate players in either lineup | 0 |
-| Package-invalid on-court actor rows | 37 (0.0655%) |
-| Games containing an invalid-actor flag | 28 |
-
-Of the 37 package-invalid actor rows, 29 are assists. This is consistent with
-the package's documented source-timing cases, such as an assist being credited
-after the passer has left the floor. The remaining eight are two turnovers,
-two offensive rebounds, and one each of foul drawn, made two-pointer,
-defensive rebound, and missed two-pointer. These rows remain visible in the QA
-export; the package lineups are not silently altered.
-
-## Why the missing parent ID matters
-
-The absence of `parent_action_id` was rated high severity because relationships
-drive more than presentation. They determine:
-
-- which foul awarded a free throw;
-- whether a made shot and FT are an and-one;
-- whether multiple FTs are one or several trips;
-- whether an offensive foul plus turnover is one endpoint or two;
-- whether a rebound closes or continues a possession;
-- how technical and unsportsmanlike penalties affect entitlement;
-- which action receives `final_end_poss`.
-
-It is manageable because the source has stable within-game sequence and enough
-event evidence to reconstruct most relationships. The mitigation is not a
-single guessed parent column: it is the combination of synthetic parent, FT
-trip, endpoint, confidence, and QA status.
-
-Every event receives a non-null parent. A root or singleton parents itself;
-children point to a root in the same game and period. Synthetic IDs are derived
-from source identity and ordering, never from game clock.
-
-## Deterministic possession implementations
-
-The typed Python implementation is the EuroLeague canonical candidate:
-
-- `euroleague/src/euroleague_possessions/models.py` defines immutable events,
-  mutable per-event decisions, grouping statuses, endpoint reasons, and explicit
-  pending-penalty state;
-- `euroleague/src/euroleague_possessions/parser.py` normalizes input, executes
-  fixed relationship/endpoint passes, and emits a rule-by-rule
-  `decision_trace` for every event;
-- `euroleague/src/euroleague_possessions/counter.py` emits possession rows,
-  team/reason totals, sequential possession numbers, and game QA;
-- `euroleague/src/euroleague_possessions/cli.py` provides a file-based
-  diagnostic and optional CSV outputs;
-- `euroleague/tests/` verifies manual labels, input-order independence,
-  deterministic complete outputs, traces, numbering, and structural QA.
-
-The original pure R transformation remains an independent reference:
-
-- `etl/euroleague/group_events.R` normalizes package columns and derives
-  `synthetic_parent_order`, `synthetic_ft_trip_id`, `final_end_poss`, endpoint
-  reason, status, and confidence;
-- `etl/euroleague/count_possessions.R` always recomputes grouping from raw
-  columns and returns event-level output, one row per possession, team totals,
-  reason totals, and game QA;
-- `etl/euroleague/evaluate_grouping_sample.R` reports structural diagnostics for
-  an unlabelled sample;
-- `etl/euroleague/fixtures/event_grouping_edge_cases.csv` stores raw evidence
-  and manual expectations;
-- three `etl/tests/test_euroleague_*.R` scripts protect grouping, endpoints,
-  deterministic counting, and structural invariants.
-
-`euroleague/scripts/export_r_reference.R` and
-`euroleague/scripts/compare_r_reference.py` compare every material derived
-field between languages. The Python design is typed and more auditable, but it
-deliberately preserves the already validated basketball semantics of the R
-reference rather than changing rules during a language port.
-
-### Python and R semantic parity
-
-The Python implementation intentionally applies the same basketball logic as
-the R reference. Both versions use the same:
-
-- event ordering and period boundaries;
-- shot, assist, block, and rebound relationships;
-- offensive-foul, unsportsmanlike, turnover, and steal bundles;
-- committed-foul and foul-drawn pairing;
-- FT-parent candidate scoring and deterministic tie behavior;
-- FT-trip partition rules;
-- and-one and different-shooter dead-ball-FT treatment;
-- technical, compound, and retained-ball penalty treatment;
-- possession endpoint rules and endpoint reasons;
-- grouping status, confidence, and game-QA definitions.
-
-The 100-game comparison covered 56,463 events and found zero differences in:
-
-| Derived field | Python/R mismatches |
-|---|---:|
-| `synthetic_parent_order` | 0 |
-| `synthetic_ft_trip_id` | 0 |
-| `final_end_poss` | 0 |
-| `end_reason` | 0 |
-| `grouping_status` | 0 |
-| `grouping_confidence_pct` | 0 |
-
-Both implementations produce exactly 14,684 possession rows.
-
-The implementation structure differs without changing those semantics:
-
-| R reference | Python candidate |
+# EuroLeague project handoff
+
+Last updated: 2026-08-13
+
+This is the current project handoff and the first document to read before
+changing the EuroLeague ETL, schema, or app integration. `CLAUDE.md` is a
+historical record and must not be edited or treated as the current schema
+contract.
+
+## Current state
+
+- The project uses an isolated `euroleague` schema in the existing PostgreSQL
+  database. Never write EuroLeague data to the Israeli `basketball` or
+  `basketball_test` schemas.
+- The recorded live load is `E/2025/1-84` under completed `load_run_id=4`:
+  84 requested, 84 successful, zero failed, rounds 1-9.
+- Parser `0.2.1` and offline checkpoint format `6` add the labelled
+  compound-penalty endpoint fix. The extraction dependency remains pinned to
+  `euroleague-api==0.1.1`.
+- Migrations 010-012 completed the simplified event-schema cutover. The
+  canonical `actions` table now contains every typed package PBP field, both
+  package lineups, parser grouping, and the possession endpoint annotation.
+- The recorded post-cutover counts are 47,608 `actions_raw` rows, 47,608
+  `actions` rows, 95,216 event/team-perspective rows, and 11,554 team matchup
+  segments. The schema occupied 254 MB for 84 games.
+- Player ON/OFF, player four factors, team four factors, team ratings, schedule
+  filtering, and EuroLeague Shiny tabs are implemented. The app now also has
+  game logs in Summary and Four Factors modes, backed by the existing
+  game-level read facts; no shot-type mode is exposed.
+- EuroLeague Team Ratings now follows the Israeli minutes/pace pattern. Applied
+  migration 018 exposes `get_team_minutes_dynamic()`, which sums canonical
+  `matchup_segments_actions.segment_seconds` per game/team under active filters;
+  the app derives Off Pace and Def Pace only after aggregating possessions and
+  minutes. The function is a scoped `SECURITY DEFINER` path because
+  `app_readonly` must not read the segment table directly.
+- Statistics for 2-, 3-, 4-, and 5-player lineup units are implemented
+  (migrations 013-014) and surfaced by a third EuroLeague Shiny tab.
+- EuroLeague clutch filtering is implemented in the app and its database
+  migration (019) is applied to the live `euroleague` schema (2026-08-12).
+  Team Ratings and Lineup Data reuse the Israeli `clutch_filter_ui()`,
+  `resolve_clutch_params()`, reset, chip, and clear helpers. The EuroLeague
+  read layer evaluates score margin/status from the pre-event team
+  perspective and intersects canonical lineup segments with score-state/time
+  windows, so clutch minutes and pace do not bridge excluded stretches.
+  Regulation uses the selected time limit; overtime always qualifies unless
+  the user opts into the margin/status restriction.
+- Migration 020 is implemented in the repository but **not yet applied**. It
+  adds an incrementally refreshed per-game additive cache for the dominant
+  standard preset (pre-event margin <= 5, final 5:00, all score states, and
+  unrestricted overtime). Non-clutch requests continue to read
+  `lineup_totals_by_game`; custom clutch definitions continue to use the exact
+  action-level migration-019 path. Publication refreshes only changed games.
+- All four EuroLeague tabs now render their filter chips through the Israeli
+  `build_filter_chips()` rather than three hand-rolled builders, and
+  `fmt_rank_cell()` is shared. This uncovered and fixed a wrong-season date
+  reset on tabs 8 and 9 and a chip bar on tab 10 that showed none of the
+  filters it was applying. The later Game Logs tab also uses the same filter
+  and rank helpers.
+- The latest focused commit is `0ccaeaf` (`Expose EuroLeague team minutes and
+  pace`). Earlier commits in the same working window added Game Logs,
+  corrected EuroLeague auto possession minimums, aligned lineup filters and
+  loading, fixed the lineup fast path, and extracted shared Israeli/EuroLeague
+  tab plumbing. Unrelated worktree changes remain outside those commits.
+- The `euroleague` schema is now inside the repository-wide database security
+  contract. RLS is enabled with the `app_readonly_select_all` read policy on all
+  18 base tables, `PUBLIC`/`anon`/`authenticated` hold nothing, and
+  `app_readonly` has a curated relation list plus an eight-function EXECUTE
+  allowlist. Applied to the live database on 2026-08-12; see the security
+  section below.
+- Migrations 018 and 019 are applied to the isolated `euroleague` schema.
+  Migration 020 remains pending. Further live loads or DDL changes still
+  require explicit approval.
+
+## Project goal
+
+Provide EuroLeague versions of the Israeli application's core basketball
+analytics while preserving EuroLeague source semantics:
+
+- player ON/OFF ratings;
+- player ON/OFF four factors;
+- 2-, 3-, 4-, and 5-player lineup-unit statistics;
+- team offensive, defensive, net, and four-factor ratings;
+- additive game-level facts that can be filtered and aggregated without
+  averaging stored ratios.
+
+Compatibility means comparable grains, lineup exposure, possession meaning,
+and metric formulas. It does not require copying the Israeli physical schema or
+its historical intermediate tables.
+
+## End-to-end ETL
+
+```text
+EuroLeague schedule + box score + PBP
+        |
+        v
+Restartable per-game collectors and local cache
+        |
+        v
+Offline staging
+  - package PBP cleanup and Lineup_A / Lineup_B
+  - deterministic parent and FT-trip grouping
+  - possession endpoint and offense-team assignment
+  - roster/identity resolution, reconciliation, and QA
+        |
+        v
+One staged game snapshot
+  - full_rosters
+  - team_boxscores
+  - actions_raw
+  - actions
+  - reconciliation_metrics
+  - game_qa
+  - qa_incidents
+        |
+        v
+One PostgreSQL transaction per game
+        |
+        v
+Actions-derived consumer facts
+  - action_team_context_actions
+  - matchup_segments_actions
+        |
+        v
+Game-level player and team facts
+        |
+        v
+App materialized views and dynamic filtered functions
+```
+
+### 1. Collection
+
+`scripts/load_games.py` coordinates schedule metadata, box-score collection,
+PBP collection, staging, publication, and verification. Cached per-game inputs
+make collection restartable. Requests use throttling, bounded retry/backoff,
+and deterministic game ordering.
+
+The package is the extraction adapter and the lineup constructor. Project code
+adds reliability, immutable persistence, deterministic possessions,
+reconciliation, QA, and database mapping. Do not implement another lineup
+engine unless a measured package failure establishes the need.
+
+### 2. Offline staging
+
+Staging has no database I/O. It converts one cached game into a complete
+`GameSnapshot`, validates the schema coverage, and writes a checkpoint under
+`data/staging/`. A checkpoint is reusable only when its format version and
+input hashes match.
+
+Package lineups are reconstructed from box-score starters and substitution
+rows before the event snapshot is built. The complete package-enriched event,
+including `Lineup_A`, `Lineup_B`, `IsHomeTeam`, and
+`validate_on_court_player`, is preserved in `actions_raw.raw_event`.
+
+### 3. Per-game publication
+
+The game is the transaction and retry boundary:
+
+1. Resolve/upsert shared teams, players, schedule, and immutable source
+   artifacts.
+2. Delete the game's replaceable rows child-first.
+3. Insert the seven staged snapshot relations parent-first.
+4. Rebuild the two actions-derived consumer facts.
+5. Refresh player and team game facts.
+6. Run database-side counts, structural checks, and reconciliation.
+7. Commit only if every validation succeeds; otherwise roll back that game.
+
+When the batch finishes, `refresh_app_materialized_views()` runs before the
+load is marked completed. This is intentionally fail-closed so a successful
+load cannot leave the app snapshots stale.
+
+## Current schema contract
+
+### Lineage, dimensions, and validation
+
+| Relation | Grain and purpose |
 |---|---|
-| Mutable vectors and procedural passes | Typed `Event`, `EventDecision`, and `PendingPenalty` objects |
-| Relationship state is mostly implicit | Pending penalty state is explicit |
-| No per-row explanation field | Rule-by-rule `decision_trace` on every event |
-| Script sourced by the existing ETL | Installable package and command-line diagnostic |
-| Relies on dataframe input assumptions | Rejects missing required fields and duplicate source identities |
+| `load_runs` | One extraction/publication run, with package and collector lineage. |
+| `source_artifacts` | Immutable schedule/PBP/box-score evidence and hashes. |
+| `teams` | One provider team identity per competition. |
+| `players` | One provider player identity per competition. This is not yet a cross-season person dictionary. |
+| `schedule` | One row per `(competition, season, gamecode)`. |
+| `full_rosters` | One named roster player per game and team, including starter and minutes evidence. |
+| `team_boxscores` | One official box-score row per game and team. |
+| `reconciliation_metrics` | PBP-versus-official metric comparison per game and team. |
+| `game_qa` | One publication/QA summary per game and load run. |
+| `qa_incidents` | Event-level or game-level review evidence. |
 
-The Python parser remains staged and multi-pass. This was deliberate: the
-initial port established exact parity before attempting algorithmic changes.
-A future single-pass or otherwise optimized parser must first reproduce the
-same labelled fixtures and broad-sample decisions, with any intentional
-basketball-rule divergence reviewed and documented separately.
+Only named box-score/PBP actors resolve to a normalized player foreign key.
+Coach, bench, `Team`, `Total`, and other pseudo-actors remain in raw evidence
+with `player_id` null or are excluded from normalized rosters as appropriate.
 
-Core design rules:
+### `actions_raw`: immutable package-level evidence
 
-- order by season, game, period, and source event order;
-- keep incident identity, FT-trip identity, and possession endpoint separate;
-- allow at most one endpoint per incident;
-- made baskets end on the shot unless a compatible scoring/penalty sequence
-  deliberately moves the endpoint to final FT resolution;
-- missed shots end on opponent control or period end, not on an offensive
-  rebound;
-- turnovers end once; offensive-foul and steal annotations do not add another
-  endpoint;
-- ordinary FT trips end on the final make, or after opponent control following
-  a final miss;
-- technical and retained-ball penalties do not automatically end possession;
-- contradictory sequences remain visible and are flagged instead of being
-  altered merely to force alternation.
+Grain: one package-enriched PBP event per
+`(game_id, source_event_order)`.
 
-No rule contains a gamecode-specific exception.
+In this project, “raw” means the complete row returned by the pinned package
+after its supported PBP cleanup and lineup enrichment. It is not limited to the
+provider's wire payload. The table retains useful typed lookup columns and the
+complete event in `raw_event JSONB`.
 
-## Edge cases covered
+The JSON is retained only here so that:
 
-The labelled regression data covers 20 patterns:
+- every package field can be reproduced and audited;
+- future package changes can be detected;
+- typed normalization can be re-run without recollecting the game;
+- package lineups and validation flags are never lost.
 
-- clock-shifted and-one;
-- and-one with substitutions before the FT;
-- four-point play;
-- bench technical after a made basket;
-- personal and technical FT trips at the same clock;
-- opposing FT trips at the same clock;
-- interleaved personal and unsportsmanlike penalties;
-- coach technical with a later-clock FT;
-- blocked shot with block annotations and defensive rebound;
-- blocked shot resolved by period end without a rebound;
-- technical then personal trips with different shooters;
-- offsetting technicals beside an ordinary personal trip;
-- throw-in-foul FT followed by a separate personal trip;
-- retained possession after a made basket;
-- retained possession after a challenge;
-- offensive rebound at period end;
-- made basket followed by dead-ball FTs for a different teammate;
-- a new foul closing an earlier special trip even with the same shooter;
-- `CMU -> TO -> RV` unsportsmanlike sequence with retained ball;
-- a provider offensive-rebound row between foul and FTs.
+### `actions`: canonical analytical event
 
-### Concrete and-one example
+Grain: exactly one row per `actions_raw` event, with the same primary key.
 
-Season 2025, game 1, period 1:
+It contains:
 
-- order 36: Istanbul made two-pointer by Isaia Cordinier at 06:01;
-- order 37: Tel Aviv committed foul;
-- order 38: Cordinier drew the foul;
-- order 39: Cordinier made the FT at the provider's later 05:53 clock.
+- all 22 typed fields emitted by the pinned package after lineup enrichment;
+- internal `team_id` and nullable `player_id` mappings;
+- `lineup_a text[]` and `lineup_b text[]`, each exactly five players;
+- source/package/load lineage;
+- synthetic parent and free-throw-trip identities;
+- grouping status, confidence, trace, and parser version;
+- `end_possession` and endpoint reason;
+- game and team possession sequence numbers and the offense team on endpoints.
 
-All four actions attach to shot root 36 and the possession ends only on FT 39
-with reason `and_one_final_ft`. Manual confidence: 99%. The clock difference is
-why equality of clock cannot be the grouping key.
+`actions` deliberately has no JSON column: the complete immutable JSON already
+exists in `actions_raw.raw_event`.
 
-## Rules added during broader testing
+This is the end-goal event table discussed during the schema review: every PBP
+event, its additional source and parser data, both on-court lineups, and an
+explicit marker saying whether the possession ended on that event.
 
-The 100-game audit produced several general improvements:
+### Lineup identity
 
-- `TOUT_TV` is administrative and does not close relationship searches;
-- `CMU -> same-team TO -> opponent RV` is one unsportsmanlike incident;
-- transparent administrative and rebound rows can occur between a foul and its
-  FT trip;
-- child turnovers inside an unsportsmanlike/offensive-foul bundle are not new
-  FT search boundaries;
-- rebound ownership is determined from rebound team relative to shooter team,
-  even when the provider's `O`/`D` label conflicts;
-- multiple rebound rows and intervening foul annotations can be scanned before
-  resolving a miss;
-- a made basket and compatible dead-ball FT trip by a different teammate are
-  grouped as one scoring sequence, distinct from an and-one;
-- a new committed foul closes an older pending FT parent after that parent has
-  already emitted an FT, even when shooter and team are unchanged.
+There is no current `lineup_id`, `lineup_a_id`, or `lineup_b_id`.
 
-## Validation performed
+- `lineup_a` is the home lineup supplied by the package.
+- `lineup_b` is the away lineup supplied by the package.
+- They are event attributes, not offense/defense labels.
+- `segment_id` is a deterministic sequence within `(game_id, team_id)`. It is
+  not a reusable lineup identity.
+- Cross-game or cross-season lineup units should be keyed from resolved
+  internal player IDs, not provider names or a game-specific segment ID.
 
-### Labelled fixtures
+### `matchup_segments_actions`: lineup duration fact
 
-The current fixture suite contains:
+Grain: one consecutive joint-lineup interval per `(game_id, team_id,
+segment_id)`.
 
-- 20 fixtures;
-- 210 raw events;
-- 73 manually labelled incidents;
-- 34 FT rows;
-- 42 possession endpoints.
+Each physical basketball interval becomes two rows, one from each team's
+perspective. A row stores `own_lineup`, `opp_lineup`, starter counts, event
+boundaries, canonical elapsed boundaries, and `segment_seconds`.
 
-The implementation exactly matches every labelled synthetic parent, FT parent,
-FT-trip partition, possession endpoint, and endpoint reason. All three R test
-scripts pass.
+A segment begins when the home/away lineup pair changes. A lineup change does
+not create or end a possession.
 
-This 100% result is a regression guarantee for known cases, not an estimate of
-accuracy on unseen EuroLeague games.
+### `action_team_context_actions`: event/team analytical fact
 
-### Initial complete-game sample
+Grain: two rows per canonical event, one for each team perspective:
+`(game_id, source_event_order, team_id)`.
 
-An initial 23-game sample contained 12,674 events and produced 3,336
-possessions. All 900 FTs were resolved, with no duplicate endpoints or missing
-parents. Its two same-team endpoint transitions were both inspected and found
-to be retained-ball sequences.
+It supplies the fields repeatedly needed by analytics:
 
-### Expanded 100-game sample
+- `team_id` and `opponent_team_id`;
+- own and opponent lineups;
+- offense/defense context;
+- starter context and segment identity;
+- points, shot counts, rebounds, turnovers, steals, and FT attempts;
+- possession endpoint flag;
+- own and opponent running scores;
+- canonical elapsed time.
 
-The broader convenience sample contained 100 complete season-2025 games and
-56,463 raw events. Sequential early-season games were supplemented with
-distributed later gamecodes. The final sample had no fetch failures.
+The fixed two-row expansion is appropriately implemented with a two-value
+lateral expansion. This is not a combinatorial join: a game has exactly two
+team perspectives. Persisting the result prevents every analytics query from
+repeating the same event expansion.
 
-| Diagnostic | Result |
-|---|---:|
-| Derived possessions | 14,684 |
-| FT rows assigned | 4,122 / 4,122 (100%) |
-| Provisional FT rows | 235 (5.70%) |
-| Unresolved FT rows | 0 |
-| Provisional endpoints | 26 (0.18%) |
-| Duplicate-endpoint incidents | 0 |
-| Missing parent targets | 0 |
-| Games passing hard structural QA | 100 / 100 |
-| Same-team endpoint transitions | 13 / 14,283 (0.091%) |
-| Full count runtime | approximately 7.7 seconds |
+`actions` is conceptually similar to the Israeli `pws` row because it combines
+an event, lineups, and possession information, but it does not carry a rival
+team perspective. `action_team_context_actions` is the closer equivalent of
+the Israeli two-perspective central fact.
 
-Two independent executions returned identical complete result objects and
-14,684 possession rows.
+### Game facts and app read layer
 
-The team possession-count difference was zero in 32 games, one in 51, two in
-16, and three in one. Differences above one are review signals, not automatic
-errors, because retained possession and period boundaries can interrupt simple
-alternation.
-
-The conservative game QA marked 75 games `review` and 25 `clear`. A review can
-be caused by one provisional FT, one same-team transition, or count difference
-above one; it is not a structural failure.
-
-The 2026-08-06 warning audit replaced the original arbitrary +/-8-row
-special-penalty test with a live-play-bounded penalty cluster. Of the original
-267 provisional FT rows, 215 remained provisional, 52 were separated from the
-special penalty by a live boundary, and 20 previously missed rows joined the
-same penalty cluster through transparent administrative/annotation rows. The
-change affects warning status only: all 14,684 possession endpoints and their
-reasons are unchanged. Python and R remain exactly equal across all 56,463
-events.
-
-### Official box-score and score-progression reconciliation
-
-All 100 official box scores were collected into restartable per-game cache
-files. Across 200 team-games, all 16 compared totals matched exactly: points,
-2FG makes/attempts, 3FG makes/attempts, FT makes/attempts, offensive and
-defensive rebounds, assists, steals, turnovers, blocks for/against, and fouls
-committed/received.
-
-Strict event-by-event score progression matched in 97 games. The other three
-games each contained one adjacent pair where the provider score snapshot on
-the first scoring row already included the next scoring action. The following
-row then had no score delta. This exact one-event-lead pattern occurred in
-games 10, 54, and 67; all three final scores and event totals matched. The
-tightly bounded snapshot-lead reconciliation therefore passed 100/100 games,
-while the strict result remains recorded as 97/100.
-
-This validates event completeness and metric mappings. Box-score agreement
-does not independently prove every possession boundary.
-
-### Effect of audit-driven rules
-
-On the same 100 games, the first pass had two unresolved FTs, 26 same-team
-transitions, and 14,675 endpoints. After general-rule corrections it had zero
-unresolved FTs, 13 same-team transitions, and 14,684 endpoints.
-
-## Remaining same-team transitions
-
-All 13 were inspected:
-
-| Class | Count | Games / periods | Treatment |
-|---|---:|---|---|
-| Legitimate retained or compound possession | 5 | 5/P2, 60/P2, 38/P3, 70/P3, 75/P3 | Keep both endpoints; retain provisional status when entitlement is inferred. |
-| Provider or control gap | 6 | 18/P1, 28/P1, 46/P1, 77/P2, 84/P3, 56/P4 | Preserve deterministic output and flag QA; do not invent an unrecorded change of control. |
-| Mixed special-penalty sequence | 2 | 73/P3, 73/P4 | Keep provisional and manually reconcile before publication. |
-
-Provider/control gaps include consecutive duplicate-looking turnovers and cases
-where an opponent rebound is followed by the original offense's next shot with
-no recorded turnover or other control change.
-
-## Endpoint composition in 100 games
-
-| Rule | Possessions |
-|---|---:|
-| Made field goal | 5,592 |
-| Miss plus defensive rebound | 4,024 |
-| Turnover | 2,539 |
-| Ordinary made final FT | 1,385 |
-| Final missed FT plus defensive rebound | 358 |
-| Blocked shot plus defensive rebound | 308 |
-| And-one final FT | 279 |
-| Miss at period end | 177 |
-| Offensive rebound at period end | 10 |
-| Blocked miss at period end | 6 |
-| Compound-penalty resolution | 3 |
-| Made basket plus different-shooter dead-ball FTs | 3 |
-
-## Confidence and effectiveness
-
-Directly measured:
-
-- exact labelled regression agreement: 100%;
-- FT structural resolution in 100 games: 100%;
-- hard structural QA pass: 100/100 games;
-- deterministic rerun equality: exact;
-- Python/R parity across 56,463 events: zero differences in parent, FT trip,
-  endpoint, endpoint reason, status, or confidence.
-
-Not directly measurable yet:
-
-- overall semantic possession accuracy across the 100 games;
-- correctness of every provisional penalty entitlement;
-- whether each of the 37 package-invalid actor rows reflects delayed source
-  attribution or a materially wrong stint boundary.
-
-Indicative relationship confidence from observed patterns:
-
-- ordinary shots, rebounds, turnovers, and ordinary FTs: 98-99%;
-- explicit observed and-ones and four-point plays: 99%;
-- technical, throw-in, interleaved, and retained-ball penalties: 90-95%;
-- provider/control-gap cases: manual review required.
-
-It would be misleading to call the whole system 100% accurate. The current
-evidence supports "structurally reliable enough for shadow ETL," not
-"production canonical truth."
-
-## EuroLeague shadow schema
-
-The reviewed DDL is in `euroleague/sql/001_core_shadow_schema.sql`. It was first
-applied for the approved one-game trial on 2026-08-06. It is isolated to the
-`euroleague` schema and contains no application views, grants, destructive
-statements, or references to `basketball`/`basketball_test`.
-
-| Relation | Grain / purpose |
+| Relation | Grain and purpose |
 |---|---|
-| `load_runs` | One restartable load with package, collector, timing, and outcome metadata |
-| `teams` / `players` | Stable internal keys for trimmed provider identifiers |
-| `schedule` | One competition/season/gamecode with home/away teams |
-| `source_artifacts` | One immutable cached payload or storage manifest entry |
-| `full_rosters` | One game/team/player from package box scores, including starter provenance |
-| `team_boxscores` | One official game/team total with explicit reconciliation metrics |
-| `actions_raw` | One package-normalized event plus lossless source JSON |
-| `actions_clean` | One event with synthetic parent, internal FT-trip identity, endpoint, confidence, and trace |
-| `possessions` | One deterministic possession endpoint |
-| `lineups` / `lineup_players` | One package lineup composition and its ordered source members |
-| `action_lineups` | Package `Lineup_A`/`Lineup_B` and validation at one event |
-| `stints` | One contiguous team/package-lineup interval using half-open event boundaries |
-| `pws` | One narrow possession-to-offense/defense-lineup and stint association |
-| `reconciliation_metrics` | One PBP-versus-official metric result per game/team/load |
-| `game_qa` | One combined possession, score, box-score, and lineup release gate |
-| `qa_incidents` | One detailed source contradiction or review item |
+| `player_four_factors_by_game` | Player/game/team, ON or OFF, offense or defense, and starter context; raw additive counts and minutes. |
+| `team_four_factors_by_game` | Game/team and starter context; separate additive offense and defense counts. |
+| `final_schedule_mv` | Indexed team-perspective schedule for app filters. |
+| `player_onoff_default_mv` | Default full-season player ON/OFF snapshot. |
+| `player_advanced_stats_mv` | Default player four-factor snapshot. |
+| `team_game_ratings_mv` | One row per game and team; therefore two team rows per game. |
+| `team_ppp_ratings_mv` | Season team ratings calculated from summed points and possessions. |
+| `team_four_factors_mv` | Default team four-factor snapshot. |
+| `get_team_minutes_dynamic()` | Filtered team minutes summed from canonical matchup-segment seconds; used with team ratings to calculate pace. |
+| `lineup_totals_by_game` | Game/team/five-player-lineup, offense or defense, and opponent starter context; additive counts plus floor seconds on offense rows only. |
+| `sub_lineups` | Season mapping from a five-player lineup to each of its 26 sub-units. Identity only, no metrics. |
+| `sub_lineups_stats_mv` | Default season snapshot per 2-5 player unit. |
 
-The design inherits the Israeli project's useful conventions: explicit primary
-keys for deterministic upsert, source-preserving raw fields, raw-to-derived
-separation, half-open stint intervals, per-game incremental grains, package and
-parser lineage, and publication checks. It does not copy Israeli provider
-columns or reconstruct lineups already supplied by `euroleague-api`.
+The functions `onoff_compute()`, `four_factors_compute()`,
+`get_team_ratings_dynamic()`, `get_team_four_factors_dynamic()`, and
+`get_team_minutes_dynamic()` provide filtered paths. Default season requests
+use indexed materialized results. Game Logs reads the existing game-level
+facts directly and does not add another physical fact table.
 
-FT-trip grouping is not materialized as its own table. It exists only as
-`actions_clean.synthetic_ft_trip_id`, because its purpose is to make possession
-counting deterministic and auditable rather than to provide a separate query
-surface.
+### Removed relations
 
-### Israeli guidance and deliberate improvements
+Migration 012 proved bidirectional output parity and then removed the obsolete
+EuroLeague middle layer:
 
-| Israeli relation/pattern | EuroLeague decision | Reason |
+- `actions_clean`
+- `possessions`
+- `lineups`
+- `lineup_players`
+- `action_lineups`
+- `stints`
+- `pws`
+- `action_team_context`
+- `matchup_segments`
+
+Do not restore these merely to resemble the Israeli schema. Migrations 001-009
+remain in the bootstrap history, so some create the old objects temporarily;
+migration 012 is the authoritative final cutover.
+
+## Event and possession rules
+
+- Primary event ordering is provider sequence expressed as
+  `(season, gamecode, period, source_event_order)`. Game clock is never an
+  identifier, and provider `NUMBEROFPLAY` is not assumed to be ordered.
+- Every event has a same-game, same-period synthetic parent; singleton events
+  parent themselves.
+- Incident identity, FT-trip identity, and possession endpoints remain
+  separate concepts.
+- Every free throw resolves to exactly one trip or remains explicitly
+  unresolved. Clock equality alone is insufficient.
+- Provisional or contradictory sequences retain status, confidence, trace, and
+  QA reasons; the parser never forces alternation just to make the result look
+  regular.
+- Rebound control is determined from rebound-team versus shooting-team context
+  before trusting provider offensive/defensive rebound text.
+- Only endpoint events increment possession counts. Non-endpoint actions remain
+  in `actions` with `end_possession=false`.
+
+The typed Python parser is canonical. The pure R implementation remains an
+independent regression reference. New event behavior must be a general rule
+with a labelled fixture; do not add gamecode-specific exceptions.
+
+## Analytics flow
+
+Points and possessions intentionally come from different event properties:
+
+1. Made 2PT, 3PT, and FT actions contribute points using that action's lineup.
+2. Only deterministic possession endpoints contribute a possession, using the
+   endpoint action's lineup and offense-team assignment.
+3. Every event is expressed from both teams' perspectives, which gives
+   separate offense and defense rows.
+4. Segment durations supply lineup and player minutes.
+5. Every named player on the complete game roster receives ON and OFF contexts,
+   including players who never entered the game.
+6. Store and sum raw points, possessions, shot/rebound/turnover counts, and
+   seconds first. Calculate PPP, ratings, percentages, and differences only
+   after the requested games are aggregated.
+
+The two team-perspective rows are essential. Without them there is no explicit
+place to store a team's offense and the opponent's corresponding defense.
+Defensive rating is opponent points per defensive possession, so lower is
+better.
+
+## Comparison with the Israeli ETL
+
+### Israeli flow
+
+```text
+Provider JSON
+  -> schedule + full_rosters + actions_clean + subs
+  -> possessions
+  -> stints + lineups_lookup
+  -> pws
+  -> df_pts_poss_lineups_longer_mv (two team perspectives)
+  -> player, lineup, and team facts
+  -> app aggregates
+```
+
+### EuroLeague flow
+
+```text
+Package-enriched cached inputs
+  -> actions_raw + actions
+  -> action_team_context_actions + matchup_segments_actions
+  -> player and team game facts
+  -> app aggregates
+```
+
+### Similarities
+
+- Schedule and full-roster dimensions precede analytics.
+- The canonical event order is preserved.
+- Possessions are counted at deterministic endpoints.
+- Lineup exposure is attached to action and time context.
+- A two-team-perspective fact supports offense and defense.
+- Player and team game facts retain additive components.
+- Ratios are calculated after aggregation.
+
+### Differences
+
+| Concern | Israeli League | EuroLeague |
 |---|---|---|
-| `schedule` | Keep the familiar relation and `game_id`; add competition, season, gamecode, and load lineage | Preserves downstream shape while namespacing EuroLeague source identity correctly. |
-| `full_rosters` | Keep the game/team/player grain and starter flag; reference stable `teams`/`players` dimensions | Applies the Israeli identity lessons from the beginning rather than correcting reused IDs later. |
-| `actions_clean` | Split immutable `actions_raw` evidence from one-to-one `actions_clean` derivations | Prevents a parser rerun from overwriting package/provider evidence. |
-| Wide `possessions` copy of every action | Store only possession endpoints; keep event decisions on `actions_clean` | Avoids repeating all PBP columns while preserving the exact possession count. |
-| Reconstructed `lineups_lookup` states | Store package `Lineup_A`/`Lineup_B` in normalized `lineups`, `lineup_players`, and `action_lineups` | Uses package capability directly and avoids ten player-state rows per event. A compatibility view can be added only if an app query needs it. |
-| Overlapped paired `stints` | Store simple contiguous team-lineup stints | Package already supplies both event lineups; pairing belongs in the possession bridge, not the base stint identity. |
-| Wide action-level `pws` | Store a narrow one-row-per-possession bridge to offense/defense lineups and stints | Retains the Israeli query concept without duplicating every action column again. |
-| Publication inferred from downstream presence | Use `load_runs`, `game_qa`, and explicit publication status | Makes partial loads and failed QA visible and restartable. |
+| Main implementation | R-centric orchestrator | Python collection/staging/publication; R is a possession reference |
+| Lineups | Reconstructed by the ETL from starters/substitutions | Reconstructed by the package and preserved on every event |
+| Event-to-final middle layer | `actions_clean -> possessions -> stints/lineups_lookup -> pws` | `actions_raw -> actions` |
+| Central team-perspective fact | `df_pts_poss_lineups_longer_mv` | `action_team_context_actions` |
+| Duration fact | Israeli stints/lineup lookup chain | `matchup_segments_actions` |
+| Raw provenance | Provider fields and cold-storage exports | Explicit load runs, source artifacts, hashes, package version, and immutable package-event JSON |
+| Publication | Phased R ETL and dependent incremental refreshes | Explicit one-game transaction and checkpointed retry |
+| 2-5 player units | `sub_lineups` mapping plus `sub_lineups_stats` season table | Same shape: `sub_lineups` mapping plus `lineup_totals_by_game` and `sub_lineups_stats_mv` |
+| Cold storage | Historical hot tables can be exported/truncated | No cold-storage lifecycle yet |
 
-### Database-free schema coverage
+The Israeli intermediate tables primarily exist because its ETL must construct
+and normalize lineups before it can create lineup stints. EuroLeague already
+has event-level reconstructed lineups, so copying that entire middle layer
+would add duplication without adding basketball information.
 
-`euroleague_possessions.schema_coverage` maps the package and possession
-outputs to the schema's natural-key contract without connecting to PostgreSQL.
-It checks schedule sides, starters, roster identity, action keys, package lineup
-membership, possession offense teams, and endpoint-lineup availability.
+## Delivered: 2-5 player lineup units
 
-The 100-game sample produced:
+Implemented in migrations 013 and 014 and surfaced by Shiny tab 10
+(`euro_lineups`). The design is recorded in
+`../docs/superpowers/specs/2026-08-10-euroleague-013-lineup-units-design.md`.
 
-| Diagnostic | Result |
-|---|---:|
-| Schema-ready games | 100 / 100 |
-| Blocking mapping issues | 0 |
-| Package lineup names missing from rosters | 0 |
-| Ambiguous package lineup names | 0 |
-| Possession endpoints without a package lineup | 0 |
-| Invalid possession offense teams | 0 |
-| Non-roster pseudo-actor rows retained as raw-only | 35 |
-| Package-invalid on-court actor rows retained for QA | 37 |
+An earlier draft of this section proposed a per-game fact at *unit* grain. That
+is not what was built. The Israeli `sub_lineups` shape was used instead, which
+keeps the 26x expansion out of the facts entirely:
 
-The 35 non-roster actor rows use coach/bench-style identifiers such as `CO_A`,
-`CO_B`, and `AC_A` and have no player name. They are not missing players. The
-loader must preserve their provider ID in `actions_raw` while leaving the
-normalized `player_id` foreign key null. A named PBP player missing from the
-box-score roster would instead block the game.
+```text
+action_team_context_actions (event metrics, possession endpoints)
+  + matchup_segments_actions (segment seconds)
+  + full_rosters (provider name -> internal player_id)
+  -> lineup_totals_by_game     (fact, five-player-lineup grain, per game)
+  -> sub_lineups               (season mapping, 26 units per lineup, no metrics)
+  -> sub_lineups_stats_mv      (season roll-up, app fast path)
+  -> fetch_lineups_dynamic()   (filtered path)
+```
 
-### Deterministic 100-game staged load plan
+The expansion therefore multiplies distinct lineups per season, not
+team-game-segments. Measured over the 84 loaded games: 17,144 fact rows, 83,824
+mapping rows, 17,293 season units, and a 5-7 second full MV refresh.
 
-`euroleague_possessions.load_plan` resolves package lineup names to provider
-player IDs, hashes lineup composition, counts contiguous team-lineup runs, maps
-every possession endpoint to package lineups, and reports the exact planned
-rows without opening a database connection.
+### Identity
 
-All 100 games are loadable and the current staged plan reports zero issues.
-Shared team/player counts below are unique upsert candidates; the remaining
-counts are additive per-game rows:
+`lineup_key` is `md5` over the sorted internal `player_id` array; `unit_key`
+uses the same construction over the unit's members, so `unit_key = lineup_key`
+at size 5 by definition. Grouping happens on the provider name array, which is
+valid *within* a game; identity is keyed on resolved internal IDs, which is what
+survives across games. Nine lineups in the loaded season carry more than one
+provider name spelling (for example `EBUKA, IZUNDU` versus `IZUNDU, EBUKA`);
+name-based keying would have split each of them in two.
 
-| Table | Planned rows |
-|---|---:|
-| `load_runs` | 1 |
-| `teams` | 20 |
-| `players` | 322 |
-| `source_artifacts` | 300 |
-| `schedule` | 100 |
-| `full_rosters` | 2,388 |
-| `team_boxscores` | 200 |
-| `actions_raw` | 56,463 |
-| `actions_clean` | 56,463 |
-| `possessions` | 14,684 |
-| `lineups` | 5,573 |
-| `lineup_players` | 27,865 |
-| `action_lineups` | 56,463 |
-| `stints` | 6,873 |
-| `pws` | 14,684 |
-| `player_four_factors_by_game` | 216,660 |
-| `reconciliation_metrics` | 3,200 |
-| `game_qa` | 100 |
-| `qa_incidents` | 0 |
+### Validation
 
-Each game checkpoint retains its own schedule, PBP, and box-score artifact,
-which makes restart validation independent and explains the 300 source
-artifacts. `qa_incidents` is not pre-populated by the plan; package actor
-validity already lives on `action_lineups`, and detailed incident rows should
-be created only for review items that require their own lifecycle.
+`scripts/verify_lineup_units.py` holds nine gates, all passing over all 84
+games. The load-bearing ones are G3 (per game and team, the summed lineup rows
+equal `team_four_factors_by_game`), G4 (summed offense-row seconds equal segment
+seconds and canonical game length), and G5 (the roll-up matches an independent
+name-membership recomputation from the event fact).
 
-The offline analytics validator independently projects the same 216,660
-`player_four_factors_by_game` rows from the 2,388 roster appearances,
-including 186 DNP appearances. All 100 game clocks consume the exact game-time
-budget; every player ON+OFF partition is exact; and every additive metric
-reconciles to official totals.
+Containment, duplicate-unit, and five-player-identity checks are deliberately
+absent: this architecture makes all three tautologies, and asserting them would
+repeat migration 009's mistake of checking what the schema already guarantees.
 
-### Driver-independent transaction contract
+G5 compares two paths with deliberately different row populations -- the
+roll-up is built from segments, the recomputation from events -- so it treats a
+missing group as zero in one direction only, and separately asserts that no unit
+the events prove exists is absent from the roll-up, and that no unit without
+events carries counts.
 
-`euroleague_possessions.transaction_writer` defines and tests the atomic
-per-game replacement boundary without importing a database driver or opening a
-connection. For each loadable game it plans:
+### Not built
 
-1. begin a transaction and resolve/upsert the schedule natural key;
-2. delete replaceable game rows child-first;
-3. insert a complete staged snapshot parent-first;
-4. run final database-side integrity and publication checks;
-5. commit only if every prior operation succeeds, otherwise roll back.
+(Migration 019 has since delivered clutch filtering on this surface; see
+below. This subsection is left as the historical record of why it was
+deferred at the time the lineup-unit read layer shipped.)
 
-The base-snapshot writer produces 2,800 operations: 100 begins, 1,300 deletes,
-1,200 non-empty table inserts, 100 validations, and 100 commits. Every game's
-sequence is gap-free and there are no duplicate `(season, gamecode, sequence)`
-keys. Re-running the same manifest is deterministic. The SQL analytics refresh
-runs inside database validation and is intentionally not counted as a second
-Python insert operation per derived row.
+Clutch filtering. It needs the pre-shot margin per event, which the
+pre-aggregated fact cannot answer, so it requires a third query path against
+`action_team_context_actions` and its own design pass.
 
-The contract deliberately excludes immutable `source_artifacts` and run-level
-or shared dimension writes from game replacement. A PostgreSQL adapter must
-also delete `lineup_players` through the game's `lineups`, because
-`lineup_players` has no direct `game_id`. The adapter must resolve generated
-lineup/stint identities from natural keys before inserting dependent rows.
+## Delivered: shared filter chips and rank cells across both leagues
 
-This contract was initially verified without live SQL. The live adapter now
-implements the same ordering, natural-key resolution, generated lineup/stint
-ID resolution, current-run audit replacement, database count checks, and
-rollback behavior using pinned `psycopg==3.2.9`.
+Branch `shiny/euro-tab1`, 2026-08-11. App-side only: no schema, SQL, or ETL
+change, and no database connection.
 
-### PostgreSQL trial and controlled batch
+This continues the code-unification work recorded in commits 1d959d7, 2fd1d5e,
+8f5f02a, f456ee6 and 954b754. It closes the two largest remaining duplications
+between the EuroLeague tabs and their Israeli companions, both of which were
+audited and named before the work started.
 
-On 2026-08-06, the reviewed migrations were applied on direct PostgreSQL port
-5432. The initial `E/2025/1` load and rollback probe were followed by a
-controlled `E/2025/1-3` publication. The batch reused validated checkpoints,
-replaced game 1 idempotently, added games 2 and 3, and wrote only to the
-`euroleague` schema.
+### What was duplicated
 
-All three games share `load_run_id=3`, whose final audit is `completed` with
-three requested, three successful, and zero failed games:
+`build_filter_chips()` lives in `app/R/global.R` and seven Israeli tabs use it.
+All three EuroLeague tabs hand-rolled their own chip builder instead — roughly
+70 lines in `server_tab8_euro.R`, 67 in `server_tab9_euro_team.R`, 25 in
+`server_tab10_euro_lineups.R`. `setup_chip_clears()` was already shared and
+already used by all three, so only the builder had drifted.
 
-| Gamecode / game ID | Actions | Possessions | Lineups / members | Stints | Analytics facts | Status | Review evidence |
-|---|---:|---:|---:|---:|---:|---|---|
-| 1 / 1 | 546 | 140 | 51 / 255 | 64 | 1,144 | `review` | 4 provisional FT rows; 1 invalid actor |
-| 2 / 4 | 603 | 154 | 56 / 280 | 74 | 1,518 | `review` | 2 invalid actors |
-| 3 / 5 | 497 | 138 | 50 / 250 | 55 | 1,248 | `clear` | None |
-| **Total** | **1,646** | **432** | **157 / 785** | **193** | **3,910** | — | 0 unresolved FTs |
+`fmt_rank_cell()` — the three-line value/rank/delta cell on the team-ratings
+tabs — existed twice, in `server_tab3.R` and `server_tab9_euro_team.R`. The
+copies differed only in that Tab 3's honoured a `show_delta` flag.
 
-The analytics-fact counts were 1,824 / 2,496 / 1,920 (6,240 total) until
-2026-08-08. `refresh_player_four_factors_by_game_for_games()` built its
-population with an unconditional cross join — roster × every starter-count
-context × `is_on_key` × `type_lineup` — so it emitted rows for combinations
-that never occurred, zero on every measure. Restricting the grain to observed
-combinations removed those; every season-level rate is byte-identical either
-way. The counts above are the corrected ones.
+### What was done
 
-Every game has 24 normalized roster players, two team box scores, three source
-artifacts, 32 exact reconciliation metrics, one current-run QA row, and equal
-`possessions`/`pws` counts. The read-only post-publication audit found zero
-checkpoint mismatches. Box-score metrics, score progression, lineup structure,
-and structural possession checks pass for all three. Review statuses therefore
-preserve narrow evidence warnings rather than hiding or repairing source rows.
-The original game 1 rollback probe also passed, restoring all 140 `pws` rows.
+`build_filter_chips()` was generalised rather than cloned, taking the league
+dimension as arguments that all default to today's Israeli behaviour, so none
+of the seven Israeli call sites changed. The argument list and the reasoning
+behind each are recorded in the root `CLAUDE.md`, under the EuroLeague reuse
+rule; that table is the reference, not this section.
 
-#### Disposition of the seven warning rows
+Two structural fixes inside the builder were needed to serve a fourth and fifth
+prefix at all: the teams branch now falls back to `<prefix>_teams` instead of
+returning `NULL` for any unrecognised prefix, and the players-on/off block lost
+its `prefix == "ld"` gate in favour of reading `<prefix>_players_on` / `_off`.
+For prefix `ld` both resolve to the same inputs and the same clear ids, so Tab
+2's behaviour is unchanged.
 
-The four provisional FT warnings and three package-invalid actor warnings were
-reviewed against their surrounding raw events:
+`fmt_rank_cell()` moved verbatim from `server_tab3.R` to `app/R/helpers.R`,
+with `show_delta` promoted from a closure over the render scope to an argument
+defaulting to `TRUE` — which is exactly what Tab 9's copy did. Tab 3's fifteen
+call sites pass it explicitly; Tab 9's copy was deleted. The stub in
+`tests/testthat/helper-server-mocks.R` gained the same argument.
 
-- game 1 event 214 is the first FT in an unsportsmanlike sequence; event 216 is
-  the second FT in the same parent/trip. Substitutions and a delayed assist fall
-  between them, so both remain provisional together;
-- game 1 events 438 and 443 are retained-ball bench/technical penalty FTs and
-  remain provisional;
-- game 1 event 461 is a clear and-one. A live shot boundary separates it from a
-  later unsportsmanlike incident, so it is now confirmed;
-- game 1 event 215 and game 2 events 437 and 486 are assists emitted after each
-  assister's recorded `OUT` substitution. The actors are genuinely absent from
-  the package lineup at those rows, so the flags are retained as delayed source
-  attribution; no lineup is rewritten.
+### Three defects this surfaced
 
-The live `load_run_id=3` snapshot was built with parser `0.1.0`. It still has
-the same four-warning count, possession rows, and analytics totals, but its
-game-1 warning identities reflect the old rule (214, 438, 443, 461 rather than
-214, 216, 438, 443). Parser `0.2.0` and stage format `2` invalidate those stale
-derived checkpoints. No database republish was performed during this audit.
+1. **Tab 10 was hiding its own filters.** Its chip bar showed only unit size,
+   row count and min-possessions. Dates, phase, opponents, home/away, outcome,
+   round range, last-N, starter bounds and opponent rank were all being sent to
+   `fetch_lineups_dynamic()` with nothing on screen to say so — a filtered
+   result was indistinguishable from an unfiltered one. The tab now renders the
+   full chip bar and has `setup_chip_clears()` wired, which it never had. The
+   three informational readouts survive as `extra_children`.
+2. **The date chip cleared to the wrong season window.** `setup_chip_clears()`
+   resolved its reset target with the Israeli `shared$season_date_bounds`, and
+   Tabs 8 and 9 fed it a EuroLeague season read from `euro_game_year`. Season
+   2025 therefore resolved to the Israeli 2024-25 window (Oct 2024 - Jul 2025)
+   instead of Sep 2025 - Jul 2026. Fixed with a `bounds_fn` argument; all three
+   EuroLeague tabs pass `euro_season_date_bounds`.
+3. **Tab 10 used `"all"` as its blank sentinel** for Home/Away and Outcome,
+   where every other tab in both leagues uses `""`. The read layer already
+   coerces `''` to `'all'` (`COALESCE(NULLIF(btrim(p_home_away), ''), 'all')`),
+   so the two were equivalent to SQL and the divergence bought nothing. The UI
+   was aligned to `""` rather than teaching the shared builder a per-tab
+   special case.
 
-### PPP and player on/off analytic requirement
+The EuroLeague chip bars also gained styling they never had: they were wrapped
+in `.filter-chips-bar`, which has no rule anywhere in `app/www/app.css`. The
+shared builder emits `.filter-chips`, which does.
 
-The EuroLeague analytic layer should follow the Israeli raw-count method while
-using unambiguous names:
+### Deliberate display convergences
 
-- literal PPP = `points / possessions`;
-- offensive rating = `100 * offensive points / offensive possessions`;
-- defensive rating = `100 * points allowed / defensive possessions`;
-- player net on/off = `(OffRtg_ON - OffRtg_OFF) - (DefRtg_ON - DefRtg_OFF)`.
+Where the EuroLeague wording differed from the Israeli for no league reason, it
+now follows the Israeli: opponents read `vs 3 opps` rather than `vs 3 teams`,
+and the two starter bounds collapse into one `Starters: Own ≥3, Opp ≤2` chip
+instead of one chip per side. Round ranges stayed league-specific and read
+`Rd≥1 Rd≤10`, via the `gn_label` argument — round-versus-GN is on the short
+list of genuine league dimensions.
 
-The Israeli `onoff_compute` function calls its per-100 result `ppp_calc`; the
-EuroLeague layer should expose both `*_ppp` and `*_rtg` rather than overloading
-one label.
+One behavioural note: the shared builder reads the round and last-N inputs
+directly, where the old EuroLeague builders read the post-mutual-exclusion
+`gn_params()`. If both a round range and a last-N are somehow set, both chips
+now appear. This matches every Israeli tab, and the mutual exclusion applied to
+the actual query is untouched.
 
-The deterministic calculation grain is action/team context, not only the
-possession endpoint:
+### Verification at the time of the initial extraction
 
-1. Derive event points from made 2PT, 3PT, and FT actions.
-2. Use package `action_lineups` to attach each team's lineup at that scoring
-   action.
-3. Use `possessions.endpoint_source_event_order` to count exactly one offensive
-   and one mirrored defensive possession at each endpoint.
-4. Expand each action into home-team and away-team perspectives, crediting
-   points scored/allowed and offensive/defensive possession flags separately.
-5. Cross each team's game roster to those contexts and use lineup membership to
-   assign `is_on=true/false` for every player, including players who never enter.
-6. Sum raw points and possessions by game/team/player/ON-OFF/side. Calculate
-   ratios only after the requested games are aggregated.
+All `app/R/*.R` files parse. `test-tab-wiring.R` passes, 42 of 42. The full
+suite (41 files, 890 `expect_` calls) was **not** run and remains outstanding —
+`test-league-shared-helpers.R` is the other file worth running for this change.
+Focused tests for shared helpers, Team Ratings regressions, Game Logs parsing,
+and the minutes read layer now pass. Database and deployed-app tests remain
+opt-in because they require external state.
 
-Lineup changes never create or end possessions. A substitution within a free-
-throw or and-one sequence can legitimately attach a scoring event and the final
-possession endpoint to different lineups; retaining action-level lineup context
-matches the Israeli method and avoids forcing the full sequence onto one lineup.
+Line endings needed repair: `global.R` and `server_tab3.R` are stored with
+mixed CRLF/LF and the editor normalised both to all-CRLF, inflating the diff to
+208 and 112 lines against 74 and 44 of real change. Untouched lines were
+restored to their original endings, after which the raw `git diff --stat`
+matches `--ignore-cr-at-eol` exactly. Check this on every edit to those two
+files.
 
-The base schema retains the required evidence in `actions_raw`,
-`actions_clean`, `action_lineups`, `possessions`, `lineups`, `lineup_players`,
-and `full_rosters`. Migration
-`euroleague/sql/002_existing_analytics_compatibility.sql` now adds the derived
-contract while keeping the facts additive:
+### Not done, and where tab unification stands
 
-- `player_four_factors_by_game` stores raw ON/OFF offense/defense points,
-  possessions, shot/rebound/turnover numerators, and minutes by starter context;
-- `refresh_stint_timing_for_games()` derives canonical stint durations without
-  overwriting raw provider clocks;
-- `refresh_player_four_factors_by_game_for_games()` refreshes only the affected
-  games inside the publication validation transaction;
-- `final_schedule`, `player_onoff_by_season`, and
-  `player_four_factors_by_season` remain the always-current semantic views;
-- `final_schedule_mv`, `player_onoff_by_season_mv`, and
-  `player_four_factors_by_season_mv` are indexed app-facing materialized views
-  defined by migration `003_app_materialized_views.sql`.
+Tab 10 now has the same clutch controls and parameter semantics as Israeli Tab
+2. Migration 019 is applied (see the delivered/validation-evidence sections
+above); a local browser smoke test of both tabs' clutch controls remains
+before the feature can be treated as fully deployed.
 
-The MVs refresh once when a load run finishes, after all per-game
-`player_four_factors_by_game` refreshes succeed. This follows the Israeli mixed
-architecture: per-game facts are incrementally maintained physical rows, while
-bounded application aggregates are materialized. Migration 003 is prepared and
-tested in the repository but has not been applied to the live shadow schema.
+The agreed direction for the remaining duplication — extract into a league
+descriptor plus shared helpers, never merge the tab files per pair — and the
+measured per-file overlap are recorded in the root `CLAUDE.md` under the
+EuroLeague reuse rule. Read that before continuing. What is left, in rough
+cost order:
 
-Package aggregate `Team`/`Total` rows are excluded from normalized players and
-rosters but remain in raw evidence. Remaining application work is limited to
-real package schedule dates/round/phase values, explicit publication filtering
-for `review`/`blocked` games, and the eventual league-aware app adapter.
+1. **`server_tab8_euro.R` against `server_tab1.R`** — the big one. 1,306 lines
+   at roughly 81% overlap, the highest of any pair, and the only pair where a
+   descriptor-driven extraction would pay for itself immediately. Nothing has
+   been done here beyond the shared pieces listed in `CLAUDE.md`.
+2. **`ui_tab8_euro.R` against `ui_tab1_onoff.R`** — 190 lines at 68%. The
+   sidebar accordion is already built by a shared `global.R` builder; what
+   remains is the per-tab input scaffolding around it.
+3. **`setup_chip_clears()`'s teams handling.** The EuroLeague tabs still carry
+   their own team-clear observers, because that helper picks between
+   `character(0)` and `""` from a hardcoded Israeli id allowlist
+   (`c("teams", "ts_teams")`) rather than from an argument. Small and
+   well-understood; it would delete three near-identical observers.
+4. **Tabs 9 and 10 against tabs 3 and 2** — 34% and 23% overlap. Lower value,
+   and both are the smaller side of their pair, so the descriptor work above
+   should land first and be reused here rather than derived twice.
 
-The read-only worked query is
-`euroleague/sql/analytics/player_onoff_ppp_readonly.sql`. On game `E/2025/1`,
-team totals reconcile to 85 points / 70 possessions for IST and 78 / 70 for
-TEL. Two single-game player examples are:
+The league descriptor itself does not exist yet. Until it does, each shared
+piece is passed as an explicit argument, which is why `build_filter_chips()`
+now takes seven of them. That is the right shape for two or three call sites
+and the wrong shape for twenty — the descriptor is what replaces it, not
+another round of arguments.
 
-| Player | Off ON | Off OFF | Def ON | Def OFF | Net ON/OFF |
-|---|---:|---:|---:|---:|---:|
-| Shane Larkin (IST) | 74/58 = 127.6 | 11/12 = 91.7 | 66/57 = 115.8 | 12/13 = 92.3 | +12.4 |
-| Jaylen Hoard (TEL) | 64/57 = 112.3 | 14/13 = 107.7 | 72/56 = 128.6 | 13/14 = 92.9 | -31.1 |
+## Recent changes: 2026-08-11 to 2026-08-12
 
-Values after `=` are ratings per 100 possessions. These are one-game examples
-with small OFF samples, not stable player evaluations.
+The following commits landed in the last day, in dependency order:
 
-## Hurdles and action items
+| Commit | Change | Practical result |
+|---|---|---|
+| `fb9e02a` | Shared filter-chip builder and rank-cell helper | EuroLeague tabs reuse Israeli filter UI, reset behavior, labels, and rank-cell rendering; wrong-season date reset and hidden Tab 10 filters were fixed. |
+| `e7f14e0` | Shared Israeli/EuroLeague ON/OFF plumbing | Common descriptors, filter mapping, fast-path gates, local filters, and DataTable helpers now serve both leagues while retaining league-specific SQL and feature flags. |
+| `edd7021` | Shared lineup/team-rating plumbing | Team and lineup tabs use neutral shared context helpers and shared metric-rank polarity rather than duplicate parameter conversion code. |
+| `42a8a4a` | Lineup fast-path fix | EuroLeague lineup auto-minimum calculations use the correctly shaped filtered population before rendering. |
+| `c9c32e6` | Lineup filters and extraction controls | Lineup filters re-enable auto thresholds when the data scope changes; collectors support fetch-only, box-score-only, cached-input reuse, missing-input handling, and bounded fetch batches with cooldowns. |
+| `4c88ff3` | EuroLeague ON/OFF auto possession minimums | EuroLeague now starts from the same non-zero automatic minimum policy as Israeli ON/OFF, with regression coverage. |
+| `33610db` | EuroLeague Game Logs | New Tab 11 supports Summary and Four Factors game-level views, shared filters/chips, W/L styling, rank heatmaps, CSV export, and per-game team-perspective facts. |
+| `0ccaeaf` | Team minutes and pace | EuroLeague exposes filtered team minutes from canonical segment duration, adds Min/Off Pace/Def Pace to Team Ratings, and documents the `app_readonly` security boundary. |
 
-### High severity
+### What this means for the current app
 
-1. **Relationship reconstruction** — implemented and structurally validated;
-   continue adding a general fixture for every new pattern.
-2. **Possession reconciliation** — completed on the 100-game sample; repeat the
-   same box-score and score-progression gates for every future load.
-3. **Lineup validity** — package output passed the structural audit; persist its
-   37 invalid-actor flags and review them without a second lineup engine.
-4. **Provider gaps** — persist QA incidents and create a documented correction
-   layer rather than editing raw events.
-5. **Storage reproducibility** — checkpointed collection, applied shadow DDL,
-   staged row construction, PostgreSQL identity resolution, exact database
-   validation, idempotent replacement, analytics refresh, live rollback, and a
-   shared-run three-game publication are proven. The 100-game offline batch and
-   restart also pass. A deliberately interrupted/partial live recovery drill is
-   the remaining transaction-lifecycle test before broader use.
+- Tabs 8-11 now share more of the Israeli application's interaction contract,
+  but they still use EuroLeague-specific season, phase, round, possession, and
+  schema semantics.
+- Game Logs is an additive read surface; it does not create a new fact table.
+  It adapts the EuroLeague team four-factor game fact into the shared Israeli
+  game-log calculator and keeps both team perspectives explicit.
+- Team pace is not a stored ratio. Minutes are summed first, and pace is
+  calculated only after the requested games and starter context are aggregated.
+  Overtime is therefore preserved.
+- The local app uses `app_readonly`. The minutes function is intentionally
+  `SECURITY DEFINER` with a fixed search path and schema-qualified relations;
+  direct segment-table access remains denied.
 
-### Medium severity
+### Follow-up thoughts
 
-1. Normalize team/player identity across seasons and competitions.
-2. Record API/package version and retrieval provenance.
-3. Handle rate limiting and partial loads explicitly.
-4. Review package licensing for the intended deployment/distribution model.
-5. Define cross-league canonical views only after EuroLeague tables stabilize.
+1. **Deploy/restart verification:** after pulling `0ccaeaf`, restart the local
+   Shiny process so the new minutes reactive and Tab 11 sources are loaded. A
+   live app bundle still needs deployment separately from the database migration.
+2. **Add a direct app smoke test for minutes:** render EuroLeague Team Ratings
+   through an `app_readonly` connection and assert non-empty `Min`, `Off Pace`,
+   and `Def Pace` cells. This would have caught the original permission failure,
+   which was hidden by a broad `tryCatch`.
+3. **Keep read-layer permissions explicit:** any new function that reads an
+   internal EuroLeague fact should document whether it is invoker or definer,
+   fix its `search_path`, qualify relations, and include a role-level test.
+4. **Run a focused extraction dry run before a live load:** use the new
+   `--fetch-only`, `--skip-fetch`, and batch cooldown flags on a small gamecode
+   range, then run staging/verification before requesting publication approval.
+5. **Unify the remaining large tab pair:** Tab 8/Tab 1 still has the largest
+   measured duplication. A league descriptor plus extracted render helpers is
+   the next high-value refactor; do not merge the two server files wholesale.
+6. **Refresh the handoff after deployment:** record the deployed app bundle,
+   migration 019 application timestamp, and exact local/live test results so
+   repository state and database state do not drift again.
+7. **Apply and benchmark the standard clutch fast path:** migration 020 now
+   implements the primary performance target: margin <= 5 points in the final
+   5 regulation minutes, with overtime following the existing default. It
+   preserves migration-019 pre-event score semantics and exact segment/window
+   minutes in an additive per-game cache. Custom definitions remain dynamic,
+   and non-clutch requests retain their existing aggregate path. The remaining
+   step requires explicit live-DDL approval: run
+   `scripts/apply_020_default_clutch_fast_path.py`, confirm bidirectional cache
+   parity, record warm cached-versus-dynamic latency, then re-run the repository
+   security apply/audit pass.
+
+## Database security boundary (applied 2026-08-12)
+
+The schema was created outside the Israeli security pass, so it had accumulated
+its access rules from individual migration `GRANT` statements and nothing else.
+An audit found 67 violations across both schemas:
+
+| Violation | Count | What it was |
+|---|---|---|
+| `untrusted_routine_execute` | 28 | `anon` and `authenticated` held the default `PUBLIC` EXECUTE on all 14 EuroLeague functions, including the six mutating `refresh_*` publication functions and the `SECURITY DEFINER` `get_team_minutes_dynamic`. Only the absent schema `USAGE` stopped them. |
+| `rls_disabled` | 19 | No RLS on any of the 18 EuroLeague base tables, and no policies at all. Plus one Israeli drift: `basketball_test.team_metrics_by_game_mv`, a physical table with an `_mv` name that a later migration created after the previous hardening pass. |
+| `rls_unexpected_policy` | 14 | Israeli tables carrying a legacy `rls_read_all_app_readonly` policy alongside `app_readonly_select_all`. |
+| `app_unexpected_routine_execute` | 6 | `app_readonly` could EXECUTE the six `refresh_*` mutating functions, for the same `PUBLIC`-default reason. |
+
+The fix extends the existing `sql/security/*.sql` to take `euroleague` as a
+third target schema rather than adding a parallel EuroLeague security script.
+Two dimensions differ from the Israeli schemas, both deliberately stricter and
+both enforced by the audit:
+
+- **Curated relation grants.** Israeli schemas use `GRANT SELECT ON ALL TABLES`
+  because their SQL functions are `SECURITY INVOKER` and read widely. Applying
+  that here would newly expose `actions_raw`, `source_artifacts`, `game_qa`,
+  `qa_incidents` and `reconciliation_metrics`. `app_readonly`'s existing grants
+  already matched the read layer exactly, so that 18-relation list is pinned in
+  both files. `app_required_relation_select_missing` catches a removal;
+  `app_unexpected_relation_select` catches a widening.
+- **No `service_role`.** The shadow schema stays outside Supabase's managed
+  surface and must never join the Data-API exposed schemas.
+
+The audit now reads RLS state from the catalog rather than trusting the apply
+script to have seen every table — which is precisely how the Israeli
+`team_metrics_by_game_mv` drift survived unnoticed.
+
+Verified after applying, as `app_readonly` over the 6543 pooler: every
+EuroLeague read and all six app functions still work, while reads of
+`actions_raw`/`source_artifacts`, execution of `refresh_app_materialized_views`,
+writes to any table, and `CREATE` in the schema are denied. The audit reports
+zero violations. Publication is unaffected: every `euroleague` table is owned by
+`postgres` and none sets `FORCE ROW LEVEL SECURITY`, so the owner bypasses its
+own policies.
+
+Two consequences for future work:
+
+1. **Re-run the security pass after every EuroLeague migration.** `CREATE OR
+   REPLACE FUNCTION` on a new signature and any `DROP FUNCTION` leave the
+   function executable by `PUBLIC` and wipe `app_readonly`'s EXECUTE grants; a
+   new base table arrives without RLS. This is how the 67 violations
+   accumulated in the first place.
+2. **A new app-facing relation or function must be added to the allowlists** in
+   `../sql/security/enable_readonly_rls.sql` and
+   `../sql/security/audit_app_access.sql`, in the same change that creates it,
+   or the audit fails.
+
+The applied database state is committed; the files that reproduce it were left
+uncommitted in the working tree, so they still need a commit on an `infra/`
+branch. Until then a future `apply_db_security.R` run from a clean checkout
+would silently revert `euroleague` to unhardened.
+
+## Validation evidence
+
+All 79 EuroLeague Python tests pass, including the 31-test focused
+migration-020 schema/backend suite. The focused EuroLeague clutch/lineup R tests
+pass, and all changed R files parse.
+
+Migration 020 is repository-only as of 2026-08-13. It creates
+`default_clutch_lineup_totals_by_game`, backfills it from the exact
+`clutch_team_game_facts(..., 5, 'all', 300, false)` result, and wires both the
+per-game and grouped publication paths to refresh changed games after the
+canonical action consumers. `select_team_game_facts()` uses explicit branches
+so the standard preset cannot accidentally fall through to the dynamic path.
+Its apply script checks bidirectional row parity and reports median cached and
+dynamic timings. The script has not been run against PostgreSQL because live
+DDL still requires explicit approval.
+
+Migration 019 was applied transactionally to the live `euroleague` schema on
+2026-08-12 via `scripts/apply_019_clutch_read_layer.py`, which validates the
+DDL (only the four expected signature-changing `DROP FUNCTION IF EXISTS`
+statements, each immediately superseded by its own `CREATE OR REPLACE`; no
+`CASCADE`; no reference to `basketball`/`basketball_test`), applies it, and
+verifies the result. The connection and safety guard are scoped to
+`euroleague` only -- this migration did not touch, and the apply script cannot
+touch, the Israeli schemas.
+
+Non-clutch parity, checked by snapshotting each rewritten function's default
+output before applying and diffing after:
+
+- `get_team_ratings_dynamic`, `get_team_four_factors_dynamic`,
+  `get_team_minutes_dynamic`: byte-for-byte identical, 20 rows each.
+- `fetch_lineups_dynamic`: 8,240 rows before, 6,008 after, at `p_unit_size=5`
+  and no other filters. Root-caused and accepted: the new
+  `clutch_team_game_facts()` adapter (which all four functions now route
+  through, to gain clutch parameters) omits lineup instances whose matchup
+  segments all have `segment_seconds = 0` -- instantaneous back-to-back
+  substitution artifacts with no floor time. All 4,263 of the missing
+  `(game, team, own_lineup)` combinations were confirmed to have exactly zero
+  seconds, zero possessions, and zero points across every one of their 4,700
+  underlying segment rows; 2,232 season-level lineup units disappear entirely
+  because every appearance they ever had was one of these zero-duration
+  ghosts. This changes nothing about any real metric (every dropped row sums
+  to zero) and arguably improves data quality by dropping pure noise, but it
+  is a genuine behavior change from the pre-migration function, decided and
+  accepted explicitly rather than silently passed through. The apply script
+  documents this exact discrepancy so a future re-run treats it as expected
+  and would still fail loudly on a mismatch of a different shape.
+
+Also verified live, connecting as `app_readonly` over the same pooler the app
+uses: `get_team_ratings_dynamic`, `get_team_minutes_dynamic`, and
+`fetch_lineups_dynamic` all return sane clutch-filtered rows (e.g.
+`p_max_margin=5, p_max_time_remaining=300`), and direct `SELECT` on
+`euroleague.matchup_segments_actions` is still denied -- confirming the
+`SECURITY DEFINER` scoping migration 018 required is intact for the new
+functions too.
+
+Browser-testing both tabs (Team Ratings and Lineup Data) with the clutch
+controls live is still outstanding.
+
+The exploratory 100-game sample established the parser and schema rules:
+
+- 56,463 events and 14,684 possessions matched exactly between Python and R.
+- All 4,122 free throws resolved.
+- All 16 PBP-versus-box-score metrics matched across 200 team-games.
+- Strict score progression passed 97/100 games; three exact adjacent
+  one-event-ahead provider snapshots passed the bounded reconciliation rule,
+  giving 100/100 reconciled games.
+- Every event had two unique five-player package lineups.
+- Thirty-seven package-invalid actor rows were retained as QA evidence rather
+  than repaired by a second lineup engine.
+
+For the recorded 84-game live load:
+
+- raw and canonical event keys match exactly;
+- all package fields round-trip from `actions` to `actions_raw.raw_event`;
+- possession numbering is gap-free;
+- official box-score and score-progression reconciliation passes all games;
+- team and player four-factor facts reconcile;
+- team ratings materialized and dynamic paths agree;
+- the migration 012 actions-based outputs matched the removed model before the
+  destructive cutover committed.
+
+Seventy of the 84 games are marked `publication_status='review'`, primarily
+because conservative possession QA flags small same-team-transition counts;
+all hard publication gates passed. Review status is evidence for inspection,
+not an exclusion from season aggregates.
+
+## Known gaps and risks
+
+1. Clutch filtering is now available on the lineup-unit surface (migration
+   019, applied 2026-08-12) -- see the delivered section and validation
+   evidence above. Browser-testing both tabs with the controls live is still
+   outstanding. `unit_key` is season-scoped, because `players` is not yet a
+   cross-season person dictionary (gap 2); a unit's identity is stable within
+   a season only.
+2. `players` is keyed by competition/provider ID and is not yet a durable
+   cross-season person identity. Build that identity layer before a second
+   season is trusted.
+3. EuroCup has not been collected or validated. Test one game before any batch.
+4. Collection/publication is manual; there is no scheduler or last-success UI
+   indicator.
+5. QA review counts are not yet surfaced clearly in the UI.
+6. There is no EuroLeague cold-storage policy; all published data remains hot.
+7. Migration 012 changed the publication path, so the old 5-6 second/game
+   benchmark is historical. Take a new multi-game timing sample before capacity
+   planning.
+8. EuroLeague four-factor impact-point annotations remain suppressed because
+   their weights were fitted on Israeli data.
+9. The database security audit runs automatically only after the *Israeli* ETL
+   workflow. EuroLeague publication and migrations are manual (gap 4), so
+   nothing runs the audit after a EuroLeague DDL change — it has to be run by
+   hand until EuroLeague publication is scheduled.
 
 ## Recommended next sequence
 
-1. Review and apply `003_app_materialized_views.sql` to the isolated schema;
-   this changes derived database objects but does not load another game.
-2. Re-stage the three controlled games offline with parser `0.2.0` and validate
-   that counts, endpoints, analytics, and reconciliation are unchanged.
-3. Republish only those three games under a new load run with explicit approval;
-   this changes parser/warning lineage, not possession totals.
-4. Run the safe partial-run/restart drill with explicit approval after the
-   corrected three-game snapshots and app MVs are verified.
-5. Validate at least one additional season when production integration becomes
-   the objective.
-6. Only then design cross-league views and app integration.
+0. **Commit the database security files** on an `infra/` branch. No design pass
+   needed, and it is the cheapest item here: the live database is hardened but
+   the four files that reproduce that state are uncommitted, so a future
+   `apply_db_security.R` run from a clean checkout would silently revert
+   `euroleague` to unhardened. Note this script also re-applies to
+   `basketball`/`basketball_test`; running it is a cross-schema action, not a
+   euroleague-only one, so treat it with the same care as any Israeli-schema
+   change.
 
-## Reproduction
+1. **Browser-test both clutch-enabled tabs.** Migration 019 is applied and
+   database-side verified (functional correctness, non-clutch parity,
+   `app_readonly` permissions); a local Shiny smoke test of the Team Ratings
+   and Lineup Data clutch controls against live data has not been run yet.
 
-Install the sub-project into a local environment using any Python 3.10+
-interpreter:
+The rest stay one-line backlog entries, roughly in dependency order. Each needs
+its own design pass before it becomes work:
 
-```powershell
-python -m venv euroleague/.venv
-& euroleague/.venv/Scripts/python.exe -m pip install -e euroleague
-```
+2. Durable cross-season player identity, built *with* the second season rather
+   than after it (gap 2).
+2b. Continue tab unification, starting with the tab 8 / tab 1 pair and the
+   league descriptor. The direction, the measured overlap, and the ordered
+   remaining targets are in the delivered section above and in the root
+   `CLAUDE.md`. App-side only, no database work.
+3. With explicit approval, continue the 2025-26 load through
+   `scripts/load_games.py` and record a fresh publication benchmark (gap 7).
+4. Surface `game_qa` review counts and a last-success indicator in the app
+   (gap 5).
+5. Scheduled collection/publication and operational monitoring (gap 4).
+6. A EuroLeague cold-storage/retention policy, sized against the shared
+   instance budget (gap 6).
+7. Validate one EuroCup game before treating competition `U` as supported
+   (gap 3).
+8. Refit the four-factor impact weights on EuroLeague data, or keep the
+   annotations suppressed (gap 8).
 
-Run the Python tests and 100-game diagnostic:
+## Operations and tests
 
-```powershell
-& euroleague/.venv/Scripts/python.exe -m unittest discover `
-  -s euroleague/tests -v
-& euroleague/.venv/Scripts/euroleague-possessions.exe `
-  C:\tmp\euroleague_pbp_2025_100games.csv
-```
+Use [RUNBOOK.md](RUNBOOK.md) for collection, dry-run, publication, verification,
+rollback probing, prerequisites, and recovery instructions.
 
-Apply the package's lineups to the cached sample and export its QA evidence:
-
-```powershell
-& euroleague/.venv/Scripts/python.exe -m `
-  euroleague_possessions.package_lineups `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  euroleague/data/raw/boxscores `
-  --output-dir euroleague/data/exports/package_lineups_100
-```
-
-Validate the schema contract without connecting to PostgreSQL:
-
-```powershell
-& euroleague/.venv/Scripts/python.exe -m `
-  euroleague_possessions.schema_coverage `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  euroleague/data/raw/boxscores `
-  --output-dir euroleague/data/exports/schema_coverage_100
-```
-
-Generate the deterministic per-table load plan without database writes:
+Run Python tests first:
 
 ```powershell
-& euroleague/.venv/Scripts/python.exe -m `
-  euroleague_possessions.load_plan `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  euroleague/data/raw/boxscores `
-  --output-dir euroleague/data/exports/load_plan_100
+& .venv/Scripts/python.exe -m unittest discover -s tests -v
 ```
 
-Validate the additive ON/OFF and four-factor contract over the cached sample:
+After grouping or possession changes, run the independent R tests from the
+repository root:
 
 ```powershell
-& euroleague/.venv/Scripts/euroleague-validate-analytics.exe `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  euroleague/data/raw/boxscores
+Set-Location etl/tests
+& 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe' test_euroleague_event_grouping_fixtures.R
+& 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe' test_euroleague_group_events.R
+& 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe' test_euroleague_count_possessions.R
 ```
 
-Build or resume deterministic per-game stage checkpoints without touching the
-database:
+Migration order is:
+
+```text
+001 -> 002 -> 004 -> 005 -> 006 -> 007 -> 008 -> 009 -> 010 -> 011 -> 012
+  -> 013 -> 014 -> 015 -> 016 -> 017 -> 018 -> 019 -> 020
+```
+
+Migration 003 is superseded by 004 and must not be applied.
+Migration 020 is the repository head but is not yet applied to the recorded
+live schema.
+
+After applying any migration, re-run the security pass from the repository root
+(see the security section above for why this is not optional):
 
 ```powershell
-& euroleague/.venv/Scripts/euroleague-batch.exe `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  euroleague/data/raw/boxscores `
-  --checkpoint-dir euroleague/data/staging/batch_100 `
-  --stage-workers 1
+& 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe' scripts/audit_db_security.R
+$env:CONFIRM_DB_SECURITY_APPLY = '1'
+& 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe' scripts/apply_db_security.R
 ```
 
-The batch command is offline unless `--execute` is supplied. Multi-game
-publication additionally requires `--confirm-multiple-games`; do not use those
-flags for new games without explicit approval.
+`apply_db_security.R` is dry-run by default: without
+`CONFIRM_DB_SECURITY_APPLY=1` it applies the hardening, runs the audit inside
+the same transaction, and rolls back. Use that to preview a change. The
+contract tests are `../app/tests/testthat/test-db-security-contracts.R`.
 
-Audit published games against their immutable stage checkpoints without
-modifying the database:
+## Key files
 
-```powershell
-& euroleague/.venv/Scripts/python.exe `
-  euroleague/scripts/audit_live_batch.py `
-  --season 2025 --gamecodes 1,2,3 `
-  --checkpoint-dir euroleague/data/staging/batch_100
-```
+- `RUNBOOK.md`: current load and recovery procedure.
+- `src/euroleague_possessions/staging.py`: canonical per-game staging.
+- `src/euroleague_possessions/transaction_writer.py`: transaction contract and
+  seven-table snapshot order.
+- `src/euroleague_possessions/postgres_backend.py`: database mapping,
+  compatibility guard, validation, and fact refreshes.
+- `src/euroleague_possessions/parser.py` and `counter.py`: deterministic event
+  grouping and possession logic.
+- `sql/010_canonical_actions.sql`: canonical typed `actions` table.
+- `sql/011_actions_consumer_candidates.sql`: actions-derived event/team and
+  matchup-segment facts.
+- `sql/012_actions_consumer_cutover.sql`: consumer switch, parity gates, and old
+  middle-table removal.
+- `sql/013_lineup_units.sql`: lineup-grain per-game fact and season unit mapping.
+- `sql/014_lineup_units_read_layer.sql`: season unit roll-up and
+  `fetch_lineups_dynamic()`.
+- `sql/018_team_minutes_read_layer.sql`: filtered team minutes from canonical
+  matchup segments for Team Ratings.
+- `sql/019_clutch_read_layer.sql`: shared pre-event clutch predicate,
+  set-based score-state/segment duration intersection, and clutch-aware Team
+  Ratings, Four Factors, minutes, and lineup-unit readers. Applied
+  2026-08-12 via `scripts/apply_019_clutch_read_layer.py`, which validates,
+  applies, and functionally verifies the migration (euroleague-only).
+- `sql/020_default_clutch_fast_path.sql`: incremental per-game additive cache
+  and explicit no-clutch/default/custom source selector. Pending live apply.
+- `scripts/apply_020_default_clutch_fast_path.py`: guarded EuroLeague-only
+  migration apply, exact cache-parity check, and default-preset benchmark.
+- `docs/team_ratings_minutes.md`: minutes/pace and `app_readonly` security
+  handoff.
+- `../sql/security/enable_readonly_rls.sql`: schema-aware grants, EXECUTE
+  allowlists, and RLS policies for both leagues. The EuroLeague relation and
+  function allowlists live here.
+- `../sql/security/audit_app_access.sql`: the same contract as assertions;
+  expects zero rows.
+- `../app/R/server_tab11_euro_gamelogs.R`: EuroLeague Game Logs server.
+- `scripts/verify_lineup_units.py`: the nine lineup-unit validation gates.
+- `scripts/verify_actions_schema.py`: actions/raw/fact verification.
+- `scripts/probe_batched_publish.py`: real publication path followed by
+  rollback and before/after proof.
+- `../docs/database_context.md`: current Israeli schema and ETL reference.
+- `CLAUDE.md`: historical exploration and validation narrative only.
 
-Reproduce the local warning-context audit without API or database I/O:
+## Non-negotiable boundary
 
-```powershell
-& euroleague/.venv/Scripts/python.exe `
-  euroleague/scripts/audit_review_warnings.py `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  euroleague/data/raw/boxscores `
-  --season 2025 --gamecodes 1,2,3 --radius 12 `
-  --output-dir euroleague/data/exports/review_warning_audit_3games
-```
-
-Expand that plan into the deterministic per-game transaction manifest, still
-without importing a database driver or writing to PostgreSQL:
-
-```powershell
-& euroleague/.venv/Scripts/python.exe -m `
-  euroleague_possessions.transaction_writer `
-  euroleague/data/exports/load_plan_100/load_plan_games.csv `
-  --output euroleague/data/exports/transaction_plan_100.csv
-```
-
-Reproduce the one-game staging pass without a database connection by omitting
-`--execute`. The following is the explicitly mutating form used for the
-approved trial; do not run it for additional games without approval:
-
-```powershell
-& euroleague/.venv/Scripts/python.exe -m `
-  euroleague_possessions.postgres_trial `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  euroleague/data/raw/boxscores `
-  --season 2025 --gamecode 1 `
-  --execute --apply-schema --probe-rollback
-```
-
-Export the R reference and verify event-level parity:
-
-```powershell
-& 'C:\Program Files\R\R-4.4.2\bin\Rscript.exe' `
-  euroleague/scripts/export_r_reference.R `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  tmp/euroleague_r_grouped_100.csv
-& euroleague/.venv/Scripts/python.exe `
-  euroleague/scripts/compare_r_reference.py `
-  C:\tmp\euroleague_pbp_2025_100games.csv `
-  tmp/euroleague_r_grouped_100.csv
-```
-
-Run the independent R regression tests using the commands in
-`euroleague/AGENTS.md` after any semantic rule change.
-
-## Artifact index
-
-- `euroleague/AGENTS.md` — inherited and EuroLeague-specific operating rules
-- `euroleague/pyproject.toml` — installable typed Python sub-project
-- `euroleague/requirements.txt` — pinned extraction dependency
-- `euroleague/src/euroleague_possessions/` — Python parser, counter, models,
-  CLI, bounded/restartable PBP and box-score collectors, official
-  reconciliation, concurrent checkpoints, analytics validation, and thin
-  package-lineup/schema-coverage/load-planning/staging/PostgreSQL adapters
-- `euroleague/tests/` — 54 Python regression, transaction, concurrency, and
-  determinism tests
-- `euroleague/sql/001_core_shadow_schema.sql` — applied isolated schema migration
-- `euroleague/sql/002_existing_analytics_compatibility.sql` — applied additive
-  ON/OFF and four-factor analytics contract
-- `euroleague/sql/003_app_materialized_views.sql` — prepared, not-yet-applied
-  indexed app read layer and batch refresh function
-- `euroleague/scripts/export_r_reference.R` — R decision export
-- `euroleague/scripts/compare_r_reference.py` — cross-language parity check
-- `euroleague/scripts/audit_live_batch.py` — read-only live/checkpoint count,
-  QA, analytics, and batch-lineage audit
-- `euroleague/scripts/audit_review_warnings.py` — deterministic local context
-  export for provisional FTs and package-invalid lineup actors
-- `docs/euroleague_event_grouping_spec.md` — relationship contract
-- `docs/euroleague_event_grouping_effectiveness_2026-08-05.md` — initial
-  fixture and 23-game effectiveness report
-- `docs/euroleague_possession_audit_100_games_2026-08-05.md` — detailed
-  100-game audit
-- `etl/euroleague/group_events.R` — relationship/endpoint state machine
-- `etl/euroleague/count_possessions.R` — deterministic counter and QA outputs
-- `etl/euroleague/evaluate_grouping_sample.R` — broad-sample diagnostics
-- `etl/euroleague/fixtures/event_grouping_edge_cases.csv` — manual labels
-- `etl/tests/test_euroleague_event_grouping_fixtures.R`
-- `etl/tests/test_euroleague_group_events.R`
-- `etl/tests/test_euroleague_count_possessions.R`
-
-The 100-game CSV remains outside the repository. The reproducible local Python
-environment is `euroleague/.venv` and is ignored by Git. No database,
-production ETL orchestrator, or application file was changed by this work.
+EuroLeague schema work must remain isolated. Do not create, alter, load,
+truncate, refresh, or otherwise modify objects in `basketball` or
+`basketball_test`. Cross-league comparison is read-only design reference unless
+the user explicitly authorizes a separate integration task.

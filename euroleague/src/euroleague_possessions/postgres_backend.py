@@ -391,6 +391,10 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         # season identity that is never deleted per game.
         "lineup_totals_by_game",
         "sub_lineups",
+        # Migration 020: exact additive facts for the dominant <=5 point,
+        # final-five-minutes clutch preset. Rebuilt per changed game inside
+        # the same publication transaction as the other derived facts.
+        "default_clutch_lineup_totals_by_game",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
@@ -617,6 +621,38 @@ def bootstrap_game(
         raise
     cursor.close()
     return BootstrapResult(load_run_id=load_run_id, game_id=game_id)
+
+
+def refresh_derived_for_games(connection: Any, game_ids: Sequence[int]) -> None:
+    """Refresh actions-derived facts once for a completed base batch."""
+
+    ids = sorted({int(game_id) for game_id in game_ids})
+    if not ids:
+        return
+    cursor = connection.cursor()
+    try:
+        cursor.execute("BEGIN")
+        for function_name in (
+            "refresh_actions_consumer_candidates",
+            "refresh_default_clutch_for_games",
+            "refresh_player_four_factors_by_game_for_games",
+            "refresh_team_four_factors_by_game_for_games",
+            "refresh_lineup_totals_by_game",
+            "refresh_sub_lineups",
+        ):
+            cursor.execute(
+                f"SELECT euroleague.{function_name}(%s::bigint[])",
+                (ids,),
+            )
+            cursor.fetchone()
+        cursor.execute("COMMIT")
+    except Exception:
+        try:
+            cursor.execute("ROLLBACK")
+        finally:
+            cursor.close()
+        raise
+    cursor.close()
 
 
 def finish_load_run(
@@ -918,14 +954,35 @@ class PostgresTransactionBackend:
             )
         return int(cursor.fetchone()[0])
 
-    def validate_game(self, game_id: int) -> None:
+    def validate_game(
+        self,
+        game_id: int,
+        *,
+        refresh: bool = True,
+        check_derived: bool = True,
+    ) -> None:
         cursor = self.connection.cursor()
         try:
             mismatches: list[str] = []
+            analytics_rows: int | None = None
+            if not refresh:
+                # Batch publication validates the complete derived graph once
+                # after all base snapshots commit. The snapshot's offline
+                # validation plus database FKs still protect this transaction.
+                return
             # Rebuild the analytical facts directly from canonical actions
             # before refreshing their player/team consumers.
             cursor.execute(
                 "SELECT euroleague.refresh_actions_consumer_candidates("
+                "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
+            # Default-clutch cache (migration 020). It reads the canonical
+            # event/team fact and exact matchup segments, so it must be rebuilt
+            # after refresh_actions_consumer_candidates and before commit.
+            cursor.execute(
+                "SELECT euroleague.refresh_default_clutch_for_games("
                 "ARRAY[%s]::bigint[])",
                 (game_id,),
             )
@@ -984,7 +1041,8 @@ class PostgresTransactionBackend:
             cursor.execute(
                 "WITH game_duration AS ("
                 "  SELECT game_id, "
-                "    (2400 + greatest(max(period) - 4, 0) * 300)::numeric AS seconds "
+                "    (2400 + greatest(max(euroleague.effective_period("
+                "      period, minute, play_type)) - 4, 0) * 300)::numeric AS seconds "
                 "  FROM euroleague.actions WHERE game_id = %s GROUP BY game_id"
                 "), team_time AS ("
                 "  SELECT game_id, team_id, sum(segment_seconds)::numeric AS seconds "
