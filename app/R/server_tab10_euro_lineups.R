@@ -18,6 +18,14 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   auto_min_state <- reactiveValues(last_auto = NA_integer_, updating = FALSE)
   auto_enabled <- reactiveVal(TRUE)
 
+  euro_ld_stat_filter_state <- make_stat_filter_state()
+  euro_ld_stat_filter_cols <- reactive({
+    if (identical(input$euro_ld_view_mode, "Four Factors")) LD_FF_FILTERABLE_COLS
+    else LD_SUMMARY_FILTERABLE_COLS
+  })
+  setup_stat_filter_handlers("euro_ld", input, session,
+                             euro_ld_stat_filter_cols, euro_ld_stat_filter_state)
+
   euro_competition <- reactive(euro_selected_competition(input))
   euro_season <- reactive(euro_selected_game_year(input))
 
@@ -424,32 +432,57 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     auto_enabled(FALSE)
   }, ignoreInit = TRUE)
 
-  # --- Displayed rows, with the TOTAL row pinned on top ---------------------
+  # Tab 2's column contract. The count columns are COPIED, not renamed: the
+  # Summary view still reads off_fg3_made for its shot splits, and off_fga /
+  # off_oreb are still the FTR and OREB denominators. Copying first also makes
+  # the ordering constraint structural rather than a rule to remember --
+  # off_tov is a raw count here and a rate on Tab 2, so deriving the rate
+  # before copying the count would leave the FF TOTAL row dividing a rate by
+  # possessions.
+  to_tab2_contract <- function(df) {
+    if (!NROW(df)) return(df)
+    df$Team            <- df$team_name
+    df$Players         <- df$player_names_str
+    df$sub_lineup_hash <- df$unit_key
+    df$num_starters    <- df$unit_size          # constant; see Task 4
+    df$plus_minus      <- as.numeric(df$off_pts) - as.numeric(df$def_pts)
+
+    # --- raw counts the FF TOTAL row sums (copies) ---
+    df$off_oreb_cnt  <- df$off_oreb
+    df$off_oreb_opps <- df$off_oreb_opp
+    df$off_tov_cnt   <- df$off_tov
+    df$off_fga_cnt   <- df$off_fga
+    df$off_fgm_cnt   <- df$off_fgm
+    df$off_fg3m_cnt  <- df$off_fg3_made
+    df$def_oreb_cnt  <- df$def_oreb
+    df$def_oreb_opps <- df$def_oreb_opp
+    df$def_tov_cnt   <- df$def_tov
+    df$def_fga_cnt   <- df$def_fga
+    df$def_fgm_cnt   <- df$def_fgm
+    df$def_fg3m_cnt  <- df$def_fg3_made
+    # off_ts_poss, off_fta, off_pts, def_pts, minutes already carry Tab 2's names.
+
+    # --- rates, LAST: these overwrite off_oreb / off_tov ---
+    df$off_oreb <- df$off_oreb_pct
+    df$def_oreb <- df$def_oreb_pct
+    df$off_tov  <- df$off_tov_pct
+    df$def_tov  <- df$def_tov_pct
+    # off_efg, def_efg, off_ftr, def_ftr, off_ppp, def_ppp, net_rtg,
+    # total_poss, off_poss, def_poss, minutes already carry Tab 2's names.
+    df
+  }
+
+  # --- Displayed rows --------------------------------------------------------
+  # The shared renderers (lineup_summary_datatable() / lineup_ff_datatable())
+  # build their own TOTAL row from the filtered population, exactly as Tab 2
+  # does -- this reactive must not build one of its own.
   euro_ld_display <- reactive({
     df <- apply_local_unit_filters(euro_ld_full())
     if (!NROW(df)) return(df)
     threshold <- as.numeric(input$euro_ld_minposs %||% 0)
     df <- df[!is.na(df$total_poss) & df$total_poss >= threshold, , drop = FALSE]
     if (!NROW(df)) return(df)
-
-    # TOTAL sums the raw counts and derives its rates from those sums. It is
-    # not an average of the rows' rates, and it is not clickable.
-    count_cols <- c("off_poss", "off_pts", "off_fg2_made", "off_fg2_att",
-                    "off_fg3_made", "off_fg3_att", "off_ts_poss", "off_fgm",
-                    "off_fga", "off_fta", "off_oreb", "off_oreb_opp",
-                    "off_tov", "off_steals",
-                    "def_poss", "def_pts", "def_fg2_made", "def_fg2_att",
-                    "def_fg3_made", "def_fg3_att", "def_ts_poss", "def_fgm",
-                    "def_fga", "def_fta", "def_oreb", "def_oreb_opp",
-                    "def_tov", "def_steals", "minutes")
-    total <- df[1, , drop = FALSE]
-    for (col in count_cols) total[[col]] <- sum(as.numeric(df[[col]]), na.rm = TRUE)
-    total$unit_key <- NA_character_
-    total$team_id <- NA_integer_
-    total$team_name <- "TOTAL"
-    total$player_names_str <- "TOTAL"
-    total <- add_rates(total)
-    rbind(total, df)
+    to_tab2_contract(df)
   })
 
   # --- Table ----------------------------------------------------------------
@@ -466,8 +499,8 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     eligible <- !is.na(df$total_poss) & df$total_poss >= thresh &
       !is.na(df$unit_key)
     for (nm in names(specs)) {
-      src <- specs[[nm]]
-      vals <- suppressWarnings(as.numeric(df[[src]]))
+      spec <- specs[[nm]]
+      vals <- suppressWarnings(as.numeric(df[[spec$src]]))
       vals[!eligible] <- NA_real_
       pr <- rep(NA_real_, length(vals))
       ok <- !is.na(vals)
@@ -476,179 +509,46 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       } else if (sum(ok) == 1L) {
         pr[ok] <- 0.5
       }
+      if (isTRUE(spec$invert)) pr <- 1 - pr
       df[[nm]] <- pr
     }
     df
   }
 
-  # Column polarity follows the project's standing rule: offense is green-high
-  # except TOV%, defense is red-high except TOV%.
-  SUMMARY_RANKS <- list(pr_off_ppp = "off_ppp", pr_def_ppp = "def_ppp",
-                        pr_net = "net_rtg", pr_off_efg = "off_efg",
-                        pr_def_efg = "def_efg")
-  FF_RANKS <- list(pr_off_ts = "off_ts", pr_off_tov = "off_tov_pct",
-                   pr_off_oreb = "off_oreb_pct", pr_off_ftr = "off_ftr",
-                   pr_def_ts = "def_ts", pr_def_tov = "def_tov_pct",
-                   pr_def_oreb = "def_oreb_pct", pr_def_ftr = "def_ftr")
-
-  summary_cols <- c(
-    team_name = "Team", player_names_str = "Unit",
-    off_ppp = "Off PPP", def_ppp = "Def PPP", net_rtg = "Net Rtg",
-    off_efg = "Off eFG%", def_efg = "Def eFG%",
-    minutes = "Min", off_poss = "Off Poss", def_poss = "Def Poss"
+  # Polarity is baked into the rank, not chosen at render time: the shared
+  # renderer applies COLS_GRAD to every pr_* column, exactly as Tab 2 does.
+  SUMMARY_RANKS <- list(
+    pr_ld_off_ppp   = list(src = "off_ppp"),
+    pr_ld_def_ppp_i = list(src = "def_ppp", invert = TRUE),
+    pr_ld_net       = list(src = "net_rtg")
   )
-  ff_cols <- c(
-    team_name = "Team", player_names_str = "Unit",
-    off_ts = "Off TS%", off_tov_pct = "Off TOV%",
-    off_oreb_pct = "Off OREB%", off_ftr = "Off FTR",
-    def_ts = "Def TS%", def_tov_pct = "Def TOV%",
-    def_oreb_pct = "Def OREB%", def_ftr = "Def FTR",
-    minutes = "Min", off_poss = "Off Poss", def_poss = "Def Poss"
+  FF_RANKS <- list(
+    pr_off_ppp  = list(src = "off_ppp"),
+    pr_off_efg  = list(src = "off_efg"),
+    pr_off_oreb = list(src = "off_oreb_pct"),
+    pr_off_tov  = list(src = "off_tov_pct", invert = TRUE),
+    pr_off_ftr  = list(src = "off_ftr"),
+    pr_def_ppp  = list(src = "def_ppp",     invert = TRUE),
+    pr_def_efg  = list(src = "def_efg",     invert = TRUE),
+    pr_def_oreb = list(src = "def_oreb_pct", invert = TRUE),
+    pr_def_tov  = list(src = "def_tov_pct"),
+    pr_def_ftr  = list(src = "def_ftr",     invert = TRUE),
+    pr_net      = list(src = "net_rtg")
   )
-
-  sketch_summary <- htmltools::withTags(table(class = "display", thead(
-    tr(
-      th(class = "group-head", colspan = 2, ""),
-      th(class = "group-head section-left-border", colspan = 3, "Ratings"),
-      th(class = "group-head section-left-border", colspan = 2, "Shooting"),
-      th(class = "group-head section-left-border", colspan = 3, "Usage")
-    ),
-    tr(
-      th(class = "sub-head", "Team"), th(class = "sub-head", "Unit"),
-      th(class = "sub-head section-left-border", "Off PPP"),
-      th(class = "sub-head", "Def PPP"), th(class = "sub-head", "Net Rtg"),
-      th(class = "sub-head section-left-border", "Off eFG%"),
-      th(class = "sub-head", "Def eFG%"),
-      th(class = "sub-head section-left-border", "Min"),
-      th(class = "sub-head", "Off Poss"), th(class = "sub-head", "Def Poss")
-    )
-  )))
-
-  sketch_ff <- htmltools::withTags(table(class = "display", thead(
-    tr(
-      th(class = "group-head", colspan = 2, ""),
-      th(class = "group-head section-left-border", colspan = 4, "Offense"),
-      th(class = "group-head section-left-border", colspan = 4, "Defense"),
-      th(class = "group-head section-left-border", colspan = 3, "Usage")
-    ),
-    tr(
-      th(class = "sub-head", "Team"), th(class = "sub-head", "Unit"),
-      th(class = "sub-head section-left-border", "TS%"),
-      th(class = "sub-head", "TOV%"), th(class = "sub-head", "OREB%"),
-      th(class = "sub-head", "FTR"),
-      th(class = "sub-head section-left-border", "TS%"),
-      th(class = "sub-head", "TOV%"), th(class = "sub-head", "OREB%"),
-      th(class = "sub-head", "FTR"),
-      th(class = "sub-head section-left-border", "Min"),
-      th(class = "sub-head", "Off Poss"), th(class = "sub-head", "Def Poss")
-    )
-  )))
 
   output$euro_ld_dt <- renderDT({
     df <- euro_ld_display()
-    is_ff <- identical(input$euro_ld_view_mode, "Four Factors")
-    cols   <- if (is_ff) ff_cols   else summary_cols
-    sketch <- if (is_ff) sketch_ff else sketch_summary
-    ranks  <- if (is_ff) FF_RANKS  else SUMMARY_RANKS
-
     if (!NROW(df)) {
       return(datatable(data.frame(Message = "No units match these filters."),
                        rownames = FALSE, options = list(dom = "t")))
     }
-
-    out <- df[, names(cols), drop = FALSE]
-    names(out) <- unname(cols)
-    # unit_key and the pr_* columns ride along hidden. Hidden columns beyond
-    # the sketch's th count get auto-generated headers, so they need no entry
-    # in the container.
-    out$unit_ref <- ifelse(is.na(df$unit_key), "", df$unit_key)
-    for (nm in names(ranks)) out[[nm]] <- df[[nm]]
-
-    hide_idx  <- which(names(out) %in% c("unit_ref", names(ranks))) - 1L
-    unit_idx  <- which(names(out) == "Unit") - 1L
-    key_idx   <- which(names(out) == "unit_ref") - 1L
-    border_at <- if (is_ff) c("Off TS%", "Def TS%", "Min") else
-                            c("Off PPP", "Off eFG%", "Min")
-    section_borders <- which(names(out) %in% border_at) - 1L
-
-    # Escaping stays on. Provider-supplied player names reach this table, so
-    # the data must be escaped; the unit link and the bold TOTAL come from the
-    # columnDefs render function, whose markup DataTables inserts regardless.
-    dt <- datatable(
-      out,
-      container = sketch,
-      rownames = FALSE,
-      escape = dt_escape_except(out),
-      selection = "none",
-      # Delegated on the table, not an inline onclick: DataTables re-creates
-      # the row elements on every sort, page and redraw, so a handler bound to
-      # the anchors themselves would stop firing after the first interaction.
-      callback = DT::JS(
-        "table.on('click', 'a.euro-ld-unit', function(e) {",
-        "  e.preventDefault();",
-        "  var key = this.getAttribute('data-unit');",
-        "  if (!key) return;",
-        "  Shiny.setInputValue('euro_ld_clicked_unit', key, {priority: 'event'});",
-        "});"
-      ),
-      options = list(
-        headerCallback = HEADER_TOOLTIP_JS,
-        dom = "tip",
-        pageLength = 30,
-        scrollX = TRUE,
-        scrollY = "70vh",
-        scrollCollapse = TRUE,
-        order = list(list(which(names(out) == "Off Poss") - 1L, "desc")),
-        columnDefs = list(
-          list(targets = hide_idx, visible = FALSE),
-          list(targets = section_borders, className = "section-left-border"),
-          list(targets = "_all", className = "dt-center"),
-          list(
-            targets = unit_idx,
-            className = "dt-left",
-            render = DT::JS(
-              "function(data, type, row, meta) {",
-              "  if (type !== 'display' || !row) return data;",
-              sprintf("  var key = row[%d];", key_idx),
-              "  if (!key) return '<strong>' + data + '</strong>';",
-              "  return '<a href=\"#\" class=\"euro-ld-unit\" data-unit=\"' + key + '\">' + data + '</a>';",
-              "}"
-            )
-          )
-        )
-      )
-    ) |>
-      formatRound(intersect(names(out),
-                            c("Off PPP", "Def PPP", "Net Rtg", "Off eFG%",
-                              "Def eFG%", "Off TS%", "Def TS%", "Off TOV%",
-                              "Def TOV%", "Off OREB%", "Def OREB%",
-                              "Off FTR", "Def FTR", "Min")), 1) |>
-      formatCurrency(intersect(names(out), c("Off Poss", "Def Poss")),
-                     currency = "", interval = 3, mark = ",", digits = 0)
-
-    # Offense green-high except TOV%; defense red-high except TOV%.
-    heat <- if (is_ff) list(
-      list("Off TS%",   "pr_off_ts",   COLS_GRAD),
-      list("Off TOV%",  "pr_off_tov",  COLS_REV),
-      list("Off OREB%", "pr_off_oreb", COLS_GRAD),
-      list("Off FTR",   "pr_off_ftr",  COLS_GRAD),
-      list("Def TS%",   "pr_def_ts",   COLS_REV),
-      list("Def TOV%",  "pr_def_tov",  COLS_GRAD),
-      list("Def OREB%", "pr_def_oreb", COLS_REV),
-      list("Def FTR",   "pr_def_ftr",  COLS_REV)
-    ) else list(
-      list("Off PPP",  "pr_off_ppp", COLS_GRAD),
-      list("Def PPP",  "pr_def_ppp", COLS_REV),
-      list("Net Rtg",  "pr_net",     COLS_GRAD),
-      list("Off eFG%", "pr_off_efg", COLS_GRAD),
-      list("Def eFG%", "pr_def_efg", COLS_REV)
-    )
-    for (h in heat) {
-      dt <- formatStyle(dt, h[[1]],
-                        backgroundColor = styleInterval(CUTS, h[[3]]),
-                        valueColumns = h[[2]])
+    if (identical(input$euro_ld_view_mode, "Four Factors")) {
+      lineup_ff_datatable(df, euro_ld_stat_filter_state$filters(),
+                          EURO_LD_LINEUP_TABLE_SPEC)
+    } else {
+      lineup_summary_datatable(df, euro_ld_stat_filter_state$filters(),
+                               EURO_LD_LINEUP_TABLE_SPEC)
     }
-    dt
   })
 
   # --- Filter chips ---------------------------------------------------------
@@ -671,7 +571,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       player_map <- stats::setNames(as.character(pmap$name), as.character(pmap$player_id))
     }
 
-    n_units <- max(NROW(euro_ld_display()) - 1L, 0L)
+    n_units <- NROW(euro_ld_display())
     bits <- c(sprintf("%s-player units", input$euro_ld_group_size %||% "5"),
               sprintf("%d shown", n_units))
     if (!is.null(input$euro_ld_minposs) && input$euro_ld_minposs > 0) {
@@ -696,7 +596,11 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       game_type_input_id = "euro_ld_phase",
       game_type_labeller = euro_phase_label,
       gn_label = "Rd",
-      extra_children = lapply(bits, function(b) tags$span(class = "filter-chip", b))
+      extra_children = c(
+        lapply(bits, function(b) tags$span(class = "filter-chip", b)),
+        stat_filter_chips_ui("euro_ld", euro_ld_stat_filter_state,
+                             euro_ld_stat_filter_cols)
+      )
     )
   })
 

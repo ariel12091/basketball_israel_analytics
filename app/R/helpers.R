@@ -2644,3 +2644,14 @@ LD_LINEUP_TABLE_SPEC <- list(
   link_class = "ld-lineup-link",
   click_js   = "window.handleLineupLinkClick(this);"
 )
+
+# The EuroLeague spec. Tab 10 has no equivalent of app.js's
+# handleLineupLinkClick, so it sets its input directly. data-hash carries the
+# unit_key, which the rename map surfaces as sub_lineup_hash.
+EURO_LD_LINEUP_TABLE_SPEC <- list(
+  link_class = "euro-ld-unit",
+  click_js   = paste0(
+    "Shiny.setInputValue('euro_ld_clicked_unit', ",
+    "this.getAttribute('data-hash'), {priority: 'event'});"
+  )
+)
