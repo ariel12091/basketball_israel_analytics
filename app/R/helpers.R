@@ -2255,7 +2255,15 @@ onoff_clean_display_names <- function(df) {
 # Indentation is left exactly as it was in the server files. make_shot_render()
 # builds its JS with a multi-line sprintf template, so re-indenting the body
 # would change the emitted JavaScript and stop this being a provable move.
-lineup_ff_datatable <- function(df, stat_filters, spec, raw = df) {
+lineup_ff_datatable <- function(df, stat_filters, spec, raw = NULL) {
+      # raw defaults to NULL, not df, because R default-argument promises
+      # evaluate lazily in THIS frame -- an implicit raw = df would be forced
+      # only when first read below, by which point df has already been
+      # reassigned by select()/arrange()/apply_stat_filters() and the count
+      # columns raw needs would be gone. Forcing it here, before any
+      # reassignment of df, guards every caller -- not just ones that
+      # remember to pass raw explicitly.
+      if (is.null(raw)) raw <- df
       # ============================================================
       # FOUR FACTORS LINEUP TABLE
       # Ranks are pre-computed on the full unfiltered population

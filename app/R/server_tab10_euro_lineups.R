@@ -543,8 +543,18 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
                        rownames = FALSE, options = list(dom = "t")))
     }
     if (identical(input$euro_ld_view_mode, "Four Factors")) {
+      # raw = df is explicit, not left to the default: R default-argument
+      # promises evaluate lazily in the CALLEE's frame, so an implicit
+      # raw = df would be forced only deep inside the TOTAL-row block, by
+      # which point lineup_ff_datatable() has already reassigned its own
+      # df via select()/arrange()/apply_stat_filters() and the count columns
+      # (off_pts, off_ts_poss, off_oreb_cnt, ...) would be gone -- summing
+      # them would silently yield 0 instead of erroring. Passing raw = df
+      # here creates the promise in THIS frame, where df is still
+      # euro_ld_display()'s unmutated output. Mirrors server_tab2.R's
+      # lineup_ff_datatable(..., raw = ld_data()) call.
       lineup_ff_datatable(df, euro_ld_stat_filter_state$filters(),
-                          EURO_LD_LINEUP_TABLE_SPEC)
+                          EURO_LD_LINEUP_TABLE_SPEC, raw = df)
     } else {
       lineup_summary_datatable(df, euro_ld_stat_filter_state$filters(),
                                EURO_LD_LINEUP_TABLE_SPEC)
