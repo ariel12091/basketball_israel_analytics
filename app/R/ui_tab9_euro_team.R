@@ -1,7 +1,6 @@
 # ui_tab9_euro_team.R - Tab 9: EuroLeague / EuroCup Team Ratings
 #
 # Mirrors Israeli Tab 3's Summary and Four Factors views. Deliberately absent:
-#   * Clutch filter    - needs an action-level running score; deferred.
 #   * Shot Profile     - needs shot coordinates/types, never collected.
 #   * Traditional      - needs the box score promoted out of jsonb.
 # Team minutes and pace reuse the canonical matchup-segment duration fact.
@@ -39,6 +38,7 @@ ui_tab9_euro_team <- function() tabPanel(
                          format = "yyyy-mm-dd"),
           selectizeInput("euroteam_teams", "Teams", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All teams")),
+          clutch_filter_ui("euroteam"),
           starter_context_filters_ui("euroteam"),
           tags$hr(),
           accordion_toggle_link(),

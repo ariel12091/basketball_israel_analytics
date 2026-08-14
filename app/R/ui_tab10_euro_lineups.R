@@ -3,10 +3,6 @@
 # Tab 8's euro filter vocabulary plus the lineup-specific controls Tab 2 has:
 # group size, team + players-on/off, and a minimum-possessions threshold.
 #
-# Clutch controls are deliberately absent. They arrive with the query path that
-# backs them (a per-event margin test the pre-aggregated fact cannot answer);
-# a disabled control that silently does nothing is worse than no control.
-
 ui_tab10_euro_lineups <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-people"), "Lineup Data"),
   value = "euro_lineups",
@@ -54,6 +50,7 @@ ui_tab10_euro_lineups <- function() tabPanel(
                          start = EURO_DEFAULT_START, end = EURO_DEFAULT_END,
                          min = EURO_DEFAULT_START, max = EURO_DEFAULT_END,
                          format = "yyyy-mm-dd"),
+          clutch_filter_ui("euro_ld"),
           accordion_toggle_link(),
           game_context_filters_from_descriptor(
             game_context_descriptor(

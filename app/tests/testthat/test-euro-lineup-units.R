@@ -51,7 +51,9 @@ test_that("EuroLeague auto min possessions follows the filtered Tab 2 population
     "euro_ld_opp_rank_side", "euro_ld_opp_rank_n", "euro_ld_opp_rank_metric",
     "euro_ld_view_mode", "euro_ld_num_starters_off_mode",
     "euro_ld_num_starters_off", "euro_ld_num_starters_def_mode",
-    "euro_ld_num_starters_def"
+    "euro_ld_num_starters_def", "euro_ld_clutch_enabled",
+    "euro_ld_clutch_margin", "euro_ld_clutch_status",
+    "euro_ld_clutch_minutes", "euro_ld_clutch_ot_margin"
   )) {
     expect_match(server, paste0("input\\$", input_id), fixed = FALSE)
   }
