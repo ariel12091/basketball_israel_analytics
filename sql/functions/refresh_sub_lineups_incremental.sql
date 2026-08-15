@@ -158,7 +158,10 @@ segment_stats AS (
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 2 AND f.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 2 THEN 1 ELSE 0 END) AS fg2_att,
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 AND f.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
-    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att
+    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
+    -- Numerator for the possession-weighted own-starters average; see the same
+    -- expression and rationale in refresh_sub_lineups.sql.
+    SUM(CASE WHEN COALESCE(f.final_end_poss, FALSE) THEN COALESCE(f.num_starters, 0) ELSE 0 END) AS starters_poss_num
   FROM basketball_test.df_pts_poss_lineups_longer_mv f
   JOIN sched sc
     ON sc.game_id = f.game_id
@@ -179,6 +182,7 @@ lineup_totals AS (
     SUM(ss.fg2_att) AS fg2_att,
     SUM(ss.fg3_made) AS fg3_made,
     SUM(ss.fg3_att) AS fg3_att,
+    SUM(ss.starters_poss_num) AS starters_poss_num,
     SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
   FROM segment_stats ss
   JOIN segment_times st
@@ -201,6 +205,7 @@ per_type AS (
     SUM(lt.fg2_att) AS fg2_att,
     SUM(lt.fg3_made) AS fg3_made,
     SUM(lt.fg3_att) AS fg3_att,
+    SUM(lt.starters_poss_num) AS starters_poss_num,
     SUM(lt.minutes) AS minutes
   FROM sub_map sm
   JOIN lineup_totals lt
@@ -240,7 +245,10 @@ final_rows AS (
     COALESCE(SUM(p.fg2_made) FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg2_made,
     COALESCE(SUM(p.fg2_att)  FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg2_att,
     COALESCE(SUM(p.fg3_made) FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg3_made,
-    COALESCE(SUM(p.fg3_att)  FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg3_att
+    COALESCE(SUM(p.fg3_att)  FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg3_att,
+    -- Unfiltered by type_lineup on purpose: weighted by offensive AND defensive
+    -- possessions, matching fetch_lineups_all lines 315/485.
+    COALESCE(SUM(p.starters_poss_num), 0) AS starters_poss_num
   FROM sub_dedup d
   JOIN names_by_sub n
     ON n.team_id = d.team_id
@@ -265,13 +273,15 @@ upserted AS (
     team_id, sub_lineup_hash, num_lineup, player_ids, player_names, player_names_str,
     off_poss, off_pts, off_ppp, def_poss, def_pts, def_ppp, minutes, game_year,
     off_fg2_made, off_fg2_att, off_fg3_made, off_fg3_att,
-    def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att
+    def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att,
+    starters_poss_num
   )
   SELECT
     team_id, sub_lineup_hash, num_lineup, player_ids, player_names, player_names_str,
     off_poss, off_pts, off_ppp, def_poss, def_pts, def_ppp, minutes, game_year,
     off_fg2_made, off_fg2_att, off_fg3_made, off_fg3_att,
-    def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att
+    def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att,
+    starters_poss_num
   FROM final_rows
   ON CONFLICT (team_id, sub_lineup_hash, game_year) DO UPDATE
   SET
@@ -293,7 +303,8 @@ upserted AS (
     def_fg2_made     = EXCLUDED.def_fg2_made,
     def_fg2_att      = EXCLUDED.def_fg2_att,
     def_fg3_made     = EXCLUDED.def_fg3_made,
-    def_fg3_att      = EXCLUDED.def_fg3_att
+    def_fg3_att      = EXCLUDED.def_fg3_att,
+    starters_poss_num = EXCLUDED.starters_poss_num
   RETURNING 1
 )
 SELECT count(*)::bigint FROM upserted;

@@ -2636,7 +2636,7 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
         ),
         options = list(headerCallback = HEADER_TOOLTIP_JS, pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)
       ) |>
-        DT::formatRound(c("off_ppp", "def_ppp", "net_rtg", "minutes")[c("off_ppp", "def_ppp", "net_rtg", "minutes") %in% names(df)], 1) |>
+        DT::formatRound(c("off_ppp", "def_ppp", "net_rtg", "minutes", "num_starters")[c("off_ppp", "def_ppp", "net_rtg", "minutes", "num_starters") %in% names(df)], 1) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
       dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#1a1f2b"), fontWeight = styleEqual("TOTAL", "bold"))

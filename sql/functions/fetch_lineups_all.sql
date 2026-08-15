@@ -98,7 +98,13 @@ BEGIN
     SELECT
       s.team_id, s.sub_lineup_hash::text, s.num_lineup, s.player_ids, s.player_names, s.player_names_str,
       s.off_poss, s.off_pts, s.off_ppp, s.def_poss, s.def_pts, s.def_ppp,
-      ROUND(s.off_ppp - s.def_ppp, 1) AS net_rtg, s.minutes, s.num_lineup::numeric AS num_starters, s.game_year,
+      ROUND(s.off_ppp - s.def_ppp, 1) AS net_rtg, s.minutes,
+      -- Possession-weighted own-starters average, identical in expression and
+      -- rounding to the two filtered branches below (lines ~315 and ~485). This
+      -- previously returned s.num_lineup::numeric -- the group size -- so the
+      -- column silently meant one thing on the fast path and another whenever a
+      -- filter forced a dynamic path.
+      ROUND(s.starters_poss_num / NULLIF(s.off_poss + s.def_poss, 0), 2) AS num_starters, s.game_year,
       s.off_fg2_made, s.off_fg2_att, s.off_fg3_made, s.off_fg3_att,
       s.def_fg2_made, s.def_fg2_att, s.def_fg3_made, s.def_fg3_att
     FROM basketball_test.sub_lineups_stats s
