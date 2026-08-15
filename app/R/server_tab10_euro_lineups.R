@@ -69,7 +69,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
 
   observeEvent(input$euro_ld_reset, {
     apply_season_date_bounds(session, "euro_ld_date_range", euro_season_date_bounds(euro_season()))
-    updateSelectInput(session, "euro_ld_group_size", selected = "5")
+    updateRadioButtons(session, "euro_ld_group_size", selected = "5")
     ld_filter$reset_inputs(team_selected = "")
     updateSelectizeInput(session, "euro_ld_opponents", selected = character(0))
     updateSelectizeInput(session, "euro_ld_phase", selected = character(0))

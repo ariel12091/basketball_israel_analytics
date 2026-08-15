@@ -63,6 +63,16 @@ gate are all correct and should stay.
   EuroLeague TS% is deliberately *not* `PTS / (2 * (FGA + 0.44 * FTA))`. The
   Israeli project keeps both denominators for different questions — an adapter
   must never mix them under one label.
+
+  > **Display reversal (2026-08-15).** Tab 10's Four Factors view no longer
+  > *shows* TS%; it shows eFG%, matching Tab 2 column for column. This reverses
+  > the display choice recorded above in favour of UI parity — the two tabs now
+  > render through the same helpers (`lineup_summary_datatable()` /
+  > `lineup_ff_datatable()` in `app/R/helpers.R`), and a column that exists on
+  > one and not the other would defeat that. **Nothing about the denominator
+  > changed:** `ts_possessions` is still computed, still stored, and still
+  > carries the definition above. Only the displayed column changed. Spec:
+  > `docs/superpowers/specs/2026-08-14-euroleague-lineups-ui-parity-design.md`.
 - **Raw counts before rates.** The season views sum numerators and denominators
   and divide once. That is the Israeli rule that prevents averaged percentages.
 - **`*_ppp` versus `*_rtg`.** A genuine improvement over the Israeli `ppp_calc`
