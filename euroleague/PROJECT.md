@@ -316,9 +316,21 @@ functions, no fact table, no backfill, no index.
   `_pergame`; exactly 5/all/5:00 -> `_dynamic` and its cache; any other clutch
   -> `_direct`. Clutch behaviour is unchanged on both tabs.
 
-Still open after this: Tab 8's `onoff_compute` (11.88s vs the Israeli 2.06s,
-shape not yet examined), and player traditional stats, which is broken in both
-leagues (Israeli 91s live, EuroLeague over 120s).
+Tab 8's `onoff_compute` was examined on 2026-08-14 and **nothing was shipped**;
+the live functions are byte-identical to migration 004 with their grants intact.
+The 11.88s does not reproduce warm (2.8-3.1s broad, 0.3-1.5s filtered; the cold
+first call is 15.3s). It does have a real shape defect -- both on/off readers
+reach the per-game fact through `player_game_context`, whose two unused
+schedule joins are 95% of the query's buffers -- but removing the view flips
+the planner to a seq scan of the whole 624,478-row fact on any narrow filter,
+so a source swap alone is a regression for the common case. It needs a
+`(game_id, team_id)` index on `player_four_factors_by_game` first, then both
+halves in one change behind one gate. Full evidence, including why timing on
+this instance cannot arbitrate the decision, is in section 8 of
+`docs/euroleague_query_perf_handoff_2026-08-13.md`.
+
+Also still open: player traditional stats, which is broken in both leagues
+(Israeli 91s live, EuroLeague over 120s).
 
 ### Optimization techniques used and lessons
 
@@ -932,15 +944,97 @@ cost order:
    `character(0)` and `""` from a hardcoded Israeli id allowlist
    (`c("teams", "ts_teams")`) rather than from an argument. Small and
    well-understood; it would delete three near-identical observers.
-4. **Tabs 9 and 10 against tabs 3 and 2** — 34% and 23% overlap. Lower value,
-   and both are the smaller side of their pair, so the descriptor work above
-   should land first and be reused here rather than derived twice.
+4. **Tab 9 against Tab 3** — 34% overlap. Lower value, and Tab 9 is the smaller
+   side of the pair, so the descriptor work above should land first and be
+   reused here rather than derived twice.
+
+   **Tab 10 against Tab 2 is now largely done** (2026-08-15, see the delivered
+   section below): both tabs render through one pair of extracted helpers and
+   Tab 10 uses Tab 2's sidebar. This was done without a descriptor — the two
+   league differences are passed as a small `spec` list — and it is a useful
+   precedent for what the descriptor should eventually absorb rather than a
+   substitute for it.
 
 The league descriptor itself does not exist yet. Until it does, each shared
 piece is passed as an explicit argument, which is why `build_filter_chips()`
 now takes seven of them. That is the right shape for two or three call sites
 and the wrong shape for twenty — the descriptor is what replaces it, not
 another round of arguments.
+
+## Delivered: Tab 10 lineup table and sidebar parity with Tab 2 (2026-08-15)
+
+Tab 10 no longer has a table of its own. `server_tab2.R`'s `renderDataTable`
+body was extracted into `lineup_summary_datatable()` and
+`lineup_ff_datatable()` in `app/R/helpers.R`, and both tabs now call them. A
+`spec` list carries the only two league differences — the anchor class and the
+click statement — so matching columns is a property of the code rather than a
+claim about one day's screenshot.
+
+| Commit | Change |
+|---|---|
+| `299ea6c` | Extract the two lineup DataTables into `helpers.R` (byte-identical move, verified by reversing the transform and diffing against `HEAD`) |
+| `22a21d9` | Tab 10 renames its frame to Tab 2's column contract and renders through the shared helpers |
+| `2a1b6e9` | Fix the lazy-default `raw = df` trap in `lineup_ff_datatable()` |
+| `f7aeae6` | Tab 10 adopts Tab 2's sidebar, gains the shot-splits legend, FF explainer switches TS% → eFG% |
+
+What Tab 10 gained: the 2PT/3PT shot-split cells and their legend, the
+per-column `filter = "top"` boxes, `+/-`, `Off Pts`/`Def Pts`, `# Starters`,
+Tab 2's paging (50, menu 25/50/100/200/1000), and Tab 2's sidebar order,
+labels and widget types (group size is now an inline radio, the min-possessions
+slider regained its help text).
+
+Three design points worth carrying forward:
+
+1. **Rank polarity lives in the rank value, not the palette.** The shared
+   renderer applies `COLS_GRAD` to every `pr_*` column and never uses
+   `COLS_REV`; Tab 2 bakes the inversion in upstream via `invert = TRUE`.
+   Tab 10's `add_pct_ranks()` was changed to match and its `COLS_REV` heat list
+   deleted. Any future tab calling these helpers must do the same or its
+   defensive columns render backwards, and no test catches it.
+2. **Counts are copied before rates are derived.** `off_tov` is a raw count in
+   the EuroLeague schema and a rate in Tab 2's contract — the same name on both
+   sides of the map. `to_tab2_contract()` copies every count column first and
+   overwrites the rate names last. `off_fg3_made` and `off_fga` are copied
+   rather than renamed because the Summary shot splits and the FTR denominator
+   still read them.
+3. **`ts_possessions` is unchanged.** Only the displayed column moved from TS%
+   to eFG%; the EuroLeague TS% denominator is still computed and stored. The
+   reversal is recorded in `euroleague/CLAUDE.md` beside the original decision.
+
+**The bug this nearly shipped.** The extracted renderer took `raw = df` as a
+default argument. R evaluates defaults lazily *in the function's own frame*, so
+by the time `raw` was read — deep in the TOTAL-row block — `df` had already been
+narrowed by `select(any_of(keep_cols))` and every count column was gone. Every
+`sum(raw$...)` silently returned 0, so Tab 10's Four Factors TOTAL row would
+have displayed zeros and NAs rather than erroring. Tab 2 was never affected
+because it passes `raw = ld_data()` explicitly. The fix passes `raw` explicitly
+at the call site *and* hardens the default to `raw = NULL` with
+`if (is.null(raw)) raw <- df` as the first statement. The general lesson: when
+extracting shared code, copy the working caller's call convention too — the one
+part of the signature that was invented rather than copied is where the defect
+was.
+
+**Verification.** Offline replay against live EuroLeague data reconciled Off PPP
+to 116.9827 against an independent `lineup_totals_by_game` aggregate. Both tabs
+were then opened side by side in the running app, Summary and Four Factors, and
+compared: identical headers, one TOTAL row, shot bars, filter boxes, sidebar.
+The FF TOTAL row reads 121.6 / 57.6 / 32.0 / 16.6 / 26.6 — non-zero, which is
+the `raw=` fix confirmed end to end. 297 tests pass, 0 fail.
+
+**Open, and deliberately not fixed here.** Six of 8,240 EuroLeague units report
+more offensive rebounds than rebound opportunities, so their OREB% exceeds 100.
+`to_tab2_contract()` copies both columns verbatim with no arithmetic, so the
+defect is upstream in `euroleague.sub_lineups_stats_mv`. It is an ETL fix, not
+a UI one, and it is still outstanding.
+
+**Deferred.** A real `# Starters` column. Tab 2's is a constant equal to the
+group size (`fetch_lineups_all` returns `s.num_lineup::numeric AS num_starters`
+while filtering `WHERE s.num_lineup = p_num_lineup`), and Tab 10 now reproduces
+that constant, which keeps parity exact and leaves the change a pure source
+swap on both leagues. See the design spec's step 4 for the proposed
+possession-weighted definition and its two risks.
+
+Branch `shiny/euro-tab1` — not merged, not deployed.
 
 ## Recent changes: 2026-08-11 to 2026-08-12
 
