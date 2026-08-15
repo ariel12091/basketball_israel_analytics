@@ -116,8 +116,8 @@ ui <- function(request) {
   ui_tab5_traditional(),
   ui_tab7_compare(),
   ui_tab8_euro(),
-  ui_tab9_euro_team(),
   ui_tab10_euro_lineups(),
+  ui_tab9_euro_team(),
   ui_tab11_euro_gamelogs()
   )
 }
@@ -516,14 +516,25 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "main_tabs", selected = "compare")
   })
 
-  # Card navigation: EuroLeague on/off -> Tab 8. The league switch itself is
-  # client-side; this only moves the tab once the card is clicked.
+  # Card navigation: the EuroLeague cards, in the same order as the Israeli
+  # ones above. The league switch itself is client-side; these only move the
+  # tab once a card is clicked. There is no team prefill because the Home team
+  # selector is Israeli-only.
+  observeEvent(input$go_euro_onoff, {
+    updateTabsetPanel(session, "main_tabs", selected = "euro")
+  })
+
+  observeEvent(input$go_euro_lineups, {
+    updateRadioButtons(session, "euro_ld_group_size", selected = "5")
+    updateTabsetPanel(session, "main_tabs", selected = "euro_lineups")
+  })
+
   observeEvent(input$go_euro_team, {
     updateTabsetPanel(session, "main_tabs", selected = "euro_team")
   })
 
-  observeEvent(input$go_euro_onoff, {
-    updateTabsetPanel(session, "main_tabs", selected = "euro")
+  observeEvent(input$go_euro_gamelogs, {
+    updateTabsetPanel(session, "main_tabs", selected = "euro_game_logs")
   })
 
   log_startup("server modules initialized")

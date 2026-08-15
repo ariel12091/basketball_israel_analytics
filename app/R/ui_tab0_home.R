@@ -51,8 +51,13 @@ ui_tab0_home <- function() tabPanel(
       ),
 
       # ---- EuroLeague ----
+      # Same cards, same order, same icons and wording as the Israeli block
+      # below -- only the tabs each one opens differ. The two surfaces that
+      # have no EuroLeague counterpart (player stats, compare) have no card.
       div(
         class = "league-only-el",
+
+        # Row 1
         fluidRow(style = "align-items: stretch;",
           column(
             width = 6,
@@ -75,12 +80,48 @@ ui_tab0_home <- function() tabPanel(
             tags$button(
               type = "button",
               class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+              `data-input-id` = "go_euro_lineups",
+              div(
+                class = "card-body d-flex flex-column gap-2",
+                tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: #e8a435;"),
+                tags$h5("Which lineups are working?", class = "card-title mb-1"),
+                tags$small(class = "text-muted", "Best and worst 5-man units by possessions"),
+                div(class = "mt-auto pt-2",
+                  tags$span(class = "text-warning small fw-semibold", "Go →"))
+              )
+            )
+          )
+        ),
+
+        # Row 2
+        fluidRow(style = "align-items: stretch;",
+          column(
+            width = 6,
+            tags$button(
+              type = "button",
+              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
               `data-input-id` = "go_euro_team",
               div(
                 class = "card-body d-flex flex-column gap-2",
                 tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: #e8a435;"),
                 tags$h5("How is my team performing?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Offense, defense, net rating vs. the league"),
+                div(class = "mt-auto pt-2",
+                  tags$span(class = "text-warning small fw-semibold", "Go →"))
+              )
+            )
+          ),
+          column(
+            width = 6,
+            tags$button(
+              type = "button",
+              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+              `data-input-id` = "go_euro_gamelogs",
+              div(
+                class = "card-body d-flex flex-column gap-2",
+                tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: #e8a435;"),
+                tags$h5("What happened in last night's game?", class = "card-title mb-1"),
+                tags$small(class = "text-muted", "Score, lineups, and stats by game"),
                 div(class = "mt-auto pt-2",
                   tags$span(class = "text-warning small fw-semibold", "Go →"))
               )

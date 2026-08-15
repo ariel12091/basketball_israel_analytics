@@ -7,7 +7,7 @@
 # caveats the Israeli tab has no reason to make.
 #
 ui_tab10_euro_lineups <- function() tabPanel(
-  title = tags$span(tags$i(class = "bi bi-people"), "Lineup Data"),
+  title = tags$span(tags$i(class = "bi bi-people-fill"), "Lineup Data"),
   value = "euro_lineups",
   fluidPage(
     shared_head_tags(),

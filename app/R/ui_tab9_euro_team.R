@@ -6,7 +6,7 @@
 # Team minutes and pace reuse the canonical matchup-segment duration fact.
 
 ui_tab9_euro_team <- function() tabPanel(
-  title = tags$span(tags$i(class = "bi bi-bar-chart-fill"), "Team Ratings"),
+  title = tags$span(tags$i(class = "bi bi-trophy-fill"), "Team Ratings"),
   value = "euro_team",
   fluidPage(
     shared_head_tags(),
