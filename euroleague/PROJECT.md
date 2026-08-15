@@ -1027,12 +1027,57 @@ more offensive rebounds than rebound opportunities, so their OREB% exceeds 100.
 defect is upstream in `euroleague.sub_lineups_stats_mv`. It is an ETL fix, not
 a UI one, and it is still outstanding.
 
-**Deferred.** A real `# Starters` column. Tab 2's is a constant equal to the
-group size (`fetch_lineups_all` returns `s.num_lineup::numeric AS num_starters`
-while filtering `WHERE s.num_lineup = p_num_lineup`), and Tab 10 now reproduces
-that constant, which keeps parity exact and leaves the change a pure source
-swap on both leagues. See the design spec's step 4 for the proposed
-possession-weighted definition and its two risks.
+**Deferred, and the spec's description of it was wrong.** A real `# Starters`
+column. The design spec (and an earlier draft of this section) claimed Tab 2's
+`# Starters` is simply a constant equal to the group size. That is true of only
+one of `fetch_lineups_all`'s three branches. Verified 2026-08-15:
+
+| Branch | `num_starters` |
+|---|---|
+| Fast path, line 101 | `s.num_lineup::numeric` — the constant |
+| Filtered path A, line 315 | `ROUND(SUM(lt.num_starters * lt.total_poss) / NULLIF(SUM(lt.total_poss),0), 2)` |
+| Filtered path B, line 485 | same weighted expression |
+
+So the possession-weighted mean **already exists** on both filtered paths. The
+live defect is that the column changes meaning depending on whether a filter is
+active: a real weighted average when the query goes dynamic, a group-size
+placeholder when it hits the MV. Applying any starter filter on Tab 2 shows
+5-player units with values below 5, which is the filtered path telling the
+truth.
+
+Three facts that shape the fix:
+
+- **`num_starters` and `own_starters` are the same value**, not two columns.
+  `df_pts_poss_longer.sql` aliases both to `pws.num_starters_offense` on
+  offense-perspective rows and to `pws.num_starters_defense` on defense rows,
+  so both always mean "own starters on court". The filter and the display agree.
+- **The existing weighting is over offensive *and* defensive possessions.**
+  Line 315's `SUM(lt.total_poss)` carries no `type_lineup` filter, unlike every
+  other aggregate in that SELECT. Coherent, since `num_starters` is always
+  own-perspective — but it is not the offense-only
+  `Σ(own_starters × off_poss) / Σ(off_poss)` the spec proposed. Whichever
+  definition is chosen, the fast path must adopt the same one or the column
+  changes meaning a second time.
+- **The GRANT hazard is on the EuroLeague side, not the Israeli side.**
+  `basketball_test.sub_lineups_stats` is a TABLE, populated by `INSERT INTO` in
+  `refresh_sub_lineups_stats()` and `refresh_sub_lineups_stats_for_games()`;
+  `ALTER TABLE ... ADD COLUMN` preserves its grants, and both refresh functions
+  already read `df_pts_poss_lineups_longer_mv`, which carries `num_starters`, so
+  the numerator needs no new join. `fetch_lineups_all` already declares
+  `num_starters numeric` in its `RETURNS TABLE`, so `CREATE OR REPLACE` keeps
+  the signature and its EXECUTE grants. By contrast
+  `euroleague.sub_lineups_stats_mv` is a MATERIALIZED VIEW, whose query cannot
+  be altered — that side needs DROP+CREATE, which wipes grants and drops
+  `euroleague_sub_lineups_stats_mv_pk` and `..._size_idx`. The security
+  apply/audit pass belongs there.
+
+On the EuroLeague side the readers `035_direct_lineups_reader`,
+`038_pergame_lineups_reader` and `014_lineup_units_read_layer` all filter on
+`l.own_starters` but none of them return it, so the data is already joined and
+in scope in every one of them.
+
+Tab 10 currently reproduces the constant (`num_starters <- unit_size`), which
+keeps parity exact against Tab 2's fast path.
 
 Branch `shiny/euro-tab1` — not merged, not deployed.
 
