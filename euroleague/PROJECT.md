@@ -1027,8 +1027,13 @@ more offensive rebounds than rebound opportunities, so their OREB% exceeds 100.
 defect is upstream in `euroleague.sub_lineups_stats_mv`. It is an ETL fix, not
 a UI one, and it is still outstanding.
 
-**Deferred, and the spec's description of it was wrong.** A real `# Starters`
-column. The design spec (and an earlier draft of this section) claimed Tab 2's
+**Delivered 2026-08-15** (migration `039_lineup_starters_numerator.sql`,
+commits `3880747` Israeli / `94ba256` EuroLeague / `750a4dd` display). Full
+account including every pitfall is in the root `PROJECT.md` under
+"Session Update (2026-08-15): Real `# Starters` on Both Lineup Tabs" — read
+that before touching this column again.
+
+The design spec (and an earlier draft of this section) claimed Tab 2's
 `# Starters` is simply a constant equal to the group size. That is true of only
 one of `fetch_lineups_all`'s three branches. Verified 2026-08-15:
 
@@ -1076,8 +1081,26 @@ On the EuroLeague side the readers `035_direct_lineups_reader`,
 `l.own_starters` but none of them return it, so the data is already joined and
 in scope in every one of them.
 
-Tab 10 currently reproduces the constant (`num_starters <- unit_size`), which
-keeps parity exact against Tab 2's fast path.
+What shipped on the EuroLeague side: `sub_lineups_stats_mv` and all three
+readers now carry `starters_poss_num`, and `to_tab2_contract()` divides it by
+`off_poss + def_poss` in R alongside the other rates — the read layer returns
+the numerator, never a ratio. `fetch_lineups_pergame` was also added to both
+security declarations; it had been missing since migration 038 and was
+therefore outside the declared contract.
+
+Two EuroLeague-specific traps, both now handled in 039 and both worth
+remembering for the next MV change here:
+
+- `CREATE FUNCTION` grants EXECUTE to PUBLIC by default. Recreating the three
+  readers widened them to every role; the pre-migration ACL had none. The
+  migration REVOKEs from PUBLIC before re-granting. Capture
+  `pg_proc.proacl` **before** any DROP, and compare after.
+- `lineup_totals_by_game.possessions` is `integer`, so
+  `sum(own_starters * possessions)` is `bigint` and dividing it by
+  `off_poss + def_poss` integer-divides. The MV numerator is cast `::numeric`
+  for that reason; the readers were already safe because they cast in their
+  final SELECT. The fast-vs-filtered invariant is what exposed it, and both
+  paths now agree to 0.0000 across all 5,864 five-player units.
 
 Branch `shiny/euro-tab1` — not merged, not deployed.
 

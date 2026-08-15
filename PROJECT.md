@@ -60,7 +60,7 @@ shared <- list(
 server_tab1(input, output, session, shared)
 ```
 
-**Direct SQL queries (no dbplyr lazy tables):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with parameterized SQL. No `tbl()`/`in_schema()` calls — eliminates metadata round trips. Pool is pre-warmed at source time with `SELECT 1` to force the SSL handshake before any user session.
+**Direct SQL queries (no dbplyr lazy tables):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with parameterized SQL. No `tbl()`/`in_schema()` calls — eliminates metadata round trips. The pool is created at source time, but its first connection is opened lazily by the first database query.
 
 ### Shiny Tabs
 
@@ -105,8 +105,17 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
 - Task Scheduler inline command strings are brittle (quoting errors caused failures); use scripts/run_etl_full.ps1 wrapper instead.
 - Daily ETL is run via Windows Task Scheduler task `onoff_etl_full_daily` calling `scripts/run_etl_full.ps1` (wrapper avoids quoting issues).
 - Wrapper runs `etl_full(dry_run=TRUE)` then `etl_full(dry_run=FALSE)`, appends output to `logs/etl_full.log`, and deletes logs older than 2 days.
-- Successful runs write a marker timestamp to `etl/logs/last_success.txt`; the app reads this to show "Last updated" in the top-right.
+- Successful runs write `etl/logs/last_success.txt` for local operations and
+  `app_meta.etl_full_last_success` in PostgreSQL; the deployed app reads the DB
+  key to show "Last updated" in the top-right.
 ### Key Tables & MVs
+
+**Canonical database and query context:** `docs/database_context.md`. Read this
+before adding or reconstructing SQL; it records relation grains, existing query
+surfaces, every live column, filter semantics, refresh order, diagnostics, and
+current anomalies. For observed inputs, exact low-cardinality value counts, and
+larger-domain ranges for every column, also read
+`docs/database_value_profiles.md`.
 
 **Base tables:** `schedule`, `actions_clean`, `full_rosters`, `possessions`, `pws`, `lineups_lookup`, `stints`, `sub_lineups`
 
@@ -133,7 +142,7 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
 ```
 L1: final_schedule_mv, df_pts_poss_lineups_longer_mv (depends on: possessions, pws)
 L2: mv_lineup_totals_by_day, team_ppp_ratings_mv, onoff_default_mv
-L3: player_onoff_by_game, player_four_factors_by_game, lineup_four_factors_by_game, player_advanced_stats_mv
+L3: player_four_factors_by_game, lineup_four_factors_by_game, player_advanced_stats_mv
 L4: team_four_factors_mv
 ```
 
@@ -159,7 +168,7 @@ windows, and attach only windows containing offense rows. After rebuilding
 `team_metrics_rolling_mv` so their canonical-minute snapshots stay aligned.
 
 **Function → MV mapping:**
-- `onoff_compute` → `player_onoff_by_game`, `final_schedule_mv`
+- `onoff_compute` → `player_four_factors_by_game`, `final_schedule_mv`
 - `four_factors_compute` → `lineup_four_factors_by_game`, `final_schedule_mv`
 - `fetch_lineups_*` → `mv_lineup_totals_by_day`, `final_schedule_mv`
 - `get_team_*_dynamic` → `lineup_four_factors_by_game`, `final_schedule_mv`
@@ -169,6 +178,11 @@ windows, and attach only windows containing offense rows. After rebuilding
 **Wins/Losses in Team Ratings:** `get_team_ratings_dynamic()` returns `wins` and `losses`. When clutch filter is active, wins/losses only count games that have qualifying clutch possessions (not all filtered games). Uses `qualifying_games` CTE which applies clutch WHERE clause to identify games, then counts wins/losses from that subset.
 
 **Canonical minutes calculation:** Raw provider clocks remain untouched for auditing. Runtime minutes use canonical elapsed time and consecutive lineup-segment boundaries, so delayed or out-of-order actions cannot inflate a stint. Consumers deduplicate `segment_seconds` at `(game_id, team_id, lineup_hash, segment_id)` and count each duration once; possession and point statistics remain split by `type_lineup`.
+
+`lineup_four_factors_by_game.minutes` stores that duration once on the offense
+row. In `team_metrics_by_game_mv`, `off_minutes` and `def_minutes` intentionally
+mirror the same canonical team floor duration; never independently sum the
+empty defense-row minute payload.
 
 The normal incremental ETL path calls `refresh_segment_clock_fields_for_games()` from `refresh_df_pts_poss_lineups_longer_for_games()`. See `docs/canonical_clock_minutes.md` for the formula, affected cases, integration points, and deployment constraints.
 
@@ -188,6 +202,31 @@ The normal incremental ETL path calls `refresh_segment_clock_fields_for_games()`
 **Use `etl_full.R`** — runs: base tables → sub-lineups → MV refresh → validation. Logs to `etl/logs/`.
 
 Key helpers: `upsert_by_like()` (schema-driven upsert), `fetch_israel_schedule()`, `compute_possessions()`, `compute_lineups_lookup()`
+
+Before a game is written, `complete_roster_from_action_players()` recovers PBP
+participants missing from that game roster using same-season/team roster
+history. `assert_action_players_in_roster()` then fails that game before its
+transaction begins if any nonzero PBP `(game_id, team_id, player_id)` still has
+no roster row. This prevents a roster omission from silently generating a
+four-player lineup.
+
+Stint action ranges are half-open `[final_start_id, final_end_id)`. Persisted
+`final_end_id` remains a real action ID because it is foreign-keyed. During the
+PWS join only, `add_terminal_stint_join_end()` advances the final interval's
+temporary upper bound by one, keeping the maximum action attributable without
+overlapping adjacent stints or weakening the FK.
+
+**Lineup anomaly status (2026-07-22):** Game 62461/team 8 was repaired after
+the source game roster omitted Cody Demps (player 2543) despite 26 PBP actions.
+The reprocess removed 18 invalid lineup states and restored 430 unmatched
+event-team rows; the full-history action-player/roster audit now has zero gaps.
+The remaining 52 invalid states are mixed: games 178 and 62452 are confirmed
+material source substitution failures, game 62479 is a small likely source
+failure, and 28 states across games 157, 168, 190, 205, 209, 211, 357, 381,
+62447, and 62534 are transient bulk-reset declarations rather than sustained
+gameplay failures. Do not globally suppress `n_on = 0`; game 62452 shows that
+it can begin a genuine sustained defect. Detailed evidence and follow-up:
+`docs/lineup_anomalies_etl_memory_2026-07-22.md`.
 
 **`fetch_israel_schedule()`:** Fetches from `basket.co.il/pbp/json/games_all.json`, flattens game objects via `as.data.frame()`. JSON field names are mixed-case (e.g. `GN`, `ExternalID`) — must explicitly map to lowercase DB columns in `mutate()` (e.g. `gn = as.integer(GN)`, `game_id = as.integer(ExternalID)`). The `upsert_by_like()` helper matches columns by **exact name** (case-sensitive), so unmapped uppercase JSON fields get dropped and the DB column gets `NA`.
 
@@ -230,7 +269,7 @@ Now in main `app/app.R` (not app_test.R). Toggle between Summary/Four Factors in
 
 Available in Tab 1 (On/Off Impact) Summary, Tab 2 (Lineup Data) Summary, and Tab 4 (Game Logs) Summary. Not in Four Factors views or Tab 3. Tabs 1, 2, and 4 show the shot splits legend box (conditionally visible in Summary mode only).
 
-**Tab 1:** 16 columns (off/def × on/off × fg2/fg3 × made/att). Source: `onoff_default_mv` via `shot_agg` CTE, or `onoff_compute()` via `player_onoff_by_game`.
+**Tab 1:** 16 columns (off/def × on/off × fg2/fg3 × made/att). Source: `onoff_default_mv` via `shot_agg` CTE, or `onoff_compute()` via `player_four_factors_by_game`.
 
 **Tab 2:** 8 columns (off/def × fg2/fg3 × made/att) — no on/off split since Tab 2 shows lineup-level stats. Columns: `off_fg2_made`, `off_fg2_att`, `off_fg3_made`, `off_fg3_att`, `def_fg2_made`, `def_fg2_att`, `def_fg3_made`, `def_fg3_att`.
 - **Fast path:** reads from `sub_lineups_stats` (8 shooting columns populated by `refresh_sub_lineups_stats()`)
@@ -338,7 +377,7 @@ ot_margin_filter <- if (clutch_enabled) isTRUE(input$ld_clutch_ot_margin) else F
 A possession ends (`end_poss = TRUE`) when:
 1. Made shot
 2. Next action is a defensive rebound (miss → DREB)
-3. Made last free throw (`pct_ft == 1`, where `pct_ft = ft_number / ft_awarded`)
+3. Made last free throw (`pct_ft == 1`, where `pct_ft = ft_number / effective_ft_awarded`)
 4. Turnover
 
 Post-processing (`final_end_poss`):
@@ -377,7 +416,13 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 
 **`complex_flags` CTE:** LEFT JOINs each action to its parent foul via `parent_action_id` to get `parent_type` and `parent_param`. Only matches `type='foul'` parents. Actions without a foul parent get NULL → excluded from personal-foul filters (affects `ts_poss_count` and `oreb_opportunities` FT conditions).
 
-**`pct_ft`:** `parameters_free_throw_number / parameters_free_throws_awarded` (computed in ETL `compute_possessions()`). `pct_ft = 1` means last FT in the sequence.
+**`pct_ft`:** computed in ETL `compute_possessions()` as
+`parameters_free_throw_number / effective_ft_awarded`. Normally the effective
+denominator is `parameters_free_throws_awarded`; if the provider reports an
+impossible smaller total than the current attempt number, the attempt number is
+used as the hard lower bound. Raw provider fields remain unchanged. `pct_ft = 1`
+means the last FT in the sequence, and DQ check `AJ` enforces the published 0-1
+domain.
 
 **Architecture note:** SQL functions (`four_factors_compute`, `fetch_lineups_four_factors`, `get_team_four_factors_dynamic`) only aggregate (`SUM`) pre-computed columns from MVs — they don't recompute raw counts. Fixes to metric formulas only need to touch the base MVs (`player_four_factors_by_game`, `lineup_four_factors_by_game`, `player_advanced_stats_mv`). `team_four_factors_mv` aggregates from `lineup_four_factors_by_game` so it picks up fixes automatically on refresh.
 
@@ -404,7 +449,7 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 ### R / Shiny / DT
 - **`bigint = "numeric"` in `dbPool()`** — RPostgres returns PostgreSQL `bigint` as R `integer64` by default, which is incompatible with dplyr `coalesce()`, `+`, and many tidyverse operations. Fix: add `bigint = "numeric"` to the pool connection. Safe for basketball stats (precision loss only for values > 2^53). `SUM()` on integer in PostgreSQL returns `bigint`, so even flag columns (CASE 0/1) produce bigint sums
 - **dateRangeInput NA pitfall** — `updateDateRangeInput()` with `start` outside the input's `min` produces `NA`. The "reset to defaults" button must use season-appropriate dates (from `season_date_bounds()`), not global `DEFAULT_START`/`DEFAULT_END`. Also guard `fallback_needed()` and `live_result_df()` against NA dates: `if (is.na(start_d) || is.na(end_d)) return(FALSE)` and `req(!is.na(rng[1]), !is.na(rng[2]))`
-- **All DB access uses `dbGetQuery()`** — no `tbl()`/`in_schema()` anywhere in active code. Eliminates metadata round trips (~200-400ms each to Supabase). Pool pre-warmed with `SELECT 1` at source time. Requires `bigint = "numeric"` in pool
+- **All DB access uses `dbGetQuery()`** — no `tbl()`/`in_schema()` anywhere in active code. Eliminates metadata round trips (~200-400ms each to Supabase). Pool connections are opened lazily on the first query. Requires `bigint = "numeric"` in pool
 - `formatRound()` clobbers JS `columnDefs` render — do all formatting in JS if using custom render
 - `uiOutput`/`renderUI` causes NULL window on startup — use static inputs + `update*Input()`
 - Hoist `colorRampPalette()`, `seq()` to global constants
@@ -772,6 +817,25 @@ Source: `player_four_factors_by_game` / `lineup_four_factors_by_game` SELECT cla
 3. Add short TTL cache for repeated identical filtered requests (API layer).
 
 4. Audit indexes only after query-plan evidence (avoid speculative indexing).
+
+5. Add an app-level fast path for Israeli Tab 2 Lineups after measuring the
+   deployed tab end to end:
+   - Cache the full-season, full-league result by season, lineup size, view, and
+     Israeli ETL/data version. Load lineup sizes on demand rather than caching
+     every 2-5 player population eagerly.
+   - Apply team, players ON/OFF, minimum possessions, and table/stat filters
+     locally, preserving full-population percentile ranks.
+   - Keep filters that change the game set on the dynamic SQL path initially:
+     dates, game type, opponents, home/away, Win/Loss, opponent strength, GN or
+     Last N, clutch, and starter context.
+   - Summary can use `sub_lineups_stats`; Four Factors can cache the full-season
+     result aggregated from `lineup_four_factors_by_game`. Preserve raw additive
+     counts and calculate rates only after aggregation.
+   - Recorded warm baselines are about `280ms` for Summary's database-internal
+     full-season fast path, `435ms` for full-season Four Factors, and `390-550ms`
+     for non-clutch filtered calls. Prioritize this work if deployed latency or
+     concurrency shows that avoiding repeated default queries is material.
+
 ## Session Notes (2026-02-17 Player IDs Parsing Optimization)
 
 1. Implemented fix:
@@ -1668,3 +1732,261 @@ extract_starters <- function(box) {
   - load was ~6.8s in repeated cold runs
   - reset clear was ~5s in repeated cold runs
 - If CI still fails while UI is correct, prioritize test-harness semantics (event triggering, assertion style) before increasing timeouts further.
+
+## Session Update (2026-03-08): Project Skill Library (Credential-Safe)
+- Added reusable project skills under docs/skills/ (all generated/validated with skill-creator tooling and kept credential-free):
+  - shiny-tab-contracts
+  - basketball-sql-semantics
+  - shiny-ci-e2e
+  - etl-wrapper-ops
+  - deploy-and-runtime-hygiene
+  - performance-safe-refactors
+  - data-integrity-guards
+
+### Skill Purpose Summary
+- shiny-tab-contracts: keep cross-tab reset/filter/UI contracts consistent.
+- basketball-sql-semantics: preserve metric definitions and clutch/type_lineup semantics.
+- shiny-ci-e2e: stabilize shinytest2 and GitHub Actions test behavior.
+- etl-wrapper-ops: harden ETL wrapper execution, logging, and local/CI parity.
+- deploy-and-runtime-hygiene: keep deploy/runtime setup robust and non-local-path dependent.
+- performance-safe-refactors: improve hot-path performance while preserving outputs.
+- data-integrity-guards: run structural and metric integrity checks before/after ETL or SQL changes.
+
+## Git Branch Workflow
+
+Use short-lived feature branches (do not commit new work directly to `main`).
+
+Solo workflow (no formal PR needed):
+
+1. Create/switch branch from updated main:
+   - `git checkout main`
+   - `git pull origin main`
+   - `git checkout -b feature/<short-topic>`
+2. Commit and push branch:
+   - `git add <files>`
+   - `git commit -m "<message>"`
+   - `git push -u origin feature/<short-topic>`
+3. Merge locally into `main`:
+   - `git checkout main`
+   - `git merge --no-ff feature/<short-topic>`
+   - `git push origin main`
+4. Delete branch after merge:
+   - Local: `git branch -d feature/<short-topic>`
+   - Remote: `git push origin --delete feature/<short-topic>`
+
+If an urgent hotfix is committed to `main`, return to branch workflow for the next change.
+## Session Update (2026-03-19): Idle Timeout + shinyapps Deploy Fix
+- App idle session timeout is active and configurable:
+  - APP_IDLE_TIMEOUT_MIN (preferred; minutes)
+  - APP_IDLE_TIMEOUT_SEC (fallback; seconds)
+  - APP_IDLE_CHECK_SEC (check interval; seconds)
+- App server now reads timeout values from global.R constants (no hardcoded timeout in app.R).
+- Browser activity heartbeat is throttled (15s) to avoid unnecessary high-frequency Shiny.setInputValue(...) events.
+- Tab 7 player-compare non-timeout DB errors now log detailed message server-side and show a generic user notification.
+
+### Deploy Failure Root Cause (shinyapps.io)
+- Error observed:
+  - Error in client$setEnvVars(application$guid, deployment$envVars) : attempt to apply non-function
+- Cause:
+  - Local rsconnect client object for shinyapps.io did not expose setEnvVars, but deployment metadata requested env var update.
+  - app/rsconnect/shinyapps.io/ibpl-stats/onoff-shiny.dcf had envVars: ...
+- Fix:
+  - Removed envVars: from that DCF so deployApp() does not attempt setEnvVars(...) on redeploy.
+## Session Update (2026-03-26): ETL Automation Reliability (Cold Storage Follow-up)
+- Root cause in automation path:
+  - `scripts/run_etl_full.ps1` could fail immediately when `RSCRIPT_PATH` was unset and `Rscript` was not on PATH.
+  - Phase 7 cold-storage purge ran even when no new games were processed, adding unnecessary parquet/DDL steps to routine no-op runs.
+- Fixes applied:
+  - `scripts/run_etl_full.ps1`: added fallback to `C:\Program Files\R\R-4.4.2\bin\Rscript.exe` when env/PATH lookup fails.
+  - `etl/etl_full.R`: Phase 7 now runs only when `length(processed_ids) > 0` and pipeline is healthy; otherwise logs skip reason.
+- Verification:
+  - Wrapper run completed with `exit_code=0` and explicit log line:
+    - `Skipping Phase 7 (cold storage purge): no new games processed`
+  - Log reference: `logs/etl_full_wrapper_20260324_163129.log`
+## Session Update (2026-03-27): Compare Tab Four-Factor Fixes + Labeling
+- Compare tab root cause for `TS%`, `TOV%`, and `OREB%` chip crashes:
+  - `TEAM_METRICS` in `app/R/server_tab7_compare.R` used nonexistent names (`off_ts_pct`, `off_tov_pct`, `off_oreb_pct`) while compare SQL returns `off_ts`, `off_tov`, `off_oreb`.
+  - `cmp_joined()` also still used the old `_pct` names in the `is_ff` branch check, so even after fixing the chip map it could still route through ratings instead of four factors.
+  - Failure mode was the Shiny/data-frame error `replacement has 0 rows, data has N` because `pick_cols()` could not create `metric_a` / `metric_b`.
+- Fixes applied:
+  - Updated tab 7 team metric mappings and the `is_ff` checks to use actual four-factor column names.
+  - Added `app/tests/testthat/test-tab7-compare-server.R` with real `shiny::testServer` coverage for tab 7 four-factor chip flows (Teams and Lineups).
+  - Extended `app/tests/testthat/helper-server-mocks.R` with tab 7 mock query responses so compare tests run in CI without a live DB.
+- Testing lesson:
+  - Existing tab 7 coverage was mostly text/contract based and did not execute the chip-selection reactive path.
+  - For Shiny regressions like this, prefer at least one behavioral `testServer()` path that sets inputs in the same sequence as the UI (mode change first, chip click second).
+- Compare side-label work:
+  - Added `side_label_short()` / `side_label_full()` split in tab 7 usage.
+  - Compare DT headers now use short labels (`Home`, `Away`, `Starters`, `Bench`, etc.); custom mode keeps `A`/`B` and renders colored badges via `headerCallback`.
+  - Detail view column headers now use short labels while summary cards and detail subheader keep full verbose labels.
+- Verification:
+  - `Rscript scripts/test_all.R` passed locally after the compare fixes and side-label changes.
+
+## Session Update (2026-04-06): Tab 5 Navbar Mode Sync + Per-30 Minutes Fix
+- Root cause for Tab 5 mode switching appearing broken in the app/deploy:
+  - The visible navbar hover menu in app/app.R was driving a hidden selectInput("ts_display_mode", ...) in app/R/ui_tab5_traditional.R.
+  - The JS path only mutated the DOM select value and triggered a browser change event, which was brittle and could fail to propagate the new value to Shiny consistently.
+  - Result: input in app/R/server_tab5_traditional.R could stay stale, so Totals, Per 60 Possessions, and Per 30 Minutes appeared not to apply even though the navbar UI suggested they had changed.
+- Fix applied:
+  - Hardened the shared navbar mode-menu handler in app/app.R to call Shiny.setInputValue(...) explicitly for both select-backed and radio-backed tab mode controls, in addition to updating the underlying DOM control.
+  - This makes the navbar mode picker more robust across tabs, with Tab 5 as the original failure case.
+- Separate Tab 5 calculation bug:
+  - In Per 30 Minutes, count stats and possessions were normalized, but minutes itself was not.
+  - Result: the Min column still showed the source minutes instead of 30, making the row internally inconsistent.
+- Fix applied:
+  - app/R/server_tab5_traditional.R: in apply_ts_mode(), minutes is now explicitly normalized as minutes / minutes * 30, so valid rows show Min = 30 in Per 30 Minutes.
+- Related Tab 5 stat-chip work:
+  - The stat-filter chips feature filters the current display-mode values (not raw base totals), while percentage columns remain effectively stable because they are not transformed by the mode conversion.
+
+## Session Update (2026-04-08): Tab 5 Total Poss In Rate Modes
+- Requirement clarified:
+  - Keep "Poss On Floor" as the mode-adjusted display column in all modes.
+  - Add a separate "Total Poss" column only in non-Totals modes.
+  - In Totals mode, do not show both because "Poss On Floor" already represents the raw total possession count.
+- Implementation:
+  - app/R/server_tab5_traditional.R copies the pre-conversion poss_on_floor value into an in-memory total_poss column before apply_ts_mode() mutates the mode-specific display values.
+  - total_poss is then inserted next to "Poss On Floor" only for non-Totals table render and CSV export paths.
+  - The stat-filter menu exposes "Total Poss" only outside Totals mode.
+- Performance note:
+  - This is not a new DB query or persistent cache.
+  - It is a single vectorized in-memory column copy on the already-loaded Tab 5 data frame, so the cost is negligible compared with the query and DT render.
+
+## Architecture Decision (2026-07-22): Web Stack Direction
+
+- The deployed R/Shiny application is the maintained product and the source of
+  truth for behavior. Continue normal feature work and maintenance there.
+- `frontend-v2` and its R/Plumber API are stale prototypes, not parity-complete
+  application layers. Do not treat them as current contracts or update them
+  incidentally during Shiny work.
+- There is no active Python rewrite. FastAPI async behavior alone is not a
+  sufficient reason to migrate: it can improve concurrent I/O handling, but it
+  does not make PostgreSQL queries faster, and Python Shiny retains stateful,
+  serial reactive execution unless long work is explicitly moved to extended
+  tasks.
+- If a future full web migration is approved, prefer a stateless
+  React/TypeScript frontend plus FastAPI backend over Python Shiny plus FastAPI.
+  Treat the existing React code as a prototype: reuse worthwhile presentation
+  components, but rebuild API/data contracts from the active Shiny behavior.
+- Any future migration must be incremental and parity-tested by vertical slice.
+  Keep the PostgreSQL functions/materialized views and the working R ETL in
+  place initially, and keep R/Shiny live until the replacement covers the
+  required behavior.
+- If the goal is only near-term maintainability, refactor the active R/Shiny
+  modules into smaller query, transformation, and rendering units rather than
+  changing languages.
+
+### Known React drift
+
+Among other drift, Shiny Tabs 1/3/7 have a "Shot Profile" display mode
+(shot-diet shares including corner-3-of-known-3PA) that `frontend-v2` does not
+implement. See `docs/superpowers/specs/2026-07-16-shot-profile-design.md` for the
+current feature specification.
+
+## Session Update (2026-08-15): Real `# Starters` on Both Lineup Tabs
+
+### What the column was
+
+Tab 2's `# Starters` was two different things depending on which branch of
+`fetch_lineups_all` answered the request:
+
+| Branch | Expression |
+|---|---|
+| Fast path (`sub_lineups_stats`) | `s.num_lineup::numeric` — the group size, a constant |
+| Filtered path A | `ROUND(SUM(lt.num_starters * lt.total_poss) / NULLIF(SUM(lt.total_poss),0), 2)` |
+| Filtered path B | same weighted expression |
+
+The possession-weighted average already existed on both filtered paths. Only
+the fast path returned a placeholder, so the column silently changed meaning
+whenever a filter forced a dynamic path — visible as a starter filter showing
+5-player units with values below 5. That is what prompted the work.
+
+### Purpose
+
+Make the column mean one thing everywhere, in both leagues: the
+possession-weighted mean of own starters on court,
+`SUM(own_starters * possessions) / (off_poss + def_poss)`. Weighted by
+offensive **and** defensive possessions — not offence alone — because that is
+what the two filtered branches already did, and conforming the fast path to
+live code beat changing two expressions that were working.
+
+### What changed
+
+Israeli (`3880747`):
+
+- `ALTER TABLE basketball_test.sub_lineups_stats ADD COLUMN starters_poss_num numeric`.
+- `refresh_sub_lineups_stats()` and `refresh_sub_lineups_stats_for_games()`
+  compute it, summed at the **possession grain**
+  (`SUM(CASE WHEN final_end_poss THEN num_starters ELSE 0 END)`) rather than by
+  adding `num_starters` to the GROUP BY the way `fetch_lineups_all` does. Same
+  value, but it cannot fan out the join to `segment_times` if `num_starters`
+  ever varies inside a segment.
+- `fetch_lineups_all` fast path divides the stored numerator by
+  `off_poss + def_poss`, same expression and same 2-decimal rounding as the
+  filtered branches.
+- `fetch_lineups_csv_v2` needed nothing — it is a pure wrapper
+  (`RETURN QUERY SELECT * FROM fetch_lineups_all(...)`).
+
+EuroLeague (`94ba256`, migration `euroleague/sql/039_lineup_starters_numerator.sql`):
+
+- `sub_lineups_stats_mv` and all three readers (`fetch_lineups_dynamic`,
+  `fetch_lineups_direct`, `fetch_lineups_pergame`) gain `starters_poss_num`.
+  Every reader already FILTERED on `own_starters`; none RETURNED it.
+- The read layer returns the **numerator**, never the ratio — Tab 10 derives
+  every rate in R from summed counts and the schema stores no ratios by design.
+- `fetch_lineups_pergame` added to both security declarations.
+
+Display (`750a4dd`): `# Starters` renders as a whole number in the shared
+renderer, so both tabs move together. Display only — filter and sort still use
+the exact value.
+
+### Pitfalls hit, in the order they bit
+
+1. **The spec's description of the column was simply wrong**, and so was an
+   earlier version of this note. "Tab 2's `# Starters` is a constant equal to
+   the group size" is true of one branch out of three. It was corrected only
+   because the behaviour was questioned against the live app. Read every branch
+   of a multi-path function before describing what it returns.
+2. **`num_starters` and `own_starters` are the same value under two names.**
+   `df_pts_poss_longer.sql` aliases both to `pws.num_starters_offense` on
+   offense rows and `pws.num_starters_defense` on defense rows. The filter uses
+   one name and the display the other; they agree. Do not "fix" this.
+3. **The GRANT risk was the opposite of what the spec claimed.**
+   `basketball_test.sub_lineups_stats` is a TABLE, so `ADD COLUMN` preserves
+   its ACL, and all three functions kept their signatures under
+   `CREATE OR REPLACE`, so EXECUTE survived. The hazard was entirely on the
+   EuroLeague side, where `sub_lineups_stats_mv` is a MATERIALIZED VIEW whose
+   query cannot be altered.
+4. **`CREATE FUNCTION` grants EXECUTE to PUBLIC by default.** Recreating the
+   three EuroLeague readers silently widened them to every role in the
+   database; the pre-migration ACL had no PUBLIC entry. Caught by diffing
+   `pg_class.relacl` / `pg_proc.proacl` against values captured *before* the
+   migration. Always capture the ACL first, and always REVOKE FROM PUBLIC
+   before re-granting.
+5. **`information_schema.role_table_grants` lies** — it filters by the current
+   user's role membership and reported *no* grants on a relation that plainly
+   had them. Query `pg_class.relacl` / `pg_proc.proacl` instead.
+6. **Integer division, silently.** `lineup_totals_by_game.possessions` is
+   `integer`, so `sum(smallint * integer)` is `bigint`, and `bigint / bigint`
+   truncates. The MV returned `2` where the readers returned `2.9895`. The
+   readers were correct only because they cast `::numeric` in their final
+   SELECT. Fixed by casting in the MV. This shifted the season averages
+   upward — 5-man units read 2.22 before and 2.34 after.
+7. **The fast-vs-filtered invariant is what caught it.** Comparing the two
+   paths over the full-season window is cheap and is a direct test of the
+   defect being fixed. It reported 1,377 of 5,864 units differing; component
+   comparison said identical. The contradiction was the signal — chasing it
+   found the truncation. Both leagues now agree to 0.0000 across every unit.
+8. **The Edit tool converted three LF-only SQL files to CRLF**, turning an
+   85-line change into a 2,000-line diff. Caught on the `git diff --stat`
+   plausibility check, stripped, amended. Check the stat before every commit
+   touching SQL.
+
+### Still open
+
+- **`refresh_sub_lineups_stats()` is not actually full.** 301 rows in the 2025
+  season were never regenerated and so have a NULL numerator, despite having
+  possessions. Their `off_poss`, `off_pts` and the rest are equally stale
+  leftovers; the new column merely exposed it. Those rows render `# Starters`
+  blank.
+- The EuroLeague column has not been checked in a running browser; the Israeli
+  side was.
