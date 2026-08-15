@@ -1104,6 +1104,42 @@ remembering for the next MV change here:
 
 Branch `shiny/euro-tab1` — not merged, not deployed.
 
+## Delivered: navbar and Home parity with the Israeli section (2026-08-15)
+
+Cosmetic, but it completes the parity thread above at the level the user
+actually navigates. The two leagues offered the same four surfaces in a
+different order and under different icons, so switching leagues moved the tabs
+around under the cursor.
+
+| Concern | Was | Now |
+|---|---|---|
+| Navbar order | On/Off, Team Ratings, Lineup Data, Game Logs | On/Off, Lineup Data, Team Ratings, Game Logs — Tabs 1-2-3-4 |
+| On/Off icon | `bi-globe2` | `bi-toggles` (Tab 1) |
+| Team Ratings icon | `bi-bar-chart-fill` | `bi-trophy-fill` (Tab 3) |
+| Lineup Data icon | `bi-people` | `bi-people-fill` (Tab 2) |
+| Game Logs icon | `bi-calendar-event` | unchanged — already matched Tab 4 |
+| Home cards | On/Off, Team Ratings | the Israeli two-row layout: On/Off + Lineup Data, then Team Ratings + Game Logs |
+
+Commit `b57de29`. Three points worth carrying forward:
+
+- **Navbar order is free to change.** `app.js`'s `TAB_LEAGUE` map keys on the
+  tab *value* (`euro`, `euro_lineups`, …), never on navbar index, so reordering
+  `tabPanel` calls in `app.R` cannot break league scoping. Anything that starts
+  keying on position would give that up.
+- **Home stays two cards short of the Israeli block**, deliberately: there is
+  no EuroLeague Player Stats or Compare tab to open. The new cards also carry
+  no team prefill, because the Home team selector is `league-only-il` — the
+  Israeli `go_lineups`/`go_gamelogs` handlers write `shared$pending_ld_team` /
+  `pending_gl_team` and the EuroLeague ones have nothing to write.
+  `go_euro_lineups` does mirror the one non-navigational thing its Israeli twin
+  does: it sets group size to 5, matching the card's "5-man units" copy.
+- **`app/app.R` has mixed line endings**, and `sed`/`cat -A` under Git Bash
+  strip CR before you see it — both reported the observer block as LF when the
+  bytes are CRLF. Edit that file on bytes with an exact-match assertion, and
+  check the staged blob's CR count against `HEAD`'s before committing (319 →
+  330 here, exactly the lines added). A silent whole-file re-ending is the
+  failure mode.
+
 ## Recent changes: 2026-08-11 to 2026-08-12
 
 The following commits landed in the last day, in dependency order:
