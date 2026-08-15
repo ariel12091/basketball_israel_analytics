@@ -1988,5 +1988,6 @@ the exact value.
   possessions. Their `off_poss`, `off_pts` and the rest are equally stale
   leftovers; the new column merely exposed it. Those rows render `# Starters`
   blank.
-- The EuroLeague column has not been checked in a running browser; the Israeli
-  side was.
+Both tabs have now been checked in a running browser — the Israeli side during
+the parity work, the EuroLeague side by the maintainer after the whole-number
+rounding landed.
