@@ -174,7 +174,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
           " off_tov, off_steals,",
           " def_poss, def_pts, def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att,",
           " def_ts_poss, def_fgm, def_fga, def_fta, def_oreb, def_oreb_opp,",
-          " def_tov, def_steals, minutes",
+          " def_tov, def_steals, minutes, starters_poss_num",
           " FROM euroleague.sub_lineups_stats_mv",
           " WHERE competition = $1::text AND game_year = $2::int4"
         ),
@@ -309,7 +309,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
         " off_tov, off_steals,",
         " def_poss, def_pts, def_fg2_made, def_fg2_att, def_fg3_made, def_fg3_att,",
         " def_ts_poss, def_fgm, def_fga, def_fta, def_oreb, def_oreb_opp,",
-        " def_tov, def_steals, minutes",
+        " def_tov, def_steals, minutes, starters_poss_num",
         " FROM euroleague.", reader, "(", sig, ")"
       ),
       params = params
@@ -444,7 +444,13 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     df$Team            <- df$team_name
     df$Players         <- df$player_names_str
     df$sub_lineup_hash <- df$unit_key
-    df$num_starters    <- df$unit_size          # constant; see Task 4
+    # Possession-weighted mean of own starters on court, weighted by
+    # offensive AND defensive possessions -- the same definition the Israeli
+    # fetch_lineups_all uses. The read layer returns the numerator, never a
+    # stored ratio, so the division happens here with the rest of the rates.
+    df$num_starters    <- safe_rate(df$starters_poss_num,
+                                    as.numeric(df$off_poss) + as.numeric(df$def_poss),
+                                    scale = 1)
     df$plus_minus      <- as.numeric(df$off_pts) - as.numeric(df$def_pts)
 
     # --- raw counts the FF TOTAL row sums (copies) ---

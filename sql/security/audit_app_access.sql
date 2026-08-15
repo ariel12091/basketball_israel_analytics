@@ -45,6 +45,7 @@ euro_app_routines(routine_name) AS (
     ('four_factors_compute'),
     ('fetch_lineups_dynamic'),
     ('fetch_lineups_direct'),
+    ('fetch_lineups_pergame'),
     ('get_team_ratings_dynamic'),
     ('get_team_ratings_direct'),
     ('get_team_ratings_pergame'),
