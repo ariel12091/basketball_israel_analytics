@@ -109,16 +109,22 @@ ui <- function(request) {
     )
   ),
   ui_tab0_home(),
+  # Israeli tabs, then EuroLeague, then the tabs BOTH leagues share. Only one
+  # league's tabs are visible at a time (app.js hides the rest), so this single
+  # DOM order renders as On/Off, Lineup Data, Team Ratings, Game Logs, Player
+  # Stats [, Compare] under either league. Player Stats is one shared tab, not
+  # a per-league pair -- so it has to sit AFTER the EuroLeague block, or it
+  # leads the EuroLeague navbar while sitting fifth in the Israeli one.
   ui_tab1_onoff(),
   ui_tab2_lineup(),
   ui_tab3_team(),
   ui_tab4_gamelogs(),
-  ui_tab5_traditional(),
-  ui_tab7_compare(),
   ui_tab8_euro(),
   ui_tab10_euro_lineups(),
   ui_tab9_euro_team(),
-  ui_tab11_euro_gamelogs()
+  ui_tab11_euro_gamelogs(),
+  ui_tab5_traditional(),
+  ui_tab7_compare()
   )
 }
 

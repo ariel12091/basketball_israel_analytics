@@ -36,12 +36,12 @@ ui_tab0_home <- function() tabPanel(
         tags$button(
           type = "button", `data-league-btn` = "E",
           tags$span(class = "league-chooser-name", "EuroLeague"),
-          tags$span(class = "league-chooser-sub", "On/off, team ratings, lineups, game logs")
+          tags$span(class = "league-chooser-sub", "On/off, lineups, team ratings, game logs, player stats")
         ),
         tags$button(
           type = "button", `data-league-btn` = "U",
           tags$span(class = "league-chooser-name", "EuroCup"),
-          tags$span(class = "league-chooser-sub", "On/off, team ratings, lineups, game logs")
+          tags$span(class = "league-chooser-sub", "On/off, lineups, team ratings, game logs, player stats")
         ),
         tags$button(
           type = "button", `data-league-btn` = "il",
@@ -52,8 +52,9 @@ ui_tab0_home <- function() tabPanel(
 
       # ---- EuroLeague ----
       # Same cards, same order, same icons and wording as the Israeli block
-      # below -- only the tabs each one opens differ. The two surfaces that
-      # have no EuroLeague counterpart (player stats, compare) have no card.
+      # below -- only the tabs each one opens differ, and Player Stats does not
+      # even differ there (one shared tab, one shared input id). Compare is the
+      # only Israeli surface with no EuroLeague counterpart, so it has no card.
       div(
         class = "league-only-el",
 
@@ -122,6 +123,29 @@ ui_tab0_home <- function() tabPanel(
                 tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: #e8a435;"),
                 tags$h5("What happened in last night's game?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Score, lineups, and stats by game"),
+                div(class = "mt-auto pt-2",
+                  tags$span(class = "text-warning small fw-semibold", "Go →"))
+              )
+            )
+          )
+        ),
+
+        # Row 3. Same input id as the Israeli card: Player Stats is one shared
+        # tab that reads the league from #league_select, so there is no
+        # EuroLeague variant to dispatch to. Only one of the two cards is ever
+        # visible, and the handler is identical for both.
+        fluidRow(style = "align-items: stretch;",
+          column(
+            width = 6,
+            tags$button(
+              type = "button",
+              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
+              `data-input-id` = "go_playerstats",
+              div(
+                class = "card-body d-flex flex-column gap-2",
+                tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: #e8a435;"),
+                tags$h5("How are individual players performing?", class = "card-title mb-1"),
+                tags$small(class = "text-muted", "Points, rebounds, assists, shooting splits per player"),
                 div(class = "mt-auto pt-2",
                   tags$span(class = "text-warning small fw-semibold", "Go →"))
               )

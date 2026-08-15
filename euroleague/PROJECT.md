@@ -1107,32 +1107,49 @@ Branch `shiny/euro-tab1` — not merged, not deployed.
 ## Delivered: navbar and Home parity with the Israeli section (2026-08-15)
 
 Cosmetic, but it completes the parity thread above at the level the user
-actually navigates. The two leagues offered the same four surfaces in a
-different order and under different icons, so switching leagues moved the tabs
-around under the cursor.
+actually navigates. The two leagues offer the same five surfaces and presented
+them in a different order under different icons, so switching leagues moved the
+tabs around under the cursor.
 
 | Concern | Was | Now |
 |---|---|---|
-| Navbar order | On/Off, Team Ratings, Lineup Data, Game Logs | On/Off, Lineup Data, Team Ratings, Game Logs — Tabs 1-2-3-4 |
+| Navbar order | Player Stats, On/Off, Team Ratings, Lineup Data, Game Logs | On/Off, Lineup Data, Team Ratings, Game Logs, Player Stats — Tabs 1-2-3-4-5 |
 | On/Off icon | `bi-globe2` | `bi-toggles` (Tab 1) |
 | Team Ratings icon | `bi-bar-chart-fill` | `bi-trophy-fill` (Tab 3) |
 | Lineup Data icon | `bi-people` | `bi-people-fill` (Tab 2) |
 | Game Logs icon | `bi-calendar-event` | unchanged — already matched Tab 4 |
-| Home cards | On/Off, Team Ratings | the Israeli two-row layout: On/Off + Lineup Data, then Team Ratings + Game Logs |
+| Home cards | On/Off, Team Ratings | the Israeli layout: On/Off + Lineup Data, Team Ratings + Game Logs, Player Stats |
 
-Commit `b57de29`. Three points worth carrying forward:
+Commits `b57de29` (order, icons, two Home cards) and the follow-up that moved
+the shared tabs last. Three points worth carrying forward:
 
-- **Navbar order is free to change.** `app.js`'s `TAB_LEAGUE` map keys on the
-  tab *value* (`euro`, `euro_lineups`, …), never on navbar index, so reordering
-  `tabPanel` calls in `app.R` cannot break league scoping. Anything that starts
-  keying on position would give that up.
-- **Home stays two cards short of the Israeli block**, deliberately: there is
-  no EuroLeague Player Stats or Compare tab to open. The new cards also carry
-  no team prefill, because the Home team selector is `league-only-il` — the
-  Israeli `go_lineups`/`go_gamelogs` handlers write `shared$pending_ld_team` /
-  `pending_gl_team` and the EuroLeague ones have nothing to write.
-  `go_euro_lineups` does mirror the one non-navigational thing its Israeli twin
-  does: it sets group size to 5, matching the card's "5-man units" copy.
+- **The EuroLeague section has five surfaces, not four.** Player Stats is not
+  a per-league pair like 8↔1 or 10↔2 — it is *one* tab serving both leagues,
+  switching on `input$league_select` (`server_tab5_traditional.R:427-430`
+  onward: `ts_is_euro()` picks the season selector, the date bounds, the phase
+  input, the cache prefix and the schema). That is why it is absent from
+  `app.js`'s `TAB_LEAGUE` map and stays visible under both leagues, and it is
+  the shape the "extract shared logic, do not merge the tab files" direction is
+  aiming at. Only Compare is genuinely Israeli-only.
+- **Shared tabs must sit last in the navbar.** One DOM order has to render
+  correctly under both leagues, because app.js hides rather than reorders. With
+  Player Stats at DOM position 5 it led the EuroLeague navbar (Home → Player
+  Stats → On/Off) while sitting fifth in the Israeli one. Putting the Israeli
+  block, then the EuroLeague block, then the shared tabs makes both sequences
+  come out identical. Any future shared tab goes at the end for the same
+  reason. Reordering is otherwise free: `TAB_LEAGUE` keys on the tab *value*
+  (`euro`, `euro_lineups`, …), never on navbar index.
+- **Home mirrors that.** Its EuroLeague Player Stats card reuses the Israeli
+  `go_playerstats` input id rather than adding a `go_euro_playerstats` — there
+  is no league-specific tab to dispatch to, only one of the two cards is ever
+  visible, and the delegated `js-shiny-event` handler reads `data-input-id` off
+  whichever was clicked. The block stays one card short of the Israeli one
+  (Compare). The new cards carry no team prefill because the Home team selector
+  is `league-only-il` — the Israeli `go_lineups`/`go_gamelogs` handlers write
+  `shared$pending_ld_team` / `pending_gl_team` and the EuroLeague ones have
+  nothing to write. `go_euro_lineups` does mirror the one non-navigational
+  thing its Israeli twin does: it sets group size to 5, matching the card's
+  "5-man units" copy.
 - **`app/app.R` has mixed line endings**, and `sed`/`cat -A` under Git Bash
   strip CR before you see it — both reported the observer block as LF when the
   bytes are CRLF. Edit that file on bytes with an exact-match assertion, and
