@@ -54,18 +54,46 @@ def _clock_seconds(value: Any) -> int | None:
         return None
 
 
+def effective_period(
+    provider_period: int,
+    provider_minute: int | None,
+    play_type: str | None,
+) -> int:
+    """Expand cumulative-minute overtime rows without changing raw PERIOD.
+
+    EuroLeague's feed can keep PERIOD=5 in later overtimes while MINUTE
+    continues through 46-50, 51-55, and so on.  End-period rows use the first
+    minute of the following interval (46, 51, ...) and therefore belong to the
+    overtime that just ended.
+    """
+
+    if provider_period <= 4 or provider_minute is None:
+        return provider_period
+    boundary_adjustment = 1 if str(play_type or "").strip().upper() in {"EP", "EG"} else 0
+    overtime_index = max(provider_minute - 41 - boundary_adjustment, 0) // 5
+    return 5 + overtime_index
+
+
 def canonical_elapsed_seconds(
     game: pd.DataFrame,
 ) -> tuple[dict[int, int], int]:
     """Mirror the SQL cumulative canonical clock without changing raw fields."""
 
     ordered = game.sort_values("TRUE_NUMBEROFPLAY", kind="stable")
-    maximum_period = int(pd.to_numeric(ordered["PERIOD"]).max())
+    effective_periods: list[int] = []
+    for row in ordered.itertuples(index=False):
+        raw_minute = getattr(row, "MINUTE", None)
+        minute = None if raw_minute is None or pd.isna(raw_minute) else int(raw_minute)
+        effective_periods.append(
+            effective_period(
+                int(row.PERIOD), minute, getattr(row, "PLAYTYPE", None)
+            )
+        )
+    maximum_period = max(effective_periods)
     game_end = 2400 + max(maximum_period - 4, 0) * 300
     elapsed: dict[int, int] = {}
     previous = 0
-    for row in ordered.itertuples(index=False):
-        period = int(row.PERIOD)
+    for row, period in zip(ordered.itertuples(index=False), effective_periods):
         period_start = (
             (period - 1) * 600
             if period <= 4
