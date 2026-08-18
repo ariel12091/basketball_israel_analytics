@@ -20,7 +20,7 @@ from .transaction_writer import GameSnapshot, NaturalGameKey
 
 
 COLLECTOR_VERSION = "0.2.0"
-PARSER_VERSION = "0.2.0"
+PARSER_VERSION = "0.2.1"
 
 
 # Every field emitted by euroleague-api 0.1.1 after lineup enrichment must be

@@ -739,6 +739,22 @@ class PeriodParser:
                         else EndpointReason.MADE_BASKET_DEAD_BALL_FT
                     )
                 elif is_compound:
+                    # One dead-ball cluster can contain a turnover by the
+                    # eventual FT team followed by that team's already-earned
+                    # personal-foul shots (for example offsetting common and
+                    # unsportsmanlike penalties). The turnover already closes
+                    # that offense's possession; the later FT trip must not
+                    # emit a second same-team endpoint.
+                    earlier_same_team_endpoint = any(
+                        self.decisions[index].final_end_poss
+                        and _same(self.events[index].team, self.events[final].team)
+                        for index in range(lower, final)
+                    )
+                    if earlier_same_team_endpoint:
+                        self.decisions[final].trace.append(
+                            "endpoint.compound_same_team_already_closed"
+                        )
+                        continue
                     reason = EndpointReason.COMPOUND_PENALTY_RESOLVED
                 else:
                     reason = EndpointReason.ORDINARY_FT_FINAL_MAKE
