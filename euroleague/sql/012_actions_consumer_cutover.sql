@@ -119,7 +119,7 @@ BEGIN
        AND lower(p.provider_player_id) NOT IN ('team', 'total')
        AND lower(btrim(p.display_name)) NOT IN ('team', 'total')
   ),
-  player_minutes AS (
+  player_minutes AS MATERIALIZED (
     SELECT
       ms.game_id,
       ms.team_id,
@@ -147,7 +147,7 @@ BEGIN
         VALUES ('offense'::text), ('defense'::text)
       ) AS side(type_lineup)
   ),
-  counts AS (
+  counts AS MATERIALIZED (
     SELECT
       atc.game_id,
       atc.team_id,

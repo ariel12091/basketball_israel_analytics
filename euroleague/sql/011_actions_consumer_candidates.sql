@@ -190,47 +190,65 @@ BEGIN
        AND fr.source_player_name = ANY(ul.lineup)
      GROUP BY ul.game_id, ul.team_id, ul.lineup
   ),
-  lineup_sided AS MATERIALIZED (
+  -- Each action already carries the exact five-v-five matchup. Freeze that
+  -- pair before joining lineup metadata so the planner cannot enumerate every
+  -- own/opp lineup candidate in the game and filter the cross product later.
+  event_lineups AS MATERIALIZED (
     SELECT
       a.game_id,
       a.source_event_order,
       ec.event_elapsed_seconds,
       ge.game_end_elapsed_seconds,
-      side.team_id,
-      side.own_lineup,
-      side.opp_lineup,
-      own_count.starters AS own_starters,
-      opp_count.starters AS opp_starters,
+      tg.home_team_id,
+      tg.away_team_id,
+      ARRAY(SELECT x FROM unnest(a.lineup_a) x ORDER BY x) AS lineup_a,
+      ARRAY(SELECT x FROM unnest(a.lineup_b) x ORDER BY x) AS lineup_b,
       tg.last_seen_load_run_id
     FROM euroleague.actions a
     JOIN target_games tg ON tg.game_id = a.game_id
     JOIN event_clock ec
-      ON ec.game_id = a.game_id
+     ON ec.game_id = a.game_id
      AND ec.source_event_order = a.source_event_order
     JOIN game_ends ge ON ge.game_id = a.game_id
-    CROSS JOIN LATERAL (
-      VALUES
-        (
-          tg.home_team_id,
-          tg.away_team_id,
-          ARRAY(SELECT x FROM unnest(a.lineup_a) x ORDER BY x),
-          ARRAY(SELECT x FROM unnest(a.lineup_b) x ORDER BY x)
-        ),
-        (
-          tg.away_team_id,
-          tg.home_team_id,
-          ARRAY(SELECT x FROM unnest(a.lineup_b) x ORDER BY x),
-          ARRAY(SELECT x FROM unnest(a.lineup_a) x ORDER BY x)
-        )
-    ) AS side(team_id, opponent_team_id, own_lineup, opp_lineup)
+  ),
+  event_sides AS MATERIALIZED (
+    SELECT
+      el.game_id, el.source_event_order,
+      el.event_elapsed_seconds, el.game_end_elapsed_seconds,
+      el.home_team_id AS team_id, el.away_team_id AS opponent_team_id,
+      el.lineup_a AS own_lineup, el.lineup_b AS opp_lineup,
+      el.last_seen_load_run_id
+    FROM event_lineups el
+    UNION ALL
+    SELECT
+      el.game_id, el.source_event_order,
+      el.event_elapsed_seconds, el.game_end_elapsed_seconds,
+      el.away_team_id, el.home_team_id,
+      el.lineup_b, el.lineup_a,
+      el.last_seen_load_run_id
+    FROM event_lineups el
+  ),
+  lineup_sided AS MATERIALIZED (
+    SELECT
+      es.game_id,
+      es.source_event_order,
+      es.event_elapsed_seconds,
+      es.game_end_elapsed_seconds,
+      es.team_id,
+      es.own_lineup,
+      es.opp_lineup,
+      own_count.starters AS own_starters,
+      opp_count.starters AS opp_starters,
+      es.last_seen_load_run_id
+    FROM event_sides es
     JOIN starter_counts own_count
-      ON own_count.game_id = a.game_id
-     AND own_count.team_id = side.team_id
-     AND own_count.lineup = side.own_lineup
+      ON own_count.game_id = es.game_id
+     AND own_count.team_id = es.team_id
+     AND own_count.lineup = es.own_lineup
     JOIN starter_counts opp_count
-      ON opp_count.game_id = a.game_id
-     AND opp_count.team_id = side.opponent_team_id
-     AND opp_count.lineup = side.opp_lineup
+      ON opp_count.game_id = es.game_id
+     AND opp_count.team_id = es.opponent_team_id
+     AND opp_count.lineup = es.opp_lineup
   ),
   lineup_lagged AS (
     SELECT ls.*,
