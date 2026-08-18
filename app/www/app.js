@@ -226,9 +226,66 @@
 
   initCompareViewHandler();
 
+  // Clicks landing before the websocket is up used to be swallowed: the
+  // listener below calls preventDefault(), then sendShinyEvent() returned
+  // early because there was no session to carry the value. That window is
+  // 0.6-1.3s after DOMContentLoaded (see the startup timing at the top of this
+  // file), which is exactly when an impatient user hits a Home nav card and
+  // nothing happens. Hold the intent instead, and replay it on connect.
+  //
+  // Ordering assumption: this file is loaded via includeScript() in the
+  // navbarPage header, so the listener below is always bound before Shiny
+  // finishes connecting.
+  var shinyReady = false;
+  var pendingEvents = [];
+  var PENDING_MAX_AGE_MS = 30000;
+
+  function flushPendingEvents() {
+    shinyReady = true;
+    var queued = pendingEvents;
+    pendingEvents = [];
+    if (!queued.length) return;
+
+    var now = Date.now();
+    for (var i = 0; i < queued.length; i++) {
+      // Don't navigate on an intent the user has long since abandoned.
+      if (now - queued[i].ts > PENDING_MAX_AGE_MS) continue;
+      window.Shiny.setInputValue(queued[i].inputId, queued[i].value, { priority: "event" });
+      if (window.console && typeof window.console.info === "function") {
+        window.console.info("[startup] replayed queued click: " + queued[i].inputId +
+                            " (held " + Math.round(now - queued[i].ts) + "ms)");
+      }
+    }
+  }
+
+  // Deliberately .on(), not .one(): a one-shot handler is consumed by the
+  // first connect, so anything queued after that could never drain. The queue
+  // is empty on a normal connect, so re-running this is free.
+  if (window.jQuery) {
+    window.jQuery(document).on("shiny:connected", flushPendingEvents);
+  } else {
+    document.addEventListener("shiny:connected", flushPendingEvents);
+  }
+
   function sendShinyEvent(inputId, value) {
-    if (!inputId || !window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
-    window.Shiny.setInputValue(inputId, value === undefined ? Math.random() : value, { priority: "event" });
+    if (!inputId) return;
+    var payload = value === undefined ? Math.random() : value;
+
+    if (shinyReady && window.Shiny && typeof window.Shiny.setInputValue === "function") {
+      window.Shiny.setInputValue(inputId, payload, { priority: "event" });
+      return;
+    }
+
+    // Last intent per control wins: three impatient clicks on one card should
+    // resolve to one navigation, not three.
+    pendingEvents = pendingEvents.filter(function(p) { return p.inputId !== inputId; });
+    pendingEvents.push({ inputId: inputId, value: payload, ts: Date.now() });
+    if (window.console && typeof window.console.info === "function") {
+      // Depth is logged so repeated clicks on one card read as deduped rather
+      // than dropped: three clicks log three times but leave depth at 1.
+      window.console.info("[startup] queued click before connect: " + inputId +
+                          " (queue depth " + pendingEvents.length + ")");
+    }
   }
 
   document.addEventListener("click", function(e) {
