@@ -428,7 +428,13 @@ pg_pool <- dbPool(
   user     = Sys.getenv("PG_USER"),
   password = Sys.getenv("PG_PASS"),
   sslmode  = Sys.getenv("PG_SSLMODE", "require"),
-  options  = sprintf("-c statement_timeout=%d", PG_STATEMENT_TIMEOUT_MS),
+  # The pooler discards the startup `options` string, so a timeout set there
+  # never took effect -- `SHOW statement_timeout` returned the 2min server
+  # default. Issue it as an ordinary statement once per connection instead;
+  # verified 2026-08-19 to hold across checkouts and to cancel for real.
+  onCreate = function(con) {
+    DBI::dbExecute(con, sprintf("SET statement_timeout = %d", PG_STATEMENT_TIMEOUT_MS))
+  },
   minSize  = 0,
   maxSize  = as.integer(Sys.getenv("POOL_MAX", "3")),
   idleTimeout = 15000
