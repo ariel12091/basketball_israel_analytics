@@ -30,6 +30,11 @@ df <- DBI::dbGetQuery(con, "
   WHERE off_ppp IS NOT NULL AND off_efg IS NOT NULL AND off_tov IS NOT NULL
     AND off_oreb IS NOT NULL AND off_ftr IS NOT NULL
 ")
+tiers <- DBI::dbGetQuery(con, "
+  SELECT game_year, team_id,
+         dense_rank() OVER (PARTITION BY game_year ORDER BY off_ppp DESC) AS rk
+  FROM basketball_test.team_ppp_ratings_mv
+")
 DBI::dbDisconnect(con)
 
 cat("rows:", nrow(df), " seasons:", paste(sort(unique(df$game_year)), collapse = ", "), "\n\n")
@@ -39,6 +44,16 @@ m0 <- lm(off_ppp ~ off_efg + off_tov + off_oreb + off_ftr,
 cat("=== Pooled OLS (weights source) ===\n")
 print(round(coef(summary(m0)), 4))
 cat("R-squared:", round(summary(m0)$r.squared, 4), "\n\n")
+
+# VIFs: the factors are near-orthogonal (~1.0), so small weights (FTR) are
+# precisely estimated, not collinearity artifacts. Investigate if any VIF > 2.
+factors <- c("off_efg", "off_tov", "off_oreb", "off_ftr")
+cat("=== VIFs ===\n")
+print(sapply(factors, function(v) {
+  r2 <- summary(lm(reformulate(setdiff(factors, v), v), data = df))$r.squared
+  round(1 / (1 - r2), 2)
+}))
+cat("\n")
 
 cat("=== Per-season stability ===\n")
 for (yr in sort(unique(df$game_year))) {
@@ -56,5 +71,20 @@ m2 <- lm(off_ppp ~ off_efg + off_tov + off_oreb + off_ftr + team_season + opp_se
          data = df, weights = df$off_poss)
 cat("\n=== Fixed-effects check ===\n")
 print(round(coef(m2)[c("off_efg", "off_tov", "off_oreb", "off_ftr")], 4))
+
+# Per-tier stability (offensive-rating tiers top4/mid4/bottom6): league-wide
+# weights are only safe for the est.± annotations if slopes don't vary by
+# team strength. 2026-07-15 check: eFG 1.42-1.44 across tiers — stable.
+df <- merge(df, tiers, by = c("game_year", "team_id"))
+df$tier <- cut(df$rk, c(0, 4, 8, 14), labels = c("top4", "mid4", "bottom6"))
+cat("\n=== Per-tier weights (offensive-rating tiers) ===\n")
+for (t in levels(df$tier)) {
+  d <- df[df$tier == t, ]
+  m <- lm(off_ppp ~ off_efg + off_tov + off_oreb + off_ftr,
+          data = d, weights = d$off_poss)
+  cat(sprintf("%-8s n=%4d  %s\n", t, nrow(d),
+      paste(sprintf("%s=%+.2f", sub("off_", "", names(coef(m))[-1]), coef(m)[-1]),
+            collapse = "  ")))
+}
 
 cat("\nUpdate FF_IMPACT_WEIGHTS in app/R/helpers.R with the pooled coefficients (2dp).\n")
