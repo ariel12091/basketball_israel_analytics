@@ -97,6 +97,8 @@ class TransactionBackend(Protocol):
 def write_game_snapshot(
     backend: TransactionBackend,
     snapshot: GameSnapshot,
+    *,
+    defer_derived: bool = False,
 ) -> int:
     """Replace one game atomically, rolling back on any failure."""
 
@@ -111,7 +113,10 @@ def write_game_snapshot(
             rows = snapshot.rows.get(table, ())
             if rows:
                 backend.insert_rows(table, game_id, rows)
-        backend.validate_game(game_id)
+        if defer_derived:
+            backend.validate_game(game_id, refresh=False, check_derived=False)
+        else:
+            backend.validate_game(game_id)
         backend.commit()
         transaction_open = False
         return game_id

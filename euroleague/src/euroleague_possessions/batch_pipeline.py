@@ -21,6 +21,7 @@ from .postgres_backend import (
     assert_shadow_schema_compatible,
     bootstrap_game,
     connect_from_env_file,
+    refresh_derived_for_games,
     finish_load_run,
     inspect_target,
     start_load_run,
@@ -32,7 +33,7 @@ from .transaction_writer import GameSnapshot, NaturalGameKey, write_game_snapsho
 
 # Increment whenever staged derived rows must be rebuilt even if the raw PBP
 # and box-score fingerprints are unchanged.
-STAGE_FORMAT_VERSION = 5
+STAGE_FORMAT_VERSION = 6
 
 
 @dataclass(frozen=True)
@@ -432,6 +433,7 @@ def publish_staged_games(
             )
             batch_errors: list[dict[str, Any]] = []
             successful_games = 0
+            published_backends: list[tuple[int, PostgresTransactionBackend]] = []
 
             for record in group:
                 started = time.perf_counter()
@@ -449,8 +451,10 @@ def publish_staged_games(
                     game_id = write_game_snapshot(
                         backend,
                         record.staged.snapshot,
+                        defer_derived=True,
                     )
                     successful_games += 1
+                    published_backends.append((game_id, backend))
                     results.append(
                         PublicationRecord(
                             record.key,
@@ -480,6 +484,32 @@ def publish_staged_games(
                             error,
                         )
                     )
+
+            if published_backends:
+                # Keep base publication per game, then refresh consumers only
+                # after the complete base batch is present.  Refresh one game
+                # per transaction: a bad lineup or other game-local invariant
+                # must not roll back derived facts for neighboring games.
+                derived_game_ids = [game_id for game_id, _ in published_backends]
+                derived_failed_game_ids: set[int] = set()
+                for game_id in derived_game_ids:
+                    try:
+                        refresh_derived_for_games(
+                            connection,
+                            [game_id],
+                        )
+                    except Exception as exc:
+                        derived_failed_game_ids.add(game_id)
+                        batch_errors.append(
+                            {
+                                "scope": "derived_refresh",
+                                "game_id": game_id,
+                                "error": f"{type(exc).__name__}: {exc}",
+                            }
+                        )
+                        # This game's derived transaction rolled back; other
+                        # games continue and remain independently publishable.
+                successful_games -= len(derived_failed_game_ids)
 
             failed_games = len(group) - successful_games
             finish_load_run(
