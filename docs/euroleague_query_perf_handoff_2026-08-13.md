@@ -189,7 +189,8 @@ request, so it is not the answer here; it needs a clutch predicate to be fast.
 
 ## 6. Other open items
 
-1. **Tab 8 `onoff_compute`** — 11.88s vs Israeli 2.06s. Shape not yet examined.
+1. **Tab 8 `onoff_compute`** — examined 2026-08-14, see section 8. The shape
+   defect is real but the obvious fix is not one; nothing was left applied.
 2. **Israeli Tab 5** `get_player_traditional_dynamic` broad — **91s**, live.
    The EuroLeague equivalent exceeds 120s. Both leagues broken; Israel's ships.
 3. **Statement timeout is not in force.** `app/R/global.R:431` sets it via the
@@ -224,3 +225,116 @@ request, so it is not the answer here; it needs a clutch predicate to be fast.
   `get_team_minutes_dynamic`, which the app does not use on that path; the real
   reader is `_direct` at 0.77s. That error removed a whole item from the plan
   once corrected.
+
+## 8. Tab 8 `onoff_compute` — examined 2026-08-14, nothing shipped
+
+**State: the live functions are exactly as migration 004 left them.** A
+migration was written, applied, parity-verified, then reverted the same
+session. Both `euroleague.onoff_compute` and `euroleague.four_factors_compute`
+are byte-identical to `euroleague/sql/004_app_read_layer.sql` and their
+`app_readonly` EXECUTE grants are intact, both re-verified from `pg_proc` after
+the revert.
+
+### The 11.88s does not reproduce
+
+Warm medians as `app_readonly` on the pooler, E/2025 broad season:
+
+| | cold first call | warm median |
+|---|---:|---:|
+| `euroleague.onoff_compute` | 15.32 | 2.8-3.1 |
+
+Narrow presets (last-10, phase, home, starter bounds) are 0.3-1.5s warm. So
+Tab 8's steady state is roughly twice the Israeli 2.06s, not six times it, and
+the 11.88s figure in section 2 was a cold read. **Cold cache, not steady state,
+is what hurts this surface** — which also means timing on this instance cannot
+adjudicate a change of this size (see "measurement" below).
+
+### The shape defect (real, and it is neither 037's nor 038's)
+
+Both functions already read a per-game fact. They read it through
+`euroleague.player_game_context`, a view that joins `schedule` and
+`final_schedule` onto `player_four_factors_by_game`. The `agg` CTE uses none of
+the columns those joins add — every filter that needs schedule context reads
+the `games` CTE instead. `EXPLAIN (ANALYZE, BUFFERS)`, broad season preset,
+385,140 qualifying fact rows:
+
+- `Index Only Scan using schedule_pkey ... loops=385140, Heap Fetches: 385140,
+  Buffers: shared hit=1155420` — the view's `JOIN euroleague.schedule s`, run
+  once per fact row. Postgres cannot remove it: inner joins are not removable
+  even when the join key is unique.
+- `Join Filter: (pf.team_id = "*VALUES*".column1), Rows Removed by Join Filter:
+  385140` — `final_schedule` is a view over `CROSS JOIN LATERAL (VALUES ...)`,
+  so every fact row is expanded to both team perspectives and half discarded.
+
+That is 1,155,420 of the query's 1,216,268 buffers, 95%, doing nothing.
+
+### Why swapping the source is not the fix
+
+Reading `player_four_factors_by_game` directly is output-identical — 41/41
+before/after preset comparisons returned identical ordered tuples through the
+applier's snapshot gate, and 20/20 more through the inlined bodies beforehand.
+It is also **not faster**, because the view's useless joins were accidentally
+holding the plan together:
+
+| buffers (deterministic; timings on this instance are not) | broad season | last-10 games |
+|---|---:|---:|
+| through `player_game_context` (004, live) | 1,216,268 | **10,105** |
+| base fact direct | **59,096** | 21,017 |
+
+With the view, the planner drives a parameterised nested loop from the game set
+into `euroleague_pff_game_idx`. With the fact exposed directly and the game set
+estimated at 650 rows, it prices 650 index probes (cost 166.88 each, because
+`euroleague_pff_game_idx` is on `game_id` alone and each probe reads ~1,319
+rows to keep ~659) above a `Seq Scan on player_four_factors_by_game` of all
+624,478 rows, and takes the seq scan. Every narrow filter — the common case —
+gets slower. The estimate that drives this is off by two orders of magnitude in
+both directions: `rows=1` against 385,140 actual with the view, `rows=3107`
+against 128,720 without it.
+
+Forcing the nested loop back does work — `enable_seqscan=off` reproduces the
+good shape on both presets — so the direction is right and the mechanism is
+understood. What is missing is a plan the planner will choose on its own.
+
+### What to try next, in order
+
+1. **Index `player_four_factors_by_game (game_id, team_id)`.** The join
+   predicate is exactly that pair; today's `game_id`-only index makes every
+   probe read both teams and discard half, which is both the runtime waste and
+   the reason the planner's per-probe cost is high enough to prefer a seq scan.
+   Follow migration 036's lesson: `CREATE INDEX CONCURRENTLY` starved on
+   continuous app reads, a bounded normal build succeeded, and invalid shells
+   must be dropped first.
+2. **Only then** swap the aggregation source, in the same change and behind the
+   same before/after snapshot gate. Neither half is worth shipping alone.
+3. `work_mem` is **2,184 kB** server-side, so the 385k-row sort always spills
+   (`Sort Method: external merge  Disk: 13592kB`). A function-level
+   `SET work_mem` was worth ~20%, and collapsing the two-level `agg` ->
+   `pivoted` aggregation into one `GROUP BY (player_id, team_id)` with FILTER
+   aggregates was worth ~15%. Both are separate changes with their own gates.
+
+### Measurement — the thing that actually went wrong here
+
+The first probe covered one preset class (broad season), found the view join,
+and that was enough to write SQL. It was not enough to decide: the defect is
+real, the fix was output-identical, and it still made the common case worse.
+The handoff's own rule — probe before writing SQL — has to mean probe *every
+preset class the app can produce*, not the first one that explains the headline
+number.
+
+Timing on this instance cannot arbitrate differences under ~2x. The same query
+measured 0.62s and 2.98s in runs minutes apart, and one preset read 0.44s
+before a change and 14.28s after it, purely from contention. **Use buffer
+counts from `EXPLAIN (ANALYZE, BUFFERS)`** — they are deterministic — and treat
+wall-clock as corroboration only.
+
+### Two incidental findings
+
+- `schedule.phase` for E/2025 holds `RS` (274), `PO` (15), `PI` (3). Migration
+  004's header comment describes EuroLeague phases as `'REGULAR SEASON'`,
+  `'PLAYOFFS'`. The comment is wrong; the data and the UI agree with each other.
+- `player_four_factors_by_game` has no `competition` column, and `agg` puts no
+  predicate on the fact at all. Of its 624,478 rows for season 2025, 385,140 are
+  `E` and **239,338 are `U`** — the EuroCup rows are in every scan of this fact.
+  `pf.game_year` is never distinct from `schedule.season` (0 of 624,478), so a
+  redundant `c.game_year = p_game_year` predicate would be safe; it does not
+  help on its own, since `game_year` alone does not separate the competitions.

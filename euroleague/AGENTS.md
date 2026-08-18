@@ -7,33 +7,38 @@ related implementation in `etl/euroleague/`.
 
 ## Scope and isolation
 
-- Treat EuroLeague work as a shadow data project until an explicit integration
-  decision is made.
-- As of 2026-08-06, the isolated `euroleague` schema contains the approved
-  controlled batch `E/2025/1-3` under `load_run_id=3` (`game_id` 1, 4, and 5).
-  Further live loads require explicit approval.
+- Treat EuroLeague data work as an isolated project even though the approved
+  EuroLeague read layer is now used by two league-scoped Shiny tabs.
+- As of 2026-08-09, the isolated `euroleague` schema contains
+  `E/2025/1-84` under completed `load_run_id=4`. Migrations 010-012 are applied
+  and the obsolete normalized middle tables have been removed. Further live
+  loads require explicit approval.
 - Do not write EuroLeague data into the Israeli `basketball` or
   `basketball_test` schemas.
-- The default future database target is a separate `euroleague` schema in the
-  existing PostgreSQL instance, not a separate database.
-- Do not connect EuroLeague results to the production Shiny app unless the user
-  explicitly requests that integration.
+- Keep the database target as the separate `euroleague` schema in the existing
+  PostgreSQL instance, not a separate database.
+- Do not broaden the existing EuroLeague app integration unless the user
+  explicitly requests it.
 - Preserve raw provider fields and provenance. Derived fields must be additive
   and reproducible.
 
 ## Israeli-schema guidance
 
-- Use the Israeli pipeline's core layers and grains as the design reference:
-  `schedule`, `full_rosters`, `actions_clean`, `possessions`, `stints`, and
-  `pws`.
+- Use the Israeli pipeline's basketball grains as the design reference:
+  schedule, roster, canonical event, possession endpoint, lineup exposure,
+  two team perspectives, and additive player/team game facts.
 - Do not require identical provider columns or preserve historical duplication
   merely for naming parity. A EuroLeague deviation must have a documented
   source, integrity, storage, or queryability benefit.
 - Prefer familiar relation names where the basketball grain is materially the
   same. Document grain differences explicitly when reusing a familiar name.
-- Current approved improvements are immutable `actions_raw` separation,
-  endpoint-only `possessions`, package-native normalized lineup tables,
-  team-specific `stints`, a narrow `pws` bridge, and explicit load/QA lineage.
+- The approved EuroLeague physical model is immutable package evidence in
+  `actions_raw`, one typed canonical `actions` row per PBP event, and the
+  actions-derived `action_team_context_actions` and
+  `matchup_segments_actions` consumer facts. Do not restore `actions_clean`,
+  `possessions`, `lineups`, `lineup_players`, `action_lineups`, `stints`,
+  `pws`, `action_team_context`, or `matchup_segments` merely for Israeli naming
+  parity.
 - Only box-score/PBP actors that resolve to a named roster player receive a
   `players`/`full_rosters` foreign key. Preserve coach, bench, and other
   pseudo-actor IDs in `actions_raw.provider_player_id` with `player_id` null.
@@ -95,8 +100,8 @@ related implementation in `etl/euroleague/`.
 ## Python and R deterministic transformations
 
 - The typed Python parser in `euroleague/src/euroleague_possessions/` is the
-  EuroLeague canonical candidate. The R implementation remains an independent
-  reference until reconciliation and database release gates pass.
+  EuroLeague canonical implementation. The R implementation remains an
+  independent regression reference.
 - Use `C:\Program Files\R\R-4.4.2\bin\Rscript.exe`, as required by the root
   project.
 - Keep both transformation implementations pure and free of database I/O.
@@ -128,18 +133,24 @@ related implementation in `etl/euroleague/`.
   box-score starters and substitution rows. Use them as the EuroLeague lineup
   baseline; do not build a second lineup engine unless measured package
   failures establish a concrete need.
-- Persist lineup validation results and never publish a stint containing an
-  invalid player count or an unexplained on-court-player mismatch.
+- Persist lineup validation results. Invalid lineup cardinality or duplicate
+  members are blocking; package-invalid action actors may be retained only with
+  explicit QA evidence and must not be silently used to rewrite the lineup.
+- The current schema has no `lineup_id`. `lineup_a` and `lineup_b` are
+  five-player arrays on `actions`; `segment_id` is game/team-local and is not a
+  cross-game lineup identity.
 
 ## Transactional loading
 
 - Treat one game's staged snapshot as the unit of transaction and retry.
 - Delete replaceable rows child-first, insert the complete snapshot
   parent-first, run database-side validation, and only then commit.
-- `lineup_players` must be deleted through the game's `lineups`; it has no
-  direct `game_id` in the draft schema.
-- Resolve generated lineup and stint identities from deterministic natural
-  keys before inserting dependent rows.
+- The direct snapshot relations are `full_rosters`, `team_boxscores`,
+  `actions_raw`, `actions`, `reconciliation_metrics`, `game_qa`, and
+  `qa_incidents`.
+- Delete `action_team_context_actions` and `matchup_segments_actions`
+  child-first before replacing their game's canonical `actions`; rebuild both
+  inside validation with `refresh_actions_consumer_candidates()`.
 - Keep immutable source artifacts and shared dimensions outside destructive
   per-game replacement.
 - Do not create the schema or execute a live load without explicit user
@@ -153,14 +164,19 @@ related implementation in `etl/euroleague/`.
   endpoint lineups for possession exposure. A lineup change never creates a
   possession.
 - Build each player's ON and OFF rows from the complete game roster, not only
-  players found in `lineup_players`.
-- `pws` is an endpoint bridge and is not the scoring numerator. Use
-  `actions_raw` plus `action_lineups` for points and `possessions` for counts.
+  players present in an on-court lineup.
+- Use canonical `actions` as the event and endpoint source,
+  `action_team_context_actions` for additive team-perspective event metrics,
+  and `matchup_segments_actions` for duration. Do not use `actions_raw` as the
+  analytical scoring fact.
 - Exclude package aggregate rows with provider IDs `Team` and `Total` from
   normalized player/roster relations; retain them only in raw evidence and
   team-total reconciliation.
 - Store offense and defense as separate contexts. Defensive rating is opponent
   points per defensive possession, so lower is better.
+- Any 2-5 player unit fact must expand only units actually present in each
+  five-player lineup, use resolved internal player IDs for stable keys, and
+  store additive counts/seconds rather than pre-aggregated ratios.
 - Keep lightweight ordinary views as the live semantic layer. App-facing
   schedule and season aggregates must use indexed materialized views or
   incrementally maintained physical tables with an explicit refresh lifecycle.

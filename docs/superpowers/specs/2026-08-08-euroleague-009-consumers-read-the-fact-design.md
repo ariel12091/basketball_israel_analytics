@@ -26,6 +26,17 @@ by. During 008, three separate places hardcoded a *consequence* of the player
 grain, and all three broke when the grain was corrected. Copies of the
 derivation itself are the same hazard one level down.
 
+Worse, the three copies do not even agree on their inputs: 006 and 007 select
+events through inner joins to `actions_clean` and the synthetic-parent root,
+while 008 selects from `action_lineups`. Those paths pick the same events today
+only because the three relations happen to be 1:1 — a property `validate_game()`
+asserts per publish, but one that nothing in the derivations themselves
+requires.
+
+**Collapsing the three copies into one is the point of this migration.** After
+009 the expansion is written once, in the fact's refresh, and both consumers
+read it.
+
 ## What is already proven
 
 - The fact reproduces `player_four_factors_by_game` exactly: bidirectional
@@ -122,11 +133,23 @@ caught the difference between a legitimate grain correction and a defect during
   per game today. The player rewrite keeps the roster fan-out, so it should be
   comparable; the team rewrite should be faster. Measure both, and treat a
   regression as a defect rather than a cost of the refactor.
-- **`event_base` divergence.** 007 built its segments from events surviving
-  inner joins to `actions_clean` and the synthetic-parent root, while 008 builds
-  from `action_lineups` directly. Those two event sets coincide today, and gate
-  check 2 (`fact rows = 2 × actions_raw`) is what enforces the coincidence. That
-  check is doing more work than its name suggests and must be kept.
+- **`event_base` divergence — eliminated, not carried.** 006 and 007 each build
+  their event set from `actions_raw` through inner joins to `actions_clean` and
+  the synthetic-parent root; 008 builds from `action_lineups` directly. After
+  009 neither consumer derives anything, so `event_base` exists in exactly one
+  place. This is the main structural benefit of the migration, not a risk of it.
+
+  The transition is safe because the three relations are 1:1 and that is
+  asserted, not assumed: `actions_raw`, `actions_clean` and `action_lineups` are
+  47,608 rows each, no row of any one lacks a counterpart in the others, and
+  `validate_game()` fails a publish on `raw/clean action counts differ` or
+  `raw/action-lineup counts differ`. The differing join paths therefore select
+  the same events today, which is why the 008 gate reproduces the player grain
+  exactly.
+
+  Keep gate check 2 (`fact rows = 2 × actions_raw`) regardless. Once 009 lands
+  it is the only remaining assertion that the fact covers every event, and it is
+  doing more work than its name suggests.
 
 ## Non-goals
 

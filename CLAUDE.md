@@ -79,7 +79,9 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **Global season selector:** Single `input$game_year` in navbar header. All tabs read from this — no per-tab season inputs.
 
-**Direct SQL (no dbplyr):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with `$1, $2` params. Pool pre-warmed with `SELECT 1` at source time. `bigint = "numeric"` in `dbPool()`.
+**Direct SQL (no dbplyr):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with `$1, $2` params. `bigint = "numeric"` in `dbPool()`. The pool is `minSize = 0` and is NOT pre-warmed — an earlier claim here that it ran `SELECT 1` at source time was stale (no such call exists). Measured 2026-08-18: `minSize` makes no difference to query latency (0.250s after a 22s idle gap either way) and `minSize = 1` only adds ~0.9s to startup. Don't "fix" it.
+
+**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
 
 **UI theme:** Dark editorial (bslib BS5), DM Sans + JetBrains Mono, amber accent `#e8a435`. Filter chips bar, loading skeletons, tab icons with active amber underline.
 
@@ -291,6 +293,88 @@ wiring).
 - A `euro_` prefix is justified only for the league dimension itself:
   schema-qualified queries, provider season convention, the competition
   dimension, phase-vs-`game_type`, round-vs-GN.
+
+#### Direction: extract shared logic, do NOT merge the tab files
+
+Decided 2026-08-10. The two leagues' tabs duplicate each other and the
+duplication has caused real bugs, but the fix is **extraction into a league
+descriptor plus helpers/modules — not one merged file per pair.**
+
+Measured overlap against the Israeli counterpart, after normalising the
+`euro_` prefix and the schema name:
+
+| EuroLeague file | lines | shared with companion |
+|---|---|---|
+| `server_tab8_euro.R` (on/off) | 1306 | **81%** |
+| `ui_tab8_euro.R` | 190 | 68% |
+| `server_tab9_euro_team.R` | 536 | 34% |
+| `server_tab10_euro_lineups.R` | 702 | 23% |
+
+Tabs 9 and 10 score lower mostly because the EuroLeague versions are *smaller*
+(no clutch, no shot profile, no FF impact annotations), not because the logic
+differs in kind. Tab 8 is a near-clone of tab 1 and is the largest remaining
+target.
+
+Why not merge per pair: tabs 1/2/3 are live and working, `server_tab3.R` alone
+is ~2,100 lines, and the `if (league)` branches would land inside the very file
+the merge is meant to simplify. Zero user-visible gain for a large refactor of
+working code.
+
+The league differences are enumerable, so they belong in one descriptor: schema
+name, SQL function names and signatures, season convention (Israeli
+`game_year` is the season-ending year, EuroLeague `season` is the provider
+season — a `+1` offset), GN meaning, phase text versus integer `game_type`, and
+feature flags for clutch, shot profile, shot splits and FF impact weights.
+
+Each extraction is **one byte-identical move plus a test run** — never a
+rewrite bundled with a move. Verify a move by reversing the transform and
+diffing against `HEAD`, not by writing new tests for moved code. Unifying
+*code* never means mixing *data*: no ranked table mixes leagues, and cache keys
+keep their league dimension.
+
+#### What is already shared (do not re-clone these)
+
+| Concern | Shared function | Where |
+|---|---|---|
+| Filter chip bar | `build_filter_chips()` | `global.R` |
+| Chip clear observers | `setup_chip_clears()` | `global.R` |
+| Team-ratings value/rank/delta cell | `fmt_rank_cell()` | `helpers.R` |
+| Season date bounds on an input | `apply_season_date_bounds()` | `helpers.R` |
+| Lineup team/players-on/off filter | `lineup_player_filter_server()` | `mod_lineup_player_filter.R` |
+| Percentile rank vector | `pr_vec()` | `helpers.R` |
+| Auto min-possessions | `auto_minposs_from_df()`, `setup_onoff_auto_min()` | `helpers.R` |
+| Local lineup filtering | `apply_local_lineup_filters()` | `helpers.R` |
+| On/off DataTables | `onoff_summary_datatable()`, `onoff_four_factors_datatable()` | `helpers.R` |
+
+`build_filter_chips()` takes the league dimension as arguments, every one
+defaulting to the Israeli behaviour so no Israeli call site passes any of them:
+
+- `season_value` / `season_label` — the season fed to the bounds function and
+  the chip text. EuroLeague passes its own selector value and a
+  competition-qualified label (`"EuroLeague 25-26"`); Israeli reads the global
+  `input$game_year`.
+- `date_input_id` — Israeli tabs use `<prefix>_dates` (Tab 1 is `date_range`);
+  EuroLeague ids do not follow that pattern.
+- `dates_show_when_set` — whether a resolved date range earns a chip on its own
+  or only when it differs from the season bounds.
+- `game_type_input_id` / `game_type_labeller` — EuroLeague's filter is
+  `<prefix>_phase` holding provider text, labelled by `euro_phase_label()`;
+  Israeli is `<prefix>_game_type` labelled by `GAME_TYPE_LABELS`.
+- `gn_label` — `"GN"` (Israeli schedule game number) vs `"Rd"` (EuroLeague
+  round). This is the round-vs-GN league dimension, not a style choice.
+
+`setup_chip_clears()` takes `bounds_fn` for the same reason: it resolves the
+date-clear target from `gy_input_id`, and passing a EuroLeague season to the
+Israeli `shared$season_date_bounds` silently produced the wrong window.
+
+Two conventions the shared builder assumes — align a new tab to them rather
+than adding a special case:
+
+- `""` is the blank sentinel for every single-select filter. Tab 10 used
+  `"all"` and had to be changed; the SQL coerces `''` to `'all'` itself, so
+  there was never a reason to differ.
+- The clear-chip id is always `<prefix>_clear_<thing>`, and the prefix is the
+  same one passed to `build_filter_chips()` and `setup_chip_clears()`.
 
 ## Pitfalls & Lessons Learned
 
