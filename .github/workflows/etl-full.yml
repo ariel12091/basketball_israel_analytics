@@ -137,6 +137,37 @@ jobs:
               --title "Cold Storage Exports" \
               --notes "Cumulative Parquet backups of ETL intermediate tables"
 
+      # The ETL is when new tables and functions appear, and both arrive
+      # unprotected: a new table has no RLS, and CREATE/DROP FUNCTION leaves
+      # the function executable by PUBLIC while wiping app_readonly's EXECUTE
+      # grants. Nothing else runs this audit, which is how
+      # basketball_test.team_metrics_by_game_mv sat without RLS until
+      # 2026-08-12. A failure here means the data published fine but the access
+      # boundary drifted -- re-run scripts/apply_db_security.R, do not
+      # re-run the ETL.
+      - name: Audit database security boundary
+        shell: pwsh
+        env:
+          PG_HOST: ${{ secrets.PG_HOST }}
+          PG_PORT: ${{ secrets.PG_PORT }}
+          PG_DB: ${{ secrets.PG_DB }}
+          PG_USER: ${{ secrets.PG_USER }}
+          PG_PASS: ${{ secrets.PG_PASS }}
+          PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+        run: |
+          # The audit reports drift through its exit code, and its stdout is
+          # the actionable part. GitHub's pwsh shell presets
+          # ErrorActionPreference=stop, which on PowerShell 7.4 turns a
+          # non-zero native exit into a thrown error before the message below
+          # can run -- so relax it around the call and branch explicitly.
+          $ErrorActionPreference = 'Continue'
+          Rscript scripts/audit_db_security.R
+          $auditExit = $LASTEXITCODE
+          $ErrorActionPreference = 'Stop'
+          if ($auditExit -ne 0) {
+            throw "Database security audit reported violations (ETL itself succeeded); see the table above and re-run scripts/apply_db_security.R."
+          }
+
       - name: Upload ETL logs
         if: ${{ always() }}
         uses: actions/upload-artifact@v4
