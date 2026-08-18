@@ -1,3 +1,55 @@
+// ---- Startup readiness timing --------------------------------------------
+// The nav cards are bound and look clickable at DOMContentLoaded, but
+// sendShinyEvent() below silently drops every click until the websocket is up.
+// app.R's log_startup() cannot see that window: its clock starts at
+// startup_t0, inside the server function, which only runs once the connection
+// already exists. So measure it here, where it actually happens, and report it
+// once per session.
+(function() {
+  if (!window.performance || typeof window.performance.now !== "function") return;
+
+  var domReadyAt = null;
+
+  function markDomReady() {
+    if (domReadyAt === null) domReadyAt = window.performance.now();
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", markDomReady);
+  } else {
+    markDomReady();
+  }
+
+  function onConnected() {
+    var connectedAt = window.performance.now();
+    var timing = {
+      dom_ready_ms: domReadyAt === null ? null : Math.round(domReadyAt),
+      connected_ms: Math.round(connectedAt),
+      dead_window_ms: domReadyAt === null ? null : Math.round(connectedAt - domReadyAt)
+    };
+
+    if (window.console && typeof window.console.info === "function") {
+      window.console.info(
+        "[startup] nav->DOMContentLoaded " + timing.dom_ready_ms + "ms | " +
+        "DOMContentLoaded->shiny:connected " + timing.dead_window_ms + "ms (clicks dead) | " +
+        "nav->connected " + timing.connected_ms + "ms"
+      );
+    }
+
+    if (window.Shiny && typeof window.Shiny.setInputValue === "function") {
+      window.Shiny.setInputValue("client_startup_timing", timing, { priority: "event" });
+    }
+  }
+
+  // jQuery is the proven path for shiny:connected in this file (see the
+  // view-mode tooltip binding below); the DOM listener is a fallback only.
+  if (window.jQuery) {
+    window.jQuery(document).one("shiny:connected", onConnected);
+  } else {
+    document.addEventListener("shiny:connected", onConnected, { once: true });
+  }
+})();
+
 (function() {
   if (!window.console || typeof window.console.warn !== "function") return;
 

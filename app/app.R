@@ -46,7 +46,7 @@ app_log("startup", sprintf(
 ))
 
 # ---------------- UI ----------------
-ui <- function(request) {
+build_ui <- function() {
   navbarPage(
   id = "main_tabs",
   title = tags$span(
@@ -128,6 +128,23 @@ ui <- function(request) {
   )
 }
 
+# The UI tree is byte-identical for every request: `request` is unused, and
+# nothing in it reads the clock, the database, or a random source (verified
+# 2026-08-18). But enableBookmarking() requires a function UI, so Shiny rebuilt
+# all twelve tabs on every page load -- measured at ~3s of a ~7s cold start,
+# producing output that never differs. Build it once per worker instead.
+#
+# Bookmark restore is unaffected: it runs server-side through
+# session$restoreContext / restored_input_value(), not by varying this HTML.
+#
+# Set IBPL_CACHE_UI=false when editing www/app.css or www/app.js -- those are
+# read by includeCSS()/includeScript() while this tree is built, so with the
+# cache on an edit needs an app restart rather than just a browser reload.
+.UI_CACHE_ENABLED <- !tolower(trimws(Sys.getenv("IBPL_CACHE_UI", "true"))) %in%
+  c("0", "false", "no", "off")
+.UI_CACHED <- if (.UI_CACHE_ENABLED) build_ui() else NULL
+ui <- function(request) .UI_CACHED %||% build_ui()
+
 # ---------------- Server ----------------
 server <- function(input, output, session) {
   startup_t0 <- proc.time()[["elapsed"]]
@@ -141,6 +158,19 @@ server <- function(input, output, session) {
     elapsed <- proc.time()[["elapsed"]] - startup_t0
     app_log("startup", sprintf("%s (%.3fs)", step, elapsed), session = session)
   }
+
+  # The browser reports how long it sat between becoming interactive and the
+  # websocket connecting. Nav-card clicks are silently dropped in that window
+  # (sendShinyEvent in www/app.js returns early), and log_startup's clock does
+  # not start until after it, so this is the only place that gap is visible.
+  observeEvent(input$client_startup_timing, {
+    t <- input$client_startup_timing
+    fmt <- function(x) if (is.null(x) || is.na(x)) "?" else as.character(x)
+    app_log("startup", sprintf(
+      "client timing: nav->dom %sms | dom->connected %sms (clicks dead) | nav->connected %sms",
+      fmt(t$dom_ready_ms), fmt(t$dead_window_ms), fmt(t$connected_ms)
+    ), session = session)
+  }, ignoreInit = TRUE, once = TRUE)
 
   observeEvent(input$idle_activity_ts, {
     last_activity_at(as.numeric(Sys.time()))
