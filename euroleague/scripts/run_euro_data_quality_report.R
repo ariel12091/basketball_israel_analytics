@@ -313,9 +313,14 @@ build_checks <- function(con, schema) {
         "One internal player ID carrying two roster names. Severity is deliberately",
         "lower than the Israeli counterpart: there, one ID with two names signals a",
         "provider re-mint. Here internal player_id is assigned per provider_player_id",
-        "and stays stable, so this reads as provider name inconsistency (reordered",
-        "surname and given name, or a spelling change) and does not split aggregates.",
-        "Check B carries the error severity, because that is the direction that does."
+        "and stays stable, so this is provider name inconsistency (reordered surname and",
+        "given name, or a spelling change) and does not split aggregates. Verified",
+        "2026-08-19: lineup arrays use the roster spelling for the game they belong to",
+        "and resolve to the correct player, so the variants do not corrupt lineups.",
+        "What they do break is any join written on a single canonical name -- check Z",
+        "had exactly that bug and reported 258 false positives before it was fixed to",
+        "match against the game's own roster spellings. Check B carries the error",
+        "severity, because that is the direction that splits a player's season."
       ),
       required_tables = c("full_rosters", "schedule"),
       sql = sprintf(
@@ -929,9 +934,16 @@ build_checks <- function(con, schema) {
       purpose = paste(
         "A player who records an offensive action for his own team must be one of the",
         "five in the lineup attached to that event. Offenders are lineup reconstruction",
-        "errors: the possession is attributed to a five that did not include the actor."
+        "errors: the possession is attributed to a five that did not include the actor.",
+        "",
+        "Lineups are text arrays of player names, and the provider spells some players",
+        "two ways (check A). A lineup legitimately uses the spelling from the roster of",
+        "the game it belongs to, which is not always players.display_name. Matching on",
+        "display_name alone therefore reports a player as absent when he is present",
+        "under his other spelling: that bug produced 258 false positives out of 425",
+        "before this check also matched against the game's own roster names."
       ),
-      required_tables = c("action_team_context_actions", "players"),
+      required_tables = c("action_team_context_actions", "players", "full_rosters"),
       sql = sprintf(
         "SELECT a.game_id, a.team_id, a.period, a.source_event_order, a.play_type,
                 p.display_name AS acting_player,
@@ -941,8 +953,14 @@ build_checks <- function(con, schema) {
           WHERE a.type_lineup = 'offense'
             AND a.event_team_id = a.team_id
             AND NOT (p.display_name = ANY (a.own_lineup))
+            AND NOT EXISTS (
+                  SELECT 1
+                    FROM %s f
+                   WHERE f.game_id = a.game_id
+                     AND f.player_id = a.action_player_id
+                     AND f.source_player_name = ANY (a.own_lineup))
           ORDER BY 1, 4",
-        atc, pls
+        atc, pls, fr
       )
     ),
 
