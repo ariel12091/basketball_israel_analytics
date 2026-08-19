@@ -61,11 +61,21 @@ exists or the staging dedup rule changes.
 Applied: **001, 002, 004-038, 040, 041**. Two gaps, both deliberate to record:
 
 - **003** was superseded by 004 and will never be applied.
-- **039 is NOT applied.** It adds a real possession-weighted `num_starters` to
-  the lineup readers; none of `fetch_lineups_direct`, `_dynamic` or `_pergame`
-  returns that column today, so Tab 10 still shows unit size as a constant.
-  Verified by inspecting the function result types, not assumed from the file
-  existing on disk.
+- **039 is NOT applied, and the app already depends on it.** It adds
+  `starters_poss_num` to `sub_lineups_stats_mv` and to all three lineup
+  readers; none of `fetch_lineups_direct`, `_dynamic` or `_pergame` returns
+  that column today (verified against the function result types, not assumed
+  from the file existing on disk). App commit `94ba256` on `main` reads
+  `df$starters_poss_num` in `server_tab10_euro_lineups.R:451`, so **Tab 10's
+  "# Starters" is `NA` for every lineup on the deployed app**. It does not
+  error: the missing column resolves to `NULL`, `as.numeric(NULL)` is
+  `numeric(0)`, and `ifelse()` recycles that to `NA_real_` for every row —
+  a silently blank column rather than a visible failure.
+
+  Applying 039 requires `DROP FUNCTION` on all three readers and DROP+CREATE
+  on the MV, which wipes EXECUTE and SELECT grants plus two indexes. The
+  migration re-grants them itself, but re-run `scripts/apply_db_security.R`
+  with `CONFIRM_DB_SECURITY_APPLY=1` afterwards and read the audit in full.
 
 Migration 020 **is** applied — the earlier checkpoint's "implemented but not
 applied" was obsolete; the standard clutch preset is served from the per-game
