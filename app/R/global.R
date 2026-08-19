@@ -445,8 +445,14 @@ onStop(function() poolClose(pg_pool))
 shared_head_tags <- function() {
   tags$head(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1, maximum-scale=1"),
-    tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap"),
-    tags$link(rel = "stylesheet", href = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css")
+    # Vendored into www/ on 2026-08-19: no cross-origin fetch, nothing loaded
+    # from a CDN without an integrity hash, and two fewer round trips in the
+    # window before the websocket connects. Regenerate with
+    # scripts/vendor_web_fonts.R. Inter is deliberately NOT vendored -- it only
+    # ever appears as a fallback behind DM Sans in app.css, so downloading four
+    # weights of it bought nothing.
+    tags$link(rel = "stylesheet", href = "fonts.css"),
+    tags$link(rel = "stylesheet", href = "bootstrap-icons/bootstrap-icons.min.css")
   )
 }
 
