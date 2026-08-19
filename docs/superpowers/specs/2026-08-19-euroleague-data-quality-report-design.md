@@ -102,7 +102,13 @@ names the reason, so the report states the gap rather than hiding it.
 | `AF` | invalid persisted segment IDs | null or non-positive `segment_id` |
 | `AJ` | free-throw progress domain | `ft_reverse_order` and `synthetic_ft_trip_id` domain |
 
-### EuroLeague-native (8)
+### EuroLeague-native (10)
+
+> **The IDs in this table drifted from the shipped script during the build.**
+> `run_euro_data_quality_report.R` is authoritative: what is listed below as
+> `N6` ships as `N7_scheduled_games_not_loaded`, `N7` ships as
+> `N8_possession_endpoint_vocabulary`, and `N8` ships as
+> `N9_schema_storage_footprint`. `N10`/`N11` below match the script exactly.
 
 | ID | Purpose |
 |---|---|
@@ -114,6 +120,8 @@ names the reason, so the report states the gap rather than hiding it.
 | `N6` | Schedule games finished at the provider but with no loaded actions |
 | `N7` | Possession endpoint reasons outside the expected vocabulary |
 | `N8` | Per-relation storage footprint against the recorded PROJECT.md baseline |
+| `N10_regular_season_gamecode_gaps` | Holes strictly inside the observed regular-season gamecode range. The one check whose expectation is NOT derived from what was loaded, so it can see games that were never collected. `RS` only — post-season codes are pre-allocated per series and a sweep leaves a legitimate hole |
+| `N11_cached_payloads_never_loaded` | Cached provider payloads under `data/raw/pbp/` with no `schedule` row. The same defect seen from the opposite side: evidence already downloaded to fill a gap nobody published. Skipped when the cache directory is absent |
 
 ## Constraints
 

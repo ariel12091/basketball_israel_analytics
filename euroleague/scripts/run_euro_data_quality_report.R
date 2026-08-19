@@ -262,6 +262,81 @@ euro_storage_footprint_details <- function(con, schema, root) {
   out
 }
 
+euro_cached_payloads_not_loaded <- function(con, schema, root) {
+  empty <- data.frame(
+    competition = character(),
+    season = integer(),
+    first_cached_gamecode = integer(),
+    last_cached_gamecode = integer(),
+    cached_not_loaded = integer(),
+    stringsAsFactors = FALSE
+  )
+
+  pbp_dir <- file.path(root, "data", "raw", "pbp")
+  if (!dir.exists(pbp_dir)) {
+    out <- empty
+    attr(out, "dq_status") <- "skipped"
+    return(out)
+  }
+
+  files <- list.files(pbp_dir, pattern = "\\.pbp\\.json$")
+  if (!length(files)) {
+    out <- empty
+    attr(out, "dq_status") <- "skipped"
+    return(out)
+  }
+
+  # Filenames are <competition><season>_<gamecode>.pbp.json, e.g. E2025_111.
+  parts <- regmatches(files, regexec("^([A-Z])([0-9]{4})_([0-9]+)\\.pbp\\.json$", files))
+  keep <- vapply(parts, length, integer(1)) == 4L
+  if (!any(keep)) {
+    out <- empty
+    attr(out, "dq_status") <- "skipped"
+    return(out)
+  }
+  parts <- parts[keep]
+
+  cached <- data.frame(
+    competition = vapply(parts, `[[`, character(1), 2L),
+    season = as.integer(vapply(parts, `[[`, character(1), 3L)),
+    gamecode = as.integer(vapply(parts, `[[`, character(1), 4L)),
+    stringsAsFactors = FALSE
+  )
+
+  loaded <- DBI::dbGetQuery(con, sprintf(
+    "SELECT s.competition, s.season, s.gamecode FROM %s s",
+    quote_table(con, schema, "schedule")
+  ))
+  loaded$key <- paste(loaded$competition, loaded$season, loaded$gamecode, sep = "/")
+
+  cached$key <- paste(cached$competition, cached$season, cached$gamecode, sep = "/")
+  gap <- cached[!(cached$key %in% loaded$key), , drop = FALSE]
+  if (!nrow(gap)) return(empty)
+
+  # Collapse to contiguous runs so the detail reads as a range, not 106 rows.
+  # Each competition-season is grouped and summarised independently; nothing is
+  # reordered across groups, so the run numbering cannot drift out of alignment.
+  gap$group_key <- paste(gap$competition, gap$season, sep = "/")
+  per_group <- lapply(split(gap, gap$group_key), function(chunk) {
+    chunk <- chunk[order(chunk$gamecode), , drop = FALSE]
+    run_id <- cumsum(c(TRUE, diff(chunk$gamecode) != 1L))
+    runs <- lapply(split(chunk, run_id), function(part) {
+      data.frame(
+        competition = part$competition[[1]],
+        season = part$season[[1]],
+        first_cached_gamecode = min(part$gamecode),
+        last_cached_gamecode = max(part$gamecode),
+        cached_not_loaded = nrow(part),
+        stringsAsFactors = FALSE
+      )
+    })
+    do.call(rbind, runs)
+  })
+  out <- do.call(rbind, per_group)
+  rownames(out) <- NULL
+  out[order(out$competition, out$season, out$first_cached_gamecode), , drop = FALSE]
+}
+
 build_checks <- function(con, schema) {
   q <- function(table) quote_table(con, schema, table)
 
@@ -1459,6 +1534,85 @@ build_checks <- function(con, schema) {
           ORDER BY 1",
         sch, act
       )
+    ),
+
+    list(
+      id = "N10_regular_season_gamecode_gaps",
+      title = "Regular-season gamecodes are not contiguous",
+      severity = "error",
+      purpose = paste(
+        "Every other check in this report starts from games that were loaded, so a game",
+        "never collected at all is invisible to all of them -- including N7, whose own",
+        "purpose notes that the schedule relation is populated by the same load. This",
+        "check derives its expectation from the SHAPE of the season instead: provider",
+        "gamecodes for a regular season are densely allocated, so a hole strictly inside",
+        "the observed range is a game nobody asked for. It is what would have caught",
+        "E/2025 gamecodes 111-216 -- rounds 12-21 plus six of round 22, cached on disk",
+        "but never staged -- which silently understated every team rating for months.",
+        "Restricted to phase 'RS' deliberately: post-season codes are pre-allocated for",
+        "the maximum number of games in a series, so a swept series leaves a legitimate",
+        "hole (E/2025 gamecode 396) that would otherwise pin this check permanently red."
+      ),
+      required_tables = c("schedule"),
+      problem_count_col = "missing_games",
+      sql = sprintf(
+        "WITH bounds AS (
+           SELECT s.competition, s.season,
+                  MIN(s.gamecode) AS min_gc, MAX(s.gamecode) AS max_gc
+             FROM %s s
+            WHERE s.phase = 'RS'
+            GROUP BY 1, 2
+         ), expected AS (
+           SELECT b.competition, b.season, g AS gamecode
+             FROM bounds b, generate_series(b.min_gc, b.max_gc) AS g
+         ), missing AS (
+           SELECT e.competition, e.season, e.gamecode
+             FROM expected e
+             LEFT JOIN %s s
+               ON s.competition = e.competition
+              AND s.season = e.season
+              AND s.gamecode = e.gamecode
+            WHERE s.game_id IS NULL
+         ), runs AS (
+           SELECT m.competition, m.season, m.gamecode,
+                  m.gamecode - ROW_NUMBER() OVER (
+                    PARTITION BY m.competition, m.season ORDER BY m.gamecode) AS run_key
+             FROM missing m
+         )
+         SELECT r.competition, r.season,
+                MIN(r.gamecode) AS first_missing_gamecode,
+                MAX(r.gamecode) AS last_missing_gamecode,
+                COUNT(*) AS missing_games,
+                (SELECT MAX(p.round_number) FROM %s p
+                  WHERE p.competition = r.competition AND p.season = r.season
+                    AND p.gamecode < MIN(r.gamecode)) AS last_loaded_round_before,
+                (SELECT MIN(n.round_number) FROM %s n
+                  WHERE n.competition = r.competition AND n.season = r.season
+                    AND n.gamecode > MAX(r.gamecode)) AS first_loaded_round_after
+           FROM runs r
+          GROUP BY r.competition, r.season, r.run_key
+          ORDER BY 1, 2, 3",
+        sch, sch, sch, sch
+      )
+    ),
+
+    list(
+      id = "N11_cached_payloads_never_loaded",
+      title = "Provider payloads are cached on disk but no game was loaded",
+      severity = "error",
+      purpose = paste(
+        "The collector and the publisher take independent gamecode ranges, so a fetch can",
+        "succeed for games a later publish never asks for. That is exactly how E/2025",
+        "111-216 went missing: all 106 payloads sat valid in data/raw/ for eight days",
+        "while the app served ratings computed without them. Comparing the cache against",
+        "the schedule catches the mismatch from the other side to N10 -- N10 sees a hole",
+        "in the sequence, this sees the evidence that was already downloaded to fill it.",
+        "Skipped when the cache directory is absent, since a checkout need not carry it."
+      ),
+      required_tables = c("schedule"),
+      sql = NA_character_,
+      problem_count_col = "cached_not_loaded",
+      runner = function(con, schema, root) euro_cached_payloads_not_loaded(con, schema, root)
     ),
 
     list(
