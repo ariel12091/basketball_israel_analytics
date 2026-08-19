@@ -720,40 +720,61 @@ build_checks <- function(con, schema) {
     ),
 
     list(
-      id = "R1_raw_lineup_duplicate_players",
-      title = "Source PBP lineup states name the same player twice",
+      id = "R1_raw_lineup_resolution_failures",
+      title = "Source PBP lineup states do not resolve to five own-team players",
       severity = "error",
       purpose = paste(
-        "Check R inspects the published event and segment facts, so it can only see",
-        "games that finished building. This one reads the raw package lineups on",
-        "actions.lineup_a / lineup_b, which exist for every loaded game including the",
-        "ones whose derived build failed.",
+        "Check R inspects the published event and segment facts, so it is blind to",
+        "games whose derived build failed -- precisely the games worth catching. This",
+        "one reads the raw package lineups on actions.lineup_a / lineup_b, which exist",
+        "for every loaded game.",
         "",
-        "A state with five slots but four distinct names resolves to four player_ids and",
-        "trips the cardinality(player_ids) = 5 constraint on lineup_totals_by_game,",
-        "which aborts the whole game. Measured 2026-08-19: 927 such states in three",
-        "games, and zero in the other 483 -- the separation is total, so this predicts",
-        "a failed build rather than merely correlating with one. Run it before the",
-        "derived refresh and a game like this is reported, not discovered as a dead",
-        "load run."
+        "The refresh resolves a lineup by joining its names to full_rosters on game AND",
+        "team, then requires cardinality(player_ids) = 5 on lineup_totals_by_game.",
+        "Anything that yields fewer than five distinct own-team player IDs aborts the",
+        "whole game. Two distinct causes produce it, and the issue_type column",
+        "separates them:",
+        "",
+        "  duplicate_player_in_lineup -- five slots, one name repeated;",
+        "  player_from_other_roster   -- a name belonging to the opposing team.",
+        "",
+        "Measured 2026-08-19: 66 states across games 246, 493, 549 and 650, and zero in",
+        "the other 483. Games 246, 549 and 650 are duplicates; 493 is a mutual swap,",
+        "with LIPKEVICIUS in the opponent's lineup and DAVIS JR. in his. An earlier",
+        "version of this check tested only for duplicates and missed 493 entirely."
       ),
-      required_tables = c("actions"),
-      problem_count_col = "duplicate_states",
+      required_tables = c("actions", "schedule", "full_rosters"),
       sql = sprintf(
-        "WITH states AS (
-                SELECT game_id, 'lineup_a' AS side, lineup_a AS lineup
-                  FROM %s WHERE lineup_a IS NOT NULL
-                 UNION ALL
-                SELECT game_id, 'lineup_b', lineup_b
-                  FROM %s WHERE lineup_b IS NOT NULL)
-         SELECT s.game_id, s.side,
-                COUNT(*) AS duplicate_states,
-                MIN(ARRAY_TO_STRING(s.lineup, ' | ')) AS example_state
-           FROM states s
-          WHERE CARDINALITY(s.lineup) <> (SELECT COUNT(DISTINCT e) FROM UNNEST(s.lineup) e)
-          GROUP BY 1, 2
-          ORDER BY 3 DESC",
-        act, act
+        "WITH sides AS (
+                SELECT game_id, home_team_id, away_team_id FROM %s),
+              states AS (
+                SELECT DISTINCT a.game_id, s.home_team_id AS team_id,
+                       'lineup_a'::text AS side, a.lineup_a AS lineup
+                  FROM %s a JOIN sides s ON s.game_id = a.game_id
+                 WHERE a.lineup_a IS NOT NULL
+                 UNION
+                SELECT DISTINCT a.game_id, s.away_team_id,
+                       'lineup_b', a.lineup_b
+                  FROM %s a JOIN sides s ON s.game_id = a.game_id
+                 WHERE a.lineup_b IS NOT NULL),
+              resolved AS (
+                SELECT st.game_id, st.team_id, st.side, st.lineup,
+                       CARDINALITY(st.lineup) AS slots,
+                       (SELECT COUNT(DISTINCT e) FROM UNNEST(st.lineup) e) AS distinct_names,
+                       (SELECT COUNT(DISTINCT f.player_id)
+                          FROM %s f
+                         WHERE f.game_id = st.game_id
+                           AND f.team_id = st.team_id
+                           AND f.source_player_name = ANY (st.lineup)) AS ids_on_own_roster
+                  FROM states st)
+         SELECT r.game_id, r.team_id, r.side, r.slots, r.distinct_names, r.ids_on_own_roster,
+                CASE WHEN r.distinct_names < r.slots THEN 'duplicate_player_in_lineup'
+                     ELSE 'player_from_other_roster' END AS issue_type,
+                ARRAY_TO_STRING(r.lineup, ' | ') AS lineup_state
+           FROM resolved r
+          WHERE r.ids_on_own_roster <> 5
+          ORDER BY 1, 2, 3",
+        sch, act, act, fr
       )
     ),
 
