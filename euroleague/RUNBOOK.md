@@ -2,22 +2,91 @@
 
 How to load games into the `euroleague` schema without needing an agent session.
 
-## Current checkpoint (2026-08-12)
+## Current checkpoint (2026-08-19)
 
-- Games 1-100 were loaded and passed the scoped verification.
-- Cached source coverage was subsequently extended through game 402. PBP was
-  known missing for game 396 and games 400-402 before the latest retry; use
-  `--allow-missing-inputs` if intentionally publishing around such gaps.
-- Load run 12 committed base `actions` snapshots for 80 games, but its grouped
-  derived refresh failed on provider gamecode 249. The package lineup contains
-  `BOLOMBOY, JOEL` twice, violating the unique-player lineup constraint.
-- Derived refreshes now run one game per transaction. A future failure records
-  that game and continues; it no longer rolls back neighboring derived games.
-- The EuroLeague consumer refresh uses the migration-016 non-cross-product
-  action-lineup design.
-- Migration 020 is implemented but not applied. Once approved and applied, the
-  standard clutch preset is served from an exact per-game cache refreshed only
-  for changed games; custom clutch definitions remain action-level.
+Every figure below was read from the live schema on the date in the heading.
+Re-measure before trusting it; the previous checkpoint went eight days stale
+while claiming 100 games were loaded, and that staleness is part of how a
+106-game gap survived unnoticed.
+
+### What is loaded
+
+| Competition | Season | Games | Gamecodes | RS | Post |
+|---|---|---|---|---|---|
+| `E` EuroLeague | 2025-26 | 398 | 1-399 | 380 | 18 |
+| `U` EuroCup | 2025-26 | 195 | 1-195 | 180 | 15 |
+
+Both regular seasons are complete and contiguous. E/2025 gamecode **396** is
+absent and that is correct — post-season codes are pre-allocated for the maximum
+games in a series, and that slot belongs to a sweep. Run
+`scripts/run_euro_data_quality_report.R` to re-confirm coverage rather than
+reasoning from this table.
+
+Schema footprint: **2342 MB**. This is far past the 500 MB default budget in
+check `N9`, on an instance shared with the Israeli schema, and there is still no
+EuroLeague cold storage. Treat further large loads as a storage decision.
+
+### Known broken games (4)
+
+| Competition | Gamecode | Round |
+|---|---|---|
+| `E` | 249 | 25 |
+| `U` | 17 | 2 |
+| `U` | 73 | 8 |
+| `U` | 174 | 18 |
+
+All four fail `lineup_totals_by_game_player_ids_check`: the package lineup names
+one player twice (the original was `BOLOMBOY, JOEL` on E/249). Their base
+`actions` are committed; only the derived facts are missing, so they are absent
+from four-factors, lineup, on-off and player-stats surfaces while still counting
+in team ratings. There is no correction layer yet, so they stay broken until one
+exists or the staging dedup rule changes.
+
+### Load-run history worth knowing
+
+- **Run 17** is recorded `partial` (53 ok / 53 failed) and that record is now
+  misleading. Its 53 derived failures were caused by migration 030 having
+  dropped an offense-only `seconds` guard, fixed by migration 040; all 53 were
+  repaired afterwards by re-running the derived refresh. Do not reload them.
+- **Run 16** (`U`, partial, 3 failed) is the origin of the three EuroCup games
+  above and is genuinely unresolved.
+- Derived refreshes run one game per transaction, so a failure records that game
+  and continues without rolling back its neighbours. Note that all eight refresh
+  functions still share a single transaction *per game*, so any one of them
+  failing discards that game's other derived facts too — that is what turned one
+  bad column into 53 games of missing statistics.
+
+### Migration state
+
+Applied: **001, 002, 004-038, 040, 041**. Two gaps, both deliberate to record:
+
+- **003** was superseded by 004 and will never be applied.
+- **039 is NOT applied.** It adds a real possession-weighted `num_starters` to
+  the lineup readers; none of `fetch_lineups_direct`, `_dynamic` or `_pergame`
+  returns that column today, so Tab 10 still shows unit size as a constant.
+  Verified by inspecting the function result types, not assumed from the file
+  existing on disk.
+
+Migration 020 **is** applied — the earlier checkpoint's "implemented but not
+applied" was obsolete; the standard clutch preset is served from the per-game
+cache in `default_clutch_lineup_totals_by_game` (5,263 rows). The consumer
+refresh uses the migration-016 non-cross-product action-lineup design.
+
+There is no migrations table, so applied-state can only be established by
+checking for the objects a migration creates or the columns it adds. Do that
+before assuming a number in this list is still right.
+
+Recent, and worth knowing before the next load:
+
+- **040** restores the offense-only `seconds` guard in `clutch_team_game_facts`.
+  Without it every game with a clutch segment fails its derived refresh.
+- **041** merges the two `player_four_factors_by_game` scans in
+  `player_traditional_stats_mv` (60.2s to 41.8s; full MV set 138.8s to 111.0s).
+- `finish_load_run` now lifts `statement_timeout` around the app MV refresh.
+  That refresh rebuilds all eight MVs over the whole schema, so its cost grows
+  with total games and it had crossed the 2-minute connection default at 593
+  games — cancelling *after* every game had committed, which reports success
+  while the app serves stale aggregates.
 
 ## TL;DR
 
