@@ -903,6 +903,45 @@ build_checks <- function(con, schema) {
     ),
 
     list(
+      id = "X1_played_players_without_lineup_exposure",
+      title = "Players with official minutes get no lineup exposure",
+      severity = "error",
+      purpose = paste(
+        "The Player Stats readers derive poss_on_floor and minutes by matching",
+        "full_rosters.source_player_name against the lineup name array for the same",
+        "game and team, then wrap the result in coalesce(..., 0). A player who logged",
+        "official box-score minutes but matches no lineup therefore renders as a",
+        "confident zero rather than as missing data, with the game still counted in his",
+        "games played.",
+        "",
+        "The name match is game-scoped, so the provider's inconsistent spellings",
+        "(check A) do not break it: within one game the roster and the lineup agree.",
+        "What does break it is a game whose lineup facts never got built at all, which",
+        "is check J. Measured 2026-08-19: 40 player-games and 744 official minutes, all",
+        "of them inside J's four games, and none in the other 483."
+      ),
+      required_tables = c("full_rosters", "lineup_totals_by_game"),
+      problem_count_col = "player_games",
+      sql = sprintf(
+        "SELECT f.game_id, f.team_id, f.player_id, f.source_player_name,
+                ROUND(f.minutes_seconds / 60.0, 1) AS official_minutes,
+                EXISTS (SELECT 1 FROM %s l WHERE l.game_id = f.game_id) AS game_has_lineup_rows,
+                1 AS player_games
+           FROM %s f
+          WHERE f.is_playing
+            AND COALESCE(f.minutes_seconds, 0) > 0
+            AND NOT EXISTS (
+                  SELECT 1
+                    FROM %s l
+                   WHERE l.game_id = f.game_id
+                     AND l.team_id = f.team_id
+                     AND f.source_player_name = ANY (l.own_lineup))
+          ORDER BY 5 DESC, 1, 3",
+        ltbg, fr, ltbg
+      )
+    ),
+
+    list(
       id = "Y_overtime_segment_coverage",
       title = "Overtime events are not covered by a canonical lineup segment",
       severity = "error",
