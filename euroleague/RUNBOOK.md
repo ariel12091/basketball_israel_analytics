@@ -103,6 +103,13 @@ transactions, followed by one app materialized-view refresh. A failed game does
 not roll back earlier games. Verification runs
 automatically and the command returns exit code 0 only when every check passes.
 
+Note what that exit code does and does not mean. Verification asserts that
+every gamecode **you requested** is present and sound. It cannot tell you the
+range itself was wrong: a game outside `--games` is not checked, not reported,
+and not counted as missing. Exit code 0 says "what you asked for arrived", never
+"you asked for everything". The season-completeness checks in the data quality
+report are what answer the second question.
+
 Verify without collecting or writing:
 
 ```powershell
@@ -115,12 +122,17 @@ codes; do not mix them in one load range.
 
 ### Two-phase large load
 
-For a large range, separate provider traffic from database processing. Phase 1
-fetches all payloads in 20-game batches and pauses between batches:
+For a large range, separate provider traffic from database processing. **Both
+phases must use the identical `<FIRST>-<LAST>` range.** They are independent
+arguments, so a phase 2 range narrower than phase 1 leaves the difference cached
+but unpublished, with no error — see the warning under *Partial-cache and
+box-score workflows* for what that cost once.
+
+Phase 1 fetches all payloads in 20-game batches and pauses between batches:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '101-180' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --fetch-only --collect-workers 1 --fetch-batch-size 20 --fetch-batch-sleep 60
 ```
 
@@ -129,7 +141,7 @@ cache and performs staging/publication without contacting the provider:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '101-180' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --skip-fetch --execute --stage-workers 1
 ```
 
@@ -139,13 +151,33 @@ requested. If phase 2 fails, rerun it with `--skip-fetch`.
 
 ### Partial-cache and box-score workflows
 
+> **Substitute your own range for `<FIRST>-<LAST>` below, and check it against
+> what is actually cached before running.** These commands previously carried a
+> literal `217-402`. On 2026-08-11 a fetch swept games 100 through 250+, but the
+> publish that followed was copied from here with its literal range intact and
+> started at 217. Gamecodes **111-216** — rounds 12-21 plus six of round 22 —
+> were therefore fetched, validated and cached, and never staged or published.
+> They stayed missing for eight days while the app served team ratings computed
+> without them, understating every team's games played by up to eleven.
+>
+> Nothing caught it: `--verify-only` asserts that every *requested* gamecode is
+> present, and a range nobody requested is never checked. The fetch range and
+> the publish range are independent inputs, and **a publish range narrower than
+> what you cached fails silently** — there is no error, just absent games.
+>
+> The report now has two checks for exactly this
+> (`Rscript scripts/run_euro_data_quality_report.R`):
+> `N10_regular_season_gamecode_gaps` finds holes inside the loaded regular
+> season, and `N11_cached_payloads_never_loaded` finds cached payloads with no
+> schedule row. Run it after any load whose range you composed by hand.
+
 PBP is fetched before box scores in the current orchestrator because it is the
 main API bottleneck. To fill only box-score gaps without touching PBP or the
 database:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '217-402' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --boxscores-only --collect-workers 1 `
   --fetch-batch-size 20 --fetch-batch-sleep 60
 ```
@@ -154,7 +186,7 @@ To publish every available cached game while deliberately omitting missing PBP:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '217-402' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --skip-fetch --allow-missing-inputs --execute --stage-workers 1
 ```
 
