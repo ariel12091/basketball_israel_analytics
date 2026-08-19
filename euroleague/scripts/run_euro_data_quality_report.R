@@ -720,6 +720,44 @@ build_checks <- function(con, schema) {
     ),
 
     list(
+      id = "R1_raw_lineup_duplicate_players",
+      title = "Source PBP lineup states name the same player twice",
+      severity = "error",
+      purpose = paste(
+        "Check R inspects the published event and segment facts, so it can only see",
+        "games that finished building. This one reads the raw package lineups on",
+        "actions.lineup_a / lineup_b, which exist for every loaded game including the",
+        "ones whose derived build failed.",
+        "",
+        "A state with five slots but four distinct names resolves to four player_ids and",
+        "trips the cardinality(player_ids) = 5 constraint on lineup_totals_by_game,",
+        "which aborts the whole game. Measured 2026-08-19: 927 such states in three",
+        "games, and zero in the other 483 -- the separation is total, so this predicts",
+        "a failed build rather than merely correlating with one. Run it before the",
+        "derived refresh and a game like this is reported, not discovered as a dead",
+        "load run."
+      ),
+      required_tables = c("actions"),
+      problem_count_col = "duplicate_states",
+      sql = sprintf(
+        "WITH states AS (
+                SELECT game_id, 'lineup_a' AS side, lineup_a AS lineup
+                  FROM %s WHERE lineup_a IS NOT NULL
+                 UNION ALL
+                SELECT game_id, 'lineup_b', lineup_b
+                  FROM %s WHERE lineup_b IS NOT NULL)
+         SELECT s.game_id, s.side,
+                COUNT(*) AS duplicate_states,
+                MIN(ARRAY_TO_STRING(s.lineup, ' | ')) AS example_state
+           FROM states s
+          WHERE CARDINALITY(s.lineup) <> (SELECT COUNT(DISTINCT e) FROM UNNEST(s.lineup) e)
+          GROUP BY 1, 2
+          ORDER BY 3 DESC",
+        act, act
+      )
+    ),
+
+    list(
       id = "S_invalid_starter_context",
       title = "Starter context is missing or out of domain",
       severity = "warning",
