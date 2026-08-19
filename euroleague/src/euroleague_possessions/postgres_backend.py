@@ -684,6 +684,14 @@ def finish_load_run(
     cursor = connection.cursor()
     try:
         cursor.execute("BEGIN")
+        # refresh_app_materialized_views() rebuilds eight MVs non-concurrently
+        # over the WHOLE schema, so its cost grows with total games loaded, not
+        # with the size of this run. It crossed the 2-minute Supabase default
+        # statement_timeout at 593 games (measured 124.8s), which would cancel
+        # the refresh AFTER every game had already committed -- a load that
+        # reports success while the app serves stale aggregates. Lift the
+        # timeout for this statement only; SET LOCAL reverts at COMMIT.
+        cursor.execute("SET LOCAL statement_timeout = 0")
         cursor.execute("SELECT euroleague.refresh_app_materialized_views()")
         cursor.execute(
             "UPDATE euroleague.load_runs SET status = %s, completed_at = now(), "
