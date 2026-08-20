@@ -58,24 +58,21 @@ exists or the staging dedup rule changes.
 
 ### Migration state
 
-Applied: **001, 002, 004-038, 040, 041**. Two gaps, both deliberate to record:
+Applied: **001, 002, 004-041**. One gap: **003** was superseded by 004 and will
+never be applied.
 
-- **003** was superseded by 004 and will never be applied.
-- **039 is NOT applied, and the app already depends on it.** It adds
-  `starters_poss_num` to `sub_lineups_stats_mv` and to all three lineup
-  readers; none of `fetch_lineups_direct`, `_dynamic` or `_pergame` returns
-  that column today (verified against the function result types, not assumed
-  from the file existing on disk). App commit `94ba256` on `main` reads
-  `df$starters_poss_num` in `server_tab10_euro_lineups.R:451`, so **Tab 10's
-  "# Starters" is `NA` for every lineup on the deployed app**. It does not
-  error: the missing column resolves to `NULL`, `as.numeric(NULL)` is
-  `numeric(0)`, and `ifelse()` recycles that to `NA_real_` for every row —
-  a silently blank column rather than a visible failure.
+Migration 039 **is** applied. `sub_lineups_stats_mv` carries
+`starters_poss_num` (38,059 rows, none null) and all three of
+`fetch_lineups_direct`, `_dynamic` and `_pergame` return it, so Tab 10's
+"# Starters" resolves normally — around 4.6-5.0 for the heaviest five-man
+units.
 
-  Applying 039 requires `DROP FUNCTION` on all three readers and DROP+CREATE
-  on the MV, which wipes EXECUTE and SELECT grants plus two indexes. The
-  migration re-grants them itself, but re-run `scripts/apply_db_security.R`
-  with `CONFIRM_DB_SECURITY_APPLY=1` afterwards and read the audit in full.
+> When checking whether 039 is applied, look for **`starters_poss_num`**, not
+> `num_starters`. The SQL layer never contains the latter: 039 returns the
+> possession-weighted **numerator** and `server_tab10_euro_lineups.R:451`
+> divides it by `off_poss + def_poss` to get `num_starters` in R. Searching the
+> function result types for the ratio name finds nothing and looks exactly like
+> an unapplied migration.
 
 Migration 020 **is** applied — the earlier checkpoint's "implemented but not
 applied" was obsolete; the standard clutch preset is served from the per-game
