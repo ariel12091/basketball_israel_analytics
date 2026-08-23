@@ -282,9 +282,8 @@ body and profile it first.
 
 ## 6. Implemented fix — per-game traditional fact
 
-**The Israeli database migration was applied on 2026-08-23. The Shiny routing
-change is implemented and tested locally but is not yet deployed to
-shinyapps.io.**
+**The Israeli database migration was applied on 2026-08-23. The non-clutch
+Shiny routing was deployed by the maintainer the same day.**
 
 The `SUM(CASE WHEN ...)` expressions already exist verbatim in
 `sql/materialized_views/player_traditional_stats_mv.sql`. The change is to run them grouped by
@@ -342,8 +341,40 @@ Implemented objects and integration:
   functions remain inaccessible to the app role;
 - local Tab 5 routing: non-clutch uses the new reader, clutch keeps the action reader.
 
-Remaining work is the separate fixed-scope fact for exact standard
-5/all/5:00 clutch. Arbitrary custom clutch should remain on the action path.
+### 6.2 Standard clutch cache (completed 2026-08-23)
+
+The separate fixed-scope Israeli fact is now live for exactly margin <= 5,
+status `all`, final 5:00, and unrestricted overtime. Arbitrary custom clutch
+remains on the action path; no general custom-clutch cache was added.
+
+| Measurement | Result |
+|---|---:|
+| Live build | 8.13 s |
+| Persisted rows / games | 2,756 / 213 |
+| App-role persisted size including indexes | 778,240 bytes (0.74 MiB) |
+| App-role 2026 full-season reader, first / second run | 0.78 s / 0.31 s |
+| Full-season cached-vs-dynamic parity | exact, 231 rows |
+| Transactional single-game refresh | 0.52 s, 18 rows touched |
+
+Implementation details:
+
+- `compute_player_traditional_by_game(int4[], boolean)` adds one explicit
+  standard-clutch mode while the existing one-argument function remains the
+  non-clutch wrapper;
+- `default_clutch_player_totals_by_game` stores the same additive player and
+  team denominators as the non-clutch fact, using qualifying-action segment
+  extrema for clutch minutes;
+- `refresh_default_clutch_player_totals_for_games(int4[])` is wired into the
+  level-3 incremental ETL publication path;
+- `get_player_traditional_from_games(...)` accepts either no clutch predicate
+  or the exact standard preset and rejects every custom definition;
+- Tab 5 routes `pergame` and `dynamic` request kinds to that cached reader,
+  while `direct` continues to call `get_player_traditional_dynamic(...)`;
+- the post-migration database security audit passed, and `app_readonly` can
+  read/call only the fact and reader, not either compute or refresh function.
+
+The remaining release action is deploying the new Tab 5 routing code. The
+database cache and incremental publication lifecycle are already live.
 
 ---
 

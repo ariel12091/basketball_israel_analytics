@@ -1,5 +1,6 @@
 CREATE OR REPLACE FUNCTION basketball_test.compute_player_traditional_by_game(
-  p_game_ids int4[] DEFAULT NULL
+  p_game_ids int4[],
+  p_standard_clutch boolean
 )
 RETURNS TABLE (
   game_year int4,
@@ -55,6 +56,22 @@ actions_base AS (
   SELECT d.*, sg.game_year
   FROM basketball_test.df_pts_poss_lineups_longer_mv d
   JOIN source_games sg ON sg.game_id = d.game_id AND sg.team_id = d.team_id
+  WHERE NOT COALESCE(p_standard_clutch, FALSE)
+     OR (
+       (
+         ABS(
+           CASE
+             WHEN d.type_lineup = 'offense'
+               THEN (COALESCE(d.own_team_score, 0) - COALESCE(d.team_score, 0))
+                    - COALESCE(d.opp_team_score, 0)
+             ELSE COALESCE(d.own_team_score, 0)
+                  - (COALESCE(d.opp_team_score, 0) - COALESCE(d.team_score, 0))
+           END
+         ) <= 5
+         OR d.quarter > 4
+       )
+       AND (d.end_game_seconds_remaining <= 300 OR d.quarter > 4)
+     )
 ),
 complex_flags AS (
   SELECT DISTINCT ON (d.game_id, d.id)
@@ -122,9 +139,22 @@ team_possession_totals AS (
 ),
 segment_times AS (
   SELECT d.game_year, d.game_id, d.team_id, d.lineup_hash, d.segment_id,
-         MAX(d.segment_seconds)::numeric AS segment_seconds
+         CASE
+           WHEN COALESCE(p_standard_clutch, FALSE) THEN
+             GREATEST(
+               (array_agg(d.event_elapsed_seconds ORDER BY d.id DESC))[1] -
+               (array_agg(d.event_elapsed_seconds ORDER BY d.id))[1],
+               0
+             )::numeric
+           ELSE MAX(d.segment_seconds)::numeric
+         END AS segment_seconds
   FROM actions_base d
-  WHERE d.lineup_hash IS NOT NULL AND d.segment_id IS NOT NULL AND d.segment_seconds IS NOT NULL
+  WHERE d.lineup_hash IS NOT NULL
+    AND d.segment_id IS NOT NULL
+    AND (
+      (NOT COALESCE(p_standard_clutch, FALSE) AND d.segment_seconds IS NOT NULL)
+      OR (COALESCE(p_standard_clutch, FALSE) AND d.event_elapsed_seconds IS NOT NULL)
+    )
   GROUP BY d.game_year, d.game_id, d.team_id, d.lineup_hash, d.segment_id
 ),
 seconds_totals AS (
@@ -209,4 +239,43 @@ WHERE (a.player_id IS NOT NULL AND r.player_id IS NOT NULL)
    OR COALESCE(e.gp, 0) > 0
    OR COALESCE(e.poss_on_floor, 0) > 0
    OR COALESCE(e.seconds_on_floor, 0) > 0
+$$;
+
+CREATE OR REPLACE FUNCTION basketball_test.compute_player_traditional_by_game(
+  p_game_ids int4[] DEFAULT NULL
+)
+RETURNS TABLE (
+  game_year int4,
+  game_id int4,
+  team_id int4,
+  player_id int4,
+  has_actor_stats boolean,
+  gp int4,
+  poss_on_floor int4,
+  seconds_on_floor numeric,
+  pts int4,
+  reb int4,
+  oreb int4,
+  dreb int4,
+  ast int4,
+  stl int4,
+  blk int4,
+  dfl int4,
+  tov int4,
+  fgm int4,
+  fga int4,
+  "3pm" int4,
+  "3pa" int4,
+  ftm int4,
+  fta int4,
+  player_ts_poss_count int4,
+  team_ts_poss_count int4,
+  team_tov int4,
+  team_poss int4
+)
+LANGUAGE sql
+STABLE
+AS $$
+  SELECT *
+  FROM basketball_test.compute_player_traditional_by_game(p_game_ids, FALSE)
 $$;
