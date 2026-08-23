@@ -41,7 +41,8 @@ test_that("app role is read-only and function execution is allowlisted", {
     "fetch_lineups_four_factors",
     "get_team_ratings_dynamic",
     "get_team_four_factors_dynamic",
-    "get_player_traditional_dynamic"
+    "get_player_traditional_dynamic",
+    "get_player_traditional_from_games"
   )
   for (function_name in expected_functions) {
     expect_match(sql, sprintf("'%s'", function_name), fixed = TRUE)

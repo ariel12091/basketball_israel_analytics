@@ -35,7 +35,8 @@ israeli_app_routines(routine_name) AS (
     ('fetch_lineups_four_factors'),
     ('get_team_ratings_dynamic'),
     ('get_team_four_factors_dynamic'),
-    ('get_player_traditional_dynamic')
+    ('get_player_traditional_dynamic'),
+    ('get_player_traditional_from_games')
 ),
 -- The EuroLeague refresh_* publication functions are excluded on purpose:
 -- they mutate the schema and must not be executable by the app role.
@@ -80,6 +81,7 @@ israeli_app_relations(relation_name) AS (
     ('mv_lineup_totals_by_day'),
     ('onoff_default_mv'),
     ('player_advanced_stats_mv'),
+    ('player_traditional_by_game'),
     ('player_traditional_stats_mv'),
     ('default_clutch_player_totals_by_game'),
     ('sub_lineups'),

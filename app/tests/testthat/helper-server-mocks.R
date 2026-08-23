@@ -375,7 +375,8 @@ db_get_query <- function(pool, query, params = NULL) {
     ))
   }
 
-  if (grepl("get_player_traditional_dynamic", q, fixed = TRUE)) {
+  if (grepl("get_player_traditional_dynamic", q, fixed = TRUE) ||
+      grepl("get_player_traditional_from_games", q, fixed = TRUE)) {
     out <- data.frame(
       player_id = c(11L, 12L, 21L),
       team_id = c(1L, 1L, 2L),

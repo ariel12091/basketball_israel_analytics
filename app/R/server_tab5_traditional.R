@@ -860,10 +860,20 @@ server_tab5_traditional <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
+    reader <- if (identical(clutch_reader_kind(list(
+      max_margin = max_margin,
+      margin_status = margin_status,
+      max_time_remaining = max_time_remaining,
+      ot_margin_filter = ot_margin_filter
+    )), "pergame")) {
+      "get_player_traditional_from_games"
+    } else {
+      "get_player_traditional_dynamic"
+    }
     db_get_query(
       pool,
       paste0(
-        "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
+        "SELECT * FROM basketball_test.", reader, "(",
         "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
         "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
         ")"

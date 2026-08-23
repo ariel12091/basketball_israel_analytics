@@ -50,7 +50,8 @@ DECLARE
     'fetch_lineups_four_factors',
     'get_team_ratings_dynamic',
     'get_team_four_factors_dynamic',
-    'get_player_traditional_dynamic'
+    'get_player_traditional_dynamic',
+    'get_player_traditional_from_games'
   ];
   -- EuroLeague app API. The refresh_* functions are publication machinery and
   -- are deliberately absent: they mutate the schema and must never be callable

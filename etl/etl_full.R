@@ -990,6 +990,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       length(processed_ids)
     ))
     log_msg(sprintf(
+      "[DRY RUN] Would incrementally refresh table: player_traditional_by_game for %d game(s)",
+      length(processed_ids)
+    ))
+    log_msg(sprintf(
       "[DRY RUN] Would incrementally refresh table: onoff_default_mv for %d game(s)",
       length(processed_ids)
     ))
@@ -1089,6 +1093,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
           if (!isTRUE(fn_exists("refresh_team_metrics_by_game_for_games"))) {
             stop("Missing function basketball_test.refresh_team_metrics_by_game_for_games(int4[])")
           }
+          if (!isTRUE(fn_exists("refresh_player_traditional_by_game_for_games"))) {
+            stop("Missing function basketball_test.refresh_player_traditional_by_game_for_games(int4[])")
+          }
           if (!isTRUE(fn_exists("refresh_onoff_default_for_games"))) {
             stop("Missing function basketball_test.refresh_onoff_default_for_games(int4[])")
           }
@@ -1130,6 +1137,24 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             format(as.integer(tm_touch), big.mark = ","),
             format(as.integer(tm_cnt), big.mark = ","),
             tm_elapsed
+          ))
+
+          ptg_t0 <- proc.time()
+          ptg_touch <- DBI::dbGetQuery(
+            pg,
+            sprintf(
+              "SELECT refresh_player_traditional_by_game_for_games(ARRAY[%s]::int4[]) AS n",
+              ids_csv
+            )
+          )$n[[1]]
+          ptg_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM player_traditional_by_game")$n[[1]]
+          ptg_elapsed <- (proc.time() - ptg_t0)["elapsed"]
+          log_msg(sprintf(
+            "  [INC] player_traditional_by_game refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
+            length(processed_ids),
+            format(as.integer(ptg_touch), big.mark = ","),
+            format(as.integer(ptg_cnt), big.mark = ","),
+            ptg_elapsed
           ))
 
           onoff_t0 <- proc.time()

@@ -124,7 +124,9 @@ test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
   expect_match(traditional, "takes_clutch <- !identical(reader,", fixed = TRUE)
   expect_match(traditional, '"$13::int4,$14::int4,$15::int4"', fixed = TRUE)
 
-  # The Israeli companion has no routing at all: one unconditional reader that
-  # takes the clutch parameters straight through. Nothing to share there.
-  expect_match(traditional, "basketball_test.get_player_traditional_dynamic(", fixed = TRUE)
+  # Israel now shares the request classifier: non-clutch uses the per-game
+  # fact, while clutch retains the action-level dynamic reader.
+  expect_match(traditional, '"get_player_traditional_from_games"', fixed = TRUE)
+  expect_match(traditional, '"get_player_traditional_dynamic"', fixed = TRUE)
+  expect_match(traditional, 'identical(clutch_reader_kind(list(', fixed = TRUE)
 })
