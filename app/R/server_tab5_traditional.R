@@ -860,12 +860,13 @@ server_tab5_traditional <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    reader <- if (identical(clutch_reader_kind(list(
+    reader_kind <- clutch_reader_kind(list(
       max_margin = max_margin,
       margin_status = margin_status,
       max_time_remaining = max_time_remaining,
       ot_margin_filter = ot_margin_filter
-    )), "pergame")) {
+    ))
+    reader <- if (reader_kind %in% c("pergame", "dynamic")) {
       "get_player_traditional_from_games"
     } else {
       "get_player_traditional_dynamic"

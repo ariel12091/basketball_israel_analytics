@@ -16,6 +16,17 @@ execute_simple_file <- function(con, path) {
   statements <- statements[nzchar(statements)]
   invisible(lapply(statements, function(sql) dbExecute(con, sql)))
 }
+execute_function_file <- function(con, path) {
+  sql <- read_sql(path)
+  starts <- gregexpr("CREATE OR REPLACE FUNCTION", sql, fixed = TRUE)[[1]]
+  starts <- starts[starts > 0]
+  ends <- c(starts[-1L] - 1L, nchar(sql))
+  invisible(mapply(
+    function(from, to) dbExecute(con, trimws(substr(sql, from, to))),
+    starts, ends,
+    SIMPLIFY = FALSE
+  ))
+}
 timed <- function(label, expr) {
   started <- proc.time()[["elapsed"]]
   value <- force(expr)
@@ -44,7 +55,7 @@ dbExecute(con, "SET LOCAL lock_timeout = '5s'")
 dbExecute(con, "SET LOCAL statement_timeout = '180s'")
 dbExecute(con, "SET LOCAL search_path TO basketball_test, public")
 
-timed("install compute function", dbExecute(con, read_sql("sql/functions/compute_player_traditional_by_game.sql")))
+timed("install compute function", execute_function_file(con, "sql/functions/compute_player_traditional_by_game.sql"))
 timed("build per-game table", execute_simple_file(con, "sql/materialized_views/player_traditional_by_game.sql"))
 timed("install refresh function", dbExecute(con, read_sql("sql/functions/refresh_player_traditional_by_game_for_games.sql")))
 
@@ -58,6 +69,7 @@ dbExecute(con, paste0(
 timed("install reader function", dbExecute(con, substring(reader_sql, reader_create_at)))
 
 dbExecute(con, "REVOKE ALL ON FUNCTION basketball_test.compute_player_traditional_by_game(int4[]) FROM PUBLIC")
+dbExecute(con, "REVOKE ALL ON FUNCTION basketball_test.compute_player_traditional_by_game(int4[],boolean) FROM PUBLIC")
 dbExecute(con, "REVOKE ALL ON FUNCTION basketball_test.refresh_player_traditional_by_game_for_games(int4[]) FROM PUBLIC")
 dbExecute(con, paste0(
   "REVOKE ALL ON FUNCTION basketball_test.get_player_traditional_from_games(",

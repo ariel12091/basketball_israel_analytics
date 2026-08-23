@@ -43,10 +43,21 @@ DECLARE
   v_opp_rank_side text := COALESCE(NULLIF(btrim(p_opp_rank_side), ''), 'all');
   v_opp_rank_metric text := COALESCE(NULLIF(btrim(p_opp_rank_metric), ''), 'net');
   v_margin_status text := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
+  v_no_clutch boolean;
+  v_standard_clutch boolean;
 BEGIN
-  IF p_max_margin IS NOT NULL OR p_max_time_remaining IS NOT NULL
-     OR v_margin_status <> 'all' OR COALESCE(p_ot_margin_filter, FALSE) THEN
-    RAISE EXCEPTION 'get_player_traditional_from_games does not accept clutch filters';
+  v_no_clutch := p_max_margin IS NULL
+    AND p_max_time_remaining IS NULL
+    AND v_margin_status = 'all'
+    AND NOT COALESCE(p_ot_margin_filter, FALSE);
+  v_standard_clutch := p_max_margin = 5
+    AND p_max_time_remaining = 300
+    AND v_margin_status = 'all'
+    AND NOT COALESCE(p_ot_margin_filter, FALSE);
+
+  IF NOT v_no_clutch AND NOT v_standard_clutch THEN
+    RAISE EXCEPTION
+      'get_player_traditional_from_games accepts only no clutch or standard 5/all/5:00 with unrestricted overtime';
   END IF;
 
   IF p_team_ids_csv IS NOT NULL AND length(btrim(p_team_ids_csv)) > 0 THEN
@@ -128,6 +139,13 @@ BEGIN
     FROM basketball_test.player_traditional_by_game f
     JOIN games_filtered g
       ON g.game_year = f.game_year AND g.game_id = f.game_id AND g.team_id = f.team_id
+    WHERE v_no_clutch
+    UNION ALL
+    SELECT f.*
+    FROM basketball_test.default_clutch_player_totals_by_game f
+    JOIN games_filtered g
+      ON g.game_year = f.game_year AND g.game_id = f.game_id AND g.team_id = f.team_id
+    WHERE v_standard_clutch
   ),
   team_game AS (
     SELECT f.game_year, f.game_id, f.team_id,
