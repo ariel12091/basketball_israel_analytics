@@ -866,11 +866,12 @@ server_tab5_traditional <- function(input, output, session, shared) {
       max_time_remaining = max_time_remaining,
       ot_margin_filter = ot_margin_filter
     ))
-    reader <- if (reader_kind %in% c("pergame", "dynamic")) {
-      "get_player_traditional_from_games"
-    } else {
-      "get_player_traditional_dynamic"
-    }
+    reader <- switch(
+      reader_kind,
+      pergame = "get_player_traditional_from_games",
+      dynamic = "get_player_traditional_from_games",
+      "get_player_traditional_custom_clutch"
+    )
     db_get_query(
       pool,
       paste0(

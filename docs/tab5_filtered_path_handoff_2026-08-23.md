@@ -376,6 +376,41 @@ Implementation details:
 The remaining release action is deploying the new Tab 5 routing code. The
 database cache and incremental publication lifecycle are already live.
 
+### 6.3 Custom clutch narrow action fact (completed 2026-08-23)
+
+The EuroLeague custom Player Stats design was adapted to Israel after fresh
+measurements showed the broad custom preset still took 10-14 seconds. This is
+not a fixed custom-clutch result cache: arbitrary definitions remain exact and
+are evaluated from a private-purpose, incrementally refreshed action/team
+perspective fact.
+
+| Measurement | Result |
+|---|---:|
+| Live rows / games | 528,035 / 439 |
+| Live size including indexes | 134,619,136 bytes (128.4 MiB) |
+| Share of the 3.1 GB database | about 4% |
+| App-role margin <= 3 / all / final 4:00 | 6.12 s, 3.75 s, 4.02 s |
+| App-role trailing / margin <= 7 / final 2:00 / filtered OT | 5.11 s, 4.80 s, 4.78 s |
+| Single-game transactional refresh | about 0.45-0.47 s, 1,418 rows in the sampled game |
+
+Exact parity passed for the two full-season presets above plus bounded leading
+and time-only shapes. The fact precomputes only the event flags, pre-event
+margin/status, possession endpoint, and timing fields needed by Player Stats;
+it deliberately continues to resolve Israeli lineup hashes through
+`lineups_lookup`. Persisting a five-player array improved only one narrower
+probe, added about 21 MiB, and slowed the sampled refresh, so it was rejected.
+
+`get_player_traditional_custom_clutch(...)` is now the app-facing custom
+reader. `get_player_traditional_dynamic(...)` remains available as the parity
+reference. The ETL refreshes `player_stats_actions_by_game` only for changed
+games, and the app role cannot execute its compute or refresh functions.
+
+The companion Israeli custom Team and Lineup readers were measured before
+broadening this migration and did not need it: Team Ratings 0.37-1.54 s, Team
+Four Factors 1.82-1.83 s, five-player Lineups 1.22-2.19 s, and Lineup Four
+Factors 3.48-3.81 s. They remain on their existing paths rather than taking on
+unnecessary new SQL and lineage.
+
 ---
 
 ## 7. Other open items

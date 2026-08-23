@@ -998,6 +998,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       length(processed_ids)
     ))
     log_msg(sprintf(
+      "[DRY RUN] Would incrementally refresh table: player_stats_actions_by_game for %d game(s)",
+      length(processed_ids)
+    ))
+    log_msg(sprintf(
       "[DRY RUN] Would incrementally refresh table: onoff_default_mv for %d game(s)",
       length(processed_ids)
     ))
@@ -1103,6 +1107,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
           if (!isTRUE(fn_exists("refresh_default_clutch_player_totals_for_games"))) {
             stop("Missing function basketball_test.refresh_default_clutch_player_totals_for_games(int4[])")
           }
+          if (!isTRUE(fn_exists("refresh_player_stats_actions_for_games"))) {
+            stop("Missing function basketball_test.refresh_player_stats_actions_for_games(int4[])")
+          }
           if (!isTRUE(fn_exists("refresh_onoff_default_for_games"))) {
             stop("Missing function basketball_test.refresh_onoff_default_for_games(int4[])")
           }
@@ -1183,6 +1190,27 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             format(as.integer(clutch_ptg_touch), big.mark = ","),
             format(as.integer(clutch_ptg_cnt), big.mark = ","),
             clutch_ptg_elapsed
+          ))
+
+          custom_actions_t0 <- proc.time()
+          custom_actions_touch <- DBI::dbGetQuery(
+            pg,
+            sprintf(
+              "SELECT refresh_player_stats_actions_for_games(ARRAY[%s]::int4[]) AS n",
+              ids_csv
+            )
+          )$n[[1]]
+          custom_actions_cnt <- DBI::dbGetQuery(
+            pg,
+            "SELECT count(*) AS n FROM player_stats_actions_by_game"
+          )$n[[1]]
+          custom_actions_elapsed <- (proc.time() - custom_actions_t0)["elapsed"]
+          log_msg(sprintf(
+            "  [INC] player_stats_actions_by_game refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
+            length(processed_ids),
+            format(as.integer(custom_actions_touch), big.mark = ","),
+            format(as.integer(custom_actions_cnt), big.mark = ","),
+            custom_actions_elapsed
           ))
 
           onoff_t0 <- proc.time()
