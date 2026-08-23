@@ -217,11 +217,17 @@ class PostgresBackendTest(unittest.TestCase):
         )
 
         self.assertEqual(connection.statements[0], ("BEGIN", None))
+        # The timeout lift must sit INSIDE the transaction and BEFORE the
+        # refresh: SET LOCAL reverts at COMMIT, so the order is the contract.
         self.assertEqual(
             connection.statements[1],
+            ("SET LOCAL statement_timeout = 0", None),
+        )
+        self.assertEqual(
+            connection.statements[2],
             ("SELECT euroleague.refresh_app_materialized_views()", None),
         )
-        sql, parameters = connection.statements[2]
+        sql, parameters = connection.statements[3]
         self.assertIn("UPDATE euroleague.load_runs", sql)
         self.assertEqual(parameters[0:3], ("partial", 2, 1))
         self.assertIn('"gamecode":3', str(parameters[3]))
