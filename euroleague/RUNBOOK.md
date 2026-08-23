@@ -2,22 +2,98 @@
 
 How to load games into the `euroleague` schema without needing an agent session.
 
-## Current checkpoint (2026-08-12)
+## Current checkpoint (2026-08-19)
 
-- Games 1-100 were loaded and passed the scoped verification.
-- Cached source coverage was subsequently extended through game 402. PBP was
-  known missing for game 396 and games 400-402 before the latest retry; use
-  `--allow-missing-inputs` if intentionally publishing around such gaps.
-- Load run 12 committed base `actions` snapshots for 80 games, but its grouped
-  derived refresh failed on provider gamecode 249. The package lineup contains
-  `BOLOMBOY, JOEL` twice, violating the unique-player lineup constraint.
-- Derived refreshes now run one game per transaction. A future failure records
-  that game and continues; it no longer rolls back neighboring derived games.
-- The EuroLeague consumer refresh uses the migration-016 non-cross-product
-  action-lineup design.
-- Migration 020 is implemented but not applied. Once approved and applied, the
-  standard clutch preset is served from an exact per-game cache refreshed only
-  for changed games; custom clutch definitions remain action-level.
+Every figure below was read from the live schema on the date in the heading.
+Re-measure before trusting it; the previous checkpoint went eight days stale
+while claiming 100 games were loaded, and that staleness is part of how a
+106-game gap survived unnoticed.
+
+### What is loaded
+
+| Competition | Season | Games | Gamecodes | RS | Post |
+|---|---|---|---|---|---|
+| `E` EuroLeague | 2025-26 | 398 | 1-399 | 380 | 18 |
+| `U` EuroCup | 2025-26 | 195 | 1-195 | 180 | 15 |
+
+Both regular seasons are complete and contiguous. E/2025 gamecode **396** is
+absent and that is correct — post-season codes are pre-allocated for the maximum
+games in a series, and that slot belongs to a sweep. Run
+`scripts/run_euro_data_quality_report.R` to re-confirm coverage rather than
+reasoning from this table.
+
+Schema footprint: **2342 MB**. This is far past the 500 MB default budget in
+check `N9`, on an instance shared with the Israeli schema, and there is still no
+EuroLeague cold storage. Treat further large loads as a storage decision.
+
+### Known broken games (4)
+
+| Competition | Gamecode | Round |
+|---|---|---|
+| `E` | 249 | 25 |
+| `U` | 17 | 2 |
+| `U` | 73 | 8 |
+| `U` | 174 | 18 |
+
+All four fail `lineup_totals_by_game_player_ids_check`: the package lineup names
+one player twice (the original was `BOLOMBOY, JOEL` on E/249). Their base
+`actions` are committed; only the derived facts are missing, so they are absent
+from four-factors, lineup, on-off and player-stats surfaces while still counting
+in team ratings. There is no correction layer yet, so they stay broken until one
+exists or the staging dedup rule changes.
+
+### Load-run history worth knowing
+
+- **Run 17** is recorded `partial` (53 ok / 53 failed) and that record is now
+  misleading. Its 53 derived failures were caused by migration 030 having
+  dropped an offense-only `seconds` guard, fixed by migration 040; all 53 were
+  repaired afterwards by re-running the derived refresh. Do not reload them.
+- **Run 16** (`U`, partial, 3 failed) is the origin of the three EuroCup games
+  above and is genuinely unresolved.
+- Derived refreshes run one game per transaction, so a failure records that game
+  and continues without rolling back its neighbours. Note that all eight refresh
+  functions still share a single transaction *per game*, so any one of them
+  failing discards that game's other derived facts too — that is what turned one
+  bad column into 53 games of missing statistics.
+
+### Migration state
+
+Applied: **001, 002, 004-041**. One gap: **003** was superseded by 004 and will
+never be applied.
+
+Migration 039 **is** applied. `sub_lineups_stats_mv` carries
+`starters_poss_num` (38,059 rows, none null) and all three of
+`fetch_lineups_direct`, `_dynamic` and `_pergame` return it, so Tab 10's
+"# Starters" resolves normally — around 4.6-5.0 for the heaviest five-man
+units.
+
+> When checking whether 039 is applied, look for **`starters_poss_num`**, not
+> `num_starters`. The SQL layer never contains the latter: 039 returns the
+> possession-weighted **numerator** and `server_tab10_euro_lineups.R:451`
+> divides it by `off_poss + def_poss` to get `num_starters` in R. Searching the
+> function result types for the ratio name finds nothing and looks exactly like
+> an unapplied migration.
+
+Migration 020 **is** applied — the earlier checkpoint's "implemented but not
+applied" was obsolete; the standard clutch preset is served from the per-game
+cache in `default_clutch_lineup_totals_by_game` (5,263 rows). The consumer
+refresh uses the migration-016 non-cross-product action-lineup design.
+
+There is no migrations table, so applied-state can only be established by
+checking for the objects a migration creates or the columns it adds. Do that
+before assuming a number in this list is still right.
+
+Recent, and worth knowing before the next load:
+
+- **040** restores the offense-only `seconds` guard in `clutch_team_game_facts`.
+  Without it every game with a clutch segment fails its derived refresh.
+- **041** merges the two `player_four_factors_by_game` scans in
+  `player_traditional_stats_mv` (60.2s to 41.8s; full MV set 138.8s to 111.0s).
+- `finish_load_run` now lifts `statement_timeout` around the app MV refresh.
+  That refresh rebuilds all eight MVs over the whole schema, so its cost grows
+  with total games and it had crossed the 2-minute connection default at 593
+  games — cancelling *after* every game had committed, which reports success
+  while the app serves stale aggregates.
 
 ## TL;DR
 
@@ -103,6 +179,13 @@ transactions, followed by one app materialized-view refresh. A failed game does
 not roll back earlier games. Verification runs
 automatically and the command returns exit code 0 only when every check passes.
 
+Note what that exit code does and does not mean. Verification asserts that
+every gamecode **you requested** is present and sound. It cannot tell you the
+range itself was wrong: a game outside `--games` is not checked, not reported,
+and not counted as missing. Exit code 0 says "what you asked for arrived", never
+"you asked for everything". The season-completeness checks in the data quality
+report are what answer the second question.
+
 Verify without collecting or writing:
 
 ```powershell
@@ -115,12 +198,17 @@ codes; do not mix them in one load range.
 
 ### Two-phase large load
 
-For a large range, separate provider traffic from database processing. Phase 1
-fetches all payloads in 20-game batches and pauses between batches:
+For a large range, separate provider traffic from database processing. **Both
+phases must use the identical `<FIRST>-<LAST>` range.** They are independent
+arguments, so a phase 2 range narrower than phase 1 leaves the difference cached
+but unpublished, with no error — see the warning under *Partial-cache and
+box-score workflows* for what that cost once.
+
+Phase 1 fetches all payloads in 20-game batches and pauses between batches:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '101-180' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --fetch-only --collect-workers 1 --fetch-batch-size 20 --fetch-batch-sleep 60
 ```
 
@@ -129,7 +217,7 @@ cache and performs staging/publication without contacting the provider:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '101-180' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --skip-fetch --execute --stage-workers 1
 ```
 
@@ -139,13 +227,33 @@ requested. If phase 2 fails, rerun it with `--skip-fetch`.
 
 ### Partial-cache and box-score workflows
 
+> **Substitute your own range for `<FIRST>-<LAST>` below, and check it against
+> what is actually cached before running.** These commands previously carried a
+> literal `217-402`. On 2026-08-11 a fetch swept games 100 through 250+, but the
+> publish that followed was copied from here with its literal range intact and
+> started at 217. Gamecodes **111-216** — rounds 12-21 plus six of round 22 —
+> were therefore fetched, validated and cached, and never staged or published.
+> They stayed missing for eight days while the app served team ratings computed
+> without them, understating every team's games played by up to eleven.
+>
+> Nothing caught it: `--verify-only` asserts that every *requested* gamecode is
+> present, and a range nobody requested is never checked. The fetch range and
+> the publish range are independent inputs, and **a publish range narrower than
+> what you cached fails silently** — there is no error, just absent games.
+>
+> The report now has two checks for exactly this
+> (`Rscript scripts/run_euro_data_quality_report.R`):
+> `N10_regular_season_gamecode_gaps` finds holes inside the loaded regular
+> season, and `N11_cached_payloads_never_loaded` finds cached payloads with no
+> schedule row. Run it after any load whose range you composed by hand.
+
 PBP is fetched before box scores in the current orchestrator because it is the
 main API bottleneck. To fill only box-score gaps without touching PBP or the
 database:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '217-402' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --boxscores-only --collect-workers 1 `
   --fetch-batch-size 20 --fetch-batch-sleep 60
 ```
@@ -154,7 +262,7 @@ To publish every available cached game while deliberately omitting missing PBP:
 
 ```powershell
 & .venv\Scripts\python.exe scripts\load_games.py `
-  --games '217-402' --season 2025 --competition E `
+  --games '<FIRST>-<LAST>' --season 2025 --competition E `
   --skip-fetch --allow-missing-inputs --execute --stage-workers 1
 ```
 
