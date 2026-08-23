@@ -26,6 +26,7 @@ MV_REGISTRY <- list(
   list(name = "player_advanced_stats_mv",       file = "sql/materialized_views/player_advanced_stats_mv.sql",      level = 3, type = "table"),
   list(name = "player_traditional_by_game",     file = "sql/materialized_views/player_traditional_by_game.sql",     level = 3, type = "table"),
   list(name = "default_clutch_player_totals_by_game", file = "sql/materialized_views/default_clutch_player_totals_by_game.sql", level = 3, type = "table"),
+  list(name = "player_stats_actions_by_game", file = "sql/materialized_views/player_stats_actions_by_game.sql", level = 3, type = "table"),
   list(name = "player_traditional_stats_mv",    file = "sql/materialized_views/player_traditional_stats_mv.sql",   level = 3),
   list(name = "team_metrics_rolling_mv",        file = "sql/materialized_views/team_metrics_rolling_mv.sql",       level = 3),
   list(name = "team_four_factors_mv",           file = "sql/materialized_views/team_four_factors_mv.sql",          level = 4),

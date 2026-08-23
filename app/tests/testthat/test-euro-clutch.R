@@ -127,6 +127,7 @@ test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
   # Israel now shares the request classifier: non-clutch and the exact cached
   # standard preset use per-game facts; custom clutch retains the action scan.
   expect_match(traditional, '"get_player_traditional_from_games"', fixed = TRUE)
-  expect_match(traditional, '"get_player_traditional_dynamic"', fixed = TRUE)
-  expect_match(traditional, 'reader_kind %in% c("pergame", "dynamic")', fixed = TRUE)
+  expect_match(traditional, '"get_player_traditional_custom_clutch"', fixed = TRUE)
+  expect_match(traditional, 'pergame = "get_player_traditional_from_games"', fixed = TRUE)
+  expect_match(traditional, 'dynamic = "get_player_traditional_from_games"', fixed = TRUE)
 })
