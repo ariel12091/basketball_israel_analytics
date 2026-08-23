@@ -621,8 +621,8 @@ blank_to_na_character <- function(x) {
 }
 
 # Which of the three EuroLeague clutch-capable readers answers a request.
-# Shared by Tabs 9 and 10 -- the two surfaces that route the same four clutch
-# parameters -- so the classification cannot drift between them.
+# Shared by Tabs 5, 9 and 10 -- the three surfaces that route the same four
+# clutch parameters -- so the classification cannot drift between them.
 #
 #   "pergame" no margin/time predicate at all. The per-game facts (migrations
 #             037 and 038) answer it without an action scan.

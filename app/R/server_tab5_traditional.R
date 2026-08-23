@@ -906,75 +906,52 @@ server_tab5_traditional <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    has_int_value <- function(x) {
-      x <- suppressWarnings(as.integer(x))
-      length(x) == 1L && is.finite(x)
-    }
-    margin_status_value <- blank_to_na_character(margin_status)
-    clutch_active <- has_int_value(max_margin) || has_int_value(max_time_remaining) ||
-      (length(margin_status_value) == 1L && !is.na(margin_status_value) &&
-         nzchar(margin_status_value))
-    if (isTRUE(clutch_active)) {
-      standard_clutch <- identical(suppressWarnings(as.integer(max_margin)), 5L) &&
-        identical(margin_status_value %||% "all", "all") &&
-        identical(suppressWarnings(as.integer(max_time_remaining)), 300L) &&
-        !isTRUE(ot_margin_filter)
-      if (isTRUE(standard_clutch)) {
-        return(db_get_query(
-          pool,
-          paste0(
-            "SELECT * FROM euroleague.get_player_traditional_standard_clutch(",
-            "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
-            "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-            "$13::int4,$14::int4,$15::int4)"
-          ),
-          params = list(
-            competition, as.integer(game_year),
-            if (!is.na(start_d)) as.Date(start_d) else NA,
-            if (!is.na(end_d)) as.Date(end_d) else NA,
-            team_ids_csv, phase_csv, opp_ids_csv, home_away, outcome,
-            opp_rank_side, opp_rank_n, opp_rank_metric,
-            min_gn, max_gn, last_n_games
-          )
-        ))
-      }
-      return(db_get_query(
-        pool,
-        paste0(
-          "SELECT * FROM euroleague.get_player_traditional_custom_clutch(",
-          "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
-          "$8::text,$9::text,$10::text,$11::int4,$12::text,$13::int4,",
-          "$14::text,$15::int4,$16::bool,$17::int4,$18::int4,$19::int4)"
-        ),
-        params = list(
-          competition, as.integer(game_year),
-          if (!is.na(start_d)) as.Date(start_d) else NA,
-          if (!is.na(end_d)) as.Date(end_d) else NA,
-          team_ids_csv, phase_csv, opp_ids_csv, home_away, outcome,
-          opp_rank_side, opp_rank_n, opp_rank_metric,
-          max_margin, margin_status, max_time_remaining, ot_margin_filter,
-          min_gn, max_gn, last_n_games
-        )
-      ))
-    }
-    db_get_query(
-      pool,
-      paste0(
-        "SELECT * FROM euroleague.get_player_traditional_dynamic(",
-        "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
-        "$8::text,$9::text,$10::text,$11::int4,$12::text,$13::int4,",
-        "$14::text,$15::int4,$16::bool,$17::int4,$18::int4,$19::int4)"
-      ),
-      params = list(
-        competition, as.integer(game_year),
-        if (!is.na(start_d)) as.Date(start_d) else NA,
-        if (!is.na(end_d)) as.Date(end_d) else NA,
-        team_ids_csv, phase_csv, opp_ids_csv, home_away, outcome,
-        opp_rank_side, opp_rank_n, opp_rank_metric,
-        max_margin, margin_status, max_time_remaining, ot_margin_filter,
-        min_gn, max_gn, last_n_games
-      )
+    # Which of the three readers answers this request is clutch_reader_kind()
+    # in helpers.R -- the classifier Tabs 9 and 10 already route through. This
+    # function used to inline its own copy, down to a private has_int_value()
+    # character-identical to the helper's is_set().
+    #
+    # The kind names describe the REQUEST, not the reader, and the two
+    # vocabularies do not line up here: kind "pergame" (no clutch predicate at
+    # all) is answered by ..._dynamic, and kind "dynamic" (the cached
+    # 5 / all / 5:00 preset) by ..._standard_clutch. Read the map, not the
+    # suffix.
+    reader <- switch(
+      clutch_reader_kind(list(
+        max_margin = max_margin, margin_status = margin_status,
+        max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter
+      )),
+      pergame = "get_player_traditional_dynamic",
+      dynamic = "get_player_traditional_standard_clutch",
+      "get_player_traditional_custom_clutch"
     )
+
+    # get_player_traditional_standard_clutch bakes the preset into the function,
+    # so it takes the twelve context parameters and none of the four clutch
+    # ones; the other two take all nineteen. Signature and parameter list are
+    # therefore chosen together, never independently.
+    takes_clutch <- !identical(reader, "get_player_traditional_standard_clutch")
+    context <- list(
+      competition, as.integer(game_year),
+      if (!is.na(start_d)) as.Date(start_d) else NA,
+      if (!is.na(end_d)) as.Date(end_d) else NA,
+      team_ids_csv, phase_csv, opp_ids_csv, home_away, outcome,
+      opp_rank_side, opp_rank_n, opp_rank_metric
+    )
+    sig <- paste0("$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+                  "$8::text,$9::text,$10::text,$11::int4,$12::text,")
+    if (takes_clutch) {
+      sig <- paste0(sig, "$13::int4,$14::text,$15::int4,$16::bool,",
+                    "$17::int4,$18::int4,$19::int4")
+      params <- c(context,
+                  list(max_margin, margin_status, max_time_remaining, ot_margin_filter),
+                  list(min_gn, max_gn, last_n_games))
+    } else {
+      sig <- paste0(sig, "$13::int4,$14::int4,$15::int4")
+      params <- c(context, list(min_gn, max_gn, last_n_games))
+    }
+    db_get_query(pool, paste0("SELECT * FROM euroleague.", reader, "(", sig, ")"),
+                 params = params)
   }
 
   fallback_needed <- reactive({

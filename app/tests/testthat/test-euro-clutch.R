@@ -100,3 +100,31 @@ test_that("clutch_reader_kind routes by what the request actually asks for", {
     "direct"
   )
 })
+
+test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
+  traditional <- read_repo_txt("R", "server_tab5_traditional.R")
+
+  # Tab 5 inlined its own copy of the three-way test, down to a private
+  # has_int_value() character-identical to the helper's is_set(). The copies
+  # agreed only because the clutch status select uses a literal "all" value
+  # rather than the project's "" blank sentinel; adopting that convention
+  # would have split them silently.
+  expect_match(traditional, "clutch_reader_kind(list(", fixed = TRUE)
+  expect_no_match(traditional, "clutch_active <-", fixed = TRUE)
+  expect_no_match(traditional, "has_int_value <- function", fixed = TRUE)
+
+  # Kind names describe the request, reader names the SQL function, and the
+  # two vocabularies cross over: pergame -> _dynamic, dynamic -> _standard_clutch.
+  expect_match(traditional, 'pergame = "get_player_traditional_dynamic"', fixed = TRUE)
+  expect_match(traditional, 'dynamic = "get_player_traditional_standard_clutch"', fixed = TRUE)
+  expect_match(traditional, '"get_player_traditional_custom_clutch"', fixed = TRUE)
+
+  # The standard-clutch reader bakes the preset in and takes none of the four
+  # clutch parameters, so reader and parameter list must be chosen together.
+  expect_match(traditional, "takes_clutch <- !identical(reader,", fixed = TRUE)
+  expect_match(traditional, '"$13::int4,$14::int4,$15::int4"', fixed = TRUE)
+
+  # The Israeli companion has no routing at all: one unconditional reader that
+  # takes the clutch parameters straight through. Nothing to share there.
+  expect_match(traditional, "basketball_test.get_player_traditional_dynamic(", fixed = TRUE)
+})
