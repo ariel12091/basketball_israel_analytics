@@ -5,7 +5,11 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 SQL = (ROOT / "sql" / "031_direct_team_custom_readers.sql").read_text(encoding="utf-8")
 INDEX_SQL = (ROOT / "sql" / "032_team_action_covering_index.sql").read_text(encoding="utf-8")
-APP = (ROOT.parent / "app" / "R" / "server_tab9_euro_team.R").read_text(encoding="utf-8")
+# Scope: this file tests the SQL migration only. The app-side routing
+# contract (which reader each tab picks) lives in clutch_reader_kind() and is
+# tested in app/tests/testthat/test-euro-clutch.R, behaviourally. Do not grep
+# app/R from here -- a cross-boundary source assertion went stale unnoticed
+# when that routing was refactored into the shared helper.
 
 
 class DirectTeamReadersMigrationTest(unittest.TestCase):
@@ -26,13 +30,6 @@ class DirectTeamReadersMigrationTest(unittest.TestCase):
             SQL.count("OR (a.is_overtime AND NOT coalesce(p_ot_margin_filter,false))"),
             4,
         )
-
-    def test_app_keeps_standard_cache_and_routes_other_requests_direct(self):
-        self.assertIn("use_direct_team_reader <- function(p)", APP)
-        self.assertIn('"get_team_ratings_direct"', APP)
-        self.assertIn('"get_team_four_factors_direct"', APP)
-        self.assertIn('"get_team_ratings_dynamic"', APP)
-        self.assertIn('"get_team_four_factors_dynamic"', APP)
 
     def test_covering_index_contains_only_direct_team_inputs(self):
         self.assertIn("CREATE INDEX CONCURRENTLY", INDEX_SQL)

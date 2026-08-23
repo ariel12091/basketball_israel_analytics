@@ -4,7 +4,11 @@ import unittest
 ROOT=Path(__file__).resolve().parents[1]
 SQL=(ROOT/'sql'/'035_direct_lineups_reader.sql').read_text(encoding='utf-8')
 INDEX_SQL=(ROOT/'sql'/'036_lineups_covering_index.sql').read_text(encoding='utf-8')
-APP=(ROOT.parent/'app'/'R'/'server_tab10_euro_lineups.R').read_text(encoding='utf-8')
+# Scope: this file tests the SQL migration only. The app-side routing
+# contract (which reader each tab picks) lives in clutch_reader_kind() and is
+# tested in app/tests/testthat/test-euro-clutch.R, behaviourally. Do not grep
+# app/R from here -- a cross-boundary source assertion went stale unnoticed
+# when that routing was refactored into the shared helper.
 
 class DirectLineupsMigrationTest(unittest.TestCase):
     def test_one_action_set_feeds_events_and_duration(self):
@@ -17,12 +21,6 @@ class DirectLineupsMigrationTest(unittest.TestCase):
     def test_five_players_bypass_sub_lineups(self):
         self.assertIn('WHERE p_unit_size=5',SQL)
         self.assertIn('WHERE p_unit_size BETWEEN 2 AND 4',SQL)
-
-    def test_app_routes_only_clutch_requests_direct(self):
-        self.assertIn('clutch_active <-',APP)
-        self.assertIn('standard_clutch <-',APP)
-        self.assertIn('"fetch_lineups_direct"',APP)
-        self.assertIn('"fetch_lineups_dynamic"',APP)
 
     def test_covering_index_has_identity_metrics_and_duration(self):
         self.assertIn('CREATE INDEX IF NOT EXISTS',INDEX_SQL)
