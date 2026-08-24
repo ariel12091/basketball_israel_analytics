@@ -468,3 +468,20 @@ test_that("home storylines stay gated when a bookmark restores another tab", {
   expect_match(app_r_txt, 'restored_input_value(session, "main_tabs")', fixed = TRUE)
   expect_match(hub_txt, "suspendWhenHidden = TRUE", fixed = TRUE)
 })
+
+test_that("league switcher cannot redirect a restored EuroLeague tab to Home", {
+  js <- read_repo_txt("www", "app.js")
+
+  expect_match(
+    js,
+    'var bookmarkRestorePending = location.search.indexOf("_inputs_") !== -1;',
+    fixed = TRUE
+  )
+  expect_match(
+    js,
+    "owner !== league && !opts.noRedirect && !bookmarkRestorePending",
+    fixed = TRUE
+  )
+  expect_match(js, "applyValue(restoredValue, { noRedirect: true });", fixed = TRUE)
+  expect_match(js, "bookmarkRestorePending = false;", fixed = TRUE)
+})

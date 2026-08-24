@@ -1012,6 +1012,13 @@
   };
   var STORE_KEY = "ibpl_league_select";
   var DEFAULT_VALUE = "il";
+  // Shiny restores main_tabs and league_select independently. During that
+  // startup window the select can briefly report its UI default (Israeli)
+  // after main_tabs has already restored a EuroLeague page. Treating that
+  // transient mismatch as a real league switch clicks Home and destroys the
+  // restored tab. Keep both leagues on the same native bookmark path by
+  // disabling only the mismatch redirect until Shiny finishes initialization.
+  var bookmarkRestorePending = location.search.indexOf("_inputs_") !== -1;
 
   // Which league owns each league_select value. Deliberately explicit rather
   // than "anything that is not Israeli must be EuroLeague": that assumption
@@ -1100,7 +1107,7 @@
     // invisible -- go Home rather than stranding the user on a hidden tab.
     var current = activeTabValue();
     var owner = current ? TAB_LEAGUE[current] : null;
-    if (owner && owner !== league && !opts.noRedirect) {
+    if (owner && owner !== league && !opts.noRedirect && !bookmarkRestorePending) {
       var home = document.querySelector('.navbar a[data-value="home"]');
       if (home) home.click();
     }
@@ -1182,7 +1189,10 @@
 
     if (window.jQuery) {
       window.jQuery(document).one("shiny:sessioninitialized", function() {
-        writeSelect(desiredValue());
+        var restoredValue = desiredValue();
+        writeSelect(restoredValue);
+        applyValue(restoredValue, { noRedirect: true });
+        bookmarkRestorePending = false;
       });
     }
   }
