@@ -7,12 +7,12 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "t")
   )
 
-  competition <- reactive(euro_selected_competition(input))
-  season <- reactive(euro_selected_game_year(input))
-  teams_df <- reactive(euro_fetch_teams(competition(), season()))
+  competition <- shared$euro$competition
+  season <- shared$euro$season
+  teams_df <- shared$euro$teams_df
 
-  setup_euro_section_filters(input, session, "eurogl", competition, season,
-                             teams_df, "eurogl_dates")
+  setup_euro_section_filters(input, session, "eurogl", tab_id = "euro_game_logs",
+                             euro_context = shared$euro, date_id = "eurogl_dates")
   setup_gn_last_n_sync(session, input, "eurogl")
 
   observeEvent(input$eurogl_reset, {

@@ -469,6 +469,10 @@ server <- function(input, output, session) {
     )
   }, ignoreInit = TRUE)
 
+  # One lazy EuroLeague reference-data owner. Hidden EuroLeague tabs consume
+  # this context only when selected instead of running parallel startup loads.
+  euro_context <- make_euro_shared_context(input)
+
   # Create shared context for tab servers
   shared <- list(
     season_date_bounds = season_date_bounds,
@@ -481,12 +485,13 @@ server <- function(input, output, session) {
     hub_storylines_ready_year = hub_storylines_ready_year,
     pending_ld_team = reactiveVal(NULL),
     pending_gl_team = reactiveVal(NULL),
-    pending_compare_preset = reactiveVal(NULL)
+    pending_compare_preset = reactiveVal(NULL),
+    euro = euro_context
   )
 
   # One competition + season pair for the whole EuroLeague section.
   # Populated here, never per tab -- two tabs updating the same input fight.
-  euro_init_season_inputs(input, session)
+  euro_init_season_inputs(input, session, euro_context)
 
   # Call tab server modules
   server_tab1(input, output, session, shared)

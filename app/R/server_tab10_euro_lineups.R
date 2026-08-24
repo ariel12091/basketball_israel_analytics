@@ -26,21 +26,21 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   setup_stat_filter_handlers("euro_ld", input, session,
                              euro_ld_stat_filter_cols, euro_ld_stat_filter_state)
 
-  euro_competition <- reactive(euro_selected_competition(input))
-  euro_season <- reactive(euro_selected_game_year(input))
+  euro_competition <- shared$euro$competition
+  euro_season <- shared$euro$season
 
   # --- Reference data -------------------------------------------------------
   # Own cache keys throughout. Reusing an Israeli lookup's key would serve one
   # league's teams and players to the other.
-  observeEvent(list(euro_competition(), euro_season()), {
+  observeEvent(list(input$main_tabs, euro_competition(), euro_season()), {
+    if (!identical(input$main_tabs, "euro_lineups")) return(invisible(NULL))
     comp <- euro_competition()
     season <- euro_season()
     if (is.null(comp) || is.null(season) || is.na(season)) return(invisible(NULL))
 
-    teams <- tryCatch(euro_fetch_teams(comp, season), error = function(e) NULL)
+    teams <- shared$euro$teams_df()
     euro_ld_ref$teams <- teams
-    euro_ld_ref$players <- tryCatch(euro_fetch_players_basic(comp, season),
-                                    error = function(e) NULL)
+    euro_ld_ref$players <- shared$euro$players_df()
 
     team_choices <- if (!is.null(teams) && nrow(teams)) {
       c(setNames("", "- All teams -"),
@@ -56,15 +56,14 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       session, input, "euro_ld_opponents", opponent_choices, server = FALSE
     )
 
-    phase_choices <- euro_phase_choices(comp, season)
+    phase_choices <- shared$euro$phase_choices()
     update_restore_aware_selectize(
       session, input, "euro_ld_phase", phase_choices, server = FALSE
     )
 
-    rounds <- tryCatch(euro_fetch_round_values(comp, season), error = function(e) NULL)
-    update_gn_last_n_choices(session, "euro_ld", rounds$gn)
+    update_gn_last_n_choices(session, "euro_ld", shared$euro$round_values())
 
-    apply_season_date_bounds(session, "euro_ld_date_range", euro_season_date_bounds(season))
+    apply_season_date_bounds(session, "euro_ld_date_range", shared$euro$date_bounds())
   }, ignoreInit = FALSE)
 
   setup_gn_last_n_sync(session, input, "euro_ld")

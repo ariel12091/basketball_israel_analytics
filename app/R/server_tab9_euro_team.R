@@ -14,16 +14,14 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   # ---- Competition + season come from the shared navbar selectors ----
   # Same inputs the On/Off tab reads, populated once in app.R, so changing
   # season once changes it for the whole EuroLeague section.
-  et_competition <- reactive(euro_selected_competition(input))
-  et_season <- reactive(euro_selected_game_year(input))
-  et_teams_df <- reactive(euro_fetch_teams(et_competition(), et_season()))
+  et_competition <- shared$euro$competition
+  et_season <- shared$euro$season
+  et_teams_df <- shared$euro$teams_df
 
   # Teams / opponents / phase / rounds / dates all follow competition + season.
   # Shared with the other EuroLeague tabs; see setup_euro_section_filters().
-  setup_euro_section_filters(input, session, "euroteam",
-                             competition = et_competition,
-                             season = et_season,
-                             teams_df = et_teams_df,
+  setup_euro_section_filters(input, session, "euroteam", tab_id = "euro_team",
+                             euro_context = shared$euro,
                              date_id = "euroteam_dates")
 
   setup_gn_last_n_sync(session, input, "euroteam")

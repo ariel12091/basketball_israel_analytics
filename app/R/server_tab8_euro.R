@@ -22,18 +22,14 @@ server_tab8_euro <- function(input, output, session, shared) {
   # navbar's input$game_year, which is the Israeli season-ending year
   # (2026 = 2025-26) while EuroLeague uses the provider season (2025 = 2025-26).
   # One selector value must never mean two seasons.
-  euro_competition <- reactive(euro_selected_competition(input))
-  euro_selected_season <- reactive(euro_selected_game_year(input))
-  euro_teams_df <- reactive({
-    euro_fetch_teams(euro_competition(), euro_selected_season())
-  })
+  euro_competition <- shared$euro$competition
+  euro_selected_season <- shared$euro$season
+  euro_teams_df <- shared$euro$teams_df
 
   # Teams / opponents / phase / rounds / dates all follow competition + season.
   # Shared with the other EuroLeague tabs; see setup_euro_section_filters().
-  setup_euro_section_filters(input, session, "euro",
-                             competition = euro_competition,
-                             season = euro_selected_season,
-                             teams_df = euro_teams_df,
+  setup_euro_section_filters(input, session, "euro", tab_id = "euro",
+                             euro_context = shared$euro,
                              date_id = "euro_date_range")
 
   euro_stat_filter_cols <- reactive({
@@ -55,7 +51,7 @@ server_tab8_euro <- function(input, output, session, shared) {
     resetting(TRUE)
     # Reset to the newest loaded season for this competition, not to the
     # Israeli DEFAULT_GAME_YEAR, which is a different numbering entirely.
-    seasons <- tryCatch(euro_fetch_seasons(euro_competition()), error = function(e) NULL)
+    seasons <- shared$euro$seasons_df()
     default_season <- if (!is.null(seasons) && nrow(seasons)) {
       as.character(seasons$game_year[[1]])
     } else {
@@ -100,7 +96,7 @@ server_tab8_euro <- function(input, output, session, shared) {
   ) %>% debounce(300)
 
   # Same GN/last-N resolution as every other tab; "GN" here is the round
-  # number, which is what euro_fetch_round_values() populates the choices from.
+  # number supplied by the shared EuroLeague reference context.
   gn_params <- reactive(resolve_gn_last_n_params(input, "euro")) %>% debounce(150)
 
   build_onoff_db_args <- function() {

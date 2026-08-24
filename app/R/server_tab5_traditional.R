@@ -428,9 +428,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
   # and post-processing stay identical; this small adapter owns only the
   # league-specific selector, reference, and SQL contracts.
   ts_is_euro <- reactive(!identical(input$league_select %||% "il", "il"))
-  ts_competition <- reactive(euro_selected_competition(input))
+  ts_competition <- shared$euro$competition
   ts_game_year <- reactive({
-    value <- if (ts_is_euro()) euro_selected_game_year(input) else input$game_year
+    value <- if (ts_is_euro()) shared$euro$season() else input$game_year
     value <- suppressWarnings(as.integer(value))
     if (length(value) != 1L || !is.finite(value)) {
       value <- if (ts_is_euro()) as.integer(EURO_DEFAULT_SEASON) else as.integer(DEFAULT_GAME_YEAR)
@@ -438,7 +438,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     value
   })
   ts_season_bounds <- function(game_year = ts_game_year()) {
-    if (ts_is_euro()) euro_season_date_bounds(game_year)
+    if (ts_is_euro()) shared$euro$date_bounds()
     else shared$season_date_bounds(game_year)
   }
   ts_game_type_value <- reactive({
@@ -560,7 +560,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     req(gy_int)
 
     teams_df <- if (ts_is_euro()) {
-      euro_fetch_teams(ts_competition(), gy_int)
+      shared$euro$teams_df()
     } else {
       fetch_teams_distinct(gy_int)
     }
@@ -584,7 +584,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     )
 
     players_df <- if (ts_is_euro()) {
-      ep <- euro_fetch_players_basic(ts_competition(), gy_int)
+      ep <- shared$euro$players_df()
       ep$team_name <- unname(stats::setNames(
         as.character(teams_df$team_name), as.character(teams_df$team_id)
       )[as.character(ep$team_id)])
@@ -616,17 +616,18 @@ server_tab5_traditional <- function(input, output, session, shared) {
     refresh_ts_player_choices()
 
     if (ts_is_euro()) {
+      phase_choices <- shared$euro$phase_choices()
       updateSelectizeInput(
         session, "ts_phase",
-        choices = euro_phase_choices(ts_competition(), gy_int),
+        choices = phase_choices,
         selected = restore_aware_selection(
           session, "ts_phase", isolate(input$ts_phase),
-          euro_phase_choices(ts_competition(), gy_int)
+          phase_choices
         )
       )
     }
     gn_df <- if (ts_is_euro()) {
-      euro_fetch_round_values(ts_competition(), gy_int)
+      data.frame(gn = shared$euro$round_values())
     } else {
       fetch_gn_values(gy_int)
     }

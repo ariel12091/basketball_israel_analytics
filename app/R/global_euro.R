@@ -150,35 +150,31 @@ euro_phase_choices <- function(competition, season) {
   stats::setNames(vals, euro_phase_label(vals))
 }
 
-# The whole standard filter set in one observer, for the tabs whose controls
-# follow the usual shape: <prefix>_teams / _opponents / _phase selectize inputs
-# and the _gn_min / _gn_max / _last_n trio. Tab 10 drives a filter module and
-# uses selectInput for its GN controls, so it composes the primitives above
-# itself rather than calling this.
-#
-# Keyed on competition AND season together. Tab 8 previously refreshed its
-# dates and round choices on season change alone, so switching EuroLeague to
-# EuroCup left the old competition's rounds in the dropdown.
-setup_euro_section_filters <- function(input, session, prefix, competition, season,
-                                       teams_df, date_id) {
-  observeEvent(list(competition(), season()), {
-    apply_season_date_bounds(session, date_id, euro_season_date_bounds(season()))
+# Populate one tab's standard controls from the section-wide lazy reference
+# context. Hidden navbar tabs are mounted by Shiny, so the active-tab guard is
+# essential: without it all EuroLeague tabs query and rebuild at startup.
+setup_euro_section_filters <- function(input, session, prefix, tab_id,
+                                       euro_context, date_id) {
+  observeEvent(list(input$main_tabs, euro_context$competition(),
+                    euro_context$season()), {
+    if (!identical(input$main_tabs, tab_id)) return(invisible(NULL))
 
-    choices <- team_select_choices_with_all(teams_df(), all_label = NULL)
+    apply_season_date_bounds(session, date_id, euro_context$date_bounds())
+
+    choices <- team_select_choices_with_all(euro_context$teams_df(), all_label = NULL)
     for (id in paste0(prefix, c("_teams", "_opponents"))) {
       update_restore_aware_selectize(session, input, id, choices)
     }
 
     phase_id <- paste0(prefix, "_phase")
-    phase_choices <- euro_phase_choices(competition(), season())
+    phase_choices <- euro_context$phase_choices()
     update_restore_aware_selectize(
       session, input, phase_id, phase_choices, server = FALSE
     )
 
     # "GN" is the round number here, never the provider gamecode. NULL from a
     # failed lookup coerces to integer(0) inside the shared helper.
-    rd <- tryCatch(euro_fetch_round_values(competition(), season()), error = function(e) NULL)
-    update_gn_last_n_choices(session, prefix, rd$gn)
+    update_gn_last_n_choices(session, prefix, euro_context$round_values())
   }, ignoreInit = FALSE)
 }
 
@@ -224,13 +220,12 @@ euro_navbar_season_ui <- function() {
 
 # Populate the EuroLeague season list from what is actually loaded. Called ONCE
 # from app.R -- if each tab did this they would fight over the same input.
-euro_init_season_inputs <- function(input, session) {
+euro_init_season_inputs <- function(input, session, euro_context) {
   observeEvent(input$league_select, {
     # Under the Israeli league the EuroLeague season select is hidden and its
     # choices are meaningless; leave them alone rather than rebuilding them.
     if (identical(input$league_select %||% "", "il")) return(invisible(NULL))
-    comp <- euro_selected_competition(input)
-    seasons <- tryCatch(euro_fetch_seasons(comp), error = function(e) NULL)
+    seasons <- euro_context$seasons_df()
     vals <- if (!is.null(seasons) && nrow(seasons)) as.character(seasons$game_year) else EURO_DEFAULT_SEASON
     choices <- stats::setNames(vals, euro_season_label(vals))
     restored <- restore_once_selection(
@@ -255,6 +250,38 @@ euro_selected_competition <- function(input) {
 euro_selected_game_year <- function(input) {
   val <- input$euro_game_year %||% EURO_DEFAULT_SEASON
   if (!nzchar(val)) EURO_DEFAULT_SEASON else as.character(val)
+}
+
+# One lazy reference-data owner for every EuroLeague consumer. A reactive is
+# evaluated only when an active tab asks for it, and its value is then shared by
+# On/Off, Lineups, Team Ratings, Game Logs, and the shared Player Stats tab.
+make_euro_shared_context <- function(input) {
+  competition <- reactive(euro_selected_competition(input))
+  season <- reactive(euro_selected_game_year(input))
+
+  list(
+    competition = competition,
+    season = season,
+    seasons_df = reactive({
+      tryCatch(euro_fetch_seasons(competition()), error = function(e) NULL)
+    }),
+    teams_df = reactive({
+      tryCatch(euro_fetch_teams(competition(), season()), error = function(e) NULL)
+    }),
+    players_df = reactive({
+      tryCatch(euro_fetch_players_basic(competition(), season()), error = function(e) NULL)
+    }),
+    phase_choices = reactive({
+      euro_phase_choices(competition(), season())
+    }),
+    round_values = reactive({
+      rd <- tryCatch(euro_fetch_round_values(competition(), season()), error = function(e) NULL)
+      if (is.null(rd) || !NROW(rd)) integer(0) else rd$gn
+    }),
+    date_bounds = reactive({
+      euro_season_date_bounds(season())
+    })
+  )
 }
 
 EURO_PHASE_LABELS <- c(
