@@ -512,7 +512,8 @@ apply_season_date_bounds <- function(session, input_id, bounds) {
       is.na(b$start) || is.na(b$end)) {
     return(invisible(FALSE))
   }
-  updateDateRangeInput(session, input_id, start = b$start, end = b$end,
+  selected <- restore_once_date_range(session, input_id, b)
+  updateDateRangeInput(session, input_id, start = selected[[1]], end = selected[[2]],
                        min = b$start, max = b$end)
   invisible(TRUE)
 }
@@ -776,6 +777,42 @@ restore_once_selection <- function(session, id, current, choices) {
   if (!is.null(env)) assign(id, TRUE, envir = env)
   if (!length(candidate) || !length(choices)) return(character(0))
   intersect(candidate, as.character(unname(choices)))
+}
+
+# Shared by Israeli and EuroLeague choice-population observers. Rebuilding a
+# selectize's choices must preserve either its live value or Shiny's restored
+# bookmark value; callers should not reimplement this update sequence.
+update_restore_aware_selectize <- function(session, input, id, choices,
+                                           server = TRUE) {
+  selected <- restore_aware_selection(
+    session, id, isolate(input[[id]]), choices
+  )
+  updateSelectizeInput(
+    session, id, choices = choices, selected = selected, server = server
+  )
+  invisible(selected)
+}
+
+restore_once_date_range <- function(session, id, bounds) {
+  candidate <- character(0)
+  if (!restore_value_consumed(session, id)) {
+    candidate <- sanitize_persisted_choices(restored_input_value(session, id))
+  }
+
+  candidate <- suppressWarnings(as.Date(candidate))
+  start <- suppressWarnings(as.Date(bounds$start))
+  end <- suppressWarnings(as.Date(bounds$end))
+  valid <- length(candidate) == 2L && !anyNA(candidate) &&
+    candidate[[1]] >= start && candidate[[2]] <= end && candidate[[1]] <= candidate[[2]]
+
+  # A EuroLeague tab observer can briefly see the default season before the
+  # shared season selector applies its restored value. Do not consume a validly
+  # shaped bookmark merely because those first bounds belong to another season.
+  if (!length(candidate) || valid) {
+    env <- restore_consumed_env(session)
+    if (!is.null(env)) assign(id, TRUE, envir = env)
+  }
+  if (valid) candidate else c(start, end)
 }
 
 csv_if_any <- function(x, integerize = FALSE) {

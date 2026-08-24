@@ -40,9 +40,7 @@ server_tab1 <- function(input, output, session, shared) {
   # ======== On/Off tab Logic ===================================
   observeEvent(shared$selected_game_year(), {
     bounds <- shared$season_date_bounds(shared$selected_game_year())
-    updateDateRangeInput(session, "date_range",
-                         start = bounds$start, end = bounds$end,
-                         min = bounds$start, max = bounds$end)
+    apply_season_date_bounds(session, "date_range", bounds)
 
     gy_int <- as.integer(shared$selected_game_year())
     gn_df <- fetch_gn_values(gy_int)

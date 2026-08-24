@@ -457,7 +457,7 @@ server_tab3 <- function(input, output, session, shared) {
   # refreshes choice pools so it never clobbers user-picked dates on tab switch.
   observeEvent(input$game_year, {
     b <- shared$season_date_bounds(input$game_year %||% DEFAULT_GAME_YEAR)
-    updateDateRangeInput(session, "tr_dates", start = b$start, end = b$end, min = b$start, max = b$end)
+    apply_season_date_bounds(session, "tr_dates", b)
   }, ignoreInit = FALSE)
 
   observeEvent(list(input$game_year, input$main_tabs), ignoreInit = FALSE, {

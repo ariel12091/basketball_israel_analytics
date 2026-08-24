@@ -51,13 +51,15 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     selected_team <- ld_filter$update_team_choices(team_choices)
     ld_filter$refresh_player_choices(team_value = selected_team)
 
-    updateSelectizeInput(session, "euro_ld_opponents",
-                         choices = team_select_choices_with_all(teams, all_label = NULL),
-                         selected = character(0), server = FALSE)
+    opponent_choices <- team_select_choices_with_all(teams, all_label = NULL)
+    update_restore_aware_selectize(
+      session, input, "euro_ld_opponents", opponent_choices, server = FALSE
+    )
 
-    updateSelectizeInput(session, "euro_ld_phase",
-                         choices = euro_phase_choices(comp, season),
-                         selected = character(0), server = FALSE)
+    phase_choices <- euro_phase_choices(comp, season)
+    update_restore_aware_selectize(
+      session, input, "euro_ld_phase", phase_choices, server = FALSE
+    )
 
     rounds <- tryCatch(euro_fetch_round_values(comp, season), error = function(e) NULL)
     update_gn_last_n_choices(session, "euro_ld", rounds$gn)

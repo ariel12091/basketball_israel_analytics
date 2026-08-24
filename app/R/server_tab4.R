@@ -297,7 +297,7 @@ server_tab4 <- function(input, output, session, shared) {
 
   observeEvent(input$game_year, {
     b <- shared$season_date_bounds(input$game_year)
-    updateDateRangeInput(session, "gl_dates", start = b$start, end = b$end, min = b$start, max = b$end)
+    apply_season_date_bounds(session, "gl_dates", b)
   }, ignoreInit = FALSE)
 
   gl_gn_params <- reactive({

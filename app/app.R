@@ -282,12 +282,7 @@ server <- function(input, output, session) {
     td <- teams_for_year_df()
     team_choices <- stats::setNames(as.character(td$team_id), as.character(td$team_name))
     for (id in c("teams", "on_opponents", "ld_opponents")) {
-      updateSelectizeInput(
-        session, id,
-        choices = team_choices,
-        selected = restore_aware_selection(session, id, isolate(input[[id]]), team_choices),
-        server = TRUE
-      )
+      update_restore_aware_selectize(session, input, id, team_choices)
     }
   }, ignoreInit = FALSE)
 

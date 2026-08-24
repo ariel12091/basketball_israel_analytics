@@ -166,13 +166,14 @@ setup_euro_section_filters <- function(input, session, prefix, competition, seas
 
     choices <- team_select_choices_with_all(teams_df(), all_label = NULL)
     for (id in paste0(prefix, c("_teams", "_opponents"))) {
-      updateSelectizeInput(session, id, choices = choices,
-                           selected = character(0), server = TRUE)
+      update_restore_aware_selectize(session, input, id, choices)
     }
 
-    updateSelectizeInput(session, paste0(prefix, "_phase"),
-                         choices = euro_phase_choices(competition(), season()),
-                         selected = character(0))
+    phase_id <- paste0(prefix, "_phase")
+    phase_choices <- euro_phase_choices(competition(), season())
+    update_restore_aware_selectize(
+      session, input, phase_id, phase_choices, server = FALSE
+    )
 
     # "GN" is the round number here, never the provider gamecode. NULL from a
     # failed lookup coerces to integer(0) inside the shared helper.
@@ -231,10 +232,14 @@ euro_init_season_inputs <- function(input, session) {
     comp <- euro_selected_competition(input)
     seasons <- tryCatch(euro_fetch_seasons(comp), error = function(e) NULL)
     vals <- if (!is.null(seasons) && nrow(seasons)) as.character(seasons$game_year) else EURO_DEFAULT_SEASON
-    sel <- isolate(input$euro_game_year) %||% EURO_DEFAULT_SEASON
-    if (!sel %in% vals) sel <- vals[[1]]
+    choices <- stats::setNames(vals, euro_season_label(vals))
+    restored <- restore_once_selection(
+      session, "euro_game_year", character(0), choices
+    )
+    current <- as.character(isolate(input$euro_game_year) %||% "")
+    sel <- if (length(restored)) restored[[1]] else if (current %in% vals) current else vals[[1]]
     updateSelectInput(session, "euro_game_year",
-                      choices = stats::setNames(vals, euro_season_label(vals)),
+                      choices = choices,
                       selected = sel)
   }, ignoreInit = FALSE)
 }

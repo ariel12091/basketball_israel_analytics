@@ -126,13 +126,15 @@ test_that("choice-populating observers preserve restored selections", {
   tab5_txt <- read_repo_txt("R", "server_tab5_traditional.R")
   tab7_txt <- read_repo_txt("R", "server_tab7_compare.R")
   mod_txt  <- read_repo_txt("R", "mod_lineup_player_filter.R")
+  euro_global <- read_repo_txt("R", "global_euro.R")
+  euro_lineups <- read_repo_txt("R", "server_tab10_euro_lineups.R")
 
   # the startup population path must not hard-reset selections any more
   expect_false(grepl(
     'updateSelectizeInput(session, "teams", choices = team_choices, selected = character(0)',
     app_r_txt, fixed = TRUE
   ))
-  expect_match(app_r_txt, "restore_aware_selection(", fixed = TRUE)
+  expect_match(app_r_txt, "update_restore_aware_selectize(", fixed = TRUE)
 
   for (txt in list(tab3_txt, tab4_txt, tab5_txt, tab7_txt)) {
     expect_match(txt, "restore_aware_selection(", fixed = TRUE)
@@ -142,6 +144,18 @@ test_that("choice-populating observers preserve restored selections", {
   expect_match(mod_txt, "restore_seed <- new.env(", fixed = TRUE)
   expect_match(mod_txt, 'restored_input_value(session, "team")', fixed = TRUE)
   expect_match(mod_txt, "selection_with_restore_seed(", fixed = TRUE)
+
+  # EuroLeague choice rebuilds use the same restore bridges as Israel.
+  expect_match(euro_global, "update_restore_aware_selectize(", fixed = TRUE)
+  expect_match(
+    euro_global,
+    'restore_once_selection(\n      session, "euro_game_year"',
+    fixed = TRUE
+  )
+  expect_match(euro_lineups, 'session, "euro_ld_opponents"', fixed = TRUE)
+  expect_match(euro_lineups, 'session, "euro_ld_phase"', fixed = TRUE)
+
+  expect_match(app_r_txt, "update_restore_aware_selectize(session, input, id, team_choices)", fixed = TRUE)
 })
 
 test_that("restored tab choice observers run initially and restore lineup players", {
@@ -243,6 +257,32 @@ test_that("restore_once_selection applies a bookmarked value exactly once", {
   expect_equal(restore_once_selection(s, "gl_team", NULL, choices), character(0))
   # an explicit current value always wins
   expect_equal(restore_once_selection(s, "gl_team", "7", choices), "7")
+})
+
+test_that("EuroLeague date ranges restore once before later season resets", {
+  s <- fake_restore_session(paste0(
+    '?_inputs_&euroteam_dates=',
+    '%5B%222025-11-01%22%2C%222026-02-01%22%5D'
+  ))
+  s$userData <- new.env(parent = emptyenv())
+  bounds <- list(start = as.Date("2025-09-01"), end = as.Date("2026-07-01"))
+
+  expect_equal(
+    restore_once_date_range(
+      s, "euroteam_dates",
+      list(start = as.Date("2024-09-01"), end = as.Date("2025-07-01"))
+    ),
+    as.Date(c("2024-09-01", "2025-07-01"))
+  )
+
+  expect_equal(
+    restore_once_date_range(s, "euroteam_dates", bounds),
+    as.Date(c("2025-11-01", "2026-02-01"))
+  )
+  expect_equal(
+    restore_once_date_range(s, "euroteam_dates", bounds),
+    as.Date(c("2025-09-01", "2026-07-01"))
+  )
 })
 
 test_that("GN and last-N rebuilds seed from the bookmark once, then clear", {
