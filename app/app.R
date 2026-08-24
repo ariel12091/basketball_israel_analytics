@@ -134,8 +134,10 @@ build_ui <- function() {
 # all twelve tabs on every page load -- measured at ~3s of a ~7s cold start,
 # producing output that never differs. Build it once per worker instead.
 #
-# Bookmark restore is unaffected: it runs server-side through
-# session$restoreContext / restored_input_value(), not by varying this HTML.
+# Bookmark filters restore server-side through session$restoreContext /
+# restored_input_value(). Because navbarPage() resolves its selected tab while
+# this cached tree is built, server() reasserts the per-session main_tabs value
+# after the first flush through restore_tabset_after_flush().
 #
 # Set IBPL_CACHE_UI=false when editing www/app.css or www/app.js -- those are
 # read by includeCSS()/includeScript() while this tree is built, so with the
@@ -226,6 +228,7 @@ server <- function(input, output, session) {
   })
 
   restored_tab <- sanitize_single_choice(restored_input_value(session, "main_tabs"))
+  restore_tabset_after_flush(session, "main_tabs", restored_tab)
   startup_restore_pending <- reactiveVal(
     nzchar(restored_tab) && !identical(restored_tab, "home")
   )
