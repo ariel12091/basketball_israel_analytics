@@ -79,30 +79,14 @@ test_that("restored_input_value resolves module namespaces", {
   expect_equal(as.character(restored_input_value(s, "players_off")), "201")
 })
 
-test_that("cached navbar UI reasserts any league's restored tab after the first flush", {
-  sent <- new.env(parent = emptyenv())
-  sent$id <- NULL
-  sent$message <- NULL
-  sent$count <- 0L
-  fake_session <- shiny:::MockShinySession$new()
-  unlockBinding("sendInputMessage", fake_session)
-  fake_session$sendInputMessage <- function(inputId, message) {
-    sent$id <- inputId
-    sent$message <- message
-    sent$count <- sent$count + 1L
-  }
-
-  expect_true(restore_tabset_after_flush(fake_session, "main_tabs", "euro_team"))
-  expect_null(sent$id)
-  fake_session$flushReact()
-  expect_identical(sent$id, "main_tabs")
-  expect_identical(sent$message$value, "euro_team")
-  fake_session$flushReact()
-  expect_identical(sent$count, 1L)
-
-  sent$id <- NULL
-  expect_false(restore_tabset_after_flush(fake_session, "main_tabs", character(0)))
-  expect_null(sent$id)
+test_that("bookmark requests are distinguished from ordinary cached UI requests", {
+  expect_true(is_bookmark_request(list(
+    QUERY_STRING = "_inputs_&main_tabs=%22euro_team%22&league_select=%22E%22"
+  )))
+  expect_true(is_bookmark_request(list(QUERY_STRING = "?_inputs_&main_tabs=home")))
+  expect_false(is_bookmark_request(list(QUERY_STRING = "")))
+  expect_false(is_bookmark_request(list(QUERY_STRING = "foo=_inputs_")))
+  expect_false(is_bookmark_request(list()))
 })
 
 test_that("restore_aware_selection prefers current, falls back to restored, filters to choices", {
@@ -492,12 +476,19 @@ test_that("home storylines stay gated when a bookmark restores another tab", {
 
   expect_match(app_r_txt, "startup_restore_pending", fixed = TRUE)
   expect_match(app_r_txt, 'restored_input_value(session, "main_tabs")', fixed = TRUE)
+  expect_match(hub_txt, "suspendWhenHidden = TRUE", fixed = TRUE)
+})
+
+test_that("bookmarks use the original per-request UI restore path", {
+  app_r_txt <- read_repo_txt("app.R")
+
   expect_match(
     app_r_txt,
-    'restore_tabset_after_flush(session, "main_tabs", restored_tab)',
+    "if (.UI_CACHE_ENABLED && !is_bookmark_request(request)) return(.UI_CACHED)",
     fixed = TRUE
   )
-  expect_match(hub_txt, "suspendWhenHidden = TRUE", fixed = TRUE)
+  expect_match(app_r_txt, "build_ui()", fixed = TRUE)
+  expect_false(grepl("restore_tabset_after_flush", app_r_txt, fixed = TRUE))
 })
 
 test_that("league switcher cannot redirect a restored EuroLeague tab to Home", {

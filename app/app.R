@@ -128,16 +128,15 @@ build_ui <- function() {
   )
 }
 
-# The UI tree is byte-identical for every request: `request` is unused, and
-# nothing in it reads the clock, the database, or a random source (verified
-# 2026-08-18). But enableBookmarking() requires a function UI, so Shiny rebuilt
-# all twelve tabs on every page load -- measured at ~3s of a ~7s cold start,
-# producing output that never differs. Build it once per worker instead.
+# Ordinary requests share one byte-identical UI tree per worker, avoiding the
+# measured ~3s cost of rebuilding all tabs. Bookmarked requests are the one
+# deliberate exception: navbarPage() calls restoreInput() while the UI is
+# built, so it must run inside that request's restore context to select the
+# saved main_tabs page. This is the original, browser-verified Israeli restore
+# path and applies unchanged to EuroLeague, EuroCup, and shared tabs.
 #
-# Bookmark filters restore server-side through session$restoreContext /
-# restored_input_value(). Because navbarPage() resolves its selected tab while
-# this cached tree is built, server() reasserts the per-session main_tabs value
-# after the first flush through restore_tabset_after_flush().
+# Server-populated choices still restore through session$restoreContext /
+# restored_input_value(); only UI-time restoreInput() requires a fresh tree.
 #
 # Set IBPL_CACHE_UI=false when editing www/app.css or www/app.js -- those are
 # read by includeCSS()/includeScript() while this tree is built, so with the
@@ -145,7 +144,10 @@ build_ui <- function() {
 .UI_CACHE_ENABLED <- !tolower(trimws(Sys.getenv("IBPL_CACHE_UI", "true"))) %in%
   c("0", "false", "no", "off")
 .UI_CACHED <- if (.UI_CACHE_ENABLED) build_ui() else NULL
-ui <- function(request) .UI_CACHED %||% build_ui()
+ui <- function(request) {
+  if (.UI_CACHE_ENABLED && !is_bookmark_request(request)) return(.UI_CACHED)
+  build_ui()
+}
 
 # ---------------- Server ----------------
 server <- function(input, output, session) {
@@ -228,7 +230,6 @@ server <- function(input, output, session) {
   })
 
   restored_tab <- sanitize_single_choice(restored_input_value(session, "main_tabs"))
-  restore_tabset_after_flush(session, "main_tabs", restored_tab)
   startup_restore_pending <- reactiveVal(
     nzchar(restored_tab) && !identical(restored_tab, "home")
   )

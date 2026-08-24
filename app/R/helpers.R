@@ -731,21 +731,14 @@ restored_input_value <- function(session, id, default = character(0)) {
   default
 }
 
-# navbarPage() resolves restoreInput() while its UI tree is built. Because the
-# app caches that otherwise-static tree once per worker, its initial active tab
-# is necessarily Home rather than the per-session bookmarked tab. Reassert the
-# saved selection through the normal Shiny tabset update after the first flush.
-# This is league-neutral: Israeli, EuroLeague, EuroCup, and shared tabs all use
-# the same main_tabs input and the same restore path.
-restore_tabset_after_flush <- function(session, input_id, restored_value) {
-  selected <- sanitize_single_choice(restored_value)
-  if (!nzchar(selected)) return(invisible(FALSE))
-
-  session$onFlushed(function() {
-    updateTabsetPanel(session, input_id, selected = selected)
-  }, once = TRUE)
-
-  invisible(TRUE)
+# URL bookmarking marks restored requests with a standalone `_inputs_` query
+# component. Those requests must rebuild the UI inside their restore context so
+# Shiny's native restoreInput() can select static controls such as main_tabs.
+is_bookmark_request <- function(request) {
+  query <- tryCatch(request$QUERY_STRING %||% "", error = function(e) "")
+  if (!nzchar(query)) return(FALSE)
+  query <- sub("?", "", query, fixed = TRUE)
+  "_inputs_" %in% strsplit(query, "&", fixed = TRUE)[[1]]
 }
 
 restore_aware_selection <- function(session, id, current, choices) {
