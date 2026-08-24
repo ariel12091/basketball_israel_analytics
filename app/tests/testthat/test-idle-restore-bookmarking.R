@@ -41,7 +41,7 @@ test_that("bookmark exclusion handles empty and NULL input safely", {
 
 fake_restore_session <- function(query_string) {
   ctx <- shiny:::RestoreContext$new(query_string)
-  list(restoreContext = ctx)
+  list(restoreContext = ctx, request = list(QUERY_STRING = query_string))
 }
 
 test_that("restored_input_value reads saved values even after they were used", {
@@ -59,8 +59,19 @@ test_that("restored_input_value falls back to the default", {
   expect_identical(restored_input_value(s, "missing_id"), character(0))
   expect_identical(restored_input_value(s, "missing_id", "fallback"), "fallback")
 
-  no_ctx <- list(restoreContext = NULL)
+  no_ctx <- list(restoreContext = NULL, request = list(QUERY_STRING = ""))
   expect_identical(restored_input_value(no_ctx, "teams"), character(0))
+})
+
+test_that("restored_input_value survives a consumed or missing native context", {
+  s <- list(
+    restoreContext = NULL,
+    request = list(
+      QUERY_STRING = "_inputs_&main_tabs=%22euro%22&euro_teams=%5B%221%22%5D"
+    )
+  )
+
+  expect_equal(as.character(restored_input_value(s, "euro_teams")), "1")
 })
 
 test_that("restored_input_value resolves module namespaces", {

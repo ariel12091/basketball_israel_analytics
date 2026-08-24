@@ -715,19 +715,57 @@ bookmark_excluded_ids <- function(input_ids) {
   ids[hit]
 }
 
-# restoreContext$input$get() marks a value as used; force = TRUE lets the
-# server re-read values that the UI already consumed via restoreInput().
+# Build an independent restore reader from the immutable HTTP request. Slow
+# server-populated controls can have their native restore value consumed by an
+# empty selectize before their choices arrive; the request query is still the
+# authoritative bookmark in that case.
+request_restore_context <- function(session) {
+  user_data <- tryCatch(session$userData, error = function(e) NULL)
+  cache_key <- ".ibpl_request_restore_context"
+  if (is.environment(user_data) &&
+      exists(cache_key, envir = user_data, inherits = FALSE)) {
+    cached <- get(cache_key, envir = user_data, inherits = FALSE)
+    return(if (identical(cached, FALSE)) NULL else cached)
+  }
+
+  query <- tryCatch(
+    suppressWarnings(session$request$QUERY_STRING),
+    error = function(e) NULL
+  )
+  if (is.null(query) || !length(query) || !nzchar(query[[1]])) {
+    query <- tryCatch(isolate(session$clientData$url_search), error = function(e) NULL)
+  }
+  ctx <- NULL
+  if (!is.null(query) && length(query) && nzchar(query[[1]])) {
+    query <- as.character(query[[1]])
+    if (!startsWith(query, "?")) query <- paste0("?", query)
+    if (grepl("(?:^|[?&])_inputs_(?:&|$)", query, perl = TRUE)) {
+      ctx <- tryCatch(shiny:::RestoreContext$new(query), error = function(e) NULL)
+    }
+  }
+  if (is.environment(user_data)) {
+    assign(cache_key, if (is.null(ctx)) FALSE else ctx, envir = user_data)
+  }
+  ctx
+}
+
+# restoreContext$input$get() marks a value as used; force = TRUE normally lets
+# the server re-read it. The request-backed context is a timing-independent
+# fallback shared by both leagues.
 restored_input_value <- function(session, id, default = character(0)) {
-  ctx <- tryCatch(session$restoreContext, error = function(e) NULL)
-  if (is.null(ctx) || !isTRUE(ctx$active)) return(default)
+  native_ctx <- tryCatch(session$restoreContext, error = function(e) NULL)
+  contexts <- list(native_ctx, request_restore_context(session))
   namespaced_id <- tryCatch(session$ns(id), error = function(e) id)
   candidate_ids <- unique(c(as.character(namespaced_id), as.character(id)))
-  for (candidate_id in candidate_ids) {
-    val <- tryCatch(
-      ctx$input$get(candidate_id, force = TRUE),
-      error = function(e) NULL
-    )
-    if (!is.null(val) && length(val)) return(val)
+  for (ctx in contexts) {
+    if (is.null(ctx) || !isTRUE(ctx$active)) next
+    for (candidate_id in candidate_ids) {
+      val <- tryCatch(
+        ctx$input$get(candidate_id, force = TRUE),
+        error = function(e) NULL
+      )
+      if (!is.null(val) && length(val)) return(val)
+    }
   }
   default
 }
