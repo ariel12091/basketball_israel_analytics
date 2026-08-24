@@ -680,12 +680,15 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     rows$off_ppp <- round(safe_rate(rows$off_pts, rows$off_poss), 1)
     rows$def_ppp <- round(safe_rate(rows$def_pts, rows$def_poss), 1)
     rows$net <- round(rows$off_ppp - rows$def_ppp, 1)
+    rows$plus_minus <- as.numeric(rows$off_pts) - as.numeric(rows$def_pts)
+    rows$total_poss <- as.numeric(rows$off_poss) + as.numeric(rows$def_poss)
     rows$venue <- ifelse(isTRUE(rows$is_home) | rows$is_home %in% TRUE, "H", "A")
     show <- rows[, c("game_date", "round_number", "opp_team_name", "venue",
-                     "minutes", "off_poss", "off_ppp", "def_poss", "def_ppp",
-                     "net")]
+                     "minutes", "total_poss", "off_ppp", "def_ppp", "net",
+                     "plus_minus", "off_poss", "off_pts", "def_poss", "def_pts")]
     names(show) <- c("Date", "Rd", "Opponent", "H/A", "Min",
-                     "Off Poss", "Off PPP", "Def Poss", "Def PPP", "Net")
+                     "Total Poss", "Off PPP", "Def PPP", "Net", "+/-",
+                     "Off Poss", "Off Pts", "Def Poss", "Def Pts")
 
     showModal(modalDialog(
       title = "Lineup game log",
