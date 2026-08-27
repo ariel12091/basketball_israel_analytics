@@ -383,6 +383,7 @@ class LineupUnitWiringTest(unittest.TestCase):
         "matchup_segments_actions", "action_team_context_actions",
         "lineup_totals_by_game", "sub_lineups",
         "default_clutch_lineup_totals_by_game",
+        "player_traditional_by_game",
     }
 
     def test_schema_allowlist_accepts_the_unit_relations(self) -> None:
@@ -423,9 +424,15 @@ class LineupUnitWiringTest(unittest.TestCase):
         fact = index_of("refresh_actions_consumer_candidates")
         totals = index_of("refresh_lineup_totals_by_game")
         units = index_of("refresh_sub_lineups")
+        player_ff = index_of("refresh_player_four_factors_by_game_for_games")
+        team_ff = index_of("refresh_team_four_factors_by_game_for_games")
+        traditional = index_of("refresh_player_traditional_by_game_for_games")
 
         self.assertLess(fact, totals, "the event fact must be refreshed first")
         self.assertLess(totals, units, "units are expanded from lineup totals")
+        self.assertLess(player_ff, traditional)
+        self.assertLess(team_ff, traditional)
+        self.assertLess(totals, traditional)
 
     def test_validate_game_refreshes_default_clutch_after_the_fact(self) -> None:
         connection = LoadRunConnection()
@@ -462,6 +469,18 @@ class LineupUnitWiringTest(unittest.TestCase):
         self.assertLess(player_stats, clutch)
         self.assertLess(fact, clutch)
         self.assertEqual(connection.statements[clutch][1], ([23, 24],))
+
+        player_ff = next(i for i, s in enumerate(executed)
+                         if "refresh_player_four_factors_by_game_for_games" in s)
+        team_ff = next(i for i, s in enumerate(executed)
+                       if "refresh_team_four_factors_by_game_for_games" in s)
+        traditional = next(i for i, s in enumerate(executed)
+                           if "refresh_player_traditional_by_game_for_games" in s)
+        self.assertLess(player_ff, traditional)
+        self.assertLess(team_ff, traditional)
+        totals = next(i for i, s in enumerate(executed)
+                      if "refresh_lineup_totals_by_game" in s)
+        self.assertLess(totals, traditional)
 
 
 if __name__ == "__main__":

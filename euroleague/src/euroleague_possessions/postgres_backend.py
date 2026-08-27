@@ -397,6 +397,7 @@ def assert_shadow_schema_compatible(connection: Any) -> None:
         "default_clutch_lineup_totals_by_game",
         "default_clutch_player_totals_by_game",
         "player_stats_actions_by_game",
+        "player_traditional_by_game",
         *TABLE_COLUMNS.keys(),
     }
     unknown = existing.difference(expected)
@@ -642,6 +643,7 @@ def refresh_derived_for_games(connection: Any, game_ids: Sequence[int]) -> None:
             "refresh_player_four_factors_by_game_for_games",
             "refresh_team_four_factors_by_game_for_games",
             "refresh_lineup_totals_by_game",
+            "refresh_player_traditional_by_game_for_games",
             "refresh_sub_lineups",
         ):
             cursor.execute(
@@ -1035,6 +1037,15 @@ class PostgresTransactionBackend:
             # surface silently omits it.
             cursor.execute(
                 "SELECT euroleague.refresh_lineup_totals_by_game("
+                "ARRAY[%s]::bigint[])",
+                (game_id,),
+            )
+            cursor.fetchone()
+            # The app-facing non-clutch Player Stats fact consumes mapped
+            # lineup IDs/seconds plus both four-factor facts, so it follows
+            # lineup_totals and precedes only the subset identity expansion.
+            cursor.execute(
+                "SELECT euroleague.refresh_player_traditional_by_game_for_games("
                 "ARRAY[%s]::bigint[])",
                 (game_id,),
             )

@@ -376,6 +376,7 @@ db_get_query <- function(pool, query, params = NULL) {
   }
 
   if (grepl("get_player_traditional_dynamic", q, fixed = TRUE) ||
+      grepl("get_player_traditional_pergame", q, fixed = TRUE) ||
       grepl("get_player_traditional_from_games", q, fixed = TRUE) ||
       grepl("get_player_traditional_custom_clutch", q, fixed = TRUE)) {
     out <- data.frame(

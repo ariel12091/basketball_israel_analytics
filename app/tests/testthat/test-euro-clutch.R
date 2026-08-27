@@ -113,15 +113,15 @@ test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
   expect_no_match(traditional, "clutch_active <-", fixed = TRUE)
   expect_no_match(traditional, "has_int_value <- function", fixed = TRUE)
 
-  # Kind names describe the request, reader names the SQL function, and the
-  # two vocabularies cross over: pergame -> _dynamic, dynamic -> _standard_clutch.
-  expect_match(traditional, 'pergame = "get_player_traditional_dynamic"', fixed = TRUE)
+  # Non-clutch uses the typed per-game companion; the standard preset keeps
+  # its existing cache and only custom requests carry clutch arguments.
+  expect_match(traditional, 'pergame = "get_player_traditional_pergame"', fixed = TRUE)
   expect_match(traditional, 'dynamic = "get_player_traditional_standard_clutch"', fixed = TRUE)
   expect_match(traditional, '"get_player_traditional_custom_clutch"', fixed = TRUE)
 
   # The standard-clutch reader bakes the preset in and takes none of the four
   # clutch parameters, so reader and parameter list must be chosen together.
-  expect_match(traditional, "takes_clutch <- !identical(reader,", fixed = TRUE)
+  expect_match(traditional, 'takes_clutch <- identical(reader, "get_player_traditional_custom_clutch")', fixed = TRUE)
   expect_match(traditional, '"$13::int4,$14::int4,$15::int4"', fixed = TRUE)
 
   # Israel now shares the request classifier: non-clutch and the exact cached

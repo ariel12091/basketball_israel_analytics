@@ -924,26 +924,21 @@ server_tab5_traditional <- function(input, output, session, shared) {
     # function used to inline its own copy, down to a private has_int_value()
     # character-identical to the helper's is_set().
     #
-    # The kind names describe the REQUEST, not the reader, and the two
-    # vocabularies do not line up here: kind "pergame" (no clutch predicate at
-    # all) is answered by ..._dynamic, and kind "dynamic" (the cached
-    # 5 / all / 5:00 preset) by ..._standard_clutch. Read the map, not the
-    # suffix.
+    # Non-clutch and the cached standard preset both use game-grain facts.
+    # Only a custom clutch request needs the four clutch parameters.
     reader <- switch(
       clutch_reader_kind(list(
         max_margin = max_margin, margin_status = margin_status,
         max_time_remaining = max_time_remaining, ot_margin_filter = ot_margin_filter
       )),
-      pergame = "get_player_traditional_dynamic",
+      pergame = "get_player_traditional_pergame",
       dynamic = "get_player_traditional_standard_clutch",
       "get_player_traditional_custom_clutch"
     )
 
-    # get_player_traditional_standard_clutch bakes the preset into the function,
-    # so it takes the twelve context parameters and none of the four clutch
-    # ones; the other two take all nineteen. Signature and parameter list are
-    # therefore chosen together, never independently.
-    takes_clutch <- !identical(reader, "get_player_traditional_standard_clutch")
+    # The per-game and standard-clutch readers take the same 15 context/game
+    # arguments. Only the custom reader takes the four clutch arguments.
+    takes_clutch <- identical(reader, "get_player_traditional_custom_clutch")
     context <- list(
       competition, as.integer(game_year),
       if (!is.na(start_d)) as.Date(start_d) else NA,
