@@ -103,7 +103,8 @@ def main() -> int:
             "       sum(pg_total_relation_size(c.oid)) "
             "FROM pg_class c "
             "JOIN pg_namespace n ON n.oid = c.relnamespace "
-            "WHERE n.nspname = 'euroleague'"
+            "WHERE n.nspname = 'euroleague' "
+            "  AND c.relkind IN ('r', 'm')"
         )
         pretty_size, size_bytes = cursor.fetchone()
         print(f"EuroLeague schema size: {pretty_size} ({size_bytes:,} bytes)")

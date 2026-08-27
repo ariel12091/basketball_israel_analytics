@@ -90,7 +90,10 @@ GATES: list[tuple[str, str]] = [
         ),
         game_length AS (
           SELECT game_id,
-                 2400 + 300 * greatest(max(period) - 4, 0) AS seconds
+                 2400 + 300 * greatest(
+                   max(euroleague.effective_period(period, minute, play_type)) - 4,
+                   0
+                 ) AS seconds
             FROM euroleague.actions
            GROUP BY game_id
         )

@@ -1,6 +1,6 @@
 # EuroLeague project handoff
 
-Last updated: 2026-08-13
+Last updated: 2026-08-28
 
 This is the current project handoff and the first document to read before
 changing the EuroLeague ETL, schema, or app integration. `CLAUDE.md` is a
@@ -8,6 +8,63 @@ historical record and must not be edited or treated as the current schema
 contract.
 
 ## Current state
+
+- Migration 043 was applied on 2026-08-27. Non-clutch Team Minutes now reads
+  the existing per-game lineup fact, with one additive `action_span_seconds`
+  column preserving the Israeli first-to-last-action duration convention. It
+  adds no table or unit expansion. Eight live presets matched the former
+  direct reader exactly; broad warm median improved from 1.889 seconds in the
+  apply comparison to 0.213 seconds, and last-10 measured 0.111 seconds. The
+  required database security audit and hardening pass both succeeded. The app
+  code is updated locally but was not deployed.
+- Migration 044 was applied on 2026-08-28 after explicit acceptance of a 0.550-
+  second median gate. The custom Player Stats function now reuses resolved IDs
+  from `lineup_totals_by_game`, runs at the Israeli PL/pgSQL function boundary,
+  disables per-call JIT, and deduplicates lineup identities before unnesting.
+  It adds no table, column, index, backfill, or publication work. The retained
+  run matched all bounded rows exactly, improved all three bounded medians, and
+  measured 0.519 seconds median / 0.547 seconds p90 over 15 broad warm samples.
+  The preceding rollback gate measured 0.524 seconds median; its first 2.961-
+  second sample was recorded as cache warming rather than hidden. The required
+  security audit and hardening pass succeeded. A separate 15-call check through
+  the configured pooled connection measured 0.528 seconds median; its first two
+  cold/session calls were 7.587 and 2.715 seconds. No app deployment was
+  performed.
+- A paired Tab 8 direct-fact source plus `(game_id, team_id)` index remains
+  rejected: it preserved broad/narrow results and improved broad ON/OFF from
+  9.876 to 0.878 seconds, but missed its 0.500-second gate; JIT-off regressed it
+  to 1.050 seconds. A scalar-`lineup_key` action-fact experiment also rolled
+  back: bounded rows were exact, but seven broad warm samples had a 0.583-
+  second median, proving that persistent array identity was not the final
+  bottleneck. That rewrite left physical free-space bloat even after autovacuum;
+  guarded `VACUUM (FULL, ANALYZE)` preserved all 665,814 rows and reduced the
+  fact plus indexes from 1,210,531,840 to 583,819,264 bytes, below its roughly
+  677 MB pre-experiment baseline. No scalar-key column or experimental Tab 8
+  index/function remains live.
+
+- On 2026-08-24, same-definition concurrent index compaction reduced the live
+  schema from 2,342 MB to 2,138 MB (about 204 MiB / 8.7%) without changing a
+  table, index definition, read function, or analytical result. The largest
+  fact, `player_stats_actions_by_game`, fell from 802 MB to 677 MB. Thirteen
+  reviewed indexes were rebuilt one at a time; all are valid/ready and no
+  concurrent-reindex shells remain. Use
+  `scripts/reindex_storage_candidates.py` for the guarded, repeatable process.
+- The apparently redundant 72 MB
+  `euroleague_player_stats_actions_team_idx` was retained. A transactional
+  A/B/A gate found exact results and a major Lineups improvement without it,
+  but a repeat apply gate measured broad custom Team Ratings at 0.900 s with
+  the index versus 1.040 s without it, exceeding the 10%/100 ms no-regression
+  limit. `scripts/benchmark_storage_indexes.py` preserves this acceptance
+  test and explicitly disables the loader helper's autocommit before testing
+  transactional DDL.
+- Post-compaction app-path medians with the full live index set were 0.878 s
+  broad custom Team Ratings, 0.248 s broad custom Four Factors, 0.095 s
+  one-team custom Ratings, 0.275 s broad custom Team Minutes, and 6.301 s
+  custom five-player Lineups. All compared result hashes were identical.
+- Storage verification now counts only table/materialized-view roots so
+  indexes are not counted twice, and the lineup-duration gate uses migration
+  015's `effective_period()` for provider-reset overtime clocks. The corrected
+  duration gate has zero mismatches across the live season.
 
 - The project uses an isolated `euroleague` schema in the existing PostgreSQL
   database. Never write EuroLeague data to the Israeli `basketball` or

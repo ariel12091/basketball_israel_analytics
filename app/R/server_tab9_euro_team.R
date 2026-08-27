@@ -198,29 +198,46 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   # separate from the rating facts so pace remains a ratio calculated only
   # after the selected games and starter contexts have been aggregated.
   run_team_minutes <- function(p) {
-    # Minutes has no per-game counterpart yet, so it keeps the original
-    # two-way choice: only the exact 5/all/5:00 preset uses the cached dynamic
-    # reader, everything else scans. Behaviour here is unchanged.
-    reader <- if (identical(clutch_reader_kind(p), "dynamic")) {
-      "get_team_minutes_dynamic"
-    } else {
+    kind <- clutch_reader_kind(p)
+    reader <- switch(kind,
+      pergame = "get_team_minutes_pergame",
+      dynamic = "get_team_minutes_dynamic",
       "get_team_minutes_direct"
+    )
+    head_params <- list(
+      p$competition, p$game_year, p$start_d, p$end_d,
+      p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
+      p$rank_side, p$rank_n, p$rank_metric
+    )
+    tail_params <- list(
+      p$min_gn, p$max_gn, p$last_n,
+      p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max
+    )
+    if (identical(kind, "pergame")) {
+      sig <- paste0(
+        "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+        "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+        "$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4"
+      )
+      params <- c(head_params, tail_params)
+    } else {
+      sig <- paste0(
+        "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+        "$8::text,$9::text,$10::text,$11::int4,$12::text,",
+        "$13::int4,$14::text,$15::int4,$16::bool,",
+        "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4"
+      )
+      params <- c(
+        head_params,
+        list(p$max_margin, p$margin_status,
+             p$max_time_remaining, p$ot_margin_filter),
+        tail_params
+      )
     }
     db_get_query(pg_pool,
       paste0("SELECT team_id, minutes AS game_minutes ",
-             "FROM euroleague.", reader, "(",
-             "$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
-             "$8::text,$9::text,$10::text,$11::int4,$12::text,",
-             "$13::int4,$14::text,$15::int4,$16::bool,",
-             "$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)"),
-      params = list(
-        p$competition, p$game_year, p$start_d, p$end_d,
-        p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
-        p$rank_side, p$rank_n, p$rank_metric,
-        p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-        p$min_gn, p$max_gn, p$last_n,
-        p$st_off_min, p$st_off_max, p$st_def_min, p$st_def_max
-      )
+             "FROM euroleague.", reader, "(", sig, ")"),
+      params = params
     )
   }
 

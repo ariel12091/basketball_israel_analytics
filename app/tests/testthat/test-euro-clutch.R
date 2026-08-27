@@ -45,6 +45,7 @@ test_that("EuroLeague clutch parameters reach ratings, factors, minutes, and lin
                fixed = TRUE)
   expect_match(team_server, "get_team_minutes_dynamic", fixed = TRUE)
   expect_match(team_server, "get_team_minutes_direct", fixed = TRUE)
+  expect_match(team_server, "get_team_minutes_pergame", fixed = TRUE)
   expect_match(lineup_server, "fetch_lineups_pergame", fixed = TRUE)
   expect_match(lineup_server, "fetch_lineups_dynamic", fixed = TRUE)
   expect_match(lineup_server, "fetch_lineups_direct", fixed = TRUE)

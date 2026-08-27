@@ -67,6 +67,7 @@ test_that("hardening covers the EuroLeague shadow schema on the same terms", {
     "get_team_four_factors_direct",
     "get_team_minutes_dynamic",
     "get_team_minutes_direct",
+    "get_team_minutes_pergame",
     "get_player_traditional_dynamic",
     "get_player_traditional_pergame",
     "effective_period",
