@@ -405,6 +405,52 @@ schedule endpoint.
 - **No cold storage.** Unlike the Israeli ETL, nothing is truncated or exported
   to Parquet after a run. Everything stays hot.
 
+## Migration 045 (Tab 8 query shape) - prepared, NOT applied
+
+Nothing from migration 045 is in the database. The functions still read
+`euroleague.player_game_context`, `euroleague_pff_game_team_idx` does not
+exist, and neither function has a `work_mem` setting. Full evidence and the
+resume steps are in `PROJECT.md`, section "Migration 045 - Tab 8 query shape".
+
+The harness is `scripts/apply_045_tab8_query_shape.py`. It defaults to rollback;
+`--apply` is the only path that commits, and it runs the identical gates first.
+
+```bash
+RSCRIPT="/c/Program Files/R/R-4.4.2/bin/Rscript.exe"
+PY=euroleague/.venv/Scripts/python.exe
+
+# Read-only: target, definition hashes, sizes, settings, privileges, and the
+# whole preset matrix. Performs no DDL at all. Takes ~15 minutes.
+"$PY" euroleague/scripts/apply_045_tab8_query_shape.py --baseline
+
+# Rollback-only gate of the migration file. Takes ~25 minutes.
+"$PY" euroleague/scripts/apply_045_tab8_query_shape.py --candidate MIGRATION   --expect-onoff-sha256 083d6ff31f82cbe62083b82f36d6b4c17ac994e613d064317e7fe0b2ddbd4f82   --expect-ff-sha256 3bac5d68cb82f0e0a0f7d8e3367eb26b57f728af2649673e192ea59e8bad6c3a
+
+# Restrict the matrix while iterating (empty result is always included).
+#   --presets "broad season,broad app dates,last 10,one team"
+# Skip the same-session Israeli companion timing:
+#   --no-companion
+```
+
+Notes for whoever picks this up:
+
+- **Run it on direct port 5432.** The script refuses any other port: candidate
+  DDL inside an uncommitted transaction is invisible to a pooled connection, so
+  a pooled gate would measure the old functions.
+- **Check for an active publication first.** The script does this itself and
+  refuses to start if any writer holds a lock on a `euroleague` relation. The
+  index build takes a SHARE lock on the 212 MB fact for the length of the
+  transaction, roughly 3-5 minutes on a dry run.
+- **Baselines are captured before the transaction opens**, so the lock is held
+  only for the candidate measurement, and no comparison is ever made between
+  two post-change executions.
+- **Killing the process mid-run is safe.** It was killed twice during this
+  work; the server rolled back both times, verified by re-reading the function
+  hashes and `pg_index`.
+- The expected pre-apply hashes above make the script refuse a stale target.
+  If they no longer match, someone changed the functions - stop and find out
+  who before proceeding.
+
 ## After a migration: re-run the security pass
 
 The `euroleague` schema is covered by the repository-wide database security

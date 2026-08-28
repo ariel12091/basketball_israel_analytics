@@ -9,6 +9,14 @@ contract.
 
 ## Current state
 
+- Migration 045 is **prepared and gated but NOT applied** (2026-08-28). The
+  database is unchanged: `euroleague.onoff_compute` and
+  `euroleague.four_factors_compute` still read `player_game_context`, the
+  `(game_id, team_id)` index does not exist, and neither function carries a
+  `work_mem` setting. Verified after every experiment by re-reading
+  `pg_get_functiondef` hashes and `pg_index`. See "Migration 045 - Tab 8 query
+  shape (prepared, not applied)" below for the full evidence.
+
 - Migration 043 was applied on 2026-08-27. Non-clutch Team Minutes now reads
   the existing per-game lineup fact, with one additive `action_span_seconds`
   column preserving the Israeli first-to-last-action duration convention. It
@@ -65,6 +73,205 @@ contract.
   indexes are not counted twice, and the lineup-duration gate uses migration
   015's `effective_period()` for provider-reset overtime clocks. The corrected
   duration gate has zero mismatches across the live season.
+
+### Current app-query timing overview (2026-08-28)
+
+A fresh read-only overview was run through the configured pooled connection
+after migrations 043-044, the rejected scalar-key experiment, and the guarded
+table compaction. Every probe fetched the complete result. The first execution
+was recorded as cold/session-start latency; the reported warm value is the
+median of the next three calls in the same connection. Each call had a 30-
+second statement cap. These are execution observations, not publication gates:
+
+| App-facing route | Rows | Cold | Warm median | Warm samples |
+|---|---:|---:|---:|---|
+| Tab 8 ON/OFF, broad | 358 | 10.548 s | 3.288 s | 6.775, 3.288, 0.863 s |
+| Tab 8 ON/OFF, last 10 | 288 | 0.296 s | 0.276 s | 0.280, 0.276, 0.274 s |
+| Tab 8 Four Factors, broad | 358 | 1.061 s | 0.945 s | 0.934, 0.945, 0.953 s |
+| Tab 8 Four Factors, last 10 | 288 | 0.292 s | 0.288 s | 0.325, 0.288, 0.285 s |
+| Player Stats, per-game broad | 340 | 0.497 s | 0.138 s | 0.132, 0.138, 0.141 s |
+| Player Stats, custom broad | 265 | 3.771 s | 0.515 s | 1.660, 0.515, 0.515 s |
+| Team Ratings, per-game | 20 | 0.892 s | 0.128 s | 0.134, 0.128, 0.123 s |
+| Team Ratings, custom | 20 | 14.671 s | 0.346 s | 0.822, 0.346, 0.343 s |
+| Team Four Factors, per-game | 20 | 0.380 s | 0.128 s | 0.128, 0.126, 0.130 s |
+| Team Four Factors, custom | 20 | 0.404 s | 0.355 s | 0.359, 0.350, 0.355 s |
+| Team Minutes, per-game | 20 | 3.203 s | 0.141 s | 0.181, 0.137, 0.141 s |
+| Lineups, per-game size 5 | 10,016 | 8.265 s | 1.724 s | 2.046, 1.724, 1.645 s |
+| Lineups, per-game size 2 | 2,451 | 15.163 s | 9.274 s | 10.344, 8.160, 9.274 s |
+| Lineups, standard clutch size 5 | 1,098 | 1.654 s | 1.234 s | 1.196, 1.234, 1.361 s |
+| Lineups, custom clutch size 5 | 751 | 24.252 s | 5.445 s | 8.792, 5.445, 3.209 s |
+
+The remaining warm-over-500-ms work is therefore broad Tab 8, all measured
+five-player Lineups routes, the deliberately deprioritized two-player Lineups
+edge case, and custom Player Stats at a near-threshold 0.515 seconds. Team
+Ratings, Team Four Factors, Team Minutes, last-10 Tab 8, and per-game Player
+Stats are under 500 ms once warm.
+
+Cold execution is the next investigation, separate from warm query-shape work.
+The most useful cases are routes whose warm computation is already healthy but
+whose first call is disproportionately slow: custom Team Ratings (14.671 vs
+0.346 seconds), Team Minutes (3.203 vs 0.141), custom Player Stats (3.771 vs
+0.515), and per-game Team Ratings (0.892 vs 0.128). Broad Tab 8 and Lineups
+remain warm-query problems as well and must not be misdiagnosed as cold-only.
+
+For the cold-call pass:
+
+1. Measure connection checkout/wake time separately from server execution.
+2. Capture `EXPLAIN (ANALYZE, BUFFERS)` on genuinely fresh pooled sessions and
+   compare shared reads, cache hits, planning time, JIT, and execution time.
+3. Separate relation-cache warming from function/custom-plan warming; do not
+   infer either from one first-call sample.
+4. Start with custom Team Ratings and Team Minutes because their warm paths are
+   already below 500 ms, making cold overhead easier to isolate.
+5. Require repeated cold-session samples and exact results before retaining a
+   connection, function-setting, index, or prewarming change.
+6. Keep the two-player Lineups route deprioritized unless product usage changes.
+7. Do not deploy the app as part of database diagnosis; deployment remains an
+   explicit separate action.
+
+Cold-call phase 1 isolated the startup cost further. The database is PostgreSQL
+17.4. The first diagnostic used the pooler's session-mode port 5432: connection
+establishment was 0.49-0.75 seconds and a trivial first round trip was
+0.078-0.093 seconds. On backend PID 4024165, the first custom
+Team Ratings call took 12.523 seconds and its second call 3.303 seconds; later
+new client sessions assigned to that same backend were already at 0.346-0.353
+seconds. Team Minutes showed the same per-reader first-use shape: 4.547 seconds,
+then 0.850 seconds, then 0.136-0.150 seconds on later sessions using that
+backend. All result row counts and SHA-256 digests were identical.
+
+This is not principally custom-versus-generic plan selection. After both paths
+were warm, session-local `DISCARD PLANS` left custom Team Ratings at 0.358
+seconds and Team Minutes at 0.145 seconds. A different pooled PostgreSQL backend
+(PID 4024178) reproduced the startup penalty under `EXPLAIN (ANALYZE, BUFFERS)`:
+Team Ratings took 4.266 seconds with 206,767 shared-buffer hits and only 82
+reads; Team Minutes took 1.065 seconds with 19,062 hits and only 19 reads.
+Planning reported by the outer call was at most 0.006 seconds. The evidence
+therefore points to backend-local first-use initialization plus memory/cache
+locality, not network connection time, disk reads, or ordinary cached-plan
+invalidation alone. PostgreSQL 17 also predates PostgreSQL 18's change that
+caches old-style SQL-function plans across successive outer queries.
+
+The app currently makes this startup behavior user-visible: `app/R/global.R`
+configures `dbPool()` with `minSize = 0`, `maxSize = POOL_MAX` (default 3), and
+`idleTimeout = 15000` seconds. Its `onCreate` callback sets only
+`statement_timeout`. The first database request therefore creates the first
+connection lazily; later connections can introduce another cold backend when
+concurrency grows. Because the idle timeout is about 4.2 hours, this is an app
+process/pool-expansion cost rather than a cost on every ordinary request.
+
+The exact R `dbPool` path was then measured with the app's actual port 6543,
+which Supabase defines as transaction mode. With `minSize = 0`, pool creation
+was immediate, the first control query took 2.480 seconds, custom Team Ratings
+ran 7.790 / 0.790 / 0.530 / 0.510 seconds, and Team Minutes ran 1.600 / 0.310 /
+0.310 / 0.310 seconds. With `minSize = 1`, pool creation took 1.250 seconds and
+the first control query 0.520 seconds, but the first reader calls still took
+2.420 and 0.960 seconds; subsequent calls settled at roughly 0.51-0.53 and
+0.31-0.48 seconds. `minSize = 1` alone therefore moves client connection setup
+to startup but does not warm the readers.
+
+The same R pool on Supabase session mode (port 5432, the documented mode for a
+persistent backend) improved first-use latency without changing results. With
+`minSize = 0`, Team Ratings was 5.250 seconds cold and 0.53-0.55 warm; Team
+Minutes was 1.000 cold and 0.30-0.31 warm. With `minSize = 1`, creation cost
+1.230 seconds, Ratings was 1.360 seconds on its first use and 0.52-0.59 warm,
+and Minutes was 0.31-0.33 seconds throughout. A targeted startup warm-up on the
+one persistent connection, ordered Minutes then Ratings, appeared promising in
+an already-warm synthetic sample: it shifted 0.950 seconds to startup and made
+the next Ratings call 0.520 seconds. An earlier colder warm-up cost 4.510
+seconds. Every comparison returned the same 20 rows and digest.
+
+The connection-mode candidate was then checked for cross-league regression.
+All eight representative Israeli readers returned identical rows and digests.
+Session mode improved ON/OFF and Four Factors, was effectively neutral for the
+Team routes, and was 3-4% slower for Traditional Stats in the initial small
+sample. The initial Israeli Lineups result looked 21% slower, but a 10-sample
+interleaved rerun reversed it: port 6543 measured 1.685 seconds median / 1.854
+seconds p90, while port 5432 measured 1.490 / 1.692 seconds with the same digest.
+There was therefore no evidence supporting separate league pools; connection
+management must remain one shared app-level policy.
+
+The complete `app/R/global.R` startup test nevertheless rejected the warm-up.
+Real startup took 26.450 seconds and reported the warm-up successful, but the
+first subsequent Ratings calls were still 7.530, 1.670, 0.530, and 0.520
+seconds. Team Minutes was 3.730 seconds first and 0.310-0.320 thereafter. A
+single startup call does not establish the steady state on this PostgreSQL 17
+path, so it would move substantial work into startup without fixing the user-
+visible cold call. The app pool/port/warm-up experiment was fully reverted; the
+app still has its one original shared `dbPool` and no deployment was performed.
+
+The next cold-call implementation should therefore be query-level, not a pool
+workaround:
+
+1. Test a combined additive Team reader that calculates Ratings and Four
+   Factors from one filtered action set and attaches Minutes in the same app
+   call, removing a duplicate scan and network round trips.
+2. Retain it only if exact outputs and both cold and warm complete-call latency
+   improve for the Israeli-shaped and EuroLeague consumers; do not introduce a
+   league-specific connection policy.
+3. The PostgreSQL-17 definition-time function-body experiment produced a
+   partial improvement, recorded below, but needs broader preset parity before
+   it could be retained.
+4. Do not prewarm Lineups or two-player combinations. Avoid `pg_prewarm`: the
+   slow new-backend samples were already overwhelmingly shared-buffer hits, and
+   indiscriminate prewarming would consume shared resources used by the Israeli
+   schema too.
+
+The definition-time parsing experiment used an ungranted temporary
+`BEGIN ATOMIC` copy of `get_team_ratings_direct` and four simultaneous, distinct
+PostgreSQL session backends. Candidate creation took 0.251 seconds. Baseline
+first calls were 8.485 and 5.657 seconds (7.071 median); atomic-candidate first
+calls were 6.333 and 5.351 seconds (5.842 median), a 17.4% improvement. The
+20-row result digest matched exactly. Warm median was unchanged within noise:
+0.351 seconds baseline versus 0.348 candidate; measured warm p90 was 3.348
+versus 0.379 seconds. The candidate was dropped successfully. This proves that
+definition-time parsing helps backend startup without warm regression in the
+broad case, but it does not make the cold call sub-500-ms. Do not apply it until
+the remaining custom filter presets and the exact app call pass parity and
+no-regression gates.
+
+Cold-call phase 2 measured the deployed application boundary with standalone
+Playwright. The bundled in-app browser control could not initialize because its
+local Codex runtime failed before navigation with `failed to write kernel
+assets: The system cannot find the path specified. (os error 3)`; the standard
+Windows temp and application-data paths existed, so this was a local browser-
+kernel problem rather than evidence about the app. After explicit permission to
+use Playwright outside the sandbox, a fresh named browser session opened
+`https://ibpl-stats.shinyapps.io/onoff-shiny/` in 38.5 seconds. A snapshot then
+confirmed that the complete home UI had rendered. An immediate same-session
+reload took 10.1 seconds end to end; the browser Navigation Timing entry
+reported 4.471 seconds through `loadEventEnd`, including a 1.839-second response
+start and 4.469-second DOM completion. A second fresh browser session while the
+app was warm took 10.5 seconds. No application, database, or deployment change
+was made for this measurement.
+
+The roughly 28-second cold-versus-warm-fresh-browser difference is a combined
+deployed cold-start tax, not a pure shinyapps.io sleep number. It includes
+instance wake, R/package/application startup, creation of the process-local
+`dbPool`, first database connection work, and any database reader first-use
+cost. The independent database experiment above measured broad Team Ratings at
+5.842 seconds cold for the atomic candidate and 7.071 seconds cold for the
+baseline, versus roughly 0.35-0.52 seconds warm in the relevant runs. Those
+measurements establish a material cold database component, but they were not
+captured inside the same browser request and therefore must not be subtracted
+from 28 seconds as an exact decomposition.
+
+The two remedies are complementary. Keeping a shinyapps.io instance running or
+raising its instance idle timeout can avoid instance/R restart and preserve the
+worker's connection pool, but consumes active hours and depends on the hosting
+plan and dashboard settings. An external keep-alive would mainly emulate that
+cost and is not the preferred solution. Query-level/backend-first-use work can
+reduce the remaining database component; `dbPool` by itself cannot survive an
+application instance being put to sleep. Do not change hosting settings, add a
+keep-alive, instrument production, or deploy without explicit approval.
+
+For an exact next decomposition, add monotonic startup/request timestamps for
+R process start, completion of global sourcing, pool creation, first checkout,
+first `SELECT 1`, completion of the first app-facing reader, and UI-ready/flush.
+Correlate those with shinyapps.io logs and browser Navigation Timing across
+multiple genuinely sleeping starts. This requires a deliberately approved
+instrumented deployment; until then, retain `38.5 s cold`, `10.5 s warm fresh
+browser`, `4.471 s warm navigation`, and the separate `5.842-7.071 s` cold
+Ratings evidence without claiming a more precise layer split.
 
 - The project uses an isolated `euroleague` schema in the existing PostgreSQL
   database. Never write EuroLeague data to the Israeli `basketball` or
@@ -463,24 +670,12 @@ Use this as the playbook for future EuroLeague analytical-query work:
     must appear in both the grant and audit allowlists. The hardening script
     correctly rolled back when only one list was updated.
 
-The remaining cold custom Team/Lineup optimization requires a deliberate
-one-time backfill. Reuse and extend `player_stats_actions_by_game` at its current
-action/team-perspective grain with canonical `own_starters`, `opp_starters`,
-`fg2_made`, `fg2_att`, `orebounds`, `oreb_opportunities`, and `steals`. Then:
-
-1. implement direct public custom Team and Lineup readers that keep schedule,
-   action filtering, and aggregation in one function, as the Israeli reference
-   does;
-2. split regulation and overtime into mutually exclusive branches;
-3. route the app directly to cached-standard or direct-custom readers;
-4. make the Team tab obtain ratings, four factors, and minutes from one additive
-   result instead of scanning the same filtered facts separately;
-5. require exact output parity and cold/warm app-called benchmarks before live
-   cutover.
-
-Do not add a second custom-clutch action table. The existing narrow physical
-fact is the correct reusable grain; only its canonical additive projection is
-incomplete for Team/Lineup consumers.
+The formerly planned custom Team/Lineup action-fact backfill is complete.
+`player_stats_actions_by_game` already contains the canonical starter and
+additive team-event fields, and the app already routes to cached-standard,
+per-game, or direct-custom readers. Do not add a second custom-clutch action
+table. Remaining work is the measured cold-backend behavior above and the warm
+Lineups/Tab 8 paths, not another copy of the action grain.
 
 ## End-to-end ETL
 
@@ -1426,6 +1621,142 @@ Seventy of the 84 games are marked `publication_status='review'`, primarily
 because conservative possession QA flags small same-team-transition counts;
 all hard publication gates passed. Review status is evidence for inspection,
 not an exclusion from season aggregates.
+
+## Migration 045 - Tab 8 query shape (prepared, not applied)
+
+**Status: nothing is applied.** Four candidates were tested inside
+rollback-only transactions on direct port 5432 on 2026-08-28. The database was
+re-verified clean after each: original three indexes on
+`player_four_factors_by_game`, function SHA-256
+`083d6ff31f82cbe62083b82f36d6b4c17ac994e613d064317e7fe0b2ddbd4f82` (onoff) and
+`3bac5d68cb82f0e0a0f7d8e3367eb26b57f728af2649673e192ea59e8bad6c3a` (ff), no
+`work_mem` setting on either function.
+
+Spec: `docs/specs/2026-08-28-tab8-query-remediation-design.md` plus Addendum A.
+Plan: `docs/plans/2026-08-28-tab8-query-remediation.md`.
+
+### The defect
+
+Both public functions aggregated the per-game fact through
+`euroleague.player_game_context`. That view joins `euroleague.schedule` (a
+primary-key probe) and the two-perspective `euroleague.final_schedule` (a
+`CROSS JOIN LATERAL VALUES` expansion, half of it then discarded) to **every
+fact row**, and the aggregation consumes none of those columns. The `games` CTE
+already resolves every schedule filter, so joining the fact to `games` on
+`(game_id, team_id)` is the same restriction.
+
+Measured cost of the view on the broad call: **1,653,821 shared buffers, of
+which 1,606,198 are the redundant lookup.**
+
+### What Tab 8 actually sends
+
+The spec measured the broad call with NULL dates. Tab 8 populates its date
+inputs from `euro_season_date_bounds()`, so the app always sends an explicit
+2025-09-01..2026-07-01 window. That call is ~4x slower than the NULL-date call
+for byte-identical output (358 rows both ways), because the planner then probes
+the fact per game and each probe paid the view cost. It was added to the preset
+matrix as `broad app dates` and is the number that matters.
+
+### Candidates
+
+| candidate | shape | verdict |
+|---|---|---|
+| A | direct fact source + `(game_id, team_id)` index | good; every preset faster |
+| B | A + one filtered aggregation at `(player_id, team_id)` | **rejected** |
+| C | B + 16 MB function-local `work_mem` | **rejected** |
+| AC | A + 16 MB function-local `work_mem` | **accepted shape**, shipped as `sql/045_tab8_query_shape.sql` |
+
+**B and C are rejected on measured evidence and must not be revisited without
+new evidence.** Collapsing `agg`/`pivoted` into one aggregation needs 25
+(ON/OFF) and 44 (Four Factors) accumulators per group instead of 7/12
+accumulators over 4x more groups. That state no longer fits the server's
+2,184 kB `work_mem` and introduced an **on-disk sort where none existed**
+(`onoff broad season` temp written 0 -> 9,240 blocks; `ff broad season`
+0 -> 16,794; `last 10` 0 -> 1,135/4,113). Wall clock followed: `ff broad
+season` 0.935 -> 3.019 s. Candidate C removed the spill with 16 MB but the
+shape stayed ~2.5x slower than A, so the wide aggregate costs more CPU than two
+narrow passes. Buffer counts were identical to A's throughout, so the
+aggregation shape was the only variable.
+
+### Measured effect of the accepted migration
+
+Full-matrix rollback-only run of `sql/045_tab8_query_shape.sql`, 25 presets x
+both functions, warm median of 15 samples on the gated presets:
+
+| preset | before | after | buffers | temp written |
+|---|---|---|---|---|
+| onoff broad, app dates | 3.787 s | **1.373 s** | 1,653,821 -> 47,623 | 9,240 -> 4,609 |
+| ff broad, app dates | 4.338 s | **1.684 s** | 1,653,821 -> 47,623 | 16,794 -> 8,383 |
+| onoff broad, NULL dates | 1.027 s | **0.810 s** | 71,988 -> 46,559 | 0 -> 0 |
+| ff broad, NULL dates | 1.055 s | **0.788 s** | 73,052 -> 46,559 | 0 -> 0 |
+| onoff last 10 | 0.605 s | **0.248 s** | 10,228 -> 5,279 | 0 -> 0 |
+| ff last 10 | 0.658 s | **0.488 s** | 11,082 -> 5,279 | 0 -> 0 |
+| onoff one team | 0.592 s | **0.135 s** | 141,245 -> 1,930 | 211 -> 0 |
+| onoff one opponent | 0.609 s | **0.153 s** | 81,657 -> 3,555 | 225 -> 0 |
+| onoff team+lastN+starters | 0.127 s | **0.102 s** | 6,605 -> 241 | 0 -> 0 |
+
+Index `euroleague_pff_game_team_idx` is **5.7 MB** and builds in 5-11 s.
+
+**Correctness: exact full-row parity on all 50 preset x function combinations,
+on every candidate**, including empty results, zero denominators, all four
+starter bounds, opponent-rank top/bottom, round ranges, and the EuroCup
+competition. No preset regressed against its same-run baseline under the
+`max(10%, 100 ms)` rule. `app_readonly` EXECUTE survived, SECURITY mode
+unchanged, signatures and return contracts unchanged.
+
+### Why it is not applied
+
+The absolute latency gate did not pass, and the gate instrument is not
+trustworthy enough to force the question either way.
+
+The original 0.500 s gate was re-anchored (Addendum A) to Israeli-companion
+parity, because **the companion does not reach 0.500 s either** and already
+uses this exact execution shape - `basketball_test.onoff_compute` reads
+`basketball_test.player_four_factors_by_game p JOIN sched s ON s.game_id =
+p.game_id AND s.team_id = p.team_id`, with no context view. So this work
+converges EuroLeague onto what the Israeli side has always done rather than
+inventing an optimisation.
+
+The final run failed 2 of 6 absolute checks:
+
+- `onoff broad season` p90 2.140 s vs a 1.891 s gate - while its **median was
+  0.810 s** and its cold sample was 8.880 s. This is instance contention, not
+  query behaviour.
+- `ff broad app dates` median 1.684 s vs a 1.246 s gate.
+
+Two reasons not to read those as real regressions:
+
+1. **The instrument is noisier than the effect it measures.** The Israeli
+   companion's own `four_factors_compute` median measured 1.583 s in one
+   session and 1.132 s in another - a 40% swing on unchanged code. EuroLeague's
+   `ff broad app dates` measured 1.613 s and 1.684 s across runs. The
+   difference being gated is smaller than the run-to-run spread.
+2. **A known harness defect.** The companion is measured only on the app-date
+   window, but its gate is applied to both `broad season` (NULL dates) and
+   `broad app dates`. Those are different filter shapes with different plans,
+   so the `broad season` comparison is not like-for-like. This must be fixed in
+   `scripts/apply_045_tab8_query_shape.py` before any apply run - either gate
+   `broad season` against a companion NULL-date call or make it report-only.
+
+Everything that does not depend on wall clock passed: parity, no-regression,
+shared-buffer traffic, temp blocks, no narrow full-fact scan, privileges,
+contracts, and clean rollback.
+
+### To resume
+
+1. Fix the companion-gate shape mismatch noted above.
+2. Consider replacing single-run medians with a repeated-measures comparison,
+   or making the absolute gate advisory while parity/buffer/temp gates remain
+   blocking. Do not simply raise the threshold.
+3. Re-run `scripts/apply_045_tab8_query_shape.py --candidate MIGRATION` (no
+   `--apply`) and confirm.
+4. Get explicit approval, then run with `--apply`, then the pooled-port gate,
+   then `scripts/apply_db_security.R` with `CONFIRM_DB_SECURITY_APPLY=1` and
+   the audit, per "After a migration: re-run the security pass" in `RUNBOOK.md`.
+5. No app deployment is needed: signatures and the R call sites are unchanged.
+
+`euroleague.player_game_context` must NOT be dropped - the migration 002 season
+aggregates still read it.
 
 ## Known gaps and risks
 
