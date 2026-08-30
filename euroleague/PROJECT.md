@@ -1884,6 +1884,9 @@ kill-safety.
 
 ## Migration 046 - combined filtered player dashboard reader (applied 2026-08-30)
 
+Session handoff, with the full measurement set and the design analysis:
+`docs/plans/2026-08-30-combined-ff-reader-handoff.md`.
+
 **Status: applied in both schemas.** `euroleague.four_factors_dashboard_compute`
 and `basketball_test.four_factors_dashboard_compute` both exist and are on the
 `app_readonly` EXECUTE allowlist. `four_factors_compute` and `onoff_compute` are
