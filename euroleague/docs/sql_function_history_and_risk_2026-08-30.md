@@ -1,8 +1,16 @@
-# EuroLeague SQL functions: history, dead code, and drift risk
+# EuroLeague SQL functions: history, dead code, drift risk, and the 047 cleanup
 
 Date: 2026-08-30
 Scope: every function in `euroleague` (39) and `basketball_test` (27), app-facing
-and internal, from the schema's inception on 2026-08-06 to migration 046.
+and internal, from the schema's inception on 2026-08-06 to migration 047.
+
+**This is the single place for this work.** `PROJECT.md` and `RUNBOOK.md` carry
+pointers here rather than copies — the findings, the migration and the operating
+instructions all live in this file, so there is one thing to keep current.
+
+Contents: §1–§4 what exists and how it got that way; §5–§6 what nothing reaches;
+§7–§9 the drift and source-of-truth risks; §10 the risk register; **§11 migration
+047, including how to apply it**; §12 the remaining recommendations.
 
 ## How the facts here were established
 
@@ -422,15 +430,74 @@ pattern safe.
 | 6 | 2 orphan views (`*_by_season`, migration 002) | Low-medium | §6 |
 | 7 | Fast-path fan-out: 15 functions for 5 surfaces | Low (by design) | §4a |
 
-## 11. Recommendations, in order
+## 11. Migration 047 — the cleanup, and how to run it
 
-1. **Drop the three orphan functions and two orphan views** — migration 047,
-   prepared and gated, `scripts/apply_047_drop_orphans.py`. The gate re-verifies
-   every target is unreferenced, refuses to touch `player_game_context`, and
-   smoke-tests all 18 app-reachable readers before committing. Removes 13 KB of
-   grantable SQL and eliminates the dead/live name collision on
-   `get_player_traditional_dynamic`. Follow with the security re-apply, since
-   `DROP FUNCTION` wipes EXECUTE grants.
+**Status: prepared and gated, NOT applied.** The database is unchanged.
+
+Files: `euroleague/sql/047_drop_orphaned_objects.sql`,
+`euroleague/scripts/apply_047_drop_orphans.py`.
+
+### What it removes
+
+| Object | Origin | Superseded by |
+|---|---|---|
+| `get_player_traditional_clutch` | 024 | R-side `clutch_reader_kind()` (026) |
+| `select_player_clutch_counts` | 024 | its dispatcher, orphaned with it |
+| `get_player_traditional_dynamic` | 021 | the `pergame`/`standard_clutch`/`custom_clutch` trio |
+| `player_onoff_by_season` | 002 | `player_onoff_default_mv` |
+| `player_four_factors_by_season` | 002 | `player_advanced_stats_mv` |
+
+### How to apply
+
+`apply_shadow_schema()` **refuses any DDL containing `DROP `** by design
+(`postgres_backend.py:285`). That guard is correct and must not be relaxed, so
+047 applies its statements directly, exactly as the 045 and 046 applicators do:
+
+```bash
+# rollback-only gate
+euroleague/.venv/Scripts/python.exe euroleague/scripts/apply_047_drop_orphans.py
+
+# commit
+euroleague/.venv/Scripts/python.exe euroleague/scripts/apply_047_drop_orphans.py --apply
+
+# MANDATORY afterwards -- DROP FUNCTION wipes EXECUTE grants
+CONFIRM_DB_SECURITY_APPLY=1 "$RSCRIPT" scripts/apply_db_security.R
+```
+
+### What the gate does before dropping anything
+
+1. Refuses to run if the migration would drop a `PROTECTED` object.
+2. Re-verifies in the live catalog that every target has zero referrers among
+   euroleague views, materialized views and function bodies.
+3. Smoke-runs all 18 app-reachable readers, and again after the drop, failing if
+   any row count changes. The lineup readers are narrowed to two-player units
+   over the last two games — an unfiltered five-player expansion exceeded the
+   statement timeout on the first run.
+
+Gate result on 2026-08-30: every target unreferenced, all 18 readers returning
+identical row counts, rolled back cleanly.
+
+### `player_game_context` is PROTECTED and must never be dropped
+
+Migration 045 removed the two *function* reads of it, which makes it look
+orphaned. `scripts/load_games.py` reads it for the published-game QA check that
+cross-validates team-grain four factors against the player-grain fact divided by
+five. Dropping it would break game loading. The applicator encodes the
+protection; see the correction in §6.
+
+### Known consequence
+
+`scripts/apply_042_player_traditional_pergame.py` benchmarks
+`get_player_traditional_dynamic` and cannot be re-run as-is afterwards. It is a
+historical applicator whose migration is already applied; accepted.
+
+---
+
+## 12. Remaining recommendations, in order
+
+1. **Apply migration 047** (§11). Removes 13 KB of grantable SQL and eliminates
+   the dead/live name collision on `get_player_traditional_dynamic`. Prepared,
+   gated and waiting.
 2. **Replace 016 and 017 with literal `CREATE OR REPLACE` files** carrying the
    current deployed bodies. Capture them from `pg_get_functiondef` first, so
    the committed text is exactly what runs.

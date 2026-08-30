@@ -431,72 +431,23 @@ The larger `scripts/apply_045_tab8_query_shape.py` remains historical benchmark
 instrumentation. Its index and `work_mem` candidates were experiments and are
 not the deployed migration.
 
-## Migration 046 (combined player dashboard reader) - applied 2026-08-30
+## Migrations 046 and 047
 
-Additive. `euroleague.four_factors_dashboard_compute` returns
-`four_factors_compute`'s 43 columns plus `Net RTG Diff`, `Off ON Diff`,
-`Def ON Diff` and `minutes`, so the filtered Four Factors path makes one call
-instead of two. `four_factors_compute` and `onoff_compute` are unchanged and
-still deployed; `four_factors_compute` still builds
-`euroleague.player_advanced_stats_mv`.
+046 (combined player dashboard reader) is applied and additive. 047 (drop
+orphaned objects) is prepared and gated but **not applied**.
 
-No grant was wiped -- the migration only `CREATE OR REPLACE`s a new name and
-never `DROP`s -- but re-run the security pass anyway to confirm the new
-function is on the allowlist rather than inheriting PUBLIC EXECUTE.
+Both are documented in one place - `docs/sql_function_history_and_risk_2026-08-30.md` - including 047's apply
+commands. Three operational facts belong here so nobody has to go looking:
 
-Applicator: `scripts/apply_046_player_dashboard_reader.py`. The Israeli
-companion is `sql/functions/four_factors_dashboard_compute.sql`, gated by
-`scripts/gate_israeli_player_dashboard_reader.py` and deployed from the
-repository root with `scripts/deploy_sql_functions.R`.
-
-Full write-up: `docs/plans/2026-08-30-combined-ff-reader-handoff.md`.
-
-## Migration 047 (drop orphaned objects) - prepared, NOT applied
-
-The only destructive EuroLeague migration. It drops three functions and two
-views that have no referrer anywhere:
-
-| Object | Superseded by |
-|---|---|
-| `get_player_traditional_clutch` | R-side `clutch_reader_kind()` (migration 026) |
-| `select_player_clutch_counts` | its dispatcher, orphaned with it |
-| `get_player_traditional_dynamic` | the `pergame`/`standard_clutch`/`custom_clutch` trio |
-| `player_onoff_by_season` | `player_onoff_default_mv` |
-| `player_four_factors_by_season` | `player_advanced_stats_mv` |
-
-**`apply_shadow_schema()` refuses this migration by design** -- it rejects any
-DDL containing `DROP `. That guard is correct and must not be relaxed. Apply
-with the dedicated applicator instead, which executes the statements directly
-exactly as the 045 and 046 applicators do:
-
-```bash
-euroleague/.venv/Scripts/python.exe euroleague/scripts/apply_047_drop_orphans.py           # rollback-only gate
-euroleague/.venv/Scripts/python.exe euroleague/scripts/apply_047_drop_orphans.py --apply   # commit
-```
-
-The gate, before dropping anything:
-
-1. refuses to run if the migration would drop a `PROTECTED` object;
-2. re-verifies in the live catalog that every target has zero referrers among
-   euroleague views, materialized views and function bodies;
-3. smoke-runs all 18 app-reachable readers, and again afterwards, failing if
-   any row count changes.
-
-**`euroleague.player_game_context` is PROTECTED and must never be dropped.**
-Migration 045 removed the two *function* reads of it, which makes it look
-orphaned, but `scripts/load_games.py` reads it for the published-game QA check
-that cross-validates team-grain four factors against the player-grain fact
-divided by five. An audit draft on 2026-08-30 wrongly listed it as an orphan;
-the applicator now encodes the protection so the mistake cannot be repeated.
-
-**`DROP FUNCTION` wipes EXECUTE grants**, so the security pass below is
-mandatory after this one, not optional.
-
-Known consequence: `scripts/apply_042_player_traditional_pergame.py` benchmarks
-`get_player_traditional_dynamic` and can no longer be re-run as-is. It is a
-historical applicator whose migration is already applied; that is accepted.
-
-Audit behind the migration: `docs/sql_function_history_and_risk_2026-08-30.md`.
+- **`apply_shadow_schema()` refuses migration 047** because it rejects any
+  DDL containing `DROP `. That guard is correct. Use
+  `scripts/apply_047_drop_orphans.py`, which applies the statements
+  directly as the 045 and 046 applicators do.
+- **`DROP FUNCTION` wipes EXECUTE grants**, so the security pass below is
+  mandatory after 047, not optional.
+- **`euroleague.player_game_context` must never be dropped** -
+  `scripts/load_games.py` reads it for the published-game QA check. The
+  applicator carries it in a `PROTECTED` list and refuses to override it.
 
 ## After a migration: re-run the security pass
 

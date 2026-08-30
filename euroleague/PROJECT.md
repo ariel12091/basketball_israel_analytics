@@ -1995,73 +1995,18 @@ test.**
 
 **Status: gated, not applied.** The database is unchanged.
 
-The first full audit of the schema's SQL surface
-(`docs/sql_function_history_and_risk_2026-08-30.md`) established what exists,
-where it came from, and what nothing reaches. Headline: `euroleague` carries
-**39 functions to the Israeli schema's 27**, while covering *fewer* product
-surfaces, and **three of them have no consumer at all** (the Israeli schema has
-zero orphans).
+047 drops three functions and two views that nothing reaches, found by the
+first full audit of the schema's SQL surface. That audit is the single
+place for this work - findings, migration detail and the apply
+instructions all live in `docs/sql_function_history_and_risk_2026-08-30.md`.
 
-### What 047 removes
+Two things worth knowing without opening it:
 
-| Object | Origin | Superseded by |
-|---|---|---|
-| `get_player_traditional_clutch` | 024 | R-side `clutch_reader_kind()` (026) |
-| `select_player_clutch_counts` | 024 | its dispatcher, orphaned with it |
-| `get_player_traditional_dynamic` | 021 | the `pergame`/`standard_clutch`/`custom_clutch` trio |
-| `player_onoff_by_season` | 002 | `player_onoff_default_mv` |
-| `player_four_factors_by_season` | 002 | `player_advanced_stats_mv` |
-
-All three orphan functions date from a single day - 2026-08-13 - when the
-Player Stats clutch path was redesigned three times (023 → 024 → 026). Each
-redesign superseded the last; none dropped it.
-
-`get_player_traditional_dynamic` is the sharpest case: 10 KB of live,
-`app_readonly`-executable SQL that nothing reaches, **sharing a name with a
-live Israeli function that Tab 7 Compare calls every session** (19 args versus
-18, `sql` versus `plpgsql`, 5% textually alike).
-
-### Gate result
-
-Every target unreferenced; all 18 app-reachable readers returning identical row
-counts before and after; rolled back cleanly. Operational detail, including why
-`apply_shadow_schema()` refuses this migration and why the security re-apply is
-mandatory afterwards, is in `RUNBOOK.md` under "Migration 047".
-
-### One correction the preparation forced
-
-An audit draft listed `euroleague.player_game_context` as a third orphan view.
-**That was wrong.** Migration 045 removed the two *function* reads of it, which
-is what the scan measured, but `scripts/load_games.py` reads it in the
-published-game QA check that cross-validates team-grain four factors against
-the player-grain fact divided by five. Dropping it would have broken game
-loading. `RUNBOOK.md`'s own migration-045 section had already recorded that it
-"remains for other consumers"; the scan contradicted the project's existing
-documentation and the scan was the thing that was wrong.
-
-The applicator now carries it in a `PROTECTED` list and refuses to run if a
-future migration tries to drop it.
-
-### Other findings from the audit, not addressed by 047
-
-- **Migrations 016 and 017 patch function bodies by text substitution.** They
-  read `pg_get_functiondef`, run `replace()` on the source, and `EXECUTE` it,
-  so no committed file holds the deployed body of
-  `refresh_actions_consumer_candidates` or
-  `refresh_player_four_factors_by_game_for_games`. A later `CREATE OR REPLACE`
-  silently reverts the patch, and `replace()` on a non-matching string is a
-  no-op that raises nothing.
-- **Tab 9 composes function names from two fragments** (`base + "_" + kind`),
-  so `get_team_minutes_direct` appears nowhere in the R source. Nothing
-  statically links those call sites to their functions.
-- **Companions share names and sometimes arity across schemas without sharing
-  implementations.** `get_team_ratings_dynamic` takes 23 arguments in both
-  schemas yet is 5% textually alike and written in different languages.
-- **The React API still runs the pre-046 two-call pattern** as a SQL-level
-  `LEFT JOIN` (`frontend-v2/server/plumber.R:288`). It is `basketball_test`-only
-  and archival, but it is a third shape of the same concept.
-
-No app signature drift was found: every call site matches its deployed arity.
+- `euroleague` carries **39 functions to the Israeli schema's 27** while
+  covering fewer surfaces, and has **3 orphans to its 0**.
+- **`euroleague.player_game_context` must never be dropped.** It looks
+  orphaned since migration 045 removed the function reads, but
+  `scripts/load_games.py` reads it for the published-game QA check.
 
 ## Known gaps and risks
 
