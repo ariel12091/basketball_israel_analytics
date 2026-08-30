@@ -433,15 +433,17 @@ columns and on `Net RTG Diff` / `Off ON Diff` / `Def ON Diff` / `minutes`:
 | Path | Agreement guaranteed by |
 |---|---|
 | `four_factors_compute` ⋈ `onoff_compute` (Plumber) | construction — it calls both functions |
-| Israeli `four_factors_dashboard_compute` | construction — it *wraps* `four_factors_compute` |
+| Israeli `four_factors_dashboard_compute` | the 43 factor columns are inherited from `four_factors_compute`; the four inline rating/minutes columns still require a behavioural gate |
 | **EuroLeague `four_factors_dashboard_compute`** | **nothing — it reimplements the logic** |
 
-Two of the three are safe by structure. The third is the one that needs a test,
-and it is the reason the parity test below is the single required action rather
-than a nice-to-have. Current state, verified live during this audit: EuroLeague's
-two functions agree exactly — 0 mismatching cells across 43 shared columns on
-broad, last-10, home, and the 2-argument shape the MV uses. That is a
-measurement of today, not a guarantee about tomorrow.
+The Israeli wrapper is structurally safe only for its 43 inherited factor
+columns. Its narrow ratings aggregation independently repeats schedule,
+opponent-rank, starter and last-N filtering, so its four added columns can still
+drift from `onoff_compute`. Both dashboard readers therefore need a behavioural
+contract test. Current state, verified live during this audit: EuroLeague's two
+functions agree exactly — 0 mismatching cells across 43 shared columns on broad,
+last-10, home, and the 2-argument shape the MV uses. That is a measurement of
+today, not a guarantee about tomorrow.
 
 The two leagues solve the same requirement differently:
 `basketball_test.four_factors_dashboard_compute` **wraps** `four_factors_compute`
@@ -481,46 +483,62 @@ Examples: `94ba256` ("a real # Starters") changed all three
 filter changes already land in several places, so a new duplicate is a real
 cost, not a neutral choice.
 
-#### Why the filtered-path hit rate does not need measuring
+#### Filtered-path usage does not decide the query shape
 
-The obvious missing number is what fraction of sessions take the filtered path
-at all — the 50% only applies there. But Tabs 1 and 8 share a design, a filter
-UI and `onoff_fallback_needed()`, so the hit rate `h` is the **same on both
-sides and cancels out of the comparison**:
-
-```
-Israeli wrapper      h x 12%    one definition       <- already shipped
-EuroLeague inline    h x 50%    one extra definition
-EuroLeague wrapper   h x  0.7%  one definition       <- pointless
-```
-
-Shipping the Israeli wrapper already asserts that `h x 12%` cleared the bar. If
-it did, `h x 50%` clears it comfortably. No measurement changes that ordering.
+The 50% saving applies only to filtered requests. Tabs 1 and 8 share a design,
+but their user populations need not choose filters at the same rate, so their
+hit rates cannot simply be assumed equal. That affects total product impact,
+not the relative cost of two scans versus one for a request that takes this
+path. The query-shape decision can therefore be made from paired filtered-path
+measurements; production hit rate is still useful for prioritisation.
 
 #### Verdict
 
-**Keep both shapes.** They are not an inconsistency to fix — each is the only
-sensible option given one structural fact:
+**Use the single-scan shape in both leagues, behind behavioural parity tests.**
+The earlier wrapper verdict was based on comparing the Israeli wrapper only to
+the old two-full-function path. It did not measure an Israeli single scan.
 
-| | other consumers of `four_factors_compute` | a wrapper would save |
-|---|---:|---:|
-| Israeli | 3 (Tab 7, Plumber, perf scripts) | 12% |
-| EuroLeague | 1 (the MV it builds) | 0.7% |
+`scripts/benchmark_israeli_dashboard_single_scan.py` filled that gap in a
+rollback-only transaction. The first probe was derived from the canonical
+Israeli factor function. On 2026-08-31 the exact production SQL in
+`sql/functions/four_factors_dashboard_compute.sql` was probed under a disposable
+name, granted temporarily to `app_readonly`, and rolled back. It matched the
+current wrapper exactly across all 47 columns and all 12 presets (11 non-empty):
 
-Israeli's wrapper is strictly dominant — single definition *and* the whole
-available saving, no trade-off. EuroLeague has no wrapper option worth taking,
-so its real choice is inline-with-a-guard, or revert to two calls.
+| preset | wrapper median | single-scan median | change | wrapper buffers | single-scan buffers |
+|---|---:|---:|---:|---:|---:|
+| broad | 2.302 s | 1.759 s | **-23.6%** | 82,124 | 41,364 |
+| last 10 | 0.664 s | 0.491 s | **-26.2%** | 27,450 | 13,877 |
 
-**The one action: add a behavioural parity test for EuroLeague**, asserting that
-`four_factors_compute` and `four_factors_dashboard_compute` agree on the 43
-shared columns **across the filter presets** — not just the broad case, since the
-co-change data says filter logic is precisely what moves. That converts drift
-from a silent bug into a failing test, which is what makes a duplicate
-affordable here. Without it, revert EuroLeague to two calls.
+The single scan also reduced temporary blocks (32,049 → 24,800 broad; 9,042 →
+8,099 last-10). A separate exact-production gate matched the legacy two-call
+composition on all 12 presets and measured broad latency at 2.570 s → 1.268 s.
+Wall time varies materially on this instance; the stable result is exact parity
+plus approximately half the buffers. Both probe transactions rolled back.
 
-One caveat on the 0.7% figure: it comes from a rollback-only probe built during
-this audit, not from a decision recorded in August. The EuroLeague shape is
-*defensible*; it was never *justified* at the time.
+The approved live apply then reran all 12 cases exactly, measured broad latency
+at 2.734 s -> 1.439 s, and committed the single-scan Israeli body. Both league
+matrices passed after commit. The confirmed database security reconciliation
+and independent security audit also passed.
+
+The durable change should preserve separate schema-local adapters for schedule
+and parameter differences while using the same aggregation shape: one eligible-
+games stage, one additive fact aggregation, then factors and ratings. Because
+both dashboard functions reimplement filter logic relative to older consumers,
+the price of this performance shape is a standing database-backed parity test
+for **both** leagues across the full filter matrix and all 47 columns.
+
+That guard is `scripts/audit_player_dashboard_contracts.py`. It is read-only,
+runs both league matrices, compares typed values by `(player_id, team_id)`,
+rejects duplicate keys and vacuous non-empty presets, and was run successfully
+against both live functions on 2026-08-31. Decimal display scale (`0` versus
+`0.0`) is not treated as behavioral drift; column names and the one-scan SQL
+shape are enforced separately by `tests/test_player_dashboard_reader.py`.
+
+The 0.7% EuroLeague-wrapper figure also came from a rollback-only probe, not
+from the original August decision. The new Israeli measurement supplies the
+missing like-for-like comparison and removes the factual basis for retaining
+different shapes.
 
 ## 9. The source-of-truth break — three migrations, verified against the database
 

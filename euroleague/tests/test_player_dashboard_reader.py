@@ -7,6 +7,16 @@ ROOT = Path(__file__).parents[1]
 SQL = (ROOT / "sql" / "046_player_dashboard_reader.sql").read_text(encoding="utf-8")
 SCRIPT = (ROOT / "scripts" / "apply_046_player_dashboard_reader.py").read_text(encoding="utf-8")
 APP = (ROOT.parent / "app" / "R" / "server_tab8_euro.R").read_text(encoding="utf-8")
+ISRAELI_SQL = (ROOT.parent / "sql" / "functions" / "four_factors_dashboard_compute.sql").read_text(encoding="utf-8")
+
+
+def return_columns(sql):
+    block = re.search(r"RETURNS TABLE\s*\((.*?)\)\s*LANGUAGE", sql, re.S | re.I).group(1)
+    columns = []
+    for item in block.split(","):
+        match = re.match(r'\s*(?:"([^"]+)"|([A-Za-z_][A-Za-z0-9_]*))\s+', item)
+        columns.append(match.group(1) or match.group(2))
+    return columns
 
 
 class PlayerDashboardReaderTests(unittest.TestCase):
@@ -73,12 +83,52 @@ class PlayerDashboardReaderTests(unittest.TestCase):
             self.assertIn("four_factors_dashboard_compute", path.read_text(encoding="utf-8"))
 
     def test_israeli_candidate_is_additive_and_replaces_full_onoff_call(self):
-        path = ROOT.parent / "sql" / "functions" / "four_factors_dashboard_compute.sql"
-        sql = path.read_text(encoding="utf-8")
-        self.assertIn("CREATE OR REPLACE FUNCTION basketball_test.four_factors_dashboard_compute", sql)
-        self.assertIn("basketball_test.four_factors_compute", sql)
-        self.assertNotIn("basketball_test.onoff_compute", sql)
-        self.assertIn("basketball_test.player_four_factors_by_game", sql)
+        self.assertIn("CREATE OR REPLACE FUNCTION basketball_test.four_factors_dashboard_compute", ISRAELI_SQL)
+        self.assertNotIn("basketball_test.four_factors_compute(", ISRAELI_SQL)
+        self.assertNotIn("basketball_test.onoff_compute(", ISRAELI_SQL)
+        self.assertEqual(1, ISRAELI_SQL.count("FROM basketball_test.player_four_factors_by_game"))
+
+    def test_both_leagues_share_the_dashboard_result_contract(self):
+        self.assertEqual(47, len(return_columns(SQL)))
+        self.assertEqual(return_columns(SQL), return_columns(ISRAELI_SQL))
+
+    def test_both_leagues_share_one_scan_aggregation_stages(self):
+        for sql, fact in (
+            (SQL, "euroleague.player_four_factors_by_game"),
+            (ISRAELI_SQL, "basketball_test.player_four_factors_by_game"),
+        ):
+            self.assertEqual(1, sql.count("FROM " + fact))
+            for stage in ("games AS MATERIALIZED", "agg AS", "rates AS", "p AS"):
+                self.assertIn(stage, sql)
+            for additive in (
+                "total_points", "total_poss", "onoff_minutes", "ts_poss_count",
+                "oreb_count", "oreb_opportunities", "tov_count", "steal_count",
+                "deflection_count", "total_ft_attempts", "total_fga", "total_fgm",
+                "total_fg3_made",
+            ):
+                self.assertIn(additive, sql)
+            self.assertNotIn("four_factors_compute(", sql.split("AS $function$", 1)[1])
+            self.assertNotIn("onoff_compute(", sql.split("AS $function$", 1)[1])
+
+    def test_both_leagues_share_rate_formula_contract(self):
+        formulas = (
+            "a.pts/nullif(2*a.ts_poss,0)::numeric",
+            "(a.fgm+0.5*a.fg3m)/nullif(a.fga,0)::numeric",
+            "a.oreb/nullif(a.oreb_opp,0)::numeric",
+            "a.tov/nullif(a.poss,0)::numeric",
+            "(a.steals+a.deflections)/nullif(a.poss,0)::numeric",
+            "a.fta/nullif(a.fga,0)::numeric",
+            "round(100.0*a.pts/nullif(a.poss,0),1)",
+            "(p.off_on_ppp-p.off_off_ppp)-(p.def_on_ppp-p.def_off_ppp)",
+        )
+        for sql in (SQL, ISRAELI_SQL):
+            compact = re.sub(r"\s+", "", sql.lower())
+            for formula in formulas:
+                self.assertIn(formula, compact)
+
+    def test_euro_gate_rejects_vacuous_presets(self):
+        self.assertIn("MUST_RETURN_ROWS", SCRIPT)
+        self.assertIn("parity is vacuous", SCRIPT)
 
 
 if __name__ == "__main__":

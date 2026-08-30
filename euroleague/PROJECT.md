@@ -1,6 +1,6 @@
 # EuroLeague project handoff
 
-Last updated: 2026-08-30
+Last updated: 2026-08-31
 
 This is the current project handoff and the first document to read before
 changing the EuroLeague ETL, schema, or app integration. `CLAUDE.md` is a
@@ -20,6 +20,10 @@ contract.
   rating/minutes fields the app previously re-derived with a second full
   `onoff_compute`. Additive - the existing functions are unchanged. Exact
   row parity on twelve presets; broad median 2.714 s -> 1.987 s.
+  On 2026-08-31 the Israeli dashboard body was replaced with the same one-scan
+  aggregation shape used by EuroLeague. The 12-preset apply gate was exact and
+  measured 2.734 s -> 1.439 s broad. Both league behavioral matrices passed
+  after commit, followed by the confirmed security apply and security audit.
 
 - Migration 045 was **applied as function-only query alignment** on 2026-08-29.
   `euroleague.onoff_compute` and `euroleague.four_factors_compute` now read
@@ -1914,10 +1918,13 @@ for, and 43 of its 47 output columns were discarded.
 
 ### The fix
 
-One additive function per schema returning `four_factors_compute`'s 43 columns
-plus the four rating/minutes fields, from a single fact aggregation. Ratios are
-still derived once, after the additive sums - the raw-counts-before-rates rule
-holds, and the aggregate CTE contains no division.
+One additive function per schema returns `four_factors_compute`'s 43 columns
+plus the four rating/minutes fields in one application/database call. The live
+EuroLeague implementation uses one fact aggregation. The live Israeli
+implementation is still the migration-046 wrapper: it preserves the 43 factor
+columns by calling `four_factors_compute`, then performs one narrow second fact
+aggregation for ratings/minutes. Ratios remain derived only after additive
+sums.
 
 - `euroleague/sql/046_player_dashboard_reader.sql` - 19 in-params, competition
   first, matching `euroleague.four_factors_compute`.
@@ -1957,6 +1964,45 @@ both would have passed without exercising anything:
   by `sched_long` and `onoff_default_mv`.
 
 The gate now refuses to pass any preset other than `empty` that returns 0 rows.
+
+### Israeli single-scan replacement (applied 2026-08-31)
+
+The deployed `sql/functions/four_factors_dashboard_compute.sql` now matches the
+EuroLeague execution shape: one eligible-games stage, one additive scan of
+`player_four_factors_by_game`, then factors and ratings. Its public signature
+and 47-column return contract are unchanged.
+
+Pre-apply rollback evidence for the exact SQL:
+
+- exact parity with the legacy two-call composition on 12/12 presets;
+- exact parity with the live wrapper across all 47 columns on 12/12 presets;
+- broad wrapper 2.302 s / 82,124 buffers versus single scan 1.759 s / 41,364;
+- last-10 wrapper 0.664 s / 27,450 buffers versus single scan 0.491 s / 13,877;
+- a separate broad gate measured 2.570 s two-call versus 1.268 s single scan.
+
+The approved apply reran all 12 presets exactly, measured broad latency at
+2.734 s two-call versus 1.439 s single scan, and committed. The post-commit
+read-only audit passed every EuroLeague and Israeli preset. The confirmed
+`apply_db_security.R` reconciliation committed and the independent
+`audit_db_security.R` pass succeeded.
+
+`euroleague/scripts/audit_player_dashboard_contracts.py` is the permanent
+read-only drift guard. It compares each league's dashboard reader with its
+established `four_factors_compute` + `onoff_compute` composition across the full
+filter matrix and all 47 columns. Static tests additionally require both SQL
+definitions to expose the same result contract and the same
+one-scan `games -> agg -> rates -> p` structure.
+
+Run from `euroleague/`:
+
+```powershell
+& .\.venv\Scripts\python.exe scripts\audit_player_dashboard_contracts.py --league both
+& .\.venv\Scripts\python.exe scripts\gate_israeli_player_dashboard_reader.py
+& .\.venv\Scripts\python.exe scripts\benchmark_israeli_dashboard_single_scan.py
+```
+
+The audit is always read-only. The gate remains non-persistent without
+`--apply`, and the benchmark has no apply path at all.
 
 ### App changes
 

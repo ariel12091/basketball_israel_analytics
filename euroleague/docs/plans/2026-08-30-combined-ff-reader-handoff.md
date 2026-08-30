@@ -119,6 +119,9 @@ wiped. Verified after apply:
 - `PUBLIC`, `anon`, `authenticated` have **no** EXECUTE
 - `apply_db_security.R` dry run validated clean
 - `sql/security/audit_app_access.sql` returned **zero** violation rows
+- Follow-up on 2026-08-31: the Israeli reader was replaced with the validated
+  single-scan body; the confirmed `apply_db_security.R` pass committed and the
+  independent `audit_db_security.R` pass succeeded.
 
 ### Verification
 

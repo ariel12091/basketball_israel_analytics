@@ -32,6 +32,7 @@ PRESETS = (
     ("opponent starters", "p_num_starters_def_max=>3"),
     ("empty", "p_min_gn=>999"),
 )
+MUST_RETURN_ROWS = {label for label, _ in PRESETS if label != "empty"}
 RATING_COLUMNS = ("Net RTG Diff", "Off ON Diff", "Def ON Diff", "minutes")
 
 
@@ -114,6 +115,8 @@ def main() -> int:
             after = candidate_result(cur, extra)
             if canonical(*before) != canonical(*after):
                 raise RuntimeError(f"{label}: combined result differs from current app composition")
+            if label in MUST_RETURN_ROWS and not after[1]:
+                raise RuntimeError(f"{label}: preset returned 0 rows; parity is vacuous")
             print(f"  OK {label:<20} rows={len(after[1])}")
 
         extra = PRESETS[0][1]
