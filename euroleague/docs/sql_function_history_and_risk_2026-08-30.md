@@ -181,19 +181,41 @@ name which is load-bearing.
 
 ---
 
-## 6. Dead views — three, one of them nine days old
+## 6. Dead views — two (an earlier draft said three)
 
 | View | Origin | Status |
 |---|---|---|
 | `player_onoff_by_season` | 002 | No referrer. Superseded by `player_onoff_default_mv`. |
 | `player_four_factors_by_season` | 002 | No referrer. Superseded by `player_advanced_stats_mv`. |
-| `player_game_context` | 002 / 004 | **No referrer as of migration 045 (2026-08-29).** |
+| `player_game_context` | 002 / 004 | **NOT an orphan — see the correction below.** |
 
-`player_game_context` is the interesting one. Removing the reads of it *was*
-migration 045's entire purpose — the view joined `schedule` and the
-two-perspective `final_schedule` onto every fact row for columns the
-aggregation never used. 045 succeeded, both functions moved off it, and the
-view was left in place with zero consumers.
+### Correction (2026-08-30, after this audit was first written)
+
+`player_game_context` was listed here as a third orphan. **That was wrong.**
+
+Migration 045 did remove the two *function* reads of it, which is what the
+first pass measured. But `euroleague/scripts/load_games.py:172` reads it in the
+published-game QA check that cross-validates team-grain four factors against
+the player-grain fact divided by five:
+
+```sql
+ply AS (
+  SELECT game_id, team_id, sum(ts_poss_count)/5 ts, ...
+    FROM euroleague.player_game_context
+   WHERE type_lineup='offense' AND is_on_key=1 GROUP BY 1,2)
+```
+
+`euroleague/tests/test_tab8_query_shape.py:25` also names it, asserting the
+functions no longer read it.
+
+**Why the first pass missed it:** the view-referrer scan covered `app/R/*.R`
+and `euroleague/src/**/*.py` but not `euroleague/scripts/*.py`. The
+*function*-referrer scan did cover `euroleague/scripts/`, so the three orphan
+functions were correctly identified — only the view scan had the gap. Dropping
+it would have broken game loading.
+
+The view stays, and `scripts/apply_047_drop_orphans.py` carries it in a
+`PROTECTED` list that refuses to run if a future migration tries to drop it.
 
 The first two are already flagged in the memory index ("don't confuse live
 `*_default_mv` with the dead migration-002 `*_by_season` views") — evidence
@@ -397,16 +419,18 @@ pattern safe.
 | 3 | Companion functions share names/arity but not implementations | **Medium-high** | 23-arg pairs at 2% and 5% similarity |
 | 4 | 3 orphan functions, one shadowing a live Israeli name | Medium | §5, all reachability paths checked |
 | 5 | EL `four_factors_compute` vs `_dashboard_compute` unguarded 52% duplicate | Medium | live parity holds; only static tests exist |
-| 6 | 3 orphan views, incl. one orphaned 9 days ago by 045 | Low-medium | §6 |
+| 6 | 2 orphan views (`*_by_season`, migration 002) | Low-medium | §6 |
 | 7 | Fast-path fan-out: 15 functions for 5 surfaces | Low (by design) | §4a |
 
 ## 11. Recommendations, in order
 
-1. **Drop the three orphan functions and three orphan views.** Zero-risk —
-   reachability was checked across views, function bodies, R, Python and
-   scripts. Removes 13 KB of grantable SQL and eliminates the dead/live name
-   collision on `get_player_traditional_dynamic`. Follow with the security
-   re-apply, since `DROP FUNCTION` wipes EXECUTE grants.
+1. **Drop the three orphan functions and two orphan views** — migration 047,
+   prepared and gated, `scripts/apply_047_drop_orphans.py`. The gate re-verifies
+   every target is unreferenced, refuses to touch `player_game_context`, and
+   smoke-tests all 18 app-reachable readers before committing. Removes 13 KB of
+   grantable SQL and eliminates the dead/live name collision on
+   `get_player_traditional_dynamic`. Follow with the security re-apply, since
+   `DROP FUNCTION` wipes EXECUTE grants.
 2. **Replace 016 and 017 with literal `CREATE OR REPLACE` files** carrying the
    current deployed bodies. Capture them from `pg_get_functiondef` first, so
    the committed text is exactly what runs.
