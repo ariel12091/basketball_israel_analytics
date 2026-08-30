@@ -418,6 +418,31 @@ file and never touch the database.
 
 ### Which shape is better — the wrapper or the single scan
 
+> **Standing contract: the shapes are implementation choices, not behaviour
+> choices.** Every path that produces "filtered Four Factors plus rating
+> differences" MUST return identical values for the columns it shares with the
+> others, for the same arguments. `four_factors_dashboard_compute` exists only
+> to compute in one pass what `four_factors_compute` and `onoff_compute`
+> compute in two — it is a performance refactor, and a performance refactor
+> that changes a number is a bug, not a trade-off. Anything else silently makes
+> Tab 1, Tab 8, Tab 7 and the React API disagree about the same player.
+
+Concretely, all three of these must agree, per league, on the 43 four-factor
+columns and on `Net RTG Diff` / `Off ON Diff` / `Def ON Diff` / `minutes`:
+
+| Path | Agreement guaranteed by |
+|---|---|
+| `four_factors_compute` ⋈ `onoff_compute` (Plumber) | construction — it calls both functions |
+| Israeli `four_factors_dashboard_compute` | construction — it *wraps* `four_factors_compute` |
+| **EuroLeague `four_factors_dashboard_compute`** | **nothing — it reimplements the logic** |
+
+Two of the three are safe by structure. The third is the one that needs a test,
+and it is the reason the parity test below is the single required action rather
+than a nice-to-have. Current state, verified live during this audit: EuroLeague's
+two functions agree exactly — 0 mismatching cells across 43 shared columns on
+broad, last-10, home, and the 2-argument shape the MV uses. That is a
+measurement of today, not a guarantee about tomorrow.
+
 The two leagues solve the same requirement differently:
 `basketball_test.four_factors_dashboard_compute` **wraps** `four_factors_compute`
 and joins a narrow ratings aggregation to it; `euroleague.four_factors_dashboard_compute`
