@@ -44,6 +44,7 @@ DECLARE
   app_function_names constant text[] := ARRAY[
     'onoff_compute',
     'four_factors_compute',
+    'four_factors_dashboard_compute',
     'fetch_lineups_csv_v2',
     'fetch_lineups_all',
     'fetch_lineups_four_factors_csv',
@@ -62,6 +63,7 @@ DECLARE
   euro_function_names constant text[] := ARRAY[
     'onoff_compute',
     'four_factors_compute',
+    'four_factors_dashboard_compute',
     'fetch_lineups_dynamic',
     'fetch_lineups_direct',
     'fetch_lineups_pergame',

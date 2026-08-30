@@ -1,6 +1,6 @@
 # EuroLeague project handoff
 
-Last updated: 2026-08-28
+Last updated: 2026-08-30
 
 This is the current project handoff and the first document to read before
 changing the EuroLeague ETL, schema, or app integration. `CLAUDE.md` is a
@@ -9,13 +9,18 @@ contract.
 
 ## Current state
 
-- Migration 045 is **prepared and gated but NOT applied** (2026-08-28). The
-  database is unchanged: `euroleague.onoff_compute` and
-  `euroleague.four_factors_compute` still read `player_game_context`, the
-  `(game_id, team_id)` index does not exist, and neither function carries a
-  `work_mem` setting. Verified after every experiment by re-reading
-  `pg_get_functiondef` hashes and `pg_index`. See "Migration 045 - Tab 8 query
-  shape (prepared, not applied)" below for the full evidence.
+- Migration 046 was **applied in both schemas** on 2026-08-30. The filtered
+  Four Factors path in Tab 8 and Tab 1 now makes one database call instead of
+  two: `four_factors_dashboard_compute` returns the factor columns plus the
+  rating/minutes fields the app previously re-derived with a second full
+  `onoff_compute`. Additive - the existing functions are unchanged. Exact
+  row parity on twelve presets; broad median 2.714 s -> 1.987 s.
+
+- Migration 045 was **applied as function-only query alignment** on 2026-08-29.
+  `euroleague.onoff_compute` and `euroleague.four_factors_compute` now read
+  `player_four_factors_by_game` directly, matching the Israeli app-facing
+  access shape. No index or function-local `work_mem` setting was added; the
+  existing physical indexes are unchanged.
 
 - Migration 043 was applied on 2026-08-27. Non-clutch Team Minutes now reads
   the existing per-game lineup fact, with one additive `action_span_seconds`
@@ -1622,40 +1627,133 @@ because conservative possession QA flags small same-team-transition counts;
 all hard publication gates passed. Review status is evidence for inspection,
 not an exclusion from season aggregates.
 
-## Migration 045 - Tab 8 query shape (prepared, not applied)
+## Migration 045 - Tab 8 query shape (applied 2026-08-29)
 
-**Status: nothing is applied.** Four candidates were tested inside
-rollback-only transactions on direct port 5432 on 2026-08-28. The database was
-re-verified clean after each: original three indexes on
-`player_four_factors_by_game`, function SHA-256
-`083d6ff31f82cbe62083b82f36d6b4c17ac994e613d064317e7fe0b2ddbd4f82` (onoff) and
-`3bac5d68cb82f0e0a0f7d8e3367eb26b57f728af2649673e192ea59e8bad6c3a` (ff), no
-`work_mem` setting on either function.
+**Final status:** the two function source swaps are applied. The composite
+index and function-local `work_mem` experiments were deliberately excluded.
+Before that final decision, rollback was verified after every
+one of the seven live runs by re-reading `pg_get_functiondef` hashes and
+`pg_index`: both functions still read `player_game_context`,
+`euroleague_pff_game_team_idx` does not exist, and neither function carries a
+`work_mem` setting. Two runs were killed mid-flight and the server rolled both
+back cleanly.
 
-Spec: `docs/specs/2026-08-28-tab8-query-remediation-design.md` plus Addendum A.
-Plan: `docs/plans/2026-08-28-tab8-query-remediation.md`.
+Historical pre-apply hashes used by the fixed applicator:
+
+- `onoff` `083d6ff31f82cbe62083b82f36d6b4c17ac994e613d064317e7fe0b2ddbd4f82`
+- `ff` `3bac5d68cb82f0e0a0f7d8e3367eb26b57f728af2649673e192ea59e8bad6c3a`
+
+Spec: `docs/specs/2026-08-28-tab8-query-remediation-design.md` plus Addenda A,
+A.1, A.2 and A.3. Plan: `docs/plans/2026-08-28-tab8-query-remediation.md`.
+Also kept as a standalone document beside the plan:
+`docs/plans/2026-08-28-tab8-query-remediation-handoff.md`.
+Branch `sql/tab8-query-shape`, commit `aea2b13`.
 
 ### The defect
 
 Both public functions aggregated the per-game fact through
-`euroleague.player_game_context`. That view joins `euroleague.schedule` (a
-primary-key probe) and the two-perspective `euroleague.final_schedule` (a
-`CROSS JOIN LATERAL VALUES` expansion, half of it then discarded) to **every
-fact row**, and the aggregation consumes none of those columns. The `games` CTE
+`euroleague.player_game_context`. That view joins `euroleague.schedule` and the
+two-perspective `euroleague.final_schedule` onto every fact row, and the
+aggregation reads none of those columns. The `games` CTE inside each function
 already resolves every schedule filter, so joining the fact to `games` on
-`(game_id, team_id)` is the same restriction.
+`(game_id, team_id)` is the identical restriction.
 
-Measured cost of the view on the broad call: **1,653,821 shared buffers, of
-which 1,606,198 are the redundant lookup.**
+The cost, from a faithful replica of the function's inner query:
 
-### What Tab 8 actually sends
+```
+Nested Loop                                    est=1      act=526,808
+  Index Scan       player_four_factors_by_game  loops=796      buffers=69,476
+  Index Only Scan  schedule                     loops=526,808  buffers=1,580,424
+                                                -> 3.0 buffer accesses per loop,
+                                                   96% of the 1,652,318 total
+```
 
-The spec measured the broad call with NULL dates. Tab 8 populates its date
-inputs from `euro_season_date_bounds()`, so the app always sends an explicit
+**1.65 million buffers is not 1.65 million pages read.** `euroleague.schedule`
+is 11 pages and its primary key 4 - about 15 pages, permanently cached. Every
+one of those accesses is a shared *hit*; there is no I/O at all. The cost is
+CPU: 526,808 pointless B-tree descents to fetch columns nobody reads.
+
+### Why the planner chose a per-row nested loop
+
+Not a planner blunder - the correct choice for the estimate it had. Every join
+node in that plan estimates **1 row** while producing 526,808, and the planner
+costed the whole query at **163**.
+
+| Join predicate | Estimated | Actual | Error |
+|---|---:|---:|---|
+| `game_id` only | 585,580 | 526,808 | 11%, fine |
+| `team_id` only | 8,900,744 | 10,500,064 | 15%, fine |
+| `game_id` AND `team_id` | 14,639 | 263,404 | **18x under** |
+
+Each column is estimated well alone; together they collapse. `game_id` and
+`team_id` are near-perfectly correlated - 589 games x 40 teams is 23,560
+combinations if independent, but only **1,178 pairs actually exist**, because a
+game determines its two teams. PostgreSQL assumes independence and multiplies
+the selectivities, under-counting ~20x. There are no extended statistics on the
+table to say otherwise.
+
+The full chain:
+
+1. `(game_id, team_id)` are correlated; the independence assumption under-counts
+   ~20x per join.
+2. Stacked through the real query's multi-level join, the estimate collapses
+   from 526,808 to 1.
+3. At one row, a nested loop with an index probe is unbeatable - total plan
+   cost 163.
+4. The view adds a second, redundant `schedule` join on top of that.
+5. The "one" probe therefore executes 526,808 times, for 1,580,424 wasted
+   buffer accesses.
+
+**Why the fix is robust to this:** it does not try to correct the estimate. The
+misestimate survives the migration, but with the view gone there is nothing left
+to multiply. The only looped node becomes the fact index scan at 796 loops,
+which is exactly right: one per game/team. That is why the buffer results were
+identical to the digit across all seven runs while wall clock swung wildly.
+
+With `enable_nestloop = off` the same query drops to 26,005 buffers via a merge
+join, but its estimated cost is 20 billion, so it would never be chosen
+naturally. Not a usable lever.
+
+### What shipped
+
+`sql/045_tab8_query_shape.sql` is additive, one transaction, and has no
+`DROP FUNCTION`. It ships both function bodies with **exactly one line changed
+each** - the aggregation
+  source swaps from the view to the base fact, alias `c` retained so no other
+  token differs. A test enforces byte-identity against candidate A.
+
+No index or function setting changed. The proposed `(game_id, team_id)` index
+and 16 MB `work_mem` remain separate experiments because their individual
+benefit was not isolated and the Israeli companion does not carry that
+composite index.
+
+Signatures, volatility, `SECURITY` mode, defaults, return columns and ordering
+are unchanged, so the Shiny call sites need no edit and no deploy.
+`player_game_context` is **not** dropped - the migration 002 season aggregates
+still read it.
+
+### Historical bundled-candidate measurements
+
+The table below measured the source swap bundled with physical tuning and must
+not be attributed to the final function-only migration. Full-matrix
+rollback-only run, 25 presets x both functions:
+
+| preset | before | after | buffers | temp blocks |
+|---|---:|---:|---|---|
+| onoff broad, app dates | 3.787 s | **1.373 s** | 1,653,821 -> 47,623 | 9,240 -> 4,609 |
+| ff broad, app dates | 4.338 s | **1.684 s** | 1,653,821 -> 47,623 | 16,794 -> 8,383 |
+| onoff last 10, app dates | 0.915 s | **0.275 s** | 398,123 -> 6,133 | 0 -> 0 |
+| onoff one team | 0.592 s | **0.135 s** | 141,245 -> 1,930 | 211 -> 0 |
+| onoff one opponent | 0.609 s | **0.153 s** | 81,657 -> 3,555 | 225 -> 0 |
+| onoff broad, NULL dates | 1.027 s | **0.810 s** | 71,988 -> 46,559 | 0 -> 0 |
+
+**The spec measured the wrong call.** Tab 8 populates its date inputs from
+`euro_season_date_bounds()`, so the app always sends an explicit
 2025-09-01..2026-07-01 window. That call is ~4x slower than the NULL-date call
-for byte-identical output (358 rows both ways), because the planner then probes
-the fact per game and each probe paid the view cost. It was added to the preset
-matrix as `broad app dates` and is the number that matters.
+the spec benchmarked, for byte-identical output (358 rows either way). It was
+added to the matrix as `broad app dates` and is the number that matters. The
+same omission hid the single largest win in the exercise, `last 10 app dates`
+at 398,123 -> 6,133 buffers.
 
 ### Candidates
 
@@ -1664,99 +1762,226 @@ matrix as `broad app dates` and is the number that matters.
 | A | direct fact source + `(game_id, team_id)` index | good; every preset faster |
 | B | A + one filtered aggregation at `(player_id, team_id)` | **rejected** |
 | C | B + 16 MB function-local `work_mem` | **rejected** |
-| AC | A + 16 MB function-local `work_mem` | **accepted shape**, shipped as `sql/045_tab8_query_shape.sql` |
+| AC | A + 16 MB function-local `work_mem` | fast experiment; **not shipped** |
+| final 045 | direct fact source only; existing indexes/settings | **applied** |
 
 **B and C are rejected on measured evidence and must not be revisited without
 new evidence.** Collapsing `agg`/`pivoted` into one aggregation needs 25
-(ON/OFF) and 44 (Four Factors) accumulators per group instead of 7/12
-accumulators over 4x more groups. That state no longer fits the server's
-2,184 kB `work_mem` and introduced an **on-disk sort where none existed**
-(`onoff broad season` temp written 0 -> 9,240 blocks; `ff broad season`
-0 -> 16,794; `last 10` 0 -> 1,135/4,113). Wall clock followed: `ff broad
-season` 0.935 -> 3.019 s. Candidate C removed the spill with 16 MB but the
-shape stayed ~2.5x slower than A, so the wide aggregate costs more CPU than two
-narrow passes. Buffer counts were identical to A's throughout, so the
-aggregation shape was the only variable.
+(ON/OFF) and 44 (Four Factors) accumulators per group instead of 7/12 over 4x
+more groups. That state no longer fits `work_mem` and introduced an **on-disk
+sort where none existed** - `onoff broad season` temp written 0 -> 9,240 blocks,
+`ff broad season` 0 -> 16,794, `last 10` 0 -> 1,135/4,113. Wall clock followed:
+`ff broad season` 0.935 -> 3.019 s. Candidate C removed the spill with 16 MB and
+the shape was still ~2.5x slower than A, so the wide aggregate costs more CPU
+than two narrow passes; the spill was a symptom, not the cause. Buffer counts
+were identical to A's throughout, isolating the aggregation shape as the only
+variable.
 
-### Measured effect of the accepted migration
+### The measurement problem
 
-Full-matrix rollback-only run of `sql/045_tab8_query_shape.sql`, 25 presets x
-both functions, warm median of 15 samples on the gated presets:
+This consumed more of the session than the migration did, and the conclusions
+matter for any future performance work on this instance.
 
-| preset | before | after | buffers | temp written |
-|---|---|---|---|---|
-| onoff broad, app dates | 3.787 s | **1.373 s** | 1,653,821 -> 47,623 | 9,240 -> 4,609 |
-| ff broad, app dates | 4.338 s | **1.684 s** | 1,653,821 -> 47,623 | 16,794 -> 8,383 |
-| onoff broad, NULL dates | 1.027 s | **0.810 s** | 71,988 -> 46,559 | 0 -> 0 |
-| ff broad, NULL dates | 1.055 s | **0.788 s** | 73,052 -> 46,559 | 0 -> 0 |
-| onoff last 10 | 0.605 s | **0.248 s** | 10,228 -> 5,279 | 0 -> 0 |
-| ff last 10 | 0.658 s | **0.488 s** | 11,082 -> 5,279 | 0 -> 0 |
-| onoff one team | 0.592 s | **0.135 s** | 141,245 -> 1,930 | 211 -> 0 |
-| onoff one opponent | 0.609 s | **0.153 s** | 81,657 -> 3,555 | 225 -> 0 |
-| onoff team+lastN+starters | 0.127 s | **0.102 s** | 6,605 -> 241 | 0 -> 0 |
-
-Index `euroleague_pff_game_team_idx` is **5.7 MB** and builds in 5-11 s.
-
-**Correctness: exact full-row parity on all 50 preset x function combinations,
-on every candidate**, including empty results, zero denominators, all four
-starter bounds, opponent-rank top/bottom, round ranges, and the EuroCup
-competition. No preset regressed against its same-run baseline under the
-`max(10%, 100 ms)` rule. `app_readonly` EXECUTE survived, SECURITY mode
-unchanged, signatures and return contracts unchanged.
-
-### Why it is not applied
-
-The absolute latency gate did not pass, and the gate instrument is not
-trustworthy enough to force the question either way.
-
-The original 0.500 s gate was re-anchored (Addendum A) to Israeli-companion
-parity, because **the companion does not reach 0.500 s either** and already
-uses this exact execution shape - `basketball_test.onoff_compute` reads
+The spec's 0.500 s gate was anchored to a sample that does not reproduce -
+6.775 s warm became 0.993 s on re-measurement, a 7x spread driven by buffer
+cache state. Worse, **the Israeli companion never reached 0.500 s either**, and
+it already uses the exact shape this migration adopts:
 `basketball_test.player_four_factors_by_game p JOIN sched s ON s.game_id =
-p.game_id AND s.team_id = p.team_id`, with no context view. So this work
-converges EuroLeague onto what the Israeli side has always done rather than
-inventing an optimisation.
+p.game_id AND s.team_id = p.team_id`, with no context view. EuroLeague was the
+outlier; this converges it. Gates were re-anchored to companion parity in
+Addendum A.
 
-The final run failed 2 of 6 absolute checks:
+Three instrument defects were found and fixed, none of which relaxed a
+threshold:
 
-- `onoff broad season` p90 2.140 s vs a 1.891 s gate - while its **median was
-  0.810 s** and its cold sample was 8.880 s. This is instance contention, not
-  query behaviour.
-- `ff broad app dates` median 1.684 s vs a 1.246 s gate.
+1. **Shape-matched gates (A.2).** `basketball_test.onoff_compute` ends with
+   `fs.game_date BETWEEN p_start_date AND p_end_date` and has no NULL guard, so
+   the companion *cannot* make a NULL-date call - it returns zero rows. Gating
+   EuroLeague's NULL-date presets against a dated companion call compared two
+   different plans and produced a bogus p90 failure on a preset whose median was
+   0.810 s. NULL-date presets are now report-only, and a `last 10 app dates`
+   preset was added so the last-N gate is shape-matched too.
+2. **Companion timed inside the transaction (A.2).** It was measured before the
+   DDL, minutes earlier. Not close enough: the companion's own unchanged
+   `four_factors_compute` measured 1.642 s and 1.199 s twenty minutes apart.
+   `basketball_test` is untouched by the candidate DDL, so reading it inside the
+   transaction cannot be contaminated by it.
+3. **Trimmed estimator (A.3).** The instance injects multi-second stalls into
+   whatever is running; one landed inside a baseline `EXPLAIN`, 13,207 ms on a
+   query whose median is 1.2 s. A representative candidate sample:
 
-Two reasons not to read those as real regressions:
+   ```
+   1.34 1.35 1.37 1.37 1.37 1.37 1.38 1.39 1.39 1.40 1.41 | 1.63 3.05 5.42 7.16
+   twelve values inside 0.07 s                            | the instance
 
-1. **The instrument is noisier than the effect it measures.** The Israeli
-   companion's own `four_factors_compute` median measured 1.583 s in one
-   session and 1.132 s in another - a 40% swing on unchanged code. EuroLeague's
-   `ff broad app dates` measured 1.613 s and 1.684 s across runs. The
-   difference being gated is smaller than the run-to-run spread.
-2. **A known harness defect.** The companion is measured only on the app-date
-   window, but its gate is applied to both `broad season` (NULL dates) and
-   `broad app dates`. Those are different filter shapes with different plans,
-   so the `broad season` comparison is not like-for-like. This must be fixed in
-   `scripts/apply_045_tab8_query_shape.py` before any apply run - either gate
-   `broad season` against a companion NULL-date call or make it report-only.
+   raw     median 1.390   p90 5.420
+   trimmed median 1.390   p90 1.630
+   ```
 
-Everything that does not depend on wall clock passed: parity, no-regression,
-shared-buffer traffic, temp blocks, no narrow full-fact scan, privileges,
-contracts, and clean rollback.
+   Every latency statistic is now computed over the central 60% of samples,
+   applied identically to candidate, baseline and companion so no side gains an
+   advantage. The median does not move; only the stall-dominated p90 does. Runs
+   print the full sorted sample list with trimmed values marked, so a genuinely
+   fat tail can never be mistaken for a discarded outlier.
 
-### To resume
+The baseline half of a run is slow because it measures the *unfixed* functions -
+a single `home` call costs ~6.8 s today. Baseline sample count was cut to 3 per
+preset (the candidate keeps each preset's full count), taking a full run from
+~50 minutes to ~18.
 
-1. Fix the companion-gate shape mismatch noted above.
-2. Consider replacing single-run medians with a repeated-measures comparison,
-   or making the absolute gate advisory while parity/buffer/temp gates remain
-   blocking. Do not simply raise the threshold.
-3. Re-run `scripts/apply_045_tab8_query_shape.py --candidate MIGRATION` (no
-   `--apply`) and confirm.
-4. Get explicit approval, then run with `--apply`, then the pooled-port gate,
-   then `scripts/apply_db_security.R` with `CONFIRM_DB_SECURITY_APPLY=1` and
-   the audit, per "After a migration: re-run the security pass" in `RUNBOOK.md`.
-5. No app deployment is needed: signatures and the R call sites are unchanged.
+### What is settled
 
-`euroleague.player_game_context` must NOT be dropped - the migration 002 season
-aggregates still read it.
+Stable across every completed run:
+
+- exact full-row parity, 25 presets x 2 functions, including empty results,
+  zero denominators, all four starter bounds, opponent-rank top/bottom, round
+  ranges and the EuroCup competition;
+- shared-buffer counts, identical to the digit;
+- temp blocks, with narrow-preset spills eliminated (211/225/382/408 -> 0);
+- no preset regressed under the `max(10%, 100 ms)` rule;
+- privileges, `SECURITY` mode, signatures, and clean rollback;
+- candidate trimmed median for `onoff broad app dates`: 1.357 / 1.373 / 1.390 s
+  across three independent runs.
+
+### What is open
+
+Whether EuroLeague Four Factors is at parity with the Israeli companion. It
+measured 1.651 s against the companion's 1.642 s in one run (pass) and 1.670 s
+against 1.199 s in another (fail). The companion is the unstable side, and the
+recorded comparisons are candidate-trimmed against companion-untrimmed because
+its raw samples were not retained. One run with both sides trimmed settles it.
+This is the only unresolved gate.
+
+### Incidental findings, outside the scope of 045
+
+- **Israeli `onoff_compute` silently returns zero rows on NULL input.** Its
+  final filter is `WHERE fs.total_net_rtg >= p_min_net` and its date filter
+  `fs.game_date BETWEEN p_start_date AND p_end_date`; neither is NULL-guarded,
+  so a NULL yields an empty result rather than an error. The EuroLeague version
+  guards both. Tab 1 always passes real values, so it is not currently biting.
+- **No extended statistics on either league's fact table.**
+  `CREATE STATISTICS (dependencies) ON game_id, team_id` would teach the planner
+  the correlation described above and likely help other queries joining that
+  pair. Deliberately not bundled into 045 - it would confuse attribution.
+- **The Israeli side probably pays a smaller version of the same tax.** Same
+  table shape, same missing statistics. Tab 1's broad call at 1.745 s is the
+  candidate to look at.
+- **JIT is already off server-wide**, so the spec's caution about not disabling
+  it again is moot.
+- **`app_readonly` already holds SELECT on the base fact.** The plan proposed a
+  test asserting it could not; that assertion would have been false.
+
+### Follow-up
+
+1. Do not bundle the composite index or `work_mem` into migration 045.
+2. Run `scripts/apply_db_security.R` with `CONFIRM_DB_SECURITY_APPLY=1`, then
+   re-run the audit.
+3. No app deployment is needed; the call interface is unchanged.
+
+Operational notes are in `RUNBOOK.md` under "Migration 045 (Tab 8 query shape)":
+direct port 5432 only, publication pre-flight, SHARE lock duration, and
+kill-safety.
+
+## Migration 046 - combined filtered player dashboard reader (applied 2026-08-30)
+
+**Status: applied in both schemas.** `euroleague.four_factors_dashboard_compute`
+and `basketball_test.four_factors_dashboard_compute` both exist and are on the
+`app_readonly` EXECUTE allowlist. `four_factors_compute` and `onoff_compute` are
+unchanged and still deployed in both schemas.
+
+### The defect
+
+On the filtered (non-MV) path, the Four Factors view issued **two** full fact
+aggregations per filter change:
+
+1. `four_factors_compute` for the 43 factor columns, and
+2. a second `onoff_compute` with `p_team_ids => NULL`, `p_min_all => 0`,
+   `p_min_on => 0` - a whole unrestricted on/off computation - solely to recover
+   four columns: `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, `minutes`.
+
+Both calls read the same per-game fact under the same filter set, then R
+`left_join`ed them on `(player_id, team_id)`. The second call recomputed every
+possession, rating and percentile the first call had already scanned the rows
+for, and 43 of its 47 output columns were discarded.
+
+### The fix
+
+One additive function per schema returning `four_factors_compute`'s 43 columns
+plus the four rating/minutes fields, from a single fact aggregation. Ratios are
+still derived once, after the additive sums - the raw-counts-before-rates rule
+holds, and the aggregate CTE contains no division.
+
+- `euroleague/sql/046_player_dashboard_reader.sql` - 19 in-params, competition
+  first, matching `euroleague.four_factors_compute`.
+- `sql/functions/four_factors_dashboard_compute.sql` - 20 in-params, matching
+  `basketball_test.four_factors_compute`.
+
+The call interface for the *existing* functions is untouched, so nothing else
+that reads them is affected.
+
+### Gate evidence (Israeli, 2026-08-30)
+
+`euroleague/scripts/gate_israeli_player_dashboard_reader.py` creates the
+function inside a transaction, compares the combined result against the live
+two-call result row-by-row keyed on `(player_id, team_id)` across all 47
+columns, then rolls back unless `--apply` is passed.
+
+Twelve presets, eleven of which return rows:
+
+```
+broad 362, last 10 328, game type 362, game type multi 362, opponents 332,
+opponent rank 355, gn range 294, home 359, win 359, own starters 362,
+opponent starters 359, empty 0
+```
+
+Exact parity on all twelve. Broad-call median latency **2.714 s two-call ->
+1.987 s combined** (a second run: 3.488 s -> 2.374 s; wall-clock on this
+instance swings widely, so treat the direction as the result, not the ratio -
+the structural claim is one fewer full aggregation).
+
+Two presets in the first version of this gate were vacuous and have been fixed;
+both would have passed without exercising anything:
+
+- `p_game_type_csv => '1'` - not a `game_type` this schedule uses. The 2026
+  values are 5 (regular season, 194 games), 16, 17, 26, 34, 35.
+- `p_opp_ids_csv => '1109,1110'` - `schedule.team1` holds external team codes;
+  the id domain the functions filter on is the small-int `team_id` (2-15) used
+  by `sched_long` and `onoff_default_mv`.
+
+The gate now refuses to pass any preset other than `empty` that returns 0 rows.
+
+### App changes
+
+`ff_ranked_df` in both on/off tabs drops the second `onoff_compute` block and
+reads the combined function directly on the fallback path. The MV path is
+untouched.
+
+- `app/R/server_tab8_euro.R` - `euroleague.four_factors_dashboard_compute`.
+- `app/R/server_tab1.R` - `basketball_test.four_factors_dashboard_compute`.
+
+### Security
+
+The function name is on the Israeli and EuroLeague allowlists in
+`sql/security/audit_app_access.sql`, `sql/security/enable_readonly_rls.sql` and
+`app/tests/testthat/test-db-security-contracts.R`. Because this migration only
+`CREATE OR REPLACE`s a new name and never `DROP`s an existing function, no
+EXECUTE grant was wiped. Verified after apply: `proacl` is
+`{postgres=X/postgres,service_role=X/postgres,app_readonly=X/postgres}` on the
+Israeli function, `PUBLIC`/`anon`/`authenticated` have no EXECUTE, and
+`audit_app_access.sql` returns zero violation rows.
+
+### Ordering hazard seen in this change
+
+The R edits for both leagues were made in one pass, but only the EuroLeague
+function had been applied. Israeli Tab 1 Four Factors was therefore broken for
+every filtered call - `UndefinedFunction` - while Summary, the MV path and all
+of Tab 8 kept working, so a casual local check did not reveal it. A running
+Shiny process also holds the pre-edit closure, since `app.R` sources `R/*.R`
+once at startup and there is no `shiny.autoreload` in this project; a browser
+reload does not re-source R. **When a change spans both leagues, apply both
+functions before editing either tab, and restart R before believing a local
+test.**
+
 
 ## Known gaps and risks
 

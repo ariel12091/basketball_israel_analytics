@@ -35,6 +35,7 @@ test_that("app role is read-only and function execution is allowlisted", {
   expected_functions <- c(
     "onoff_compute",
     "four_factors_compute",
+    "four_factors_dashboard_compute",
     "fetch_lineups_csv_v2",
     "fetch_lineups_all",
     "fetch_lineups_four_factors_csv",
@@ -59,6 +60,7 @@ test_that("hardening covers the EuroLeague shadow schema on the same terms", {
   euro_functions <- c(
     "onoff_compute",
     "four_factors_compute",
+    "four_factors_dashboard_compute",
     "fetch_lineups_dynamic",
     "fetch_lineups_direct",
     "get_team_ratings_dynamic",

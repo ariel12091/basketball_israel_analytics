@@ -195,7 +195,7 @@ server_tab1 <- function(input, output, session, shared) {
     if (!isTRUE(allowed)) return(data.frame())
     team_csv <- if (is.null(team_ids) || !length(team_ids)) NA_character_ else paste(team_ids, collapse = ",")
     db_get_query(pool,
-                    paste0("SELECT * FROM basketball_test.four_factors_compute(",
+                    paste0("SELECT * FROM basketball_test.four_factors_dashboard_compute(",
                            "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,",
                            "$7::text,$8::text,$9::text,$10::int4,$11::text,",
                            "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4",
@@ -272,28 +272,8 @@ server_tab1 <- function(input, output, session, shared) {
   # --- Full ranked Four Factors data (ranks computed BEFORE any user filtering) ---
   ff_ranked_df <- reactive({
     if (isTRUE(fallback_needed())) {
-      # Dynamic SQL path: use four_factors_compute + onoff_compute for rating diffs
-      df_adv <- live_ff_result_df()
-
-      # Get RTG diffs for ALL players (no min_poss or team filter)
-      # Min-poss and team filtering is applied later in result_df()
-      rng <- debounced_range()
-      gy <- shared$selected_game_year()
-      db_args <- build_onoff_db_args()
-      df_sum <- run_onoff_compute_14(pg_pool,
-                                     start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
-                                     team_ids = NULL, min_all = 0L, min_on = 0L, min_net = DEFAULT_MIN_NET,
-                                     game_year = gy, game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv,
-                                     home_away = db_args$home_away, outcome = db_args$outcome,
-                                     opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric,
-                                     min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games,
-                                     num_starters_off = NA_integer_, num_starters_def = NA_integer_,
-                                     num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max,
-                                     num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max) %>%
-        select(player_id, team_id, `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, any_of("minutes"))
-
-      df <- df_adv %>%
-        left_join(df_sum, by = c("player_id", "team_id"))
+      # One app call: Four Factors plus a narrow ratings/minutes aggregation.
+      df <- live_ff_result_df()
     } else {
       # MV path (existing behavior)
       df_adv <- advanced_result_df()
