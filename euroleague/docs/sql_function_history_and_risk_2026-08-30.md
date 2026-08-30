@@ -416,6 +416,87 @@ file and never touch the database.
 
 ---
 
+### Which shape is better — the wrapper or the single scan
+
+The two leagues solve the same requirement differently:
+`basketball_test.four_factors_dashboard_compute` **wraps** `four_factors_compute`
+and joins a narrow ratings aggregation to it; `euroleague.four_factors_dashboard_compute`
+**reimplements** the whole thing as one scan. Neither file says why, and there is
+no design doc for 046 — each was gated independently on *output* parity, and an
+output-parity gate cannot see shape.
+
+Only one of the three shapes in the system is literally a join between two
+functions, and it is the one nobody chose deliberately:
+
+| Shape | Fact scans | Function calls | Saving |
+|---|---:|---:|---:|
+| Plumber: `four_factors_compute` ⋈ `onoff_compute` | 2 | 2 | baseline |
+| Israeli: `four_factors_compute` ⋈ inline ratings CTE | 2 | 1 | 12% |
+| EuroLeague: one `agg` CTE | **1** | 0 | **50%** |
+
+The saving tracks **fact scans**, not function calls. Israeli went from two calls
+to one but still scans twice, so it captured only the difference between a full
+`onoff_compute` (47,835 buffers, percentile ranks included) and a narrow ratings
+scan (~41,040).
+
+#### The maintenance cost of duplication, measured
+
+How often does one commit have to change the same filter/gate logic
+(`schedule_ranked`, opponent rank, starter bounds, last-N, GN, home/away,
+outcome) in more than one function at once?
+
+| | commits changing filter/gate logic | of those, in >1 function |
+|---|---:|---:|
+| **EuroLeague** | 18 | **10 (56%)** |
+| Israeli | 30 | 5 (17%) |
+
+Examples: `94ba256` ("a real # Starters") changed all three
+`fetch_lineups_*`; `24d551d` changed five functions; the Israeli `3456ce2`
+("add GN filter functionality") changed six. In EuroLeague the **majority** of
+filter changes already land in several places, so a new duplicate is a real
+cost, not a neutral choice.
+
+#### Why the filtered-path hit rate does not need measuring
+
+The obvious missing number is what fraction of sessions take the filtered path
+at all — the 50% only applies there. But Tabs 1 and 8 share a design, a filter
+UI and `onoff_fallback_needed()`, so the hit rate `h` is the **same on both
+sides and cancels out of the comparison**:
+
+```
+Israeli wrapper      h x 12%    one definition       <- already shipped
+EuroLeague inline    h x 50%    one extra definition
+EuroLeague wrapper   h x  0.7%  one definition       <- pointless
+```
+
+Shipping the Israeli wrapper already asserts that `h x 12%` cleared the bar. If
+it did, `h x 50%` clears it comfortably. No measurement changes that ordering.
+
+#### Verdict
+
+**Keep both shapes.** They are not an inconsistency to fix — each is the only
+sensible option given one structural fact:
+
+| | other consumers of `four_factors_compute` | a wrapper would save |
+|---|---:|---:|
+| Israeli | 3 (Tab 7, Plumber, perf scripts) | 12% |
+| EuroLeague | 1 (the MV it builds) | 0.7% |
+
+Israeli's wrapper is strictly dominant — single definition *and* the whole
+available saving, no trade-off. EuroLeague has no wrapper option worth taking,
+so its real choice is inline-with-a-guard, or revert to two calls.
+
+**The one action: add a behavioural parity test for EuroLeague**, asserting that
+`four_factors_compute` and `four_factors_dashboard_compute` agree on the 43
+shared columns **across the filter presets** — not just the broad case, since the
+co-change data says filter logic is precisely what moves. That converts drift
+from a silent bug into a failing test, which is what makes a duplicate
+affordable here. Without it, revert EuroLeague to two calls.
+
+One caveat on the 0.7% figure: it comes from a rollback-only probe built during
+this audit, not from a decision recorded in August. The EuroLeague shape is
+*defensible*; it was never *justified* at the time.
+
 ## 9. The source-of-truth break — three migrations, verified against the database
 
 **Corrected 2026-08-30 after mining the git history.** An earlier draft named
@@ -584,10 +665,12 @@ historical applicator whose migration is already applied; accepted.
 4. **Make the composed names greppable.** Have the R hold the full name per
    branch (as Tabs 10 and 5 already do) rather than assembling `base + "_" +
    kind`. Cheap, and it restores grep, review and static checking for Tab 9.
-5. **Add a behavioural parity test** for `four_factors_compute` vs
-   `four_factors_dashboard_compute` across filter presets — or retire the
-   former by repointing `player_advanced_stats_mv` (costs +45,000 buffers per
-   publication; see the 046 handoff).
+5. **Add the behavioural parity test** for `four_factors_compute` vs
+   `four_factors_dashboard_compute` across filter presets (§8, "Which shape is
+   better"). It is what makes EuroLeague's duplicate affordable in a schema
+   where 56% of filter commits already touch more than one function. The
+   alternative is retiring `four_factors_compute` by repointing
+   `player_advanced_stats_mv`, which costs +45,000 buffers per publication.
 6. **Treat the `analytics_common` adapter as the real fix** for §8. The two
    fact tables are already structurally identical (36 shared columns, zero
    Israeli-only) and a `UNION ALL` with a league discriminator prunes correctly,
