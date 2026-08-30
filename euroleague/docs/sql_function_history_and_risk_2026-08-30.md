@@ -23,6 +23,9 @@ so explicitly rather than quietly dropped.
 | What exists | `pg_proc` × `pg_namespace` × `pg_language` for both schemas |
 | What each migration did | `CREATE`/`DROP FUNCTION` grep over `euroleague/sql/0*.sql` |
 | When it landed | `git log --diff-filter=A` per migration file |
+| Whether it changed afterwards | full `git log` per migration file, plus `git show` on the editing commits |
+| Whether the deployed body matches the file | `pg_proc.prosrc` diffed against the `$tag$…$tag$` body in the committed migration |
+| Review trail | `gh pr list --state all` |
 | Who calls what, in-database | `pg_get_viewdef` for views/MVs + `pg_proc.prosrc` for function bodies |
 | Who calls what, in code | `app/R/*.R`, `euroleague/src/**/*.py`, `euroleague/scripts/*.py`, `etl/*.R`, `scripts/*.R`, `frontend-v2/server` |
 | App signature match | app-side `$N` placeholders vs `pg_proc.pronargs` — **this check was wrong, see §7** |
@@ -77,11 +80,38 @@ changing one.**
 Migration `003` was prepared and deliberately never applied — superseded by
 `004`. It remains in the tree, correctly marked.
 
+### A migration file is not a record of what was applied
+
+Mining `git log` per migration file rather than only its creation date changes
+how §2 and §3 should be read. **Nine of the 46 migration files were edited after
+the commit that introduced them:**
+
+| Migration | Commits | Notable |
+|---|---:|---|
+| `004_app_read_layer` | 5 | all on 08-07, including a same-day `onoff_compute` alias fix |
+| `008_action_team_context` | 5 | all on 08-08, ending in "Close the residual findings from the whole-branch review" |
+| `009_consumers_read_the_fact` | 3 | 08-09 |
+| `014_lineup_units_read_layer` | 3 | 08-10 |
+| `005`, `006`, `007`, `011`, `012` | 2 each | **011 and 012 were edited on 08-18, eight days after introduction** |
+
+So "migration 011" names at least two different texts, and the rewrite counts in
+§3 are a floor rather than an exact number: they count migrations that issued a
+`CREATE OR REPLACE`, not the times each file's contents changed.
+
+The 08-18 edit is the important one. Commit `8352f94` ("Freeze each action's 5v5
+pair before joining lineup metadata") changed 74 lines of `011` and 4 of `012`
+— four days *after* migrations 016 and 017 had text-patched those same two
+functions in the database. That is exactly the ordering that makes a text-patch
+migration dangerous, and the outcome was mixed: `012` came out consistent,
+`011` did not. §9 has the verified detail.
+
 ---
 
 ## 3. Which functions were rewritten, and how often
 
-Counting every migration that issued a `CREATE OR REPLACE` for the function:
+Counting every migration that issued a `CREATE OR REPLACE` for the function.
+These are floors, not exact counts — see the note above on migration files
+being edited after they were applied.
 
 | Function | Rewrites | Migrations |
 |---|---:|---|
@@ -386,44 +416,86 @@ file and never touch the database.
 
 ---
 
-## 9. The source-of-truth break: migrations 016 and 017
+## 9. The source-of-truth break — three migrations, verified against the database
 
-These two migrations do not contain the SQL they deploy. They read the existing
-body out of the catalog, perform a **text substitution**, and re-execute it:
+**Corrected 2026-08-30 after mining the git history.** An earlier draft named
+two patching migrations and asserted that neither target's body could be
+reconstructed. Both halves needed fixing.
 
-```sql
--- 017_materialize_player_refresh.sql
-SELECT pg_get_functiondef(p.oid) ... WHERE p.proname = 'refresh_player_four_factors_by_game_for_games';
-definition := replace(definition, 'player_minutes AS (', 'player_minutes AS MATERIALIZED (');
-definition := replace(definition, 'counts AS (',         'counts AS MATERIALIZED (');
-EXECUTE definition;
+### There are three, not two
+
+`015`, `016` and `017` all read a function's body out of the catalog, transform
+the text, and re-execute it:
+
+| Migration | Target | Transform |
+|---|---|---|
+| 015 | `refresh_actions_consumer_candidates` | `a.period` → `euroleague.effective_period(a.period, a.minute, a.play_type)`, and `'actions-v1'` → `'actions-v2'` |
+| 016 | `refresh_actions_consumer_candidates` | injects a rewritten `event_lineups AS MATERIALIZED` block |
+| 017 | `refresh_player_four_factors_by_game_for_games` | `player_minutes AS (` / `counts AS (` → `… AS MATERIALIZED (` |
+
+015 was missed by the first pass because the scan keyed on `CREATE FUNCTION`
+and 015 contains none — it only mutates an existing body. It is also the most
+consequential of the three, because it rewrites *semantics* (the overtime
+period calculation) and bumps a **derivation-version marker** that downstream
+code checks.
+
+### What is actually deployed, checked rather than assumed
+
+Comparing `pg_proc.prosrc` against the body in each committed migration:
+
+| Function | Committed file | Live body | Match |
+|---|---|---|---|
+| `refresh_player_four_factors_by_game_for_games` | 012 | 5,237 chars | **identical** |
+| `refresh_actions_consumer_candidates` | 011 | 15,433 vs 15,138 chars | **8 differing hunks** |
+
+So the risk is **half-resolved and half-live**:
+
+- **Resolved.** On 2026-08-18, commit `8352f94` folded the `MATERIALIZED` hints
+  into `011` and `012` directly. `012`'s committed body now reproduces the
+  deployed function exactly. Someone already fixed this case.
+- **Still live.** `refresh_actions_consumer_candidates` cannot be reproduced
+  from any committed file. The deployed body carries 015's substitutions:
+
+```diff
+-      CASE WHEN a.period <= 4 THEN (a.period - 1) * 600
++      CASE WHEN euroleague.effective_period(a.period, a.minute, a.play_type) <= 4
++           THEN (euroleague.effective_period(a.period, a.minute, a.play_type) - 1) * 600
+-    'actions-v1'
++    'actions-v2'
 ```
 
-`016` does the same to `refresh_actions_consumer_candidates`.
+while the committed `011` carries a comment and an indentation change the live
+body does not have. Neither is a superset of the other. Reproducing the
+deployed function means applying 011, then 015, then 016, in that order — and
+even then the comment would differ.
 
-Consequences:
+### Why this matters more than a tidiness complaint
 
-1. **No committed file contains the deployed body** of those two functions. The
-   live source is migration 011's or 012's text with keywords injected.
-2. **The series is not replayable out of order.** Running 017 against a schema
-   where 012 has not run patches a different body — or silently patches nothing,
-   since `replace()` on a non-matching string is a no-op that raises no error.
-3. **A later `CREATE OR REPLACE` silently reverts the patch.** If anyone
-   re-applies 012, the `MATERIALIZED` hints vanish with no warning and no test
-   failure — only a slower ETL.
+`'actions-v1'` → `'actions-v2'` is a **derivation-version marker**, and
+`scripts/apply_015_effective_overtime_periods.py` verifies it with
+`LIKE '%actions-v2%'`. The committed `011` still says `actions-v1`. Anyone
+re-applying `011` from the file would silently revert both the overtime-period
+semantics and the version marker that is supposed to detect exactly that.
 
-Both patched functions are ETL-side, so a silent revert costs refresh time
-rather than wrong numbers. That limits the blast radius; it does not make the
-pattern safe.
+`replace()` on a non-matching string is a no-op that raises nothing, so a
+partial or out-of-order replay fails silently in both directions.
 
----
+### No review trail
+
+`gh pr list --state all` returns **three pull requests for the entire
+repository**, all from March 2026 (`infra/branching-conventions`,
+`infra/pre-push-hook`, `shiny/landing-page`). **None of the 46 EuroLeague
+migrations went through a pull request** — all merged directly to `main`. There
+is no review record for any of the schema work, which is consistent with a
+one-person project but means the migration files and this document are the only
+account of what happened and why.
 
 ## 10. Risk register
 
 | # | Risk | Severity | Evidence |
 |---|---|---|---|
 | 1 | Dynamic name composition defeats all static verification | **High** | `server_tab9_euro_team.R:167`; nine readers first misreported as dead |
-| 2 | 016/017 patch bodies by text — no file holds the deployed source | **High** | `pg_get_functiondef` + `replace()` + `EXECUTE` |
+| 2 | 015/016/017 patch bodies by text; `refresh_actions_consumer_candidates` matches no committed file, incl. a stale `actions-v1` version marker | **High** | §9, `prosrc` diffed against 011 |
 | 3 | Companion functions share names/arity but not implementations | **Medium-high** | 23-arg pairs at 2% and 5% similarity |
 | 4 | 3 orphan functions, one shadowing a live Israeli name | Medium | §5, all reachability paths checked |
 | 5 | EL `four_factors_compute` vs `_dashboard_compute` unguarded 52% duplicate | Medium | live parity holds; only static tests exist |
@@ -498,9 +570,13 @@ historical applicator whose migration is already applied; accepted.
 1. **Apply migration 047** (§11). Removes 13 KB of grantable SQL and eliminates
    the dead/live name collision on `get_player_traditional_dynamic`. Prepared,
    gated and waiting.
-2. **Replace 016 and 017 with literal `CREATE OR REPLACE` files** carrying the
-   current deployed bodies. Capture them from `pg_get_functiondef` first, so
-   the committed text is exactly what runs.
+2. **Fix `refresh_actions_consumer_candidates`'s source of truth.** Capture the
+   live body from `pg_get_functiondef` and commit it as a literal
+   `CREATE OR REPLACE`, the way `8352f94` already did for `012` on 2026-08-18.
+   Until then the committed `011` says `actions-v1` while the database says
+   `actions-v2`, and re-applying the file reverts the overtime-period
+   semantics. 017's target needs no action — its committed body already
+   matches.
 3. **Add a reachability test.** Assert that every `app_readonly`-executable
    function in `euroleague` is either in the set `clutch_reader_kind()` can
    compose, or has an in-database referrer. That test would have caught all
