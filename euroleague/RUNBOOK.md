@@ -405,51 +405,98 @@ schedule endpoint.
 - **No cold storage.** Unlike the Israeli ETL, nothing is truncated or exported
   to Parquet after a run. Everything stays hot.
 
-## Migration 045 (Tab 8 query shape) - prepared, NOT applied
+## Migration 045 (Tab 8 query shape) - applied 2026-08-29
 
-Nothing from migration 045 is in the database. The functions still read
-`euroleague.player_game_context`, `euroleague_pff_game_team_idx` does not
-exist, and neither function has a `work_mem` setting. Full evidence and the
-resume steps are in `PROJECT.md`, section "Migration 045 - Tab 8 query shape".
+Migration 045 is function-only. `euroleague.onoff_compute` and
+`euroleague.four_factors_compute` now aggregate directly from
+`euroleague.player_four_factors_by_game`, matching the Israeli companion's
+app-facing access shape. Their signatures, results, privileges, security mode,
+ordering, and other body tokens are unchanged.
 
-The harness is `scripts/apply_045_tab8_query_shape.py`. It defaults to rollback;
-`--apply` is the only path that commits, and it runs the identical gates first.
+No physical tuning was bundled:
+
+- `euroleague_pff_game_team_idx` does not exist;
+- the existing indexes remain unchanged;
+- neither function has a local `work_mem` setting;
+- `euroleague.player_game_context` remains for other consumers.
+
+The reviewed DDL is `sql/045_tab8_query_shape.sql`. It disables the inherited
+two-minute statement timeout and lock timeout transaction-locally with zero,
+then replaces both functions in one transaction. The fixed applicator is
+`scripts/apply_045_query_alignment.py`; it validates the original hashes and
+verifies indexes/settings remain unchanged. Do not rerun it after application:
+its pre-change hash guard intentionally rejects an already-applied target.
+
+The larger `scripts/apply_045_tab8_query_shape.py` remains historical benchmark
+instrumentation. Its index and `work_mem` candidates were experiments and are
+not the deployed migration.
+
+## Migration 046 (combined player dashboard reader) - applied 2026-08-30
+
+Additive. `euroleague.four_factors_dashboard_compute` returns
+`four_factors_compute`'s 43 columns plus `Net RTG Diff`, `Off ON Diff`,
+`Def ON Diff` and `minutes`, so the filtered Four Factors path makes one call
+instead of two. `four_factors_compute` and `onoff_compute` are unchanged and
+still deployed; `four_factors_compute` still builds
+`euroleague.player_advanced_stats_mv`.
+
+No grant was wiped -- the migration only `CREATE OR REPLACE`s a new name and
+never `DROP`s -- but re-run the security pass anyway to confirm the new
+function is on the allowlist rather than inheriting PUBLIC EXECUTE.
+
+Applicator: `scripts/apply_046_player_dashboard_reader.py`. The Israeli
+companion is `sql/functions/four_factors_dashboard_compute.sql`, gated by
+`scripts/gate_israeli_player_dashboard_reader.py` and deployed from the
+repository root with `scripts/deploy_sql_functions.R`.
+
+Full write-up: `docs/plans/2026-08-30-combined-ff-reader-handoff.md`.
+
+## Migration 047 (drop orphaned objects) - prepared, NOT applied
+
+The only destructive EuroLeague migration. It drops three functions and two
+views that have no referrer anywhere:
+
+| Object | Superseded by |
+|---|---|
+| `get_player_traditional_clutch` | R-side `clutch_reader_kind()` (migration 026) |
+| `select_player_clutch_counts` | its dispatcher, orphaned with it |
+| `get_player_traditional_dynamic` | the `pergame`/`standard_clutch`/`custom_clutch` trio |
+| `player_onoff_by_season` | `player_onoff_default_mv` |
+| `player_four_factors_by_season` | `player_advanced_stats_mv` |
+
+**`apply_shadow_schema()` refuses this migration by design** -- it rejects any
+DDL containing `DROP `. That guard is correct and must not be relaxed. Apply
+with the dedicated applicator instead, which executes the statements directly
+exactly as the 045 and 046 applicators do:
 
 ```bash
-RSCRIPT="/c/Program Files/R/R-4.4.2/bin/Rscript.exe"
-PY=euroleague/.venv/Scripts/python.exe
-
-# Read-only: target, definition hashes, sizes, settings, privileges, and the
-# whole preset matrix. Performs no DDL at all. Takes ~15 minutes.
-"$PY" euroleague/scripts/apply_045_tab8_query_shape.py --baseline
-
-# Rollback-only gate of the migration file. Takes ~25 minutes.
-"$PY" euroleague/scripts/apply_045_tab8_query_shape.py --candidate MIGRATION   --expect-onoff-sha256 083d6ff31f82cbe62083b82f36d6b4c17ac994e613d064317e7fe0b2ddbd4f82   --expect-ff-sha256 3bac5d68cb82f0e0a0f7d8e3367eb26b57f728af2649673e192ea59e8bad6c3a
-
-# Restrict the matrix while iterating (empty result is always included).
-#   --presets "broad season,broad app dates,last 10,one team"
-# Skip the same-session Israeli companion timing:
-#   --no-companion
+euroleague/.venv/Scripts/python.exe euroleague/scripts/apply_047_drop_orphans.py           # rollback-only gate
+euroleague/.venv/Scripts/python.exe euroleague/scripts/apply_047_drop_orphans.py --apply   # commit
 ```
 
-Notes for whoever picks this up:
+The gate, before dropping anything:
 
-- **Run it on direct port 5432.** The script refuses any other port: candidate
-  DDL inside an uncommitted transaction is invisible to a pooled connection, so
-  a pooled gate would measure the old functions.
-- **Check for an active publication first.** The script does this itself and
-  refuses to start if any writer holds a lock on a `euroleague` relation. The
-  index build takes a SHARE lock on the 212 MB fact for the length of the
-  transaction, roughly 3-5 minutes on a dry run.
-- **Baselines are captured before the transaction opens**, so the lock is held
-  only for the candidate measurement, and no comparison is ever made between
-  two post-change executions.
-- **Killing the process mid-run is safe.** It was killed twice during this
-  work; the server rolled back both times, verified by re-reading the function
-  hashes and `pg_index`.
-- The expected pre-apply hashes above make the script refuse a stale target.
-  If they no longer match, someone changed the functions - stop and find out
-  who before proceeding.
+1. refuses to run if the migration would drop a `PROTECTED` object;
+2. re-verifies in the live catalog that every target has zero referrers among
+   euroleague views, materialized views and function bodies;
+3. smoke-runs all 18 app-reachable readers, and again afterwards, failing if
+   any row count changes.
+
+**`euroleague.player_game_context` is PROTECTED and must never be dropped.**
+Migration 045 removed the two *function* reads of it, which makes it look
+orphaned, but `scripts/load_games.py` reads it for the published-game QA check
+that cross-validates team-grain four factors against the player-grain fact
+divided by five. An audit draft on 2026-08-30 wrongly listed it as an orphan;
+the applicator now encodes the protection so the mistake cannot be repeated.
+
+**`DROP FUNCTION` wipes EXECUTE grants**, so the security pass below is
+mandatory after this one, not optional.
+
+Known consequence: `scripts/apply_042_player_traditional_pergame.py` benchmarks
+`get_player_traditional_dynamic` and can no longer be re-run as-is. It is a
+historical applicator whose migration is already applied; that is accepted.
+
+Audit behind the migration: `docs/sql_function_history_and_risk_2026-08-30.md`.
 
 ## After a migration: re-run the security pass
 
