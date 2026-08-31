@@ -364,8 +364,9 @@ uncertain, while every retained index adds storage and refresh cost.
 
 The active priority is codebase tightening and enforceable guardrails:
 
-1. remove the five proven orphan objects through already-prepared migration
-   047, but only after explicit approval for the live drops;
+1. **completed 2026-08-31:** remove the five proven orphan objects through
+   migration 047; both the rollback gate and committed apply preserved all 18
+   reader row counts, followed by security reconciliation and audit;
 2. restore a literal, replayable source of truth for
    `refresh_actions_consumer_candidates` instead of catalog-text patching;
 3. add a reachability contract for every `app_readonly`-executable function so

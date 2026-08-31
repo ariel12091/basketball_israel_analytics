@@ -29,7 +29,8 @@ DIRECT_APP_READERS = frozenset(
     }
 )
 
-# These remain live only until migration 047 receives explicit approval.
+# Migration 047 targets. They are retained in the contract so the applicator is
+# idempotent and the audit reports them explicitly if they ever reappear.
 PENDING_REMOVAL_FUNCTIONS = frozenset(
     {
         "get_player_traditional_clutch",

@@ -1,7 +1,8 @@
 # EuroLeague SQL functions: history, dead code, drift risk, and the 047 cleanup
 
 Date: 2026-08-30
-Scope: every function in `euroleague` (39) and `basketball_test` (27), app-facing
+Scope: every pre-cleanup function in `euroleague` (39) and `basketball_test`
+(27), app-facing
 and internal, from the schema's inception on 2026-08-06 to migration 047.
 
 **This is the single place for this work.** `PROJECT.md` and `RUNBOOK.md` carry
@@ -43,16 +44,16 @@ Similarity is used here only to show that companions were written
 
 | | EuroLeague | Israeli |
 |---|---:|---:|
-| total functions | **39** | **27** |
+| total functions | **36** | **27** |
 | app-facing readers | 17 | 11 |
 | ETL / refresh | 10 | 12 |
 | internal helpers | 9 | 3 |
-| orphans (no consumer) | **3** | **0** |
+| orphans (no consumer) | **0** | **0** |
 | overloaded names | 0 | 1 (intentional) |
 
-EuroLeague has 44% more functions than the league it shadows, while covering
-*fewer* product surfaces. That ratio is the headline risk, and §4–§6 explain
-where it came from.
+EuroLeague had 44% more functions than the league it shadows before migration
+047 and still has 33% more while covering *fewer* product surfaces. Sections
+4–6 explain where that fan-out came from and which five objects 047 removed.
 
 The one Israeli overload is not stale: `compute_player_traditional_by_game`
 exists as `(int[])` — an 89-character body — and `(int[], boolean)`. The short
@@ -621,14 +622,15 @@ account of what happened and why.
 | 1 | Dynamic name composition defeats all static verification | **High** | `server_tab9_euro_team.R:167`; nine readers first misreported as dead |
 | 2 | 015/016/017 patch bodies by text; `refresh_actions_consumer_candidates` matches no committed file, incl. a stale `actions-v1` version marker | **High** | §9, `prosrc` diffed against 011 |
 | 3 | Companion functions share names/arity but not implementations | **Medium-high** | 23-arg pairs at 2% and 5% similarity |
-| 4 | 3 orphan functions, one shadowing a live Israeli name | Medium | §5, all reachability paths checked |
+| 4 | 3 orphan functions, one shadowing a live Israeli name | **Resolved by 047** | §5, all reachability paths checked |
 | 5 | EL `four_factors_compute` vs `_dashboard_compute` unguarded 52% duplicate | Medium | live parity holds; only static tests exist |
-| 6 | 2 orphan views (`*_by_season`, migration 002) | Low-medium | §6 |
+| 6 | 2 orphan views (`*_by_season`, migration 002) | **Resolved by 047** | §6 |
 | 7 | Fast-path fan-out: 15 functions for 5 surfaces | Low (by design) | §4a |
 
 ## 11. Migration 047 — the cleanup, and how to run it
 
-**Status: prepared and gated, NOT applied.** The database is unchanged.
+**Status: applied 2026-08-31.** All five targets are absent from the live
+database.
 
 Files: `euroleague/sql/047_drop_orphaned_objects.sql`,
 `euroleague/scripts/apply_047_drop_orphans.py`.
@@ -670,8 +672,13 @@ CONFIRM_DB_SECURITY_APPLY=1 "$RSCRIPT" scripts/apply_db_security.R
    over the last two games — an unfiltered five-player expansion exceeded the
    statement timeout on the first run.
 
-Gate result on 2026-08-30: every target unreferenced, all 18 readers returning
-identical row counts, rolled back cleanly.
+Final gate and apply result on 2026-08-31: every target remained unreferenced;
+all 18 readers returned identical row counts in both the rollback gate and the
+committed apply. Confirmed security reconciliation and the independent security
+audit passed. The post-apply reachability audit found 20 app-executable
+functions, all 17 declared direct readers present, no overloads, no uncovered
+functions and no pending 047 targets. Both league player-dashboard behavioral
+matrices also passed after the removal.
 
 ### `player_game_context` is PROTECTED and must never be dropped
 
@@ -691,9 +698,9 @@ historical applicator whose migration is already applied; accepted.
 
 ## 12. Remaining recommendations, in order
 
-1. **Apply migration 047** (§11). Removes 13 KB of grantable SQL and eliminates
-   the dead/live name collision on `get_player_traditional_dynamic`. Prepared,
-   gated and waiting.
+1. **Completed 2026-08-31 — apply migration 047** (§11). Removed 13 KB of
+   grantable SQL and eliminated the dead/live name collision on
+   `get_player_traditional_dynamic`.
 2. **Fix `refresh_actions_consumer_candidates`'s source of truth.** Capture the
    live body from `pg_get_functiondef` and commit it as a literal
    `CREATE OR REPLACE`, the way `8352f94` already did for `012` on 2026-08-18.
@@ -738,6 +745,9 @@ readers present, no uncovered executable function, and the two executable 047
 targets reported explicitly as pending removal. The third 047 function is an
 internal helper and is not directly executable by `app_readonly`.
 
+After 047, the same audit passed with 20 executable functions, no pending
+removals, no missing declared readers, no overloads and no uncovered functions.
+
 `tests/test_sql_function_guardrails.py` adds the companion repository guard. It
 fails if a migration outside the frozen 015–017 historical set reads a catalog
 function body at all. New work must use a literal, reviewable
@@ -766,5 +776,5 @@ manifest. The full Python suite passed with 209 tests.
 `clutch_margin_qualifies`, `clutch_segment_durations`, `clutch_team_game_facts`,
 `filtered_team_game_facts`, `select_team_game_facts`
 
-**Orphaned (3):** `get_player_traditional_dynamic`,
+**Removed by migration 047:** `get_player_traditional_dynamic`,
 `get_player_traditional_clutch`, `select_player_clutch_counts`

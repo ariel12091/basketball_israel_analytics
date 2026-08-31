@@ -9,9 +9,10 @@ contract.
 
 ## Current state
 
-- Migration 047 is **prepared and gated but NOT applied** (2026-08-30). It
-  drops three orphaned functions and two orphaned views found by the first
-  full audit of the SQL surface. The database is unchanged. See
+- Migration 047 was **applied** on 2026-08-31. It removed three orphaned
+  functions and two orphaned views found by the first full audit of the SQL
+  surface. The rollback gate and committed apply each preserved all 18 reader
+  row counts; security reconciliation and the independent audit passed. See
   "Migration 047" below and `docs/sql_function_history_and_risk_2026-08-30.md`.
 
 - Migration 046 was **applied in both schemas** on 2026-08-30. The filtered
@@ -2037,9 +2038,11 @@ functions before editing either tab, and restart R before believing a local
 test.**
 
 
-## Migration 047 - drop orphaned objects (prepared 2026-08-30, NOT applied)
+## Migration 047 - drop orphaned objects (applied 2026-08-31)
 
-**Status: gated, not applied.** The database is unchanged.
+**Status: applied.** The three functions and two views are absent from the live
+database. All guarded readers, security checks and both player-dashboard
+behavioral matrices passed afterward.
 
 047 drops three functions and two views that nothing reaches, found by the
 first full audit of the schema's SQL surface. That audit is the single
@@ -2048,8 +2051,9 @@ instructions all live in `docs/sql_function_history_and_risk_2026-08-30.md`.
 
 Two things worth knowing without opening it:
 
-- `euroleague` carries **39 functions to the Israeli schema's 27** while
-  covering fewer surfaces, and has **3 orphans to its 0**.
+- Before 047, `euroleague` carried **39 functions to the Israeli schema's 27**
+  while covering fewer surfaces, and had **3 orphans to its 0**. It now has 36
+  functions and zero known orphans.
 - **`euroleague.player_game_context` must never be dropped.** It looks
   orphaned since migration 045 removed the function reads, but
   `scripts/load_games.py` reads it for the published-game QA check.
