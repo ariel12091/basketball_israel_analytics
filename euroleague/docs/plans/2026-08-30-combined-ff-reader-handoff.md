@@ -377,7 +377,11 @@ The active priority is codebase tightening and enforceable guardrails:
 5. keep the database-backed two-league player-dashboard contract audit as the
    guard against duplicated filter and aggregation logic drifting.
 
-One separate app cleanup remains: filtered Shot Profile can call
-`onoff_compute` once for its table and again for auto-minimum calculation. It
-does **not** run in Four Factors mode and did not affect the measurements above.
-Remove it only as its own app-facing change, with a query-count regression test.
+**Completed 2026-08-31:** filtered Shot Profile previously called
+`onoff_compute` once for its table and again through the Summary auto-minimum
+source. The shared auto-min selector now reuses `sp_ranked_df()` in Shot Profile
+mode, so the ranked table and both possession bars share one reactive pull. A
+server-level query-count regression proves one `onoff_compute` call per filter
+change, and a pure helper test proves the Shot Profile branch does not touch the
+separate Summary source. It still does **not** run in Four Factors mode and did
+not affect the measurements above.

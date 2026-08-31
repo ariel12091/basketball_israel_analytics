@@ -139,6 +139,7 @@ server_tab1 <- function(input, output, session, shared) {
     sources = list(
       fallback = function() fallback_needed(),
       ff = function() ff_ranked_df(),
+      sp = function() sp_ranked_df(),
       mv = function() mv_result_df(),
       live = function() live_unfiltered_df(),
       team_ids = function() selected_team_ids()

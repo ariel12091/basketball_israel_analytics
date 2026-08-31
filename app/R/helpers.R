@@ -1539,9 +1539,9 @@ setup_onoff_auto_min <- function(input, session, min_on_id, min_all_id,
 # The population the auto-min bars measure, for the active view mode. Shared by
 # Tab 1 and Tab 8; the league-specific parts arrive through `sources`:
 #
-#   ff()        ranked four-factor frame       mv()    season materialized view
-#   fallback()  is the filtered path active?   live()  filtered-path pull with
-#   team_ids()  currently selected teams               BOTH bars at zero
+#   ff()        ranked four-factor frame       sp()    ranked Shot Profile frame
+#   mv()        season materialized view       fallback()  filtered path active?
+#   live()      filtered-path Summary pull     team_ids()  selected teams
 #
 # live() must not pre-filter on the possession bars: the threshold is derived
 # from the whole population, and a pre-filtered frame would ratchet it upward
@@ -1559,6 +1559,13 @@ onoff_auto_min_base_df <- function(mode, sources, min_on = NULL) {
       df <- df %>% filter(off_on_poss >= !!min_on)
     }
     return(df)
+  }
+
+  # Shot Profile already has a full-population reactive for ranking and table
+  # output. Reuse it for auto-min too; falling through to live() would issue a
+  # second onoff_compute call for the same filter change.
+  if (identical(mode, "Shot Profile")) {
+    return(filter_teams(sources$sp()))
   }
 
   if (isTRUE(sources$fallback())) return(sources$live())

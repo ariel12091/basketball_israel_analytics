@@ -34,6 +34,11 @@ contract.
   measured 2.734 s -> 1.439 s broad. Both league behavioral matrices passed
   after commit, followed by the confirmed security apply and security audit.
 
+- Israeli filtered Shot Profile now shares its ranked reactive with the
+  auto-minimum observers. The table and both possession bars therefore make
+  one `onoff_compute` call per filter change instead of two. A server-level
+  query-count test guards this boundary; Four Factors routing is unchanged.
+
 - Migration 045 was **applied as function-only query alignment** on 2026-08-29.
   `euroleague.onoff_compute` and `euroleague.four_factors_compute` now read
   `player_four_factors_by_game` directly, matching the Israeli app-facing

@@ -265,3 +265,21 @@ test_that("primary app tables render data-shaped output with mock data", {
     expect_primary_table_rendered(rendered)
   })
 })
+
+test_that("filtered Shot Profile issues one onoff query for table and auto-min", {
+  reset_mock_db_query_counts()
+
+  shiny::testServer(function(input, output, session) {
+    server_tab1(input, output, session, shared = make_shared())
+  }, {
+    set_onoff_inputs(session, "Shot Profile")
+    reset_mock_db_query_counts()
+
+    session$setInputs(date_range = as.Date(c("2025-11-01", "2026-02-01")))
+    session$elapse(500)
+    session$flushReact()
+    expect_silent(output$onoff_dt)
+
+    expect_identical(mock_db_query_count("onoff_compute"), 1L)
+  })
+})

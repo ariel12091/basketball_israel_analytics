@@ -145,6 +145,10 @@ hub_fetch_team_ratings_presets <- function(gy, ver) {
 db_get_query <- function(pool, query, params = NULL) {
   q <- paste(query, collapse = " ")
 
+  if (grepl("basketball_test.onoff_compute(", q, fixed = TRUE)) {
+    increment_mock_db_query_count("onoff_compute")
+  }
+
   if (grepl("mv_lineup_totals_by_day", q, fixed = TRUE)) {
     increment_mock_db_query_count("gl_lineup_totals")
   }

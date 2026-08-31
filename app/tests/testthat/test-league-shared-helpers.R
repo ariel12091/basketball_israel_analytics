@@ -66,6 +66,36 @@ test_that("resolve_poss_cols picks the columns for the active view mode", {
                    list(on = NA_character_, off = NA_character_))
 })
 
+test_that("Shot Profile auto-min reuses its ranked frame", {
+  calls <- new.env(parent = emptyenv())
+  calls$sp <- 0L
+  calls$live <- 0L
+  calls$fallback <- 0L
+  sources <- list(
+    sp = function() {
+      calls$sp <- calls$sp + 1L
+      data.frame(team_id = c(1L, 2L), `ON Poss` = c(100, 200),
+                 `OFF Poss` = c(80, 160), check.names = FALSE)
+    },
+    live = function() {
+      calls$live <- calls$live + 1L
+      stop("Shot Profile must not load the separate Summary frame")
+    },
+    fallback = function() {
+      calls$fallback <- calls$fallback + 1L
+      TRUE
+    },
+    team_ids = function() 2L
+  )
+
+  out <- onoff_auto_min_base_df("Shot Profile", sources)
+
+  expect_identical(out$team_id, 2L)
+  expect_identical(calls$sp, 1L)
+  expect_identical(calls$live, 0L)
+  expect_identical(calls$fallback, 0L)
+})
+
 test_that("onoff_add_ff_ranks derives the display columns and ranks the full population", {
   raw_cols <- as.vector(outer(c("off_on", "off_off", "def_on", "def_off"),
                               c("efg", "oreb", "tov", "ftr"), paste, sep = "_"))
