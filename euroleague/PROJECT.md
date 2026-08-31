@@ -574,6 +574,11 @@ functions, no fact table, no backfill, no index.
   comparisons identical against the `_direct` readers across 15 non-clutch
   presets. Team Minutes was left alone -- it has no per-game counterpart and
   migration 033's reader is already fast at 0.77s.
+- **Tab 9 reader routing cleanup (2026-08-31)** makes all nine ratings, Four
+  Factors, and Minutes reader names fully qualified literals in a fail-closed
+  map. A repository contract test cross-checks them against the direct-reader
+  manifest, so reachability audits, grep, and review can no longer miss routes
+  assembled from fragments. This is app/test-only; it changes no SQL object.
 - **Migration 038** adds `fetch_lineups_pergame`. Its cause is *not* 037's.
   A probe of the live schema showed `fetch_lineups_dynamic` never touches the
   action fact on a non-clutch request: `select_team_game_facts` (migration 020)

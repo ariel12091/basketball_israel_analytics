@@ -22,13 +22,16 @@ test_that("EuroLeague clutch parameters reach ratings, factors, minutes, and lin
     expect_match(team_server, paste0("p$", parameter), fixed = TRUE)
     expect_match(lineup_server, paste0("a$", parameter), fixed = TRUE)
   }
-  # Ratings and Four Factors compose the reader name from a base plus the kind
-  # clutch_reader_kind() picks, so assert the pieces: the literal
-  # get_team_ratings_direct no longer appears in the source.
-  expect_match(team_server, 'paste0("SELECT * FROM euroleague.", base, "_", kind, "("',
-               fixed = TRUE)
-  expect_match(team_server, 'team_reader_call("get_team_ratings"', fixed = TRUE)
-  expect_match(team_server, 'team_reader_call("get_team_four_factors"', fixed = TRUE)
+  # Every route is a fully-qualified literal so reachability is statically
+  # reviewable; only parameter signatures are assembled.
+  for (reader in c(
+    "get_team_ratings_pergame", "get_team_ratings_dynamic", "get_team_ratings_direct",
+    "get_team_four_factors_pergame", "get_team_four_factors_dynamic",
+    "get_team_four_factors_direct"
+  )) {
+    expect_match(team_server, paste0('"euroleague.', reader, '"'), fixed = TRUE)
+  }
+  expect_no_match(team_server, 'base, "_", kind', fixed = TRUE)
   # Both tabs route through the one shared classifier rather than each carrying
   # its own copy of the same three-way test.
   expect_match(team_server, "clutch_reader_kind(p)", fixed = TRUE)

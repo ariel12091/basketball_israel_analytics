@@ -15,8 +15,8 @@ class DirectTeamMinutesMigrationTest(unittest.TestCase):
         self.assertNotIn("clutch_segment_durations(", SQL)
 
     def test_app_routes_custom_minutes_direct(self):
-        self.assertIn('"get_team_minutes_direct"', APP)
-        self.assertIn('"get_team_minutes_dynamic"', APP)
+        self.assertIn('"euroleague.get_team_minutes_direct"', APP)
+        self.assertIn('"euroleague.get_team_minutes_dynamic"', APP)
 
     def test_minutes_index_covers_segment_duration(self):
         self.assertIn("CREATE INDEX CONCURRENTLY", INDEX_SQL)

@@ -138,11 +138,43 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   # starters, so it answers them directly. Parity was verified for those
   # presets specifically.
 
+  # Full names are deliberately explicit: reachability audits, grep and review
+  # must see every function that the router can call.
+  team_reader_names <- list(
+    ratings = c(
+      pergame = "euroleague.get_team_ratings_pergame",
+      dynamic = "euroleague.get_team_ratings_dynamic",
+      direct = "euroleague.get_team_ratings_direct"
+    ),
+    four_factors = c(
+      pergame = "euroleague.get_team_four_factors_pergame",
+      dynamic = "euroleague.get_team_four_factors_dynamic",
+      direct = "euroleague.get_team_four_factors_direct"
+    ),
+    minutes = c(
+      pergame = "euroleague.get_team_minutes_pergame",
+      dynamic = "euroleague.get_team_minutes_dynamic",
+      direct = "euroleague.get_team_minutes_direct"
+    )
+  )
+  team_reader_name <- function(metric, kind) {
+    readers <- team_reader_names[[metric]]
+    reader <- if (!is.null(readers) && length(kind) == 1L && kind %in% names(readers)) {
+      unname(readers[[kind]])
+    } else {
+      NULL
+    }
+    if (is.null(reader) || !nzchar(reader)) {
+      stop("Unsupported EuroLeague team reader route: ", metric, "/", kind)
+    }
+    reader
+  }
+
   # Builds the call for whichever reader clutch_reader_kind() selected. The
   # per-game reader takes 19 parameters because it has no time/margin
   # dimension; the other two keep their existing 23. Signature and parameter
   # list are therefore chosen together, never independently.
-  team_reader_call <- function(base, kind, p, end_d) {
+  team_reader_call <- function(reader, kind, p, end_d) {
     head_params <- list(p$competition, p$game_year, p$start_d, end_d,
                         p$team_ids_csv, p$phase_csv, p$opp_ids_csv,
                         p$home_away, p$outcome,
@@ -164,7 +196,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
                        p$max_time_remaining, p$ot_margin_filter),
                   tail_params)
     }
-    list(sql = paste0("SELECT * FROM euroleague.", base, "_", kind, "(", sig, ")"),
+    list(sql = paste0("SELECT * FROM ", reader, "(", sig, ")"),
          params = params)
   }
 
@@ -176,7 +208,8 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    call <- team_reader_call("get_team_ratings", clutch_reader_kind(p), p,
+    kind <- clutch_reader_kind(p)
+    call <- team_reader_call(team_reader_name("ratings", kind), kind, p,
                              end_override %||% p$end_d)
     db_get_query(pg_pool, call$sql, params = call$params)
   }
@@ -189,7 +222,8 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_calls = 35L, window_sec = 60L
     )
     if (!isTRUE(allowed)) return(data.frame())
-    call <- team_reader_call("get_team_four_factors", clutch_reader_kind(p), p,
+    kind <- clutch_reader_kind(p)
+    call <- team_reader_call(team_reader_name("four_factors", kind), kind, p,
                              end_override %||% p$end_d)
     db_get_query(pg_pool, call$sql, params = call$params)
   }
@@ -199,11 +233,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   # after the selected games and starter contexts have been aggregated.
   run_team_minutes <- function(p) {
     kind <- clutch_reader_kind(p)
-    reader <- switch(kind,
-      pergame = "get_team_minutes_pergame",
-      dynamic = "get_team_minutes_dynamic",
-      "get_team_minutes_direct"
-    )
+    reader <- team_reader_name("minutes", kind)
     head_params <- list(
       p$competition, p$game_year, p$start_d, p$end_d,
       p$team_ids_csv, p$phase_csv, p$opp_ids_csv, p$home_away, p$outcome,
@@ -236,7 +266,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     }
     db_get_query(pg_pool,
       paste0("SELECT team_id, minutes AS game_minutes ",
-             "FROM euroleague.", reader, "(", sig, ")"),
+             "FROM ", reader, "(", sig, ")"),
       params = params
     )
   }

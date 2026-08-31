@@ -32,9 +32,9 @@ class TeamMinutesPergameMigrationTest(unittest.TestCase):
         self.assertNotIn("P_MAX_TIME_REMAINING", signature)
 
     def test_app_has_three_way_minutes_routing(self) -> None:
-        self.assertIn('pergame = "get_team_minutes_pergame"', APP)
-        self.assertIn('dynamic = "get_team_minutes_dynamic"', APP)
-        self.assertIn('"get_team_minutes_direct"', APP)
+        self.assertIn('pergame = "euroleague.get_team_minutes_pergame"', APP)
+        self.assertIn('dynamic = "euroleague.get_team_minutes_dynamic"', APP)
+        self.assertIn('direct = "euroleague.get_team_minutes_direct"', APP)
 
 
 if __name__ == "__main__":

@@ -323,6 +323,12 @@ Consequences:
 The Israeli tabs write their function names as literals, so they do not have
 this problem.
 
+**Resolved 2026-08-31.** Tab 9 now keeps all nine fully qualified reader names
+as literals in a fail-closed route map. Only SQL parameter signatures are
+assembled. `tests/test_team_reader_name_contract.py` verifies that every route
+is explicit, declared in `DIRECT_APP_READERS`, and cannot fall back to fragment
+composition. The example above is retained as the historical failure mode.
+
 ---
 
 ## 8. Drift risk between companion functions
@@ -619,7 +625,7 @@ account of what happened and why.
 
 | # | Risk | Severity | Evidence |
 |---|---|---|---|
-| 1 | Dynamic name composition defeats all static verification | **High** | `server_tab9_euro_team.R:167`; nine readers first misreported as dead |
+| 1 | Dynamic name composition defeats all static verification | **Resolved 2026-08-31** | Tab 9 has nine explicit fully qualified names plus a contract test |
 | 2 | 015/016/017 patched bodies by text; `refresh_actions_consumer_candidates` matched no literal committed definition | **Resolved by 048** | §9; literal body now canonical |
 | 3 | Companion functions share names/arity but not implementations | **Medium-high** | 23-arg pairs at 2% and 5% similarity |
 | 4 | 3 orphan functions, one shadowing a live Israeli name | **Resolved by 047** | §5, all reachability paths checked |
@@ -711,9 +717,12 @@ historical applicator whose migration is already applied; accepted.
    function in `euroleague` is either in the set `clutch_reader_kind()` can
    compose, or has an in-database referrer. That test would have caught all
    three orphans on 2026-08-13.
-4. **Make the composed names greppable.** Have the R hold the full name per
-   branch (as Tabs 10 and 5 already do) rather than assembling `base + "_" +
-   kind`. Cheap, and it restores grep, review and static checking for Tab 9.
+4. **Completed 2026-08-31 — make the composed names greppable.** Tab 9 now
+   holds all nine fully qualified names in a fail-closed route map rather than
+   assembling `base + "_" + kind`. The repository contract test cross-checks
+   every route against `DIRECT_APP_READERS`; the R clutch test checks the six
+   ratings/Four Factors routes. All 215 EuroLeague Python tests and the focused
+   R clutch test passed.
 5. **Add the behavioural parity test** for `four_factors_compute` vs
    `four_factors_dashboard_compute` across filter presets (§8, "Which shape is
    better"). It is what makes EuroLeague's duplicate affordable in a schema
