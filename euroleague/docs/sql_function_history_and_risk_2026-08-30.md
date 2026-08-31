@@ -627,9 +627,9 @@ account of what happened and why.
 |---|---|---|---|
 | 1 | Dynamic name composition defeats all static verification | **Resolved 2026-08-31** | Tab 9 has nine explicit fully qualified names plus a contract test |
 | 2 | 015/016/017 patched bodies by text; `refresh_actions_consumer_candidates` matched no literal committed definition | **Resolved by 048** | §9; literal body now canonical |
-| 3 | Companion functions share names/arity but not implementations | **Medium-high** | 23-arg pairs at 2% and 5% similarity |
+| 3 | Companion functions share names/arity but not implementations | **Confirmed, bounded** | Team contract audit: all 12 routes agree except `net_rtg` rounding; migration 049 required |
 | 4 | 3 orphan functions, one shadowing a live Israeli name | **Resolved by 047** | §5, all reachability paths checked |
-| 5 | EL `four_factors_compute` vs `_dashboard_compute` unguarded 52% duplicate | Medium | live parity holds; only static tests exist |
+| 5 | EL `four_factors_compute` vs `_dashboard_compute` 52% duplicate | **Guarded** | `audit_player_dashboard_contracts.py` covers both schemas, 47 columns, and the full filter matrix |
 | 6 | 2 orphan views (`*_by_season`, migration 002) | **Resolved by 047** | §6 |
 | 7 | Fast-path fan-out: 15 functions for 5 surfaces | Low (by design) | §4a |
 

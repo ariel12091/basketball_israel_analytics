@@ -488,7 +488,13 @@ reviewable DDL and may not reconstruct a body from the live catalog.
 
 ### Remaining work, ordered by value
 
-There is no urgent defect left from this session.
+The player-dashboard drift is guarded. A subsequent Team-reader contract audit
+found one bounded correctness defect: every Ratings/Four Factors route selects
+the same teams and agrees on PPP and possessions, but `net_rtg` differs by 0.1
+where one reader subtracts displayed rounded rates and the other rounds once
+after subtracting raw rates. Migration 049 should apply the already documented
+single-round formula across the season, per-game, standard-clutch, and direct
+routes in both schemas.
 
 1. Keep the behavioral dashboard and reachability audits in the gate whenever
    SQL readers, filters, signatures, grants, or destructive migrations change.
@@ -499,6 +505,22 @@ There is no urgent defect left from this session.
    change.
 4. Explore `analytics_common` only as a separately designed project with narrow
    filtered-plan evidence and an explicit refresh/security lifecycle.
+
+### Team companion audit added after closeout
+
+`scripts/audit_team_reader_contracts.py` is the permanent read-only guard for
+the two highest-risk same-arity companions. It covers both season MVs, Israeli
+filtered readers, and EuroLeague per-game, standard-clutch, and direct readers,
+including last-N and starter filters. It compares the common contract
+(`off_ppp`, `def_ppp`, `net_rtg`, `off_poss`, `def_poss`) by `team_id`, rejects
+duplicate/vacuous results, runs with a 60-second statement timeout, and always
+rolls back.
+
+The first live run failed all 12 routes only on `net_rtg`. Representative broad
+mismatch counts remain 4/14 Israeli teams and 8/20 EuroLeague teams. The four
+season materialized views have zero normal dependents, so migration 049 can
+rebuild them without a cascade; it must still preserve indexes, ownership,
+grants, row keys, and every non-`net_rtg` value.
 
 ### Test-harness note
 
