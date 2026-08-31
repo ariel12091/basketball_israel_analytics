@@ -9,6 +9,14 @@ contract.
 
 ## Current state
 
+- Migration 048 was **applied** on 2026-08-31. It records
+  `refresh_actions_consumer_candidates(bigint[])` as one literal, replayable
+  `CREATE OR REPLACE FUNCTION`, replacing migrations 015–016's catalog-text
+  patching as the current source of truth. The rollback gate and committed
+  apply preserved body MD5 `18b7329c289960f0825f0035f98a6bd8`, owner,
+  security mode, settings and ACL exactly. Security reconciliation and the
+  independent audit passed.
+
 - Migration 047 was **applied** on 2026-08-31. It removed three orphaned
   functions and two orphaned views found by the first full audit of the SQL
   surface. The rollback gate and committed apply each preserved all 18 reader

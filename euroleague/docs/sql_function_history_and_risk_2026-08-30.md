@@ -620,7 +620,7 @@ account of what happened and why.
 | # | Risk | Severity | Evidence |
 |---|---|---|---|
 | 1 | Dynamic name composition defeats all static verification | **High** | `server_tab9_euro_team.R:167`; nine readers first misreported as dead |
-| 2 | 015/016/017 patch bodies by text; `refresh_actions_consumer_candidates` matches no committed file, incl. a stale `actions-v1` version marker | **High** | §9, `prosrc` diffed against 011 |
+| 2 | 015/016/017 patched bodies by text; `refresh_actions_consumer_candidates` matched no literal committed definition | **Resolved by 048** | §9; literal body now canonical |
 | 3 | Companion functions share names/arity but not implementations | **Medium-high** | 23-arg pairs at 2% and 5% similarity |
 | 4 | 3 orphan functions, one shadowing a live Israeli name | **Resolved by 047** | §5, all reachability paths checked |
 | 5 | EL `four_factors_compute` vs `_dashboard_compute` unguarded 52% duplicate | Medium | live parity holds; only static tests exist |
@@ -701,13 +701,12 @@ historical applicator whose migration is already applied; accepted.
 1. **Completed 2026-08-31 — apply migration 047** (§11). Removed 13 KB of
    grantable SQL and eliminated the dead/live name collision on
    `get_player_traditional_dynamic`.
-2. **Fix `refresh_actions_consumer_candidates`'s source of truth.** Capture the
-   live body from `pg_get_functiondef` and commit it as a literal
-   `CREATE OR REPLACE`, the way `8352f94` already did for `012` on 2026-08-18.
-   Until then the committed `011` says `actions-v1` while the database says
-   `actions-v2`, and re-applying the file reverts the overtime-period
-   semantics. 017's target needs no action — its committed body already
-   matches.
+2. **Completed 2026-08-31 — fix
+   `refresh_actions_consumer_candidates`'s source of truth.** Migration 048
+   captures the live result of 015–016 as a literal `CREATE OR REPLACE` body.
+   Its applicator refuses live-body drift and requires the body hash, owner,
+   security mode, settings and ACL to remain exact across both rollback and
+   committed apply. Migration 017's target already matched its literal source.
 3. **Completed 2026-08-31 — add a reachability test.** Assert that every `app_readonly`-executable
    function in `euroleague` is either in the set `clutch_reader_kind()` can
    compose, or has an in-database referrer. That test would have caught all
@@ -754,6 +753,21 @@ function body at all. New work must use a literal, reviewable
 `CREATE OR REPLACE FUNCTION` instead. It also locks the complete
 dynamic router matrix and verifies that migration 047 consumes the shared
 manifest. The full Python suite passed with 209 tests.
+
+### Migration 048 canonical source added 2026-08-31
+
+`sql/048_canonical_actions_consumer_refresh.sql` is now the current literal
+source for `refresh_actions_consumer_candidates(bigint[])`. It contains the
+effective-overtime logic and `actions-v2` marker introduced by 015 plus the
+exact matchup-side expansion introduced by 016. It contains no
+`pg_get_functiondef`, `prosrc` read, or dynamically executed catalog body.
+
+The rollback gate and committed apply both retained body MD5
+`18b7329c289960f0825f0035f98a6bd8` and identical owner, invoker-security mode,
+function settings and private ACL. Confirmed security reconciliation and the
+independent security audit passed afterward. New migration-hygiene tests make
+015–017 the only historical SQL files allowed to read catalog function text;
+048 is the replayable source to use going forward.
 
 ---
 
