@@ -367,15 +367,18 @@ The active priority is codebase tightening and enforceable guardrails:
 1. **completed 2026-08-31:** remove the five proven orphan objects through
    migration 047; both the rollback gate and committed apply preserved all 18
    reader row counts, followed by security reconciliation and audit;
-2. restore a literal, replayable source of truth for
-   `refresh_actions_consumer_candidates` instead of catalog-text patching;
-3. add a reachability contract for every `app_readonly`-executable function so
-   a new public reader must declare an app or in-database consumer;
-4. reject new migrations that derive DDL from `pg_get_functiondef`/`prosrc` and
-   execute a modified catalog body; migrations 015–017 are the frozen
+2. **completed 2026-08-31:** migration 048 restored a literal, replayable source
+   of truth for `refresh_actions_consumer_candidates` instead of catalog-text
+   patching;
+3. **completed 2026-08-31:** every `app_readonly`-executable EuroLeague function
+   must now declare an app consumer, have an in-database referrer, or be an
+   explicit pending-removal target;
+4. **completed 2026-08-31:** repository tests reject new migrations that derive
+   DDL from `pg_get_functiondef`/`prosrc` and execute a modified catalog body;
+   migrations 015–017 are the frozen
    historical exceptions, not a pattern to repeat;
-5. keep the database-backed two-league player-dashboard contract audit as the
-   guard against duplicated filter and aggregation logic drifting.
+5. **in place:** keep the database-backed two-league player-dashboard contract
+   audit as the guard against duplicated filter and aggregation logic drifting.
 
 **Completed 2026-08-31:** filtered Shot Profile previously called
 `onoff_compute` once for its table and again through the Summary auto-minimum
@@ -385,3 +388,122 @@ server-level query-count regression proves one `onoff_compute` call per filter
 change, and a pure helper test proves the Shot Profile branch does not touch the
 separate Summary source. It still does **not** run in Four Factors mode and did
 not affect the measurements above.
+
+---
+
+## 10. 2026-08-31 session closeout
+
+### Outcome
+
+The session began as a query-shape investigation and ended as a bounded SQL and
+app-surface cleanup. The important distinction is:
+
+- migrations 047 and 048, plus the Israeli single-scan dashboard replacement,
+  were applied to the database with rollback, parity, and security gates;
+- explicit Tab 9 reader routing and Shot Profile query reuse were app/test-only
+  changes and did not modify any SQL object;
+- no Shiny deployment was performed in this session.
+
+### Decisions reached
+
+1. **The league schemas need comparable semantics, not byte-identical SQL.**
+   Their app usage is almost the same and they share a PostgreSQL instance, but
+   schedule dimensions, provider grains, and filtered source facts remain
+   schema-local. The chosen dashboard contract is one additive fact scan per
+   league, with a database-backed cross-league behavioral audit guarding the 47
+   output columns and filter matrix.
+2. **Single scan is the approved dashboard shape in both leagues.** The Israeli
+   single-scan body matched all 12 presets and reduced broad buffers from
+   82,124 to 41,364; the approved live comparison measured 2.734 s to 1.439 s.
+   EuroLeague already used this shape. The public signatures stayed unchanged.
+3. **Do not retire `euroleague.four_factors_compute` just to remove textual
+   duplication.** Repointing the season MV to the dashboard reader was exact but
+   raised its refresh work from 25,940 to 70,988 buffers (+174%). The standing
+   behavioral audit is the lower-cost guard. Section 6's earlier "nothing
+   enforces it" statement is historical and is superseded by that audit.
+4. **Do not add starter-leading indexes without evidence.** Israeli starter
+   filter mapping is correct. Warm requests narrowed the aggregation, but all
+   presets still touched roughly 41k-48k buffers. A rollback-only own/opponent
+   starter index matrix remains backlog and must show material p50/p95 or buffer
+   improvement before retention.
+5. **Four Factors does not request Shot Profile data.** The duplicate call was
+   confined to filtered Israeli Shot Profile: its table and auto-min observers
+   independently reached `onoff_compute`. Four Factors timing was therefore not
+   contaminated by Shot Profile work.
+6. **Run the full behavioral parity matrix at database/query-contract
+   boundaries, not after every app-only edit.** It was rerun after the
+   single-scan SQL replacement and destructive orphan cleanup. The Tab 9
+   literal-name change and Shot Profile reactive reuse instead received focused
+   static, routing, render, and query-count tests. This keeps the expensive
+   matrix meaningful without weakening the gates around SQL behavior.
+7. **The `analytics_common` adapter is not the next cleanup by default.** It is
+   a plausible longer-term consolidation, but filtered index access after
+   widening Israeli IDs to `bigint` must be proven first. Do not trade guarded
+   schema-local readers for a broad refactor without measured benefit.
+
+### Delivered work and evidence
+
+| Commit | Change | Database state | Verification |
+|---|---|---|---|
+| `ced4c69` | Recorded the measured wrapper-versus-single-scan decision and the publication-cost tradeoff | Documentation only | Evidence reconciled against the live query shapes |
+| `ae8cc7e` | Defined same functionality as a 47-column behavioral contract rather than identical physical SQL | Documentation/contract only | Cross-league expectations made explicit before implementation |
+| `587a319` | Aligned both player dashboards on the single-scan contract and added the permanent two-league behavioral audit | Israeli dashboard body applied; EuroLeague body already single-scan | 12-preset exact parity, post-commit matrices for both leagues, security reconciliation and audit |
+| `20e1526` | Added the SQL reachability manifest/audit and catalog-body migration guardrails | Read-only guardrails | 209-test Python suite; live reachability audit |
+| `8089a49` | Recorded and completed migration 047 orphan cleanup | Applied: three functions and two views removed | rollback and apply preserved all 18 reader row counts; 20 executable functions covered; both dashboard matrices and security audits passed |
+| `27e217f` | Made `refresh_actions_consumer_candidates(bigint[])` literal and replayable in migration 048 | Applied with body MD5 `18b7329c289960f0825f0035f98a6bd8` | rollback/apply preserved body, owner, security mode, settings, and ACL; 213 Python tests; security checks passed |
+| `93ec8c7` | Replaced Tab 9 fragment-built names with nine fully qualified, fail-closed reader routes | No SQL change | all 215 EuroLeague Python tests plus focused R clutch test |
+| `9f6e7ef` | Reused `sp_ranked_df()` for filtered Shot Profile table and auto-minimum observers | No SQL change | pure source-routing test and server query-count/render test; one `onoff_compute` call per filter change |
+
+Migration 047 removed:
+
+- `get_player_traditional_clutch`;
+- `select_player_clutch_counts`;
+- the dead EuroLeague `get_player_traditional_dynamic`;
+- `player_onoff_by_season`;
+- `player_four_factors_by_season`.
+
+`player_game_context` remains explicitly protected. It is not app-facing, but
+`scripts/load_games.py` uses it for published-game QA; dropping it would break
+the load pipeline.
+
+Migration 048 is now the canonical definition to edit or replay. Migrations
+015-017 remain historical evidence only. New migrations must contain literal,
+reviewable DDL and may not reconstruct a body from the live catalog.
+
+### Guardrails now in force
+
+- `scripts/euroleague_function_contract.py` is the shared inventory of direct
+  readers, protected objects, and destructive-cleanup smoke readers.
+- `scripts/audit_function_reachability.py` fails on missing declared readers,
+  uncovered executable functions, and unexpected overloads.
+- `tests/test_sql_function_guardrails.py` blocks catalog-text DDL patching and
+  locks the router/reachability contract.
+- `scripts/audit_player_dashboard_contracts.py` compares each dashboard reader
+  with its established companion composition across both schemas and all 47
+  columns.
+- `tests/test_team_reader_name_contract.py` ensures all nine Tab 9 routes remain
+  explicit and declared rather than assembled from fragments.
+- the Shot Profile server regression counts the actual mocked database calls,
+  preventing table and auto-min wiring from silently separating again.
+
+### Remaining work, ordered by value
+
+There is no urgent defect left from this session.
+
+1. Keep the behavioral dashboard and reachability audits in the gate whenever
+   SQL readers, filters, signatures, grants, or destructive migrations change.
+2. Consider the starter-index experiment only when filter latency is again the
+   active goal; it is performance backlog, not structural cleanup.
+3. Treat the guarded EuroLeague `four_factors_compute` / dashboard duplication
+   as an accepted publication-vs-request tradeoff unless refresh economics
+   change.
+4. Explore `analytics_common` only as a separately designed project with narrow
+   filtered-plan evidence and an explicit refresh/security lifecycle.
+
+### Test-harness note
+
+On this Windows environment, invoking the focused R tests without `--vanilla`
+stalled while consuming CPU during test-harness startup. The same parse and test
+commands completed normally with `Rscript --vanilla`. Locale/encoding warnings
+for `LC_ALL=C.UTF-8` and comparison-symbol characters remained non-failing. This
+was not a reactive loop or an application failure.
