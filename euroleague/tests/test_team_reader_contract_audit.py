@@ -72,6 +72,16 @@ class TeamReaderContractAuditTest(unittest.TestCase):
         detail = self.module.mismatch(cursor, self.module.ROUTES[0])
         self.assertIn("column=net_rtg", detail)
 
+    def test_mismatch_reports_every_differing_column(self):
+        columns = ("team_id",) + self.module.COMMON_COLUMNS
+        cursor = FakeCursor([
+            (columns, [(1, Decimal("110.0"), Decimal("100.0"), Decimal("10.0"), 50, 50)]),
+            (columns, [(1, Decimal("109.9"), Decimal("100.0"), Decimal("9.9"), 49, 50)]),
+        ])
+        detail = self.module.mismatch(cursor, self.module.ROUTES[0])
+        self.assertIn("mismatches=3", detail)
+        self.assertIn("columns=off_ppp=1,net_rtg=1,off_poss=1", detail)
+
     def test_numeric_scale_is_not_drift(self):
         columns = ("team_id",) + self.module.COMMON_COLUMNS
         row_a = (1, Decimal("110"), Decimal("100"), Decimal("10"), 50, 50)

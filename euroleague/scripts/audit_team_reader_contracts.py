@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -95,18 +96,27 @@ def mismatch(cursor, route: Route) -> str | None:
     if route.must_return_rows and (not ratings or not factors):
         return f"vacuous rows ratings={len(ratings)} factors={len(factors)}"
     keys = sorted(set(ratings) | set(factors))
+    differences = []
     for team_id in keys:
         if team_id not in ratings or team_id not in factors:
             return f"team_id={team_id} missing ratings={team_id not in ratings} factors={team_id not in factors}"
         left = common(rating_columns, ratings[team_id])
         right = common(factor_columns, factors[team_id])
-        if left != right:
-            column = next(i for i, values in enumerate(zip(left, right)) if values[0] != values[1])
-            return (
-                f"team_id={team_id} column={COMMON_COLUMNS[column]} "
-                f"ratings={left[column]!r} factors={right[column]!r}"
-            )
-    return None
+        for column, values in enumerate(zip(left, right)):
+            if values[0] != values[1]:
+                differences.append(
+                    (team_id, COMMON_COLUMNS[column], values[0], values[1])
+                )
+    if not differences:
+        return None
+    counts = Counter(item[1] for item in differences)
+    first = differences[0]
+    summary = ",".join(f"{name}={counts[name]}" for name in COMMON_COLUMNS if counts[name])
+    return (
+        f"mismatches={len(differences)} columns={summary}; "
+        f"first team_id={first[0]} column={first[1]} "
+        f"ratings={first[2]!r} factors={first[3]!r}"
+    )
 
 
 def audit(cursor, routes=ROUTES) -> None:

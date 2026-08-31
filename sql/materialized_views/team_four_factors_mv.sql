@@ -121,7 +121,13 @@ SELECT
   p.off_pts, p.off_ts_poss, p.off_oreb_cnt, p.off_oreb_opps, p.off_tov_cnt, p.off_fta, p.off_fga_cnt, p.off_fgm_cnt, p.off_fg3m_cnt,
   p.def_ts, p.def_efg, p.def_oreb, p.def_tov, p.def_ftr, p.def_ppp, p.def_poss,
   p.def_pts, p.def_ts_poss, p.def_oreb_cnt, p.def_oreb_opps, p.def_tov_cnt, p.def_fta, p.def_fga_cnt, p.def_fgm_cnt, p.def_fg3m_cnt,
-  ROUND(p.off_ppp - p.def_ppp, 1) AS net_rtg
+  -- Round once, from the additive counts. Subtracting two values that were
+  -- each already rounded to 1dp disagreed with Ratings by 0.1 for 4 of 14
+  -- teams in the 2026-08-29 audit.
+  ROUND(
+    100.0 * p.off_pts / NULLIF(p.off_poss, 0)
+    - 100.0 * p.def_pts / NULLIF(p.def_poss, 0)
+  , 1) AS net_rtg
 FROM pivoted p
 JOIN teams t ON t.game_year = p.game_year AND t.team_id = p.team_id
 WITH DATA;

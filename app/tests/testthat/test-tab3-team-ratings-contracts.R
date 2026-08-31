@@ -30,3 +30,17 @@ test_that("starter-bounds helper call sites use valid argument names", {
     expect_false(grepl("resolve_starters_bounds\\(", txt), info = file)
   }
 })
+
+test_that("Israeli Four Factors Net Rating rounds once from additive counts", {
+  mv <- read_repo_txt("..", "sql", "materialized_views", "team_four_factors_mv.sql")
+  fn <- read_repo_txt("..", "sql", "functions", "get_team_four_factors_dynamic.sql")
+
+  # The defect: subtracting two values that were each already rounded to 1dp.
+  expect_false(grepl("ROUND(p.off_ppp - p.def_ppp, 1)", mv, fixed = TRUE))
+  expect_false(grepl("ROUND(p.off_ppp - p.def_ppp, 1)", fn, fixed = TRUE))
+
+  # The canonical form, matching Israeli Ratings and spec section 8.
+  canonical <- "100.0 * p.off_pts / NULLIF(p.off_poss, 0)"
+  expect_match(mv, canonical, fixed = TRUE)
+  expect_match(fn, canonical, fixed = TRUE)
+})

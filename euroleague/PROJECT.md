@@ -9,6 +9,15 @@ contract.
 
 ## Current state
 
+- Migration 049 was **applied in both schemas** on 2026-08-31. Team Ratings
+  and Four Factors now round Net Rating once from additive counts and pass the
+  permanent 12-route companion audit. The EuroLeague season Ratings MV now
+  uses the same publication-eligible `team_four_factors_by_game` source as its
+  per-game reader, preventing QA-blocked games 246, 493, 549 and 650 from
+  leaking through the direct-actions season path. Rollback/apply gates
+  preserved MV ownership, ACLs and indexes; security reconciliation/audits and
+  all 238 Python tests passed.
+
 - Migration 048 was **applied** on 2026-08-31. It records
   `refresh_actions_consumer_candidates(bigint[])` as one literal, replayable
   `CREATE OR REPLACE FUNCTION`, replacing migrations 015–016's catalog-text

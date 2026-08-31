@@ -627,7 +627,7 @@ account of what happened and why.
 |---|---|---|---|
 | 1 | Dynamic name composition defeats all static verification | **Resolved 2026-08-31** | Tab 9 has nine explicit fully qualified names plus a contract test |
 | 2 | 015/016/017 patched bodies by text; `refresh_actions_consumer_candidates` matched no literal committed definition | **Resolved by 048** | §9; literal body now canonical |
-| 3 | Companion functions share names/arity but not implementations | **Confirmed, bounded** | Team contract audit: all 12 routes agree except `net_rtg` rounding; migration 049 required |
+| 3 | Companion functions share names/arity but not implementations | **Mitigated** | Migration 049 applied; permanent 12-route audit now reports every differing common column and passes |
 | 4 | 3 orphan functions, one shadowing a live Israeli name | **Resolved by 047** | §5, all reachability paths checked |
 | 5 | EL `four_factors_compute` vs `_dashboard_compute` 52% duplicate | **Guarded** | `audit_player_dashboard_contracts.py` covers both schemas, 47 columns, and the full filter matrix |
 | 6 | 2 orphan views (`*_by_season`, migration 002) | **Resolved by 047** | §6 |
@@ -777,6 +777,24 @@ function settings and private ACL. Confirmed security reconciliation and the
 independent security audit passed afterward. New migration-hygiene tests make
 015–017 the only historical SQL files allowed to read catalog function text;
 048 is the replayable source to use going forward.
+
+### Migration 049: Team companion drift and publication eligibility
+
+Migration 049 was applied on 2026-08-31. It rounds Team Net Rating once from
+additive counts in the Israeli Four Factors reader/MV and the three EuroLeague
+Ratings readers/MV. Its first rollback attempt exposed a second defect hidden
+by the audit's former first-mismatch reporting: EuroLeague season Ratings read
+direct actions and included four QA-blocked games whose invalid provider lineup
+states prevented consumer-fact publication. The current season MV happened to
+mask this because its snapshot was out of sync with its refreshed upstream MV.
+
+The retained definition aggregates `team_four_factors_by_game`, matching the
+published per-game path and excluding games 246, 493, 549 and 650 without a
+game-specific exception or alternate lineup engine. Future Team audits report
+all differing common columns rather than stopping at the first. The migration
+preserved owners, ACLs, indexes, signatures and grants; the rollback/apply
+matrices, 12-route post-apply audit, security reconciliation/audits, focused R
+contract, and all 238 EuroLeague Python tests passed.
 
 ---
 

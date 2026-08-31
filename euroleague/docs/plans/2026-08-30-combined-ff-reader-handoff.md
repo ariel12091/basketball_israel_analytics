@@ -488,13 +488,9 @@ reviewable DDL and may not reconstruct a body from the live catalog.
 
 ### Remaining work, ordered by value
 
-The player-dashboard drift is guarded. A subsequent Team-reader contract audit
-found one bounded correctness defect: every Ratings/Four Factors route selects
-the same teams and agrees on PPP and possessions, but `net_rtg` differs by 0.1
-where one reader subtracts displayed rounded rates and the other rounds once
-after subtracting raw rates. Migration 049 should apply the already documented
-single-round formula across the season, per-game, standard-clutch, and direct
-routes in both schemas.
+The player-dashboard drift is guarded. Migration 049 was applied on 2026-08-31
+and made all 12 Ratings/Four Factors routes agree on the common contract. It
+uses the documented single-round Net Rating formula across both schemas.
 
 1. Keep the behavioral dashboard and reachability audits in the gate whenever
    SQL readers, filters, signatures, grants, or destructive migrations change.
@@ -516,11 +512,22 @@ including last-N and starter filters. It compares the common contract
 duplicate/vacuous results, runs with a 60-second statement timeout, and always
 rolls back.
 
-The first live run failed all 12 routes only on `net_rtg`. Representative broad
-mismatch counts remain 4/14 Israeli teams and 8/20 EuroLeague teams. The four
-season materialized views have zero normal dependents, so migration 049 can
-rebuild them without a cascade; it must still preserve indexes, ownership,
-grants, row keys, and every non-`net_rtg` value.
+The first audit stopped at the first mismatch per route, so its original
+"only net_rtg" conclusion was incomplete. Migration 049's rollback gate
+revealed that the EuroLeague season Ratings source also included QA-blocked
+games 246, 493, 549 and 650, while the lineup-aware Four Factors fact excluded
+them. Game 246 alone explained team 9's hidden 95 points and 72/73 possession
+difference. The audit now reports every differing common column per route.
+
+Migration 049 makes `euroleague.team_ppp_ratings_mv` aggregate the same
+publication-eligible `team_four_factors_by_game` fact as the broad per-game
+reader. Its gate requires exact season/per-game agreement, preserves the MV
+owner/ACL/index contract, and leaves the four blocked raw games untouched.
+Israeli Four Factors changed only `net_rtg`; its source files now carry the
+same canonical expression for future rebuilds. The rollback and committed
+apply gates passed, all 12 routes passed post-apply, both security audits and
+the hardening reconciliation passed, and the full EuroLeague suite passed
+238 tests.
 
 ### Test-harness note
 
