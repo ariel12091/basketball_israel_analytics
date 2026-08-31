@@ -701,7 +701,7 @@ historical applicator whose migration is already applied; accepted.
    `actions-v2`, and re-applying the file reverts the overtime-period
    semantics. 017's target needs no action — its committed body already
    matches.
-3. **Add a reachability test.** Assert that every `app_readonly`-executable
+3. **Completed 2026-08-31 — add a reachability test.** Assert that every `app_readonly`-executable
    function in `euroleague` is either in the set `clutch_reader_kind()` can
    compose, or has an in-database referrer. That test would have caught all
    three orphans on 2026-08-13.
@@ -721,6 +721,29 @@ historical applicator whose migration is already applied; accepted.
    `game_id`/`team_id` to `bigint` does not defeat index access on the Israeli
    branch for *filtered* queries — the pruning test used a broad aggregate that
    seq-scans regardless.
+
+### Guardrail status added 2026-08-31
+
+Recommendation 3 now has an implementation:
+`scripts/audit_function_reachability.py` checks every live EuroLeague function
+executable by `app_readonly`. Each must be a declared direct reader in
+`scripts/euroleague_function_contract.py`, have an in-database function/view
+referrer, or be explicitly pending removal by migration 047. The same manifest
+now supplies migration 047's smoke-reader and protected-object lists, removing
+the second handwritten inventory from the destructive applicator. Executable
+overloads also fail the audit rather than being collapsed by function name.
+
+The first live read-only run passed: 22 executable functions, all 17 direct app
+readers present, no uncovered executable function, and the two executable 047
+targets reported explicitly as pending removal. The third 047 function is an
+internal helper and is not directly executable by `app_readonly`.
+
+`tests/test_sql_function_guardrails.py` adds the companion repository guard. It
+fails if a migration outside the frozen 015–017 historical set reads a catalog
+function body at all. New work must use a literal, reviewable
+`CREATE OR REPLACE FUNCTION` instead. It also locks the complete
+dynamic router matrix and verifies that migration 047 consumes the shared
+manifest. The full Python suite passed with 209 tests.
 
 ---
 

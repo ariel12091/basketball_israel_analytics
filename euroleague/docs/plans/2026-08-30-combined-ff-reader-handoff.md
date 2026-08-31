@@ -342,3 +342,41 @@ To settle whether a function is really there, call it as `app_readonly` with the
 exact parameter shape the R code sends. A `pg_proc` name match is not enough — a
 wrong parameter count is a different function. And restart R before treating a
 local click-through as evidence.
+
+---
+
+## 9. 2026-08-31 follow-up: cleanup first, starter indexes deferred
+
+The Israeli starter filters were traced from the shared UI through the live
+Four Factors and ON/OFF readers. Their min/max mapping is correct, and the
+filtered Four Factors view makes exactly one
+`four_factors_dashboard_compute` call. Warm starter-filter requests were faster
+than the broad live query because they reduce the aggregation, although every
+preset still touched the same 41k–48k buffers. The live Israeli fact has no
+starter-leading index.
+
+An index experiment is therefore **backlog, not active work**. If resumed, it
+must be rollback-only first and compare own/opponent lower and upper bounds,
+combined filters, broad, last-N and team presets. Require exact results and a
+material p50/p95 or buffer improvement before retaining either an own-starter
+or opponent-starter index. Low-cardinality starter counts make benefit
+uncertain, while every retained index adds storage and refresh cost.
+
+The active priority is codebase tightening and enforceable guardrails:
+
+1. remove the five proven orphan objects through already-prepared migration
+   047, but only after explicit approval for the live drops;
+2. restore a literal, replayable source of truth for
+   `refresh_actions_consumer_candidates` instead of catalog-text patching;
+3. add a reachability contract for every `app_readonly`-executable function so
+   a new public reader must declare an app or in-database consumer;
+4. reject new migrations that derive DDL from `pg_get_functiondef`/`prosrc` and
+   execute a modified catalog body; migrations 015–017 are the frozen
+   historical exceptions, not a pattern to repeat;
+5. keep the database-backed two-league player-dashboard contract audit as the
+   guard against duplicated filter and aggregation logic drifting.
+
+One separate app cleanup remains: filtered Shot Profile can call
+`onoff_compute` once for its table and again for auto-minimum calculation. It
+does **not** run in Four Factors mode and did not affect the measurements above.
+Remove it only as its own app-facing change, with a query-count regression test.

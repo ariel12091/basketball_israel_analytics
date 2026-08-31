@@ -25,6 +25,13 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
+sys.path.insert(0, str(ROOT / "scripts"))
+from euroleague_function_contract import (  # noqa: E402
+    APP_READER_SMOKE,
+    PENDING_REMOVAL_FUNCTIONS,
+    PENDING_REMOVAL_VIEWS,
+    PROTECTED_RELATIONS,
+)
 from euroleague_possessions.postgres_backend import (  # noqa: E402
     _split_sql_statements,
     connect_from_env_file,
@@ -33,15 +40,11 @@ from euroleague_possessions.postgres_backend import (  # noqa: E402
 DDL = ROOT / "sql" / "047_drop_orphaned_objects.sql"
 ENV = ROOT.parent / "etl" / ".Renviron"
 
-TARGET_FUNCTIONS = (
-    "get_player_traditional_clutch",
-    "select_player_clutch_counts",
-    "get_player_traditional_dynamic",
-)
-TARGET_VIEWS = ("player_onoff_by_season", "player_four_factors_by_season")
+TARGET_FUNCTIONS = tuple(sorted(PENDING_REMOVAL_FUNCTIONS))
+TARGET_VIEWS = tuple(sorted(PENDING_REMOVAL_VIEWS))
 
 # Must never be dropped: the loader's published-game QA check reads it.
-PROTECTED = ("player_game_context",)
+PROTECTED = tuple(sorted(PROTECTED_RELATIONS))
 
 # Every reader the EuroLeague tabs can name, including the ones Tab 9 assembles
 # from fragments (base + "_" + kind), which appear nowhere in the R source.
@@ -50,23 +53,7 @@ PROTECTED = ("player_game_context",)
 # benchmark it. The lineup readers are narrowed to two-player units over the
 # last two games -- an unfiltered five-player expansion takes minutes and
 # exceeded the statement timeout on the first run.
-NARROW_LINEUPS = "'E',2025,p_last_n_games=>2,p_unit_size=>2"
-
-SMOKE = [
-    ("onoff_compute", "'E',2025"),
-    ("four_factors_dashboard_compute", "'E',2025"),
-    ("four_factors_compute", "'E',2025"),
-] + [
-    (f"{base}_{kind}", "'E',2025")
-    for base in ("get_team_ratings", "get_team_four_factors", "get_team_minutes")
-    for kind in ("pergame", "dynamic", "direct")
-] + [
-    (f"fetch_lineups_{kind}", NARROW_LINEUPS) for kind in ("pergame", "dynamic", "direct")
-] + [
-    ("get_player_traditional_pergame", "'E',2025"),
-    ("get_player_traditional_standard_clutch", "'E',2025"),
-    ("get_player_traditional_custom_clutch", "'E',2025"),
-]
+SMOKE = APP_READER_SMOKE
 
 
 def options():
