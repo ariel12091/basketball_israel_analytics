@@ -7,7 +7,11 @@ test_that("Player Stats is shared by the Israeli and EuroLeague sections", {
   expect_match(ui, 'uiOutput("ts_game_context_filters")', fixed = TRUE)
   expect_match(server, "ts_is_euro <- reactive", fixed = TRUE)
   expect_match(server, "game_context_descriptor(", fixed = TRUE)
-  expect_match(server, "euro_fetch_players_basic", fixed = TRUE)
+  # 019d8c7 centralized the EuroLeague reference lookups: tabs no longer call
+  # euro_fetch_*() directly, they read the shared reactives that wrap them
+  # (test-euro-shared-initialization.R pins that). Assert Tab 5 sources
+  # EuroLeague players through that reactive, not by naming the fetcher.
+  expect_match(server, "shared$euro$players_df()", fixed = TRUE)
 })
 
 test_that("EuroLeague Player Stats uses the indexed and dynamic read paths", {
