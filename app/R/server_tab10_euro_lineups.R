@@ -375,7 +375,8 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # Manual slider use switches to manual; a filter change returns to auto. The
   # `updating` flag stops an auto-driven slider update reading as a manual one.
   euro_ld_auto_inputs <- reactive({
-    list(euro_ld_full(), input$euro_ld_group_size, ld_filter$team(),
+    list(input$main_tabs, euro_competition(), euro_season(),
+         input$euro_ld_group_size, ld_filter$team(),
          ld_filter$players_on(), ld_filter$players_off(),
          debounced_dates(), input$euro_ld_opponents, input$euro_ld_phase,
          input$euro_ld_home_away, input$euro_ld_outcome,
@@ -411,6 +412,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   }, ignoreInit = TRUE)
 
   observeEvent(euro_ld_auto_inputs(), {
+    req(identical(input$main_tabs, "euro_lineups"))
     df <- apply_local_unit_filters(euro_ld_full())
     if (!NROW(df)) return(invisible(NULL))
     if (!isTRUE(auto_enabled())) return(invisible(NULL))

@@ -42,9 +42,16 @@ test_that("EuroLeague auto min possessions follows the filtered Tab 2 population
     collapse = "\n"
   )
 
+  # The activation gate sits between the observer head and the population,
+  # so this pins both invariants: Home must not pay for Tab 10 at startup,
+  # and the threshold is still computed on the filtered population.
   expect_match(
     server,
-    "observeEvent\\(euro_ld_auto_inputs\\(\\), \\{\\s+df <- apply_local_unit_filters\\(euro_ld_full\\(\\)\\)",
+    paste0(
+      "observeEvent\\(euro_ld_auto_inputs\\(\\), \\{\\s+",
+      "req\\(identical\\(input\\$main_tabs, .euro_lineups.\\)\\)\\s+",
+      "df <- apply_local_unit_filters\\(euro_ld_full\\(\\)\\)"
+    ),
     perl = TRUE
   )
   for (input_id in c(
@@ -64,4 +71,25 @@ test_that("EuroLeague auto min possessions follows the filtered Tab 2 population
                            fixed = TRUE)[[1]]
   expect_gt(enable_pos, 0L)
   expect_gt(calculate_pos, enable_pos)
+})
+
+test_that("Tab 10 does not pull the season units on sessions that never open it", {
+  server <- paste(
+    readLines(testthat::test_path("..", "..", "R", "server_tab10_euro_lineups.R"),
+              warn = FALSE),
+    collapse = "\n"
+  )
+
+  # euro_ld_auto_inputs() is the trigger expression of an observeEvent, so it
+  # is evaluated on EVERY session -- observers are never suspended by tab
+  # visibility the way outputs are. Referencing euro_ld_full() here pulled the
+  # whole EuroLeague season from sub_lineups_stats_mv (measured 2.6s) ahead of
+  # the Home tab own query, on sessions that never opened Tab 10.
+  start <- regexpr("euro_ld_auto_inputs <- reactive({", server, fixed = TRUE)[[1]]
+  expect_gt(start, 0)
+  rest <- substring(server, start)
+  trigger <- substring(rest, 1, regexpr("})", rest, fixed = TRUE)[[1]])
+
+  expect_false(grepl("euro_ld_full(", trigger, fixed = TRUE))
+  expect_true(grepl("input$main_tabs", trigger, fixed = TRUE))
 })
