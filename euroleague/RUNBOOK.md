@@ -434,7 +434,11 @@ not the deployed migration.
 ## Migrations 046 and 047
 
 046 (combined player dashboard reader) is applied and additive. 047 (drop
-orphaned objects) is prepared and gated but **not applied**.
+orphaned objects) was applied on 2026-08-31 with
+`scripts/apply_047_drop_orphans.py --apply`; it dropped three orphaned
+functions and two orphaned views. Re-verified against the live catalog on
+2026-09-01: all five targets are absent and `player_game_context` is still a
+view.
 
 Both are documented in one place - `docs/sql_function_history_and_risk_2026-08-30.md` - including 047's apply
 commands. Three operational facts belong here so nobody has to go looking:
@@ -444,7 +448,10 @@ commands. Three operational facts belong here so nobody has to go looking:
   `scripts/apply_047_drop_orphans.py`, which applies the statements
   directly as the 045 and 046 applicators do.
 - **`DROP FUNCTION` wipes EXECUTE grants**, so the security pass below is
-  mandatory after 047, not optional.
+  mandatory after 047, not optional. Confirmed healthy on 2026-09-01: of
+  the 37 remaining functions, the 16 without `app_readonly` EXECUTE are all
+  internal `refresh_*`/clutch/`select_*` helpers, and every app-facing
+  reader kept EXECUTE.
 - **`euroleague.player_game_context` must never be dropped** -
   `scripts/load_games.py` reads it for the published-game QA check. The
   applicator carries it in a `PROTECTED` list and refuses to override it.

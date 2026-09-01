@@ -1,7 +1,8 @@
 -- EUROLEAGUE SHADOW SCHEMA -- migration 045: Tab 8 query shape.
 --
--- Additive. One index plus replacement bodies for the two public read-layer
--- functions. No table, column, publication, grant, or signature change, and no
+-- Additive replacement bodies for the two public read-layer functions. No
+-- index, table, column, publication, grant, signature, or function setting
+-- change, and no
 -- DROP FUNCTION (that would wipe the app_readonly EXECUTE grants).
 --
 -- WHAT CHANGES
@@ -21,25 +22,15 @@
 --    cost. This is also the shape the Israeli companion
 --    basketball_test.onoff_compute already uses.
 --
--- 2. A narrow (game_id, team_id) index supports that join. The pre-existing
---    game_id-only index made every per-game probe read both teams' rows and
---    discard half.
+-- Indexes remain aligned with the Israeli companion for this access path: both
+-- schemas retain their existing game_id-only index. A wider (game_id, team_id)
+-- index and function-local work_mem are separate physical tuning experiments,
+-- not part of this query-shape alignment migration.
 --
--- 3. A function-local work_mem of 16MB. The server default is ~2.1MB, which is
---    not enough for the broad full-season aggregation and spilled to disk. This
---    is set per function, never on the cluster or the app role.
---
--- MEASURED (direct port 5432, 2026-08-28; before -> after, warm median of 15)
---
---   onoff broad, app date window   3.685s -> 1.335s   buffers 1,653,821 -> 47,623
---   ff    broad, app date window   4.119s -> 1.613s   buffers 1,653,821 -> 47,623
---   onoff last 10                  0.278s -> 0.311s   buffers    10,228 ->  5,279
---   ff    last 10                  0.287s -> 0.237s   buffers    11,082 ->  5,279
---   onoff one team                 0.507s -> 0.128s   buffers   141,245 ->  1,930
---
---   Index size 5.7MB, build ~5s. Narrow-preset temp spills eliminated.
---   Full-row parity held across 25 filter presets x both functions, including
---   empty results, all four starter bounds, and the EuroCup competition.
+-- Full-row parity held across 25 filter presets x both functions, including
+-- empty results, all four starter bounds, and the EuroCup competition. Earlier
+-- performance measurements bundled the source swap with physical tuning, so
+-- they are deliberately not attributed to this function-only migration.
 --
 -- REJECTED, with evidence (see PROJECT.md):
 --   B  collapsing agg/pivoted into one filtered aggregation -- 25 (onoff) and
@@ -54,13 +45,12 @@
 
 BEGIN;
 SET LOCAL search_path TO euroleague, public;
+-- The database role inherits statement_timeout=2min. Zero explicitly disables
+-- both timeouts for this transaction; it does not change the role or database.
+SET LOCAL lock_timeout = 0;
+SET LOCAL statement_timeout = 0;
 
--- 1. Support the actual join key. The existing euroleague_pff_game_idx is
---    game_id only, so each probe read both teams and threw half away.
-CREATE INDEX IF NOT EXISTS euroleague_pff_game_team_idx
-  ON euroleague.player_four_factors_by_game (game_id, team_id);
-
--- 2. Replacement function bodies.
+-- Replacement function bodies. Their only body edit is the aggregation source.
 
 CREATE OR REPLACE FUNCTION euroleague.onoff_compute(
     p_competition          TEXT,
@@ -550,12 +540,5 @@ BEGIN
   JOIN euroleague.teams   t  ON t.team_id    = p.team_id;
 END;
 $function$;
-
--- 3. Bounded, function-local working memory. Verified not to regress under
---    three concurrent broad calls, matching the app pool's maximum.
-ALTER FUNCTION euroleague.onoff_compute(text,integer,date,date,text,text,text,text,text,text,integer,text,integer,integer,integer,integer,integer,integer,integer,numeric,integer,integer)
-  SET work_mem = '16MB';
-ALTER FUNCTION euroleague.four_factors_compute(text,integer,date,date,text,text,text,text,text,text,integer,text,integer,integer,integer,integer,integer,integer,integer)
-  SET work_mem = '16MB';
 
 COMMIT;

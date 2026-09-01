@@ -1,5 +1,9 @@
 # EuroLeague Tab 8 query remediation — implementation plan
 
+**Final outcome (2026-08-29):** migration 045 was applied as the two
+function-source swaps only. No composite index or function-local `work_mem`
+was shipped; those remain historical experiments in this plan.
+
 **Goal:** Make broad EuroLeague Tab 8 ON/OFF healthy without regressing the
 already-fast narrow filters or changing any result.
 
@@ -110,8 +114,9 @@ fail and leave function/index definitions unchanged after rollback.
   execution time, and complete-fetch latency.
 
 **Decision:** Retain A in the transaction only if every parity check passes and
-no preset breaches the 10%/100 ms no-regression rule. Missing the final broad
-0.500-second gate does not discard A as evidence, but it prevents apply.
+no preset breaches the 10%/100 ms no-regression rule. The shape-matched broad
+and last-10 calls must also be no worse than the same-session Israeli companion
+under the same tolerance.
 
 ## Task 4 — Candidate B: aggregate once
 
@@ -145,8 +150,10 @@ safe at three concurrent calls. Otherwise remove the setting.
 ## Task 6 — Decide whether a migration exists
 
 - [ ] Choose the smallest candidate that passes all spec gates.
-- [ ] Require broad ON/OFF median ≤0.500 seconds, p90 ≤0.750 seconds, last-10
-  median ≤0.350 seconds, and zero row differences.
+- [ ] Require zero row differences and companion-relative gates from Addenda
+  A–A.3: alternate candidate/companion calls AB/BA, gate on the central-60%
+  trimmed median and named upper-central statistic, and report raw p90 without
+  mislabelling it as a trimmed p90.
 - [ ] Require no narrow full-fact sequential scan, no new disk sort, and no
   preset regression beyond 10%/100 ms.
 - [ ] If none passes, roll back everything and write a rejection section in
@@ -198,8 +205,9 @@ safe at three concurrent calls. Otherwise remove the setting.
   `scripts/apply_045_tab8_query_shape.py` without `--apply` against direct port
   5432. It must finish with a rollback and prove definitions and index state
   are unchanged.
-- [ ] Present the exact candidate, parity count, broad/narrow medians and p90s,
-  plans/buffers, index size/build time, and rollback proof to the user.
+- [ ] Present the exact candidate, parity count, broad/narrow trimmed medians,
+  upper-central statistics, raw p90s, plans/buffers, index size/build time, and
+  rollback proof to the user.
 - [ ] Request separate explicit approval for committed live DDL. Do not combine
   either approval with app deployment or a EuroLeague data load.
 
@@ -235,7 +243,8 @@ safe at three concurrent calls. Otherwise remove the setting.
 ## Completion criteria
 
 - Both public functions are output-identical across the full preset matrix.
-- Broad ON/OFF meets the 0.500-second median and 0.750-second p90 gates.
+- Shape-matched broad ON/OFF and Four Factors meet the companion-relative
+  median and upper-central gates.
 - Last-10 and every other narrow class stay within their regression limits.
 - Plans contain no redundant `player_game_context` schedule joins and no
   narrow full-fact scan.

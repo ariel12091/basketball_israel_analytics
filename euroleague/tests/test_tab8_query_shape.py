@@ -19,6 +19,7 @@ CANDIDATE_B = (ROOT / "sql" / "candidates" / "045b_single_aggregate.sql").read_t
 MIGRATION_PATH = ROOT / "sql" / "045_tab8_query_shape.sql"
 SCRIPT_PATH = ROOT / "scripts" / "apply_045_tab8_query_shape.py"
 SCRIPT_TEXT = SCRIPT_PATH.read_text(encoding="utf-8")
+DIRECT_APPLY_PATH = ROOT / "scripts" / "apply_045_query_alignment.py"
 
 FUNCTIONS = ("onoff_compute", "four_factors_compute")
 VIEW = "euroleague.player_game_context"
@@ -185,7 +186,7 @@ class CandidateBDerivationTest(unittest.TestCase):
 
 
 class MigrationMatchesAcceptedCandidateTest(unittest.TestCase):
-    """Migration 045 must ship candidate A's bodies verbatim, plus work_mem."""
+    """Migration 045 ships only candidate A's function-body alignment."""
 
     def setUp(self) -> None:
         if not MIGRATION_PATH.exists():
@@ -198,13 +199,11 @@ class MigrationMatchesAcceptedCandidateTest(unittest.TestCase):
                 self.assertEqual(definition(CANDIDATE_A, function),
                                  definition(self.sql, function))
 
-    def test_carries_the_index_and_the_bounded_work_mem(self) -> None:
+    def test_does_not_bundle_physical_tuning(self) -> None:
         body = strip_comments(self.sql)
-        self.assertIn("CREATE INDEX IF NOT EXISTS euroleague_pff_game_team_idx", body)
-        self.assertIn("ON euroleague.player_four_factors_by_game (game_id, team_id)", body)
-        self.assertEqual(2, body.count("SET work_mem = '16MB'"))
-        self.assertEqual(2, body.count("ALTER FUNCTION euroleague."))
-        self.assertNotIn("SET work_mem", body.split("ALTER FUNCTION", 1)[0])
+        self.assertNotIn("CREATE INDEX", body)
+        self.assertNotIn("SET work_mem", body)
+        self.assertNotIn("ALTER FUNCTION", body)
 
     def test_is_one_transaction(self) -> None:
         body = strip_comments(self.sql)
@@ -222,27 +221,171 @@ class ApplyScriptSafetyTest(unittest.TestCase):
             "CREATE INDEX IF NOT EXISTS euroleague_pff_game_team_idx "
             "ON euroleague.player_four_factors_by_game (game_id, team_id)",
             self.module.INDEX_DDL)
-        for name, sql in deployable():
-            if name == "045":
-                with self.subTest(file=name):
-                    indexes = re.findall(r"CREATE INDEX[^;]*", sql)
-                    self.assertEqual(1, len(indexes))
-                    self.assertIn("(game_id, team_id)", indexes[0])
-                    self.assertNotIn("INCLUDE", indexes[0])
+        # The composite index remains available to the historical A/B probes,
+        # but the parity-first reviewed migration deliberately does not ship it.
+        indexes = re.findall(
+            r"CREATE INDEX[^;]*",
+            strip_comments(MIGRATION_PATH.read_text(encoding="utf-8")))
+        self.assertEqual([], indexes)
 
     def test_defaults_to_rollback(self) -> None:
         self.assertIn('cur.execute("COMMIT" if args.apply else "ROLLBACK")', SCRIPT_TEXT)
         self.assertIn('parser.add_argument("--apply", action="store_true"', SCRIPT_TEXT)
         self.assertIn("--apply requires --candidate", SCRIPT_TEXT)
 
-    def test_companion_is_measured_in_the_same_session_before_any_ddl(self) -> None:
-        # The gate must compare against a companion timed under the same
-        # instance conditions, not a constant from another session.
-        before_ddl = SCRIPT_TEXT.split('cur.execute("BEGIN")', 1)[0]
-        self.assertIn("companion = measure_companion(cur)", before_ddl)
-        self.assertIn("baseline = capture_baseline(cur, expect)", before_ddl)
-        self.assertLess(before_ddl.index("baseline = capture_baseline(cur, expect)"),
-                        before_ddl.index("companion = measure_companion(cur)"))
+    def test_apply_requires_both_expected_function_hashes(self) -> None:
+        self.assertIn(
+            "--apply requires both expected pre-change function hashes",
+            SCRIPT_TEXT)
+        self.assertIn("not args.expect_onoff_sha256", SCRIPT_TEXT)
+        self.assertIn("not args.expect_ff_sha256", SCRIPT_TEXT)
+
+    def test_direct_alignment_applicator_disables_inherited_timeouts(self) -> None:
+        text = DIRECT_APPLY_PATH.read_text(encoding="utf-8")
+        migration = MIGRATION_PATH.read_text(encoding="utf-8")
+        self.assertIn("SET LOCAL lock_timeout = 0;", migration)
+        self.assertIn("SET LOCAL statement_timeout = 0;", migration)
+        self.assertIn('effective_lock_timeout != "0"', text)
+        self.assertIn('effective_statement_timeout != "0"', text)
+        self.assertIn("candidate_statements(MIGRATION)", text)
+        self.assertIn("verify_aligned(cur)", text)
+
+    def test_apply_cannot_commit_a_probe_or_skip_gates(self) -> None:
+        self.assertIn(
+            "--apply may commit only the reviewed MIGRATION artifact",
+            SCRIPT_TEXT)
+        self.assertIn("--apply requires the same-session companion gate",
+                      SCRIPT_TEXT)
+        self.assertIn("--apply requires the complete preset matrix",
+                      SCRIPT_TEXT)
+
+    def test_catalog_lock_retry_reuses_baseline_transaction_boundary(self) -> None:
+        class LockTimeout(Exception):
+            sqlstate = "55P03"
+
+        class Cursor:
+            def __init__(self):
+                self.calls = []
+                self.failures = 2
+
+            def execute(self, statement):
+                self.calls.append(statement)
+                if statement == "DDL" and self.failures:
+                    self.failures -= 1
+                    raise LockTimeout("catalog busy")
+
+        cursor = Cursor()
+        original = self.module.report_ddl_retry_context
+        self.module.report_ddl_retry_context = lambda cur: None
+        try:
+            self.module.begin_candidate_ddl_with_retry(
+                cursor, ["DDL"], sleep=lambda seconds: None)
+        finally:
+            self.module.report_ddl_retry_context = original
+
+        self.assertEqual(3, cursor.calls.count("BEGIN"))
+        self.assertEqual(2, cursor.calls.count("ROLLBACK"))
+        self.assertEqual(3, cursor.calls.count("DDL"))
+        self.assertIn("captured baseline is retained", SCRIPT_TEXT)
+
+    def test_non_lock_ddl_failure_is_not_retried(self) -> None:
+        class Cursor:
+            calls = []
+
+            def execute(self, statement):
+                self.calls.append(statement)
+                if statement == "DDL":
+                    raise RuntimeError("bad DDL")
+
+        cursor = Cursor()
+        with self.assertRaisesRegex(RuntimeError, "bad DDL"):
+            self.module.begin_candidate_ddl_with_retry(
+                cursor, ["DDL"], sleep=lambda seconds: None)
+        self.assertEqual(1, cursor.calls.count("BEGIN"))
+        self.assertEqual(1, cursor.calls.count("ROLLBACK"))
+
+    def test_commit_is_followed_by_pooled_gate_and_compensating_recovery(self) -> None:
+        commit = SCRIPT_TEXT.index('cur.execute("COMMIT" if args.apply else "ROLLBACK")')
+        pooled = SCRIPT_TEXT.index("pooled_post_commit_gate(baseline)", commit)
+        cleanup = SCRIPT_TEXT.index("RECOVERY_FILE.unlink", pooled)
+        self.assertLess(commit, pooled)
+        self.assertLess(pooled, cleanup)
+        self.assertIn("restore_prechange(con, pre_definitions, pre_hashes)", SCRIPT_TEXT)
+        recovery = SCRIPT_TEXT.split("def restore_prechange", 1)[1].split(
+            "def restore_from_artifact", 1)[0]
+        self.assertNotIn("RESET work_mem", recovery)
+        self.assertNotIn("DROP INDEX", recovery)
+        self.assertIn('direct_port=POOL_PORT', SCRIPT_TEXT)
+
+    def test_recovery_artifact_has_an_explicit_resume_mode(self) -> None:
+        self.assertIn('parser.add_argument("--restore-from"', SCRIPT_TEXT)
+        self.assertIn("function_definitions", SCRIPT_TEXT)
+        self.assertIn("function_hashes", SCRIPT_TEXT)
+        self.assertIn("restore_from_artifact(con, args.restore_from)", SCRIPT_TEXT)
+
+    def test_recovery_rejects_incomplete_or_tampered_definitions_before_db(self) -> None:
+        class NoDatabase:
+            def cursor(self):
+                raise AssertionError("database must not be touched")
+
+        with self.assertRaisesRegex(RuntimeError, "does not cover"):
+            self.module.restore_prechange(
+                NoDatabase(), {"onoff": "x"}, {"onoff": "bad"})
+        definitions = {"onoff": "one", "ff": "two"}
+        hashes = {key: "bad" for key in definitions}
+        with self.assertRaisesRegex(RuntimeError, "definition hash mismatch"):
+            self.module.restore_prechange(NoDatabase(), definitions, hashes)
+
+    def test_companion_is_timed_adjacent_to_the_candidate(self) -> None:
+        # Instance conditions drift over minutes, so the companion must be timed
+        # inside the transaction next to the candidate, not before the DDL.
+        head, tail = SCRIPT_TEXT.split('cur.execute("BEGIN")', 1)
+        self.assertNotIn("companion = measure_companion(cur)", head)
+        self.assertIn("companion = measure_companion(cur)", tail)
+        self.assertLess(tail.index("parity / regression"),
+                        tail.index("companion = measure_companion(cur)"))
+
+    def test_candidate_and_companion_samples_are_interleaved(self) -> None:
+        helper = SCRIPT_TEXT.split("def measure_companion(", 1)[1].split(
+            "def with_tolerance(", 1)[0]
+        self.assertIn("if index % 2", helper)
+        self.assertIn("companion_once(); candidate_once()", helper)
+        self.assertIn("candidate_once(); companion_once()", helper)
+
+    def test_only_shape_matched_presets_carry_an_absolute_gate(self) -> None:
+        module = self.module
+        labels = {label for label, _, _ in module.PRESETS}
+        # Every gated preset sends an explicit season window, as both apps do.
+        for label in module.GATED_BROAD + (module.GATED_LAST10,):
+            with self.subTest(preset=label):
+                self.assertIn(label, labels)
+                preset = next(p for lbl, p, _ in module.PRESETS if lbl == label)
+                self.assertIn("p_start_date", preset)
+                self.assertIn("p_end_date", preset)
+        # The NULL-date presets have no companion counterpart and must not be
+        # gated: basketball_test.onoff_compute cannot accept NULL dates at all.
+        for label in module.REPORT_ONLY:
+            with self.subTest(preset=label):
+                preset = next(p for lbl, p, _ in module.PRESETS if lbl == label)
+                self.assertNotIn("p_start_date", preset)
+        self.assertFalse(set(module.REPORT_ONLY) & set(module.GATED_BROAD))
+        self.assertNotIn(module.GATED_LAST10, module.REPORT_ONLY)
+
+    def test_companion_calls_all_send_an_explicit_window(self) -> None:
+        module = self.module
+        for key, (sql, params) in module.COMPANION_CALLS.items():
+            with self.subTest(companion=key):
+                self.assertIn("p_start_date", sql)
+                self.assertIn("p_end_date", sql)
+        for key, (sql, params) in module.COMPANION_LAST10_CALLS.items():
+            with self.subTest(companion=key):
+                self.assertIn("p_start_date", sql)
+                self.assertIn("p_last_n_games => 10", sql)
+        # onoff_compute has no NULL guard on p_min_net; NULL silently yields
+        # zero rows, so the companion call must pass a real floor.
+        sql, params = module.COMPANION_LAST10_CALLS["onoff"]
+        self.assertIn("p_min_net", sql)
+        self.assertIn(-999, params)
 
     def test_israeli_schema_is_read_only_by_the_benchmark_never_by_the_ddl(self) -> None:
         for name, sql in deployable():
@@ -326,8 +469,8 @@ class GateRejectionTest(unittest.TestCase):
         self.assertEqual(0.549, self.module.COMPANION_LAST10_MEDIAN)
         self.assertAlmostEqual(1.920, self.module.GATE_BROAD_MEDIAN["onoff"], places=3)
         self.assertAlmostEqual(1.741, self.module.GATE_BROAD_MEDIAN["ff"], places=3)
-        self.assertAlmostEqual(1.977, self.module.GATE_BROAD_P90["onoff"], places=3)
-        self.assertAlmostEqual(1.758, self.module.GATE_BROAD_P90["ff"], places=3)
+        self.assertAlmostEqual(1.977, self.module.GATE_BROAD_UPPER["onoff"], places=3)
+        self.assertAlmostEqual(1.758, self.module.GATE_BROAD_UPPER["ff"], places=3)
         self.assertAlmostEqual(0.649, self.module.GATE_LAST10_MEDIAN, places=3)
 
     def test_tolerance_rule_is_max_of_ten_percent_and_hundred_ms(self) -> None:
@@ -352,6 +495,52 @@ class GateRejectionTest(unittest.TestCase):
         with self.assertRaises(RuntimeError):
             self.module.check_plan("x", wide, dict(wide, shared_hit=25000), narrow=True)
         self.module.check_plan("x", wide, dict(wide, shared_hit=25000), narrow=False)
+
+    def test_trim_drops_the_stalls_and_keeps_the_signal(self) -> None:
+        # A real observed candidate sample: twelve values inside 0.07s, then
+        # three instance stalls.
+        observed = [1.34, 1.35, 1.37, 1.37, 1.37, 1.37, 1.38, 1.39, 1.39,
+                    1.40, 1.41, 1.63, 3.05, 5.42, 7.16]
+        median, p90 = self.module.summarize(observed)
+        self.assertAlmostEqual(1.390, median, places=3)
+        self.assertAlmostEqual(1.630, p90, places=3)
+        self.assertEqual(9, len(self.module.trim(observed)))
+        # The estimator must not flatter the candidate: the median is the same
+        # trimmed or not; only the stall-dominated p90 changes.
+        import statistics as s
+        self.assertAlmostEqual(s.median(observed), median, places=3)
+
+    def test_trim_is_symmetric_so_no_side_gains_an_advantage(self) -> None:
+        fast_outlier = [0.01] + [1.0] * 13 + [9.0]
+        kept = self.module.trim(fast_outlier)
+        self.assertNotIn(0.01, kept)
+        self.assertNotIn(9.0, kept)
+        self.assertEqual(0.20, self.module.TRIM_FRACTION)
+
+    def test_trim_is_skipped_when_there_are_too_few_samples(self) -> None:
+        for series in ([1.0, 2.0, 9.0], [1.0, 9.0], [1.0]):
+            with self.subTest(n=len(series)):
+                self.assertEqual(sorted(series), self.module.trim(series))
+
+    def test_blocking_latency_statistics_are_trimmed_and_raw_p90_is_reported(self) -> None:
+        # Blocking medians/upper-central values go through summarize(); raw p90
+        # is deliberately computed separately as a visible, non-blocking tail
+        # observation.
+        callers = SCRIPT_TEXT.split("def capture_baseline(", 1)[1]
+        self.assertNotIn("statistics.median(timings)", callers)
+        self.assertEqual(2, callers.count("summarize(timings)"))
+        self.assertIn('"raw_p90": p90_of(timings)', callers)
+        helpers = SCRIPT_TEXT.split("def measure_companion(", 1)[1].split(
+            "def with_tolerance(", 1)[0]
+        self.assertIn("summarize(candidate_timings)", helpers)
+        self.assertIn("summarize(companion_timings)", helpers)
+
+    def test_trimmed_tail_statistic_is_not_labelled_raw_p90(self) -> None:
+        helper = SCRIPT_TEXT.split("def summarize(", 1)[1].split(
+            "def p90_of(", 1)[0]
+        self.assertIn("upper-central", helper)
+        gate_output = SCRIPT_TEXT.split("absolute gates", 1)[1]
+        self.assertIn("upper-central", gate_output)
 
     def test_p90_index(self) -> None:
         self.assertEqual(14.0, self.module.p90_of([float(x) for x in range(1, 16)]))
@@ -381,6 +570,17 @@ class PresetMatrixTest(unittest.TestCase):
                 self.assertGreaterEqual(count, 5)
                 for key in preset:
                     self.assertIn(key, self.module.PARAM_TYPES)
+
+    def test_baseline_is_cheaper_than_the_candidate_side(self) -> None:
+        # The baseline measures the unfixed functions and only needs parity rows
+        # plus a median for the no-regression rule; the candidate keeps full
+        # precision. Guard against the two being silently coupled again.
+        module = self.module
+        self.assertEqual(3, module.BASELINE_SAMPLES)
+        self.assertIn("min(count, samples or BASELINE_SAMPLES)", SCRIPT_TEXT)
+        candidate_half = SCRIPT_TEXT.split("print(\"parity / regression:\")", 1)[1]
+        self.assertIn("sample(cur, signature, preset, count)", candidate_half)
+        self.assertNotIn("BASELINE_SAMPLES", candidate_half)
 
     def test_gated_presets_take_fifteen_warm_samples(self) -> None:
         counts = {label: count for label, _, count in self.module.PRESETS}
