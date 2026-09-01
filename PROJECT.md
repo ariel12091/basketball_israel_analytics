@@ -2062,3 +2062,97 @@ the exact value.
 Both tabs have now been checked in a running browser — the Israeli side during
 the parity work, the EuroLeague side by the maintainer after the whole-number
 rounding landed.
+
+## Session Update (2026-09-01): Home Cold Start — UI Render Cache + Pool Warm-up
+
+Full detail, including every measurement and its corrections, is in
+`docs/home_cold_start_handoff_2026-09-01.md`. That document is the record;
+this is the narrative.
+
+Branch `shiny/home-cold-start`, two commits, **not merged and not deployed**.
+
+### What prompted it
+
+A ~20s Home load on a cold app. The prior session had already combined the six
+Home datasets into one SQL call and suspected the query. It was not the query:
+the combined Home SQL measures 250-270ms warm, 360-580ms cold, comfortably
+inside its sub-500ms target, and it never fell back (`hub_home_fallback` never
+fired in any run).
+
+### What actually cost the time, and what shipped
+
+**The page itself.** `.UI_CACHED` cached the tag *tree*, but Shiny still ran
+`renderTags` over that ~1MB tree on every single request. `shiny:::uiHttpHandler`
+returns an `httpResponse` verbatim, so `app.R` now caches the *rendered page*
+(`.UI_RESPONSE` / `ui_response()`) and pre-renders it from a `later::later()`
+callback so the first render is not charged to the first visitor. Bookmarked
+requests still take the uncached `build_ui()` path, since `navbarPage()` calls
+`restoreInput()` while the tree is built; both caches sit inside that one guard.
+If shiny's internals ever move, the call logs a warning and falls back to
+`.UI_CACHED` — verified by simulating a signature change with `trace()`.
+
+**The first DB connection.** A first pool checkout costs ~1,700-2,200ms and with
+`minSize = 0` always landed on a user request. `minSize = 1` moves it to boot but
+measured +2.7s to boot against -1.7s on the request, so it loses whenever the
+worker is booted by the request it then serves — and it would have contradicted
+the standing 2026-08-18 "don't fix it" note, which measured *steady-state*
+latency and does not cover the first checkout. `global.R` instead schedules a
+`later::later()` checkout after pool creation: boot unchanged, connection ready
+before the first session queries. `POOL_PREWARM=false` disables it.
+
+Output is byte-identical. Pages differ across workers only in `data-tabsetid`,
+`bslib-accordion` ids and the random default Home team, all generated at
+`build_ui()` time — two *uncached* workers differ from each other in exactly the
+same way, and after normalising those ids the cached and uncached pages hash
+identically. Full suite FAIL 0 | PASS 1318; all 11 tabs verified rendering with
+populated dropdowns; a bookmark URL verified restoring onto Team Ratings.
+
+### The measurements are not trustworthy, and why
+
+`C:` was **100% full** (950G of 953G) for the entire session; a benchmark loop
+died with `No space left on device`. Identical code produced 3.7-15.1s worker
+boots, 1.5-9.6s first renders and 6.5-26.4s loads. **Re-measure the cold figures
+on a healthy disk before quoting them** — including the "22.2s -> 9.6s" in commit
+`512efe9`'s message. What clears that noise floor is the byte-identity check and
+the steady-state `GET /` of **1.24s -> 0.004s**, seen repeatedly across separate
+workers.
+
+### Pitfalls hit, in the order they bit
+
+1. **`log_startup()` measures from session start, not from the step it names.**
+   `startup_t0` sits at the top of `server()`. So `prewarm complete (9.230s)`
+   never meant 9.2s of prewarming — marks around the block itself give **0.28s**.
+   This sent a whole round of work at the wrong target.
+2. **`prewarm_for_year()` is not a performance target.** Its four real queries
+   total 1,270ms cold, all at the ~250ms round-trip floor;
+   `fetch_teams_distinct`/`fetch_teams_min` never touch the DB at all.
+3. **Single-run A/B on a noisy machine produces confident nonsense.** A claimed
+   5.2s saving from deferring tab server modules came from one paired log delta.
+   Profiling said total R execution over a 9.03s session init was **1.22s** (R
+   idle ~7.8s), `update*Input` cost **0.00s**, the browser logged **0 long
+   tasks**, and the whole init is 35 websocket messages / 17kB. Measured end to
+   end, the ten-tabs-disabled build landed at 10,379ms — inside the full build's
+   own 6,515-12,554ms range. Proposal withdrawn.
+4. **The large Teams/Players pickers are already lazy** — `selectize` with
+   `server = TRUE`, shipped as an empty `<select>` and fetched over XHR on
+   interaction. `teams` and `on_opponents` never receive `<option>` tags at all.
+   Only `*_gn_min` / `*_gn_max` / `*_last_n` are pushed at session start.
+5. **The pre-render does not help "start the app, then open it."** That first
+   request races it and loses; reproduced at ~41.5s launch-to-usable, which is
+   what the maintainer saw testing by hand. Leave the app running when testing
+   manually.
+
+### Still open
+
+- Free disk space, then re-measure and correct the figures here, in
+  `CLAUDE.md`, and in the handoff doc. Compare like with like: worker booted
+  and idle, versus worker booted by the request.
+- The remaining cold time is R **waiting**, not R computing, and what it waits
+  on is still unexplained. That is the open question — not `prewarm_for_year()`
+  and not tab deferral.
+- `sass`/`bslib` theme compilation is 0.53s of the first render and is redone in
+  every worker, because the cache lives in the per-process `tempdir()`. A
+  persistent `sass` cache directory is a plausible small win, unmeasured.
+- Branch is unmerged and undeployed. On deploy, check the log for
+  `UI html cache unavailable` (the fallback firing) and the
+  `client timing: nav->dom` line to confirm the cache took on shinyapps.io.
