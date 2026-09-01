@@ -502,6 +502,36 @@ server_tab3 <- function(input, output, session, shared) {
     db_get_query(pool, paste0("SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", ")"), params = list(as.integer(game_year), if (!is.na(start_d)) as.Date(start_d) else NA, if (!is.na(end_d)) as.Date(end_d) else NA, game_type_csv, opp_ids_csv, home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric, max_margin, margin_status, max_time_remaining, ot_margin_filter, min_gn, max_gn, last_n_games, num_starters_off, num_starters_def, num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max))
   }
 
+  run_team_ff_dashboard_dynamic <- function(pool, p, end_override = NA) {
+    end_d <- if (is.na(end_override)) p$end_d else as.Date(end_override)
+    allowed <- guard_heavy_request(
+      session, key = "tab3_team_ff_dashboard",
+      start_d = p$start_d, end_d = end_d,
+      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n_games,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
+    db_get_query(
+      pool,
+      paste0(
+        "SELECT * FROM basketball_test.get_team_four_factors_dashboard_dynamic(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,",
+        "$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,",
+        "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,",
+        "$21::int4,$22::int4,$23::int4)"
+      ),
+      params = list(
+        as.integer(p$game_year), if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
+        if (!is.na(end_d)) as.Date(end_d) else NA, p$game_type_csv, p$opp_ids_csv,
+        p$home_away, p$outcome, p$rank_side, p$rank_n, p$metric,
+        p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
+        p$min_gn, p$max_gn, p$last_n_games, p$num_starters_off,
+        p$num_starters_def, p$num_starters_off_min, p$num_starters_off_max,
+        p$num_starters_def_min, p$num_starters_def_max
+      )
+    )
+  }
+
   run_team_traditional_dynamic <- function(pool, p, end_override = NA) {
     end_d <- if (is.na(end_override)) p$end_d else as.Date(end_override)
     start_d <- p$start_d
@@ -980,10 +1010,22 @@ server_tab3 <- function(input, output, session, shared) {
     }
   })
 
+  tr_ff_dashboard_data <- reactive({
+    p <- tr_params()
+    if (!tr_fallback_needed() || !identical(clutch_reader_kind(p), "dynamic")) {
+      return(NULL)
+    }
+    run_team_ff_dashboard_dynamic(pg_pool, p)
+  })
+
   tr_ff_data <- reactive({
     p <- tr_params()
     if (tr_fallback_needed()) {
-      df <- run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
+      df <- if (identical(clutch_reader_kind(p), "dynamic")) {
+        tr_ff_dashboard_data()
+      } else {
+        run_team_ff_dynamic(pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = p$end_d, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away, outcome = p$outcome, opp_rank_side = p$rank_side, opp_rank_n = p$rank_n, opp_rank_metric = p$metric, max_margin = p$max_margin, margin_status = p$margin_status, max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter, min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games, num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def, num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max, num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max)
+      }
     } else {
       df <- db_get_query(pg_pool,
         "SELECT *
@@ -1344,7 +1386,10 @@ server_tab3 <- function(input, output, session, shared) {
     prev_end <- tr_prev_match_end()
     if (is.na(prev_end)) return(NULL)
     p <- tr_params()
-    tryCatch(
+    tryCatch({
+      if (identical(clutch_reader_kind(p), "dynamic")) {
+        return(run_team_ff_dashboard_dynamic(pg_pool, p, end_override = prev_end))
+      }
       run_team_ff_dynamic(
         pg_pool, game_year = p$game_year, start_d = p$start_d, end_d = prev_end,
         game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv, home_away = p$home_away,
@@ -1354,7 +1399,8 @@ server_tab3 <- function(input, output, session, shared) {
         num_starters_off = p$num_starters_off, num_starters_def = p$num_starters_def,
         num_starters_off_min = p$num_starters_off_min, num_starters_off_max = p$num_starters_off_max,
         num_starters_def_min = p$num_starters_def_min, num_starters_def_max = p$num_starters_def_max
-      ),
+      )
+    },
       error = function(e) NULL
     )
   })
@@ -1385,7 +1431,18 @@ server_tab3 <- function(input, output, session, shared) {
     mode <- input$tr_view_mode
     mins_map <- NULL
     if (!identical(mode, "Traditional")) {
-      mins_df <- tryCatch(tr_game_minutes(), error = function(e) NULL)
+      p <- tr_params()
+      mins_df <- if (identical(mode, "Four Factors") && tr_fallback_needed() &&
+                     identical(clutch_reader_kind(p), "dynamic")) {
+        raw <- tryCatch(tr_ff_dashboard_data(), error = function(e) NULL)
+        if (is.data.frame(raw) && nrow(raw)) {
+          data.frame(team_id = raw$team_id, game_minutes = raw$minutes)
+        } else {
+          raw
+        }
+      } else {
+        tryCatch(tr_game_minutes(), error = function(e) NULL)
+      }
       if (is.data.frame(mins_df) && nrow(mins_df) && all(c("team_id", "game_minutes") %in% names(mins_df))) {
         mins_map <- setNames(suppressWarnings(as.numeric(mins_df$game_minutes)), as.character(mins_df$team_id))
       }

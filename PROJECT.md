@@ -197,6 +197,77 @@ The normal incremental ETL path calls `refresh_segment_clock_fields_for_games()`
 | `get_team_ratings_dynamic` | 14 | Team PPP ratings + wins/losses + clutch filters |
 | `get_team_four_factors_dynamic` | 14 | Team four-factor rates + clutch filters |
 
+### Shared-scan analytical reader rules (required)
+
+These rules govern Israeli analytical readers. The EuroLeague sub-project
+inherits them and may add provider-specific constraints in
+`euroleague/PROJECT.md`.
+
+1. **One expensive filtered fact per user request.** Resolve the selected games
+   and action/fact eligibility once. When multiple outputs use identical
+   eligibility, derive them from one narrowly projected materialized CTE or one
+   pre-aggregated fact. Do not independently rescan action grain for metrics,
+   duration, ranks, observers, or charts within the same request.
+2. **Choose the lowest sufficient source by route.** Default-season requests
+   use indexed materialized views; non-clutch filters use per-game additive
+   facts; an exact standard-clutch preset uses an incrementally maintained fact
+   where available; only arbitrary custom clutch reaches action grain. A route
+   may not accept and ignore a filter.
+3. **Combine consumers, not unrelated features.** Share a filtered set only
+   when consumers have identical selected-game, clutch, starter, and row-
+   eligibility semantics. Keep each public reader narrow enough for the view
+   actually rendered. Summary must not pay for Four Factors, Traditional,
+   lineup expansion, or unused shot-profile work merely to create a universal
+   dashboard function.
+4. **Give each heavy result one application owner.** One Shiny reactive or API
+   query owns the expensive result. All same-semantics consumers project from
+   that cached result. Add a query-count test for the render/filter boundary;
+   the normal acceptance limit is one action-grain database call per rendered
+   view and filter change.
+5. **Do not mistake a helper for shared execution.** Separate calls to a view,
+   SQL function, or CTE-returning helper still evaluate separately. Use one
+   combined consumer call or a persisted/incremental fact. Do not create
+   request-local temporary tables in the app path.
+6. **Materialize narrowly and calculate rates late.** Carry only the identity,
+   additive metric, and canonical-duration columns needed downstream.
+   Aggregate counts and seconds at their correct grains before calculating
+   PPP, ratings, percentages, pace, or ranks. Count segment duration once at
+   segment grain; a lineup change never creates a possession.
+7. **Prefer durable pre-aggregation for common routes.** If a common filter
+   repeatedly needs action grain, extend the appropriate per-game or standard-
+   clutch additive fact and its incremental refresh lifecycle. Do not copy a
+   second action table or repeatedly reconstruct the same rows.
+8. **Require structural and behavioral proof.** Static tests must assert the
+   intended primary-fact scan count, one materialization boundary when reused,
+   filter-before-expansion order, late ratios, and absence of nested companion
+   scans. Behavioral gates compare complete, non-vacuous results including
+   additive counts, duration, ranks, nulls, and provider extensions.
+9. **Measure warm and backend-first performance separately.** Before routing,
+   run at least 15 alternating complete-fetch warm samples and report median
+   and p90. Also run repeated candidate-first and legacy-first samples on
+   distinct fresh backends and inspect `EXPLAIN (ANALYZE, BUFFERS, SETTINGS)`.
+   A warm win alone is insufficient on PostgreSQL 17; reject material cold
+   regressions for the actual consumer.
+10. **Measure the real UI composition.** Time the calls made by one rendered
+    view, not a sum of mutually exclusive views. Record query count and full
+    fetch latency. Treat buffer reduction, round-trip reduction, and elapsed-
+    time reduction as separate evidence.
+11. **Apply additively and preserve rollback.** Retain existing readers as
+    compatibility surfaces during cutover, revoke PUBLIC execution, update the
+    app-role grant and independent audit allowlists together, run security and
+    reachability audits, and keep app deployment separate from DDL approval.
+12. **Document justified duplication.** If readers remain separate because
+    grains differ or a combined body regresses cold latency, record the measured
+    reason. Historical duplication alone is not justification.
+
+Current Israeli Team result from the 2026-09-01 measurement: Summary and its
+Minutes path remain unchanged. The additive migration 051 reader is limited to
+standard-clutch **Four Factors + Minutes**, omits Ratings ranks/records and
+Israeli shot-profile work, and is routed locally through one shared reactive.
+Exact parity, 15-sample warm, repeated fresh-backend, security, and query-count
+gates passed. The app change has not been deployed. See
+`euroleague/docs/plans/2026-09-01-israeli-standard-clutch-dashboard-measurement.md`.
+
 ### ETL
 
 **Use `etl_full.R`** — runs: base tables → sub-lineups → MV refresh → validation. Logs to `etl/logs/`.

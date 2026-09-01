@@ -19,7 +19,7 @@ def load_contract():
 
 
 class TeamReaderNameContractTest(unittest.TestCase):
-    def test_all_nine_team_readers_are_explicit_and_declared(self):
+    def test_all_team_readers_are_explicit_and_declared(self):
         contract = load_contract()
         expected = {
             f"{base}_{kind}"
@@ -29,6 +29,16 @@ class TeamReaderNameContractTest(unittest.TestCase):
         self.assertTrue(expected <= contract.DIRECT_APP_READERS)
         for reader in expected:
             self.assertEqual(1, APP.count(f'"euroleague.{reader}"'))
+        self.assertIn("get_team_dashboard_dynamic", contract.DIRECT_APP_READERS)
+        self.assertEqual(1, APP.count('"euroleague.get_team_dashboard_dynamic"'))
+
+    def test_standard_clutch_dashboard_is_shared_by_all_three_consumers(self):
+        self.assertIn("et_dynamic_dashboard <- reactive({", APP)
+        self.assertIn("return(et_dynamic_dashboard())", APP)
+        self.assertIn("et_dynamic_dashboard()\n      } else {\n        run_team_ff(p)", APP)
+        self.assertIn("df <- et_dynamic_dashboard()", APP)
+        self.assertIn("et_prev_dynamic_dashboard <- reactive({", APP)
+        self.assertEqual(2, APP.count("return(et_prev_dynamic_dashboard())"))
 
     def test_function_names_are_not_assembled_from_fragments(self):
         self.assertNotIn('base, "_", kind', APP)

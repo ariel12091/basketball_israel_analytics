@@ -51,6 +51,7 @@ DECLARE
     'fetch_lineups_four_factors',
     'get_team_ratings_dynamic',
     'get_team_four_factors_dynamic',
+    'get_team_four_factors_dashboard_dynamic',
     'get_player_traditional_dynamic',
     'get_player_traditional_from_games',
     'get_player_traditional_custom_clutch'
@@ -76,6 +77,7 @@ DECLARE
     'get_team_minutes_dynamic',
     'get_team_minutes_direct',
     'get_team_minutes_pergame',
+    'get_team_dashboard_dynamic',
     'get_player_traditional_dynamic',
     'get_player_traditional_pergame',
     'get_player_traditional_clutch',

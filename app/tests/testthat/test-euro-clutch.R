@@ -27,7 +27,7 @@ test_that("EuroLeague clutch parameters reach ratings, factors, minutes, and lin
   for (reader in c(
     "get_team_ratings_pergame", "get_team_ratings_dynamic", "get_team_ratings_direct",
     "get_team_four_factors_pergame", "get_team_four_factors_dynamic",
-    "get_team_four_factors_direct"
+    "get_team_four_factors_direct", "get_team_dashboard_dynamic"
   )) {
     expect_match(team_server, paste0('"euroleague.', reader, '"'), fixed = TRUE)
   }
@@ -53,6 +53,16 @@ test_that("EuroLeague clutch parameters reach ratings, factors, minutes, and lin
   expect_match(lineup_server, "fetch_lineups_dynamic", fixed = TRUE)
   expect_match(lineup_server, "fetch_lineups_direct", fixed = TRUE)
   expect_match(lineup_server, "isTRUE(input$euro_ld_clutch_enabled)", fixed = TRUE)
+})
+
+test_that("standard clutch shares one Team dashboard query across consumers", {
+  team_server <- read_repo_txt("R", "server_tab9_euro_team.R")
+
+  expect_match(team_server, "et_dynamic_dashboard <- reactive({", fixed = TRUE)
+  expect_match(team_server, "et_prev_dynamic_dashboard <- reactive({", fixed = TRUE)
+  expect_match(team_server, 'key = "tab9_euro_team_dashboard"', fixed = TRUE)
+  expect_match(team_server, "return(et_dynamic_dashboard())", fixed = TRUE)
+  expect_match(team_server, "df <- et_dynamic_dashboard()", fixed = TRUE)
 })
 
 test_that("clutch_reader_kind routes by what the request actually asks for", {

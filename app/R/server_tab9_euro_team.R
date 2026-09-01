@@ -155,6 +155,9 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       pergame = "euroleague.get_team_minutes_pergame",
       dynamic = "euroleague.get_team_minutes_dynamic",
       direct = "euroleague.get_team_minutes_direct"
+    ),
+    dashboard = c(
+      dynamic = "euroleague.get_team_dashboard_dynamic"
     )
   )
   team_reader_name <- function(metric, kind) {
@@ -228,6 +231,23 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     db_get_query(pg_pool, call$sql, params = call$params)
   }
 
+  run_team_dashboard <- function(p, end_override = NULL) {
+    allowed <- guard_heavy_request(
+      session, key = "tab9_euro_team_dashboard",
+      start_d = p$start_d, end_d = end_override %||% p$end_d,
+      min_gn = p$min_gn, max_gn = p$max_gn, last_n = p$last_n,
+      max_calls = 35L, window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return(data.frame())
+    kind <- clutch_reader_kind(p)
+    if (!identical(kind, "dynamic")) {
+      stop("Unsupported EuroLeague team dashboard route: ", kind)
+    }
+    call <- team_reader_call(team_reader_name("dashboard", kind), kind, p,
+                             end_override %||% p$end_d)
+    db_get_query(pg_pool, call$sql, params = call$params)
+  }
+
   # Team floor time already exists at canonical segment grain. Keep this query
   # separate from the rating facts so pace remains a ratio calculated only
   # after the selected games and starter contexts have been aggregated.
@@ -273,9 +293,23 @@ server_tab9_euro_team <- function(input, output, session, shared) {
 
   et_data_version <- reactive(euro_data_version())
 
+  # The standard-clutch reader returns Ratings, Four Factors, and Minutes from
+  # one materialized filtered fact. This reactive is the single query boundary
+  # shared by both views and the pace denominator.
+  et_dynamic_dashboard <- reactive({
+    p <- et_params()
+    if (!et_fallback_needed() || !identical(clutch_reader_kind(p), "dynamic")) {
+      return(NULL)
+    }
+    run_team_dashboard(p)
+  })
+
   et_data <- reactive({
     p <- et_params()
-    if (et_fallback_needed()) return(run_team_ratings(p))
+    if (et_fallback_needed()) {
+      if (identical(clutch_reader_kind(p), "dynamic")) return(et_dynamic_dashboard())
+      return(run_team_ratings(p))
+    }
     cached_season_df(
       list("euro_team_ppp_ratings_mv", p$competition, p$game_year, et_data_version()),
       function() db_get_query(pg_pool,
@@ -294,7 +328,11 @@ server_tab9_euro_team <- function(input, output, session, shared) {
   et_ff_data <- reactive({
     p <- et_params()
     df <- if (et_fallback_needed()) {
-      run_team_ff(p)
+      if (identical(clutch_reader_kind(p), "dynamic")) {
+        et_dynamic_dashboard()
+      } else {
+        run_team_ff(p)
+      }
     } else {
       cached_season_df(
         list("euro_team_four_factors_mv", p$competition, p$game_year, et_data_version()),
@@ -333,18 +371,37 @@ server_tab9_euro_team <- function(input, output, session, shared) {
     if (!isTRUE(et_delta_enabled())) return(NULL)
     prev_end <- et_prev_end()
     if (is.na(prev_end)) return(NULL)
-    tryCatch(run_team_ratings(et_params(), end_override = prev_end), error = function(e) NULL)
+    p <- et_params()
+    if (identical(clutch_reader_kind(p), "dynamic")) return(et_prev_dynamic_dashboard())
+    tryCatch(run_team_ratings(p, end_override = prev_end), error = function(e) NULL)
   })
 
   et_prev_ff_data <- reactive({
     if (!isTRUE(et_delta_enabled())) return(NULL)
     prev_end <- et_prev_end()
     if (is.na(prev_end)) return(NULL)
-    tryCatch(run_team_ff(et_params(), end_override = prev_end), error = function(e) NULL)
+    p <- et_params()
+    if (identical(clutch_reader_kind(p), "dynamic")) return(et_prev_dynamic_dashboard())
+    tryCatch(run_team_ff(p, end_override = prev_end), error = function(e) NULL)
+  })
+
+  et_prev_dynamic_dashboard <- reactive({
+    if (!isTRUE(et_delta_enabled())) return(NULL)
+    prev_end <- et_prev_end()
+    if (is.na(prev_end)) return(NULL)
+    p <- et_params()
+    if (!identical(clutch_reader_kind(p), "dynamic")) return(NULL)
+    tryCatch(run_team_dashboard(p, end_override = prev_end), error = function(e) NULL)
   })
 
   et_game_minutes <- reactive({
-    run_team_minutes(et_params())
+    p <- et_params()
+    if (identical(clutch_reader_kind(p), "dynamic")) {
+      df <- et_dynamic_dashboard()
+      if (is.null(df) || !nrow(df)) return(df)
+      return(data.frame(team_id = df$team_id, game_minutes = df$minutes))
+    }
+    run_team_minutes(p)
   })
 
   # ---- Render ----
