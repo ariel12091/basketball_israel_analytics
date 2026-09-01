@@ -144,9 +144,62 @@ build_ui <- function() {
 .UI_CACHE_ENABLED <- !tolower(trimws(Sys.getenv("IBPL_CACHE_UI", "true"))) %in%
   c("0", "false", "no", "off")
 .UI_CACHED <- if (.UI_CACHE_ENABLED) build_ui() else NULL
+
+# .UI_CACHED saves rebuilding the tag tree, but Shiny still serialised that
+# ~1MB tree to HTML on every request. Measured 2026-09-01: renderTags on the
+# cached tree cost 6.59s on the first call (bslib Sass compile + htmltools
+# warm-up) and 1.17-1.22s on every call after -- so a cold GET / took 10.5s
+# and a warm one still took ~1.1s, the single largest item in the 22s cold
+# Home load. shiny:::uiHttpHandler returns an httpResponse verbatim (read
+# against shiny 1.9.1), so cache the rendered page itself and hand back the
+# same bytes. Output is unchanged: the tree is already byte-identical per
+# request, so every response was the same 1,073,417 bytes before this too.
+#
+# Bookmarked requests keep the uncached build_ui() path, for the reason
+# above: navbarPage() calls restoreInput() while the tree is built.
+#
+# Skipped under testmode; showcase mode would also need the uncached path,
+# and this app runs neither. Set IBPL_CACHE_UI_HTML=false to drop just this
+# layer while keeping the tag-tree cache.
+.UI_HTML_CACHE_ENABLED <- .UI_CACHE_ENABLED &&
+  !tolower(trimws(Sys.getenv("IBPL_CACHE_UI_HTML", "true"))) %in%
+    c("0", "false", "no", "off")
+.UI_RESPONSE <- NULL
+ui_response <- function() {
+  if (!is.null(.UI_RESPONSE)) return(.UI_RESPONSE)
+  if (isTRUE(getShinyOption("testmode", default = FALSE))) return(NULL)
+  resp <- tryCatch(
+    shiny:::httpResponse(
+      200,
+      content = shiny:::renderPage(.UI_CACHED, showcase = 0, testMode = FALSE)
+    ),
+    error = function(e) {
+      app_log(
+        "startup",
+        sprintf("UI html cache unavailable: %s", conditionMessage(e)),
+        level = "WARN"
+      )
+      NULL
+    }
+  )
+  if (!is.null(resp)) .UI_RESPONSE <<- resp
+  resp
+}
 ui <- function(request) {
-  if (.UI_CACHE_ENABLED && !is_bookmark_request(request)) return(.UI_CACHED)
+  if (.UI_CACHE_ENABLED && !is_bookmark_request(request)) {
+    if (.UI_HTML_CACHE_ENABLED) {
+      resp <- ui_response()
+      if (!is.null(resp)) return(resp)
+    }
+    return(.UI_CACHED)
+  }
   build_ui()
+}
+
+# Render the page off the boot critical path so the ~6.6s first render is
+# not paid by the first visitor. Same idea as the pool warm-up in global.R.
+if (.UI_HTML_CACHE_ENABLED) {
+  later::later(function() invisible(ui_response()), delay = 0)
 }
 
 # ---------------- Server ----------------

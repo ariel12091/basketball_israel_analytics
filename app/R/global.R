@@ -441,6 +441,29 @@ pg_pool <- dbPool(
 )
 onStop(function() poolClose(pg_pool))
 
+# Warm one pooled connection off the boot critical path.
+#
+# Measured 2026-09-01: a first checkout costs ~1,700-2,200ms (TCP + TLS +
+# auth + the onCreate SET). With minSize = 0 that always lands on a user
+# request -- it showed up inside the 9.2s cold Home prewarm. minSize = 1
+# does move it to boot, but measured +2.7s to boot against -1.7s on the
+# request, so it is a loss whenever the worker is booted by the request it
+# then has to serve. This keeps minSize = 0 (the 2026-08-18 steady-state
+# finding stands) and instead connects from the event loop once R goes
+# idle, which is the gap while the browser parses the page and opens its
+# websocket. Boot time is unchanged and the connection is ready before the
+# first session queries. Best-effort: a failure here is retried by the
+# normal checkout path. Set POOL_PREWARM=false to disable.
+if (!tolower(trimws(Sys.getenv("POOL_PREWARM", "true"))) %in%
+      c("0", "false", "no", "off")) {
+  later::later(function() {
+    tryCatch({
+      con <- pool::poolCheckout(pg_pool)
+      pool::poolReturn(con)
+    }, error = function(e) NULL)
+  }, delay = 0)
+}
+
 # Shared head tags
 shared_head_tags <- function() {
   tags$head(

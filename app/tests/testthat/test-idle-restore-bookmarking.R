@@ -533,13 +533,27 @@ test_that("home storylines stay gated when a bookmark restores another tab", {
 test_that("bookmarks use the original per-request UI restore path", {
   app_r_txt <- read_repo_txt("app.R")
 
+  # Both UI caches -- the tag tree and the rendered-HTML response -- sit
+  # inside this one guard, so a bookmark request still reaches build_ui()
+  # and its UI-time restoreInput() calls.
   expect_match(
     app_r_txt,
-    "if (.UI_CACHE_ENABLED && !is_bookmark_request(request)) return(.UI_CACHED)",
+    "if (.UI_CACHE_ENABLED && !is_bookmark_request(request)) {",
     fixed = TRUE
   )
+  expect_match(app_r_txt, "return(.UI_CACHED)", fixed = TRUE)
   expect_match(app_r_txt, "build_ui()", fixed = TRUE)
   expect_false(grepl("restore_tabset_after_flush", app_r_txt, fixed = TRUE))
+
+  # The rendered-HTML cache must be reached only from inside that guard.
+  guard_at <- regexpr(
+    "if (.UI_CACHE_ENABLED && !is_bookmark_request(request)) {",
+    app_r_txt, fixed = TRUE
+  )
+  ui_fn_at <- regexpr("ui <- function(request) {", app_r_txt, fixed = TRUE)
+  resp_at <- regexpr("resp <- ui_response()", app_r_txt, fixed = TRUE)
+  expect_gt(as.integer(resp_at), as.integer(guard_at))
+  expect_gt(as.integer(guard_at), as.integer(ui_fn_at))
 })
 
 test_that("league switcher cannot redirect a restored EuroLeague tab to Home", {
