@@ -184,13 +184,31 @@ test_that("app.css defines the full design token set in one :root block", {
   }
 })
 
-test_that("every colour token except the rgb triplet is a parseable colour", {
+test_that("every colour token is a parseable colour", {
   css <- read_repo_txt("www", "app.css")
   tokens <- css_tokens(css)
-  colour_tokens <- tokens[setdiff(names(tokens), "--ibpl-accent-rgb")]
+  # Tokens ending in -rgb hold a bare "r, g, b" triplet for use inside
+  # rgba(), not a colour literal, so col2rgb() cannot parse them. Task 3
+  # adds three more of them, so exclude by suffix rather than by name.
+  colour_tokens <- tokens[!grepl("-rgb$", names(tokens))]
 
   for (nm in names(colour_tokens)) {
     expect_silent(grDevices::col2rgb(colour_tokens[[nm]]))
+  }
+})
+
+test_that("every rgb triplet token parses as three 0-255 integers", {
+  css <- read_repo_txt("www", "app.css")
+  tokens <- css_tokens(css)
+  triplets <- tokens[grepl("-rgb$", names(tokens))]
+
+  for (nm in names(triplets)) {
+    parts <- suppressWarnings(
+      as.integer(strsplit(gsub("\\s", "", triplets[[nm]]), ",")[[1]])
+    )
+    expect_length(parts, 3)
+    expect_false(any(is.na(parts)), info = nm)
+    expect_true(all(parts >= 0 & parts <= 255), info = nm)
   }
 })
 
@@ -589,12 +607,24 @@ with:
         tags$span(style = "width: 6px; height: 6px; background: var(--ibpl-pos); border-radius: 50%; display: inline-block;"),
 ```
 
-Then find any remaining occurrences and replace each the same way:
+Then find the remaining occurrences:
 ```bash
 grep -n '#[0-9a-fA-F]\{6\}' app/app.R app/R/global.R
 ```
 
-Leave the `bslib::bs_theme()` arguments in `app/app.R:56-66` as literal hex — Sass compiles those at build time and cannot read a CSS custom property. Add a comment above them:
+**Only a hex inside a `style=` string becomes a token.** A hex that is an R
+*value* — one passed to an R function that must parse it as a colour — stays
+literal, because `colorRampPalette("var(--ibpl-accent)")` is not a colour and
+fails at source time. In `app/R/global.R` the split is:
+
+| line | what it is | action |
+|---|---|---|
+| 88 | `COLS_GRAD <- colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)` | **leave literal** — Task 7 owns this line |
+| 798, 800, 801, 802, 805, 807, 808, 809, 826, 828 | `style = "... #xxxxxx ..."` | tokenize |
+
+Leave the `bslib::bs_theme()` arguments in `app/app.R:56-66` as literal hex for
+the same reason — Sass compiles those at UI build time, before any CSS custom
+property exists. Add a comment above them:
 
 ```r
   # Literal hex, not tokens: bslib compiles these through Sass at UI build
