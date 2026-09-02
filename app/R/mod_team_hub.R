@@ -155,6 +155,217 @@ hub_fetch_team_ratings_presets <- function(gy, ver, session = NULL) {
   )
 }
 
+# One app round trip for every dataset rendered by the Home team analysis.
+# The sources remain the existing ETL-refreshed facts. The default lineup
+# branch reads sub_lineups_stats directly because that is the exact fast path
+# used by fetch_lineups_csv_v2() for Home's full-season, filter-free request.
+hub_dashboard_query_sql <- function() {
+  paste(
+    "/* home_dashboard_combined */ SELECT",
+    "(SELECT value FROM basketball_test.app_meta",
+    "  WHERE key = 'etl_full_last_success' LIMIT 1) AS data_version,",
+    "(SELECT COALESCE(jsonb_agg(to_jsonb(p)",
+    "  ORDER BY p.hub_variant, p.rank_net_rtg), '[]'::jsonb)::text",
+    " FROM (SELECT preset_variant AS hub_variant, game_year, team_id, team_name,",
+    "              off_ppp, def_ppp, net_rtg, games_played, wins, losses,",
+    "              off_poss, def_poss, rank_net_rtg, rank_off_ppp, rank_def_ppp,",
+    "              off_fga, off_layup_att, off_dunk_att, off_fg3_att,",
+    "              off_c3_att, off_c3_known_att, def_fga, def_layup_att,",
+    "              def_dunk_att, def_fg3_att, def_c3_att, def_c3_known_att",
+    "         FROM basketball_test.team_ratings_preset_cache",
+    "        WHERE game_year = $1::int4) p) AS storylines_json,",
+    "(SELECT COALESCE(jsonb_agg(to_jsonb(r) ORDER BY r.rank_net_rtg),",
+    "                       '[]'::jsonb)::text",
+    " FROM (SELECT game_year, team_id, team_name, off_ppp, def_ppp, net_rtg,",
+    "              games_played, wins, losses, off_poss, def_poss,",
+    "              rank_net_rtg, rank_off_ppp, rank_def_ppp, off_fga,",
+    "              off_layup_att, off_dunk_att, off_fg3_att, off_c3_att,",
+    "              off_c3_known_att, def_fga, def_layup_att, def_dunk_att,",
+    "              def_fg3_att, def_c3_att, def_c3_known_att",
+    "         FROM basketball_test.team_ppp_ratings_mv",
+    "        WHERE game_year = $1::int4) r) AS ratings_json,",
+    "(SELECT COALESCE(jsonb_agg(to_jsonb(f) ORDER BY f.team_id),",
+    "                       '[]'::jsonb)::text",
+    " FROM (SELECT * FROM basketball_test.team_four_factors_mv",
+    "        WHERE game_year = $1::int4) f) AS four_factors_json,",
+    "(SELECT COALESCE(jsonb_agg(to_jsonb(o)",
+    "  ORDER BY o.\"Net RTG Diff\" DESC, o.\"Team\", o.\"Last Name\", o.\"First Name\"),",
+    "  '[]'::jsonb)::text",
+    " FROM (SELECT * FROM basketball_test.onoff_default_mv",
+    "        WHERE \"Year\" = $1::int4 AND team_id = $2::int4",
+    "          AND COALESCE(\"ON Poss\", 0) >= 100",
+    "          AND \"Net RTG Diff\" IS NOT NULL",
+    "          AND \"Net RTG Diff\"::text NOT IN ('NaN', 'Infinity', '-Infinity')",
+    "        ORDER BY \"Net RTG Diff\" DESC, \"Team\", \"Last Name\", \"First Name\"",
+    "        LIMIT 5) o) AS onoff_json,",
+    "(SELECT COALESCE(jsonb_agg(to_jsonb(t)), '[]'::jsonb)::text",
+    " FROM (SELECT * FROM basketball_test.player_traditional_stats_mv",
+    "        WHERE game_year = $1::int4 AND team_id = $2::int4) t) AS traditional_json,",
+    "(SELECT COALESCE(jsonb_agg(to_jsonb(l)), '[]'::jsonb)::text",
+    " FROM (SELECT player_names_str, ROUND(off_ppp - def_ppp, 1) AS net_rtg,",
+    "              off_poss, def_poss",
+    "         FROM basketball_test.sub_lineups_stats",
+    "        WHERE game_year = $1::int4 AND team_id = $2::int4",
+    "          AND num_lineup = 5",
+    "          AND COALESCE(off_poss, 0) + COALESCE(def_poss, 0) >= 100) l)",
+    " AS lineups_json"
+  )
+}
+
+hub_parse_json_df <- function(value) {
+  if (is.null(value) || length(value) != 1L || is.na(value) || !nzchar(value)) {
+    return(data.frame())
+  }
+  out <- jsonlite::fromJSON(value, simplifyDataFrame = TRUE)
+  if (is.data.frame(out)) return(out)
+  if (is.list(out) && !length(out)) return(data.frame())
+  as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
+}
+
+hub_dashboard_validation_error <- function(dashboard) {
+  contracts <- list(
+    storylines = c("hub_variant", "team_id", "net_rtg"),
+    ratings = c("team_id", "team_name", "off_ppp", "def_ppp", "net_rtg"),
+    four_factors = c(
+      "team_id", "off_efg", "off_tov", "off_oreb", "off_ftr",
+      "def_efg", "def_tov", "def_oreb", "def_ftr"
+    ),
+    onoff = c("team_id", "ON Poss", "Net RTG Diff", "First Name", "Last Name"),
+    traditional = c("team_id", "pts", "gp"),
+    lineups = c("player_names_str", "net_rtg", "off_poss", "def_poss")
+  )
+  required_nonempty <- c("storylines", "ratings", "four_factors")
+
+  if (!is.list(dashboard)) return("response is not a dashboard list")
+  for (section in names(contracts)) {
+    value <- dashboard[[section]]
+    if (!is.data.frame(value)) {
+      return(sprintf("section %s is not a data frame", section))
+    }
+    if (section %in% required_nonempty && !nrow(value)) {
+      return(sprintf("required section %s is empty", section))
+    }
+    # Empty selected-team sections are valid (for example, no lineup reaches
+    # the possession threshold). JSON [] cannot preserve column names.
+    if (nrow(value)) {
+      missing <- setdiff(contracts[[section]], names(value))
+      if (length(missing)) {
+        return(sprintf(
+          "section %s is missing columns: %s",
+          section,
+          paste(missing, collapse = ", ")
+        ))
+      }
+    }
+  }
+  ""
+}
+
+hub_log_dashboard_fallback <- function(reason, gy, team_id, session = NULL) {
+  if (exists("app_log", mode = "function")) {
+    app_log(
+      "hub_home_fallback",
+      sprintf(
+        "combined reader unavailable season=%d team=%d reason=%s; using legacy readers",
+        gy,
+        team_id,
+        reason
+      ),
+      level = "WARN",
+      session = session
+    )
+  }
+}
+
+hub_fetch_dashboard <- function(gy, team_id, ver, session = NULL) {
+  gy <- suppressWarnings(as.integer(gy))
+  team_id <- suppressWarnings(as.integer(team_id))
+  if (!is.finite(gy) || !is.finite(team_id)) return(NULL)
+
+  cached_season_df(
+    list("home_dashboard", gy, team_id, ver),
+    function() {
+      query_error <- NULL
+      out <- tryCatch(
+        hub_db_get_query_timed(
+          hub_dashboard_query_sql(),
+          params = list(gy, team_id),
+          label = sprintf("combined season=%d team=%d", gy, team_id),
+          session = session
+        ),
+        error = function(e) {
+          query_error <<- conditionMessage(e)
+          NULL
+        }
+      )
+      if (is.null(out) || nrow(out) != 1L) {
+        received <- if (is.null(out)) 0L else nrow(out)
+        reason <- query_error %||% sprintf("expected one row, received %d", received)
+        hub_log_dashboard_fallback(reason, gy, team_id, session)
+        return(NULL)
+      }
+
+      parse_error <- NULL
+      dashboard <- tryCatch(
+        list(
+          storylines = hub_parse_json_df(out$storylines_json[[1]]),
+          ratings = hub_parse_json_df(out$ratings_json[[1]]),
+          four_factors = hub_parse_json_df(out$four_factors_json[[1]]),
+          onoff = hub_parse_json_df(out$onoff_json[[1]]),
+          traditional = hub_parse_json_df(out$traditional_json[[1]]),
+          lineups = hub_parse_json_df(out$lineups_json[[1]])
+        ),
+        error = function(e) {
+          parse_error <<- conditionMessage(e)
+          NULL
+        }
+      )
+      if (is.null(dashboard)) {
+        hub_log_dashboard_fallback(parse_error %||% "JSON parsing failed", gy, team_id, session)
+        return(NULL)
+      }
+      validation_error <- hub_dashboard_validation_error(dashboard)
+      if (nzchar(validation_error)) {
+        hub_log_dashboard_fallback(validation_error, gy, team_id, session)
+        return(NULL)
+      }
+
+      version_value <- if ("data_version" %in% names(out)) {
+        out$data_version[[1]]
+      } else {
+        ""
+      }
+      version <- trimws(as.character(version_value %||% ""))
+      if (length(version) != 1L || is.na(version)) version <- ""
+      if (nzchar(version)) {
+        attr(dashboard, "data_version") <- version
+        attr(dashboard$storylines, "data_version") <- version
+
+        # Seed the canonical full-season caches returned in this same call.
+        # This prevents the lower-priority prewarm and matching Compare routes
+        # from immediately fetching the same rows again.
+        GL_DATA_CACHE$set(
+          rlang::hash(list("home_dashboard", gy, team_id, version)),
+          dashboard
+        )
+        GL_DATA_CACHE$set(
+          rlang::hash(list("team_ratings_preset_cache", gy, version)),
+          dashboard$storylines
+        )
+        GL_DATA_CACHE$set(
+          rlang::hash(list("team_ppp_ratings_mv", gy, version)),
+          dashboard$ratings
+        )
+        GL_DATA_CACHE$set(
+          rlang::hash(list("team_four_factors_mv", gy, version)),
+          dashboard$four_factors
+        )
+      }
+      dashboard
+    }
+  )
+}
+
 # Safety fallback for deployments where the persisted table has not been
 # created yet. It remains batched into one database round trip.
 hub_storyline_variants_sql <- function() {
@@ -416,10 +627,35 @@ server_team_hub <- function(input, output, session, shared) {
     )
   })
 
-  hub_ratings_df <- reactive(hub_fetch_team_ratings(hub_gy(), hub_ver()))
-  hub_ff_df <- reactive(hub_fetch_team_ff(hub_gy(), hub_ver()))
+  hub_dashboard_df <- reactive({
+    dashboard <- hub_fetch_dashboard(
+      hub_gy(),
+      hub_team_id(),
+      hub_ver(),
+      session = session
+    )
+    version <- attr(dashboard, "data_version", exact = TRUE)
+    accept_data_version <- shared$accept_data_version
+    if (is.function(accept_data_version) && !is.null(version)) {
+      accept_data_version(version)
+    }
+    dashboard
+  })
+
+  hub_ratings_df <- reactive({
+    dashboard <- hub_dashboard_df()
+    if (!is.null(dashboard)) return(dashboard$ratings)
+    hub_fetch_team_ratings(hub_gy(), hub_ver())
+  })
+  hub_ff_df <- reactive({
+    dashboard <- hub_dashboard_df()
+    if (!is.null(dashboard)) return(dashboard$four_factors)
+    hub_fetch_team_ff(hub_gy(), hub_ver())
+  })
 
   hub_onoff_df <- reactive({
+    dashboard <- hub_dashboard_df()
+    if (!is.null(dashboard)) return(dashboard$onoff)
     gy <- hub_gy()
     cached_season_df(
       list("onoff_default_mv", gy, hub_ver()),
@@ -440,6 +676,10 @@ server_team_hub <- function(input, output, session, shared) {
   })
 
   hub_ts_df <- reactive({
+    dashboard <- hub_dashboard_df()
+    if (!is.null(dashboard)) {
+      return(normalize_ts_result_cols(dashboard$traditional))
+    }
     gy <- hub_gy()
     cached_season_df(
       list("player_traditional_stats_mv", gy, hub_ver()),
@@ -461,6 +701,8 @@ server_team_hub <- function(input, output, session, shared) {
   })
 
   hub_lineups_df <- reactive({
+    dashboard <- hub_dashboard_df()
+    if (!is.null(dashboard)) return(dashboard$lineups)
     gy <- hub_gy()
     tid <- hub_team_id()
     bounds <- shared$season_date_bounds(as.character(gy))
@@ -525,6 +767,8 @@ server_team_hub <- function(input, output, session, shared) {
   # Prefer the ETL-refreshed preset table. During a rolling deployment, fall
   # back to the previous batched dynamic query if that table is unavailable.
   hub_dyn_all_df <- reactive({
+    dashboard <- hub_dashboard_df()
+    if (!is.null(dashboard)) return(dashboard$storylines)
     gy <- hub_gy()
     persisted <- hub_fetch_team_ratings_presets(gy, hub_ver(), session = session)
     if (!is.null(persisted)) {

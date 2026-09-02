@@ -145,6 +145,72 @@ hub_fetch_team_ratings_presets <- function(gy, ver) {
 db_get_query <- function(pool, query, params = NULL) {
   q <- paste(query, collapse = " ")
 
+  if (grepl("home_dashboard_combined", q, fixed = TRUE)) {
+    increment_mock_db_query_count("home_dashboard_combined")
+    ratings <- mock_team_ratings_df()
+    variants <- c(
+      "starters_hi", "starters_lo", "clutch",
+      "last10", "top4", "bottom4"
+    )
+    storylines <- do.call(rbind, lapply(variants, function(variant) {
+      out <- ratings
+      out$hub_variant <- variant
+      out[, c("hub_variant", setdiff(names(out), "hub_variant")), drop = FALSE]
+    }))
+    four_factors <- data.frame(
+      game_year = c(2026L, 2026L),
+      team_id = c(1L, 2L),
+      team_name = c("Team A", "Team B"),
+      off_efg = c(54.8, 52.1), off_tov = c(12.8, 15.6),
+      off_oreb = c(31.2, 27.5), off_ftr = c(28.4, 24.9),
+      def_efg = c(50.7, 53.3), def_tov = c(16.1, 13.8),
+      def_oreb = c(24.9, 28.3), def_ftr = c(22.7, 27.1)
+    )
+    selected_team <- suppressWarnings(as.integer(params[[2]]))
+    onoff <- data.frame(
+      team_id = c(1L, 2L),
+      `ON Poss` = c(420L, 360L),
+      `Net RTG Diff` = c(12.5, 8.1),
+      `First Name` = c("Player", "Player"),
+      `Last Name` = c("A", "B"),
+      check.names = FALSE
+    )
+    onoff <- onoff[onoff$team_id == selected_team, , drop = FALSE]
+    traditional <- data.frame(
+      team_id = c(1L, 2L), player_id = c(11L, 21L),
+      player_name = c("Player A", "Player B"),
+      gp = c(5L, 5L), pts = c(100, 90)
+    )
+    traditional <- traditional[
+      traditional$team_id == selected_team,
+      ,
+      drop = FALSE
+    ]
+    lineups <- data.frame(
+      player_names_str = c("A1, A2, A3, A4, A5", "A6, A7, A8, A9, A10"),
+      net_rtg = c(18.4, -5.1),
+      off_poss = c(42L, 55L),
+      def_poss = c(42L, 55L)
+    )
+    encode <- function(x) jsonlite::toJSON(
+      x,
+      dataframe = "rows",
+      auto_unbox = TRUE,
+      na = "null",
+      digits = NA
+    )
+    return(data.frame(
+      data_version = "test-etl-v1",
+      storylines_json = encode(storylines),
+      ratings_json = encode(ratings),
+      four_factors_json = encode(four_factors),
+      onoff_json = encode(onoff),
+      traditional_json = encode(traditional),
+      lineups_json = encode(lineups),
+      stringsAsFactors = FALSE
+    ))
+  }
+
   if (grepl("basketball_test.onoff_compute(", q, fixed = TRUE)) {
     increment_mock_db_query_count("onoff_compute")
   }
