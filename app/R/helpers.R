@@ -1831,12 +1831,17 @@ add_team_pace_cols <- function(df, minutes_map = NULL, fallback_to_regulation = 
 
 # The on/off range cell: a headline value, a league-range track carrying the
 # off-court and on-court dots, and the "on | off" pair beneath. The Four
-# Factors diff cell and the Shot Profile share cell each emitted this markup by
-# hand. Arguments are JS expression strings evaluated in the calling renderer's
-# scope. `extra_expr` is appended to both branches -- Four Factors passes its
-# est. +/-X pts line there, Shot Profile passes nothing -- so the impact
-# annotation survives the extraction and still compiles out when a league sets
-# show_impact = FALSE.
+# Factors diff cell, the Shot Profile share cell and the Summary verdict column
+# each emitted this markup by hand. Arguments are JS expression strings
+# evaluated in the calling renderer's scope. `extra_expr` is appended to both
+# branches -- Four Factors passes its est. +/-X pts line there, the others pass
+# nothing -- so the impact annotation survives the extraction and still
+# compiles out when a league sets show_impact = FALSE.
+#
+# sprintf_escaped controls the percent signs in the emitted CSS. A call site
+# that hands this to sprintf() as part of a format string needs them doubled;
+# one that concatenates the result straight into DT::JS() needs them single, or
+# the browser receives "left:42%%" and positions nothing.
 #
 # The indentation below is JS source, outside the quoted HTML fragments, so it
 # never reaches the page. The move is verified by regenerating each call site's
@@ -1844,7 +1849,8 @@ add_team_pace_cols <- function(df, minutes_map = NULL, fallback_to_regulation = 
 # newlines and leading indentation, not by asserting substrings.
 range_cell_js <- function(value_expr, on_expr, off_expr,
                           on_pct_expr = "onPct", off_pct_expr = "offPct",
-                          extra_expr = NULL) {
+                          extra_expr = NULL, sprintf_escaped = TRUE) {
+  pc <- if (isTRUE(sprintf_escaped)) "%%" else "%"
   tail_js <- if (is.null(extra_expr)) ";" else paste0(" +\n                        ", extra_expr, ";")
   paste0(
     "               if (", on_pct_expr, " === null || ", on_pct_expr, " === undefined) {\n",
@@ -1857,9 +1863,9 @@ range_cell_js <- function(value_expr, on_expr, off_expr,
     "               return '<div class=\"diff-val\">' + ", value_expr, " + '</div>' +\n",
     "                      '<div class=\"rank-bar-container\">' +\n",
     "                        '<div class=\"rank-track\"></div>' +\n",
-    "                        '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '%%; width:' + rangeLineWidth + '%%;\"></div>' +\n",
-    "                        '<div class=\"dot-off\" style=\"left:' + ", off_pct_expr, " + '%%;\" title=\"Off: ' + ", off_expr, " + '\"></div>' +\n",
-    "                        '<div class=\"dot-on\" style=\"left:' + ", on_pct_expr, " + '%%;\" title=\"On: ' + ", on_expr, " + '\"></div>' +\n",
+    "                        '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '", pc, "; width:' + rangeLineWidth + '", pc, ";\"></div>' +\n",
+    "                        '<div class=\"dot-off\" style=\"left:' + ", off_pct_expr, " + '", pc, ";\" title=\"Off: ' + ", off_expr, " + '\"></div>' +\n",
+    "                        '<div class=\"dot-on\" style=\"left:' + ", on_pct_expr, " + '", pc, ";\" title=\"On: ' + ", on_expr, " + '\"></div>' +\n",
     "                      '</div>' +\n",
     "                      '<div class=\"sub-text\">' +\n",
     "                        '<span style=\"font-weight:700; color:#222;\">' + ", on_expr, " + '</span>' +\n",
@@ -1977,9 +1983,11 @@ onoff_summary_datatable <- function(df, stat_filters) {
       idx_on  <- which(names(df) == "Off ON PPP") - 1
       idx_off <- which(names(df) == "Off OFF PPP") - 1
       idx_use <- which(names(df) == "minutes") - 1
+      idx_pr_on  <- which(names(df) == "pr_off_on") - 1
+      idx_pr_off <- which(names(df) == "pr_off_off") - 1
 
       diff_cols <- c("Net RTG Diff", "Off ON Diff", "Def ON Diff", "On Net RTG", "Off Net RTG")
-      idx_diff <- which(names(df) %in% diff_cols) - 1
+      idx_diff <- which(names(df) %in% setdiff(diff_cols, "Net RTG Diff")) - 1
 
       pr_cols <- names(df)[grep("^pr_", names(df))]
       hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols)) - 1
@@ -2110,7 +2118,7 @@ onoff_summary_datatable <- function(df, stat_filters) {
         )
       )))
 
-      dt <- datatable(df, container = sketch_summary, rownames = FALSE,
+      dt <- datatable(df, container = sketch_summary, rownames = FALSE, escape = dt_escape_except(df, "Net RTG Diff"),
                       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "tip", pageLength = 30, scrollX = TRUE,
                                      scrollY = "70vh", scrollCollapse = TRUE,
                                      order = list(list(which(names(df) == "Net RTG Diff") - 1, "desc")),
@@ -2126,23 +2134,47 @@ onoff_summary_datatable <- function(df, stat_filters) {
                                          "  var formatted = val.toFixed(2);",
                                          "  return val > 0 ? '+' + formatted : formatted;",
                                          "}"
+                                       )),
+                                       # The verdict column carries rank as dot
+                                       # position on a league track, not only as
+                                       # a background colour -- so it stays
+                                       # readable when hue does not. onTxt and
+                                       # offTxt come from row[] raw, so they are
+                                       # rounded here to match the 1-decimal
+                                       # display of the columns they mirror.
+                                       list(targets = idx_net, render = DT::JS(
+                                         "function(data, type, row, meta) {",
+                                         "  if (type !== 'display' || !row || data === null) return data;",
+                                         sprintf("  var onPct = row[%d] === null ? null : row[%d] * 100;", idx_pr_on, idx_pr_on),
+                                         sprintf("  var offPct = row[%d] === null ? null : row[%d] * 100;", idx_pr_off, idx_pr_off),
+                                         sprintf("  var onTxt = row[%d] === null ? '-' : parseFloat(row[%d]).toFixed(1);", idx_on, idx_on),
+                                         sprintf("  var offTxt = row[%d] === null ? '-' : parseFloat(row[%d]).toFixed(1);", idx_off, idx_off),
+                                         "  var val = parseFloat(data);",
+                                         "  var head = isNaN(val) ? data : (val > 0 ? '+' + val.toFixed(2) : val.toFixed(2));",
+                                         range_cell_js(
+                                           value_expr   = "head",
+                                           on_expr      = "onTxt",
+                                           off_expr     = "offTxt",
+                                           on_pct_expr  = "onPct",
+                                           off_pct_expr = "offPct",
+                                           sprintf_escaped = FALSE
+                                         ),
+                                         "}"
                                        ))
                                      ), shot_col_defs))) |>
         formatRound(c("Off ON PPP", "Def ON PPP", "Off OFF PPP", "Def OFF PPP"), 1) |>
         formatRound(intersect("minutes", names(df)), 1) |>
         formatCurrency(c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
 
+      # Background colour is reserved for the three columns that carry the
+      # verdict. The on-court and off-court rates beside them are context: they
+      # read through the range track and their own magnitude, and colouring
+      # them too meant every cell was emphasised and none of them was.
       if("pr_net" %in% names(df)) dt <- formatStyle(dt, "Net RTG Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_net")
       if("pr_off_on_d" %in% names(df)) dt <- formatStyle(dt, "Off ON Diff", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_on_d")
       if("pr_def_on_d" %in% names(df)) dt <- formatStyle(dt, "Def ON Diff", backgroundColor = styleInterval(CUTS, COLS_REV), valueColumns = "pr_def_on_d")
 
-      if("pr_off_on" %in% names(df)) dt <- formatStyle(dt, "Off ON PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_on")
-      if("pr_def_on_inv" %in% names(df)) dt <- formatStyle(dt, "Def ON PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_on_inv")
-      if("pr_on_net" %in% names(df)) dt <- formatStyle(dt, "On Net RTG", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_on_net")
 
-      if("pr_off_off" %in% names(df)) dt <- formatStyle(dt, "Off OFF PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_off")
-      if("pr_def_off_inv" %in% names(df)) dt <- formatStyle(dt, "Def OFF PPP", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_def_off_inv")
-      if("pr_off_net" %in% names(df)) dt <- formatStyle(dt, "Off Net RTG", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_off_net")
 
       return(dt)
 }

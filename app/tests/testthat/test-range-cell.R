@@ -67,3 +67,64 @@ test_that("both call sites go through the shared builder", {
   expect_equal(length(gregexpr("rank-track", helpers_txt, fixed = TRUE)[[1]]), 1)
   expect_false(grepl("rank-track", tab1_txt, fixed = TRUE))
 })
+
+# --- Summary verdict columns -------------------------------------------------
+
+# Isolate onoff_summary_datatable's body so these assertions cannot be
+# satisfied by the four-factors renderer further down the same file.
+summary_body <- function() {
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+  start <- regexpr("onoff_summary_datatable <- function", helpers_txt, fixed = TRUE)
+  end <- regexpr("onoff_four_factors_datatable <- function", helpers_txt, fixed = TRUE)
+  substring(helpers_txt, start, end)
+}
+
+test_that("the summary verdict column carries a non-colour rank cue", {
+  expect_true(grepl("range_cell_js(", summary_body(), fixed = TRUE))
+})
+
+test_that("summary background colour is confined to the verdict columns", {
+  body <- summary_body()
+
+  styled <- regmatches(body, gregexpr('formatStyle\\(dt, "[^"]+"', body))[[1]]
+  styled <- sub('formatStyle\\(dt, "', "", styled)
+  styled <- sub('"$', "", styled)
+
+  # Net RTG Diff, Off ON Diff and Def ON Diff are the verdict. The on/off PPP
+  # and net-rating columns are context and read through position instead.
+  expect_setequal(styled, c("Net RTG Diff", "Off ON Diff", "Def ON Diff"))
+})
+
+test_that("the summary escape allowlist stays narrow", {
+  body <- summary_body()
+
+  # Exactly one column emits HTML, and it is the one that renders the range
+  # cell. Anything wider would put database text through an unescaped column.
+  expect_true(grepl('dt_escape_except(df, "Net RTG Diff")', body, fixed = TRUE))
+  expect_false(grepl("escape = FALSE", body, fixed = TRUE))
+})
+
+test_that("Net RTG Diff no longer runs through the plain diff formatter", {
+  body <- summary_body()
+
+  # Two renderers targeting one column would leave the outcome to DT's
+  # columnDefs precedence; the verdict column is excluded explicitly instead.
+  expect_true(grepl('setdiff(diff_cols, "Net RTG Diff")', body, fixed = TRUE))
+})
+
+test_that("percent signs match how the call site consumes the JS", {
+  # A call site that passes the result through sprintf() needs %% ; one that
+  # concatenates straight into DT::JS() needs % , or the browser is handed
+  # "left:42%%" and positions nothing.
+  escaped <- range_cell_js("v", "on", "off")
+  plain <- range_cell_js("v", "on", "off", sprintf_escaped = FALSE)
+
+  expect_true(grepl("left:' + rangeLineLeft + '%%;", escaped, fixed = TRUE))
+  expect_true(grepl("left:' + rangeLineLeft + '%;", plain, fixed = TRUE))
+  expect_false(grepl("%%", plain, fixed = TRUE))
+})
+
+test_that("the Summary verdict renderer emits single percent signs", {
+  # It concatenates into DT::JS() rather than sprintf(), unlike the other two.
+  expect_true(grepl("sprintf_escaped = FALSE", summary_body(), fixed = TRUE))
+})
