@@ -13,17 +13,17 @@ ui_tab0_home <- function() tabPanel(
       div(
         class = "text-center mb-4",
         tags$h2(
-          style = "font-weight: 700; color: #e6edf3; margin-bottom: 4px;",
+          style = "font-weight: 700; color: var(--ibpl-text); margin-bottom: 4px;",
           "IBPL Analytics"
         ),
         tags$p(
           class = "league-only-il",
-          style = "color: #8b949e; font-size: .92rem; margin: 0;",
+          style = "color: var(--ibpl-text-muted); font-size: .92rem; margin: 0;",
           "Your go-to site for Israel Basketball Premier League stats"
         ),
         tags$p(
           class = "league-only-el",
-          style = "color: #8b949e; font-size: .92rem; margin: 0;",
+          style = "color: var(--ibpl-text-muted); font-size: .92rem; margin: 0;",
           "EuroLeague and EuroCup on/off, team and lineup stats"
         )
       ),
@@ -68,7 +68,7 @@ ui_tab0_home <- function() tabPanel(
               `data-input-id` = "go_euro_onoff",
               div(
                 class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: #e8a435;"),
+                tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
                 tags$h5("Who is helping my team?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Player impact when on vs. off the court"),
                 div(class = "mt-auto pt-2",
@@ -84,7 +84,7 @@ ui_tab0_home <- function() tabPanel(
               `data-input-id` = "go_euro_lineups",
               div(
                 class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: #e8a435;"),
+                tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
                 tags$h5("Which lineups are working?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Best and worst 5-man units by possessions"),
                 div(class = "mt-auto pt-2",
@@ -104,7 +104,7 @@ ui_tab0_home <- function() tabPanel(
               `data-input-id` = "go_euro_team",
               div(
                 class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: #e8a435;"),
+                tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
                 tags$h5("How is my team performing?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Offense, defense, net rating vs. the league"),
                 div(class = "mt-auto pt-2",
@@ -120,7 +120,7 @@ ui_tab0_home <- function() tabPanel(
               `data-input-id` = "go_euro_gamelogs",
               div(
                 class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: #e8a435;"),
+                tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
                 tags$h5("What happened in last night's game?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Score, lineups, and stats by game"),
                 div(class = "mt-auto pt-2",
@@ -143,7 +143,7 @@ ui_tab0_home <- function() tabPanel(
               `data-input-id` = "go_playerstats",
               div(
                 class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: #e8a435;"),
+                tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: var(--ibpl-accent);"),
                 tags$h5("How are individual players performing?", class = "card-title mb-1"),
                 tags$small(class = "text-muted", "Points, rebounds, assists, shooting splits per player"),
                 div(class = "mt-auto pt-2",
@@ -153,7 +153,7 @@ ui_tab0_home <- function() tabPanel(
           )
         ),
         tags$p(
-          style = "color: #6e7681; font-size: .8rem; text-align: center; margin-top: 4px;",
+          style = "color: var(--ibpl-text-dim); font-size: .8rem; text-align: center; margin-top: 4px;",
           "EuroLeague possessions come from a separate engine from the Israeli ",
           "league. The two are never ranked against each other."
         )
@@ -205,7 +205,7 @@ ui_tab0_home <- function() tabPanel(
             `data-input-id` = "go_onoff",
             div(
               class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: #e8a435;"),
+              tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
               tags$h5("Who is helping my team?", class = "card-title mb-1"),
               tags$small(class = "text-muted", "Player impact when on vs. off the court"),
               div(class = "mt-auto pt-2",
@@ -221,7 +221,7 @@ ui_tab0_home <- function() tabPanel(
             `data-input-id` = "go_lineups",
             div(
               class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: #e8a435;"),
+              tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
               tags$h5("Which lineups are working?", class = "card-title mb-1"),
               tags$small(class = "text-muted", "Best and worst 5-man units by possessions"),
               div(class = "mt-auto pt-2",
@@ -241,7 +241,7 @@ ui_tab0_home <- function() tabPanel(
             `data-input-id` = "go_team",
             div(
               class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: #e8a435;"),
+              tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
               tags$h5("How is my team performing?", class = "card-title mb-1"),
               tags$small(class = "text-muted", "Offense, defense, net rating vs. the league"),
               div(class = "mt-auto pt-2",
@@ -257,7 +257,7 @@ ui_tab0_home <- function() tabPanel(
             `data-input-id` = "go_gamelogs",
             div(
               class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: #e8a435;"),
+              tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
               tags$h5("What happened in last night's game?", class = "card-title mb-1"),
               tags$small(class = "text-muted", "Score, lineups, and stats by game"),
               div(class = "mt-auto pt-2",
@@ -277,7 +277,7 @@ ui_tab0_home <- function() tabPanel(
             `data-input-id` = "go_playerstats",
             div(
               class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: #e8a435;"),
+              tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: var(--ibpl-accent);"),
               tags$h5("How are individual players performing?", class = "card-title mb-1"),
               tags$small(class = "text-muted", "Points, rebounds, assists, shooting splits per player"),
               div(class = "mt-auto pt-2",
@@ -293,7 +293,7 @@ ui_tab0_home <- function() tabPanel(
             `data-input-id` = "go_compare",
             div(
               class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-arrow-left-right", style = "font-size: 2rem; color: #e8a435;"),
+              tags$i(class = "bi bi-arrow-left-right", style = "font-size: 2rem; color: var(--ibpl-accent);"),
               tags$h5("How do starters compare to the bench?", class = "card-title mb-1"),
               tags$small(class = "text-muted", "Compare any two situations side-by-side"),
               div(class = "mt-auto pt-2",

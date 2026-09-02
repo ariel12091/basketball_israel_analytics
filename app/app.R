@@ -53,6 +53,9 @@ build_ui <- function() {
     tags$i(class = "bi bi-activity", style = "margin-right: 6px;"),
     "IBPL Analytics"
   ),
+  # Literal hex, not tokens: bslib compiles these through Sass at UI build
+  # time, before any CSS custom property exists. Keep them in step with the
+  # :root values in www/app.css by hand.
   theme = bslib::bs_theme(
     version = 5,
     bg = "#0d1117",
@@ -82,7 +85,7 @@ build_ui <- function() {
     includeScript("www/app.js"),
     tags$div(
       id = "navbar_right_cluster",
-      style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
+      style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: var(--ibpl-text-muted); z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
       # League select first, then the season selector belonging to whichever
       # league is showing -- so the pair always reads [league] [season].
       navbar_league_select_ui(),
@@ -103,7 +106,7 @@ build_ui <- function() {
                    class = "btn btn-sm btn-outline-secondary nav-help-btn"),
       tags$span(
         style = "display: inline-flex; align-items: center; gap: 4px; min-width: 0;",
-        tags$span(style = "width: 6px; height: 6px; background: #34d399; border-radius: 50%; display: inline-block;"),
+        tags$span(style = "width: 6px; height: 6px; background: var(--ibpl-pos); border-radius: 50%; display: inline-block;"),
         tags$span(style = "display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                   textOutput("last_updated", inline = TRUE))
       )
@@ -475,14 +478,14 @@ server <- function(input, output, session) {
         title = "Glossary",
         size = "l",
         # --- Efficiency ---
-        tags$h5(style = "margin-top: 0; color: #e8a435;", "Efficiency"),
+        tags$h5(style = "margin-top: 0; color: var(--ibpl-accent);", "Efficiency"),
         tags$ul(
           tags$li(tags$b("PPP"), ": Points per 100 possessions (points per possession \u00d7 100)."),
           tags$li(tags$b("Net Rating"), ": Offensive PPP minus Defensive PPP. Positive = outscoring opponents."),
           tags$li(tags$b("Possessions"), ": Estimated offensive or defensive trips. More possessions = more reliable stats.")
         ),
         # --- Four Factors ---
-        tags$h5(style = "color: #e8a435;", "Four Factors"),
+        tags$h5(style = "color: var(--ibpl-accent);", "Four Factors"),
         tags$ul(
           tags$li(tags$b("TS%"), ": True Shooting \u2014 scoring efficiency accounting for 2PT, 3PT, and free throws. Formula: pts / (2 \u00d7 (FGA + FT trips))."),
           tags$li(tags$b("OREB%"), ": Offensive rebound rate \u2014 share of available misses grabbed. On defense, it measures opponent offensive rebounds allowed."),
@@ -490,26 +493,26 @@ server <- function(input, output, session) {
           tags$li(tags$b("FTR"), ": Free throw rate \u2014 FTA / FGA. Measures how often a team or player gets to the line relative to shot attempts.")
         ),
         # --- Shot Splits ---
-        tags$h5(style = "color: #e8a435;", "Shot Splits"),
+        tags$h5(style = "color: var(--ibpl-accent);", "Shot Splits"),
         tags$ul(
           tags$li(tags$b("Off Shot / Def Shot"), ": Each cell shows 2PT and 3PT frequency (how often that shot type is taken) and accuracy (FG%)."),
-          tags$li("The ", tags$span(style = "color: #5b8abd; font-weight: 600;", "blue"), " bar is 2PT frequency, the ",
-                  tags$span(style = "color: #d4843e; font-weight: 600;", "orange"), " bar is 3PT frequency."),
-          tags$li("Accuracy is shown as FG% text, colored from ", tags$span(style = "color: #f87171;", "red"),
-                  " (below league average) to ", tags$span(style = "color: #34d399;", "green"), " (above league average).")
+          tags$li("The ", tags$span(style = "color: var(--ibpl-fg2); font-weight: 600;", "blue"), " bar is 2PT frequency, the ",
+                  tags$span(style = "color: var(--ibpl-fg3); font-weight: 600;", "orange"), " bar is 3PT frequency."),
+          tags$li("Accuracy is shown as FG% text, colored from ", tags$span(style = "color: var(--ibpl-neg);", "red"),
+                  " (below league average) to ", tags$span(style = "color: var(--ibpl-pos);", "green"), " (above league average).")
         ),
         # --- Colors & Ranking ---
-        tags$h5(style = "color: #e8a435;", "Colors & Ranking"),
+        tags$h5(style = "color: var(--ibpl-accent);", "Colors & Ranking"),
         tags$ul(
-          tags$li(tags$b("Heat colors"), ": ", tags$span(style = "color: #34d399;", "Green"), " = good, ",
-                  tags$span(style = "color: #f87171;", "red"), " = bad. ",
+          tags$li(tags$b("Heat colors"), ": ", tags$span(style = "color: var(--ibpl-pos);", "Green"), " = good, ",
+                  tags$span(style = "color: var(--ibpl-neg);", "red"), " = bad. ",
                   tags$b("Polarity flips for defense"), " \u2014 lower Def PPP is better, so green means fewer points allowed."),
           tags$li(tags$b("TOV% exception"), ": On offense, lower TOV% is green (fewer turnovers). On defense, higher TOV% is green (more opponent turnovers)."),
           tags$li(tags$b("Gray / no color"), ": The player, lineup, or team has too few possessions to rank reliably (below the minimum threshold)."),
           tags$li(tags$b("Percentile rank bars"), " (Four Factors view): The slider shows where a player ranks from 0% to 100% among all players with enough possessions. 50% = league median. Only players above the minimum possession threshold are included in rankings.")
         ),
         # --- Filters ---
-        tags$h5(style = "color: #e8a435;", "Filters"),
+        tags$h5(style = "color: var(--ibpl-accent);", "Filters"),
         tags$ul(
           tags$li(tags$b("Game Number (GN)"), ": Each team's sequential game number in the season. Useful for filtering to a stretch of games."),
           tags$li(tags$b("Last N"), ": Only include the most recent N games. Mutually exclusive with GN range."),

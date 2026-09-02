@@ -795,18 +795,18 @@ shot_splits_legend_ui <- function(view_id) {
       span(style = "font-weight:700; margin-right:10px;", "Shot Splits:"),
       div(class = "legend-item",
           div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-              span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
+              span(style = "font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
               div(style = "display:flex; align-items:center; gap:8px;",
-                  div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"), span("2PT"),
-                  div(style = "width:14px; height:14px; background:#d4843e; border-radius:3px; margin-left:6px;"), span("3PT")))),
-      span(style = "margin:0 12px; color:#30363d;", "|"),
+                  div(style = "width:14px; height:14px; background:var(--ibpl-fg2); border-radius:3px;"), span("2PT"),
+                  div(style = "width:14px; height:14px; background:var(--ibpl-fg3); border-radius:3px; margin-left:6px;"), span("3PT")))),
+      span(style = "margin:0 12px; color:var(--ibpl-border);", "|"),
       div(class = "legend-item",
           div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-              span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
+              span(style = "font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
               div(style = "display:flex; align-items:center; gap:6px;",
-                  span(style = "color:#f87171; font-weight:600;", "FG%"),
-                  span(style = "color:#6e7681; margin:0 2px;", "\u2192"),
-                  span(style = "color:#34d399; font-weight:600;", "FG%"))))
+                  span(style = "color:var(--ibpl-neg); font-weight:600;", "FG%"),
+                  span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "\u2192"),
+                  span(style = "color:var(--ibpl-pos); font-weight:600;", "FG%"))))
     )
   )
 }
@@ -823,9 +823,9 @@ onoff_rank_legend_ui <- function(view_id, mode = "Four Factors", note = NULL) {
       div(class = "legend-item", div(class = "legend-icon-off"), span("Off-Court")),
       div(class = "legend-item", span("0%"),
           div(class = "legend-bar", div(class = "legend-tick", style = "left:0;"),
-              div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:#6e7681;"),
+              div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:var(--ibpl-text-dim);"),
               div(class = "legend-tick", style = "right:0;")), span("100% Rank")),
-      span(style = "margin-left: 15px; font-size: 0.8em; color: #6e7681;",
+      span(style = "margin-left: 15px; font-size: 0.8em; color: var(--ibpl-text-dim);",
            note %||% paste0("(Ranked Players: > ", RANKING_BASELINE, " poss)"))
     )
   )

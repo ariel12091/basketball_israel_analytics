@@ -100,7 +100,7 @@ ui_tab7_compare <- function() tabPanel(
           tags$div(
             class = "d-flex align-items-center gap-2 mb-2",
             tags$span(class = "badge rounded-pill",
-                      style = "background: rgba(123,140,222,.2); color: #7b8cde; border: 1px solid rgba(123,140,222,.4); font-size: .7rem;",
+                      style = "background: rgba(123,140,222,.2); color: var(--ibpl-side-a); border: 1px solid rgba(123,140,222,.4); font-size: .7rem;",
                       "A")
           ),
 
@@ -190,7 +190,7 @@ ui_tab7_compare <- function() tabPanel(
           tags$div(
             class = "d-flex align-items-center gap-2 mb-2",
             tags$span(class = "badge rounded-pill",
-                      style = "background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); font-size: .7rem;",
+                      style = "background: rgba(232,164,53,.15); color: var(--ibpl-accent); border: 1px solid rgba(232,164,53,.35); font-size: .7rem;",
                       "B")
           ),
 
@@ -354,24 +354,24 @@ ui_tab7_compare <- function() tabPanel(
             # Summary cards
             fluidRow(
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-                tags$div(class = "small text-uppercase", style = "color: #7b8cde;",
+                tags$div(class = "small text-uppercase", style = "color: var(--ibpl-side-a);",
                          textOutput("cmp_summary_a_title", inline = TRUE)),
-                tags$div(class = "fs-4 fw-bold", style = "color: #4caf7d;", textOutput("cmp_summary_a", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", style = "color: var(--ibpl-side-a);", textOutput("cmp_summary_a", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_label", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_delta", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_poss", inline = TRUE))
               )),
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-                tags$div(class = "small text-uppercase", style = "color: #e8a435;",
+                tags$div(class = "small text-uppercase", style = "color: var(--ibpl-accent);",
                          textOutput("cmp_summary_b_title", inline = TRUE)),
-                tags$div(class = "fs-4 fw-bold", style = "color: #e05c5c;", textOutput("cmp_summary_b", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", style = "color: var(--ibpl-accent);", textOutput("cmp_summary_b", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_b_label", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_b_delta", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_b_poss", inline = TRUE))
               )),
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
                 tags$div(class = "small text-uppercase text-muted", "Avg Gap"),
-                tags$div(class = "fs-4 fw-bold", style = "color: #e8a435;", textOutput("cmp_summary_gap", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", style = "color: var(--ibpl-accent);", textOutput("cmp_summary_gap", inline = TRUE)),
                 tags$div(class = "small text-muted", "league-wide")
               ))
             ),

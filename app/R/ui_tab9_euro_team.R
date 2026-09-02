@@ -84,7 +84,7 @@ ui_tab9_euro_team <- function() tabPanel(
           div(
             class = "legend-box",
             span(style = "font-weight:700; margin-right:5px;", "Legend:"),
-            span(style = "font-size: 0.82em; color: #6e7681;",
+            span(style = "font-size: 0.82em; color: var(--ibpl-text-dim);",
                  "Green = better for that team. Offence: higher eFG%/OREB%/FTR, lower TOV%. ",
                  "Defence: lower eFG%/OREB%/FTR allowed, higher opponent TOV%.")
           )

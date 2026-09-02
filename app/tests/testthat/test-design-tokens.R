@@ -77,3 +77,20 @@ test_that("app.css expresses brand alpha through the accent rgb token", {
   expect_false(grepl("rgba\\(\\s*232\\s*,\\s*164\\s*,\\s*53", outside))
   expect_true(grepl("rgba\\(var\\(--ibpl-accent-rgb\\)", outside))
 })
+
+test_that("UI files style themselves through tokens, not literal hex", {
+  ui_files <- c(
+    "ui_tab0_home.R", "ui_tab1_onoff.R", "ui_tab2_lineup.R",
+    "ui_tab4_gamelogs.R", "ui_tab7_compare.R",
+    "ui_tab9_euro_team.R", "ui_tab10_euro_lineups.R"
+  )
+
+  for (f in ui_files) {
+    txt <- read_repo_txt("R", f)
+    found <- regmatches(txt, gregexpr("#[0-9a-fA-F]{6}", txt))[[1]]
+    expect_equal(
+      sort(unique(found)), character(0),
+      info = paste(f, "still carries literal hex:", paste(sort(unique(found)), collapse = ", "))
+    )
+  }
+})

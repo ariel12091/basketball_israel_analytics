@@ -125,23 +125,23 @@ ui_tab4_gamelogs <- function() tabPanel(
             span(style = "font-weight:700; margin-right:10px;", "Shot Splits:"),
             div(class = "legend-item",
                 div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-                    span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
+                    span(style = "font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;", "Frequency"),
                     div(style = "display:flex; align-items:center; gap:8px;",
-                        div(style = "width:14px; height:14px; background:#5b8abd; border-radius:3px;"),
+                        div(style = "width:14px; height:14px; background:var(--ibpl-fg2); border-radius:3px;"),
                         span("2PT"),
-                        div(style = "width:14px; height:14px; background:#d4843e; border-radius:3px; margin-left:6px;"),
+                        div(style = "width:14px; height:14px; background:var(--ibpl-fg3); border-radius:3px; margin-left:6px;"),
                         span("3PT")
                     )
                 )
             ),
-            span(style = "margin:0 12px; color:#30363d;", "|"),
+            span(style = "margin:0 12px; color:var(--ibpl-border);", "|"),
             div(class = "legend-item",
                 div(style = "display:flex; flex-direction:column; align-items:center; gap:2px;",
-                    span(style = "font-size:0.75em; color:#6e7681; text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
+                    span(style = "font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
                     div(style = "display:flex; align-items:center; gap:6px;",
-                        span(style = "color:#f87171; font-weight:600;", "FG%"),
-                        span(style = "color:#6e7681; margin:0 2px;", "\u2192"),
-                        span(style = "color:#34d399; font-weight:600;", "FG%")
+                        span(style = "color:var(--ibpl-neg); font-weight:600;", "FG%"),
+                        span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "\u2192"),
+                        span(style = "color:var(--ibpl-pos); font-weight:600;", "FG%")
                     )
                 )
             )

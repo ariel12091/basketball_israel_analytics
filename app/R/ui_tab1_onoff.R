@@ -166,12 +166,12 @@ ui_tab1_onoff <- function() {
               div(
                 class = "legend-bar",
                 div(class = "legend-tick", style = "left:0;"),
-                div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:#6e7681;"),
+                div(class = "legend-tick", style = "left:50%; height:12px; top:-2px; background:var(--ibpl-text-dim);"),
                 div(class = "legend-tick", style = "right:0;")
               ),
               span("100% Rank")
             ),
-            span(style = "margin-left: 15px; font-size: 0.8em; color: #6e7681;",
+            span(style = "margin-left: 15px; font-size: 0.8em; color: var(--ibpl-text-dim);",
                  "(Ranked: ≥ 50 team FGA with player on · eFG% + shares of team FGA, Δ = ON − OFF pp · Corner 3 Share uses known-location 3PA, — = unknown)")
           )
         ),
