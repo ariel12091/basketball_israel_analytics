@@ -2119,6 +2119,7 @@ onoff_summary_datatable <- function(df, stat_filters) {
       )))
 
       dt <- datatable(df, container = sketch_summary, rownames = FALSE, escape = dt_escape_except(df, "Net RTG Diff"),
+                      class = "display ibpl-flip",
                       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "tip", pageLength = 30, scrollX = TRUE,
                                      scrollY = "70vh", scrollCollapse = TRUE,
                                      order = list(list(which(names(df) == "Net RTG Diff") - 1, "desc")),
@@ -2343,6 +2344,7 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact) {
 
       dt <- datatable(df_final,
                       container = sketch_ff, rownames = FALSE,
+                      class = "display ibpl-flip",
                       escape = dt_escape_except(df_final),
                       options = list(
                         headerCallback = HEADER_TOOLTIP_JS,

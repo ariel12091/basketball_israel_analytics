@@ -1258,3 +1258,114 @@
     window.jQuery(document).on("change", "#league_select", schedule);
   }
 })();
+
+/* ---- FLIP row transitions on table redraw ---------------------------------
+   A ranking table that repaints in place discards the one thing a re-sort
+   actually tells you: who moved, and how far. Measure each row's position
+   before the redraw, compare after, and play the difference back as a
+   transform so the movement is visible.
+
+   Deliberately narrow: opt-in per table via the ibpl-flip class, capped at
+   MAX_ROWS because past that the effect reads as noise rather than as
+   information, and skipped entirely under prefers-reduced-motion. Rows
+   present on only one side of the redraw are left alone -- animating arrival
+   and departure would be decoration, not information.
+   -------------------------------------------------------------------------- */
+(function() {
+  var MAX_ROWS = 60;
+  var DURATION_MS = 300;
+  var SEP = String.fromCharCode(31);
+  var pending = null;
+
+  function reducedMotion() {
+    return window.matchMedia &&
+           window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  }
+
+  // Identity has to survive a re-sort, and the first cell alone does not carry
+  // it: on both tables that opt in, column 1 is Team and column 2 is Player, so
+  // a team's several players would share a key and animate from each other's
+  // positions. Measured on a 30-row table: 14 unique first cells, 30 unique
+  // first-and-second. SEP is a unit separator so a name cannot forge a key.
+  function rowKey(tr) {
+    var cells = tr.querySelectorAll("td");
+    if (!cells.length) return null;
+    var k = cells[0].textContent.trim();
+    if (cells.length > 1) k += SEP + cells[1].textContent.trim();
+    return k;
+  }
+
+  function measure(table) {
+    var rows = table.querySelectorAll("tbody tr");
+    if (!rows.length || rows.length > MAX_ROWS) return null;
+    var boxes = {};
+    for (var i = 0; i < rows.length; i++) {
+      var k = rowKey(rows[i]);
+      if (k) boxes[k] = rows[i].getBoundingClientRect().top;
+    }
+    return boxes;
+  }
+
+  function play(table, before) {
+    var rows = table.querySelectorAll("tbody tr");
+    var moved = [];
+    for (var i = 0; i < rows.length; i++) {
+      var k = rowKey(rows[i]);
+      if (!k || !Object.prototype.hasOwnProperty.call(before, k)) continue;
+      var delta = before[k] - rows[i].getBoundingClientRect().top;
+      if (!delta) continue;
+      rows[i].style.transition = "none";
+      rows[i].style.transform = "translateY(" + delta + "px)";
+      moved.push(rows[i]);
+    }
+    if (!moved.length) return;
+
+    // Force the start frame to commit before the transition is attached.
+    void table.offsetHeight;
+
+    for (var j = 0; j < moved.length; j++) {
+      moved[j].style.transition = "transform " + DURATION_MS + "ms cubic-bezier(.2,.7,.3,1)";
+      moved[j].style.transform = "";
+    }
+    window.setTimeout(function() {
+      for (var m = 0; m < moved.length; m++) {
+        moved[m].style.transition = "";
+        moved[m].style.transform = "";
+      }
+    }, DURATION_MS + 50);
+  }
+
+  function bind() {
+    if (!window.jQuery) return;
+    var $ = window.jQuery;
+
+    $(document).on("preDraw.dt", function(e) {
+      if (reducedMotion()) { pending = null; return; }
+      var table = e.target;
+      if (!table || !table.classList || !table.classList.contains("ibpl-flip")) return;
+      // DataTables fires preDraw more than once per redraw, and only the first
+      // lands before the rows are reordered. Letting a later one overwrite the
+      // measurement compares the new layout against itself, so every delta is
+      // zero and nothing animates -- measured: 30 rows move, 1 animates.
+      if (pending && pending.table === table) return;
+      pending = { table: table, boxes: measure(table) };
+    });
+
+    $(document).on("draw.dt", function(e) {
+      if (!pending || pending.table !== e.target || !pending.boxes) {
+        pending = null;
+        return;
+      }
+      var table = pending.table;
+      var boxes = pending.boxes;
+      pending = null;
+      play(table, boxes);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+})();
