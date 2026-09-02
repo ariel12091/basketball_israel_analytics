@@ -197,5 +197,5 @@ Out, deferred by decision:
   `www/app.css` or `www/app.js`, or edits need an app restart rather than a
   browser reload.
 - Launch with Run App / `runApp()`, never select-all + Ctrl+Enter.
-- The served page must contain 11 `nav-link` occurrences (navbar health check).
+- Navbar health check: the navbar markup carries 11 `class="nav-link"` occurrences, one per tab. The served page also inlines `app.css` (8 further `nav-link` mentions, in selectors) and `app.js` (1), so a naive whole-page grep reads about 20 and is not the check.
 - Colour changes are verified by computed WCAG relative luminance, never by eye.

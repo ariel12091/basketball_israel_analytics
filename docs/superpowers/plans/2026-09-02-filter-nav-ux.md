@@ -15,7 +15,7 @@
 ## Global Constraints
 
 - Set `IBPL_CACHE_UI=false` for any manual app run. `www/app.css` and `www/app.js` are read at UI build time, so with the cache on an edit needs an app restart, not a browser reload.
-- Launch with Run App / `runApp('app')`, **never** select-all + Ctrl+Enter. Health check: the served page contains 11 `nav-link` occurrences.
+- Launch with Run App / `runApp('app')`, **never** select-all + Ctrl+Enter. Health check: the navbar markup carries 11 `class="nav-link"` occurrences, one per tab. The served page also inlines `app.css` (8 further `nav-link` mentions, in selectors) and `app.js` (1), so a naive whole-page grep reads about 20 and is not the check.
 - Run tests from the repo root with `"/c/Program Files/R/R-4.4.2/bin/Rscript.exe" scripts/test_all.R`. Single file from `app/`: `"/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('tests/testthat/<file>')"`.
 - **Shiny input ids are unique per session.** A chip cannot host a live duplicate of a sidebar control. Chips therefore reveal and focus the owning input; they never re-declare it.
 - **DT escaping is fail-closed** (`dt_escape_except()`, `app/R/helpers.R:10`) and `test-dt-security.R` fails the build on `escape = FALSE` anywhere in a `server_tab*.R`. Never widen an escape allowlist to carry interaction markup — put it on the `<tr>` instead.

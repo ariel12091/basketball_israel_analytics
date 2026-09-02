@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - Set `IBPL_CACHE_UI=false` in the environment for any manual app run in this plan. `www/app.css` and `www/app.js` are read by `includeCSS()`/`includeScript()` at UI build time, so with the cache on an edit needs an app restart, not a browser reload.
-- Launch the app with Run App / `runApp('app')`, **never** select-all + Ctrl+Enter — the latter builds a BS3-style navbar and caches it for the life of the process. Health check: the served page contains 11 `nav-link` occurrences.
+- Launch the app with Run App / `runApp('app')`, **never** select-all + Ctrl+Enter — the latter builds a BS3-style navbar and caches it for the life of the process. Health check: the navbar markup carries 11 `class="nav-link"` occurrences, one per tab. The served page also inlines `app.css` (8 further `nav-link` mentions, in selectors) and `app.js` (1), so a naive whole-page grep reads about 20 and is not the check.
 - Run tests from the repo root with `"/c/Program Files/R/R-4.4.2/bin/Rscript.exe" scripts/test_all.R`. Run a single file from `app/` with `"/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('tests/testthat/<file>')"`.
 - Colour changes are verified by computed WCAG relative luminance. Never assert a colour is "similar" by eye.
 - Israeli and EuroLeague tabs share code. Never write a parallel `euro_` implementation — generalise the existing function and name it neutrally (root `CLAUDE.md`).
@@ -1704,5 +1704,5 @@ fading arrivals in would be decoration rather than information."
 - The seven listed UI files contain no literal hex, enforced by the same file.
 - Every neutral token's WCAG relative luminance is within 0.02 of its pre-warming value, and red leads blue on all thirteen.
 - `COLS_GRAD` is strictly monotonic in luminance with a minimum quintile ratio above 1.2 and an end-to-end span above 3x.
-- The served page still contains 11 `nav-link` occurrences.
+- The navbar markup still carries 11 `class="nav-link"` occurrences, one per tab.
 - On/Off Impact, Team Ratings and Home render correctly in a browser under both the default and `prefers-reduced-motion: reduce`.
