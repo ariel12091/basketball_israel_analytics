@@ -44,30 +44,19 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     )
   })
 
-  filtered_games <- reactive({
-    df <- season_rows()
-    if (is.null(df) || !nrow(df)) return(df)
-    f <- game_context_filter_values(input, "eurogl", game_type_id = "eurogl_phase")
-    rng <- input$eurogl_dates
-    if (length(rng) == 2L) df <- df %>% filter(game_date >= as.Date(rng[1]), game_date <= as.Date(rng[2]))
-    ids <- suppressWarnings(as.numeric(input$eurogl_teams)); ids <- ids[is.finite(ids)]
-    if (length(ids)) df <- df %>% filter(team_id %in% ids)
-    opp <- suppressWarnings(as.numeric(f$opp_ids)); opp <- opp[is.finite(opp)]
-    if (length(opp)) df <- df %>% filter(opp_team_id %in% opp)
-    if (length(f$game_type) && any(nzchar(f$game_type))) df <- df %>% filter(phase %in% f$game_type[nzchar(f$game_type)])
-    if (nzchar(f$home_away %||% "")) df <- df %>% filter(is_home == (f$home_away == "home"))
-    if (nzchar(f$outcome %||% "")) df <- df %>% filter(has_won == (f$outcome == "win"))
+  percentile_metrics <- c(
+    "off_ppp", "def_ppp", "net_rtg",
+    "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+    "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
+  )
 
-    starter_bounds <- resolve_starters_bounds(
-      input$eurogl_num_starters_off_mode, input$eurogl_num_starters_off,
-      input$eurogl_num_starters_def_mode, input$eurogl_num_starters_def
-    )
-    gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
-    if (!is.na(gn$min_gn)) df <- df %>% filter(round_number >= gn$min_gn)
-    if (!is.na(gn$max_gn)) df <- df %>% filter(round_number <= gn$max_gn)
-    if (!is.na(gn$last_n)) df <- df %>% group_by(team_id) %>%
-      arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-      slice_head(n = gn$last_n) %>% ungroup()
+  selected_team_ids <- reactive({
+    ids <- suppressWarnings(as.numeric(input$eurogl_teams))
+    ids[is.finite(ids)]
+  })
+
+  build_games <- function(df, starters_bounds = NULL, apply_starters = TRUE) {
+    if (is.null(df) || !nrow(df)) return(NULL)
 
     schedule_rows <- df %>%
       distinct(game_id, team_id, round_number, phase, game_date, opp_team_id,
@@ -98,25 +87,65 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     games <- gl_build_ff_metrics(
       metric_rows, schedule_rows,
-      starters_bounds = list(
-        off_min = starter_bounds$num_starters_off_min,
-        off_max = starter_bounds$num_starters_off_max,
-        def_min = starter_bounds$num_starters_def_min,
-        def_max = starter_bounds$num_starters_def_max
-      )
-    ) %>%
+      starters_bounds = starters_bounds,
+      apply_starters = apply_starters
+    )
+    if (is.null(games) || !nrow(games)) return(NULL)
+
+    games %>%
       inner_join(schedule_rows, by = c("game_id", "team_id")) %>%
       mutate(result = ifelse(has_won, "W", "L"),
              score = paste0(team_points, "-", opp_points),
              phase_label = euro_phase_label(phase)) %>%
       arrange(desc(game_date), desc(round_number), team_name)
+  }
 
-    gl_attach_percentiles(
-      games, games,
-      c("off_ppp", "def_ppp", "net_rtg",
-        "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
-        "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct")
+  # Match the Israeli companion: filters decide which games are displayed,
+  # but their percentiles remain anchored to the selected teams' full-season
+  # game population. Date, opponent, phase, result, round, last-N, and starter
+  # filters therefore cannot rescale the heat cells.
+  percentile_games <- reactive({
+    df <- season_rows()
+    if (is.null(df) || !nrow(df)) return(df)
+    ids <- selected_team_ids()
+    if (length(ids)) df <- df %>% filter(team_id %in% ids)
+    build_games(df, apply_starters = FALSE)
+  })
+
+  filtered_games <- reactive({
+    df <- season_rows()
+    if (is.null(df) || !nrow(df)) return(df)
+    f <- game_context_filter_values(input, "eurogl", game_type_id = "eurogl_phase")
+    rng <- input$eurogl_dates
+    if (length(rng) == 2L) df <- df %>% filter(game_date >= as.Date(rng[1]), game_date <= as.Date(rng[2]))
+    ids <- selected_team_ids()
+    if (length(ids)) df <- df %>% filter(team_id %in% ids)
+    opp <- suppressWarnings(as.numeric(f$opp_ids)); opp <- opp[is.finite(opp)]
+    if (length(opp)) df <- df %>% filter(opp_team_id %in% opp)
+    if (length(f$game_type) && any(nzchar(f$game_type))) df <- df %>% filter(phase %in% f$game_type[nzchar(f$game_type)])
+    if (nzchar(f$home_away %||% "")) df <- df %>% filter(is_home == (f$home_away == "home"))
+    if (nzchar(f$outcome %||% "")) df <- df %>% filter(has_won == (f$outcome == "win"))
+
+    starter_bounds <- resolve_starters_bounds(
+      input$eurogl_num_starters_off_mode, input$eurogl_num_starters_off,
+      input$eurogl_num_starters_def_mode, input$eurogl_num_starters_def
     )
+    gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
+    if (!is.na(gn$min_gn)) df <- df %>% filter(round_number >= gn$min_gn)
+    if (!is.na(gn$max_gn)) df <- df %>% filter(round_number <= gn$max_gn)
+    if (!is.na(gn$last_n)) df <- df %>% group_by(team_id) %>%
+      arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
+      slice_head(n = gn$last_n) %>% ungroup()
+
+    games <- build_games(df, starters_bounds = list(
+      off_min = starter_bounds$num_starters_off_min,
+      off_max = starter_bounds$num_starters_off_max,
+      def_min = starter_bounds$num_starters_def_min,
+      def_max = starter_bounds$num_starters_def_max
+    ))
+    if (is.null(games) || !nrow(games)) return(games)
+
+    gl_attach_percentiles(games, percentile_games(), percentile_metrics)
   })
 
   output$eurogl_table <- renderDT({
@@ -199,4 +228,9 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     starters_ids = c("eurogl_num_starters_off_mode", "eurogl_num_starters_off",
                      "eurogl_num_starters_def_mode", "eurogl_num_starters_def"),
     bounds_fn = euro_season_date_bounds)
+
+  invisible(list(
+    filtered_games = filtered_games,
+    percentile_games = percentile_games
+  ))
 }

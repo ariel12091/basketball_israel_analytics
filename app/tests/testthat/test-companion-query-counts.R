@@ -278,17 +278,31 @@ test_that("EuroLeague Lineups table and auto-min share one filtered query", {
   })
 })
 
-test_that("EuroLeague Game Logs reuses one season query across both views", {
+test_that("EuroLeague Game Logs keeps season ranks while reusing one query", {
   euro <- make_euro_query_test_env()
   shared <- make_euro_query_shared()
 
   shiny::testServer(function(input, output, session) {
-    euro$server_tab11_euro_gamelogs(input, output, session, shared)
+    session$userData$eurogl <- euro$server_tab11_euro_gamelogs(
+      input, output, session, shared
+    )
   }, {
     set_euro_common_inputs(session, "euro_game_logs", "eurogl", "Summary")
     session$setInputs(eurogl_dates = as.Date(c("2025-10-01", "2025-10-31")))
     session$flushReact()
     expect_silent(output$eurogl_table)
+
+    full <- session$userData$eurogl$filtered_games()
+    full_rank <- full$pr_off_ppp[full$game_id == 101L]
+    expect_length(full_rank, 1L)
+    expect_true(is.finite(full_rank))
+
+    session$setInputs(eurogl_dates = as.Date(c("2025-10-01", "2025-10-01")))
+    session$flushReact()
+    narrowed <- session$userData$eurogl$filtered_games()
+    expect_identical(narrowed$game_id, 101L)
+    expect_equal(narrowed$pr_off_ppp, full_rank)
+
     session$setInputs(eurogl_view_mode = "Four Factors")
     session$flushReact()
     expect_silent(output$eurogl_table)
