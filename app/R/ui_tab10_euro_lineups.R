@@ -32,10 +32,7 @@ ui_tab10_euro_lineups <- function() tabPanel(
           actionButton("euro_ld_reset", "Reset Lineup Filters"),
           tags$hr(),
 
-          sliderInput("euro_ld_minposs",
-                      tt("Minimum possessions (Off + Def)", "min_poss_lineup"),
-                      min = 0, max = 500, value = 0, step = 10),
-          helpText("Higher minimums improve stability but remove smaller-sample lineups."),
+          helpText("The possession minimum sits above the table. Higher minimums improve stability but remove smaller-sample lineups."),
 
           radioButtons("euro_ld_group_size", tt("Group size", "group_size"),
                        choices = c("2", "3", "4", "5"),
@@ -135,7 +132,11 @@ ui_tab10_euro_lineups <- function() tabPanel(
             )
           )
         ),
-        uiOutput("euro_ld_filter_chips"),
+        filter_chips_row(
+          "euro_ld_filter_chips",
+          minposs_slider("euro_ld_minposs", "Min Poss", "min_poss_lineup",
+                         max = 500, value = 0)
+        ),
         DTOutput("euro_ld_dt")
       )
     )

@@ -29,15 +29,7 @@ ui_tab2_lineup <- function() tabPanel(
           class = "collapse d-md-block",
           actionButton("ld_reset", "Reset Lineup Filters"),
           tags$hr(),
-          sliderInput(
-            "ld_minposs",
-            tt("Minimum possessions (Off + Def)", "min_poss_lineup"),
-            min = 0,
-            max = 2000,
-            value = LD_DEFAULT_MIN_POSS,
-            step = 10
-          ),
-          helpText("Higher minimums improve stability but remove smaller-sample lineups."),
+          helpText("The possession minimum sits above the table. Higher minimums improve stability but remove smaller-sample lineups."),
           radioButtons("ld_num", tt("Group size", "group_size"), choices = c("2", "3", "4", "5"), selected = LD_DEFAULT_NUM, inline = TRUE),
           tags$hr(),
           lineup_player_filter_ui(
@@ -178,7 +170,11 @@ ui_tab2_lineup <- function() tabPanel(
             )
           )
         ),
-        uiOutput("ld_filter_chips"),
+        filter_chips_row(
+          "ld_filter_chips",
+          minposs_slider("ld_minposs", "Min Poss", "min_poss_lineup",
+                         max = 2000, value = LD_DEFAULT_MIN_POSS)
+        ),
         DTOutput("ld_table")
       )
     )

@@ -11,7 +11,9 @@ test_that("each tab UI contains reset button and chips output", {
   for (s in TAB_SPECS) {
     ui_txt <- paste(readLines(s$ui, warn = FALSE), collapse = "\n")
     expect_true(grepl(sprintf("actionButton\\(\\\"%s\\\"", s$reset_id), ui_txt), info = s$name)
-    expect_true(grepl(sprintf("uiOutput\\(\\\"%s\\\"", s$chips_id), ui_txt), info = s$name)
+    # The chips output reaches the page either directly or through
+    # filter_chips_row(), which pairs it with the min-possession controls.
+    expect_true(grepl(sprintf("(uiOutput|filter_chips_row)\\(\\s*\\\"%s\\\"", s$chips_id), ui_txt), info = s$name)
   }
 })
 

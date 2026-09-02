@@ -39,10 +39,7 @@ ui_tab1_onoff <- function() {
           onoff_game_context_filters_ui(onoff_cfg),
 
           tags$hr(),
-          sliderInput("min_all_poss", tt("Min possessions per side (eligibility):", "min_poss_side"), min = 0, max = 2000, value = onoff_cfg$initial_min_all, step = 10),
-          sliderInput("min_on_poss", tt("Minimum ON possessions (for ranking):", "min_on_poss"), min = 0, max = 3000, value = onoff_cfg$initial_min_on, step = 10),
-          helpText("If rows disappear, reduce possession minimums or widen the date range."),
-          tags$hr(),
+          helpText("If rows disappear, reduce the possession minimums above the table or widen the date range."),
           downloadButton("download_csv", "Download CSV")
         )
       ),
@@ -178,7 +175,13 @@ ui_tab1_onoff <- function() {
                  "(Ranked: ≥ 50 team FGA with player on · eFG% + shares of team FGA, Δ = ON − OFF pp · Corner 3 Share uses known-location 3PA, — = unknown)")
           )
         ),
-        uiOutput("on_filter_chips"),
+        filter_chips_row(
+          "on_filter_chips",
+          minposs_slider("min_all_poss", "Min Poss / side", "min_poss_side",
+                         max = 2000, value = onoff_cfg$initial_min_all),
+          minposs_slider("min_on_poss", "Min ON Poss", "min_on_poss",
+                         max = 3000, value = onoff_cfg$initial_min_on)
+        ),
         DTOutput("onoff_dt"),
         conditionalPanel(
           condition = "input.onoff_view_mode == 'Four Factors'",

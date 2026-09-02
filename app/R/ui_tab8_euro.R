@@ -52,9 +52,7 @@ ui_tab8_euro <- function() {
           onoff_game_context_filters_ui(onoff_cfg),
 
           tags$hr(),
-          sliderInput("euro_min_all_poss", tt("Min possessions per side (eligibility):", "min_poss_side"), min = 0, max = 2000, value = onoff_cfg$initial_min_all, step = 10),
-          sliderInput("euro_min_on_poss", tt("Minimum ON possessions (for ranking):", "min_on_poss"), min = 0, max = 3000, value = onoff_cfg$initial_min_on, step = 10),
-          helpText("If rows disappear, reduce possession minimums or widen the date range.")
+          helpText("If rows disappear, reduce the possession minimums above the table or widen the date range.")
         )
       ),
 
@@ -91,7 +89,13 @@ ui_tab8_euro <- function() {
         ),
         onoff_summary_legend_ui(onoff_cfg$view_id),
         onoff_rank_legend_ui(onoff_cfg$view_id),
-        uiOutput("euro_filter_chips"),
+        filter_chips_row(
+          "euro_filter_chips",
+          minposs_slider("euro_min_all_poss", "Min Poss / side", "min_poss_side",
+                         max = 2000, value = onoff_cfg$initial_min_all),
+          minposs_slider("euro_min_on_poss", "Min ON Poss", "min_on_poss",
+                         max = 3000, value = onoff_cfg$initial_min_on)
+        ),
         DTOutput("euro_dt")
       )
     )

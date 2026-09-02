@@ -1079,6 +1079,31 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   )
 }
 
+# Chips bar plus the min-possession controls, laid out as one row: chips grow
+# from the left, the controls sit against the right edge. The on/off and lineup
+# tabs in both leagues call this, so the four sites cannot drift apart.
+filter_chips_row <- function(chips_output_id, ...) {
+  controls <- list(...)
+  tags$div(
+    class = "chips-row",
+    tags$div(class = "chips-row-chips", uiOutput(chips_output_id)),
+    if (length(controls)) tags$div(class = "chips-row-controls", controls)
+  )
+}
+
+# A min-possession slider sized for the chips row rather than the sidebar: no
+# tick grid, a fixed narrow track, and a small caption label. The long wording
+# lives in the tooltip, keyed the same way as the sidebar version was.
+minposs_slider <- function(input_id, label, tooltip_key, max, value,
+                           step = 10, width = "150px") {
+  tags$div(
+    class = "minposs-compact",
+    sliderInput(input_id, tt(label, tooltip_key),
+                min = 0, max = max, value = value, step = step,
+                width = width, ticks = FALSE)
+  )
+}
+
 setup_chip_clears <- function(prefix, session, input, shared,
                               game_type_id, opponents_id, home_away_id, outcome_id,
                               gn_min_id, gn_max_id, last_n_id, opp_rank_ids,

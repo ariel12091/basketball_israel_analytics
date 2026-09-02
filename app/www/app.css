@@ -763,6 +763,38 @@ body.ibpl-idle-expired::before {
   border-color: #e8a435 !important;
   color: #e8a435 !important;
 }
+
+/* ---- Chips row: chips left, min-possession controls right ---- */
+.chips-row {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 20px; flex-wrap: wrap; margin-bottom: 10px;
+}
+.chips-row-chips { flex: 1 1 320px; min-width: 0; }
+.chips-row-chips .filter-chips { margin-bottom: 0; }
+.chips-row-controls {
+  flex: 0 0 auto; display: flex; align-items: flex-end; gap: 16px;
+  padding: 8px 0 4px;
+}
+.minposs-compact .form-group { margin-bottom: 0; }
+.minposs-compact .control-label {
+  display: block;
+  font-size: 0.68rem; font-weight: 600; letter-spacing: 0.3px;
+  color: #8b949e; margin-bottom: 2px; white-space: nowrap;
+}
+.minposs-compact .irs--shiny { height: 34px; font-size: 0.65rem; }
+.minposs-compact .irs--shiny .irs-line,
+.minposs-compact .irs--shiny .irs-bar { top: 21px; height: 6px; }
+.minposs-compact .irs--shiny .irs-handle { top: 16px; width: 16px; height: 16px; }
+.minposs-compact .irs--shiny .irs-min,
+.minposs-compact .irs--shiny .irs-max,
+.minposs-compact .irs--shiny .irs-from,
+.minposs-compact .irs--shiny .irs-to,
+.minposs-compact .irs--shiny .irs-single {
+  font-size: 0.62rem; padding: 0 4px; top: 0;
+}
+@media (max-width: 768px) {
+  .chips-row-controls { flex: 1 1 100%; flex-wrap: wrap; gap: 12px; }
+}
 .popover {
   background-color: #161b22 !important;
   border: 1px solid #30363d !important;
