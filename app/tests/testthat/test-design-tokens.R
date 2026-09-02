@@ -94,3 +94,71 @@ test_that("UI files style themselves through tokens, not literal hex", {
     )
   }
 })
+
+# Every neutral moved from Primer's cool blue-black to a warm ground. The
+# contract is that hue changed and luminance did not: contrast ratios across
+# the app are a function of luminance alone, so matching it means no text
+# pair got harder to read.
+WARM_NEUTRALS <- c(
+  "--ibpl-bg"              = 0.00548,
+  "--ibpl-bg-sunken"       = 0.00948,
+  "--ibpl-surface"         = 0.01070,
+  "--ibpl-surface-alt"     = 0.01374,
+  "--ibpl-surface-2"       = 0.01688,
+  "--ibpl-surface-3"       = 0.01899,
+  "--ibpl-surface-hover"   = 0.02589,
+  "--ibpl-border"          = 0.03604,
+  "--ibpl-text-faint"      = 0.07674,
+  "--ibpl-text-dim"        = 0.17857,
+  "--ibpl-text-muted"      = 0.29137,
+  "--ibpl-text-body"       = 0.63028,
+  "--ibpl-text"            = 0.83862
+)
+
+test_that("warming the palette preserved every neutral's luminance", {
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+
+  for (nm in names(WARM_NEUTRALS)) {
+    got <- rel_luminance(tokens[[nm]])
+    expect_lt(
+      abs(got - WARM_NEUTRALS[[nm]]), 0.02,
+      label = sprintf("%s luminance %.5f vs baseline %.5f", nm, got, WARM_NEUTRALS[[nm]])
+    )
+  }
+})
+
+test_that("the neutral ramp is warm, not cool", {
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+
+  for (nm in names(WARM_NEUTRALS)) {
+    rgb <- grDevices::col2rgb(tokens[[nm]])[, 1]
+    # Warm means red leads blue. Primer's neutrals do the opposite.
+    expect_gt(
+      as.integer(rgb[["red"]]), as.integer(rgb[["blue"]]),
+      label = sprintf("%s (%s) is not warm", nm, tokens[[nm]])
+    )
+  }
+})
+
+test_that("body text on the page ground still clears WCAG AA", {
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+  contrast <- function(a, b) {
+    la <- rel_luminance(a); lb <- rel_luminance(b)
+    (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+  }
+
+  expect_gt(contrast(tokens[["--ibpl-text"]], tokens[["--ibpl-bg"]]), 4.5)
+  expect_gt(contrast(tokens[["--ibpl-text-body"]], tokens[["--ibpl-bg"]]), 4.5)
+  expect_gt(contrast(tokens[["--ibpl-text-muted"]], tokens[["--ibpl-bg"]]), 4.5)
+  expect_gt(contrast(tokens[["--ibpl-accent"]], tokens[["--ibpl-bg"]]), 4.5)
+})
+
+test_that("bs_theme literals track the token values they mirror", {
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+  app_txt <- read_repo_txt("app.R")
+
+  expect_true(grepl(sprintf('bg = "%s"', tokens[["--ibpl-bg"]]), app_txt, fixed = TRUE))
+  expect_true(grepl(sprintf('fg = "%s"', tokens[["--ibpl-text"]]), app_txt, fixed = TRUE))
+  expect_true(grepl(sprintf('primary = "%s"', tokens[["--ibpl-accent"]]), app_txt, fixed = TRUE))
+  expect_true(grepl(sprintf('"navbar-bg" = "%s"', tokens[["--ibpl-bg"]]), app_txt, fixed = TRUE))
+})

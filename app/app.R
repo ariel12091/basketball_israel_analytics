@@ -58,16 +58,16 @@ build_ui <- function() {
   # :root values in www/app.css by hand.
   theme = bslib::bs_theme(
     version = 5,
-    bg = "#0d1117",
-    fg = "#e6edf3",
+    bg = "#14100C",
+    fg = "#EEECE8",
     primary = "#e8a435",
-    secondary = "#21262d",
+    secondary = "#2A251F",
     success = "#34d399",
     danger = "#f87171",
     info = "#60a5fa",
     base_font = "DM Sans, Inter, -apple-system, sans-serif",
     code_font = "JetBrains Mono, monospace",
-    "navbar-bg" = "#0d1117"
+    "navbar-bg" = "#14100C"
   ),
   header = tagList(
     includeCSS("www/app.css"),

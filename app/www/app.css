@@ -9,23 +9,23 @@
    -------------------------------------------------------------------------- */
 :root {
   /* ground, darkest to lightest */
-  --ibpl-bg: #0d1117;
-  --ibpl-bg-rgb: 13, 17, 23;
-  --ibpl-bg-sunken: #141920;
-  --ibpl-surface: #161b22;
-  --ibpl-surface-alt: #1a1f2b;
-  --ibpl-surface-2: #1c2333;
-  --ibpl-surface-3: #21262d;
-  --ibpl-surface-hover: #242d3d;
-  --ibpl-surface-selected: #2a1f0a;
-  --ibpl-border: #30363d;
+  --ibpl-bg: #14100C;
+  --ibpl-bg-rgb: 20, 16, 12;
+  --ibpl-bg-sunken: #1D1712;
+  --ibpl-surface: #1F1A14;
+  --ibpl-surface-alt: #251E16;
+  --ibpl-surface-2: #2A2117;
+  --ibpl-surface-3: #2A251F;
+  --ibpl-surface-hover: #352B1F;
+  --ibpl-surface-selected: #3A2A10;
+  --ibpl-border: #3A342F;
 
   /* text, dimmest to brightest */
-  --ibpl-text-faint: #484f58;
-  --ibpl-text-dim: #6e7681;
-  --ibpl-text-muted: #8b949e;
-  --ibpl-text-body: #c9d1d9;
-  --ibpl-text: #e6edf3;
+  --ibpl-text-faint: #534E47;
+  --ibpl-text-dim: #7A756E;
+  --ibpl-text-muted: #98938B;
+  --ibpl-text-body: #D4D0CA;
+  --ibpl-text: #EEECE8;
 
   /* brand */
   --ibpl-accent: #e8a435;
