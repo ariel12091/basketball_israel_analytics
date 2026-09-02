@@ -20,7 +20,11 @@ test_that("tooltip wiring is present in compare and tooltip-heavy tabs", {
 
   expect_true(grepl("headerCallback\\s*=\\s*DT::JS\\(sprintf\\(", compare_txt))
   expect_true(grepl("jsonlite::toJSON\\(as\\.list\\(COLUMN_TOOLTIPS\\)", compare_txt))
-  expect_true(grepl("tt\\(\"Min possessions per side \\(eligibility\\):\", \"min_poss_side\"\\)", tab1_ui_txt))
+  # The slider moved onto the chips row in 35ecb34 and now routes its tooltip
+  # through minposs_slider(), which calls tt() internally. Assert the wiring
+  # that exists, and that the key still resolves in the tooltip registry.
+  expect_true(grepl("minposs_slider\\(\"min_all_poss\", \"Min Poss / side\", \"min_poss_side\"", tab1_ui_txt))
+  expect_true(grepl("sliderInput\\(input_id, tt\\(label, tooltip_key\\)", read_repo_txt("R", "global.R")))
   expect_true(grepl("lineup_player_filter_ui\\(", tab2_ui_txt))
   expect_true(grepl("tt\\(\"Players On \\(exact/contains\\)\", \"players_on\"\\)", lineup_filter_txt))
   expect_true(grepl("tt\\(\"Quick preset\", \"quick_preset\"\\)", tab7_ui_txt))
