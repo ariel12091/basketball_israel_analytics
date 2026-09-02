@@ -468,7 +468,11 @@ if (!tolower(trimws(Sys.getenv("POOL_PREWARM", "true"))) %in%
 shared_head_tags <- function() {
   tags$head(
     tags$meta(name = "viewport", content = "width=device-width, initial-scale=1, maximum-scale=1"),
-    tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap"),
+    # Archivo is the display face: a variable grotesque with a real width axis,
+    # so headers and big numbers can be set condensed the way a scoreboard or a
+    # jersey number is, without a second family. DM Sans stays the body face and
+    # JetBrains Mono stays for dense inline data.
+    tags$link(rel = "stylesheet", href = "https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..112,500..800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap"),
     tags$link(rel = "stylesheet", href = "https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css")
   )
 }

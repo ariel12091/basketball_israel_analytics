@@ -45,6 +45,11 @@
   --ibpl-fg3: #d4843e;
   --ibpl-chip-game-border: #3a6fa0;
   --ibpl-chip-game-text: #7db8e8;
+
+  /* type */
+  --ibpl-font-display: "Archivo", "DM Sans", -apple-system, sans-serif;
+  --ibpl-font-body: "DM Sans", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
+  --ibpl-font-mono: "JetBrains Mono", "Inter", monospace;
 }
 
 /* Global Font & Base Colors */
@@ -1121,3 +1126,51 @@ body.league-el .league-only-el { display: block; }
 body.league-il .league-nav-il { display: inline-flex; align-items: center; gap: 6px; }
 body.league-el .league-nav-el { display: inline-flex; align-items: center; gap: 6px; }
 .league-nav-el .form-group, .league-nav-el .shiny-input-container { margin-bottom: 0; }
+
+/* ---- Type roles -----------------------------------------------------------
+   Archivo carries the voice: the brand, the section and column headers, and
+   any number large enough to be read as a headline. Everything else is DM
+   Sans. Numbers that stack in a column get tabular figures so a re-sort moves
+   rows without also shifting digits sideways.
+   -------------------------------------------------------------------------- */
+.navbar-brand,
+.explainer-title,
+.hub-block-title,
+.cmp-team-header,
+.cmp-col-header,
+.cmp-section-title,
+table.dataTable thead th,
+th.sub-head {
+  font-family: var(--ibpl-font-display);
+  font-stretch: 92%;
+}
+
+.navbar-brand {
+  font-stretch: 84%;
+  letter-spacing: 0.02em;
+}
+
+.diff-val,
+.hub-stat-value,
+.cmp-stat-value {
+  font-family: var(--ibpl-font-display);
+  font-stretch: 88%;
+}
+
+/* Numeric surfaces. DM Sans ships without a tnum feature -- measured in the
+   browser, its digit advances are byte-identical with and without
+   font-variant-numeric -- so asking it for tabular figures does nothing. The
+   surfaces that stack numbers in a column are therefore set in Archivo, which
+   has the feature, and every digit then holds the same advance width. */
+table.dataTable,
+table.dataTable tbody td,
+.diff-val,
+.sub-text,
+.hub-stat-value,
+.hub-record,
+.cmp-stat-value,
+.cmp-gap-num {
+  font-family: var(--ibpl-font-display);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}

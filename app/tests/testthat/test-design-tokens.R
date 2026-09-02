@@ -26,7 +26,8 @@ test_that("every colour token is a parseable colour", {
   # Tokens ending in -rgb hold a bare "r, g, b" triplet for use inside
   # rgba(), not a colour literal, so col2rgb() cannot parse them. Task 3
   # adds three more of them, so exclude by suffix rather than by name.
-  colour_tokens <- tokens[!grepl("-rgb$", names(tokens))]
+  # --ibpl-font-* hold font stacks, also not colour literals.
+  colour_tokens <- tokens[!grepl("-rgb$|^--ibpl-font-", names(tokens))]
 
   for (nm in names(colour_tokens)) {
     expect_silent(grDevices::col2rgb(colour_tokens[[nm]]))
@@ -161,4 +162,50 @@ test_that("bs_theme literals track the token values they mirror", {
   expect_true(grepl(sprintf('fg = "%s"', tokens[["--ibpl-text"]]), app_txt, fixed = TRUE))
   expect_true(grepl(sprintf('primary = "%s"', tokens[["--ibpl-accent"]]), app_txt, fixed = TRUE))
   expect_true(grepl(sprintf('"navbar-bg" = "%s"', tokens[["--ibpl-bg"]]), app_txt, fixed = TRUE))
+})
+
+test_that("the display face is loaded and tokenised", {
+  global_txt <- read_repo_txt("R", "global.R")
+  css <- read_repo_txt("www", "app.css")
+  tokens <- css_tokens(css)
+
+  expect_true(grepl("family=Archivo", global_txt, fixed = TRUE))
+  expect_true("--ibpl-font-display" %in% names(tokens))
+  expect_true("--ibpl-font-body" %in% names(tokens))
+  expect_true("--ibpl-font-mono" %in% names(tokens))
+  expect_true(grepl("Archivo", tokens[["--ibpl-font-display"]], fixed = TRUE))
+})
+
+test_that("numeric surfaces use tabular figures", {
+  css <- read_repo_txt("www", "app.css")
+
+  # Every surface that stacks numbers in a column must line them up.
+  for (sel in c("table.dataTable", ".diff-val", ".sub-text",
+                ".hub-stat-value", ".cmp-stat-value", ".cmp-gap-num")) {
+    expect_true(
+      grepl(sel, css, fixed = TRUE),
+      info = paste("selector missing:", sel)
+    )
+  }
+  expect_true(grepl("font-variant-numeric:\\s*tabular-nums", css))
+  # One shared rule, not six copies.
+  expect_gte(length(regmatches(css, gregexpr("tabular-nums", css))[[1]]), 1)
+})
+
+test_that("the tabular-figures rule is set in a face that has the feature", {
+  # Measured in the browser: DM Sans' digit advances are identical with and
+  # without font-variant-numeric, because the served face carries no tnum
+  # feature. Archivo does. So the rule asking for tabular figures must also set
+  # the display face, or it is inert and the columns still shimmer on re-sort.
+  css <- read_repo_txt("www", "app.css")
+
+  rule <- regmatches(
+    css,
+    regexpr("[^}]*font-variant-numeric:\\s*tabular-nums[^}]*", css)
+  )
+  expect_length(rule, 1)
+  expect_true(
+    grepl("font-family:\\s*var\\(--ibpl-font-display\\)", rule),
+    info = "the tabular-nums rule does not set --ibpl-font-display"
+  )
 })
