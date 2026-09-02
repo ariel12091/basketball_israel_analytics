@@ -563,7 +563,10 @@ server_tab9_euro_team <- function(input, output, session, shared) {
       max_rank <- suppressWarnings(max(c(rk_net, rk_off, rk_def), na.rm = TRUE))
       if (!is.finite(max_rank) || max_rank < 2) max_rank <- 2
       cuts <- seq(1.5, max_rank - 0.5, 1)
-      cols_rank <- colorRampPalette(c("#1a6b38", "#6b5a20", "#8b2020"))(length(cuts) + 1)
+      # Ranks run best-first, so the ramp is the shared one reversed. Deriving
+      # it from RAMP_ANCHORS keeps this in step with COLS_GRAD; it used to be a
+      # second copy of the anchors and silently kept the old palette.
+      cols_rank <- colorRampPalette(rev(RAMP_ANCHORS))(length(cuts) + 1)
 
       hidden <- which(names(disp) %in% c("rank_net_rtg", "rank_off_ppp", "rank_def_ppp",
                                          "sort_off_ppp", "sort_def_ppp", "sort_net_rtg")) - 1L

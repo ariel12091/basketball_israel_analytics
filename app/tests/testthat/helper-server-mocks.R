@@ -25,8 +25,15 @@ DEFAULT_MIN_NET <- -1e9
 LD_DEFAULT_MIN_POSS <- 20L
 LD_DEFAULT_NUM <- "5"
 CUTS <- seq(0.05, 0.95, by = 0.05)
-COLS_GRAD <- grDevices::colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
-COLS_REV <- rev(COLS_GRAD)
+# The colour ramp mirrors global.R. Read the real definition rather than
+# copying it: a copy here silently kept the old palette when the ramp changed,
+# so the mocks and the app disagreed about what a heat cell looks like.
+.ramp_src <- readLines(repo_file("R", "global.R"), warn = FALSE)
+eval(parse(text = .ramp_src[
+  startsWith(.ramp_src, "RAMP_ANCHORS") |
+  startsWith(.ramp_src, "COLS_GRAD") |
+  startsWith(.ramp_src, "COLS_REV")
+]))
 GAME_TYPE_LABELS <- c(`1` = "League", `2` = "Cup")
 onoff_tab_descriptor <- function(league = c("israel", "euroleague")) {
   league <- match.arg(league)

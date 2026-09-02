@@ -85,7 +85,13 @@ DEFAULT_END   <- season_date_bounds_for_year(DEFAULT_GAME_YEAR)$end
 
 # Color scale constants (shared across all renderDT calls)
 CUTS      <- seq(0.05, 0.95, by = 0.05)
-COLS_GRAD <- colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
+# Anchors chosen so WCAG relative luminance rises strictly across all twenty
+# steps (0.0482 -> 0.1632, a 3.4x span, minimum adjacent step +0.00233). The
+# previous anchors spanned only 1.7x and were not monotonic, so under red-green
+# deficiency the top half of the scale collapsed into one indistinguishable
+# band. Hue still reads red-bad / green-good for everyone else.
+RAMP_ANCHORS <- c("#6e2622", "#615641", "#2f7f4d")  # worst -> best
+COLS_GRAD <- colorRampPalette(RAMP_ANCHORS)(20)
 COLS_REV  <- rev(COLS_GRAD)
 
 # ---- Tooltip definitions ----

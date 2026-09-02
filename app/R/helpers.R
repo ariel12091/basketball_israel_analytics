@@ -1988,13 +1988,24 @@ onoff_summary_datatable <- function(df, stat_filters) {
              var minFGA = %d;
              var sign = %d;
              var avg2 = %d, avg3 = %d;
+             // Luminance carries the signal, hue only confirms it: below
+             // average darkens toward a warm red, above average brightens
+             // toward green. Varying red and green alone (as this did before)
+             // is invisible to a red-green deficient reader.
              function accColor(pct, avg) {
                var d = sign * (pct - avg) / avg;
                d = Math.max(-1, Math.min(1, d * 3));
-               var r, g;
-               if (d < 0) { r = 200; g = Math.round(200 + d * 120); }
-               else       { g = 170; r = Math.round(200 - d * 150); }
-               return 'rgb(' + r + ',' + g + ',60)';
+               var r, g, b;
+               if (d < 0) {
+                 r = Math.round(196 + d * 40);
+                 g = Math.round(120 + d * 78);
+                 b = Math.round(96 + d * 60);
+               } else {
+                 r = Math.round(150 - d * 60);
+                 g = Math.round(150 + d * 82);
+                 b = Math.round(110 + d * 20);
+               }
+               return 'rgb(' + r + ',' + g + ',' + b + ')';
              }
              var muted = totalFGA < minFGA;
              var c2 = muted ? '#bbb' : accColor(fg2pct, avg2);
@@ -2623,13 +2634,24 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
              var minFGA = %d;
              var sign = %d;
              var avg2 = %d, avg3 = %d;
+             // Luminance carries the signal, hue only confirms it: below
+             // average darkens toward a warm red, above average brightens
+             // toward green. Varying red and green alone (as this did before)
+             // is invisible to a red-green deficient reader.
              function accColor(pct, avg) {
                var d = sign * (pct - avg) / avg;
                d = Math.max(-1, Math.min(1, d * 3));
-               var r, g;
-               if (d < 0) { r = 200; g = Math.round(200 + d * 120); }
-               else       { g = 170; r = Math.round(200 - d * 150); }
-               return 'rgb(' + r + ',' + g + ',60)';
+               var r, g, b;
+               if (d < 0) {
+                 r = Math.round(196 + d * 40);
+                 g = Math.round(120 + d * 78);
+                 b = Math.round(96 + d * 60);
+               } else {
+                 r = Math.round(150 - d * 60);
+                 g = Math.round(150 + d * 82);
+                 b = Math.round(110 + d * 20);
+               }
+               return 'rgb(' + r + ',' + g + ',' + b + ')';
              }
              var muted = totalFGA < minFGA;
              var c2 = muted ? '#bbb' : accColor(fg2pct, avg2);

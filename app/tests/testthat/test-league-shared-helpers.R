@@ -408,10 +408,9 @@ test_that("ff_diff_cell_js emits the same JS both leagues rendered before extrac
 })
 
 test_that("onoff_summary_datatable builds the shared Summary widget", {
-  # Globals the function reads from global.R, which the mocks do not load.
+  # Globals the function reads from global.R. COLS_GRAD / COLS_REV come from
+  # helper-server-mocks.R, which reads them out of global.R itself.
   CUTS <- seq(0.05, 0.95, by = 0.05)
-  COLS_GRAD <- colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
-  COLS_REV <- rev(COLS_GRAD)
   HEADER_TOOLTIP_JS <- DT::JS("function(thead, data, start, end, display) {}")
 
   shot_raw_cols <- c(
@@ -456,10 +455,9 @@ test_that("onoff_summary_datatable builds the shared Summary widget", {
 })
 
 test_that("onoff_four_factors_datatable differs between leagues only in the impact estimate", {
-  # Globals the function reads from global.R, which the mocks do not load.
+  # Globals the function reads from global.R. COLS_GRAD / COLS_REV come from
+  # helper-server-mocks.R, which reads them out of global.R itself.
   CUTS <- seq(0.05, 0.95, by = 0.05)
-  COLS_GRAD <- colorRampPalette(c("#8b2020", "#6b5a20", "#1a6b38"))(20)
-  COLS_REV <- rev(COLS_GRAD)
   HEADER_TOOLTIP_JS <- DT::JS("function(thead, data, start, end, display) {}")
   OFF_OREB_TOOLTIP <- "off oreb"
   DEF_OREB_TOOLTIP <- "def oreb"
