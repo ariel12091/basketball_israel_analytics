@@ -1203,3 +1203,58 @@
     init();
   }
 })();
+
+/* --------------------------------------------------------------------------
+   Navbar overlap.
+
+   #navbar_right_cluster is position:fixed, so it is outside normal flow and
+   the tab list lays out as if it were not there. Below ~1440px the rightmost
+   tabs rendered underneath it, and because the cluster also takes the pointer
+   their hover menus could never open (li:hover never matched). Reserve the
+   cluster's width on the tab list so the tabs stop before it.
+
+   Measured rather than hard-coded: the width changes with the "last updated"
+   text and with which league's season selector is showing.
+   -------------------------------------------------------------------------- */
+(function() {
+  var pending = null;
+
+  function sync() {
+    pending = null;
+    var cluster = document.getElementById("navbar_right_cluster");
+    var tabs = document.getElementById("main_tabs");
+    if (!cluster || !tabs) return;
+    var c = cluster.getBoundingClientRect();
+    var u = tabs.getBoundingClientRect();
+    if (!c.width || !u.width) return;
+    // Reserve only the part of the cluster that actually overhangs the tab
+    // list, not its full width: the ul stops short of the viewport edge, so
+    // reserving the whole cluster over-reserved by that margin and wrapped
+    // the navbar onto a second row at 1440px, where it used to fit.
+    var overlap = Math.ceil(u.right - c.left);
+    document.documentElement.style.setProperty(
+      "--navbar-cluster-w", Math.max(0, overlap + 8) + "px");
+  }
+
+  function schedule() {
+    if (pending !== null) return;
+    pending = window.requestAnimationFrame
+      ? window.requestAnimationFrame(sync)
+      : window.setTimeout(sync, 16);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", schedule);
+  } else {
+    schedule();
+  }
+  window.addEventListener("load", schedule);
+  window.addEventListener("resize", schedule);
+
+  // The cluster only reaches full width once the season selectors and the
+  // last-updated text arrive, and the league switch swaps which selector shows.
+  if (window.jQuery) {
+    window.jQuery(document).on("shiny:connected shiny:value", schedule);
+    window.jQuery(document).on("change", "#league_select", schedule);
+  }
+})();

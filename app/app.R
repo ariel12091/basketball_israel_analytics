@@ -81,6 +81,7 @@ build_ui <- function() {
     ))),
     includeScript("www/app.js"),
     tags$div(
+      id = "navbar_right_cluster",
       style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: #8b949e; z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",
       # League select first, then the season selector belonging to whichever
       # league is showing -- so the pair always reads [league] [season].

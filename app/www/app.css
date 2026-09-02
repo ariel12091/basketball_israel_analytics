@@ -21,6 +21,18 @@ body {
   padding-top: 6px;
   padding-bottom: 6px;
 }
+
+/* The navbar right-hand cluster (league + season selects, Glossary,
+   last-updated) is position:fixed, so it sits OUTSIDE normal flow and the
+   tab list lays out as if it were not there. Below ~1440px the last tabs
+   rendered underneath it and -- because the cluster also swallows the
+   pointer -- their hover menus could never open. Reserve the cluster width
+   so the tabs stop before it. app.js measures the real width into
+   --navbar-cluster-w; the fallback here only covers the pre-script paint. */
+#main_tabs {
+  flex-wrap: wrap;
+  padding-right: var(--navbar-cluster-w, 380px);
+}
 .navbar-brand {
   font-weight: 700;
   color: #e8a435;
