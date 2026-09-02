@@ -1,6 +1,49 @@
 /* Shared Shiny theme */
 /* ============ DARK EDITORIAL THEME ============ */
 
+/* ---- Design tokens --------------------------------------------------------
+   Every colour in this stylesheet and in the R inline styles resolves through
+   one of these. A palette change is an edit to this block and nothing else.
+   Token names describe the ROLE, not the colour, so a warm or light palette
+   can be dropped in without renaming anything.
+   -------------------------------------------------------------------------- */
+:root {
+  /* ground, darkest to lightest */
+  --ibpl-bg: #0d1117;
+  --ibpl-bg-sunken: #141920;
+  --ibpl-surface: #161b22;
+  --ibpl-surface-alt: #1a1f2b;
+  --ibpl-surface-2: #1c2333;
+  --ibpl-surface-3: #21262d;
+  --ibpl-surface-hover: #242d3d;
+  --ibpl-surface-selected: #2a1f0a;
+  --ibpl-border: #30363d;
+
+  /* text, dimmest to brightest */
+  --ibpl-text-faint: #484f58;
+  --ibpl-text-dim: #6e7681;
+  --ibpl-text-muted: #8b949e;
+  --ibpl-text-body: #c9d1d9;
+  --ibpl-text: #e6edf3;
+
+  /* brand */
+  --ibpl-accent: #e8a435;
+  --ibpl-accent-rgb: 232, 164, 53;
+  --ibpl-accent-hover: #f0c060;
+
+  /* status */
+  --ibpl-pos: #34d399;
+  --ibpl-neg: #f87171;
+  --ibpl-info: #60a5fa;
+
+  /* data marks */
+  --ibpl-side-a: #7b8cde;
+  --ibpl-fg2: #5b8abd;
+  --ibpl-fg3: #d4843e;
+  --ibpl-chip-game-border: #3a6fa0;
+  --ibpl-chip-game-text: #7db8e8;
+}
+
 /* Global Font & Base Colors */
 body, .container-fluid, .form-control, .btn {
   font-family: 'DM Sans', 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;

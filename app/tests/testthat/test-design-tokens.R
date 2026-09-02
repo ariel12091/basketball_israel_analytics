@@ -1,0 +1,57 @@
+REQUIRED_TOKENS <- c(
+  "--ibpl-bg", "--ibpl-bg-sunken", "--ibpl-surface", "--ibpl-surface-alt",
+  "--ibpl-surface-2", "--ibpl-surface-3", "--ibpl-surface-hover",
+  "--ibpl-surface-selected", "--ibpl-border",
+  "--ibpl-text", "--ibpl-text-body", "--ibpl-text-muted", "--ibpl-text-dim",
+  "--ibpl-text-faint",
+  "--ibpl-accent", "--ibpl-accent-rgb", "--ibpl-accent-hover",
+  "--ibpl-pos", "--ibpl-neg", "--ibpl-info", "--ibpl-side-a",
+  "--ibpl-fg2", "--ibpl-fg3",
+  "--ibpl-chip-game-border", "--ibpl-chip-game-text"
+)
+
+test_that("app.css defines the full design token set in one :root block", {
+  css <- read_repo_txt("www", "app.css")
+  tokens <- css_tokens(css)
+
+  expect_true(length(tokens) > 0)
+  for (tok in REQUIRED_TOKENS) {
+    expect_true(tok %in% names(tokens), info = paste("missing token:", tok))
+  }
+})
+
+test_that("every colour token is a parseable colour", {
+  css <- read_repo_txt("www", "app.css")
+  tokens <- css_tokens(css)
+  # Tokens ending in -rgb hold a bare "r, g, b" triplet for use inside
+  # rgba(), not a colour literal, so col2rgb() cannot parse them. Task 3
+  # adds three more of them, so exclude by suffix rather than by name.
+  colour_tokens <- tokens[!grepl("-rgb$", names(tokens))]
+
+  for (nm in names(colour_tokens)) {
+    expect_silent(grDevices::col2rgb(colour_tokens[[nm]]))
+  }
+})
+
+test_that("every rgb triplet token parses as three 0-255 integers", {
+  css <- read_repo_txt("www", "app.css")
+  tokens <- css_tokens(css)
+  triplets <- tokens[grepl("-rgb$", names(tokens))]
+
+  for (nm in names(triplets)) {
+    parts <- suppressWarnings(
+      as.integer(strsplit(gsub("\\s", "", triplets[[nm]]), ",")[[1]])
+    )
+    expect_length(parts, 3)
+    expect_false(any(is.na(parts)), info = nm)
+    expect_true(all(parts >= 0 & parts <= 255), info = nm)
+  }
+})
+
+test_that("the accent rgb triplet matches the accent hex", {
+  css <- read_repo_txt("www", "app.css")
+  tokens <- css_tokens(css)
+
+  triplet <- as.integer(strsplit(gsub("\\s", "", tokens[["--ibpl-accent-rgb"]]), ",")[[1]])
+  expect_equal(triplet, as.integer(grDevices::col2rgb(tokens[["--ibpl-accent"]])[, 1]))
+})
