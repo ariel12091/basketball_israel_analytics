@@ -432,7 +432,7 @@ server_tab1 <- function(input, output, session, shared) {
         off_idx <- which(names(df_final) == off_col) - 1L
         on_rank_idx  <- which(names(df_final) == paste0(on_col, "_rank")) - 1L
         off_rank_idx <- which(names(df_final) == paste0(off_col, "_rank")) - 1L
-        DT::JS(sprintf(
+        DT::JS(sprintf(paste0(
           "function(data, type, row, meta) {
              if (type !== 'display' || !row) return data;
              var onV = row[%d], offV = row[%d], onPct = row[%d], offPct = row[%d];
@@ -442,26 +442,9 @@ server_tab1 <- function(input, output, session, shared) {
              var d = parseFloat(data);
              var head = (d > 0 ? '+' : '') + d.toFixed(1);
              var onTxt = parseFloat(onV).toFixed(1), offTxt = parseFloat(offV).toFixed(1);
-             if (onPct === null || onPct === undefined) {
-               return '<div class=\"diff-val unranked\">' + head + '</div>' +
-                      '<div class=\"rank-bar-container hidden\"></div>' +
-                      '<div class=\"sub-text\" style=\"opacity:0.5;\">' + onTxt + ' | ' + offTxt + '</div>';
-             }
-             var rangeLineLeft  = Math.min(onPct, offPct);
-             var rangeLineWidth = Math.abs(onPct - offPct);
-             return '<div class=\"diff-val\">' + head + '</div>' +
-                    '<div class=\"rank-bar-container\">' +
-                      '<div class=\"rank-track\"></div>' +
-                      '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '%%; width:' + rangeLineWidth + '%%;\"></div>' +
-                      '<div class=\"dot-off\" style=\"left:' + offPct + '%%;\" title=\"Off: ' + offTxt + '\"></div>' +
-                      '<div class=\"dot-on\" style=\"left:' + onPct + '%%;\" title=\"On: ' + onTxt + '\"></div>' +
-                    '</div>' +
-                    '<div class=\"sub-text\">' +
-                      '<span style=\"font-weight:700; color:#222;\">' + onTxt + '</span>' +
-                      ' <span style=\"opacity:0.6;\">|</span> ' +
-                      '<span style=\"color:#666;\">' + offTxt + '</span>' +
-                    '</div>';
-           }", on_idx, off_idx, on_rank_idx, off_rank_idx))
+",
+          range_cell_js("head", "onTxt", "offTxt"),
+          "           }"), on_idx, off_idx, on_rank_idx, off_rank_idx))
       }
 
       defs <- list()

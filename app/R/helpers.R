@@ -1829,6 +1829,46 @@ add_team_pace_cols <- function(df, minutes_map = NULL, fallback_to_regulation = 
   df
 }
 
+# The on/off range cell: a headline value, a league-range track carrying the
+# off-court and on-court dots, and the "on | off" pair beneath. The Four
+# Factors diff cell and the Shot Profile share cell each emitted this markup by
+# hand. Arguments are JS expression strings evaluated in the calling renderer's
+# scope. `extra_expr` is appended to both branches -- Four Factors passes its
+# est. +/-X pts line there, Shot Profile passes nothing -- so the impact
+# annotation survives the extraction and still compiles out when a league sets
+# show_impact = FALSE.
+#
+# The indentation below is JS source, outside the quoted HTML fragments, so it
+# never reaches the page. The move is verified by regenerating each call site's
+# JS and comparing it with the previous hand-written version after collapsing
+# newlines and leading indentation, not by asserting substrings.
+range_cell_js <- function(value_expr, on_expr, off_expr,
+                          on_pct_expr = "onPct", off_pct_expr = "offPct",
+                          extra_expr = NULL) {
+  tail_js <- if (is.null(extra_expr)) ";" else paste0(" +\n                        ", extra_expr, ";")
+  paste0(
+    "               if (", on_pct_expr, " === null || ", on_pct_expr, " === undefined) {\n",
+    "                  return '<div class=\"diff-val unranked\">' + ", value_expr, " + '</div>' +\n",
+    "                         '<div class=\"rank-bar-container hidden\"></div>' +\n",
+    "                         '<div class=\"sub-text\" style=\"opacity:0.5;\">' + ", on_expr, " + ' | ' + ", off_expr, " + '</div>'", tail_js, "\n",
+    "               }\n",
+    "               var rangeLineLeft  = Math.min(", on_pct_expr, ", ", off_pct_expr, ");\n",
+    "               var rangeLineWidth = Math.abs(", on_pct_expr, " - ", off_pct_expr, ");\n",
+    "               return '<div class=\"diff-val\">' + ", value_expr, " + '</div>' +\n",
+    "                      '<div class=\"rank-bar-container\">' +\n",
+    "                        '<div class=\"rank-track\"></div>' +\n",
+    "                        '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '%%; width:' + rangeLineWidth + '%%;\"></div>' +\n",
+    "                        '<div class=\"dot-off\" style=\"left:' + ", off_pct_expr, " + '%%;\" title=\"Off: ' + ", off_expr, " + '\"></div>' +\n",
+    "                        '<div class=\"dot-on\" style=\"left:' + ", on_pct_expr, " + '%%;\" title=\"On: ' + ", on_expr, " + '\"></div>' +\n",
+    "                      '</div>' +\n",
+    "                      '<div class=\"sub-text\">' +\n",
+    "                        '<span style=\"font-weight:700; color:#222;\">' + ", on_expr, " + '</span>' +\n",
+    "                        ' <span style=\"opacity:0.6;\">|</span> ' +\n",
+    "                        '<span style=\"color:#666;\">' + ", off_expr, " + '</span>' +\n",
+    "                      '</div>'", tail_js, "\n"
+  )
+}
+
 # show_impact is the one real league difference. The weights in
 # FF_IMPACT_WEIGHTS were fitted on Israeli-league data, so EuroLeague passes
 # FALSE: reusing those coefficients would state a points-per-100 impact that
@@ -1847,7 +1887,7 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
   } else {
     "false"
   }
-            JS(sprintf(
+            JS(sprintf(paste0(
             "function(data, type, row, meta) {
                if (type === 'display') {
                  var w = %f;
@@ -1863,33 +1903,11 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
                  var offVal  = row[%d] || '-';
                  var onPct   = row[%d];
                  var offPct  = row[%d];
-
-                 if (onPct === null || onPct === undefined) {
-                    return '<div class=\"diff-val unranked\">' + diffVal + '</div>' +
-                           '<div class=\"rank-bar-container hidden\"></div>' +
-                           '<div class=\"sub-text\" style=\"opacity:0.5;\">' + onVal + ' | ' + offVal + '</div>' +
-                           estLine;
-                 }
-
-                 var rangeLineLeft  = Math.min(onPct, offPct);
-                 var rangeLineWidth = Math.abs(onPct - offPct);
-
-                 return '<div class=\"diff-val\">' + diffVal + '</div>' +
-                        '<div class=\"rank-bar-container\">' +
-                          '<div class=\"rank-track\"></div>' +
-                          '<div class=\"range-connect\" style=\"left:' + rangeLineLeft + '%%; width:' + rangeLineWidth + '%%;\"></div>' +
-                          '<div class=\"dot-off\" style=\"left:' + offPct + '%%;\" title=\"Off: ' + offVal + '\"></div>' +
-                          '<div class=\"dot-on\" style=\"left:' + onPct + '%%;\" title=\"On: ' + onVal + '\"></div>' +
-                        '</div>' +
-                        '<div class=\"sub-text\">' +
-                          '<span style=\"font-weight:700; color:#222;\">' + onVal + '</span>' +
-                          ' <span style=\"opacity:0.6;\">|</span> ' +
-                          '<span style=\"color:#666;\">' + offVal + '</span>' +
-                        '</div>' +
-                        estLine;
-               }
+",
+            range_cell_js("diffVal", "onVal", "offVal", extra_expr = "estLine"),
+            "               }
                return data;
-             }", impact_w, guard, impact_tip, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
+             }"), impact_w, guard, impact_tip, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
   ))
 }
 
