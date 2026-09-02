@@ -55,3 +55,25 @@ test_that("the accent rgb triplet matches the accent hex", {
   triplet <- as.integer(strsplit(gsub("\\s", "", tokens[["--ibpl-accent-rgb"]]), ",")[[1]])
   expect_equal(triplet, as.integer(grDevices::col2rgb(tokens[["--ibpl-accent"]])[, 1]))
 })
+
+test_that("app.css carries no raw hex outside the :root token block", {
+  css <- read_repo_txt("www", "app.css")
+  root <- css_root_block(css)
+  outside <- sub(root, "", css, fixed = TRUE)
+
+  found <- regmatches(outside, gregexpr("#[0-9a-fA-F]{6}", outside))[[1]]
+  expect_equal(
+    sort(unique(found)), character(0),
+    info = paste("raw hex outside :root:", paste(sort(unique(found)), collapse = ", "))
+  )
+})
+
+test_that("app.css expresses brand alpha through the accent rgb token", {
+  css <- read_repo_txt("www", "app.css")
+  root <- css_root_block(css)
+  outside <- sub(root, "", css, fixed = TRUE)
+
+  # The literal amber triplet must not appear in an rgba() outside :root.
+  expect_false(grepl("rgba\\(\\s*232\\s*,\\s*164\\s*,\\s*53", outside))
+  expect_true(grepl("rgba\\(var\\(--ibpl-accent-rgb\\)", outside))
+})
