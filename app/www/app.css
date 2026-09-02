@@ -476,11 +476,14 @@ a:hover { color: var(--ibpl-accent-hover); }
 .tab-pane { background: var(--ibpl-bg); }
 .help-text, .shiny-text-output { color: var(--ibpl-text-muted); }
 
-/* Compare's two side values. textOutput() emits a .shiny-text-output span,
+/* Compare's summary strip. textOutput() emits a .shiny-text-output span,
    and the rule above wins over a colour inherited from the parent div -- so
    these have to target the span itself or they paint muted grey. */
 #cmp_summary_a { color: var(--ibpl-pos); }
 #cmp_summary_b { color: var(--ibpl-neg); }
+#cmp_summary_a_title { color: var(--ibpl-side-a); }
+#cmp_summary_b_title { color: var(--ibpl-accent); }
+#cmp_summary_gap { color: var(--ibpl-accent); }
 
 /* Download button */
 .btn-default.shiny-download-link {

@@ -354,7 +354,7 @@ ui_tab7_compare <- function() tabPanel(
             # Summary cards
             fluidRow(
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-                tags$div(class = "small text-uppercase", style = "color: var(--ibpl-side-a);",
+                tags$div(class = "small text-uppercase",
                          textOutput("cmp_summary_a_title", inline = TRUE)),
                 tags$div(class = "fs-4 fw-bold", textOutput("cmp_summary_a", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_label", inline = TRUE)),
@@ -362,7 +362,7 @@ ui_tab7_compare <- function() tabPanel(
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_poss", inline = TRUE))
               )),
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
-                tags$div(class = "small text-uppercase", style = "color: var(--ibpl-accent);",
+                tags$div(class = "small text-uppercase",
                          textOutput("cmp_summary_b_title", inline = TRUE)),
                 tags$div(class = "fs-4 fw-bold", textOutput("cmp_summary_b", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_b_label", inline = TRUE)),
@@ -371,7 +371,7 @@ ui_tab7_compare <- function() tabPanel(
               )),
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
                 tags$div(class = "small text-uppercase text-muted", "Avg Gap"),
-                tags$div(class = "fs-4 fw-bold", style = "color: var(--ibpl-accent);", textOutput("cmp_summary_gap", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", textOutput("cmp_summary_gap", inline = TRUE)),
                 tags$div(class = "small text-muted", "league-wide")
               ))
             ),
