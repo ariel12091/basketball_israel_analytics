@@ -476,6 +476,12 @@ a:hover { color: var(--ibpl-accent-hover); }
 .tab-pane { background: var(--ibpl-bg); }
 .help-text, .shiny-text-output { color: var(--ibpl-text-muted); }
 
+/* Compare's two side values. textOutput() emits a .shiny-text-output span,
+   and the rule above wins over a colour inherited from the parent div -- so
+   these have to target the span itself or they paint muted grey. */
+#cmp_summary_a { color: var(--ibpl-pos); }
+#cmp_summary_b { color: var(--ibpl-neg); }
+
 /* Download button */
 .btn-default.shiny-download-link {
   background: var(--ibpl-surface-2);
