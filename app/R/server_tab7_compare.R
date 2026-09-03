@@ -3746,17 +3746,23 @@ server_tab7_compare <- function(input, output, session, shared) {
   output$cmp_summary_a_title <- renderText({ side_label_full("a") })
   output$cmp_summary_b_title <- renderText({ side_label_full("b") })
 
-  # Which side is better depends on the metric, not on which number is larger:
-  # Defense is points allowed and TOV% is turnovers, so both are won by the
-  # lower value. A fixed green-A / red-B said side B was worse on every metric
-  # regardless of the figures.
-  CMP_LOWER_BETTER <- c("def_ppp", "off_tov", "tov")
+  # Polarity is not restated here. TEAM_RATING_METRICS is the shared contract
+  # the ranking layer already uses to decide which direction earns the better
+  # percentile -- best_direction "asc" means lower is better, the same flag
+  # pr_vec() inverts on -- and TEAM_PLAYER_LOWER_BETTER covers the per-player
+  # chips. Reading them keeps this from drifting when a metric is added or a
+  # polarity is corrected; a second hand-written list would not.
+  cmp_metric_lower_is_better <- function(metric) {
+    i <- match(metric, TEAM_RATING_METRICS$metric)
+    if (!is.na(i)) return(identical(TEAM_RATING_METRICS$best_direction[[i]], "asc"))
+    metric %in% TEAM_PLAYER_LOWER_BETTER
+  }
 
   cmp_summary_winner <- reactive({
     st <- cmp_summary_stats()
     if (!is.finite(st$a) || !is.finite(st$b)) return("tie")
     if (isTRUE(all.equal(st$a, st$b))) return("tie")
-    a_better <- if (selected_metric() %in% CMP_LOWER_BETTER) st$a < st$b else st$a > st$b
+    a_better <- if (cmp_metric_lower_is_better(selected_metric())) st$a < st$b else st$a > st$b
     if (isTRUE(a_better)) "a" else "b"
   })
 

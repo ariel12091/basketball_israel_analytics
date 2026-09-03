@@ -683,3 +683,23 @@ test_that("tab7 lineups detail view omits defensive shooting", {
     expect_false(grepl("Defensive Shooting", detail_txt, fixed = TRUE))
   })
 })
+
+test_that("compare polarity is read from the shared ranking contract", {
+  # The Compare chips must agree with the table that builds the percentile
+  # ranks, or the summary card would colour a side green that the rest of the
+  # app ranks last. Every Teams chip is covered by that contract.
+  chips <- c("net_rtg", "off_ppp", "def_ppp", "off_efg", "off_tov", "off_oreb", "off_ftr")
+  expect_true(all(chips %in% TEAM_RATING_METRICS$metric))
+
+  lower <- TEAM_RATING_METRICS$metric[TEAM_RATING_METRICS$best_direction == "asc"]
+  expect_true("def_ppp" %in% lower)   # points allowed
+  expect_true("off_tov" %in% lower)   # own turnovers
+  expect_false("off_ppp" %in% lower)
+  expect_false("net_rtg" %in% lower)
+  expect_false("def_tov" %in% lower)  # forcing turnovers is good
+
+  # The source is read, not restated.
+  src <- read_repo_txt("R", "server_tab7_compare.R")
+  expect_true(grepl("TEAM_RATING_METRICS$metric", src, fixed = TRUE))
+  expect_false(grepl("CMP_LOWER_BETTER", src, fixed = TRUE))
+})
