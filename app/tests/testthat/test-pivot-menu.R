@@ -68,3 +68,33 @@ test_that("destination tabs read the generalised payload", {
   expect_true(grepl("pending_ld_team", tab2, fixed = TRUE))
   expect_true(grepl("pending_gl_team", tab4, fixed = TRUE))
 })
+
+test_that("a player pivot carries the player, not just the team", {
+  tab2 <- read_repo_txt("R", "server_tab2.R")
+  mod <- read_repo_txt("R", "mod_lineup_player_filter.R")
+
+  # The menu offers "Lineups with this player". Reading only nav$team_id made
+  # that item behave exactly like "Lineups for this team".
+  expect_true(grepl("nav$player_id", tab2, fixed = TRUE))
+  expect_true(grepl("players_on = pending_player", tab2, fixed = TRUE))
+
+  # The module has to accept the selection; it otherwise only preserves one.
+  expect_true(grepl("function(team_value, players_on = NULL)", mod, fixed = TRUE))
+  # Team-scoped choices: a player not on this roster must not be forced in.
+  expect_true(grepl("unname(choices))", mod, fixed = TRUE))
+})
+
+test_that("a team pivot clears a player left by an earlier one", {
+  js <- read_repo_txt("www", "app.js")
+  mod <- read_repo_txt("R", "mod_lineup_player_filter.R")
+  tab2 <- read_repo_txt("R", "server_tab2.R")
+
+  # A row carries both ids, so the menu has to send only the one its action
+  # is about, or "Lineups for this team" behaves like the player action.
+  expect_true(grepl('action.needs === "player" ?', js, fixed = TRUE))
+
+  # NULL means no pivot (preserve); a value states the selection, and
+  # character(0) from a team pivot must clear rather than preserve.
+  expect_true(grepl("if (is.null(players_on))", mod, fixed = TRUE))
+  expect_true(grepl("pending_player <- if (is.null(nav)) NULL else {", tab2, fixed = TRUE))
+})

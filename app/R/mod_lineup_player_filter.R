@@ -117,7 +117,7 @@ lineup_player_filter_server <- function(id, players_ref) {
       sanitize_persisted_choices(input[[input_id]], numeric_only = TRUE)
     }
 
-    refresh_player_choices <- function(team_value) {
+    refresh_player_choices <- function(team_value, players_on = NULL) {
       team_val <- if (missing(team_value)) {
         current_team_value()
       } else {
@@ -142,9 +142,16 @@ lineup_player_filter_server <- function(id, players_ref) {
       } else {
         empty_choices
       }
-      selected_on <- selection_with_restore_seed(
-        "players_on", input$players_on, choices
-      )
+      # NULL means no pivot: preserve whatever is selected. A value states the
+      # selection outright, including character(0) for a team-level pivot, which
+      # has to clear a player left behind by an earlier one. Team-scoped choices,
+      # so a player off this roster is dropped either way.
+      selected_on <- if (is.null(players_on)) {
+        selection_with_restore_seed("players_on", input$players_on, choices)
+      } else {
+        intersect(sanitize_persisted_choices(players_on, numeric_only = TRUE),
+                  unname(choices))
+      }
       selected_off <- selection_with_restore_seed(
         "players_off", input$players_off, choices
       )

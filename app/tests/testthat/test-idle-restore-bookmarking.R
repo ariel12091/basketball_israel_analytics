@@ -188,7 +188,7 @@ test_that("restored tab choice observers run initially and restore lineup player
   expect_match(mod_txt, "restore_seed$players_off", fixed = TRUE)
   expect_match(
     tab2_txt,
-    "refresh_player_choices(team_value = selected_team)",
+    "refresh_player_choices(team_value = selected_team,",
     fixed = TRUE
   )
 })

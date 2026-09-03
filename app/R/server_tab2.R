@@ -77,6 +77,12 @@ server_tab2 <- function(input, output, session, shared) {
       (if (!is.null(nav)) nav$team_id else NULL) %||% shared$pending_ld_team() %||% ""
     )
     pending_team <- pending_team[nzchar(pending_team)]
+    # "Lineups with this player" carries a player as well as a team; without
+    # this the menu item silently behaved like "Lineups for this team".
+    pending_player <- if (is.null(nav)) NULL else {
+      pid <- as.character(nav$player_id %||% "")
+      pid[nzchar(pid)]
+    }
     if (length(pending_team)) {
       shared$pending_ld_team(NULL)
       selected_team <- if (pending_team[[1]] %in% unname(team_choices)) pending_team[[1]] else ""
@@ -94,7 +100,8 @@ server_tab2 <- function(input, output, session, shared) {
 
     players_map <- fetch_players_basic(gy_int)
     ld_ref$players <- players_map
-    ld_lineup_filter$refresh_player_choices(team_value = selected_team)
+    ld_lineup_filter$refresh_player_choices(team_value = selected_team,
+                                            players_on = pending_player)
 
     gn_df <- fetch_gn_values(gy_int)
     gn_vals <- if (nrow(gn_df)) as.integer(gn_df$gn) else integer(0)

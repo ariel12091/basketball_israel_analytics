@@ -1539,12 +1539,14 @@ document.addEventListener("keydown", function(e) {
     menu = null;
   }
 
-  function send(target, row, label) {
+  function send(action, row, label) {
     if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
     window.Shiny.setInputValue("pivot_action", {
-      target: target,
+      target: action.target,
       team_id: row.getAttribute("data-pivot-team") || "",
-      player_id: row.getAttribute("data-pivot-player") || "",
+      // Only the entity this action is about. A row carries both ids, so
+      // sending both would leave a player selected on a team-level pivot.
+      player_id: action.needs === "player" ? (row.getAttribute("data-pivot-player") || "") : "",
       entity_name: label,
       rand: Math.random()
     }, { priority: "event" });
@@ -1573,7 +1575,7 @@ document.addEventListener("keydown", function(e) {
       btn.setAttribute("role", "menuitem");
       btn.textContent = a.label;
       btn.addEventListener("click", function() {
-        send(a.target, row, label);
+        send(a, row, label);
         close();
       });
       menu.appendChild(btn);
