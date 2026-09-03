@@ -41,7 +41,7 @@ output gains a wrapper and nothing else.
 - Consumes: `filter_chips_row(chips_output_id, ...)` from `app/R/global.R:1085`, unchanged.
 - Produces: every data tab's chips are wrapped in `div.chips-row > div.chips-row-chips`.
 
-- [ ] **Step 1: Create the branch**
+- [x] **Step 1: Create the branch**
 
 ```bash
 cd /c/Users/ariel/documents/on_off_israel_pbp
@@ -50,7 +50,7 @@ git checkout -b shiny/filter-nav-ux
 ```
 Expected: 0 failures. Do not proceed from a red baseline.
 
-- [ ] **Step 2: Write the failing test**
+- [x] **Step 2: Write the failing test**
 
 Create `app/tests/testthat/test-chips-row.R`:
 
@@ -84,7 +84,7 @@ test_that("every data tab reaches its chips through the shared row", {
 })
 ```
 
-- [ ] **Step 3: Run the test to verify it fails**
+- [x] **Step 3: Run the test to verify it fails**
 
 Run:
 ```bash
@@ -92,7 +92,7 @@ cd app && "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('
 ```
 Expected: FAIL for `ui_tab3_team.R`, `ui_tab4_gamelogs.R`, `ui_tab5_traditional.R`, `ui_tab9_euro_team.R`, `ui_tab11_euro_gamelogs.R`.
 
-- [ ] **Step 4: Wrap the five bare call sites**
+- [x] **Step 4: Wrap the five bare call sites**
 
 In each file, replace the bare output with the shared wrapper. `ui_tab3_team.R:193`:
 
@@ -108,7 +108,7 @@ Apply the identical one-line change at `ui_tab4_gamelogs.R:150` (`gl_filter_chip
 
 `filter_chips_row()` renders no controls div when called with no `...`, so the only DOM change is the two wrapper divs.
 
-- [ ] **Step 5: Run the tests to verify they pass**
+- [x] **Step 5: Run the tests to verify they pass**
 
 Run:
 ```bash
@@ -117,14 +117,14 @@ cd /c/Users/ariel/documents/on_off_israel_pbp && "/c/Program Files/R/R-4.4.2/bin
 ```
 Expected: 0 failures. `test-tab-wiring.R` and `test-tab-parse.R` parse every UI file and must stay green.
 
-- [ ] **Step 6: Confirm the chips still render on all nine tabs**
+- [x] **Step 6: Confirm the chips still render on all nine tabs**
 
 ```bash
 IBPL_CACHE_UI=false "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "shiny::runApp('app', port = 7666, launch.browser = FALSE)"
 ```
 Visit each of the nine tabs under both leagues and confirm the chip bar is present, sits above the table, and its season chip reads correctly.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/R/ui_tab3_team.R app/R/ui_tab4_gamelogs.R app/R/ui_tab5_traditional.R \
@@ -156,7 +156,7 @@ learning about it.
 - Consumes: `filter_chips_row()` from Task 1.
 - Produces: a `button.js-filters-toggle` in every chips row; body class `filters-collapsed`; JS-applied column classes `ibpl-filter-col` and `ibpl-main-col`; `localStorage` key `ibpl_filters_collapsed`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `app/tests/testthat/test-filter-collapse.R`:
 
@@ -194,7 +194,7 @@ test_that("the collapse state is remembered per browser", {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 ```bash
@@ -202,7 +202,7 @@ cd app && "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('
 ```
 Expected: FAIL — `js-filters-toggle` does not exist.
 
-- [ ] **Step 3: Add the toggle to the shared chips row**
+- [x] **Step 3: Add the toggle to the shared chips row**
 
 In `app/R/global.R`, replace `filter_chips_row()` at line 1085:
 
@@ -242,7 +242,7 @@ filter_chips_row <- function(chips_output_id, ...) {
 }
 ```
 
-- [ ] **Step 4: Add the collapse styles**
+- [x] **Step 4: Add the collapse styles**
 
 Append to `app/www/app.css`:
 
@@ -291,7 +291,7 @@ body.filters-collapsed .ibpl-main-col {
 }
 ```
 
-- [ ] **Step 5: Add the JS module**
+- [x] **Step 5: Add the JS module**
 
 Append to `app/www/app.js`:
 
@@ -392,7 +392,7 @@ Append to `app/www/app.js`:
 })();
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run:
 ```bash
@@ -401,14 +401,14 @@ cd /c/Users/ariel/documents/on_off_israel_pbp && "/c/Program Files/R/R-4.4.2/bin
 ```
 Expected: 0 failures.
 
-- [ ] **Step 7: Verify in the browser**
+- [x] **Step 7: Verify in the browser**
 
 ```bash
 IBPL_CACHE_UI=false "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "shiny::runApp('app', port = 7666, launch.browser = FALSE)"
 ```
 Confirm: clicking **Filters** hides the sidebar and the table expands to full width with its header still aligned; clicking again restores it; the state survives a page reload; switching tabs keeps the state and the newly-shown tab's sidebar is also collapsed; the button is reachable and operable by keyboard with a visible focus ring; at a viewport under 768px the toggle is hidden and the tab's own "Show Filters" button still works.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add app/R/global.R app/www/app.css app/www/app.js app/tests/testthat/test-filter-collapse.R
@@ -437,7 +437,7 @@ means crossing to the far-left sidebar. Make the chip the way in.
 - Consumes: `filter_chips_row()` and the collapse module from Task 2.
 - Produces: `make_chip(label, clear_id, css_class = "", focus_id = NULL)`; chips carry `data-chip-focus="<input id>"`; `build_filter_chips()` gains `input_ids = NULL` (a named list overriding the `<prefix>_<thing>` default).
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `app/tests/testthat/test-chip-focus.R`:
 
@@ -485,7 +485,7 @@ test_that("app.js opens the panel before focusing a hidden control", {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 ```bash
@@ -493,7 +493,7 @@ cd app && "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('
 ```
 Expected: FAIL — `make_chip()` has no `focus_id` argument, so the call errors on an unused argument.
 
-- [ ] **Step 3: Give `make_chip()` a focus target**
+- [x] **Step 3: Give `make_chip()` a focus target**
 
 In `app/R/global.R`, replace `make_chip()` at line 834:
 
@@ -538,7 +538,7 @@ make_chip <- function(label, clear_id, css_class = "", focus_id = NULL) {
 }
 ```
 
-- [ ] **Step 4: Pass focus targets from `build_filter_chips()`**
+- [x] **Step 4: Pass focus targets from `build_filter_chips()`**
 
 Add an `input_ids = NULL` argument to `build_filter_chips()` (in the signature at `app/R/global.R:860`, after `gn_label = "GN"`), and immediately after `chips <- list()` insert the resolver:
 
@@ -573,7 +573,7 @@ Then add the fourth argument to each `make_chip()` call in the function body:
 Leave the starters chip's call unchanged — it summarises two inputs, so there
 is no single control to focus.
 
-- [ ] **Step 5: Style the focusable chip**
+- [x] **Step 5: Style the focusable chip**
 
 Append to `app/www/app.css`:
 
@@ -607,7 +607,7 @@ Append to `app/www/app.css`:
 }
 ```
 
-- [ ] **Step 6: Handle the chip click in app.js**
+- [x] **Step 6: Handle the chip click in app.js**
 
 In `app/www/app.js`, inside the delegated click handler that begins at line 291,
 insert this branch **before** the existing `[data-shiny-event]` branch, so a
@@ -667,7 +667,7 @@ Enter and Space:
   });
 ```
 
-- [ ] **Step 7: Run the tests to verify they pass**
+- [x] **Step 7: Run the tests to verify they pass**
 
 Run:
 ```bash
@@ -676,14 +676,14 @@ cd /c/Users/ariel/documents/on_off_israel_pbp && "/c/Program Files/R/R-4.4.2/bin
 ```
 Expected: 0 failures. `test-filter-chip-date-guards.R` covers `build_filter_chips()` and must stay green — the new argument is optional and every existing call site passes nothing.
 
-- [ ] **Step 8: Verify in the browser**
+- [x] **Step 8: Verify in the browser**
 
 ```bash
 IBPL_CACHE_UI=false "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "shiny::runApp('app', port = 7666, launch.browser = FALSE)"
 ```
 On On/Off Impact set a team filter and a date range so two chips appear. Confirm: clicking the **x** still clears that filter and nothing else; clicking the chip **body** opens the panel if collapsed, expands the accordion section holding the control, scrolls it into view, pulses it twice and focuses it; Tab reaches the chip and Enter does the same; under `prefers-reduced-motion: reduce` the pulse is replaced by a static outline. Repeat on Lineup Data and on EuroLeague Tab 10, which pass their own input ids.
 
-- [ ] **Step 9: Commit**
+- [x] **Step 9: Commit**
 
 ```bash
 git add app/R/global.R app/www/app.css app/www/app.js app/tests/testthat/test-chip-focus.R
@@ -713,7 +713,7 @@ already work.
 - Consumes: nothing.
 - Produces: `shared$pending_nav` (a `reactiveVal` holding `NULL` or a named list with at least `target`), and `consume_pending_nav(shared, target)` returning the payload list when `target` matches — clearing it — and `NULL` otherwise.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `app/tests/testthat/test-pending-nav.R`:
 
@@ -756,7 +756,7 @@ test_that("consume_pending_nav tolerates a shared list without the value", {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 ```bash
@@ -764,7 +764,7 @@ cd app && "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('
 ```
 Expected: FAIL — `consume_pending_nav` is not defined.
 
-- [ ] **Step 3: Add the reader**
+- [x] **Step 3: Add the reader**
 
 In `app/R/helpers.R`, immediately after `shared_data_version()` (which ends at
 line 133), add:
@@ -789,7 +789,7 @@ consume_pending_nav <- function(shared, target) {
 }
 ```
 
-- [ ] **Step 4: Add the value to the shared list**
+- [x] **Step 4: Add the value to the shared list**
 
 In `app/app.R`, after line 542 (`pending_compare_preset = reactiveVal(NULL),`), add:
 
@@ -799,7 +799,7 @@ In `app/app.R`, after line 542 (`pending_compare_preset = reactiveVal(NULL),`), 
     pending_nav = reactiveVal(NULL),
 ```
 
-- [ ] **Step 5: Add it to the server-test mock**
+- [x] **Step 5: Add it to the server-test mock**
 
 In `app/tests/testthat/helper-server-mocks.R`, find `make_shared()` and add
 `pending_nav = shiny::reactiveVal(NULL)` alongside the existing
@@ -812,7 +812,7 @@ grep -n "pending_ld_team" app/tests/testthat/helper-server-mocks.R
 ```
 and add the new field immediately after that line.
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run:
 ```bash
@@ -821,7 +821,7 @@ cd /c/Users/ariel/documents/on_off_israel_pbp && "/c/Program Files/R/R-4.4.2/bin
 ```
 Expected: 0 failures, including `test-server-tabs-smoke.R` which builds the shared list.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add app/R/helpers.R app/app.R app/tests/testthat/helper-server-mocks.R \
@@ -853,7 +853,7 @@ carrying the entity with you.
 - Consumes: `consume_pending_nav()` and `shared$pending_nav` from Task 4.
 - Produces: Shiny input `pivot_action`, a list with `target`, `team_id`, `player_id`, `entity_name` and `rand`. `<tr>` elements carry `data-pivot-team` and `data-pivot-player`.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Create `app/tests/testthat/test-pivot-menu.R`:
 
@@ -904,7 +904,7 @@ test_that("destination tabs read the generalised payload", {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 ```bash
@@ -912,7 +912,7 @@ cd app && "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('
 ```
 Expected: FAIL on every test except the escaping contract, which already holds and must keep holding.
 
-- [ ] **Step 3: Carry the id columns through to the rendered frame**
+- [x] **Step 3: Carry the id columns through to the rendered frame**
 
 Neither renderer currently reaches the browser with `team_id` or `player_id`:
 `onoff_summary_datatable()` drops them at `keep_cols` (`app/R/helpers.R:1945-1955`)
@@ -963,7 +963,7 @@ and to `hide_cols` at line 2222:
 
 Note that line 2184 re-selects `final_col_order`; add `any_of(c("team_id", "player_id"))` to that select too, or the columns are dropped again immediately after being added. Read lines 2176-2185 and place them at the end of the order vector.
 
-- [ ] **Step 4: Put identity on the row**
+- [x] **Step 4: Put identity on the row**
 
 In `app/R/helpers.R`, add a `rowCallback` to the `options` list of both
 `datatable()` calls (line 2084 and line 2283). Compute the indices with the
@@ -1000,7 +1000,7 @@ In `onoff_four_factors_datatable()` the frame is `df_final`, so use
 A `NULL` entry in a DT `options` list is dropped, so a frame that happens to
 lack the ids degrades to no pivot rather than to an error.
 
-- [ ] **Step 5: Build the menu in app.js**
+- [x] **Step 5: Build the menu in app.js**
 
 Append to `app/www/app.js`:
 
@@ -1101,7 +1101,7 @@ Append to `app/www/app.js`:
 })();
 ```
 
-- [ ] **Step 6: Style the menu**
+- [x] **Step 6: Style the menu**
 
 Append to `app/www/app.css`:
 
@@ -1133,7 +1133,7 @@ tr[data-pivot-player] td:first-child,
 tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 ```
 
-- [ ] **Step 7: Dispatch the action**
+- [x] **Step 7: Dispatch the action**
 
 In `app/app.R`, after the existing `go_compare` observer (around line 612), add:
 
@@ -1157,7 +1157,7 @@ In `app/app.R`, after the existing `go_compare` observer (around line 612), add:
   })
 ```
 
-- [ ] **Step 8: Read the payload in the destination tabs**
+- [x] **Step 8: Read the payload in the destination tabs**
 
 In `app/R/server_tab2.R`, replace line 73:
 
@@ -1185,7 +1185,7 @@ with:
     pending_team <- (if (!is.null(nav)) nav$team_id else NULL) %||% shared$pending_gl_team()
 ```
 
-- [ ] **Step 9: Run the tests to verify they pass**
+- [x] **Step 9: Run the tests to verify they pass**
 
 Run:
 ```bash
@@ -1194,14 +1194,14 @@ cd /c/Users/ariel/documents/on_off_israel_pbp && "/c/Program Files/R/R-4.4.2/bin
 ```
 Expected: 0 failures, including `test-dt-security.R`, `test-server-tabs-smoke.R` and `test-primary-table-render-smoke.R`.
 
-- [ ] **Step 10: Verify in the browser**
+- [x] **Step 10: Verify in the browser**
 
 ```bash
 IBPL_CACHE_UI=false "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "shiny::runApp('app', port = 7666, launch.browser = FALSE)"
 ```
 On On/Off Impact, click a player's name: a menu appears at the cursor offering the lineup and game-log actions. Choosing "Lineups for this team" lands on Lineup Data with that team already selected. Confirm Escape closes the menu, clicking elsewhere closes it, scrolling closes it, and the menu's items are reachable with Tab. Then confirm the sorting and column-header clicks on the first two columns still work — the pivot handler calls `stopPropagation` only on `td`, never on `th`.
 
-- [ ] **Step 11: Commit**
+- [x] **Step 11: Commit**
 
 ```bash
 git add app/R/helpers.R app/R/server_tab2.R app/R/server_tab4.R app/app.R \
@@ -1227,7 +1227,7 @@ fail-closed DT escaping contract is unchanged."
 - Consumes: nothing.
 - Produces: `home_nav_rail(items)` in `app/R/ui_tab0_home.R`, taking a list of `list(input_id =, icon =, label =)`. The five Israeli `go_*` input ids are unchanged, so `app/app.R`'s observers need no edit.
 
-- [ ] **Step 1: Write the failing test**
+- [x] **Step 1: Write the failing test**
 
 Append to `app/tests/testthat/test-team-hub-ui.R`:
 
@@ -1254,7 +1254,7 @@ test_that("EuroLeague keeps its cards because it has no hub above them", {
 })
 ```
 
-- [ ] **Step 2: Run the test to verify it fails**
+- [x] **Step 2: Run the test to verify it fails**
 
 Run:
 ```bash
@@ -1262,7 +1262,7 @@ cd app && "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('
 ```
 Expected: FAIL — `home-nav-rail` does not exist and `Go →` appears eleven times.
 
-- [ ] **Step 3: Add the rail builder**
+- [x] **Step 3: Add the rail builder**
 
 At the top of `app/R/ui_tab0_home.R`, above `ui_tab0_home()`, add:
 
@@ -1289,7 +1289,7 @@ home_nav_rail <- function(items) {
 }
 ```
 
-- [ ] **Step 4: Replace the five Israeli cards with the rail**
+- [x] **Step 4: Replace the five Israeli cards with the rail**
 
 In `ui_tab0_home()`, in the `league-only-il` block, delete the three
 `fluidRow(...)` blocks holding the five Israeli nav cards (lines 190-307) and
@@ -1308,7 +1308,7 @@ replace them with:
 
 Leave the entire `league-only-el` block exactly as it is.
 
-- [ ] **Step 5: Style the rail**
+- [x] **Step 5: Style the rail**
 
 Append to `app/www/app.css`:
 
@@ -1352,7 +1352,7 @@ Append to `app/www/app.css`:
 }
 ```
 
-- [ ] **Step 6: Run the tests to verify they pass**
+- [x] **Step 6: Run the tests to verify they pass**
 
 Run:
 ```bash
@@ -1361,14 +1361,14 @@ cd /c/Users/ariel/documents/on_off_israel_pbp && "/c/Program Files/R/R-4.4.2/bin
 ```
 Expected: 0 failures. `test-tab-wiring.R` checks that every `go_*` input has an observer and must stay green — the ids are unchanged.
 
-- [ ] **Step 7: Verify both leagues in the browser**
+- [x] **Step 7: Verify both leagues in the browser**
 
 ```bash
 IBPL_CACHE_UI=false "/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "shiny::runApp('app', port = 7666, launch.browser = FALSE)"
 ```
 Under the Israeli league, Home shows the team selector, the hub, then the rail; each rail button lands on the right tab with the team preselected exactly as the cards did. Under EuroLeague, Home still shows the five question cards. Confirm the rail is keyboard reachable with a visible focus ring, and that clicking a rail item before the websocket connects still navigates once connected (the queue-and-replay path at `app/www/app.js:240` covers `js-shiny-event`).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add app/R/ui_tab0_home.R app/www/app.css app/tests/testthat/test-team-hub-ui.R
