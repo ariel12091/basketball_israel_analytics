@@ -1369,3 +1369,97 @@
     bind();
   }
 })();
+
+/* ---- Collapsible filter panel ---------------------------------------------
+   Tags the two columns of each tab's sidebarLayout so CSS can collapse them,
+   then toggles a body class. The sidebar column is identified by the .well it
+   contains rather than by a class added in R, so the ten tab files stay
+   untouched and no :has() support is assumed.
+
+   State is client-only and persists per browser. Storage can throw outright
+   in a private window, so every access is guarded and a failure just means
+   the panel opens expanded.
+   -------------------------------------------------------------------------- */
+(function() {
+  var STORE_KEY = "ibpl_filters_collapsed";
+
+  function readStored() {
+    try {
+      return window.localStorage.getItem(STORE_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function writeStored(collapsed) {
+    try {
+      window.localStorage.setItem(STORE_KEY, collapsed ? "1" : "0");
+    } catch (e) {
+      /* private window or blocked site data: the toggle still works, it just
+         does not survive a reload. */
+    }
+  }
+
+  function tagColumns() {
+    var wells = document.querySelectorAll(".tab-pane .well");
+    for (var i = 0; i < wells.length; i++) {
+      var col = wells[i].closest("div[class*='col-sm-']");
+      if (!col || col.classList.contains("ibpl-filter-col")) continue;
+      col.classList.add("ibpl-filter-col");
+      var main = col.nextElementSibling;
+      if (main && main.className.indexOf("col-sm-") !== -1) {
+        main.classList.add("ibpl-main-col");
+      }
+    }
+  }
+
+  function syncToggles(collapsed) {
+    var buttons = document.querySelectorAll(".js-filters-toggle");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].setAttribute("aria-expanded", collapsed ? "false" : "true");
+      buttons[i].setAttribute(
+        "aria-label",
+        collapsed ? "Show the filter panel" : "Hide the filter panel"
+      );
+    }
+  }
+
+  function apply(collapsed) {
+    document.body.classList.toggle("filters-collapsed", collapsed);
+    syncToggles(collapsed);
+  }
+
+  function init() {
+    tagColumns();
+    apply(readStored());
+
+    document.addEventListener("click", function(e) {
+      var btn = e.target.closest(".js-filters-toggle");
+      if (!btn) return;
+      e.preventDefault();
+      var collapsed = !document.body.classList.contains("filters-collapsed");
+      apply(collapsed);
+      writeStored(collapsed);
+      // DataTables sizes its header to the container width, so a column that
+      // just changed width has to be told to remeasure.
+      if (window.jQuery && window.jQuery.fn.dataTable) {
+        window.jQuery.fn.dataTable.tables({ visible: true, api: true }).columns.adjust();
+      }
+    });
+
+    // Tabs render lazily, so a tab shown for the first time brings untagged
+    // columns with it.
+    if (window.jQuery) {
+      window.jQuery(document).on("shown.bs.tab shiny:value", function() {
+        tagColumns();
+        apply(document.body.classList.contains("filters-collapsed"));
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();

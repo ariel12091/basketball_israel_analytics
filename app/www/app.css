@@ -1189,3 +1189,45 @@ table.dataTable tbody td,
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
 }
+
+/* ---- Collapsible filter panel ---------------------------------------------
+   The sidebar holds ten tabs' worth of controls that are usually at their
+   defaults, against tables that want every pixel. Collapse is a body class
+   over two columns tagged by app.js, so no tab file knows this exists and the
+   ten sidebarLayout() calls stay untouched.
+   -------------------------------------------------------------------------- */
+.chips-filters-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 10px; border-radius: 16px;
+  font-size: 0.78rem; font-weight: 600; line-height: 1.3;
+  border: 1px solid var(--ibpl-border);
+  background: var(--ibpl-surface-3);
+  color: var(--ibpl-text-body);
+  cursor: pointer; white-space: nowrap;
+  transition: border-color .15s ease, color .15s ease;
+}
+.chips-filters-toggle:hover {
+  border-color: var(--ibpl-accent);
+  color: var(--ibpl-accent);
+}
+.chips-filters-toggle:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 2px;
+}
+.chips-filters-toggle[aria-expanded="false"] {
+  border-style: dashed;
+  color: var(--ibpl-text-muted);
+}
+
+body.filters-collapsed .ibpl-filter-col { display: none; }
+body.filters-collapsed .ibpl-main-col {
+  flex: 0 0 100%;
+  max-width: 100%;
+  width: 100%;
+}
+
+/* The panel is already collapsed behind the tab's own Show Filters button on
+   narrow viewports, so the toggle would be a second control for one thing. */
+@media (max-width: 767px) {
+  .chips-filters-toggle { display: none; }
+}

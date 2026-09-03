@@ -1092,10 +1092,22 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
 # Chips bar plus the min-possession controls, laid out as one row: chips grow
 # from the left, the controls sit against the right edge. The on/off and lineup
 # tabs in both leagues call this, so the four sites cannot drift apart.
+# The chips row is where filters are read, so it is also where they are
+# reached. The toggle is pure client state -- it collapses a layout column and
+# nothing else -- so it is a plain button rather than a Shiny input: no
+# round trip, and no filter state to keep in step.
 filter_chips_row <- function(chips_output_id, ...) {
   controls <- list(...)
   tags$div(
     class = "chips-row",
+    tags$button(
+      type = "button",
+      class = "chips-filters-toggle js-filters-toggle",
+      `aria-expanded` = "true",
+      `aria-label` = "Hide the filter panel",
+      tags$i(class = "bi bi-sliders", `aria-hidden` = "true"),
+      tags$span(class = "chips-filters-toggle-label", "Filters")
+    ),
     tags$div(class = "chips-row-chips", uiOutput(chips_output_id)),
     if (length(controls)) tags$div(class = "chips-row-controls", controls)
   )
