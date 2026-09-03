@@ -1,3 +1,19 @@
+# The two side values render as HTML now, not text: a span whose class says
+# which side wins the selected metric. Defense and TOV% are won by the lower
+# number, so the class cannot be inferred from the value alone.
+# In testServer a renderUI output arrives as list(html=, deps=), so the markup
+# has to be unwrapped before it can be read.
+cmp_value_html <- function(x) {
+  if (is.list(x) && !is.null(x$html)) as.character(x$html) else as.character(x)
+}
+cmp_value_text <- function(x) trimws(gsub("<[^>]*>", "", cmp_value_html(x)))
+cmp_value_class <- function(x) {
+  s <- cmp_value_html(x)
+  m <- regmatches(s, regexpr('class="[^"]*"', s))
+  if (!length(m)) return(NA_character_)
+  gsub('class="|"$', '', m)
+}
+
 test_that("tab7 exact storyline rating presets use the persisted cache", {
   reset_mock_db_query_counts()
 
@@ -38,8 +54,10 @@ test_that("tab7 teams compare uses four-factor query for four-factor chips", {
 
     expect_equal(output$cmp_summary_a_label, "eFG%")
     expect_equal(output$cmp_summary_b_label, "eFG%")
-    expect_equal(output$cmp_summary_a, "53.5")
-    expect_equal(output$cmp_summary_b, "53.5")
+    expect_equal(cmp_value_text(output$cmp_summary_a), "53.5")
+    expect_equal(cmp_value_text(output$cmp_summary_b), "53.5")
+    # equal values on both sides: neither side wins
+    expect_true(grepl("is-tie", cmp_value_class(output$cmp_summary_a), fixed = TRUE))
     expect_equal(output$cmp_summary_gap, "0.0")
   })
 })
@@ -59,8 +77,8 @@ test_that("tab7 lineups compare uses four-factor query for four-factor chips", {
 
     expect_equal(output$cmp_summary_a_label, "OREB%")
     expect_equal(output$cmp_summary_b_label, "OREB%")
-    expect_equal(output$cmp_summary_a, "31.0")
-    expect_equal(output$cmp_summary_b, "31.0")
+    expect_equal(cmp_value_text(output$cmp_summary_a), "31.0")
+    expect_equal(cmp_value_text(output$cmp_summary_b), "31.0")
     expect_equal(output$cmp_summary_gap, "0.0")
   })
 })
@@ -583,7 +601,7 @@ test_that("tab7 team detail view shows offensive and defensive shooting sections
   })
 })
 
-test_that("tab7 detail separates performance winner from raw-value leader", {
+test_that("tab7 detail points the gap and bar at the polarity-aware winner", {
   server_env <- environment(server_tab7_compare)
   original_db_get_query <- get("db_get_query", envir = server_env)
   # Vary opponent shooting by side via the home/away param (index 12) so A and B
@@ -632,8 +650,8 @@ test_that("tab7 detail separates performance winner from raw-value leader", {
     # Opp 2PT Acc: A=75.0% (lower) beats B=90.0% under defensive (lower) polarity.
     expect_true(grepl('winner">75.0%', detail_txt, fixed = TRUE))
     expect_true(grepl('loser">90.0%', detail_txt, fixed = TRUE))
-    # The gap color follows the higher raw value (B), not the lower-is-better winner (A).
-    expect_true(grepl('cmp-gap-num b-color">−15.0%', detail_txt, fixed = TRUE))
+    # The gap colour and bar follow the winner (A), not the higher raw value (B).
+    expect_true(grepl('cmp-gap-num a-color">−15.0%', detail_txt, fixed = TRUE))
     # Opp 3PT Acc: A=30.0% (lower) beats B=40.0%.
     expect_true(grepl('winner">30.0%', detail_txt, fixed = TRUE))
     expect_true(grepl('loser">40.0%', detail_txt, fixed = TRUE))

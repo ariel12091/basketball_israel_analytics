@@ -26,6 +26,10 @@
   --ibpl-text-muted: #98938B;
   --ibpl-text-body: #D4D0CA;
   --ibpl-text: #EEECE8;
+  /* Text drawn on a heat-coloured cell. Pure white is the only value that
+     clears WCAG AA against every step of the ramp: measured 4.93 against the
+     greenest cell, where --ibpl-text reaches only 4.17 and 90% opacity 4.33. */
+  --ibpl-cell-text: #FFFFFF;
 
   /* brand */
   --ibpl-accent: #e8a435;
@@ -481,11 +485,17 @@ a:hover { color: var(--ibpl-accent-hover); }
 .tab-pane { background: var(--ibpl-bg); }
 .help-text, .shiny-text-output { color: var(--ibpl-text-muted); }
 
+/* The two side values are coloured by which side is better on the selected
+   metric, not by which side they are: Defense is points allowed and TOV% is
+   turnovers, so those are won by the lower number. The server decides and
+   sets the class; a fixed colour per side claimed B was worse every time. */
+.cmp-side-value.is-winner { color: var(--ibpl-pos); }
+.cmp-side-value.is-loser  { color: var(--ibpl-neg); }
+.cmp-side-value.is-tie    { color: var(--ibpl-text); }
+
 /* Compare's summary strip. textOutput() emits a .shiny-text-output span,
    and the rule above wins over a colour inherited from the parent div -- so
    these have to target the span itself or they paint muted grey. */
-#cmp_summary_a { color: var(--ibpl-pos); }
-#cmp_summary_b { color: var(--ibpl-neg); }
 #cmp_summary_a_title { color: var(--ibpl-side-a); }
 #cmp_summary_b_title { color: var(--ibpl-accent); }
 #cmp_summary_gap { color: var(--ibpl-accent); }

@@ -356,7 +356,7 @@ ui_tab7_compare <- function() tabPanel(
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
                 tags$div(class = "small text-uppercase",
                          textOutput("cmp_summary_a_title", inline = TRUE)),
-                tags$div(class = "fs-4 fw-bold", textOutput("cmp_summary_a", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", uiOutput("cmp_summary_a", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_label", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_delta", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_a_poss", inline = TRUE))
@@ -364,7 +364,7 @@ ui_tab7_compare <- function() tabPanel(
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
                 tags$div(class = "small text-uppercase",
                          textOutput("cmp_summary_b_title", inline = TRUE)),
-                tags$div(class = "fs-4 fw-bold", textOutput("cmp_summary_b", inline = TRUE)),
+                tags$div(class = "fs-4 fw-bold", uiOutput("cmp_summary_b", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_b_label", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_b_delta", inline = TRUE)),
                 tags$div(class = "small text-muted", textOutput("cmp_summary_b_poss", inline = TRUE))

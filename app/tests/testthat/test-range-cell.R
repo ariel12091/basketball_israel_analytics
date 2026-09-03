@@ -34,7 +34,12 @@ test_that("the sub-text keeps on-court primary and off-court secondary", {
   # and lose which one is the on-court figure.
   expect_true(grepl("font-weight:700", js, fixed = TRUE))
   expect_true(grepl("opacity:0.6", js, fixed = TRUE))
-  expect_true(grepl("color:#666", js, fixed = TRUE))
+  # Both values are drawn in --ibpl-cell-text; the hierarchy is carried by
+  # weight alone, because only pure white clears AA on every step of the
+  # ramp (4.93 on the greenest cell, against 4.33 at 90% opacity).
+  expect_equal(length(gregexpr("var(--ibpl-cell-text)", js, fixed = TRUE)[[1]]), 2)
+  expect_false(grepl("#666", js, fixed = TRUE))
+  expect_false(grepl("#222", js, fixed = TRUE))
 })
 
 test_that("extra_expr reaches both branches, and is absent when not passed", {

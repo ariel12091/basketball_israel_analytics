@@ -521,7 +521,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(
       a_cls = if (identical(value_leader, "none") || identical(value_leader, "a")) "winner" else "loser",
       b_cls = if (identical(value_leader, "none") || identical(value_leader, "b")) "winner" else "loser",
-      gap_side = direction
+      # The gap number's colour and the bar's direction follow the winner, not
+      # the larger raw value. On a lower-is-better metric such as Opp eFG% the
+      # two disagree: the side with the smaller number wins, so keying off the
+      # raw difference pointed the bar at the loser while the value beside it
+      # was already marked the winner. value_leader falls back to the raw
+      # direction for neutral metrics, which have no winner to point at.
+      gap_side = value_leader
     )
   }
 
@@ -3740,20 +3746,35 @@ server_tab7_compare <- function(input, output, session, shared) {
   output$cmp_summary_a_title <- renderText({ side_label_full("a") })
   output$cmp_summary_b_title <- renderText({ side_label_full("b") })
 
-  output$cmp_summary_a <- renderText({
+  # Which side is better depends on the metric, not on which number is larger:
+  # Defense is points allowed and TOV% is turnovers, so both are won by the
+  # lower value. A fixed green-A / red-B said side B was worse on every metric
+  # regardless of the figures.
+  CMP_LOWER_BETTER <- c("def_ppp", "off_tov", "tov")
+
+  cmp_summary_winner <- reactive({
     st <- cmp_summary_stats()
-    format_metric_raw(st$a)
+    if (!is.finite(st$a) || !is.finite(st$b)) return("tie")
+    if (isTRUE(all.equal(st$a, st$b))) return("tie")
+    a_better <- if (selected_metric() %in% CMP_LOWER_BETTER) st$a < st$b else st$a > st$b
+    if (isTRUE(a_better)) "a" else "b"
   })
+
+  cmp_side_value_ui <- function(side) {
+    st <- cmp_summary_stats()
+    w <- cmp_summary_winner()
+    cls <- if (identical(w, "tie")) "is-tie" else if (identical(w, side)) "is-winner" else "is-loser"
+    tags$span(class = paste("cmp-side-value", cls), format_metric_raw(st[[side]]))
+  }
+
+  output$cmp_summary_a <- renderUI({ cmp_side_value_ui("a") })
   output$cmp_summary_a_label <- renderText({ metric_label() })
   output$cmp_summary_a_delta <- renderText({
     st <- cmp_summary_stats()
     if (!is.finite(st$delta)) return("\u0394 vs B: \u2014")
     paste0("\u0394 vs B: ", sprintf("%+.1f", st$delta))
   })
-  output$cmp_summary_b <- renderText({
-    st <- cmp_summary_stats()
-    format_metric_raw(st$b)
-  })
+  output$cmp_summary_b <- renderUI({ cmp_side_value_ui("b") })
   output$cmp_summary_b_label <- renderText({ metric_label() })
   output$cmp_summary_b_delta <- renderText({
     st <- cmp_summary_stats()
