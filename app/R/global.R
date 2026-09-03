@@ -1034,7 +1034,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     parts <- paste0("vs ", opp_side)
     if (!is.null(rank_n) && nzchar(rank_n)) parts <- paste0(parts, " ", rank_n)
     if (!is.null(rank_m) && nzchar(rank_m)) parts <- paste0(parts, " ", rank_m)
-    chips[[length(chips) + 1]] <- make_chip(parts, paste0(prefix, "_clear_opp_rank"), "chip-game", owner("opp_rank"))
+    chips[[length(chips) + 1]] <- make_chip(parts, paste0(prefix, "_clear_opp_rank"), "chip-game", owner("opp_rank", paste0(prefix, "_opp_rank_side")))
   }
 
   # Clutch (Tab 2, 3, 5 only)

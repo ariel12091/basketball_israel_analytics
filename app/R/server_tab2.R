@@ -893,6 +893,11 @@ server_tab2 <- function(input, output, session, shared) {
       teams_value = ld_lineup_filter$team(),
       players_on_value = ld_lineup_filter$players_on(),
       players_off_value = ld_lineup_filter$players_off(),
+      input_ids = list(
+        teams = "ld_lineup_filter-team",
+        players_on = "ld_lineup_filter-players_on",
+        players_off = "ld_lineup_filter-players_off"
+      ),
       extra_children = stat_filter_chips_ui("ld", ld_stat_filter_state, ld_stat_filter_cols)
     )
   })

@@ -34,11 +34,9 @@ test_that("the sub-text keeps on-court primary and off-court secondary", {
   # and lose which one is the on-court figure.
   expect_true(grepl("font-weight:700", js, fixed = TRUE))
   expect_true(grepl("opacity:0.6", js, fixed = TRUE))
-  # Two cues separate the on-court value from the off-court one: weight and
-  # tone. Weight alone was not enough at 11px in a condensed face -- both read
-  # tone. --ibpl-cell-text-2 sits at 54% of white's luminance, a visible step
-  # down, and still scores 3.21 against the greenest heat cell where the old
-  # #666 scored 1.17.
+  # Weight separates the primary on-court value from the normal-weight
+  # off-court value. Both colours remain AA-safe at this small size on every
+  # heat-ramp background.
   expect_true(grepl("font-weight:700; color:var(--ibpl-cell-text)", js, fixed = TRUE))
   expect_true(grepl("color:var(--ibpl-cell-text-2)", js, fixed = TRUE))
   expect_false(grepl("#666", js, fixed = TRUE))

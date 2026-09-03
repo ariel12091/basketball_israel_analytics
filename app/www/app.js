@@ -1443,6 +1443,11 @@
   function tagColumns() {
     var wells = document.querySelectorAll(".tab-pane .well");
     for (var i = 0; i < wells.length; i++) {
+      // Only tabs that render the shared toggle participate. Compare has a
+      // sidebar too, but no toggle; tagging it would let another tab's saved
+      // collapse state hide Compare's filters with no way to reopen them.
+      var pane = wells[i].closest(".tab-pane");
+      if (!pane || !pane.querySelector(".js-filters-toggle")) continue;
       var col = wells[i].closest("div[class*='col-sm-']");
       if (!col || col.classList.contains("ibpl-filter-col")) continue;
       col.classList.add("ibpl-filter-col");
@@ -1526,6 +1531,7 @@ document.addEventListener("keydown", function(e) {
    -------------------------------------------------------------------------- */
 (function() {
   var menu = null;
+  var opener = null;
 
   // The destination is read off the row, not hardcoded: the same two tables
   // serve both leagues, and each league's rows carry its own tab ids.
@@ -1535,10 +1541,12 @@ document.addEventListener("keydown", function(e) {
     { attr: "data-pivot-gamelogs", label: "Game log for this team", needs: "team" }
   ];
 
-  function close() {
+  function close(restoreFocus) {
     if (!menu) return;
     menu.remove();
     menu = null;
+    if (restoreFocus && opener && typeof opener.focus === "function") opener.focus();
+    opener = null;
   }
 
   function send(action, row, label) {
@@ -1554,8 +1562,9 @@ document.addEventListener("keydown", function(e) {
     }, { priority: "event" });
   }
 
-  function open(row, x, y) {
+  function open(row, x, y, trigger) {
     close();
+    opener = trigger || null;
     var hasTeam = !!row.getAttribute("data-pivot-team");
     var hasPlayer = !!row.getAttribute("data-pivot-player");
     var firstCell = row.querySelector("td");
@@ -1603,11 +1612,22 @@ document.addEventListener("keydown", function(e) {
 
     e.preventDefault();
     e.stopPropagation();
-    open(row, e.clientX, e.clientY);
+    open(row, e.clientX, e.clientY, cell);
   });
 
   document.addEventListener("keydown", function(e) {
-    if (e.key === "Escape") close();
+    if (e.key === "Escape") { close(true); return; }
+    if (e.key !== "Enter" && e.key !== " ") return;
+
+    var cell = e.target.closest("td[data-pivot-trigger]");
+    if (!cell || cell.cellIndex > 1) return;
+    var row = cell.closest("tr[data-pivot-team], tr[data-pivot-player]");
+    if (!row) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    var box = cell.getBoundingClientRect();
+    open(row, box.left, box.bottom, cell);
   });
 
   window.addEventListener("resize", close);

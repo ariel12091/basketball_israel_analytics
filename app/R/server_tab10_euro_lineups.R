@@ -621,6 +621,11 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       teams_value = ld_filter$team(),
       players_on_value = ld_filter$players_on(),
       players_off_value = ld_filter$players_off(),
+      input_ids = list(
+        teams = "euro_ld_filter-team",
+        players_on = "euro_ld_filter-players_on",
+        players_off = "euro_ld_filter-players_off"
+      ),
       season_value = season,
       season_label = paste(EURO_COMPETITION_LABELS[[euro_competition()]] %||% euro_competition(),
                            euro_season_label(season)),

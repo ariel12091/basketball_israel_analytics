@@ -38,6 +38,18 @@ test_that("the pivot menu is keyboard dismissable and sends one event", {
   expect_true(grepl('role", "menu"', js, fixed = TRUE))
 })
 
+test_that("the pivot menu has a keyboard-reachable opener", {
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+  js <- read_repo_txt("www", "app.js")
+
+  expect_true(grepl("data-pivot-trigger", helpers_txt, fixed = TRUE))
+  expect_true(grepl("'tabindex', '0'", helpers_txt, fixed = TRUE))
+  expect_true(grepl("'aria-haspopup', 'menu'", helpers_txt, fixed = TRUE))
+  expect_true(grepl('td[data-pivot-trigger]', js, fixed = TRUE))
+  expect_true(grepl('e.key !== "Enter" && e.key !== " "', js, fixed = TRUE))
+  expect_true(grepl("close(true)", js, fixed = TRUE))
+})
+
 test_that("the menu only opens on the identity columns", {
   js <- read_repo_txt("www", "app.js")
 

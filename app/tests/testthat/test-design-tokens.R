@@ -3,7 +3,7 @@ REQUIRED_TOKENS <- c(
   "--ibpl-surface-2", "--ibpl-surface-3", "--ibpl-surface-hover",
   "--ibpl-surface-selected", "--ibpl-border",
   "--ibpl-text", "--ibpl-text-body", "--ibpl-text-muted", "--ibpl-text-dim",
-  "--ibpl-text-faint",
+  "--ibpl-text-faint", "--ibpl-cell-text", "--ibpl-cell-text-2",
   "--ibpl-accent", "--ibpl-accent-rgb", "--ibpl-accent-hover",
   "--ibpl-pos", "--ibpl-neg", "--ibpl-info", "--ibpl-side-a",
   "--ibpl-fg2", "--ibpl-fg3",
@@ -152,6 +152,20 @@ test_that("body text on the page ground still clears WCAG AA", {
   expect_gt(contrast(tokens[["--ibpl-text-body"]], tokens[["--ibpl-bg"]]), 4.5)
   expect_gt(contrast(tokens[["--ibpl-text-muted"]], tokens[["--ibpl-bg"]]), 4.5)
   expect_gt(contrast(tokens[["--ibpl-accent"]], tokens[["--ibpl-bg"]]), 4.5)
+})
+
+test_that("small range-cell text clears WCAG AA across the heat ramp", {
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+  contrast <- function(a, b) {
+    la <- rel_luminance(a); lb <- rel_luminance(b)
+    (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+  }
+
+  # The green endpoint has the highest luminance and is therefore the
+  # worst-case background for the light range-cell text.
+  for (token in c("--ibpl-cell-text", "--ibpl-cell-text-2")) {
+    expect_gte(contrast(tokens[[token]], "#2f7f4d"), 4.5, label = token)
+  }
 })
 
 test_that("bs_theme literals track the token values they mirror", {

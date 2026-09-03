@@ -42,3 +42,25 @@ test_that("app.js opens the panel before focusing a hidden control", {
   # be opened first.
   expect_true(grepl("filters-collapsed", js, fixed = TRUE))
 })
+
+test_that("nonstandard filter ids are wired to their real controls", {
+  tab2 <- read_repo_txt("R", "server_tab2.R")
+  tab4 <- read_repo_txt("R", "server_tab4.R")
+  tab10 <- read_repo_txt("R", "server_tab10_euro_lineups.R")
+  global <- read_repo_txt("R", "global.R")
+
+  for (id in c("ld_lineup_filter-team", "ld_lineup_filter-players_on",
+               "ld_lineup_filter-players_off")) {
+    expect_true(grepl(id, tab2, fixed = TRUE), info = id)
+  }
+  expect_true(grepl('input_ids = list(teams = "gl_team")', tab4, fixed = TRUE))
+  for (id in c("euro_ld_filter-team", "euro_ld_filter-players_on",
+               "euro_ld_filter-players_off")) {
+    expect_true(grepl(id, tab10, fixed = TRUE), info = id)
+  }
+
+  # Opponent strength is a group; focus its first real control rather than the
+  # nonexistent <prefix>_opp_rank id.
+  expect_true(grepl('owner("opp_rank", paste0(prefix, "_opp_rank_side"))',
+                    global, fixed = TRUE))
+})

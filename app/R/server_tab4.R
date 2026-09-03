@@ -837,6 +837,7 @@ server_tab4 <- function(input, output, session, shared) {
       reset_btn_id = "gl_reset",
       team_label_map = team_map,
       opponent_label_map = team_map,
+      input_ids = list(teams = "gl_team"),
       extra_children = stat_filter_chips_ui("gl", gl_stat_filter_state, gl_stat_filter_cols)
     )
   })

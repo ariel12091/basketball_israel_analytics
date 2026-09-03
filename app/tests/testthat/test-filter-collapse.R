@@ -32,6 +32,18 @@ test_that("collapse is driven by a body class over tagged columns", {
   expect_true(grepl("ibpl_filters_collapsed", js, fixed = TRUE))
 })
 
+test_that("only tabs with their own toggle have collapsible sidebars", {
+  js <- read_repo_txt("www", "app.js")
+  compare_ui <- read_repo_txt("R", "ui_tab7_compare.R")
+
+  # Compare intentionally keeps its own large two-sided filter UI and does not
+  # render filter_chips_row(). A collapse choice made elsewhere must therefore
+  # not hide Compare's sidebar with no local way to restore it.
+  expect_true(grepl('pane.querySelector(".js-filters-toggle")', js, fixed = TRUE))
+  expect_true(grepl('uiOutput("cmp_filter_chips")', compare_ui, fixed = TRUE))
+  expect_false(grepl('filter_chips_row("cmp_filter_chips")', compare_ui, fixed = TRUE))
+})
+
 test_that("the collapse state is remembered per browser", {
   js <- read_repo_txt("www", "app.js")
 

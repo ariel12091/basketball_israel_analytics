@@ -2166,7 +2166,14 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
               "  if (!row || !data) return;",
               "  var t = data[%d], p = data[%d];",
               "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
-              "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);"
+              "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);",
+              "  var cells = row.querySelectorAll('td');",
+              "  for (var i = 0; i < Math.min(2, cells.length); i++) {",
+              "    cells[i].setAttribute('data-pivot-trigger', '');",
+              "    cells[i].setAttribute('tabindex', '0');",
+              "    cells[i].setAttribute('role', 'button');",
+              "    cells[i].setAttribute('aria-haspopup', 'menu');",
+              "  }"
             ),
             pivot_team_idx, pivot_player_idx
           ),
@@ -2427,7 +2434,14 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
               "  if (!row || !data) return;",
               "  var t = data[%d], p = data[%d];",
               "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
-              "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);"
+              "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);",
+              "  var cells = row.querySelectorAll('td');",
+              "  for (var i = 0; i < Math.min(2, cells.length); i++) {",
+              "    cells[i].setAttribute('data-pivot-trigger', '');",
+              "    cells[i].setAttribute('tabindex', '0');",
+              "    cells[i].setAttribute('role', 'button');",
+              "    cells[i].setAttribute('aria-haspopup', 'menu');",
+              "  }"
             ),
             pivot_team_idx, pivot_player_idx
           ),
