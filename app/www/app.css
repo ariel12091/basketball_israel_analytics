@@ -1258,3 +1258,28 @@ body.filters-collapsed .ibpl-main-col {
     outline-offset: 3px;
   }
 }
+
+/* ---- Pivot menu ---------------------------------------------------------- */
+.ibpl-pivot-menu {
+  position: fixed; z-index: 2000; min-width: 210px;
+  background: var(--ibpl-surface);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px; padding: 4px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
+}
+.ibpl-pivot-item {
+  display: block; width: 100%; text-align: left;
+  padding: 7px 12px; border: none; border-radius: 5px;
+  background: transparent; color: var(--ibpl-text-body);
+  font-size: 0.82rem; cursor: pointer;
+}
+.ibpl-pivot-item:hover { background: var(--ibpl-surface-3); color: var(--ibpl-text); }
+.ibpl-pivot-item:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: -2px;
+}
+
+tr[data-pivot-team] td:first-child,
+tr[data-pivot-team] td:nth-child(2),
+tr[data-pivot-player] td:first-child,
+tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }

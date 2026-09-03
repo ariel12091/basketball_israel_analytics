@@ -263,7 +263,8 @@ server_tab4 <- function(input, output, session, shared) {
     gy_int <- as.integer(input$game_year)
     teams_gl <- fetch_teams_min(gy_int)
     gl_ref$teams <- teams_gl
-    pending_team <- shared$pending_gl_team()
+    nav <- consume_pending_nav(shared, "game_logs")
+    pending_team <- (if (!is.null(nav)) nav$team_id else NULL) %||% shared$pending_gl_team()
     if (!is.null(pending_team) && nzchar(pending_team)) {
       shared$pending_gl_team(NULL)
       update_single_team_selectize(session, "gl_team", teams_gl, selected = pending_team)

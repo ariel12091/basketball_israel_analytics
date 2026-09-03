@@ -70,7 +70,12 @@ server_tab2 <- function(input, output, session, shared) {
     teams_ld <- fetch_teams_min(gy_int)
     ld_ref$teams <- teams_ld
     team_choices <- team_select_choices_with_all(teams_ld, all_label = "- All teams -")
-    pending_team <- as.character(shared$pending_ld_team() %||% "")
+    # Home cards still use pending_ld_team; row pivots arrive through the
+    # generalised value. Either one supplies a team to preselect.
+    nav <- consume_pending_nav(shared, "lineup_data")
+    pending_team <- as.character(
+      (if (!is.null(nav)) nav$team_id else NULL) %||% shared$pending_ld_team() %||% ""
+    )
     pending_team <- pending_team[nzchar(pending_team)]
     if (length(pending_team)) {
       shared$pending_ld_team(NULL)

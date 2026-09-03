@@ -616,6 +616,24 @@ server <- function(input, output, session) {
     updateTabsetPanel(session, "main_tabs", selected = "compare")
   })
 
+  # One dispatcher for every pivot. The trigger is a plain input: observers are
+  # never suspended by tab visibility, so a data reactive here would run on
+  # every session regardless of which tab is open (4487c2f).
+  observeEvent(input$pivot_action, {
+    action <- input$pivot_action
+    req(!is.null(action), nzchar(as.character(action$target %||% "")))
+
+    target <- as.character(action$target)
+    if (!target %in% c("lineup_data", "game_logs")) return(invisible(NULL))
+
+    shared$pending_nav(list(
+      target = target,
+      team_id = as.character(action$team_id %||% ""),
+      player_id = as.character(action$player_id %||% "")
+    ))
+    updateTabsetPanel(session, "main_tabs", selected = target)
+  })
+
   # Card navigation: the EuroLeague cards, in the same order as the Israeli
   # ones above. The league switch itself is client-side; these only move the
   # tab once a card is clicked. There is no team prefill because the Home team

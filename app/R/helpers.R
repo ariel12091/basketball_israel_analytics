@@ -1986,6 +1986,9 @@ onoff_summary_datatable <- function(df, stat_filters) {
 
       keep_cols <- c(
         "Team", "Player",
+        # Carried only to reach the browser as row attributes for the pivot
+        # menu; hidden below, and never rendered into a cell.
+        "team_id", "player_id",
         "Net RTG Diff", "Off ON Diff", "Def ON Diff",
         "Off ON PPP", "Def ON PPP", "On Net RTG", "Off Shot ON", "Def Shot ON",
         "Off OFF PPP", "Def OFF PPP", "Off Net RTG", "Off Shot OFF", "Def Shot OFF",
@@ -2008,7 +2011,8 @@ onoff_summary_datatable <- function(df, stat_filters) {
       idx_diff <- which(names(df) %in% setdiff(diff_cols, "Net RTG Diff")) - 1
 
       pr_cols <- names(df)[grep("^pr_", names(df))]
-      hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols)) - 1
+      hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols,
+                                          "team_id", "player_id")) - 1
 
       # Shooting column JS render function factory
       make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
@@ -2136,9 +2140,33 @@ onoff_summary_datatable <- function(df, stat_filters) {
         )
       )))
 
+      # Identity rides on the <tr> rather than inside a cell, so the pivot menu
+      # never needs an escape allowlist widened for it. Names stay escaped
+      # text; the menu reads them with textContent. createdRow rather than
+      # rowCallback: DT implements formatStyle() by writing options$rowCallback,
+      # so a hand-written one there is overwritten and the table stops rendering.
+      pivot_team_idx <- which(names(df) == "team_id") - 1
+      pivot_player_idx <- which(names(df) == "player_id") - 1
+      pivot_cb <- if (length(pivot_team_idx) && length(pivot_player_idx)) {
+        DT::JS(sprintf(
+          paste0(
+            "function(row, data, dataIndex) {",
+            "  if (!row || !data) return;",
+            "  var t = data[%d], p = data[%d];",
+            "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
+            "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);",
+            "}"
+          ),
+          pivot_team_idx, pivot_player_idx
+        ))
+      } else {
+        NULL
+      }
+
       dt <- datatable(df, container = sketch_summary, rownames = FALSE, escape = dt_escape_except(df, "Net RTG Diff"),
                       class = "display ibpl-flip",
-                      options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "tip", pageLength = 30, scrollX = TRUE,
+                      options = list(createdRow = pivot_cb,
+                                     headerCallback = HEADER_TOOLTIP_JS, dom = "tip", pageLength = 30, scrollX = TRUE,
                                      scrollY = "70vh", scrollCollapse = TRUE,
                                      order = list(list(which(names(df) == "Net RTG Diff") - 1, "desc")),
                                      columnDefs = c(list(
@@ -2250,7 +2278,8 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact) {
         "pr_diff_def_efg", "pr_diff_def_oreb", "pr_diff_def_tov", "pr_diff_def_ftr"
       ), names(df))
 
-      df_final <- df %>% select(all_of(vis_cols), any_of(rank_cols), ends_with("_rank"), all_of(raw_cols_all))
+      df_final <- df %>% select(all_of(vis_cols), any_of(c("team_id", "player_id")),
+                                any_of(rank_cols), ends_with("_rank"), all_of(raw_cols_all))
 
       final_vis_order <- c(
         "Team", "Player", "Net Diff",
@@ -2299,7 +2328,8 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact) {
       }
 
       # Hide auxiliary columns
-      hide_cols <- c(rank_cols, raw_cols_all, names(df)[grep("_rank$", names(df))])
+      hide_cols <- c(rank_cols, raw_cols_all, "team_id", "player_id",
+                     names(df)[grep("_rank$", names(df))])
       hide_idx <- which(names(df_final) %in% hide_cols) - 1L
       if (length(hide_idx)) defs[[length(defs) + 1]] <- list(targets = hide_idx, visible = FALSE)
 
@@ -2360,11 +2390,34 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact) {
         )
       )))
 
+      # Identity rides on the <tr> rather than inside a cell, so the pivot menu
+      # rowCallback: DT implements formatStyle() by writing options$rowCallback,
+      # so a hand-written one there is overwritten and the table stops rendering.
+      # never needs an escape allowlist widened for it. Names stay escaped
+      # text; the menu reads them with textContent. createdRow rather than
+      pivot_team_idx <- which(names(df_final) == "team_id") - 1
+      pivot_player_idx <- which(names(df_final) == "player_id") - 1
+      pivot_cb <- if (length(pivot_team_idx) && length(pivot_player_idx)) {
+        DT::JS(sprintf(
+          paste0(
+            "function(row, data, dataIndex) {",
+            "  if (!row || !data) return;",
+            "  var t = data[%d], p = data[%d];",
+            "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
+            "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);",
+            "}"
+          ),
+          pivot_team_idx, pivot_player_idx
+        ))
+      } else {
+        NULL
+      }
+
       dt <- datatable(df_final,
                       container = sketch_ff, rownames = FALSE,
                       class = "display ibpl-flip",
                       escape = dt_escape_except(df_final),
-                      options = list(
+                      options = list(createdRow = pivot_cb,
                         headerCallback = HEADER_TOOLTIP_JS,
                         dom = "t", pageLength = 50, deferRender = TRUE, scrollX = TRUE,
                         scrollY = "70vh", scrollCollapse = TRUE,

@@ -1513,3 +1513,97 @@ document.addEventListener("keydown", function(e) {
   e.preventDefault();
   chip.click();
 });
+
+/* ---- Pivot menu -----------------------------------------------------------
+   A finding in one table is usually a question for another: a player with a
+   large on/off gap raises "which lineups", a team raises "which games". The
+   app already carries filter state between tabs for three Home cards; this
+   opens the same road from any row.
+
+   Identity is read from the row's data attributes, which DT sets from hidden
+   id columns, and the label from textContent -- so nothing here depends on
+   unescaped HTML reaching a cell.
+   -------------------------------------------------------------------------- */
+(function() {
+  var menu = null;
+
+  var ACTIONS = [
+    { target: "lineup_data", label: "Lineups with this player", needs: "player" },
+    { target: "lineup_data", label: "Lineups for this team", needs: "team" },
+    { target: "game_logs", label: "Game log for this team", needs: "team" }
+  ];
+
+  function close() {
+    if (!menu) return;
+    menu.remove();
+    menu = null;
+  }
+
+  function send(target, row, label) {
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    window.Shiny.setInputValue("pivot_action", {
+      target: target,
+      team_id: row.getAttribute("data-pivot-team") || "",
+      player_id: row.getAttribute("data-pivot-player") || "",
+      entity_name: label,
+      rand: Math.random()
+    }, { priority: "event" });
+  }
+
+  function open(row, x, y) {
+    close();
+    var hasTeam = !!row.getAttribute("data-pivot-team");
+    var hasPlayer = !!row.getAttribute("data-pivot-player");
+    var firstCell = row.querySelector("td");
+    var label = firstCell ? firstCell.textContent.trim() : "";
+
+    var items = ACTIONS.filter(function(a) {
+      return a.needs === "team" ? hasTeam : hasPlayer;
+    });
+    if (!items.length) return;
+
+    menu = document.createElement("div");
+    menu.className = "ibpl-pivot-menu";
+    menu.setAttribute("role", "menu");
+
+    items.forEach(function(a) {
+      var btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "ibpl-pivot-item";
+      btn.setAttribute("role", "menuitem");
+      btn.textContent = a.label;
+      btn.addEventListener("click", function() {
+        send(a.target, row, label);
+        close();
+      });
+      menu.appendChild(btn);
+    });
+
+    document.body.appendChild(menu);
+    var box = menu.getBoundingClientRect();
+    menu.style.left = Math.min(x, window.innerWidth - box.width - 8) + "px";
+    menu.style.top = Math.min(y, window.innerHeight - box.height - 8) + "px";
+    var first = menu.querySelector(".ibpl-pivot-item");
+    if (first) first.focus();
+  }
+
+  document.addEventListener("click", function(e) {
+    if (menu && !e.target.closest(".ibpl-pivot-menu")) { close(); return; }
+
+    var cell = e.target.closest("td");
+    if (!cell || cell.cellIndex > 1) return;
+    var row = cell.closest("tr[data-pivot-team], tr[data-pivot-player]");
+    if (!row) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+    open(row, e.clientX, e.clientY);
+  });
+
+  document.addEventListener("keydown", function(e) {
+    if (e.key === "Escape") close();
+  });
+
+  window.addEventListener("resize", close);
+  window.addEventListener("scroll", close, true);
+})();
