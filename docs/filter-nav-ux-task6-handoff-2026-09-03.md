@@ -13,7 +13,9 @@ newest first:
 | Commit | |
 |---|---|
 | `d2b84fc` | this handoff |
-| `217494d` | Task 6 — Home nav rail |
+| `d226eb7` | Task 6 reversed — cards restored, slimmer |
+| `d1e72e5` | plan checkboxes and this handoff |
+| `217494d` | Task 6 — Home nav rail (superseded by `d226eb7`) |
 | `5857f37` | review findings (below) |
 | `67e572f` | pivot routes to its own league's tabs |
 | `ffa9aa7` | pivot filters by the player, not just their team |
@@ -61,7 +63,7 @@ originally implemented. Its tests asserted that the `input_ids` mechanism
 existed, never that a chip's resolved id named a control that exists, so
 several chips focused nothing. Assert the resolved target, not the mechanism.
 
-### `217494d` — Task 6 Home navigation rail
+### `217494d` — Task 6 Home navigation rail (superseded)
 
 - Replace the six Israeli Home question cards with a compact navigation rail
   below the existing team hub.
@@ -78,6 +80,43 @@ Validation completed:
 - `test-team-hub-ui.R` passed all 64 assertions after the Task 6 changes.
 - Browser check of the six Israeli rail items, accessible nav label, absence of
   Israeli question cards, and five retained EuroLeague cards.
+
+### `d226eb7` — the rail is reverted; the cards come back slimmer
+
+The rail was rejected on review. Two reasons, both about what the card does
+that a destination label cannot:
+
+- **It works before the hub does.** The card is readable and clickable from
+  the served HTML alone. The hub above it needs a database round trip before
+  it says anything, and a click landing in that window is queued and replayed
+  — so during the slowest part of a cold load the cards are the only part of
+  Home that answers a question or accepts an intent.
+- **The question explains the tab.** "Who is helping my team?" tells a
+  first-time visitor what On/Off Impact is for; "On/Off Impact" does not.
+
+So the reasoning behind the rail — the hub already answers these questions —
+was right about the *content* and wrong about what the cards were for. What
+was actually wrong was their weight, and that is what changed instead: the
+icon moved inline beside the question rather than sitting as a 2rem block
+above it, the "Go →" row went (the whole card is the affordance), and padding
+and type tightened. Six cards occupy 263px where they needed roughly twice
+that.
+
+Both leagues now render from one `home_nav_cards()` builder taking a list of
+`input_id` / `icon` / `title` / `sub`. The EuroLeague block had been a
+hand-copied near-duplicate of the Israeli one; it is now five list entries.
+
+Verified in a browser against live data at 1280px and 390px: eleven cards, six
+visible under the Israeli league and five under EuroLeague; tokens resolving
+(`#EEECE8` question, `#98938B` answer, amber icon); a click on the Israeli
+Compare card and on the EuroLeague Team card each reaching its pane; one card
+per row under 576px with the answer un-indented there. The horizontal overflow
+that appears at 390px is `#main_tabs`, not the cards, and predates this branch.
+
+Not re-raced: a click during the pre-connect window. That path is shared and
+untouched — the same `.js-shiny-event` branch and the same `sendShinyEvent()`
+queue the rail used and the cards used before it — but it was verified live
+for the rail, not again for the cards.
 
 ## Verification status
 
