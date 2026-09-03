@@ -79,20 +79,65 @@ test_that("app.css expresses brand alpha through the accent rgb token", {
   expect_true(grepl("rgba\\(var\\(--ibpl-accent-rgb\\)", outside))
 })
 
-test_that("UI files style themselves through tokens, not literal hex", {
-  ui_files <- c(
-    "ui_tab0_home.R", "ui_tab1_onoff.R", "ui_tab2_lineup.R",
-    "ui_tab4_gamelogs.R", "ui_tab7_compare.R",
-    "ui_tab9_euro_team.R", "ui_tab10_euro_lineups.R"
-  )
+# The hardcoded seven-file list this replaces was the gap that let Compare,
+# the DT TOTAL rows and Tab 5 keep the pre-warming Primer palette through a
+# green suite. Derive the list from app.R instead, so a file is covered the
+# moment the app sources it.
+SOURCE_PREFIX <- 'source("R/'
 
-  for (f in ui_files) {
+sourced_r_files <- function() {
+  ln <- trimws(strsplit(read_repo_txt("app.R"), "
+", fixed = TRUE)[[1]])
+  ln <- ln[startsWith(ln, SOURCE_PREFIX)]
+  # Everything between the prefix and the closing quote is the file name.
+  unique(sub('".*$', "", substring(ln, nchar(SOURCE_PREFIX) + 1L)))
+}
+
+# global.R hands these three to colorRampPalette(), which takes R colour
+# literals and cannot read a CSS custom property. Every other colour in R is
+# written into a style attribute, where a token works.
+HEX_ALLOWED <- list("global.R" = c("#6e2622", "#615641", "#2f7f4d"))
+
+test_that("app.R sources the files this check believes it does", {
+  files <- sourced_r_files()
+
+  expect_gte(length(files), 20)
+  for (f in c("helpers.R", "global.R", "ui_tab0_home.R", "server_tab2.R",
+              "server_tab5_traditional.R", "server_tab7_compare.R")) {
+    expect_true(f %in% files, info = paste("not sourced by app.R:", f))
+  }
+})
+
+test_that("every sourced R file styles itself through tokens, not literal hex", {
+  for (f in sourced_r_files()) {
     txt <- read_repo_txt("R", f)
-    found <- regmatches(txt, gregexpr("#[0-9a-fA-F]{6}", txt))[[1]]
+    found <- unique(regmatches(txt, gregexpr("#[0-9a-fA-F]{6}", txt))[[1]])
+    found <- setdiff(found, HEX_ALLOWED[[f]])
+
     expect_equal(
-      sort(unique(found)), character(0),
-      info = paste(f, "still carries literal hex:", paste(sort(unique(found)), collapse = ", "))
+      sort(found), character(0),
+      info = paste(f, "carries literal hex:", paste(sort(found), collapse = ", "))
     )
+  }
+})
+
+test_that("no sourced R file spells a brand colour as a raw rgb triplet", {
+  # rgba(232,164,53,.15) is the accent again, written so the hex check above
+  # cannot see it. Whitespace is stripped first so the spaced-out spelling
+  # rgba(232, 164, 53, 0.18) is caught by the same fixed search.
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+
+  for (tok in c("--ibpl-accent-rgb", "--ibpl-side-a-rgb", "--ibpl-neg-rgb")) {
+    triplet <- gsub("[[:space:]]", "", tokens[[tok]])
+    needle <- paste0("rgba(", triplet)
+
+    for (f in sourced_r_files()) {
+      compact <- gsub("[[:space:]]", "", read_repo_txt("R", f))
+      expect_false(
+        grepl(needle, compact, fixed = TRUE),
+        info = sprintf("%s writes the %s triplet literally", f, tok)
+      )
+    }
   }
 })
 

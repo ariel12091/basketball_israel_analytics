@@ -2695,7 +2695,7 @@ lineup_ff_datatable <- function(df, stat_filters, spec, raw = NULL) {
 
       # TOTAL row styling
       dt <- DT::formatStyle(dt, "Team", target = "row",
-                            backgroundColor = styleEqual("TOTAL", "#1a1f2b"),
+                            backgroundColor = styleEqual("TOTAL", "var(--ibpl-surface-alt)"),
                             fontWeight = styleEqual("TOTAL", "bold"))
 
       # Color logic
@@ -2920,7 +2920,7 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
         DT::formatRound(intersect("num_starters", names(df)), 0) |>
         DT::formatCurrency(c("total_poss", "off_poss", "def_poss")[c("total_poss", "off_poss", "def_poss") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0) |>
         DT::formatCurrency(c("off_pts", "def_pts", "plus_minus")[c("off_pts", "def_pts", "plus_minus") %in% names(df)], currency = "", interval = 3, mark = ",", digits = 0)
-      dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "#1a1f2b"), fontWeight = styleEqual("TOTAL", "bold"))
+      dt <- DT::formatStyle(dt, "Team", target = "row", backgroundColor = styleEqual("TOTAL", "var(--ibpl-surface-alt)"), fontWeight = styleEqual("TOTAL", "bold"))
       if (all(c("net_rtg", "pr_ld_net") %in% colnames(df))) dt <- DT::formatStyle(dt, "net_rtg", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_net")
       if (all(c("off_ppp", "pr_ld_off_ppp") %in% colnames(df))) dt <- DT::formatStyle(dt, "off_ppp", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_off_ppp")
       if (all(c("def_ppp", "pr_ld_def_ppp_i") %in% colnames(df))) dt <- DT::formatStyle(dt, "def_ppp", backgroundColor = styleInterval(CUTS, COLS_GRAD), valueColumns = "pr_ld_def_ppp_i")

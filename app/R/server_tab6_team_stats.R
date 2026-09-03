@@ -335,7 +335,7 @@ server_tab6_team_stats <- function(input, output, session, shared) {
     ranked_cell <- paste0(
       "<div style='display:flex; justify-content:space-between; gap:8px;'>",
       "<span>", val_txt, "</span>",
-      "<span style='font-size:11px; color:#c9d1d9;'>#",
+      "<span style='font-size:11px; color:var(--ibpl-text-body);'>#",
       as.integer(rank_now_num),
       " ",
       trend_txt,

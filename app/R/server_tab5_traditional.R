@@ -1491,7 +1491,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       DT::formatStyle(
         columns = style_cols,
         valueColumns = ".eligible_rate",
-        color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "#6e7681"))
+        color = DT::styleEqual(c(TRUE, FALSE), c("inherit", "var(--ibpl-text-dim)"))
       ) %>%
       DT::formatStyle(
         columns = style_cols,
@@ -1507,7 +1507,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         DT::formatStyle(
           columns = tint_cols,
           valueColumns = ".is_total",
-          backgroundColor = DT::styleEqual(TRUE, "rgba(232, 164, 53, 0.18)")
+          backgroundColor = DT::styleEqual(TRUE, "rgba(var(--ibpl-accent-rgb), 0.18)")
         )
     }
     dt

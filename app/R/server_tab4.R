@@ -38,7 +38,7 @@ gl_pr_col_name <- function(metric_name) {
 gl_result_cell_renderer <- function() DT::JS(
   "function(data, type, row, meta) {
      if (type !== 'display' || !row) return data;
-     var color = data === 'W' ? '#34d399' : '#f87171';
+     var color = data === 'W' ? 'var(--ibpl-pos)' : 'var(--ibpl-neg)';
      return '<span style=\"font-weight:700; color:' + color + ';\">' + data + '</span>';
    }"
 )

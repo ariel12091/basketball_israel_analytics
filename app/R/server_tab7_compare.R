@@ -2153,25 +2153,25 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   # -- Shared PvP UI helpers --
 
-  badge_css <- "background: rgba(232,164,53,.15); color: #e8a435; border: 1px solid rgba(232,164,53,.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;"
-  val_win_css <- "font-size: 1.05rem; font-weight: 600; color: #e6edf3;"
-  val_lose_css <- "font-size: 1.05rem; font-weight: 600; color: #8b949e;"
+  badge_css <- "background: rgba(var(--ibpl-accent-rgb),.15); color: var(--ibpl-accent); border: 1px solid rgba(var(--ibpl-accent-rgb),.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;"
+  val_win_css <- "font-size: 1.05rem; font-weight: 600; color: var(--ibpl-text);"
+  val_lose_css <- "font-size: 1.05rem; font-weight: 600; color: var(--ibpl-text-muted);"
 
   pvp_header <- function(name_a, team_a, info_a, name_b, team_b, info_b) {
     tags$div(
       style = "display: flex; align-items: center; justify-content: center; margin-bottom: 20px; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,.08);",
       tags$div(
         style = "flex: 1; text-align: center;",
-        tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #7b8cde;", name_a),
-        tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", team_a),
-        tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_a)
+        tags$div(style = "font-size: 1.25rem; font-weight: 700; color: var(--ibpl-side-a);", name_a),
+        tags$div(style = "font-size: .82rem; color: var(--ibpl-text-muted); margin-top: 2px;", team_a),
+        tags$div(style = "font-size: .78rem; color: var(--ibpl-text-dim); margin-top: 2px;", info_a)
       ),
-      tags$div(style = "font-size: .9rem; font-weight: 700; color: #484f58; padding: 0 20px;", "vs"),
+      tags$div(style = "font-size: .9rem; font-weight: 700; color: var(--ibpl-text-faint); padding: 0 20px;", "vs"),
       tags$div(
         style = "flex: 1; text-align: center;",
-        tags$div(style = "font-size: 1.25rem; font-weight: 700; color: #e8a435;", name_b),
-        tags$div(style = "font-size: .82rem; color: #8b949e; margin-top: 2px;", team_b),
-        tags$div(style = "font-size: .78rem; color: #6e7681; margin-top: 2px;", info_b)
+        tags$div(style = "font-size: 1.25rem; font-weight: 700; color: var(--ibpl-accent);", name_b),
+        tags$div(style = "font-size: .82rem; color: var(--ibpl-text-muted); margin-top: 2px;", team_b),
+        tags$div(style = "font-size: .78rem; color: var(--ibpl-text-dim); margin-top: 2px;", info_b)
       )
     )
   }
@@ -2207,7 +2207,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         )
       ),
       tags$div(
-        style = "width: 130px; text-align: center; font-size: .85rem; font-weight: 600; color: #8b949e;",
+        style = "width: 130px; text-align: center; font-size: .85rem; font-weight: 600; color: var(--ibpl-text-muted);",
         label
       ),
       tags$div(
@@ -2224,7 +2224,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   pvp_section_header <- function(label) {
     tags$div(
-      style = "text-align: center; padding: 14px 0 6px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: #6e7681;",
+      style = "text-align: center; padding: 14px 0 6px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ibpl-text-dim);",
       label
     )
   }
@@ -2349,7 +2349,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       tags$div(
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
-          style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
+          style = "text-align: center; font-size: .72rem; color: var(--ibpl-text-dim); margin-bottom: 8px;",
           paste("Swing values use the same diffs as Tab 1 Four Factors (plus Off/Def Diff).", ff_impact_legend())
         ),
         pvp_section_header("Offensive Four Factors"),
@@ -2422,7 +2422,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     fmt_swing <- function(v) if (is.na(v)) "—" else sprintf("%+.1f", v)
     onoff_sub <- function(s) {
       if (!is.finite(s$on) || !is.finite(s$off)) return(NULL)
-      tags$div(style = "font-size:.72rem; color:#6e7681;",
+      tags$div(style = "font-size:.72rem; color:var(--ibpl-text-dim);",
                sprintf("on %.1f | off %.1f", s$on, s$off))
     }
 
@@ -2450,7 +2450,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       tags$div(
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
-          style = "text-align: center; font-size: .72rem; color: #6e7681; margin-bottom: 8px;",
+          style = "text-align: center; font-size: .72rem; color: var(--ibpl-text-dim); margin-bottom: 8px;",
           "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points), led by the team eFG% swing. Diet rows are descriptive — no point-impact estimate. Corner 3 Share is the share of known-location 3PA taken from the corners; — = unknown."
         ),
         pvp_section_header("Offensive Shot Profile (ON − OFF)"),
@@ -3693,7 +3693,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         tags$div(class = "cmp-compare-grid",
           do.call(tagList, all_cells)),
         tags$div(
-          style = "text-align: center; font-size: .72rem; color: #6e7681; margin-top: 8px;",
+          style = "text-align: center; font-size: .72rem; color: var(--ibpl-text-dim); margin-top: 8px;",
           ff_impact_legend()
         )
       )
@@ -3998,8 +3998,8 @@ server_tab7_compare <- function(input, output, session, shared) {
             var cells = $(thead).find('th');
             var tips = %s;
             var badgeStyle = 'display:inline-block;border-radius:50%%;padding:2px 8px;font-size:.7rem;font-weight:600;';
-            var aStyle = badgeStyle + 'background:rgba(123,140,222,.2);color:#7b8cde;border:1px solid rgba(123,140,222,.4);';
-            var bStyle = badgeStyle + 'background:rgba(232,164,53,.15);color:#e8a435;border:1px solid rgba(232,164,53,.35);';
+            var aStyle = badgeStyle + 'background:rgba(var(--ibpl-side-a-rgb),.2);color:var(--ibpl-side-a);border:1px solid rgba(var(--ibpl-side-a-rgb),.4);';
+            var bStyle = badgeStyle + 'background:rgba(var(--ibpl-accent-rgb),.15);color:var(--ibpl-accent);border:1px solid rgba(var(--ibpl-accent-rgb),.35);';
             cells.each(function() {
               var cell = $(this);
               var txt = cell.text().trim();

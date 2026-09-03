@@ -100,7 +100,7 @@ ui_tab7_compare <- function() tabPanel(
           tags$div(
             class = "d-flex align-items-center gap-2 mb-2",
             tags$span(class = "badge rounded-pill",
-                      style = "background: rgba(123,140,222,.2); color: var(--ibpl-side-a); border: 1px solid rgba(123,140,222,.4); font-size: .7rem;",
+                      style = "background: rgba(var(--ibpl-side-a-rgb),.2); color: var(--ibpl-side-a); border: 1px solid rgba(var(--ibpl-side-a-rgb),.4); font-size: .7rem;",
                       "A")
           ),
 
@@ -190,7 +190,7 @@ ui_tab7_compare <- function() tabPanel(
           tags$div(
             class = "d-flex align-items-center gap-2 mb-2",
             tags$span(class = "badge rounded-pill",
-                      style = "background: rgba(232,164,53,.15); color: var(--ibpl-accent); border: 1px solid rgba(232,164,53,.35); font-size: .7rem;",
+                      style = "background: rgba(var(--ibpl-accent-rgb),.15); color: var(--ibpl-accent); border: 1px solid rgba(var(--ibpl-accent-rgb),.35); font-size: .7rem;",
                       "B")
           ),
 
