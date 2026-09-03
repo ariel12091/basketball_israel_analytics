@@ -69,7 +69,7 @@ ui_tab11_euro_gamelogs <- function() tabPanel(
             )
           )
         ),
-        uiOutput("eurogl_filter_chips"),
+        filter_chips_row("eurogl_filter_chips"),
         DTOutput("eurogl_table")
       )
     )

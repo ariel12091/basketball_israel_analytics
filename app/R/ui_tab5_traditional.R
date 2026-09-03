@@ -94,7 +94,7 @@ ui_tab5_traditional <- function() tabPanel(
             )
           )
         ),
-        uiOutput("ts_filter_chips"),
+        filter_chips_row("ts_filter_chips"),
         uiOutput("ts_mode_warning"),
         DTOutput("ts_table")
       )

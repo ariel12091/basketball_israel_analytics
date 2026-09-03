@@ -89,7 +89,7 @@ ui_tab9_euro_team <- function() tabPanel(
                  "Defence: lower eFG%/OREB%/FTR allowed, higher opponent TOV%.")
           )
         ),
-        uiOutput("euroteam_filter_chips"),
+        filter_chips_row("euroteam_filter_chips"),
         DTOutput("euroteam_table")
       )
     )
