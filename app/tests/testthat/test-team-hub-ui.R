@@ -231,33 +231,44 @@ test_that("combined Home validation rejects incomplete required sections", {
   )
 })
 
-test_that("the Israeli Home offers a rail, not a second set of question cards", {
+test_that("both leagues' Home cards come from the one shared builder", {
   html <- htmltools::renderTags(ui_tab0_home())$html
 
-  expect_match(html, "home-nav-rail", fixed = TRUE)
-  # The six destinations keep their input ids, so app.R's observers are
-  # untouched by the change of presentation.
-  for (id in c("go_onoff", "go_lineups", "go_team",
-               "go_gamelogs", "go_playerstats", "go_compare")) {
+  # Six Israeli cards and five EuroLeague ones. A count is what catches a
+  # block that was half-converted back to hand-written markup.
+  cards <- gregexpr('class="home-nav-card js-shiny-event"', html, fixed = TRUE)[[1]]
+  expect_equal(length(cards), 11L)
+  expect_false(grepl("home-nav-rail", html, fixed = TRUE))
+})
+
+test_that("every Home card keeps the input id its observer listens on", {
+  html <- htmltools::renderTags(ui_tab0_home())$html
+
+  # go_playerstats is deliberately absent from the EuroLeague list: Player
+  # Stats is one shared tab, so both blocks send the same id.
+  for (id in c("go_onoff", "go_lineups", "go_team", "go_gamelogs",
+               "go_playerstats", "go_compare",
+               "go_euro_onoff", "go_euro_lineups", "go_euro_team",
+               "go_euro_gamelogs")) {
     expect_match(html, sprintf('data-input-id="%s"', id), fixed = TRUE)
   }
+  shared <- gregexpr('data-input-id="go_playerstats"', html, fixed = TRUE)[[1]]
+  expect_equal(length(shared), 2L)
 })
 
-test_that("EuroLeague keeps its cards because it has no hub above them", {
+test_that("each Home card carries its question and its answer", {
   html <- htmltools::renderTags(ui_tab0_home())$html
 
-  expect_match(html, 'data-input-id="go_euro_onoff"', fixed = TRUE)
-  expect_match(html, "Who is helping my team?", fixed = TRUE)
-  expect_match(html, "home-nav-card", fixed = TRUE)
-})
-
-test_that("the Israeli block no longer repeats the hub's questions", {
-  html <- htmltools::renderTags(ui_tab0_home())$html
-
-  # Every remaining question card belongs to the EuroLeague block, which has
-  # no hub above it. Counting them is what catches a half-done replacement.
-  cards <- length(gregexpr("home-nav-card", html, fixed = TRUE)[[1]])
-  euro_ids <- length(gregexpr('data-input-id="go_euro_', html, fixed = TRUE)[[1]])
-  expect_equal(cards, 5L)
-  expect_equal(euro_ids, 4L)
+  # The card has to explain itself from the served HTML alone, before the hub
+  # above it has queried anything -- that is why it is a card and not a label.
+  for (question in c("Who is helping my team?",
+                     "Which lineups are working?",
+                     "How is my team performing?",
+                     "What happened in last night's game?",
+                     "How are individual players performing?",
+                     "How do starters compare to the bench?")) {
+    expect_match(html, question, fixed = TRUE)
+  }
+  expect_match(html, "Player impact when on vs. off the court", fixed = TRUE)
+  expect_match(html, "Compare any two situations side-by-side", fixed = TRUE)
 })

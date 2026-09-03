@@ -1,24 +1,37 @@
 # ui_tab0_home.R - Tab 0: Home / Landing Page
 
-# Under the Israeli league the team hub already answers the five questions the
-# nav cards ask, so the cards become a rail: the same destinations and the same
-# input ids, at the weight of navigation rather than of content. The EuroLeague
-# block keeps its cards because it has no hub above them, and there the cards
-# are the content.
-home_nav_rail <- function(items) {
-  tags$nav(
-    class = "home-nav-rail",
-    `aria-label` = "Go to a stats tab",
-    lapply(items, function(item) {
-      tags$button(
-        type = "button",
-        class = "home-nav-rail-item js-shiny-event",
-        `data-input-id` = item$input_id,
-        tags$i(class = paste("bi", item$icon), `aria-hidden` = "true"),
-        tags$span(item$label)
-      )
-    })
-  )
+# One builder for both leagues' Home cards. The blocks differ only in which tab
+# each card opens, so the shape lives here and each block passes its own list;
+# a card one league has and the other does not is one list entry, never a
+# second copy of the markup.
+#
+# The card carries its own question and answer, so it is readable and clickable
+# from the served HTML alone -- before the hub above it has queried anything.
+# js-shiny-event keeps a click made in that window queued and replayed rather
+# than dropped.
+home_nav_cards <- function(items) {
+  rows <- split(items, ceiling(seq_along(items) / 2))
+  unname(lapply(rows, function(row) {
+    div(
+      class = "row home-nav-row",
+      lapply(row, function(item) {
+        column(
+          width = 6,
+          tags$button(
+            type = "button",
+            class = "home-nav-card js-shiny-event",
+            `data-input-id` = item$input_id,
+            tags$span(
+              class = "home-nav-card-head",
+              tags$i(class = paste("bi", item$icon), `aria-hidden` = "true"),
+              tags$span(class = "home-nav-card-title", item$title)
+            ),
+            tags$span(class = "home-nav-card-sub", item$sub)
+          )
+        )
+      })
+    )
+  }))
 }
 
 ui_tab0_home <- function() tabPanel(
@@ -74,105 +87,31 @@ ui_tab0_home <- function() tabPanel(
       # ---- EuroLeague ----
       # Same cards, same order, same icons and wording as the Israeli block
       # below -- only the tabs each one opens differ, and Player Stats does not
-      # even differ there (one shared tab, one shared input id). Compare is the
-      # only Israeli surface with no EuroLeague counterpart, so it has no card.
+      # even differ there: it is one shared tab reading the league from
+      # #league_select, so both blocks send go_playerstats and only one of the
+      # two cards is ever visible. Compare is the only Israeli surface with no
+      # EuroLeague counterpart, so it has no card here.
       div(
         class = "league-only-el",
 
-        # Row 1
-        fluidRow(style = "align-items: stretch;",
-          column(
-            width = 6,
-            tags$button(
-              type = "button",
-              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-              `data-input-id` = "go_euro_onoff",
-              div(
-                class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-                tags$h5("Who is helping my team?", class = "card-title mb-1"),
-                tags$small(class = "text-muted", "Player impact when on vs. off the court"),
-                div(class = "mt-auto pt-2",
-                  tags$span(class = "text-warning small fw-semibold", "Go →"))
-              )
-            )
-          ),
-          column(
-            width = 6,
-            tags$button(
-              type = "button",
-              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-              `data-input-id` = "go_euro_lineups",
-              div(
-                class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-                tags$h5("Which lineups are working?", class = "card-title mb-1"),
-                tags$small(class = "text-muted", "Best and worst 5-man units by possessions"),
-                div(class = "mt-auto pt-2",
-                  tags$span(class = "text-warning small fw-semibold", "Go →"))
-              )
-            )
-          )
-        ),
+        home_nav_cards(list(
+          list(input_id = "go_euro_onoff",   icon = "bi-person-fill",
+               title = "Who is helping my team?",
+               sub   = "Player impact when on vs. off the court"),
+          list(input_id = "go_euro_lineups", icon = "bi-people-fill",
+               title = "Which lineups are working?",
+               sub   = "Best and worst 5-man units by possessions"),
+          list(input_id = "go_euro_team",    icon = "bi-bar-chart-fill",
+               title = "How is my team performing?",
+               sub   = "Offense, defense, net rating vs. the league"),
+          list(input_id = "go_euro_gamelogs", icon = "bi-calendar-day-fill",
+               title = "What happened in last night's game?",
+               sub   = "Score, lineups, and stats by game"),
+          list(input_id = "go_playerstats",  icon = "bi-bar-chart-line",
+               title = "How are individual players performing?",
+               sub   = "Points, rebounds, assists, shooting splits per player")
+        )),
 
-        # Row 2
-        fluidRow(style = "align-items: stretch;",
-          column(
-            width = 6,
-            tags$button(
-              type = "button",
-              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-              `data-input-id` = "go_euro_team",
-              div(
-                class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-                tags$h5("How is my team performing?", class = "card-title mb-1"),
-                tags$small(class = "text-muted", "Offense, defense, net rating vs. the league"),
-                div(class = "mt-auto pt-2",
-                  tags$span(class = "text-warning small fw-semibold", "Go →"))
-              )
-            )
-          ),
-          column(
-            width = 6,
-            tags$button(
-              type = "button",
-              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-              `data-input-id` = "go_euro_gamelogs",
-              div(
-                class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-                tags$h5("What happened in last night's game?", class = "card-title mb-1"),
-                tags$small(class = "text-muted", "Score, lineups, and stats by game"),
-                div(class = "mt-auto pt-2",
-                  tags$span(class = "text-warning small fw-semibold", "Go →"))
-              )
-            )
-          )
-        ),
-
-        # Row 3. Same input id as the Israeli card: Player Stats is one shared
-        # tab that reads the league from #league_select, so there is no
-        # EuroLeague variant to dispatch to. Only one of the two cards is ever
-        # visible, and the handler is identical for both.
-        fluidRow(style = "align-items: stretch;",
-          column(
-            width = 6,
-            tags$button(
-              type = "button",
-              class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-              `data-input-id` = "go_playerstats",
-              div(
-                class = "card-body d-flex flex-column gap-2",
-                tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-                tags$h5("How are individual players performing?", class = "card-title mb-1"),
-                tags$small(class = "text-muted", "Points, rebounds, assists, shooting splits per player"),
-                div(class = "mt-auto pt-2",
-                  tags$span(class = "text-warning small fw-semibold", "Go →"))
-              )
-            )
-          )
-        ),
         tags$p(
           style = "color: var(--ibpl-text-dim); font-size: .8rem; text-align: center; margin-top: 4px;",
           "EuroLeague possessions come from a separate engine from the Israeli ",
@@ -212,18 +151,30 @@ ui_tab0_home <- function() tabPanel(
       ),
 
       div(
-      class = "league-only-il",
+        class = "league-only-il",
 
-      team_hub_ui(),
+        team_hub_ui(),
 
-      home_nav_rail(list(
-        list(input_id = "go_onoff",       icon = "bi-person-fill",       label = "On/Off Impact"),
-        list(input_id = "go_lineups",     icon = "bi-people-fill",       label = "Lineups"),
-        list(input_id = "go_team",        icon = "bi-bar-chart-fill",    label = "Team Ratings"),
-        list(input_id = "go_gamelogs",    icon = "bi-calendar-day-fill", label = "Game Logs"),
-        list(input_id = "go_playerstats", icon = "bi-bar-chart-line",    label = "Player Stats"),
-        list(input_id = "go_compare",     icon = "bi-arrow-left-right",  label = "Compare")
-      ))
+        home_nav_cards(list(
+          list(input_id = "go_onoff",       icon = "bi-person-fill",
+               title = "Who is helping my team?",
+               sub   = "Player impact when on vs. off the court"),
+          list(input_id = "go_lineups",     icon = "bi-people-fill",
+               title = "Which lineups are working?",
+               sub   = "Best and worst 5-man units by possessions"),
+          list(input_id = "go_team",        icon = "bi-bar-chart-fill",
+               title = "How is my team performing?",
+               sub   = "Offense, defense, net rating vs. the league"),
+          list(input_id = "go_gamelogs",    icon = "bi-calendar-day-fill",
+               title = "What happened in last night's game?",
+               sub   = "Score, lineups, and stats by game"),
+          list(input_id = "go_playerstats", icon = "bi-bar-chart-line",
+               title = "How are individual players performing?",
+               sub   = "Points, rebounds, assists, shooting splits per player"),
+          list(input_id = "go_compare",     icon = "bi-arrow-left-right",
+               title = "How do starters compare to the bench?",
+               sub   = "Compare any two situations side-by-side")
+        ))
       )
     )
   )
