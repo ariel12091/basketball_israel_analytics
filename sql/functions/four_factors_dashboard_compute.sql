@@ -2,6 +2,12 @@
 -- Match the EuroLeague dashboard query shape: filter eligible games once,
 -- aggregate the additive player-game fact once, then derive factors and ratings.
 -- The older four_factors_compute remains unchanged for its other consumers.
+-- The four on/off rating components below are new outputs, which changes the
+-- return type; CREATE OR REPLACE cannot do that, so the function is dropped
+-- first. That wipes app_readonly's EXECUTE grant -- the GRANT at the foot of
+-- this file restores it, and apply_db_security.R is the audit for it.
+DROP FUNCTION IF EXISTS basketball_test.four_factors_dashboard_compute(int,date,date,text,text,text,text,text,text,int,text,int,int,int,int,int,int,int,int,int);
+
 CREATE OR REPLACE FUNCTION basketball_test.four_factors_dashboard_compute(
   p_game_year int, p_start_date date DEFAULT NULL, p_end_date date DEFAULT NULL,
   p_team_ids_csv text DEFAULT NULL, p_game_type_csv text DEFAULT NULL,
@@ -29,7 +35,11 @@ RETURNS TABLE (
   "Def TS% Diff" numeric, "Def OREB% Diff" numeric, "Def TOV% Diff" numeric,
   "Def FTR Diff" numeric, "Def Disruptions/100 Diff" numeric,
   "Net RTG Diff" numeric, "Off ON Diff" numeric, "Def ON Diff" numeric,
-  minutes numeric
+  minutes numeric,
+  -- The components the three Diff columns above are derived from. The query
+  -- already computes them; returning them lets the app draw the on-court and
+  -- off-court rating as a range rather than only their difference.
+  off_on_ppp numeric, off_off_ppp numeric, def_on_ppp numeric, def_off_ppp numeric
 )
 LANGUAGE sql STABLE
 SET search_path TO 'pg_catalog', 'basketball_test', 'public'
@@ -192,7 +202,10 @@ SELECT p.player_id, p.team_id, r.firstname, r.lastname, r.team_name, p_game_year
   CASE WHEN (p.off_on_ppp-p.off_off_ppp)-(p.def_on_ppp-p.def_off_ppp) IS NOT NULL
     THEN p.def_on_ppp-p.def_off_ppp END,
   CASE WHEN (p.off_on_ppp-p.off_off_ppp)-(p.def_on_ppp-p.def_off_ppp) IS NOT NULL
-    THEN p.mins_on END
+    THEN p.mins_on END,
+  -- Ungated, unlike the diffs above: a rating that exists is reportable even
+  -- when its opposite side is missing and the difference is therefore NULL.
+  p.off_on_ppp, p.off_off_ppp, p.def_on_ppp, p.def_off_ppp
 FROM p JOIN roster r USING (player_id, team_id)
 ORDER BY round(100 * (p.off_on_ts - p.off_off_ts), 1) DESC NULLS LAST
 $function$;
