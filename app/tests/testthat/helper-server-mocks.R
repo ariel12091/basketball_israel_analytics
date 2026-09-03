@@ -695,6 +695,7 @@ make_shared <- function(data_version = shiny::reactiveVal("test-etl-v1")) {
   pending_compare_preset <- shiny::reactiveVal(NULL)
   pending_ld_team <- shiny::reactiveVal(NULL)
   pending_gl_team <- shiny::reactiveVal(NULL)
+  pending_nav <- shiny::reactiveVal(NULL)
   list(
     season_date_bounds = function(gy) {
       if (identical(as.character(gy), "2026")) {
@@ -711,6 +712,7 @@ make_shared <- function(data_version = shiny::reactiveVal("test-etl-v1")) {
     hub_storylines_ready_year = shiny::reactiveVal(NA_integer_),
     pending_ld_team = pending_ld_team,
     pending_gl_team = pending_gl_team,
-    pending_compare_preset = pending_compare_preset
+    pending_compare_preset = pending_compare_preset,
+    pending_nav = pending_nav
   )
 }

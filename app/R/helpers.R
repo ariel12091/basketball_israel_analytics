@@ -129,6 +129,24 @@ shared_data_version <- function(shared) {
   if (!length(version) || is.na(version[[1]]) || !nzchar(version[[1]])) "unknown" else version[[1]]
 }
 
+# Cross-tab handoff. A source sets shared$pending_nav(list(target = "<tab>",
+# ...)); the destination tab's init observer calls this, gets its payload once,
+# and the value clears. One value rather than one reactiveVal per destination,
+# so a new pivot target costs a case in the dispatcher instead of a new field
+# in the shared list.
+consume_pending_nav <- function(shared, target) {
+  slot <- shared$pending_nav
+  if (!is.function(slot)) return(NULL)
+
+  pending <- slot()
+  if (is.null(pending) || !identical(as.character(pending$target), as.character(target))) {
+    return(NULL)
+  }
+
+  slot(NULL)
+  pending
+}
+
 # Return the persisted rating variant for an exact full-season preset shape.
 # Team selection is intentionally ignored because Compare applies that filter
 # locally after fetching league-wide ratings. NA means the dynamic path is

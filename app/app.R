@@ -543,6 +543,9 @@ server <- function(input, output, session) {
     pending_ld_team = reactiveVal(NULL),
     pending_gl_team = reactiveVal(NULL),
     pending_compare_preset = reactiveVal(NULL),
+    # Generalised pivot handoff. The three pending_* values above predate it
+    # and keep their own Home-card paths; new destinations use this one.
+    pending_nav = reactiveVal(NULL),
     euro = euro_context
   )
 
