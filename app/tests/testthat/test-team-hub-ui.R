@@ -230,3 +230,34 @@ test_that("combined Home validation rejects incomplete required sections", {
     fixed = TRUE
   )
 })
+
+test_that("the Israeli Home offers a rail, not a second set of question cards", {
+  html <- htmltools::renderTags(ui_tab0_home())$html
+
+  expect_match(html, "home-nav-rail", fixed = TRUE)
+  # The six destinations keep their input ids, so app.R's observers are
+  # untouched by the change of presentation.
+  for (id in c("go_onoff", "go_lineups", "go_team",
+               "go_gamelogs", "go_playerstats", "go_compare")) {
+    expect_match(html, sprintf('data-input-id="%s"', id), fixed = TRUE)
+  }
+})
+
+test_that("EuroLeague keeps its cards because it has no hub above them", {
+  html <- htmltools::renderTags(ui_tab0_home())$html
+
+  expect_match(html, 'data-input-id="go_euro_onoff"', fixed = TRUE)
+  expect_match(html, "Who is helping my team?", fixed = TRUE)
+  expect_match(html, "home-nav-card", fixed = TRUE)
+})
+
+test_that("the Israeli block no longer repeats the hub's questions", {
+  html <- htmltools::renderTags(ui_tab0_home())$html
+
+  # Every remaining question card belongs to the EuroLeague block, which has
+  # no hub above it. Counting them is what catches a half-done replacement.
+  cards <- length(gregexpr("home-nav-card", html, fixed = TRUE)[[1]])
+  euro_ids <- length(gregexpr('data-input-id="go_euro_', html, fixed = TRUE)[[1]])
+  expect_equal(cards, 5L)
+  expect_equal(euro_ids, 4L)
+})

@@ -1,5 +1,26 @@
 # ui_tab0_home.R - Tab 0: Home / Landing Page
 
+# Under the Israeli league the team hub already answers the five questions the
+# nav cards ask, so the cards become a rail: the same destinations and the same
+# input ids, at the weight of navigation rather than of content. The EuroLeague
+# block keeps its cards because it has no hub above them, and there the cards
+# are the content.
+home_nav_rail <- function(items) {
+  tags$nav(
+    class = "home-nav-rail",
+    `aria-label` = "Go to a stats tab",
+    lapply(items, function(item) {
+      tags$button(
+        type = "button",
+        class = "home-nav-rail-item js-shiny-event",
+        `data-input-id` = item$input_id,
+        tags$i(class = paste("bi", item$icon), `aria-hidden` = "true"),
+        tags$span(item$label)
+      )
+    })
+  )
+}
+
 ui_tab0_home <- function() tabPanel(
   title = tags$span(tags$i(class = "bi bi-house-fill"), "Home"),
   value = "home",
@@ -195,113 +216,14 @@ ui_tab0_home <- function() tabPanel(
 
       team_hub_ui(),
 
-      # Row 1
-      fluidRow(style = "align-items: stretch;",
-        column(
-          width = 6,
-          tags$button(
-            type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-            `data-input-id` = "go_onoff",
-            div(
-              class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-person-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-              tags$h5("Who is helping my team?", class = "card-title mb-1"),
-              tags$small(class = "text-muted", "Player impact when on vs. off the court"),
-              div(class = "mt-auto pt-2",
-                tags$span(class = "text-warning small fw-semibold", "Go \u2192"))
-            )
-          )
-        ),
-        column(
-          width = 6,
-          tags$button(
-            type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-            `data-input-id` = "go_lineups",
-            div(
-              class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-people-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-              tags$h5("Which lineups are working?", class = "card-title mb-1"),
-              tags$small(class = "text-muted", "Best and worst 5-man units by possessions"),
-              div(class = "mt-auto pt-2",
-                tags$span(class = "text-warning small fw-semibold", "Go \u2192"))
-            )
-          )
-        )
-      ),
-
-      # Row 2
-      fluidRow(style = "align-items: stretch;",
-        column(
-          width = 6,
-          tags$button(
-            type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-            `data-input-id` = "go_team",
-            div(
-              class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-bar-chart-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-              tags$h5("How is my team performing?", class = "card-title mb-1"),
-              tags$small(class = "text-muted", "Offense, defense, net rating vs. the league"),
-              div(class = "mt-auto pt-2",
-                tags$span(class = "text-warning small fw-semibold", "Go \u2192"))
-            )
-          )
-        ),
-        column(
-          width = 6,
-          tags$button(
-            type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-            `data-input-id` = "go_gamelogs",
-            div(
-              class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-calendar-day-fill", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-              tags$h5("What happened in last night's game?", class = "card-title mb-1"),
-              tags$small(class = "text-muted", "Score, lineups, and stats by game"),
-              div(class = "mt-auto pt-2",
-                tags$span(class = "text-warning small fw-semibold", "Go \u2192"))
-            )
-          )
-        )
-      ),
-
-      # Row 3
-      fluidRow(style = "align-items: stretch;",
-        column(
-          width = 6,
-          tags$button(
-            type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-            `data-input-id` = "go_playerstats",
-            div(
-              class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-bar-chart-line", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-              tags$h5("How are individual players performing?", class = "card-title mb-1"),
-              tags$small(class = "text-muted", "Points, rebounds, assists, shooting splits per player"),
-              div(class = "mt-auto pt-2",
-                tags$span(class = "text-warning small fw-semibold", "Go \u2192"))
-            )
-          )
-        ),
-        column(
-          width = 6,
-          tags$button(
-            type = "button",
-            class = "card bg-dark border-secondary mb-4 h-100 w-100 text-start p-0 home-nav-card js-shiny-event",
-            `data-input-id` = "go_compare",
-            div(
-              class = "card-body d-flex flex-column gap-2",
-              tags$i(class = "bi bi-arrow-left-right", style = "font-size: 2rem; color: var(--ibpl-accent);"),
-              tags$h5("How do starters compare to the bench?", class = "card-title mb-1"),
-              tags$small(class = "text-muted", "Compare any two situations side-by-side"),
-              div(class = "mt-auto pt-2",
-                tags$span(class = "text-warning small fw-semibold", "Go \u2192"))
-            )
-          )
-        )
-      )
+      home_nav_rail(list(
+        list(input_id = "go_onoff",       icon = "bi-person-fill",       label = "On/Off Impact"),
+        list(input_id = "go_lineups",     icon = "bi-people-fill",       label = "Lineups"),
+        list(input_id = "go_team",        icon = "bi-bar-chart-fill",    label = "Team Ratings"),
+        list(input_id = "go_gamelogs",    icon = "bi-calendar-day-fill", label = "Game Logs"),
+        list(input_id = "go_playerstats", icon = "bi-bar-chart-line",    label = "Player Stats"),
+        list(input_id = "go_compare",     icon = "bi-arrow-left-right",  label = "Compare")
+      ))
       )
     )
   )
