@@ -841,14 +841,23 @@ onoff_rank_legend_ui <- function(view_id, mode = "Four Factors", note = NULL) {
   )
 }
 
-make_chip <- function(label, clear_id, css_class = "") {
+# A chip reports a filter's value and offers to clear it. `focus_id` makes it
+# the way in as well: clicking the chip body opens the filter panel and moves
+# focus to the control that owns the value. It cannot host a live copy of that
+# control -- Shiny input ids are unique per session -- so it reveals it.
+make_chip <- function(label, clear_id, css_class = "", focus_id = NULL) {
+  focusable <- !is.null(focus_id) && nzchar(as.character(focus_id))
   tags$span(
-    class = paste("filter-chip", css_class),
+    class = paste("filter-chip", css_class, if (focusable) "chip-focusable" else ""),
+    `data-chip-focus` = if (focusable) as.character(focus_id) else NULL,
+    tabindex = if (focusable) "0" else NULL,
+    role = if (focusable) "button" else NULL,
     label,
     tags$button(
       class = "chip-x",
       type = "button",
       `data-shiny-event` = clear_id,
+      `aria-label` = paste("Clear", label),
       HTML("&times;")
     )
   )
@@ -875,7 +884,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
                                season_value = NULL, season_label = NULL,
                                date_input_id = NULL, dates_show_when_set = NULL,
                                game_type_input_id = NULL, game_type_labeller = NULL,
-                               gn_label = "GN") {
+                               gn_label = "GN", input_ids = NULL) {
   get_input <- function(suffix) input[[paste0(prefix, suffix)]]
   map_label <- function(x, label_map) {
     if (is.null(label_map) || is.null(x)) return(x)
@@ -901,6 +910,15 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     as.character(val %||% NA_character_)
   }
   chips <- list()
+
+  # Which input owns each chip. Defaults to the <prefix>_<thing> convention
+  # every Israeli tab follows; a tab whose id differs passes an override, the
+  # same way setup_chip_clears() already takes its ids.
+  owner <- function(thing, default = paste0(prefix, "_", thing)) {
+    if (is.null(input_ids)) return(default)
+    val <- input_ids[[thing]]
+    if (is.null(val) || !nzchar(as.character(val))) default else as.character(val)
+  }
 
   # Season chip (always visible, not dismissable) - single global input
   gy <- season_value %||% input$game_year %||% DEFAULT_GAME_YEAR
@@ -929,7 +947,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
       is_non_default <- !same_date(start_d, bounds$start) || !same_date(end_d, bounds$end)
       if ((show_when_set && has_any_raw) || (!show_when_set && is_non_default)) {
         lbl <- paste(format(start_d, "%b %d"), "\u2013", format(end_d, "%b %d"))
-        chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_dates"), "chip-game")
+        chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_dates"), "chip-game", owner("dates", date_id))
       }
     }
   }
@@ -940,7 +958,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     labeller <- game_type_labeller %||%
       function(x) vapply(x, function(v) GAME_TYPE_LABELS[v] %||% v, "")
     labels <- labeller(gt[nzchar(gt)])
-    chips[[length(chips) + 1]] <- make_chip(paste(labels, collapse = ", "), paste0(prefix, "_clear_game_type"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(paste(labels, collapse = ", "), paste0(prefix, "_clear_game_type"), "chip-game", owner("game_type", game_type_input_id %||% paste0(prefix, "_game_type")))
   }
 
   # Teams
@@ -957,7 +975,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   if (!is.null(teams_val) && length(teams_val) && any(nzchar(teams_val))) {
     mapped_teams <- map_label(teams_val, team_label_map)
     lbl <- if (length(mapped_teams) == 1) mapped_teams[1] else paste0(length(mapped_teams), " teams")
-    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_teams"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_teams"), "chip-game", owner("teams", if (prefix == "on") "teams" else paste0(prefix, "_teams")))
   }
 
   # Opponents
@@ -966,21 +984,21 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   if (!is.null(opp_val) && length(opp_val)) {
     mapped_opponents <- map_label(opp_val, opponent_label_map)
     lbl <- if (length(mapped_opponents) == 1) paste("vs", mapped_opponents[1]) else paste0("vs ", length(mapped_opponents), " opps")
-    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_opponents"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_opponents"), "chip-game", owner("opponents"))
   }
 
   # Home/Away
   ha <- get_input("_home_away")
   if (prefix == "on") ha <- input$on_home_away
   if (!is.null(ha) && nzchar(ha)) {
-    chips[[length(chips) + 1]] <- make_chip(if (ha == "home") "Home" else "Away", paste0(prefix, "_clear_home_away"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(if (ha == "home") "Home" else "Away", paste0(prefix, "_clear_home_away"), "chip-game", owner("home_away"))
   }
 
   # Outcome
   out_val <- get_input("_outcome")
   if (prefix == "on") out_val <- input$on_outcome
   if (!is.null(out_val) && nzchar(out_val)) {
-    chips[[length(chips) + 1]] <- make_chip(if (out_val == "win") "Wins" else "Losses", paste0(prefix, "_clear_outcome"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(if (out_val == "win") "Wins" else "Losses", paste0(prefix, "_clear_outcome"), "chip-game", owner("outcome"))
   }
 
   # GN range
@@ -991,14 +1009,14 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     parts <- c()
     if (!is.null(gn_min) && nzchar(gn_min)) parts <- c(parts, paste0(gn_label, "\u2265", gn_min))
     if (!is.null(gn_max) && nzchar(gn_max)) parts <- c(parts, paste0(gn_label, "\u2264", gn_max))
-    chips[[length(chips) + 1]] <- make_chip(paste(parts, collapse = " "), paste0(prefix, "_clear_gn"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(paste(parts, collapse = " "), paste0(prefix, "_clear_gn"), "chip-game", owner("gn", paste0(prefix, "_gn_min")))
   }
 
   # Last N
   last_n <- get_input("_last_n")
   if (prefix == "on") last_n <- input$on_last_n
   if (!is.null(last_n) && nzchar(last_n)) {
-    chips[[length(chips) + 1]] <- make_chip(paste("Last", last_n, "games"), paste0(prefix, "_clear_last_n"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(paste("Last", last_n, "games"), paste0(prefix, "_clear_last_n"), "chip-game", owner("last_n"))
   }
 
   # Opponent strength
@@ -1011,7 +1029,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     parts <- paste0("vs ", opp_side)
     if (!is.null(rank_n) && nzchar(rank_n)) parts <- paste0(parts, " ", rank_n)
     if (!is.null(rank_m) && nzchar(rank_m)) parts <- paste0(parts, " ", rank_m)
-    chips[[length(chips) + 1]] <- make_chip(parts, paste0(prefix, "_clear_opp_rank"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(parts, paste0(prefix, "_clear_opp_rank"), "chip-game", owner("opp_rank"))
   }
 
   # Clutch (Tab 2, 3, 5 only)
@@ -1024,7 +1042,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     if (is.na(mins) || mins < 1L) mins <- 5L
     lbl <- paste0("Clutch \u2264", mins, "min margin\u2264", margin)
     if (!identical(status, "all")) lbl <- paste0(lbl, " ", status)
-    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_clutch"), "chip-clutch")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_clutch"), "chip-clutch", owner("clutch", paste0(prefix, "_clutch_margin")))
   }
 
   # Starters filter
@@ -1052,13 +1070,13 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   if (!is.null(pon) && length(pon)) {
     mapped_on <- map_label(pon, player_label_map)
     lbl <- if (length(mapped_on) == 1) paste("On:", mapped_on[1]) else paste0("On: ", length(mapped_on), " players")
-    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_on"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_on"), "chip-game", owner("players_on"))
   }
   poff <- players_off_value %||% get_input("_players_off")
   if (!is.null(poff) && length(poff)) {
     mapped_off <- map_label(poff, player_label_map)
     lbl <- if (length(mapped_off) == 1) paste("Off:", mapped_off[1]) else paste0("Off: ", length(mapped_off), " players")
-    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_off"), "chip-game")
+    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_off"), "chip-game", owner("players_off"))
   }
 
   # Only show "Clear all" if there are removable chips (more than just season)

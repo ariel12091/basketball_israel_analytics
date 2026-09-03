@@ -1,19 +1,5 @@
-# global.R cannot be sourced from a test: at source time it builds the DB pool,
-# registers onStop() and schedules a later() prewarm. parse() does not execute,
-# so the one definition under test is lifted out and evaluated on its own. That
-# keeps this an assertion about rendered output rather than about source text.
-filter_chips_row <- local({
-  exprs <- parse(repo_file("R", "global.R"))
-  env <- new.env(parent = globalenv())
-  for (e in exprs) {
-    if (is.call(e) && identical(as.character(e[[1]]), "<-") &&
-        identical(as.character(e[[2]]), "filter_chips_row")) {
-      eval(e, envir = env)
-    }
-  }
-  stopifnot(is.function(env$filter_chips_row))
-  env$filter_chips_row
-})
+# Lifted out of global.R rather than sourced -- see helper-global-defs.R.
+filter_chips_row <- global_defs("filter_chips_row")$filter_chips_row
 
 test_that("the chips row carries an accessible filter toggle", {
   html <- htmltools::renderTags(filter_chips_row("demo_chips"))$html

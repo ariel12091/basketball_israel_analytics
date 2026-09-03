@@ -289,6 +289,46 @@
   }
 
   document.addEventListener("click", function(e) {
+    // A chip click reveals the control that owns the value; the x still falls
+    // through to the clear event below.
+    var chipFocus = e.target.closest("[data-chip-focus]");
+    if (chipFocus && !e.target.closest(".chip-x")) {
+      e.preventDefault();
+      var targetId = chipFocus.dataset.chipFocus;
+
+      // A control inside a collapsed panel cannot take focus, so open it
+      // first and let the layout settle before reaching for the input.
+      if (document.body.classList.contains("filters-collapsed")) {
+        var toggle = document.querySelector(".js-filters-toggle");
+        if (toggle) toggle.click();
+      }
+
+      window.setTimeout(function() {
+        var el = document.getElementById(targetId);
+        if (!el) return;
+
+        // Bootstrap accordions hold most of these controls closed.
+        var panel = el.closest(".accordion-collapse");
+        if (panel && !panel.classList.contains("show") &&
+            window.bootstrap && window.bootstrap.Collapse) {
+          window.bootstrap.Collapse.getOrCreateInstance(panel).show();
+        }
+
+        var group = el.closest(".form-group, .shiny-input-container") || el;
+        group.scrollIntoView({ block: "center", behavior: "smooth" });
+        group.classList.add("ibpl-chip-revealed");
+        window.setTimeout(function() {
+          group.classList.remove("ibpl-chip-revealed");
+        }, 2400);
+
+        // Selectize replaces the original input with its own focusable node.
+        var selectize = group.querySelector(".selectize-input");
+        if (selectize) { selectize.click(); return; }
+        if (typeof el.focus === "function") el.focus({ preventScroll: true });
+      }, 80);
+      return;
+    }
+
     var eventEl = e.target.closest("[data-shiny-event], .js-shiny-event");
     if (eventEl) {
       e.preventDefault();
@@ -1463,3 +1503,13 @@
     init();
   }
 })();
+
+/* A chip reached by Tab responds to Enter and Space, like the button its role
+   claims it is. */
+document.addEventListener("keydown", function(e) {
+  if (e.key !== "Enter" && e.key !== " ") return;
+  var chip = e.target.closest("[data-chip-focus]");
+  if (!chip) return;
+  e.preventDefault();
+  chip.click();
+});

@@ -1231,3 +1231,30 @@ body.filters-collapsed .ibpl-main-col {
 @media (max-width: 767px) {
   .chips-filters-toggle { display: none; }
 }
+
+/* A chip that owns a control invites a click into it; one that summarises
+   several (starters) or lives outside the panel (season) does not. */
+.filter-chip.chip-focusable { cursor: pointer; }
+.filter-chip.chip-focusable:hover { border-color: var(--ibpl-accent); }
+.filter-chip.chip-focusable:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 2px;
+}
+
+/* Two seconds is long enough to find the control after the panel opens and
+   short enough not to linger as decoration. */
+@keyframes ibplChipReveal {
+  0%   { box-shadow: 0 0 0 0 rgba(var(--ibpl-accent-rgb), 0.55); }
+  100% { box-shadow: 0 0 0 8px rgba(var(--ibpl-accent-rgb), 0); }
+}
+.ibpl-chip-revealed {
+  border-radius: 6px;
+  animation: ibplChipReveal 1.1s ease-out 2;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ibpl-chip-revealed {
+    animation: none;
+    outline: 2px solid var(--ibpl-accent);
+    outline-offset: 3px;
+  }
+}
