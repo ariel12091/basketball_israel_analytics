@@ -1870,7 +1870,7 @@ range_cell_js <- function(value_expr, on_expr, off_expr,
     "                      '<div class=\"sub-text\">' +\n",
     "                        '<span style=\"font-weight:700; color:var(--ibpl-cell-text);\">' + ", on_expr, " + '</span>' +\n",
     "                        ' <span style=\"opacity:0.6;\">|</span> ' +\n",
-    "                        '<span style=\"color:var(--ibpl-text-body);\">' + ", off_expr, " + '</span>' +\n",
+    "                        '<span style=\"color:var(--ibpl-cell-text-2);\">' + ", off_expr, " + '</span>' +\n",
     "                      '</div>'", tail_js, "\n"
   )
 }

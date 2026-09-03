@@ -30,6 +30,11 @@
      clears WCAG AA against every step of the ramp: measured 4.93 against the
      greenest cell, where --ibpl-text reaches only 4.17 and 90% opacity 4.33. */
   --ibpl-cell-text: #FFFFFF;
+  /* The secondary value on a heat-coloured cell. Dimmer than --ibpl-cell-text
+     so weight is not the only thing separating the on-court number from the
+     off-court one: 54% of its luminance, and 2.75 contrast against the
+     greenest cell where the #666 this replaced scored 1.17. */
+  --ibpl-cell-text-2: #C6C1B9;
 
   /* brand */
   --ibpl-accent: #e8a435;
