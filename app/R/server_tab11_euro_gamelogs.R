@@ -12,7 +12,8 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
   teams_df <- shared$euro$teams_df
 
   setup_euro_section_filters(input, session, "eurogl", tab_id = "euro_game_logs",
-                             euro_context = shared$euro, date_id = "eurogl_dates")
+                             euro_context = shared$euro, date_id = "eurogl_dates",
+                             shared = shared, teams_id = "eurogl_teams")
   setup_gn_last_n_sync(session, input, "eurogl")
 
   observeEvent(input$eurogl_reset, {

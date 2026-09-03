@@ -1527,10 +1527,12 @@ document.addEventListener("keydown", function(e) {
 (function() {
   var menu = null;
 
+  // The destination is read off the row, not hardcoded: the same two tables
+  // serve both leagues, and each league's rows carry its own tab ids.
   var ACTIONS = [
-    { target: "lineup_data", label: "Lineups with this player", needs: "player" },
-    { target: "lineup_data", label: "Lineups for this team", needs: "team" },
-    { target: "game_logs", label: "Game log for this team", needs: "team" }
+    { attr: "data-pivot-lineups", label: "Lineups with this player", needs: "player" },
+    { attr: "data-pivot-lineups", label: "Lineups for this team", needs: "team" },
+    { attr: "data-pivot-gamelogs", label: "Game log for this team", needs: "team" }
   ];
 
   function close() {
@@ -1542,7 +1544,7 @@ document.addEventListener("keydown", function(e) {
   function send(action, row, label) {
     if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
     window.Shiny.setInputValue("pivot_action", {
-      target: action.target,
+      target: row.getAttribute(action.attr) || "",
       team_id: row.getAttribute("data-pivot-team") || "",
       // Only the entity this action is about. A row carries both ids, so
       // sending both would leave a player selected on a team-level pivot.
@@ -1560,6 +1562,8 @@ document.addEventListener("keydown", function(e) {
     var label = firstCell ? firstCell.textContent.trim() : "";
 
     var items = ACTIONS.filter(function(a) {
+      // Both the entity and a destination for it have to be present.
+      if (!row.getAttribute(a.attr)) return false;
       return a.needs === "team" ? hasTeam : hasPlayer;
     });
     if (!items.length) return;

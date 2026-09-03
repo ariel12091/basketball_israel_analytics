@@ -48,8 +48,21 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     } else {
       setNames("", "- All teams -")
     }
-    selected_team <- ld_filter$update_team_choices(team_choices)
-    ld_filter$refresh_player_choices(team_value = selected_team)
+    # A row pivot from EuroLeague On/Off names a team, and for the player
+    # action a player as well. NULL means no pivot, so the selection is kept.
+    nav <- consume_pending_nav(shared, "euro_lineups")
+    nav_team <- if (!is.null(nav)) as.character(nav$team_id %||% "") else ""
+    nav_team <- nav_team[nzchar(nav_team)]
+    selected_team <- ld_filter$update_team_choices(
+      team_choices,
+      selected = if (length(nav_team) && nav_team[[1]] %in% unname(team_choices)) nav_team[[1]] else ""
+    )
+    nav_player <- if (is.null(nav)) NULL else {
+      pid <- as.character(nav$player_id %||% "")
+      pid[nzchar(pid)]
+    }
+    ld_filter$refresh_player_choices(team_value = selected_team,
+                                     players_on = nav_player)
 
     opponent_choices <- team_select_choices_with_all(teams, all_label = NULL)
     update_restore_aware_selectize(

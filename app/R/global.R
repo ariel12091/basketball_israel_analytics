@@ -750,6 +750,10 @@ onoff_tab_descriptor <- function(league = c("israel", "euroleague")) {
       game_type_placeholder = "All game types",
       gn_min_label = tt("From Game Number (GN)", "gn"),
       gn_max_label = tt("To Game Number (GN)", "gn"),
+      # Where a row pivot goes. A league's rows must reach its own tabs: the
+      # two leagues' team ids collide numerically, so an Israeli target on a
+      # EuroLeague row silently selects a different team.
+      pivot_lineups = "lineup_data", pivot_game_logs = "game_logs",
       opp_rank_max = 12L, show_shot_profile = TRUE, show_impact = TRUE,
       show_download = TRUE, initial_min_all = DEFAULT_MIN_ALL,
       initial_min_on = DEFAULT_MIN_ON
@@ -768,6 +772,7 @@ onoff_tab_descriptor <- function(league = c("israel", "euroleague")) {
     game_type_placeholder = "All phases",
     gn_min_label = "From Round", gn_max_label = "To Round",
     opp_rank_metric_selected = "",
+    pivot_lineups = "euro_lineups", pivot_game_logs = "euro_game_logs",
     opp_rank_max = 20L, show_shot_profile = FALSE, show_impact = FALSE,
     show_download = FALSE, initial_min_all = DEFAULT_MIN_ALL,
     initial_min_on = DEFAULT_MIN_ON

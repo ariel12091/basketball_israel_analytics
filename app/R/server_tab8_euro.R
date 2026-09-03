@@ -8,6 +8,10 @@
 
 server_tab8_euro <- function(input, output, session, shared) {
   onoff_cfg <- onoff_tab_descriptor("euroleague")
+  # Where this league's row pivots go. Carried on each row so the menu
+  # never guesses: the two leagues' team ids collide numerically.
+  pivot_targets <- list(lineups = onoff_cfg$pivot_lineups,
+                        game_logs = onoff_cfg$pivot_game_logs)
   auto_min_state <- reactiveValues(
     last_auto = NA_integer_,
     last_auto_all = NA_integer_,
@@ -350,11 +354,12 @@ server_tab8_euro <- function(input, output, session, shared) {
     mode <- input$euro_view_mode
 
     if (identical(mode, "Summary")) {
-      return(onoff_summary_datatable(df, euro_stat_filter_state$filters()))
+      return(onoff_summary_datatable(df, euro_stat_filter_state$filters(), pivot = pivot_targets))
 
     } else if (identical(mode, "Four Factors")) {
       return(onoff_four_factors_datatable(df, euro_stat_filter_state$filters(),
-                                          show_impact = onoff_cfg$show_impact))
+                                          show_impact = onoff_cfg$show_impact,
+                                          pivot = pivot_targets))
     }
   }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$euro_min_all_poss, input$euro_min_on_poss, input$euro_game_year, input$euro_view_mode, euro_stat_filter_state$filters())
 

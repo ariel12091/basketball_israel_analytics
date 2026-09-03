@@ -154,7 +154,8 @@ euro_phase_choices <- function(competition, season) {
 # context. Hidden navbar tabs are mounted by Shiny, so the active-tab guard is
 # essential: without it all EuroLeague tabs query and rebuild at startup.
 setup_euro_section_filters <- function(input, session, prefix, tab_id,
-                                       euro_context, date_id) {
+                                       euro_context, date_id,
+                                       shared = NULL, teams_id = NULL) {
   observeEvent(list(input$main_tabs, euro_context$competition(),
                     euro_context$season()), {
     if (!identical(input$main_tabs, tab_id)) return(invisible(NULL))
@@ -162,8 +163,20 @@ setup_euro_section_filters <- function(input, session, prefix, tab_id,
     apply_season_date_bounds(session, date_id, euro_context$date_bounds())
 
     choices <- team_select_choices_with_all(euro_context$teams_df(), all_label = NULL)
+
+    # A row pivot landing here names its team. Only the tabs that are pivot
+    # destinations pass shared/teams_id; the rest keep their old behaviour.
+    nav_team <- character(0)
+    if (!is.null(shared) && !is.null(teams_id)) {
+      nav <- consume_pending_nav(shared, tab_id)
+      nav_team <- if (!is.null(nav)) as.character(nav$team_id %||% "") else ""
+      nav_team <- nav_team[nzchar(nav_team)]
+    }
     for (id in paste0(prefix, c("_teams", "_opponents"))) {
-      update_restore_aware_selectize(session, input, id, choices)
+      update_restore_aware_selectize(
+        session, input, id, choices,
+        selected = if (identical(id, teams_id) && length(nav_team)) nav_team else NULL
+      )
     }
 
     phase_id <- paste0(prefix, "_phase")

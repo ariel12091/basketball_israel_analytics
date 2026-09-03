@@ -839,10 +839,14 @@ restore_once_selection <- function(session, id, current, choices) {
 # selectize's choices must preserve either its live value or Shiny's restored
 # bookmark value; callers should not reimplement this update sequence.
 update_restore_aware_selectize <- function(session, input, id, choices,
-                                           server = TRUE) {
-  selected <- restore_aware_selection(
-    session, id, isolate(input[[id]]), choices
-  )
+                                           server = TRUE, selected = NULL) {
+  # An explicit selection wins: a caller landing a row pivot knows what it
+  # wants, and the choices go out server-side, so it cannot be applied after.
+  if (is.null(selected)) {
+    selected <- restore_aware_selection(
+      session, id, isolate(input[[id]]), choices
+    )
+  }
   updateSelectizeInput(
     session, id, choices = choices, selected = selected, server = server
   )
@@ -1950,7 +1954,7 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
 # Indentation is left exactly as it was in the server files. make_shot_render()
 # builds its JS with a multi-line sprintf template, so re-indenting the body
 # would change the emitted JavaScript and stop this being a provable move.
-onoff_summary_datatable <- function(df, stat_filters) {
+onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
       # Shooting split column names (16 raw + 4 display)
       shot_raw_cols <- c(
         "off_on_fg2_made", "off_on_fg2_att", "off_on_fg3_made", "off_on_fg3_att",
@@ -2145,19 +2149,30 @@ onoff_summary_datatable <- function(df, stat_filters) {
       # text; the menu reads them with textContent. createdRow rather than
       # rowCallback: DT implements formatStyle() by writing options$rowCallback,
       # so a hand-written one there is overwritten and the table stops rendering.
+      #
+      # The league's own destinations ride along on the row. The two leagues'
+      # team ids collide numerically, so a EuroLeague row carrying an Israeli
+      # target would silently select a different team.
       pivot_team_idx <- which(names(df) == "team_id") - 1
       pivot_player_idx <- which(names(df) == "player_id") - 1
-      pivot_cb <- if (length(pivot_team_idx) && length(pivot_player_idx)) {
-        DT::JS(sprintf(
-          paste0(
-            "function(row, data, dataIndex) {",
-            "  if (!row || !data) return;",
-            "  var t = data[%d], p = data[%d];",
-            "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
-            "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);",
-            "}"
+      pivot_lineups <- as.character(pivot$lineups %||% "")
+      pivot_gamelogs <- as.character(pivot$game_logs %||% "")
+      pivot_cb <- if (length(pivot_team_idx) && length(pivot_player_idx) &&
+                      nzchar(pivot_lineups) && nzchar(pivot_gamelogs)) {
+        DT::JS(paste0(
+          sprintf(
+            paste0(
+              "function(row, data, dataIndex) {",
+              "  if (!row || !data) return;",
+              "  var t = data[%d], p = data[%d];",
+              "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
+              "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);"
+            ),
+            pivot_team_idx, pivot_player_idx
           ),
-          pivot_team_idx, pivot_player_idx
+          sprintf("  row.setAttribute('data-pivot-lineups', '%s');", pivot_lineups),
+          sprintf("  row.setAttribute('data-pivot-gamelogs', '%s');", pivot_gamelogs),
+          "}"
         ))
       } else {
         NULL
@@ -2235,7 +2250,7 @@ onoff_summary_datatable <- function(df, stat_filters) {
 # Israeli-league data, so reusing those coefficients would state a
 # points-per-100 impact this league's data never supported. Restore only after
 # refitting on EuroLeague possessions.
-onoff_four_factors_datatable <- function(df, stat_filters, show_impact) {
+onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = NULL) {
       # === MODE 2: FOUR FACTORS ===
 
       metric_map <- list(
@@ -2391,23 +2406,34 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact) {
       )))
 
       # Identity rides on the <tr> rather than inside a cell, so the pivot menu
-      # rowCallback: DT implements formatStyle() by writing options$rowCallback,
-      # so a hand-written one there is overwritten and the table stops rendering.
       # never needs an escape allowlist widened for it. Names stay escaped
       # text; the menu reads them with textContent. createdRow rather than
+      # rowCallback: DT implements formatStyle() by writing options$rowCallback,
+      # so a hand-written one there is overwritten and the table stops rendering.
+      #
+      # The league's own destinations ride along on the row. The two leagues'
+      # team ids collide numerically, so a EuroLeague row carrying an Israeli
+      # target would silently select a different team.
       pivot_team_idx <- which(names(df_final) == "team_id") - 1
       pivot_player_idx <- which(names(df_final) == "player_id") - 1
-      pivot_cb <- if (length(pivot_team_idx) && length(pivot_player_idx)) {
-        DT::JS(sprintf(
-          paste0(
-            "function(row, data, dataIndex) {",
-            "  if (!row || !data) return;",
-            "  var t = data[%d], p = data[%d];",
-            "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
-            "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);",
-            "}"
+      pivot_lineups <- as.character(pivot$lineups %||% "")
+      pivot_gamelogs <- as.character(pivot$game_logs %||% "")
+      pivot_cb <- if (length(pivot_team_idx) && length(pivot_player_idx) &&
+                      nzchar(pivot_lineups) && nzchar(pivot_gamelogs)) {
+        DT::JS(paste0(
+          sprintf(
+            paste0(
+              "function(row, data, dataIndex) {",
+              "  if (!row || !data) return;",
+              "  var t = data[%d], p = data[%d];",
+              "  if (t !== null && t !== undefined && t !== '') row.setAttribute('data-pivot-team', t);",
+              "  if (p !== null && p !== undefined && p !== '') row.setAttribute('data-pivot-player', p);"
+            ),
+            pivot_team_idx, pivot_player_idx
           ),
-          pivot_team_idx, pivot_player_idx
+          sprintf("  row.setAttribute('data-pivot-lineups', '%s');", pivot_lineups),
+          sprintf("  row.setAttribute('data-pivot-gamelogs', '%s');", pivot_gamelogs),
+          "}"
         ))
       } else {
         NULL

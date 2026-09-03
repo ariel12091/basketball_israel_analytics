@@ -624,7 +624,10 @@ server <- function(input, output, session) {
     req(!is.null(action), nzchar(as.character(action$target %||% "")))
 
     target <- as.character(action$target)
-    if (!target %in% c("lineup_data", "game_logs")) return(invisible(NULL))
+    if (!target %in% c("lineup_data", "game_logs",
+                       "euro_lineups", "euro_game_logs")) {
+      return(invisible(NULL))
+    }
 
     shared$pending_nav(list(
       target = target,
