@@ -131,3 +131,63 @@ test_that("percent signs match how the call site consumes the JS", {
   expect_true(grepl("left:' + rangeLineLeft + '%;", plain, fixed = TRUE))
   expect_false(grepl("%%", plain, fixed = TRUE))
 })
+
+test_that("the rating columns render through the shared range cell", {
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+  start <- regexpr("onoff_four_factors_datatable <- function", helpers_txt, fixed = TRUE)
+  ff <- substring(helpers_txt, start)
+
+  # Off/Def Rtg Diff take the four-factor grammar. They are deliberately NOT in
+  # metric_map: vis_cols already names them, and a second mention there would
+  # select the same column twice.
+  expect_true(grepl("rtg_map <- list(", ff, fixed = TRUE))
+  expect_true(grepl('"Off Rtg Diff" = c("off_on_ppp", "off_off_ppp")', ff, fixed = TRUE))
+  expect_true(grepl('"Def Rtg Diff" = c("def_on_ppp", "def_off_ppp")', ff, fixed = TRUE))
+  expect_true(grepl("cell_map <- c(metric_map, rtg_map)", ff, fixed = TRUE))
+  # metric_map itself must stay the eight four-factor columns: a "Rtg Diff"
+  # entry there would put the name into vis_cols twice.
+  mm_at <- regexpr("metric_map <- list(", ff, fixed = TRUE)
+  expect_false(grepl("Rtg Diff", substring(ff, mm_at, mm_at + 420L), fixed = TRUE))
+})
+
+test_that("a rating cell carries no estimated-points line", {
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+  start <- regexpr("onoff_four_factors_datatable <- function", helpers_txt, fixed = TRUE)
+  ff <- substring(helpers_txt, start)
+
+  # The rating diff IS the points. An est. line derived from it would restate
+  # it, and FF_METRIC_FACTOR has no entry for these two names anyway.
+  expect_true(grepl("isTRUE(show_impact) && !is_rating", ff, fixed = TRUE))
+  expect_true(grepl("show_impact = isTRUE(show_impact) && !is_rating", ff, fixed = TRUE))
+})
+
+test_that("the rating components are carried but never shown", {
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+  start <- regexpr("onoff_four_factors_datatable <- function", helpers_txt, fixed = TRUE)
+  ff <- substring(helpers_txt, start)
+
+  # Selected so the renderer can index them, hidden so they are not four extra
+  # columns of raw ratings. They rendered visibly in the browser when the second
+  # half of this was missing, with the suite green.
+  expect_true(grepl("any_of(rtg_cols_all)", ff, fixed = TRUE))
+  expect_true(grepl("hide_cols <- c(rank_cols, raw_cols_all, rtg_cols_all,", ff, fixed = TRUE))
+})
+
+test_that("only the rating columns without a range cell keep the plain + renderer", {
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+  start <- regexpr("onoff_four_factors_datatable <- function", helpers_txt, fixed = TRUE)
+  ff <- substring(helpers_txt, start)
+
+  # Two renderers on one column would leave the outcome to DataTables'
+  # columnDefs precedence -- the trap Task 9 hit on the Summary view.
+  expect_true(grepl('plain_rtg <- setdiff(c("Off Rtg Diff", "Def Rtg Diff"), rendered_rtg)', ff, fixed = TRUE))
+  expect_true(grepl("rtg_diff_idx <- which(names(df_final) %in% plain_rtg) - 1L", ff, fixed = TRUE))
+})
+
+test_that("both leagues supply the rating components on the MV path", {
+  for (f in c("server_tab1.R", "server_tab8_euro.R")) {
+    txt <- read_repo_txt("R", f)
+    expect_true(grepl("off_on_ppp = `Off ON PPP`", txt, fixed = TRUE), info = f)
+    expect_true(grepl("def_off_ppp = `Def OFF PPP`", txt, fixed = TRUE), info = f)
+  }
+})

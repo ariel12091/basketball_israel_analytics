@@ -1375,8 +1375,8 @@ resolve_poss_cols <- function(df, mode) {
 onoff_add_ff_ranks <- function(df) {
     # Derived display columns
     df <- df %>% mutate(
-      `Off Rtg Diff` = as.numeric(`Off ON Diff`),
-      `Def Rtg Diff` = as.numeric(`Def ON Diff`),
+      `Off Rtg Diff` = round(as.numeric(`Off ON Diff`), 1),
+      `Def Rtg Diff` = round(as.numeric(`Def ON Diff`), 1),
       `Net Diff`     = round(`Net RTG Diff`, 1)
     )
 
@@ -1405,7 +1405,11 @@ onoff_add_ff_ranks <- function(df) {
     raw_cols <- c("off_on_efg", "off_off_efg", "off_on_oreb", "off_off_oreb",
                   "off_on_tov", "off_off_tov", "off_on_ftr", "off_off_ftr",
                   "def_on_efg", "def_off_efg", "def_on_oreb", "def_off_oreb",
-                  "def_on_tov", "def_off_tov", "def_on_ftr", "def_off_ftr")
+                  "def_on_tov", "def_off_tov", "def_on_ftr", "def_off_ftr",
+                  # The rating components, so Off/Def Rtg Diff can carry the
+                  # same range track as the four-factor columns beside them.
+                  # intersect() below skips them on a frame that lacks them.
+                  "off_on_ppp", "off_off_ppp", "def_on_ppp", "def_off_ppp")
     for (col in intersect(raw_cols, names(df))) {
       vals <- if_else(df$off_on_poss >= rank_thresh, coalesce(df[[col]], 0), NA_real_)
       df[[paste0(col, "_rank")]] <- percent_rank(vals) * 100
@@ -2255,6 +2259,17 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
 
       raw_cols_all <- unique(unlist(metric_map))
 
+      # The two rating columns take the same range track as the four factors.
+      # They stay out of metric_map for two reasons: vis_cols already names
+      # them, so a second mention would select the same column twice; and they
+      # are already per-100 rates, so they must miss the x100 rounding that
+      # raw_cols_all gets below.
+      rtg_map <- list(
+        "Off Rtg Diff" = c("off_on_ppp", "off_off_ppp"),
+        "Def Rtg Diff" = c("def_on_ppp", "def_off_ppp")
+      )
+      rtg_cols_all <- unique(unlist(rtg_map))
+
       # Rounding
       df <- df %>% mutate(across(all_of(intersect(raw_cols_all, names(df))), ~ round(as.numeric(.) * 100, 1)))
       df <- df %>% mutate(across(all_of(intersect(names(metric_map), names(df))), ~ round(as.numeric(.), 1)))
@@ -2275,7 +2290,8 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
       ), names(df))
 
       df_final <- df %>% select(all_of(vis_cols), any_of(c("team_id", "player_id")),
-                                any_of(rank_cols), ends_with("_rank"), all_of(raw_cols_all))
+                                any_of(rank_cols), ends_with("_rank"), all_of(raw_cols_all),
+                                any_of(rtg_cols_all))
 
       final_vis_order <- c(
         "Team", "Player", "Net Diff",
@@ -2291,13 +2307,21 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
 
       defs <- list()
 
-      for (i in seq_along(metric_map)) {
-        diff_name <- names(metric_map)[i]
+      # Four-factor columns first, then the two rating columns. Identical
+      # markup, so one loop: the only difference is that a rating carries no
+      # est. +/-X pts line, because the rating diff IS the points -- annotating
+      # it with an estimate derived from itself would just restate it.
+      cell_map <- c(metric_map, rtg_map)
+      rendered_rtg <- character(0)
+
+      for (i in seq_along(cell_map)) {
+        diff_name <- names(cell_map)[i]
         if (!diff_name %in% names(df_final)) next
         target_idx <- which(names(df_final) == diff_name) - 1L
+        is_rating <- diff_name %in% names(rtg_map)
 
-        on_col <- metric_map[[i]][1]
-        off_col <- metric_map[[i]][2]
+        on_col <- cell_map[[i]][1]
+        off_col <- cell_map[[i]][2]
 
         if (on_col %in% names(df_final) && off_col %in% names(df_final)) {
           on_val_idx <- which(names(df_final) == on_col) - 1L
@@ -2305,7 +2329,7 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
           on_rank_idx <- which(names(df_final) == paste0(on_col, "_rank")) - 1L
           off_rank_idx <- which(names(df_final) == paste0(off_col, "_rank")) - 1L
 
-          if (isTRUE(show_impact)) {
+          if (isTRUE(show_impact) && !is_rating) {
             impact_w <- FF_IMPACT_WEIGHTS[[FF_METRIC_FACTOR[[diff_name]]]]
             impact_suffix <- if (startsWith(diff_name, "Def")) " pts allowed" else " pts"
             impact_tip <- FF_IMPACT_EST_TITLE
@@ -2317,14 +2341,16 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
 
           js_func <- ff_diff_cell_js(
             on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
-            impact_w, impact_suffix, impact_tip, show_impact = show_impact
+            impact_w, impact_suffix, impact_tip,
+            show_impact = isTRUE(show_impact) && !is_rating
           )
           defs[[length(defs) + 1]] <- list(targets = target_idx, render = js_func)
+          if (is_rating) rendered_rtg <- c(rendered_rtg, diff_name)
         }
       }
 
       # Hide auxiliary columns
-      hide_cols <- c(rank_cols, raw_cols_all, "team_id", "player_id",
+      hide_cols <- c(rank_cols, raw_cols_all, rtg_cols_all, "team_id", "player_id",
                      names(df)[grep("_rank$", names(df))])
       hide_idx <- which(names(df_final) %in% hide_cols) - 1L
       if (length(hide_idx)) defs[[length(defs) + 1]] <- list(targets = hide_idx, visible = FALSE)
@@ -2353,7 +2379,9 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
                                          }"))
       }
 
-      # '+' sign for Off Rtg Diff and Def Rtg Diff
+      # '+' sign for whichever rating columns did NOT get a range cell above.
+      # Letting both renderers target one column would leave the outcome to
+      # DataTables' columnDefs precedence rather than to this file.
       plus_sign_js <- JS(
         "function(data, type, row, meta) {",
         "  if (type !== 'display' || data === null) return data;",
@@ -2362,9 +2390,8 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
         "  return val > 0 ? '+' + data : data;",
         "}"
       )
-      off_rtg_diff_idx <- which(names(df_final) == "Off Rtg Diff") - 1L
-      def_rtg_diff_idx <- which(names(df_final) == "Def Rtg Diff") - 1L
-      rtg_diff_idx <- c(off_rtg_diff_idx, def_rtg_diff_idx)
+      plain_rtg <- setdiff(c("Off Rtg Diff", "Def Rtg Diff"), rendered_rtg)
+      rtg_diff_idx <- which(names(df_final) %in% plain_rtg) - 1L
       if (length(rtg_diff_idx)) defs[[length(defs) + 1]] <- list(targets = rtg_diff_idx, render = plus_sign_js)
 
       defs[[length(defs) + 1]] <- list(targets = "_all", className = "dt-center")

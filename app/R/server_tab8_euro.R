@@ -312,7 +312,11 @@ server_tab8_euro <- function(input, output, session, shared) {
       if (!"Net RTG Diff" %in% names(df_adv)) {
         df_sum <- mv_result_df() %>%
           select(player_id, team_id, competition, game_year,
-                 `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, any_of("minutes"))
+                 `Net RTG Diff`, `Off ON Diff`, `Def ON Diff`, any_of("minutes"),
+                 # The rating range cell needs the two sides, not just their
+                 # difference. Free here: this MV pull is already made and cached.
+                 off_on_ppp = `Off ON PPP`, off_off_ppp = `Off OFF PPP`,
+                 def_on_ppp = `Def ON PPP`, def_off_ppp = `Def OFF PPP`)
 
         df <- df_adv %>%
           left_join(df_sum, by = c("player_id", "team_id", "competition", "game_year"))
