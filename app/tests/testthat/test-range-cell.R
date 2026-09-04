@@ -191,3 +191,22 @@ test_that("both leagues supply the rating components on the MV path", {
     expect_true(grepl("def_off_ppp = `Def OFF PPP`", txt, fixed = TRUE), info = f)
   }
 })
+
+test_that("the summary sketch's headers map to the first 18 columns", {
+  body <- summary_body()
+
+  # The container assigns its <th> positionally across the first 18 columns,
+  # visible or not, so a HIDDEN column among them shifts every header one to
+  # the left. Putting the pivot ids at position 3 did exactly that: the header
+  # row read Team, Player, Def, ... with "Net" and "Off" consumed by team_id
+  # and player_id, and the body drifted 109px out of line. Browser-only defect;
+  # the suite was green throughout.
+  n_sub_head <- length(gregexpr('class="sub-head', body, fixed = TRUE)[[1]])
+  expect_equal(n_sub_head, 18L)
+
+  # Everything hidden must be listed after the 18 display columns. regexpr
+  # takes the first hit, which is the keep_cols one rather than hide_cols.
+  ids_at <- regexpr('"team_id", "player_id"', body, fixed = TRUE)
+  usage_at <- regexpr('"minutes", "ON Poss", "OFF Poss"', body, fixed = TRUE)
+  expect_gt(as.integer(ids_at), as.integer(usage_at))
+})

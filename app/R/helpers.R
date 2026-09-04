@@ -1994,13 +1994,18 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
 
       keep_cols <- c(
         "Team", "Player",
-        # Carried only to reach the browser as row attributes for the pivot
-        # menu; hidden below, and never rendered into a cell.
-        "team_id", "player_id",
         "Net RTG Diff", "Off ON Diff", "Def ON Diff",
         "Off ON PPP", "Def ON PPP", "On Net RTG", "Off Shot ON", "Def Shot ON",
         "Off OFF PPP", "Def OFF PPP", "Off Net RTG", "Off Shot OFF", "Def Shot OFF",
         "minutes", "ON Poss", "OFF Poss",
+        # Everything below this line is hidden. It must STAY below it: the
+        # sketch container assigns its 18 <th> to the first 18 columns
+        # positionally, hidden or not, so a hidden column wedged among the
+        # display columns silently shifts every header left. That is what
+        # putting these two at position 3 did -- "Net" and "Off" landed on
+        # them and the whole row drifted. The Four Factors table appends
+        # them after vis_cols for the same reason.
+        "team_id", "player_id",
         shot_raw_cols,
         shot_filter_cols,
         "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
