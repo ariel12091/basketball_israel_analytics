@@ -422,6 +422,23 @@ table.dataTable thead select {
   font-size: 0.75em; color: var(--ibpl-text-dim); margin-top: 4px; white-space: nowrap; font-family: 'JetBrains Mono', 'Inter', monospace;
 }
 
+/* On/Off Four Factors: the rating is the outcome, the four factors are its
+   breakdown, so they must not read at the same volume. The rating keeps a
+   larger headline and is fenced off on its right; the factors beside it step
+   down. Scoped to these two classes so the same .diff-val in Tab 2, Shot
+   Profile and Compare is untouched. */
+table.dataTable tbody td.onoff-rtg-cell .diff-val { font-size: 1.35em; }
+table.dataTable tbody td.onoff-factor-cell .diff-val { font-size: 1em; }
+
+/* The rule sits on the first factor cell rather than the rating's right edge,
+   so it lands between the two columns and survives DataTables reordering.
+   DataTables copies a column's className onto its header cell too, so the same
+   selector carries the fence up through the header. */
+table.dataTable tbody td.onoff-rtg-cell + td.onoff-factor-cell,
+table.dataTable thead th.onoff-rtg-cell + th.onoff-factor-cell {
+  border-left: 1px solid var(--ibpl-border) !important;
+}
+
 /* Four-factor estimated point impact annotation (Tabs 1 & 7) */
 .ff-impact-est {
   display: block;

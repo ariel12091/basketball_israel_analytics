@@ -2349,7 +2349,10 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
             impact_w, impact_suffix, impact_tip,
             show_impact = isTRUE(show_impact) && !is_rating
           )
-          defs[[length(defs) + 1]] <- list(targets = target_idx, render = js_func)
+          defs[[length(defs) + 1]] <- list(
+            targets = target_idx, render = js_func,
+            className = if (is_rating) "onoff-rtg-cell" else "onoff-factor-cell"
+          )
           if (is_rating) rendered_rtg <- c(rendered_rtg, diff_name)
         }
       }
