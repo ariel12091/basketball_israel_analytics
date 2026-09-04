@@ -1896,7 +1896,7 @@ range_cell_js <- function(value_expr, on_expr, off_expr,
     "                      '<div class=\"sub-text\">' +\n",
     "                        '<span style=\"font-weight:700; color:var(--ibpl-cell-text);\">' + ", on_expr, " + '</span>' +\n",
     "                        ' <span style=\"opacity:0.6;\">|</span> ' +\n",
-    "                        '<span style=\"font-size:0.85em; color:var(--ibpl-cell-text-2);\">' + ", off_expr, " + '</span>' +\n",
+    "                        '<span style=\"font-size:0.85em; opacity:0.72; color:var(--ibpl-cell-text-2);\">' + ", off_expr, " + '</span>' +\n",
     "                      '</div>'", tail_js, "\n"
   )
 }
@@ -1931,6 +1931,7 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
                              '%s</div>';
                  }
                  var diffVal = (data === null) ? '-' : (parseFloat(data) > 0 ? '+' + data : data);
+                 if (diffVal !== '-') diffVal = diffVal + '%s';
                  var onVal   = row[%d] || '-';
                  var offVal  = row[%d] || '-';
                  if (onVal  !== '-') onVal  = onVal  + '%s';
@@ -1941,7 +1942,7 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
             range_cell_js("diffVal", "onVal", "offVal", extra_expr = "estLine"),
             "               }
                return data;
-             }"), impact_w, guard, impact_tip, impact_suffix, on_val_idx, off_val_idx,
+             }"), impact_w, guard, impact_tip, impact_suffix, unit, on_val_idx, off_val_idx,
                unit, unit, on_rank_idx, off_rank_idx
   ))
 }
