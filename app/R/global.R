@@ -1136,6 +1136,29 @@ filter_chips_row <- function(chips_output_id, ...) {
   )
 }
 
+# Show or hide the range track, the on/off values and the points estimate
+# inside the Four Factors cells. Display-only and client-side: app.js toggles a
+# body class and remembers it in localStorage, so nothing round-trips to the
+# server and the state survives a DataTables redraw -- which per-cell state
+# would not, because DT re-renders every cell on sort, page and filter.
+ff_ranges_toggle <- function(view_mode_input_id) {
+  conditionalPanel(
+    condition = sprintf("input.%s == 'Four Factors'", view_mode_input_id),
+    tags$button(
+      type = "button",
+      class = "chips-ranges-toggle js-ranges-toggle",
+      `aria-pressed` = "false",
+      title = paste(
+        "Adds three things to every Four Factors cell: where the player ranks",
+        "across the league, his on-court and off-court rate, and the estimated",
+        "points that gap is worth."
+      ),
+      tags$i(class = "bi bi-bar-chart-line", `aria-hidden` = "true"),
+      tags$span(class = "js-ranges-toggle-label", "Show on/off detail")
+    )
+  )
+}
+
 # A min-possession slider sized for the chips row rather than the sidebar: no
 # tick grid, a fixed narrow track, and a small caption label. The long wording
 # lives in the tooltip, keyed the same way as the sidebar version was.

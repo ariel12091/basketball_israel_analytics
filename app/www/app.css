@@ -1293,6 +1293,61 @@ table.dataTable tbody td,
   color: var(--ibpl-text-muted);
 }
 
+/* The Four Factors detail toggle. It is an action, not a filter, and what it
+   does is not guessable from the table, so it carries a full label and more
+   presence than the filter chips beside it: outlined in the accent when off,
+   filled when on, so its state is readable at a glance. */
+.chips-ranges-toggle {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 6px 14px; border-radius: 16px;
+  font-size: 0.8rem; font-weight: 600; line-height: 1.3;
+  border: 1px solid var(--ibpl-accent);
+  background: transparent;
+  color: var(--ibpl-accent);
+  cursor: pointer; white-space: nowrap;
+  transition: background-color .15s ease, color .15s ease;
+}
+
+.chips-ranges-toggle .bi { font-size: 0.95rem; }
+
+.chips-ranges-toggle:hover {
+  background: rgba(var(--ibpl-accent-rgb), 0.14);
+}
+
+.chips-ranges-toggle:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 2px;
+}
+
+/* Filled when the detail is showing: the button reads as pressed rather than
+   as a second thing to click. */
+.chips-ranges-toggle[aria-pressed="true"] {
+  background: var(--ibpl-accent);
+  color: var(--ibpl-bg);
+}
+
+/* Four Factors cells collapse to their headline unless the Ranges toggle is
+   on. The cell was carrying four lines -- diff, track, on/off values and the
+   points estimate -- and only the diff is needed to scan the table. Everything
+   hidden here is either drawn from the diff (the estimate) or is the detail the
+   toggle exists to reveal. Keyed on the two cell classes, so the Summary view,
+   Tab 2, Shot Profile and Compare are untouched. */
+body:not(.ff-ranges-on) td.onoff-rtg-cell .rank-bar-container,
+body:not(.ff-ranges-on) td.onoff-rtg-cell .sub-text,
+body:not(.ff-ranges-on) td.onoff-rtg-cell .ff-impact-est,
+body:not(.ff-ranges-on) td.onoff-factor-cell .rank-bar-container,
+body:not(.ff-ranges-on) td.onoff-factor-cell .sub-text,
+body:not(.ff-ranges-on) td.onoff-factor-cell .ff-impact-est {
+  display: none !important;
+}
+
+/* .diff-val reserves space for the track beneath it; with nothing below, that
+   margin is a stray gap at the foot of every cell. */
+body:not(.ff-ranges-on) td.onoff-rtg-cell .diff-val,
+body:not(.ff-ranges-on) td.onoff-factor-cell .diff-val {
+  margin-bottom: 0;
+}
+
 body.filters-collapsed .ibpl-filter-col { display: none; }
 body.filters-collapsed .ibpl-main-col {
   flex: 0 0 100%;

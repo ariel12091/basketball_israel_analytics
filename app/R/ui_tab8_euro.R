@@ -94,7 +94,8 @@ ui_tab8_euro <- function() {
           minposs_slider("euro_min_all_poss", "Min Poss / side", "min_poss_side",
                          max = 2000, value = onoff_cfg$initial_min_all),
           minposs_slider("euro_min_on_poss", "Min ON Poss", "min_on_poss",
-                         max = 3000, value = onoff_cfg$initial_min_on)
+                         max = 3000, value = onoff_cfg$initial_min_on),
+          ff_ranges_toggle("euro_view_mode")
         ),
         DTOutput("euro_dt")
       )

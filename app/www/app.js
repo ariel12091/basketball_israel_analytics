@@ -1633,3 +1633,88 @@ document.addEventListener("keydown", function(e) {
   window.addEventListener("resize", close);
   window.addEventListener("scroll", close, true);
 })();
+
+/* ---- Four Factors range toggle -------------------------------------------
+   The Four Factors cell can show a range track, the on-court and off-court
+   values and a points estimate under its headline. That is four lines per cell
+   across ten cells, which is too much to scan, so the extra lines are hidden
+   until asked for.
+
+   A body class rather than per-cell state, for the same reason the filter
+   collapse uses one: DataTables re-renders every cell on sort, page and filter,
+   so anything stored on a cell is gone by the next draw. A class on <body>
+   survives all of it and costs nothing to re-apply.
+
+   Default is collapsed. Storage can throw outright in a private window, so
+   every access is guarded and a failure just means the state does not persist.
+   -------------------------------------------------------------------------- */
+(function() {
+  var STORE_KEY = "ibpl_ff_ranges";
+
+  function readStored() {
+    try {
+      return window.localStorage.getItem(STORE_KEY) === "1";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function writeStored(on) {
+    try {
+      window.localStorage.setItem(STORE_KEY, on ? "1" : "0");
+    } catch (e) {
+      /* private window or blocked site data: the toggle still works, it just
+         does not survive a reload. */
+    }
+  }
+
+  function syncToggles(on) {
+    var buttons = document.querySelectorAll(".js-ranges-toggle");
+    for (var i = 0; i < buttons.length; i++) {
+      buttons[i].setAttribute("aria-pressed", on ? "true" : "false");
+      var label = buttons[i].querySelector(".js-ranges-toggle-label");
+      if (label) label.textContent = on ? "Hide on/off detail" : "Show on/off detail";
+    }
+  }
+
+  function apply(on) {
+    document.body.classList.toggle("ff-ranges-on", on);
+    syncToggles(on);
+  }
+
+  function init() {
+    apply(readStored());
+
+    document.addEventListener("click", function(e) {
+      var btn = e.target.closest(".js-ranges-toggle");
+      if (!btn) return;
+      e.preventDefault();
+      var on = !document.body.classList.contains("ff-ranges-on");
+      apply(on);
+      writeStored(on);
+      // Cell content changes width, which changes how the Team and Player
+      // columns wrap, which changes row height. columns.adjust() alone does
+      // not re-measure that -- collapsing left every row at its expanded
+      // height until the next sort. A redraw does, and keeps the current page.
+      if (window.jQuery && window.jQuery.fn.dataTable) {
+        var api = window.jQuery.fn.dataTable.tables({ visible: true, api: true });
+        api.columns.adjust();
+        api.draw(false);
+      }
+    });
+
+    // The button is inside a conditionalPanel and the tables render lazily, so
+    // a freshly shown toggle has to be brought in line with the stored state.
+    if (window.jQuery) {
+      window.jQuery(document).on("shown.bs.tab shiny:value", function() {
+        apply(document.body.classList.contains("ff-ranges-on"));
+      });
+    }
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();
