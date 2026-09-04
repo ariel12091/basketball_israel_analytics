@@ -403,18 +403,15 @@ server_tab4 <- function(input, output, session, shared) {
     df
   })
 
+  # Percentile baseline: the season's whole game population, deliberately
+  # unfiltered. Filters -- the team selector included -- decide which rows are
+  # DISPLAYED, never how the heat cells are scaled, so a game keeps the same
+  # colour whether it is read in a league-wide table or a single team's log.
+  # Same contract as Tab 5 (see test-tab5-percentile-population.R).
   gl_percentile_schedule <- reactive({
     sched <- gl_schedule()
     req(nrow(sched) > 0)
-
-    df <- sched
-    team_id_str <- input$gl_team
-    if (!is.null(team_id_str) && nzchar(team_id_str)) {
-      team_id_val <- as.integer(team_id_str)
-      df <- df %>% filter(team_id == !!team_id_val)
-    }
-
-    df
+    sched
   })
 
   gl_starters_filter <- reactive({

@@ -102,14 +102,12 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
   }
 
   # Match the Israeli companion: filters decide which games are displayed,
-  # but their percentiles remain anchored to the selected teams' full-season
-  # game population. Date, opponent, phase, result, round, last-N, and starter
-  # filters therefore cannot rescale the heat cells.
+  # but their percentiles stay anchored to the season's whole game population.
+  # Team, date, opponent, phase, result, round, last-N, and starter filters
+  # therefore cannot rescale the heat cells.
   percentile_games <- reactive({
     df <- season_rows()
     if (is.null(df) || !nrow(df)) return(df)
-    ids <- selected_team_ids()
-    if (length(ids)) df <- df %>% filter(team_id %in% ids)
     build_games(df, apply_starters = FALSE)
   })
 
