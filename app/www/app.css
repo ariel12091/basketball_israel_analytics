@@ -30,9 +30,10 @@
      clears WCAG AA against every step of the ramp: measured 4.93 against the
      greenest cell, where --ibpl-text reaches only 4.17 and 90% opacity 4.33. */
   --ibpl-cell-text: #FFFFFF;
-  /* Secondary text is still small normal-weight text, so it keeps the same
-     AA-safe white as the primary value. Weight carries the hierarchy without
-     sacrificing contrast on the green end of the heat ramp. */
+
+  /* Secondary text on a heat-coloured cell. It remains a separate semantic
+     token so a future ramp can tone it down independently; this ramp requires
+     white to retain WCAG AA contrast at its brightest green. */
   --ibpl-cell-text-2: #FFFFFF;
 
   /* brand */
