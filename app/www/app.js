@@ -1645,29 +1645,12 @@ document.addEventListener("keydown", function(e) {
    so anything stored on a cell is gone by the next draw. A class on <body>
    survives all of it and costs nothing to re-apply.
 
-   Default is collapsed. Storage can throw outright in a private window, so
-   every access is guarded and a failure just means the state does not persist.
+   Deliberately NOT persisted. The detail IS the view -- every load shows it,
+   and the button is there for anyone who wants a bare grid of diffs for a
+   moment. Remembering the hidden state would silently withhold the range
+   tracks from someone who collapsed them once, weeks ago.
    -------------------------------------------------------------------------- */
 (function() {
-  var STORE_KEY = "ibpl_ff_ranges";
-
-  function readStored() {
-    try {
-      return window.localStorage.getItem(STORE_KEY) === "1";
-    } catch (e) {
-      return false;
-    }
-  }
-
-  function writeStored(on) {
-    try {
-      window.localStorage.setItem(STORE_KEY, on ? "1" : "0");
-    } catch (e) {
-      /* private window or blocked site data: the toggle still works, it just
-         does not survive a reload. */
-    }
-  }
-
   function syncToggles(on) {
     var buttons = document.querySelectorAll(".js-ranges-toggle");
     for (var i = 0; i < buttons.length; i++) {
@@ -1678,20 +1661,19 @@ document.addEventListener("keydown", function(e) {
   }
 
   function apply(on) {
-    document.body.classList.toggle("ff-ranges-on", on);
+    document.body.classList.toggle("ff-ranges-off", !on);
     syncToggles(on);
   }
 
   function init() {
-    apply(readStored());
+    apply(true);
 
     document.addEventListener("click", function(e) {
       var btn = e.target.closest(".js-ranges-toggle");
       if (!btn) return;
       e.preventDefault();
-      var on = !document.body.classList.contains("ff-ranges-on");
+      var on = document.body.classList.contains("ff-ranges-off");
       apply(on);
-      writeStored(on);
       // Cell content changes width, which changes how the Team and Player
       // columns wrap, which changes row height. columns.adjust() alone does
       // not re-measure that -- collapsing left every row at its expanded
@@ -1707,7 +1689,7 @@ document.addEventListener("keydown", function(e) {
     // a freshly shown toggle has to be brought in line with the stored state.
     if (window.jQuery) {
       window.jQuery(document).on("shown.bs.tab shiny:value", function() {
-        apply(document.body.classList.contains("ff-ranges-on"));
+        apply(!document.body.classList.contains("ff-ranges-off"));
       });
     }
   }

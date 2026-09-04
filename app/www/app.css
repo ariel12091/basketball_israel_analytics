@@ -1326,25 +1326,27 @@ table.dataTable tbody td,
   color: var(--ibpl-bg);
 }
 
-/* Four Factors cells collapse to their headline unless the Ranges toggle is
-   on. The cell was carrying four lines -- diff, track, on/off values and the
+/* Four Factors cells show their detail by default. This collapses them to the
+   headline when the toggle is off -- the class means HIDDEN, so a page that
+   has not run app.js yet renders the full cell rather than flashing a bare
+   one. The cell was carrying four lines -- diff, track, on/off values and the
    points estimate -- and only the diff is needed to scan the table. Everything
    hidden here is either drawn from the diff (the estimate) or is the detail the
    toggle exists to reveal. Keyed on the two cell classes, so the Summary view,
    Tab 2, Shot Profile and Compare are untouched. */
-body:not(.ff-ranges-on) td.onoff-rtg-cell .rank-bar-container,
-body:not(.ff-ranges-on) td.onoff-rtg-cell .sub-text,
-body:not(.ff-ranges-on) td.onoff-rtg-cell .ff-impact-est,
-body:not(.ff-ranges-on) td.onoff-factor-cell .rank-bar-container,
-body:not(.ff-ranges-on) td.onoff-factor-cell .sub-text,
-body:not(.ff-ranges-on) td.onoff-factor-cell .ff-impact-est {
+body.ff-ranges-off td.onoff-rtg-cell .rank-bar-container,
+body.ff-ranges-off td.onoff-rtg-cell .sub-text,
+body.ff-ranges-off td.onoff-rtg-cell .ff-impact-est,
+body.ff-ranges-off td.onoff-factor-cell .rank-bar-container,
+body.ff-ranges-off td.onoff-factor-cell .sub-text,
+body.ff-ranges-off td.onoff-factor-cell .ff-impact-est {
   display: none !important;
 }
 
 /* .diff-val reserves space for the track beneath it; with nothing below, that
    margin is a stray gap at the foot of every cell. */
-body:not(.ff-ranges-on) td.onoff-rtg-cell .diff-val,
-body:not(.ff-ranges-on) td.onoff-factor-cell .diff-val {
+body.ff-ranges-off td.onoff-rtg-cell .diff-val,
+body.ff-ranges-off td.onoff-factor-cell .diff-val {
   margin-bottom: 0;
 }
 

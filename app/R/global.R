@@ -1147,14 +1147,14 @@ ff_ranges_toggle <- function(view_mode_input_id) {
     tags$button(
       type = "button",
       class = "chips-ranges-toggle js-ranges-toggle",
-      `aria-pressed` = "false",
+      `aria-pressed` = "true",
       title = paste(
         "Adds three things to every Four Factors cell: where the player ranks",
         "across the league, his on-court and off-court rate, and the estimated",
         "points that gap is worth."
       ),
       tags$i(class = "bi bi-bar-chart-line", `aria-hidden` = "true"),
-      tags$span(class = "js-ranges-toggle-label", "Show on/off detail")
+      tags$span(class = "js-ranges-toggle-label", "Hide on/off detail")
     )
   )
 }
