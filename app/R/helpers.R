@@ -1896,7 +1896,7 @@ range_cell_js <- function(value_expr, on_expr, off_expr,
     "                      '<div class=\"sub-text\">' +\n",
     "                        '<span style=\"font-weight:700; color:var(--ibpl-cell-text);\">' + ", on_expr, " + '</span>' +\n",
     "                        ' <span style=\"opacity:0.6;\">|</span> ' +\n",
-    "                        '<span style=\"color:var(--ibpl-cell-text-2);\">' + ", off_expr, " + '</span>' +\n",
+    "                        '<span style=\"font-size:0.85em; color:var(--ibpl-cell-text-2);\">' + ", off_expr, " + '</span>' +\n",
     "                      '</div>'", tail_js, "\n"
   )
 }
@@ -1913,7 +1913,7 @@ range_cell_js <- function(value_expr, on_expr, off_expr,
 # change the output and stop this being a provable move.
 ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
                             impact_w = 0, impact_suffix = "", impact_tip = "",
-                            show_impact = TRUE) {
+                            show_impact = TRUE, unit = "") {
   guard <- if (isTRUE(show_impact)) {
     "data !== null && data !== '' && !isNaN(parseFloat(data))"
   } else {
@@ -1933,13 +1933,16 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
                  var diffVal = (data === null) ? '-' : (parseFloat(data) > 0 ? '+' + data : data);
                  var onVal   = row[%d] || '-';
                  var offVal  = row[%d] || '-';
+                 if (onVal  !== '-') onVal  = onVal  + '%s';
+                 if (offVal !== '-') offVal = offVal + '%s';
                  var onPct   = row[%d];
                  var offPct  = row[%d];
 ",
             range_cell_js("diffVal", "onVal", "offVal", extra_expr = "estLine"),
             "               }
                return data;
-             }"), impact_w, guard, impact_tip, impact_suffix, on_val_idx, off_val_idx, on_rank_idx, off_rank_idx
+             }"), impact_w, guard, impact_tip, impact_suffix, on_val_idx, off_val_idx,
+               unit, unit, on_rank_idx, off_rank_idx
   ))
 }
 
@@ -2347,7 +2350,8 @@ onoff_four_factors_datatable <- function(df, stat_filters, show_impact, pivot = 
           js_func <- ff_diff_cell_js(
             on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
             impact_w, impact_suffix, impact_tip,
-            show_impact = isTRUE(show_impact) && !is_rating
+            show_impact = isTRUE(show_impact) && !is_rating,
+            unit = if (is_rating) "" else "%"
           )
           defs[[length(defs) + 1]] <- list(
             targets = target_idx, render = js_func,
