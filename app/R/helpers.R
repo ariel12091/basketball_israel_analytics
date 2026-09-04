@@ -1983,8 +1983,10 @@ onoff_summary_datatable <- function(df, stat_filters) {
       idx_on  <- which(names(df) == "Off ON PPP") - 1
       idx_off <- which(names(df) == "Off OFF PPP") - 1
       idx_use <- which(names(df) == "minutes") - 1
-      idx_pr_on  <- which(names(df) == "pr_off_on") - 1
-      idx_pr_off <- which(names(df) == "pr_off_off") - 1
+      idx_on_net  <- which(names(df) == "On Net RTG") - 1
+      idx_off_net <- which(names(df) == "Off Net RTG") - 1
+      idx_pr_on_net  <- which(names(df) == "pr_on_net") - 1
+      idx_pr_off_net <- which(names(df) == "pr_off_net") - 1
 
       diff_cols <- c("Net RTG Diff", "Off ON Diff", "Def ON Diff", "On Net RTG", "Off Net RTG")
       idx_diff <- which(names(df) %in% setdiff(diff_cols, "Net RTG Diff")) - 1
@@ -2146,10 +2148,10 @@ onoff_summary_datatable <- function(df, stat_filters) {
                                        list(targets = idx_net, render = DT::JS(
                                          "function(data, type, row, meta) {",
                                          "  if (type !== 'display' || !row || data === null) return data;",
-                                         sprintf("  var onPct = row[%d] === null ? null : row[%d] * 100;", idx_pr_on, idx_pr_on),
-                                         sprintf("  var offPct = row[%d] === null ? null : row[%d] * 100;", idx_pr_off, idx_pr_off),
-                                         sprintf("  var onTxt = row[%d] === null ? '-' : parseFloat(row[%d]).toFixed(1);", idx_on, idx_on),
-                                         sprintf("  var offTxt = row[%d] === null ? '-' : parseFloat(row[%d]).toFixed(1);", idx_off, idx_off),
+                                         sprintf("  var onPct = row[%d] === null ? null : row[%d] * 100;", idx_pr_on_net, idx_pr_on_net),
+                                         sprintf("  var offPct = row[%d] === null ? null : row[%d] * 100;", idx_pr_off_net, idx_pr_off_net),
+                                         sprintf("  var onTxt = row[%d] === null ? '-' : parseFloat(row[%d]).toFixed(1);", idx_on_net, idx_on_net),
+                                         sprintf("  var offTxt = row[%d] === null ? '-' : parseFloat(row[%d]).toFixed(1);", idx_off_net, idx_off_net),
                                          "  var val = parseFloat(data);",
                                          "  var head = isNaN(val) ? data : (val > 0 ? '+' + val.toFixed(2) : val.toFixed(2));",
                                          range_cell_js(

@@ -96,6 +96,40 @@ test_that("UI files style themselves through tokens, not literal hex", {
   }
 })
 
+test_that("UI files do not hard-code rgb channels", {
+  ui_files <- c(
+    "ui_tab0_home.R", "ui_tab1_onoff.R", "ui_tab2_lineup.R",
+    "ui_tab4_gamelogs.R", "ui_tab7_compare.R",
+    "ui_tab9_euro_team.R", "ui_tab10_euro_lineups.R"
+  )
+
+  for (f in ui_files) {
+    txt <- read_repo_txt("R", f)
+    expect_false(
+      grepl("rgba?\\(\\s*[0-9]+\\s*,\\s*[0-9]+\\s*,\\s*[0-9]+", txt),
+      info = paste(f, "still carries literal RGB channels")
+    )
+  }
+})
+
+test_that("heat-cell text retains WCAG AA contrast across the ramp", {
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+  contrast <- function(a, b) {
+    la <- rel_luminance(a); lb <- rel_luminance(b)
+    (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+  }
+  global_src <- readLines(repo_file("R", "global.R"), warn = FALSE)
+  anchor_line <- global_src[startsWith(global_src, "RAMP_ANCHORS")]
+  anchor_env <- new.env()
+  eval(parse(text = anchor_line), envir = anchor_env)
+  ramp <- grDevices::colorRampPalette(anchor_env$RAMP_ANCHORS)(20)
+
+  for (token in c("--ibpl-cell-text", "--ibpl-cell-text-2")) {
+    ratios <- vapply(ramp, function(bg) contrast(tokens[[token]], bg), numeric(1))
+    expect_gte(min(ratios), 4.5, info = token)
+  }
+})
+
 # Every neutral moved from Primer's cool blue-black to a warm ground. The
 # contract is that hue changed and luminance did not: contrast ratios across
 # the app are a function of luminance alone, so matching it means no text

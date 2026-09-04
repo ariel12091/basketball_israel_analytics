@@ -34,11 +34,9 @@ test_that("the sub-text keeps on-court primary and off-court secondary", {
   # and lose which one is the on-court figure.
   expect_true(grepl("font-weight:700", js, fixed = TRUE))
   expect_true(grepl("opacity:0.6", js, fixed = TRUE))
-  # Two cues separate the on-court value from the off-court one: weight and
-  # tone. Weight alone was not enough at 11px in a condensed face -- both read
-  # tone. --ibpl-cell-text-2 sits at 54% of white's luminance, a visible step
-  # down, and still scores 3.21 against the greenest heat cell where the old
-  # #666 scored 1.17.
+  # Weight separates the on-court value from the off-court one. Their colours
+  # remain separate semantic tokens, but the current heat ramp requires both
+  # to resolve to white to retain normal-text contrast at its brightest green.
   expect_true(grepl("font-weight:700; color:var(--ibpl-cell-text)", js, fixed = TRUE))
   expect_true(grepl("color:var(--ibpl-cell-text-2)", js, fixed = TRUE))
   expect_false(grepl("#666", js, fixed = TRUE))
@@ -89,6 +87,19 @@ summary_body <- function() {
 
 test_that("the summary verdict column carries a non-colour rank cue", {
   expect_true(grepl("range_cell_js(", summary_body(), fixed = TRUE))
+})
+
+test_that("the summary net verdict uses net-rating values and ranks", {
+  body <- summary_body()
+
+  expect_true(grepl('which(names(df) == "On Net RTG")', body, fixed = TRUE))
+  expect_true(grepl('which(names(df) == "Off Net RTG")', body, fixed = TRUE))
+  expect_true(grepl('which(names(df) == "pr_on_net")', body, fixed = TRUE))
+  expect_true(grepl('which(names(df) == "pr_off_net")', body, fixed = TRUE))
+  expect_true(grepl("idx_on_net, idx_on_net", body, fixed = TRUE))
+  expect_true(grepl("idx_off_net, idx_off_net", body, fixed = TRUE))
+  expect_true(grepl("idx_pr_on_net, idx_pr_on_net", body, fixed = TRUE))
+  expect_true(grepl("idx_pr_off_net, idx_pr_off_net", body, fixed = TRUE))
 })
 
 test_that("summary background colour is confined to the verdict columns", {
