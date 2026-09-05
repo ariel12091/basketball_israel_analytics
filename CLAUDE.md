@@ -455,6 +455,11 @@ than adding a special case:
 1. Apply shinyapps.io worker settings from `docs/shinyapps_worker_tuning.md` (dashboard)
 2. If concurrency still hurts: `ExtendedTask` + `promises`/`mirai` for slowest filtered-path queries
 
+**Data:**
+1. **2025 State Cup has no play-by-play.** `game_type = 35` is the State Cup: 7 games a season (4 QF, 2 SF, 1 final), and the only games with a NULL `gn` — correct, a cup bracket has no league game number. The 2026 seven (ids 291-309, final = 309) were processed; the 2025 seven (ids **737922-738725**) have **zero rows in `etl_processed_games`** and so no segments, actions or possessions. They sit in `schedule` and `final_schedule_mv` with final scores, flow into the schedule-derived team MVs, and are invisible in every on/off, lineup and minutes view. `pbp_link` is empty for all 14 cup games including the processed ones, so that column is not the fetch route — see `etl/run_state_cup_final_etl.ps1` and `docs/state_cup_final_309.json.md` for how 2026 was done. Seven games of playoff-calibre data.
+   Note the 2025 cup ids come from a different provider space (normal range is 23-64942). Harmless for display — both game-log tabs sort on date first and use `game_id` only as a same-date tiebreak — but anything keying or ordering on `game_id` alone will place them after every other game.
+   They are also the 14 team-games that `verify_minutes_migration()` skips as "absent from both sides"; if they are ever backfilled that exemption should stop finding them.
+
 **Performance (React+Plumber):**
 1. Profile SQL functions with `EXPLAIN (ANALYZE, BUFFERS)` for filtered cases
 2. Audit indexes only after query-plan evidence
