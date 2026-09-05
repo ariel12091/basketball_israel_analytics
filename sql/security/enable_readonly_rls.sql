@@ -108,7 +108,9 @@ DECLARE
     'team_four_factors_mv',
     'lineup_totals_by_game',
     'sub_lineups',
-    'sub_lineups_stats_mv'
+    'sub_lineups_stats_mv',
+    'ribbon_segments_v',
+    'ribbon_margin_v'
   ];
 BEGIN
   SELECT EXISTS (
