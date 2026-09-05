@@ -2058,10 +2058,16 @@ Append to `app/R/helpers.R`:
 ```r
 # A game-log cell that opens the stint ribbon. Both ids travel on the anchor so
 # the click handler needs no table lookup.
-ribbon_link_cell <- function(game_id, team_id, label) {
+ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_click",
+                             own_team = "", opp_team = "") {
   sprintf(
-    '<a href="#" class="ribbon-link" data-game-id="%d" data-team-id="%d" onclick="window.handleRibbonLinkClick(this); return false;">%s</a>',
-    as.integer(game_id), as.integer(team_id), htmltools::htmlEscape(label)
+    paste0('<a href="#" class="ribbon-link" data-game-id="%d" data-team-id="%d" ',
+           'data-input-id="%s" data-own-team="%s" data-opp-team="%s" ',
+           'onclick="window.handleRibbonLinkClick(this); return false;">%s</a>'),
+    as.integer(game_id), as.integer(team_id),
+    htmltools::htmlEscape(input_id),
+    htmltools::htmlEscape(own_team), htmltools::htmlEscape(opp_team),
+    htmltools::htmlEscape(label)
   )
 }
 ```
@@ -2234,12 +2240,13 @@ git commit -m "feat: open the stint ribbon from Israeli game logs"
 Append to `app/tests/testthat/test-stint-ribbon.R`:
 
 ```r
-test_that("the ribbon link cell takes the input id as an argument, not a league", {
-  # One handler serves both tabs; the league lives in the argument, not the name.
-  israeli <- ribbon_link_cell(1L, 2L, "x", input_id = "gl_ribbon_click")
+test_that("one link cell serves both leagues via its input_id argument", {
+  # The league lives in the argument, not in the function name -- per CLAUDE.md,
+  # no parallel euro_ implementation of logic that already exists.
+  israeli <- ribbon_link_cell(1L, 2L, "x")
   euro <- ribbon_link_cell(1L, 2L, "x", input_id = "euro_gl_ribbon_click")
-  expect_match(israeli, "gl_ribbon_click", fixed = TRUE)
-  expect_match(euro, "euro_gl_ribbon_click", fixed = TRUE)
+  expect_match(israeli, 'data-input-id="gl_ribbon_click"', fixed = TRUE)
+  expect_match(euro, 'data-input-id="euro_gl_ribbon_click"', fixed = TRUE)
 })
 
 test_that("both EuroLeague view modes build the ribbon link", {
@@ -2270,34 +2277,18 @@ cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribb
 
 Expected: FAIL, `unused argument (input_id = ...)`.
 
-- [ ] **Step 3: Parameterise the link cell and the JS handler**
+- [ ] **Step 3: Route the JS handler by input id**
 
-In `app/R/helpers.R`, replace `ribbon_link_cell` with:
-
-```r
-ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_click",
-                             own_team = "", opp_team = "") {
-  sprintf(
-    paste0('<a href="#" class="ribbon-link" data-game-id="%d" data-team-id="%d" ',
-           'data-input-id="%s" data-own-team="%s" data-opp-team="%s" ',
-           'onclick="window.handleRibbonLinkClick(this); return false;">%s</a>'),
-    as.integer(game_id), as.integer(team_id),
-    htmltools::htmlEscape(input_id),
-    htmltools::htmlEscape(own_team), htmltools::htmlEscape(opp_team),
-    htmltools::htmlEscape(label)
-  )
-}
-```
-
-In `app/www/app.js`, change the handler body's `setInputValue` target:
+`ribbon_link_cell()` already takes `input_id` (Task 7 defined it that way), and
+already emits `data-input-id`. The handler must honour it rather than hardcoding
+the Israeli input. In `app/www/app.js`, confirm the ribbon handler reads it:
 
 ```js
-    window.Shiny.setInputValue(linkEl.dataset.inputId || "gl_ribbon_click", {
-      game_id: gameId,
-      team_id: teamId,
-      ts: Date.now()
-    }, { priority: "event" });
+    window.ibplSendShinyEvent(linkEl.dataset.inputId || "gl_ribbon_click", {
 ```
+
+If Task 7 left a hardcoded `"gl_ribbon_click"` there, change it to the line
+above. No change to `helpers.R` is needed in this task.
 
 - [ ] **Step 4: Wire Tab 11**
 
@@ -2356,9 +2347,10 @@ Set each of those `DT::datatable(...)` calls to
   })
 ```
 
-- [ ] **Step 5: Update Task 7's call site**
+- [ ] **Step 5: Confirm Tab 4 still passes**
 
-`server_tab4.R` still calls `ribbon_link_cell` without `input_id`; the default keeps it working. Confirm no change is needed by re-running the Israeli test.
+`server_tab4.R` relies on the `input_id` default, so nothing there changes.
+Re-run the focused suite to confirm Task 7's tests still pass alongside Task 8's.
 
 - [ ] **Step 6: Run the full suite**
 
