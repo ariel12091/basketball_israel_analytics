@@ -287,6 +287,52 @@ LEFT JOIN player_minutes pm
  AND pm.opp_starters = ss.opp_starters
 GROUP BY ss.player_id, ss.team_id, ss.game_id, ss.game_year, ss.is_on_key,
          ss.type_lineup, ss.num_starters, ss.own_starters, ss.opp_starters
+UNION ALL
+-- Slices with floor time but no offense-perspective row in segment_stats.
+-- segment_stats drives the rows above and is grouped by type_lineup, so a
+-- slice in which the player's lineup recorded no offensive possession had no
+-- offense row for MAX(pm.minutes) FILTER (...) to land on, and its minutes
+-- were dropped entirely. Emitted here as offense rows with zero counts and
+-- their real minutes -- the same treatment sub_lineups_by_day and
+-- lineup_four_factors_by_game get. They cannot collide with idx_pff_pk:
+-- by construction no offense row exists for the slice.
+SELECT
+  pm.player_id,
+  pm.team_id,
+  pm.game_id,
+  pm.game_year,
+  pm.is_on_key,
+  'offense'::text AS type_lineup,
+  pm.num_starters,
+  pm.own_starters,
+  pm.opp_starters,
+  0::numeric AS total_points,
+  0::bigint  AS total_poss,
+  0::bigint  AS ts_poss_count,
+  0::bigint  AS oreb_count,
+  0::bigint  AS oreb_opportunities,
+  0::bigint  AS tov_count,
+  0::bigint  AS steal_count,
+  0::bigint  AS deflection_count,
+  0::bigint  AS total_ft_attempts,
+  0::bigint  AS total_fga,
+  0::bigint  AS total_fgm,
+  0::bigint  AS total_fg3_made,
+  0::bigint  AS player_ts_poss_count,
+  0::bigint  AS player_tov_count,
+  pm.minutes
+FROM player_minutes pm
+WHERE NOT EXISTS (
+    SELECT 1 FROM segment_stats s2
+     WHERE s2.player_id = pm.player_id
+       AND s2.team_id = pm.team_id
+       AND s2.game_id = pm.game_id
+       AND s2.game_year = pm.game_year
+       AND s2.is_on_key = pm.is_on_key
+       AND s2.num_starters = pm.num_starters
+       AND s2.own_starters = pm.own_starters
+       AND s2.opp_starters = pm.opp_starters
+       AND s2.type_lineup = 'offense')
 )
 SELECT
   ff.player_id,

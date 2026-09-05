@@ -164,6 +164,43 @@ day_stats AS (
         b.game_id,
         s.game_year,
         b.opp_starters
+),
+-- Slices with floor time but no offense-perspective row.
+--
+-- day_stats groups by type_lineup, so an offense row exists only where `base`
+-- had offense rows for that slice. A lineup that was on court against a given
+-- opponent-starters configuration without recording an offensive possession
+-- therefore had a defence row only, and since minutes attach to the offense
+-- row its floor time had nowhere to land -- 5,772 slices holding 325.9
+-- minutes, i.e. 0.371 per team-game, measured 2026-09-05.
+--
+-- These are emitted as offense rows with zero counts and their real minutes.
+-- The row is true: the lineup played, and took no shot. The defence row of
+-- the same slice supplies the date, season and starter count.
+slices_without_offense AS (
+    SELECT
+        wm.team_id,
+        wm.lineup_hash,
+        wm.game_id,
+        wm.opp_starters,
+        wm.minutes,
+        MAX(ds.g_date)       AS g_date,
+        MAX(ds.game_year)    AS game_year,
+        MAX(ds.num_starters) AS num_starters
+    FROM window_minutes wm
+    JOIN day_stats ds
+      ON ds.team_id = wm.team_id
+     AND ds.lineup_hash = wm.lineup_hash
+     AND ds.game_id = wm.game_id
+     AND ds.opp_starters IS NOT DISTINCT FROM wm.opp_starters
+    WHERE NOT EXISTS (
+        SELECT 1 FROM day_stats d
+         WHERE d.team_id = wm.team_id
+           AND d.lineup_hash = wm.lineup_hash
+           AND d.game_id = wm.game_id
+           AND d.opp_starters IS NOT DISTINCT FROM wm.opp_starters
+           AND d.type_lineup = 'offense')
+    GROUP BY wm.team_id, wm.lineup_hash, wm.game_id, wm.opp_starters, wm.minutes
 )
 SELECT
     ds.team_id,
@@ -187,6 +224,24 @@ LEFT JOIN window_minutes wm
  AND wm.lineup_hash = ds.lineup_hash
  AND wm.game_id = ds.game_id
  AND wm.opp_starters IS NOT DISTINCT FROM ds.opp_starters
+UNION ALL
+SELECT
+    swo.team_id,
+    swo.lineup_hash,
+    'offense'::text AS type_lineup,
+    swo.g_date,
+    swo.game_id,
+    swo.game_year,
+    swo.opp_starters,
+    0::bigint  AS total_poss,
+    0::numeric AS total_pts,
+    0::bigint  AS fg2_made,
+    0::bigint  AS fg2_att,
+    0::bigint  AS fg3_made,
+    0::bigint  AS fg3_att,
+    swo.num_starters,
+    swo.minutes
+FROM slices_without_offense swo
 WITH DATA;
 
 -- View indexes:

@@ -219,6 +219,37 @@ segment_stats AS (
     cd.num_starters,
     cd.opp_starters,
     cd.segment_id
+),
+-- Same defect as sub_lineups_by_day: segment_stats groups by type_lineup, so
+-- an offense row exists only where the lineup recorded an offensive
+-- possession in that slice, and minutes attach to the offense row. A slice
+-- with floor time and no offence therefore lost its minutes entirely.
+-- Emitted here as offense rows with zero counts and their real minutes.
+-- These cannot collide with idx_lff_pk: by construction no offense row exists
+-- for the slice, and num_starters is a property of the lineup.
+slices_without_offense AS (
+  SELECT
+    wm.team_id,
+    wm.lineup_hash,
+    wm.game_id,
+    wm.opp_starters,
+    wm.minutes,
+    MAX(ss.game_year)    AS game_year,
+    MAX(ss.num_starters) AS num_starters
+  FROM window_minutes wm
+  JOIN segment_stats ss
+    ON ss.team_id = wm.team_id
+   AND ss.lineup_hash = wm.lineup_hash
+   AND ss.game_id = wm.game_id
+   AND ss.opp_starters IS NOT DISTINCT FROM wm.opp_starters
+  WHERE NOT EXISTS (
+      SELECT 1 FROM segment_stats s2
+       WHERE s2.team_id = wm.team_id
+         AND s2.lineup_hash = wm.lineup_hash
+         AND s2.game_id = wm.game_id
+         AND s2.opp_starters IS NOT DISTINCT FROM wm.opp_starters
+         AND s2.type_lineup = 'offense')
+  GROUP BY wm.team_id, wm.lineup_hash, wm.game_id, wm.opp_starters, wm.minutes
 )
 SELECT
   ss.lineup_hash,
@@ -254,6 +285,27 @@ GROUP BY
   ss.num_starters,
   ss.opp_starters,
   wm.minutes
+UNION ALL
+SELECT
+  swo.lineup_hash,
+  swo.team_id,
+  swo.game_id,
+  swo.game_year,
+  'offense'::text AS type_lineup,
+  swo.num_starters,
+  swo.opp_starters,
+  0::numeric AS total_points,
+  0::bigint  AS total_poss,
+  0::bigint  AS ts_poss_count,
+  0::bigint  AS oreb_count,
+  0::bigint  AS oreb_opportunities,
+  0::bigint  AS tov_count,
+  0::bigint  AS total_ft_attempts,
+  0::bigint  AS total_fga,
+  0::bigint  AS total_fgm,
+  0::bigint  AS total_fg3_made,
+  swo.minutes
+FROM slices_without_offense swo
 WITH DATA;
 
 -- Indexes for the dynamic function.

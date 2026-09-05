@@ -146,10 +146,10 @@ others <- list(
                from basketball_test.onoff_default_mv group by 1,2)
     select avg(p.m/g.games) v from p join g on g.team_id=p.team_id and g.game_year=p.yr"),
   list(lbl = "pff minutes             ", sql = "
-    with d as (select distinct game_id, team_id, player_id, minutes
-               from basketball_test.player_four_factors_by_game
-               where is_on_key = 1 and minutes is not null)
-    select avg(m) v from (select game_id, team_id, sum(minutes) m from d group by 1,2) t"),
+    select avg(m) v from (select game_id, team_id, sum(minutes) m
+      from basketball_test.player_four_factors_by_game
+      where is_on_key = 1 and type_lineup = 'offense' and minutes is not null
+      group by 1,2) t"),
   list(lbl = "pff onoff_minutes       ", sql = "
     select avg(m) v from (select game_id, team_id, sum(onoff_minutes) m
       from basketball_test.player_four_factors_by_game
