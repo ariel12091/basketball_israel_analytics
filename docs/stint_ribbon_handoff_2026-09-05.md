@@ -22,7 +22,7 @@ plotting library, one database round trip per open.
 | 0 — test baseline | complete |
 | 1 — EuroLeague views + grants | complete, review clean |
 | 2 — lane transforms | complete, review clean (1 fix round) |
-| 3 — clock frame + margin series | fix applied; **scoped re-review was in flight when we paused** |
+| 3 — clock frame + margin series | complete, review clean (1 fix round) |
 | 4 — SVG builder | not started |
 | 5 — readers | not started |
 | 6 — CSS + hover JS | not started |
@@ -32,9 +32,12 @@ plotting library, one database round trip per open.
 Shipped so far: 6 helper functions in `helpers.R`, 24 tests (51 assertions,
 all passing), 2 EuroLeague views, both security enumerations updated.
 
-**On resume:** read the ledger first. Task 3's re-review verdict may never have
-arrived; if not, re-run it (`review-8b7c9da..86dd73c.diff` is already written)
-rather than assuming the fix landed. Then continue at Task 4.
+**On resume:** read the ledger first, then start at **Task 4 (SVG builder)**.
+Its brief has not been generated yet.
+
+Task 3's scoped re-review arrived just after the pause and closed all three
+findings, confirming the strengthened clamp test by mutation (flipping
+`fromLast = TRUE` to `FALSE` makes it fail, as it must).
 
 ## Outstanding manual step
 
@@ -64,7 +67,12 @@ Four test files skip on env gates as designed (`RUN_DB_TESTS`,
 Both the **Edit tool** and **`sed -i`** silently normalise the whole file. Task 2
 committed 384 rewritten lines that way (638 insertions / 384 deletions for what
 should have been +90) and had to redo the commit; Task 3's mutation check
-stripped every CR byte in the working tree before catching it. The route that
+stripped every CR byte in the working tree before catching it.
+
+It is not a function of edit size: Task 3's re-reviewer used the Edit tool to
+change **one token** (`fromLast = TRUE` → `FALSE`) and the CR count jumped
+2,670 → 3,194 with a 524-line diffstat. For a single-token change on this file,
+a binary-mode exact-byte replace produced a true one-line diff. The route that
 works: write the new block to a temp file outside the repo and `cat tmpfile >>`
 it on. Verify before every commit:
 
