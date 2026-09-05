@@ -212,7 +212,7 @@ DBI::dbWithTransaction(con, {
   # Freeze the truth used throughout verification, including concurrent ETL.
   dbExecute(con, "LOCK TABLE basketball_test.df_pts_poss_lineups_longer_mv IN SHARE MODE")
   rebuild_minutes_relations(con, targets, definitions)
-  dbExecute(con, hardening)
+  dbExecute(con, hardening, immediate = TRUE)  # 76 statements
   violations <- dbGetQuery(con, audit)
   if (nrow(violations)) {
     print(violations)

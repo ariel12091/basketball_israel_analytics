@@ -14,7 +14,10 @@ rebuild_minutes_relations <- function(con, targets, definitions) {
   for (i in seq_along(targets)) {
     message("Creating ", targets[[i]]$name)
     # Execute complete SQL: splitting on semicolons corrupts comments/DO blocks.
-    DBI::dbExecute(con, definitions[[i]])
+    # immediate = TRUE uses the simple query protocol. The extended one takes
+    # a single statement, and these files carry the CREATE plus its indexes;
+    # splitting on semicolons is not an option (comments, DO blocks).
+    DBI::dbExecute(con, definitions[[i]], immediate = TRUE)
     DBI::dbGetQuery(con, sprintf("SELECT count(*) FROM %s",
       DBI::dbQuoteIdentifier(con, DBI::Id(schema = "basketball_test", table = targets[[i]]$name))))
     index_matches <- regmatches(definitions[[i]], gregexpr(
