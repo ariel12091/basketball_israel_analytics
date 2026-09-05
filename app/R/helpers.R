@@ -3327,3 +3327,44 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
     lane_rects
   )
 }
+
+# ---------------- Stint ribbon: reader normalisers ----------------
+
+ribbon_normalise_lanes <- function(raw, own_team_id) {
+  if (is.null(raw) || !nrow(raw)) {
+    return(data.frame(side = character(0), player_key = character(0),
+                      player_label = character(0),
+                      start_elapsed = numeric(0), end_elapsed = numeric(0),
+                      stringsAsFactors = FALSE))
+  }
+  data.frame(
+    side = ifelse(as.integer(raw$team_id) == as.integer(own_team_id), "own", "opp"),
+    player_key = as.character(raw$player_id),
+    player_label = as.character(raw$player_label),
+    start_elapsed = as.numeric(raw$start_elapsed),
+    end_elapsed = as.numeric(raw$end_elapsed),
+    stringsAsFactors = FALSE
+  )
+}
+
+ribbon_sign_margin <- function(m, own_team_id, home_team_id) {
+  if (is.null(m) || !nrow(m)) {
+    return(data.frame(elapsed = numeric(0), margin = numeric(0),
+                      order_key = numeric(0)))
+  }
+  diff <- as.numeric(m$points_a) - as.numeric(m$points_b)
+  own_is_home <- !is.na(home_team_id) &&
+    as.integer(own_team_id) == as.integer(home_team_id)
+  data.frame(
+    elapsed = as.numeric(m$elapsed),
+    margin = if (own_is_home) diff else -diff,
+    order_key = as.numeric(m$order_key %||% seq_len(nrow(m)))
+  )
+}
+
+ribbon_health_message <- function(excluded_segments) {
+  n <- suppressWarnings(as.integer(excluded_segments %||% 0))
+  if (length(n) != 1 || is.na(n) || n <= 0) return(NULL)
+  sprintf(paste("Lineup data is incomplete for this game: %d segment(s) had no",
+                "five-player lineup on record and are not drawn."), n)
+}

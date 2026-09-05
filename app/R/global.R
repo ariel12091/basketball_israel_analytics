@@ -263,6 +263,139 @@ cached_season_df <- function(key_parts, query_fun) {
   val
 }
 
+# ---------------- Stint ribbon readers ----------------
+# Lanes and margin return as JSON in one row so each open costs one pooler
+# round trip.
+
+RIBBON_SQL_ISRAEL <- "
+WITH gy AS (
+  SELECT game_year FROM basketball_test.final_schedule_mv
+  WHERE game_id = $1 LIMIT 1
+),
+segs AS (
+  SELECT team_id, segment_id, lineup_hash,
+         MIN(segment_start_elapsed_seconds) AS start_elapsed,
+         MAX(segment_end_elapsed_seconds)   AS end_elapsed
+  FROM basketball_test.df_pts_poss_lineups_longer_mv
+  WHERE game_id = $1
+  GROUP BY team_id, segment_id, lineup_hash
+  HAVING MAX(segment_seconds) > 0
+),
+lineup_players AS (
+  SELECT l.team_id, l.lineup_hash,
+         ARRAY_AGG(DISTINCT l.player_id ORDER BY l.player_id)::int4[] AS player_ids
+  FROM basketball_test.lineups_lookup_on l
+  WHERE l.game_year = (SELECT game_year FROM gy)
+  GROUP BY l.team_id, l.lineup_hash
+  HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
+),
+lanes AS (
+  SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
+         COALESCE(NULLIF(TRIM(COALESCE(r.firstname, '') || ' ' ||
+                              COALESCE(r.lastname, '')), ''),
+                  'Player ' || p.player_id) AS player_label
+  FROM segs s
+  JOIN lineup_players lp
+    ON lp.lineup_hash = s.lineup_hash AND lp.team_id = s.team_id
+  CROSS JOIN LATERAL unnest(lp.player_ids) AS p(player_id)
+  LEFT JOIN basketball_test.full_rosters r
+    ON r.game_id = $1
+   AND r.team_id = s.team_id
+   AND r.player_id = p.player_id
+),
+marg AS (
+  SELECT DISTINCT event_elapsed_seconds AS elapsed,
+         (own_team_score - opp_team_score) AS margin,
+         id AS order_key
+  FROM basketball_test.df_pts_poss_lineups_longer_mv
+  WHERE game_id = $1 AND team_id = $2
+)
+SELECT
+  (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
+  (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
+  (SELECT MAX(quarter) FROM basketball_test.df_pts_poss_lineups_longer_mv
+    WHERE game_id = $1) AS n_periods,
+  (SELECT COUNT(*) FROM segs s
+    WHERE NOT EXISTS (SELECT 1 FROM lineup_players lp
+                       WHERE lp.lineup_hash = s.lineup_hash
+                         AND lp.team_id = s.team_id)) AS excluded_segments
+"
+
+RIBBON_SQL_EURO <- "
+WITH segs AS (
+  SELECT team_id, segment_id, player_ids,
+         start_elapsed_seconds AS start_elapsed,
+         end_elapsed_seconds   AS end_elapsed
+  FROM euroleague.ribbon_segments_v
+  WHERE game_id = $1
+),
+lanes AS (
+  SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
+         COALESCE(r.source_player_name, 'Player ' || p.player_id) AS player_label
+  FROM segs s
+  CROSS JOIN LATERAL unnest(s.player_ids) AS p(player_id)
+  LEFT JOIN euroleague.full_rosters r
+    ON r.game_id = $1
+   AND r.team_id = s.team_id
+   AND r.player_id = p.player_id
+),
+marg AS (
+  SELECT DISTINCT elapsed_seconds AS elapsed, points_a, points_b, home_team_id,
+         source_event_order AS order_key
+  FROM euroleague.ribbon_margin_v
+  WHERE game_id = $1
+)
+SELECT
+  (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
+  (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
+  (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1) AS n_periods,
+  0 AS excluded_segments
+"
+
+fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NULL) {
+  league <- match.arg(league, c("israel", "euroleague"))
+  game_id <- as.integer(game_id)
+  team_id <- as.integer(team_id)
+
+  cached_season_df(list("stint_ribbon", league, game_id, team_id, data_version), function() {
+    sql <- if (identical(league, "israel")) RIBBON_SQL_ISRAEL else RIBBON_SQL_EURO
+    params <- if (identical(league, "israel")) list(game_id, team_id) else list(game_id)
+    row <- db_get_query(pool, sql, params = params)
+    if (is.null(row) || !nrow(row)) return(NULL)
+
+    lanes_raw <- if (is.na(row$lanes[1])) NULL else
+      jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
+    marg_raw <- if (is.na(row$margin[1])) NULL else
+      jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
+    if (is.null(lanes_raw) || !NROW(lanes_raw)) return(NULL)
+
+    if (identical(league, "euroleague")) {
+      margin <- ribbon_sign_margin(
+        marg_raw, team_id,
+        if (NROW(marg_raw)) marg_raw$home_team_id[1] else NA
+      )
+    } else {
+      margin <- data.frame(
+        elapsed = as.numeric(marg_raw$elapsed %||% numeric(0)),
+        margin = as.numeric(marg_raw$margin %||% numeric(0)),
+        order_key = as.numeric(marg_raw$order_key %||% numeric(0))
+      )
+    }
+
+    n_periods <- as.integer(row$n_periods[1] %||% 4L)
+    bounds <- ribbon_period_bounds(n_periods)
+    margin <- ribbon_complete_margin(margin, bounds[length(bounds)])
+    lanes <- ribbon_mark_starters(ribbon_normalise_lanes(lanes_raw, team_id))
+
+    list(
+      lanes = lanes,
+      margin = margin,
+      meta = list(n_periods = n_periods),
+      health = ribbon_health_message(row$excluded_segments[1])
+    )
+  })
+}
+
 # Central query helper used across modules.
 # Kept as a thin wrapper for pooler compatibility with parameterized queries.
 db_get_query <- function(conn_or_pool, statement, params = NULL) {
