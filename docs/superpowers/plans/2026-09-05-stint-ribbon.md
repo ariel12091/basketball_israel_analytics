@@ -1126,11 +1126,11 @@ test_that("ribbon_normalise_lanes keys on player_id, never on the label", {
   expect_identical(length(unique(out$player_key)), 2L)
 })
 
-test_that("ribbon_health_message reports unmatched and odd-sized rosters", {
-  expect_null(ribbon_health_message(0, 0))
-  expect_match(ribbon_health_message(3, 0), "3")
-  expect_match(ribbon_health_message(0, 2), "2")
-  expect_match(ribbon_health_message(1, 1), "lineup")
+test_that("ribbon_health_message speaks only when segments were excluded", {
+  expect_null(ribbon_health_message(0))
+  expect_null(ribbon_health_message(NULL))
+  expect_match(ribbon_health_message(3), "3")
+  expect_match(ribbon_health_message(3), "not drawn")
 })
 
 test_that("ribbon_sign_margin flips the sign when the clicked team is away", {
@@ -1307,26 +1307,17 @@ ribbon_sign_margin <- function(m, own_team_id, home_team_id) {
   )
 }
 
-# Israeli lineup hashes are not always five players: 4-, 6- and 7-player hashes
-# exist, and some resolve to no roster row at all. Say so rather than drawing a
-# lane set that is quietly wrong.
-ribbon_health_message <- function(unmatched_hashes, odd_sized_hashes) {
-  unmatched <- as.integer(unmatched_hashes %||% 0)
-  odd <- as.integer(odd_sized_hashes %||% 0)
-  if (is.na(unmatched)) unmatched <- 0L
-  if (is.na(odd)) odd <- 0L
-  if (unmatched == 0L && odd == 0L) return(NULL)
-
-  parts <- character(0)
-  if (unmatched > 0L) {
-    parts <- c(parts, sprintf("%d lineup(s) have no roster record", unmatched))
-  }
-  if (odd > 0L) {
-    parts <- c(parts, sprintf("%d lineup(s) do not hold exactly five players", odd))
-  }
-  paste0("Lineup data is incomplete for this game: ",
-         paste(parts, collapse = "; "), ". Lanes may be missing or wrong.")
+# The SQL drops segments whose lineup fails the cardinality = 5 guard, matching
+# what fetch_lineups_all.sql already does. This only reports that it happened,
+# so a game with incomplete lineups says so instead of showing a silent gap.
+# Affects roughly 4-6 games in 221.
+ribbon_health_message <- function(excluded_segments) {
+  n <- suppressWarnings(as.integer(excluded_segments %||% 0))
+  if (length(n) != 1 || is.na(n) || n <= 0) return(NULL)
+  sprintf(paste("Lineup data is incomplete for this game: %d segment(s) had no",
+                "five-player lineup on record and are not drawn."), n)
 }
+
 ```
 
 - [ ] **Step 4: Add the readers to `global.R`**
@@ -1346,9 +1337,13 @@ WITH gy AS (
   WHERE game_id = $1 LIMIT 1
 ),
 segs AS (
-  -- type_lineup is deliberately absent from the grouping AND the filter.
-  -- Filtering to 'offense' loses 1.46% of floor time; the NULL rows are
-  -- substitutions and timeouts and cost 0.14%, nearly all zero-length.
+  -- Same collapse the app already performs in server_tab3.R:1327-1345: group
+  -- WITHOUT type_lineup and take MAX(segment_seconds). Filtering to 'offense'
+  -- loses 1.46% of floor time; the NULL rows are substitutions and timeouts and
+  -- cost 0.14%, nearly all of it zero-length.
+  --
+  -- The ribbon's ONLY departure from the existing readers: it keeps the
+  -- interval (start/end elapsed) rather than collapsing it to a duration.
   SELECT team_id, segment_id, lineup_hash,
          MIN(segment_start_elapsed_seconds) AS start_elapsed,
          MAX(segment_end_elapsed_seconds)   AS end_elapsed
@@ -1357,56 +1352,57 @@ segs AS (
   GROUP BY team_id, segment_id, lineup_hash
   HAVING MAX(segment_seconds) > 0
 ),
-roster AS (
-  SELECT lineup_hash, team_id, game_year, COUNT(*) AS n_players
-  FROM basketball_test.lineups_lookup_on
-  GROUP BY lineup_hash, team_id, game_year
+lineup_players AS (
+  -- The canonical hash -> players expansion, copied from
+  -- fetch_lineups_all.sql:205-214 including its cardinality = 5 guard. The app
+  -- already excludes odd-sized lineups everywhere; the ribbon follows that
+  -- convention instead of inventing its own handling.
+  SELECT l.team_id, l.lineup_hash,
+         ARRAY_AGG(DISTINCT l.player_id ORDER BY l.player_id)::int4[] AS player_ids
+  FROM basketball_test.lineups_lookup_on l
+  WHERE l.game_year = (SELECT game_year FROM gy)
+  GROUP BY l.team_id, l.lineup_hash
+  HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
 ),
 lanes AS (
   SELECT s.team_id,
          s.start_elapsed,
          s.end_elapsed,
-         l.player_id,
-         -- Label only. full_rosters is per GAME, which is what makes this safe:
-         -- the provider reuses an id for a different person in specific games
-         -- (id 2060 is Josh Hagins season-wide but J'Von McCormick in ~7), so a
-         -- season-level name map would label those games with the wrong player.
+         p.player_id,
+         -- Label only, and fetched BY id. full_rosters is per GAME, which is
+         -- what makes it safe: the provider reuses an id for a different person
+         -- in specific games (id 2060 is Josh Hagins season-wide but J'Von
+         -- McCormick in ~7), so a season-level name map would mislabel those.
          COALESCE(NULLIF(TRIM(COALESCE(r.firstname, '') || ' ' ||
                               COALESCE(r.lastname, '')), ''),
-                  'Player ' || l.player_id) AS player_label
+                  'Player ' || p.player_id) AS player_label
   FROM segs s
-  JOIN basketball_test.lineups_lookup_on l
-    ON l.lineup_hash = s.lineup_hash
-   AND l.team_id     = s.team_id
-   AND l.game_year   = (SELECT game_year FROM gy)
+  JOIN lineup_players lp
+    ON lp.lineup_hash = s.lineup_hash AND lp.team_id = s.team_id
+  CROSS JOIN LATERAL unnest(lp.player_ids) AS p(player_id)
   LEFT JOIN basketball_test.full_rosters r
     ON r.game_id   = $1
    AND r.team_id   = s.team_id
-   AND r.player_id = l.player_id
+   AND r.player_id = p.player_id
 ),
 marg AS (
   SELECT DISTINCT event_elapsed_seconds AS elapsed,
          (own_team_score - opp_team_score) AS margin
   FROM basketball_test.df_pts_poss_lineups_longer_mv
   WHERE game_id = $1 AND team_id = $2
-),
-health AS (
-  SELECT
-    COUNT(*) FILTER (WHERE ro.lineup_hash IS NULL)                       AS unmatched_hashes,
-    COUNT(*) FILTER (WHERE ro.n_players IS NOT NULL AND ro.n_players <> 5) AS odd_sized_hashes
-  FROM segs s
-  LEFT JOIN roster ro
-    ON ro.lineup_hash = s.lineup_hash
-   AND ro.team_id     = s.team_id
-   AND ro.game_year   = (SELECT game_year FROM gy)
 )
 SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes)                AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed) FROM marg) AS margin,
   (SELECT MAX(quarter) FROM basketball_test.df_pts_poss_lineups_longer_mv
     WHERE game_id = $1)                                         AS n_periods,
-  (SELECT unmatched_hashes FROM health)                         AS unmatched_hashes,
-  (SELECT odd_sized_hashes FROM health)                         AS odd_sized_hashes
+  -- Segments the cardinality = 5 guard dropped. One counter, not a bespoke
+  -- health subsystem: it exists only so the modal can say the lanes are
+  -- incomplete rather than silently showing a gap.
+  (SELECT COUNT(*) FROM segs s
+    WHERE NOT EXISTS (SELECT 1 FROM lineup_players lp
+                       WHERE lp.lineup_hash = s.lineup_hash
+                         AND lp.team_id = s.team_id))           AS excluded_segments
 "
 
 RIBBON_SQL_EURO <- "
@@ -1442,8 +1438,7 @@ SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes)                AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed) FROM marg) AS margin,
   (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1) AS n_periods,
-  0 AS unmatched_hashes,
-  0 AS odd_sized_hashes
+  0 AS excluded_segments
 "
 
 fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NULL) {
@@ -1485,7 +1480,7 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
       lanes = lanes,
       margin = margin[order(margin$elapsed), , drop = FALSE],
       meta = list(n_periods = as.integer(row$n_periods[1] %||% 4L)),
-      health = ribbon_health_message(row$unmatched_hashes[1], row$odd_sized_hashes[1])
+      health = ribbon_health_message(row$excluded_segments[1])
     )
   })
 }
