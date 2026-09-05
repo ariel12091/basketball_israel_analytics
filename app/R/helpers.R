@@ -131,6 +131,74 @@ csv_export_stamp <- function(now = Sys.time()) {
 # tables, it lives here. The EuroLeague tabs (9, 11) currently pass no
 # exportOptions at all and so leak their pr_* columns into the CSV; they
 # should adopt this too.
+# Game-log table headers.
+#
+# The Israeli (tab 4) and EuroLeague (tab 11) game logs draw the same table.
+# Only two labels differ -- the schedule game number and the competition
+# stage -- plus whether the shot-split columns are present. Per the reuse
+# rule in CLAUDE.md the league belongs in the argument, not the name, so
+# these take labels rather than a league flag.
+#
+# The Four Factors header is two-tier: a group row spanning Offense, Defense
+# and Usage over a sub-head row. The blank leading cell spans the eight
+# context columns, so the colspans must stay in step with the sub-head row
+# below -- 8 + 5 + 5 + 2 = 20.
+gamelog_summary_header <- function(first_label = "GN", second_label = "Game Type",
+                                   has_shots = FALSE) {
+  htmltools::withTags(table(class = 'display', thead(
+    tr(
+      th(class = "sub-head", first_label),
+      th(class = "sub-head", second_label),
+      th(class = "sub-head", "Date"),
+      th(class = "sub-head", "Team"),
+      th(class = "sub-head", "Opponent"),
+      th(class = "sub-head", "W/L"),
+      th(class = "sub-head", "Score"),
+      th(class = "sub-head", "Min"),
+      th(class = "sub-head section-left-border", "Off PPP"),
+      th(class = "sub-head", "Def PPP"),
+      th(class = "sub-head", "Net"),
+      if (has_shots) th(class = "sub-head section-left-border", "Off Shot"),
+      if (has_shots) th(class = "sub-head", "Def Shot"),
+      th(class = "sub-head section-left-border", "Off Poss"),
+      th(class = "sub-head", "Def Poss")
+    )
+  )))
+}
+
+gamelog_ff_header <- function(first_label = "GN", second_label = "Game Type") {
+  htmltools::withTags(table(class = 'display', thead(
+    tr(
+      th(class = "group-head", colspan = 8, ""),
+      th(class = "group-head section-left-border", colspan = 5, "Offense"),
+      th(class = "group-head section-left-border", colspan = 5, "Defense"),
+      th(class = "group-head section-left-border", colspan = 2, "Usage")
+    ),
+    tr(
+      th(class = "sub-head", first_label),
+      th(class = "sub-head", second_label),
+      th(class = "sub-head", "Date"),
+      th(class = "sub-head", "Team"),
+      th(class = "sub-head", "Opponent"),
+      th(class = "sub-head", "W/L"),
+      th(class = "sub-head", "Score"),
+      th(class = "sub-head", "Min"),
+      th(class = "sub-head section-left-border", "PPP"),
+      th(class = "sub-head", "eFG%"),
+      th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"),
+      th(class = "sub-head", "TOV%"),
+      th(class = "sub-head", "FTR"),
+      th(class = "sub-head section-left-border", "PPP"),
+      th(class = "sub-head", "eFG%"),
+      th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"),
+      th(class = "sub-head", "TOV%"),
+      th(class = "sub-head", "FTR"),
+      th(class = "sub-head section-left-border", "Off Poss"),
+      th(class = "sub-head", "Def Poss")
+    )
+  )))
+}
+
 csv_export_button <- function(slug, text = "Download CSV", now = Sys.time()) {
   list(list(
     extend = "csv",

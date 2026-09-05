@@ -655,25 +655,7 @@ server_tab4 <- function(input, output, session, shared) {
         shot_col_defs
       )
 
-      sketch <- htmltools::withTags(table(class = 'display', thead(
-        tr(
-          th(class = "sub-head", "GN"),
-          th(class = "sub-head", "Game Type"),
-          th(class = "sub-head", "Date"),
-          th(class = "sub-head", "Team"),
-          th(class = "sub-head", "Opponent"),
-          th(class = "sub-head", "W/L"),
-          th(class = "sub-head", "Score"),
-          th(class = "sub-head", "Min"),
-          th(class = "sub-head section-left-border", "Off PPP"),
-          th(class = "sub-head", "Def PPP"),
-          th(class = "sub-head", "Net"),
-          if (has_shots) th(class = "sub-head section-left-border", "Off Shot"),
-          if (has_shots) th(class = "sub-head", "Def Shot"),
-          th(class = "sub-head section-left-border", "Off Poss"),
-          th(class = "sub-head", "Def Poss")
-        )
-      )))
+      sketch <- gamelog_summary_header(has_shots = has_shots)
 
       off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
       off_poss_idx <- which(names(disp) == "off_poss") - 1L
@@ -745,36 +727,7 @@ server_tab4 <- function(input, output, session, shared) {
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
       if (length(off_poss_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_poss_idx, className = "section-left-border dt-center")
 
-      sketch <- htmltools::withTags(table(class = 'display', thead(
-        tr(
-          th(class = "group-head", colspan = 8, ""),
-          th(class = "group-head section-left-border", colspan = 5, "Offense"),
-          th(class = "group-head section-left-border", colspan = 5, "Defense"),
-          th(class = "group-head section-left-border", colspan = 2, "Usage")
-        ),
-        tr(
-          th(class = "sub-head", "GN"),
-          th(class = "sub-head", "Game Type"),
-          th(class = "sub-head", "Date"),
-          th(class = "sub-head", "Team"),
-          th(class = "sub-head", "Opponent"),
-          th(class = "sub-head", "W/L"),
-          th(class = "sub-head", "Score"),
-          th(class = "sub-head", "Min"),
-          th(class = "sub-head section-left-border", "PPP"),
-          th(class = "sub-head", "eFG%"),
-          th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"),
-          th(class = "sub-head", "TOV%"),
-          th(class = "sub-head", "FTR"),
-          th(class = "sub-head section-left-border", "PPP"),
-          th(class = "sub-head", "eFG%"),
-          th(class = "sub-head", title = DEF_OREB_TOOLTIP, "OREB%"),
-          th(class = "sub-head", "TOV%"),
-          th(class = "sub-head", "FTR"),
-          th(class = "sub-head section-left-border", "Off Poss"),
-          th(class = "sub-head", "Def Poss")
-        )
-      )))
+      sketch <- gamelog_ff_header()
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
                           escape = dt_escape_except(disp),
