@@ -3052,3 +3052,93 @@ EURO_LD_LINEUP_TABLE_SPEC <- list(
     "this.getAttribute('data-hash'), {priority: 'event'});"
   )
 )
+
+# ---------------- Stint ribbon: pure transforms ----------------
+# The ribbon draws one bar per continuous stretch a player spent on the floor.
+# The readers hand these functions a row per (segment, player); everything
+# below is geometry and has no idea which league or table it came from.
+
+# Width reserved on the left for lane labels.
+RIBBON_GUTTER <- 150
+
+# Collapse consecutive segments in which the same player stayed on the floor.
+# Merging is per PLAYER, not per lineup hash: a player who survives a
+# substitution around them keeps one continuous bar rather than abutting
+# rectangles with a visible seam.
+merge_adjacent_stints <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+
+  lanes <- lanes[order(lanes$side, lanes$player_key, lanes$start_elapsed), , drop = FALSE]
+  key <- paste(lanes$side, lanes$player_key, sep = "\r")
+  prev_key <- c("", key[-length(key)])
+  prev_end <- c(NA_real_, lanes$end_elapsed[-nrow(lanes)])
+
+  # A new bar starts when the player changes, or when this interval does not
+  # begin exactly where the previous one ended.
+  new_run <- key != prev_key | is.na(prev_end) | lanes$start_elapsed > prev_end
+  run_id <- cumsum(new_run)
+
+  merged <- lapply(split(seq_len(nrow(lanes)), run_id), function(i) {
+    row <- lanes[i[1], , drop = FALSE]
+    row$end_elapsed <- max(lanes$end_elapsed[i])
+    row
+  })
+
+  out <- do.call(rbind, merged)
+  rownames(out) <- NULL
+  out
+}
+
+
+# Whoever is on the floor in a side's earliest segment started the game.
+# Derived rather than read from a boxscore flag so both leagues use one
+# definition: measured exactly 5 per team-game across 1,178 EuroLeague and 878
+# Israeli team-games, while the EuroLeague boxscore carries 40 stray flags.
+ribbon_mark_starters <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) {
+    lanes$is_starter <- logical(0)
+    return(lanes)
+  }
+  first_start <- tapply(lanes$start_elapsed, lanes$side, min)
+  on_first <- lanes$start_elapsed == first_start[lanes$side]
+  starters <- unique(paste(lanes$side, lanes$player_key, sep = "\r")[on_first])
+  lanes$is_starter <- paste(lanes$side, lanes$player_key, sep = "\r") %in% starters
+  lanes
+}
+
+
+# Lane order within each side: starters first, then most floor time.
+ribbon_lane_index <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+
+  order_df <- lanes %>%
+    mutate(.dur = end_elapsed - start_elapsed) %>%
+    group_by(side, player_key) %>%
+    summarise(floor_time = sum(.dur), is_starter = any(is_starter), .groups = "drop") %>%
+    arrange(side, desc(is_starter), desc(floor_time), player_key) %>%
+    group_by(side) %>%
+    mutate(lane_index = as.integer(row_number())) %>%
+    ungroup() %>%
+    select(side, player_key, lane_index)
+
+  lanes %>% left_join(order_df, by = c("side", "player_key"))
+}
+
+# Map elapsed seconds to the 1000-unit viewBox and lane index to a y offset.
+ribbon_geometry <- function(lanes, total_seconds, width = 1000,
+                            lane_height = 14, lane_gap = 3,
+                            gutter = RIBBON_GUTTER) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+  stopifnot(is.numeric(total_seconds), length(total_seconds) == 1, total_seconds > 0)
+
+  # The plot area starts after the gutter, which holds one visible name per
+  # lane. A 20-lane rotation chart cannot be read through hover tooltips alone.
+  scale <- (width - gutter) / total_seconds
+  lanes$x <- gutter + lanes$start_elapsed * scale
+  # A one-second stint would otherwise be a sub-pixel sliver that still
+  # occupies a lane slot; give it a hairline so it is visible and hoverable.
+  lanes$w <- pmax((lanes$end_elapsed - lanes$start_elapsed) * scale, 0.75)
+  lanes$y <- (lanes$lane_index - 1L) * (lane_height + lane_gap)
+  lanes$h <- lane_height
+  lanes
+}
