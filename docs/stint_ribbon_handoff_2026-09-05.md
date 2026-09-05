@@ -1,6 +1,6 @@
 # Stint Ribbon — Handoff, 2026-09-05
 
-Paused mid-execution. Branch `shiny/stint-ribbon`, unmerged, not deployed.
+Paused mid-execution after Task 6. Branch `shiny/stint-ribbon`, unmerged, not deployed.
 
 **Documents**
 - Spec: `docs/superpowers/specs/2026-09-05-stint-ribbon-design.md`
@@ -23,21 +23,45 @@ plotting library, one database round trip per open.
 | 1 — EuroLeague views + grants | complete, review clean |
 | 2 — lane transforms | complete, review clean (1 fix round) |
 | 3 — clock frame + margin series | complete, review clean (1 fix round) |
-| 4 — SVG builder | not started |
-| 5 — readers | not started |
-| 6 — CSS + hover JS | not started |
+| 4 — SVG builder | complete, focused tests passing |
+| 5 — readers | complete, live DB verified |
+| 6 — CSS + hover JS | complete, focused tests + JS parse passing |
 | 7 — Tab 4 wiring | not started |
 | 8 — Tab 11 wiring | not started |
 
-Shipped so far: 6 helper functions in `helpers.R`, 24 tests (51 assertions,
-all passing), 2 EuroLeague views, both security enumerations updated.
+Shipped so far: the pure transforms, accessible inline-SVG builder, both
+single-round-trip readers, ribbon CSS and hover/focus/touch interaction, 2
+EuroLeague views, and both security enumerations.
 
-**On resume:** read the ledger first, then start at **Task 4 (SVG builder)**.
-Its brief has not been generated yet.
+**On resume:** read the ledger first, then start at **Task 7 (Tab 4 wiring)**.
+Build the ribbon date link from source `df` before `select()` drops `game_id`
+and `team_id`, in both Summary and Four Factors modes.
 
 Task 3's scoped re-review arrived just after the pause and closed all three
 findings, confirming the strengthened clamp test by mutation (flipping
 `fromLast = TRUE` to `FALSE` makes it fail, as it must).
+
+## Work completed after the first pause
+
+| Task | Commit | Verification |
+|---|---|---|
+| 4 | `30f761b` | focused suite passed; append-only helper diff; `helpers.R` retained 2,670 CR bytes |
+| 5 | `def8a3d` | focused suite passed with only DB-gated skips; both live readers verified |
+| 6 | `a67680f` | focused suite passed; `node --check app/www/app.js` passed |
+
+Task 5 live measurements (three timed opens per league): Israeli game 115/team
+7 returned 350 raw lane rows and 341 margin states at 370.3 ms median;
+EuroLeague game 25/team 25 returned 460 raw lane rows and 78 margin states at
+293.4 ms median. Both returned `opp/own`, with no health warning.
+
+Two plan defects were corrected during implementation:
+
+- Task 5's proposed R regex literals used invalid single-backslash escapes;
+  the committed tests use valid doubled escapes and assert the intended SQL.
+- Task 6 placed the `sendShinyEvent` export outside the closure defining it.
+  The committed code exports it inside the existing IIFE as
+  `window.ibplSendShinyEvent`; the ribbon hover handler remains a separate
+  IIFE, preserving queue-and-replay behavior for Task 7.
 
 ## Outstanding manual step
 
