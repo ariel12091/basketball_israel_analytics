@@ -53,3 +53,17 @@ test_that("Tab 4 does not inline its own export options", {
   # to prevent.
   expect_false(grepl("exportOptions", src, fixed = TRUE))
 })
+
+# Audit finding P1: tabs 9 and 11 shipped their CSV buttons with no
+# exportOptions at all, so DataTables exported every hidden pr_* column and
+# the filenames carried no timestamp. Tab 11 was fixed when it adopted the
+# shared header container; tab 9 is the last one.
+test_that("no tab hand-rolls a csv button any more", {
+  for (f in c("server_tab9_euro_team.R", "server_tab11_euro_gamelogs.R",
+              "server_tab4.R")) {
+    src <- paste(readLines(repo_file("R", f), warn = FALSE), collapse = "
+")
+    expect_false(grepl('extend = "csv"', src, fixed = TRUE), info = f)
+    expect_true(grepl("csv_export_button(", src, fixed = TRUE), info = f)
+  }
+})

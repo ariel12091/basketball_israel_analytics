@@ -494,8 +494,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
           extensions = "Buttons",
           options = list(
             headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
-            buttons = list(list(extend = "csv", text = "Download CSV",
-                                filename = "euroleague_team_four_factors")),
+            buttons = csv_export_button("euroleague_team_four_factors"),
             pageLength = 50, deferRender = TRUE, scrollX = TRUE,
             scrollY = "70vh", scrollCollapse = TRUE,
             order = if (length(net_idx)) list(list(net_idx, "desc")) else list(),
@@ -593,8 +592,7 @@ server_tab9_euro_team <- function(input, output, session, shared) {
         extensions = "Buttons",
         options = list(
           headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
-          buttons = list(list(extend = "csv", text = "Download CSV",
-                              filename = "euroleague_team_ratings")),
+          buttons = csv_export_button("euroleague_team_ratings"),
           pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
           columnDefs = c(list(
             list(className = "dt-center", targets = "_all"),

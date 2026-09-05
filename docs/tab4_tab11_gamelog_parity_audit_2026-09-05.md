@@ -31,7 +31,7 @@ EuroLeague" list. Three findings run the other way.
 
 ## Findings
 
-### P1 — EuroLeague CSVs leak hidden columns · **Defect** · Tab 11 (also Tab 9)
+### P1 — EuroLeague CSVs leak hidden columns · **Defect** · Tab 11 (also Tab 9) · FIXED
 
 Tabs 3, 5 and 6 pass `exportOptions = list(columns = ":visible", stripHtml =
 TRUE, …)`. Tabs 9 and 11 pass **no `exportOptions` at all**. DataTables exports
