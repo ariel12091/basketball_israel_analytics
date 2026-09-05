@@ -533,28 +533,35 @@ a:hover { color: var(--ibpl-accent-hover); }
 }
 
 /* DataTables Buttons export control (tabs 3, 4, 5, 6, 9, 11).
-   The BS5 Buttons integration renders
-   <button class="btn btn-secondary dt-button buttons-csv"> and ships no
-   appearance of its own -- buttons.bootstrap5.css sets only overflow. bslib
-   derives $secondary from the dark bg, so the stock .btn-secondary lands a
-   few points off --ibpl-surface and the control reads as invisible. Match
-   the Shiny downloadButton treatment above. Specificity (0,2,0) clears
-   .btn-secondary without !important. */
-.dt-buttons .dt-button,
-.dt-buttons .dt-button.btn-secondary {
-  background: var(--ibpl-surface-2);
-  color: var(--ibpl-accent);
-  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55);
+   DT resolves to its DEFAULT Buttons integration, not the Bootstrap 5 one:
+   the widget attaches buttons.dataTables.min.css, so the button never gets
+   .btn/.btn-secondary. That stylesheet paints
+     div.dt-buttons > .dt-button {
+       background: linear-gradient(rgba(230,230,230,.1), rgba(0,0,0,.1));
+       border: 1px solid rgba(0,0,0,.3); color: inherit; }
+   -- a near-transparent chip with a black border on a near-black ground,
+   which is the "invisible button". Its selector is (0,2,1) and its hover
+   rule (0,4,1), so a lower-specificity override silently loses; !important
+   is the same tool the section-left-border and dataTables_info rules above
+   already use against this stylesheet. Matching on div.dt-buttons > .dt-button
+   also covers the Bootstrap 5 integration, where the button additionally
+   carries .btn.btn-secondary but sits in the same place. */
+div.dt-buttons > .dt-button {
+  background: var(--ibpl-surface-2) !important;
+  color: var(--ibpl-accent) !important;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55) !important;
+  border-radius: 4px !important;
   font-weight: 600;
+  box-shadow: none !important;
 }
-.dt-buttons .dt-button:hover,
-.dt-buttons .dt-button.btn-secondary:hover {
-  background: var(--ibpl-surface-hover);
-  border-color: var(--ibpl-accent);
-  color: var(--ibpl-accent);
+div.dt-buttons > .dt-button:hover:not(.disabled) {
+  background: var(--ibpl-surface-hover) !important;
+  border-color: var(--ibpl-accent) !important;
+  color: var(--ibpl-accent) !important;
+  box-shadow: none !important;
 }
-.dt-buttons .dt-button:focus-visible {
-  outline: 2px solid var(--ibpl-accent);
+div.dt-buttons > .dt-button:focus-visible {
+  outline: 2px solid var(--ibpl-accent) !important;
   outline-offset: 2px;
 }
 

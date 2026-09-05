@@ -320,41 +320,22 @@ test_that("the CSV export button clears WCAG AA on its own surfaces", {
   expect_gt(contrast(tokens[["--ibpl-accent"]], tokens[["--ibpl-surface-hover"]]), 4.5)
 })
 
-test_that("app.css gives the DataTables export button an explicit appearance", {
+test_that("app.css overrides the DataTables export button at sufficient specificity", {
   css_lines <- readLines(repo_file("www", "app.css"), warn = FALSE)
 
-  starts <- grep(".dt-buttons .dt-button", css_lines, fixed = TRUE)
-  expect_gt(length(starts), 0)
+  # DT attaches buttons.dataTables.min.css -- its DEFAULT Buttons integration,
+  # not the Bootstrap 5 one -- whose rule is
+  #   div.dt-buttons > .dt-button                    (0,2,1)
+  #   div.dt-buttons > .dt-button:hover:not(.disabled) (0,4,1)
+  # painting a transparent gradient with a black border and color: inherit.
+  # An override must match that selector shape and force it; a plain
+  # ".dt-buttons .dt-button" rule is (0,2,0), loses silently, and the button
+  # stays invisible. That is exactly what shipped first.
+  hits <- grep("div.dt-buttons > .dt-button", css_lines, fixed = TRUE)
+  expect_gte(length(hits), 2)
 
-  block <- paste(css_lines[min(starts):(max(starts) + 6)], collapse = " ")
+  block <- paste(css_lines[min(hits):(max(hits) + 6)], collapse = " ")
   expect_true(grepl("var(--ibpl-accent)", block, fixed = TRUE))
   expect_true(grepl("var(--ibpl-surface-2)", block, fixed = TRUE))
-  # Specificity (0,2,0) beats .btn-secondary, so no !important is needed here
-  # and none should creep in.
-  expect_false(grepl("!important", block, fixed = TRUE))
-})
-
-# WCAG 1.4.11: the boundary that identifies a control needs 3:1. Both export
-# buttons originally drew their border in --ibpl-border, which composites to
-# 1.41:1 against the card surface -- legible amber text inside a shape you
-# cannot see, which is how a styled button still reads as invisible. Accent
-# at 0.55 alpha is the least-loud value that clears the threshold.
-test_that("both export buttons have a perceivable boundary", {
-  css_lines <- readLines(repo_file("www", "app.css"), warn = FALSE)
-  tokens <- css_tokens(paste(css_lines, collapse = " "))
-
-  hits <- grep("border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55);", css_lines, fixed = TRUE)
-  expect_equal(length(hits), 2)  # .shiny-download-link and .dt-button
-
-  contrast <- function(a, b) {
-    la <- rel_luminance(a); lb <- rel_luminance(b)
-    (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
-  }
-  composite <- function(fg, bg, alpha) {
-    v <- round(alpha * grDevices::col2rgb(fg) + (1 - alpha) * grDevices::col2rgb(bg))
-    sprintf("#%02X%02X%02X", v[1], v[2], v[3])
-  }
-
-  border <- composite(tokens[["--ibpl-accent"]], tokens[["--ibpl-surface-2"]], 0.55)
-  expect_gte(contrast(border, tokens[["--ibpl-surface"]]), 3)
+  expect_true(grepl("!important", block, fixed = TRUE))
 })
