@@ -167,12 +167,12 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     # the two league-varying header labels differ (Rd/Phase for GN/Game Type).
     # Names stay snake_case rather than being renamed to display labels: the
     # shared header container supplies the labels, and gl_apply_heat_styles()
-    # keys on the frame's own names. Net is deliberately absent from Four
-    # Factors -- it lives in the Summary view on both tabs, and the Usage group
-    # is the possession pair.
+    # keys on the frame's own names. Net sits in the leading context block, not
+    # in Offense or Defense: it is their difference, and it is there so the
+    # table can be ordered by it.
     if (ff) {
       cols <- c("round_number", "phase_label", "game_date", "team_name", "opp_team_name",
-                "result", "score", "minutes",
+                "result", "score", "minutes", "net_rtg",
                 "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
                 "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct",
                 "off_poss", "def_poss")
@@ -182,7 +182,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
         def_ppp = TRUE, def_efg_pct = TRUE, def_oreb_pct = TRUE,
         def_tov_pct = FALSE, def_ftr_pct = TRUE
       )
-      round_cols <- names(heat_reverse)
+      round_cols <- c(names(heat_reverse), "net_rtg")
       sketch <- gamelog_ff_header("Rd", "Phase")
     } else {
       cols <- c("round_number", "phase_label", "game_date", "team_name", "opp_team_name",

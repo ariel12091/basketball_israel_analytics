@@ -142,7 +142,7 @@ csv_export_stamp <- function(now = Sys.time()) {
 # The Four Factors header is two-tier: a group row spanning Offense, Defense
 # and Usage over a sub-head row. The blank leading cell spans the eight
 # context columns, so the colspans must stay in step with the sub-head row
-# below -- 8 + 5 + 5 + 2 = 20.
+# below -- 9 + 5 + 5 + 2 = 21.
 gamelog_summary_header <- function(first_label = "GN", second_label = "Game Type",
                                    has_shots = FALSE) {
   htmltools::withTags(table(class = 'display', thead(
@@ -169,7 +169,7 @@ gamelog_summary_header <- function(first_label = "GN", second_label = "Game Type
 gamelog_ff_header <- function(first_label = "GN", second_label = "Game Type") {
   htmltools::withTags(table(class = 'display', thead(
     tr(
-      th(class = "group-head", colspan = 8, ""),
+      th(class = "group-head", colspan = 9, ""),
       th(class = "group-head section-left-border", colspan = 5, "Offense"),
       th(class = "group-head section-left-border", colspan = 5, "Defense"),
       th(class = "group-head section-left-border", colspan = 2, "Usage")
@@ -183,6 +183,7 @@ gamelog_ff_header <- function(first_label = "GN", second_label = "Game Type") {
       th(class = "sub-head", "W/L"),
       th(class = "sub-head", "Score"),
       th(class = "sub-head", "Min"),
+      th(class = "sub-head", "Net"),
       th(class = "sub-head section-left-border", "PPP"),
       th(class = "sub-head", "eFG%"),
       th(class = "sub-head", title = OFF_OREB_TOOLTIP, "OREB%"),

@@ -698,7 +698,7 @@ server_tab4 <- function(input, output, session, shared) {
 
       disp <- df %>% select(
         gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
-        minutes,
+        minutes, net_rtg,
         off_ppp, off_efg_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
         def_ppp, def_efg_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
         off_poss, def_poss,
@@ -744,7 +744,7 @@ server_tab4 <- function(input, output, session, shared) {
 
       rate_cols <- c("off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
                      "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct")
-      ppp_cols <- c("off_ppp", "def_ppp")
+      ppp_cols <- c("off_ppp", "def_ppp", "net_rtg")
 
       dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols), names(disp)), 1)
       if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)

@@ -529,7 +529,7 @@ test_that("the four-factors group row spans exactly the sub-head columns", {
   html <- as.character(gamelog_ff_header())
 
   spans <- as.integer(regmatches(html, gregexpr("(?<=colspan=\")[0-9]+", html, perl = TRUE))[[1]])
-  expect_equal(spans, c(8L, 5L, 5L, 2L))
+  expect_equal(spans, c(9L, 5L, 5L, 2L))
 
   n_subhead <- length(gregexpr("sub-head", html, fixed = TRUE)[[1]])
   expect_equal(sum(spans), n_subhead)
