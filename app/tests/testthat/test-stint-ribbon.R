@@ -194,8 +194,13 @@ test_that("ribbon_geometry stacks lanes by index", {
 
 
 test_that("merge_adjacent_stints does not merge across a one-second gap", {
-  # The boundary case named but never written: a gap of exactly one second
-  # between two stints for the same player must stay two bars, not one.
+  # Proves a minimal one-second gap is still treated as a real gap (guards an
+  # off-by-one threshold bug that requires gap > 1 rather than gap > 0). It
+  # does NOT distinguish `>` from `>=` in the adjacency check -- 242 and 243
+  # are never equal, so that operator can't matter here. The touching/zero-gap
+  # case (`start_elapsed == prev_end`) is already covered by "collapses a
+  # contiguous run into one bar" above, which is what would catch a `>=` vs
+  # `>` regression.
   lanes <- rbind(
     lane_row("own", "7", 0, 242),
     lane_row("own", "7", 243, 337)
@@ -248,10 +253,19 @@ test_that("ribbon_complete_margin collapses ties by order_key, keeping the last"
 })
 
 test_that("ribbon_complete_margin clamps elapsed into the nominal frame", {
+  # elapsed 0 and -10 both clamp to 0 -- clamping deliberately manufactures a
+  # tie at 0, which the tie-collapse must then resolve to the highest
+  # order_key (3, margin 1), same as any other same-second tie. Asserting
+  # only the elapsed range would still pass if the tie-collapse were broken
+  # (e.g. kept the first record instead of the last, or dropped the clamped
+  # row), since pmin/pmax alone already guarantees the range.
   m <- data.frame(elapsed = c(0, 2500, -10), margin = c(0, 9, 1),
                   order_key = c(1, 2, 3))
   out <- ribbon_complete_margin(m, total_seconds = 2400)
   expect_true(all(out$elapsed >= 0 & out$elapsed <= 2400))
+  expect_identical(nrow(out), 2L)
+  expect_identical(out$margin[out$elapsed == 0], 1)
+  expect_identical(out$margin[out$elapsed == 2400], 9)
 })
 
 test_that("ribbon_complete_margin returns a usable series from no data", {
