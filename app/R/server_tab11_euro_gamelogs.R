@@ -29,6 +29,51 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     updateRadioButtons(session, "eurogl_view_mode", selected = "Summary")
   })
 
+  observeEvent(input$eurogl_ribbon_click, {
+    click <- input$eurogl_ribbon_click
+    req(click$game_id, click$team_id)
+
+    ribbon <- fetch_stint_ribbon(
+      pg_pool, "euroleague", click$game_id, click$team_id,
+      data_version = shared_data_version(shared)
+    )
+
+    if (is.null(ribbon) || !nrow(ribbon$lanes)) {
+      showModal(modalDialog(title = "No lineup data",
+                            "This game has no segment data to draw.",
+                            easyClose = TRUE))
+      return()
+    }
+
+    meta <- ribbon$meta
+    own_team <- click$own_team %||% ""
+    opp_team <- click$opp_team %||% ""
+    meta$own_team <- if (nzchar(own_team)) own_team else "Own"
+    meta$opp_team <- if (nzchar(opp_team)) opp_team else "Opponent"
+    meta$game_label <- if (nzchar(own_team) && nzchar(opp_team)) {
+      sprintf("%s vs %s", own_team, opp_team)
+    } else {
+      sprintf("Game %s", click$game_id)
+    }
+
+    output$eurogl_ribbon_svg <- renderUI({
+      tagList(
+        if (!is.null(ribbon$health)) {
+          div(class = "alert alert-warning py-2 px-3 mb-2", ribbon$health)
+        },
+        build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
+                               id_prefix = paste0("eugl", click$game_id))
+      )
+    })
+
+    showModal(modalDialog(
+      title = meta$game_label,
+      uiOutput("eurogl_ribbon_svg"),
+      size = "xl",
+      easyClose = TRUE
+    ))
+  })
+
   season_rows <- reactive({
     req(identical(input$main_tabs, "euro_game_logs"))
     cached_season_df(
@@ -201,6 +246,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     pr_cols <- intersect(
       unname(vapply(names(heat_reverse), gl_pr_col_name, character(1))), names(df))
+    df <- add_ribbon_link_column(df, input_id = "eurogl_ribbon_click")
     disp <- df[, c(cols, pr_cols), drop = FALSE]
 
     result_idx <- which(names(disp) == "result") - 1L
@@ -224,6 +270,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
       extensions = "Buttons",
+      escape = dt_escape_except(disp, "game_date"),
       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
         buttons = csv_export_button(if (ff) "euroleague_game_logs_four_factors"
                                     else "euroleague_game_logs_summary"),
