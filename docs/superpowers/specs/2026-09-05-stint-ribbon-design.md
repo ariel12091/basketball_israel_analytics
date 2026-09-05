@@ -33,7 +33,8 @@ which called it "the strongest single addition available".
   canonical elapsed columns) + `basketball_test.lineups_lookup_on`
   (`lineup_hash` → five ON players; live, not cold storage).
 - EuroLeague: `euroleague.matchup_segments_actions` (segment grain, native
-  elapsed, both lineups inline) + `euroleague.actions` (running score).
+  elapsed) + `euroleague.lineup_totals_by_game` (the existing lineup →
+  `player_ids` link, already granted) + `euroleague.actions` (running score).
 
 ### 3.2 Verified properties
 
@@ -42,7 +43,9 @@ which called it "the strongest single addition available".
 | Elapsed boundaries | `segment_start/end_elapsed_seconds` | `start/end_elapsed_seconds` |
 | Both-team alignment | 10,219 of 10,241 segments (2026) carry both teams with identical boundaries; 22 single-team | 38,904 segments, **all** aligned |
 | Perspective column | `type_lineup` ∈ {offense 94,376, defense 94,376, **NULL 74,447**} | **absent** |
-| Roster integrity | 4,634 hashes = 5 players; **1 game with a 4-player hash, 14 six-player, 4 seven-player hashes, 10 hashes (664 rows, 4 games) with no roster row** | **5/5 on all 77,808 rows, no exceptions** |
+| Roster integrity | 4,634 hashes = 5 players; 1 game with a 4-player hash, 14 six-player, 4 seven-player, 10 hashes (4 games) with no roster row — all excluded by the app's existing `cardinality = 5` guard | **5/5 on all 77,808 rows, no exceptions** |
+| Lineup → player_id link | `lineups_lookup_on`, expanded as in `fetch_lineups_all.sql:205-214` | `lineup_totals_by_game.player_ids` — **all 22,597 segment lineups resolve, zero fan-out** |
+| Name-as-key safety | **unsafe**: a same-name/different-id pair inside one (game, team); team 4 has `NEW NEW` across 3 ids | **unsafe**: `own_lineup` and `player_ids` are sorted independently — **31,907 of 40,000 positional pairs mismatch** |
 | Zero-length segments | 37 rows in game 115 | **35,136 of 77,808 (45%)** |
 | Segments per game (both teams share one timeline) | ~35 distinct, max 56 | ~36 distinct (72 rows at 2 per segment, max 116 rows) |
 | Payload per game | ~1,191 MV rows, max 1,634 | ~72 segment rows after the zero-length filter, plus ~565 `actions` rows for the margin |
@@ -74,15 +77,28 @@ Both leagues supply that pairing already (§3.2), so the advantage is void.
 `fetch_stint_ribbon(league, game_id, team_id)` returns:
 
 ```
-$stints      side ∈ {own, opp}, player_label, player_key,
+$stints      side ∈ {own, opp}, player_key, player_label,
              start_elapsed, end_elapsed, is_starter
 $margin      elapsed, margin        # signed to the clicked team, stepped
-$meta        game_label, own_team, opp_team, nominal_seconds, period_seconds[]
-$health      NULL, or a reason string when lane data is untrustworthy
+$meta        n_periods              # game_label added by the calling observer
+$health      NULL, or a reason string when segments were excluded
 ```
 
 The renderer consumes only this. Neither reader is visible above it, and no
 league name appears in any shared function name.
+
+**`player_key` is always the `player_id`, never a name.** Both leagues carry
+same-name/different-id players on one team — Israeli data has such a pair inside
+a single (game, team), and team 4 carries the name `NEW NEW` across three
+distinct ids. A name key does not lose a lane; it silently *merges two people's
+floor time into one*, which is a wrong answer rather than a missing one. Names
+are display labels, always fetched **by id**.
+
+**`is_starter` is not read from either league's boxscore.** It is derived in the
+pure layer by `ribbon_mark_starters()` (§6) from whoever is on the floor in a
+side's earliest segment: measured exactly 5 per team-game across 1,178
+EuroLeague and 878 Israeli team-games, while the EuroLeague boxscore carries 40
+stray flags. One definition, both leagues, no extra column.
 
 ## 5. Readers
 
@@ -115,8 +131,35 @@ So the rule is not "NULL rows are precious" — it is that no `type_lineup`
 predicate is needed at all. Adding one buys nothing, and filtering to
 `IS NOT NULL` reintroduces a seam risk when adjacent runs are merged (§6).
 
-Segments are then exploded to players via `lineups_lookup_on`, and `$health` is
-set when a hash resolves to ≠5 players or to no roster row at all.
+This collapse is not a new pattern: `server_tab3.R:1327-1345` already groups the
+same MV by `(team_id, game_id, lineup_hash, segment_id)` without `type_lineup`
+and takes `MAX(segment_seconds)`. The ribbon's **only** departure from every
+existing reader is that it keeps the interval — `MIN(start_elapsed)` /
+`MAX(end_elapsed)` — instead of collapsing a segment to a duration. Two extra
+columns on an established query.
+
+Segments are exploded to players with the canonical expansion copied from
+`fetch_lineups_all.sql:205-214`, the version behind Tab 2:
+
+```
+SELECT l.team_id, l.lineup_hash,
+       ARRAY_AGG(DISTINCT l.player_id ORDER BY l.player_id)::int4[] AS player_ids
+FROM basketball_test.lineups_lookup_on l
+WHERE l.game_year = <season>
+GROUP BY l.team_id, l.lineup_hash
+HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
+```
+
+The `cardinality = 5` guard is the app's existing convention for odd-sized
+lineups — exclude them — so the ribbon follows it rather than inventing its own
+handling. `$health` is then a single count of segments that guard dropped,
+existing only so the modal can say the lanes are incomplete instead of showing a
+silent gap. It affects roughly 4-6 games in 221.
+
+Labels come from `full_rosters` joined on `(game_id, team_id, player_id)`. The
+`game_id` predicate is load-bearing: the provider reuses an id for a **different
+person in specific games** (id 2060 is Josh Hagins season-wide but J'Von
+McCormick in ~7), so a season-level name map would mislabel exactly those games.
 
 Margin: `own_team_score - opp_team_score` at `event_elapsed_seconds`, from one
 team's rows (verified mirrored: 83/71 vs 71/83 in game 115).
@@ -124,15 +167,30 @@ team's rows (verified mirrored: 83/71 vs 71/83 in game 115).
 ### 5.2 EuroLeague
 
 ```
-SELECT team_id, segment_id, own_lineup, opp_lineup, own_starters, opp_starters,
-       start_elapsed_seconds, end_elapsed_seconds
-FROM euroleague.matchup_segments_actions
-WHERE game_id = $1 AND segment_seconds > 0
+SELECT team_id, segment_id, start_elapsed_seconds, end_elapsed_seconds, player_ids
+FROM euroleague.ribbon_segments_v
+WHERE game_id = $1
 ```
 
-One row yields both sides; `own_lineup` / `opp_lineup` unnest directly to player
-names, so there is no roster join and `$health` is always NULL. Dropping
-zero-length rows is load-bearing here, not cosmetic — it removes 45% of rows.
+`matchup_segments_actions` stores lineups as `text[]` of **names** and carries no
+ids. Resolving those names against the roster one by one would be a name-keyed
+join — the shape that manufactured 258 false findings in the 2026-08-19
+data-quality report. Instead the view reuses the lineup → `player_id` link the
+on/off system is already built on: `lineup_totals_by_game` holds `own_lineup`
+and `player_ids` for the same lineup, is already granted to `app_readonly`, and
+covers **all 22,597 distinct segment lineups with zero fan-out**.
+
+**The two arrays must never be paired positionally.** `own_lineup` and
+`player_ids` are each sorted independently — names alphabetically, ids ascending
+— so `names[i]` is unrelated to `ids[i]`: measured **31,907 mismatches in 40,000
+pairs**. Only the id *set* is trustworthy; labels come from `full_rosters` by id
+(12,674 player-games, 0 unresolved). Pairing positionally would mislabel four
+lanes in five, and would look entirely plausible on screen.
+
+`opp_lineup` is not used at all: both teams have a row for every segment, so the
+opponent's lanes are simply the other team's own rows. `$health` is always NULL
+here — EuroLeague has no odd-sized-lineup defect. Dropping zero-length rows is
+load-bearing, not cosmetic — it removes 45% of rows.
 
 Margin: `actions.points_a` / `points_b`, with elapsed derived as
 `Σ(prior period lengths) + (period_length − marker_time)` — period length 600s
@@ -157,9 +215,11 @@ to draw a score line is the wrong trade.
 
 Instead, add two narrow views in `euroleague` and grant `SELECT` on **those**:
 
-- `ribbon_segments_v` — `game_id, team_id, segment_id, own_lineup, opp_lineup,
-  own_starters, opp_starters, start_elapsed_seconds, end_elapsed_seconds`,
-  already filtered to `segment_seconds > 0`.
+- `ribbon_segments_v` — `game_id, team_id, segment_id, start_elapsed_seconds,
+  end_elapsed_seconds, player_ids`, already filtered to `segment_seconds > 0`.
+  It joins `lineup_totals_by_game` on `(game_id, team_id, own_lineup)` so the
+  view emits **ids, never names**, and exposes no `opp_lineup` — the opponent's
+  lanes are the other team's own rows.
 - `ribbon_margin_v` — `game_id, elapsed_seconds, points_a, points_b`, with the
   period/`marker_time` → elapsed derivation (§5.2) done in the view so the
   clock rule lives in one place rather than in R.
@@ -220,6 +280,10 @@ which were stable within a few ms — as sound.
   survives a substitution around them keeps one continuous lane. Verified
   necessary: game 115 has runs of up to 6 segments sharing a hash, and
   per-player runs are longer still.
+- `ribbon_mark_starters()` — flag whoever is on the floor in a side's earliest
+  segment. One definition for both leagues, replacing two different boxscore
+  columns; verified exactly 5 per team-game in 1,178 EuroLeague and 878 Israeli
+  team-games.
 - `ribbon_geometry()` — elapsed → a 1000-unit viewBox space; lane index → y.
   Lane order: starters first, then total floor time descending, within each
   team block.
@@ -297,13 +361,20 @@ Tab 4 and Tab 11 wiring, and the two EuroLeague views with their grants.
 3. Drop zero-length segments before laying out lanes, or they consume lane
    slots while rendering as invisible slivers.
 4. Merge per player, not per lineup hash.
-5. `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`.
-6. Launch with Run App / `runApp()`, never select-all + Ctrl+Enter.
-7. Re-run `apply_db_security.R` after any `DROP` touching `ribbon_segments_v` or
+5. **Never key a lane on a player name**, and never pair a name array with an id
+   array positionally. Both leagues carry same-name/different-id players, and the
+   EuroLeague arrays are independently sorted (31,907/40,000 positional
+   mismatches). Key on `player_id`; fetch labels by id.
+6. Take the lineup → player_id link from what exists (`lineups_lookup_on` via
+   the `fetch_lineups_all.sql` expansion; `lineup_totals_by_game` for
+   EuroLeague) rather than resolving names.
+7. `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`.
+8. Launch with Run App / `runApp()`, never select-all + Ctrl+Enter.
+9. Re-run `apply_db_security.R` after any `DROP` touching `ribbon_segments_v` or
    `ribbon_margin_v` — editing either view means `DROP`+`CREATE`, which wipes
    the grant.
-8. The EuroLeague tabs read only pre-aggregated relations today; `actions` and
-   `matchup_segments_actions` are denied to `app_readonly` by design. Do not
-   "fix" that with a table-level grant.
-9. Never add a second query to a ribbon open. The round-trip floor is 238 ms, so
-   a second trip costs more than the entire rest of the feature. §5.4.
+10. The EuroLeague tabs read only pre-aggregated relations today; `actions` and
+    `matchup_segments_actions` are denied to `app_readonly` by design. Do not
+    "fix" that with a table-level grant.
+11. Never add a second query to a ribbon open. The round-trip floor is 238 ms, so
+    a second trip costs more than the entire rest of the feature. §5.4.
