@@ -274,3 +274,150 @@ test_that("ribbon_complete_margin returns a usable series from no data", {
   expect_identical(out$elapsed, c(0, 2400))
   expect_identical(out$margin, c(0, 0))
 })
+
+ribbon_fixture <- function() {
+  lanes <- rbind(
+    lane_row("own", "1", 0, 1200, is_starter = TRUE, player_label = "A Cohen"),
+    lane_row("own", "2", 1200, 2400, player_label = "B Levy"),
+    lane_row("opp", "9", 0, 2400, is_starter = TRUE, player_label = "C Katz")
+  )
+  margin <- data.frame(elapsed = c(0, 600, 1200), margin = c(0, 5, -3))
+  meta <- list(game_label = "Team A vs Team B", n_periods = 4L,
+               own_team = "Team A", opp_team = "Team B")
+  list(lanes = lanes, margin = margin, meta = meta)
+}
+
+test_that("ribbon_margin_path emits a stepped path, not a diagonal one", {
+  margin <- data.frame(elapsed = c(0, 1200), margin = c(0, 10))
+  d <- ribbon_margin_path(margin, total_seconds = 2400, width = 1000,
+                          top = 0, height = 100)
+  expect_match(d, "^M ")
+  expect_match(d, "H .* V ")
+})
+
+test_that("ribbon_margin_path returns an empty string for no data", {
+  expect_identical(
+    ribbon_margin_path(data.frame(elapsed = numeric(0), margin = numeric(0)),
+                       2400, 1000, 0, 100),
+    ""
+  )
+})
+
+test_that("build_stint_ribbon_svg draws one rect per merged stint", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_identical(lengths(regmatches(html, gregexpr("ibpl-ribbon-lane", html))), 3L)
+})
+
+test_that("build_stint_ribbon_svg emits one clipPath per player", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_identical(lengths(regmatches(html, gregexpr("<clipPath", html))), 3L)
+})
+
+test_that("every lane's data-clip matches a clipPath id that exists", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  clips <- regmatches(html, gregexpr('data-clip="[^"]+"', html))[[1]]
+  clips <- sub('data-clip="', "", sub('"$', "", clips))
+  ids <- regmatches(html, gregexpr('id="[^"]+"', html))[[1]]
+  ids <- sub('id="', "", sub('"$', "", ids))
+  expect_true(all(clips %in% ids))
+})
+
+test_that("the viewBox width comes from nominal period length", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(html, 'viewBox="0 0 1000 ')
+})
+
+test_that("an overtime game gets more period gridlines than regulation", {
+  f <- ribbon_fixture()
+  reg <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  f$meta$n_periods <- 5L
+  ot <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  n_reg <- lengths(regmatches(reg, gregexpr("ibpl-ribbon-period", reg)))
+  n_ot <- lengths(regmatches(ot, gregexpr("ibpl-ribbon-period", ot)))
+  expect_gt(n_ot, n_reg)
+})
+
+test_that("the margin curve is drawn twice: a base copy and a focus copy", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(html, "ibpl-ribbon-margin-base")
+  expect_match(html, "ibpl-ribbon-margin-focus")
+})
+
+test_that("every lane renders one visible name in the gutter", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_identical(lengths(regmatches(html, gregexpr("ibpl-ribbon-name", html))), 3L)
+  expect_match(html, "A Cohen", fixed = TRUE)
+})
+
+test_that("the two teams are identified on the chart", {
+  f <- ribbon_fixture()
+  f$meta$own_team <- "Hapoel TA"; f$meta$opp_team <- "Maccabi"
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(html, "Hapoel TA", fixed = TRUE)
+  expect_match(html, "Maccabi", fixed = TRUE)
+})
+
+test_that("the zero-margin baseline is drawn and labelled", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(html, "ibpl-ribbon-zero", fixed = TRUE)
+  expect_match(html, ">tied<", fixed = TRUE)
+})
+
+test_that("period boundaries are labelled, not merely drawn", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(html, ">Q1<", fixed = TRUE)
+  expect_match(html, ">Q4<", fixed = TRUE)
+  f$meta$n_periods <- 5L
+  ot <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(ot, ">OT1<", fixed = TRUE)
+})
+
+test_that("each lane carries an explicit aria-label, not just a title", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_identical(lengths(regmatches(html, gregexpr('aria-label="A Cohen', html))), 1L)
+})
+
+test_that("each lane carries a title for tooltip and screen readers", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(html, "<title>A Cohen")
+})
+
+test_that("build_stint_ribbon_svg returns NULL when there are no lanes", {
+  f <- ribbon_fixture()
+  expect_null(build_stint_ribbon_svg(f$lanes[0, , drop = FALSE], f$margin, f$meta))
+})
+
+test_that("clip ids are namespaced so two ribbons on a page cannot collide", {
+  f <- ribbon_fixture()
+  a <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta, id_prefix = "r1"))
+  b <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta, id_prefix = "r2"))
+  expect_match(a, 'id="r1-on-own-1"')
+  expect_match(b, 'id="r2-on-own-1"')
+})
+
+test_that("clip ids stay valid when the key is a EuroLeague player name", {
+  id <- ribbon_clip_id("r1", "own", "BIRCH, KHEM")
+  expect_false(grepl("[ ,]", id))
+  expect_identical(id, "r1-on-own-BIRCH-KHEM")
+})
+
+test_that("a named-key lane still resolves to a clipPath that exists", {
+  f <- ribbon_fixture()
+  f$lanes$player_key <- c("BIRCH, KHEM", "HALL, DEVON", "SLEVA, DUSTIN")
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  clips <- regmatches(html, gregexpr('data-clip="[^"]+"', html))[[1]]
+  clips <- sub('data-clip="', "", sub('"$', "", clips))
+  ids <- regmatches(html, gregexpr('id="[^"]+"', html))[[1]]
+  ids <- sub('id="', "", sub('"$', "", ids))
+  expect_true(all(clips %in% ids))
+})

@@ -3192,3 +3192,138 @@ ribbon_complete_margin <- function(margin, total_seconds) {
   rownames(m) <- NULL
   m
 }
+
+# ---------------- Stint ribbon: SVG builder ----------------
+
+RIBBON_WIDTH <- 1000
+RIBBON_LANE_HEIGHT <- 14
+RIBBON_LANE_GAP <- 3
+RIBBON_MARGIN_HEIGHT <- 90
+
+ribbon_clip_id <- function(id_prefix, side, player_key) {
+  slug <- gsub("[^A-Za-z0-9_-]+", "-", as.character(player_key))
+  slug <- gsub("(^-+)|(-+$)", "", slug)
+  paste0(id_prefix, "-on-", side, "-", slug)
+}
+
+ribbon_margin_path <- function(margin, total_seconds, width, top, height,
+                               gutter = RIBBON_GUTTER) {
+  if (is.null(margin) || !nrow(margin)) return("")
+
+  margin <- margin[order(margin$elapsed), , drop = FALSE]
+  max_abs <- suppressWarnings(max(abs(margin$margin), na.rm = TRUE))
+  if (!is.finite(max_abs) || max_abs <= 0) max_abs <- 1
+
+  x <- gutter + margin$elapsed * ((width - gutter) / total_seconds)
+  y <- top + height / 2 - (margin$margin / max_abs) * (height / 2)
+
+  parts <- sprintf("M %.2f %.2f", x[1], y[1])
+  if (length(x) > 1) {
+    parts <- c(parts, sprintf("H %.2f V %.2f", x[-1], y[-1]))
+  }
+  paste(parts, collapse = " ")
+}
+
+build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
+  if (is.null(lanes) || !nrow(lanes)) return(NULL)
+
+  bounds <- ribbon_period_bounds(meta$n_periods)
+  total_seconds <- bounds[length(bounds)]
+
+  lanes <- merge_adjacent_stints(lanes)
+  lanes <- ribbon_lane_index(lanes)
+  lanes <- ribbon_geometry(lanes, total_seconds, width = RIBBON_WIDTH,
+                           lane_height = RIBBON_LANE_HEIGHT,
+                           lane_gap = RIBBON_LANE_GAP)
+
+  own <- lanes[lanes$side == "own", , drop = FALSE]
+  opp <- lanes[lanes$side == "opp", , drop = FALSE]
+  own_h <- if (nrow(own)) max(own$y + own$h) else 0
+  margin_top <- own_h + RIBBON_LANE_GAP * 2
+  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_LANE_GAP * 2
+  total_h <- opp_top + if (nrow(opp)) max(opp$y + opp$h) else 0
+
+  lanes$abs_y <- ifelse(lanes$side == "own", lanes$y, opp_top + lanes$y)
+  lanes$clip <- ribbon_clip_id(id_prefix, lanes$side, lanes$player_key)
+
+  path_d <- ribbon_margin_path(margin, total_seconds, RIBBON_WIDTH,
+                               margin_top, RIBBON_MARGIN_HEIGHT)
+
+  clip_paths <- lapply(unique(lanes$clip), function(cid) {
+    rows <- lanes[lanes$clip == cid, , drop = FALSE]
+    tags$clipPath(
+      id = cid,
+      lapply(seq_len(nrow(rows)), function(i) {
+        tags$rect(x = rows$x[i], y = margin_top,
+                  width = rows$w[i], height = RIBBON_MARGIN_HEIGHT)
+      })
+    )
+  })
+
+  period_lines <- lapply(bounds[-length(bounds)], function(b) {
+    bx <- RIBBON_GUTTER + b * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
+    tags$line(class = "ibpl-ribbon-period",
+              x1 = bx, x2 = bx, y1 = 0, y2 = total_h)
+  })
+
+  lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
+    secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
+    label <- sprintf("%s, %.0f:%02.0f on the floor",
+                     lanes$player_label[i], secs %/% 60, secs %% 60)
+    tags$g(
+      class = paste("ibpl-ribbon-lane", paste0("is-", lanes$side[i])),
+      `data-clip` = lanes$clip[i],
+      tabindex = "0",
+      role = "listitem",
+      `aria-label` = label,
+      tags$title(label),
+      tags$rect(x = lanes$x[i], y = lanes$abs_y[i],
+                width = lanes$w[i], height = lanes$h[i], rx = 2)
+    )
+  })
+
+  first_row <- !duplicated(paste(lanes$side, lanes$player_key))
+  lane_labels <- lapply(which(first_row), function(i) {
+    tags$text(class = "ibpl-ribbon-name", x = RIBBON_GUTTER - 8,
+              y = lanes$abs_y[i] + lanes$h[i] - 3, `text-anchor` = "end",
+              lanes$player_label[i])
+  })
+
+  team_labels <- list(
+    tags$text(class = "ibpl-ribbon-team", x = 0, y = 10, meta$own_team %||% "Own"),
+    tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - 6,
+              meta$opp_team %||% "Opponent")
+  )
+
+  zero_y <- margin_top + RIBBON_MARGIN_HEIGHT / 2
+  baseline <- list(
+    tags$line(class = "ibpl-ribbon-zero", x1 = RIBBON_GUTTER, x2 = RIBBON_WIDTH,
+              y1 = zero_y, y2 = zero_y),
+    tags$text(class = "ibpl-ribbon-zero-label", x = RIBBON_GUTTER - 8,
+              y = zero_y + 3, `text-anchor` = "end", "tied")
+  )
+
+  period_labels <- lapply(seq_along(bounds), function(k) {
+    bx <- RIBBON_GUTTER + bounds[k] * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
+    tags$text(class = "ibpl-ribbon-period-label", x = bx - 4, y = total_h + 12,
+              `text-anchor` = "end",
+              if (k <= 4) paste0("Q", k) else paste0("OT", k - 4))
+  })
+
+  tags$svg(
+    xmlns = "http://www.w3.org/2000/svg",
+    viewBox = sprintf("0 0 %d %.0f", RIBBON_WIDTH, total_h + 16),
+    class = "ibpl-ribbon",
+    role = "img",
+    `aria-label` = meta$game_label,
+    tags$defs(clip_paths),
+    period_lines,
+    baseline,
+    tags$path(class = "ibpl-ribbon-margin-base", d = path_d),
+    tags$path(class = "ibpl-ribbon-margin-focus", d = path_d),
+    team_labels,
+    lane_labels,
+    period_labels,
+    lane_rects
+  )
+}
