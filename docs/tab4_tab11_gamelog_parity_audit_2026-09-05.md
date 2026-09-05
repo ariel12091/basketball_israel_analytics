@@ -106,6 +106,23 @@ Tab 4 ships a "Show/Hide Example" collapse per view with a real annotated game
 bullets with no example and no image. Tab 4's explainers also run four bullets
 to Tab 11's three.
 
+### P10 — Tab 11 lost the game_id sort tiebreak · **Defect** · Tab 11 · FIXED
+
+Recorded because this audit originally mis-classified it as cosmetic, on the
+reasoning that the R-side arrange is "irrelevant once DT re-sorts". That is
+wrong: **DataTables' sort is stable**, so rows tying on every sort key keep
+their incoming order — and with the table sorted on Date then Rd, every row of
+every game played on the same date in the same round ties on both.
+
+Tab 4 arranges `desc(game_date), desc(gn), game_id, team_name`; Tab 11 omitted
+`game_id`, leaving `team_name` as the only tiebreak, so a game's two rows sorted
+apart alphabetically instead of sitting together.
+
+Measured on EuroLeague 2025: **79 of 100 date+round buckets hold more than one
+game**, up to 9 games / 18 tied rows in one bucket. On 2026-01-20 round 23,
+game 224's two rows (EA7 Milan, Real Madrid) sat 11 rows apart. Fixed by
+matching Tab 4's arrange.
+
 ### P8 — Different season-cache mechanisms · **Cosmetic**, verify · both
 
 Tab 4 uses `bindCache(...) %>% bindEvent(...)` against `GL_DATA_CACHE`; Tab 11

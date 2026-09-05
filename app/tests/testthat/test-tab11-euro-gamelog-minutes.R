@@ -106,3 +106,22 @@ test_that("Tab 11 sorts newest game first, like Tab 4", {
   # showing the OLDEST game first and silently discarding the R-side arrange().
   expect_match(src, "order = list(list(2, \"desc\")", fixed = TRUE)
 })
+
+# DataTables sorts on Date then Rd, and its sort is STABLE: rows tying on
+# every sort key keep their incoming order. Every row of every game played on
+# the same date in the same round ties on both keys -- 79 of 100 date+round
+# buckets in EuroLeague 2025 hold more than one game, up to 9 games / 18 tied
+# rows. Without a game_id tiebreak in the R-side arrange, a game's two rows
+# sort apart alphabetically instead of sitting together.
+test_that("Tab 11 tiebreaks its sort on game_id, like Tab 4", {
+  euro <- paste(readLines(repo_file("R", "server_tab11_euro_gamelogs.R"), warn = FALSE),
+                collapse = "
+")
+  isr <- paste(readLines(repo_file("R", "server_tab4.R"), warn = FALSE), collapse = "
+")
+
+  expect_true(grepl("arrange(desc(game_date), desc(round_number), game_id, team_name)",
+                    euro, fixed = TRUE))
+  expect_true(grepl("arrange(desc(game_date), desc(gn), game_id, team_name)",
+                    isr, fixed = TRUE))
+})

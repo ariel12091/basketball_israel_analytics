@@ -110,7 +110,13 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
       mutate(result = ifelse(has_won, "W", "L"),
              score = paste0(team_points, "-", opp_points),
              phase_label = euro_phase_label(phase)) %>%
-      arrange(desc(game_date), desc(round_number), team_name)
+      # game_id before team_name, matching tab 4. DataTables sorts on Date
+      # then Rd and its sort is stable, so every row of every game played on
+      # the same date in the same round ties on both keys and falls back to
+      # this order. Without the game_id tiebreak a game's two rows scatter
+      # alphabetically across the whole date block -- 79 of 100 date+round
+      # buckets hold more than one game.
+      arrange(desc(game_date), desc(round_number), game_id, team_name)
   }
 
   # Match the Israeli companion: filters decide which games are displayed,
