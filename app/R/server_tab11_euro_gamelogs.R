@@ -35,7 +35,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     ribbon <- fetch_stint_ribbon(
       pg_pool, "euroleague", click$game_id, click$team_id,
-      data_version = shared_data_version(shared)
+      data_version = euro_data_version()
     )
 
     if (is.null(ribbon) || !nrow(ribbon$lanes)) {

@@ -462,6 +462,12 @@
   });
 
   document.addEventListener("click", function(e) {
+    // Touch/no-hover devices only: tap-to-toggle (spec §8). On a
+    // hover-capable device, mouseover already set is-active, so toggling
+    // here on click would clear emphasis while the pointer is still on the
+    // lane. Spec D3 rejects pinning; evaluated per-event (not cached at
+    // load) so it tracks a device gaining/losing a pointer.
+    if (!(window.matchMedia && window.matchMedia("(hover: none)").matches)) return;
     var lane = laneFrom(e.target);
     if (!lane) return;
     var svg = lane.closest(".ibpl-ribbon");
