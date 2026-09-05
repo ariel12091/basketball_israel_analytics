@@ -23,6 +23,7 @@ which called it "the strongest single addition available".
 | D5 | Drill-down from the **game-log tabs** (Tab 4 Israeli, Tab 11 EuroLeague), reusing Tab 2's click→modal spine | Rows are already per `(game_id, team_id)`; no new game picker |
 | D6 | **Both leagues in v1**, one canonical frame and two thin readers | A boundary validated by one implementation is the kind `CLAUDE.md` warns "demonstrably drifts" |
 | D7 | x-axis extent from **nominal period structure**, never `max(elapsed)` | Verified: Israeli games end ragged (2344, 2351, …, and outliers at 961 and 1754) |
+| D8 | **One query per ribbon open**, returning one row with `lanes` and `margin` as `jsonb` | Budget is 500 ms and the round-trip floor is 238 ms; two queries fail on latency alone. §5.4 |
 
 ## 3. Data foundation (measured 2026-09-05, not assumed)
 
@@ -171,6 +172,47 @@ from. Register both in `sql/security/*.sql` and apply via
 checklist, and note that changing either view means `DROP`+`CREATE`, hence
 re-granting.
 
+### 5.4 Performance budget — one round trip, non-negotiable
+
+**Budget: under 500 ms per ribbon open.** Measured 2026-09-05; every number is a
+median of n=7 unless stated.
+
+The binding constraint is transport, not SQL. A bare `SELECT 1` on the pooler
+costs **238 ms** (n=10, min 236, max 245). Server-side execution for the real
+queries is 0.5-21.6 ms. So each round trip costs ~240 ms regardless of what it
+asks for, and **two sequential queries spend the whole budget on latency alone**.
+
+| Form | Israeli | EuroLeague |
+|---|---|---|
+| segments only | 240.6 ms (1.3 ms server) | — |
+| margin only | 243-250 ms | — |
+| segments + roster join | 256-260 ms (19.1 ms server) | — |
+| **two queries, sequential** | **~490-510 ms — fails** | — |
+| one query, `UNION ALL` | 256-269 ms (18.6 ms server) | 240-247 ms (0.5 ms server) |
+| **one query, two `jsonb` columns** | **268-272 ms (21.6 ms server)** | — |
+
+**Decision: one query per ribbon open, returning a single row with two `jsonb`
+columns — `lanes` and `margin`.** It costs ~10 ms more than the `UNION ALL`
+form and avoids stuffing margin values into generically-named lane columns, so
+the reader gets a typed, self-describing contract. Payload is 29-39 KB per game.
+
+Consequences for implementation:
+
+- Never issue a second query to complete a ribbon. The roster explosion joins
+  inside the query; the EuroLeague clock derivation lives in `ribbon_margin_v`
+  (§5.3) so it costs no extra trip.
+- Optimising the SQL is not the lever — 21.6 ms of a 270 ms open is 8%.
+  Round-trip count is the only thing that moves this number.
+- Cache the result per `game_id` + `shared_data_version(shared)`, following the
+  `GL_DATA_CACHE` pattern Tab 4 already uses, so re-opening a ribbon costs
+  nothing.
+
+Headroom: ~230 ms of the budget is unused, which is the margin for tail latency.
+One sample of 489 ms was observed under contention across ~90 timed calls. Note
+these were measured with `C:` at 99% full; a past session recorded 2x timing
+swings on a full disk, so treat the tails as pessimistic and the medians —
+which were stable within a few ms — as sound.
+
 ## 6. Transforms (pure, in `helpers.R`)
 
 - `merge_adjacent_stints()` — collapse consecutive segments in which a player
@@ -263,3 +305,5 @@ Tab 4 and Tab 11 wiring, and the two EuroLeague views with their grants.
 8. The EuroLeague tabs read only pre-aggregated relations today; `actions` and
    `matchup_segments_actions` are denied to `app_readonly` by design. Do not
    "fix" that with a table-level grant.
+9. Never add a second query to a ribbon open. The round-trip floor is 238 ms, so
+   a second trip costs more than the entire rest of the feature. §5.4.
