@@ -200,9 +200,7 @@ lineup_totals AS (
     SUM(ss.fg2_att) AS fg2_att,
     SUM(ss.fg3_made) AS fg3_made,
     SUM(ss.fg3_att) AS fg3_att,
-    SUM(ss.starters_poss_num) AS starters_poss_num,
-    -- Minutes from segment_times, count once per segment (use offense filter)
-    SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+    SUM(ss.starters_poss_num) AS starters_poss_num
   FROM segment_stats ss
   JOIN segment_times st
     ON st.lineup_hash = ss.lineup_hash
@@ -228,8 +226,7 @@ per_type AS (
     SUM(lt.fg2_att) AS fg2_att,
     SUM(lt.fg3_made) AS fg3_made,
     SUM(lt.fg3_att) AS fg3_att,
-    SUM(lt.starters_poss_num) AS starters_poss_num,
-    SUM(lt.minutes)    AS minutes
+    SUM(lt.starters_poss_num) AS starters_poss_num
   FROM sub_map sm
   JOIN lineup_totals lt
     ON lt.lineup_hash = sm.lineup_hash
@@ -242,6 +239,15 @@ per_type AS (
 ),
 
 -- pivot Off/Def and join names + identity, per season
+sub_minutes AS (
+  SELECT sm.team_id, sm.sub_lineup_hash, sm.game_year,
+         SUM(st.stint_seconds) / 60.0 AS minutes
+  FROM sub_map sm
+  JOIN segment_times st
+    ON st.lineup_hash = sm.lineup_hash AND st.game_year = sm.game_year
+  GROUP BY sm.team_id, sm.sub_lineup_hash, sm.game_year
+),
+
 final_rows AS (
   SELECT
     d.team_id,
@@ -268,8 +274,8 @@ final_rows AS (
       1
     ) AS def_ppp,
 
-    -- Minutes: sum from both offense and defense (they cover the same time, so just take one)
-    ROUND(COALESCE(SUM(p.minutes) FILTER (WHERE p.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+    -- Duration is independent of offensive-event row existence.
+    ROUND(COALESCE(MAX(pm.minutes), 0)::numeric, 1) AS minutes,
 
     COALESCE(SUM(p.fg2_made) FILTER (WHERE p.type_lineup = 'offense'), 0) AS off_fg2_made,
     COALESCE(SUM(p.fg2_att)  FILTER (WHERE p.type_lineup = 'offense'), 0) AS off_fg2_att,
@@ -291,6 +297,9 @@ final_rows AS (
     ON n.team_id        = d.team_id
    AND n.sub_lineup_hash = d.sub_lineup_hash
    AND n.game_year       = d.game_year
+  LEFT JOIN sub_minutes pm
+    ON pm.team_id = d.team_id AND pm.sub_lineup_hash = d.sub_lineup_hash
+   AND pm.game_year = d.game_year
   LEFT JOIN per_type p
     ON p.team_id        = d.team_id
    AND p.sub_lineup_hash = d.sub_lineup_hash

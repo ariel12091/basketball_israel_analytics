@@ -49,7 +49,7 @@ complex_flags AS (
   WHERE d.parent_action_id IS NOT NULL
   ORDER BY d.id
 ),
-lineup_totals AS (
+lineup_stats AS (
   SELECT
     cs.game_id,
     s.game_year,
@@ -99,6 +99,25 @@ onoff_lineup_minutes AS (
     ROUND(SUM(seg_seconds) / 60.0, 3) AS minutes
   FROM onoff_lineup_segments
   GROUP BY game_id, team_id, lineup_hash, own_starters, opp_starters
+),
+lineup_totals AS (
+  SELECT * FROM lineup_stats
+  UNION ALL
+  -- Time-only slices still need an offense row for the on/off minute payload.
+  SELECT lm.game_id, s.game_year, lm.team_id, lm.lineup_hash,
+         'offense'::text, lm.own_starters, lm.opp_starters,
+         0::bigint, 0::bigint, 0::bigint, 0::bigint,
+         0::bigint, 0::bigint, 0::bigint, 0::bigint,
+         0::bigint, 0::bigint, 0::bigint
+  FROM onoff_lineup_minutes lm
+  JOIN basketball_test.schedule s USING (game_id)
+  WHERE NOT EXISTS (
+    SELECT 1 FROM lineup_stats ls
+    WHERE ls.game_id = lm.game_id AND ls.team_id = lm.team_id
+      AND ls.lineup_hash = lm.lineup_hash AND ls.type_lineup = 'offense'
+      AND ls.own_starters IS NOT DISTINCT FROM lm.own_starters
+      AND ls.opp_starters IS NOT DISTINCT FROM lm.opp_starters
+  )
 ),
 onoff_player AS (
   SELECT

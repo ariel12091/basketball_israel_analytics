@@ -70,6 +70,9 @@ APPLY  <- "--apply"   %in% commandArgs(trailingOnly = TRUE)
 # learn that the apply path works without spending a maintenance window on it.
 # Precedent: etl/backfill_canonical_segment_minutes.R.
 DRY    <- "--dry-run" %in% commandArgs(trailingOnly = TRUE)
+args <- commandArgs(trailingOnly = TRUE)
+if (any(!args %in% c("--apply", "--dry-run")) || (APPLY && DRY))
+  stop("Use no flag, --dry-run, or --apply (mutually exclusive)")
 SCHEMA <- "basketball_test"
 
 say <- function(...) cat(sprintf(...), "\n", sep = "")
@@ -202,6 +205,13 @@ affected <- c("mv_lineup_totals_by_day", "onoff_default_mv",
 targets <- Filter(function(x) x$name %in% affected, registry_env$MV_REGISTRY)
 # Read every input before taking locks or dropping anything.
 definitions <- lapply(targets, function(x) paste(readLines(x$file, warn = FALSE), collapse = "\n"))
+refresh_paths <- file.path("sql", "functions", c(
+  "refresh_player_four_factors_by_game_for_games.sql",
+  "refresh_onoff_default_for_games.sql",
+  "refresh_team_metrics_by_game_for_games.sql",
+  "refresh_sub_lineups.sql", "refresh_sub_lineups_incremental.sql"))
+refresh_definitions <- lapply(refresh_paths, function(f)
+  paste(readLines(f, warn = FALSE), collapse = "\n"))
 hardening <- paste(readLines("sql/security/enable_readonly_rls.sql", warn = FALSE), collapse = "\n")
 audit <- paste(readLines("sql/security/audit_app_access.sql", warn = FALSE), collapse = "\n")
 outcome <- tryCatch({
@@ -212,6 +222,12 @@ DBI::dbWithTransaction(con, {
   # Freeze the truth used throughout verification, including concurrent ETL.
   dbExecute(con, "LOCK TABLE basketball_test.df_pts_poss_lineups_longer_mv IN SHARE MODE")
   rebuild_minutes_relations(con, targets, definitions)
+  for (i in seq_along(refresh_definitions)) {
+    say("Installing %s", refresh_paths[[i]])
+    dbExecute(con, refresh_definitions[[i]], immediate = TRUE)
+  }
+  say("Refreshing sub-lineup season totals")
+  dbExecute(con, "SELECT basketball_test.refresh_sub_lineups_stats()")
   dbExecute(con, hardening, immediate = TRUE)  # 76 statements
   violations <- dbGetQuery(con, audit)
   if (nrow(violations)) {
@@ -219,6 +235,7 @@ DBI::dbWithTransaction(con, {
     stop("Database access audit failed")
   }
   verify_minutes_migration(con)
+  verify_minutes_refresh_parity(con)
   after <- measure(con)
   say("")
   say("AFTER    canonical truth        : %7.3f min/team-game", after$truth)

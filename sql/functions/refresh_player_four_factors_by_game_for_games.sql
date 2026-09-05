@@ -5,7 +5,7 @@ AS $$
 DECLARE
   inserted_count bigint := 0;
 BEGIN
-  IF game_ids IS NULL OR array_length(game_ids, 1) IS NULL THEN
+  IF game_ids IS NULL THEN
     DELETE FROM basketball_test.player_four_factors_by_game;
   ELSE
     DELETE FROM basketball_test.player_four_factors_by_game
@@ -68,7 +68,7 @@ BEGIN
       AND (game_ids IS NULL OR d.game_id = ANY(game_ids))
     ORDER BY d.id
   ),
-  lineup_totals AS (
+  lineup_stats AS (
     SELECT
       cs.game_id,
       s.game_year,
@@ -98,7 +98,6 @@ BEGIN
       cs.game_id,
       cs.team_id,
       cs.lineup_hash,
-      cs.type_lineup,
       cs.own_starters,
       cs.opp_starters,
       cs.segment_id,
@@ -107,22 +106,37 @@ BEGIN
     WHERE cs.lineup_hash IS NOT NULL
       AND cs.segment_id IS NOT NULL
       AND cs.segment_seconds IS NOT NULL
-    GROUP BY cs.game_id, cs.team_id, cs.lineup_hash, cs.type_lineup, cs.own_starters, cs.opp_starters, cs.segment_id
+    GROUP BY cs.game_id, cs.team_id, cs.lineup_hash, cs.own_starters, cs.opp_starters, cs.segment_id
   ),
   onoff_lineup_minutes AS (
     SELECT
       game_id,
       team_id,
       lineup_hash,
-      type_lineup,
       own_starters,
       opp_starters,
-      CASE
-        WHEN type_lineup = 'offense' THEN ROUND(SUM(seg_seconds) / 60.0, 3)
-        ELSE 0::numeric
-      END AS minutes
+      ROUND(SUM(seg_seconds) / 60.0, 3) AS minutes
     FROM onoff_lineup_segments
-    GROUP BY game_id, team_id, lineup_hash, type_lineup, own_starters, opp_starters
+    GROUP BY game_id, team_id, lineup_hash, own_starters, opp_starters
+  ),
+  lineup_totals AS (
+    SELECT * FROM lineup_stats
+    UNION ALL
+    -- Time-only slices still need an offense row for the on/off minute payload.
+    SELECT lm.game_id, s.game_year, lm.team_id, lm.lineup_hash,
+           'offense'::text, lm.own_starters, lm.opp_starters,
+           0::bigint, 0::bigint, 0::bigint, 0::bigint,
+           0::bigint, 0::bigint, 0::bigint, 0::bigint,
+           0::bigint, 0::bigint, 0::bigint
+    FROM onoff_lineup_minutes lm
+    JOIN basketball_test.schedule s USING (game_id)
+    WHERE NOT EXISTS (
+      SELECT 1 FROM lineup_stats ls
+      WHERE ls.game_id = lm.game_id AND ls.team_id = lm.team_id
+        AND ls.lineup_hash = lm.lineup_hash AND ls.type_lineup = 'offense'
+        AND ls.own_starters IS NOT DISTINCT FROM lm.own_starters
+        AND ls.opp_starters IS NOT DISTINCT FROM lm.opp_starters
+    )
   ),
   onoff_player AS (
     SELECT
@@ -145,7 +159,8 @@ BEGIN
       SUM(lt.c3_made) AS c3_made,
       SUM(lt.c3_att) AS c3_att,
       SUM(lt.c3_known_att) AS c3_known_att,
-      SUM(COALESCE(lm.minutes, 0)) AS onoff_minutes
+      SUM(CASE WHEN lt.type_lineup = 'offense'
+               THEN COALESCE(lm.minutes, 0) ELSE 0 END) AS onoff_minutes
     FROM base0 b0
     JOIN lineup_totals lt
       ON lt.lineup_hash = b0.lineup_hash
@@ -154,7 +169,6 @@ BEGIN
       ON lm.game_id = lt.game_id
      AND lm.team_id = lt.team_id
      AND lm.lineup_hash = lt.lineup_hash
-     AND lm.type_lineup = lt.type_lineup
      AND lm.own_starters = lt.own_starters
      AND lm.opp_starters = lt.opp_starters
     GROUP BY b0.player_id, b0.team_id, lt.game_id, lt.game_year, b0.is_on_key,
@@ -209,6 +223,15 @@ BEGIN
              cd.is_on_key, cd.num_starters, cd.own_starters, cd.opp_starters,
              cd.segment_id
   ),
+  player_minutes AS (
+    SELECT
+      player_id, team_id, game_id, game_year, is_on_key,
+      num_starters, own_starters, opp_starters,
+      SUM(stint_seconds) / 60.0 AS minutes
+    FROM segment_times
+    GROUP BY player_id, team_id, game_id, game_year, is_on_key,
+             num_starters, own_starters, opp_starters
+  ),
   segment_stats AS (
     SELECT
       cd.player_id,
@@ -221,22 +244,22 @@ BEGIN
       cd.own_starters,
       cd.opp_starters,
       cd.segment_id,
-      sum(cd.team_score) AS total_points,
-      sum(cd.final_end_flag) AS total_poss,
+      sum(cd.team_score)       AS total_points,
+      sum(cd.final_end_flag)   AS total_poss,
       count(CASE WHEN cd.type = 'shot' THEN 1 END)
         + count(DISTINCT CASE
             WHEN cd.type = 'freeThrow'
               AND cd.parent_type = 'foul'
               AND cd.parent_param = 'personal'
             THEN cd.parent_action_id
-          END) AS ts_poss_count,
+          END)                 AS ts_poss_count,
       count(CASE WHEN cd.type = 'rebound' AND cd.parameters_type = 'offensive' THEN 1 END) AS oreb_count,
       count(CASE
         WHEN cd.type = 'shot' AND cd.parameters_made IN ('missed', 'blocked') THEN 1
         WHEN cd.type = 'freeThrow' AND cd.parameters_made = 'missed'
           AND cd.pct_ft = 1::numeric
           AND cd.parent_type = 'foul' AND cd.parent_param = 'personal' THEN 1
-      END) AS oreb_opportunities,
+      END)                     AS oreb_opportunities,
       count(CASE WHEN cd.type = 'turnover' THEN 1 END) AS tov_count,
       count(CASE WHEN cd.type = 'steal' THEN 1 END) AS steal_count,
       count(CASE WHEN cd.type = 'deflection' THEN 1 END) AS deflection_count,
@@ -275,34 +298,79 @@ BEGIN
     ss.num_starters,
     ss.own_starters,
     ss.opp_starters,
-    SUM(ss.total_points)::numeric AS total_points,
-    SUM(ss.total_poss)::bigint AS total_poss,
-    SUM(ss.ts_poss_count)::bigint AS ts_poss_count,
-    SUM(ss.oreb_count)::bigint AS oreb_count,
-    SUM(ss.oreb_opportunities)::bigint AS oreb_opportunities,
-    SUM(ss.tov_count)::bigint AS tov_count,
-    SUM(ss.steal_count)::bigint AS steal_count,
-    SUM(ss.deflection_count)::bigint AS deflection_count,
-    SUM(ss.total_ft_attempts)::bigint AS total_ft_attempts,
-    SUM(ss.total_fga)::bigint AS total_fga,
-    SUM(ss.total_fgm)::bigint AS total_fgm,
-    SUM(ss.total_fg3_made)::bigint AS total_fg3_made,
+    SUM(ss.total_points)::numeric       AS total_points,
+    SUM(ss.total_poss)::bigint          AS total_poss,
+    SUM(ss.ts_poss_count)::bigint       AS ts_poss_count,
+    SUM(ss.oreb_count)::bigint          AS oreb_count,
+    SUM(ss.oreb_opportunities)::bigint  AS oreb_opportunities,
+    SUM(ss.tov_count)::bigint           AS tov_count,
+    SUM(ss.steal_count)::bigint         AS steal_count,
+    SUM(ss.deflection_count)::bigint    AS deflection_count,
+    SUM(ss.total_ft_attempts)::bigint   AS total_ft_attempts,
+    SUM(ss.total_fga)::bigint           AS total_fga,
+    SUM(ss.total_fgm)::bigint           AS total_fgm,
+    SUM(ss.total_fg3_made)::bigint      AS total_fg3_made,
     SUM(ss.player_ts_poss_count)::bigint AS player_ts_poss_count,
-    SUM(ss.player_tov_count)::bigint AS player_tov_count,
-    SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+    SUM(ss.player_tov_count)::bigint     AS player_tov_count,
+    MAX(pm.minutes) FILTER (WHERE ss.type_lineup = 'offense') AS minutes
   FROM segment_stats ss
-  LEFT JOIN segment_times st
-    ON st.player_id = ss.player_id
-   AND st.team_id = ss.team_id
-   AND st.game_id = ss.game_id
-   AND st.game_year = ss.game_year
-   AND st.is_on_key = ss.is_on_key
-   AND st.num_starters = ss.num_starters
-   AND st.own_starters = ss.own_starters
-   AND st.opp_starters = ss.opp_starters
-   AND st.segment_id = ss.segment_id
+  LEFT JOIN player_minutes pm
+    ON pm.player_id = ss.player_id
+   AND pm.team_id = ss.team_id
+   AND pm.game_id = ss.game_id
+   AND pm.game_year = ss.game_year
+   AND pm.is_on_key = ss.is_on_key
+   AND pm.num_starters = ss.num_starters
+   AND pm.own_starters = ss.own_starters
+   AND pm.opp_starters = ss.opp_starters
   GROUP BY ss.player_id, ss.team_id, ss.game_id, ss.game_year, ss.is_on_key,
            ss.type_lineup, ss.num_starters, ss.own_starters, ss.opp_starters
+  UNION ALL
+  -- Slices with floor time but no offense-perspective row in segment_stats.
+  -- segment_stats drives the rows above and is grouped by type_lineup, so a
+  -- slice in which the player's lineup recorded no offensive possession had no
+  -- offense row for MAX(pm.minutes) FILTER (...) to land on, and its minutes
+  -- were dropped entirely. Emitted here as offense rows with zero counts and
+  -- their real minutes -- the same treatment sub_lineups_by_day and
+  -- lineup_four_factors_by_game get. They cannot collide with idx_pff_pk:
+  -- by construction no offense row exists for the slice.
+  SELECT
+    pm.player_id,
+    pm.team_id,
+    pm.game_id,
+    pm.game_year,
+    pm.is_on_key,
+    'offense'::text AS type_lineup,
+    pm.num_starters,
+    pm.own_starters,
+    pm.opp_starters,
+    0::numeric AS total_points,
+    0::bigint  AS total_poss,
+    0::bigint  AS ts_poss_count,
+    0::bigint  AS oreb_count,
+    0::bigint  AS oreb_opportunities,
+    0::bigint  AS tov_count,
+    0::bigint  AS steal_count,
+    0::bigint  AS deflection_count,
+    0::bigint  AS total_ft_attempts,
+    0::bigint  AS total_fga,
+    0::bigint  AS total_fgm,
+    0::bigint  AS total_fg3_made,
+    0::bigint  AS player_ts_poss_count,
+    0::bigint  AS player_tov_count,
+    pm.minutes
+  FROM player_minutes pm
+  WHERE NOT EXISTS (
+      SELECT 1 FROM segment_stats s2
+       WHERE s2.player_id = pm.player_id
+         AND s2.team_id = pm.team_id
+         AND s2.game_id = pm.game_id
+         AND s2.game_year = pm.game_year
+         AND s2.is_on_key = pm.is_on_key
+         AND s2.num_starters = pm.num_starters
+         AND s2.own_starters = pm.own_starters
+         AND s2.opp_starters = pm.opp_starters
+         AND s2.type_lineup = 'offense')
   )
   SELECT
     ff.player_id,
@@ -329,17 +397,17 @@ BEGIN
     ff.player_ts_poss_count,
     ff.player_tov_count,
     ff.minutes,
-    op.fg2_made::int,
-    op.fg2_att::int,
-    op.fg3_made::int,
-    op.fg3_att::int,
-    op.layup_made::int,
-    op.layup_att::int,
-    op.dunk_made::int,
-    op.dunk_att::int,
-    op.c3_made::int,
-    op.c3_att::int,
-    op.c3_known_att::int,
+    op.fg2_made::int AS fg2_made,
+    op.fg2_att::int AS fg2_att,
+    op.fg3_made::int AS fg3_made,
+    op.fg3_att::int AS fg3_att,
+    op.layup_made::int AS layup_made,
+    op.layup_att::int AS layup_att,
+    op.dunk_made::int AS dunk_made,
+    op.dunk_att::int AS dunk_att,
+    op.c3_made::int AS c3_made,
+    op.c3_att::int AS c3_att,
+    op.c3_known_att::int AS c3_known_att,
     op.onoff_minutes
   FROM ff
   LEFT JOIN onoff_player op

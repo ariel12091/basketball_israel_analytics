@@ -178,3 +178,32 @@ verify_minutes_migration <- function(con) {
   assert_onoff_minutes_conserved(con, truth)
   assert_onoff_matches_traditional(con)
 }
+
+# Exercise the installed ETL writers, not just the CREATE TABLE definitions.
+# Snapshots live only in the migration transaction and are dropped on commit.
+verify_minutes_refresh_parity <- function(con) {
+  surfaces <- list(
+    pff = list(table = "player_four_factors_by_game", columns = "*",
+      refresh = "refresh_player_four_factors_by_game_for_games(NULL::int4[])"),
+    onoff = list(table = "onoff_default_mv", columns = 'player_id, team_id, "Year", minutes',
+      refresh = "refresh_onoff_default_for_games(NULL::int4[])"),
+    team = list(table = "team_metrics_by_game_mv", columns = "game_id, team_id, off_minutes, def_minutes",
+      refresh = "refresh_team_metrics_by_game_for_games(NULL::int4[])"),
+    sub = list(table = "sub_lineups_stats", columns = "*",
+      refresh = "refresh_sub_lineups_stats_for_games(ARRAY(SELECT DISTINCT game_id FROM basketball_test.df_pts_poss_lineups_longer_mv))")
+  )
+  for (key in names(surfaces)) {
+    s <- surfaces[[key]]
+    query <- sprintf("SELECT %s FROM basketball_test.%s", s$columns, s$table)
+    snapshot <- paste0("minutes_before_", key)
+    DBI::dbExecute(con, sprintf("CREATE TEMP TABLE %s ON COMMIT DROP AS %s", snapshot, query))
+    message("ETL parity: ", s$table)
+    DBI::dbGetQuery(con, paste0("SELECT basketball_test.", s$refresh))
+    differences <- DBI::dbGetQuery(con, sprintf(
+      "SELECT count(*) AS n FROM ((SELECT * FROM %s EXCEPT ALL %s)
+       UNION ALL (%s EXCEPT ALL SELECT * FROM %s)) d", snapshot, query, query, snapshot))$n[[1]]
+    if (differences != 0) stop(s$table, ": ETL refresh changed ", differences, " rows from rebuilt results")
+    message("ETL parity PASS: ", s$table)
+  }
+  verify_minutes_migration(con)
+}
