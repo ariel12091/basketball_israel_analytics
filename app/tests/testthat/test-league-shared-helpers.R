@@ -517,3 +517,56 @@ test_that("onoff_four_factors_datatable differs between leagues only in the impa
   expect_false(grepl(" pts allowed", js(el), fixed = TRUE))
   expect_false(grepl(FF_IMPACT_EST_TITLE, js(el), fixed = TRUE))
 })
+
+# Game-log table headers (tabs 4 and 11).
+#
+# The Four Factors header is two-tier, and the failure mode is silent: if the
+# group row colspans stop summing to the sub-head count, DataTables renders a
+# skewed table rather than erroring. Assert the invariant, not the markup.
+test_that("the four-factors group row spans exactly the sub-head columns", {
+  OFF_OREB_TOOLTIP <- "off oreb"
+  DEF_OREB_TOOLTIP <- "def oreb"
+  html <- as.character(gamelog_ff_header())
+
+  spans <- as.integer(regmatches(html, gregexpr("(?<=colspan=\")[0-9]+", html, perl = TRUE))[[1]])
+  expect_equal(spans, c(8L, 5L, 5L, 2L))
+
+  n_subhead <- length(gregexpr("sub-head", html, fixed = TRUE)[[1]])
+  expect_equal(sum(spans), n_subhead)
+})
+
+test_that("the group row names offense, defense and usage", {
+  OFF_OREB_TOOLTIP <- "off oreb"
+  DEF_OREB_TOOLTIP <- "def oreb"
+  html <- as.character(gamelog_ff_header())
+
+  for (grp in c("Offense", "Defense", "Usage")) {
+    expect_true(grepl(grp, html, fixed = TRUE), info = grp)
+  }
+})
+
+test_that("the league varying labels are arguments, not hardcoded", {
+  OFF_OREB_TOOLTIP <- "off oreb"
+  DEF_OREB_TOOLTIP <- "def oreb"
+
+  israeli <- as.character(gamelog_ff_header())
+  euro <- as.character(gamelog_ff_header("Rd", "Phase"))
+
+  expect_true(grepl(">GN<", israeli, fixed = TRUE))
+  expect_true(grepl(">Game Type<", israeli, fixed = TRUE))
+  expect_true(grepl(">Rd<", euro, fixed = TRUE))
+  expect_true(grepl(">Phase<", euro, fixed = TRUE))
+  # Everything else must be identical between the leagues.
+  expect_equal(nchar(israeli) - nchar(">GN<>Game Type<"),
+               nchar(euro) - nchar(">Rd<>Phase<"))
+})
+
+test_that("the summary header drops the shot columns when there are none", {
+  with_shots <- as.character(gamelog_summary_header(has_shots = TRUE))
+  without <- as.character(gamelog_summary_header(has_shots = FALSE))
+
+  expect_true(grepl("Off Shot", with_shots, fixed = TRUE))
+  expect_false(grepl("Off Shot", without, fixed = TRUE))
+  # EuroLeague has no shot splits, so this is the branch tab 11 takes.
+  expect_equal(length(gregexpr("sub-head", without, fixed = TRUE)[[1]]), 13L)
+})

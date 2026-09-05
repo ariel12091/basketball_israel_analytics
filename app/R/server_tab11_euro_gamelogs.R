@@ -163,64 +163,78 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     df <- filtered_games()
     if (is.null(df) || !nrow(df)) return(empty_game_log("No games match the current filters"))
     ff <- identical(input$eurogl_view_mode, "Four Factors")
-    cols <- if (ff) c(
-      "round_number", "phase_label", "game_date", "team_name", "opp_team_name", "result", "score",
-      "minutes",
-      "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
-      "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct", "net_rtg"
-    ) else c(
-      "round_number", "phase_label", "game_date", "team_name", "opp_team_name", "result", "score",
-      "minutes", "off_ppp", "def_ppp", "net_rtg", "off_poss", "def_poss"
-    )
-    labels <- if (ff)
-      c("Rd", "Phase", "Date", "Team", "Opponent", "W/L", "Score",
-        "Min",
-        "Off PPP", "Off eFG%", "Off OREB%", "Off TOV%", "Off FTR",
-        "Def PPP", "Def eFG%", "Def OREB%", "Def TOV%", "Def FTR", "Net")
-      else c("Rd", "Phase", "Date", "Team", "Opponent", "W/L", "Score",
-             "Min", "Off PPP", "Def PPP", "Net", "Off Poss", "Def Poss")
-    metric_map <- c(
-      "Off PPP" = "off_ppp", "Def PPP" = "def_ppp", "Net" = "net_rtg",
-      "Off eFG%" = "off_efg_pct", "Off OREB%" = "off_oreb_pct",
-      "Off TOV%" = "off_tov_pct", "Off FTR" = "off_ftr_pct",
-      "Def eFG%" = "def_efg_pct", "Def OREB%" = "def_oreb_pct",
-      "Def TOV%" = "def_tov_pct", "Def FTR" = "def_ftr_pct"
-    )
-    metric_map <- metric_map[metric_map %in% cols]
-    pr_cols <- unname(vapply(metric_map, gl_pr_col_name, character(1)))
-    pr_cols <- intersect(pr_cols, names(df))
+    # Column sets, heat polarity and number formats mirror Tab 4 exactly; only
+    # the two league-varying header labels differ (Rd/Phase for GN/Game Type).
+    # Names stay snake_case rather than being renamed to display labels: the
+    # shared header container supplies the labels, and gl_apply_heat_styles()
+    # keys on the frame's own names. Net is deliberately absent from Four
+    # Factors -- it lives in the Summary view on both tabs, and the Usage group
+    # is the possession pair.
+    if (ff) {
+      cols <- c("round_number", "phase_label", "game_date", "team_name", "opp_team_name",
+                "result", "score", "minutes",
+                "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+                "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct",
+                "off_poss", "def_poss")
+      heat_reverse <- c(
+        off_ppp = FALSE, off_efg_pct = FALSE, off_oreb_pct = FALSE,
+        off_tov_pct = TRUE, off_ftr_pct = FALSE,
+        def_ppp = TRUE, def_efg_pct = TRUE, def_oreb_pct = TRUE,
+        def_tov_pct = FALSE, def_ftr_pct = TRUE
+      )
+      round_cols <- names(heat_reverse)
+      sketch <- gamelog_ff_header("Rd", "Phase")
+    } else {
+      cols <- c("round_number", "phase_label", "game_date", "team_name", "opp_team_name",
+                "result", "score", "minutes",
+                "off_ppp", "def_ppp", "net_rtg", "off_poss", "def_poss")
+      heat_reverse <- c(off_ppp = FALSE, def_ppp = TRUE)
+      round_cols <- c("off_ppp", "def_ppp", "net_rtg")
+      sketch <- gamelog_summary_header("Rd", "Phase", has_shots = FALSE)
+    }
+
+    pr_cols <- intersect(
+      unname(vapply(names(heat_reverse), gl_pr_col_name, character(1))), names(df))
     disp <- df[, c(cols, pr_cols), drop = FALSE]
-    names(disp)[seq_along(labels)] <- labels
 
-    result_idx <- which(names(disp) == "W/L") - 1L
+    result_idx <- which(names(disp) == "result") - 1L
     hidden_idx <- which(names(disp) %in% pr_cols) - 1L
-    result_render <- gl_result_cell_renderer()
+    off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
+    def_ppp_idx <- which(names(disp) == "def_ppp") - 1L
+    off_poss_idx <- which(names(disp) == "off_poss") - 1L
 
-    dt <- DT::datatable(disp, rownames = FALSE, extensions = "Buttons",
+    col_defs <- list(
+      list(className = "dt-center", targets = "_all"),
+      list(targets = result_idx, render = gl_result_cell_renderer()),
+      list(targets = hidden_idx, visible = FALSE)
+    )
+    # Section separators under the Offense / Defense / Usage group headings.
+    if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <-
+      list(targets = off_ppp_idx, className = "section-left-border dt-center")
+    if (ff && length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <-
+      list(targets = def_ppp_idx, className = "section-left-border dt-center")
+    if (length(off_poss_idx)) col_defs[[length(col_defs) + 1]] <-
+      list(targets = off_poss_idx, className = "section-left-border dt-center")
+
+    dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
+      extensions = "Buttons",
       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
-        buttons = list(list(extend = "csv", text = "Download CSV", filename = "euroleague_game_logs")),
+        buttons = csv_export_button(if (ff) "euroleague_game_logs_four_factors"
+                                    else "euroleague_game_logs_summary"),
         pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
         order = list(list(2, "desc"), list(0, "desc")),
-        columnDefs = list(
-          list(className = "dt-center", targets = "_all"),
-          list(targets = result_idx, render = result_render),
-          list(targets = hidden_idx, visible = FALSE)
-        ))) %>%
-      DT::formatRound(intersect(names(metric_map), names(disp)), 1)
+        columnDefs = col_defs)) %>%
+      DT::formatRound(intersect(round_cols, names(disp)), 1)
 
-    if ("Min" %in% names(disp)) dt <- DT::formatRound(dt, "Min", 1)
-
-    if (all(c("Off Poss", "Def Poss") %in% names(disp))) {
-      dt <- DT::formatCurrency(dt, c("Off Poss", "Def Poss"), currency = "",
+    if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)
+    if (all(c("off_poss", "def_poss") %in% names(disp))) {
+      dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "",
                                interval = 3, mark = ",", digits = 0)
     }
-    heat_reverse <- c(
-      "Off PPP" = FALSE, "Off eFG%" = FALSE, "Off OREB%" = FALSE,
-      "Off TOV%" = TRUE, "Off FTR" = FALSE,
-      "Def PPP" = TRUE, "Def eFG%" = TRUE, "Def OREB%" = TRUE,
-      "Def TOV%" = FALSE, "Def FTR" = TRUE, "Net" = FALSE
-    )
-    gl_apply_heat_styles(dt, disp, metric_map, heat_reverse)
+
+    gl_apply_heat_styles(dt, disp,
+                         stats::setNames(names(heat_reverse), names(heat_reverse)),
+                         heat_reverse)
   }, server = FALSE)
 
   output$eurogl_filter_chips <- renderUI({
