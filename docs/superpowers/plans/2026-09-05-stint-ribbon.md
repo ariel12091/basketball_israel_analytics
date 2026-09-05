@@ -46,8 +46,8 @@ IIFE (`app/www/app.js:270`), so the first draft dropped early clicks.
    later `all(c("game_id", "team_id") %in% names(disp))` guard is always false.
    Build `disp$game_date` from the row-aligned `df$game_id` / `df$team_id`, or
    retain the identifiers until after the link is built. Apply this to both
-   Summary and Four Factors in Tab 4, and to both modes in Tab 11. Tasks 6 and
-   7 must test that real rendered cells contain the link, not merely that the
+   Summary and Four Factors in Tab 4, and to both modes in Tab 11. Tasks 7 and
+   8 must test that real rendered cells contain the link, not merely that the
    helper exists.
 
 2. **Make the stepped margin a complete, deterministic game-clock series.**
@@ -65,7 +65,7 @@ IIFE (`app/www/app.js:270`), so the first draft dropped early clicks.
    teams, label period boundaries, and draw and label the zero-margin baseline.
    Give each focusable lane an explicit `aria-label`; do not rely on descendants
    of an SVG with `role="img"` being exposed consistently to assistive tools.
-   Update Tasks 1-3 geometry, builder, CSS, and tests together.
+   Update the geometry (Task 2), builder (Task 4), CSS (Task 6) and their tests together.
 
 4. **Use the existing queue-and-replay path for ribbon clicks.** The proposed
    `handleRibbonLinkClick()` returns while Shiny is disconnected, contradicting
@@ -78,7 +78,7 @@ IIFE (`app/www/app.js:270`), so the first draft dropped early clicks.
    must use `immediate = TRUE` (or execute parsed statements safely); otherwise
    it fails with `cannot insert multiple commands into a prepared statement`.
    Prefer one transaction that creates/replaces both views, restores grants,
-   runs the access audit, and rolls back on any failure. Task 4 must also use
+   runs the access audit, and rolls back on any failure. The EuroLeague views task must also use
    `euroleague.schedule.home_team_id` as the authoritative home-team mapping
    instead of aggregating `actions.is_home_team`.
 
@@ -88,7 +88,7 @@ IIFE (`app/www/app.js:270`), so the first draft dropped early clicks.
    or browser assertion using a player with two separated stints.
 
 7. **Fix the reader-test regex literals before running them.** R strings such
-   as `"unnest\s*\("` in Task 5 contain invalid escapes. Use escaped patterns
+   as `"unnest\s*\("` in the readers task contain invalid escapes. Use escaped patterns
    such as `"unnest\\s*\\("`, and parse the new test files as part of the
    focused test command.
 
@@ -108,23 +108,331 @@ cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribb
 
 ## File Structure
 
-| File | Responsibility |
-|---|---|
-| `app/R/helpers.R` (modify) | Pure transforms + the SVG builder. Everything testable lives here. |
-| `app/tests/testthat/test-stint-ribbon.R` (create) | All unit tests for the transforms and the builder. |
-| `app/tests/testthat/test-stint-ribbon-readers.R` (create) | Reader tests against a stubbed `db_get_query`. |
-| `sql/euroleague/ribbon_views.sql` (create) | The two EuroLeague read-layer views. |
-| `sql/security/enable_readonly_rls.sql` (modify) | Register the two views in the curated grant list. |
-| `sql/security/audit_app_access.sql` (modify) | Same two names, kept in sync. |
-| `app/R/global.R` (modify) | `fetch_stint_ribbon()` — impure: DB + cache. |
-| `app/www/app.css` (modify) | Ribbon styling and theme tokens. |
-| `app/www/app.js` (modify) | Hover/tap handler that swaps `clip-path`. |
-| `app/R/server_tab4.R` (modify) | Israeli link cell, click observer, modal. |
-| `app/R/server_tab11_euro_gamelogs.R` (modify) | EuroLeague wiring, same helpers. |
+| Task | File | Responsibility |
+|---|---|---|
+| 1 | `sql/euroleague/ribbon_views.sql` (create) | The two EuroLeague read-layer views. |
+| 1 | `sql/security/enable_readonly_rls.sql` (modify) | Register the two views in the curated grant list. |
+| 1 | `sql/security/audit_app_access.sql` (modify) | Same two names, kept in sync. |
+| 2-4 | `app/R/helpers.R` (modify) | Pure transforms + the SVG builder. Everything testable lives here. |
+| 2-4, 7-8 | `app/tests/testthat/test-stint-ribbon.R` (create) | Unit tests for the transforms, the builder, and the link cell. |
+| 5 | `app/R/global.R` (modify) | `fetch_stint_ribbon()` — impure: DB + cache. |
+| 5 | `app/tests/testthat/test-stint-ribbon-readers.R` (create) | Reader tests against a stubbed `db_get_query`. |
+| 6 | `app/www/app.css` (modify) | Ribbon styling and theme tokens. |
+| 6-7 | `app/www/app.js` (modify) | Exported queue helper, hover/tap handler, ribbon link handler. |
+| 7 | `app/R/server_tab4.R` (modify) | Israeli link column (both view modes), click observer, modal. |
+| 8 | `app/R/server_tab11_euro_gamelogs.R` (modify) | EuroLeague wiring, same helpers. |
+
+**Execution order rationale.** Task 1 goes first because it is the only task
+with external side effects — DDL, grants, and a security-surface run — and it
+depends on nothing else; a blocker there should surface before three tasks of R
+code exist. Tasks 2 and 3 are pure and independent of each other. Task 6 (CSS
+and JS) cannot be *seen* until Task 7 wires a tab, so its own gate is a presence
+assertion and the browser check lands in Task 7.
 
 ---
 
-### Task 1: Pure geometry and stint-merging transforms
+### Task 0: Record the test baseline
+
+**Files:**
+- Create: `.superpowers/sdd/2026-09-05-stint-ribbon/test-baseline.txt`
+
+**Interfaces:**
+- Consumes: nothing.
+- Produces: the pre-change test result, which every later task compares against.
+
+This repository routinely carries unrelated work in progress — 96 modified or
+untracked entries when this plan was written — so the baseline must be recorded
+**before** the first edit. Do not try to reconstruct it later with
+`git stash` / `git stash pop`: that cycle puts unrelated user work at risk for
+no benefit.
+
+- [ ] **Step 1: Run the full suite and save the result**
+
+```bash
+RSCRIPT="/c/Program Files/R/R-4.4.2/bin/Rscript.exe"
+cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', reporter='summary')"   > ../.superpowers/sdd/2026-09-05-stint-ribbon/test-baseline.txt 2>&1
+```
+
+- [ ] **Step 2: Record the headline numbers**
+
+Read the last lines of that file and note the FAIL/WARN/SKIP/PASS counts. Some
+tests in this suite require a database or a deployed app and may already fail or
+skip; that is the point of a baseline. "No new failures" is the bar for every
+later task, not "zero failures".
+
+Nothing is committed by this task — the baseline lives in the git-ignored SDD
+workspace.
+
+---
+
+
+### Task 1: EuroLeague read-layer views and grants
+
+**Files:**
+- Create: `sql/euroleague/ribbon_views.sql`
+- Modify: `sql/security/enable_readonly_rls.sql:91` (the `euro_app_relations` array)
+- Modify: `sql/security/audit_app_access.sql:101` (the `euro_app_relations` VALUES list)
+- Test: `app/tests/testthat/test-stint-ribbon.R` (append)
+
+**Interfaces:**
+- Consumes: nothing from earlier tasks.
+- Produces: `euroleague.ribbon_segments_v` with columns `game_id, team_id, segment_id, start_elapsed_seconds, end_elapsed_seconds, player_ids` (ids, resolved via `lineup_totals_by_game` — the view exposes no player names and no `opp_lineup`); and `euroleague.ribbon_margin_v` with `game_id, period, elapsed_seconds, points_a, points_b, home_team_id`. Task 5's EuroLeague reader depends on exactly these names.
+
+**Why views rather than table grants:** `app_readonly` is denied on `euroleague.actions` (211 MB of raw play-by-play, 40 columns including provider ids and parser traces) and on `matchup_segments_actions`, by design — the euro schema uses a curated read layer, unlike the Israeli blanket grant. Exposing two narrow views keeps that boundary and puts the clock derivation next to its data.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `app/tests/testthat/test-stint-ribbon.R`:
+
+```r
+test_that("both euro read-layer enumerations list the ribbon views", {
+  # The curated grant list is duplicated in two files. They must agree, or
+  # apply_db_security.R grants a relation the audit then reports as unexpected.
+  grant_sql <- paste(readLines(
+    testthat::test_path("..", "..", "..", "sql", "security", "enable_readonly_rls.sql"),
+    warn = FALSE), collapse = "\n")
+  audit_sql <- paste(readLines(
+    testthat::test_path("..", "..", "..", "sql", "security", "audit_app_access.sql"),
+    warn = FALSE), collapse = "\n")
+
+  for (view in c("ribbon_segments_v", "ribbon_margin_v")) {
+    expect_match(grant_sql, view, fixed = TRUE)
+    expect_match(audit_sql, view, fixed = TRUE)
+  }
+})
+
+test_that("the two euro read-layer lists contain exactly the same relations", {
+  extract <- function(path, pattern) {
+    txt <- paste(readLines(testthat::test_path("..", "..", "..", "sql", "security", path),
+                           warn = FALSE), collapse = "\n")
+    block <- regmatches(txt, regexpr(pattern, txt, perl = TRUE))
+    sort(unique(gsub("'", "", regmatches(block, gregexpr("'[a-z_]+'", block))[[1]])))
+  }
+  grants <- extract("enable_readonly_rls.sql",
+                    "euro_app_relations constant text\\[\\] := ARRAY\\[.*?\\];")
+  audit <- extract("audit_app_access.sql",
+                   "euro_app_relations\\(relation_name\\) AS \\(.*?\\),")
+  expect_identical(grants, audit)
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+```bash
+cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
+```
+
+Expected: FAIL, no match for "ribbon_segments_v".
+
+- [ ] **Step 3: Create the views**
+
+Create `sql/euroleague/ribbon_views.sql`:
+
+```sql
+-- Narrow read layer for the stint ribbon.
+--
+-- app_readonly is denied on euroleague.actions and
+-- euroleague.matchup_segments_actions on purpose: the euro schema keeps raw
+-- provider evidence closed and grants only an enumerated read layer. These two
+-- views expose exactly what the ribbon needs and nothing else.
+--
+-- Editing either view means DROP + CREATE, which wipes the app_readonly grant.
+-- Re-run scripts/apply_db_security.R with CONFIRM_DB_SECURITY_APPLY=1 after.
+
+-- Lanes are keyed on player_id, never on player names.
+--
+-- matchup_segments_actions stores lineups as text[] of NAMES and carries no
+-- ids. Resolving those names one by one against full_rosters would be a
+-- name-keyed join, the exact shape that manufactured 258 false findings in the
+-- 2026-08-19 data-quality report. Instead this reuses the lineup -> player_id
+-- link the on/off system is already built on: lineup_totals_by_game holds
+-- own_lineup and player_ids for the same lineup. Measured 2026-09-05: all
+-- 22,597 distinct segment lineups match on (game_id, team_id, own_lineup),
+-- with zero fan-out.
+--
+-- Do NOT pair own_lineup and player_ids positionally. The two arrays are
+-- sorted independently (names alphabetically, ids ascending), so names[i] is
+-- unrelated to ids[i] -- measured 31,907 mismatches in 40,000 pairs. Only the
+-- id SET is trustworthy; labels come from full_rosters by id.
+--
+-- opp_lineup is deliberately not exposed: both teams have a row for every
+-- segment, so the opponent's lanes are the other team's own rows.
+CREATE OR REPLACE VIEW euroleague.ribbon_segments_v AS
+SELECT
+  m.game_id,
+  m.team_id,
+  m.segment_id,
+  m.start_elapsed_seconds,
+  m.end_elapsed_seconds,
+  l.player_ids
+FROM euroleague.matchup_segments_actions m
+JOIN (
+  SELECT DISTINCT game_id, team_id, own_lineup, player_ids
+  FROM euroleague.lineup_totals_by_game
+) l
+  ON l.game_id    = m.game_id
+ AND l.team_id    = m.team_id
+ AND l.own_lineup = m.own_lineup
+-- 45% of rows are zero-length (two substitutions at the same clock). Dropping
+-- them here is load-bearing: they would occupy lane slots while rendering as
+-- invisible slivers.
+WHERE m.segment_seconds > 0;
+
+-- The provider records a per-period countdown (marker_time) plus a period
+-- number; the ribbon needs elapsed seconds. Periods 1-4 run 10:00 and period
+-- 5+ runs 05:00, verified against observed game lengths of exactly
+-- 2400 / 2700 / 3000 / 3300 seconds.
+-- home_team_id comes from euroleague.schedule, the authoritative mapping, not
+-- from aggregating actions.is_home_team over a 211 MB table.
+CREATE OR REPLACE VIEW euroleague.ribbon_margin_v AS
+SELECT
+  a.game_id,
+  a.period,
+  (
+    (CASE WHEN a.period <= 4 THEN (a.period - 1) * 600
+          ELSE 2400 + (a.period - 5) * 300 END)
+    + ((CASE WHEN a.period <= 4 THEN 600 ELSE 300 END)
+       - (split_part(a.marker_time, ':', 1)::int * 60
+          + split_part(a.marker_time, ':', 2)::int))
+  )::numeric AS elapsed_seconds,
+  a.source_event_order,
+  a.points_a,
+  a.points_b,
+  sc.home_team_id
+FROM euroleague.actions a
+JOIN euroleague.schedule sc ON sc.game_id = a.game_id
+WHERE a.marker_time IS NOT NULL
+  AND (a.points_a IS NOT NULL OR a.points_b IS NOT NULL);
+```
+
+- [ ] **Step 4: Apply the views, grants and audit atomically**
+
+`ribbon_views.sql` holds multiple statements, so it cannot go through a prepared
+statement — `dbExecute()` would fail with *"cannot insert multiple commands into
+a prepared statement"*. Use `immediate = TRUE`, and wrap the whole deploy in one
+transaction so a failure anywhere leaves no half-applied state.
+
+Write it to a file (long `Rscript -e` segfaults on this box):
+
+```bash
+cat > /tmp/ribbon_deploy.R <<'EOF'
+readRenviron("etl/.Renviron")
+library(DBI); library(RPostgres)
+con <- dbConnect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
+  port = 5432L, dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
+  password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
+  connect_timeout = 15L)
+on.exit(dbDisconnect(con), add = TRUE)
+
+sql <- paste(readLines("sql/euroleague/ribbon_views.sql", warn = FALSE), collapse = "
+")
+
+dbBegin(con)
+ok <- tryCatch({
+  # immediate = TRUE: multi-statement DDL cannot be a prepared statement.
+  dbExecute(con, sql, immediate = TRUE)
+  dbExecute(con, "GRANT SELECT ON euroleague.ribbon_segments_v TO app_readonly", immediate = TRUE)
+  dbExecute(con, "GRANT SELECT ON euroleague.ribbon_margin_v  TO app_readonly", immediate = TRUE)
+  TRUE
+}, error = function(e) { message("deploy failed: ", conditionMessage(e)); FALSE })
+
+if (!ok) { dbRollback(con); quit(status = 1) }
+dbCommit(con)
+
+# Verify from the app's own role before declaring success.
+ro <- dbConnect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
+  port = as.integer(Sys.getenv("PG_PORT")), dbname = Sys.getenv("PG_DB"),
+  user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"),
+  sslmode = Sys.getenv("PG_SSLMODE"), connect_timeout = 15L)
+on.exit(dbDisconnect(ro), add = TRUE)
+for (v in c("ribbon_segments_v", "ribbon_margin_v")) {
+  stopifnot(dbGetQuery(ro, sprintf(
+    "select has_table_privilege('app_readonly','euroleague.%s','SELECT') p", v))$p[1])
+}
+cat("views deployed and readable by app_readonly
+")
+EOF
+"$RSCRIPT" /tmp/ribbon_deploy.R
+```
+
+Note port **5432** (direct) for the DDL connection, not 6543 — per `CLAUDE.md`.
+The grants here are the immediate fix; Step 5 registers the views in the
+permanent enumerations so `apply_db_security.R` keeps them.
+
+- [ ] **Step 5: Register both views in the two enumerations**
+
+In `sql/security/enable_readonly_rls.sql`, add to the `euro_app_relations` array after `'sub_lineups_stats_mv'`:
+
+```sql
+    'sub_lineups_stats_mv',
+    'ribbon_segments_v',
+    'ribbon_margin_v'
+  ];
+```
+
+In `sql/security/audit_app_access.sql`, add to the `euro_app_relations` VALUES list after `('sub_lineups_stats_mv')`:
+
+```sql
+    ('sub_lineups_stats_mv'),
+    ('ribbon_segments_v'),
+    ('ribbon_margin_v')
+),
+```
+
+- [ ] **Step 6: Apply the grants**
+
+```bash
+CONFIRM_DB_SECURITY_APPLY=1 "$RSCRIPT" scripts/apply_db_security.R
+```
+
+- [ ] **Step 7: Verify the grant landed and the query stays in budget**
+
+The `home` CTE aggregates over `euroleague.actions`; confirm the `game_id`
+predicate still pushes down rather than scanning the whole table. Write to a
+temp file (long `Rscript -e` segfaults on this box):
+
+```bash
+cat > /tmp/ribbon_verify.R <<'EOF'
+readRenviron("app/.Renviron")
+library(DBI); library(RPostgres)
+con <- dbConnect(RPostgres::Postgres(), host=Sys.getenv("PG_HOST"),
+  port=as.integer(Sys.getenv("PG_PORT")), dbname=Sys.getenv("PG_DB"),
+  user=Sys.getenv("PG_USER"), password=Sys.getenv("PG_PASS"),
+  sslmode=Sys.getenv("PG_SSLMODE"), connect_timeout=15L, bigint="numeric")
+g <- dbGetQuery(con, "select game_id from euroleague.ribbon_segments_v limit 1")$game_id[1]
+ms <- replicate(7, {
+  t0 <- Sys.time()
+  dbGetQuery(con, "select * from euroleague.ribbon_margin_v where game_id = $1",
+             params = list(g))
+  as.numeric(difftime(Sys.time(), t0, units = "secs")) * 1000
+})
+cat("app_readonly can read both views; margin median ms:", median(ms), "\n")
+stopifnot(median(ms) < 500)
+dbDisconnect(con)
+EOF
+"$RSCRIPT" /tmp/ribbon_verify.R
+```
+
+Expected: prints a median well under 500 ms and exits 0. If it exceeds budget, the `home` CTE is not pushing the predicate down — replace it with a lateral subquery keyed on `a.game_id` and re-measure.
+
+- [ ] **Step 8: Run the tests**
+
+```bash
+cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
+```
+
+Expected: PASS, no failures.
+
+- [ ] **Step 9: Commit**
+
+```bash
+git add sql/euroleague/ribbon_views.sql sql/security/enable_readonly_rls.sql sql/security/audit_app_access.sql app/tests/testthat/test-stint-ribbon.R
+git commit -m "feat: euroleague ribbon read-layer views and grants"
+```
+
+---
+
+### Task 2: Lane transforms — merging, starters, ordering, geometry
 
 **Files:**
 - Modify: `app/R/helpers.R` (append at end)
@@ -134,8 +442,6 @@ cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribb
 - Consumes: nothing.
 - Produces:
   - `merge_adjacent_stints(lanes)` → data.frame with the same columns, contiguous runs collapsed. Input/output columns: `side` (chr, "own"/"opp"), `player_key` (chr), `player_label` (chr), `is_starter` (lgl), `start_elapsed` (num), `end_elapsed` (num).
-  - `ribbon_period_bounds(n_periods, regulation = 4L, regulation_seconds = 600, ot_seconds = 300)` → numeric vector of cumulative period end times; the last element is the nominal game length.
-  - `ribbon_complete_margin(margin, total_seconds)` → the margin series made complete and deterministic: tied elapsed values collapsed to their last state by `order_key`, a leading `(0, 0)` prepended when absent, the final score extended to `total_seconds`, and elapsed clamped to `[0, total_seconds]`. Input columns: `elapsed`, `margin`, `order_key`.
   - `ribbon_mark_starters(lanes)` → input plus logical `is_starter`, TRUE for every player on the floor in that side's earliest segment.
   - `ribbon_lane_index(lanes)` → input plus integer `lane_index`, restarting at 1 per `side`.
   - `ribbon_geometry(lanes, total_seconds, width = 1000, lane_height = 14, lane_gap = 3)` → input plus numeric `x`, `w`, `y`, `h`.
@@ -210,20 +516,7 @@ test_that("merge_adjacent_stints returns empty input unchanged", {
   expect_identical(nrow(merge_adjacent_stints(empty)), 0L)
 })
 
-test_that("ribbon_period_bounds uses nominal lengths, not observed data", {
-  # Regulation: four 10-minute quarters.
-  expect_identical(ribbon_period_bounds(4), c(600, 1200, 1800, 2400))
-  # One overtime adds 5 minutes, matching the measured EuroLeague max of 2700.
-  expect_identical(ribbon_period_bounds(5), c(600, 1200, 1800, 2400, 2700))
-  expect_identical(ribbon_period_bounds(6), c(600, 1200, 1800, 2400, 2700, 3000))
-})
 
-test_that("ribbon_period_bounds floors at regulation for truncated games", {
-  # A game whose actions stop early (one Israeli game ends at 961s) must still
-  # be drawn on a full regulation axis, or its lanes read at the wrong scale.
-  expect_identical(ribbon_period_bounds(2), c(600, 1200, 1800, 2400))
-  expect_identical(ribbon_period_bounds(NA), c(600, 1200, 1800, 2400))
-})
 
 test_that("ribbon_mark_starters flags whoever is on the floor in the first segment", {
   lanes <- rbind(
@@ -262,46 +555,10 @@ test_that("ribbon_mark_starters keeps a player who returns later flagged once", 
   expect_true(all(out$is_starter))
 })
 
-test_that("ribbon_complete_margin opens the game at zero", {
-  # The first scoring event can be a minute in. Without a leading (0, 0) the
-  # curve starts mid-air and the first stint has no baseline behind it.
-  m <- data.frame(elapsed = c(60, 120), margin = c(2, 5), order_key = c(1, 2))
-  out <- ribbon_complete_margin(m, total_seconds = 2400)
-  expect_identical(out$elapsed[1], 0)
-  expect_identical(out$margin[1], 0)
-})
 
-test_that("ribbon_complete_margin extends the final score to the game end", {
-  m <- data.frame(elapsed = c(0, 1200), margin = c(0, 7), order_key = c(1, 2))
-  out <- ribbon_complete_margin(m, total_seconds = 2400)
-  expect_identical(out$elapsed[nrow(out)], 2400)
-  expect_identical(out$margin[nrow(out)], 7)
-})
 
-test_that("ribbon_complete_margin collapses ties by order_key, keeping the last", {
-  # Several scoring records share one elapsed second (an and-1, or a made shot
-  # and the ensuing free throw). DISTINCT + ORDER BY elapsed is not
-  # deterministic; the last state at that second is the true one.
-  m <- data.frame(elapsed = c(0, 600, 600, 600), margin = c(0, 3, 5, 4),
-                  order_key = c(1, 10, 11, 12))
-  out <- ribbon_complete_margin(m, total_seconds = 2400)
-  expect_identical(sum(out$elapsed == 600), 1L)
-  expect_identical(out$margin[out$elapsed == 600], 4)
-})
 
-test_that("ribbon_complete_margin clamps elapsed into the nominal frame", {
-  m <- data.frame(elapsed = c(0, 2500, -10), margin = c(0, 9, 1),
-                  order_key = c(1, 2, 3))
-  out <- ribbon_complete_margin(m, total_seconds = 2400)
-  expect_true(all(out$elapsed >= 0 & out$elapsed <= 2400))
-})
 
-test_that("ribbon_complete_margin returns a usable series from no data", {
-  m <- data.frame(elapsed = numeric(0), margin = numeric(0), order_key = numeric(0))
-  out <- ribbon_complete_margin(m, total_seconds = 2400)
-  expect_identical(out$elapsed, c(0, 2400))
-  expect_identical(out$margin, c(0, 0))
-})
 
 test_that("ribbon_lane_index orders starters first, then by floor time", {
   lanes <- rbind(
@@ -407,41 +664,6 @@ merge_adjacent_stints <- function(lanes) {
   out
 }
 
-# Turn raw scoring records into a complete, deterministic step series.
-#
-# Three problems in the raw data, all of which show as a wrong curve rather than
-# an error: the first scoring event may be a minute into the game, the last one
-# is well before the final buzzer, and several records can share one elapsed
-# second (an and-1, or a shot plus its free throw). DISTINCT + ORDER BY elapsed
-# does not decide the last of those -- order_key does.
-ribbon_complete_margin <- function(margin, total_seconds) {
-  stopifnot(is.numeric(total_seconds), length(total_seconds) == 1, total_seconds > 0)
-
-  if (is.null(margin) || !nrow(margin)) {
-    return(data.frame(elapsed = c(0, total_seconds), margin = c(0, 0)))
-  }
-
-  m <- data.frame(
-    elapsed = pmin(pmax(as.numeric(margin$elapsed), 0), total_seconds),
-    margin = as.numeric(margin$margin),
-    order_key = as.numeric(margin$order_key %||% seq_len(nrow(margin)))
-  )
-  m <- m[order(m$elapsed, m$order_key), , drop = FALSE]
-
-  # One state per elapsed second: the last one recorded there.
-  keep <- !duplicated(m$elapsed, fromLast = TRUE)
-  m <- m[keep, c("elapsed", "margin"), drop = FALSE]
-
-  if (m$elapsed[1] > 0) {
-    m <- rbind(data.frame(elapsed = 0, margin = 0), m)
-  }
-  if (m$elapsed[nrow(m)] < total_seconds) {
-    m <- rbind(m, data.frame(elapsed = total_seconds, margin = m$margin[nrow(m)]))
-  }
-
-  rownames(m) <- NULL
-  m
-}
 
 # Whoever is on the floor in a side's earliest segment started the game.
 # Derived rather than read from a boxscore flag so both leagues use one
@@ -459,18 +681,6 @@ ribbon_mark_starters <- function(lanes) {
   lanes
 }
 
-# Cumulative period end times from the NOMINAL clock, never from observed
-# data. Israeli games end ragged (2344, 2351, one at 961), so sizing the axis
-# from max(elapsed) would draw different games at different scales and drift
-# the period gridlines.
-ribbon_period_bounds <- function(n_periods, regulation = 4L,
-                                 regulation_seconds = 600, ot_seconds = 300) {
-  n <- suppressWarnings(as.integer(n_periods))
-  if (length(n) != 1 || is.na(n) || n < regulation) n <- as.integer(regulation)
-  lengths <- c(rep(regulation_seconds, regulation),
-               rep(ot_seconds, n - regulation))
-  cumsum(lengths)
-}
 
 # Lane order within each side: starters first, then most floor time.
 ribbon_lane_index <- function(lanes) {
@@ -529,14 +739,177 @@ git commit -m "feat: stint ribbon geometry and per-player stint merging"
 
 ---
 
-### Task 2: SVG builder
+### Task 3: Game-clock frame and the margin series
 
 **Files:**
-- Modify: `app/R/helpers.R` (append after Task 1's block)
+- Modify: `app/R/helpers.R` (append after Task 2's block)
 - Test: `app/tests/testthat/test-stint-ribbon.R` (append)
 
 **Interfaces:**
-- Consumes: `ribbon_period_bounds()`, `ribbon_lane_index()`, `ribbon_geometry()` from Task 1.
+- Consumes: nothing from earlier tasks. These two helpers are pure and depend
+  only on their arguments, which is why they are separable from the lane
+  geometry in Task 2.
+- Produces:
+  - `ribbon_period_bounds(n_periods, regulation = 4L, regulation_seconds = 600, ot_seconds = 300)` → numeric vector of cumulative period end times; the last element is the nominal game length.
+  - `ribbon_complete_margin(margin, total_seconds)` → the margin series made complete and deterministic: tied elapsed values collapsed to their last state by `order_key`, a leading `(0, 0)` prepended when absent, the final score extended to `total_seconds`, and elapsed clamped to `[0, total_seconds]`. Input columns: `elapsed`, `margin`, `order_key`.
+
+Both helpers exist because the raw data does not describe a full game. Segment
+boundaries stop at the last recorded action, and scoring records start at the
+first basket and stop before the buzzer — so the chart's horizontal frame and
+its curve both have to be completed deliberately rather than inferred from
+whatever the data happens to contain.
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `app/tests/testthat/test-stint-ribbon.R`:
+
+```r
+test_that("ribbon_period_bounds uses nominal lengths, not observed data", {
+  # Regulation: four 10-minute quarters.
+  expect_identical(ribbon_period_bounds(4), c(600, 1200, 1800, 2400))
+  # One overtime adds 5 minutes, matching the measured EuroLeague max of 2700.
+  expect_identical(ribbon_period_bounds(5), c(600, 1200, 1800, 2400, 2700))
+  expect_identical(ribbon_period_bounds(6), c(600, 1200, 1800, 2400, 2700, 3000))
+})
+
+test_that("ribbon_period_bounds floors at regulation for truncated games", {
+  # A game whose actions stop early (one Israeli game ends at 961s) must still
+  # be drawn on a full regulation axis, or its lanes read at the wrong scale.
+  expect_identical(ribbon_period_bounds(2), c(600, 1200, 1800, 2400))
+  expect_identical(ribbon_period_bounds(NA), c(600, 1200, 1800, 2400))
+})
+
+test_that("ribbon_complete_margin opens the game at zero", {
+  # The first scoring event can be a minute in. Without a leading (0, 0) the
+  # curve starts mid-air and the first stint has no baseline behind it.
+  m <- data.frame(elapsed = c(60, 120), margin = c(2, 5), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed[1], 0)
+  expect_identical(out$margin[1], 0)
+})
+
+test_that("ribbon_complete_margin extends the final score to the game end", {
+  m <- data.frame(elapsed = c(0, 1200), margin = c(0, 7), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed[nrow(out)], 2400)
+  expect_identical(out$margin[nrow(out)], 7)
+})
+
+test_that("ribbon_complete_margin collapses ties by order_key, keeping the last", {
+  # Several scoring records share one elapsed second (an and-1, or a made shot
+  # and the ensuing free throw). DISTINCT + ORDER BY elapsed is not
+  # deterministic; the last state at that second is the true one.
+  m <- data.frame(elapsed = c(0, 600, 600, 600), margin = c(0, 3, 5, 4),
+                  order_key = c(1, 10, 11, 12))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(sum(out$elapsed == 600), 1L)
+  expect_identical(out$margin[out$elapsed == 600], 4)
+})
+
+test_that("ribbon_complete_margin clamps elapsed into the nominal frame", {
+  m <- data.frame(elapsed = c(0, 2500, -10), margin = c(0, 9, 1),
+                  order_key = c(1, 2, 3))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_true(all(out$elapsed >= 0 & out$elapsed <= 2400))
+})
+
+test_that("ribbon_complete_margin returns a usable series from no data", {
+  m <- data.frame(elapsed = numeric(0), margin = numeric(0), order_key = numeric(0))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed, c(0, 2400))
+  expect_identical(out$margin, c(0, 0))
+})
+```
+
+- [ ] **Step 2: Run the tests to verify they fail**
+
+```bash
+cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
+```
+
+Expected: FAIL, `could not find function "ribbon_period_bounds"`.
+
+- [ ] **Step 3: Implement both helpers**
+
+Append to `app/R/helpers.R`:
+
+```r
+# Cumulative period end times from the NOMINAL clock, never from observed
+# data. Israeli games end ragged (2344, 2351, one at 961), so sizing the axis
+# from max(elapsed) would draw different games at different scales and drift
+# the period gridlines.
+ribbon_period_bounds <- function(n_periods, regulation = 4L,
+                                 regulation_seconds = 600, ot_seconds = 300) {
+  n <- suppressWarnings(as.integer(n_periods))
+  if (length(n) != 1 || is.na(n) || n < regulation) n <- as.integer(regulation)
+  lengths <- c(rep(regulation_seconds, regulation),
+               rep(ot_seconds, n - regulation))
+  cumsum(lengths)
+}
+
+# Turn raw scoring records into a complete, deterministic step series.
+#
+# Three problems in the raw data, all of which show as a wrong curve rather than
+# an error: the first scoring event may be a minute into the game, the last one
+# is well before the final buzzer, and several records can share one elapsed
+# second (an and-1, or a shot plus its free throw). DISTINCT + ORDER BY elapsed
+# does not decide the last of those -- order_key does.
+ribbon_complete_margin <- function(margin, total_seconds) {
+  stopifnot(is.numeric(total_seconds), length(total_seconds) == 1, total_seconds > 0)
+
+  if (is.null(margin) || !nrow(margin)) {
+    return(data.frame(elapsed = c(0, total_seconds), margin = c(0, 0)))
+  }
+
+  m <- data.frame(
+    elapsed = pmin(pmax(as.numeric(margin$elapsed), 0), total_seconds),
+    margin = as.numeric(margin$margin),
+    order_key = as.numeric(margin$order_key %||% seq_len(nrow(margin)))
+  )
+  m <- m[order(m$elapsed, m$order_key), , drop = FALSE]
+
+  # One state per elapsed second: the last one recorded there.
+  keep <- !duplicated(m$elapsed, fromLast = TRUE)
+  m <- m[keep, c("elapsed", "margin"), drop = FALSE]
+
+  if (m$elapsed[1] > 0) {
+    m <- rbind(data.frame(elapsed = 0, margin = 0), m)
+  }
+  if (m$elapsed[nrow(m)] < total_seconds) {
+    m <- rbind(m, data.frame(elapsed = total_seconds, margin = m$margin[nrow(m)]))
+  }
+
+  rownames(m) <- NULL
+  m
+}
+```
+
+- [ ] **Step 4: Run the tests to verify they pass**
+
+```bash
+cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
+```
+
+Expected: PASS, no failures.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add app/R/helpers.R app/tests/testthat/test-stint-ribbon.R
+git commit -m "feat: nominal game-clock frame and completed margin series"
+```
+
+---
+
+
+### Task 4: SVG builder
+
+**Files:**
+- Modify: `app/R/helpers.R` (append after Task 2's block)
+- Test: `app/tests/testthat/test-stint-ribbon.R` (append)
+
+**Interfaces:**
+- Consumes: `ribbon_lane_index()`, `ribbon_geometry()` from Task 2 and `ribbon_period_bounds()` from Task 3.
 - Produces:
   - `ribbon_margin_path(margin, total_seconds, width, top, height)` → SVG path `d` string, stepped.
   - `ribbon_clip_id(id_prefix, side, player_key)` → chr, the DOM id shared by the builder and `app.js`.
@@ -885,494 +1258,6 @@ git commit -m "feat: stint ribbon SVG builder with per-player clip paths"
 
 ---
 
-### Task 3: Ribbon styling and the hover handler
-
-**Files:**
-- Modify: `app/www/app.css` (append)
-- Modify: `app/www/app.js` (append a new IIFE at end of file)
-- Test: manual, plus the CSS/JS presence assertions below
-
-**Interfaces:**
-- Consumes: the class names and `data-clip` attribute emitted by `build_stint_ribbon_svg()` in Task 2 — `.ibpl-ribbon`, `.ibpl-ribbon-lane`, `.ibpl-ribbon-margin-base`, `.ibpl-ribbon-margin-focus`, `.ibpl-ribbon-period`.
-- Produces: no R interface. The contract is the DOM one above.
-
-**Before starting:** export `IBPL_CACHE_UI=false` in the shell that runs the app, or edits to these two files will not appear on a browser reload.
-
-- [ ] **Step 1: Write the failing test**
-
-Append to `app/tests/testthat/test-stint-ribbon.R`:
-
-```r
-test_that("app.css styles every class the SVG builder emits", {
-  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
-                         warn = FALSE), collapse = "\n")
-  for (cls in c("ibpl-ribbon", "ibpl-ribbon-lane", "ibpl-ribbon-margin-base",
-                "ibpl-ribbon-margin-focus", "ibpl-ribbon-period",
-                "ibpl-ribbon-name", "ibpl-ribbon-team", "ibpl-ribbon-zero",
-                "ibpl-ribbon-period-label")) {
-    expect_match(css, cls, fixed = TRUE,
-                 info = paste("missing ribbon style for", cls))
-  }
-})
-
-test_that("app.js swaps clip-path rather than recomputing geometry", {
-  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
-                        warn = FALSE), collapse = "\n")
-  expect_match(js, "ibpl-ribbon-margin-focus", fixed = TRUE)
-  expect_match(js, "clip-path", fixed = TRUE)
-  # The hover target is the lane group, keyed by the builder's data-clip.
-  expect_match(js, "ibpl-ribbon-lane", fixed = TRUE)
-})
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-```bash
-cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
-```
-
-Expected: FAIL, "missing ribbon style for ibpl-ribbon".
-
-- [ ] **Step 3: Add the styles**
-
-Append to `app/www/app.css`:
-
-```css
-/* ---------------- Stint ribbon ---------------- */
-.ibpl-ribbon {
-  width: 100%;
-  height: auto;
-  display: block;
-}
-
-.ibpl-ribbon-period {
-  stroke: var(--ibpl-border, #3a3a3a);
-  stroke-width: 1;
-  opacity: 0.45;
-}
-
-.ibpl-ribbon-lane rect {
-  fill: var(--ibpl-accent, #e8a435);
-  opacity: 0.85;
-  transition: opacity 120ms ease;
-}
-
-.ibpl-ribbon-lane.is-opp rect {
-  fill: var(--ibpl-text-muted, #8a8a8a);
-}
-
-/* At rest the chart is a rotation map: every lane reads equally. */
-.ibpl-ribbon.is-focused .ibpl-ribbon-lane rect { opacity: 0.3; }
-.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active rect { opacity: 1; }
-
-.ibpl-ribbon-lane:focus { outline: none; }
-.ibpl-ribbon-lane:focus rect {
-  stroke: var(--ibpl-accent, #e8a435);
-  stroke-width: 1.5;
-}
-
-.ibpl-ribbon-name,
-.ibpl-ribbon-team,
-.ibpl-ribbon-period-label,
-.ibpl-ribbon-zero-label {
-  fill: var(--ibpl-text-muted, #8a8a8a);
-  font-family: var(--ibpl-font-sans, system-ui, sans-serif);
-  font-size: 11px;
-}
-
-.ibpl-ribbon-name { fill: var(--ibpl-text, #e6e6e6); }
-
-.ibpl-ribbon-team {
-  fill: var(--ibpl-text, #e6e6e6);
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-
-.ibpl-ribbon-zero {
-  stroke: var(--ibpl-border, #3a3a3a);
-  stroke-width: 1;
-  stroke-dasharray: 3 3;
-}
-
-.ibpl-ribbon-margin-base,
-.ibpl-ribbon-margin-focus {
-  fill: none;
-  stroke-width: 1.75;
-}
-
-.ibpl-ribbon-margin-base {
-  stroke: var(--ibpl-text-muted, #8a8a8a);
-  opacity: 0.5;
-}
-
-/* Hidden until a lane is hovered, then revealed only where that player was on. */
-.ibpl-ribbon-margin-focus {
-  stroke: var(--ibpl-accent, #e8a435);
-  opacity: 0;
-}
-
-.ibpl-ribbon.is-focused .ibpl-ribbon-margin-focus { opacity: 1; }
-```
-
-- [ ] **Step 4: Add the hover handler**
-
-Append to `app/www/app.js`:
-
-```js
-// Expose the queue-and-replay sender so delegated handlers defined in other
-// IIFEs (the ribbon link) can use it instead of calling Shiny.setInputValue
-// directly and dropping clicks that land before shiny:connected.
-window.ibplSendShinyEvent = function(inputId, value) { sendShinyEvent(inputId, value); };
-
-// ---------------- Stint ribbon hover ----------------
-// Hovering a lane reveals the margin curve only where that player was on the
-// floor. The clip rectangles are rendered server-side, one clipPath per
-// player, so this is a single attribute write -- no geometry in the browser.
-(function() {
-  function setFocus(svg, lane) {
-    var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
-    if (!focus) return;
-
-    var active = svg.querySelectorAll(".ibpl-ribbon-lane.is-active");
-    for (var i = 0; i < active.length; i++) active[i].classList.remove("is-active");
-
-    if (lane && lane.dataset.clip) {
-      focus.setAttribute("clip-path", "url(#" + lane.dataset.clip + ")");
-      // A player with two separated stints has two <g> elements sharing one
-      // data-clip. Light all of them, or the curve shows both stints while only
-      // one bar highlights.
-      var mates = svg.querySelectorAll(
-        '.ibpl-ribbon-lane[data-clip="' + lane.dataset.clip + '"]');
-      for (var m = 0; m < mates.length; m++) mates[m].classList.add("is-active");
-      svg.classList.add("is-focused");
-    } else {
-      focus.removeAttribute("clip-path");
-      svg.classList.remove("is-focused");
-    }
-  }
-
-  function laneFrom(target) {
-    return target && target.closest ? target.closest(".ibpl-ribbon-lane") : null;
-  }
-
-  document.addEventListener("mouseover", function(e) {
-    var lane = laneFrom(e.target);
-    if (!lane) return;
-    var svg = lane.closest(".ibpl-ribbon");
-    if (svg) setFocus(svg, lane);
-  });
-
-  document.addEventListener("mouseout", function(e) {
-    var lane = laneFrom(e.target);
-    if (!lane) return;
-    var svg = lane.closest(".ibpl-ribbon");
-    // Ignore moves between the <g> and its own <rect>/<title> children.
-    if (svg && !laneFrom(e.relatedTarget)) setFocus(svg, null);
-  });
-
-  // Keyboard parity: lanes are focusable, so focus drives the same split.
-  document.addEventListener("focusin", function(e) {
-    var lane = laneFrom(e.target);
-    if (!lane) return;
-    var svg = lane.closest(".ibpl-ribbon");
-    if (svg) setFocus(svg, lane);
-  });
-
-  // Touch has no hover: tap toggles the same state.
-  document.addEventListener("click", function(e) {
-    var lane = laneFrom(e.target);
-    if (!lane) return;
-    var svg = lane.closest(".ibpl-ribbon");
-    if (!svg) return;
-    setFocus(svg, lane.classList.contains("is-active") ? null : lane);
-  });
-})();
-```
-
-- [ ] **Step 5: Run the tests to verify they pass**
-
-```bash
-cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
-```
-
-Expected: PASS, no failures.
-
-- [ ] **Step 6: Commit**
-
-```bash
-git add app/www/app.css app/www/app.js app/tests/testthat/test-stint-ribbon.R
-git commit -m "feat: ribbon styling and clip-path hover handler"
-```
-
----
-
-### Task 4: EuroLeague read-layer views and grants
-
-**Files:**
-- Create: `sql/euroleague/ribbon_views.sql`
-- Modify: `sql/security/enable_readonly_rls.sql:91` (the `euro_app_relations` array)
-- Modify: `sql/security/audit_app_access.sql:101` (the `euro_app_relations` VALUES list)
-- Test: `app/tests/testthat/test-stint-ribbon.R` (append)
-
-**Interfaces:**
-- Consumes: nothing from earlier tasks.
-- Produces: `euroleague.ribbon_segments_v` with columns `game_id, team_id, segment_id, start_elapsed_seconds, end_elapsed_seconds, player_ids` (ids, resolved via `lineup_totals_by_game` — the view exposes no player names and no `opp_lineup`); and `euroleague.ribbon_margin_v` with `game_id, period, elapsed_seconds, points_a, points_b, home_team_id`. Task 5's EuroLeague reader depends on exactly these names.
-
-**Why views rather than table grants:** `app_readonly` is denied on `euroleague.actions` (211 MB of raw play-by-play, 40 columns including provider ids and parser traces) and on `matchup_segments_actions`, by design — the euro schema uses a curated read layer, unlike the Israeli blanket grant. Exposing two narrow views keeps that boundary and puts the clock derivation next to its data.
-
-- [ ] **Step 1: Write the failing test**
-
-Append to `app/tests/testthat/test-stint-ribbon.R`:
-
-```r
-test_that("both euro read-layer enumerations list the ribbon views", {
-  # The curated grant list is duplicated in two files. They must agree, or
-  # apply_db_security.R grants a relation the audit then reports as unexpected.
-  grant_sql <- paste(readLines(
-    testthat::test_path("..", "..", "..", "sql", "security", "enable_readonly_rls.sql"),
-    warn = FALSE), collapse = "\n")
-  audit_sql <- paste(readLines(
-    testthat::test_path("..", "..", "..", "sql", "security", "audit_app_access.sql"),
-    warn = FALSE), collapse = "\n")
-
-  for (view in c("ribbon_segments_v", "ribbon_margin_v")) {
-    expect_match(grant_sql, view, fixed = TRUE)
-    expect_match(audit_sql, view, fixed = TRUE)
-  }
-})
-
-test_that("the two euro read-layer lists contain exactly the same relations", {
-  extract <- function(path, pattern) {
-    txt <- paste(readLines(testthat::test_path("..", "..", "..", "sql", "security", path),
-                           warn = FALSE), collapse = "\n")
-    block <- regmatches(txt, regexpr(pattern, txt, perl = TRUE))
-    sort(unique(gsub("'", "", regmatches(block, gregexpr("'[a-z_]+'", block))[[1]])))
-  }
-  grants <- extract("enable_readonly_rls.sql",
-                    "euro_app_relations constant text\\[\\] := ARRAY\\[.*?\\];")
-  audit <- extract("audit_app_access.sql",
-                   "euro_app_relations\\(relation_name\\) AS \\(.*?\\),")
-  expect_identical(grants, audit)
-})
-```
-
-- [ ] **Step 2: Run to verify it fails**
-
-```bash
-cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
-```
-
-Expected: FAIL, no match for "ribbon_segments_v".
-
-- [ ] **Step 3: Create the views**
-
-Create `sql/euroleague/ribbon_views.sql`:
-
-```sql
--- Narrow read layer for the stint ribbon.
---
--- app_readonly is denied on euroleague.actions and
--- euroleague.matchup_segments_actions on purpose: the euro schema keeps raw
--- provider evidence closed and grants only an enumerated read layer. These two
--- views expose exactly what the ribbon needs and nothing else.
---
--- Editing either view means DROP + CREATE, which wipes the app_readonly grant.
--- Re-run scripts/apply_db_security.R with CONFIRM_DB_SECURITY_APPLY=1 after.
-
--- Lanes are keyed on player_id, never on player names.
---
--- matchup_segments_actions stores lineups as text[] of NAMES and carries no
--- ids. Resolving those names one by one against full_rosters would be a
--- name-keyed join, the exact shape that manufactured 258 false findings in the
--- 2026-08-19 data-quality report. Instead this reuses the lineup -> player_id
--- link the on/off system is already built on: lineup_totals_by_game holds
--- own_lineup and player_ids for the same lineup. Measured 2026-09-05: all
--- 22,597 distinct segment lineups match on (game_id, team_id, own_lineup),
--- with zero fan-out.
---
--- Do NOT pair own_lineup and player_ids positionally. The two arrays are
--- sorted independently (names alphabetically, ids ascending), so names[i] is
--- unrelated to ids[i] -- measured 31,907 mismatches in 40,000 pairs. Only the
--- id SET is trustworthy; labels come from full_rosters by id.
---
--- opp_lineup is deliberately not exposed: both teams have a row for every
--- segment, so the opponent's lanes are the other team's own rows.
-CREATE OR REPLACE VIEW euroleague.ribbon_segments_v AS
-SELECT
-  m.game_id,
-  m.team_id,
-  m.segment_id,
-  m.start_elapsed_seconds,
-  m.end_elapsed_seconds,
-  l.player_ids
-FROM euroleague.matchup_segments_actions m
-JOIN (
-  SELECT DISTINCT game_id, team_id, own_lineup, player_ids
-  FROM euroleague.lineup_totals_by_game
-) l
-  ON l.game_id    = m.game_id
- AND l.team_id    = m.team_id
- AND l.own_lineup = m.own_lineup
--- 45% of rows are zero-length (two substitutions at the same clock). Dropping
--- them here is load-bearing: they would occupy lane slots while rendering as
--- invisible slivers.
-WHERE m.segment_seconds > 0;
-
--- The provider records a per-period countdown (marker_time) plus a period
--- number; the ribbon needs elapsed seconds. Periods 1-4 run 10:00 and period
--- 5+ runs 05:00, verified against observed game lengths of exactly
--- 2400 / 2700 / 3000 / 3300 seconds.
--- home_team_id comes from euroleague.schedule, the authoritative mapping, not
--- from aggregating actions.is_home_team over a 211 MB table.
-CREATE OR REPLACE VIEW euroleague.ribbon_margin_v AS
-SELECT
-  a.game_id,
-  a.period,
-  (
-    (CASE WHEN a.period <= 4 THEN (a.period - 1) * 600
-          ELSE 2400 + (a.period - 5) * 300 END)
-    + ((CASE WHEN a.period <= 4 THEN 600 ELSE 300 END)
-       - (split_part(a.marker_time, ':', 1)::int * 60
-          + split_part(a.marker_time, ':', 2)::int))
-  )::numeric AS elapsed_seconds,
-  a.source_event_order,
-  a.points_a,
-  a.points_b,
-  sc.home_team_id
-FROM euroleague.actions a
-JOIN euroleague.schedule sc ON sc.game_id = a.game_id
-WHERE a.marker_time IS NOT NULL
-  AND (a.points_a IS NOT NULL OR a.points_b IS NOT NULL);
-```
-
-- [ ] **Step 4: Apply the views, grants and audit atomically**
-
-`ribbon_views.sql` holds multiple statements, so it cannot go through a prepared
-statement — `dbExecute()` would fail with *"cannot insert multiple commands into
-a prepared statement"*. Use `immediate = TRUE`, and wrap the whole deploy in one
-transaction so a failure anywhere leaves no half-applied state.
-
-Write it to a file (long `Rscript -e` segfaults on this box):
-
-```bash
-cat > /tmp/ribbon_deploy.R <<'EOF'
-readRenviron("etl/.Renviron")
-library(DBI); library(RPostgres)
-con <- dbConnect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
-  port = 5432L, dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
-  password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
-  connect_timeout = 15L)
-on.exit(dbDisconnect(con), add = TRUE)
-
-sql <- paste(readLines("sql/euroleague/ribbon_views.sql", warn = FALSE), collapse = "
-")
-
-dbBegin(con)
-ok <- tryCatch({
-  # immediate = TRUE: multi-statement DDL cannot be a prepared statement.
-  dbExecute(con, sql, immediate = TRUE)
-  dbExecute(con, "GRANT SELECT ON euroleague.ribbon_segments_v TO app_readonly", immediate = TRUE)
-  dbExecute(con, "GRANT SELECT ON euroleague.ribbon_margin_v  TO app_readonly", immediate = TRUE)
-  TRUE
-}, error = function(e) { message("deploy failed: ", conditionMessage(e)); FALSE })
-
-if (!ok) { dbRollback(con); quit(status = 1) }
-dbCommit(con)
-
-# Verify from the app's own role before declaring success.
-ro <- dbConnect(RPostgres::Postgres(), host = Sys.getenv("PG_HOST"),
-  port = as.integer(Sys.getenv("PG_PORT")), dbname = Sys.getenv("PG_DB"),
-  user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"),
-  sslmode = Sys.getenv("PG_SSLMODE"), connect_timeout = 15L)
-on.exit(dbDisconnect(ro), add = TRUE)
-for (v in c("ribbon_segments_v", "ribbon_margin_v")) {
-  stopifnot(dbGetQuery(ro, sprintf(
-    "select has_table_privilege('app_readonly','euroleague.%s','SELECT') p", v))$p[1])
-}
-cat("views deployed and readable by app_readonly
-")
-EOF
-"$RSCRIPT" /tmp/ribbon_deploy.R
-```
-
-Note port **5432** (direct) for the DDL connection, not 6543 — per `CLAUDE.md`.
-The grants here are the immediate fix; Step 5 registers the views in the
-permanent enumerations so `apply_db_security.R` keeps them.
-
-- [ ] **Step 5: Register both views in the two enumerations**
-
-In `sql/security/enable_readonly_rls.sql`, add to the `euro_app_relations` array after `'sub_lineups_stats_mv'`:
-
-```sql
-    'sub_lineups_stats_mv',
-    'ribbon_segments_v',
-    'ribbon_margin_v'
-  ];
-```
-
-In `sql/security/audit_app_access.sql`, add to the `euro_app_relations` VALUES list after `('sub_lineups_stats_mv')`:
-
-```sql
-    ('sub_lineups_stats_mv'),
-    ('ribbon_segments_v'),
-    ('ribbon_margin_v')
-),
-```
-
-- [ ] **Step 6: Apply the grants**
-
-```bash
-CONFIRM_DB_SECURITY_APPLY=1 "$RSCRIPT" scripts/apply_db_security.R
-```
-
-- [ ] **Step 7: Verify the grant landed and the query stays in budget**
-
-The `home` CTE aggregates over `euroleague.actions`; confirm the `game_id`
-predicate still pushes down rather than scanning the whole table. Write to a
-temp file (long `Rscript -e` segfaults on this box):
-
-```bash
-cat > /tmp/ribbon_verify.R <<'EOF'
-readRenviron("app/.Renviron")
-library(DBI); library(RPostgres)
-con <- dbConnect(RPostgres::Postgres(), host=Sys.getenv("PG_HOST"),
-  port=as.integer(Sys.getenv("PG_PORT")), dbname=Sys.getenv("PG_DB"),
-  user=Sys.getenv("PG_USER"), password=Sys.getenv("PG_PASS"),
-  sslmode=Sys.getenv("PG_SSLMODE"), connect_timeout=15L, bigint="numeric")
-g <- dbGetQuery(con, "select game_id from euroleague.ribbon_segments_v limit 1")$game_id[1]
-ms <- replicate(7, {
-  t0 <- Sys.time()
-  dbGetQuery(con, "select * from euroleague.ribbon_margin_v where game_id = $1",
-             params = list(g))
-  as.numeric(difftime(Sys.time(), t0, units = "secs")) * 1000
-})
-cat("app_readonly can read both views; margin median ms:", median(ms), "\n")
-stopifnot(median(ms) < 500)
-dbDisconnect(con)
-EOF
-"$RSCRIPT" /tmp/ribbon_verify.R
-```
-
-Expected: prints a median well under 500 ms and exits 0. If it exceeds budget, the `home` CTE is not pushing the predicate down — replace it with a lateral subquery keyed on `a.game_id` and re-measure.
-
-- [ ] **Step 8: Run the tests**
-
-```bash
-cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
-```
-
-Expected: PASS, no failures.
-
-- [ ] **Step 9: Commit**
-
-```bash
-git add sql/euroleague/ribbon_views.sql sql/security/enable_readonly_rls.sql sql/security/audit_app_access.sql app/tests/testthat/test-stint-ribbon.R
-git commit -m "feat: euroleague ribbon read-layer views and grants"
-```
-
----
-
 ### Task 5: The two readers behind one canonical frame
 
 **Files:**
@@ -1380,7 +1265,7 @@ git commit -m "feat: euroleague ribbon read-layer views and grants"
 - Test: `app/tests/testthat/test-stint-ribbon-readers.R` (create)
 
 **Interfaces:**
-- Consumes: `db_get_query()` and `cached_season_df()` from `global.R`; `merge_adjacent_stints()` from Task 1; the two views from Task 4.
+- Consumes: `db_get_query()` and `cached_season_df()` from `global.R`; `ribbon_normalise_lanes()` and `ribbon_mark_starters()` from Task 2; `ribbon_period_bounds()` and `ribbon_complete_margin()` from Task 3; the two views from Task 1.
 - Produces: `fetch_stint_ribbon(pool, league, game_id, team_id, data_version = NULL)` → `list(lanes = <data.frame>, margin = <data.frame>, meta = <list>, health = <chr or NULL>)`.
   - `lanes` columns: `side`, `player_key` (always the player_id), `player_label` (display only), `is_starter` (added by `ribbon_mark_starters`, not by SQL), `start_elapsed`, `end_elapsed`.
   - `margin` columns: `elapsed`, `margin` (signed so positive means the clicked team leads).
@@ -1869,7 +1754,229 @@ git commit -m "feat: single-round-trip stint ribbon readers for both leagues"
 
 ---
 
-### Task 6: Wire the ribbon into Tab 4 (Israeli game logs)
+### Task 6: Ribbon styling and the hover handler
+
+**Files:**
+- Modify: `app/www/app.css` (append)
+- Modify: `app/www/app.js` (append a new IIFE at end of file)
+- Test: manual, plus the CSS/JS presence assertions below
+
+**Interfaces:**
+- Consumes: the class names and `data-clip` attribute emitted by `build_stint_ribbon_svg()` in Task 4 — `.ibpl-ribbon`, `.ibpl-ribbon-lane`, `.ibpl-ribbon-margin-base`, `.ibpl-ribbon-margin-focus`, `.ibpl-ribbon-period`, `.ibpl-ribbon-name`, `.ibpl-ribbon-team`, `.ibpl-ribbon-zero`, `.ibpl-ribbon-period-label`.
+- Produces: no R interface. The contract is the DOM one above.
+
+**Before starting:** export `IBPL_CACHE_UI=false` in the shell that runs the app, or edits to these two files will not appear on a browser reload.
+
+- [ ] **Step 1: Write the failing test**
+
+Append to `app/tests/testthat/test-stint-ribbon.R`:
+
+```r
+test_that("app.css styles every class the SVG builder emits", {
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  for (cls in c("ibpl-ribbon", "ibpl-ribbon-lane", "ibpl-ribbon-margin-base",
+                "ibpl-ribbon-margin-focus", "ibpl-ribbon-period",
+                "ibpl-ribbon-name", "ibpl-ribbon-team", "ibpl-ribbon-zero",
+                "ibpl-ribbon-period-label")) {
+    expect_match(css, cls, fixed = TRUE,
+                 info = paste("missing ribbon style for", cls))
+  }
+})
+
+test_that("app.js swaps clip-path rather than recomputing geometry", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_match(js, "ibpl-ribbon-margin-focus", fixed = TRUE)
+  expect_match(js, "clip-path", fixed = TRUE)
+  # The hover target is the lane group, keyed by the builder's data-clip.
+  expect_match(js, "ibpl-ribbon-lane", fixed = TRUE)
+})
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+```bash
+cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
+```
+
+Expected: FAIL, "missing ribbon style for ibpl-ribbon".
+
+- [ ] **Step 3: Add the styles**
+
+Append to `app/www/app.css`:
+
+```css
+/* ---------------- Stint ribbon ---------------- */
+.ibpl-ribbon {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ibpl-ribbon-period {
+  stroke: var(--ibpl-border, #3a3a3a);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
+.ibpl-ribbon-lane rect {
+  fill: var(--ibpl-accent, #e8a435);
+  opacity: 0.85;
+  transition: opacity 120ms ease;
+}
+
+.ibpl-ribbon-lane.is-opp rect {
+  fill: var(--ibpl-text-muted, #8a8a8a);
+}
+
+/* At rest the chart is a rotation map: every lane reads equally. */
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane rect { opacity: 0.3; }
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active rect { opacity: 1; }
+
+.ibpl-ribbon-lane:focus { outline: none; }
+.ibpl-ribbon-lane:focus rect {
+  stroke: var(--ibpl-accent, #e8a435);
+  stroke-width: 1.5;
+}
+
+.ibpl-ribbon-name,
+.ibpl-ribbon-team,
+.ibpl-ribbon-period-label,
+.ibpl-ribbon-zero-label {
+  fill: var(--ibpl-text-muted, #8a8a8a);
+  font-family: var(--ibpl-font-sans, system-ui, sans-serif);
+  font-size: 11px;
+}
+
+.ibpl-ribbon-name { fill: var(--ibpl-text, #e6e6e6); }
+
+.ibpl-ribbon-team {
+  fill: var(--ibpl-text, #e6e6e6);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ibpl-ribbon-zero {
+  stroke: var(--ibpl-border, #3a3a3a);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.ibpl-ribbon-margin-base,
+.ibpl-ribbon-margin-focus {
+  fill: none;
+  stroke-width: 1.75;
+}
+
+.ibpl-ribbon-margin-base {
+  stroke: var(--ibpl-text-muted, #8a8a8a);
+  opacity: 0.5;
+}
+
+/* Hidden until a lane is hovered, then revealed only where that player was on. */
+.ibpl-ribbon-margin-focus {
+  stroke: var(--ibpl-accent, #e8a435);
+  opacity: 0;
+}
+
+.ibpl-ribbon.is-focused .ibpl-ribbon-margin-focus { opacity: 1; }
+```
+
+- [ ] **Step 4: Add the hover handler**
+
+Append to `app/www/app.js`:
+
+```js
+// Expose the queue-and-replay sender so delegated handlers defined in other
+// IIFEs (the ribbon link) can use it instead of calling Shiny.setInputValue
+// directly and dropping clicks that land before shiny:connected.
+window.ibplSendShinyEvent = function(inputId, value) { sendShinyEvent(inputId, value); };
+
+// ---------------- Stint ribbon hover ----------------
+// Hovering a lane reveals the margin curve only where that player was on the
+// floor. The clip rectangles are rendered server-side, one clipPath per
+// player, so this is a single attribute write -- no geometry in the browser.
+(function() {
+  function setFocus(svg, lane) {
+    var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
+    if (!focus) return;
+
+    var active = svg.querySelectorAll(".ibpl-ribbon-lane.is-active");
+    for (var i = 0; i < active.length; i++) active[i].classList.remove("is-active");
+
+    if (lane && lane.dataset.clip) {
+      focus.setAttribute("clip-path", "url(#" + lane.dataset.clip + ")");
+      // A player with two separated stints has two <g> elements sharing one
+      // data-clip. Light all of them, or the curve shows both stints while only
+      // one bar highlights.
+      var mates = svg.querySelectorAll(
+        '.ibpl-ribbon-lane[data-clip="' + lane.dataset.clip + '"]');
+      for (var m = 0; m < mates.length; m++) mates[m].classList.add("is-active");
+      svg.classList.add("is-focused");
+    } else {
+      focus.removeAttribute("clip-path");
+      svg.classList.remove("is-focused");
+    }
+  }
+
+  function laneFrom(target) {
+    return target && target.closest ? target.closest(".ibpl-ribbon-lane") : null;
+  }
+
+  document.addEventListener("mouseover", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    if (svg) setFocus(svg, lane);
+  });
+
+  document.addEventListener("mouseout", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    // Ignore moves between the <g> and its own <rect>/<title> children.
+    if (svg && !laneFrom(e.relatedTarget)) setFocus(svg, null);
+  });
+
+  // Keyboard parity: lanes are focusable, so focus drives the same split.
+  document.addEventListener("focusin", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    if (svg) setFocus(svg, lane);
+  });
+
+  // Touch has no hover: tap toggles the same state.
+  document.addEventListener("click", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    if (!svg) return;
+    setFocus(svg, lane.classList.contains("is-active") ? null : lane);
+  });
+})();
+```
+
+- [ ] **Step 5: Run the tests to verify they pass**
+
+```bash
+cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribbon')"
+```
+
+Expected: PASS, no failures.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add app/www/app.css app/www/app.js app/tests/testthat/test-stint-ribbon.R
+git commit -m "feat: ribbon styling and clip-path hover handler"
+```
+
+---
+
+### Task 7: Wire the ribbon into Tab 4 (Israeli game logs)
 
 **Files:**
 - Modify: `app/R/server_tab4.R` (the Summary `DT::datatable` block around line 640-690, and a new observer near the other `observeEvent` calls around line 300)
@@ -1877,7 +1984,7 @@ git commit -m "feat: single-round-trip stint ribbon readers for both leagues"
 - Test: `app/tests/testthat/test-stint-ribbon.R` (append)
 
 **Interfaces:**
-- Consumes: `fetch_stint_ribbon()` from Task 5, `build_stint_ribbon_svg()` from Task 2, the CSS/JS contract from Task 3.
+- Consumes: `fetch_stint_ribbon()` from Task 5, `build_stint_ribbon_svg()` from Task 4, the CSS/JS contract from Task 6.
 - Produces: `input$gl_ribbon_click` carrying `list(game_id, team_id, ts)`; `ribbon_link_cell(game_id, team_id, label)` in `helpers.R`.
 
 - [ ] **Step 1: Write the failing test**
@@ -2109,7 +2216,7 @@ git commit -m "feat: open the stint ribbon from Israeli game logs"
 
 ---
 
-### Task 7: Wire the ribbon into Tab 11 (EuroLeague game logs)
+### Task 8: Wire the ribbon into Tab 11 (EuroLeague game logs)
 
 **Files:**
 - Modify: `app/R/server_tab11_euro_gamelogs.R`
@@ -2117,7 +2224,7 @@ git commit -m "feat: open the stint ribbon from Israeli game logs"
 - Test: `app/tests/testthat/test-stint-ribbon.R` (append)
 
 **Interfaces:**
-- Consumes: everything from Tasks 1-6.
+- Consumes: everything from Tasks 1-7.
 - Produces: `input$euro_gl_ribbon_click`, same payload shape as `gl_ribbon_click`.
 
 **Note:** per `CLAUDE.md`, do not write a parallel `euro_` implementation. The only difference is the input id, the league argument, and the tab file — every helper is reused unchanged.
@@ -2249,7 +2356,7 @@ Set each of those `DT::datatable(...)` calls to
   })
 ```
 
-- [ ] **Step 5: Update Task 6's call site**
+- [ ] **Step 5: Update Task 7's call site**
 
 `server_tab4.R` still calls `ribbon_link_cell` without `input_id`; the default keeps it working. Confirm no change is needed by re-running the Israeli test.
 
@@ -2292,10 +2399,14 @@ git commit -m "feat: open the stint ribbon from EuroLeague game logs"
 
 Before considering the feature done:
 
-- [ ] `cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', reporter='summary')"` shows no new failures against the pre-change baseline.
+- [ ] `cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', reporter='summary')"` shows no new failures against the Task 0 baseline (`.superpowers/sdd/2026-09-05-stint-ribbon/test-baseline.txt`).
 - [ ] Both readers return `sides: opp/own` and a median under 500 ms (Task 5, Step 6).
 - [ ] `CONFIRM_DB_SECURITY_APPLY=1 "$RSCRIPT" scripts/apply_db_security.R` has been run after the views were created, and the audit query returns zero rows.
 - [ ] Neither game-log query contains a `type_lineup` predicate.
 - [ ] An overtime game draws a wider axis than a regulation game (pick one from the EuroLeague set with max elapsed 2700).
 - [ ] A game with incomplete Israeli lineup data shows the health warning rather than silently wrong lanes.
+- [ ] The date cell in **all four** game-log renderers (Tab 4 Summary and Four Factors, Tab 11 both modes) renders an actual `ribbon-link` anchor — check the served table, not just the helper's unit test.
+- [ ] The margin curve starts at 0-0 and runs to the nominal game end, with no diagonal segments.
+- [ ] Every lane shows a visible player name; both teams and the period boundaries are labelled; the zero baseline is drawn.
+- [ ] Hovering a player with two separated stints highlights both bars.
 - [ ] The app was launched with `runApp()`, and the served page carries 11 `class="nav-link"` occurrences.
