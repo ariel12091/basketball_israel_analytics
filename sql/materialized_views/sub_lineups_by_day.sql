@@ -56,8 +56,7 @@ window_bounds AS (
             MIN(b.event_elapsed_seconds),
             0
         ) AS segment_start_elapsed_seconds,
-        MAX(b.segment_seconds) AS segment_seconds,
-        BOOL_OR(b.type_lineup = 'offense') AS has_offense
+        MAX(b.segment_seconds) AS segment_seconds
     FROM base b
     WHERE b.segment_seconds IS NOT NULL
     GROUP BY
@@ -113,7 +112,6 @@ window_times AS (
         nws.segment_id,
         nws.opp_starters,
         nws.opp_island,
-        nws.has_offense,
         GREATEST(
             COALESCE(
                 LEAD(nws.window_start) OVER (
@@ -132,7 +130,7 @@ window_minutes AS (
         wt.lineup_hash,
         wt.game_id,
         wt.opp_starters,
-        SUM(wt.window_seconds) FILTER (WHERE wt.has_offense) / 60.0 AS minutes
+        SUM(wt.window_seconds) / 60.0 AS minutes
     FROM window_times wt
     GROUP BY
         wt.team_id,
