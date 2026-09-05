@@ -39,8 +39,19 @@ assert_minute_rows <- function(truth, actual, label, tolerance = 1e-6) {
   if (!nrow(truth) || !nrow(actual) || anyDuplicated(truth[keys]) ||
       anyDuplicated(actual[keys])) stop(label, ": empty or duplicate team-game keys")
   joined <- merge(truth, actual, by = keys, all = TRUE, suffixes = c("_truth", "_actual"))
-  bad <- !is.finite(joined$minutes_truth) | !is.finite(joined$minutes_actual) |
-    abs(joined$minutes_truth - joined$minutes_actual) > tolerance
+  # 14 team-games across 7 games sit in the team MVs with no segments at all in
+  # df_pts_poss_lineups_longer_mv, and already carry NULL minutes. A full outer
+  # join keeps them, NA fails is.finite(), and the migration would roll back on
+  # rows that have nothing to conserve. Exempt only the case where BOTH sides
+  # are absent -- a value on one side and not the other is still a failure.
+  both_missing <- is.na(joined$minutes_truth) & is.na(joined$minutes_actual)
+  if (any(both_missing)) {
+    message(label, ": ", sum(both_missing),
+            " team-game(s) absent from both sides, skipped")
+  }
+  bad <- !both_missing &
+    (!is.finite(joined$minutes_truth) | !is.finite(joined$minutes_actual) |
+       abs(joined$minutes_truth - joined$minutes_actual) > tolerance)
   if (any(bad)) {
     print(utils::head(joined[bad, ], 20))
     stop(label, ": minute conservation failed for ", sum(bad), " team-games")
