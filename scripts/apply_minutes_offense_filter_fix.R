@@ -104,36 +104,77 @@ source("scripts/minutes_migration_helpers.R")
 
 main <- function() {
 # ---- preflight --------------------------------------------------------------
-edited <- c("sql/materialized_views/sub_lineups_by_day.sql",
-            "sql/materialized_views/lineup_four_factors_by_game.sql")
-for (f in edited) {
-  src <- paste(readLines(f, warn = FALSE), collapse = "\n")
-  if (grepl("has_offense", src, fixed = TRUE))
-    stop("Preflight failed: ", f, " still references has_offense. ",
+# Each edited definition, with the pattern that must be gone from it. A stale
+# file here would rebuild the old behaviour and still report success.
+edited <- list(
+  list(f = "sql/materialized_views/sub_lineups_by_day.sql",          gone = "has_offense"),
+  list(f = "sql/materialized_views/lineup_four_factors_by_game.sql", gone = "has_offense"),
+  list(f = "sql/materialized_views/onoff_mv.sql",                    gone = "player_segments.type_lineup = 'offense'"),
+  list(f = "sql/materialized_views/player_four_factors_by_game.sql", gone = "SUM(st.stint_seconds) FILTER")
+)
+for (e in edited) {
+  src <- paste(readLines(e$f, warn = FALSE), collapse = "
+")
+  if (grepl(e$gone, src, fixed = TRUE))
+    stop("Preflight failed: ", e$f, " still contains the old expression. ",
          "Apply the source edit before running this migration.")
 }
-say("preflight: both view definitions are free of has_offense")
+say("preflight: all %d edited definitions are free of the offense filter", length(edited))
 
 con <- connect_ddl()
 on.exit(try(dbDisconnect(con), silent = TRUE), add = TRUE)
 
 before <- measure(con)
 say("")
-say("BEFORE   base-table truth : %.3f min/team-game", before$truth)
-say("         mv as deployed   : %.3f min/team-game", before$mv)
-say("         shortfall        : %.3f", before$truth - before$mv)
+say("BEFORE   canonical truth        : %7.3f min/team-game", before$truth)
+say("         mv_lineup_totals_by_day: %7.3f  (short %.3f)",
+    before$mv, before$truth - before$mv)
+
+# The remaining paths are player-grain: five on court, so 5x the floor time.
+target <- before$truth * 5
+others <- list(
+  list(lbl = "onoff_default_mv        ", sql = "
+    with g as (select team_id, game_year, count(distinct game_id) games
+               from basketball_test.mv_lineup_totals_by_day group by 1,2),
+         p as (select team_id, \"Year\"::int yr, sum(minutes) m
+               from basketball_test.onoff_default_mv group by 1,2)
+    select avg(p.m/g.games) v from p join g on g.team_id=p.team_id and g.game_year=p.yr"),
+  list(lbl = "pff minutes             ", sql = "
+    with d as (select distinct game_id, team_id, player_id, minutes
+               from basketball_test.player_four_factors_by_game
+               where is_on_key = 1 and minutes is not null)
+    select avg(m) v from (select game_id, team_id, sum(minutes) m from d group by 1,2) t"),
+  list(lbl = "pff onoff_minutes       ", sql = "
+    select avg(m) v from (select game_id, team_id, sum(onoff_minutes) m
+      from basketball_test.player_four_factors_by_game
+      where is_on_key = 1 group by 1,2) t"),
+  list(lbl = "player_traditional_stats", sql = "
+    with g as (select team_id, game_year, count(distinct game_id) games
+               from basketball_test.mv_lineup_totals_by_day group by 1,2),
+         p as (select team_id, game_year, sum(minutes) m
+               from basketball_test.player_traditional_stats_mv group by 1,2)
+    select avg(p.m/g.games) v from p join g using (team_id, game_year)")
+)
+say("")
+say("         player-minutes per team-game, target %.2f (5 x floor time):", target)
+for (o in others) {
+  v <- tryCatch(dbGetQuery(con, o$sql)$v[[1]], error = function(e) NA_real_)
+  say("         %s: %7.2f  (short %.2f)", o$lbl, v, target - v)
+}
 
 if (!APPLY) {
   say("")
   say("REHEARSAL ONLY -- nothing changed. Re-run with --apply to execute:")
-  say("  1. Rebuild both lineup MVs and their three team dependents atomically.")
+  say("  1. Rebuild 7 relations atomically, in registry order.")
   say("     REFRESH is NOT enough: it re-runs the stored definition.")
   say("  2. Restore grants and audit access on the same connection.")
-  say("  3. Verify both MVs per team-game, downstream minutes, and indexes.")
-  say("     Commit only if all checks pass; otherwise roll back everything.")
+  say("  3. Five verification gates: both lineup MVs, the team dependents,")
+  say("     published player minutes, onoff_minutes, and a cross-check that")
+  say("     onoff_default_mv agrees with player_traditional_stats_mv, which is")
+  say("     NOT rebuilt here and so stays an independent reference.")
+  say("     Commit only if all pass; otherwise roll back everything.")
   say("")
   say("AFTER APPLYING, still to do by hand:")
-  say("  - CLAUDE.md:387 still tells the next person to add the filter back.")
   say("  - DQ checks T and X, and test-clock-minute-contracts.R, expect the old")
   say("    numbers; game 115 moves from 39.867 toward 40.0.")
   say("  - PROJECT.md:1390's ETL warning threshold (minutes < 39.0) exists")
