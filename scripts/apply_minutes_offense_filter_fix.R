@@ -41,11 +41,16 @@
 #   read-only: 195.30 -> 200.04 player-minutes per team-game, i.e. 5 x the
 #   40.006 canonical team total.
 #
-#   Its OTHER column, `onoff_minutes`, still carries the pattern:
-#   onoff_lineup_segments keeps type_lineup in its GROUP BY and the join at
-#   :134 keys on it. Left alone deliberately -- it is a different column with a
-#   different downstream contract, and it has not been measured. Same treatment
-#   as the published column would apply, but not without its own before/after.
+#   Its other column, `onoff_minutes`, is fixed as well. Measured first:
+#   197.10 player-minutes per team-game, which is 39.42 x 5 -- the same
+#   lineup-level shortfall seen through the player grain. onoff_lineup_segments
+#   now collapses the perspective and the single-count guard moves to the join
+#   (CASE WHEN lt.type_lineup = 'offense'), the same shape sub_lineups_by_day
+#   uses. Verified read-only: team minutes 39.421 -> 40.006, i.e. player
+#   minutes 197.10 -> 200.03.
+#
+#   All four measured minute defects are now addressed. Nothing in the schema
+#   is known to undercount minutes after this migration runs.
 #
 # USAGE
 #   Rehearsal (default) -- measures, prints the plan, changes nothing:

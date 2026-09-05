@@ -79,7 +79,6 @@ onoff_lineup_segments AS (
     cs.game_id,
     cs.team_id,
     cs.lineup_hash,
-    cs.type_lineup,
     cs.own_starters,
     cs.opp_starters,
     cs.segment_id,
@@ -88,22 +87,18 @@ onoff_lineup_segments AS (
   WHERE cs.lineup_hash IS NOT NULL
     AND cs.segment_id IS NOT NULL
     AND cs.segment_seconds IS NOT NULL
-  GROUP BY cs.game_id, cs.team_id, cs.lineup_hash, cs.type_lineup, cs.own_starters, cs.opp_starters, cs.segment_id
+  GROUP BY cs.game_id, cs.team_id, cs.lineup_hash, cs.own_starters, cs.opp_starters, cs.segment_id
 ),
 onoff_lineup_minutes AS (
   SELECT
     game_id,
     team_id,
     lineup_hash,
-    type_lineup,
     own_starters,
     opp_starters,
-    CASE
-      WHEN type_lineup = 'offense' THEN ROUND(SUM(seg_seconds) / 60.0, 3)
-      ELSE 0::numeric
-    END AS minutes
+    ROUND(SUM(seg_seconds) / 60.0, 3) AS minutes
   FROM onoff_lineup_segments
-  GROUP BY game_id, team_id, lineup_hash, type_lineup, own_starters, opp_starters
+  GROUP BY game_id, team_id, lineup_hash, own_starters, opp_starters
 ),
 onoff_player AS (
   SELECT
@@ -126,7 +121,8 @@ onoff_player AS (
     SUM(lt.c3_made) AS c3_made,
     SUM(lt.c3_att) AS c3_att,
     SUM(lt.c3_known_att) AS c3_known_att,
-    SUM(COALESCE(lm.minutes, 0)) AS onoff_minutes
+    SUM(CASE WHEN lt.type_lineup = 'offense'
+             THEN COALESCE(lm.minutes, 0) ELSE 0 END) AS onoff_minutes
   FROM base0 b0
   JOIN lineup_totals lt
     ON lt.lineup_hash = b0.lineup_hash
@@ -135,7 +131,6 @@ onoff_player AS (
     ON lm.game_id = lt.game_id
    AND lm.team_id = lt.team_id
    AND lm.lineup_hash = lt.lineup_hash
-   AND lm.type_lineup = lt.type_lineup
    AND lm.own_starters = lt.own_starters
    AND lm.opp_starters = lt.opp_starters
   GROUP BY b0.player_id, b0.team_id, lt.game_id, lt.game_year, b0.is_on_key,

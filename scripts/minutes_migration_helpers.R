@@ -101,6 +101,20 @@ assert_player_minutes_conserved <- function(con, truth, tolerance = 0.5) {
                      tolerance = tolerance)
 }
 
+# onoff_minutes is a second, independent minute path on the same relation. It
+# is summed across the type_lineup/starters slices rather than deduplicated,
+# so it is checked on its own rather than folded into the published-minutes
+# assertion above.
+assert_onoff_minutes_conserved <- function(con, truth, tolerance = 0.5) {
+  actual <- DBI::dbGetQuery(con, "
+    SELECT game_id, team_id, sum(onoff_minutes) AS minutes
+    FROM basketball_test.player_four_factors_by_game
+    WHERE is_on_key = 1 GROUP BY game_id, team_id")
+  scaled <- truth; scaled$minutes <- scaled$minutes * 5
+  assert_minute_rows(scaled, actual, 'player_four_factors_by_game onoff_minutes',
+                     tolerance = tolerance)
+}
+
 verify_minutes_migration <- function(con) {
   truth <- DBI::dbGetQuery(con, "
     SELECT game_id, team_id, sum(seconds)/60.0 AS minutes FROM (
@@ -124,5 +138,6 @@ verify_minutes_migration <- function(con) {
     }
   }
   assert_player_minutes_conserved(con, truth)
+  assert_onoff_minutes_conserved(con, truth)
   assert_onoff_matches_traditional(con)
 }
