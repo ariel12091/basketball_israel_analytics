@@ -33,13 +33,19 @@
 #   197.15 -> 200.09 player-minutes per team-game, landing exactly on
 #   player_traditional_stats_mv, the one relation that always got this right.
 #
-#   player_four_factors_by_game (195.30 vs 200) is NOT fixed here. It has TWO
-#   independent minute paths -- the published `minutes` at line 273
-#   (SUM(stint_seconds) FILTER (type_lineup = 'offense')) and `onoff_minutes`
-#   fed from onoff_lineup_minutes at 104/129 -- and its downstream join keys on
-#   type_lineup, so collapsing the grain means restructuring the join rather
-#   than deleting a clause. It needs its own design and its own before/after
-#   measurement.
+#   player_four_factors_by_game's PUBLISHED `minutes` is fixed too. Its
+#   segment_times CTE was already collapsed, but segment_stats drove the join,
+#   so a segment in which the lineup had no offensive possession produced no
+#   offense row and its seconds were never reached. Times are now aggregated on
+#   their own grain (player_minutes) and attached to the offense row. Verified
+#   read-only: 195.30 -> 200.04 player-minutes per team-game, i.e. 5 x the
+#   40.006 canonical team total.
+#
+#   Its OTHER column, `onoff_minutes`, still carries the pattern:
+#   onoff_lineup_segments keeps type_lineup in its GROUP BY and the join at
+#   :134 keys on it. Left alone deliberately -- it is a different column with a
+#   different downstream contract, and it has not been measured. Same treatment
+#   as the published column would apply, but not without its own before/after.
 #
 # USAGE
 #   Rehearsal (default) -- measures, prints the plan, changes nothing:
@@ -137,8 +143,9 @@ registry_env <- new.env(parent = globalenv())
 sys.source("sql/rebuild_all_mvs.R", envir = registry_env)
 registry_env$validate_mv_registry()
 affected <- c("mv_lineup_totals_by_day", "onoff_default_mv",
-              "lineup_four_factors_by_game", "team_metrics_by_game_mv",
-              "team_metrics_rolling_mv", "team_four_factors_mv")
+              "player_four_factors_by_game", "lineup_four_factors_by_game",
+              "team_metrics_by_game_mv", "team_metrics_rolling_mv",
+              "team_four_factors_mv")
 targets <- Filter(function(x) x$name %in% affected, registry_env$MV_REGISTRY)
 # Read every input before taking locks or dropping anything.
 definitions <- lapply(targets, function(x) paste(readLines(x$file, warn = FALSE), collapse = "\n"))

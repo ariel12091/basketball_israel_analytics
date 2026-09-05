@@ -190,6 +190,15 @@ segment_times AS (
            cd.is_on_key, cd.num_starters, cd.own_starters, cd.opp_starters,
            cd.segment_id
 ),
+player_minutes AS (
+  SELECT
+    player_id, team_id, game_id, game_year, is_on_key,
+    num_starters, own_starters, opp_starters,
+    SUM(stint_seconds) / 60.0 AS minutes
+  FROM segment_times
+  GROUP BY player_id, team_id, game_id, game_year, is_on_key,
+           num_starters, own_starters, opp_starters
+),
 segment_stats AS (
   SELECT
     cd.player_id,
@@ -270,18 +279,17 @@ SELECT
   SUM(ss.total_fg3_made)::bigint      AS total_fg3_made,
   SUM(ss.player_ts_poss_count)::bigint AS player_ts_poss_count,
   SUM(ss.player_tov_count)::bigint     AS player_tov_count,
-  SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+  MAX(pm.minutes) FILTER (WHERE ss.type_lineup = 'offense') AS minutes
 FROM segment_stats ss
-LEFT JOIN segment_times st
-  ON st.player_id = ss.player_id
- AND st.team_id = ss.team_id
- AND st.game_id = ss.game_id
- AND st.game_year = ss.game_year
- AND st.is_on_key = ss.is_on_key
- AND st.num_starters = ss.num_starters
- AND st.own_starters = ss.own_starters
- AND st.opp_starters = ss.opp_starters
- AND st.segment_id = ss.segment_id
+LEFT JOIN player_minutes pm
+  ON pm.player_id = ss.player_id
+ AND pm.team_id = ss.team_id
+ AND pm.game_id = ss.game_id
+ AND pm.game_year = ss.game_year
+ AND pm.is_on_key = ss.is_on_key
+ AND pm.num_starters = ss.num_starters
+ AND pm.own_starters = ss.own_starters
+ AND pm.opp_starters = ss.opp_starters
 GROUP BY ss.player_id, ss.team_id, ss.game_id, ss.game_year, ss.is_on_key,
          ss.type_lineup, ss.num_starters, ss.own_starters, ss.opp_starters
 )

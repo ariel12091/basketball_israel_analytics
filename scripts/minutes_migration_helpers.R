@@ -84,6 +84,23 @@ assert_onoff_matches_traditional <- function(con, tolerance = 0.051) {
   invisible(TRUE)
 }
 
+# Five players are on court at all times, so a team-game's player-minutes come
+# to 5x its floor time. This is approximate at the margins (the source can
+# record other than five), so the tolerance is wide -- it exists to catch the
+# whole-minutes class of regression this migration fixes (195.30 vs 200.04
+# per team-game), not to police rounding.
+assert_player_minutes_conserved <- function(con, truth, tolerance = 0.5) {
+  actual <- DBI::dbGetQuery(con, "
+    SELECT game_id, team_id, sum(minutes) AS minutes FROM (
+      SELECT DISTINCT game_id, team_id, player_id, minutes
+      FROM basketball_test.player_four_factors_by_game
+      WHERE is_on_key = 1 AND minutes IS NOT NULL) d
+    GROUP BY game_id, team_id")
+  scaled <- truth; scaled$minutes <- scaled$minutes * 5
+  assert_minute_rows(scaled, actual, 'player_four_factors_by_game minutes',
+                     tolerance = tolerance)
+}
+
 verify_minutes_migration <- function(con) {
   truth <- DBI::dbGetQuery(con, "
     SELECT game_id, team_id, sum(seconds)/60.0 AS minutes FROM (
@@ -106,5 +123,6 @@ verify_minutes_migration <- function(con) {
       assert_minute_rows(truth, actual, paste(name, column), tolerance = 0.050001)
     }
   }
+  assert_player_minutes_conserved(con, truth)
   assert_onoff_matches_traditional(con)
 }
