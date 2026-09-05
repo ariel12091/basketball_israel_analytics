@@ -95,12 +95,24 @@ GROUP BY team_id, segment_id, lineup_hash, <boundaries>   -- type_lineup ABSENT
 HAVING MAX(segment_seconds) > 0
 ```
 
-`type_lineup` **must not** appear in the filter or the grouping. Measured: game
-115 team 7 has 32 offense and 34 defense segments but **45 under NULL** —
-filtering to offense silently drops 13 of 45. This is the same defect as the
+`type_lineup` **must not** appear in the filter or the grouping.
+
+The NULL rows are exactly two action types — `substitution` (146,155) and
+`timeout` (6,540). They are not a hidden third perspective, and dropping them
+costs little: of 9,495 NULL-only segments, 8,961 are zero-length and are
+discarded anyway, leaving 534 segments worth 2,896 seconds — **0.14%** of floor
+time, about 1.2 segments per team-game averaging 5.4 seconds, roughly two
+viewBox units wide.
+
+The filter that actually does damage is **offense-only**, which loses 30,860
+seconds — **1.46%**, ten times worse. That is the defect behind the
 unattributed floor time fixed 2026-09-05 (0.586 min/team-game across 92% of
 team-games); `player_traditional_stats_mv.segment_times` is the reference
 implementation.
+
+So the rule is not "NULL rows are precious" — it is that no `type_lineup`
+predicate is needed at all. Adding one buys nothing, and filtering to
+`IS NOT NULL` reintroduces a seam risk when adjacent runs are merged (§6).
 
 Segments are then exploded to players via `lineups_lookup_on`, and `$health` is
 set when a hash resolves to ≠5 players or to no roster row at all.
@@ -121,18 +133,43 @@ One row yields both sides; `own_lineup` / `opp_lineup` unnest directly to player
 names, so there is no roster join and `$health` is always NULL. Dropping
 zero-length rows is load-bearing here, not cosmetic — it removes 45% of rows.
 
-Margin: `actions.points_a` / `points_b` with elapsed derived as
-`Σ(prior period lengths) + (period_length − marker_time)`, period length 600s
-for periods 1-4 and 300s for period 5+. Verified exact against max elapsed
-(2400 / 2700 / 3000 / 3300).
+Margin: `actions.points_a` / `points_b`, with elapsed derived as
+`Σ(prior period lengths) + (period_length − marker_time)` — period length 600s
+for periods 1-4, 300s for period 5+. Verified exact against observed max elapsed
+(2400 / 2700 / 3000 / 3300). This derivation lives in `ribbon_margin_v`
+(§5.3), not in R.
 
-### 5.3 Security prerequisite
+### 5.3 Security prerequisite — two narrow views, not two table grants
 
-`app_readonly` has **no grant** on `euroleague.matchup_segments_actions` (only
-`postgres` does). Add it to `sql/security/*.sql` and apply via
+The EuroLeague tabs work today without any of this because they never read the
+segment grain. `app_readonly` can `SELECT` 20 euro relations — every MV and
+aggregate the tabs use (`lineup_totals_by_game`, `sub_lineups_stats_mv`,
+`player_onoff_default_mv`, `final_schedule_mv`, …) — and is denied on 13, all
+ETL intermediates, raw play-by-play, or QA tables. That is a deliberate
+least-privilege boundary.
+
+The ribbon is the first app feature needing segment-grain EuroLeague data, and
+it needs **two** denied relations: `matchup_segments_actions` (lanes) and
+`actions` (margin curve). Granting blanket `SELECT` on `actions` — 211 MB of raw
+play-by-play, 40 columns including provider ids, parser traces and QA fields —
+to draw a score line is the wrong trade.
+
+Instead, add two narrow views in `euroleague` and grant `SELECT` on **those**:
+
+- `ribbon_segments_v` — `game_id, team_id, segment_id, own_lineup, opp_lineup,
+  own_starters, opp_starters, start_elapsed_seconds, end_elapsed_seconds`,
+  already filtered to `segment_seconds > 0`.
+- `ribbon_margin_v` — `game_id, elapsed_seconds, points_a, points_b`, with the
+  period/`marker_time` → elapsed derivation (§5.2) done in the view so the
+  clock rule lives in one place rather than in R.
+
+This keeps the app's least-privilege posture intact, gives the reader a stable
+contract, and puts the EuroLeague clock derivation next to the data it derives
+from. Register both in `sql/security/*.sql` and apply via
 `scripts/apply_db_security.R` with `CONFIRM_DB_SECURITY_APPLY=1`. Per
-`CLAUDE.md`, these grants are wiped by later `DROP`s — add the table to the
-re-grant checklist.
+`CLAUDE.md`, `DROP`s wipe these grants — add both views to the re-grant
+checklist, and note that changing either view means `DROP`+`CREATE`, hence
+re-granting.
 
 ## 6. Transforms (pure, in `helpers.R`)
 
@@ -199,7 +236,7 @@ no helper implementation is copied into the mocks.
 ## 10. Scope
 
 **In:** both readers, the canonical frame, the shared renderer, hover split,
-Tab 4 and Tab 11 wiring, the EuroLeague grant.
+Tab 4 and Tab 11 wiring, and the two EuroLeague views with their grants.
 
 **Out, deferred by decision:**
 
@@ -211,11 +248,18 @@ Tab 4 and Tab 11 wiring, the EuroLeague grant.
 
 ## 11. Known traps
 
-1. Never filter or group on `type_lineup` (Israeli) — §5.1.
+1. Never filter to `type_lineup = 'offense'` (Israeli) — it loses 1.46% of floor
+   time. No `type_lineup` predicate is needed at all; the NULL rows are subs and
+   timeouts and are worth 0.14%, nearly all of it zero-length. §5.1.
 2. Never take the axis extent from `max(elapsed)` — §2 D7.
 3. Drop zero-length segments before laying out lanes, or they consume lane
    slots while rendering as invisible slivers.
 4. Merge per player, not per lineup hash.
 5. `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`.
 6. Launch with Run App / `runApp()`, never select-all + Ctrl+Enter.
-7. Re-run `apply_db_security.R` after any `DROP` that touches the new grant.
+7. Re-run `apply_db_security.R` after any `DROP` touching `ribbon_segments_v` or
+   `ribbon_margin_v` — editing either view means `DROP`+`CREATE`, which wipes
+   the grant.
+8. The EuroLeague tabs read only pre-aggregated relations today; `actions` and
+   `matchup_segments_actions` are denied to `app_readonly` by design. Do not
+   "fix" that with a table-level grant.
