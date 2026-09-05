@@ -444,7 +444,7 @@ git commit -m "feat: euroleague ribbon read-layer views and grants"
   - `merge_adjacent_stints(lanes)` → data.frame with the same columns, contiguous runs collapsed. Input/output columns: `side` (chr, "own"/"opp"), `player_key` (chr), `player_label` (chr), `is_starter` (lgl), `start_elapsed` (num), `end_elapsed` (num).
   - `ribbon_mark_starters(lanes)` → input plus logical `is_starter`, TRUE for every player on the floor in that side's earliest segment.
   - `ribbon_lane_index(lanes)` → input plus integer `lane_index`, restarting at 1 per `side`.
-  - `ribbon_geometry(lanes, total_seconds, width = 1000, lane_height = 14, lane_gap = 3)` → input plus numeric `x`, `w`, `y`, `h`.
+  - `ribbon_geometry(lanes, total_seconds, width = 1000, lane_height = 14, lane_gap = 3, gutter = RIBBON_GUTTER)` → input plus numeric `x`, `w`, `y`, `h`.
 
 - [ ] **Step 1: Write the failing tests**
 
