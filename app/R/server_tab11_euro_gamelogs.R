@@ -36,10 +36,22 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
       function() db_get_query(pg_pool,
         "SELECT f.*, s.round_number, s.phase, s.game_date, s.opp_team_id,
                 s.is_home, s.has_won, s.team_points, s.opp_points,
-                s.team_name, s.opp_team_name
+                s.team_name, s.opp_team_name,
+                m.seconds / 60.0 AS minutes
            FROM euroleague.team_four_factors_by_game f
            JOIN euroleague.final_schedule_mv s
              ON s.game_id = f.game_id AND s.team_id = f.team_id
+           LEFT JOIN (
+             SELECT game_id, team_id, own_starters, opp_starters,
+                    SUM(seconds) AS seconds
+               FROM euroleague.lineup_totals_by_game
+              WHERE type_lineup = 'offense'
+                AND competition = $1::text AND game_year = $2::int4
+              GROUP BY game_id, team_id, own_starters, opp_starters
+           ) m
+             ON m.game_id = f.game_id AND m.team_id = f.team_id
+            AND m.own_starters = f.own_starters
+            AND m.opp_starters = f.opp_starters
           WHERE s.competition = $1::text AND s.game_year = $2::int4",
         params = list(competition(), as.integer(season())))
     )
@@ -74,7 +86,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
         ts_poss_count = off_ts_poss, oreb_count = off_oreb,
         oreb_opportunities = off_oreb_opp, tov_count = off_tov,
         total_ft_attempts = off_fta, total_fga = off_fga,
-        total_fgm = off_fgm, total_fg3_made = off_fg3m
+        total_fgm = off_fgm, total_fg3_made = off_fg3m, minutes
       ),
       df %>% transmute(
         game_id, team_id, type_lineup = "defense", num_starters = opp_starters,
@@ -82,7 +94,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
         ts_poss_count = def_ts_poss, oreb_count = def_oreb,
         oreb_opportunities = def_oreb_opp, tov_count = def_tov,
         total_ft_attempts = def_fta, total_fga = def_fga,
-        total_fgm = def_fgm, total_fg3_made = def_fg3m
+        total_fgm = def_fgm, total_fg3_made = def_fg3m, minutes = NA_real_
       )
     )
 
@@ -153,18 +165,20 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     ff <- identical(input$eurogl_view_mode, "Four Factors")
     cols <- if (ff) c(
       "round_number", "phase_label", "game_date", "team_name", "opp_team_name", "result", "score",
+      "minutes",
       "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
       "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct", "net_rtg"
     ) else c(
       "round_number", "phase_label", "game_date", "team_name", "opp_team_name", "result", "score",
-      "off_ppp", "def_ppp", "net_rtg", "off_poss", "def_poss"
+      "minutes", "off_ppp", "def_ppp", "net_rtg", "off_poss", "def_poss"
     )
     labels <- if (ff)
       c("Rd", "Phase", "Date", "Team", "Opponent", "W/L", "Score",
+        "Min",
         "Off PPP", "Off eFG%", "Off OREB%", "Off TOV%", "Off FTR",
         "Def PPP", "Def eFG%", "Def OREB%", "Def TOV%", "Def FTR", "Net")
       else c("Rd", "Phase", "Date", "Team", "Opponent", "W/L", "Score",
-             "Off PPP", "Def PPP", "Net", "Off Poss", "Def Poss")
+             "Min", "Off PPP", "Def PPP", "Net", "Off Poss", "Def Poss")
     metric_map <- c(
       "Off PPP" = "off_ppp", "Def PPP" = "def_ppp", "Net" = "net_rtg",
       "Off eFG%" = "off_efg_pct", "Off OREB%" = "off_oreb_pct",
@@ -186,12 +200,15 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
         buttons = list(list(extend = "csv", text = "Download CSV", filename = "euroleague_game_logs")),
         pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
+        order = list(list(2, "desc"), list(0, "desc")),
         columnDefs = list(
           list(className = "dt-center", targets = "_all"),
           list(targets = result_idx, render = result_render),
           list(targets = hidden_idx, visible = FALSE)
         ))) %>%
       DT::formatRound(intersect(names(metric_map), names(disp)), 1)
+
+    if ("Min" %in% names(disp)) dt <- DT::formatRound(dt, "Min", 1)
 
     if (all(c("Off Poss", "Def Poss") %in% names(disp))) {
       dt <- DT::formatCurrency(dt, c("Off Poss", "Def Poss"), currency = "",
