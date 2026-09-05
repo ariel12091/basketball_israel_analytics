@@ -441,3 +441,52 @@ test_that("app.js swaps clip-path rather than recomputing geometry", {
   expect_match(js, "ibpl-ribbon-lane", fixed = TRUE)
   expect_match(js, "window.ibplSendShinyEvent = sendShinyEvent", fixed = TRUE)
 })
+
+test_that("ribbon_link_cell carries the ids and team names the modal needs", {
+  html <- ribbon_link_cell(115L, 7L, "12 Mar", own_team = "Hapoel TA",
+                           opp_team = "Maccabi")
+  expect_match(html, 'data-game-id="115"')
+  expect_match(html, 'data-team-id="7"')
+  expect_match(html, 'data-own-team="Hapoel TA"')
+  expect_match(html, 'data-opp-team="Maccabi"')
+  expect_match(html, "12 Mar", fixed = TRUE)
+  expect_match(html, "ribbon-link", fixed = TRUE)
+})
+
+test_that("ribbon_link_cell escapes labels and data attributes", {
+  html <- ribbon_link_cell(1L, 1L, "<script>alert(1)</script>",
+                           own_team = 'A "quoted" team')
+  expect_false(grepl("<script>", html, fixed = TRUE))
+  expect_match(html, 'data-own-team="A &quot;quoted&quot; team"', fixed = TRUE)
+})
+
+test_that("add_ribbon_link_column builds links from the source frame", {
+  df <- data.frame(game_id = c(115L, 116L), team_id = c(7L, 10L),
+                   game_date = c("12 Mar", "14 Mar"), stringsAsFactors = FALSE)
+  out <- add_ribbon_link_column(df)
+  expect_match(out$game_date[1], 'data-game-id="115"')
+  expect_match(out$game_date[2], 'data-team-id="10"')
+  expect_match(out$game_date[1], "12 Mar", fixed = TRUE)
+})
+
+test_that("add_ribbon_link_column fails loudly on a frame missing the ids", {
+  disp <- data.frame(gn = 1L, game_date = "12 Mar", stringsAsFactors = FALSE)
+  expect_error(add_ribbon_link_column(disp), "game_id")
+})
+
+test_that("both Tab 4 modes build the link before select drops the ids", {
+  src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
+  add_lines <- grep("add_ribbon_link_column", src)
+  sel_lines <- grep("disp <- df %>% select", src, fixed = TRUE)
+  expect_length(sel_lines, 2)
+  expect_length(add_lines, 2)
+  for (sl in sel_lines) expect_true(any(add_lines < sl & add_lines > sl - 12))
+})
+
+test_that("app.js exposes the queued ribbon click handler", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_match(js, "handleRibbonLinkClick", fixed = TRUE)
+  expect_match(js, "gl_ribbon_click", fixed = TRUE)
+  expect_match(js, "window.ibplSendShinyEvent", fixed = TRUE)
+})

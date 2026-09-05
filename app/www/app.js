@@ -111,6 +111,20 @@
     }, { priority: "event" });
   };
 
+  window.handleRibbonLinkClick = function(linkEl) {
+    if (!linkEl) return;
+    var gameId = parseInt(linkEl.dataset.gameId, 10);
+    var teamId = parseInt(linkEl.dataset.teamId, 10);
+    if (Number.isNaN(gameId) || Number.isNaN(teamId)) return;
+    window.ibplSendShinyEvent(linkEl.dataset.inputId || "gl_ribbon_click", {
+      game_id: gameId,
+      team_id: teamId,
+      own_team: linkEl.dataset.ownTeam || "",
+      opp_team: linkEl.dataset.oppTeam || "",
+      ts: Date.now()
+    });
+  };
+
   window.handleCompareTableRowClick = function(table, rowEl, entityColIdx) {
     if (!table || !rowEl || !window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
     var data = table.row(rowEl).data();

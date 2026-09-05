@@ -3368,3 +3368,42 @@ ribbon_health_message <- function(excluded_segments) {
   sprintf(paste("Lineup data is incomplete for this game: %d segment(s) had no",
                 "five-player lineup on record and are not drawn."), n)
 }
+
+# A game-log cell that opens the stint ribbon. Both ids travel on the anchor so
+# the click handler needs no table lookup.
+ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_click",
+                             own_team = "", opp_team = "") {
+  sprintf(
+    paste0('<a href="#" class="ribbon-link" data-game-id="%d" data-team-id="%d" ',
+           'data-input-id="%s" data-own-team="%s" data-opp-team="%s" ',
+           'onclick="window.handleRibbonLinkClick(this); return false;">%s</a>'),
+    as.integer(game_id), as.integer(team_id),
+    htmltools::htmlEscape(input_id, attribute = TRUE),
+    htmltools::htmlEscape(own_team, attribute = TRUE),
+    htmltools::htmlEscape(opp_team, attribute = TRUE),
+    htmltools::htmlEscape(label)
+  )
+}
+
+# Call on the source frame before its identifiers are dropped for display.
+add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
+                                   date_col = "game_date") {
+  if (is.null(df) || !nrow(df)) return(df)
+  needed <- c("game_id", "team_id", date_col)
+  if (!all(needed %in% names(df))) {
+    stop("add_ribbon_link_column() needs ", paste(needed, collapse = ", "),
+         "; got: ", paste(names(df), collapse = ", "))
+  }
+
+  own <- if ("team_name" %in% names(df)) as.character(df$team_name) else rep("", nrow(df))
+  opp <- if ("opp_team_name" %in% names(df)) as.character(df$opp_team_name) else rep("", nrow(df))
+  own[is.na(own)] <- ""
+  opp[is.na(opp)] <- ""
+  df[[date_col]] <- mapply(
+    ribbon_link_cell,
+    df$game_id, df$team_id, as.character(df[[date_col]]),
+    own_team = own, opp_team = opp,
+    MoreArgs = list(input_id = input_id), USE.NAMES = FALSE
+  )
+  df
+}
