@@ -71,6 +71,15 @@ test_that("the Israeli ribbon SQL carries no type_lineup predicate", {
   expect_false(grepl("GROUP BY[^)]*type_lineup", sql, ignore.case = TRUE))
 })
 
+# This guard deliberately reads euroleague.ribbon_segments_v, NOT the base
+# table euroleague.matchup_segments_actions. app_readonly (the role the
+# deployed app actually runs as) is denied on the base table on purpose -- the
+# EuroLeague schema keeps raw/derived-fact tables closed and exposes only a
+# curated read layer, of which this view is the entire point (see
+# sql/euroleague/ribbon_views.sql). A guard that only runs under an elevated
+# ETL role isn't guarding what the application sees, and it fails outright
+# (not skip) for anyone who runs the suite with app/.Renviron credentials. Do
+# not point this back at the base table.
 test_that("euro segment lineups resolve to one player-id set", {
   skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
@@ -81,16 +90,31 @@ test_that("euro segment lineups resolve to one player-id set", {
     password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
     connect_timeout = 15L, bigint = "numeric")
   on.exit(DBI::dbDisconnect(con), add = TRUE)
-  unresolved <- DBI::dbGetQuery(con, "
-    WITH seg AS (
-      SELECT DISTINCT game_id, team_id, own_lineup
-      FROM euroleague.matchup_segments_actions WHERE segment_seconds > 0)
-    SELECT COUNT(*) AS n FROM seg s
-    LEFT JOIN (SELECT DISTINCT game_id, team_id, own_lineup, player_ids
-               FROM euroleague.lineup_totals_by_game) l
-      ON l.game_id=s.game_id AND l.team_id=s.team_id AND l.own_lineup=s.own_lineup
-    WHERE l.player_ids IS NULL")
-  expect_identical(as.numeric(unresolved$n[1]), 0)
+
+  # Three checks in one round trip against the view:
+  #   - empty_ids: a segment whose player_ids came back NULL or empty means
+  #     the join in ribbon_segments_v missed -- a lane set with no players.
+  #   - fanout: (game_id, team_id, segment_id) appearing more than once means
+  #     the own_lineup join produced two different player-id sets for the
+  #     same segment -- a player would get duplicate lanes.
+  #   - total_rows: a bare "zero violations" on empty_ids/fanout would also
+  #     pass vacuously if the view were empty or the filter wrong, so this
+  #     asserts a healthy lower bound too -- it is not sufficient on its own,
+  #     but it is a necessary companion to the other two.
+  counts <- DBI::dbGetQuery(con, "
+    SELECT
+      (SELECT COUNT(*) FROM euroleague.ribbon_segments_v
+         WHERE player_ids IS NULL OR cardinality(player_ids) = 0) AS empty_ids,
+      (SELECT COUNT(*) FROM (
+         SELECT game_id, team_id, segment_id
+         FROM euroleague.ribbon_segments_v
+         GROUP BY game_id, team_id, segment_id
+         HAVING COUNT(*) > 1) dup) AS fanout,
+      (SELECT COUNT(*) FROM euroleague.ribbon_segments_v) AS total_rows")
+
+  expect_identical(as.numeric(counts$empty_ids[1]), 0)
+  expect_identical(as.numeric(counts$fanout[1]), 0)
+  expect_gt(counts$total_rows[1], 1000)
 })
 
 test_that("the ribbon segment count matches type-lineup-absent grouping", {
