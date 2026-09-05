@@ -59,6 +59,31 @@ assert_minute_rows <- function(truth, actual, label, tolerance = 1e-6) {
   invisible(TRUE)
 }
 
+# onoff_default_mv and player_traditional_stats_mv now compute the same thing:
+# the sum of distinct on-court segment durations per player. They are built by
+# different CTE chains, so agreeing to a rounding tolerance is a real
+# cross-check rather than a restatement. player_traditional_stats_mv is NOT
+# rebuilt by this migration, so it is an independent reference.
+assert_onoff_matches_traditional <- function(con, tolerance = 0.051) {
+  cmp <- DBI::dbGetQuery(con, '
+    SELECT o.player_id, o.team_id, o."Year"::int AS game_year,
+           o.minutes AS onoff_minutes, t.minutes AS traditional_minutes
+      FROM basketball_test.onoff_default_mv o
+      JOIN basketball_test.player_traditional_stats_mv t
+        ON t.player_id = o.player_id AND t.team_id = o.team_id
+       AND t.game_year = o."Year"::int')
+  if (!nrow(cmp)) stop('onoff vs traditional: join produced no rows')
+  bad <- !is.finite(cmp$onoff_minutes) | !is.finite(cmp$traditional_minutes) |
+    abs(cmp$onoff_minutes - cmp$traditional_minutes) > tolerance
+  if (any(bad)) {
+    print(utils::head(cmp[bad, ], 20))
+    stop('onoff vs traditional: ', sum(bad), ' of ', nrow(cmp),
+         ' player-seasons disagree on minutes')
+  }
+  message('onoff vs traditional: ', nrow(cmp), ' player-seasons agree')
+  invisible(TRUE)
+}
+
 verify_minutes_migration <- function(con) {
   truth <- DBI::dbGetQuery(con, "
     SELECT game_id, team_id, sum(seconds)/60.0 AS minutes FROM (
@@ -81,4 +106,5 @@ verify_minutes_migration <- function(con) {
       assert_minute_rows(truth, actual, paste(name, column), tolerance = 0.050001)
     }
   }
+  assert_onoff_matches_traditional(con)
 }

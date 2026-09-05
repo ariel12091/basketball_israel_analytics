@@ -136,8 +136,9 @@ say("APPLYING -- rebuilding lineup MVs and their team dependents")
 registry_env <- new.env(parent = globalenv())
 sys.source("sql/rebuild_all_mvs.R", envir = registry_env)
 registry_env$validate_mv_registry()
-affected <- c("mv_lineup_totals_by_day", "lineup_four_factors_by_game",
-              "team_metrics_by_game_mv", "team_metrics_rolling_mv", "team_four_factors_mv")
+affected <- c("mv_lineup_totals_by_day", "onoff_default_mv",
+              "lineup_four_factors_by_game", "team_metrics_by_game_mv",
+              "team_metrics_rolling_mv", "team_four_factors_mv")
 targets <- Filter(function(x) x$name %in% affected, registry_env$MV_REGISTRY)
 # Read every input before taking locks or dropping anything.
 definitions <- lapply(targets, function(x) paste(readLines(x$file, warn = FALSE), collapse = "\n"))
