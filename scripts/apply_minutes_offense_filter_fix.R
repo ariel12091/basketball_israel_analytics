@@ -63,7 +63,13 @@
 
 suppressMessages({library(DBI); library(RPostgres)})
 
-APPLY  <- "--apply" %in% commandArgs(trailingOnly = TRUE)
+APPLY  <- "--apply"   %in% commandArgs(trailingOnly = TRUE)
+# --dry-run performs the ENTIRE apply -- rebuild, grants, audit, all five
+# gates -- inside the transaction and then rolls it back. Same wall clock and
+# the same locks as a real run, but nothing is kept. It is the only way to
+# learn that the apply path works without spending a maintenance window on it.
+# Precedent: etl/backfill_canonical_segment_minutes.R.
+DRY    <- "--dry-run" %in% commandArgs(trailingOnly = TRUE)
 SCHEMA <- "basketball_test"
 
 say <- function(...) cat(sprintf(...), "\n", sep = "")
@@ -162,9 +168,10 @@ for (o in others) {
   say("         %s: %7.2f  (short %.2f)", o$lbl, v, target - v)
 }
 
-if (!APPLY) {
+if (!APPLY && !DRY) {
   say("")
-  say("REHEARSAL ONLY -- nothing changed. Re-run with --apply to execute:")
+  say("REHEARSAL ONLY -- nothing changed. --dry-run rehearses the whole")
+  say("apply and rolls back; --apply executes it. Both will:")
   say("  1. Rebuild 7 relations atomically, in registry order.")
   say("     REFRESH is NOT enough: it re-runs the stored definition.")
   say("  2. Restore grants and audit access on the same connection.")
@@ -184,7 +191,7 @@ if (!APPLY) {
 
 # ---- apply ------------------------------------------------------------------
 say("")
-say("APPLYING -- rebuilding lineup MVs and their team dependents")
+say(if (DRY) "DRY RUN -- full apply, then rollback" else "APPLYING -- rebuilding 7 relations")
 registry_env <- new.env(parent = globalenv())
 sys.source("sql/rebuild_all_mvs.R", envir = registry_env)
 registry_env$validate_mv_registry()
@@ -197,6 +204,7 @@ targets <- Filter(function(x) x$name %in% affected, registry_env$MV_REGISTRY)
 definitions <- lapply(targets, function(x) paste(readLines(x$file, warn = FALSE), collapse = "\n"))
 hardening <- paste(readLines("sql/security/enable_readonly_rls.sql", warn = FALSE), collapse = "\n")
 audit <- paste(readLines("sql/security/audit_app_access.sql", warn = FALSE), collapse = "\n")
+outcome <- tryCatch({
 DBI::dbWithTransaction(con, {
   dbExecute(con, "SET LOCAL search_path TO basketball_test, public")
   dbExecute(con, "SET LOCAL lock_timeout = '15s'")
@@ -211,8 +219,24 @@ DBI::dbWithTransaction(con, {
     stop("Database access audit failed")
   }
   verify_minutes_migration(con)
+  after <- measure(con)
+  say("")
+  say("AFTER    canonical truth        : %7.3f min/team-game", after$truth)
+  say("         mv_lineup_totals_by_day: %7.3f  (gap %.3f)",
+      after$mv, abs(after$truth - after$mv))
+  if (DRY) stop(structure(class = c("ibpl_dry_rollback", "error", "condition"),
+                          list(message = "dry-run rollback", call = NULL)))
+  "committed"
 })
-say("VERIFY PASSED -- rebuild, grants and minute checks committed together.")
+}, ibpl_dry_rollback = function(e) "rolled_back")
+if (identical(outcome, "rolled_back")) {
+  say("")
+  say("DRY RUN COMPLETE -- every step ran, all five gates passed, and the")
+  say("transaction was rolled back. Nothing changed. Re-run with --apply.")
+} else {
+  say("")
+  say("VERIFY PASSED -- rebuild, grants and all five gates committed together.")
+}
 }
 
 main()
