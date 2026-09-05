@@ -121,6 +121,31 @@ csv_export_stamp <- function(now = Sys.time()) {
   format(now, "%Y%m%d_%H%M%S")
 }
 
+# DataTables CSV export button.
+#
+# Every table that offers an export wants the same contract: the VISIBLE
+# columns only -- hidden percentile-rank and raw-shot columns are internals,
+# not data the reader asked for -- carrying the search and ordering actually
+# on screen, under a timestamped filename. Tabs 3, 5 and 6 each spelled that
+# out separately; rather than write a fourth and fifth copy for tab 4's two
+# tables, it lives here. The EuroLeague tabs (9, 11) currently pass no
+# exportOptions at all and so leak their pr_* columns into the CSV; they
+# should adopt this too.
+csv_export_button <- function(slug, text = "Download CSV", now = Sys.time()) {
+  list(list(
+    extend = "csv",
+    text = text,
+    filename = sprintf("%s_%s", slug, csv_export_stamp(now)),
+    exportOptions = list(
+      columns = ":visible",
+      stripHtml = TRUE,
+      stripNewlines = TRUE,
+      trim = TRUE,
+      modifier = list(search = "applied", order = "applied")
+    )
+  ))
+}
+
 # Normalized ETL data version from the shared context. Used in cache keys so
 # season-level MV pulls are shared across sessions and invalidate after ETL.
 shared_data_version <- function(shared) {

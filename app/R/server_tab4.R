@@ -685,9 +685,11 @@ server_tab4 <- function(input, output, session, shared) {
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
                           escape = dt_escape_except(disp),
+                          extensions = "Buttons",
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
-                            dom = "tip", pageLength = 50,
+                            dom = "Btip", pageLength = 50,
+                            buttons = csv_export_button("game_logs_summary"),
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
                             order = list(list(2, "desc"), list(0, "desc")),
@@ -776,9 +778,11 @@ server_tab4 <- function(input, output, session, shared) {
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
                           escape = dt_escape_except(disp),
+                          extensions = "Buttons",
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
-                            dom = "tip", pageLength = 50,
+                            dom = "Btip", pageLength = 50,
+                            buttons = csv_export_button("game_logs_four_factors"),
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
                             order = list(list(2, "desc"), list(0, "desc")),

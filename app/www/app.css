@@ -524,12 +524,38 @@ a:hover { color: var(--ibpl-accent-hover); }
 .btn-default.shiny-download-link {
   background: var(--ibpl-surface-2);
   color: var(--ibpl-accent);
-  border: 1px solid var(--ibpl-border);
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55);
   font-weight: 600;
 }
 .btn-default.shiny-download-link:hover {
   background: var(--ibpl-surface-hover);
   border-color: var(--ibpl-accent);
+}
+
+/* DataTables Buttons export control (tabs 3, 4, 5, 6, 9, 11).
+   The BS5 Buttons integration renders
+   <button class="btn btn-secondary dt-button buttons-csv"> and ships no
+   appearance of its own -- buttons.bootstrap5.css sets only overflow. bslib
+   derives $secondary from the dark bg, so the stock .btn-secondary lands a
+   few points off --ibpl-surface and the control reads as invisible. Match
+   the Shiny downloadButton treatment above. Specificity (0,2,0) clears
+   .btn-secondary without !important. */
+.dt-buttons .dt-button,
+.dt-buttons .dt-button.btn-secondary {
+  background: var(--ibpl-surface-2);
+  color: var(--ibpl-accent);
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55);
+  font-weight: 600;
+}
+.dt-buttons .dt-button:hover,
+.dt-buttons .dt-button.btn-secondary:hover {
+  background: var(--ibpl-surface-hover);
+  border-color: var(--ibpl-accent);
+  color: var(--ibpl-accent);
+}
+.dt-buttons .dt-button:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 2px;
 }
 
 /* ---- Global League + Season Selectors (navbar) ---- */

@@ -302,3 +302,59 @@ test_that("the tabular-figures rule is set in a face that has the feature", {
     info = "the tabular-nums rule does not set --ibpl-font-display"
   )
 })
+
+# The DataTables Buttons export control paints --ibpl-accent on
+# --ibpl-surface-2 (and --ibpl-surface-hover while hovered). BS5 ships no
+# appearance for .dt-button and bslib derives $secondary from the dark bg, so
+# without an explicit rule the control is invisible rather than merely dim --
+# which is what prompted this. Assert the threshold, not an improvement over
+# what it replaced.
+test_that("the CSV export button clears WCAG AA on its own surfaces", {
+  tokens <- css_tokens(read_repo_txt("www", "app.css"))
+  contrast <- function(a, b) {
+    la <- rel_luminance(a); lb <- rel_luminance(b)
+    (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+  }
+
+  expect_gt(contrast(tokens[["--ibpl-accent"]], tokens[["--ibpl-surface-2"]]), 4.5)
+  expect_gt(contrast(tokens[["--ibpl-accent"]], tokens[["--ibpl-surface-hover"]]), 4.5)
+})
+
+test_that("app.css gives the DataTables export button an explicit appearance", {
+  css_lines <- readLines(repo_file("www", "app.css"), warn = FALSE)
+
+  starts <- grep(".dt-buttons .dt-button", css_lines, fixed = TRUE)
+  expect_gt(length(starts), 0)
+
+  block <- paste(css_lines[min(starts):(max(starts) + 6)], collapse = " ")
+  expect_true(grepl("var(--ibpl-accent)", block, fixed = TRUE))
+  expect_true(grepl("var(--ibpl-surface-2)", block, fixed = TRUE))
+  # Specificity (0,2,0) beats .btn-secondary, so no !important is needed here
+  # and none should creep in.
+  expect_false(grepl("!important", block, fixed = TRUE))
+})
+
+# WCAG 1.4.11: the boundary that identifies a control needs 3:1. Both export
+# buttons originally drew their border in --ibpl-border, which composites to
+# 1.41:1 against the card surface -- legible amber text inside a shape you
+# cannot see, which is how a styled button still reads as invisible. Accent
+# at 0.55 alpha is the least-loud value that clears the threshold.
+test_that("both export buttons have a perceivable boundary", {
+  css_lines <- readLines(repo_file("www", "app.css"), warn = FALSE)
+  tokens <- css_tokens(paste(css_lines, collapse = " "))
+
+  hits <- grep("border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55);", css_lines, fixed = TRUE)
+  expect_equal(length(hits), 2)  # .shiny-download-link and .dt-button
+
+  contrast <- function(a, b) {
+    la <- rel_luminance(a); lb <- rel_luminance(b)
+    (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+  }
+  composite <- function(fg, bg, alpha) {
+    v <- round(alpha * grDevices::col2rgb(fg) + (1 - alpha) * grDevices::col2rgb(bg))
+    sprintf("#%02X%02X%02X", v[1], v[2], v[3])
+  }
+
+  border <- composite(tokens[["--ibpl-accent"]], tokens[["--ibpl-surface-2"]], 0.55)
+  expect_gte(contrast(border, tokens[["--ibpl-surface"]]), 3)
+})
