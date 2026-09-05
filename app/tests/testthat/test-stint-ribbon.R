@@ -490,3 +490,44 @@ test_that("app.js exposes the queued ribbon click handler", {
   expect_match(js, "gl_ribbon_click", fixed = TRUE)
   expect_match(js, "window.ibplSendShinyEvent", fixed = TRUE)
 })
+
+test_that("ribbon_link_cell's data-input-id follows the input_id argument", {
+  # The league lives in the argument, not in the function name -- one helper
+  # serves both leagues via input_id. Per CLAUDE.md, no parallel euro_
+  # implementation of logic that already exists. Note the literal id:
+  # eurogl_ribbon_click (matching this tab's eurogl_* input prefix), not the
+  # brief's euro_gl_ribbon_click.
+  israeli <- ribbon_link_cell(1L, 2L, "x")
+  euro <- ribbon_link_cell(1L, 2L, "x", input_id = "eurogl_ribbon_click")
+  expect_match(israeli, 'data-input-id="gl_ribbon_click"', fixed = TRUE)
+  expect_match(euro, 'data-input-id="eurogl_ribbon_click"', fixed = TRUE)
+})
+
+test_that("Tab 11 builds the ribbon link on the source frame before the display subset", {
+  # Tab 11 has a single renderDT with an `ff` flag that branches column sets
+  # for Summary vs Four Factors, and one shared `disp <- df[...]` subset line
+  # -- unlike Tab 4's two separate `disp <- df %>% select(...)` blocks, one
+  # add_ribbon_link_column() call here covers both view modes. Assert >= 1,
+  # not the 2 Tab 4 needs; do not add a second call to satisfy a stale count.
+  src <- readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
+                   warn = FALSE)
+  expect_gte(length(grep("add_ribbon_link_column", src, fixed = TRUE)), 1)
+  expect_true(any(grepl("eurogl_ribbon_click", src, fixed = TRUE)))
+})
+
+test_that("EuroLeague game logs reuse the shared ribbon builder, not a parallel euro_ clone", {
+  # CLAUDE.md hard rule: EuroLeague tabs REUSE the Israeli implementation and
+  # must never grow a parallel euro_ version of logic that already exists.
+  # This is the guard against a future edit silently reintroducing
+  # euro_build_stint_ribbon / euro_fetch_stint_ribbon -- do not delete this
+  # test as "redundant" with the wiring assertions above.
+  il <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
+                        warn = FALSE), collapse = "\n")
+  eu <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
+                        warn = FALSE), collapse = "\n")
+  expect_match(il, "fetch_stint_ribbon", fixed = TRUE)
+  expect_match(eu, "fetch_stint_ribbon", fixed = TRUE)
+  expect_match(eu, "build_stint_ribbon_svg", fixed = TRUE)
+  expect_false(grepl("euro_build_stint_ribbon", eu, fixed = TRUE))
+  expect_false(grepl("euro_fetch_stint_ribbon", eu, fixed = TRUE))
+})
