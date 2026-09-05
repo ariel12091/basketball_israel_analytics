@@ -72,7 +72,6 @@ test_that("the Israeli ribbon SQL carries no type_lineup predicate", {
 })
 
 test_that("euro segment lineups resolve to one player-id set", {
-  skip_on_cran()
   skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
@@ -95,7 +94,6 @@ test_that("euro segment lineups resolve to one player-id set", {
 })
 
 test_that("the ribbon segment count matches type-lineup-absent grouping", {
-  skip_on_cran()
   skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
 
