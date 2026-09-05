@@ -101,7 +101,6 @@ WITH sched AS (
             s.game_year,
             d.game_id,
             d.lineup_hash,
-            d.type_lineup,
             d.segment_id,
             MAX(d.segment_seconds)::numeric AS seg_seconds
            FROM base0 b0
@@ -111,7 +110,7 @@ WITH sched AS (
              JOIN sched s USING (game_id)
           WHERE d.segment_id IS NOT NULL
             AND d.segment_seconds IS NOT NULL
-          GROUP BY b0.player_id, b0.team_id, b0.is_on_key, s.game_year, d.game_id, d.lineup_hash, d.type_lineup, d.segment_id
+          GROUP BY b0.player_id, b0.team_id, b0.is_on_key, s.game_year, d.game_id, d.lineup_hash, d.segment_id
         ), player_minutes AS (
          SELECT player_segments.player_id,
             player_segments.team_id,
@@ -119,7 +118,6 @@ WITH sched AS (
             ROUND(
               COALESCE(SUM(player_segments.seg_seconds) FILTER (
                 WHERE player_segments.is_on_key = 1
-                  AND player_segments.type_lineup = 'offense'::text
               ), 0) / 60.0,
               1
             )::numeric AS minutes

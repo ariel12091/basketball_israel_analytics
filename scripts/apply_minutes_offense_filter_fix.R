@@ -24,14 +24,22 @@
 #   to offense rows only", and what PROJECT.md:180 and :518 describe.
 #
 # NOT IN SCOPE
-#   onoff_default_mv (197.16 vs 200) and player_four_factors_by_game (195.30 vs
-#   200) undercount for a RELATED BUT DIFFERENT reason: their segment CTEs keep
-#   type_lineup IN the GROUP BY, so their offense filter is load-bearing and
-#   deleting it WOULD double-count. They need the perspective collapsed in the
-#   GROUP BY first, matching player_traditional_stats_mv -- the one relation
-#   that gets this right (200.09) because its segment_times CTE groups by
-#   (game_year, game_id, team_id, lineup_hash, segment_id) and filters nothing.
-#   That is a separate migration and needs its own before/after measurement.
+#   onoff_default_mv is FIXED in this migration too. Its player_segments CTE
+#   kept type_lineup in the GROUP BY, so its offense filter was load-bearing and
+#   could not simply be deleted -- removing it alone would have double-counted.
+#   The perspective is now collapsed in the GROUP BY, matching
+#   player_traditional_stats_mv.segment_times, and the filter goes with it.
+#   Verified read-only against the committed CTE chain before editing:
+#   197.15 -> 200.09 player-minutes per team-game, landing exactly on
+#   player_traditional_stats_mv, the one relation that always got this right.
+#
+#   player_four_factors_by_game (195.30 vs 200) is NOT fixed here. It has TWO
+#   independent minute paths -- the published `minutes` at line 273
+#   (SUM(stint_seconds) FILTER (type_lineup = 'offense')) and `onoff_minutes`
+#   fed from onoff_lineup_minutes at 104/129 -- and its downstream join keys on
+#   type_lineup, so collapsing the grain means restructuring the join rather
+#   than deleting a clause. It needs its own design and its own before/after
+#   measurement.
 #
 # USAGE
 #   Rehearsal (default) -- measures, prints the plan, changes nothing:
