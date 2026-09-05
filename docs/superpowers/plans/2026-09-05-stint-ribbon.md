@@ -67,6 +67,7 @@ cd app && "$RSCRIPT" -e "testthat::test_dir('tests/testthat', filter='stint-ribb
 - Produces:
   - `merge_adjacent_stints(lanes)` → data.frame with the same columns, contiguous runs collapsed. Input/output columns: `side` (chr, "own"/"opp"), `player_key` (chr), `player_label` (chr), `is_starter` (lgl), `start_elapsed` (num), `end_elapsed` (num).
   - `ribbon_period_bounds(n_periods, regulation = 4L, regulation_seconds = 600, ot_seconds = 300)` → numeric vector of cumulative period end times; the last element is the nominal game length.
+  - `ribbon_mark_starters(lanes)` → input plus logical `is_starter`, TRUE for every player on the floor in that side's earliest segment.
   - `ribbon_lane_index(lanes)` → input plus integer `lane_index`, restarting at 1 per `side`.
   - `ribbon_geometry(lanes, total_seconds, width = 1000, lane_height = 14, lane_gap = 3)` → input plus numeric `x`, `w`, `y`, `h`.
 
@@ -153,6 +154,43 @@ test_that("ribbon_period_bounds floors at regulation for truncated games", {
   # be drawn on a full regulation axis, or its lanes read at the wrong scale.
   expect_identical(ribbon_period_bounds(2), c(600, 1200, 1800, 2400))
   expect_identical(ribbon_period_bounds(NA), c(600, 1200, 1800, 2400))
+})
+
+test_that("ribbon_mark_starters flags whoever is on the floor in the first segment", {
+  lanes <- rbind(
+    lane_row("own", "starter_a", 0, 300),
+    lane_row("own", "starter_b", 0, 300),
+    lane_row("own", "bench", 300, 600)
+  )
+  out <- ribbon_mark_starters(lanes)
+  flag <- setNames(out$is_starter, out$player_key)
+  expect_true(flag[["starter_a"]])
+  expect_true(flag[["starter_b"]])
+  expect_false(flag[["bench"]])
+})
+
+test_that("ribbon_mark_starters resolves each side independently", {
+  # The two sides always share a segment timeline, but a side whose first
+  # segment starts later must still get its own starters.
+  lanes <- rbind(
+    lane_row("own", "a", 0, 300),
+    lane_row("opp", "b", 0, 300),
+    lane_row("opp", "c", 300, 600)
+  )
+  out <- ribbon_mark_starters(lanes)
+  flag <- setNames(out$is_starter, paste(out$side, out$player_key))
+  expect_true(flag[["own a"]])
+  expect_true(flag[["opp b"]])
+  expect_false(flag[["opp c"]])
+})
+
+test_that("ribbon_mark_starters keeps a player who returns later flagged once", {
+  lanes <- rbind(
+    lane_row("own", "a", 0, 300),
+    lane_row("own", "a", 900, 1200)
+  )
+  out <- ribbon_mark_starters(lanes)
+  expect_true(all(out$is_starter))
 })
 
 test_that("ribbon_lane_index orders starters first, then by floor time", {
@@ -257,6 +295,22 @@ merge_adjacent_stints <- function(lanes) {
   out <- do.call(rbind, merged)
   rownames(out) <- NULL
   out
+}
+
+# Whoever is on the floor in a side's earliest segment started the game.
+# Derived rather than read from a boxscore flag so both leagues use one
+# definition: measured exactly 5 per team-game across 1,178 EuroLeague and 878
+# Israeli team-games, while the EuroLeague boxscore carries 40 stray flags.
+ribbon_mark_starters <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) {
+    lanes$is_starter <- logical(0)
+    return(lanes)
+  }
+  first_start <- tapply(lanes$start_elapsed, lanes$side, min)
+  on_first <- lanes$start_elapsed == first_start[lanes$side]
+  starters <- unique(paste(lanes$side, lanes$player_key, sep = "\r")[on_first])
+  lanes$is_starter <- paste(lanes$side, lanes$player_key, sep = "\r") %in% starters
+  lanes
 }
 
 # Cumulative period end times from the NOMINAL clock, never from observed
@@ -793,7 +847,7 @@ git commit -m "feat: ribbon styling and clip-path hover handler"
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `euroleague.ribbon_segments_v` with columns `game_id, team_id, segment_id, own_lineup, opp_lineup, own_starters, opp_starters, start_elapsed_seconds, end_elapsed_seconds`; and `euroleague.ribbon_margin_v` with `game_id, period, elapsed_seconds, points_a, points_b, home_team_id`. Task 5's EuroLeague reader depends on exactly these names.
+- Produces: `euroleague.ribbon_segments_v` with columns `game_id, team_id, segment_id, start_elapsed_seconds, end_elapsed_seconds, player_ids` (ids, resolved via `lineup_totals_by_game` — the view exposes no player names and no `opp_lineup`); and `euroleague.ribbon_margin_v` with `game_id, period, elapsed_seconds, points_a, points_b, home_team_id`. Task 5's EuroLeague reader depends on exactly these names.
 
 **Why views rather than table grants:** `app_readonly` is denied on `euroleague.actions` (211 MB of raw play-by-play, 40 columns including provider ids and parser traces) and on `matchup_segments_actions`, by design — the euro schema uses a curated read layer, unlike the Israeli blanket grant. Exposing two narrow views keeps that boundary and puts the clock derivation next to its data.
 
@@ -856,22 +910,44 @@ Create `sql/euroleague/ribbon_views.sql`:
 -- Editing either view means DROP + CREATE, which wipes the app_readonly grant.
 -- Re-run scripts/apply_db_security.R with CONFIRM_DB_SECURITY_APPLY=1 after.
 
+-- Lanes are keyed on player_id, never on player names.
+--
+-- matchup_segments_actions stores lineups as text[] of NAMES and carries no
+-- ids. Resolving those names one by one against full_rosters would be a
+-- name-keyed join, the exact shape that manufactured 258 false findings in the
+-- 2026-08-19 data-quality report. Instead this reuses the lineup -> player_id
+-- link the on/off system is already built on: lineup_totals_by_game holds
+-- own_lineup and player_ids for the same lineup. Measured 2026-09-05: all
+-- 22,597 distinct segment lineups match on (game_id, team_id, own_lineup),
+-- with zero fan-out.
+--
+-- Do NOT pair own_lineup and player_ids positionally. The two arrays are
+-- sorted independently (names alphabetically, ids ascending), so names[i] is
+-- unrelated to ids[i] -- measured 31,907 mismatches in 40,000 pairs. Only the
+-- id SET is trustworthy; labels come from full_rosters by id.
+--
+-- opp_lineup is deliberately not exposed: both teams have a row for every
+-- segment, so the opponent's lanes are the other team's own rows.
 CREATE OR REPLACE VIEW euroleague.ribbon_segments_v AS
 SELECT
-  game_id,
-  team_id,
-  segment_id,
-  own_lineup,
-  opp_lineup,
-  own_starters,
-  opp_starters,
-  start_elapsed_seconds,
-  end_elapsed_seconds
-FROM euroleague.matchup_segments_actions
+  m.game_id,
+  m.team_id,
+  m.segment_id,
+  m.start_elapsed_seconds,
+  m.end_elapsed_seconds,
+  l.player_ids
+FROM euroleague.matchup_segments_actions m
+JOIN (
+  SELECT DISTINCT game_id, team_id, own_lineup, player_ids
+  FROM euroleague.lineup_totals_by_game
+) l
+  ON l.game_id    = m.game_id
+ AND l.team_id    = m.team_id
+ AND l.own_lineup = m.own_lineup
 -- 45% of rows are zero-length (two substitutions at the same clock). Dropping
 -- them here is load-bearing: they would occupy lane slots while rendering as
 -- invisible slivers.
-WHERE segment_seconds > 0;
+WHERE m.segment_seconds > 0;
 
 -- The provider records a per-period countdown (marker_time) plus a period
 -- number; the ribbon needs elapsed seconds. Periods 1-4 run 10:00 and period
@@ -994,7 +1070,7 @@ git commit -m "feat: euroleague ribbon read-layer views and grants"
 **Interfaces:**
 - Consumes: `db_get_query()` and `cached_season_df()` from `global.R`; `merge_adjacent_stints()` from Task 1; the two views from Task 4.
 - Produces: `fetch_stint_ribbon(pool, league, game_id, team_id, data_version = NULL)` → `list(lanes = <data.frame>, margin = <data.frame>, meta = <list>, health = <chr or NULL>)`.
-  - `lanes` columns: `side`, `player_key`, `player_label`, `is_starter`, `start_elapsed`, `end_elapsed`.
+  - `lanes` columns: `side`, `player_key` (always the player_id), `player_label` (display only), `is_starter` (added by `ribbon_mark_starters`, not by SQL), `start_elapsed`, `end_elapsed`.
   - `margin` columns: `elapsed`, `margin` (signed so positive means the clicked team leads).
   - `meta`: `n_periods` (int) only. The calling observer adds `game_label` before passing `meta` to the builder, because the reader has no access to team names without a second query.
   - Also produces `ribbon_normalise_lanes(raw, own_team_id)` (pure, in `helpers.R`) — maps a reader's raw rows onto the canonical frame.
@@ -1013,7 +1089,6 @@ test_that("ribbon_normalise_lanes labels the clicked team own and the other opp"
     team_id = c(7L, 7L, 10L),
     player_id = c(1L, 2L, 3L),
     player_label = c("A", "B", "C"),
-    is_starter = c(TRUE, FALSE, TRUE),
     start_elapsed = c(0, 0, 0),
     end_elapsed = c(100, 100, 100),
     stringsAsFactors = FALSE
@@ -1025,14 +1100,30 @@ test_that("ribbon_normalise_lanes labels the clicked team own and the other opp"
 
 test_that("ribbon_normalise_lanes returns the canonical columns and nothing else", {
   raw <- data.frame(team_id = 7L, player_id = 1L, player_label = "A",
-                    is_starter = TRUE, start_elapsed = 0, end_elapsed = 10,
+                    start_elapsed = 0, end_elapsed = 10,
                     extra_junk = "drop me", stringsAsFactors = FALSE)
   out <- ribbon_normalise_lanes(raw, own_team_id = 7L)
   expect_identical(
     sort(names(out)),
-    sort(c("side", "player_key", "player_label", "is_starter",
+    sort(c("side", "player_key", "player_label",
            "start_elapsed", "end_elapsed"))
   )
+})
+
+test_that("ribbon_normalise_lanes keys on player_id, never on the label", {
+  # Both leagues carry same-name/different-id players on one team (Israeli has
+  # a same-name pair inside a single game+team, and team 4 has "NEW NEW" across
+  # three ids). Keying on the label would merge two people into one lane.
+  raw <- data.frame(
+    team_id = c(7L, 7L),
+    player_id = c(101L, 202L),
+    player_label = c("NEW NEW", "NEW NEW"),
+    start_elapsed = c(0, 0), end_elapsed = c(100, 100),
+    stringsAsFactors = FALSE
+  )
+  out <- ribbon_normalise_lanes(raw, own_team_id = 7L)
+  expect_identical(out$player_key, c("101", "202"))
+  expect_identical(length(unique(out$player_key)), 2L)
 })
 
 test_that("ribbon_health_message reports unmatched and odd-sized rosters", {
@@ -1048,6 +1139,73 @@ test_that("ribbon_sign_margin flips the sign when the clicked team is away", {
   away <- ribbon_sign_margin(m, own_team_id = 9L, home_team_id = 5L)
   expect_identical(home$margin, c(0, 6))
   expect_identical(away$margin, c(0, -6))
+})
+
+test_that("euro segment lineups resolve to player_ids with no fan-out", {
+  # matchup_segments_actions stores lineups as text[] of NAMES with no ids.
+  # Rather than resolving names one by one -- the join shape that manufactured
+  # 258 false findings in the 2026-08-19 DQ report -- the view reuses the
+  # lineup -> player_id link the on/off system already has. This guards that
+  # link: every segment lineup must resolve, and to exactly one id set.
+  skip_on_cran()
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+
+  con <- DBI::dbConnect(RPostgres::Postgres(),
+    host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
+    dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
+    password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
+    connect_timeout = 15L, bigint = "numeric")
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  unresolved <- DBI::dbGetQuery(con, "
+    WITH seg AS (
+      SELECT DISTINCT game_id, team_id, own_lineup
+      FROM euroleague.matchup_segments_actions
+      WHERE segment_seconds > 0)
+    SELECT COUNT(*) AS n
+    FROM seg s
+    LEFT JOIN (SELECT DISTINCT game_id, team_id, own_lineup, player_ids
+               FROM euroleague.lineup_totals_by_game) l
+      ON l.game_id = s.game_id AND l.team_id = s.team_id
+     AND l.own_lineup = s.own_lineup
+    WHERE l.player_ids IS NULL")
+  expect_identical(as.numeric(unresolved$n[1]), 0)
+
+  fanout <- DBI::dbGetQuery(con, "
+    SELECT COUNT(*) AS n FROM (
+      SELECT game_id, team_id, own_lineup
+      FROM euroleague.lineup_totals_by_game
+      GROUP BY 1, 2, 3 HAVING COUNT(DISTINCT player_ids::text) > 1) t")
+  expect_identical(as.numeric(fanout$n[1]), 0)
+})
+
+test_that("the euro reader never pairs lineup names with ids positionally", {
+  # own_lineup and player_ids are each sorted independently, so names[i] is
+  # unrelated to ids[i] -- measured 31,907 mismatches in 40,000 pairs. Pairing
+  # positionally would mislabel four lanes in five, plausibly.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "
+")
+  sql <- regmatches(src, regexpr('RIBBON_SQL_EURO <- "(.|
+)*?"
+', src, perl = TRUE))
+  expect_true(nzchar(sql))
+  expect_false(grepl("unnest\s*\([^)]*own_lineup[^)]*,", sql))
+  expect_match(sql, "unnest\(s\.player_ids\)")
+})
+
+test_that("the Israeli lane label comes from the per-game roster, not a season map", {
+  # The provider reuses a player id for a DIFFERENT person in specific games
+  # (id 2060 is Josh Hagins season-wide but J'Von McCormick in ~7 games), so a
+  # season-level name lookup would label those games with the wrong player.
+  # full_rosters is per game, which is what makes the label safe -- keep the
+  # game_id predicate on that join.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  sql <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src, perl = TRUE))
+  expect_true(nzchar(sql))
+  expect_match(sql, "full_rosters r")
+  expect_match(sql, "r\\.game_id\\s*=\\s*\\$1")
 })
 
 test_that("the Israeli ribbon SQL carries no type_lineup predicate", {
@@ -1112,13 +1270,16 @@ Append to `app/R/helpers.R`:
 # ---------------- Stint ribbon: reader normalisers ----------------
 # Pure so both league readers share one definition of the canonical frame.
 
-RIBBON_LANE_COLS <- c("side", "player_key", "player_label", "is_starter",
+RIBBON_LANE_COLS <- c("side", "player_key", "player_label",
                       "start_elapsed", "end_elapsed")
 
+# player_key is always the player_id. Names are display labels only -- both
+# leagues carry same-name/different-id players on one team, so a name key would
+# silently merge two people's floor time into one lane.
 ribbon_normalise_lanes <- function(raw, own_team_id) {
   if (is.null(raw) || !nrow(raw)) {
     return(data.frame(side = character(0), player_key = character(0),
-                      player_label = character(0), is_starter = logical(0),
+                      player_label = character(0),
                       start_elapsed = numeric(0), end_elapsed = numeric(0),
                       stringsAsFactors = FALSE))
   }
@@ -1126,7 +1287,6 @@ ribbon_normalise_lanes <- function(raw, own_team_id) {
     side = ifelse(as.integer(raw$team_id) == as.integer(own_team_id), "own", "opp"),
     player_key = as.character(raw$player_id),
     player_label = as.character(raw$player_label),
-    is_starter = as.logical(raw$is_starter) %in% TRUE,
     start_elapsed = as.numeric(raw$start_elapsed),
     end_elapsed = as.numeric(raw$end_elapsed),
     stringsAsFactors = FALSE
@@ -1207,10 +1367,13 @@ lanes AS (
          s.start_elapsed,
          s.end_elapsed,
          l.player_id,
+         -- Label only. full_rosters is per GAME, which is what makes this safe:
+         -- the provider reuses an id for a different person in specific games
+         -- (id 2060 is Josh Hagins season-wide but J'Von McCormick in ~7), so a
+         -- season-level name map would label those games with the wrong player.
          COALESCE(NULLIF(TRIM(COALESCE(r.firstname, '') || ' ' ||
                               COALESCE(r.lastname, '')), ''),
-                  'Player ' || l.player_id) AS player_label,
-         COALESCE(r.starter, FALSE) AS is_starter
+                  'Player ' || l.player_id) AS player_label
   FROM segs s
   JOIN basketball_test.lineups_lookup_on l
     ON l.lineup_hash = s.lineup_hash
@@ -1248,25 +1411,27 @@ SELECT
 
 RIBBON_SQL_EURO <- "
 WITH segs AS (
-  SELECT team_id, segment_id, own_lineup,
+  SELECT team_id, segment_id, player_ids,
          start_elapsed_seconds AS start_elapsed,
          end_elapsed_seconds   AS end_elapsed
   FROM euroleague.ribbon_segments_v
   WHERE game_id = $1
 ),
 lanes AS (
+  -- Keyed on player_id throughout. The name is a display label fetched BY id,
+  -- never a join key: euro rosters contain same-name/different-id players, and
+  -- the lineup name array is not positionally aligned with the id array.
   SELECT s.team_id,
          s.start_elapsed,
          s.end_elapsed,
-         COALESCE(r.player_id, 0)          AS player_id,
-         p.player_name                     AS player_label,
-         COALESCE(r.is_starter, FALSE)     AS is_starter
+         p.player_id,
+         COALESCE(r.source_player_name, 'Player ' || p.player_id) AS player_label
   FROM segs s
-  CROSS JOIN LATERAL unnest(s.own_lineup) AS p(player_name)
+  CROSS JOIN LATERAL unnest(s.player_ids) AS p(player_id)
   LEFT JOIN euroleague.full_rosters r
-    ON r.game_id            = $1
-   AND r.team_id            = s.team_id
-   AND r.source_player_name = p.player_name
+    ON r.game_id   = $1
+   AND r.team_id   = s.team_id
+   AND r.player_id = p.player_id
 ),
 marg AS (
   SELECT DISTINCT elapsed_seconds AS elapsed, points_a, points_b, home_team_id
@@ -1280,15 +1445,6 @@ SELECT
   0 AS unmatched_hashes,
   0 AS odd_sized_hashes
 "
-
-# EuroLeague lineups are player names, so player_id is 0 whenever the roster
-# join misses. Key lanes on the label in that case, or two unmatched players
-# would share one lane.
-ribbon_euro_player_key <- function(lanes_df) {
-  key <- as.character(lanes_df$player_id)
-  key[is.na(key) | key == "0"] <- as.character(lanes_df$player_label[is.na(key) | key == "0"])
-  key
-}
 
 fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NULL) {
   league <- match.arg(league, c("israel", "euroleague"))
@@ -1310,7 +1466,6 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
     if (is.null(lanes_raw) || !NROW(lanes_raw)) return(NULL)
 
     if (identical(league, "euroleague")) {
-      lanes_raw$player_id <- ribbon_euro_player_key(lanes_raw)
       margin <- ribbon_sign_margin(marg_raw, team_id,
                                    if (NROW(marg_raw)) marg_raw$home_team_id[1] else NA)
     } else {
@@ -1320,7 +1475,11 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
       )
     }
 
+    # Starters are derived from the first segment, identically in both leagues:
+    # measured exactly 5 per team-game in 1,178 EuroLeague and 878 Israeli
+    # team-games, and cleaner than the EuroLeague boxscore flag (40 stray flags).
     lanes <- ribbon_normalise_lanes(lanes_raw, team_id)
+    lanes <- ribbon_mark_starters(lanes)
 
     list(
       lanes = lanes,
