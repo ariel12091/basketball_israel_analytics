@@ -81,6 +81,9 @@ measure <- function(con) {
        mv    = dbGetQuery(con, MV_SQL)$v[[1]])
 }
 
+source("scripts/minutes_migration_helpers.R")
+
+main <- function() {
 # ---- preflight --------------------------------------------------------------
 edited <- c("sql/materialized_views/sub_lineups_by_day.sql",
             "sql/materialized_views/lineup_four_factors_by_game.sql")
@@ -104,12 +107,11 @@ say("         shortfall        : %.3f", before$truth - before$mv)
 if (!APPLY) {
   say("")
   say("REHEARSAL ONLY -- nothing changed. Re-run with --apply to execute:")
-  say("  1. rebuild_all_mvs(from_level = 2)   DROP+CREATE, L2 through L5 in order.")
+  say("  1. Rebuild both lineup MVs and their three team dependents atomically.")
   say("     REFRESH is NOT enough: it re-runs the stored definition.")
-  say("  2. scripts/apply_db_security.R with CONFIRM_DB_SECURITY_APPLY=1.")
-  say("     DROP+CREATE wipes GRANTs -- the app connects as app_readonly and")
-  say("     will 403 on every rebuilt relation until this runs.")
-  say("  3. this script re-measures and asserts the MV now matches truth.")
+  say("  2. Restore grants and audit access on the same connection.")
+  say("  3. Verify both MVs per team-game, downstream minutes, and indexes.")
+  say("     Commit only if all checks pass; otherwise roll back everything.")
   say("")
   say("AFTER APPLYING, still to do by hand:")
   say("  - CLAUDE.md:387 still tells the next person to add the filter back.")
@@ -117,30 +119,38 @@ if (!APPLY) {
   say("    numbers; game 115 moves from 39.867 toward 40.0.")
   say("  - PROJECT.md:1390's ETL warning threshold (minutes < 39.0) exists")
   say("    because of this undercount and should be raised.")
-  quit(save = "no", status = 0)
+  return(invisible(NULL))
 }
 
 # ---- apply ------------------------------------------------------------------
 say("")
-say("APPLYING -- rebuilding L2 through L5 in dependency order")
-source("sql/rebuild_all_mvs.R")
-rebuild_all_mvs(from_level = 2)
-
-say("")
-say("re-granting (DROP+CREATE wipes GRANTs)")
-Sys.setenv(CONFIRM_DB_SECURITY_APPLY = "1")
-source("scripts/apply_db_security.R")
-
-# ---- verify -----------------------------------------------------------------
-con2 <- connect_ddl(); on.exit(try(dbDisconnect(con2), silent = TRUE), add = TRUE)
-after <- measure(con2)
-say("")
-say("AFTER    base-table truth : %.3f", after$truth)
-say("         mv rebuilt       : %.3f", after$mv)
-gap <- abs(after$truth - after$mv)
-say("         gap              : %.3f", gap)
-if (gap > 0.01) {
-  stop(sprintf("VERIFY FAILED: mv still %.3f off truth. Investigate before deploying.", gap))
+say("APPLYING -- rebuilding lineup MVs and their team dependents")
+registry_env <- new.env(parent = globalenv())
+sys.source("sql/rebuild_all_mvs.R", envir = registry_env)
+registry_env$validate_mv_registry()
+affected <- c("mv_lineup_totals_by_day", "lineup_four_factors_by_game",
+              "team_metrics_by_game_mv", "team_metrics_rolling_mv", "team_four_factors_mv")
+targets <- Filter(function(x) x$name %in% affected, registry_env$MV_REGISTRY)
+# Read every input before taking locks or dropping anything.
+definitions <- lapply(targets, function(x) paste(readLines(x$file, warn = FALSE), collapse = "\n"))
+hardening <- paste(readLines("sql/security/enable_readonly_rls.sql", warn = FALSE), collapse = "\n")
+audit <- paste(readLines("sql/security/audit_app_access.sql", warn = FALSE), collapse = "\n")
+DBI::dbWithTransaction(con, {
+  dbExecute(con, "SET LOCAL search_path TO basketball_test, public")
+  dbExecute(con, "SET LOCAL lock_timeout = '15s'")
+  dbExecute(con, "SET LOCAL statement_timeout = '30min'")
+  # Freeze the truth used throughout verification, including concurrent ETL.
+  dbExecute(con, "LOCK TABLE basketball_test.df_pts_poss_lineups_longer_mv IN SHARE MODE")
+  rebuild_minutes_relations(con, targets, definitions)
+  dbExecute(con, hardening)
+  violations <- dbGetQuery(con, audit)
+  if (nrow(violations)) {
+    print(violations)
+    stop("Database access audit failed")
+  }
+  verify_minutes_migration(con)
+})
+say("VERIFY PASSED -- rebuild, grants and minute checks committed together.")
 }
-say("")
-say("VERIFY PASSED -- lineup minutes now match the canonical segment total.")
+
+main()
