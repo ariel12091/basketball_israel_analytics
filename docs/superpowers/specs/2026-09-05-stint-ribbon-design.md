@@ -79,7 +79,8 @@ Both leagues supply that pairing already (§3.2), so the advantage is void.
 ```
 $stints      side ∈ {own, opp}, player_key, player_label,
              start_elapsed, end_elapsed, is_starter
-$margin      elapsed, margin        # signed to the clicked team, stepped
+$margin      elapsed, margin        # signed to the clicked team, stepped,
+                                    # and COMPLETE (see below)
 $meta        n_periods              # game_label added by the calling observer
 $health      NULL, or a reason string when segments were excluded
 ```
@@ -93,6 +94,17 @@ a single (game, team), and team 4 carries the name `NEW NEW` across three
 distinct ids. A name key does not lose a lane; it silently *merges two people's
 floor time into one*, which is a wrong answer rather than a missing one. Names
 are display labels, always fetched **by id**.
+
+**`$margin` is a complete, deterministic series, not raw scoring records.**
+Raw data has three defects that render as a wrong curve rather than an error:
+the first scoring event may be a minute into the game, the last one falls well
+before the final buzzer, and several records can share one elapsed second (an
+and-1, or a made shot and its free throw). `ribbon_complete_margin()` (§6)
+prepends `(0, 0)` when absent, extends the final score horizontally to the
+nominal game end, clamps elapsed into `[0, nominal]`, and collapses ties to the
+last state at that second. `DISTINCT` plus `ORDER BY elapsed` is **not**
+deterministic, so both readers carry an `order_key` — `id` on the Israeli side,
+`source_event_order` on the EuroLeague side — and order by it.
 
 **`is_starter` is not read from either league's boxscore.** It is derived in the
 pure layer by `ribbon_mark_starters()` (§6) from whoever is on the floor in a
@@ -192,7 +204,11 @@ opponent's lanes are simply the other team's own rows. `$health` is always NULL
 here — EuroLeague has no odd-sized-lineup defect. Dropping zero-length rows is
 load-bearing, not cosmetic — it removes 45% of rows.
 
-Margin: `actions.points_a` / `points_b`, with elapsed derived as
+Margin: `actions.points_a` / `points_b` with `source_event_order` as the tie
+key, and `home_team_id` taken from `euroleague.schedule` — the authoritative
+mapping, already granted — rather than aggregated from `actions.is_home_team`,
+which would scan a 211 MB table for something the schedule states directly.
+Elapsed is derived as
 `Σ(prior period lengths) + (period_length − marker_time)` — period length 600s
 for periods 1-4, 300s for period 5+. Verified exact against observed max elapsed
 (2400 / 2700 / 3000 / 3300). This derivation lives in `ribbon_margin_v`
@@ -220,14 +236,21 @@ Instead, add two narrow views in `euroleague` and grant `SELECT` on **those**:
   It joins `lineup_totals_by_game` on `(game_id, team_id, own_lineup)` so the
   view emits **ids, never names**, and exposes no `opp_lineup` — the opponent's
   lanes are the other team's own rows.
-- `ribbon_margin_v` — `game_id, elapsed_seconds, points_a, points_b`, with the
-  period/`marker_time` → elapsed derivation (§5.2) done in the view so the
-  clock rule lives in one place rather than in R.
+- `ribbon_margin_v` — `game_id, period, source_event_order, elapsed_seconds,
+  points_a, points_b, home_team_id`, with the period/`marker_time` → elapsed
+  derivation (§5.2) done in the view so the clock rule lives in one place rather
+  than in R, and `home_team_id` joined from `euroleague.schedule`.
 
 This keeps the app's least-privilege posture intact, gives the reader a stable
 contract, and puts the EuroLeague clock derivation next to the data it derives
-from. Register both in `sql/security/*.sql` and apply via
-`scripts/apply_db_security.R` with `CONFIRM_DB_SECURITY_APPLY=1`. Per
+from. **Deploy atomically.** The view file holds multiple statements, so it cannot go
+through a prepared statement — `dbExecute()` fails with *"cannot insert multiple
+commands into a prepared statement"* unless called with `immediate = TRUE`. The
+deploy runs as one transaction that creates both views and restores their
+grants, rolls back on any failure, and then verifies readability **as
+`app_readonly`** before reporting success. Register both in
+`sql/security/*.sql` and apply via `scripts/apply_db_security.R` with
+`CONFIRM_DB_SECURITY_APPLY=1`. Per
 `CLAUDE.md`, `DROP`s wipe these grants — add both views to the re-grant
 checklist, and note that changing either view means `DROP`+`CREATE`, hence
 re-granting.
@@ -280,6 +303,8 @@ which were stable within a few ms — as sound.
   survives a substitution around them keeps one continuous lane. Verified
   necessary: game 115 has runs of up to 6 segments sharing a hash, and
   per-player runs are longer still.
+- `ribbon_complete_margin()` — turn raw scoring records into the complete,
+  deterministic step series described in §4.
 - `ribbon_mark_starters()` — flag whoever is on the floor in a side's earliest
   segment. One definition for both leagues, replacing two different boxscore
   columns; verified exactly 5 per team-game in 1,178 EuroLeague and 878 Israeli
@@ -293,15 +318,26 @@ which were stable within a few ms — as sound.
 `renderUI` returns an `htmltools` tag tree: explicit `xmlns`,
 `viewBox = "0 0 1000 H"`, `width:100%; height:auto` so scaling happens in CSS.
 
+- a **left gutter** (150 of the 1000 viewBox units) holding one visible player
+  name per lane. A 20-lane rotation chart cannot be read through hover tooltips
+  alone, so the plot area starts after the gutter and every x — stint rects,
+  period lines, the margin path — is offset by it;
 - one `<rect>` per merged stint;
 - one stepped `<path>` for the margin (scores change at discrete events), drawn
   twice — a dim base copy and an emphasised copy;
 - one `<clipPath>` per player holding that player's on-intervals as rects;
-- quarter/period gridlines from `$meta$period_seconds`, never from observed max.
+- quarter/period gridlines from the nominal period bounds, never from observed
+  max, each **labelled** (`Q1`…`Q4`, `OT1`…);
+- a **labelled zero-margin baseline**, so the curve has a readable scale rather
+  than an arbitrary vertical position;
+- the two **team names**, above and below the curve, identifying which block is
+  which.
 
 **Hover** sets the emphasised curve's `clip-path` to the hovered player's
 clipPath id — one attribute write, no client-side geometry, ~8 lines of JS in
-`app.js`. Pre-rendering one clipped curve copy per player was rejected: the clip
+`app.js`. It also adds `is-active` to **every** `<g>` sharing that clip id: a
+player with two separated stints has two lane groups, and highlighting only the
+hovered one while the curve reveals both reads as a bug. Pre-rendering one clipped curve copy per player was rejected: the clip
 paths are rects, but the curve is ~340 points, so 20 copies is 20× the DOM.
 
 Why not a plotting library: `ggplot2` + `renderPlot` is a raster and cannot
@@ -316,17 +352,37 @@ only in `scripts/analysis/`, which writes PNGs into `docs/`).
 
 ## 8. Interaction and placement
 
-The game-log DT renders its date/GN cell as a link carrying `data-game-id` /
-`data-team-id`. A delegated handler in `app.js` — sibling to the existing
-`ld_lineup_click`, routed through the same queue-and-replay helper so a click
-before `shiny:connected` is not swallowed — fires `<prefix>_ribbon_click`. The
-tab server answers with `modalDialog(size = "xl", easyClose = TRUE)`.
+The game-log DT renders its date cell as a link carrying `data-game-id`,
+`data-team-id` and the two team names. A delegated handler in `app.js` — sibling
+to the existing `ld_lineup_click` — fires `<prefix>_ribbon_click`, and the tab
+server answers with `modalDialog(size = "xl", easyClose = TRUE)`.
+
+**The link must be built on the source frame, not the display frame.** Both
+game-log renderers construct their display frame with an explicit `select()`
+that omits `game_id` and `team_id` (`server_tab4.R:554` Summary, `:699` Four
+Factors), so any guard testing for those columns on the display frame is
+permanently false and the link silently never renders — with unit tests on the
+link helper still passing. One shared helper builds the column from the source
+frame at all four call sites (two view modes × two tabs) and raises an error if
+handed a frame without the identifiers.
+
+Team names ride on the anchor as data attributes so the modal can title itself
+without a second query, which would breach the one-round-trip budget (§5.4).
+
+**The queue-and-replay helper must be exported to be reused.** `sendShinyEvent`
+is private to its IIFE in `app/www/app.js`, so a handler defined elsewhere that
+calls `Shiny.setInputValue` directly drops any click landing before
+`shiny:connected` — the dead window this project already fixed once (0189b4e).
+The helper is exposed as `window.ibplSendShinyEvent` and the ribbon link uses
+it.
 
 On touch, where hover does not exist, the same handler binds tap-to-toggle. The
 chart still reads as a rotation map without it.
 
-Each lane carries a `<title>` for native tooltip and screen-reader text. Hover
-involves no motion, so `prefers-reduced-motion` needs no branch.
+Each lane carries a `<title>` **and** an explicit `aria-label`: descendants of an
+SVG with `role="img"` are not reliably exposed to assistive tools, so a `<title>`
+alone does not give a lane an accessible name. Hover involves no motion, so
+`prefers-reduced-motion` needs no branch.
 
 ## 9. Testing
 
@@ -368,13 +424,22 @@ Tab 4 and Tab 11 wiring, and the two EuroLeague views with their grants.
 6. Take the lineup → player_id link from what exists (`lineups_lookup_on` via
    the `fetch_lineups_all.sql` expansion; `lineup_totals_by_game` for
    EuroLeague) rather than resolving names.
-7. `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`.
-8. Launch with Run App / `runApp()`, never select-all + Ctrl+Enter.
-9. Re-run `apply_db_security.R` after any `DROP` touching `ribbon_segments_v` or
-   `ribbon_margin_v` — editing either view means `DROP`+`CREATE`, which wipes
-   the grant.
-10. The EuroLeague tabs read only pre-aggregated relations today; `actions` and
+7. **Build the ribbon link on the source frame.** Both game-log renderers drop
+   `game_id`/`team_id` when they build their display frame, so a guard against
+   the display frame is always false and the feature silently does nothing while
+   its unit tests pass. §8.
+8. **Never call `Shiny.setInputValue` directly from the ribbon link** — use the
+   exported queue-and-replay helper, or clicks in the pre-connection window are
+   dropped. §8.
+9. **Deploy the EuroLeague views with `immediate = TRUE`, in one transaction**,
+   and verify as `app_readonly` afterwards. §5.3.
+10. `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`.
+11. Launch with Run App / `runApp()`, never select-all + Ctrl+Enter.
+12. Re-run `apply_db_security.R` after any `DROP` touching `ribbon_segments_v` or
+    `ribbon_margin_v` — editing either view means `DROP`+`CREATE`, which wipes
+    the grant.
+13. The EuroLeague tabs read only pre-aggregated relations today; `actions` and
     `matchup_segments_actions` are denied to `app_readonly` by design. Do not
     "fix" that with a table-level grant.
-11. Never add a second query to a ribbon open. The round-trip floor is 238 ms, so
+14. Never add a second query to a ribbon open. The round-trip floor is 238 ms, so
     a second trip costs more than the entire rest of the feature. §5.4.
