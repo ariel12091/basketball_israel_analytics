@@ -3142,3 +3142,53 @@ ribbon_geometry <- function(lanes, total_seconds, width = 1000,
   lanes$h <- lane_height
   lanes
 }
+
+
+# Cumulative period end times from the NOMINAL clock, never from observed
+# data. Israeli games end ragged (2344, 2351, one at 961), so sizing the axis
+# from max(elapsed) would draw different games at different scales and drift
+# the period gridlines.
+ribbon_period_bounds <- function(n_periods, regulation = 4L,
+                                 regulation_seconds = 600, ot_seconds = 300) {
+  n <- suppressWarnings(as.integer(n_periods))
+  if (length(n) != 1 || is.na(n) || n < regulation) n <- as.integer(regulation)
+  lengths <- c(rep(regulation_seconds, regulation),
+               rep(ot_seconds, n - regulation))
+  cumsum(lengths)
+}
+
+# Turn raw scoring records into a complete, deterministic step series.
+#
+# Three problems in the raw data, all of which show as a wrong curve rather than
+# an error: the first scoring event may be a minute into the game, the last one
+# is well before the final buzzer, and several records can share one elapsed
+# second (an and-1, or a shot plus its free throw). DISTINCT + ORDER BY elapsed
+# does not decide the last of those -- order_key does.
+ribbon_complete_margin <- function(margin, total_seconds) {
+  stopifnot(is.numeric(total_seconds), length(total_seconds) == 1, total_seconds > 0)
+
+  if (is.null(margin) || !nrow(margin)) {
+    return(data.frame(elapsed = c(0, total_seconds), margin = c(0, 0)))
+  }
+
+  m <- data.frame(
+    elapsed = pmin(pmax(as.numeric(margin$elapsed), 0), total_seconds),
+    margin = as.numeric(margin$margin),
+    order_key = as.numeric(margin$order_key %||% seq_len(nrow(margin)))
+  )
+  m <- m[order(m$elapsed, m$order_key), , drop = FALSE]
+
+  # One state per elapsed second: the last one recorded there.
+  keep <- !duplicated(m$elapsed, fromLast = TRUE)
+  m <- m[keep, c("elapsed", "margin"), drop = FALSE]
+
+  if (m$elapsed[1] > 0) {
+    m <- rbind(data.frame(elapsed = 0, margin = 0), m)
+  }
+  if (m$elapsed[nrow(m)] < total_seconds) {
+    m <- rbind(m, data.frame(elapsed = total_seconds, margin = m$margin[nrow(m)]))
+  }
+
+  rownames(m) <- NULL
+  m
+}

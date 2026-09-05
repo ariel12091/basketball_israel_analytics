@@ -191,3 +191,72 @@ test_that("ribbon_geometry stacks lanes by index", {
   expect_identical(out$y, c(0, 17))
   expect_identical(out$h, c(14, 14))
 })
+
+
+test_that("merge_adjacent_stints does not merge across a one-second gap", {
+  # The boundary case named but never written: a gap of exactly one second
+  # between two stints for the same player must stay two bars, not one.
+  lanes <- rbind(
+    lane_row("own", "7", 0, 242),
+    lane_row("own", "7", 243, 337)
+  )
+  out <- merge_adjacent_stints(lanes)
+  expect_identical(nrow(out), 2L)
+  expect_identical(out$end_elapsed, c(242, 337))
+})
+
+test_that("ribbon_period_bounds uses nominal lengths, not observed data", {
+  # Regulation: four 10-minute quarters.
+  expect_identical(ribbon_period_bounds(4), c(600, 1200, 1800, 2400))
+  # One overtime adds 5 minutes, matching the measured EuroLeague max of 2700.
+  expect_identical(ribbon_period_bounds(5), c(600, 1200, 1800, 2400, 2700))
+  expect_identical(ribbon_period_bounds(6), c(600, 1200, 1800, 2400, 2700, 3000))
+})
+
+test_that("ribbon_period_bounds floors at regulation for truncated games", {
+  # A game whose actions stop early (one Israeli game ends at 961s) must still
+  # be drawn on a full regulation axis, or its lanes read at the wrong scale.
+  expect_identical(ribbon_period_bounds(2), c(600, 1200, 1800, 2400))
+  expect_identical(ribbon_period_bounds(NA), c(600, 1200, 1800, 2400))
+})
+
+test_that("ribbon_complete_margin opens the game at zero", {
+  # The first scoring event can be a minute in. Without a leading (0, 0) the
+  # curve starts mid-air and the first stint has no baseline behind it.
+  m <- data.frame(elapsed = c(60, 120), margin = c(2, 5), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed[1], 0)
+  expect_identical(out$margin[1], 0)
+})
+
+test_that("ribbon_complete_margin extends the final score to the game end", {
+  m <- data.frame(elapsed = c(0, 1200), margin = c(0, 7), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed[nrow(out)], 2400)
+  expect_identical(out$margin[nrow(out)], 7)
+})
+
+test_that("ribbon_complete_margin collapses ties by order_key, keeping the last", {
+  # Several scoring records share one elapsed second (an and-1, or a made shot
+  # and the ensuing free throw). DISTINCT + ORDER BY elapsed is not
+  # deterministic; the last state at that second is the true one.
+  m <- data.frame(elapsed = c(0, 600, 600, 600), margin = c(0, 3, 5, 4),
+                  order_key = c(1, 10, 11, 12))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(sum(out$elapsed == 600), 1L)
+  expect_identical(out$margin[out$elapsed == 600], 4)
+})
+
+test_that("ribbon_complete_margin clamps elapsed into the nominal frame", {
+  m <- data.frame(elapsed = c(0, 2500, -10), margin = c(0, 9, 1),
+                  order_key = c(1, 2, 3))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_true(all(out$elapsed >= 0 & out$elapsed <= 2400))
+})
+
+test_that("ribbon_complete_margin returns a usable series from no data", {
+  m <- data.frame(elapsed = numeric(0), margin = numeric(0), order_key = numeric(0))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed, c(0, 2400))
+  expect_identical(out$margin, c(0, 0))
+})
