@@ -176,7 +176,7 @@ workspace.
 
 **Interfaces:**
 - Consumes: nothing from earlier tasks.
-- Produces: `euroleague.ribbon_segments_v` with columns `game_id, team_id, segment_id, start_elapsed_seconds, end_elapsed_seconds, player_ids` (ids, resolved via `lineup_totals_by_game` — the view exposes no player names and no `opp_lineup`); and `euroleague.ribbon_margin_v` with `game_id, period, elapsed_seconds, points_a, points_b, home_team_id`. Task 5's EuroLeague reader depends on exactly these names.
+- Produces: `euroleague.ribbon_segments_v` with columns `game_id, team_id, segment_id, start_elapsed_seconds, end_elapsed_seconds, player_ids` (ids, resolved via `lineup_totals_by_game` — the view exposes no player names and no `opp_lineup`); and `euroleague.ribbon_margin_v` with `game_id, period, source_event_order, elapsed_seconds, points_a, points_b, home_team_id`. Task 5's EuroLeague reader depends on exactly these names — `source_event_order` is the `order_key` that makes the margin series deterministic when several scoring records share one elapsed second.
 
 **Why views rather than table grants:** `app_readonly` is denied on `euroleague.actions` (211 MB of raw play-by-play, 40 columns including provider ids and parser traces) and on `matchup_segments_actions`, by design — the euro schema uses a curated read layer, unlike the Israeli blanket grant. Exposing two narrow views keeps that boundary and puts the clock derivation next to its data.
 
