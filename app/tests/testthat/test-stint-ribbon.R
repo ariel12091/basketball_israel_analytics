@@ -421,3 +421,23 @@ test_that("a named-key lane still resolves to a clipPath that exists", {
   ids <- sub('id="', "", sub('"$', "", ids))
   expect_true(all(clips %in% ids))
 })
+
+test_that("app.css styles every class the SVG builder emits", {
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  for (cls in c("ibpl-ribbon", "ibpl-ribbon-lane", "ibpl-ribbon-margin-base",
+                "ibpl-ribbon-margin-focus", "ibpl-ribbon-period",
+                "ibpl-ribbon-name", "ibpl-ribbon-team", "ibpl-ribbon-zero",
+                "ibpl-ribbon-period-label")) {
+    expect_match(css, cls, fixed = TRUE, info = paste("missing ribbon style for", cls))
+  }
+})
+
+test_that("app.js swaps clip-path rather than recomputing geometry", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_match(js, "ibpl-ribbon-margin-focus", fixed = TRUE)
+  expect_match(js, "clip-path", fixed = TRUE)
+  expect_match(js, "ibpl-ribbon-lane", fixed = TRUE)
+  expect_match(js, "window.ibplSendShinyEvent = sendShinyEvent", fixed = TRUE)
+})

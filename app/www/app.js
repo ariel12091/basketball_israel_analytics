@@ -288,6 +288,10 @@
     }
   }
 
+  // Reuse the existing queue-and-replay path from delegated handlers defined
+  // in later IIFEs. Direct Shiny calls can drop clicks before connection.
+  window.ibplSendShinyEvent = sendShinyEvent;
+
   document.addEventListener("click", function(e) {
     // A chip click reveals the control that owns the value; the x still falls
     // through to the clear event below.
@@ -394,6 +398,61 @@
       e.preventDefault();
       sortCompareDetailGrid(detailSortEl);
     }
+  });
+})();
+
+// ---------------- Stint ribbon hover ----------------
+(function() {
+  function setFocus(svg, lane) {
+    var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
+    if (!focus) return;
+
+    var active = svg.querySelectorAll(".ibpl-ribbon-lane.is-active");
+    for (var i = 0; i < active.length; i++) active[i].classList.remove("is-active");
+
+    if (lane && lane.dataset.clip) {
+      focus.setAttribute("clip-path", "url(#" + lane.dataset.clip + ")");
+      var mates = svg.querySelectorAll(
+        '.ibpl-ribbon-lane[data-clip="' + lane.dataset.clip + '"]');
+      for (var m = 0; m < mates.length; m++) mates[m].classList.add("is-active");
+      svg.classList.add("is-focused");
+    } else {
+      focus.removeAttribute("clip-path");
+      svg.classList.remove("is-focused");
+    }
+  }
+
+  function laneFrom(target) {
+    return target && target.closest ? target.closest(".ibpl-ribbon-lane") : null;
+  }
+
+  document.addEventListener("mouseover", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    if (svg) setFocus(svg, lane);
+  });
+
+  document.addEventListener("mouseout", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    if (svg && !laneFrom(e.relatedTarget)) setFocus(svg, null);
+  });
+
+  document.addEventListener("focusin", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    if (svg) setFocus(svg, lane);
+  });
+
+  document.addEventListener("click", function(e) {
+    var lane = laneFrom(e.target);
+    if (!lane) return;
+    var svg = lane.closest(".ibpl-ribbon");
+    if (!svg) return;
+    setFocus(svg, lane.classList.contains("is-active") ? null : lane);
   });
 })();
 
