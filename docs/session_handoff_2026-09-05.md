@@ -9,10 +9,10 @@ Baseline at session start: `main` at `9adfa97`.
 
 | | |
 |---|---|
-| `origin/main` | `1cf3891` — 20 commits, all pushed |
-| Working branch | `sql/minutes-orphan-slices`, 1 commit ahead (`411a1fc`), unpushed |
-| Database | **UNCHANGED.** Every migration run was `--dry-run` and rolled back |
-| App | Game-log work is merged but **has never been opened in a browser** |
+| `origin/main` | 24 commits, all pushed |
+| Database | **UNCHANGED.** Every run was `--dry-run` and rolled back |
+| Minutes migration | **VERIFIED AND READY.** Full dry-run passes all six gates. Not applied — `--apply` is a manual step |
+| App | Game-log work is merged but **has never been opened in a browser**, and never deployed |
 
 ---
 
@@ -122,34 +122,62 @@ it. Modes: no flag = measure only; `--dry-run` = full apply then rollback;
 | 3 | Gate 4 failed, **642** |
 | 4 | Gate 4 failed, **3** — all pre-existing bad data |
 | 5 | **Gates 1-4 PASS.** Gate 5 (`onoff_minutes`) failed, **627** |
+| 6 | **ALL SIX GATES PASS**, 18m11s. `gap 0.000`, 568/568 player-seasons agree, ETL parity PASS on all three |
 
 Each rollback was verified clean: 7 relations present, minutes unchanged at
 39.421, `app_readonly` grants intact.
 
-### THE BLOCKER — do not apply
+### The blocker, and how it was closed
 
-**Six refresh functions duplicate the minute logic**, and at least two carry the
-identical defect:
+`rebuild_all_mvs` builds from the `.sql` MV files, but **ETL Phase 4 maintains
+those relations incrementally through the refresh functions**, which held the
+old minute logic. Applying without them would have been undone game by game by
+the next nightly run.
+
+Five refresh functions are now installed **inside the same transaction** as the
+rebuild, `refresh_sub_lineups_stats()` runs there too, and a sixth gate,
+`verify_minutes_refresh_parity`, asserts the incremental path agrees with the
+rebuilt relations. All three parity checks pass.
+
+### Final dry-run — all six gates
 
 ```
-refresh_player_four_factors_by_game_for_games.sql:121, :292
-refresh_sub_lineups.sql:205, :272
+ETL parity PASS: onoff_default_mv / team_metrics_by_game_mv / sub_lineups_stats
+onoff vs traditional: 568 player-seasons agree
+AFTER  canonical truth        : 40.006 min/team-game
+       mv_lineup_totals_by_day: 40.006  (gap 0.000)
+DRY RUN COMPLETE -- rolled back. Nothing changed.
 ```
 
-`rebuild_all_mvs` builds from the `.sql` MV files (fixed). **ETL Phase 4
-maintains these relations incrementally through those functions (not fixed).**
-Apply tonight and tomorrow's ETL reintroduces the defect game by game.
+`gap 0.000` is exact conservation per team-game, not an average — the
+distinction that rejected three earlier attempts. Gate 6 compares
+`onoff_default_mv` against `player_traditional_stats_mv`, which this migration
+does NOT rebuild, so it is an independent reference.
 
-The real unit of work is **each MV and its incremental twin, in lockstep.**
+### Implementation audit (residual 2, closed)
 
-### Also outstanding
+The fix-B edits add zero-count rows to three relations. Verified they cannot
+disturb anything else:
 
-- **Gate 5 fails**: `onoff_minutes` needs fix B through a third driving CTE
-  (`lineup_totals`). It is user-facing — `onoff_compute.sql:246` surfaces it as
-  **the Minutes column on Tab 1**.
-- **Gate 6 has never executed.** The `onoff_default_mv` vs
-  `player_traditional_stats_mv` cross-check — the strongest one, comparing two
-  independently built relations — has not been reached by any run.
+- Only `SUM`s consume the changed CTEs internally — all-zero rows are inert.
+- Every downstream `COUNT`/`AVG` reads `df_pts_poss_lineups_longer_mv`, which
+  is not rebuilt. `onoff_compute.sql:145`'s `AVG(tgp.off_ppp)` traces to the
+  base table, not to any changed MV.
+- **`auto_minposs_from_df()` is provably unchanged**: it sorts `total_poss`
+  descending and takes the 150th largest, so zero rows sort last. With >=150
+  non-zero rows the threshold is untouched; with fewer, the old branch returned
+  `0L` and the new one computes `ceiling(0/10)*10 = 0`. Same answer.
+- `onoff_default_mv` gains no rows (no `UNION` in `onoff_mv.sql`), so Tab 1's
+  top-35% percentile is unaffected.
+
+### Residuals before applying
+
+1. **The `COMMIT` line itself has never executed.** `--dry-run` covers
+   everything up to it and raises a sentinel instead.
+2. **One unrelated behaviour change** rides along: an empty `game_ids` array no
+   longer means "all games" in a refresh function's guard
+   (`array_length(...) IS NULL` removed). Probably an improvement.
+3. ~18 minutes with Tabs 1-4 unavailable; do not run during the nightly ETL.
 
 ### Verification lessons
 

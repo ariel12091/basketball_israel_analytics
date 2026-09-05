@@ -38,8 +38,10 @@
 #   so a segment in which the lineup had no offensive possession produced no
 #   offense row and its seconds were never reached. Times are now aggregated on
 #   their own grain (player_minutes) and attached to the offense row. Verified
-#   read-only: 195.30 -> 200.04 player-minutes per team-game, i.e. 5 x the
-#   40.006 canonical team total.
+#   read-only: 197.10 -> 200.04 player-minutes per team-game, i.e. 5 x the
+#   40.006 canonical team total. (An earlier note said 195.30; that was an
+#   artefact of the gate deduplicating with DISTINCT on the minutes VALUE,
+#   which collapsed distinct slices holding equal numbers. Corrected.)
 #
 #   Its other column, `onoff_minutes`, is fixed as well. Measured first:
 #   197.10 player-minutes per team-game, which is 39.42 x 5 -- the same
@@ -55,6 +57,10 @@
 # USAGE
 #   Rehearsal (default) -- measures, prints the plan, changes nothing:
 #     Rscript scripts/apply_minutes_offense_filter_fix.R
+#   Dry run -- the ENTIRE apply inside the transaction, then rollback. Same
+#   wall clock and locks as a real run; nothing is kept. Every defect this
+#   migration has, it found:
+#     Rscript scripts/apply_minutes_offense_filter_fix.R --dry-run
 #   Apply:
 #     Rscript scripts/apply_minutes_offense_filter_fix.R --apply
 #
