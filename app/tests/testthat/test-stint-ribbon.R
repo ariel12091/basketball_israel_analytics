@@ -1295,3 +1295,19 @@ test_that("ribbon_stint_overlaps returns zero typed rows when nothing overlaps",
   expect_true(all(c("player_key", "player_label", "start_elapsed",
                     "end_elapsed", "shared") %in% names(out)))
 })
+
+test_that("ribbon_stint_overlaps sorts input that does not arrive in order", {
+  # The ov_lanes() fixture happens to list its teammates in descending
+  # shared time already, so it would pass even with the order() call
+  # removed. This fixture lists the SHORTEST overlap first and the longest
+  # last, so it fails unless the sort actually runs.
+  lanes <- rbind(
+    lane_row("own", "1", 0, 600),
+    lane_row("own", "9", 500, 600),   # shared 100, listed first
+    lane_row("own", "8", 0, 600),     # shared 600, listed last
+    lane_row("own", "7", 200, 600)    # shared 400
+  )
+  out <- ribbon_stint_overlaps(lanes, "own", "1", 0, 600)
+  expect_equal(out$player_key, c("8", "7", "9"))
+  expect_equal(out$shared, c(600, 400, 100))
+})
