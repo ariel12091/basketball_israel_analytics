@@ -62,7 +62,9 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
           div(class = "alert alert-warning py-2 px-3 mb-2", ribbon$health)
         },
         build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
-                               id_prefix = paste0("eugl", click$game_id))
+                               id_prefix = paste0("eugl", click$game_id),
+                               steps = ribbon$steps),
+        ribbon_detail_strip()
       )
     })
 

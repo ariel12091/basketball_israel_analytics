@@ -1481,3 +1481,77 @@ test_that("no number is drawn when steps are absent", {
     list(n_periods = 4L)))
   expect_false(grepl("ibpl-ribbon-num", svg, fixed = TRUE))
 })
+
+
+# ---------------- hover payload ----------------
+
+test_that("each lane carries the numbers and the teammate spans the strip needs", {
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
+    lane_row("own", "2", 300, 900, player_label = "Bea Bell")
+  ))
+  steps <- data.frame(elapsed = c(200, 400), order_key = c(1, 2),
+                      margin = c(3, 6), own = c(5, 10))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = c(200, 400), margin = c(3, 6), order_key = c(1, 2)),
+      2400),
+    list(n_periods = 4L), steps = steps))
+
+  expect_true(grepl('data-start="0"', svg, fixed = TRUE))
+  expect_true(grepl('data-end="600"', svg, fixed = TRUE))
+  expect_true(grepl('data-player="Alice Adams"', svg, fixed = TRUE))
+  expect_true(grepl("data-pf=", svg, fixed = TRUE))
+  expect_true(grepl("data-pa=", svg, fixed = TRUE))
+  # Alice overlapped Bea for 300-600, and the entry carries BOTH axes.
+  expect_true(grepl("Bea Bell", svg, fixed = TRUE))
+})
+
+test_that("a teammate entry names a window and a swing, never a bare name", {
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
+    lane_row("own", "2", 300, 900, player_label = "Bea Bell")
+  ))
+  steps <- data.frame(elapsed = c(200, 400), order_key = c(1, 2),
+                      margin = c(3, 6), own = c(5, 10))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = c(200, 400), margin = c(3, 6), order_key = c(1, 2)),
+      2400),
+    list(n_periods = 4L), steps = steps))
+  with_attr <- regmatches(svg, regexpr('data-with="[^"]*"', svg))
+  expect_true(nzchar(with_attr))
+  # every entry has a clock range and a signed number
+  expect_true(grepl("5:00", with_attr, fixed = TRUE))
+  expect_true(grepl("+", with_attr, fixed = TRUE))
+})
+
+test_that("ribbon_detail_strip renders an aria-hidden container", {
+  strip <- as.character(ribbon_detail_strip())
+  expect_true(grepl("ibpl-ribbon-detail", strip, fixed = TRUE))
+  expect_true(grepl('aria-hidden="true"', strip, fixed = TRUE))
+})
+
+test_that("the lane aria-label carries the teammates too, not just the numbers", {
+  # The strip is aria-hidden and the band and lit overlaps are purely
+  # visual, so this label is the ONLY path to the lineup for a
+  # screen-reader user. Dropping the teammates here would leave that user
+  # with no equivalent at all.
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
+    lane_row("own", "2", 300, 900, player_label = "Bea Bell")
+  ))
+  steps <- data.frame(elapsed = c(200, 400), order_key = c(1, 2),
+                      margin = c(3, 6), own = c(5, 10))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = c(200, 400), margin = c(3, 6), order_key = c(1, 2)),
+      2400),
+    list(n_periods = 4L), steps = steps))
+
+  aria <- regmatches(svg, gregexpr('aria-label="[^"]*"', svg))[[1]]
+  alice <- aria[grepl("Alice Adams", aria, fixed = TRUE)]
+  expect_true(length(alice) > 0)
+  expect_true(any(grepl("on with", alice, fixed = TRUE)))
+  expect_true(any(grepl("Bea Bell", alice, fixed = TRUE)))
+})

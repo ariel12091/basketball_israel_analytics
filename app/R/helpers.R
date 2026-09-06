@@ -3384,11 +3384,34 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   num <- ribbon_pm_label(lanes$pm)
   lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
     secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
-    label <- sprintf("%s, %.0f:%02.0f on the floor",
-                     lanes$player_label[i], secs %/% 60, secs %% 60)
+    ov <- ribbon_stint_overlaps(lanes, lanes$side[i], lanes$player_key[i],
+                                lanes$start_elapsed[i], lanes$end_elapsed[i])
+    with_txt <- ribbon_overlap_label(ov, steps)
+    window_txt <- sprintf("%s-%s", ribbon_minutes_label(lanes$start_elapsed[i]),
+                          ribbon_minutes_label(lanes$end_elapsed[i]))
+    # The accessible name carries EVERYTHING the strip shows, teammates
+    # included, because the strip is aria-hidden -- see
+    # ribbon_detail_strip(). If the teammates were left out here there
+    # would be no path to them at all for a screen-reader user: the band
+    # and the lit overlaps are purely visual, so this label is their only
+    # equivalent.
+    label <- sprintf("%s, %s on the floor, plus-minus %s%s%s",
+                     lanes$player_label[i], ribbon_minutes_label(secs), num[i],
+                     if (is.na(lanes$pf[i])) "" else
+                       sprintf(", %d points for and %d against",
+                               lanes$pf[i], lanes$pa[i]),
+                     if (nzchar(with_txt)) paste(", on with", with_txt) else "")
     tags$g(
       class = paste("ibpl-ribbon-lane", paste0("is-", lanes$side[i])),
       `data-clip` = lanes$clip[i],
+      `data-start` = lanes$start_elapsed[i],
+      `data-end` = lanes$end_elapsed[i],
+      `data-player` = lanes$player_label[i],
+      `data-window` = window_txt,
+      `data-pm` = num[i],
+      `data-pf` = if (is.na(lanes$pf[i])) "" else as.character(lanes$pf[i]),
+      `data-pa` = if (is.na(lanes$pa[i])) "" else as.character(lanes$pa[i]),
+      `data-with` = with_txt,
       tabindex = "0",
       role = "listitem",
       `aria-label` = label,
@@ -3759,4 +3782,34 @@ RIBBON_NUM_PAD <- 6
 ribbon_number_fits <- function(text, width) {
   need <- nchar(text) * RIBBON_NUM_ADVANCE * RIBBON_NUM_FONT + RIBBON_NUM_PAD
   as.numeric(width) >= need
+}
+
+
+# The hover detail strip. Rendered empty; app.js fills it from the hovered
+# lane's data-* attributes and leaves the last one in place on exit, so the
+# reader can look away from the chart to read it.
+#
+# aria-hidden because the same facts are already on each lane's aria-label.
+# An aria-live region here would announce on every hover, which is noise.
+ribbon_detail_strip <- function() {
+  tags$div(
+    class = "ibpl-ribbon-detail", `aria-hidden` = "true",
+    tags$span(class = "ibpl-ribbon-detail-rest",
+              "Hover or tab to a stint to see who was on the floor.")
+  )
+}
+
+# One teammate entry for the strip. Carries BOTH axes -- the shared window
+# and the margin swing across it -- so each entry maps onto a span the reader
+# can see lit in the chart. A bare name and duration was rejected in design
+# for having no connection to either axis.
+ribbon_overlap_label <- function(overlaps, steps) {
+  if (is.null(overlaps) || !nrow(overlaps)) return("")
+  spans <- ribbon_stint_points(overlaps, steps)
+  paste(sprintf("%s %s-%s %s",
+                spans$player_label,
+                ribbon_minutes_label(spans$start_elapsed),
+                ribbon_minutes_label(spans$end_elapsed),
+                ribbon_pm_label(spans$pm)),
+        collapse = " \u00b7 ")
 }
