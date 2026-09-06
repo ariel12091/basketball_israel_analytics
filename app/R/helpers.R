@@ -3214,17 +3214,26 @@ RIBBON_MARGIN_HEIGHT <- 90
 # Vertical clearance between the lane blocks and the margin band (final
 # review follow-up, 2026-09-06): without this the last own-team lane's
 # label sat almost on the band's top gridline, and the band's bottom edge
-# almost touched the first opponent label. 24 units is roughly one lane
-# height plus its gap again -- enough to read as a clear gap at a glance
-# without materially inflating the chart, and it replaces RIBBON_LANE_GAP
-# * 2 (6) at exactly the two anchors (margin_top, opp_top) everything
-# else below is computed from.
-RIBBON_BAND_GAP <- 24
+# almost touched the first opponent label. It replaces RIBBON_LANE_GAP * 2
+# (6) at exactly the two anchors (margin_top, opp_top) everything else
+# below is computed from, so the same value sets BOTH gaps and they cannot
+# drift apart.
+#
+# 28 rather than a rounder 24 because the lower gap has to hold the
+# opponent's team label (a RIBBON_HEADER-tall row) AND clear the band's
+# lowest scale label, which sits at band_bottom + 3 whenever a tick lands
+# exactly on the band's bottom edge -- i.e. whenever the game's max margin
+# is a multiple of the tick interval, which is common (20, 25, 40 ...).
+# Measured in a browser at 24: the two label boxes overlapped by 1.9px for
+# a long team name. At 28 they clear.
+RIBBON_BAND_GAP <- 28
 
 # Row above the lanes reserved for the team name, so it never shares a
 # baseline with the first lane label (both live in the same gutter column).
-# Reused as the clearance above the opponent block too, so that label clears
-# the margin band instead of landing inside it.
+# It is a real row only above the OWN block; below the band the opponent
+# label is placed inside RIBBON_BAND_GAP at the same offset, so the two
+# labels sit identically relative to their blocks without the lower gap
+# growing by a whole row.
 RIBBON_HEADER <- 20
 
 # Breathing room above/below the whole chart (final review follow-up,
@@ -3330,7 +3339,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
   opp <- lanes[lanes$side == "opp", , drop = FALSE]
   own_h <- if (nrow(own)) max(own$y + own$h) else 0
   margin_top <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h + RIBBON_BAND_GAP
-  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_BAND_GAP + RIBBON_HEADER
+  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_BAND_GAP
   total_h <- opp_top + if (nrow(opp)) max(opp$y + opp$h) else 0
 
   lanes$abs_y <- ifelse(lanes$side == "own", lanes$y + RIBBON_PAD_TOP + RIBBON_HEADER, opp_top + lanes$y)
@@ -3384,9 +3393,13 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
               lanes$player_label[i])
   })
 
-  # The opponent label gets the same header-row clearance as the own label
-  # (row starts RIBBON_HEADER above opp_top), instead of sitting on the
-  # margin band's bottom edge.
+  # Both team labels sit RIBBON_HEADER - 10 above their own block, in the
+  # x = 0 gutter column: the own label inside the top padding, the opponent
+  # label inside the band gap. The opponent label lives IN that gap rather
+  # than below it (2026-09-06) -- adding a whole header row underneath the
+  # band made the space below it 44 units against 24 above, which read as a
+  # lopsided chart, while the label itself never fills that space: it is
+  # left-anchored in the gutter and the band starts at RIBBON_GUTTER.
   team_labels <- list(
     tags$text(class = "ibpl-ribbon-team", x = 0, y = RIBBON_PAD_TOP + 10, meta$own_team %||% "Own"),
     tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - RIBBON_HEADER + 10,

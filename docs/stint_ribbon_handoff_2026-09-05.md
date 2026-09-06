@@ -1,6 +1,7 @@
 # Stint Ribbon — Handoff, 2026-09-05
 
-Paused mid-execution after Task 7. Branch `shiny/stint-ribbon`, unmerged, not deployed.
+All nine tasks complete, plus post-review visual polish. Branch
+`shiny/stint-ribbon`, clean tree, unmerged, not deployed. HEAD `3b31b73`.
 
 **Documents**
 - Spec: `docs/superpowers/specs/2026-09-05-stint-ribbon-design.md`
@@ -27,14 +28,17 @@ plotting library, one database round trip per open.
 | 5 — readers | complete, live DB verified |
 | 6 — CSS + hover JS | complete, focused tests + JS parse passing |
 | 7 — Tab 4 wiring | complete, focused tests + manual UI verified |
-| 8 — Tab 11 wiring | not started |
+| 8 — Tab 11 wiring | complete, review clean |
+| polish — margin scale, gutter, band gap | complete, see below |
 
-Shipped so far: the pure transforms, accessible inline-SVG builder, both
-single-round-trip readers, ribbon CSS and hover/focus/touch interaction, 2
-EuroLeague views, and both security enumerations.
+Shipped: the pure lane/clock transforms, accessible inline-SVG builder, both
+single-round-trip readers, ribbon CSS and hover/focus/touch interaction, the
+EuroLeague read layer, both game-log tabs wired, and both security
+enumerations. Focused suite: **228 pass / 3 skip / 0 fail**.
 
-**On resume:** read the ledger first, then start at **Task 8 (Tab 11 wiring)**.
-Reuse the shared link and modal path with input id `euro_gl_ribbon_click`.
+**On resume:** read the ledger tail first — it holds every ruling and every
+mutation-drill result. Remaining before merge: the security-apply run below,
+and the one open visual judgement in "Polish after Task 8".
 
 Task 3's scoped re-review arrived just after the pause and closed all three
 findings, confirming the strengthened clamp test by mutation (flipping
@@ -62,6 +66,46 @@ Two plan defects were corrected during implementation:
   The committed code exports it inside the existing IIFE as
   `window.ibplSendShinyEvent`; the ribbon hover handler remains a separate
   IIFE, preserving queue-and-replay behavior for Task 7.
+
+## Polish after Task 8
+
+| Change | Commit |
+|---|---|
+| EuroLeague margin sourced from the clutch score layer (fixes the blank band) | `19863d5` |
+| Gutter header row, name hover, name as hover target | `694f375` |
+| Round-interval vertical scale on the margin curve | `70631eb` |
+| Band gap separating the margin band from both lane blocks | `3b31b73` |
+
+The scale change extracted `ribbon_margin_scale()` (the single source of
+`max_abs`, `interval` and `ticks`) and `ribbon_margin_y()` (the shared value
+→ y mapping), consumed by **both** the curve and the gridlines. Alignment is
+therefore structural, not coincidental — a gridline cannot drift off the curve
+it annotates. Verified on a real game to 4e-13.
+
+`RIBBON_BAND_GAP` (24) replaced `RIBBON_LANE_GAP * 2` (6) at the two anchors
+`margin_top` and `opp_top`, so the band, its baseline, gridlines, clip rects,
+opponent block and viewBox all shift together.
+
+**Evened out, 2026-09-06.** The first version put the opponent's team label
+in a RIBBON_HEADER row *below* the band, on top of the gap, so the chart had
+24 units of space above the band and 44 below. The label now sits INSIDE the
+gap: it never filled that space anyway, being left-anchored in the gutter
+while the band starts at `RIBBON_GUTTER`. One constant sets both gaps, so
+they cannot drift apart.
+
+`RIBBON_BAND_GAP` went 24 —> 28 for a measured reason, not taste. The lower
+gap must clear the band's lowest scale label, which sits at `band_bottom + 3`
+whenever a tick lands exactly on the band's bottom edge — i.e. whenever the
+game's max margin is a multiple of the tick interval, which is common (20,
+25, 40). Rendered in a browser with long team names: at 24 the two text boxes
+**overlapped by 1.9px**; at 28 they clear by 2.7px above and 8.2px below.
+Both gaps are 28, viewBox 554 —> 542 on the same fixture.
+
+Two tests hold it, each verified by the mutation that should kill it:
+restoring `+ RIBBON_HEADER` on `opp_top` fails the gap-equality assertion
+(48 vs 28) and nothing else; shrinking `RIBBON_BAND_GAP` back to 24 fails the
+scale-label clearance assertion (11 vs the 12-unit floor) and nothing else.
+Neither mutation is caught by the other's test, which is why both exist.
 
 ## Outstanding manual step
 

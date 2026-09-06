@@ -629,17 +629,70 @@ test_that("the margin band is inset from the lane blocks by RIBBON_BAND_GAP, not
   gap_above <- band_top - own_bottom
   gap_below <- opp_top_lane - band_bottom
 
-  # Deliberately a hardcoded floor (22), not `RIBBON_BAND_GAP` itself: with
-  # BAND_GAP live at 24, gap_above is BAND_GAP exactly and gap_below is
-  # BAND_GAP + RIBBON_HEADER -- but comparing against the live constant is
-  # tautological the same way the breathing-room test above warns about,
-  # since mutating BAND_GAP to 0 moves both the drawn gap AND the threshold
-  # to 0 together and the assertion would keep passing. 22 sits strictly
-  # between the un-inset gap this replaces (RIBBON_LANE_GAP * 2 = 6) and the
-  # smaller of the two gaps at the current design value (24), so it fails
-  # for BAND_GAP <- 0 (gaps collapse to 0 and 20) while passing at 24.
+  # Deliberately a hardcoded floor (22), not `RIBBON_BAND_GAP` itself:
+  # comparing against the live constant is tautological the same way the
+  # breathing-room test above warns about, since mutating BAND_GAP moves
+  # both the drawn gap AND the threshold together and the assertion would
+  # keep passing. 22 sits strictly between the un-inset gap this replaces
+  # (RIBBON_LANE_GAP * 2 = 6) and the design value, so it fails for
+  # BAND_GAP <- 0 while passing as shipped.
   expect_gt(gap_above, 22)
   expect_gt(gap_below, 22)
+
+  # The two gaps must be EQUAL (2026-09-06). They were not: the opponent's
+  # team label was given a RIBBON_HEADER row *below* the band on top of the
+  # gap, so the chart carried 24 units of space above the band and 44 below
+  # and read as lopsided. The label now sits inside the gap instead -- it
+  # never filled that space anyway, being left-anchored in the gutter while
+  # the band starts at RIBBON_GUTTER.
+  #
+  # Mutation check: restore `+ RIBBON_HEADER` on opp_top and this fails
+  # (44 vs 28) while both expect_gt()s above still pass -- which is exactly
+  # why the floors alone were not enough to hold this.
+  expect_equal(gap_below, gap_above)
+})
+
+test_that("the opponent team label clears a scale label sitting on the band's edge", {
+  # The opponent's team label lives INSIDE the band gap, so the gap has to be
+  # deep enough to hold it clear of the band's lowest scale label. That label
+  # lands exactly on the band's bottom edge whenever the game's max margin is
+  # a multiple of the tick interval -- common, not a corner case (20, 25, 40
+  # all do it). Measured in a browser at RIBBON_BAND_GAP = 24, the two text
+  # boxes overlapped by 1.9px for a long team name; 28 clears.
+  #
+  # max_abs = 20 puts ribbon_margin_scale() on the interval-5 rung with
+  # n_per_side = 4, so -20 IS a tick and maps to the band's bottom edge.
+  f <- ribbon_fixture()
+  f$margin <- data.frame(elapsed = c(0, 600, 1200), margin = c(0, 20, -20))
+  scale_info <- ribbon_margin_scale(f$margin)
+  expect_true(-scale_info$max_abs %in% scale_info$ticks)  # premise, not decoration
+
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  # No backslash escapes here on purpose: the y attribute is the first
+  # `y="..."` in each tag, so a plain match plus a strip is enough --
+  # and R reads '\b' in a single-quoted literal as a backspace, not as a
+  # word boundary, which silently turned this into a never-matching
+  # pattern and an NA comparison the first time round.
+  y_of <- function(tags) {
+    m <- regmatches(tags, regexpr('y="[0-9.]+"', tags))
+    as.numeric(gsub('[^0-9.]', '', m))
+  }
+  scale_labels <- regmatches(html, gregexpr(
+    '<text class="ibpl-ribbon-scale-label"[^>]*>', html))[[1]]
+  expect_gt(length(scale_labels), 0)
+  lowest_scale_y <- max(y_of(scale_labels))
+
+  # Anchor on content: lanes sort "opp" before "own", so "the second team
+  # label in the document" is not reliably the opponent's.
+  opp_label <- regmatches(html, regexpr(
+    '<text class="ibpl-ribbon-team"[^>]*>Team B<', html))[[1]]
+  expect_true(nzchar(opp_label))
+  opp_label_y <- y_of(opp_label)
+
+  # One full label height (12px font) between the two baselines. At
+  # BAND_GAP 28 the separation is 15; mutating it back to 24 gives 11 and
+  # this fails, which is the mutation the equality test above cannot see.
+  expect_gt(opp_label_y - lowest_scale_y, 12)
 })
 
 test_that("period boundaries are labelled, not merely drawn", {
