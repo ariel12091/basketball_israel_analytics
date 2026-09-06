@@ -470,7 +470,19 @@ test_that("app.css styles every class the SVG builder emits", {
                 "ibpl-ribbon-margin-focus", "ibpl-ribbon-period",
                 "ibpl-ribbon-name", "ibpl-ribbon-team", "ibpl-ribbon-zero",
                 "ibpl-ribbon-period-label")) {
-    expect_match(css, cls, fixed = TRUE, info = paste("missing ribbon style for", cls))
+    # fixed=TRUE substring matching is vacuously satisfied when `cls` is only
+    # a PREFIX of a different, longer class that is separately styled --
+    # e.g. "ibpl-ribbon-zero" is a substring of "ibpl-ribbon-zero-label",
+    # which app.css styles in its own rule. Deleting the standalone
+    # `.ibpl-ribbon-zero { ... }` rule (a real regression: the tied-game
+    # baseline stops being dashed) left this assertion green because
+    # "-label" is still in the file (confirmed by mutation, 2026-09-06). A
+    # trailing negative lookahead requires the class name not be immediately
+    # followed by a hyphen or word character, so it only matches the
+    # standalone class or a non-hyphenated compound selector (".cls.other",
+    # ".cls rect", ".cls,").
+    expect_true(grepl(paste0(cls, "(?![-\\w])"), css, perl = TRUE),
+                info = paste("missing ribbon style for", cls))
   }
 })
 
@@ -592,7 +604,17 @@ test_that("app.js's is-active token matches the class app.css actually styles", 
   # means renaming any ONE of the three (not just deleting the whole
   # mechanism) still fails this test -- matching only "add" or only "remove"
   # would have let exactly that kind of partial rename through.
-  expect_identical(lengths(regmatches(fn, gregexpr("is-active", fn, fixed = TRUE))), 3L)
+  #
+  # fixed=TRUE substring counting has its own hole: "is-active" is also a
+  # SUBSTRING of "is-active-lane", so renaming the token to that (or any
+  # other superstring) left all three occurrences "matching" and this
+  # assertion still green even though the CSS selector below no longer
+  # applies (confirmed by mutation, 2026-09-06). A trailing negative
+  # lookahead requires the token not be immediately followed by a hyphen or
+  # word character, so a superstring rename actually breaks the count.
+  expect_identical(
+    lengths(regmatches(fn, gregexpr("is-active(?![-\\w])", fn, perl = TRUE))),
+    3L)
   # CSS side: the selector that actually renders the emphasis.
   expect_match(css, "\\.ibpl-ribbon-lane\\.is-active\\b")
 })
@@ -605,8 +627,13 @@ test_that("handleRibbonLinkClick routes by the link's own data-input-id, not a h
   expect_true(nzchar(fn))
   # If this hardcoded "gl_ribbon_click" instead of reading dataset.inputId,
   # every Tab 11 (EuroLeague) click would route into Tab 4's Israeli observer.
-  expect_match(fn, "dataset\\.inputId")
-  expect_match(fn, '"gl_ribbon_click"', fixed = TRUE) # documented fallback only
+  # Two separate expect_match() calls (one for `dataset\.inputId`, one for
+  # the quoted literal) would still both pass if the `||` operands were
+  # swapped to `"gl_ribbon_click" || linkEl.dataset.inputId` -- the hardcoded
+  # literal is truthy and always wins, so the fallback is dead code, but both
+  # substrings are still present. Assert the operands in their required
+  # order, as one expression, instead.
+  expect_match(fn, 'linkEl\\.dataset\\.inputId\\s*\\|\\|\\s*"gl_ribbon_click"')
 })
 
 test_that("ribbon_link_cell's onclick target is a function app.js actually defines", {
@@ -639,8 +666,15 @@ test_that("Tab 4 and Tab 11 ribbon output ids and SVG id_prefix never collide", 
   tab11 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
                            warn = FALSE), collapse = "\n")
 
-  out4 <- regmatches(tab4, regexpr('output\\$[A-Za-z0-9_]+\\s*<-\\s*renderUI', tab4))
-  out11 <- regmatches(tab11, regexpr('output\\$[A-Za-z0-9_]+\\s*<-\\s*renderUI', tab11))
+  # Anchored on "ribbon" specifically: an unqualified
+  # 'output\$[A-Za-z0-9_]+\s*<-\s*renderUI' regexpr() only returns the FIRST
+  # such match in the file. It happens today to be the ribbon output because
+  # nothing else with `<- renderUI` precedes it in either server file, but
+  # that ordering is incidental -- an unrelated renderUI output added earlier
+  # in the file would make this compare the wrong pair of ids and stop
+  # checking the ribbon outputs' names at all, while still reporting green.
+  out4 <- regmatches(tab4, regexpr('output\\$[A-Za-z0-9_]*ribbon[A-Za-z0-9_]*\\s*<-\\s*renderUI', tab4))
+  out11 <- regmatches(tab11, regexpr('output\\$[A-Za-z0-9_]*ribbon[A-Za-z0-9_]*\\s*<-\\s*renderUI', tab11))
   expect_true(nzchar(out4))
   expect_true(nzchar(out11))
   expect_false(identical(out4, out11))
