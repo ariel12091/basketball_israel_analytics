@@ -3176,6 +3176,17 @@ ribbon_complete_margin <- function(margin, total_seconds) {
     margin = as.numeric(margin$margin),
     order_key = as.numeric(margin$order_key %||% seq_len(nrow(margin)))
   )
+  # Defence in depth (2026-09-05 final review): a non-finite margin
+  # (NA/NaN/Inf, e.g. from a provider score that has not started yet) must
+  # never reach ribbon_margin_path() -- it turns into an invalid "V NaN" in
+  # the SVG path and the browser drops the WHOLE curve. Drop rather than
+  # zero-fill: a fabricated 0 would draw a false "tied" dip that never
+  # happened, while dropping the row lets the stepped path carry the last
+  # known value across the gap.
+  m <- m[is.finite(m$margin), , drop = FALSE]
+  if (!nrow(m)) {
+    return(data.frame(elapsed = c(0, total_seconds), margin = c(0, 0)))
+  }
   m <- m[order(m$elapsed, m$order_key), , drop = FALSE]
 
   # One state per elapsed second: the last one recorded there.
@@ -3211,6 +3222,14 @@ ribbon_margin_path <- function(margin, total_seconds, width, top, height,
   if (is.null(margin) || !nrow(margin)) return("")
 
   margin <- margin[order(margin$elapsed), , drop = FALSE]
+  # Defence in depth (2026-09-05 final review): a non-finite elapsed/margin
+  # value must never reach sprintf() below -- "V NaN" (or "H NaN") is
+  # invalid SVG path data and the browser silently drops the WHOLE path,
+  # not just the bad segment. ribbon_complete_margin() already filters
+  # these out upstream; this is a second, independent line of defence.
+  margin <- margin[is.finite(margin$elapsed) & is.finite(margin$margin), , drop = FALSE]
+  if (!nrow(margin)) return("")
+
   max_abs <- suppressWarnings(max(abs(margin$margin), na.rm = TRUE))
   if (!is.finite(max_abs) || max_abs <= 0) max_abs <- 1
 
@@ -3344,21 +3363,6 @@ ribbon_normalise_lanes <- function(raw, own_team_id) {
     start_elapsed = as.numeric(raw$start_elapsed),
     end_elapsed = as.numeric(raw$end_elapsed),
     stringsAsFactors = FALSE
-  )
-}
-
-ribbon_sign_margin <- function(m, own_team_id, home_team_id) {
-  if (is.null(m) || !nrow(m)) {
-    return(data.frame(elapsed = numeric(0), margin = numeric(0),
-                      order_key = numeric(0)))
-  }
-  diff <- as.numeric(m$points_a) - as.numeric(m$points_b)
-  own_is_home <- !is.na(home_team_id) &&
-    as.integer(own_team_id) == as.integer(home_team_id)
-  data.frame(
-    elapsed = as.numeric(m$elapsed),
-    margin = if (own_is_home) diff else -diff,
-    order_key = as.numeric(m$order_key %||% seq_len(nrow(m)))
   )
 }
 

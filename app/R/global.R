@@ -340,10 +340,14 @@ lanes AS (
    AND r.player_id = p.player_id
 ),
 marg AS (
-  SELECT DISTINCT elapsed_seconds AS elapsed, points_a, points_b, home_team_id,
+  -- ribbon_margin_v is team-perspective (one row per team per scoring
+  -- event, from euroleague.action_team_context_actions -- see
+  -- euroleague/sql/053_stint_ribbon_read_layer.sql), so this already reads
+  -- like the Israeli marg CTE: no sign flip, filter by team_id directly.
+  SELECT DISTINCT elapsed_seconds AS elapsed, margin,
          source_event_order AS order_key
   FROM euroleague.ribbon_margin_v
-  WHERE game_id = $1
+  WHERE game_id = $1 AND team_id = $2
 )
 SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
@@ -359,7 +363,7 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
 
   cached_season_df(list("stint_ribbon", league, game_id, team_id, data_version), function() {
     sql <- if (identical(league, "israel")) RIBBON_SQL_ISRAEL else RIBBON_SQL_EURO
-    params <- if (identical(league, "israel")) list(game_id, team_id) else list(game_id)
+    params <- list(game_id, team_id)
     row <- db_get_query(pool, sql, params = params)
     if (is.null(row) || !nrow(row)) return(NULL)
 
@@ -369,18 +373,13 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
       jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
     if (is.null(lanes_raw) || !NROW(lanes_raw)) return(NULL)
 
-    if (identical(league, "euroleague")) {
-      margin <- ribbon_sign_margin(
-        marg_raw, team_id,
-        if (NROW(marg_raw)) marg_raw$home_team_id[1] else NA
-      )
-    } else {
-      margin <- data.frame(
-        elapsed = as.numeric(marg_raw$elapsed %||% numeric(0)),
-        margin = as.numeric(marg_raw$margin %||% numeric(0)),
-        order_key = as.numeric(marg_raw$order_key %||% numeric(0))
-      )
-    }
+    # Both leagues now return an already-signed, team-perspective margin
+    # (elapsed, margin, order_key) -- no per-league branch needed.
+    margin <- data.frame(
+      elapsed = as.numeric(marg_raw$elapsed %||% numeric(0)),
+      margin = as.numeric(marg_raw$margin %||% numeric(0)),
+      order_key = as.numeric(marg_raw$order_key %||% numeric(0))
+    )
 
     n_periods <- as.integer(row$n_periods[1] %||% 4L)
     bounds <- ribbon_period_bounds(n_periods)

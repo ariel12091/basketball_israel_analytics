@@ -277,7 +277,13 @@ test_that("ribbon_complete_margin returns a usable series from no data", {
 
 ribbon_fixture <- function() {
   lanes <- rbind(
-    lane_row("own", "1", 0, 1200, is_starter = TRUE, player_label = "A Cohen"),
+    # Player "1" is split into two TOUCHING stints (0-600, 600-1200) rather
+    # than one 0-1200 row on purpose: build_stint_ribbon_svg must call
+    # merge_adjacent_stints() internally to collapse them back into one bar.
+    # A single unsplit row here would let that call be deleted with the whole
+    # suite staying green (found in the 2026-09-05 final review, I6).
+    lane_row("own", "1", 0, 600, is_starter = TRUE, player_label = "A Cohen"),
+    lane_row("own", "1", 600, 1200, player_label = "A Cohen"),
     lane_row("own", "2", 1200, 2400, player_label = "B Levy"),
     lane_row("opp", "9", 0, 2400, is_starter = TRUE, player_label = "C Katz")
   )
@@ -303,6 +309,34 @@ test_that("ribbon_margin_path returns an empty string for no data", {
   )
 })
 
+test_that("ribbon_margin_path never emits NA or NaN into the path, even with bad input", {
+  # Defence in depth (2026-09-05 final review): a single non-finite margin
+  # value must never blank the whole curve. An SVG path `d` attribute
+  # containing "NaN" is invalid, and the browser drops the ENTIRE path rather
+  # than just the bad segment -- this is exactly how the EuroLeague margin
+  # curve went blank on every one of 593 games (the provider leaves the
+  # running score NULL until a side has scored; that NULL propagated to NA
+  # margin, then to "V NaN" here).
+  m <- data.frame(elapsed = c(0, 60, 120), margin = c(0, NA, 4))
+  d <- ribbon_margin_path(m, total_seconds = 2400, width = 1000, top = 0, height = 100)
+  expect_false(grepl("NA", d, fixed = TRUE))
+  expect_false(grepl("NaN", d, fixed = TRUE))
+  expect_match(d, "^M ")
+})
+
+test_that("ribbon_complete_margin drops non-finite margins rather than propagating them", {
+  m <- data.frame(elapsed = c(0, 60, 120), margin = c(0, NA, 4), order_key = c(1, 2, 3))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_true(all(is.finite(out$margin)))
+})
+
+test_that("ribbon_complete_margin falls back to a flat series when every margin is non-finite", {
+  m <- data.frame(elapsed = c(0, 60), margin = c(NA_real_, NaN), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed, c(0, 2400))
+  expect_identical(out$margin, c(0, 0))
+})
+
 test_that("build_stint_ribbon_svg draws one rect per merged stint", {
   f <- ribbon_fixture()
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
@@ -322,6 +356,9 @@ test_that("every lane's data-clip matches a clipPath id that exists", {
   clips <- sub('data-clip="', "", sub('"$', "", clips))
   ids <- regmatches(html, gregexpr('id="[^"]+"', html))[[1]]
   ids <- sub('id="', "", sub('"$', "", ids))
+  # all(character(0) %in% ids) is vacuously TRUE -- a renamed data-clip
+  # attribute would make `clips` empty and this assertion pass on nothing.
+  expect_gt(length(clips), 0)
   expect_true(all(clips %in% ids))
 })
 
@@ -413,12 +450,16 @@ test_that("clip ids stay valid when the key is a EuroLeague player name", {
 
 test_that("a named-key lane still resolves to a clipPath that exists", {
   f <- ribbon_fixture()
-  f$lanes$player_key <- c("BIRCH, KHEM", "HALL, DEVON", "SLEVA, DUSTIN")
+  # 4 rows in the fixture (player "1" is split into two touching stints); the
+  # first two share a name since they are the same real player.
+  f$lanes$player_key <- c("BIRCH, KHEM", "BIRCH, KHEM", "HALL, DEVON", "SLEVA, DUSTIN")
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
   clips <- regmatches(html, gregexpr('data-clip="[^"]+"', html))[[1]]
   clips <- sub('data-clip="', "", sub('"$', "", clips))
   ids <- regmatches(html, gregexpr('id="[^"]+"', html))[[1]]
   ids <- sub('id="', "", sub('"$', "", ids))
+  # Same vacuous-pass trap as above: assert clips were actually found.
+  expect_gt(length(clips), 0)
   expect_true(all(clips %in% ids))
 })
 
@@ -530,4 +571,83 @@ test_that("EuroLeague game logs reuse the shared ribbon builder, not a parallel 
   expect_match(eu, "build_stint_ribbon_svg", fixed = TRUE)
   expect_false(grepl("euro_build_stint_ribbon", eu, fixed = TRUE))
   expect_false(grepl("euro_fetch_stint_ribbon", eu, fixed = TRUE))
+})
+
+# ---- Mutation guards added after the 2026-09-05 final review (I4) ----------
+# Each of the six tests below asserts BOTH sides of a cross-file contract, so
+# renaming either side alone -- not just deleting one -- fails the suite.
+
+test_that("app.js's is-active token matches the class app.css actually styles", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  # JS side: setFocus() toggles the literal class via classList.
+  fn <- regmatches(js, regexpr(
+    "function setFocus\\(svg, lane\\) \\{(.|\n)*?\\n  \\}", js, perl = TRUE))
+  expect_true(nzchar(fn))
+  # All three literal occurrences must survive TOGETHER: the selector that
+  # finds the currently-active lane(s), the removal before reassigning, and
+  # the add that actually applies the emphasis. A single count assertion
+  # means renaming any ONE of the three (not just deleting the whole
+  # mechanism) still fails this test -- matching only "add" or only "remove"
+  # would have let exactly that kind of partial rename through.
+  expect_identical(lengths(regmatches(fn, gregexpr("is-active", fn, fixed = TRUE))), 3L)
+  # CSS side: the selector that actually renders the emphasis.
+  expect_match(css, "\\.ibpl-ribbon-lane\\.is-active\\b")
+})
+
+test_that("handleRibbonLinkClick routes by the link's own data-input-id, not a hardcoded one", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  fn <- regmatches(js, regexpr(
+    "window\\.handleRibbonLinkClick = function\\(linkEl\\) \\{(.|\n)*?\\n  \\};", js, perl = TRUE))
+  expect_true(nzchar(fn))
+  # If this hardcoded "gl_ribbon_click" instead of reading dataset.inputId,
+  # every Tab 11 (EuroLeague) click would route into Tab 4's Israeli observer.
+  expect_match(fn, "dataset\\.inputId")
+  expect_match(fn, '"gl_ribbon_click"', fixed = TRUE) # documented fallback only
+})
+
+test_that("ribbon_link_cell's onclick target is a function app.js actually defines", {
+  html <- ribbon_link_cell(1L, 1L, "x")
+  target <- regmatches(html, regexpr('onclick="window\\.[A-Za-z0-9_]+\\(', html))
+  expect_true(nzchar(target))
+  fn_name <- sub('^onclick="window\\.', "", sub("\\($", "", target))
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  # A renamed onclick target with no matching JS definition is a dead link:
+  # the anchor is clickable but nothing happens.
+  expect_match(js, paste0("window\\.", fn_name, "\\s*="))
+})
+
+test_that("Tab 4 and Tab 11 game-log tables escape everything except the ribbon-link date column", {
+  # Dropping this at any of the three call sites renders the ribbon-link
+  # anchor as visible HTML text instead of a clickable link.
+  tab4 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
+                          warn = FALSE), collapse = "\n")
+  tab11 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
+                           warn = FALSE), collapse = "\n")
+  escape_pattern <- 'escape\\s*=\\s*dt_escape_except\\(disp,\\s*"game_date"\\)'
+  expect_identical(lengths(regmatches(tab4, gregexpr(escape_pattern, tab4))), 2L)
+  expect_match(tab11, escape_pattern)
+})
+
+test_that("Tab 4 and Tab 11 ribbon output ids and SVG id_prefix never collide", {
+  tab4 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
+                          warn = FALSE), collapse = "\n")
+  tab11 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
+                           warn = FALSE), collapse = "\n")
+
+  out4 <- regmatches(tab4, regexpr('output\\$[A-Za-z0-9_]+\\s*<-\\s*renderUI', tab4))
+  out11 <- regmatches(tab11, regexpr('output\\$[A-Za-z0-9_]+\\s*<-\\s*renderUI', tab11))
+  expect_true(nzchar(out4))
+  expect_true(nzchar(out11))
+  expect_false(identical(out4, out11))
+
+  prefix4 <- regmatches(tab4, regexpr('id_prefix\\s*=\\s*paste0\\("[a-z]+"', tab4))
+  prefix11 <- regmatches(tab11, regexpr('id_prefix\\s*=\\s*paste0\\("[a-z]+"', tab11))
+  expect_true(nzchar(prefix4))
+  expect_true(nzchar(prefix11))
+  expect_false(identical(prefix4, prefix11))
 })

@@ -37,11 +37,12 @@ test_that("ribbon_health_message speaks only when segments were excluded", {
   expect_match(ribbon_health_message(3), "not drawn")
 })
 
-test_that("ribbon_sign_margin flips the sign when the clicked team is away", {
-  m <- data.frame(elapsed = c(0, 60), points_a = c(0, 10), points_b = c(0, 4))
-  expect_identical(ribbon_sign_margin(m, 5L, 5L)$margin, c(0, 6))
-  expect_identical(ribbon_sign_margin(m, 9L, 5L)$margin, c(0, -6))
-})
+# ribbon_sign_margin() was removed 2026-09-05 (final review, live-data bug):
+# ribbon_margin_v is now team-perspective (sourced from
+# euroleague.action_team_context_actions, the same source and `points > 0`
+# predicate as the clutch read layer, euroleague/sql/019_clutch_read_layer.sql)
+# and already carries a signed `margin` column, exactly like the Israeli
+# reader. There is no longer a home/away sign to flip in R.
 
 test_that("the euro reader never pairs lineup names with ids positionally", {
   src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
@@ -50,6 +51,24 @@ test_that("the euro reader never pairs lineup names with ids positionally", {
   expect_true(nzchar(sql))
   expect_false(grepl("unnest\\s*\\([^)]*own_lineup[^)]*,", sql))
   expect_match(sql, "unnest\\(s\\.player_ids\\)")
+})
+
+test_that("the ribbon_segments_v view never pairs lineup names with ids positionally", {
+  # readers.R:51 (the test above) forbids `own_lineup` inside an unnest() in
+  # RIBBON_SQL_EURO, but that string never appears in the R query at all --
+  # RIBBON_SQL_EURO only unnests s.player_ids. The positional-pairing risk
+  # this whole feature guards against (31,907 mismatches in 40,000 pairs when
+  # own_lineup and player_ids are zipped by position) lives entirely in the
+  # VIEW definition, so that is what must be checked, or this guard is
+  # trivially true regardless of what the view does.
+  sql <- paste(readLines(testthat::test_path("..", "..", "..", "euroleague", "sql",
+                        "053_stint_ribbon_read_layer.sql"), warn = FALSE), collapse = "\n")
+  view_sql <- regmatches(sql, regexpr(
+    "CREATE OR REPLACE VIEW euroleague\\.ribbon_segments_v AS(.|\n)*?;", sql, perl = TRUE))
+  expect_true(nzchar(view_sql))
+  expect_false(grepl("unnest\\s*\\([^)]*own_lineup", view_sql, ignore.case = TRUE))
+  # The named-key join this view uses instead.
+  expect_match(view_sql, "l\\.own_lineup\\s*=\\s*m\\.own_lineup")
 })
 
 test_that("the Israeli lane label comes from the per-game roster", {
@@ -71,15 +90,57 @@ test_that("the Israeli ribbon SQL carries no type_lineup predicate", {
   expect_false(grepl("GROUP BY[^)]*type_lineup", sql, ignore.case = TRUE))
 })
 
+test_that("the Israeli ribbon SQL keeps both HAVING guards on segs/lineup_players", {
+  # Removing either lets a bad row back in:
+  #   - segs: without MAX(segment_seconds) > 0, zero-length segments (two
+  #     substitutions at the same clock, ~45% of raw rows) occupy a lane slot
+  #     as an invisible sliver.
+  #   - lineup_players: without cardinality(...) = 5, a partially-resolved
+  #     lineup would label a segment with fewer than five players.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  sql <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src, perl = TRUE))
+  expect_true(nzchar(sql))
+  expect_match(sql, "HAVING\\s+MAX\\(segment_seconds\\)\\s*>\\s*0")
+  expect_match(sql, "HAVING\\s+cardinality\\(ARRAY_AGG\\(DISTINCT l\\.player_id\\)\\)\\s*=\\s*5")
+})
+
+test_that("euroleague.ribbon_margin_v has no NULL margin (2026-09-05 live-data bug)", {
+  # The OLD view read actions.points_a/points_b directly: the provider leaves
+  # the running score NULL until that side has scored, so every early event
+  # in every one of 593 games carried a NULL score, which propagated to NA
+  # margin and then to an invalid "V NaN" in the SVG path -- blanking the
+  # WHOLE curve, not just the affected span. The view now sources
+  # own_team_score/opp_team_score from euroleague.action_team_context_actions
+  # (the same source the clutch read layer uses, migration 019), which is
+  # NULL-free by construction. This is the regression guard.
+  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+
+  con <- DBI::dbConnect(RPostgres::Postgres(),
+    host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
+    dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
+    password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
+    connect_timeout = 15L, bigint = "numeric")
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  counts <- DBI::dbGetQuery(con, "
+    SELECT
+      (SELECT COUNT(*) FROM euroleague.ribbon_margin_v WHERE margin IS NULL) AS null_margin,
+      (SELECT COUNT(*) FROM euroleague.ribbon_margin_v) AS total_rows")
+  expect_identical(as.numeric(counts$null_margin[1]), 0)
+  expect_gt(counts$total_rows[1], 1000)
+})
+
 # This guard deliberately reads euroleague.ribbon_segments_v, NOT the base
 # table euroleague.matchup_segments_actions. app_readonly (the role the
 # deployed app actually runs as) is denied on the base table on purpose -- the
 # EuroLeague schema keeps raw/derived-fact tables closed and exposes only a
 # curated read layer, of which this view is the entire point (see
-# sql/euroleague/ribbon_views.sql). A guard that only runs under an elevated
-# ETL role isn't guarding what the application sees, and it fails outright
-# (not skip) for anyone who runs the suite with app/.Renviron credentials. Do
-# not point this back at the base table.
+# euroleague/sql/053_stint_ribbon_read_layer.sql). A guard that only runs
+# under an elevated ETL role isn't guarding what the application sees, and it
+# fails outright (not skip) for anyone who runs the suite with app/.Renviron
+# credentials. Do not point this back at the base table.
 test_that("euro segment lineups resolve to one player-id set", {
   skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")

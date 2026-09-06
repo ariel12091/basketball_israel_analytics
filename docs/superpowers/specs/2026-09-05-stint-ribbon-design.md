@@ -290,11 +290,30 @@ Consequences for implementation:
   `GL_DATA_CACHE` pattern Tab 4 already uses, so re-opening a ribbon costs
   nothing.
 
-Headroom: ~230 ms of the budget is unused, which is the margin for tail latency.
-One sample of 489 ms was observed under contention across ~90 timed calls. Note
-these were measured with `C:` at 99% full; a past session recorded 2x timing
-swings on a full disk, so treat the tails as pessimistic and the medians —
-which were stable within a few ms — as sound.
+**Correction (final review, 2026-09-05).** The table above measured the
+*components* in isolation; it was never re-measured end-to-end after
+integration, and the numbers above are now stale. Re-measured this session
+(n=9 per arm, medians): pooler floor `SELECT 1` **240 ms**; full EuroLeague
+ribbon open **409 ms** (min 334, max 568); full Israeli ribbon open **~368
+ms**; server-side `EXPLAIN (ANALYZE)` **45-103 ms** EuroLeague and **90-106
+ms** Israeli — not the 0.5 / 21.6 ms this section originally recorded. The
+500 ms budget is still met **at the median** for both leagues, but maxima have
+been observed above the per-component numbers quoted above, so treat this as
+a live budget with real tail risk, not a comfortably-cleared one. The
+"~230 ms of unused headroom" claim below is wrong; the real headroom against
+the 500 ms budget is **~100-150 ms** at the median, and the observed 568 ms
+EuroLeague maximum already exceeds it. This correction does not change the
+one-query decision above — it is still the right call — only the margin by
+which the budget is met.
+
+Headroom: ~~~230 ms of the budget is unused, which is the margin for tail
+latency.~~ **Corrected above: ~100-150 ms, not ~230 ms.** One sample of 489 ms
+was observed under contention across ~90 timed calls. Note these were
+measured with `C:` at 99% full; a past session recorded 2x timing swings on a
+full disk, so treat the tails as pessimistic and the medians — which were
+stable within a few ms — as sound. That caveat applies to the original
+component-level numbers above; the end-to-end re-measurement in the
+correction was not taken under a full disk.
 
 ## 6. Transforms (pure, in `helpers.R`)
 
