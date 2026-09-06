@@ -1229,3 +1229,69 @@ test_that("an empty step series yields NA, never a fabricated zero", {
   expect_true(is.na(out$pf))
   expect_true(is.na(out$pa))
 })
+
+# ---------------- ribbon_stint_overlaps ----------------
+# A merged bar spans a median of 4 different fives (measured 2026-09-06 over
+# 1,470 real stints), so "the five at the start" is stale for most of most
+# bars. The strip lists everyone who shared the floor, with their spans.
+
+ov_lanes <- function() {
+  rbind(
+    lane_row("own", "1", 0, 600),    # the hovered player
+    lane_row("own", "2", 0, 600),    # on the whole stint
+    lane_row("own", "3", 300, 900),  # joins partway, stays past the end
+    lane_row("own", "4", 0, 200),    # leaves partway
+    lane_row("own", "5", 100, 150),  # entirely inside
+    lane_row("own", "6", 700, 900),  # no overlap at all
+    lane_row("opp", "7", 0, 600)     # other side, never counted
+  )
+}
+
+test_that("ribbon_stint_overlaps clips each teammate to the stint window", {
+  out <- ribbon_stint_overlaps(ov_lanes(), "own", "1", 0, 600)
+  expect_equal(out$start_elapsed[out$player_key == "3"], 300)
+  expect_equal(out$end_elapsed[out$player_key == "3"], 600)
+  expect_equal(out$end_elapsed[out$player_key == "4"], 200)
+  expect_equal(out$start_elapsed[out$player_key == "5"], 100)
+  expect_equal(out$end_elapsed[out$player_key == "5"], 150)
+})
+
+test_that("ribbon_stint_overlaps excludes the player, the other side and non-overlaps", {
+  out <- ribbon_stint_overlaps(ov_lanes(), "own", "1", 0, 600)
+  expect_false("1" %in% out$player_key)
+  expect_false("6" %in% out$player_key)
+  expect_false("7" %in% out$player_key)
+})
+
+test_that("ribbon_stint_overlaps orders by shared time, longest first", {
+  out <- ribbon_stint_overlaps(ov_lanes(), "own", "1", 0, 600)
+  expect_equal(out$player_key, c("2", "3", "4", "5"))
+  expect_equal(out$shared, c(600, 300, 200, 50))
+})
+
+test_that("ribbon_stint_overlaps keeps both spans when a teammate returns", {
+  # Teammate 2 subs out and back in while player 1 stays on the floor.
+  lanes <- rbind(
+    lane_row("own", "1", 0, 600),
+    lane_row("own", "2", 0, 100),
+    lane_row("own", "2", 400, 600)
+  )
+  out <- ribbon_stint_overlaps(lanes, "own", "1", 0, 600)
+  expect_equal(nrow(out), 2)
+  expect_equal(out$start_elapsed, c(0, 400))
+  expect_true(all(out$shared == 300))   # 100 + 200, on both rows
+})
+
+test_that("ribbon_stint_overlaps drops a zero-length touch at the boundary", {
+  # Teammate leaves exactly when this stint starts: they never shared the floor.
+  lanes <- rbind(lane_row("own", "1", 300, 600), lane_row("own", "2", 0, 300))
+  out <- ribbon_stint_overlaps(lanes, "own", "1", 300, 600)
+  expect_equal(nrow(out), 0)
+})
+
+test_that("ribbon_stint_overlaps returns zero typed rows when nothing overlaps", {
+  out <- ribbon_stint_overlaps(lane_row("own", "1", 0, 600), "own", "1", 0, 600)
+  expect_equal(nrow(out), 0)
+  expect_true(all(c("player_key", "player_label", "start_elapsed",
+                    "end_elapsed", "shared") %in% names(out)))
+})

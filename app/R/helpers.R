@@ -3618,3 +3618,43 @@ ribbon_stint_points <- function(stints, steps) {
   stints$pa <- (own_end - mar_end) - (own_start - mar_start)
   stints
 }
+
+
+# Teammates who shared the floor during one stint, clipped to its window.
+#
+# Keyed on player_key, NEVER on player_label: both leagues carry same-name /
+# different-id players on one team, and a name key would merge two people's
+# spans into one.
+#
+# A teammate can appear more than once -- they subbed out and back in while
+# this player stayed on -- so spans are kept separate while `shared` carries
+# that teammate's total across all of them, which is what the ordering uses.
+ribbon_stint_overlaps <- function(lanes, side, player_key, start_elapsed,
+                                  end_elapsed) {
+  empty <- data.frame(player_key = character(0), player_label = character(0),
+                      start_elapsed = numeric(0), end_elapsed = numeric(0),
+                      shared = numeric(0), stringsAsFactors = FALSE)
+  if (is.null(lanes) || !nrow(lanes)) return(empty)
+
+  o <- lanes[lanes$side == side & lanes$player_key != player_key, , drop = FALSE]
+  if (!nrow(o)) return(empty)
+
+  s <- pmax(as.numeric(o$start_elapsed), start_elapsed)
+  e <- pmin(as.numeric(o$end_elapsed), end_elapsed)
+  keep <- e > s
+  if (!any(keep)) return(empty)
+
+  out <- data.frame(
+    player_key = as.character(o$player_key[keep]),
+    player_label = as.character(o$player_label[keep]),
+    start_elapsed = s[keep],
+    end_elapsed = e[keep],
+    stringsAsFactors = FALSE
+  )
+  totals <- tapply(out$end_elapsed - out$start_elapsed, out$player_key, sum)
+  out$shared <- as.numeric(totals[out$player_key])
+
+  out <- out[order(-out$shared, out$player_key, out$start_elapsed), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
