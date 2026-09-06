@@ -37,8 +37,11 @@ EuroLeague read layer, both game-log tabs wired, and both security
 enumerations. Focused suite: **228 pass / 3 skip / 0 fail**.
 
 **On resume:** read the ledger tail first — it holds every ruling and every
-mutation-drill result. Remaining before merge: the security-apply run below,
-and the one open visual judgement in "Polish after Task 8".
+mutation-drill result, and it is more current than this file has ever been.
+
+**Exactly one thing stands between this branch and a merge:** the
+security-apply run in "Outstanding manual step" below. No code work is
+outstanding, no review finding is open, and no visual judgement is pending.
 
 Task 3's scoped re-review arrived just after the pause and closed all three
 findings, confirming the strengthened clamp test by mutation (flipping
@@ -75,6 +78,7 @@ Two plan defects were corrected during implementation:
 | Gutter header row, name hover, name as hover target | `694f375` |
 | Round-interval vertical scale on the margin curve | `70631eb` |
 | Band gap separating the margin band from both lane blocks | `3b31b73` |
+| Gaps above and below the band evened out | `8ab7ee9` |
 
 The scale change extracted `ribbon_margin_scale()` (the single source of
 `max_abs`, `interval` and `ticks`) and `ribbon_margin_y()` (the shared value
