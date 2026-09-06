@@ -3535,3 +3535,29 @@ add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
   )
   df
 }
+
+
+# ---------------- Stint ribbon: per-stint numbers ----------------
+# Value of a running-score step series at time t: the last row with
+# elapsed <= t, and 0 before the first row. Vectorised over t.
+#
+# `series` MUST be the reader's RAW step frame, never
+# ribbon_complete_margin()'s output. Completion collapses each second to one
+# row and pads both ends to close the drawn path; an as-of lookup must read
+# the recorded events, not the padding.
+#
+# Ties on `elapsed` are resolved by `order_key` and the LAST row wins, which
+# is what findInterval() returns for a non-decreasing vector with duplicates.
+ribbon_score_as_of <- function(series, t) {
+  t <- as.numeric(t)
+  if (is.null(series) || !NROW(series)) return(rep(0, length(t)))
+
+  ord <- order(as.numeric(series$elapsed), as.numeric(series$order_key))
+  el <- as.numeric(series$elapsed)[ord]
+  val <- as.numeric(series$value)[ord]
+
+  i <- findInterval(t, el)
+  out <- val[pmax(i, 1L)]
+  out[i < 1L] <- 0
+  as.numeric(out)
+}

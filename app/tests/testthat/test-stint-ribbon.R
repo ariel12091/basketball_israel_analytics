@@ -1091,3 +1091,54 @@ test_that("Tab 4 and Tab 11 ribbon output ids and SVG id_prefix never collide", 
   expect_true(nzchar(prefix11))
   expect_false(identical(prefix4, prefix11))
 })
+
+# ---------------- ribbon_score_as_of ----------------
+# The step-series lookup behind every per-stint number. It must read the RAW
+# reader series, never ribbon_complete_margin()'s padded output.
+
+steps_fixture <- function() {
+  data.frame(
+    elapsed   = c(30, 30, 95, 240, 240),
+    order_key = c(1, 2, 3, 4, 5),
+    value     = c(2, 4, 7, 9, 12),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("ribbon_score_as_of is 0 before the first row", {
+  expect_equal(ribbon_score_as_of(steps_fixture(), 0), 0)
+  expect_equal(ribbon_score_as_of(steps_fixture(), 29), 0)
+})
+
+test_that("ribbon_score_as_of takes the LAST row at a tied elapsed second", {
+  # Two events share second 30; the state after that second is 4, not 2.
+  expect_equal(ribbon_score_as_of(steps_fixture(), 30), 4)
+  expect_equal(ribbon_score_as_of(steps_fixture(), 240), 12)
+})
+
+test_that("ribbon_score_as_of carries the last value forward between rows", {
+  expect_equal(ribbon_score_as_of(steps_fixture(), 94), 4)
+  expect_equal(ribbon_score_as_of(steps_fixture(), 95), 7)
+  expect_equal(ribbon_score_as_of(steps_fixture(), 239), 7)
+})
+
+test_that("ribbon_score_as_of holds the final value after the last row", {
+  expect_equal(ribbon_score_as_of(steps_fixture(), 2400), 12)
+})
+
+test_that("ribbon_score_as_of is vectorised over t", {
+  expect_equal(ribbon_score_as_of(steps_fixture(), c(0, 30, 94, 2400)),
+               c(0, 4, 4, 12))
+})
+
+test_that("ribbon_score_as_of sorts an unordered series before reading it", {
+  s <- steps_fixture()[c(5, 1, 3, 2, 4), , drop = FALSE]
+  expect_equal(ribbon_score_as_of(s, c(30, 95, 240)), c(4, 7, 12))
+})
+
+test_that("ribbon_score_as_of returns zeros for an empty or NULL series", {
+  expect_equal(ribbon_score_as_of(NULL, c(1, 2)), c(0, 0))
+  empty <- data.frame(elapsed = numeric(0), order_key = numeric(0),
+                      value = numeric(0))
+  expect_equal(ribbon_score_as_of(empty, c(1, 2)), c(0, 0))
+})
