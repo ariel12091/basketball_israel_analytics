@@ -1503,6 +1503,20 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   stroke-dasharray: 3 3;
 }
 
+/* Round-interval gridlines behind the curve (final review, M7): fainter
+   than .ibpl-ribbon-zero so the tied baseline stays the visual reference. */
+.ibpl-ribbon-scale {
+  stroke: var(--ibpl-border);
+  stroke-width: 1;
+  opacity: 0.25;
+}
+
+.ibpl-ribbon-scale-label {
+  fill: var(--ibpl-text-faint);
+  font-family: var(--ibpl-font-body);
+  font-size: 10px;
+}
+
 .ibpl-ribbon-margin-base,
 .ibpl-ribbon-margin-focus {
   fill: none;

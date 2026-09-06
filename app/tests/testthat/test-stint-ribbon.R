@@ -324,6 +324,58 @@ test_that("ribbon_margin_path never emits NA or NaN into the path, even with bad
   expect_match(d, "^M ")
 })
 
+# ---- ribbon_margin_scale(): the shared max_abs/interval/ticks helper ------
+# (added M7, 2026-09-06) -- ribbon_margin_path() and the scale gridlines in
+# build_stint_ribbon_svg() both consume this ONE function, so alignment
+# between the curve and the gridlines is structural, not coincidental.
+
+margin_of <- function(mx) data.frame(elapsed = c(0, 1), margin = c(0, mx))
+
+test_that("ribbon_margin_scale picks the smallest ladder rung with max_abs/interval <= 4", {
+  # Mutation check: hardcode `interval <- 25` unconditionally in
+  # ribbon_margin_scale() -- the 6/18/45 cases below fail (still pass the
+  # >100 case by coincidence), confirming this test actually pins the ladder
+  # logic rather than just checking "some interval was returned".
+  expect_identical(ribbon_margin_scale(margin_of(6))$interval, 2)
+  expect_identical(ribbon_margin_scale(margin_of(18))$interval, 5)
+  expect_identical(ribbon_margin_scale(margin_of(45))$interval, 20)
+  # 150 / 25 = 6 > 4 -- no ladder rung satisfies the <=4 target, so this
+  # must fall back to 25 rather than silently picking a rung that violates
+  # the "2-4 gridlines per side" spec.
+  expect_identical(ribbon_margin_scale(margin_of(150))$interval, 25)
+})
+
+test_that("ribbon_margin_scale ticks never exceed max_abs and never include zero", {
+  # Mutation check: drop the "<= max_abs" filter (e.g. use
+  # `seq_len(ceiling(max_abs / interval))` instead of `floor`) -- the 6 and 45
+  # cases below then emit a tick past max_abs and this fails.
+  for (mx in c(6, 18, 45, 150, 0.5)) {
+    scale <- ribbon_margin_scale(margin_of(mx))
+    expect_true(all(abs(scale$ticks) <= scale$max_abs))
+    expect_false(0 %in% scale$ticks)
+  }
+})
+
+test_that("ribbon_margin_scale returns no ticks and max_abs = 1 for empty/all-zero margin", {
+  # Mirrors ribbon_margin_path's own empty/all-zero guard exactly -- these
+  # two functions must never compute a different max_abs from the same data.
+  empty <- ribbon_margin_scale(data.frame(elapsed = numeric(0), margin = numeric(0)))
+  expect_identical(empty$max_abs, 1)
+  expect_length(empty$ticks, 0)
+
+  zero <- ribbon_margin_scale(data.frame(elapsed = c(0, 600, 1200), margin = c(0, 0, 0)))
+  expect_identical(zero$max_abs, 1)
+  expect_length(zero$ticks, 0)
+})
+
+test_that("ribbon_margin_path and ribbon_margin_scale agree on max_abs for the same data", {
+  # The extraction's whole point: a single source of truth. This directly
+  # guards against a future edit reintroducing a second, independent max_abs
+  # computation in either function.
+  m <- data.frame(elapsed = c(0, 600, 1200), margin = c(0, 17, -9))
+  expect_identical(ribbon_margin_scale(m)$max_abs, 17)
+})
+
 test_that("ribbon_complete_margin drops non-finite margins rather than propagating them", {
   m <- data.frame(elapsed = c(0, 60, 120), margin = c(0, NA, 4), order_key = c(1, 2, 3))
   out <- ribbon_complete_margin(m, total_seconds = 2400)
@@ -405,6 +457,125 @@ test_that("the zero-margin baseline is drawn and labelled", {
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
   expect_match(html, "ibpl-ribbon-zero", fixed = TRUE)
   expect_match(html, ">tied<", fixed = TRUE)
+})
+
+# ---- Round-interval scale gridlines (M7, added 2026-09-06) ----------------
+
+test_that("build_stint_ribbon_svg emits one scale gridline and one label per tick, correctly signed", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  scale_info <- ribbon_margin_scale(f$margin)
+  expect_gt(length(scale_info$ticks), 0)
+
+  # Anchored on the opening `<line class="ibpl-ribbon-scale"` (with its
+  # closing quote) so this does not also count "ibpl-ribbon-scale-label".
+  expect_identical(
+    lengths(regmatches(html, gregexpr('<line class="ibpl-ribbon-scale"', html, fixed = TRUE))),
+    length(scale_info$ticks))
+  expect_identical(
+    lengths(regmatches(html, gregexpr('class="ibpl-ribbon-scale-label"', html, fixed = TRUE))),
+    length(scale_info$ticks))
+
+  # Mutation check: format the label without the "+" flag (e.g. plain
+  # `sprintf("%d", v)`) -- the positive-tick lookups below then fail to find
+  # ">2<"/ ">4<" (they only find "-2"/"-4" style negatives), confirming this
+  # actually checks the sign, not just that some number is present.
+  for (v in scale_info$ticks) {
+    label <- sprintf("%+d", as.integer(round(v)))
+    expect_match(html, paste0(">", label, "<"), fixed = TRUE)
+  }
+})
+
+test_that("scale gridlines never fall outside the band and never leak NaN", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_false(grepl("NaN", html, fixed = TRUE))
+
+  ys <- as.numeric(regmatches(html, gregexpr(
+    '(?<=<line class="ibpl-ribbon-scale" x1="150" x2="1000" y1=")[0-9.]+', html, perl = TRUE))[[1]])
+  expect_gt(length(ys), 0)
+  expect_true(all(ys >= 0))
+})
+
+test_that("an all-zero or empty margin renders no scale gridlines and does not crash", {
+  f <- ribbon_fixture()
+  f$margin <- data.frame(elapsed = c(0, 600, 1200), margin = c(0, 0, 0))
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  # "ibpl-ribbon-scale" is a substring of "ibpl-ribbon-scale-label", so this
+  # single check rules out both the lines and the labels.
+  expect_false(grepl("ibpl-ribbon-scale", html, fixed = TRUE))
+  expect_false(grepl("NaN", html, fixed = TRUE))
+
+  f$margin <- data.frame(elapsed = numeric(0), margin = numeric(0))
+  html2 <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_false(grepl("ibpl-ribbon-scale", html2, fixed = TRUE))
+  expect_false(grepl("NaN", html2, fixed = TRUE))
+})
+
+test_that("a scale gridline's y agrees with where the curve maps the same margin value", {
+  # The alignment guarantee itself: choose a margin value that lands EXACTLY
+  # on a tick (10, with max_abs also 10 -> interval 5 -> ticks -10,-5,5,10),
+  # then compare the curve's own y at that point against the gridlines'
+  # actual y attributes in the built SVG -- not a recomputed formula, so a
+  # bug that changes the mapping in only one of the two call sites is
+  # caught here.
+  f <- ribbon_fixture()
+  f$margin <- data.frame(elapsed = c(0, 600), margin = c(0, 10))
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+
+  path_tag <- regmatches(html, regexpr(
+    '<path class="ibpl-ribbon-margin-base" d="[^"]+"', html))
+  expect_true(nzchar(path_tag))
+  d <- sub('.*d="([^"]+)".*', "\\1", path_tag)
+  tokens <- strsplit(d, " ")[[1]]
+  # "M x0 y0 H x1 V y1" -- margin=10 at elapsed=600 is the point right after
+  # the first "V".
+  v_idx <- which(tokens == "V")
+  expect_gt(length(v_idx), 0)
+  curve_y <- as.numeric(tokens[v_idx[1] + 1])
+
+  grid_ys <- as.numeric(regmatches(html, gregexpr(
+    '(?<=<line class="ibpl-ribbon-scale" x1="150" x2="1000" y1=")[0-9.]+', html, perl = TRUE))[[1]])
+  expect_true(any(abs(grid_ys - curve_y) < 0.05))
+})
+
+test_that("the chart carries genuine breathing room top and bottom, not just a tight fit", {
+  # Follow-up to M7 (2026-09-06): the own-team label and the period labels
+  # used to sit within a couple of units of the SVG's top/bottom edges.
+  # RIBBON_PAD_TOP/RIBBON_PAD_BOTTOM are added at the couple of places
+  # build_stint_ribbon_svg() anchors its y=0 origin (and at the viewBox
+  # height), so every drawn element -- lanes, labels, the margin band, the
+  # zero baseline, the scale gridlines, period lines/labels -- should have
+  # shifted down together, and the viewBox should have grown to match.
+  #
+  # Deliberately compares against a hardcoded floor (5), not against the
+  # live RIBBON_PAD_TOP/RIBBON_PAD_BOTTOM constants: comparing "min(ys) >=
+  # RIBBON_PAD_TOP" would be tautological, since RIBBON_PAD_TOP IS the
+  # topmost coordinate by construction -- mutating the constant to 0 would
+  # move both sides of that comparison together and it would keep passing.
+  # Mutation check: set RIBBON_PAD_TOP <- 0 in helpers.R -- the top-most
+  # drawn y collapses to 0 and the first assertion below fails. Set
+  # RIBBON_PAD_BOTTOM <- 0 instead -- the gap between the bottom-most drawn
+  # y and the viewBox height collapses to 0 and the second fails.
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+
+  vb <- regmatches(html, regexpr('viewBox="0 0 [0-9]+ [0-9.]+"', html, perl = TRUE))
+  expect_true(nzchar(vb))
+  vb_height <- as.numeric(sub('.*viewBox="0 0 [0-9]+ ([0-9.]+)".*', "\\1", vb))
+
+  # Every y-ish coordinate actually drawn: y="..", y1="..", y2="..". \\b
+  # keeps this off "opacity=" and similar (no word boundary before that y).
+  y_attrs <- regmatches(html, gregexpr('\\by[12]?="[0-9.]+"', html, perl = TRUE))[[1]]
+  expect_gt(length(y_attrs), 0)
+  ys <- as.numeric(sub('.*="([0-9.]+)"', "\\1", y_attrs))
+
+  # Nothing is clipped at the bottom: the viewBox is taller than the
+  # bottom-most drawn coordinate.
+  expect_gt(vb_height, max(ys))
+
+  expect_gt(min(ys), 5)
+  expect_gt(vb_height - max(ys), 5)
 })
 
 test_that("period boundaries are labelled, not merely drawn", {
@@ -497,7 +668,8 @@ test_that("app.css styles every class the SVG builder emits", {
   for (cls in c("ibpl-ribbon", "ibpl-ribbon-lane", "ibpl-ribbon-margin-base",
                 "ibpl-ribbon-margin-focus", "ibpl-ribbon-period",
                 "ibpl-ribbon-name", "ibpl-ribbon-team", "ibpl-ribbon-zero",
-                "ibpl-ribbon-period-label")) {
+                "ibpl-ribbon-period-label", "ibpl-ribbon-scale",
+                "ibpl-ribbon-scale-label")) {
     # fixed=TRUE substring matching is vacuously satisfied when `cls` is only
     # a PREFIX of a different, longer class that is separately styled --
     # e.g. "ibpl-ribbon-zero" is a substring of "ibpl-ribbon-zero-label",

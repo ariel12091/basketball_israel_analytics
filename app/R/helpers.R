@@ -3217,10 +3217,66 @@ RIBBON_MARGIN_HEIGHT <- 90
 # the margin band instead of landing inside it.
 RIBBON_HEADER <- 20
 
+# Breathing room above/below the whole chart (final review follow-up,
+# 2026-09-06): without these the own-team label's ascender (12px font at
+# y=10) sat a couple of units from the SVG's top edge, and the period labels
+# (at total_h + 12) sat almost on the bottom edge. Both are added ONCE, at
+# the two places build_stint_ribbon_svg() anchors its y=0 origin
+# (margin_top's leading term and the own-side lanes' abs_y) and at the
+# viewBox height -- everything else (opp lanes, the margin band, the zero
+# baseline, the new scale gridlines, period lines/labels) is computed FROM
+# those, so it all shifts down together automatically.
+RIBBON_PAD_TOP <- 14
+RIBBON_PAD_BOTTOM <- 16
+
 ribbon_clip_id <- function(id_prefix, side, player_key) {
   slug <- gsub("[^A-Za-z0-9_-]+", "-", as.character(player_key))
   slug <- gsub("(^-+)|(-+$)", "", slug)
   paste0(id_prefix, "-on-", side, "-", slug)
+}
+
+# The margin curve normalises to each game's own max_abs so a 5-point game
+# and a 25-point blowout would otherwise draw identically (final review,
+# M7). ribbon_margin_path() and the scale gridlines in
+# build_stint_ribbon_svg() must derive max_abs from this ONE function --
+# if either recomputed it independently, the two could drift and the
+# gridlines would stop lining up with the curve they are meant to scale.
+ribbon_margin_scale <- function(margin) {
+  ladder <- c(2, 5, 10, 20, 25)
+
+  if (is.null(margin) || !nrow(margin)) {
+    finite_vals <- numeric(0)
+  } else {
+    keep <- is.finite(margin$elapsed) & is.finite(margin$margin)
+    finite_vals <- margin$margin[keep]
+  }
+
+  # Same guard as the pre-extraction code: an empty or all-zero margin must
+  # not divide by zero (or by -Inf's max-of-nothing) downstream.
+  max_abs <- suppressWarnings(max(abs(finite_vals), na.rm = TRUE))
+  if (!is.finite(max_abs) || max_abs <= 0) max_abs <- 1
+
+  # Smallest ladder rung that keeps the band to 2-4 gridlines per side.
+  # Quotient falls as the rung grows, so the qualifying rungs are always a
+  # suffix of the (ascending) ladder -- the first one found is the smallest.
+  qualifies <- max_abs / ladder <= 4
+  interval <- if (any(qualifies)) min(ladder[qualifies]) else 25
+
+  n_per_side <- floor(max_abs / interval)
+  ticks <- if (n_per_side >= 1) {
+    pos <- interval * seq_len(n_per_side)
+    c(-rev(pos), pos)
+  } else {
+    numeric(0)
+  }
+
+  list(max_abs = max_abs, interval = interval, ticks = ticks)
+}
+
+# The one place a margin value becomes a y coordinate in the band -- shared
+# by the curve and the scale gridlines so both use the same mapping.
+ribbon_margin_y <- function(value, max_abs, top, height) {
+  top + height / 2 - (value / max_abs) * (height / 2)
 }
 
 ribbon_margin_path <- function(margin, total_seconds, width, top, height,
@@ -3236,11 +3292,10 @@ ribbon_margin_path <- function(margin, total_seconds, width, top, height,
   margin <- margin[is.finite(margin$elapsed) & is.finite(margin$margin), , drop = FALSE]
   if (!nrow(margin)) return("")
 
-  max_abs <- suppressWarnings(max(abs(margin$margin), na.rm = TRUE))
-  if (!is.finite(max_abs) || max_abs <= 0) max_abs <- 1
+  max_abs <- ribbon_margin_scale(margin)$max_abs
 
   x <- gutter + margin$elapsed * ((width - gutter) / total_seconds)
-  y <- top + height / 2 - (margin$margin / max_abs) * (height / 2)
+  y <- ribbon_margin_y(margin$margin, max_abs, top, height)
 
   parts <- sprintf("M %.2f %.2f", x[1], y[1])
   if (length(x) > 1) {
@@ -3264,11 +3319,11 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
   own <- lanes[lanes$side == "own", , drop = FALSE]
   opp <- lanes[lanes$side == "opp", , drop = FALSE]
   own_h <- if (nrow(own)) max(own$y + own$h) else 0
-  margin_top <- RIBBON_HEADER + own_h + RIBBON_LANE_GAP * 2
+  margin_top <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h + RIBBON_LANE_GAP * 2
   opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_LANE_GAP * 2 + RIBBON_HEADER
   total_h <- opp_top + if (nrow(opp)) max(opp$y + opp$h) else 0
 
-  lanes$abs_y <- ifelse(lanes$side == "own", lanes$y + RIBBON_HEADER, opp_top + lanes$y)
+  lanes$abs_y <- ifelse(lanes$side == "own", lanes$y + RIBBON_PAD_TOP + RIBBON_HEADER, opp_top + lanes$y)
   lanes$clip <- ribbon_clip_id(id_prefix, lanes$side, lanes$player_key)
 
   path_d <- ribbon_margin_path(margin, total_seconds, RIBBON_WIDTH,
@@ -3288,7 +3343,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
   period_lines <- lapply(bounds[-length(bounds)], function(b) {
     bx <- RIBBON_GUTTER + b * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
     tags$line(class = "ibpl-ribbon-period",
-              x1 = bx, x2 = bx, y1 = 0, y2 = total_h)
+              x1 = bx, x2 = bx, y1 = RIBBON_PAD_TOP, y2 = total_h)
   })
 
   lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
@@ -3323,7 +3378,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
   # (row starts RIBBON_HEADER above opp_top), instead of sitting on the
   # margin band's bottom edge.
   team_labels <- list(
-    tags$text(class = "ibpl-ribbon-team", x = 0, y = 10, meta$own_team %||% "Own"),
+    tags$text(class = "ibpl-ribbon-team", x = 0, y = RIBBON_PAD_TOP + 10, meta$own_team %||% "Own"),
     tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - RIBBON_HEADER + 10,
               meta$opp_team %||% "Opponent")
   )
@@ -3336,6 +3391,26 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
               y = zero_y + 3, `text-anchor` = "end", "tied")
   )
 
+  # Round-interval gridlines behind the curve (final review, M7): the curve
+  # is normalised to max_abs alone, so without these a 5-point game and a
+  # 25-point blowout drew identically. Ticks come from ribbon_margin_scale()
+  # -- the SAME function ribbon_margin_path() used for max_abs above -- so
+  # the lines are structurally guaranteed to sit where the curve says they
+  # should, not just coincidentally aligned. Zero itself is excluded from
+  # `ticks`; the "tied" baseline above already draws it, and .ibpl-ribbon-zero
+  # stays visually dominant over the fainter .ibpl-ribbon-scale lines.
+  scale_info <- ribbon_margin_scale(margin)
+  scale_lines <- lapply(scale_info$ticks, function(v) {
+    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, RIBBON_MARGIN_HEIGHT)
+    tags$line(class = "ibpl-ribbon-scale", x1 = RIBBON_GUTTER, x2 = RIBBON_WIDTH,
+              y1 = y, y2 = y)
+  })
+  scale_labels <- lapply(scale_info$ticks, function(v) {
+    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, RIBBON_MARGIN_HEIGHT)
+    tags$text(class = "ibpl-ribbon-scale-label", x = RIBBON_GUTTER - 8,
+              y = y + 3, `text-anchor` = "end", sprintf("%+d", as.integer(round(v))))
+  })
+
   period_labels <- lapply(seq_along(bounds), function(k) {
     bx <- RIBBON_GUTTER + bounds[k] * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
     tags$text(class = "ibpl-ribbon-period-label", x = bx - 4, y = total_h + 12,
@@ -3345,17 +3420,19 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
 
   tags$svg(
     xmlns = "http://www.w3.org/2000/svg",
-    viewBox = sprintf("0 0 %d %.0f", RIBBON_WIDTH, total_h + 16),
+    viewBox = sprintf("0 0 %d %.0f", RIBBON_WIDTH, total_h + 12 + RIBBON_PAD_BOTTOM),
     class = "ibpl-ribbon",
     role = "img",
     `aria-label` = meta$game_label,
     tags$defs(clip_paths),
     period_lines,
     baseline,
+    scale_lines,
     tags$path(class = "ibpl-ribbon-margin-base", d = path_d),
     tags$path(class = "ibpl-ribbon-margin-focus", d = path_d),
     team_labels,
     lane_labels,
+    scale_labels,
     period_labels,
     lane_rects
   )
