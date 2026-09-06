@@ -1571,3 +1571,31 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
    have been dimmed out of focus. */
 .ibpl-ribbon.is-focused .ibpl-ribbon-lane .ibpl-ribbon-num { opacity: 0.3; }
 .ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active .ibpl-ribbon-num { opacity: 1; }
+
+/* Hover band: the vertical slice of the chart the hovered stint occupies.
+   Painted behind everything, so the lanes and the curve stay readable. */
+.ibpl-ribbon-band {
+  fill: var(--ibpl-accent);
+  opacity: 0.08;
+  pointer-events: none;
+}
+
+/* A teammate's bar inside the band. Brighter than the dimmed-out lanes but
+   below the hovered lane itself, so the three states stay distinguishable:
+   hovered (1.0) > overlapping (0.65) > not on the floor (0.3). */
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-overlap rect { opacity: 0.65; }
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-overlap .ibpl-ribbon-num { opacity: 0.65; }
+
+.ibpl-ribbon-detail {
+  margin-top: 10px;
+  padding: 8px 10px;
+  border-top: 1px solid var(--ibpl-border);
+  font-family: var(--ibpl-font-mono);
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--ibpl-text);
+  min-height: 3.2em;   /* reserve both lines so the chart never jumps */
+}
+
+.ibpl-ribbon-detail-with,
+.ibpl-ribbon-detail-rest { color: var(--ibpl-text-muted); }

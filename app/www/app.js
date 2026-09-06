@@ -417,6 +417,83 @@
 
 // ---------------- Stint ribbon hover ----------------
 (function() {
+  // laneFrom() deliberately also matches the gutter <text> labels, which
+  // carry data-clip so a name works as an index into the lanes. Those
+  // elements have NO data-start/data-end/data-player, so every function
+  // below that reads a stint's attributes must reject them -- otherwise
+  // hovering a name renders "undefined · undefined · undefined" in the
+  // strip and bands a NaN-wide window.
+  function isStint(lane) {
+    return !!(lane && lane.dataset && lane.dataset.start !== undefined);
+  }
+
+  function bandFor(svg) {
+    var band = svg.querySelector(".ibpl-ribbon-band");
+    if (!band) {
+      band = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+      band.setAttribute("class", "ibpl-ribbon-band");
+      // First child so it paints behind every lane, curve and gridline.
+      svg.insertBefore(band, svg.firstChild);
+    }
+    return band;
+  }
+
+  // The lane <g> elements carry their own x/width, so the band's geometry
+  // comes from the hovered lane's rect rather than from a seconds->px
+  // conversion the script would have to keep in step with the R constants.
+  function setBand(svg, lane) {
+    var band = bandFor(svg);
+    if (!isStint(lane)) { band.setAttribute("width", "0"); return; }
+    var r = lane.querySelector("rect");
+    if (!r) { band.setAttribute("width", "0"); return; }
+    var vb = svg.viewBox.baseVal;
+    band.setAttribute("x", r.getAttribute("x"));
+    band.setAttribute("width", r.getAttribute("width"));
+    band.setAttribute("y", vb.y);
+    band.setAttribute("height", vb.height);
+  }
+
+  function setOverlaps(svg, lane) {
+    var lit = svg.querySelectorAll(".ibpl-ribbon-lane.is-overlap");
+    for (var i = 0; i < lit.length; i++) lit[i].classList.remove("is-overlap");
+    if (!isStint(lane)) return;
+
+    var s = Number(lane.dataset.start);
+    var e = Number(lane.dataset.end);
+    var side = lane.classList.contains("is-own") ? "is-own" : "is-opp";
+    var lanes = svg.querySelectorAll(".ibpl-ribbon-lane." + side);
+    for (var k = 0; k < lanes.length; k++) {
+      var o = lanes[k];
+      if (o === lane) continue;
+      // A shared instant is not shared floor time: require a real overlap.
+      if (Math.min(Number(o.dataset.end), e) > Math.max(Number(o.dataset.start), s)) {
+        o.classList.add("is-overlap");
+      }
+    }
+  }
+
+  function setDetail(svg, lane) {
+    var host = svg.parentNode && svg.parentNode.querySelector(".ibpl-ribbon-detail");
+    // Keep the last contents in place on exit (!lane) AND when the pointer
+    // is on a gutter name (!isStint) -- a name is a whole-game index, not a
+    // stint, and has none of the attributes read below.
+    if (!host || !isStint(lane)) return;
+    var d = lane.dataset;
+    var score = (d.pf !== "" && d.pa !== "") ? "  " + d.pf + "-" + d.pa : "";
+    var head = d.player + "  ·  " + d.window + "  ·  " + d.pm + score;
+    host.innerHTML = "";
+    var h = document.createElement("div");
+    h.className = "ibpl-ribbon-detail-head";
+    h.textContent = head;
+    host.appendChild(h);
+    if (d.with) {
+      var w = document.createElement("div");
+      w.className = "ibpl-ribbon-detail-with";
+      w.textContent = "with  " + d.with;
+      host.appendChild(w);
+    }
+  }
+
   function setFocus(svg, lane) {
     var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
     if (!focus) return;
@@ -436,6 +513,10 @@
       focus.removeAttribute("clip-path");
       svg.classList.remove("is-focused");
     }
+
+    setBand(svg, lane);
+    setOverlaps(svg, lane);
+    setDetail(svg, lane);
   }
 
   function laneFrom(target) {
