@@ -1,6 +1,6 @@
 # Stint Ribbon — Handoff, 2026-09-05
 
-Paused mid-execution after Task 6. Branch `shiny/stint-ribbon`, unmerged, not deployed.
+Paused mid-execution after Task 7. Branch `shiny/stint-ribbon`, unmerged, not deployed.
 
 **Documents**
 - Spec: `docs/superpowers/specs/2026-09-05-stint-ribbon-design.md`
@@ -26,16 +26,15 @@ plotting library, one database round trip per open.
 | 4 — SVG builder | complete, focused tests passing |
 | 5 — readers | complete, live DB verified |
 | 6 — CSS + hover JS | complete, focused tests + JS parse passing |
-| 7 — Tab 4 wiring | not started |
+| 7 — Tab 4 wiring | complete, focused tests + manual UI verified |
 | 8 — Tab 11 wiring | not started |
 
 Shipped so far: the pure transforms, accessible inline-SVG builder, both
 single-round-trip readers, ribbon CSS and hover/focus/touch interaction, 2
 EuroLeague views, and both security enumerations.
 
-**On resume:** read the ledger first, then start at **Task 7 (Tab 4 wiring)**.
-Build the ribbon date link from source `df` before `select()` drops `game_id`
-and `team_id`, in both Summary and Four Factors modes.
+**On resume:** read the ledger first, then start at **Task 8 (Tab 11 wiring)**.
+Reuse the shared link and modal path with input id `euro_gl_ribbon_click`.
 
 Task 3's scoped re-review arrived just after the pause and closed all three
 findings, confirming the strengthened clamp test by mutation (flipping
@@ -48,6 +47,7 @@ findings, confirming the strengthened clamp test by mutation (flipping
 | 4 | `30f761b` | focused suite passed; append-only helper diff; `helpers.R` retained 2,670 CR bytes |
 | 5 | `def8a3d` | focused suite passed with only DB-gated skips; both live readers verified |
 | 6 | `a67680f` | focused suite passed; `node --check app/www/app.js` passed |
+| 7 | `6645f9c` | focused suite and R/JS parse checks passed; user manually verified the rendered UI |
 
 Task 5 live measurements (three timed opens per league): Israeli game 115/team
 7 returned 350 raw lane rows and 341 margin states at 370.3 ms median;
