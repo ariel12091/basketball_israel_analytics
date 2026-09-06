@@ -1151,9 +1151,11 @@ pts_steps <- function(elapsed, own, opp) {
 }
 
 pts_stint <- function(start_elapsed, end_elapsed) {
-  data.frame(side = "own", player_key = "1", player_label = "Player 1",
-             is_starter = TRUE, start_elapsed = start_elapsed,
-             end_elapsed = end_elapsed, stringsAsFactors = FALSE)
+  n <- length(start_elapsed)
+  data.frame(side = rep("own", n), player_key = rep("1", n),
+             player_label = rep("Player 1", n), is_starter = rep(TRUE, n),
+             start_elapsed = start_elapsed, end_elapsed = end_elapsed,
+             stringsAsFactors = FALSE)
 }
 
 test_that("ribbon_stint_points takes net differences across the window", {
