@@ -420,7 +420,35 @@ test_that("period boundaries are labelled, not merely drawn", {
 test_that("each lane carries an explicit aria-label, not just a title", {
   f <- ribbon_fixture()
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
-  expect_identical(lengths(regmatches(html, gregexpr('aria-label="A Cohen', html))), 1L)
+  # The gutter label for the same player ALSO carries an aria-label (it is a
+  # hover/keyboard target of its own, doubling as a 20-lane index), so the
+  # substring now appears twice -- once on the <g> lane, once on the <text>
+  # label. Anchored to the enclosing tag so a regression that drops either
+  # one specifically (not just the whole mechanism) is still caught.
+  expect_identical(
+    lengths(regmatches(html, gregexpr('<g[^>]*aria-label="A Cohen', html, perl = TRUE))),
+    1L)
+  expect_identical(
+    lengths(regmatches(html, gregexpr('<text[^>]*aria-label="A Cohen', html, perl = TRUE))),
+    1L)
+})
+
+test_that("a lane's gutter label carries the same data-clip as its lane", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  # Isolate the <g ...> opening tag for the "A Cohen" lane (lookahead makes
+  # the aria-label check order-independent of the data-clip attribute), pull
+  # its data-clip value, then assert a <text class="ibpl-ribbon-name"> exists
+  # with that EXACT same value -- not just that some data-clip exists
+  # somewhere (every lane has one; that alone would pass even if the label's
+  # value pointed at a different lane).
+  lane_tag <- regmatches(html, regexpr(
+    '<g(?=[^>]*aria-label="A Cohen)[^>]*data-clip="[^"]+"[^>]*>', html, perl = TRUE))
+  expect_true(nzchar(lane_tag))
+  clip_id <- sub('.*data-clip="([^"]+)".*', "\\1", lane_tag)
+  expect_match(html,
+               sprintf('<text class="ibpl-ribbon-name"[^>]*data-clip="%s"', clip_id),
+               perl = TRUE)
 })
 
 test_that("each lane carries a title for tooltip and screen readers", {
@@ -484,6 +512,52 @@ test_that("app.css styles every class the SVG builder emits", {
     expect_true(grepl(paste0(cls, "(?![-\\w])"), css, perl = TRUE),
                 info = paste("missing ribbon style for", cls))
   }
+})
+
+test_that("app.css styles the active gutter label, not just the active lane", {
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  # Anchored with \\b so a superstring class (e.g. a future
+  # ".ibpl-ribbon-name.is-active-foo") cannot satisfy this the way fixed=TRUE
+  # substring matching would.
+  expect_match(css, "\\.ibpl-ribbon-name\\.is-active\\b")
+})
+
+test_that("the team label no longer shares a baseline with lane 1", {
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  # Assert the GEOMETRIC relationship, not a hardcoded pixel: the own-team
+  # label must clear lane 1's label by at least a full header row. A fixed
+  # `y == 10` assertion would keep passing even if a future change shrank
+  # the header back down to nothing.
+  extract_y <- function(tag_pattern) {
+    tag <- regmatches(html, regexpr(tag_pattern, html, perl = TRUE))
+    as.numeric(sub('.*\\by="([0-9.]+)".*', "\\1", tag))
+  }
+  team_y <- extract_y('<text class="ibpl-ribbon-team"[^>]*>')
+  lane1_y <- extract_y('<text class="ibpl-ribbon-name"[^>]*>')
+  expect_true(lane1_y - team_y >= RIBBON_HEADER)
+})
+
+test_that("app.js resolves hover targets by data-clip, not only the lane class", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  # laneFrom() must match a gutter label too: a <text data-clip="..."> has no
+  # .ibpl-ribbon-lane class of its own, so a hover on the label would
+  # otherwise resolve to nothing.
+  lane_from <- regmatches(js, regexpr(
+    "function laneFrom\\(target\\) \\{(.|\n)*?\\n  \\}", js, perl = TRUE))
+  expect_true(nzchar(lane_from))
+  expect_match(lane_from, '.closest(".ibpl-ribbon-lane, [data-clip]")', fixed = TRUE)
+
+  # setFocus()'s mates selector must widen the same way, or the label lights
+  # up as a hover TARGET (laneFrom finds it) without lighting up as a hover
+  # RESULT (its own mates query never selects it back).
+  set_focus <- regmatches(js, regexpr(
+    "function setFocus\\(svg, lane\\) \\{(.|\n)*?\\n  \\}", js, perl = TRUE))
+  expect_true(nzchar(set_focus))
+  expect_match(set_focus, "svg.querySelectorAll('[data-clip=\"' + lane.dataset.clip + '\"]')",
+               fixed = TRUE)
 })
 
 test_that("app.js swaps clip-path rather than recomputing geometry", {

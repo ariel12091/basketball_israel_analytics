@@ -3211,6 +3211,12 @@ RIBBON_LANE_HEIGHT <- 14
 RIBBON_LANE_GAP <- 3
 RIBBON_MARGIN_HEIGHT <- 90
 
+# Row above the lanes reserved for the team name, so it never shares a
+# baseline with the first lane label (both live in the same gutter column).
+# Reused as the clearance above the opponent block too, so that label clears
+# the margin band instead of landing inside it.
+RIBBON_HEADER <- 20
+
 ribbon_clip_id <- function(id_prefix, side, player_key) {
   slug <- gsub("[^A-Za-z0-9_-]+", "-", as.character(player_key))
   slug <- gsub("(^-+)|(-+$)", "", slug)
@@ -3258,11 +3264,11 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
   own <- lanes[lanes$side == "own", , drop = FALSE]
   opp <- lanes[lanes$side == "opp", , drop = FALSE]
   own_h <- if (nrow(own)) max(own$y + own$h) else 0
-  margin_top <- own_h + RIBBON_LANE_GAP * 2
-  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_LANE_GAP * 2
+  margin_top <- RIBBON_HEADER + own_h + RIBBON_LANE_GAP * 2
+  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_LANE_GAP * 2 + RIBBON_HEADER
   total_h <- opp_top + if (nrow(opp)) max(opp$y + opp$h) else 0
 
-  lanes$abs_y <- ifelse(lanes$side == "own", lanes$y, opp_top + lanes$y)
+  lanes$abs_y <- ifelse(lanes$side == "own", lanes$y + RIBBON_HEADER, opp_top + lanes$y)
   lanes$clip <- ribbon_clip_id(id_prefix, lanes$side, lanes$player_key)
 
   path_d <- ribbon_margin_path(margin, total_seconds, RIBBON_WIDTH,
@@ -3303,14 +3309,22 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
 
   first_row <- !duplicated(paste(lanes$side, lanes$player_key))
   lane_labels <- lapply(which(first_row), function(i) {
+    secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
+    label <- sprintf("%s, %.0f:%02.0f on the floor",
+                     lanes$player_label[i], secs %/% 60, secs %% 60)
     tags$text(class = "ibpl-ribbon-name", x = RIBBON_GUTTER - 8,
               y = lanes$abs_y[i] + lanes$h[i] - 3, `text-anchor` = "end",
+              `data-clip` = lanes$clip[i], tabindex = "0",
+              `aria-label` = label,
               lanes$player_label[i])
   })
 
+  # The opponent label gets the same header-row clearance as the own label
+  # (row starts RIBBON_HEADER above opp_top), instead of sitting on the
+  # margin band's bottom edge.
   team_labels <- list(
     tags$text(class = "ibpl-ribbon-team", x = 0, y = 10, meta$own_team %||% "Own"),
-    tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - 6,
+    tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - RIBBON_HEADER + 10,
               meta$opp_team %||% "Opponent")
   )
 

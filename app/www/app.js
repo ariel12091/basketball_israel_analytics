@@ -421,13 +421,15 @@
     var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
     if (!focus) return;
 
-    var active = svg.querySelectorAll(".ibpl-ribbon-lane.is-active");
+    var active = svg.querySelectorAll("[data-clip].is-active");
     for (var i = 0; i < active.length; i++) active[i].classList.remove("is-active");
 
     if (lane && lane.dataset.clip) {
       focus.setAttribute("clip-path", "url(#" + lane.dataset.clip + ")");
-      var mates = svg.querySelectorAll(
-        '.ibpl-ribbon-lane[data-clip="' + lane.dataset.clip + '"]');
+      // [data-clip] rather than .ibpl-ribbon-lane[data-clip]: the gutter
+      // label for this lane carries the same data-clip value (outside the
+      // lane <g>) and must light up too, so it works as an index.
+      var mates = svg.querySelectorAll('[data-clip="' + lane.dataset.clip + '"]');
       for (var m = 0; m < mates.length; m++) mates[m].classList.add("is-active");
       svg.classList.add("is-focused");
     } else {
@@ -437,7 +439,12 @@
   }
 
   function laneFrom(target) {
-    return target && target.closest ? target.closest(".ibpl-ribbon-lane") : null;
+    // A gutter label (<text data-clip="...">) is a hover target in its own
+    // right, not just the lane <g> it labels -- it has no .ibpl-ribbon-lane
+    // class of its own, so match on data-clip too.
+    return target && target.closest
+      ? target.closest(".ibpl-ribbon-lane, [data-clip]")
+      : null;
   }
 
   document.addEventListener("mouseover", function(e) {

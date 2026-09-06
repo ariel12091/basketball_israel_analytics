@@ -1487,7 +1487,9 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   font-size: 11px;
 }
 
-.ibpl-ribbon-name { fill: var(--ibpl-text); }
+.ibpl-ribbon-name { fill: var(--ibpl-text); cursor: pointer; }
+.ibpl-ribbon-name:focus { outline: none; }
+.ibpl-ribbon-name.is-active { fill: var(--ibpl-accent); }
 .ibpl-ribbon-team {
   fill: var(--ibpl-text);
   font-size: 12px;
