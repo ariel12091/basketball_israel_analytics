@@ -390,8 +390,14 @@ test_that("each bar's +/- equals the margin curve's rise across that bar", {
 
   for (league in names(RIBBON_LEAGUES)) {
     games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 3L))
+    expect_gt(nrow(games), 0)
+
     for (i in seq_len(nrow(games))) {
       fx <- ribbon_fixture(con, league, games$game_id[i], games$team_id[i])
+      # Without this, an empty fx$lanes would make `rise` and `fx$lanes$pm`
+      # both numeric(0), and expect_equal() passes vacuously on that pair.
+      expect_gt(nrow(fx$lanes), 0)
+
       mar <- data.frame(elapsed = fx$steps$elapsed,
                         order_key = fx$steps$order_key,
                         value = fx$steps$margin)
@@ -414,7 +420,14 @@ test_that("a player's bars sum to their gutter total", {
 
   for (league in names(RIBBON_LEAGUES)) {
     games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 1L))
+    expect_gt(nrow(games), 0)
+
     fx <- ribbon_fixture(con, league, games$game_id[1], games$team_id[1])
+    # Without this, an empty fx$lanes would make `tot` zero-row and the
+    # expect_equal() below would compare numeric(0) to numeric(0), which
+    # testthat's expect_equal() passes vacuously.
+    expect_gt(nrow(fx$lanes), 0)
+
     tot <- ribbon_player_totals(fx$lanes)
 
     key <- paste(fx$lanes$side, fx$lanes$player_key, sep = "\r")
