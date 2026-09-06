@@ -3561,3 +3561,60 @@ ribbon_score_as_of <- function(series, t) {
   out[i < 1L] <- 0
   as.numeric(out)
 }
+
+
+# Points for, points against and +/- for each stint, as NET DIFFERENCES
+# across the stint window.
+#
+# Never sum increments. The PBP credits a basket and later rescinds it
+# (measured 2026-09-06: 15 own + 15 opp phantom points across 10 of 40
+# Israeli games), so sum(delta[delta > 0]) overstates BOTH sides. A net
+# difference cancels a credit-then-rescind that falls inside the window.
+#
+# `pm` is taken from the margin series directly rather than as pf - pa. The
+# two are algebraically equal, but sourcing pm from the margin guarantees
+# that a bar's printed number equals the rise of the curve drawn above it
+# even if `own` is absent -- the self-consistency the whole chart rests on.
+ribbon_stint_points <- function(stints, steps) {
+  if (is.null(stints) || !nrow(stints)) {
+    stints$pf <- numeric(0)
+    stints$pa <- numeric(0)
+    stints$pm <- numeric(0)
+    return(stints)
+  }
+
+  # No series means "unknown", not "level". A fabricated 0 would print a
+  # measured-looking zero on every bar; NA prints nothing at all.
+  if (is.null(steps) || !NROW(steps)) {
+    stints$pf <- rep(NA_real_, nrow(stints))
+    stints$pa <- rep(NA_real_, nrow(stints))
+    stints$pm <- rep(NA_real_, nrow(stints))
+    return(stints)
+  }
+
+  as_series <- function(value) {
+    data.frame(elapsed = as.numeric(steps$elapsed),
+               order_key = as.numeric(steps$order_key),
+               value = as.numeric(value))
+  }
+
+  mar <- as_series(steps$margin)
+  mar_start <- ribbon_score_as_of(mar, stints$start_elapsed)
+  mar_end <- ribbon_score_as_of(mar, stints$end_elapsed)
+  stints$pm <- mar_end - mar_start
+
+  if (is.null(steps$own)) {
+    stints$pf <- rep(NA_real_, nrow(stints))
+    stints$pa <- rep(NA_real_, nrow(stints))
+    return(stints)
+  }
+
+  own <- as_series(steps$own)
+  own_start <- ribbon_score_as_of(own, stints$start_elapsed)
+  own_end <- ribbon_score_as_of(own, stints$end_elapsed)
+  stints$pf <- own_end - own_start
+  # The opponent's running score is own - margin, so its net difference is
+  # the difference of those two differences.
+  stints$pa <- (own_end - mar_end) - (own_start - mar_start)
+  stints
+}

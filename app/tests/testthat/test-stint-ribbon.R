@@ -1142,3 +1142,88 @@ test_that("ribbon_score_as_of returns zeros for an empty or NULL series", {
                       value = numeric(0))
   expect_equal(ribbon_score_as_of(empty, c(1, 2)), c(0, 0))
 })
+
+# ---------------- ribbon_stint_points ----------------
+
+pts_steps <- function(elapsed, own, opp) {
+  data.frame(elapsed = elapsed, order_key = seq_along(elapsed),
+             own = own, margin = own - opp, stringsAsFactors = FALSE)
+}
+
+pts_stint <- function(start_elapsed, end_elapsed) {
+  data.frame(side = "own", player_key = "1", player_label = "Player 1",
+             is_starter = TRUE, start_elapsed = start_elapsed,
+             end_elapsed = end_elapsed, stringsAsFactors = FALSE)
+}
+
+test_that("ribbon_stint_points takes net differences across the window", {
+  steps <- pts_steps(c(10, 20, 30, 40), own = c(2, 2, 5, 7), opp = c(0, 3, 3, 3))
+  out <- ribbon_stint_points(pts_stint(10, 40), steps)
+  expect_equal(out$pf, 5)   # own 2 -> 7
+  expect_equal(out$pa, 3)   # opp 0 -> 3
+  expect_equal(out$pm, 2)
+})
+
+test_that("ribbon_stint_points nets out a credit-then-rescind inside the window", {
+  # The PBP credits 2 at t=20 and rescinds them at t=30. Summing positive
+  # increments would report pf = 5; the net difference reports 3.
+  steps <- pts_steps(c(10, 20, 30, 40), own = c(0, 2, 0, 3), opp = c(0, 0, 0, 0))
+  out <- ribbon_stint_points(pts_stint(10, 40), steps)
+  expect_equal(out$pf, 3)
+  expect_equal(out$pa, 0)
+  expect_equal(out$pm, 3)
+})
+
+test_that("ribbon_stint_points puts a score on the boundary second in the OUTGOING stint", {
+  # A basket recorded at exactly t=30, where one stint ends and the next
+  # begins. It belongs to the stint that ended, and forms the next one's
+  # baseline, so the two stints still telescope to the game total.
+  steps <- pts_steps(c(10, 30, 50), own = c(0, 2, 5), opp = c(0, 0, 0))
+  stints <- rbind(pts_stint(0, 30), pts_stint(30, 60))
+  out <- ribbon_stint_points(stints, steps)
+  expect_equal(out$pf, c(2, 3))
+  expect_equal(sum(out$pf), 5)
+})
+
+test_that("ribbon_stint_points pm always equals the margin delta", {
+  # This is the property that keeps a bar's printed number equal to the
+  # rise of the curve drawn above it. It must hold independently of `own`.
+  steps <- pts_steps(c(10, 25, 45), own = c(3, 3, 8), opp = c(0, 6, 6))
+  out <- ribbon_stint_points(pts_stint(10, 45), steps)
+  expect_equal(out$pm, out$pf - out$pa)
+  expect_equal(out$pm,
+               ribbon_score_as_of(
+                 data.frame(elapsed = steps$elapsed, order_key = steps$order_key,
+                            value = steps$margin), 45) -
+               ribbon_score_as_of(
+                 data.frame(elapsed = steps$elapsed, order_key = steps$order_key,
+                            value = steps$margin), 10))
+})
+
+test_that("ribbon_stint_points computes pm without an own column", {
+  steps <- data.frame(elapsed = c(10, 30), order_key = c(1, 2), margin = c(1, 6))
+  out <- ribbon_stint_points(pts_stint(0, 40), steps)
+  expect_equal(out$pm, 6)
+  expect_true(is.na(out$pf))
+  expect_true(is.na(out$pa))
+})
+
+test_that("ribbon_stint_points returns typed empty columns for no stints", {
+  empty <- pts_stint(numeric(0), numeric(0))
+  out <- ribbon_stint_points(empty, pts_steps(10, 1, 0))
+  expect_equal(nrow(out), 0)
+  expect_true(all(c("pf", "pa", "pm") %in% names(out)))
+})
+
+test_that("an empty step series yields NA, never a fabricated zero", {
+  # "Unknown" and "the stint was level" are different facts and the chart
+  # renders them differently: NA prints nothing, 0 prints "0". Returning 0
+  # here would put a false level-stint number on every bar whenever the
+  # step series is missing.
+  empty_steps <- data.frame(elapsed = numeric(0), order_key = numeric(0),
+                            margin = numeric(0))
+  out <- ribbon_stint_points(pts_stint(0, 600), empty_steps)
+  expect_true(is.na(out$pm))
+  expect_true(is.na(out$pf))
+  expect_true(is.na(out$pa))
+})
