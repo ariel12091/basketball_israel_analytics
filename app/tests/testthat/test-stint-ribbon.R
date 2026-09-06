@@ -1418,3 +1418,59 @@ test_that("the lane aria-label reports the player's GAME total, not one stint", 
   expect_false(any(grepl('aria-label="Alice Adams, 10:00 on the floor', name_tags,
                          fixed = TRUE)))
 })
+
+# ---------------- on-bar numbers ----------------
+# Measured 2026-09-06 over 15 games: 72 bars a game, median width 105px,
+# 90.3% at least 20px. So about 65 of 72 bars carry a number and ~7 do not.
+
+test_that("ribbon_number_fits uses the mono advance width", {
+  # nchar * 0.6 * 9 + 6
+  expect_equal(ribbon_number_fits("0", 11.4), TRUE)
+  expect_equal(ribbon_number_fits("0", 11.3), FALSE)
+  expect_equal(ribbon_number_fits("+6", 16.8), TRUE)
+  expect_equal(ribbon_number_fits("+12", 22.2), TRUE)
+  expect_equal(ribbon_number_fits("+12", 20), FALSE)
+})
+
+test_that("ribbon_number_fits is vectorised", {
+  expect_equal(ribbon_number_fits(c("0", "+12"), c(50, 5)), c(TRUE, FALSE))
+})
+
+test_that("a wide bar carries its +/- and a narrow one carries nothing", {
+  # 850 units span 2400s, so 600s -> 212px (wide) and 30s -> 10.6px (narrow).
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600),
+    lane_row("own", "1", 700, 730)
+  ))
+  steps <- data.frame(elapsed = c(300, 720), order_key = c(1, 2),
+                      margin = c(6, 8))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = c(300, 720), margin = c(6, 8), order_key = c(1, 2)),
+      2400),
+    list(n_periods = 4L), steps = steps))
+
+  expect_true(grepl("ibpl-ribbon-num", svg, fixed = TRUE))
+  expect_equal(lengths(regmatches(svg, gregexpr("ibpl-ribbon-num", svg,
+                                                fixed = TRUE))), 1)
+})
+
+test_that("a level stint prints a zero rather than nothing", {
+  lanes <- ribbon_mark_starters(lane_row("own", "1", 0, 600))
+  steps <- data.frame(elapsed = 1200, order_key = 1, margin = 5)
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = 1200, margin = 5, order_key = 1), 2400),
+    list(n_periods = 4L), steps = steps))
+  # Nothing scored inside 0-600, so the stint is level and must say so.
+  expect_true(grepl(">0</text>", svg, fixed = TRUE))
+})
+
+test_that("no number is drawn when steps are absent", {
+  lanes <- ribbon_mark_starters(lane_row("own", "1", 0, 600))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = 300, margin = 2, order_key = 1), 2400),
+    list(n_periods = 4L)))
+  expect_false(grepl("ibpl-ribbon-num", svg, fixed = TRUE))
+})

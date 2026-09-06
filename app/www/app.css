@@ -1553,3 +1553,21 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 }
 
 .ibpl-ribbon.is-focused .ibpl-ribbon-margin-focus { opacity: 1; }
+
+/* On-bar +/-. Dark ink on both fills: composited over --ibpl-bg at the bars'
+   0.85 opacity the own bar is #C88E2F (contrast 6.64:1) and the opp bar is
+   #847F78 (4.77:1). Both clear the 4.5:1 small-text threshold. Verify in a
+   browser against the COMPOSITED colour, not the raw token. */
+.ibpl-ribbon-num {
+  font-family: var(--ibpl-font-mono);
+  font-size: 9px;
+  fill: var(--ibpl-bg);
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+/* The number must dim with its bar. The existing dimming rule targets
+   `rect` only, so without this the numbers would stay bright on bars that
+   have been dimmed out of focus. */
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane .ibpl-ribbon-num { opacity: 0.3; }
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active .ibpl-ribbon-num { opacity: 1; }

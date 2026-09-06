@@ -3381,6 +3381,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
               x1 = bx, x2 = bx, y1 = RIBBON_PAD_TOP, y2 = total_h)
   })
 
+  num <- ribbon_pm_label(lanes$pm)
   lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
     secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
     label <- sprintf("%s, %.0f:%02.0f on the floor",
@@ -3393,7 +3394,15 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
       `aria-label` = label,
       tags$title(label),
       tags$rect(x = lanes$x[i], y = lanes$abs_y[i],
-                width = lanes$w[i], height = lanes$h[i], rx = 2)
+                width = lanes$w[i], height = lanes$h[i], rx = 2),
+      # Blank means one thing only: too narrow to label. A level stint
+      # prints "0", so blank never has to be read as "nothing happened".
+      if (!is.na(lanes$pm[i]) && ribbon_number_fits(num[i], lanes$w[i])) {
+        tags$text(class = "ibpl-ribbon-num",
+                  x = lanes$x[i] + lanes$w[i] / 2,
+                  y = lanes$abs_y[i] + lanes$h[i] - 4,
+                  `text-anchor` = "middle", num[i])
+      }
     )
   })
 
@@ -3736,4 +3745,18 @@ ribbon_minutes_label <- function(secs) {
 ribbon_pm_label <- function(pm) {
   pm <- as.integer(round(as.numeric(pm)))
   ifelse(is.na(pm), "", ifelse(pm == 0, "0", sprintf("%+d", pm)))
+}
+
+
+# On-bar number metrics. The numbers are drawn in JetBrains Mono, whose
+# advance is 600/1000 em, so a string's rendered width is computable here
+# without measuring a font -- which a server-built SVG cannot do.
+RIBBON_NUM_FONT <- 9
+RIBBON_NUM_ADVANCE <- 0.6
+RIBBON_NUM_PAD <- 6
+
+# Thresholds this yields: "0" 11.4px, "+6" 16.8px, "+12" 22.2px.
+ribbon_number_fits <- function(text, width) {
+  need <- nchar(text) * RIBBON_NUM_ADVANCE * RIBBON_NUM_FONT + RIBBON_NUM_PAD
+  as.numeric(width) >= need
 }
