@@ -79,12 +79,19 @@ Two plan defects were corrected during implementation:
 | Round-interval vertical scale on the margin curve | `70631eb` |
 | Band gap separating the margin band from both lane blocks | `3b31b73` |
 | Gaps above and below the band evened out | `8ab7ee9` |
+| Period markers repeated above the lanes | `1b36415` |
 
 The scale change extracted `ribbon_margin_scale()` (the single source of
 `max_abs`, `interval` and `ticks`) and `ribbon_margin_y()` (the shared value
 → y mapping), consumed by **both** the curve and the gridlines. Alignment is
 therefore structural, not coincidental — a gridline cannot drift off the curve
 it annotates. Verified on a real game to 4e-13.
+
+The Q1-Q4 markers are drawn twice, top and bottom, from one
+`period_label_row(y)` closure — a tall game pushed the only row out of the
+modal's view. The top row reuses the own-team label's header row, so it adds
+no height (measured: 187px clear of a long team name, 9px above the lanes,
+viewBox unchanged).
 
 `RIBBON_BAND_GAP` (24) replaced `RIBBON_LANE_GAP * 2` (6) at the two anchors
 `margin_top` and `opp_top`, so the band, its baseline, gridlines, clip rects,
