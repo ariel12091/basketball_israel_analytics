@@ -304,8 +304,13 @@ lanes AS (
    AND r.player_id = p.player_id
 ),
 marg AS (
+  -- own_team_score rides along so a stint's points FOR and AGAINST can be
+  -- taken as net differences across its window. pf - pa is the margin
+  -- delta, already here; pf + pa is not derivable from the margin, so this
+  -- column is the one number the feature actually needed.
   SELECT DISTINCT event_elapsed_seconds AS elapsed,
          (own_team_score - opp_team_score) AS margin,
+         own_team_score AS own,
          id AS order_key
   FROM basketball_test.df_pts_poss_lineups_longer_mv
   WHERE game_id = $1 AND team_id = $2

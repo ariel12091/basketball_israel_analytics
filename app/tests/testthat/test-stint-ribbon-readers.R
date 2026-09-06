@@ -228,3 +228,21 @@ test_that("completing the margin does not disturb the raw step series", {
   expect_equal(completed$elapsed[nrow(completed)], 2400)  # padded end
   expect_null(completed$order_key)                   # dropped by completion
 })
+
+test_that("the Israeli ribbon SQL selects own_team_score in its margin CTE", {
+  # own_team_score is already a column on the MV the marg CTE scans, so this
+  # costs no new relation, no new grant and no second round trip. pf + pa is
+  # not derivable from the margin alone -- this one column is what makes
+  # points for/against possible.
+  #
+  # Read from source: tests do not source global.R, so RIBBON_SQL_ISRAEL is
+  # not bound here. Same approach as the euro reader tests above.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  sql <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src,
+                                 perl = TRUE))
+  expect_true(nzchar(sql))
+  expect_match(sql, "own_team_score AS own", fixed = TRUE)
+  expect_match(sql, "basketball_test.df_pts_poss_lineups_longer_mv",
+               fixed = TRUE)
+})
