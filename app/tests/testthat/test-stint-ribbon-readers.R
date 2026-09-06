@@ -284,3 +284,173 @@ test_that("migration 054 appends the column with CREATE OR REPLACE, not a drop",
   last_own <- max(gregexpr("own_team_score", body, fixed = TRUE)[[1]])
   expect_true(regexpr("source_event_order", body, fixed = TRUE) < last_own)
 })
+
+# Shared by the reconciliation tests below: bind RIBBON_SQL_ISRAEL or
+# RIBBON_SQL_EURO by evaluating just that assignment out of global.R, which
+# the suite does not source. Reading the real constant (rather than pasting a
+# copy here) is the point -- a copy would keep passing after the query changed.
+ribbon_sql_for <- function(league) {
+  const <- if (identical(league, "israel")) "RIBBON_SQL_ISRAEL" else "RIBBON_SQL_EURO"
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  assign_txt <- regmatches(src, regexpr(paste0(const, ' <- "(.|\n)*?"\n'),
+                                        src, perl = TRUE))
+  stopifnot(nzchar(assign_txt))
+  eval(parse(text = assign_txt))
+}
+
+# Every reconciliation below runs against BOTH leagues. The feature's standing
+# constraint is "both leagues or neither", and the spec's evidence covers both
+# (301/301 Israeli and 323/323 EuroLeague player-games). A test that checked
+# only one would let the other drift silently -- which is exactly how the two
+# leagues' tab code diverged three ways before.
+RIBBON_LEAGUES <- list(
+  israel = list(
+    games = "SELECT DISTINCT ON (game_id) game_id, team_id
+             FROM basketball_test.final_schedule_mv
+             WHERE game_year = 2026 ORDER BY game_id LIMIT %d",
+    minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
+               FROM basketball_test.player_four_factors_by_game
+               WHERE game_id = $1 AND team_id = $2
+                 AND is_on_key = 1 AND type_lineup = 'offense'
+               GROUP BY player_id"),
+  euroleague = list(
+    games = "SELECT DISTINCT ON (game_id) game_id, team_id
+             FROM euroleague.final_schedule ORDER BY game_id DESC LIMIT %d",
+    minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
+               FROM euroleague.player_four_factors_by_game
+               WHERE game_id = $1 AND team_id = $2
+                 AND is_on_key = 1 AND type_lineup = 'offense'
+               GROUP BY player_id")
+)
+
+ribbon_db_con <- function() {
+  DBI::dbConnect(RPostgres::Postgres(),
+    host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
+    dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
+    password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
+    connect_timeout = 15L, bigint = "numeric")
+}
+
+# Run the real query and rebuild what the builder would draw.
+ribbon_fixture <- function(con, league, game_id, team_id) {
+  row <- DBI::dbGetQuery(con, ribbon_sql_for(league),
+                         params = list(game_id, team_id))
+  lanes_raw <- jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
+  marg_raw <- jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
+  steps <- data.frame(elapsed = as.numeric(marg_raw$elapsed),
+                      order_key = as.numeric(marg_raw$order_key),
+                      margin = as.numeric(marg_raw$margin),
+                      own = as.numeric(marg_raw$own))
+  lanes <- merge_adjacent_stints(ribbon_normalise_lanes(lanes_raw, team_id))
+  list(lanes = ribbon_stint_points(lanes, steps), steps = steps)
+}
+
+test_that("ribbon floor time equals the app's published per-game minutes", {
+  # Measured 2026-09-06 before any of this was built: 301/301 Israeli
+  # player-games agreed to 7e-15 and 323/323 EuroLeague ones to 0.002 min
+  # (the MV stores 3 decimals). This asserts it, so a change to either
+  # minutes path is caught here rather than by a reader noticing two
+  # different totals for one player in one app.
+  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+  con <- ribbon_db_con()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  for (league in names(RIBBON_LEAGUES)) {
+    cfg <- RIBBON_LEAGUES[[league]]
+    games <- DBI::dbGetQuery(con, sprintf(cfg$games, 5L))
+    expect_gt(nrow(games), 0)
+
+    for (i in seq_len(nrow(games))) {
+      fx <- ribbon_fixture(con, league, games$game_id[i], games$team_id[i])
+      tot <- ribbon_player_totals(fx$lanes)
+      tot <- tot[tot$side == "own", , drop = FALSE]
+
+      mv <- DBI::dbGetQuery(con, cfg$minutes,
+                            params = list(games$game_id[i], games$team_id[i]))
+
+      both <- merge(tot, mv, by = "player_key")
+      # info = so a failure names the league and game rather than just a row.
+      expect_gt(nrow(both), 0)
+      expect_true(all(abs(both$secs / 60 - both$mv_min) < 0.01),
+                  info = sprintf("%s game %s", league, games$game_id[i]))
+    }
+  }
+})
+
+test_that("each bar's +/- equals the margin curve's rise across that bar", {
+  # The self-consistency the whole chart rests on: a reader can check a
+  # printed number against the curve drawn above it by eye, so it must never
+  # be possible for the two to disagree.
+  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+  con <- ribbon_db_con()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  for (league in names(RIBBON_LEAGUES)) {
+    games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 3L))
+    for (i in seq_len(nrow(games))) {
+      fx <- ribbon_fixture(con, league, games$game_id[i], games$team_id[i])
+      mar <- data.frame(elapsed = fx$steps$elapsed,
+                        order_key = fx$steps$order_key,
+                        value = fx$steps$margin)
+      rise <- ribbon_score_as_of(mar, fx$lanes$end_elapsed) -
+              ribbon_score_as_of(mar, fx$lanes$start_elapsed)
+      expect_equal(fx$lanes$pm, rise)
+
+      # And pf - pa must reproduce it, which ties the printed number to the
+      # for/against pair the strip shows.
+      expect_equal(fx$lanes$pm, fx$lanes$pf - fx$lanes$pa)
+    }
+  }
+})
+
+test_that("a player's bars sum to their gutter total", {
+  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+  con <- ribbon_db_con()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  for (league in names(RIBBON_LEAGUES)) {
+    games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 1L))
+    fx <- ribbon_fixture(con, league, games$game_id[1], games$team_id[1])
+    tot <- ribbon_player_totals(fx$lanes)
+
+    key <- paste(fx$lanes$side, fx$lanes$player_key, sep = "\r")
+    by_hand <- tapply(fx$lanes$pm, key, sum)
+    tkey <- paste(tot$side, tot$player_key, sep = "\r")
+    expect_equal(as.numeric(by_hand[tkey]), tot$pm)
+  }
+})
+
+test_that("fetch_stint_ribbon captures the raw steps series before ribbon_complete_margin runs", {
+  # The comment/token test above ("the reader returns a raw steps frame
+  # alongside the drawn margin") only asserts that "steps = steps" and
+  # "steps <- margin" appear SOMEWHERE in global.R -- a regression that
+  # computed `steps` from the completed margin (e.g. moved the assignment
+  # below ribbon_complete_margin(), or read from the already-completed
+  # `margin` variable after that call) would still satisfy it. This asserts
+  # SOURCE ORDER within fetch_stint_ribbon's own body: `steps <- margin` must
+  # occur strictly before the `margin <- ribbon_complete_margin(` call, or
+  # per-stint as-of lookups would read the padded/collapsed curve instead of
+  # the recorded events.
+  #
+  # Scoped to the function body (not grep-anywhere-in-file) because the body
+  # itself contains an explanatory comment mentioning
+  # "ribbon_complete_margin()" ABOVE the real `steps <- margin` line -- a
+  # bare-token search for "ribbon_complete_margin(" would match that comment
+  # first and report the wrong order. Matching the actual assignment
+  # "margin <- ribbon_complete_margin(" avoids that trap.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                        warn = FALSE), collapse = "\n")
+  body <- regmatches(src, regexpr(
+    "fetch_stint_ribbon <- function\\((.|\n)*?\n\\}\n", src, perl = TRUE))
+  expect_true(nzchar(body))
+
+  steps_pos <- regexpr("steps <- margin", body, fixed = TRUE)
+  complete_pos <- regexpr("margin <- ribbon_complete_margin\\(", body, perl = TRUE)
+  expect_true(steps_pos > 0)
+  expect_true(complete_pos > 0)
+  expect_true(steps_pos < complete_pos)
+})
