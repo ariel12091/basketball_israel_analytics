@@ -578,6 +578,70 @@ test_that("the chart carries genuine breathing room top and bottom, not just a t
   expect_gt(vb_height - max(ys), 5)
 })
 
+test_that("the margin band is inset from the lane blocks by RIBBON_BAND_GAP, not just touching them", {
+  # Follow-up to the 2026-09-06 final review: the last own-team lane label
+  # used to sit almost on the band's top gridline, and the band's bottom
+  # edge almost touched the first opponent label (both gaps were only
+  # RIBBON_LANE_GAP * 2 = 6). RIBBON_BAND_GAP now replaces that at the two
+  # anchors (margin_top, opp_top) everything else is computed from.
+  #
+  # Read the gap from the BUILT SVG's own geometry, not by recomputing the
+  # margin_top/opp_top formula -- a bug that changes the formula but not the
+  # constant (or vice versa) must still be caught here.
+  #
+  # Mutation check: set RIBBON_BAND_GAP <- 0 in helpers.R -- both gaps below
+  # collapse to 0 (top) / RIBBON_HEADER (bottom) and both assertions fail.
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+
+  # Own-side lane rects: `<g class="ibpl-ribbon-lane is-own" ...><title>..
+  # </title><rect x=".." y=".." width=".." height=".." rx="2"></rect></g>`.
+  # Capture each block, then pull y/height per block -- gives the bottom
+  # (y + height) of every own lane, of which the max is the last one.
+  own_blocks <- regmatches(html, gregexpr(
+    '(?s)<g class="ibpl-ribbon-lane is-own".*?rx="2"></rect>', html, perl = TRUE))[[1]]
+  expect_gt(length(own_blocks), 0)
+  own_y <- as.numeric(sub('.*<rect[^>]*\\by="([0-9.]+)".*', "\\1", own_blocks))
+  own_h <- as.numeric(sub('.*<rect[^>]*\\bheight="([0-9.]+)".*', "\\1", own_blocks))
+  own_bottom <- max(own_y + own_h)
+
+  opp_blocks <- regmatches(html, gregexpr(
+    '(?s)<g class="ibpl-ribbon-lane is-opp".*?rx="2"></rect>', html, perl = TRUE))[[1]]
+  expect_gt(length(opp_blocks), 0)
+  opp_y <- as.numeric(sub('.*<rect[^>]*\\by="([0-9.]+)".*', "\\1", opp_blocks))
+  opp_top_lane <- min(opp_y)
+
+  # The margin band's own extent, read from the clipPath rects (the only
+  # place margin_top/RIBBON_MARGIN_HEIGHT are drawn as literal geometry).
+  # These rects have no `rx` attribute, unlike the lane rects above, so the
+  # pattern -- requiring `></rect>` immediately after `height="..."` -- only
+  # matches the clip rects.
+  clip_rects <- regmatches(html, gregexpr(
+    '<rect x="[0-9.]+" y="([0-9.]+)" width="[0-9.]+" height="([0-9.]+)"></rect>',
+    html))[[1]]
+  expect_gt(length(clip_rects), 0)
+  band_top <- unique(as.numeric(sub('.*y="([0-9.]+)".*', "\\1", clip_rects)))
+  band_height <- unique(as.numeric(sub('.*height="([0-9.]+)".*', "\\1", clip_rects)))
+  expect_length(band_top, 1)
+  expect_length(band_height, 1)
+  band_bottom <- band_top + band_height
+
+  gap_above <- band_top - own_bottom
+  gap_below <- opp_top_lane - band_bottom
+
+  # Deliberately a hardcoded floor (22), not `RIBBON_BAND_GAP` itself: with
+  # BAND_GAP live at 24, gap_above is BAND_GAP exactly and gap_below is
+  # BAND_GAP + RIBBON_HEADER -- but comparing against the live constant is
+  # tautological the same way the breathing-room test above warns about,
+  # since mutating BAND_GAP to 0 moves both the drawn gap AND the threshold
+  # to 0 together and the assertion would keep passing. 22 sits strictly
+  # between the un-inset gap this replaces (RIBBON_LANE_GAP * 2 = 6) and the
+  # smaller of the two gaps at the current design value (24), so it fails
+  # for BAND_GAP <- 0 (gaps collapse to 0 and 20) while passing at 24.
+  expect_gt(gap_above, 22)
+  expect_gt(gap_below, 22)
+})
+
 test_that("period boundaries are labelled, not merely drawn", {
   f <- ribbon_fixture()
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))

@@ -3211,6 +3211,16 @@ RIBBON_LANE_HEIGHT <- 14
 RIBBON_LANE_GAP <- 3
 RIBBON_MARGIN_HEIGHT <- 90
 
+# Vertical clearance between the lane blocks and the margin band (final
+# review follow-up, 2026-09-06): without this the last own-team lane's
+# label sat almost on the band's top gridline, and the band's bottom edge
+# almost touched the first opponent label. 24 units is roughly one lane
+# height plus its gap again -- enough to read as a clear gap at a glance
+# without materially inflating the chart, and it replaces RIBBON_LANE_GAP
+# * 2 (6) at exactly the two anchors (margin_top, opp_top) everything
+# else below is computed from.
+RIBBON_BAND_GAP <- 24
+
 # Row above the lanes reserved for the team name, so it never shares a
 # baseline with the first lane label (both live in the same gutter column).
 # Reused as the clearance above the opponent block too, so that label clears
@@ -3319,8 +3329,8 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
   own <- lanes[lanes$side == "own", , drop = FALSE]
   opp <- lanes[lanes$side == "opp", , drop = FALSE]
   own_h <- if (nrow(own)) max(own$y + own$h) else 0
-  margin_top <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h + RIBBON_LANE_GAP * 2
-  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_LANE_GAP * 2 + RIBBON_HEADER
+  margin_top <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h + RIBBON_BAND_GAP
+  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_BAND_GAP + RIBBON_HEADER
   total_h <- opp_top + if (nrow(opp)) max(opp$y + opp$h) else 0
 
   lanes$abs_y <- ifelse(lanes$side == "own", lanes$y + RIBBON_PAD_TOP + RIBBON_HEADER, opp_top + lanes$y)
