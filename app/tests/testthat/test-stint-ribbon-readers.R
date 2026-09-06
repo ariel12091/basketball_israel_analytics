@@ -246,3 +246,41 @@ test_that("the Israeli ribbon SQL selects own_team_score in its margin CTE", {
   expect_match(sql, "basketball_test.df_pts_poss_lineups_longer_mv",
                fixed = TRUE)
 })
+
+test_that("the EuroLeague ribbon SQL selects own_team_score in its margin CTE", {
+  # Source-read for the same reason as the Israeli test: global.R is not
+  # sourced by the suite. This regex is the one already used by the
+  # "euro reader never pairs lineup names with ids positionally" test above.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  sql <- regmatches(src, regexpr('RIBBON_SQL_EURO <- "(.|\n)*?"\n', src,
+                                 perl = TRUE))
+  expect_true(nzchar(sql))
+  expect_match(sql, "own_team_score AS own", fixed = TRUE)
+})
+
+test_that("migration 054 appends the column with CREATE OR REPLACE, not a drop", {
+  # CREATE OR REPLACE VIEW preserves the app_readonly grant; DROP + CREATE
+  # wipes it. The column must be appended at the END of the select list,
+  # which is the only shape CREATE OR REPLACE allows.
+  sql <- paste(readLines(testthat::test_path(
+    "..", "..", "..", "euroleague", "sql",
+    "054_ribbon_margin_own_score.sql"), warn = FALSE), collapse = "\n")
+  expect_match(sql, "CREATE OR REPLACE VIEW euroleague.ribbon_margin_v",
+               fixed = TRUE)
+  expect_false(grepl("DROP VIEW", sql, fixed = TRUE))
+  # own_team_score must be APPENDED after source_event_order in the SELECT
+  # list -- the only shape CREATE OR REPLACE VIEW permits. Two reasons this
+  # is scoped and uses the LAST occurrence rather than comparing first
+  # positions in the whole file: the comment header names own_team_score
+  # before any SQL, and inside the statement the margin expression
+  # (own_team_score - opp_team_score) necessarily precedes
+  # source_event_order. Neither is the select-list position under test.
+  body <- regmatches(sql, regexpr(
+    "CREATE OR REPLACE VIEW euroleague[.]ribbon_margin_v AS(.|
+)*?;", sql,
+    perl = TRUE))
+  expect_true(nzchar(body))
+  last_own <- max(gregexpr("own_team_score", body, fixed = TRUE)[[1]])
+  expect_true(regexpr("source_event_order", body, fixed = TRUE) < last_own)
+})

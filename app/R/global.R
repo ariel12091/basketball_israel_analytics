@@ -350,6 +350,7 @@ marg AS (
   -- euroleague/sql/053_stint_ribbon_read_layer.sql), so this already reads
   -- like the Israeli marg CTE: no sign flip, filter by team_id directly.
   SELECT DISTINCT elapsed_seconds AS elapsed, margin,
+         own_team_score AS own,
          source_event_order AS order_key
   FROM euroleague.ribbon_margin_v
   WHERE game_id = $1 AND team_id = $2
