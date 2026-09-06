@@ -1311,3 +1311,35 @@ test_that("ribbon_stint_overlaps sorts input that does not arrive in order", {
   expect_equal(out$player_key, c("8", "7", "9"))
   expect_equal(out$shared, c(600, 400, 100))
 })
+
+# ---------------- ribbon_player_totals ----------------
+
+test_that("ribbon_player_totals sums floor time and +/- per player per side", {
+  lanes <- rbind(
+    lane_row("own", "1", 0, 300),
+    lane_row("own", "1", 600, 900),
+    lane_row("own", "2", 0, 600),
+    lane_row("opp", "1", 0, 120)
+  )
+  lanes$pm <- c(4, -1, 3, 7)
+  out <- ribbon_player_totals(lanes)
+
+  own1 <- out[out$side == "own" & out$player_key == "1", ]
+  expect_equal(own1$secs, 600)
+  expect_equal(own1$pm, 3)
+
+  # The same player_key on the other side is a different person's lane.
+  opp1 <- out[out$side == "opp" & out$player_key == "1", ]
+  expect_equal(opp1$secs, 120)
+  expect_equal(opp1$pm, 7)
+})
+
+test_that("build_stint_ribbon_svg still renders with steps = NULL", {
+  lanes <- ribbon_mark_starters(rbind(lane_row("own", "1", 0, 600),
+                                      lane_row("opp", "2", 0, 600)))
+  margin <- ribbon_complete_margin(
+    data.frame(elapsed = c(100, 500), margin = c(2, -3), order_key = c(1, 2)),
+    2400)
+  svg <- as.character(build_stint_ribbon_svg(lanes, margin, list(n_periods = 4L)))
+  expect_true(grepl("ibpl-ribbon", svg, fixed = TRUE))
+})

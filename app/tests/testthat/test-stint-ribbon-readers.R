@@ -203,3 +203,28 @@ test_that("the ribbon segment count matches type-lineup-absent grouping", {
          AS offense_only")
   expect_gt(counts$all_perspectives[1], counts$offense_only[1])
 })
+
+test_that("the reader returns a raw steps frame alongside the drawn margin", {
+  # steps is the RAW series: one row per recorded event, order_key intact and
+  # no padding. The drawn `margin` stays completed by ribbon_complete_margin().
+  # They are different frames on purpose -- as-of lookups must not read the
+  # padding. Asserted on the source because tests do not source global.R.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  expect_match(src, "steps = steps", fixed = TRUE)
+  expect_match(src, "steps <- margin", fixed = TRUE)
+})
+
+test_that("completing the margin does not disturb the raw step series", {
+  # The pure half of the same contract: completion collapses duplicate
+  # seconds and pads both ends, so reading it as-of would answer from
+  # padding rather than from recorded events.
+  raw <- data.frame(elapsed = c(30, 30, 900), margin = c(2, 4, 9),
+                    order_key = c(1, 2, 3))
+  completed <- ribbon_complete_margin(raw, 2400)
+  expect_equal(nrow(raw), 3)
+  expect_true(nrow(completed) != nrow(raw))
+  expect_equal(completed$elapsed[1], 0)              # padded start
+  expect_equal(completed$elapsed[nrow(completed)], 2400)  # padded end
+  expect_null(completed$order_key)                   # dropped by completion
+})

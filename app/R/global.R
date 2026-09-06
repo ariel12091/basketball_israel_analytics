@@ -381,6 +381,14 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
       order_key = as.numeric(marg_raw$order_key %||% numeric(0))
     )
 
+    # The RAW step series, kept separate from the completed margin below.
+    # ribbon_complete_margin() collapses each second to one row and pads both
+    # ends to close the drawn path; per-stint as-of lookups must read the
+    # recorded events instead. `own` is added by the league SQL in a later
+    # task and is absent until then.
+    steps <- margin
+    if (!is.null(marg_raw$own)) steps$own <- as.numeric(marg_raw$own)
+
     n_periods <- as.integer(row$n_periods[1] %||% 4L)
     bounds <- ribbon_period_bounds(n_periods)
     margin <- ribbon_complete_margin(margin, bounds[length(bounds)])
@@ -389,6 +397,7 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
     list(
       lanes = lanes,
       margin = margin,
+      steps = steps,
       meta = list(n_periods = n_periods),
       health = ribbon_health_message(row$excluded_segments[1])
     )

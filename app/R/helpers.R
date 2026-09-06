@@ -3323,13 +3323,19 @@ ribbon_margin_path <- function(margin, total_seconds, width, top, height,
   paste(parts, collapse = " ")
 }
 
-build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
+build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
+                                   steps = NULL) {
   if (is.null(lanes) || !nrow(lanes)) return(NULL)
 
   bounds <- ribbon_period_bounds(meta$n_periods)
   total_seconds <- bounds[length(bounds)]
 
   lanes <- merge_adjacent_stints(lanes)
+  # Per-stint numbers come from the RAW step series, not the completed margin
+  # the curve is drawn from. With steps = NULL every number is NA and the
+  # chart renders exactly as it did before this feature -- see
+  # ribbon_stint_points(), which returns NA rather than a fabricated 0.
+  lanes <- ribbon_stint_points(lanes, steps)
   lanes <- ribbon_lane_index(lanes)
   lanes <- ribbon_geometry(lanes, total_seconds, width = RIBBON_WIDTH,
                            lane_height = RIBBON_LANE_HEIGHT,
@@ -3657,4 +3663,32 @@ ribbon_stint_overlaps <- function(lanes, side, player_key, start_elapsed,
   out <- out[order(-out$shared, out$player_key, out$start_elapsed), , drop = FALSE]
   rownames(out) <- NULL
   out
+}
+
+
+# Per-player game totals for the gutter: floor seconds and +/-, one row per
+# player per side. `side` is part of the key because the same player_key on
+# the other side is a different person's lane.
+#
+# Requires lanes to carry `pm` (from ribbon_stint_points). Excluded segments
+# are not in `lanes` at all, so they are not counted here -- that omission is
+# already disclosed by ribbon_health_message().
+ribbon_player_totals <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) {
+    return(data.frame(side = character(0), player_key = character(0),
+                      secs = numeric(0), pm = numeric(0),
+                      stringsAsFactors = FALSE))
+  }
+  key <- paste(lanes$side, lanes$player_key, sep = "\r")
+  secs <- tapply(lanes$end_elapsed - lanes$start_elapsed, key, sum)
+  pm <- tapply(as.numeric(lanes$pm), key, sum)
+  parts <- strsplit(names(secs), "\r", fixed = TRUE)
+
+  data.frame(
+    side = vapply(parts, `[`, character(1), 1),
+    player_key = vapply(parts, `[`, character(1), 2),
+    secs = as.numeric(secs),
+    pm = as.numeric(pm),
+    stringsAsFactors = FALSE
+  )
 }
