@@ -39,9 +39,9 @@ enumerations. Focused suite: **228 pass / 3 skip / 0 fail**.
 **On resume:** read the ledger tail first — it holds every ruling and every
 mutation-drill result, and it is more current than this file has ever been.
 
-**Exactly one thing stands between this branch and a merge:** the
-security-apply run in "Outstanding manual step" below. No code work is
-outstanding, no review finding is open, and no visual judgement is pending.
+**Nothing is outstanding.** No code work, no review finding, no visual
+judgement, and the security-apply run is done (see below). The branch is
+ready to merge.
 
 Task 3's scoped re-review arrived just after the pause and closed all three
 findings, confirming the strengthened clamp test by mutation (flipping
@@ -118,17 +118,21 @@ restoring `+ RIBBON_HEADER` on `opp_top` fails the gap-equality assertion
 scale-label clearance assertion (11 vs the 12-unit floor) and nothing else.
 Neither mutation is caught by the other's test, which is why both exist.
 
-## Outstanding manual step
+## Security apply — DONE 2026-09-06
 
-`scripts/apply_db_security.R` with `CONFIRM_DB_SECURITY_APPLY=1` has **not**
-been run. It re-applies the whole database security surface, so it was
-deliberately not delegated to a subagent.
+`scripts/apply_db_security.R` was run, dry run first (it applies the whole
+hardening inside a transaction, runs the audit, and rolls back), then with
+`CONFIRM_DB_SECURITY_APPLY=1`. Role `postgres` on the DDL port; the audit
+returned **zero violations** both times, and the apply committed.
 
-This is not blocking: Task 1's deploy transaction granted `SELECT` on both new
-views directly, and both view names are registered in
-`sql/security/enable_readonly_rls.sql` and `sql/security/audit_app_access.sql`.
-Running it makes those grants survive future `DROP`s, and should be a no-op
-confirmation.
+Verified afterwards against the live database, not just by the script's own
+exit: `RUN_DB_TESTS=1` over the ribbon and db-security files gave **343 pass
+/ 0 fail / 0 skip** — zero skips being the point, since it means both ribbon
+readers really did query the live DB as `app_readonly` after the change.
+
+The two ribbon views' grants now survive future `DROP`s, which is all this
+run was ever for — Task 1's deploy transaction had already granted `SELECT`
+on them directly.
 
 ## Pre-existing failure, not ours
 
