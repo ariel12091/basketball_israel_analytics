@@ -530,12 +530,19 @@ test_that("the team label no longer shares a baseline with lane 1", {
   # label must clear lane 1's label by at least a full header row. A fixed
   # `y == 10` assertion would keep passing even if a future change shrank
   # the header back down to nothing.
+  #
+  # Anchor each extraction on content, not on "the first tag of this class"
+  # -- merge_adjacent_stints() sorts by side ("opp" < "own" alphabetically),
+  # so the first <text class="ibpl-ribbon-name"> in the document is actually
+  # the OPPONENT's lane, not lane 1. ribbon_fixture()'s own team is "Team A"
+  # and its lane-1 player (is_starter, first row) is "A Cohen".
   extract_y <- function(tag_pattern) {
     tag <- regmatches(html, regexpr(tag_pattern, html, perl = TRUE))
+    expect_true(nzchar(tag))
     as.numeric(sub('.*\\by="([0-9.]+)".*', "\\1", tag))
   }
-  team_y <- extract_y('<text class="ibpl-ribbon-team"[^>]*>')
-  lane1_y <- extract_y('<text class="ibpl-ribbon-name"[^>]*>')
+  team_y <- extract_y('<text class="ibpl-ribbon-team"[^>]*>Team A<')
+  lane1_y <- extract_y('<text class="ibpl-ribbon-name"[^>]*aria-label="A Cohen[^>]*>')
   expect_true(lane1_y - team_y >= RIBBON_HEADER)
 })
 
