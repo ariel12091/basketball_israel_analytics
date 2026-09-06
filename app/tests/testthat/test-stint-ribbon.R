@@ -1463,7 +1463,14 @@ test_that("a level stint prints a zero rather than nothing", {
       data.frame(elapsed = 1200, margin = 5, order_key = 1), 2400),
     list(n_periods = 4L), steps = steps))
   # Nothing scored inside 0-600, so the stint is level and must say so.
-  expect_true(grepl(">0</text>", svg, fixed = TRUE))
+  # Scope to the on-bar <text class="ibpl-ribbon-num"> node. An unscoped
+  # grepl(">0</text>") is also satisfied by the gutter's ibpl-ribbon-pm
+  # total (a Task 5 node, always present, and often "0" itself), so it
+  # would still pass even if this task's on-bar number were deleted.
+  num_tags <- regmatches(svg, gregexpr(
+    '<text[^>]*ibpl-ribbon-num[^>]*>[^<]*</text>', svg))[[1]]
+  expect_true(length(num_tags) > 0)
+  expect_true(any(grepl(">0</text>", num_tags, fixed = TRUE)))
 })
 
 test_that("no number is drawn when steps are absent", {
