@@ -3434,12 +3434,22 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon") {
               y = y + 3, `text-anchor` = "end", sprintf("%+d", as.integer(round(v))))
   })
 
-  period_labels <- lapply(seq_along(bounds), function(k) {
-    bx <- RIBBON_GUTTER + bounds[k] * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
-    tags$text(class = "ibpl-ribbon-period-label", x = bx - 4, y = total_h + 12,
-              `text-anchor` = "end",
-              if (k <= 4) paste0("Q", k) else paste0("OT", k - 4))
-  })
+  # The period markers are drawn twice, once above the lanes and once below
+  # them (2026-09-06). A game with deep rotations makes the chart taller
+  # than the modal, and with the row only at the bottom the reader had to
+  # scroll to find out which quarter a stint sits in. The top row costs no
+  # height at all: it reuses the own-team label's header row, and the
+  # earliest marker (end of Q1) sits far right of that left-anchored label.
+  period_label_row <- function(y) {
+    lapply(seq_along(bounds), function(k) {
+      bx <- RIBBON_GUTTER + bounds[k] * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
+      tags$text(class = "ibpl-ribbon-period-label", x = bx - 4, y = y,
+                `text-anchor` = "end",
+                if (k <= 4) paste0("Q", k) else paste0("OT", k - 4))
+    })
+  }
+  period_labels <- list(period_label_row(RIBBON_PAD_TOP + 10),
+                        period_label_row(total_h + 12))
 
   tags$svg(
     xmlns = "http://www.w3.org/2000/svg",

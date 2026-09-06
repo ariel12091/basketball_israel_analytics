@@ -652,6 +652,42 @@ test_that("the margin band is inset from the lane blocks by RIBBON_BAND_GAP, not
   expect_equal(gap_below, gap_above)
 })
 
+test_that("the period markers are drawn above the lanes as well as below them", {
+  # 2026-09-06: a game with deep rotations makes the chart taller than the
+  # modal, and with the Q1-Q4 row only at the bottom the reader had to scroll
+  # to find out which quarter a stint sits in. The top row reuses the
+  # own-team label's header row, so it must cost no height either.
+  #
+  # Mutation check: drop period_label_row(RIBBON_PAD_TOP + 10) from the
+  # period_labels list -- the count halves and the "above the lanes"
+  # assertion fails.
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+
+  # No backslash escapes: R reads them as control characters in a quoted
+  # literal, and a never-matching pattern here would pass vacuously.
+  y_of <- function(tags) {
+    m <- regmatches(tags, regexpr('y="[0-9.]+"', tags))
+    as.numeric(gsub('[^0-9.]', '', m))
+  }
+  labels <- regmatches(html, gregexpr(
+    '<text class="ibpl-ribbon-period-label"[^>]*>Q[0-9]<', html))[[1]]
+  expect_identical(length(labels), 8L)   # Q1-Q4, twice
+
+  label_ys <- y_of(labels)
+  lane_rects <- regmatches(html, gregexpr(
+    '(?s)<g class="ibpl-ribbon-lane[^"]*".*?rx="2"></rect>', html, perl = TRUE))[[1]]
+  lane_tops <- y_of(lane_rects)
+
+  # One row above every lane, one row below every lane.
+  expect_lt(min(label_ys), min(lane_tops))
+  expect_gt(max(label_ys), max(lane_tops))
+
+  # Both rows carry the full set, so neither is a partial decoration.
+  expect_identical(sum(label_ys == min(label_ys)), 4L)
+  expect_identical(sum(label_ys == max(label_ys)), 4L)
+})
+
 test_that("the opponent team label clears a scale label sitting on the band's edge", {
   # The opponent's team label lives INSIDE the band gap, so the gap has to be
   # deep enough to hold it clear of the band's lowest scale label. That label
