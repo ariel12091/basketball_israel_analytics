@@ -417,7 +417,7 @@ test_that("every lane's data-clip matches a clipPath id that exists", {
 test_that("the viewBox width comes from nominal period length", {
   f <- ribbon_fixture()
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
-  expect_match(html, 'viewBox="0 0 1000 ')
+  expect_match(html, 'viewBox="0 0 1070 ')
 })
 
 test_that("an overtime game gets more period gridlines than regulation", {
@@ -492,7 +492,7 @@ test_that("scale gridlines never fall outside the band and never leak NaN", {
   expect_false(grepl("NaN", html, fixed = TRUE))
 
   ys <- as.numeric(regmatches(html, gregexpr(
-    '(?<=<line class="ibpl-ribbon-scale" x1="150" x2="1000" y1=")[0-9.]+', html, perl = TRUE))[[1]])
+    '(?<=<line class="ibpl-ribbon-scale" x1="220" x2="1070" y1=")[0-9.]+', html, perl = TRUE))[[1]])
   expect_gt(length(ys), 0)
   expect_true(all(ys >= 0))
 })
@@ -535,7 +535,7 @@ test_that("a scale gridline's y agrees with where the curve maps the same margin
   curve_y <- as.numeric(tokens[v_idx[1] + 1])
 
   grid_ys <- as.numeric(regmatches(html, gregexpr(
-    '(?<=<line class="ibpl-ribbon-scale" x1="150" x2="1000" y1=")[0-9.]+', html, perl = TRUE))[[1]])
+    '(?<=<line class="ibpl-ribbon-scale" x1="220" x2="1070" y1=")[0-9.]+', html, perl = TRUE))[[1]])
   expect_true(any(abs(grid_ys - curve_y) < 0.05))
 })
 
@@ -1342,4 +1342,79 @@ test_that("build_stint_ribbon_svg still renders with steps = NULL", {
     2400)
   svg <- as.character(build_stint_ribbon_svg(lanes, margin, list(n_periods = 4L)))
   expect_true(grepl("ibpl-ribbon", svg, fixed = TRUE))
+})
+
+# ---------------- gutter columns ----------------
+
+test_that("ribbon_minutes_label formats floor time as M:SS", {
+  expect_equal(ribbon_minutes_label(0), "0:00")
+  expect_equal(ribbon_minutes_label(59), "0:59")
+  expect_equal(ribbon_minutes_label(600), "10:00")
+  expect_equal(ribbon_minutes_label(1692), "28:12")
+})
+
+test_that("ribbon_pm_label signs every nonzero value and prints a bare zero", {
+  expect_equal(ribbon_pm_label(0), "0")
+  expect_equal(ribbon_pm_label(6), "+6")
+  expect_equal(ribbon_pm_label(-4), "-4")
+  expect_equal(ribbon_pm_label(12), "+12")
+})
+
+test_that("the geometry change preserves the plot area exactly", {
+  # RIBBON_GUTTER and RIBBON_WIDTH move together so every measured bar width
+  # is unchanged: 1070 - 220 == 1000 - 150.
+  expect_equal(RIBBON_WIDTH - RIBBON_GUTTER, 850)
+})
+
+test_that("the gutter renders a MIN and a +/- column per player", {
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
+    lane_row("own", "1", 900, 1200, player_label = "Alice Adams")
+  ))
+  steps <- data.frame(elapsed = c(300, 1000), order_key = c(1, 2),
+                      margin = c(4, 9))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = c(300, 1000), margin = c(4, 9), order_key = c(1, 2)),
+      2400),
+    list(n_periods = 4L), steps = steps))
+
+  expect_true(grepl("ibpl-ribbon-min", svg, fixed = TRUE))
+  expect_true(grepl("ibpl-ribbon-pm", svg, fixed = TRUE))
+  expect_true(grepl(">15:00<", svg, fixed = TRUE))   # 600 + 300 seconds
+  expect_true(grepl(">+9<", svg, fixed = TRUE))      # margin 0 -> 4 -> 9
+})
+
+test_that("the gutter header labels both new columns", {
+  lanes <- ribbon_mark_starters(lane_row("own", "1", 0, 600))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = 300, margin = 2, order_key = 1), 2400),
+    list(n_periods = 4L),
+    steps = data.frame(elapsed = 300, order_key = 1, margin = 2)))
+  expect_true(grepl(">MIN<", svg, fixed = TRUE))
+  expect_true(grepl(">+/-<", svg, fixed = TRUE))
+})
+
+test_that("the lane aria-label reports the player's GAME total, not one stint", {
+  # Before this task it reported the first stint's duration, which for a
+  # player with several stints was simply the wrong number.
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
+    lane_row("own", "1", 900, 1200, player_label = "Alice Adams")
+  ))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = 300, margin = 2, order_key = 1), 2400),
+    list(n_periods = 4L),
+    steps = data.frame(elapsed = 300, order_key = 1, margin = 2)))
+  # Scope to the gutter <text> label. The per-stint <g> aria-labels
+  # legitimately report their own stint's duration (10:00 for the first
+  # stint here), so an unscoped grepl over the whole SVG conflates two
+  # different labels that are both correct.
+  name_tags <- regmatches(svg, gregexpr('<text[^>]*ibpl-ribbon-name[^>]*>', svg))[[1]]
+  expect_true(any(grepl('aria-label="Alice Adams, 15:00 on the floor', name_tags,
+                        fixed = TRUE)))
+  expect_false(any(grepl('aria-label="Alice Adams, 10:00 on the floor', name_tags,
+                         fixed = TRUE)))
 })

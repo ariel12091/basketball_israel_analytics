@@ -3058,8 +3058,18 @@ EURO_LD_LINEUP_TABLE_SPEC <- list(
 # The readers hand these functions a row per (segment, player); everything
 # below is geometry and has no idea which league or table it came from.
 
-# Width reserved on the left for lane labels.
-RIBBON_GUTTER <- 150
+# Width reserved on the left for lane labels and the two totals columns.
+# RIBBON_GUTTER and RIBBON_WIDTH moved together (150/1000 -> 220/1070) so the
+# plot area stays 850 units and every bar keeps the width it had before the
+# totals columns existed.
+RIBBON_GUTTER <- 220
+
+# Right-hand anchors of the three gutter columns. RIBBON_NAME_X is 142, the
+# same x the name occupied under the 150-unit gutter, so the name column did
+# not move -- the two new columns were added in the space the widening made.
+RIBBON_NAME_X <- RIBBON_GUTTER - 78
+RIBBON_MIN_X <- RIBBON_GUTTER - 35
+RIBBON_PM_X <- RIBBON_GUTTER - 8
 
 # Collapse consecutive segments in which the same player stayed on the floor.
 # Merging is per PLAYER, not per lineup hash: a player who survives a
@@ -3206,7 +3216,7 @@ ribbon_complete_margin <- function(margin, total_seconds) {
 
 # ---------------- Stint ribbon: SVG builder ----------------
 
-RIBBON_WIDTH <- 1000
+RIBBON_WIDTH <- 1070
 RIBBON_LANE_HEIGHT <- 14
 RIBBON_LANE_GAP <- 3
 RIBBON_MARGIN_HEIGHT <- 90
@@ -3387,16 +3397,32 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     )
   })
 
+  # One gutter row per player: name, floor time, +/-. The totals come from
+  # ribbon_player_totals() rather than the first stint's row -- the old
+  # aria-label used lanes[i]'s own duration, which for a player with several
+  # stints reported one stint instead of their game.
+  totals <- ribbon_player_totals(lanes)
+  tkey <- paste(totals$side, totals$player_key, sep = "\r")
   first_row <- !duplicated(paste(lanes$side, lanes$player_key))
   lane_labels <- lapply(which(first_row), function(i) {
-    secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
-    label <- sprintf("%s, %.0f:%02.0f on the floor",
-                     lanes$player_label[i], secs %/% 60, secs %% 60)
-    tags$text(class = "ibpl-ribbon-name", x = RIBBON_GUTTER - 8,
-              y = lanes$abs_y[i] + lanes$h[i] - 3, `text-anchor` = "end",
-              `data-clip` = lanes$clip[i], tabindex = "0",
-              `aria-label` = label,
-              lanes$player_label[i])
+    ti <- match(paste(lanes$side[i], lanes$player_key[i], sep = "\r"), tkey)
+    mins <- ribbon_minutes_label(totals$secs[ti])
+    pm <- ribbon_pm_label(totals$pm[ti])
+    label <- sprintf("%s, %s on the floor, %s", lanes$player_label[i], mins,
+                     if (nzchar(pm)) paste("plus-minus", pm) else "plus-minus unavailable")
+    y <- lanes$abs_y[i] + lanes$h[i] - 3
+    # class comes first in each tag (not via `common`, which is spliced in
+    # after) so the DOM matches the order pre-existing tests pin, e.g. a
+    # `<text class="ibpl-ribbon-name"[^>]*data-clip=...` regex.
+    common <- list(`data-clip` = lanes$clip[i], `text-anchor` = "end")
+    list(
+      do.call(tags$text, c(list(class = "ibpl-ribbon-name", x = RIBBON_NAME_X, y = y),
+        common, list(tabindex = "0", `aria-label` = label, lanes$player_label[i]))),
+      do.call(tags$text, c(list(class = "ibpl-ribbon-min", x = RIBBON_MIN_X, y = y),
+        common, list(mins))),
+      do.call(tags$text, c(list(class = "ibpl-ribbon-pm", x = RIBBON_PM_X, y = y),
+        common, list(pm)))
+    )
   })
 
   # Both team labels sit RIBBON_HEADER - 10 above their own block, in the
@@ -3407,6 +3433,10 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # lopsided chart, while the label itself never fills that space: it is
   # left-anchored in the gutter and the band starts at RIBBON_GUTTER.
   team_labels <- list(
+    tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_MIN_X,
+              y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "MIN"),
+    tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_PM_X,
+              y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "+/-"),
     tags$text(class = "ibpl-ribbon-team", x = 0, y = RIBBON_PAD_TOP + 10, meta$own_team %||% "Own"),
     tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - RIBBON_HEADER + 10,
               meta$opp_team %||% "Opponent")
@@ -3691,4 +3721,19 @@ ribbon_player_totals <- function(lanes) {
     pm = as.numeric(pm),
     stringsAsFactors = FALSE
   )
+}
+
+
+# Floor time as M:SS. floor() rather than round() so a total never reads one
+# second longer than the bars it was summed from.
+ribbon_minutes_label <- function(secs) {
+  secs <- floor(as.numeric(secs))
+  sprintf("%d:%02d", secs %/% 60, secs %% 60)
+}
+
+# +/- for the gutter and the bar faces. Zero prints bare, so a "0" is
+# visibly a measured level stint rather than a sign the renderer gave up.
+ribbon_pm_label <- function(pm) {
+  pm <- as.integer(round(as.numeric(pm)))
+  ifelse(is.na(pm), "", ifelse(pm == 0, "0", sprintf("%+d", pm)))
 }

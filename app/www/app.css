@@ -1490,6 +1490,25 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 .ibpl-ribbon-name { fill: var(--ibpl-text); cursor: pointer; }
 .ibpl-ribbon-name:focus { outline: none; }
 .ibpl-ribbon-name.is-active { fill: var(--ibpl-accent); }
+
+/* Gutter totals columns. Mono so the digits align down the column and so
+   their width is computable server-side (see the on-bar numbers below). */
+.ibpl-ribbon-min,
+.ibpl-ribbon-pm,
+.ibpl-ribbon-col-head {
+  font-family: var(--ibpl-font-mono);
+  font-size: 10px;
+  fill: var(--ibpl-text-muted);
+}
+
+.ibpl-ribbon-pm { fill: var(--ibpl-text); }
+
+.ibpl-ribbon-col-head {
+  fill: var(--ibpl-text-faint);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
 .ibpl-ribbon-team {
   fill: var(--ibpl-text);
   font-size: 12px;
