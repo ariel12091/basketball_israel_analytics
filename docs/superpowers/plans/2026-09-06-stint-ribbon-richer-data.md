@@ -12,6 +12,35 @@
 
 **Branch:** `shiny/stint-ribbon` (the base ribbon feature is complete and unmerged on this branch).
 
+## Review remarks — all three accepted and applied
+
+- **Accessibility:** The detail strip is `aria-hidden`, but the proposed lane
+  `aria-label` omitted the teammate (`with`) context. Include the overlap text
+  in the accessible label, or provide an equivalent keyboard/screen-reader path.
+  → **Applied in Task 9.** The overlap computation moved above the label so the
+  label can carry it, and a test now asserts a lane's `aria-label` names its
+  teammates. The remark understated it: the old comment claimed the label
+  "carries what the strip shows" while omitting them, so the code was
+  self-contradictory. With the band and the lit overlaps purely visual and the
+  strip `aria-hidden`, that label is the *only* path to the lineup for a
+  screen-reader user.
+- **Gutter hover:** `setDetail()` must ignore gutter labels, which have no
+  `data-start`/`data-player`; otherwise hovering a name can render
+  `undefined · undefined · undefined` in the detail strip. Apply the same guard
+  used for `setBand()` and `setOverlaps()`.
+  → **Applied in Task 10.** The guard is now a named `isStint()` predicate that
+  all three functions call, rather than prose telling the implementer to add it
+  to two of them — which is how `setDetail()` got missed in the first place. The
+  browser checklist gained an explicit "must never show `undefined`" step.
+- **League coverage:** The reconciliation tests in Task 11 queried only the
+  Israeli reader, despite the plan's "both leagues or neither" constraint. Add
+  equivalent EuroLeague coverage after migration 054.
+  → **Applied in Task 11.** All three reconciliation tests now loop over a
+  `RIBBON_LEAGUES` table, and the SQL-constant loader is parameterised over the
+  league. Task 11 already runs after Task 8, and its step now states that
+  migration 054 must be applied first — a missing `own_team_score` is the
+  correct failure, not a reason to drop the EuroLeague case.
+
 ## Global Constraints
 
 - **One round trip per ribbon open.** Pooler latency is 238 ms against a 500 ms budget. No task may add a second query.
@@ -1575,6 +1604,30 @@ test_that("ribbon_detail_strip renders an aria-hidden container", {
   expect_true(grepl("ibpl-ribbon-detail", strip, fixed = TRUE))
   expect_true(grepl('aria-hidden="true"', strip, fixed = TRUE))
 })
+
+test_that("the lane aria-label carries the teammates too, not just the numbers", {
+  # The strip is aria-hidden and the band and lit overlaps are purely
+  # visual, so this label is the ONLY path to the lineup for a
+  # screen-reader user. Dropping the teammates here would leave that user
+  # with no equivalent at all.
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
+    lane_row("own", "2", 300, 900, player_label = "Bea Bell")
+  ))
+  steps <- data.frame(elapsed = c(200, 400), order_key = c(1, 2),
+                      margin = c(3, 6), own = c(5, 10))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes, ribbon_complete_margin(
+      data.frame(elapsed = c(200, 400), margin = c(3, 6), order_key = c(1, 2)),
+      2400),
+    list(n_periods = 4L), steps = steps))
+
+  aria <- regmatches(svg, gregexpr('aria-label="[^"]*"', svg))[[1]]
+  alice <- aria[grepl("Alice Adams", aria, fixed = TRUE)]
+  expect_true(length(alice) > 0)
+  expect_true(any(grepl("on with", alice, fixed = TRUE)))
+  expect_true(any(grepl("Bea Bell", alice, fixed = TRUE)))
+})
 ```
 
 - [ ] **Step 2: Run the tests to verify they fail**
@@ -1636,14 +1689,9 @@ Replace the lane `<g>` opening in `build_stint_ribbon_svg`. Old text:
       tags$title(label),
 ```
 
-New text:
+New text (`ov`, `with_txt` and `window_txt` are already in scope — they are computed at the top of the `lapply` by the second replacement below):
 
 ```r
-    ov <- ribbon_stint_overlaps(lanes, lanes$side[i], lanes$player_key[i],
-                                lanes$start_elapsed[i], lanes$end_elapsed[i])
-    with_txt <- ribbon_overlap_label(ov, steps)
-    window_txt <- sprintf("%s-%s", ribbon_minutes_label(lanes$start_elapsed[i]),
-                          ribbon_minutes_label(lanes$end_elapsed[i]))
     tags$g(
       class = paste("ibpl-ribbon-lane", paste0("is-", lanes$side[i])),
       `data-clip` = lanes$clip[i],
@@ -1675,13 +1723,23 @@ New text:
 ```r
   lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
     secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
-    # The accessible name carries what the strip shows, because the strip is
-    # aria-hidden -- see ribbon_detail_strip().
-    label <- sprintf("%s, %s on the floor, plus-minus %s%s",
+    ov <- ribbon_stint_overlaps(lanes, lanes$side[i], lanes$player_key[i],
+                                lanes$start_elapsed[i], lanes$end_elapsed[i])
+    with_txt <- ribbon_overlap_label(ov, steps)
+    window_txt <- sprintf("%s-%s", ribbon_minutes_label(lanes$start_elapsed[i]),
+                          ribbon_minutes_label(lanes$end_elapsed[i]))
+    # The accessible name carries EVERYTHING the strip shows, teammates
+    # included, because the strip is aria-hidden -- see
+    # ribbon_detail_strip(). If the teammates were left out here there
+    # would be no path to them at all for a screen-reader user: the band
+    # and the lit overlaps are purely visual, so this label is their only
+    # equivalent.
+    label <- sprintf("%s, %s on the floor, plus-minus %s%s%s",
                      lanes$player_label[i], ribbon_minutes_label(secs), num[i],
                      if (is.na(lanes$pf[i])) "" else
                        sprintf(", %d points for and %d against",
-                               lanes$pf[i], lanes$pa[i]))
+                               lanes$pf[i], lanes$pa[i]),
+                     if (nzchar(with_txt)) paste(", on with", with_txt) else "")
 ```
 
 - [ ] **Step 5: Render the strip in both tabs**
@@ -1737,6 +1795,16 @@ Claude-Session: https://claude.ai/code/session_01NS6bqx4bZQ7H8gaPRKBPbr"
 Inside the existing stint-ribbon IIFE, add these helpers above `setFocus` and call them from it. The band is one `<rect>` inserted once per SVG and repositioned; the overlap highlights are recomputed per hover.
 
 ```js
+  // laneFrom() deliberately also matches the gutter <text> labels, which
+  // carry data-clip so a name works as an index into the lanes. Those
+  // elements have NO data-start/data-end/data-player, so every function
+  // below that reads a stint's attributes must reject them -- otherwise
+  // hovering a name renders "undefined · undefined · undefined" in the
+  // strip and bands a NaN-wide window.
+  function isStint(lane) {
+    return !!(lane && lane.dataset && lane.dataset.start !== undefined);
+  }
+
   function bandFor(svg) {
     var band = svg.querySelector(".ibpl-ribbon-band");
     if (!band) {
@@ -1753,7 +1821,7 @@ Inside the existing stint-ribbon IIFE, add these helpers above `setFocus` and ca
   // conversion the script would have to keep in step with the R constants.
   function setBand(svg, lane) {
     var band = bandFor(svg);
-    if (!lane) { band.setAttribute("width", "0"); return; }
+    if (!isStint(lane)) { band.setAttribute("width", "0"); return; }
     var r = lane.querySelector("rect");
     if (!r) { band.setAttribute("width", "0"); return; }
     var vb = svg.viewBox.baseVal;
@@ -1766,7 +1834,7 @@ Inside the existing stint-ribbon IIFE, add these helpers above `setFocus` and ca
   function setOverlaps(svg, lane) {
     var lit = svg.querySelectorAll(".ibpl-ribbon-lane.is-overlap");
     for (var i = 0; i < lit.length; i++) lit[i].classList.remove("is-overlap");
-    if (!lane) return;
+    if (!isStint(lane)) return;
 
     var s = Number(lane.dataset.start);
     var e = Number(lane.dataset.end);
@@ -1784,7 +1852,10 @@ Inside the existing stint-ribbon IIFE, add these helpers above `setFocus` and ca
 
   function setDetail(svg, lane) {
     var host = svg.parentNode && svg.parentNode.querySelector(".ibpl-ribbon-detail");
-    if (!host || !lane) return;   // on exit, keep the last one in place
+    // Keep the last contents in place on exit (!lane) AND when the pointer
+    // is on a gutter name (!isStint) -- a name is a whole-game index, not a
+    // stint, and has none of the attributes read below.
+    if (!host || !isStint(lane)) return;
     var d = lane.dataset;
     var score = (d.pf !== "" && d.pa !== "") ? "  " + d.pf + "-" + d.pa : "";
     var head = d.player + "  ·  " + d.window + "  ·  " + d.pm + score;
@@ -1810,7 +1881,7 @@ Then call all three from inside `setFocus`, immediately after the existing `svg.
     setDetail(svg, lane);
 ```
 
-Note the existing `laneFrom()` also matches gutter labels, which have no `data-start`. Guard `setBand` / `setOverlaps` by returning early when `lane.dataset.start === undefined`, so hovering a name still clips the curve (as it does today) without drawing a band.
+All three read stint attributes, so all three go through `isStint()`. Hovering a gutter name still clips the curve and lights that player's bars exactly as it does today, and now draws no band and leaves the strip alone.
 
 - [ ] **Step 2: Add the CSS**
 
@@ -1867,7 +1938,7 @@ Check each of these on an Israeli game and again on a EuroLeague game:
 3. The strip fills with the player, window, +/-, for-against, and the teammate list — and every teammate entry shows a clock range and a signed number.
 4. Moving off the chart leaves the last strip contents in place.
 5. **Tab** moves focus between lanes and produces the same band, highlights and strip as hover — with no pointer involved.
-6. Hovering a gutter *name* still clips the curve and lights that player's bars, and draws no band.
+6. Hovering a gutter *name* still clips the curve and lights that player's bars, draws no band, and leaves the strip showing the last stint — **it must never show `undefined`**. Check the strip text explicitly here; this is the one case where `laneFrom()` returns an element with none of the stint attributes.
 7. The strip does not change height between a stint with teammates and one without (the `min-height` holds).
 
 - [ ] **Step 5: Commit**
@@ -1906,18 +1977,44 @@ Append to `app/tests/testthat/test-stint-ribbon-readers.R`.
 The file has **no** `skip_if_no_db()` helper and **no** pool fixture — its DB tests use a two-line env guard and a direct `DBI::dbConnect` (see `test-stint-ribbon-readers.R:117-124`). And because the suite does not source `global.R`, `fetch_stint_ribbon` is unavailable: extract and evaluate the SQL constant from source instead, which is the same trick `helper-server-mocks.R:31-36` uses for the colour ramp.
 
 ```r
-# Shared by the reconciliation tests below: bind RIBBON_SQL_ISRAEL by
-# evaluating just that assignment out of global.R, which the suite does not
-# source. Reading the real constant (rather than pasting a copy here) is the
-# point -- a copy would keep passing after the query changed.
-ribbon_israel_sql <- function() {
+# Shared by the reconciliation tests below: bind RIBBON_SQL_ISRAEL or
+# RIBBON_SQL_EURO by evaluating just that assignment out of global.R, which
+# the suite does not source. Reading the real constant (rather than pasting a
+# copy here) is the point -- a copy would keep passing after the query changed.
+ribbon_sql_for <- function(league) {
+  const <- if (identical(league, "israel")) "RIBBON_SQL_ISRAEL" else "RIBBON_SQL_EURO"
   src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
                          warn = FALSE), collapse = "\n")
-  assign_txt <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n',
+  assign_txt <- regmatches(src, regexpr(paste0(const, ' <- "(.|\n)*?"\n'),
                                         src, perl = TRUE))
   stopifnot(nzchar(assign_txt))
   eval(parse(text = assign_txt))
 }
+
+# Every reconciliation below runs against BOTH leagues. The feature's standing
+# constraint is "both leagues or neither", and the spec's evidence covers both
+# (301/301 Israeli and 323/323 EuroLeague player-games). A test that checked
+# only one would let the other drift silently -- which is exactly how the two
+# leagues' tab code diverged three ways before.
+RIBBON_LEAGUES <- list(
+  israel = list(
+    games = "SELECT DISTINCT ON (game_id) game_id, team_id
+             FROM basketball_test.final_schedule_mv
+             WHERE game_year = 2026 ORDER BY game_id LIMIT %d",
+    minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
+               FROM basketball_test.player_four_factors_by_game
+               WHERE game_id = $1 AND team_id = $2
+                 AND is_on_key = 1 AND type_lineup = 'offense'
+               GROUP BY player_id"),
+  euroleague = list(
+    games = "SELECT DISTINCT ON (game_id) game_id, team_id
+             FROM euroleague.final_schedule ORDER BY game_id DESC LIMIT %d",
+    minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
+               FROM euroleague.player_four_factors_by_game
+               WHERE game_id = $1 AND team_id = $2
+                 AND is_on_key = 1 AND type_lineup = 'offense'
+               GROUP BY player_id")
+)
 
 ribbon_db_con <- function() {
   DBI::dbConnect(RPostgres::Postgres(),
@@ -1928,8 +2025,8 @@ ribbon_db_con <- function() {
 }
 
 # Run the real query and rebuild what the builder would draw.
-ribbon_fixture <- function(con, game_id, team_id) {
-  row <- DBI::dbGetQuery(con, ribbon_israel_sql(),
+ribbon_fixture <- function(con, league, game_id, team_id) {
+  row <- DBI::dbGetQuery(con, ribbon_sql_for(league),
                          params = list(game_id, team_id))
   lanes_raw <- jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
   marg_raw <- jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
@@ -1952,26 +2049,25 @@ test_that("ribbon floor time equals the app's published per-game minutes", {
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-  games <- DBI::dbGetQuery(con, "
-    SELECT DISTINCT ON (game_id) game_id, team_id
-    FROM basketball_test.final_schedule_mv
-    WHERE game_year = 2026 ORDER BY game_id LIMIT 5")
+  for (league in names(RIBBON_LEAGUES)) {
+    cfg <- RIBBON_LEAGUES[[league]]
+    games <- DBI::dbGetQuery(con, sprintf(cfg$games, 5L))
+    expect_gt(nrow(games), 0)
 
-  for (i in seq_len(nrow(games))) {
-    fx <- ribbon_fixture(con, games$game_id[i], games$team_id[i])
-    tot <- ribbon_player_totals(fx$lanes)
-    tot <- tot[tot$side == "own", , drop = FALSE]
+    for (i in seq_len(nrow(games))) {
+      fx <- ribbon_fixture(con, league, games$game_id[i], games$team_id[i])
+      tot <- ribbon_player_totals(fx$lanes)
+      tot <- tot[tot$side == "own", , drop = FALSE]
 
-    mv <- DBI::dbGetQuery(con, "
-      SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
-      FROM basketball_test.player_four_factors_by_game
-      WHERE game_id = $1 AND team_id = $2
-        AND is_on_key = 1 AND type_lineup = 'offense'
-      GROUP BY player_id", params = list(games$game_id[i], games$team_id[i]))
+      mv <- DBI::dbGetQuery(con, cfg$minutes,
+                            params = list(games$game_id[i], games$team_id[i]))
 
-    both <- merge(tot, mv, by = "player_key")
-    expect_gt(nrow(both), 0)
-    expect_true(all(abs(both$secs / 60 - both$mv_min) < 0.01))
+      both <- merge(tot, mv, by = "player_key")
+      # info = so a failure names the league and game rather than just a row.
+      expect_gt(nrow(both), 0)
+      expect_true(all(abs(both$secs / 60 - both$mv_min) < 0.01),
+                  info = sprintf("%s game %s", league, games$game_id[i]))
+    }
   }
 })
 
@@ -1984,23 +2080,21 @@ test_that("each bar's +/- equals the margin curve's rise across that bar", {
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-  games <- DBI::dbGetQuery(con, "
-    SELECT DISTINCT ON (game_id) game_id, team_id
-    FROM basketball_test.final_schedule_mv
-    WHERE game_year = 2026 ORDER BY game_id LIMIT 3")
+  for (league in names(RIBBON_LEAGUES)) {
+    games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 3L))
+    for (i in seq_len(nrow(games))) {
+      fx <- ribbon_fixture(con, league, games$game_id[i], games$team_id[i])
+      mar <- data.frame(elapsed = fx$steps$elapsed,
+                        order_key = fx$steps$order_key,
+                        value = fx$steps$margin)
+      rise <- ribbon_score_as_of(mar, fx$lanes$end_elapsed) -
+              ribbon_score_as_of(mar, fx$lanes$start_elapsed)
+      expect_equal(fx$lanes$pm, rise)
 
-  for (i in seq_len(nrow(games))) {
-    fx <- ribbon_fixture(con, games$game_id[i], games$team_id[i])
-    mar <- data.frame(elapsed = fx$steps$elapsed,
-                      order_key = fx$steps$order_key,
-                      value = fx$steps$margin)
-    rise <- ribbon_score_as_of(mar, fx$lanes$end_elapsed) -
-            ribbon_score_as_of(mar, fx$lanes$start_elapsed)
-    expect_equal(fx$lanes$pm, rise)
-
-    # And pf - pa must reproduce it, which ties the printed number to the
-    # for/against pair the strip shows.
-    expect_equal(fx$lanes$pm, fx$lanes$pf - fx$lanes$pa)
+      # And pf - pa must reproduce it, which ties the printed number to the
+      # for/against pair the strip shows.
+      expect_equal(fx$lanes$pm, fx$lanes$pf - fx$lanes$pa)
+    }
   }
 })
 
@@ -2010,20 +2104,22 @@ test_that("a player's bars sum to their gutter total", {
   con <- ribbon_db_con()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
 
-  games <- DBI::dbGetQuery(con, "
-    SELECT game_id, team_id FROM basketball_test.final_schedule_mv
-    WHERE game_year = 2026 ORDER BY game_id LIMIT 1")
-  fx <- ribbon_fixture(con, games$game_id[1], games$team_id[1])
-  tot <- ribbon_player_totals(fx$lanes)
+  for (league in names(RIBBON_LEAGUES)) {
+    games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 1L))
+    fx <- ribbon_fixture(con, league, games$game_id[1], games$team_id[1])
+    tot <- ribbon_player_totals(fx$lanes)
 
-  key <- paste(fx$lanes$side, fx$lanes$player_key, sep = "\r")
-  by_hand <- tapply(fx$lanes$pm, key, sum)
-  tkey <- paste(tot$side, tot$player_key, sep = "\r")
-  expect_equal(as.numeric(by_hand[tkey]), tot$pm)
+    key <- paste(fx$lanes$side, fx$lanes$player_key, sep = "\r")
+    by_hand <- tapply(fx$lanes$pm, key, sum)
+    tkey <- paste(tot$side, tot$player_key, sep = "\r")
+    expect_equal(as.numeric(by_hand[tkey]), tot$pm)
+  }
 })
 ```
 
 - [ ] **Step 2: Run them with the database enabled**
+
+**Migration 054 (Task 8) must already be applied to the live database**, or the EuroLeague half of these tests fails on a missing `own_team_score` column. That is the correct failure — do not skip the EuroLeague league to get green.
 
 ```bash
 RUN_DB_TESTS=1 "$RSCRIPT" -e "setwd('app'); testthat::test_file('tests/testthat/test-stint-ribbon-readers.R')"
