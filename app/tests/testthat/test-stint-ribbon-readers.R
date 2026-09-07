@@ -399,6 +399,22 @@ ribbon_fixture <- function(con, league, game_id, team_id) {
   list(lanes = lanes, steps = steps)
 }
 
+# The PRE-MERGE lanes, plus the same step series. ribbon_fixture() above
+# returns the merged bars the chart draws; the two reconciliations at the end
+# of this file need the rows those bars were merged FROM, so this stops short
+# of merge_adjacent_stints() and of the side flip.
+ribbon_raw_fixture <- function(con, league, game_id, team_id) {
+  row <- DBI::dbGetQuery(con, ribbon_sql_for(league),
+                         params = list(game_id, team_id))
+  lanes_raw <- jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
+  marg_raw <- jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
+  list(lanes = ribbon_normalise_lanes(lanes_raw, team_id),
+       steps = data.frame(elapsed = as.numeric(marg_raw$elapsed),
+                          order_key = as.numeric(marg_raw$order_key),
+                          margin = as.numeric(marg_raw$margin),
+                          own = as.numeric(marg_raw$own)))
+}
+
 test_that("ribbon floor time equals the app's published per-game minutes", {
   # Measured 2026-09-06 before any of this was built: 301/301 Israeli
   # player-games agreed to 7e-15 and 323/323 EuroLeague ones to 0.002 min
@@ -538,4 +554,93 @@ test_that("fetch_stint_ribbon captures the raw steps series before ribbon_comple
   expect_true(steps_pos > 0)
   expect_true(complete_pos > 0)
   expect_true(steps_pos < complete_pos)
+})
+
+
+test_that("a lineup key identifies exactly five players, both leagues", {
+  # Task 4 reused the identities each league already had -- Israel's
+  # lineup_hash, EuroLeague's sorted player_ids array -- instead of minting a
+  # new identifier. The entire justification for that is that they ALREADY
+  # partition the floor into fives, so it is asserted here on live data rather
+  # than assumed. Restores brief 4 Step 4, which the shelved batch never wrote.
+  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+  con <- ribbon_db_con()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  checked <- 0L
+  for (league in names(RIBBON_LEAGUES)) {
+    games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 3L))
+    expect_gt(nrow(games), 0)
+
+    for (i in seq_len(nrow(games))) {
+      fx <- ribbon_raw_fixture(con, league, games$game_id[i], games$team_id[i])
+      expect_gt(nrow(fx$lanes), 0)
+      expect_false(any(is.na(fx$lanes$lineup_key)))
+      expect_true(all(nzchar(fx$lanes$lineup_key)))
+
+      # One (side, lineup_key, start_elapsed) is one five on the floor. The
+      # start is part of the key because the same five can retake the floor
+      # later in the game, which is a second occupancy of one lineup.
+      per <- tapply(fx$lanes$player_key,
+                    paste(fx$lanes$side, fx$lanes$lineup_key,
+                          fx$lanes$start_elapsed),
+                    function(x) length(unique(x)))
+      expect_true(all(per == 5),
+                  info = sprintf("%s game %s", league, games$game_id[i]))
+      checked <- checked + length(per)
+    }
+  }
+  # Non-vacuous: proves fives were actually counted, not that the loops were
+  # skipped. Four stub-passing tests shipped in the predecessor plan for want
+  # of exactly this line.
+  expect_gt(checked, 50L)
+})
+
+test_that("segments reconcile with their bar on live data, both leagues", {
+  # The offline invariant proves the telescoping property on a synthetic
+  # three-segment fixture. This proves it where the feature lives: real bars,
+  # 86.3% of which span more than one five (median 4). Restores brief 6 Step 4,
+  # which the shelved batch never wrote.
+  #
+  # Deliberately reads the PRE-flip numbers (ribbon_stint_points() straight off
+  # merge_adjacent_stints()), because the telescoping identity holds on both
+  # sides before ribbon_side_perspective() and the flip is a presentation step.
+  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+  con <- ribbon_db_con()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  checked <- 0L
+  scored <- 0L
+  for (league in names(RIBBON_LEAGUES)) {
+    games <- DBI::dbGetQuery(con, sprintf(RIBBON_LEAGUES[[league]]$games, 3L))
+    expect_gt(nrow(games), 0)
+
+    for (i in seq_len(nrow(games))) {
+      fx <- ribbon_raw_fixture(con, league, games$game_id[i], games$team_id[i])
+      expect_gt(nrow(fx$lanes), 0)
+      bars <- ribbon_stint_points(merge_adjacent_stints(fx$lanes), fx$steps)
+      expect_gt(nrow(bars), 0)
+
+      for (b in seq_len(nrow(bars))) {
+        seg <- ribbon_stint_points(
+          ribbon_stint_segments(fx$lanes, bars$side[b], bars$player_key[b],
+                                bars$start_elapsed[b], bars$end_elapsed[b]),
+          fx$steps)
+        expect_gt(nrow(seg), 0)
+        expect_equal(sum(seg$pm), bars$pm[b], tolerance = 1e-9,
+                     info = sprintf("%s game %s bar %d", league,
+                                    games$game_id[i], b))
+        checked <- checked + 1L
+        if (!is.na(bars$pm[b])) scored <- scored + 1L
+      }
+    }
+  }
+  # Non-vacuous: proves bars were actually compared.
+  expect_gt(checked, 100L)
+  # And that most of them carried real numbers. A scoreless game (Task 1:
+  # games 139/140/141/143) yields NA on both sides of the comparison, and
+  # expect_equal(NA, NA) passes without testing the arithmetic.
+  expect_gt(scored, 50L)
 })

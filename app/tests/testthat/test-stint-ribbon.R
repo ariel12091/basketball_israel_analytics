@@ -1432,6 +1432,48 @@ test_that("NA survives the flip as NA, not as a sign-flipped zero", {
   expect_true(is.na(out$pm) && is.na(out$pf) && is.na(out$pa))
 })
 
+test_that("the builder itself applies the side flip to the bars it draws", {
+  # The two tests above call ribbon_side_perspective() directly, so neither of
+  # them can see whether build_stint_ribbon_svg() actually CALLS it. Measured
+  # 2026-09-07: deleting the call site broke no offline test at all, and the
+  # live-DB reconciliation that would have caught it never runs in CI (this
+  # repo has no RUN_DB_TESTS runner). So this one watches the wiring rather
+  # than the helper -- it reads the bars the builder rendered.
+  lanes <- ribbon_mark_starters(rbind(
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
+    lane_row("opp", "2", 0, 600, player_label = "Zoe Zed")
+  ))
+  # The clicked team is outscored 4-12 across the window, so its margin runs
+  # 0 -> -8 and that opponent five won those minutes by 8.
+  steps <- data.frame(elapsed = c(0, 600), order_key = c(1, 2),
+                      margin = c(0, -8), own = c(0, 4))
+  svg <- as.character(build_stint_ribbon_svg(
+    lanes,
+    ribbon_complete_margin(
+      data.frame(elapsed = c(0, 600), margin = c(0, -8), order_key = c(1, 2)),
+      2400),
+    list(n_periods = 4L), steps = steps))
+
+  lane_g <- function(side) {
+    g <- regmatches(svg, regexpr(
+      sprintf('<g class="ibpl-ribbon-lane is-%s"[^>]*', side), svg))
+    # Non-vacuous guard: with no matching group every grepl() below would run
+    # against character(0) and the test would assert nothing.
+    expect_length(g, 1L)
+    g
+  }
+  own <- lane_g("own")
+  opp <- lane_g("opp")
+
+  expect_true(grepl('data-pm="-8"', own, fixed = TRUE))
+  expect_true(grepl('data-pf="4"', own, fixed = TRUE))
+  expect_true(grepl('data-pa="12"', own, fixed = TRUE))
+  # The same minutes, read from the opponent five's own point of view.
+  expect_true(grepl('data-pm="+8"', opp, fixed = TRUE))
+  expect_true(grepl('data-pf="12"', opp, fixed = TRUE))
+  expect_true(grepl('data-pa="4"', opp, fixed = TRUE))
+})
+
 # ---------------- ribbon_stint_overlaps ----------------
 # A merged bar spans a median of 4 different fives (measured 2026-09-06 over
 # 1,470 real stints), so "the five at the start" is stale for most of most
