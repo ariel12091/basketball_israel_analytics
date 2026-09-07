@@ -3346,6 +3346,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # chart renders exactly as it did before this feature -- see
   # ribbon_stint_points(), which returns NA rather than a fabricated 0.
   lanes <- ribbon_stint_points(lanes, steps)
+  lanes <- ribbon_side_perspective(lanes)
   lanes <- ribbon_lane_index(lanes)
   lanes <- ribbon_geometry(lanes, total_seconds, width = RIBBON_WIDTH,
                            lane_height = RIBBON_LANE_HEIGHT,
@@ -3546,6 +3547,7 @@ ribbon_normalise_lanes <- function(raw, own_team_id) {
     return(data.frame(side = character(0), player_key = character(0),
                       player_label = character(0),
                       start_elapsed = numeric(0), end_elapsed = numeric(0),
+                      lineup_key = character(0),
                       stringsAsFactors = FALSE))
   }
   data.frame(
@@ -3554,8 +3556,33 @@ ribbon_normalise_lanes <- function(raw, own_team_id) {
     player_label = as.character(raw$player_label),
     start_elapsed = as.numeric(raw$start_elapsed),
     end_elapsed = as.numeric(raw$end_elapsed),
+    lineup_key = as.character(raw$lineup_key),
     stringsAsFactors = FALSE
   )
+}
+
+# One row per (side, lineup_key) with the five member labels. Keyed on
+# player_key, NEVER on player_label: both leagues carry same-name /
+# different-id players on one team, and a label key would collapse two
+# people into one and report a four-man five.
+ribbon_lineup_dictionary <- function(lanes) {
+  empty <- data.frame(side = character(0), lineup_key = character(0),
+                      members = character(0), stringsAsFactors = FALSE)
+  if (is.null(lanes) || !nrow(lanes)) return(empty)
+
+  grp <- paste(lanes$side, lanes$lineup_key, sep = "\r")
+  keep <- !duplicated(paste(grp, lanes$player_key, sep = "\r"))
+  u <- lanes[keep, , drop = FALSE]
+
+  rows <- lapply(split(seq_len(nrow(u)), paste(u$side, u$lineup_key, sep = "\r")),
+    function(i) data.frame(
+      side = u$side[i[1]], lineup_key = u$lineup_key[i[1]],
+      members = paste(sort(u$player_label[i]), collapse = " \u00b7 "),
+      stringsAsFactors = FALSE))
+
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
 }
 
 ribbon_health_message <- function(excluded_segments) {
@@ -3720,6 +3747,45 @@ ribbon_stint_points <- function(stints, steps) {
   # The opponent's running score is own - margin, so its net difference is
   # the difference of those two differences.
   stints$pa <- (own_end - mar_end) - (own_start - mar_start)
+  stints
+}
+
+
+# The segments of one merged bar. merge_adjacent_stints() built the bar by
+# collapsing contiguous per-(segment, player) rows; this is the same set,
+# un-collapsed. Clipping is defensive -- within one bar the rows abut
+# exactly -- but it is what makes sum(segment pm) == bar pm hold by
+# construction rather than by luck, since each pm is a NET difference and
+# abutting windows telescope.
+ribbon_stint_segments <- function(lanes, side, player_key,
+                                  start_elapsed, end_elapsed) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+  sel <- lanes$side == side & lanes$player_key == player_key &
+    lanes$end_elapsed > start_elapsed & lanes$start_elapsed < end_elapsed
+  out <- lanes[sel, , drop = FALSE]
+  if (!nrow(out)) return(out)
+  out$start_elapsed <- pmax(out$start_elapsed, start_elapsed)
+  out$end_elapsed <- pmin(out$end_elapsed, end_elapsed)
+  out <- out[out$end_elapsed > out$start_elapsed, , drop = FALSE]
+  out <- out[order(out$start_elapsed), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+
+# A lineup's plus-minus is its own. An opponent bar reads +8 when that
+# opponent five won those minutes by 8, matching what the same five looks
+# up to in Tab 2. This makes the "bar +/- equals the curve's rise"
+# property true of the OWN block only, by design -- the curve is signed to
+# the clicked team and the opponent block is drawn mirrored beneath it.
+ribbon_side_perspective <- function(stints) {
+  if (is.null(stints) || !nrow(stints)) return(stints)
+  opp <- !is.na(stints$side) & stints$side == "opp"
+  if (!any(opp)) return(stints)
+  stints$pm[opp] <- -stints$pm[opp]
+  pf <- stints$pf[opp]
+  stints$pf[opp] <- stints$pa[opp]
+  stints$pa[opp] <- pf
   stints
 }
 

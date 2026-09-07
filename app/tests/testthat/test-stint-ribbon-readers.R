@@ -5,7 +5,8 @@ test_that("ribbon_normalise_lanes labels the clicked team own and the other opp"
   raw <- data.frame(
     team_id = c(7L, 7L, 10L), player_id = c(1L, 2L, 3L),
     player_label = c("A", "B", "C"), start_elapsed = c(0, 0, 0),
-    end_elapsed = c(100, 100, 100), stringsAsFactors = FALSE
+    end_elapsed = c(100, 100, 100), lineup_key = c("h1", "h1", "h2"),
+    stringsAsFactors = FALSE
   )
   out <- ribbon_normalise_lanes(raw, own_team_id = 7L)
   expect_identical(out$side, c("own", "own", "opp"))
@@ -14,20 +15,31 @@ test_that("ribbon_normalise_lanes labels the clicked team own and the other opp"
 
 test_that("ribbon_normalise_lanes returns only canonical columns", {
   raw <- data.frame(team_id = 7L, player_id = 1L, player_label = "A",
-                    start_elapsed = 0, end_elapsed = 10, extra_junk = "drop me")
+                    start_elapsed = 0, end_elapsed = 10, lineup_key = "h1",
+                    extra_junk = "drop me")
   out <- ribbon_normalise_lanes(raw, own_team_id = 7L)
   expect_identical(sort(names(out)),
                    sort(c("side", "player_key", "player_label",
-                          "start_elapsed", "end_elapsed")))
+                          "start_elapsed", "end_elapsed", "lineup_key")))
 })
 
 test_that("ribbon_normalise_lanes keys on player_id, never on the label", {
   raw <- data.frame(team_id = c(7L, 7L), player_id = c(101L, 202L),
                     player_label = c("NEW NEW", "NEW NEW"),
-                    start_elapsed = c(0, 0), end_elapsed = c(100, 100))
+                    start_elapsed = c(0, 0), end_elapsed = c(100, 100),
+                    lineup_key = c("h1", "h1"))
   out <- ribbon_normalise_lanes(raw, own_team_id = 7L)
   expect_identical(out$player_key, c("101", "202"))
   expect_identical(length(unique(out$player_key)), 2L)
+})
+
+test_that("normalised lanes carry a lineup key", {
+  raw <- data.frame(team_id = c(6L, 6L), player_id = c(1L, 2L),
+                    player_label = c("A", "B"),
+                    start_elapsed = c(0, 0), end_elapsed = c(60, 60),
+                    lineup_key = c("h1", "h1"), stringsAsFactors = FALSE)
+  out <- ribbon_normalise_lanes(raw, 6L)
+  expect_identical(out$lineup_key, c("h1", "h1"))
 })
 
 test_that("ribbon_health_message speaks only when segments were excluded", {
@@ -282,6 +294,22 @@ test_that("the EuroLeague ribbon SQL selects own_team_score in its margin CTE", 
   expect_match(sql, "own_team_score AS own", fixed = TRUE)
 })
 
+test_that("both readers select a lineup key into the lanes CTE", {
+  # Israeli already carries lineup_hash in `segs` and dropped it in the
+  # unnest; EuroLeague has no hash so the sorted, verified player_ids array
+  # IS the identity -- its text form, not a minted second identifier.
+  # Source-read for the same reason as the tests above: global.R is not
+  # sourced by the suite.
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  israel_sql <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src,
+                                        perl = TRUE))
+  euro_sql <- regmatches(src, regexpr('RIBBON_SQL_EURO <- "(.|\n)*?"\n', src,
+                                      perl = TRUE))
+  expect_match(israel_sql, "s.lineup_hash AS lineup_key", fixed = TRUE)
+  expect_match(euro_sql, "s.player_ids::text AS lineup_key", fixed = TRUE)
+})
+
 test_that("migration 054 appends the column with CREATE OR REPLACE, not a drop", {
   # CREATE OR REPLACE VIEW preserves the app_readonly grant; DROP + CREATE
   # wipes it. The column must be appended at the END of the select list,
@@ -366,7 +394,9 @@ ribbon_fixture <- function(con, league, game_id, team_id) {
                       margin = as.numeric(marg_raw$margin),
                       own = as.numeric(marg_raw$own))
   lanes <- merge_adjacent_stints(ribbon_normalise_lanes(lanes_raw, team_id))
-  list(lanes = ribbon_stint_points(lanes, steps), steps = steps)
+  lanes <- ribbon_stint_points(lanes, steps)
+  lanes <- ribbon_side_perspective(lanes)
+  list(lanes = lanes, steps = steps)
 }
 
 test_that("ribbon floor time equals the app's published per-game minutes", {
@@ -406,6 +436,12 @@ test_that("each bar's +/- equals the margin curve's rise across that bar", {
   # The self-consistency the whole chart rests on: a reader can check a
   # printed number against the curve drawn above it by eye, so it must never
   # be possible for the two to disagree.
+  #
+  # L7 narrowed this to the OWN block: ribbon_side_perspective() (called by
+  # ribbon_fixture() above, matching build_stint_ribbon_svg()) negates pm and
+  # swaps pf/pa on opp rows so an opponent five reads its own result, not the
+  # clicked team's. That is a deliberate design decision, not a regression --
+  # see the mirrored opp assertion in the next test below.
   skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
   skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
   con <- ribbon_db_con()
@@ -417,20 +453,33 @@ test_that("each bar's +/- equals the margin curve's rise across that bar", {
 
     for (i in seq_len(nrow(games))) {
       fx <- ribbon_fixture(con, league, games$game_id[i], games$team_id[i])
-      # Without this, an empty fx$lanes would make `rise` and `fx$lanes$pm`
+      # Without this, an empty fx$lanes would make `rise` and `own_bars$pm`
       # both numeric(0), and expect_equal() passes vacuously on that pair.
       expect_gt(nrow(fx$lanes), 0)
+
+      own_bars <- fx$lanes[fx$lanes$side == "own", , drop = FALSE]
+      opp_bars <- fx$lanes[fx$lanes$side == "opp", , drop = FALSE]
+      expect_gt(nrow(own_bars), 0)
+      expect_gt(nrow(opp_bars), 0)
 
       mar <- data.frame(elapsed = fx$steps$elapsed,
                         order_key = fx$steps$order_key,
                         value = fx$steps$margin)
-      rise <- ribbon_score_as_of(mar, fx$lanes$end_elapsed) -
-              ribbon_score_as_of(mar, fx$lanes$start_elapsed)
-      expect_equal(fx$lanes$pm, rise)
+      curve_rise_over <- function(bars) {
+        sum(ribbon_score_as_of(mar, bars$end_elapsed) -
+              ribbon_score_as_of(mar, bars$start_elapsed))
+      }
+      rise <- ribbon_score_as_of(mar, own_bars$end_elapsed) -
+              ribbon_score_as_of(mar, own_bars$start_elapsed)
+      expect_equal(own_bars$pm, rise)
 
       # And pf - pa must reproduce it, which ties the printed number to the
       # for/against pair the strip shows.
-      expect_equal(fx$lanes$pm, fx$lanes$pf - fx$lanes$pa)
+      expect_equal(own_bars$pm, own_bars$pf - own_bars$pa)
+
+      # The same property, mirrored: an opponent bar's +/- is the NEGATIVE
+      # of the clicked team's curve rise across it.
+      expect_equal(sum(opp_bars$pm), -(curve_rise_over(opp_bars)), tolerance = 1e-9)
     }
   }
 })

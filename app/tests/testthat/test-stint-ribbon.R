@@ -1376,6 +1376,62 @@ test_that("an empty step series yields NA, never a fabricated zero", {
   expect_true(is.na(out$pa))
 })
 
+# ---------------- ribbon_stint_segments ----------------
+
+test_that("a bar decomposes into its segments in time order", {
+  lanes <- data.frame(
+    side = rep("own", 4), player_key = rep("1", 4),
+    player_label = rep("Ash", 4),
+    lineup_key = c("h1", "h2", "h3", "h1"),
+    start_elapsed = c(0, 60, 120, 600),
+    end_elapsed   = c(60, 120, 180, 660), stringsAsFactors = FALSE)
+  seg <- ribbon_stint_segments(lanes, "own", "1", 0, 180)
+  expect_identical(seg$lineup_key, c("h1", "h2", "h3"))
+  expect_identical(seg$start_elapsed, c(0, 60, 120))
+})
+
+test_that("segment plus-minus sums to the bar's plus-minus", {
+  lanes <- data.frame(
+    side = rep("own", 3), player_key = rep("1", 3), player_label = rep("Ash", 3),
+    lineup_key = c("h1", "h2", "h3"),
+    start_elapsed = c(0, 60, 120), end_elapsed = c(60, 120, 180),
+    stringsAsFactors = FALSE)
+  steps <- data.frame(elapsed = c(0, 30, 90, 150, 180),
+                      order_key = 1:5,
+                      margin = c(0, 4, 1, 6, 2))
+  bar <- ribbon_stint_points(
+    data.frame(start_elapsed = 0, end_elapsed = 180), steps)
+  seg <- ribbon_stint_points(ribbon_stint_segments(lanes, "own", "1", 0, 180), steps)
+  expect_equal(sum(seg$pm), bar$pm)
+  expect_gt(nrow(seg), 1)      # non-vacuous: a single segment would be trivial
+})
+
+test_that("a window matching no segment returns a typed empty frame", {
+  lanes <- data.frame(
+    side = "own", player_key = "1", player_label = "Ash", lineup_key = "h1",
+    start_elapsed = 0, end_elapsed = 60, stringsAsFactors = FALSE)
+  seg <- ribbon_stint_segments(lanes, "own", "9", 0, 60)
+  expect_identical(nrow(seg), 0L)
+  expect_true(is.data.frame(seg))
+})
+
+# ---------------- ribbon_side_perspective ----------------
+
+test_that("opponent rows carry their own perspective", {
+  s <- data.frame(side = c("own", "opp"), pm = c(-8, -8),
+                  pf = c(4, 4), pa = c(12, 12))
+  out <- ribbon_side_perspective(s)
+  expect_identical(out$pm, c(-8, 8))
+  expect_identical(out$pf, c(4, 12))
+  expect_identical(out$pa, c(12, 4))
+})
+
+test_that("NA survives the flip as NA, not as a sign-flipped zero", {
+  s <- data.frame(side = "opp", pm = NA_real_, pf = NA_real_, pa = NA_real_)
+  out <- ribbon_side_perspective(s)
+  expect_true(is.na(out$pm) && is.na(out$pf) && is.na(out$pa))
+})
+
 # ---------------- ribbon_stint_overlaps ----------------
 # A merged bar spans a median of 4 different fives (measured 2026-09-06 over
 # 1,470 real stints), so "the five at the start" is stale for most of most
@@ -1478,6 +1534,42 @@ test_that("ribbon_player_totals sums floor time and +/- per player per side", {
   opp1 <- out[out$side == "opp" & out$player_key == "1", ]
   expect_equal(opp1$secs, 120)
   expect_equal(opp1$pm, 7)
+})
+
+# ---------------- ribbon_lineup_dictionary ----------------
+
+test_that("the lineup dictionary lists each five once, sorted", {
+  lanes <- data.frame(
+    side = rep("own", 6),
+    lineup_key = c("h1", "h1", "h1", "h1", "h1", "h2"),
+    player_key = c("3", "1", "2", "5", "4", "9"),
+    player_label = c("Cohen", "Ash", "Bar", "Eyal", "Dan", "Zed"),
+    stringsAsFactors = FALSE)
+  d <- ribbon_lineup_dictionary(lanes)
+  expect_identical(nrow(d), 2L)
+  expect_identical(d$members[d$lineup_key == "h1"],
+                   paste(c("Ash", "Bar", "Cohen", "Dan", "Eyal"), collapse = " \u00b7 "))
+})
+
+test_that("the dictionary keys on player_key, never on label", {
+  # Both leagues carry same-name/different-id players on one team. A label
+  # key would collapse these two people into one and yield four members.
+  lanes <- data.frame(
+    side = rep("own", 5), lineup_key = rep("h1", 5),
+    player_key = c("1", "2", "3", "4", "5"),
+    player_label = c("NEW NEW", "NEW NEW", "Bar", "Dan", "Eyal"),
+    stringsAsFactors = FALSE)
+  d <- ribbon_lineup_dictionary(lanes)
+  expect_identical(lengths(strsplit(d$members, " \u00b7 ", fixed = TRUE))[[1]], 5L)
+})
+
+test_that("an empty frame yields a typed empty dictionary", {
+  d <- ribbon_lineup_dictionary(data.frame(
+    side = character(0), lineup_key = character(0),
+    player_key = character(0), player_label = character(0)))
+  expect_identical(nrow(d), 0L)
+  expect_true(is.data.frame(d))
+  expect_identical(names(d), c("side", "lineup_key", "members"))
 })
 
 test_that("build_stint_ribbon_svg still renders with steps = NULL", {

@@ -291,6 +291,7 @@ lineup_players AS (
 ),
 lanes AS (
   SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
+         s.lineup_hash AS lineup_key,
          COALESCE(NULLIF(TRIM(COALESCE(r.firstname, '') || ' ' ||
                               COALESCE(r.lastname, '')), ''),
                   'Player ' || p.player_id) AS player_label
@@ -336,6 +337,7 @@ WITH segs AS (
 ),
 lanes AS (
   SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
+         s.player_ids::text AS lineup_key,
          COALESCE(r.source_player_name, 'Player ' || p.player_id) AS player_label
   FROM segs s
   CROSS JOIN LATERAL unnest(s.player_ids) AS p(player_id)
