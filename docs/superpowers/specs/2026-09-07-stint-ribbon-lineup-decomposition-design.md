@@ -34,12 +34,19 @@ The fix is not to re-key the chart to lineups. It is to keep the player lane and
 | L2 | **Click a stint → the bar splits in place** into its constituent fives, each segment carrying its own `+/-` where width allows | The decomposition is the missing attribution. Click, not hover, so the resting chart stays quiet |
 | L3 | **The strip below lists those same fives** — window, membership, `+/-` — *replacing* the `with <player>` prose | This is the crowding fix. The list is click-gated, so the median 4 rows is a deliberate cost, not an accidental one |
 | L4 | **Hover a five in the list → its window is marked on the clicked player's lane only**, and on the margin/time chart | Marking all five members' lanes was considered and rejected by the user: on a ~26-lane chart it moves too much, and membership is already spelled out in the row being pointed at |
-| L5 | **Marking reaches every window that five played**, with the clicked stint at full strength and its other appearances as weaker echoes | User constraint, given twice: the broader answer is wanted, but "it should be clear what the original stint is" |
+| L5 | **Marking reaches every window that five played**, with the clicked stint at full strength and its other appearances as weaker echoes. **Provisional — see below** | User constraint, given twice: the broader answer is wanted, but "it should be clear what the original stint is" |
 | L6 | **The bar keeps its stint `+/-` at rest**; segments add the per-five parts on click | The total is a real quantity, and the parts visibly sum back to it. Total and decomposition, checkable by eye |
 | L7 | **Each side's numbers are in its own perspective.** An opponent bar or segment reads `+8` when that opponent five won those minutes by 8; points-for/against flip with it | Resolves final-review issue 1, which was an *unconsidered gap*, not a recorded decision. Matches Tab 2, where the same five looks up to the same sign |
 | L8 | **The overlap machinery is deleted**, not adapted: `ribbon_stint_overlaps()`, `ribbon_overlap_label()`, the teammate band and the lit overlaps | Its question is now answered by L2-L4. It is also the dominant cost in the current render (final-review issue 3) |
 | L9 | **The split is drawn client-side** from a compact per-bar data attribute, not emitted as hidden rects | ~175 segments per team-game would roughly triple the SVG's rect count against a payload the final review already measured at 97 KB |
 | L10 | **Keyboard focus on a stint triggers the same split as a click**, and the list is reachable and hoverable by keyboard | The strip is the screen-reader path; parity is not optional |
+
+**L5 is explicitly provisional.** The user chose "all of the stints" while
+saying they understood the trade and were "still not sure about it" — the
+decision is to be revisited *after seeing it live*, not after further argument.
+Build the broad behaviour, and keep the scope decision isolated behind one
+predicate so narrowing it to the clicked stint is a one-line change rather than
+a re-plumb. Do not scatter the choice across the JS.
 
 ## 3. Measurements
 
@@ -173,9 +180,30 @@ Independent of this redesign, fixed in the same wave:
   140, 141 and 143 have `own_team_score`/`opp_team_score` NULL on every row for
   both teams. The margin frame empties, the fallback
   `data.frame(elapsed = c(0, 2400), margin = c(0, 0))` engages, and the chart
-  asserts the game was level throughout with no health message. It must
-  **disclose, not invent**: suppress the curve and say the score series is
-  unavailable. Worth a separate ETL investigation.
+  asserts the game was level throughout with no health message.
+
+  **Resolution (user, 2026-09-07): do not offer the view for such a game at
+  all.** The date cell is not rendered as a ribbon link, so the chart is never
+  reachable rather than reachable-and-caveated. A chart that cannot be drawn
+  should not be a link.
+
+  Three constraints on that gate:
+
+  1. It is **dynamic, never a hardcoded game list**. These four are what the
+     condition currently catches, not the definition of it; the ETL can produce
+     more.
+  2. It is **league-agnostic** in shape, though only Israeli data trips it today
+     — `euroleague.ribbon_margin_v` is asserted to have zero NULL margins by an
+     existing test.
+  3. **How the game-log query learns this is an open implementation question
+     with a cost to measure.** The game-log tabs read `mv_lineup_totals_by_day`
+     + `final_schedule_mv`, while the NULL lives in
+     `df_pts_poss_lineups_longer_mv`. An `EXISTS` per row may be cheap or may
+     not be; measure before choosing between it and a precomputed flag. Do not
+     add a second round trip to the game-log load to find out.
+
+  The underlying data gap is worth a separate ETL investigation regardless — the
+  chart only exposed it.
 - **The 46-line modal observer is cloned** between `server_tab4.R:331-376` and
   `server_tab11_euro_gamelogs.R:32-77`, differing only in five parameters. The
   one remaining league clone; extract it.
