@@ -132,6 +132,29 @@ test_that("euroleague.ribbon_margin_v has no NULL margin (2026-09-05 live-data b
   expect_gt(counts$total_rows[1], 1000)
 })
 
+test_that("games with no score data are identified dynamically", {
+  skip_if_not(nzchar(Sys.getenv("RUN_DB_TESTS")), "RUN_DB_TESTS not enabled")
+  skip_if_not(nzchar(Sys.getenv("PG_HOST")), "no database configured")
+
+  con <- DBI::dbConnect(RPostgres::Postgres(),
+    host = Sys.getenv("PG_HOST"), port = as.integer(Sys.getenv("PG_PORT")),
+    dbname = Sys.getenv("PG_DB"), user = Sys.getenv("PG_USER"),
+    password = Sys.getenv("PG_PASS"), sslmode = Sys.getenv("PG_SSLMODE"),
+    connect_timeout = 15L, bigint = "numeric")
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+  bad <- DBI::dbGetQuery(con, "
+    SELECT game_id, team_id
+    FROM basketball_test.df_pts_poss_lineups_longer_mv
+    GROUP BY game_id, team_id
+    HAVING COUNT(own_team_score) = 0")
+
+  # Not an equality against a fixed list: these four are what the condition
+  # catches today, not the definition of it. The ETL can produce more.
+  expect_gt(nrow(bad), 0)
+  expect_true(all(c(139L, 140L, 141L, 143L) %in% as.integer(bad$game_id)))
+})
+
 # This guard deliberately reads euroleague.ribbon_segments_v, NOT the base
 # table euroleague.matchup_segments_actions. app_readonly (the role the
 # deployed app actually runs as) is denied on the base table on purpose -- the

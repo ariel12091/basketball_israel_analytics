@@ -3582,8 +3582,15 @@ ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_clic
 }
 
 # Call on the source frame before its identifiers are dropped for display.
+# `has_scores_col`, when present on `df`, withholds the link (leaving the raw
+# date text) for rows where it is FALSE -- a game whose score data is entirely
+# NULL has no margin to draw, and ribbon_complete_margin()'s empty-input
+# fallback would otherwise render a confident flat "tied" curve for it. The
+# gate fails OPEN: a missing column, or any value other than FALSE, keeps the
+# link, so an unexpected upstream shape never silently kills every ribbon.
 add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
-                                   date_col = "game_date") {
+                                   date_col = "game_date",
+                                   has_scores_col = "has_scores") {
   if (is.null(df) || !nrow(df)) return(df)
   needed <- c("game_id", "team_id", date_col)
   if (!all(needed %in% names(df))) {
@@ -3595,12 +3602,23 @@ add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
   opp <- if ("opp_team_name" %in% names(df)) as.character(df$opp_team_name) else rep("", nrow(df))
   own[is.na(own)] <- ""
   opp[is.na(opp)] <- ""
-  df[[date_col]] <- mapply(
+  # isFALSE() is not itself vectorised (it only accepts a length-1 logical),
+  # so it is applied per-element via vapply. That preserves the fail-open
+  # contract above for free: isFALSE(NA) is FALSE, isFALSE("no") is FALSE,
+  # isFALSE(anything but a bare logical FALSE) is FALSE -- so `gate` is TRUE
+  # for every value except an actual FALSE.
+  gate <- if (!is.null(has_scores_col) && has_scores_col %in% names(df)) {
+    !vapply(df[[has_scores_col]], isFALSE, logical(1))
+  } else {
+    rep(TRUE, nrow(df))
+  }
+  linked <- mapply(
     ribbon_link_cell,
     df$game_id, df$team_id, as.character(df[[date_col]]),
     own_team = own, opp_team = opp,
     MoreArgs = list(input_id = input_id), USE.NAMES = FALSE
   )
+  df[[date_col]] <- ifelse(gate, linked, as.character(df[[date_col]]))
   df
 }
 

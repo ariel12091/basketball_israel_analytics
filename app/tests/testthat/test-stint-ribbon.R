@@ -933,6 +933,26 @@ test_that("add_ribbon_link_column fails loudly on a frame missing the ids", {
   expect_error(add_ribbon_link_column(disp), "game_id")
 })
 
+test_that("a game with no score data gets no ribbon link", {
+  df <- data.frame(
+    game_id = c(139L, 200L), team_id = c(6L, 6L),
+    game_date = c("2026-01-10", "2026-01-17"),
+    team_name = c("A", "A"), opp_team_name = c("B", "C"),
+    has_scores = c(FALSE, TRUE), stringsAsFactors = FALSE
+  )
+  out <- add_ribbon_link_column(df)
+  expect_false(grepl("<a", out$game_date[1], fixed = TRUE))
+  expect_identical(out$game_date[1], "2026-01-10")
+  expect_true(grepl('class="ribbon-link"', out$game_date[2], fixed = TRUE))
+})
+
+test_that("the link column is unchanged when no has_scores column is supplied", {
+  df <- data.frame(game_id = 200L, team_id = 6L, game_date = "2026-01-17",
+                   team_name = "A", opp_team_name = "C", stringsAsFactors = FALSE)
+  out <- add_ribbon_link_column(df)
+  expect_true(grepl('class="ribbon-link"', out$game_date[1], fixed = TRUE))
+})
+
 test_that("both Tab 4 modes build the link before select drops the ids", {
   src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
   add_lines <- grep("add_ribbon_link_column", src)
