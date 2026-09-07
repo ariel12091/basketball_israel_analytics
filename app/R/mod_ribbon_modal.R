@@ -4,6 +4,14 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
     click <- input[[paste0(prefix, "_ribbon_click")]]
     req(click$game_id, click$team_id)
 
+    allowed <- guard_heavy_request(
+      session,
+      key = "ribbon_open",
+      max_calls = 20L,
+      window_sec = 60L
+    )
+    if (!isTRUE(allowed)) return()
+
     ribbon <- fetch_stint_ribbon(
       pg_pool, league, click$game_id, click$team_id,
       data_version = data_version_fn()

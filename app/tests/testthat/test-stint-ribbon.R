@@ -1113,6 +1113,14 @@ test_that("neither game-log tab defines its own ribbon modal observer", {
   }
 })
 
+test_that("the ribbon modal observer is rate limited", {
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "mod_ribbon_modal.R"),
+                        warn = FALSE), collapse = "\n")
+  expect_true(grepl("guard_heavy_request(", src, fixed = TRUE))
+  expect_lt(regexpr("guard_heavy_request(", src, fixed = TRUE)[1],
+            regexpr("fetch_stint_ribbon(", src, fixed = TRUE)[1])
+})
+
 # ---- Mutation guards added after the 2026-09-05 final review (I4) ----------
 # Each of the six tests below asserts BOTH sides of a cross-file contract, so
 # renaming either side alone -- not just deleting one -- fails the suite.
