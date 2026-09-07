@@ -248,6 +248,12 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     pr_cols <- intersect(
       unname(vapply(names(heat_reverse), gl_pr_col_name, character(1))), names(df))
+    # EuroLeague has nothing to gate today: euroleague.ribbon_margin_v is
+    # asserted NULL-free by a live-DB regression test (see
+    # test-stint-ribbon-readers.R, "has no NULL margin"), so pass an empty
+    # scoreless set rather than inventing a second query against this
+    # league's schema for a condition it does not have.
+    df <- attach_has_scores(df, NULL)
     df <- add_ribbon_link_column(df, input_id = "eurogl_ribbon_click")
     disp <- df[, c(cols, pr_cols), drop = FALSE]
 

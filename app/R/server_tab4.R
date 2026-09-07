@@ -598,6 +598,7 @@ server_tab4 <- function(input, output, session, shared) {
       df <- apply_stat_filters(df, gl_stat_filter_state$filters())
       if (is.null(df) || nrow(df) == 0) return(NULL)
 
+      df <- attach_has_scores(df, fetch_scoreless_games(gl_data_version()))
       df <- add_ribbon_link_column(df)
       disp <- df %>% select(
         gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
@@ -744,6 +745,7 @@ server_tab4 <- function(input, output, session, shared) {
       df <- apply_stat_filters(df, gl_stat_filter_state$filters())
       if (is.null(df) || nrow(df) == 0) return(NULL)
 
+      df <- attach_has_scores(df, fetch_scoreless_games(gl_data_version()))
       df <- add_ribbon_link_column(df)
       disp <- df %>% select(
         gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,

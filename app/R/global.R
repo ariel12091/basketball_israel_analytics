@@ -497,6 +497,32 @@ fetch_players_basic <- function(gy) {
   )
 }
 
+# (game_id, team_id) pairs with zero non-NULL own_team_score -- the stint
+# ribbon has no margin to draw for these (Israeli games 139/140/141/143
+# today; the ETL can produce more). Deliberately NOT one-per-season like the
+# four lookups above: measured 2026-09-07, the underlying query is a full
+# sequential scan of df_pts_poss_lineups_longer_mv (21,240 buffer pages,
+# 2.56s) whose cost does NOT fall when filtered by season -- it must still
+# visit the whole relation to find rows with zero non-null own_team_score
+# per (game_id, team_id). A per-season key would mean re-running that same
+# scan once per season for an 8-row answer. Do NOT "fix" this into a
+# per-season key. `ver` is the ETL data version (shared_data_version()); it
+# rides in the cache key only so a new ETL run gets a fresh key rather than
+# an explicit invalidation call, matching cached_season_df()'s convention
+# elsewhere (see hub_fetch_team_ratings()).
+fetch_scoreless_games <- function(ver = NULL) {
+  cached_ref_query(
+    key = sprintf("scoreless_games_%s", ver %||% "na"),
+    query_fun = function() db_get_query(
+      pg_pool,
+      "SELECT game_id, team_id
+         FROM basketball_test.df_pts_poss_lineups_longer_mv
+        GROUP BY game_id, team_id
+        HAVING COUNT(own_team_score) = 0"
+    )
+  )
+}
+
 # app_log() lives in R/logger.R (sourced from app.R after global.R).
 
 # ---------------- Session safety guards ----------------

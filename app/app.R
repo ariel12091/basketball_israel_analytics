@@ -332,6 +332,10 @@ server <- function(input, output, session) {
     )
     hub_fetch_team_ratings(gy_int, ver)
     hub_fetch_team_ff(gy_int, ver)
+    # Warms the 2.56s / 21,240-buffer scoreless-games scan (see
+    # fetch_scoreless_games() in global.R) so it never lands on a user
+    # request; the result itself is a single, season-agnostic 8-row set.
+    fetch_scoreless_games(ver)
     invisible(NULL)
   }
 

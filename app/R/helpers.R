@@ -3622,6 +3622,24 @@ add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
   df
 }
 
+# Attaches a `has_scores` column to `df` by (game_id, team_id) membership in
+# `scoreless`, the set fetch_scoreless_games() returns (or an empty/NULL
+# frame for a league with nothing to gate -- see Tab 11's call site). Shared
+# by both leagues' game-log builders so the anti-join logic exists exactly
+# once, per CLAUDE.md's rule against parallel euro_ clones of shared logic:
+# the league enters as the `scoreless` argument, not as a second function.
+attach_has_scores <- function(df, scoreless) {
+  if (is.null(df) || !nrow(df)) return(df)
+  if (is.null(scoreless) || !nrow(scoreless)) {
+    df$has_scores <- TRUE
+    return(df)
+  }
+  key <- paste(df$game_id, df$team_id)
+  bad_key <- paste(scoreless$game_id, scoreless$team_id)
+  df$has_scores <- !(key %in% bad_key)
+  df
+}
+
 
 # ---------------- Stint ribbon: per-stint numbers ----------------
 # Value of a running-score step series at time t: the last row with

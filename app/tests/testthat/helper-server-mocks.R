@@ -70,6 +70,11 @@ fetch_players_basic <- function(gy) {
     name = c("Player A", "Player C", "Player B")
   )
 }
+# Empty by default (fail-open shape): no test game is scoreless unless a
+# specific test overrides this stub.
+fetch_scoreless_games <- function(ver = NULL) {
+  data.frame(game_id = integer(0), team_id = integer(0))
+}
 
 .mock_db_query_counts <- new.env(parent = emptyenv())
 

@@ -953,6 +953,36 @@ test_that("the link column is unchanged when no has_scores column is supplied", 
   expect_true(grepl('class="ribbon-link"', out$game_date[1], fixed = TRUE))
 })
 
+test_that("attach_has_scores keys on (game_id, team_id), not game_id alone", {
+  # Non-vacuous: a game_id-only join would gate BOTH rows off here, since
+  # both share game_id 139. Keying on the pair leaves team 7's row untouched.
+  df <- data.frame(game_id = c(139L, 139L), team_id = c(6L, 7L),
+                   stringsAsFactors = FALSE)
+  scoreless <- data.frame(game_id = 139L, team_id = 6L)
+  out <- attach_has_scores(df, scoreless)
+  expect_identical(out$has_scores, c(FALSE, TRUE))
+})
+
+test_that("attach_has_scores flags the scoreless row and leaves the other linked", {
+  df <- data.frame(game_id = c(139L, 200L), team_id = c(6L, 6L),
+                   stringsAsFactors = FALSE)
+  scoreless <- data.frame(game_id = 139L, team_id = 6L)
+  out <- attach_has_scores(df, scoreless)
+  expect_identical(out$has_scores, c(FALSE, TRUE))
+})
+
+test_that("attach_has_scores treats a NULL or empty scoreless set as nothing to gate", {
+  # This is the shape Tab 11 passes today (EuroLeague has no known scoreless
+  # games), and the shape a stale/empty cache would return for Tab 4 -- either
+  # way every row must stay linked, not silently lose its ribbon.
+  df <- data.frame(game_id = c(139L, 200L), team_id = c(6L, 6L),
+                   stringsAsFactors = FALSE)
+  out_null <- attach_has_scores(df, NULL)
+  out_empty <- attach_has_scores(df, data.frame(game_id = integer(0), team_id = integer(0)))
+  expect_true(all(out_null$has_scores))
+  expect_true(all(out_empty$has_scores))
+})
+
 test_that("both Tab 4 modes build the link before select drops the ids", {
   src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
   add_lines <- grep("add_ribbon_link_column", src)
@@ -960,6 +990,54 @@ test_that("both Tab 4 modes build the link before select drops the ids", {
   expect_length(sel_lines, 2)
   expect_length(add_lines, 2)
   for (sl in sel_lines) expect_true(any(add_lines < sl & add_lines > sl - 12))
+})
+
+test_that("both Tab 4 modes attach has_scores immediately before building the link", {
+  # Regression guard for Ruling 2: a gate wired into only one of the two Tab 4
+  # view modes leaves a live path that still links a scoreless game.
+  src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
+  attach_lines <- grep("attach_has_scores(df, fetch_scoreless_games(gl_data_version()))",
+                       src, fixed = TRUE)
+  add_lines <- grep("df <- add_ribbon_link_column(df)", src, fixed = TRUE)
+  expect_length(attach_lines, 2)
+  expect_length(add_lines, 2)
+  for (al in add_lines) expect_true(any(attach_lines == al - 1))
+})
+
+test_that("Tab 11 passes an empty scoreless set instead of a second query", {
+  # Ruling 6: EuroLeague's ribbon_margin_v is asserted NULL-free elsewhere
+  # (see "euroleague.ribbon_margin_v has no NULL margin" in
+  # test-stint-ribbon-readers.R), so this tab must not grow its own scan
+  # against euroleague's schema for a condition it does not have.
+  src <- readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
+                   warn = FALSE)
+  expect_true(any(grepl("attach_has_scores(df, NULL)", src, fixed = TRUE)))
+  expect_false(any(grepl("fetch_scoreless_games", src, fixed = TRUE)))
+})
+
+test_that("fetch_scoreless_games carries no season dimension in its cache key", {
+  # Ruling 6: this deviates from the four canonical lookups' one-key-per-
+  # season convention on purpose -- the underlying scan's cost does not fall
+  # when filtered by season, so a per-season key would mean N scans for one
+  # 8-row answer. Assert the deviation stays a single, non-`gy`-scoped key.
+  src <- readLines(testthat::test_path("..", "..", "R", "global.R"), warn = FALSE)
+  fn_line <- grep("^fetch_scoreless_games <- function", src)
+  expect_length(fn_line, 1)
+  expect_false(grepl("gy", src[fn_line], fixed = TRUE))
+  key_line <- grep('key = sprintf\\("scoreless_games', src, value = TRUE)
+  expect_length(key_line, 1)
+  expect_false(grepl("gy", key_line, fixed = TRUE))
+})
+
+test_that("prewarm_for_year also warms fetch_scoreless_games", {
+  # So the 2.56s / 21,240-buffer scan never lands on a user request.
+  src <- paste(readLines(testthat::test_path("..", "..", "app.R"), warn = FALSE),
+              collapse = "\n")
+  idx_pf <- regexpr("prewarm_for_year <- function", src)
+  idx_hub <- regexpr("hub_fetch_team_ff\\(gy_int, ver\\)", src)
+  idx_scoreless <- regexpr("fetch_scoreless_games\\(ver\\)", src)
+  expect_true(idx_pf > 0 && idx_hub > 0 && idx_scoreless > 0)
+  expect_true(idx_scoreless > idx_pf && idx_scoreless > idx_hub)
 })
 
 test_that("app.js exposes the queued ribbon click handler", {
