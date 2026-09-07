@@ -1078,15 +1078,39 @@ test_that("EuroLeague game logs reuse the shared ribbon builder, not a parallel 
   # This is the guard against a future edit silently reintroducing
   # euro_build_stint_ribbon / euro_fetch_stint_ribbon -- do not delete this
   # test as "redundant" with the wiring assertions above.
+  # Task 2 moved the observer into the shared ribbon_modal_server()
+  # (mod_ribbon_modal.R), so fetch_stint_ribbon/build_stint_ribbon_svg no
+  # longer appear inline in either tab file -- assert both delegate to the
+  # shared function, and that the shared function is where the calls live.
   il <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
                         warn = FALSE), collapse = "\n")
   eu <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
                         warn = FALSE), collapse = "\n")
-  expect_match(il, "fetch_stint_ribbon", fixed = TRUE)
-  expect_match(eu, "fetch_stint_ribbon", fixed = TRUE)
-  expect_match(eu, "build_stint_ribbon_svg", fixed = TRUE)
+  mod <- paste(readLines(testthat::test_path("..", "..", "R", "mod_ribbon_modal.R"),
+                        warn = FALSE), collapse = "\n")
+  expect_match(il, "ribbon_modal_server(", fixed = TRUE)
+  expect_match(eu, "ribbon_modal_server(", fixed = TRUE)
+  expect_match(mod, "fetch_stint_ribbon", fixed = TRUE)
+  expect_match(mod, "build_stint_ribbon_svg", fixed = TRUE)
   expect_false(grepl("euro_build_stint_ribbon", eu, fixed = TRUE))
   expect_false(grepl("euro_fetch_stint_ribbon", eu, fixed = TRUE))
+})
+
+test_that("neither game-log tab defines its own ribbon modal observer", {
+  # Guards against a re-clone of the extracted observer (Task 2): the
+  # existing "reuse the shared ribbon builder" test above only asserts
+  # fetch_stint_ribbon/build_stint_ribbon_svg live in mod_ribbon_modal.R --
+  # it would not catch someone pasting the old 46-line observeEvent block
+  # back into a tab file (that block also called those two functions).
+  # Reverting either call site to the inline block restores `showModal(` in
+  # that file and fails the second assertion here; dropping the call
+  # entirely fails the first.
+  for (f in c("server_tab4.R", "server_tab11_euro_gamelogs.R")) {
+    src <- paste(readLines(testthat::test_path("..", "..", "R", f), warn = FALSE),
+                collapse = "\n")
+    expect_true(grepl("ribbon_modal_server(", src, fixed = TRUE), info = f)
+    expect_false(grepl("showModal(", src, fixed = TRUE), info = f)
+  }
 })
 
 # ---- Mutation guards added after the 2026-09-05 final review (I4) ----------
@@ -1165,29 +1189,41 @@ test_that("Tab 4 and Tab 11 game-log tables escape everything except the ribbon-
 })
 
 test_that("Tab 4 and Tab 11 ribbon output ids and SVG id_prefix never collide", {
-  tab4 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
-                          warn = FALSE), collapse = "\n")
-  tab11 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
-                           warn = FALSE), collapse = "\n")
+  # Task 2 moved the observer into the shared ribbon_modal_server(); the
+  # output id is now built as output[[paste0(prefix, "_ribbon_svg")]] inside
+  # mod_ribbon_modal.R, not as an inline `output$..._ribbon_svg <- renderUI`
+  # literal in either tab file, so the non-collision guarantee now lives in
+  # each call site's `prefix` / `svg_id_prefix` arguments. Read the call line
+  # directly (not the pasted whole-file blob) so a nested paren inside
+  # `function() ...` in the Israeli call can't confuse a bounded regex.
+  src4 <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
+  src11 <- readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
+                     warn = FALSE)
+  call4 <- grep("ribbon_modal_server(", src4, fixed = TRUE, value = TRUE)
+  call11 <- grep("ribbon_modal_server(", src11, fixed = TRUE, value = TRUE)
+  expect_length(call4, 1)
+  expect_length(call11, 1)
 
-  # Anchored on "ribbon" specifically: an unqualified
-  # 'output\$[A-Za-z0-9_]+\s*<-\s*renderUI' regexpr() only returns the FIRST
-  # such match in the file. It happens today to be the ribbon output because
-  # nothing else with `<- renderUI` precedes it in either server file, but
-  # that ordering is incidental -- an unrelated renderUI output added earlier
-  # in the file would make this compare the wrong pair of ids and stop
-  # checking the ribbon outputs' names at all, while still reporting green.
-  out4 <- regmatches(tab4, regexpr('output\\$[A-Za-z0-9_]*ribbon[A-Za-z0-9_]*\\s*<-\\s*renderUI', tab4))
-  out11 <- regmatches(tab11, regexpr('output\\$[A-Za-z0-9_]*ribbon[A-Za-z0-9_]*\\s*<-\\s*renderUI', tab11))
-  expect_true(nzchar(out4))
-  expect_true(nzchar(out11))
-  expect_false(identical(out4, out11))
-
-  prefix4 <- regmatches(tab4, regexpr('id_prefix\\s*=\\s*paste0\\("[a-z]+"', tab4))
-  prefix11 <- regmatches(tab11, regexpr('id_prefix\\s*=\\s*paste0\\("[a-z]+"', tab11))
+  prefix4 <- regmatches(call4, regexpr('"[a-z]+"', call4))
+  prefix11 <- regmatches(call11, regexpr('"[a-z]+"', call11))
   expect_true(nzchar(prefix4))
   expect_true(nzchar(prefix11))
   expect_false(identical(prefix4, prefix11))
+
+  # svg_id_prefix defaults to prefix when the call omits it (Israeli does).
+  svg4 <- if (grepl("svg_id_prefix", call4, fixed = TRUE)) {
+    regmatches(call4, regexpr('svg_id_prefix\\s*=\\s*"[a-z]+"', call4))
+  } else {
+    prefix4
+  }
+  svg11 <- if (grepl("svg_id_prefix", call11, fixed = TRUE)) {
+    regmatches(call11, regexpr('svg_id_prefix\\s*=\\s*"[a-z]+"', call11))
+  } else {
+    prefix11
+  }
+  expect_true(nzchar(svg4))
+  expect_true(nzchar(svg11))
+  expect_false(identical(svg4, svg11))
 })
 
 # ---------------- ribbon_score_as_of ----------------

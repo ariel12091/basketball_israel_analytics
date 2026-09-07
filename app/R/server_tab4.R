@@ -328,52 +328,7 @@ server_tab4 <- function(input, output, session, shared) {
     reset_stat_filters(gl_stat_filter_state)
   }, ignoreInit = TRUE)
 
-  observeEvent(input$gl_ribbon_click, {
-    click <- input$gl_ribbon_click
-    req(click$game_id, click$team_id)
-
-    ribbon <- fetch_stint_ribbon(
-      pg_pool, "israel", click$game_id, click$team_id,
-      data_version = shared_data_version(shared)
-    )
-
-    if (is.null(ribbon) || !nrow(ribbon$lanes)) {
-      showModal(modalDialog(title = "No lineup data",
-                            "This game has no segment data to draw.",
-                            easyClose = TRUE))
-      return()
-    }
-
-    meta <- ribbon$meta
-    own_team <- click$own_team %||% ""
-    opp_team <- click$opp_team %||% ""
-    meta$own_team <- if (nzchar(own_team)) own_team else "Own"
-    meta$opp_team <- if (nzchar(opp_team)) opp_team else "Opponent"
-    meta$game_label <- if (nzchar(own_team) && nzchar(opp_team)) {
-      sprintf("%s vs %s", own_team, opp_team)
-    } else {
-      sprintf("Game %s", click$game_id)
-    }
-
-    output$gl_ribbon_svg <- renderUI({
-      tagList(
-        if (!is.null(ribbon$health)) {
-          div(class = "alert alert-warning py-2 px-3 mb-2", ribbon$health)
-        },
-        build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
-                               id_prefix = paste0("gl", click$game_id),
-                               steps = ribbon$steps),
-        ribbon_detail_strip()
-      )
-    })
-
-    showModal(modalDialog(
-      title = meta$game_label,
-      uiOutput("gl_ribbon_svg"),
-      size = "xl",
-      easyClose = TRUE
-    ))
-  })
+  ribbon_modal_server(input, output, session, "gl", "israel", function() shared_data_version(shared))
 
   # --- Schedule cache per season ---
   gl_schedule <- reactive({

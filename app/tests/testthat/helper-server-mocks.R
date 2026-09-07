@@ -696,6 +696,7 @@ dt_col_order_init_callback <- function(...) {
 source(repo_file("R", "logger.R"), local = TRUE)
 source(repo_file("R", "server_tab1.R"), local = TRUE)
 source(repo_file("R", "mod_lineup_player_filter.R"), local = TRUE)
+source(repo_file("R", "mod_ribbon_modal.R"), local = TRUE)
 source(repo_file("R", "server_tab2.R"), local = TRUE)
 source(repo_file("R", "server_tab3.R"), local = TRUE)
 source(repo_file("R", "server_tab4.R"), local = TRUE)
