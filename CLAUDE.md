@@ -82,7 +82,7 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **Direct SQL (no dbplyr):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with `$1, $2` params. `bigint = "numeric"` in `dbPool()`. The pool is `minSize = 0`. Measured 2026-08-18: `minSize` makes no difference to *steady-state* query latency (0.250s after a 22s idle gap either way) — don't "fix" it for that. But a *first* checkout on a booted worker costs ~1,700-2,200ms (TCP + TLS + auth + the `onCreate` SET), and with `minSize = 0` that always lands on a user request. Measured 2026-09-01: `minSize = 1` moves it to boot but costs +2.7s there against -1.7s on the request, so it loses whenever the worker is booted by the request it must then serve. `global.R` instead schedules a `later::later()` checkout right after the pool is created, connecting once R goes idle: boot time is unchanged and the connection is ready before the first session queries. Set `POOL_PREWARM=false` to disable.
 
-**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and pre-renders it off the boot critical path via `later::later()`. Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). **On Connect Cloud that gap never exists** — the process is started *because* a request is waiting, so both `later()` warmups always lose the race; see § Posit Connect Cloud. See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain 11 `nav-link` occurrences. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
+**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and renders it synchronously before `startServer` (it used to use `later::later(delay = 0)`, which runs ahead of the already-queued first request). Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). **On Connect Cloud that gap never exists** — the process is started *because* a request is waiting, so both `later()` warmups always lost that race. Both now run synchronously before `startServer` instead, which moved 5.6-5.8s off the first request; see § Posit Connect Cloud. See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain 11 `nav-link` occurrences. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
 
 **UI theme:** Dark editorial (bslib BS5), DM Sans + JetBrains Mono, amber accent `#e8a435`. Filter chips bar, loading skeletons, tab icons with active amber underline.
 
@@ -291,19 +291,40 @@ defaults: `PG_STATEMENT_TIMEOUT_MS`, `POOL_PREWARM`, `IBPL_CACHE_UI`,
 | container start -> `Listening on` | **2.0-3.9s** — boot is not the problem |
 | client `nav->dom`, warm process | 1.6-4.0s |
 | client `nav->dom`, fresh process | **10-20s** |
-| Connect Cloud loading-page reload watchdog | **7s** |
 
-That last row is the bug behind the `NS_ERROR_CORRUPTED_CONTENT` console
-errors. Connect Cloud's interstitial carries
-`setTimeout(function(){window.location.reload();}, 7000)`; a fresh-process first
-paint of 10-20s loses to it, the reload aborts in-flight requests, and Firefox
-reports the header-less responses as corrupted content with an empty MIME type.
-It is one cascade, not many failures: whichever of jquery / selectize /
-bslib-component-css gets aborted takes everything downstream with it. **Do not
-re-derive "blocked R starves the static assets" — it was measured and is false**
-(R blocked 15s: `GET /` took 14.5s, every dependency asset still returned in
-~1ms, because httpuv serves registered static paths on background threads). The
-real cost is the ~1.1 MB HTML document of twelve pre-built tabs.
+**Nearly every visit is the cold arm**, because the Connect Cloud runtime setting
+"Idle timeout" is 5s — the platform minimum of a 5-60s range. Five seconds
+after the last connection closes the worker is killed, taking `.UI_RESPONSE`, the
+`bs_theme_dependencies()` warm-up, `GL_DATA_CACHE`, `RANKED_CACHE`,
+`cached_ref_query` and the pooled connection with it. Raising that setting is the
+cheapest available win and needs no code.
+
+The cold penalty was **not** the page size. The ~1.1 MB HTML document is
+identical in both arms, so it cannot explain a 1.6-4.0s vs 10-20s split; an
+earlier version of this section claimed it was the real cost, which was asserted
+without measurement and is wrong. What differed was server-side warm-up blocking
+the first request: measured "Listening on" to first `GET /` answered was
+**5.6-5.8s** (n = 3) while both warmups ran from `later::later(delay = 0)`, and
+**0.20-0.31s** (n = 3) once they were moved ahead of `startServer`. Warm `GET /`
+is 3-30ms either way. A `delay = 0` callback scheduled during sourcing runs on
+the first event-loop pass — ahead of the request already queued — so "off the
+boot critical path" was never true on a request-started worker.
+
+On the `NS_ERROR_CORRUPTED_CONTENT` console errors, separate the established from
+the guessed. **Established:** they happen only on a cold load; all five affected
+files (jquery, 3x selectize, bslib-component-css) return 200 with the right
+`Content-Type` on a warm worker; the failing responses carried *no*
+`Content-Type` at all, which is an aborted request, not a 404 (a real Shiny 404
+carries `text/html`); and it is one cascade, not many failures — whichever file
+is aborted takes everything downstream with it, jquery first.
+**Also established, do not re-derive it:** "blocked R starves the static assets"
+is false. R blocked 15s: `GET /` took 14.5s while every dependency asset still
+returned in ~1ms, because httpuv serves registered static paths on background
+threads. **Not established:** *why* the requests abort. Connect Cloud's
+interstitial does carry `setTimeout(function(){window.location.reload();}, 7000)`,
+but it is reset by server heartbeats and explicitly `clearTimeout`-ed immediately
+before the intentional reload, so it is not demonstrated that it ever fires during
+the app page load. Treat it as a hypothesis, not the cause.
 
 **Do not quote local `runApp('app')` timings as production numbers.** A local
 launch measured 13.7s against production's ~3s: a cold OS file cache plus, at

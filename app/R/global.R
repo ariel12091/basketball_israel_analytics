@@ -455,27 +455,34 @@ pg_pool <- dbPool(
 )
 onStop(function() poolClose(pg_pool))
 
-# Warm one pooled connection off the boot critical path.
+# Warm one pooled connection BEFORE the server starts listening.
 #
-# Measured 2026-09-01: a first checkout costs ~1,700-2,200ms (TCP + TLS +
-# auth + the onCreate SET). With minSize = 0 that always lands on a user
-# request -- it showed up inside the 9.2s cold Home prewarm. minSize = 1
-# does move it to boot, but measured +2.7s to boot against -1.7s on the
-# request, so it is a loss whenever the worker is booted by the request it
-# then has to serve. This keeps minSize = 0 (the 2026-08-18 steady-state
-# finding stands) and instead connects from the event loop once R goes
-# idle, which is the gap while the browser parses the page and opens its
-# websocket. Boot time is unchanged and the connection is ready before the
-# first session queries. Best-effort: a failure here is retried by the
-# normal checkout path. Set POOL_PREWARM=false to disable.
+# A first checkout costs ~1,700-2,200ms (TCP + TLS + auth + the onCreate SET),
+# so with minSize = 0 it has to happen somewhere. It used to run from a
+# later::later(delay = 0), on the theory that R would be idle while the browser
+# parsed the page. That theory came from shinyapps.io, where a worker usually
+# had an idle gap before its first request. It is wrong on Posit Connect Cloud:
+# the worker idle timeout is 5s (the platform minimum), so the process is nearly
+# always started *because* a request is waiting -- and a delay = 0 callback
+# scheduled during sourcing runs on the first event-loop pass, ahead of that
+# queued request. Measured: "Listening on" to first GET / answered was 5.6-5.8s
+# (n = 3) with both warmups on later(); warm GET / is 3-30ms.
+#
+# Running it here instead moves the cost behind Connect Cloud's loading page,
+# which is held open by server heartbeats, and off the 7s reload watchdog that
+# the browser applies once it is actually waiting on GET /. Boot grows by about
+# the checkout cost against a 60s Startup timeout, so there is ample headroom.
+#
+# The trade is that an unreachable database now stalls boot rather than serving
+# a page whose queries then fail. That is acceptable -- the app is unusable
+# either way -- but it is why this stays best-effort and wrapped: a failure is
+# retried by the normal checkout path. Set POOL_PREWARM=false to disable.
 if (!tolower(trimws(Sys.getenv("POOL_PREWARM", "true"))) %in%
       c("0", "false", "no", "off")) {
-  later::later(function() {
-    tryCatch({
-      con <- pool::poolCheckout(pg_pool)
-      pool::poolReturn(con)
-    }, error = function(e) NULL)
-  }, delay = 0)
+  tryCatch({
+    con <- pool::poolCheckout(pg_pool)
+    pool::poolReturn(con)
+  }, error = function(e) NULL)
 }
 
 # Shared head tags
