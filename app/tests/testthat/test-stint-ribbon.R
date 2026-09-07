@@ -1211,16 +1211,20 @@ test_that("Tab 4 and Tab 11 ribbon output ids and SVG id_prefix never collide", 
   expect_false(identical(prefix4, prefix11))
 
   # svg_id_prefix defaults to prefix when the call omits it (Israeli does).
-  svg4 <- if (grepl("svg_id_prefix", call4, fixed = TRUE)) {
-    regmatches(call4, regexpr('svg_id_prefix\\s*=\\s*"[a-z]+"', call4))
-  } else {
-    prefix4
+  # Normalize to just the quoted value in both branches -- comparing the
+  # explicit branch's full "svg_id_prefix = "x"" match against the default
+  # branch's bare "x" would make expect_false() below pass on formatting
+  # alone, independent of whether the underlying values actually collide.
+  extract_svg_prefix <- function(call_line, default_val) {
+    if (grepl("svg_id_prefix", call_line, fixed = TRUE)) {
+      labeled <- regmatches(call_line, regexpr('svg_id_prefix\\s*=\\s*"[a-z]+"', call_line))
+      regmatches(labeled, regexpr('"[a-z]+"', labeled))
+    } else {
+      default_val
+    }
   }
-  svg11 <- if (grepl("svg_id_prefix", call11, fixed = TRUE)) {
-    regmatches(call11, regexpr('svg_id_prefix\\s*=\\s*"[a-z]+"', call11))
-  } else {
-    prefix11
-  }
+  svg4 <- extract_svg_prefix(call4, prefix4)
+  svg11 <- extract_svg_prefix(call11, prefix11)
   expect_true(nzchar(svg4))
   expect_true(nzchar(svg11))
   expect_false(identical(svg4, svg11))
