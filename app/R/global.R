@@ -233,7 +233,15 @@ APP_IDLE_CHECK_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_CHECK_SEC
 if (!is.finite(APP_IDLE_CHECK_SEC) || APP_IDLE_CHECK_SEC <= 0) APP_IDLE_CHECK_SEC <- 15L
 APP_IDLE_STATE_TTL_HOURS <- suppressWarnings(as.numeric(Sys.getenv("APP_IDLE_STATE_TTL_HOURS", "24")))
 if (!is.finite(APP_IDLE_STATE_TTL_HOURS) || APP_IDLE_STATE_TTL_HOURS <= 0) APP_IDLE_STATE_TTL_HOURS <- 24
-APP_IDLE_CLOSE_SESSION <- tolower(trimws(Sys.getenv("APP_IDLE_CLOSE_SESSION", "true"))) %in% c("1", "true", "yes", "on")
+# Off by default since the move to Posit Connect Cloud. The point of closing an
+# idle session was to hand a shinyapps.io worker slot back; Connect Cloud stops
+# the whole container on its own, measured 5-8 minutes after last use -- before
+# this 10-minute timer can fire. What the timer still reliably did was drive the
+# client resume reload onto a container that had already gone, which is a cold
+# start, and a cold first paint (10-20s) loses to Connect Cloud's 7s loading-page
+# reload and drops assets mid-flight. The client keeps its disconnect watchers,
+# so the resume pill still appears when Connect does reap the container.
+APP_IDLE_CLOSE_SESSION <- tolower(trimws(Sys.getenv("APP_IDLE_CLOSE_SESSION", "false"))) %in% c("1", "true", "yes", "on")
 
 .ref_cache_env <- new.env(parent = emptyenv())
 

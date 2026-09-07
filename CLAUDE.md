@@ -8,7 +8,7 @@
 
 Basketball Israel Analytics — R/Shiny dashboard + React frontend for player on/off impact, lineup combos, team ratings. Data: play-by-play JSON → ETL → PostgreSQL (Supabase) → Shiny app / Plumber API.
 
-**Live app:** https://ibpl-stats.shinyapps.io/onoff-shiny/
+**Live app:** https://arieltaieb-onoff-shiny.share.connect.posit.cloud/ (Posit Connect Cloud since 2026-09. The old https://ibpl-stats.shinyapps.io/onoff-shiny/ is now a 308 redirect into Connect Cloud, so there is no shinyapps.io deployment left to compare against.)
 
 **Tech:** R 4.4.2, Shiny (bslib/BS5), DBI/RPostgres (no dbplyr), PostgreSQL on Supabase (port 6543), schema `basketball_test`. React 19 + TypeScript + Vite in `frontend-v2/` with Plumber/R API (Phase 2 — Tabs 1-2 complete, Tabs 3-4 stubs, Tab 5 Shiny only).
 
@@ -45,7 +45,8 @@ git config core.hooksPath scripts/hooks
 ```bash
 RSCRIPT="/c/Program Files/R/R-4.4.2/bin/Rscript.exe"
 "$RSCRIPT" -e "shiny::runApp('app')"                    # Run Shiny app locally
-"$RSCRIPT" -e "rsconnect::deployApp('app')"             # Deploy Shiny
+# Deploy: push to main. Connect Cloud builds from GitHub via app/manifest.json.
+"$RSCRIPT" -e 'rsconnect::showLogs(appPath="app", account="ibpl-stats", server="shinyapps.io", entries=1500)'  # live server log
 "$RSCRIPT" -e "Sys.setenv(APP_ENV='test'); source('etl/etl_full.R'); etl_full()"  # Full ETL
 cd frontend-v2 && npm run dev                            # Vite dev (port 5173, proxies /api → 3002)
 cd frontend-v2/server && "$RSCRIPT" run.R                # Plumber API (port 3002)
@@ -69,11 +70,11 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **Modular pattern:** `app.R` calls `server_tab*(input, output, session, shared)`. Shared list contains: `season_date_bounds`, `selected_game_year`, `teams_for_year_df`, `selected_opp_ids_on`, `selected_opp_ids_ld`, `data_version`, `pending_ld_team`, `pending_gl_team`, `pending_compare_preset`.
 
-**Cross-session caching:** season-level MV pulls (Tabs 1, 4, 5) are shared across sessions via `GL_DATA_CACHE` — `cached_season_df()` helper or `bindCache()`, keyed on `game_year` + `shared_data_version(shared)` (ETL timestamp), so caches invalidate after each ETL run. Reference dropdowns go through four canonical lookups in `global.R` — `fetch_teams_distinct()`, `fetch_teams_min()`, `fetch_gn_values()`, `fetch_players_basic()` — one `cached_ref_query()` key per dataset per season, shared by all tabs and the prewarm (never write per-tab cache keys for the same data). See `docs/shinyapps_worker_tuning.md` for deployment-side scaling settings.
+**Cross-session caching:** season-level MV pulls (Tabs 1, 4, 5) are shared across sessions via `GL_DATA_CACHE` — `cached_season_df()` helper or `bindCache()`, keyed on `game_year` + `shared_data_version(shared)` (ETL timestamp), so caches invalidate after each ETL run. Reference dropdowns go through four canonical lookups in `global.R` — `fetch_teams_distinct()`, `fetch_teams_min()`, `fetch_gn_values()`, `fetch_players_basic()` — one `cached_ref_query()` key per dataset per season, shared by all tabs and the prewarm (never write per-tab cache keys for the same data). `docs/shinyapps_worker_tuning.md` is shinyapps.io-era and no longer applies: Connect Cloud runs **more than one R process per container** (two `Shiny application starting` lines on one container is normal), so every in-process cache — `GL_DATA_CACHE`, `RANKED_CACHE`, `cached_ref_query`, `.UI_RESPONSE` — pays its own cold cost. Do not reason from "the worker".
 
 **Test mocks:** `tests/testthat/helper-server-mocks.R` sources `R/helpers.R` (real implementations) and stubs only the impure pieces (`db_get_query`, `cached_ref_query`, `fetch_*`, guards, chip builders). Never copy a helper implementation into the mocks — put it in `helpers.R`.
 
-**Session guardrails:** `guard_heavy_request()` (per-session rate limit + query-window caps), `statement_timeout` (`PG_STATEMENT_TIMEOUT_MS`, default 20s), idle-session timeout with client-side state restore (`APP_IDLE_CLOSE_SESSION`, on by default in `global.R`; 10-min timeout). `.Renviron` is credentials only — it is gitignored *and* deployed, so tuning values there override the committed defaults invisibly. `app.R` logs the resolved idle config at startup.
+**Session guardrails:** `guard_heavy_request()` (per-session rate limit + query-window caps), `statement_timeout` (`PG_STATEMENT_TIMEOUT_MS`, default 20s), idle-session timeout with client-side state restore (`APP_IDLE_CLOSE_SESSION`, **off by default since the Connect Cloud move**; 10-min timeout). Connect Cloud stops the container itself 5-8 min after last use — before that timer fires — and the resume reload then lands on a cold start, so the timer-driven pause is off and only the disconnect-driven one remains. `www/app.js` reads the mode from `IBPL_IDLE_CONFIG.closeSession`. `.Renviron` is credentials only, and on Connect Cloud it is **not deployed at all** — it is gitignored and Connect builds from GitHub, so every env var lives in the Connect Cloud dashboard (see § Posit Connect Cloud). `app.R` logs the resolved idle config at startup.
 
 **DB security:** app connects as `app_readonly` (SELECT-only, EXECUTE on an explicit function allowlist, RLS enabled). Apply/audit via `scripts/apply_db_security.R` (dry-run by default) + `sql/security/*.sql`; contract tests in `test-db-security-contracts.R`.
 
@@ -81,7 +82,7 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **Direct SQL (no dbplyr):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with `$1, $2` params. `bigint = "numeric"` in `dbPool()`. The pool is `minSize = 0`. Measured 2026-08-18: `minSize` makes no difference to *steady-state* query latency (0.250s after a 22s idle gap either way) — don't "fix" it for that. But a *first* checkout on a booted worker costs ~1,700-2,200ms (TCP + TLS + auth + the `onCreate` SET), and with `minSize = 0` that always lands on a user request. Measured 2026-09-01: `minSize = 1` moves it to boot but costs +2.7s there against -1.7s on the request, so it loses whenever the worker is booted by the request it must then serve. `global.R` instead schedules a `later::later()` checkout right after the pool is created, connecting once R goes idle: boot time is unchanged and the connection is ready before the first session queries. Set `POOL_PREWARM=false` to disable.
 
-**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and pre-renders it off the boot critical path via `later::later()`. Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain 11 `nav-link` occurrences. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
+**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and pre-renders it off the boot critical path via `later::later()`. Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). **On Connect Cloud that gap never exists** — the process is started *because* a request is waiting, so both `later()` warmups always lose the race; see § Posit Connect Cloud. See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` while editing `www/app.css` or `www/app.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain 11 `nav-link` occurrences. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
 
 **UI theme:** Dark editorial (bslib BS5), DM Sans + JetBrains Mono, amber accent `#e8a435`. Filter chips bar, loading skeletons, tab icons with active amber underline.
 
@@ -255,6 +256,72 @@ Two `.Renviron` files (gitignored): `app/.Renviron` (readonly), `etl/.Renviron` 
 - Port 6543 = pooler (app/ETL), Port 5432 = direct (DDL)
 - DDL uses same pooler host on port 5432 (not `db.<ref>.supabase.co`)
 - `SET search_path` needs `SET LOCAL` in transaction on pooler
+
+## Posit Connect Cloud
+
+The app moved off shinyapps.io in 2026-09. Deploys are **git-backed**: Connect
+Cloud builds from GitHub using `app/manifest.json`, so anything gitignored
+(`app/.Renviron`, `app/renv/`, `app/renv.lock`) is simply absent at runtime.
+
+**Read the live server log** — this is the highest-value diagnostic here, and it
+still goes through the old shinyapps.io API:
+
+```bash
+"$RSCRIPT" -e 'rsconnect::showLogs(appPath="app", account="ibpl-stats", server="shinyapps.io", entries=1500)'
+```
+
+`entries` caps at 1500 (3000 returns HTTP 400). You get container start/stop
+events, `Listening on`, and every `app_log()` line including the client
+`nav->dom` timings.
+
+**Every env var must be set in the Connect Cloud dashboard.** There is no
+deployed `.Renviron` any more, so anything not set silently falls back to the
+committed default. Required: `PG_HOST`, `PG_DB`, `PG_USER`, `PG_PASS`,
+`PG_PORT=6543`, `PG_SSLMODE=require`, `POOL_MAX`. Optional, all with working
+defaults: `PG_STATEMENT_TIMEOUT_MS`, `POOL_PREWARM`, `IBPL_CACHE_UI`,
+`IBPL_CACHE_UI_HTML`, `APP_IDLE_CLOSE_SESSION`, `APP_IDLE_TIMEOUT_SEC`,
+`APP_IDLE_TIMEOUT_MIN`, `APP_IDLE_WARNING_SEC`, `APP_IDLE_CHECK_SEC`,
+`APP_IDLE_STATE_TTL_HOURS`, `GL_DATA_CACHE_MAX_AGE_SEC`, `GL_DATA_CACHE_MAX_MB`,
+`REF_CACHE_TTL_SEC`, `APP_LOG_LEVEL`, `APP_LOG_FILE`.
+
+**Measured 2026-09-07, from the production log (n=8 restarts, 23 sessions):**
+
+| | |
+|---|---|
+| container start -> `Listening on` | **2.0-3.9s** — boot is not the problem |
+| client `nav->dom`, warm process | 1.6-4.0s |
+| client `nav->dom`, fresh process | **10-20s** |
+| Connect Cloud loading-page reload watchdog | **7s** |
+
+That last row is the bug behind the `NS_ERROR_CORRUPTED_CONTENT` console
+errors. Connect Cloud's interstitial carries
+`setTimeout(function(){window.location.reload();}, 7000)`; a fresh-process first
+paint of 10-20s loses to it, the reload aborts in-flight requests, and Firefox
+reports the header-less responses as corrupted content with an empty MIME type.
+It is one cascade, not many failures: whichever of jquery / selectize /
+bslib-component-css gets aborted takes everything downstream with it. **Do not
+re-derive "blocked R starves the static assets" — it was measured and is false**
+(R blocked 15s: `GET /` took 14.5s, every dependency asset still returned in
+~1ms, because httpuv serves registered static paths on background threads). The
+real cost is the ~1.1 MB HTML document of twelve pre-built tabs.
+
+**Do not quote local `runApp('app')` timings as production numbers.** A local
+launch measured 13.7s against production's ~3s: a cold OS file cache plus, at
+one point, a stray `rsconnect::writeManifest()` at the top of `app.R` costing
+4.5s per boot and inflating `manifest.json` from 61 to 72 packages. Never leave
+`writeManifest()` in `app.R`.
+
+**Shiny's native bookmark restore is inactive here.** Across 23 logged sessions,
+all 10 that carried a real bookmark URL (2.2-6.9 KB of `_inputs_`) logged
+`restore context active=FALSE values=0 ... has_inputs=TRUE`. The app runs on its
+own fallback, `request_restore_context()` in `helpers.R`, which rebuilds a
+`RestoreContext` from the query string — that is why `tab=` is populated while
+`values=0`. That fallback predates the migration, so this is **not** proven to
+be a Connect Cloud regression, and it can no longer be compared.
+
+The disconnect nodes the client hides (`#ss-connect-dialog`, `#ss-overlay`,
+`.ss-gray-out`) are `shiny-server-client`'s and are served by Connect Cloud too
+— verified against the deployed page 2026-09-07.
 
 ## ETL Scheduler
 
@@ -452,7 +519,7 @@ than adding a special case:
 (Done: `statement_timeout` guardrail — 20s via `PG_STATEMENT_TIMEOUT_MS`; Tab 4 MV cache — `GL_DATA_CACHE`; per-session rate limit — `guard_heavy_request()`.)
 
 **Scalability (Shiny):**
-1. Apply shinyapps.io worker settings from `docs/shinyapps_worker_tuning.md` (dashboard)
+1. ~~Apply shinyapps.io worker settings~~ — obsolete, the app is on Connect Cloud
 2. If concurrency still hurts: `ExtendedTask` + `promises`/`mirai` for slowest filtered-path queries
 
 **Data:**

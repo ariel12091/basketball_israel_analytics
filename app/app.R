@@ -74,13 +74,18 @@ build_ui <- function() {
     tags$script(HTML(sprintf(
       paste0(
         "window.IBPL_IDLE_CONFIG = {",
-        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:%d",
+        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:%d,",
+        "closeSession:%s",
         "};"
       ),
       APP_IDLE_TIMEOUT_SEC,
       APP_IDLE_WARNING_SEC,
       format(APP_IDLE_STATE_TTL_HOURS, scientific = FALSE, trim = TRUE),
-      IBPL_RESTORE_STATE_VERSION
+      IBPL_RESTORE_STATE_VERSION,
+      # The client runs its own idle countdown and pauses the page when it
+      # expires. That is only honest while the server actually closes the
+      # session, so tell the client which mode it is in.
+      if (isTRUE(APP_IDLE_CLOSE_SESSION)) "true" else "false"
     ))),
     includeScript("www/app.js"),
     tags$div(

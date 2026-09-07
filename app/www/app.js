@@ -403,6 +403,12 @@
   var warningMs = Math.max(1, Number(cfg.warningSec || 60)) * 1000;
   var ttlMs = Math.max(1, Number(cfg.stateTtlHours || 24)) * 60 * 60 * 1000;
   var stateVersion = Number(cfg.stateVersion || 1);
+  // The server tells us whether it will actually close an idle session. When
+  // it will not (the default since the move to Posit Connect Cloud), the
+  // countdown and the paused pill would be lying, so the timer-driven half of
+  // this is switched off. The disconnect-driven half stays: Connect Cloud
+  // stops the container on its own and the pill is still the right response.
+  var serverClosesSession = cfg.closeSession !== false;
   warningMs = Math.min(warningMs, Math.max(1000, timeoutMs - 1000));
   var loadedFromBookmark = location.search.indexOf("_inputs_") !== -1;
   var bookmarkCaptureArmed = !loadedFromBookmark;
@@ -564,8 +570,9 @@
       "#shiny-reconnect-dialog",
       ".shiny-reconnect-dialog",
       ".reconnect-dialog",
-      // shinyapps.io's hosting layer, not Shiny itself. These are the nodes
-      // that actually appear in production.
+      // shiny-server-client's nodes, not Shiny's own. Served by Posit Connect
+      // Cloud as well as the old shinyapps.io; verified present in the
+      // deployed page 2026-09-07. These are what actually appear in production.
       "#ss-overlay",
       ".ss-gray-out",
       "#ss-connect-dialog"
@@ -595,7 +602,7 @@
       }).observe(dialog, { attributes: true, attributeFilter: ["style"] });
       return true;
     };
-    // Present at page load on shinyapps.io; watch for it otherwise rather than
+    // Present at page load on Connect Cloud; watch for it otherwise rather than
     // assume the ordering, since getting this wrong means hiding the dialog and
     // showing nothing in its place.
     if (attach() || !document.body) return;
@@ -716,6 +723,10 @@
   }
 
   function sendActivity(force) {
+    // Nothing reads idle_activity_ts when the server is not closing idle
+    // sessions, and a 15s heartbeat would also hold Connect Cloud's container
+    // open for as long as a tab is left on screen.
+    if (!serverClosesSession) return;
     var now = Date.now();
     // Hard guard: never emit an input before shiny's init message has been
     // answered, or we steal the restore context. See handleConnected().
@@ -739,6 +750,7 @@
   }
 
   function checkIdleState() {
+    if (!serverClosesSession) return;
     if (idleExpired || document.visibilityState === "hidden") return;
     var remainingMs = timeoutMs - (Date.now() - lastActivity);
     if (remainingMs <= 0) {
@@ -826,7 +838,7 @@
     if (document.visibilityState !== "visible") return;
     // Background tabs throttle timers and can deliver shiny:disconnected after
     // visibilitychange. Compare wall-clock time before activity can reset it.
-    if ((Date.now() - lastActivity) >= timeoutMs) idleExpired = true;
+    if (serverClosesSession && (Date.now() - lastActivity) >= timeoutMs) idleExpired = true;
     if (!shinyReadyForRestore()) idleExpired = true;
     if (idleExpired) {
       restoreOnReturn();
@@ -859,7 +871,7 @@
     watchHostingDisconnectDialog();
     sendActivity(true);
     if (timerId) window.clearInterval(timerId);
-    timerId = window.setInterval(checkIdleState, 1000);
+    if (serverClosesSession) timerId = window.setInterval(checkIdleState, 1000);
   }
 
   // Registered at parse time, not in bindActivity(), so the listener is in

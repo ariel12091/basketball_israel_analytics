@@ -461,7 +461,8 @@ test_that("foreground return detects timeout before resetting activity", {
   expect_gt(handler_start, 0L)
   expect_match(
     handler,
-    "if ((Date.now() - lastActivity) >= timeoutMs) idleExpired = true;",
+    paste0("if (serverClosesSession && (Date.now() - lastActivity) >= ",
+           "timeoutMs) idleExpired = true;"),
     fixed = TRUE
   )
   expect_match(
@@ -474,6 +475,48 @@ test_that("foreground return detects timeout before resetting activity", {
     regexpr("idleExpired = true;", handler, fixed = TRUE)[[1]],
     regexpr("markActivity(true);", handler, fixed = TRUE)[[1]]
   )
+})
+
+test_that("the timer-driven idle path is gated on the server closing sessions", {
+  js <- read_repo_txt("www", "app.js")
+
+  # The client only owns half of this. It runs the countdown and paints the
+  # paused pill, but the session is closed by the server -- and since the move
+  # to Posit Connect Cloud it is not closed at all by default. Every
+  # timer-driven branch has to read the mode the server reported, or the page
+  # tells the user it paused while the session is still live.
+  expect_match(js, "var serverClosesSession = cfg.closeSession !== false;",
+               fixed = TRUE)
+  expect_match(js, "if (serverClosesSession) timerId = window.setInterval(checkIdleState, 1000);",
+               fixed = TRUE)
+
+  slice_fn <- function(open, close) {
+    start <- regexpr(open, js, fixed = TRUE)[[1]]
+    expect_gt(start, 0L)
+    tail <- substring(js, start)
+    stop_at <- regexpr(close, tail, fixed = TRUE)[[1]]
+    expect_gt(stop_at, 0L)
+    substring(tail, 1L, stop_at - 1L)
+  }
+
+  # The heartbeat and the countdown are both timer-driven, so both are gated.
+  # Nothing reads idle_activity_ts when the server is not closing sessions, and
+  # the heartbeat would also hold Connect Cloud's container open indefinitely.
+  guarded <- list(
+    c("function sendActivity(force) {", "function markActivity(force) {"),
+    c("function checkIdleState() {", "function handleDisconnected() {")
+  )
+  for (bounds in guarded) {
+    expect_match(slice_fn(bounds[[1]], bounds[[2]]),
+                 "if (!serverClosesSession) return;", fixed = TRUE)
+  }
+
+  # The disconnect-driven half must NOT be gated: Connect Cloud stops the
+  # container on its own and the paused pill is still the right response.
+  disconnect <- slice_fn("function handleDisconnected() {",
+                         "function registerMessageHandlers() {")
+  expect_false(grepl("serverClosesSession", disconnect, fixed = TRUE))
+  expect_match(disconnect, "showPausedPill();", fixed = TRUE)
 })
 
 test_that("a visible disconnect stays paused until later user activity", {
