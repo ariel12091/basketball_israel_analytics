@@ -1050,6 +1050,16 @@ test_that("app.js exposes the queued ribbon click handler", {
   expect_match(js, "window.ibplSendShinyEvent", fixed = TRUE)
 })
 
+test_that("the ribbon JS selects on click and clears on Escape", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_true(grepl("setSelection", js, fixed = TRUE))
+  expect_true(grepl("data-segments", js, fixed = TRUE) ||
+              grepl("dataset.segments", js, fixed = TRUE))
+  expect_true(grepl("Escape", js, fixed = TRUE))
+  expect_false(grepl("setOverlaps", js, fixed = TRUE))
+})
+
 test_that("ribbon_link_cell's data-input-id follows the input_id argument", {
   # The league lives in the argument, not in the function name -- one helper
   # serves both leagues via input_id. Per CLAUDE.md, no parallel euro_

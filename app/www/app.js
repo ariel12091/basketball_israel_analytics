@@ -453,31 +453,13 @@
     band.setAttribute("height", vb.height);
   }
 
-  function setOverlaps(svg, lane) {
-    var lit = svg.querySelectorAll(".ibpl-ribbon-lane.is-overlap");
-    for (var i = 0; i < lit.length; i++) lit[i].classList.remove("is-overlap");
-    if (!isStint(lane)) return;
-
-    var s = Number(lane.dataset.start);
-    var e = Number(lane.dataset.end);
-    var side = lane.classList.contains("is-own") ? "is-own" : "is-opp";
-    var lanes = svg.querySelectorAll(".ibpl-ribbon-lane." + side);
-    for (var k = 0; k < lanes.length; k++) {
-      var o = lanes[k];
-      if (o === lane) continue;
-      // A shared instant is not shared floor time: require a real overlap.
-      if (Math.min(Number(o.dataset.end), e) > Math.max(Number(o.dataset.start), s)) {
-        o.classList.add("is-overlap");
-      }
-    }
-  }
-
   function setDetail(svg, lane) {
     var host = svg.parentNode && svg.parentNode.querySelector(".ibpl-ribbon-detail");
     // Keep the last contents in place on exit (!lane) AND when the pointer
     // is on a gutter name (!isStint) -- a name is a whole-game index, not a
     // stint, and has none of the attributes read below.
     if (!host || !isStint(lane)) return;
+    if (svg.querySelector(".ibpl-ribbon-lane.is-selected")) return;
     var d = lane.dataset;
     var score = (d.pf !== "" && d.pa !== "") ? "  " + d.pf + "-" + d.pa : "";
     var head = d.player + "  ·  " + d.window + "  ·  " + d.pm + score;
@@ -486,12 +468,125 @@
     h.className = "ibpl-ribbon-detail-head";
     h.textContent = head;
     host.appendChild(h);
-    if (d.with) {
-      var w = document.createElement("div");
-      w.className = "ibpl-ribbon-detail-with";
-      w.textContent = "with  " + d.with;
-      host.appendChild(w);
+  }
+
+  function clearSelection(svg) {
+    if (!svg) return;
+    var selected = svg.querySelector(".ibpl-ribbon-lane.is-selected");
+    if (selected) selected.classList.remove("is-selected");
+    var overlays = svg.querySelectorAll(".ibpl-ribbon-selection-overlay");
+    for (var i = 0; i < overlays.length; i++) overlays[i].remove();
+    var host = svg.parentNode && svg.parentNode.querySelector(".ibpl-ribbon-detail");
+    if (host) {
+      host.innerHTML = "";
+      var rest = document.createElement("span");
+      rest.className = "ibpl-ribbon-detail-rest";
+      rest.textContent = "Hover or tab to a stint to see who was on the floor.";
+      host.appendChild(rest);
     }
+  }
+
+  function clockLabel(seconds) {
+    var total = Math.max(0, Math.floor(Number(seconds) || 0));
+    return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+  }
+
+  function segmentNumberFits(text, width) {
+    return text && width >= text.length * 0.6 * 9 + 6;
+  }
+
+  function setSelection(svg, lane) {
+    var otherSelected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
+    for (var i = 0; i < otherSelected.length; i++) {
+      var otherSvg = otherSelected[i].closest(".ibpl-ribbon");
+      if (otherSvg && otherSvg !== svg) clearSelection(otherSvg);
+    }
+    clearSelection(svg);
+    if (!isStint(lane)) return;
+
+    var segments = (lane.dataset.segments || "").split(";").filter(Boolean).map(function(value) {
+      var parts = value.split(",");
+      return {
+        start: Number(parts[0]),
+        end: Number(parts[1]),
+        pm: parts[2] || "",
+        dictIndex: Number(parts[3])
+      };
+    }).filter(function(seg) {
+      return isFinite(seg.start) && isFinite(seg.end) && seg.end > seg.start;
+    });
+    if (!segments.length) return;
+
+    var lineups = [];
+    try { lineups = JSON.parse(svg.dataset.lineups || "[]"); } catch (e) {}
+    lane.classList.add("is-selected");
+    var rect = lane.querySelector("rect");
+    if (!rect) return;
+    var overlay = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    overlay.setAttribute("class", "ibpl-ribbon-selection-overlay");
+    var laneStart = Number(lane.dataset.start);
+    var laneEnd = Number(lane.dataset.end);
+    var x0 = Number(rect.getAttribute("x"));
+    var width = Number(rect.getAttribute("width"));
+    var y = Number(rect.getAttribute("y"));
+    var h = Number(rect.getAttribute("height"));
+
+    segments.forEach(function(seg, index) {
+      var x = x0 + ((seg.start - laneStart) / (laneEnd - laneStart)) * width;
+      var w = ((seg.end - seg.start) / (laneEnd - laneStart)) * width;
+      if (index > 0) {
+        var divider = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        divider.setAttribute("class", "ibpl-ribbon-segment-divider");
+        divider.setAttribute("x1", x);
+        divider.setAttribute("x2", x);
+        divider.setAttribute("y1", y);
+        divider.setAttribute("y2", y + h);
+        overlay.appendChild(divider);
+      }
+      if (segmentNumberFits(seg.pm, w)) {
+        var number = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        number.setAttribute("class", "ibpl-ribbon-segment-num");
+        number.setAttribute("x", x + w / 2);
+        number.setAttribute("y", y + h - 4);
+        number.setAttribute("text-anchor", "middle");
+        number.textContent = seg.pm;
+        overlay.appendChild(number);
+      }
+    });
+    lane.appendChild(overlay);
+
+    var host = svg.parentNode && svg.parentNode.querySelector(".ibpl-ribbon-detail");
+    if (!host) return;
+    host.innerHTML = "";
+    var head = document.createElement("div");
+    head.className = "ibpl-ribbon-detail-head";
+    head.textContent = lane.dataset.player + "  ·  " + lane.dataset.window +
+      "  ·  " + lane.dataset.pm;
+    host.appendChild(head);
+    var list = document.createElement("div");
+    list.className = "ibpl-ribbon-detail-list";
+    var shown = Math.min(segments.length, 12);
+    for (var i = 0; i < shown; i++) {
+      var seg = segments[i];
+      var row = document.createElement("div");
+      row.className = "ibpl-ribbon-detail-row";
+      row.setAttribute("tabindex", "0");
+      row.setAttribute("role", "button");
+      row.dataset.start = seg.start;
+      row.dataset.end = seg.end;
+      row.dataset.lineupIndex = seg.dictIndex;
+      row.textContent = clockLabel(seg.start) + "-" + clockLabel(seg.end) +
+        "  ·  " + (lineups[seg.dictIndex] || "Lineup unavailable") +
+        "  ·  " + seg.pm;
+      list.appendChild(row);
+    }
+    if (segments.length > shown) {
+      var more = document.createElement("div");
+      more.className = "ibpl-ribbon-detail-rest";
+      more.textContent = "+" + (segments.length - shown) + " more";
+      list.appendChild(more);
+    }
+    host.appendChild(list);
   }
 
   function setFocus(svg, lane) {
@@ -515,7 +610,6 @@
     }
 
     setBand(svg, lane);
-    setOverlaps(svg, lane);
     setDetail(svg, lane);
   }
 
@@ -555,12 +649,38 @@
     // here on click would clear emphasis while the pointer is still on the
     // lane. Spec D3 rejects pinning; evaluated per-event (not cached at
     // load) so it tracks a device gaining/losing a pointer.
-    if (!(window.matchMedia && window.matchMedia("(hover: none)").matches)) return;
     var lane = laneFrom(e.target);
-    if (!lane) return;
-    var svg = lane.closest(".ibpl-ribbon");
-    if (!svg) return;
-    setFocus(svg, lane.classList.contains("is-active") ? null : lane);
+    if (lane && isStint(lane)) {
+      e.preventDefault();
+      var svg = lane.closest(".ibpl-ribbon");
+      if (!svg) return;
+      if (lane.classList.contains("is-selected")) clearSelection(svg);
+      else setSelection(svg, lane);
+      return;
+    }
+    if (e.target.closest && e.target.closest(".ibpl-ribbon-detail")) return;
+    var selected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
+    for (var i = 0; i < selected.length; i++) {
+      var selectedSvg = selected[i].closest(".ibpl-ribbon");
+      if (selectedSvg) clearSelection(selectedSvg);
+    }
+  });
+
+  document.addEventListener("keydown", function(e) {
+    var lane = laneFrom(e.target);
+    if (lane && isStint(lane) && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      var svg = lane.closest(".ibpl-ribbon");
+      if (svg) setSelection(svg, lane);
+      return;
+    }
+    if (e.key === "Escape") {
+      var selected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
+      for (var i = 0; i < selected.length; i++) {
+        var selectedSvg = selected[i].closest(".ibpl-ribbon");
+        if (selectedSvg) clearSelection(selectedSvg);
+      }
+    }
   });
 })();
 
