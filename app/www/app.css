@@ -1472,7 +1472,7 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 .ibpl-ribbon.is-focused .ibpl-ribbon-lane rect { opacity: 0.3; }
 .ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active rect { opacity: 1; }
 .ibpl-ribbon-lane.is-selected rect { opacity: 1; }
-.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-selected .ibpl-ribbon-num { opacity: 0; }
+.ibpl-ribbon-lane.is-selected > .ibpl-ribbon-num { opacity: 0; }
 
 .ibpl-ribbon-lane:focus { outline: none; }
 .ibpl-ribbon-lane:focus rect {
