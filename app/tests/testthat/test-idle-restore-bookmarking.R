@@ -599,6 +599,21 @@ test_that("bookmarks use the original per-request UI restore path", {
   expect_gt(as.integer(guard_at), as.integer(ui_fn_at))
 })
 
+test_that("the rendered UI cache is populated only inside a UI request", {
+  app_r_txt <- read_repo_txt("app.R")
+
+  calls <- gregexpr("ui_response()", app_r_txt, fixed = TRUE)[[1]]
+  calls <- calls[calls > 0L]
+  expect_length(calls, 1L)
+
+  ui_fn_at <- regexpr("ui <- function(request) {", app_r_txt, fixed = TRUE)[[1]]
+  server_at <- regexpr("server <- function(input, output, session) {",
+                       app_r_txt, fixed = TRUE)[[1]]
+  expect_gt(calls[[1]], ui_fn_at)
+  expect_lt(calls[[1]], server_at)
+  expect_false(grepl("invisible(ui_response())", app_r_txt, fixed = TRUE))
+})
+
 test_that("league switcher cannot redirect a restored EuroLeague tab to Home", {
   js <- read_repo_txt("www", "app.js")
 

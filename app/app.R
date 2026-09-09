@@ -206,24 +206,11 @@ ui <- function(request) {
   build_ui()
 }
 
-# Render the page BEFORE the server starts listening, so the process only
-# accepts connections once it can answer GET / from cache.
-#
-# This used to be a later::later(delay = 0), which reads as "off the critical
-# path" but is not: a delay = 0 callback scheduled during sourcing runs on the
-# first event-loop pass, which is ahead of the request that is already queued.
-# It only ever helped a worker that had been idle long enough to finish it, and
-# Connect Cloud never gives that gap -- its worker idle timeout is 5s, so the
-# process is nearly always started by the request it then has to serve.
-#
-# Measured: with both warmups on later(), "Listening on" to first GET /
-# answered was 5.6-5.8s (n = 3); warm GET / is 3-30ms. That delay lands
-# squarely on Connect Cloud's 7s loading-page reload watchdog, and a reload
-# mid-load aborts in-flight requests -- which is what surfaces in the browser
-# as NS_ERROR_CORRUPTED_CONTENT on a random handful of assets. Paying it at
-# boot instead puts it behind the heartbeat-held loading page, against a 60s
-# Startup timeout that boot (~3s) is nowhere near.
-if (.UI_HTML_CACHE_ENABLED) invisible(ui_response())
+# Do not pre-render the response while app.R is being sourced. On Connect Cloud
+# that runs before Shiny establishes the request's Bootstrap context and freezes
+# a BS3-style navbar into the worker-wide cache (no .nav-link/.nav-item classes),
+# so the tab view-mode menus cannot attach. The first ordinary UI request builds
+# .UI_RESPONSE inside ui(), then every later request reuses those bytes.
 
 # ---------------- Server ----------------
 server <- function(input, output, session) {
