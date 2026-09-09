@@ -490,17 +490,17 @@ server <- function(input, output, session) {
         # --- Efficiency ---
         tags$h5(style = "margin-top: 0; color: var(--ibpl-accent);", "Efficiency"),
         tags$ul(
-          tags$li(tags$b("PPP"), ": Points per 100 possessions (points per possession \u00d7 100)."),
+          tags$li(tags$b("PPP"), ": Points per 100 possessions (points per possession x 100)."),
           tags$li(tags$b("Net Rating"), ": Offensive PPP minus Defensive PPP. Positive = outscoring opponents."),
           tags$li(tags$b("Possessions"), ": Estimated offensive or defensive trips. More possessions = more reliable stats.")
         ),
         # --- Four Factors ---
         tags$h5(style = "color: var(--ibpl-accent);", "Four Factors"),
         tags$ul(
-          tags$li(tags$b("TS%"), ": True Shooting \u2014 scoring efficiency accounting for 2PT, 3PT, and free throws. Formula: pts / (2 \u00d7 (FGA + FT trips))."),
-          tags$li(tags$b("OREB%"), ": Offensive rebound rate \u2014 share of available misses grabbed. On defense, it measures opponent offensive rebounds allowed."),
-          tags$li(tags$b("TOV%"), ": Turnover rate \u2014 turnovers per possession. Lower is better on offense; higher is better on defense."),
-          tags$li(tags$b("FTR"), ": Free throw rate \u2014 FTA / FGA. Measures how often a team or player gets to the line relative to shot attempts.")
+          tags$li(tags$b("TS%"), ": True Shooting -- scoring efficiency accounting for 2PT, 3PT, and free throws. Formula: pts / (2 x (FGA + FT trips))."),
+          tags$li(tags$b("OREB%"), ": Offensive rebound rate -- share of available misses grabbed. On defense, it measures opponent offensive rebounds allowed."),
+          tags$li(tags$b("TOV%"), ": Turnover rate -- turnovers per possession. Lower is better on offense; higher is better on defense."),
+          tags$li(tags$b("FTR"), ": Free throw rate -- FTA / FGA. Measures how often a team or player gets to the line relative to shot attempts.")
         ),
         # --- Shot Splits ---
         tags$h5(style = "color: var(--ibpl-accent);", "Shot Splits"),
@@ -516,7 +516,7 @@ server <- function(input, output, session) {
         tags$ul(
           tags$li(tags$b("Heat colors"), ": ", tags$span(style = "color: var(--ibpl-pos);", "Green"), " = good, ",
                   tags$span(style = "color: var(--ibpl-neg);", "red"), " = bad. ",
-                  tags$b("Polarity flips for defense"), " \u2014 lower Def PPP is better, so green means fewer points allowed."),
+          tags$b("Polarity flips for defense"), " -- lower Def PPP is better, so green means fewer points allowed."),
           tags$li(tags$b("TOV% exception"), ": On offense, lower TOV% is green (fewer turnovers). On defense, higher TOV% is green (more opponent turnovers)."),
           tags$li(tags$b("Gray / no color"), ": The player, lineup, or team has too few possessions to rank reliably (below the minimum threshold)."),
           tags$li(tags$b("Percentile rank bars"), " (Four Factors view): The slider shows where a player ranks from 0% to 100% among all players with enough possessions. 50% = league median. Only players above the minimum possession threshold are included in rankings.")

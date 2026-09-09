@@ -150,7 +150,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       )
     ),
     # Teams-only descriptive shot-diet sections (gated in section_metrics).
-    # polarity neutral: shares describe the mix, not quality — no winner, no est.±.
+    # Polarity neutral: shares describe the mix, not quality; no winner or estimate.
     off_shot_profile = list(
       title = "Offensive Shot Profile",
       metrics = list(
@@ -370,7 +370,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       gn_split = {
         gn <- suppressWarnings(as.integer(input$cmp_split_gn %||% ""))
         if (is.finite(gn)) {
-          if (side == "a") paste0("GN 1\u2013", gn) else paste0("GN ", gn + 1L, "+")
+      if (side == "a") paste0("GN 1-", gn) else paste0("GN ", gn + 1L, "+")
         } else {
           toupper(side)
         }
@@ -388,13 +388,13 @@ server_tab7_compare <- function(input, output, session, shared) {
     st_mode <- get_input("starters_mode") %||% ""
     st_val <- get_input("starters_val") %||% ""
     if (nzchar(st_mode) && nzchar(st_val)) {
-      op <- if (st_mode == "gte") "\u2265" else "\u2264"
+      op <- if (st_mode == "gte") ">=" else "<="
       parts <- c(parts, paste0("Own starters ", op, st_val))
     }
     opp_st_mode <- get_input("opp_starters_mode") %||% ""
     opp_st_val <- get_input("opp_starters_val") %||% ""
     if (nzchar(opp_st_mode) && nzchar(opp_st_val)) {
-      op <- if (opp_st_mode == "gte") "\u2265" else "\u2264"
+      op <- if (opp_st_mode == "gte") ">=" else "<="
       parts <- c(parts, paste0("Opp starters ", op, opp_st_val))
     }
     ha <- get_input("home_away") %||% ""
@@ -482,7 +482,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         }
       }
     }
-    if (length(parts)) paste(parts, collapse = " \u00b7 ") else paste0("Side ", toupper(side))
+    if (length(parts)) paste(parts, collapse = " | ") else paste0("Side ", toupper(side))
   }
 
   cmp_gap_direction <- function() {
@@ -2298,11 +2298,11 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (!is.na(poss)) parts <- c(parts, paste0(round(poss), " ON Poss"))
       time_label <- player_side_time_label(side)
       if (nzchar(time_label)) parts <- c(parts, time_label)
-      paste(parts, collapse = " \u00b7 ")
+      paste(parts, collapse = " | ")
     }
 
     fmt_swing <- function(v) {
-      if (is.na(v)) return("\u2014")
+      if (is.na(v)) return("--")
       sprintf("%+.1f", v)
     }
 
@@ -2407,7 +2407,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (is.finite(poss)) parts <- c(parts, paste0(round(poss), " ON Poss"))
       time_label <- player_side_time_label(side)
       if (nzchar(time_label)) parts <- c(parts, time_label)
-      paste(parts, collapse = " · ")
+      paste(parts, collapse = " | ")
     }
 
     sp_labels <- c("Lay-up%", "Dunk%", "Lay+Dunk%", "3PA%", "Corner 3 Share", "2PT Jumper%")
@@ -2419,7 +2419,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (!is.finite(on_v) || !is.finite(off_v)) return(list(d = NA_real_, on = on_v, off = off_v))
       list(d = round(on_v - off_v, 1), on = on_v, off = off_v)
     }
-    fmt_swing <- function(v) if (is.na(v)) "—" else sprintf("%+.1f", v)
+    fmt_swing <- function(v) if (is.na(v)) "--" else sprintf("%+.1f", v)
     onoff_sub <- function(s) {
       if (!is.finite(s$on) || !is.finite(s$off)) return(NULL)
       tags$div(style = "font-size:.72rem; color:var(--ibpl-text-dim);",
@@ -2428,7 +2428,7 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     make_rows <- function(side) {
       # eFG% swing leads each side: efficiency context for the diet shares
-      # (judged — higher is better on offense, lower on defense).
+      # (judged -- higher is better on offense, lower on defense).
       se_a <- swing(row_a, side, "efg")
       se_b <- swing(row_b, side, "efg")
       efg_row <- pvp_stat_row("eFG%", se_a$d, se_b$d, fmt_swing,
@@ -2451,11 +2451,11 @@ server_tab7_compare <- function(input, output, session, shared) {
         style = "max-width: 520px; margin: 0 auto;",
         tags$div(
           style = "text-align: center; font-size: .72rem; color: var(--ibpl-text-dim); margin-bottom: 8px;",
-          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points), led by the team eFG% swing. Diet rows are descriptive — no point-impact estimate. Corner 3 Share is the share of known-location 3PA taken from the corners; — = unknown."
+          "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points), led by the team eFG% swing. Diet rows are descriptive -- no point-impact estimate. Corner 3 Share is the share of known-location 3PA taken from the corners; -- = unknown."
         ),
-        pvp_section_header("Offensive Shot Profile (ON − OFF)"),
+        pvp_section_header("Offensive Shot Profile (ON - OFF)"),
         do.call(tagList, make_rows("off")),
-        pvp_section_header("Defensive Shot Profile (ON − OFF)"),
+        pvp_section_header("Defensive Shot Profile (ON - OFF)"),
         do.call(tagList, make_rows("def"))
       )
     )
@@ -2517,7 +2517,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     }
 
     fmt_val <- function(v, stat) {
-      if (is.na(v)) return("\u2014")
+      if (is.na(v)) return("--")
       if (stat$type == "pct") return(sprintf("%.1f", v))
       if (rate == "Totals") return(sprintf("%.0f", v))
       sprintf("%.1f", v)
@@ -2539,7 +2539,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       if (!is.na(mpg)) parts <- c(parts, paste0(sprintf("%.1f", mpg), " MPG"))
       time_label <- player_side_time_label(side)
       if (nzchar(time_label)) parts <- c(parts, time_label)
-      paste(parts, collapse = " \u00b7 ")
+      paste(parts, collapse = " | ")
     }
 
     tagList(
@@ -2944,7 +2944,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   format_team_player_metric <- function(x, metric = selected_team_player_metric()) {
-    if (!is.finite(x)) return("\u2014")
+    if (!is.finite(x)) return("--")
     if (metric %in% TEAM_PLAYER_PCT_COLS) sprintf("%.1f%%", x) else sprintf("%.1f", x)
   }
 
@@ -2954,10 +2954,10 @@ server_tab7_compare <- function(input, output, session, shared) {
   }
 
   format_team_player_gap <- function(x, metric = selected_team_player_metric()) {
-    if (!is.finite(x)) return("\u2014")
+    if (!is.finite(x)) return("--")
     suffix <- if (metric %in% TEAM_PLAYER_PCT_COLS) "%" else ""
     if (abs(x) < 1e-9) return(paste0("+0.0", suffix))
-    if (x > 0) sprintf("+%.1f%s", x, suffix) else sprintf("\u2212%.1f%s", abs(x), suffix)
+    if (x > 0) sprintf("+%.1f%s", x, suffix) else sprintf("-%.1f%s", abs(x), suffix)
   }
 
   cmp_team_players_joined <- reactive({
@@ -3100,7 +3100,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         return(tags$div(class = "detail-container",
           tags$button(class = "cmp-back-btn js-shiny-event",
             `data-input-id` = "cmp_team_players_back_players",
-            "\u2190 Back to players"),
+            "<- Back to players"),
           tags$div(class = "text-muted text-center mt-4", "No player data for current filters.")
         ))
       }
@@ -3109,8 +3109,8 @@ server_tab7_compare <- function(input, output, session, shared) {
       team_name <- row$team_name[1] %||% player$team_name
       player_name <- row$player_name[1] %||% player$player_name
       rate_mode <- input$cmp_team_player_rate_mode %||% "Per Game"
-      col_a_text <- if (identical(short_a, "A")) "A" else paste0("A \u00b7 ", short_a)
-      col_b_text <- if (identical(short_b, "B")) "B" else paste0("B \u00b7 ", short_b)
+      col_a_text <- if (identical(short_a, "A")) "A" else paste0("A | ", short_a)
+      col_b_text <- if (identical(short_b, "B")) "B" else paste0("B | ", short_b)
 
       detail_specs <- list(
         usage = list(
@@ -3154,7 +3154,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         calc_team_player_metric(row, suffix, spec$col, rate_mode)
       }
       fmt_detail <- function(val, spec) {
-        if (!is.finite(val)) return("\u2014")
+        if (!is.finite(val)) return("--")
         if (identical(spec$fmt, "pct")) return(sprintf("%.1f%%", val))
         if (isTRUE(spec$raw) && identical(spec$col, "gp")) return(sprintf("%.0f", val))
         sprintf("%.1f", val)
@@ -3204,11 +3204,11 @@ server_tab7_compare <- function(input, output, session, shared) {
           b_cls <- display_state$b_cls
           is_last_row <- identical(sec_key, tail(active_sections, 1)) && j == length(computed)
           last_cls <- if (is_last_row) " cmp-last-row" else ""
-          gap_text <- if (!is.finite(gi$gap)) "\u2014" else {
+          gap_text <- if (!is.finite(gi$gap)) "--" else {
             suffix <- if (identical(m$fmt, "pct")) "%" else ""
             if (abs(gi$gap) < 1e-9) paste0("+0.0", suffix)
             else if (gi$gap > 0) sprintf("+%.1f%s", gi$gap, suffix)
-            else sprintf("\u2212%.1f%s", abs(gi$gap), suffix)
+            else sprintf("-%.1f%s", abs(gi$gap), suffix)
           }
           gap_side <- display_state$gap_side
           gap_color_cls <- if (gap_side == "a") "a-color" else if (gap_side == "b") "b-color" else ""
@@ -3238,18 +3238,18 @@ server_tab7_compare <- function(input, output, session, shared) {
       poss_b <- if (isTRUE(row$played_b[1])) suppressWarnings(as.numeric(row$poss_on_floor_b[1])) else 0
       note_a <- if (isTRUE(row$played_a[1])) {
         sprintf(
-          "<strong>%s</strong> GP \u00b7 <strong>%s</strong> Poss",
-          if (is.finite(gp_a)) round(gp_a) else "\u2014",
-          if (is.finite(poss_a)) format(round(poss_a), big.mark = ",") else "\u2014"
+          "<strong>%s</strong> GP | <strong>%s</strong> Poss",
+          if (is.finite(gp_a)) round(gp_a) else "--",
+          if (is.finite(poss_a)) format(round(poss_a), big.mark = ",") else "--"
         )
       } else {
         "didn't play"
       }
       note_b <- if (isTRUE(row$played_b[1])) {
         sprintf(
-          "<strong>%s</strong> GP \u00b7 <strong>%s</strong> Poss",
-          if (is.finite(gp_b)) round(gp_b) else "\u2014",
-          if (is.finite(poss_b)) format(round(poss_b), big.mark = ",") else "\u2014"
+          "<strong>%s</strong> GP | <strong>%s</strong> Poss",
+          if (is.finite(gp_b)) round(gp_b) else "--",
+          if (is.finite(poss_b)) format(round(poss_b), big.mark = ",") else "--"
         )
       } else {
         "didn't play"
@@ -3267,10 +3267,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       return(tags$div(class = "detail-container",
         tags$button(class = "cmp-back-btn js-shiny-event",
           `data-input-id` = "cmp_team_players_back_players",
-          "\u2190 Back to players"),
+          "<- Back to players"),
         tags$div(class = "cmp-team-header", player_name),
         tags$div(class = "cmp-team-subheader",
-          paste0(team_name, " \u00b7 ", full_a, " vs ", full_b, " \u00b7 ", rate_mode, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
+          paste0(team_name, " | ", full_a, " vs ", full_b, " | ", rate_mode, " | ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
         context_bar,
         tags$div(class = "cmp-compare-grid", do.call(tagList, all_cells))
       ))
@@ -3280,10 +3280,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       return(tags$div(
         tags$button(class = "cmp-back-btn js-shiny-event",
           `data-input-id` = "cmp_team_players_back_teams",
-          "\u2190 Back to team detail"),
+          "<- Back to team detail"),
         tags$div(class = "cmp-team-header", team$team_name),
         tags$div(class = "cmp-team-subheader",
-          paste0(full_a, " vs ", full_b, " \u00b7 ", input$cmp_team_player_rate_mode %||% "Per Game")),
+          paste0(full_a, " vs ", full_b, " | ", input$cmp_team_player_rate_mode %||% "Per Game")),
         DT::dataTableOutput("cmp_team_players_table")
       ))
     }
@@ -3428,18 +3428,18 @@ server_tab7_compare <- function(input, output, session, shared) {
     suppressWarnings(as.numeric(row[[col]]))
   }
 
-  # All values are already Ã— 100 (SQL does it, Win% computed as w/gp*100 in detail_win_pct).
+  # All values are already x 100 (SQL does it, Win% computed as w/gp*100 in detail_win_pct).
   detail_fmt <- function(val, fmt) {
-    if (!is.finite(val)) return("\u2014")
+    if (!is.finite(val)) return("--")
     switch(fmt,
-      pct = sprintf("%.1f%%", val),   # already Ã—100
-      rtg = sprintf("%.1f", val),     # already Ã—100
-      net = sprintf("%+.1f", val),    # already Ã—100
+      pct = sprintf("%.1f%%", val),   # already x 100
+      rtg = sprintf("%.1f", val),     # already x 100
+      net = sprintf("%+.1f", val),    # already x 100
       sprintf("%.1f", val)
     )
   }
 
-  # Returns Win% already Ã— 100 (matching SQL scale for other metrics)
+  # Returns Win% already x 100 (matching SQL scale for other metrics)
   detail_win_pct <- function(row) {
     gp <- detail_get_value(row, "games_played")
     w <- detail_get_value(row, "wins")
@@ -3499,7 +3499,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       tags$div(class = "cmp-context-side",
         tags$span(class = paste("cmp-context-badge", badge_cls),
           if (badge_cls == "a") "A" else "B"),
-        tags$span(class = "cmp-context-info", HTML(paste(parts, collapse = " \u00b7 ")))
+      tags$span(class = "cmp-context-info", HTML(paste(parts, collapse = " | ")))
       )
     }
     side_a <- build_side(ra, "a")
@@ -3526,7 +3526,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     data <- cmp_detail_data()
     entity <- selected_detail_entity()
 
-    # No entity selected yet in detail mode â†’ show prompt
+    # No entity selected yet in detail mode: show prompt
     if (is.null(entity) && isTRUE(detail_view_active())) {
       return(tags$div(class = "detail-container",
         tags$div(class = "text-muted text-center mt-4",
@@ -3538,7 +3538,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       return(tags$div(class = "detail-container",
         tags$div(class = "cmp-back-btn js-shiny-event",
           `data-input-id` = "cmp_detail_back",
-          "\u2190 Back to league view"),
+          "<- Back to league view"),
         tags$div(class = "text-muted text-center mt-4",
           "No data for this entity with current filters.")))
     }
@@ -3555,17 +3555,17 @@ server_tab7_compare <- function(input, output, session, shared) {
 
     context_bar <- build_detail_context_bar(ra, rb, mode)
 
-    # Build all grid cells â€” flat layout, each metric = 3 sibling cells sharing one grid row
+    # Build all grid cells -- flat layout, each metric = 3 sibling cells sharing one grid row
     all_cells <- list()
     section_names <- names(DETAIL_METRICS)
-    col_a_text <- if (identical(short_a, "A")) "A" else paste0("A \u00b7 ", short_a)
-    col_b_text <- if (identical(short_b, "B")) "B" else paste0("B \u00b7 ", short_b)
+    col_a_text <- if (identical(short_a, "A")) "A" else paste0("A | ", short_a)
+    col_b_text <- if (identical(short_b, "B")) "B" else paste0("B | ", short_b)
 
     # Column headers (first row of grid)
     all_cells <- c(all_cells, list(
       tags$div(class = "cmp-col-header cmp-col-a cmp-cell cmp-first-row", col_a_text),
       tags$div(class = "cmp-col-header cmp-col-gap cmp-cell cmp-first-row js-cmp-detail-sort",
-        "Gap ", tags$span(id = "cmp-sort-icon", "\u2195")),
+      "Gap ", tags$span(id = "cmp-sort-icon", "up/down")),
       tags$div(class = "cmp-col-header cmp-col-b cmp-cell cmp-first-row", col_b_text)
     ))
 
@@ -3621,15 +3621,15 @@ server_tab7_compare <- function(input, output, session, shared) {
         fmt_vb <- detail_fmt(vb, m$fmt)
 
         # Gap display text
-        gap_text <- if (!is.finite(gi$gap)) "\u2014" else {
+      gap_text <- if (!is.finite(gi$gap)) "--" else {
           g_display <- gi$gap
           pct_suffix <- if (m$fmt == "pct") "%" else ""
           if (abs(g_display) < 1e-9) {
-            sprintf("\u00b10.0%s", pct_suffix)
+          sprintf("+/-0.0%s", pct_suffix)
           } else if (g_display > 0) {
             sprintf("+%.1f%s", g_display, pct_suffix)
           } else {
-            sprintf("\u2212%.1f%s", abs(g_display), pct_suffix)
+          sprintf("-%.1f%s", abs(g_display), pct_suffix)
           }
         }
         gap_side <- display_state$gap_side
@@ -3685,10 +3685,10 @@ server_tab7_compare <- function(input, output, session, shared) {
       tags$div(class = "detail-container",
         tags$div(class = "cmp-back-btn js-shiny-event",
           `data-input-id` = "cmp_detail_back",
-          "\u2190 Back to league view"),
+        "<- Back to league view"),
         tags$div(class = "cmp-team-header", data$entity_name),
         tags$div(class = "cmp-team-subheader",
-          paste0(full_a, " vs ", full_b, " \u00b7 ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
+        paste0(full_a, " vs ", full_b, " | ", gy, "-", as.integer(substr(gy, 3, 4)) + 1)),
         context_bar,
         tags$div(class = "cmp-compare-grid",
           do.call(tagList, all_cells)),
@@ -3709,7 +3709,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   })
 
   format_metric_raw <- function(x) {
-    if (is.null(x) || !is.finite(x)) return("\u2014")
+    if (is.null(x) || !is.finite(x)) return("--")
     sprintf("%.1f", x)
   }
 
@@ -3777,33 +3777,33 @@ server_tab7_compare <- function(input, output, session, shared) {
   output$cmp_summary_a_label <- renderText({ metric_label() })
   output$cmp_summary_a_delta <- renderText({
     st <- cmp_summary_stats()
-    if (!is.finite(st$delta)) return("\u0394 vs B: \u2014")
-    paste0("\u0394 vs B: ", sprintf("%+.1f", st$delta))
+    if (!is.finite(st$delta)) return("Delta vs B: --")
+    paste0("Delta vs B: ", sprintf("%+.1f", st$delta))
   })
   output$cmp_summary_b <- renderUI({ cmp_side_value_ui("b") })
   output$cmp_summary_b_label <- renderText({ metric_label() })
   output$cmp_summary_b_delta <- renderText({
     st <- cmp_summary_stats()
-    if (!is.finite(st$delta)) return("\u0394 vs A: \u2014")
-    paste0("\u0394 vs A: ", sprintf("%+.1f", -st$delta))
+    if (!is.finite(st$delta)) return("Delta vs A: --")
+    paste0("Delta vs A: ", sprintf("%+.1f", -st$delta))
   })
   output$cmp_summary_a_poss <- renderText({
     df <- cmp_joined()
-    if (is.null(df) || !nrow(df) || !("poss_a" %in% names(df))) return("Poss A: \u2014")
+    if (is.null(df) || !nrow(df) || !("poss_a" %in% names(df))) return("Poss A: --")
     poss <- suppressWarnings(mean(as.numeric(df$poss_a), na.rm = TRUE))
-    if (!is.finite(poss)) return("Poss A: \u2014")
+    if (!is.finite(poss)) return("Poss A: --")
     paste0("Poss A: ", format(round(poss), big.mark = ",", scientific = FALSE))
   })
   output$cmp_summary_b_poss <- renderText({
     df <- cmp_joined()
-    if (is.null(df) || !nrow(df) || !("poss_b" %in% names(df))) return("Poss B: \u2014")
+    if (is.null(df) || !nrow(df) || !("poss_b" %in% names(df))) return("Poss B: --")
     poss <- suppressWarnings(mean(as.numeric(df$poss_b), na.rm = TRUE))
-    if (!is.finite(poss)) return("Poss B: \u2014")
+    if (!is.finite(poss)) return("Poss B: --")
     paste0("Poss B: ", format(round(poss), big.mark = ",", scientific = FALSE))
   })
   output$cmp_summary_gap <- renderText({
     st <- cmp_summary_stats()
-    if (!is.finite(st$gap_abs)) return("\u2014")
+    if (!is.finite(st$gap_abs)) return("--")
     sprintf("%.1f", st$gap_abs)
   })
 
@@ -3932,11 +3932,11 @@ server_tab7_compare <- function(input, output, session, shared) {
             `#` = df$rank,
             Entity = df$entity_name,
             Team = if ("team_name" %in% names(df)) df$team_name else "",
-            A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "\u2014"),
+      A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "--"),
             `Total Poss A` = as.integer(df$poss_a),
-            B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "\u2014"),
+      B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "--"),
             `Total Poss B` = as.integer(df$poss_b),
-            Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "\u2014"),
+      Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "--"),
             gap_sort = ifelse(is.finite(df$gap), df$gap, -Inf),
             check.names = FALSE, stringsAsFactors = FALSE
           )
@@ -3954,11 +3954,11 @@ server_tab7_compare <- function(input, output, session, shared) {
           show_df <- data.frame(
             `#` = df$rank,
             Entity = df$entity_name,
-            A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "\u2014"),
+      A = ifelse(is.finite(df$metric_a), sprintf("%.1f", df$metric_a), "--"),
             `Total Poss A` = as.integer(df$poss_a),
-            B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "\u2014"),
+      B = ifelse(is.finite(df$metric_b), sprintf("%.1f", df$metric_b), "--"),
             `Total Poss B` = as.integer(df$poss_b),
-            Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "\u2014"),
+      Gap = ifelse(is.finite(df$gap), sprintf("%+.1f", df$gap), "--"),
             gap_sort = ifelse(is.finite(df$gap), df$gap, -Inf),
             check.names = FALSE, stringsAsFactors = FALSE
           )

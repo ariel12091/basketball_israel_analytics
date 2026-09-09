@@ -139,7 +139,7 @@ COLUMN_TOOLTIPS <- c(
   # On/Off FF total diff
   "Diff"        = "Net PPP impact: On-court minus Off-court",
   # Four Factors
-  "TS%"         = "True Shooting: pts / (2 \u00d7 (FGA + FT trips))",
+  "TS%"         = "True Shooting: pts / (2 x (FGA + FT trips))",
   "USG%"        = "Usage rate: share of team shot, free-throw, and turnover possessions while on court",
   "OREB%"       = "Offense: offensive rebounds / available misses. Defense: opponent offensive rebounds allowed / available misses",
   "TOV%"        = "Turnover rate: turnovers / possessions",
@@ -464,7 +464,7 @@ db_get_query <- function(conn_or_pool, statement, params = NULL) {
 
 # ---------------- Canonical per-season reference lookups ----------------
 # One cache key per dataset per season, shared by every tab and the prewarm in
-# app.R — replaces per-tab keys (on_gn_/ld_teams_/tr_teams_/...) that aliased
+# app.R -- replaces per-tab keys (on_gn_/ld_teams_/tr_teams_/...) that aliased
 # identical data under different names.
 
 # Teams as stored (tabs 1, 3, 5, 6, 7 dropdowns).
@@ -821,7 +821,7 @@ clutch_filter_ui <- function(prefix, margin_default = 5, minutes_default = 5) {
 }
 
 game_context_filters_ui <- function(prefix, include_opp_rank = TRUE,
-                                    opp_rank_blank_label = "\u2014",
+  opp_rank_blank_label = "--",
                                     game_type_id = paste0(prefix, "_game_type"),
                                     game_type_label = "Game type",
                                     game_type_choices = GAME_TYPE_CHOICES_UI,
@@ -1008,14 +1008,14 @@ starter_context_filters_ui <- function(prefix) {
                             tt("Own lineup starters", "own_starters"),
                             choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
       column(6, selectInput(paste0(prefix, "_num_starters_off"), "Own value",
-                            choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+                            choices = c("--" = "", as.character(0:5)), selected = ""))
     ),
     fluidRow(
       column(6, selectInput(paste0(prefix, "_num_starters_def_mode"),
                             tt("Opponent lineup starters", "opp_starters"),
                             choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
       column(6, selectInput(paste0(prefix, "_num_starters_def"), "Opp value",
-                            choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+                            choices = c("--" = "", as.character(0:5)), selected = ""))
     )
   )
 }
@@ -1042,7 +1042,7 @@ shot_splits_legend_ui <- function(view_id) {
               span(style = "font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
               div(style = "display:flex; align-items:center; gap:6px;",
                   span(style = "color:var(--ibpl-neg); font-weight:600;", "FG%"),
-                  span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "\u2192"),
+                 span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "->"),
                   span(style = "color:var(--ibpl-pos); font-weight:600;", "FG%"))))
     )
   )
@@ -1174,7 +1174,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
       show_when_set <- dates_show_when_set %||% (prefix %in% c("ld", "tr", "gl"))
       is_non_default <- !same_date(start_d, bounds$start) || !same_date(end_d, bounds$end)
       if ((show_when_set && has_any_raw) || (!show_when_set && is_non_default)) {
-        lbl <- paste(format(start_d, "%b %d"), "\u2013", format(end_d, "%b %d"))
+      lbl <- paste(format(start_d, "%b %d"), "-", format(end_d, "%b %d"))
         chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_dates"), "chip-game", owner("dates", date_id))
       }
     }
@@ -1235,8 +1235,8 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   if (prefix == "on") { gn_min <- input$on_gn_min; gn_max <- input$on_gn_max }
   if ((!is.null(gn_min) && nzchar(gn_min)) || (!is.null(gn_max) && nzchar(gn_max))) {
     parts <- c()
-    if (!is.null(gn_min) && nzchar(gn_min)) parts <- c(parts, paste0(gn_label, "\u2265", gn_min))
-    if (!is.null(gn_max) && nzchar(gn_max)) parts <- c(parts, paste0(gn_label, "\u2264", gn_max))
+  if (!is.null(gn_min) && nzchar(gn_min)) parts <- c(parts, paste0(gn_label, ">=", gn_min))
+  if (!is.null(gn_max) && nzchar(gn_max)) parts <- c(parts, paste0(gn_label, "<=", gn_max))
     chips[[length(chips) + 1]] <- make_chip(paste(parts, collapse = " "), paste0(prefix, "_clear_gn"), "chip-game", owner("gn", paste0(prefix, "_gn_min")))
   }
 
@@ -1268,7 +1268,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
     status <- get_input("_clutch_status") %||% "all"
     mins <- suppressWarnings(as.integer(mins))
     if (is.na(mins) || mins < 1L) mins <- 5L
-    lbl <- paste0("Clutch \u2264", mins, "min margin\u2264", margin)
+    lbl <- paste0("Clutch <=", mins, "min margin<=", margin)
     if (!identical(status, "all")) lbl <- paste0(lbl, " ", status)
     chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_clutch"), "chip-clutch", owner("clutch", paste0(prefix, "_clutch_margin")))
   }
@@ -1280,11 +1280,11 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   def_val <- input[[paste0(prefix, "_num_starters_def")]]
   starters_parts <- c()
   if (!is.null(off_mode) && nzchar(off_mode) && !is.null(off_val) && nzchar(off_val)) {
-    sym <- if (off_mode == "gte") "\u2265" else "\u2264"
+    sym <- if (off_mode == "gte") ">=" else "<="
     starters_parts <- c(starters_parts, paste0("Own ", sym, off_val))
   }
   if (!is.null(def_mode) && nzchar(def_mode) && !is.null(def_val) && nzchar(def_val)) {
-    sym <- if (def_mode == "gte") "\u2265" else "\u2264"
+    sym <- if (def_mode == "gte") ">=" else "<="
     starters_parts <- c(starters_parts, paste0("Opp ", sym, def_val))
   }
   if (length(starters_parts)) {

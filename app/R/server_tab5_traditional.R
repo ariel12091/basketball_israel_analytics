@@ -1526,7 +1526,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       stat_filter_choices <- setdiff(stat_filter_choices, "Total Poss")
     }
     stat_chips <- lapply(ts_stat_filters(), function(f) {
-      op_sym <- if (identical(f$op, "ge")) "\u2265" else "\u2264"
+      op_sym <- if (identical(f$op, "ge")) ">=" else "<="
       val_txt <- format(f$value, big.mark = ",", trim = TRUE)
       label <- sprintf("%s %s %s", f$label, op_sym, val_txt)
       tags$span(
@@ -1538,7 +1538,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
           `data-input-id` = "ts_remove_stat_filter",
           `data-shiny-value` = as.character(as.integer(f$id)),
           style = "margin-left:4px;color:inherit;",
-          "\u00d7"
+          "x"
         )
       )
     })
@@ -1579,7 +1579,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         ),
         radioButtons(
           "ts_stat_filter_op", "Operator",
-          choices = c("\u2265" = "ge", "\u2264" = "le"),
+          choices = c(">=" = "ge", "<=" = "le"),
           selected = "ge",
           inline = TRUE
         ),
@@ -1589,7 +1589,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
         ),
         tags$div(
           class = "small text-muted mb-2",
-          "Percent columns (FG%, 2P%, 3P%, FT%, eFG%, TS%, USG%): enter as 0\u2013100."
+        "Percent columns (FG%, 2P%, 3P%, FT%, eFG%, TS%, USG%): enter as 0-100."
         ),
         actionButton(
           "ts_add_stat_filter", "Add",

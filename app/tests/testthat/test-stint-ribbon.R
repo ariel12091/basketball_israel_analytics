@@ -1587,7 +1587,7 @@ test_that("the lineup dictionary lists each five once, sorted", {
   d <- ribbon_lineup_dictionary(lanes)
   expect_identical(nrow(d), 2L)
   expect_identical(d$members[d$lineup_key == "h1"],
-                   paste(c("Ash", "Bar", "Cohen", "Dan", "Eyal"), collapse = " \u00b7 "))
+                   paste(c("Ash", "Bar", "Cohen", "Dan", "Eyal"), collapse = " | "))
 })
 
 test_that("the dictionary keys on player_key, never on label", {
@@ -1599,7 +1599,7 @@ test_that("the dictionary keys on player_key, never on label", {
     player_label = c("NEW NEW", "NEW NEW", "Bar", "Dan", "Eyal"),
     stringsAsFactors = FALSE)
   d <- ribbon_lineup_dictionary(lanes)
-  expect_identical(lengths(strsplit(d$members, " \u00b7 ", fixed = TRUE))[[1]], 5L)
+  expect_identical(lengths(strsplit(d$members, " | ", fixed = TRUE))[[1]], 5L)
 })
 
 test_that("an empty frame yields a typed empty dictionary", {

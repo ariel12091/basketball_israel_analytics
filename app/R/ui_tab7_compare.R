@@ -18,7 +18,7 @@ ui_tab7_compare <- function() tabPanel(
         conditionalPanel(
           condition = "input.cmp_mode != 'Players'",
           selectInput("cmp_preset", tt("Quick preset", "quick_preset"),
-                      choices = c("\u2014 Custom \u2014" = "",
+                      choices = c("-- Custom --" = "",
                                   "Starters vs Bench" = "starters_bench",
                                   "Vs Starters vs Vs Bench" = "opp_starters_bench",
                                   "Clutch vs Non-Clutch" = "clutch",
@@ -96,7 +96,7 @@ ui_tab7_compare <- function() tabPanel(
             )
           ),
 
-          # ── A ──
+          # -- A --
           tags$div(
             class = "d-flex align-items-center gap-2 mb-2",
             tags$span(class = "badge rounded-pill",
@@ -141,13 +141,13 @@ ui_tab7_compare <- function() tabPanel(
                 column(6, selectInput("cmp_a_starters_mode", tt("Own lineup starters", "own_starters"),
                                     choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
                 column(6, selectInput("cmp_a_starters_val", "Own value",
-                                    choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+                                    choices = c("--" = "", as.character(0:5)), selected = ""))
               ),
               fluidRow(
                 column(6, selectInput("cmp_a_opp_starters_mode", tt("Opponent lineup starters", "opp_starters"),
                                     choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
                 column(6, selectInput("cmp_a_opp_starters_val", "Opp value",
-                                    choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+                                    choices = c("--" = "", as.character(0:5)), selected = ""))
               )
             )
           ),
@@ -170,23 +170,23 @@ ui_tab7_compare <- function() tabPanel(
           selectizeInput("cmp_a_opponents", "Opponents", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All opponents")),
           selectizeInput("cmp_a_game_type", "Game type",
-                         choices = c("All" = "", "Regular season" = "5", "Playoffs \u2013 QF" = "16",
-                                     "Playoffs \u2013 Finals" = "17", "Playoffs \u2013 SF" = "26",
+                         choices = c("All" = "", "Regular season" = "5", "Playoffs - QF" = "16",
+                                     "Playoffs - Finals" = "17", "Playoffs - SF" = "26",
                                      "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
             column(4, selectInput("cmp_a_opp_rank_side", "Top / Bottom",
                                   choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = "")),
             column(4, selectInput("cmp_a_opp_rank_n", "Rank N",
-                                  choices = c("\u2014" = "", as.character(1:12)), selected = "")),
+                                    choices = c("--" = "", as.character(1:12)), selected = "")),
             column(4, selectInput("cmp_a_opp_rank_metric", "Metric",
-                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = ""))
+                                    choices = c("--" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = ""))
           ),
 
-          # ── vs divider ──
-          tags$div(class = "text-center text-muted fw-bold my-2", "\u2014 vs \u2014"),
+          # -- vs divider --
+          tags$div(class = "text-center text-muted fw-bold my-2", "-- vs --"),
 
-          # ── B ──
+          # -- B --
           tags$div(
             class = "d-flex align-items-center gap-2 mb-2",
             tags$span(class = "badge rounded-pill",
@@ -228,13 +228,13 @@ ui_tab7_compare <- function() tabPanel(
                 column(6, selectInput("cmp_b_starters_mode", tt("Own lineup starters", "own_starters"),
                                     choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
                 column(6, selectInput("cmp_b_starters_val", "Own value",
-                                    choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+                                    choices = c("--" = "", as.character(0:5)), selected = ""))
               ),
               fluidRow(
                 column(6, selectInput("cmp_b_opp_starters_mode", tt("Opponent lineup starters", "opp_starters"),
                                     choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
                 column(6, selectInput("cmp_b_opp_starters_val", "Opp value",
-                                    choices = c("\u2014" = "", as.character(0:5)), selected = ""))
+                                    choices = c("--" = "", as.character(0:5)), selected = ""))
               )
             )
           ),
@@ -257,17 +257,17 @@ ui_tab7_compare <- function() tabPanel(
           selectizeInput("cmp_b_opponents", "Opponents", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All opponents")),
           selectizeInput("cmp_b_game_type", "Game type",
-                         choices = c("All" = "", "Regular season" = "5", "Playoffs \u2013 QF" = "16",
-                                     "Playoffs \u2013 Finals" = "17", "Playoffs \u2013 SF" = "26",
+                         choices = c("All" = "", "Regular season" = "5", "Playoffs - QF" = "16",
+                                     "Playoffs - Finals" = "17", "Playoffs - SF" = "26",
                                      "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
             column(4, selectInput("cmp_b_opp_rank_side", "Top / Bottom",
                                   choices = c("Off" = "", "Top" = "top", "Bottom" = "bottom"), selected = "")),
             column(4, selectInput("cmp_b_opp_rank_n", "Rank N",
-                                  choices = c("\u2014" = "", as.character(1:12)), selected = "")),
+                                    choices = c("--" = "", as.character(1:12)), selected = "")),
             column(4, selectInput("cmp_b_opp_rank_metric", "Metric",
-                                  choices = c("\u2014" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = ""))
+                                    choices = c("--" = "", "Offense" = "off", "Defense" = "def", "Net rating" = "net"), selected = ""))
           )
         )
       ),
@@ -312,7 +312,7 @@ ui_tab7_compare <- function() tabPanel(
           )
         ),
 
-        # ── Teams / Lineups mode ──
+        # -- Teams / Lineups mode --
         conditionalPanel(
           condition = "input.cmp_mode != 'Players'",
 
@@ -428,7 +428,7 @@ ui_tab7_compare <- function() tabPanel(
           )
         ),
 
-        # ── Players mode: PvP comparison view ──
+        # -- Players mode: PvP comparison view --
         conditionalPanel(
           condition = "input.cmp_mode == 'Players'",
           div(

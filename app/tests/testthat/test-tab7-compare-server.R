@@ -273,8 +273,8 @@ test_that("tab7 teams player compare follows preset gap direction", {
     list(preset = "home_away", extra = list(), expected = "+20.0"),
     list(preset = "win_loss", extra = list(), expected = "+20.0"),
     list(preset = "top_bottom_rank", extra = list(), expected = "+20.0"),
-    list(preset = "date_split", extra = list(cmp_split_date = as.Date("2026-01-15")), expected = "\u221220.0"),
-    list(preset = "gn_split", extra = list(cmp_split_gn = "10"), expected = "\u221220.0")
+    list(preset = "date_split", extra = list(cmp_split_date = as.Date("2026-01-15")), expected = "-20.0"),
+    list(preset = "gn_split", extra = list(cmp_split_gn = "10"), expected = "-20.0")
   )
 
   for (case in cases) {
@@ -651,7 +651,7 @@ test_that("tab7 detail points the gap and bar at the polarity-aware winner", {
     expect_true(grepl('winner">75.0%', detail_txt, fixed = TRUE))
     expect_true(grepl('loser">90.0%', detail_txt, fixed = TRUE))
     # The gap colour and bar follow the winner (A), not the higher raw value (B).
-    expect_true(grepl('cmp-gap-num a-color">−15.0%', detail_txt, fixed = TRUE))
+    expect_true(grepl('cmp-gap-num a-color">-15.0%', detail_txt, fixed = TRUE))
     # Opp 3PT Acc: A=30.0% (lower) beats B=40.0%.
     expect_true(grepl('winner">30.0%', detail_txt, fixed = TRUE))
     expect_true(grepl('loser">40.0%', detail_txt, fixed = TRUE))

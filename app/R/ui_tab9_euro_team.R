@@ -60,7 +60,7 @@ ui_tab9_euro_team <- function() tabPanel(
               "Off PPP is points scored per 100 possessions; Def PPP is points allowed per 100. Net Rtg is the gap.",
               "Minutes are summed from each selected game's canonical lineup segments; pace is possessions per 40 minutes.",
               "Each cell shows the value, the team's rank in it, and the rank change versus the previous matchday.",
-              "Colour runs by rank, green best to red worst, so Def PPP colours in reverse — allowing fewer points is better.",
+              "Colour runs by rank, green best to red worst, so Def PPP colours in reverse -- allowing fewer points is better.",
               "Opponent-strength filters rank opponents over the whole season, so they do not shift as you narrow the date range."
             )
           )
@@ -72,7 +72,7 @@ ui_tab9_euro_team <- function() tabPanel(
             title = "What This Tab Answers (Four Factors)",
             intro = "What drives each team's rating? Shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends.",
             bullets = c(
-              "Offence green-high on every factor except TOV%, where fewer is better; defence flips — green means the team suppresses that factor.",
+              "Offence green-high on every factor except TOV%, where fewer is better; defence flips -- green means the team suppresses that factor.",
               "Rates are computed once from summed raw counts, never averaged across games.",
               "TS% uses the Israeli denominator (FGA plus the last free throw of a shooting-foul trip), not the 0.44 x FTA estimate.",
               "These counts are derived independently of the Israeli league's possession engine. Do not compare the two leagues' numbers directly."

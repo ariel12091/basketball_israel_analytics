@@ -55,8 +55,8 @@ ui_tab1_onoff <- function() {
             bullets = c(
               "Net Impact shows the on-minus-off PPP gap; Off and Def break it into which end the player affects.",
               "On Court Stats (Off PPP, Def PPP, Net RTG) and Off Court Stats show the team's actual rates with and without the player.",
-              "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy \u2014 use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
-              "ON Poss and OFF Poss (scrolled right) indicate sample size \u2014 small samples produce noisy diffs."
+              "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
+              "ON Poss and OFF Poss (scrolled right) indicate sample size -- small samples produce noisy diffs."
             )
           ),
           tags$a(
@@ -103,7 +103,7 @@ ui_tab1_onoff <- function() {
             intro = "Why is a player's on/off impact happening? Break down the Net diff into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends.",
             bullets = c(
               "Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider.",
-              "Read Offense Impact and Defense Impact blocks separately \u2014 a player can help on one end and hurt on the other.",
+              "Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other.",
               "Gray (unranked) cells mean fewer than 100 on-court possessions; factor diffs from small samples are unreliable.",
               "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
             )
@@ -140,14 +140,14 @@ ui_tab1_onoff <- function() {
           tab_explainer(
             id = "onoff_explainer_sp",
             title = "What This Tab Answers (Shot Profile)",
-            intro = "How does the team's shot diet shift with the player on vs off the floor? Each cell shows the ON-minus-OFF change in share of team FGA, with ON | OFF values below. Each group leads with the team eFG% swing — the efficiency context the diet shares feed into.",
+            intro = "How does the team's shot diet shift with the player on vs off the floor? Each cell shows the ON-minus-OFF change in share of team FGA, with ON | OFF values below. Each group leads with the team eFG% swing -- the efficiency context the diet shares feed into.",
             bullets = c(
               "eFG% is the ON-minus-OFF change in team effective FG% (offense: higher is better; defense: lower is better). It is computed from the same shooting splits as the diet shares.",
-              "Colors follow the league value hierarchy (interior and 3s beat 2PT jumpers): green = shift toward higher-value shots, red = away; the 2PT Jumper column flips, like TOV% in Four Factors. No point-impact estimate is attached — efficiency itself lives in the Summary and Four Factors views.",
-              "Each cell mirrors Four Factors: the Δ headline, on/off percentile dots on the rank bar, and ON | OFF share values below.",
-              "Columns follow the play-by-play shot-type tags: Lay+Dunk = attempts tagged lay-up or dunk (the tag describes execution, not court location — a running floater can be tagged lay-up); 2PT Jumper = attempts tagged 2-point jump-shot. 3PA% is share of all FGA.",
-              "Corner 3 Share splits threes into corner vs above-break, using shots with known court location; — means location unknown.",
-              "Cells gray out below 50 team FGA on the ON side — small samples produce noisy shares."
+              "Colors follow the league value hierarchy (interior and 3s beat 2PT jumpers): green = shift toward higher-value shots, red = away; the 2PT Jumper column flips, like TOV% in Four Factors. No point-impact estimate is attached -- efficiency itself lives in the Summary and Four Factors views.",
+              "Each cell mirrors Four Factors: the Delta headline, on/off percentile dots on the rank bar, and ON | OFF share values below.",
+              "Columns follow the play-by-play shot-type tags: Lay+Dunk = attempts tagged lay-up or dunk (the tag describes execution, not court location -- a running floater can be tagged lay-up); 2PT Jumper = attempts tagged 2-point jump-shot. 3PA% is share of all FGA.",
+              "Corner 3 Share splits threes into corner vs above-break, using shots with known court location; -- means location unknown.",
+              "Cells gray out below 50 team FGA on the ON side -- small samples produce noisy shares."
             )
           )
         ),
@@ -172,7 +172,7 @@ ui_tab1_onoff <- function() {
               span("100% Rank")
             ),
             span(style = "margin-left: 15px; font-size: 0.8em; color: var(--ibpl-text-dim);",
-                 "(Ranked: ≥ 50 team FGA with player on · eFG% + shares of team FGA, Δ = ON − OFF pp · Corner 3 Share uses known-location 3PA, — = unknown)")
+                 "(Ranked: >= 50 team FGA with player on | eFG% + shares of team FGA, Delta = ON - OFF pp | Corner 3 Share uses known-location 3PA, -- = unknown)")
           )
         ),
         filter_chips_row(

@@ -81,9 +81,9 @@ test_that("tab7 detail view keeps full labels in subheader and short labels in c
   expect_true(grepl('short_b\\s*<-\\s*side_label_short\\("b"\\)', txt))
   expect_true(grepl('full_a\\s*<-\\s*side_label_full\\("a"\\)', txt))
   expect_true(grepl('full_b\\s*<-\\s*side_label_full\\("b"\\)', txt))
-  expect_true(grepl('col_a_text\\s*<-\\s*if \\(identical\\(short_a, "A"\\)\\) "A" else paste0\\("A \\\\u00b7 ", short_a\\)', txt))
-  expect_true(grepl('col_b_text\\s*<-\\s*if \\(identical\\(short_b, "B"\\)\\) "B" else paste0\\("B \\\\u00b7 ", short_b\\)', txt))
-  expect_true(grepl('paste0\\(full_a, " vs ", full_b, " \\\\u00b7 ", gy, "-", as.integer\\(substr\\(gy, 3, 4\\)\\) \\+ 1\\)', txt))
+  expect_true(grepl('col_a_text\\s*<-\\s*if \\(identical\\(short_a, "A"\\)\\) "A" else paste0\\("A \\| ", short_a\\)', txt))
+  expect_true(grepl('col_b_text\\s*<-\\s*if \\(identical\\(short_b, "B"\\)\\) "B" else paste0\\("B \\| ", short_b\\)', txt))
+  expect_true(grepl('paste0\\(full_a, " vs ", full_b, " \\| ", gy, "-", as.integer\\(substr\\(gy, 3, 4\\)\\) \\+ 1\\)', txt))
 })
 
 test_that("tab7 detail view registers Teams-only neutral shot-profile sections", {

@@ -80,7 +80,7 @@ ui_tab0_home <- function() tabPanel(
         tags$button(
           type = "button", `data-league-btn` = "il",
           tags$span(class = "league-chooser-name", "Israeli League"),
-          tags$span(class = "league-chooser-sub", "Premier League — full stats suite")
+          tags$span(class = "league-chooser-sub", "Premier League -- full stats suite")
         )
       ),
 

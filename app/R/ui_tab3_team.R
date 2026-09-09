@@ -104,7 +104,7 @@ ui_tab3_team <- function() tabPanel(
             title = "What This Tab Answers (Four Factors)",
             intro = "Which team-level factors are driving strong or weak performance? See each team's PPP, eFG%, OREB%, TOV%, FTR, and possessions on offense and defense, plus league rank, rank delta, and net rating.",
             bullets = c(
-              "Read offense and defense factor profiles side by side - ranks (#1-#14) and rank deltas (\u25b2/\u25bc) help spot movement.",
+              "Read offense and defense factor profiles side by side - ranks (#1-#14) and rank deltas (up/down) help spot movement.",
               "Interpret TOV% with opposite polarity: lower is better on offense, higher is better on defense.",
               "Use Poss columns to judge sample reliability, especially after applying date or clutch filters.",
               "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
@@ -144,9 +144,9 @@ ui_tab3_team <- function() tabPanel(
             title = "What This Tab Answers (Shot Profile)",
             intro = "What does each team's shot diet look like, on offense and defense? Shares of FGA by play-by-play shot-type tag: lay-up, dunk, lay+dunk combined, 3PA, corner-3 share of 3PA, and 2PT jump-shots. Tags describe execution, not court location.",
             bullets = c(
-              "Shares are descriptive — they describe the mix, not its quality. #1 means most of that shot type, not best.",
+              "Shares are descriptive -- they describe the mix, not its quality. #1 means most of that shot type, not best.",
               "Defense columns are the shot diet teams allow their opponents.",
-              "Corner 3 Share uses shots with known court location; — means location unknown.",
+              "Corner 3 Share uses shots with known court location; -- means location unknown.",
               "The same date/clutch-free filters apply as in Summary; use Poss columns to judge sample size."
             )
           )

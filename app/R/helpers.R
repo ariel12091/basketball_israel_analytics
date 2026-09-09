@@ -419,7 +419,7 @@ add_shot_split_metrics <- function(df, specs) {
 
 # ---- Shot Profile (shot-diet) share metrics ---------------------------------
 # Descriptive shares of total FGA (Plan C). Corner-3 share is of KNOWN-location
-# 3PA (c3_known_att), never of all 3PA — unknown fails open to NA, not 0.
+# 3PA (c3_known_att), never of all 3PA -- unknown fails open to NA, not 0.
 
 SHOT_PROFILE_METRIC_SUFFIXES <- c(
   "_layup_share", "_dunk_share", "_rim_share", "_fg3_share", "_c3_pct3", "_mid_share"
@@ -520,7 +520,7 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
   choices <- names(cols)
   remove_id <- paste0(prefix, "_remove_stat_filter")
   filter_chips <- lapply(state$filters(), function(f) {
-    op_sym <- if (identical(f$op, "ge")) "\u2265" else "\u2264"
+    op_sym <- if (identical(f$op, "ge")) ">=" else "<="
     val_txt <- format(f$value, big.mark = ",", trim = TRUE)
     tags$span(
       class = "filter-chip chip-stat",
@@ -560,7 +560,7 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
       ),
       radioButtons(
         paste0(prefix, "_stat_filter_op"), "Operator",
-        choices = c("\u2265" = "ge", "\u2264" = "le"),
+      choices = c(">=" = "ge", "<=" = "le"),
         selected = "ge",
         inline = TRUE
       ),
@@ -1008,7 +1008,7 @@ resolve_starters_bounds <- function(off_mode, off_val, def_mode, def_val) {
 # team_id -> team_name choices for a team selector. all_label = NULL omits the
 # leading blank "all teams" entry, which is what a multi-select wants: an empty
 # option there shows as a selectable blank tag. Both leagues use this.
-team_select_choices_with_all <- function(teams_df, all_label = "\u2014 All teams \u2014") {
+team_select_choices_with_all <- function(teams_df, all_label = "-- All teams --") {
   if (is.null(teams_df) || !nrow(teams_df)) {
     if (is.null(all_label)) return(character(0))
     out <- ""
@@ -1027,7 +1027,7 @@ team_select_choices_with_all <- function(teams_df, all_label = "\u2014 All teams
   out
 }
 
-update_single_team_selectize <- function(session, select_id, teams_df, selected = "", all_label = "\u2014 All teams \u2014") {
+update_single_team_selectize <- function(session, select_id, teams_df, selected = "", all_label = "-- All teams --") {
   updateSelectizeInput(
     session,
     select_id,
@@ -1062,7 +1062,7 @@ FF_IMPACT_EST_TITLE <- "Estimated points per 100 possessions"
 # weights once, so the per-cell annotations can stay terse.
 ff_impact_legend <- function() {
   sprintf(
-    "Estimated factor impact (est.): each 1pp of a factor \u2248 eFG %+.2f, TOV %+.2f, OREB %+.2f, FTR %+.2f pts per 100 poss. (league-calibrated regression weights \u2014 an approximation, not a measured stat).",
+        "Estimated factor impact (est.): each 1pp of a factor ~ eFG %+.2f, TOV %+.2f, OREB %+.2f, FTR %+.2f pts per 100 poss. (league-calibrated regression weights -- an approximation, not a measured stat).",
     FF_IMPACT_WEIGHTS[["efg"]], FF_IMPACT_WEIGHTS[["tov"]],
     FF_IMPACT_WEIGHTS[["oreb"]], FF_IMPACT_WEIGHTS[["ftr"]]
   )
@@ -1272,7 +1272,7 @@ hub_storyline_specs <- function() {
       sentence = function(a, b) {
         delta <- as.numeric(a$net_rtg) - as.numeric(b$net_rtg)
         sprintf(
-          "Clutch net rating %+.1f — %.1f pts per 100 %s than overall",
+          "Clutch net rating %+.1f -- %.1f pts per 100 %s than overall",
           as.numeric(a$net_rtg),
           abs(delta),
           if (delta >= 0) "better" else "worse"
@@ -1297,7 +1297,7 @@ hub_storyline_specs <- function() {
       min_poss = 100,
       sentence = function(a, b) {
         sprintf(
-          "Net rating vs Top 4: %+.1f (%s in league) · vs Bottom 4: %+.1f (%s in league)",
+          "Net rating vs Top 4: %+.1f (%s in league) | vs Bottom 4: %+.1f (%s in league)",
           as.numeric(a$net_rtg),
           hub_ordinal(rank_value(a)),
           as.numeric(b$net_rtg),
@@ -1849,8 +1849,8 @@ fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1,
   rank_txt <- ifelse(is.na(r), "#NA", paste0("#", r))
   delta_txt <- ifelse(
     !show_delta | is.na(d),
-    "\u2014",
-    ifelse(d > 0, paste0("\u25b2", abs(d)), ifelse(d < 0, paste0("\u25bc", abs(d)), "\u2194"))
+      "--",
+      ifelse(d > 0, paste0("up ", abs(d)), ifelse(d < 0, paste0("down ", abs(d)), "no change"))
   )
   paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
 }
@@ -3622,7 +3622,7 @@ ribbon_lineup_dictionary <- function(lanes) {
   rows <- lapply(split(seq_len(nrow(u)), paste(u$side, u$lineup_key, sep = "\r")),
     function(i) data.frame(
       side = u$side[i[1]], lineup_key = u$lineup_key[i[1]],
-      members = paste(sort(u$player_label[i]), collapse = " \u00b7 "),
+          members = paste(sort(u$player_label[i]), collapse = " | "),
       stringsAsFactors = FALSE))
 
   out <- do.call(rbind, rows)

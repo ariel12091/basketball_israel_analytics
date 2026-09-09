@@ -68,7 +68,7 @@ ui_tab8_euro <- function() {
               "Net Impact shows the on-minus-off PPP gap; Off and Def break it into which end the player affects.",
               "On Court Stats (Off PPP, Def PPP, Net RTG) and Off Court Stats show the team's actual rates with and without the player.",
               "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy.",
-              "ON Poss and OFF Poss (scrolled right) indicate sample size — small samples produce noisy diffs.",
+              "ON Poss and OFF Poss (scrolled right) indicate sample size -- small samples produce noisy diffs.",
               "Possessions and ratings come from an independent EuroLeague possession engine. Never compare these numbers against the Israeli-league tabs: different competitions, different derivations."
             )
           )
@@ -81,7 +81,7 @@ ui_tab8_euro <- function() {
             intro = "Why is a player's on/off impact happening? Break the Net diff into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends.",
             bullets = c(
               "Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider.",
-              "Read Offense Impact and Defense Impact blocks separately — a player can help on one end and hurt on the other.",
+              "Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other.",
               "Gray (unranked) cells mean a small on-court possession sample; factor diffs from small samples are unreliable.",
               "TS% uses the same denominator as the Israeli tabs (FGA plus the last free throw of a shooting-foul trip), not the 0.44 x FTA estimate."
             )

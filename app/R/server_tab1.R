@@ -6,8 +6,8 @@
 ON_SP_LABELS <- c("eFG%", "Lay-up", "Dunk", "Lay+Dunk", "3PA", "C3", "2PT Jumper")
 
 ON_SP_FILTERABLE_COLS <- c(
-  stats::setNames(paste0("Off ", ON_SP_LABELS, " Diff"), paste("Off", ON_SP_LABELS, "Δ")),
-  stats::setNames(paste0("Def ", ON_SP_LABELS, " Diff"), paste("Def", ON_SP_LABELS, "Δ")),
+  stats::setNames(paste0("Off ", ON_SP_LABELS, " Diff"), paste("Off", ON_SP_LABELS, "Delta")),
+  stats::setNames(paste0("Def ", ON_SP_LABELS, " Diff"), paste("Def", ON_SP_LABELS, "Delta")),
   "Min" = "minutes",
   "On Poss" = "ON Poss",
   "Off Poss" = "OFF Poss"
@@ -337,7 +337,7 @@ server_tab1 <- function(input, output, session, shared) {
     if (is.null(df) || !nrow(df) || !all(need_cols %in% names(df))) return(df)
 
     # Total FGA per split (helper takes total FGA, not fg2) + eFG per split
-    # (same FGA denominator as the diet shares — efficiency context column)
+    # (same FGA denominator as the diet shares -- efficiency context column)
     for (p in sp_prefixes) {
       fga <- dplyr::coalesce(as.numeric(df[[paste0(p, "_fg2_att")]]), 0) +
         dplyr::coalesce(as.numeric(df[[paste0(p, "_fg3_att")]]), 0)
@@ -446,7 +446,7 @@ server_tab1 <- function(input, output, session, shared) {
              if (type !== 'display' || !row) return data;
              var onV = row[%d], offV = row[%d], onPct = row[%d], offPct = row[%d];
              if (data === null || onV === null || offV === null) {
-               return '<div class=\"diff-val unranked\">—</div>';
+               return '<div class=\"diff-val unranked\">--</div>';
              }
              var d = parseFloat(data);
              var head = (d > 0 ? '+' : '') + d.toFixed(1);
@@ -475,12 +475,12 @@ server_tab1 <- function(input, output, session, shared) {
       if (length(sec_idx)) defs[[length(defs) + 1L]] <- list(targets = sec_idx, className = "section-left-border")
       defs[[length(defs) + 1L]] <- list(targets = "_all", className = "dt-center")
 
-      c3_title <- "Corner 3s as % of 3PA with known court location; — = location unknown"
+      c3_title <- "Corner 3s as % of 3PA with known court location; -- = location unknown"
       sketch_sp <- htmltools::withTags(table(class = "display", thead(
         tr(
           th(class = "group-head", colspan = 2, ""),
-          th(class = "group-head section-left-border", colspan = 7, "Offense Shot Profile (ON − OFF; eFG% + shares of FGA)"),
-          th(class = "group-head section-left-border", colspan = 7, "Defense Shot Profile (ON − OFF; eFG% + shares of FGA)"),
+          th(class = "group-head section-left-border", colspan = 7, "Offense Shot Profile (ON - OFF; eFG% + shares of FGA)"),
+          th(class = "group-head section-left-border", colspan = 7, "Defense Shot Profile (ON - OFF; eFG% + shares of FGA)"),
           th(class = "group-head section-left-border", colspan = 3, "Usage")
         ),
         tr(

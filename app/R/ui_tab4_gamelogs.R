@@ -25,11 +25,11 @@ ui_tab4_gamelogs <- function() tabPanel(
           dateRangeInput("gl_dates", "Date range", start = DEFAULT_START, end = DEFAULT_END),
           fluidRow(
             column(6, selectInput("gl_num_starters_off_mode", tt("Own lineup starters", "own_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-            column(6, selectInput("gl_num_starters_off", "Own value", choices = c("—" = "", as.character(0:5)), selected = ""))
+            column(6, selectInput("gl_num_starters_off", "Own value", choices = c("--" = "", as.character(0:5)), selected = ""))
           ),
           fluidRow(
             column(6, selectInput("gl_num_starters_def_mode", tt("Opponent lineup starters", "opp_starters"), choices = c("ALL" = "", "At least (>=)" = "gte", "At most (<=)" = "lte"), selected = "")),
-            column(6, selectInput("gl_num_starters_def", "Opp value", choices = c("—" = "", as.character(0:5)), selected = ""))
+            column(6, selectInput("gl_num_starters_def", "Opp value", choices = c("--" = "", as.character(0:5)), selected = ""))
           ),
           tags$hr(),
           accordion_toggle_link(),
@@ -46,7 +46,7 @@ ui_tab4_gamelogs <- function() tabPanel(
             intro = "How did each game look in outcomes and pace-adjusted efficiency terms?",
             bullets = c(
               "Each row shows GN, Game Type, Date, Team, Opponent, W/L, Score, Off PPP, Def PPP, Net, Off Shot, Def Shot, Off Poss, and Def Poss.",
-              "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy \u2014 use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
+              "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
               "Compare Off PPP and Def PPP across games to spot trends; the score alone can mislead when pace varies.",
               "Switch to Four Factors view if you need the cause-level breakdown (eFG%, OREB%, TOV%, FTR)."
             )
@@ -86,7 +86,7 @@ ui_tab4_gamelogs <- function() tabPanel(
             intro = "Which four-factor components drove each single-game result? Each row shows one game with GN, date, teams, W/L, score, and the full PPP + eFG% + OREB% + TOV% + FTR breakdown for both offense and defense.",
             bullets = c(
               "Scan eFG%, OREB%, TOV%, and FTR together to diagnose why a game was won or lost.",
-              "Compare offense and defense factor columns side by side \u2014 a win can mask poor defense if offense was exceptional.",
+              "Compare offense and defense factor columns side by side -- a win can mask poor defense if offense was exceptional.",
               "Look for patterns across games: consistent factor profiles suggest sustainability, while one-off spikes may be variance.",
               "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% game was driven by sustainable shot selection or a hot-hand streak."
             )
@@ -140,7 +140,7 @@ ui_tab4_gamelogs <- function() tabPanel(
                     span(style = "font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;", "Accuracy"),
                     div(style = "display:flex; align-items:center; gap:6px;",
                         span(style = "color:var(--ibpl-neg); font-weight:600;", "FG%"),
-                        span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "\u2192"),
+               span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "->"),
                         span(style = "color:var(--ibpl-pos); font-weight:600;", "FG%")
                     )
                 )

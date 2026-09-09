@@ -163,7 +163,7 @@ ui_tab2_lineup <- function() tabPanel(
                 div(
                   style = "display:flex; align-items:center; gap:6px;",
                   span(style = "color:var(--ibpl-neg); font-weight:600;", "FG%"),
-                  span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "\u2192"),
+               span(style = "color:var(--ibpl-text-dim); margin:0 2px;", "->"),
                   span(style = "color:var(--ibpl-pos); font-weight:600;", "FG%")
                 )
               )

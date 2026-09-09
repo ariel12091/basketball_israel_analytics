@@ -1869,7 +1869,7 @@ server_tab3 <- function(input, output, session, shared) {
       df <- apply_stat_filters(df, tr_stat_filter_state$filters())
       if (is.null(df) || !nrow(df)) return(empty_dt("Shot Profile: no rows match stat filters"))
 
-      # eFG% context column (level — Tab 3 has no on/off split), joined from
+      # eFG% context column (level -- Tab 3 has no on/off split), joined from
       # the four-factors data (same filter params as tr_data()).
       df$off_efg <- NULL
       df$def_efg <- NULL
@@ -1889,7 +1889,7 @@ server_tab3 <- function(input, output, session, shared) {
       fmt_share_cell <- function(vals, ranks) {
         v <- suppressWarnings(as.numeric(vals))
         r <- suppressWarnings(as.integer(ranks))
-        ifelse(is.na(v), "—",
+        ifelse(is.na(v), "--",
                paste0(format(round(v, 1), nsmall = 1, trim = TRUE), "%<br>",
                       ifelse(is.na(r), "#NA", paste0("#", r))))
       }
@@ -1939,7 +1939,7 @@ server_tab3 <- function(input, output, session, shared) {
         )
       })
 
-      c3_title <- "Corner 3s as % of 3PA with known court location; — = location unknown"
+      c3_title <- "Corner 3s as % of 3PA with known court location; -- = location unknown"
       sketch_sp <- htmltools::withTags(table(class = "display", thead(
         tr(
           th(class = "group-head", colspan = 2, ""),

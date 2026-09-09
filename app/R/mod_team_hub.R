@@ -1,4 +1,4 @@
-# mod_team_hub.R — Home team hub: identity card, key players, best/worst
+# mod_team_hub.R -- Home team hub: identity card, key players, best/worst
 # lineups, storylines. Plain server-function pattern (not a namespaced module)
 # because it drives top-level inputs (main_tabs, home_team, teams).
 
@@ -436,7 +436,7 @@ team_hub_ui <- function() {
               class = "spinner-border spinner-border-sm",
               `aria-hidden` = "true"
             ),
-            tags$span("Analyzing team splits…")
+            tags$span("Analyzing team splits...")
           )
         )
       )
@@ -885,7 +885,7 @@ server_team_hub <- function(input, output, session, shared) {
           tags$h5(class = "card-title mb-0", as.character(row$team_name)),
           tags$span(
             class = "hub-record",
-            sprintf("%d–%d", as.integer(row$wins), as.integer(row$losses))
+            sprintf("%d-%d", as.integer(row$wins), as.integer(row$losses))
           )
         ),
         div(
@@ -955,7 +955,7 @@ server_team_hub <- function(input, output, session, shared) {
           tags$p(
             class = "hub-footnote",
             sprintf(
-              "Top scorer: %s — %.1f ppg",
+              "Top scorer: %s -- %.1f ppg",
               as.character(scorer$player_name %||% scorer$Player),
               scorer$ppg
             )
