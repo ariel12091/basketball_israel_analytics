@@ -1448,3 +1448,232 @@ tr[data-pivot-team] td:first-child,
 tr[data-pivot-team] td:nth-child(2),
 tr[data-pivot-player] td:first-child,
 tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
+
+/* ---------------- Stint ribbon ---------------- */
+.ibpl-ribbon {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.ibpl-ribbon-period {
+  stroke: var(--ibpl-border);
+  stroke-width: 1;
+  opacity: 0.45;
+}
+
+.ibpl-ribbon-lane rect {
+  fill: var(--ibpl-accent);
+  opacity: 0.85;
+  transition: opacity 120ms ease;
+}
+
+.ibpl-ribbon-lane.is-opp rect { fill: var(--ibpl-text-muted); }
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane rect { opacity: 0.3; }
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active rect { opacity: 1; }
+.ibpl-ribbon-lane.is-selected rect { opacity: 1; }
+.ibpl-ribbon-lane.is-selected > .ibpl-ribbon-num { opacity: 0 !important; }
+
+.ibpl-ribbon-lane:focus { outline: none; }
+.ibpl-ribbon-lane:focus rect {
+  stroke: var(--ibpl-accent);
+  stroke-width: 1.5;
+}
+
+.ibpl-ribbon-name,
+.ibpl-ribbon-team,
+.ibpl-ribbon-period-label,
+.ibpl-ribbon-zero-label {
+  fill: var(--ibpl-text-muted);
+  font-family: var(--ibpl-font-body);
+  font-size: 11px;
+}
+
+.ibpl-ribbon-name { fill: var(--ibpl-text); cursor: pointer; }
+.ibpl-ribbon-name:focus { outline: none; }
+.ibpl-ribbon-name.is-active { fill: var(--ibpl-accent); }
+
+/* Gutter totals columns. Mono so the digits align down the column and so
+   their width is computable server-side (see the on-bar numbers below). */
+.ibpl-ribbon-min,
+.ibpl-ribbon-pm,
+.ibpl-ribbon-col-head {
+  font-family: var(--ibpl-font-mono);
+  font-size: 10px;
+  fill: var(--ibpl-text-muted);
+}
+
+.ibpl-ribbon-pm { fill: var(--ibpl-text); }
+
+.ibpl-ribbon-col-head {
+  fill: var(--ibpl-text-faint);
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.ibpl-ribbon-team {
+  fill: var(--ibpl-text);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.ibpl-ribbon-zero {
+  stroke: var(--ibpl-border);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+/* Round-interval gridlines behind the curve (final review, M7): fainter
+   than .ibpl-ribbon-zero so the tied baseline stays the visual reference. */
+.ibpl-ribbon-scale {
+  stroke: var(--ibpl-border);
+  stroke-width: 1;
+  opacity: 0.25;
+}
+
+.ibpl-ribbon-scale-label {
+  fill: var(--ibpl-text-faint);
+  font-family: var(--ibpl-font-body);
+  font-size: 10px;
+}
+
+.ibpl-ribbon-margin-base,
+.ibpl-ribbon-margin-focus {
+  fill: none;
+  stroke-width: 1.75;
+}
+
+.ibpl-ribbon-margin-base {
+  stroke: var(--ibpl-text-muted);
+  opacity: 0.5;
+}
+
+.ibpl-ribbon-margin-focus {
+  stroke: var(--ibpl-text);
+  stroke-width: 3;
+  opacity: 0;
+}
+
+.ibpl-ribbon.is-focused .ibpl-ribbon-margin-focus { opacity: 1; }
+
+/* On-bar +/-. Dark ink on both fills: composited over --ibpl-bg at the bars'
+   0.85 opacity the own bar is #C88E2F (contrast 6.64:1) and the opp bar is
+   #847F78 (4.77:1). Both clear the 4.5:1 small-text threshold. Verify in a
+   browser against the COMPOSITED colour, not the raw token. */
+.ibpl-ribbon-num {
+  font-family: var(--ibpl-font-mono);
+  font-size: 9px;
+  fill: var(--ibpl-bg);
+  pointer-events: none;
+  transition: opacity 120ms ease;
+}
+
+/* The number must dim with its bar. The existing dimming rule targets
+   `rect` only, so without this the numbers would stay bright on bars that
+   have been dimmed out of focus. */
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane .ibpl-ribbon-num { opacity: 0.3; }
+.ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active .ibpl-ribbon-num { opacity: 1; }
+
+/* Hover band: the vertical slice of the chart the hovered stint occupies.
+   Painted behind everything, so the lanes and the curve stay readable. */
+.ibpl-ribbon-band {
+  fill: var(--ibpl-accent);
+  opacity: 0.16;
+  pointer-events: none;
+}
+
+.ibpl-ribbon-selection-overlay { pointer-events: none; }
+.ibpl-ribbon-segment-divider {
+  stroke: var(--ibpl-bg);
+  stroke-width: 1;
+  opacity: 0.8;
+}
+.ibpl-ribbon-segment-num {
+  fill: var(--ibpl-bg);
+  font-family: var(--ibpl-font-mono);
+  font-size: 9px;
+}
+
+.ibpl-ribbon-lineup-mark-overlay { pointer-events: none; }
+/* Specificity 0,5,0: both rules beat the focused lane rule (0,3,1) and its
+   active variant (0,4,1), including when the selected bar is still active. */
+.ibpl-ribbon.is-lineup-focused .ibpl-ribbon-lane .ibpl-ribbon-lineup-mark.is-primary {
+  fill: var(--ibpl-text);
+  stroke: var(--ibpl-bg);
+  stroke-width: 1;
+  opacity: 0.92;
+}
+.ibpl-ribbon.is-lineup-focused .ibpl-ribbon-lane .ibpl-ribbon-lineup-mark.is-echo {
+  fill: var(--ibpl-text);
+  stroke: var(--ibpl-text);
+  stroke-width: 0.75;
+  opacity: 0.38;
+}
+
+.ibpl-ribbon.is-lineup-focused .ibpl-ribbon-margin-focus { opacity: 1; }
+.ibpl-ribbon-margin-lineup-echo {
+  fill: none;
+  stroke: var(--ibpl-accent-hover);
+  stroke-width: 2.5;
+  opacity: 0.85;
+  pointer-events: none;
+}
+
+.ibpl-ribbon-detail-slot { overflow: visible; }
+.ibpl-ribbon-detail {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 6px;
+  background: var(--ibpl-bg-sunken);
+  font-family: var(--ibpl-font-mono);
+  font-size: 11px;
+  line-height: 1.35;
+  color: var(--ibpl-text);
+}
+
+.ibpl-ribbon-detail-head {
+  margin-bottom: 4px;
+  color: var(--ibpl-text);
+  font-weight: 700;
+}
+
+.ibpl-ribbon-detail-list {
+  display: grid;
+  gap: 3px;
+}
+
+.ibpl-ribbon-detail-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+  align-items: baseline;
+  color: var(--ibpl-text-body);
+  cursor: pointer;
+  padding: 3px 5px;
+  border-left: 2px solid transparent;
+  border-radius: 3px;
+}
+
+.ibpl-ribbon-detail-members { min-width: 0; }
+.ibpl-ribbon-detail-meta {
+  color: var(--ibpl-text-muted);
+  text-align: right;
+}
+
+.ibpl-ribbon-detail-row:focus {
+  outline: 1px solid var(--ibpl-accent);
+  outline-offset: 1px;
+}
+
+.ibpl-ribbon-detail-row.is-active {
+  background: var(--ibpl-surface-selected);
+  border-left-color: var(--ibpl-accent-hover);
+  color: var(--ibpl-text);
+}
+
+.ibpl-ribbon-detail-row.is-active .ibpl-ribbon-detail-meta {
+  color: var(--ibpl-text);
+}

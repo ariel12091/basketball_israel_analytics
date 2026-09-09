@@ -119,7 +119,9 @@ euro_app_relations(relation_name) AS (
     ('team_four_factors_mv'),
     ('lineup_totals_by_game'),
     ('sub_lineups'),
-    ('sub_lineups_stats_mv')
+    ('sub_lineups_stats_mv'),
+    ('ribbon_segments_v'),
+    ('ribbon_margin_v')
 ),
 required_app_relations(schema_name, relation_name) AS (
   SELECT s.schema_name, r.relation_name

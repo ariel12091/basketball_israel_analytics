@@ -2,6 +2,37 @@
 
 Date: 2026-07-28
 
+## 2026-09-01 combined Home reader
+
+The complete Home team analysis now uses one parameterized database request
+instead of six sequential requests. It packages the existing Storylines
+preset cache, team ratings, Four Factors, selected-team on/off and traditional
+player rows, and default five-player lineups into one response. No new table or
+database object was added. The previous readers remain as a compatibility
+fallback.
+
+The default lineup portion reads `sub_lineups_stats` directly. This is the
+documented full-season, filter-free fast path already used by
+`fetch_lineups_csv_v2()`, and avoids PostgreSQL function first-use overhead.
+Exact live parity passed against the former function for all 14 teams.
+
+Read-only measurements through the configured app role on port 6543:
+
+| Measurement | Result |
+|---|---:|
+| Previous six Home SQL calls, connected | ~2.09 s |
+| Combined reader, all-team median | 0.28-0.30 s |
+| Combined reader, all-team observed range | 0.26-0.36 s |
+| First combined request including lazy connection | 2.06-2.25 s |
+| Typical response payload | ~81 kB |
+
+All six payload sections matched their previous live sources exactly. The
+remaining first-request cost is connection establishment, not Home SQL. The
+combined response is validated before use: league-wide sections must be
+non-empty and every populated section must retain the columns consumed by the
+Home cards. Parse, shape, or query failures emit a `hub_home_fallback` warning
+and use the previous readers. The change is local and has not been deployed.
+
 ## Problem
 
 The Team Hub Storylines card originally appeared about 10-15 seconds after the

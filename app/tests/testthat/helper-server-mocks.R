@@ -70,6 +70,11 @@ fetch_players_basic <- function(gy) {
     name = c("Player A", "Player C", "Player B")
   )
 }
+# Empty by default (fail-open shape): no test game is scoreless unless a
+# specific test overrides this stub.
+fetch_scoreless_games <- function(ver = NULL) {
+  data.frame(game_id = integer(0), team_id = integer(0))
+}
 
 .mock_db_query_counts <- new.env(parent = emptyenv())
 
@@ -691,6 +696,7 @@ dt_col_order_init_callback <- function(...) {
 source(repo_file("R", "logger.R"), local = TRUE)
 source(repo_file("R", "server_tab1.R"), local = TRUE)
 source(repo_file("R", "mod_lineup_player_filter.R"), local = TRUE)
+source(repo_file("R", "mod_ribbon_modal.R"), local = TRUE)
 source(repo_file("R", "server_tab2.R"), local = TRUE)
 source(repo_file("R", "server_tab3.R"), local = TRUE)
 source(repo_file("R", "server_tab4.R"), local = TRUE)

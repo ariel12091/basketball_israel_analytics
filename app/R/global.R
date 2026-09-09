@@ -12,12 +12,34 @@ library(htmltools)
 # ---------------- Defaults ----------------
 # Default season shown on load. To roll to a new season, add its static roster,
 # bump this value, and add the matching navbar label in app.R.
-DEFAULT_GAME_YEAR <- "2026"   # 25-26
+DEFAULT_GAME_YEAR <- "2027"   # 26-27
 
 # Season-aware team rosters used before the first database connection. Team IDs
 # are provider IDs and can be recycled between seasons, so each season needs an
 # explicit mapping.
 STATIC_TEAM_ROSTERS <- list(
+  `2027` = data.frame(
+    # App-facing IDs come from the PBP roster feed; the public schedule uses
+    # separate 2111-2124 IDs mapped in schedule_team_dict.
+    team_id = c(2L, 3L, 7L, 4L, 5L, 12L, 8L, 9L, 11L, 6L, 10L, 14L, 33L, 17L),
+    team_name = c(
+      "MACCABI TEL AVIV",
+      "HAPOEL TEL AVIV",
+      "MACCABI RAMAT GAN",
+      "HAPOEL JERUSALEM",
+      "HAPOEL HOLON",
+      "IRONI KIRYAT ATA",
+      "HAPOEL HAEMEK",
+      "NESS ZIONA",
+      "BEER SHEVA/DIMONA",
+      "BNEI HERZLIYA",
+      "HAPOEL GALIL ELION",
+      "M. RISHON",
+      "MACCABI ASHDOD",
+      "HAPOEL EILAT"
+    ),
+    stringsAsFactors = FALSE
+  ),
   `2026` = data.frame(
     team_id = 2:15,
     team_name = c(
@@ -70,10 +92,18 @@ LD_DEFAULT_NUM      <- "5"
 RANKING_BASELINE <- 100
 RANKING_MIN_PCT  <- 0.25   # at least 25% of rows should be ranked
 
-# Season window for a given game_year: Oct 1 (Y-1) through Jul 1 (Y).
+# Explicit exceptions for Israeli seasons that begin before October.
+SEASON_DATE_BOUNDS <- list(
+  `2027` = list(start = as.Date("2026-09-01"), end = as.Date("2027-07-01"))
+)
+
+# Season window for a given game_year. Most seasons use Oct 1 (Y-1) through
+# Jul 1 (Y); explicit feed-confirmed exceptions are defined above.
 season_date_bounds_for_year <- function(gy = DEFAULT_GAME_YEAR) {
   y <- suppressWarnings(as.integer(gy))
   if (length(y) != 1L || is.na(y)) y <- as.integer(DEFAULT_GAME_YEAR)
+  explicit <- SEASON_DATE_BOUNDS[[as.character(y)]]
+  if (!is.null(explicit)) return(explicit)
   list(start = as.Date(sprintf("%04d-10-01", y - 1L)),
        end   = as.Date(sprintf("%04d-07-01", y)))
 }
@@ -271,6 +301,157 @@ cached_season_df <- function(key_parts, query_fun) {
   val
 }
 
+# ---------------- Stint ribbon readers ----------------
+# Lanes and margin return as JSON in one row so each open costs one pooler
+# round trip.
+
+RIBBON_SQL_ISRAEL <- "
+WITH gy AS (
+  SELECT game_year FROM basketball_test.final_schedule_mv
+  WHERE game_id = $1 LIMIT 1
+),
+segs AS (
+  SELECT team_id, segment_id, lineup_hash,
+         MIN(segment_start_elapsed_seconds) AS start_elapsed,
+         MAX(segment_end_elapsed_seconds)   AS end_elapsed,
+         BOOL_OR(type IS DISTINCT FROM 'substitution') AS has_gameplay
+  FROM basketball_test.df_pts_poss_lineups_longer_mv
+  WHERE game_id = $1
+  GROUP BY team_id, segment_id, lineup_hash
+  HAVING MAX(segment_seconds) > 0
+),
+lineup_players AS (
+  SELECT l.team_id, l.lineup_hash,
+         ARRAY_AGG(DISTINCT l.player_id ORDER BY l.player_id)::int4[] AS player_ids
+  FROM basketball_test.lineups_lookup_on l
+  WHERE l.game_year = (SELECT game_year FROM gy)
+  GROUP BY l.team_id, l.lineup_hash
+  HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
+),
+lanes AS (
+  SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
+         s.lineup_hash AS lineup_key,
+         COALESCE(NULLIF(TRIM(COALESCE(r.firstname, '') || ' ' ||
+                              COALESCE(r.lastname, '')), ''),
+                  'Player ' || p.player_id) AS player_label
+  FROM segs s
+  JOIN lineup_players lp
+    ON lp.lineup_hash = s.lineup_hash AND lp.team_id = s.team_id
+  CROSS JOIN LATERAL unnest(lp.player_ids) AS p(player_id)
+  LEFT JOIN basketball_test.full_rosters r
+    ON r.game_id = $1
+   AND r.team_id = s.team_id
+   AND r.player_id = p.player_id
+),
+marg AS (
+  -- own_team_score rides along so a stint's points FOR and AGAINST can be
+  -- taken as net differences across its window. pf - pa is the margin
+  -- delta, already here; pf + pa is not derivable from the margin, so this
+  -- column is the one number the feature actually needed.
+  SELECT DISTINCT event_elapsed_seconds AS elapsed,
+         (own_team_score - opp_team_score) AS margin,
+         own_team_score AS own,
+         id AS order_key
+  FROM basketball_test.df_pts_poss_lineups_longer_mv
+  WHERE game_id = $1 AND team_id = $2
+)
+SELECT
+  (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
+  (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
+  (SELECT MAX(quarter) FROM basketball_test.df_pts_poss_lineups_longer_mv
+    WHERE game_id = $1) AS n_periods,
+  (SELECT COUNT(*) FROM segs s
+    WHERE s.has_gameplay
+      AND NOT EXISTS (SELECT 1 FROM lineup_players lp
+                       WHERE lp.lineup_hash = s.lineup_hash
+                         AND lp.team_id = s.team_id)) AS excluded_segments
+"
+
+RIBBON_SQL_EURO <- "
+WITH segs AS (
+  SELECT team_id, segment_id, player_ids,
+         start_elapsed_seconds AS start_elapsed,
+         end_elapsed_seconds   AS end_elapsed
+  FROM euroleague.ribbon_segments_v
+  WHERE game_id = $1
+),
+lanes AS (
+  SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
+         s.player_ids::text AS lineup_key,
+         COALESCE(r.source_player_name, 'Player ' || p.player_id) AS player_label
+  FROM segs s
+  CROSS JOIN LATERAL unnest(s.player_ids) AS p(player_id)
+  LEFT JOIN euroleague.full_rosters r
+    ON r.game_id = $1
+   AND r.team_id = s.team_id
+   AND r.player_id = p.player_id
+),
+marg AS (
+  -- ribbon_margin_v is team-perspective (one row per team per scoring
+  -- event, from euroleague.action_team_context_actions -- see
+  -- euroleague/sql/053_stint_ribbon_read_layer.sql), so this already reads
+  -- like the Israeli marg CTE: no sign flip, filter by team_id directly.
+  SELECT DISTINCT elapsed_seconds AS elapsed, margin,
+         own_team_score AS own,
+         source_event_order AS order_key
+  FROM euroleague.ribbon_margin_v
+  WHERE game_id = $1 AND team_id = $2
+)
+SELECT
+  (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
+  (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
+  (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1) AS n_periods,
+  0 AS excluded_segments
+"
+
+fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NULL) {
+  league <- match.arg(league, c("israel", "euroleague"))
+  game_id <- as.integer(game_id)
+  team_id <- as.integer(team_id)
+
+  cached_season_df(list("stint_ribbon", league, game_id, team_id, data_version), function() {
+    sql <- if (identical(league, "israel")) RIBBON_SQL_ISRAEL else RIBBON_SQL_EURO
+    params <- list(game_id, team_id)
+    row <- db_get_query(pool, sql, params = params)
+    if (is.null(row) || !nrow(row)) return(NULL)
+
+    lanes_raw <- if (is.na(row$lanes[1])) NULL else
+      jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
+    marg_raw <- if (is.na(row$margin[1])) NULL else
+      jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
+    if (is.null(lanes_raw) || !NROW(lanes_raw)) return(NULL)
+
+    # Both leagues now return an already-signed, team-perspective margin
+    # (elapsed, margin, order_key) -- no per-league branch needed.
+    margin <- data.frame(
+      elapsed = as.numeric(marg_raw$elapsed %||% numeric(0)),
+      margin = as.numeric(marg_raw$margin %||% numeric(0)),
+      order_key = as.numeric(marg_raw$order_key %||% numeric(0))
+    )
+
+    # The RAW step series, kept separate from the completed margin below.
+    # ribbon_complete_margin() collapses each second to one row and pads both
+    # ends to close the drawn path; per-stint as-of lookups must read the
+    # recorded events instead. `own` is added by the league SQL in a later
+    # task and is absent until then.
+    steps <- margin
+    if (!is.null(marg_raw$own)) steps$own <- as.numeric(marg_raw$own)
+
+    n_periods <- as.integer(row$n_periods[1] %||% 4L)
+    bounds <- ribbon_period_bounds(n_periods)
+    margin <- ribbon_complete_margin(margin, bounds[length(bounds)])
+    lanes <- ribbon_mark_starters(ribbon_normalise_lanes(lanes_raw, team_id))
+
+    list(
+      lanes = lanes,
+      margin = margin,
+      steps = steps,
+      meta = list(n_periods = n_periods),
+      health = ribbon_health_message(row$excluded_segments[1])
+    )
+  })
+}
+
 # Central query helper used across modules.
 # Kept as a thin wrapper for pooler compatibility with parameterized queries.
 db_get_query <- function(conn_or_pool, statement, params = NULL) {
@@ -354,6 +535,32 @@ fetch_players_basic <- function(gy) {
         GROUP BY team_id, player_id
         ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
       params = list(gy)
+    )
+  )
+}
+
+# (game_id, team_id) pairs with zero non-NULL own_team_score -- the stint
+# ribbon has no margin to draw for these (Israeli games 139/140/141/143
+# today; the ETL can produce more). Deliberately NOT one-per-season like the
+# four lookups above: measured 2026-09-07, the underlying query is a full
+# sequential scan of df_pts_poss_lineups_longer_mv (21,240 buffer pages,
+# 2.56s) whose cost does NOT fall when filtered by season -- it must still
+# visit the whole relation to find rows with zero non-null own_team_score
+# per (game_id, team_id). A per-season key would mean re-running that same
+# scan once per season for an 8-row answer. Do NOT "fix" this into a
+# per-season key. `ver` is the ETL data version (shared_data_version()); it
+# rides in the cache key only so a new ETL run gets a fresh key rather than
+# an explicit invalidation call, matching cached_season_df()'s convention
+# elsewhere (see hub_fetch_team_ratings()).
+fetch_scoreless_games <- function(ver = NULL) {
+  cached_ref_query(
+    key = sprintf("scoreless_games_%s", ver %||% "na"),
+    query_fun = function() db_get_query(
+      pg_pool,
+      "SELECT game_id, team_id
+         FROM basketball_test.df_pts_poss_lineups_longer_mv
+        GROUP BY game_id, team_id
+        HAVING COUNT(own_team_score) = 0"
     )
   )
 }
@@ -885,7 +1092,8 @@ make_chip <- function(label, clear_id, css_class = "", focus_id = NULL) {
 
 make_season_chip <- function(gy, label = NULL) {
   if (is.null(label)) {
-    label <- if (identical(gy, "2026")) "2025-26" else if (identical(gy, "2025")) "2024-25" else gy
+    y <- suppressWarnings(as.integer(gy))
+    label <- if (length(y) == 1L && !is.na(y)) sprintf("%d-%02d", y - 1L, y %% 100L) else gy
   }
   tags$span(class = "filter-chip chip-season", label)
 }

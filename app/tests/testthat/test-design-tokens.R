@@ -58,15 +58,57 @@ test_that("the accent rgb triplet matches the accent hex", {
 })
 
 test_that("app.css carries no raw hex outside the :root token block", {
+  # Comments are stripped before scanning (helper-color.R's
+  # hex_outside_root()) -- a comment documenting a measured contrast ratio
+  # (app.css:1557-1560, added by 0c8c495) is prose, not a declaration, and
+  # must not trip this guard. The property under test is that COLOURS COME
+  # FROM TOKENS IN DECLARATIONS; a comment cannot declare a colour.
   css <- read_repo_txt("www", "app.css")
-  root <- css_root_block(css)
-  outside <- sub(root, "", css, fixed = TRUE)
-
-  found <- regmatches(outside, gregexpr("#[0-9a-fA-F]{6}", outside))[[1]]
+  found <- hex_outside_root(css)
   expect_equal(
-    sort(unique(found)), character(0),
-    info = paste("raw hex outside :root:", paste(sort(unique(found)), collapse = ", "))
+    found, character(0),
+    info = paste("raw hex outside :root:", paste(found, collapse = ", "))
   )
+})
+
+test_that("the raw-hex guard strips comments but still catches a real violation", {
+  # Companion to the app.css check above: proves stripping comments did not
+  # turn the guard into a no-op, and that the comment-stripping regex cannot
+  # be accidentally made greedy without this test catching it.
+
+  # A hex value that appears ONLY inside a comment (as app.css's measured
+  # contrast note does) must not be reported.
+  benign <- paste(
+    ':root { --ibpl-bg: #111111; }',
+    '/* measured contrast against #ABCDEF is documentation, not a rule */',
+    '.foo { color: var(--ibpl-bg); }',
+    sep = "\n"
+  )
+  expect_equal(hex_outside_root(benign), character(0))
+
+  # A genuine hex literal in a real declaration outside :root must still be
+  # reported.
+  violation <- paste(
+    ':root { --ibpl-bg: #111111; }',
+    '.foo { color: #ABCDEF; }',
+    sep = "\n"
+  )
+  expect_equal(hex_outside_root(violation), "#ABCDEF")
+
+  # Regression guard for a greedy comment-stripping regex: TWO SEPARATE
+  # comments straddling a real declaration. A greedy `/\*.*\*/` deletes
+  # everything from the first `/*` through the LAST `*/`, including the
+  # `.foo` rule sitting between them -- which would silently blind the guard
+  # to the violation. The correct (non-greedy) regex leaves the declaration
+  # intact and this must still report it.
+  sandwiched <- paste(
+    ':root { --ibpl-bg: #111111; }',
+    '/* first comment */',
+    '.foo { color: #ABCDEF; }',
+    '/* second comment */',
+    sep = "\n"
+  )
+  expect_equal(hex_outside_root(sandwiched), "#ABCDEF")
 })
 
 test_that("app.css expresses brand alpha through the accent rgb token", {

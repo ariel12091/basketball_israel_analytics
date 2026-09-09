@@ -8,6 +8,7 @@ source("R/global.R", local = TRUE)
 source("R/logger.R", local = TRUE)
 source("R/mod_lineup_player_filter.R", local = TRUE)
 source("R/mod_team_hub.R", local = TRUE)
+source("R/mod_ribbon_modal.R", local = TRUE)
 source("R/ui_tab0_home.R", local = TRUE)
 source("R/ui_tab1_onoff.R", local = TRUE)
 source("R/ui_tab2_lineup.R", local = TRUE)
@@ -99,7 +100,7 @@ build_ui <- function() {
       tags$div(
         class = "navbar-season-select league-nav-il",
         selectInput("game_year", NULL,
-                    choices = c("25-26" = "2026", "24-25" = "2025"),
+                    choices = c("26-27" = "2027", "25-26" = "2026", "24-25" = "2025"),
                     selected = DEFAULT_GAME_YEAR)
       ),
       # EuroLeague season selector; hidden under the Israeli league. Only one
@@ -350,6 +351,10 @@ server <- function(input, output, session) {
     )
     hub_fetch_team_ratings(gy_int, ver)
     hub_fetch_team_ff(gy_int, ver)
+    # Warms the 2.56s / 21,240-buffer scoreless-games scan (see
+    # fetch_scoreless_games() in global.R) so it never lands on a user
+    # request; the result itself is a single, season-agnostic 8-row set.
+    fetch_scoreless_games(ver)
     invisible(NULL)
   }
 

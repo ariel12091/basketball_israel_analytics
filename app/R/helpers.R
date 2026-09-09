@@ -3052,3 +3052,841 @@ EURO_LD_LINEUP_TABLE_SPEC <- list(
     "this.getAttribute('data-hash'), {priority: 'event'});"
   )
 )
+
+# ---------------- Stint ribbon: pure transforms ----------------
+# The ribbon draws one bar per continuous stretch a player spent on the floor.
+# The readers hand these functions a row per (segment, player); everything
+# below is geometry and has no idea which league or table it came from.
+
+# Width reserved on the left for lane labels and the two totals columns.
+# RIBBON_GUTTER and RIBBON_WIDTH moved together (150/1000 -> 220/1070) so the
+# plot area stays 850 units and every bar keeps the width it had before the
+# totals columns existed.
+RIBBON_GUTTER <- 220
+
+# Right-hand anchors of the three gutter columns. RIBBON_NAME_X is 142, the
+# same x the name occupied under the 150-unit gutter, so the name column did
+# not move -- the two new columns were added in the space the widening made.
+RIBBON_NAME_X <- RIBBON_GUTTER - 78
+RIBBON_MIN_X <- RIBBON_GUTTER - 35
+RIBBON_PM_X <- RIBBON_GUTTER - 8
+
+# Collapse consecutive segments in which the same player stayed on the floor.
+# Merging is per PLAYER, not per lineup hash: a player who survives a
+# substitution around them keeps one continuous bar rather than abutting
+# rectangles with a visible seam.
+merge_adjacent_stints <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+
+  lanes <- lanes[order(lanes$side, lanes$player_key, lanes$start_elapsed), , drop = FALSE]
+  key <- paste(lanes$side, lanes$player_key, sep = "\r")
+  prev_key <- c("", key[-length(key)])
+  prev_end <- c(NA_real_, lanes$end_elapsed[-nrow(lanes)])
+
+  # A new bar starts when the player changes, or when this interval does not
+  # begin exactly where the previous one ended.
+  new_run <- key != prev_key | is.na(prev_end) | lanes$start_elapsed > prev_end
+  run_id <- cumsum(new_run)
+
+  merged <- lapply(split(seq_len(nrow(lanes)), run_id), function(i) {
+    row <- lanes[i[1], , drop = FALSE]
+    row$end_elapsed <- max(lanes$end_elapsed[i])
+    row
+  })
+
+  out <- do.call(rbind, merged)
+  rownames(out) <- NULL
+  out
+}
+
+
+# Whoever is on the floor in a side's earliest segment started the game.
+# Derived rather than read from a boxscore flag so both leagues use one
+# definition: measured exactly 5 per team-game across 1,178 EuroLeague and 878
+# Israeli team-games, while the EuroLeague boxscore carries 40 stray flags.
+ribbon_mark_starters <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) {
+    lanes$is_starter <- logical(0)
+    return(lanes)
+  }
+  first_start <- tapply(lanes$start_elapsed, lanes$side, min)
+  on_first <- lanes$start_elapsed == first_start[lanes$side]
+  starters <- unique(paste(lanes$side, lanes$player_key, sep = "\r")[on_first])
+  lanes$is_starter <- paste(lanes$side, lanes$player_key, sep = "\r") %in% starters
+  lanes
+}
+
+
+# Lane order within each side: starters first, then most floor time.
+ribbon_lane_index <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+
+  order_df <- lanes %>%
+    mutate(.dur = end_elapsed - start_elapsed) %>%
+    group_by(side, player_key) %>%
+    summarise(floor_time = sum(.dur), is_starter = any(is_starter), .groups = "drop") %>%
+    arrange(side, desc(is_starter), desc(floor_time), player_key) %>%
+    group_by(side) %>%
+    mutate(lane_index = as.integer(row_number())) %>%
+    ungroup() %>%
+    select(side, player_key, lane_index)
+
+  lanes %>% left_join(order_df, by = c("side", "player_key"))
+}
+
+# Map elapsed seconds to the 1000-unit viewBox and lane index to a y offset.
+ribbon_geometry <- function(lanes, total_seconds, width = 1000,
+                            lane_height = 14, lane_gap = 3,
+                            gutter = RIBBON_GUTTER) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+  stopifnot(is.numeric(total_seconds), length(total_seconds) == 1, total_seconds > 0)
+
+  # The plot area starts after the gutter, which holds one visible name per
+  # lane. A 20-lane rotation chart cannot be read through hover tooltips alone.
+  scale <- (width - gutter) / total_seconds
+  lanes$x <- gutter + lanes$start_elapsed * scale
+  # A one-second stint would otherwise be a sub-pixel sliver that still
+  # occupies a lane slot; give it a hairline so it is visible and hoverable.
+  lanes$w <- pmax((lanes$end_elapsed - lanes$start_elapsed) * scale, 0.75)
+  lanes$y <- (lanes$lane_index - 1L) * (lane_height + lane_gap)
+  lanes$h <- lane_height
+  lanes
+}
+
+
+# Cumulative period end times from the NOMINAL clock, never from observed
+# data. Israeli games end ragged (2344, 2351, one at 961), so sizing the axis
+# from max(elapsed) would draw different games at different scales and drift
+# the period gridlines.
+ribbon_period_bounds <- function(n_periods, regulation = 4L,
+                                 regulation_seconds = 600, ot_seconds = 300) {
+  n <- suppressWarnings(as.integer(n_periods))
+  if (length(n) != 1 || is.na(n) || n < regulation) n <- as.integer(regulation)
+  lengths <- c(rep(regulation_seconds, regulation),
+               rep(ot_seconds, n - regulation))
+  cumsum(lengths)
+}
+
+# Turn raw scoring records into a complete, deterministic step series.
+#
+# Three problems in the raw data, all of which show as a wrong curve rather than
+# an error: the first scoring event may be a minute into the game, the last one
+# is well before the final buzzer, and several records can share one elapsed
+# second (an and-1, or a shot plus its free throw). DISTINCT + ORDER BY elapsed
+# does not decide the last of those -- order_key does.
+ribbon_complete_margin <- function(margin, total_seconds) {
+  stopifnot(is.numeric(total_seconds), length(total_seconds) == 1, total_seconds > 0)
+
+  if (is.null(margin) || !nrow(margin)) {
+    return(data.frame(elapsed = c(0, total_seconds), margin = c(0, 0)))
+  }
+
+  m <- data.frame(
+    elapsed = pmin(pmax(as.numeric(margin$elapsed), 0), total_seconds),
+    margin = as.numeric(margin$margin),
+    order_key = as.numeric(margin$order_key %||% seq_len(nrow(margin)))
+  )
+  # Defence in depth (2026-09-05 final review): a non-finite margin
+  # (NA/NaN/Inf, e.g. from a provider score that has not started yet) must
+  # never reach ribbon_margin_path() -- it turns into an invalid "V NaN" in
+  # the SVG path and the browser drops the WHOLE curve. Drop rather than
+  # zero-fill: a fabricated 0 would draw a false "tied" dip that never
+  # happened, while dropping the row lets the stepped path carry the last
+  # known value across the gap.
+  m <- m[is.finite(m$margin), , drop = FALSE]
+  if (!nrow(m)) {
+    return(data.frame(elapsed = c(0, total_seconds), margin = c(0, 0)))
+  }
+  m <- m[order(m$elapsed, m$order_key), , drop = FALSE]
+
+  # One state per elapsed second: the last one recorded there.
+  keep <- !duplicated(m$elapsed, fromLast = TRUE)
+  m <- m[keep, c("elapsed", "margin"), drop = FALSE]
+
+  if (m$elapsed[1] > 0) {
+    m <- rbind(data.frame(elapsed = 0, margin = 0), m)
+  }
+  if (m$elapsed[nrow(m)] < total_seconds) {
+    m <- rbind(m, data.frame(elapsed = total_seconds, margin = m$margin[nrow(m)]))
+  }
+
+  rownames(m) <- NULL
+  m
+}
+
+# ---------------- Stint ribbon: SVG builder ----------------
+
+RIBBON_WIDTH <- 1070
+RIBBON_LANE_HEIGHT <- 14
+RIBBON_LANE_GAP <- 3
+RIBBON_MARGIN_HEIGHT <- 90
+
+# Vertical clearance between the lane blocks and the margin band (final
+# review follow-up, 2026-09-06): without this the last own-team lane's
+# label sat almost on the band's top gridline, and the band's bottom edge
+# almost touched the first opponent label. It replaces RIBBON_LANE_GAP * 2
+# (6) at exactly the two anchors (margin_top, opp_top) everything else
+# below is computed from, so the same value sets BOTH gaps and they cannot
+# drift apart.
+#
+# 28 rather than a rounder 24 because the lower gap has to hold the
+# opponent's team label (a RIBBON_HEADER-tall row) AND clear the band's
+# lowest scale label, which sits at band_bottom + 3 whenever a tick lands
+# exactly on the band's bottom edge -- i.e. whenever the game's max margin
+# is a multiple of the tick interval, which is common (20, 25, 40 ...).
+# Measured in a browser at 24: the two label boxes overlapped by 1.9px for
+# a long team name. At 28 they clear.
+RIBBON_BAND_GAP <- 28
+
+# Row above the lanes reserved for the team name, so it never shares a
+# baseline with the first lane label (both live in the same gutter column).
+# It is a real row only above the OWN block; below the band the opponent
+# label is placed inside RIBBON_BAND_GAP at the same offset, so the two
+# labels sit identically relative to their blocks without the lower gap
+# growing by a whole row.
+RIBBON_HEADER <- 20
+
+# Breathing room above/below the whole chart (final review follow-up,
+# 2026-09-06): without these the own-team label's ascender (12px font at
+# y=10) sat a couple of units from the SVG's top edge, and the period labels
+# (at total_h + 12) sat almost on the bottom edge. Both are added ONCE, at
+# the two places build_stint_ribbon_svg() anchors its y=0 origin
+# (margin_top's leading term and the own-side lanes' abs_y) and at the
+# viewBox height -- everything else (opp lanes, the margin band, the zero
+# baseline, the new scale gridlines, period lines/labels) is computed FROM
+# those, so it all shifts down together automatically.
+RIBBON_PAD_TOP <- 14
+RIBBON_PAD_BOTTOM <- 16
+
+ribbon_clip_id <- function(id_prefix, side, player_key) {
+  slug <- gsub("[^A-Za-z0-9_-]+", "-", as.character(player_key))
+  slug <- gsub("(^-+)|(-+$)", "", slug)
+  paste0(id_prefix, "-on-", side, "-", slug)
+}
+
+# The margin curve normalises to each game's own max_abs so a 5-point game
+# and a 25-point blowout would otherwise draw identically (final review,
+# M7). ribbon_margin_path() and the scale gridlines in
+# build_stint_ribbon_svg() must derive max_abs from this ONE function --
+# if either recomputed it independently, the two could drift and the
+# gridlines would stop lining up with the curve they are meant to scale.
+ribbon_margin_scale <- function(margin) {
+  ladder <- c(2, 5, 10, 20, 25)
+
+  if (is.null(margin) || !nrow(margin)) {
+    finite_vals <- numeric(0)
+  } else {
+    keep <- is.finite(margin$elapsed) & is.finite(margin$margin)
+    finite_vals <- margin$margin[keep]
+  }
+
+  # Same guard as the pre-extraction code: an empty or all-zero margin must
+  # not divide by zero (or by -Inf's max-of-nothing) downstream.
+  max_abs <- suppressWarnings(max(abs(finite_vals), na.rm = TRUE))
+  if (!is.finite(max_abs) || max_abs <= 0) max_abs <- 1
+
+  # Smallest ladder rung that keeps the band to 2-4 gridlines per side.
+  # Quotient falls as the rung grows, so the qualifying rungs are always a
+  # suffix of the (ascending) ladder -- the first one found is the smallest.
+  qualifies <- max_abs / ladder <= 4
+  interval <- if (any(qualifies)) min(ladder[qualifies]) else 25
+
+  n_per_side <- floor(max_abs / interval)
+  ticks <- if (n_per_side >= 1) {
+    pos <- interval * seq_len(n_per_side)
+    c(-rev(pos), pos)
+  } else {
+    numeric(0)
+  }
+
+  list(max_abs = max_abs, interval = interval, ticks = ticks)
+}
+
+# The one place a margin value becomes a y coordinate in the band -- shared
+# by the curve and the scale gridlines so both use the same mapping.
+ribbon_margin_y <- function(value, max_abs, top, height) {
+  top + height / 2 - (value / max_abs) * (height / 2)
+}
+
+ribbon_margin_path <- function(margin, total_seconds, width, top, height,
+                               gutter = RIBBON_GUTTER) {
+  if (is.null(margin) || !nrow(margin)) return("")
+
+  margin <- margin[order(margin$elapsed), , drop = FALSE]
+  # Defence in depth (2026-09-05 final review): a non-finite elapsed/margin
+  # value must never reach sprintf() below -- "V NaN" (or "H NaN") is
+  # invalid SVG path data and the browser silently drops the WHOLE path,
+  # not just the bad segment. ribbon_complete_margin() already filters
+  # these out upstream; this is a second, independent line of defence.
+  margin <- margin[is.finite(margin$elapsed) & is.finite(margin$margin), , drop = FALSE]
+  if (!nrow(margin)) return("")
+
+  max_abs <- ribbon_margin_scale(margin)$max_abs
+
+  x <- gutter + margin$elapsed * ((width - gutter) / total_seconds)
+  y <- ribbon_margin_y(margin$margin, max_abs, top, height)
+
+  parts <- sprintf("M %.2f %.2f", x[1], y[1])
+  if (length(x) > 1) {
+    parts <- c(parts, sprintf("H %.2f V %.2f", x[-1], y[-1]))
+  }
+  paste(parts, collapse = " ")
+}
+
+build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
+                                   steps = NULL) {
+  if (is.null(lanes) || !nrow(lanes)) return(NULL)
+
+  bounds <- ribbon_period_bounds(meta$n_periods)
+  total_seconds <- bounds[length(bounds)]
+
+  # Keep the pre-merge frame: merged bars are deliberately keyed by player
+  # occupancy, while the lineup decomposition needs the rows that composed
+  # each bar.
+  premerge <- lanes
+  dict <- ribbon_lineup_dictionary(premerge)
+  dict_key <- paste(dict$side, dict$lineup_key, sep = "\r")
+
+  # ribbon_score_as_of() retains its own order() safety, but all per-bar
+  # lookups below receive this one deterministic ordering.
+  if (!is.null(steps) && NROW(steps)) {
+    steps <- steps[order(as.numeric(steps$elapsed), as.numeric(steps$order_key)), , drop = FALSE]
+  }
+
+  lanes <- merge_adjacent_stints(lanes)
+  # Per-stint numbers come from the RAW step series, not the completed margin
+  # the curve is drawn from. With steps = NULL every number is NA and the
+  # chart renders exactly as it did before this feature -- see
+  # ribbon_stint_points(), which returns NA rather than a fabricated 0.
+  lanes <- ribbon_stint_points(lanes, steps)
+  lanes <- ribbon_side_perspective(lanes)
+  lanes <- ribbon_lane_index(lanes)
+  lanes <- ribbon_geometry(lanes, total_seconds, width = RIBBON_WIDTH,
+                           lane_height = RIBBON_LANE_HEIGHT,
+                           lane_gap = RIBBON_LANE_GAP)
+
+  own <- lanes[lanes$side == "own", , drop = FALSE]
+  opp <- lanes[lanes$side == "opp", , drop = FALSE]
+  own_h <- if (nrow(own)) max(own$y + own$h) else 0
+  margin_top <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h + RIBBON_BAND_GAP
+  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_BAND_GAP
+  total_h <- opp_top + if (nrow(opp)) max(opp$y + opp$h) else 0
+
+  lanes$abs_y <- ifelse(lanes$side == "own", lanes$y + RIBBON_PAD_TOP + RIBBON_HEADER, opp_top + lanes$y)
+  lanes$clip <- ribbon_clip_id(id_prefix, lanes$side, lanes$player_key)
+
+  path_d <- ribbon_margin_path(margin, total_seconds, RIBBON_WIDTH,
+                               margin_top, RIBBON_MARGIN_HEIGHT)
+
+  clip_paths <- lapply(unique(lanes$clip), function(cid) {
+    rows <- lanes[lanes$clip == cid, , drop = FALSE]
+    tags$clipPath(
+      id = cid,
+      lapply(seq_len(nrow(rows)), function(i) {
+        tags$rect(x = rows$x[i], y = margin_top,
+                  width = rows$w[i], height = RIBBON_MARGIN_HEIGHT)
+      })
+    )
+  })
+
+  period_lines <- lapply(bounds[-length(bounds)], function(b) {
+    bx <- RIBBON_GUTTER + b * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
+    tags$line(class = "ibpl-ribbon-period",
+              x1 = bx, x2 = bx, y1 = RIBBON_PAD_TOP, y2 = total_h,
+              `data-base-y2` = total_h)
+  })
+
+  num <- ribbon_pm_label(lanes$pm)
+  lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
+    secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
+    seg <- ribbon_side_perspective(
+      ribbon_stint_points(
+        ribbon_stint_segments(premerge, lanes$side[i], lanes$player_key[i],
+                              lanes$start_elapsed[i], lanes$end_elapsed[i]),
+        steps))
+    seg_key <- paste(seg$side, seg$lineup_key, sep = "\r")
+    seg_idx <- match(seg_key, dict_key) - 1L
+    seg_txt <- if (!nrow(seg)) "" else paste(sprintf(
+      "%.0f,%.0f,%s,%d", seg$start_elapsed, seg$end_elapsed,
+      ribbon_pm_label(seg$pm), seg_idx), collapse = ";")
+    members <- dict$members[match(seg_key, dict_key)]
+    members <- members[!is.na(members)]
+    window_txt <- sprintf("%s-%s", ribbon_minutes_label(lanes$start_elapsed[i]),
+                          ribbon_minutes_label(lanes$end_elapsed[i]))
+    lineup_txt <- if (length(members)) {
+      sprintf(", made up of %d lineups: %s", length(members),
+              paste(members, collapse = "; "))
+    } else ""
+    # The accessible name carries everything the click-only inline panel
+    # shows. Do not add an SVG <title>: it duplicates all this data as a
+    # mouse-hover tooltip, which obscures the chart.
+    label <- sprintf("%s, %s on the floor, plus-minus %s%s%s",
+                     lanes$player_label[i], ribbon_minutes_label(secs), num[i],
+                     if (is.na(lanes$pf[i])) "" else
+                       sprintf(", %d points for and %d against",
+                               lanes$pf[i], lanes$pa[i]),
+                     lineup_txt)
+    tags$g(
+      class = paste("ibpl-ribbon-lane", paste0("is-", lanes$side[i])),
+      `data-clip` = lanes$clip[i],
+      `data-start` = lanes$start_elapsed[i],
+      `data-end` = lanes$end_elapsed[i],
+      `data-player` = lanes$player_label[i],
+      `data-window` = window_txt,
+      `data-pm` = num[i],
+      `data-pf` = if (is.na(lanes$pf[i])) "" else as.character(lanes$pf[i]),
+      `data-pa` = if (is.na(lanes$pa[i])) "" else as.character(lanes$pa[i]),
+      `data-segments` = seg_txt,
+      tabindex = "0",
+      role = "listitem",
+      `aria-label` = label,
+      tags$rect(x = lanes$x[i], y = lanes$abs_y[i],
+                width = lanes$w[i], height = lanes$h[i], rx = 2),
+      # Blank means one thing only: too narrow to label. A level stint
+      # prints "0", so blank never has to be read as "nothing happened".
+      if (!is.na(lanes$pm[i]) && ribbon_number_fits(num[i], lanes$w[i])) {
+        tags$text(class = "ibpl-ribbon-num",
+                  x = lanes$x[i] + lanes$w[i] / 2,
+                  y = lanes$abs_y[i] + lanes$h[i] - 4,
+                  `text-anchor` = "middle", num[i])
+      }
+    )
+  })
+
+  # One gutter row per player: name, floor time, +/-. The totals come from
+  # ribbon_player_totals() rather than the first stint's row -- the old
+  # aria-label used lanes[i]'s own duration, which for a player with several
+  # stints reported one stint instead of their game.
+  totals <- ribbon_player_totals(lanes)
+  tkey <- paste(totals$side, totals$player_key, sep = "\r")
+  first_row <- !duplicated(paste(lanes$side, lanes$player_key))
+  first_idx <- which(first_row)
+  lane_labels <- lapply(first_idx, function(i) {
+    ti <- match(paste(lanes$side[i], lanes$player_key[i], sep = "\r"), tkey)
+    mins <- ribbon_minutes_label(totals$secs[ti])
+    pm <- ribbon_pm_label(totals$pm[ti])
+    label <- sprintf("%s, %s on the floor, %s", lanes$player_label[i], mins,
+                     if (nzchar(pm)) paste("plus-minus", pm) else "plus-minus unavailable")
+    y <- lanes$abs_y[i] + lanes$h[i] - 3
+    # class comes first in each tag (not via `common`, which is spliced in
+    # after) so the DOM matches the order pre-existing tests pin, e.g. a
+    # `<text class="ibpl-ribbon-name"[^>]*data-clip=...` regex.
+    common <- list(`data-clip` = lanes$clip[i], `text-anchor` = "end")
+    list(
+      do.call(tags$text, c(list(class = "ibpl-ribbon-name", x = RIBBON_NAME_X, y = y),
+        common, list(tabindex = "0", `aria-label` = label, lanes$player_label[i]))),
+      do.call(tags$text, c(list(class = "ibpl-ribbon-min", x = RIBBON_MIN_X, y = y),
+        common, list(mins))),
+      do.call(tags$text, c(list(class = "ibpl-ribbon-pm", x = RIBBON_PM_X, y = y),
+        common, list(pm)))
+    )
+  })
+
+  # Both team labels sit RIBBON_HEADER - 10 above their own block, in the
+  # x = 0 gutter column: the own label inside the top padding, the opponent
+  # label inside the band gap. The opponent label lives IN that gap rather
+  # than below it (2026-09-06) -- adding a whole header row underneath the
+  # band made the space below it 44 units against 24 above, which read as a
+  # lopsided chart, while the label itself never fills that space: it is
+  # left-anchored in the gutter and the band starts at RIBBON_GUTTER.
+  own_team_labels <- list(
+    tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_MIN_X,
+              y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "MIN"),
+    tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_PM_X,
+              y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "+/-"),
+    tags$text(class = "ibpl-ribbon-team", x = 0, y = RIBBON_PAD_TOP + 10,
+              meta$own_team %||% "Own")
+  )
+  opp_team_labels <- list(
+    tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - RIBBON_HEADER + 10,
+              meta$opp_team %||% "Opponent")
+  )
+
+  zero_y <- margin_top + RIBBON_MARGIN_HEIGHT / 2
+  baseline <- list(
+    tags$line(class = "ibpl-ribbon-zero", x1 = RIBBON_GUTTER, x2 = RIBBON_WIDTH,
+              y1 = zero_y, y2 = zero_y),
+    tags$text(class = "ibpl-ribbon-zero-label", x = RIBBON_GUTTER - 8,
+              y = zero_y + 3, `text-anchor` = "end", "tied")
+  )
+
+  # Round-interval gridlines behind the curve (final review, M7): the curve
+  # is normalised to max_abs alone, so without these a 5-point game and a
+  # 25-point blowout drew identically. Ticks come from ribbon_margin_scale()
+  # -- the SAME function ribbon_margin_path() used for max_abs above -- so
+  # the lines are structurally guaranteed to sit where the curve says they
+  # should, not just coincidentally aligned. Zero itself is excluded from
+  # `ticks`; the "tied" baseline above already draws it, and .ibpl-ribbon-zero
+  # stays visually dominant over the fainter .ibpl-ribbon-scale lines.
+  scale_info <- ribbon_margin_scale(margin)
+  scale_lines <- lapply(scale_info$ticks, function(v) {
+    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, RIBBON_MARGIN_HEIGHT)
+    tags$line(class = "ibpl-ribbon-scale", x1 = RIBBON_GUTTER, x2 = RIBBON_WIDTH,
+              y1 = y, y2 = y)
+  })
+  scale_labels <- lapply(scale_info$ticks, function(v) {
+    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, RIBBON_MARGIN_HEIGHT)
+    tags$text(class = "ibpl-ribbon-scale-label", x = RIBBON_GUTTER - 8,
+              y = y + 3, `text-anchor` = "end", sprintf("%+d", as.integer(round(v))))
+  })
+
+  # The period markers are drawn twice, once above the lanes and once below
+  # them (2026-09-06). A game with deep rotations makes the chart taller
+  # than the modal, and with the row only at the bottom the reader had to
+  # scroll to find out which quarter a stint sits in. The top row costs no
+  # height at all: it reuses the own-team label's header row, and the
+  # earliest marker (end of Q1) sits far right of that left-anchored label.
+  period_label_row <- function(y) {
+    lapply(seq_along(bounds), function(k) {
+      bx <- RIBBON_GUTTER + bounds[k] * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
+      tags$text(class = "ibpl-ribbon-period-label", x = bx - 4, y = y,
+                `text-anchor` = "end",
+                if (k <= 4) paste0("Q", k) else paste0("OT", k - 4))
+    })
+  }
+  top_period_labels <- period_label_row(RIBBON_PAD_TOP + 10)
+  bottom_period_labels <- period_label_row(total_h + 12)
+  base_height <- total_h + 12 + RIBBON_PAD_BOTTOM
+  own_detail_y <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h
+  opp_detail_y <- total_h
+
+  tags$svg(
+    xmlns = "http://www.w3.org/2000/svg",
+    viewBox = sprintf("0 0 %d %.0f", RIBBON_WIDTH, base_height),
+    class = "ibpl-ribbon",
+    role = "img",
+    `aria-label` = meta$game_label,
+    `data-lineups` = jsonlite::toJSON(dict$members),
+    `data-base-height` = base_height,
+    `data-detail-x` = RIBBON_GUTTER,
+    `data-own-detail-y` = own_detail_y,
+    `data-opp-detail-y` = opp_detail_y,
+    tags$defs(clip_paths),
+    period_lines,
+    tags$g(class = "ibpl-ribbon-own-layer",
+           own_team_labels,
+           lane_labels[lanes$side[first_idx] == "own"],
+           lane_rects[lanes$side == "own"]),
+    tags$g(class = "ibpl-ribbon-margin-layer ibpl-ribbon-shift-after-own",
+           baseline,
+           scale_lines,
+           tags$path(class = "ibpl-ribbon-margin-base", d = path_d),
+           tags$path(class = "ibpl-ribbon-margin-focus", d = path_d),
+           scale_labels),
+    tags$g(class = "ibpl-ribbon-opp-layer ibpl-ribbon-shift-after-own",
+           opp_team_labels,
+           lane_labels[lanes$side[first_idx] == "opp"],
+           lane_rects[lanes$side == "opp"]),
+    tags$g(class = "ibpl-ribbon-top-layer", top_period_labels),
+    tags$g(class = paste("ibpl-ribbon-bottom-layer",
+                         "ibpl-ribbon-shift-after-own",
+                         "ibpl-ribbon-shift-after-opp"),
+           bottom_period_labels)
+  )
+}
+
+# ---------------- Stint ribbon: reader normalisers ----------------
+
+ribbon_normalise_lanes <- function(raw, own_team_id) {
+  if (is.null(raw) || !nrow(raw)) {
+    return(data.frame(side = character(0), player_key = character(0),
+                      player_label = character(0),
+                      start_elapsed = numeric(0), end_elapsed = numeric(0),
+                      lineup_key = character(0),
+                      stringsAsFactors = FALSE))
+  }
+  data.frame(
+    side = ifelse(as.integer(raw$team_id) == as.integer(own_team_id), "own", "opp"),
+    player_key = as.character(raw$player_id),
+    player_label = as.character(raw$player_label),
+    start_elapsed = as.numeric(raw$start_elapsed),
+    end_elapsed = as.numeric(raw$end_elapsed),
+    lineup_key = as.character(raw$lineup_key),
+    stringsAsFactors = FALSE
+  )
+}
+
+# One row per (side, lineup_key) with the five member labels. Keyed on
+# player_key, NEVER on player_label: both leagues carry same-name /
+# different-id players on one team, and a label key would collapse two
+# people into one and report a four-man five.
+ribbon_lineup_dictionary <- function(lanes) {
+  empty <- data.frame(side = character(0), lineup_key = character(0),
+                      members = character(0), stringsAsFactors = FALSE)
+  if (is.null(lanes) || !nrow(lanes)) return(empty)
+
+  grp <- paste(lanes$side, lanes$lineup_key, sep = "\r")
+  keep <- !duplicated(paste(grp, lanes$player_key, sep = "\r"))
+  u <- lanes[keep, , drop = FALSE]
+
+  rows <- lapply(split(seq_len(nrow(u)), paste(u$side, u$lineup_key, sep = "\r")),
+    function(i) data.frame(
+      side = u$side[i[1]], lineup_key = u$lineup_key[i[1]],
+      members = paste(sort(u$player_label[i]), collapse = " \u00b7 "),
+      stringsAsFactors = FALSE))
+
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+ribbon_health_message <- function(excluded_segments) {
+  n <- suppressWarnings(as.integer(excluded_segments %||% 0))
+  if (length(n) != 1 || is.na(n) || n <= 0) return(NULL)
+  sprintf(paste("Lineup data is incomplete for this game: %d gameplay segment(s)",
+                "had no valid five-player lineup and are not drawn."), n)
+}
+
+# A game-log cell that opens the stint ribbon. Both ids travel on the anchor so
+# the click handler needs no table lookup.
+ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_click",
+                             own_team = "", opp_team = "") {
+  sprintf(
+    paste0('<a href="#" class="ribbon-link" data-game-id="%d" data-team-id="%d" ',
+           'data-input-id="%s" data-own-team="%s" data-opp-team="%s" ',
+           'onclick="window.handleRibbonLinkClick(this); return false;">%s</a>'),
+    as.integer(game_id), as.integer(team_id),
+    htmltools::htmlEscape(input_id, attribute = TRUE),
+    htmltools::htmlEscape(own_team, attribute = TRUE),
+    htmltools::htmlEscape(opp_team, attribute = TRUE),
+    htmltools::htmlEscape(label)
+  )
+}
+
+# Call on the source frame before its identifiers are dropped for display.
+# `has_scores_col`, when present on `df`, withholds the link (leaving the raw
+# date text) for rows where it is FALSE -- a game whose score data is entirely
+# NULL has no margin to draw, and ribbon_complete_margin()'s empty-input
+# fallback would otherwise render a confident flat "tied" curve for it. The
+# gate fails OPEN: a missing column, or any value other than FALSE, keeps the
+# link, so an unexpected upstream shape never silently kills every ribbon.
+add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
+                                   date_col = "game_date",
+                                   has_scores_col = "has_scores") {
+  if (is.null(df) || !nrow(df)) return(df)
+  needed <- c("game_id", "team_id", date_col)
+  if (!all(needed %in% names(df))) {
+    stop("add_ribbon_link_column() needs ", paste(needed, collapse = ", "),
+         "; got: ", paste(names(df), collapse = ", "))
+  }
+
+  own <- if ("team_name" %in% names(df)) as.character(df$team_name) else rep("", nrow(df))
+  opp <- if ("opp_team_name" %in% names(df)) as.character(df$opp_team_name) else rep("", nrow(df))
+  own[is.na(own)] <- ""
+  opp[is.na(opp)] <- ""
+  # isFALSE() is not itself vectorised (it only accepts a length-1 logical),
+  # so it is applied per-element via vapply. That preserves the fail-open
+  # contract above for free: isFALSE(NA) is FALSE, isFALSE("no") is FALSE,
+  # isFALSE(anything but a bare logical FALSE) is FALSE -- so `gate` is TRUE
+  # for every value except an actual FALSE.
+  gate <- if (!is.null(has_scores_col) && has_scores_col %in% names(df)) {
+    !vapply(df[[has_scores_col]], isFALSE, logical(1))
+  } else {
+    rep(TRUE, nrow(df))
+  }
+  linked <- mapply(
+    ribbon_link_cell,
+    df$game_id, df$team_id, as.character(df[[date_col]]),
+    own_team = own, opp_team = opp,
+    MoreArgs = list(input_id = input_id), USE.NAMES = FALSE
+  )
+  df[[date_col]] <- ifelse(gate, linked, as.character(df[[date_col]]))
+  df
+}
+
+# Attaches a `has_scores` column to `df` by (game_id, team_id) membership in
+# `scoreless`, the set fetch_scoreless_games() returns (or an empty/NULL
+# frame for a league with nothing to gate -- see Tab 11's call site). Shared
+# by both leagues' game-log builders so the anti-join logic exists exactly
+# once, per CLAUDE.md's rule against parallel euro_ clones of shared logic:
+# the league enters as the `scoreless` argument, not as a second function.
+attach_has_scores <- function(df, scoreless) {
+  if (is.null(df) || !nrow(df)) return(df)
+  if (is.null(scoreless) || !nrow(scoreless)) {
+    df$has_scores <- TRUE
+    return(df)
+  }
+  key <- paste(df$game_id, df$team_id)
+  bad_key <- paste(scoreless$game_id, scoreless$team_id)
+  df$has_scores <- !(key %in% bad_key)
+  df
+}
+
+
+# ---------------- Stint ribbon: per-stint numbers ----------------
+# Value of a running-score step series at time t: the last row with
+# elapsed <= t, and 0 before the first row. Vectorised over t.
+#
+# `series` MUST be the reader's RAW step frame, never
+# ribbon_complete_margin()'s output. Completion collapses each second to one
+# row and pads both ends to close the drawn path; an as-of lookup must read
+# the recorded events, not the padding.
+#
+# Ties on `elapsed` are resolved by `order_key` and the LAST row wins, which
+# is what findInterval() returns for a non-decreasing vector with duplicates.
+ribbon_score_as_of <- function(series, t) {
+  t <- as.numeric(t)
+  if (is.null(series) || !NROW(series)) return(rep(0, length(t)))
+
+  ord <- order(as.numeric(series$elapsed), as.numeric(series$order_key))
+  el <- as.numeric(series$elapsed)[ord]
+  val <- as.numeric(series$value)[ord]
+
+  i <- findInterval(t, el)
+  out <- val[pmax(i, 1L)]
+  out[i < 1L] <- 0
+  as.numeric(out)
+}
+
+
+# Points for, points against and +/- for each stint, as NET DIFFERENCES
+# across the stint window.
+#
+# Never sum increments. The PBP credits a basket and later rescinds it
+# (measured 2026-09-06: 15 own + 15 opp phantom points across 10 of 40
+# Israeli games), so sum(delta[delta > 0]) overstates BOTH sides. A net
+# difference cancels a credit-then-rescind that falls inside the window.
+#
+# `pm` is taken from the margin series directly rather than as pf - pa. The
+# two are algebraically equal, but sourcing pm from the margin guarantees
+# that a bar's printed number equals the rise of the curve drawn above it
+# even if `own` is absent -- the self-consistency the whole chart rests on.
+ribbon_stint_points <- function(stints, steps) {
+  if (is.null(stints) || !nrow(stints)) {
+    stints$pf <- numeric(0)
+    stints$pa <- numeric(0)
+    stints$pm <- numeric(0)
+    return(stints)
+  }
+
+  # No series means "unknown", not "level". A fabricated 0 would print a
+  # measured-looking zero on every bar; NA prints nothing at all.
+  if (is.null(steps) || !NROW(steps)) {
+    stints$pf <- rep(NA_real_, nrow(stints))
+    stints$pa <- rep(NA_real_, nrow(stints))
+    stints$pm <- rep(NA_real_, nrow(stints))
+    return(stints)
+  }
+
+  as_series <- function(value) {
+    data.frame(elapsed = as.numeric(steps$elapsed),
+               order_key = as.numeric(steps$order_key),
+               value = as.numeric(value))
+  }
+
+  mar <- as_series(steps$margin)
+  mar_start <- ribbon_score_as_of(mar, stints$start_elapsed)
+  mar_end <- ribbon_score_as_of(mar, stints$end_elapsed)
+  stints$pm <- mar_end - mar_start
+
+  if (is.null(steps$own)) {
+    stints$pf <- rep(NA_real_, nrow(stints))
+    stints$pa <- rep(NA_real_, nrow(stints))
+    return(stints)
+  }
+
+  own <- as_series(steps$own)
+  own_start <- ribbon_score_as_of(own, stints$start_elapsed)
+  own_end <- ribbon_score_as_of(own, stints$end_elapsed)
+  stints$pf <- own_end - own_start
+  # The opponent's running score is own - margin, so its net difference is
+  # the difference of those two differences.
+  stints$pa <- (own_end - mar_end) - (own_start - mar_start)
+  stints
+}
+
+
+# The segments of one merged bar. merge_adjacent_stints() built the bar by
+# collapsing contiguous per-(segment, player) rows; this is the same set,
+# un-collapsed. Clipping is defensive -- within one bar the rows abut
+# exactly -- but it is what makes sum(segment pm) == bar pm hold by
+# construction rather than by luck, since each pm is a NET difference and
+# abutting windows telescope.
+ribbon_stint_segments <- function(lanes, side, player_key,
+                                  start_elapsed, end_elapsed) {
+  if (is.null(lanes) || !nrow(lanes)) return(lanes)
+  sel <- lanes$side == side & lanes$player_key == player_key &
+    lanes$end_elapsed > start_elapsed & lanes$start_elapsed < end_elapsed
+  out <- lanes[sel, , drop = FALSE]
+  if (!nrow(out)) return(out)
+  out$start_elapsed <- pmax(out$start_elapsed, start_elapsed)
+  out$end_elapsed <- pmin(out$end_elapsed, end_elapsed)
+  out <- out[out$end_elapsed > out$start_elapsed, , drop = FALSE]
+  out <- out[order(out$start_elapsed), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+
+# A lineup's plus-minus is its own. An opponent bar reads +8 when that
+# opponent five won those minutes by 8, matching what the same five looks
+# up to in Tab 2. This makes the "bar +/- equals the curve's rise"
+# property true of the OWN block only, by design -- the curve is signed to
+# the clicked team and the opponent block is drawn mirrored beneath it.
+ribbon_side_perspective <- function(stints) {
+  if (is.null(stints) || !nrow(stints)) return(stints)
+  opp <- !is.na(stints$side) & stints$side == "opp"
+  if (!any(opp)) return(stints)
+  stints$pm[opp] <- -stints$pm[opp]
+  pf <- stints$pf[opp]
+  stints$pf[opp] <- stints$pa[opp]
+  stints$pa[opp] <- pf
+  stints
+}
+
+
+# Per-player game totals for the gutter: floor seconds and +/-, one row per
+# player per side. `side` is part of the key because the same player_key on
+# the other side is a different person's lane.
+#
+# Requires lanes to carry `pm` (from ribbon_stint_points). Excluded segments
+# are not in `lanes` at all, so they are not counted here -- that omission is
+# already disclosed by ribbon_health_message().
+ribbon_player_totals <- function(lanes) {
+  if (is.null(lanes) || !nrow(lanes)) {
+    return(data.frame(side = character(0), player_key = character(0),
+                      secs = numeric(0), pm = numeric(0),
+                      stringsAsFactors = FALSE))
+  }
+  key <- paste(lanes$side, lanes$player_key, sep = "\r")
+  secs <- tapply(lanes$end_elapsed - lanes$start_elapsed, key, sum)
+  pm <- tapply(as.numeric(lanes$pm), key, sum)
+  parts <- strsplit(names(secs), "\r", fixed = TRUE)
+
+  data.frame(
+    side = vapply(parts, `[`, character(1), 1),
+    player_key = vapply(parts, `[`, character(1), 2),
+    secs = as.numeric(secs),
+    pm = as.numeric(pm),
+    stringsAsFactors = FALSE
+  )
+}
+
+
+# Floor time as M:SS. floor() rather than round() so a total never reads one
+# second longer than the bars it was summed from.
+ribbon_minutes_label <- function(secs) {
+  secs <- floor(as.numeric(secs))
+  sprintf("%d:%02d", secs %/% 60, secs %% 60)
+}
+
+# +/- for the gutter and the bar faces. Zero prints bare, so a "0" is
+# visibly a measured level stint rather than a sign the renderer gave up.
+ribbon_pm_label <- function(pm) {
+  pm <- as.integer(round(as.numeric(pm)))
+  ifelse(is.na(pm), "", ifelse(pm == 0, "0", sprintf("%+d", pm)))
+}
+
+
+# On-bar number metrics. The numbers are drawn in JetBrains Mono, whose
+# advance is 600/1000 em, so a string's rendered width is computable here
+# without measuring a font -- which a server-built SVG cannot do.
+RIBBON_NUM_FONT <- 9
+RIBBON_NUM_ADVANCE <- 0.6
+RIBBON_NUM_PAD <- 6
+
+# Thresholds this yields: "0" 11.4px, "+6" 16.8px, "+12" 22.2px.
+ribbon_number_fits <- function(text, width) {
+  need <- nchar(text) * RIBBON_NUM_ADVANCE * RIBBON_NUM_FONT + RIBBON_NUM_PAD
+  as.numeric(width) >= need
+}

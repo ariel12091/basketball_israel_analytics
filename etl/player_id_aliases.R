@@ -605,6 +605,18 @@ player_alias_residue_summary <- function(pg, schema = SCHEMA, game_ids = NULL) {
 
   full_rosters_filter <- if (!is.null(ids_sql)) sprintf("AND fr.game_id IN (%s)", ids_sql) else ""
   lineups_filter <- if (!is.null(ids_sql)) sprintf("AND ll.game_id IN (%s)", ids_sql) else ""
+  lineups_on_filter <- if (!is.null(ids_sql)) {
+    sprintf(
+      'WHERE llo.game_year IN (SELECT game_year FROM "%s"."schedule" WHERE game_id IN (%s))',
+      schema, ids_sql
+    )
+  } else ""
+  sub_lineups_stats_filter <- if (!is.null(ids_sql)) {
+    sprintf(
+      'WHERE ss.game_year IN (SELECT game_year FROM "%s"."schedule" WHERE game_id IN (%s))',
+      schema, ids_sql
+    )
+  } else ""
 
   DBI::dbGetQuery(
     pg,
@@ -668,6 +680,7 @@ player_alias_residue_summary <- function(pg, schema = SCHEMA, game_ids = NULL) {
            ON a.game_year = llo.game_year
           AND a.team_id = llo.team_id
           AND a.alias_player_id = llo.player_id
+         %s
          UNION ALL
          SELECT
            \'sub_lineups_stats\'::text AS source_table,
@@ -680,6 +693,7 @@ player_alias_residue_summary <- function(pg, schema = SCHEMA, game_ids = NULL) {
            ON a.game_year = ss.game_year
           AND a.team_id = ss.team_id
           AND ss.player_ids && ARRAY[a.alias_player_id]::int4[]
+         %s
        )
        SELECT
          source_table,
@@ -696,7 +710,9 @@ player_alias_residue_summary <- function(pg, schema = SCHEMA, game_ids = NULL) {
       schema, full_rosters_filter,
       schema, lineups_filter,
       schema,
-      schema
+      lineups_on_filter,
+      schema,
+      sub_lineups_stats_filter
     )
   )
 }

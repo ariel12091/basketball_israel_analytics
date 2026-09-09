@@ -29,6 +29,8 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     updateRadioButtons(session, "eurogl_view_mode", selected = "Summary")
   })
 
+  ribbon_modal_server(input, output, session, "eurogl", "euroleague", euro_data_version, svg_id_prefix = "eugl")
+
   season_rows <- reactive({
     req(identical(input$main_tabs, "euro_game_logs"))
     cached_season_df(
@@ -201,10 +203,18 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     pr_cols <- intersect(
       unname(vapply(names(heat_reverse), gl_pr_col_name, character(1))), names(df))
+    # EuroLeague has nothing to gate today: euroleague.ribbon_margin_v is
+    # asserted NULL-free by a live-DB regression test (see
+    # test-stint-ribbon-readers.R, "has no NULL margin"), so pass an empty
+    # scoreless set rather than inventing a second query against this
+    # league's schema for a condition it does not have.
+    df <- attach_has_scores(df, NULL)
+    df <- add_ribbon_link_column(df, input_id = "eurogl_ribbon_click")
     disp <- df[, c(cols, pr_cols), drop = FALSE]
 
     result_idx <- which(names(disp) == "result") - 1L
     hidden_idx <- which(names(disp) %in% pr_cols) - 1L
+    date_idx <- which(names(disp) == "game_date") - 1L
     off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
     def_ppp_idx <- which(names(disp) == "def_ppp") - 1L
     off_poss_idx <- which(names(disp) == "off_poss") - 1L
@@ -212,7 +222,8 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     col_defs <- list(
       list(className = "dt-center", targets = "_all"),
       list(targets = result_idx, render = gl_result_cell_renderer()),
-      list(targets = hidden_idx, visible = FALSE)
+      list(targets = hidden_idx, visible = FALSE),
+      list(targets = date_idx, render = gl_date_cell_renderer())
     )
     # Section separators under the Offense / Defense / Usage group headings.
     if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <-
@@ -224,11 +235,13 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
       extensions = "Buttons",
+      escape = dt_escape_except(disp, "game_date"),
       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
         buttons = csv_export_button(if (ff) "euroleague_game_logs_four_factors"
                                     else "euroleague_game_logs_summary"),
         pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
-        order = list(list(2, "desc"), list(0, "desc")),
+        # build_games() already supplies date/round/game ordering.
+        order = list(),
         columnDefs = col_defs)) %>%
       DT::formatRound(intersect(round_cols, names(disp)), 1)
 
