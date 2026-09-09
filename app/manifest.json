@@ -1973,9 +1973,6 @@
     }
   },
   "files": {
-    ".Renviron": {
-      "checksum": "f1fd8864a3af63aabc1423e4ea1b4b4a"
-    },
     ".Rprofile": {
       "checksum": "5050b2e413b885318b70608b226446a7"
     },

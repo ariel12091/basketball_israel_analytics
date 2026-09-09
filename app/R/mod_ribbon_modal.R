@@ -42,8 +42,7 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
         },
         build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
                                id_prefix = paste0(svg_id_prefix, click$game_id),
-                               steps = ribbon$steps),
-        ribbon_detail_strip()
+                               steps = ribbon$steps)
       )
     })
 

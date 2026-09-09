@@ -1,44 +1,54 @@
-# Tab 5 filtered path exceeds the statement timeout — handoff
+# Tab 5 filtered-path performance — final handoff
 
-**Date:** 2026-08-23
-**Branch:** `main` at `ae3cec7`, in sync with `origin/main`
-**Author:** session of 2026-08-23 (Claude Opus 5 + Ariel)
-**Status:** investigation complete, one decision outstanding, no fix implemented
+**Opened:** 2026-08-23
+
+**Finalized:** 2026-08-24
+
+**Branch:** `main` at `d8e3099`, pushed to `origin/main`
+
+**Status:** all three Israeli Player Stats paths are live, deployed, and verified
 
 ---
 
-## 1. Decision required before the next deploy
+## 1. Final state and next action
 
-**Do not redeploy the Shiny app until you have decided what Tab 5 should do.**
+The original timeout decision is resolved: the fix-first option was implemented.
+Israeli Player Stats now has an explicit reader for each request class.
 
-The pooler-drops-`options` fix (`3083592`, merged, **not yet deployed**) makes the 20 s
-`statement_timeout` effective for the first time. Tab 5's filtered path measures **59.56 s**.
-The redeploy therefore converts a slow-but-working feature into a hard error.
+| Request class | Live source | App-role measurement |
+|---|---|---:|
+| Filtered non-clutch | `player_traditional_by_game` | 0.34-0.74 s |
+| Standard clutch: 5 / all / 5:00, unrestricted OT | `default_clutch_player_totals_by_game` | 0.31-0.78 s |
+| Arbitrary custom clutch | `player_stats_actions_by_game` through `get_player_traditional_custom_clutch(...)` | 3.75-6.12 s and 4.78-5.11 s on the two full-season reference presets |
 
-| | Today (deployed) | After redeploy |
-|---|---|---|
-| `statement_timeout` in force | Supabase default, 120 s | 20 s (`global.R:214`) |
-| Filtered Tab 5 request | returns in ~60 s | **cancelled — error shown to user** |
-| Tabs 1 / 2 / 3 | fine | fine (measured, section 4) |
+The database objects and incremental refresh lifecycle are live. Shiny commit
+`d8e3099` was deployed by the maintainer on 2026-08-24; a focused production
+smoke test rendered the default Player Stats table, applied the custom
+3-point/4-minute clutch filter, and returned changed table data without an
+error. No timeout increase is required.
 
-Three options. **Pick one and record it here.**
-
-1. **Deploy as-is.** A 60 s query is already unusable; failing in 20 s is more honest than a
-   minute-long hang and makes the problem visible. Cheapest. Visible regression for anyone
-   currently using Tab 5 filters.
-2. **Raise the timeout for that one call site.** In `run_player_traditional_dynamic`
-   (`app/R/server_tab5_traditional.R:851`), issue `SET LOCAL statement_timeout = 90000` on the
-   connection before the query. Preserves today's behaviour until section 6 lands. Keeps a bad
-   experience rather than replacing it with a broken one.
-3. **Fix first, deploy after.** Correct, but blocks the deploy on new ETL work plus a storage
-   estimate against an instance already over budget.
-
-No option is free. Option 1 is the recommendation, but the choice is the product owner's because
-it is user-visible.
+The improvement is visible only on Israeli **Player Stats (Tab 5)**. Israeli
+Team and Lineup custom paths were measured at 0.37-3.81 seconds and were left
+unchanged. EuroLeague routing is unchanged.
 
 ---
 
 ## 2. Repository state — what is done
+
+The performance work is merged and pushed:
+
+| Commit | What it does |
+|---|---|
+| `5ae97da` | Israeli filtered non-clutch per-game fact and routing |
+| `eab04a7` | Israeli standard-clutch cache, ETL refresh, and routing |
+| `d8e3099` | Israeli custom-clutch narrow action fact, direct reader, ETL refresh, security, and routing |
+
+Final verification: `FAIL 0 | WARN 0 | SKIP 4 | PASS 1195`; the four skips are
+the existing environment-gated E2E/DB/deployed-app tests. The live database
+security audit passed. The sections below retain the original investigation
+and detailed evidence for future debugging.
+
+### Earlier repository state at the start of the investigation
 
 All four commits are pushed to `origin/main`. Nothing is left on a branch.
 
@@ -335,11 +345,13 @@ Implemented objects and integration:
 - `player_traditional_by_game`, with a unique game/team/player key and filter index;
 - `compute_player_traditional_by_game(int4[])` and incremental
   `refresh_player_traditional_by_game_for_games(int4[])`;
-- app-only `get_player_traditional_from_games(...)`, which rejects clutch parameters;
+- app-only `get_player_traditional_from_games(...)`, which accepts non-clutch
+  and the exact standard preset while rejecting custom clutch definitions;
 - incremental ETL registration and L3 rebuild-registry registration;
 - `app_readonly` SELECT/EXECUTE grants plus RLS, while internal compute/refresh
   functions remain inaccessible to the app role;
-- local Tab 5 routing: non-clutch uses the new reader, clutch keeps the action reader.
+- Tab 5 routing: non-clutch and standard clutch use the cached reader; custom
+  clutch uses `get_player_traditional_custom_clutch(...)`.
 
 ### 6.2 Standard clutch cache (completed 2026-08-23)
 
@@ -369,12 +381,12 @@ Implementation details:
 - `get_player_traditional_from_games(...)` accepts either no clutch predicate
   or the exact standard preset and rejects every custom definition;
 - Tab 5 routes `pergame` and `dynamic` request kinds to that cached reader,
-  while `direct` continues to call `get_player_traditional_dynamic(...)`;
+  while `direct` calls `get_player_traditional_custom_clutch(...)`;
 - the post-migration database security audit passed, and `app_readonly` can
   read/call only the fact and reader, not either compute or refresh function.
 
-The remaining release action is deploying the new Tab 5 routing code. The
-database cache and incremental publication lifecycle are already live.
+Shiny commit `d8e3099` was deployed on 2026-08-24. The database cache, custom
+action fact, application routing, and incremental publication lifecycle are live.
 
 ### 6.3 Custom clutch narrow action fact (completed 2026-08-23)
 

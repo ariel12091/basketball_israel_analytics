@@ -2156,3 +2156,104 @@ workers.
 - Branch is unmerged and undeployed. On deploy, check the log for
   `UI html cache unavailable` (the fallback firing) and the
   `client timing: nav->dom` line to confirm the cache took on shinyapps.io.
+
+## Session Update (2026-09-02): Home Cold Start — the open question, answered
+
+Continues the 2026-09-01 section above and closes its "Still open" list. Full
+measurements are in `docs/home_cold_start_handoff_2026-09-01.md` § Session
+2026-09-02; this is the narrative.
+
+Branch `shiny/home-cold-start`, now four commits, **still not merged and not
+deployed**.
+
+### The open question was based on a bad reading
+
+The previous session ended on "the remaining cold time is R **waiting**, not R
+computing, and what it waits on is unexplained." R was not waiting. It was
+**blocked**.
+
+A heartbeat scheduled onto the event loop at session start — `later::later(tick,
+0.25)` — did not fire its first tick until **12.55s**. The loop was blocked solid
+the whole time. `Rprof` had reported only 1.22s of work across that window
+because it under-samples time spent blocked in native calls and reports it as
+nothing, which reads exactly like idle.
+
+The rule worth keeping: **compare `summaryRprof()$sampling.time` against measured
+wall time before believing any share in a profile.** The same artifact showed up
+again later — profiling `bs_theme_dependencies()` gave WALL 2,190ms against
+SAMPLED 282ms.
+
+The browser was cleared the same way: the client reaches `shiny:idle` at
+~1.4-1.6s and then waits 9.3-12.4s for the first `shiny:value`. The 256 bound
+inputs and 171 selectize widgets are not the bottleneck.
+
+### What it actually was: Tab 10, on every Home visit
+
+Instrumenting `db_get_query()` to log every statement showed session init issuing
+five queries totalling ~3.7s, with Home's own combined query running **fourth**,
+behind 3.15s of work for a tab nobody had opened. The largest single item was
+**2,630ms** against `euroleague.sub_lineups_stats_mv` — the whole EuroLeague
+season of lineup units.
+
+`server_tab10_euro_lineups.R` had `euro_ld_full()` inside the **trigger
+expression** of its auto-min-poss `observeEvent`. A trigger expression is
+evaluated on every session, and observers — unlike outputs — are never suspended
+by tab visibility. So every visitor to Home paid for Tab 10.
+
+Israeli Tab 2 does not have this bug: it keeps data reactives out of the trigger
+and gates the handler with `req(identical(input$main_tabs, ...))`. Commit
+`4487c2f` aligns Tab 10 to that reference rather than inventing a variant — the
+`euro_` reuse rule doing its job.
+
+Measured n=4 per arm, fresh app process per run: Home cards **11.9s -> 8.4s**,
+session-init queries **5 -> 3**, session-init SQL **3,450-3,800ms ->
+1,200-1,590ms**. The query-count drop is categorical evidence from the app log,
+not a timing inference — that is the half of the result to trust.
+
+### The navbar overlap, found on the way
+
+Separately, the fixed right-hand cluster (league/season selects, Glossary,
+last-updated) is `position: fixed; z-index: 9999`, so it sits outside normal flow
+and the tab list lays out as if it were absent. Below ~1440px the rightmost tabs
+rendered underneath it, and because the cluster also takes the pointer their
+hover menus could never open. Commit `2f6089e` reserves the cluster's overlap on
+the tab list so the tabs stop before it. Note it reserves `ul.right -
+cluster.left`, not the cluster's full width — the latter over-reserves by the
+~13px the cluster overhangs the `ul` and wraps the navbar onto a second row at
+1440px, where it had previously fit.
+
+### Corrections to the section above
+
+- **The persistent `sass` cache idea is dead.** `sass` 0.4.9 already caches to
+  `~/AppData/Local/R/cache/R/sass`, not the per-process `tempdir()`. Verified the
+  cache is *hit* (key count unchanged, 205 -> 205) while the call still costs
+  seconds. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s per
+  process, ~87% native file I/O copying dependency files — not Sass compilation.
+- **`prewarm_for_year()` re-confirmed as a non-target** at **290ms**, and
+  `log_startup()` re-confirmed as measuring from session start.
+
+### Still open
+
+- **Free real disk space.** `C:` sat at 99% (13GB free) throughout; small-file
+  I/O measures ~1ms/file and `bslib` ships 796 files. The remaining cold cost is
+  dominated by that I/O, so further tuning measures the disk, not the app. This
+  is the same wall that voided the original cold figures.
+- **Caching the rendered page across restarts** would remove the first-render
+  cost entirely. The bytes are safe to reuse (two workers' pages differ only in
+  `data-tabsetid`, which is page-local), but serving them without rendering skips
+  `addResourcePath` registration and 404s every asset. It needs the dependency
+  metadata cached and re-registered too — fiddly and `bslib`-version-fragile. Not
+  attempted; recorded so it is not rediscovered.
+- Branch still unmerged and undeployed.
+
+### One development trap worth knowing
+
+`app.R` builds the UI once at source time. **Launch with Run App / `runApp()`,
+never select-all + Ctrl+Enter** — the latter evaluates `build_ui()` with no app
+context, so Shiny emits a BS3-style navbar with no `nav-link`/`nav-item` (which
+means `app.js` never builds the tab hover menus) and an incomplete theme
+dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load and the
+navbar renders in a wider fallback face). That degraded build is then cached for
+the life of the process, so reloading the browser never clears it. Health check:
+the served page should contain 11 occurrences of `nav-link`, and
+`<url>/bootstrap-5.3.1/font.css` should return 200.

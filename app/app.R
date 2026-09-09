@@ -75,13 +75,18 @@ build_ui <- function() {
     tags$script(HTML(sprintf(
       paste0(
         "window.IBPL_IDLE_CONFIG = {",
-        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:%d",
+        "timeoutSec:%d,warningSec:%d,stateTtlHours:%s,stateVersion:%d,",
+        "closeSession:%s",
         "};"
       ),
       APP_IDLE_TIMEOUT_SEC,
       APP_IDLE_WARNING_SEC,
       format(APP_IDLE_STATE_TTL_HOURS, scientific = FALSE, trim = TRUE),
-      IBPL_RESTORE_STATE_VERSION
+      IBPL_RESTORE_STATE_VERSION,
+      # The client runs its own idle countdown and pauses the page when it
+      # expires. That is only honest while the server actually closes the
+      # session, so tell the client which mode it is in.
+      if (isTRUE(APP_IDLE_CLOSE_SESSION)) "true" else "false"
     ))),
     includeScript("www/app.js"),
     tags$div(
@@ -95,7 +100,7 @@ build_ui <- function() {
       tags$div(
         class = "navbar-season-select league-nav-il",
         selectInput("game_year", NULL,
-                    choices = c("25-26" = "2026", "24-25" = "2025"),
+                    choices = c("26-27" = "2027", "25-26" = "2026", "24-25" = "2025"),
                     selected = DEFAULT_GAME_YEAR)
       ),
       # EuroLeague season selector; hidden under the Israeli league. Only one
@@ -201,11 +206,24 @@ ui <- function(request) {
   build_ui()
 }
 
-# Render the page off the boot critical path so the ~6.6s first render is
-# not paid by the first visitor. Same idea as the pool warm-up in global.R.
-if (.UI_HTML_CACHE_ENABLED) {
-  later::later(function() invisible(ui_response()), delay = 0)
-}
+# Render the page BEFORE the server starts listening, so the process only
+# accepts connections once it can answer GET / from cache.
+#
+# This used to be a later::later(delay = 0), which reads as "off the critical
+# path" but is not: a delay = 0 callback scheduled during sourcing runs on the
+# first event-loop pass, which is ahead of the request that is already queued.
+# It only ever helped a worker that had been idle long enough to finish it, and
+# Connect Cloud never gives that gap -- its worker idle timeout is 5s, so the
+# process is nearly always started by the request it then has to serve.
+#
+# Measured: with both warmups on later(), "Listening on" to first GET /
+# answered was 5.6-5.8s (n = 3); warm GET / is 3-30ms. That delay lands
+# squarely on Connect Cloud's 7s loading-page reload watchdog, and a reload
+# mid-load aborts in-flight requests -- which is what surfaces in the browser
+# as NS_ERROR_CORRUPTED_CONTENT on a random handful of assets. Paying it at
+# boot instead puts it behind the heartbeat-held loading page, against a 60s
+# Startup timeout that boot (~3s) is nowhere near.
+if (.UI_HTML_CACHE_ENABLED) invisible(ui_response())
 
 # ---------------- Server ----------------
 server <- function(input, output, session) {

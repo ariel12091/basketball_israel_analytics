@@ -43,6 +43,24 @@ gl_result_cell_renderer <- function() DT::JS(
    }"
 )
 
+# The date becomes an HTML link after the display frame is built. DataTables
+# otherwise compares that markup as text. Return a numeric YYYYMMDD key for
+# sort/type operations so ordering cannot depend on HTML or locale; keep the
+# display/export value unchanged.
+gl_date_cell_renderer <- function() DT::JS(
+  "function(data, type, row, meta) {
+     if (type !== 'sort' && type !== 'type') return data;
+     var node = document.createElement('span');
+     node.innerHTML = data == null ? '' : String(data);
+     var text = (node.textContent || node.innerText || '').trim();
+     var iso = text.match(/^(\\d{4})[-/.](\\d{1,2})[-/.](\\d{1,2})/);
+     if (iso) return Number(iso[1]) * 10000 + Number(iso[2]) * 100 + Number(iso[3]);
+     var dmy = text.match(/^(\\d{1,2})[-/.](\\d{1,2})[-/.](\\d{4})/);
+     if (dmy) return Number(dmy[3]) * 10000 + Number(dmy[2]) * 100 + Number(dmy[1]);
+     return 0;
+   }"
+)
+
 gl_apply_heat_styles <- function(dt, display_df, metric_map, heat_reverse) {
   for (display_name in names(metric_map)) {
     metric_name <- unname(metric_map[[display_name]])
@@ -566,6 +584,7 @@ server_tab4 <- function(input, output, session, shared) {
       )
 
       hide_idx <- which(names(disp) %in% c(shot_raw_cols, "pr_off_ppp", "pr_def_ppp")) - 1L
+      date_idx <- which(names(disp) == "game_date") - 1L
 
       # Shooting column JS render
       make_shot_render_gl <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
@@ -654,7 +673,8 @@ server_tab4 <- function(input, output, session, shared) {
         list(
           list(targets = hide_idx, visible = FALSE),
           list(targets = "_all", className = "dt-center"),
-          list(targets = result_idx, render = result_render)
+          list(targets = result_idx, render = result_render),
+          list(targets = date_idx, render = gl_date_cell_renderer())
         ),
         shot_col_defs
       )
@@ -678,7 +698,10 @@ server_tab4 <- function(input, output, session, shared) {
                             buttons = csv_export_button("game_logs_summary"),
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(2, "desc"), list(0, "desc")),
+                            # `df` is already authoritatively arranged by
+                            # date/GN. Preserve it on first paint; header clicks
+                            # still use the numeric date renderer above.
+                            order = list(),
                             columnDefs = col_defs
                           ))
 
@@ -719,6 +742,7 @@ server_tab4 <- function(input, output, session, shared) {
       # Result column color
       result_idx <- which(names(disp) == "result") - 1L
       result_render <- gl_result_cell_renderer()
+      date_idx <- which(names(disp) == "game_date") - 1L
 
       off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
       def_ppp_idx <- which(names(disp) == "def_ppp") - 1L
@@ -727,7 +751,8 @@ server_tab4 <- function(input, output, session, shared) {
       col_defs <- list(
         list(targets = "_all", className = "dt-center"),
         list(targets = result_idx, render = result_render),
-        list(targets = which(names(disp) %in% hidden_pr_cols) - 1L, visible = FALSE)
+        list(targets = which(names(disp) %in% hidden_pr_cols) - 1L, visible = FALSE),
+        list(targets = date_idx, render = gl_date_cell_renderer())
       )
       if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_ppp_idx, className = "section-left-border dt-center")
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
@@ -744,7 +769,7 @@ server_tab4 <- function(input, output, session, shared) {
                             buttons = csv_export_button("game_logs_four_factors"),
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(list(2, "desc"), list(0, "desc")),
+                            order = list(),
                             columnDefs = col_defs
                           ))
 

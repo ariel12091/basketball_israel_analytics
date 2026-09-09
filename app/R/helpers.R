@@ -3340,6 +3340,19 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   bounds <- ribbon_period_bounds(meta$n_periods)
   total_seconds <- bounds[length(bounds)]
 
+  # Keep the pre-merge frame: merged bars are deliberately keyed by player
+  # occupancy, while the lineup decomposition needs the rows that composed
+  # each bar.
+  premerge <- lanes
+  dict <- ribbon_lineup_dictionary(premerge)
+  dict_key <- paste(dict$side, dict$lineup_key, sep = "\r")
+
+  # ribbon_score_as_of() retains its own order() safety, but all per-bar
+  # lookups below receive this one deterministic ordering.
+  if (!is.null(steps) && NROW(steps)) {
+    steps <- steps[order(as.numeric(steps$elapsed), as.numeric(steps$order_key)), , drop = FALSE]
+  }
+
   lanes <- merge_adjacent_stints(lanes)
   # Per-stint numbers come from the RAW step series, not the completed margin
   # the curve is drawn from. With steps = NULL every number is NA and the
@@ -3379,29 +3392,40 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   period_lines <- lapply(bounds[-length(bounds)], function(b) {
     bx <- RIBBON_GUTTER + b * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
     tags$line(class = "ibpl-ribbon-period",
-              x1 = bx, x2 = bx, y1 = RIBBON_PAD_TOP, y2 = total_h)
+              x1 = bx, x2 = bx, y1 = RIBBON_PAD_TOP, y2 = total_h,
+              `data-base-y2` = total_h)
   })
 
   num <- ribbon_pm_label(lanes$pm)
   lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
     secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
-    ov <- ribbon_stint_overlaps(lanes, lanes$side[i], lanes$player_key[i],
-                                lanes$start_elapsed[i], lanes$end_elapsed[i])
-    with_txt <- ribbon_overlap_label(ov, steps)
+    seg <- ribbon_side_perspective(
+      ribbon_stint_points(
+        ribbon_stint_segments(premerge, lanes$side[i], lanes$player_key[i],
+                              lanes$start_elapsed[i], lanes$end_elapsed[i]),
+        steps))
+    seg_key <- paste(seg$side, seg$lineup_key, sep = "\r")
+    seg_idx <- match(seg_key, dict_key) - 1L
+    seg_txt <- if (!nrow(seg)) "" else paste(sprintf(
+      "%.0f,%.0f,%s,%d", seg$start_elapsed, seg$end_elapsed,
+      ribbon_pm_label(seg$pm), seg_idx), collapse = ";")
+    members <- dict$members[match(seg_key, dict_key)]
+    members <- members[!is.na(members)]
     window_txt <- sprintf("%s-%s", ribbon_minutes_label(lanes$start_elapsed[i]),
                           ribbon_minutes_label(lanes$end_elapsed[i]))
-    # The accessible name carries EVERYTHING the strip shows, teammates
-    # included, because the strip is aria-hidden -- see
-    # ribbon_detail_strip(). If the teammates were left out here there
-    # would be no path to them at all for a screen-reader user: the band
-    # and the lit overlaps are purely visual, so this label is their only
-    # equivalent.
+    lineup_txt <- if (length(members)) {
+      sprintf(", made up of %d lineups: %s", length(members),
+              paste(members, collapse = "; "))
+    } else ""
+    # The accessible name carries everything the click-only inline panel
+    # shows. Do not add an SVG <title>: it duplicates all this data as a
+    # mouse-hover tooltip, which obscures the chart.
     label <- sprintf("%s, %s on the floor, plus-minus %s%s%s",
                      lanes$player_label[i], ribbon_minutes_label(secs), num[i],
                      if (is.na(lanes$pf[i])) "" else
                        sprintf(", %d points for and %d against",
                                lanes$pf[i], lanes$pa[i]),
-                     if (nzchar(with_txt)) paste(", on with", with_txt) else "")
+                     lineup_txt)
     tags$g(
       class = paste("ibpl-ribbon-lane", paste0("is-", lanes$side[i])),
       `data-clip` = lanes$clip[i],
@@ -3412,11 +3436,10 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
       `data-pm` = num[i],
       `data-pf` = if (is.na(lanes$pf[i])) "" else as.character(lanes$pf[i]),
       `data-pa` = if (is.na(lanes$pa[i])) "" else as.character(lanes$pa[i]),
-      `data-with` = with_txt,
+      `data-segments` = seg_txt,
       tabindex = "0",
       role = "listitem",
       `aria-label` = label,
-      tags$title(label),
       tags$rect(x = lanes$x[i], y = lanes$abs_y[i],
                 width = lanes$w[i], height = lanes$h[i], rx = 2),
       # Blank means one thing only: too narrow to label. A level stint
@@ -3437,7 +3460,8 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   totals <- ribbon_player_totals(lanes)
   tkey <- paste(totals$side, totals$player_key, sep = "\r")
   first_row <- !duplicated(paste(lanes$side, lanes$player_key))
-  lane_labels <- lapply(which(first_row), function(i) {
+  first_idx <- which(first_row)
+  lane_labels <- lapply(first_idx, function(i) {
     ti <- match(paste(lanes$side[i], lanes$player_key[i], sep = "\r"), tkey)
     mins <- ribbon_minutes_label(totals$secs[ti])
     pm <- ribbon_pm_label(totals$pm[ti])
@@ -3465,12 +3489,15 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # band made the space below it 44 units against 24 above, which read as a
   # lopsided chart, while the label itself never fills that space: it is
   # left-anchored in the gutter and the band starts at RIBBON_GUTTER.
-  team_labels <- list(
+  own_team_labels <- list(
     tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_MIN_X,
               y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "MIN"),
     tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_PM_X,
               y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "+/-"),
-    tags$text(class = "ibpl-ribbon-team", x = 0, y = RIBBON_PAD_TOP + 10, meta$own_team %||% "Own"),
+    tags$text(class = "ibpl-ribbon-team", x = 0, y = RIBBON_PAD_TOP + 10,
+              meta$own_team %||% "Own")
+  )
+  opp_team_labels <- list(
     tags$text(class = "ibpl-ribbon-team", x = 0, y = opp_top - RIBBON_HEADER + 10,
               meta$opp_team %||% "Opponent")
   )
@@ -3517,26 +3544,44 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
                 if (k <= 4) paste0("Q", k) else paste0("OT", k - 4))
     })
   }
-  period_labels <- list(period_label_row(RIBBON_PAD_TOP + 10),
-                        period_label_row(total_h + 12))
+  top_period_labels <- period_label_row(RIBBON_PAD_TOP + 10)
+  bottom_period_labels <- period_label_row(total_h + 12)
+  base_height <- total_h + 12 + RIBBON_PAD_BOTTOM
+  own_detail_y <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h
+  opp_detail_y <- total_h
 
   tags$svg(
     xmlns = "http://www.w3.org/2000/svg",
-    viewBox = sprintf("0 0 %d %.0f", RIBBON_WIDTH, total_h + 12 + RIBBON_PAD_BOTTOM),
+    viewBox = sprintf("0 0 %d %.0f", RIBBON_WIDTH, base_height),
     class = "ibpl-ribbon",
     role = "img",
     `aria-label` = meta$game_label,
+    `data-lineups` = jsonlite::toJSON(dict$members),
+    `data-base-height` = base_height,
+    `data-detail-x` = RIBBON_GUTTER,
+    `data-own-detail-y` = own_detail_y,
+    `data-opp-detail-y` = opp_detail_y,
     tags$defs(clip_paths),
     period_lines,
-    baseline,
-    scale_lines,
-    tags$path(class = "ibpl-ribbon-margin-base", d = path_d),
-    tags$path(class = "ibpl-ribbon-margin-focus", d = path_d),
-    team_labels,
-    lane_labels,
-    scale_labels,
-    period_labels,
-    lane_rects
+    tags$g(class = "ibpl-ribbon-own-layer",
+           own_team_labels,
+           lane_labels[lanes$side[first_idx] == "own"],
+           lane_rects[lanes$side == "own"]),
+    tags$g(class = "ibpl-ribbon-margin-layer ibpl-ribbon-shift-after-own",
+           baseline,
+           scale_lines,
+           tags$path(class = "ibpl-ribbon-margin-base", d = path_d),
+           tags$path(class = "ibpl-ribbon-margin-focus", d = path_d),
+           scale_labels),
+    tags$g(class = "ibpl-ribbon-opp-layer ibpl-ribbon-shift-after-own",
+           opp_team_labels,
+           lane_labels[lanes$side[first_idx] == "opp"],
+           lane_rects[lanes$side == "opp"]),
+    tags$g(class = "ibpl-ribbon-top-layer", top_period_labels),
+    tags$g(class = paste("ibpl-ribbon-bottom-layer",
+                         "ibpl-ribbon-shift-after-own",
+                         "ibpl-ribbon-shift-after-opp"),
+           bottom_period_labels)
   )
 }
 
@@ -3588,8 +3633,8 @@ ribbon_lineup_dictionary <- function(lanes) {
 ribbon_health_message <- function(excluded_segments) {
   n <- suppressWarnings(as.integer(excluded_segments %||% 0))
   if (length(n) != 1 || is.na(n) || n <= 0) return(NULL)
-  sprintf(paste("Lineup data is incomplete for this game: %d segment(s) had no",
-                "five-player lineup on record and are not drawn."), n)
+  sprintf(paste("Lineup data is incomplete for this game: %d gameplay segment(s)",
+                "had no valid five-player lineup and are not drawn."), n)
 }
 
 # A game-log cell that opens the stint ribbon. Both ids travel on the anchor so
@@ -3790,46 +3835,6 @@ ribbon_side_perspective <- function(stints) {
 }
 
 
-# Teammates who shared the floor during one stint, clipped to its window.
-#
-# Keyed on player_key, NEVER on player_label: both leagues carry same-name /
-# different-id players on one team, and a name key would merge two people's
-# spans into one.
-#
-# A teammate can appear more than once -- they subbed out and back in while
-# this player stayed on -- so spans are kept separate while `shared` carries
-# that teammate's total across all of them, which is what the ordering uses.
-ribbon_stint_overlaps <- function(lanes, side, player_key, start_elapsed,
-                                  end_elapsed) {
-  empty <- data.frame(player_key = character(0), player_label = character(0),
-                      start_elapsed = numeric(0), end_elapsed = numeric(0),
-                      shared = numeric(0), stringsAsFactors = FALSE)
-  if (is.null(lanes) || !nrow(lanes)) return(empty)
-
-  o <- lanes[lanes$side == side & lanes$player_key != player_key, , drop = FALSE]
-  if (!nrow(o)) return(empty)
-
-  s <- pmax(as.numeric(o$start_elapsed), start_elapsed)
-  e <- pmin(as.numeric(o$end_elapsed), end_elapsed)
-  keep <- e > s
-  if (!any(keep)) return(empty)
-
-  out <- data.frame(
-    player_key = as.character(o$player_key[keep]),
-    player_label = as.character(o$player_label[keep]),
-    start_elapsed = s[keep],
-    end_elapsed = e[keep],
-    stringsAsFactors = FALSE
-  )
-  totals <- tapply(out$end_elapsed - out$start_elapsed, out$player_key, sum)
-  out$shared <- as.numeric(totals[out$player_key])
-
-  out <- out[order(-out$shared, out$player_key, out$start_elapsed), , drop = FALSE]
-  rownames(out) <- NULL
-  out
-}
-
-
 # Per-player game totals for the gutter: floor seconds and +/-, one row per
 # player per side. `side` is part of the key because the same player_key on
 # the other side is a different person's lane.
@@ -3884,34 +3889,4 @@ RIBBON_NUM_PAD <- 6
 ribbon_number_fits <- function(text, width) {
   need <- nchar(text) * RIBBON_NUM_ADVANCE * RIBBON_NUM_FONT + RIBBON_NUM_PAD
   as.numeric(width) >= need
-}
-
-
-# The hover detail strip. Rendered empty; app.js fills it from the hovered
-# lane's data-* attributes and leaves the last one in place on exit, so the
-# reader can look away from the chart to read it.
-#
-# aria-hidden because the same facts are already on each lane's aria-label.
-# An aria-live region here would announce on every hover, which is noise.
-ribbon_detail_strip <- function() {
-  tags$div(
-    class = "ibpl-ribbon-detail", `aria-hidden` = "true",
-    tags$span(class = "ibpl-ribbon-detail-rest",
-              "Hover or tab to a stint to see who was on the floor.")
-  )
-}
-
-# One teammate entry for the strip. Carries BOTH axes -- the shared window
-# and the margin swing across it -- so each entry maps onto a span the reader
-# can see lit in the chart. A bare name and duration was rejected in design
-# for having no connection to either axis.
-ribbon_overlap_label <- function(overlaps, steps) {
-  if (is.null(overlaps) || !nrow(overlaps)) return("")
-  spans <- ribbon_stint_points(overlaps, steps)
-  paste(sprintf("%s %s-%s %s",
-                spans$player_label,
-                ribbon_minutes_label(spans$start_elapsed),
-                ribbon_minutes_label(spans$end_elapsed),
-                ribbon_pm_label(spans$pm)),
-        collapse = " \u00b7 ")
 }

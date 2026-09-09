@@ -2,6 +2,13 @@
 
 Date: 2026-09-01
 
+> **START AT THE END.** Two later passes supersede much of what follows:
+> *Corrections -- same session, later* (the disk was 100% full; the absolute
+> cold figures below are void) and **Session 2026-09-02**, which answers the
+> open question, records what worked and what did not, and kills the
+> persistent-sass-cache proposal. Do not quote a number from the body of this
+> document without checking both.
+
 ## User report and objective
 
 The user reports that the Home tab still takes about 20 seconds when the
@@ -521,3 +528,161 @@ is unmeasurable without n>=5 per configuration on a quiet, non-full disk.
 - `euroleague/tmp_measure_home_phases.R` -- mirrors `global.R` pool config and
   runs the combined SQL as the first statement on a new connection, then N warm
   repeats plus an optional idle probe. Read-only.
+
+# Session 2026-09-02 — the "unexplained wait" resolved
+
+The previous session closed with: *"The remaining cold time is R waiting, not R
+computing, and what it waits on is still unexplained -- that is the open
+question."* It is answered here. Prefer this section to the pre-Corrections
+numbers above.
+
+## 1. R was not waiting. It was blocked.
+
+`Rprof` reported 1.22 s of work in a 9.03 s session-init window, and that was
+read as "R is idle ~7.8 s". The reading was wrong, and the method that produced
+it is the thing to distrust.
+
+A heartbeat scheduled onto the event loop at session start:
+
+```r
+local({
+  .hb0 <- proc.time()[["elapsed"]]
+  tick <- function() {
+    el <- proc.time()[["elapsed"]] - .hb0
+    app_log("hb", sprintf("%.3f", el))
+    if (el < 16) later::later(tick, 0.25)
+  }
+  later::later(tick, 0.25)
+})
+```
+
+**The first tick, due at 0.25 s, did not fire until 12.55 s.** The event loop
+was blocked solid the whole time. `Rprof` under-samples time spent blocked in
+native calls (DB socket reads, file I/O) and reports it as nothing at all,
+which is indistinguishable from idle.
+
+The same artifact appears elsewhere in this work: profiling
+`bs_theme_dependencies()` gave **WALL 2,190 ms vs SAMPLED 282 ms** — 87 %
+invisible.
+
+**Rule: compare `summaryRprof()$sampling.time` against measured wall time before
+believing any share in a profile. If they diverge, the profile is not a budget —
+go find the blocking call.**
+
+The browser was cleared the same way: the client reaches `shiny:idle` at
+~1.4-1.6 s and then waits 9.3-12.4 s for the first `shiny:value`. The 256 bound
+inputs and 171 selectize widgets are not the bottleneck; the server is.
+
+## 2. Root cause: Tab 10 pulled the whole EuroLeague season on every Home visit
+
+Instrumenting `db_get_query()` to log every statement showed session init
+issuing **5 queries totalling ~3.7 s**, in this order:
+
+| ms | query |
+|---:|---|
+| 270 | `fetch_gn_values` — `final_schedule_mv` |
+| 250 | EuroLeague load-run version |
+| **2,630** | **`euroleague.sub_lineups_stats_mv` — the whole season of units** |
+| 370 | `home_dashboard_combined` — Home's own data |
+| 470 | `fetch_players_basic` |
+
+Home's own query ran **fourth, behind 3.15 s of work for a tab nobody had
+opened.**
+
+`server_tab10_euro_lineups.R` had `euro_ld_full()` inside the **trigger
+expression** of the auto-min-poss `observeEvent`. A trigger expression is
+evaluated on every session, and **observers are never suspended by tab
+visibility the way outputs are** — so every visitor to Home paid for Tab 10.
+
+Israeli Tab 2 does not have this bug: it keeps data reactives out of the trigger
+and gates the handler with `req(identical(input$main_tabs, ...))`. Fixed in
+`4487c2f` by aligning Tab 10 to that reference rather than inventing a variant.
+
+Measured n=4 per arm, fresh app process per run, same harness:
+
+| | before | after |
+|---|---|---|
+| Home cards visible | **11.9 s** (11.6-12.4) | **8.4 s** (8.1-11.2) |
+| queries at session init | 5 | **3** |
+| SQL at session init | 3,450-3,800 ms | **1,200-1,590 ms** |
+
+The query-count drop is categorical evidence from the app log, not a timing
+inference — that is the part of this result to trust.
+
+## 3. Ledger — what worked and what did not
+
+| Change | Verdict |
+|---|---|
+| `.UI_CACHED` — build the tag tree once per worker | **Worked.** |
+| `.UI_RESPONSE` — cache the *rendered* page, pre-rendered off the boot path | **Worked.** Steady-state `GET /` 1.24 s -> 0.004 s, measured repeatedly. Warm `nav->dom` 358 ms. |
+| Gate Tab 10's auto-min-poss observer on tab activation | **Worked.** 11.9 s -> 8.4 s; two queries and ~2.9 s removed. |
+| Pool warm-up via `later::later()` instead of `minSize = 1` | **Worked.** `checkout_ms=0.0` on the Home query in every run. |
+| Combined Home dashboard query (six reads -> one) | **Worked.** ~2.09 s -> ~0.3-0.6 s connected. |
+| Deferring each tab's *server* module to first activation | **Withdrawn.** 1.22 s of R work cannot fund a claimed 5.2 s saving. |
+| Persistent `sass` cache | **Dead — the premise was false.** See §5. |
+| `pg_prewarm` | **Useless, and harmful.** |
+| Pool `minSize = 1` | **Loses.** +2.7 s at boot against -1.7 s on the request. |
+| `prewarm_for_year()` | **Not a target.** Real cost **290 ms**; two of its six calls never touch the DB. |
+
+## 4. What the cold Home path costs now
+
+| phase | cost |
+|---|---|
+| first `GET /` — dominated by `bs_theme_dependencies()` | 2.3-3.5 s |
+| session init, of which SQL is ~1.4 s | ~4.3 s |
+| **Home cards visible, worker booted by the request** | **~8.4 s** |
+| **Home cards visible, worker already booted and idle** | **~4.0 s** |
+
+## 5. The remaining cost is `bs_theme_dependencies()`, and it is file I/O
+
+Measured in fresh R processes:
+
+| call | time |
+|---|---:|
+| `bs_theme_dependencies()` #1 | **2,330-3,490 ms** |
+| `bs_theme_dependencies()` #2, same process | **160-300 ms** |
+
+**It is not Sass compilation.** The sass cache is *hit* — the cached-key count is
+unchanged across the call (205 -> 205). Profiling gives WALL 2,190 ms vs SAMPLED
+282 ms with `file.copy` the visible tip: ~87 % is native file I/O, copying HTML
+dependency files.
+
+**Correction to "Next steps" item 4 above: the persistent-`sass`-cache idea is
+dead.** `sass` 0.4.9 already caches to `~/AppData/Local/R/cache/R/sass`, not the
+per-process `tempdir()`. There is no win available there.
+
+Context for that I/O: `C:` was **99 % full (13 GB free)** throughout; small-file
+I/O measured ~1 ms/file (200 writes 190 ms, 200 copies 200 ms); `bslib` ships
+796 files / 10.7 MB. **Free real disk space before tuning this further, or you
+are measuring the disk.** This is the same wall that forced the retraction of
+the original cold figures.
+
+## 6. Caching the rendered page across restarts — bytes are safe, mechanism is not
+
+Tempting, since it would remove the first-render cost from every restart.
+Checked, not attempted:
+
+- **The bytes are safe to reuse.** Two workers' rendered pages differ *only* in
+  `data-tabsetid` (126 lines), which is page-local — Shiny's tab input keys off
+  the stable `data-value`.
+- **But serving cached bytes without rendering skips `addResourcePath`
+  registration** for every dependency, so the browser 404s on all assets. It
+  would need the dependency metadata cached and re-registered too — fiddly, and
+  fragile across `bslib` versions.
+
+Recorded so the next attempt does not rediscover the blocker.
+
+## 7. Method notes for anyone re-measuring
+
+- **n >= 4 per arm, a fresh app process per run.** Timings on this machine swing
+  wide; a single-run A/B is worthless here.
+- **Prefer categorical evidence to wall clock.** "5 queries became 3" survives
+  contention; "11.9 s became 8.4 s" needs repeats.
+- **`log_startup()` measures from session start, not from the step it labels.**
+  `prewarm complete (8.97s)` never meant 9 s of prewarming.
+- **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter.** The
+  latter builds the UI with no app context, producing a BS3-style navbar and an
+  incomplete theme dependency, cached for the life of the process — and any
+  measurement taken against such an instance is void. Two quick health checks:
+  the served page should contain 11 occurrences of `nav-link`, and
+  `<url>/bootstrap-5.3.1/font.css` should return 200, not 404.

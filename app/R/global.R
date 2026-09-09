@@ -12,12 +12,34 @@ library(htmltools)
 # ---------------- Defaults ----------------
 # Default season shown on load. To roll to a new season, add its static roster,
 # bump this value, and add the matching navbar label in app.R.
-DEFAULT_GAME_YEAR <- "2026"   # 25-26
+DEFAULT_GAME_YEAR <- "2027"   # 26-27
 
 # Season-aware team rosters used before the first database connection. Team IDs
 # are provider IDs and can be recycled between seasons, so each season needs an
 # explicit mapping.
 STATIC_TEAM_ROSTERS <- list(
+  `2027` = data.frame(
+    # App-facing IDs come from the PBP roster feed; the public schedule uses
+    # separate 2111-2124 IDs mapped in schedule_team_dict.
+    team_id = c(2L, 3L, 7L, 4L, 5L, 12L, 8L, 9L, 11L, 6L, 10L, 14L, 33L, 17L),
+    team_name = c(
+      "MACCABI TEL AVIV",
+      "HAPOEL TEL AVIV",
+      "MACCABI RAMAT GAN",
+      "HAPOEL JERUSALEM",
+      "HAPOEL HOLON",
+      "IRONI KIRYAT ATA",
+      "HAPOEL HAEMEK",
+      "NESS ZIONA",
+      "BEER SHEVA/DIMONA",
+      "BNEI HERZLIYA",
+      "HAPOEL GALIL ELION",
+      "M. RISHON",
+      "MACCABI ASHDOD",
+      "HAPOEL EILAT"
+    ),
+    stringsAsFactors = FALSE
+  ),
   `2026` = data.frame(
     team_id = 2:15,
     team_name = c(
@@ -70,10 +92,18 @@ LD_DEFAULT_NUM      <- "5"
 RANKING_BASELINE <- 100
 RANKING_MIN_PCT  <- 0.25   # at least 25% of rows should be ranked
 
-# Season window for a given game_year: Oct 1 (Y-1) through Jul 1 (Y).
+# Explicit exceptions for Israeli seasons that begin before October.
+SEASON_DATE_BOUNDS <- list(
+  `2027` = list(start = as.Date("2026-09-01"), end = as.Date("2027-07-01"))
+)
+
+# Season window for a given game_year. Most seasons use Oct 1 (Y-1) through
+# Jul 1 (Y); explicit feed-confirmed exceptions are defined above.
 season_date_bounds_for_year <- function(gy = DEFAULT_GAME_YEAR) {
   y <- suppressWarnings(as.integer(gy))
   if (length(y) != 1L || is.na(y)) y <- as.integer(DEFAULT_GAME_YEAR)
+  explicit <- SEASON_DATE_BOUNDS[[as.character(y)]]
+  if (!is.null(explicit)) return(explicit)
   list(start = as.Date(sprintf("%04d-10-01", y - 1L)),
        end   = as.Date(sprintf("%04d-07-01", y)))
 }
@@ -233,7 +263,15 @@ APP_IDLE_CHECK_SEC <- suppressWarnings(as.integer(Sys.getenv("APP_IDLE_CHECK_SEC
 if (!is.finite(APP_IDLE_CHECK_SEC) || APP_IDLE_CHECK_SEC <= 0) APP_IDLE_CHECK_SEC <- 15L
 APP_IDLE_STATE_TTL_HOURS <- suppressWarnings(as.numeric(Sys.getenv("APP_IDLE_STATE_TTL_HOURS", "24")))
 if (!is.finite(APP_IDLE_STATE_TTL_HOURS) || APP_IDLE_STATE_TTL_HOURS <= 0) APP_IDLE_STATE_TTL_HOURS <- 24
-APP_IDLE_CLOSE_SESSION <- tolower(trimws(Sys.getenv("APP_IDLE_CLOSE_SESSION", "true"))) %in% c("1", "true", "yes", "on")
+# Off by default since the move to Posit Connect Cloud. The point of closing an
+# idle session was to hand a shinyapps.io worker slot back; Connect Cloud stops
+# the whole container on its own, measured 5-8 minutes after last use -- before
+# this 10-minute timer can fire. What the timer still reliably did was drive the
+# client resume reload onto a container that had already gone, which is a cold
+# start, and a cold first paint (10-20s) loses to Connect Cloud's 7s loading-page
+# reload and drops assets mid-flight. The client keeps its disconnect watchers,
+# so the resume pill still appears when Connect does reap the container.
+APP_IDLE_CLOSE_SESSION <- tolower(trimws(Sys.getenv("APP_IDLE_CLOSE_SESSION", "false"))) %in% c("1", "true", "yes", "on")
 
 .ref_cache_env <- new.env(parent = emptyenv())
 
@@ -275,7 +313,8 @@ WITH gy AS (
 segs AS (
   SELECT team_id, segment_id, lineup_hash,
          MIN(segment_start_elapsed_seconds) AS start_elapsed,
-         MAX(segment_end_elapsed_seconds)   AS end_elapsed
+         MAX(segment_end_elapsed_seconds)   AS end_elapsed,
+         BOOL_OR(type IS DISTINCT FROM 'substitution') AS has_gameplay
   FROM basketball_test.df_pts_poss_lineups_longer_mv
   WHERE game_id = $1
   GROUP BY team_id, segment_id, lineup_hash
@@ -322,7 +361,8 @@ SELECT
   (SELECT MAX(quarter) FROM basketball_test.df_pts_poss_lineups_longer_mv
     WHERE game_id = $1) AS n_periods,
   (SELECT COUNT(*) FROM segs s
-    WHERE NOT EXISTS (SELECT 1 FROM lineup_players lp
+    WHERE s.has_gameplay
+      AND NOT EXISTS (SELECT 1 FROM lineup_players lp
                        WHERE lp.lineup_hash = s.lineup_hash
                          AND lp.team_id = s.team_id)) AS excluded_segments
 "
@@ -622,27 +662,34 @@ pg_pool <- dbPool(
 )
 onStop(function() poolClose(pg_pool))
 
-# Warm one pooled connection off the boot critical path.
+# Warm one pooled connection BEFORE the server starts listening.
 #
-# Measured 2026-09-01: a first checkout costs ~1,700-2,200ms (TCP + TLS +
-# auth + the onCreate SET). With minSize = 0 that always lands on a user
-# request -- it showed up inside the 9.2s cold Home prewarm. minSize = 1
-# does move it to boot, but measured +2.7s to boot against -1.7s on the
-# request, so it is a loss whenever the worker is booted by the request it
-# then has to serve. This keeps minSize = 0 (the 2026-08-18 steady-state
-# finding stands) and instead connects from the event loop once R goes
-# idle, which is the gap while the browser parses the page and opens its
-# websocket. Boot time is unchanged and the connection is ready before the
-# first session queries. Best-effort: a failure here is retried by the
-# normal checkout path. Set POOL_PREWARM=false to disable.
+# A first checkout costs ~1,700-2,200ms (TCP + TLS + auth + the onCreate SET),
+# so with minSize = 0 it has to happen somewhere. It used to run from a
+# later::later(delay = 0), on the theory that R would be idle while the browser
+# parsed the page. That theory came from shinyapps.io, where a worker usually
+# had an idle gap before its first request. It is wrong on Posit Connect Cloud:
+# the worker idle timeout is 5s (the platform minimum), so the process is nearly
+# always started *because* a request is waiting -- and a delay = 0 callback
+# scheduled during sourcing runs on the first event-loop pass, ahead of that
+# queued request. Measured: "Listening on" to first GET / answered was 5.6-5.8s
+# (n = 3) with both warmups on later(); warm GET / is 3-30ms.
+#
+# Running it here instead moves the cost behind Connect Cloud's loading page,
+# which is held open by server heartbeats, and off the 7s reload watchdog that
+# the browser applies once it is actually waiting on GET /. Boot grows by about
+# the checkout cost against a 60s Startup timeout, so there is ample headroom.
+#
+# The trade is that an unreachable database now stalls boot rather than serving
+# a page whose queries then fail. That is acceptable -- the app is unusable
+# either way -- but it is why this stays best-effort and wrapped: a failure is
+# retried by the normal checkout path. Set POOL_PREWARM=false to disable.
 if (!tolower(trimws(Sys.getenv("POOL_PREWARM", "true"))) %in%
       c("0", "false", "no", "off")) {
-  later::later(function() {
-    tryCatch({
-      con <- pool::poolCheckout(pg_pool)
-      pool::poolReturn(con)
-    }, error = function(e) NULL)
-  }, delay = 0)
+  tryCatch({
+    con <- pool::poolCheckout(pg_pool)
+    pool::poolReturn(con)
+  }, error = function(e) NULL)
 }
 
 # Shared head tags
@@ -1045,7 +1092,8 @@ make_chip <- function(label, clear_id, css_class = "", focus_id = NULL) {
 
 make_season_chip <- function(gy, label = NULL) {
   if (is.null(label)) {
-    label <- if (identical(gy, "2026")) "2025-26" else if (identical(gy, "2025")) "2024-25" else gy
+    y <- suppressWarnings(as.integer(gy))
+    label <- if (length(y) == 1L && !is.na(y)) sprintf("%d-%02d", y - 1L, y %% 100L) else gy
   }
   tags$span(class = "filter-chip chip-season", label)
 }

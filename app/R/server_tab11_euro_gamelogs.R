@@ -214,6 +214,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     result_idx <- which(names(disp) == "result") - 1L
     hidden_idx <- which(names(disp) %in% pr_cols) - 1L
+    date_idx <- which(names(disp) == "game_date") - 1L
     off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
     def_ppp_idx <- which(names(disp) == "def_ppp") - 1L
     off_poss_idx <- which(names(disp) == "off_poss") - 1L
@@ -221,7 +222,8 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     col_defs <- list(
       list(className = "dt-center", targets = "_all"),
       list(targets = result_idx, render = gl_result_cell_renderer()),
-      list(targets = hidden_idx, visible = FALSE)
+      list(targets = hidden_idx, visible = FALSE),
+      list(targets = date_idx, render = gl_date_cell_renderer())
     )
     # Section separators under the Offense / Defense / Usage group headings.
     if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <-
@@ -238,7 +240,8 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
         buttons = csv_export_button(if (ff) "euroleague_game_logs_four_factors"
                                     else "euroleague_game_logs_summary"),
         pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
-        order = list(list(2, "desc"), list(0, "desc")),
+        # build_games() already supplies date/round/game ordering.
+        order = list(),
         columnDefs = col_defs)) %>%
       DT::formatRound(intersect(round_cols, names(disp)), 1)
 

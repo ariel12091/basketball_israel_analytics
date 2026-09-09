@@ -33,11 +33,13 @@ test_that("the two euro read-layer lists contain exactly the same relations", {
 # merge rule is checked here rather than through a query.
 
 lane_row <- function(side, player_key, start_elapsed, end_elapsed,
-                     is_starter = FALSE, player_label = NULL) {
+                     is_starter = FALSE, player_label = NULL,
+                     lineup_key = NULL) {
   data.frame(
     side = side,
     player_key = player_key,
     player_label = player_label %||% paste("Player", player_key),
+    lineup_key = lineup_key %||% paste0("lineup-", side, "-", player_key),
     is_starter = is_starter,
     start_elapsed = start_elapsed,
     end_elapsed = end_elapsed,
@@ -775,10 +777,11 @@ test_that("a lane's gutter label carries the same data-clip as its lane", {
                perl = TRUE)
 })
 
-test_that("each lane carries a title for tooltip and screen readers", {
+test_that("each lane carries an accessible label without a mouse tooltip", {
   f <- ribbon_fixture()
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
-  expect_match(html, "<title>A Cohen")
+  expect_match(html, 'aria-label="A Cohen', fixed = TRUE)
+  expect_false(grepl("<title>", html, fixed = TRUE))
 })
 
 test_that("build_stint_ribbon_svg returns NULL when there are no lanes", {
@@ -985,7 +988,7 @@ test_that("attach_has_scores treats a NULL or empty scoreless set as nothing to 
 
 test_that("both Tab 4 modes build the link before select drops the ids", {
   src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
-  add_lines <- grep("add_ribbon_link_column", src)
+  add_lines <- grep("^[[:space:]]*df <- add_ribbon_link_column", src)
   sel_lines <- grep("disp <- df %>% select", src, fixed = TRUE)
   expect_length(sel_lines, 2)
   expect_length(add_lines, 2)
@@ -998,10 +1001,10 @@ test_that("both Tab 4 modes attach has_scores immediately before building the li
   src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
   attach_lines <- grep("attach_has_scores(df, fetch_scoreless_games(gl_data_version()))",
                        src, fixed = TRUE)
-  add_lines <- grep("df <- add_ribbon_link_column(df)", src, fixed = TRUE)
+  add_lines <- grep("^[[:space:]]*df <- add_ribbon_link_column\\(df\\)", src)
   expect_length(attach_lines, 2)
   expect_length(add_lines, 2)
-  for (al in add_lines) expect_true(any(attach_lines == al - 1))
+  for (al in add_lines) expect_true(any(attach_lines < al & attach_lines >= al - 5))
 })
 
 test_that("Tab 11 passes an empty scoreless set instead of a second query", {
@@ -1048,6 +1051,59 @@ test_that("app.js exposes the queued ribbon click handler", {
   expect_match(js, "window.ibplSendShinyEvent", fixed = TRUE)
 })
 
+test_that("the ribbon JS selects on click and clears on Escape", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_true(grepl("setSelection", js, fixed = TRUE))
+  expect_true(grepl("data-segments", js, fixed = TRUE) ||
+              grepl("dataset.segments", js, fixed = TRUE))
+  expect_true(grepl("Escape", js, fixed = TRUE))
+  expect_false(grepl("setOverlaps", js, fixed = TRUE))
+})
+
+test_that("the ribbon JS preserves touch focus and toggles keyboard selection", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_match(js, 'matchMedia("(hover: none)")', fixed = TRUE)
+  keyboard <- regmatches(js, regexpr(
+    'if \\(lane && isStint\\(lane\\) && \\(e.key === "Enter"(.|\\n)*?return;',
+    js, perl = TRUE))
+  expect_true(nzchar(keyboard))
+  expect_match(keyboard, 'lane.classList.contains("is-selected")', fixed = TRUE)
+  expect_match(keyboard, "clearSelection(svg)", fixed = TRUE)
+})
+
+test_that("aggregated lineup rows mark their windows with prominent echoes", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  expect_match(js, "function marksOtherWindows() { return true; }", fixed = TRUE)
+  expect_match(js, "function aggregateSegments(segments)", fixed = TRUE)
+  expect_match(js, "b.duration - a.duration", fixed = TRUE)
+  expect_match(js, "row.dataset.windows", fixed = TRUE)
+  expect_match(js, "appendInlineDetail", fixed = TRUE)
+  expect_match(js, "function setLineupFocus(svg, row)", fixed = TRUE)
+  expect_match(js, "row.dataset.lineupIndex", fixed = TRUE)
+  expect_match(js, "ibpl-ribbon-lineup-mark", fixed = TRUE)
+  expect_match(js, "ibpl-ribbon-margin-lineup-echo", fixed = TRUE)
+  expect_match(css, ".ibpl-ribbon-lineup-mark.is-primary", fixed = TRUE)
+  expect_match(css, ".ibpl-ribbon-lineup-mark.is-echo", fixed = TRUE)
+  expect_match(css, ".ibpl-ribbon-margin-lineup-echo", fixed = TRUE)
+  expect_match(css, "fill: var(--ibpl-text)", fixed = TRUE)
+  expect_match(css, "stroke: var(--ibpl-accent-hover)", fixed = TRUE)
+})
+
+test_that("selection hides the aggregate bar number regardless of focus", {
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  expect_match(
+    css,
+    ".ibpl-ribbon-lane.is-selected > .ibpl-ribbon-num { opacity: 0 !important; }",
+    fixed = TRUE
+  )
+})
+
 test_that("ribbon_link_cell's data-input-id follows the input_id argument", {
   # The league lives in the argument, not in the function name -- one helper
   # serves both leagues via input_id. Per CLAUDE.md, no parallel euro_
@@ -1070,6 +1126,29 @@ test_that("Tab 11 builds the ribbon link on the source frame before the display 
                    warn = FALSE)
   expect_gte(length(grep("add_ribbon_link_column", src, fixed = TRUE)), 1)
   expect_true(any(grepl("eurogl_ribbon_click", src, fixed = TRUE)))
+})
+
+test_that("linked game dates sort orthogonally without a hidden date column", {
+  israel <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
+                            warn = FALSE), collapse = "\n")
+  euro <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
+                          warn = FALSE), collapse = "\n")
+  expect_match(israel, "gl_date_cell_renderer", fixed = TRUE)
+  expect_match(euro, "render = gl_date_cell_renderer()", fixed = TRUE)
+  expect_false(grepl("game_date_sort", israel, fixed = TRUE))
+  expect_false(grepl("game_date_sort", euro, fixed = TRUE))
+  # The data frames are already arranged by their real date columns. An empty
+  # DataTables order preserves that authoritative order on first paint, while
+  # the renderer below handles subsequent date-header clicks.
+  expect_equal(length(gregexpr("order = list()", israel, fixed = TRUE)[[1L]]), 2L)
+  expect_equal(length(gregexpr("order = list()", euro, fixed = TRUE)[[1L]]), 1L)
+  expect_false(grepl('order = list(list(2, "desc")', israel, fixed = TRUE))
+  expect_false(grepl('order = list(list(2, "desc")', euro, fixed = TRUE))
+  renderer <- as.character(gl_date_cell_renderer())
+  expect_match(renderer, "type !== 'sort' && type !== 'type'", fixed = TRUE)
+  expect_match(renderer, "textContent", fixed = TRUE)
+  expect_match(renderer, "Number(iso[1]) * 10000", fixed = TRUE)
+  expect_match(renderer, "Number(dmy[3]) * 10000", fixed = TRUE)
 })
 
 test_that("EuroLeague game logs reuse the shared ribbon builder, not a parallel euro_ clone", {
@@ -1474,88 +1553,6 @@ test_that("the builder itself applies the side flip to the bars it draws", {
   expect_true(grepl('data-pa="4"', opp, fixed = TRUE))
 })
 
-# ---------------- ribbon_stint_overlaps ----------------
-# A merged bar spans a median of 4 different fives (measured 2026-09-06 over
-# 1,470 real stints), so "the five at the start" is stale for most of most
-# bars. The strip lists everyone who shared the floor, with their spans.
-
-ov_lanes <- function() {
-  rbind(
-    lane_row("own", "1", 0, 600),    # the hovered player
-    lane_row("own", "2", 0, 600),    # on the whole stint
-    lane_row("own", "3", 300, 900),  # joins partway, stays past the end
-    lane_row("own", "4", 0, 200),    # leaves partway
-    lane_row("own", "5", 100, 150),  # entirely inside
-    lane_row("own", "6", 700, 900),  # no overlap at all
-    lane_row("opp", "7", 0, 600)     # other side, never counted
-  )
-}
-
-test_that("ribbon_stint_overlaps clips each teammate to the stint window", {
-  out <- ribbon_stint_overlaps(ov_lanes(), "own", "1", 0, 600)
-  expect_equal(out$start_elapsed[out$player_key == "3"], 300)
-  expect_equal(out$end_elapsed[out$player_key == "3"], 600)
-  expect_equal(out$end_elapsed[out$player_key == "4"], 200)
-  expect_equal(out$start_elapsed[out$player_key == "5"], 100)
-  expect_equal(out$end_elapsed[out$player_key == "5"], 150)
-})
-
-test_that("ribbon_stint_overlaps excludes the player, the other side and non-overlaps", {
-  out <- ribbon_stint_overlaps(ov_lanes(), "own", "1", 0, 600)
-  expect_false("1" %in% out$player_key)
-  expect_false("6" %in% out$player_key)
-  expect_false("7" %in% out$player_key)
-})
-
-test_that("ribbon_stint_overlaps orders by shared time, longest first", {
-  out <- ribbon_stint_overlaps(ov_lanes(), "own", "1", 0, 600)
-  expect_equal(out$player_key, c("2", "3", "4", "5"))
-  expect_equal(out$shared, c(600, 300, 200, 50))
-})
-
-test_that("ribbon_stint_overlaps keeps both spans when a teammate returns", {
-  # Teammate 2 subs out and back in while player 1 stays on the floor.
-  lanes <- rbind(
-    lane_row("own", "1", 0, 600),
-    lane_row("own", "2", 0, 100),
-    lane_row("own", "2", 400, 600)
-  )
-  out <- ribbon_stint_overlaps(lanes, "own", "1", 0, 600)
-  expect_equal(nrow(out), 2)
-  expect_equal(out$start_elapsed, c(0, 400))
-  expect_true(all(out$shared == 300))   # 100 + 200, on both rows
-})
-
-test_that("ribbon_stint_overlaps drops a zero-length touch at the boundary", {
-  # Teammate leaves exactly when this stint starts: they never shared the floor.
-  lanes <- rbind(lane_row("own", "1", 300, 600), lane_row("own", "2", 0, 300))
-  out <- ribbon_stint_overlaps(lanes, "own", "1", 300, 600)
-  expect_equal(nrow(out), 0)
-})
-
-test_that("ribbon_stint_overlaps returns zero typed rows when nothing overlaps", {
-  out <- ribbon_stint_overlaps(lane_row("own", "1", 0, 600), "own", "1", 0, 600)
-  expect_equal(nrow(out), 0)
-  expect_true(all(c("player_key", "player_label", "start_elapsed",
-                    "end_elapsed", "shared") %in% names(out)))
-})
-
-test_that("ribbon_stint_overlaps sorts input that does not arrive in order", {
-  # The ov_lanes() fixture happens to list its teammates in descending
-  # shared time already, so it would pass even with the order() call
-  # removed. This fixture lists the SHORTEST overlap first and the longest
-  # last, so it fails unless the sort actually runs.
-  lanes <- rbind(
-    lane_row("own", "1", 0, 600),
-    lane_row("own", "9", 500, 600),   # shared 100, listed first
-    lane_row("own", "8", 0, 600),     # shared 600, listed last
-    lane_row("own", "7", 200, 600)    # shared 400
-  )
-  out <- ribbon_stint_overlaps(lanes, "own", "1", 0, 600)
-  expect_equal(out$player_key, c("8", "7", "9"))
-  expect_equal(out$shared, c(600, 400, 100))
-})
-
 # ---------------- ribbon_player_totals ----------------
 
 test_that("ribbon_player_totals sums floor time and +/- per player per side", {
@@ -1763,12 +1760,12 @@ test_that("no number is drawn when steps are absent", {
 })
 
 
-# ---------------- hover payload ----------------
+# ---------------- decomposition payload ----------------
 
-test_that("each lane carries the numbers and the teammate spans the strip needs", {
+test_that("each lane carries the numbers and its segment decomposition", {
   lanes <- ribbon_mark_starters(rbind(
-    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
-    lane_row("own", "2", 300, 900, player_label = "Bea Bell")
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams", lineup_key = "h1"),
+    lane_row("own", "2", 300, 900, player_label = "Bea Bell", lineup_key = "h1")
   ))
   steps <- data.frame(elapsed = c(200, 400), order_key = c(1, 2),
                       margin = c(3, 6), own = c(5, 10))
@@ -1783,14 +1780,15 @@ test_that("each lane carries the numbers and the teammate spans the strip needs"
   expect_true(grepl('data-player="Alice Adams"', svg, fixed = TRUE))
   expect_true(grepl("data-pf=", svg, fixed = TRUE))
   expect_true(grepl("data-pa=", svg, fixed = TRUE))
-  # Alice overlapped Bea for 300-600, and the entry carries BOTH axes.
-  expect_true(grepl("Bea Bell", svg, fixed = TRUE))
+  expect_true(grepl("data-segments=", svg, fixed = TRUE))
+  expect_true(grepl("data-lineups=", svg, fixed = TRUE))
+  expect_false(grepl("data-with=", svg, fixed = TRUE))
 })
 
-test_that("a teammate entry names a window and a swing, never a bare name", {
+test_that("the lineup dictionary is serialized once for the accessible label", {
   lanes <- ribbon_mark_starters(rbind(
-    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
-    lane_row("own", "2", 300, 900, player_label = "Bea Bell")
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams", lineup_key = "h1"),
+    lane_row("own", "2", 300, 900, player_label = "Bea Bell", lineup_key = "h1")
   ))
   steps <- data.frame(elapsed = c(200, 400), order_key = c(1, 2),
                       margin = c(3, 6), own = c(5, 10))
@@ -1799,17 +1797,32 @@ test_that("a teammate entry names a window and a swing, never a bare name", {
       data.frame(elapsed = c(200, 400), margin = c(3, 6), order_key = c(1, 2)),
       2400),
     list(n_periods = 4L), steps = steps))
-  with_attr <- regmatches(svg, regexpr('data-with="[^"]*"', svg))
-  expect_true(nzchar(with_attr))
-  # every entry has a clock range and a signed number
-  expect_true(grepl("5:00", with_attr, fixed = TRUE))
-  expect_true(grepl("+", with_attr, fixed = TRUE))
+  expect_true(grepl("made up of 1 lineups", svg, fixed = TRUE))
+  expect_true(grepl("Alice Adams", svg, fixed = TRUE))
+  expect_true(grepl("Bea Bell", svg, fixed = TRUE))
 })
 
-test_that("ribbon_detail_strip renders an aria-hidden container", {
-  strip <- as.character(ribbon_detail_strip())
-  expect_true(grepl("ibpl-ribbon-detail", strip, fixed = TRUE))
-  expect_true(grepl('aria-hidden="true"', strip, fixed = TRUE))
+test_that("the overlap helpers are gone, not merely unused", {
+  expect_false(exists("ribbon_stint_overlaps"))
+  expect_false(exists("ribbon_overlap_label"))
+})
+
+test_that("the SVG exposes inline detail anchors for both teams", {
+  f <- ribbon_fixture()
+  svg <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_match(svg, "data-own-detail-y=", fixed = TRUE)
+  expect_match(svg, "data-opp-detail-y=", fixed = TRUE)
+  expect_match(svg, "ibpl-ribbon-shift-after-own", fixed = TRUE)
+  expect_match(svg, "ibpl-ribbon-shift-after-opp", fixed = TRUE)
+  expect_false(grepl("<title>", svg, fixed = TRUE))
+  expect_false(exists("ribbon_detail_strip"))
+})
+
+test_that("mouse hover no longer writes lineup data into a detail strip", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  expect_false(grepl("function setDetail(svg, lane)", js, fixed = TRUE))
+  expect_false(grepl("Hover or tab to a stint", js, fixed = TRUE))
 })
 
 test_that("the lane aria-label carries the teammates too, not just the numbers", {
@@ -1818,8 +1831,8 @@ test_that("the lane aria-label carries the teammates too, not just the numbers",
   # screen-reader user. Dropping the teammates here would leave that user
   # with no equivalent at all.
   lanes <- ribbon_mark_starters(rbind(
-    lane_row("own", "1", 0, 600, player_label = "Alice Adams"),
-    lane_row("own", "2", 300, 900, player_label = "Bea Bell")
+    lane_row("own", "1", 0, 600, player_label = "Alice Adams", lineup_key = "h1"),
+    lane_row("own", "2", 300, 900, player_label = "Bea Bell", lineup_key = "h1")
   ))
   steps <- data.frame(elapsed = c(200, 400), order_key = c(1, 2),
                       margin = c(3, 6), own = c(5, 10))
@@ -1832,6 +1845,6 @@ test_that("the lane aria-label carries the teammates too, not just the numbers",
   aria <- regmatches(svg, gregexpr('aria-label="[^"]*"', svg))[[1]]
   alice <- aria[grepl("Alice Adams", aria, fixed = TRUE)]
   expect_true(length(alice) > 0)
-  expect_true(any(grepl("on with", alice, fixed = TRUE)))
+  expect_true(any(grepl("made up of", alice, fixed = TRUE)))
   expect_true(any(grepl("Bea Bell", alice, fixed = TRUE)))
 })

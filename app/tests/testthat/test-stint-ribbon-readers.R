@@ -117,6 +117,20 @@ test_that("the Israeli ribbon SQL keeps both HAVING guards on segs/lineup_player
   expect_match(sql, "HAVING\\s+cardinality\\(ARRAY_AGG\\(DISTINCT l\\.player_id\\)\\)\\s*=\\s*5")
 })
 
+test_that("Israeli ribbon health ignores substitution-only transition segments", {
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  sql <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src,
+                                 perl = TRUE))
+  expect_true(nzchar(sql))
+  expect_match(
+    sql,
+    "BOOL_OR(type IS DISTINCT FROM 'substitution') AS has_gameplay",
+    fixed = TRUE
+  )
+  expect_match(sql, "WHERE s.has_gameplay", fixed = TRUE)
+})
+
 test_that("euroleague.ribbon_margin_v has no NULL margin (2026-09-05 live-data bug)", {
   # The OLD view read actions.points_a/points_b directly: the provider leaves
   # the running score NULL until that side has scored, so every early event

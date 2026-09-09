@@ -453,45 +453,366 @@
     band.setAttribute("height", vb.height);
   }
 
-  function setOverlaps(svg, lane) {
-    var lit = svg.querySelectorAll(".ibpl-ribbon-lane.is-overlap");
-    for (var i = 0; i < lit.length; i++) lit[i].classList.remove("is-overlap");
-    if (!isStint(lane)) return;
+  function clearSelection(svg) {
+    if (!svg) return;
+    clearLineupFocus(svg);
+    var selected = svg.querySelector(".ibpl-ribbon-lane.is-selected");
+    if (selected) selected.classList.remove("is-selected");
+    var overlays = svg.querySelectorAll(".ibpl-ribbon-selection-overlay");
+    for (var i = 0; i < overlays.length; i++) overlays[i].remove();
+    resetDetailLayout(svg);
+  }
 
-    var s = Number(lane.dataset.start);
-    var e = Number(lane.dataset.end);
-    var side = lane.classList.contains("is-own") ? "is-own" : "is-opp";
-    var lanes = svg.querySelectorAll(".ibpl-ribbon-lane." + side);
-    for (var k = 0; k < lanes.length; k++) {
-      var o = lanes[k];
-      if (o === lane) continue;
-      // A shared instant is not shared floor time: require a real overlap.
-      if (Math.min(Number(o.dataset.end), e) > Math.max(Number(o.dataset.start), s)) {
-        o.classList.add("is-overlap");
+  function clockLabel(seconds) {
+    var total = Math.max(0, Math.floor(Number(seconds) || 0));
+    return Math.floor(total / 60) + ":" + String(total % 60).padStart(2, "0");
+  }
+
+
+  function pmLabel(value, available) {
+    if (!available || !isFinite(value)) return "";
+    var rounded = Math.round(value);
+    return rounded > 0 ? "+" + rounded : String(rounded);
+  }
+
+  function aggregateSegments(segments) {
+    var groups = Object.create(null);
+    segments.forEach(function(seg) {
+      var key = String(seg.dictIndex);
+      if (!groups[key]) {
+        groups[key] = {
+          dictIndex: seg.dictIndex,
+          duration: 0,
+          pm: 0,
+          hasPm: false,
+          firstStart: seg.start,
+          windows: []
+        };
       }
+      var group = groups[key];
+      group.duration += seg.end - seg.start;
+      group.firstStart = Math.min(group.firstStart, seg.start);
+      group.windows.push({ start: seg.start, end: seg.end });
+      if (seg.pm !== "" && isFinite(Number(seg.pm))) {
+        group.pm += Number(seg.pm);
+        group.hasPm = true;
+      }
+    });
+    return Object.keys(groups).map(function(key) {
+      groups[key].windows.sort(function(a, b) { return a.start - b.start; });
+      return groups[key];
+    }).sort(function(a, b) {
+      return b.duration - a.duration || a.firstStart - b.firstStart;
+    });
+  }
+
+  function resetDetailLayout(svg) {
+    if (!svg) return;
+    var slots = svg.querySelectorAll(".ibpl-ribbon-detail-slot");
+    for (var i = 0; i < slots.length; i++) slots[i].remove();
+
+    var shifted = svg.querySelectorAll(
+      ".ibpl-ribbon-shift-after-own, .ibpl-ribbon-shift-after-opp"
+    );
+    for (var j = 0; j < shifted.length; j++) shifted[j].removeAttribute("transform");
+
+    var periodLines = svg.querySelectorAll(".ibpl-ribbon-period[data-base-y2]");
+    for (var k = 0; k < periodLines.length; k++) {
+      periodLines[k].setAttribute("y2", periodLines[k].dataset.baseY2);
+    }
+
+    var vb = svg.viewBox.baseVal;
+    var baseHeight = Number(svg.dataset.baseHeight);
+    if (isFinite(baseHeight) && baseHeight > 0) {
+      svg.setAttribute("viewBox", [vb.x, vb.y, vb.width, baseHeight].join(" "));
     }
   }
 
-  function setDetail(svg, lane) {
-    var host = svg.parentNode && svg.parentNode.querySelector(".ibpl-ribbon-detail");
-    // Keep the last contents in place on exit (!lane) AND when the pointer
-    // is on a gutter name (!isStint) -- a name is a whole-game index, not a
-    // stint, and has none of the attributes read below.
-    if (!host || !isStint(lane)) return;
-    var d = lane.dataset;
-    var score = (d.pf !== "" && d.pa !== "") ? "  " + d.pf + "-" + d.pa : "";
-    var head = d.player + "  ·  " + d.window + "  ·  " + d.pm + score;
-    host.innerHTML = "";
-    var h = document.createElement("div");
-    h.className = "ibpl-ribbon-detail-head";
-    h.textContent = head;
-    host.appendChild(h);
-    if (d.with) {
-      var w = document.createElement("div");
-      w.className = "ibpl-ribbon-detail-with";
-      w.textContent = "with  " + d.with;
-      host.appendChild(w);
+  function applyDetailLayout(svg, side, extraHeight) {
+    var selector = side === "own"
+      ? ".ibpl-ribbon-shift-after-own"
+      : ".ibpl-ribbon-shift-after-opp";
+    var shifted = svg.querySelectorAll(selector);
+    for (var i = 0; i < shifted.length; i++) {
+      shifted[i].setAttribute("transform", "translate(0 " + extraHeight + ")");
     }
+
+    var periodLines = svg.querySelectorAll(".ibpl-ribbon-period[data-base-y2]");
+    for (var j = 0; j < periodLines.length; j++) {
+      periodLines[j].setAttribute(
+        "y2", Number(periodLines[j].dataset.baseY2) + extraHeight
+      );
+    }
+
+    var vb = svg.viewBox.baseVal;
+    var baseHeight = Number(svg.dataset.baseHeight);
+    svg.setAttribute("viewBox", [vb.x, vb.y, vb.width, baseHeight + extraHeight].join(" "));
+  }
+
+  function appendInlineDetail(svg, lane, lineups, groups) {
+    var side = lane.classList.contains("is-own") ? "own" : "opp";
+    var y = Number(side === "own" ? svg.dataset.ownDetailY : svg.dataset.oppDetailY);
+    var x = Number(svg.dataset.detailX) || 0;
+    var vb = svg.viewBox.baseVal;
+    if (!isFinite(y)) return;
+
+    var slot = document.createElementNS("http://www.w3.org/2000/svg", "foreignObject");
+    slot.setAttribute("class", "ibpl-ribbon-detail-slot");
+    slot.setAttribute("x", x);
+    slot.setAttribute("y", y + 4);
+    slot.setAttribute("width", Math.max(1, vb.width - x - 8));
+    slot.setAttribute("height", 1000);
+
+    var panel = document.createElement("div");
+    panel.className = "ibpl-ribbon-detail";
+    panel.setAttribute("role", "group");
+    panel.setAttribute("aria-label", "Lineups in " + lane.dataset.player + "'s selected stint");
+
+    var head = document.createElement("div");
+    head.className = "ibpl-ribbon-detail-head";
+    head.textContent = lane.dataset.player + " | " + lane.dataset.window;
+    panel.appendChild(head);
+
+    var list = document.createElement("div");
+    list.className = "ibpl-ribbon-detail-list";
+    groups.forEach(function(group) {
+      var row = document.createElement("div");
+      row.className = "ibpl-ribbon-detail-row";
+      row.setAttribute("tabindex", "0");
+      row.setAttribute("role", "button");
+      row.dataset.lineupIndex = group.dictIndex;
+      row.dataset.windows = group.windows.map(function(window) {
+        return window.start + "," + window.end;
+      }).join(";");
+
+      var members = document.createElement("div");
+      members.className = "ibpl-ribbon-detail-members";
+      members.textContent = lineups[group.dictIndex] || "Lineup unavailable";
+      row.appendChild(members);
+
+      var windows = group.windows.map(function(window) {
+        return clockLabel(window.start) + "-" + clockLabel(window.end);
+      });
+      var meta = document.createElement("div");
+      meta.className = "ibpl-ribbon-detail-meta";
+      var pieces = [clockLabel(group.duration) + " total"];
+      var totalPm = pmLabel(group.pm, group.hasPm);
+      if (totalPm) pieces.push("+/- " + totalPm);
+      pieces.push((windows.length === 1 ? "window: " : "windows: ") + windows.join(", "));
+      meta.textContent = pieces.join(" | ");
+      row.appendChild(meta);
+      list.appendChild(row);
+    });
+    panel.appendChild(list);
+    slot.appendChild(panel);
+    svg.appendChild(slot);
+
+    var panelHeight = Math.max(44, Math.ceil(panel.scrollHeight) + 8);
+    slot.setAttribute("height", panelHeight);
+    applyDetailLayout(svg, side, panelHeight + 8);
+  }
+
+  function segmentNumberFits(text, width) {
+    return text && width >= text.length * 0.6 * 9 + 6;
+  }
+
+  function segmentsForLane(lane) {
+    return (lane.dataset.segments || "").split(";").filter(Boolean).map(function(value) {
+      var parts = value.split(",");
+      return {
+        start: Number(parts[0]),
+        end: Number(parts[1]),
+        pm: parts[2] || "",
+        dictIndex: Number(parts[3])
+      };
+    }).filter(function(seg) {
+      return isFinite(seg.start) && isFinite(seg.end) && seg.end > seg.start &&
+        isFinite(seg.dictIndex);
+    });
+  }
+
+  function segmentGeometry(lane, start, end) {
+    var rect = lane && lane.querySelector("rect");
+    if (!rect) return null;
+    var laneStart = Number(lane.dataset.start);
+    var laneEnd = Number(lane.dataset.end);
+    if (!isFinite(laneStart) || !isFinite(laneEnd) || laneEnd <= laneStart) return null;
+    var x0 = Number(rect.getAttribute("x"));
+    var width = Number(rect.getAttribute("width"));
+    return {
+      x: x0 + ((start - laneStart) / (laneEnd - laneStart)) * width,
+      width: ((end - start) / (laneEnd - laneStart)) * width,
+      y: Number(rect.getAttribute("y")),
+      height: Number(rect.getAttribute("height"))
+    };
+  }
+
+  // L5 is PROVISIONAL: the user chose "all windows that five played" while
+  // unsure, and will decide once they have seen it live. Narrowing to the
+  // clicked stint alone must stay a one-line change -- return false here.
+  // Do not inline this test anywhere else.
+  function marksOtherWindows() { return true; }
+
+  function clearLineupFocus(svg) {
+    if (!svg) return;
+    var generated = svg.querySelectorAll(
+      ".ibpl-ribbon-lineup-mark-overlay, .ibpl-ribbon-lineup-clip, .ibpl-ribbon-margin-lineup-echo"
+    );
+    for (var i = 0; i < generated.length; i++) generated[i].remove();
+    var activeRows = svg.parentNode &&
+      svg.parentNode.querySelectorAll(".ibpl-ribbon-detail-row.is-active");
+    for (var j = 0; activeRows && j < activeRows.length; j++) {
+      activeRows[j].classList.remove("is-active");
+    }
+    var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
+    if (focus) focus.removeAttribute("clip-path");
+    svg.classList.remove("is-lineup-focused");
+  }
+
+  function appendClipRect(clip, geometry, y, height) {
+    var rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+    rect.setAttribute("x", geometry.x);
+    rect.setAttribute("y", y);
+    rect.setAttribute("width", geometry.width);
+    rect.setAttribute("height", height);
+    clip.appendChild(rect);
+  }
+
+  function setLineupFocus(svg, row) {
+    clearLineupFocus(svg);
+    if (!svg || !row) return;
+    var selected = svg.querySelector(".ibpl-ribbon-lane.is-selected");
+    var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
+    var defs = svg.querySelector("defs");
+    if (!selected || !focus || !defs) return;
+
+    var wantedIndex = Number(row.dataset.lineupIndex);
+    var wantedWindows = (row.dataset.windows || "").split(";").filter(Boolean).map(function(value) {
+      var parts = value.split(",");
+      return { start: Number(parts[0]), end: Number(parts[1]) };
+    });
+    if (!isFinite(wantedIndex) || !wantedWindows.length) return;
+
+    var sourceClip = svg.querySelector("#" + selected.dataset.clip);
+    var sourceClipRect = sourceClip && sourceClip.querySelector("rect");
+    if (!sourceClipRect) return;
+    var clipY = Number(sourceClipRect.getAttribute("y"));
+    var clipHeight = Number(sourceClipRect.getAttribute("height"));
+    var fullClip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+    var echoClip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+    fullClip.setAttribute("class", "ibpl-ribbon-lineup-clip");
+    echoClip.setAttribute("class", "ibpl-ribbon-lineup-clip");
+    fullClip.setAttribute("id", selected.dataset.clip + "-lineup-full");
+    echoClip.setAttribute("id", selected.dataset.clip + "-lineup-echo");
+
+    var lanes = svg.querySelectorAll(".ibpl-ribbon-lane");
+    var hasFull = false;
+    var hasEcho = false;
+    for (var i = 0; i < lanes.length; i++) {
+      var lane = lanes[i];
+      if (lane.dataset.clip !== selected.dataset.clip) continue;
+      var segments = segmentsForLane(lane);
+      var overlay = null;
+      for (var j = 0; j < segments.length; j++) {
+        var seg = segments[j];
+        if (seg.dictIndex !== wantedIndex) continue;
+        var primary = lane === selected && wantedWindows.some(function(window) {
+          return seg.start === window.start && seg.end === window.end;
+        });
+        if (!primary && !marksOtherWindows()) continue;
+        var geometry = segmentGeometry(lane, seg.start, seg.end);
+        if (!geometry) continue;
+        if (!overlay) {
+          overlay = document.createElementNS("http://www.w3.org/2000/svg", "g");
+          overlay.setAttribute("class", "ibpl-ribbon-lineup-mark-overlay");
+        }
+        var mark = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+        mark.setAttribute("class", "ibpl-ribbon-lineup-mark " +
+          (primary ? "is-primary" : "is-echo"));
+        mark.setAttribute("x", geometry.x);
+        mark.setAttribute("y", geometry.y);
+        mark.setAttribute("width", geometry.width);
+        mark.setAttribute("height", geometry.height);
+        mark.setAttribute("rx", "2");
+        overlay.appendChild(mark);
+        appendClipRect(primary ? fullClip : echoClip, geometry, clipY, clipHeight);
+        if (primary) hasFull = true;
+        else hasEcho = true;
+      }
+      if (overlay) {
+        var selectionOverlay = lane.querySelector(".ibpl-ribbon-selection-overlay");
+        lane.insertBefore(overlay, selectionOverlay || null);
+      }
+    }
+
+    if (!hasFull) {
+      clearLineupFocus(svg);
+      return;
+    }
+    defs.appendChild(fullClip);
+    focus.setAttribute("clip-path", "url(#" + fullClip.id + ")");
+    if (hasEcho) {
+      defs.appendChild(echoClip);
+      var echoPath = focus.cloneNode(false);
+      echoPath.setAttribute("class", "ibpl-ribbon-margin-lineup-echo");
+      echoPath.setAttribute("clip-path", "url(#" + echoClip.id + ")");
+      focus.parentNode.insertBefore(echoPath, focus.nextSibling);
+    }
+    row.classList.add("is-active");
+    svg.classList.add("is-lineup-focused");
+  }
+
+  function setSelection(svg, lane) {
+    var otherSelected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
+    for (var i = 0; i < otherSelected.length; i++) {
+      var otherSvg = otherSelected[i].closest(".ibpl-ribbon");
+      if (otherSvg && otherSvg !== svg) clearSelection(otherSvg);
+    }
+    clearSelection(svg);
+    if (!isStint(lane)) return;
+
+    var segments = segmentsForLane(lane);
+    if (!segments.length) return;
+
+    var lineups = [];
+    try { lineups = JSON.parse(svg.dataset.lineups || "[]"); } catch (e) {}
+    lane.classList.add("is-selected");
+    var rect = lane.querySelector("rect");
+    if (!rect) return;
+    var overlay = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    overlay.setAttribute("class", "ibpl-ribbon-selection-overlay");
+    var laneStart = Number(lane.dataset.start);
+    var laneEnd = Number(lane.dataset.end);
+    var x0 = Number(rect.getAttribute("x"));
+    var width = Number(rect.getAttribute("width"));
+    var y = Number(rect.getAttribute("y"));
+    var h = Number(rect.getAttribute("height"));
+
+    segments.forEach(function(seg, index) {
+      var x = x0 + ((seg.start - laneStart) / (laneEnd - laneStart)) * width;
+      var w = ((seg.end - seg.start) / (laneEnd - laneStart)) * width;
+      if (index > 0) {
+        var divider = document.createElementNS("http://www.w3.org/2000/svg", "line");
+        divider.setAttribute("class", "ibpl-ribbon-segment-divider");
+        divider.setAttribute("x1", x);
+        divider.setAttribute("x2", x);
+        divider.setAttribute("y1", y);
+        divider.setAttribute("y2", y + h);
+        overlay.appendChild(divider);
+      }
+      if (segmentNumberFits(seg.pm, w)) {
+        var number = document.createElementNS("http://www.w3.org/2000/svg", "text");
+        number.setAttribute("class", "ibpl-ribbon-segment-num");
+        number.setAttribute("x", x + w / 2);
+        number.setAttribute("y", y + h - 4);
+        number.setAttribute("text-anchor", "middle");
+        number.textContent = seg.pm;
+        overlay.appendChild(number);
+      }
+    });
+    lane.appendChild(overlay);
+
+    appendInlineDetail(svg, lane, lineups, aggregateSegments(segments));
   }
 
   function setFocus(svg, lane) {
@@ -515,8 +836,6 @@
     }
 
     setBand(svg, lane);
-    setOverlaps(svg, lane);
-    setDetail(svg, lane);
   }
 
   function laneFrom(target) {
@@ -550,17 +869,76 @@
   });
 
   document.addEventListener("click", function(e) {
-    // Touch/no-hover devices only: tap-to-toggle (spec §8). On a
-    // hover-capable device, mouseover already set is-active, so toggling
-    // here on click would clear emphasis while the pointer is still on the
-    // lane. Spec D3 rejects pinning; evaluated per-event (not cached at
-    // load) so it tracks a device gaining/losing a pointer.
-    if (!(window.matchMedia && window.matchMedia("(hover: none)").matches)) return;
+    // Selection is click-driven on every device. Touch/no-hover devices also
+    // retain the original tap-to-focus behavior for the lane and curve.
     var lane = laneFrom(e.target);
-    if (!lane) return;
-    var svg = lane.closest(".ibpl-ribbon");
-    if (!svg) return;
-    setFocus(svg, lane.classList.contains("is-active") ? null : lane);
+    if (lane && isStint(lane)) {
+      e.preventDefault();
+      var svg = lane.closest(".ibpl-ribbon");
+      if (!svg) return;
+      // Preserve the original touch tap-to-focus behavior alongside the new
+      // click selection. Hover-capable pointers already called setFocus().
+      if (window.matchMedia && window.matchMedia("(hover: none)").matches) {
+        setFocus(svg, lane.classList.contains("is-active") ? null : lane);
+      }
+      if (lane.classList.contains("is-selected")) clearSelection(svg);
+      else setSelection(svg, lane);
+      return;
+    }
+    if (e.target.closest && e.target.closest(".ibpl-ribbon-detail")) return;
+    var selected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
+    for (var i = 0; i < selected.length; i++) {
+      var selectedSvg = selected[i].closest(".ibpl-ribbon");
+      if (selectedSvg) clearSelection(selectedSvg);
+    }
+  });
+
+  document.addEventListener("keydown", function(e) {
+    var lane = laneFrom(e.target);
+    if (lane && isStint(lane) && (e.key === "Enter" || e.key === " ")) {
+      e.preventDefault();
+      var svg = lane.closest(".ibpl-ribbon");
+      if (svg) {
+        if (lane.classList.contains("is-selected")) clearSelection(svg);
+        else setSelection(svg, lane);
+      }
+      return;
+    }
+    if (e.key === "Escape") {
+      var selected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
+      for (var i = 0; i < selected.length; i++) {
+        var selectedSvg = selected[i].closest(".ibpl-ribbon");
+        if (selectedSvg) clearSelection(selectedSvg);
+      }
+    }
+  });
+
+  document.addEventListener("mouseover", function(e) {
+    var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
+    if (!row) return;
+    var svg = row.closest(".ibpl-ribbon");
+    if (svg) setLineupFocus(svg, row);
+  });
+
+  document.addEventListener("mouseout", function(e) {
+    var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
+    if (!row || (e.relatedTarget && row.contains(e.relatedTarget))) return;
+    var svg = row.closest(".ibpl-ribbon");
+    if (svg) clearLineupFocus(svg);
+  });
+
+  document.addEventListener("focusin", function(e) {
+    var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
+    if (!row) return;
+    var svg = row.closest(".ibpl-ribbon");
+    if (svg) setLineupFocus(svg, row);
+  });
+
+  document.addEventListener("focusout", function(e) {
+    var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
+    if (!row || (e.relatedTarget && row.contains(e.relatedTarget))) return;
+    var svg = row.closest(".ibpl-ribbon");
+    if (svg) clearLineupFocus(svg);
   });
 })();
 
@@ -570,6 +948,12 @@
   var warningMs = Math.max(1, Number(cfg.warningSec || 60)) * 1000;
   var ttlMs = Math.max(1, Number(cfg.stateTtlHours || 24)) * 60 * 60 * 1000;
   var stateVersion = Number(cfg.stateVersion || 1);
+  // The server tells us whether it will actually close an idle session. When
+  // it will not (the default since the move to Posit Connect Cloud), the
+  // countdown and the paused pill would be lying, so the timer-driven half of
+  // this is switched off. The disconnect-driven half stays: Connect Cloud
+  // stops the container on its own and the pill is still the right response.
+  var serverClosesSession = cfg.closeSession !== false;
   warningMs = Math.min(warningMs, Math.max(1000, timeoutMs - 1000));
   var loadedFromBookmark = location.search.indexOf("_inputs_") !== -1;
   var bookmarkCaptureArmed = !loadedFromBookmark;
@@ -731,8 +1115,9 @@
       "#shiny-reconnect-dialog",
       ".shiny-reconnect-dialog",
       ".reconnect-dialog",
-      // shinyapps.io's hosting layer, not Shiny itself. These are the nodes
-      // that actually appear in production.
+      // shiny-server-client's nodes, not Shiny's own. Served by Posit Connect
+      // Cloud as well as the old shinyapps.io; verified present in the
+      // deployed page 2026-09-07. These are what actually appear in production.
       "#ss-overlay",
       ".ss-gray-out",
       "#ss-connect-dialog"
@@ -762,7 +1147,7 @@
       }).observe(dialog, { attributes: true, attributeFilter: ["style"] });
       return true;
     };
-    // Present at page load on shinyapps.io; watch for it otherwise rather than
+    // Present at page load on Connect Cloud; watch for it otherwise rather than
     // assume the ordering, since getting this wrong means hiding the dialog and
     // showing nothing in its place.
     if (attach() || !document.body) return;
@@ -883,6 +1268,10 @@
   }
 
   function sendActivity(force) {
+    // Nothing reads idle_activity_ts when the server is not closing idle
+    // sessions, and a 15s heartbeat would also hold Connect Cloud's container
+    // open for as long as a tab is left on screen.
+    if (!serverClosesSession) return;
     var now = Date.now();
     // Hard guard: never emit an input before shiny's init message has been
     // answered, or we steal the restore context. See handleConnected().
@@ -906,6 +1295,7 @@
   }
 
   function checkIdleState() {
+    if (!serverClosesSession) return;
     if (idleExpired || document.visibilityState === "hidden") return;
     var remainingMs = timeoutMs - (Date.now() - lastActivity);
     if (remainingMs <= 0) {
@@ -993,7 +1383,7 @@
     if (document.visibilityState !== "visible") return;
     // Background tabs throttle timers and can deliver shiny:disconnected after
     // visibilitychange. Compare wall-clock time before activity can reset it.
-    if ((Date.now() - lastActivity) >= timeoutMs) idleExpired = true;
+    if (serverClosesSession && (Date.now() - lastActivity) >= timeoutMs) idleExpired = true;
     if (!shinyReadyForRestore()) idleExpired = true;
     if (idleExpired) {
       restoreOnReturn();
@@ -1026,7 +1416,7 @@
     watchHostingDisconnectDialog();
     sendActivity(true);
     if (timerId) window.clearInterval(timerId);
-    timerId = window.setInterval(checkIdleState, 1000);
+    if (serverClosesSession) timerId = window.setInterval(checkIdleState, 1000);
   }
 
   // Registered at parse time, not in bindActivity(), so the listener is in

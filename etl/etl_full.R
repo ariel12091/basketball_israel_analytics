@@ -493,10 +493,37 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
           params = list(gid)
         )
       }
-      upsert_by_like(pg, SCHEMA, "schedule", game_sched, manage_transaction = FALSE)
-      upsert_by_like(pg, SCHEMA, "actions_clean", actions_df, manage_transaction = FALSE)
-      upsert_by_like(pg, SCHEMA, "subs", subs_df, manage_transaction = FALSE)
-      upsert_by_like(pg, SCHEMA, "full_rosters", roster_df, manage_transaction = FALSE)
+      action_table_cols <- get_table_cols(pg, SCHEMA, "actions_clean")
+      ignored_action_cols <- setdiff(
+        names(actions_df),
+        c(action_table_cols, "team_score", "game_year")
+      )
+      if (length(ignored_action_cols)) {
+        log_msg(sprintf(
+          "  game %d source action column(s) not persisted: %s",
+          gid, paste(ignored_action_cols, collapse = ", ")
+        ), "WARN")
+      }
+      base_payloads <- list(
+        schedule = game_sched,
+        actions_clean = actions_df,
+        subs = subs_df,
+        full_rosters = roster_df
+      )
+      for (table_name in names(base_payloads)) {
+        tryCatch(
+          upsert_by_like(
+            pg, SCHEMA, table_name, base_payloads[[table_name]],
+            manage_transaction = FALSE
+          ),
+          error = function(e) {
+            stop(sprintf(
+              "%s upsert failed [%s]: %s",
+              table_name, paste(class(e), collapse = "/"), conditionMessage(e)
+            ), call. = FALSE)
+          }
+        )
+      }
       log_msg(sprintf("  game %d staged: schedule=%d, actions_clean=%d, subs=%d, full_rosters=%d",
                       gid, nrow(game_sched), nrow(actions_df), nrow(subs_df), nrow(roster_df)))
 
