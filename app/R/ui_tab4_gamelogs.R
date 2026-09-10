@@ -45,7 +45,7 @@ ui_tab4_gamelogs <- function() tabPanel(
             title = "What This Tab Answers (Summary)",
             intro = "How did each game look in outcomes and pace-adjusted efficiency terms?",
             bullets = c(
-              "Each row shows GN, Game Type, Date, Team, Opponent, W/L, Score, Off PPP, Def PPP, Net, Off Shot, Def Shot, Off Poss, and Def Poss.",
+              "Each row shows GN, Game Type, Date, Gameflow, Team, Opponent, W/L, Score, Off PPP, Def PPP, Net, Off Shot, Def Shot, Off Poss, and Def Poss.",
               "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
               "Compare Off PPP and Def PPP across games to spot trends; the score alone can mislead when pace varies.",
               "Switch to Four Factors view if you need the cause-level breakdown (eFG%, OREB%, TOV%, FTR)."

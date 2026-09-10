@@ -141,15 +141,15 @@ csv_export_stamp <- function(now = Sys.time()) {
 #
 # The Four Factors header is two-tier: a group row spanning Offense, Defense
 # and Usage over a sub-head row. The blank leading cell spans the eight
-# context columns, so the colspans must stay in step with the sub-head row
-# below -- 9 + 5 + 5 + 2 = 21.
+# context columns, so the colspans must stay in step with the sub-head row.
 gamelog_summary_header <- function(first_label = "GN", second_label = "Game Type",
-                                   has_shots = FALSE) {
+                                   has_shots = FALSE, show_gameflow = FALSE) {
   htmltools::withTags(table(class = 'display', thead(
     tr(
       th(class = "sub-head", first_label),
       th(class = "sub-head", second_label),
       th(class = "sub-head", "Date"),
+      if (show_gameflow) th(class = "sub-head", "Gameflow"),
       th(class = "sub-head", "Team"),
       th(class = "sub-head", "Opponent"),
       th(class = "sub-head", "W/L"),
@@ -166,10 +166,11 @@ gamelog_summary_header <- function(first_label = "GN", second_label = "Game Type
   )))
 }
 
-gamelog_ff_header <- function(first_label = "GN", second_label = "Game Type") {
+gamelog_ff_header <- function(first_label = "GN", second_label = "Game Type",
+                              show_gameflow = FALSE) {
   htmltools::withTags(table(class = 'display', thead(
     tr(
-      th(class = "group-head", colspan = 9, ""),
+      th(class = "group-head", colspan = if (show_gameflow) 10 else 9, ""),
       th(class = "group-head section-left-border", colspan = 5, "Offense"),
       th(class = "group-head section-left-border", colspan = 5, "Defense"),
       th(class = "group-head section-left-border", colspan = 2, "Usage")
@@ -178,6 +179,7 @@ gamelog_ff_header <- function(first_label = "GN", second_label = "Game Type") {
       th(class = "sub-head", first_label),
       th(class = "sub-head", second_label),
       th(class = "sub-head", "Date"),
+      if (show_gameflow) th(class = "sub-head", "Gameflow"),
       th(class = "sub-head", "Team"),
       th(class = "sub-head", "Opponent"),
       th(class = "sub-head", "W/L"),
@@ -3662,7 +3664,9 @@ ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_clic
 # link, so an unexpected upstream shape never silently kills every ribbon.
 add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
                                    date_col = "game_date",
-                                   has_scores_col = "has_scores") {
+                                   has_scores_col = "has_scores",
+                                   output_col = date_col,
+                                   link_label = NULL) {
   if (is.null(df) || !nrow(df)) return(df)
   needed <- c("game_id", "team_id", date_col)
   if (!all(needed %in% names(df))) {
@@ -3684,13 +3688,15 @@ add_ribbon_link_column <- function(df, input_id = "gl_ribbon_click",
   } else {
     rep(TRUE, nrow(df))
   }
+  labels <- if (is.null(link_label)) as.character(df[[date_col]]) else rep(link_label, nrow(df))
   linked <- mapply(
     ribbon_link_cell,
-    df$game_id, df$team_id, as.character(df[[date_col]]),
+    df$game_id, df$team_id, labels,
     own_team = own, opp_team = opp,
     MoreArgs = list(input_id = input_id), USE.NAMES = FALSE
   )
-  df[[date_col]] <- ifelse(gate, linked, as.character(df[[date_col]]))
+  fallback <- if (identical(output_col, date_col)) as.character(df[[date_col]]) else rep("", nrow(df))
+  df[[output_col]] <- ifelse(gate, linked, fallback)
   df
 }
 

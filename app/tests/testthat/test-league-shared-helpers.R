@@ -570,3 +570,15 @@ test_that("the summary header drops the shot columns when there are none", {
   # EuroLeague has no shot splits, so this is the branch tab 11 takes.
   expect_equal(length(gregexpr("sub-head", without, fixed = TRUE)[[1]]), 13L)
 })
+
+test_that("Israeli game-log headers optionally add a Gameflow context column", {
+  OFF_OREB_TOOLTIP <- "off oreb"
+  DEF_OREB_TOOLTIP <- "def oreb"
+  summary <- as.character(gamelog_summary_header(show_gameflow = TRUE))
+  ff <- as.character(gamelog_ff_header(show_gameflow = TRUE))
+
+  expect_match(summary, ">Gameflow<", fixed = TRUE)
+  expect_match(ff, ">Gameflow<", fixed = TRUE)
+  spans <- as.integer(regmatches(ff, gregexpr("(?<=colspan=\")[0-9]+", ff, perl = TRUE))[[1]])
+  expect_equal(spans, c(10L, 5L, 5L, 2L))
+})

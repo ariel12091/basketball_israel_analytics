@@ -572,9 +572,9 @@ server_tab4 <- function(input, output, session, shared) {
       if (is.null(df) || nrow(df) == 0) return(NULL)
 
       df <- attach_has_scores(df, fetch_scoreless_games(gl_data_version()))
-      df <- add_ribbon_link_column(df)
+      df <- add_ribbon_link_column(df, output_col = "gameflow", link_label = "View")
       disp <- df %>% select(
-        gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
+        gn, game_type_label, game_date, gameflow, team_name, opp_team_name, result, score_display,
         minutes,
         off_ppp, def_ppp, net_rtg,
         any_of(c("Off Shot", "Def Shot")),
@@ -674,12 +674,12 @@ server_tab4 <- function(input, output, session, shared) {
           list(targets = hide_idx, visible = FALSE),
           list(targets = "_all", className = "dt-center"),
           list(targets = result_idx, render = result_render),
-          list(targets = date_idx, render = gl_date_cell_renderer())
+          list(targets = date_idx, type = "date")
         ),
         shot_col_defs
       )
 
-      sketch <- gamelog_summary_header(has_shots = has_shots)
+      sketch <- gamelog_summary_header(has_shots = has_shots, show_gameflow = TRUE)
 
       off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
       off_poss_idx <- which(names(disp) == "off_poss") - 1L
@@ -690,7 +690,7 @@ server_tab4 <- function(input, output, session, shared) {
       if (length(off_shot_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_shot_idx, className = "section-left-border dt-center")
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
-                          escape = dt_escape_except(disp, "game_date"),
+                          escape = dt_escape_except(disp, "gameflow"),
                           extensions = "Buttons",
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,
@@ -721,9 +721,9 @@ server_tab4 <- function(input, output, session, shared) {
       if (is.null(df) || nrow(df) == 0) return(NULL)
 
       df <- attach_has_scores(df, fetch_scoreless_games(gl_data_version()))
-      df <- add_ribbon_link_column(df)
+      df <- add_ribbon_link_column(df, output_col = "gameflow", link_label = "View")
       disp <- df %>% select(
-        gn, game_type_label, game_date, team_name, opp_team_name, result, score_display,
+        gn, game_type_label, game_date, gameflow, team_name, opp_team_name, result, score_display,
         minutes, net_rtg,
         off_ppp, off_efg_pct, off_oreb_pct, off_tov_pct, off_ftr_pct,
         def_ppp, def_efg_pct, def_oreb_pct, def_tov_pct, def_ftr_pct,
@@ -749,16 +749,16 @@ server_tab4 <- function(input, output, session, shared) {
         list(targets = "_all", className = "dt-center"),
         list(targets = result_idx, render = result_render),
         list(targets = which(names(disp) %in% hidden_pr_cols) - 1L, visible = FALSE),
-        list(targets = date_idx, render = gl_date_cell_renderer())
+        list(targets = date_idx, type = "date")
       )
       if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_ppp_idx, className = "section-left-border dt-center")
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
       if (length(off_poss_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_poss_idx, className = "section-left-border dt-center")
 
-      sketch <- gamelog_ff_header()
+      sketch <- gamelog_ff_header(show_gameflow = TRUE)
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
-                          escape = dt_escape_except(disp, "game_date"),
+                          escape = dt_escape_except(disp, "gameflow"),
                           extensions = "Buttons",
                           options = list(
                             headerCallback = HEADER_TOOLTIP_JS,

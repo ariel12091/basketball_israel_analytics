@@ -1001,7 +1001,7 @@ test_that("both Tab 4 modes attach has_scores immediately before building the li
   src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
   attach_lines <- grep("attach_has_scores(df, fetch_scoreless_games(gl_data_version()))",
                        src, fixed = TRUE)
-  add_lines <- grep("^[[:space:]]*df <- add_ribbon_link_column\\(df\\)", src)
+  add_lines <- grep("^[[:space:]]*df <- add_ribbon_link_column", src)
   expect_length(attach_lines, 2)
   expect_length(add_lines, 2)
   for (al in add_lines) expect_true(any(attach_lines < al & attach_lines >= al - 5))
@@ -1042,6 +1042,14 @@ test_that("prewarm_for_year leaves fetch_scoreless_games lazy", {
   idx_scoreless <- regexpr("fetch_scoreless_games\\(ver\\)", src)
   expect_true(idx_pf > 0 && idx_hub > idx_pf)
   expect_identical(as.integer(idx_scoreless), -1L)
+})
+
+test_that("ribbon links can use a separate gameflow column", {
+  df <- data.frame(game_id = 115L, team_id = 7L, game_date = as.Date("2026-09-08"))
+  out <- add_ribbon_link_column(df, output_col = "gameflow", link_label = "View")
+  expect_s3_class(out$game_date, "Date")
+  expect_identical(out$game_date, as.Date("2026-09-08"))
+  expect_match(out$gameflow, '>View</a>', fixed = TRUE)
 })
 
 test_that("app.js exposes the queued ribbon click handler", {
@@ -1129,14 +1137,14 @@ test_that("Tab 11 builds the ribbon link on the source frame before the display 
   expect_true(any(grepl("eurogl_ribbon_click", src, fixed = TRUE)))
 })
 
-test_that("linked game dates sort orthogonally without a hidden date column", {
+test_that("Israeli game dates stay plain while gameflow carries the link", {
   israel <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
                             warn = FALSE), collapse = "\n")
   euro <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
                           warn = FALSE), collapse = "\n")
-  expect_match(israel, "gl_date_cell_renderer", fixed = TRUE)
+  expect_match(israel, 'output_col = "gameflow", link_label = "View"', fixed = TRUE)
+  expect_match(israel, 'escape = dt_escape_except(disp, "gameflow")', fixed = TRUE)
   expect_match(euro, "render = gl_date_cell_renderer()", fixed = TRUE)
-  expect_false(grepl("game_date_sort", israel, fixed = TRUE))
   expect_false(grepl("game_date_sort", euro, fixed = TRUE))
   # Israeli game logs explicitly order newest-first on initial paint, while
   # the renderer below handles subsequent date-header clicks.
@@ -1262,16 +1270,17 @@ test_that("ribbon_link_cell's onclick target is a function app.js actually defin
   expect_match(js, paste0("window\\.", fn_name, "\\s*="))
 })
 
-test_that("Tab 4 and Tab 11 game-log tables escape everything except the ribbon-link date column", {
+test_that("game-log tables escape everything except their ribbon-link column", {
   # Dropping this at any of the three call sites renders the ribbon-link
   # anchor as visible HTML text instead of a clickable link.
   tab4 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
                           warn = FALSE), collapse = "\n")
   tab11 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
                            warn = FALSE), collapse = "\n")
-  escape_pattern <- 'escape\\s*=\\s*dt_escape_except\\(disp,\\s*"game_date"\\)'
-  expect_identical(lengths(regmatches(tab4, gregexpr(escape_pattern, tab4))), 2L)
-  expect_match(tab11, escape_pattern)
+  tab4_pattern <- 'escape\\s*=\\s*dt_escape_except\\(disp,\\s*"gameflow"\\)'
+  tab11_pattern <- 'escape\\s*=\\s*dt_escape_except\\(disp,\\s*"game_date"\\)'
+  expect_identical(lengths(regmatches(tab4, gregexpr(tab4_pattern, tab4))), 2L)
+  expect_match(tab11, tab11_pattern)
 })
 
 test_that("Tab 4 and Tab 11 ribbon output ids and SVG id_prefix never collide", {
