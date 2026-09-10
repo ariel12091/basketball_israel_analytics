@@ -349,7 +349,11 @@ server <- function(input, output, session) {
     td <- teams_for_year_df()
     team_choices <- stats::setNames(as.character(td$team_id), as.character(td$team_name))
     for (id in c("teams", "on_opponents", "ld_opponents")) {
-      update_restore_aware_selectize(session, input, id, team_choices)
+      # League team lists are small. Keep them in the browser so navigation
+      # never depends on session-scoped dataobj routes surviving a worker hop.
+      update_restore_aware_selectize(
+        session, input, id, team_choices, server = FALSE
+      )
     }
   }, ignoreInit = FALSE)
 
@@ -584,11 +588,11 @@ server <- function(input, output, session) {
       team_id <- as.character(input$home_team)
       if (team_id %in% unname(team_choices)) {
         updateSelectizeInput(session, "teams", choices = team_choices,
-                             selected = team_id, server = TRUE)
+                             selected = team_id, server = FALSE)
       }
     } else {
       updateSelectizeInput(session, "teams", choices = team_choices,
-                           selected = character(0), server = TRUE)
+                           selected = character(0), server = FALSE)
     }
     updateTabsetPanel(session, "main_tabs", selected = "onoff")
   })

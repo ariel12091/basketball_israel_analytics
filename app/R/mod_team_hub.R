@@ -529,7 +529,9 @@ server_team_hub <- function(input, output, session, shared) {
       "home_team",
       choices = choices,
       selected = selected,
-      server = TRUE
+      # This is a small league-team list; keeping it client-side avoids a
+      # session-scoped dataobj request during cross-tab navigation.
+      server = FALSE
     )
     if (first_remembered) {
       hub_saved_default_team(
@@ -1029,7 +1031,7 @@ server_team_hub <- function(input, output, session, shared) {
         "teams",
         choices = team_choices,
         selected = tid,
-        server = TRUE
+        server = FALSE
       )
     }
     updateTabsetPanel(session, "main_tabs", selected = "onoff")
