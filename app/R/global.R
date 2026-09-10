@@ -92,19 +92,19 @@ LD_DEFAULT_NUM      <- "5"
 RANKING_BASELINE <- 100
 RANKING_MIN_PCT  <- 0.25   # at least 25% of rows should be ranked
 
-# Explicit exceptions for Israeli seasons that begin before October.
+# Explicit exceptions for Israeli seasons with non-standard date bounds.
 SEASON_DATE_BOUNDS <- list(
   `2027` = list(start = as.Date("2026-09-01"), end = as.Date("2027-07-01"))
 )
 
-# Season window for a given game_year. Most seasons use Oct 1 (Y-1) through
+# Season window for a given game_year. Most seasons use Sep 1 (Y-1) through
 # Jul 1 (Y); explicit feed-confirmed exceptions are defined above.
 season_date_bounds_for_year <- function(gy = DEFAULT_GAME_YEAR) {
   y <- suppressWarnings(as.integer(gy))
   if (length(y) != 1L || is.na(y)) y <- as.integer(DEFAULT_GAME_YEAR)
   explicit <- SEASON_DATE_BOUNDS[[as.character(y)]]
   if (!is.null(explicit)) return(explicit)
-  list(start = as.Date(sprintf("%04d-10-01", y - 1L)),
+  list(start = as.Date(sprintf("%04d-09-01", y - 1L)),
        end   = as.Date(sprintf("%04d-07-01", y)))
 }
 
@@ -824,7 +824,8 @@ navbar_league_select_ui <- function() {
 
 # ---------------- Filter Chips Builder ----------------
 GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
-                       "17" = "PO Finals", "33" = "Play-in", "34" = "Winner Cup", "35" = "State Cup")
+                       "17" = "PO Finals", "33" = "Play-in", "10" = "Winner Cup",
+                       "34" = "Winner Cup", "10,34" = "Winner Cup", "35" = "State Cup")
 GAME_TYPE_CHOICES_UI <- c(
   "All" = "",
   "Regular season" = "5",
@@ -832,7 +833,7 @@ GAME_TYPE_CHOICES_UI <- c(
   "Playoffs - Finals" = "17",
   "Playoffs - Semifinals" = "26",
   "Play-in" = "33",
-  "Winner Cup" = "34",
+  "Winner Cup" = "10,34",
   "State Cup" = "35"
 )
 

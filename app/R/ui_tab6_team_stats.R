@@ -72,16 +72,7 @@ ui_tab6_team_stats <- tabPanel(
               "Game Filters",
               selectizeInput(
                 "tst_game_type", "Game type",
-                choices = c(
-                  "All" = "",
-                  "Regular season" = "5",
-                  "Playoffs - Quarterfinals" = "16",
-                  "Playoffs - Finals" = "17",
-                  "Playoffs - Semifinals" = "26",
-                  "Play-in" = "33",
-                  "Winner Cup" = "34",
-                  "State Cup" = "35"
-                ),
+                choices = GAME_TYPE_CHOICES_UI,
                 selected = "", multiple = TRUE,
                 options = list(placeholder = "All game types")
               ),

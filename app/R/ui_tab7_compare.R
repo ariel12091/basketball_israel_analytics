@@ -170,9 +170,7 @@ ui_tab7_compare <- function() tabPanel(
           selectizeInput("cmp_a_opponents", "Opponents", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All opponents")),
           selectizeInput("cmp_a_game_type", "Game type",
-                         choices = c("All" = "", "Regular season" = "5", "Playoffs - QF" = "16",
-                                     "Playoffs - Finals" = "17", "Playoffs - SF" = "26",
-                                     "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
+                         choices = GAME_TYPE_CHOICES_UI,
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
             column(4, selectInput("cmp_a_opp_rank_side", "Top / Bottom",
@@ -257,9 +255,7 @@ ui_tab7_compare <- function() tabPanel(
           selectizeInput("cmp_b_opponents", "Opponents", choices = NULL, multiple = TRUE,
                          options = list(placeholder = "All opponents")),
           selectizeInput("cmp_b_game_type", "Game type",
-                         choices = c("All" = "", "Regular season" = "5", "Playoffs - QF" = "16",
-                                     "Playoffs - Finals" = "17", "Playoffs - SF" = "26",
-                                     "Play-in" = "33", "Winner Cup" = "34", "State Cup" = "35"),
+                         choices = GAME_TYPE_CHOICES_UI,
                          selected = "", multiple = TRUE, options = list(placeholder = "All")),
           fluidRow(
             column(4, selectInput("cmp_b_opp_rank_side", "Top / Bottom",

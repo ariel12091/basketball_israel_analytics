@@ -3,7 +3,9 @@
   "STATIC_TEAM_ROSTERS",
   "static_team_roster",
   "SEASON_DATE_BOUNDS",
-  "season_date_bounds_for_year"
+  "season_date_bounds_for_year",
+  "GAME_TYPE_LABELS",
+  "GAME_TYPE_CHOICES_UI"
 )
 
 test_that("Israeli 2026-27 season is the default with its provider teams", {
@@ -19,8 +21,17 @@ test_that("Israeli 2026-27 date bounds include the September opening games", {
   expect_identical(bounds$start, as.Date("2026-09-01"))
   expect_identical(bounds$end, as.Date("2027-07-01"))
 
-  # Historical seasons retain the established fallback window.
-  old_bounds <- .rollover_defs$season_date_bounds_for_year(2026L)
-  expect_identical(old_bounds$start, as.Date("2025-10-01"))
-  expect_identical(old_bounds$end, as.Date("2026-07-01"))
+  bounds_2026 <- .rollover_defs$season_date_bounds_for_year(2026L)
+  expect_identical(bounds_2026$start, as.Date("2025-09-01"))
+  expect_identical(bounds_2026$end, as.Date("2026-07-01"))
+
+  bounds_2025 <- .rollover_defs$season_date_bounds_for_year(2025L)
+  expect_identical(bounds_2025$start, as.Date("2024-09-01"))
+  expect_identical(bounds_2025$end, as.Date("2025-07-01"))
+})
+
+test_that("Winner Cup filters include both legacy and 2027 provider game types", {
+  expect_identical(unname(.rollover_defs$GAME_TYPE_CHOICES_UI[["Winner Cup"]]), "10,34")
+  expect_identical(unname(.rollover_defs$GAME_TYPE_LABELS[c("10", "34")]),
+                   c("Winner Cup", "Winner Cup"))
 })
