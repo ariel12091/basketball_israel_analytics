@@ -452,14 +452,74 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
   })
 }
 
-# Central query helper used across modules.
-# Kept as a thin wrapper for pooler compatibility with parameterized queries.
-db_get_query <- function(conn_or_pool, statement, params = NULL) {
-  if (is.null(params)) {
-    DBI::dbGetQuery(conn_or_pool, statement)
-  } else {
-    DBI::dbGetQuery(conn_or_pool, statement, params = params)
+# Central query helper used across modules. Slow/error telemetry separates time
+# spent waiting for a pooled connection from time spent executing PostgreSQL.
+db_query_label <- function(statement) {
+  sql <- paste(as.character(statement), collapse = " ")
+  comment <- regmatches(sql, regexpr("/\\*[^*]+\\*/", sql))
+  if (length(comment) && nzchar(comment)) {
+    return(trimws(sub("^/\\*|\\*/$", "", comment)))
   }
+  compact <- gsub("[[:space:]]+", " ", trimws(sql))
+  substr(compact, 1L, 100L)
+}
+
+db_get_query <- function(conn_or_pool, statement, params = NULL, label = NULL) {
+  started <- proc.time()[["elapsed"]]
+  checkout_ms <- 0
+  sql_ms <- NA_real_
+  status <- "ok"
+  query_conn <- conn_or_pool
+  pooled <- inherits(conn_or_pool, "Pool")
+
+  on.exit({
+    total_ms <- (proc.time()[["elapsed"]] - started) * 1000
+    threshold_ms <- suppressWarnings(as.numeric(
+      Sys.getenv("APP_SLOW_QUERY_MS", "5000")
+    ))
+    if (!is.finite(threshold_ms)) threshold_ms <- 5000
+    if ((identical(status, "error") || total_ms >= threshold_ms) &&
+        exists("app_log", mode = "function")) {
+      session <- tryCatch(
+        shiny::getDefaultReactiveDomain(),
+        error = function(e) NULL
+      )
+      app_log(
+        "db_perf",
+        sprintf(
+          "%s checkout_ms=%.1f sql_ms=%.1f total_ms=%.1f status=%s",
+          label %||% db_query_label(statement),
+          checkout_ms,
+          sql_ms,
+          total_ms,
+          status
+        ),
+        level = "WARN",
+        session = session
+      )
+    }
+  }, add = TRUE)
+
+  tryCatch({
+    if (pooled) {
+      checkout_started <- proc.time()[["elapsed"]]
+      query_conn <- pool::poolCheckout(conn_or_pool)
+      checkout_ms <- (proc.time()[["elapsed"]] - checkout_started) * 1000
+      on.exit(pool::poolReturn(query_conn), add = TRUE)
+    }
+
+    sql_started <- proc.time()[["elapsed"]]
+    out <- if (is.null(params)) {
+      DBI::dbGetQuery(query_conn, statement)
+    } else {
+      DBI::dbGetQuery(query_conn, statement, params = params)
+    }
+    sql_ms <- (proc.time()[["elapsed"]] - sql_started) * 1000
+    out
+  }, error = function(e) {
+    status <<- "error"
+    stop(e)
+  })
 }
 
 # ---------------- Canonical per-season reference lookups ----------------
