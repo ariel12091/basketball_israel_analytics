@@ -1032,15 +1032,16 @@ test_that("fetch_scoreless_games carries no season dimension in its cache key", 
   expect_false(grepl("gy", key_line, fixed = TRUE))
 })
 
-test_that("prewarm_for_year also warms fetch_scoreless_games", {
-  # So the 2.56s / 21,240-buffer scan never lands on a user request.
+test_that("prewarm_for_year leaves fetch_scoreless_games lazy", {
+  # The 2.56s / 21,240-buffer scan is specific to Game Logs ribbon links and
+  # must not delay Home or unrelated first-tab navigation for every session.
   src <- paste(readLines(testthat::test_path("..", "..", "app.R"), warn = FALSE),
               collapse = "\n")
   idx_pf <- regexpr("prewarm_for_year <- function", src)
   idx_hub <- regexpr("hub_fetch_team_ff\\(gy_int, ver\\)", src)
   idx_scoreless <- regexpr("fetch_scoreless_games\\(ver\\)", src)
-  expect_true(idx_pf > 0 && idx_hub > 0 && idx_scoreless > 0)
-  expect_true(idx_scoreless > idx_pf && idx_scoreless > idx_hub)
+  expect_true(idx_pf > 0 && idx_hub > idx_pf)
+  expect_identical(as.integer(idx_scoreless), -1L)
 })
 
 test_that("app.js exposes the queued ribbon click handler", {
