@@ -837,6 +837,13 @@ GAME_TYPE_CHOICES_UI <- c(
   "State Cup" = "35"
 )
 
+game_type_filter_values <- function(x) {
+  if (is.null(x) || !length(x)) return(integer(0))
+  parts <- unlist(strsplit(as.character(x), ",", fixed = TRUE), use.names = FALSE)
+  values <- suppressWarnings(as.integer(trimws(parts)))
+  unique(values[!is.na(values)])
+}
+
 accordion_toggle_link <- function() {
   tags$div(
     class = "text-end mb-2",

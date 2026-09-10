@@ -381,7 +381,7 @@ server_tab4 <- function(input, output, session, shared) {
     # Game type filter
     gt <- input$gl_game_type
     if (!is.null(gt) && length(gt) > 0 && any(nzchar(gt))) {
-      gt_vals <- as.integer(gt[nzchar(gt)])
+      gt_vals <- game_type_filter_values(gt)
       df <- df %>% filter(game_type %in% !!gt_vals)
     }
 
@@ -698,10 +698,7 @@ server_tab4 <- function(input, output, session, shared) {
                             buttons = csv_export_button("game_logs_summary"),
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            # `df` is already authoritatively arranged by
-                            # date/GN. Preserve it on first paint; header clicks
-                            # still use the numeric date renderer above.
-                            order = list(),
+                            order = list(list(date_idx, "desc"), list(0, "desc")),
                             columnDefs = col_defs
                           ))
 
@@ -769,7 +766,7 @@ server_tab4 <- function(input, output, session, shared) {
                             buttons = csv_export_button("game_logs_four_factors"),
                             deferRender = TRUE, scrollX = TRUE,
                             scrollY = "70vh", scrollCollapse = TRUE,
-                            order = list(),
+                            order = list(list(date_idx, "desc"), list(0, "desc")),
                             columnDefs = col_defs
                           ))
 

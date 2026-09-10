@@ -1138,12 +1138,10 @@ test_that("linked game dates sort orthogonally without a hidden date column", {
   expect_match(euro, "render = gl_date_cell_renderer()", fixed = TRUE)
   expect_false(grepl("game_date_sort", israel, fixed = TRUE))
   expect_false(grepl("game_date_sort", euro, fixed = TRUE))
-  # The data frames are already arranged by their real date columns. An empty
-  # DataTables order preserves that authoritative order on first paint, while
+  # Israeli game logs explicitly order newest-first on initial paint, while
   # the renderer below handles subsequent date-header clicks.
-  expect_equal(length(gregexpr("order = list()", israel, fixed = TRUE)[[1L]]), 2L)
+  expect_equal(length(gregexpr('order = list(list(date_idx, "desc")', israel, fixed = TRUE)[[1L]]), 2L)
   expect_equal(length(gregexpr("order = list()", euro, fixed = TRUE)[[1L]]), 1L)
-  expect_false(grepl('order = list(list(2, "desc")', israel, fixed = TRUE))
   expect_false(grepl('order = list(list(2, "desc")', euro, fixed = TRUE))
   renderer <- as.character(gl_date_cell_renderer())
   expect_match(renderer, "type !== 'sort' && type !== 'type'", fixed = TRUE)

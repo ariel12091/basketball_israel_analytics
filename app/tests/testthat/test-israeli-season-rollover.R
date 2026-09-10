@@ -5,7 +5,8 @@
   "SEASON_DATE_BOUNDS",
   "season_date_bounds_for_year",
   "GAME_TYPE_LABELS",
-  "GAME_TYPE_CHOICES_UI"
+  "GAME_TYPE_CHOICES_UI",
+  "game_type_filter_values"
 )
 
 test_that("Israeli 2026-27 season is the default with its provider teams", {
@@ -34,4 +35,5 @@ test_that("Winner Cup filters include both legacy and 2027 provider game types",
   expect_identical(unname(.rollover_defs$GAME_TYPE_CHOICES_UI[["Winner Cup"]]), "10,34")
   expect_identical(unname(.rollover_defs$GAME_TYPE_LABELS[c("10", "34")]),
                    c("Winner Cup", "Winner Cup"))
+  expect_identical(.rollover_defs$game_type_filter_values("10,34"), c(10L, 34L))
 })
