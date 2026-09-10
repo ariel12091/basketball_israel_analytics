@@ -104,8 +104,7 @@ test_that("Tab 11 preserves its newest-first server order", {
 
   # An empty DataTables order disables its implicit column-0 sort and preserves
   # build_games()'s date/round/game ordering on first paint.
-  expect_match(src, "order = list()", fixed = TRUE)
-  expect_false(grepl('order = list(list(2, "desc")', src, fixed = TRUE))
+  expect_match(src, 'order = list(list(date_idx, "desc")', fixed = TRUE)
 })
 
 # DataTables preserves build_games()'s incoming order. The game_id tiebreak

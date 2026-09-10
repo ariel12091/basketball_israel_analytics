@@ -179,7 +179,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     # in Offense or Defense: it is their difference, and it is there so the
     # table can be ordered by it.
     if (ff) {
-      cols <- c("round_number", "phase_label", "game_date", "team_name", "opp_team_name",
+      cols <- c("round_number", "phase_label", "game_date", "gameflow", "team_name", "opp_team_name",
                 "result", "score", "minutes", "net_rtg",
                 "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
                 "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct",
@@ -191,14 +191,14 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
         def_tov_pct = FALSE, def_ftr_pct = TRUE
       )
       round_cols <- c(names(heat_reverse), "net_rtg")
-      sketch <- gamelog_ff_header("Rd", "Phase")
+      sketch <- gamelog_ff_header("Rd", "Phase", show_gameflow = TRUE)
     } else {
-      cols <- c("round_number", "phase_label", "game_date", "team_name", "opp_team_name",
+      cols <- c("round_number", "phase_label", "game_date", "gameflow", "team_name", "opp_team_name",
                 "result", "score", "minutes",
                 "off_ppp", "def_ppp", "net_rtg", "off_poss", "def_poss")
       heat_reverse <- c(off_ppp = FALSE, def_ppp = TRUE)
       round_cols <- c("off_ppp", "def_ppp", "net_rtg")
-      sketch <- gamelog_summary_header("Rd", "Phase", has_shots = FALSE)
+      sketch <- gamelog_summary_header("Rd", "Phase", has_shots = FALSE, show_gameflow = TRUE)
     }
 
     pr_cols <- intersect(
@@ -209,7 +209,10 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     # scoreless set rather than inventing a second query against this
     # league's schema for a condition it does not have.
     df <- attach_has_scores(df, NULL)
-    df <- add_ribbon_link_column(df, input_id = "eurogl_ribbon_click")
+    df <- add_ribbon_link_column(
+      df, input_id = "eurogl_ribbon_click",
+      output_col = "gameflow", link_label = "View"
+    )
     disp <- df[, c(cols, pr_cols), drop = FALSE]
 
     result_idx <- which(names(disp) == "result") - 1L
@@ -223,7 +226,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
       list(className = "dt-center", targets = "_all"),
       list(targets = result_idx, render = gl_result_cell_renderer()),
       list(targets = hidden_idx, visible = FALSE),
-      list(targets = date_idx, render = gl_date_cell_renderer())
+      list(targets = date_idx, type = "date")
     )
     # Section separators under the Offense / Defense / Usage group headings.
     if (length(off_ppp_idx)) col_defs[[length(col_defs) + 1]] <-
@@ -235,13 +238,12 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
     dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
       extensions = "Buttons",
-      escape = dt_escape_except(disp, "game_date"),
+      escape = dt_escape_except(disp, "gameflow"),
       options = list(headerCallback = HEADER_TOOLTIP_JS, dom = "Btip",
         buttons = csv_export_button(if (ff) "euroleague_game_logs_four_factors"
                                     else "euroleague_game_logs_summary"),
         pageLength = 50, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE,
-        # build_games() already supplies date/round/game ordering.
-        order = list(),
+        order = list(list(date_idx, "desc"), list(0, "desc")),
         columnDefs = col_defs)) %>%
       DT::formatRound(intersect(round_cols, names(disp)), 1)
 

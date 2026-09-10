@@ -50,7 +50,7 @@ ui_tab11_euro_gamelogs <- function() tabPanel(
             title = "What This Tab Answers (Summary)",
             intro = "How did each EuroLeague game look in result and possession-adjusted efficiency terms?",
             bullets = c(
-              "Each row is one team's perspective on one game, with round, opponent, result, score, and ratings.",
+              "Each row is one team's perspective on one game, with round, date, Gameflow, opponent, result, score, and ratings.",
               "Off PPP is points scored per 100 possessions; Def PPP is points allowed per 100. Net is the gap.",
               "Compare games by efficiency rather than score alone, because pace and possession counts vary."
             )

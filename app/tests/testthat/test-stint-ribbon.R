@@ -1137,20 +1137,19 @@ test_that("Tab 11 builds the ribbon link on the source frame before the display 
   expect_true(any(grepl("eurogl_ribbon_click", src, fixed = TRUE)))
 })
 
-test_that("Israeli game dates stay plain while gameflow carries the link", {
+test_that("game dates stay plain while gameflow carries the link in both leagues", {
   israel <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab4.R"),
                             warn = FALSE), collapse = "\n")
   euro <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
                           warn = FALSE), collapse = "\n")
   expect_match(israel, 'output_col = "gameflow", link_label = "View"', fixed = TRUE)
   expect_match(israel, 'escape = dt_escape_except(disp, "gameflow")', fixed = TRUE)
-  expect_match(euro, "render = gl_date_cell_renderer()", fixed = TRUE)
-  expect_false(grepl("game_date_sort", euro, fixed = TRUE))
+  expect_match(euro, 'output_col = "gameflow", link_label = "View"', fixed = TRUE)
+  expect_match(euro, 'escape = dt_escape_except(disp, "gameflow")', fixed = TRUE)
   # Israeli game logs explicitly order newest-first on initial paint, while
   # the renderer below handles subsequent date-header clicks.
   expect_equal(length(gregexpr('order = list(list(date_idx, "desc")', israel, fixed = TRUE)[[1L]]), 2L)
-  expect_equal(length(gregexpr("order = list()", euro, fixed = TRUE)[[1L]]), 1L)
-  expect_false(grepl('order = list(list(2, "desc")', euro, fixed = TRUE))
+  expect_equal(length(gregexpr('order = list(list(date_idx, "desc")', euro, fixed = TRUE)[[1L]]), 1L)
   renderer <- as.character(gl_date_cell_renderer())
   expect_match(renderer, "type !== 'sort' && type !== 'type'", fixed = TRUE)
   expect_match(renderer, "textContent", fixed = TRUE)
@@ -1278,7 +1277,7 @@ test_that("game-log tables escape everything except their ribbon-link column", {
   tab11 <- paste(readLines(testthat::test_path("..", "..", "R", "server_tab11_euro_gamelogs.R"),
                            warn = FALSE), collapse = "\n")
   tab4_pattern <- 'escape\\s*=\\s*dt_escape_except\\(disp,\\s*"gameflow"\\)'
-  tab11_pattern <- 'escape\\s*=\\s*dt_escape_except\\(disp,\\s*"game_date"\\)'
+  tab11_pattern <- 'escape\\s*=\\s*dt_escape_except\\(disp,\\s*"gameflow"\\)'
   expect_identical(lengths(regmatches(tab4, gregexpr(tab4_pattern, tab4))), 2L)
   expect_match(tab11, tab11_pattern)
 })
