@@ -627,6 +627,22 @@ server_team_hub <- function(input, output, session, shared) {
     )
   })
 
+  # The dashboard reader is keyed by the shared data version. Accepting a
+  # newer version while that reader is still rendering invalidates the same
+  # reactive mid-flush, which leaves Shiny's client output state machine out of
+  # sequence. Commit the version only after the current flush is complete.
+  accept_data_version_after_flush <- function(version) {
+    accept_data_version <- shared$accept_data_version
+    if (!is.function(accept_data_version) || is.null(version)) {
+      return(invisible(FALSE))
+    }
+    version <- as.character(version)
+    session$onFlushed(function() {
+      accept_data_version(version)
+    }, once = TRUE)
+    invisible(TRUE)
+  }
+
   hub_dashboard_df <- reactive({
     dashboard <- hub_fetch_dashboard(
       hub_gy(),
@@ -635,10 +651,7 @@ server_team_hub <- function(input, output, session, shared) {
       session = session
     )
     version <- attr(dashboard, "data_version", exact = TRUE)
-    accept_data_version <- shared$accept_data_version
-    if (is.function(accept_data_version) && !is.null(version)) {
-      accept_data_version(version)
-    }
+    accept_data_version_after_flush(version)
     dashboard
   })
 
@@ -772,11 +785,8 @@ server_team_hub <- function(input, output, session, shared) {
     gy <- hub_gy()
     persisted <- hub_fetch_team_ratings_presets(gy, hub_ver(), session = session)
     if (!is.null(persisted)) {
-      accept_data_version <- shared$accept_data_version
       persisted_version <- attr(persisted, "data_version", exact = TRUE)
-      if (is.function(accept_data_version) && !is.null(persisted_version)) {
-        accept_data_version(persisted_version)
-      }
+      accept_data_version_after_flush(persisted_version)
       return(persisted)
     }
 

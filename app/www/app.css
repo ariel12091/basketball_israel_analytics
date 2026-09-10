@@ -100,6 +100,11 @@ body {
   font-size: 1.1rem;
 }
 .navbar .navbar-nav .nav-link {
+  /* Keep wrapped-row tab links above a hover menu from the row above. Without
+     this stacking order, the menu can cover the next tab and trap the pointer
+     inside its own :hover area. */
+  position: relative;
+  z-index: 10001;
   color: var(--ibpl-text-muted);
   font-weight: 600;
   font-size: 0.88rem;
