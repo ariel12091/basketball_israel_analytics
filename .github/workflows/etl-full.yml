@@ -17,13 +17,9 @@ on:
         required: false
         type: boolean
         default: false
-  # Scheduled ETL is paused while the league is out of action.
-  # Restore this block when recurring overnight runs should resume:
-  # schedule:
-  #   # GitHub cron is UTC. These cover 00:15 Asia/Jerusalem in both
-  #   # daylight (+03) and standard (+02) time.
-  #   - cron: '15 21 * * *'
-  #   - cron: '15 22 * * *'
+  schedule:
+    # Run once nightly: 00:15 in Israel daylight time, 23:15 in standard time.
+    - cron: '15 21 * * *'
 
 jobs:
   etl:
