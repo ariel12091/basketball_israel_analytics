@@ -578,7 +578,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       )
       provisional_pws <- dplyr::left_join(
         poss_stage %>%
-          dplyr::mutate(q_bucket = dplyr::if_else(quarter < 5, 0L, quarter)),
+          dplyr::mutate(q_bucket = as.integer(quarter)),
         provisional_stints_df,
         provisional_by
       )
@@ -710,7 +710,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         between(id, final_start_id, .join_end_id, bounds = "[)")
       )
       pws_stage <- dplyr::left_join(
-        poss_stage %>% dplyr::mutate(q_bucket = dplyr::if_else(quarter < 5, 0L, quarter)),
+        poss_stage %>% dplyr::mutate(q_bucket = as.integer(quarter)),
         stints_for_join,
         by
       ) |>
@@ -730,7 +730,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
               team_id_defense = team_id,
               lineup_hash_defense = lineup_hash,
               num_starters_defense = num_starters
-            ),
+          ),
           by = c("game_id", "team_id_defense", "lineup_hash_defense")
         )
 

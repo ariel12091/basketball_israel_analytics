@@ -681,7 +681,7 @@ compute_possessions <- function(actions_tbl) {
       pct_ft = round(parameters_free_throw_number / NULLIF(.effective_ft_awarded, 0), 2),
       team_score = case_when(parameters_made == "made" ~ parameters_points, TRUE ~ NULL)
     ) |>
-    mutate(q_bucket = if_else(quarter < 5, 0L, quarter)) %>%
+    mutate(q_bucket = as.integer(quarter)) %>%
     group_by(game_id) |>
     dbplyr::window_order(id) |>
     ungroup()
@@ -815,7 +815,7 @@ compute_stints <- function(pg) {
     distinct(id, game_id, team_id, quarter, quarter_time,
              end_game_seconds_remaining, lineup_id, lineup_hash) |>
     group_by(game_id, team_id) |>
-    dbplyr::window_order(quarter, desc(end_game_seconds_remaining), id) |>
+    dbplyr::window_order(quarter, id) |>
     #arrange(quarter, desc(end_game_seconds_remaining), id) |>
     left_join(
       poss |>
@@ -842,15 +842,14 @@ compute_stints <- function(pg) {
     #arrange(quarter, desc(start_segment)) |>
     inner_join(lineups_segments, by = c("game_id"), suffix = c("_offense","_defense")) |>
     filter(team_id_offense != team_id_defense,
-           (quarter_offense < 5 & quarter_defense < 5) |
-             (quarter_offense >= 5 & quarter_defense >= 5 & quarter_offense == quarter_defense)) |>
+           quarter_offense == quarter_defense) |>
     mutate(
       final_start_seg = pmin(start_segment_offense, start_segment_defense),
       final_end_seg   = pmax(end_segment_offense, end_segment_defense),
       final_start_id  = pmax(start_id_offense, start_id_defense),
       final_end_id    = pmin(end_id_offense, end_id_defense),
       quarter_min     = pmin(quarter_offense, quarter_defense),
-      q_bucket        = if_else(quarter_min < 5, 0L, quarter_min)
+      q_bucket        = as.integer(quarter_min)
     ) |>
     filter(final_end_id > final_start_id) |>
     group_by(game_id, final_start_id, final_end_id) |>
@@ -995,7 +994,7 @@ etl_update <- function() {
   by <- join_by(team_id, game_id, q_bucket, between(id, final_start_id, .join_end_id, bounds = "[)"))
 
   pws_stage <- left_join(poss_stage %>%
-                           mutate(q_bucket = if_else(quarter < 5, 0L, quarter)), stints_for_join, by) %>%
+                           mutate(q_bucket = as.integer(quarter)), stints_for_join, by) %>%
     dplyr::select(-.join_end_id)
   pws_stage <- pws_stage %>%
     dplyr::left_join(
