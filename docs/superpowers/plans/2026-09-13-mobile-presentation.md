@@ -562,6 +562,13 @@ window.IBPL_MOBILE_TABLE = {
     });
   }
 
+  function removeCarets(node) {
+    var carets = node.querySelectorAll(".ibpl-m-caret");
+    for (var i = 0; i < carets.length; i++) {
+      carets[i].parentNode.removeChild(carets[i]);
+    }
+  }
+
   function applyTable(api) {
     var node = api.table().node();
     var orig = origVisible(node, api);
@@ -582,12 +589,16 @@ window.IBPL_MOBILE_TABLE = {
 
     if (changed) {
       // columns.adjust() alone leaves the header measured against the old
-      // layout; a redraw re-measures it and keeps the current page.
+      // layout; a redraw re-measures it and keeps the current page. The guarded
+      // draw.dt handler skips this draw, so finish the caret pass below here.
       api.columns.adjust();
       api.draw(false);
-      return;
     }
-    if (isMobile()) addCarets(api, keep, orig);
+    if (isMobile()) {
+      addCarets(api, keep, orig);
+    } else {
+      removeCarets(node);
+    }
   }
 
   function applyAll() {
@@ -730,7 +741,10 @@ Launch with `IBPL_CACHE_UI=false ... runApp('app', port = 7788)`. With the Playw
 }
 ```
 
-Expected: `visible: 3`, `carets` equal to the row count, `overflow: true` (no horizontal overflow).
+Expected immediately after the first visibility change, without a second sort,
+page, or filter action: `visible: 3`, `carets` equal to the row count,
+`overflow: true` (no horizontal overflow). The redraw guard suppresses the
+nested `draw.dt` event, so this initial pass must insert the carets itself.
 
 Then `browser_click` the first caret and evaluate:
 
@@ -743,7 +757,9 @@ Then `browser_click` the first caret and evaluate:
 
 Expected: `open: true`, `rows` > 10, `html: true` — the child row contains **markup**, confirming the gradient cells survived. `html: false` means `render("display")` was flattened to text and the task is not done.
 
-Finally resize to 1440x900 and confirm `visible` returns to its full count and no caret remains.
+Finally resize to 1440x900 and confirm `visible` returns to its full count and
+no caret remains in the DOM. Resize back to 390x844 and confirm the carets
+return without another table interaction.
 
 - [ ] **Step 7: Check the console**
 
@@ -767,7 +783,8 @@ git commit -m "feat(mobile): priority columns and caret expand for DT tables"
 
 **Interfaces:**
 - Consumes: `body.ibpl-mobile`, `ibpl:mobilechange`.
-- Produces: CSS class `.ibpl-m-viewmode` on the promoted radio group.
+- Produces: CSS class `.ibpl-m-viewmode` on the promoted radio group; a navbar
+  cluster moved inside `.navbar-collapse` while mobile mode is active.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -799,6 +816,8 @@ test_that("the fixed navbar cluster is unfixed on mobile", {
   # body.league-* sets these to inline-flex; the override must not break the
   # league filtering that decides WHICH season selector shows.
   expect_true(grepl(".league-nav-il", css, fixed = TRUE))
+  # Static positioning alone does not put a header node inside the burger.
+  expect_true(grepl(".navbar-collapse", read_repo_txt("www", "mobile.js"), fixed = TRUE))
 })
 ```
 
@@ -869,16 +888,35 @@ body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
 }
 ```
 
-- [ ] **Step 5: Append the view-mode promotion to `mobile.js`**
+- [ ] **Step 5: Append the navbar-cluster relocation and view-mode promotion to `mobile.js`**
 
 ```js
-/* ---- Promote the view-mode radios above the table on mobile -------------
-   The navbar hover menus are unreachable on touch. They are only ever a
-   shortcut to the .view-mode-container radio group that already exists in each
-   tab's sidebar, so on mobile that group is moved above the table instead.
-   Same input, so the two can never disagree.
+/* ---- Mobile navigation relocation ---------------------------------------
+   The fixed cluster is supplied through navbarPage(header = ...) outside the
+   collapsed menu. Positioning it statically does not put it under the burger,
+   so move the existing node into the collapse and restore it on desktop.
+   The view-mode radios are also moved above each table on mobile. Preserve
+   their sidebar positions with placeholders for the desktop transition.
    ----------------------------------------------------------------------- */
 (function () {
+  var clusterHome = null;
+
+  function relocateCluster(on) {
+    var cluster = document.getElementById("navbar_right_cluster");
+    if (!cluster || !cluster.parentNode) return;
+    if (!clusterHome) {
+      clusterHome = document.createComment("navbar cluster home");
+      cluster.parentNode.insertBefore(clusterHome, cluster);
+    }
+    if (on) {
+      var tabs = document.getElementById("main_tabs");
+      var collapse = tabs && tabs.closest(".navbar-collapse");
+      if (collapse && cluster.parentNode !== collapse) collapse.appendChild(cluster);
+    } else if (clusterHome.parentNode && cluster.parentNode !== clusterHome.parentNode) {
+      clusterHome.parentNode.insertBefore(cluster, clusterHome.nextSibling);
+    }
+  }
+
   function promote(on) {
     var panes = document.querySelectorAll(".tab-pane");
     for (var i = 0; i < panes.length; i++) {
@@ -892,23 +930,42 @@ body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
         var holder = document.createElement("div");
         holder.className = "ibpl-m-viewmode";
         holder.setAttribute("data-ibpl-m-holder", "1");
-        // Remember where it came from so desktop gets it back untouched.
+        // Leave a placeholder in the sidebar. Moving the holder itself would
+        // lose the original parent and restore the radios into the main panel.
+        var home = document.createElement("span");
+        home.style.display = "none";
+        group.parentNode.insertBefore(home, group);
+        holder.ibplHome = home;
         group.setAttribute("data-ibpl-m-home", "1");
-        group.parentNode.insertBefore(holder, group);
         holder.appendChild(group);
         main.insertBefore(holder, main.firstChild);
       } else if (group.getAttribute("data-ibpl-m-home")) {
         var oldHolder = group.parentNode;
         group.removeAttribute("data-ibpl-m-home");
         if (oldHolder && oldHolder.getAttribute("data-ibpl-m-holder")) {
-          oldHolder.parentNode.insertBefore(group, oldHolder);
+          var original = oldHolder.ibplHome;
+          // document.contains, not just parentNode: a detached subtree still
+          // has a parent, and inserting the live radios into one would remove
+          // them from the page entirely.
+          if (original && original.parentNode && document.contains(original)) {
+            original.parentNode.insertBefore(group, original);
+            original.parentNode.removeChild(original);
+          } else {
+            // A sidebar may have been re-rendered while the group was away.
+            // Keep the live input in the page even if its marker disappeared.
+            oldHolder.parentNode.insertBefore(group, oldHolder);
+          }
           oldHolder.parentNode.removeChild(oldHolder);
         }
       }
     }
   }
 
-  function sync() { promote(document.body.classList.contains("ibpl-mobile")); }
+  function sync() {
+    var on = document.body.classList.contains("ibpl-mobile");
+    relocateCluster(on);
+    promote(on);
+  }
 
   document.addEventListener("ibpl:mobilechange", sync);
   if (window.jQuery) window.jQuery(document).on("shown.bs.tab shiny:value", sync);
@@ -920,7 +977,10 @@ body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
 })();
 ```
 
-Moving the node keeps the Shiny input binding intact — Shiny binds by `id`/`name`, not by position — so no input is re-registered and no observer sees a change.
+Moving the existing nodes keeps their Shiny input bindings intact — Shiny binds
+by `id`/`name`, not by position — so no input is re-registered and no observer
+sees a change. The cluster and each view-mode group return to their original
+parents when the viewport crosses back to desktop width.
 
 - [ ] **Step 6: Run the tests**
 
@@ -932,16 +992,27 @@ At 390x844, `browser_evaluate`:
 
 ```js
 () => ({
-  burger: !!document.querySelector('.navbar-toggler'),
+  // Version-agnostic: a UI rendered outside an app context emits the BS3
+  // class (navbar-toggle) while the real app emits BS5's (navbar-toggler).
+  // The collapse attribute is present either way, so assert on that.
+  burger: !!document.querySelector('.navbar [data-bs-toggle="collapse"], .navbar [data-toggle="collapse"]'),
   navLinks: document.querySelectorAll('.nav-link').length,
   clusterFixed: getComputedStyle(document.querySelector('#navbar_right_cluster')).position,
+  clusterInBurger: !!document.querySelector('.navbar-collapse #navbar_right_cluster'),
   promoted: !!document.querySelector('.ibpl-m-viewmode .view-mode-container')
 })
 ```
 
-Expected: `burger: true`, `navLinks: 11`, `clusterFixed: "static"`, `promoted: true`.
+Expected: `burger: true`, `navLinks: 11`, `clusterFixed: "static"`,
+`clusterInBurger: true`, `promoted: true`. Close the burger and verify the
+cluster is hidden with its tabs; reopen it and verify the league and season
+controls are usable.
 
 `browser_click` the burger, then confirm only the current league's tabs are listed — count visible `.nav-item` and compare against `body.league-il`/`league-el`. Then click a view-mode option in the promoted control and confirm the table re-renders.
+
+Resize to 1440x900 and confirm the cluster is outside `.navbar-collapse`, has
+its original fixed positioning, and every `.view-mode-container` is back in its
+sidebar. Resize to 390x844 once more and confirm both relocations still work.
 
 - [ ] **Step 8: Commit**
 
