@@ -80,7 +80,12 @@ Create `app/tests/testthat/test-mobile-layer.R`:
 ```r
 test_that("the viewport meta allows pinch zoom", {
   shared_head_tags <- global_defs("shared_head_tags")$shared_head_tags
-  html <- htmltools::renderTags(shared_head_tags())$html
+  # shared_head_tags() returns a bare tags$head(...): htmltools::renderTags()
+  # hoists head content into $head (via takeHeads()), leaving $html empty for
+  # this input regardless of content -- so the meta tag is asserted on $head.
+  # Asserting on $html would make the first check impossible to pass and the
+  # second vacuously true.
+  html <- htmltools::renderTags(shared_head_tags())$head
 
   expect_match(html, "width=device-width", fixed = TRUE)
   # maximum-scale=1 blocks pinch zoom, which is an accessibility failure and is
