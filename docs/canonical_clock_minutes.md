@@ -29,11 +29,18 @@ event_elapsed_seconds =
   2400 + (quarter - 5) * 300 + (300 - end_game_seconds_remaining)
 ```
 
+Before assigning segment boundaries, order actions by ID within each game/team
+and compute a monotonic timeline as the running maximum of
+`event_elapsed_seconds`. This prevents a provider clock that jumps backward and
+then catches up from counting the repeated interval twice. The raw
+`event_elapsed_seconds` and `clock_regression_seconds` audit fields remain
+unchanged.
+
 For each `(game_id, team_id, lineup_hash, segment_id)`:
 
-1. The segment starts at the canonical elapsed time of its lowest action ID.
+1. The segment starts at the monotonic elapsed time of its lowest action ID.
 2. It ends at the next segment's start.
-3. The final segment ends at the maximum retained elapsed time for that game/team.
+3. The final segment ends at the maximum monotonic elapsed time for that game/team.
 4. `segment_seconds` is `GREATEST(end - start, 0)`.
 
 Consumers deduplicate at the full segment key and count the duration once. Possession, point, and shot statistics remain split by `type_lineup`.
@@ -46,6 +53,7 @@ Do not restore minute formulas based on raw clock extrema, `first()`/`last()` so
 - Incremental canonical refresh: `sql/functions/refresh_segment_clock_fields_for_games.sql`
 - Normal ETL entry point: `refresh_df_pts_poss_lineups_longer_for_games()` calls the canonical refresh for touched games.
 - Existing-schema migration record: `sql/migrations/2026-07-21_canonical_segment_clock_minutes.sql`
+- Backward-clock correction migration: `sql/migrations/2026-09-12_monotonic_segment_clock_minutes.sql`
 - Minute consumers: lineup, on/off, player traditional, team, and sub-lineup SQL definitions under `sql/functions/` and `sql/materialized_views/`
 - Data-quality checks: `etl/run_data_quality_report.R`, especially checks AA through AH
 - Contract tests: `app/tests/testthat/test-clock-minute-contracts.R`
