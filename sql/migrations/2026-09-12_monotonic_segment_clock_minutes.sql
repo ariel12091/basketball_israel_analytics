@@ -1,17 +1,10 @@
--- Rebuild canonical event/segment timing without overwriting raw source clocks.
--- Segment durations are defined by consecutive lineup-segment starts. Interior
--- annotation rows therefore cannot inflate minutes through an extreme clock.
+-- Prevent backward provider-clock jumps from counting the same game interval twice.
+-- Raw event elapsed time and regression size remain available for source auditing;
+-- only lineup-segment boundaries use the monotonic timeline.
 
 CREATE OR REPLACE FUNCTION basketball_test.refresh_segment_clock_fields_for_games(game_ids int4[])
 RETURNS bigint
 LANGUAGE plpgsql
--- Forbid nested-loop joins for this statement. The final UPDATE joins the
--- ~100k-row ordered_actions CTE, and the planner badly under-estimates that
--- join's cardinality (the min(id)=oa.id filter yields rows=1 estimates). At
--- scale, or once a prior batch's UPDATE has bloated the table mid-transaction,
--- it flips to a nested loop with the big CTE on the inner side and effectively
--- never completes. Hash/merge joins are stable and fast here regardless of
--- input size or in-transaction bloat.
 SET enable_nestloop = off
 AS $$
 DECLARE

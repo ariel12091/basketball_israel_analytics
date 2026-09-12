@@ -9,12 +9,36 @@ test_that("canonical segment timing preserves raw clocks and uses lineup boundar
   base_sql <- clock_contract_file(
     "..", "sql", "materialized_views", "df_pts_poss_longer.sql"
   )
+  migration_sql <- clock_contract_file(
+    "..", "sql", "migrations", "2026-09-12_monotonic_segment_clock_minutes.sql"
+  )
 
   expect_true(grepl("event_elapsed_seconds", helper_sql, fixed = TRUE))
+  expect_true(grepl("max(ao.event_elapsed_seconds) OVER", helper_sql, fixed = TRUE))
+  expect_true(grepl(
+    "ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW",
+    helper_sql,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "oa.timeline_elapsed_seconds AS segment_start_elapsed_seconds",
+    helper_sql,
+    fixed = TRUE
+  ))
+  expect_true(grepl("max(ao.event_elapsed_seconds) OVER", base_sql, fixed = TRUE))
+  expect_true(grepl("max(ao.event_elapsed_seconds) OVER", migration_sql, fixed = TRUE))
   expect_true(grepl("lead(ss.segment_start_elapsed_seconds)", helper_sql, fixed = TRUE))
   expect_true(grepl("segment_seconds", base_sql, fixed = TRUE))
   expect_false(grepl("UPDATE basketball_test.actions_clean", helper_sql, fixed = TRUE))
   expect_false(grepl("UPDATE basketball_test.possessions", helper_sql, fixed = TRUE))
+})
+
+test_that("backward provider clocks do not add repeated game time", {
+  raw_elapsed <- c(0, 600, 1200, 720, 900, 1200, 1800, 2400)
+  canonical_elapsed <- cummax(raw_elapsed)
+
+  expect_gt(sum(pmax(diff(raw_elapsed), 0)), 2400)
+  expect_equal(sum(pmax(diff(canonical_elapsed), 0)), 2400)
 })
 
 test_that("production minute SQL no longer uses action-clock extrema", {

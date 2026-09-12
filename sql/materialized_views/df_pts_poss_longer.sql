@@ -163,6 +163,11 @@ action_order AS (
 ordered_actions AS (
     SELECT
       ao.*,
+      max(ao.event_elapsed_seconds) OVER (
+        PARTITION BY ao.game_id, ao.team_id
+        ORDER BY ao.id
+        ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+      )::numeric AS timeline_elapsed_seconds,
       greatest(
         coalesce(ao.previous_event_elapsed_seconds - ao.event_elapsed_seconds, 0),
         0
@@ -184,7 +189,7 @@ segment_keys AS (
 segment_starts AS (
     SELECT
       sk.*,
-      oa.event_elapsed_seconds AS segment_start_elapsed_seconds
+      oa.timeline_elapsed_seconds AS segment_start_elapsed_seconds
     FROM segment_keys sk
     JOIN ordered_actions oa
       ON oa.game_id = sk.game_id
@@ -195,7 +200,7 @@ game_ends AS (
     SELECT
       game_id,
       team_id,
-      max(event_elapsed_seconds)::numeric AS game_end_elapsed_seconds
+      max(timeline_elapsed_seconds)::numeric AS game_end_elapsed_seconds
     FROM ordered_actions
     GROUP BY game_id, team_id
 ),
