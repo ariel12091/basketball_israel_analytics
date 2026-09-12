@@ -72,6 +72,7 @@ build_ui <- function() {
   ),
   header = tagList(
     includeCSS("www/app.css"),
+    if (IBPL_MOBILE) includeCSS("www/mobile.css"),
     tags$script(HTML(sprintf(
       paste0(
         "window.IBPL_IDLE_CONFIG = {",
@@ -89,6 +90,7 @@ build_ui <- function() {
       if (isTRUE(APP_IDLE_CLOSE_SESSION)) "true" else "false"
     ))),
     includeScript("www/app.js"),
+    if (IBPL_MOBILE) includeScript("www/mobile.js"),
     tags$div(
       id = "navbar_right_cluster",
       style = "position: fixed; right: 10px; top: 8px; font-size: 0.8rem; color: var(--ibpl-text-muted); z-index: 9999; display: flex; align-items: center; gap: 6px; max-width: calc(100vw - 20px); white-space: nowrap;",

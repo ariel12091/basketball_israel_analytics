@@ -1,0 +1,10 @@
+/* mobile.css -- every mobile style rule for the app.
+
+   Scoped to body.ibpl-mobile, set by mobile.js from a matchMedia query, rather
+   than to a bare @media block. One source of truth for the mode. */
+
+body.ibpl-mobile {
+  /* Tap targets below this are hard to hit reliably; referenced by the filter
+     sheet and the caret controls. */
+  --ibpl-m-tap: 44px;
+}
