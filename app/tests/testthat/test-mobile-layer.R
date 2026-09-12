@@ -71,3 +71,17 @@ test_that("mode is carried by a body class, not a bare media query", {
   # mobile", which could disagree with the class the JS sets.
   expect_false(grepl("@media (max-width", css, fixed = TRUE))
 })
+
+test_that("mobile rules live only in mobile.css", {
+  app_css <- read_repo_txt("www", "app.css")
+  mobile_css <- read_repo_txt("www", "mobile.css")
+
+  # The three blocks that used to be scattered through app.css.
+  expect_false(grepl("@media (max-width: 768px)", app_css, fixed = TRUE))
+  expect_true(grepl(".chips-filters-toggle", mobile_css, fixed = TRUE))
+  expect_true(grepl(".irs-handle", mobile_css, fixed = TRUE))
+  expect_true(grepl(".chips-row-controls", mobile_css, fixed = TRUE))
+
+  # Non-mobile media queries must NOT be dragged along.
+  expect_true(grepl("prefers-reduced-motion", app_css, fixed = TRUE))
+})

@@ -8,3 +8,21 @@ body.ibpl-mobile {
      sheet and the caret controls. */
   --ibpl-m-tap: 44px;
 }
+
+/* ---- Migrated from app.css (@media max-width:768px at :637, :923, :1401) ----
+   Same declarations, rescoped to the body class. No behaviour change intended. */
+
+body.ibpl-mobile table.dataTable tbody td { font-size: 0.8rem; padding: 4px 6px !important; }
+body.ibpl-mobile table.dataTable thead th { font-size: 0.75rem; padding-top: 8px !important; padding-bottom: 8px !important; }
+body.ibpl-mobile .navbar-brand { font-size: 0.9rem; }
+body.ibpl-mobile .dataTables_wrapper { width: 100% !important; overflow-x: auto; }
+body.ibpl-mobile .irs-handle { width: 32px !important; height: 32px !important; top: -8px !important; }
+body.ibpl-mobile .irs-bar, body.ibpl-mobile .irs-line { height: 8px !important; }
+body.ibpl-mobile .legend-box { flex-wrap: wrap; gap: 10px; padding: 8px 12px; font-size: 0.75rem; }
+body.ibpl-mobile .example-grid { grid-template-columns: 1fr; }
+
+body.ibpl-mobile .chips-row-controls { flex: 1 1 100%; flex-wrap: wrap; gap: 12px; }
+
+/* The panel is already collapsed behind the tab's own Show Filters button on
+   narrow viewports, so the toggle would be a second control for one thing. */
+body.ibpl-mobile .chips-filters-toggle { display: none; }
