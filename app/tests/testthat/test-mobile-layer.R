@@ -26,13 +26,39 @@ test_that("the mobile layer is loaded after app.css and app.js", {
     regexpr("www/app.js", app_r, fixed = TRUE),
     regexpr("www/mobile.js", app_r, fixed = TRUE)
   )
+  # Both includes must actually carry the kill switch, not just exist -- an
+  # always-on, ungated include would still satisfy every check above.
+  expect_true(grepl(
+    'if (IBPL_MOBILE) includeCSS("www/mobile.css")', app_r, fixed = TRUE
+  ))
+  expect_true(grepl(
+    'if (IBPL_MOBILE) includeScript("www/mobile.js")', app_r, fixed = TRUE
+  ))
 })
 
-test_that("the mobile layer has a kill switch defaulting to on", {
-  global_r <- read_repo_txt("R", "global.R")
+test_that("the mobile layer kill switch resolves the right default per env value", {
+  # A string check on global.R (does it contain "IBPL_MOBILE" and the
+  # Sys.getenv() call) would pass unchanged even if the %in% set were
+  # inverted or a stray "!" flipped the default to off -- silently disabling
+  # the whole mobile layer in production. global_defs() re-parses and
+  # re-evaluates global.R's top-level IBPL_MOBILE assignment fresh on every
+  # call, so lifting it under a controlled env var actually exercises the
+  # resolved logical, not just its source text. Re-lift inside each case so
+  # each resolution sees its own env var value.
+  resolve <- function(value) {
+    withr::with_envvar(c(IBPL_MOBILE = value), {
+      global_defs("IBPL_MOBILE")$IBPL_MOBILE
+    })
+  }
 
-  expect_true(grepl("IBPL_MOBILE", global_r, fixed = TRUE))
-  expect_true(grepl('Sys.getenv("IBPL_MOBILE", "true")', global_r, fixed = TRUE))
+  expect_true(resolve(NA))            # unset -> default "true"
+  expect_true(resolve("true"))
+  expect_false(resolve("false"))
+  expect_false(resolve("0"))
+  expect_false(resolve("no"))
+  expect_false(resolve("FALSE"))       # case-insensitive
+  expect_false(resolve(" false "))     # trimmed
+  expect_true(resolve("banana"))       # fail-open on garbage, like IBPL_CACHE_UI
 })
 
 test_that("mode is carried by a body class, not a bare media query", {
