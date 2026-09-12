@@ -559,7 +559,9 @@ window.IBPL_MOBILE_TABLE = {
     if (keep.length >= orig.length) return;
     var first = keep[0];
     api.rows({ page: "current" }).every(function () {
-      var cell = this.cell(this.index(), first);
+      // api.cell, not this.cell: inside rows().every() `this` is a row-scoped
+      // API and addressing a cell through it is not a documented form.
+      var cell = api.cell(this.index(), first);
       if (!cell) return;
       var node = cell.node();
       if (!node || node.querySelector(".ibpl-m-caret")) return;
@@ -617,9 +619,13 @@ window.IBPL_MOBILE_TABLE = {
     if (applying) return;
     applying = true;
     try {
-      $().fn.dataTable.tables({ visible: true, api: true }).tables().every(function () {
-        applyTable(this);
-      });
+      // Iterate DOM nodes and build one Api per table, the same construction
+      // the draw.dt handler below uses. tables().every() is not a documented
+      // idiom and would fail silently, leaving every table untouched.
+      var nodes = document.querySelectorAll("table.dataTable");
+      for (var i = 0; i < nodes.length; i++) {
+        applyTable($().fn.dataTable.Api(nodes[i]));
+      }
     } finally {
       applying = false;
     }
@@ -1066,9 +1072,19 @@ test_that("the sheet is a reusable component", {
 
   expect_true(grepl("IBPL_MOBILE_SHEET", js, fixed = TRUE))
   expect_true(grepl(".ibpl-m-sheet", css, fixed = TRUE))
-  # 100dvh, with a 100vh fallback declared first, so browser chrome does not
-  # crop the footer.
-  expect_true(grepl("100dvh", css, fixed = TRUE))
+  # dvh, with a vh fallback declared first, so browser chrome does not crop
+  # the footer. Asserted generically here: this task introduces 85dvh for the
+  # sheet, and Task 6 adds 100dvh for modals with its own ordering assertion.
+  expect_true(grepl("dvh", css, fixed = TRUE))
+})
+
+test_that("the sheet body is cleared on open", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Task 6 appends tooltip text into the sheet body directly. close() only
+  # restores MOVED nodes, so without an explicit clear that text accumulates
+  # across opens and leaks into the filter sheet.
+  expect_true(grepl('body.innerHTML = ""', js, fixed = TRUE))
 })
 
 test_that("every tab still has its own filter toggle", {
@@ -1137,6 +1153,11 @@ window.IBPL_MOBILE_SHEET = (function () {
   function open(title, node) {
     build();
     close();
+    // close() returns a MOVED node to its origin, but it cannot know about
+    // content that was appended directly (Task 6 injects tooltip text that
+    // way). Without this, that text accumulates across opens and then shows
+    // up above the filter panel on the next open.
+    body.innerHTML = "";
     head.textContent = title || "";
     if (node) {
       // Remember exactly where it was so close() can put it back.
@@ -1219,7 +1240,10 @@ body.ibpl-mobile.ibpl-m-sheet-open .ibpl-m-sheet {
   left: 0;
   right: 0;
   bottom: 0;
+  /* vh first as the fallback; dvh accounts for mobile browser chrome so the
+     sticky Apply footer is never cropped. */
   max-height: 85vh;
+  max-height: 85dvh;
   z-index: 2147482001;
   background: var(--ibpl-surface);
   border-top: 1px solid var(--ibpl-border);
@@ -1253,8 +1277,8 @@ body.ibpl-mobile .ibpl-m-sheet-body .btn {
 }
 ```
 
-Note the `100dvh` requirement in the test is satisfied by Task 6's modal rules; if Task 6 is not yet done, add
-`body.ibpl-mobile .ibpl-m-sheet { max-height: 85vh; max-height: 85dvh; }` here — `vh` first as the fallback.
+The `dvh` assertion is satisfied by this task's own `max-height: 85dvh`. Task 6
+adds `100dvh` for modals and carries the stricter ordering assertion.
 
 - [ ] **Step 5: Run the tests**
 
@@ -1549,7 +1573,6 @@ Replace the empty `priority: {}` written in Task 3 with:
    Three col-4 cards at 390px give each ~120px, too little for an fs-4 value
    plus four small lines. A and B stay adjacent because comparing them is the
    tab's only job; Gap reads fine as a full-width strip. */
-body.ibpl-mobile #cmp_table_wrap .cmp-summary-row > [class*="col-"],
 body.ibpl-mobile .cmp-summary-row > [class*="col-"] { padding: 0 4px; }
 body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(1),
 body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(2) {
