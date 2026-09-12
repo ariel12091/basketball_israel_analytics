@@ -45,6 +45,17 @@ Three things were verified during planning that the spec got wrong or left open.
 2. **Priority overrides must be keyed by column NAME, not index.** There are only **11 DT output ids** (`onoff_dt`, `ld_table`, `tr_table`, `gl_table`, `euro_dt`, `euro_ld_dt`, `euroteam_table`, `eurogl_table`, `ts_table`, `tst_table`, `cmp_table`) serving 41 `datatable()` calls, because one output renders a different column set per view mode. An index-keyed override would corrupt the other view modes. Name matching degrades safely to the default when it does not match.
 3. **Compare's columns are `A` and `B`, not "Side A"/"Side B"** (`server_tab7_compare.R:3-9`, `:3300-3315`). The spec took those names from explainer prose. The override is `["Team", "Player", "A", "B", "Gap"]`.
 
+4. **Gameflow / the stint ribbon was missed entirely by the spec**, and is now
+   Task 8. The spec's Component 4 put "the rotation chart's hover tooltip" out
+   of scope — a description that obscured that this is the **gameflow** feature
+   reached from both game-log tabs. Two measured problems: the `gameflow`
+   column is position 4, so the default priority rule hides the only entry
+   point to the ribbon; and the ribbon SVG scales from a 1070-unit viewBox to
+   ~370px, rendering its 11px labels at **3.8px**. The spec's out-of-scope line
+   for the chart hover tooltip still stands — only the hover *preview* is lost
+   on touch, because the ribbon also binds `click`/`focusin`/`keydown` and its
+   lanes carry `tabindex="0"`.
+
 Also verified: **`shinytest2` is NOT installed**, so `test-e2e-tabs-shinytest2.R` is dormant (`skip_if_not_installed`). Verification uses the Playwright MCP browser tools, which need no `npx` — memory records `npx` as broken under the Bash tool here.
 
 ---
@@ -1585,7 +1596,175 @@ git commit -m "feat(mobile): two-up Compare summary and column priority override
 
 ---
 
-### Task 8: Verification sweep across all tabs and widths
+### Task 8: Gameflow — keep the View link visible and the stint ribbon legible
+
+**Files:**
+- Modify: `app/www/mobile.css`, `app/www/mobile.js`
+- Test: `app/tests/testthat/test-mobile-layer.R`
+
+**Interfaces:**
+- Consumes: `window.IBPL_MOBILE_TABLE.priority` (Task 3), the full-screen modal rules (Task 6).
+- Produces: nothing.
+
+The `gameflow` column is the "View" link that opens the stint ribbon
+(`add_ribbon_link_column()`, `helpers.R:3665` → `ribbon_link_cell()`, `:3644` →
+`mod_ribbon_modal.R:49`). Two problems, both measured:
+
+**Problem 1 — the link is hidden by the default rule.** Column order in both
+game-log tabs is `GN|Rd, Game Type|Phase, Date, Gameflow, Team, Opponent, W/L,
+Score, Min, …` (`helpers.R:146-166`, `server_tab4.R:577`,
+`server_tab11_euro_gamelogs.R:196`). "First 3 visible" yields `GN, Game Type,
+Date`, dropping the link into the caret detail row.
+
+**Problem 2 — the ribbon shrinks to illegibility.** The SVG is
+`viewBox="0 0 1070 H"` (`helpers.R:3557`, `RIBBON_WIDTH <- 1070`) under
+`.ibpl-ribbon { width: 100% }` (`app.css:1458`). At ~370px usable width the
+scale is **0.346**, so the 14px lanes render at **4.8px** and the 11px labels
+(`app.css:1494`) at **3.8px**.
+
+The fix keeps the designed geometry exactly and scrolls instead of scaling.
+`ribbon_geometry()` is server-side R, verified over 11 tasks and migration 054;
+this task must not touch it.
+
+**Known limitation, accept and document:** panning right scrolls the ~220-unit
+name gutter off screen. Mitigation is already in place — lanes carry
+`tabindex="0"` (`helpers.R:3442`) and an `aria-label`, and tap-to-select works
+because the ribbon binds `click`/`focusin`/`keydown`, not only `mouseover`
+(`app.js:871-897`). Only the hover *preview* is lost on touch.
+
+- [ ] **Step 1: Write the failing test**
+
+```r
+test_that("the gameflow link survives the column priority rule", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Gameflow is column 4 in both game-log tabs, so the "first 3 visible"
+  # default would bury the only entry point to the stint ribbon.
+  expect_true(grepl("gl_table", js, fixed = TRUE))
+  expect_true(grepl("eurogl_table", js, fixed = TRUE))
+  expect_true(grepl('"Gameflow"', js, fixed = TRUE))
+})
+
+test_that("the ribbon keeps its designed width on mobile", {
+  helpers <- read_repo_txt("R", "helpers.R")
+  css <- read_repo_txt("www", "mobile.css")
+
+  # Hardcoding the width in CSS would silently drift from the R geometry.
+  # Pin them together: this test fails if RIBBON_WIDTH ever changes.
+  m <- regmatches(helpers, regexpr("RIBBON_WIDTH <- [0-9]+", helpers))
+  expect_length(m, 1L)
+  w <- sub("RIBBON_WIDTH <- ", "", m)
+
+  expect_true(grepl(paste0("min-width: ", w, "px"), css, fixed = TRUE))
+  # Scrolling, not scaling: app.css sets width:100%, which is what shrinks the
+  # 11px labels to 3.8px at 390px.
+  expect_true(grepl("overflow-x: auto", css, fixed = TRUE))
+})
+```
+
+- [ ] **Step 2: Run it to verify it fails**
+
+```bash
+"$RSCRIPT" -e "testthat::test_file('app/tests/testthat/test-mobile-layer.R')"
+```
+
+Expected: FAIL — `gl_table` not in `mobile.js`.
+
+- [ ] **Step 3: Add the two game-log overrides**
+
+Extend the `priority` map from Task 3 (which already holds `cmp_table`):
+
+```js
+    // Gameflow is column 4 in both game-log tabs, so the default would bury
+    // the only entry point to the stint ribbon behind a caret tap. On a phone
+    // a game is identified by date and opponent, not by GN or round.
+    // One list serves both leagues: Tab 4 leads GN|Game Type and Tab 11 leads
+    // Rd|Phase, but Date, Opponent, Score and Gameflow are named identically.
+    gl_table: ["Date", "Opponent", "Score", "Gameflow"],
+    eurogl_table: ["Date", "Opponent", "Score", "Gameflow"]
+```
+
+**Caution for any future override:** the Four Factors header
+(`gamelog_ff_header()`, `helpers.R:170`) repeats `PPP`, `eFG%`, `OREB%`, `TOV%`
+and `FTR` across its Offense and Defense groups. `indexOf` takes the first
+match, so an override must never name a duplicated header.
+
+- [ ] **Step 4: Add the ribbon scroll rules to `mobile.css`**
+
+```css
+/* ---- Stint ribbon (gameflow) ----
+   The SVG is viewBox 0 0 1070 H under .ibpl-ribbon { width: 100% }, so at
+   ~370px of usable modal width the scale is 0.346: 14px lanes render at 4.8px
+   and 11px labels at 3.8px. Pin the SVG to its viewBox width instead and let
+   the container pan. Scale 1.0, designed size exactly.
+
+   min-width MUST equal RIBBON_WIDTH in helpers.R -- pinned by a test. */
+body.ibpl-mobile .modal-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+body.ibpl-mobile .ibpl-ribbon {
+  width: 1070px;
+  min-width: 1070px;
+  max-width: none;
+  height: auto;
+}
+```
+
+`app.css:1458` sets `.ibpl-ribbon { width: 100% }` with no `!important`, so
+`body.ibpl-mobile .ibpl-ribbon` wins on specificity without editing `app.css`.
+
+- [ ] **Step 5: Run the tests**
+
+Expected: PASS, 21 tests.
+
+- [ ] **Step 6: Verify in the browser**
+
+At 390x844, open Game Logs and evaluate:
+
+```js
+() => {
+  const t = window.jQuery('#gl_table table.dataTable').DataTable();
+  return {
+    heads: t.columns(':visible').header().toArray().map(h => h.textContent.trim()),
+    links: document.querySelectorAll('#gl_table a.ribbon-link').length
+  };
+}
+```
+
+Expected: `heads` contains `Gameflow`, `links` > 0 — the View link is on the
+face of the table, not buried.
+
+`browser_click` a View link, wait for the modal, then evaluate:
+
+```js
+() => {
+  const svg = document.querySelector('.ibpl-ribbon');
+  const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+  const body = document.querySelector('.modal-body');
+  return {
+    scale: scale,
+    renderedFontPx: 11 * scale,
+    renderedLanePx: 14 * scale,
+    canPan: body.scrollWidth > body.clientWidth
+  };
+}
+```
+
+Expected: `scale` about 1.0, `renderedFontPx` about 11, `renderedLanePx` about
+14, `canPan: true`. A `scale` near 0.35 means `app.css`'s `width: 100%` is still
+winning and the task is not done.
+
+Then tap a lane and confirm it selects (the `click`/`focusin` path), and confirm
+the modal is full-screen from Task 6.
+
+- [ ] **Step 7: Commit**
+
+```bash
+git add app/www/mobile.js app/www/mobile.css app/tests/testthat/test-mobile-layer.R
+git commit -m "feat(mobile): keep gameflow link visible and ribbon at designed scale"
+```
+
+---
+
+### Task 9: Verification sweep across all tabs and widths
 
 **Files:**
 - Modify: `app/www/mobile.js` (CFG overrides found by the sweep)
@@ -1604,7 +1783,7 @@ This is the task that converts the plan's central assumption — "first 3 visibl
 "$RSCRIPT" -e "testthat::test_dir('app/tests/testthat')"
 ```
 
-Expected: no NEW failures versus `main`. Tasks 1-7 touch no server code, so a data or contract failure means something was broken that this work claims not to touch. `test-deployed-app-smoke.R` is known-stale (fails on the unwired `team_stats` tab) — not caused here.
+Expected: no NEW failures versus `main`. Tasks 1-8 touch no server code, so a data or contract failure means something was broken that this work claims not to touch. `test-deployed-app-smoke.R` is known-stale (fails on the unwired `team_stats` tab) — not caused here.
 
 - [ ] **Step 2: Launch the app once for the whole sweep**
 
@@ -1629,6 +1808,23 @@ For each of Home, On/Off, Lineup Data, Team Ratings, Game Logs, Player Stats, Co
 ```
 
 Record `visibleCols` per tab. Acceptance: `overflow <= 0`, `navLinks === 11`, and `visibleCols` names a **usable** headline set — an identity column plus a metric that carries the tab's point. A set like `#, Player, GP A` fails and earns a CFG override.
+
+**Overflow is not legibility.** An SVG with a `viewBox` and `width: 100%` never
+overflows — it shrinks, so `overflow <= 0` passes on an unreadable chart. The
+stint ribbon is exactly this case and it would have passed this step as
+originally written. So also assert, wherever an SVG is on screen:
+
+```js
+() => {
+  const t = document.querySelector('.ibpl-ribbon-name, svg text');
+  if (!t) return { skipped: true };
+  const svg = t.ownerSVGElement;
+  const scale = svg.getBoundingClientRect().width / svg.viewBox.baseVal.width;
+  return { scale: scale, renderedFontPx: 11 * scale };
+}
+```
+
+Acceptance: `renderedFontPx >= 9`. Below that the label is not text.
 
 - [ ] **Step 4: Add CFG overrides for every failing table**
 
@@ -1680,8 +1876,8 @@ Summarise: tabs verified, overrides added, anything still wrong. Merging is a se
 
 ## Self-Review
 
-**Spec coverage.** Every spec section maps to a task: Delivery mechanism, Breakpoint, Mode signal, Kill switch, Viewport → Task 1. The `@media` migration → Task 2. Component 1 Tables → Task 3. Component 2 Navigation → Task 4. Component 3 Filter sheet → Task 5. Component 4 Popups → Task 6. Component 5 Compare → Task 7. Testing and Risks → Task 8. Out-of-scope items (glossary, chart tooltips, React, tab 6, PWA) appear in no task, correctly.
+**Spec coverage.** Every spec section maps to a task: Delivery mechanism, Breakpoint, Mode signal, Kill switch, Viewport → Task 1. The `@media` migration → Task 2. Component 1 Tables → Task 3. Component 2 Navigation → Task 4. Component 3 Filter sheet → Task 5. Component 4 Popups → Task 6. Component 5 Compare → Task 7. Testing and Risks → Task 9. Gameflow, raised by the user after the spec was written → Task 8. Out-of-scope items (glossary, React, tab 6, PWA) appear in no task, correctly.
 
 **Deviations from the spec, all recorded above under "Findings that changed the spec":** caret instead of row tap (row clicks already taken); name-keyed instead of index-keyed overrides (11 output ids serve 41 tables); `A`/`B` instead of `Side A`/`Side B`; Playwright MCP instead of PowerShell `npx` (shinytest2 not installed, `npx` broken under Bash). One scope addition: Task 7 Step 4 adds a `class` to one `fluidRow` in `ui_tab7_compare.R` — a CSS hook only, no input or logic, and called out as the single exception to "no per-tab R edits".
 
-**Type and name consistency.** `window.IBPL_MOBILE_MQ` (Task 1) is read in Task 1 only. `body.ibpl-mobile` and `ibpl:mobilechange` are produced in Task 1 and consumed in 3, 4, 5, 6. `window.IBPL_MOBILE_TABLE.priority` is created empty in Task 3 and populated in Task 7. `window.IBPL_MOBILE_SHEET.open(title, node)` / `.close()` / `.isOpen()` are defined in Task 5 and called in Task 6 with the same signature. `--ibpl-m-tap` is defined in Task 1 and used in 3, 4, 5, 6. `.ibpl-m-caret`, `.ibpl-m-detail*` are defined and used in Task 3 and asserted in Task 8.
+**Type and name consistency.** `window.IBPL_MOBILE_MQ` (Task 1) is read in Task 1 only. `body.ibpl-mobile` and `ibpl:mobilechange` are produced in Task 1 and consumed in 3, 4, 5, 6. `window.IBPL_MOBILE_TABLE.priority` is created empty in Task 3 and populated in Task 7 and Task 8. `window.IBPL_MOBILE_SHEET.open(title, node)` / `.close()` / `.isOpen()` are defined in Task 5 and called in Task 6 with the same signature. `--ibpl-m-tap` is defined in Task 1 and used in 3, 4, 5, 6. `.ibpl-m-caret`, `.ibpl-m-detail*` are defined and used in Task 3 and asserted in Task 9.
