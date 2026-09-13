@@ -1819,6 +1819,20 @@ Expected: no NEW failures versus `main`. Tasks 1-8 touch no server code, so a da
 IBPL_CACHE_UI=false "$RSCRIPT" -e "shiny::runApp('app', port = 7788, launch.browser = FALSE)"
 ```
 
+**Select season 25-26 (`game_year` 2026) before sweeping — do not use the
+default.** `DEFAULT_GAME_YEAR` is `"2027"` (26-27), which has only **10 games**
+in `final_schedule_mv` against 442 for 2026 and 450 for 2025 (measured
+2026-09-13). With ten games the min-possessions filters leave the On/Off table
+empty, and a sweep that inspects an empty table verifies nothing: there are no
+rows to carry carets, and `visibleCols` on a zero-row table cannot show whether
+the priority set is usable. This is the same failure shape as checking overflow
+instead of legibility — a green result observing nothing.
+
+For each tab, record the row count alongside `visibleCols`. **A tab that
+reports zero rows is NOT verified**; switch season (or filters) until it has
+data, and say so in the verification record. The EuroLeague tabs need
+`league_select` switched as well.
+
 - [ ] **Step 3: Sweep all 11 tabs at 390x844**
 
 For each of Home, On/Off, Lineup Data, Team Ratings, Game Logs, Player Stats, Compare, and the four EuroLeague tabs (switch `league_select` to reach them): `browser_resize` 390x844, navigate to the tab, `browser_take_screenshot`, then `browser_evaluate`:
