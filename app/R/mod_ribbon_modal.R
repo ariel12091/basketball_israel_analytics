@@ -1,8 +1,25 @@
+ribbon_inline_ui <- function(prefix) {
+  div(
+    id = paste0(prefix, "_ribbon_inline_panel"),
+    class = "ibpl-ribbon-inline-panel",
+    hidden = "hidden",
+    div(
+      class = "ibpl-ribbon-inline-head",
+      tags$strong("Gameflow"),
+      tags$button(type = "button", class = "ibpl-ribbon-inline-close",
+                  `aria-label` = "Close gameflow", "Close")
+    ),
+    div(class = "ibpl-ribbon-inline-loading", "Loading gameflow…"),
+    uiOutput(paste0(prefix, "_ribbon_inline"))
+  )
+}
+
 ribbon_modal_server <- function(input, output, session, prefix, league,
                                  data_version_fn, svg_id_prefix = prefix) {
   observeEvent(input[[paste0(prefix, "_ribbon_click")]], {
     click <- input[[paste0(prefix, "_ribbon_click")]]
     req(click$game_id, click$team_id)
+    mobile <- isTRUE(click$mobile)
 
     allowed <- guard_heavy_request(
       session,
@@ -10,7 +27,16 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
       max_calls = 20L,
       window_sec = 60L
     )
-    if (!isTRUE(allowed)) return()
+    if (!isTRUE(allowed)) {
+      if (mobile) {
+        output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
+          div(class = "ibpl-ribbon-inline-result",
+              `data-game-id` = as.character(click$game_id),
+              div(class = "alert alert-warning mb-0", "Please try again in a moment."))
+        })
+      }
+      return()
+    }
 
     ribbon <- fetch_stint_ribbon(
       pg_pool, league, click$game_id, click$team_id,
@@ -18,9 +44,18 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
     )
 
     if (is.null(ribbon) || !nrow(ribbon$lanes)) {
-      showModal(modalDialog(title = "No lineup data",
-                            "This game has no segment data to draw.",
-                            easyClose = TRUE))
+      if (mobile) {
+        output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
+          div(class = "ibpl-ribbon-inline-result",
+              `data-game-id` = as.character(click$game_id),
+              div(class = "alert alert-warning mb-0",
+                  "This game has no segment data to draw."))
+        })
+      } else {
+        showModal(modalDialog(title = "No lineup data",
+                              "This game has no segment data to draw.",
+                              easyClose = TRUE))
+      }
       return()
     }
 
@@ -35,16 +70,28 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
       sprintf("Game %s", click$game_id)
     }
 
-    output[[paste0(prefix, "_ribbon_svg")]] <- renderUI({
-      tagList(
-        if (!is.null(ribbon$health)) {
-          div(class = "alert alert-warning py-2 px-3 mb-2", ribbon$health)
-        },
-        build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
-                               id_prefix = paste0(svg_id_prefix, click$game_id),
-                               steps = ribbon$steps)
-      )
-    })
+    health_ui <- if (!is.null(ribbon$health)) {
+      div(class = "alert alert-warning py-2 px-3 mb-2", ribbon$health)
+    }
+    svg <- build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
+                                  id_prefix = paste0(svg_id_prefix, click$game_id),
+                                  steps = ribbon$steps)
+
+    if (mobile) {
+      output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
+        div(class = "ibpl-ribbon-inline-result",
+            `data-game-id` = as.character(click$game_id),
+          div(class = "ibpl-ribbon-inline-title", meta$game_label),
+          health_ui,
+          div(class = "ibpl-ribbon-inline-hint", "Swipe horizontally to explore the full game"),
+          div(class = "ibpl-ribbon-inline-scroll", tabindex = "0",
+              `aria-label` = paste("Gameflow for", meta$game_label), svg)
+        )
+      })
+      return()
+    }
+
+    output[[paste0(prefix, "_ribbon_svg")]] <- renderUI({ tagList(health_ui, svg) })
 
     showModal(modalDialog(
       title = meta$game_label,

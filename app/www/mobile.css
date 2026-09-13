@@ -360,13 +360,51 @@ body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
    needs no selector of its own here any more. */
 
 /* ---- Stint ribbon (gameflow) ----
-   The SVG is viewBox 0 0 1070 H under .ibpl-ribbon { width: 100% }, so at
-   ~370px of usable modal width the scale is 0.346: 14px lanes render at 4.8px
-   and 11px labels at 3.8px. Pin the SVG to its viewBox width instead and let
-   the container pan. Scale 1.0, designed size exactly.
-
-   min-width MUST equal RIBBON_WIDTH in helpers.R -- pinned by a test. */
-body.ibpl-mobile .modal-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+   On mobile the chart opens in the page above its game-log table, not in a
+   modal. Keep the SVG at its designed width so labels remain readable and
+   let this dedicated container pan horizontally. The width must match
+   RIBBON_WIDTH in helpers.R. */
+body:not(.ibpl-mobile) .ibpl-ribbon-inline-panel { display: none !important; }
+body.ibpl-mobile .ibpl-ribbon-inline-panel {
+  margin: 12px 0 18px;
+  padding: 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  background: var(--ibpl-surface);
+  scroll-margin-top: 68px;
+}
+body.ibpl-mobile .ibpl-ribbon-inline-panel[hidden] { display: none; }
+body.ibpl-mobile .ibpl-ribbon-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+body.ibpl-mobile .ibpl-ribbon-inline-close {
+  min-height: var(--ibpl-m-tap);
+  min-width: var(--ibpl-m-tap);
+  padding: 8px 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ibpl-text);
+}
+body.ibpl-mobile .ibpl-ribbon-inline-loading { display: none; }
+body.ibpl-mobile .ibpl-ribbon-inline-panel.is-loading .ibpl-ribbon-inline-loading { display: block; }
+body.ibpl-mobile .ibpl-ribbon-inline-panel.is-loading .shiny-html-output { display: none; }
+body.ibpl-mobile .ibpl-ribbon-inline-title { font-weight: 700; margin-bottom: 4px; }
+body.ibpl-mobile .ibpl-ribbon-inline-hint {
+  color: var(--ibpl-text-muted);
+  font-size: 0.8rem;
+  margin-bottom: 8px;
+}
+body.ibpl-mobile .ibpl-ribbon-inline-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+}
 body.ibpl-mobile .ibpl-ribbon {
   width: 1070px;
   min-width: 1070px;

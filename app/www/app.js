@@ -121,6 +121,7 @@
       team_id: teamId,
       own_team: linkEl.dataset.ownTeam || "",
       opp_team: linkEl.dataset.oppTeam || "",
+      mobile: document.body.classList.contains("ibpl-mobile"),
       ts: Date.now()
     });
   };

@@ -97,6 +97,56 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   }
 })();
 
+/* ---- Gameflow: show the full-size ribbon in the page -------------------- */
+(function () {
+  function panelFor(link) {
+    var inputId = link && link.dataset.inputId || "gl_ribbon_click";
+    var prefix = inputId.replace(/_ribbon_click$/, "");
+    if (prefix !== "gl" && prefix !== "eurogl") return null;
+    return document.getElementById(prefix + "_ribbon_inline_panel");
+  }
+
+  document.addEventListener("click", function (e) {
+    if (!document.body.classList.contains("ibpl-mobile")) return;
+    var close = e.target.closest && e.target.closest(".ibpl-ribbon-inline-close");
+    if (close) {
+      var openPanel = close.closest(".ibpl-ribbon-inline-panel");
+      if (openPanel) openPanel.hidden = true;
+      return;
+    }
+    var link = e.target.closest && e.target.closest(".ribbon-link");
+    if (!link || !window.Shiny) return;
+    var panel = panelFor(link);
+    if (!panel) return;
+    panel.dataset.gameId = link.dataset.gameId;
+    panel.hidden = false;
+    panel.classList.add("is-loading");
+    window.requestAnimationFrame(function () {
+      panel.scrollIntoView({ block: "start", behavior: "smooth" });
+    });
+  }, true);
+
+  if (window.jQuery) {
+    window.jQuery(document).on("shiny:value", function (e) {
+      var id = e.target && e.target.id || "";
+      if (id !== "gl_ribbon_inline" && id !== "eurogl_ribbon_inline") return;
+      var panel = document.getElementById(id + "_panel");
+      if (panel) window.requestAnimationFrame(function () {
+        var result = panel.querySelector(".ibpl-ribbon-inline-result");
+        if (result && result.dataset.gameId === panel.dataset.gameId) {
+          panel.classList.remove("is-loading");
+        }
+      });
+    });
+  }
+
+  document.addEventListener("ibpl:mobilechange", function (e) {
+    if (e.detail && e.detail.mobile) return;
+    var panels = document.querySelectorAll(".ibpl-ribbon-inline-panel");
+    for (var i = 0; i < panels.length; i++) panels[i].hidden = true;
+  });
+})();
+
 /* ---- Filter panel: inline, never an overlay -----------------------------
    R2 in the 2026-09-13 rework brief reverses the sheet transform this task
    used to apply to every "-filters" panel: "show filters should never be a
