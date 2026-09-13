@@ -1,0 +1,375 @@
+/* mobile.css -- every mobile style rule for the app.
+
+   Scoped to body.ibpl-mobile, set by mobile.js from a matchMedia query, rather
+   than to a bare @media block. One source of truth for the mode. */
+
+body.ibpl-mobile {
+  /* Tap targets below this are hard to hit reliably; referenced throughout
+     this file for buttons, form controls and menu rows. */
+  --ibpl-m-tap: 44px;
+}
+
+/* ---- Migrated from app.css (:637, :923, :1401) ----
+   The three blocks used two different breakpoints -- 768px (DT font/padding,
+   navbar brand, slider handles, legend, example grid, chips-row-controls) and
+   767px (chips-filters-toggle) -- now unified on the 767.98px body.ibpl-mobile
+   carrier. This is a deliberate behaviour change, not a pure move: at exactly
+   768px (iPad portrait / this app's own Bootstrap `md` boundary) these rules
+   now stop applying where they used to; in the fractional (767, 767.98] band
+   (reachable off 100% browser zoom) .chips-filters-toggle is now hidden where
+   it previously wasn't. Both shifts intentionally align these ad-hoc
+   breakpoints with the d-md-none boundary the rest of this plan is built on. */
+
+body.ibpl-mobile table.dataTable tbody td { font-size: 0.8rem; padding: 4px 6px !important; }
+body.ibpl-mobile table.dataTable thead th { font-size: 0.75rem; padding-top: 8px !important; padding-bottom: 8px !important; }
+body.ibpl-mobile .navbar-brand { font-size: 0.9rem; }
+body.ibpl-mobile .dataTables_wrapper { width: 100% !important; overflow-x: auto; }
+body.ibpl-mobile .irs-handle { width: 32px !important; height: 32px !important; top: -8px !important; }
+body.ibpl-mobile .irs-bar, body.ibpl-mobile .irs-line { height: 8px !important; }
+body.ibpl-mobile .legend-box { flex-wrap: wrap; gap: 10px; padding: 8px 12px; font-size: 0.75rem; }
+body.ibpl-mobile .example-grid { grid-template-columns: 1fr; }
+
+body.ibpl-mobile .chips-row-controls { flex: 1 1 100%; flex-wrap: wrap; gap: 12px; }
+
+/* The panel is already collapsed behind the tab's own Show Filters button on
+   narrow viewports, so the toggle would be a second control for one thing. */
+body.ibpl-mobile .chips-filters-toggle { display: none; }
+
+/* ---- Mobile table layer ----
+   R1 in the 2026-09-13 rework brief reverses the tap-to-expand design this
+   task originally shipped: hiding columns behind a caret "doesn't offer any
+   advantage of the table, which is literally compare the teams/players."
+   Every column now stays visible and the table scrolls horizontally instead
+   -- all 41 datatable() calls already set scrollX = TRUE, so no R change is
+   needed for the scroll itself. Only the identity column is pinned, done
+   with CSS alone: DT's scrollX splits the header and body into separate
+   tables (.dataTables_scrollHead / .dataTables_scrollBody), both nested
+   inside .dataTables_wrapper, so one selector reaches both without needing
+   to know which mode a given table is in -- a table with no scroll split at
+   all (dom: "t", e.g. Compare's cmp_table) still has its thead/tbody
+   directly inside .dataTables_wrapper and picks up the same rule. */
+body.ibpl-mobile table.dataTable tbody td { min-height: var(--ibpl-m-tap); }
+
+body.ibpl-mobile .dataTables_wrapper table.dataTable > thead > tr > th:first-child,
+body.ibpl-mobile .dataTables_wrapper table.dataTable > tbody > tr > td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  /* Opaque, or the row scrolling underneath would show through the pinned
+     cell -- the classic sticky-column failure. */
+  background: var(--ibpl-surface) !important;
+  border-right: 1px solid var(--ibpl-border);
+}
+body.ibpl-mobile .dataTables_wrapper table.dataTable > thead > tr > th:first-child {
+  z-index: 3;
+  background: var(--ibpl-bg) !important;
+}
+
+/* ---- Mobile navigation ---- */
+/* app.R:93 sets position:fixed inline, which would sit on top of the burger. */
+body.ibpl-mobile #navbar_right_cluster {
+  position: static !important;
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100% !important;
+  white-space: normal !important;
+  padding: 8px 12px;
+  border-top: 1px solid var(--ibpl-border);
+}
+/* body.league-il / -el set these to inline-flex and decide which season
+   selector shows. Keep that decision, change only the box. */
+body.ibpl-mobile.league-il .league-nav-il,
+body.ibpl-mobile.league-el .league-nav-el { display: flex !important; width: 100%; }
+
+/* ---- View mode: the burger menu, not a promoted radio group ----
+   R4 in the 2026-09-13 rework brief removes promote() (mobile.js used to
+   move the raw radios/select above the table -- "on a phone the bare radios
+   read as a stray form control"). The replacement drives the SAME inputs
+   through the SAME menu app.js already builds per tab (the
+   ".tab-hover-menu" CFG array, app.js:1469): each row's click handler
+   already calls Shiny.setInputValue on the real input (radio .click() for
+   the nine radio-based tabs, a select's value + change event for Player
+   Stats' select), so nothing here needs new markup or new JS -- only making
+   the ACTIVE tab's menu render in the page flow instead of on :hover, which
+   does not exist on touch.
+
+   :has() covers whichever active-tab pattern actually applies: BS5 (verified
+   live in this app) puts .active on the link itself; app.css:118-119
+   defends the older .nav-item.active > .nav-link pattern too, so this does
+   the same rather than assuming one. */
+body.ibpl-mobile .tab-hover-menu { display: none !important; }
+body.ibpl-mobile .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu,
+body.ibpl-mobile .nav-item.tab-has-dropdown.active .tab-hover-menu {
+  display: block !important;
+  position: static;
+  transform: none;
+  width: 100%;
+  min-width: 0;
+  margin: 4px 0 8px;
+  padding: 4px 0;
+  box-shadow: none;
+  border-radius: 6px;
+}
+body.ibpl-mobile .tab-hover-menu .thm-item {
+  min-height: var(--ibpl-m-tap);
+  padding: 0 16px;
+}
+
+/* ---- Filter panel: inline, never an overlay ----
+   R2 in the 2026-09-13 rework brief removes the sheet transform this task
+   used to apply to every "-filters" panel: "show filters should never be a
+   popup". mobile.js no longer intercepts the toggle at all, so Bootstrap's
+   own collapse plugin owns show/hide exactly as it did before this whole
+   layer existed -- tapping "Show Filters" expands the panel in the page
+   flow and pushes the table down. Only its mobile sizing lives here: every
+   tab's panel shares the id$="-filters" shape (mobile.js used to match it
+   with the same selector for the sheet route), so one rule reaches all 11
+   without an R edit. */
+body.ibpl-mobile [id$="-filters"] .form-control,
+body.ibpl-mobile [id$="-filters"] .form-select,
+body.ibpl-mobile [id$="-filters"] .selectize-input,
+body.ibpl-mobile [id$="-filters"] input[type="text"],
+body.ibpl-mobile [id$="-filters"] input[type="number"],
+body.ibpl-mobile [id$="-filters"] .btn {
+  min-height: var(--ibpl-m-tap);
+  width: 100%;
+}
+body.ibpl-mobile [id$="-filters"] > .shiny-input-container,
+body.ibpl-mobile [id$="-filters"] > .form-group {
+  margin-bottom: 14px;
+}
+
+/* ---- Stat filter add: inline, not a sheet ----
+   R3: the "+ Filter" trigger's popover content is suppressed at the source
+   on mobile (mobile.js capture-phase click, same shape as .ibpl-m-th-info)
+   and moved inline into this wrapper instead of ever letting Bootstrap show
+   its floating box. */
+body.ibpl-mobile .ibpl-m-filteradd {
+  flex: 1 1 100%;
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--ibpl-surface);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+}
+body.ibpl-mobile .ibpl-m-filteradd .form-control,
+body.ibpl-mobile .ibpl-m-filteradd .form-select,
+body.ibpl-mobile .ibpl-m-filteradd .selectize-input,
+body.ibpl-mobile .ibpl-m-filteradd .btn {
+  min-height: var(--ibpl-m-tap);
+  width: 100%;
+}
+
+/* ---- Min possessions: secondary, not a headline control ----
+   R5: min_poss reads as a headline control on a phone (full-width, leading
+   the chips-row-controls wrap per the .chips-row-controls rule above).
+   Demote it in place -- id and behaviour are unchanged, only its visual
+   weight and its order relative to the tab's other chips-row control (the
+   Four Factors range toggle, where a tab has one). */
+body.ibpl-mobile .chips-row-controls .minposs-compact {
+  order: 2;
+  padding: 2px 0;
+}
+body.ibpl-mobile .chips-row-controls > *:not(.minposs-compact) { order: 1; }
+body.ibpl-mobile .minposs-compact .control-label {
+  font-size: 0.65rem;
+  margin-bottom: 1px;
+}
+
+/* ---- Full-screen modals ----
+   An xl dialog on a 390px screen is a wide table squeezed into a small box.
+   100dvh, with 100vh declared first as the fallback, so mobile browser chrome
+   does not crop the sticky footer.
+   Scoped to .modal-xl, not every .modal-dialog: modalDialog(size = "xl")
+   renders <div class="modal-dialog modal-xl">, but this app also shows small
+   one-line notice modals with no size class (mod_ribbon_modal.R:21 "No
+   lineup data", server_tab2.R:546/:686 "No game data") -- those should stay
+   a small centred dialog with a Dismiss button, not fill the viewport. */
+body.ibpl-mobile .modal-dialog.modal-xl {
+  margin: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100vh;
+  height: 100dvh;
+}
+body.ibpl-mobile .modal-dialog.modal-xl .modal-content {
+  height: 100%;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+body.ibpl-mobile .modal-dialog.modal-xl .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ibpl-surface);
+  flex: 0 0 auto;
+}
+body.ibpl-mobile .modal-dialog.modal-xl .modal-body { flex: 1 1 auto; overflow-y: auto; }
+body.ibpl-mobile .modal-dialog.modal-xl .modal-header .btn-close {
+  min-width: var(--ibpl-m-tap);
+  min-height: var(--ibpl-m-tap);
+}
+
+/* ---- Tooltips ----
+   Both mechanisms are hover-only and so unreachable on touch. Suppress the
+   CSS one and route both through an inline strip instead (R6, 2026-09-13
+   hardening -- replaces the bottom sheet both used to open; see
+   ".ibpl-m-strip" below). (The stat-filter popover used to be a third sheet
+   user, hidden here once shown; R3 suppresses it at the source instead, so
+   Bootstrap's show() never runs on mobile and there is no floating .popover
+   box left to hide.) */
+body.ibpl-mobile [data-tooltip]:hover::after,
+body.ibpl-mobile [data-tooltip]:hover::before { display: none !important; }
+body.ibpl-mobile [data-tooltip] {
+  text-decoration: underline dotted var(--ibpl-text-muted);
+  text-underline-offset: 3px;
+}
+
+/* A dedicated target, so a header tap still means SORT and only this opens
+   the explanation. Small, but the whole th stays the sort target around it.
+
+   Real bug fixed here (found live, not in a synthetic-click test): this
+   used to be a 14x14 button -- both the hit area AND the visible dot --
+   against this file's own --ibpl-m-tap: 44px minimum for every other tap
+   target. A thumb reliably missed it, landed on the th instead, and sorted
+   the column with no explanation shown. The fix separates the two: the
+   REAL element (".ibpl-m-th-info", what getBoundingClientRect() measures
+   and what actually receives the tap) is the full 44x44 --ibpl-m-tap
+   square; the VISIBLE dot is a small 14x14 ::before centered inside it, so
+   32 columns are not visually cluttered by 32 big circles.
+
+   Growing the real box by 30px per axis would still be a regression if left
+   alone -- the header row would triple in height, and each of 32 columns
+   would add 30px of horizontal scroll. Negative margins claw that back on
+   every axis except the left: top/bottom cancel out completely (-15/-15
+   against the added 30px), so the header row's height is unchanged, and the
+   right margin absorbs most of the width growth. The left margin is left
+   positive (unchanged from the original gap) so the dot's position
+   relative to the header text does not move. This intentionally leaves the
+   invisible portion of the hit box overlapping neighboring cells for 15px
+   in three directions -- accepted because adjacent header cells paint an
+   opaque background on top of it (verified live: taps in that overlap still
+   open THIS column's explanation, they don't leak into the next column's
+   sort), and it is strictly better than an unhittable 14px target. */
+body.ibpl-mobile .ibpl-m-th-info {
+  appearance: none;
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  width: var(--ibpl-m-tap);
+  height: var(--ibpl-m-tap);
+  margin: -15px -15px -15px 4px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  vertical-align: middle;
+}
+body.ibpl-mobile .ibpl-m-th-info::before {
+  content: "i";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  line-height: 1;
+  font-size: 0.6rem;
+  font-style: italic;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ibpl-text-muted);
+}
+body.ibpl-mobile .ibpl-m-th-info:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 1px;
+}
+
+/* ---- Column/label explanation: inline strip, never a popup ----
+   R6 (2026-09-13 hardening) replaces the bottom sheet both tooltip
+   mechanisms used to open: "no popups on mobile" was already the rule
+   everywhere else in this file (R2, R3); the sheet was the one remaining
+   exception, a fixed-position overlay with a backdrop. Deliberately NOT
+   position: fixed/absolute here -- pushing the table or the filter panel
+   down, not floating over it, is the entire point. Hidden by default
+   (display: none, not just visually hidden) until mobile.js adds
+   .ibpl-m-strip-open. */
+body.ibpl-mobile .ibpl-m-strip {
+  display: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--ibpl-surface);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: var(--ibpl-text);
+}
+body.ibpl-mobile .ibpl-m-strip.ibpl-m-strip-open { display: flex; }
+body.ibpl-mobile .ibpl-m-strip-text { flex: 1 1 auto; }
+body.ibpl-mobile .ibpl-m-strip-close {
+  appearance: none;
+  flex: 0 0 auto;
+  min-width: var(--ibpl-m-tap);
+  min-height: var(--ibpl-m-tap);
+  border: none;
+  background: transparent;
+  color: var(--ibpl-text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* Sits directly above the table -- a .dataTables_wrapper-level sibling of
+   .dataTables_scrollHead -- never inside .dataTables_scrollBody, which
+   scrolls horizontally and would carry the strip out of view with it. */
+body.ibpl-mobile .ibpl-m-th-strip { width: 100%; }
+
+/* Sidebar labels are often inline with their control (a checkbox's own
+   label wraps both the text and the input), so the strip needs to force its
+   own line the same way .ibpl-m-filteradd already does for the "+ Filter"
+   panel above. */
+body.ibpl-mobile .ibpl-m-label-strip { flex: 1 1 100%; width: 100%; }
+
+/* ---- Compare ----
+   Three col-4 cards at 390px give each ~120px, too little for an fs-4 value
+   plus four small lines. A and B stay adjacent because comparing them is the
+   tab's only job; Gap reads fine as a full-width strip. */
+body.ibpl-mobile .cmp-summary-row > [class*="col-"] { padding: 0 4px; }
+body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(1),
+body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(2) {
+  flex: 0 0 50%;
+  max-width: 50%;
+}
+body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(3) {
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+body.ibpl-mobile .cmp-summary-row .fs-4 { font-size: 1.1rem !important; }
+body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
+
+/* Compare's mode radios (#cmp_mode) reach mobile the same way every other
+   tab's view mode does now (see "View mode: the burger menu" above) -- the
+   tab-hover-menu CFG entry for "compare" already drives #cmp_mode, which
+   needs no selector of its own here any more. */
+
+/* ---- Stint ribbon (gameflow) ----
+   The SVG is viewBox 0 0 1070 H under .ibpl-ribbon { width: 100% }, so at
+   ~370px of usable modal width the scale is 0.346: 14px lanes render at 4.8px
+   and 11px labels at 3.8px. Pin the SVG to its viewBox width instead and let
+   the container pan. Scale 1.0, designed size exactly.
+
+   min-width MUST equal RIBBON_WIDTH in helpers.R -- pinned by a test. */
+body.ibpl-mobile .modal-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+body.ibpl-mobile .ibpl-ribbon {
+  width: 1070px;
+  min-width: 1070px;
+  max-width: none;
+  height: auto;
+}

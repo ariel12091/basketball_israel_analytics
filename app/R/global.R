@@ -235,6 +235,10 @@ HEADER_TOOLTIP_JS <- DT::JS(paste0(
 ))
 
 # ---------------- App-level cache & guardrails ----------------
+# The mobile presentation layer (www/mobile.css + www/mobile.js). Set
+# IBPL_MOBILE=false to serve the desktop layout to every viewport.
+IBPL_MOBILE <- !tolower(trimws(Sys.getenv("IBPL_MOBILE", "true"))) %in% c("false", "0", "no")
+
 REF_CACHE_TTL_SEC <- as.numeric(Sys.getenv("REF_CACHE_TTL_SEC", "300"))
 if (!is.finite(REF_CACHE_TTL_SEC) || REF_CACHE_TTL_SEC < 0) REF_CACHE_TTL_SEC <- 60
 
@@ -755,7 +759,7 @@ if (!tolower(trimws(Sys.getenv("POOL_PREWARM", "true"))) %in%
 # Shared head tags
 shared_head_tags <- function() {
   tags$head(
-    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1, maximum-scale=1"),
+    tags$meta(name = "viewport", content = "width=device-width, initial-scale=1"),
     # Archivo is the display face: a variable grotesque with a real width axis,
     # so headers and big numbers can be set condensed the way a scoreboard or a
     # jersey number is, without a second family. DM Sans stays the body face and

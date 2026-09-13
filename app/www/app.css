@@ -633,18 +633,6 @@ div.dt-buttons > .dt-button:focus-visible {
 .nav-link .bi { margin-right: 5px; font-size: 0.9em; opacity: 0.7; }
 .nav-link.active .bi, .nav-item.active .nav-link .bi { opacity: 1; }
 
-/* ---- Mobile Responsive ---- */
-@media (max-width: 768px) {
-  table.dataTable tbody td { font-size: 0.8rem; padding: 4px 6px !important; }
-  table.dataTable thead th { font-size: 0.75rem; padding-top: 8px !important; padding-bottom: 8px !important; }
-  .navbar-brand { font-size: 0.9rem; }
-  .dataTables_wrapper { width: 100% !important; overflow-x: auto; }
-  .irs-handle { width: 32px !important; height: 32px !important; top: -8px !important; }
-  .irs-bar, .irs-line { height: 8px !important; }
-  .legend-box { flex-wrap: wrap; gap: 10px; padding: 8px 12px; font-size: 0.75rem; }
-  .example-grid { grid-template-columns: 1fr; }
-}
-
 /* ---- Loading Skeleton & Transitions ---- */
 .dataTables_processing {
   background: linear-gradient(90deg, transparent, rgba(var(--ibpl-accent-rgb),0.08), transparent) !important;
@@ -919,9 +907,6 @@ body.ibpl-idle-expired::before {
 .minposs-compact .irs--shiny .irs-to,
 .minposs-compact .irs--shiny .irs-single {
   font-size: 0.62rem; padding: 0 4px; top: 0;
-}
-@media (max-width: 768px) {
-  .chips-row-controls { flex: 1 1 100%; flex-wrap: wrap; gap: 12px; }
 }
 .popover {
   background-color: var(--ibpl-surface) !important;
@@ -1394,12 +1379,6 @@ body.filters-collapsed .ibpl-main-col {
   flex: 0 0 100%;
   max-width: 100%;
   width: 100%;
-}
-
-/* The panel is already collapsed behind the tab's own Show Filters button on
-   narrow viewports, so the toggle would be a second control for one thing. */
-@media (max-width: 767px) {
-  .chips-filters-toggle { display: none; }
 }
 
 /* A chip that owns a control invites a click into it; one that summarises
