@@ -286,3 +286,28 @@ body.ibpl-mobile .ibpl-m-th-info:focus-visible {
 /* The popover body is moved into the sheet; the floating box must not also
    render. */
 body.ibpl-mobile.ibpl-m-sheet-open .popover { display: none !important; }
+
+/* ---- Compare ----
+   Three col-4 cards at 390px give each ~120px, too little for an fs-4 value
+   plus four small lines. A and B stay adjacent because comparing them is the
+   tab's only job; Gap reads fine as a full-width strip. */
+body.ibpl-mobile .cmp-summary-row > [class*="col-"] { padding: 0 4px; }
+body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(1),
+body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(2) {
+  flex: 0 0 50%;
+  max-width: 50%;
+}
+body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(3) {
+  flex: 0 0 100%;
+  max-width: 100%;
+}
+body.ibpl-mobile .cmp-summary-row .fs-4 { font-size: 1.1rem !important; }
+body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
+
+/* Compare's mode radios (#cmp_mode) are not a .view-mode-container -- they
+   are hidden directly by app.css:969
+   (#cmp_mode.shiny-input-radiogroup { display: none !important; }). The
+   generic .view-mode-container override above does not reach them, so they
+   need their own selector once mobile.js's promote() moves the group into
+   the holder. */
+body.ibpl-mobile .ibpl-m-viewmode #cmp_mode.shiny-input-radiogroup { display: block !important; }

@@ -346,3 +346,35 @@ test_that("the sheet auto-closes when its held content's origin has been detache
   expect_true(grepl('window.jQuery(document).on("shiny:value"', js, fixed = TRUE))
   expect_true(grepl("!document.contains(origin.parent)", js, fixed = TRUE))
 })
+
+# ---- Task 7: Compare ------------------------------------------------------
+
+test_that("Compare keeps A and B adjacent on mobile", {
+  css <- read_repo_txt("www", "mobile.css")
+
+  # Three col-4 cards would give each ~120px. A and B two-up, Gap full width.
+  expect_true(grepl("cmp-summary", css, fixed = TRUE))
+})
+
+test_that("the Compare table override names the real columns", {
+  js <- read_repo_txt("www", "mobile.js")
+  server <- read_repo_txt("R", "server_tab7_compare.R")
+
+  expect_true(grepl("cmp_table", js, fixed = TRUE))
+  # The columns are A and B. "Side A"/"Side B" appears only in explainer prose.
+  expect_true(grepl('"A", "B", "Gap"', js, fixed = TRUE))
+  expect_true(grepl('"Gap" = "gap"', server, fixed = TRUE))
+})
+
+test_that("Compare's hidden mode radio is reachable on mobile", {
+  app_css <- read_repo_txt("www", "app.css")
+  mobile_css <- read_repo_txt("www", "mobile.css")
+  mobile_js <- read_repo_txt("www", "mobile.js")
+
+  expect_true(grepl("#cmp_mode.shiny-input-radiogroup", app_css, fixed = TRUE))
+  expect_true(grepl('querySelector("#cmp_mode")', mobile_js, fixed = TRUE))
+  expect_true(grepl(
+    "body.ibpl-mobile .ibpl-m-viewmode #cmp_mode.shiny-input-radiogroup { display: block !important; }",
+    mobile_css, fixed = TRUE
+  ))
+})

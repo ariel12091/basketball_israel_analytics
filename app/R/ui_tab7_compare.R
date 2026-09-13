@@ -349,6 +349,7 @@ ui_tab7_compare <- function() tabPanel(
 
             # Summary cards
             fluidRow(
+              class = "cmp-summary-row",
               column(4, div(class = "card bg-dark border-secondary p-3 mb-3",
                 tags$div(class = "small text-uppercase",
                          textOutput("cmp_summary_a_title", inline = TRUE)),

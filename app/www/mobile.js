@@ -71,8 +71,15 @@ window.IBPL_MOBILE_TABLE = {
   // Ordered preference lists keyed by DT output id. Matching is by column
   // HEADER NAME: one output id serves several view modes with different column
   // sets, so a name list simply fails to match in the wrong mode and falls
-  // back to the default. Task 7 adds cmp_table.
-  priority: {}
+  // back to the default.
+  priority: {
+    // Compare's columns are #, Team|Player, GP A, A, Total Poss A, GP B, B,
+    // Total Poss B, Gap. The default "first 3 visible" would yield
+    // #, Player, GP A -- deleting both compared values and the gap, which is
+    // the entire point of the tab. Team and Player are alternatives: Teams
+    // mode has one, Players mode the other, and only the present one matches.
+    cmp_table: ["Team", "Player", "A", "B", "Gap"]
+  }
 };
 
 (function () {
@@ -369,6 +376,13 @@ window.IBPL_MOBILE_TABLE = {
         var select = panes[i].querySelector("#ts_display_mode");
         group = select && select.closest(".shiny-input-container");
       }
+      // Compare's mode radios (#cmp_mode) are hidden by app.css:969
+      // (#cmp_mode.shiny-input-radiogroup { display: none !important; }) and
+      // are not wrapped in .view-mode-container, so neither case above finds
+      // them. Move the radio group itself, mirroring the Player Stats select
+      // case above -- the existing placeholder/restore logic below handles it
+      // without cloning the live Shiny input.
+      if (!group) group = panes[i].querySelector("#cmp_mode");
       if (!group) continue;
       var main = panes[i].querySelector(".col-sm-9, .col-md-9, [role='main']");
       if (!main) continue;
