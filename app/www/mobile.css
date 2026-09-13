@@ -215,3 +215,69 @@ body.ibpl-mobile .ibpl-m-sheet-body .btn {
   min-height: var(--ibpl-m-tap);
   width: 100%;
 }
+
+/* ---- Full-screen modals ----
+   An xl dialog on a 390px screen is a wide table squeezed into a small box.
+   100dvh, with 100vh declared first as the fallback, so mobile browser chrome
+   does not crop the sticky footer. */
+body.ibpl-mobile .modal-dialog {
+  margin: 0 !important;
+  max-width: 100% !important;
+  width: 100% !important;
+  height: 100vh;
+  height: 100dvh;
+}
+body.ibpl-mobile .modal-content {
+  height: 100%;
+  border-radius: 0;
+  display: flex;
+  flex-direction: column;
+}
+body.ibpl-mobile .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  background: var(--ibpl-surface);
+  flex: 0 0 auto;
+}
+body.ibpl-mobile .modal-body { flex: 1 1 auto; overflow-y: auto; }
+body.ibpl-mobile .modal-header .btn-close {
+  min-width: var(--ibpl-m-tap);
+  min-height: var(--ibpl-m-tap);
+}
+
+/* ---- Tooltips ----
+   Both mechanisms are hover-only and so unreachable on touch. Suppress the CSS
+   one and route both through the sheet. */
+body.ibpl-mobile [data-tooltip]:hover::after,
+body.ibpl-mobile [data-tooltip]:hover::before { display: none !important; }
+body.ibpl-mobile [data-tooltip] {
+  text-decoration: underline dotted var(--ibpl-text-muted);
+  text-underline-offset: 3px;
+}
+
+/* A dedicated target, so a header tap still means SORT and only this opens
+   the explanation. Small, but the whole th stays the sort target around it. */
+body.ibpl-mobile .ibpl-m-th-info {
+  appearance: none;
+  margin-left: 4px;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  line-height: 12px;
+  font-size: 0.6rem;
+  font-style: italic;
+  vertical-align: middle;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ibpl-text-muted);
+}
+body.ibpl-mobile .ibpl-m-th-info:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 1px;
+}
+
+/* The popover body is moved into the sheet; the floating box must not also
+   render. */
+body.ibpl-mobile.ibpl-m-sheet-open .popover { display: none !important; }

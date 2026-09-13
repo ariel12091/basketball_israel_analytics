@@ -235,3 +235,43 @@ test_that("every tab still has its own filter toggle", {
   # 11 tab UIs each carry one. A drop here means a tab lost its filters.
   expect_gte(toggles, 11L)
 })
+
+test_that("xl modals go full screen on mobile", {
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_true(grepl(".modal-dialog", css, fixed = TRUE))
+  # dvh, not vh -- mobile browser chrome would crop the footer.
+  expect_true(grepl("100dvh", css, fixed = TRUE))
+  # A vh fallback must be declared FIRST for browsers without dvh.
+  expect_lt(
+    regexpr("height: 100vh", css, fixed = TRUE),
+    regexpr("height: 100dvh", css, fixed = TRUE)
+  )
+})
+
+test_that("both tooltip mechanisms get a tap path", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Native title on th, written by HEADER_TOOLTIP_JS.
+  expect_true(grepl("th[title]", js, fixed = TRUE))
+  # data-tooltip on tt() labels -- a different mechanism, own selector.
+  expect_true(grepl("[data-tooltip]", js, fixed = TRUE))
+  expect_true(grepl("IBPL_MOBILE_SHEET.open", js, fixed = TRUE))
+})
+
+test_that("HEADER_TOOLTIP_JS is unchanged", {
+  global_r <- read_repo_txt("R", "global.R")
+
+  # The mobile layer reads the title attribute; it does not change how it is
+  # written. Touching this would affect desktop too.
+  expect_true(grepl("cell.attr('title', tips[txt])", global_r, fixed = TRUE))
+})
+
+test_that("the stat-filter popover keeps its input ids", {
+  helpers <- read_repo_txt("R", "helpers.R")
+
+  # Relocating the popover BODY must not rename inputs, or
+  # apply_stat_filters() and every observer break.
+  expect_true(grepl('paste0(prefix, "_stat_filter_col")', helpers, fixed = TRUE))
+  expect_true(grepl('paste0(prefix, "_stat_filter_value")', helpers, fixed = TRUE))
+})
