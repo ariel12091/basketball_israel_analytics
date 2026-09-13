@@ -9,8 +9,16 @@ body.ibpl-mobile {
   --ibpl-m-tap: 44px;
 }
 
-/* ---- Migrated from app.css (@media max-width:768px at :637, :923, :1401) ----
-   Same declarations, rescoped to the body class. No behaviour change intended. */
+/* ---- Migrated from app.css (:637, :923, :1401) ----
+   The three blocks used two different breakpoints -- 768px (DT font/padding,
+   navbar brand, slider handles, legend, example grid, chips-row-controls) and
+   767px (chips-filters-toggle) -- now unified on the 767.98px body.ibpl-mobile
+   carrier. This is a deliberate behaviour change, not a pure move: at exactly
+   768px (iPad portrait / this app's own Bootstrap `md` boundary) these rules
+   now stop applying where they used to; in the fractional (767, 767.98] band
+   (reachable off 100% browser zoom) .chips-filters-toggle is now hidden where
+   it previously wasn't. Both shifts intentionally align these ad-hoc
+   breakpoints with the d-md-none boundary the rest of this plan is built on. */
 
 body.ibpl-mobile table.dataTable tbody td { font-size: 0.8rem; padding: 4px 6px !important; }
 body.ibpl-mobile table.dataTable thead th { font-size: 0.75rem; padding-top: 8px !important; padding-bottom: 8px !important; }

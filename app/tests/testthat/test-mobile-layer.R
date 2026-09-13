@@ -82,6 +82,19 @@ test_that("mobile rules live only in mobile.css", {
   expect_true(grepl(".irs-handle", mobile_css, fixed = TRUE))
   expect_true(grepl(".chips-row-controls", mobile_css, fixed = TRUE))
 
+  # Block 3 used 767px, not 768px, so the assertion above can't catch it: a
+  # regression that left "@media (max-width: 767px) { .chips-filters-toggle
+  # { display: none; } }" in app.css while ALSO migrating it into mobile.css
+  # would pass every check above (the rule would just exist in both files).
+  # Assert on the specific combination that was moved, not on either string
+  # alone -- app.css still legitimately has an unrelated 767px media block
+  # (.hub-stat-row) and unrelated .chips-filters-toggle base rules outside
+  # any media query, and both must keep passing.
+  expect_false(grepl(
+    "@media \\(max-width: 767px\\)[\\s\\S]{0,120}\\.chips-filters-toggle \\{ display: none; \\}",
+    app_css, perl = TRUE
+  ))
+
   # Non-mobile media queries must NOT be dragged along.
   expect_true(grepl("prefers-reduced-motion", app_css, fixed = TRUE))
 })
