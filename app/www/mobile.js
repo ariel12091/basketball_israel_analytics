@@ -270,9 +270,30 @@ window.IBPL_MOBILE_TABLE = {
     document.addEventListener("click", function (e) {
       var $caret = $()(e.target).closest(".ibpl-m-caret");
       if (!$caret.length) return;
+      // The pivot menu's only outside-click dismissal (app.js) is bubble
+      // phase, so our capture-phase stopPropagation() below removes the
+      // click before that listener ever runs -- a caret tap elsewhere would
+      // otherwise leave an open menu stuck on screen. Escape is the pivot
+      // feature's own close path (app.js keydown handler); dispatching it
+      // routes through that closure so its internal state is reset properly
+      // instead of leaving it pointing at a node we removed ourselves.
+      // Guarded on a menu actually being open, so this is a no-op otherwise.
+      var btn = $caret.get(0);
+      if (document.querySelector(".ibpl-pivot-menu")) {
+        document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+        // close(true) in app.js restores focus to the row that opened the
+        // menu, not to the caret the user just tapped (verified live: focus
+        // landed on the original opener's <td>, not this button). That
+        // opener is necessarily still on screen -- app.js closes the menu on
+        // any scroll, so it can never be left open with its opener off
+        // screen -- so this never causes a scroll jump, only a focus target
+        // that doesn't match what the user just interacted with. Put focus
+        // back on the caret, whose aria-expanded state is what actually
+        // changed.
+        btn.focus();
+      }
       e.preventDefault();
       e.stopPropagation();
-      var btn = $caret.get(0);
       var tableNode = $caret.closest("table.dataTable").get(0);
       if (!tableNode) return;
       var api = $().fn.dataTable.Api(tableNode);
