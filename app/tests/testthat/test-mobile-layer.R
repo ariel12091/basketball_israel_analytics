@@ -99,34 +99,40 @@ test_that("mobile rules live only in mobile.css", {
   expect_true(grepl("prefers-reduced-motion", app_css, fixed = TRUE))
 })
 
-test_that("the table layer keeps a caret, not a row tap", {
-  js <- read_repo_txt("www", "mobile.js")
+# ---- R1 (2026-09-13 rework): every column visible, identity column pinned
+# ----------------------------------------------------------------------------
+# Replaces the caret/child-row/priority-column tests above: real-device
+# testing rejected that design ("doesn't offer any advantage of the table,
+# which is literally compare the teams/players"). The replacement is CSS-only
+# (all 41 datatable() calls already set scrollX = TRUE, so no R change), so
+# what's testable here is the ABSENCE of the deleted machinery and the
+# PRESENCE of the sticky-column rule -- the scroll/pin/alignment behaviour
+# itself needs a real browser and is verified there, not here.
 
-  # Compare and Tab 2 already bind tbody tr clicks for their own modals.
-  expect_true(grepl("ibpl-m-caret", js, fixed = TRUE))
-  expect_false(grepl('on("click", "table.dataTable > tbody > tr"', js, fixed = TRUE))
+test_that("the caret/child-row/priority-column machinery is gone, not disabled", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_false(grepl("IBPL_MOBILE_TABLE", js, fixed = TRUE))
+  expect_false(grepl("ibpl-m-caret", js, fixed = TRUE))
+  expect_false(grepl("keepSet", js, fixed = TRUE))
+  expect_false(grepl("detailHtml", js, fixed = TRUE))
+  expect_false(grepl("ibpl-m-caret", css, fixed = TRUE))
+  expect_false(grepl("ibpl-m-detail", css, fixed = TRUE))
 })
 
-test_that("the table layer re-applies on every draw and guards re-entry", {
-  js <- read_repo_txt("www", "mobile.js")
+test_that("the identity column is pinned with CSS, covering both scrollHead and scrollBody", {
+  css <- read_repo_txt("www", "mobile.css")
 
-  # DT re-renders every cell on sort, page and filter, so per-cell state is
-  # gone by the next draw.
-  expect_true(grepl("draw.dt", js, fixed = TRUE))
-  # column().visible() triggers a redraw, which fires draw.dt, which recurses.
-  expect_true(grepl("applying", js, fixed = TRUE))
-  # Hiding columns desyncs the header from the body without this.
-  expect_true(grepl("columns.adjust()", js, fixed = TRUE))
-})
-
-test_that("priority overrides are keyed by column name, not index", {
-  js <- read_repo_txt("www", "mobile.js")
-
-  # One DT output id serves several view modes with different column sets, so
-  # an index-keyed override would corrupt the other modes.
-  expect_true(grepl("IBPL_MOBILE_TABLE", js, fixed = TRUE))
-  expect_true(grepl("indexOf", js, fixed = TRUE))
-  expect_true(grepl("render(\"display\")", js, fixed = TRUE))
+  # DT's scrollX splits the header and body into separate tables; both need
+  # the sticky rule or the pinned header drifts from the pinned body.
+  expect_true(grepl(".dataTables_wrapper table.dataTable > thead > tr > th:first-child", css, fixed = TRUE))
+  expect_true(grepl(".dataTables_wrapper table.dataTable > tbody > tr > td:first-child", css, fixed = TRUE))
+  expect_true(grepl("position: sticky", css, fixed = TRUE))
+  expect_true(grepl("left: 0", css, fixed = TRUE))
+  # An opaque background is the whole point -- a transparent sticky column
+  # lets scrolled cells show through underneath it.
+  expect_true(grepl("background: var(--ibpl-surface) !important", css, fixed = TRUE))
 })
 
 test_that("the navbar collapses into a burger", {
@@ -356,15 +362,11 @@ test_that("Compare keeps A and B adjacent on mobile", {
   expect_true(grepl("cmp-summary", css, fixed = TRUE))
 })
 
-test_that("the Compare table override names the real columns", {
-  js <- read_repo_txt("www", "mobile.js")
-  server <- read_repo_txt("R", "server_tab7_compare.R")
-
-  expect_true(grepl("cmp_table", js, fixed = TRUE))
-  # The columns are A and B. "Side A"/"Side B" appears only in explainer prose.
-  expect_true(grepl('"A", "B", "Gap"', js, fixed = TRUE))
-  expect_true(grepl('"Gap" = "gap"', server, fixed = TRUE))
-})
+# "the Compare table override names the real columns" tested the
+# IBPL_MOBILE_TABLE.priority.cmp_table override -- gone with the rest of R1's
+# deletion above ("The CFG overrides for cmp_table, gl_table and eurogl_table
+# go with them"). Compare needs no special-casing under the replacement:
+# every column is visible for every table now.
 
 test_that("Compare's hidden mode radio is reachable on mobile", {
   app_css <- read_repo_txt("www", "app.css")
@@ -381,15 +383,10 @@ test_that("Compare's hidden mode radio is reachable on mobile", {
 
 # ---- Task 8: Gameflow ------------------------------------------------------
 
-test_that("the gameflow link survives the column priority rule", {
-  js <- read_repo_txt("www", "mobile.js")
-
-  # Gameflow is column 4 in both game-log tabs, so the "first 3 visible"
-  # default would bury the only entry point to the stint ribbon.
-  expect_true(grepl("gl_table", js, fixed = TRUE))
-  expect_true(grepl("eurogl_table", js, fixed = TRUE))
-  expect_true(grepl('"Gameflow"', js, fixed = TRUE))
-})
+# "the gameflow link survives the column priority rule" tested the
+# IBPL_MOBILE_TABLE.priority.gl_table/eurogl_table overrides -- gone with the
+# rest of R1's deletion above. Every column is visible now, so Gameflow needs
+# no priority rule to protect it.
 
 test_that("the ribbon keeps its designed width on mobile", {
   helpers <- read_repo_txt("R", "helpers.R")

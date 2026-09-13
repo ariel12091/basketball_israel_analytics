@@ -4,8 +4,8 @@
    than to a bare @media block. One source of truth for the mode. */
 
 body.ibpl-mobile {
-  /* Tap targets below this are hard to hit reliably; referenced by the filter
-     sheet and the caret controls. */
+  /* Tap targets below this are hard to hit reliably; referenced throughout
+     this file for buttons, form controls and menu rows. */
   --ibpl-m-tap: 44px;
 }
 
@@ -35,55 +35,34 @@ body.ibpl-mobile .chips-row-controls { flex: 1 1 100%; flex-wrap: wrap; gap: 12p
    narrow viewports, so the toggle would be a second control for one thing. */
 body.ibpl-mobile .chips-filters-toggle { display: none; }
 
-/* ---- Mobile table layer ---- */
-body.ibpl-mobile .ibpl-m-caret {
-  appearance: none;
-  background: var(--ibpl-surface-2);
-  color: var(--ibpl-accent);
-  border: 1px solid var(--ibpl-border);
-  border-radius: 4px;
-  width: 24px;
-  height: 24px;
-  min-width: 24px;
-  margin-right: 6px;
-  padding: 0;
-  font-family: var(--bs-font-monospace, monospace);
-  font-size: 0.9rem;
-  line-height: 1;
-  vertical-align: middle;
-}
-body.ibpl-mobile .ibpl-m-caret:focus-visible {
-  outline: 2px solid var(--ibpl-accent);
-  outline-offset: 1px;
-}
-/* The button is 24px but the row it sits in gives it the rest of the 44px. */
+/* ---- Mobile table layer ----
+   R1 in the 2026-09-13 rework brief reverses the tap-to-expand design this
+   task originally shipped: hiding columns behind a caret "doesn't offer any
+   advantage of the table, which is literally compare the teams/players."
+   Every column now stays visible and the table scrolls horizontally instead
+   -- all 41 datatable() calls already set scrollX = TRUE, so no R change is
+   needed for the scroll itself. Only the identity column is pinned, done
+   with CSS alone: DT's scrollX splits the header and body into separate
+   tables (.dataTables_scrollHead / .dataTables_scrollBody), both nested
+   inside .dataTables_wrapper, so one selector reaches both without needing
+   to know which mode a given table is in -- a table with no scroll split at
+   all (dom: "t", e.g. Compare's cmp_table) still has its thead/tbody
+   directly inside .dataTables_wrapper and picks up the same rule. */
 body.ibpl-mobile table.dataTable tbody td { min-height: var(--ibpl-m-tap); }
 
-body.ibpl-mobile .ibpl-m-detail {
-  display: grid;
-  gap: 6px;
-  padding: 8px 10px;
-  background: var(--ibpl-surface);
+body.ibpl-mobile .dataTables_wrapper table.dataTable > thead > tr > th:first-child,
+body.ibpl-mobile .dataTables_wrapper table.dataTable > tbody > tr > td:first-child {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  /* Opaque, or the row scrolling underneath would show through the pinned
+     cell -- the classic sticky-column failure. */
+  background: var(--ibpl-surface) !important;
+  border-right: 1px solid var(--ibpl-border);
 }
-body.ibpl-mobile .ibpl-m-detail-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 12px;
-  border-bottom: 1px dotted var(--ibpl-border);
-  padding-bottom: 4px;
-}
-body.ibpl-mobile .ibpl-m-detail-label {
-  color: var(--ibpl-text-muted);
-  font-size: 0.72rem;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  flex: 0 0 auto;
-}
-body.ibpl-mobile .ibpl-m-detail-value {
-  text-align: right;
-  flex: 1 1 auto;
-  min-width: 0;
+body.ibpl-mobile .dataTables_wrapper table.dataTable > thead > tr > th:first-child {
+  z-index: 3;
+  background: var(--ibpl-bg) !important;
 }
 
 /* ---- Mobile navigation ---- */
