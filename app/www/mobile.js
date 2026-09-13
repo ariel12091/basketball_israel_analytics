@@ -56,8 +56,13 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
    priority columns and move the rest into a DataTables child row behind a
    caret.
 
-   A caret rather than a row tap because Compare and Tab 2 already bind
-   tbody tr clicks for their own modals.
+   A caret rather than a row tap because Compare binds
+   table.on('click', 'tbody tr', ...) directly on its tables
+   (server_tab7_compare.R:3324, :3980) for its own team/lineup detail views.
+   (Tab 2's lineup modal is not a row tap -- input$ld_lineup_click is set by
+   an onclick on an <a class="ld-lineup-link"> inside the Players column,
+   one of the 3 columns this layer keeps, so it was never at risk from
+   column hiding either way. Compare alone is reason enough for a caret.)
 
    Re-applied on every draw: DataTables re-renders every cell on sort, page and
    filter, so nothing can be stored on a cell.
@@ -252,14 +257,26 @@ window.IBPL_MOBILE_TABLE = {
       }
     });
 
-    $()(document).on("click", ".ibpl-m-caret", function (e) {
+    // Capture phase, not $(document).on() (bubble phase): Compare binds
+    // table.on('click', 'tbody tr', ...) directly on the <table> node, which
+    // is a closer ancestor of the caret than document. In the native bubble
+    // order the table's listener fires BEFORE a document-bound bubble
+    // listener ever gets a chance to run, so calling stopPropagation() there
+    // is too late -- Compare's row-click handler already fired (verified
+    // live: a bare caret click alone set cmp_table_row_click). Listening on
+    // document during the CAPTURE phase runs before the event ever reaches
+    // the table, so stopPropagation() here removes it from the rest of the
+    // dispatch, bubble phase included.
+    document.addEventListener("click", function (e) {
+      var $caret = $()(e.target).closest(".ibpl-m-caret");
+      if (!$caret.length) return;
       e.preventDefault();
-      e.stopPropagation();   // Compare and Tab 2 bind tbody tr clicks.
-      var btn = this;
-      var tableNode = $()(btn).closest("table.dataTable").get(0);
+      e.stopPropagation();
+      var btn = $caret.get(0);
+      var tableNode = $caret.closest("table.dataTable").get(0);
       if (!tableNode) return;
       var api = $().fn.dataTable.Api(tableNode);
-      var row = api.row($()(btn).closest("tr").get(0));
+      var row = api.row($caret.closest("tr").get(0));
       var orig = origVisible(tableNode, api);
       var keep = keepSet(api, outputIdOf(tableNode), orig);
 
@@ -272,7 +289,7 @@ window.IBPL_MOBILE_TABLE = {
         btn.textContent = "−";
         btn.setAttribute("aria-expanded", "true");
       }
-    });
+    }, true);
 
     document.addEventListener("ibpl:mobilechange", applyAll);
     // Tables render lazily inside conditionalPanels, so a freshly shown table
