@@ -809,8 +809,16 @@ git commit -m "feat(mobile): priority columns and caret expand for DT tables"
 
 **Interfaces:**
 - Consumes: `body.ibpl-mobile`, `ibpl:mobilechange`.
-- Produces: CSS class `.ibpl-m-viewmode` on the promoted radio group; a navbar
+- Produces: CSS class `.ibpl-m-viewmode` on the promoted input; a navbar
   cluster moved inside `.navbar-collapse` while mobile mode is active.
+
+The eight `.view-mode-container` radio groups are live Shiny inputs but
+**hidden on desktop** by `app.css:965` (`display: none !important`). Moving one
+does not make it visible: the mobile CSS must explicitly override that rule.
+Player Stats has no such radio group; its `#ts_display_mode` select lives under
+an inline `display: none` wrapper in `ui_tab5_traditional.R`, so promote the
+select's input container without moving the hidden wrapper. Compare has a
+separately hidden `#cmp_mode` radio group; Task 7 must handle it explicitly.
 
 - [ ] **Step 1: Write the failing test**
 
@@ -825,12 +833,29 @@ test_that("the navbar collapses into a burger", {
 test_that("mobile drives the real view-mode radios, not the hover menu", {
   js <- read_repo_txt("www", "mobile.js")
   css <- read_repo_txt("www", "mobile.css")
+  app_css <- read_repo_txt("www", "app.css")
 
-  # The hover menu is only ever a shortcut to .view-mode-container's radios.
-  # Driving the radios directly cannot drift from the menu.
+  # The desktop menu controls live radios hidden with !important. A move alone
+  # would leave the mobile control invisible.
+  expect_true(grepl(".view-mode-container {", app_css, fixed = TRUE))
+  expect_true(grepl("display: none !important", app_css, fixed = TRUE))
   expect_true(grepl(".view-mode-container", js, fixed = TRUE))
+  expect_true(grepl(
+    "body.ibpl-mobile .ibpl-m-viewmode .view-mode-container { display: block !important; }",
+    css, fixed = TRUE
+  ))
   expect_true(grepl("tab-hover-menu", css, fixed = TRUE))
-  expect_true(grepl("ibpl-m-viewmode", css, fixed = TRUE))
+})
+
+test_that("Player Stats moves its hidden select into the mobile mode control", {
+  ui <- read_repo_txt("R", "ui_tab5_traditional.R")
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_true(grepl('"ts_display_mode"', ui, fixed = TRUE))
+  expect_true(grepl('querySelector("#ts_display_mode")', js, fixed = TRUE))
+  expect_true(grepl('select.closest(".shiny-input-container")', js, fixed = TRUE))
+  expect_true(grepl(".ibpl-m-viewmode select", css, fixed = TRUE))
 })
 
 test_that("the fixed navbar cluster is unfixed on mobile", {
@@ -885,6 +910,10 @@ body.ibpl-mobile.league-el .league-nav-el { display: flex !important; width: 100
    shortcuts to are promoted instead. */
 body.ibpl-mobile .tab-hover-menu { display: none !important; }
 
+/* app.css hides every .view-mode-container with !important because desktop
+   uses the navbar menu. Make the relocated Shiny radios visible on mobile. */
+body.ibpl-mobile .ibpl-m-viewmode .view-mode-container { display: block !important; }
+
 body.ibpl-mobile .ibpl-m-viewmode {
   position: sticky;
   top: 0;
@@ -912,6 +941,19 @@ body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
   border-color: var(--ibpl-accent);
   color: var(--ibpl-accent);
 }
+/* Player Stats' display mode is a selectInput in a hidden wrapper. */
+body.ibpl-mobile .ibpl-m-viewmode .shiny-input-container { width: 100%; margin: 0; }
+body.ibpl-mobile .ibpl-m-viewmode .shiny-input-container > label {
+  display: block;
+  min-height: 0;
+  padding: 0;
+  border: 0;
+}
+body.ibpl-mobile .ibpl-m-viewmode select,
+body.ibpl-mobile .ibpl-m-viewmode .selectize-input {
+  min-height: var(--ibpl-m-tap);
+  width: 100%;
+}
 ```
 
 - [ ] **Step 5: Append the navbar-cluster relocation and view-mode promotion to `mobile.js`**
@@ -921,8 +963,9 @@ body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
    The fixed cluster is supplied through navbarPage(header = ...) outside the
    collapsed menu. Positioning it statically does not put it under the burger,
    so move the existing node into the collapse and restore it on desktop.
-   The view-mode radios are also moved above each table on mobile. Preserve
-   their sidebar positions with placeholders for the desktop transition.
+   The view-mode inputs (radios, or Player Stats' select) are also moved above
+   each table on mobile. Preserve their sidebar positions with placeholders
+   for the desktop transition.
    ----------------------------------------------------------------------- */
 (function () {
   var clusterHome = null;
@@ -947,6 +990,13 @@ body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
     var panes = document.querySelectorAll(".tab-pane");
     for (var i = 0; i < panes.length; i++) {
       var group = panes[i].querySelector(".view-mode-container");
+      if (!group) {
+        // Player Stats uses a hidden selectInput instead of view-mode radios.
+        // Move the input container, not its display:none wrapper, so it can be
+        // used on mobile while keeping the existing Shiny binding and value.
+        var select = panes[i].querySelector("#ts_display_mode");
+        group = select && select.closest(".shiny-input-container");
+      }
       if (!group) continue;
       var main = panes[i].querySelector(".col-sm-9, .col-md-9, [role='main']");
       if (!main) continue;
@@ -1010,7 +1060,7 @@ parents when the viewport crosses back to desktop width.
 
 - [ ] **Step 6: Run the tests**
 
-Expected: PASS, 10 tests.
+Expected: PASS, 11 tests.
 
 - [ ] **Step 7: Verify in the browser**
 
@@ -1036,9 +1086,16 @@ controls are usable.
 
 `browser_click` the burger, then confirm only the current league's tabs are listed — count visible `.nav-item` and compare against `body.league-il`/`league-el`. Then click a view-mode option in the promoted control and confirm the table re-renders.
 
+Check the promoted `.view-mode-container` has computed `display` other than
+`none`; its presence in the DOM is insufficient. On Player Stats, check that
+`#ts_display_mode` is visible in `.ibpl-m-viewmode`, choose a different display
+mode, and confirm the table changes. The desktop hover menu remains hidden on
+mobile. Compare's distinct `#cmp_mode` control is covered by Task 7.
+
 Resize to 1440x900 and confirm the cluster is outside `.navbar-collapse`, has
 its original fixed positioning, and every `.view-mode-container` is back in its
-sidebar. Resize to 390x844 once more and confirm both relocations still work.
+sidebar. Confirm `#ts_display_mode` is back under its hidden wrapper. Resize to
+390x844 once more and confirm both relocations still work.
 
 - [ ] **Step 8: Commit**
 
@@ -1291,7 +1348,7 @@ adds `100dvh` for modals and carries the stricter ordering assertion.
 
 - [ ] **Step 5: Run the tests**
 
-Expected: PASS, 13 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 6: Verify in the browser**
 
@@ -1494,7 +1551,7 @@ body.ibpl-mobile.ibpl-m-sheet-open .popover { display: none !important; }
 
 - [ ] **Step 5: Run the tests**
 
-Expected: PASS, 17 tests.
+Expected: PASS, 18 tests.
 
 - [ ] **Step 6: Verify in the browser**
 
@@ -1535,6 +1592,28 @@ Compare's summary is three `column(4)` cards — A, B, Avg Gap (`ui_tab7_compare
 
 The Compare table's real column names are `#, Team`/`Player, GP A, A, Total Poss A, GP B, B, Total Poss B, Gap` (`server_tab7_compare.R:3300-3315`) — **`A`/`B`, not "Side A"/"Side B"**. The default of "first 3 visible" would yield `#, Player, GP A`, deleting both compared values and the gap.
 
+Compare also differs from Task 4's eight `.view-mode-container` tabs:
+`#cmp_mode.shiny-input-radiogroup` is hidden by `app.css:969` with
+`display: none !important`. Its Teams / Lineups / Players choice must be moved
+into the mobile mode holder and explicitly revealed there, or the suppressed
+hover menu leaves Compare with no mode switch.
+
+**Compare has no mobile view-mode control — close this first.** Found during
+Task 4. `radioButtons("cmp_mode", ...)` (`ui_tab7_compare.R:13`) is hidden by
+`app.css:969` (`#cmp_mode.shiny-input-radiogroup { display: none !important; }`),
+is **not** inside a `.view-mode-container`, and is not `#ts_display_mode` — so
+Task 4's `promote()` skips it entirely, while
+`body.ibpl-mobile .tab-hover-menu { display: none }` removes its only other
+control. On a phone, Compare cannot switch between Teams, Lineups and Players.
+
+Extend `promote()`'s selector chain with a third case for `#cmp_mode`,
+mirroring the `#ts_display_mode` case added for Player Stats: locate the input,
+take its `.shiny-input-container`, move that, and add the matching
+`body.ibpl-mobile .ibpl-m-viewmode` override so it is visible inside the holder
+without ever revealing it on desktop. Verify in the browser that switching mode
+actually re-renders Compare, not merely that the control appears — this is the
+third control in this plan that existed but did not render.
+
 - [ ] **Step 1: Write the failing test**
 
 ```r
@@ -1553,6 +1632,19 @@ test_that("the Compare table override names the real columns", {
   # The columns are A and B. "Side A"/"Side B" appears only in explainer prose.
   expect_true(grepl('"A", "B", "Gap"', js, fixed = TRUE))
   expect_true(grepl('"Gap" = "gap"', server, fixed = TRUE))
+})
+
+test_that("Compare's hidden mode radio is reachable on mobile", {
+  app_css <- read_repo_txt("www", "app.css")
+  mobile_css <- read_repo_txt("www", "mobile.css")
+  mobile_js <- read_repo_txt("www", "mobile.js")
+
+  expect_true(grepl("#cmp_mode.shiny-input-radiogroup", app_css, fixed = TRUE))
+  expect_true(grepl('querySelector("#cmp_mode")', mobile_js, fixed = TRUE))
+  expect_true(grepl(
+    "body.ibpl-mobile .ibpl-m-viewmode #cmp_mode.shiny-input-radiogroup { display: block !important; }",
+    mobile_css, fixed = TRUE
+  ))
 })
 ```
 
@@ -1598,9 +1690,22 @@ body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
 
 The summary `fluidRow` at `ui_tab7_compare.R:351` has no class, so add `class = "cmp-summary-row"` to that one `fluidRow` call. This is a **class-only** UI edit — no input, no logic. It is the one exception to "no per-tab R edits" and is limited to adding a hook for the CSS.
 
+Also extend Task 4's `promote(on)` fallback after the Player Stats select:
+
+```js
+if (!group) group = panes[i].querySelector("#cmp_mode");
+```
+
+Task 4's existing placeholder and restore logic then moves the real Compare
+radio group without cloning its Shiny input. Add this scoped CSS override:
+
+```css
+body.ibpl-mobile .ibpl-m-viewmode #cmp_mode.shiny-input-radiogroup { display: block !important; }
+```
+
 - [ ] **Step 5: Run the tests**
 
-Expected: PASS, 19 tests.
+Expected: PASS, 20 tests.
 
 - [ ] **Step 6: Verify in the browser**
 
@@ -1618,6 +1723,9 @@ At 390x844 on Compare, evaluate:
 Expected: `heads` contains `A`, `B` and `Gap` plus the identity column — never `#, Player, GP A`. `cards` shows two roughly equal widths then one about double.
 
 Also confirm a row click still opens the Compare detail view — the caret must not have stolen it.
+Check that `#cmp_mode` is visibly rendered in `.ibpl-m-viewmode`; click
+Lineups and Players and confirm the active content changes. At 1440x900,
+confirm it returns to the sidebar and is hidden by the desktop rule.
 
 - [ ] **Step 7: Commit**
 
@@ -1745,7 +1853,7 @@ body.ibpl-mobile .ibpl-ribbon {
 
 - [ ] **Step 5: Run the tests**
 
-Expected: PASS, 21 tests.
+Expected: PASS, 22 tests.
 
 - [ ] **Step 6: Verify in the browser**
 
