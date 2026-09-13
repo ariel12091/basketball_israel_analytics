@@ -1475,10 +1475,31 @@ body.ibpl-mobile .modal-header .btn-close {
    one and route both through the sheet. */
 body.ibpl-mobile [data-tooltip]:hover::after,
 body.ibpl-mobile [data-tooltip]:hover::before { display: none !important; }
-body.ibpl-mobile table.dataTable thead th[title],
 body.ibpl-mobile [data-tooltip] {
   text-decoration: underline dotted var(--ibpl-text-muted);
   text-underline-offset: 3px;
+}
+
+/* A dedicated target, so a header tap still means SORT and only this opens
+   the explanation. Small, but the whole th stays the sort target around it. */
+body.ibpl-mobile .ibpl-m-th-info {
+  appearance: none;
+  margin-left: 4px;
+  padding: 0;
+  width: 14px;
+  height: 14px;
+  line-height: 12px;
+  font-size: 0.6rem;
+  font-style: italic;
+  vertical-align: middle;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--ibpl-text-muted);
+}
+body.ibpl-mobile .ibpl-m-th-info:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 1px;
 }
 
 /* The popover body is moved into the sheet; the floating box must not also
@@ -1504,18 +1525,58 @@ body.ibpl-mobile.ibpl-m-sheet-open .popover { display: none !important; }
     document.querySelector(".ibpl-m-sheet-body").appendChild(p);
   }
 
+  // DataTables re-renders the header on every draw, so the affordance has to
+  // be re-injected the same way the caret is. HEADER_TOOLTIP_JS (global.R:212)
+  // writes the native title attribute; this only reads it.
+  function addInfoMarks() {
+    if (!document.body.classList.contains("ibpl-mobile")) return;
+    var ths = document.querySelectorAll("table.dataTable thead th[title]");
+    for (var i = 0; i < ths.length; i++) {
+      if (ths[i].querySelector(".ibpl-m-th-info")) continue;
+      var b = document.createElement("button");
+      b.type = "button";
+      b.className = "ibpl-m-th-info";
+      b.setAttribute("aria-label", "What this column means");
+      b.textContent = "i";
+      ths[i].appendChild(b);
+    }
+  }
+
+  function removeInfoMarks() {
+    var marks = document.querySelectorAll(".ibpl-m-th-info");
+    for (var i = 0; i < marks.length; i++) {
+      if (marks[i].parentNode) marks[i].parentNode.removeChild(marks[i]);
+    }
+  }
+
   function bind() {
     if (!window.jQuery) return;
     var $ = window.jQuery;
 
-    $(document).on("click", "table.dataTable thead th[title]", function (e) {
+    $(document).on("draw.dt", addInfoMarks);
+    document.addEventListener("ibpl:mobilechange", function (e) {
+      if (e.detail && e.detail.mobile) addInfoMarks();
+      else removeInfoMarks();
+    });
+
+    // NOT a click on the th itself. A column header's tap already means SORT,
+    // in DataTables' own handler bound closer to the target than document --
+    // so a document-level handler here cannot replace that, it only ADDS to
+    // it, and every sort tap would also fling open a tooltip sheet. Inject a
+    // small dedicated affordance into each th[title] instead and listen for
+    // that, so tap-to-sort keeps working untouched and the explanation has its
+    // own target. Injected on each draw, like the caret, because DataTables
+    // re-renders the header.
+    $(document).on("click", ".ibpl-m-th-info", function (e) {
       if (!document.body.classList.contains("ibpl-mobile")) return;
-      var tip = this.getAttribute("title");
+      var th = this.parentNode;
+      var tip = th ? th.getAttribute("title") : "";
       if (!tip) return;
-      // Do not swallow the sort click: only the header TEXT opens the tip.
+      // Stop here so the tap on the info affordance does NOT also sort.
       e.stopPropagation();
       e.preventDefault();
-      textSheet((this.textContent || "").trim(), tip);
+      var label = (th.textContent || "").replace(/\s*i\s*$/, "").trim();
+      textSheet(label, tip);
     });
 
     $(document).on("click", "[data-tooltip]", function (e) {
