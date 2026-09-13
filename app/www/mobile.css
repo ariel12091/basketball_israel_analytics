@@ -177,67 +177,6 @@ body.ibpl-mobile .minposs-compact .control-label {
   margin-bottom: 1px;
 }
 
-/* ---- Bottom sheet ---- */
-/* Intentional exception to "every rule in this file is scoped to
-   body.ibpl-mobile": this is a default-hide base rule with no mode
-   dependency of its own, and it is deliberately unscoped so the sheet stays
-   hidden even in the moment before ibpl-mobile lands (or after it is
-   removed while the sheet is open -- see the ibpl:mobilechange handler in
-   mobile.js). Scoping it under body.ibpl-mobile would leave the sheet
-   visible over the desktop layout in exactly that window. Do not "fix" this
-   into the scoped block below. */
-.ibpl-m-sheet, .ibpl-m-sheet-backdrop { display: none; }
-
-body.ibpl-mobile.ibpl-m-sheet-open .ibpl-m-sheet-backdrop {
-  display: block;
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 2147482000;
-}
-body.ibpl-mobile.ibpl-m-sheet-open .ibpl-m-sheet {
-  display: flex;
-  flex-direction: column;
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  /* vh first as the fallback; dvh accounts for mobile browser chrome so the
-     sticky Apply footer is never cropped. */
-  max-height: 85vh;
-  max-height: 85dvh;
-  z-index: 2147482001;
-  background: var(--ibpl-surface);
-  border-top: 1px solid var(--ibpl-border);
-  border-radius: 12px 12px 0 0;
-}
-body.ibpl-mobile .ibpl-m-sheet-head {
-  flex: 0 0 auto;
-  padding: 12px 16px;
-  font-weight: 600;
-  border-bottom: 1px solid var(--ibpl-border);
-}
-body.ibpl-mobile .ibpl-m-sheet-body {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 12px 16px;
-  -webkit-overflow-scrolling: touch;
-}
-body.ibpl-mobile .ibpl-m-sheet-foot {
-  flex: 0 0 auto;
-  padding: 12px 16px;
-  border-top: 1px solid var(--ibpl-border);
-}
-/* The collapse class would keep the moved panel hidden inside the sheet. */
-body.ibpl-mobile .ibpl-m-sheet-body .collapse { display: block !important; height: auto !important; }
-body.ibpl-mobile .ibpl-m-sheet-body .form-control,
-body.ibpl-mobile .ibpl-m-sheet-body .form-select,
-body.ibpl-mobile .ibpl-m-sheet-body .selectize-input,
-body.ibpl-mobile .ibpl-m-sheet-body .btn {
-  min-height: var(--ibpl-m-tap);
-  width: 100%;
-}
-
 /* ---- Full-screen modals ----
    An xl dialog on a 390px screen is a wide table squeezed into a small box.
    100dvh, with 100vh declared first as the fallback, so mobile browser chrome
@@ -274,11 +213,13 @@ body.ibpl-mobile .modal-dialog.modal-xl .modal-header .btn-close {
 }
 
 /* ---- Tooltips ----
-   Both mechanisms are hover-only and so unreachable on touch. Suppress the CSS
-   one and route both through the sheet. (The stat-filter popover used to be a
-   third sheet user, hidden here once shown; R3 suppresses it at the source
-   instead, so Bootstrap's show() never runs on mobile and there is no
-   floating .popover box left to hide.) */
+   Both mechanisms are hover-only and so unreachable on touch. Suppress the
+   CSS one and route both through an inline strip instead (R6, 2026-09-13
+   hardening -- replaces the bottom sheet both used to open; see
+   ".ibpl-m-strip" below). (The stat-filter popover used to be a third sheet
+   user, hidden here once shown; R3 suppresses it at the source instead, so
+   Bootstrap's show() never runs on mobile and there is no floating .popover
+   box left to hide.) */
 body.ibpl-mobile [data-tooltip]:hover::after,
 body.ibpl-mobile [data-tooltip]:hover::before { display: none !important; }
 body.ibpl-mobile [data-tooltip] {
@@ -287,17 +228,58 @@ body.ibpl-mobile [data-tooltip] {
 }
 
 /* A dedicated target, so a header tap still means SORT and only this opens
-   the explanation. Small, but the whole th stays the sort target around it. */
+   the explanation. Small, but the whole th stays the sort target around it.
+
+   Real bug fixed here (found live, not in a synthetic-click test): this
+   used to be a 14x14 button -- both the hit area AND the visible dot --
+   against this file's own --ibpl-m-tap: 44px minimum for every other tap
+   target. A thumb reliably missed it, landed on the th instead, and sorted
+   the column with no explanation shown. The fix separates the two: the
+   REAL element (".ibpl-m-th-info", what getBoundingClientRect() measures
+   and what actually receives the tap) is the full 44x44 --ibpl-m-tap
+   square; the VISIBLE dot is a small 14x14 ::before centered inside it, so
+   32 columns are not visually cluttered by 32 big circles.
+
+   Growing the real box by 30px per axis would still be a regression if left
+   alone -- the header row would triple in height, and each of 32 columns
+   would add 30px of horizontal scroll. Negative margins claw that back on
+   every axis except the left: top/bottom cancel out completely (-15/-15
+   against the added 30px), so the header row's height is unchanged, and the
+   right margin absorbs most of the width growth. The left margin is left
+   positive (unchanged from the original gap) so the dot's position
+   relative to the header text does not move. This intentionally leaves the
+   invisible portion of the hit box overlapping neighboring cells for 15px
+   in three directions -- accepted because adjacent header cells paint an
+   opaque background on top of it (verified live: taps in that overlap still
+   open THIS column's explanation, they don't leak into the next column's
+   sort), and it is strictly better than an unhittable 14px target. */
 body.ibpl-mobile .ibpl-m-th-info {
   appearance: none;
-  margin-left: 4px;
+  position: relative;
+  display: inline-block;
+  box-sizing: border-box;
+  width: var(--ibpl-m-tap);
+  height: var(--ibpl-m-tap);
+  margin: -15px -15px -15px 4px;
   padding: 0;
+  border: none;
+  background: transparent;
+  vertical-align: middle;
+}
+body.ibpl-mobile .ibpl-m-th-info::before {
+  content: "i";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 14px;
   height: 14px;
-  line-height: 12px;
+  line-height: 1;
   font-size: 0.6rem;
   font-style: italic;
-  vertical-align: middle;
   border: 1px solid var(--ibpl-border);
   border-radius: 50%;
   background: transparent;
@@ -307,6 +289,53 @@ body.ibpl-mobile .ibpl-m-th-info:focus-visible {
   outline: 2px solid var(--ibpl-accent);
   outline-offset: 1px;
 }
+
+/* ---- Column/label explanation: inline strip, never a popup ----
+   R6 (2026-09-13 hardening) replaces the bottom sheet both tooltip
+   mechanisms used to open: "no popups on mobile" was already the rule
+   everywhere else in this file (R2, R3); the sheet was the one remaining
+   exception, a fixed-position overlay with a backdrop. Deliberately NOT
+   position: fixed/absolute here -- pushing the table or the filter panel
+   down, not floating over it, is the entire point. Hidden by default
+   (display: none, not just visually hidden) until mobile.js adds
+   .ibpl-m-strip-open. */
+body.ibpl-mobile .ibpl-m-strip {
+  display: none;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: var(--ibpl-surface);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  font-size: 0.75rem;
+  color: var(--ibpl-text);
+}
+body.ibpl-mobile .ibpl-m-strip.ibpl-m-strip-open { display: flex; }
+body.ibpl-mobile .ibpl-m-strip-text { flex: 1 1 auto; }
+body.ibpl-mobile .ibpl-m-strip-close {
+  appearance: none;
+  flex: 0 0 auto;
+  min-width: var(--ibpl-m-tap);
+  min-height: var(--ibpl-m-tap);
+  border: none;
+  background: transparent;
+  color: var(--ibpl-text-muted);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+/* Sits directly above the table -- a .dataTables_wrapper-level sibling of
+   .dataTables_scrollHead -- never inside .dataTables_scrollBody, which
+   scrolls horizontally and would carry the strip out of view with it. */
+body.ibpl-mobile .ibpl-m-th-strip { width: 100%; }
+
+/* Sidebar labels are often inline with their control (a checkbox's own
+   label wraps both the text and the input), so the strip needs to force its
+   own line the same way .ibpl-m-filteradd already does for the "+ Filter"
+   panel above. */
+body.ibpl-mobile .ibpl-m-label-strip { flex: 1 1 100%; width: 100%; }
 
 /* ---- Compare ----
    Three col-4 cards at 390px give each ~120px, too little for an fs-4 value

@@ -226,44 +226,6 @@ test_that("min possessions is visually demoted, not removed or renamed", {
   expect_true(grepl("font-size: 0.65rem", css, fixed = TRUE))
 })
 
-test_that("the sheet is a reusable component", {
-  js <- read_repo_txt("www", "mobile.js")
-  css <- read_repo_txt("www", "mobile.css")
-
-  expect_true(grepl("IBPL_MOBILE_SHEET", js, fixed = TRUE))
-  expect_true(grepl(".ibpl-m-sheet", css, fixed = TRUE))
-  # dvh, with a vh fallback declared first, so browser chrome does not crop
-  # the footer. Asserted generically here: this task introduces 85dvh for the
-  # sheet, and Task 6 adds 100dvh for modals with its own ordering assertion.
-  expect_true(grepl("dvh", css, fixed = TRUE))
-})
-
-test_that("the sheet body is cleared on open, AFTER close() restores any moved node", {
-  js <- read_repo_txt("www", "mobile.js")
-
-  # Task 6 appends tooltip text into the sheet body directly. close() only
-  # restores MOVED nodes, so without an explicit clear that text accumulates
-  # across opens and leaks into the filter sheet.
-  expect_true(grepl('body.innerHTML = ""', js, fixed = TRUE))
-
-  # Ordering is the whole point, not just presence: clearing BEFORE close()
-  # would wipe out a still-moved node via innerHTML instead of returning it
-  # to the page. Isolate open()'s own body (everything between its signature
-  # and the next function's) so this can't be satisfied by the two strings
-  # appearing anywhere else in the file.
-  start <- regexpr("function open(title, node) {", js, fixed = TRUE)
-  end <- regexpr("function close() {", js, fixed = TRUE)
-  expect_gt(start, 0)
-  expect_gt(end, start)
-  open_fn <- substr(js, start, end - 1)
-
-  close_pos <- regexpr("close();", open_fn, fixed = TRUE)
-  clear_pos <- regexpr('body.innerHTML = ""', open_fn, fixed = TRUE)
-  expect_gt(close_pos, 0)
-  expect_gt(clear_pos, 0)
-  expect_lt(close_pos, clear_pos)
-})
-
 test_that("every tab still has its own filter toggle", {
   ui_files <- list.files(repo_file("R"), pattern = "^ui_tab.*\\.R$", full.names = TRUE)
   toggles <- sum(vapply(ui_files, function(f) {
@@ -294,7 +256,109 @@ test_that("both tooltip mechanisms get a tap path", {
   expect_true(grepl("th[title]", js, fixed = TRUE))
   # data-tooltip on tt() labels -- a different mechanism, own selector.
   expect_true(grepl("[data-tooltip]", js, fixed = TRUE))
-  expect_true(grepl("IBPL_MOBILE_SHEET.open", js, fixed = TRUE))
+  # R6 (2026-09-13 hardening): both now open an inline strip, not a sheet.
+  expect_true(grepl("function toggleHeaderStrip(", js, fixed = TRUE))
+  expect_true(grepl("function toggleLabelStrip(", js, fixed = TRUE))
+})
+
+# ---- R6 (2026-09-13 hardening): header info-dot hit area + sheet removal --
+# "No popups on mobile" was already the rule for the filter panel (R2) and
+# the stat-filter popover (R3); the bottom sheet was the one remaining
+# exception. It is deleted entirely here, along with the real bug that
+# survived every prior synthetic-click check: .ibpl-m-th-info rendered at
+# 14x14 against this file's own 44px minimum tap target, so a thumb missed
+# it, landed on the th, and sorted the column instead of opening the
+# explanation. The replacement is an inline strip pushed into the page flow,
+# never an overlay -- see docs on ".ibpl-m-strip" in mobile.css and
+# "buildStrip" in mobile.js. The scroll/tap/push-down behaviour itself needs
+# a real browser and is verified there, not here.
+
+test_that("the bottom sheet component is deleted entirely, not just unused", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_false(grepl("IBPL_MOBILE_SHEET", js, fixed = TRUE))
+  expect_false(grepl("ibpl-m-sheet", js, fixed = TRUE))
+  expect_false(grepl("ibpl-m-sheet", css, fixed = TRUE))
+  expect_false(grepl("textSheet", js, fixed = TRUE))
+})
+
+test_that("the header info-dot's real hit box is the 44px tap minimum, not the visible dot", {
+  css <- read_repo_txt("www", "mobile.css")
+
+  # The element getBoundingClientRect() measures (.ibpl-m-th-info itself)
+  # must be sized to the shared --ibpl-m-tap minimum...
+  start <- regexpr("body.ibpl-mobile .ibpl-m-th-info {", css, fixed = TRUE)
+  expect_gt(start, 0)
+  rest <- substring(css, start)
+  end <- regexpr("\\}", rest)
+  expect_gt(end, 0)
+  info_rule <- substring(rest, 1, end)
+
+  expect_true(grepl("width: var(--ibpl-m-tap)", info_rule, fixed = TRUE))
+  expect_true(grepl("height: var(--ibpl-m-tap)", info_rule, fixed = TRUE))
+
+  # ...while the VISIBLE dot stays a separate, small ::before -- 32 columns
+  # do not each get a 44px circle.
+  before_start <- regexpr("body.ibpl-mobile .ibpl-m-th-info::before {", css, fixed = TRUE)
+  expect_gt(before_start, 0)
+  before_rest <- substring(css, before_start)
+  before_end <- regexpr("\\}", before_rest)
+  before_rule <- substring(before_rest, 1, before_end)
+
+  expect_true(grepl("width: 14px", before_rule, fixed = TRUE))
+  expect_true(grepl("height: 14px", before_rule, fixed = TRUE))
+  expect_true(grepl("border-radius: 50%", before_rule, fixed = TRUE))
+})
+
+test_that("the header and label strips push content down, never float over it", {
+  css <- read_repo_txt("www", "mobile.css")
+
+  start <- regexpr("body.ibpl-mobile .ibpl-m-strip {", css, fixed = TRUE)
+  expect_gt(start, 0)
+  rest <- substring(css, start)
+  end <- regexpr("\\}", rest)
+  strip_rule <- substring(rest, 1, end)
+
+  # No overlay positioning at all -- this is the entire point of replacing
+  # the sheet, which was fixed-positioned with a backdrop.
+  expect_false(grepl("position: fixed", strip_rule, fixed = TRUE))
+  expect_false(grepl("position: absolute", strip_rule, fixed = TRUE))
+  expect_false(grepl("z-index", strip_rule, fixed = TRUE))
+
+  # A dismiss control exists (close button in JS, sized to the tap minimum
+  # in CSS) rather than requiring an outside-tap/Escape dismissal pattern
+  # that only a floating overlay could offer.
+  expect_true(grepl(".ibpl-m-strip-close", css, fixed = TRUE))
+})
+
+test_that("the table header strip anchors outside .dataTables_scrollBody", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # scrollX splits the header/body into separate tables; the strip must
+  # anchor on .dataTables_scrollHead (or the bare table, for a dom: "t"
+  # table with no scroll split) so it never ends up a scrollBody child that
+  # would slide out of view when the table scrolls horizontally.
+  expect_true(grepl('wrapper.querySelector(".dataTables_scrollHead")', js, fixed = TRUE))
+  # Mentioning scrollBody in a comment (explaining what to avoid) is fine;
+  # querying or inserting into it is not.
+  expect_false(grepl('querySelector(".dataTables_scrollBody")', js, fixed = TRUE))
+  expect_false(grepl("dataTables_scrollBody\"); anchor.appendChild", js, fixed = TRUE))
+})
+
+test_that("tapping the same header dot again dismisses the strip", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  start <- regexpr("function toggleHeaderStrip(th, label, text) {", js, fixed = TRUE)
+  expect_gt(start, 0)
+  rest <- substring(js, start)
+  # Function body ends at the first line that is just a closing brace.
+  end <- regexpr("\n\\}", rest)
+  expect_gt(end, 0)
+  fn_body <- substring(rest, 1, end)
+
+  expect_true(grepl("ibpl-m-strip-open", fn_body, fixed = TRUE))
+  expect_true(grepl("closeHeaderStrip(", fn_body, fixed = TRUE))
 })
 
 test_that("HEADER_TOOLTIP_JS is unchanged", {
@@ -387,9 +451,10 @@ test_that("[data-tooltip] taps do not call preventDefault", {
   # checkbox/radio a tt() label wraps (ts_clutch_enabled, tst_clutch_enabled,
   # cmp_a_clutch, cmp_b_clutch, and more across the sidebars) -- verified
   # live (Task 6 fix round 1): tapping "Enable clutch filter"'s tooltip text
-  # left the checkbox unchecked and closed an already-open Filters sheet.
-  # Scope to this handler's own body -- the same way the sheet's open()/
-  # close() ordering test above scopes to open() -- so this can't pass on
+  # left the checkbox unchecked and closed an already-open Filters sheet
+  # (the sheet is gone since R6, but the underlying browser-default hazard
+  # -- ANY preventDefault() during dispatch suppresses the native toggle --
+  # is unchanged). Scope to this handler's own body so this can't pass on
   # preventDefault() calls elsewhere in the file (the th-info and
   # filter-chip-add handlers legitimately call it, to stop DataTables/
   # Bootstrap's own listeners).
@@ -403,7 +468,7 @@ test_that("[data-tooltip] taps do not call preventDefault", {
   expect_gt(end, 0)
   handler <- substring(rest, 1, end + 2)
 
-  expect_true(grepl("textSheet", handler, fixed = TRUE))
+  expect_true(grepl("toggleLabelStrip", handler, fixed = TRUE))
   expect_false(grepl("preventDefault", handler, fixed = TRUE))
 })
 
@@ -415,11 +480,17 @@ test_that("[data-tooltip] ignores untrusted clicks (R4 regression: synthetic rad
   # (e.g. onoff_view_mode's "Four Factors") carry their own data-tooltip --
   # tt() puts it on the <label> itself, an ANCESTOR of the <input> -- so that
   # synthetic click bubbles straight into this delegated handler and pops
-  # the tooltip sheet open on every mode switch made from the menu. Verified
-  # live with a capture-phase click logger: none of the clicks in that
-  # sequence (burger toggle, thm-item, nav-link, radio input) were a real
-  # tap on the tooltip label, yet the sheet opened. A real finger tap is
-  # always isTrusted; app.js's own programmatic clicks never are.
+  # the strip open on every mode switch made from the menu. Verified live
+  # with a capture-phase click logger: none of the clicks in that sequence
+  # (burger toggle, thm-item, nav-link, radio input) were a real tap on the
+  # tooltip label, yet it opened anyway. A real finger tap is always
+  # isTrusted; app.js's own programmatic clicks never are.
+  #
+  # e.originalEvent.isTrusted, not bare e.isTrusted (real bug, found live
+  # while building the R6 inline strip): jQuery's Event object does not
+  # forward isTrusted onto itself, so e.isTrusted reads back undefined for
+  # every click -- real or synthetic -- and a bare check would silently
+  # discard every tap, breaking this affordance for real users too.
   start <- regexpr(
     '$(document).on("click", "[data-tooltip]", function (e) {',
     js, fixed = TRUE
@@ -430,20 +501,8 @@ test_that("[data-tooltip] ignores untrusted clicks (R4 regression: synthetic rad
   expect_gt(end, 0)
   handler <- substring(rest, 1, end + 2)
 
-  expect_true(grepl("e.isTrusted", handler, fixed = TRUE))
-})
-
-test_that("the sheet auto-closes when its held content's origin has been detached", {
-  js <- read_repo_txt("www", "mobile.js")
-
-  # The stat-filter popover's home output (a renderUI) regenerates its
-  # entire trigger+content on every filter add/remove, orphaning whatever
-  # the sheet is currently holding and creating a duplicate-id node --
-  # verified live (Task 6 fix round 1): two `.on-stat-popover` nodes existed
-  # at once, and Shiny logged its own "IDs were repeated" warning. Without
-  # this listener the sheet keeps showing the stale orphan indefinitely.
-  expect_true(grepl('window.jQuery(document).on("shiny:value"', js, fixed = TRUE))
-  expect_true(grepl("!document.contains(origin.parent)", js, fixed = TRUE))
+  expect_true(grepl("e.originalEvent.isTrusted", handler, fixed = TRUE))
+  expect_false(grepl("if (!e.isTrusted)", handler, fixed = TRUE))
 })
 
 # ---- Task 7: Compare ------------------------------------------------------

@@ -97,144 +97,6 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   }
 })();
 
-/* ---- Bottom sheet ------------------------------------------------------
-   One component, one remaining user: the column header tooltip text (the
-   filter panel and the stat-filter popover used to route through this too,
-   before the 2026-09-13 rework made both inline instead -- see R2 and R3
-   below). Kept as-is: still the only "floating over the page" surface this
-   layer uses, for content with nothing sensible to push inline against.
-
-   The sheet MOVES the existing node rather than cloning it, so every Shiny
-   input keeps its binding and its id. Cloning would register duplicate ids and
-   silently break the filters.
-   --------------------------------------------------------------------- */
-window.IBPL_MOBILE_SHEET = (function () {
-  var sheet = null, backdrop = null, body = null, head = null;
-  var origin = null, content = null;
-
-  function build() {
-    if (sheet) return;
-    backdrop = document.createElement("div");
-    backdrop.className = "ibpl-m-sheet-backdrop";
-    backdrop.addEventListener("click", close);
-
-    sheet = document.createElement("div");
-    sheet.className = "ibpl-m-sheet";
-    sheet.setAttribute("role", "dialog");
-    sheet.setAttribute("aria-modal", "true");
-
-    head = document.createElement("div");
-    head.className = "ibpl-m-sheet-head";
-
-    body = document.createElement("div");
-    body.className = "ibpl-m-sheet-body";
-
-    var foot = document.createElement("div");
-    foot.className = "ibpl-m-sheet-foot";
-    var done = document.createElement("button");
-    done.type = "button";
-    done.className = "btn btn-warning w-100";
-    done.textContent = "Apply";
-    done.addEventListener("click", close);
-    foot.appendChild(done);
-
-    sheet.appendChild(head);
-    sheet.appendChild(body);
-    sheet.appendChild(foot);
-    document.body.appendChild(backdrop);
-    document.body.appendChild(sheet);
-  }
-
-  function open(title, node) {
-    build();
-    close();
-    // close() returns a MOVED node to its origin, but it cannot know about
-    // content that was appended directly (Task 6 injects tooltip text that
-    // way). Without this, that text accumulates across opens and then shows
-    // up above the filter panel on the next open.
-    body.innerHTML = "";
-    head.textContent = title || "";
-    if (node) {
-      // Remember exactly where it was so close() can put it back.
-      origin = { parent: node.parentNode, next: node.nextSibling };
-      content = node;
-      body.appendChild(node);
-    }
-    document.body.classList.add("ibpl-m-sheet-open");
-  }
-
-  function close() {
-    // document.contains guard: same precedent as the stat-filter-add
-    // restore() further down this file -- a detached subtree still has a
-    // parent, and inserting the live panel into one would remove it from
-    // the page entirely.
-    if (content && origin && origin.parent && document.contains(origin.parent)) {
-      origin.parent.insertBefore(content, origin.next);
-    } else if (content && content.parentNode) {
-      // The origin is gone -- its container was replaced wholesale, not just
-      // moved. This guarded a renderUI-backed consumer (the stat-filter
-      // popover, before R3 gave it its own inline component below) whose
-      // container regenerated its own trigger+content on every filter
-      // add/remove, so a held copy's origin container could be detached out
-      // from under it. Leaving such an orphan attached (still Shiny-bound,
-      // ids intact) would sit alongside a freshly auto-bound duplicate Shiny
-      // just rendered in the container's natural spot -- verified live via
-      // Shiny's own "IDs were repeated" console warning at the time.
-      // Removing it outright here closes that window immediately instead of
-      // deferring the cleanup, and stays correct for any future consumer
-      // shaped the same way.
-      content.parentNode.removeChild(content);
-    }
-    content = null;
-    origin = null;
-    document.body.classList.remove("ibpl-m-sheet-open");
-  }
-
-  function isOpen() {
-    return document.body.classList.contains("ibpl-m-sheet-open");
-  }
-
-  document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && isOpen()) close();
-  });
-
-  // If the viewport crosses the breakpoint while the sheet is open (rotation,
-  // a foldable, a devtools resize), body.ibpl-mobile is removed but nothing
-  // else here would be -- the sheet's base rule (display: none) would then
-  // hide it with the moved filter panel trapped inside, leaving the desktop
-  // sidebar empty until Escape is pressed. Route through the normal close()
-  // so the panel is restored to its origin like every other path.
-  document.addEventListener("ibpl:mobilechange", function (e) {
-    if (!e.detail || !e.detail.mobile) close();
-  });
-
-  // Kept for any future consumer shaped like the stat-filter popover used to
-  // be: a renderUI output that regenerates its own trigger+content on every
-  // change (output$*_filter_chips did, for the chip list and the "+ Filter"
-  // popover together). Shiny replaces such a container's innerHTML
-  // wholesale; a copy moved into the sheet body would no longer be among its
-  // children at that point, so it would survive the replace as an orphan
-  // while a fresh duplicate-id copy is auto-bound in the container's natural
-  // spot -- verified live (two `.on-stat-popover` nodes at once, one
-  // "in-sheet" and one "natural", after a single Add, before R3 moved that
-  // consumer to its own inline component below). shiny:value fires (bubbled,
-  // jQuery-delegated -- see the existing "shown.bs.tab shiny:value"
-  // listeners below) on the output whenever a renderUI finishes; if it just
-  // detached what the sheet was holding, origin.parent is no longer in the
-  // document -- close() already no-ops safely on that (the document.contains
-  // guard above), it just needs triggering here instead of waiting for
-  // Escape or the next open().
-  if (window.jQuery) {
-    window.jQuery(document).on("shiny:value", function () {
-      if (isOpen() && origin && origin.parent && !document.contains(origin.parent)) {
-        close();
-      }
-    });
-  }
-
-  return { open: open, close: close, isOpen: isOpen };
-})();
-
 /* ---- Filter panel: inline, never an overlay -----------------------------
    R2 in the 2026-09-13 rework brief reverses the sheet transform this task
    used to apply to every "-filters" panel: "show filters should never be a
@@ -245,26 +107,141 @@ window.IBPL_MOBILE_SHEET = (function () {
    (full-width controls, tap targets) lives here now, in mobile.css.
    --------------------------------------------------------------------- */
 
-/* ---- Tooltips into the sheet --------------------------------------------
-   Two mechanisms, two selectors:
+/* ---- Column/label explanation: inline strip, never a popup -------------
+   R6 (2026-09-13 hardening) replaces the bottom sheet entirely -- "no
+   popups on mobile" was already the rule everywhere else in this file (R2,
+   R3); the sheet was the one remaining exception, a fixed-position overlay
+   with a backdrop. Both taps now push a small strip into the page flow
+   instead, dismissed by tapping the close button or (for the header dot)
+   the same dot again.
+
+   This also carries the fix for the header info-dot's own hit area: it
+   rendered at 14x14 against this file's own --ibpl-m-tap: 44px minimum, so
+   a thumb reliably missed it, landed on the th instead, and sorted the
+   column with no explanation shown -- see .ibpl-m-th-info in mobile.css.
+
+   Two tooltip mechanisms, two selectors:
    - th[title]       native title, written by HEADER_TOOLTIP_JS (global.R:212)
    - [data-tooltip]  CSS ::after on :hover, written by tt() (global.R:209)
-   The stat-filter popover (helpers.R:546) used to be a third sheet user; R3
-   moved it to its own inline component below instead (see "Stat filter
-   add: inline, not a sheet").
+   The stat-filter popover (helpers.R:546) is a third, unrelated inline
+   component (see "Stat filter add: inline, not a sheet" below) -- it never
+   routed through this one.
    --------------------------------------------------------------------- */
 (function () {
-  function textSheet(title, text) {
-    var p = document.createElement("div");
-    p.className = "ibpl-m-tip-text";
-    p.textContent = text;
-    window.IBPL_MOBILE_SHEET.open(title, null);
-    document.querySelector(".ibpl-m-sheet-body").appendChild(p);
+  function buildStrip(text, onClose) {
+    var strip = document.createElement("div");
+    strip.className = "ibpl-m-strip";
+    var textEl = document.createElement("span");
+    textEl.className = "ibpl-m-strip-text";
+    textEl.textContent = text;
+    var closeBtn = document.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "ibpl-m-strip-close";
+    closeBtn.setAttribute("aria-label", "Close explanation");
+    closeBtn.textContent = "✕";
+    closeBtn.addEventListener("click", onClose);
+    strip.appendChild(textEl);
+    strip.appendChild(closeBtn);
+    return strip;
+  }
+
+  // ---- Table header strip: one per table, content swapped per column ----
+  // "Immediately above the table, outside .dataTables_scrollBody" -- the
+  // scroll body is the part that scrolls horizontally (scrollX: true on
+  // every datatable() call), so a strip inside it would slide out of view
+  // together with the table instead of staying put. .dataTables_scrollHead
+  // sits above .dataTables_scrollBody as a sibling inside
+  // .dataTables_wrapper, so anchor on that (falling back to the bare
+  // <table> for the rare dom: "t" case with no scroll split at all, e.g.
+  // Compare's cmp_table) -- the strip lands as a wrapper-level sibling,
+  // never a scrollBody child, either way.
+  function headerStripFor(th) {
+    var wrapper = th.closest(".dataTables_wrapper");
+    if (!wrapper) return null;
+    if (wrapper.ibplThStrip) return wrapper.ibplThStrip;
+
+    var strip = buildStrip("", function () { closeHeaderStrip(wrapper); });
+    strip.className += " ibpl-m-th-strip";
+    wrapper.ibplThStrip = strip;
+
+    var scrollHead = wrapper.querySelector(".dataTables_scrollHead");
+    var anchor = scrollHead || wrapper.querySelector("table.dataTable");
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(strip, anchor);
+    } else {
+      wrapper.insertBefore(strip, wrapper.firstChild);
+    }
+    return strip;
+  }
+
+  function closeHeaderStrip(wrapper) {
+    var strip = wrapper && wrapper.ibplThStrip;
+    if (!strip) return;
+    strip.classList.remove("ibpl-m-strip-open");
+    strip.ibplLabel = null;
+  }
+
+  function toggleHeaderStrip(th, label, text) {
+    var strip = headerStripFor(th);
+    if (!strip) return;
+    if (strip.ibplLabel === label && strip.classList.contains("ibpl-m-strip-open")) {
+      // Tapping the SAME dot again dismisses it.
+      closeHeaderStrip(th.closest(".dataTables_wrapper"));
+      return;
+    }
+    strip.querySelector(".ibpl-m-strip-text").textContent = label + " — " + text;
+    strip.ibplLabel = label;
+    strip.classList.add("ibpl-m-strip-open");
+  }
+
+  function removeHeaderStrips() {
+    var wrappers = document.querySelectorAll(".dataTables_wrapper");
+    for (var i = 0; i < wrappers.length; i++) {
+      var strip = wrappers[i].ibplThStrip;
+      if (strip && strip.parentNode) strip.parentNode.removeChild(strip);
+      wrappers[i].ibplThStrip = null;
+    }
+  }
+
+  // ---- Sidebar label strip: one per label, independent of the others ----
+  // "The filter panel is already inline now" (R2), so this only needs to
+  // insert a sibling right after the tapped label -- no relocation, no
+  // sheet, nothing to restore on desktop.
+  function toggleLabelStrip(label, text) {
+    var next = label.nextElementSibling;
+    if (next && next.classList.contains("ibpl-m-strip")) {
+      next.parentNode.removeChild(next);
+      return;
+    }
+    var strip = buildStrip(text, function () {
+      if (strip.parentNode) strip.parentNode.removeChild(strip);
+    });
+    strip.className += " ibpl-m-label-strip ibpl-m-strip-open";
+    label.parentNode.insertBefore(strip, label.nextSibling);
+  }
+
+  // Real bug, found live while verifying this fix: .ibpl-m-strip's CSS is
+  // scoped to body.ibpl-mobile (like everything else in mobile.css), so a
+  // label strip left in the DOM when the viewport crosses back over the
+  // breakpoint falls back to the browser default (display: block) instead
+  // of disappearing -- verified live, a strip opened on a phone-width
+  // viewport was still visible, taking up real layout space, after resizing
+  // to desktop. Unlike the header strip (one per table, reused/cleared on
+  // every mode switch via removeHeaderStrips()), a label strip is a
+  // one-off DOM node with no other owner, so it has to be swept explicitly.
+  function removeLabelStrips() {
+    var strips = document.querySelectorAll(".ibpl-m-label-strip");
+    for (var i = 0; i < strips.length; i++) {
+      if (strips[i].parentNode) strips[i].parentNode.removeChild(strips[i]);
+    }
   }
 
   // DataTables re-renders the header on every draw, so the affordance has to
   // be re-injected on every draw too. HEADER_TOOLTIP_JS (global.R:212)
-  // writes the native title attribute; this only reads it.
+  // writes the native title attribute; this only reads it. The visible "i"
+  // glyph is drawn entirely in CSS (::before on .ibpl-m-th-info) so the
+  // button itself carries no text node -- th.textContent below needs no
+  // stripping to recover the plain column label.
   function addInfoMarks() {
     if (!document.body.classList.contains("ibpl-mobile")) return;
     var ths = document.querySelectorAll("table.dataTable thead th[title]");
@@ -274,7 +251,6 @@ window.IBPL_MOBILE_SHEET = (function () {
       b.type = "button";
       b.className = "ibpl-m-th-info";
       b.setAttribute("aria-label", "What this column means");
-      b.textContent = "i";
       ths[i].appendChild(b);
     }
   }
@@ -284,6 +260,7 @@ window.IBPL_MOBILE_SHEET = (function () {
     for (var i = 0; i < marks.length; i++) {
       if (marks[i].parentNode) marks[i].parentNode.removeChild(marks[i]);
     }
+    removeHeaderStrips();
   }
 
   function bind() {
@@ -292,8 +269,12 @@ window.IBPL_MOBILE_SHEET = (function () {
 
     $(document).on("draw.dt", addInfoMarks);
     document.addEventListener("ibpl:mobilechange", function (e) {
-      if (e.detail && e.detail.mobile) addInfoMarks();
-      else removeInfoMarks();
+      if (e.detail && e.detail.mobile) {
+        addInfoMarks();
+      } else {
+        removeInfoMarks();
+        removeLabelStrips();
+      }
     });
 
     // [data-tooltip] stays bubble phase and skips preventDefault(): several
@@ -302,9 +283,8 @@ window.IBPL_MOBILE_SHEET = (function () {
     // default action, decided only by whether ANY listener called
     // preventDefault() during the whole dispatch, independent of phase order.
     // Calling it here suppressed the toggle entirely (verified live: tapping
-    // "Enable clutch filter" left the checkbox unchecked and, worse, closed
-    // the already-open Filters sheet to show a tooltip instead). Omitting it
-    // lets the native toggle proceed exactly as before; the sheet opens too,
+    // "Enable clutch filter" left the checkbox unchecked). Omitting it lets
+    // the native toggle proceed exactly as before; the strip opens too,
     // which is a bonus, not a conflict, since nothing here owns "toggle vs.
     // explain" -- both can happen from one tap.
     //
@@ -314,20 +294,30 @@ window.IBPL_MOBILE_SHEET = (function () {
     // burger-menu row for that choice drives the real radio with a
     // synthetic radio.click() (app.js updateInput()) -- a click on the
     // <input> bubbles through its ancestor <label>, straight into this
-    // delegated handler, popping the tooltip sheet open on every mode
-    // switch made from the menu. Verified live (reproduced with a capture
-    // logger: the four expected synthetic clicks were burger-toggle,
-    // thm-item, nav-link and the radio input -- none of them a real tap on
-    // the tooltip label -- yet the sheet opened anyway). A real finger tap
-    // on a tooltip-bearing label is always isTrusted; app.js's own
-    // programmatic .click()/.setValue() calls never are, so this excludes
-    // exactly the synthetic case without touching the real one.
+    // delegated handler, popping the strip open on every mode switch made
+    // from the menu. Verified live (reproduced with a capture logger: the
+    // four expected synthetic clicks were burger-toggle, thm-item, nav-link
+    // and the radio input -- none of them a real tap on the tooltip label --
+    // yet the sheet opened anyway, back when this routed through the
+    // sheet). A real finger tap on a tooltip-bearing label is always
+    // isTrusted; app.js's own programmatic .click()/.setValue() calls never
+    // are, so this excludes exactly the synthetic case without touching the
+    // real one.
+    //
+    // e.originalEvent.isTrusted, NOT e.isTrusted (real bug, found live while
+    // building the R6 inline strip): jQuery's Event object does not forward
+    // isTrusted onto itself -- e.isTrusted reads back undefined for every
+    // click, real tap or synthetic alike, on this jQuery/browser combination.
+    // With the bare e.isTrusted check this guard silently discarded every
+    // click, so the entire [data-tooltip] strip never opened for a real user
+    // either; verified live with an instrumented handler (e.isTrusted:
+    // undefined, e.originalEvent.isTrusted: true, for the same tap).
     $(document).on("click", "[data-tooltip]", function (e) {
       if (!document.body.classList.contains("ibpl-mobile")) return;
-      if (!e.isTrusted) return;
+      if (!e.originalEvent || !e.originalEvent.isTrusted) return;
       var tip = this.getAttribute("data-tooltip");
       if (!tip) return;
-      textSheet((this.textContent || "").trim(), tip);
+      toggleLabelStrip(this, tip);
     });
 
     // CAPTURE phase, not $(document).on() (bubble phase): a column header's
@@ -337,11 +327,14 @@ window.IBPL_MOBILE_SHEET = (function () {
     // document handler ever runs, so e.stopPropagation() there is too late
     // -- it only stops the event reaching document, after DataTables already
     // reacted. Verified live: an info-dot tap toggled the column's sort
-    // order every time, in addition to opening the tooltip sheet. Capturing
+    // order every time, in addition to opening the explanation. Capturing
     // on document intercepts before the event ever reaches the th, so
-    // DataTables' listener never runs. (The stat-filter popover trigger used
-    // to share this exact hazard with Bootstrap's own popover toggle; its
-    // capture-phase handler now lives with the rest of that component below.)
+    // DataTables' listener never runs. Enlarging the hit area (see
+    // .ibpl-m-th-info in mobile.css) makes this MORE important, not less --
+    // the bigger target overlaps more of the sortable header. (The
+    // stat-filter popover trigger shares this exact hazard with Bootstrap's
+    // own popover toggle; its capture-phase handler lives with the rest of
+    // that component below.)
     document.addEventListener("click", function (e) {
       if (!document.body.classList.contains("ibpl-mobile")) return;
       var $info = $(e.target).closest(".ibpl-m-th-info");
@@ -356,8 +349,8 @@ window.IBPL_MOBILE_SHEET = (function () {
       if (!tip) return;
       e.preventDefault();
       e.stopPropagation();
-      var label = (th.textContent || "").replace(/\s*i\s*$/, "").trim();
-      textSheet(label, tip);
+      var label = (th.textContent || "").trim();
+      toggleHeaderStrip(th, label, tip);
     }, true);
   }
 
@@ -383,21 +376,21 @@ window.IBPL_MOBILE_SHEET = (function () {
    exactly the capture-phase interception this file already uses for
    .ibpl-m-th-info: stopping the click before it ever reaches the trigger
    means Bootstrap's show() is never called and nothing is ever built to
-   leak, and the div itself can just be moved (not cloned) inline -- the
-   same "move, don't clone" rule as the sheet, for the same reason: the
-   selectInput / radioButtons / numericInput inside it keep their ids, so
-   apply_stat_filters() and every server observer keep working untouched.
+   leak, and the div itself can just be moved (not cloned) inline -- moving
+   rather than cloning is what keeps the selectInput / radioButtons /
+   numericInput inside it on their original ids, so apply_stat_filters() and
+   every server observer keep working untouched.
 
    Desktop must keep working exactly as before, so a moved panel is always
    restored to its original spot in <bslib-popover> before mobile mode is
-   left -- same origin-tracking shape as IBPL_MOBILE_SHEET.close().
+   left -- restore(), below.
 
    The chips row that hosts the trigger re-renders wholesale on every
    Add/Remove (output$*_filter_chips is one renderUI covering the whole
    chip list, helpers.R:520 stat_filter_chips_ui()), which rebuilds a fresh
    <bslib-popover> carrying the SAME ids as whatever this component is
-   currently holding inline -- the same duplicate-id hazard Task 6 hit with
-   the sheet. Detect it the same way: when shiny:value fires and the held
+   currently holding inline. Detect it the same way the header/label strips
+   above detect a stat-filter re-render: when shiny:value fires and the held
    panel's origin is no longer in the document, the container was replaced
    out from under it, so discard the now-orphaned copy instead of leaving a
    stale duplicate-id form on screen.
