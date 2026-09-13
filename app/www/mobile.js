@@ -329,8 +329,9 @@ window.IBPL_MOBILE_TABLE = {
    The fixed cluster is supplied through navbarPage(header = ...) outside the
    collapsed menu. Positioning it statically does not put it under the burger,
    so move the existing node into the collapse and restore it on desktop.
-   The view-mode radios are also moved above each table on mobile. Preserve
-   their sidebar positions with placeholders for the desktop transition.
+   The view-mode inputs (radios, or Player Stats' select) are also moved above
+   each table on mobile. Preserve their sidebar positions with placeholders
+   for the desktop transition.
    ----------------------------------------------------------------------- */
 (function () {
   var clusterHome = null;
@@ -355,6 +356,13 @@ window.IBPL_MOBILE_TABLE = {
     var panes = document.querySelectorAll(".tab-pane");
     for (var i = 0; i < panes.length; i++) {
       var group = panes[i].querySelector(".view-mode-container");
+      if (!group) {
+        // Player Stats uses a hidden selectInput instead of view-mode radios.
+        // Move the input container, not its display:none wrapper, so it can be
+        // used on mobile while keeping the existing Shiny binding and value.
+        var select = panes[i].querySelector("#ts_display_mode");
+        group = select && select.closest(".shiny-input-container");
+      }
       if (!group) continue;
       var main = panes[i].querySelector(".col-sm-9, .col-md-9, [role='main']");
       if (!main) continue;

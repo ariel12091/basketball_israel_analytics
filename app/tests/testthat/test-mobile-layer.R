@@ -139,12 +139,29 @@ test_that("the navbar collapses into a burger", {
 test_that("mobile drives the real view-mode radios, not the hover menu", {
   js <- read_repo_txt("www", "mobile.js")
   css <- read_repo_txt("www", "mobile.css")
+  app_css <- read_repo_txt("www", "app.css")
 
-  # The hover menu is only ever a shortcut to .view-mode-container's radios.
-  # Driving the radios directly cannot drift from the menu.
+  # Desktop deliberately hides these live Shiny inputs. Moving them without
+  # overriding that rule would leave every mobile mode control invisible.
+  expect_true(grepl(".view-mode-container {", app_css, fixed = TRUE))
+  expect_true(grepl("display: none !important", app_css, fixed = TRUE))
   expect_true(grepl(".view-mode-container", js, fixed = TRUE))
+  expect_true(grepl(
+    "body.ibpl-mobile .ibpl-m-viewmode .view-mode-container { display: block !important; }",
+    css, fixed = TRUE
+  ))
   expect_true(grepl("tab-hover-menu", css, fixed = TRUE))
-  expect_true(grepl("ibpl-m-viewmode", css, fixed = TRUE))
+})
+
+test_that("Player Stats moves its hidden select into the mobile mode control", {
+  ui <- read_repo_txt("R", "ui_tab5_traditional.R")
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_true(grepl('"ts_display_mode"', ui, fixed = TRUE))
+  expect_true(grepl('querySelector("#ts_display_mode")', js, fixed = TRUE))
+  expect_true(grepl('select.closest(".shiny-input-container")', js, fixed = TRUE))
+  expect_true(grepl(".ibpl-m-viewmode select", css, fixed = TRUE))
 })
 
 test_that("the fixed navbar cluster is unfixed on mobile", {
