@@ -98,3 +98,33 @@ test_that("mobile rules live only in mobile.css", {
   # Non-mobile media queries must NOT be dragged along.
   expect_true(grepl("prefers-reduced-motion", app_css, fixed = TRUE))
 })
+
+test_that("the table layer keeps a caret, not a row tap", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Compare and Tab 2 already bind tbody tr clicks for their own modals.
+  expect_true(grepl("ibpl-m-caret", js, fixed = TRUE))
+  expect_false(grepl('on("click", "table.dataTable > tbody > tr"', js, fixed = TRUE))
+})
+
+test_that("the table layer re-applies on every draw and guards re-entry", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # DT re-renders every cell on sort, page and filter, so per-cell state is
+  # gone by the next draw.
+  expect_true(grepl("draw.dt", js, fixed = TRUE))
+  # column().visible() triggers a redraw, which fires draw.dt, which recurses.
+  expect_true(grepl("applying", js, fixed = TRUE))
+  # Hiding columns desyncs the header from the body without this.
+  expect_true(grepl("columns.adjust()", js, fixed = TRUE))
+})
+
+test_that("priority overrides are keyed by column name, not index", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # One DT output id serves several view modes with different column sets, so
+  # an index-keyed override would corrupt the other modes.
+  expect_true(grepl("IBPL_MOBILE_TABLE", js, fixed = TRUE))
+  expect_true(grepl("indexOf", js, fixed = TRUE))
+  expect_true(grepl("render(\"display\")", js, fixed = TRUE))
+})

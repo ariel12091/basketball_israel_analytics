@@ -34,3 +34,54 @@ body.ibpl-mobile .chips-row-controls { flex: 1 1 100%; flex-wrap: wrap; gap: 12p
 /* The panel is already collapsed behind the tab's own Show Filters button on
    narrow viewports, so the toggle would be a second control for one thing. */
 body.ibpl-mobile .chips-filters-toggle { display: none; }
+
+/* ---- Mobile table layer ---- */
+body.ibpl-mobile .ibpl-m-caret {
+  appearance: none;
+  background: var(--ibpl-surface-2);
+  color: var(--ibpl-accent);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 4px;
+  width: 24px;
+  height: 24px;
+  min-width: 24px;
+  margin-right: 6px;
+  padding: 0;
+  font-family: var(--bs-font-monospace, monospace);
+  font-size: 0.9rem;
+  line-height: 1;
+  vertical-align: middle;
+}
+body.ibpl-mobile .ibpl-m-caret:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 1px;
+}
+/* The button is 24px but the row it sits in gives it the rest of the 44px. */
+body.ibpl-mobile table.dataTable tbody td { min-height: var(--ibpl-m-tap); }
+
+body.ibpl-mobile .ibpl-m-detail {
+  display: grid;
+  gap: 6px;
+  padding: 8px 10px;
+  background: var(--ibpl-surface);
+}
+body.ibpl-mobile .ibpl-m-detail-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px dotted var(--ibpl-border);
+  padding-bottom: 4px;
+}
+body.ibpl-mobile .ibpl-m-detail-label {
+  color: var(--ibpl-text-muted);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  flex: 0 0 auto;
+}
+body.ibpl-mobile .ibpl-m-detail-value {
+  text-align: right;
+  flex: 1 1 auto;
+  min-width: 0;
+}
