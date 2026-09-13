@@ -1862,6 +1862,29 @@ Add name-based entries to `window.IBPL_MOBILE_TABLE.priority` for each, with a o
 
 360x800 is the narrowest realistic Android. 768x1024 is **above** the 767.98px breakpoint, so it must show the **desktop** layout — confirm `document.body.classList.contains('ibpl-mobile')` is `false` there. That is the boundary test.
 
+**Test the boundary itself, not just the two sides.** Task 2 unified three
+blocks that previously used *two* breakpoints (768px and 767px) onto the
+767.98px carrier, which deliberately changed behaviour at exactly 768px — iPad
+portrait width — and in the `(767, 767.98]` band. Static analysis cannot
+confirm that flip; only a browser can. At widths 767 and 768 evaluate:
+
+```js
+() => {
+  const td = document.querySelector('table.dataTable tbody td');
+  return {
+    w: document.documentElement.clientWidth,
+    mobile: document.body.classList.contains('ibpl-mobile'),
+    tdFontPx: td ? getComputedStyle(td).fontSize : null,
+    toggleHidden: getComputedStyle(document.querySelector('.chips-filters-toggle') || document.body).display
+  };
+}
+```
+
+Acceptance: at **767** → `mobile: true` and the compact DT font is in force; at
+**768** → `mobile: false` and it is not. If both widths report the same
+`tdFontPx`, the migrated rules are not actually switching and Task 2's move
+only moved text.
+
 - [ ] **Step 6: Regression control at 1440x900**
 
 Confirm at 1440x900: no `ibpl-mobile` class, every table back to its full visible column count, no caret in the DOM, `#navbar_right_cluster` computed `position: fixed`, the view-mode group back in the sidebar, and the hover menus working.
