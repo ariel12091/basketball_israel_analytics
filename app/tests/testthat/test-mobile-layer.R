@@ -275,3 +275,74 @@ test_that("the stat-filter popover keeps its input ids", {
   expect_true(grepl('paste0(prefix, "_stat_filter_col")', helpers, fixed = TRUE))
   expect_true(grepl('paste0(prefix, "_stat_filter_value")', helpers, fixed = TRUE))
 })
+
+test_that("the info-dot and filter-chip-add taps are intercepted in the capture phase", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # DataTables' sort listener is bound directly on <th>, and Bootstrap's
+  # popover-toggle listener directly on the trigger -- both closer to the
+  # target than a bubble-phase document handler, so stopPropagation() there
+  # always runs too late. Verified live (Task 6 fix round 1): a bubble-phase
+  # $(document).on() let an info-dot tap also re-sort the column, and let
+  # closing the sheet leave a real floating Bootstrap popover on screen.
+  # Scope to THIS listener (identified by the .closest(".ibpl-m-th-info")
+  # call, unique to it) so the assertion can't be satisfied by the caret's
+  # own, separate capture-phase listener earlier in the file (mobile.js's
+  # "Mobile table layer" section).
+  start <- regexpr(
+    'var $info = $(e.target).closest(".ibpl-m-th-info");',
+    js, fixed = TRUE
+  )
+  expect_gt(start, 0)
+  rest <- substring(js, start)
+  end <- regexpr("}, true);", rest, fixed = TRUE)
+  # A revert to bubble phase ($(document).on(...)) would end this block with
+  # "});" instead, so this forward search would fail to find "}, true);"
+  # before running off the end of the block (or find nothing at all).
+  expect_gt(end, 0)
+  block <- substring(rest, 1, end + nchar("}, true);") - 1)
+
+  # Confirms this is the SAME listener handling both selectors together, not
+  # just any capture-phase block.
+  expect_true(grepl(".filter-chip-add", block, fixed = TRUE))
+})
+
+test_that("[data-tooltip] taps do not call preventDefault", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # preventDefault() here suppressed the native label-click toggle on every
+  # checkbox/radio a tt() label wraps (ts_clutch_enabled, tst_clutch_enabled,
+  # cmp_a_clutch, cmp_b_clutch, and more across the sidebars) -- verified
+  # live (Task 6 fix round 1): tapping "Enable clutch filter"'s tooltip text
+  # left the checkbox unchecked and closed an already-open Filters sheet.
+  # Scope to this handler's own body -- the same way the sheet's open()/
+  # close() ordering test above scopes to open() -- so this can't pass on
+  # preventDefault() calls elsewhere in the file (the th-info and
+  # filter-chip-add handlers legitimately call it, to stop DataTables/
+  # Bootstrap's own listeners).
+  start <- regexpr(
+    '$(document).on("click", "[data-tooltip]", function (e) {',
+    js, fixed = TRUE
+  )
+  expect_gt(start, 0)
+  rest <- substring(js, start)
+  end <- regexpr("});", rest, fixed = TRUE)
+  expect_gt(end, 0)
+  handler <- substring(rest, 1, end + 2)
+
+  expect_true(grepl("textSheet", handler, fixed = TRUE))
+  expect_false(grepl("preventDefault", handler, fixed = TRUE))
+})
+
+test_that("the sheet auto-closes when its held content's origin has been detached", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # The stat-filter popover's home output (a renderUI) regenerates its
+  # entire trigger+content on every filter add/remove, orphaning whatever
+  # the sheet is currently holding and creating a duplicate-id node --
+  # verified live (Task 6 fix round 1): two `.on-stat-popover` nodes existed
+  # at once, and Shiny logged its own "IDs were repeated" warning. Without
+  # this listener the sheet keeps showing the stale orphan indefinitely.
+  expect_true(grepl('window.jQuery(document).on("shiny:value"', js, fixed = TRUE))
+  expect_true(grepl("!document.contains(origin.parent)", js, fixed = TRUE))
+})

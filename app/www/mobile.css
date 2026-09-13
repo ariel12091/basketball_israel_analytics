@@ -219,29 +219,34 @@ body.ibpl-mobile .ibpl-m-sheet-body .btn {
 /* ---- Full-screen modals ----
    An xl dialog on a 390px screen is a wide table squeezed into a small box.
    100dvh, with 100vh declared first as the fallback, so mobile browser chrome
-   does not crop the sticky footer. */
-body.ibpl-mobile .modal-dialog {
+   does not crop the sticky footer.
+   Scoped to .modal-xl, not every .modal-dialog: modalDialog(size = "xl")
+   renders <div class="modal-dialog modal-xl">, but this app also shows small
+   one-line notice modals with no size class (mod_ribbon_modal.R:21 "No
+   lineup data", server_tab2.R:546/:686 "No game data") -- those should stay
+   a small centred dialog with a Dismiss button, not fill the viewport. */
+body.ibpl-mobile .modal-dialog.modal-xl {
   margin: 0 !important;
   max-width: 100% !important;
   width: 100% !important;
   height: 100vh;
   height: 100dvh;
 }
-body.ibpl-mobile .modal-content {
+body.ibpl-mobile .modal-dialog.modal-xl .modal-content {
   height: 100%;
   border-radius: 0;
   display: flex;
   flex-direction: column;
 }
-body.ibpl-mobile .modal-header {
+body.ibpl-mobile .modal-dialog.modal-xl .modal-header {
   position: sticky;
   top: 0;
   z-index: 2;
   background: var(--ibpl-surface);
   flex: 0 0 auto;
 }
-body.ibpl-mobile .modal-body { flex: 1 1 auto; overflow-y: auto; }
-body.ibpl-mobile .modal-header .btn-close {
+body.ibpl-mobile .modal-dialog.modal-xl .modal-body { flex: 1 1 auto; overflow-y: auto; }
+body.ibpl-mobile .modal-dialog.modal-xl .modal-header .btn-close {
   min-width: var(--ibpl-m-tap);
   min-height: var(--ibpl-m-tap);
 }

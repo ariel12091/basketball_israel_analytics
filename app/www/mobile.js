@@ -690,9 +690,14 @@ window.IBPL_MOBILE_SHEET = (function () {
       if ($info.length) {
         var th = $info.get(0).parentNode;
         var tip = th ? th.getAttribute("title") : "";
+        // Guard BEFORE intercepting: addInfoMarks() only ever creates this
+        // button inside a th[title], so tip is empty only if the title was
+        // removed after the fact. When there's nothing to show, don't eat
+        // the click either -- let it fall through to the normal sort tap
+        // instead of silently swallowing it for no reason.
+        if (!tip) return;
         e.preventDefault();
         e.stopPropagation();
-        if (!tip) return;
         var label = (th.textContent || "").replace(/\s*i\s*$/, "").trim();
         textSheet(label, tip);
         return;
