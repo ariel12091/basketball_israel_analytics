@@ -200,13 +200,30 @@ test_that("the sheet is a reusable component", {
   expect_true(grepl("dvh", css, fixed = TRUE))
 })
 
-test_that("the sheet body is cleared on open", {
+test_that("the sheet body is cleared on open, AFTER close() restores any moved node", {
   js <- read_repo_txt("www", "mobile.js")
 
   # Task 6 appends tooltip text into the sheet body directly. close() only
   # restores MOVED nodes, so without an explicit clear that text accumulates
   # across opens and leaks into the filter sheet.
   expect_true(grepl('body.innerHTML = ""', js, fixed = TRUE))
+
+  # Ordering is the whole point, not just presence: clearing BEFORE close()
+  # would wipe out a still-moved node via innerHTML instead of returning it
+  # to the page. Isolate open()'s own body (everything between its signature
+  # and the next function's) so this can't be satisfied by the two strings
+  # appearing anywhere else in the file.
+  start <- regexpr("function open(title, node) {", js, fixed = TRUE)
+  end <- regexpr("function close() {", js, fixed = TRUE)
+  expect_gt(start, 0)
+  expect_gt(end, start)
+  open_fn <- substr(js, start, end - 1)
+
+  close_pos <- regexpr("close();", open_fn, fixed = TRUE)
+  clear_pos <- regexpr('body.innerHTML = ""', open_fn, fixed = TRUE)
+  expect_gt(close_pos, 0)
+  expect_gt(clear_pos, 0)
+  expect_lt(close_pos, clear_pos)
 })
 
 test_that("every tab still has its own filter toggle", {

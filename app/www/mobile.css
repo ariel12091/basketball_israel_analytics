@@ -156,6 +156,14 @@ body.ibpl-mobile .ibpl-m-viewmode .selectize-input {
 }
 
 /* ---- Bottom sheet ---- */
+/* Intentional exception to "every rule in this file is scoped to
+   body.ibpl-mobile": this is a default-hide base rule with no mode
+   dependency of its own, and it is deliberately unscoped so the sheet stays
+   hidden even in the moment before ibpl-mobile lands (or after it is
+   removed while the sheet is open -- see the ibpl:mobilechange handler in
+   mobile.js). Scoping it under body.ibpl-mobile would leave the sheet
+   visible over the desktop layout in exactly that window. Do not "fix" this
+   into the scoped block below. */
 .ibpl-m-sheet, .ibpl-m-sheet-backdrop { display: none; }
 
 body.ibpl-mobile.ibpl-m-sheet-open .ibpl-m-sheet-backdrop {

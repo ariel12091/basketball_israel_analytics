@@ -182,6 +182,12 @@ window.IBPL_MOBILE_TABLE = {
   }
 
   function removeCarets(node) {
+    // Guard only -- the path that reaches here with an undefined node is
+    // unexplained (three independent static readings failed to find it from
+    // the :199 applyTable guard to this call site), but a crash here aborts
+    // the sweep for every OTHER table on the page, so the guard stays even
+    // without a causal story. Do not delete this as dead code.
+    if (!node) return;
     var carets = node.querySelectorAll(".ibpl-m-caret");
     for (var i = 0; i < carets.length; i++) {
       carets[i].parentNode.removeChild(carets[i]);
@@ -482,7 +488,10 @@ window.IBPL_MOBILE_SHEET = (function () {
   }
 
   function close() {
-    if (content && origin && origin.parent) {
+    // document.contains guard: same precedent as the view-mode restore at
+    // mobile.js:392 -- a detached subtree still has a parent, and inserting
+    // the live panel into one would remove it from the page entirely.
+    if (content && origin && origin.parent && document.contains(origin.parent)) {
       origin.parent.insertBefore(content, origin.next);
     }
     content = null;
@@ -496,6 +505,16 @@ window.IBPL_MOBILE_SHEET = (function () {
 
   document.addEventListener("keydown", function (e) {
     if (e.key === "Escape" && isOpen()) close();
+  });
+
+  // If the viewport crosses the breakpoint while the sheet is open (rotation,
+  // a foldable, a devtools resize), body.ibpl-mobile is removed but nothing
+  // else here would be -- the sheet's base rule (display: none) would then
+  // hide it with the moved filter panel trapped inside, leaving the desktop
+  // sidebar empty until Escape is pressed. Route through the normal close()
+  // so the panel is restored to its origin like every other path.
+  document.addEventListener("ibpl:mobilechange", function (e) {
+    if (!e.detail || !e.detail.mobile) close();
   });
 
   return { open: open, close: close, isOpen: isOpen };
