@@ -422,6 +422,82 @@ test_that("the viewBox width comes from nominal period length", {
   expect_match(html, 'viewBox="0 0 1070 ')
 })
 
+# ---- compact (phone) layout ----------------------------------------------
+
+compact_svg <- function(f = ribbon_fixture()) {
+  as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta,
+                                      layout = ribbon_layout(compact = TRUE)))
+}
+
+test_that("the default layout is the desktop constants, unchanged", {
+  L <- ribbon_layout()
+  expect_false(L$compact)
+  expect_identical(L$width, RIBBON_WIDTH)
+  expect_identical(L$gutter, RIBBON_GUTTER)
+  f <- ribbon_fixture()
+  expect_identical(
+    as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta)),
+    as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta, layout = L))
+  )
+})
+
+test_that("the compact layout keeps the desktop game scale with a narrow gutter", {
+  html <- compact_svg()
+  # Full scale: the plot keeps the desktop 850 units and the svg carries a
+  # real width, so it is swiped sideways rather than fitted to the screen.
+  expect_match(html, 'viewBox="0 0 954 ')
+  expect_match(html, 'width="954"', fixed = TRUE)
+  expect_match(html, 'class="ibpl-ribbon is-compact"', fixed = TRUE)
+  # Every stint and every player is still drawn.
+  expect_identical(lengths(regmatches(html, gregexpr("ibpl-ribbon-lane", html))), 3L)
+  expect_identical(lengths(regmatches(html, gregexpr('class="ibpl-ribbon-name"', html))), 3L)
+  # The Q4 gridline label sits at the right edge, not off a scrolled canvas.
+  expect_match(html, '<text class="ibpl-ribbon-period-label" x="950"', fixed = TRUE)
+})
+
+test_that("the compact gutter drops MIN but keeps +/- and the full name for AT", {
+  html <- compact_svg()
+  expect_false(grepl("ibpl-ribbon-min", html, fixed = TRUE))
+  expect_false(grepl("ibpl-ribbon-col-head", html, fixed = TRUE))
+  expect_identical(lengths(regmatches(html, gregexpr('class="ibpl-ribbon-pm"', html))), 3L)
+  # Visible text is the surname; the accessible name keeps the full label
+  # and the floor time the MIN column no longer shows.
+  expect_match(html, ">Cohen</text>", fixed = TRUE)
+  expect_match(html, 'aria-label="A Cohen, 20:00 on the floor', fixed = TRUE)
+  expect_match(html, 'data-player="A Cohen"', fixed = TRUE)
+})
+
+test_that("ribbon_short_labels keeps surnames and separates same-side clashes", {
+  expect_identical(
+    ribbon_short_labels(
+      c("WILLY WORKMAN", "BEN RUINA", "BEN RUINA", "OREN RUINA", "NENE",
+        "TAL RUINA", "JEAN-CHARLES DE LA CRUZ LIVIO"),
+      c("own", "own", "own", "own", "own", "opp", "opp")),
+    c("WORKMAN", "B. RUINA", "B. RUINA", "O. RUINA", "NENE", "RUINA", "LIVIO")
+  )
+  expect_identical(ribbon_short_labels("A VERYLONGSURNAMEX", "own"),
+                   "VERYLONGSU…")
+  # EuroLeague labels are "SURNAME, FIRST": the comma form must yield the
+  # surname, not the given name (found live: "NIGEL", "IV, WADE").
+  expect_identical(
+    ribbon_short_labels(c("BALDWIN IV, WADE", "DE COLO, NANDO", "HAYES, NIGEL", "HAYES, JORDAN"),
+                        c("opp", "opp", "own", "own")),
+    c("BALDWIN IV", "DE COLO", "N. HAYES", "J. HAYES")
+  )
+})
+
+test_that("the compact header drops a top quarter marker a long team name would hit", {
+  f <- ribbon_fixture()
+  short <- compact_svg(f)
+  # At full scale Q1's marker sits ~290 units in, so only a very long name
+  # reaches it.
+  f$meta$own_team <- "Fenerbahce Beko Istanbul Basketball Club Sports"
+  long <- compact_svg(f)
+  count_q1 <- function(html) lengths(regmatches(html, gregexpr(">Q1</text>", html, fixed = TRUE)))
+  expect_identical(count_q1(short), 2L)
+  expect_identical(count_q1(long), 1L)
+})
+
 test_that("an overtime game gets more period gridlines than regulation", {
   f <- ribbon_fixture()
   reg <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))

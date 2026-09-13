@@ -121,6 +121,7 @@
       team_id: teamId,
       own_team: linkEl.dataset.ownTeam || "",
       opp_team: linkEl.dataset.oppTeam || "",
+      mobile: document.body.classList.contains("ibpl-mobile"),
       ts: Date.now()
     });
   };
@@ -510,6 +511,9 @@
     if (!svg) return;
     var slots = svg.querySelectorAll(".ibpl-ribbon-detail-slot");
     for (var i = 0; i < slots.length; i++) slots[i].remove();
+    var host = detailHost(svg);
+    var cards = host ? host.querySelectorAll(".ibpl-ribbon-detail.is-card") : [];
+    for (var c = 0; c < cards.length; c++) cards[c].remove();
 
     var shifted = svg.querySelectorAll(
       ".ibpl-ribbon-shift-after-own, .ibpl-ribbon-shift-after-opp"
@@ -549,7 +553,100 @@
     svg.setAttribute("viewBox", [vb.x, vb.y, vb.width, baseHeight + extraHeight].join(" "));
   }
 
+  // Where a compact chart's detail card and lineup rows live: the inline
+  // result wrapper on a phone, else the SVG's parent.
+  function detailHost(svg) {
+    return (svg.closest && svg.closest(".ibpl-ribbon-inline-result")) || svg.parentNode;
+  }
+
+  // The compact (phone) chart gets its detail as an HTML card in the page
+  // flow after the chart's horizontal scroller, never a <foreignObject>
+  // inside the SVG: the chart is wider than the screen, so an in-chart panel
+  // would be cut off at the scroller's edge and slide away when swiped.
+  function appendDetailCard(svg, lane, lineups, groups) {
+    var card = document.createElement("div");
+    card.className = "ibpl-ribbon-detail is-card";
+    card.setAttribute("role", "group");
+    card.setAttribute("aria-label", "Lineups in " + lane.dataset.player + "'s selected stint");
+    card.ibplSvg = svg;
+
+    var head = document.createElement("div");
+    head.className = "ibpl-ribbon-detail-head";
+    head.textContent = lane.dataset.player;
+    card.appendChild(head);
+
+    var facts = [
+      lane.dataset.window,
+      clockLabel(Number(lane.dataset.end) - Number(lane.dataset.start)) + " on floor"
+    ];
+    if (lane.dataset.pm) facts.push("+/- " + lane.dataset.pm);
+    if (lane.dataset.pf !== "" && lane.dataset.pa !== "") {
+      facts.push(lane.dataset.pf + " for, " + lane.dataset.pa + " against");
+    }
+    var summary = document.createElement("div");
+    summary.className = "ibpl-ribbon-detail-summary";
+    summary.textContent = facts.join(" · ");
+    card.appendChild(summary);
+
+    var caption = document.createElement("div");
+    caption.className = "ibpl-ribbon-detail-caption";
+    caption.textContent = groups.length === 1
+      ? "One lineup played this stint"
+      : groups.length + " lineups played this stint. Tap one to mark its minutes.";
+    card.appendChild(caption);
+
+    var list = document.createElement("div");
+    list.className = "ibpl-ribbon-detail-list";
+    groups.forEach(function(group) {
+      var row = document.createElement("div");
+      row.className = "ibpl-ribbon-detail-row";
+      row.setAttribute("tabindex", "0");
+      row.setAttribute("role", "button");
+      row.dataset.lineupIndex = group.dictIndex;
+      row.dataset.windows = group.windows.map(function(window) {
+        return window.start + "," + window.end;
+      }).join(";");
+
+      var members = document.createElement("div");
+      members.className = "ibpl-ribbon-detail-members";
+      members.textContent = (lineups[group.dictIndex] || "Lineup unavailable")
+        .split(" | ").join(" · ");
+      row.appendChild(members);
+
+      var meta = document.createElement("div");
+      meta.className = "ibpl-ribbon-detail-meta";
+      var pieces = [clockLabel(group.duration)];
+      var totalPm = pmLabel(group.pm, group.hasPm);
+      if (totalPm) pieces.push("+/- " + totalPm);
+      pieces.push(group.windows.map(function(window) {
+        return clockLabel(window.start) + "–" + clockLabel(window.end);
+      }).join(", "));
+      meta.textContent = pieces.join(" · ");
+      row.appendChild(meta);
+      list.appendChild(row);
+    });
+    card.appendChild(list);
+    var anchor = (svg.closest && svg.closest(".ibpl-ribbon-inline-scroll")) || svg;
+    anchor.parentNode.insertBefore(card, anchor.nextSibling);
+
+    // The compact chart is taller than a phone screen (it scrolls vertically
+    // rather than squeezing its rows), so the card usually opens below the
+    // fold. Scroll toward its head, but never so far that the tapped stint
+    // leaves the top of the screen -- the user can scroll the rest.
+    var top = card.getBoundingClientRect().top;
+    var viewport = window.innerHeight || document.documentElement.clientHeight;
+    if (top > viewport - 96) {
+      var laneRect = lane.getBoundingClientRect();
+      var delta = Math.min(top - (viewport - 180), laneRect.top - 80);
+      if (delta > 0) window.scrollBy({ top: delta, behavior: "smooth" });
+    }
+  }
+
   function appendInlineDetail(svg, lane, lineups, groups) {
+    if (svg.classList.contains("is-compact") && svg.parentNode) {
+      appendDetailCard(svg, lane, lineups, groups);
+      return;
+    }
     var side = lane.classList.contains("is-own") ? "own" : "opp";
     var y = Number(side === "own" ? svg.dataset.ownDetailY : svg.dataset.oppDetailY);
     var x = Number(svg.dataset.detailX) || 0;
@@ -659,8 +756,9 @@
       ".ibpl-ribbon-lineup-mark-overlay, .ibpl-ribbon-lineup-clip, .ibpl-ribbon-margin-lineup-echo"
     );
     for (var i = 0; i < generated.length; i++) generated[i].remove();
-    var activeRows = svg.parentNode &&
-      svg.parentNode.querySelectorAll(".ibpl-ribbon-detail-row.is-active");
+    var rowHost = detailHost(svg);
+    var activeRows = rowHost &&
+      rowHost.querySelectorAll(".ibpl-ribbon-detail-row.is-active");
     for (var j = 0; activeRows && j < activeRows.length; j++) {
       activeRows[j].classList.remove("is-active");
     }
@@ -804,7 +902,9 @@
         var number = document.createElementNS("http://www.w3.org/2000/svg", "text");
         number.setAttribute("class", "ibpl-ribbon-segment-num");
         number.setAttribute("x", x + w / 2);
-        number.setAttribute("y", y + h - 4);
+        // From the lane centre, matching the server-drawn bar numbers; at the
+        // desktop 14-unit lane this is the old y + h - 4.
+        number.setAttribute("y", y + h / 2 + 3);
         number.setAttribute("text-anchor", "middle");
         number.textContent = seg.pm;
         overlay.appendChild(number);
@@ -815,9 +915,21 @@
     appendInlineDetail(svg, lane, lineups, aggregateSegments(segments));
   }
 
+  // mobile.js pins a copy of the compact gutter (svg.ibplPin); its names
+  // carry data-pin-clip and must light up with the real ones.
+  function syncPinFocus(svg, clip) {
+    var pin = svg.ibplPin;
+    if (!pin) return;
+    var names = pin.querySelectorAll("[data-pin-clip]");
+    for (var i = 0; i < names.length; i++) {
+      names[i].classList.toggle("is-active", !!clip && names[i].getAttribute("data-pin-clip") === clip);
+    }
+  }
+
   function setFocus(svg, lane) {
     var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
     if (!focus) return;
+    syncPinFocus(svg, lane && lane.dataset.clip);
 
     var active = svg.querySelectorAll("[data-clip].is-active");
     for (var i = 0; i < active.length; i++) active[i].classList.remove("is-active");
@@ -868,21 +980,69 @@
     if (svg) setFocus(svg, lane);
   });
 
+  // A compact row is 18 units tall and a short stint a few units wide --
+  // well below a fingertip. So a tap anywhere in the
+  // chart resolves to the nearest row (within half a row pitch), then to
+  // the stint in that row nearest the tap horizontally. A tap on a gutter
+  // name therefore picks that player's first stint.
+  function laneAtPoint(svg, clientX, clientY) {
+    var ctm = svg.getScreenCTM && svg.getScreenCTM();
+    if (!ctm) return null;
+    var pt = svg.createSVGPoint();
+    pt.x = clientX;
+    pt.y = clientY;
+    var p = pt.matrixTransform(ctm.inverse());
+    var lanes = svg.querySelectorAll(".ibpl-ribbon-lane");
+    var best = null, bestDy = Infinity, bestDx = Infinity;
+    for (var i = 0; i < lanes.length; i++) {
+      var r = lanes[i].querySelector("rect");
+      if (!r) continue;
+      var x = Number(r.getAttribute("x")), w = Number(r.getAttribute("width"));
+      var y = Number(r.getAttribute("y")), h = Number(r.getAttribute("height"));
+      var dy = Math.max(0, y - p.y, p.y - (y + h));
+      var dx = Math.max(0, x - p.x, p.x - (x + w));
+      if (dy < bestDy || (dy === bestDy && dx < bestDx)) {
+        best = lanes[i]; bestDy = dy; bestDx = dx;
+      }
+    }
+    return best && bestDy <= 8 ? best : null;
+  }
+
+  function noHover() {
+    return !!(window.matchMedia && window.matchMedia("(hover: none)").matches);
+  }
+
   document.addEventListener("click", function(e) {
-    // Selection is click-driven on every device. Touch/no-hover devices also
-    // retain the original tap-to-focus behavior for the lane and curve.
+    // Selection is click-driven on every device.
     var lane = laneFrom(e.target);
+    if (!isStint(lane)) {
+      // A tap on the pinned gutter (mobile.js) picks that row's stint
+      // nearest the pin's right edge -- the earliest time currently in view.
+      var pinEl = e.target.closest && e.target.closest(".ibpl-ribbon-pin");
+      if (pinEl && pinEl.ibplSvg) {
+        lane = laneAtPoint(pinEl.ibplSvg, pinEl.getBoundingClientRect().right + 1, e.clientY) || lane;
+      } else {
+        var compact = e.target.closest && e.target.closest(".ibpl-ribbon.is-compact");
+        if (compact) lane = laneAtPoint(compact, e.clientX, e.clientY) || lane;
+      }
+    }
     if (lane && isStint(lane)) {
       e.preventDefault();
       var svg = lane.closest(".ibpl-ribbon");
       if (!svg) return;
-      // Preserve the original touch tap-to-focus behavior alongside the new
-      // click selection. Hover-capable pointers already called setFocus().
-      if (window.matchMedia && window.matchMedia("(hover: none)").matches) {
-        setFocus(svg, lane.classList.contains("is-active") ? null : lane);
-      }
-      if (lane.classList.contains("is-selected")) clearSelection(svg);
+      var wasSelected = lane.classList.contains("is-selected");
+      if (wasSelected) clearSelection(svg);
       else setSelection(svg, lane);
+      // Focus AFTER selection, and decided by the selection state rather
+      // than is-active. A touch tap is preceded by an emulated mouseover
+      // that already marks the lane is-active, so toggling on is-active
+      // turned the focus straight back off -- a tap never highlighted
+      // anything. And clearSelection() strips the curve's clip-path, so
+      // focus set before it left the WHOLE curve highlighted instead of
+      // this player's minutes. A hover pointer is still over the lane, so
+      // it keeps focus on deselect; a touch has nothing left to point at.
+      setFocus(svg, wasSelected && (noHover() || svg.classList.contains("is-compact")) ? null : lane);
+      if (wasSelected && document.activeElement === lane && lane.blur) lane.blur();
       return;
     }
     if (e.target.closest && e.target.closest(".ibpl-ribbon-detail")) return;
@@ -913,31 +1073,49 @@
     }
   });
 
+  // A desktop row lives inside the SVG's foreignObject; a compact card is
+  // the SVG's next sibling and carries a reference back to it.
+  function svgForRow(row) {
+    var inSvg = row.closest(".ibpl-ribbon");
+    if (inSvg) return inSvg;
+    var card = row.closest(".ibpl-ribbon-detail.is-card");
+    return card && card.ibplSvg && document.contains(card.ibplSvg) ? card.ibplSvg : null;
+  }
+
   document.addEventListener("mouseover", function(e) {
     var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
     if (!row) return;
-    var svg = row.closest(".ibpl-ribbon");
+    var svg = svgForRow(row);
+    if (svg) setLineupFocus(svg, row);
+  });
+
+  // Touch browsers do not all emulate mouseover or focus a tapped div, so
+  // a tap on a lineup row marks it explicitly. Idempotent with the above.
+  document.addEventListener("click", function(e) {
+    var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
+    if (!row || row.classList.contains("is-active")) return;
+    var svg = svgForRow(row);
     if (svg) setLineupFocus(svg, row);
   });
 
   document.addEventListener("mouseout", function(e) {
     var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
     if (!row || (e.relatedTarget && row.contains(e.relatedTarget))) return;
-    var svg = row.closest(".ibpl-ribbon");
+    var svg = svgForRow(row);
     if (svg) clearLineupFocus(svg);
   });
 
   document.addEventListener("focusin", function(e) {
     var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
     if (!row) return;
-    var svg = row.closest(".ibpl-ribbon");
+    var svg = svgForRow(row);
     if (svg) setLineupFocus(svg, row);
   });
 
   document.addEventListener("focusout", function(e) {
     var row = e.target.closest && e.target.closest(".ibpl-ribbon-detail-row");
     if (!row || (e.relatedTarget && row.contains(e.relatedTarget))) return;
-    var svg = row.closest(".ibpl-ribbon");
+    var svg = svgForRow(row);
     if (svg) clearLineupFocus(svg);
   });
 })();

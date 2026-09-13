@@ -529,18 +529,49 @@ test_that("Compare keeps A and B adjacent on mobile", {
 # of IBPL_MOBILE_TABLE's gl_table/eurogl_table overrides (R1, above): every
 # column is visible now, so Gameflow needs no priority rule to protect it.
 
-test_that("the ribbon keeps its designed width on mobile", {
-  helpers <- read_repo_txt("R", "helpers.R")
+# The designed-width-plus-horizontal-scroll pin that used to live here was
+# replaced 2026-09-13 after phone testing: at 390px the 220-unit gutter took
+# two thirds of the screen, showed about one quarter of the game, and scrolled
+# the names out of view. A phone now gets the compact layout, drawn for the
+# screen (see test-stint-ribbon.R for its geometry).
+
+test_that("a phone gameflow requests the compact ribbon layout", {
+  mod <- read_repo_txt("R", "mod_ribbon_modal.R")
   css <- read_repo_txt("www", "mobile.css")
 
-  # Hardcoding the width in CSS would silently drift from the R geometry.
-  # Pin them together: this test fails if RIBBON_WIDTH ever changes.
-  m <- regmatches(helpers, regexpr("RIBBON_WIDTH <- [0-9]+", helpers))
-  expect_length(m, 1L)
-  w <- sub("RIBBON_WIDTH <- ", "", m)
+  expect_true(grepl("layout = ribbon_layout(compact = mobile)", mod, fixed = TRUE))
+  # The compact chart is sized to its container, never pinned to the
+  # desktop's 1070px.
+  expect_false(grepl("min-width: 1070px", css, fixed = TRUE))
+  expect_true(grepl(".ibpl-ribbon.is-compact {", css, fixed = TRUE))
+})
 
-  expect_true(grepl(paste0("min-width: ", w, "px"), css, fixed = TRUE))
-  # Scrolling, not scaling: app.css sets width:100%, which is what shrinks the
-  # 11px labels to 3.8px at 390px.
-  expect_true(grepl("overflow-x: auto", css, fixed = TRUE))
+test_that("the gameflow panel never hides its own Shiny output while loading", {
+  css <- read_repo_txt("www", "mobile.css")
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Shiny suspends an output it sees as hidden and never sends its value:
+  # hiding .shiny-html-output during is-loading left the first gameflow on
+  # "Loading gameflow..." forever. Only the stale result may be hidden.
+  expect_false(grepl("is-loading .shiny-html-output", css, fixed = TRUE))
+  expect_true(grepl("is-loading .ibpl-ribbon-inline-result", css, fixed = TRUE))
+  # The panel starts [hidden]; Shiny re-checks visibility on "shown".
+  expect_true(grepl('jQuery(panel).trigger("shown")', js, fixed = TRUE))
+})
+
+test_that("the compact ribbon's tap handling lives in app.js", {
+  js <- read_repo_txt("www", "app.js")
+
+  # A tap resolves to the nearest row/stint, not only an exact bar hit.
+  expect_true(grepl("function laneAtPoint(svg, clientX, clientY)", js, fixed = TRUE))
+  # Focus is decided from selection state AFTER selection. Toggling on
+  # is-active cancelled every touch tap (the emulated mouseover had already
+  # set it).
+  expect_false(grepl('setFocus(svg, lane.classList.contains("is-active") ? null : lane)', js, fixed = TRUE))
+  sel <- regexpr("else setSelection(svg, lane);", js, fixed = TRUE)
+  foc <- regexpr("setFocus(svg, wasSelected", js, fixed = TRUE)
+  expect_gt(sel, 0)
+  expect_gt(foc, sel)
+  # The compact detail is an HTML card after the SVG, not a foreignObject.
+  expect_true(grepl('"ibpl-ribbon-detail is-card"', js, fixed = TRUE))
 })

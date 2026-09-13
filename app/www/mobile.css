@@ -360,16 +360,143 @@ body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
    needs no selector of its own here any more. */
 
 /* ---- Stint ribbon (gameflow) ----
-   The SVG is viewBox 0 0 1070 H under .ibpl-ribbon { width: 100% }, so at
-   ~370px of usable modal width the scale is 0.346: 14px lanes render at 4.8px
-   and 11px labels at 3.8px. Pin the SVG to its viewBox width instead and let
-   the container pan. Scale 1.0, designed size exactly.
-
-   min-width MUST equal RIBBON_WIDTH in helpers.R -- pinned by a test. */
-body.ibpl-mobile .modal-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-body.ibpl-mobile .ibpl-ribbon {
-  width: 1070px;
-  min-width: 1070px;
+   On mobile the chart opens in the page above its game-log table, not in a
+   modal. The server draws the COMPACT layout here (ribbon_layout(compact =
+   TRUE) in helpers.R): full scale, with a real svg width, so the reader
+   swipes sideways to reach Q4. mobile.js pins the narrow name column to the
+   left edge. The tapped stint's detail is an HTML card below the scroller. */
+body:not(.ibpl-mobile) .ibpl-ribbon-inline-panel { display: none !important; }
+body.ibpl-mobile .ibpl-ribbon-inline-panel {
+  margin: 12px 0 18px;
+  padding: 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  background: var(--ibpl-surface);
+  scroll-margin-top: 68px;
+}
+body.ibpl-mobile .ibpl-ribbon-inline-panel[hidden] { display: none; }
+body.ibpl-mobile .ibpl-ribbon-inline-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+body.ibpl-mobile .ibpl-ribbon-inline-close {
+  min-height: var(--ibpl-m-tap);
+  min-width: var(--ibpl-m-tap);
+  padding: 8px 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ibpl-text);
+}
+body.ibpl-mobile .ibpl-ribbon-inline-loading { display: none; }
+body.ibpl-mobile .ibpl-ribbon-inline-panel.is-loading .ibpl-ribbon-inline-loading { display: block; }
+/* Hide the previous game's RESULT while loading, never the output element
+   itself: Shiny suspends an output it sees as display:none, so hiding the
+   output is what kept the new value from ever arriving. */
+body.ibpl-mobile .ibpl-ribbon-inline-panel.is-loading .ibpl-ribbon-inline-result { display: none; }
+body.ibpl-mobile .ibpl-ribbon-inline-title { font-weight: 700; margin-bottom: 4px; }
+body.ibpl-mobile .ibpl-ribbon-inline-hint {
+  color: var(--ibpl-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  margin-bottom: 8px;
+}
+body.ibpl-mobile .ibpl-ribbon-inline-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  overflow-y: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior-inline: contain;
+}
+/* width:auto lets the svg's own width attribute (the layout width) size it;
+   app.css's width:100% would fit the whole game to the screen instead. */
+body.ibpl-mobile .ibpl-ribbon.is-compact {
+  width: auto;
   max-width: none;
   height: auto;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
+}
+/* The pinned gutter copy (mobile.js pinGutter) sticks to the scroller's
+   left edge; the originals it copies are hidden so nothing doubles up. */
+body.ibpl-mobile .ibpl-ribbon-pin {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  display: block;
+  overflow: visible;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+body.ibpl-mobile .ibpl-ribbon-pin-bg { fill: var(--ibpl-surface); }
+body.ibpl-mobile .ibpl-ribbon-pin .ibpl-ribbon-name.is-active { fill: var(--ibpl-accent); }
+body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-name,
+body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-pm,
+body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-team,
+body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-scale-label,
+body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-zero-label { visibility: hidden; }
+/* iOS Safari dispatches click to a document listener only for elements it
+   considers clickable; cursor:pointer is what qualifies them. */
+body.ibpl-mobile .ibpl-ribbon-lane,
+body.ibpl-mobile .ibpl-ribbon-detail-row { cursor: pointer; }
+body.ibpl-mobile .ibpl-ribbon.is-compact .ibpl-ribbon-lane:focus rect { stroke: none; }
+body.ibpl-mobile .ibpl-ribbon.is-compact .ibpl-ribbon-lane.is-selected rect {
+  stroke: var(--ibpl-text);
+  stroke-width: 1;
+}
+
+/* Detail card for the tapped stint. Body font, not the desktop panel's
+   11px mono: this is read on a phone, and it wraps instead of clipping. */
+body.ibpl-mobile .ibpl-ribbon-detail.is-card {
+  margin: 10px 0 0;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid var(--ibpl-border);
+  border-left: 3px solid var(--ibpl-accent);
+  background: var(--ibpl-bg-sunken);
+  font-family: var(--ibpl-font-body);
+  font-size: 0.875rem;
+  line-height: 1.4;
+}
+body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-head {
+  font-size: 1rem;
+  margin-bottom: 2px;
+}
+body.ibpl-mobile .ibpl-ribbon-detail-summary {
+  font-family: var(--ibpl-font-mono);
+  font-size: 0.8rem;
+  color: var(--ibpl-text);
+}
+body.ibpl-mobile .ibpl-ribbon-detail-caption {
+  margin: 10px 0 4px;
+  color: var(--ibpl-text-muted);
+  font-size: 0.75rem;
+}
+body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-list { gap: 4px; }
+body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-row {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 2px;
+  min-height: var(--ibpl-m-tap);
+  padding: 8px 10px;
+  border-left-width: 3px;
+  border-radius: 6px;
+  background: var(--ibpl-surface);
+}
+body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-members {
+  color: var(--ibpl-text);
+  font-size: 0.8rem;
+}
+body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-meta {
+  text-align: left;
+  font-family: var(--ibpl-font-mono);
+  font-size: 0.75rem;
+}
+body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-row.is-active {
+  background: var(--ibpl-surface-selected);
 }
