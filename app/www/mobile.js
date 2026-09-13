@@ -55,9 +55,14 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
    The fixed cluster is supplied through navbarPage(header = ...) outside the
    collapsed menu. Positioning it statically does not put it under the burger,
    so move the existing node into the collapse and restore it on desktop.
-   The view-mode inputs (radios, or Player Stats' select) are also moved above
-   each table on mobile. Preserve their sidebar positions with placeholders
-   for the desktop transition.
+
+   View-mode selection itself is NOT handled here any more (see R4 in the
+   2026-09-13 rework brief): promoting the radios/select above the table read
+   as a stray form control on a phone. The burger menu now carries the same
+   view-mode choices through the existing per-tab hover menu (app.js CFG,
+   ".tab-hover-menu") -- see the CSS in mobile.css that makes the ACTIVE tab's
+   menu render in-flow instead of on hover. Nothing here drives that; it
+   already calls Shiny.setInputValue on the real inputs.
    ----------------------------------------------------------------------- */
 (function () {
   var clusterHome = null;
@@ -78,68 +83,9 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     }
   }
 
-  function promote(on) {
-    var panes = document.querySelectorAll(".tab-pane");
-    for (var i = 0; i < panes.length; i++) {
-      var group = panes[i].querySelector(".view-mode-container");
-      if (!group) {
-        // Player Stats uses a hidden selectInput instead of view-mode radios.
-        // Move the input container, not its display:none wrapper, so it can be
-        // used on mobile while keeping the existing Shiny binding and value.
-        var select = panes[i].querySelector("#ts_display_mode");
-        group = select && select.closest(".shiny-input-container");
-      }
-      // Compare's mode radios (#cmp_mode) are hidden by app.css:969
-      // (#cmp_mode.shiny-input-radiogroup { display: none !important; }) and
-      // are not wrapped in .view-mode-container, so neither case above finds
-      // them. Move the radio group itself, mirroring the Player Stats select
-      // case above -- the existing placeholder/restore logic below handles it
-      // without cloning the live Shiny input.
-      if (!group) group = panes[i].querySelector("#cmp_mode");
-      if (!group) continue;
-      var main = panes[i].querySelector(".col-sm-9, .col-md-9, [role='main']");
-      if (!main) continue;
-
-      if (on) {
-        if (group.getAttribute("data-ibpl-m-home")) continue;
-        var holder = document.createElement("div");
-        holder.className = "ibpl-m-viewmode";
-        holder.setAttribute("data-ibpl-m-holder", "1");
-        // Leave a placeholder in the sidebar. Moving the holder itself would
-        // lose the original parent and restore the radios into the main panel.
-        var home = document.createElement("span");
-        home.style.display = "none";
-        group.parentNode.insertBefore(home, group);
-        holder.ibplHome = home;
-        group.setAttribute("data-ibpl-m-home", "1");
-        holder.appendChild(group);
-        main.insertBefore(holder, main.firstChild);
-      } else if (group.getAttribute("data-ibpl-m-home")) {
-        var oldHolder = group.parentNode;
-        group.removeAttribute("data-ibpl-m-home");
-        if (oldHolder && oldHolder.getAttribute("data-ibpl-m-holder")) {
-          var original = oldHolder.ibplHome;
-          // document.contains, not just parentNode: a detached subtree still
-          // has a parent, and inserting the live radios into one would remove
-          // them from the page entirely.
-          if (original && original.parentNode && document.contains(original)) {
-            original.parentNode.insertBefore(group, original);
-            original.parentNode.removeChild(original);
-          } else {
-            // A sidebar may have been re-rendered while the group was away.
-            // Keep the live input in the page even if its marker disappeared.
-            oldHolder.parentNode.insertBefore(group, oldHolder);
-          }
-          oldHolder.parentNode.removeChild(oldHolder);
-        }
-      }
-    }
-  }
-
   function sync() {
     var on = document.body.classList.contains("ibpl-mobile");
     relocateCluster(on);
-    promote(on);
   }
 
   document.addEventListener("ibpl:mobilechange", sync);
@@ -152,8 +98,11 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
 })();
 
 /* ---- Bottom sheet ------------------------------------------------------
-   One component, three users: the filter panel (this task), the tooltip text
-   and the stat-filter popover (Task 6).
+   One component, one remaining user: the column header tooltip text (the
+   filter panel and the stat-filter popover used to route through this too,
+   before the 2026-09-13 rework made both inline instead -- see R2 and R3
+   below). Kept as-is: still the only "floating over the page" surface this
+   layer uses, for content with nothing sensible to push inline against.
 
    The sheet MOVES the existing node rather than cloning it, so every Shiny
    input keeps its binding and its id. Cloning would register duplicate ids and
@@ -215,22 +164,25 @@ window.IBPL_MOBILE_SHEET = (function () {
   }
 
   function close() {
-    // document.contains guard: same precedent as the view-mode restore at
-    // mobile.js:392 -- a detached subtree still has a parent, and inserting
-    // the live panel into one would remove it from the page entirely.
+    // document.contains guard: same precedent as the stat-filter-add
+    // restore() further down this file -- a detached subtree still has a
+    // parent, and inserting the live panel into one would remove it from
+    // the page entirely.
     if (content && origin && origin.parent && document.contains(origin.parent)) {
       origin.parent.insertBefore(content, origin.next);
     } else if (content && content.parentNode) {
       // The origin is gone -- its container was replaced wholesale, not just
-      // moved. Task 6's stat-filter popover lives inside a renderUI that
-      // regenerates its own trigger+content on every filter add/remove, so a
-      // held copy's origin container is routinely detached out from under it.
-      // Leaving this orphan attached (still Shiny-bound, ids intact) sits
-      // alongside the freshly auto-bound duplicate Shiny just rendered in the
-      // container's natural spot -- verified live via Shiny's own "IDs were
-      // repeated" console warning, incrementing with every add until the next
-      // open() wiped it via body.innerHTML="". Removing it outright here
-      // closes that window immediately instead of deferring the cleanup.
+      // moved. This guarded a renderUI-backed consumer (the stat-filter
+      // popover, before R3 gave it its own inline component below) whose
+      // container regenerated its own trigger+content on every filter
+      // add/remove, so a held copy's origin container could be detached out
+      // from under it. Leaving such an orphan attached (still Shiny-bound,
+      // ids intact) would sit alongside a freshly auto-bound duplicate Shiny
+      // just rendered in the container's natural spot -- verified live via
+      // Shiny's own "IDs were repeated" console warning at the time.
+      // Removing it outright here closes that window immediately instead of
+      // deferring the cleanup, and stays correct for any future consumer
+      // shaped the same way.
       content.parentNode.removeChild(content);
     }
     content = null;
@@ -256,21 +208,22 @@ window.IBPL_MOBILE_SHEET = (function () {
     if (!e.detail || !e.detail.mobile) close();
   });
 
-  // Task 6's stat-filter popover lives inside a renderUI output that
-  // regenerates its own trigger+content on every filter add/remove
-  // (output$*_filter_chips, since the chip list and the "+ Filter" popover
-  // share one output). Shiny replaces that container's innerHTML wholesale;
-  // the copy WE moved into the sheet body is no longer among its children at
-  // that point, so it survives the replace as an orphan while a fresh
-  // duplicate-id copy is auto-bound in the container's natural spot --
-  // verified live (two `.on-stat-popover` nodes at once, one "in-sheet" and
-  // one "natural", after a single Add). Left open, the sheet keeps showing
-  // the stale orphan. shiny:value fires (bubbled, jQuery-delegated -- see the
-  // existing "shown.bs.tab shiny:value" listeners below) on the output
-  // whenever a renderUI finishes; if it just detached what we were holding,
-  // origin.parent is no longer in the document -- close() already no-ops
-  // safely on that (the document.contains guard above), it just needs
-  // triggering here instead of waiting for Escape or the next open().
+  // Kept for any future consumer shaped like the stat-filter popover used to
+  // be: a renderUI output that regenerates its own trigger+content on every
+  // change (output$*_filter_chips did, for the chip list and the "+ Filter"
+  // popover together). Shiny replaces such a container's innerHTML
+  // wholesale; a copy moved into the sheet body would no longer be among its
+  // children at that point, so it would survive the replace as an orphan
+  // while a fresh duplicate-id copy is auto-bound in the container's natural
+  // spot -- verified live (two `.on-stat-popover` nodes at once, one
+  // "in-sheet" and one "natural", after a single Add, before R3 moved that
+  // consumer to its own inline component below). shiny:value fires (bubbled,
+  // jQuery-delegated -- see the existing "shown.bs.tab shiny:value"
+  // listeners below) on the output whenever a renderUI finishes; if it just
+  // detached what the sheet was holding, origin.parent is no longer in the
+  // document -- close() already no-ops safely on that (the document.contains
+  // guard above), it just needs triggering here instead of waiting for
+  // Escape or the next open().
   if (window.jQuery) {
     window.jQuery(document).on("shiny:value", function () {
       if (isOpen() && origin && origin.parent && !document.contains(origin.parent)) {
@@ -282,42 +235,23 @@ window.IBPL_MOBILE_SHEET = (function () {
   return { open: open, close: close, isOpen: isOpen };
 })();
 
-/* ---- Filter panel into the sheet --------------------------------------
-   All 11 tabs use the same toggle shape, so this is one selector rather than
-   11 R edits. Bootstrap's collapse still owns show/hide, so the button, its
-   aria-expanded state and the chips-bar wiring are untouched.
+/* ---- Filter panel: inline, never an overlay -----------------------------
+   R2 in the 2026-09-13 rework brief reverses the sheet transform this task
+   used to apply to every "-filters" panel: "show filters should never be a
+   popup". Nothing in this file intercepts the toggle any more --
+   Bootstrap's own collapse plugin owns show/hide exactly as it did before
+   this whole layer existed, expanding the panel in the page flow and
+   pushing the table down. Only the expanded panel's mobile styling
+   (full-width controls, tap targets) lives here now, in mobile.css.
    --------------------------------------------------------------------- */
-(function () {
-  var SEL = '[data-bs-toggle="collapse"][data-bs-target$="-filters"]';
 
-  function bind() {
-    if (!window.jQuery) return;
-    window.jQuery(document).on("click", SEL, function (e) {
-      if (!document.body.classList.contains("ibpl-mobile")) return;
-      e.preventDefault();
-      e.stopPropagation();   // Do not let Bootstrap also toggle the collapse.
-      var target = document.querySelector(this.getAttribute("data-bs-target"));
-      if (!target) return;
-      if (window.IBPL_MOBILE_SHEET.isOpen()) {
-        window.IBPL_MOBILE_SHEET.close();
-        return;
-      }
-      window.IBPL_MOBILE_SHEET.open("Filters", target);
-    });
-  }
-
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", bind);
-  } else {
-    bind();
-  }
-})();
-
-/* ---- Tooltips and the stat-filter popover into the sheet ---------------
-   Three mechanisms, three selectors:
+/* ---- Tooltips into the sheet --------------------------------------------
+   Two mechanisms, two selectors:
    - th[title]       native title, written by HEADER_TOOLTIP_JS (global.R:212)
    - [data-tooltip]  CSS ::after on :hover, written by tt() (global.R:209)
-   - the bslib popover at helpers.R:546, whose Shiny input ids must survive
+   The stat-filter popover (helpers.R:546) used to be a third sheet user; R3
+   moved it to its own inline component below instead (see "Stat filter
+   add: inline, not a sheet").
    --------------------------------------------------------------------- */
 (function () {
   function textSheet(title, text) {
@@ -329,7 +263,7 @@ window.IBPL_MOBILE_SHEET = (function () {
   }
 
   // DataTables re-renders the header on every draw, so the affordance has to
-  // be re-injected the same way the caret is. HEADER_TOOLTIP_JS (global.R:212)
+  // be re-injected on every draw too. HEADER_TOOLTIP_JS (global.R:212)
   // writes the native title attribute; this only reads it.
   function addInfoMarks() {
     if (!document.body.classList.contains("ibpl-mobile")) return;
@@ -373,77 +307,178 @@ window.IBPL_MOBILE_SHEET = (function () {
     // lets the native toggle proceed exactly as before; the sheet opens too,
     // which is a bonus, not a conflict, since nothing here owns "toggle vs.
     // explain" -- both can happen from one tap.
+    //
+    // isTrusted guard added for R4 (2026-09-13 rework): a view-mode choice's
+    // <label> (e.g. onoff_view_mode's "Four Factors") is itself a
+    // data-tooltip target ("eFG%, OREB%, TOV%, FTR breakdown"), and the
+    // burger-menu row for that choice drives the real radio with a
+    // synthetic radio.click() (app.js updateInput()) -- a click on the
+    // <input> bubbles through its ancestor <label>, straight into this
+    // delegated handler, popping the tooltip sheet open on every mode
+    // switch made from the menu. Verified live (reproduced with a capture
+    // logger: the four expected synthetic clicks were burger-toggle,
+    // thm-item, nav-link and the radio input -- none of them a real tap on
+    // the tooltip label -- yet the sheet opened anyway). A real finger tap
+    // on a tooltip-bearing label is always isTrusted; app.js's own
+    // programmatic .click()/.setValue() calls never are, so this excludes
+    // exactly the synthetic case without touching the real one.
     $(document).on("click", "[data-tooltip]", function (e) {
       if (!document.body.classList.contains("ibpl-mobile")) return;
+      if (!e.isTrusted) return;
       var tip = this.getAttribute("data-tooltip");
       if (!tip) return;
       textSheet((this.textContent || "").trim(), tip);
     });
 
-    // CAPTURE phase, not $(document).on() (bubble phase), for both of the
-    // handlers below -- same hazard the caret already solved (mobile.js
-    // applyAll's click handler, "Capture phase, not $(document).on()").
-    //
-    // .ibpl-m-th-info: a column header's tap already means SORT, in
-    // DataTables' own click.DT listener bound DIRECTLY on the th (verified:
-    // $._data(th, 'events') lists 'click'). That listener fires at the target
-    // phase, before a bubble-phase document handler ever runs, so
-    // e.stopPropagation() there is too late -- it only stops the event
-    // reaching document, after DataTables already reacted. Verified live: an
-    // info-dot tap toggled the column's sort order every time, in addition to
-    // opening the tooltip sheet. Capturing on document intercepts before the
-    // event ever reaches the th, so DataTables' listener never runs.
-    //
-    // .filter-chip-add: the same shape, with Bootstrap's popover in place of
-    // DataTables. bslib's trigger carries data-bs-toggle="popover", and
-    // Bootstrap binds its show/hide toggle directly on the trigger element.
-    // At bubble phase that listener already ran by the time our handler got a
-    // chance to stopPropagation() -- verified live: the panel (normally
-    // sitting inert in a display:none template inside <bslib-popover>) had
-    // already been moved into a freshly built, positioned `.popover` box
-    // appended to body. Moving it again from there into the sheet still
-    // "worked" while the sheet was open (the sheet's ibpl-m-sheet-open CSS
-    // hides any `.popover`), but close() returns the panel to wherever it
-    // last was -- Bootstrap's now-empty `.popover` box, not the template --
-    // and that box is still marked shown (class "popover ... show",
-    // display:block) with no CSS masking it once ibpl-m-sheet-open is gone.
-    // Verified live: after closing the sheet, a fully visible floating
-    // popover was left sitting on screen. Capturing ahead of Bootstrap's
-    // listener means show() is never called, so nothing is ever built to
-    // leak -- the panel only ever moves via this component's own open/close.
+    // CAPTURE phase, not $(document).on() (bubble phase): a column header's
+    // tap already means SORT, in DataTables' own click.DT listener bound
+    // DIRECTLY on the th (verified: $._data(th, 'events') lists 'click').
+    // That listener fires at the target phase, before a bubble-phase
+    // document handler ever runs, so e.stopPropagation() there is too late
+    // -- it only stops the event reaching document, after DataTables already
+    // reacted. Verified live: an info-dot tap toggled the column's sort
+    // order every time, in addition to opening the tooltip sheet. Capturing
+    // on document intercepts before the event ever reaches the th, so
+    // DataTables' listener never runs. (The stat-filter popover trigger used
+    // to share this exact hazard with Bootstrap's own popover toggle; its
+    // capture-phase handler now lives with the rest of that component below.)
     document.addEventListener("click", function (e) {
       if (!document.body.classList.contains("ibpl-mobile")) return;
       var $info = $(e.target).closest(".ibpl-m-th-info");
-      if ($info.length) {
-        var th = $info.get(0).parentNode;
-        var tip = th ? th.getAttribute("title") : "";
-        // Guard BEFORE intercepting: addInfoMarks() only ever creates this
-        // button inside a th[title], so tip is empty only if the title was
-        // removed after the fact. When there's nothing to show, don't eat
-        // the click either -- let it fall through to the normal sort tap
-        // instead of silently swallowing it for no reason.
-        if (!tip) return;
-        e.preventDefault();
-        e.stopPropagation();
-        var label = (th.textContent || "").replace(/\s*i\s*$/, "").trim();
-        textSheet(label, tip);
-        return;
-      }
+      if (!$info.length) return;
+      var th = $info.get(0).parentNode;
+      var tip = th ? th.getAttribute("title") : "";
+      // Guard BEFORE intercepting: addInfoMarks() only ever creates this
+      // button inside a th[title], so tip is empty only if the title was
+      // removed after the fact. When there's nothing to show, don't eat
+      // the click either -- let it fall through to the normal sort tap
+      // instead of silently swallowing it for no reason.
+      if (!tip) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var label = (th.textContent || "").replace(/\s*i\s*$/, "").trim();
+      textSheet(label, tip);
+    }, true);
+  }
 
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+})();
+
+/* ---- Stat filter add: inline, not a sheet -------------------------------
+   R3 in the 2026-09-13 rework brief: render the "+ Filter" controls inline
+   with the other filter chips instead of relocating them into the bottom
+   sheet.
+
+   bslib's popover() does NOT leave its content inert inside the <template>
+   the server-rendered HTML shows -- its custom element (<bslib-popover>)
+   moves the content out into a real, but display:none, <div> sitting next
+   to the trigger the moment the element upgrades (verified live: the panel
+   is reachable by plain document.querySelector before any interaction).
+   Bootstrap only clones THAT div's content into a floating .popover box
+   when its own show() runs. So "suppress the popover at the source" is
+   exactly the capture-phase interception this file already uses for
+   .ibpl-m-th-info: stopping the click before it ever reaches the trigger
+   means Bootstrap's show() is never called and nothing is ever built to
+   leak, and the div itself can just be moved (not cloned) inline -- the
+   same "move, don't clone" rule as the sheet, for the same reason: the
+   selectInput / radioButtons / numericInput inside it keep their ids, so
+   apply_stat_filters() and every server observer keep working untouched.
+
+   Desktop must keep working exactly as before, so a moved panel is always
+   restored to its original spot in <bslib-popover> before mobile mode is
+   left -- same origin-tracking shape as IBPL_MOBILE_SHEET.close().
+
+   The chips row that hosts the trigger re-renders wholesale on every
+   Add/Remove (output$*_filter_chips is one renderUI covering the whole
+   chip list, helpers.R:520 stat_filter_chips_ui()), which rebuilds a fresh
+   <bslib-popover> carrying the SAME ids as whatever this component is
+   currently holding inline -- the same duplicate-id hazard Task 6 hit with
+   the sheet. Detect it the same way: when shiny:value fires and the held
+   panel's origin is no longer in the document, the container was replaced
+   out from under it, so discard the now-orphaned copy instead of leaving a
+   stale duplicate-id form on screen.
+   --------------------------------------------------------------------- */
+(function () {
+  var origins = {}; // prefix -> { parent, next }
+
+  function wrapFor(prefix) {
+    return document.querySelector('[data-ibpl-m-filteradd="' + prefix + '"]');
+  }
+
+  function restore(prefix) {
+    var wrap = wrapFor(prefix);
+    if (!wrap) return;
+    var panel = wrap.querySelector("." + prefix + "-stat-popover");
+    var origin = origins[prefix];
+    // document.contains guard: same precedent as the sheet's close() -- a
+    // detached subtree still has a parent, and inserting the live panel
+    // into one would remove it from the page entirely.
+    if (panel && origin && origin.parent && document.contains(origin.parent)) {
+      origin.parent.insertBefore(panel, origin.next);
+    }
+    delete origins[prefix];
+    if (wrap.parentNode) wrap.parentNode.removeChild(wrap);
+  }
+
+  function open(trigger) {
+    var id = trigger.id || "";
+    var prefix = id.replace(/_stat_filter_add_btn$/, "");
+    var panel = document.querySelector("." + prefix + "-stat-popover");
+    if (!panel) return;
+
+    var wrap = document.createElement("div");
+    wrap.className = "ibpl-m-filteradd";
+    wrap.setAttribute("data-ibpl-m-filteradd", prefix);
+    origins[prefix] = { parent: panel.parentNode, next: panel.nextSibling };
+    wrap.appendChild(panel);
+    trigger.parentNode.insertBefore(wrap, trigger.nextSibling);
+  }
+
+  function bind() {
+    if (!window.jQuery) return;
+    var $ = window.jQuery;
+
+    // CAPTURE phase, same shape and same reason as .ibpl-m-th-info above:
+    // Bootstrap binds its popover show/hide directly on the trigger
+    // (data-bs-toggle="popover"), closer to the target than a bubble-phase
+    // document handler, so stopPropagation() there always runs too late.
+    document.addEventListener("click", function (e) {
+      if (!document.body.classList.contains("ibpl-mobile")) return;
       var $trigger = $(e.target).closest(".filter-chip-add");
-      if ($trigger.length) {
-        e.preventDefault();
-        e.stopPropagation();
-        var id = $trigger.attr("id") || "";
-        var prefix = id.replace(/_stat_filter_add_btn$/, "");
-        // The popover BODY is moved, not cloned, so the selectInput /
-        // radioButtons / numericInput keep their ids and every server
-        // observer and apply_stat_filters() call keeps working.
-        var panel = document.querySelector("." + prefix + "-stat-popover");
-        if (!panel) return;
-        window.IBPL_MOBILE_SHEET.open("Add stat filter", panel);
+      if (!$trigger.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var trigger = $trigger.get(0);
+      var id = trigger.id || "";
+      var prefix = id.replace(/_stat_filter_add_btn$/, "");
+      if (wrapFor(prefix)) {
+        restore(prefix); // Tap again to collapse it back.
+      } else {
+        open(trigger);
       }
     }, true);
+
+    $(document).on("shiny:value", function () {
+      Object.keys(origins).forEach(function (prefix) {
+        var origin = origins[prefix];
+        if (origin && origin.parent && !document.contains(origin.parent)) {
+          var wrap = wrapFor(prefix);
+          if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+          delete origins[prefix];
+        }
+      });
+    });
+
+    // Crossing the breakpoint mid-open must restore every held panel to its
+    // <bslib-popover>, or the desktop popover would show empty content.
+    document.addEventListener("ibpl:mobilechange", function (e) {
+      if (e.detail && e.detail.mobile) return;
+      Object.keys(origins).forEach(restore);
+    });
   }
 
   if (document.readyState === "loading") {

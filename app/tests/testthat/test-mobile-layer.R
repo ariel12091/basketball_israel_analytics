@@ -142,32 +142,40 @@ test_that("the navbar collapses into a burger", {
   expect_true(grepl("collapsible = TRUE", app_r, fixed = TRUE))
 })
 
-test_that("mobile drives the real view-mode radios, not the hover menu", {
+# ---- R4 (2026-09-13 rework): view mode lives in the burger menu ----------
+# Replaces the two tests above. promote() (which moved the raw
+# radios/select above the table) is gone -- "on a phone the bare radios read
+# as a stray form control". The replacement drives the SAME inputs through
+# app.js's existing per-tab ".tab-hover-menu" (CFG array, app.js:1469, which
+# already covers both the nine radio-based tabs and the two type: "select"
+# ones -- Player Stats and Team Ratings -- generically), just rendered
+# in-flow for the active tab instead of on :hover. There is no per-tab code
+# left in mobile.js/mobile.css for this at all, radios or select alike, which
+# is itself worth asserting: it means nothing here can drift out of sync with
+# app.js's own CFG the way the promoted-copy machinery could.
+
+test_that("promote() and the promoted-radio machinery are gone, not disabled", {
   js <- read_repo_txt("www", "mobile.js")
   css <- read_repo_txt("www", "mobile.css")
-  app_css <- read_repo_txt("www", "app.css")
 
-  # Desktop deliberately hides these live Shiny inputs. Moving them without
-  # overriding that rule would leave every mobile mode control invisible.
-  expect_true(grepl(".view-mode-container {", app_css, fixed = TRUE))
-  expect_true(grepl("display: none !important", app_css, fixed = TRUE))
-  expect_true(grepl(".view-mode-container", js, fixed = TRUE))
-  expect_true(grepl(
-    "body.ibpl-mobile .ibpl-m-viewmode .view-mode-container { display: block !important; }",
-    css, fixed = TRUE
-  ))
-  expect_true(grepl("tab-hover-menu", css, fixed = TRUE))
+  expect_false(grepl("function promote(", js, fixed = TRUE))
+  expect_false(grepl("ibpl-m-viewmode", js, fixed = TRUE))
+  expect_false(grepl("ibpl-m-viewmode", css, fixed = TRUE))
+  # relocateCluster() is untouched R4-adjacent navbar work and must survive.
+  expect_true(grepl("function relocateCluster(", js, fixed = TRUE))
 })
 
-test_that("Player Stats moves its hidden select into the mobile mode control", {
-  ui <- read_repo_txt("R", "ui_tab5_traditional.R")
-  js <- read_repo_txt("www", "mobile.js")
+test_that("the active tab's hover menu renders in the page flow instead of on hover", {
   css <- read_repo_txt("www", "mobile.css")
 
-  expect_true(grepl('"ts_display_mode"', ui, fixed = TRUE))
-  expect_true(grepl('querySelector("#ts_display_mode")', js, fixed = TRUE))
-  expect_true(grepl('select.closest(".shiny-input-container")', js, fixed = TRUE))
-  expect_true(grepl(".ibpl-m-viewmode select", css, fixed = TRUE))
+  # Hidden by default (hover does not exist on touch)...
+  expect_true(grepl("body.ibpl-mobile .tab-hover-menu { display: none !important; }", css, fixed = TRUE))
+  # ...then shown in-flow for whichever tab is actually active, however that
+  # tab marks itself active (BS5 puts .active on the link itself; app.css
+  # also defends the older .nav-item.active pattern).
+  expect_true(grepl(":has(.nav-link.active) .tab-hover-menu", css, fixed = TRUE))
+  expect_true(grepl("display: block !important", css, fixed = TRUE))
+  expect_true(grepl("position: static", css, fixed = TRUE))
 })
 
 test_that("the fixed navbar cluster is unfixed on mobile", {
@@ -183,15 +191,39 @@ test_that("the fixed navbar cluster is unfixed on mobile", {
   expect_true(grepl(".navbar-collapse", read_repo_txt("www", "mobile.js"), fixed = TRUE))
 })
 
-test_that("the filter sheet is generic over all 11 tabs", {
-  js <- read_repo_txt("www", "mobile.js")
+# ---- R2 (2026-09-13 rework): filters expand inline, never an overlay -----
+# Replaces the sheet-routing test above: "show filters should never be a
+# popup". mobile.js no longer intercepts the "Show Filters" toggle at all --
+# Bootstrap's native collapse plugin owns show/hide exactly as it did before
+# this layer existed, so there's nothing left here to test except that the
+# interception is genuinely gone (not just unreachable) and that the
+# expanded panel still gets mobile-specific sizing.
 
-  # Matching the shared toggle shape means no per-tab R edit.
-  expect_true(grepl('data-bs-target$=', js, fixed = TRUE))
-  expect_true(grepl("-filters", js, fixed = TRUE))
-  # Bootstrap keeps owning show/hide so the button, aria-expanded and the
-  # chips-bar wiring all keep working untouched.
-  expect_false(grepl("classList.remove(\"collapse\")", js, fixed = TRUE))
+test_that("the filter panel is native Bootstrap collapse, not a sheet", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_false(grepl('data-bs-toggle="collapse"', js, fixed = TRUE))
+  expect_false(grepl('IBPL_MOBILE_SHEET.open("Filters"', js, fixed = TRUE))
+  # Matching the shared "-filters" id shape means no per-tab R edit for the
+  # mobile sizing that IS still applied.
+  expect_true(grepl('[id$="-filters"]', css, fixed = TRUE))
+  expect_true(grepl("min-height: var(--ibpl-m-tap)", css, fixed = TRUE))
+})
+
+# ---- R5 (2026-09-13 rework): min possessions is secondary, not a headline
+# control -- demoted in place, same id and behaviour, only its visual weight
+# and its order relative to the tab's other chips-row control changes.
+
+test_that("min possessions is visually demoted, not removed or renamed", {
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_true(grepl(".chips-row-controls .minposs-compact", css, fixed = TRUE))
+  expect_true(grepl("order: 2", css, fixed = TRUE))
+  # Smaller label, tighter vertical space -- but this is styling only. The
+  # slider's id and behaviour live in global.R's minposs_slider(), untouched.
+  expect_true(grepl(".minposs-compact .control-label", css, fixed = TRUE))
+  expect_true(grepl("font-size: 0.65rem", css, fixed = TRUE))
 })
 
 test_that("the sheet is a reusable component", {
@@ -282,19 +314,13 @@ test_that("the stat-filter popover keeps its input ids", {
   expect_true(grepl('paste0(prefix, "_stat_filter_value")', helpers, fixed = TRUE))
 })
 
-test_that("the info-dot and filter-chip-add taps are intercepted in the capture phase", {
+test_that("the info-dot tap is intercepted in the capture phase", {
   js <- read_repo_txt("www", "mobile.js")
 
-  # DataTables' sort listener is bound directly on <th>, and Bootstrap's
-  # popover-toggle listener directly on the trigger -- both closer to the
+  # DataTables' sort listener is bound directly on <th>, closer to the
   # target than a bubble-phase document handler, so stopPropagation() there
   # always runs too late. Verified live (Task 6 fix round 1): a bubble-phase
-  # $(document).on() let an info-dot tap also re-sort the column, and let
-  # closing the sheet leave a real floating Bootstrap popover on screen.
-  # Scope to THIS listener (identified by the .closest(".ibpl-m-th-info")
-  # call, unique to it) so the assertion can't be satisfied by the caret's
-  # own, separate capture-phase listener earlier in the file (mobile.js's
-  # "Mobile table layer" section).
+  # $(document).on() let an info-dot tap also re-sort the column.
   start <- regexpr(
     'var $info = $(e.target).closest(".ibpl-m-th-info");',
     js, fixed = TRUE
@@ -306,11 +332,52 @@ test_that("the info-dot and filter-chip-add taps are intercepted in the capture 
   # "});" instead, so this forward search would fail to find "}, true);"
   # before running off the end of the block (or find nothing at all).
   expect_gt(end, 0)
+})
+
+test_that("the filter-chip-add tap is intercepted in the capture phase, in its own component", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # R3 (2026-09-13 rework) gave the stat-filter popover its own inline
+  # component instead of routing it through the sheet; it no longer shares a
+  # listener with the info-dot (each selector now gets its own capture-phase
+  # block), but the same underlying hazard applies: Bootstrap binds its
+  # popover show/hide directly on the trigger, closer to the target than a
+  # bubble-phase document handler.
+  start <- regexpr(
+    'var $trigger = $(e.target).closest(".filter-chip-add");',
+    js, fixed = TRUE
+  )
+  expect_gt(start, 0)
+  rest <- substring(js, start)
+  end <- regexpr("}, true);", rest, fixed = TRUE)
+  expect_gt(end, 0)
   block <- substring(rest, 1, end + nchar("}, true);") - 1)
 
-  # Confirms this is the SAME listener handling both selectors together, not
-  # just any capture-phase block.
-  expect_true(grepl(".filter-chip-add", block, fixed = TRUE))
+  # Confirms this is its OWN listener, not sharing a block with the info-dot
+  # handler any more.
+  expect_false(grepl("ibpl-m-th-info", block, fixed = TRUE))
+})
+
+test_that("the stat-filter panel is moved inline, restored on desktop, and cleaned up on rerender", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  # Moved (not cloned) into a wrapper this component owns, so the
+  # selectInput/radioButtons/numericInput inside keep their ids.
+  expect_true(grepl('wrap.setAttribute("data-ibpl-m-filteradd", prefix)', js, fixed = TRUE))
+  expect_true(grepl('wrap.appendChild(panel)', js, fixed = TRUE))
+  # Desktop must keep working: a held panel is restored to its <bslib-popover>
+  # origin before mobile mode is left.
+  expect_true(grepl("ibpl:mobilechange", js, fixed = TRUE))
+  start <- regexpr("function restore(prefix)", js, fixed = TRUE)
+  expect_gt(start, 0)
+  # The chips row re-renders wholesale on every Add/Remove, orphaning a held
+  # panel's origin the same way it used to orphan the sheet's -- detect and
+  # discard it via shiny:value, the same shape as IBPL_MOBILE_SHEET.
+  expect_true(grepl('$(document).on("shiny:value"', js, fixed = TRUE))
+  expect_true(grepl("!document.contains(origin.parent)", js, fixed = TRUE))
+
+  expect_true(grepl(".ibpl-m-filteradd", css, fixed = TRUE))
 })
 
 test_that("[data-tooltip] taps do not call preventDefault", {
@@ -340,6 +407,32 @@ test_that("[data-tooltip] taps do not call preventDefault", {
   expect_false(grepl("preventDefault", handler, fixed = TRUE))
 })
 
+test_that("[data-tooltip] ignores untrusted clicks (R4 regression: synthetic radio.click() bubbles into a tooltip label)", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # R4 makes the burger menu drive a REAL radio via a synthetic
+  # radio.click() (app.js updateInput()). Several view-mode choice labels
+  # (e.g. onoff_view_mode's "Four Factors") carry their own data-tooltip --
+  # tt() puts it on the <label> itself, an ANCESTOR of the <input> -- so that
+  # synthetic click bubbles straight into this delegated handler and pops
+  # the tooltip sheet open on every mode switch made from the menu. Verified
+  # live with a capture-phase click logger: none of the clicks in that
+  # sequence (burger toggle, thm-item, nav-link, radio input) were a real
+  # tap on the tooltip label, yet the sheet opened. A real finger tap is
+  # always isTrusted; app.js's own programmatic clicks never are.
+  start <- regexpr(
+    '$(document).on("click", "[data-tooltip]", function (e) {',
+    js, fixed = TRUE
+  )
+  expect_gt(start, 0)
+  rest <- substring(js, start)
+  end <- regexpr("});", rest, fixed = TRUE)
+  expect_gt(end, 0)
+  handler <- substring(rest, 1, end + 2)
+
+  expect_true(grepl("e.isTrusted", handler, fixed = TRUE))
+})
+
 test_that("the sheet auto-closes when its held content's origin has been detached", {
   js <- read_repo_txt("www", "mobile.js")
 
@@ -362,31 +455,20 @@ test_that("Compare keeps A and B adjacent on mobile", {
   expect_true(grepl("cmp-summary", css, fixed = TRUE))
 })
 
-# "the Compare table override names the real columns" tested the
-# IBPL_MOBILE_TABLE.priority.cmp_table override -- gone with the rest of R1's
-# deletion above ("The CFG overrides for cmp_table, gl_table and eurogl_table
-# go with them"). Compare needs no special-casing under the replacement:
-# every column is visible for every table now.
-
-test_that("Compare's hidden mode radio is reachable on mobile", {
-  app_css <- read_repo_txt("www", "app.css")
-  mobile_css <- read_repo_txt("www", "mobile.css")
-  mobile_js <- read_repo_txt("www", "mobile.js")
-
-  expect_true(grepl("#cmp_mode.shiny-input-radiogroup", app_css, fixed = TRUE))
-  expect_true(grepl('querySelector("#cmp_mode")', mobile_js, fixed = TRUE))
-  expect_true(grepl(
-    "body.ibpl-mobile .ibpl-m-viewmode #cmp_mode.shiny-input-radiogroup { display: block !important; }",
-    mobile_css, fixed = TRUE
-  ))
-})
+# The Compare-specific column-priority override ("the Compare table override
+# names the real columns") and the promoted-copy CSS for #cmp_mode ("Compare's
+# hidden mode radio is reachable on mobile") are gone along with the rest of
+# IBPL_MOBILE_TABLE and promote() -- see the R1 and R4 sections above.
+# Compare needs no special-casing under either replacement: R1 shows every
+# column for every table generically, and R4's tab-hover-menu CFG entry for
+# "compare" (app.js:1475) already drives #cmp_mode the same way every other
+# tab's view mode is driven now.
 
 # ---- Task 8: Gameflow ------------------------------------------------------
 
-# "the gameflow link survives the column priority rule" tested the
-# IBPL_MOBILE_TABLE.priority.gl_table/eurogl_table overrides -- gone with the
-# rest of R1's deletion above. Every column is visible now, so Gameflow needs
-# no priority rule to protect it.
+# "the gameflow link survives the column priority rule" is gone with the rest
+# of IBPL_MOBILE_TABLE's gl_table/eurogl_table overrides (R1, above): every
+# column is visible now, so Gameflow needs no priority rule to protect it.
 
 test_that("the ribbon keeps its designed width on mobile", {
   helpers <- read_repo_txt("R", "helpers.R")

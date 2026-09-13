@@ -82,56 +82,99 @@ body.ibpl-mobile #navbar_right_cluster {
 body.ibpl-mobile.league-il .league-nav-il,
 body.ibpl-mobile.league-el .league-nav-el { display: flex !important; width: 100%; }
 
-/* Hover does not exist on touch, so the menu is unreachable; the radios it
-   shortcuts to are promoted instead. */
+/* ---- View mode: the burger menu, not a promoted radio group ----
+   R4 in the 2026-09-13 rework brief removes promote() (mobile.js used to
+   move the raw radios/select above the table -- "on a phone the bare radios
+   read as a stray form control"). The replacement drives the SAME inputs
+   through the SAME menu app.js already builds per tab (the
+   ".tab-hover-menu" CFG array, app.js:1469): each row's click handler
+   already calls Shiny.setInputValue on the real input (radio .click() for
+   the nine radio-based tabs, a select's value + change event for Player
+   Stats' select), so nothing here needs new markup or new JS -- only making
+   the ACTIVE tab's menu render in the page flow instead of on :hover, which
+   does not exist on touch.
+
+   :has() covers whichever active-tab pattern actually applies: BS5 (verified
+   live in this app) puts .active on the link itself; app.css:118-119
+   defends the older .nav-item.active > .nav-link pattern too, so this does
+   the same rather than assuming one. */
 body.ibpl-mobile .tab-hover-menu { display: none !important; }
-
-/* app.css:965 hides .view-mode-container with !important everywhere -- the
-   desktop UI drives the tab-hover-menu instead and never shows the raw
-   radios. The promoted copy must override that or the moved node renders
-   nothing: higher specificity (three ancestors) beats app.css's bare class
-   selector regardless of load order. */
-body.ibpl-mobile .ibpl-m-viewmode .view-mode-container { display: block !important; }
-
-body.ibpl-mobile .ibpl-m-viewmode {
-  position: sticky;
-  top: 0;
-  z-index: 5;
-  display: flex;
-  gap: 4px;
-  overflow-x: auto;
-  padding: 6px 0;
-  margin-bottom: 8px;
-  background: var(--ibpl-bg);
-}
-body.ibpl-mobile .ibpl-m-viewmode .radio,
-body.ibpl-mobile .ibpl-m-viewmode .shiny-options-group > div { margin: 0; }
-body.ibpl-mobile .ibpl-m-viewmode label {
-  display: inline-flex;
-  align-items: center;
-  min-height: var(--ibpl-m-tap);
-  padding: 0 12px;
-  border: 1px solid var(--ibpl-border);
+body.ibpl-mobile .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu,
+body.ibpl-mobile .nav-item.tab-has-dropdown.active .tab-hover-menu {
+  display: block !important;
+  position: static;
+  transform: none;
+  width: 100%;
+  min-width: 0;
+  margin: 4px 0 8px;
+  padding: 4px 0;
+  box-shadow: none;
   border-radius: 6px;
-  white-space: nowrap;
 }
-body.ibpl-mobile .ibpl-m-viewmode input:checked + span,
-body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
-  border-color: var(--ibpl-accent);
-  color: var(--ibpl-accent);
+body.ibpl-mobile .tab-hover-menu .thm-item {
+  min-height: var(--ibpl-m-tap);
+  padding: 0 16px;
 }
-/* Player Stats uses a selectInput, not a .view-mode-container radio group. */
-body.ibpl-mobile .ibpl-m-viewmode .shiny-input-container { width: 100%; margin: 0; }
-body.ibpl-mobile .ibpl-m-viewmode .shiny-input-container > label {
-  display: block;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-}
-body.ibpl-mobile .ibpl-m-viewmode select,
-body.ibpl-mobile .ibpl-m-viewmode .selectize-input {
+
+/* ---- Filter panel: inline, never an overlay ----
+   R2 in the 2026-09-13 rework brief removes the sheet transform this task
+   used to apply to every "-filters" panel: "show filters should never be a
+   popup". mobile.js no longer intercepts the toggle at all, so Bootstrap's
+   own collapse plugin owns show/hide exactly as it did before this whole
+   layer existed -- tapping "Show Filters" expands the panel in the page
+   flow and pushes the table down. Only its mobile sizing lives here: every
+   tab's panel shares the id$="-filters" shape (mobile.js used to match it
+   with the same selector for the sheet route), so one rule reaches all 11
+   without an R edit. */
+body.ibpl-mobile [id$="-filters"] .form-control,
+body.ibpl-mobile [id$="-filters"] .form-select,
+body.ibpl-mobile [id$="-filters"] .selectize-input,
+body.ibpl-mobile [id$="-filters"] input[type="text"],
+body.ibpl-mobile [id$="-filters"] input[type="number"],
+body.ibpl-mobile [id$="-filters"] .btn {
   min-height: var(--ibpl-m-tap);
   width: 100%;
+}
+body.ibpl-mobile [id$="-filters"] > .shiny-input-container,
+body.ibpl-mobile [id$="-filters"] > .form-group {
+  margin-bottom: 14px;
+}
+
+/* ---- Stat filter add: inline, not a sheet ----
+   R3: the "+ Filter" trigger's popover content is suppressed at the source
+   on mobile (mobile.js capture-phase click, same shape as .ibpl-m-th-info)
+   and moved inline into this wrapper instead of ever letting Bootstrap show
+   its floating box. */
+body.ibpl-mobile .ibpl-m-filteradd {
+  flex: 1 1 100%;
+  margin-top: 8px;
+  padding: 12px;
+  background: var(--ibpl-surface);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+}
+body.ibpl-mobile .ibpl-m-filteradd .form-control,
+body.ibpl-mobile .ibpl-m-filteradd .form-select,
+body.ibpl-mobile .ibpl-m-filteradd .selectize-input,
+body.ibpl-mobile .ibpl-m-filteradd .btn {
+  min-height: var(--ibpl-m-tap);
+  width: 100%;
+}
+
+/* ---- Min possessions: secondary, not a headline control ----
+   R5: min_poss reads as a headline control on a phone (full-width, leading
+   the chips-row-controls wrap per the .chips-row-controls rule above).
+   Demote it in place -- id and behaviour are unchanged, only its visual
+   weight and its order relative to the tab's other chips-row control (the
+   Four Factors range toggle, where a tab has one). */
+body.ibpl-mobile .chips-row-controls .minposs-compact {
+  order: 2;
+  padding: 2px 0;
+}
+body.ibpl-mobile .chips-row-controls > *:not(.minposs-compact) { order: 1; }
+body.ibpl-mobile .minposs-compact .control-label {
+  font-size: 0.65rem;
+  margin-bottom: 1px;
 }
 
 /* ---- Bottom sheet ---- */
@@ -232,7 +275,10 @@ body.ibpl-mobile .modal-dialog.modal-xl .modal-header .btn-close {
 
 /* ---- Tooltips ----
    Both mechanisms are hover-only and so unreachable on touch. Suppress the CSS
-   one and route both through the sheet. */
+   one and route both through the sheet. (The stat-filter popover used to be a
+   third sheet user, hidden here once shown; R3 suppresses it at the source
+   instead, so Bootstrap's show() never runs on mobile and there is no
+   floating .popover box left to hide.) */
 body.ibpl-mobile [data-tooltip]:hover::after,
 body.ibpl-mobile [data-tooltip]:hover::before { display: none !important; }
 body.ibpl-mobile [data-tooltip] {
@@ -262,10 +308,6 @@ body.ibpl-mobile .ibpl-m-th-info:focus-visible {
   outline-offset: 1px;
 }
 
-/* The popover body is moved into the sheet; the floating box must not also
-   render. */
-body.ibpl-mobile.ibpl-m-sheet-open .popover { display: none !important; }
-
 /* ---- Compare ----
    Three col-4 cards at 390px give each ~120px, too little for an fs-4 value
    plus four small lines. A and B stay adjacent because comparing them is the
@@ -283,13 +325,10 @@ body.ibpl-mobile .cmp-summary-row > [class*="col-"]:nth-child(3) {
 body.ibpl-mobile .cmp-summary-row .fs-4 { font-size: 1.1rem !important; }
 body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
 
-/* Compare's mode radios (#cmp_mode) are not a .view-mode-container -- they
-   are hidden directly by app.css:969
-   (#cmp_mode.shiny-input-radiogroup { display: none !important; }). The
-   generic .view-mode-container override above does not reach them, so they
-   need their own selector once mobile.js's promote() moves the group into
-   the holder. */
-body.ibpl-mobile .ibpl-m-viewmode #cmp_mode.shiny-input-radiogroup { display: block !important; }
+/* Compare's mode radios (#cmp_mode) reach mobile the same way every other
+   tab's view mode does now (see "View mode: the burger menu" above) -- the
+   tab-hover-menu CFG entry for "compare" already drives #cmp_mode, which
+   needs no selector of its own here any more. */
 
 /* ---- Stint ribbon (gameflow) ----
    The SVG is viewBox 0 0 1070 H under .ibpl-ribbon { width: 100% }, so at
