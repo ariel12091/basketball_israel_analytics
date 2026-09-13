@@ -10,24 +10,14 @@ Merging this branch **is deploying** — Connect Cloud builds from `main`.
 
 ---
 
-## STOP — read this first
+## Completion update
 
-**There is uncommitted work in the tree.** An agent was fixing the column-header
-info affordance when the session hit its limit. `app/www/mobile.js`,
-`app/www/mobile.css` and `app/tests/testthat/test-mobile-layer.R` are modified
-and **not committed**. `IBPL_MOBILE_SHEET` is already deleted (0 references), so
-the tree is mid-refactor and may not be in a working state.
-
-Check first:
-
-```bash
-git status --short app/www/ app/tests/testthat/test-mobile-layer.R
-"/c/Program Files/R/R-4.4.2/bin/Rscript.exe" -e "testthat::test_file('app/tests/testthat/test-mobile-layer.R')"
-```
-
-If tests pass and the app loads, commit it. If not, `git checkout` those three
-paths to return to `1eb95a3`, which is known good, and redo the fix described
-under "What remains" below.
+The interrupted column-header info refactor is committed as `04dca1a`.
+Its focused mobile test file passed, JavaScript syntax checked, and the app
+started locally. A 390px browser check confirmed the mobile navbar and a
+season switch to 25-26; it did not cover all tabs or the header-info tap.
+Further device verification is left to the user. This branch remains unmerged
+and undeployed.
 
 ---
 
@@ -44,9 +34,9 @@ plus four small R edits, all committed.
   the viewport meta so pinch-zoom works
 - `app/R/ui_tab7_compare.R` — one `class = "cmp-summary-row"` CSS hook
 
-**Kill switch:** `IBPL_MOBILE=false` skips both includes. **It is NOT yet
-documented in CLAUDE.md's Connect Cloud env list — do that before merging**, or
-it is an invisible flag in production.
+**Kill switch:** `IBPL_MOBILE=false` skips both includes. It is documented in
+`CLAUDE.md`'s Connect Cloud optional-env list and the mobile files are in its
+file map.
 
 **While editing `mobile.css`/`mobile.js`, run with `IBPL_CACHE_UI=false`** or
 edits need an app restart rather than a browser reload.
@@ -67,8 +57,10 @@ edits need an app restart rather than a browser reload.
 | `d0c7794` | Gameflow: ribbon pinned to designed scale |
 | `8608153` | **Rework R1:** every column shown, identity column pinned |
 | `1eb95a3` | **Rework R2-R5:** filters and view mode inline, never overlays |
+| `04dca1a` | **Rework R6:** header and label explanations inline; 44px header-info target; sheet removed |
 
-`1eb95a3` is the last known-good commit. 101/101 in `test-mobile-layer.R`.
+The focused `test-mobile-layer.R` suite passed after `04dca1a`. The browser
+check was limited as described above.
 
 ---
 
@@ -84,7 +76,7 @@ two core decisions were rejected**:
 Plus: view-mode radios moved into the burger menu, min-poss demoted, and
 "avoid popups as much as possible on mobile".
 
-Commits `8608153` and `1eb95a3` are that rework. It is mostly deletion —
+Commits `8608153`, `1eb95a3`, and `04dca1a` are that rework. It is mostly deletion —
 roughly 680 lines removed.
 
 **Do not reintroduce the removed mechanisms.** They were not abandoned as
@@ -92,32 +84,20 @@ unfinished; they were built, reviewed, verified and then rejected in the hand.
 
 ---
 
-## What remains
+## What remains for user verification
 
-1. **Finish the column-header info fix** (the uncommitted work). Two parts:
-   - **The bug:** `.ibpl-m-th-info` renders **14×14px with a 9.6px glyph**,
-     against this layer's own `--ibpl-m-tap: 44px`. Measured live. On a thumb
-     you miss it, hit the `th`, and **the table sorts** with no explanation
-     shown. Needs a ≥44px hit area with a small visible glyph.
-   - **The design change:** show the explanation **inline above the table,
-     outside `.dataTables_scrollBody`** (a strip inside the scroll container
-     slides out of view when you swipe), not in a sheet. Same for the
-     `[data-tooltip]` sidebar labels. This removes the sheet's last user, so
-     `IBPL_MOBILE_SHEET` and its CSS go too.
-2. **Document `IBPL_MOBILE`** in CLAUDE.md's Connect Cloud optional-env list,
-   and add `www/mobile.css` / `www/mobile.js` to the file map.
-3. **Sweep the other tabs.** No systematic pass over all 11 tabs at multiple
-   widths was ever completed — it was started twice and killed both times, once
-   by a rate limit and once because it was verifying a design being discarded.
-   The plan's Task 9 has the full method. Two traps are baked into it from
-   earlier mistakes: **sweep season 25-26** (the default 26-27 has 10 games and
-   renders empty tables, so a sweep there verifies nothing), and **check
-   legibility, not just overflow** (a `viewBox` SVG never overflows — it
-   shrinks; the ribbon rendered 11px labels at 3.8px while passing an overflow
-   check).
-4. **Tasks 7+8 were never independently reviewed** — the review was killed
-   mid-run during the rework. The surviving parts (the Compare two-up summary,
-   the ribbon width pin) carry no review sign-off.
+- On a phone, check that tapping the column-header info target shows its
+  explanation inline without sorting, and that sidebar label explanations
+  also appear inline. The completed browser check did not exercise these taps.
+- The surviving Compare two-up summary and Gameflow ribbon width pin have no
+  independent review sign-off. Check their legibility on the device if relevant.
+- The full 11-tab, multi-width Task 9 sweep was not completed. Decision F36 in
+  the progress ledger records that the user accepted dropping that sweep after
+  phone testing; it is not a merge requirement.
+
+Use season 25-26 when checking data-bearing tables: the default 26-27 season
+has only 10 games and can leave tables empty. Check legibility as well as
+overflow; an SVG can shrink its labels without overflowing.
 
 ---
 
