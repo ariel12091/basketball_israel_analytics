@@ -154,3 +154,56 @@ body.ibpl-mobile .ibpl-m-viewmode .selectize-input {
   min-height: var(--ibpl-m-tap);
   width: 100%;
 }
+
+/* ---- Bottom sheet ---- */
+.ibpl-m-sheet, .ibpl-m-sheet-backdrop { display: none; }
+
+body.ibpl-mobile.ibpl-m-sheet-open .ibpl-m-sheet-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  z-index: 2147482000;
+}
+body.ibpl-mobile.ibpl-m-sheet-open .ibpl-m-sheet {
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* vh first as the fallback; dvh accounts for mobile browser chrome so the
+     sticky Apply footer is never cropped. */
+  max-height: 85vh;
+  max-height: 85dvh;
+  z-index: 2147482001;
+  background: var(--ibpl-surface);
+  border-top: 1px solid var(--ibpl-border);
+  border-radius: 12px 12px 0 0;
+}
+body.ibpl-mobile .ibpl-m-sheet-head {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--ibpl-border);
+}
+body.ibpl-mobile .ibpl-m-sheet-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 12px 16px;
+  -webkit-overflow-scrolling: touch;
+}
+body.ibpl-mobile .ibpl-m-sheet-foot {
+  flex: 0 0 auto;
+  padding: 12px 16px;
+  border-top: 1px solid var(--ibpl-border);
+}
+/* The collapse class would keep the moved panel hidden inside the sheet. */
+body.ibpl-mobile .ibpl-m-sheet-body .collapse { display: block !important; height: auto !important; }
+body.ibpl-mobile .ibpl-m-sheet-body .form-control,
+body.ibpl-mobile .ibpl-m-sheet-body .form-select,
+body.ibpl-mobile .ibpl-m-sheet-body .selectize-input,
+body.ibpl-mobile .ibpl-m-sheet-body .btn {
+  min-height: var(--ibpl-m-tap);
+  width: 100%;
+}

@@ -417,3 +417,117 @@ window.IBPL_MOBILE_TABLE = {
     sync();
   }
 })();
+
+/* ---- Bottom sheet ------------------------------------------------------
+   One component, three users: the filter panel (this task), the tooltip text
+   and the stat-filter popover (Task 6).
+
+   The sheet MOVES the existing node rather than cloning it, so every Shiny
+   input keeps its binding and its id. Cloning would register duplicate ids and
+   silently break the filters.
+   --------------------------------------------------------------------- */
+window.IBPL_MOBILE_SHEET = (function () {
+  var sheet = null, backdrop = null, body = null, head = null;
+  var origin = null, content = null;
+
+  function build() {
+    if (sheet) return;
+    backdrop = document.createElement("div");
+    backdrop.className = "ibpl-m-sheet-backdrop";
+    backdrop.addEventListener("click", close);
+
+    sheet = document.createElement("div");
+    sheet.className = "ibpl-m-sheet";
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-modal", "true");
+
+    head = document.createElement("div");
+    head.className = "ibpl-m-sheet-head";
+
+    body = document.createElement("div");
+    body.className = "ibpl-m-sheet-body";
+
+    var foot = document.createElement("div");
+    foot.className = "ibpl-m-sheet-foot";
+    var done = document.createElement("button");
+    done.type = "button";
+    done.className = "btn btn-warning w-100";
+    done.textContent = "Apply";
+    done.addEventListener("click", close);
+    foot.appendChild(done);
+
+    sheet.appendChild(head);
+    sheet.appendChild(body);
+    sheet.appendChild(foot);
+    document.body.appendChild(backdrop);
+    document.body.appendChild(sheet);
+  }
+
+  function open(title, node) {
+    build();
+    close();
+    // close() returns a MOVED node to its origin, but it cannot know about
+    // content that was appended directly (Task 6 injects tooltip text that
+    // way). Without this, that text accumulates across opens and then shows
+    // up above the filter panel on the next open.
+    body.innerHTML = "";
+    head.textContent = title || "";
+    if (node) {
+      // Remember exactly where it was so close() can put it back.
+      origin = { parent: node.parentNode, next: node.nextSibling };
+      content = node;
+      body.appendChild(node);
+    }
+    document.body.classList.add("ibpl-m-sheet-open");
+  }
+
+  function close() {
+    if (content && origin && origin.parent) {
+      origin.parent.insertBefore(content, origin.next);
+    }
+    content = null;
+    origin = null;
+    document.body.classList.remove("ibpl-m-sheet-open");
+  }
+
+  function isOpen() {
+    return document.body.classList.contains("ibpl-m-sheet-open");
+  }
+
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && isOpen()) close();
+  });
+
+  return { open: open, close: close, isOpen: isOpen };
+})();
+
+/* ---- Filter panel into the sheet --------------------------------------
+   All 11 tabs use the same toggle shape, so this is one selector rather than
+   11 R edits. Bootstrap's collapse still owns show/hide, so the button, its
+   aria-expanded state and the chips-bar wiring are untouched.
+   --------------------------------------------------------------------- */
+(function () {
+  var SEL = '[data-bs-toggle="collapse"][data-bs-target$="-filters"]';
+
+  function bind() {
+    if (!window.jQuery) return;
+    window.jQuery(document).on("click", SEL, function (e) {
+      if (!document.body.classList.contains("ibpl-mobile")) return;
+      e.preventDefault();
+      e.stopPropagation();   // Do not let Bootstrap also toggle the collapse.
+      var target = document.querySelector(this.getAttribute("data-bs-target"));
+      if (!target) return;
+      if (window.IBPL_MOBILE_SHEET.isOpen()) {
+        window.IBPL_MOBILE_SHEET.close();
+        return;
+      }
+      window.IBPL_MOBILE_SHEET.open("Filters", target);
+    });
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", bind);
+  } else {
+    bind();
+  }
+})();

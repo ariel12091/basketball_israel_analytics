@@ -176,3 +176,45 @@ test_that("the fixed navbar cluster is unfixed on mobile", {
   # Static positioning alone does not put a header node inside the burger.
   expect_true(grepl(".navbar-collapse", read_repo_txt("www", "mobile.js"), fixed = TRUE))
 })
+
+test_that("the filter sheet is generic over all 11 tabs", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Matching the shared toggle shape means no per-tab R edit.
+  expect_true(grepl('data-bs-target$=', js, fixed = TRUE))
+  expect_true(grepl("-filters", js, fixed = TRUE))
+  # Bootstrap keeps owning show/hide so the button, aria-expanded and the
+  # chips-bar wiring all keep working untouched.
+  expect_false(grepl("classList.remove(\"collapse\")", js, fixed = TRUE))
+})
+
+test_that("the sheet is a reusable component", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  expect_true(grepl("IBPL_MOBILE_SHEET", js, fixed = TRUE))
+  expect_true(grepl(".ibpl-m-sheet", css, fixed = TRUE))
+  # dvh, with a vh fallback declared first, so browser chrome does not crop
+  # the footer. Asserted generically here: this task introduces 85dvh for the
+  # sheet, and Task 6 adds 100dvh for modals with its own ordering assertion.
+  expect_true(grepl("dvh", css, fixed = TRUE))
+})
+
+test_that("the sheet body is cleared on open", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Task 6 appends tooltip text into the sheet body directly. close() only
+  # restores MOVED nodes, so without an explicit clear that text accumulates
+  # across opens and leaks into the filter sheet.
+  expect_true(grepl('body.innerHTML = ""', js, fixed = TRUE))
+})
+
+test_that("every tab still has its own filter toggle", {
+  ui_files <- list.files(repo_file("R"), pattern = "^ui_tab.*\\.R$", full.names = TRUE)
+  toggles <- sum(vapply(ui_files, function(f) {
+    sum(grepl("d-md-none", readLines(f, warn = FALSE), fixed = TRUE))
+  }, integer(1)))
+
+  # 11 tab UIs each carry one. A drop here means a tab lost its filters.
+  expect_gte(toggles, 11L)
+})
