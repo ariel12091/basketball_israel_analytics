@@ -3260,6 +3260,63 @@ RIBBON_HEADER <- 20
 RIBBON_PAD_TOP <- 14
 RIBBON_PAD_BOTTOM <- 16
 
+# Where each geometry constant comes from, per place the ribbon is drawn.
+# The default is the desktop modal and returns the constants above
+# unchanged. The compact layout is the phone. Nothing is scaled down: the
+# plot keeps the desktop's 850-unit game width and is drawn at 1:1 (the
+# svg carries a real width), so the reader swipes sideways to reach Q4.
+# Only the gutter narrows, because mobile.js pins it to the left edge and a
+# 220-unit pinned column would leave a 390px screen almost no chart: it
+# shows a short label (ribbon_short_labels()) and the game +/-; the MIN
+# column is dropped (floor time is in the tapped stint's detail card).
+# Rows are taller than desktop (24-unit pitch) for touch, and app.js also
+# hit-tests a tap to the nearest row.
+ribbon_layout <- function(compact = FALSE) {
+  if (!isTRUE(compact)) {
+    return(list(compact = FALSE, width = RIBBON_WIDTH, gutter = RIBBON_GUTTER,
+                name_x = RIBBON_NAME_X, min_x = RIBBON_MIN_X,
+                pm_x = RIBBON_PM_X, lane_height = RIBBON_LANE_HEIGHT,
+                lane_gap = RIBBON_LANE_GAP,
+                margin_height = RIBBON_MARGIN_HEIGHT))
+  }
+  gutter <- 104
+  list(compact = TRUE, width = gutter + (RIBBON_WIDTH - RIBBON_GUTTER), gutter = gutter, name_x = gutter - 28,
+       min_x = NA_real_, pm_x = gutter - 6, lane_height = 18, lane_gap = 6,
+       margin_height = RIBBON_MARGIN_HEIGHT)
+}
+
+# Gutter labels for the compact layout: the surname alone. A one-word label
+# is kept whole; a long compound surname falls back to its last word; two
+# players on the same side who would share a label get their first initial
+# back. Anything still over 11 characters is cut with an ellipsis. The full
+# name is never lost -- it stays in every aria-label and in the detail card.
+ribbon_short_labels <- function(label, side) {
+  label <- as.character(label)
+  # The two leagues spell names in opposite orders: Israeli labels are
+  # "FIRST SURNAME", EuroLeague labels are "SURNAME, FIRST" (the comma is
+  # the tell). Split each into its surname part and its given-name part.
+  has_comma <- grepl(",", label, fixed = TRUE)
+  family <- ifelse(has_comma, sub(",.*$", "", label), sub("^[^[:space:]]+", "", trimws(label)))
+  given <- ifelse(has_comma, sub("^[^,]*,", "", label), sub("[[:space:]].*$", "", trimws(label)))
+  family <- trimws(family)
+  given <- trimws(given)
+  # A one-word label has no surname part; keep it whole.
+  family <- ifelse(nzchar(family), family, trimws(label))
+  given <- ifelse(family == trimws(label), "", given)
+  surname <- vapply(strsplit(family, "[[:space:]]+"), function(w) {
+    rest <- paste(w, collapse = " ")
+    if (nchar(rest) > 11 && length(w) > 1) w[length(w)] else rest
+  }, character(1))
+  # A clash is two DIFFERENT players sharing a surname, so count each
+  # (side, label) once -- a player's repeated stint rows are not a clash.
+  key <- paste(side, surname, sep = "\r")
+  first <- !duplicated(paste(side, label, sep = "\r"))
+  clash <- key %in% key[first][duplicated(key[first])]
+  initial <- ifelse(nzchar(given), paste0(substr(given, 1, 1), ". "), "")
+  out <- ifelse(clash, paste0(initial, surname), surname)
+  ifelse(nchar(out) > 11, paste0(substr(out, 1, 10), "\u2026"), out)
+}
+
 ribbon_clip_id <- function(id_prefix, side, player_key) {
   slug <- gsub("[^A-Za-z0-9_-]+", "-", as.character(player_key))
   slug <- gsub("(^-+)|(-+$)", "", slug)
@@ -3336,8 +3393,9 @@ ribbon_margin_path <- function(margin, total_seconds, width, top, height,
 }
 
 build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
-                                   steps = NULL) {
+                                   steps = NULL, layout = ribbon_layout()) {
   if (is.null(lanes) || !nrow(lanes)) return(NULL)
+  L <- layout
 
   bounds <- ribbon_period_bounds(meta$n_periods)
   total_seconds <- bounds[length(bounds)]
@@ -3363,22 +3421,22 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   lanes <- ribbon_stint_points(lanes, steps)
   lanes <- ribbon_side_perspective(lanes)
   lanes <- ribbon_lane_index(lanes)
-  lanes <- ribbon_geometry(lanes, total_seconds, width = RIBBON_WIDTH,
-                           lane_height = RIBBON_LANE_HEIGHT,
-                           lane_gap = RIBBON_LANE_GAP)
+  lanes <- ribbon_geometry(lanes, total_seconds, width = L$width,
+                           lane_height = L$lane_height,
+                           lane_gap = L$lane_gap, gutter = L$gutter)
 
   own <- lanes[lanes$side == "own", , drop = FALSE]
   opp <- lanes[lanes$side == "opp", , drop = FALSE]
   own_h <- if (nrow(own)) max(own$y + own$h) else 0
   margin_top <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h + RIBBON_BAND_GAP
-  opp_top <- margin_top + RIBBON_MARGIN_HEIGHT + RIBBON_BAND_GAP
+  opp_top <- margin_top + L$margin_height + RIBBON_BAND_GAP
   total_h <- opp_top + if (nrow(opp)) max(opp$y + opp$h) else 0
 
   lanes$abs_y <- ifelse(lanes$side == "own", lanes$y + RIBBON_PAD_TOP + RIBBON_HEADER, opp_top + lanes$y)
   lanes$clip <- ribbon_clip_id(id_prefix, lanes$side, lanes$player_key)
 
-  path_d <- ribbon_margin_path(margin, total_seconds, RIBBON_WIDTH,
-                               margin_top, RIBBON_MARGIN_HEIGHT)
+  path_d <- ribbon_margin_path(margin, total_seconds, L$width,
+                               margin_top, L$margin_height, gutter = L$gutter)
 
   clip_paths <- lapply(unique(lanes$clip), function(cid) {
     rows <- lanes[lanes$clip == cid, , drop = FALSE]
@@ -3386,13 +3444,13 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
       id = cid,
       lapply(seq_len(nrow(rows)), function(i) {
         tags$rect(x = rows$x[i], y = margin_top,
-                  width = rows$w[i], height = RIBBON_MARGIN_HEIGHT)
+                  width = rows$w[i], height = L$margin_height)
       })
     )
   })
 
   period_lines <- lapply(bounds[-length(bounds)], function(b) {
-    bx <- RIBBON_GUTTER + b * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
+    bx <- L$gutter + b * ((L$width - L$gutter) / total_seconds)
     tags$line(class = "ibpl-ribbon-period",
               x1 = bx, x2 = bx, y1 = RIBBON_PAD_TOP, y2 = total_h,
               `data-base-y2` = total_h)
@@ -3449,7 +3507,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
       if (!is.na(lanes$pm[i]) && ribbon_number_fits(num[i], lanes$w[i])) {
         tags$text(class = "ibpl-ribbon-num",
                   x = lanes$x[i] + lanes$w[i] / 2,
-                  y = lanes$abs_y[i] + lanes$h[i] - 4,
+                  y = lanes$abs_y[i] + lanes$h[i] / 2 + 3,
                   `text-anchor` = "middle", num[i])
       }
     )
@@ -3463,23 +3521,32 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   tkey <- paste(totals$side, totals$player_key, sep = "\r")
   first_row <- !duplicated(paste(lanes$side, lanes$player_key))
   first_idx <- which(first_row)
+  # The compact gutter shows a short label; the full name stays in the
+  # aria-label below and in the stint lane's data-player.
+  gutter_label <- if (isTRUE(L$compact)) {
+    ribbon_short_labels(lanes$player_label, lanes$side)
+  } else {
+    lanes$player_label
+  }
   lane_labels <- lapply(first_idx, function(i) {
     ti <- match(paste(lanes$side[i], lanes$player_key[i], sep = "\r"), tkey)
     mins <- ribbon_minutes_label(totals$secs[ti])
     pm <- ribbon_pm_label(totals$pm[ti])
     label <- sprintf("%s, %s on the floor, %s", lanes$player_label[i], mins,
                      if (nzchar(pm)) paste("plus-minus", pm) else "plus-minus unavailable")
-    y <- lanes$abs_y[i] + lanes$h[i] - 3
+    # Baselines from the lane centre, so taller compact rows keep the text
+    # centred; at the desktop 14-unit height these equal the old h - 4 / h - 3.
+    y <- lanes$abs_y[i] + lanes$h[i] / 2 + 4
     # class comes first in each tag (not via `common`, which is spliced in
     # after) so the DOM matches the order pre-existing tests pin, e.g. a
     # `<text class="ibpl-ribbon-name"[^>]*data-clip=...` regex.
     common <- list(`data-clip` = lanes$clip[i], `text-anchor` = "end")
     list(
-      do.call(tags$text, c(list(class = "ibpl-ribbon-name", x = RIBBON_NAME_X, y = y),
-        common, list(tabindex = "0", `aria-label` = label, lanes$player_label[i]))),
-      do.call(tags$text, c(list(class = "ibpl-ribbon-min", x = RIBBON_MIN_X, y = y),
+      do.call(tags$text, c(list(class = "ibpl-ribbon-name", x = L$name_x, y = y),
+        common, list(tabindex = "0", `aria-label` = label, gutter_label[i]))),
+      if (!isTRUE(L$compact)) do.call(tags$text, c(list(class = "ibpl-ribbon-min", x = L$min_x, y = y),
         common, list(mins))),
-      do.call(tags$text, c(list(class = "ibpl-ribbon-pm", x = RIBBON_PM_X, y = y),
+      do.call(tags$text, c(list(class = "ibpl-ribbon-pm", x = L$pm_x, y = y),
         common, list(pm)))
     )
   })
@@ -3491,11 +3558,15 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # band made the space below it 44 units against 24 above, which read as a
   # lopsided chart, while the label itself never fills that space: it is
   # left-anchored in the gutter and the band starts at RIBBON_GUTTER.
-  own_team_labels <- list(
-    tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_MIN_X,
+  # The compact layout has no column heads: its team name fills the header
+  # row's gutter, and the inline panel's hint names the +/- column instead.
+  col_heads <- if (!isTRUE(L$compact)) list(
+    tags$text(class = "ibpl-ribbon-col-head", x = L$min_x,
               y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "MIN"),
-    tags$text(class = "ibpl-ribbon-col-head", x = RIBBON_PM_X,
-              y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "+/-"),
+    tags$text(class = "ibpl-ribbon-col-head", x = L$pm_x,
+              y = RIBBON_PAD_TOP + 10, `text-anchor` = "end", "+/-"))
+  own_team_labels <- list(
+    col_heads,
     tags$text(class = "ibpl-ribbon-team", x = 0, y = RIBBON_PAD_TOP + 10,
               meta$own_team %||% "Own")
   )
@@ -3504,11 +3575,11 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
               meta$opp_team %||% "Opponent")
   )
 
-  zero_y <- margin_top + RIBBON_MARGIN_HEIGHT / 2
+  zero_y <- margin_top + L$margin_height / 2
   baseline <- list(
-    tags$line(class = "ibpl-ribbon-zero", x1 = RIBBON_GUTTER, x2 = RIBBON_WIDTH,
+    tags$line(class = "ibpl-ribbon-zero", x1 = L$gutter, x2 = L$width,
               y1 = zero_y, y2 = zero_y),
-    tags$text(class = "ibpl-ribbon-zero-label", x = RIBBON_GUTTER - 8,
+    tags$text(class = "ibpl-ribbon-zero-label", x = L$gutter - 8,
               y = zero_y + 3, `text-anchor` = "end", "tied")
   )
 
@@ -3522,13 +3593,13 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # stays visually dominant over the fainter .ibpl-ribbon-scale lines.
   scale_info <- ribbon_margin_scale(margin)
   scale_lines <- lapply(scale_info$ticks, function(v) {
-    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, RIBBON_MARGIN_HEIGHT)
-    tags$line(class = "ibpl-ribbon-scale", x1 = RIBBON_GUTTER, x2 = RIBBON_WIDTH,
+    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, L$margin_height)
+    tags$line(class = "ibpl-ribbon-scale", x1 = L$gutter, x2 = L$width,
               y1 = y, y2 = y)
   })
   scale_labels <- lapply(scale_info$ticks, function(v) {
-    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, RIBBON_MARGIN_HEIGHT)
-    tags$text(class = "ibpl-ribbon-scale-label", x = RIBBON_GUTTER - 8,
+    y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, L$margin_height)
+    tags$text(class = "ibpl-ribbon-scale-label", x = L$gutter - 8,
               y = y + 3, `text-anchor` = "end", sprintf("%+d", as.integer(round(v))))
   })
 
@@ -3540,13 +3611,24 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # earliest marker (end of Q1) sits far right of that left-anchored label.
   period_label_row <- function(y) {
     lapply(seq_along(bounds), function(k) {
-      bx <- RIBBON_GUTTER + bounds[k] * ((RIBBON_WIDTH - RIBBON_GUTTER) / total_seconds)
+      bx <- L$gutter + bounds[k] * ((L$width - L$gutter) / total_seconds)
       tags$text(class = "ibpl-ribbon-period-label", x = bx - 4, y = y,
                 `text-anchor` = "end",
                 if (k <= 4) paste0("Q", k) else paste0("OT", k - 4))
     })
   }
   top_period_labels <- period_label_row(RIBBON_PAD_TOP + 10)
+  if (isTRUE(L$compact)) {
+    # The compact header row is shared with a team name that can run past
+    # the first quarter ("Fenerbahce Beko Istanbul" reaches ~170 units in a
+    # 350-unit chart). Drop any top marker that name would run into; the
+    # bottom row still carries every marker. 7 units per character
+    # over-estimates the 12px semibold label, so the check errs toward
+    # dropping rather than overprinting.
+    name_end <- nchar(meta$own_team %||% "Own") * 7 + 6
+    marker_left <- L$gutter + bounds * ((L$width - L$gutter) / total_seconds) - 4 - 20
+    top_period_labels <- top_period_labels[marker_left > name_end]
+  }
   bottom_period_labels <- period_label_row(total_h + 12)
   base_height <- total_h + 12 + RIBBON_PAD_BOTTOM
   own_detail_y <- RIBBON_PAD_TOP + RIBBON_HEADER + own_h
@@ -3554,13 +3636,16 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
 
   tags$svg(
     xmlns = "http://www.w3.org/2000/svg",
-    viewBox = sprintf("0 0 %d %.0f", RIBBON_WIDTH, base_height),
-    class = "ibpl-ribbon",
+    viewBox = sprintf("0 0 %d %.0f", L$width, base_height),
+    class = if (isTRUE(L$compact)) "ibpl-ribbon is-compact" else "ibpl-ribbon",
+    # Compact only: a real pixel width, so the chart is drawn at 1:1 and
+    # scrolls sideways instead of being fitted to the screen.
+    width = if (isTRUE(L$compact)) L$width,
     role = "img",
     `aria-label` = meta$game_label,
     `data-lineups` = jsonlite::toJSON(dict$members),
     `data-base-height` = base_height,
-    `data-detail-x` = RIBBON_GUTTER,
+    `data-detail-x` = L$gutter,
     `data-own-detail-y` = own_detail_y,
     `data-opp-detail-y` = opp_detail_y,
     tags$defs(clip_paths),

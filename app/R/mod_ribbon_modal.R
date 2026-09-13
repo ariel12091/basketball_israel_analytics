@@ -73,9 +73,12 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
     health_ui <- if (!is.null(ribbon$health)) {
       div(class = "alert alert-warning py-2 px-3 mb-2", ribbon$health)
     }
+    # A phone gets the compact layout: the whole game across the screen
+    # rather than the 1070-unit desktop chart panned sideways.
     svg <- build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
                                   id_prefix = paste0(svg_id_prefix, click$game_id),
-                                  steps = ribbon$steps)
+                                  steps = ribbon$steps,
+                                  layout = ribbon_layout(compact = mobile))
 
     if (mobile) {
       output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
@@ -83,8 +86,9 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
             `data-game-id` = as.character(click$game_id),
           div(class = "ibpl-ribbon-inline-title", meta$game_label),
           health_ui,
-          div(class = "ibpl-ribbon-inline-hint", "Swipe horizontally to explore the full game"),
-          div(class = "ibpl-ribbon-inline-scroll", tabindex = "0",
+          div(class = "ibpl-ribbon-inline-hint",
+              "Swipe sideways for the rest of the game. Tap a player's row for that stint and its lineups; the number beside each name is their game +/-."),
+          div(class = "ibpl-ribbon-inline-scroll",
               `aria-label` = paste("Gameflow for", meta$game_label), svg)
         )
       })

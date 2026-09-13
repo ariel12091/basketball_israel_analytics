@@ -106,6 +106,73 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     return document.getElementById(prefix + "_ribbon_inline_panel");
   }
 
+  /* The compact chart is drawn at 1:1 and swiped sideways, so its name
+     column would scroll away with it. Pin a copy of the gutter's text (names,
+     +/-, team names, margin scale) to the scroller's left edge with
+     position: sticky, and hide the originals. The copy carries no data-clip
+     or tabindex, so app.js's lane handlers never mistake it for the chart;
+     app.js reaches it through svg.ibplPin (focus highlight) and pin.ibplSvg
+     (a tap on a pinned name picks that row's stint in view). */
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var PIN_SELECTOR = ".ibpl-ribbon-name, .ibpl-ribbon-pm, .ibpl-ribbon-team, " +
+    ".ibpl-ribbon-scale-label, .ibpl-ribbon-zero-label";
+
+  function pinGutter(svg) {
+    var scroller = svg.closest(".ibpl-ribbon-inline-scroll");
+    var gutter = Number(svg.dataset.detailX);
+    var vb = svg.viewBox && svg.viewBox.baseVal;
+    if (!scroller || !isFinite(gutter) || gutter <= 0 || !vb) return;
+    var old = scroller.querySelector(".ibpl-ribbon-pin");
+    if (old) old.parentNode.removeChild(old);
+
+    var height = svg.getBoundingClientRect().height;
+    var pin = document.createElementNS(SVG_NS, "svg");
+    pin.setAttribute("class", "ibpl-ribbon-pin");
+    pin.setAttribute("aria-hidden", "true");
+    pin.setAttribute("viewBox", "0 0 " + gutter + " " + vb.height);
+    pin.style.width = gutter + "px";
+    pin.style.height = height + "px";
+    pin.style.marginBottom = -height + "px";
+
+    var bg = document.createElementNS(SVG_NS, "rect");
+    bg.setAttribute("class", "ibpl-ribbon-pin-bg");
+    bg.setAttribute("width", gutter);
+    bg.setAttribute("height", vb.height);
+    pin.appendChild(bg);
+
+    var texts = svg.querySelectorAll(PIN_SELECTOR);
+    var teams = [];
+    for (var i = 0; i < texts.length; i++) {
+      var copy = texts[i].cloneNode(true);
+      if (copy.hasAttribute("data-clip")) {
+        copy.setAttribute("data-pin-clip", copy.getAttribute("data-clip"));
+        copy.removeAttribute("data-clip");
+      }
+      copy.removeAttribute("tabindex");
+      copy.removeAttribute("aria-label");
+      pin.appendChild(copy);
+      if (copy.classList.contains("ibpl-ribbon-team")) teams.push(copy);
+    }
+
+    scroller.insertBefore(pin, svg);
+    // A team name is wider than the gutter and overflows onto the chart;
+    // back it so period labels swiping underneath do not show through.
+    teams.forEach(function (t) {
+      var bb = t.getBBox();
+      var back = document.createElementNS(SVG_NS, "rect");
+      back.setAttribute("class", "ibpl-ribbon-pin-bg");
+      back.setAttribute("x", 0);
+      back.setAttribute("y", bb.y - 2);
+      back.setAttribute("width", Math.max(gutter, bb.width + 10));
+      back.setAttribute("height", bb.height + 4);
+      pin.insertBefore(back, t);
+    });
+
+    svg.classList.add("has-pin");
+    svg.ibplPin = pin;
+    pin.ibplSvg = svg;
+  }
+
   document.addEventListener("click", function (e) {
     if (!document.body.classList.contains("ibpl-mobile")) return;
     var close = e.target.closest && e.target.closest(".ibpl-ribbon-inline-close");
@@ -121,6 +188,12 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     panel.dataset.gameId = link.dataset.gameId;
     panel.hidden = false;
     panel.classList.add("is-loading");
+    // Shiny suspends an output it believes is hidden and never sends its
+    // value. The panel starts [hidden], and Shiny only re-checks visibility
+    // on a "shown" event, so without this the first gameflow opened stayed
+    // on "Loading gameflow..." forever (reproduced at 390px, 2026-09-13:
+    // .clientdata_output_gl_ribbon_inline_hidden stayed true).
+    if (window.jQuery) window.jQuery(panel).trigger("shown");
     window.requestAnimationFrame(function () {
       panel.scrollIntoView({ block: "start", behavior: "smooth" });
     });
@@ -135,6 +208,8 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
         var result = panel.querySelector(".ibpl-ribbon-inline-result");
         if (result && result.dataset.gameId === panel.dataset.gameId) {
           panel.classList.remove("is-loading");
+          var svg = result.querySelector("svg.ibpl-ribbon.is-compact");
+          if (svg) window.requestAnimationFrame(function () { pinGutter(svg); });
         }
       });
     });
