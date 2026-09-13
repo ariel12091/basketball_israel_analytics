@@ -78,7 +78,15 @@ window.IBPL_MOBILE_TABLE = {
     // #, Player, GP A -- deleting both compared values and the gap, which is
     // the entire point of the tab. Team and Player are alternatives: Teams
     // mode has one, Players mode the other, and only the present one matches.
-    cmp_table: ["Team", "Player", "A", "B", "Gap"]
+    cmp_table: ["Team", "Player", "A", "B", "Gap"],
+
+    // Gameflow is column 4 in both game-log tabs, so the default would bury
+    // the only entry point to the stint ribbon behind a caret tap. On a phone
+    // a game is identified by date and opponent, not by GN or round.
+    // One list serves both leagues: Tab 4 leads GN|Game Type and Tab 11 leads
+    // Rd|Phase, but Date, Opponent, Score and Gameflow are named identically.
+    gl_table: ["Date", "Opponent", "Score", "Gameflow"],
+    eurogl_table: ["Date", "Opponent", "Score", "Gameflow"]
   }
 };
 
@@ -293,6 +301,16 @@ window.IBPL_MOBILE_TABLE = {
       // Guarded on a menu actually being open, so this is a no-op otherwise.
       var btn = $caret.get(0);
       if (document.querySelector(".ibpl-pivot-menu")) {
+        // This synthetic Escape also reaches app.js's OWN keydown handler
+        // (app.js:903-909), which clears every .ibpl-ribbon-lane.is-selected --
+        // a second, unrelated Escape consumer. That collision is currently
+        // unreachable: the ribbon renders only inside a Shiny modalDialog whose
+        // backdrop blocks reaching a pivot-menu trigger underneath it, and
+        // Shiny removes the modal's whole subtree on close, so a selected lane
+        // can never outlive the modal to be cleared by an unrelated caret tap
+        // elsewhere on the page. This is safe ONLY while the ribbon's DOM dies
+        // with its modal -- rendering the ribbon inline (e.g. a mobile detail
+        // row) would let a caret tap silently clear a selected lane.
         document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
         // close(true) in app.js restores focus to the row that opened the
         // menu, not to the caret the user just tapped (verified live: focus

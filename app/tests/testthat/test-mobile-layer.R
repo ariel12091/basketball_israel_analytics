@@ -378,3 +378,31 @@ test_that("Compare's hidden mode radio is reachable on mobile", {
     mobile_css, fixed = TRUE
   ))
 })
+
+# ---- Task 8: Gameflow ------------------------------------------------------
+
+test_that("the gameflow link survives the column priority rule", {
+  js <- read_repo_txt("www", "mobile.js")
+
+  # Gameflow is column 4 in both game-log tabs, so the "first 3 visible"
+  # default would bury the only entry point to the stint ribbon.
+  expect_true(grepl("gl_table", js, fixed = TRUE))
+  expect_true(grepl("eurogl_table", js, fixed = TRUE))
+  expect_true(grepl('"Gameflow"', js, fixed = TRUE))
+})
+
+test_that("the ribbon keeps its designed width on mobile", {
+  helpers <- read_repo_txt("R", "helpers.R")
+  css <- read_repo_txt("www", "mobile.css")
+
+  # Hardcoding the width in CSS would silently drift from the R geometry.
+  # Pin them together: this test fails if RIBBON_WIDTH ever changes.
+  m <- regmatches(helpers, regexpr("RIBBON_WIDTH <- [0-9]+", helpers))
+  expect_length(m, 1L)
+  w <- sub("RIBBON_WIDTH <- ", "", m)
+
+  expect_true(grepl(paste0("min-width: ", w, "px"), css, fixed = TRUE))
+  # Scrolling, not scaling: app.css sets width:100%, which is what shrinks the
+  # 11px labels to 3.8px at 390px.
+  expect_true(grepl("overflow-x: auto", css, fixed = TRUE))
+})

@@ -311,3 +311,18 @@ body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
    need their own selector once mobile.js's promote() moves the group into
    the holder. */
 body.ibpl-mobile .ibpl-m-viewmode #cmp_mode.shiny-input-radiogroup { display: block !important; }
+
+/* ---- Stint ribbon (gameflow) ----
+   The SVG is viewBox 0 0 1070 H under .ibpl-ribbon { width: 100% }, so at
+   ~370px of usable modal width the scale is 0.346: 14px lanes render at 4.8px
+   and 11px labels at 3.8px. Pin the SVG to its viewBox width instead and let
+   the container pan. Scale 1.0, designed size exactly.
+
+   min-width MUST equal RIBBON_WIDTH in helpers.R -- pinned by a test. */
+body.ibpl-mobile .modal-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+body.ibpl-mobile .ibpl-ribbon {
+  width: 1070px;
+  min-width: 1070px;
+  max-width: none;
+  height: auto;
+}
