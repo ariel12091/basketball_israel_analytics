@@ -85,3 +85,59 @@ body.ibpl-mobile .ibpl-m-detail-value {
   flex: 1 1 auto;
   min-width: 0;
 }
+
+/* ---- Mobile navigation ---- */
+/* app.R:93 sets position:fixed inline, which would sit on top of the burger. */
+body.ibpl-mobile #navbar_right_cluster {
+  position: static !important;
+  display: flex !important;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-width: 100% !important;
+  white-space: normal !important;
+  padding: 8px 12px;
+  border-top: 1px solid var(--ibpl-border);
+}
+/* body.league-il / -el set these to inline-flex and decide which season
+   selector shows. Keep that decision, change only the box. */
+body.ibpl-mobile.league-il .league-nav-il,
+body.ibpl-mobile.league-el .league-nav-el { display: flex !important; width: 100%; }
+
+/* Hover does not exist on touch, so the menu is unreachable; the radios it
+   shortcuts to are promoted instead. */
+body.ibpl-mobile .tab-hover-menu { display: none !important; }
+
+/* app.css:965 hides .view-mode-container with !important everywhere -- the
+   desktop UI drives the tab-hover-menu instead and never shows the raw
+   radios. The promoted copy must override that or the moved node renders
+   nothing: higher specificity (three ancestors) beats app.css's bare class
+   selector regardless of load order. */
+body.ibpl-mobile .ibpl-m-viewmode .view-mode-container { display: block !important; }
+
+body.ibpl-mobile .ibpl-m-viewmode {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  padding: 6px 0;
+  margin-bottom: 8px;
+  background: var(--ibpl-bg);
+}
+body.ibpl-mobile .ibpl-m-viewmode .radio,
+body.ibpl-mobile .ibpl-m-viewmode .shiny-options-group > div { margin: 0; }
+body.ibpl-mobile .ibpl-m-viewmode label {
+  display: inline-flex;
+  align-items: center;
+  min-height: var(--ibpl-m-tap);
+  padding: 0 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 6px;
+  white-space: nowrap;
+}
+body.ibpl-mobile .ibpl-m-viewmode input:checked + span,
+body.ibpl-mobile .ibpl-m-viewmode label:has(input:checked) {
+  border-color: var(--ibpl-accent);
+  color: var(--ibpl-accent);
+}

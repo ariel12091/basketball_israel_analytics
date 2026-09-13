@@ -324,3 +324,88 @@ window.IBPL_MOBILE_TABLE = {
     bind();
   }
 })();
+
+/* ---- Mobile navigation relocation ---------------------------------------
+   The fixed cluster is supplied through navbarPage(header = ...) outside the
+   collapsed menu. Positioning it statically does not put it under the burger,
+   so move the existing node into the collapse and restore it on desktop.
+   The view-mode radios are also moved above each table on mobile. Preserve
+   their sidebar positions with placeholders for the desktop transition.
+   ----------------------------------------------------------------------- */
+(function () {
+  var clusterHome = null;
+
+  function relocateCluster(on) {
+    var cluster = document.getElementById("navbar_right_cluster");
+    if (!cluster || !cluster.parentNode) return;
+    if (!clusterHome) {
+      clusterHome = document.createComment("navbar cluster home");
+      cluster.parentNode.insertBefore(clusterHome, cluster);
+    }
+    if (on) {
+      var tabs = document.getElementById("main_tabs");
+      var collapse = tabs && tabs.closest(".navbar-collapse");
+      if (collapse && cluster.parentNode !== collapse) collapse.appendChild(cluster);
+    } else if (clusterHome.parentNode && cluster.parentNode !== clusterHome.parentNode) {
+      clusterHome.parentNode.insertBefore(cluster, clusterHome.nextSibling);
+    }
+  }
+
+  function promote(on) {
+    var panes = document.querySelectorAll(".tab-pane");
+    for (var i = 0; i < panes.length; i++) {
+      var group = panes[i].querySelector(".view-mode-container");
+      if (!group) continue;
+      var main = panes[i].querySelector(".col-sm-9, .col-md-9, [role='main']");
+      if (!main) continue;
+
+      if (on) {
+        if (group.getAttribute("data-ibpl-m-home")) continue;
+        var holder = document.createElement("div");
+        holder.className = "ibpl-m-viewmode";
+        holder.setAttribute("data-ibpl-m-holder", "1");
+        // Leave a placeholder in the sidebar. Moving the holder itself would
+        // lose the original parent and restore the radios into the main panel.
+        var home = document.createElement("span");
+        home.style.display = "none";
+        group.parentNode.insertBefore(home, group);
+        holder.ibplHome = home;
+        group.setAttribute("data-ibpl-m-home", "1");
+        holder.appendChild(group);
+        main.insertBefore(holder, main.firstChild);
+      } else if (group.getAttribute("data-ibpl-m-home")) {
+        var oldHolder = group.parentNode;
+        group.removeAttribute("data-ibpl-m-home");
+        if (oldHolder && oldHolder.getAttribute("data-ibpl-m-holder")) {
+          var original = oldHolder.ibplHome;
+          // document.contains, not just parentNode: a detached subtree still
+          // has a parent, and inserting the live radios into one would remove
+          // them from the page entirely.
+          if (original && original.parentNode && document.contains(original)) {
+            original.parentNode.insertBefore(group, original);
+            original.parentNode.removeChild(original);
+          } else {
+            // A sidebar may have been re-rendered while the group was away.
+            // Keep the live input in the page even if its marker disappeared.
+            oldHolder.parentNode.insertBefore(group, oldHolder);
+          }
+          oldHolder.parentNode.removeChild(oldHolder);
+        }
+      }
+    }
+  }
+
+  function sync() {
+    var on = document.body.classList.contains("ibpl-mobile");
+    relocateCluster(on);
+    promote(on);
+  }
+
+  document.addEventListener("ibpl:mobilechange", sync);
+  if (window.jQuery) window.jQuery(document).on("shown.bs.tab shiny:value", sync);
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", sync);
+  } else {
+    sync();
+  }
+})();

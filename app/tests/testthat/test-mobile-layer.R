@@ -128,3 +128,34 @@ test_that("priority overrides are keyed by column name, not index", {
   expect_true(grepl("indexOf", js, fixed = TRUE))
   expect_true(grepl("render(\"display\")", js, fixed = TRUE))
 })
+
+test_that("the navbar collapses into a burger", {
+  app_r <- read_repo_txt("app.R")
+
+  # Default is FALSE, so 7 tabs wrap or overflow on a phone without this.
+  expect_true(grepl("collapsible = TRUE", app_r, fixed = TRUE))
+})
+
+test_that("mobile drives the real view-mode radios, not the hover menu", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  # The hover menu is only ever a shortcut to .view-mode-container's radios.
+  # Driving the radios directly cannot drift from the menu.
+  expect_true(grepl(".view-mode-container", js, fixed = TRUE))
+  expect_true(grepl("tab-hover-menu", css, fixed = TRUE))
+  expect_true(grepl("ibpl-m-viewmode", css, fixed = TRUE))
+})
+
+test_that("the fixed navbar cluster is unfixed on mobile", {
+  css <- read_repo_txt("www", "mobile.css")
+
+  # app.R:93 sets position:fixed inline; it would sit on top of the burger.
+  expect_true(grepl("navbar_right_cluster", css, fixed = TRUE))
+  expect_true(grepl("position: static !important", css, fixed = TRUE))
+  # body.league-* sets these to inline-flex; the override must not break the
+  # league filtering that decides WHICH season selector shows.
+  expect_true(grepl(".league-nav-il", css, fixed = TRUE))
+  # Static positioning alone does not put a header node inside the burger.
+  expect_true(grepl(".navbar-collapse", read_repo_txt("www", "mobile.js"), fixed = TRUE))
+})

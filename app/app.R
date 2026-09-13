@@ -49,6 +49,7 @@ app_log("startup", sprintf(
 # ---------------- UI ----------------
 build_ui <- function() {
   navbarPage(
+    collapsible = TRUE,
   id = "main_tabs",
   title = tags$span(
     tags$i(class = "bi bi-activity", style = "margin-right: 6px;"),
