@@ -83,6 +83,51 @@ dq_get_query <- function(con, sql) {
   DBI::dbGetQuery(con, sql, immediate = TRUE)
 }
 
+# Names for the findings page: the games, teams and players its detail rows
+# mention. Ids are integers parsed from the details, never raw strings. An
+# immediate query with no rows returns no columns, so each lookup falls back
+# to an empty frame with its expected columns.
+dq_findings_context <- function(con, schema, details_by_check) {
+  ints <- function(cols) {
+    vals <- unlist(lapply(details_by_check, function(d) {
+      if (is.null(d) || !nrow(d)) return(NULL)
+      unlist(lapply(intersect(cols, names(d)), function(col) {
+        unlist(strsplit(as.character(d[[col]]), "[^0-9]+"))
+      }))
+    }))
+    ids <- suppressWarnings(as.integer(vals))
+    sort(unique(ids[!is.na(ids)]))
+  }
+  lookup <- function(sql, ids, empty) {
+    if (!length(ids)) return(empty)
+    out <- dq_get_query(con, sprintf(sql, paste(ids, collapse = ",")))
+    if (!nrow(out)) empty else out
+  }
+  schedule <- quote_table(con, schema, "final_schedule_mv")
+  rosters <- quote_table(con, schema, "full_rosters")
+  list(
+    games = lookup(
+      paste0("SELECT game_id, game_date, team_id, team_name, team_score, is_home FROM ", schedule,
+             " WHERE game_id IN (%s)"),
+      ints(c("game_id", "game_ids", "affected_game_ids")),
+      data.frame(game_id = integer(), game_date = as.Date(character()), team_id = integer(),
+                 team_name = character(), team_score = numeric(), is_home = logical())
+    ),
+    teams = lookup(
+      paste0("SELECT DISTINCT ON (team_id) team_id, team_name FROM ", schedule,
+             " WHERE team_id IN (%s) ORDER BY team_id, game_date DESC"),
+      ints(c("team_id", "opp_team_id")),
+      data.frame(team_id = integer(), team_name = character())
+    ),
+    players = lookup(
+      paste0("SELECT DISTINCT ON (team_id, player_id) team_id, player_id, firstname, lastname FROM ", rosters,
+             " WHERE player_id IN (%s) ORDER BY team_id, player_id, game_id DESC"),
+      ints(c("player_id", "alias_player_id", "canonical_player_id")),
+      data.frame(team_id = integer(), player_id = integer(), firstname = character(), lastname = character())
+    )
+  )
+}
+
 escape_md <- function(x) {
   x <- as.character(x)
   x[is.na(x)] <- ""
@@ -2646,8 +2691,30 @@ run_data_quality_report <- function(
   latest_path <- file.path(output_dir, "latest.md")
   writeLines(report_lines, latest_path, useBytes = TRUE)
 
+  # The readable findings page. A failure here is reported but never loses
+  # the markdown report above.
+  findings_path <- tryCatch({
+    source(file.path(root, "etl", "dq_findings_html.R"), local = TRUE)
+    details_by_check <- stats::setNames(lapply(results, `[[`, "details"),
+                                        vapply(checks, `[[`, character(1), "id"))
+    stamped <- file.path(output_dir, paste0("findings_", stamp, ".html"))
+    write_dq_findings_html(
+      summary_df, details_by_check,
+      dq_findings_context(con, schema, details_by_check),
+      stamped,
+      meta = list(run_time = format(started_at, "%Y-%m-%d %H:%M"), schema = schema,
+                  status = overall_status)
+    )
+    file.copy(stamped, file.path(output_dir, "findings.html"), overwrite = TRUE)
+    file.path(output_dir, "findings.html")
+  }, error = function(e) {
+    message(sprintf("Data quality findings page FAILED: %s", conditionMessage(e)))
+    NA_character_
+  })
+
   message(sprintf("Data quality report written: %s", report_path))
   message(sprintf("Data quality latest report: %s", latest_path))
+  message(sprintf("Data quality findings page: %s", findings_path))
   message(sprintf("Data quality summary CSV: %s", summary_path))
   message(sprintf("Overall status: %s", overall_status))
 
@@ -2657,6 +2724,7 @@ run_data_quality_report <- function(
     has_warning_rows = has_warning_rows,
     report_path = report_path,
     latest_path = latest_path,
+    findings_path = findings_path,
     summary_path = summary_path,
     summary = summary_df
   )

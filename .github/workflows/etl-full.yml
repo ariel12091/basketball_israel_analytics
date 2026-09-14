@@ -186,6 +186,7 @@ jobs:
           name: data-quality-${{ github.run_id }}
           path: |
             etl/logs/data_quality/latest.md
+            etl/logs/data_quality/findings.html
             etl/logs/data_quality/data_quality_report_*.md
             etl/logs/data_quality/summary_*.csv
             etl/logs/data_quality/details/*.csv
