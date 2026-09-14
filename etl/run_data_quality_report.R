@@ -69,7 +69,18 @@ table_exists <- function(con, schema, table) {
     sql_string(con, schema),
     sql_string(con, table)
   )
-  nrow(DBI::dbGetQuery(con, q)) > 0
+  nrow(dq_get_query(con, q)) > 0
+}
+
+# The report connects through Supabase's transaction pooler (port 6543).
+# RPostgres prepares a query and binds it in separate round trips, and the
+# pooler can hand those to different server connections: "unnamed prepared
+# statement does not exist" / "Query needs to be bound before fetching".
+# That killed the ETL's report step on 2026-09-12, and 23 of 150 prepared
+# probes failed on 2026-09-14 against 0 of 150 immediate ones. No report query
+# takes parameters, so every one is sent in a single round trip.
+dq_get_query <- function(con, sql) {
+  DBI::dbGetQuery(con, sql, immediate = TRUE)
 }
 
 escape_md <- function(x) {
@@ -143,16 +154,21 @@ run_sql_check <- function(con, schema, check, output_dir) {
   }
 
   tryCatch({
-    details <- DBI::dbGetQuery(con, check$sql)
+    details <- dq_get_query(con, check$sql)
     issue_count <- if (!is.null(check$problem_count_col)) {
-      if (!check$problem_count_col %in% names(details)) {
+      # An immediate query that returns no rows also returns no columns, so
+      # an empty result is zero problems, not a missing count column.
+      if (!nrow(details)) {
+        0
+      } else if (!check$problem_count_col %in% names(details)) {
         stop(sprintf(
           "Check %s expected problem count column %s",
           check$id,
           check$problem_count_col
         ))
+      } else {
+        sum(suppressWarnings(as.numeric(details[[check$problem_count_col]])), na.rm = TRUE)
       }
-      sum(suppressWarnings(as.numeric(details[[check$problem_count_col]])), na.rm = TRUE)
     } else {
       nrow(details)
     }
