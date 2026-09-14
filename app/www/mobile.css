@@ -426,13 +426,15 @@ body.ibpl-mobile .ibpl-ribbon-overview-line {
   stroke-width: 2;
   stroke-linejoin: round;
 }
+/* A grid, not a row: a triple-overtime game has seven periods, which at one
+   row gave 35px buttons (below the tap minimum) and overflowed. */
 body.ibpl-mobile .ibpl-ribbon-quarter-nav {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(var(--ibpl-m-tap), 1fr));
   gap: 6px;
   margin-top: 8px;
 }
 body.ibpl-mobile .ibpl-ribbon-quarter-jump {
-  flex: 1 1 0;
   min-width: 0;
   min-height: var(--ibpl-m-tap);
   border: 1px solid var(--ibpl-border);

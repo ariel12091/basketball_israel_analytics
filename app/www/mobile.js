@@ -122,11 +122,14 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     if (old) old.parentNode.removeChild(old);
 
     var height = svg.getBoundingClientRect().height;
+    // A quarter card draws the chart scaled; the pin must share that scale
+    // or its names drift off their rows. The full timeline is 1:1.
+    var scale = height / vb.height;
     var pin = document.createElementNS(SVG_NS, "svg");
     pin.setAttribute("class", "ibpl-ribbon-pin");
     pin.setAttribute("aria-hidden", "true");
     pin.setAttribute("viewBox", "0 0 " + gutter + " " + vb.height);
-    pin.style.width = gutter + "px";
+    pin.style.width = gutter * scale + "px";
     pin.style.height = height + "px";
     pin.style.marginBottom = -height + "px";
 
@@ -173,6 +176,9 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     return index < 4 ? "Q" + (index + 1) : "OT" + (index - 3);
   }
 
+  // A regulation quarter fills the card; wider screens stop growing here.
+  var MAX_QUARTER_SCALE = 1.25;
+
   function fitQuarter(svg) {
     var frame = svg.closest(".ibpl-ribbon-quarter-frame");
     var bounds = (svg.dataset.periodBounds || "").split(",").map(Number);
@@ -185,19 +191,98 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     var width = frame.clientWidth;
     if (width <= gutter + 20) return;
     var start = index ? bounds[index - 1] : 0;
-    var end = bounds[index];
-    var total = bounds[bounds.length - 1];
-    var plotStart = gutter + start * (fullWidth - gutter) / total;
-    var plotSpan = (end - start) * (fullWidth - gutter) / total;
-    var sourceScale = plotSpan / (width - gutter);
-    var left = plotStart - gutter * sourceScale;
-    svg.setAttribute("viewBox", [left, 0, width * sourceScale, height].join(" "));
-    svg.setAttribute("preserveAspectRatio", "none");
-    svg.setAttribute("width", width);
-    svg.setAttribute("height", height);
-    svg.style.width = width + "px";
-    svg.style.height = height + "px";
+    var perSecond = (fullWidth - gutter) / bounds[bounds.length - 1];
+    var span = (bounds[index] - start) * perSecond;
+    // One uniform scale for every card of the game, taken from Q1. A
+    // per-card fit stretched text sideways (1.7x on a 5-minute OT) and made
+    // a bar's width mean different minutes in different cards; now an OT
+    // card is simply narrower.
+    var scale = Math.min(width / (gutter + bounds[0] * perSecond), MAX_QUARTER_SCALE);
+    svg.setAttribute("viewBox", [start * perSecond, 0, gutter + span, height].join(" "));
+    svg.setAttribute("width", (gutter + span) * scale);
+    svg.setAttribute("height", height * scale);
+    svg.style.width = (gutter + span) * scale + "px";
+    svg.style.height = height * scale + "px";
     pinGutter(svg);
+  }
+
+  function shiftY(element, dy) {
+    if (!dy) return;
+    if (element.tagName === "line") {
+      element.setAttribute("y1", Number(element.getAttribute("y1")) - dy);
+      element.setAttribute("y2", Number(element.getAttribute("y2")) - dy);
+    } else if (element.tagName === "path") {
+      // Only the margin curves. Their clip paths live in the curve's own
+      // user space, so translating the path keeps each player's minutes
+      // clipped correctly.
+      element.setAttribute("transform", "translate(0 " + -dy + ")");
+    } else if (element.hasAttribute("y")) {
+      element.setAttribute("y", Number(element.getAttribute("y")) - dy);
+    }
+  }
+
+  // Drop the rows of players who sat out this period. Rows are one per
+  // player at a fixed pitch; everything below a removed row moves up by
+  // rewriting y values, never with a transform: app.js strips transforms
+  // from the shift layers on every deselect and hit-tests raw rect y.
+  function collapseRows(svg, source) {
+    var shifts = { own: 0, opp: 0 };
+    var rowShift = Object.create(null);
+    ["own", "opp"].forEach(function (side) {
+      var yOf = function (lane) { return Number(lane.querySelector("rect").getAttribute("y")); };
+      var unique = function (values) {
+        return Array.from(new Set(values)).sort(function (a, b) { return a - b; });
+      };
+      var all = unique(Array.from(source.querySelectorAll(".ibpl-ribbon-lane.is-" + side), yOf));
+      var kept = svg.querySelectorAll(".ibpl-ribbon-lane.is-" + side);
+      var used = unique(Array.from(kept, yOf));
+      if (all.length < 2) return;
+      var pitch = (all[all.length - 1] - all[0]) / (all.length - 1);
+      kept.forEach(function (lane) {
+        rowShift[lane.dataset.clip] = yOf(lane) - all[used.indexOf(yOf(lane))];
+      });
+      shifts[side] = (all.length - used.length) * pitch;
+    });
+
+    svg.querySelectorAll(".ibpl-ribbon-lane rect, .ibpl-ribbon-lane .ibpl-ribbon-num, " +
+                         ".ibpl-ribbon-name").forEach(function (element) {
+      var owner = element.closest(".ibpl-ribbon-lane") || element;
+      shiftY(element, rowShift[owner.dataset.clip] || 0);
+    });
+    svg.querySelectorAll(".ibpl-ribbon-margin-layer > *, .ibpl-ribbon-opp-layer text, " +
+                         ".ibpl-ribbon-opp-layer rect").forEach(function (element) {
+      shiftY(element, shifts.own);
+    });
+    var below = shifts.own + shifts.opp;
+    svg.querySelectorAll(".ibpl-ribbon-bottom-layer text").forEach(function (element) {
+      shiftY(element, below);
+    });
+    svg.querySelectorAll(".ibpl-ribbon-period[data-base-y2]").forEach(function (line) {
+      line.dataset.baseY2 = Number(line.dataset.baseY2) - below;
+      line.setAttribute("y2", line.dataset.baseY2);
+    });
+    svg.dataset.baseHeight = Number(svg.dataset.baseHeight) - below;
+    svg.dataset.ownDetailY = Number(svg.dataset.ownDetailY) - shifts.own;
+    svg.dataset.oppDetailY = Number(svg.dataset.oppDetailY) - below;
+  }
+
+  // A stint's +/- is drawn once for the whole stint. Show it in exactly one
+  // card -- the one holding the stint's midpoint -- and keep it inside the
+  // visible part of the bar; a stint crossing a period edge otherwise
+  // printed the same number cut in half in two cards.
+  function placeStintNumbers(svg, start, end, plotStart, plotEnd) {
+    svg.querySelectorAll(".ibpl-ribbon-lane").forEach(function (lane) {
+      var num = lane.querySelector(".ibpl-ribbon-num");
+      var rect = lane.querySelector("rect");
+      if (!num || !rect) return;
+      var mid = (Number(lane.dataset.start) + Number(lane.dataset.end)) / 2;
+      var x = Number(rect.getAttribute("x"));
+      var half = (num.textContent.length * 0.6 * 9 + 6) / 2;
+      var lo = Math.max(x, plotStart) + half;
+      var hi = Math.min(x + Number(rect.getAttribute("width")), plotEnd) - half;
+      if (mid < start || mid >= end || lo > hi) { num.remove(); return; }
+      num.setAttribute("x", Math.min(Math.max(Number(num.getAttribute("x")), lo), hi));
+    });
   }
 
   function quarterSvg(source, index, bounds) {
@@ -206,6 +291,8 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     var end = bounds[index];
     var suffix = "-quarter-" + (index + 1);
     var ids = Object.create(null);
+    var gutter = Number(source.dataset.detailX);
+    var perSecond = (source.viewBox.baseVal.width - gutter) / bounds[bounds.length - 1];
     svg.dataset.quarterIndex = index;
     svg.dataset.fullWidth = source.viewBox.baseVal.width;
     svg.setAttribute("aria-label", source.getAttribute("aria-label") + ", " + quarterLabel(index));
@@ -222,9 +309,17 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
         label.remove();
       } else {
         // A quarter card does not show the gutter's full-game +/- total.
-        label.setAttribute("x", Number(source.dataset.detailX) - 6);
+        label.setAttribute("x", gutter - 6);
       }
     });
+    // The card heading names the period. The top marker row shares the team
+    // name's header row, and in a narrow OT card the pinned name's backing
+    // cut it into a stray sliver; the bottom row still marks the period end.
+    svg.querySelectorAll(".ibpl-ribbon-top-layer .ibpl-ribbon-period-label").forEach(function (label) {
+      label.remove();
+    });
+    collapseRows(svg, source);
+    placeStintNumbers(svg, start, end, gutter + start * perSecond, gutter + end * perSecond);
     svg.querySelectorAll("clipPath[id]").forEach(function (clip) {
       if (!visibleClips.has(clip.id)) clip.remove();
       else { ids[clip.id] = clip.id + suffix; clip.id = ids[clip.id]; }
@@ -328,9 +423,36 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     if (svg) window.requestAnimationFrame(function () { pinGutter(svg); });
   });
 
+  // A phone fires resize whenever its address bar shows or hides; only a
+  // width change moves the cards.
+  var fittedWidth = window.innerWidth;
   window.addEventListener("resize", function () {
+    if (window.innerWidth === fittedWidth) return;
+    fittedWidth = window.innerWidth;
     document.querySelectorAll(".ibpl-ribbon-quarter-card svg.ibpl-ribbon").forEach(fitQuarter);
   });
+
+  // The highlighted jump button follows the card being read, not only the
+  // last button pressed. A card counts as current once its top passes this
+  // far down the screen (its scroll-margin-top is 68px).
+  var CURRENT_CARD_TOP = 120;
+  var navQueued = false;
+  window.addEventListener("scroll", function () {
+    if (navQueued) return;
+    navQueued = true;
+    window.requestAnimationFrame(function () {
+      navQueued = false;
+      document.querySelectorAll(".ibpl-ribbon-quarters:not([hidden])").forEach(function (cards) {
+        var result = cards.closest(".ibpl-ribbon-inline-result");
+        if (!result || !cards.offsetParent) return;
+        var current = 1;
+        cards.querySelectorAll(".ibpl-ribbon-quarter-card").forEach(function (card) {
+          if (card.getBoundingClientRect().top <= CURRENT_CARD_TOP) current = Number(card.dataset.quarter);
+        });
+        updateQuarterNav(result, current);
+      });
+    });
+  }, { passive: true });
 
   document.addEventListener("click", function (e) {
     if (!document.body.classList.contains("ibpl-mobile")) return;

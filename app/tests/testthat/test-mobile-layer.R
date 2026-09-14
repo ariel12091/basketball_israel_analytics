@@ -552,6 +552,24 @@ test_that("mobile gameflow overview covers every played period", {
   expect_match(html, 'class="ibpl-ribbon-overview-line" d="M ', fixed = TRUE)
 })
 
+test_that("quarter cards draw at one uniform scale and drop idle rows", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  # A per-card fit with preserveAspectRatio="none" stretched text sideways,
+  # 1.7x on a 5-minute OT card. One scale, from Q1, serves every card.
+  expect_false(grepl('"preserveAspectRatio", "none"', js, fixed = TRUE))
+  expect_true(grepl("Math.min(width / (gutter + bounds[0] * perSecond)", js, fixed = TRUE))
+  # The pinned names share that scale, or they drift off their rows.
+  expect_true(grepl('pin.style.width = gutter * scale + "px"', js, fixed = TRUE))
+  # Players who sat out a period get no blank row, and a stint's +/- is
+  # printed in one card only.
+  expect_true(grepl("collapseRows(svg, source);", js, fixed = TRUE))
+  expect_true(grepl("placeStintNumbers(svg, start, end,", js, fixed = TRUE))
+  # Seven periods (triple overtime) wrap instead of shrinking below the tap minimum.
+  expect_true(grepl("minmax(var(--ibpl-m-tap), 1fr)", css, fixed = TRUE))
+})
+
 test_that("the gameflow panel never hides its own Shiny output while loading", {
   css <- read_repo_txt("www", "mobile.css")
   js <- read_repo_txt("www", "mobile.js")

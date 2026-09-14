@@ -37,34 +37,47 @@ game data. No new database query or ETL path was added.
   overtime controls.
 - `app/tests/testthat/test-stint-ribbon.R` — checks period-boundary metadata.
 
-## Validation completed
+## Browser pass — completed 2026-09-14
 
-- R parsing passed for `helpers.R` and `mod_ribbon_modal.R`.
-- `node --check app/www/mobile.js` passed.
-- The targeted test directory run completed with exit code 0:
-  `testthat::test_dir('app/tests/testthat', filter='mobile-layer|stint-ribbon')`.
-- Before this change, the published app was inspected at 390×844. The existing
-  compact ribbon rendered, measured 954px wide, and its tap/detail behavior was
-  visible. The new quarter-card layer has not yet been browser-tested against a
-  live Shiny response.
+Run locally (`IBPL_CACHE_UI=false`) at 390×844 and 430×932 against a live
+Shiny response. Games: Israeli 398 (regulation, Bnei Herzliya vs Hapoel
+Eilat), Israeli 64942 (one OT, long team names), EuroLeague 729 (three OTs).
 
-## Next checks
+The first pass found five defects, all fixed in `mobile.js` / `mobile.css`:
 
-1. Run the app with `IBPL_CACHE_UI=false` and open Game Logs at a 390px viewport.
-2. Open a regulation game and confirm four cards render, each card fits the
-   phone width, and tapping a stint still creates the detail card.
-3. Open an overtime game and confirm the extra card and `OT1` button render.
-4. Click `View full timeline`, verify the original chart and pinned gutter are
-   restored, then return to quarter cards.
-5. Test a long team name, a player with multiple stints, and both Israeli and
-   EuroLeague Game Logs.
-6. Review duplicate accessibility IDs/labels in cloned SVGs and confirm that
-   keyboard focus does not reach hidden or out-of-period lanes.
+| Defect | Fix |
+|---|---|
+| `preserveAspectRatio="none"` stretched chart text sideways — 0.85x on a regulation card, **1.7x** on a 5-minute OT card | One uniform scale per game, taken from Q1 and capped at 1.25. An OT card is now narrower rather than stretched, and a bar's width means the same minutes in every card. The pinned gutter takes the same scale (`pinGutter`). |
+| A stint crossing a period edge printed its +/- cut in half in both cards (e.g. a stray `0` against the pin) | `placeStintNumbers()`: each number appears only in the card holding the stint's midpoint, clamped inside the visible bar, dropped if too narrow. Verified 43 of 43 numbers shown exactly once on game 398. |
+| Players who sat out a period left blank rows (Q2 of game 398: 6 of 17) | `collapseRows()` rewrites y values. It deliberately uses no transform on the shift layers: app.js strips those on every deselect and hit-tests raw rect `y`. Only the two margin curves are translated, which keeps their clip paths in their own user space. |
+| Seven periods gave 35px jump buttons, below the 44px tap minimum, and overflowed | The jump row is a grid (`minmax(var(--ibpl-m-tap), 1fr)`), so it wraps to a second row. |
+| The active jump button only followed clicks | A rAF-throttled scroll listener marks the card whose top has passed 120px. |
 
-## Known implementation risk
+Also removed the top-row period markers inside cards. The card heading names
+the period, and in a narrow OT card the pinned team name's backing cut the
+marker into a sliver.
 
-The quarter cards clone the source SVG in the browser and remove out-of-period
-lanes. SVG clip paths and `data-clip` references are renamed per clone. This
-needs a live browser check because the existing app.js selection code relies on
-those references, and because a quarter card may contain a stint crossing a
-quarter boundary.
+Verified after the fixes:
+
+- Every card renders at identical x/y scale (0.897 at 390px, 1.098 for the
+  triple-OT game, capped at 1.25 at 430px). Pinned names sit within 0.4px
+  of their rows in every card of all three games.
+- Tapping a stint in a card, including an opponent stint below collapsed
+  rows, selects it. The detail card opens inside that card, the renamed clip
+  id is unique in the document, the margin highlight lands on the curve, and
+  a lineup row tap focuses its minutes.
+- `View full timeline` restores the 954px chart with a 1:1 pinned gutter that
+  stays sticky while scrolling. Toggling back refits the cards.
+- A width change refits every card and keeps one pin per card. A height-only
+  resize (the address bar) is ignored.
+- The hidden full timeline holds no focusable element, and no card contains a
+  stint outside its period.
+- The only console error is the pre-existing favicon 404.
+
+## Remaining, by choice
+
+- The jump row scrolls away with the overview. A sticky row would cost ~50px
+  of phone height on every scroll, so it was not added.
+- Numbers drawn on selection (`ibpl-ribbon-segment-num`, app.js) are not
+  clamped to the card, so a selected stint crossing a period edge can show a
+  cut segment number.
