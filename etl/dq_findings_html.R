@@ -73,6 +73,12 @@ dq_player <- function(ctx, team_id, player_id) {
   trimws(paste(p$firstname[i[1]], p$lastname[i[1]]))
 }
 
+# A misplaced run before its jump carries a later clock than the events after
+# it, so it advances the running-maximum timeline canonical minutes use.
+dq_ak_pushes_timeline <- function(r) {
+  identical(as.character(r$likely_misplaced_side), "before_jump") && isTRUE(as.numeric(r$jump_seconds) > 24)
+}
+
 dq_split_ids <- function(x) {
   ids <- suppressWarnings(as.integer(unlist(strsplit(as.character(x), "[^0-9]+"))))
   ids[!is.na(ids)]
@@ -82,9 +88,12 @@ dq_split_ids <- function(x) {
 # Catalog: one entry per check. `entity` says where a row belongs (a game, a
 # player, or the whole dataset); `describe(row, ctx)` turns one detail row into
 # a sentence; `effect` is what the app shows wrongly; `fix` is the change.
-# `gameplay(row)`, where a check can count them, is the number of affected
-# events that are plays; at zero the finding drops two tiers and reports
-# `admin_effect` instead, since substitutions and timeouts move no stat.
+# Two things make a finding minor, which ranks it low whatever the check's
+# tier: `gameplay(row)` returning zero (every affected event is a
+# substitution, timeout or similar, which moves no stat; the finding then
+# reports `admin_effect`), or `minor(row)` returning a reason (the finding
+# then reports `minor_effect`). `tier_fn(row)` and `effect_fn(row)`, where
+# present, replace the fixed tier and effect for that row.
 # test_dq_findings_html.R fails if a check in the report has no entry here.
 # -----------------------------------------------------------------------------
 
@@ -286,6 +295,13 @@ DQ_FINDING_CATALOG <- list(
       r$team_name, dq_num(r$actual_player_minutes, 2L), dq_num(r$expected_player_minutes, 2L),
       dq_signed(r$minute_difference)
     ),
+    # Under 3% of the expected player minutes is within the noise of whole-
+    # second clocks and substitution ordering.
+    minor = function(r) {
+      share <- abs(as.numeric(r$minute_difference)) / as.numeric(r$expected_player_minutes)
+      if (isTRUE(share < 0.03)) sprintf("under 3%% of player minutes (%.1f%%)", 100 * share)
+    },
+    minor_effect = "Individual minutes are off by less than 3% of the team's player minutes; no other stat is affected.",
     effect = "Individual minutes in Player Stats and on/off are wrong for this team-game.",
     fix = "Fix the substitutions that put a player on court twice or leave a slot empty."
   ),
@@ -340,6 +356,30 @@ DQ_FINDING_CATALOG <- list(
   AK_misplaced_clock_runs = list(
     headline = "Events stamped with the wrong game clock",
     tier = "high", entity = "game",
+    # A run before the jump carries a later clock than what follows, so it
+    # pushes the running-maximum timeline forward and hands the following
+    # lineups' minutes to the lineup before it (games 398 and 399: 20-30
+    # player-minutes per team). That is critical even for substitutions. A
+    # run after the jump sits below the maximum and moves only itself.
+    tier_fn = function(r) if (dq_ak_pushes_timeline(r)) "critical" else "high",
+    gameplay = function(r) if (dq_ak_pushes_timeline(r)) NA else r$misplaced_gameplay_events,
+    # 72 seconds of lineup time over five players is 6 player-minutes, 3% of
+    # a regulation team-game's 200.
+    minor = function(r) {
+      if (dq_ak_pushes_timeline(r) && isTRUE(as.numeric(r$jump_seconds) < 72)) "under 3% of player minutes"
+    },
+    minor_effect = "The clock is pushed forward by under 72 seconds, so under 3% of player minutes move between lineups.",
+    effect_fn = function(r) {
+      if (dq_ak_pushes_timeline(r)) {
+        sprintf(paste(
+          "The run pushes the period's clock forward by about %ss. Canonical minutes follow the latest clock seen, so the",
+          "lineup before the run is credited with the time of every lineup after it until the clock catches up: minutes in",
+          "Player Stats, Lineup Data and on/off go to the wrong players, and the gameflow chart misplaces the period.",
+          "Points and possessions still go to the right lineups."), dq_num(r$jump_seconds))
+      } else {
+        "Only these events sit at the wrong time: gameflow, quarter cards, quarter and clutch splits place them wrongly. Minutes, scores and counts are unaffected."
+      }
+    },
     describe = function(r, ctx) {
       before <- identical(r$likely_misplaced_side, "before_jump")
       sprintf(
@@ -363,9 +403,8 @@ DQ_FINDING_CATALOG <- list(
       }
     },
     note = function(r) r$diagnosis,
-    gameplay = function(r) r$misplaced_gameplay_events,
-    admin_effect = "Plays and scores sit at the right time; only lineup changes are misplaced, so the gameflow bars and minutes by period can shift.",
-    effect = "Gameflow, quarter cards, quarter and clutch splits place these events at the wrong time; scores and counts still add up.",
+    admin_effect = "Only substitutions or timeouts sit at the wrong time, after the period's clock has already moved past them: no minutes, points or possessions change.",
+    effect = "Gameflow, quarter cards, quarter and clutch splits place these events at the wrong time.",
     fix = "Correct the clock on the misplaced events in the ETL (like the game-381 source correction in etl_onoff.R) and reload the game."
   ),
   AC_missing_regulation_period_coverage = list(
@@ -456,7 +495,7 @@ dq_plural <- function(n, one, many = paste0(one, "s")) {
 
 dq_empty_findings <- function() {
   data.frame(check_id = character(), tier = character(), rank = integer(), entity = character(),
-             non_gameplay = logical(), season = integer(), game_id = integer(),
+             minor = character(), season = integer(), game_id = integer(),
              player_key = character(), player_name = character(), team_id = integer(),
              player_id = integer(), text = character(), events = character(), note = character(),
              effect = character(), fix = character(), stringsAsFactors = FALSE)
@@ -483,14 +522,25 @@ dq_build_findings <- function(summary_df, details_by_check, ctx) {
     for (r in dq_rows(details)) {
       text <- entry$describe(r, ctx)
       if (is.null(text) || !nzchar(text)) next
-      # Substitutions and timeouts move no stat: a finding whose events are all
-      # of that kind drops two tiers and says what it does affect.
+      # A minor finding ranks low and says why: substitutions and timeouts
+      # move no stat, and some checks define their own small-enough threshold.
       plays <- if (is.function(entry$gameplay)) suppressWarnings(as.numeric(entry$gameplay(r))) else NA_real_
-      non_gameplay <- isTRUE(plays == 0)
-      rank <- match(entry$tier, DQ_TIERS)
-      if (non_gameplay) {
-        rank <- min(rank + 2L, length(DQ_TIERS))
-        text <- paste(text, "Only substitutions or timeouts are involved.")
+      minor <- if (isTRUE(plays == 0)) {
+        "substitutions or timeouts only"
+      } else if (is.function(entry$minor)) {
+        entry$minor(r) %||% ""
+      } else ""
+      rank <- match(if (is.function(entry$tier_fn)) entry$tier_fn(r) else entry$tier, DQ_TIERS)
+      minor_effect <- NULL
+      if (nzchar(minor)) {
+        rank <- length(DQ_TIERS)
+        if (isTRUE(plays == 0)) {
+          text <- paste(text, "Only substitutions or timeouts are involved.")
+          minor_effect <- entry$admin_effect
+        } else {
+          text <- paste0(text, " That is ", minor, ".")
+          minor_effect <- entry$minor_effect
+        }
       }
       games <- if (identical(entry$entity, "game")) {
         if (is.function(entry$games)) entry$games(r) else as.integer(r$game_id)
@@ -509,14 +559,16 @@ dq_build_findings <- function(summary_df, details_by_check, ctx) {
         }
         add(
           check_id = check_id, tier = DQ_TIERS[rank], rank = rank, entity = entry$entity,
-          non_gameplay = non_gameplay, season = as.integer(season %||% NA),
+          # The summary groups on the reason without its per-row figure.
+          minor = if (nzchar(minor)) strsplit(minor, " (", fixed = TRUE)[[1]][1] else "",
+          season = as.integer(season %||% NA),
           game_id = g, player_key = player_key, player_name = player_name,
           team_id = suppressWarnings(as.integer(r$team_id %||% NA)),
           player_id = suppressWarnings(as.integer(r$canonical_player_id %||% r$player_id %||% NA)),
           text = text,
           events = if (is.function(entry$events)) entry$events(r) else "",
           note = if (is.function(entry$note)) as.character(entry$note(r) %||% "") else "",
-          effect = if (non_gameplay) entry$admin_effect %||% entry$effect else entry$effect,
+          effect = minor_effect %||% (if (is.function(entry$effect_fn)) entry$effect_fn(r) else entry$effect),
           fix = entry$fix
         )
       }
@@ -593,15 +645,16 @@ dq_summary_html <- function(findings, summary_df) {
     n_games <- length(unique(stats::na.omit(f$game_id)))
     sprintf(
       '<div class="tally %s"><span class="tally-label">%s</span><strong class="mono">%d</strong><span class="tally-unit">problem types</span><span class="tally-sub">%s</span></div>',
-      t, DQ_TIER_LABELS[[t]], nrow(unique(f[, c("check_id", "non_gameplay")])),
+      t, DQ_TIER_LABELS[[t]], nrow(unique(f[, c("check_id", "minor")])),
       dq_escape(sprintf("%s. %s.", DQ_TIER_MEANING[[t]], dq_plural(n_games, "game")))
     )
   }, character(1))
 
-  groups <- unique(findings[, c("check_id", "rank", "tier", "non_gameplay"), drop = FALSE])
-  groups <- groups[order(groups$rank, groups$non_gameplay, groups$check_id), , drop = FALSE]
+  groups <- unique(findings[, c("check_id", "rank", "tier", "minor"), drop = FALSE])
+  groups <- groups[order(groups$rank, nzchar(groups$minor), groups$check_id), , drop = FALSE]
   lines <- vapply(seq_len(nrow(groups)), function(i) {
-    f <- findings[findings$check_id == groups$check_id[i] & findings$non_gameplay == groups$non_gameplay[i], , drop = FALSE]
+    f <- findings[findings$check_id == groups$check_id[i] & findings$rank == groups$rank[i] &
+                    findings$minor == groups$minor[i], , drop = FALSE]
     reach <- if (all(f$entity == "game")) {
       dq_plural(length(unique(f$game_id)), "game")
     } else if (all(f$entity == "player")) {
@@ -610,7 +663,7 @@ dq_summary_html <- function(findings, summary_df) {
       dq_plural(nrow(f), "item")
     }
     title <- DQ_FINDING_CATALOG[[groups$check_id[i]]]$headline %||% summary_df$title[summary_df$check_id == groups$check_id[i]][1]
-    if (isTRUE(groups$non_gameplay[i])) title <- paste(title, "(substitutions or timeouts only)")
+    if (nzchar(groups$minor[i])) title <- paste0(title, " (", groups$minor[i], ")")
     sprintf('<li>%s<span class="line">%s</span><span class="reach mono">%s</span></li>',
             dq_pill(groups$tier[i]), dq_escape(title), reach)
   }, character(1))

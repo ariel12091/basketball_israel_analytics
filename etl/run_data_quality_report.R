@@ -1246,8 +1246,9 @@ build_checks <- function(con, schema) {
            GROUP BY game_id, team_id, id
          ),
          -- Whether each state's event is a play. A state at a substitution or
-         -- timeout credits no stats to a wrong five; an event missing from the
-         -- event table counts as a play.
+         -- timeout credits no stats to a wrong five, and neither does a state
+         -- whose event is missing from the event table: the app's stats are
+         -- built from that table (game 399's 3990418 was such a state).
          event_types AS (
            SELECT game_id, id, bool_or(coalesce(type, '') NOT IN %s) AS gameplay
            FROM %s
@@ -1256,7 +1257,7 @@ build_checks <- function(con, schema) {
          quality AS (
            SELECT
              s.*,
-             coalesce(e.gameplay, TRUE) AS gameplay,
+             coalesce(e.gameplay, FALSE) AS gameplay,
              (
                lineup_hash IS NULL
                OR reported_n_on IS DISTINCT FROM 5
@@ -2125,8 +2126,11 @@ build_checks <- function(con, schema) {
         "within one period the clock jumps back more than 24 seconds, so the events before and after the jump claim overlapping time.",
         "The feed order is usually right and only the stamped clock is wrong, so scores and event counts still add up,",
         "but everything that places events in time misplaces them: the gameflow chart and its quarter cards, per-quarter",
-        "and clutch-window splits, and segment timing by period. Each row is one jump, measured on both sides; the smaller",
-        "side is reported as the likely misplaced run, with the scoring plays it carries.",
+        "and clutch-window splits. When the misplaced run comes before the jump its clock is later than the events that",
+        "follow, and canonical minutes (a running maximum of the clock) give the lineup before the run the time of every",
+        "lineup after it until the clock catches up, so Player Stats, Lineup Data and on/off minutes go to the wrong players.",
+        "Points and possessions still follow feed order. Each row is one jump, measured on both sides; the smaller side is",
+        "reported as the likely misplaced run, with the plays and scoring plays it carries.",
         "Confirm a row against the provider feed's entry times (userTime), which the ETL does not store, then record the",
         "finding in the diagnosis column below. AA_material_clock_order_anomalies flags the same games without this breakdown."
       ),
@@ -2213,9 +2217,9 @@ build_checks <- function(con, schema) {
            FROM (
              VALUES
                (398, 3980352::bigint, 'verified',
-                'Verified 2026-09-14 against the provider feed''s entry times (userTime, which mixes two clocks three hours apart; normalised): these events were entered 19:20-19:24, straight after Q2 started (19:20:04) and before the 8:00 entries (19:24:24), but stamped 0:28 to 0:00 left in Q2. They belong at about 10:00 to 8:00 left. Feed order is correct; only the clock is wrong. The provider''s own score strings on the two baskets (43-47, 43-50) inherit the wrong clock, and the gameflow chart piles Q2''s opening scoring at the end of the half.'),
+                'Verified 2026-09-14 against the provider feed''s entry times (userTime, which mixes two clocks three hours apart; normalised): these events were entered 19:20-19:24, straight after Q2 started (19:20:04) and before the 8:00 entries (19:24:24), but stamped 0:28 to 0:00 left in Q2. They belong at about 10:00 to 8:00 left. Feed order is correct; only the clock is wrong. The provider''s own score strings on the two baskets (43-47, 43-50) inherit the wrong clock. Measured 2026-09-14 by rebuilding canonical minutes with the events re-timed: one lineup per team is credited with all of Q2 (576 and 599 seconds), and 21.7 (Bnei Herzliya) and 29.4 (Hapoel Eilat) player-minutes go to the wrong players, up to 9 minutes for one player.'),
                (399, 3990437::bigint, 'likely',
-                'Same shape as game 398: 11 substitutions stamped 0:16 to 0:00 left in Q3, fed between the Q3 start (10:00) and the 9:51 play. Cannot be confirmed from entry times: the feed carries one userTime (21:44:37) for every event in this game. No scoring plays, so only lineup timing is affected.')
+                'Same shape as game 398: 11 substitutions stamped 0:16 to 0:00 left in Q3, fed between the Q3 start (10:00) and the 9:51 play. Cannot be confirmed from entry times: the feed carries one userTime (21:44:37) for every event in this game. No plays, but the stamps still push the Q3 clock to its end: measured 2026-09-14, one lineup per team is credited with all of Q3 (584 and 600 seconds), and 23.1 (Hapoel Holon) and 20.7 (Ness Ziona) player-minutes go to the wrong players.')
            ) AS d(game_id, resume_id, review_status, diagnosis)
          ),
          clock_text AS (

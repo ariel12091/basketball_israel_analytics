@@ -58,25 +58,52 @@ fixture <- function() {
   list(summary = summary_df, details = details, ctx = ctx)
 }
 
-test_that("a finding that only involves substitutions or timeouts drops two tiers", {
+test_that("a clock run that pushes the timeline forward is critical, even for substitutions", {
   f <- fixture()
   f$summary <- rbind(f$summary, data.frame(
-    check_id = "AK_misplaced_clock_runs", severity = "warning", status = "warning", row_count = 2,
-    issue_count = 2, title = "Clock runs", detail_file = "", error_message = NA_character_
+    check_id = "AK_misplaced_clock_runs", severity = "warning", status = "warning", row_count = 4,
+    issue_count = 4, title = "Clock runs", detail_file = "", error_message = NA_character_
   ))
   f$details$AK_misplaced_clock_runs <- data.frame(
-    game_id = c(398L, 399L), period = c("Q2", "Q3"), likely_misplaced_side = "before_jump",
-    misplaced_events = c(37, 11), misplaced_gameplay_events = c(19, 0), misplaced_scoring_plays = c(2, 0),
-    before_first_id = c(1, 3), before_last_id = c(2, 4), before_clock_left = c("0:24 to 0:00", "0:16 to 0:00"),
-    after_first_id = c(5, 7), after_last_id = c(6, 8), after_clock_left = c("8:00 to 0:00", "9:51 to 0:04"),
-    review_status = c("verified", "likely"), diagnosis = ""
+    game_id = c(398L, 399L, 62572L, 62537L), period = c("Q2", "Q3", "Q1", "Q1"),
+    jump_seconds = c(480, 591, 28, 597),
+    likely_misplaced_side = c("before_jump", "before_jump", "before_jump", "after_jump"),
+    misplaced_events = c(37, 11, 8, 1), misplaced_gameplay_events = c(19, 0, 5, 0), misplaced_scoring_plays = c(2, 0, 1, 0),
+    before_first_id = 1, before_last_id = 2, before_clock_left = "0:24 to 0:00",
+    after_first_id = 3, after_last_id = 4, after_clock_left = "8:00 to 0:00",
+    review_status = "unreviewed", diagnosis = ""
   )
   findings <- dq_build_findings(f$summary, f$details, f$ctx)
   ak <- findings[findings$check_id == "AK_misplaced_clock_runs", , drop = FALSE]
-  expect_identical(ak$tier[ak$game_id == 398L], "high")
-  expect_identical(ak$tier[ak$game_id == 399L], "low")
-  expect_match(ak$text[ak$game_id == 399L], "Only substitutions or timeouts are involved.", fixed = TRUE)
-  expect_match(ak$effect[ak$game_id == 399L], "only lineup changes are misplaced", fixed = TRUE)
+  tier <- function(g) ak$tier[ak$game_id == g]
+  # Game 399's run is substitutions only, yet it moved a quarter of minutes.
+  expect_identical(c(tier(398L), tier(399L)), c("critical", "critical"))
+  expect_match(ak$effect[ak$game_id == 399L], "pushes the period's clock forward by about 591s", fixed = TRUE)
+  # A 28-second push stays under 3% of player minutes.
+  expect_identical(tier(62572L), "low")
+  # A single non-play after the jump moves nothing.
+  expect_identical(tier(62537L), "low")
+  expect_match(ak$text[ak$game_id == 62537L], "Only substitutions or timeouts are involved.", fixed = TRUE)
+  # Each summary line counts only its own severity's games.
+  html <- dq_summary_html(findings, f$summary)
+  expect_match(html, 'Critical</span><span class="line">Events stamped with the wrong game clock</span><span class="reach mono">2 games', fixed = TRUE)
+})
+
+test_that("a player-minute gap under 3% of expected minutes ranks low", {
+  f <- fixture()
+  f$summary <- rbind(f$summary, data.frame(
+    check_id = "X_player_minute_conservation", severity = "error", status = "fail", row_count = 2,
+    issue_count = 2, title = "Minutes", detail_file = "", error_message = NA_character_
+  ))
+  f$details$X_player_minute_conservation <- data.frame(
+    game_id = c(399L, 178L), team_id = c(5L, 11L), team_name = c("Hapoel Holon", "Beer Sheva/Dimona"),
+    actual_player_minutes = c(199.37, 216.5), expected_player_minutes = c(199.5, 199), minute_difference = c(-0.13, 17.5)
+  )
+  x <- dq_build_findings(f$summary, f$details, f$ctx)
+  x <- x[x$check_id == "X_player_minute_conservation", , drop = FALSE]
+  expect_identical(x$tier[x$game_id == 399L], "low")
+  expect_match(x$text[x$game_id == 399L], "under 3% of player minutes (0.1%)", fixed = TRUE)
+  expect_identical(x$tier[x$game_id == 178L], "critical")
 })
 
 test_that("findings carry their season: games from the schedule, players from the check", {
