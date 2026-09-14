@@ -244,14 +244,131 @@ fetch_game_box <- function(game_id, box_url) {
 
 
 
+# Known provider clock-stamp errors: a dead-ball substitution flurry stamped
+# with the clock from the END of the period instead of its start. Diagnosed
+# and offline-replay-verified 2026-09-14/15 -- see
+# docs/game_398_399_misclocked_clock_fix_plan_2026-09-14.md and memory
+# `project-game-398-misclocked-q2-etl-fix` for the full derivation. Applied
+# in `apply_known_clock_corrections()` BEFORE `end_quarter_seconds_remaining`/
+# `end_game_seconds_remaining` are derived from `quarter_time`, and ONLY if
+# the feed still shows `wrong_quarter_time` at that exact (game_id, id) -- a
+# provider-side fix to the feed makes the row a no-op (with a warning)
+# instead of silently altering already-correct data. Live-window rows (ids
+# 3980322-3980350) use a linear interpolation of real entry time between the
+# first live play and the next correctly-clocked anchor; dead-ball rows are
+# flat at the period's start value. Both derivations are reviewed in the
+# offline replay, not re-derived here.
+KNOWN_CLOCK_STAMP_CORRECTIONS <- tibble::tribble(
+  ~game_id, ~id,      ~wrong_quarter_time, ~corrected_quarter_time, ~reason,
+  398L, 3980298L, "00:28", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980299L, "00:28", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980300L, "00:27", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980301L, "00:26", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980302L, "00:26", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980303L, "00:24", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980304L, "00:23", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980305L, "00:23", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980306L, "00:22", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980307L, "00:21", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980309L, "00:17", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980310L, "00:16", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980311L, "00:13", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980312L, "00:12", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980313L, "00:10", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980315L, "00:01", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980316L, "00:00", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980317L, "00:00", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980318L, "00:00", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980319L, "00:00", "10:00", "Q2 dead-ball sub flurry stamped as end-of-quarter",
+  398L, 3980322L, "00:00", "10:00", "Q2 live play resumes right at the dead-ball boundary",
+  398L, 3980323L, "00:00", "09:58", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980324L, "00:00", "09:56", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980325L, "00:00", "09:46", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980327L, "00:00", "09:33", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980329L, "00:00", "09:19", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980330L, "00:00", "09:17", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980331L, "00:00", "09:13", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980333L, "00:00", "09:09", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980334L, "00:00", "09:04", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980335L, "00:00", "09:02", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980337L, "00:00", "08:59", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980338L, "00:00", "08:57", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980339L, "00:00", "08:53", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980340L, "00:00", "08:51", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980341L, "00:00", "08:51", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980343L, "00:00", "08:42", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980344L, "00:00", "08:37", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980346L, "00:00", "08:30", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980347L, "00:00", "08:26", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980348L, "00:00", "08:25", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980349L, "00:00", "08:22", "Q2 live-window linear interpolation to next correct anchor",
+  398L, 3980350L, "00:00", "08:21", "Q2 live-window linear interpolation to next correct anchor",
+  399L, 3990421L, "00:16", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990422L, "00:16", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990423L, "00:15", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990424L, "00:13", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990425L, "00:12", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990428L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990429L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990430L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990431L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990432L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990433L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  399L, 3990434L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter"
+)
+
+#' Apply KNOWN_CLOCK_STAMP_CORRECTIONS to one game's raw action rows.
+#'
+#' Only touches `quarter_time`, and only where the feed still shows the
+#' expected wrong value -- if the provider corrects its own feed for one of
+#' these ids, the row is left untouched and a warning is raised instead of
+#' silently overwriting already-correct data.
+apply_known_clock_corrections <- function(df, game_id_val) {
+  corr <- KNOWN_CLOCK_STAMP_CORRECTIONS |>
+    dplyr::filter(game_id == as.integer(game_id_val)) |>
+    dplyr::select(id, wrong_quarter_time, corrected_quarter_time)
+  if (!nrow(corr)) return(df)
+
+  df <- df |>
+    dplyr::mutate(.join_id = as.integer(id)) |>
+    dplyr::left_join(corr, by = c(".join_id" = "id"))
+
+  mismatched <- df |>
+    dplyr::filter(!is.na(corrected_quarter_time), quarter_time != wrong_quarter_time)
+  if (nrow(mismatched)) {
+    warning(
+      sprintf(
+        "Known clock correction for game %s skipped at id(s) %s: feed no longer shows the expected stamp. Re-verify KNOWN_CLOCK_STAMP_CORRECTIONS.",
+        game_id_val, paste(unique(mismatched$id), collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  df |>
+    dplyr::mutate(
+      quarter_time = dplyr::if_else(
+        !is.na(corrected_quarter_time) & quarter_time == wrong_quarter_time,
+        corrected_quarter_time,
+        quarter_time
+      )
+    ) |>
+    dplyr::select(-.join_id, -wrong_quarter_time, -corrected_quarter_time)
+}
+
 clean_actions <- function(pbp) {
   a <- tibble::as_tibble(pbp$result$actions) |>
     dplyr::mutate(source_row = dplyr::row_number()) |>
     tidyr::unnest(parameters, names_sep = "_") |>
     janitor::clean_names()
-  
+
   game_id_val <- pbp$result$gameInfo$gameId
-  
+
+  # Correct known bad clock stamps BEFORE end_quarter_seconds_remaining /
+  # end_game_seconds_remaining are derived from quarter_time below, so the
+  # displayed clock and the clock used downstream never disagree.
+  a <- apply_known_clock_corrections(a, game_id_val)
+
   out <- a |>
     filter(type != "clock") |>
     mutate(

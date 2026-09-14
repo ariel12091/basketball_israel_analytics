@@ -17,6 +17,10 @@ on:
         required: false
         type: boolean
         default: false
+      game_ids:
+        description: "Comma-separated game_ids to force through the pipeline (e.g. 398,399), bypassing the normal new-games-only diff. Leave empty for normal incremental behavior."
+        required: false
+        default: ""
   schedule:
     # Run once nightly: 00:15 in Israel daylight time, 23:15 in standard time.
     - cron: '15 21 * * *'
@@ -75,12 +79,14 @@ jobs:
 
           $dryRunOnly = $false
           $skipDryRun = $false
+          $gameIds = ""
           if ('${{ github.event_name }}' -eq 'workflow_dispatch') {
             if (-not [string]::IsNullOrWhiteSpace('${{ inputs.app_env }}')) {
               $env:APP_ENV = '${{ inputs.app_env }}'
             }
             if ('${{ inputs.dry_run_only }}' -eq 'true') { $dryRunOnly = $true }
             if ('${{ inputs.skip_dry_run }}' -eq 'true') { $skipDryRun = $true }
+            $gameIds = '${{ inputs.game_ids }}'
           }
           $requiredEnv = @('PG_HOST','PG_PORT','PG_DB','PG_USER','PG_PASS')
           $missingEnv = $requiredEnv | Where-Object { [string]::IsNullOrWhiteSpace([string](Get-Item "Env:$_" -ErrorAction SilentlyContinue).Value) }
@@ -101,6 +107,7 @@ jobs:
             )
             if ($dryRunOnly) { $psArgs += '-DryRunOnly' }
             if ($skipDryRun) { $psArgs += '-SkipDryRun' }
+            if (-not [string]::IsNullOrWhiteSpace($gameIds)) { $psArgs += @('-GameIds', $gameIds) }
 
             & $psExe @psArgs 2>&1 |
               Tee-Object -FilePath $runnerLog -Append

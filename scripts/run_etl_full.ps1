@@ -1,7 +1,12 @@
 param(
   [string]$BaseDir = "",
   [switch]$SkipDryRun,
-  [switch]$DryRunOnly
+  [switch]$DryRunOnly,
+  # Comma-separated game_ids, e.g. "398,399". Forces those specific games
+  # through the pipeline regardless of etl_processed_games -- bypasses the
+  # normal "new games only" incremental diff. Leave empty for the normal
+  # nightly/incremental behavior.
+  [string]$GameIds = ""
 )
 
 $ErrorActionPreference = 'Stop'
@@ -46,12 +51,27 @@ foreach ($name in $envVarsToTrim) {
 $etlFile = (Join-Path $base 'etl\etl_full.R') -replace '\\', '/'
 $exprPrefix = "Sys.setenv(APP_ENV='$appEnv'); source('$etlFile'); "
 
+$gameIdsArg = ""
+if (-not [string]::IsNullOrWhiteSpace($GameIds)) {
+  $parsedIds = $GameIds -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' }
+  foreach ($tok in $parsedIds) {
+    if ($tok -notmatch '^\d+$') {
+      throw "GameIds must be a comma-separated list of integers, got: '$tok'"
+    }
+  }
+  if ($parsedIds.Count -eq 0) {
+    throw "GameIds was provided but contained no valid integers: '$GameIds'"
+  }
+  $gameIdsArg = "game_ids=c(" + ($parsedIds -join ',') + "), "
+  Write-Host "Forcing specific game_ids through the pipeline: $($parsedIds -join ',')"
+}
+
 if ($DryRunOnly.IsPresent) {
-  $expr = $exprPrefix + "result <- etl_full(dry_run=TRUE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
+  $expr = $exprPrefix + "result <- etl_full(${gameIdsArg}dry_run=TRUE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
 } elseif ($SkipDryRun.IsPresent) {
-  $expr = $exprPrefix + "result <- etl_full(dry_run=FALSE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
+  $expr = $exprPrefix + "result <- etl_full(${gameIdsArg}dry_run=FALSE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
 } else {
-  $expr = $exprPrefix + "dry_result <- etl_full(dry_run=TRUE); if (!isTRUE(dry_result[['success']])) quit(status=2, save='no'); result <- etl_full(dry_run=FALSE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
+  $expr = $exprPrefix + "dry_result <- etl_full(${gameIdsArg}dry_run=TRUE); if (!isTRUE(dry_result[['success']])) quit(status=2, save='no'); result <- etl_full(${gameIdsArg}dry_run=FALSE); if (!isTRUE(result[['success']])) quit(status=2, save='no')"
 }
 
 $lockStream = $null
