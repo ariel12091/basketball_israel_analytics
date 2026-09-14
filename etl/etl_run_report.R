@@ -29,6 +29,117 @@ read_dq_detail <- function(dq_result, check_id) {
   utils::read.csv(path, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
+# Open data-quality findings that name one of `game_ids`: one row per
+# (game, check), taken from the detail CSV of every failing, warning or
+# erroring check that carries a game_id column. Dataset-level checks cannot be
+# attributed to a game and stay in the whole-dataset summary. The reviewed
+# exceptions register is not a finding.
+dq_game_findings <- function(dq_result, game_ids) {
+  empty <- data.frame(
+    game_id = integer(), check_id = character(), severity = character(),
+    status = character(), detail_rows = integer(), title = character(),
+    stringsAsFactors = FALSE
+  )
+  game_ids <- unique(suppressWarnings(as.integer(game_ids)))
+  game_ids <- game_ids[!is.na(game_ids)]
+  summary <- dq_result$summary
+  if (!length(game_ids) || is.null(summary) || !nrow(summary)) return(empty)
+
+  open <- summary[
+    summary$status %in% c("fail", "warning", "query_error") &
+      nzchar(summary$detail_file) &
+      summary$check_id != "P1_reviewed_data_quality_exceptions",
+    , drop = FALSE
+  ]
+  rows <- lapply(seq_len(nrow(open)), function(i) {
+    details <- read_dq_detail(dq_result, open$check_id[[i]])
+    if (!"game_id" %in% names(details)) return(NULL)
+    hits <- suppressWarnings(as.integer(details$game_id))
+    hits <- hits[!is.na(hits) & hits %in% game_ids]
+    if (!length(hits)) return(NULL)
+    counts <- table(hits)
+    data.frame(
+      game_id = as.integer(names(counts)),
+      check_id = open$check_id[[i]],
+      severity = open$severity[[i]],
+      status = open$status[[i]],
+      detail_rows = as.integer(counts),
+      title = open$title[[i]],
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, c(list(empty), Filter(Negate(is.null), rows)))
+  out <- out[order(out$game_id, out$check_id), , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
+
+# One row per game published in the run, clean games included, so the report
+# shows the quality of everything the run inserted rather than only failures.
+published_games_table <- function(game_ids, findings) {
+  games <- sort(unique(suppressWarnings(as.integer(game_ids))))
+  games <- games[!is.na(games)]
+  if (!length(games)) {
+    return(data.frame(game_id = integer(), open_findings = integer(),
+                      checks = character(), stringsAsFactors = FALSE))
+  }
+  data.frame(
+    game_id = games,
+    open_findings = vapply(games, function(g) sum(findings$game_id == g), integer(1)),
+    checks = vapply(games, function(g) {
+      f <- findings[findings$game_id == g, , drop = FALSE]
+      if (!nrow(f)) "none" else paste(sprintf("%s (%s)", f$check_id, f$severity), collapse = ", ")
+    }, character(1)),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Markdown summary for the CI run page: the run's outcome, every published
+# game with its open findings, and the whole dataset's open checks.
+write_etl_run_summary_md <- function(etl_result, dq_result, games_table, path) {
+  md_cell <- function(x) gsub("|", "\\|", as.character(x), fixed = TRUE)
+  md_rows <- function(df) {
+    if (!nrow(df)) return(character(0))
+    # Column-wise as.character: apply() would format numbers to a shared,
+    # space-padded width.
+    cells <- lapply(df, function(col) md_cell(ifelse(is.na(col), "", as.character(col))))
+    paste0("| ", do.call(paste, c(cells, sep = " | ")), " |")
+  }
+  open <- dq_result$summary[
+    dq_result$summary$status %in% c("fail", "warning", "query_error") &
+      dq_result$summary$check_id != "P1_reviewed_data_quality_exceptions",
+    c("check_id", "severity", "status", "issue_count", "title"),
+    drop = FALSE
+  ]
+  lines <- c(
+    "## Nightly ETL data quality",
+    "",
+    sprintf("- ETL: **%s**", if (isTRUE(etl_result$success)) "PASS" else "FAIL"),
+    sprintf("- Data quality (whole dataset): **%s**", dq_result$status),
+    sprintf("- Games published this run: %d", nrow(games_table)),
+    "",
+    "### Games published this run",
+    "",
+    if (nrow(games_table)) {
+      c("| Game | Open findings | Checks |", "| --- | --- | --- |", md_rows(games_table))
+    } else {
+      "No games were published in this run."
+    },
+    "",
+    "### Open checks (whole dataset)",
+    "",
+    if (nrow(open)) {
+      c("| Check | Severity | Status | Issues | Title |", "| --- | --- | --- | --- | --- |", md_rows(open))
+    } else {
+      "No open checks."
+    },
+    "",
+    "The full report, detail CSVs and HTML report are in this run's `data-quality` artifact."
+  )
+  writeLines(lines, path, useBytes = TRUE)
+  path
+}
+
 metric_bar <- function(label, value, detail, color = "#dc3545") {
   width <- if (is.finite(value)) min(100, max(1, value)) else 0
   sprintf(
@@ -137,6 +248,9 @@ write_etl_run_report <- function(
   x <- read_dq_detail(dq_result, "X_player_minute_conservation")
   y <- read_dq_detail(dq_result, "Y_ot_period_start_lineup_coverage")
   z <- read_dq_detail(dq_result, "Z_ot_event_player_lineup_mismatches")
+  ak <- read_dq_detail(dq_result, "AK_misplaced_clock_runs")
+  game_findings <- dq_game_findings(dq_result, etl_result$published_game_ids)
+  games_table <- published_games_table(etl_result$published_game_ids, game_findings)
   log_evidence <- parse_log_evidence(etl_result$log_file)
   ot_audit <- if (!is.null(etl_result$ot_recovery_audit)) {
     etl_result$ot_recovery_audit
@@ -367,7 +481,17 @@ write_etl_run_report <- function(
     status_card("OT periods recovered", fmt_count(ot_periods), if (ot_rejected) "fail" else if (ot_periods) "pass" else "neutral"),
     status_card("Elapsed", if (is.finite(overall_elapsed)) sprintf("%.1fs", overall_elapsed) else "n/a"),
     "</div>",
+    "<section><h2>Games published in this run</h2>",
+    '<p class="muted">Every game this run published, with each open check whose details name it. Dataset-level checks are in the findings table below.</p>',
+    render_table(games_table, 200L),
+    "<h3>Findings by game and check</h3>",
+    render_table(game_findings, 200L),
+    "</section>",
     "<section><h2>Quality overview</h2>", summary_bars, "</section>",
+    "<section><h2>Events stamped with a clock from another part of the period</h2>",
+    '<p class="muted">The clock jumps back more than 24 seconds inside a period. Feed order is usually right and only the clock is wrong, so time-based views (gameflow, quarter and clutch splits, segment timing) misplace the smaller side of the jump.</p>',
+    render_table(ak, 50L),
+    "</section>",
     "<section><h2>Unmatched lineup rows by affected game</h2>",
     '<p class="muted">Affected-game and full-dataset denominators are shown separately.</p>',
     unmatched_bars,
@@ -427,5 +551,9 @@ write_etl_run_report <- function(
 
   writeLines(html, report_path, useBytes = TRUE)
   writeLines(html, latest_path, useBytes = TRUE)
-  list(report_path = report_path, latest_path = latest_path)
+  summary_path <- write_etl_run_summary_md(
+    etl_result, dq_result, games_table,
+    file.path(output_dir, "latest_summary.md")
+  )
+  list(report_path = report_path, latest_path = latest_path, summary_path = summary_path)
 }

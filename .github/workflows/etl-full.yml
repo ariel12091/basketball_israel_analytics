@@ -176,6 +176,35 @@ jobs:
             etl/logs/last_success.txt
           if-no-files-found: warn
 
+      # etl_full() writes the data-quality report after every write run, but the
+      # runner is discarded with the job; keep this run's report files. A fresh
+      # runner holds only this run's files, so the globs cannot pick up history.
+      - name: Upload data quality report
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-quality-${{ github.run_id }}
+          path: |
+            etl/logs/data_quality/latest.md
+            etl/logs/data_quality/data_quality_report_*.md
+            etl/logs/data_quality/summary_*.csv
+            etl/logs/data_quality/details/*.csv
+            etl/logs/reports/etl_report_*.html
+            etl/logs/reports/latest_summary.md
+          if-no-files-found: warn
+
+      - name: Publish data quality summary
+        if: ${{ always() }}
+        shell: pwsh
+        run: |
+          $summary = 'etl/logs/reports/latest_summary.md'
+          if (Test-Path $summary) {
+            Get-Content $summary -Raw | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          } else {
+            "## Nightly ETL data quality`n`nNo data-quality summary was written: the write phase did not reach the report. See the ETL logs artifact." |
+              Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
+
       - name: Show ETL process log tail
         if: ${{ always() }}
         shell: pwsh

@@ -2027,6 +2027,151 @@ build_checks <- function(con, schema) {
       )
     ),
     list(
+      id = "AK_misplaced_clock_runs",
+      title = "Runs of events stamped with a clock from another part of the period",
+      severity = "warning",
+      purpose = paste(
+        "A run of consecutive events carries a game clock from a different part of the period than the events around it:",
+        "within one period the clock jumps back more than 24 seconds, so the events before and after the jump claim overlapping time.",
+        "The feed order is usually right and only the stamped clock is wrong, so scores and event counts still add up,",
+        "but everything that places events in time misplaces them: the gameflow chart and its quarter cards, per-quarter",
+        "and clutch-window splits, and segment timing by period. Each row is one jump, measured on both sides; the smaller",
+        "side is reported as the likely misplaced run, with the scoring plays it carries.",
+        "Confirm a row against the provider feed's entry times (userTime), which the ETL does not store, then record the",
+        "finding in the diagnosis column below. AA_material_clock_order_anomalies flags the same games without this breakdown."
+      ),
+      required_tables = c("df_pts_poss_lineups_longer_mv"),
+      problem_count_col = "misplaced_runs",
+      sql = sprintf(
+        "WITH action_grain AS (
+           SELECT
+             game_id,
+             id,
+             max(quarter)::int AS quarter,
+             max(end_game_seconds_remaining)::numeric AS game_clock,
+             bool_or(type IN ('shot', 'freeThrow') AND parameters_made = 'made') AS scoring
+           FROM %s
+           GROUP BY game_id, id
+         ),
+         ordered AS (
+           SELECT
+             a.*,
+             row_number() OVER w AS rn,
+             lag(quarter) OVER w AS prev_quarter,
+             lag(game_clock) OVER w AS prev_clock
+           FROM action_grain a
+           WINDOW w AS (PARTITION BY game_id ORDER BY id)
+         ),
+         jumps AS (
+           SELECT game_id, quarter, id AS resume_id, rn AS resume_rn,
+                  game_clock AS resume_clock, game_clock - prev_clock AS jump_seconds
+           FROM ordered
+           WHERE quarter = prev_quarter AND game_clock - prev_clock > 24
+         ),
+         -- Before the jump: the events back to the period start, or to the
+         -- last event already at or before the clock the period resumes at.
+         before_stops AS (
+           SELECT j.game_id, j.resume_id, max(o.rn) AS stop_rn
+           FROM jumps j
+           JOIN ordered o
+             ON o.game_id = j.game_id
+            AND o.rn < j.resume_rn
+            AND (o.quarter <> j.quarter OR o.game_clock >= j.resume_clock)
+           GROUP BY j.game_id, j.resume_id
+         ),
+         -- After the jump: the events up to the period end or the next jump.
+         after_stops AS (
+           SELECT j.game_id, j.resume_id, min(o.rn) AS stop_rn
+           FROM jumps j
+           JOIN ordered o
+             ON o.game_id = j.game_id
+            AND o.rn > j.resume_rn
+            AND (o.quarter <> j.quarter
+                 OR (o.quarter = o.prev_quarter AND o.game_clock - o.prev_clock > 24))
+           GROUP BY j.game_id, j.resume_id
+         ),
+         sides AS (
+           SELECT
+             j.game_id, j.quarter, j.resume_id, j.jump_seconds,
+             count(*) FILTER (WHERE o.rn < j.resume_rn) AS before_events,
+             count(*) FILTER (WHERE o.rn < j.resume_rn AND o.scoring) AS before_scoring,
+             min(o.id) FILTER (WHERE o.rn < j.resume_rn) AS before_first_id,
+             max(o.id) FILTER (WHERE o.rn < j.resume_rn) AS before_last_id,
+             max(o.game_clock) FILTER (WHERE o.rn < j.resume_rn) AS before_clock_from,
+             min(o.game_clock) FILTER (WHERE o.rn < j.resume_rn) AS before_clock_to,
+             count(*) FILTER (WHERE o.rn >= j.resume_rn) AS after_events,
+             count(*) FILTER (WHERE o.rn >= j.resume_rn AND o.scoring) AS after_scoring,
+             max(o.id) FILTER (WHERE o.rn >= j.resume_rn) AS after_last_id,
+             max(o.game_clock) FILTER (WHERE o.rn >= j.resume_rn) AS after_clock_from,
+             min(o.game_clock) FILTER (WHERE o.rn >= j.resume_rn) AS after_clock_to
+           FROM jumps j
+           LEFT JOIN before_stops bs ON bs.game_id = j.game_id AND bs.resume_id = j.resume_id
+           LEFT JOIN after_stops ast ON ast.game_id = j.game_id AND ast.resume_id = j.resume_id
+           JOIN ordered o
+             ON o.game_id = j.game_id
+            AND o.rn > coalesce(bs.stop_rn, 0)
+            AND o.rn < coalesce(ast.stop_rn, 2147483647)
+           GROUP BY j.game_id, j.quarter, j.resume_id, j.jump_seconds
+         ),
+         -- Reviewed findings. Add a row once a jump has been checked against
+         -- the provider feed; unreviewed rows stay visible as such.
+         diagnoses AS (
+           SELECT *
+           FROM (
+             VALUES
+               (398, 3980352::bigint, 'verified',
+                'Verified 2026-09-14 against the provider feed''s entry times (userTime, which mixes two clocks three hours apart; normalised): these events were entered 19:20-19:24, straight after Q2 started (19:20:04) and before the 8:00 entries (19:24:24), but stamped 0:28 to 0:00 left in Q2. They belong at about 10:00 to 8:00 left. Feed order is correct; only the clock is wrong. The provider''s own score strings on the two baskets (43-47, 43-50) inherit the wrong clock, and the gameflow chart piles Q2''s opening scoring at the end of the half.'),
+               (399, 3990437::bigint, 'likely',
+                'Same shape as game 398: 11 substitutions stamped 0:16 to 0:00 left in Q3, fed between the Q3 start (10:00) and the 9:51 play. Cannot be confirmed from entry times: the feed carries one userTime (21:44:37) for every event in this game. No scoring plays, so only lineup timing is affected.')
+           ) AS d(game_id, resume_id, review_status, diagnosis)
+         ),
+         clock_text AS (
+           SELECT
+             s.*,
+             CASE WHEN s.quarter <= 4 THEN (4 - s.quarter) * 600 ELSE 0 END AS period_offset
+           FROM sides s
+         )
+         SELECT
+           c.game_id,
+           CASE WHEN c.quarter <= 4 THEN 'Q' || c.quarter ELSE 'OT' || (c.quarter - 4) END AS period,
+           c.jump_seconds,
+           CASE WHEN c.before_events <= c.after_events THEN 'before_jump' ELSE 'after_jump' END
+             AS likely_misplaced_side,
+           CASE WHEN c.before_events <= c.after_events THEN c.before_events ELSE c.after_events END
+             AS misplaced_events,
+           CASE WHEN c.before_events <= c.after_events THEN c.before_scoring ELSE c.after_scoring END
+             AS misplaced_scoring_plays,
+           c.before_first_id,
+           c.before_last_id,
+           c.before_events,
+           c.before_scoring,
+           format('%%s:%%s to %%s:%%s',
+                  floor((c.before_clock_from - c.period_offset) / 60)::int,
+                  lpad(((c.before_clock_from - c.period_offset)::int %% 60)::text, 2, '0'),
+                  floor((c.before_clock_to - c.period_offset) / 60)::int,
+                  lpad(((c.before_clock_to - c.period_offset)::int %% 60)::text, 2, '0'))
+             AS before_clock_left,
+           c.resume_id AS after_first_id,
+           c.after_last_id,
+           c.after_events,
+           c.after_scoring,
+           format('%%s:%%s to %%s:%%s',
+                  floor((c.after_clock_from - c.period_offset) / 60)::int,
+                  lpad(((c.after_clock_from - c.period_offset)::int %% 60)::text, 2, '0'),
+                  floor((c.after_clock_to - c.period_offset) / 60)::int,
+                  lpad(((c.after_clock_to - c.period_offset)::int %% 60)::text, 2, '0'))
+             AS after_clock_left,
+           coalesce(d.review_status, 'unreviewed') AS review_status,
+           coalesce(d.diagnosis, '') AS diagnosis,
+           1::bigint AS misplaced_runs
+         FROM clock_text c
+         LEFT JOIN diagnoses d
+           ON d.game_id = c.game_id AND d.resume_id = c.resume_id
+         ORDER BY misplaced_scoring_plays DESC, c.game_id, c.resume_id",
+        df_long
+      )
+    ),
+    list(
       id = "AC_missing_regulation_period_coverage",
       title = "Regulation periods are missing from the app event table",
       severity = "error",
