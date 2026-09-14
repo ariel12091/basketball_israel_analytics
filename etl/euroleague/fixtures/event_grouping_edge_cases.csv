@@ -1,0 +1,225 @@
+fixture_id,season,gamecode,source_event_order,provider_number_of_play,period,clock,team_code,play_type,player_id,player_name,play_info,score_a,score_b,comment,expected_incident_id,expected_parent_order,expected_ft_trip_id,expected_possession_end,expected_end_reason,review_status,label_confidence_pct
+clock_shifted_and_one,2025,1,32,37,1,06:07,IST,3FGA,P009549,"CORDINIER, ISAIA","Missed Three Pointer (0/1 -  2 pt)",,,,g1_q1_miss_32,32,,FALSE,,confirmed,99
+clock_shifted_and_one,2025,1,33,38,1,06:04,IST,O,P012710,"OSMANI, ERCAN","Off Rebound (1)",,,,g1_q1_miss_32,32,,FALSE,,confirmed,99
+clock_shifted_and_one,2025,1,34,39,1,06:01,TEL,CM,P013699,"CLARK III, JIMMY","Foul (1)",,,,g1_q1_personal_34,34,,FALSE,,confirmed,98
+clock_shifted_and_one,2025,1,35,40,1,06:01,IST,RV,P007200,"LARKIN, SHANE","Foul Drawn (1)",,,,g1_q1_personal_34,34,,FALSE,,confirmed,98
+clock_shifted_and_one,2025,1,36,41,1,06:01,IST,2FGM,P009549,"CORDINIER, ISAIA","Two Pointer (2/2 -  4 pt)",13,9,,g1_q1_and_one_36,36,,FALSE,,confirmed,99
+clock_shifted_and_one,2025,1,37,42,1,06:01,TEL,CM,P014127,"BRISSETT, O'SHAE J","Foul (1)",,,,g1_q1_and_one_36,36,,FALSE,,confirmed,99
+clock_shifted_and_one,2025,1,38,43,1,06:01,IST,RV,P009549,"CORDINIER, ISAIA","Foul Drawn (1)",,,,g1_q1_and_one_36,36,,FALSE,,confirmed,99
+clock_shifted_and_one,2025,1,39,45,1,05:53,IST,FTM,P009549,"CORDINIER, ISAIA","Free Throw In (1/1 -  5 pt)",14,9,,g1_q1_and_one_36,36,g1_q1_and_one_ft,TRUE,and_one_final_ft,confirmed,99
+clock_shifted_and_one,2025,1,40,46,1,05:53,TEL,3FGA,P011193,"BLATT, TAMIR","Missed Three Pointer (0/1 -  0 pt)",,,,g1_q1_miss_40,40,,TRUE,miss_defensive_rebound,confirmed,99
+clock_shifted_and_one,2025,1,41,47,1,05:53,IST,D,P014102,"JONES, KAI","Def Rebound (1)",,,,g1_q1_miss_40,40,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,94,111,1,00:32,BAR,2FGM,P006435,"LAPROVITTOLA, NICOLAS","Two Pointer (1/1 -  5 pt)",23,22,,g5_q1_and_one_94,94,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,95,112,1,00:32,BAR,RV,P006435,"LAPROVITTOLA, NICOLAS","Foul Drawn (1)",,,,g5_q1_and_one_94,94,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,96,113,1,00:32,HTA,CM,P011157,"MOTLEY, JOHNATHAN","Foul (1)",,,,g5_q1_and_one_94,94,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,97,114,1,00:32,HTA,OUT,P012609,"MALCOLM, COLLIN",Out,,,,,97,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,98,115,1,00:32,HTA,IN,P010550,"GINAT, TOMER",In,,,,,98,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,99,116,1,00:32,BAR,OUT,P009948,"MARCOS, JUANI",Out,,,,,99,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,100,117,1,00:32,BAR,IN,P009992,"BRIZUELA, DARIO",In,,,,,100,,FALSE,,confirmed,99
+and_one_with_substitutions,2025,5,101,118,1,00:32,BAR,FTM,P006435,"LAPROVITTOLA, NICOLAS","Free Throw In (1/1 -  6 pt)",23,23,,g5_q1_and_one_94,94,g5_q1_and_one_ft,TRUE,and_one_final_ft,confirmed,99
+four_point_play,2025,7,320,354,3,04:08,VIR,3FGM,P011987,"EDWARDS, CARSEN","Three Pointer (2/3 -  6 pt)",46,43,,g7_q3_four_point_320,320,,FALSE,,confirmed,99
+four_point_play,2025,7,321,355,3,04:08,VIR,AS,P001844,"HACKETT, DANIEL","Assist (1)",,,,g7_q3_four_point_320,320,,FALSE,,confirmed,99
+four_point_play,2025,7,322,356,3,04:08,MAD,CM,P009005,"DECK, GABRIEL","Foul (2)",,,,g7_q3_four_point_320,320,,FALSE,,confirmed,99
+four_point_play,2025,7,323,357,3,04:08,VIR,RV,P011987,"EDWARDS, CARSEN","Foul Drawn (1)",,,,g7_q3_four_point_320,320,,FALSE,,confirmed,99
+four_point_play,2025,7,324,358,3,04:08,VIR,FTM,P011987,"EDWARDS, CARSEN","Free Throw In (1/1 -  7 pt)",47,43,,g7_q3_four_point_320,320,g7_q3_four_point_ft,TRUE,and_one_final_ft,confirmed,99
+technical_after_made_basket,2025,220,56,80,1,03:33,BAR,2FGM,P003196,"HERNANGOMEZ, WILLY","Two Pointer (1/1 -  2 pt)",10,4,,g220_q1_made_56,56,,TRUE,made_field_goal,confirmed,99
+technical_after_made_basket,2025,220,57,81,1,03:33,BAR,AS,P002939,"SATORANSKY, TOMAS","Assist (1)",,,,g220_q1_made_56,56,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,58,82,1,03:33,MAD,B,CO_A,,"Bench Foul (1)",,,,g220_q1_bench_technical_58,58,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,59,83,1,03:33,MAD,OUT,P003733,"ABALDE, ALBERTO",Out,,,,,59,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,60,84,1,03:33,MAD,IN,P007027,"MALEDON, THEO",In,,,,,60,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,61,85,1,03:33,BAR,OUT,P014134,"NORRIS, MILES",Out,,,,,61,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,62,86,1,03:33,BAR,OUT,P002939,"SATORANSKY, TOMAS",Out,,,,,62,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,63,87,1,03:33,BAR,IN,P006435,"LAPROVITTOLA, NICOLAS",In,,,,,63,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,64,88,1,03:33,BAR,IN,P001133,"SHENGELIA, TORNIKE",In,,,,,64,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,65,89,1,03:33,BAR,FTM,P009862,"PUNTER, KEVIN","Free Throw In (1/1 -  1 pt)",10,5,,g220_q1_bench_technical_58,58,g220_q1_bench_technical_ft,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,66,90,1,03:33,MAD,IN,P014117,"LYLES, TREY",In,,,,,66,,FALSE,,confirmed,99
+technical_after_made_basket,2025,220,67,91,1,03:33,MAD,OUT,P014006,"OKEKE, CHUMA",Out,,,,,67,,FALSE,,confirmed,99
+personal_then_technical_same_clock,2025,240,422,462,4,08:20,RED,CM,P011982,"OJELEYE, SEMI","Foul (1)",,,,g240_q4_personal_422,422,,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,423,463,4,08:20,VIR,RV,P011987,"EDWARDS, CARSEN","Foul Drawn (3)",,,,g240_q4_personal_422,422,,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,424,464,4,08:20,VIR,FTA,P011987,"EDWARDS, CARSEN","Missed Free Throw (0/1 -  15 pt)",,,,g240_q4_personal_422,422,g240_q4_personal_ft,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,425,465,4,08:20,VIR,FTM,P011987,"EDWARDS, CARSEN","Free Throw In (1/2 -  16 pt)",69,86,,g240_q4_personal_422,422,g240_q4_personal_ft,TRUE,ordinary_ft_trip_final_make,confirmed,98
+personal_then_technical_same_clock,2025,240,426,468,4,08:20,VIR,CMT,P011987,"EDWARDS, CARSEN","Technical Foul (3)",,,,g240_q4_technical_426,426,,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,427,469,4,08:20,VIR,OUT,P011987,"EDWARDS, CARSEN",Out,,,,,427,,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,428,470,4,08:20,VIR,IN,P014005,"ALSTON JR., DERRICK",In,,,,,428,,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,429,471,4,08:20,RED,FTM,P014163,"BUTLER, JARED","Free Throw In (3/3 -  16 pt)",69,87,,g240_q4_technical_426,426,g240_q4_technical_ft,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,430,472,4,08:13,RED,OF,P012044,"DOS SANTOS, YAGO","Offensive Foul (1)",,,,g240_q4_offensive_foul_430,430,,FALSE,,confirmed,98
+personal_then_technical_same_clock,2025,240,431,473,4,08:13,RED,TO,P012044,"DOS SANTOS, YAGO","Turnover (2)",,,,g240_q4_offensive_foul_430,430,,TRUE,turnover,confirmed,98
+personal_then_technical_same_clock,2025,240,432,474,4,08:13,VIR,RV,P007947,"VILDOZA, LUCA","Foul Drawn (1)",,,,g240_q4_offensive_foul_430,430,,FALSE,,confirmed,98
+opposing_ft_trips_same_clock,2025,240,488,534,4,04:34,RED,3FGA,P013363,"NWORA, JORDAN","Missed Three Pointer (3/7 -  15 pt)",,,,g240_q4_miss_488,488,,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,489,535,4,04:33,RED,O,P014029,"IZUNDU, EBUKA","Off Rebound (5)",,,,g240_q4_miss_488,488,,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,490,536,4,04:33,VIR,CM,P007947,"VILDOZA, LUCA","Foul (2)",,,,g240_q4_personal_490,490,,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,491,537,4,04:33,RED,RV,P014029,"IZUNDU, EBUKA","Foul Drawn (2)",,,,g240_q4_personal_490,490,,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,492,538,4,04:33,RED,FTA,P014029,"IZUNDU, EBUKA","Missed Free Throw (0/1 -  6 pt)",,,,g240_q4_personal_490,490,g240_q4_red_personal_ft,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,493,539,4,04:33,RED,FTA,P014029,"IZUNDU, EBUKA","Missed Free Throw (0/2 -  6 pt)",,,,g240_q4_personal_490,490,g240_q4_red_personal_ft,TRUE,final_ft_miss_defensive_rebound,confirmed,99
+opposing_ft_trips_same_clock,2025,240,494,540,4,04:33,VIR,D,,,"Def Rebound (5)",,,,g240_q4_personal_490,490,,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,495,541,4,04:33,RED,CM,P012201,"MONEKE, CHIMA","Foul (2)",,,,g240_q4_personal_495,495,,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,496,542,4,04:33,VIR,RV,P014005,"ALSTON JR., DERRICK","Foul Drawn (2)",,,,g240_q4_personal_495,495,,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,497,543,4,04:33,VIR,FTM,P014005,"ALSTON JR., DERRICK","Free Throw In (2/2 -  17 pt)",81,94,,g240_q4_personal_495,495,g240_q4_vir_personal_ft,FALSE,,confirmed,99
+opposing_ft_trips_same_clock,2025,240,498,544,4,04:33,VIR,FTM,P014005,"ALSTON JR., DERRICK","Free Throw In (3/3 -  18 pt)",82,94,,g240_q4_personal_495,495,g240_q4_vir_personal_ft,TRUE,ordinary_ft_trip_final_make,confirmed,99
+interleaved_unsportsmanlike,2025,320,329,357,3,05:07,MAD,2FGA,P003108,"HEZONJA, MARIO","Missed Two Pointer (7/15 -  15 pt)",,,,g320_q3_miss_329,329,,FALSE,,confirmed,99
+interleaved_unsportsmanlike,2025,320,330,358,3,05:05,MAD,O,P005791,"TAVARES, WALTER","Off Rebound (4)",,,,g320_q3_miss_329,329,,FALSE,,confirmed,99
+interleaved_unsportsmanlike,2025,320,331,359,3,05:05,ZAL,CM,P011927,"SLEVA, DUSTIN","Foul (3)",,,,g320_q3_personal_331,331,,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,332,360,3,05:05,MAD,RV,P005791,"TAVARES, WALTER","Foul Drawn (5)",,,,g320_q3_personal_331,331,,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,333,362,3,05:05,MAD,CMU,P005791,"TAVARES, WALTER","Unsportsmanlike Foul  (1)",,,,g320_q3_unsportsmanlike_333,333,,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,334,363,3,05:05,ZAL,RV,P002676,"BUTKEVICIUS, ARNAS","Foul Drawn (1)",,,,g320_q3_unsportsmanlike_333,333,,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,335,361,3,05:05,ZAL,CCH,,,"Coach Challenge (3)",,,,,335,,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,336,364,3,05:05,MAD,FTM,P005791,"TAVARES, WALTER","Free Throw In (5/6 -  11 pt)",61,62,,g320_q3_personal_331,331,g320_q3_mad_personal_ft,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,337,365,3,05:05,MAD,FTM,P005791,"TAVARES, WALTER","Free Throw In (6/7 -  12 pt)",61,63,,g320_q3_personal_331,331,g320_q3_mad_personal_ft,TRUE,compound_penalty_offense_resolved,provisional,90
+interleaved_unsportsmanlike,2025,320,338,367,3,05:05,ZAL,FTA,P002676,"BUTKEVICIUS, ARNAS","Missed Free Throw (0/1 -  5 pt)",,,,g320_q3_unsportsmanlike_333,333,g320_q3_zal_unsportsmanlike_ft,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,339,368,3,05:05,ZAL,FTA,P002676,"BUTKEVICIUS, ARNAS","Missed Free Throw (0/2 -  5 pt)",,,,g320_q3_unsportsmanlike_333,333,g320_q3_zal_unsportsmanlike_ft,FALSE,,provisional,90
+interleaved_unsportsmanlike,2025,320,340,370,3,04:48,ZAL,3FGA,P007975,"FRANCISCO, SYLVAIN","Missed Three Pointer (3/6 -  16 pt)",,,,g320_q3_miss_340,340,,TRUE,miss_defensive_rebound,confirmed,99
+interleaved_unsportsmanlike,2025,320,341,371,3,04:46,MAD,D,P005791,"TAVARES, WALTER","Def Rebound (4)",,,,g320_q3_miss_340,340,,FALSE,,confirmed,99
+clock_shifted_coach_technical,2025,7,451,497,4,03:16,VIR,3FGA,P011987,"EDWARDS, CARSEN","Missed Three Pointer (3/6 -  12 pt)",,,,g7_q4_miss_451,451,,TRUE,miss_defensive_rebound,confirmed,98
+clock_shifted_coach_technical,2025,7,452,498,4,03:16,MAD,D,P003108,"HEZONJA, MARIO","Def Rebound (3)",,,,g7_q4_miss_451,451,,FALSE,,confirmed,98
+clock_shifted_coach_technical,2025,7,453,499,4,03:16,MAD,2FGA,P003108,"HEZONJA, MARIO","Missed Two Pointer (7/10 -  14 pt)",,,,g7_q4_miss_453,453,,FALSE,,confirmed,98
+clock_shifted_coach_technical,2025,7,454,500,4,03:16,MAD,O,,,"Off Rebound (4)",,,,g7_q4_miss_453,453,,FALSE,,confirmed,98
+clock_shifted_coach_technical,2025,7,455,501,4,03:16,MAD,CCH,,,"Coach Challenge (2)",,,,,455,,FALSE,,confirmed,98
+clock_shifted_coach_technical,2025,7,456,502,4,03:16,MAD,C,CO_B,,"Coach Foul (1)",,,,g7_q4_coach_technical_456,456,,FALSE,,confirmed,98
+clock_shifted_coach_technical,2025,7,457,504,4,02:48,VIR,FTA,P011987,"EDWARDS, CARSEN","Missed Free Throw (3/4 -  12 pt)",,,,g7_q4_coach_technical_456,456,g7_q4_coach_technical_ft,FALSE,,confirmed,98
+clock_shifted_coach_technical,2025,7,458,505,4,02:44,MAD,3FGA,P003108,"HEZONJA, MARIO","Missed Three Pointer (0/6 -  14 pt)",,,,g7_q4_miss_458,458,,FALSE,,confirmed,98
+clock_shifted_coach_technical,2025,7,459,506,4,02:41,MAD,O,P005928,"CAMPAZZO, FACUNDO","Off Rebound (1)",,,,g7_q4_miss_458,458,,FALSE,,confirmed,98
+blocked_shot_defensive_rebound,2025,1,196,212,2,05:40,TEL,2FGA,P013699,"CLARK III, JIMMY","Missed Two Pointer (1/4 -  3 pt)",,,,g1_q2_block_196,196,,TRUE,blocked_shot_defensive_rebound,confirmed,99
+blocked_shot_defensive_rebound,2025,1,197,213,2,05:40,TEL,AG,P013699,"CLARK III, JIMMY","Shot Rejected (1)",,,,g1_q2_block_196,196,,FALSE,,confirmed,99
+blocked_shot_defensive_rebound,2025,1,198,214,2,05:34,IST,FV,P014102,"JONES, KAI","Block (1)",,,,g1_q2_block_196,196,,FALSE,,confirmed,99
+blocked_shot_defensive_rebound,2025,1,199,215,2,05:32,IST,D,P007109,"SMITS, ROLANDS","Def Rebound (1)",,,,g1_q2_block_196,196,,FALSE,,confirmed,99
+period_end_blocked_shot,2025,1,401,433,3,00:03,TEL,TO,P014123,"DOWTIN JR, JEFFREY","Turnover (3)",,,,g1_q3_turnover_401,401,,TRUE,turnover,confirmed,99
+period_end_blocked_shot,2025,1,402,434,3,00:01,IST,ST,P011201,"HAZER, SEHMUS","Steal (1)",,,,g1_q3_turnover_401,401,,FALSE,,confirmed,99
+period_end_blocked_shot,2025,1,403,435,3,00:00,IST,2FGA,P009549,"CORDINIER, ISAIA","Missed Two Pointer (3/7 -  7 pt)",,,,g1_q3_block_403,403,,TRUE,period_end_blocked_miss,confirmed,99
+period_end_blocked_shot,2025,1,404,436,3,00:00,IST,AG,P009549,"CORDINIER, ISAIA","Shot Rejected (1)",,,,g1_q3_block_403,403,,FALSE,,confirmed,99
+period_end_blocked_shot,2025,1,405,437,3,00:00,TEL,FV,P013289,"SANTOS, MARCIO","Block (1)",,,,g1_q3_block_403,403,,FALSE,,confirmed,99
+period_end_blocked_shot,2025,1,406,439,3,,,EP,,,"End Period",,,,,406,,FALSE,,confirmed,99
+technical_then_personal_ft_trips,2025,7,129,148,2,08:50,VIR,2FGA,P014108,"DIARRA, ALIOU","Missed Two Pointer (1/2 -  2 pt)",,,,g7_q2_miss_129,129,,TRUE,miss_defensive_rebound,confirmed,99
+technical_then_personal_ft_trips,2025,7,130,149,2,08:47,MAD,D,P014117,"LYLES, TREY","Def Rebound (2)",,,,g7_q2_miss_129,129,,FALSE,,confirmed,99
+technical_then_personal_ft_trips,2025,7,131,150,2,08:42,VIR,CM,P014108,"DIARRA, ALIOU","Foul (1)",,,,g7_q2_personal_131,131,,FALSE,,provisional,94
+technical_then_personal_ft_trips,2025,7,132,151,2,08:42,MAD,RV,P007630,"GARUBA, USMAN","Foul Drawn (1)",,,,g7_q2_personal_131,131,,FALSE,,provisional,94
+technical_then_personal_ft_trips,2025,7,133,152,2,08:42,VIR,CMT,P014108,"DIARRA, ALIOU","Technical Foul (2)",,,,g7_q2_technical_133,133,,FALSE,,provisional,94
+technical_then_personal_ft_trips,2025,7,134,153,2,08:42,VIR,OUT,P014108,"DIARRA, ALIOU",Out,,,,,134,,FALSE,,confirmed,99
+technical_then_personal_ft_trips,2025,7,135,154,2,08:42,VIR,IN,P013374,"DIOUF, MOUHAMET",In,,,,,135,,FALSE,,confirmed,99
+technical_then_personal_ft_trips,2025,7,136,155,2,08:42,MAD,OUT,P014117,"LYLES, TREY",Out,,,,,136,,FALSE,,confirmed,99
+technical_then_personal_ft_trips,2025,7,137,156,2,08:42,MAD,IN,P014006,"OKEKE, CHUMA",In,,,,,137,,FALSE,,confirmed,99
+technical_then_personal_ft_trips,2025,7,138,157,2,08:42,MAD,FTM,PTGB,"LLULL, SERGIO","Free Throw In (1/1 -  1 pt)",16,20,,g7_q2_technical_133,133,g7_q2_technical_ft,FALSE,,provisional,94
+technical_then_personal_ft_trips,2025,7,139,158,2,08:42,MAD,FTM,P007630,"GARUBA, USMAN","Free Throw In (1/1 -  1 pt)",16,21,,g7_q2_personal_131,131,g7_q2_personal_ft,FALSE,,provisional,94
+technical_then_personal_ft_trips,2025,7,140,159,2,08:42,MAD,FTA,P007630,"GARUBA, USMAN","Missed Free Throw (1/2 -  1 pt)",,,,g7_q2_personal_131,131,g7_q2_personal_ft,TRUE,final_ft_miss_defensive_rebound,provisional,94
+technical_then_personal_ft_trips,2025,7,141,160,2,08:42,VIR,D,P001844,"HACKETT, DANIEL","Def Rebound (1)",,,,g7_q2_personal_131,131,,FALSE,,provisional,94
+technical_then_personal_ft_trips,2025,7,142,161,2,08:28,VIR,3FGM,P012585,"MORGAN, MATTHEW","Three Pointer (1/2 -  3 pt)",19,21,,g7_q2_made_142,142,,TRUE,made_field_goal,confirmed,99
+offsetting_technicals_personal_trip,2025,300,342,390,3,01:00,OLY,TO,P011981,"JONES, TYRIQUE","Turnover (1)",,,,g300_q3_turnover_342,342,,TRUE,turnover,confirmed,99
+offsetting_technicals_personal_trip,2025,300,343,392,3,00:59,PAN,ST,P007866,"MITOGLOU, KONSTANTINOS","Steal (1)",,,,g300_q3_turnover_342,342,,FALSE,,confirmed,99
+offsetting_technicals_personal_trip,2025,300,344,393,3,00:59,PAN,RV,P001926,"SLOUKAS, KOSTAS","Foul Drawn (1)",,,,g300_q3_personal_345,345,,FALSE,,provisional,92
+offsetting_technicals_personal_trip,2025,300,345,394,3,00:59,OLY,CM,P012610,"WARD, TYSON","Foul (3)",,,,g300_q3_personal_345,345,,FALSE,,provisional,92
+offsetting_technicals_personal_trip,2025,300,346,396,3,00:59,PAN,CMT,P001926,"SLOUKAS, KOSTAS","Technical Foul (1)",,,,g300_q3_offsetting_tech_346,346,,FALSE,,provisional,92
+offsetting_technicals_personal_trip,2025,300,347,395,3,00:59,OLY,CMT,P011981,"JONES, TYRIQUE","Technical Foul (1)",,,,g300_q3_offsetting_tech_347,347,,FALSE,,provisional,92
+offsetting_technicals_personal_trip,2025,300,348,397,3,00:59,PAN,OUT,P011204,"GRANT, JERIAN",Out,,,,,348,,FALSE,,confirmed,99
+offsetting_technicals_personal_trip,2025,300,349,398,3,00:59,PAN,IN,P012774,"NUNN, KENDRICK",In,,,,,349,,FALSE,,confirmed,99
+offsetting_technicals_personal_trip,2025,300,350,399,3,00:59,PAN,FTM,P001926,"SLOUKAS, KOSTAS","Free Throw In (1/1 -  1 pt)",58,53,,g300_q3_personal_345,345,g300_q3_personal_ft,FALSE,,provisional,92
+offsetting_technicals_personal_trip,2025,300,351,400,3,00:59,PAN,FTM,P001926,"SLOUKAS, KOSTAS","Free Throw In (2/2 -  2 pt)",58,54,,g300_q3_personal_345,345,g300_q3_personal_ft,TRUE,compound_penalty_offense_resolved,provisional,92
+offsetting_technicals_personal_trip,2025,300,352,401,3,00:59,PAN,IN,P012712,"HERNANGOMEZ, JUANCHO",In,,,,,352,,FALSE,,confirmed,99
+offsetting_technicals_personal_trip,2025,300,353,402,3,00:59,PAN,OUT,P007866,"MITOGLOU, KONSTANTINOS",Out,,,,,353,,FALSE,,confirmed,99
+offsetting_technicals_personal_trip,2025,300,354,403,3,00:38,OLY,2FGA,P014316,"JOSEPH, CORY","Missed Two Pointer (2/5 -  5 pt)",,,,g300_q3_miss_354,354,,TRUE,miss_defensive_rebound,confirmed,99
+offsetting_technicals_personal_trip,2025,300,355,404,3,00:38,PAN,D,,,"Def Rebound (5)",,,,g300_q3_miss_354,354,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,603,649,4,00:19,ULK,2FGM,P012613,"JANTUNEN, MIKAEL","Two Pointer (1/1 -  2 pt)",82,81,,g20_q4_made_603,603,,TRUE,made_field_goal,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,604,651,4,00:19,ULK,CMTI,P014124,"HORTON TUCKER, TALEN","Throw-In Foul (4)",,,,g20_q4_throw_in_604,604,,FALSE,,provisional,95
+throw_in_then_personal_ft_trips,2025,20,605,652,4,00:19,ZAL,RV,P007975,"FRANCISCO, SYLVAIN","Foul Drawn (5)",,,,g20_q4_throw_in_604,604,,FALSE,,provisional,95
+throw_in_then_personal_ft_trips,2025,20,606,653,4,00:19,ULK,OUT,P014124,"HORTON TUCKER, TALEN",Out,,,,,606,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,607,654,4,00:19,ULK,IN,P006961,"BIBEROVIC, TARIK",In,,,,,607,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,608,655,4,00:19,ULK,IN,P007929,"BITIM, ONURALP",In,,,,,608,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,609,656,4,00:19,ULK,OUT,P012613,"JANTUNEN, MIKAEL",Out,,,,,609,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,610,657,4,00:19,ZAL,OUT,P012878,"WRIGHT, MOSES",Out,,,,,610,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,611,658,4,00:19,ZAL,IN,P007032,"LO, MAODO",In,,,,,611,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,612,659,4,00:19,ZAL,FTA,P007975,"FRANCISCO, SYLVAIN","Missed Free Throw (3/7 -  18 pt)",,,,g20_q4_throw_in_604,604,g20_q4_throw_in_ft,FALSE,,provisional,95
+throw_in_then_personal_ft_trips,2025,20,613,660,4,00:12,ULK,CM,P011205,"HALL, DEVON","Foul (2)",,,,g20_q4_personal_613,613,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,614,661,4,00:12,ZAL,RV,P007982,"WILLIAMS-GOSS, NIGEL","Foul Drawn (4)",,,,g20_q4_personal_613,613,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,615,662,4,00:12,ZAL,IN,P012878,"WRIGHT, MOSES",In,,,,,615,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,616,663,4,00:12,ZAL,OUT,P007032,"LO, MAODO",Out,,,,,616,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,617,664,4,00:12,ULK,IN,P014124,"HORTON TUCKER, TALEN",In,,,,,617,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,618,665,4,00:12,ULK,OUT,P007929,"BITIM, ONURALP",Out,,,,,618,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,619,666,4,00:12,ZAL,FTM,P007982,"WILLIAMS-GOSS, NIGEL","Free Throw In (5/6 -  19 pt)",83,81,,g20_q4_personal_613,613,g20_q4_personal_ft,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,620,667,4,00:12,ZAL,FTM,P007982,"WILLIAMS-GOSS, NIGEL","Free Throw In (6/7 -  20 pt)",84,81,,g20_q4_personal_613,613,g20_q4_personal_ft,TRUE,ordinary_ft_trip_final_make,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,621,668,4,00:03,ULK,3FGA,P002849,"MELLI, NICOLO","Missed Three Pointer (1/6 -  5 pt)",,,,g20_q4_miss_621,621,,TRUE,miss_defensive_rebound,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,622,669,4,00:02,ZAL,D,P007982,"WILLIAMS-GOSS, NIGEL","Def Rebound (2)",,,,g20_q4_miss_621,621,,FALSE,,confirmed,99
+throw_in_then_personal_ft_trips,2025,20,623,677,4,,,EG,,,"End Game",,,,,623,,FALSE,,confirmed,99
+retained_possession_after_made_basket,2025,5,106,127,2,09:43,HTA,3FGA,P010568,"JONES, CHRIS","Missed Three Pointer (0/2 -  2 pt)",,,,g5_q2_miss_106,106,,FALSE,,confirmed,99
+retained_possession_after_made_basket,2025,5,107,128,2,09:42,HTA,O,P013284,"WAINRIGHT, ISH","Off Rebound (1)",,,,g5_q2_miss_106,106,,FALSE,,confirmed,99
+retained_possession_after_made_basket,2025,5,108,129,2,09:42,HTA,2FGM,P013284,"WAINRIGHT, ISH","Two Pointer (1/1 -  5 pt)",28,26,,g5_q2_made_108,108,,TRUE,made_field_goal,provisional,90
+retained_possession_after_made_basket,2025,5,109,130,2,09:42,BAR,CM,P000925,"VESELY, JAN","Foul (1)",,,,g5_q2_personal_109,109,,FALSE,,provisional,90
+retained_possession_after_made_basket,2025,5,110,131,2,09:42,HTA,RV,P011157,"MOTLEY, JOHNATHAN","Foul Drawn (2)",,,,g5_q2_personal_109,109,,FALSE,,provisional,90
+retained_possession_after_made_basket,2025,5,111,132,2,09:38,HTA,2FGM,P010550,"GINAT, TOMER","Two Pointer (1/1 -  2 pt)",30,26,,g5_q2_made_111,111,,TRUE,made_field_goal,provisional,90
+retained_possession_after_made_basket,2025,5,112,133,2,09:36,HTA,AS,P010568,"JONES, CHRIS","Assist (3)",,,,g5_q2_made_111,111,,FALSE,,confirmed,99
+retained_possession_after_made_basket,2025,5,113,134,2,09:20,BAR,3FGA,P007464,"PARRA, JOEL","Missed Three Pointer (0/1 -  0 pt)",,,,g5_q2_miss_113,113,,TRUE,miss_defensive_rebound,confirmed,99
+retained_possession_after_made_basket,2025,5,114,135,2,09:18,HTA,D,P010568,"JONES, CHRIS","Def Rebound (1)",,,,g5_q2_miss_113,113,,FALSE,,confirmed,99
+retained_possession_after_challenge,2025,60,220,239,2,02:27,PAN,2FGA,P005353,"YURTSEVEN, OMER","Missed Two Pointer (2/4 -  4 pt)",,,,g60_q2_miss_220,220,,TRUE,miss_defensive_rebound,confirmed,99
+retained_possession_after_challenge,2025,60,221,240,2,02:24,VIR,D,P001844,"HACKETT, DANIEL","Def Rebound (4)",,,,g60_q2_miss_220,220,,FALSE,,confirmed,99
+retained_possession_after_challenge,2025,60,222,241,2,02:20,VIR,2FGM,P005422,"JALLOW, KARIM","Two Pointer (3/7 -  6 pt)",40,29,,g60_q2_made_222,222,,TRUE,made_field_goal,provisional,90
+retained_possession_after_challenge,2025,60,223,242,2,02:19,VIR,AS,P001844,"HACKETT, DANIEL","Assist (1)",,,,g60_q2_made_222,222,,FALSE,,confirmed,99
+retained_possession_after_challenge,2025,60,224,243,2,02:19,PAN,CM,P012774,"NUNN, KENDRICK","Foul (2)",,,,g60_q2_personal_224,224,,FALSE,,provisional,90
+retained_possession_after_challenge,2025,60,225,244,2,02:19,VIR,RV,P011987,"EDWARDS, CARSEN","Foul Drawn (2)",,,,g60_q2_personal_224,224,,FALSE,,provisional,90
+retained_possession_after_challenge,2025,60,226,245,2,02:19,PAN,IN,P004451,"KOUZELOGLOU, IOANNIS",In,,,,,226,,FALSE,,confirmed,99
+retained_possession_after_challenge,2025,60,227,246,2,02:19,PAN,OUT,P005353,"YURTSEVEN, OMER",Out,,,,,227,,FALSE,,confirmed,99
+retained_possession_after_challenge,2025,60,228,247,2,02:19,VIR,CCH,,,"Coach Challenge (1)",,,,,228,,FALSE,,provisional,90
+retained_possession_after_challenge,2025,60,229,282,2,02:19,VIR,3FGA,P011987,"EDWARDS, CARSEN","Missed Three Pointer (0/3 -  10 pt)",,,,g60_q2_miss_229,229,,TRUE,miss_defensive_rebound,provisional,90
+retained_possession_after_challenge,2025,60,230,250,2,02:13,PAN,D,P004088,"OSMAN, CEDI","Def Rebound (2)",,,,g60_q2_miss_229,229,,FALSE,,confirmed,99
+period_end_offensive_rebound,2025,300,238,274,2,00:03,OLY,3FGA,P013380,"FOURNIER, EVAN","Missed Three Pointer (0/2 -  2 pt)",,,,g300_q2_miss_238,238,,FALSE,,confirmed,99
+period_end_offensive_rebound,2025,300,239,276,2,00:00,OLY,O,P009849,"DORSEY, TYLER","Off Rebound (1)",,,,g300_q2_miss_238,238,,TRUE,period_end_offensive_rebound,confirmed,99
+period_end_offensive_rebound,2025,300,240,278,2,,,EP,,,"End Period",,,,,240,,FALSE,,confirmed,99
+made_basket_dead_ball_ft,2025,54,271,311,2,00:05,ZAL,2FGM,P008192,"TUBELIS, AZUOLAS","Two Pointer (3/4 -  6 pt)",39,50,,g54_q2_made_dead_ball_ft_271,271,,FALSE,,confirmed,98
+made_basket_dead_ball_ft,2025,54,272,312,2,00:05,ZAL,AS,P007975,"FRANCISCO, SYLVAIN","Assist (3)",,,,g54_q2_made_dead_ball_ft_271,271,,FALSE,,confirmed,98
+made_basket_dead_ball_ft,2025,54,273,306,2,00:05,BAR,CM,P001133,"SHENGELIA, TORNIKE","Foul (2)",,,,g54_q2_made_dead_ball_ft_271,271,,FALSE,,confirmed,98
+made_basket_dead_ball_ft,2025,54,274,307,2,00:05,ZAL,RV,P007975,"FRANCISCO, SYLVAIN","Foul Drawn (4)",,,,g54_q2_made_dead_ball_ft_271,271,,FALSE,,confirmed,98
+made_basket_dead_ball_ft,2025,54,275,313,2,00:05,ZAL,FTM,P007975,"FRANCISCO, SYLVAIN","Free Throw In (3/3 -  5 pt)",39,51,,g54_q2_made_dead_ball_ft_271,271,g54_q2_dead_ball_ft,FALSE,,confirmed,98
+made_basket_dead_ball_ft,2025,54,276,314,2,00:05,ZAL,FTM,P007975,"FRANCISCO, SYLVAIN","Free Throw In (4/4 -  6 pt)",39,52,,g54_q2_made_dead_ball_ft_271,271,g54_q2_dead_ball_ft,TRUE,made_basket_dead_ball_ft,confirmed,98
+made_basket_dead_ball_ft,2025,54,277,315,2,00:05,ZAL,OUT,P007975,"FRANCISCO, SYLVAIN",Out,,,,g54_q2_sub_277,277,,FALSE,,confirmed,99
+made_basket_dead_ball_ft,2025,54,278,316,2,00:05,ZAL,IN,P009299,"RUBSTAVICIUS, MANTAS",In,,,,g54_q2_sub_278,278,,FALSE,,confirmed,99
+made_basket_dead_ball_ft,2025,54,279,317,2,00:00,BAR,2FGA,P000925,"VESELY, JAN","Missed Two Pointer (1/3 -  3 pt)",,,,g54_q2_period_end_miss_279,279,,TRUE,period_end_miss,confirmed,99
+made_basket_dead_ball_ft,2025,54,280,319,2,,,EP,,,"End Period",,,,g54_q2_end_period_280,280,,FALSE,,confirmed,99
+new_foul_closes_special_ft_trip,2025,81,492,530,3,01:33,PRS,2FGA,P009664,"WILLIS, DEREK","Missed Two Pointer (0/4 -  0 pt)",,,,g81_q3_miss_492,492,,TRUE,miss_defensive_rebound,confirmed,99
+new_foul_closes_special_ft_trip,2025,81,493,531,3,01:28,MUN,D,P014162,"DINWIDDIE, SPENCER","Def Rebound (2)",,,,g81_q3_miss_492,492,,FALSE,,confirmed,99
+new_foul_closes_special_ft_trip,2025,81,494,536,3,01:28,MUN,OF,P013386,"MCCORMACK, DAVID","Offensive Foul (4)",,,,g81_q3_offensive_foul_494,494,,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,495,537,3,01:28,MUN,TO,P013386,"MCCORMACK, DAVID","Turnover (1)",,,,g81_q3_offensive_foul_494,494,,TRUE,turnover,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,496,538,3,01:28,PRS,RV,P013373,"CAVALIERE, LEOPOLD","Foul Drawn (1)",,,,g81_q3_offensive_foul_494,494,,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,497,539,3,01:28,MUN,B,CO_B,,"Bench Foul (1)",,,,g81_q3_bench_foul_497,497,,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,498,540,3,01:28,PRS,FTM,P014008,"ROBINSON, JUSTIN","Free Throw In (5/6 -  17 pt)",64,63,,g81_q3_bench_foul_497,497,g81_q3_bench_ft,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,499,541,3,01:22,MUN,CM,P014162,"DINWIDDIE, SPENCER","Foul (4)",,,,g81_q3_personal_499,499,,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,500,542,3,01:22,PRS,RV,P014008,"ROBINSON, JUSTIN","Foul Drawn (5)",,,,g81_q3_personal_499,499,,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,501,543,3,01:22,PRS,FTM,P014008,"ROBINSON, JUSTIN","Free Throw In (6/7 -  18 pt)",65,63,,g81_q3_personal_499,499,g81_q3_personal_ft,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,502,544,3,01:22,PRS,FTM,P014008,"ROBINSON, JUSTIN","Free Throw In (7/8 -  19 pt)",66,63,,g81_q3_personal_499,499,g81_q3_personal_ft,FALSE,,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,503,545,3,01:22,PRS,FTA,P014008,"ROBINSON, JUSTIN","Missed Free Throw (7/9 -  19 pt)",,,,g81_q3_personal_499,499,g81_q3_personal_ft,TRUE,final_ft_miss_defensive_rebound,confirmed,98
+new_foul_closes_special_ft_trip,2025,81,504,546,3,01:22,MUN,D,P011244,"DA SILVA, OSCAR","Def Rebound (2)",,,,g81_q3_personal_499,499,,FALSE,,confirmed,98
+unsportsmanlike_turnover_then_retained_ball,2025,18,115,126,1,00:52,BAR,2FGA,P013269,"CALE, MYLES","Missed Two Pointer (0/2 -  3 pt)",,,,g18_q1_miss_115,115,,TRUE,miss_defensive_rebound,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,116,127,1,00:50,PAN,D,P012712,"HERNANGOMEZ, JUANCHO","Def Rebound (2)",,,,g18_q1_miss_115,115,,FALSE,,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,117,128,1,00:42,PAN,CMU,P005353,"YURTSEVEN, OMER","Unsportsmanlike Foul  (1)",,,,g18_q1_unsports_117,117,,FALSE,,confirmed,98
+unsportsmanlike_turnover_then_retained_ball,2025,18,118,129,1,00:42,PAN,TO,P005353,"YURTSEVEN, OMER","Turnover (1)",,,,g18_q1_unsports_117,117,,TRUE,turnover,confirmed,98
+unsportsmanlike_turnover_then_retained_ball,2025,18,119,130,1,00:42,BAR,RV,P000925,"VESELY, JAN","Foul Drawn (1)",,,,g18_q1_unsports_117,117,,FALSE,,confirmed,98
+unsportsmanlike_turnover_then_retained_ball,2025,18,120,131,1,00:42,PAN,OUT,P004088,"OSMAN, CEDI",Out,,,,g18_q1_sub_120,120,,FALSE,,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,121,132,1,00:42,PAN,IN,P014011,"HOLMES, RICHAUN",In,,,,g18_q1_sub_121,121,,FALSE,,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,122,133,1,00:42,PAN,IN,P011085,"ROGKAVOPOULOS, NIKOLAOS",In,,,,g18_q1_sub_122,122,,FALSE,,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,123,134,1,00:42,PAN,OUT,P005353,"YURTSEVEN, OMER",Out,,,,g18_q1_sub_123,123,,FALSE,,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,124,135,1,00:42,BAR,CCH,,,"Coach Challenge (1)",,,,g18_q1_challenge_124,124,,FALSE,,confirmed,98
+unsportsmanlike_turnover_then_retained_ball,2025,18,125,136,1,00:42,BAR,FTM,P000925,"VESELY, JAN","Free Throw In (1/1 -  1 pt)",17,24,,g18_q1_unsports_117,117,g18_q1_unsports_ft,FALSE,,confirmed,98
+unsportsmanlike_turnover_then_retained_ball,2025,18,126,137,1,00:42,BAR,FTA,P000925,"VESELY, JAN","Missed Free Throw (1/2 -  1 pt)",,,,g18_q1_unsports_117,117,g18_q1_unsports_ft,FALSE,,confirmed,98
+unsportsmanlike_turnover_then_retained_ball,2025,18,127,138,1,00:36,BAR,2FGM,P013269,"CALE, MYLES","Two Pointer (1/3 -  5 pt)",17,26,,g18_q1_made_127,127,,TRUE,made_field_goal,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,128,139,1,00:17,PAN,2FGA,P011204,"GRANT, JERIAN","Missed Two Pointer (0/1 -  0 pt)",,,,g18_q1_miss_128,128,,TRUE,miss_defensive_rebound,confirmed,99
+unsportsmanlike_turnover_then_retained_ball,2025,18,129,140,1,00:15,BAR,D,P014134,"NORRIS, MILES","Def Rebound (1)",,,,g18_q1_miss_128,128,,FALSE,,confirmed,99
+foul_offensive_rebound_before_free_throws,2025,30,281,308,2,02:38,ULK,3FGA,P014124,"HORTON TUCKER, TALEN","Missed Three Pointer (1/2 -  6 pt)",,,,g30_q2_miss_281,281,,FALSE,,confirmed,98
+foul_offensive_rebound_before_free_throws,2025,30,282,309,2,02:37,ULK,O,P011205,"HALL, DEVON","Off Rebound (1)",,,,g30_q2_miss_281,281,,FALSE,,confirmed,98
+foul_offensive_rebound_before_free_throws,2025,30,283,310,2,02:30,ULK,3FGA,P006961,"BIBEROVIC, TARIK","Missed Three Pointer (0/1 -  0 pt)",,,,g30_q2_miss_283,283,,FALSE,,confirmed,98
+foul_offensive_rebound_before_free_throws,2025,30,284,311,2,02:29,RED,CM,P004866,"KALINIC, NIKOLA","Foul (2)",,,,g30_q2_personal_284,284,,FALSE,,confirmed,98
+foul_offensive_rebound_before_free_throws,2025,30,285,312,2,02:29,ULK,RV,P012613,"JANTUNEN, MIKAEL","Foul Drawn (3)",,,,g30_q2_personal_284,284,,FALSE,,confirmed,98
+foul_offensive_rebound_before_free_throws,2025,30,286,313,2,02:29,ULK,O,,,"Off Rebound (2)",,,,g30_q2_provider_rebound_286,286,,FALSE,,provisional,90
+foul_offensive_rebound_before_free_throws,2025,30,287,314,2,02:29,ULK,FTM,P012613,"JANTUNEN, MIKAEL","Free Throw In (5/5 -  7 pt)",26,37,,g30_q2_personal_284,284,g30_q2_personal_ft,FALSE,,confirmed,98
+foul_offensive_rebound_before_free_throws,2025,30,288,315,2,02:29,ULK,FTM,P012613,"JANTUNEN, MIKAEL","Free Throw In (6/6 -  8 pt)",27,37,,g30_q2_personal_284,284,g30_q2_personal_ft,TRUE,ordinary_ft_trip_final_make,confirmed,98
+foul_offensive_rebound_before_free_throws,2025,30,289,316,2,02:29,ULK,IN,P002849,"MELLI, NICOLO",In,,,,g30_q2_sub_289,289,,FALSE,,confirmed,99
+foul_offensive_rebound_before_free_throws,2025,30,290,317,2,02:29,ULK,OUT,P012613,"JANTUNEN, MIKAEL",Out,,,,g30_q2_sub_290,290,,FALSE,,confirmed,99
+foul_offensive_rebound_before_free_throws,2025,30,291,318,2,02:12,RED,TO,P011305,"CARTER, TYSON","Turnover (1)",,,,g30_q2_turnover_291,291,,TRUE,turnover,confirmed,99
+compound_penalty_after_turnover_single_endpoint,2025,90,576,631,4,00:13,ZAL,CM,P007975,"FRANCISCO, SYLVAIN","Foul (2)",,,,g90_q4_personal_576,576,,FALSE,,provisional,90
+compound_penalty_after_turnover_single_endpoint,2025,90,577,632,4,00:13,PAM,RV,P010042,"MONTERO, JEAN","Foul Drawn (4)",,,,g90_q4_personal_576,576,,FALSE,,confirmed,98
+compound_penalty_after_turnover_single_endpoint,2025,90,578,634,4,00:13,PAM,CMU,P010042,"MONTERO, JEAN","Unsportsmanlike Foul  (4)",,,,g90_q4_unsports_578,578,,FALSE,,confirmed,98
+compound_penalty_after_turnover_single_endpoint,2025,90,579,635,4,00:13,PAM,TO,P010042,"MONTERO, JEAN","Turnover (3)",,,,g90_q4_unsports_578,578,,TRUE,turnover,confirmed,98
+compound_penalty_after_turnover_single_endpoint,2025,90,580,636,4,00:13,ZAL,RV,P007975,"FRANCISCO, SYLVAIN","Foul Drawn (5)",,,,g90_q4_unsports_578,578,,FALSE,,confirmed,98
+compound_penalty_after_turnover_single_endpoint,2025,90,581,637,4,00:13,ZAL,OUT,P008192,"TUBELIS, AZUOLAS",Out,,,,g90_q4_sub_581,581,,FALSE,,confirmed,99
+compound_penalty_after_turnover_single_endpoint,2025,90,582,638,4,00:13,ZAL,IN,P007032,"LO, MAODO",In,,,,g90_q4_sub_582,582,,FALSE,,confirmed,99
+compound_penalty_after_turnover_single_endpoint,2025,90,583,639,4,00:13,ZAL,IN,P011927,"SLEVA, DUSTIN",In,,,,g90_q4_sub_583,583,,FALSE,,confirmed,99
+compound_penalty_after_turnover_single_endpoint,2025,90,584,640,4,00:13,ZAL,OUT,P014124,"BUTKEVICIUS, ARNAS",Out,,,,g90_q4_sub_584,584,,FALSE,,confirmed,99
+compound_penalty_after_turnover_single_endpoint,2025,90,585,641,4,00:13,PAM,FTM,P010042,"MONTERO, JEAN","Free Throw In (2/2 -  14 pt)",80,75,,g90_q4_personal_576,576,g90_q4_personal_ft,FALSE,,provisional,90
+compound_penalty_after_turnover_single_endpoint,2025,90,586,642,4,00:13,PAM,FTM,P010042,"MONTERO, JEAN","Free Throw In (3/3 -  15 pt)",81,75,,g90_q4_personal_576,576,g90_q4_personal_ft,FALSE,,provisional,90
+compound_penalty_after_turnover_single_endpoint,2025,90,587,643,4,00:13,ZAL,FTM,P007975,"FRANCISCO, SYLVAIN","Free Throw In (1/1 -  12 pt)",81,76,,g90_q4_unsports_578,578,g90_q4_unsports_ft,FALSE,,provisional,90
+compound_penalty_after_turnover_single_endpoint,2025,90,588,644,4,00:13,ZAL,FTM,P007975,"FRANCISCO, SYLVAIN","Free Throw In (2/2 -  13 pt)",81,77,,g90_q4_unsports_578,578,g90_q4_unsports_ft,FALSE,,provisional,90
+compound_penalty_after_turnover_single_endpoint,2025,90,589,645,4,00:02,ZAL,2FGM,P007975,"FRANCISCO, SYLVAIN","Two Pointer (5/7 -  15 pt)",81,79,,g90_q4_made_589,589,,TRUE,made_field_goal,confirmed,99

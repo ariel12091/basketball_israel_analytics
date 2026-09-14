@@ -74,7 +74,7 @@ APPLY  <- "--apply"   %in% commandArgs(trailingOnly = TRUE)
 # gates -- inside the transaction and then rolls it back. Same wall clock and
 # the same locks as a real run, but nothing is kept. It is the only way to
 # learn that the apply path works without spending a maintenance window on it.
-# Precedent: etl/backfill_canonical_segment_minutes.R.
+# Precedent: scripts/backfill_canonical_segment_minutes.R.
 DRY    <- "--dry-run" %in% commandArgs(trailingOnly = TRUE)
 args <- commandArgs(trailingOnly = TRUE)
 if (any(!args %in% c("--apply", "--dry-run")) || (APPLY && DRY))
