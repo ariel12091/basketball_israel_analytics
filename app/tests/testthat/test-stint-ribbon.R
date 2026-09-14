@@ -462,27 +462,54 @@ test_that("the compact SVG exposes period boundaries for regulation and overtime
   expect_match(compact_svg(f), 'data-period-bounds="600,1200,1800,2400,2700"', fixed = TRUE)
 })
 
-test_that("ribbon_period_pm_labels splits each bar's +/- by period", {
-  # An own stint 300-900 crosses the Q1 end; the opponent plays all game.
+test_that("ribbon_period_details describes each period of a bar on its own", {
+  # Player 1 plays 300-900 in two lineups: A (300-500), then B (500-900),
+  # whose segment crosses the Q1 end. Opponent player 9 plays all game.
   # Margin (own - opp) is +2 from t=400, -1 from t=700, +2 from t=1500.
-  lanes <- rbind(lane_row("own", "1", 300, 900), lane_row("opp", "9", 0, 2400))
+  premerge <- rbind(lane_row("own", "1", 300, 500, lineup_key = "A"),
+                    lane_row("own", "1", 500, 900, lineup_key = "B"),
+                    lane_row("opp", "9", 0, 2400, lineup_key = "Z"))
+  dict <- ribbon_lineup_dictionary(premerge)
+  idx <- function(key) match(paste("own", key, sep = "\r"),
+                             paste(dict$side, dict$lineup_key, sep = "\r")) - 1L
   steps <- data.frame(elapsed = c(400, 700, 1500), order_key = 1:3,
                       own = c(2, 2, 5), margin = c(2, -1, 2))
-  labels <- ribbon_period_pm_labels(lanes, steps, ribbon_period_bounds(4))
-  # Own: Q1 0 -> +2, Q2 +2 -> -1, off the floor after. Opponent: every
-  # period, in its own perspective (sign flipped).
-  expect_identical(labels, c("+2,-3,,", "-2,+3,-3,0"))
-  # A bar's period numbers telescope to its stint number: +2 - 3 and
-  # -2 + 3 - 3 + 0.
-  stint <- ribbon_side_perspective(ribbon_stint_points(lanes, steps))
-  expect_identical(stint$pm, c(-1, -2))
+  details <- jsonlite::fromJSON(
+    ribbon_period_details(premerge, steps, dict, "own", "1", "Player 1",
+                          300, 900, ribbon_period_bounds(4)),
+    simplifyVector = FALSE)
+
+  expect_length(details, 4L)
+  expect_null(details[[3]])
+  expect_null(details[[4]])
+  q1 <- details[[1]]
+  q2 <- details[[2]]
+  expect_identical(c(q1$window, q1$pm, q1$pf, q1$pa), c("5:00-10:00", "+2", "2", "0"))
+  expect_identical(c(q2$window, q2$pm, q2$pf, q2$pa), c("10:00-15:00", "-3", "0", "3"))
+  # Lineup B's crossing segment is clipped at 600 with its own +/- on each
+  # side, never split or summed from the whole segment.
+  expect_identical(q1$segments, sprintf("300,500,+2,%d;500,600,0,%d", idx("A"), idx("B")))
+  expect_identical(q2$segments, sprintf("600,900,-3,%d", idx("B")))
+  expect_match(q2$label, "^Player 1, 5:00 on the floor, plus-minus -3, 0 points for and 3 against, made up of 1 lineups")
+  # The periods telescope to the whole stint, which the full chart describes
+  # through the same helper.
+  whole <- ribbon_window_detail(premerge, steps, dict, "own", "1", "Player 1", 300, 900)
+  expect_identical(whole$pm, "-1")
+  expect_identical(whole$window, "5:00-15:00")
+
+  # An opponent bar's periods are in its own perspective (sign flipped).
+  opp <- jsonlite::fromJSON(
+    ribbon_period_details(premerge, steps, dict, "opp", "9", "Player 9",
+                          0, 2400, ribbon_period_bounds(4)),
+    simplifyVector = FALSE)
+  expect_identical(vapply(opp, function(p) p$pm, ""), c("-2", "+3", "-3", "0"))
 })
 
-test_that("only the compact SVG carries per-period +/- labels", {
+test_that("only the compact SVG carries per-period detail", {
   f <- ribbon_fixture()
-  expect_match(compact_svg(f), 'data-period-pm="', fixed = TRUE)
+  expect_match(compact_svg(f), 'data-period-detail="', fixed = TRUE)
   desktop <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
-  expect_false(grepl("data-period-pm", desktop, fixed = TRUE))
+  expect_false(grepl("data-period-detail", desktop, fixed = TRUE))
 })
 
 test_that("the compact gutter drops MIN but keeps +/- and the full name for AT", {

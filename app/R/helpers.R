@@ -3405,7 +3405,6 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # each bar.
   premerge <- lanes
   dict <- ribbon_lineup_dictionary(premerge)
-  dict_key <- paste(dict$side, dict$lineup_key, sep = "\r")
 
   # ribbon_score_as_of() retains its own order() safety, but all per-bar
   # lookups below receive this one deterministic ordering.
@@ -3457,52 +3456,32 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   })
 
   num <- ribbon_pm_label(lanes$pm)
-  # Compact only: the phone's quarter cards clip each bar to one period.
-  period_pm <- if (isTRUE(L$compact)) ribbon_period_pm_labels(lanes, steps, bounds)
   lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
-    secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
-    seg <- ribbon_side_perspective(
-      ribbon_stint_points(
-        ribbon_stint_segments(premerge, lanes$side[i], lanes$player_key[i],
-                              lanes$start_elapsed[i], lanes$end_elapsed[i]),
-        steps))
-    seg_key <- paste(seg$side, seg$lineup_key, sep = "\r")
-    seg_idx <- match(seg_key, dict_key) - 1L
-    seg_txt <- if (!nrow(seg)) "" else paste(sprintf(
-      "%.0f,%.0f,%s,%d", seg$start_elapsed, seg$end_elapsed,
-      ribbon_pm_label(seg$pm), seg_idx), collapse = ";")
-    members <- dict$members[match(seg_key, dict_key)]
-    members <- members[!is.na(members)]
-    window_txt <- sprintf("%s-%s", ribbon_minutes_label(lanes$start_elapsed[i]),
-                          ribbon_minutes_label(lanes$end_elapsed[i]))
-    lineup_txt <- if (length(members)) {
-      sprintf(", made up of %d lineups: %s", length(members),
-              paste(members, collapse = "; "))
-    } else ""
-    # The accessible name carries everything the click-only inline panel
-    # shows. Do not add an SVG <title>: it duplicates all this data as a
-    # mouse-hover tooltip, which obscures the chart.
-    label <- sprintf("%s, %s on the floor, plus-minus %s%s%s",
-                     lanes$player_label[i], ribbon_minutes_label(secs), num[i],
-                     if (is.na(lanes$pf[i])) "" else
-                       sprintf(", %d points for and %d against",
-                               lanes$pf[i], lanes$pa[i]),
-                     lineup_txt)
+    detail <- ribbon_window_detail(premerge, steps, dict, lanes$side[i],
+                                   lanes$player_key[i], lanes$player_label[i],
+                                   lanes$start_elapsed[i], lanes$end_elapsed[i])
+    # Compact only: a phone quarter card clips this bar to one period and
+    # swaps in that period's detail.
+    period_detail <- if (isTRUE(L$compact)) {
+      ribbon_period_details(premerge, steps, dict, lanes$side[i],
+                            lanes$player_key[i], lanes$player_label[i],
+                            lanes$start_elapsed[i], lanes$end_elapsed[i], bounds)
+    }
     tags$g(
       class = paste("ibpl-ribbon-lane", paste0("is-", lanes$side[i])),
       `data-clip` = lanes$clip[i],
       `data-start` = lanes$start_elapsed[i],
       `data-end` = lanes$end_elapsed[i],
       `data-player` = lanes$player_label[i],
-      `data-window` = window_txt,
+      `data-window` = detail$window,
       `data-pm` = num[i],
-      `data-period-pm` = period_pm[i],
-      `data-pf` = if (is.na(lanes$pf[i])) "" else as.character(lanes$pf[i]),
-      `data-pa` = if (is.na(lanes$pa[i])) "" else as.character(lanes$pa[i]),
-      `data-segments` = seg_txt,
+      `data-period-detail` = period_detail,
+      `data-pf` = detail$pf,
+      `data-pa` = detail$pa,
+      `data-segments` = detail$segments,
       tabindex = "0",
       role = "listitem",
-      `aria-label` = label,
+      `aria-label` = detail$label,
       tags$rect(x = lanes$x[i], y = lanes$abs_y[i],
                 width = lanes$w[i], height = lanes$h[i], rx = 2),
       # Blank means one thing only: too narrow to label. A level stint
@@ -3972,26 +3951,74 @@ ribbon_pm_label <- function(pm) {
   ifelse(is.na(pm), "", ifelse(pm == 0, "0", sprintf("%+d", pm)))
 }
 
-# Each bar's +/- within every period: one label per period, comma-joined in
-# period order, blank where the bar is not on the floor in that period. A
-# phone quarter card clips a bar to its period, so the number printed on it
-# must be that period's net difference, not the whole stint's -- a stint
-# crossing a quarter end otherwise showed its number in one card only.
-# Computed with ribbon_stint_points() on the clipped window, the same series
-# and as-of rule as the stint number, so a bar's period labels telescope to
-# its stint +/-. Never by summing lineup segments: segments can span a
+# Everything a tap on a bar reveals, for one time window of that bar: the
+# window text, +/-, points for and against, its lineup segments (the
+# data-segments format app.js reads) and the accessible name. The full chart
+# asks for the whole stint; a phone quarter card asks for the part inside its
+# period, so the card describes a quarter by exactly the same rules.
+#
+# The accessible name carries everything the click-only inline panel shows.
+# Do not add an SVG <title>: it duplicates all this data as a mouse-hover
+# tooltip, which obscures the chart.
+ribbon_window_detail <- function(premerge, steps, dict, side, player_key,
+                                 player_label, start_elapsed, end_elapsed) {
+  dict_key <- paste(dict$side, dict$lineup_key, sep = "\r")
+  window <- data.frame(side = side, start_elapsed = start_elapsed,
+                       end_elapsed = end_elapsed, stringsAsFactors = FALSE)
+  pts <- ribbon_side_perspective(ribbon_stint_points(window, steps))
+  seg <- ribbon_side_perspective(
+    ribbon_stint_points(
+      ribbon_stint_segments(premerge, side, player_key, start_elapsed, end_elapsed),
+      steps))
+  seg_key <- paste(seg$side, seg$lineup_key, sep = "\r")
+  seg_idx <- match(seg_key, dict_key) - 1L
+  seg_txt <- if (!nrow(seg)) "" else paste(sprintf(
+    "%.0f,%.0f,%s,%d", seg$start_elapsed, seg$end_elapsed,
+    ribbon_pm_label(seg$pm), seg_idx), collapse = ";")
+  members <- dict$members[match(seg_key, dict_key)]
+  members <- members[!is.na(members)]
+  pm <- ribbon_pm_label(pts$pm)
+  lineup_txt <- if (length(members)) {
+    sprintf(", made up of %d lineups: %s", length(members),
+            paste(members, collapse = "; "))
+  } else ""
+  list(
+    start = start_elapsed,
+    end = end_elapsed,
+    window = sprintf("%s-%s", ribbon_minutes_label(start_elapsed),
+                     ribbon_minutes_label(end_elapsed)),
+    pm = pm,
+    pf = if (is.na(pts$pf)) "" else as.character(pts$pf),
+    pa = if (is.na(pts$pa)) "" else as.character(pts$pa),
+    segments = seg_txt,
+    label = sprintf("%s, %s on the floor, plus-minus %s%s%s",
+                    player_label, ribbon_minutes_label(end_elapsed - start_elapsed), pm,
+                    if (is.na(pts$pf)) "" else
+                      sprintf(", %d points for and %d against", pts$pf, pts$pa),
+                    lineup_txt)
+  )
+}
+
+# One bar's detail per period, as a JSON array in period order: the bar
+# clipped to that period through ribbon_window_detail(), or null where the
+# player was not on the floor. A phone quarter card clips the bar to its
+# period, so its number, tap detail, lineups and accessible name must all be
+# that period's. Clipping the window before computing is what keeps this
+# exact: segment +/- is never summed or split, because segments can span a
 # period end (26 Israeli 2026 and 454 EuroLeague segments, 2026-09-14).
-ribbon_period_pm_labels <- function(lanes, steps, bounds) {
-  if (is.null(lanes) || !nrow(lanes)) return(character(0))
+ribbon_period_details <- function(premerge, steps, dict, side, player_key,
+                                  player_label, start_elapsed, end_elapsed,
+                                  bounds) {
   starts <- c(0, bounds[-length(bounds)])
-  labels <- vapply(seq_along(bounds), function(k) {
-    clipped <- lanes
-    clipped$start_elapsed <- pmax(lanes$start_elapsed, starts[k])
-    clipped$end_elapsed <- pmin(lanes$end_elapsed, bounds[k])
-    pm <- ribbon_side_perspective(ribbon_stint_points(clipped, steps))$pm
-    ifelse(clipped$end_elapsed > clipped$start_elapsed, ribbon_pm_label(pm), "")
-  }, character(nrow(lanes)))
-  apply(matrix(labels, nrow = nrow(lanes)), 1, paste, collapse = ",")
+  details <- lapply(seq_along(bounds), function(k) {
+    from <- max(start_elapsed, starts[k])
+    to <- min(end_elapsed, bounds[k])
+    if (to <= from) return(NULL)
+    ribbon_window_detail(premerge, steps, dict, side, player_key,
+                         player_label, from, to)
+  })
+  as.character(jsonlite::toJSON(details, auto_unbox = TRUE, null = "null",
+                                digits = NA))
 }
 
 

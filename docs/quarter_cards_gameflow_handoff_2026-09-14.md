@@ -48,7 +48,7 @@ The first pass found five defects, all fixed in `mobile.js` / `mobile.css`:
 | Defect | Fix |
 |---|---|
 | `preserveAspectRatio="none"` stretched chart text sideways — 0.85x on a regulation card, **1.7x** on a 5-minute OT card | One uniform scale per game, taken from Q1 and capped at 1.25. An OT card is now narrower rather than stretched, and a bar's width means the same minutes in every card. The pinned gutter takes the same scale (`pinGutter`). |
-| A stint crossing a period edge printed its +/- cut in half in both cards (e.g. a stray `0` against the pin) | Each bar is labelled with its +/- **in that period**. `ribbon_period_pm_labels()` (helpers.R) emits `data-period-pm` on compact lanes, computed with `ribbon_stint_points()` on the clipped window, and `labelPeriodBars()` draws it centred on the visible bar. The first fix, showing the whole-stint number only in the card holding the stint's midpoint, left long bars unlabelled in the other card and was replaced the same day. Segment +/- is not summed, because segments can span a period end (26 Israeli 2026, 454 EuroLeague). |
+| A stint crossing a period edge printed its +/- cut in half in both cards (e.g. a stray `0` against the pin) | Each bar in a card **is** its period: number, tap detail (window, floor time, +/-, points for/against), lineups and accessible name. `ribbon_window_detail()` (helpers.R) builds a bar's detail for any time window and serves both the full chart and the cards; `ribbon_period_details()` emits one JSON entry per period as `data-period-detail` on compact lanes; `clipBarsToPeriod()` swaps it in and cuts the rect at the period edges, so app.js maps lineup segments onto the visible bar. A lineup segment crossing a period end is clipped and gets its own +/- on each side. Nothing is summed, because segments can span a period end (26 Israeli 2026, 454 EuroLeague). Two earlier attempts the same day are superseded: whole-stint number only in the midpoint card (left long bars blank), then per-period numbers with whole-stint tap detail. |
 | Players who sat out a period left blank rows (Q2 of game 398: 6 of 17) | `collapseRows()` rewrites y values. It deliberately uses no transform on the shift layers: app.js strips those on every deselect and hit-tests raw rect `y`. Only the two margin curves are translated, which keeps their clip paths in their own user space. |
 | Seven periods gave 35px jump buttons, below the 44px tap minimum, and overflowed | The jump row is a grid (`minmax(var(--ibpl-m-tap), 1fr)`), so it wraps to a second row. |
 | The active jump button only followed clicks | A rAF-throttled scroll listener marks the card whose top has passed 120px. |
@@ -59,10 +59,25 @@ marker into a sliver.
 
 Verified after the fixes:
 
-- Every bar with room for its number carries one, and a bar's period numbers
-  sum to its stint +/-: game 398 has 61 of 67 bars labelled (6 too narrow) over 46
-  stints, 64942 has 107 of 140 (113 stints), and 729 has 139 of 168 (123 stints),
-  with zero mismatches.
+- Audited every card bar in games 398, 64942 and 729: 375 bars and 282 stints,
+  with zero problems. Each bar's window, rect, lineup segments (in range,
+  covering the window, +/- summing to the bar), number and aria-label agree
+  and stay inside the period. Its period +/- and points-for sum back to the
+  whole stint, and every bar with room carries a number (68 are too narrow).
+- Desktop SVG output is byte-identical before and after the extraction, for
+  both teams of all three games. The compact output differs only by the
+  per-period attribute.
+- Clean games are internally consistent per quarter: points for minus points
+  against equals the quarter +/- for both teams in all 12 periods of 64942
+  and 729.
+- **Game 398's Q2 is a data problem, not the split.** From 8:19 to 19:59
+  each team has one lineup segment (no substitutions for 11½ minutes), and
+  the last 29 score events before the series passes 20:00 are all stamped at
+  1200s. Herzliya's score jumps 22 → 43 there, and Eilat's Q2 points land
+  in a one-second gap with no opponent lane, so the cards show Q2 as 0 for
+  most bars. The full chart already showed it (a 10-second stint at
+  "23 for, 20 against"). This is the known 398/399 clock game; see
+  `docs/etl_clock_incident_handoff_2026-09-13.md`.
 - Every card renders at identical x/y scale (0.897 at 390px, 1.098 for the
   triple-OT game, capped at 1.25 at 430px). Pinned names sit within 0.4px
   of their rows in every card of all three games.
@@ -82,6 +97,5 @@ Verified after the fixes:
 
 - The jump row scrolls away with the overview. A sticky row would cost ~50px
   of phone height on every scroll, so it was not added.
-- Numbers drawn on selection (`ibpl-ribbon-segment-num`, app.js) are not
-  clamped to the card, so a selected stint crossing a period edge can show a
-  cut segment number.
+- The full-timeline SVG in the same page still carries `data-period-detail`
+  on every lane, unused there (the cards strip it from their clones).
