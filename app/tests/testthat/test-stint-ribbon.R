@@ -455,6 +455,13 @@ test_that("the compact layout keeps the desktop game scale with a narrow gutter"
   expect_match(html, '<text class="ibpl-ribbon-period-label" x="950"', fixed = TRUE)
 })
 
+test_that("the compact SVG exposes period boundaries for regulation and overtime cards", {
+  f <- ribbon_fixture()
+  expect_match(compact_svg(f), 'data-period-bounds="600,1200,1800,2400"', fixed = TRUE)
+  f$meta$n_periods <- 5L
+  expect_match(compact_svg(f), 'data-period-bounds="600,1200,1800,2400,2700"', fixed = TRUE)
+})
+
 test_that("the compact gutter drops MIN but keeps +/- and the full name for AT", {
   html <- compact_svg()
   expect_false(grepl("ibpl-ribbon-min", html, fixed = TRUE))

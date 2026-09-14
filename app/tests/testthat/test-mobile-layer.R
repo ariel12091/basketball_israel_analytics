@@ -529,11 +529,8 @@ test_that("Compare keeps A and B adjacent on mobile", {
 # of IBPL_MOBILE_TABLE's gl_table/eurogl_table overrides (R1, above): every
 # column is visible now, so Gameflow needs no priority rule to protect it.
 
-# The designed-width-plus-horizontal-scroll pin that used to live here was
-# replaced 2026-09-13 after phone testing: at 390px the 220-unit gutter took
-# two thirds of the screen, showed about one quarter of the game, and scrolled
-# the names out of view. A phone now gets the compact layout, drawn for the
-# screen (see test-stint-ribbon.R for its geometry).
+# The mobile gameflow keeps its compact source SVG and derives one viewport
+# per quarter from its period bounds. The full timeline remains available.
 
 test_that("a phone gameflow requests the compact ribbon layout", {
   mod <- read_repo_txt("R", "mod_ribbon_modal.R")
@@ -544,6 +541,15 @@ test_that("a phone gameflow requests the compact ribbon layout", {
   # desktop's 1070px.
   expect_false(grepl("min-width: 1070px", css, fixed = TRUE))
   expect_true(grepl(".ibpl-ribbon.is-compact {", css, fixed = TRUE))
+})
+
+test_that("mobile gameflow overview covers every played period", {
+  margin <- data.frame(elapsed = c(0, 600, 1200, 2400, 2700),
+                       margin = c(0, 4, -3, 2, 5))
+  html <- as.character(ribbon_mobile_overview_ui(margin, ribbon_period_bounds(5)))
+  expect_identical(lengths(regmatches(html, gregexpr('class="ibpl-ribbon-quarter-jump"', html))), 5L)
+  expect_match(html, 'aria-label="Jump to OT1"', fixed = TRUE)
+  expect_match(html, 'class="ibpl-ribbon-overview-line" d="M ', fixed = TRUE)
 })
 
 test_that("the gameflow panel never hides its own Shiny output while loading", {

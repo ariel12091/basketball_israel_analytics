@@ -360,11 +360,8 @@ body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
    needs no selector of its own here any more. */
 
 /* ---- Stint ribbon (gameflow) ----
-   On mobile the chart opens in the page above its game-log table, not in a
-   modal. The server draws the COMPACT layout here (ribbon_layout(compact =
-   TRUE) in helpers.R): full scale, with a real svg width, so the reader
-   swipes sideways to reach Q4. mobile.js pins the narrow name column to the
-   left edge. The tapped stint's detail is an HTML card below the scroller. */
+   The compact SVG is shown through one viewport per quarter. Each viewport
+   fits the phone width; the original full chart remains available on demand. */
 body:not(.ibpl-mobile) .ibpl-ribbon-inline-panel { display: none !important; }
 body.ibpl-mobile .ibpl-ribbon-inline-panel {
   margin: 12px 0 18px;
@@ -404,6 +401,73 @@ body.ibpl-mobile .ibpl-ribbon-inline-hint {
   line-height: 1.35;
   margin-bottom: 8px;
 }
+body.ibpl-mobile .ibpl-ribbon-mobile-overview {
+  margin-bottom: 16px;
+  padding: 10px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  background: var(--ibpl-bg-sunken);
+}
+body.ibpl-mobile .ibpl-ribbon-overview-title {
+  margin-bottom: 6px;
+  color: var(--ibpl-text-muted);
+  font-size: 0.75rem;
+}
+body.ibpl-mobile .ibpl-ribbon-overview-svg { display: block; width: 100%; height: 56px; }
+body.ibpl-mobile .ibpl-ribbon-overview-zero {
+  stroke: var(--ibpl-text-dim);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+body.ibpl-mobile .ibpl-ribbon-overview-period { stroke: var(--ibpl-border); stroke-width: 1; }
+body.ibpl-mobile .ibpl-ribbon-overview-line {
+  fill: none;
+  stroke: var(--ibpl-accent);
+  stroke-width: 2;
+  stroke-linejoin: round;
+}
+body.ibpl-mobile .ibpl-ribbon-quarter-nav {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+body.ibpl-mobile .ibpl-ribbon-quarter-jump {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: var(--ibpl-m-tap);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 6px;
+  background: var(--ibpl-surface);
+  color: var(--ibpl-text);
+  font-weight: 600;
+}
+body.ibpl-mobile .ibpl-ribbon-quarter-jump.is-active {
+  border-color: var(--ibpl-accent);
+  color: var(--ibpl-accent);
+}
+body.ibpl-mobile .ibpl-ribbon-full-toggle {
+  min-height: var(--ibpl-m-tap);
+  width: 100%;
+  margin-bottom: 12px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ibpl-text);
+}
+body.ibpl-mobile .ibpl-ribbon-quarters { display: grid; gap: 16px; }
+body.ibpl-mobile .ibpl-ribbon-quarter-card {
+  min-width: 0;
+  padding: 10px 8px;
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  scroll-margin-top: 68px;
+}
+body.ibpl-mobile .ibpl-ribbon-quarter-heading {
+  margin: 0 0 8px;
+  color: var(--ibpl-accent);
+  font-size: 0.9rem;
+  font-weight: 700;
+}
 body.ibpl-mobile .ibpl-ribbon-inline-scroll {
   max-width: 100%;
   overflow-x: auto;
@@ -411,6 +475,9 @@ body.ibpl-mobile .ibpl-ribbon-inline-scroll {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-inline: contain;
 }
+body.ibpl-mobile .ibpl-ribbon-quarter-frame { overflow-x: hidden; }
+body.ibpl-mobile .ibpl-ribbon-full-timeline[hidden],
+body.ibpl-mobile .ibpl-ribbon-quarters[hidden] { display: none; }
 /* width:auto lets the svg's own width attribute (the layout width) size it;
    app.css's width:100% would fit the whole game to the screen instead. */
 body.ibpl-mobile .ibpl-ribbon.is-compact {

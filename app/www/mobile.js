@@ -106,13 +106,9 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     return document.getElementById(prefix + "_ribbon_inline_panel");
   }
 
-  /* The compact chart is drawn at 1:1 and swiped sideways, so its name
-     column would scroll away with it. Pin a copy of the gutter's text (names,
-     +/-, team names, margin scale) to the scroller's left edge with
-     position: sticky, and hide the originals. The copy carries no data-clip
-     or tabindex, so app.js's lane handlers never mistake it for the chart;
-     app.js reaches it through svg.ibplPin (focus highlight) and pin.ibplSvg
-     (a tap on a pinned name picks that row's stint in view). */
+  /* Keep the names and margin scale visible in both the quarter cards and
+     the optional full timeline. The copy carries no data-clip or tabindex;
+     app.js reaches it through svg.ibplPin and pin.ibplSvg. */
   var SVG_NS = "http://www.w3.org/2000/svg";
   var PIN_SELECTOR = ".ibpl-ribbon-name, .ibpl-ribbon-pm, .ibpl-ribbon-team, " +
     ".ibpl-ribbon-scale-label, .ibpl-ribbon-zero-label";
@@ -173,6 +169,169 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     pin.ibplSvg = svg;
   }
 
+  function quarterLabel(index) {
+    return index < 4 ? "Q" + (index + 1) : "OT" + (index - 3);
+  }
+
+  function fitQuarter(svg) {
+    var frame = svg.closest(".ibpl-ribbon-quarter-frame");
+    var bounds = (svg.dataset.periodBounds || "").split(",").map(Number);
+    var index = Number(svg.dataset.quarterIndex);
+    var gutter = Number(svg.dataset.detailX);
+    var fullWidth = Number(svg.dataset.fullWidth);
+    var height = Number(svg.dataset.baseHeight);
+    if (!frame || !bounds.length || !isFinite(index) || !isFinite(gutter) ||
+        !isFinite(fullWidth) || !isFinite(height)) return;
+    var width = frame.clientWidth;
+    if (width <= gutter + 20) return;
+    var start = index ? bounds[index - 1] : 0;
+    var end = bounds[index];
+    var total = bounds[bounds.length - 1];
+    var plotStart = gutter + start * (fullWidth - gutter) / total;
+    var plotSpan = (end - start) * (fullWidth - gutter) / total;
+    var sourceScale = plotSpan / (width - gutter);
+    var left = plotStart - gutter * sourceScale;
+    svg.setAttribute("viewBox", [left, 0, width * sourceScale, height].join(" "));
+    svg.setAttribute("preserveAspectRatio", "none");
+    svg.setAttribute("width", width);
+    svg.setAttribute("height", height);
+    svg.style.width = width + "px";
+    svg.style.height = height + "px";
+    pinGutter(svg);
+  }
+
+  function quarterSvg(source, index, bounds) {
+    var svg = source.cloneNode(true);
+    var start = index ? bounds[index - 1] : 0;
+    var end = bounds[index];
+    var suffix = "-quarter-" + (index + 1);
+    var ids = Object.create(null);
+    svg.dataset.quarterIndex = index;
+    svg.dataset.fullWidth = source.viewBox.baseVal.width;
+    svg.setAttribute("aria-label", source.getAttribute("aria-label") + ", " + quarterLabel(index));
+
+    // Each card is a view onto the same game, but hidden stints must not be
+    // focusable, and duplicated clip IDs would resolve to the wrong card.
+    svg.querySelectorAll(".ibpl-ribbon-lane").forEach(function (lane) {
+      if (Number(lane.dataset.end) <= start || Number(lane.dataset.start) >= end) lane.remove();
+    });
+    var visibleClips = new Set(Array.from(svg.querySelectorAll(".ibpl-ribbon-lane"),
+      function (lane) { return lane.dataset.clip; }));
+    svg.querySelectorAll(".ibpl-ribbon-name, .ibpl-ribbon-pm").forEach(function (label) {
+      if (!visibleClips.has(label.dataset.clip) || label.classList.contains("ibpl-ribbon-pm")) {
+        label.remove();
+      } else {
+        // A quarter card does not show the gutter's full-game +/- total.
+        label.setAttribute("x", Number(source.dataset.detailX) - 6);
+      }
+    });
+    svg.querySelectorAll("clipPath[id]").forEach(function (clip) {
+      if (!visibleClips.has(clip.id)) clip.remove();
+      else { ids[clip.id] = clip.id + suffix; clip.id = ids[clip.id]; }
+    });
+    svg.querySelectorAll("[data-clip]").forEach(function (element) {
+      if (ids[element.dataset.clip]) element.dataset.clip = ids[element.dataset.clip];
+    });
+    return svg;
+  }
+
+  function showQuarterCards(result) {
+    var cards = result.querySelector(".ibpl-ribbon-quarters");
+    var full = result.querySelector(".ibpl-ribbon-full-timeline");
+    var toggle = result.querySelector(".ibpl-ribbon-full-toggle");
+    if (!cards || !full || !toggle) return;
+    cards.hidden = false;
+    full.hidden = true;
+    toggle.textContent = "View full timeline";
+    toggle.setAttribute("aria-expanded", "false");
+    cards.querySelectorAll("svg.ibpl-ribbon").forEach(fitQuarter);
+  }
+
+  function buildQuarterCards(source) {
+    var scroller = source.closest(".ibpl-ribbon-inline-scroll");
+    var result = source.closest(".ibpl-ribbon-inline-result");
+    var bounds = (source.dataset.periodBounds || "").split(",").map(Number);
+    if (!scroller || !result || bounds.length < 4 ||
+        bounds.some(function (value, i) { return !isFinite(value) || value <= (i ? bounds[i - 1] : 0); })) {
+      return false;
+    }
+
+    var cards = document.createElement("div");
+    cards.className = "ibpl-ribbon-quarters";
+    bounds.forEach(function (_end, index) {
+      var card = document.createElement("section");
+      card.className = "ibpl-ribbon-quarter-card";
+      card.dataset.quarter = index + 1;
+      var heading = document.createElement("h4");
+      heading.className = "ibpl-ribbon-quarter-heading";
+      heading.textContent = quarterLabel(index);
+      var frame = document.createElement("div");
+      frame.className = "ibpl-ribbon-inline-scroll ibpl-ribbon-quarter-frame";
+      frame.setAttribute("aria-label", quarterLabel(index) + " gameflow");
+      frame.appendChild(quarterSvg(source, index, bounds));
+      card.appendChild(heading);
+      card.appendChild(frame);
+      cards.appendChild(card);
+    });
+
+    var toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.className = "ibpl-ribbon-full-toggle";
+    toggle.textContent = "View full timeline";
+    toggle.setAttribute("aria-expanded", "false");
+    var full = document.createElement("div");
+    full.className = "ibpl-ribbon-full-timeline";
+    full.hidden = true;
+    var shell = document.createElement("div");
+    shell.className = "ibpl-ribbon-mobile-charts";
+    scroller.parentNode.insertBefore(toggle, scroller);
+    scroller.parentNode.insertBefore(shell, scroller);
+    shell.appendChild(cards);
+    shell.appendChild(full);
+    full.appendChild(scroller);
+    cards.querySelectorAll("svg.ibpl-ribbon").forEach(fitQuarter);
+    var first = result.querySelector('.ibpl-ribbon-quarter-jump[data-quarter="1"]');
+    if (first) first.classList.add("is-active");
+    return true;
+  }
+
+  function updateQuarterNav(result, index) {
+    result.querySelectorAll(".ibpl-ribbon-quarter-jump").forEach(function (button) {
+      button.classList.toggle("is-active", Number(button.dataset.quarter) === index);
+    });
+  }
+
+  document.addEventListener("click", function (e) {
+    var jump = e.target.closest && e.target.closest(".ibpl-ribbon-quarter-jump");
+    var toggle = e.target.closest && e.target.closest(".ibpl-ribbon-full-toggle");
+    var control = jump || toggle;
+    if (!control) return;
+    var result = control.closest(".ibpl-ribbon-inline-result");
+    if (!result) return;
+    if (jump) {
+      showQuarterCards(result);
+      var index = Number(jump.dataset.quarter);
+      var card = result.querySelector('.ibpl-ribbon-quarter-card[data-quarter="' + index + '"]');
+      if (card) card.scrollIntoView({ block: "start", behavior: "smooth" });
+      updateQuarterNav(result, index);
+      return;
+    }
+    var full = result.querySelector(".ibpl-ribbon-full-timeline");
+    var cards = result.querySelector(".ibpl-ribbon-quarters");
+    if (!full || !cards) return;
+    if (!full.hidden) { showQuarterCards(result); return; }
+    cards.hidden = true;
+    full.hidden = false;
+    toggle.textContent = "Show quarter cards";
+    toggle.setAttribute("aria-expanded", "true");
+    var svg = full.querySelector("svg.ibpl-ribbon");
+    if (svg) window.requestAnimationFrame(function () { pinGutter(svg); });
+  });
+
+  window.addEventListener("resize", function () {
+    document.querySelectorAll(".ibpl-ribbon-quarter-card svg.ibpl-ribbon").forEach(fitQuarter);
+  });
+
   document.addEventListener("click", function (e) {
     if (!document.body.classList.contains("ibpl-mobile")) return;
     var close = e.target.closest && e.target.closest(".ibpl-ribbon-inline-close");
@@ -209,7 +368,9 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
         if (result && result.dataset.gameId === panel.dataset.gameId) {
           panel.classList.remove("is-loading");
           var svg = result.querySelector("svg.ibpl-ribbon.is-compact");
-          if (svg) window.requestAnimationFrame(function () { pinGutter(svg); });
+          if (svg) window.requestAnimationFrame(function () {
+            if (!buildQuarterCards(svg)) pinGutter(svg);
+          });
         }
       });
     });
