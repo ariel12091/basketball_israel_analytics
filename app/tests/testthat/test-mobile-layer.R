@@ -562,10 +562,11 @@ test_that("quarter cards draw at one uniform scale and drop idle rows", {
   expect_true(grepl("Math.min(width / (gutter + bounds[0] * perSecond)", js, fixed = TRUE))
   # The pinned names share that scale, or they drift off their rows.
   expect_true(grepl('pin.style.width = gutter * scale + "px"', js, fixed = TRUE))
-  # Players who sat out a period get no blank row, and a stint's +/- is
-  # printed in one card only.
+  # Players who sat out a period get no blank row, and every bar is
+  # labelled with its +/- in that period.
   expect_true(grepl("collapseRows(svg, source);", js, fixed = TRUE))
-  expect_true(grepl("placeStintNumbers(svg, start, end,", js, fixed = TRUE))
+  expect_true(grepl("labelPeriodBars(svg, index,", js, fixed = TRUE))
+  expect_true(grepl('lane.dataset.periodPm.split(",")[index]', js, fixed = TRUE))
   # Seven periods (triple overtime) wrap instead of shrinking below the tap minimum.
   expect_true(grepl("minmax(var(--ibpl-m-tap), 1fr)", css, fixed = TRUE))
 })

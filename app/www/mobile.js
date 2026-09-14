@@ -266,22 +266,29 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     svg.dataset.oppDetailY = Number(svg.dataset.oppDetailY) - below;
   }
 
-  // A stint's +/- is drawn once for the whole stint. Show it in exactly one
-  // card -- the one holding the stint's midpoint -- and keep it inside the
-  // visible part of the bar; a stint crossing a period edge otherwise
-  // printed the same number cut in half in two cards.
-  function placeStintNumbers(svg, start, end, plotStart, plotEnd) {
+  // A card clips each bar to its period, so the bar is labelled with its
+  // +/- in that period (data-period-pm, from ribbon_period_pm_labels), not
+  // the whole stint's. Every bar with room gets a number, so a blank bar
+  // still means only "too narrow to label" -- the same width rule as the
+  // server's ribbon_number_fits().
+  function labelPeriodBars(svg, index, plotStart, plotEnd) {
     svg.querySelectorAll(".ibpl-ribbon-lane").forEach(function (lane) {
-      var num = lane.querySelector(".ibpl-ribbon-num");
       var rect = lane.querySelector("rect");
-      if (!num || !rect) return;
-      var mid = (Number(lane.dataset.start) + Number(lane.dataset.end)) / 2;
+      if (!rect || lane.dataset.periodPm === undefined) return;
+      var stale = lane.querySelector(".ibpl-ribbon-num");
+      if (stale) stale.remove();
+      var label = lane.dataset.periodPm.split(",")[index] || "";
       var x = Number(rect.getAttribute("x"));
-      var half = (num.textContent.length * 0.6 * 9 + 6) / 2;
-      var lo = Math.max(x, plotStart) + half;
-      var hi = Math.min(x + Number(rect.getAttribute("width")), plotEnd) - half;
-      if (mid < start || mid >= end || lo > hi) { num.remove(); return; }
-      num.setAttribute("x", Math.min(Math.max(Number(num.getAttribute("x")), lo), hi));
+      var left = Math.max(x, plotStart);
+      var width = Math.min(x + Number(rect.getAttribute("width")), plotEnd) - left;
+      if (!label || width < label.length * 0.6 * 9 + 6) return;
+      var num = document.createElementNS(SVG_NS, "text");
+      num.setAttribute("class", "ibpl-ribbon-num");
+      num.setAttribute("x", left + width / 2);
+      num.setAttribute("y", Number(rect.getAttribute("y")) + Number(rect.getAttribute("height")) / 2 + 3);
+      num.setAttribute("text-anchor", "middle");
+      num.textContent = label;
+      rect.parentNode.insertBefore(num, rect.nextSibling);
     });
   }
 
@@ -319,7 +326,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
       label.remove();
     });
     collapseRows(svg, source);
-    placeStintNumbers(svg, start, end, gutter + start * perSecond, gutter + end * perSecond);
+    labelPeriodBars(svg, index, gutter + start * perSecond, gutter + end * perSecond);
     svg.querySelectorAll("clipPath[id]").forEach(function (clip) {
       if (!visibleClips.has(clip.id)) clip.remove();
       else { ids[clip.id] = clip.id + suffix; clip.id = ids[clip.id]; }

@@ -462,6 +462,29 @@ test_that("the compact SVG exposes period boundaries for regulation and overtime
   expect_match(compact_svg(f), 'data-period-bounds="600,1200,1800,2400,2700"', fixed = TRUE)
 })
 
+test_that("ribbon_period_pm_labels splits each bar's +/- by period", {
+  # An own stint 300-900 crosses the Q1 end; the opponent plays all game.
+  # Margin (own - opp) is +2 from t=400, -1 from t=700, +2 from t=1500.
+  lanes <- rbind(lane_row("own", "1", 300, 900), lane_row("opp", "9", 0, 2400))
+  steps <- data.frame(elapsed = c(400, 700, 1500), order_key = 1:3,
+                      own = c(2, 2, 5), margin = c(2, -1, 2))
+  labels <- ribbon_period_pm_labels(lanes, steps, ribbon_period_bounds(4))
+  # Own: Q1 0 -> +2, Q2 +2 -> -1, off the floor after. Opponent: every
+  # period, in its own perspective (sign flipped).
+  expect_identical(labels, c("+2,-3,,", "-2,+3,-3,0"))
+  # A bar's period numbers telescope to its stint number: +2 - 3 and
+  # -2 + 3 - 3 + 0.
+  stint <- ribbon_side_perspective(ribbon_stint_points(lanes, steps))
+  expect_identical(stint$pm, c(-1, -2))
+})
+
+test_that("only the compact SVG carries per-period +/- labels", {
+  f <- ribbon_fixture()
+  expect_match(compact_svg(f), 'data-period-pm="', fixed = TRUE)
+  desktop <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  expect_false(grepl("data-period-pm", desktop, fixed = TRUE))
+})
+
 test_that("the compact gutter drops MIN but keeps +/- and the full name for AT", {
   html <- compact_svg()
   expect_false(grepl("ibpl-ribbon-min", html, fixed = TRUE))

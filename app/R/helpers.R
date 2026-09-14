@@ -3457,6 +3457,8 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   })
 
   num <- ribbon_pm_label(lanes$pm)
+  # Compact only: the phone's quarter cards clip each bar to one period.
+  period_pm <- if (isTRUE(L$compact)) ribbon_period_pm_labels(lanes, steps, bounds)
   lane_rects <- lapply(seq_len(nrow(lanes)), function(i) {
     secs <- lanes$end_elapsed[i] - lanes$start_elapsed[i]
     seg <- ribbon_side_perspective(
@@ -3494,6 +3496,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
       `data-player` = lanes$player_label[i],
       `data-window` = window_txt,
       `data-pm` = num[i],
+      `data-period-pm` = period_pm[i],
       `data-pf` = if (is.na(lanes$pf[i])) "" else as.character(lanes$pf[i]),
       `data-pa` = if (is.na(lanes$pa[i])) "" else as.character(lanes$pa[i]),
       `data-segments` = seg_txt,
@@ -3967,6 +3970,28 @@ ribbon_minutes_label <- function(secs) {
 ribbon_pm_label <- function(pm) {
   pm <- as.integer(round(as.numeric(pm)))
   ifelse(is.na(pm), "", ifelse(pm == 0, "0", sprintf("%+d", pm)))
+}
+
+# Each bar's +/- within every period: one label per period, comma-joined in
+# period order, blank where the bar is not on the floor in that period. A
+# phone quarter card clips a bar to its period, so the number printed on it
+# must be that period's net difference, not the whole stint's -- a stint
+# crossing a quarter end otherwise showed its number in one card only.
+# Computed with ribbon_stint_points() on the clipped window, the same series
+# and as-of rule as the stint number, so a bar's period labels telescope to
+# its stint +/-. Never by summing lineup segments: segments can span a
+# period end (26 Israeli 2026 and 454 EuroLeague segments, 2026-09-14).
+ribbon_period_pm_labels <- function(lanes, steps, bounds) {
+  if (is.null(lanes) || !nrow(lanes)) return(character(0))
+  starts <- c(0, bounds[-length(bounds)])
+  labels <- vapply(seq_along(bounds), function(k) {
+    clipped <- lanes
+    clipped$start_elapsed <- pmax(lanes$start_elapsed, starts[k])
+    clipped$end_elapsed <- pmin(lanes$end_elapsed, bounds[k])
+    pm <- ribbon_side_perspective(ribbon_stint_points(clipped, steps))$pm
+    ifelse(clipped$end_elapsed > clipped$start_elapsed, ribbon_pm_label(pm), "")
+  }, character(nrow(lanes)))
+  apply(matrix(labels, nrow = nrow(lanes)), 1, paste, collapse = ",")
 }
 
 
