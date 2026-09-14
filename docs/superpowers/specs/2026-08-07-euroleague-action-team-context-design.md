@@ -166,7 +166,7 @@ The Israeli pipeline stores `segment_seconds` denormalised onto every event row
 of the backbone, and needs three separate mechanisms to keep that safe:
 
 1. the backbone CTAS writes `NULL::numeric AS segment_seconds` and a separate
-   ETL pass (`etl/apply_canonical_segment_minutes_online.R`) fills the value
+   ETL pass (`scripts/apply_canonical_segment_minutes_online.R`) fills the value
    back onto every row of the segment;
 2. every consumer must reduce before summing — `MAX(segment_seconds)` grouped
    by `segment_id`, then `SUM`. That convention appears four times across
