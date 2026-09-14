@@ -82,6 +82,9 @@ dq_split_ids <- function(x) {
 # Catalog: one entry per check. `entity` says where a row belongs (a game, a
 # player, or the whole dataset); `describe(row, ctx)` turns one detail row into
 # a sentence; `effect` is what the app shows wrongly; `fix` is the change.
+# `gameplay(row)`, where a check can count them, is the number of affected
+# events that are plays; at zero the finding drops two tiers and reports
+# `admin_effect` instead, since substitutions and timeouts move no stat.
 # test_dq_findings_html.R fails if a check in the report has no entry here.
 # -----------------------------------------------------------------------------
 
@@ -209,6 +212,8 @@ DQ_FINDING_CATALOG <- list(
       "%s of %s event rows (%s%%) have no five-player lineup attached.",
       dq_num(r$unmatched_rows), dq_num(r$total_rows), dq_num(r$unmatched_pct, 1L)
     ),
+    gameplay = function(r) r$unmatched_gameplay_rows,
+    admin_effect = "None on stats: substitutions and timeouts carry no points, shots or possessions, so nothing drops out.",
     effect = "Those events drop out of on/off, Lineup Data and lineup-based ratings for this game.",
     fix = "Trace the substitution chain around the unmatched events; a missed or duplicated substitution breaks the lineup."
   ),
@@ -220,6 +225,8 @@ DQ_FINDING_CATALOG <- list(
       dq_team(ctx, r$team_id), dq_num(r$invalid_states), dq_num(r$total_states),
       r$min_reported_n_on, r$max_reported_n_on
     ),
+    gameplay = function(r) r$invalid_gameplay_states,
+    admin_effect = "No play happens in these states (only substitutions or timeouts), so no points or possessions go to a wrong five.",
     effect = "Minutes and points in those states go to lineups that aren't real fives, in on/off and Lineup Data.",
     fix = "Fix the substitutions that leave too many or too few players on court."
   ),
@@ -336,10 +343,10 @@ DQ_FINDING_CATALOG <- list(
     describe = function(r, ctx) {
       before <- identical(r$likely_misplaced_side, "before_jump")
       sprintf(
-        "%s: %s event(s) stamped %s left (%s scoring) sit %s a run stamped %s left.%s",
+        "%s: %s event(s) stamped %s left (%s plays, %s scoring) sit %s a run stamped %s left.%s",
         r$period, r$misplaced_events,
         if (before) r$before_clock_left else r$after_clock_left,
-        r$misplaced_scoring_plays,
+        r$misplaced_gameplay_events %||% "?", r$misplaced_scoring_plays,
         if (before) "before" else "after",
         if (before) r$after_clock_left else r$before_clock_left,
         switch(as.character(r$review_status),
@@ -356,6 +363,8 @@ DQ_FINDING_CATALOG <- list(
       }
     },
     note = function(r) r$diagnosis,
+    gameplay = function(r) r$misplaced_gameplay_events,
+    admin_effect = "Plays and scores sit at the right time; only lineup changes are misplaced, so the gameflow bars and minutes by period can shift.",
     effect = "Gameflow, quarter cards, quarter and clutch splits place these events at the wrong time; scores and counts still add up.",
     fix = "Correct the clock on the misplaced events in the ETL (like the game-381 source correction in etl_onoff.R) and reload the game."
   ),
@@ -376,7 +385,9 @@ DQ_FINDING_CATALOG <- list(
         sprintf("after a %s event", dq_period_name(r$prev_quarter))
       else "re-entering Q4 outside the last five minutes"
     ),
-    events = function(r) as.character(r$action_id),
+    events = function(r) sprintf("%s (%s)", r$action_id, r$action_type %||% "event"),
+    gameplay = function(r) r$gameplay_events,
+    admin_effect = "The event is not a play: it carries no points or possessions, so clutch numbers don't change.",
     effect = "The clutch filter (Lineup Data, Team Ratings) can leave this play out of a clutch window, or count it in one.",
     fix = "Correct the event's period or clock so it falls in its real window."
   ),
@@ -433,6 +444,24 @@ dq_rows <- function(df) {
   lapply(seq_len(nrow(df)), function(i) as.list(df[i, , drop = FALSE]))
 }
 
+# Israeli game_year is the season-ending year: 2027 is the 2026-27 season.
+dq_season_label <- function(game_year) {
+  y <- suppressWarnings(as.integer(game_year))
+  ifelse(is.na(y), "", sprintf("%d-%02d", y - 1L, y %% 100L))
+}
+
+dq_plural <- function(n, one, many = paste0(one, "s")) {
+  sprintf("%d %s", n, if (n == 1) one else many)
+}
+
+dq_empty_findings <- function() {
+  data.frame(check_id = character(), tier = character(), rank = integer(), entity = character(),
+             non_gameplay = logical(), season = integer(), game_id = integer(),
+             player_key = character(), player_name = character(), team_id = integer(),
+             player_id = integer(), text = character(), events = character(), note = character(),
+             effect = character(), fix = character(), stringsAsFactors = FALSE)
+}
+
 dq_build_findings <- function(summary_df, details_by_check, ctx) {
   open <- summary_df$check_id[summary_df$status %in% c("fail", "warning")]
   out <- list()
@@ -454,6 +483,15 @@ dq_build_findings <- function(summary_df, details_by_check, ctx) {
     for (r in dq_rows(details)) {
       text <- entry$describe(r, ctx)
       if (is.null(text) || !nzchar(text)) next
+      # Substitutions and timeouts move no stat: a finding whose events are all
+      # of that kind drops two tiers and says what it does affect.
+      plays <- if (is.function(entry$gameplay)) suppressWarnings(as.numeric(entry$gameplay(r))) else NA_real_
+      non_gameplay <- isTRUE(plays == 0)
+      rank <- match(entry$tier, DQ_TIERS)
+      if (non_gameplay) {
+        rank <- min(rank + 2L, length(DQ_TIERS))
+        text <- paste(text, "Only substitutions or timeouts are involved.")
+      }
       games <- if (identical(entry$entity, "game")) {
         if (is.function(entry$games)) entry$games(r) else as.integer(r$game_id)
       } else NA_integer_
@@ -464,28 +502,28 @@ dq_build_findings <- function(summary_df, details_by_check, ctx) {
         paste(r$team_id %||% "", toupper(trimws(player_name)), sep = ":")
       } else NA_character_
       for (g in games) {
+        season <- if (!is.na(g)) {
+          ctx$games$game_year[match(g, ctx$games$game_id)]
+        } else {
+          suppressWarnings(as.integer(r$game_year %||% NA))
+        }
         add(
-          check_id = check_id, tier = entry$tier, entity = entry$entity,
+          check_id = check_id, tier = DQ_TIERS[rank], rank = rank, entity = entry$entity,
+          non_gameplay = non_gameplay, season = as.integer(season %||% NA),
           game_id = g, player_key = player_key, player_name = player_name,
           team_id = suppressWarnings(as.integer(r$team_id %||% NA)),
           player_id = suppressWarnings(as.integer(r$canonical_player_id %||% r$player_id %||% NA)),
           text = text,
           events = if (is.function(entry$events)) entry$events(r) else "",
           note = if (is.function(entry$note)) as.character(entry$note(r) %||% "") else "",
-          effect = entry$effect, fix = entry$fix
+          effect = if (non_gameplay) entry$admin_effect %||% entry$effect else entry$effect,
+          fix = entry$fix
         )
       }
     }
   }
-  if (!length(out)) {
-    return(data.frame(check_id = character(), tier = character(), entity = character(),
-                      game_id = integer(), player_key = character(), player_name = character(), team_id = integer(),
-                      player_id = integer(), text = character(), events = character(),
-                      note = character(), effect = character(), fix = character(),
-                      stringsAsFactors = FALSE))
-  }
+  if (!length(out)) return(dq_empty_findings())
   findings <- do.call(rbind, out)
-  findings$rank <- match(findings$tier, DQ_TIERS)
   findings[order(findings$rank, findings$check_id), , drop = FALSE]
 }
 
@@ -499,14 +537,18 @@ dq_pill <- function(tier) {
 
 dq_game_heading <- function(game_id, ctx) {
   g <- ctx$games[ctx$games$game_id == game_id, , drop = FALSE]
-  if (!nrow(g)) return(list(title = sprintf("Game %s", game_id), meta = ""))
+  if (!nrow(g)) return(list(title = sprintf("Game %s", game_id), meta = sprintf("Game %s", game_id), date = ""))
   g <- g[order(!g$is_home), , drop = FALSE]
   d <- as.Date(g$game_date[1])
   date_txt <- if (is.na(d)) "" else sprintf("%d %s %s", as.integer(format(d, "%d")), month.abb[as.integer(format(d, "%m"))], format(d, "%Y"))
   score <- if (nrow(g) >= 2) {
     sprintf("%s %s&ndash;%s %s", dq_escape(g$team_name[1]), dq_num(g$team_score[1]), dq_num(g$team_score[2]), dq_escape(g$team_name[2]))
   } else dq_escape(g$team_name[1])
-  list(title = score, meta = sprintf("Game %s &middot; %s", game_id, date_txt))
+  list(
+    title = score,
+    meta = sprintf("Game %s &middot; %s &middot; %s", game_id, date_txt, dq_season_label(g$game_year[1])),
+    date = if (is.na(d)) "" else format(d, "%Y%m%d")
+  )
 }
 
 dq_finding_items <- function(f) {
@@ -524,8 +566,67 @@ dq_finding_items <- function(f) {
   }, character(1)), collapse = "")
 }
 
+# Headline, severity tallies and the worst-first list for one season (or all).
+# Dataset-wide findings have no season and appear in every view.
+dq_summary_html <- function(findings, summary_df) {
+  game_f <- findings[findings$entity == "game", , drop = FALSE]
+  game_ids <- unique(game_f$game_id)
+  worst <- vapply(game_ids, function(g) min(game_f$rank[game_f$game_id == g]), numeric(1))
+  n_critical <- sum(worst == 1)
+  n_high <- sum(worst == 2)
+  n_fix <- n_critical + n_high
+  n_rest <- length(game_ids) - n_fix
+  n_players <- length(unique(findings$player_key[findings$entity == "player" & findings$rank <= 2]))
+  lede <- sprintf(
+    "%s a data fix: %d with critical problems, %d with high. %s to repair.",
+    if (n_fix == 1) "1 game needs" else sprintf("%d games need", n_fix), n_critical, n_high,
+    dq_plural(n_players, "player identity", "player identities")
+  )
+  sublede <- sprintf(
+    "Another %s only medium or low findings. %d of %d checks pass.",
+    if (n_rest == 1) "1 game carries" else sprintf("%d games carry", n_rest),
+    sum(summary_df$status == "pass"), nrow(summary_df)
+  )
+
+  tallies <- vapply(DQ_TIERS, function(t) {
+    f <- findings[findings$tier == t, , drop = FALSE]
+    n_games <- length(unique(stats::na.omit(f$game_id)))
+    sprintf(
+      '<div class="tally %s"><span class="tally-label">%s</span><strong class="mono">%d</strong><span class="tally-unit">problem types</span><span class="tally-sub">%s</span></div>',
+      t, DQ_TIER_LABELS[[t]], nrow(unique(f[, c("check_id", "non_gameplay")])),
+      dq_escape(sprintf("%s. %s.", DQ_TIER_MEANING[[t]], dq_plural(n_games, "game")))
+    )
+  }, character(1))
+
+  groups <- unique(findings[, c("check_id", "rank", "tier", "non_gameplay"), drop = FALSE])
+  groups <- groups[order(groups$rank, groups$non_gameplay, groups$check_id), , drop = FALSE]
+  lines <- vapply(seq_len(nrow(groups)), function(i) {
+    f <- findings[findings$check_id == groups$check_id[i] & findings$non_gameplay == groups$non_gameplay[i], , drop = FALSE]
+    reach <- if (all(f$entity == "game")) {
+      dq_plural(length(unique(f$game_id)), "game")
+    } else if (all(f$entity == "player")) {
+      dq_plural(length(unique(f$player_key)), "player")
+    } else {
+      dq_plural(nrow(f), "item")
+    }
+    title <- DQ_FINDING_CATALOG[[groups$check_id[i]]]$headline %||% summary_df$title[summary_df$check_id == groups$check_id[i]][1]
+    if (isTRUE(groups$non_gameplay[i])) title <- paste(title, "(substitutions or timeouts only)")
+    sprintf('<li>%s<span class="line">%s</span><span class="reach mono">%s</span></li>',
+            dq_pill(groups$tier[i]), dq_escape(title), reach)
+  }, character(1))
+
+  paste0(
+    sprintf('<h1>%s</h1><p class="sublede">%s</p>', dq_escape(lede), dq_escape(sublede)),
+    '<div class="tallies">', paste(tallies, collapse = ""), "</div>",
+    '<h2 class="summary-title">What needs attention, worst first</h2>',
+    if (length(lines)) sprintf('<ol class="summary-list">%s</ol>', paste(lines, collapse = ""))
+    else '<p class="empty">No open findings in this season.</p>'
+  )
+}
+
 write_dq_findings_html <- function(summary_df, details_by_check, ctx, path, meta) {
   ctx$clock_run_games <- as.integer(details_by_check[["AK_misplaced_clock_runs"]]$game_id)
+  if (is.null(ctx$games$game_year)) ctx$games$game_year <- rep(NA_integer_, nrow(ctx$games))
   findings <- dq_build_findings(summary_df, details_by_check, ctx)
   exceptions <- findings[findings$entity == "exception", , drop = FALSE]
   findings <- findings[findings$entity != "exception", , drop = FALSE]
@@ -533,45 +634,25 @@ write_dq_findings_html <- function(summary_df, details_by_check, ctx, path, meta
   player_f <- findings[findings$entity == "player", , drop = FALSE]
   data_f <- findings[findings$entity == "dataset", , drop = FALSE]
 
-  # Summary: one line per open check, worst first, with its reach.
-  open_checks <- unique(findings$check_id)
-  summary_lines <- vapply(open_checks, function(id) {
-    f <- findings[findings$check_id == id, , drop = FALSE]
-    reach <- if (all(f$entity == "game")) {
-      sprintf("%d game%s", length(unique(f$game_id)), if (length(unique(f$game_id)) == 1) "" else "s")
-    } else if (all(f$entity == "player")) {
-      n <- length(unique(f$player_key)); sprintf("%d player%s", n, if (n == 1) "" else "s")
-    } else {
-      sprintf("%d item%s", nrow(f), if (nrow(f) == 1) "" else "s")
-    }
-    title <- DQ_FINDING_CATALOG[[id]]$headline %||% summary_df$title[summary_df$check_id == id][1]
-    sprintf('<li>%s<span class="line">%s</span><span class="reach mono">%s</span></li>',
-            dq_pill(f$tier[1]), dq_escape(title), reach)
-  }, character(1))
-  tier_counts <- vapply(DQ_TIERS, function(t) {
-    f <- findings[findings$tier == t, , drop = FALSE]
-    sprintf(
-      '<div class="tally %s"><span class="tally-label">%s</span><strong class="mono">%d</strong><span class="tally-unit">problem types</span><span class="tally-sub">%s</span></div>',
-      t, DQ_TIER_LABELS[[t]], length(unique(f$check_id)),
-      dq_escape(sprintf("%s. %d game%s.", DQ_TIER_MEANING[[t]],
-                        length(unique(stats::na.omit(f$game_id))),
-                        if (length(unique(stats::na.omit(f$game_id))) == 1) "" else "s"))
-    )
-  }, character(1))
+  seasons <- sort(unique(stats::na.omit(findings$season)), decreasing = TRUE)
+  in_season <- function(y) findings[is.na(findings$season) | findings$season == y, , drop = FALSE]
+  views <- c(
+    sprintf('<div class="season-view" data-season="all">%s</div>', dq_summary_html(findings, summary_df)),
+    vapply(seasons, function(y) {
+      sprintf('<div class="season-view" data-season="%s" hidden>%s</div>', y, dq_summary_html(in_season(y), summary_df))
+    }, character(1))
+  )
+  season_options <- paste(sprintf('<option value="%s">%s</option>', seasons, dq_season_label(seasons)), collapse = "")
 
-  # Games, worst first: best tier, then number of problems.
   game_ids <- unique(game_f$game_id)
-  game_order <- if (length(game_ids)) {
-    best <- vapply(game_ids, function(g) min(game_f$rank[game_f$game_id == g]), numeric(1))
-    n <- vapply(game_ids, function(g) sum(game_f$game_id == g), numeric(1))
-    game_ids[order(best, -n, -game_ids)]
-  } else integer()
-  game_cards <- vapply(game_order, function(g) {
+  game_cards <- vapply(game_ids, function(g) {
     f <- game_f[game_f$game_id == g, , drop = FALSE]
     h <- dq_game_heading(g, ctx)
     sprintf(
-      '<article class="entry %s" id="game-%s"><header><p class="meta mono">%s</p><h3>%s</h3><p class="count">%d problem%s</p></header><ul class="findings">%s</ul></article>',
-      f$tier[1], g, h$meta, h$title, nrow(f), if (nrow(f) == 1) "" else "s", dq_finding_items(f)
+      paste0('<article class="entry %s" id="game-%s" data-season="%s" data-rank="%d" data-problems="%d" data-date="%s">',
+             '<header><p class="meta mono">%s</p><h3>%s</h3><p class="count">%s</p></header><ul class="findings">%s</ul></article>'),
+      f$tier[1], g, f$season[1] %||% "", min(f$rank), nrow(f), h$date,
+      h$meta, h$title, dq_plural(nrow(f), "problem"), dq_finding_items(f)
     )
   }, character(1))
 
@@ -581,13 +662,14 @@ write_dq_findings_html <- function(summary_df, details_by_check, ctx, path, meta
     ids <- stats::na.omit(f$player_id)
     name <- if (length(ids)) dq_player(ctx, f$team_id[1], ids[1]) else f$player_name[1]
     sprintf(
-      '<article class="entry %s"><header><p class="meta mono">%s%s</p><h3>%s</h3><p class="count">%d problem%s</p></header><ul class="findings">%s</ul></article>',
-      f$tier[1], dq_escape(if (!is.na(f$team_id[1])) dq_team(ctx, f$team_id[1]) else ""),
+      paste0('<article class="entry %s" data-season="%s" data-rank="%d" data-problems="%d" data-date="">',
+             '<header><p class="meta mono">%s%s</p><h3>%s</h3><p class="count">%s</p></header><ul class="findings">%s</ul></article>'),
+      f$tier[1], paste(unique(stats::na.omit(f$season)), collapse = " "), min(f$rank), nrow(f),
+      dq_escape(if (!is.na(f$team_id[1])) dq_team(ctx, f$team_id[1]) else ""),
       if (length(ids)) sprintf(" &middot; ID %s", ids[1]) else "",
-      dq_escape(name), nrow(f), if (nrow(f) == 1) "" else "s", dq_finding_items(f)
+      dq_escape(name), dq_plural(nrow(f), "problem"), dq_finding_items(f)
     )
   }, character(1))
-  player_cards <- player_cards[order(match(vapply(players, function(k) player_f$tier[player_f$player_key == k][1], ""), DQ_TIERS))]
 
   data_items <- if (nrow(data_f)) dq_finding_items(data_f) else ""
   exception_items <- if (nrow(exceptions)) paste(sprintf("<li>%s</li>", dq_escape(exceptions$text)), collapse = "") else ""
@@ -602,24 +684,12 @@ write_dq_findings_html <- function(summary_df, details_by_check, ctx, path, meta
     ifelse(is.na(all_checks$issue_count), "", dq_escape(all_checks$issue_count)), dq_escape(all_checks$detail_file)
   ), collapse = "")
 
-  worst_game_tier <- vapply(game_ids, function(g) DQ_TIERS[min(game_f$rank[game_f$game_id == g])], "")
-  n_critical <- sum(worst_game_tier == "critical")
-  n_high <- sum(worst_game_tier == "high")
-  n_players <- length(unique(player_f$player_key[player_f$tier %in% c("critical", "high")]))
-  lede <- sprintf(
-    "%d game%s a data fix: %d with critical problems, %d with high. %d player identit%s to repair.",
-    n_critical + n_high, if (n_critical + n_high == 1) " needs" else "s need", n_critical, n_high,
-    n_players, if (n_players == 1) "y" else "ies"
-  )
-  sublede <- sprintf(
-    "Another %d game%s only medium or low findings. %d of %d checks pass.",
-    length(game_ids) - n_critical - n_high, if (length(game_ids) - n_critical - n_high == 1) " carries" else "s carry",
-    sum(summary_df$status == "pass"), nrow(summary_df)
-  )
-
-  section <- function(id, title, sub, body) {
-    if (!nzchar(paste(body, collapse = ""))) return("")
-    sprintf('<section id="%s"><div class="section-head"><h2>%s</h2><p>%s</p></div>%s</section>', id, title, sub, paste(body, collapse = ""))
+  card_section <- function(id, title, sub, cards) {
+    if (!length(cards)) return("")
+    sprintf(
+      '<section id="%s"><div class="section-head"><h2>%s</h2><p>%s <span class="shown mono" id="%s-count"></span></p></div><div class="cards" id="%s-list">%s</div><p class="empty" id="%s-empty" hidden>Nothing in this season.</p></section>',
+      id, title, sub, id, id, paste(cards, collapse = ""), id
+    )
   }
 
   html <- paste0(
@@ -629,23 +699,67 @@ write_dq_findings_html <- function(summary_df, details_by_check, ctx, path, meta
     '<link rel="preconnect" href="https://fonts.googleapis.com">',
     '<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,600;9..40,700&family=JetBrains+Mono:wght@400;500&display=swap">',
     "<style>", DQ_FINDINGS_CSS, "</style></head><body><main>",
-    '<header class="masthead"><p class="brand">IBPL Analytics &middot; Data health</p>',
-    sprintf('<h1>%s</h1><p class="sublede">%s</p>', dq_escape(lede), dq_escape(sublede)),
+    '<header class="masthead"><div class="topline"><p class="brand">IBPL Analytics &middot; Data health</p>',
+    '<div class="controls" role="group" aria-label="Season and order">',
+    '<label for="season-filter">Season</label>',
+    '<select id="season-filter"><option value="all">All seasons</option>', season_options, "</select>",
+    '<label for="order-by">Order</label>',
+    '<select id="order-by"><option value="severity">Worst first</option><option value="newest">Newest games first</option><option value="oldest">Oldest games first</option></select>',
+    "</div></div>",
+    paste(views, collapse = ""),
     sprintf('<p class="run mono">Run %s &middot; schema %s &middot; overall <span class="status %s">%s</span></p></header>',
             dq_escape(meta$run_time), dq_escape(meta$schema), tolower(meta$status), dq_escape(meta$status)),
-    '<section class="summary"><div class="tallies">', paste(tier_counts, collapse = ""), "</div>",
-    '<h2 class="summary-title">What needs attention, worst first</h2><ol class="summary-list">', paste(summary_lines, collapse = ""), "</ol></section>",
-    section("games", "Games", "Each game lists every problem found in it, worst game first.", game_cards),
-    section("players", "Players", "Identities that are split, stale or placeholders.", player_cards),
-    section("dataset", "Dataset-wide", "Problems that aren't tied to one game or player.", sprintf('<ul class="findings flat">%s</ul>', data_items)),
+    card_section("games", "Games", "Each game lists every problem found in it.", game_cards),
+    card_section("players", "Players", "Identities that are split, stale or placeholders.", player_cards),
+    if (nzchar(data_items)) sprintf('<section id="dataset"><div class="section-head"><h2>Dataset-wide</h2><p>Problems that aren&rsquo;t tied to one game or player; shown in every season.</p></div><ul class="findings flat">%s</ul></section>', data_items) else "",
     if (nzchar(exception_items)) sprintf('<section id="exceptions"><div class="section-head"><h2>Reviewed exceptions</h2><p>Known and expected; no change needed.</p></div><ul class="plain">%s</ul></section>', exception_items) else "",
     '<section id="checks"><details><summary>All ', nrow(summary_df), ' checks</summary><div class="table-wrap"><table><thead><tr><th>Check</th><th>What it tests</th><th>Status</th><th class="num">Issues</th><th>Detail CSV</th></tr></thead><tbody>',
     check_rows, "</tbody></table></div></details></section>",
-    "</main></body></html>"
+    "</main><script>", DQ_FINDINGS_JS, "</script></body></html>"
   )
   writeLines(enc2utf8(html), path, useBytes = TRUE)
   invisible(list(path = path, findings = findings))
 }
+
+# Season filter and ordering. Summary views are pre-rendered per season; cards
+# are shown or hidden by their data-season and re-sorted in place.
+DQ_FINDINGS_JS <- "
+(function () {
+  var season = document.getElementById('season-filter');
+  var order = document.getElementById('order-by');
+  if (!season || !order) return;
+  function byDate(a, b) { return (a.dataset.date || '').localeCompare(b.dataset.date || ''); }
+  function compare(a, b) {
+    var rank = a.dataset.rank - b.dataset.rank;
+    if (order.value === 'newest') return byDate(b, a) || rank;
+    if (order.value === 'oldest') return byDate(a, b) || rank;
+    return rank || (b.dataset.problems - a.dataset.problems) || byDate(b, a);
+  }
+  function apply() {
+    var s = season.value;
+    document.querySelectorAll('.season-view').forEach(function (view) {
+      view.hidden = view.dataset.season !== s;
+    });
+    ['games', 'players'].forEach(function (id) {
+      var list = document.getElementById(id + '-list');
+      if (!list) return;
+      var cards = Array.prototype.slice.call(list.children);
+      var shown = 0;
+      cards.forEach(function (card) {
+        var match = s === 'all' || (' ' + card.dataset.season + ' ').indexOf(' ' + s + ' ') >= 0;
+        card.hidden = !match;
+        if (match) shown++;
+      });
+      cards.sort(compare).forEach(function (card) { list.appendChild(card); });
+      document.getElementById(id + '-count').textContent = shown + ' shown';
+      document.getElementById(id + '-empty').hidden = shown > 0;
+    });
+  }
+  season.addEventListener('change', apply);
+  order.addEventListener('change', apply);
+  apply();
+})();
+"
 
 DQ_FINDINGS_CSS <- "
 :root{
@@ -678,11 +792,21 @@ DQ_FINDINGS_CSS <- "
   --pass:#5fbf85;
 }
 *{box-sizing:border-box}
+[hidden]{display:none!important}
 body{margin:0;background:var(--ground);color:var(--ink);font:15px/1.55 'DM Sans',system-ui,-apple-system,'Segoe UI',sans-serif;padding-inline:20px;padding-block:32px 64px}
 main{max-width:1040px;margin:0 auto;display:grid;gap:40px}
 .mono{font-family:'JetBrains Mono',ui-monospace,Consolas,monospace;font-variant-numeric:tabular-nums}
 h1,h2,h3{text-wrap:balance;margin:0}
 .masthead{display:grid;gap:10px}
+.topline{display:flex;flex-wrap:wrap;gap:10px 24px;align-items:center;justify-content:space-between}
+.controls{display:flex;flex-wrap:wrap;gap:8px 10px;align-items:center;font-size:13px;color:var(--muted)}
+.controls label{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase}
+.controls select{font:inherit;font-size:13.5px;color:var(--ink);background:var(--surface);border:1px solid var(--rule);border-radius:6px;padding:6px 28px 6px 10px}
+.controls select:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+.season-view{display:grid;gap:18px}
+.cards{display:grid;gap:14px}
+.shown{color:var(--muted);font-size:12px;margin-left:6px}
+.empty{margin:0;color:var(--muted)}
 .brand{margin:0;color:var(--brand);font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase}
 .masthead h1{font-size:clamp(24px,3.4vw,34px);line-height:1.2;font-weight:600;max-width:32ch}
 .sublede{margin:0;color:var(--muted);font-size:16px;max-width:60ch}

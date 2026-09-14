@@ -48,13 +48,46 @@ fixture <- function() {
     )
   )
   ctx <- list(
-    games = data.frame(game_id = c(139L, 139L), game_date = as.Date("2025-11-02"), team_id = c(6L, 13L),
-                       team_name = c("Bnei Herzliya", "M. Raanana"), team_score = c(89, 79), is_home = c(TRUE, FALSE)),
+    games = data.frame(game_id = c(139L, 139L, 500L), game_year = c(2026L, 2026L, 2025L),
+                       game_date = as.Date(c("2025-11-02", "2025-11-02", "2024-12-01")), team_id = c(6L, 13L, 4L),
+                       team_name = c("Bnei Herzliya", "M. Raanana", "Hapoel Jerusalem"), team_score = c(89, 79, 80),
+                       is_home = c(TRUE, FALSE, TRUE)),
     teams = data.frame(team_id = c(6L, 9L, 13L), team_name = c("Bnei Herzliya", "Ness Ziona", "M. Raanana")),
     players = data.frame(team_id = 9L, player_id = 1110L, firstname = "Noam", lastname = "Avivi")
   )
   list(summary = summary_df, details = details, ctx = ctx)
 }
+
+test_that("a finding that only involves substitutions or timeouts drops two tiers", {
+  f <- fixture()
+  f$summary <- rbind(f$summary, data.frame(
+    check_id = "AK_misplaced_clock_runs", severity = "warning", status = "warning", row_count = 2,
+    issue_count = 2, title = "Clock runs", detail_file = "", error_message = NA_character_
+  ))
+  f$details$AK_misplaced_clock_runs <- data.frame(
+    game_id = c(398L, 399L), period = c("Q2", "Q3"), likely_misplaced_side = "before_jump",
+    misplaced_events = c(37, 11), misplaced_gameplay_events = c(19, 0), misplaced_scoring_plays = c(2, 0),
+    before_first_id = c(1, 3), before_last_id = c(2, 4), before_clock_left = c("0:24 to 0:00", "0:16 to 0:00"),
+    after_first_id = c(5, 7), after_last_id = c(6, 8), after_clock_left = c("8:00 to 0:00", "9:51 to 0:04"),
+    review_status = c("verified", "likely"), diagnosis = ""
+  )
+  findings <- dq_build_findings(f$summary, f$details, f$ctx)
+  ak <- findings[findings$check_id == "AK_misplaced_clock_runs", , drop = FALSE]
+  expect_identical(ak$tier[ak$game_id == 398L], "high")
+  expect_identical(ak$tier[ak$game_id == 399L], "low")
+  expect_match(ak$text[ak$game_id == 399L], "Only substitutions or timeouts are involved.", fixed = TRUE)
+  expect_match(ak$effect[ak$game_id == 399L], "only lineup changes are misplaced", fixed = TRUE)
+})
+
+test_that("findings carry their season: games from the schedule, players from the check", {
+  f <- fixture()
+  f$details$C_active_correction_residue_game_scoped_tables$game_year <- 2026L
+  findings <- dq_build_findings(f$summary, f$details, f$ctx)
+  expect_identical(findings$season[findings$game_id %in% 139L], 2026L)
+  expect_identical(findings$season[findings$game_id %in% 500L], 2025L)
+  expect_identical(unique(findings$season[findings$check_id == "C_active_correction_residue_game_scoped_tables"]), 2026L)
+  expect_identical(dq_season_label(2027L), "2026-27")
+})
 
 test_that("findings are ordered worst first and passing checks are left out", {
   f <- fixture()
@@ -81,4 +114,9 @@ test_that("the page leads with the games that need a fix and shows both score si
   expect_match(html, "Bnei Herzliya 89&ndash;79 M. Raanana", fixed = TRUE)
   expect_match(html, "The opponent scored 79 officially; lineup defense counts 79.", fixed = TRUE)
   expect_lt(regexpr('id="game-139"', html), regexpr('id="game-500"', html))
+  # One summary view for all seasons plus one per season, and the controls.
+  expect_match(html, '<div class="season-view" data-season="all">', fixed = TRUE)
+  expect_match(html, '<div class="season-view" data-season="2025" hidden>', fixed = TRUE)
+  expect_match(html, '<option value="2026">2025-26</option>', fixed = TRUE)
+  expect_match(html, 'id="game-500" data-season="2025"', fixed = TRUE)
 })

@@ -83,6 +83,16 @@ dq_get_query <- function(con, sql) {
   DBI::dbGetQuery(con, sql, immediate = TRUE)
 }
 
+# Event types that carry no play: they change who is on court or pause the
+# game, but never score, shoot, rebound or end a possession. Checks that point
+# at specific events count the gameplay among them, so the findings page can
+# rank a substitution-only problem well below one that moves a basket.
+DQ_NON_GAMEPLAY_TYPES <- c("substitution", "timeout", "challenge", "officialReview")
+
+dq_non_gameplay_sql <- function() {
+  paste0("(", paste(sprintf("'%s'", DQ_NON_GAMEPLAY_TYPES), collapse = ", "), ")")
+}
+
 # Names for the findings page: the games, teams and players its detail rows
 # mention. Ids are integers parsed from the details, never raw strings. An
 # immediate query with no rows returns no columns, so each lookup falls back
@@ -107,10 +117,10 @@ dq_findings_context <- function(con, schema, details_by_check) {
   rosters <- quote_table(con, schema, "full_rosters")
   list(
     games = lookup(
-      paste0("SELECT game_id, game_date, team_id, team_name, team_score, is_home FROM ", schedule,
+      paste0("SELECT game_id, game_year, game_date, team_id, team_name, team_score, is_home FROM ", schedule,
              " WHERE game_id IN (%s)"),
       ints(c("game_id", "game_ids", "affected_game_ids")),
-      data.frame(game_id = integer(), game_date = as.Date(character()), team_id = integer(),
+      data.frame(game_id = integer(), game_year = integer(), game_date = as.Date(character()), team_id = integer(),
                  team_name = character(), team_score = numeric(), is_home = logical())
     ),
     teams = lookup(
@@ -408,6 +418,7 @@ build_checks <- function(con, schema) {
   processed <- quote_table(con, schema, "etl_processed_games")
   actions <- quote_table(con, schema, "actions_clean")
   df_long <- quote_table(con, schema, "df_pts_poss_lineups_longer_mv")
+  non_gameplay <- dq_non_gameplay_sql()
   pff <- quote_table(con, schema, "player_four_factors_by_game")
   tmg <- quote_table(con, schema, "team_metrics_by_game_mv")
   lff <- quote_table(con, schema, "lineup_four_factors_by_game")
@@ -1163,7 +1174,11 @@ build_checks <- function(con, schema) {
              count(*) FILTER (
                WHERE lk.lineup_hash IS NULL
                   OR lk.players_on <> 5
-             )::bigint AS unmatched_rows
+             )::bigint AS unmatched_rows,
+             count(*) FILTER (
+               WHERE (lk.lineup_hash IS NULL OR lk.players_on <> 5)
+                 AND coalesce(d.type, '') NOT IN %s
+             )::bigint AS unmatched_gameplay_rows
            FROM %s d
            LEFT JOIN lineup_keys lk
              ON lk.game_id = d.game_id
@@ -1188,6 +1203,7 @@ build_checks <- function(con, schema) {
            r.game_id,
            r.total_rows,
            r.unmatched_rows,
+           r.unmatched_gameplay_rows,
            round(100.0 * r.unmatched_rows / nullif(r.total_rows, 0), 4) AS unmatched_pct,
            t.overall_total_rows,
            t.overall_unmatched_rows,
@@ -1206,7 +1222,7 @@ build_checks <- function(con, schema) {
          CROSS JOIN affected_totals a
          WHERE r.unmatched_rows > 0
          ORDER BY r.unmatched_rows DESC, r.game_id",
-        ll, df_long
+        ll, non_gameplay, df_long
       )
     ),
     list(
@@ -1214,7 +1230,7 @@ build_checks <- function(con, schema) {
       title = "Lineup states do not contain exactly five distinct ON players",
       severity = "error",
       purpose = "Counts lineup-state rows with missing hashes or player counts other than five.",
-      required_tables = c("lineups_lookup"),
+      required_tables = c("lineups_lookup", "df_pts_poss_lineups_longer_mv"),
       problem_count_col = "invalid_states",
       sql = sprintf(
         "WITH states AS (
@@ -1229,16 +1245,28 @@ build_checks <- function(con, schema) {
            FROM %s
            GROUP BY game_id, team_id, id
          ),
+         -- Whether each state's event is a play. A state at a substitution or
+         -- timeout credits no stats to a wrong five; an event missing from the
+         -- event table counts as a play.
+         event_types AS (
+           SELECT game_id, id, bool_or(coalesce(type, '') NOT IN %s) AS gameplay
+           FROM %s
+           GROUP BY game_id, id
+         ),
          quality AS (
            SELECT
-             *,
+             s.*,
+             coalesce(e.gameplay, TRUE) AS gameplay,
              (
                lineup_hash IS NULL
                OR reported_n_on IS DISTINCT FROM 5
                OR on_rows <> 5
                OR distinct_on_players <> 5
              ) AS invalid
-           FROM states
+           FROM states s
+           LEFT JOIN event_types e
+             ON e.game_id = s.game_id
+            AND e.id = s.id
          ),
          totals AS (
            SELECT
@@ -1251,6 +1279,7 @@ build_checks <- function(con, schema) {
            q.team_id,
            count(*)::bigint AS total_states,
            count(*) FILTER (WHERE q.invalid)::bigint AS invalid_states,
+           count(*) FILTER (WHERE q.invalid AND q.gameplay)::bigint AS invalid_gameplay_states,
            round(
              100.0 * count(*) FILTER (WHERE q.invalid) / nullif(count(*), 0),
              4
@@ -1272,7 +1301,7 @@ build_checks <- function(con, schema) {
            t.overall_invalid_states
          HAVING count(*) FILTER (WHERE q.invalid) > 0
          ORDER BY invalid_states DESC, q.game_id, q.team_id",
-        ll
+        ll, non_gameplay, df_long
       )
     ),
     list(
@@ -2110,7 +2139,8 @@ build_checks <- function(con, schema) {
              id,
              max(quarter)::int AS quarter,
              max(end_game_seconds_remaining)::numeric AS game_clock,
-             bool_or(type IN ('shot', 'freeThrow') AND parameters_made = 'made') AS scoring
+             bool_or(type IN ('shot', 'freeThrow') AND parameters_made = 'made') AS scoring,
+             bool_or(coalesce(type, '') NOT IN %s) AS gameplay
            FROM %s
            GROUP BY game_id, id
          ),
@@ -2156,12 +2186,14 @@ build_checks <- function(con, schema) {
              j.game_id, j.quarter, j.resume_id, j.jump_seconds,
              count(*) FILTER (WHERE o.rn < j.resume_rn) AS before_events,
              count(*) FILTER (WHERE o.rn < j.resume_rn AND o.scoring) AS before_scoring,
+             count(*) FILTER (WHERE o.rn < j.resume_rn AND o.gameplay) AS before_gameplay,
              min(o.id) FILTER (WHERE o.rn < j.resume_rn) AS before_first_id,
              max(o.id) FILTER (WHERE o.rn < j.resume_rn) AS before_last_id,
              max(o.game_clock) FILTER (WHERE o.rn < j.resume_rn) AS before_clock_from,
              min(o.game_clock) FILTER (WHERE o.rn < j.resume_rn) AS before_clock_to,
              count(*) FILTER (WHERE o.rn >= j.resume_rn) AS after_events,
              count(*) FILTER (WHERE o.rn >= j.resume_rn AND o.scoring) AS after_scoring,
+             count(*) FILTER (WHERE o.rn >= j.resume_rn AND o.gameplay) AS after_gameplay,
              max(o.id) FILTER (WHERE o.rn >= j.resume_rn) AS after_last_id,
              max(o.game_clock) FILTER (WHERE o.rn >= j.resume_rn) AS after_clock_from,
              min(o.game_clock) FILTER (WHERE o.rn >= j.resume_rn) AS after_clock_to
@@ -2202,6 +2234,8 @@ build_checks <- function(con, schema) {
              AS misplaced_events,
            CASE WHEN c.before_events <= c.after_events THEN c.before_scoring ELSE c.after_scoring END
              AS misplaced_scoring_plays,
+           CASE WHEN c.before_events <= c.after_events THEN c.before_gameplay ELSE c.after_gameplay END
+             AS misplaced_gameplay_events,
            c.before_first_id,
            c.before_last_id,
            c.before_events,
@@ -2229,7 +2263,7 @@ build_checks <- function(con, schema) {
          LEFT JOIN diagnoses d
            ON d.game_id = c.game_id AND d.resume_id = c.resume_id
          ORDER BY misplaced_scoring_plays DESC, c.game_id, c.resume_id",
-        df_long
+        non_gameplay, df_long
       )
     ),
     list(
@@ -2315,7 +2349,9 @@ build_checks <- function(con, schema) {
              game_id,
              id,
              max(quarter)::int AS quarter,
-             max(end_game_seconds_remaining)::numeric AS game_clock
+             max(end_game_seconds_remaining)::numeric AS game_clock,
+             max(type) AS action_type,
+             bool_or(coalesce(type, '') NOT IN %s) AS gameplay
            FROM %s
            GROUP BY game_id, id
          ),
@@ -2348,11 +2384,13 @@ build_checks <- function(con, schema) {
            prev_clock,
            game_clock,
            exposure_type,
+           action_type,
+           CASE WHEN gameplay THEN 1 ELSE 0 END AS gameplay_events,
            1::bigint AS exposed_rows
          FROM exposed
          WHERE exposure_type IS NOT NULL
          ORDER BY game_id, action_id",
-        df_long
+        non_gameplay, df_long
       )
     ),
     list(
