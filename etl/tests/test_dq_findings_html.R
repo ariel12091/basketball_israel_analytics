@@ -89,6 +89,54 @@ test_that("a clock run that pushes the timeline forward is critical, even for su
   expect_match(html, 'Critical</span><span class="line">Events stamped with the wrong game clock</span><span class="reach mono">2 games', fixed = TRUE)
 })
 
+test_that("incomplete lineups rank by what was played under them, with the impact in the text", {
+  f <- fixture()
+  f$summary <- rbind(f$summary, data.frame(
+    check_id = "R_invalid_lineup_player_counts", severity = "error", status = "fail", row_count = 2,
+    issue_count = 15, title = "Lineups", detail_file = "", error_message = NA_character_
+  ))
+  f$details$R_invalid_lineup_player_counts <- data.frame(
+    game_id = c(399L, 178L), team_id = c(5L, 4L), total_states = c(25, 34), invalid_states = c(4, 11),
+    invalid_gameplay_states = c(0, 0), min_reported_n_on = c(0, 6), max_reported_n_on = c(4, 6),
+    invalid_lineup_seconds = c(4, 782), invalid_lineup_points_scored = c(0, 33), invalid_lineup_points_allowed = c(0, 19),
+    invalid_lineup_off_possessions = c(0, 23), invalid_lineup_def_possessions = c(0, 25)
+  )
+  lineups <- dq_build_findings(f$summary, f$details, f$ctx)
+  lineups <- lineups[lineups$check_id == "R_invalid_lineup_player_counts", , drop = FALSE]
+  expect_identical(lineups$tier[lineups$game_id == 399L], "low")
+  expect_identical(lineups$tier[lineups$game_id == 178L], "critical")
+  expect_match(lineups$text[lineups$game_id == 399L], "on court for 4 s, with 0 points scored and 0 allowed and 0 possession endings", fixed = TRUE)
+  expect_match(lineups$text[lineups$game_id == 178L], "on court for 13:02 min, with 33 points scored and 19 allowed and 48 possession endings", fixed = TRUE)
+})
+
+test_that("the summary carries the measured impact and the Actions digest repeats it", {
+  f <- fixture()
+  f$summary <- rbind(f$summary, data.frame(
+    check_id = "AK_misplaced_clock_runs", severity = "warning", status = "warning", row_count = 1,
+    issue_count = 1, title = "Clock runs", detail_file = "", error_message = NA_character_
+  ))
+  f$details$AK_misplaced_clock_runs <- data.frame(
+    game_id = 398L, period = "Q2", jump_seconds = 480, likely_misplaced_side = "before_jump",
+    misplaced_events = 37, misplaced_gameplay_events = 19, misplaced_scoring_plays = 2,
+    before_first_id = 1, before_last_id = 2, before_clock_left = "0:24 to 0:00",
+    after_first_id = 3, after_last_id = 4, after_clock_left = "8:00 to 0:00",
+    review_status = "verified", diagnosis = "", minutes_moved = 51,
+    minutes_moved_by_team = "Bnei Herzliya 21.7; Hapoel Eilat 29.4",
+    largest_player_change = "ZACK BRYANT (Bnei Herzliya) credited 9.1 min too few",
+    share_of_team_player_minutes = 0.1469, impact_note = "Minutes estimated by spreading the run evenly between 10:00 and 8:00 left."
+  )
+  path <- tempfile(fileext = ".html")
+  out <- write_dq_findings_html(f$summary, f$details, f$ctx, path,
+                                meta = list(run_time = "2026-09-14 12:00", schema = "basketball_test", status = "FAIL"))
+  html <- paste(readLines(path, warn = FALSE, encoding = "UTF-8"), collapse = "
+")
+  expect_match(html, "51.0 player-minutes credited to the wrong players by misclocked events (1 game)", fixed = TRUE)
+  expect_match(html, "largest: ZACK BRYANT (Bnei Herzliya) credited 9.1 min too few.", fixed = TRUE)
+  digest <- readLines(out$digest_path, warn = FALSE, encoding = "UTF-8")
+  expect_true(any(grepl("**Measured impact:** 51.0 player-minutes", digest, fixed = TRUE)))
+  expect_true(any(grepl("| Critical | Events stamped with the wrong game clock | 1 game |", digest, fixed = TRUE)))
+})
+
 test_that("a player-minute gap under 3% of expected minutes ranks low", {
   f <- fixture()
   f$summary <- rbind(f$summary, data.frame(

@@ -93,6 +93,122 @@ dq_non_gameplay_sql <- function() {
   paste0("(", paste(sprintf("'%s'", DQ_NON_GAMEPLAY_TYPES), collapse = ", "), ")")
 }
 
+# Minutes a misplaced clock run moves between players. Canonical minutes are
+# rebuilt twice from the event table: as stored (which must reproduce the
+# stored segment durations, or the row is left unmeasured), and with the run
+# re-timed evenly into the gap it belongs in, between the last same-period
+# event before it and the event the period resumes at. Only runs before their
+# jump are measured; a run after its jump sits below the running maximum and
+# moves no minutes. The even spread makes the figures estimates.
+dq_clock_run_minutes <- function(con, schema, runs) {
+  if (is.null(runs) || !nrow(runs)) return(runs)
+  events_table <- quote_table(con, schema, "df_pts_poss_lineups_longer_mv")
+  lineups_on <- quote_table(con, schema, "lineups_lookup_on")
+  schedule <- quote_table(con, schema, "final_schedule_mv")
+  rosters <- quote_table(con, schema, "full_rosters")
+  period_end <- function(q) if (q <= 4) q * 600 else 2400 + (q - 4) * 300
+  clock_left <- function(elapsed, q) {
+    secs <- max(0, round(period_end(q) - elapsed))
+    sprintf("%d:%02d", secs %/% 60, secs %% 60)
+  }
+
+  rebuild <- function(ev, elapsed) {
+    do.call(rbind, lapply(split(seq_len(nrow(ev)), ev$team_id), function(i) {
+      e <- ev[i, , drop = FALSE]
+      e$timeline <- cummax(elapsed[i])
+      keyed <- e[!is.na(e$lineup_hash) & !is.na(e$segment_id), , drop = FALSE]
+      first <- keyed[!duplicated(paste(keyed$lineup_hash, keyed$segment_id)), , drop = FALSE]
+      first <- first[order(first$id), , drop = FALSE]
+      first$seconds <- pmax(c(first$timeline[-1], max(e$timeline)) - first$timeline, 0)
+      first[, c("team_id", "lineup_hash", "seconds", "stored_seconds")]
+    }))
+  }
+
+  measure <- function(r) {
+    g <- as.integer(r$game_id)
+    ev <- dq_get_query(con, sprintf(
+      "SELECT team_id, id, max(quarter)::int AS quarter,
+              max(event_elapsed_seconds)::numeric AS raw_elapsed,
+              max(lineup_hash) AS lineup_hash, max(segment_id)::int AS segment_id,
+              max(segment_seconds)::numeric AS stored_seconds
+       FROM %s WHERE game_id = %d
+       GROUP BY team_id, id ORDER BY team_id, id", events_table, g))
+    raw <- as.numeric(ev$raw_elapsed)
+    raw[is.na(raw)] <- -Inf
+    as_stored <- rebuild(ev, raw)
+    if (isTRUE(max(abs(as_stored$seconds - as_stored$stored_seconds), na.rm = TRUE) > 1)) {
+      stop("rebuilt minutes do not reproduce the stored segments")
+    }
+    block <- ev$id >= as.numeric(r$before_first_id) & ev$id <= as.numeric(r$before_last_id)
+    q <- ev$quarter[match(as.numeric(r$after_first_id), ev$id)]
+    resume <- max(as.numeric(ev$raw_elapsed[ev$id == as.numeric(r$after_first_id)]), na.rm = TRUE)
+    period_start <- if (q <= 4) (q - 1) * 600 else 2400 + (q - 5) * 300
+    prior <- raw[ev$quarter == q & ev$id < as.numeric(r$before_first_id) & raw <= resume]
+    start <- max(c(period_start, prior[is.finite(prior)]))
+    stamped <- raw[block]
+    lo <- min(stamped[is.finite(stamped)])
+    hi <- max(stamped[is.finite(stamped)])
+    fixed <- raw
+    fixed[block] <- if (hi > lo) start + (stamped - lo) / (hi - lo) * (resume - start) else start
+    corrected <- rebuild(ev, fixed)
+
+    hashes <- unique(stats::na.omit(ev$lineup_hash))
+    members <- dq_get_query(con, sprintf(
+      "SELECT team_id, lineup_hash, player_id FROM %s
+       WHERE game_year = (SELECT game_year FROM %s WHERE game_id = %d LIMIT 1)
+         AND lineup_hash IN (%s)
+       GROUP BY team_id, lineup_hash, player_id",
+      lineups_on, schedule, g,
+      paste(vapply(hashes, function(h) sql_string(con, h), character(1)), collapse = ",")))
+    per_player <- function(seg) {
+      m <- merge(seg[, c("team_id", "lineup_hash", "seconds")], members, by = c("team_id", "lineup_hash"))
+      stats::aggregate(seconds ~ team_id + player_id, m, sum)
+    }
+    players <- merge(per_player(as_stored), per_player(corrected), by = c("team_id", "player_id"),
+                     all = TRUE, suffixes = c("_app", "_corrected"))
+    players[is.na(players)] <- 0
+    players$change <- (players$seconds_app - players$seconds_corrected) / 60
+
+    teams <- dq_get_query(con, sprintf("SELECT team_id, team_name FROM %s WHERE game_id = %d", schedule, g))
+    names_df <- dq_get_query(con, sprintf(
+      "SELECT DISTINCT ON (team_id, player_id) team_id, player_id, firstname, lastname
+       FROM %s WHERE game_id = %d ORDER BY team_id, player_id", rosters, g))
+    team_name <- function(id) {
+      n <- teams$team_name[match(id, teams$team_id)]
+      if (length(n) && !is.na(n)) n else paste("team", id)
+    }
+    by_team <- lapply(split(players, players$team_id), function(t) {
+      list(team_id = t$team_id[1], moved = sum(abs(t$change)) / 2, player_minutes = sum(t$seconds_app) / 60)
+    })
+    worst <- players[which.max(abs(players$change)), , drop = FALSE]
+    who <- names_df[names_df$team_id == worst$team_id & names_df$player_id == worst$player_id, , drop = FALSE]
+    who <- if (nrow(who)) trimws(paste(who$firstname[1], who$lastname[1])) else paste("player", worst$player_id)
+    data.frame(
+      minutes_moved = round(sum(vapply(by_team, `[[`, numeric(1), "moved")), 1),
+      minutes_moved_by_team = paste(vapply(by_team, function(t) sprintf("%s %.1f", team_name(t$team_id), t$moved), character(1)), collapse = "; "),
+      largest_player_change = sprintf("%s (%s) credited %.1f min too %s", who, team_name(worst$team_id),
+                                      abs(worst$change), if (worst$change > 0) "many" else "few"),
+      share_of_team_player_minutes = round(max(vapply(by_team, function(t) t$moved / t$player_minutes, numeric(1))), 4),
+      impact_note = sprintf("Minutes estimated by spreading the run evenly between %s and %s left.",
+                            clock_left(start, q), clock_left(resume, q)),
+      stringsAsFactors = FALSE
+    )
+  }
+
+  unmeasured <- function(note) {
+    data.frame(minutes_moved = NA_real_, minutes_moved_by_team = "", largest_player_change = "",
+               share_of_team_player_minutes = NA_real_, impact_note = note, stringsAsFactors = FALSE)
+  }
+  impact <- do.call(rbind, lapply(seq_len(nrow(runs)), function(i) {
+    r <- runs[i, , drop = FALSE]
+    if (!identical(as.character(r$likely_misplaced_side), "before_jump") || !isTRUE(as.numeric(r$jump_seconds) > 24)) {
+      return(unmeasured(""))
+    }
+    tryCatch(measure(r), error = function(e) unmeasured(paste("Minutes not measured:", conditionMessage(e))))
+  }))
+  cbind(runs, impact)
+}
+
 # Names for the findings page: the games, teams and players its detail rows
 # mention. Ids are integers parsed from the details, never raw strings. An
 # immediate query with no rows returns no columns, so each lookup falls back
@@ -1186,6 +1302,37 @@ build_checks <- function(con, schema) {
             AND lk.lineup_hash = d.lineup_hash
            GROUP BY d.game_id
          ),
+         -- What the unmatched rows carry: lineup time (each segment once),
+         -- points scored and allowed, and possession endings on each side.
+         unmatched AS (
+           SELECT d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.segment_seconds,
+                  d.team_score, d.type_lineup, d.final_end_poss
+           FROM %s d
+           LEFT JOIN lineup_keys lk
+             ON lk.game_id = d.game_id
+            AND lk.team_id = d.team_id
+            AND lk.lineup_hash = d.lineup_hash
+           WHERE lk.lineup_hash IS NULL OR lk.players_on <> 5
+         ),
+         unmatched_seconds AS (
+           SELECT game_id, sum(secs) AS secs
+           FROM (
+             SELECT game_id, team_id, lineup_hash, segment_id, max(segment_seconds) AS secs
+             FROM unmatched
+             WHERE segment_id IS NOT NULL
+             GROUP BY game_id, team_id, lineup_hash, segment_id
+           ) segments
+           GROUP BY game_id
+         ),
+         unmatched_points AS (
+           SELECT game_id,
+                  coalesce(sum(team_score) FILTER (WHERE type_lineup = 'offense'), 0) AS points_scored,
+                  coalesce(sum(team_score) FILTER (WHERE type_lineup = 'defense'), 0) AS points_allowed,
+                  count(*) FILTER (WHERE final_end_poss AND type_lineup = 'offense') AS off_possessions,
+                  count(*) FILTER (WHERE final_end_poss AND type_lineup = 'defense') AS def_possessions
+           FROM unmatched
+           GROUP BY game_id
+         ),
          totals AS (
            SELECT
              sum(total_rows)::bigint AS overall_total_rows,
@@ -1204,6 +1351,11 @@ build_checks <- function(con, schema) {
            r.total_rows,
            r.unmatched_rows,
            r.unmatched_gameplay_rows,
+           coalesce(us.secs, 0) AS unmatched_lineup_seconds,
+           coalesce(up.points_scored, 0) AS unmatched_points_scored,
+           coalesce(up.points_allowed, 0) AS unmatched_points_allowed,
+           coalesce(up.off_possessions, 0) AS unmatched_off_possessions,
+           coalesce(up.def_possessions, 0) AS unmatched_def_possessions,
            round(100.0 * r.unmatched_rows / nullif(r.total_rows, 0), 4) AS unmatched_pct,
            t.overall_total_rows,
            t.overall_unmatched_rows,
@@ -1220,9 +1372,11 @@ build_checks <- function(con, schema) {
          FROM row_quality r
          CROSS JOIN totals t
          CROSS JOIN affected_totals a
+         LEFT JOIN unmatched_seconds us ON us.game_id = r.game_id
+         LEFT JOIN unmatched_points up ON up.game_id = r.game_id
          WHERE r.unmatched_rows > 0
          ORDER BY r.unmatched_rows DESC, r.game_id",
-        ll, non_gameplay, df_long
+        ll, non_gameplay, df_long, df_long
       )
     ),
     list(
@@ -1274,7 +1428,43 @@ build_checks <- function(con, schema) {
              count(*)::bigint AS overall_total_states,
              count(*) FILTER (WHERE invalid)::bigint AS overall_invalid_states
            FROM quality
-         )
+         ),
+         -- What the invalid lineups carry for the team: lineup time (each
+         -- segment once), points scored and allowed, possession endings.
+         bad_lineups AS (
+           SELECT DISTINCT game_id, team_id, coalesce(lineup_hash, '') AS hash_key
+           FROM quality
+           WHERE invalid
+         ),
+         bad_rows AS (
+           SELECT d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.segment_seconds,
+                  d.team_score, d.type_lineup, d.final_end_poss
+           FROM %s d
+           JOIN bad_lineups b
+             ON b.game_id = d.game_id
+            AND b.team_id = d.team_id
+            AND b.hash_key = coalesce(d.lineup_hash, '')
+         ),
+         bad_seconds AS (
+           SELECT game_id, team_id, sum(secs) AS secs
+           FROM (
+             SELECT game_id, team_id, lineup_hash, segment_id, max(segment_seconds) AS secs
+             FROM bad_rows
+             WHERE segment_id IS NOT NULL
+             GROUP BY game_id, team_id, lineup_hash, segment_id
+           ) segments
+           GROUP BY game_id, team_id
+         ),
+         bad_points AS (
+           SELECT game_id, team_id,
+                  coalesce(sum(team_score) FILTER (WHERE type_lineup = 'offense'), 0) AS points_scored,
+                  coalesce(sum(team_score) FILTER (WHERE type_lineup = 'defense'), 0) AS points_allowed,
+                  count(*) FILTER (WHERE final_end_poss AND type_lineup = 'offense') AS off_possessions,
+                  count(*) FILTER (WHERE final_end_poss AND type_lineup = 'defense') AS def_possessions
+           FROM bad_rows
+           GROUP BY game_id, team_id
+         ),
+         per_team AS (
          SELECT
            q.game_id,
            q.team_id,
@@ -1301,8 +1491,19 @@ build_checks <- function(con, schema) {
            t.overall_total_states,
            t.overall_invalid_states
          HAVING count(*) FILTER (WHERE q.invalid) > 0
-         ORDER BY invalid_states DESC, q.game_id, q.team_id",
-        ll, non_gameplay, df_long
+         )
+         SELECT
+           p.*,
+           coalesce(bs.secs, 0) AS invalid_lineup_seconds,
+           coalesce(bp.points_scored, 0) AS invalid_lineup_points_scored,
+           coalesce(bp.points_allowed, 0) AS invalid_lineup_points_allowed,
+           coalesce(bp.off_possessions, 0) AS invalid_lineup_off_possessions,
+           coalesce(bp.def_possessions, 0) AS invalid_lineup_def_possessions
+         FROM per_team p
+         LEFT JOIN bad_seconds bs ON bs.game_id = p.game_id AND bs.team_id = p.team_id
+         LEFT JOIN bad_points bp ON bp.game_id = p.game_id AND bp.team_id = p.team_id
+         ORDER BY p.invalid_states DESC, p.game_id, p.team_id",
+        ll, non_gameplay, df_long, df_long
       )
     ),
     list(
@@ -2217,9 +2418,9 @@ build_checks <- function(con, schema) {
            FROM (
              VALUES
                (398, 3980352::bigint, 'verified',
-                'Verified 2026-09-14 against the provider feed''s entry times (userTime, which mixes two clocks three hours apart; normalised): these events were entered 19:20-19:24, straight after Q2 started (19:20:04) and before the 8:00 entries (19:24:24), but stamped 0:28 to 0:00 left in Q2. They belong at about 10:00 to 8:00 left. Feed order is correct; only the clock is wrong. The provider''s own score strings on the two baskets (43-47, 43-50) inherit the wrong clock. Measured 2026-09-14 by rebuilding canonical minutes with the events re-timed: one lineup per team is credited with all of Q2 (576 and 599 seconds), and 21.7 (Bnei Herzliya) and 29.4 (Hapoel Eilat) player-minutes go to the wrong players, up to 9 minutes for one player.'),
+                'Verified 2026-09-14 against the provider feed''s entry times (userTime, which mixes two clocks three hours apart; normalised): these events were entered 19:20-19:24, straight after Q2 started (19:20:04) and before the 8:00 entries (19:24:24), but stamped 0:28 to 0:00 left in Q2. They belong at about 10:00 to 8:00 left. Feed order is correct; only the clock is wrong. The provider''s own score strings on the two baskets (43-47, 43-50) inherit the wrong clock.'),
                (399, 3990437::bigint, 'likely',
-                'Same shape as game 398: 11 substitutions stamped 0:16 to 0:00 left in Q3, fed between the Q3 start (10:00) and the 9:51 play. Cannot be confirmed from entry times: the feed carries one userTime (21:44:37) for every event in this game. No plays, but the stamps still push the Q3 clock to its end: measured 2026-09-14, one lineup per team is credited with all of Q3 (584 and 600 seconds), and 23.1 (Hapoel Holon) and 20.7 (Ness Ziona) player-minutes go to the wrong players.')
+                'Same shape as game 398: 11 substitutions stamped 0:16 to 0:00 left in Q3, fed between the Q3 start (10:00) and the 9:51 play. Cannot be confirmed from entry times: the feed carries one userTime (21:44:37) for every event in this game. No plays, but the stamps still push the Q3 clock to its end, so minutes move between players.')
            ) AS d(game_id, resume_id, review_status, diagnosis)
          ),
          clock_text AS (
@@ -2355,6 +2556,7 @@ build_checks <- function(con, schema) {
              max(quarter)::int AS quarter,
              max(end_game_seconds_remaining)::numeric AS game_clock,
              max(type) AS action_type,
+             coalesce(max(team_score), 0) AS event_points,
              bool_or(coalesce(type, '') NOT IN %s) AS gameplay
            FROM %s
            GROUP BY game_id, id
@@ -2389,6 +2591,7 @@ build_checks <- function(con, schema) {
            game_clock,
            exposure_type,
            action_type,
+           event_points,
            CASE WHEN gameplay THEN 1 ELSE 0 END AS gameplay_events,
            1::bigint AS exposed_rows
          FROM exposed
@@ -2677,6 +2880,20 @@ run_data_quality_report <- function(
     detail_file <- write_detail_csv(details, output_dir, check$id)
     make_check_result(check, "not_automated", details, detail_file)
   })
+
+  # Impact the check SQL cannot compute: minutes a misplaced clock run moves
+  # between players. A failure leaves the check's rows as they were.
+  clock_runs <- match("AK_misplaced_clock_runs", vapply(checks, `[[`, character(1), "id"))
+  if (!is.na(clock_runs) && results[[clock_runs]]$summary$status %in% c("fail", "warning")) {
+    results[[clock_runs]]$details <- tryCatch(
+      dq_clock_run_minutes(con, schema, results[[clock_runs]]$details),
+      error = function(e) {
+        message(sprintf("Clock-run minutes impact FAILED: %s", conditionMessage(e)))
+        results[[clock_runs]]$details
+      }
+    )
+    write_detail_csv(results[[clock_runs]]$details, output_dir, "AK_misplaced_clock_runs")
+  }
 
   summary_df <- do.call(rbind, lapply(results, `[[`, "summary"))
   summary_path <- file.path(output_dir, paste0("summary_", stamp, ".csv"))

@@ -187,6 +187,7 @@ jobs:
           path: |
             etl/logs/data_quality/latest.md
             etl/logs/data_quality/findings.html
+            etl/logs/data_quality/findings_summary.md
             etl/logs/data_quality/data_quality_report_*.md
             etl/logs/data_quality/summary_*.csv
             etl/logs/data_quality/details/*.csv
@@ -198,6 +199,10 @@ jobs:
         if: ${{ always() }}
         shell: pwsh
         run: |
+          $findings = 'etl/logs/data_quality/findings_summary.md'
+          if (Test-Path $findings) {
+            Get-Content $findings -Raw | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
+          }
           $summary = 'etl/logs/reports/latest_summary.md'
           if (Test-Path $summary) {
             Get-Content $summary -Raw | Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8

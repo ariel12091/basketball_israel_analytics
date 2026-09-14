@@ -38,6 +38,12 @@ dq_num <- function(x, digits = 0L) {
   formatC(x, format = "f", digits = digits, big.mark = ",")
 }
 
+dq_duration <- function(secs) {
+  s <- suppressWarnings(round(as.numeric(secs)))
+  if (!length(s) || is.na(s)) return("n/a")
+  if (s < 60) sprintf("%d s", s) else sprintf("%d:%02d min", s %/% 60, s %% 60)
+}
+
 dq_signed <- function(x, digits = 2L) {
   x <- suppressWarnings(as.numeric(x))
   if (!length(x) || is.na(x)) return("n/a")
@@ -221,6 +227,18 @@ DQ_FINDING_CATALOG <- list(
       "%s of %s event rows (%s%%) have no five-player lineup attached.",
       dq_num(r$unmatched_rows), dq_num(r$total_rows), dq_num(r$unmatched_pct, 1L)
     ),
+    impact_text = function(r) {
+      if (is.null(r$unmatched_lineup_seconds)) return("")
+      sprintf("Together they cover %s of lineup time, %s points scored and %s allowed, and %s possession endings.",
+              dq_duration(r$unmatched_lineup_seconds), dq_num(r$unmatched_points_scored),
+              dq_num(r$unmatched_points_allowed),
+              dq_num(as.numeric(r$unmatched_off_possessions) + as.numeric(r$unmatched_def_possessions)))
+    },
+    impact = function(r) list(
+      seconds = r$unmatched_lineup_seconds,
+      points = as.numeric(r$unmatched_points_scored %||% NA) + as.numeric(r$unmatched_points_allowed %||% NA),
+      possessions = as.numeric(r$unmatched_off_possessions %||% NA) + as.numeric(r$unmatched_def_possessions %||% NA)
+    ),
     gameplay = function(r) r$unmatched_gameplay_rows,
     admin_effect = "None on stats: substitutions and timeouts carry no points, shots or possessions, so nothing drops out.",
     effect = "Those events drop out of on/off, Lineup Data and lineup-based ratings for this game.",
@@ -234,7 +252,23 @@ DQ_FINDING_CATALOG <- list(
       dq_team(ctx, r$team_id), dq_num(r$invalid_states), dq_num(r$total_states),
       r$min_reported_n_on, r$max_reported_n_on
     ),
-    gameplay = function(r) r$invalid_gameplay_states,
+    impact_text = function(r) {
+      if (is.null(r$invalid_lineup_seconds)) return("")
+      sprintf("Those lineups were on court for %s, with %s points scored and %s allowed and %s possession endings.",
+              dq_duration(r$invalid_lineup_seconds), dq_num(r$invalid_lineup_points_scored),
+              dq_num(r$invalid_lineup_points_allowed),
+              dq_num(as.numeric(r$invalid_lineup_off_possessions) + as.numeric(r$invalid_lineup_def_possessions)))
+    },
+    # A state is recorded at the event that changes the lineup, which is
+    # nearly always a substitution, so the state's own event type says little.
+    # What was played under the lineup does: no points and no possession
+    # endings means no plays (game 178's "substitution" states covered 782 s
+    # and 52 points).
+    gameplay = function(r) {
+      if (is.null(r[["invalid_lineup_seconds"]])) return(r$invalid_gameplay_states)
+      sum(as.numeric(c(r$invalid_lineup_points_scored, r$invalid_lineup_points_allowed,
+                       r$invalid_lineup_off_possessions, r$invalid_lineup_def_possessions)))
+    },
     admin_effect = "No play happens in these states (only substitutions or timeouts), so no points or possessions go to a wrong five.",
     effect = "Minutes and points in those states go to lineups that aren't real fives, in on/off and Lineup Data.",
     fix = "Fix the substitutions that leave too many or too few players on court."
@@ -258,6 +292,7 @@ DQ_FINDING_CATALOG <- list(
       dq_team(ctx, r$team_id), dq_num(r$minutes, 2L), dq_num(r$expected_minutes),
       dq_signed(r$minute_difference)
     ),
+    impact = function(r) list(team_minutes = abs(as.numeric(r$minute_difference))),
     effect = "Minutes totals and per-minute rates for this team-game are off by the difference.",
     fix = "Look for a stretch with no lineup (often a missing substitution or a clock gap)."
   ),
@@ -274,6 +309,10 @@ DQ_FINDING_CATALOG <- list(
       r$team_name, dq_num(r$team_score), dq_num(r$traditional_points), dq_num(r$lineup_offense_points),
       dq_num(r$opp_score), dq_num(r$lineup_defense_points)
     ),
+    impact = function(r) list(points_mismatch = max(abs(c(
+      as.numeric(r$team_score) - as.numeric(r$traditional_points),
+      as.numeric(r$team_score) - as.numeric(r$lineup_offense_points),
+      as.numeric(r$opp_score) - as.numeric(r$lineup_defense_points))), na.rm = TRUE)),
     effect = "Points in Player Stats, on/off and Lineup Data don't add up to the final score.",
     fix = "Compare the play-by-play with the official box score for a missing, duplicated or rescinded basket."
   ),
@@ -301,6 +340,7 @@ DQ_FINDING_CATALOG <- list(
       share <- abs(as.numeric(r$minute_difference)) / as.numeric(r$expected_player_minutes)
       if (isTRUE(share < 0.03)) sprintf("under 3%% of player minutes (%.1f%%)", 100 * share)
     },
+    impact = function(r) list(minutes_unbalanced = abs(as.numeric(r$minute_difference))),
     minor_effect = "Individual minutes are off by less than 3% of the team's player minutes; no other stat is affected.",
     effect = "Individual minutes in Player Stats and on/off are wrong for this team-game.",
     fix = "Fix the substitutions that put a player on court twice or leave a slot empty."
@@ -312,6 +352,9 @@ DQ_FINDING_CATALOG <- list(
       "%s: %s starts without a valid lineup; the first one appears with %s left.",
       dq_team(ctx, r$team_id), dq_period_name(r$quarter), dq_period_clock(r$first_valid_clock, 5L)
     ),
+    impact_text = function(r) sprintf("That leaves %s of overtime without one.",
+                                      dq_duration(300 - as.numeric(r$first_valid_clock))),
+    impact = function(r) list(seconds = 300 - as.numeric(r$first_valid_clock)),
     effect = "The start of overtime has no lineup, so those minutes and possessions miss on/off and lineups.",
     fix = "Recover the OT starting five (see etl/ot_lineup_recovery.R)."
   ),
@@ -365,10 +408,22 @@ DQ_FINDING_CATALOG <- list(
     gameplay = function(r) if (dq_ak_pushes_timeline(r)) NA else r$misplaced_gameplay_events,
     # 72 seconds of lineup time over five players is 6 player-minutes, 3% of
     # a regulation team-game's 200.
+    # Measured share when the report could rebuild minutes; otherwise the rule
+    # of thumb above.
     minor = function(r) {
-      if (dq_ak_pushes_timeline(r) && isTRUE(as.numeric(r$jump_seconds) < 72)) "under 3% of player minutes"
+      if (!dq_ak_pushes_timeline(r)) return(NULL)
+      share <- suppressWarnings(as.numeric(r$share_of_team_player_minutes %||% NA))
+      small <- if (!is.na(share)) share < 0.03 else isTRUE(as.numeric(r$jump_seconds) < 72)
+      if (small) "under 3% of player minutes"
     },
-    minor_effect = "The clock is pushed forward by under 72 seconds, so under 3% of player minutes move between lineups.",
+    minor_effect = "Under 3% of the team's player minutes move between lineups.",
+    impact_text = function(r) {
+      moved <- suppressWarnings(as.numeric(r$minutes_moved %||% NA))
+      if (is.na(moved)) return("")
+      sprintf("Measured: %s player-minutes go to the wrong players (%s); largest: %s.",
+              dq_num(moved, 1L), r$minutes_moved_by_team, r$largest_player_change)
+    },
+    impact = function(r) list(player_minutes_moved = r$minutes_moved %||% NA),
     effect_fn = function(r) {
       if (dq_ak_pushes_timeline(r)) {
         sprintf(paste(
@@ -402,7 +457,7 @@ DQ_FINDING_CATALOG <- list(
         sprintf("%s to %s", r$after_first_id, r$after_last_id)
       }
     },
-    note = function(r) r$diagnosis,
+    note = function(r) trimws(paste(r$diagnosis %||% "", r$impact_note %||% "")),
     admin_effect = "Only substitutions or timeouts sit at the wrong time, after the period's clock has already moved past them: no minutes, points or possessions change.",
     effect = "Gameflow, quarter cards, quarter and clutch splits place these events at the wrong time.",
     fix = "Correct the clock on the misplaced events in the ETL (like the game-381 source correction in etl_onoff.R) and reload the game."
@@ -425,6 +480,11 @@ DQ_FINDING_CATALOG <- list(
       else "re-entering Q4 outside the last five minutes"
     ),
     events = function(r) sprintf("%s (%s)", r$action_id, r$action_type %||% "event"),
+    impact_text = function(r) {
+      pts <- suppressWarnings(as.numeric(r$event_points %||% 0))
+      if (isTRUE(pts > 0)) sprintf("It is worth %s point%s.", dq_num(pts), if (pts == 1) "" else "s") else ""
+    },
+    impact = function(r) list(points = as.numeric(r$event_points %||% NA)),
     gameplay = function(r) r$gameplay_events,
     admin_effect = "The event is not a play: it carries no points or possessions, so clutch numbers don't change.",
     effect = "The clutch filter (Lineup Data, Team Ratings) can leave this play out of a clutch window, or count it in one.",
@@ -497,7 +557,10 @@ dq_empty_findings <- function() {
   data.frame(check_id = character(), tier = character(), rank = integer(), entity = character(),
              minor = character(), season = integer(), game_id = integer(),
              player_key = character(), player_name = character(), team_id = integer(),
-             player_id = integer(), text = character(), events = character(), note = character(),
+             player_id = integer(), text = character(), impact_seconds = numeric(), impact_points = numeric(),
+             impact_possessions = numeric(), impact_player_minutes_moved = numeric(),
+             impact_minutes_unbalanced = numeric(), impact_points_mismatch = numeric(),
+             impact_team_minutes = numeric(), events = character(), note = character(),
              effect = character(), fix = character(), stringsAsFactors = FALSE)
 }
 
@@ -522,13 +585,19 @@ dq_build_findings <- function(summary_df, details_by_check, ctx) {
     for (r in dq_rows(details)) {
       text <- entry$describe(r, ctx)
       if (is.null(text) || !nzchar(text)) next
+      extra <- if (is.function(entry$impact_text)) entry$impact_text(r) else ""
+      if (length(extra) == 1 && !is.na(extra) && nzchar(extra)) text <- paste(text, extra)
+      # [[ ]] rather than $: `$` partially matches, so entry$impact would
+      # return impact_text on an entry that has only that.
+      impact <- if (is.function(entry[["impact"]])) entry[["impact"]](r) else list()
+      num <- function(name) suppressWarnings(as.numeric(impact[[name]] %||% NA)[1])
       # A minor finding ranks low and says why: substitutions and timeouts
       # move no stat, and some checks define their own small-enough threshold.
       plays <- if (is.function(entry$gameplay)) suppressWarnings(as.numeric(entry$gameplay(r))) else NA_real_
       minor <- if (isTRUE(plays == 0)) {
         "substitutions or timeouts only"
-      } else if (is.function(entry$minor)) {
-        entry$minor(r) %||% ""
+      } else if (is.function(entry[["minor"]])) {
+        entry[["minor"]](r) %||% ""
       } else ""
       rank <- match(if (is.function(entry$tier_fn)) entry$tier_fn(r) else entry$tier, DQ_TIERS)
       minor_effect <- NULL
@@ -546,7 +615,7 @@ dq_build_findings <- function(summary_df, details_by_check, ctx) {
         if (is.function(entry$games)) entry$games(r) else as.integer(r$game_id)
       } else NA_integer_
       player_name <- if (identical(entry$entity, "player")) {
-        r$player_name %||% dq_player(ctx, r$team_id, r$canonical_player_id %||% r$player_id)
+        r[["player_name"]] %||% dq_player(ctx, r$team_id, r[["canonical_player_id"]] %||% r[["player_id"]])
       } else NA_character_
       player_key <- if (identical(entry$entity, "player")) {
         paste(r$team_id %||% "", toupper(trimws(player_name)), sep = ":")
@@ -564,8 +633,12 @@ dq_build_findings <- function(summary_df, details_by_check, ctx) {
           season = as.integer(season %||% NA),
           game_id = g, player_key = player_key, player_name = player_name,
           team_id = suppressWarnings(as.integer(r$team_id %||% NA)),
-          player_id = suppressWarnings(as.integer(r$canonical_player_id %||% r$player_id %||% NA)),
+          player_id = suppressWarnings(as.integer(r[["canonical_player_id"]] %||% r[["player_id"]] %||% NA)),
           text = text,
+          impact_seconds = num("seconds"), impact_points = num("points"),
+          impact_possessions = num("possessions"), impact_player_minutes_moved = num("player_minutes_moved"),
+          impact_minutes_unbalanced = num("minutes_unbalanced"), impact_points_mismatch = num("points_mismatch"),
+          impact_team_minutes = num("team_minutes"),
           events = if (is.function(entry$events)) entry$events(r) else "",
           note = if (is.function(entry$note)) as.character(entry$note(r) %||% "") else "",
           effect = minor_effect %||% (if (is.function(entry$effect_fn)) entry$effect_fn(r) else entry$effect),
@@ -618,9 +691,41 @@ dq_finding_items <- function(f) {
   }, character(1)), collapse = "")
 }
 
+# One sentence of measured impact for a slice of findings, from the numbers
+# the catalog's impact() functions attach. Substitution-only and other minor
+# findings still count toward lineup time; unbalanced minutes count only when
+# they are above the 3% threshold.
+dq_impact_line <- function(findings) {
+  total <- function(check, col, keep = TRUE) {
+    f <- findings[findings$check_id == check & keep & !is.na(findings[[col]]), , drop = FALSE]
+    list(sum = sum(f[[col]]), games = length(unique(f$game_id)))
+  }
+  parts <- character()
+  moved <- total("AK_misplaced_clock_runs", "impact_player_minutes_moved")
+  if (moved$games) parts <- c(parts, sprintf(
+    "%s player-minutes credited to the wrong players by misclocked events (%s)",
+    dq_num(moved$sum, 1L), dq_plural(moved$games, "game")))
+  lineup_time <- total("Q_persisted_rows_without_lineup_match", "impact_seconds")
+  if (lineup_time$games) parts <- c(parts, sprintf(
+    "%s of lineup time, %s points and %s possession endings with no complete lineup (%s)",
+    dq_duration(lineup_time$sum),
+    dq_num(total("Q_persisted_rows_without_lineup_match", "impact_points")$sum),
+    dq_num(total("Q_persisted_rows_without_lineup_match", "impact_possessions")$sum),
+    dq_plural(lineup_time$games, "game")))
+  unbalanced <- total("X_player_minute_conservation", "impact_minutes_unbalanced", !nzchar(findings$minor))
+  if (unbalanced$games) parts <- c(parts, sprintf(
+    "%s player-minutes that don't add up to the team's (%s)",
+    dq_num(unbalanced$sum, 1L), dq_plural(unbalanced$games, "game")))
+  points <- total("V_team_game_score_reconciliation", "impact_points_mismatch")
+  if (points$games) parts <- c(parts, sprintf(
+    "reconstructed points %s off the official scores in total (%s)",
+    dq_num(points$sum), dq_plural(points$games, "game")))
+  paste(parts, collapse = "; ")
+}
+
 # Headline, severity tallies and the worst-first list for one season (or all).
 # Dataset-wide findings have no season and appear in every view.
-dq_summary_html <- function(findings, summary_df) {
+dq_summary_parts <- function(findings, summary_df) {
   game_f <- findings[findings$entity == "game", , drop = FALSE]
   game_ids <- unique(game_f$game_id)
   worst <- vapply(game_ids, function(g) min(game_f$rank[game_f$game_id == g]), numeric(1))
@@ -640,6 +745,28 @@ dq_summary_html <- function(findings, summary_df) {
     sum(summary_df$status == "pass"), nrow(summary_df)
   )
 
+  groups <- unique(findings[, c("check_id", "rank", "tier", "minor"), drop = FALSE])
+  groups <- groups[order(groups$rank, nzchar(groups$minor), groups$check_id), , drop = FALSE]
+  groups$title <- vapply(seq_len(nrow(groups)), function(i) {
+    title <- DQ_FINDING_CATALOG[[groups$check_id[i]]]$headline %||% summary_df$title[summary_df$check_id == groups$check_id[i]][1]
+    if (nzchar(groups$minor[i])) paste0(title, " (", groups$minor[i], ")") else title
+  }, character(1))
+  groups$reach <- vapply(seq_len(nrow(groups)), function(i) {
+    f <- findings[findings$check_id == groups$check_id[i] & findings$rank == groups$rank[i] &
+                    findings$minor == groups$minor[i], , drop = FALSE]
+    if (all(f$entity == "game")) {
+      dq_plural(length(unique(f$game_id)), "game")
+    } else if (all(f$entity == "player")) {
+      dq_plural(length(unique(f$player_key)), "player")
+    } else {
+      dq_plural(nrow(f), "item")
+    }
+  }, character(1))
+  list(lede = lede, sublede = sublede, impact = dq_impact_line(findings), groups = groups)
+}
+
+dq_summary_html <- function(findings, summary_df) {
+  parts <- dq_summary_parts(findings, summary_df)
   tallies <- vapply(DQ_TIERS, function(t) {
     f <- findings[findings$tier == t, , drop = FALSE]
     n_games <- length(unique(stats::na.omit(f$game_id)))
@@ -650,26 +777,15 @@ dq_summary_html <- function(findings, summary_df) {
     )
   }, character(1))
 
-  groups <- unique(findings[, c("check_id", "rank", "tier", "minor"), drop = FALSE])
-  groups <- groups[order(groups$rank, nzchar(groups$minor), groups$check_id), , drop = FALSE]
+  groups <- parts$groups
   lines <- vapply(seq_len(nrow(groups)), function(i) {
-    f <- findings[findings$check_id == groups$check_id[i] & findings$rank == groups$rank[i] &
-                    findings$minor == groups$minor[i], , drop = FALSE]
-    reach <- if (all(f$entity == "game")) {
-      dq_plural(length(unique(f$game_id)), "game")
-    } else if (all(f$entity == "player")) {
-      dq_plural(length(unique(f$player_key)), "player")
-    } else {
-      dq_plural(nrow(f), "item")
-    }
-    title <- DQ_FINDING_CATALOG[[groups$check_id[i]]]$headline %||% summary_df$title[summary_df$check_id == groups$check_id[i]][1]
-    if (nzchar(groups$minor[i])) title <- paste0(title, " (", groups$minor[i], ")")
     sprintf('<li>%s<span class="line">%s</span><span class="reach mono">%s</span></li>',
-            dq_pill(groups$tier[i]), dq_escape(title), reach)
+            dq_pill(groups$tier[i]), dq_escape(groups$title[i]), groups$reach[i])
   }, character(1))
 
   paste0(
-    sprintf('<h1>%s</h1><p class="sublede">%s</p>', dq_escape(lede), dq_escape(sublede)),
+    sprintf('<h1>%s</h1><p class="sublede">%s</p>', dq_escape(parts$lede), dq_escape(parts$sublede)),
+    if (nzchar(parts$impact)) sprintf('<p class="impact"><span class="impact-label">Measured impact</span>%s.</p>', dq_escape(parts$impact)) else "",
     '<div class="tallies">', paste(tallies, collapse = ""), "</div>",
     '<h2 class="summary-title">What needs attention, worst first</h2>',
     if (length(lines)) sprintf('<ol class="summary-list">%s</ol>', paste(lines, collapse = ""))
@@ -771,7 +887,35 @@ write_dq_findings_html <- function(summary_df, details_by_check, ctx, path, meta
     "</main><script>", DQ_FINDINGS_JS, "</script></body></html>"
   )
   writeLines(enc2utf8(html), path, useBytes = TRUE)
-  invisible(list(path = path, findings = findings))
+  digest_path <- write_dq_findings_digest(dq_summary_parts(findings, summary_df), meta,
+                                          file.path(dirname(path), "findings_summary.md"))
+  invisible(list(path = path, digest_path = digest_path, findings = findings))
+}
+
+# Markdown digest for the CI run page: the all-seasons headline, the measured
+# impact and every critical and high problem.
+write_dq_findings_digest <- function(parts, meta, path) {
+  cell <- function(x) gsub("|", "\\|", as.character(x), fixed = TRUE)
+  urgent <- parts$groups[parts$groups$tier %in% c("critical", "high"), , drop = FALSE]
+  lines <- c(
+    "## Data quality",
+    "",
+    sprintf("**%s**", parts$lede),
+    "",
+    parts$sublede,
+    "",
+    if (nzchar(parts$impact)) c(sprintf("**Measured impact:** %s.", parts$impact), ""),
+    if (nrow(urgent)) c(
+      "| Severity | Problem | Reach |",
+      "| --- | --- | --- |",
+      sprintf("| %s | %s | %s |", DQ_TIER_LABELS[urgent$tier], cell(urgent$title), urgent$reach),
+      ""
+    ) else c("No critical or high problems.", ""),
+    sprintf("Run %s, schema `%s`. Medium and low findings, game cards and every check are in `findings.html` in this run's `data-quality` artifact.",
+            meta$run_time, meta$schema)
+  )
+  writeLines(enc2utf8(lines), path, useBytes = TRUE)
+  path
 }
 
 # Season filter and ordering. Summary views are pre-rendered per season; cards
@@ -863,6 +1007,8 @@ h1,h2,h3{text-wrap:balance;margin:0}
 .brand{margin:0;color:var(--brand);font-size:12px;font-weight:600;letter-spacing:.09em;text-transform:uppercase}
 .masthead h1{font-size:clamp(24px,3.4vw,34px);line-height:1.2;font-weight:600;max-width:32ch}
 .sublede{margin:0;color:var(--muted);font-size:16px;max-width:60ch}
+.impact{margin:0;font-size:14.5px;max-width:80ch;display:grid;gap:2px}
+.impact-label{font-size:11.5px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--brand)}
 .run{margin:0;color:var(--muted);font-size:12.5px}
 .status{font-weight:600}
 .status.fail{color:var(--critical)}.status.warning{color:var(--high)}.status.query_error{color:var(--critical)}
