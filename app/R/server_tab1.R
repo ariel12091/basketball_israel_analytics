@@ -87,8 +87,18 @@ server_tab1 <- function(input, output, session, shared) {
     session$onFlushed(function() resetting(FALSE), once = TRUE)
   })
 
+  # Keep filters the new view can still evaluate. Player Stats and sample-size
+  # filters are offered by every view; only view-specific metrics are dropped.
   observeEvent(input$onoff_view_mode, {
-    reset_stat_filters(on_stat_filter_state)
+    split <- retain_stat_filters_for_cols(on_stat_filter_state$filters(), on_stat_filter_cols())
+    if (!length(split$dropped)) return()
+    on_stat_filter_state$filters(split$kept)
+    dropped_labels <- vapply(split$dropped, function(x) as.character(x$label), character(1))
+    showNotification(
+      sprintf("Removed filters not available in %s: %s",
+              input$onoff_view_mode, paste(dropped_labels, collapse = ", ")),
+      type = "message", duration = 5
+    )
   }, ignoreInit = TRUE)
 
   debounced_range <- reactive(input$date_range) %>% debounce(300)
@@ -603,12 +613,28 @@ server_tab1 <- function(input, output, session, shared) {
     } else {
       NULL
     }
+    starters_active <- onoff_starter_restriction_active(
+      onoff_filter_values(input, onoff_cfg$prefix,
+                          game_type_id = onoff_cfg$game_type_id)
+    )
     build_filter_chips(
       "on", input, shared$season_date_bounds,
       reset_btn_id = "reset_defaults",
       team_label_map = team_map,
       opponent_label_map = team_map,
-      extra_children = stat_filter_chips_ui("on", on_stat_filter_state, on_stat_filter_cols)
+      extra_children = c(
+        stat_filter_chips_ui(
+          "on", on_stat_filter_state, on_stat_filter_cols,
+          percent_hint = onoff_player_stats_note(starters_active),
+          choice_groups = onoff_stat_filter_groups(on_stat_filter_cols())
+        ),
+        if (starters_active && has_player_stat_filters(on_stat_filter_state$filters())) {
+          list(tags$span(
+            class = "filter-chip-note text-muted small",
+            PLAYER_STAT_STARTERS_CHIP_NOTE
+          ))
+        }
+      )
     )
   })
   setup_chip_clears("on", session, input, shared,

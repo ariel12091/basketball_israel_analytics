@@ -465,3 +465,110 @@ test_that("auto min-possessions still reads the unfiltered On/Off sources", {
   expect_gt(start, 0)
   expect_false(grepl("ps_filter|player_stat|filtered_result", substr(txt, start, end)))
 })
+
+test_that("switching views keeps Player Stats and sample chips and drops view-only ones", {
+  shiny::testServer(tab1_app, {
+    set_onoff_context(session, "Summary")
+    tab1 <- session$userData$tab1
+    set_stat_filters(session,
+      ps_filter(1L, "Net", "Net RTG Diff", "ge", 0),
+      ps_filter(2L, "PTS/G", "ps_pts_pg", "ge", 0),
+      ps_filter(3L, "On Poss", "ON Poss", "ge", 0))
+    session$setInputs(onoff_view_mode = "Four Factors")
+    session$flushReact()
+    ids <- function() vapply(tab1$stat_filter_state$filters(), `[[`, integer(1), "id")
+    expect_identical(ids(), c(2L, 3L))
+    session$setInputs(onoff_view_mode = "Shot Profile")
+    session$flushReact()
+    expect_identical(ids(), c(2L, 3L))
+  })
+})
+
+test_that("Reset to defaults clears Player Stats chips", {
+  shiny::testServer(tab1_app, {
+    set_onoff_context(session)
+    tab1 <- session$userData$tab1
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 0))
+    session$setInputs(reset_defaults = 1)
+    session$flushReact()
+    expect_length(tab1$stat_filter_state$filters(), 0L)
+  })
+})
+
+test_that("the On/Off chips row groups the menu and discloses the starter-count scope", {
+  txt <- read_repo_txt("R", "server_tab1.R")
+  expect_match(txt, "choice_groups = onoff_stat_filter_groups(on_stat_filter_cols())", fixed = TRUE)
+  expect_match(txt, "percent_hint = onoff_player_stats_note(starters_active)", fixed = TRUE)
+  expect_match(txt, "PLAYER_STAT_STARTERS_CHIP_NOTE", fixed = TRUE)
+  expect_no_match(txt, "observeEvent(input$onoff_view_mode, {\n    reset_stat_filters", fixed = TRUE)
+})
+
+# One row per game-context control Tab 1 forwards to
+# get_player_traditional_from_games(). `param` is the SQL placeholder ($n) the
+# value must arrive in; `opp_ids` feeds shared$selected_opp_ids_on.
+reader_forwarding_cases <- list(
+  list(name = "start date", inputs = list(date_range = as.Date(c("2025-11-01", "2026-02-01"))),
+       param = 2L, expected = as.Date("2025-11-01")),
+  list(name = "end date", inputs = list(date_range = as.Date(c("2025-11-01", "2026-02-01"))),
+       param = 3L, expected = as.Date("2026-02-01")),
+  list(name = "game type", inputs = list(on_game_type = "1"), param = 5L, expected = "1"),
+  list(name = "opponents", inputs = list(on_opponents = c("3", "4")), opp_ids = c(3L, 4L),
+       param = 6L, expected = "3,4"),
+  list(name = "home/away", inputs = list(on_home_away = "home"), param = 7L, expected = "home"),
+  list(name = "outcome", inputs = list(on_outcome = "win"), param = 8L, expected = "win"),
+  list(name = "opp rank side", inputs = list(on_opp_rank_side = "top"), param = 9L, expected = "top"),
+  list(name = "opp rank count", inputs = list(on_opp_rank_side = "top", on_opp_rank_n = "4"),
+       param = 10L, expected = 4L),
+  list(name = "opp rank metric",
+       inputs = list(on_opp_rank_side = "top", on_opp_rank_n = "4", on_opp_rank_metric = "off"),
+       param = 11L, expected = "off"),
+  list(name = "GN min", inputs = list(on_gn_min = "2"), param = 16L, expected = 2L),
+  list(name = "GN max", inputs = list(on_gn_min = "2", on_gn_max = "9"), param = 17L, expected = 9L),
+  list(name = "last N", inputs = list(on_last_n = "3"), param = 18L, expected = 3L)
+)
+
+tab1_app_mutable_opps <- function(input, output, session) {
+  shared <- make_shared()
+  # app.R derives this reactive from input$on_opponents; build_onoff_db_args()
+  # reads the reactive, so the test must drive it, not just the input.
+  opp_ids <- shiny::reactiveVal(NULL)
+  shared$selected_opp_ids_on <- opp_ids
+  session$userData$opp_ids <- opp_ids
+  session$userData$tab1 <- server_tab1(input, output, session, shared = shared)
+}
+
+test_that("every game-context control invalidates the frame and reaches the reader exactly", {
+  reset_mock_db_query_counts()
+  shiny::testServer(tab1_app_mutable_opps, {
+    tab1 <- session$userData$tab1
+    for (i in seq_along(reader_forwarding_cases)) {
+      case <- reader_forwarding_cases[[i]]
+      # Start from the default (fast-path) context, then change one control.
+      session$userData$opp_ids(NULL)
+      set_onoff_context(session)
+      set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", i))
+      tab1$filtered_result()
+      before <- mock_db_query_count("player_traditional_reader")
+
+      session$userData$opp_ids(case$opp_ids)
+      do.call(set_onoff_context, c(list(session), case$inputs))
+      tab1$filtered_result()
+      expect_identical(mock_db_query_count("player_traditional_reader"), before + 1L,
+                       label = paste(case$name, "reader calls"))
+
+      params <- mock_db_last_params("player_traditional_reader")
+      expect_identical(params[[case$param]], case$expected, label = case$name)
+      # Never forwarded: season stays, no team list, no clutch window.
+      expect_identical(params[[1]], 2026L, label = paste(case$name, "$1 season"))
+      expect_identical(params[[4]], NA_character_, label = paste(case$name, "$4 teams"))
+      expect_identical(params[12:15], list(NA_integer_, NA_character_, NA_integer_, FALSE),
+                       label = paste(case$name, "$12-$15 clutch"))
+
+      # A threshold edit in the same context reuses the frame.
+      set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", i + 0.5))
+      tab1$filtered_result()
+      expect_identical(mock_db_query_count("player_traditional_reader"), before + 1L,
+                       label = paste(case$name, "reader calls after threshold edit"))
+    }
+  })
+})
