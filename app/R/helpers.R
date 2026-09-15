@@ -517,7 +517,24 @@ setup_stat_filter_handlers <- function(prefix, input, session, filterable_cols, 
   }, ignoreInit = TRUE)
 }
 
-stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = NULL) {
+# Choices for the stat-filter column select. `groups` (group label -> internal
+# column names) renders native <optgroup>s; each group is passed as a list so a
+# one-item group still renders as a group. Without groups this is the flat
+# vector the menu has always used.
+stat_filter_choices <- function(cols, groups = NULL) {
+  labels <- names(cols)
+  if (is.null(groups)) return(c("Choose..." = "", labels))
+  grouped <- lapply(groups, function(group_cols) {
+    in_group <- labels[unname(cols) %in% group_cols]
+    stats::setNames(as.list(in_group), in_group)
+  })
+  grouped <- grouped[vapply(grouped, length, integer(1)) > 0L]
+  ungrouped <- labels[!unname(cols) %in% unlist(groups, use.names = FALSE)]
+  c(list("Choose..." = ""), grouped, stats::setNames(as.list(ungrouped), ungrouped))
+}
+
+stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = NULL,
+                                 choice_groups = NULL) {
   cols <- normalize_stat_filter_cols(filterable_cols)
   choices <- names(cols)
   remove_id <- paste0(prefix, "_remove_stat_filter")
@@ -556,7 +573,7 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
       style = "min-width: 220px;",
       selectInput(
         paste0(prefix, "_stat_filter_col"), "Column",
-        choices = c("Choose..." = "", choices),
+        choices = stat_filter_choices(cols, choice_groups),
         selected = "",
         width = "100%"
       ),
@@ -1721,8 +1738,7 @@ onoff_fallback_needed <- function(rng, season_bounds, filters, gn, input, prefix
     nzchar(f$home_away %||% "") ||
     nzchar(f$outcome %||% "") ||
     nzchar(f$rank_side %||% "") ||
-    (nzchar(f$num_starters_off_mode %||% "") && nzchar(f$num_starters_off %||% "")) ||
-    (nzchar(f$num_starters_def_mode %||% "") && nzchar(f$num_starters_def %||% ""))
+    onoff_starter_restriction_active(f)
 
   gn_active <- !is.na(gn$min_gn) || !is.na(gn$max_gn) || !is.na(gn$last_n)
   gn_raw_active <- nzchar(input[[paste0(prefix, "_gn_min")]] %||% "") ||
@@ -2014,6 +2030,206 @@ run_player_traditional_israel <- function(pool, session, guard_key, game_year, s
       last_n_games
     )
   )
+}
+
+# ---- Player Stats filter chips on the On/Off tab ----
+# The On/Off `+ Filter` chip can narrow rows by a player's traditional stats
+# over the same selected games. These columns never render: they are joined
+# onto the ranked On/Off population and filtered BEFORE the table is built, so
+# they stay out of the grouped-header column contract and cannot move a
+# percentile rank. The ps_ prefix is the classification; labels are display.
+PLAYER_STAT_FILTERABLE_COLS <- c(
+  "GP"    = "ps_gp",
+  "MIN/G" = "ps_min_pg",
+  "PTS/G" = "ps_pts_pg",
+  "REB/G" = "ps_reb_pg",
+  "AST/G" = "ps_ast_pg",
+  "STL/G" = "ps_stl_pg",
+  "BLK/G" = "ps_blk_pg",
+  "3P%"   = "ps_3p_pct",
+  "eFG%"  = "ps_efg_pct",
+  "TS%"   = "ps_ts_pct",
+  "USG%"  = "ps_usg_pct"
+)
+
+# Player Stats column behind each ps_* column, in menu order. Counting stats
+# become per-game through apply_ts_mode("Per Game"), exactly as Tab 5 shows
+# them; the four percentages are already on the 0-100 display scale.
+PLAYER_STAT_FILTER_SOURCE <- c(
+  ps_gp = "gp", ps_min_pg = "minutes", ps_pts_pg = "pts", ps_reb_pg = "reb",
+  ps_ast_pg = "ast", ps_stl_pg = "stl", ps_blk_pg = "blk",
+  ps_3p_pct = "tp_pct", ps_efg_pct = "efg", ps_ts_pct = "ts", ps_usg_pct = "usg_pct"
+)
+
+# Sample-size columns every On/Off view menu carries under the same names.
+ONOFF_SAMPLE_FILTER_COLS <- c("minutes", "ON Poss", "OFF Poss")
+
+ONOFF_STARTER_FILTER_FIELDS <- c("num_starters_off_mode", "num_starters_off",
+                                 "num_starters_def_mode", "num_starters_def")
+
+PLAYER_STAT_FILTER_ERROR_TEXT <- "Player Stats filters could not be evaluated. Remove them or try again."
+PLAYER_STAT_STARTERS_CHIP_NOTE <- "Player Stats ignore starter-count filters"
+
+is_player_stat_filter <- function(filter) {
+  isTRUE(startsWith(as.character(filter$col %||% ""), "ps_"))
+}
+
+has_player_stat_filters <- function(filters) {
+  any(vapply(filters, is_player_stat_filter, logical(1)))
+}
+
+split_stat_filters <- function(filters) {
+  ps <- vapply(filters, is_player_stat_filter, logical(1))
+  list(player_stats = filters[ps], onoff = filters[!ps])
+}
+
+# Chips whose column the given menu still offers, and those it does not.
+retain_stat_filters_for_cols <- function(filters, filterable_cols) {
+  allowed <- unname(normalize_stat_filter_cols(filterable_cols))
+  keep <- vapply(filters, function(f) as.character(f$col %||% "") %in% allowed, logical(1))
+  list(kept = filters[keep], dropped = filters[!keep])
+}
+
+onoff_stat_filter_groups <- function(filterable_cols) {
+  cols <- unname(normalize_stat_filter_cols(filterable_cols))
+  sample <- intersect(ONOFF_SAMPLE_FILTER_COLS, cols)
+  player_stats <- intersect(unname(PLAYER_STAT_FILTERABLE_COLS), cols)
+  list(
+    "Impact and on/off results" = setdiff(cols, c(sample, player_stats)),
+    "Sample size" = sample,
+    "Player Stats" = player_stats
+  )
+}
+
+# A starter-count restriction is active only when both its mode and its value
+# are set -- the same rule onoff_fallback_needed() applies.
+onoff_starter_restriction_active <- function(filters) {
+  set <- function(field) nzchar(as.character(filters[[field]] %||% ""))
+  (set("num_starters_off_mode") && set("num_starters_off")) ||
+    (set("num_starters_def_mode") && set("num_starters_def"))
+}
+
+# The game context Player Stats can honour: the traditional reader aggregates
+# whole games, so the starter-count segment restriction is removed.
+onoff_drop_starter_filters <- function(filters) {
+  filters[ONOFF_STARTER_FILTER_FIELDS] <- ""
+  filters
+}
+
+onoff_player_stats_note <- function(starters_active) {
+  note <- "Player Stats use the selected games. Percentages use 0-100."
+  if (isTRUE(starters_active)) {
+    note <- paste(note, "Starter-count filters affect On/Off possessions, not Player Stats.")
+  }
+  note
+}
+
+# Normalised Player Stats rows -> one row per team-player with the ps_* columns.
+# The multi-team TOTAL row is never built here, so each On/Off team row is
+# judged on that team's stats alone.
+player_stat_filter_projection <- function(df, game_year) {
+  ps_cols <- names(PLAYER_STAT_FILTER_SOURCE)
+  gy <- suppressWarnings(as.integer(game_year))
+  if (is.null(df) || !nrow(df)) {
+    out <- data.frame(game_year = integer(0), team_id = integer(0), player_id = integer(0))
+    out[ps_cols] <- rep(list(numeric(0)), length(ps_cols))
+    return(out)
+  }
+  per_game <- apply_ts_mode(add_ts_usage_pct(clean_ts_rows(df)), "Per Game")
+  out <- data.frame(
+    game_year = rep(gy, nrow(per_game)),
+    team_id = suppressWarnings(as.integer(per_game$team_id)),
+    player_id = suppressWarnings(as.integer(per_game$player_id))
+  )
+  out[ps_cols] <- lapply(unname(PLAYER_STAT_FILTER_SOURCE), function(src) {
+    v <- per_game[[src]]
+    if (is.null(v)) rep(NA_real_, nrow(per_game)) else suppressWarnings(as.numeric(v))
+  })
+  # Thresholds compare what the Player Stats table shows. GP is a count and is
+  # displayed unrounded; everything else is displayed to one decimal.
+  shown <- setdiff(ps_cols, "ps_gp")
+  out[shown] <- lapply(out[shown], round_display_1)
+  out
+}
+
+# One-decimal rounding identical to DT::formatRound(x, 1), which the Player
+# Stats table uses. That is JavaScript toFixed(1): it rounds the double's EXACT
+# decimal value and takes the larger candidate on a tie. Base round() does not:
+# round(41 / 4, 1) is 10.2 where the table shows 10.3, and round(1.95, 1) is 2.0
+# where it shows 1.9. sprintf("%.60f") prints the exact expansion, so the
+# hundredths digit alone decides. Verified against node on 3,135,580 per-game
+# and percentage values with zero mismatches (plan review remark 1).
+round_display_1 <- function(x) {
+  x <- suppressWarnings(as.numeric(x))
+  out <- rep(NA_real_, length(x))
+  ok <- is.finite(x)
+  if (!any(ok)) return(out)
+  s <- sprintf("%.60f", abs(x[ok]))
+  dot <- regexpr(".", s, fixed = TRUE)
+  whole <- as.numeric(substr(s, 1L, dot - 1L))
+  tenths <- as.numeric(substr(s, dot + 1L, dot + 1L))
+  up <- as.numeric(substr(s, dot + 2L, dot + 2L)) >= 5
+  out[ok] <- sign(x[ok]) * (whole * 10 + tenths + up) / 10
+  out
+}
+
+# Appends every ps_* column to `df` by season + team + player. Row order and
+# every existing column (percentile ranks included) are untouched; a row with
+# no Player Stats match gets NA, which an active chip then excludes.
+join_player_stat_filter_frame <- function(df, ps_frame, game_year) {
+  ps_cols <- names(PLAYER_STAT_FILTER_SOURCE)
+  ps <- ps_frame[suppressWarnings(as.integer(ps_frame$game_year)) %in%
+                   suppressWarnings(as.integer(game_year)), , drop = FALSE]
+  idx <- rep(NA_integer_, nrow(df))
+  if (all(c("team_id", "player_id") %in% names(df)) && nrow(df)) {
+    idx <- match(ts_player_key(df$team_id, df$player_id),
+                 ts_player_key(ps$team_id, ps$player_id))
+    idx[is.na(suppressWarnings(as.integer(df$team_id))) |
+          is.na(suppressWarnings(as.integer(df$player_id)))] <- NA_integer_
+  }
+  df[ps_cols] <- lapply(ps[ps_cols], function(col) col[idx])
+  df
+}
+
+# list(df, error). No Player Stats chips: df unchanged. A missing or malformed
+# frame: an error with zero rows -- never the unfiltered table.
+apply_player_stat_filters <- function(df, ps_frame, filters, game_year) {
+  if (!length(filters) || is.null(df)) return(list(df = df, error = FALSE))
+  required <- c("game_year", "team_id", "player_id", names(PLAYER_STAT_FILTER_SOURCE))
+  if (is.null(ps_frame) || !all(required %in% names(ps_frame))) {
+    return(list(df = df[0, , drop = FALSE], error = TRUE))
+  }
+  joined <- join_player_stat_filter_frame(df, ps_frame, game_year)
+  list(df = apply_stat_filters(joined, filters), error = FALSE)
+}
+
+# The projected Player Stats frame for one On/Off game context, or NULL when it
+# cannot be read. `ctx$fast` selects the shared default-season MV pull;
+# otherwise the per-game reader answers with no team and no clutch filter.
+fetch_player_stat_filter_frame <- function(pool, ctx, session) {
+  raw <- if (isTRUE(ctx$fast)) {
+    fetch_player_traditional_season_israel(pool, ctx$game_year, ctx$data_version)
+  } else {
+    out <- tryCatch(
+      run_player_traditional_israel(
+        pool, session = session, guard_key = "tab1_player_stat_filters",
+        game_year = ctx$game_year, start_d = ctx$start_d, end_d = ctx$end_d,
+        team_ids_csv = NA_character_,
+        game_type_csv = ctx$game_type_csv, opp_ids_csv = ctx$opp_ids_csv,
+        home_away = ctx$home_away, outcome = ctx$outcome,
+        opp_rank_side = ctx$opp_rank_side, opp_rank_n = ctx$opp_rank_n,
+        opp_rank_metric = ctx$opp_rank_metric,
+        max_margin = NA_integer_, margin_status = NA_character_,
+        max_time_remaining = NA_integer_, ot_margin_filter = FALSE,
+        min_gn = ctx$min_gn, max_gn = ctx$max_gn, last_n_games = ctx$last_n_games
+      ),
+      error = function(e) NULL
+    )
+    # A guard refusal is a column-less frame: not an answer, so fail closed.
+    if (is.null(out) || !ncol(out)) NULL else normalize_ts_result_cols(out)
+  }
+  if (is.null(raw)) return(NULL)
+  player_stat_filter_projection(raw, ctx$game_year)
 }
 
 # ---- Stat-filter column menus for the on/off tabs ----
