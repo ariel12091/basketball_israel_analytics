@@ -133,26 +133,6 @@ add_ts_two_point_stats <- function(df) {
   df
 }
 
-normalize_ts_result_cols <- function(df) {
-  if (is.null(df) || !nrow(df)) return(df)
-  if ("player_name" %in% names(df) && !("Player" %in% names(df))) {
-    names(df)[names(df) == "player_name"] <- "Player"
-  }
-
-  if (!("oreb" %in% names(df))) df$oreb <- NA_real_
-  if (!("dreb" %in% names(df))) df$dreb <- NA_real_
-  if (!("reb" %in% names(df))) {
-    oreb <- suppressWarnings(as.numeric(df$oreb))
-    dreb <- suppressWarnings(as.numeric(df$dreb))
-    df$reb <- ifelse(is.na(oreb) & is.na(dreb), NA_real_, coalesce(oreb, 0) + coalesce(dreb, 0))
-  }
-  df
-}
-
-ts_player_key <- function(team_id, player_id) {
-  paste0(as.integer(team_id), ":", as.integer(player_id))
-}
-
 normalize_ts_players <- function(players_df, teams_df = NULL) {
   if (is.null(players_df) || !nrow(players_df) || is.null(names(players_df))) {
     return(data.frame())
@@ -452,66 +432,6 @@ server_tab5_traditional <- function(input, output, session, shared) {
     game_context_filters_from_descriptor(descriptor)
   })
 
-  clean_ts_rows <- function(df) {
-    if (is.null(df) || !nrow(df)) return(df)
-    df %>%
-      filter(
-        !is.na(Player), nzchar(trimws(Player)),
-        !is.na(team_name), nzchar(trimws(team_name))
-      ) %>%
-      filter(
-        coalesce(gp, 0) > 0 |
-          coalesce(poss_on_floor, 0) > 0 |
-          coalesce(minutes, 0) > 0
-      )
-  }
-
-  add_ts_usage_pct <- function(df) {
-    if (is.null(df) || !nrow(df)) return(df)
-    if (!("usg_pct" %in% names(df))) df$usg_pct <- NA_real_
-    needed <- c("fga", "fta", "tov", "poss_on_floor")
-    if (!all(needed %in% names(df))) return(df)
-
-    as_num <- function(col) suppressWarnings(as.numeric(df[[col]]))
-    zero_na <- function(x) {
-      x[!is.finite(x)] <- 0
-      x
-    }
-
-    fga <- zero_na(as_num("fga"))
-    fta <- zero_na(as_num("fta"))
-    tov <- zero_na(as_num("tov"))
-    poss_on_floor <- as_num("poss_on_floor")
-    pts <- if ("pts" %in% names(df)) as_num("pts") else rep(NA_real_, nrow(df))
-    ts <- if ("ts" %in% names(df)) as_num("ts") else rep(NA_real_, nrow(df))
-
-    shot_term <- fga + 0.44 * fta
-    can_imply_ts_term <- is.finite(pts) & pts > 0 & is.finite(ts) & ts > 0
-    shot_term[can_imply_ts_term] <- pts[can_imply_ts_term] / (2 * (ts[can_imply_ts_term] / 100))
-    player_term <- shot_term + tov
-
-    out <- suppressWarnings(as.numeric(df$usg_pct))
-    team_key <- if ("team_id" %in% names(df)) as.character(df$team_id) else rep("all", nrow(df))
-    team_key[is.na(team_key) | !nzchar(team_key)] <- "all"
-
-    for (key in unique(team_key)) {
-      idx <- which(team_key == key)
-      team_term <- sum(player_term[idx], na.rm = TRUE)
-      team_poss <- sum(poss_on_floor[idx], na.rm = TRUE) / 5
-      ok <- !is.finite(out[idx]) &
-        is.finite(player_term[idx]) & player_term[idx] >= 0 &
-        is.finite(poss_on_floor[idx]) & poss_on_floor[idx] > 0 &
-        is.finite(team_term) & team_term > 0 &
-        is.finite(team_poss) & team_poss > 0
-      if (any(ok)) {
-        out[idx[ok]] <- 100 * player_term[idx][ok] * team_poss / (team_term * poss_on_floor[idx][ok])
-      }
-    }
-
-    df$usg_pct <- round(out, 1)
-    df
-  }
-
   ts_ref <- reactiveValues(teams = NULL, players = NULL)
 
   ts_stat_filters <- reactiveVal(list())
@@ -725,63 +645,6 @@ server_tab5_traditional <- function(input, output, session, shared) {
       updateSliderInput(session, "ts_min_gp_slider", value = n)
     }
   })
-
-  apply_ts_mode <- function(df, mode, x_poss = NA_real_, x_min = NA_real_) {
-    if (is.null(df) || !nrow(df)) return(df)
-
-    count_cols <- c("pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "dfl", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta")
-    mode <- mode %||% "Per Game"
-
-    if (identical(mode, "Per Game")) {
-      for (col in count_cols) {
-        if (col %in% names(df)) df[[col]] <- ifelse(df$gp > 0, df[[col]] / df$gp, NA_real_)
-      }
-      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$gp > 0, df$poss_on_floor / df$gp, NA_real_)
-      if ("minutes" %in% names(df)) df$minutes <- ifelse(df$gp > 0, df$minutes / df$gp, NA_real_)
-      return(df)
-    }
-
-    if (identical(mode, "Per 60 Possessions")) {
-      base_poss <- df$poss_on_floor
-      for (col in count_cols) {
-        if (col %in% names(df)) df[[col]] <- ifelse(base_poss > 0, df[[col]] / base_poss * 60, NA_real_)
-      }
-      if ("minutes" %in% names(df)) df$minutes <- ifelse(base_poss > 0, df$minutes / base_poss * 60, NA_real_)
-      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(base_poss > 0, base_poss / base_poss * 60, NA_real_)
-      return(df)
-    }
-
-    if (identical(mode, "Per 30 Minutes")) {
-      base_minutes <- df$minutes
-      for (col in count_cols) {
-        if (col %in% names(df)) df[[col]] <- ifelse(base_minutes > 0, df[[col]] / base_minutes * 30, NA_real_)
-      }
-      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(base_minutes > 0, df$poss_on_floor / base_minutes * 30, NA_real_)
-      if ("minutes" %in% names(df)) df$minutes <- ifelse(base_minutes > 0, base_minutes / base_minutes * 30, NA_real_)
-      return(df)
-    }
-
-    if (identical(mode, "Per X Possessions")) {
-      if (!is.finite(x_poss) || x_poss <= 0) return(df)
-      for (col in count_cols) {
-        if (col %in% names(df)) df[[col]] <- ifelse(df$poss_on_floor > 0, df[[col]] / df$poss_on_floor * x_poss, NA_real_)
-      }
-      if ("minutes" %in% names(df)) df$minutes <- ifelse(df$poss_on_floor > 0, df$minutes / df$poss_on_floor * x_poss, NA_real_)
-      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$poss_on_floor > 0, df$poss_on_floor / df$poss_on_floor * x_poss, NA_real_)
-      return(df)
-    }
-
-    if (identical(mode, "Per X Minutes")) {
-      if (!is.finite(x_min) || x_min <= 0) return(df)
-      for (col in count_cols) {
-        if (col %in% names(df)) df[[col]] <- ifelse(df$minutes > 0, df[[col]] / df$minutes * x_min, NA_real_)
-      }
-      if ("poss_on_floor" %in% names(df)) df$poss_on_floor <- ifelse(df$minutes > 0, df$poss_on_floor / df$minutes * x_min, NA_real_)
-      return(df)
-    }
-
-    df
-  }
 
   debounced_range <- reactive(input$ts_dates) %>% debounce(300)
   debounced_teams <- reactive(input$ts_teams) %>% debounce(300)
