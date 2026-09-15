@@ -414,9 +414,13 @@ server_tab1 <- function(input, output, session, shared) {
   # enter the grouped-header column contract. The frame is read only while a
   # ps_* chip is active, for this tab's game context WITHOUT the starter-count
   # restriction: the traditional reader aggregates whole games (the chips row
-  # discloses this). Teams are not in the context either -- the reader's team
-  # filter only drops team-game rows, so a team-player row's values cannot
-  # depend on it, and leaving it out lets a team change reuse the frame.
+  # discloses this). Teams are not in the context either. For every control
+  # but a bottom-N opponent rank the reader's team filter only drops
+  # team-game rows, so a team-player row's values cannot depend on it. For
+  # bottom-N the reader ranks within the selected teams' games; leaving
+  # teams out keeps the league-wide bottom-N that onoff_compute uses, so
+  # Player Stats describe the same games as the On/Off numbers, and a team
+  # change reuses the frame.
   on_filter_split <- reactive(split_stat_filters(on_stat_filter_state$filters()))
 
   ps_filter_context <- reactive({

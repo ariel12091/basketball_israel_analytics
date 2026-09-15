@@ -414,8 +414,9 @@ test_that("starter counts and teams reuse the Player Stats frame", {
     # Starter counts restrict On/Off segments, not the games Player Stats read.
     set_onoff_context(session, on_num_starters_off_mode = "gte", on_num_starters_off = "3")
     tab1$filtered_result()
-    # The reader's team filter only drops team-game rows, so a team change
-    # cannot alter a team-player row; the frame is reused.
+    # This case has no bottom-N opponent rank filter active, so the reader's
+    # team filter only drops team-game rows: a team-player row's values
+    # cannot change, and the frame is reused.
     set_onoff_context(session, on_num_starters_off_mode = "gte", on_num_starters_off = "3", teams = "1")
     tab1$filtered_result()
     expect_identical(mock_db_query_count("player_traditional_mv"), 1L)
