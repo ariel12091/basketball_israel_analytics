@@ -306,3 +306,162 @@ test_that("the shared frame fetcher uses the pool it is given (review remark 4)"
   fetch_player_stat_filter_frame(sentinel, ps_ctx(fast = FALSE), session = NULL)
   expect_identical(mock_db_last_params("player_traditional_reader_pool"), sentinel)
 })
+
+# ---- Tab 1 server --------------------------------------------------------------
+
+tab1_app <- function(input, output, session) {
+  session$userData$tab1 <- server_tab1(input, output, session, shared = make_shared())
+}
+
+# Season-bounds dates (2025-10-01 .. 2026-07-01 in make_shared) keep the fast path.
+set_onoff_context <- function(session, mode = "Summary", ...) {
+  inputs <- list(
+    main_tabs = "onoff", game_year = "2026", onoff_view_mode = mode,
+    date_range = as.Date(c("2025-10-01", "2026-07-01")), teams = character(0),
+    on_game_type = character(0), on_opponents = character(0),
+    on_home_away = "", on_outcome = "",
+    on_opp_rank_side = "", on_opp_rank_n = "", on_opp_rank_metric = "",
+    on_num_starters_off_mode = "", on_num_starters_off = "",
+    on_num_starters_def_mode = "", on_num_starters_def = "",
+    on_gn_min = "", on_gn_max = "", on_last_n = "",
+    min_all_poss = 0, min_on_poss = 0
+  )
+  do.call(session$setInputs, utils::modifyList(inputs, list(...)))
+  session$elapse(500)
+  session$flushReact()
+}
+
+set_stat_filters <- function(session, ...) {
+  session$userData$tab1$stat_filter_state$filters(list(...))
+  session$flushReact()
+}
+
+# The On/Off DataTable is server-side: row data never appears in the widget
+# JSON, only the container. Use it for headers (the error table's "Info").
+table_text <- function(value) paste(deparse(value), collapse = "")
+
+test_that("On/Off issues no Player Stats query without a Player Stats chip", {
+  reset_mock_db_query_counts()
+  shiny::testServer(tab1_app, {
+    set_onoff_context(session)
+    output$onoff_dt
+    set_stat_filters(session, ps_filter(1L, "Net", "Net RTG Diff", "ge", 10))
+    output$onoff_dt
+    session$userData$tab1$filtered_result()
+    expect_identical(mock_db_query_count("player_traditional_mv"), 0L)
+    expect_identical(mock_db_query_count("player_traditional_reader"), 0L)
+  })
+})
+
+test_that("a Player Stats chip reads once, filters by team and player, and keeps ranks", {
+  reset_mock_db_query_counts()
+  shiny::testServer(tab1_app, {
+    set_onoff_context(session)
+    tab1 <- session$userData$tab1
+    unfiltered <- tab1$filtered_result()$df
+
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 19))
+    res <- tab1$filtered_result()
+    expect_false(res$error)
+    expect_identical(as.integer(res$df$player_id), 11L)
+    # Narrowing rows never recomputes the league-relative ranks.
+    expect_identical(res$df$pr_net, unfiltered$pr_net[unfiltered$player_id == 11])
+    expect_identical(mock_db_query_count("player_traditional_mv"), 1L)
+
+    # Threshold edits and ranges reuse the fetched frame.
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 17))
+    expect_setequal(as.integer(tab1$filtered_result()$df$player_id), c(11L, 21L))
+    set_stat_filters(session,
+      ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 17),
+      ps_filter(2L, "PTS/G", "ps_pts_pg", "le", 19))
+    expect_identical(as.integer(tab1$filtered_result()$df$player_id), 21L)
+    expect_identical(mock_db_query_count("player_traditional_mv"), 1L)
+    expect_identical(mock_db_query_count("player_traditional_reader"), 0L)
+  })
+})
+
+test_that("Player Stats and On/Off chips compose with AND in the table data", {
+  # The renderer hands exactly these two inputs to onoff_summary_datatable().
+  expect_match(read_repo_txt("R", "server_tab1.R"),
+               "onoff_summary_datatable(df, onoff_filters, pivot = pivot_targets)", fixed = TRUE)
+  shiny::testServer(tab1_app, {
+    set_onoff_context(session)
+    tab1 <- session$userData$tab1
+    table_players <- function() {
+      onoff_filters <- split_stat_filters(tab1$stat_filter_state$filters())$onoff
+      df <- onoff_clean_display_names(tab1$filtered_result()$df)
+      onoff_summary_datatable(df, onoff_filters)$x$data$Player
+    }
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 17))
+    expect_setequal(table_players(), c("Player A", "Player B"))
+
+    set_stat_filters(session,
+      ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 17),
+      ps_filter(2L, "Net", "Net RTG Diff", "ge", 10))
+    expect_identical(table_players(), "Player A")
+  })
+})
+
+test_that("starter counts and teams reuse the Player Stats frame", {
+  reset_mock_db_query_counts()
+  shiny::testServer(tab1_app, {
+    set_onoff_context(session)
+    tab1 <- session$userData$tab1
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 0))
+    tab1$filtered_result()
+    expect_identical(mock_db_query_count("player_traditional_mv"), 1L)
+
+    # Starter counts restrict On/Off segments, not the games Player Stats read.
+    set_onoff_context(session, on_num_starters_off_mode = "gte", on_num_starters_off = "3")
+    tab1$filtered_result()
+    # The reader's team filter only drops team-game rows, so a team change
+    # cannot alter a team-player row; the frame is reused.
+    set_onoff_context(session, on_num_starters_off_mode = "gte", on_num_starters_off = "3", teams = "1")
+    tab1$filtered_result()
+    expect_identical(mock_db_query_count("player_traditional_mv"), 1L)
+    expect_identical(mock_db_query_count("player_traditional_reader"), 0L)
+  })
+})
+
+test_that("a failed Player Stats read shows an error, keeps the chips, and retries", {
+  expect_match(read_repo_txt("R", "server_tab1.R"),
+               "data.frame(Info = PLAYER_STAT_FILTER_ERROR_TEXT", fixed = TRUE)
+  withr::local_options(ibpl.mock_player_traditional_error = TRUE)
+  shiny::testServer(tab1_app, {
+    set_onoff_context(session)
+    tab1 <- session$userData$tab1
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 0))
+    res <- tab1$filtered_result()
+    expect_true(res$error)
+    expect_identical(nrow(res$df), 0L)
+    # The table is the one-column Info error table, not the On/Off grid.
+    expect_match(table_text(output$onoff_dt), "<th>Info", fixed = TRUE)
+    expect_length(tab1$stat_filter_state$filters(), 1L)
+
+    options(ibpl.mock_player_traditional_error = FALSE)
+    # A different value: reactiveVal ignores an identical set.
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 1))
+    expect_false(tab1$filtered_result()$error)
+  })
+})
+
+test_that("every On/Off view renders with a Player Stats chip, including an empty result", {
+  shiny::testServer(tab1_app, {
+    for (mode in c("Summary", "Four Factors", "Shot Profile")) {
+      set_onoff_context(session, mode)
+      set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 19))
+      expect_silent(txt <- table_text(output$onoff_dt))
+      expect_false(grepl("<th>Info", txt, fixed = TRUE))
+      set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 1000))
+      expect_silent(output$onoff_dt)
+    }
+  })
+})
+
+test_that("auto min-possessions still reads the unfiltered On/Off sources", {
+  txt <- read_repo_txt("R", "server_tab1.R")
+  start <- regexpr("setup_onoff_auto_min(", txt, fixed = TRUE)
+  end <- regexpr("setup_gn_last_n_sync(", txt, fixed = TRUE)
+  expect_gt(start, 0)
+  expect_false(grepl("ps_filter|player_stat|filtered_result", substr(txt, start, end)))
+})

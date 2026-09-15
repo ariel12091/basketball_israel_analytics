@@ -28,12 +28,13 @@ server_tab1 <- function(input, output, session, shared) {
   resetting <- reactiveVal(FALSE)
   on_stat_filter_state <- make_stat_filter_state()
 
+  # Player Stats chips are common to every view (PLAYER_STAT_FILTERABLE_COLS).
   on_stat_filter_cols <- reactive({
-    switch(input$onoff_view_mode %||% "Summary",
+    c(switch(input$onoff_view_mode %||% "Summary",
       "Four Factors" = ONOFF_FF_FILTERABLE_COLS,
       "Shot Profile" = ON_SP_FILTERABLE_COLS,
       ONOFF_SUMMARY_FILTERABLE_COLS
-    )
+    ), PLAYER_STAT_FILTERABLE_COLS)
   })
 
   setup_stat_filter_handlers("on", input, session, on_stat_filter_cols, on_stat_filter_state)
@@ -398,16 +399,85 @@ server_tab1 <- function(input, output, session, shared) {
     }
   }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$min_all_poss, input$min_on_poss, input$game_year, input$onoff_view_mode)
 
+  # ---- Player Stats filter chips ----
+  # ps_* chips are evaluated here, upstream of the renderers, so they never
+  # enter the grouped-header column contract. The frame is read only while a
+  # ps_* chip is active, for this tab's game context WITHOUT the starter-count
+  # restriction: the traditional reader aggregates whole games (the chips row
+  # discloses this). Teams are not in the context either -- the reader's team
+  # filter only drops team-game rows, so a team-player row's values cannot
+  # depend on it, and leaving it out lets a team change reuse the frame.
+  on_filter_split <- reactive(split_stat_filters(on_stat_filter_state$filters()))
+
+  ps_filter_context <- reactive({
+    rng <- debounced_range()
+    req(rng)
+    req(!is.na(rng[1]), !is.na(rng[2]))
+    db_args <- build_onoff_db_args()
+    list(
+      game_year = as.integer(shared$selected_game_year()),
+      # `list()`, not `input`: the On/Off tab also reads the RAW GN inputs so
+      # it leaves the MV while a round is still being typed. Here that would
+      # yield fast = FALSE with the (still debounced) GN arguments unset -- a
+      # full-season reader query thrown away 150ms later. Decide the path
+      # from the same resolved values the reader receives.
+      fast = !isTRUE(onoff_fallback_needed(
+        rng, shared$season_date_bounds(shared$selected_game_year()),
+        onoff_drop_starter_filters(debounced_on_filters()), gn_params(),
+        list(), onoff_cfg$prefix
+      )),
+      start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
+      game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv,
+      home_away = db_args$home_away, outcome = db_args$outcome,
+      opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n,
+      opp_rank_metric = db_args$opp_rank_metric,
+      min_gn = db_args$min_gn, max_gn = db_args$max_gn,
+      last_n_games = db_args$last_n_games,
+      data_version = on_data_version()
+    )
+  })
+
+  # One read per distinct context: threshold edits reuse the last frame. A
+  # failed read (NULL) is not remembered, so the next chip change retries.
+  ps_frame_memo <- new.env(parent = emptyenv())
+  ps_filter_frame <- reactive({
+    if (!has_player_stat_filters(on_stat_filter_state$filters())) return(NULL)
+    ctx <- ps_filter_context()
+    if (identical(ps_frame_memo$ctx, ctx)) return(ps_frame_memo$frame)
+    frame <- fetch_player_stat_filter_frame(pg_pool, ctx, session)
+    if (!is.null(frame)) {
+      ps_frame_memo$ctx <- ctx
+      ps_frame_memo$frame <- frame
+    }
+    frame
+  })
+
+  # result_df() is already ranked and min-poss filtered; ps_frame is forced
+  # only when a Player Stats chip is active.
+  ps_filtered_result <- reactive({
+    apply_player_stat_filters(result_df(), ps_filter_frame(),
+                              on_filter_split()$player_stats,
+                              shared$selected_game_year())
+  })
+
   # --- Render Table ---
   output$onoff_dt <- renderDT({
-    df <- onoff_clean_display_names(result_df())
+    ps_result <- ps_filtered_result()
+    if (isTRUE(ps_result$error)) {
+      return(DT::datatable(
+        data.frame(Info = PLAYER_STAT_FILTER_ERROR_TEXT, check.names = FALSE),
+        rownames = FALSE, options = list(dom = "t")
+      ))
+    }
+    df <- onoff_clean_display_names(ps_result$df)
+    onoff_filters <- on_filter_split()$onoff
     mode <- input$onoff_view_mode
 
     if (identical(mode, "Summary")) {
-      return(onoff_summary_datatable(df, on_stat_filter_state$filters(), pivot = pivot_targets))
+      return(onoff_summary_datatable(df, onoff_filters, pivot = pivot_targets))
 
     } else if (identical(mode, "Four Factors")) {
-      return(onoff_four_factors_datatable(df, on_stat_filter_state$filters(),
+      return(onoff_four_factors_datatable(df, onoff_filters,
                                           show_impact = onoff_cfg$show_impact,
                                           pivot = pivot_targets))
     } else {
@@ -431,7 +501,7 @@ server_tab1 <- function(input, output, session, shared) {
       keep_cols <- c("Team", "Player", sp_diff_cols, "minutes", "ON Poss", "OFF Poss",
                      sp_share_cols, sp_fga_cols, sp_pr_cols, sp_rank_cols)
       df_final <- df[, intersect(keep_cols, names(df))]
-      df_final <- apply_stat_filters(df_final, on_stat_filter_state$filters())
+      df_final <- apply_stat_filters(df_final, onoff_filters)
 
       # FF-style cell: signed diff headline, on/off percentile dots on a rank
       # bar, "on | off" subtext. Em-dash when the corner flag is unknown;
@@ -550,5 +620,12 @@ server_tab1 <- function(input, output, session, shared) {
     teams_ids = "teams",
     starters_ids = c("on_num_starters_off_mode", "on_num_starters_off",
                      "on_num_starters_def_mode", "on_num_starters_def"))
+
+  # Returned for the server tests; app.R ignores it.
+  invisible(list(
+    stat_filter_state = on_stat_filter_state,
+    player_stat_frame = ps_filter_frame,
+    filtered_result = ps_filtered_result
+  ))
 }
 
