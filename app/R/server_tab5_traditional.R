@@ -712,61 +712,6 @@ server_tab5_traditional <- function(input, output, session, shared) {
     )
   }
 
-  run_player_traditional_dynamic <- function(pool, game_year, start_d, end_d,
-                                             team_ids_csv, game_type_csv, opp_ids_csv,
-                                             home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
-                                             max_margin, margin_status, max_time_remaining, ot_margin_filter,
-                                             min_gn, max_gn, last_n_games) {
-    allowed <- guard_heavy_request(
-      session, key = "tab5_player_traditional",
-      start_d = start_d, end_d = end_d,
-      min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
-      max_calls = 35L, window_sec = 60L
-    )
-    if (!isTRUE(allowed)) return(data.frame())
-    reader_kind <- clutch_reader_kind(list(
-      max_margin = max_margin,
-      margin_status = margin_status,
-      max_time_remaining = max_time_remaining,
-      ot_margin_filter = ot_margin_filter
-    ))
-    reader <- switch(
-      reader_kind,
-      pergame = "get_player_traditional_from_games",
-      dynamic = "get_player_traditional_from_games",
-      "get_player_traditional_custom_clutch"
-    )
-    db_get_query(
-      pool,
-      paste0(
-        "SELECT * FROM basketball_test.", reader, "(",
-        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
-        "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
-        ")"
-      ),
-      params = list(
-        as.integer(game_year),
-        if (!is.na(start_d)) as.Date(start_d) else NA,
-        if (!is.na(end_d)) as.Date(end_d) else NA,
-        team_ids_csv,
-        game_type_csv,
-        opp_ids_csv,
-        home_away,
-        outcome,
-        opp_rank_side,
-        opp_rank_n,
-        opp_rank_metric,
-        max_margin,
-        margin_status,
-        max_time_remaining,
-        ot_margin_filter,
-        min_gn,
-        max_gn,
-        last_n_games
-      )
-    )
-  }
-
   run_euro_player_traditional_dynamic <- function(pool, competition, game_year,
                                                    start_d, end_d,
                                                    team_ids_csv, phase_csv, opp_ids_csv,
@@ -864,34 +809,29 @@ server_tab5_traditional <- function(input, output, session, shared) {
     req(gy_int)
 
     # Raw season pull shared across sessions; per-session filters run below.
-    out <- cached_season_df(
-      list(if (ts_is_euro()) "euro_player_traditional_stats_mv" else "player_traditional_stats_mv",
-           ts_competition(), gy_int, ts_data_version()),
-      function() {
-        raw <- tryCatch(
-          if (ts_is_euro()) {
+    # The Israeli pull is fetch_player_traditional_season_israel() so the On/Off
+    # tab's Player Stats filter chips read the same cache entry.
+    out <- if (ts_is_euro()) {
+      cached_season_df(
+        list("euro_player_traditional_stats_mv", ts_competition(), gy_int, ts_data_version()),
+        function() {
+          raw <- tryCatch(
             db_get_query(
               pg_pool,
               "SELECT *
                  FROM euroleague.player_traditional_stats_mv
                 WHERE competition = $1::text AND game_year = $2::int4",
               params = list(ts_competition(), gy_int)
-            )
-          } else {
-            db_get_query(
-              pg_pool,
-              "SELECT *
-                 FROM basketball_test.player_traditional_stats_mv
-                WHERE game_year = $1",
-              params = list(gy_int)
-            )
-          },
-          error = function(e) NULL
-        )
-        if (is.null(raw)) return(NULL)
-        normalize_ts_result_cols(raw)
-      }
-    )
+            ),
+            error = function(e) NULL
+          )
+          if (is.null(raw)) return(NULL)
+          normalize_ts_result_cols(raw)
+        }
+      )
+    } else {
+      fetch_player_traditional_season_israel(pg_pool, gy_int, ts_data_version())
+    }
     if (is.null(out)) return(NULL)
 
     team_ids <- selected_team_ids()
@@ -938,8 +878,9 @@ server_tab5_traditional <- function(input, output, session, shared) {
           last_n_games = db_args$last_n_games
         )
       } else {
-        run_player_traditional_dynamic(
-          pg_pool, game_year = gy_int,
+        run_player_traditional_israel(
+          pg_pool, session = session, guard_key = "tab5_player_traditional",
+          game_year = gy_int,
           start_d = as.Date(rng[1]), end_d = as.Date(rng[2]),
           team_ids_csv = db_args$team_ids_csv,
           game_type_csv = db_args$game_type_csv,

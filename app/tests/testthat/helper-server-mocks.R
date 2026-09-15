@@ -80,6 +80,7 @@ fetch_scoreless_games <- function(ver = NULL) {
 
 reset_mock_db_query_counts <- function() {
   rm(list = ls(envir = .mock_db_query_counts, all.names = TRUE), envir = .mock_db_query_counts)
+  rm(list = ls(envir = .mock_db_last_params, all.names = TRUE), envir = .mock_db_last_params)
   invisible(NULL)
 }
 
@@ -98,6 +99,18 @@ mock_db_query_count <- function(name) {
     get(name, envir = .mock_db_query_counts, inherits = FALSE)
   } else {
     0L
+  }
+}
+
+# Last parameter list each counted read received, so tests can assert exactly
+# what a reader forwarded ($1, $2, ... in order).
+.mock_db_last_params <- new.env(parent = emptyenv())
+
+mock_db_last_params <- function(name) {
+  if (exists(name, envir = .mock_db_last_params, inherits = FALSE)) {
+    get(name, envir = .mock_db_last_params, inherits = FALSE)
+  } else {
+    NULL
   }
 }
 
@@ -151,6 +164,40 @@ hub_fetch_team_ratings_presets <- function(gy, ver) {
       "FROM basketball_test.team_ratings_preset_cache WHERE game_year = $1::int4"
     ),
     params = list(as.integer(gy))
+  )
+}
+
+# Traditional Player Stats rows shared by the MV mock and the reader mock.
+mock_player_traditional_df <- function() {
+  data.frame(
+    player_id = c(11L, 12L, 21L),
+    team_id = c(1L, 1L, 2L),
+    team_name = c("Team A", "Team A", "Team B"),
+    player_name = c("Player A", "Player C", "Player B"),
+    gp = c(5L, 4L, 5L),
+    pts = c(100, 72, 90),
+    reb = c(40, 24, 35),
+    oreb = c(12, 7, 10),
+    dreb = c(28, 17, 25),
+    ast = c(30, 18, 20),
+    stl = c(10, 7, 8),
+    blk = c(6, 4, 5),
+    dfl = c(5, 3, 4),
+    tov = c(14, 11, 13),
+    fgm = c(38, 28, 34),
+    fga = c(70, 55, 66),
+    `3pm` = c(11, 8, 9),
+    `3pa` = c(29, 22, 26),
+    ftm = c(13, 8, 13),
+    fta = c(16, 10, 16),
+    fg_pct = c(55.0, 51.0, 50.0),
+    tp_pct = c(38.0, 36.0, 34.0),
+    ft_pct = c(84.0, 80.0, 79.0),
+    efg = c(62.8, 58.2, 56.8),
+    ts = c(60.0, 58.0, 57.0),
+    poss_on_floor = c(300, 220, 280),
+    minutes = c(150, 120, 145),
+    check.names = FALSE
   )
 }
 
@@ -457,40 +504,24 @@ db_get_query <- function(pool, query, params = NULL) {
     ))
   }
 
+  if (grepl("basketball_test.player_traditional_stats_mv", q, fixed = TRUE)) {
+    increment_mock_db_query_count("player_traditional_mv")
+    assign("player_traditional_mv_pool", pool, envir = .mock_db_last_params)
+    if (isTRUE(getOption("ibpl.mock_player_traditional_error"))) stop("mock Player Stats failure")
+    out <- mock_player_traditional_df()
+    out$game_year <- 2026L
+    return(out)
+  }
+
   if (grepl("get_player_traditional_dynamic", q, fixed = TRUE) ||
       grepl("get_player_traditional_pergame", q, fixed = TRUE) ||
       grepl("get_player_traditional_from_games", q, fixed = TRUE) ||
       grepl("get_player_traditional_custom_clutch", q, fixed = TRUE)) {
-    out <- data.frame(
-      player_id = c(11L, 12L, 21L),
-      team_id = c(1L, 1L, 2L),
-      team_name = c("Team A", "Team A", "Team B"),
-      player_name = c("Player A", "Player C", "Player B"),
-      gp = c(5L, 4L, 5L),
-      pts = c(100, 72, 90),
-      reb = c(40, 24, 35),
-      oreb = c(12, 7, 10),
-      dreb = c(28, 17, 25),
-      ast = c(30, 18, 20),
-      stl = c(10, 7, 8),
-      blk = c(6, 4, 5),
-      dfl = c(5, 3, 4),
-      tov = c(14, 11, 13),
-      fgm = c(38, 28, 34),
-      fga = c(70, 55, 66),
-      `3pm` = c(11, 8, 9),
-      `3pa` = c(29, 22, 26),
-      ftm = c(13, 8, 13),
-      fta = c(16, 10, 16),
-      fg_pct = c(55.0, 51.0, 50.0),
-      tp_pct = c(38.0, 36.0, 34.0),
-      ft_pct = c(84.0, 80.0, 79.0),
-      efg = c(62.8, 58.2, 56.8),
-      ts = c(60.0, 58.0, 57.0),
-      poss_on_floor = c(300, 220, 280),
-      minutes = c(150, 120, 145),
-      check.names = FALSE
-    )
+    increment_mock_db_query_count("player_traditional_reader")
+    assign("player_traditional_reader", params, envir = .mock_db_last_params)
+    assign("player_traditional_reader_pool", pool, envir = .mock_db_last_params)
+    if (isTRUE(getOption("ibpl.mock_player_traditional_error"))) stop("mock Player Stats failure")
+    out <- mock_player_traditional_df()
     team_csv <- if (!is.null(params) && length(params) >= 4L) params[[4]] else NA_character_
     if (!is.null(team_csv) && !is.na(team_csv) && nzchar(team_csv)) {
       team_ids <- suppressWarnings(as.integer(strsplit(team_csv, ",", fixed = TRUE)[[1]]))

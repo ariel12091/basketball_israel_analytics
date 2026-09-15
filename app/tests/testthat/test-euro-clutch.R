@@ -140,8 +140,12 @@ test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
 
   # Israel now shares the request classifier: non-clutch and the exact cached
   # standard preset use per-game facts; custom clutch retains the action scan.
-  expect_match(traditional, '"get_player_traditional_from_games"', fixed = TRUE)
-  expect_match(traditional, '"get_player_traditional_custom_clutch"', fixed = TRUE)
-  expect_match(traditional, 'pergame = "get_player_traditional_from_games"', fixed = TRUE)
-  expect_match(traditional, 'dynamic = "get_player_traditional_from_games"', fixed = TRUE)
+  # The Israeli reader lives in helpers.R (run_player_traditional_israel) so
+  # the On/Off tab's Player Stats filter chips reuse it.
+  helpers <- read_repo_txt("R", "helpers.R")
+  expect_match(helpers, 'reader_kind <- clutch_reader_kind(list(', fixed = TRUE)
+  expect_match(helpers, '"get_player_traditional_from_games"', fixed = TRUE)
+  expect_match(helpers, '"get_player_traditional_custom_clutch"', fixed = TRUE)
+  expect_match(helpers, 'pergame = "get_player_traditional_from_games"', fixed = TRUE)
+  expect_match(helpers, 'dynamic = "get_player_traditional_from_games"', fixed = TRUE)
 })
