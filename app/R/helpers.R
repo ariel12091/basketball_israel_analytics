@@ -1851,8 +1851,8 @@ fmt_rank_cell <- function(value, rank_now, delta = NA_integer_, digits = 1,
   rank_txt <- ifelse(is.na(r), "#NA", paste0("#", r))
   delta_txt <- ifelse(
     !show_delta | is.na(d),
-      "--",
-      ifelse(d > 0, paste0("up ", abs(d)), ifelse(d < 0, paste0("down ", abs(d)), "no change"))
+      "&#8212;",
+      ifelse(d > 0, paste0("&#9650;", abs(d)), ifelse(d < 0, paste0("&#9660;", abs(d)), "&#8596;"))
   )
   paste0(value_txt, "<br>", rank_txt, "<br>", delta_txt)
 }
