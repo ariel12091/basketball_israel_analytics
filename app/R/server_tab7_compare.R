@@ -501,6 +501,26 @@ server_tab7_compare <- function(input, output, session, shared) {
     if (identical(cmp_gap_direction(), "b_minus_a")) val_b - val_a else val_a - val_b
   }
 
+  # Shared by every detail-grid gap column (team-vs-player drill-down and the
+  # Teams/Lineups detail view) so date_split/gn_split's after-minus-before
+  # framing applies consistently everywhere gaps are shown, not just on the
+  # summary cards. `gap` is the signed difference along cmp_gap_direction();
+  # `a_wins` is a straight A-vs-B comparison per the metric's own polarity,
+  # independent of that framing, and drives which side is colored as leader.
+  cmp_compute_gap <- function(val_a, val_b, polarity) {
+    if (!is.finite(val_a) || !is.finite(val_b)) {
+      return(list(gap = NA_real_, direction = "none", a_wins = NA))
+    }
+    raw_diff <- val_a - val_b
+    direction <- if (raw_diff > 0) "a" else if (raw_diff < 0) "b" else "none"
+    raw <- cmp_gap_value(val_a, val_b)
+    if (identical(polarity, "neutral")) {
+      return(list(gap = raw, direction = direction, a_wins = NA))
+    }
+    a_wins <- if (identical(polarity, "lower")) val_a < val_b else val_a > val_b
+    list(gap = raw, direction = direction, a_wins = if (abs(raw) < 1e-9) NA else a_wins)
+  }
+
   cmp_detail_display_state <- function(gap_info) {
     direction <- as.character(gap_info$direction %||% "none")
     if (!length(direction) || is.na(direction[[1]]) || !(direction[[1]] %in% c("a", "b"))) {
@@ -3159,20 +3179,6 @@ server_tab7_compare <- function(input, output, session, shared) {
         if (isTRUE(spec$raw) && identical(spec$col, "gp")) return(sprintf("%.0f", val))
         sprintf("%.1f", val)
       }
-      compute_detail_gap <- function(val_a, val_b, polarity) {
-        if (!is.finite(val_a) || !is.finite(val_b)) {
-          return(list(gap = NA_real_, direction = "none", a_wins = NA))
-        }
-        raw_diff <- val_a - val_b
-        direction <- if (raw_diff > 0) "a" else if (raw_diff < 0) "b" else "none"
-        raw <- cmp_gap_value(val_a, val_b)
-        if (identical(polarity, "neutral")) {
-          return(list(gap = raw, direction = direction, a_wins = NA))
-        }
-        a_wins <- if (identical(polarity, "lower")) val_a < val_b else val_a > val_b
-        list(gap = raw, direction = direction, a_wins = if (abs(raw) < 1e-9) NA else a_wins)
-      }
-
       all_cells <- list(
         tags$div(class = "cmp-col-header cmp-col-a cmp-cell cmp-first-row", col_a_text),
         tags$div(class = "cmp-col-header cmp-col-gap cmp-cell cmp-first-row", "Gap"),
@@ -3187,7 +3193,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         computed <- lapply(sec$metrics, function(m) {
           va <- get_detail_val(m, "a")
           vb <- get_detail_val(m, "b")
-          gi <- compute_detail_gap(va, vb, m$polarity)
+          gi <- cmp_compute_gap(va, vb, m$polarity)
           list(m = m, va = va, vb = vb, gi = gi)
         })
         max_abs_gap <- max(vapply(computed, function(x) {
@@ -3462,24 +3468,6 @@ server_tab7_compare <- function(input, output, session, shared) {
     NA_real_
   }
 
-  detail_compute_gap <- function(val_a, val_b, polarity) {
-    if (!is.finite(val_a) || !is.finite(val_b)) {
-      return(list(gap = NA_real_, direction = "none", a_wins = NA))
-    }
-    raw_diff <- val_a - val_b
-    abs_gap <- abs(raw_diff)
-    direction <- if (raw_diff > 0) "a" else if (raw_diff < 0) "b" else "none"
-    if (identical(polarity, "neutral")) {
-      return(list(gap = raw_diff, direction = direction, a_wins = NA))
-    }
-    signed_gap <- if (polarity == "higher") abs_gap else -abs_gap
-    if (abs_gap == 0) signed_gap <- 0
-    a_wins <- if (abs_gap == 0) NA else {
-      if (polarity == "higher") (val_a > val_b) else (val_a < val_b)
-    }
-    list(gap = signed_gap, direction = direction, a_wins = a_wins)
-  }
-
   build_detail_context_bar <- function(ra, rb, mode) {
     build_side <- function(row, badge_cls) {
       parts <- character(0)
@@ -3597,7 +3585,7 @@ server_tab7_compare <- function(input, output, session, shared) {
       computed <- lapply(metrics_list, function(m) {
         va <- detail_extract_value(ra, fa, sha, m)
         vb <- detail_extract_value(rb, fb, shb, m)
-        gap_info <- detail_compute_gap(va, vb, m$polarity)
+        gap_info <- cmp_compute_gap(va, vb, m$polarity)
         list(m = m, va = va, vb = vb, gap = gap_info)
       })
 
