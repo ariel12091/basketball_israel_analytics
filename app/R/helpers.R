@@ -1606,7 +1606,8 @@ onoff_filter_ff_rows <- function(df, team_ids, min_all, min_on) {
 # call this before the reactives it names are assigned.
 setup_onoff_auto_min <- function(input, session, min_on_id, min_all_id,
                                  state, auto_enabled, resetting,
-                                 mode_r, triggers, sources) {
+                                 mode_r, triggers, sources,
+                                 active = function() TRUE) {
   manual <- list(list(id = min_on_id, slot = "last_auto"),
                  list(id = min_all_id, slot = "last_auto_all"))
   for (m in manual) {
@@ -1625,9 +1626,9 @@ setup_onoff_auto_min <- function(input, session, min_on_id, min_all_id,
   }
 
   observeEvent(triggers(), {
-    if (isTRUE(resetting())) return(invisible(NULL))
+    if (isTRUE(resetting()) || !isTRUE(active())) return(invisible(NULL))
     auto_enabled(TRUE)
-  }, ignoreInit = TRUE)
+  }, ignoreInit = FALSE)
 
   bars <- list(
     list(
@@ -1651,7 +1652,7 @@ setup_onoff_auto_min <- function(input, session, min_on_id, min_all_id,
     local({
       spec <- b
       observeEvent(list(triggers(), input[[spec$trigger_id]]), {
-        if (!isTRUE(auto_enabled())) return(invisible(NULL))
+        if (!isTRUE(active()) || !isTRUE(auto_enabled())) return(invisible(NULL))
 
         mode <- mode_r()
         df_base <- onoff_auto_min_base_df(
@@ -1670,7 +1671,7 @@ setup_onoff_auto_min <- function(input, session, min_on_id, min_all_id,
         updateSliderInput(session, spec$id, value = min_needed)
         state$updating <- FALSE
         state[[spec$slot]] <- min_needed
-      }, ignoreInit = TRUE)
+      }, ignoreInit = FALSE)
     })
   }
 }

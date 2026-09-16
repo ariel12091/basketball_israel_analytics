@@ -48,6 +48,49 @@ test_that("auto_min_all_from_df requires both on and off to clear the bar", {
   expect_true(is.na(auto_min_all_from_df(df, "poss", "on", "nope")))
 })
 
+test_that("auto minimums initialize when an On/Off tab first becomes active", {
+  shiny::testServer(function(input, output, session) {
+    state <- shiny::reactiveValues(last_auto = NA_integer_, last_auto_all = NA_integer_, updating = FALSE)
+    auto_enabled <- shiny::reactiveVal(TRUE)
+    resetting <- shiny::reactiveVal(FALSE)
+    source_calls <- new.env(parent = emptyenv())
+    source_calls$n <- 0L
+    base_df <- data.frame(
+      `ON Poss` = c(100, 90, 80, 70, 60, 50, 40, 30, 20, 10),
+      `OFF Poss` = c(50, 40, 30, 20, 60, 50, 40, 30, 20, 10),
+      check.names = FALSE
+    )
+    sources <- list(
+      fallback = function() FALSE,
+      ff = function() base_df,
+      mv = function() { source_calls$n <- source_calls$n + 1L; base_df },
+      live = function() stop("live source should not be used"),
+      team_ids = function() NULL
+    )
+    setup_onoff_auto_min(
+      input, session, "min_on", "min_all", state, auto_enabled, resetting,
+      mode_r = function() input$view_mode,
+      triggers = function() list(input$main_tabs),
+      sources = sources,
+      active = function() identical(input$main_tabs, "onoff")
+    )
+    session$userData$auto_state <- state
+    session$userData$source_calls <- function() source_calls$n
+  }, {
+    session$setInputs(main_tabs = "home", view_mode = "Summary", min_on = 300, min_all = 100)
+    session$flushReact()
+    expect_true(is.na(session$userData$auto_state$last_auto))
+    expect_true(is.na(session$userData$auto_state$last_auto_all))
+    expect_identical(session$userData$source_calls(), 0L)
+
+    session$setInputs(main_tabs = "onoff")
+    session$flushReact()
+    expect_identical(session$userData$auto_state$last_auto, 70L)
+    expect_identical(session$userData$auto_state$last_auto_all, 20L)
+    expect_identical(session$userData$source_calls(), 2L)
+  })
+})
+
 test_that("resolve_poss_cols picks the columns for the active view mode", {
   summary_df <- data.frame(`ON Poss` = 1, `OFF Poss` = 1, check.names = FALSE)
   expect_identical(resolve_poss_cols(summary_df, "Summary"),
