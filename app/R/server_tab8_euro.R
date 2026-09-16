@@ -150,7 +150,7 @@ server_tab8_euro <- function(input, output, session, shared) {
     mode_r = function() input$euro_view_mode,
     triggers = function() {
       list(debounced_range(), debounced_teams(), debounced_on_filters(),
-           gn_params(), input$euro_game_year, input$euro_view_mode)
+           gn_params(), input$euro_game_year, euro_competition(), on_data_version(), input$euro_view_mode)
     },
     sources = list(
       fallback = function() fallback_needed(),
@@ -360,7 +360,7 @@ server_tab8_euro <- function(input, output, session, shared) {
                                          input$euro_min_on_poss))
       }
     }
-  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$euro_min_all_poss, input$euro_min_on_poss, input$euro_game_year, input$euro_view_mode)
+  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$euro_min_all_poss, input$euro_min_on_poss, input$euro_game_year, euro_competition(), on_data_version(), input$euro_view_mode)
 
   # ---- Player Stats filter chips ----
   # ps_* chips are evaluated here, upstream of the renderers, so they never
@@ -450,7 +450,7 @@ server_tab8_euro <- function(input, output, session, shared) {
                                           show_impact = onoff_cfg$show_impact,
                                           pivot = pivot_targets))
     }
-  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$euro_min_all_poss, input$euro_min_on_poss, input$euro_game_year, input$euro_view_mode, euro_stat_filter_state$filters())
+  }) %>% bindEvent(debounced_range(), debounced_teams(), debounced_on_filters(), gn_params(), input$euro_min_all_poss, input$euro_min_on_poss, input$euro_game_year, euro_competition(), on_data_version(), input$euro_view_mode, euro_stat_filter_state$filters())
 
   # ---- Filter Chips ----
   # Tab 1's chip bar. Everything league-specific is an argument: the season
