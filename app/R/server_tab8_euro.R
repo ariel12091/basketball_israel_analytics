@@ -149,7 +149,7 @@ server_tab8_euro <- function(input, output, session, shared) {
     state = auto_min_state, auto_enabled = auto_enabled, resetting = resetting,
     mode_r = function() input$euro_view_mode,
     triggers = function() {
-      list(debounced_range(), debounced_teams(), debounced_on_filters(),
+      list(input$main_tabs, debounced_range(), debounced_teams(), debounced_on_filters(),
            gn_params(), input$euro_game_year, euro_competition(), on_data_version(), input$euro_view_mode)
     },
     sources = list(
@@ -158,7 +158,8 @@ server_tab8_euro <- function(input, output, session, shared) {
       mv = function() mv_result_df(),
       live = function() live_unfiltered_df(),
       team_ids = function() selected_team_ids()
-    )
+    ),
+    active = function() identical(input$main_tabs, "euro")
   )
 
   setup_gn_last_n_sync(session, input, "euro")
