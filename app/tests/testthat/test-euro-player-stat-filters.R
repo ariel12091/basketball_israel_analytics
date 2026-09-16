@@ -104,11 +104,13 @@ make_euro8_test_env <- function() {
   env$euro_phase_label <- function(x) as.character(x)
   env$euro_data_version <- function() "euro-test-v1"
   env$setup_euro_section_filters <- function(...) invisible(TRUE)
+  env$onoff_query_params <- list()
 
   env$db_get_query <- function(pool, query, params = NULL) {
     q <- paste(query, collapse = " ")
     if (grepl("euroleague.onoff_compute(", q, fixed = TRUE) ||
         grepl("euroleague.player_onoff_default_mv", q, fixed = TRUE)) {
+      env$onoff_query_params[[length(env$onoff_query_params) + 1L]] <- params
       return(euro8_onoff_rows())
     }
     if (grepl("euroleague.four_factors_dashboard_compute(", q, fixed = TRUE) ||
@@ -344,5 +346,34 @@ test_that("every game-context control invalidates the frame and reaches the euro
       expect_identical(mock_db_query_count("euro_player_traditional_reader"), before + 1L,
                        label = paste(case$name, "reader calls after threshold edit"))
     }
+  })
+})
+
+test_that("switching competition alone refreshes Tab 8 and its Player Stats frame", {
+  reset_mock_db_query_counts()
+  competition <- shiny::reactiveVal("E")
+  shared <- make_euro8_shared()
+  shared$euro$competition <- competition
+  euro <- make_euro8_test_env()
+
+  shiny::testServer(function(input, output, session) {
+    session$userData$tab8 <- euro$server_tab8_euro(input, output, session, shared)
+  }, {
+    # A phase forces both the On/Off and Player Stats paths through their
+    # competition-parameterized per-game readers.
+    set_euro_context(session, euro_phase = "RS")
+    set_stat_filters(session, ps_filter(1L, "PTS/G", "ps_pts_pg", "ge", 0))
+    output$euro_dt
+    onoff_before <- length(euro$onoff_query_params)
+    reader_before <- mock_db_query_count("euro_player_traditional_reader")
+
+    competition("U")
+    session$flushReact()
+    output$euro_dt
+
+    expect_gt(length(euro$onoff_query_params), onoff_before)
+    expect_identical(tail(euro$onoff_query_params, 1)[[1]][[1]], "U")
+    expect_identical(mock_db_query_count("euro_player_traditional_reader"), reader_before + 1L)
+    expect_identical(mock_db_last_params("euro_player_traditional_reader")[[1]], "U")
   })
 })
