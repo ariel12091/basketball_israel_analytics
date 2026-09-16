@@ -18,7 +18,7 @@ test_that("the Israeli season reader fails to NULL, which cached_season_df never
 
 test_that("the Israeli filtered reader issues one per-game read when no clutch window is set", {
   reset_mock_db_query_counts()
-  out <- run_player_traditional(
+  out <- fetch_player_traditional_filtered(
     pg_pool, session = NULL, guard_key = "test_reader",
     league = "israel", competition = NA_character_,
     game_year = 2026L, start_d = as.Date("2025-11-01"), end_d = as.Date("2026-02-01"),
@@ -58,7 +58,7 @@ test_that("the EuroLeague season reader fails to NULL, which cached_season_df ne
 
 test_that("the EuroLeague filtered reader issues one per-game read when no clutch window is set", {
   reset_mock_db_query_counts()
-  out <- run_player_traditional(
+  out <- fetch_player_traditional_filtered(
     pg_pool, session = NULL, guard_key = "test_euro_reader",
     league = "euroleague", competition = "E",
     game_year = 2025L, start_d = as.Date("2025-11-01"), end_d = as.Date("2026-02-01"),
@@ -75,7 +75,7 @@ test_that("the EuroLeague filtered reader issues one per-game read when no clutc
 
 test_that("an invalid league errors instead of silently falling back", {
   expect_error(fetch_player_traditional_season(pg_pool, "nba", NA_character_, 2026L, "v1"))
-  expect_error(run_player_traditional(
+  expect_error(fetch_player_traditional_filtered(
     pg_pool, session = NULL, guard_key = "test_reader",
     league = "nba", competition = NA_character_,
     game_year = 2026L, start_d = as.Date("2025-11-01"), end_d = as.Date("2026-02-01"),
@@ -99,4 +99,9 @@ test_that("Tab 5 reads Player Stats through the shared league-aware readers", {
   expect_no_match(txt, "run_player_traditional_israel", fixed = TRUE)
   expect_no_match(txt, "run_euro_player_traditional_dynamic", fixed = TRUE)
   expect_no_match(txt, "fetch_player_traditional_season_israel", fixed = TRUE)
+  # run_player_traditional() is an unrelated local closure inside
+  # server_tab7_compare(); the shared filtered reader is named
+  # fetch_player_traditional_filtered() to avoid the name collision.
+  expect_no_match(txt, "run_player_traditional(", fixed = TRUE)
+  expect_match(txt, "fetch_player_traditional_filtered(", fixed = TRUE)
 })

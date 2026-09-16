@@ -787,7 +787,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
     db_args <- build_ts_db_args()
 
     out <- tryCatch(
-      run_player_traditional(
+      fetch_player_traditional_filtered(
         pg_pool, session = session,
         guard_key = if (ts_is_euro()) "tab5_euro_player_traditional" else "tab5_player_traditional",
         league = if (ts_is_euro()) "euroleague" else "israel",
