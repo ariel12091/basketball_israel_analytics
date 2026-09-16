@@ -116,36 +116,38 @@ test_that("clutch_reader_kind routes by what the request actually asks for", {
 })
 
 test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
-  traditional <- read_repo_txt("R", "server_tab5_traditional.R")
+  # Tab 5 used to inline its own copy of the three-way test, down to a private
+  # has_int_value() character-identical to the helper's is_set(), inside a
+  # closure only it could call. That closure joined its Israeli twin in
+  # helpers.R as run_player_traditional() (Task A), so every assertion below
+  # now reads helpers.R instead of server_tab5_traditional.R.
+  helpers <- read_repo_txt("R", "helpers.R")
 
-  # Tab 5 inlined its own copy of the three-way test, down to a private
-  # has_int_value() character-identical to the helper's is_set(). The copies
-  # agreed only because the clutch status select uses a literal "all" value
-  # rather than the project's "" blank sentinel; adopting that convention
-  # would have split them silently.
-  expect_match(traditional, "clutch_reader_kind(list(", fixed = TRUE)
-  expect_no_match(traditional, "clutch_active <-", fixed = TRUE)
-  expect_no_match(traditional, "has_int_value <- function", fixed = TRUE)
+  # The copies agreed only because the clutch status select uses a literal
+  # "all" value rather than the project's "" blank sentinel; adopting that
+  # convention would have split them silently.
+  expect_match(helpers, "clutch_reader_kind(list(", fixed = TRUE)
+  expect_no_match(helpers, "clutch_active <-", fixed = TRUE)
+  expect_no_match(helpers, "has_int_value <- function", fixed = TRUE)
 
   # Non-clutch uses the typed per-game companion; the standard preset keeps
   # its existing cache and only custom requests carry clutch arguments.
-  expect_match(traditional, 'pergame = "get_player_traditional_pergame"', fixed = TRUE)
-  expect_match(traditional, 'dynamic = "get_player_traditional_standard_clutch"', fixed = TRUE)
-  expect_match(traditional, '"get_player_traditional_custom_clutch"', fixed = TRUE)
+  expect_match(helpers, 'pergame = "get_player_traditional_pergame"', fixed = TRUE)
+  expect_match(helpers, 'dynamic = "get_player_traditional_standard_clutch"', fixed = TRUE)
+  expect_match(helpers, '"get_player_traditional_custom_clutch"', fixed = TRUE)
 
   # The standard-clutch reader bakes the preset in and takes none of the four
   # clutch parameters, so reader and parameter list must be chosen together.
-  expect_match(traditional, 'takes_clutch <- identical(reader, "get_player_traditional_custom_clutch")', fixed = TRUE)
-  expect_match(traditional, '"$13::int4,$14::int4,$15::int4"', fixed = TRUE)
+  expect_match(helpers, 'takes_clutch <- identical(reader, "get_player_traditional_custom_clutch")', fixed = TRUE)
+  expect_match(helpers, '"$13::int4,$14::int4,$15::int4"', fixed = TRUE)
 
-  # Israel now shares the request classifier: non-clutch and the exact cached
+  # Israel shares the request classifier too: non-clutch and the exact cached
   # standard preset use per-game facts; custom clutch retains the action scan.
-  # The Israeli reader lives in helpers.R (run_player_traditional_israel) so
-  # the On/Off tab's Player Stats filter chips reuse it.
-  helpers <- read_repo_txt("R", "helpers.R")
+  # Both leagues' readers live in helpers.R (run_player_traditional()) so the
+  # On/Off tabs' Player Stats filter chips (Tab 1 Israeli, Tab 8 EuroLeague)
+  # reuse them.
   expect_match(helpers, 'reader_kind <- clutch_reader_kind(list(', fixed = TRUE)
   expect_match(helpers, '"get_player_traditional_from_games"', fixed = TRUE)
-  expect_match(helpers, '"get_player_traditional_custom_clutch"', fixed = TRUE)
   expect_match(helpers, 'pergame = "get_player_traditional_from_games"', fixed = TRUE)
   expect_match(helpers, 'dynamic = "get_player_traditional_from_games"', fixed = TRUE)
 })

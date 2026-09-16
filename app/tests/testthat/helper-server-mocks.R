@@ -513,22 +513,39 @@ db_get_query <- function(pool, query, params = NULL) {
     return(out)
   }
 
+  if (grepl("euroleague.player_traditional_stats_mv", q, fixed = TRUE)) {
+    increment_mock_db_query_count("euro_player_traditional_mv")
+    assign("euro_player_traditional_mv_pool", pool, envir = .mock_db_last_params)
+    if (isTRUE(getOption("ibpl.mock_player_traditional_error"))) stop("mock Player Stats failure")
+    out <- mock_player_traditional_df()
+    out$competition <- "E"
+    out$game_year <- 2025L
+    return(out)
+  }
+
   if (grepl("get_player_traditional_dynamic", q, fixed = TRUE) ||
       grepl("get_player_traditional_pergame", q, fixed = TRUE) ||
       grepl("get_player_traditional_from_games", q, fixed = TRUE) ||
+      grepl("get_player_traditional_standard_clutch", q, fixed = TRUE) ||
       grepl("get_player_traditional_custom_clutch", q, fixed = TRUE)) {
-    increment_mock_db_query_count("player_traditional_reader")
-    assign("player_traditional_reader", params, envir = .mock_db_last_params)
-    assign("player_traditional_reader_pool", pool, envir = .mock_db_last_params)
+    is_euro <- grepl("euroleague.", q, fixed = TRUE)
+    counter <- if (is_euro) "euro_player_traditional_reader" else "player_traditional_reader"
+    increment_mock_db_query_count(counter)
+    assign(counter, params, envir = .mock_db_last_params)
+    assign(paste0(counter, "_pool"), pool, envir = .mock_db_last_params)
     if (isTRUE(getOption("ibpl.mock_player_traditional_error"))) stop("mock Player Stats failure")
     out <- mock_player_traditional_df()
-    team_csv <- if (!is.null(params) && length(params) >= 4L) params[[4]] else NA_character_
+    # Israel's signature leads with game_year; EuroLeague's leads with
+    # competition, so team_ids_csv/home_away sit one slot later.
+    team_idx <- if (is_euro) 5L else 4L
+    home_idx <- if (is_euro) 8L else 7L
+    team_csv <- if (!is.null(params) && length(params) >= team_idx) params[[team_idx]] else NA_character_
     if (!is.null(team_csv) && !is.na(team_csv) && nzchar(team_csv)) {
       team_ids <- suppressWarnings(as.integer(strsplit(team_csv, ",", fixed = TRUE)[[1]]))
       team_ids <- team_ids[is.finite(team_ids)]
       out <- out[out$team_id %in% team_ids, , drop = FALSE]
     }
-    home_away <- if (!is.null(params) && length(params) >= 7L) params[[7]] else NA_character_
+    home_away <- if (!is.null(params) && length(params) >= home_idx) params[[home_idx]] else NA_character_
     if (!is.null(home_away) && !is.na(home_away) && identical(as.character(home_away), "home") &&
         nrow(out) && all(out$team_id == 1L)) {
       out <- out[out$player_id == 11L, , drop = FALSE]

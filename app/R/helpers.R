@@ -1948,23 +1948,49 @@ apply_ts_mode <- function(df, mode, x_poss = NA_real_, x_min = NA_real_) {
   df
 }
 
-# ---- Israeli Player Stats readers (Tab 5 and the On/Off Player Stats chips) ----
-# One season of basketball_test.player_traditional_stats_mv, normalised. The
-# key carries no league dimension beyond the table name: this is the Israeli
-# reader. NULL on a read error, which cached_season_df() never caches. The
-# pool is an argument, not part of the key: it changes where, not what.
-fetch_player_traditional_season_israel <- function(pool, game_year, data_version) {
+# ---- Player Stats readers (Tab 5 and the On/Off tabs Player Stats chips) ----
+# One season of <schema>.player_traditional_stats_mv, normalised, for either
+# league. `league` is "israel" or "euroleague"; anything else is a caller bug
+# and errors loudly rather than silently defaulting. `competition` is ignored
+# for "israel" (callers pass NA_character_) -- the Israeli cache key carries
+# no league dimension beyond the table name, unchanged from before this
+# function grew a league argument, since Tab 5, Tab 1 and Team Hub share that
+# cache entry. NULL on a read error, which cached_season_df() never caches.
+# The pool is an argument, not part of the key: it changes where, not what.
+fetch_player_traditional_season <- function(pool, league, competition, game_year, data_version) {
+  if (!identical(league, "israel") && !identical(league, "euroleague")) {
+    stop(sprintf("fetch_player_traditional_season: unknown league %s", league))
+  }
   gy <- suppressWarnings(as.integer(game_year))
+  if (identical(league, "israel")) {
+    return(cached_season_df(
+      list("player_traditional_stats_mv", gy, data_version),
+      function() {
+        raw <- tryCatch(
+          db_get_query(
+            pool,
+            "SELECT *
+               FROM basketball_test.player_traditional_stats_mv
+              WHERE game_year = $1",
+            params = list(gy)
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(raw)) return(NULL)
+        normalize_ts_result_cols(raw)
+      }
+    ))
+  }
   cached_season_df(
-    list("player_traditional_stats_mv", gy, data_version),
+    list("euro_player_traditional_stats_mv", competition, gy, data_version),
     function() {
       raw <- tryCatch(
         db_get_query(
           pool,
           "SELECT *
-             FROM basketball_test.player_traditional_stats_mv
-            WHERE game_year = $1",
-          params = list(gy)
+             FROM euroleague.player_traditional_stats_mv
+            WHERE competition = $1::text AND game_year = $2::int4",
+          params = list(competition, gy)
         ),
         error = function(e) NULL
       )
@@ -1974,14 +2000,22 @@ fetch_player_traditional_season_israel <- function(pool, game_year, data_version
   )
 }
 
-# Filtered-context reader, moved from server_tab5_traditional.R. The caller
-# names its own rate-limit bucket (guard_key) so tabs do not share a budget.
-# A guard refusal returns a column-less data.frame().
-run_player_traditional_israel <- function(pool, session, guard_key, game_year, start_d, end_d,
-                                          team_ids_csv, game_type_csv, opp_ids_csv,
-                                          home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
-                                          max_margin, margin_status, max_time_remaining, ot_margin_filter,
-                                          min_gn, max_gn, last_n_games) {
+# Filtered-context reader, moved from server_tab5_traditional.R -- the
+# EuroLeague branch joins the Israeli one here so Tab 8 reuses it exactly as
+# Tab 5 and Tab 1 do. The caller names its own rate-limit bucket (guard_key)
+# so tabs do not share a budget. A guard refusal returns a column-less
+# data.frame(). Each league keeps its own reader-name map, schema and
+# parameter list exactly as before this function grew a league argument:
+# Israel always sends the full 18-slot signature; EuroLeague sends 15 or 19
+# slots depending on whether the custom-clutch reader is chosen.
+run_player_traditional <- function(pool, session, guard_key, league, competition, game_year,
+                                   start_d, end_d, team_ids_csv, game_type_csv, opp_ids_csv,
+                                   home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
+                                   max_margin, margin_status, max_time_remaining, ot_margin_filter,
+                                   min_gn, max_gn, last_n_games) {
+  if (!identical(league, "israel") && !identical(league, "euroleague")) {
+    stop(sprintf("run_player_traditional: unknown league %s", league))
+  }
   allowed <- guard_heavy_request(
     session, key = guard_key,
     start_d = start_d, end_d = end_d,
@@ -1995,41 +2029,79 @@ run_player_traditional_israel <- function(pool, session, guard_key, game_year, s
     max_time_remaining = max_time_remaining,
     ot_margin_filter = ot_margin_filter
   ))
+
+  if (identical(league, "israel")) {
+    reader <- switch(
+      reader_kind,
+      pergame = "get_player_traditional_from_games",
+      dynamic = "get_player_traditional_from_games",
+      "get_player_traditional_custom_clutch"
+    )
+    return(db_get_query(
+      pool,
+      paste0(
+        "SELECT * FROM basketball_test.", reader, "(",
+        "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
+        "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
+        ")"
+      ),
+      params = list(
+        as.integer(game_year),
+        if (!is.na(start_d)) as.Date(start_d) else NA,
+        if (!is.na(end_d)) as.Date(end_d) else NA,
+        team_ids_csv,
+        game_type_csv,
+        opp_ids_csv,
+        home_away,
+        outcome,
+        opp_rank_side,
+        opp_rank_n,
+        opp_rank_metric,
+        max_margin,
+        margin_status,
+        max_time_remaining,
+        ot_margin_filter,
+        min_gn,
+        max_gn,
+        last_n_games
+      )
+    ))
+  }
+
+  # league == "euroleague". Which of the three readers answers this request
+  # is the same clutch_reader_kind() classifier Tabs 9 and 10 route through:
+  # non-clutch and the cached standard preset both use game-grain facts, and
+  # only a custom clutch request needs the four clutch parameters.
   reader <- switch(
     reader_kind,
-    pergame = "get_player_traditional_from_games",
-    dynamic = "get_player_traditional_from_games",
+    pergame = "get_player_traditional_pergame",
+    dynamic = "get_player_traditional_standard_clutch",
     "get_player_traditional_custom_clutch"
   )
-  db_get_query(
-    pool,
-    paste0(
-      "SELECT * FROM basketball_test.", reader, "(",
-      "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
-      "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
-      ")"
-    ),
-    params = list(
-      as.integer(game_year),
-      if (!is.na(start_d)) as.Date(start_d) else NA,
-      if (!is.na(end_d)) as.Date(end_d) else NA,
-      team_ids_csv,
-      game_type_csv,
-      opp_ids_csv,
-      home_away,
-      outcome,
-      opp_rank_side,
-      opp_rank_n,
-      opp_rank_metric,
-      max_margin,
-      margin_status,
-      max_time_remaining,
-      ot_margin_filter,
-      min_gn,
-      max_gn,
-      last_n_games
-    )
+  # The per-game and standard-clutch readers take the same 15 context/game
+  # arguments. Only the custom reader takes the four clutch arguments.
+  takes_clutch <- identical(reader, "get_player_traditional_custom_clutch")
+  context <- list(
+    competition, as.integer(game_year),
+    if (!is.na(start_d)) as.Date(start_d) else NA,
+    if (!is.na(end_d)) as.Date(end_d) else NA,
+    team_ids_csv, game_type_csv, opp_ids_csv, home_away, outcome,
+    opp_rank_side, opp_rank_n, opp_rank_metric
   )
+  sig <- paste0("$1::text,$2::int4,$3::date,$4::date,$5::text,$6::text,$7::text,",
+                "$8::text,$9::text,$10::text,$11::int4,$12::text,")
+  if (takes_clutch) {
+    sig <- paste0(sig, "$13::int4,$14::text,$15::int4,$16::bool,",
+                  "$17::int4,$18::int4,$19::int4")
+    params <- c(context,
+                list(max_margin, margin_status, max_time_remaining, ot_margin_filter),
+                list(min_gn, max_gn, last_n_games))
+  } else {
+    sig <- paste0(sig, "$13::int4,$14::int4,$15::int4")
+    params <- c(context, list(min_gn, max_gn, last_n_games))
+  }
+  db_get_query(pool, paste0("SELECT * FROM euroleague.", reader, "(", sig, ")"),
+               params = params)
 }
 
 # ---- Player Stats filter chips on the On/Off tab ----
@@ -2206,13 +2278,20 @@ apply_player_stat_filters <- function(df, ps_frame, filters, game_year) {
 # The projected Player Stats frame for one On/Off game context, or NULL when it
 # cannot be read. `ctx$fast` selects the shared default-season MV pull;
 # otherwise the per-game reader answers with no team and no clutch filter.
+# `ctx$league` defaults to "israel" (Tab 1's guard key) and Tab 8 sets it to
+# "euroleague" (its own guard key), so the two tabs never share a rate-limit
+# budget.
 fetch_player_stat_filter_frame <- function(pool, ctx, session) {
+  league <- ctx$league %||% "israel"
+  competition <- ctx$competition %||% NA_character_
+  guard_key <- if (identical(league, "euroleague")) "tab8_player_stat_filters" else "tab1_player_stat_filters"
   raw <- if (isTRUE(ctx$fast)) {
-    fetch_player_traditional_season_israel(pool, ctx$game_year, ctx$data_version)
+    fetch_player_traditional_season(pool, league, competition, ctx$game_year, ctx$data_version)
   } else {
     out <- tryCatch(
-      run_player_traditional_israel(
-        pool, session = session, guard_key = "tab1_player_stat_filters",
+      run_player_traditional(
+        pool, session = session, guard_key = guard_key,
+        league = league, competition = competition,
         game_year = ctx$game_year, start_d = ctx$start_d, end_d = ctx$end_d,
         team_ids_csv = NA_character_,
         game_type_csv = ctx$game_type_csv, opp_ids_csv = ctx$opp_ids_csv,
