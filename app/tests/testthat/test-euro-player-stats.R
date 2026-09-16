@@ -24,7 +24,7 @@ test_that("EuroLeague Player Stats uses the indexed and dynamic read paths", {
   # The three reader names and the kind -> reader map are pinned in
   # test-euro-clutch.R; this test only asserts the read paths exist.
   # The EuroLeague reader itself moved to helpers.R behind
-  # run_player_traditional()'s league argument (Task A), so the two
+  # fetch_player_traditional_filtered()'s league argument (Task A), so the two
   # source-text checks that used to pin it to this file now read helpers.R.
   expect_match(helpers, 'paste0("SELECT * FROM euroleague.", reader, "("', fixed = TRUE)
   expect_match(helpers, "clutch_reader_kind(list(", fixed = TRUE)

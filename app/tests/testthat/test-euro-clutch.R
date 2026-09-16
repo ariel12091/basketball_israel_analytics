@@ -119,7 +119,7 @@ test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
   # Tab 5 used to inline its own copy of the three-way test, down to a private
   # has_int_value() character-identical to the helper's is_set(), inside a
   # closure only it could call. That closure joined its Israeli twin in
-  # helpers.R as run_player_traditional() (Task A), so every assertion below
+  # helpers.R as fetch_player_traditional_filtered() (Task A), so every assertion below
   # now reads helpers.R instead of server_tab5_traditional.R.
   helpers <- read_repo_txt("R", "helpers.R")
 
@@ -143,7 +143,7 @@ test_that("Tab 5's EuroLeague reader routes through the shared classifier", {
 
   # Israel shares the request classifier too: non-clutch and the exact cached
   # standard preset use per-game facts; custom clutch retains the action scan.
-  # Both leagues' readers live in helpers.R (run_player_traditional()) so the
+  # Both leagues' readers live in helpers.R (fetch_player_traditional_filtered()) so the
   # On/Off tabs' Player Stats filter chips (Tab 1 Israeli, Tab 8 EuroLeague)
   # reuse them.
   expect_match(helpers, 'reader_kind <- clutch_reader_kind(list(', fixed = TRUE)

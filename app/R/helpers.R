@@ -2002,19 +2002,24 @@ fetch_player_traditional_season <- function(pool, league, competition, game_year
 
 # Filtered-context reader, moved from server_tab5_traditional.R -- the
 # EuroLeague branch joins the Israeli one here so Tab 8 reuses it exactly as
-# Tab 5 and Tab 1 do. The caller names its own rate-limit bucket (guard_key)
+# Tab 5 and Tab 1 do. Named fetch_player_traditional_filtered() (paired with
+# fetch_player_traditional_season() above) rather than run_player_traditional()
+# because server_tab7_compare.R already has an unrelated LOCAL closure of
+# that name (a different SQL function) -- the two never collided at runtime
+# since Tab 7's local binding shadows this one, but the identical name made
+# git grep ambiguous. The caller names its own rate-limit bucket (guard_key)
 # so tabs do not share a budget. A guard refusal returns a column-less
 # data.frame(). Each league keeps its own reader-name map, schema and
 # parameter list exactly as before this function grew a league argument:
 # Israel always sends the full 18-slot signature; EuroLeague sends 15 or 19
 # slots depending on whether the custom-clutch reader is chosen.
-run_player_traditional <- function(pool, session, guard_key, league, competition, game_year,
+fetch_player_traditional_filtered <- function(pool, session, guard_key, league, competition, game_year,
                                    start_d, end_d, team_ids_csv, game_type_csv, opp_ids_csv,
                                    home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
                                    max_margin, margin_status, max_time_remaining, ot_margin_filter,
                                    min_gn, max_gn, last_n_games) {
   if (!identical(league, "israel") && !identical(league, "euroleague")) {
-    stop(sprintf("run_player_traditional: unknown league %s", league))
+    stop(sprintf("fetch_player_traditional_filtered: unknown league %s", league))
   }
   allowed <- guard_heavy_request(
     session, key = guard_key,
@@ -2289,7 +2294,7 @@ fetch_player_stat_filter_frame <- function(pool, ctx, session) {
     fetch_player_traditional_season(pool, league, competition, ctx$game_year, ctx$data_version)
   } else {
     out <- tryCatch(
-      run_player_traditional(
+      fetch_player_traditional_filtered(
         pool, session = session, guard_key = guard_key,
         league = league, competition = competition,
         game_year = ctx$game_year, start_d = ctx$start_d, end_d = ctx$end_d,
