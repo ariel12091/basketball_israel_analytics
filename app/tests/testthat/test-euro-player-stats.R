@@ -16,17 +16,21 @@ test_that("Player Stats is shared by the Israeli and EuroLeague sections", {
 
 test_that("EuroLeague Player Stats uses the indexed and dynamic read paths", {
   server <- read_repo_txt("R", "server_tab5_traditional.R")
+  helpers <- read_repo_txt("R", "helpers.R")
 
   expect_match(server, "euroleague.player_traditional_stats_mv", fixed = TRUE)
   # The live path composes its reader name from the kind clutch_reader_kind()
   # picks, so no euroleague.get_player_traditional_* literal appears any more.
   # The three reader names and the kind -> reader map are pinned in
   # test-euro-clutch.R; this test only asserts the read paths exist.
-  expect_match(server, 'paste0("SELECT * FROM euroleague.", reader, "("', fixed = TRUE)
-  expect_match(server, "clutch_reader_kind(list(", fixed = TRUE)
+  # The EuroLeague reader itself moved to helpers.R behind
+  # run_player_traditional()'s league argument (Task A), so the two
+  # source-text checks that used to pin it to this file now read helpers.R.
+  expect_match(helpers, 'paste0("SELECT * FROM euroleague.", reader, "("', fixed = TRUE)
+  expect_match(helpers, "clutch_reader_kind(list(", fixed = TRUE)
   expect_match(server, "resolve_clutch_params(", fixed = TRUE)
   expect_match(server, "integerize = !ts_is_euro()", fixed = TRUE)
-  expect_match(server, 'phase_csv = db_args$game_type_csv', fixed = TRUE)
+  expect_match(server, 'game_type_csv = db_args$game_type_csv', fixed = TRUE)
   expect_match(server, 'if (ts_is_euro()) disp$DFL <- NULL', fixed = TRUE)
 })
 
