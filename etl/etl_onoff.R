@@ -232,7 +232,25 @@ fetch_israel_schedule <- function() {
     )
 }
 fetch_game_pbp <- function(game_id, pbp_url) {
-  jsonlite::read_json(pbp_url, simplifyVector = TRUE)
+  # Allow a one-game provider fallback without changing the normal source.
+  # Basket's archived game endpoint contains the same gameInfo/actions payload
+  # under `actions`, rather than the Segevstats JSON-RPC `result` envelope.
+  fallback_url <- Sys.getenv("PBP_GAME_402_FALLBACK_URL", unset = "")
+  if (as.integer(game_id) == 402L && nzchar(fallback_url)) {
+    pbp_url <- fallback_url
+  }
+
+  raw <- jsonlite::read_json(pbp_url, simplifyVector = TRUE)
+  if (is.null(raw$result) && !is.null(raw$actions$actions)) {
+    raw <- list(
+      result = list(
+        gameInfo = raw$actions$gameInfo,
+        actions = raw$actions$actions,
+        success = raw$actions$success
+      )
+    )
+  }
+  raw
 }
 fetch_game_box <- function(game_id, box_url) {
   url <- as.character(box_url)[1]

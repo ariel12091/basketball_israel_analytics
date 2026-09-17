@@ -70,6 +70,7 @@ jobs:
           PG_USER: ${{ secrets.PG_USER }}
           PG_PASS: ${{ secrets.PG_PASS }}
           PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+          PBP_GAME_402_FALLBACK_URL: https://basket.co.il/livestats/data/game-402.json?w=178944452
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
