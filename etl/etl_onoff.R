@@ -335,6 +335,44 @@ KNOWN_CLOCK_STAMP_CORRECTIONS <- tibble::tribble(
   399L, 3990434L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter"
 )
 
+# Game 402's archived Basket payload contains a coherent Q4 action stream, but
+# 87 interleaved rows retain quarter=3 after Q4 begins. Their IDs, user times,
+# and clocks align with the surrounding Q4 rows; the block includes clocks,
+# substitutions, timeouts, one missed shot, and its offensive rebound.
+KNOWN_PERIOD_LABEL_CORRECTIONS <- tibble::tribble(
+  ~game_id, ~min_id,   ~max_id,   ~wrong_quarter, ~corrected_quarter, ~reason,
+  402L,     4020627L, 4020822L, 3L,             4L,                 "Q4 rows mislabeled as Q3 in archived Basket payload"
+)
+
+apply_known_period_label_corrections <- function(df, game_id_val) {
+  corr <- KNOWN_PERIOD_LABEL_CORRECTIONS |>
+    dplyr::filter(game_id == as.integer(game_id_val))
+  if (!nrow(corr)) return(df)
+
+  for (i in seq_len(nrow(corr))) {
+    target <-
+      as.integer(df$id) >= corr$min_id[[i]] &
+      as.integer(df$id) <= corr$max_id[[i]] &
+      as.integer(df$quarter) == corr$wrong_quarter[[i]]
+
+    df$quarter[target] <- corr$corrected_quarter[[i]]
+    if ("parameters_current_quarter" %in% names(df)) {
+      current_target <- target &
+        !is.na(df$parameters_current_quarter) &
+        as.integer(df$parameters_current_quarter) == corr$wrong_quarter[[i]]
+      df$parameters_current_quarter[current_target] <- corr$corrected_quarter[[i]]
+    }
+    if ("parameters_quarter" %in% names(df)) {
+      parameter_target <- target &
+        !is.na(df$parameters_quarter) &
+        as.integer(df$parameters_quarter) == corr$wrong_quarter[[i]]
+      df$parameters_quarter[parameter_target] <- corr$corrected_quarter[[i]]
+    }
+  }
+
+  df
+}
+
 #' Apply KNOWN_CLOCK_STAMP_CORRECTIONS to one game's raw action rows.
 #'
 #' Only touches `quarter_time`, and only where the feed still shows the
@@ -381,6 +419,9 @@ clean_actions <- function(pbp) {
     janitor::clean_names()
 
   game_id_val <- pbp$result$gameInfo$gameId
+
+  # Correct known period-label errors before deriving game time or lineups.
+  a <- apply_known_period_label_corrections(a, game_id_val)
 
   # Correct known bad clock stamps BEFORE end_quarter_seconds_remaining /
   # end_game_seconds_remaining are derived from quarter_time below, so the
