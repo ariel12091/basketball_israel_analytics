@@ -4117,13 +4117,35 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # them (2026-09-06). A game with deep rotations makes the chart taller
   # than the modal, and with the row only at the bottom the reader had to
   # scroll to find out which quarter a stint sits in. The top row costs no
-  # height at all: it reuses the own-team label's header row, and the
-  # earliest marker (end of Q1) sits far right of that left-anchored label.
+  # height at all: it reuses the own-team label's header row.
+  #
+  # Each label marks the START of its period (2026-09-19), left-anchored
+  # just right of that period's opening gridline, so "Q2" names the bars to
+  # its right rather than the ones behind it. Q1 opens at the gutter and has
+  # no gridline of its own.
+  period_starts <- c(0, bounds[-length(bounds)])
+
+  # Alternating tint, every second period (2026-09-19). A single gridline is
+  # easy to lose in a chart tall enough to scroll, and it is painted UNDER
+  # the lane bars -- so a player who never sits had no quarter marking across
+  # their row at all. A band gives the whole column a background instead, and
+  # the gridlines move above the bars below for the same reason. Bands are
+  # inert (pointer-events: none in app.css) so one never swallows a lane
+  # click, and they carry data-base-y2 like the gridlines do: app.js and
+  # mobile.js grow both when a detail card opens or rows collapse.
+  period_bands <- lapply(which(seq_along(period_starts) %% 2L == 0L), function(k) {
+    per_second <- (L$width - L$gutter) / total_seconds
+    x0 <- L$gutter + period_starts[k] * per_second
+    tags$rect(class = "ibpl-ribbon-band", x = x0, y = RIBBON_PAD_TOP,
+              width = L$gutter + bounds[k] * per_second - x0,
+              height = total_h - RIBBON_PAD_TOP, `data-base-y2` = total_h)
+  })
+
   period_label_row <- function(y) {
-    lapply(seq_along(bounds), function(k) {
-      bx <- L$gutter + bounds[k] * ((L$width - L$gutter) / total_seconds)
-      tags$text(class = "ibpl-ribbon-period-label", x = bx - 4, y = y,
-                `text-anchor` = "end",
+    lapply(seq_along(period_starts), function(k) {
+      bx <- L$gutter + period_starts[k] * ((L$width - L$gutter) / total_seconds)
+      tags$text(class = "ibpl-ribbon-period-label", x = bx + 4, y = y,
+                `text-anchor` = "start",
                 if (k <= 4) paste0("Q", k) else paste0("OT", k - 4))
     })
   }
@@ -4136,7 +4158,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     # over-estimates the 12px semibold label, so the check errs toward
     # dropping rather than overprinting.
     name_end <- nchar(meta$own_team %||% "Own") * 7 + 6
-    marker_left <- L$gutter + bounds * ((L$width - L$gutter) / total_seconds) - 4 - 20
+    marker_left <- L$gutter + period_starts * ((L$width - L$gutter) / total_seconds) + 4
     top_period_labels <- top_period_labels[marker_left > name_end]
   }
   bottom_period_labels <- period_label_row(total_h + 12)
@@ -4160,7 +4182,7 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     `data-own-detail-y` = own_detail_y,
     `data-opp-detail-y` = opp_detail_y,
     tags$defs(clip_paths),
-    period_lines,
+    period_bands,
     tags$g(class = "ibpl-ribbon-own-layer",
            own_team_labels,
            lane_labels[lanes$side[first_idx] == "own"],
@@ -4175,6 +4197,9 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
            opp_team_labels,
            lane_labels[lanes$side[first_idx] == "opp"],
            lane_rects[lanes$side == "opp"]),
+    # Above the lanes, not below them: a boundary that only shows in the gaps
+    # between rows is no boundary at all on a bar that spans it.
+    period_lines,
     tags$g(class = "ibpl-ribbon-top-layer", top_period_labels),
     tags$g(class = paste("ibpl-ribbon-bottom-layer",
                          "ibpl-ribbon-shift-after-own",

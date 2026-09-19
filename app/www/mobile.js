@@ -257,9 +257,15 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     svg.querySelectorAll(".ibpl-ribbon-bottom-layer text").forEach(function (element) {
       shiftY(element, below);
     });
-    svg.querySelectorAll(".ibpl-ribbon-period[data-base-y2]").forEach(function (line) {
-      line.dataset.baseY2 = Number(line.dataset.baseY2) - below;
-      line.setAttribute("y2", line.dataset.baseY2);
+    // Gridlines carry their extent in y2, the alternating bands in height.
+    svg.querySelectorAll("[data-base-y2]").forEach(function (mark) {
+      mark.dataset.baseY2 = Number(mark.dataset.baseY2) - below;
+      if (mark.tagName === "rect") {
+        mark.setAttribute("height",
+          Math.max(Number(mark.dataset.baseY2) - Number(mark.getAttribute("y")), 0));
+      } else {
+        mark.setAttribute("y2", mark.dataset.baseY2);
+      }
     });
     svg.dataset.baseHeight = Number(svg.dataset.baseHeight) - below;
     svg.dataset.ownDetailY = Number(svg.dataset.ownDetailY) - shifts.own;
@@ -340,9 +346,14 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     });
     // The card heading names the period. The top marker row shares the team
     // name's header row, and in a narrow OT card the pinned name's backing
-    // cut it into a stray sliver; the bottom row still marks the period end.
+    // cut it into a stray sliver; the bottom row still marks the period start.
     svg.querySelectorAll(".ibpl-ribbon-top-layer .ibpl-ribbon-period-label").forEach(function (label) {
       label.remove();
+    });
+    // A card is one period, so an alternating band has nothing to alternate
+    // against -- it would just tint every other card's whole background.
+    svg.querySelectorAll(".ibpl-ribbon-band").forEach(function (band) {
+      band.remove();
     });
     collapseRows(svg, source);
     clipBarsToPeriod(svg, index, gutter + start * perSecond, gutter + end * perSecond);

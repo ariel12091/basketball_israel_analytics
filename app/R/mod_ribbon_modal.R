@@ -30,6 +30,13 @@ ribbon_mobile_overview_ui <- function(margin, bounds) {
       viewBox = sprintf("0 0 %d %d", width, height),
       role = "img",
       `aria-label` = "Full-game score margin; positive values favor the first team",
+      # Same alternating band as the full chart, so the strip and the
+      # timeline below it divide the game the same way.
+      lapply(which(seq_along(bounds) %% 2L == 0L), function(k) {
+        x0 <- bounds[k - 1L] / total * width
+        tags$rect(class = "ibpl-ribbon-band", x = x0, y = 0,
+                  width = bounds[k] / total * width - x0, height = height)
+      }),
       tags$line(class = "ibpl-ribbon-overview-zero", x1 = 0, x2 = width,
                 y1 = plot_top + plot_height / 2,
                 y2 = plot_top + plot_height / 2),

@@ -507,6 +507,23 @@
     });
   }
 
+  // Period markers span the whole chart and so must grow with it. A <line>
+  // carries its extent in y2, an alternating band rect in height; both are
+  // keyed off the data-base-y2 the server wrote.
+  function setPeriodExtent(svg, extraHeight) {
+    var marks = svg.querySelectorAll("[data-base-y2]");
+    for (var i = 0; i < marks.length; i++) {
+      var mark = marks[i];
+      var y2 = Number(mark.dataset.baseY2) + extraHeight;
+      if (mark.tagName === "rect") {
+        mark.setAttribute("height",
+          Math.max(y2 - Number(mark.getAttribute("y")), 0));
+      } else {
+        mark.setAttribute("y2", y2);
+      }
+    }
+  }
+
   function resetDetailLayout(svg) {
     if (!svg) return;
     var slots = svg.querySelectorAll(".ibpl-ribbon-detail-slot");
@@ -520,10 +537,7 @@
     );
     for (var j = 0; j < shifted.length; j++) shifted[j].removeAttribute("transform");
 
-    var periodLines = svg.querySelectorAll(".ibpl-ribbon-period[data-base-y2]");
-    for (var k = 0; k < periodLines.length; k++) {
-      periodLines[k].setAttribute("y2", periodLines[k].dataset.baseY2);
-    }
+    setPeriodExtent(svg, 0);
 
     var vb = svg.viewBox.baseVal;
     var baseHeight = Number(svg.dataset.baseHeight);
@@ -541,12 +555,7 @@
       shifted[i].setAttribute("transform", "translate(0 " + extraHeight + ")");
     }
 
-    var periodLines = svg.querySelectorAll(".ibpl-ribbon-period[data-base-y2]");
-    for (var j = 0; j < periodLines.length; j++) {
-      periodLines[j].setAttribute(
-        "y2", Number(periodLines[j].dataset.baseY2) + extraHeight
-      );
-    }
+    setPeriodExtent(svg, extraHeight);
 
     var vb = svg.viewBox.baseVal;
     var baseHeight = Number(svg.dataset.baseHeight);

@@ -1440,10 +1440,23 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   display: block;
 }
 
+/* Alternating quarter bands: a tinted column behind every second period, so
+   which quarter a bar sits in reads off the background instead of off a
+   single rule. Painted first, and inert -- a filled rect over the lanes
+   would otherwise swallow their clicks and hovers. */
+.ibpl-ribbon-band {
+  fill: var(--ibpl-text);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+/* Painted over the lane bars now (see build_stint_ribbon_svg), so it needs
+   the same inertness and a little more presence than it had underneath. */
 .ibpl-ribbon-period {
   stroke: var(--ibpl-border);
   stroke-width: 1;
-  opacity: 0.45;
+  opacity: 0.7;
+  pointer-events: none;
 }
 
 .ibpl-ribbon-lane rect {

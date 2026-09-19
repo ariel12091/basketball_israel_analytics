@@ -451,8 +451,9 @@ test_that("the compact layout keeps the desktop game scale with a narrow gutter"
   # Every stint and every player is still drawn.
   expect_identical(lengths(regmatches(html, gregexpr("ibpl-ribbon-lane", html))), 3L)
   expect_identical(lengths(regmatches(html, gregexpr('class="ibpl-ribbon-name"', html))), 3L)
-  # The Q4 gridline label sits at the right edge, not off a scrolled canvas.
-  expect_match(html, '<text class="ibpl-ribbon-period-label" x="950"', fixed = TRUE)
+  # Labels mark the START of a period, so Q4's sits just right of the Q3/Q4
+  # gridline (741.5) -- on the canvas, not off a scrolled one.
+  expect_match(html, '<text class="ibpl-ribbon-period-label" x="745.5"', fixed = TRUE)
 })
 
 test_that("the compact SVG exposes period boundaries for regulation and overtime cards", {
@@ -546,8 +547,8 @@ test_that("ribbon_short_labels keeps surnames and separates same-side clashes", 
 test_that("the compact header drops a top quarter marker a long team name would hit", {
   f <- ribbon_fixture()
   short <- compact_svg(f)
-  # At full scale Q1's marker sits ~290 units in, so only a very long name
-  # reaches it.
+  # Q1's marker now opens the chart, 4 units right of the 104-unit gutter,
+  # so a name only has to overrun the gutter to reach it.
   f$meta$own_team <- "Fenerbahce Beko Istanbul Basketball Club Sports"
   long <- compact_svg(f)
   count_q1 <- function(html) lengths(regmatches(html, gregexpr(">Q1</text>", html, fixed = TRUE)))
@@ -563,6 +564,46 @@ test_that("an overtime game gets more period gridlines than regulation", {
   n_reg <- lengths(regmatches(reg, gregexpr("ibpl-ribbon-period", reg)))
   n_ot <- lengths(regmatches(ot, gregexpr("ibpl-ribbon-period", ot)))
   expect_gt(n_ot, n_reg)
+})
+
+band_rects <- function(html) {
+  regmatches(html, gregexpr('<rect class="ibpl-ribbon-band"[^>]*>', html))[[1]]
+}
+
+test_that("every second period is tinted, and the tint is painted under the lanes", {
+  # 2026-09-19: a single gridline is easy to lose in a chart tall enough to
+  # scroll, and it used to be painted under the bars -- a player who never
+  # sits had no quarter marking across their row at all.
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+  bands <- band_rects(html)
+  expect_identical(length(bands), 2L)  # Q2 and Q4; Q1/Q3 are the bare half
+
+  # 220-unit gutter across 1070 units for 2400 seconds -> 0.3541667/second,
+  # so a quarter is 212.5 units and Q2 opens at 220 + 212.5.
+  expect_match(bands[1], 'x="432.5"', fixed = TRUE)
+  expect_match(bands[1], 'width="212.5"', fixed = TRUE)
+  expect_match(bands[2], 'x="857.5"', fixed = TRUE)
+
+  # Paint order is the whole point of the change, and nothing else in the
+  # SVG asserts it. Mutation check: swap period_bands and period_lines back
+  # to their old positions and both expectations flip.
+  expect_lt(regexpr("ibpl-ribbon-band", html),
+            regexpr("ibpl-ribbon-own-layer", html))
+  expect_gt(regexpr('ibpl-ribbon-period"', html),
+            regexpr("ibpl-ribbon-opp-layer", html))
+})
+
+test_that("bands alternate through overtime and carry the extent the JS grows", {
+  f <- ribbon_fixture()
+  f$meta$n_periods <- 6L
+  bands <- band_rects(as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta)))
+  # Q2, Q4, OT2 -- never two tinted periods in a row across the regulation
+  # boundary, which a parity taken over the OT periods alone would break.
+  expect_identical(length(bands), 3L)
+  # app.js/mobile.js resize a band off data-base-y2; without it a band keeps
+  # its built height while the chart below it grows.
+  expect_true(all(grepl("data-base-y2", bands, fixed = TRUE)))
 })
 
 test_that("the margin curve is drawn twice: a base copy and a focus copy", {
@@ -956,6 +997,7 @@ test_that("app.css styles every class the SVG builder emits", {
                          warn = FALSE), collapse = "\n")
   for (cls in c("ibpl-ribbon", "ibpl-ribbon-lane", "ibpl-ribbon-margin-base",
                 "ibpl-ribbon-margin-focus", "ibpl-ribbon-period",
+                "ibpl-ribbon-band",
                 "ibpl-ribbon-name", "ibpl-ribbon-team", "ibpl-ribbon-zero",
                 "ibpl-ribbon-period-label", "ibpl-ribbon-scale",
                 "ibpl-ribbon-scale-label")) {
