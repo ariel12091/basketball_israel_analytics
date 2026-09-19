@@ -6,6 +6,7 @@ library(dplyr); library(dbplyr); library(tidyr)
 library(purrr); library(jsonlite); library(lubridate)
 library(janitor); library(digest); library(stringr)
 library(pool)
+source("etl/period_opening_anchors.R")
 
 APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
 PROD_SCHEMA <- "basketball"
@@ -921,6 +922,18 @@ compute_lineups_lookup <- function(pg) {
   subs <- actions |> filter(type == "substitution") |>    mutate(parameters_player_in = if_else(!is.na(parameters_player_in), player_id, NA), 
                                                                  parameters_player_out = if_else(!is.na(parameters_player_out), player_id, NA))
   full_rosters <- tbl(pg, dbplyr::in_schema(SCHEMA, "full_rosters"))
+  # Period-opening anchors (etl/period_opening_anchors.R): one payload-free row
+  # per team at each period's first action from Q2 on, so a team that does not
+  # substitute at a boundary still gets a lineup state there. period_anchor
+  # marks them for apply_period_anchor_gates(); it is not a table column.
+  anchors <- period_opening_anchors_tbl(
+    actions,
+    full_rosters |> filter(game_id %in% sched_subset$game_id) |> distinct(game_id, team_id)
+  )
+  subs <- union_all(
+    subs |> mutate(period_anchor = FALSE),
+    anchors |> mutate(period_anchor = TRUE)
+  )
   
   
   full_rosters |>
@@ -1151,6 +1164,10 @@ etl_update <- function() {
   
   # lineups_lookup
   df_lineups_df <- compute_lineups_lookup(pg) |> filter(game_id %in% sched_subset$game_id) |> collect()
+  df_lineups_df <- apply_period_anchor_gates(
+    df_lineups_df, actions_df, distinct(roster_df, game_id, team_id),
+    log_msg = function(msg, level = "INFO") message(msg)
+  )
   upsert_by_like(pg, SCHEMA, "lineups_lookup", df_lineups_df, manage_transaction = FALSE)
   lineup_starters <- df_lineups_df %>%
     dplyr::select(game_id, team_id, lineup_hash, num_starters) %>%
