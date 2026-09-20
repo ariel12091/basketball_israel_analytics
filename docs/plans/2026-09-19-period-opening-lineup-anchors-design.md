@@ -250,8 +250,7 @@ substitution. The other team still needs its anchor there, and gets it.
 
 In scope:
 
-- `quarter >= 2`, including OT periods, where an OT anchor is a cheaper path to
-  the same result the existing recovery module produces by simulation.
+- `quarter` 2 to 4. Regulation period openings only.
 - `compute_lineups_lookup()` only. `compute_stints()`, `pws` construction,
   `df_pts_poss_longer.sql` and every app reader are unchanged.
 - Israeli league only. EuroLeague has no equivalent defect: across 589 games
@@ -261,6 +260,34 @@ In scope:
 
 Out of scope, deliberately:
 
+- **Overtime (`quarter >= 5`).** Reversed 2026-09-20; this section previously
+  scoped OT in, on the reasoning that "an OT anchor is a cheaper path to the
+  same result the existing recovery module produces by simulation." It is a
+  cheaper path to the same *lineup*, but not to the same *guarantee*, and it
+  removes the guarantee as a side effect.
+
+  `detect_ot_leading_lineup_gaps()` (`etl/ot_lineup_recovery.R:604`) reports a
+  period only when the first OT gameplay action carries a NULL `segment_id` /
+  `lineup_hash_offense` / `lineup_hash_defense`. `etl/etl_full.R` stages
+  `lineups_lookup` at line 564 and builds the provisional PWS at line 573, so
+  an OT anchor closes that condition *before* the detector reads it: the
+  detector returns zero rows, `recover_ot_lineup_periods()` never runs, and
+  with it go the event replay, the `recovery$audit` trail and the
+  reject-the-game path at `etl_full.R:652`. Gate 1 cannot substitute for it —
+  it checks `n_on == 5`, which a carry-forward satisfies by construction. What
+  is lost is detection of a provider-omitted OT substitution: the anchor loads
+  a five that looks healthy and is wrong.
+
+  This is not hypothetical, and OT is not an unserved gap. The module is live
+  and fired in production on **game 401 Q5** on 2026-09-16 and 2026-09-17
+  (`etl/logs/reports/`): both teams `accepted_carry_forward`, `unexplained=0`,
+  87 reconstructed rows staged, final coverage passed on 62 action rows. Game
+  401 is also one of the three shadow games, so an OT anchor would have made
+  that game's shadow diff non-additive by suppressing those 87 rows.
+
+  OT therefore stays with `etl/ot_lineup_recovery.R`. `PERIOD_ANCHOR_MAX_QUARTER`
+  in `etl/period_opening_anchors.R` carries the reason; both the pure helper and
+  the dbplyr twin honour it, verified against Postgres.
 - **Q1.** There is no previous period to carry forward, so a fill-down from
   nothing yields `n_on = 0` and a meaningless `lineup_hash` at the game's first
   action. Q1 already works, because the provider declares the starting five as
@@ -308,6 +335,31 @@ because an anchor superseded by a same-clock substitution is correctly gone
 after `slice_max`; the count property is the helper's, covered by its unit
 tests and by the Postgres parity test. Rows carry a `period_anchor` marker
 from the `UNION ALL`, which the gate runner removes; it is not a table column.
+
+**Hardened 2026-09-20**, after a review of the implementation:
+
+- **Gate 4 no longer reports a phantom period.** `end_game_seconds_remaining`
+  comes from `lubridate::ms()`, which returns NA on an unparseable clock.
+  `NA < x` is NA, and logical-NA row subsetting of a data frame returns an
+  all-NA *row* rather than no row, so an unreadable clock aborted the game
+  with `game NA QNA id NA at NA < NA`. The unreadable and below-maximum cases
+  are now separated, carried in a `reason` column, and subset by position.
+- **The marker's absence is raised, not interpreted.** Every gate reads
+  `period_anchor` with `%in% TRUE`; on a frame without the column that is
+  `NULL %in% TRUE` -> `logical(0)`, which subsets *every* row away — and the
+  gate runner's return value is what the caller writes to `lineups_lookup`.
+  `require_lineup_columns()` now fails loudly instead.
+- **Gate 5, coverage (report, do not reject).** The parity check is
+  one-directional: it proves no SQL anchor is unexpected, not that any anchor
+  arrived. A `UNION ALL` that silently yields nothing passed every gate and
+  reverted the ETL to pre-fix behaviour with no trace. The counting form
+  cannot run on this frame, because an anchor superseded by a same-clock
+  substitution is correctly absent after `slice_max` — the common case. So
+  each expected anchor must be either retained, or explained by a provider
+  state for the same team at the same period-opening clock; what is left is an
+  anchor that mattered and did not arrive. It is logged at WARN rather than
+  rejected, for Gate 1's reason: the period then loads exactly as it did
+  before anchors existed.
 
 Gate 1 is the one that will fire in practice. When it does, the period is a
 genuine carry-forward failure. In this release it simply keeps today's
@@ -570,9 +622,12 @@ reprocessing 401/404/406 alone cannot clear the global baseline.
 
 Success criteria, revised against the measured baseline:
 
-1. Present-but-late period count for `quarter >= 2` falls from 27 to at most
-   1 — game 211's Q5 gap survives, because its cause is the action-id overlap,
-   not a missing anchor.
+1. Present-but-late period count for `quarter` 2 to 4 falls from 24 to 0. The
+   three Q5 periods in the 27-period baseline are no longer in scope (see
+   Scope: Overtime) and belong to `etl/ot_lineup_recovery.R`; whether
+   reprocessing closes them is an OT-module question, tracked separately.
+   Game 211's Q5 gap survives either way, because its cause is the action-id
+   overlap, not a missing anchor.
 2. The 4 entirely-absent periods (184 Q3/Q4, 406 Q2, 380 Q4) are **unchanged**.
    They are upstream feed defects, not attribution gaps; if the anchor appears
    to fix one, something is fabricating a period.

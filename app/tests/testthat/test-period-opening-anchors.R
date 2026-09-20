@@ -119,7 +119,7 @@ test_that("the anchor is skipped for a team that already substitutes at that id"
   expect_equal(anchors$id, 2001L)
 })
 
-test_that("every period from Q2 onward in every game is anchored", {
+test_that("every regulation period from Q2 on is anchored, and OT is not", {
   actions <- do.call(rbind, c(
     lapply(1:4, function(q) {
       make_anchor_action(2000L + q * 10L, q, 2400 - (q - 1) * 600,
@@ -134,9 +134,13 @@ test_that("every period from Q2 onward in every game is anchored", {
 
   anchors <- period_opening_anchors(actions, multi_game_teams)
 
-  expect_equal(nrow(anchors), 14L)
+  expect_equal(nrow(anchors), 12L)
   expect_equal(sort(unique(anchors$quarter[anchors$game_id == 901L])), 2:4)
-  expect_equal(sort(unique(anchors$quarter[anchors$game_id == 902L])), 2:5)
+  # Game 902's Q5 is deliberately absent: etl/ot_lineup_recovery.R adjudicates
+  # overtime, and an anchor would close the gap its detector fires on before
+  # the detector runs.
+  expect_equal(sort(unique(anchors$quarter[anchors$game_id == 902L])), 2:4)
+  expect_equal(sum(anchors$quarter >= 5L), 0L)
 })
 
 test_that("an empty actions frame yields zero anchors with the input columns", {
@@ -153,6 +157,22 @@ test_that("min_quarter is configurable", {
 
   expect_equal(sort(unique(anchors$quarter)), 1:2)
   expect_true(all(anchors$id[anchors$quarter == 1L] == 1001L))
+})
+
+test_that("overtime is not anchored, and max_quarter is configurable", {
+  # etl/ot_lineup_recovery.R owns quarter >= 5. Its detector fires on exactly
+  # the condition an anchor removes, so an OT anchor would suppress the
+  # audited recovery rather than complement it.
+  actions <- rbind(
+    make_anchor_action(5001L, 5L, 300, type = "start-of-quarter"),
+    make_anchor_action(5002L, 5L, 290)
+  )
+
+  expect_equal(nrow(period_opening_anchors(actions, make_anchor_teams())), 0L)
+  expect_equal(
+    nrow(period_opening_anchors(actions, make_anchor_teams(), max_quarter = 5L)),
+    2L
+  )
 })
 
 # ---- Gate 4: the anchor must be the period's opening clock ----
@@ -212,7 +232,8 @@ parity_fixture_actions <- function() {
     # Lowest id is not the lowest clock row.
     make_anchor_action(3002L, 3L, 1199, game_id = 903L),
     make_anchor_action(3001L, 3L, 1200, game_id = 903L, type = "start-of-quarter"),
-    # Q1 must never anchor; OT must.
+    # Q1 must never anchor, and OT is left to ot_lineup_recovery.R -- the SQL
+    # twin must exclude it exactly as the helper does.
     make_anchor_action(4001L, 1L, 2400, game_id = 904L, type = "start-of-quarter"),
     make_anchor_action(4501L, 5L, 300, game_id = 904L, type = "start-of-quarter"),
     make_anchor_action(4502L, 5L, 290, game_id = 904L)
@@ -270,7 +291,7 @@ test_that("the SQL twin returns exactly the pure helper's anchors on Postgres", 
   ) |> dplyr::collect()
   via_helper <- period_opening_anchors(actions, teams)
 
-  expect_equal(nrow(via_helper), 7L)
+  expect_equal(nrow(via_helper), 5L)
   expect_equal(sort_anchors(via_sql), sort_anchors(via_helper))
   expect_setequal(names(via_sql), names(actions))
 })
@@ -278,10 +299,11 @@ test_that("the SQL twin returns exactly the pure helper's anchors on Postgres", 
 # ---- Runtime gates on the computed lineups ----
 
 make_lineup_rows <- function(game_id, team_id, quarter, id, n_on,
-                             period_anchor, players = 1:6) {
+                             period_anchor, players = 1:6, clock = 1800) {
   data.frame(
     game_id = as.integer(game_id), team_id = as.integer(team_id),
     quarter = as.integer(quarter), id = as.integer(id),
+    end_game_seconds_remaining = as.numeric(clock),
     player_id = as.integer(players), n_on = as.numeric(n_on),
     period_anchor = period_anchor, stringsAsFactors = FALSE
   )
@@ -383,6 +405,102 @@ test_that("the gate runner stops on a Gate 4 clock violation", {
     apply_period_anchor_gates(lineups, actions, make_anchor_teams()),
     "clock"
   )
+})
+
+test_that("an unreadable opening clock is reported once, not as a phantom row", {
+  # lubridate::ms() yields NA on an unparseable clock string. NA < x is NA,
+  # and logical-NA row subsetting of a data frame returns an all-NA ROW rather
+  # than no row, which surfaced as a "game NA QNA id NA" violation.
+  actions <- make_anchor_actions()
+  actions$end_game_seconds_remaining[actions$id == 1004L] <- NA_real_
+
+  violations <- period_anchor_clock_violations(actions, make_anchor_teams())
+
+  expect_equal(nrow(violations), 1L)
+  expect_equal(violations$game_id, 900L)
+  expect_equal(violations$anchor_id, 1004L)
+  expect_equal(violations$reason, "opening clock unreadable")
+})
+
+test_that("the gate runner names the game when the opening clock is unreadable", {
+  actions <- make_anchor_actions()
+  actions$end_game_seconds_remaining[actions$id == 1004L] <- NA_real_
+  lineups <- make_lineup_rows(900L, 20L, 2L, 1004L, 5, TRUE)
+
+  expect_error(
+    apply_period_anchor_gates(lineups, actions, make_anchor_teams()),
+    "game 900 Q2 id 1004"
+  )
+})
+
+test_that("a missing period_anchor marker is raised, not read as zero anchors", {
+  # NULL %in% TRUE is logical(0), and subsetting by it drops every row. The
+  # gate runner's return value is what the caller writes to lineups_lookup.
+  lineups <- make_lineup_rows(900L, 20L, 2L, 1004L, 5, TRUE)
+  lineups$period_anchor <- NULL
+
+  expect_error(drop_malformed_period_anchors(lineups), "period_anchor")
+  expect_error(
+    period_anchor_parity_errors(lineups, make_anchor_actions(), make_anchor_teams()),
+    "period_anchor"
+  )
+  expect_error(
+    apply_period_anchor_gates(lineups, make_anchor_actions(), make_anchor_teams()),
+    "period_anchor"
+  )
+})
+
+test_that("a missing n_on is raised rather than dropping every row", {
+  lineups <- make_lineup_rows(900L, 20L, 2L, 1004L, 5, TRUE)
+  lineups$n_on <- NULL
+
+  expect_error(drop_malformed_period_anchors(lineups), "n_on")
+})
+
+test_that("an anchor that arrived is not a coverage gap", {
+  lineups <- rbind(
+    make_lineup_rows(900L, 10L, 2L, 1004L, 5, TRUE, clock = 1800),
+    make_lineup_rows(900L, 20L, 2L, 1004L, 5, TRUE, clock = 1800)
+  )
+
+  gaps <- period_anchor_coverage_gaps(lineups, make_anchor_actions(), make_anchor_teams())
+
+  expect_equal(nrow(gaps), 0L)
+})
+
+test_that("an anchor superseded by a same-clock provider state is not a gap", {
+  # The common case: both teams substituted at the boundary, so slice_max kept
+  # the substitutions and the anchors are correctly absent.
+  lineups <- rbind(
+    make_lineup_rows(900L, 10L, 2L, 1005L, 5, FALSE, clock = 1800),
+    make_lineup_rows(900L, 20L, 2L, 1005L, 5, FALSE, clock = 1800)
+  )
+
+  gaps <- period_anchor_coverage_gaps(lineups, make_anchor_actions(), make_anchor_teams())
+
+  expect_equal(nrow(gaps), 0L)
+})
+
+test_that("an anchor that silently never arrived is reported and still loads", {
+  # A UNION ALL that yields nothing passes the one-directional parity check.
+  # Here no team has any state at the period's opening clock.
+  lineups <- make_lineup_rows(900L, 10L, 2L, 1006L, 5, FALSE, clock = 1792)
+  logged <- character(0)
+
+  gaps <- period_anchor_coverage_gaps(lineups, make_anchor_actions(), make_anchor_teams())
+
+  expect_equal(nrow(gaps), 2L)
+  expect_setequal(gaps$team_id, c(10L, 20L))
+  expect_true(all(gaps$id == 1004L))
+
+  out <- apply_period_anchor_gates(
+    lineups, make_anchor_actions(), make_anchor_teams(),
+    log_msg = function(msg, level = "INFO") logged <<- c(logged, msg)
+  )
+
+  # Reported, not rejected: the provider rows still load.
+  expect_equal(nrow(out), nrow(lineups))
+  expect_equal(sum(grepl("period anchor absent", logged, fixed = TRUE)), 2L)
 })
 
 test_that("compute_lineups_lookup() with anchors unioned in plans on Postgres", {
