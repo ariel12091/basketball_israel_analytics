@@ -307,6 +307,18 @@ and 6 fail the game's ETL transaction — which is already open at this point in
 the provider's data costs that period its anchors, a defect in the anchor rule
 or the engine costs the game.
 
+**Gate order is load-bearing, corrected 2026-09-20.** The reject gates run on
+the frame exactly as collected, ahead of every R-side drop. Both conditions
+they test were created in SQL — a wrong row from the `UNION ALL`, a doubled
+`lineup_id` from the `string_agg` window — so removing an anchor row in R
+undoes neither; it only removes the evidence. Gate 4 ran first in the initial
+implementation and silenced both for any period it degraded: a misclocked
+period that *also* collided returned normally and wrote the corrupted provider
+row, and a misclocked period whose anchor the helper would never have chosen
+passed parity. Reproduced both ways before the fix. The coverage gate is the
+one that legitimately runs after Gate 4, and it is told which periods Gate 4
+already handled.
+
 1. **Degrade, don't reject.** Every anchor row should resolve to `n_on = 5` for
    its `(game_id, team_id, quarter)`. `compute_stints()` does **not** filter on
    `n_on = 5`, so a malformed carried state would otherwise become a silent

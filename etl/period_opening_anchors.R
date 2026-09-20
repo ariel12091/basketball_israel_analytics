@@ -441,23 +441,13 @@ period_anchor_hash_collisions <- function(lineups,
 apply_period_anchor_gates <- function(lineups, actions, teams, log_msg = NULL) {
   log <- if (is.null(log_msg)) function(msg, level = "INFO") invisible(NULL) else log_msg
 
-  # Gate 4 degrades. A misclocked period opening is a provider defect (the
-  # 398/399 class), not a fault in the anchor rule, so it costs that period's
-  # anchors -- not the game's entire transaction, which is already open here
-  # and carries its actions, possessions and rosters.
-  clock <- period_anchor_clock_violations(actions, teams)
-  for (i in seq_len(nrow(clock))) {
-    log(sprintf(
-      paste0("  period anchor dropped (Gate 4): game %d Q%d id %d: %s ",
-             "(clock %s, period max %s)"),
-      as.integer(clock$game_id[i]), as.integer(clock$quarter[i]),
-      as.integer(clock$anchor_id[i]), clock$reason[i],
-      format(clock$anchor_clock[i]), format(clock$period_max_clock[i])
-    ), "WARN")
-  }
-  gate4 <- drop_period_anchors_in_periods(lineups, clock[, c("game_id", "quarter"), drop = FALSE])
-  lineups <- gate4$lineups
-
+  # The reject gates run on the frame EXACTLY as collected, before any R-side
+  # drop. Both conditions they detect were created in SQL -- a wrong row from
+  # the UNION ALL, a doubled lineup_id from the string_agg window -- so
+  # removing an anchor row in R undoes neither; it only removes the evidence.
+  # Gate 4 ran first until 2026-09-20 and silenced both for any period it
+  # degraded: a misclocked period that ALSO collided returned normally and
+  # wrote the corrupted provider row.
   parity <- period_anchor_parity_errors(lineups, actions, teams)
   if (nrow(parity)) {
     stop(sprintf(
@@ -476,6 +466,23 @@ apply_period_anchor_gates <- function(lineups, actions, teams, log_msg = NULL) {
             collapse = "; ")
     ), call. = FALSE)
   }
+
+  # Gate 4 degrades. A misclocked period opening is a provider defect (the
+  # 398/399 class), not a fault in the anchor rule, so it costs that period's
+  # anchors -- not the game's entire transaction, which is already open here
+  # and carries its actions, possessions and rosters.
+  clock <- period_anchor_clock_violations(actions, teams)
+  for (i in seq_len(nrow(clock))) {
+    log(sprintf(
+      paste0("  period anchor dropped (Gate 4): game %d Q%d id %d: %s ",
+             "(clock %s, period max %s)"),
+      as.integer(clock$game_id[i]), as.integer(clock$quarter[i]),
+      as.integer(clock$anchor_id[i]), clock$reason[i],
+      format(clock$anchor_clock[i]), format(clock$period_max_clock[i])
+    ), "WARN")
+  }
+  gate4 <- drop_period_anchors_in_periods(lineups, clock[, c("game_id", "quarter"), drop = FALSE])
+  lineups <- gate4$lineups
 
   gaps <- period_anchor_coverage_gaps(
     lineups, actions, teams,

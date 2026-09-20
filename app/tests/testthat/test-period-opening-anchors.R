@@ -583,6 +583,49 @@ test_that("an anchor alone in its clock window is not a collision", {
   expect_equal(nrow(period_anchor_hash_collisions(lineups)), 0L)
 })
 
+test_that("a misclocked period cannot hide a collision from Gate 6", {
+  # Gate 4 drops anchor ROWS, but the doubled lineup_id was produced by the
+  # string_agg window in SQL before these rows were collected. Dropping the
+  # anchor does not undo it -- it only removes the evidence -- so the reject
+  # gates run on the frame as collected, ahead of Gate 4.
+  actions <- rbind(
+    make_anchor_action(1004L, 2L, 1740, type = "start-of-quarter"),
+    make_anchor_action(1005L, 2L, 1740, type = "substitution",
+                       player_in = 6L, player_out = 3L),
+    make_anchor_action(1006L, 2L, 1800)
+  )
+  lineups <- rbind(
+    make_lineup_rows(900L, 20L, 2L, 1004L, 5, TRUE, clock = 1740),
+    make_lineup_rows(900L, 20L, 2L, 1005L, 5, FALSE, clock = 1740)
+  )
+
+  # Both gates have something to say about this frame.
+  expect_equal(nrow(period_anchor_clock_violations(actions, make_anchor_teams())), 1L)
+  expect_equal(nrow(period_anchor_hash_collisions(lineups)), 1L)
+
+  expect_error(
+    apply_period_anchor_gates(lineups, actions, make_anchor_teams()),
+    "lineup_id doubles"
+  )
+})
+
+test_that("a misclocked period cannot hide a parity violation either", {
+  # The same masking shape: an anchor at an id the helper never chooses, in a
+  # period Gate 4 would degrade.
+  actions <- rbind(
+    make_anchor_action(1004L, 2L, 1740, type = "start-of-quarter"),
+    make_anchor_action(1006L, 2L, 1800)
+  )
+  lineups <- make_lineup_rows(900L, 20L, 2L, 1006L, 5, TRUE, clock = 1800)
+
+  expect_equal(nrow(period_anchor_clock_violations(actions, make_anchor_teams())), 1L)
+
+  expect_error(
+    apply_period_anchor_gates(lineups, actions, make_anchor_teams()),
+    "anchor parity"
+  )
+})
+
 test_that("compute_lineups_lookup() with anchors unioned in plans on Postgres", {
   # The UNION ALL is where NULL typing bites: an untyped NULL in a subquery
   # resolves to text, and "UNION types integer and text cannot be matched"
