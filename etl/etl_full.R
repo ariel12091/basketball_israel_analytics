@@ -1779,6 +1779,41 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       t0 <- proc.time()
       cold_dir <- "exports/cold"
 
+      # On CI the workspace is fresh, so exports/cold starts empty and
+      # export_cold_table()'s merge has nothing to merge against -- the upload
+      # below then REPLACES the release with only this run's games. Verified
+      # 2026-09-19: the release held 3 games against 445 in the local archive,
+      # and on 2026-09-20 games 404 and 406 existed ONLY in that release.
+      # Seeding from the existing release first makes the export cumulative,
+      # reusing export_cold_table()'s own key-based dedup instead of adding a
+      # second merge path.
+      if (nzchar(Sys.getenv("GITHUB_ACTIONS"))) {
+        dir.create(cold_dir, recursive = TRUE, showWarnings = FALSE)
+        already <- list.files(cold_dir, pattern = "[.]parquet$")
+        if (length(already)) {
+          # Never overwrite an archive that is already here: the release is the
+          # smaller, per-run artifact, so clobbering a populated cold_dir with
+          # it would DESTROY history. Downloading without --clobber also fails
+          # on an existing file, so skip entirely and let export_cold_table()
+          # merge into what is present.
+          log_msg(sprintf(
+            "  cold_dir already holds %d Parquet file(s); not seeding from the release",
+            length(already)))
+        } else {
+          log_msg("  Seeding cold_dir from cold-storage/latest before export ...")
+          seed_exit <- system(sprintf(
+            "gh release download cold-storage/latest --dir %s",
+            shQuote(cold_dir)
+          ))
+          if (seed_exit == 0) {
+            seeded <- list.files(cold_dir, pattern = "[.]parquet$")
+            log_msg(sprintf("  Seeded %d Parquet file(s) from the release", length(seeded)))
+          } else {
+            log_msg("  No release assets to seed from; this export starts empty", "WARN")
+          }
+        }
+      }
+
       purge_results <- run_cold_storage_purge(
         pg,
         SCHEMA,
