@@ -49,6 +49,22 @@ test_that("ribbon_health_message speaks only when segments were excluded", {
   expect_match(ribbon_health_message(3), "not drawn")
 })
 
+test_that("ribbon health reports false period-opening intervals with duration", {
+  msg <- ribbon_health_message(0, false_straddle_segments = 2,
+                               false_straddle_seconds = 75)
+  expect_match(msg, "2 period-opening")
+  expect_match(msg, "75 seconds")
+  expect_match(msg, "previous lineup")
+})
+
+test_that("ribbon health combines excluded and false-straddle signals", {
+  msg <- ribbon_health_message(3, false_straddle_segments = 1,
+                               false_straddle_seconds = 72)
+  expect_match(msg, "3 gameplay segment")
+  expect_match(msg, "1 period-opening")
+  expect_match(msg, "72 seconds")
+})
+
 # ribbon_sign_margin() was removed 2026-09-05 (final review, live-data bug):
 # ribbon_margin_v is now team-perspective (sourced from
 # euroleague.action_team_context_actions, the same source and `points > 0`
@@ -129,6 +145,33 @@ test_that("Israeli ribbon health ignores substitution-only transition segments",
     fixed = TRUE
   )
   expect_match(sql, "WHERE s.has_gameplay", fixed = TRUE)
+})
+
+test_that("Israeli ribbon health detects only strictly-inside substitution straddles", {
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  sql <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src,
+                                 perl = TRUE))
+  expect_true(nzchar(sql))
+  expect_match(sql, "FROM basketball_test.subs", fixed = TRUE)
+  expect_match(sql, "sub.team_id = s.team_id", fixed = TRUE)
+  expect_match(sql, "sub.quarter = b.opening_quarter", fixed = TRUE)
+  expect_match(sql, "sub.elapsed < s.end_elapsed", fixed = TRUE)
+  expect_false(grepl("sub.elapsed <= s.end_elapsed", sql, fixed = TRUE))
+  expect_match(sql, "false_straddle_seconds", fixed = TRUE)
+})
+
+test_that("both ribbon readers return the false-straddle health contract", {
+  src <- paste(readLines(testthat::test_path("..", "..", "R", "global.R"),
+                         warn = FALSE), collapse = "\n")
+  israel <- regmatches(src, regexpr('RIBBON_SQL_ISRAEL <- "(.|\n)*?"\n', src,
+                                    perl = TRUE))
+  euro <- regmatches(src, regexpr('RIBBON_SQL_EURO <- "(.|\n)*?"\n', src,
+                                  perl = TRUE))
+  for (sql in list(israel, euro)) {
+    expect_match(sql, "false_straddle_segments", fixed = TRUE)
+    expect_match(sql, "false_straddle_seconds", fixed = TRUE)
+  }
 })
 
 test_that("euroleague.ribbon_margin_v has no NULL margin (2026-09-05 live-data bug)", {

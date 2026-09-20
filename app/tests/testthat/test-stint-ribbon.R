@@ -2030,3 +2030,50 @@ test_that("the lane aria-label carries the teammates too, not just the numbers",
   expect_true(any(grepl("made up of", alice, fixed = TRUE)))
   expect_true(any(grepl("Bea Bell", alice, fixed = TRUE)))
 })
+
+# ---- Truncated games: the margin must stop where the data does ----
+# The axis is deliberately a constant 2400s (ribbon_period_bounds floors any
+# game to regulation), so a game whose feed ends early shows empty lanes for
+# the periods it lacks. Padding the margin to the full axis undid that: game
+# 184's feed ends at elapsed 961 and the curve ran flat from there to 2400 --
+# 24 minutes of confident straight line across a half with no data.
+
+test_that("ribbon_complete_margin stops at the last period that has data", {
+  m <- data.frame(elapsed = c(0, 961), margin = c(0, -11), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400,
+                                bounds = ribbon_period_bounds(4))
+  # 961 sits in Q2 (600-1200), so the curve closes at the Q2 buzzer.
+  expect_identical(out$elapsed[nrow(out)], 1200)
+  expect_identical(out$margin[nrow(out)], -11)
+})
+
+test_that("a normal ragged ending still reaches the final buzzer", {
+  # The common case the padding exists for: the last scoring event is seconds
+  # short of the buzzer, and carrying it forward is correct.
+  m <- data.frame(elapsed = c(0, 2388), margin = c(0, 14), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400,
+                                bounds = ribbon_period_bounds(4))
+  expect_identical(out$elapsed[nrow(out)], 2400)
+  expect_identical(out$margin[nrow(out)], 14)
+})
+
+test_that("an overtime game closes at the end of the OT period that has data", {
+  m <- data.frame(elapsed = c(0, 2650), margin = c(0, 3), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2700,
+                                bounds = ribbon_period_bounds(5))
+  expect_identical(out$elapsed[nrow(out)], 2700)
+})
+
+test_that("a period boundary exactly on the last event needs no padding", {
+  m <- data.frame(elapsed = c(0, 1200), margin = c(0, 5), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400,
+                                bounds = ribbon_period_bounds(4))
+  expect_identical(out$elapsed[nrow(out)], 1200)
+})
+
+test_that("without bounds the full-axis padding is unchanged", {
+  # Back-compat: every existing caller and test passes two arguments.
+  m <- data.frame(elapsed = c(0, 900), margin = c(0, 4), order_key = c(1, 2))
+  out <- ribbon_complete_margin(m, total_seconds = 2400)
+  expect_identical(out$elapsed[nrow(out)], 2400)
+})

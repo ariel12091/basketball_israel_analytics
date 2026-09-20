@@ -332,6 +332,38 @@ lineup_players AS (
   GROUP BY l.team_id, l.lineup_hash
   HAVING cardinality(ARRAY_AGG(DISTINCT l.player_id)) = 5
 ),
+regulation_boundaries(opening_quarter, boundary_elapsed) AS (
+  VALUES (2, 600::numeric), (3, 1200::numeric), (4, 1800::numeric)
+),
+substitution_events AS (
+  SELECT game_id, team_id, quarter,
+         quarter * 600.0 - end_quarter_seconds_remaining AS elapsed
+  FROM basketball_test.subs
+  WHERE game_id = $1
+    AND quarter BETWEEN 2 AND 4
+    AND end_quarter_seconds_remaining IS NOT NULL
+),
+false_straddles AS (
+  SELECT DISTINCT
+         s.team_id, s.segment_id, s.lineup_hash, b.boundary_elapsed,
+         s.end_elapsed - b.boundary_elapsed AS overhang_seconds
+  FROM segs s
+  JOIN lineup_players lp
+    ON lp.lineup_hash = s.lineup_hash AND lp.team_id = s.team_id
+  JOIN regulation_boundaries b
+    ON s.start_elapsed < b.boundary_elapsed
+   AND s.end_elapsed > b.boundary_elapsed
+  WHERE EXISTS (
+    SELECT 1
+    FROM substitution_events sub
+    WHERE sub.team_id = s.team_id
+      AND sub.quarter = b.opening_quarter
+      AND sub.elapsed >= b.boundary_elapsed
+      -- A substitution at the endpoint creates the next state; the carried
+      -- lineup is valid until then, so only a strictly-inside event is false.
+      AND sub.elapsed < s.end_elapsed
+  )
+),
 lanes AS (
   SELECT s.team_id, s.start_elapsed, s.end_elapsed, p.player_id,
          s.lineup_hash AS lineup_key,
@@ -368,7 +400,10 @@ SELECT
     WHERE s.has_gameplay
       AND NOT EXISTS (SELECT 1 FROM lineup_players lp
                        WHERE lp.lineup_hash = s.lineup_hash
-                         AND lp.team_id = s.team_id)) AS excluded_segments
+                         AND lp.team_id = s.team_id)) AS excluded_segments,
+  (SELECT COUNT(*) FROM false_straddles) AS false_straddle_segments,
+  (SELECT COALESCE(SUM(overhang_seconds), 0) FROM false_straddles)
+    AS false_straddle_seconds
 "
 
 RIBBON_SQL_EURO <- "
@@ -405,7 +440,9 @@ SELECT
   (SELECT jsonb_agg(to_jsonb(lanes)) FROM lanes) AS lanes,
   (SELECT jsonb_agg(to_jsonb(marg) ORDER BY elapsed, order_key) FROM marg) AS margin,
   (SELECT MAX(period) FROM euroleague.ribbon_margin_v WHERE game_id = $1) AS n_periods,
-  0 AS excluded_segments
+  0 AS excluded_segments,
+  0 AS false_straddle_segments,
+  0 AS false_straddle_seconds
 "
 
 fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NULL) {
@@ -443,7 +480,7 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
 
     n_periods <- as.integer(row$n_periods[1] %||% 4L)
     bounds <- ribbon_period_bounds(n_periods)
-    margin <- ribbon_complete_margin(margin, bounds[length(bounds)])
+    margin <- ribbon_complete_margin(margin, bounds[length(bounds)], bounds = bounds)
     lanes <- ribbon_mark_starters(ribbon_normalise_lanes(lanes_raw, team_id))
 
     list(
@@ -451,7 +488,11 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
       margin = margin,
       steps = steps,
       meta = list(n_periods = n_periods),
-      health = ribbon_health_message(row$excluded_segments[1])
+      health = ribbon_health_message(
+        row$excluded_segments[1],
+        row$false_straddle_segments[1],
+        row$false_straddle_seconds[1]
+      )
     )
   })
 }

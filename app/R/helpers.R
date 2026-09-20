@@ -3704,7 +3704,7 @@ ribbon_period_bounds <- function(n_periods, regulation = 4L,
 # is well before the final buzzer, and several records can share one elapsed
 # second (an and-1, or a shot plus its free throw). DISTINCT + ORDER BY elapsed
 # does not decide the last of those -- order_key does.
-ribbon_complete_margin <- function(margin, total_seconds) {
+ribbon_complete_margin <- function(margin, total_seconds, bounds = NULL) {
   stopifnot(is.numeric(total_seconds), length(total_seconds) == 1, total_seconds > 0)
 
   if (is.null(margin) || !nrow(margin)) {
@@ -3736,8 +3736,23 @@ ribbon_complete_margin <- function(margin, total_seconds) {
   if (m$elapsed[1] > 0) {
     m <- rbind(data.frame(elapsed = 0, margin = 0), m)
   }
-  if (m$elapsed[nrow(m)] < total_seconds) {
-    m <- rbind(m, data.frame(elapsed = total_seconds, margin = m$margin[nrow(m)]))
+  # Close the curve at the end of the last period that actually HAS data,
+  # not at the end of the axis. ribbon_period_bounds() floors every game to
+  # regulation, so the axis is a constant 2400s and a feed that stops early
+  # leaves its later periods empty of lanes -- correct. Padding the margin
+  # to that same 2400 undid it: game 184's feed ends at elapsed 961 and the
+  # curve then ran flat to 2400, 24 minutes of confident straight line over
+  # a half with no data. Pad to the first period boundary at or after the
+  # last recorded event instead; within a period that WAS played, carrying
+  # the last score forward to the buzzer is right and stays unchanged.
+  # With no bounds supplied the caller keeps the original full-axis padding.
+  close_at <- total_seconds
+  if (!is.null(bounds) && length(bounds)) {
+    reached <- bounds[bounds >= m$elapsed[nrow(m)]]
+    if (length(reached)) close_at <- min(reached)
+  }
+  if (m$elapsed[nrow(m)] < close_at) {
+    m <- rbind(m, data.frame(elapsed = close_at, margin = m$margin[nrow(m)]))
   }
 
   rownames(m) <- NULL
@@ -4253,11 +4268,34 @@ ribbon_lineup_dictionary <- function(lanes) {
   out
 }
 
-ribbon_health_message <- function(excluded_segments) {
-  n <- suppressWarnings(as.integer(excluded_segments %||% 0))
-  if (length(n) != 1 || is.na(n) || n <= 0) return(NULL)
-  sprintf(paste("Lineup data is incomplete for this game: %d gameplay segment(s)",
-                "had no valid five-player lineup and are not drawn."), n)
+ribbon_health_message <- function(excluded_segments,
+                                  false_straddle_segments = 0,
+                                  false_straddle_seconds = 0) {
+  excluded <- suppressWarnings(as.integer(excluded_segments %||% 0))
+  straddles <- suppressWarnings(as.integer(false_straddle_segments %||% 0))
+  seconds <- suppressWarnings(as.numeric(false_straddle_seconds %||% 0))
+  if (length(excluded) != 1 || is.na(excluded)) excluded <- 0L
+  if (length(straddles) != 1 || is.na(straddles)) straddles <- 0L
+  if (length(seconds) != 1 || is.na(seconds) || !is.finite(seconds)) seconds <- 0
+
+  messages <- character(0)
+  if (excluded > 0) {
+    messages <- c(messages, sprintf(
+      paste("Lineup data is incomplete for this game: %d gameplay segment(s)",
+            "had no valid five-player lineup and are not drawn."),
+      excluded
+    ))
+  }
+  if (straddles > 0) {
+    messages <- c(messages, sprintf(
+      paste("%d period-opening lineup interval(s), totaling %d seconds, may",
+            "show the previous lineup because substitutions occurred before",
+            "the next valid lineup state."),
+      straddles, as.integer(round(seconds))
+    ))
+  }
+  if (!length(messages)) return(NULL)
+  paste(messages, collapse = " ")
 }
 
 # A game-log cell that opens the stint ribbon. Both ids travel on the anchor so
