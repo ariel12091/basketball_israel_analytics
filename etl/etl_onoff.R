@@ -333,7 +333,12 @@ KNOWN_CLOCK_STAMP_CORRECTIONS <- tibble::tribble(
   399L, 3990431L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
   399L, 3990432L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
   399L, 3990433L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
-  399L, 3990434L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter"
+  399L, 3990434L, "00:00", "10:00", "Q3 dead-ball sub flurry stamped as end-of-quarter",
+  406L, 4060230L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
+  406L, 4060231L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
+  406L, 4060232L, "00:01", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
+  406L, 4060233L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint",
+  406L, 4060234L, "00:00", "10:00", "Q2 opening reset OUT stamped at the false period endpoint"
 )
 
 # Game 402's archived Basket payload contains a coherent Q4 action stream, but
@@ -342,7 +347,9 @@ KNOWN_CLOCK_STAMP_CORRECTIONS <- tibble::tribble(
 # substitutions, timeouts, one missed shot, and its offensive rebound.
 KNOWN_PERIOD_LABEL_CORRECTIONS <- tibble::tribble(
   ~game_id, ~min_id,   ~max_id,   ~wrong_quarter, ~corrected_quarter, ~reason,
-  402L,     4020627L, 4020822L, 3L,             4L,                 "Q4 rows mislabeled as Q3 in archived Basket payload"
+  402L,     4020627L, 4020822L, 3L,             4L,                 "Q4 rows mislabeled as Q3 in archived Basket payload",
+  406L,     4060239L, 4060417L, 3L,             2L,                 "Provider Q3 is the complete Q2 action stream",
+  406L,     4060419L, 4060590L, 4L,             3L,                 "Clocked first half of provider Q4 is the complete Q3 action stream"
 )
 
 apply_known_period_label_corrections <- function(df, game_id_val) {
@@ -413,6 +420,103 @@ apply_known_clock_corrections <- function(df, game_id_val) {
     dplyr::select(-.join_id, -wrong_quarter_time, -corrected_quarter_time)
 }
 
+# Game 406's provider Q4 contains a complete Q3 followed by the real Q4, but
+# every real-Q4 action is stamped 00:00 (one rebound is 00:01). The provider's
+# clock rows stop before Q4 and its box-score minutes inherit the same defect,
+# so no exact game clock exists in either source. Preserve action order and
+# approximate the real Q4 monotonically from wall-entry time instead:
+#
+#   4060592 at 16:16:09 -> 10:00 (opening reset begins)
+#   4060747 at 16:41:32 -> 00:00 (last live action)
+#
+# The entire opening OUT/IN reset (4060592-4060611) is held at 10:00. This is
+# deliberately game-specific and guarded by the observed broken clock shape;
+# if the provider repairs any target row above 00:01, do not overwrite it.
+apply_known_game406_wall_clock_correction <- function(df, game_id_val) {
+  if (as.integer(game_id_val) != 406L) return(df)
+
+  ids <- as.integer(df$id)
+  target <- ids >= 4060592L & ids <= 4060749L & as.integer(df$quarter) == 4L
+  if (!any(target)) return(df)
+
+  parse_clock <- function(x) {
+    parts <- strsplit(as.character(x), ":", fixed = TRUE)
+    vapply(parts, function(p) {
+      if (length(p) != 2L) return(NA_real_)
+      suppressWarnings(as.numeric(p[[1]]) * 60 + as.numeric(p[[2]]))
+    }, numeric(1))
+  }
+  observed_clock <- parse_clock(df$quarter_time[target])
+  if (any(is.na(observed_clock)) || any(observed_clock > 1)) {
+    warning(
+      paste(
+        "Game 406 wall-clock correction skipped: the provider no longer",
+        "shows the expected 00:00/00:01 frozen Q4 stamps. Re-verify the fix."
+      ),
+      call. = FALSE
+    )
+    return(df)
+  }
+
+  parse_wall <- function(x) {
+    parts <- strsplit(as.character(x), ":", fixed = TRUE)
+    vapply(parts, function(p) {
+      if (length(p) != 3L) return(NA_real_)
+      suppressWarnings(
+        as.numeric(p[[1]]) * 3600 + as.numeric(p[[2]]) * 60 + as.numeric(p[[3]])
+      )
+    }, numeric(1))
+  }
+  start_wall <- parse_wall(df$user_time[ids == 4060592L])[1]
+  end_wall <- parse_wall(df$user_time[ids == 4060747L])[1]
+  target_wall <- parse_wall(df$user_time[target])
+  target_order <- order(ids[target], target_wall)
+  if (
+    is.na(start_wall) || is.na(end_wall) || end_wall <= start_wall ||
+    any(is.na(target_wall)) || any(diff(target_wall[target_order]) < 0)
+  ) {
+    warning(
+      "Game 406 wall-clock correction skipped: missing or non-monotone wall-time anchors.",
+      call. = FALSE
+    )
+    return(df)
+  }
+
+  corrected_seconds <- round(
+    600 * (end_wall - target_wall) / (end_wall - start_wall)
+  )
+  corrected_seconds <- pmax(0, pmin(600, corrected_seconds))
+  target_ids <- ids[target]
+  corrected_seconds[target_ids <= 4060611L] <- 600
+  corrected_seconds[target_ids >= 4060747L] <- 0
+
+  # The provider records one dead-ball substitution as adjacent OUT and IN
+  # actions, often one or two wall seconds apart. Keep every uninterrupted
+  # substitution block on one synthetic game-clock second so interpolation
+  # cannot manufacture a transient four- or six-player interval.
+  if ("type" %in% names(df)) {
+    target_indices <- which(target)
+    ordered_indices <- target_indices[target_order]
+    ordered_is_sub <- as.character(df$type[ordered_indices]) == "substitution"
+    run_start <- ordered_is_sub & !c(FALSE, head(ordered_is_sub, -1L))
+    run_id <- cumsum(run_start)
+    for (run in unique(run_id[ordered_is_sub])) {
+      ordered_positions <- which(ordered_is_sub & run_id == run)
+      target_positions <- match(ordered_indices[ordered_positions], target_indices)
+      corrected_seconds[target_positions] <- corrected_seconds[target_positions[[1]]]
+    }
+  }
+
+  corrected_clock <- sprintf(
+    "%02d:%02d",
+    corrected_seconds %/% 60,
+    corrected_seconds %% 60
+  )
+
+  df$quarter_time[target] <- corrected_clock
+  df
+}
+
 clean_actions <- function(pbp) {
   a <- tibble::as_tibble(pbp$result$actions) |>
     dplyr::mutate(source_row = dplyr::row_number()) |>
@@ -428,6 +532,7 @@ clean_actions <- function(pbp) {
   # end_game_seconds_remaining are derived from quarter_time below, so the
   # displayed clock and the clock used downstream never disagree.
   a <- apply_known_clock_corrections(a, game_id_val)
+  a <- apply_known_game406_wall_clock_correction(a, game_id_val)
 
   out <- a |>
     filter(type != "clock") |>
@@ -459,6 +564,11 @@ clean_actions <- function(pbp) {
           quarter == 2L &
           quarter_time == "00:00" &
           user_time %in% c("18:37:30", "18:37:33", "18:37:34", "18:37:37")
+      ),
+      !(
+        game_id == 406L &
+          id %in% c(4060238L, 4060239L) &
+          type == "quarter"
       )
     ) %>%
     dplyr::arrange(game_id, team_id, id, user_time, source_row) %>%
