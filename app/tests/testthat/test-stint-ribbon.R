@@ -637,7 +637,7 @@ test_that("the zero-margin baseline is drawn and labelled", {
 
 # ---- Round-interval scale gridlines (M7, added 2026-09-06) ----------------
 
-test_that("build_stint_ribbon_svg emits one scale gridline and one label per tick, correctly signed", {
+test_that("build_stint_ribbon_svg emits one scale gridline and one unsigned label per tick", {
   f <- ribbon_fixture()
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
   scale_info <- ribbon_margin_scale(f$margin)
@@ -652,14 +652,24 @@ test_that("build_stint_ribbon_svg emits one scale gridline and one label per tic
     lengths(regmatches(html, gregexpr('class="ibpl-ribbon-scale-label"', html, fixed = TRUE))),
     length(scale_info$ticks))
 
-  # Mutation check: format the label without the "+" flag (e.g. plain
-  # `sprintf("%d", v)`) -- the positive-tick lookups below then fail to find
-  # ">2<"/ ">4<" (they only find "-2"/"-4" style negatives), confirming this
-  # actually checks the sign, not just that some number is present.
+  # Labels are lead SIZES, not signed margins (2026-09-20): the side of the
+  # "tied" baseline already says who leads -- own-team block above, opponent
+  # block below -- so "-10" restated that in the one form that reads as
+  # "our team is minus ten". Ticks stay symmetric, so each magnitude is
+  # printed twice, once per side.
   for (v in scale_info$ticks) {
-    label <- sprintf("%+d", as.integer(round(v)))
+    label <- sprintf("%d", abs(as.integer(round(v))))
     expect_match(html, paste0(">", label, "<"), fixed = TRUE)
   }
+
+  # Mutation check: restore the "+" flag (or drop the abs()) and this fails.
+  # It pins that NO scale label carries a sign, which the loop above cannot
+  # do on its own: ">5<" is found whether or not ">-5<" is also emitted for
+  # the mirrored tick.
+  drawn <- regmatches(html, gregexpr(
+    '<text class="ibpl-ribbon-scale-label"[^>]*>[^<]*</text>', html))[[1]]
+  expect_gt(length(drawn), 0)
+  expect_false(any(grepl("[+-]", sub("^[^>]*>", "", drawn))))
 })
 
 test_that("scale gridlines never fall outside the band and never leak NaN", {

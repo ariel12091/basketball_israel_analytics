@@ -4122,10 +4122,16 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     tags$line(class = "ibpl-ribbon-scale", x1 = L$gutter, x2 = L$width,
               y1 = y, y2 = y)
   })
+  # Tick labels are lead SIZES, not signed margins (2026-09-20). Which side
+  # of the "tied" baseline a gridline sits on already says who leads -- the
+  # own-team block is above the band and the opponent block below it -- so a
+  # "-10" restated that fact in the one form that reads as "our team is minus
+  # ten". Positions and `ticks` are unchanged; only the text differs, and
+  # each magnitude is therefore printed twice, once per side.
   scale_labels <- lapply(scale_info$ticks, function(v) {
     y <- ribbon_margin_y(v, scale_info$max_abs, margin_top, L$margin_height)
     tags$text(class = "ibpl-ribbon-scale-label", x = L$gutter - 8,
-              y = y + 3, `text-anchor` = "end", sprintf("%+d", as.integer(round(v))))
+              y = y + 3, `text-anchor` = "end", sprintf("%d", abs(as.integer(round(v)))))
   })
 
   # The period markers are drawn twice, once above the lanes and once below
