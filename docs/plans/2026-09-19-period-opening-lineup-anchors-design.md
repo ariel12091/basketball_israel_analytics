@@ -529,7 +529,7 @@ this change's work:
 | Game | Period | Why |
 |---|---|---|
 | 184 | Q3, Q4 | Raw feed has **zero** Q3/Q4 actions. Its two 10-minute quarters total exactly the official 59-70, with no clock resets — internally consistent but describing a 20-minute game. Cause unknown. |
-| 406 | Q2 | Raw feed has **7** Q2 actions: a quarter marker plus 6 substitutions stamped at `00:01`/`00:00`, the period's *end* — the 398/399 misclocked-flurry signature. Q4 then carries 280 actions and 88 points, about double a normal quarter, while game totals still reconcile to 99-79. Reads like Q2 gameplay labelled into Q4; **not established**, needs the raw JSON. |
+| 406 | Q2 | Raw feed has **7** Q2 actions: a quarter marker plus 6 substitutions stamped at `00:01`/`00:00`, the period's *end* — the 398/399 misclocked-flurry signature. Q4 then carries 280 actions and 88 points, about double a normal quarter, while game totals still reconcile to 99-79. **Resolved 2026-09-20 (reported by the repo owner):** the period labels are wrong at the source — the period labelled Q2 is actually Q3, and the one labelled Q4 is Q3 and Q4 merged. It needs an ad-hoc relabelling script, like the game 402 Q4 corrections (`b944aed`) and `KNOWN_CLOCK_STAMP_CORRECTIONS`. Until that lands, treat 406's period structure as unreliable: the anchor the shadow run placed at "Q2" (id `4060228`, both teams, `n_on = 5`) is a symptom of the mislabelling, not a criterion-2 violation to adjudicate. |
 | 380 | Q4 | The forfeit game — only three quarters were played. Legitimate. |
 
 Two things this settles:
@@ -779,8 +779,28 @@ against the post-anchor data.
    under `app_readonly`. Full suite: 641 tests, only the three pre-existing
    failures. **Not yet run against real data** -- `actions_clean` is empty
    between ETL runs; that is step 5.
-5. Shadow run games 401, 404 and 406; confirm the semantic diff is additive
-   only, allowing surrogate segment-id renumbering.
+5. ~~Shadow run games 401, 404 and 406; confirm the semantic diff is additive
+   only, allowing surrogate segment-id renumbering.~~ **Done 2026-09-20.**
+   Cold storage restored for the three games only (the release increment was
+   merged into the local cumulative archive first — it held the only copy of
+   404 and 406). `compute_lineups_lookup()` + `apply_period_anchor_gates()`
+   run against a control arm with anchors suppressed via
+   `PERIOD_ANCHOR_EXCLUDED_GAMES`, so anchor effects are separated from
+   harness effects. Result, control -> anchored: **0 rows lost, 0 fields
+   changed on any shared key, 80 rows added** at five period openings —
+   401 Q4 `4010679`, 404 Q2 `4040211`, 404 Q4 `4040622`, 406 Q2 `4060228`,
+   406 Q3 `4060239`. Four of the five are exactly the periods the Step 1
+   baseline predicted; 406 Q2 is the mislabelling case (see the absent-period
+   table). Gate 1 dropped the 406 Q3 anchor for team 14 (`n_on = 0`) and kept
+   team 6's. Gate 4 stayed silent, correctly: 406 Q2's quarter marker is
+   stamped at `10:00`/1800.
+   Two measurements from the run that are **artifacts, not findings**: the 58
+   rows "lost" and 11 `is_on_verdict` changes against the DB baseline are all
+   game 401 Q5 and appear in the no-anchor arm too — OT-recovery rows the
+   harness does not reproduce. A reported 1793 `num_starters` changes was a
+   diff-script defect: without `bit64` attached, `is.numeric()` on an
+   `integer64` column is FALSE and the `as.character()` fallback renders raw
+   bit patterns. Attach `bit64` in any script that diffs these frames.
 6. Reprocess the three games; run the handoff checklist.
 7. Re-run the three-game acceptance checks.
 8. Regenerate the affected-game set, intersect it with cold-storage Parquet
