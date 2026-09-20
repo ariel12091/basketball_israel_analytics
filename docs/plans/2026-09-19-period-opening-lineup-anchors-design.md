@@ -831,9 +831,55 @@ against the post-anchor data.
    zero-match rows out of 477 (the 2026-09-16 run) to 2; and the data-quality
    report's `Overall status: FAIL` is pre-existing — the failing check set is
    byte-identical before and after, 14 checks either way.
-8. Regenerate the affected-game set, intersect it with cold-storage Parquet
+8. ~~Regenerate the affected-game set, intersect it with cold-storage Parquet
    coverage, decide the historical re-derivation scope, and reprocess that
-   scope (offline where covered, provider path otherwise).
+   scope (offline where covered, provider path otherwise).~~ **Done
+   2026-09-20.** Affected set: 19 games, all present in local Parquet.
+   Reprocessed 18 of them **offline** (406 held for its relabelling).
+
+   **The offline branch is mandatory, not a preference.** A refetch is not
+   equivalent to the archive: comparing today's `clean_actions()` output
+   against the archived rows field-by-field, game 64902 comes back with **507
+   changed `parent_action_id` and 26 changed `parameters_points`**, and 62449
+   with one changed `player_id`. Re-ingesting would have bundled unrelated
+   source/derivation drift — `parameters_points` is the 2PT/3PT split — into a
+   change whose whole verification story is "additive only". An id-and-count
+   comparison says "no drift" and is not sufficient; compare every column.
+
+   The offline path restores the archived `actions_clean` and `possessions`
+   for one game, then calls the same helpers `etl_update()` calls
+   (`compute_lineups_lookup` + `apply_period_anchor_gates`, `compute_stints`,
+   the `pws` join), followed by one downstream pass for all games: Phase 3's
+   sub-lineup generation, the nine `refresh_*_for_games(int4[])` SQL
+   functions, the seven MV refreshes, and `refresh_sub_lineups_stats_for_games`.
+9. ~~Re-run the production-wide survey.~~ **Done 2026-09-20 — and it falsified
+   criterion 1 as written.**
+
+   Measure A is unchanged: 24 present-but-late periods, 21 in Q2-Q4, the same
+   19 games. It did not move because **Measure A has a floor**: it reports the
+   first *attributed* clock, which is capped by when the first attributable
+   event occurs. A period whose opening seconds contain only the `team_id = 0`
+   period marker can never reach the nominal opening clock. Game 66 Q2 now
+   opens its stint exactly at the anchor id `660195`, and the `pws` row there
+   is the marker with a NULL lineup hash, so `first_attributed` stays at 1784.
+   The baseline's own median gap of 12s was the clue. **Criterion 1 ("falls to
+   0") is not achievable and should be restated against points attribution,
+   not the clock proxy.**
+
+   The measure that does hold up is points. After the offline reprocess,
+   **33 of 36 team-games reconcile exactly**. The residuals:
+
+   - **184** (both teams, -5): the raw feed has zero Q3/Q4 actions. Known, and
+     criterion 2 requires it to be unchanged.
+   - **62526 team 24 (-1)**: a made free throw, id `625260653`, stamped at
+     `clock = 1200` — *exactly* the Q3 opening. A boundary case anchors do not
+     cover; worth its own look, not a regression.
+
+   **Methodology gap, recorded so it is not repeated:** points were snapshotted
+   before reprocessing only for 401/404/406, not for these 18. So "33 of 36"
+   cannot be decomposed into improved-versus-already-correct. Snapshot the
+   acceptance measure for every game in scope before writing, not just the
+   headline ones.
 9. Re-run the production-wide survey, including an OT period inventory that is
    independent of the target MV; only now confirm the global baselines clear.
 
