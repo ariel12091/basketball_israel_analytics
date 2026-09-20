@@ -801,8 +801,36 @@ against the post-anchor data.
    diff-script defect: without `bit64` attached, `is.numeric()` on an
    `integer64` column is FALSE and the `as.character()` fallback renders raw
    bit patterns. Attach `bit64` in any script that diffs these frames.
-6. Reprocess the three games; run the handoff checklist.
-7. Re-run the three-game acceptance checks.
+6. ~~Reprocess the three games; run the handoff checklist.~~ **Done
+   2026-09-20 for 401 and 404.** 406 is held back until its period labels are
+   relabelled (see the absent-period table), because its per-quarter
+   expectations are not trustworthy until then. Run via
+   `etl_full(game_ids = c(401, 404))` — the real production path, locally,
+   because the nightly workflow builds from `main`. 181s, exit 0, all seven
+   phases complete.
+7. ~~Re-run the three-game acceptance checks.~~ **Done 2026-09-20. All pass.**
+
+   | Check | Before | After | Predicted |
+   |---|---|---|---|
+   | 401 points missing (team 11 / 33) | 2 / 3 | **0 / 0** | +2 / +3 |
+   | 404 points missing (team 4 / 11) | 2 / 5 | **0 / 0** | +2 / +5 |
+   | 401 Q4 first attributed clock | 548 | **600** | period opening |
+   | 404 Q2 first attributed clock | 1732 | **1800** | period opening |
+   | 404 Q4 first attributed clock | 483 | **600** | the 1:57 gap |
+   | 7 of the 8 target action ids | absent from MV | **attributed** | attributed |
+   | `lineups_lookup` rows 401 / 404 | 776 / 584 | 788 / 610 | +12, +26 |
+
+   The eighth target action (`4060250`) is game 406 and stays unattributed, as
+   intended. 401 Q5 stays at 286: overtime, left to `ot_lineup_recovery.R`,
+   which ran in this very ETL and logged `accepted_carry_forward` for both
+   teams with 87 reconstructed rows — the OT path is demonstrably intact under
+   the anchors, which is what the Scope reversal was for.
+
+   Two side observations from the run, both checked rather than assumed:
+   the lineup/stint coverage warning for game 401 **improved** from 11
+   zero-match rows out of 477 (the 2026-09-16 run) to 2; and the data-quality
+   report's `Overall status: FAIL` is pre-existing — the failing check set is
+   byte-identical before and after, 14 checks either way.
 8. Regenerate the affected-game set, intersect it with cold-storage Parquet
    coverage, decide the historical re-derivation scope, and reprocess that
    scope (offline where covered, provider path otherwise).
