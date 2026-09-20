@@ -112,10 +112,15 @@ lineup_player_filter_server <- function(id, players_ref) {
     )) > 0L)
 
     # The three player boxes, in precedence order: a player picked in an earlier
-    # one is removed from the later ones.
+    # one is withheld from the later ones' option pools.
     PLAYER_BOXES <- c("players_on", "players_on_any", "players_off")
 
+    # The roster behind those boxes, kept so a pool can be recomputed as players
+    # move between them without re-querying.
+    roster_choices <- reactiveVal(empty_choices)
+
     clear_player_choices <- function() {
+      roster_choices(empty_choices)
       for (box_id in PLAYER_BOXES) {
         updateSelectizeInput(session, box_id, choices = empty_choices, selected = character(0), server = FALSE)
       }
@@ -194,30 +199,29 @@ lineup_player_filter_server <- function(id, players_ref) {
       selected_off <- selection_with_restore_seed(
         "players_off", input$players_off, choices
       )
-      # Same precedence the exclusion observers use, applied here too because a
-      # team pivot can reinstate a player into more than one box at once.
+      # A team pivot can reinstate a player into more than one box at once, so
+      # the same precedence the pools enforce is applied to the selections
+      # first: earlier boxes in PLAYER_BOXES win.
       selected_any <- setdiff(selected_any, selected_on)
       selected_off <- setdiff(selected_off, c(selected_on, selected_any))
       restore_seed$available <- FALSE
+      roster_choices(choices)
 
-      updateSelectizeInput(
-        session, "players_on",
-        choices = choices,
-        selected = selected_on,
-        server = FALSE
+      selections <- list(
+        players_on = selected_on,
+        players_on_any = selected_any,
+        players_off = selected_off
       )
-      updateSelectizeInput(
-        session, "players_on_any",
-        choices = choices,
-        selected = selected_any,
-        server = FALSE
-      )
-      updateSelectizeInput(
-        session, "players_off",
-        choices = choices,
-        selected = selected_off,
-        server = FALSE
-      )
+      for (box_id in PLAYER_BOXES) {
+        mine <- selections[[box_id]]
+        taken <- unlist(selections[setdiff(PLAYER_BOXES, box_id)], use.names = FALSE)
+        updateSelectizeInput(
+          session, box_id,
+          choices = lineup_box_pool(choices, mine, taken),
+          selected = mine,
+          server = FALSE
+        )
+      }
       invisible(list(
         team = team_val,
         players_on = selected_on,
@@ -240,25 +244,39 @@ lineup_player_filter_server <- function(id, players_ref) {
       refresh_player_choices()
     }, ignoreInit = TRUE)
 
-    # A player belongs to exactly one of the three boxes. With three of them the
-    # old pairwise observers would need six copies, so one handler is registered
-    # per box and clears that box's picks out of the other two. Precedence is
-    # the PLAYER_BOXES order, which is also the order they read on screen.
-    enforce_exclusive_boxes <- function(changed_id) {
-      changed <- current_player_values(changed_id)
-      if (!length(changed)) return(invisible(NULL))
+    # Each box offers the roster minus whatever the OTHER boxes hold, so a
+    # player already claimed simply is not in the list. Registering one handler
+    # per box off the vector keeps this to a single rule rather than the six
+    # pairwise observers three boxes would otherwise need.
+    #
+    # Only the other boxes are re-pooled, never the one that just changed: a box
+    # updating itself would echo its own value back and risk a feedback loop,
+    # and its own pool is already maintained by the other boxes' handlers.
+    refresh_other_box_pools <- function(changed_id) {
+      choices <- roster_choices()
+      if (!length(choices)) return(invisible(NULL))
       for (other_id in setdiff(PLAYER_BOXES, changed_id)) {
-        vals <- current_player_values(other_id)
-        keep <- setdiff(vals, changed)
-        if (length(keep) != length(vals)) {
-          updateSelectizeInput(session, other_id, selected = keep)
-        }
+        mine <- current_player_values(other_id)
+        taken <- unlist(
+          lapply(setdiff(PLAYER_BOXES, other_id), current_player_values),
+          use.names = FALSE
+        )
+        updateSelectizeInput(
+          session, other_id,
+          choices = lineup_box_pool(choices, mine, taken),
+          selected = mine,
+          server = FALSE
+        )
       }
       invisible(NULL)
     }
 
+    # ignoreNULL = FALSE: clearing a box has to return its players to the other
+    # pools, and a cleared multi-select reports NULL, which the default would
+    # swallow.
     lapply(PLAYER_BOXES, function(box_id) {
-      observeEvent(input[[box_id]], enforce_exclusive_boxes(box_id), ignoreInit = TRUE)
+      observeEvent(input[[box_id]], refresh_other_box_pools(box_id),
+                   ignoreInit = TRUE, ignoreNULL = FALSE)
     })
 
     list(

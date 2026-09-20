@@ -1440,6 +1440,17 @@ lineup_on_predicate <- function(players_list, on_ids, required_ids) {
   )
 }
 
+# Options one player box may offer: the roster minus whatever the other boxes
+# have already claimed. The boxes are mutually exclusive, and withholding a
+# taken player is kinder than offering them and then silently pulling them out
+# of the box that had them first. A box always keeps its own selection, so the
+# narrowing update never clears what is already chosen.
+lineup_box_pool <- function(choices, own_selected, other_selected) {
+  if (!length(choices)) return(choices)
+  taken <- setdiff(as.character(other_selected), as.character(own_selected))
+  choices[!(unname(choices) %in% taken)]
+}
+
 apply_local_lineup_filters <- function(df, p) {
   if (is.null(df) || NROW(df) == 0L) return(df)
   df <- ensure_player_ids_list(df)

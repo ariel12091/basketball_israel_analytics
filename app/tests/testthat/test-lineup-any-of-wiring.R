@@ -56,9 +56,16 @@ test_that("the shared module exposes the any-of box and keeps the boxes disjoint
   txt <- read_repo_txt("R", "mod_lineup_player_filter.R")
 
   expect_true(grepl("players_on_any = reactive(current_player_values(\"players_on_any\"))", txt, fixed = TRUE))
-  # One exclusion handler per box, driven off the vector, rather than the six
-  # pairwise observers three boxes would otherwise need.
+  # One handler per box, driven off the vector, rather than the six pairwise
+  # observers three boxes would otherwise need. It narrows the OTHER boxes'
+  # option pools, so a player already claimed is never offered twice.
   expect_true(grepl("PLAYER_BOXES <- c(\"players_on\", \"players_on_any\", \"players_off\")", txt, fixed = TRUE))
-  expect_true(grepl("observeEvent(input[[box_id]], enforce_exclusive_boxes(box_id)", txt, fixed = TRUE))
+  expect_true(grepl("observeEvent(input[[box_id]], refresh_other_box_pools(box_id),", txt, fixed = TRUE))
+  # A cleared multi-select reports NULL, which the default would swallow --
+  # and then its players would never return to the other pools.
+  expect_true(grepl("ignoreInit = TRUE, ignoreNULL = FALSE", txt, fixed = TRUE))
+  # Both the live handler and the initial population go through the same
+  # pool rule, or a team pivot could offer a player two boxes already hold.
+  expect_equal(count_fixed(txt, "lineup_box_pool(choices, mine, taken)"), 2L)
   expect_equal(count_fixed(txt, "observeEvent(input$players_o"), 0L)
 })
