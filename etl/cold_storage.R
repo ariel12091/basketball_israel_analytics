@@ -3,8 +3,15 @@
 # Exports ETL-only intermediate tables to cumulative Parquet files,
 # then TRUNCATEs them to reclaim DB space. Used by etl_full.R Phase 7.
 
-COLD_TABLES <- c("actions_clean", "possessions", "pws", "stints", "subs")
+# `subs` was promoted OUT of cold storage on 2026-09-19: the Shiny ribbon needs
+# substitution evidence at REQUEST time, and a cold table is empty between ETL
+# runs. It costs ~9 MB against a 3.2 GB database, and its GRANT, RLS policy and
+# app_readonly SELECT were already in place.
+COLD_TABLES <- c("actions_clean", "possessions", "pws", "stints")
 
+# Keys for export dedup and restore. `subs` is retained here although it is no
+# longer exported or truncated: ~79k rows of history live in subs.parquet and
+# must still load through restore_cold_table().
 COLD_TABLE_KEYS <- list(
   actions_clean = c("game_id", "id"),
   possessions   = c("game_id", "id"),
@@ -12,6 +19,51 @@ COLD_TABLE_KEYS <- list(
   stints        = c("game_id", "team_id", "final_start_id", "final_end_id"),
   subs          = c("game_id", "id")
 )
+
+# Hot tables that keep a foreign key into cold actions_clean. TRUNCATE is
+# refused while a table that is NOT being truncated references the target, so
+# each constraint is dropped before the TRUNCATE and re-added NOT VALID after.
+# NOT VALID is correct here rather than a shortcut: the referenced rows are
+# gone by design, while rows a later ETL run inserts still validate, because
+# Phase 2 writes them while actions_clean still holds that game.
+#
+# Column order differs per constraint and is load-bearing -- lineups_lookup
+# references (game_id, id), subs references (id, game_id).
+HOT_FKS_INTO_COLD <- list(
+  lineups_lookup = list(
+    constraint = "lineups_lookup_actions_clean_fk",
+    columns    = "(game_id, id)",
+    references = "(game_id, id)",
+    on_delete  = ""
+  ),
+  subs = list(
+    constraint = "subs_actions_clean_fk",
+    columns    = "(id, game_id)",
+    references = "(id, game_id)",
+    on_delete  = " ON DELETE CASCADE"
+  )
+)
+
+#' DROP statements for every hot FK into cold actions_clean.
+cold_fk_drop_sql <- function(schema) {
+  vapply(names(HOT_FKS_INTO_COLD), function(tbl) {
+    sprintf('ALTER TABLE "%s"."%s" DROP CONSTRAINT IF EXISTS "%s"',
+            schema, tbl, HOT_FKS_INTO_COLD[[tbl]]$constraint)
+  }, character(1))
+}
+
+#' ADD ... NOT VALID statements for every hot FK into cold actions_clean.
+cold_fk_readd_sql <- function(schema) {
+  vapply(names(HOT_FKS_INTO_COLD), function(tbl) {
+    spec <- HOT_FKS_INTO_COLD[[tbl]]
+    sprintf(
+      paste0('ALTER TABLE "%s"."%s" ADD CONSTRAINT "%s" FOREIGN KEY %s ',
+             'REFERENCES "%s"."actions_clean" %s%s NOT VALID'),
+      schema, tbl, spec$constraint, spec$columns, schema, spec$references,
+      spec$on_delete
+    )
+  }, character(1))
+}
 
 #' Export a single table to cumulative Parquet (no truncation — see run_cold_storage_purge).
 #'
@@ -122,7 +174,8 @@ export_cold_table <- function(
 #' Run Phase 7: export all cold tables to Parquet, then TRUNCATE all at once.
 #'
 #' Single TRUNCATE handles FK dependencies between cold tables.
-#' lineups_lookup FK to actions_clean is dropped/re-added around the TRUNCATE.
+#' Hot tables holding an FK into actions_clean (HOT_FKS_INTO_COLD) have their
+#' constraint dropped and re-added NOT VALID around the TRUNCATE.
 #'
 #' @param pg DBI connection
 #' @param schema DB schema name
@@ -182,42 +235,40 @@ run_cold_storage_purge <- function(
 
   # Phase B: drop lineups_lookup FK, TRUNCATE all 5, re-add FK
   tryCatch({
-    log_msg("  [COLD] Dropping lineups_lookup FK for TRUNCATE...")
-    DBI::dbExecute(pg, sprintf(
-      'ALTER TABLE "%s"."lineups_lookup" DROP CONSTRAINT IF EXISTS "lineups_lookup_actions_clean_fk"',
-      schema))
+    log_msg(sprintf("  [COLD] Dropping %d hot FK(s) into actions_clean...",
+                    length(HOT_FKS_INTO_COLD)))
+    for (stmt in cold_fk_drop_sql(schema)) DBI::dbExecute(pg, stmt)
 
     tbl_list <- paste(sprintf('"%s"."%s"', schema, COLD_TABLES), collapse = ", ")
     DBI::dbExecute(pg, paste("TRUNCATE", tbl_list))
-    log_msg("  [COLD] All 5 tables truncated")
+    log_msg(sprintf("  [COLD] %d tables truncated", length(COLD_TABLES)))
 
-    DBI::dbExecute(pg, sprintf(
-      'ALTER TABLE "%s"."lineups_lookup" ADD CONSTRAINT "lineups_lookup_actions_clean_fk"
-       FOREIGN KEY (game_id, id) REFERENCES "%s"."actions_clean" (game_id, id) NOT VALID',
-      schema, schema))
-    log_msg("  [COLD] Re-added lineups_lookup FK (NOT VALID)")
+    for (stmt in cold_fk_readd_sql(schema)) DBI::dbExecute(pg, stmt)
+    log_msg(sprintf("  [COLD] Re-added %d hot FK(s) (NOT VALID)",
+                    length(HOT_FKS_INTO_COLD)))
   }, error = function(e) {
     log_msg(sprintf("  [COLD] TRUNCATE FAILED — %s", conditionMessage(e)), "ERROR")
     # A failure after the DROP CONSTRAINT would otherwise silently leave the
-    # schema without the lineups_lookup -> actions_clean integrity check.
-    fk_present <- tryCatch(
-      DBI::dbGetQuery(pg, sprintf(
-        "SELECT count(*) AS n FROM pg_constraint
-         WHERE conname = 'lineups_lookup_actions_clean_fk'
-           AND conrelid = '\"%s\".\"lineups_lookup\"'::regclass",
-        schema
-      ))$n[[1]] > 0,
-      error = function(e2) NA
-    )
-    if (isFALSE(fk_present)) {
+    # schema without these integrity checks. Restore whichever are missing.
+    readd <- cold_fk_readd_sql(schema)
+    for (tbl in names(HOT_FKS_INTO_COLD)) {
+      conname <- HOT_FKS_INTO_COLD[[tbl]]$constraint
+      fk_present <- tryCatch(
+        DBI::dbGetQuery(pg, sprintf(
+          "SELECT count(*) AS n FROM pg_constraint
+           WHERE conname = '%s'
+             AND conrelid = '\"%s\".\"%s\"'::regclass",
+          conname, schema, tbl
+        ))$n[[1]] > 0,
+        error = function(e2) NA
+      )
+      if (!isFALSE(fk_present)) next
       tryCatch({
-        DBI::dbExecute(pg, sprintf(
-          'ALTER TABLE "%s"."lineups_lookup" ADD CONSTRAINT "lineups_lookup_actions_clean_fk"
-           FOREIGN KEY (game_id, id) REFERENCES "%s"."actions_clean" (game_id, id) NOT VALID',
-          schema, schema))
-        log_msg("  [COLD] Re-added lineups_lookup FK after failed TRUNCATE")
+        DBI::dbExecute(pg, readd[[tbl]])
+        log_msg(sprintf("  [COLD] Re-added %s after failed TRUNCATE", conname))
       }, error = function(e2) {
-        log_msg(sprintf("  [COLD] FK re-add after failure ALSO FAILED — %s", conditionMessage(e2)), "ERROR")
+        log_msg(sprintf("  [COLD] FK re-add after failure ALSO FAILED (%s) — %s",
+                        conname, conditionMessage(e2)), "ERROR")
       })
     }
   })
@@ -235,7 +286,9 @@ run_cold_storage_purge <- function(
 #' @param cold_dir Local Parquet directory
 #' @return Number of rows restored
 restore_cold_table <- function(pg, schema, table_name, cold_dir = "exports/cold") {
-  stopifnot(table_name %in% COLD_TABLES)
+  # names(COLD_TABLE_KEYS), not COLD_TABLES: `subs` is hot now but its
+  # historical parquet must still be loadable through this helper.
+  stopifnot(table_name %in% names(COLD_TABLE_KEYS))
   parquet_path <- file.path(cold_dir, paste0(table_name, ".parquet"))
   if (!file.exists(parquet_path)) stop(sprintf("No Parquet found: %s", parquet_path))
 

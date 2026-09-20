@@ -118,7 +118,7 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader, mobile collapse behind "Show 
 
 ## Key Tables & MVs
 
-**Base tables:** `schedule`, `actions_clean`*, `full_rosters`, `possessions`*, `pws`*, `lineups_lookup`, `stints`*, `sub_lineups`, `subs`*
+**Base tables:** `schedule`, `actions_clean`*, `full_rosters`, `possessions`*, `pws`*, `lineups_lookup`, `stints`*, `sub_lineups`, `subs`
 
 (*) **Cold storage tables** — truncated after each ETL run. See Cold Storage section below.
 
@@ -222,10 +222,16 @@ Available in Tabs 2 and 3 only. 4 SQL params: `p_max_margin`, `p_margin_status`,
 
 ## Cold Storage
 
-**Purpose:** Keep Supabase DB under 500MB free tier by exporting ETL-only intermediate tables to Parquet and TRUNCATing them after each run.
+**Purpose (original):** Keep Supabase DB under 500MB free tier by exporting ETL-only intermediate tables to Parquet and TRUNCATing them after each run.
+
+**That premise is stale.** Measured 2026-09-19: `pg_database_size()` is **3237 MB**. The 500 MB free tier has not bound for a long time, so "is this table worth 9 MB?" is no longer the right question to ask about cold storage. The mechanism still earns its keep on backup/restore cost, not on the free tier.
 
 **Cold tables** (written in Phase 2, read in Phase 4, purged in Phase 7):
-- `actions_clean` (~32MB), `possessions` (~36MB), `pws` (~58MB), `stints` (~6MB), `subs` (~9MB) — **~140MB total**
+- `actions_clean` (~32MB), `possessions` (~36MB), `pws` (~58MB), `stints` (~6MB) — **~131MB total**
+
+**`subs` is HOT since 2026-09-19** — promoted out of cold storage so the Shiny stint ribbon can read substitution evidence at *request* time (a cold table is empty between ETL runs, so the reader could never use it). ~9MB, ~79k rows. Its GRANT, RLS policy and `app_readonly` SELECT already existed. Migration: `scripts/promote_subs_to_hot.R` (dry-run by default, `CONFIRM_SUBS_PROMOTION=1` to apply).
+
+**FKs into cold `actions_clean`** are registered in `HOT_FKS_INTO_COLD` (`etl/cold_storage.R`), and `cold_fk_drop_sql()` / `cold_fk_readd_sql()` build the statements Phase 7 runs around the TRUNCATE. A hot table referencing `actions_clean` blocks TRUNCATE, so its constraint is dropped first and re-added **NOT VALID** after: the referenced rows are gone by design, while rows a later ETL run inserts still validate, because Phase 2 writes them while `actions_clean` holds that game. Column order differs per constraint and is load-bearing — `lineups_lookup` references `(game_id, id)`, `subs` references `(id, game_id)`. **Add any new hot table with such an FK to that list or Phase 7 fails.**
 
 **Files:**
 - `etl/cold_storage.R` — `export_cold_table()`, `run_cold_storage_purge()`, `restore_cold_table()`
@@ -348,7 +354,9 @@ The disconnect nodes the client hides (`#ss-connect-dialog`, `#ss-overlay`,
 
 ## ETL Scheduler
 
-Daily via Windows Task Scheduler → `scripts/run_etl_full.ps1`. Writes marker to `etl/logs/last_success.txt` + `app_meta` DB table. Per-run log files. `StartWhenAvailable=True`, `WakeToRun=True`. Currently `Interactive only` mode.
+Production ETL is scheduled nightly in GitHub Actions via `.github/workflows/etl-full.yml` at `21:15 UTC` (00:15 Israel daylight time, 23:15 standard time). The former Windows Task Scheduler task was absent in the 2026-09-11 investigation, so do not rely on it as a fallback. Successful ETL writes `app_meta.etl_full_last_success`, which also versions Shiny's season caches; after a manual database aggregate refresh, advance that marker to invalidate cached results. See `docs/etl_clock_incident_handoff_2026-09-13.md`.
+
+`workflow_dispatch` accepts an optional `game_ids` input (comma-separated, e.g. `398,399`) to force specific games through the pipeline regardless of `etl_processed_games`, bypassing the normal new-games-only diff -- e.g. `gh workflow run etl-full.yml -f game_ids=398,399`. Dormant for the `schedule` trigger (inputs are only read on `workflow_dispatch`), so nightly runs are unaffected. Threaded through `scripts/run_etl_full.ps1`'s `-GameIds` param into `etl_full(game_ids=c(...))`.
 
 ## Security
 
@@ -475,6 +483,8 @@ than adding a special case:
 - `score` column from raw JSON is unreliable — use `own_team_score`/`opp_team_score`
 - `segment_id` repeats across games — always include `game_id` in GROUP BY
 - Floor time: collapse the perspective IN the segment GROUP BY -- key on `(game_id, team_id, lineup_hash, segment_id)` with `type_lineup` absent, take `MAX(segment_seconds)`, then SUM with **no** offense filter. Attach the result to the offense output row once (`CASE WHEN type_lineup = 'offense' THEN ... END`); that is where the single-count guard belongs. `player_traditional_stats_mv.segment_times` is the reference implementation. **Do not filter the sum on offense being present** -- it looks like double-count protection but a segment with no offensive possession then contributes zero, which cost 0.586 min/team-game across 92% of team-games until 2026-09-05. See `docs/unattributed_floor_time_2026-09-05.md`.
+- Canonical segment boundaries use a running maximum of raw event elapsed time ordered by action ID within each game/team. Keep raw elapsed and regression fields for auditing; do not count a backward clock jump again when it catches up. Keep `sql/functions/refresh_segment_clock_fields_for_games.sql`, `sql/materialized_views/df_pts_poss_longer.sql`, and the 2026-09-12 monotonic-clock migration aligned. Games 398 and 399 exposed the bug; see `docs/canonical_clock_minutes.md`.
+- Games 398/399 also had a SEPARATE, since-fixed defect: a provider dead-ball substitution flurry right after a period start was stamped with the clock from near the periods END, not its start (unrelated to the monotonic-clock fix above). Corrected via a per-id lookup table, `KNOWN_CLOCK_STAMP_CORRECTIONS` in `etl/etl_onoff.R`, applied in `clean_actions()` before quarter-clock fields are derived -- generalizes the earlier one-off game-381 filter into a reusable, guarded pattern (a row is a no-op with a warning if the feed no longer shows the expected wrong stamp). See `docs/game_398_399_misclocked_clock_fix_plan_2026-09-14.md`.
 - Clutch CTEs: propagate `team_id` through all CTEs + always use table aliases (avoid PL/pgSQL variable ambiguity)
 - `fetch_lineups_all.sql` and `fetch_lineups_four_factors.sql` have near-identical clutch structures — keep them in sync
 - Last-N-games filters: use the `schedule_ranked` windowed CTE pattern (all seven app functions do since 2026-07-27) — never a correlated per-row subquery
@@ -502,6 +512,7 @@ than adding a special case:
 - Long `Rscript -e` segfaults — write to temp .R file
 - MV DDL: `readLines()` + `paste(collapse="\n")`, strip comment header, execute as single string
 - `$function$` boundary: find end with `grep("^\\$function\\$;$")`
+- Editing a file (`Edit` or similar tools) can silently normalize its WHOLE line-ending convention (mixed CRLF/LF files in this repo -- `app.R`, `global.R`, `etl_onoff.R`, `run_etl_full.ps1`, `CLAUDE.md` all mix them), turning a small real change into a 100+ line spurious diff. `cat -A` in Git Bash is not a reliable detector -- it can display no `^M` even where `xxd`/`tr -cd '\r'|wc -c` prove CRLF is actually present (Git Bash's own `cat` silently translates on display). Fix: extract the pristine committed blob (`git show HEAD:<file>`), splice the change in via `perl -0777` on raw bytes (`\Q...\E` literal match), and verify with `tr -cd '\r'|wc -c` arithmetic (orig CR + added-block CR - removed-block CR = spliced CR) before installing and `git diff --stat`.
 
 ### React / Plumber
 - PR column naming: `prOffOn` (PPP rank) ≠ `prOffOnD` (Diff rank) — use correct one per column
@@ -538,6 +549,8 @@ than adding a special case:
 **Security/Resilience:**
 1. Click burst guard for lineup modal (~300ms)
 2. Vendor Google Fonts + bootstrap-icons into `www/` (or add SRI) — currently loaded from CDNs without integrity hashes
+3. **Cold-storage backup is not cumulative -- the only full archive is one local disk.** The `cold-storage/latest` release holds just the last CI run's increment: verified 2026-09-19 as 3 games (401, 404, 406) at 14-90 KB per table, against 445 games and 6.3 MB in local `exports/cold/`. The "cumulative Parquet with key-based dedup" above describes that local folder, which is gitignored; CI runs in a fresh workspace and overwrites the release instead of merging into it. Lose that disk and ~140 MB of truncated ETL intermediates (`actions_clean`, `possessions`, `pws`, `stints`, `subs`) is recoverable only by re-fetching every game's PBP. Fix: have `.github/workflows/etl-full.yml` download the existing release assets and merge before upload.
+   Four games are in neither source: `393`, `397`, `399`, `400` (DB has 451, local parquet 445, release adds 401/404/406). 393 postdates the local snapshot; 397/399/400 predate it and should have been exported, so an export was skipped or rolled back -- note 398 IS present while 397 and 399 are not, which lines up with the failed-run window in `docs/etl_clock_incident_handoff_2026-09-13.md`, but that link is unproven.
 
 (Done: `statement_timeout` guardrail — 20s via `PG_STATEMENT_TIMEOUT_MS`; Tab 4 MV cache — `GL_DATA_CACHE`; per-session rate limit — `guard_heavy_request()`.)
 

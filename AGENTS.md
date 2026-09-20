@@ -4,7 +4,6 @@ This file provides operational guidance for Codex when working in this repositor
 
 ## Scope
 - Prefer the project documentation in `PROJECT.md` (copied from `CLAUDE.md`) for domain knowledge.
-- Do not modify `CLAUDE.md`; keep it as a historical reference.
 
 ## Workflow
 - Read only what is needed to answer the task.
