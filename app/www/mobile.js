@@ -350,11 +350,6 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     svg.querySelectorAll(".ibpl-ribbon-top-layer .ibpl-ribbon-period-label").forEach(function (label) {
       label.remove();
     });
-    // A card is one period, so an alternating band has nothing to alternate
-    // against -- it would just tint every other card's whole background.
-    svg.querySelectorAll(".ibpl-ribbon-band").forEach(function (band) {
-      band.remove();
-    });
     collapseRows(svg, source);
     clipBarsToPeriod(svg, index, gutter + start * perSecond, gutter + end * perSecond);
     svg.querySelectorAll("clipPath[id]").forEach(function (clip) {

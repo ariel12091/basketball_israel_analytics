@@ -4183,22 +4183,6 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
   # no gridline of its own.
   period_starts <- c(0, bounds[-length(bounds)])
 
-  # Alternating tint, every second period (2026-09-19). A single gridline is
-  # easy to lose in a chart tall enough to scroll, and it is painted UNDER
-  # the lane bars -- so a player who never sits had no quarter marking across
-  # their row at all. A band gives the whole column a background instead, and
-  # the gridlines move above the bars below for the same reason. Bands are
-  # inert (pointer-events: none in app.css) so one never swallows a lane
-  # click, and they carry data-base-y2 like the gridlines do: app.js and
-  # mobile.js grow both when a detail card opens or rows collapse.
-  period_bands <- lapply(which(seq_along(period_starts) %% 2L == 0L), function(k) {
-    per_second <- (L$width - L$gutter) / total_seconds
-    x0 <- L$gutter + period_starts[k] * per_second
-    tags$rect(class = "ibpl-ribbon-band", x = x0, y = RIBBON_PAD_TOP,
-              width = L$gutter + bounds[k] * per_second - x0,
-              height = total_h - RIBBON_PAD_TOP, `data-base-y2` = total_h)
-  })
-
   period_label_row <- function(y) {
     lapply(seq_along(period_starts), function(k) {
       bx <- L$gutter + period_starts[k] * ((L$width - L$gutter) / total_seconds)
@@ -4240,7 +4224,6 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     `data-own-detail-y` = own_detail_y,
     `data-opp-detail-y` = opp_detail_y,
     tags$defs(clip_paths),
-    period_bands,
     tags$g(class = "ibpl-ribbon-own-layer",
            own_team_labels,
            lane_labels[lanes$side[first_idx] == "own"],

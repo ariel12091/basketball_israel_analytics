@@ -30,13 +30,6 @@ ribbon_mobile_overview_ui <- function(margin, bounds) {
       viewBox = sprintf("0 0 %d %d", width, height),
       role = "img",
       `aria-label` = "Full-game score margin; positive values favor the first team",
-      # Same alternating band as the full chart, so the strip and the
-      # timeline below it divide the game the same way.
-      lapply(which(seq_along(bounds) %% 2L == 0L), function(k) {
-        x0 <- bounds[k - 1L] / total * width
-        tags$rect(class = "ibpl-ribbon-band", x = x0, y = 0,
-                  width = bounds[k] / total * width - x0, height = height)
-      }),
       tags$line(class = "ibpl-ribbon-overview-zero", x1 = 0, x2 = width,
                 y1 = plot_top + plot_height / 2,
                 y2 = plot_top + plot_height / 2),
@@ -55,6 +48,22 @@ ribbon_mobile_overview_ui <- function(margin, bounds) {
                       `data-quarter` = i,
                       `aria-label` = paste("Jump to", label), label)
         }))
+  )
+}
+
+# Game 406's Q4 clock is reconstructed from wall-entry time because the
+# provider froze every real-Q4 action at 00:00/00:01. Put that qualification
+# in the chart's warning area, where there is room to explain its scope.
+ribbon_game_warning <- function(league, game_id, health = NULL) {
+  id <- suppressWarnings(as.integer(game_id))
+  if (!identical(as.character(league), "israel") ||
+      length(id) != 1L || is.na(id) || id != 406L) {
+    return(health)
+  }
+  paste(
+    "Q4 timing is approximate:",
+    "the provider's game clock was unusable, so Q4 events were positioned",
+    "on the Gameflow using their wall-clock timestamps."
   )
 }
 
@@ -113,9 +122,10 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
     } else {
       sprintf("Game %s", click$game_id)
     }
-
-    health_ui <- if (!is.null(ribbon$health)) {
-      div(class = "alert alert-warning py-2 px-3 mb-2", ribbon$health)
+    title_ui <- meta$game_label
+    warning <- ribbon_game_warning(league, click$game_id, ribbon$health)
+    health_ui <- if (!is.null(warning)) {
+      div(class = "alert alert-warning py-2 px-3 mb-2", warning)
     }
     # A phone gets the compact layout: the whole game across the screen
     # rather than the 1070-unit desktop chart panned sideways.
@@ -129,7 +139,7 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
       output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
         div(class = "ibpl-ribbon-inline-result",
             `data-game-id` = as.character(click$game_id),
-          div(class = "ibpl-ribbon-inline-title", meta$game_label),
+          div(class = "ibpl-ribbon-inline-title", title_ui),
           health_ui,
           div(class = "ibpl-ribbon-inline-hint",
               "Scroll through the quarters. Tap a player's row for that stint and its lineups."),
@@ -144,7 +154,7 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
     output[[paste0(prefix, "_ribbon_svg")]] <- renderUI({ tagList(health_ui, svg) })
 
     showModal(modalDialog(
-      title = meta$game_label,
+      title = title_ui,
       uiOutput(paste0(prefix, "_ribbon_svg")),
       size = "xl",
       easyClose = TRUE

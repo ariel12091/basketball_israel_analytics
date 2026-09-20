@@ -566,44 +566,20 @@ test_that("an overtime game gets more period gridlines than regulation", {
   expect_gt(n_ot, n_reg)
 })
 
-band_rects <- function(html) {
-  regmatches(html, gregexpr('<rect class="ibpl-ribbon-band"[^>]*>', html))[[1]]
-}
-
-test_that("every second period is tinted, and the tint is painted under the lanes", {
-  # 2026-09-19: a single gridline is easy to lose in a chart tall enough to
-  # scroll, and it used to be painted under the bars -- a player who never
-  # sits had no quarter marking across their row at all.
-  f <- ribbon_fixture()
-  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
-  bands <- band_rects(html)
-  expect_identical(length(bands), 2L)  # Q2 and Q4; Q1/Q3 are the bare half
-
-  # 220-unit gutter across 1070 units for 2400 seconds -> 0.3541667/second,
-  # so a quarter is 212.5 units and Q2 opens at 220 + 212.5.
-  expect_match(bands[1], 'x="432.5"', fixed = TRUE)
-  expect_match(bands[1], 'width="212.5"', fixed = TRUE)
-  expect_match(bands[2], 'x="857.5"', fixed = TRUE)
-
-  # Paint order is the whole point of the change, and nothing else in the
-  # SVG asserts it. Mutation check: swap period_bands and period_lines back
-  # to their old positions and both expectations flip.
-  expect_lt(regexpr("ibpl-ribbon-band", html),
-            regexpr("ibpl-ribbon-own-layer", html))
-  expect_gt(regexpr('ibpl-ribbon-period"', html),
-            regexpr("ibpl-ribbon-opp-layer", html))
-})
-
-test_that("bands alternate through overtime and carry the extent the JS grows", {
+test_that("period boundaries stay explicit without static background bands", {
   f <- ribbon_fixture()
   f$meta$n_periods <- 6L
-  bands <- band_rects(as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta)))
-  # Q2, Q4, OT2 -- never two tinted periods in a row across the regulation
-  # boundary, which a parity taken over the OT periods alone would break.
-  expect_identical(length(bands), 3L)
-  # app.js/mobile.js resize a band off data-base-y2; without it a band keeps
-  # its built height while the chart below it grows.
-  expect_true(all(grepl("data-base-y2", bands, fixed = TRUE)))
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+
+  expect_false(grepl("ibpl-ribbon-period-band", html, fixed = TRUE))
+  expect_match(html, ">Q1</text>", fixed = TRUE)
+  expect_match(html, ">Q4</text>", fixed = TRUE)
+  expect_match(html, ">OT2</text>", fixed = TRUE)
+  expect_identical(
+    lengths(regmatches(html, gregexpr('<line class="ibpl-ribbon-period"', html,
+                                      fixed = TRUE))),
+    5L
+  )
 })
 
 test_that("the margin curve is drawn twice: a base copy and a focus copy", {
@@ -1007,7 +983,7 @@ test_that("app.css styles every class the SVG builder emits", {
                          warn = FALSE), collapse = "\n")
   for (cls in c("ibpl-ribbon", "ibpl-ribbon-lane", "ibpl-ribbon-margin-base",
                 "ibpl-ribbon-margin-focus", "ibpl-ribbon-period",
-                "ibpl-ribbon-band",
+                "ibpl-ribbon-hover-band",
                 "ibpl-ribbon-name", "ibpl-ribbon-team", "ibpl-ribbon-zero",
                 "ibpl-ribbon-period-label", "ibpl-ribbon-scale",
                 "ibpl-ribbon-scale-label")) {
@@ -1235,6 +1211,39 @@ test_that("ribbon links can use a separate gameflow column", {
   expect_s3_class(out$game_date, "Date")
   expect_identical(out$game_date, as.Date("2026-09-08"))
   expect_match(out$gameflow, '>View</a>', fixed = TRUE)
+})
+
+test_that("interactive hover is the only ribbon background band", {
+  js <- paste(readLines(testthat::test_path("..", "..", "www", "app.js"),
+                        warn = FALSE), collapse = "\n")
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  f <- ribbon_fixture()
+  html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
+
+  expect_false(grepl("ibpl-ribbon-period-band", html, fixed = TRUE))
+  expect_false(grepl("ibpl-ribbon-hover-band", html, fixed = TRUE))
+  expect_match(js, 'querySelector(".ibpl-ribbon-hover-band")', fixed = TRUE)
+  expect_false(grepl("ibpl-ribbon-period-band", js, fixed = TRUE))
+  expect_false(grepl("ibpl-ribbon-period-band", css, fixed = TRUE))
+  expect_match(css, ".ibpl-ribbon-hover-band", fixed = TRUE)
+})
+
+test_that("only Israeli game 406 replaces ribbon health with its Q4 warning", {
+  warning <- ribbon_game_warning("israel", 406L, "old health message")
+  expect_match(warning, "Q4 timing is approximate", fixed = TRUE)
+  expect_match(warning, "wall-clock timestamps", fixed = TRUE)
+  expect_false(grepl("old health message", warning, fixed = TRUE))
+
+  expect_identical(
+    ribbon_game_warning("israel", 405L, "ordinary health"),
+    "ordinary health"
+  )
+  expect_identical(
+    ribbon_game_warning("euroleague", 406L, "ordinary health"),
+    "ordinary health"
+  )
+  expect_null(ribbon_game_warning("israel", 405L))
 })
 
 test_that("app.js exposes the queued ribbon click handler", {

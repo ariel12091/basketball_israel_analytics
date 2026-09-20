@@ -429,10 +429,10 @@
   }
 
   function bandFor(svg) {
-    var band = svg.querySelector(".ibpl-ribbon-band");
+    var band = svg.querySelector(".ibpl-ribbon-hover-band");
     if (!band) {
       band = document.createElementNS("http://www.w3.org/2000/svg", "rect");
-      band.setAttribute("class", "ibpl-ribbon-band");
+      band.setAttribute("class", "ibpl-ribbon-hover-band");
       // First child so it paints behind every lane, curve and gridline.
       svg.insertBefore(band, svg.firstChild);
     }

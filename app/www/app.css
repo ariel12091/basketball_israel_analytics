@@ -1440,16 +1440,6 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   display: block;
 }
 
-/* Alternating quarter bands: a tinted column behind every second period, so
-   which quarter a bar sits in reads off the background instead of off a
-   single rule. Painted first, and inert -- a filled rect over the lanes
-   would otherwise swallow their clicks and hovers. */
-.ibpl-ribbon-band {
-  fill: var(--ibpl-text);
-  opacity: 0.05;
-  pointer-events: none;
-}
-
 /* Painted over the lane bars now (see build_stint_ribbon_svg), so it needs
    the same inertness and a little more presence than it had underneath. */
 .ibpl-ribbon-period {
@@ -1574,7 +1564,7 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 
 /* Hover band: the vertical slice of the chart the hovered stint occupies.
    Painted behind everything, so the lanes and the curve stay readable. */
-.ibpl-ribbon-band {
+.ibpl-ribbon-hover-band {
   fill: var(--ibpl-accent);
   opacity: 0.16;
   pointer-events: none;
