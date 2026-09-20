@@ -40,10 +40,24 @@ PERIOD_ANCHOR_MAX_QUARTER <- 4L
 
 PERIOD_ANCHOR_CLOCK_COLUMN <- "end_game_seconds_remaining"
 
+# Game 211 is not anchored. Its regulation and overtime action ids overlap
+# (etl/ot_lineup_recovery.R excludes it from OT recovery for the same reason,
+# OT_LINEUP_RECOVERY_EXCLUDED_GAMES), and BOTH halves of the anchor mechanism
+# are id-ordered: the anchor is a period's lowest id, and compute_lineups_lookup()
+# fills is_on down a window ordered by id. Neither ordering is trustworthy
+# there, so an anchor would carry forward an arbitrary mid-game state and look
+# perfectly healthy doing it -- n_on would still be 5.
+PERIOD_ANCHOR_EXCLUDED_GAMES <- c(211L)
+
 period_opening_anchors <- function(actions, teams,
                                    min_quarter = PERIOD_ANCHOR_MIN_QUARTER,
-                                   max_quarter = PERIOD_ANCHOR_MAX_QUARTER) {
-  required <- c("id", "game_id", "quarter")
+                                   max_quarter = PERIOD_ANCHOR_MAX_QUARTER,
+                                   excluded_games = PERIOD_ANCHOR_EXCLUDED_GAMES) {
+  # `type` is required, not optional: without it the same-id substitution skip
+  # below silently never fires (as.character(NULL) is character(0), so
+  # identical() is FALSE for every row), while the SQL twin would error on the
+  # missing column. A silent divergence between the two is worse than a stop.
+  required <- c("id", "game_id", "quarter", "type")
   missing <- setdiff(required, names(actions))
   if (length(missing)) {
     stop(
@@ -64,7 +78,8 @@ period_opening_anchors <- function(actions, teams,
   eligible <- actions[
     !is.na(actions$quarter) &
       actions$quarter >= min_quarter &
-      actions$quarter <= max_quarter,
+      actions$quarter <= max_quarter &
+      !(actions$game_id %in% excluded_games),
     ,
     drop = FALSE
   ]
@@ -181,7 +196,8 @@ period_anchor_clock_violations <- function(actions, teams,
 # would then fail.
 period_opening_anchors_tbl <- function(actions, teams,
                                        min_quarter = PERIOD_ANCHOR_MIN_QUARTER,
-                                       max_quarter = PERIOD_ANCHOR_MAX_QUARTER) {
+                                       max_quarter = PERIOD_ANCHOR_MAX_QUARTER,
+                                       excluded_games = PERIOD_ANCHOR_EXCLUDED_GAMES) {
   min_quarter <- as.integer(min_quarter)
   max_quarter <- as.integer(max_quarter)
   action_cols <- colnames(actions)
@@ -190,6 +206,13 @@ period_opening_anchors_tbl <- function(actions, teams,
     rep(list(dbplyr::sql("CAST(NULL AS INTEGER)")), length(null_cols)),
     null_cols
   )
+  # Filter the base table, so both the MIN(id) subquery and the self-join it
+  # feeds see the same excluded set. An empty vector is skipped rather than
+  # rendered, because NOT (game_id IN ()) is not valid SQL.
+  if (length(excluded_games)) {
+    excluded_games <- as.integer(excluded_games)
+    actions <- dplyr::filter(actions, !game_id %in% !!excluded_games)
+  }
 
   actions |>
     dplyr::filter(!is.na(quarter), quarter >= !!min_quarter, quarter <= !!max_quarter) |>
@@ -292,7 +315,8 @@ period_anchor_parity_errors <- function(lineups, actions, teams,
 period_anchor_coverage_gaps <- function(lineups, actions, teams,
                                         min_quarter = PERIOD_ANCHOR_MIN_QUARTER,
                                         max_quarter = PERIOD_ANCHOR_MAX_QUARTER,
-                                        clock_column = PERIOD_ANCHOR_CLOCK_COLUMN) {
+                                        clock_column = PERIOD_ANCHOR_CLOCK_COLUMN,
+                                        skip_periods = NULL) {
   require_lineup_columns(lineups, c(PERIOD_ANCHOR_KEY, "period_anchor", clock_column),
                          "period anchor coverage")
   empty <- data.frame(
@@ -301,6 +325,13 @@ period_anchor_coverage_gaps <- function(lineups, actions, teams,
   )
   expected <- period_opening_anchors(actions, teams, min_quarter = min_quarter,
                                      max_quarter = max_quarter)
+  # Periods Gate 4 already excluded are not coverage gaps: their anchors were
+  # dropped on purpose, and reporting them again would bury the real signal.
+  if (!is.null(skip_periods) && nrow(skip_periods)) {
+    skip <- paste(as.integer(skip_periods$game_id), as.integer(skip_periods$quarter), sep = "/")
+    keep <- !(paste(as.integer(expected$game_id), as.integer(expected$quarter), sep = "/") %in% skip)
+    expected <- expected[keep, , drop = FALSE]
+  }
   if (!nrow(expected)) return(empty)
   if (!clock_column %in% names(expected)) {
     stop(sprintf("actions has no column '%s'", clock_column), call. = FALSE)
@@ -331,19 +362,101 @@ period_anchor_coverage_gaps <- function(lineups, actions, teams,
   out
 }
 
+# Gate 4's degrade arm. A period whose opening clock does not check out gets
+# its anchors removed and nothing else: provider rows are untouched and the
+# period loads exactly as it did before anchors existed.
+drop_period_anchors_in_periods <- function(lineups, periods) {
+  empty <- lineups[0, PERIOD_ANCHOR_KEY, drop = FALSE]
+  rownames(empty) <- NULL
+  if (is.null(periods) || !nrow(periods)) return(list(lineups = lineups, dropped = empty))
+
+  target <- paste(as.integer(periods$game_id), as.integer(periods$quarter), sep = "/")
+  key <- paste(as.integer(lineups$game_id), as.integer(lineups$quarter), sep = "/")
+  bad <- (lineups$period_anchor %in% TRUE) & (key %in% target)
+  dropped <- unique(lineups[bad, PERIOD_ANCHOR_KEY, drop = FALSE])
+  rownames(dropped) <- NULL
+  list(lineups = lineups[!bad, , drop = FALSE], dropped = dropped)
+}
+
+# Gate 6: the anchor must never share a lineup_id window with another state.
+#
+# slice_max de-duplicates on (quarter, quarter_time, end_game_seconds_remaining,
+# player, team), but the lineup_id window partitions on
+# (game_id, team_id, quarter, end_game_seconds_remaining) alone. So an anchor
+# whose quarter_time STRING differs from a same-clock substitution -- "10:00"
+# against "10:00.0", both parsed to 600 by lubridate::ms() -- survives the
+# de-duplication and then lands in the same string_agg window, contributing a
+# second row per player: a ten-entry lineup_id and a lineup_hash that matches
+# nothing in sub_lineups, on the provider row as well as the anchor.
+#
+# n_on partitions by id, so it stays 5 and Gate 1 cannot see this.
+#
+# This one rejects rather than degrades. The hashes are computed in SQL before
+# these rows are collected, so dropping the anchor here would leave the
+# corrupted provider row behind; and a collision means the anchor rule is
+# wrong, which is the reject class.
+period_anchor_hash_collisions <- function(lineups,
+                                          clock_column = PERIOD_ANCHOR_CLOCK_COLUMN) {
+  require_lineup_columns(
+    lineups, c(PERIOD_ANCHOR_KEY, "period_anchor", "player_id", clock_column),
+    "period anchor collision"
+  )
+  empty <- data.frame(
+    game_id = integer(0), team_id = integer(0), quarter = integer(0),
+    anchor_clock = numeric(0), ids = character(0), stringsAsFactors = FALSE
+  )
+  anchors <- lineups[lineups$period_anchor %in% TRUE, , drop = FALSE]
+  if (!nrow(anchors)) return(empty)
+
+  windows <- unique(anchors[, c("game_id", "team_id", "quarter", clock_column), drop = FALSE])
+  lineup_clock <- as.numeric(lineups[[clock_column]])
+
+  rows <- lapply(seq_len(nrow(windows)), function(i) {
+    clock <- as.numeric(windows[[clock_column]][[i]])
+    same <- as.integer(lineups$game_id) == as.integer(windows$game_id[[i]]) &
+      as.integer(lineups$team_id) == as.integer(windows$team_id[[i]]) &
+      as.integer(lineups$quarter) == as.integer(windows$quarter[[i]]) &
+      !is.na(lineup_clock) & lineup_clock == clock
+    partition <- lineups[which(same), , drop = FALSE]
+    # One state per player per window is the invariant. A repeat means two
+    # states survived at one clock, which is exactly the doubling above.
+    if (!any(duplicated(partition$player_id))) return(NULL)
+    data.frame(
+      game_id = as.integer(windows$game_id[[i]]),
+      team_id = as.integer(windows$team_id[[i]]),
+      quarter = as.integer(windows$quarter[[i]]),
+      anchor_clock = clock,
+      ids = paste(sort(unique(as.integer(partition$id))), collapse = ","),
+      stringsAsFactors = FALSE
+    )
+  })
+
+  rows <- Filter(Negate(is.null), rows)
+  if (!length(rows)) return(empty)
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
 apply_period_anchor_gates <- function(lineups, actions, teams, log_msg = NULL) {
   log <- if (is.null(log_msg)) function(msg, level = "INFO") invisible(NULL) else log_msg
 
+  # Gate 4 degrades. A misclocked period opening is a provider defect (the
+  # 398/399 class), not a fault in the anchor rule, so it costs that period's
+  # anchors -- not the game's entire transaction, which is already open here
+  # and carries its actions, possessions and rosters.
   clock <- period_anchor_clock_violations(actions, teams)
-  if (nrow(clock)) {
-    stop(sprintf(
-      "period anchor clock gate failed: %s",
-      paste(sprintf("game %d Q%d id %d: %s (clock %s, period max %s)",
-                    clock$game_id, clock$quarter, clock$anchor_id, clock$reason,
-                    format(clock$anchor_clock), format(clock$period_max_clock)),
-            collapse = "; ")
-    ), call. = FALSE)
+  for (i in seq_len(nrow(clock))) {
+    log(sprintf(
+      paste0("  period anchor dropped (Gate 4): game %d Q%d id %d: %s ",
+             "(clock %s, period max %s)"),
+      as.integer(clock$game_id[i]), as.integer(clock$quarter[i]),
+      as.integer(clock$anchor_id[i]), clock$reason[i],
+      format(clock$anchor_clock[i]), format(clock$period_max_clock[i])
+    ), "WARN")
   }
+  gate4 <- drop_period_anchors_in_periods(lineups, clock[, c("game_id", "quarter"), drop = FALSE])
+  lineups <- gate4$lineups
 
   parity <- period_anchor_parity_errors(lineups, actions, teams)
   if (nrow(parity)) {
@@ -353,7 +466,21 @@ apply_period_anchor_gates <- function(lineups, actions, teams, log_msg = NULL) {
     ), call. = FALSE)
   }
 
-  gaps <- period_anchor_coverage_gaps(lineups, actions, teams)
+  collisions <- period_anchor_hash_collisions(lineups)
+  if (nrow(collisions)) {
+    stop(sprintf(
+      "period anchor collided with a state at the same clock (lineup_id doubles every player): %s",
+      paste(sprintf("game %d team %d Q%d clock %s ids %s",
+                    collisions$game_id, collisions$team_id, collisions$quarter,
+                    format(collisions$anchor_clock), collisions$ids),
+            collapse = "; ")
+    ), call. = FALSE)
+  }
+
+  gaps <- period_anchor_coverage_gaps(
+    lineups, actions, teams,
+    skip_periods = clock[, c("game_id", "quarter"), drop = FALSE]
+  )
   for (i in seq_len(nrow(gaps))) {
     log(sprintf(
       paste0("  period anchor absent with no provider state at the same clock: ",

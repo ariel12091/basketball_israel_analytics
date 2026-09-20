@@ -301,8 +301,11 @@ Out of scope, deliberately:
 
 ## Acceptance Gates
 
-Gate 1 degrades; Gates 2-4 fail the game's ETL transaction — which is already
-open at this point in `etl/etl_full.R`.
+**Revised 2026-09-20.** Gates 1 and 4 degrade, Gate 5 reports, and Gates 2, 3
+and 6 fail the game's ETL transaction — which is already open at this point in
+`etl/etl_full.R`. The dividing line is what the failure implicates: a defect in
+the provider's data costs that period its anchors, a defect in the anchor rule
+or the engine costs the game.
 
 1. **Degrade, don't reject.** Every anchor row should resolve to `n_on = 5` for
    its `(game_id, team_id, quarter)`. `compute_stints()` does **not** filter on
@@ -360,6 +363,36 @@ from the `UNION ALL`, which the gate runner removes; it is not a table column.
   anchor that mattered and did not arrive. It is logged at WARN rather than
   rejected, for Gate 1's reason: the period then loads exactly as it did
   before anchors existed.
+- **Gate 4 degrades instead of rejecting.** See the paragraph below the gate
+  list. It drops the offending period's anchors, logs at WARN, and passes the
+  period to Gate 5 as already-handled so the same period is not re-reported as
+  a coverage gap.
+- **Gate 6, the clock-window collision (reject).** `slice_max` de-duplicates on
+  `(quarter, quarter_time, end_game_seconds_remaining, player, team)`, but the
+  `lineup_id` window partitions on `(game_id, team_id, quarter,
+  end_game_seconds_remaining)` alone. An anchor whose `quarter_time` *string*
+  differs from a same-clock substitution — `"10:00"` against `"10:00.0"`, both
+  600s to `lubridate::ms()` — survives the de-duplication and then lands in the
+  same `string_agg` window, contributing a second row per player: a ten-entry
+  `lineup_id` and a `lineup_hash` matching nothing in `sub_lineups`, on the
+  provider row as well as the anchor. `n_on` partitions by `id`, so it stays 5
+  and Gate 1 cannot see it. This was amendment 6, previously only an assertion
+  to make in the shadow diff; it is now checked in code, by the invariant that
+  no player may hold two states in one clock window. It rejects rather than
+  degrades because the hashes are computed in SQL before these rows are
+  collected, so dropping the anchor would leave the corrupted provider row.
+- **Game 211 is excluded outright** (`PERIOD_ANCHOR_EXCLUDED_GAMES`). Its
+  regulation and overtime action ids overlap, and *both* halves of the
+  mechanism are id-ordered: the anchor is a period's lowest id, and
+  `compute_lineups_lookup()` fills `is_on` down an id-ordered window. An anchor
+  there would carry forward an arbitrary mid-game state with `n_on = 5`, which
+  no gate can distinguish from a healthy one. `etl/ot_lineup_recovery.R`
+  excludes the same game for the same reason.
+- **`type` is a required column** of the actions frame. Without it the pure
+  helper's same-id substitution skip silently never fires
+  (`as.character(NULL)` is `character(0)`, so `identical()` is FALSE for every
+  row) while the SQL twin errors on the missing column — a silent divergence
+  between the two implementations the parity gate exists to keep in step.
 
 Gate 1 is the one that will fire in practice. When it does, the period is a
 genuine carry-forward failure. In this release it simply keeps today's
@@ -367,9 +400,13 @@ behaviour for that period. Adjudicating it properly is what the existing OT
 recovery machinery is built for, but that is **not wired in this release** —
 see Fallback below.
 
-Gates 2-4 hard-reject because a failure there means the anchor rule or the ETL
-itself is wrong, not the provider data, and loading anyway would write
-inconsistent rows.
+Gates 2, 3 and 6 hard-reject because a failure there means the anchor rule or
+the ETL itself is wrong, not the provider data, and loading anyway would write
+inconsistent rows. Gate 4 was in this list until 2026-09-20 and does not belong
+in it: a period opening stamped with a later clock is precisely a provider
+defect — the 398/399 class — so it now degrades like Gate 1. The old wording
+also contradicted the helper's own contract, which tolerates a clock that
+regresses inside a period.
 
 ## Fallback: The Existing Recovery Module (future work, not in this release)
 
