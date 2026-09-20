@@ -541,6 +541,14 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       df_lineups_df <- compute_lineups_lookup(pg) |>
         dplyr::filter(game_id %in% fetchable_sched$game_id) |>
         dplyr::collect()
+      # Period-opening anchor gates (etl/period_opening_anchors.R): parity with
+      # the pure helper and the opening-clock check stop the game; an anchor
+      # whose carried state is not five players is dropped and logged.
+      df_lineups_df <- apply_period_anchor_gates(
+        df_lineups_df, actions_df,
+        dplyr::distinct(roster_df, game_id, team_id),
+        log_msg = log_msg
+      )
       lineup_table_cols <- get_table_cols(pg, SCHEMA, "lineups_lookup")
       missing_lineup_cols <- setdiff(lineup_table_cols, names(df_lineups_df))
       if (length(missing_lineup_cols)) {
