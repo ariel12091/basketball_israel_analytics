@@ -1,6 +1,7 @@
 # Period-opening lineup anchors — handoff for review, 2026-09-20
 
-**Status: merged to `main` and live.** `main` is at `d49a020`. The nightly ETL
+**Status: merged to `main` and live.** `d49a020` is the implementation merge
+point; `main` has advanced past it with documentation commits. The nightly ETL
 runs from `main`, so the next run (21:15 UTC) is the first to produce anchors
 for new games.
 
@@ -49,7 +50,17 @@ control (no anchors) -> anchored
   rows 1857 -> 1937 | lost 0 | added 80 | CHANGED on shared keys: NONE
 ```
 
-Additive-only holds: nothing the provider produced was lost or altered.
+**Additive at the `lineups_lookup` grain**: no lineup state the provider
+produced was lost or altered. Note the limit — this control compared
+`compute_lineups_lookup()` output only. The design's Step 2 also asked for a
+`stints`/`pws` comparison proving that no *existing action* changed its
+team/lineup assignment, and that was never run action-by-action. The exact
+points reconciliation in the next table is strong indirect evidence for it
+(attribution moving between teams would have to net to zero to hide), but
+downstream semantic additivity is **not directly proven**, and cannot be
+checked retroactively now that the pre-anchor rows are overwritten. A fresh
+shadow on a not-yet-reprocessed game would be needed; 406 is the only
+candidate, and it is held.
 
 **Games 401 and 404, reprocessed through the real ETL:**
 
@@ -66,7 +77,9 @@ Additive-only holds: nothing the provider produced was lost or altered.
 The eighth target action is game 406, deliberately excluded. 401 Q5 is
 unchanged at 286 — overtime, see section 3.
 
-**18 historical games, reprocessed offline:** 33 of 36 team-games reconcile
+**18 historical games, reprocessed offline** — a set disjoint from 401/404,
+because the affected-game survey ran *after* those two were fixed, so they no
+longer showed a gap and dropped out of it. 33 of 36 team-games reconcile
 exactly to the official box score. Residuals:
 
 - **184** (both teams, -5): raw feed has zero Q3/Q4 actions. Known; the design
@@ -173,8 +186,12 @@ changed `player_id`, most likely because the comparison omitted
 
 ## 6. Database state
 
-- Anchors applied to **20 games**: 401, 404 (real ETL) and 18 historical games
-  (offline). Game **406 excluded**.
+- Anchors applied to **20 distinct games**: 401 and 404 (real ETL), plus the
+  18 historical games (offline). The two sets do not overlap — the 19-game
+  affected set was measured after 401/404 were already fixed, so neither
+  appears in it: `66, 68, 88, 156, 177, 184, 223, 360, 406, 62449, 62506,
+  62512, 62526, 62530, 62534, 62537, 62540, 62581, 64902`. Game **406** is
+  excluded from the 19, leaving 18.
 - `app_meta.etl_full_last_success` advanced to `2026-09-20 09:39:11` so the
   Shiny season caches pick up the offline reprocess. The ETL writes this marker
   with R's local clock (`etl/etl_full.R:129`), not the database's UTC `now()`.
