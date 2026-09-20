@@ -2825,6 +2825,158 @@ build_checks <- function(con, schema) {
       runner = function(con, schema, root) {
         cold_storage_snapshot_details(root)
       }
+    ),
+    list(
+      id = "AL_reader_lineup_hash_unresolved_in_on_table",
+      title = "Reader lineup hashes do not resolve in lineups_lookup_on",
+      severity = "error",
+      purpose = paste(
+        "The app's lineup readers -- the stint ribbon in particular -- join",
+        "df_pts_poss_lineups_longer_mv to lineups_lookup_on, keyed on",
+        "(game_year, team_id, lineup_hash), and drop any segment that does not",
+        "resolve to exactly five ON players. Check Q cannot see this: it joins",
+        "the SOURCE table lineups_lookup, which can hold a perfectly valid five",
+        "while the derived table holds nothing. That split is what a scoped",
+        "alias backfill creates -- cleanup_player_alias_lineup_derivatives()",
+        "deletes raw-hash rows from lineups_lookup_on at season scope, so a game",
+        "that was not itself reprocessed keeps raw player ids in the source and",
+        "the MV and can no longer join. The alias_resolvable column separates",
+        "the two causes: TRUE means a reprocess of that game fixes it, FALSE",
+        "means the feed itself never described a five."
+      ),
+      required_tables = c(
+        "df_pts_poss_lineups_longer_mv", "lineups_lookup", "lineups_lookup_on",
+        "player_id_aliases", "final_schedule_mv"
+      ),
+      problem_count_col = "actionable_seconds",
+      sql = sprintf(
+        "WITH game_year AS (
+           -- final_schedule_mv is sched_long-derived: two rows per game_id.
+           SELECT DISTINCT game_id, game_year FROM %s
+         ),
+         segs AS (
+           -- Mirrors RIBBON_SQL_ISRAEL's segs CTE: one row per
+           -- (game, team, segment, hash), gameplay only, non-zero duration.
+           SELECT
+             d.game_id,
+             f.game_year,
+             d.team_id,
+             d.segment_id,
+             d.lineup_hash,
+             max(d.segment_seconds) AS segment_seconds,
+             bool_or(d.type IS DISTINCT FROM 'substitution') AS has_gameplay
+           FROM %s d
+           JOIN game_year f USING (game_id)
+           WHERE d.lineup_hash IS NOT NULL
+           GROUP BY d.game_id, f.game_year, d.team_id, d.segment_id, d.lineup_hash
+           HAVING max(d.segment_seconds) > 0
+         ),
+         on_counts AS (
+           SELECT game_year, team_id, lineup_hash,
+                  count(DISTINCT player_id)::int AS players_on
+           FROM %s
+           GROUP BY game_year, team_id, lineup_hash
+         ),
+         unresolved AS (
+           SELECT s.*
+           FROM segs s
+           LEFT JOIN on_counts o
+             ON o.game_year = s.game_year
+            AND o.team_id = s.team_id
+            AND o.lineup_hash = s.lineup_hash
+           WHERE s.has_gameplay
+             AND coalesce(o.players_on, 0) <> 5
+         ),
+         raw_sets AS (
+           SELECT u.game_year, u.team_id, u.lineup_hash,
+                  array_agg(DISTINCT l.player_id ORDER BY l.player_id) AS pids
+           FROM unresolved u
+           JOIN %s l
+             ON l.game_year = u.game_year
+            AND l.team_id = u.team_id
+            AND l.lineup_hash = u.lineup_hash
+            AND l.is_on_verdict = 1
+           GROUP BY u.game_year, u.team_id, u.lineup_hash
+         ),
+         canon_sets AS (
+           -- Rewrite each id through the ACTIVE season aliases. A hash is only
+           -- comparable within one id space, so this is the step that tells a
+           -- desync apart from missing data.
+           SELECT r.game_year, r.team_id, r.lineup_hash, r.pids,
+                  (SELECT array_agg(DISTINCT c ORDER BY c)
+                     FROM (
+                       SELECT coalesce((
+                                SELECT min(a.canonical_player_id)
+                                FROM %s a
+                                WHERE a.active
+                                  AND a.alias_player_id = p
+                                  AND a.game_year = r.game_year
+                                  AND a.team_id = r.team_id
+                              ), p) AS c
+                       FROM unnest(r.pids) AS p
+                     ) t) AS canon_pids
+           FROM raw_sets r
+         ),
+         on_sets AS (
+           SELECT game_year, team_id, lineup_hash,
+                  array_agg(DISTINCT player_id ORDER BY player_id) AS pids
+           FROM %s
+           GROUP BY game_year, team_id, lineup_hash
+         ),
+         classified AS (
+           SELECT u.game_id, u.game_year, u.team_id, u.segment_id,
+                  u.lineup_hash, u.segment_seconds,
+                  coalesce(cardinality(c.pids), 0) AS source_players_on,
+                  -- Only a set that (a) an active alias actually rewrote and
+                  -- (b) lands on a FIVE-player lineup already in
+                  -- lineups_lookup_on counts as alias-resolvable. Without the
+                  -- cardinality test a 6- or 7-player feed defect matches its
+                  -- own unchanged set and is misreported as fixable.
+                  (
+                    c.canon_pids IS DISTINCT FROM c.pids
+                    AND cardinality(c.canon_pids) = 5
+                    AND EXISTS (
+                      SELECT 1 FROM on_sets o
+                      WHERE o.game_year = c.game_year
+                        AND o.team_id = c.team_id
+                        AND o.pids = c.canon_pids
+                        AND cardinality(o.pids) = 5
+                    )
+                  ) AS alias_resolvable
+           FROM unresolved u
+           LEFT JOIN canon_sets c
+             ON c.game_year = u.game_year
+            AND c.team_id = u.team_id
+            AND c.lineup_hash = u.lineup_hash
+         )
+         SELECT
+           game_id,
+           game_year,
+           team_id,
+           alias_resolvable,
+           max(source_players_on)::int AS source_players_on,
+           count(*)::int AS unresolved_segments,
+           sum(segment_seconds)::numeric AS unresolved_seconds,
+           -- Only the alias-resolvable rows are this check's problem. The
+           -- rest are feed defects, reported here as context but owned by
+           -- Q_persisted_rows_without_lineup_match and
+           -- R_invalid_lineup_player_counts. The catalog entry's impact()
+           -- reads this column into impact_seconds; keeping it to the
+           -- alias-resolvable subset is what stops the impact summary
+           -- double-counting the lineup time Q already reports.
+           coalesce(sum(segment_seconds) FILTER (WHERE alias_resolvable), 0)::numeric
+             AS actionable_seconds,
+           string_agg(DISTINCT lineup_hash, ',' ORDER BY lineup_hash) AS lineup_hashes
+         FROM classified
+         GROUP BY game_id, game_year, team_id, alias_resolvable
+         ORDER BY alias_resolvable DESC, unresolved_seconds DESC, game_id, team_id",
+        quote_table(con, schema, "final_schedule_mv"),
+        df_long,
+        llo,
+        ll,
+        aliases,
+        llo
+      )
     )
   )
 }

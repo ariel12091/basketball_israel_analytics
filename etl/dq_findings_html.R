@@ -531,6 +531,37 @@ DQ_FINDING_CATALOG <- list(
     ),
     effect = "Offline audits and cold-storage restores only; the live app is unaffected.",
     fix = "Re-export the affected cold-storage tables."
+  ),
+  AL_reader_lineup_hash_unresolved_in_on_table = list(
+    headline = "Lineup segments the app cannot draw",
+    tier = "critical", entity = "game",
+    # A row the alias map can resolve is a pipeline desync the app owns and a
+    # reprocess fixes. A row it cannot resolve is a feed defect already
+    # reported by Q and R, carried here only as context.
+    tier_fn = function(r) if (isTRUE(as.logical(r$alias_resolvable))) "critical" else "low",
+    describe = function(r, ctx) sprintf(
+      "%s in game %s: %s segment(s), %s, have a lineup the app's lookup cannot resolve%s.",
+      dq_team(ctx, r$team_id), r$game_id,
+      dq_num(r$unresolved_segments),
+      dq_duration(r$unresolved_seconds),
+      if (isTRUE(as.logical(r$alias_resolvable))) {
+        " -- the same five are stored under the player's canonical IDs"
+      } else {
+        sprintf(" -- the source records %s players on the floor, not five",
+                r$source_players_on)
+      }
+    ),
+    # Only the alias-resolvable seconds. The rest is lineup time
+    # Q_persisted_rows_without_lineup_match already totals, and counting it
+    # here too would inflate the impact summary.
+    impact = function(r) list(seconds = r$actionable_seconds),
+    effect = "The stint ribbon draws nothing for these segments and the lineup lanes skip them, so real floor time is silently missing from the game view.",
+    fix = "If the segment is alias-resolvable, reprocess that game with etl/backfill_player_id_aliases.R -- but first check which other games share the hashes the season-scope cleanup will delete, or the fix orphans them instead. Otherwise the feed never recorded five players and this is tracked by Q and R.",
+    effect_fn = function(r) if (isTRUE(as.logical(r$alias_resolvable))) {
+      "The stint ribbon draws nothing for these segments although the same five players are stored under their canonical IDs -- a reprocess recovers the time."
+    } else {
+      "The source never recorded five players on the floor here, so there is no lineup to draw; tracked by the lineup-count checks."
+    }
   )
 )
 
