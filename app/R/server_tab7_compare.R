@@ -641,12 +641,17 @@ server_tab7_compare <- function(input, output, session, shared) {
     lu <- cmp_lu_params()
     team_filter <- merge_lineup_team_csv(p$team_ids_csv, lu$team_csv)
     if (isTRUE(team_filter$conflict)) return(NULL)
+    # fetch_lineups_csv_v2 only offers @> ("all of") for p_player_ids, so an
+    # any-of clause has no SQL predicate to map onto. When one is present the
+    # on-filter is withheld from the query and re-applied in R by
+    # cmp_apply_on_boxes() below.
+    on_any <- isTRUE(lu$has_any)
     list(
       lu$num,
       team_filter$team_csv,
-      lu$player_csv,
+      if (on_any) NA_character_ else lu$player_csv,
       lu$player_off_csv,
-      lu$exact,
+      if (on_any) FALSE else lu$exact,
       as.Date(p$start_d), as.Date(p$end_d),
       min_poss,
       p$game_year,
@@ -734,12 +739,16 @@ server_tab7_compare <- function(input, output, session, shared) {
     num <- suppressWarnings(as.integer(input$cmp_lu_num %||% "5"))
     if (!is.finite(num) || num < 2L || num > 5L) num <- 5L
     team_val <- cmp_lu_filter$team()
-    player_on_ids <- if (nzchar(team_val)) as.integer(cmp_lu_filter$players_on()) else integer(0)
+    player_req_ids <- if (nzchar(team_val)) as.integer(cmp_lu_filter$players_on()) else integer(0)
+    player_any_ids <- if (nzchar(team_val)) as.integer(cmp_lu_filter$players_on_any()) else integer(0)
+    player_on_ids <- c(player_req_ids, player_any_ids)
     player_off_ids <- if (nzchar(team_val)) as.integer(cmp_lu_filter$players_off()) else integer(0)
     player_csv <- if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_
     player_off_csv <- if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_
     list(num = num, team_csv = if (nzchar(team_val)) team_val else NA_character_,
          player_csv = player_csv, player_off_csv = player_off_csv,
+         player_required_csv = paste(player_req_ids, collapse = ","),
+         has_any = length(player_any_ids) > 0L,
          exact = length(player_on_ids) > 0L)
   })
 
@@ -765,10 +774,28 @@ server_tab7_compare <- function(input, output, session, shared) {
     list(team_csv = paste(keep_ids, collapse = ","), conflict = FALSE)
   }
 
+  # Re-applies the on-filter that cmp_lineup_query_args() withheld from SQL,
+  # through the same helper Tab 2 and Tab 10 use rather than a second copy.
+  # p_min_poss filters total_poss, which does not depend on which lineups
+  # survive, so filtering after the query agrees with filtering inside it.
+  cmp_apply_on_boxes <- function(df) {
+    lu <- cmp_lu_params()
+    if (!isTRUE(lu$has_any) || is.na(lu$player_csv)) return(df)
+    if (is.null(df) || !NROW(df)) return(df)
+    df <- apply_local_lineup_filters(df, list(
+      team_csv            = NA_character_,
+      player_csv          = lu$player_csv,
+      player_required_csv = lu$player_required_csv,
+      player_off_csv      = NA_character_
+    ))
+    df$player_ids_list <- NULL
+    df
+  }
+
   run_lineups_summary <- function(p, min_poss = cmp_min_poss()) {
     params <- cmp_lineup_query_args(p, min_poss)
     if (is.null(params)) return(data.frame())
-    run_compare_query(
+    cmp_apply_on_boxes(run_compare_query(
       key = "cmp_lineups_summary",
       p = p,
       sql = paste0(
@@ -779,13 +806,13 @@ server_tab7_compare <- function(input, output, session, shared) {
         ")"
       ),
       params = params
-    )
+    ))
   }
 
   run_lineups_ff <- function(p, min_poss = cmp_min_poss()) {
     params <- cmp_lineup_query_args(p, min_poss)
     if (is.null(params)) return(data.frame())
-    run_compare_query(
+    cmp_apply_on_boxes(run_compare_query(
       key = "cmp_lineups_ff",
       p = p,
       sql = paste0(
@@ -796,7 +823,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         ")"
       ),
       params = params
-    )
+    ))
   }
 
   cmp_team_shooting_params <- function(p, team_id) {

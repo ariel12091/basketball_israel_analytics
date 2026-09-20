@@ -194,8 +194,9 @@ FILTER_TOOLTIPS <- c(
   "clutch"            = "Limit results to close-game situations based on margin, time remaining, and score status",
   "group_size"        = "Number of players in each lineup combination (2-5)",
   "quick_preset"      = "Apply a prebuilt compare split like starters vs bench, clutch vs non-clutch, or date/GN split",
-  "players_on"        = "Lineups must include all selected players",
-  "players_off"       = "Lineups must exclude all selected players",
+  "players_on"        = "Every player selected here has to be on the floor",
+  "players_on_any"    = "At least one player selected here has to be on the floor, on top of the box above. Leave it empty to match on the first box alone",
+  "players_off"       = "Skip any lineup containing a player selected here",
   "min_poss_lineup"   = "Minimum total possessions required for the lineup, team, or compare side to appear",
   "view_summary"      = "PPP ratings and shooting splits",
   "view_ff"           = "eFG%, OREB%, TOV%, FTR breakdown",
@@ -1220,7 +1221,9 @@ make_season_chip <- function(gy, label = NULL) {
 build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = NULL,
                                team_label_map = NULL, opponent_label_map = NULL,
                                player_label_map = NULL,
-                               teams_value = NULL, players_on_value = NULL, players_off_value = NULL,
+                               teams_value = NULL,
+                               players_on_value = NULL, players_on_any_value = NULL,
+                               players_off_value = NULL,
                                extra_children = NULL,
                                season_value = NULL, season_label = NULL,
                                date_input_id = NULL, dates_show_when_set = NULL,
@@ -1406,18 +1409,26 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
       paste0(prefix, "_clear_starters"), "chip-game")
   }
 
-  # Players on/off (the lineup tabs; no other prefix has these inputs)
-  pon <- players_on_value %||% get_input("_players_on")
-  if (!is.null(pon) && length(pon)) {
-    mapped_on <- map_label(pon, player_label_map)
-    lbl <- if (length(mapped_on) == 1) paste("On:", mapped_on[1]) else paste0("On: ", length(mapped_on), " players")
-    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_on"), "chip-game", owner("players_on"))
-  }
-  poff <- players_off_value %||% get_input("_players_off")
-  if (!is.null(poff) && length(poff)) {
-    mapped_off <- map_label(poff, player_label_map)
-    lbl <- if (length(mapped_off) == 1) paste("Off:", mapped_off[1]) else paste0("Off: ", length(mapped_off), " players")
-    chips[[length(chips) + 1]] <- make_chip(lbl, paste0(prefix, "_clear_players_off"), "chip-game", owner("players_off"))
+  # Players on / on-any / off (the lineup tabs; no other prefix has these
+  # inputs). One spec per box rather than three near-identical blocks, so a
+  # fourth box would be a row here and nothing else.
+  player_chip_specs <- list(
+    list(id = "players_on",     value = players_on_value,     lead = "All of"),
+    list(id = "players_on_any", value = players_on_any_value, lead = "Any of"),
+    list(id = "players_off",    value = players_off_value,    lead = "Exclude")
+  )
+  for (spec in player_chip_specs) {
+    vals <- spec$value %||% get_input(paste0("_", spec$id))
+    if (is.null(vals) || !length(vals)) next
+    mapped <- map_label(vals, player_label_map)
+    lbl <- if (length(mapped) == 1) {
+      paste0(spec$lead, ": ", mapped[1])
+    } else {
+      paste0(spec$lead, ": ", length(mapped), " players")
+    }
+    chips[[length(chips) + 1]] <- make_chip(
+      lbl, paste0(prefix, "_clear_", spec$id), "chip-game", owner(spec$id)
+    )
   }
 
   # Only show "Clear all" if there are removable chips (more than just season)

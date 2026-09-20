@@ -26,6 +26,12 @@ test_that("tooltip wiring is present in compare and tooltip-heavy tabs", {
   expect_true(grepl("minposs_slider\\(\"min_all_poss\", \"Min Poss / side\", \"min_poss_side\"", tab1_ui_txt))
   expect_true(grepl("sliderInput\\(input_id, tt\\(label, tooltip_key\\)", read_repo_txt("R", "global.R")))
   expect_true(grepl("lineup_player_filter_ui\\(", tab2_ui_txt))
-  expect_true(grepl("tt\\(\"Players On \\(exact/contains\\)\", \"players_on\"\\)", lineup_filter_txt))
+  # The two on-selectors read as one sentence, so their labels are the
+  # clause fragments rather than two near-identical noun phrases. The
+  # Players Off tooltip moved onto its heading when that box lost its own
+  # label, so assert it is still reachable.
+  expect_true(grepl("tt\\(\"every one of\", \"players_on\"\\)", lineup_filter_txt))
+  expect_true(grepl("tt\\(\"and at least one of\", \"players_on_any\"\\)", lineup_filter_txt))
+  expect_true(grepl("tt\\(\"Lineups must exclude\", \"players_off\"\\)", lineup_filter_txt))
   expect_true(grepl("tt\\(\"Quick preset\", \"quick_preset\"\\)", tab7_ui_txt))
 })

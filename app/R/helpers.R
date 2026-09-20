@@ -1384,8 +1384,9 @@ auto_minposs_from_df <- function(df, usage_col = "total_poss", step = 10L,
 # so parse_player_ids() accepts that form as well as a list column.
 #
 # Semantics match the SQL predicates they stand in for on the fast path:
-# players-on is "unit contains all of these" (@>), players-off is "unit
-# overlaps none of these" (NOT &&).
+# players-on is "unit contains all of these" (@>) under mode "all" and "unit
+# overlaps these" (&&) under mode "any"; players-off is "unit overlaps none of
+# these" (NOT &&) regardless of the on-mode.
 parse_player_ids <- function(x) {
   if (is.null(x)) return(integer(0))
   if (is.list(x)) {
@@ -1405,6 +1406,40 @@ ensure_player_ids_list <- function(df) {
   df
 }
 
+# Each chip in the Players On selector carries a required/optional flag. The
+# required ones must all be on the floor; the optional ones contribute a single
+# "at least one of these" clause, so "A required, B and C optional" reads
+# A AND (B OR C).
+#
+# The two degenerate splits are the ones every existing caller produces, and
+# both must keep their old meaning:
+#   all required  -> contains all of them  (the historical default, and what an
+#                    absent player_required_csv means)
+#   none required -> contains at least one of them
+LINEUP_REQUIRED_DEFAULT_ALL <- TRUE
+
+# Arrives from a client input, so it is parsed rather than trusted: unparseable
+# entries drop out, and ids for players who are no longer selected are ignored
+# by the caller intersecting against the live selection.
+parse_required_ids <- function(x) {
+  if (is.null(x) || length(x) != 1L || is.na(x)) return(NULL)
+  x <- as.character(x)
+  if (!nzchar(x)) return(integer(0))
+  vals <- suppressWarnings(as.integer(strsplit(x, ",", fixed = TRUE)[[1]]))
+  vals[!is.na(vals)]
+}
+
+# TRUE for each lineup satisfying the required/optional split of on_ids.
+lineup_on_predicate <- function(players_list, on_ids, required_ids) {
+  req <- if (is.null(required_ids)) on_ids else intersect(on_ids, required_ids)
+  opt <- setdiff(on_ids, req)
+  vapply(
+    players_list,
+    function(x) all(req %in% x) && (!length(opt) || any(opt %in% x)),
+    logical(1)
+  )
+}
+
 apply_local_lineup_filters <- function(df, p) {
   if (is.null(df) || NROW(df) == 0L) return(df)
   df <- ensure_player_ids_list(df)
@@ -1414,7 +1449,9 @@ apply_local_lineup_filters <- function(df, p) {
   }
   if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
     on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
-    keep <- vapply(df$player_ids_list, function(x) all(on_ids %in% x), logical(1))
+    keep <- lineup_on_predicate(
+      df$player_ids_list, on_ids, parse_required_ids(p$player_required_csv)
+    )
     df <- df[keep, , drop = FALSE]
   }
   if (!is.na(p$player_off_csv) && nzchar(p$player_off_csv)) {

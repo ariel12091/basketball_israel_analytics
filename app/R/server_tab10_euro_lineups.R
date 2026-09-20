@@ -212,15 +212,16 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # against the whole league rather than against its own team. Delegates to the
   # shared helper Tab 2 already uses in production, so the fast path's set
   # semantics are the same implementation rather than a second one that merely
-  # looks equivalent: players-on is "contains all" (the SQL @>), players-off is
-  # "overlaps none" (NOT &&).
+  # looks equivalent: the all-of box is "contains all" (the SQL @>), the any-of
+  # box adds one "overlaps" clause (&&), players-off is "overlaps none" (NOT &&).
   apply_local_unit_filters <- function(df) {
     if (!NROW(df)) return(df)
     team_val <- ld_filter$team()
     team_val <- team_val[nzchar(team_val)]
     df <- apply_local_lineup_filters(df, list(
       team_csv       = if (length(team_val)) paste(team_val, collapse = ",") else NA_character_,
-      player_csv     = csv_if_any(ld_filter$players_on()),
+      player_csv     = csv_if_any(c(ld_filter$players_on(), ld_filter$players_on_any())),
+      player_required_csv = paste(ld_filter$players_on(), collapse = ","),
       player_off_csv = csv_if_any(ld_filter$players_off())
     ))
     df$player_ids_list <- NULL
@@ -390,7 +391,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   euro_ld_auto_inputs <- reactive({
     list(input$main_tabs, euro_competition(), euro_season(),
          input$euro_ld_group_size, ld_filter$team(),
-         ld_filter$players_on(), ld_filter$players_off(),
+         ld_filter$players_on(), ld_filter$players_on_any(), ld_filter$players_off(),
          debounced_dates(), input$euro_ld_opponents, input$euro_ld_phase,
          input$euro_ld_home_away, input$euro_ld_outcome,
          input$euro_ld_opp_rank_side, input$euro_ld_opp_rank_n,
@@ -406,7 +407,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # Register this before the calculation observer, matching Tab 2: a dataset-
   # shaping filter first returns the control to auto mode, then recalculates it.
   observeEvent(list(input$euro_ld_group_size, ld_filter$team(),
-                    ld_filter$players_on(), ld_filter$players_off(),
+                    ld_filter$players_on(), ld_filter$players_on_any(), ld_filter$players_off(),
                     debounced_dates(), input$euro_ld_opponents,
                     input$euro_ld_phase, input$euro_ld_home_away,
                     input$euro_ld_outcome, input$euro_ld_opp_rank_side,
@@ -620,10 +621,12 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       player_label_map = player_map,
       teams_value = ld_filter$team(),
       players_on_value = ld_filter$players_on(),
+      players_on_any_value = ld_filter$players_on_any(),
       players_off_value = ld_filter$players_off(),
       input_ids = list(
         teams = "euro_ld_filter-team",
         players_on = "euro_ld_filter-players_on",
+        players_on_any = "euro_ld_filter-players_on_any",
         players_off = "euro_ld_filter-players_off"
       ),
       season_value = season,
@@ -656,6 +659,9 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
 
   observeEvent(input$euro_ld_clear_players_on, {
     updateSelectizeInput(session, "euro_ld_lineup_filter-players_on", selected = character(0))
+  }, ignoreInit = TRUE)
+  observeEvent(input$euro_ld_clear_players_on_any, {
+    updateSelectizeInput(session, "euro_ld_lineup_filter-players_on_any", selected = character(0))
   }, ignoreInit = TRUE)
   observeEvent(input$euro_ld_clear_players_off, {
     updateSelectizeInput(session, "euro_ld_lineup_filter-players_off", selected = character(0))

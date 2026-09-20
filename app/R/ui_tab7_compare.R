@@ -391,6 +391,7 @@ ui_tab7_compare <- function() tabPanel(
                   team_label = NULL,
                   team_placeholder = "All teams",
                   players_on_label = NULL,
+                  players_on_any_label = NULL,
                   players_off_label = NULL,
                   players_on_placeholder = "Any",
                   players_off_placeholder = "Any"
