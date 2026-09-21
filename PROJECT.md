@@ -10,9 +10,9 @@ This file is updated after every session. **Trust this context** — avoid re-re
 
 Basketball Israel Analytics — R/Shiny dashboard for player on/off impact, lineup combos, and team ratings. Data from play-by-play JSON (basket.co.il / stats.segevstats.com) → ETL → PostgreSQL (Supabase) → Shiny app.
 
-**Live app:** https://ibpl-stats.shinyapps.io/onoff-shiny/
+**Live app:** https://arieltaieb-basketball-israel-analytics.share.connect.posit.cloud/
 
-**Tech:** R 4.4.2, Shiny (bslib/BS5), DBI/RPostgres (no dbplyr), PostgreSQL on Supabase (port 6543), schema `basketball_test`, deployed to shinyapps.io
+**Tech:** R 4.4.2, Shiny (bslib/BS5), DBI/RPostgres (no dbplyr), PostgreSQL on Supabase (port 6543), schema `basketball_test`, deployed to Posit Connect Cloud
 
 ## Commands
 
@@ -103,7 +103,8 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader extension, mobile collapse beh
    - Added GN bindEvent note and session bug fixes in `PROJECT.md` for future reference.
 ## Ops Notes (ETL Scheduler)
 - Task Scheduler inline command strings are brittle (quoting errors caused failures); use scripts/run_etl_full.ps1 wrapper instead.
-- Daily ETL is run via Windows Task Scheduler task `onoff_etl_full_daily` calling `scripts/run_etl_full.ps1` (wrapper avoids quoting issues).
+- Historical local runner: Windows Task Scheduler task `onoff_etl_full_daily` called `scripts/run_etl_full.ps1`. The task was absent during the 2026-09-11 investigation; do not assume it currently protects production.
+- Production nightly ETL is scheduled in GitHub Actions by `.github/workflows/etl-full.yml` at `21:15 UTC` (00:15 Israel daylight time, 23:15 standard time). Its schedule and recent run status must be checked when updates stop.
 - Wrapper runs `etl_full(dry_run=TRUE)` then `etl_full(dry_run=FALSE)`, appends output to `logs/etl_full.log`, and deletes logs older than 2 days.
 - Successful runs write `etl/logs/last_success.txt` for local operations and
   `app_meta.etl_full_last_success` in PostgreSQL; the deployed app reads the DB
@@ -177,14 +178,14 @@ windows, and attach only windows containing offense rows. After rebuilding
 
 **Wins/Losses in Team Ratings:** `get_team_ratings_dynamic()` returns `wins` and `losses`. When clutch filter is active, wins/losses only count games that have qualifying clutch possessions (not all filtered games). Uses `qualifying_games` CTE which applies clutch WHERE clause to identify games, then counts wins/losses from that subset.
 
-**Canonical minutes calculation:** Raw provider clocks remain untouched for auditing. Runtime minutes use canonical elapsed time and consecutive lineup-segment boundaries, so delayed or out-of-order actions cannot inflate a stint. Consumers deduplicate `segment_seconds` at `(game_id, team_id, lineup_hash, segment_id)` and count each duration once; possession and point statistics remain split by `type_lineup`.
+**Canonical minutes calculation:** Raw provider clocks remain untouched for auditing. Runtime minutes use a running maximum of event elapsed time in action-ID order for each game/team, then consecutive lineup-segment boundaries. A provider clock that jumps backward and catches up cannot count the repeated interval twice. Consumers deduplicate `segment_seconds` at `(game_id, team_id, lineup_hash, segment_id)` and count each duration once; possession and point statistics remain split by `type_lineup`.
 
 `lineup_four_factors_by_game.minutes` stores that duration once on the offense
 row. In `team_metrics_by_game_mv`, `off_minutes` and `def_minutes` intentionally
 mirror the same canonical team floor duration; never independently sum the
 empty defense-row minute payload.
 
-The normal incremental ETL path calls `refresh_segment_clock_fields_for_games()` from `refresh_df_pts_poss_lineups_longer_for_games()`. See `docs/canonical_clock_minutes.md` for the formula, affected cases, integration points, and deployment constraints.
+The normal incremental ETL path calls `refresh_segment_clock_fields_for_games()` from `refresh_df_pts_poss_lineups_longer_for_games()`. Keep its function SQL, full-rebuild SQL, and `2026-09-12_monotonic_segment_clock_minutes.sql` migration aligned. A manual aggregate refresh must also advance `app_meta.etl_full_last_success`: Shiny keys its process-wide season caches on that value and polls it roughly once per minute. See `docs/canonical_clock_minutes.md` and `docs/etl_clock_incident_handoff_2026-09-13.md`.
 
 ### SQL Functions (params)
 
@@ -608,6 +609,19 @@ domain.
 3. **Click burst guard for lineup modal**
    - File: app/R/server_tab2.R
    - Ignore duplicate ld_lineup_click events within ~300ms to reduce accidental query bursts.
+
+4. **Generalize ETL source fallback and correction preflight**
+   - Files: etl/etl_onoff.R, etl/etl_full.R, .github/workflows/etl-full.yml
+   - Replace the game-402-specific fallback environment variable with a
+     provider/source registry that can define primary and fallback URLs per
+     game or competition.
+   - Normalize supported provider envelopes, then validate completion, unique
+     action IDs, period/clock order, and roster structure before any database
+     writes.
+   - Apply only reviewed corrections from a versioned correction registry,
+     rerun raw-data validation, and publish all downstream tables in one ETL
+     transaction. Unknown anomalies must fail closed and roll back rather than
+     being repaired heuristically.
 
 ## Session Lessons (2026-02-12 Security + Ops)
 
@@ -2257,3 +2271,596 @@ navbar renders in a wider fallback face). That degraded build is then cached for
 the life of the process, so reloading the browser never clears it. Health check:
 the served page should contain 11 occurrences of `nav-link`, and
 `<url>/bootstrap-5.3.1/font.css` should return 200.
+
+## Session Update (2026-09-09): Israeli 2026-27 Rollover, ETL, Ribbon, and Posit Connect
+
+This section is the operational handoff for the September 9 production work.
+The season change in this section is **Israeli Premier League only**. It does
+not change EuroLeague season numbering or defaults.
+
+### Israeli season 2026-27 (`game_year = 2027`)
+
+- The app season selector now offers `26-27` with value `2027` and selects it
+  by default. The previous `2026` and `2025` seasons remain selectable.
+- `DEFAULT_GAME_YEAR` is `"2027"` and the Israeli season bounds are
+  `2026-09-01` through `2027-07-01`. Tabs must derive their reset/default date
+  ranges from `season_date_bounds_for_year()`; do not reintroduce fixed dates.
+- The static Israeli team roster for 2027 is defined in `app/R/global.R` and is
+  used before the database-backed choices are ready.
+- Migration
+  `sql/migrations/2026-09-09_add_2027_schedule_team_dict.sql` maps the fourteen
+  new schedule IDs (`2111`-`2124`) to the stable roster/PBP IDs used by facts.
+- Migration
+  `sql/migrations/2026-09-09_widen_schedule_team_icon_urls.sql` changes both
+  schedule logo columns to `text` in `basketball` and `basketball_test`. The new
+  provider URLs can be about 199 characters; the old `varchar(130)` caused the
+  schedule upsert for game 395 to roll back.
+- Contract coverage is in
+  `app/tests/testthat/test-israeli-season-rollover.R`.
+
+### September 9 ETL incident and final state
+
+- Windows Task Scheduler did run the normal ETL at about 01:07. It found games
+  395 and 396. Game 396 published, but game 395 rolled back, so this was a
+  partial run and `last_success` was intentionally not advanced.
+- The first failure was opaque (`Multiple queries must use the same column
+  names`). Per-table error context was added around the four base upserts in
+  `etl/etl_full.R`, making the real schedule-column length failure visible.
+- Source JSON action columns are not stable across games. On this run:
+  game 395 included `team_score` and `game_year`; game 396 also included
+  `parameters_event`, `parameters_initial_call`, and `parameters_result`.
+  The ETL now compares source fields with the live `actions_clean` schema,
+  persists supported columns, and logs unsupported extras instead of allowing
+  provider drift to obscure the failing table. Review these warnings on every
+  new season, but an informational extra column alone is not an ETL failure.
+- Alias-residue validation was scoped to the affected seasons for
+  `lineups_lookup_on` and `sub_lineups_stats`; otherwise a small incremental run
+  could be penalized by unrelated historical residue.
+- After the migrations and ETL hardening, the final explicit run processed both
+  games successfully. Evidence:
+  `etl/logs/etl_full_20260909_111655.log` reports 627 action rows for game 395,
+  716 for game 396, zero missing/multiple lineup matches (`0/391`, `0/475`),
+  both games passing ETL validation, both published, and `app_meta` last-success
+  updated at the end of the 140.5-second run.
+- GitHub Actions remains an alternative runner via
+  `.github/workflows/etl-full.yml`, but the successful recovery above was a
+  local/manual run using the repository ETL wrapper and ETL credentials.
+
+### Stint ribbon and the former 19-segment warning
+
+- The completed stint-ribbon work is merged into `main` with the season work.
+  The merge commit is `0bdbd25`; the feature commit is `606b143`.
+- For the Hapoel Jerusalem vs Maccabi Ashdod game, the old message said nineteen
+  segments had no five-player lineup. Those were substitution-boundary states,
+  not missing played minutes, so the warning was technically true but
+  operationally alarming and misleading.
+- Israeli ribbon SQL now counts an excluded segment only when `has_gameplay` is
+  true and no valid five-player lineup resolves. Substitution-only/zero-duration
+  boundaries do not produce a message. A warning remains appropriate only when
+  an actual gameplay interval (and therefore drawn game time) is omitted.
+- `ribbon_health_message()` still describes genuine missing gameplay intervals;
+  do not remove that final integrity signal.
+
+### Canonical Posit Connect deployment
+
+- Public application:
+  `https://arieltaieb-basketball-israel-analytics.share.connect.posit.cloud/`
+- Connect content page used during migration:
+  `https://connect.posit.cloud/arieltaieb/content/01a07aab-94e7-5f21-516e-bce6d3f01662`
+- Publish from this repository's `app/` directory. Do not publish an old copy
+  such as `C:/Users/ariel/Downloads/onoff-shiny(1)`; doing so can successfully
+  republish stale code and make GitHub/main appear ineffective.
+- Before publishing, confirm `git status --short --branch`, the intended commit,
+  and that `app/app.R` is the repository copy. Deployment metadata (`.dcf`) is
+  local state and should not be treated as proof of the deployed source commit.
+
+### Connect database configuration
+
+The Connect content needs these runtime variables (set them in Connect; never
+commit the password):
+
+```text
+PG_HOST=aws-1-eu-north-1.pooler.supabase.com
+PG_PORT=6543
+PG_DB=postgres
+PG_USER=app_readonly.jfmxhveitknfwqpjoamn
+PG_PASS=<read-only role password>
+PG_SSLMODE=require
+IBPL_CACHE_UI_HTML=false
+```
+
+- The correct pooler user is the qualified
+  `app_readonly.jfmxhveitknfwqpjoamn`, not bare `app_readonly`.
+- A local RPostgres connection using the read-only settings succeeded. If the
+  app reports a connection problem but Supabase has no matching connection/log
+  entry, inspect the browser console and asset/network requests before changing
+  database credentials; the browser may never have initialized Shiny.
+- The Connect idle timeout was already set to 60 seconds during this incident
+  and was not the cause of the startup failure.
+
+### Two separate UI-cache deployment failures
+
+1. **Missing tab submenus / Bootstrap classes.** Rendering the full UI response
+   while `app.R` was being sourced occurred before Connect established the
+   request's Bootstrap context. It cached a BS3-like navbar without
+   `.nav-link`/`.nav-item`, so `app.js` could not build the Summary/Four Factors
+   hover menus. Commit `dd2e34b` removes boot-time full-response rendering; the
+   first ordinary UI request now performs it. A healthy page has eleven
+   `nav-link` and eleven `nav-item` elements.
+2. **Stale worker-prefixed assets.** Connect injects a worker-specific
+   `<base href="_w_<token>/">`. Caching and reusing the complete rendered HTML
+   across routing jobs also reuses that obsolete worker token. Requests for
+   jQuery, Selectize, bslib CSS, and other assets then return 404/error content;
+   the browser reports MIME mismatches, jQuery is undefined, and Shiny never
+   connects. This can look like a database outage even though no database call
+   was attempted. Keep `IBPL_CACHE_UI_HTML=false` on Connect. This disables only
+   the unsafe full-HTML response cache; the `.UI_CACHED` tag-tree cache remains.
+
+When this symptom recurs, inspect the page's `<base href>`, request its jQuery
+asset directly, and compare the `_w_...` token. Do not diagnose this as a DB or
+idle-timeout problem from the visible app message alone.
+
+### Connect-native source encoding
+
+- Connect's native locale warned while parsing en/em dashes and comparison
+  symbols. R `\uXXXX` string escapes are not a sufficient workaround because R
+  expands them at parse time and still attempts native-codepage translation.
+- Commit `d38ef45` makes production R source encoding-independent by using clear
+  ASCII equivalents such as `-`, `--`, `>=`, `<=`, and `|`. It also removes
+  pre-existing mojibake from production R comments.
+- `app/tests/testthat/test-source-encoding.R` rejects raw non-ASCII bytes and
+  parse-time Unicode escapes in `app/app.R` and `app/R/*.R`. If a displayed
+  Unicode symbol is essential later, construct it at runtime (for example with
+  `intToUtf8()`), rather than placing the character or a `\uXXXX` escape in R
+  source.
+- Verification on September 9: all 31 production R files parsed without any
+  translation warning; the encoding regression and Tab 7 contracts passed.
+
+### Git state at handoff
+
+- `main` and `origin/main` both contained:
+  - `0bdbd25` - merge stint ribbon and Israeli 2027 season
+  - `dd2e34b` - render cached UI inside Shiny request context
+  - `d38ef45` - make R source encoding-safe on Connect
+- The modified shinyapps.io deployment `.dcf` and unrelated untracked research,
+  logs, screenshots, and work files were deliberately left out of these commits.
+
+## Session Update (2026-09-14): Games 398/399 Misclocked Q2/Q3 Dead-Ball Substitution Fix
+
+Diagnosed, fixed, deployed, reloaded, and verified live in the database in one
+session. Full derivation, evidence, and diagnosis-confidence notes are in
+`docs/game_398_399_misclocked_clock_fix_plan_2026-09-14.md`; tracking memory
+is `project-game-398-misclocked-q2-etl-fix`.
+
+### The bug
+
+A provider dead-ball substitution flurry right after Q2 start (game 398,
+feed ids 3980298-3980350) and Q3 start (game 399, ids 3990421-3990434) was
+stamped with the clock from near the *end* of the period instead of its
+start. Canonical minutes use a running maximum of the clock ordered by action
+id, so this jumped the timeline straight to the period-end mark and one
+lineup per team absorbed the rest of the period — a separate, distinct defect
+from the backward-clock-regression bug fixed 2026-09-12/13 (which these same
+two games also happened to expose; see `docs/canonical_clock_minutes.md`).
+Points and possessions were unaffected (they follow feed order, not clock).
+
+### Diagnosis method
+
+Pulled both games' raw provider feed and box score directly (no assumptions
+from stored/possibly-buggy DB data). Established via the feed's own id
+ordering plus (for 398) per-event entry timestamps (`userTime`, which mixes
+two clock streams 3h apart in this game — normalize before comparing) which
+ids are certain dead-ball reads vs. genuinely uncertain live-window reads.
+
+An **offline replay** (independent per-player minute reconstruction from the
+raw feed's own `parameters.playerIn`/`parameters.playerOut` fields — these
+are jersey numbers confirming direction on a single-player toggle row, not an
+in/out pair — walked from an empty roster, using the exact running-max/
+segment-duration formula from `refresh_segment_clock_fields_for_games.sql`
+reimplemented in R) validated the fix before touching the database:
+- The uncorrected replay reproduced the live DB's actual buggy values almost
+  exactly for both games, confirming the reimplementation was faithful.
+- Game 398: 6 of 8 measurable team-6 players confirmed the fix via box-score
+  agreement. The other 5 players (across both teams) came out *worse*
+  against box after correction — traced this fully: box's `minutes` field is
+  best explained as derived from the same misclocked provider `quarterTime`
+  stream, not independently metered, so it inherits the bug for any player
+  whose true stint differs a lot from the buggy one. A downstream,
+  independently-timestamped real substitution (id 3980511, `01:13 remaining
+  in Q2` at real time `19:46:13`, 26+ minutes after the block) proved the
+  corrected reading was the only physically possible one for that player,
+  regardless of what box said.
+- Game 399: a stronger, self-contained check — no live play falls inside
+  this block, so it flat-corrects with no interpolation, and the corrected
+  total is bounded by a hard identity (5 players on the floor × the game's
+  real final elapsed time), not by comparison to box (which is separately,
+  independently broken for this game).
+
+### The fix
+
+`etl/etl_onoff.R`: `KNOWN_CLOCK_STAMP_CORRECTIONS`, a 55-row lookup table
+(`game_id`, `id`, `wrong_quarter_time`, `corrected_quarter_time`, `reason`),
+applied via `apply_known_clock_corrections()` inside `clean_actions()`
+*before* `end_quarter_seconds_remaining`/`end_game_seconds_remaining` are
+derived from `quarter_time`. Generalizes the earlier one-off game-381 filter
+in the same function into a reusable, guarded pattern: a row only applies if
+the feed still shows the expected wrong stamp at that exact id, otherwise
+it's a no-op with a warning instead of silently altering already-correct
+data (so a provider-side feed fix degrades gracefully rather than corrupting
+data). Verified against the live feeds: both games' corrections apply
+exactly as computed; a control game (397) gets zero warnings and an
+unaffected passthrough; a deliberately-broken expected value correctly
+no-ops instead of overwriting.
+
+### Reload capability added
+
+`.github/workflows/etl-full.yml` + `scripts/run_etl_full.ps1` gained an
+optional `game_ids` `workflow_dispatch` input (comma-separated, e.g.
+`398,399`) to force specific games through the pipeline regardless of
+`etl_processed_games`, bypassing the normal new-games-only diff. Dormant for
+the `schedule` trigger — inputs are only read on `workflow_dispatch`, so
+nightly/scheduled runs are completely unaffected by this addition. Use via
+`gh workflow run etl-full.yml -f game_ids=398,399`.
+
+### Deployed and verified
+
+Committed `64c84ca` on branch `etl/fix-398-399-clock`, merged to `main`,
+pushed. Triggered the reload via GitHub Actions run
+[34903587781](https://github.com/ariel12091/basketball_israel_analytics/actions/runs/34903587781)
+— completed successfully in ~9 minutes (dry-run then real write, the
+wrapper's default path).
+
+Verified live in the database afterward, not just "CI went green":
+- Zero rows with `clock_regression_seconds > 10` remain on either game.
+- Game 398: all 16 affected players' `seconds_on_floor` match the offline
+  replay's predicted corrected values to within 1 second (rounding only).
+- Game 399: both teams total 11,970s exactly — the correct number once you
+  account for the game's real final action (`00:06` remaining, not a full
+  buzzer-to-buzzer 40:00); an earlier in-session claim of "exactly 12,000"
+  was traced to a bug in the *replay script* (it wrongly included team-less
+  synthetic `quarter`/`game` marker events when computing "game end"), not
+  in the deployed fix.
+- `basketball_test.app_meta` key `etl_full_last_success` advanced to
+  `2026-09-14 22:28:31`, so Shiny's season-level caches invalidate on next
+  access.
+
+**Not yet checked:** the cold-storage Parquet row-count diff for these two
+game_ids (confirming no stale rows survived from before the fix — flagged as
+a theoretical risk during planning, traced through `compute_stints()` as
+unlikely to actually fire for a value-only clock correction, but never
+spot-checked after the real reload).
+
+### A line-ending trap hit twice this session
+
+Editing `etl/etl_onoff.R` and `scripts/run_etl_full.ps1` (both mixed
+CRLF/LF files) with the `Edit` tool silently flipped each WHOLE file to one
+convention, turning ~120-line real changes into 400+-line diffs. `cat -A` in
+Git Bash is not a reliable detector here — it displayed no `^M` even where
+raw bytes (`xxd`, `tr -cd '\r' | wc -c`) proved CRLF was actually present
+(Git Bash's own `cat` silently translates on display). Fixed both times by
+extracting the pristine `git show HEAD:<file>` blob and splicing the change
+in via `perl -0777` on raw bytes, verifying with CR-count arithmetic before
+installing. Documented as a general pitfall in `CLAUDE.md` so it doesn't get
+rediscovered from scratch next time.
+
+## Session Update (2026-09-15): Game 400 Incomplete Raw Data + ETL Quarantine Design — RESOLVED
+
+**Update, same day:** the underlying problem resolved itself — segevstats'
+feed for game 400 recovered (859 actions, all 4 quarters, no duplicate ids)
+— and a GitHub Actions reprocess (`gh workflow run etl-full.yml -f
+game_ids=400 -f skip_dry_run=true`, run
+[34949160061](https://github.com/ariel12091/basketball_israel_analytics/actions/runs/34949160061))
+picked it up cleanly: 77/76 possessions, 87/85 points (matches the schedule's
+final score exactly), 40/40 minutes. See "Resolution" at the end of this
+section for the full account, including a real bug found in the reload
+tooling along the way. The CLAUDE.md backlog entry and the Tab 4 UI warning
+badge added during the investigation were both removed once this landed — no
+longer needed.
+
+Below is the original investigation, left intact for the record (the
+basket.co.il id-collision finding remains valid/useful independent of how
+game 400 itself got fixed).
+
+Investigation only — no database writes this session. Full writeup in
+`docs/etl_phase6_quarantine_and_game400_recovery_2026-09-15.md`; tracking
+memory is `project-game-400-incomplete-raw-data` and
+`project-etl-phase6-quarantine-design`.
+
+### What's wrong with game 400
+
+Committed to the DB with only Q1 + a sliver of Q2: `mv_lineup_totals_by_day`
+shows 23 possessions / 11.75 minutes per team instead of the expected ~40.
+The ETL's actual PBP source, `stats.segevstats.com/realtimestat_heb/
+get_team_action.php?game_id=400`, is stuck — a fresh fetch days later still
+returns the same 263 actions frozen at Q2 07:59 remaining, with tail rows
+carrying a fabricated `userTime` (the request's own wall-clock time, not a
+real historical one) rather than slowly catching up.
+
+Phase 2 (base load) committed successfully before Phase 6 (validation) caught
+the problem (`Lineup/stint coverage FAILED`, `minutes 11.8 < 39.0`). Phase 6
+failing does **not** roll back Phases 2-5 — each phase has its own
+independent `dbBegin`/`dbCommit`, and `mark_phase_failed()` is pure
+bookkeeping (sets a flag, logs a string) — so the partial game stayed live in
+the app with no automatic cleanup. `etl_processed_games` has no row for it,
+so it retries every night for free, but a retry won't help until segevstats'
+feed for this specific game recovers on its own.
+
+It IS caught by the nightly data-quality report as Critical, but only via 2
+of the 7 possible Critical checks (`T_invalid_team_minutes`,
+`AC_missing_regulation_period_coverage`) — the other 5 (`V`/`W`/`Q`/`R`/`X`)
+all `JOIN etl_processed_games` and silently skip any game missing that
+marker, which game 400 is. `H_base_loaded_games_missing_processed_marker`
+independently flags that exact gap but isn't currently one of the
+findings-page's labeled severity buckets.
+
+### basket.co.il fallback: schema-compatible, but has a worse defect for this game
+
+Compared `basket.co.il/livestats/data/game-<id>.json` (a genuinely different
+endpoint from the ETL's segevstats source) against segevstats directly for
+three games:
+
+- **Games 398 and 399 (settled, complete):** the two sources are
+  byte-identical — 930/930 actions match exactly for 398 (zero diffs
+  anywhere, not just in the known misclocked block); 835/836 for 399 (one
+  cosmetic `start-of-game` marker segevstats includes and basket.co.il
+  doesn't). Ids agree 1:1 in both. This confirms the 398/399 misclocked-block
+  defect (fixed 2026-09-14, see above) is a genuine scorekeeping-entry error
+  present identically at the source in both distribution channels, not a
+  relay artifact — re-verifies that fix was the right call.
+- **Game 400 (still mid-feed, segevstats stuck):** the sources diverge —
+  basket.co.il has the complete game (881 actions, all 4 quarters,
+  `gameFinished: true`) where segevstats has 263. But basket.co.il's own
+  feed for this specific game has **226 colliding action ids** (ids
+  4000192-4000424, essentially all of Q2 and most of Q3). Of those, 59 are
+  true resends (harmless), but **167 are two genuinely different real
+  events sharing one id** — e.g. id 4000200 is simultaneously a team-17
+  substitution and an unrelated team-14 substitution. `clean_actions()`
+  correctly refuses to load it (offline-tested, no DB writes) rather than
+  silently dropping one event per collision.
+
+This is categorically worse than the 398/399 defect: there, only a
+`quarter_time` field was wrong on otherwise-unique, correctly-identified
+events — fixable with a lookup-table correction. Here, `id` is the actual
+primary key of `actions_clean` and everything downstream (`stints`,
+`lineups_lookup`, `possessions`, `pws`, `subs`) foreign-keys to it, and
+`compute_stints()` orders substitutions *by id* to reconstruct who's on the
+floor. A naive "keep one copy" collapse would silently drop real events,
+corrupt `parent_action_id` linkages, and scramble lineup/stint boundaries
+across most of two quarters — while *passing* Phase 6's minutes/coverage
+checks, since the result would look complete. That's strictly worse than
+today's honestly-partial state, because nothing in the current DQ report
+would catch it. Recovering game 400 via basket.co.il needs a real
+id-reconciliation (split two interleaved streams, assign the losing one
+fresh ids in true chronological order), with no independent anchor found yet
+to verify a reconstruction against (the box score is unpopulated in both
+sources for this game, unlike 398 which had a partial box-score check).
+
+Also resolved a smaller puzzle along the way: the rendered widget page
+(`basket.co.il/livestats/game.html?game_id=400`) looks completely normal
+despite this. Its `boxscore` object and `gameInfo.*.Score` fields are empty
+in the feed — the page has no independent score summary, it just reads the
+`score: "N-N"` string off whichever scoring action is last in array order.
+It's a linear, human-readable list that never looks anything up *by* `id`,
+so two colliding ids just render as two separate rows in their own slot —
+invisible to a viewer. Our pipeline needs `id` as a primary key, an ordering
+key, and a join key; none of those are things a scrolling play-by-play page
+ever needs, which is the entire gap between "the page looks fine" and "the
+data is fine."
+
+### ETL Phase 6 quarantine — designed, not implemented
+
+Proposed a new **Phase 6b**, right after Phase 6 inside the same
+`etl_full()` run: for each game_id Phase 6 flags, call a new
+`purge_game_from_db(pg, schema, game_id, reason)` that deletes the game's
+rows from `actions_clean` and its FK children (in FK order), the
+incrementally-refreshed derived tables, re-runs
+`refresh_sub_lineups_stats_for_games()` for the season-keyed aggregates, and
+`REFRESH MATERIALIZED VIEW`s the game_id-scoped and downstream matviews —
+`schedule` is left alone since its score/teams are independently correct.
+A new `game_ingest_quarantine` tracking table gives a 3-attempt retry budget
+before a permanently-stuck game (like segevstats' feed for 400) stops
+retrying every night for free and instead surfaces as a "stuck" line in
+`findings_summary.md`.
+
+Explicitly scoped as bolt-on-after-Phase-6 rather than restructuring
+Phase 4/5 to validate before commit: the informative checks need
+`df_pts_poss_lineups_longer_mv` (Phase 4) and `sub_lineups_stats` (Phase 5)
+to already exist, so a true pre-commit gate could only catch zero-row cases.
+Running quarantine immediately after Phase 6, same invocation, shrinks the
+exposure window from "indefinite, until a human notices" to "never actually
+served" without reordering phases that already work.
+
+**Stated gap, not solved:** this design only catches *obviously incomplete*
+games — every real failure mode seen so far (400's stall, 398/399 before
+their fix). It would not catch a complete-but-internally-scrambled reload
+(e.g. a naive basket.co.il fix for game 400 today) — that needs `V`/`W`'s
+score/possession-reconciliation SQL run without the `etl_processed_games`
+join that currently exempts freshly-loaded games, which is exactly what lets
+that class of defect through right now. Not started as of 2026-09-15.
+
+### Resolution (2026-09-15, later the same day)
+
+segevstats' feed for game 400 recovered on its own — a fresh fetch returned
+859 actions across all 4 quarters, ending cleanly at `id 4000884` (Q4 00:00),
+with **no duplicate ids** (unlike basket.co.il's still-unresolved 226-id
+collision). Confirmed all 196 previously-committed `actions_clean` ids were
+still present unchanged in the new fetch (zero orphans), so no manual purge
+was needed before reprocessing — a plain upsert-based reload was safe.
+
+**A real bug in the reload tooling surfaced on the first attempt.**
+`gh workflow run etl-full.yml -f game_ids=400` (run 34948628227) completed
+with `conclusion=failure`, reporting the exact same stale numbers as before
+(`minutes 11.8 < 39.0`, `8/134 zero-match`). Root cause: `scripts/
+run_etl_full.ps1`'s default path runs `etl_full(dry_run=TRUE)` first and only
+proceeds to the real run if that dry-run reports success — but dry-run mode
+validates whatever's *already* in the DB, it doesn't fetch anything fresh.
+Since game 400's DB state was still the old partial commit, the dry-run's
+own Phase 6 check failed on the stale data and the wrapper exited before
+ever reaching the real fetch. This didn't bite the 398/399 reload because
+their pre-existing (misclocked but complete) data still passed Phase 6's
+minute/coverage checks even before that fix. A game whose *current* DB state
+is bad enough to fail validation can never pass through the default
+dry-run-then-real gate — worth remembering for any future recovery.
+
+Re-triggered with the workflow's existing `skip_dry_run` input: `gh workflow
+run etl-full.yml -f game_ids=400 -f skip_dry_run=true` (run
+[34949160061](https://github.com/ariel12091/basketball_israel_analytics/actions/runs/34949160061)),
+`conclusion=success`. Verified live in the database:
+
+- Phase 2: 631 `actions_clean` rows committed (up from 196), no duplicate-id
+  error this time.
+- Phase 6: `lineup/stint match coverage zero=0/430 (0.000%)` — clean, down
+  from `8/134`.
+- Phase 7 (cold storage purge) ran: `5/5 tables exported & purged`.
+- `etl_processed_games` now has a row for game 400 (`2026-09-15 08:56:41`).
+- `app_meta.etl_full_last_success` advanced (`08:56:54`) — Shiny's season
+  caches invalidate on next access.
+- `mv_lineup_totals_by_day`: team 14 = 77 poss / 87 pts / 40 min, team 17 =
+  76 poss / 85 pts / 40 min. Points match the schedule's final score (87-85)
+  exactly; minutes are a clean 40/team.
+
+One non-blocking WARN in the log: `game 400 source action column(s) not
+persisted: parameters_event, parameters_initial_call, parameters_result` —
+these are the same 3 extra `parameters` keys basket.co.il's feed carried
+that segevstats didn't have when first compared earlier this session;
+segevstats appears to have since added them too. Not urgent, just a
+schema-drift note for later.
+
+**Cleanup:** removed the CLAUDE.md § Backlogs § Data entry (no longer an
+open problem) and fully reverted the Tab 4 ⚠️ warning-badge feature
+(`INCOMPLETE_RAW_DATA_GAMES` in `global.R`, `gl_incomplete_flag_renderer()`
+and its wiring in `server_tab4.R`) — restored those two files byte-for-byte
+from `HEAD` rather than hand-editing, since the content was already back to
+exactly the pre-feature state and a hand edit risked re-triggering the
+mixed-CRLF/LF corruption trap. Tab 4's test suite re-run clean afterward (73
+assertions). [[project-etl-phase6-quarantine-design]] remains a good idea
+for the *general* case (this was a lucky recovery — the source happened to
+heal on its own) but is not blocking anything now that this specific game is
+fixed.
+
+## Session Update (2026-09-21): Period Anchors, Game 406, and Gameflow
+
+### Anchor/ribbon conclusions
+
+- The original anchor reprocessing population was selected by period-opening
+  gaps, not by the strict substitution-straddle condition. Do not infer that
+  Workstream A is complete from its original checklist alone.
+- The strict-inside audit (`sub.elapsed < segment_end`) showed game 100 was an
+  endpoint false positive. Game 62452 is the sole substantive omitted case,
+  and is not anchor-repairable: its Q4 feed sends five players OUT at 10:00
+  without declaring the incoming five.
+- Game 404 is the clean anchor success. Game 406 was a separate provider
+  defect--mislabelled periods plus an unusable Q4 clock--and required a guarded
+  game-specific correction. See the 2026-09-19 correctness plan and the
+  ribbon Workstream A-C/D handoffs for the complete classifications.
+- `subs` is now hot. The strict-inside ribbon health signal remains for genuine
+  lineup uncertainty, but game 406 overrides its technical 50-second message
+  with the more relevant Q4 timing disclosure.
+
+### Game 406 correction and database state
+
+- The provider's Q3 is the real Q2; its Q4 contains the real Q3 followed by
+  Q4. Real-Q4 actions are frozen at 00:00/00:01, so exact Q4 time cannot be
+  recovered from the feed.
+- Commit `2c23b94` relabels Q3 -> Q2, splits provider Q4 at the verified action
+  boundary, repairs the Q2 opening reset stamps, and estimates Q4 positions
+  linearly from wall-clock timestamps. The estimate preserves order, but clean
+  controls showed normal errors around 10-20 seconds and occasional larger
+  dead-ball drift.
+- A scoped `etl_full(game_ids = 406)` write completed successfully. This was a
+  database change. Final/quarter scores reconcile to 99-79 and
+  28-12 / 26-24 / 19-18 / 26-25; all four periods appear once; both ribbon
+  perspectives have zero excluded gameplay segments.
+- Cold Parquet initially retained deleted marker ids 4060238/4060239 because
+  its merge is key-upsert based. The rows were validated, backed up under
+  `exports/cold/backup-2026-09-20-game406-stale-markers/`, and pruned from
+  cold `actions_clean`, `possessions`, and `pws`.
+- Evidence and reproduction are in
+  `docs/game406_wall_clock_reconstruction_report_2026-09-20.md`,
+  `scripts/report_game406_wall_clock_fix.R`, and
+  `scripts/prune_game406_stale_cold_markers.R`.
+- A genuine team-14 Q2 opening-reset gap of about 50 seconds remains. It was
+  not filled and is unrelated to Q4. The global DQ report still fails for
+  unrelated historical residue; game 406 has zero unmatched gameplay.
+
+### Gameflow and release state
+
+- Alternating Q2/Q4 shading was removed on desktop and mobile. Quarter labels
+  and boundaries remain; hover is now the only shaded region.
+- The ambiguous `approx` title badge was removed. Game 406 instead explains in
+  the alert area that only Q4 timing is approximate and wall-clock-derived.
+  Other games keep their ordinary lineup-health behavior.
+- Commit `479c591` contains the UI, warning, report, and reproduction scripts
+  and reached `main`/`origin/main`. Focused ribbon/mobile tests, R parsing, and
+  JavaScript syntax checks passed (existing locale warnings only).
+- These Gameflow UI changes were not deployed in this session. Deploy from a
+  clean `main` checkout and verify game 406 on desktop and mobile; do not deploy
+  the dirty shared workspace wholesale.
+
+## Session Update (2026-09-21): Lineup Player Filter -- All-of / Any-of
+
+### What shipped
+
+Players On became two selectors plus Players Off, so a lineup filter can now
+express `A AND (B OR C)`: one player required, plus at least one of several
+others. Three commits, all on `main`/`origin/main`:
+
+- `77e0094` two boxes and the set semantics
+- `3d2978b` boxes narrow each other's option pools
+- `b82d663` `(players on)` / `(players off)` glosses on the headings
+
+### The scoping in memory was wrong -- read this before trusting a filter claim
+
+The task was on file as a `sql/` branch needing a new parameter on two
+29-argument functions, a `DROP FUNCTION`, and a `scripts/apply_db_security.R`
+grant re-apply. None of that was true. The SQL params exist but **Tab 2 passes
+`NA` for both** and filters in R; so does Tab 10; Plumber has its own separate
+copy. Only Tab 7 Compare sends player ids to SQL. The whole change was R-side.
+Full table now in CLAUDE.md under Tab 2.
+
+### Design path (two rejected designs, both for stated reasons)
+
+1. A single All-of/Any-of dropdown was built first and is the WRONG SHAPE: one
+   switch over one set cannot express a required player plus optional ones. It
+   was reverted rather than extended.
+2. A per-chip star toggle was chosen next, then rejected on fragility BEFORE
+   any JS was written -- it needs selectize `render.item` internals, click
+   interception inside a chip, a second Shiny input kept in sync with the
+   values, and has poor touch and keyboard behaviour. Two plain
+   `selectizeInput`s give identical expressiveness with zero custom JS.
+
+### Semantics to keep straight
+
+Marking a player optional **adds** an "at least one of" clause; it does not
+relax a constraint. Two tests initially asserted the looser reading and were
+wrong -- the tests were corrected, not the code. An absent `player_required_csv`
+means all-required, which is why every untouched caller kept working.
+
+### Verification method worth reusing
+
+Counts were not eyeballed. The full lineup population was read out of the
+rendered DataTable, expected counts for each filter combination were computed
+in JS from that population, then the filters were driven through the UI and
+compared. Tab 2: 14 / 4 / 11 / 21 all exact. Tab 7: 17 / 10 / 5 / 25 all exact,
+covering both the SQL branch and the withhold-and-filter-in-R branch. Note the
+DT entry count includes the pinned TOTAL row, so it reads one higher than the
+lineup count.
+
+### Tab 7 was never broken
+
+Several earlier turns recorded "Compare's player pool will not populate" as a
+pre-existing limitation. It was a scripting artifact. The Lineups-mode roster
+loads from the `cmp_mode` change observer (`server_tab7_compare.R:1747`,
+`ignoreInit = TRUE`); setting the team before that load lands leaves the module
+reading an empty roster, and nothing re-refreshes. Real click order (Compare ->
+Lineups -> team) works. **Latent race still unfixed:** the module has no
+reactive dependency on `players_ref` changing.
+
+### Open items
+
+- The latent Tab 7 roster race above.
+- `IBPL_CACHE_UI` ON makes selectize's assets 404 locally, so every dropdown
+  renders empty. Reproduced on `main`. Same file set as the unexplained Connect
+  Cloud console cascade; a lead, not a proof. See CLAUDE.md.
+- React/Plumber was deliberately left out of scope (dormant since 2026-05-18,
+  and its filter copy is a separate function).

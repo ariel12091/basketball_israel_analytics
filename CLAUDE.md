@@ -84,7 +84,7 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **Direct SQL (no dbplyr):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with `$1, $2` params. `bigint = "numeric"` in `dbPool()`. The pool is `minSize = 0`. Measured 2026-08-18: `minSize` makes no difference to *steady-state* query latency (0.250s after a 22s idle gap either way) — don't "fix" it for that. But a *first* checkout on a booted worker costs ~1,700-2,200ms (TCP + TLS + auth + the `onCreate` SET), and with `minSize = 0` that always lands on a user request. Measured 2026-09-01: `minSize = 1` moves it to boot but costs +2.7s there against -1.7s on the request, so it loses whenever the worker is booted by the request it must then serve. `global.R` instead schedules a `later::later()` checkout right after the pool is created, connecting once R goes idle: boot time is unchanged and the connection is ready before the first session queries. Set `POOL_PREWARM=false` to disable.
 
-**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and renders it synchronously before `startServer` (it used to use `later::later(delay = 0)`, which runs ahead of the already-queued first request). Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). **On Connect Cloud that gap never exists** — the process is started *because* a request is waiting, so both `later()` warmups always lost that race. Both now run synchronously before `startServer` instead, which moved 5.6-5.8s off the first request; see § Posit Connect Cloud. See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` while editing `www/app.css`, `www/app.js`, `www/mobile.css`, or `www/mobile.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain 11 `nav-link` occurrences. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
+**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and renders it synchronously before `startServer` (it used to use `later::later(delay = 0)`, which runs ahead of the already-queued first request). Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). **On Connect Cloud that gap never exists** — the process is started *because* a request is waiting, so both `later()` warmups always lost that race. Both now run synchronously before `startServer` instead, which moved 5.6-5.8s off the first request; see § Posit Connect Cloud. See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` whenever you drive the local app in a browser** -- with it on, selectize's assets 404 and every player/team dropdown looks broken for reasons unrelated to your change (see the lead in section Posit Connect Cloud). Likewise **Set `IBPL_CACHE_UI=false` while editing `www/app.css`, `www/app.js`, `www/mobile.css`, or `www/mobile.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain 11 `nav-link` occurrences. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
 
 **UI theme:** Dark editorial (bslib BS5), DM Sans + JetBrains Mono, amber accent `#e8a435`. Filter chips bar, loading skeletons, tab icons with active amber underline.
 
@@ -200,6 +200,39 @@ Available in Tabs 2 and 3 only. 4 SQL params: `p_max_margin`, `p_margin_status`,
 - **Auto/Manual:** Manual slider → `autoEnabled = false`. Filter change → `autoEnabled = true`. `autoUpdating` ref prevents auto-triggered changes from being treated as manual.
 
 ## Tab 2: Lineup Details
+
+**Players On is TWO selectors, plus Players Off (2026-09-21).** The sidebar
+reads as a sentence -- "Lineups must include / every one of [box] / and at
+least one of [box]", then "Lineups must exclude [box]" -- so a selection
+expresses `A AND (B OR C)`. Filling only the first box is the historical
+all-of filter; only the second is a plain any-of. **Marking a player optional
+ADDS an "at least one of" clause, it does not relax one.** The boxes are
+mutually exclusive and narrow each other's OPTION POOLS (`lineup_box_pool()`),
+so a player one box holds is never offered by the others.
+
+**Where the lineup player filter actually runs.** Get this wrong and a UI tweak
+gets scoped as a `sql/` branch with a grant re-apply, which is what happened
+once. The SQL params exist, but Tab 2 passes `NA` for both:
+
+| Surface | Player filter runs in |
+|---|---|
+| Tab 2, Tab 10 | **R** -- `apply_local_lineup_filters()` (`helpers.R`) |
+| Tab 7 Compare | **SQL** -- the only surface that sends player ids |
+| React/Plumber | its OWN copy `apply_lineup_local_filters()` (`plumber.R:205`), a different function that `helpers.R` cannot reach |
+
+Tabs 2/10 fetch every lineup at `min_poss = 0`, rank the full population, then
+narrow in R. `fetch_lineups_csv_v2` has no "at least one of" predicate, so when
+the any-of box is non-empty Tab 7 withholds the on-filter from SQL and
+re-applies the shared helper to the result -- sound because `p_min_poss` filters
+`total_poss`, which does not depend on which lineups survive.
+
+**Adding a fourth box to `mod_lineup_player_filter.R`:** add it to the
+`PLAYER_BOXES` vector (which drives clearing, pooling and the exclusion
+observers -- do not add pairwise observers), and add `<name>_label = NULL` to
+`ui_tab7_compare.R`, whose inline layout supplies its own labels; a box whose
+label argument defaults to non-NULL renders a stray label and wraps that row.
+The observers need `ignoreNULL = FALSE` or clearing a box never returns its
+players to the other pools.
 
 - **Server-side ranking:** Plumber fetches ALL lineups (min_poss=0), computes PR ranks on full population, caches in `RANKED_CACHE` (game-level key), applies local filters (team/player/minPoss) via `apply_lineup_local_filters()`. Two-layer cache: `RANKED_CACHE` + `RESP_CACHE`.
 - **TOTAL row:** Sum raw counts → derive rates (client-side). Pinned at top, not clickable, PR fields null.
@@ -334,6 +367,19 @@ but it is reset by server heartbeats and explicitly `clearTimeout`-ed immediatel
 before the intentional reload, so it is not demonstrated that it ever fires during
 the app page load. Treat it as a hypothesis, not the cause.
 
+**Untested lead, measured locally 2026-09-20.** With `IBPL_CACHE_UI` ON (the
+default) a local `runApp()` returns **404** for `selectize-0.15.2/selectize.min.js`,
+`selectize.css`, `selectize-plugin-a11y.min.js` and
+`bslib-component-css-0.9.0/bslib-component-css.min.css`; selectize never
+initialises and every `selectizeInput` renders as a bare empty `<select>`. With
+`IBPL_CACHE_UI=false` those same URLs return 200. Reproduced on `main`, so it is
+not branch-specific, and consistent with the pre-render design: the page renders
+before `startServer()`, which snapshots the static paths. It is **the same file
+set** as the cascade above, but the symptoms differ (clean 404 here, aborted
+response with no `Content-Type` in production), so treat it as a lead, not a
+proof. Testing it on Connect Cloud is one dashboard env var.
+
+
 **Do not quote local `runApp('app')` timings as production numbers.** A local
 launch measured 13.7s against production's ~3s: a cold OS file cache plus, at
 one point, a stray `rsconnect::writeManifest()` at the top of `app.R` costing
@@ -442,6 +488,8 @@ keep their league dimension.
 | Percentile rank vector | `pr_vec()` | `helpers.R` |
 | Auto min-possessions | `auto_minposs_from_df()`, `setup_onoff_auto_min()` | `helpers.R` |
 | Local lineup filtering | `apply_local_lineup_filters()` | `helpers.R` |
+| Players-on set semantics | `lineup_on_predicate()`, `parse_required_ids()` | `helpers.R` |
+| Per-box option pool | `lineup_box_pool()` | `helpers.R` |
 | On/off DataTables | `onoff_summary_datatable()`, `onoff_four_factors_datatable()` | `helpers.R` |
 
 `build_filter_chips()` takes the league dimension as arguments, every one
@@ -568,3 +616,62 @@ than adding a special case:
 2. Audit indexes only after query-plan evidence
 
 **Architecture (accepted, trigger-gated):** when a tab goes React+Plumber-only, retire its mega-signature SQL function(s) and let the route build the SQL — see `docs/adr_api_owns_query_construction.md` for trigger, migration order, and the DB-role tightening that follows. Until then the stored functions are the shared source of truth for both frontends; do NOT duplicate their logic into R query builders.
+
+## Session Update (2026-09-21): Period Anchors, Game 406, and Gameflow
+
+### Anchor/ribbon conclusions
+
+- The original anchor reprocessing population was selected by period-opening
+  gaps, not by the strict substitution-straddle condition. Do not infer that
+  Workstream A is complete from its original checklist alone.
+- The strict-inside audit (`sub.elapsed < segment_end`) showed game 100 was an
+  endpoint false positive. Game 62452 is the sole substantive omitted case,
+  and is not anchor-repairable: its Q4 feed sends five players OUT at 10:00
+  without declaring the incoming five.
+- Game 404 is the clean anchor success. Game 406 was a separate provider
+  defect--mislabelled periods plus an unusable Q4 clock--and required a guarded
+  game-specific correction. See the 2026-09-19 correctness plan and the
+  ribbon Workstream A-C/D handoffs for the complete classifications.
+- `subs` is now hot. The strict-inside ribbon health signal remains for genuine
+  lineup uncertainty, but game 406 overrides its technical 50-second message
+  with the more relevant Q4 timing disclosure.
+
+### Game 406 correction and database state
+
+- The provider's Q3 is the real Q2; its Q4 contains the real Q3 followed by
+  Q4. Real-Q4 actions are frozen at 00:00/00:01, so exact Q4 time cannot be
+  recovered from the feed.
+- Commit `2c23b94` relabels Q3 -> Q2, splits provider Q4 at the verified action
+  boundary, repairs the Q2 opening reset stamps, and estimates Q4 positions
+  linearly from wall-clock timestamps. The estimate preserves order, but clean
+  controls showed normal errors around 10-20 seconds and occasional larger
+  dead-ball drift.
+- A scoped `etl_full(game_ids = 406)` write completed successfully. This was a
+  database change. Final/quarter scores reconcile to 99-79 and
+  28-12 / 26-24 / 19-18 / 26-25; all four periods appear once; both ribbon
+  perspectives have zero excluded gameplay segments.
+- Cold Parquet initially retained deleted marker ids 4060238/4060239 because
+  its merge is key-upsert based. The rows were validated, backed up under
+  `exports/cold/backup-2026-09-20-game406-stale-markers/`, and pruned from
+  cold `actions_clean`, `possessions`, and `pws`.
+- Evidence and reproduction are in
+  `docs/game406_wall_clock_reconstruction_report_2026-09-20.md`,
+  `scripts/report_game406_wall_clock_fix.R`, and
+  `scripts/prune_game406_stale_cold_markers.R`.
+- A genuine team-14 Q2 opening-reset gap of about 50 seconds remains. It was
+  not filled and is unrelated to Q4. The global DQ report still fails for
+  unrelated historical residue; game 406 has zero unmatched gameplay.
+
+### Gameflow and release state
+
+- Alternating Q2/Q4 shading was removed on desktop and mobile. Quarter labels
+  and boundaries remain; hover is now the only shaded region.
+- The ambiguous `approx` title badge was removed. Game 406 instead explains in
+  the alert area that only Q4 timing is approximate and wall-clock-derived.
+  Other games keep their ordinary lineup-health behavior.
+- Commit `479c591` contains the UI, warning, report, and reproduction scripts
+  and reached `main`/`origin/main`. Focused ribbon/mobile tests, R parsing, and
+  JavaScript syntax checks passed (existing locale warnings only).
+- These Gameflow UI changes were not deployed in this session. Deploy from a
+  clean `main` checkout and verify game 406 on desktop and mobile; do not deploy
+  the dirty shared workspace wholesale.
