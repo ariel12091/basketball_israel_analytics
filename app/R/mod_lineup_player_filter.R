@@ -73,12 +73,18 @@ lineup_player_filter_ui <- function(id,
     if (!is.null(team_help)) helpText(team_help),
     div(
       class = "mb-3",
-      tags$p(class = "mt-3 mb-2 fw-semibold", "Lineups must include"),
+      tags$p(
+        class = "mt-3 mb-2 fw-semibold", "Lineups must include",
+        tags$span(class = "ms-1 fw-normal small text-muted", "(players on)")
+      ),
       players_on_input,
       players_on_any_input,
       helpText("Leave the second box empty to match on the first alone.")
     ),
-    tags$p(class = "mt-1 mb-2 fw-semibold", tt("Lineups must exclude", "players_off")),
+    tags$p(
+      class = "mt-1 mb-2 fw-semibold", tt("Lineups must exclude", "players_off"),
+      tags$span(class = "ms-1 fw-normal small text-muted", "(players off)")
+    ),
     players_off_input
   )
 }
