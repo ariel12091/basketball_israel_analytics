@@ -554,6 +554,17 @@ than adding a special case:
 - `tags(...)` is invalid — use `tags$p(...)`, `tags$div(...)`. `htmltools::dataURI` not exported — use `base64enc::dataURI`
 - `bindEvent()` must include GN reactive in triggers or GN changes won't re-run computation
 - **Never put a data reactive in an `observeEvent()` trigger expression.** The trigger is evaluated on **every session**, and observers — unlike outputs — are never suspended by tab visibility. Tab 10 had `euro_ld_full()` in its auto-min-poss trigger and so pulled a whole EuroLeague season (2,630ms) on every *Home* visit, ahead of Home's own query. Keep only plain inputs in the trigger and gate the handler with `req(identical(input$main_tabs, "<tab>"))`, as Israeli Tab 2 does. Fixed 4487c2f.
+- **A choices-populating observer that reads a lazily-loaded ref has a race.**
+  `lineup_player_filter_server()` fills its player boxes from
+  `observeEvent(input$team)`, which reads `players_ref` at that instant and has
+  no dependency on it changing. Tab 7 loads the Lineups-mode roster from the
+  `cmp_mode` observer (`server_tab7_compare.R:1747`, `ignoreInit = TRUE`) with
+  `refresh_player_inputs = FALSE`, so a team selected before that load lands
+  leaves all three boxes **permanently empty** -- nothing re-refreshes them.
+  The real click order (Compare -> Lineups -> team) avoids it, so it is latent,
+  not user-visible. **Unfixed as of 2026-09-21.** It also makes Compare
+  impossible to drive from a script unless you wait for the roster first.
+
 
 ### Deploy Scripts
 - `DROP FUNCTION` signature must be exact (param count must match) — verify against actual CREATE signature
