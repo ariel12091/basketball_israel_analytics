@@ -38,6 +38,21 @@ NICKNAME_PATTERN <- paste0(
   "[\"\u201d\u2019']"
 )
 
+# Generational suffixes appear on one side only -- CLARENCE DANIELS II in the
+# rosters is Clarence Daniels on basket.co.il. They are dropped only when a
+# given and family name survive, so a one-word name is never emptied.
+NAME_SUFFIXES <- c("JR", "SR", "II", "III", "IV")
+
+drop_name_suffix <- function(normalized) {
+  parts <- strsplit(normalized, " ", fixed = TRUE)
+  vapply(parts, function(p) {
+    while (length(p) > 2L && p[length(p)] %in% NAME_SUFFIXES) {
+      p <- p[-length(p)]
+    }
+    if (!length(p)) NA_character_ else paste(p, collapse = " ")
+  }, character(1))
+}
+
 normalize_person_name <- function(x) {
   out <- toupper(trimws(as.character(x)))
   out <- gsub(NICKNAME_PATTERN, " ", out, perl = TRUE)
@@ -45,6 +60,8 @@ normalize_person_name <- function(x) {
   out <- gsub("[[:space:]]+", " ", out)
   out <- trimws(out)
   out[!nzchar(out)] <- NA_character_
+  out <- drop_name_suffix(out)
+  out[is.na(out) | !nzchar(out)] <- NA_character_
   out
 }
 
@@ -233,6 +250,92 @@ match_basket_identities <- function(registrations, identities) {
   do.call(rbind, results)
 }
 
+# Reviewed and confirmed by hand, 2026-09-23. Each was a same-team surname
+# match the automatic pass would only propose, because the given names differ
+# for reasons no rule should guess at. Kept as data so a re-run reproduces
+# them, in the same spirit as default_player_id_aliases().
+manual_basket_identity_matches <- function() {
+  data.frame(
+    game_year = c(2025L, 2025L, 2025L, 2026L, 2026L, 2026L, 2026L, 2026L, 2026L),
+    basket_player_id = c(17479L, 17528L, 17578L, 21840L, 21923L, 24865L,
+                         24876L, 25974L, 25990L),
+    canonical_player_id = c(1780L, 2669L, 14359L, 1060L, 1121L, 1640L,
+                            1887L, 2147L, 2172L),
+    note = c(
+      "John/Jon Dibartolomeo; only Dibartolomeo in the league",
+      "Ben/Meron Ruina; only Ruina in the league, confirmed by the user",
+      "Ish is Ishmail Wainright's usual short name",
+      "Michael Eliaszadeh/ELIASZADE; the surname itself differs, and both record 5 points",
+      "Jamiya/Jemaya Neal, transliteration",
+      "Gabriel 'Iffe' Lundberg is stored under the nickname",
+      "Isaiah/ISAHIAH Mobley, a typo in the roster",
+      "Ishmael 'Ish' El-Amin, nickname plus hyphen",
+      "Hen/Chen Halfon, the same heth"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Yonatan Hadad is listed separately: it was ambiguous, not merely unmatched.
+# Holon carries two ids with the identical Hebrew name, and only 2150 ever
+# played -- one game, 25 seconds, no points -- which is exactly what
+# basket.co.il records. 2138 has no fact rows at all.
+manual_basket_identity_matches_ambiguous <- function() {
+  data.frame(
+    game_year = 2026L,
+    basket_player_id = 25970L,
+    canonical_player_id = 2150L,
+    note = paste("Jonathan Hadad 2150 played the single game Basket records;",
+                 "Yonathan Hadad 2138 never took the floor"),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Applied after the automatic pass. A manual row promotes its registration to
+# verified; anything it names that the automatic pass already resolved the same
+# way is left alone, and a disagreement is an error rather than a silent
+# override.
+apply_manual_matches <- function(matches, identities) {
+  manual <- rbind(manual_basket_identity_matches(),
+                  manual_basket_identity_matches_ambiguous())
+  manual <- manual[!is.na(manual$canonical_player_id), , drop = FALSE]
+  for (i in seq_len(nrow(manual))) {
+    m <- manual[i, ]
+    rows <- matches$game_year == m$game_year &
+      matches$basket_player_id == m$basket_player_id
+    if (!any(rows)) {
+      stop("Manual match names an unknown registration: ", m$game_year, " ",
+           m$basket_player_id)
+    }
+    settled <- matches$status[rows][1] == "verified"
+    if (settled) {
+      already <- matches$canonical_player_id[rows][1]
+      if (!identical(as.integer(already), as.integer(m$canonical_player_id))) {
+        stop("Manual match for ", m$game_year, " ", m$basket_player_id,
+             " says canonical ", m$canonical_player_id,
+             " but the automatic pass resolved ", already)
+      }
+      next
+    }
+    identity <- identities[identities$game_year == m$game_year &
+                             identities$canonical_player_id == m$canonical_player_id, ]
+    if (!nrow(identity)) {
+      stop("Manual match names canonical ", m$canonical_player_id,
+           " which has no ", m$game_year, " identity")
+    }
+    keep <- which(rows)[1]
+    matches <- matches[!rows | seq_len(nrow(matches)) == keep, , drop = FALSE]
+    row <- matches$game_year == m$game_year &
+      matches$basket_player_id == m$basket_player_id
+    matches$identity_id[row] <- identity$identity_id[1]
+    matches$canonical_player_id[row] <- m$canonical_player_id
+    matches$display_name[row] <- identity$display_name[1]
+    matches$matched_on[row] <- "manual"
+    matches$status[row] <- "verified"
+  }
+  matches
+}
+
 match_summary <- function(matches) {
   per_registration <- matches[!duplicated(
     matches[c("game_year", "basket_player_id")]), , drop = FALSE]
@@ -299,13 +402,15 @@ write_basket_identity_links <- function(con, matches) {
       data.frame(
         game_year = as.integer(unresolved$game_year),
         basket_player_id = as.integer(unresolved$basket_player_id),
-        identity_id = NA_real_,
-        canonical_player_id = NA_integer_,
+        # Length-matched rather than recycled: once everything resolves,
+        # unresolved is empty and a scalar NA would not recycle to zero rows.
+        identity_id = rep(NA_real_, nrow(unresolved)),
+        canonical_player_id = rep(NA_integer_, nrow(unresolved)),
         # unmapped_team means the matcher could not even look; from the row's
         # point of view that is the same as having looked and found nothing.
         identity_match_status = ifelse(unresolved$status == "ambiguous",
                                        "ambiguous", "unmatched"),
-        identity_matched_on = NA_character_,
+        identity_matched_on = rep(NA_character_, nrow(unresolved)),
         stringsAsFactors = FALSE
       )
     )
@@ -405,6 +510,7 @@ main <- function() {
               nrow(registrations), nrow(identities)))
 
   matches <- match_basket_identities(registrations, identities)
+  matches <- apply_manual_matches(matches, identities)
   cat(paste(match_summary(matches), collapse = "\n"), "\n\n")
   cat(paste(report_unresolved(matches), collapse = "\n"), "\n\n")
 
