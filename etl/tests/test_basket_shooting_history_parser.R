@@ -39,6 +39,38 @@ test_that("profile labels produce season attributes", {
   expect_equal(out$height_m, 1.9)
 })
 
+test_that("profiles carry the team and date of birth", {
+  html <- paste0(
+    "<section><div>קבוצה:&nbsp;<a>הפועל IBI תל אביב</a></div>",
+    "<div>אזרחות:&nbsp;<a>ניגריה (NGA)</a></div>",
+    "<div>עמדה:&nbsp;סנטר</div><div>גובה:&nbsp;2.06</div>",
+    "<div>תאריך לידה: 21/09/1995</div><div>שנים בליגה: 2</div></section>"
+  )
+  out <- parse_basket_player_profile_html(html)
+
+  expect_equal(out$basket_team_name, "הפועל IBI תל אביב")
+  expect_equal(out$date_of_birth, as.Date("1995-09-21"))
+})
+
+# 695 of 1160 cached profiles have a day > 12 and none has a month > 12, so the
+# site's format is unambiguously dd/mm/yyyy. Reading it as mm/dd would silently
+# transpose the 465 dates where both parts are <= 12.
+test_that("dates of birth are read day-first", {
+  html <- paste0("<div>עמדה: רכז</div><div>גובה: 1.85</div>",
+                 "<div>תאריך לידה: 05/11/1994</div><div>שנים בליגה: 1</div>")
+  expect_equal(parse_basket_player_profile_html(html)$date_of_birth,
+               as.Date("1994-11-05"))
+})
+
+test_that("a profile without a team or birth date still parses", {
+  html <- "<div>עמדה: רכז</div><div>גובה: 1.85</div>"
+  out <- parse_basket_player_profile_html(html)
+
+  expect_true(is.na(out$basket_team_name))
+  expect_true(is.na(out$date_of_birth))
+  expect_equal(out$position_name, "רכז")
+})
+
 test_that("profile heights in centimeters are normalized to meters", {
   html <- "<div>אזרחות: USA (USA)</div><div>עמדה: סנטר גובה: 208</div>"
   out <- parse_basket_player_profile_html(html)

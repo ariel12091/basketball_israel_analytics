@@ -582,6 +582,20 @@ parse_basket_player_profile_html <- function(html) {
   nationality_code <- first_capture(
     "אזרחות:[[:space:]]*(.*?)[[:space:]]*\\(([A-Z]{3})\\)", text, 2L
   )
+  # The site's own team string, sponsor included, bounded by the next label.
+  team_name <- first_capture(
+    "קבוצה:[[:space:]]*(.*?)[[:space:]]*אזרחות:", text, 1L
+  )
+  # dd/mm/yyyy: 695 of 1160 cached profiles have a day > 12 and none has a
+  # month > 12, so day-first is the site's format, not an assumption.
+  birth_text <- first_capture(
+    "תאריך לידה:[[:space:]]*([0-9]{2}/[0-9]{2}/[0-9]{4})", text, 1L
+  )
+  date_of_birth <- if (is.na(birth_text)) {
+    as.Date(NA)
+  } else {
+    as.Date(birth_text, format = "%d/%m/%Y")
+  }
   position_name <- first_capture(
     "עמדה:[[:space:]]*(.*?)[[:space:]]*גובה:", text, 1L
   )
@@ -596,6 +610,7 @@ parse_basket_player_profile_html <- function(html) {
   position_name <- blank_to_na(position_name)
   nationality_name <- blank_to_na(nationality_name)
   nationality_code <- blank_to_na(nationality_code)
+  team_name <- blank_to_na(team_name)
   if (is.na(position_name) && is.na(height_m) && is.na(nationality_name)) {
     stop("Player page contains none of position, height, or nationality")
   }
@@ -606,6 +621,8 @@ parse_basket_player_profile_html <- function(html) {
     height_m = height_m,
     nationality_name = nationality_name,
     nationality_code = nationality_code,
+    basket_team_name = team_name,
+    date_of_birth = date_of_birth,
     stringsAsFactors = FALSE
   )
 }
@@ -1099,13 +1116,15 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           "CREATE TEMP TABLE basket_profiles_stage (",
           "game_year integer, basket_player_id integer, position_name text,",
           "position_en text, height_m numeric, nationality_name text,",
-          "nationality_code text, source_url text, source_content_md5 text,",
+          "nationality_code text, basket_team_name text, date_of_birth date,",
+          "source_url text, source_content_md5 text,",
           "fetched_at timestamptz, cache_hit boolean",
           ") ON COMMIT DROP"
         ))
         profile_columns <- c(
           "game_year", "basket_player_id", "position_name", "position_en", "height_m",
-          "nationality_name", "nationality_code", "source_url",
+          "nationality_name", "nationality_code", "basket_team_name",
+          "date_of_birth", "source_url",
           "source_content_md5", "fetched_at", "cache_hit"
         )
         DBI::dbAppendTable(con, DBI::Id(table = "basket_profiles_stage"),
@@ -1115,6 +1134,8 @@ write_scrape <- function(con, seasons, players, pages, profiles = NULL,
           "position_name = s.position_name, position_en = s.position_en,",
           "height_m = s.height_m, nationality_name = s.nationality_name,",
           "nationality_code = s.nationality_code,",
+          "basket_team_name = s.basket_team_name,",
+          "date_of_birth = s.date_of_birth,",
           "profile_source_url = s.source_url,",
           "profile_source_content_md5 = s.source_content_md5,",
           "profile_fetched_at = s.fetched_at, profile_cache_hit = s.cache_hit,",
