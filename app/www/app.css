@@ -1677,16 +1677,17 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   container-type: inline-size;
 }
 /* The sidebar runs ~210px at common laptop widths: too narrow for the label
-   and the switch on one row, so the switch takes its own full-width row. */
+   and the switch on one row, so the switch takes its own full-width row.
+   Scoped under .lineup-chips so it outranks the base rules below it, which
+   would otherwise win on source order and keep the header centred. */
 @container (max-width: 270px) {
-  .lineup-chips-head {
+  .lineup-chips .lineup-chips-head {
     flex-direction: column;
     align-items: stretch;
     gap: 6px;
-    text-align: left;
   }
-  .lineup-chips-modes { display: flex; }
-  .lineup-chips-mode { flex: 1; justify-content: center; }
+  .lineup-chips .lineup-chips-modes { display: flex; }
+  .lineup-chips .lineup-chips-mode { flex: 1; justify-content: center; }
 }
 .lineup-chips-head {
   display: flex;
@@ -1732,7 +1733,7 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 }
 .lineup-chips-mode:focus-visible,
 .lineup-chip:focus-visible,
-.lineup-chips-count:focus-visible,
+.lineup-chips-token:focus-visible,
 .lineup-chips-clear:focus-visible {
   outline: 2px solid var(--ibpl-accent);
   outline-offset: 1px;
@@ -1845,7 +1846,8 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   text-decoration-color: rgba(var(--ibpl-neg-rgb), 0.8);
 }
 .lineup-chips-conn { color: var(--ibpl-text-dim); }
-.lineup-chips-count {
+/* The clickable words in the summary line: the quantifier and the count. */
+.lineup-chips-token {
   display: inline-block;
   min-width: 20px;
   padding: 0 5px;
@@ -1858,7 +1860,8 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   text-align: center;
   cursor: pointer;
 }
-.lineup-chips-count:hover { background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.lineup-chips-token:hover { background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.lineup-chips-quant { font: 600 12px/18px var(--ibpl-font-body); }
 .lineup-chips-clear {
   flex: none;
   margin-left: auto;

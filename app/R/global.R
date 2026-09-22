@@ -1225,6 +1225,7 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
                                players_on_value = NULL, players_on_any_value = NULL,
                                players_off_value = NULL,
                                players_on_any_min_value = NULL,
+                               players_on_any_exact_value = NULL,
                                extra_children = NULL,
                                season_value = NULL, season_label = NULL,
                                date_input_id = NULL, dates_show_when_set = NULL,
@@ -1416,7 +1417,9 @@ build_filter_chips <- function(prefix, input, season_bounds_fn, reset_btn_id = N
   player_chip_specs <- list(
     list(id = "players_on",     value = players_on_value,     lead = "All of"),
     list(id = "players_on_any", value = players_on_any_value,
-         lead = if (isTRUE(players_on_any_min_value >= 2L)) {
+         lead = if (isTRUE(players_on_any_exact_value)) {
+           paste("Exactly", max(1L, players_on_any_min_value %||% 1L), "of")
+         } else if (isTRUE(players_on_any_min_value >= 2L)) {
            paste("At least", players_on_any_min_value, "of")
          } else "Any of"),
     list(id = "players_off",    value = players_off_value,    lead = "Exclude")

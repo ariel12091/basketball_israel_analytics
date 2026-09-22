@@ -230,7 +230,8 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       player_csv     = csv_if_any(c(ld_filter$players_on(), ld_filter$players_on_any())),
       player_required_csv = paste(ld_filter$players_on(), collapse = ","),
       player_off_csv = csv_if_any(ld_filter$players_off()),
-      player_any_min = ld_filter$players_on_any_min()
+      player_any_min = ld_filter$players_on_any_min(),
+      player_any_exact = ld_filter$players_on_any_exact()
     ))
     df$player_ids_list <- NULL
     df
@@ -400,7 +401,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     list(input$main_tabs, euro_competition(), euro_season(),
          input$euro_ld_group_size, ld_filter$team(),
          ld_filter$players_on(), ld_filter$players_on_any(), ld_filter$players_off(),
-         ld_filter$players_on_any_min(),
+         ld_filter$players_on_any_min(), ld_filter$players_on_any_exact(),
          debounced_dates(), input$euro_ld_opponents, input$euro_ld_phase,
          input$euro_ld_home_away, input$euro_ld_outcome,
          input$euro_ld_opp_rank_side, input$euro_ld_opp_rank_n,
@@ -417,7 +418,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
   # shaping filter first returns the control to auto mode, then recalculates it.
   observeEvent(list(input$euro_ld_group_size, ld_filter$team(),
                     ld_filter$players_on(), ld_filter$players_on_any(), ld_filter$players_off(),
-                    ld_filter$players_on_any_min(),
+                    ld_filter$players_on_any_min(), ld_filter$players_on_any_exact(),
                     debounced_dates(), input$euro_ld_opponents,
                     input$euro_ld_phase, input$euro_ld_home_away,
                     input$euro_ld_outcome, input$euro_ld_opp_rank_side,
@@ -634,6 +635,7 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       players_on_any_value = ld_filter$players_on_any(),
       players_off_value = ld_filter$players_off(),
       players_on_any_min_value = ld_filter$players_on_any_min(),
+      players_on_any_exact_value = ld_filter$players_on_any_exact(),
       input_ids = list(
         teams = "euro_ld_lineup_filter-team",
         players_on = "euro_ld_lineup_filter-chips",

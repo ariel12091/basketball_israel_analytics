@@ -2454,8 +2454,9 @@ document.addEventListener("keydown", function(e) {
    The three selectizes stay in the DOM, hidden, and remain the source of
    truth: a tap writes them, and any change to them -- restore, a row pivot, a
    chip-bar clear -- re-renders the chips. The roster (ordered by season
-   minutes) arrives as the "lineup-chips-roster" message. The group count is
-   the one input only this widget sets: <ns>players_on_any_min.
+   minutes) arrives as the "lineup-chips-roster" message. The group count and
+   its quantifier ("at least" / "exactly") are the only inputs this widget
+   sets itself: <ns>players_on_any_min and <ns>players_on_any_exact.
    -------------------------------------------------------------------------- */
 (function() {
   var FOLD_AT = 12;
@@ -2465,7 +2466,10 @@ document.addEventListener("keydown", function(e) {
   var widgets = {};
 
   function widget(el) {
-    if (!widgets[el.id]) widgets[el.id] = { roster: [], expanded: false, anyMin: 1, sentMin: 1 };
+    if (!widgets[el.id]) {
+      widgets[el.id] = { roster: [], expanded: false, anyMin: 1, sentMin: 1,
+                         anyExact: false, sentExact: false };
+    }
     return widgets[el.id];
   }
 
@@ -2516,6 +2520,24 @@ document.addEventListener("keydown", function(e) {
     if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
     w.sentMin = value;
     window.Shiny.setInputValue(el.getAttribute("data-ns") + "players_on_any_min", value);
+  }
+
+  // "Exactly" only means something from two group players up (of one, it is
+  // the same as "at least"), and like the count it is clamped, not cleared.
+  function effectiveExact(w, groupSize) {
+    return w.anyExact && groupSize >= 2;
+  }
+
+  function sendAnyExact(el, w, value) {
+    if (w.sentExact === value) return;
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    w.sentExact = value;
+    window.Shiny.setInputValue(el.getAttribute("data-ns") + "players_on_any_exact", value);
+  }
+
+  function resetCount(w) {
+    w.anyMin = 1;
+    w.anyExact = false;
   }
 
   // Provider names are often all caps; anything already mixed-case is kept.
@@ -2603,7 +2625,9 @@ document.addEventListener("keydown", function(e) {
 
     // All n of the group is just "On", so the count tops out at n - 1.
     var anyMin = effectiveMin(w, groups.any.length);
+    var anyExact = effectiveExact(w, groups.any.length);
     sendAnyMin(el, w, anyMin);
+    sendAnyExact(el, w, anyExact);
 
     if (!groups.on.length && !groups.any.length && !groups.off.length) {
       summary.appendChild(node("span", "lineup-chips-hint", "All lineups. Pick a mode, then tap players."));
@@ -2622,19 +2646,29 @@ document.addEventListener("keydown", function(e) {
     }
     if (groups.any.length) {
       sep();
-      // The count is only a choice from three players up: of two, "both" is
-      // just On, so "one of" is the only meaningful count.
-      if (groups.any.length < 3) {
-        var lead = groups.any.length === 1 ? (groups.on.length ? "with " : "including ")
-                                           : (groups.on.length ? "with one of " : "one of ");
-        text.appendChild(node("span", "lineup-chips-conn", lead));
+      // From two players up the quantifier is a choice ("at least" / "exactly"
+      // one of two); from three up the count is too. "All n" is just On, so
+      // the count stops at n - 1.
+      if (groups.any.length < 2) {
+        text.appendChild(node("span", "lineup-chips-conn", groups.on.length ? "with " : "including "));
       } else {
-        text.appendChild(node("span", "lineup-chips-conn", groups.on.length ? "with at least " : "at least "));
-        var count = node("button", "lineup-chips-count", String(anyMin));
-        count.type = "button";
-        count.title = "How many of the group must be on together. Click to change.";
-        count.setAttribute("aria-label", "At least " + anyMin + " of " + groups.any.length + ". Click to change.");
-        text.appendChild(count);
+        if (groups.on.length) text.appendChild(node("span", "lineup-chips-conn", "with "));
+        var quant = node("button", "lineup-chips-token lineup-chips-quant", anyExact ? "exactly" : "at least");
+        quant.type = "button";
+        quant.title = "Switch between \"at least\" and \"exactly\"";
+        quant.setAttribute("aria-label", (anyExact ? "Exactly" : "At least") + ". Click to switch.");
+        text.appendChild(quant);
+        text.appendChild(node("span", "lineup-chips-conn", " "));
+        if (groups.any.length < 3) {
+          text.appendChild(node("span", "lineup-chips-conn", "1"));
+        } else {
+          var count = node("button", "lineup-chips-token lineup-chips-count", String(anyMin));
+          count.type = "button";
+          count.title = "How many of the group must be on together. Click to change.";
+          count.setAttribute("aria-label", (anyExact ? "Exactly " : "At least ") + anyMin +
+                             " of " + groups.any.length + ". Click to change.");
+          text.appendChild(count);
+        }
         text.appendChild(node("span", "lineup-chips-conn", " of "));
       }
       text.appendChild(node("span", "lineup-chips-any", groups.any.join(", ")));
@@ -2687,12 +2721,19 @@ document.addEventListener("keydown", function(e) {
       return;
     }
 
+    if (e.target.closest(".lineup-chips-quant")) {
+      w.anyExact = !w.anyExact;
+      render(el);
+      focusAfterRender(el, ".lineup-chips-quant");
+      return;
+    }
+
     if (e.target.closest(".lineup-chips-clear")) {
       STATES.forEach(function(state) {
         var s = selectizeFor(el, state);
         if (s && valuesOf(s).length) s.setValue([], false);
       });
-      w.anyMin = 1;
+      resetCount(w);
       render(el);
       return;
     }
@@ -2736,12 +2777,13 @@ document.addEventListener("keydown", function(e) {
       // A different team starts a fresh count. The same roster re-sent (the
       // team input echoing a restore, say) must not reset a restored one.
       if (key !== w.rosterKey) {
-        w.anyMin = 1;
+        resetCount(w);
         w.expanded = false;
       }
       w.rosterKey = key;
       w.roster = players;
       if (typeof msg.any_min === "number" && msg.any_min >= 1) w.anyMin = Math.floor(msg.any_min);
+      if (msg.any_exact === true) w.anyExact = true;
       render(el);
     });
     return true;

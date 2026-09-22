@@ -178,6 +178,9 @@ lineup_player_filter_server <- function(id, players_ref, chips = FALSE) {
       restored_input_value(session, "players_on_any_min"),
       numeric_only = TRUE
     )
+    restore_seed$players_on_any_exact <- parse_any_exact(
+      restored_input_value(session, "players_on_any_exact")
+    )
     restore_seed$available <- any(lengths(list(
       restore_seed$team,
       restore_seed$players_on,
@@ -193,9 +196,9 @@ lineup_player_filter_server <- function(id, players_ref, chips = FALSE) {
     # move between them without re-querying.
     roster_choices <- reactiveVal(empty_choices)
 
-    # The chip widget's copy of the roster. any_min is only sent when there is
-    # something to restore; the widget otherwise keeps its own count.
-    send_chip_roster <- function(roster = NULL, any_min = NULL) {
+    # The chip widget's copy of the roster. any_min / any_exact are only sent
+    # when there is something to restore; the widget otherwise keeps its own.
+    send_chip_roster <- function(roster = NULL, any_min = NULL, any_exact = NULL) {
       if (!isTRUE(chips)) return(invisible(NULL))
       players <- if (is.null(roster) || !NROW(roster)) list() else lapply(
         seq_len(NROW(roster)),
@@ -210,7 +213,8 @@ lineup_player_filter_server <- function(id, players_ref, chips = FALSE) {
       session$sendCustomMessage("lineup-chips-roster", list(
         id = session$ns("chips"),
         players = players,
-        any_min = any_min
+        any_min = any_min,
+        any_exact = any_exact
       ))
       invisible(NULL)
     }
@@ -305,6 +309,7 @@ lineup_player_filter_server <- function(id, players_ref, chips = FALSE) {
       selected_any <- setdiff(selected_any, selected_on)
       selected_off <- setdiff(selected_off, c(selected_on, selected_any))
       restored_any_min <- if (isTRUE(restore_seed$available)) restore_seed$players_on_any_min else NULL
+      restored_any_exact <- isTRUE(restore_seed$available) && isTRUE(restore_seed$players_on_any_exact)
       restore_seed$available <- FALSE
       roster_choices(choices)
 
@@ -327,7 +332,8 @@ lineup_player_filter_server <- function(id, players_ref, chips = FALSE) {
         roster,
         any_min = if (length(restored_any_min) && length(selected_any) >= 2L) {
           parse_any_min(restored_any_min, length(selected_any) - 1L)
-        }
+        },
+        any_exact = if (restored_any_exact && length(selected_any) >= 2L) TRUE
       )
       invisible(list(
         team = team_val,
@@ -401,6 +407,9 @@ lineup_player_filter_server <- function(id, players_ref, chips = FALSE) {
         input$players_on_any_min,
         length(current_player_values("players_on_any"))
       )),
+      # TRUE turns that count into "exactly k of". Chip widget only, like the
+      # count; NULL elsewhere is FALSE.
+      players_on_any_exact = reactive(parse_any_exact(input$players_on_any_exact)),
       update_team_choices = update_team_choices,
       refresh_player_choices = refresh_player_choices,
       clear_player_choices = clear_player_choices,

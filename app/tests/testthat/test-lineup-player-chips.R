@@ -73,6 +73,45 @@ test_that("parse_any_min clamps into [1, group size]", {
   expect_equal(parse_any_min(2L, 0L), 1L)
 })
 
+# ---- exactly k of -----------------------------------------------------------
+
+test_that("exactly one of two drops the lineups that hold both", {
+  # {10, 11}: rows 1-2 hold both, row 3 only 10, row 4 only 11.
+  expect_equal(chips_poss(player_csv = "10,11", player_required_csv = "",
+                          player_any_exact = TRUE),
+               c(80L, 70L))
+  expect_equal(chips_poss(player_csv = "10,11", player_required_csv = ""),
+               c(100L, 90L, 80L, 70L))
+})
+
+test_that("exactly k is not at least k", {
+  # {10, 11, 12}: row 1 holds all three, row 2 two, rows 3-4 one each.
+  expect_equal(chips_poss(player_csv = "10,11,12", player_required_csv = "",
+                          player_any_min = 2L),
+               c(100L, 90L))
+  expect_equal(chips_poss(player_csv = "10,11,12", player_required_csv = "",
+                          player_any_min = 2L, player_any_exact = TRUE),
+               90L)
+})
+
+test_that("exactly applies to the group, on top of the required players", {
+  # 10 required; exactly one of {11, 12}. Row 1 holds both, row 3 neither.
+  expect_equal(chips_poss(player_csv = "10,11,12", player_required_csv = "10",
+                          player_any_exact = TRUE),
+               90L)
+})
+
+test_that("an unusable exact flag means at least", {
+  at_least <- chips_poss(player_csv = "10,11", player_required_csv = "")
+  for (bad in list(NULL, NA, FALSE, "no", "1", c(TRUE, TRUE))) {
+    expect_equal(chips_poss(player_csv = "10,11", player_required_csv = "",
+                            player_any_exact = bad), at_least)
+  }
+  expect_true(parse_any_exact(TRUE))
+  expect_true(parse_any_exact("true"))
+  expect_false(parse_any_exact("TRUE ish"))
+})
+
 # ---- roster order -----------------------------------------------------------
 
 test_that("season minutes join onto the roster by team and player", {
@@ -142,6 +181,13 @@ test_that("the count reaches the filter and every trigger that must see it", {
   # The local filter, the auto-min inputs, the auto-min observer, the chip bar.
   expect_equal(count_hits(tab10, "ld_filter$players_on_any_min()"), 4L)
   expect_true(grepl("player_any_min = ld_filter$players_on_any_min()", tab10, fixed = TRUE))
+
+  # The exact flag rides every one of those same paths.
+  expect_equal(count_hits(tab2, "ld_lineup_filter$players_on_any_exact()"), 5L)
+  expect_true(grepl("player_any_exact = ld_lineup_filter$players_on_any_exact()", tab2, fixed = TRUE))
+  expect_equal(count_hits(tab10, "ld_filter$players_on_any_exact()"), 4L)
+  expect_true(grepl("player_any_exact = ld_filter$players_on_any_exact()", tab10, fixed = TRUE))
+  expect_true(grepl('"players_on_any_exact"', read_repo_txt("www", "app.js"), fixed = TRUE))
 })
 
 test_that("the server message and the client handler agree on a name", {

@@ -1439,16 +1439,31 @@ parse_any_min <- function(x, n_opt) {
   max(1L, min(k, as.integer(n_opt)))
 }
 
+# "Exactly k of" rather than "at least k of". Also a client input: anything
+# but an unambiguous true is FALSE, which is the historical behaviour.
+parse_any_exact <- function(x) {
+  if (length(x) != 1L || is.na(x)) return(FALSE)
+  isTRUE(x) || identical(tolower(as.character(x)), "true")
+}
+
 # TRUE for each lineup satisfying the required/optional split of on_ids.
 # any_min is how many of the optional players must be on together ("at least
-# 2 of these 3"); the default 1 is the plain "at least one of".
-lineup_on_predicate <- function(players_list, on_ids, required_ids, any_min = 1L) {
+# 2 of these 3"); the default 1 is the plain "at least one of". any_exact
+# makes it "exactly any_min of them" ("only one of these two").
+lineup_on_predicate <- function(players_list, on_ids, required_ids, any_min = 1L,
+                                any_exact = FALSE) {
   req <- if (is.null(required_ids)) on_ids else intersect(on_ids, required_ids)
   opt <- setdiff(on_ids, req)
   k <- parse_any_min(any_min, length(opt))
+  exact <- parse_any_exact(any_exact)
   vapply(
     players_list,
-    function(x) all(req %in% x) && (!length(opt) || sum(opt %in% x) >= k),
+    function(x) {
+      if (!all(req %in% x)) return(FALSE)
+      if (!length(opt)) return(TRUE)
+      hits <- sum(opt %in% x)
+      if (exact) hits == k else hits >= k
+    },
     logical(1)
   )
 }
@@ -1475,7 +1490,7 @@ apply_local_lineup_filters <- function(df, p) {
     on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
     keep <- lineup_on_predicate(
       df$player_ids_list, on_ids, parse_required_ids(p$player_required_csv),
-      p$player_any_min
+      p$player_any_min, p$player_any_exact
     )
     df <- df[keep, , drop = FALSE]
   }
