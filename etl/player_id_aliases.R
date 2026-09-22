@@ -9,43 +9,49 @@ default_player_id_aliases <- function() {
   same_team_reason <-
     "same team/season duplicate display name with split lineup identity"
   tibble::tibble(
-    game_year = c(2026L, 2026L, 2025L, 2026L, 2026L, 2026L),
-    team_id = c(15L, 7L, 13L, 13L, 9L, 6L),
-    alias_player_id = c(2136L, 2143L, 27817L, 2046L, 2052L, 1982L),
-    canonical_player_id = c(1251L, 1262L, 3206L, 1165L, 1110L, 1143L),
+    game_year = c(2026L, 2026L, 2025L, 2026L, 2026L),
+    team_id = c(15L, 7L, 13L, 13L, 9L),
+    alias_player_id = c(2136L, 2143L, 27817L, 2046L, 2052L),
+    canonical_player_id = c(1251L, 1262L, 3206L, 1165L, 1110L),
     player_name = c(
       "SAGIV DVIR",
       "AMIR DANON",
       "ALON DANIELI",
       "BEN ALTSHULER",
-      "NOAM AVIVI",
-      "DJ BURNS"
+      "NOAM AVIVI"
     ),
     reason = c(
       same_team_reason,
       same_team_reason,
       same_team_reason,
       "cross-team season re-mint: id 2046 (Maccabi Raanana) is the same person as canonical 1165 (Galil Elion)",
-      "cross-team season re-mint: id 2052 (Bnei Herzliya) is the same person as canonical 1110 (Galil Elion)",
-      "cross-team season re-mint: id 1982 (Bnei Herzliya) is the same person as canonical 1143 (Rishon Lezion)"
+      "cross-team season re-mint: id 2052 (Bnei Herzliya) is the same person as canonical 1110 (Galil Elion)"
     ),
     # Same-team duplicates pollute that team's lineups/on-off and must be
     # scrubbed from base data; cross-team re-mints are identity-dictionary
     # merges only (Tab 5) — base data deliberately keeps the split ids, so
     # the alias-residue safeguard must not treat their rows as corruption.
-    canonicalize_base = c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE)
+    canonicalize_base = c(TRUE, TRUE, TRUE, FALSE, FALSE)
   )
 }
 
 retired_default_player_id_aliases <- function() {
   tibble::tibble(
-    game_year = c(2026L, 2026L),
-    team_id = c(5L, 12L),
-    alias_player_id = c(2152L, 1277L),
-    canonical_player_id = c(2060L, 1183L),
+    game_year = c(2026L, 2026L, 2026L),
+    team_id = c(5L, 12L, 6L),
+    alias_player_id = c(2152L, 1277L, 1982L),
+    canonical_player_id = c(2060L, 1183L, 1143L),
     reason = c(
       "retired: Holon 2060 is a reused provider id, not a season-wide duplicate of 2152",
-      "retired: Kiryat Ata 1183 is a reused provider id, not a season-wide duplicate of 1277"
+      "retired: Kiryat Ata 1183 is a reused provider id, not a season-wide duplicate of 1277",
+      # Two different players called D.J. Burns, not one re-minted id. They
+      # appear on opposite sides of game 147 (1143 for Rishon Lezion, 1982 for
+      # Bnei Herzliya), so they cannot be the same person. basket.co.il agrees:
+      # different birth dates (2001-05-16 vs 2000-10-13), heights (2.02 vs
+      # 2.06 m) and shooting profiles, and they wear different numbers (55 vs
+      # 30). The single stray row that prompted the merge is game 210, handled
+      # below as a per-game override.
+      "retired: Herzliya 1982 is a different D.J. Burns, not a re-mint of Rishon Lezion 1143"
     )
   )
 }
@@ -73,6 +79,17 @@ default_player_id_game_overrides <- function() {
       canonical_player_id = 1277L,
       player_name = "ITAY ZLOTOLOV",
       reason = "provider reused DeAndre Williams player_id for Itay Zlotolov in this game"
+    ),
+    # Bnei Herzliya's D.J. Burns is 1982 in every other game; here the provider
+    # stamped him with Rishon Lezion's DJ Burns id, keeping his own number 30.
+    tibble::tibble(
+      game_id = 210L,
+      game_year = 2026L,
+      team_id = 6L,
+      alias_player_id = 1143L,
+      canonical_player_id = 1982L,
+      player_name = "D.J. BURNS",
+      reason = "provider reused Rishon Lezion's DJ Burns player_id for Bnei Herzliya's D.J. Burns in this game"
     )
   )
 }

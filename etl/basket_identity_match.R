@@ -98,8 +98,15 @@ fetch_pbp_identities <- function(con, seasons) {
            r.display_name,
            btrim(f.firstnamelocal) || ' ' || btrim(f.lastnamelocal) AS name_he
     FROM basketball_test.resolved_player_identity_v r
-    LEFT JOIN basketball_test.full_rosters f
+    -- INNER, and on game_id: resolved_player_identity_v fans every active
+    -- season mapping across all of that team-season's games, so a player with
+    -- a single stray roster row appears in every game of a team he never
+    -- played for. Requiring the roster row for that same game keeps the pool
+    -- to real appearances -- which is what let Rishon Lezion's DJ Burns into
+    -- Bnei Herzliya's candidate pool and made their Burns ambiguous.
+    JOIN basketball_test.full_rosters f
       ON f.game_year = r.game_year
+     AND f.game_id = r.game_id
      AND f.team_id = r.team_id
      AND f.player_id = r.source_player_id
     WHERE r.game_year IN (%s)",
