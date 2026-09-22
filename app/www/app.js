@@ -2448,7 +2448,7 @@ document.addEventListener("keydown", function(e) {
 /* ---- Lineup player chips (Tabs 2 and 10) ----------------------------------
    The client half of lineup_player_filter_ui(layout = "chips"). One roster of
    player chips replaces the three player boxes, and a mode switch says what a
-   tap does: On (must be on), Group (at least k of these), Off (must be off).
+   tap does: On (must be on), Any of (at least k of these), Off (must be off).
    A tap on a chip already in the current mode clears it.
 
    The three selectizes stay in the DOM, hidden, and remain the source of
@@ -2461,7 +2461,7 @@ document.addEventListener("keydown", function(e) {
   var FOLD_AT = 12;
   var BOX = { on: "players_on", any: "players_on_any", off: "players_off" };
   var STATES = ["on", "any", "off"];
-  var STATE_TEXT = { none: "not set", on: "must be on", any: "in the group", off: "must be off" };
+  var STATE_TEXT = { none: "not set", on: "must be on", any: "any of", off: "must be off" };
   var widgets = {};
 
   function widget(el) {

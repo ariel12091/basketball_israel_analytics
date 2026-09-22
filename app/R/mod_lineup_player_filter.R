@@ -64,7 +64,7 @@ lineup_player_filter_ui <- function(id,
   }
 
   # One roster of player chips in place of the three boxes: a mode switch says
-  # what a tap does (On / Group / Off), and a tap on a chip already in that
+  # what a tap does (On / Any of / Off), and a tap on a chip already in that
   # mode clears it. The three selectizes stay in the DOM, hidden, and remain
   # the source of truth -- the chips read and write them -- so restore, row
   # pivots, the filter-chip bar's clears and every server-side reader keep
@@ -92,7 +92,9 @@ lineup_player_filter_ui <- function(id,
             class = "lineup-chips-modes", role = "radiogroup",
             `aria-label` = "What tapping a player does",
             mode_button("on", "On", "Must be on the floor", checked = TRUE),
-            mode_button("any", "Group", "At least some of these must be on the floor -- how many is set in the line below"),
+            # "Any of" matches the filter-chip bar's label for this clause; the
+            # summary line gives the exact count once there is a choice.
+            mode_button("any", "Any of", "At least one of these must be on the floor -- raise the count in the line below"),
             mode_button("off", "Off", "Must be off the floor")
           )
         ),
