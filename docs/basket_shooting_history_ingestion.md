@@ -39,12 +39,17 @@ https://basket.co.il/player.asp?PlayerId=21797
   additional request per season-player. A run is hard-limited to five seasons.
 - `etl/tests/test_basket_shooting_history_parser.R`: offline HTML fixtures.
 
-Status 2026-09-22 (evening): offline tests pass, 58 assertions
-(`testthat::test_file()`). Both migrations are applied, including the English
-columns. The scraper has run against the site but has **not** completed a write:
-668 of 1160 profiles and 25 of 30 `accumulate-en/` pages are cached, and the
-last run ended on the maqaf position described below. Rerunning resumes from
-the cache.
+Status 2026-09-23: **loaded and linked.** 1160 player-team-seasons across
+2022-2026 are in `basket_player_season`, reconciled row by row, and all 533
+registrations in the two seasons with play-by-play coverage (2025-2026) are
+matched to identities. Offline tests pass, 64 assertions
+(`testthat::test_file('etl/tests/test_basket_shooting_history_parser.R')`).
+All migrations applied. The 210 MB scrape cache means any re-run is
+cache-only.
+
+Next season: `game_year` 2027 needs a scrape once the regular season starts
+(`game_type = 5` rows appearing for 2027; as of 2026-09-23 the schedule has
+only cup and preseason games). Nothing schedules it.
 
 ## Suggested execution
 
@@ -199,12 +204,68 @@ dropped unbuilt: the map was empty, and Basket PlayerIds do not match
 `resolved_player_identity_v.source_player_id`, so the identity design should
 follow the matching work rather than precede it.
 
-## Identity is not solved
+## Identity
 
-Nothing links these rows to the play-by-play players. Basket PlayerIds are
-season-registration ids from a different id space (checked against four
-players), so no automatic join exists. Until that work happens this layer
-stands alone — useful on its own terms, not joinable to the app's tables.
+**Solved for 2025-2026: 533 of 533 registrations linked (100%).** Run
+`etl/basket_identity_match.R` (dry run by default, `--write` to fill the
+columns). 2022-2024 keep a NULL status — the play-by-play side starts at 2025,
+so there is nothing to match against, and the schema distinguishes that from
+having looked and failed.
+
+Basket PlayerIds are **per-team-season registration ids** in their own id
+space, re-minted yearly in non-overlapping ascending blocks (2022: 12723-12963
+… 2026: 21777-25995, every pairwise intersection empty). They never join
+directly to anything. Matching therefore runs per season:
+
+1. Resolve `basket_team_name` to a `team_id` through
+   `schedule_team_dict.team_name_basket`.
+2. Candidates are identities on that same team-season whose English **or**
+   Hebrew name normalises equally. Names are folded for the punctuation that
+   differs between sources — initials, quoted nicknames, hyphens, generational
+   suffixes, and the Hebrew maqaf.
+3. Candidates are deduplicated on `canonical_player_id`, since the alias
+   machinery already collapses duplicate identity records onto one.
+4. A unique surname within the team is a *proposal*, never auto-accepted.
+5. Ten reviewed matches are recorded as data in
+   `manual_basket_identity_matches()`, so a re-run reproduces them. A manual
+   entry contradicting an automatic match raises rather than overriding.
+
+**Restrict the candidate pool to real roster appearances.**
+`resolved_player_identity_v` fans every active season mapping across all of
+that team-season's games, so a player with a single stray roster row appears
+in every game of a team he never played for. Join it to `full_rosters` on
+`game_id` as well as team. Skipping this put Rishon Lezion's DJ Burns in Bnei
+Herzliya's pool and manufactured three ambiguities that were not real.
+
+### Neither key identifies a person across seasons
+
+This was asserted wrongly twice before being measured. Both keys are
+**season-scoped**:
+
+| key | use | why not a career key |
+|---|---|---|
+| `canonical_player_id` | join to play-by-play facts **within** a season | recycled: 18 of 712 belong to two people, e.g. 1119 is AMIT GERSHON in 2025 and MICHAEL FOSTER JR. in 2026 |
+| `identity_id` | the resolved identity for that registration | split by re-minting: `identity_key` embeds the source id, so `segev:1025:TAMIR BLATT` and `segev:1091:TAMIR BLATT` are one man; only 109 of 732 span a season boundary |
+
+So always pair `canonical_player_id` with `game_year`. There is no reliable
+cross-season person key in the schema today. `date_of_birth` is the strongest
+candidate for building one: it is on every Basket row and on no play-by-play
+relation at all.
+
+`identity_id` is also **not** a `player_identities` foreign key. The view
+COALESCEs it to the raw source id when a player has no curated identity
+(`resolution_scope = 'source'`), which is rare but real — 18 rows, one player,
+across 2025-2026.
+
+### What the link found
+
+Date of birth, being independent of both sources' naming, doubles as an audit.
+Grouped by identity, no Basket rows disagree on it. It also caught a wrong
+merge in `player_id_aliases`: Bnei Herzliya's 1982 and Rishon Lezion's 1143
+were recorded as one re-minted player, but they appear on opposite sides of
+game 147, and Basket has them differing in birth date, height, shirt number
+and shooting profile. Retired, with game 210's genuine one-game id reuse moved
+to `player_id_game_overrides`.
 
 ## Quality checks before modeling
 
