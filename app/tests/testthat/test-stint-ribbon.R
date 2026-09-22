@@ -397,6 +397,12 @@ test_that("build_stint_ribbon_svg draws one rect per merged stint", {
   expect_identical(lengths(regmatches(html, gregexpr("ibpl-ribbon-lane", html))), 3L)
 })
 
+test_that("clickable stint bars use a pointer cursor", {
+  css <- paste(readLines(testthat::test_path("..", "..", "www", "app.css"),
+                         warn = FALSE), collapse = "\n")
+  expect_match(css, "\\.ibpl-ribbon-lane \\{ cursor: pointer; \\}")
+})
+
 test_that("build_stint_ribbon_svg emits one clipPath per player", {
   f <- ribbon_fixture()
   html <- as.character(build_stint_ribbon_svg(f$lanes, f$margin, f$meta))
@@ -552,8 +558,9 @@ test_that("the compact header drops a top quarter marker a long team name would 
   f$meta$own_team <- "Fenerbahce Beko Istanbul Basketball Club Sports"
   long <- compact_svg(f)
   count_q1 <- function(html) lengths(regmatches(html, gregexpr(">Q1</text>", html, fixed = TRUE)))
-  expect_identical(count_q1(short), 2L)
-  expect_identical(count_q1(long), 1L)
+  expect_identical(count_q1(short), 3L)
+  # Only the crowded top marker is dropped; the margin and bottom rows stay.
+  expect_identical(count_q1(long), 2L)
 })
 
 test_that("an overtime game gets more period gridlines than regulation", {
@@ -814,7 +821,7 @@ test_that("the margin band is inset from the lane blocks by RIBBON_BAND_GAP, not
   expect_equal(gap_below, gap_above)
 })
 
-test_that("the period markers are drawn above the lanes as well as below them", {
+test_that("period markers are drawn above, within the margin, and below the lanes", {
   # 2026-09-06: a game with deep rotations makes the chart taller than the
   # modal, and with the Q1-Q4 row only at the bottom the reader had to scroll
   # to find out which quarter a stint sits in. The top row reuses the
@@ -834,18 +841,19 @@ test_that("the period markers are drawn above the lanes as well as below them", 
   }
   labels <- regmatches(html, gregexpr(
     '<text class="ibpl-ribbon-period-label"[^>]*>Q[0-9]<', html))[[1]]
-  expect_identical(length(labels), 8L)   # Q1-Q4, twice
+  expect_identical(length(labels), 12L)   # Q1-Q4 in all three rows
 
   label_ys <- y_of(labels)
   lane_rects <- regmatches(html, gregexpr(
     '(?s)<g class="ibpl-ribbon-lane[^"]*".*?rx="2"></rect>', html, perl = TRUE))[[1]]
   lane_tops <- y_of(lane_rects)
 
-  # One row above every lane, one row below every lane.
+  # One row above every lane, one within the margin band, and one below every lane.
   expect_lt(min(label_ys), min(lane_tops))
   expect_gt(max(label_ys), max(lane_tops))
 
-  # Both rows carry the full set, so neither is a partial decoration.
+  # All three rows carry the full set, so none is a partial decoration.
+  expect_identical(length(unique(label_ys)), 3L)
   expect_identical(sum(label_ys == min(label_ys)), 4L)
   expect_identical(sum(label_ys == max(label_ys)), 4L)
 })

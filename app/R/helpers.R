@@ -4203,6 +4203,9 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     })
   }
   top_period_labels <- period_label_row(RIBBON_PAD_TOP + 10)
+  # Repeat the period names inside the margin band. The boundary lines alone
+  # show where a period changes, but do not say which quarter the curve is in.
+  margin_period_labels <- period_label_row(margin_top + 11)
   if (isTRUE(L$compact)) {
     # The compact header row is shared with a team name that can run past
     # the first quarter ("Fenerbahce Beko Istanbul" reaches ~170 units in a
@@ -4244,7 +4247,8 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
            scale_lines,
            tags$path(class = "ibpl-ribbon-margin-base", d = path_d),
            tags$path(class = "ibpl-ribbon-margin-focus", d = path_d),
-           scale_labels),
+           scale_labels,
+           margin_period_labels),
     tags$g(class = "ibpl-ribbon-opp-layer ibpl-ribbon-shift-after-own",
            opp_team_labels,
            lane_labels[lanes$side[first_idx] == "opp"],

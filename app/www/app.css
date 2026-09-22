@@ -1455,6 +1455,8 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   transition: opacity 120ms ease;
 }
 
+.ibpl-ribbon-lane { cursor: pointer; }
+
 .ibpl-ribbon-lane.is-opp rect { fill: var(--ibpl-text-muted); }
 .ibpl-ribbon.is-focused .ibpl-ribbon-lane rect { opacity: 0.3; }
 .ibpl-ribbon.is-focused .ibpl-ribbon-lane.is-active rect { opacity: 1; }
