@@ -41,6 +41,7 @@ ui_tab10_euro_lineups <- function() tabPanel(
 
           lineup_player_filter_ui(
             "euro_ld_lineup_filter",
+            layout = "chips",
             team_label = "Team",
             team_help = "Pick a team to enable player filtering.",
             team_placeholder = "All teams",

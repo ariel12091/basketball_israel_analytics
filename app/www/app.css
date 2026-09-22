@@ -1666,3 +1666,218 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 .ibpl-ribbon-detail-row.is-active .ibpl-ribbon-detail-meta {
   color: var(--ibpl-text);
 }
+
+/* ---- Lineup player chips (Tabs 2 and 10) ----------------------------------
+   lineup_player_filter_ui(layout = "chips"); behaviour in app.js. Unset players
+   are plain names -- the border is kept, transparent, so nothing shifts when
+   hover draws it or a tap sets the chip. Two hues only: amber for on/group,
+   a muted red for off. */
+.lineup-chips {
+  margin: 0.75rem 0 1rem;
+  container-type: inline-size;
+}
+/* The sidebar runs ~210px at common laptop widths: too narrow for the label
+   and the switch on one row, so the switch takes its own full-width row. */
+@container (max-width: 270px) {
+  .lineup-chips-head {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+    text-align: left;
+  }
+  .lineup-chips-modes { display: flex; }
+  .lineup-chips-mode { flex: 1; justify-content: center; }
+}
+.lineup-chips-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.lineup-chips-eyebrow {
+  font-family: var(--ibpl-font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ibpl-text-muted);
+}
+.lineup-chips-modes {
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: var(--ibpl-bg-sunken);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 999px;
+}
+.lineup-chips-mode {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ibpl-text-dim);
+  font: 500 12px/1.3 var(--ibpl-font-body);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.lineup-chips-mode:hover { color: var(--ibpl-text-body); }
+.lineup-chips-mode[aria-checked="true"] {
+  background: var(--ibpl-surface-2);
+  color: var(--ibpl-text);
+}
+.lineup-chips-mode:focus-visible,
+.lineup-chip:focus-visible,
+.lineup-chips-count:focus-visible,
+.lineup-chips-clear:focus-visible {
+  outline: 2px solid var(--ibpl-accent);
+  outline-offset: 1px;
+}
+.lineup-chips-mark {
+  display: inline-block;
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.lineup-chips-mark.on { background: var(--ibpl-accent); }
+.lineup-chips-mark.any { border: 1.5px solid var(--ibpl-accent); }
+.lineup-chips-mark.off {
+  position: relative;
+  width: 9px;
+  height: 9px;
+  border-radius: 0;
+}
+.lineup-chips-mark.off::before,
+.lineup-chips-mark.off::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 0;
+  width: 1.5px;
+  height: 100%;
+  background: var(--ibpl-neg);
+  transform: translateX(-50%) rotate(45deg);
+}
+.lineup-chips-mark.off::after { transform: translateX(-50%) rotate(-45deg); }
+
+.lineup-chips-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px 2px;
+}
+.lineup-chips.is-empty .lineup-chips-list { display: none; }
+.lineup-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 5px 9px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--ibpl-text-muted);
+  font: 500 12.5px/1.2 var(--ibpl-font-body);
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s, border-color 0.12s;
+}
+/* Hover previews what a tap does in the current mode. */
+.lineup-chips[data-mode="on"] .lineup-chip[data-state="none"]:hover,
+.lineup-chips[data-mode="any"] .lineup-chip[data-state="none"]:hover {
+  border-color: rgba(var(--ibpl-accent-rgb), 0.7);
+  color: var(--ibpl-text);
+}
+.lineup-chips[data-mode="any"] .lineup-chip[data-state="none"]:hover { border-style: dashed; }
+.lineup-chips[data-mode="off"] .lineup-chip[data-state="none"]:hover {
+  border-color: rgba(var(--ibpl-neg-rgb), 0.6);
+  color: var(--ibpl-text);
+}
+.lineup-chip[data-state="on"] {
+  background: var(--ibpl-accent);
+  border-color: var(--ibpl-accent);
+  color: var(--ibpl-bg);
+  font-weight: 600;
+}
+.lineup-chip[data-state="any"] {
+  background: rgba(var(--ibpl-accent-rgb), 0.1);
+  border-color: var(--ibpl-accent);
+  color: var(--ibpl-accent);
+}
+.lineup-chip[data-state="off"] {
+  background: rgba(var(--ibpl-neg-rgb), 0.06);
+  border-color: rgba(var(--ibpl-neg-rgb), 0.35);
+  color: var(--ibpl-text-dim);
+  text-decoration: line-through;
+  text-decoration-color: rgba(var(--ibpl-neg-rgb), 0.8);
+}
+.lineup-chip.lineup-chip-more { color: var(--ibpl-text-dim); }
+.lineup-chip.lineup-chip-more:hover {
+  border-color: var(--ibpl-border);
+  color: var(--ibpl-text-body);
+}
+
+.lineup-chips-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px solid var(--ibpl-border);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--ibpl-text-muted);
+}
+.lineup-chips.is-empty .lineup-chips-summary {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+.lineup-chips-hint { color: var(--ibpl-text-dim); }
+.lineup-chips-on { color: var(--ibpl-text); font-weight: 600; }
+.lineup-chips-any { color: var(--ibpl-accent); }
+.lineup-chips-off {
+  color: var(--ibpl-text-dim);
+  text-decoration: line-through;
+  text-decoration-color: rgba(var(--ibpl-neg-rgb), 0.8);
+}
+.lineup-chips-conn { color: var(--ibpl-text-dim); }
+.lineup-chips-count {
+  display: inline-block;
+  min-width: 20px;
+  padding: 0 5px;
+  border: 1px solid rgba(var(--ibpl-accent-rgb), 0.55);
+  border-radius: 4px;
+  background: rgba(var(--ibpl-accent-rgb), 0.08);
+  color: var(--ibpl-accent);
+  font: 600 12px/18px var(--ibpl-font-mono);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+  cursor: pointer;
+}
+.lineup-chips-count:hover { background: rgba(var(--ibpl-accent-rgb), 0.18); }
+.lineup-chips-clear {
+  flex: none;
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--ibpl-text-dim);
+  font: 12px var(--ibpl-font-body);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  cursor: pointer;
+}
+.lineup-chips-clear:hover { color: var(--ibpl-accent); }
+
+/* Touch: no hover preview, so give the targets a finger's worth of room. */
+@media (max-width: 767.98px) {
+  .lineup-chip { padding: 7px 11px; font-size: 13.5px; }
+  .lineup-chips-mode { padding: 5px 11px; font-size: 13px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lineup-chip, .lineup-chips-mode { transition: none; }
+}

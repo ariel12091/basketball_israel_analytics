@@ -1,5 +1,5 @@
 lineup_player_filter_ui <- function(id,
-                                    layout = c("stacked", "inline"),
+                                    layout = c("stacked", "inline", "chips"),
                                     team_label = "Team",
                                     team_help = NULL,
                                     team_placeholder = "All teams",
@@ -63,6 +63,49 @@ lineup_player_filter_ui <- function(id,
     )
   }
 
+  # One roster of player chips in place of the three boxes: a mode switch says
+  # what a tap does (On / Group / Off), and a tap on a chip already in that
+  # mode clears it. The three selectizes stay in the DOM, hidden, and remain
+  # the source of truth -- the chips read and write them -- so restore, row
+  # pivots, the filter-chip bar's clears and every server-side reader keep
+  # working unchanged. The client half lives in www/app.js ("Lineup player
+  # chips"); the group count ("at least k of") is the one input only it sets.
+  if (identical(layout, "chips")) {
+    mode_button <- function(mode, label, title, checked = FALSE) {
+      tags$button(
+        type = "button", class = "lineup-chips-mode", role = "radio",
+        `data-mode` = mode, title = title,
+        `aria-checked` = if (checked) "true" else "false",
+        tags$i(class = paste("lineup-chips-mark", mode), `aria-hidden` = "true"),
+        label
+      )
+    }
+    return(tagList(
+      team_input,
+      div(
+        id = ns("chips"), class = "lineup-chips", `data-ns` = ns(""),
+        `data-mode` = "on",
+        div(
+          class = "lineup-chips-head",
+          tags$span(class = "lineup-chips-eyebrow", id = ns("chips_label"), "Players"),
+          div(
+            class = "lineup-chips-modes", role = "radiogroup",
+            `aria-label` = "What tapping a player does",
+            mode_button("on", "On", "Must be on the floor", checked = TRUE),
+            mode_button("any", "Group", "At least some of these must be on the floor -- how many is set in the line below"),
+            mode_button("off", "Off", "Must be off the floor")
+          )
+        ),
+        div(class = "lineup-chips-list", role = "group", `aria-labelledby` = ns("chips_label")),
+        div(class = "lineup-chips-summary", `aria-live` = "polite"),
+        div(
+          class = "lineup-chips-model", style = "display: none;", `aria-hidden` = "true",
+          players_on_input, players_on_any_input, players_off_input
+        )
+      )
+    ))
+  }
+
   # The two on-selectors are read as one sentence: the connective "and" sits
   # between them, where the relationship actually is, rather than inside a
   # trailing parenthetical on two labels that would otherwise be identical
@@ -89,7 +132,26 @@ lineup_player_filter_ui <- function(id,
   )
 }
 
-lineup_player_filter_server <- function(id, players_ref) {
+# Season minutes onto a roster frame, so the chip roster can lead with the
+# rotation instead of the alphabet. Best effort: a missing or failed stats pull
+# leaves the roster as it was and the chips fall back to name order.
+with_season_minutes <- function(players_df, season_df) {
+  if (is.null(players_df) || !NROW(players_df)) return(players_df)
+  if (is.null(season_df) || !NROW(season_df) ||
+      !all(c("team_id", "player_id", "minutes") %in% names(season_df))) {
+    return(players_df)
+  }
+  season_key <- paste(season_df$team_id, season_df$player_id)
+  mins <- tapply(suppressWarnings(as.numeric(season_df$minutes)), season_key, sum, na.rm = TRUE)
+  players_df$minutes <- as.numeric(mins[paste(players_df$team_id, players_df$player_id)])
+  players_df
+}
+
+# chips = TRUE pairs with lineup_player_filter_ui(layout = "chips"): the boxes
+# are hidden, so they are not pooled against each other (a player moving
+# between modes must be settable in any box), and the roster is also sent to
+# the chip widget, ordered by season minutes when players_ref carries them.
+lineup_player_filter_server <- function(id, players_ref, chips = FALSE) {
   moduleServer(id, function(input, output, session) {
     empty_choices <- setNames(character(0), character(0))
     restore_seed <- new.env(parent = emptyenv())
@@ -110,6 +172,10 @@ lineup_player_filter_server <- function(id, players_ref) {
       restored_input_value(session, "players_off"),
       numeric_only = TRUE
     )
+    restore_seed$players_on_any_min <- sanitize_single_choice(
+      restored_input_value(session, "players_on_any_min"),
+      numeric_only = TRUE
+    )
     restore_seed$available <- any(lengths(list(
       restore_seed$team,
       restore_seed$players_on,
@@ -125,11 +191,34 @@ lineup_player_filter_server <- function(id, players_ref) {
     # move between them without re-querying.
     roster_choices <- reactiveVal(empty_choices)
 
+    # The chip widget's copy of the roster. any_min is only sent when there is
+    # something to restore; the widget otherwise keeps its own count.
+    send_chip_roster <- function(roster = NULL, any_min = NULL) {
+      if (!isTRUE(chips)) return(invisible(NULL))
+      players <- if (is.null(roster) || !NROW(roster)) list() else lapply(
+        seq_len(NROW(roster)),
+        function(i) list(
+          id = as.character(roster$player_id[[i]]),
+          name = as.character(roster$name[[i]]),
+          min = if ("minutes" %in% names(roster) && !is.na(roster$minutes[[i]])) {
+            round(roster$minutes[[i]])
+          }
+        )
+      )
+      session$sendCustomMessage("lineup-chips-roster", list(
+        id = session$ns("chips"),
+        players = players,
+        any_min = any_min
+      ))
+      invisible(NULL)
+    }
+
     clear_player_choices <- function() {
       roster_choices(empty_choices)
       for (box_id in PLAYER_BOXES) {
         updateSelectizeInput(session, box_id, choices = empty_choices, selected = character(0), server = FALSE)
       }
+      send_chip_roster()
     }
 
     selection_with_restore_seed <- function(input_id, current, choices, max_len = 80L) {
@@ -184,6 +273,9 @@ lineup_player_filter_server <- function(id, players_ref) {
 
       tid <- suppressWarnings(as.integer(team_val))
       roster <- players_df[players_df$team_id == tid, , drop = FALSE]
+      if (isTRUE(chips) && "minutes" %in% names(roster)) {
+        roster <- roster[order(-roster$minutes, roster$name, na.last = TRUE), , drop = FALSE]
+      }
       choices <- if (nrow(roster)) {
         setNames(as.character(roster$player_id), roster$name)
       } else {
@@ -210,6 +302,7 @@ lineup_player_filter_server <- function(id, players_ref) {
       # first: earlier boxes in PLAYER_BOXES win.
       selected_any <- setdiff(selected_any, selected_on)
       selected_off <- setdiff(selected_off, c(selected_on, selected_any))
+      restored_any_min <- if (isTRUE(restore_seed$available)) restore_seed$players_on_any_min else NULL
       restore_seed$available <- FALSE
       roster_choices(choices)
 
@@ -223,11 +316,17 @@ lineup_player_filter_server <- function(id, players_ref) {
         taken <- unlist(selections[setdiff(PLAYER_BOXES, box_id)], use.names = FALSE)
         updateSelectizeInput(
           session, box_id,
-          choices = lineup_box_pool(choices, mine, taken),
+          choices = if (isTRUE(chips)) choices else lineup_box_pool(choices, mine, taken),
           selected = mine,
           server = FALSE
         )
       }
+      send_chip_roster(
+        roster,
+        any_min = if (length(restored_any_min) && length(selected_any) >= 2L) {
+          parse_any_min(restored_any_min, length(selected_any) - 1L)
+        }
+      )
       invisible(list(
         team = team_val,
         players_on = selected_on,
@@ -280,16 +379,26 @@ lineup_player_filter_server <- function(id, players_ref) {
     # ignoreNULL = FALSE: clearing a box has to return its players to the other
     # pools, and a cleared multi-select reports NULL, which the default would
     # swallow.
-    lapply(PLAYER_BOXES, function(box_id) {
-      observeEvent(input[[box_id]], refresh_other_box_pools(box_id),
-                   ignoreInit = TRUE, ignoreNULL = FALSE)
-    })
+    #
+    # Chips hide the boxes, so there is no dropdown to narrow.
+    if (!isTRUE(chips)) {
+      lapply(PLAYER_BOXES, function(box_id) {
+        observeEvent(input[[box_id]], refresh_other_box_pools(box_id),
+                     ignoreInit = TRUE, ignoreNULL = FALSE)
+      })
+    }
 
     list(
       team = reactive(current_team_value()),
       players_on = reactive(current_player_values("players_on")),
       players_on_any = reactive(current_player_values("players_on_any")),
       players_off = reactive(current_player_values("players_off")),
+      # "At least k of" the any-of box. Only the chip widget sets it; every
+      # other layout leaves it NULL, which is 1 -- the plain any-of.
+      players_on_any_min = reactive(parse_any_min(
+        input$players_on_any_min,
+        length(current_player_values("players_on_any"))
+      )),
       update_team_choices = update_team_choices,
       refresh_player_choices = refresh_player_choices,
       clear_player_choices = clear_player_choices,

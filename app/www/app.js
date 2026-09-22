@@ -2444,3 +2444,325 @@ document.addEventListener("keydown", function(e) {
     init();
   }
 })();
+
+/* ---- Lineup player chips (Tabs 2 and 10) ----------------------------------
+   The client half of lineup_player_filter_ui(layout = "chips"). One roster of
+   player chips replaces the three player boxes, and a mode switch says what a
+   tap does: On (must be on), Group (at least k of these), Off (must be off).
+   A tap on a chip already in the current mode clears it.
+
+   The three selectizes stay in the DOM, hidden, and remain the source of
+   truth: a tap writes them, and any change to them -- restore, a row pivot, a
+   chip-bar clear -- re-renders the chips. The roster (ordered by season
+   minutes) arrives as the "lineup-chips-roster" message. The group count is
+   the one input only this widget sets: <ns>players_on_any_min.
+   -------------------------------------------------------------------------- */
+(function() {
+  var FOLD_AT = 12;
+  var BOX = { on: "players_on", any: "players_on_any", off: "players_off" };
+  var STATES = ["on", "any", "off"];
+  var STATE_TEXT = { none: "not set", on: "must be on", any: "in the group", off: "must be off" };
+  var widgets = {};
+
+  function widget(el) {
+    if (!widgets[el.id]) widgets[el.id] = { roster: [], expanded: false, anyMin: 1, sentMin: 1 };
+    return widgets[el.id];
+  }
+
+  function selectizeFor(el, state) {
+    var sel = document.getElementById(el.getAttribute("data-ns") + BOX[state]);
+    return sel && sel.selectize ? sel.selectize : null;
+  }
+
+  function valuesOf(s) {
+    var v = s ? s.getValue() : [];
+    if (!Array.isArray(v)) v = v ? [v] : [];
+    return v.map(String);
+  }
+
+  // player id -> "on" | "any" | "off". The server keeps the boxes disjoint; if
+  // they ever were not, the earlier box wins, as it does server-side.
+  function readState(el) {
+    var out = {};
+    STATES.forEach(function(state) {
+      valuesOf(selectizeFor(el, state)).forEach(function(id) {
+        if (!out[id]) out[id] = state;
+      });
+    });
+    return out;
+  }
+
+  function setBox(el, state, id, add, label) {
+    var s = selectizeFor(el, state);
+    if (!s) return;
+    var vals = valuesOf(s).filter(function(v) { return v !== id; });
+    if (add) {
+      if (!s.options[id]) s.addOption({ value: id, label: label });
+      vals.push(id);
+    }
+    s.setValue(vals, false);
+  }
+
+  // w.anyMin is the count asked for; what is shown and sent is that count
+  // clamped to the current group. Clamping the stored value instead would lose
+  // a restored count: the roster message (which carries it) lands before the
+  // boxes' restored selections do, so the first render sees an empty group.
+  function effectiveMin(w, groupSize) {
+    return Math.max(1, Math.min(w.anyMin, groupSize - 1));
+  }
+
+  function sendAnyMin(el, w, value) {
+    if (w.sentMin === value) return;
+    if (!window.Shiny || typeof window.Shiny.setInputValue !== "function") return;
+    w.sentMin = value;
+    window.Shiny.setInputValue(el.getAttribute("data-ns") + "players_on_any_min", value);
+  }
+
+  // Provider names are often all caps; anything already mixed-case is kept.
+  function displayName(name) {
+    name = String(name || "").trim();
+    if (name !== name.toUpperCase()) return name;
+    return name.toLowerCase()
+      .replace(/(^|[\s\-'.])([a-z])/g, function(m, p, c) { return p + c.toUpperCase(); })
+      .replace(/\b(Ii|Iii|Iv)\b/g, function(m) { return m.toUpperCase(); });
+  }
+
+  // "Last, First" (EuroLeague) or "First Last" (Israeli).
+  function nameParts(name) {
+    name = displayName(name);
+    var comma = name.indexOf(",");
+    if (comma > 0) return { last: name.slice(0, comma).trim(), first: name.slice(comma + 1).trim() };
+    var sp = name.indexOf(" ");
+    return sp > 0 ? { last: name.slice(sp + 1), first: name.slice(0, sp) } : { last: name, first: "" };
+  }
+
+  // Surname only, with a first initial where two teammates share one.
+  function chipLabels(roster) {
+    var parts = roster.map(function(p) { return nameParts(p.name); });
+    var seen = {};
+    parts.forEach(function(p) { seen[p.last] = (seen[p.last] || 0) + 1; });
+    return parts.map(function(p) {
+      return seen[p.last] > 1 && p.first ? p.first.charAt(0) + ". " + p.last : p.last;
+    });
+  }
+
+  function node(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function render(el) {
+    var w = widget(el);
+    var list = el.querySelector(".lineup-chips-list");
+    var summary = el.querySelector(".lineup-chips-summary");
+    if (!list || !summary) return;
+    list.textContent = "";
+    summary.textContent = "";
+    el.classList.toggle("is-empty", !w.roster.length);
+    if (!w.roster.length) {
+      summary.appendChild(node("span", "lineup-chips-hint", "Pick a team to filter by player."));
+      return;
+    }
+
+    var byId = readState(el);
+    var labels = chipLabels(w.roster);
+    var hidden = 0;
+    w.roster.forEach(function(p, i) {
+      var state = byId[String(p.id)] || "none";
+      // A folded player who is set stays visible, so what is set is always shown.
+      if (!w.expanded && i >= FOLD_AT && state === "none") { hidden += 1; return; }
+      var full = displayName(p.name);
+      var b = node("button", "lineup-chip", labels[i]);
+      b.type = "button";
+      b.setAttribute("data-id", String(p.id));
+      b.setAttribute("data-state", state);
+      b.setAttribute("aria-label", full + ", " + STATE_TEXT[state]);
+      b.title = typeof p.min === "number" ? full + " · " + p.min + " min this season" : full;
+      list.appendChild(b);
+    });
+    if (hidden > 0 || (w.expanded && w.roster.length > FOLD_AT)) {
+      var more = node("button", "lineup-chip lineup-chip-more",
+                      hidden > 0 ? "+" + hidden + " more" : "Show fewer");
+      more.type = "button";
+      more.setAttribute("data-fold", hidden > 0 ? "open" : "close");
+      list.appendChild(more);
+    }
+
+    renderSummary(el, w, byId, labels);
+  }
+
+  function renderSummary(el, w, byId, labels) {
+    var summary = el.querySelector(".lineup-chips-summary");
+    var groups = { on: [], any: [], off: [] };
+    w.roster.forEach(function(p, i) {
+      var state = byId[String(p.id)];
+      if (state) groups[state].push(labels[i]);
+    });
+
+    // All n of the group is just "On", so the count tops out at n - 1.
+    var anyMin = effectiveMin(w, groups.any.length);
+    sendAnyMin(el, w, anyMin);
+
+    if (!groups.on.length && !groups.any.length && !groups.off.length) {
+      summary.appendChild(node("span", "lineup-chips-hint", "All lineups. Pick a mode, then tap players."));
+      return;
+    }
+
+    var text = node("span", "lineup-chips-sentence");
+    var first = true;
+    function sep() {
+      if (!first) text.appendChild(node("span", "lineup-chips-conn", " · "));
+      first = false;
+    }
+    if (groups.on.length) {
+      sep();
+      text.appendChild(node("b", "lineup-chips-on", groups.on.join(" + ")));
+    }
+    if (groups.any.length) {
+      sep();
+      // The count is only a choice from three players up: of two, "both" is
+      // just On, so "one of" is the only meaningful count.
+      if (groups.any.length < 3) {
+        var lead = groups.any.length === 1 ? (groups.on.length ? "with " : "including ")
+                                           : (groups.on.length ? "with one of " : "one of ");
+        text.appendChild(node("span", "lineup-chips-conn", lead));
+      } else {
+        text.appendChild(node("span", "lineup-chips-conn", groups.on.length ? "with at least " : "at least "));
+        var count = node("button", "lineup-chips-count", String(anyMin));
+        count.type = "button";
+        count.title = "How many of the group must be on together. Click to change.";
+        count.setAttribute("aria-label", "At least " + anyMin + " of " + groups.any.length + ". Click to change.");
+        text.appendChild(count);
+        text.appendChild(node("span", "lineup-chips-conn", " of "));
+      }
+      text.appendChild(node("span", "lineup-chips-any", groups.any.join(", ")));
+    }
+    if (groups.off.length) {
+      sep();
+      text.appendChild(node("span", "lineup-chips-conn", "without "));
+      text.appendChild(node("span", "lineup-chips-off", groups.off.join(", ")));
+    }
+    summary.appendChild(text);
+    var clear = node("button", "lineup-chips-clear", "Clear");
+    clear.type = "button";
+    summary.appendChild(clear);
+  }
+
+  function focusAfterRender(el, selector) {
+    var target = el.querySelector(selector);
+    if (target) target.focus();
+  }
+
+  document.addEventListener("click", function(e) {
+    var el = e.target.closest(".lineup-chips");
+    if (!el) return;
+    var w = widget(el);
+
+    var mode = e.target.closest(".lineup-chips-mode");
+    if (mode) {
+      el.setAttribute("data-mode", mode.getAttribute("data-mode"));
+      el.querySelectorAll(".lineup-chips-mode").forEach(function(b) {
+        b.setAttribute("aria-checked", b === mode ? "true" : "false");
+      });
+      return;
+    }
+
+    var fold = e.target.closest("[data-fold]");
+    if (fold) {
+      w.expanded = fold.getAttribute("data-fold") === "open";
+      render(el);
+      focusAfterRender(el, "[data-fold]");
+      return;
+    }
+
+    if (e.target.closest(".lineup-chips-count")) {
+      var current = readState(el);
+      var n = Object.keys(current).filter(function(id) { return current[id] === "any"; }).length;
+      var shown = effectiveMin(w, n);
+      w.anyMin = shown >= n - 1 ? 1 : shown + 1;
+      render(el);
+      focusAfterRender(el, ".lineup-chips-count");
+      return;
+    }
+
+    if (e.target.closest(".lineup-chips-clear")) {
+      STATES.forEach(function(state) {
+        var s = selectizeFor(el, state);
+        if (s && valuesOf(s).length) s.setValue([], false);
+      });
+      w.anyMin = 1;
+      render(el);
+      return;
+    }
+
+    var chip = e.target.closest(".lineup-chip[data-id]");
+    if (chip) {
+      var id = chip.getAttribute("data-id");
+      var want = el.getAttribute("data-mode") || "on";
+      var from = readState(el)[id] || "none";
+      var to = from === want ? "none" : want;
+      var player = w.roster.filter(function(p) { return String(p.id) === id; })[0];
+      // Leave the old box before joining the new one: the reverse order would
+      // briefly put the player in both, and the server would filter on that.
+      if (from !== "none") setBox(el, from, id, false);
+      if (to !== "none") setBox(el, to, id, true, player ? player.name : id);
+      render(el);
+      focusAfterRender(el, '.lineup-chip[data-id="' + id + '"]');
+    }
+  });
+
+  // Selectize fires jQuery "change" on the original select, which a native
+  // listener never sees; any box change (ours, restore, pivot, chip-bar clear)
+  // re-renders its widget.
+  function bindBoxChanges() {
+    if (!window.jQuery) return false;
+    window.jQuery(document).on("change", ".lineup-chips-model select", function() {
+      var el = this.closest(".lineup-chips");
+      if (el) render(el);
+    });
+    return true;
+  }
+
+  function registerRosterHandler() {
+    if (!window.Shiny || typeof window.Shiny.addCustomMessageHandler !== "function") return false;
+    window.Shiny.addCustomMessageHandler("lineup-chips-roster", function(msg) {
+      var el = msg && msg.id ? document.getElementById(msg.id) : null;
+      if (!el) return;
+      var w = widget(el);
+      var players = Array.isArray(msg.players) ? msg.players : [];
+      var key = players.map(function(p) { return p.id; }).join(",");
+      // A different team starts a fresh count. The same roster re-sent (the
+      // team input echoing a restore, say) must not reset a restored one.
+      if (key !== w.rosterKey) {
+        w.anyMin = 1;
+        w.expanded = false;
+      }
+      w.rosterKey = key;
+      w.roster = players;
+      if (typeof msg.any_min === "number" && msg.any_min >= 1) w.anyMin = Math.floor(msg.any_min);
+      render(el);
+    });
+    return true;
+  }
+
+  function init() {
+    var boundChanges = bindBoxChanges();
+    var registered = registerRosterHandler();
+    if (boundChanges && registered) return;
+    var attempts = 0;
+    var timer = window.setInterval(function() {
+      attempts += 1;
+      if (!boundChanges) boundChanges = bindBoxChanges();
+      if (!registered) registered = registerRosterHandler();
+      if ((boundChanges && registered) || attempts >= 40) window.clearInterval(timer);
+    }, 250);
+  }
+
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", init);
+  } else {
+    init();
+  }
+})();

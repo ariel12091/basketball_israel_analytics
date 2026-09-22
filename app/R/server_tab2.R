@@ -41,7 +41,8 @@ server_tab2 <- function(input, output, session, shared) {
   ld_ref <- reactiveValues(teams = NULL, players = NULL)
   ld_lineup_filter <- lineup_player_filter_server(
     "ld_lineup_filter",
-    players_ref = reactive(ld_ref$players)
+    players_ref = reactive(ld_ref$players),
+    chips = TRUE
   )
   auto_min_state <- reactiveValues(
     last_auto = NA_integer_,
@@ -99,7 +100,13 @@ server_tab2 <- function(input, output, session, shared) {
     )
 
     players_map <- fetch_players_basic(gy_int)
-    ld_ref$players <- players_map
+    # Season minutes let the chip roster lead with the rotation. The pull is
+    # the cross-session season cache Tab 5 and Tab 1 already share.
+    ld_ref$players <- with_season_minutes(players_map, tryCatch(
+      fetch_player_traditional_season(pg_pool, "israel", NA_character_, gy_int,
+                                      shared_data_version(shared)),
+      error = function(e) NULL
+    ))
     ld_lineup_filter$refresh_player_choices(team_value = selected_team,
                                             players_on = pending_player)
 
@@ -336,8 +343,8 @@ server_tab2 <- function(input, output, session, shared) {
     player_any_ids <- if (!is.na(team_id)) as.integer(ld_lineup_filter$players_on_any()) else integer(0)
     player_on_ids <- c(player_req_ids, player_any_ids)
     player_off_ids <- if (!is.na(team_id)) as.integer(ld_lineup_filter$players_off()) else integer(0)
-    list(num = as.integer(input$ld_num), team_csv = if (!is.na(team_id)) as.character(team_id) else NA_character_, player_csv = if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_, player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_, player_required_csv = if (length(player_req_ids)) paste(player_req_ids, collapse = ",") else "", exact = TRUE, start_date = db_args$start_date, end_date = db_args$end_date, min_poss = as.integer(input$ld_minposs), game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv, home_away = db_args$home_away, outcome = db_args$outcome, opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric, min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max, num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max)
-  }) %>% bindEvent(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_on_any(), ld_lineup_filter$players_off(), input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode, input$ld_num_starters_off_mode, input$ld_num_starters_off, input$ld_num_starters_def_mode, input$ld_num_starters_def, input$ld_gn_min, input$ld_gn_max, input$ld_last_n)
+    list(num = as.integer(input$ld_num), team_csv = if (!is.na(team_id)) as.character(team_id) else NA_character_, player_csv = if (length(player_on_ids)) paste(player_on_ids, collapse = ",") else NA_character_, player_off_csv = if (length(player_off_ids)) paste(player_off_ids, collapse = ",") else NA_character_, player_required_csv = if (length(player_req_ids)) paste(player_req_ids, collapse = ",") else "", player_any_min = ld_lineup_filter$players_on_any_min(), exact = TRUE, start_date = db_args$start_date, end_date = db_args$end_date, min_poss = as.integer(input$ld_minposs), game_type_csv = db_args$game_type_csv, opp_ids_csv = db_args$opp_ids_csv, home_away = db_args$home_away, outcome = db_args$outcome, opp_rank_side = db_args$opp_rank_side, opp_rank_n = db_args$opp_rank_n, opp_rank_metric = db_args$opp_rank_metric, min_gn = db_args$min_gn, max_gn = db_args$max_gn, last_n_games = db_args$last_n_games, num_starters_off = NA_integer_, num_starters_def = NA_integer_, num_starters_off_min = db_args$num_starters_off_min, num_starters_off_max = db_args$num_starters_off_max, num_starters_def_min = db_args$num_starters_def_min, num_starters_def_max = db_args$num_starters_def_max)
+  }) %>% bindEvent(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_on_any(), ld_lineup_filter$players_off(), ld_lineup_filter$players_on_any_min(), input$ld_dates, input$ld_minposs, input$main_tabs, input$ld_game_type, input$ld_opponents, input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side, input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode, input$ld_num_starters_off_mode, input$ld_num_starters_off, input$ld_num_starters_def_mode, input$ld_num_starters_def, input$ld_gn_min, input$ld_gn_max, input$ld_last_n)
 
   # parse_player_ids(), ensure_player_ids_list() and
   # apply_local_lineup_filters() now live in helpers.R, shared with Tab 10.
@@ -353,7 +360,7 @@ server_tab2 <- function(input, output, session, shared) {
     auto_enabled(FALSE)
   }, ignoreInit = TRUE)
 
-  observeEvent(list(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_on_any(), ld_lineup_filter$players_off(),
+  observeEvent(list(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_on_any(), ld_lineup_filter$players_off(), ld_lineup_filter$players_on_any_min(),
                     input$ld_dates, input$main_tabs, input$ld_game_type, input$ld_opponents,
                     input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side,
                     input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode,
@@ -365,7 +372,7 @@ server_tab2 <- function(input, output, session, shared) {
     auto_enabled(TRUE)
   }, ignoreInit = TRUE)
 
-  observeEvent(list(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_on_any(), ld_lineup_filter$players_off(),
+  observeEvent(list(input$ld_num, ld_lineup_filter$team(), ld_lineup_filter$players_on(), ld_lineup_filter$players_on_any(), ld_lineup_filter$players_off(), ld_lineup_filter$players_on_any_min(),
                     input$ld_dates, input$main_tabs, input$ld_game_type, input$ld_opponents,
                     input$ld_home_away, input$ld_outcome, input$ld_opp_rank_side,
                     input$ld_opp_rank_n, input$ld_opp_rank_metric, input$ld_view_mode,
@@ -900,11 +907,12 @@ server_tab2 <- function(input, output, session, shared) {
       players_on_value = ld_lineup_filter$players_on(),
       players_on_any_value = ld_lineup_filter$players_on_any(),
       players_off_value = ld_lineup_filter$players_off(),
+      players_on_any_min_value = ld_lineup_filter$players_on_any_min(),
       input_ids = list(
         teams = "ld_lineup_filter-team",
-        players_on = "ld_lineup_filter-players_on",
-        players_on_any = "ld_lineup_filter-players_on_any",
-        players_off = "ld_lineup_filter-players_off"
+        players_on = "ld_lineup_filter-chips",
+        players_on_any = "ld_lineup_filter-chips",
+        players_off = "ld_lineup_filter-chips"
       ),
       extra_children = stat_filter_chips_ui("ld", ld_stat_filter_state, ld_stat_filter_cols)
     )

@@ -54,8 +54,11 @@ test_that("nonstandard filter ids are wired to their real controls", {
     expect_true(grepl(id, tab2, fixed = TRUE), info = id)
   }
   expect_true(grepl('input_ids = list(teams = "gl_team")', tab4, fixed = TRUE))
-  for (id in c("euro_ld_filter-team", "euro_ld_filter-players_on",
-               "euro_ld_filter-players_off")) {
+  # The module is namespaced "euro_ld_lineup_filter"; the player chips focus
+  # the chip roster, since the boxes behind it are hidden.
+  for (id in c('teams = "euro_ld_lineup_filter-team"',
+               'players_on = "euro_ld_lineup_filter-chips"',
+               'players_off = "euro_ld_lineup_filter-chips"')) {
     expect_true(grepl(id, tab10, fixed = TRUE), info = id)
   }
 

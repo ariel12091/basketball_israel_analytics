@@ -1429,13 +1429,26 @@ parse_required_ids <- function(x) {
   vals[!is.na(vals)]
 }
 
+# The "at least k of" count arrives from a client input, so it is parsed and
+# clamped rather than trusted: anything unusable is 1 (the plain any-of), and
+# it never exceeds the group, so a count left over from a larger group can
+# never make the filter unsatisfiable.
+parse_any_min <- function(x, n_opt) {
+  k <- suppressWarnings(as.integer(x))
+  if (length(k) != 1L || is.na(k) || k < 1L) k <- 1L
+  max(1L, min(k, as.integer(n_opt)))
+}
+
 # TRUE for each lineup satisfying the required/optional split of on_ids.
-lineup_on_predicate <- function(players_list, on_ids, required_ids) {
+# any_min is how many of the optional players must be on together ("at least
+# 2 of these 3"); the default 1 is the plain "at least one of".
+lineup_on_predicate <- function(players_list, on_ids, required_ids, any_min = 1L) {
   req <- if (is.null(required_ids)) on_ids else intersect(on_ids, required_ids)
   opt <- setdiff(on_ids, req)
+  k <- parse_any_min(any_min, length(opt))
   vapply(
     players_list,
-    function(x) all(req %in% x) && (!length(opt) || any(opt %in% x)),
+    function(x) all(req %in% x) && (!length(opt) || sum(opt %in% x) >= k),
     logical(1)
   )
 }
@@ -1461,7 +1474,8 @@ apply_local_lineup_filters <- function(df, p) {
   if (!is.na(p$player_csv) && nzchar(p$player_csv)) {
     on_ids <- as.integer(strsplit(p$player_csv, ",")[[1]])
     keep <- lineup_on_predicate(
-      df$player_ids_list, on_ids, parse_required_ids(p$player_required_csv)
+      df$player_ids_list, on_ids, parse_required_ids(p$player_required_csv),
+      p$player_any_min
     )
     df <- df[keep, , drop = FALSE]
   }

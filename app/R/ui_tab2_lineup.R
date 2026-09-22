@@ -34,6 +34,7 @@ ui_tab2_lineup <- function() tabPanel(
           tags$hr(),
           lineup_player_filter_ui(
             "ld_lineup_filter",
+            layout = "chips",
             team_label = "Team",
             team_help = "Pick a team to enable player filtering.",
             team_placeholder = "All teams",
