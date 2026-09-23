@@ -360,6 +360,9 @@ def main() -> None:
                     help="reuse existing cached payloads and skip provider requests")
     ap.add_argument("--allow-missing-inputs", action="store_true",
                     help="skip missing cached PBP files when using --skip-fetch")
+    ap.add_argument("--keep-raw", action="store_true",
+                    help="keep actions_raw rows after a clean verification "
+                         "(default: delete them; see purge_verified_raw)")
     ap.add_argument("--collect-workers", type=int, default=2)
     ap.add_argument("--stage-workers", type=int, default=2)
     ap.add_argument("--throttle", type=float, default=0.75)
@@ -473,7 +476,44 @@ def main() -> None:
 
     failures = verify(args.competition, args.season, verify_codes)
     print(f"\n{'ALL CHECKS PASSED' if not failures else f'{failures} CHECK(S) FAILED'}")
+    if not failures and not args.keep_raw:
+        purge_verified_raw(args.competition, args.season, verify_codes)
     raise SystemExit(1 if failures else 0)
+
+
+def purge_verified_raw(competition: str, season: int, gamecodes: list[int]) -> None:
+    """Delete the raw PBP rows of games that have just passed verification.
+
+    Only reached when every check passed, so each game's canonical `actions`
+    has been proven to reproduce its raw events and all 22 package fields
+    exactly. Nothing reads actions_raw, and the provider data stays
+    re-fetchable through the package. A failed load keeps its raw rows for
+    investigation.
+    """
+    from euroleague_possessions.postgres_backend import connect_from_env_file
+
+    conn = connect_from_env_file(REPO.parent / "etl" / ".Renviron")
+    try:
+        cur = conn.cursor()
+        # Before migration 055, actions -> actions_raw was ON DELETE CASCADE:
+        # this DELETE would have taken the canonical actions with it.
+        cur.execute(
+            "SELECT count(*) FROM pg_constraint "
+            "WHERE contype = 'f' AND confrelid = 'euroleague.actions_raw'::regclass"
+        )
+        if cur.fetchone()[0]:
+            print("raw PBP kept: a foreign key still references actions_raw "
+                  "(apply migration 055 first)")
+            return
+        cur.execute(
+            "DELETE FROM euroleague.actions_raw ar USING euroleague.schedule s "
+            "WHERE ar.game_id = s.game_id AND s.competition = %s "
+            "AND s.season = %s AND s.gamecode = ANY(%s)",
+            (competition, season, gamecodes),
+        )
+        print(f"purged {cur.rowcount} verified raw PBP rows for {len(gamecodes)} games")
+    finally:
+        conn.close()
 
 
 if __name__ == "__main__":

@@ -423,10 +423,10 @@ schedule endpoint.
   - A new load still writes raw rows (the publication transaction checks
     raw count = canonical count), and verification runs the raw-vs-canonical
     checks on the requested games that still hold raw rows, printing how many.
-    **The loader does not yet delete them after a clean verification**, so
-    they accumulate at ~0.5 MB/game until `reclaim_storage.ps1 -Apply` is run
-    again (it re-checks, backs up and truncates; a same-day rerun overwrites
-    that day's file).
+    **When every check passes, `load_games.py --execute` then deletes those
+    games' raw rows** (`purge_verified_raw`; pass `--keep-raw` to keep them).
+    A failed load keeps its raw rows for investigation. The purge refuses to
+    run if any foreign key references `actions_raw` again.
   - `probe_batched_publish.py` compares `actions_raw` before/after a
     republish, and data-quality check `L_raw_pbp_duplicate_play_numbers` reads
     it; both only see games whose raw rows have not been reclaimed.
