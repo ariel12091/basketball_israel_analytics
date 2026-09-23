@@ -1,6 +1,6 @@
 name: EuroLeague weekly load
 
-# Loads every EuroLeague game that the provider lists as played and that is not
+# Loads every EuroLeague and EuroCup game that the provider lists as played and that is not
 # yet in euroleague.schedule, for the current provider season (2026 = 2026-27).
 # Insert-only: existing games are never requested, so nothing already loaded is
 # republished. Writes only the `euroleague` schema; the Israeli nightly ETL
@@ -16,7 +16,7 @@ on:
       competitions:
         description: "Comma-separated provider competitions: E=EuroLeague, U=EuroCup"
         required: false
-        default: "E"
+        default: "E,U"
       season:
         description: "Provider season (2026 = 2026-27). Empty = current season."
         required: false
@@ -43,7 +43,7 @@ jobs:
       run:
         working-directory: euroleague
     env:
-      COMPETITIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.competitions || 'E' }}
+      COMPETITIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.competitions || 'E,U' }}
       SEASON: ${{ github.event_name == 'workflow_dispatch' && inputs.season || '' }}
       EXECUTE: ${{ github.event_name != 'workflow_dispatch' || inputs.execute }}
       PYTHONUNBUFFERED: "1"
