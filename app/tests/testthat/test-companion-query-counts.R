@@ -176,6 +176,7 @@ make_euro_query_test_env <- function() {
         def_fgm = c(30L, 32L), def_fg3m = c(8L, 9L),
         round_number = c(1L, 2L), phase = c("RS", "RS"),
         game_date = as.Date(c("2025-10-01", "2025-10-08")),
+        minutes = c(40, 40),
         opp_team_id = c(2L, 3L), is_home = c(TRUE, FALSE),
         has_won = c(TRUE, TRUE), team_points = c(90L, 100L),
         opp_points = c(85L, 95L), team_name = c("Team A", "Team A"),

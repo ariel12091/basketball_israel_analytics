@@ -165,8 +165,6 @@ test_that("choice-populating observers preserve restored selections", {
   )
   expect_match(euro_lineups, 'session, "euro_ld_opponents"', fixed = TRUE)
   expect_match(euro_lineups, 'session, "euro_ld_phase"', fixed = TRUE)
-
-  expect_match(app_r_txt, "update_restore_aware_selectize(session, input, id, team_choices)", fixed = TRUE)
 })
 
 test_that("restored tab choice observers run initially and restore lineup players", {

@@ -46,6 +46,25 @@ test_that("team hub resolves its default before the selector round trip", {
   })
 })
 
+test_that("team hub accepts reader versions only after the render flush", {
+  hub_r <- read_repo_txt("R", "mod_team_hub.R")
+  helper_start <- regexpr(
+    "accept_data_version_after_flush <- function",
+    hub_r,
+    fixed = TRUE
+  )[[1L]]
+  dashboard_start <- regexpr("hub_dashboard_df <- reactive", hub_r, fixed = TRUE)[[1L]]
+  helper <- substring(hub_r, helper_start, dashboard_start - 1L)
+
+  expect_match(helper, "session$onFlushed", fixed = TRUE)
+  expect_match(helper, "once = TRUE", fixed = TRUE)
+  expect_false(grepl(
+    "accept_data_version(version)",
+    substring(hub_r, dashboard_start, regexpr("hub_ratings_df <- reactive", hub_r, fixed = TRUE)[[1L]] - 1L),
+    fixed = TRUE
+  ))
+})
+
 test_that("team hub keeps the resolved team in sync with manual selection", {
   shared <- make_shared()
 

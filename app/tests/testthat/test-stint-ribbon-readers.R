@@ -419,7 +419,7 @@ RIBBON_LEAGUES <- list(
              WHERE game_year = 2026 ORDER BY game_id LIMIT %d",
     minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
                FROM basketball_test.player_four_factors_by_game
-               WHERE game_id = $1 AND team_id = $2
+               WHERE game_id = ?game_id AND team_id = ?team_id
                  AND is_on_key = 1 AND type_lineup = 'offense'
                GROUP BY player_id"),
   euroleague = list(
@@ -427,7 +427,7 @@ RIBBON_LEAGUES <- list(
              FROM euroleague.final_schedule ORDER BY game_id DESC LIMIT %d",
     minutes = "SELECT player_id::text AS player_key, SUM(minutes) AS mv_min
                FROM euroleague.player_four_factors_by_game
-               WHERE game_id = $1 AND team_id = $2
+               WHERE game_id = ?game_id AND team_id = ?team_id
                  AND is_on_key = 1 AND type_lineup = 'offense'
                GROUP BY player_id")
 )
@@ -440,10 +440,28 @@ ribbon_db_con <- function() {
     connect_timeout = 15L, bigint = "numeric")
 }
 
+# Supabase's transaction pooler does not guarantee that an unnamed prepared
+# statement survives onto the backend used by the next bind. Interpolate the
+# two trusted numeric fixtures client-side so these live checks test the query
+# result rather than backend affinity.
+ribbon_fixture_sql <- function(con, league, game_id, team_id) {
+  sql <- ribbon_sql_for(league)
+  sql <- gsub("$1", "?game_id", sql, fixed = TRUE)
+  sql <- gsub("$2", "?team_id", sql, fixed = TRUE)
+  DBI::sqlInterpolate(
+    con,
+    sql,
+    game_id = game_id,
+    team_id = team_id
+  )
+}
+
 # Run the real query and rebuild what the builder would draw.
 ribbon_fixture <- function(con, league, game_id, team_id) {
-  row <- DBI::dbGetQuery(con, ribbon_sql_for(league),
-                         params = list(game_id, team_id))
+  row <- DBI::dbGetQuery(
+    con,
+    ribbon_fixture_sql(con, league, game_id, team_id)
+  )
   lanes_raw <- jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
   marg_raw <- jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
   steps <- data.frame(elapsed = as.numeric(marg_raw$elapsed),
@@ -461,8 +479,10 @@ ribbon_fixture <- function(con, league, game_id, team_id) {
 # of this file need the rows those bars were merged FROM, so this stops short
 # of merge_adjacent_stints() and of the side flip.
 ribbon_raw_fixture <- function(con, league, game_id, team_id) {
-  row <- DBI::dbGetQuery(con, ribbon_sql_for(league),
-                         params = list(game_id, team_id))
+  row <- DBI::dbGetQuery(
+    con,
+    ribbon_fixture_sql(con, league, game_id, team_id)
+  )
   lanes_raw <- jsonlite::fromJSON(row$lanes[1], simplifyDataFrame = TRUE)
   marg_raw <- jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
   list(lanes = ribbon_normalise_lanes(lanes_raw, team_id),
@@ -493,8 +513,13 @@ test_that("ribbon floor time equals the app's published per-game minutes", {
       tot <- ribbon_player_totals(fx$lanes)
       tot <- tot[tot$side == "own", , drop = FALSE]
 
-      mv <- DBI::dbGetQuery(con, cfg$minutes,
-                            params = list(games$game_id[i], games$team_id[i]))
+      minutes_sql <- DBI::sqlInterpolate(
+        con,
+        cfg$minutes,
+        game_id = games$game_id[[i]],
+        team_id = games$team_id[[i]]
+      )
+      mv <- DBI::dbGetQuery(con, minutes_sql)
 
       both <- merge(tot, mv, by = "player_key")
       # info = so a failure names the league and game rather than just a row.

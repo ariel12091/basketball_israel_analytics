@@ -43,6 +43,7 @@ jobs:
             any::testthat
             any::shiny
             any::dplyr
+            any::dbplyr
             any::DT
             any::bslib
             any::purrr
@@ -96,6 +97,7 @@ jobs:
             any::testthat
             any::shiny
             any::dplyr
+            any::dbplyr
             any::DT
             any::bslib
             any::purrr
