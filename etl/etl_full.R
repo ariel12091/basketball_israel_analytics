@@ -1170,19 +1170,54 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             pff_elapsed
           ))
 
+          # lineup_four_factors_by_game is rebuilt for every game above, while
+          # team_metrics_by_game_mv is normally refreshed only for this run's
+          # games. Include any historical rows whose published minutes no
+          # longer match the rebuilt canonical fact so offline corrections do
+          # not leave the downstream table stale indefinitely.
+          stale_tm_ids <- DBI::dbGetQuery(pg, "
+            WITH canonical AS (
+              SELECT
+                game_year,
+                game_id,
+                team_id,
+                round(sum(minutes)::numeric, 1) AS canonical_minutes
+              FROM lineup_four_factors_by_game
+              GROUP BY game_year, game_id, team_id
+            )
+            SELECT DISTINCT tm.game_id
+            FROM team_metrics_by_game_mv tm
+            JOIN canonical c USING (game_year, game_id, team_id)
+            WHERE tm.off_minutes IS DISTINCT FROM c.canonical_minutes
+               OR tm.def_minutes IS DISTINCT FROM c.canonical_minutes
+          ")$game_id
+          tm_refresh_ids <- sort(unique(c(
+            as.integer(processed_ids),
+            as.integer(stale_tm_ids)
+          )))
+          recovered_tm_ids <- setdiff(tm_refresh_ids, as.integer(processed_ids))
+          if (length(recovered_tm_ids)) {
+            log_msg(sprintf(
+              "  [INC] team_metrics_by_game_mv found %d stale historical game(s): %s",
+              length(recovered_tm_ids),
+              paste(recovered_tm_ids, collapse = ", ")
+            ), "WARN")
+          }
+          tm_ids_csv <- paste(tm_refresh_ids, collapse = ",")
+
           tm_t0 <- proc.time()
           tm_touch <- DBI::dbGetQuery(
             pg,
             sprintf(
               "SELECT refresh_team_metrics_by_game_for_games(ARRAY[%s]::int4[]) AS n",
-              ids_csv
+              tm_ids_csv
             )
           )$n[[1]]
           tm_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM team_metrics_by_game_mv")$n[[1]]
           tm_elapsed <- (proc.time() - tm_t0)["elapsed"]
           log_msg(sprintf(
             "  [INC] team_metrics_by_game_mv refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
-            length(processed_ids),
+            length(tm_refresh_ids),
             format(as.integer(tm_touch), big.mark = ","),
             format(as.integer(tm_cnt), big.mark = ","),
             tm_elapsed
