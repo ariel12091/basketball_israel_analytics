@@ -197,12 +197,28 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
         check(f"requested games have {label}", mine == 0,
               f"{mine} missing (schema-wide: {schema_wide})")
 
+    # Raw evidence is deleted once a game verifies (purge_verified_raw), so the
+    # two raw-vs-canonical checks run on the requested games that still hold
+    # raw rows. Right after a publish that is every requested game: the
+    # publication transaction itself refuses a game whose raw and canonical
+    # counts differ.
+    raw_games = q(
+        "SELECT s.game_id FROM euroleague.schedule s "
+        "WHERE s.competition=%s AND s.season=%s AND s.gamecode = ANY(%s) "
+        "AND EXISTS (SELECT 1 FROM euroleague.actions_raw ar WHERE ar.game_id = s.game_id)",
+        (competition, season, gamecodes),
+    )
+    raw_game_ids = [r[0] for r in raw_games]
+    print(f"        raw PBP evidence present for {len(raw_game_ids)}/{len(gamecodes)} requested games")
+
     canonical_missing = q(
         "SELECT count(*) FROM euroleague.actions_raw ar "
         "FULL JOIN euroleague.actions a "
         "  ON a.game_id=ar.game_id "
         " AND a.source_event_order=ar.source_event_order "
-        "WHERE ar.game_id IS NULL OR a.game_id IS NULL"
+        "WHERE (ar.game_id IS NULL OR a.game_id IS NULL) "
+        "  AND coalesce(a.game_id, ar.game_id) = ANY(%s)",
+        (raw_game_ids,),
     )[0][0]
     check(
         "canonical actions cover raw PBP exactly",
@@ -215,7 +231,7 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
         "JOIN euroleague.actions_raw ar "
         "  ON ar.game_id=a.game_id "
         " AND ar.source_event_order=a.source_event_order "
-        "WHERE jsonb_build_object("
+        "WHERE a.game_id = ANY(%s) AND jsonb_build_object("
         " 'Season',a.season, 'Gamecode',a.gamecode, "
         " 'TYPE',a.provider_event_type, 'NUMBEROFPLAY',a.provider_play_number, "
         " 'CODETEAM',a.provider_team_code, 'PLAYER_ID',a.provider_player_id, "
@@ -227,7 +243,8 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
         " 'Lineup_A',a.lineup_a, 'Lineup_B',a.lineup_b, "
         " 'IsHomeTeam',a.is_home_team, "
         " 'validate_on_court_player',a.validate_on_court_player"
-        ") IS DISTINCT FROM ar.raw_event"
+        ") IS DISTINCT FROM ar.raw_event",
+        (raw_game_ids,),
     )[0][0]
     check(
         "all package fields match canonical columns",

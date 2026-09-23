@@ -410,8 +410,26 @@ schedule endpoint.
   single competition: run the workflow manually with `season` / `competitions`.
   Its verification scopes the per-game analytics checks to the games it
   loaded; the four known-broken games are reported only as a schema-wide count.
-- **No cold storage.** Unlike the Israeli ETL, nothing is truncated or exported
-  to Parquet after a run. Everything stays hot.
+- **`actions_raw` is empty by design (since 2026-09-23).** Nothing reads it,
+  and verification proves per game that canonical `actions` reproduces every
+  raw event and all 22 package fields exactly. Migration 055 removed the two
+  foreign keys into it (`actions -> actions_raw` was `ON DELETE CASCADE`), and
+  `scripts/reclaim_storage.ps1` backed all 337,501 rows up to
+  `data/exports/actions_raw_2026-09-23.parquet` (13.5 MB, local and
+  gitignored; the provider data is re-fetchable through the package) and
+  truncated it. Migration 056 dropped two redundant covering indexes on
+  `player_stats_actions_by_game`. Schema: 2,089 MB -> 1,662 MB, 3.5 -> 2.8 MB
+  per game.
+  - A new load still writes raw rows (the publication transaction checks
+    raw count = canonical count), and verification runs the raw-vs-canonical
+    checks on the requested games that still hold raw rows, printing how many.
+    **The loader does not yet delete them after a clean verification**, so
+    they accumulate at ~0.5 MB/game until `reclaim_storage.ps1 -Apply` is run
+    again (it re-checks, backs up and truncates; a same-day rerun overwrites
+    that day's file).
+  - `probe_batched_publish.py` compares `actions_raw` before/after a
+    republish, and data-quality check `L_raw_pbp_duplicate_play_numbers` reads
+    it; both only see games whose raw rows have not been reclaimed.
 
 ## Migration 045 (Tab 8 query shape) - applied 2026-08-29
 

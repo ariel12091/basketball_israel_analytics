@@ -13,6 +13,10 @@ dependencies = [
   "psycopg[binary]==3.2.9",
 ]
 
+[project.optional-dependencies]
+# Parquet export of raw evidence (the Israeli cold-storage format).
+archive = ["pyarrow>=15"]
+
 [project.scripts]
 euroleague-possessions = "euroleague_possessions.cli:main"
 euroleague-boxscores = "euroleague_possessions.boxscore_collector:main"
