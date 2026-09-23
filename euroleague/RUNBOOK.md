@@ -430,6 +430,24 @@ schedule endpoint.
   - `probe_batched_publish.py` compares `actions_raw` before/after a
     republish, and data-quality check `L_raw_pbp_duplicate_play_numbers` reads
     it; both only see games whose raw rows have not been reclaimed.
+- **Storage backlog -- do only if disk space is needed.** Sized 2026-09-23,
+  not started:
+  1. *Trim `action_team_context_actions` (~125 MB, ~0.2 MB/game).* 8 of its
+     44 columns (~193 of 482 bytes/row) have no reader in any function or view:
+     `opp_lineup` (proven equal to the opponent row's `own_lineup` on all
+     670,262 rows, 0 exceptions), `play_info`, `parent_play_type`,
+     `final_end_poss`, `endpoint_reason` (its DQ check reads `actions`),
+     `derived_at`, `synthetic_ft_trip_id` (also on `actions`) and
+     `ft_reverse_order`. Only `run_euro_data_quality_report.R` reads three of
+     them: repoint the lineup-size check to `own_lineup` on both teams' rows and
+     the FT-trip check to `actions`. Steps: stop
+     `refresh_actions_consumer_candidates` writing them (same signature keeps
+     grants), `DROP COLUMN`, prove downstream facts identical in a rolled-back
+     refresh, then `VACUUM FULL` off-hours (locks the table ~1 min, including
+     `ribbon_margin_v` reads).
+  2. *Merge it with `player_stats_actions_by_game`* (same 670k-row grain).
+     Not recommended: migration 032 made the latter a deliberately narrow
+     copy (275 vs 482 bytes/row) so clutch readers scan less.
 
 ## Migration 045 (Tab 8 query shape) - applied 2026-08-29
 
