@@ -592,6 +592,7 @@ server_tab2 <- function(input, output, session, shared) {
         def_tov_pct = ifelse(def_poss > 0, round(coalesce(def_tov, 0) / def_poss * 100, 1), NA_real_),
         def_ftr = ifelse(coalesce(def_fga, 0) > 0, round(coalesce(def_fta, 0) / def_fga * 100, 1), NA_real_),
         net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1),
+        plus_minus = off_pts - def_pts,
         minutes = round(coalesce(off_mins, 0), 1)
       )
 
@@ -604,7 +605,7 @@ server_tab2 <- function(input, output, session, shared) {
         gn, game_date, opp_team_name, result, score_display,
         off_ppp, off_efg, off_oreb_pct, off_tov_pct, off_ftr, off_poss,
         def_ppp, def_efg, def_oreb_pct, def_tov_pct, def_ftr, def_poss,
-        minutes
+        minutes, off_pts, def_pts, plus_minus
       )
 
       output$ld_modal_table <- DT::renderDataTable({
@@ -633,7 +634,7 @@ server_tab2 <- function(input, output, session, shared) {
             th(class = "group-head", colspan = 5, ""),
             th(class = "group-head section-left-border", colspan = 6, "Offense"),
             th(class = "group-head section-left-border", colspan = 6, "Defense"),
-            th(class = "group-head section-left-border", colspan = 1, "")
+            th(class = "group-head section-left-border", colspan = 4, "")
           ),
           tr(
             th(class = "sub-head", "GN"),
@@ -653,7 +654,10 @@ server_tab2 <- function(input, output, session, shared) {
             th(class = "sub-head", "TOV%"),
             th(class = "sub-head", "FTR"),
             th(class = "sub-head", "Poss"),
-            th(class = "sub-head section-left-border", "Min")
+            th(class = "sub-head section-left-border", "Min"),
+            th(class = "sub-head", "Off Pts"),
+            th(class = "sub-head", "Def Pts"),
+            th(class = "sub-head", "+/-")
           )
         )))
 
@@ -674,7 +678,7 @@ server_tab2 <- function(input, output, session, shared) {
         if (length(rate_cols_ff)) dt_ff <- DT::formatRound(dt_ff, rate_cols_ff, 1)
         if (length(ppp_cols_ff))  dt_ff <- DT::formatRound(dt_ff, ppp_cols_ff, 1)
         dt_ff <- DT::formatRound(dt_ff, "minutes", 1)
-        dt_ff <- DT::formatCurrency(dt_ff, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
+        dt_ff <- DT::formatCurrency(dt_ff, c("off_poss", "def_poss", "off_pts", "def_pts", "plus_minus"), currency = "", interval = 3, mark = ",", digits = 0)
         dt_ff
       })
 
@@ -716,6 +720,7 @@ server_tab2 <- function(input, output, session, shared) {
         off_ppp = ifelse(off_poss > 0, round(off_pts / off_poss * 100, 1), NA_real_),
         def_ppp = ifelse(def_poss > 0, round(def_pts / def_poss * 100, 1), NA_real_),
         net_rtg = round(coalesce(off_ppp, 0) - coalesce(def_ppp, 0), 1),
+        plus_minus = off_pts - def_pts,
         minutes = round(coalesce(off_mins, 0), 1)
       )
 
@@ -737,7 +742,7 @@ server_tab2 <- function(input, output, session, shared) {
         gn, game_date, opp_team_name, result, score_display,
         off_ppp, def_ppp, net_rtg,
         any_of(c("Off Shot", "Def Shot")),
-        off_poss, def_poss, minutes,
+        off_poss, def_poss, minutes, off_pts, def_pts, plus_minus,
         any_of(shot_raw_cols_m)
       )
 
@@ -856,7 +861,10 @@ server_tab2 <- function(input, output, session, shared) {
             if (has_shots_m) th(class = "sub-head", "Def Shot"),
             th(class = "sub-head section-left-border", "Off Poss"),
             th(class = "sub-head", "Def Poss"),
-            th(class = "sub-head", "Min")
+            th(class = "sub-head", "Min"),
+            th(class = "sub-head", "Off Pts"),
+            th(class = "sub-head", "Def Pts"),
+            th(class = "sub-head", "+/-")
           )
         )))
 
@@ -871,7 +879,7 @@ server_tab2 <- function(input, output, session, shared) {
                                 columnDefs = col_defs_m
                               ))
         dt_m <- DT::formatRound(dt_m, c("off_ppp", "def_ppp", "net_rtg", "minutes"), 1)
-        dt_m <- DT::formatCurrency(dt_m, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
+        dt_m <- DT::formatCurrency(dt_m, c("off_poss", "def_poss", "off_pts", "def_pts", "plus_minus"), currency = "", interval = 3, mark = ",", digits = 0)
         dt_m
       })
     }

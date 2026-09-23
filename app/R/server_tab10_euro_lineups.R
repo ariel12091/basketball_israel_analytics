@@ -697,6 +697,14 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
               sum(l.points)      FILTER (WHERE l.type_lineup = 'offense') AS off_pts,
               sum(l.possessions) FILTER (WHERE l.type_lineup = 'defense') AS def_poss,
               sum(l.points)      FILTER (WHERE l.type_lineup = 'defense') AS def_pts,
+              sum(l.fg2_made)    FILTER (WHERE l.type_lineup = 'offense') AS off_fg2m,
+              sum(l.fg2_att)     FILTER (WHERE l.type_lineup = 'offense') AS off_fg2a,
+              sum(l.fg3_made)    FILTER (WHERE l.type_lineup = 'offense') AS off_fg3m,
+              sum(l.fg3_att)     FILTER (WHERE l.type_lineup = 'offense') AS off_fg3a,
+              sum(l.fg2_made)    FILTER (WHERE l.type_lineup = 'defense') AS def_fg2m,
+              sum(l.fg2_att)     FILTER (WHERE l.type_lineup = 'defense') AS def_fg2a,
+              sum(l.fg3_made)    FILTER (WHERE l.type_lineup = 'defense') AS def_fg3m,
+              sum(l.fg3_att)     FILTER (WHERE l.type_lineup = 'defense') AS def_fg3a,
               round(sum(l.seconds) FILTER (WHERE l.type_lineup = 'offense') / 60.0, 1) AS minutes
          FROM euroleague.sub_lineups sl
          JOIN euroleague.lineup_totals_by_game l
@@ -723,19 +731,65 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
     rows$plus_minus <- as.numeric(rows$off_pts) - as.numeric(rows$def_pts)
     rows$total_poss <- as.numeric(rows$off_poss) + as.numeric(rows$def_poss)
     rows$venue <- ifelse(isTRUE(rows$is_home) | rows$is_home %in% TRUE, "H", "A")
+    rows[["Off Shot"]] <- rowSums(cbind(as.numeric(rows$off_fg2a), as.numeric(rows$off_fg3a)), na.rm = TRUE)
+    rows[["Def Shot"]] <- rowSums(cbind(as.numeric(rows$def_fg2a), as.numeric(rows$def_fg3a)), na.rm = TRUE)
+    shot_counts <- c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a",
+                     "def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
     show <- rows[, c("game_date", "round_number", "opp_team_name", "venue",
                      "minutes", "total_poss", "off_ppp", "def_ppp", "net",
-                     "off_poss", "def_poss", "off_pts", "def_pts", "plus_minus")]
+                     "Off Shot", "Def Shot", "off_poss", "def_poss",
+                     "off_pts", "def_pts", "plus_minus", shot_counts)]
     names(show) <- c("Date", "Rd", "Opponent", "H/A", "Min",
-                     "Total Poss", "Off PPP", "Def PPP", "Net", "Off Poss",
-                     "Def Poss", "Off Pts", "Def Pts", "+/-")
+                     "Total Poss", "Off PPP", "Def PPP", "Net", "Off Shot",
+                     "Def Shot", "Off Poss", "Def Poss", "Off Pts", "Def Pts",
+                     "+/-", shot_counts)
+
+    shot_render <- function(prefix, is_defense = FALSE) {
+      indices <- match(paste0(prefix, c("_fg2m", "_fg2a", "_fg3m", "_fg3a")), names(show)) - 1L
+      att2 <- sum(rows[[paste0(prefix, "_fg2a")]], na.rm = TRUE)
+      att3 <- sum(rows[[paste0(prefix, "_fg3a")]], na.rm = TRUE)
+      avg2 <- if (att2 > 0) round(100 * sum(rows[[paste0(prefix, "_fg2m")]], na.rm = TRUE) / att2) else 53
+      avg3 <- if (att3 > 0) round(100 * sum(rows[[paste0(prefix, "_fg3m")]], na.rm = TRUE) / att3) else 34
+      DT::JS(sprintf("function(data, type, row) {
+        if (type !== 'display' || !row) return data;
+        var m2 = Number(row[%d]) || 0, a2 = Number(row[%d]) || 0;
+        var m3 = Number(row[%d]) || 0, a3 = Number(row[%d]) || 0;
+        var total = a2 + a3;
+        if (!total) return '<div class=\"shot-acc-label\" style=\"color:#aaa;\">-</div>';
+        var p2 = a2 ? Math.round(100 * m2 / a2) : 0;
+        var p3 = a3 ? Math.round(100 * m3 / a3) : 0;
+        var f2 = Math.round(100 * a2 / total), f3 = 100 - f2;
+        var muted = total < 10, sign = %d;
+        function color(pct, avg) {
+          var d = Math.max(-1, Math.min(1, sign * (pct - avg) / avg * 3));
+          return d < 0 ? 'rgb(200,' + Math.round(200 + d * 120) + ',60)' :
+                         'rgb(' + Math.round(200 - d * 150) + ',170,60)';
+        }
+        var c2 = muted ? '#bbb' : color(p2, %d);
+        var c3 = muted ? '#bbb' : color(p3, %d);
+        return '<div class=\"shot-acc-label\">' +
+          '<span title=\"2PT accuracy: ' + p2 + '%% (' + m2 + '/' + a2 + ')\" style=\"color:' + c2 + ';font-weight:700;cursor:help;\">' + p2 + '%%</span>' +
+          ' <span style=\"opacity:0.3;\">|</span> ' +
+          '<span title=\"3PT accuracy: ' + p3 + '%% (' + m3 + '/' + a3 + ')\" style=\"color:' + c3 + ';font-weight:700;cursor:help;\">' + p3 + '%%</span></div>' +
+          '<div class=\"shot-bar-container\" style=\"' + (muted ? 'opacity:0.3;' : '') + '\">' +
+          '<div class=\"shot-bar-2pt\" title=\"2PT frequency: ' + f2 + '%% of FGA (' + a2 + '/' + total + ')\" style=\"width:' + f2 + '%%;cursor:help;\">' + f2 + '%%</div>' +
+          '<div class=\"shot-bar-3pt\" title=\"3PT frequency: ' + f3 + '%% of FGA (' + a3 + '/' + total + ')\" style=\"width:' + f3 + '%%;cursor:help;\">' + f3 + '%%</div></div>';
+      }", indices[1], indices[2], indices[3], indices[4],
+      if (is_defense) -1L else 1L, avg2, avg3))
+    }
+    shot_defs <- list(
+      list(targets = match("Off Shot", names(show)) - 1L, render = shot_render("off")),
+      list(targets = match("Def Shot", names(show)) - 1L, render = shot_render("def", TRUE)),
+      list(targets = match(shot_counts, names(show)) - 1L, visible = FALSE)
+    )
 
     showModal(modalDialog(
       title = "Lineup game log",
-      size = "l",
+      size = "xl",
       easyClose = TRUE,
       renderDT(datatable(show, rownames = FALSE,
-                         options = list(pageLength = 25, dom = "t", scrollX = TRUE)))
+                         options = list(pageLength = 25, dom = "t", scrollX = TRUE,
+                                        columnDefs = shot_defs)))
     ))
   })
 }
