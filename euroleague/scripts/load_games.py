@@ -302,13 +302,18 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     )
     print(f"        game_qa publication_status: {dict(qa)}")
 
+    # Tables and MVs only: pg_total_relation_size already includes their
+    # indexes and TOAST, so summing every pg_class row counted those twice.
+    # Per game is over every loaded game, not just this competition-season.
     size = q(
         """SELECT pg_size_pretty(sum(pg_total_relation_size(c.oid))),
-                  sum(pg_total_relation_size(c.oid))
+                  sum(pg_total_relation_size(c.oid)),
+                  (SELECT count(*) FROM euroleague.schedule)
              FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
-            WHERE n.nspname='euroleague'"""
+            WHERE n.nspname='euroleague' AND c.relkind IN ('r','m')"""
     )[0]
-    print(f"        euroleague schema: {size[0]} ({size[1]/max(loaded,1)/1024:.0f} kB/game)")
+    print(f"        euroleague schema: {size[0]} over {size[2]} games "
+          f"({size[1]/max(size[2],1)/1024:.0f} kB/game)")
 
     cur.close()
     conn.close()
