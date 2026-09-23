@@ -41,3 +41,6 @@ frontend-v2/server/tmp_*.R
 
 # git worktrees for isolated agent work
 .worktrees/
+
+# Isolated video prototype environment
+.venv-video/
