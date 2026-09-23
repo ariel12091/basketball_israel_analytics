@@ -401,7 +401,15 @@ schedule endpoint.
   nothing has validated that EuroCup box scores carry the `IsStarter` flags the
   lineup engine bootstraps from, or that its play-type vocabulary matches. Try
   one game before trusting a batch.
-- **No scheduling.** There is no cron/Task Scheduler entry; this is run by hand.
+- **Scheduling is EuroLeague-only and insert-only.** `.github/workflows/euroleague-weekly.yml`
+  runs `scripts/load_new_games.py --execute` every Saturday 05:00 UTC for
+  competition `E`, current provider season. It loads only gamecodes the
+  package results feed lists as played (tip-off 6h+ ago) and that are absent
+  from `euroleague.schedule`, so it never republishes a loaded game. It refuses
+  a backlog over 60 games (load that by hand, two-phase). EuroCup and other
+  seasons: run the workflow manually with `competitions` / `season` inputs.
+  Its verification scopes the per-game analytics checks to the games it
+  loaded; the four known-broken games are reported only as a schema-wide count.
 - **No cold storage.** Unlike the Israeli ETL, nothing is truncated or exported
   to Parquet after a run. Everything stays hot.
 

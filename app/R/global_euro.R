@@ -234,6 +234,11 @@ euro_navbar_season_ui <- function() {
 # Populate the EuroLeague season list from what is actually loaded. Called ONCE
 # from app.R -- if each tab did this they would fight over the same input.
 euro_init_season_inputs <- function(input, session, euro_context) {
+  # The navbar select is built with the static EURO_DEFAULT_SEASON, so on the
+  # first population that placeholder must not count as a choice -- otherwise a
+  # newly loaded season never becomes the default. Later calls keep whatever
+  # season the user picked.
+  populated <- FALSE
   observeEvent(input$league_select, {
     # Under the Israeli league the EuroLeague season select is hidden and its
     # choices are meaningless; leave them alone rather than rebuilding them.
@@ -244,7 +249,8 @@ euro_init_season_inputs <- function(input, session, euro_context) {
     restored <- restore_once_selection(
       session, "euro_game_year", character(0), choices
     )
-    current <- as.character(isolate(input$euro_game_year) %||% "")
+    current <- if (populated) as.character(isolate(input$euro_game_year) %||% "") else ""
+    populated <<- TRUE
     sel <- if (length(restored)) restored[[1]] else if (current %in% vals) current else vals[[1]]
     updateSelectInput(session, "euro_game_year",
                       choices = choices,

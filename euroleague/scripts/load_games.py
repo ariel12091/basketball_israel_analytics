@@ -180,19 +180,22 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     check("team four factors match player fact", ff_bad == 0, f"{ff_bad} disagreeing team-games")
 
     # Every published game needs team analytics, not just player analytics.
-    orphan = q(
-        "SELECT count(*) FROM euroleague.schedule s "
-        "WHERE NOT EXISTS (SELECT 1 FROM euroleague.team_four_factors_by_game f "
-        "                   WHERE f.game_id = s.game_id)"
-    )[0][0]
-    check("all games have team analytics", orphan == 0, f"{orphan} games missing")
-
-    orphan_fact = q(
-        "SELECT count(*) FROM euroleague.schedule s "
-        "WHERE NOT EXISTS (SELECT 1 FROM euroleague.action_team_context_actions a "
-        "                   WHERE a.game_id = s.game_id)"
-    )[0][0]
-    check("all games have the event fact", orphan_fact == 0, f"{orphan_fact} games missing")
+    # Asserted for the requested games only: the schema carries known-broken
+    # games (RUNBOOK "Known broken games") that would otherwise fail every
+    # load, so a new failure would be indistinguishable from the old ones. The
+    # schema-wide count is still printed.
+    for label, fact in (("team analytics", "team_four_factors_by_game"),
+                        ("the event fact", "action_team_context_actions")):
+        orphan_sql = (
+            "SELECT count(*) FILTER (WHERE s.competition=%s AND s.season=%s "
+            "                          AND s.gamecode = ANY(%s)), count(*) "
+            "FROM euroleague.schedule s "
+            f"WHERE NOT EXISTS (SELECT 1 FROM euroleague.{fact} f "
+            "                   WHERE f.game_id = s.game_id)"
+        )
+        mine, schema_wide = q(orphan_sql, (competition, season, gamecodes))[0]
+        check(f"requested games have {label}", mine == 0,
+              f"{mine} missing (schema-wide: {schema_wide})")
 
     canonical_missing = q(
         "SELECT count(*) FROM euroleague.actions_raw ar "

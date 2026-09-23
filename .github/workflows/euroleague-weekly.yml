@@ -1,0 +1,117 @@
+name: EuroLeague weekly load
+
+# Loads every EuroLeague game that the provider lists as played and that is not
+# yet in euroleague.schedule, for the current provider season (2026 = 2026-27).
+# Insert-only: existing games are never requested, so nothing already loaded is
+# republished. Writes only the `euroleague` schema; the Israeli nightly ETL
+# (etl-full.yml, 21:15 UTC) is untouched and never overlaps this slot.
+# See euroleague/scripts/load_new_games.py and euroleague/RUNBOOK.md.
+
+on:
+  schedule:
+    # Saturday 05:00 UTC: after the Tue-Fri rounds, clear of the Israeli nightly.
+    - cron: '0 5 * * 6'
+  workflow_dispatch:
+    inputs:
+      competitions:
+        description: "Comma-separated provider competitions: E=EuroLeague, U=EuroCup"
+        required: false
+        default: "E"
+      season:
+        description: "Provider season (2026 = 2026-27). Empty = current season."
+        required: false
+        default: ""
+      execute:
+        description: "Publish to the database. Off = collect + stage only."
+        required: false
+        type: boolean
+        default: true
+
+# One EuroLeague load at a time: the verifier reads the latest load run, and a
+# second publisher would race it.
+concurrency:
+  group: euroleague-load
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: euroleague
+    env:
+      COMPETITIONS: ${{ github.event_name == 'workflow_dispatch' && inputs.competitions || 'E' }}
+      SEASON: ${{ github.event_name == 'workflow_dispatch' && inputs.season || '' }}
+      EXECUTE: ${{ github.event_name != 'workflow_dispatch' || inputs.execute }}
+      PYTHONUNBUFFERED: "1"
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+          cache-dependency-path: euroleague/pyproject.toml
+
+      - name: Install loader
+        run: pip install -e .
+
+      # The loader reads credentials from etl/.Renviron (gitignored) and always
+      # connects on the direct port 5432, whatever PG_PORT says.
+      - name: Write database credentials
+        env:
+          PG_HOST: ${{ secrets.PG_HOST }}
+          PG_DB: ${{ secrets.PG_DB }}
+          PG_USER: ${{ secrets.PG_USER }}
+          PG_PASS: ${{ secrets.PG_PASS }}
+          PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+        run: |
+          for v in PG_HOST PG_DB PG_USER PG_PASS; do
+            [ -n "${!v}" ] || { echo "missing secret $v"; exit 1; }
+          done
+          umask 077
+          {
+            echo "PG_HOST=$PG_HOST"
+            echo "PG_DB=$PG_DB"
+            echo "PG_USER=$PG_USER"
+            echo "PG_PASS=$PG_PASS"
+            echo "PG_SSLMODE=${PG_SSLMODE:-require}"
+          } > ../etl/.Renviron
+
+      - name: Load new games
+        run: |
+          mkdir -p logs
+          status=0
+          for comp in ${COMPETITIONS//,/ }; do
+            args=(--competition "$comp")
+            [ -n "$SEASON" ] && args+=(--season "$SEASON")
+            [ "$EXECUTE" = "true" ] && args+=(--execute)
+            echo "::group::competition $comp"
+            python scripts/load_new_games.py "${args[@]}" 2>&1 | tee "logs/load_${comp}.log"
+            rc=${PIPESTATUS[0]}
+            echo "::endgroup::"
+            {
+              echo "### $comp: exit $rc"
+              echo '```'
+              grep -E "^competition=|^new gamecodes|nothing to load|PASS|FAIL|CHECKS? |exceeds" "logs/load_${comp}.log" || true
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            [ "$rc" -eq 0 ] || status=1
+          done
+          exit $status
+
+      - name: Upload load logs
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: euroleague-load-${{ github.run_id }}
+          path: euroleague/logs/load_*.log
+          if-no-files-found: ignore
+
+      - name: Remove credentials
+        if: ${{ always() }}
+        run: rm -f ../etl/.Renviron
