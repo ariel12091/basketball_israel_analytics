@@ -401,11 +401,23 @@ schedule endpoint.
   nothing has validated that EuroCup box scores carry the `IsStarter` flags the
   lineup engine bootstraps from, or that its play-type vocabulary matches. Try
   one game before trusting a batch.
-- **Scheduling is weekly and insert-only.** `.github/workflows/euroleague-weekly.yml`
-  runs `scripts/load_new_games.py --execute` every Saturday 05:00 UTC for
-  competitions `E` then `U`, current provider season. It loads only gamecodes the
-  package results feed lists as played (tip-off 6h+ ago) and that are absent
-  from `euroleague.schedule`, so it never republishes a loaded game. It refuses
+- **Games load ~3 hours after tip-off, insert-only.**
+  `.github/workflows/euroleague-load.yml` runs
+  `scripts/load_new_games.py --execute` for competitions `E` then `U`, current
+  provider season, hourly at :23 from 18:23 to 23:23 UTC Tuesday-Friday (the
+  2026-27 fixture days; tip-offs 15:30-20:00 UTC), plus a daily 06:23 UTC
+  catch-up for skipped runs and playoff / Final Four games on other days.
+  Simulated over all 604 fixtures: loaded 3.1-3.9 h after tip-off, plus
+  GitHub's scheduling delay. It skips a run while the Israeli nightly
+  (`etl-full.yml`, which GitHub actually starts 23:00-00:10 UTC) is in
+  progress; the next run catches up. It loads only gamecodes the package
+  results feed lists as played, with tip-off 3h+ ago, and that are absent from
+  `euroleague.schedule`, so it never republishes a loaded game. The feed's
+  times are Central European (Europe/Paris), not UTC or venue-local --
+  `tipoff_utc()` converts them, checked exact against the provider's UTC for
+  all 402 E/2025 games. (`schedule_collector._parse_tipoff` still stores them
+  as if UTC, so `schedule.scheduled_at` reads 1-2 h late; dates are
+  unaffected.) Revisit the cron if a season's fixture days change. It refuses
   a backlog over 60 games (load that by hand, two-phase). Other seasons or a
   single competition: run the workflow manually with `season` / `competitions`.
   Its verification scopes the per-game analytics checks to the games it

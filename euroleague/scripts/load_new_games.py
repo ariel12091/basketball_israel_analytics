@@ -60,24 +60,39 @@ def played_gamecodes(competition: str, season: int) -> list[int]:
     return select_played(frame.to_dict("records"))
 
 
-# The package derives ``played`` with ``astype(bool)`` on the raw strings, so
-# "false" becomes True; the flag cannot tell a live game from a final one. The
-# feed does appear to list finished games only, but require the tip-off to be
-# well in the past as well. Provider times are local (CET/EET), so the margin
-# also absorbs the UTC offset.
-FINAL_AFTER = timedelta(hours=6)
+# A game is loaded this long after tip-off: about an hour after the final
+# buzzer. The package derives ``played`` with ``astype(bool)`` on the raw
+# strings, so "false" becomes True and the flag cannot tell a live game from a
+# final one; the feed appears to list finished games only, and this wait is the
+# guarantee.
+FINAL_AFTER = timedelta(hours=3)
+
+# The results feed's date/time are Central European time -- not UTC and not the
+# venue's clock (Dubai tips off at 20:00 local = 16:00 UTC, listed as 18:00).
+PROVIDER_TZ = "Europe/Paris"
+
+
+def tipoff_utc(date_str, time_str) -> datetime | None:
+    """Results-feed date + time as an aware UTC datetime; None if unparseable."""
+    import pandas as pd
+
+    if not isinstance(date_str, str) or not isinstance(time_str, str):
+        return None
+    try:
+        local = datetime.strptime(f"{date_str.strip()} {time_str.strip()}", "%b %d, %Y %H:%M")
+    except ValueError:
+        return None
+    return pd.Timestamp(local).tz_localize(PROVIDER_TZ).tz_convert("UTC").to_pydatetime()
 
 
 def select_played(records: list[dict], now: datetime | None = None) -> list[int]:
-    from euroleague_possessions.schedule_collector import _parse_tipoff
-
     now = now or datetime.now(timezone.utc)
     out: set[int] = set()
     for r in records:
         if not bool(r.get("played")):
             continue
-        tipoff = _parse_tipoff(r.get("date"), r.get("time"))
-        if tipoff is None or datetime.fromisoformat(tipoff) + FINAL_AFTER > now:
+        tipoff = tipoff_utc(r.get("date"), r.get("time"))
+        if tipoff is None or tipoff + FINAL_AFTER > now:
             continue
         out.add(int(r["gameCode"]))
     return sorted(out)

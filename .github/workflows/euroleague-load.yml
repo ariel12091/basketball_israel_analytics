@@ -1,16 +1,22 @@
-name: EuroLeague weekly load
+name: EuroLeague load
 
-# Loads every EuroLeague and EuroCup game that the provider lists as played and that is not
-# yet in euroleague.schedule, for the current provider season (2026 = 2026-27).
+# Loads every EuroLeague and EuroCup game that the provider lists as played,
+# whose tip-off was at least 3 hours ago, and that is not yet in
+# euroleague.schedule, for the current provider season (2026 = 2026-27).
 # Insert-only: existing games are never requested, so nothing already loaded is
-# republished. Writes only the `euroleague` schema; the Israeli nightly ETL
-# (etl-full.yml, 21:15 UTC) is untouched and never overlaps this slot.
+# republished. Writes only the `euroleague` schema.
 # See euroleague/scripts/load_new_games.py and euroleague/RUNBOOK.md.
 
 on:
   schedule:
-    # Saturday 05:00 UTC: after the Tue-Fri rounds, clear of the Israeli nightly.
-    - cron: '0 5 * * 6'
+    # 2026-27 fixtures: EuroLeague Tue-Fri, EuroCup Tue-Wed (2 Thu), tip-offs
+    # 15:30-20:00 UTC, so games fall due 18:30-23:00 UTC. Hourly across that
+    # window picks each game up within ~1h of its 3-hour mark. :23 avoids the
+    # top-of-hour queue that delays GitHub's scheduled runs.
+    - cron: '23 18-23 * * 2-5'
+    # Daily catch-up: games whose evening run was skipped (Israeli ETL
+    # running) or delayed, and playoff / Final Four games on other weekdays.
+    - cron: '23 6 * * *'
   workflow_dispatch:
     inputs:
       competitions:
@@ -34,7 +40,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  # The Israeli nightly (etl-full.yml) is scheduled 21:15 UTC but GitHub has
+  # started it between 23:00 and 00:10 UTC -- inside this load window. Never run
+  # alongside it: skip, and the next hourly run (or the 06:23 catch-up) loads
+  # whatever this one would have.
+  israeli-etl-guard:
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    outputs:
+      busy: ${{ steps.check.outputs.busy }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          n=$(gh run list -R "$GITHUB_REPOSITORY" --workflow etl-full.yml -L 20 \
+                --json status -q '[.[] | select(.status != "completed")] | length')
+          echo "busy=$([ "$n" -gt 0 ] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+          if [ "$n" -gt 0 ]; then
+            echo "Israeli ETL has $n run(s) in progress or queued; skipping this load." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   load:
+    needs: israeli-etl-guard
+    if: needs.israeli-etl-guard.outputs.busy != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 120
     permissions:
