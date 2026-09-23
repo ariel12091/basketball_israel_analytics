@@ -9,7 +9,10 @@ ribbon_inline_ui <- function(prefix) {
       tags$button(type = "button", class = "ibpl-ribbon-inline-close",
                   `aria-label` = "Close gameflow", "Close")
     ),
-    div(class = "ibpl-ribbon-inline-loading", "Loading gameflow…"),
+    div(
+      class = "ibpl-ribbon-inline-loading",
+      paste0("Loading gameflow", intToUtf8(8230L))
+    ),
     uiOutput(paste0(prefix, "_ribbon_inline"))
   )
 }

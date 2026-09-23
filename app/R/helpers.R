@@ -3934,7 +3934,7 @@ ribbon_short_labels <- function(label, side) {
   clash <- key %in% key[first][duplicated(key[first])]
   initial <- ifelse(nzchar(given), paste0(substr(given, 1, 1), ". "), "")
   out <- ifelse(clash, paste0(initial, surname), surname)
-  ifelse(nchar(out) > 11, paste0(substr(out, 1, 10), "\u2026"), out)
+  ifelse(nchar(out) > 11, paste0(substr(out, 1, 10), intToUtf8(8230L)), out)
 }
 
 ribbon_clip_id <- function(id_prefix, side, player_key) {
