@@ -40,3 +40,16 @@ The local Team Ratings Traditional panel showed `Error: missing value where TRUE
 2. Verify hamburger and active submenu at a phone width and at iPad width for the EuroLeague view; verify desktop header has no regression.
 3. Investigate the separate Traditional data error if it also occurs live.
 4. Keep the emulator open for the user. The CSS/JS fix is local and needs deployment before the live app changes.
+
+## Review finalized (later on 2026-09-24)
+
+Verified against the **live** app (b3b0079 deployed), Chromium with iPad Pro 11 emulation (834x1194, touch):
+
+- Burger is the top hit target at its own centre; `#navbar_right_cluster` sits inside the collapse; body carries `ibpl-collapsed-nav`.
+- Burger -> Team Ratings shows Summary / Four Factors / Shot Profile / Traditional in flow as 48 px full-width rows. Tapping Traditional sets `tr_view_mode = Traditional` and the table renders with **no** output error; the local `tr_params` error did not reproduce live.
+- Remaining defect found: after picking a view the menu stayed open, covering ~55% of the iPad screen above the table. Fixed in `app/www/mobile.js`: in collapsed-nav mode a tap on a view row (`.thm-item`) or on a tab with no views (Home) closes the collapse; tapping a tab with views keeps it open so the view can be chosen. Capture-phase listener, because app.js stops propagation on `.thm-item`.
+- The fix was verified by injecting the same code into the live page: Team Ratings tap -> stays open; Four Factors / Traditional -> closes and switches view; Home -> closes; burger reopens. Phone (390 px): same. Desktop (1280 px): no `ibpl-collapsed-nav`, cluster still `position: fixed`, burger hidden.
+
+Filter sidebar squeeze (also fixed, same day): at 834 px the `col-sm-3` sidebar was ~203 px wide, clipping the date inputs and overflowing the Team/Opponent switch. `app/www/mobile.css` now applies the phone layout to the whole collapsed-nav range (<992 px): sidebar and main column stacked full width, the filter panel collapsed behind the tab's existing "Show Filters" button (overriding the R markup's `d-md-none` / `d-md-block`), the desktop "Filters" chip toggle hidden, and a desktop-saved `filters-collapsed` state no longer able to hide the column (it previously could on phones too, stranding Show Filters). Selectors key on the sidebarPanel `.well`, so Compare (untagged by app.js) is covered. Verified by injecting the CSS into the live page on iPad: table 786 px wide, panel hidden until Show Filters, then full width (date range 753 px); Compare stacks the same way; no horizontal page scroll; desktop 1280 px unchanged (sidebar beside table, Show Filters hidden, chip toggle shown).
+
+Known cosmetic, not tablet-specific: in views whose view-mode controls are hidden (e.g. Team Ratings Shot Profile) the well starts with a lone `<hr>`, leaving ~90 px of blank space above Show Filters.

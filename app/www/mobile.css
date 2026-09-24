@@ -150,6 +150,34 @@ body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
   border-top: 1px solid var(--ibpl-border);
 }
 
+/* ---- Filter sidebar below 992px: stacked, behind Show Filters ----
+   At iPad portrait width (768-991px) Bootstrap keeps the col-sm-3 sidebar
+   beside the table, squeezing every filter into ~200px (date inputs clipped,
+   the Team/Opponent switch overflowing). Use the phone layout there instead:
+   sidebar stacked full-width above a full-width table, its panel collapsed
+   behind the tab's own "Show Filters" button. The R markup hides that button
+   and forces the panel open from md (768px) up with d-md-none / d-md-block,
+   so both are overridden here rather than in ten ui_tab files. Matched on
+   the sidebarPanel's .well, not .ibpl-filter-col, because app.js does not
+   tag Compare's column. */
+body.ibpl-collapsed-nav .tab-pane .row > [class*="col-sm-"]:has(> .well),
+body.ibpl-collapsed-nav .tab-pane .row > [class*="col-sm-"]:has(> .well) + [class*="col-sm-"] {
+  flex: 0 0 100%;
+  max-width: 100%;
+  width: 100%;
+}
+body.ibpl-collapsed-nav .well [data-bs-target$="-filters"].d-md-none {
+  display: block !important;
+}
+body.ibpl-collapsed-nav .well .collapse.d-md-block:not(.show) {
+  display: none !important;
+}
+/* The desktop "Filters" chip toggle would be a second control for the same
+   panel, and a collapse state saved on desktop must not hide the column --
+   Show Filters lives inside it, so the filters would become unreachable. */
+body.ibpl-collapsed-nav .chips-filters-toggle { display: none; }
+body.ibpl-collapsed-nav.filters-collapsed .ibpl-filter-col { display: block; }
+
 /* ---- Filter panel: inline, never an overlay ----
    R2 in the 2026-09-13 rework brief removes the sheet transform this task
    used to apply to every "-filters" panel: "show filters should never be a

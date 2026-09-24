@@ -90,6 +90,33 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     relocateCluster(on);
   }
 
+  // The collapsed menu fills most of an iPad screen, so leave it open only
+  // while the user still has a choice to make. Tapping a tab keeps it open to
+  // show that tab's views; picking a view (or a tab with no views, i.e. Home)
+  // is the last step, so close it. Capture phase: app.js stops propagation
+  // on .thm-item.
+  function closeCollapsedNav() {
+    var collapse = document.querySelector(".navbar-collapse.show");
+    if (!collapse) return;
+    if (window.bootstrap && window.bootstrap.Collapse) {
+      window.bootstrap.Collapse.getOrCreateInstance(collapse, { toggle: false }).hide();
+    } else if (window.jQuery) {
+      window.jQuery(collapse).collapse("hide");
+    }
+  }
+
+  document.addEventListener("click", function (e) {
+    if (!document.body.classList.contains("ibpl-collapsed-nav")) return;
+    var t = e.target;
+    if (!t || !t.closest) return;
+    var done = t.closest(".navbar-collapse .tab-hover-menu .thm-item");
+    if (!done) {
+      var link = t.closest("#main_tabs .nav-link");
+      if (link && !link.closest(".tab-has-dropdown")) done = link;
+    }
+    if (done) closeCollapsedNav();
+  }, true);
+
   document.addEventListener("ibpl:mobilechange", sync);
   if (collapsedNavQuery) {
     if (collapsedNavQuery.addEventListener) {

@@ -168,8 +168,9 @@ test_that("promote() and the promoted-radio machinery are gone, not disabled", {
 test_that("the active tab's hover menu renders in the page flow instead of on hover", {
   css <- read_repo_txt("www", "mobile.css")
 
-  # Hidden by default (hover does not exist on touch)...
-  expect_true(grepl("body.ibpl-mobile .tab-hover-menu { display: none !important; }", css, fixed = TRUE))
+  # Hidden by default (hover does not exist on touch). Scoped to the collapsed
+  # navbar (<992px), not just phones: iPads get the burger menu too.
+  expect_true(grepl("body.ibpl-collapsed-nav .tab-hover-menu { display: none !important; }", css, fixed = TRUE))
   # ...then shown in-flow for whichever tab is actually active, however that
   # tab marks itself active (BS5 puts .active on the link itself; app.css
   # also defends the older .nav-item.active pattern).
