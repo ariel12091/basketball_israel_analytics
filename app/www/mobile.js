@@ -615,6 +615,27 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
    routed through this one.
    --------------------------------------------------------------------- */
 (function () {
+  // Phones, and any touch-primary screen at any width: an iPad has no
+  // hover, so th[title] and the [data-tooltip] bubble are unreachable there
+  // exactly as on a phone. A mouse keeps the hover tooltips at every width.
+  var TIPS_CLASS = "ibpl-touch-tips";
+  var tipsQuery = window.matchMedia && window.matchMedia(window.IBPL_MOBILE_MQ);
+  var touchQuery = window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)");
+  var tipsOn = null;
+
+  function syncTips() {
+    var on = !!((tipsQuery && tipsQuery.matches) || (touchQuery && touchQuery.matches));
+    if (on === tipsOn) return;
+    tipsOn = on;
+    document.body.classList.toggle(TIPS_CLASS, on);
+    if (on) {
+      addInfoMarks();
+    } else {
+      removeInfoMarks();
+      removeLabelStrips();
+    }
+  }
+
   function buildStrip(text, onClose) {
     var strip = document.createElement("div");
     strip.className = "ibpl-m-strip";
@@ -695,16 +716,24 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   // insert a sibling right after the tapped label -- no relocation, no
   // sheet, nothing to restore on desktop.
   function toggleLabelStrip(label, text) {
-    var next = label.nextElementSibling;
-    if (next && next.classList.contains("ibpl-m-strip")) {
-      next.parentNode.removeChild(next);
+    if (label.ibplStrip && label.ibplStrip.parentNode) {
+      label.ibplStrip.parentNode.removeChild(label.ibplStrip);
+      label.ibplStrip = null;
       return;
     }
     var strip = buildStrip(text, function () {
       if (strip.parentNode) strip.parentNode.removeChild(strip);
+      label.ibplStrip = null;
     });
     strip.className += " ibpl-m-label-strip ibpl-m-strip-open";
-    label.parentNode.insertBefore(strip, label.nextSibling);
+    // Two filters side by side (a .row of col-sm-6) leave each column ~130px
+    // in a landscape iPad sidebar, which wrapped the strip one word per line.
+    // There the strip goes below the whole row; a phone stacks those columns
+    // full width, so it keeps its place right after the label.
+    var col = label.closest(".row > [class*='col-']");
+    var anchor = col && col.getBoundingClientRect().width < 240 ? col.parentNode : label;
+    anchor.parentNode.insertBefore(strip, anchor.nextSibling);
+    label.ibplStrip = strip;
   }
 
   // Real bug, found live while verifying this fix: .ibpl-m-strip's CSS is
@@ -730,7 +759,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   // button itself carries no text node -- th.textContent below needs no
   // stripping to recover the plain column label.
   function addInfoMarks() {
-    if (!document.body.classList.contains("ibpl-mobile")) return;
+    if (!document.body.classList.contains(TIPS_CLASS)) return;
     var ths = document.querySelectorAll("table.dataTable thead th[title]");
     for (var i = 0; i < ths.length; i++) {
       if (ths[i].querySelector(".ibpl-m-th-info")) continue;
@@ -755,12 +784,13 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     var $ = window.jQuery;
 
     $(document).on("draw.dt", addInfoMarks);
-    document.addEventListener("ibpl:mobilechange", function (e) {
-      if (e.detail && e.detail.mobile) {
-        addInfoMarks();
-      } else {
-        removeInfoMarks();
-        removeLabelStrips();
+    syncTips();
+    [tipsQuery, touchQuery].forEach(function (q) {
+      if (!q) return;
+      if (q.addEventListener) {
+        q.addEventListener("change", syncTips);
+      } else if (q.addListener) {
+        q.addListener(syncTips);
       }
     });
 
@@ -800,7 +830,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     // either; verified live with an instrumented handler (e.isTrusted:
     // undefined, e.originalEvent.isTrusted: true, for the same tap).
     $(document).on("click", "[data-tooltip]", function (e) {
-      if (!document.body.classList.contains("ibpl-mobile")) return;
+      if (!document.body.classList.contains(TIPS_CLASS)) return;
       if (!e.originalEvent || !e.originalEvent.isTrusted) return;
       var tip = this.getAttribute("data-tooltip");
       if (!tip) return;
@@ -823,7 +853,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     // own popover toggle; its capture-phase handler lives with the rest of
     // that component below.)
     document.addEventListener("click", function (e) {
-      if (!document.body.classList.contains("ibpl-mobile")) return;
+      if (!document.body.classList.contains(TIPS_CLASS)) return;
       var $info = $(e.target).closest(".ibpl-m-th-info");
       if (!$info.length) return;
       var th = $info.get(0).parentNode;

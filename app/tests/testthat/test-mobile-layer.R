@@ -262,6 +262,24 @@ test_that("both tooltip mechanisms get a tap path", {
   expect_true(grepl("function toggleLabelStrip(", js, fixed = TRUE))
 })
 
+test_that("column and label explanations reach touch tablets, not just phones", {
+  js <- read_repo_txt("www", "mobile.js")
+  css <- read_repo_txt("www", "mobile.css")
+
+  # An iPad (834-1366px) is never ibpl-mobile, yet has no hover, so th[title]
+  # and the [data-tooltip] bubble were unreachable there. The explanation
+  # layer keys on its own class: phone width OR a touch-primary screen.
+  expect_true(grepl('var TIPS_CLASS = "ibpl-touch-tips";', js, fixed = TRUE))
+  expect_true(grepl("window.matchMedia(window.IBPL_MOBILE_MQ)", js, fixed = TRUE))
+  expect_true(grepl('"(hover: none) and (pointer: coarse)"', js, fixed = TRUE))
+  expect_true(grepl("classList.contains(TIPS_CLASS)", js, fixed = TRUE))
+  # The tap-size variable the dot and strip rules use must exist there too.
+  expect_true(grepl("body.ibpl-touch-tips {", css, fixed = TRUE))
+  # No explanation rule may stay phone-only.
+  expect_false(grepl("body.ibpl-mobile .ibpl-m-(th-info|strip|th-strip|label-strip)", css))
+  expect_false(grepl("body.ibpl-mobile [data-tooltip]", css, fixed = TRUE))
+})
+
 # ---- R6 (2026-09-13 hardening): header info-dot hit area + sheet removal --
 # "No popups on mobile" was already the rule for the filter panel (R2) and
 # the stat-filter popover (R3); the bottom sheet was the one remaining
@@ -289,7 +307,7 @@ test_that("the header info-dot's real hit box is the 44px tap minimum, not the v
 
   # The element getBoundingClientRect() measures (.ibpl-m-th-info itself)
   # must be sized to the shared --ibpl-m-tap minimum...
-  start <- regexpr("body.ibpl-mobile .ibpl-m-th-info {", css, fixed = TRUE)
+  start <- regexpr("body.ibpl-touch-tips .ibpl-m-th-info {", css, fixed = TRUE)
   expect_gt(start, 0)
   rest <- substring(css, start)
   end <- regexpr("\\}", rest)
@@ -301,7 +319,7 @@ test_that("the header info-dot's real hit box is the 44px tap minimum, not the v
 
   # ...while the VISIBLE dot stays a separate, small ::before -- 32 columns
   # do not each get a 44px circle.
-  before_start <- regexpr("body.ibpl-mobile .ibpl-m-th-info::before {", css, fixed = TRUE)
+  before_start <- regexpr("body.ibpl-touch-tips .ibpl-m-th-info::before {", css, fixed = TRUE)
   expect_gt(before_start, 0)
   before_rest <- substring(css, before_start)
   before_end <- regexpr("\\}", before_rest)
@@ -315,7 +333,7 @@ test_that("the header info-dot's real hit box is the 44px tap minimum, not the v
 test_that("the header and label strips push content down, never float over it", {
   css <- read_repo_txt("www", "mobile.css")
 
-  start <- regexpr("body.ibpl-mobile .ibpl-m-strip {", css, fixed = TRUE)
+  start <- regexpr("body.ibpl-touch-tips .ibpl-m-strip {", css, fixed = TRUE)
   expect_gt(start, 0)
   rest <- substring(css, start)
   end <- regexpr("\\}", rest)

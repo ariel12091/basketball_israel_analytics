@@ -65,3 +65,13 @@ Fix (`mobile.js`, `mobile.css`):
 - The stacked filter sidebar moved to its own width-only class, `ibpl-stacked-filters` (<992 px): a landscape iPad keeps the sidebar beside the table (293 px at 1194, 336 px at 1366).
 
 Verified locally (`runApp`, `IBPL_CACHE_UI=false`, Chromium touch emulation) at touch 1194x834, touch 1366x1024, touch 834x1194, mouse 1194x834 and mouse 1440x900: in the touch cases the menu starts closed, the button is the top hit target, Team Ratings opens its view rows in flow, Traditional switches the view and closes the menu, no page overflow and no JS errors; the mouse cases are unchanged (burger hidden, expanded header). `test-mobile-layer.R` passes. Still Chromium, not WebKit/Safari.
+
+## Column and label explanations on touch tablets (later on 2026-09-24)
+
+Problem: the tap path for explanations -- the header "i" dot for `th[title]` and the inline strip for sidebar `[data-tooltip]` labels -- was gated on `body.ibpl-mobile` (<768 px). An iPad is 834-1366 px and has no hover, so neither the native title nor the CSS `::after` bubble could ever be reached there.
+
+Fix (`mobile.js`, `mobile.css`):
+- The explanation IIFE owns a new body class, `ibpl-touch-tips`, set for `IBPL_MOBILE_MQ` OR `(hover: none) and (pointer: coarse)` at any width. Its three handlers and the dot/strip/tooltip-suppression CSS key on it instead of `ibpl-mobile`; `--ibpl-m-tap` is defined for it too. Mouse users keep hover tooltips at every width.
+- Sidebar label strips: a label in a half-width `.row > col-*` column narrower than 240 px (e.g. "Own lineup starters" at ~130 px in a landscape sidebar) now gets its strip below the whole row -- inside the label it wrapped one word per line. Phones stack those columns, so they keep the strip right after the label. The strip is tracked on `label.ibplStrip` rather than found via `nextElementSibling`.
+
+Verified locally in **Playwright WebKit** (Safari's engine, not iOS Safari) against `runApp` with `IBPL_CACHE_UI=false`, On/Off tab: iPad Pro 11 portrait and landscape and iPhone 13 -- 32 dots on 32 titled headers, 44x44 hit box, dot tap opens the strip without changing the sort, label tap opens a strip (342 / 235 / 308 px wide), no page overflow, no JS errors. Mouse 1440x900 and mouse 834x1000: no dots, no strips, hover tooltips as before. Also in WebKit: burger -> Team Ratings (menu stays open) -> Traditional (view switches, menu closes, table renders) in both iPad orientations. `test-mobile-layer.R` passes, with a new test pinning the touch gate.
