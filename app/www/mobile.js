@@ -66,6 +66,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
    ----------------------------------------------------------------------- */
 (function () {
   var clusterHome = null;
+  var collapsedNavQuery = window.matchMedia && window.matchMedia("(max-width: 991.98px)");
 
   function relocateCluster(on) {
     var cluster = document.getElementById("navbar_right_cluster");
@@ -84,11 +85,19 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   }
 
   function sync() {
-    var on = document.body.classList.contains("ibpl-mobile");
+    var on = !!(collapsedNavQuery && collapsedNavQuery.matches);
+    document.body.classList.toggle("ibpl-collapsed-nav", on);
     relocateCluster(on);
   }
 
   document.addEventListener("ibpl:mobilechange", sync);
+  if (collapsedNavQuery) {
+    if (collapsedNavQuery.addEventListener) {
+      collapsedNavQuery.addEventListener("change", sync);
+    } else if (collapsedNavQuery.addListener) {
+      collapsedNavQuery.addListener(sync);
+    }
+  }
   if (window.jQuery) window.jQuery(document).on("shown.bs.tab shiny:value", sync);
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", sync);

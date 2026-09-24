@@ -65,22 +65,52 @@ body.ibpl-mobile .dataTables_wrapper table.dataTable > thead > tr > th:first-chi
   background: var(--ibpl-bg) !important;
 }
 
-/* ---- Mobile navigation ---- */
-/* app.R:93 sets position:fixed inline, which would sit on top of the burger. */
-body.ibpl-mobile #navbar_right_cluster {
+/* ---- Collapsed navigation (phones and tablets) ---- */
+/* The navbar collapses below 992px. Keep its fixed controls inside the menu
+   throughout that range so they cannot cover the menu button on an iPad. */
+body.ibpl-collapsed-nav #main_tabs { padding-right: 0; }
+body.ibpl-collapsed-nav .navbar .navbar-nav .nav-link {
+  display: flex;
+  align-items: center;
+  min-height: 48px;
+  font-size: 0.95rem;
+}
+body.ibpl-collapsed-nav #navbar_right_cluster {
   position: static !important;
-  display: flex !important;
-  flex-wrap: wrap;
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
+  width: 100%;
   max-width: 100% !important;
   white-space: normal !important;
-  padding: 8px 12px;
+  padding: 12px;
   border-top: 1px solid var(--ibpl-border);
 }
 /* body.league-il / -el set these to inline-flex and decide which season
    selector shows. Keep that decision, change only the box. */
-body.ibpl-mobile.league-il .league-nav-il,
-body.ibpl-mobile.league-el .league-nav-el { display: flex !important; width: 100%; }
+body.ibpl-collapsed-nav.league-il .league-nav-il,
+body.ibpl-collapsed-nav.league-el .league-nav-el { display: flex !important; width: 100%; }
+body.ibpl-collapsed-nav #navbar_right_cluster .navbar-league-select,
+body.ibpl-collapsed-nav #navbar_right_cluster .navbar-season-select,
+body.ibpl-collapsed-nav #navbar_right_cluster .form-group,
+body.ibpl-collapsed-nav #navbar_right_cluster .selectize-control,
+body.ibpl-collapsed-nav #navbar_right_cluster .selectize-input,
+body.ibpl-collapsed-nav #navbar_right_cluster select {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+body.ibpl-collapsed-nav #navbar_right_cluster .selectize-input,
+body.ibpl-collapsed-nav #navbar_right_cluster select,
+body.ibpl-collapsed-nav #navbar_right_cluster .nav-help-btn { min-height: 44px; }
+body.ibpl-collapsed-nav #navbar_right_cluster .nav-help-btn,
+body.ibpl-collapsed-nav #navbar_right_cluster > span:last-child {
+  grid-column: 1 / -1;
+  width: 100%;
+}
+body.ibpl-collapsed-nav #navbar_right_cluster > span:last-child > span:last-child {
+  max-width: none !important;
+}
 
 /* ---- View mode: the burger menu, not a promoted radio group ----
    R4 in the 2026-09-13 rework brief removes promote() (mobile.js used to
@@ -98,9 +128,9 @@ body.ibpl-mobile.league-el .league-nav-el { display: flex !important; width: 100
    live in this app) puts .active on the link itself; app.css:118-119
    defends the older .nav-item.active > .nav-link pattern too, so this does
    the same rather than assuming one. */
-body.ibpl-mobile .tab-hover-menu { display: none !important; }
-body.ibpl-mobile .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu,
-body.ibpl-mobile .nav-item.tab-has-dropdown.active .tab-hover-menu {
+body.ibpl-collapsed-nav .tab-hover-menu { display: none !important; }
+body.ibpl-collapsed-nav .nav-item.tab-has-dropdown:has(.nav-link.active) .tab-hover-menu,
+body.ibpl-collapsed-nav .nav-item.tab-has-dropdown.active .tab-hover-menu {
   display: block !important;
   position: static;
   transform: none;
@@ -111,9 +141,13 @@ body.ibpl-mobile .nav-item.tab-has-dropdown.active .tab-hover-menu {
   box-shadow: none;
   border-radius: 6px;
 }
-body.ibpl-mobile .tab-hover-menu .thm-item {
-  min-height: var(--ibpl-m-tap);
+body.ibpl-collapsed-nav .tab-hover-menu .thm-item {
+  min-height: 48px;
   padding: 0 16px;
+  font-size: 0.95rem;
+}
+body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
+  border-top: 1px solid var(--ibpl-border);
 }
 
 /* ---- Filter panel: inline, never an overlay ----
