@@ -1,5 +1,6 @@
 # Lifted out of global.R rather than sourced -- see helper-global-defs.R.
 .chip_defs <- global_defs("make_chip", "make_season_chip")
+.chip_defs$season_label <- season_label  # helpers.R, via helper-server-mocks.R
 make_chip <- .chip_defs$make_chip
 make_season_chip <- .chip_defs$make_season_chip
 
@@ -31,6 +32,7 @@ test_that("the season chip is not focusable", {
 
   expect_false(grepl("data-chip-focus", html, fixed = TRUE))
   expect_false(grepl("chip-x", html, fixed = TRUE))
+  expect_match(html, ">25-26<", fixed = TRUE)
 })
 
 test_that("app.js opens the panel before focusing a hidden control", {

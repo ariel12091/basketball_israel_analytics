@@ -103,7 +103,8 @@ build_ui <- function() {
       tags$div(
         class = "navbar-season-select league-nav-il",
         selectInput("game_year", NULL,
-                    choices = c("26-27" = "2027", "25-26" = "2026", "24-25" = "2025"),
+                    choices = stats::setNames(c("2027", "2026", "2025"),
+                                              season_label(c("2027", "2026", "2025"))),
                     selected = DEFAULT_GAME_YEAR)
       ),
       # EuroLeague season selector; hidden under the Israeli league. Only one

@@ -627,6 +627,18 @@ add_team_metric_ranks <- function(df) {
   df
 }
 
+# Label a season the way every selector and chip shows it: "25-26".
+# The league difference is only how a season is numbered -- Israeli game_year is
+# the season-ENDING year, a EuroLeague provider season the STARTING year -- so
+# EuroLeague passes ending_year = FALSE. Vectorised: a dropdown labels every
+# season at once.
+season_label <- function(year, ending_year = TRUE) {
+  y <- suppressWarnings(as.integer(year))
+  if (!isTRUE(ending_year)) y <- y + 1L
+  ifelse(is.na(y), as.character(year),
+         sprintf("%02d-%02d", (y - 1L) %% 100L, y %% 100L))
+}
+
 # Point a dateRangeInput at a season window, value and allowed range together.
 # Nothing league-specific here: the caller supplies whichever bounds its league
 # computes, Israeli season_date_bounds_for_year() or euro_season_date_bounds().

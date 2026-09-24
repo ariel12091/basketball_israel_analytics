@@ -30,12 +30,9 @@ euro_season_date_bounds <- function(season = EURO_DEFAULT_SEASON) {
 EURO_DEFAULT_START <- euro_season_date_bounds(EURO_DEFAULT_SEASON)$start
 EURO_DEFAULT_END   <- euro_season_date_bounds(EURO_DEFAULT_SEASON)$end
 
-# Label a provider season the way the rest of the app labels seasons.
-euro_season_label <- function(season) {
-  y <- suppressWarnings(as.integer(season))
-  if (length(y) != 1L || is.na(y)) return(as.character(season))
-  sprintf("%02d-%02d", y %% 100L, (y + 1L) %% 100L)
-}
+# A provider season is the season's STARTING year; season_label() (helpers.R)
+# does the formatting for both leagues.
+euro_season_label <- function(season) season_label(season, ending_year = FALSE)
 
 # ---------------- Reference lookups ----------------
 # One cached key per dataset per (competition, season). All read the app-facing

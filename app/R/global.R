@@ -1205,10 +1205,7 @@ make_chip <- function(label, clear_id, css_class = "", focus_id = NULL) {
 }
 
 make_season_chip <- function(gy, label = NULL) {
-  if (is.null(label)) {
-    y <- suppressWarnings(as.integer(gy))
-    label <- if (length(y) == 1L && !is.na(y)) sprintf("%d-%02d", y - 1L, y %% 100L) else gy
-  }
+  if (is.null(label)) label <- season_label(gy)
   tags$span(class = "filter-chip chip-season", label)
 }
 
