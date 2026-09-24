@@ -75,3 +75,10 @@ Fix (`mobile.js`, `mobile.css`):
 - Sidebar label strips: a label in a half-width `.row > col-*` column narrower than 240 px (e.g. "Own lineup starters" at ~130 px in a landscape sidebar) now gets its strip below the whole row -- inside the label it wrapped one word per line. Phones stack those columns, so they keep the strip right after the label. The strip is tracked on `label.ibplStrip` rather than found via `nextElementSibling`.
 
 Verified locally in **Playwright WebKit** (Safari's engine, not iOS Safari) against `runApp` with `IBPL_CACHE_UI=false`, On/Off tab: iPad Pro 11 portrait and landscape and iPhone 13 -- 32 dots on 32 titled headers, 44x44 hit box, dot tap opens the strip without changing the sort, label tap opens a strip (342 / 235 / 308 px wide), no page overflow, no JS errors. Mouse 1440x900 and mouse 834x1000: no dots, no strips, hover tooltips as before. Also in WebKit: burger -> Team Ratings (menu stays open) -> Traditional (view switches, menu closes, table renders) in both iPad orientations. `test-mobile-layer.R` passes, with a new test pinning the touch gate.
+
+Deployed as a04c7c1 (live page serves `ibpl-touch-tips`, checked 2026-09-24).
+
+### Emulator notes
+
+- Headed Playwright WebKit (`devices['iPad Pro 11']`) **cannot test horizontal table scrolling**: mobile WebKit takes touch input only, a mouse drag is not converted to a swipe, `mouse.wheel` throws "not supported in mobile WebKit", and scrollbars are overlay-only. The page side was checked instead: On/Off `.dataTables_scrollBody` is 1645 px of content in 786 px (portrait) / 854 px (landscape), `overflow-x: auto`, `touch-action: auto` on every ancestor, and the header follows a 300 px body scroll. Nothing blocks a native iOS swipe; confirm on a real device. To test the gesture on a PC use Chrome device mode (F12, Ctrl+Shift+M), where a mouse drag emulates a swipe.
+- Blurry text in the headed WebKit window is Windows display scaling (125%): `Playwright.exe` is not DPI-aware and gets bitmap-stretched. Not an app issue. Optional fix: the "Override high DPI scaling -> Application" compatibility flag on that exe.
