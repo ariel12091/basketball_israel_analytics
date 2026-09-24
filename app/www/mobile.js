@@ -66,7 +66,14 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
    ----------------------------------------------------------------------- */
 (function () {
   var clusterHome = null;
-  var collapsedNavQuery = window.matchMedia && window.matchMedia("(max-width: 991.98px)");
+  // Touch screens up to 1399px -- every iPad, including a 12.9" one in
+  // landscape at 1366px -- also get the collapsed menu: the desktop view
+  // menus open on :hover, which a finger cannot do. The filter sidebar
+  // stacks by width alone, because a landscape iPad has room for it.
+  var collapsedNavQuery = window.matchMedia && window.matchMedia(
+    "(max-width: 991.98px), (hover: none) and (pointer: coarse) and (max-width: 1399.98px)"
+  );
+  var stackedFiltersQuery = window.matchMedia && window.matchMedia("(max-width: 991.98px)");
 
   function relocateCluster(on) {
     var cluster = document.getElementById("navbar_right_cluster");
@@ -87,6 +94,9 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   function sync() {
     var on = !!(collapsedNavQuery && collapsedNavQuery.matches);
     document.body.classList.toggle("ibpl-collapsed-nav", on);
+    document.body.classList.toggle(
+      "ibpl-stacked-filters", !!(stackedFiltersQuery && stackedFiltersQuery.matches)
+    );
     relocateCluster(on);
   }
 
@@ -118,13 +128,14 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   }, true);
 
   document.addEventListener("ibpl:mobilechange", sync);
-  if (collapsedNavQuery) {
-    if (collapsedNavQuery.addEventListener) {
-      collapsedNavQuery.addEventListener("change", sync);
-    } else if (collapsedNavQuery.addListener) {
-      collapsedNavQuery.addListener(sync);
+  [collapsedNavQuery, stackedFiltersQuery].forEach(function (q) {
+    if (!q) return;
+    if (q.addEventListener) {
+      q.addEventListener("change", sync);
+    } else if (q.addListener) {
+      q.addListener(sync);
     }
-  }
+  });
   if (window.jQuery) window.jQuery(document).on("shown.bs.tab shiny:value", sync);
   if (document.readyState === "loading") {
     document.addEventListener("DOMContentLoaded", sync);

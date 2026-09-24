@@ -67,7 +67,32 @@ body.ibpl-mobile .dataTables_wrapper table.dataTable > thead > tr > th:first-chi
 
 /* ---- Collapsed navigation (phones and tablets) ---- */
 /* The navbar collapses below 992px. Keep its fixed controls inside the menu
-   throughout that range so they cannot cover the menu button on an iPad. */
+   throughout that range so they cannot cover the menu button on an iPad.
+   mobile.js also sets this class on touch screens up to 1399px, where
+   Bootstrap would expand the navbar (from 992px, via bslib's
+   .navbar:not(.navbar-expand):not(...-sm/md/lg/xl) fallback). That selector
+   out-scores any class-only override -- five :not()s -- and sets the
+   collapse to display:flex !important, so these rules are anchored on
+   .navbar:has(#main_tabs): the id lifts them above it. They restate the
+   collapsed layout; below 992px they match what Bootstrap already does. */
+body.ibpl-collapsed-nav .navbar:has(#main_tabs),
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) > .container-fluid {
+  flex-wrap: wrap;
+  justify-content: space-between;
+}
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) .navbar-header {
+  width: 100%;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) .navbar-header .navbar-toggle { order: 2; }
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) .navbar-toggle { display: block !important; }
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) .navbar-collapse { flex-basis: 100%; }
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) .navbar-collapse.collapse:not(.show) { display: none !important; }
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) .navbar-collapse.show,
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) .navbar-collapse.collapsing { display: block !important; }
+body.ibpl-collapsed-nav .navbar:has(#main_tabs) #main_tabs { flex-direction: column; }
 body.ibpl-collapsed-nav #main_tabs { padding-right: 0; }
 body.ibpl-collapsed-nav .navbar .navbar-nav .nav-link {
   display: flex;
@@ -151,6 +176,9 @@ body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
 }
 
 /* ---- Filter sidebar below 992px: stacked, behind Show Filters ----
+   (Keyed on body.ibpl-stacked-filters -- width only, set by mobile.js --
+   not ibpl-collapsed-nav, which a landscape iPad also gets; at that width
+   the sidebar has room beside the table.)
    At iPad portrait width (768-991px) Bootstrap keeps the col-sm-3 sidebar
    beside the table, squeezing every filter into ~200px (date inputs clipped,
    the Team/Opponent switch overflowing). Use the phone layout there instead:
@@ -160,23 +188,23 @@ body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
    so both are overridden here rather than in ten ui_tab files. Matched on
    the sidebarPanel's .well, not .ibpl-filter-col, because app.js does not
    tag Compare's column. */
-body.ibpl-collapsed-nav .tab-pane .row > [class*="col-sm-"]:has(> .well),
-body.ibpl-collapsed-nav .tab-pane .row > [class*="col-sm-"]:has(> .well) + [class*="col-sm-"] {
+body.ibpl-stacked-filters .tab-pane .row > [class*="col-sm-"]:has(> .well),
+body.ibpl-stacked-filters .tab-pane .row > [class*="col-sm-"]:has(> .well) + [class*="col-sm-"] {
   flex: 0 0 100%;
   max-width: 100%;
   width: 100%;
 }
-body.ibpl-collapsed-nav .well [data-bs-target$="-filters"].d-md-none {
+body.ibpl-stacked-filters .well [data-bs-target$="-filters"].d-md-none {
   display: block !important;
 }
-body.ibpl-collapsed-nav .well .collapse.d-md-block:not(.show) {
+body.ibpl-stacked-filters .well .collapse.d-md-block:not(.show) {
   display: none !important;
 }
 /* The desktop "Filters" chip toggle would be a second control for the same
    panel, and a collapse state saved on desktop must not hide the column --
    Show Filters lives inside it, so the filters would become unreachable. */
-body.ibpl-collapsed-nav .chips-filters-toggle { display: none; }
-body.ibpl-collapsed-nav.filters-collapsed .ibpl-filter-col { display: block; }
+body.ibpl-stacked-filters .chips-filters-toggle { display: none; }
+body.ibpl-stacked-filters.filters-collapsed .ibpl-filter-col { display: block; }
 
 /* ---- Filter panel: inline, never an overlay ----
    R2 in the 2026-09-13 rework brief removes the sheet transform this task
