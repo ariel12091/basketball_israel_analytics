@@ -22,8 +22,9 @@ on:
         required: false
         default: ""
   schedule:
-    # Run once nightly: 00:15 in Israel daylight time, 23:15 in standard time.
-    - cron: '15 21 * * *'
+    # Run once nightly: 22:15 in Israel daylight time, 21:15 in standard time.
+    # GitHub delays scheduled runs ~2.5h here, so actual starts land ~00:45 IDT.
+    - cron: '15 19 * * *'
 
 jobs:
   etl:
