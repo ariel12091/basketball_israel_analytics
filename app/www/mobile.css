@@ -1,7 +1,7 @@
-/* mobile.css -- every mobile style rule for the app.
+/* mobile.css -- device styles and the shared Gameflow layout.
 
-   Scoped to body.ibpl-mobile, set by mobile.js from a matchMedia query, rather
-   than to a bare @media block. One source of truth for the mode. */
+   Phone rules are scoped to body.ibpl-mobile, set by mobile.js from device
+   identity. Tablets share stacked filters and navigation at every width. */
 
 body.ibpl-mobile,
 body.ibpl-touch-tips {
@@ -10,16 +10,7 @@ body.ibpl-touch-tips {
   --ibpl-m-tap: 44px;
 }
 
-/* ---- Migrated from app.css (:637, :923, :1401) ----
-   The three blocks used two different breakpoints -- 768px (DT font/padding,
-   navbar brand, slider handles, legend, example grid, chips-row-controls) and
-   767px (chips-filters-toggle) -- now unified on the 767.98px body.ibpl-mobile
-   carrier. This is a deliberate behaviour change, not a pure move: at exactly
-   768px (iPad portrait / this app's own Bootstrap `md` boundary) these rules
-   now stop applying where they used to; in the fractional (767, 767.98] band
-   (reachable off 100% browser zoom) .chips-filters-toggle is now hidden where
-   it previously wasn't. Both shifts intentionally align these ad-hoc
-   breakpoints with the d-md-none boundary the rest of this plan is built on. */
+/* ---- Phone controls migrated from app.css ---- */
 
 body.ibpl-mobile table.dataTable tbody td { font-size: 0.8rem; padding: 4px 6px !important; }
 body.ibpl-mobile table.dataTable thead th { font-size: 0.75rem; padding-top: 8px !important; padding-bottom: 8px !important; }
@@ -176,13 +167,9 @@ body.ibpl-collapsed-nav .tab-hover-menu .thm-item + .thm-item {
   border-top: 1px solid var(--ibpl-border);
 }
 
-/* ---- Filter sidebar below 992px: stacked, behind Show Filters ----
-   (Keyed on body.ibpl-stacked-filters -- width only, set by mobile.js --
-   not ibpl-collapsed-nav, which a landscape iPad also gets; at that width
-   the sidebar has room beside the table.)
-   At iPad portrait width (768-991px) Bootstrap keeps the col-sm-3 sidebar
-   beside the table, squeezing every filter into ~200px (date inputs clipped,
-   the Team/Opponent switch overflowing). Use the phone layout there instead:
+/* ---- Filter sidebar on phones, tablets, and narrow desktop windows ----
+   A tablet keeps this layout in either orientation. Bootstrap otherwise keeps
+   the col-sm-3 sidebar beside the table, squeezing filters on iPads. Use a
    sidebar stacked full-width above a full-width table, its panel collapsed
    behind the tab's own "Show Filters" button. The R markup hides that button
    and forces the panel open from md (768px) up with d-md-none / d-md-block,
@@ -454,9 +441,9 @@ body.ibpl-mobile .cmp-summary-row .card { padding: 10px !important; }
 
 /* ---- Stint ribbon (gameflow) ----
    The compact SVG is shown through one viewport per quarter. Each viewport
-   fits the phone width; the original full chart remains available on demand. */
-body:not(.ibpl-mobile) .ibpl-ribbon-inline-panel { display: none !important; }
-body.ibpl-mobile .ibpl-ribbon-inline-panel {
+   fits its container; the full chart remains available on demand. */
+.ibpl-ribbon-inline-panel {
+  --ibpl-m-tap: 44px;
   margin: 12px 0 18px;
   padding: 12px;
   border: 1px solid var(--ibpl-border);
@@ -464,15 +451,15 @@ body.ibpl-mobile .ibpl-ribbon-inline-panel {
   background: var(--ibpl-surface);
   scroll-margin-top: 68px;
 }
-body.ibpl-mobile .ibpl-ribbon-inline-panel[hidden] { display: none; }
-body.ibpl-mobile .ibpl-ribbon-inline-head {
+.ibpl-ribbon-inline-panel[hidden] { display: none; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-inline-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 8px;
 }
-body.ibpl-mobile .ibpl-ribbon-inline-close {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-inline-close {
   min-height: var(--ibpl-m-tap);
   min-width: var(--ibpl-m-tap);
   padding: 8px 12px;
@@ -481,39 +468,39 @@ body.ibpl-mobile .ibpl-ribbon-inline-close {
   background: transparent;
   color: var(--ibpl-text);
 }
-body.ibpl-mobile .ibpl-ribbon-inline-loading { display: none; }
-body.ibpl-mobile .ibpl-ribbon-inline-panel.is-loading .ibpl-ribbon-inline-loading { display: block; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-inline-loading { display: none; }
+.ibpl-ribbon-inline-panel.is-loading .ibpl-ribbon-inline-loading { display: block; }
 /* Hide the previous game's RESULT while loading, never the output element
    itself: Shiny suspends an output it sees as display:none, so hiding the
    output is what kept the new value from ever arriving. */
-body.ibpl-mobile .ibpl-ribbon-inline-panel.is-loading .ibpl-ribbon-inline-result { display: none; }
-body.ibpl-mobile .ibpl-ribbon-inline-title { font-weight: 700; margin-bottom: 4px; }
-body.ibpl-mobile .ibpl-ribbon-inline-hint {
+.ibpl-ribbon-inline-panel.is-loading .ibpl-ribbon-inline-result { display: none; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-inline-title { font-weight: 700; margin-bottom: 4px; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-inline-hint {
   color: var(--ibpl-text-muted);
   font-size: 0.8rem;
   line-height: 1.35;
   margin-bottom: 8px;
 }
-body.ibpl-mobile .ibpl-ribbon-mobile-overview {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-mobile-overview {
   margin-bottom: 16px;
   padding: 10px;
   border: 1px solid var(--ibpl-border);
   border-radius: 8px;
   background: var(--ibpl-bg-sunken);
 }
-body.ibpl-mobile .ibpl-ribbon-overview-title {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-overview-title {
   margin-bottom: 6px;
   color: var(--ibpl-text-muted);
   font-size: 0.75rem;
 }
-body.ibpl-mobile .ibpl-ribbon-overview-svg { display: block; width: 100%; height: 56px; }
-body.ibpl-mobile .ibpl-ribbon-overview-zero {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-overview-svg { display: block; width: 100%; height: 56px; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-overview-zero {
   stroke: var(--ibpl-text-dim);
   stroke-width: 1;
   stroke-dasharray: 3 3;
 }
-body.ibpl-mobile .ibpl-ribbon-overview-period { stroke: var(--ibpl-border); stroke-width: 1; }
-body.ibpl-mobile .ibpl-ribbon-overview-line {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-overview-period { stroke: var(--ibpl-border); stroke-width: 1; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-overview-line {
   fill: none;
   stroke: var(--ibpl-accent);
   stroke-width: 2;
@@ -521,13 +508,13 @@ body.ibpl-mobile .ibpl-ribbon-overview-line {
 }
 /* A grid, not a row: a triple-overtime game has seven periods, which at one
    row gave 35px buttons (below the tap minimum) and overflowed. */
-body.ibpl-mobile .ibpl-ribbon-quarter-nav {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-nav {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(var(--ibpl-m-tap), 1fr));
   gap: 6px;
   margin-top: 8px;
 }
-body.ibpl-mobile .ibpl-ribbon-quarter-jump {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-jump {
   min-width: 0;
   min-height: var(--ibpl-m-tap);
   border: 1px solid var(--ibpl-border);
@@ -536,11 +523,11 @@ body.ibpl-mobile .ibpl-ribbon-quarter-jump {
   color: var(--ibpl-text);
   font-weight: 600;
 }
-body.ibpl-mobile .ibpl-ribbon-quarter-jump.is-active {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-jump.is-active {
   border-color: var(--ibpl-accent);
   color: var(--ibpl-accent);
 }
-body.ibpl-mobile .ibpl-ribbon-full-toggle {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-full-toggle {
   min-height: var(--ibpl-m-tap);
   width: 100%;
   margin-bottom: 12px;
@@ -549,33 +536,44 @@ body.ibpl-mobile .ibpl-ribbon-full-toggle {
   background: transparent;
   color: var(--ibpl-text);
 }
-body.ibpl-mobile .ibpl-ribbon-quarters { display: grid; gap: 16px; }
-body.ibpl-mobile .ibpl-ribbon-quarter-card {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 450px), 1fr));
+  gap: 16px;
+}
+body.ibpl-device-phone .ibpl-ribbon-quarters {
+  grid-template-columns: minmax(0, 1fr);
+}
+body.ibpl-device-tablet .ibpl-ribbon-quarters {
+  grid-template-columns: minmax(0, 600px);
+  justify-content: center;
+}
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-card {
   min-width: 0;
   padding: 10px 8px;
   border: 1px solid var(--ibpl-border);
   border-radius: 8px;
   scroll-margin-top: 68px;
 }
-body.ibpl-mobile .ibpl-ribbon-quarter-heading {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-heading {
   margin: 0 0 8px;
   color: var(--ibpl-accent);
   font-size: 0.9rem;
   font-weight: 700;
 }
-body.ibpl-mobile .ibpl-ribbon-inline-scroll {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-inline-scroll {
   max-width: 100%;
   overflow-x: auto;
   overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior-inline: contain;
 }
-body.ibpl-mobile .ibpl-ribbon-quarter-frame { overflow-x: hidden; }
-body.ibpl-mobile .ibpl-ribbon-full-timeline[hidden],
-body.ibpl-mobile .ibpl-ribbon-quarters[hidden] { display: none; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarter-frame { overflow-x: hidden; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-full-timeline[hidden],
+.ibpl-ribbon-inline-panel .ibpl-ribbon-quarters[hidden] { display: none; }
 /* width:auto lets the svg's own width attribute (the layout width) size it;
    app.css's width:100% would fit the whole game to the screen instead. */
-body.ibpl-mobile .ibpl-ribbon.is-compact {
+.ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact {
   width: auto;
   max-width: none;
   height: auto;
@@ -587,7 +585,7 @@ body.ibpl-mobile .ibpl-ribbon.is-compact {
 }
 /* The pinned gutter copy (mobile.js pinGutter) sticks to the scroller's
    left edge; the originals it copies are hidden so nothing doubles up. */
-body.ibpl-mobile .ibpl-ribbon-pin {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-pin {
   position: sticky;
   left: 0;
   z-index: 2;
@@ -596,26 +594,26 @@ body.ibpl-mobile .ibpl-ribbon-pin {
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-body.ibpl-mobile .ibpl-ribbon-pin-bg { fill: var(--ibpl-surface); }
-body.ibpl-mobile .ibpl-ribbon-pin .ibpl-ribbon-name.is-active { fill: var(--ibpl-accent); }
-body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-name,
-body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-pm,
-body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-team,
-body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-scale-label,
-body.ibpl-mobile .ibpl-ribbon.has-pin .ibpl-ribbon-zero-label { visibility: hidden; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-pin-bg { fill: var(--ibpl-surface); }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-pin .ibpl-ribbon-name.is-active { fill: var(--ibpl-accent); }
+.ibpl-ribbon-inline-panel .ibpl-ribbon.has-pin .ibpl-ribbon-name,
+.ibpl-ribbon-inline-panel .ibpl-ribbon.has-pin .ibpl-ribbon-pm,
+.ibpl-ribbon-inline-panel .ibpl-ribbon.has-pin .ibpl-ribbon-team,
+.ibpl-ribbon-inline-panel .ibpl-ribbon.has-pin .ibpl-ribbon-scale-label,
+.ibpl-ribbon-inline-panel .ibpl-ribbon.has-pin .ibpl-ribbon-zero-label { visibility: hidden; }
 /* iOS Safari dispatches click to a document listener only for elements it
    considers clickable; cursor:pointer is what qualifies them. */
-body.ibpl-mobile .ibpl-ribbon-lane,
-body.ibpl-mobile .ibpl-ribbon-detail-row { cursor: pointer; }
-body.ibpl-mobile .ibpl-ribbon.is-compact .ibpl-ribbon-lane:focus rect { stroke: none; }
-body.ibpl-mobile .ibpl-ribbon.is-compact .ibpl-ribbon-lane.is-selected rect {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-lane,
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail-row { cursor: pointer; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact .ibpl-ribbon-lane:focus rect { stroke: none; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon.is-compact .ibpl-ribbon-lane.is-selected rect {
   stroke: var(--ibpl-text);
   stroke-width: 1;
 }
 
 /* Detail card for the tapped stint. Body font, not the desktop panel's
-   11px mono: this is read on a phone, and it wraps instead of clipping. */
-body.ibpl-mobile .ibpl-ribbon-detail.is-card {
+   11px mono: it wraps instead of clipping. */
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail.is-card {
   margin: 10px 0 0;
   padding: 12px;
   border-radius: 8px;
@@ -626,22 +624,22 @@ body.ibpl-mobile .ibpl-ribbon-detail.is-card {
   font-size: 0.875rem;
   line-height: 1.4;
 }
-body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-head {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-head {
   font-size: 1rem;
   margin-bottom: 2px;
 }
-body.ibpl-mobile .ibpl-ribbon-detail-summary {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail-summary {
   font-family: var(--ibpl-font-mono);
   font-size: 0.8rem;
   color: var(--ibpl-text);
 }
-body.ibpl-mobile .ibpl-ribbon-detail-caption {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail-caption {
   margin: 10px 0 4px;
   color: var(--ibpl-text-muted);
   font-size: 0.75rem;
 }
-body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-list { gap: 4px; }
-body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-row {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-list { gap: 4px; }
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-row {
   grid-template-columns: minmax(0, 1fr);
   gap: 2px;
   min-height: var(--ibpl-m-tap);
@@ -650,15 +648,15 @@ body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-row {
   border-radius: 6px;
   background: var(--ibpl-surface);
 }
-body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-members {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-members {
   color: var(--ibpl-text);
   font-size: 0.8rem;
 }
-body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-meta {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-meta {
   text-align: left;
   font-family: var(--ibpl-font-mono);
   font-size: 0.75rem;
 }
-body.ibpl-mobile .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-row.is-active {
+.ibpl-ribbon-inline-panel .ibpl-ribbon-detail.is-card .ibpl-ribbon-detail-row.is-active {
   background: var(--ibpl-surface-selected);
 }

@@ -75,8 +75,7 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
   observeEvent(input[[paste0(prefix, "_ribbon_click")]], {
     click <- input[[paste0(prefix, "_ribbon_click")]]
     req(click$game_id, click$team_id)
-    mobile <- isTRUE(click$mobile)
-
+    inline <- isTRUE(IBPL_MOBILE) && (click$device %||% "") %in% c("phone", "tablet")
     allowed <- guard_heavy_request(
       session,
       key = "ribbon_open",
@@ -84,13 +83,12 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
       window_sec = 60L
     )
     if (!isTRUE(allowed)) {
-      if (mobile) {
-        output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
-          div(class = "ibpl-ribbon-inline-result",
-              `data-game-id` = as.character(click$game_id),
-              div(class = "alert alert-warning mb-0", "Please try again in a moment."))
-        })
-      }
+      if (!inline) return()
+      output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
+        div(class = "ibpl-ribbon-inline-result",
+            `data-game-id` = as.character(click$game_id),
+            div(class = "alert alert-warning mb-0", "Please try again in a moment."))
+      })
       return()
     }
 
@@ -100,18 +98,18 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
     )
 
     if (is.null(ribbon) || !nrow(ribbon$lanes)) {
-      if (mobile) {
-        output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
-          div(class = "ibpl-ribbon-inline-result",
-              `data-game-id` = as.character(click$game_id),
-              div(class = "alert alert-warning mb-0",
-                  "This game has no segment data to draw."))
-        })
-      } else {
+      if (!inline) {
         showModal(modalDialog(title = "No lineup data",
                               "This game has no segment data to draw.",
                               easyClose = TRUE))
+        return()
       }
+      output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
+        div(class = "ibpl-ribbon-inline-result",
+            `data-game-id` = as.character(click$game_id),
+            div(class = "alert alert-warning mb-0",
+                "This game has no segment data to draw."))
+      })
       return()
     }
 
@@ -130,37 +128,33 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
     health_ui <- if (!is.null(warning)) {
       div(class = "alert alert-warning py-2 px-3 mb-2", warning)
     }
-    # A phone gets the compact layout: the whole game across the screen
-    # rather than the 1070-unit desktop chart panned sideways.
+    # Phones and tablets use quarter cards regardless of viewport width.
+    # Desktops keep the full-size modal.
     svg <- build_stint_ribbon_svg(ribbon$lanes, ribbon$margin, meta,
                                   id_prefix = paste0(svg_id_prefix, click$game_id),
                                   steps = ribbon$steps,
-                                  layout = ribbon_layout(compact = mobile))
+                                  layout = ribbon_layout(compact = inline))
 
-    if (mobile) {
-      bounds <- ribbon_period_bounds(meta$n_periods)
-      output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
-        div(class = "ibpl-ribbon-inline-result",
-            `data-game-id` = as.character(click$game_id),
-          div(class = "ibpl-ribbon-inline-title", title_ui),
-          health_ui,
-          div(class = "ibpl-ribbon-inline-hint",
-              "Scroll through the quarters. Tap a player's row for that stint and its lineups."),
-          ribbon_mobile_overview_ui(ribbon$margin, bounds),
-          div(class = "ibpl-ribbon-inline-scroll",
-              `aria-label` = paste("Gameflow for", meta$game_label), svg)
-        )
-      })
+    if (!inline) {
+      output[[paste0(prefix, "_ribbon_svg")]] <- renderUI({ tagList(health_ui, svg) })
+      showModal(modalDialog(title = title_ui,
+                            uiOutput(paste0(prefix, "_ribbon_svg")),
+                            size = "xl", easyClose = TRUE))
       return()
     }
 
-    output[[paste0(prefix, "_ribbon_svg")]] <- renderUI({ tagList(health_ui, svg) })
-
-    showModal(modalDialog(
-      title = title_ui,
-      uiOutput(paste0(prefix, "_ribbon_svg")),
-      size = "xl",
-      easyClose = TRUE
-    ))
+    bounds <- ribbon_period_bounds(meta$n_periods)
+    output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
+      div(class = "ibpl-ribbon-inline-result",
+          `data-game-id` = as.character(click$game_id),
+        div(class = "ibpl-ribbon-inline-title", title_ui),
+        health_ui,
+        div(class = "ibpl-ribbon-inline-hint",
+            "Scroll through the quarters. Select a player's row for that stint and its lineups."),
+        ribbon_mobile_overview_ui(ribbon$margin, bounds),
+        div(class = "ibpl-ribbon-inline-scroll",
+            `aria-label` = paste("Gameflow for", meta$game_label), svg)
+      )
+    })
   })
 }

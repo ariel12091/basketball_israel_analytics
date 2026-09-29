@@ -1211,7 +1211,7 @@ th[data-tooltip]::after { display: none; }
 .hub-storylines-loading-body { flex: 1; display: flex; align-items: center; justify-content: center; gap: 10px; color: var(--ibpl-text-muted); font-size: .88rem; }
 .hub-storylines-loading-body .spinner-border { color: var(--ibpl-accent); }
 .hub-storylines-empty { color: var(--ibpl-text-muted); font-size: .88rem; }
-@media (max-width: 767px) { .hub-stat-row { gap: 14px; } }
+body.ibpl-mobile .hub-stat-row { gap: 14px; }
 
 /* ---- League scoping ------------------------------------------------------
    Home shows one league's content at a time. The body class is set by the
@@ -1877,10 +1877,8 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
 .lineup-chips-clear:hover { color: var(--ibpl-accent); }
 
 /* Touch: no hover preview, so give the targets a finger's worth of room. */
-@media (max-width: 767.98px) {
-  .lineup-chip { padding: 7px 11px; font-size: 13.5px; }
-  .lineup-chips-mode { padding: 5px 11px; font-size: 13px; }
-}
+body.ibpl-mobile .lineup-chip { padding: 7px 11px; font-size: 13.5px; }
+body.ibpl-mobile .lineup-chips-mode { padding: 5px 11px; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   .lineup-chip, .lineup-chips-mode { transition: none; }
 }

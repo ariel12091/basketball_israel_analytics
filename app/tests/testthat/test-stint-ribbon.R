@@ -1486,7 +1486,7 @@ test_that("game-log tables escape everything except their ribbon-link column", {
 
 test_that("Tab 4 and Tab 11 ribbon output ids and SVG id_prefix never collide", {
   # Task 2 moved the observer into the shared ribbon_modal_server(); the
-  # output id is now built as output[[paste0(prefix, "_ribbon_svg")]] inside
+  # output id is now built as output[[paste0(prefix, "_ribbon_inline")]] inside
   # mod_ribbon_modal.R, not as an inline `output$..._ribbon_svg <- renderUI`
   # literal in either tab file, so the non-collision guarantee now lives in
   # each call site's `prefix` / `svg_id_prefix` arguments. Read the call line

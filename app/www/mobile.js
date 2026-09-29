@@ -1,46 +1,51 @@
-/* mobile.js -- viewport-driven mobile presentation layer.
+/* mobile.js -- device presentation layer.
 
-   Loaded after app.js so it can override behaviour without editing it. Every
-   rule in mobile.css is scoped to the body class this file sets, so there is
-   exactly one answer to "are we in mobile mode" and the CSS and JS cannot
-   disagree about it.
+   Phones, tablets, and desktops keep their own presentation across window
+   sizes and orientation changes. Narrow desktop windows can still reflow. */
 
-   ES5 and one IIFE per concern, matching app.js. */
-
-window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
+window.ibplDeviceKindFor = function (ua, platform, touchPoints, touchOnly) {
+  ua = ua || "";
+  platform = platform || "";
+  touchPoints = touchPoints || 0;
+  // iPadOS may identify itself as a Mac. Android tablets omit "Mobile".
+  if (/iPad|Tablet|Kindle|Silk|PlayBook/i.test(ua) ||
+      (/Android/i.test(ua) && !/Mobile/i.test(ua)) ||
+      (platform === "MacIntel" && touchPoints > 1)) return "tablet";
+  if (/iPhone|iPod|Windows Phone|Mobi|Android.*Mobile/i.test(ua)) return "phone";
+  // Covers touch-only Windows and other tablets without a tablet user agent.
+  if (touchOnly && touchPoints > 0) return "tablet";
+  return "desktop";
+};
+window.ibplDeviceKind = function () {
+  var touchOnly = window.matchMedia &&
+    window.matchMedia("(hover: none) and (pointer: coarse)").matches;
+  return window.ibplDeviceKindFor(navigator.userAgent, navigator.platform,
+                                  navigator.maxTouchPoints, touchOnly);
+};
 
 (function () {
   var BODY_CLASS = "ibpl-mobile";
-  var last = null;
-
-  function isMobile() {
-    if (!window.matchMedia) return false;
-    return window.matchMedia(window.IBPL_MOBILE_MQ).matches;
-  }
+  var lastKind = null;
 
   function applyMode() {
-    var on = isMobile();
-    // Only announce real transitions. resize fires continuously on a phone
-    // when the URL bar collapses, and every listener downstream redraws tables.
-    if (on === last) return;
-    last = on;
+    var kind = window.ibplDeviceKind();
+    var on = kind === "phone";
+    if (kind === lastKind) return;
+    lastKind = kind;
     document.body.classList.toggle(BODY_CLASS, on);
+    document.body.classList.remove("ibpl-device-phone", "ibpl-device-tablet", "ibpl-device-desktop");
+    document.body.classList.add("ibpl-device-" + kind);
     document.dispatchEvent(new CustomEvent("ibpl:mobilechange", {
-      detail: { mobile: on }
+      detail: { mobile: on, device: kind }
     }));
   }
 
   function init() {
     applyMode();
     if (window.matchMedia) {
-      var mq = window.matchMedia(window.IBPL_MOBILE_MQ);
-      // addEventListener on a MediaQueryList is unsupported in older Safari,
-      // where addListener is the only option.
-      if (mq.addEventListener) {
-        mq.addEventListener("change", applyMode);
-      } else if (mq.addListener) {
-        mq.addListener(applyMode);
-      }
+      var pointer = window.matchMedia("(hover: none) and (pointer: coarse)");
+      if (pointer.addEventListener) pointer.addEventListener("change", applyMode);
+      else if (pointer.addListener) pointer.addListener(applyMode);
     }
   }
 
@@ -66,13 +71,9 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
    ----------------------------------------------------------------------- */
 (function () {
   var clusterHome = null;
-  // Touch screens up to 1399px -- every iPad, including a 12.9" one in
-  // landscape at 1366px -- also get the collapsed menu: the desktop view
-  // menus open on :hover, which a finger cannot do. The filter sidebar
-  // stacks by width alone, because a landscape iPad has room for it.
-  var collapsedNavQuery = window.matchMedia && window.matchMedia(
-    "(max-width: 991.98px), (hover: none) and (pointer: coarse) and (max-width: 1399.98px)"
-  );
+  // Every tablet gets collapsed navigation and stacked filters, including
+  // landscape iPads. Narrow desktop windows also need room to reflow.
+  var collapsedNavQuery = window.matchMedia && window.matchMedia("(max-width: 991.98px)");
   var stackedFiltersQuery = window.matchMedia && window.matchMedia("(max-width: 991.98px)");
 
   function relocateCluster(on) {
@@ -92,10 +93,11 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   }
 
   function sync() {
-    var on = !!(collapsedNavQuery && collapsedNavQuery.matches);
+    var handheld = window.ibplDeviceKind() !== "desktop";
+    var on = handheld || !!(collapsedNavQuery && collapsedNavQuery.matches);
     document.body.classList.toggle("ibpl-collapsed-nav", on);
     document.body.classList.toggle(
-      "ibpl-stacked-filters", !!(stackedFiltersQuery && stackedFiltersQuery.matches)
+      "ibpl-stacked-filters", handheld || !!(stackedFiltersQuery && stackedFiltersQuery.matches)
     );
     relocateCluster(on);
   }
@@ -144,8 +146,10 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   }
 })();
 
-/* ---- Gameflow: show the full-size ribbon in the page -------------------- */
+/* ---- Gameflow: inline quarter cards on phones and tablets -------------- */
 (function () {
+  var quarterObservers = {};
+
   function panelFor(link) {
     var inputId = link && link.dataset.inputId || "gl_ribbon_click";
     var prefix = inputId.replace(/_ribbon_click$/, "");
@@ -223,7 +227,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     return index < 4 ? "Q" + (index + 1) : "OT" + (index - 3);
   }
 
-  // A regulation quarter fills the card; wider screens stop growing here.
+  // A regulation quarter fills the card; wider cards stop growing here.
   var MAX_QUARTER_SCALE = 1.25;
 
   function fitQuarter(svg) {
@@ -237,6 +241,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
         !isFinite(fullWidth) || !isFinite(height)) return;
     var width = frame.clientWidth;
     if (width <= gutter + 20) return;
+    frame.ibplFittedWidth = width;
     var start = index ? bounds[index - 1] : 0;
     var perSecond = (fullWidth - gutter) / bounds[bounds.length - 1];
     var span = (bounds[index] - start) * perSecond;
@@ -464,6 +469,20 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     shell.appendChild(full);
     full.appendChild(scroller);
     cards.querySelectorAll("svg.ibpl-ribbon").forEach(fitQuarter);
+    if (window.ResizeObserver) {
+      var observer = new ResizeObserver(function (entries) {
+        entries.forEach(function (entry) {
+          if (entry.target.ibplFittedWidth === entry.target.clientWidth) return;
+          var chart = entry.target.querySelector("svg.ibpl-ribbon");
+          if (chart) fitQuarter(chart);
+        });
+      });
+      cards.querySelectorAll(".ibpl-ribbon-quarter-frame").forEach(function (frame) {
+        observer.observe(frame);
+      });
+      var panel = result.closest(".ibpl-ribbon-inline-panel");
+      if (panel) quarterObservers[panel.id] = observer;
+    }
     var first = result.querySelector('.ibpl-ribbon-quarter-jump[data-quarter="1"]');
     if (first) first.classList.add("is-active");
     return true;
@@ -534,7 +553,6 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   }, { passive: true });
 
   document.addEventListener("click", function (e) {
-    if (!document.body.classList.contains("ibpl-mobile")) return;
     var close = e.target.closest && e.target.closest(".ibpl-ribbon-inline-close");
     if (close) {
       var openPanel = close.closest(".ibpl-ribbon-inline-panel");
@@ -543,6 +561,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     }
     var link = e.target.closest && e.target.closest(".ribbon-link");
     if (!link || !window.Shiny) return;
+    if (window.ibplDeviceKind() === "desktop") return;
     var panel = panelFor(link);
     if (!panel) return;
     panel.dataset.gameId = link.dataset.gameId;
@@ -564,6 +583,10 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
       var id = e.target && e.target.id || "";
       if (id !== "gl_ribbon_inline" && id !== "eurogl_ribbon_inline") return;
       var panel = document.getElementById(id + "_panel");
+      if (panel && quarterObservers[panel.id]) {
+        quarterObservers[panel.id].disconnect();
+        delete quarterObservers[panel.id];
+      }
       if (panel) window.requestAnimationFrame(function () {
         var result = panel.querySelector(".ibpl-ribbon-inline-result");
         if (result && result.dataset.gameId === panel.dataset.gameId) {
@@ -577,11 +600,6 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
     });
   }
 
-  document.addEventListener("ibpl:mobilechange", function (e) {
-    if (e.detail && e.detail.mobile) return;
-    var panels = document.querySelectorAll(".ibpl-ribbon-inline-panel");
-    for (var i = 0; i < panels.length; i++) panels[i].hidden = true;
-  });
 })();
 
 /* ---- Filter panel: inline, never an overlay -----------------------------
@@ -619,12 +637,11 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
   // hover, so th[title] and the [data-tooltip] bubble are unreachable there
   // exactly as on a phone. A mouse keeps the hover tooltips at every width.
   var TIPS_CLASS = "ibpl-touch-tips";
-  var tipsQuery = window.matchMedia && window.matchMedia(window.IBPL_MOBILE_MQ);
   var touchQuery = window.matchMedia && window.matchMedia("(hover: none) and (pointer: coarse)");
   var tipsOn = null;
 
   function syncTips() {
-    var on = !!((tipsQuery && tipsQuery.matches) || (touchQuery && touchQuery.matches));
+    var on = window.ibplDeviceKind() !== "desktop" || !!(touchQuery && touchQuery.matches);
     if (on === tipsOn) return;
     tipsOn = on;
     document.body.classList.toggle(TIPS_CLASS, on);
@@ -785,7 +802,7 @@ window.IBPL_MOBILE_MQ = "(max-width: 767.98px)";
 
     $(document).on("draw.dt", addInfoMarks);
     syncTips();
-    [tipsQuery, touchQuery].forEach(function (q) {
+    [touchQuery].forEach(function (q) {
       if (!q) return;
       if (q.addEventListener) {
         q.addEventListener("change", syncTips);

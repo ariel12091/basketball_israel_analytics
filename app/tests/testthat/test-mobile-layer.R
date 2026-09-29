@@ -61,14 +61,16 @@ test_that("the mobile layer kill switch resolves the right default per env value
   expect_true(resolve("banana"))       # fail-open on garbage, like IBPL_CACHE_UI
 })
 
-test_that("mode is carried by a body class, not a bare media query", {
+test_that("phone and tablet modes follow device identity", {
   css <- read_repo_txt("www", "mobile.css")
   js <- read_repo_txt("www", "mobile.js")
 
   expect_true(grepl("body.ibpl-mobile", css, fixed = TRUE))
-  expect_true(grepl("max-width: 767.98px", js, fixed = TRUE))
-  # A bare @media in mobile.css would be a second source of truth for "are we
-  # mobile", which could disagree with the class the JS sets.
+  expect_true(grepl("window.ibplDeviceKindFor = function", js, fixed = TRUE))
+  expect_true(grepl('kind === "phone"', js, fixed = TRUE))
+  expect_true(grepl('"ibpl-device-" + kind', js, fixed = TRUE))
+  expect_true(grepl('var handheld = window.ibplDeviceKind() !== "desktop";', js, fixed = TRUE))
+  expect_false(grepl("window.IBPL_MOBILE_MQ", js, fixed = TRUE))
   expect_false(grepl("@media (max-width", css, fixed = TRUE))
 })
 
@@ -270,7 +272,7 @@ test_that("column and label explanations reach touch tablets, not just phones", 
   # and the [data-tooltip] bubble were unreachable there. The explanation
   # layer keys on its own class: phone width OR a touch-primary screen.
   expect_true(grepl('var TIPS_CLASS = "ibpl-touch-tips";', js, fixed = TRUE))
-  expect_true(grepl("window.matchMedia(window.IBPL_MOBILE_MQ)", js, fixed = TRUE))
+  expect_true(grepl('window.ibplDeviceKind() !== "desktop"', js, fixed = TRUE))
   expect_true(grepl('"(hover: none) and (pointer: coarse)"', js, fixed = TRUE))
   expect_true(grepl("classList.contains(TIPS_CLASS)", js, fixed = TRUE))
   # The tap-size variable the dot and strip rules use must exist there too.
@@ -548,18 +550,30 @@ test_that("Compare keeps A and B adjacent on mobile", {
 # of IBPL_MOBILE_TABLE's gl_table/eurogl_table overrides (R1, above): every
 # column is visible now, so Gameflow needs no priority rule to protect it.
 
-# The mobile gameflow keeps its compact source SVG and derives one viewport
+# Gameflow keeps its compact source SVG and derives one viewport
 # per quarter from its period bounds. The full timeline remains available.
 
-test_that("a phone gameflow requests the compact ribbon layout", {
+test_that("Gameflow uses inline cards on phones and tablets and a modal on desktops", {
   mod <- read_repo_txt("R", "mod_ribbon_modal.R")
   css <- read_repo_txt("www", "mobile.css")
+  js <- read_repo_txt("www", "mobile.js")
 
-  expect_true(grepl("layout = ribbon_layout(compact = mobile)", mod, fixed = TRUE))
-  # The compact chart is sized to its container, never pinned to the
-  # desktop's 1070px.
+  expect_true(grepl('click$device %||% ""', mod, fixed = TRUE))
+  expect_true(grepl('c("phone", "tablet")', mod, fixed = TRUE))
+  expect_true(grepl("layout = ribbon_layout(compact = inline)", mod, fixed = TRUE))
+  expect_true(grepl("if (!inline)", mod, fixed = TRUE))
+  expect_true(grepl("showModal(modalDialog", mod, fixed = TRUE))
+  expect_false(grepl("click$mobile", mod, fixed = TRUE))
   expect_false(grepl("min-width: 1070px", css, fixed = TRUE))
+  expect_false(grepl("body:not(.ibpl-mobile) .ibpl-ribbon-inline-panel", css, fixed = TRUE))
+  expect_true(grepl(".ibpl-ribbon-inline-panel[hidden] { display: none; }", css, fixed = TRUE))
   expect_true(grepl(".ibpl-ribbon.is-compact {", css, fixed = TRUE))
+  expect_true(grepl("body.ibpl-device-tablet .ibpl-ribbon-quarters", css, fixed = TRUE))
+  gameflow_js <- strsplit(js, "/* ---- Filter panel: inline", fixed = TRUE)[[1L]][1L]
+  expect_false(grepl('if (!document.body.classList.contains("ibpl-mobile")) return;',
+                     gameflow_js, fixed = TRUE))
+  expect_true(grepl("new ResizeObserver(function (entries)", js, fixed = TRUE))
+  expect_true(grepl('if (window.ibplDeviceKind() === "desktop") return;', js, fixed = TRUE))
 })
 
 test_that("mobile gameflow overview covers every played period", {
