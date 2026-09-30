@@ -8,11 +8,19 @@ name: EuroLeague load
 # See euroleague/scripts/load_new_games.py and euroleague/RUNBOOK.md.
 
 on:
+  # Primary evening load: right after the Israeli nightly finishes. Measured
+  # 2026-09-23..29, GitHub created only two evening runs per night (~21:40 and
+  # ~00:40 UTC; the 18:23-20:23 slots never fired), so games tipping at 18:45
+  # UTC waited ~3h past their 3-hour mark. The Israeli ETL (cron 19:15 UTC,
+  # started ~2.5h late) now ends ~21:45-22:10 UTC, after most games fall due,
+  # and chaining after it can never collide with it.
+  workflow_run:
+    workflows: ["ETL Full"]
+    types: [completed]
   schedule:
-    # 2026-27 fixtures: EuroLeague Tue-Fri, EuroCup Tue-Wed (2 Thu), tip-offs
-    # 15:30-20:00 UTC, so games fall due 18:30-23:00 UTC. Hourly across that
-    # window picks each game up within ~1h of its 3-hour mark. :23 avoids the
-    # top-of-hour queue that delays GitHub's scheduled runs.
+    # Best-effort backups. 2026-27 fixtures: EuroLeague Tue-Fri, EuroCup
+    # Tue-Wed (2 Thu), tip-offs 15:30-20:00 UTC, so games fall due
+    # 18:30-23:00 UTC. :23 avoids the top-of-hour queue.
     - cron: '23 18-23 * * 2-5'
     # Daily catch-up: games whose evening run was skipped (Israeli ETL
     # running) or delayed, and playoff / Final Four games on other weekdays.
@@ -40,10 +48,10 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  # The Israeli nightly (etl-full.yml) is scheduled 21:15 UTC but GitHub has
-  # started it between 23:00 and 00:10 UTC -- inside this load window. Never run
-  # alongside it: skip, and the next hourly run (or the 06:23 catch-up) loads
-  # whatever this one would have.
+  # The Israeli nightly (etl-full.yml) is scheduled 19:15 UTC and GitHub starts
+  # it ~2.5h late, ~21:35-22:00 UTC -- inside this load window. Never run
+  # alongside it: skip, and the workflow_run trigger above loads whatever this
+  # one would have as soon as it completes.
   israeli-etl-guard:
     runs-on: ubuntu-latest
     permissions:

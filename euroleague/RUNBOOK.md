@@ -408,9 +408,11 @@ schedule endpoint.
   2026-27 fixture days; tip-offs 15:30-20:00 UTC), plus a daily 06:23 UTC
   catch-up for skipped runs and playoff / Final Four games on other days.
   Simulated over all 604 fixtures: loaded 3.1-3.9 h after tip-off, plus
-  GitHub's scheduling delay. It skips a run while the Israeli nightly
-  (`etl-full.yml`, which GitHub actually starts 23:00-00:10 UTC) is in
-  progress; the next run catches up. It loads only gamecodes the package
+  GitHub's scheduling delay. It also runs whenever the Israeli nightly
+  (`etl-full.yml`, cron 19:15 UTC, started ~2.5 h late) completes -- the most
+  reliable evening trigger, since GitHub fired only ~2 of the 6 hourly slots per
+  night in 2026-09 (~21:40 and ~00:40 UTC). A cron run that overlaps the
+  Israeli nightly is skipped; the chained run catches up. It loads only gamecodes the package
   results feed lists as played, with tip-off 3h+ ago, and that are absent from
   `euroleague.schedule`, so it never republishes a loaded game. The feed's
   times are Central European (Europe/Paris), not UTC or venue-local --
