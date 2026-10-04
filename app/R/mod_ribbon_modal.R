@@ -17,7 +17,7 @@ ribbon_inline_ui <- function(prefix) {
   )
 }
 
-ribbon_mobile_overview_ui <- function(margin, bounds) {
+ribbon_mobile_overview_ui <- function(margin, bounds, steps = NULL, meta = list()) {
   total <- bounds[length(bounds)]
   width <- 320
   height <- 56
@@ -41,7 +41,9 @@ ribbon_mobile_overview_ui <- function(margin, bounds) {
         tags$line(class = "ibpl-ribbon-overview-period", x1 = x, x2 = x,
                   y1 = 0, y2 = height)
       }),
-      tags$path(class = "ibpl-ribbon-overview-line", d = path)
+      tags$path(class = "ibpl-ribbon-overview-line", d = path),
+      ribbon_margin_hover(steps, margin, meta, bounds, width, plot_top,
+                          plot_height, gutter = 0)
     ),
     div(class = "ibpl-ribbon-quarter-nav", role = "group",
         `aria-label` = "Jump to quarter",
@@ -151,7 +153,7 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
         health_ui,
         div(class = "ibpl-ribbon-inline-hint",
             "Scroll through the quarters. Select a player's row for that stint and its lineups."),
-        ribbon_mobile_overview_ui(ribbon$margin, bounds),
+        ribbon_mobile_overview_ui(ribbon$margin, bounds, ribbon$steps, meta),
         div(class = "ibpl-ribbon-inline-scroll",
             `aria-label` = paste("Gameflow for", meta$game_label), svg)
       )

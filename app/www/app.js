@@ -416,6 +416,53 @@
   });
 })();
 
+// Running score on the margin chart, including phone overview/quarter cards.
+(function () {
+  var tip;
+  function hide() { if (tip) tip.hidden = true; }
+  function show(event, hit) {
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "ibpl-ribbon-score-tooltip";
+      tip.setAttribute("role", "tooltip");
+      document.body.appendChild(tip);
+    }
+    var point = hit.ownerSVGElement.createSVGPoint();
+    point.x = event.clientX;
+    point.y = event.clientY;
+    point = point.matrixTransform(hit.getScreenCTM().inverse());
+    var elapsed = Math.max(0, Math.min(Number(hit.dataset.seconds),
+      (point.x - Number(hit.getAttribute("x"))) / Number(hit.getAttribute("width")) *
+      Number(hit.dataset.seconds)));
+    var scores = JSON.parse(hit.dataset.scores);
+    var score = { own: 0, opp: 0 };
+    for (var i = 0; i < scores.length && scores[i].elapsed <= elapsed; i++) score = scores[i];
+    var bounds = hit.dataset.bounds.split(",").map(Number);
+    var period = 0;
+    while (period < bounds.length - 1 && elapsed >= bounds[period]) period++;
+    var left = Math.ceil(bounds[period] - elapsed);
+    var label = period < 4 ? "Q" + (period + 1) : "OT" + (period - 3);
+    tip.textContent = label + " " + Math.floor(left / 60) + ":" + String(left % 60).padStart(2, "0") +
+      "\n" + hit.dataset.ownTeam + " " + score.own + " \u2013 " + score.opp + " " + hit.dataset.oppTeam;
+    tip.hidden = false;
+    tip.style.left = Math.max(8, Math.min(event.clientX + 12, window.innerWidth - tip.offsetWidth - 8)) + "px";
+    tip.style.top = Math.max(8, Math.min(event.clientY + 12, window.innerHeight - tip.offsetHeight - 8)) + "px";
+  }
+  document.addEventListener("pointermove", function (event) {
+    var hit = event.target.closest && event.target.closest(".ibpl-ribbon-margin-hit");
+    if (hit) show(event, hit);
+    else if (event.pointerType !== "touch") hide();
+  });
+  document.addEventListener("click", function (event) {
+    var hit = event.target.closest && event.target.closest(".ibpl-ribbon-margin-hit");
+    if (hit) show(event, hit); else hide();
+  });
+  document.addEventListener("pointerout", function (event) {
+    if (event.pointerType !== "touch" && event.target.matches(".ibpl-ribbon-margin-hit")) hide();
+  });
+  document.addEventListener("scroll", hide, true);
+})();
+
 // ---------------- Stint ribbon hover ----------------
 (function() {
   // laneFrom() deliberately also matches the gutter <text> labels, which
@@ -462,6 +509,7 @@
     var overlays = svg.querySelectorAll(".ibpl-ribbon-selection-overlay");
     for (var i = 0; i < overlays.length; i++) overlays[i].remove();
     resetDetailLayout(svg);
+    setFocus(svg, null);
   }
 
   function clockLabel(seconds) {
@@ -774,6 +822,7 @@
     var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
     if (focus) focus.removeAttribute("clip-path");
     svg.classList.remove("is-lineup-focused");
+    setFocus(svg, null);
   }
 
   function appendClipRect(clip, geometry, y, height) {
@@ -922,6 +971,7 @@
     lane.appendChild(overlay);
 
     appendInlineDetail(svg, lane, lineups, aggregateSegments(segments));
+    setFocus(svg, lane);
   }
 
   // mobile.js pins a copy of the compact gutter (svg.ibplPin); its names
@@ -936,6 +986,9 @@
   }
 
   function setFocus(svg, lane) {
+    // A clicked stint remains the focus when the pointer leaves the bars.
+    // Hovering another player temporarily previews that player's minutes.
+    lane = lane || svg.querySelector(".ibpl-ribbon-lane.is-selected");
     var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
     if (!focus) return;
     syncPinFocus(svg, lane && lane.dataset.clip);

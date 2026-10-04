@@ -4024,6 +4024,30 @@ ribbon_margin_path <- function(margin, total_seconds, width, top, height,
   paste(parts, collapse = " ")
 }
 
+ribbon_margin_hover <- function(steps, margin, meta, bounds, width, top, height,
+                                gutter = RIBBON_GUTTER) {
+  if (is.null(steps) || !NROW(steps) || is.null(steps$own) ||
+      is.null(margin) || !NROW(margin)) return(NULL)
+  valid <- is.finite(steps$elapsed) & is.finite(steps$own) & is.finite(steps$margin)
+  scores <- steps[valid, , drop = FALSE]
+  if (!NROW(scores)) return(NULL)
+  scores <- scores[order(scores$elapsed, scores$order_key), , drop = FALSE]
+  scores <- scores[!duplicated(scores$elapsed, fromLast = TRUE), , drop = FALSE]
+  end <- max(margin$elapsed[is.finite(margin$elapsed)])
+  tags$rect(
+    class = "ibpl-ribbon-margin-hit", x = gutter, y = top,
+    width = end / tail(bounds, 1) * (width - gutter), height = height,
+    fill = "transparent", `pointer-events` = "all",
+    `data-seconds` = end, `data-bounds` = paste(bounds, collapse = ","),
+    `data-own-team` = meta$own_team %||% "Own",
+    `data-opp-team` = meta$opp_team %||% "Opponent",
+    `data-scores` = jsonlite::toJSON(data.frame(
+      elapsed = scores$elapsed, own = scores$own, opp = scores$own - scores$margin
+    ), dataframe = "rows"),
+    `aria-label` = "Hover or tap to see the score"
+  )
+}
+
 build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
                                    steps = NULL, layout = ribbon_layout()) {
   if (is.null(lanes) || !nrow(lanes)) return(NULL)
@@ -4289,7 +4313,9 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
            tags$path(class = "ibpl-ribbon-margin-base", d = path_d),
            tags$path(class = "ibpl-ribbon-margin-focus", d = path_d),
            scale_labels,
-           margin_period_labels),
+           margin_period_labels,
+           ribbon_margin_hover(steps, margin, meta, bounds, L$width,
+                               margin_top, L$margin_height, L$gutter)),
     tags$g(class = "ibpl-ribbon-opp-layer ibpl-ribbon-shift-after-own",
            opp_team_labels,
            lane_labels[lanes$side[first_idx] == "opp"],

@@ -1533,6 +1533,20 @@ tr[data-pivot-player] td:nth-child(2) { cursor: context-menu; }
   stroke-width: 1.75;
 }
 
+.ibpl-ribbon-score-tooltip {
+  position: fixed;
+  z-index: 1100;
+  pointer-events: none;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 7px 10px;
+  border: 1px solid var(--ibpl-text-muted);
+  border-radius: 6px;
+  background: var(--ibpl-bg);
+  color: var(--ibpl-text);
+  font-size: 12px;
+  white-space: pre-line;
+}
+
 .ibpl-ribbon-margin-base {
   stroke: var(--ibpl-text-muted);
   opacity: 0.5;
