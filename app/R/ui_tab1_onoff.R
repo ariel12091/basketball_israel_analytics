@@ -181,7 +181,8 @@ ui_tab1_onoff <- function() {
                          max = 2000, value = onoff_cfg$initial_min_all),
           minposs_slider("min_on_poss", "Min ON Poss", "min_on_poss",
                          max = 3000, value = onoff_cfg$initial_min_on),
-          ff_ranges_toggle("onoff_view_mode")
+          ff_ranges_toggle("onoff_view_mode"),
+          onoff_luck_explainer_ui("onoff_view_mode")
         ),
         DTOutput("onoff_dt"),
         conditionalPanel(

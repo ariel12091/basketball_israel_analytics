@@ -2686,6 +2686,43 @@ onoff_3pt_luck_range <- function(df, z = 1.96) {
      (df$off_off_fg3_att + df$def_off_fg3_att) / poff^2))
 }
 
+# Plain-language explainer for the "too close to call" tag, opened from a
+# Summary-only link in the chips row (mirrors ff_ranges_toggle()). The worked
+# example is fixed -- 25-26 Ligat Winner, from onoff_3pt_luck_range() -- so the
+# text never depends on what the table currently shows. Israeli Tab 1 only:
+# the EuroLeague on/off data has no 3PA splits, so Tab 8 never shows the tag.
+onoff_luck_explainer_ui <- function(view_mode_input_id) {
+  tags <- htmltools::tags
+  shiny::conditionalPanel(
+    condition = sprintf("input.%s == 'Summary'", view_mode_input_id),
+    bslib::popover(
+      trigger = tags$button(
+        type = "button", class = "chips-ranges-toggle",
+        tags$i(class = "bi bi-question-circle", `aria-hidden` = "true"),
+        " What does 'too close to call' mean?"
+      ),
+      title = "Too close to call",
+      placement = "bottom",
+      tags$div(
+        style = "max-width: 340px; font-size: 0.9em;",
+        tags$p("Three-point shooting is streaky: the same shooters can go 5-for-10",
+               "one week and 2-for-10 the next. Every Net number gets a range showing",
+               "how far that streakiness alone could move it, given how many threes",
+               "both teams took with the player on and off the court. Hover the",
+               "number to see it."),
+        tags$p("If the number sits inside its range, we can't tell it apart from a",
+               "hot or cold shooting stretch, so it's marked", tags$em("too close to call.")),
+        tags$p(tags$em("Example: Gur Lavy, 25-26: +7.3, range -11.2 to +11.2,",
+                       "so too close to call.")),
+        tags$p(style = "margin-bottom: 0; color: var(--ibpl-text-muted);",
+               "The range assumes every three goes in at the league average",
+               "(34.8% in 25-26) and covers 95% of what luck alone would produce.",
+               "It shrinks as a player logs more possessions.")
+      )
+    )
+  )
+}
+
 # Summary-view DataTable for the on/off tabs, shared by Tab 1 (Israeli) and
 # Tab 8 (EuroLeague). Builds the shot-split cell renderers with league averages
 # computed from the supplied data, the grouped header, the column definitions

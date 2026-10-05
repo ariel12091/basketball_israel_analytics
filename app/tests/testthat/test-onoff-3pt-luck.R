@@ -98,3 +98,22 @@ test_that("onoff_summary_datatable is unchanged when 3PA columns are absent", {
   expect_false("luck_3pt_range" %in% names(w$x$data))
   expect_equal(w$x$data$pr_net, 0.2)
 })
+
+test_that("the luck explainer is a Summary-only popover with a worked example", {
+  html <- as.character(onoff_luck_explainer_ui("onoff_view_mode"))
+  # htmltools escapes ' inside attributes but not in text.
+  expect_match(html, "input.onoff_view_mode == &#39;Summary&#39;", fixed = TRUE)
+  expect_match(html, "What does 'too close to call' mean?", fixed = TRUE)
+  expect_match(html, "bslib-popover", fixed = TRUE)
+  expect_match(html, "Gur Lavy", fixed = TRUE)
+  expect_match(html, "-11.2 to +11.2", fixed = TRUE)
+  expect_match(html, "34.8%", fixed = TRUE)
+})
+
+test_that("Tab 1 shows the luck explainer; Tab 8 has no 3PA splits to explain", {
+  src <- function(f) paste(readLines(testthat::test_path("..", "..", "R", f),
+                                     warn = FALSE), collapse = "\n")
+  expect_match(src("ui_tab1_onoff.R"), 'onoff_luck_explainer_ui("onoff_view_mode")',
+               fixed = TRUE)
+  expect_false(grepl("onoff_luck_explainer_ui", src("ui_tab8_euro.R"), fixed = TRUE))
+})
