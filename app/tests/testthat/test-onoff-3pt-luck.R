@@ -106,7 +106,9 @@ test_that("onoff_summary_datatable tags a Net RTG Diff that 3PT luck flips", {
   js <- as.character(net_render[[1]]$render)
   expect_match(js, "3PT luck", fixed = TRUE)
   expect_match(js, "Without 3-point luck", fixed = TRUE)
-  expect_match(js, "League 3P% 35.0%", fixed = TRUE)
+  # The on/off 3P% are already in the shot columns; the tooltip doesn't repeat them.
+  expect_false(grepl("3P% with this player", js, fixed = TRUE))
+  expect_false(grepl("League 3P%", js, fixed = TRUE))
   expect_match(js, sprintf("row[%d]", which(names(d) == "luck_3pt_flag") - 1), fixed = TRUE)
 })
 
@@ -116,9 +118,6 @@ test_that("onoff_summary_datatable takes the league rate from league_3p when giv
   df <- summary_fixture()
   w <- onoff_summary_datatable(df, NULL, league_3p = 0.4)
   expect_equal(w$x$data$luck_3pt_ours, onoff_3pt_luck(df, league_3p = 0.4)$ours)
-  js <- vapply(w$x$options$columnDefs,
-               function(cd) paste(as.character(cd$render), collapse = ""), character(1))
-  expect_true(any(grepl("League 3P% 40.0%", js, fixed = TRUE)))
 })
 
 test_that("onoff_summary_datatable is unchanged when 3P columns are absent", {

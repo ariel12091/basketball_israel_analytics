@@ -2837,7 +2837,8 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
                                           "luck_3pt_flag")) - 1
 
       # Net RTG Diff reads the hidden luck columns: every cell's tooltip says
-      # what it would be without 3PT luck and the 3P% behind it, and a flagged
+      # what it would be without 3PT luck and how the luck splits (the 3P%
+      # themselves are already in the shot columns), and a flagged
       # one is tagged. The number keeps the cell text colour (grey failed
       # contrast on every percentile colour). Sorting uses the raw number.
       idx_luck <- which(names(df) %in% c("luck_3pt_ours", "luck_3pt_theirs", "luck_3pt_flag")) - 1
@@ -2853,23 +2854,14 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
         "  var o = parseFloat(row[%d]), t = parseFloat(row[%d]);",
         "  if (isNaN(o) || isNaN(t)) return txt;",
         "  var f = function(v) { return (v > 0 ? '+' : '') + v.toFixed(1); };",
-        "  var pc = function(mi, ai) { var m = parseFloat(row[mi]), a = parseFloat(row[ai]);",
-        "    return a > 0 ? (100 * m / a).toFixed(1) + '%%' : '-'; };",
         "  var tip = 'Without 3-point luck: ' + f(val - o - t) + '. 3PT shooting added ' + f(o + t) +",
-        "    ' (team ' + f(o) + ', opponents ' + f(t) + '). 3P%% with this player on / off: team ' +",
-        "    pc(%d, %d) + ' / ' + pc(%d, %d) + ', opponents ' + pc(%d, %d) + ' / ' + pc(%d, %d) +",
-        "    '. League 3P%% %s.';",
+        "    ' (team ' + f(o) + ', opponents ' + f(t) + ').';",
         "  var flag = row[%d] === true || row[%d] === 'true';",
         "  var tag = flag ? '<span class=\"onoff-luck-tag\" style=\"display:block;font-size:10px;' +",
         "    'font-weight:600;line-height:1.3;color:var(--ibpl-cell-text);white-space:nowrap;\">3PT luck</span>' : '';",
         "  return '<span title=\"' + tip + '\" style=\"cursor:help;\">' + txt + tag + '</span>';",
         "}"),
         col_idx("luck_3pt_ours"), col_idx("luck_3pt_theirs"),
-        col_idx("off_on_fg3_made"), col_idx("off_on_fg3_att"),
-        col_idx("off_off_fg3_made"), col_idx("off_off_fg3_att"),
-        col_idx("def_on_fg3_made"), col_idx("def_on_fg3_att"),
-        col_idx("def_off_fg3_made"), col_idx("def_off_fg3_att"),
-        sprintf("%.1f%%", 100 * luck_rate),
         col_idx("luck_3pt_flag"), col_idx("luck_3pt_flag"))))) else list()
       # Shooting column JS render function factory
       make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
