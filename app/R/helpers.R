@@ -2660,6 +2660,32 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
   ))
 }
 
+# Half-width of the range, per 100 possessions, that 3-point shooting luck
+# alone could put a player's Net RTG Diff in: 1.96 binomial SDs if every 3
+# taken with him on and off (both teams) went in at the league rate. The
+# 25-26 analysis found opponent 3P% on/off indistinguishable from chance and
+# our own nearly so, so a Net RTG Diff inside this range can't be told from
+# luck. The league rate comes from team totals -- on + off is the team's whole
+# 3PM/3PA for every player of a team, so take it once per team; summing rows
+# would weight each team by its player count. NULL when the 3PA columns are
+# missing; NA where a possession count is not positive.
+onoff_3pt_luck_range <- function(df, z = 1.96) {
+  need <- c("ON Poss", "OFF Poss",
+            "off_on_fg3_made", "off_on_fg3_att", "off_off_fg3_made", "off_off_fg3_att",
+            "def_on_fg3_att", "def_off_fg3_att")
+  if (!all(need %in% names(df)) || !nrow(df)) return(NULL)
+  team <- if ("team_id" %in% names(df)) df$team_id else df$Team
+  tm_m <- df$off_on_fg3_made + df$off_off_fg3_made
+  tm_a <- df$off_on_fg3_att + df$off_off_fg3_att
+  first <- !duplicated(team) & !is.na(tm_a)
+  p <- sum(tm_m[first]) / sum(tm_a[first])
+  pon <- df$`ON Poss`; poff <- df$`OFF Poss`
+  pon[!(pon > 0)] <- NA; poff[!(poff > 0)] <- NA
+  z * 300 * sqrt(p * (1 - p) *
+    ((df$off_on_fg3_att + df$def_on_fg3_att) / pon^2 +
+     (df$off_off_fg3_att + df$def_off_fg3_att) / poff^2))
+}
+
 # Summary-view DataTable for the on/off tabs, shared by Tab 1 (Israeli) and
 # Tab 8 (EuroLeague). Builds the shot-split cell renderers with league averages
 # computed from the supplied data, the grouped header, the column definitions
@@ -2709,6 +2735,10 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
         ))
       }
 
+      # "Too close to call": the range 3-point shooting luck alone could
+      # produce on this player's 3s. NULL (no column) without the 3PA splits.
+      df$luck_3pt_range <- onoff_3pt_luck_range(df)
+
       keep_cols <- c(
         "Team", "Player",
         "Net RTG Diff", "Off ON Diff", "Def ON Diff",
@@ -2722,7 +2752,7 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
         # putting these two at position 3 did -- "Net" and "Off" landed on
         # them and the whole row drifted. The Four Factors table appends
         # them after vis_cols for the same reason.
-        "team_id", "player_id",
+        "team_id", "player_id", "luck_3pt_range",
         shot_raw_cols,
         shot_filter_cols,
         "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
@@ -2740,7 +2770,34 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
 
       pr_cols <- names(df)[grep("^pr_", names(df))]
       hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols,
-                                          "team_id", "player_id")) - 1
+                                          "team_id", "player_id", "luck_3pt_range")) - 1
+
+      # Net RTG Diff reads its luck range from the hidden column: every cell
+      # gets a tooltip stating the range, and one inside it is tagged. The
+      # number keeps the cell text colour: grey failed contrast on every
+      # percentile colour (1.1:1 on the green end). Sorting still uses the raw
+      # number (type !== 'display').
+      idx_luck <- which(names(df) == "luck_3pt_range") - 1
+      luck_net_idx <- if (length(idx_luck)) idx_net else integer(0)
+      luck_col_defs <- if (length(idx_luck)) list(list(targets = idx_net, render = DT::JS(sprintf(paste0(
+        "function(data, type, row, meta) {",
+        "  if (type !== 'display' || data === null) return data;",
+        "  var val = parseFloat(data);",
+        "  if (isNaN(val)) return data;",
+        "  var txt = (val > 0 ? '+' : '') + val.toFixed(2);",
+        "  var r = row ? parseFloat(row[%d]) : NaN;",
+        "  if (isNaN(r)) return txt;",
+        "  var rs = r.toFixed(1);",
+        "  var close = Math.abs(val) < r;",
+        "  var tip = '3-point shooting luck alone could put this anywhere between %s' + rs +",
+        "    ' and +' + rs + ', given the 3s taken with this player on and off the court. ' +",
+        "    txt + (close ? ' is inside that range, so it could be luck.' : ' is outside it.');",
+        "  if (!close) return '<span title=\"' + tip + '\" style=\"cursor:help;\">' + txt + '</span>';",
+        "  return '<span title=\"' + tip + '\" style=\"cursor:help;\">' +",
+        "    '<span>' + txt + '</span>' +",
+        "    '<span class=\"onoff-luck-tag\" style=\"display:block;font-size:10px;font-weight:600;' +",
+        "    'line-height:1.3;color:var(--ibpl-cell-text);white-space:nowrap;\">too close to call</span></span>';",
+        "}"), idx_luck, intToUtf8(8722L))))) else list()
 
       # Shooting column JS render function factory
       make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
@@ -2919,7 +2976,7 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
                                        list(targets = section_borders, className = "section-left-border"),
                                        list(targets = hide_idx, visible = FALSE),
                                        list(targets = "_all", className = "dt-center"),
-                                       list(targets = idx_diff, render = DT::JS(
+                                       list(targets = setdiff(idx_diff, luck_net_idx), render = DT::JS(
                                          "function(data, type, row, meta) {",
                                          "  if (type !== 'display' || data === null) return data;",
                                          "  var val = parseFloat(data);",
@@ -2928,7 +2985,7 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
                                          "  return val > 0 ? '+' + formatted : formatted;",
                                          "}"
                                        ))
-                                     ), shot_col_defs))) |>
+                                     ), shot_col_defs, luck_col_defs))) |>
         formatRound(c("Off ON PPP", "Def ON PPP", "Off OFF PPP", "Def OFF PPP"), 1) |>
         formatRound(intersect("minutes", names(df)), 1) |>
         formatCurrency(c("ON Poss", "OFF Poss"), currency = "", interval = 3, mark = ",", digits = 0)
