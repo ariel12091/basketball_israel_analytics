@@ -475,6 +475,220 @@
     return !!(lane && lane.dataset && lane.dataset.start !== undefined);
   }
 
+  var overlapClipId = 0;
+  function pairHost(svg) { return svg.closest(".ibpl-ribbon-game"); }
+  function pairMode(svg) {
+    var host = pairHost(svg);
+    return host && host.ibplPlayers && host.ibplPlayers.length > 0;
+  }
+
+  // Use the complete source timeline: quarter cards omit players who sat out
+  // that period, while a selection must follow them across the entire game.
+  function renderPlayerOverlap(host, previewWindows) {
+    var players = host.ibplPlayers || [];
+    var source = host.querySelector(".ibpl-ribbon-full-timeline svg.ibpl-ribbon") ||
+      host.querySelector("svg.ibpl-ribbon");
+    if (!source) return;
+    var allLanes = Array.from(source.querySelectorAll(".ibpl-ribbon-lane"));
+    var windows = [];
+    players.forEach(function(player, index) {
+      var next = allLanes.filter(function(lane) { return lane.dataset.playerKey === player.key; })
+        .map(function(lane) { return { start: Number(lane.dataset.start), end: Number(lane.dataset.end) }; });
+      if (!index) windows = next;
+      else {
+        var overlap = [];
+        windows.forEach(function(a) { next.forEach(function(b) {
+          var start = Math.max(a.start, b.start), end = Math.min(a.end, b.end);
+          if (end > start) overlap.push({ start: start, end: end });
+        }); });
+        windows = overlap;
+      }
+    });
+    windows.sort(function(a, b) { return a.start - b.start; });
+    var merged = [];
+    windows.forEach(function(window) {
+      var last = merged[merged.length - 1];
+      if (last && window.start <= last.end) last.end = Math.max(last.end, window.end);
+      else merged.push({ start: window.start, end: window.end });
+    });
+    var seconds = merged.reduce(function(total, window) { return total + window.end - window.start; }, 0);
+    renderSharedLineups(host, source, players, merged);
+    var pinned = (host.ibplSharedLineups || []).find(function(group) { return group.key === host.ibplSharedFocus; });
+    var highlighted = previewWindows || (pinned ? pinned.windows : merged);
+    var status = host.querySelector(".ibpl-ribbon-pair-status");
+    if (status) status.textContent = players.length ?
+      players.map(function(p) { return p.name; }).join(" + ") + " · " +
+      (seconds ? clockLabel(seconds) + (players.length > 1 ? " on court together" : " on court") : "No shared court time") +
+      ". Select a player again to remove them." : "Select players by clicking or tapping their bars or names.";
+    host.querySelectorAll("svg.ibpl-ribbon").forEach(function(svg) {
+      svg.querySelectorAll(".ibpl-ribbon-player-overlap-clip").forEach(function(clip) { clip.remove(); });
+      svg.querySelectorAll("[data-clip]").forEach(function(element) {
+        var lane = isStint(element) ? element : Array.from(svg.querySelectorAll(".ibpl-ribbon-lane"))
+          .find(function(lane) { return lane.dataset.clip === element.dataset.clip; });
+        element.classList.toggle("is-pair-selected", !!lane && players.some(function(p) { return p.key === lane.dataset.playerKey; }));
+      });
+      svg.querySelectorAll(".ibpl-ribbon-lane").forEach(function(lane) {
+        if (lane.classList.contains("is-pair-selected")) {
+          markStintSegments(lane, segmentsForLane(lane));
+        } else {
+          var overlay = lane.querySelector(".ibpl-ribbon-selection-overlay");
+          if (overlay) overlay.remove();
+        }
+      });
+      if (svg.ibplPin) svg.ibplPin.querySelectorAll("[data-pin-clip]").forEach(function(label) {
+        var lane = Array.from(svg.querySelectorAll(".ibpl-ribbon-lane"))
+          .find(function(lane) { return lane.dataset.clip === label.dataset.pinClip; });
+        label.classList.toggle("is-pair-selected", !!lane && players.some(function(p) { return p.key === lane.dataset.playerKey; }));
+      });
+      var focus = svg.querySelector(".ibpl-ribbon-margin-focus");
+      var hit = svg.querySelector(".ibpl-ribbon-margin-hit");
+      svg.classList.toggle("is-pair-focused", players.length > 0);
+      if (!focus) return;
+      if (!players.length) { focus.removeAttribute("clip-path"); return; }
+      var defs = svg.querySelector("defs");
+      if (!hit) { svg.classList.remove("is-pair-focused"); return; }
+      var clip = document.createElementNS("http://www.w3.org/2000/svg", "clipPath");
+      svg.ibplOverlapId = svg.ibplOverlapId || "ibpl-player-overlap-" + (++overlapClipId);
+      clip.id = svg.ibplOverlapId;
+      clip.setAttribute("class", "ibpl-ribbon-player-overlap-clip");
+      var scale = Number(hit.getAttribute("width")) / Number(hit.dataset.seconds);
+      // Compact quarter cards translate the curve when absent rows collapse.
+      // Clip coordinates are local to that curve, before its translation.
+      var transform = focus.transform.baseVal.consolidate();
+      var clipY = Number(hit.getAttribute("y")) - (transform ? transform.matrix.f : 0);
+      highlighted.forEach(function(window) {
+        appendClipRect(clip, { x: Number(hit.getAttribute("x")) + window.start * scale,
+          width: (window.end - window.start) * scale }, clipY, Number(hit.getAttribute("height")));
+      });
+      defs.appendChild(clip);
+      focus.setAttribute("clip-path", "url(#" + clip.id + ")");
+    });
+  }
+
+  function renderSharedLineups(host, source, players, windows) {
+    var signature = players.map(function(player) { return player.key; }).join("|");
+    if (host.ibplSharedSignature === signature) return;
+    host.ibplSharedSignature = signature;
+    host.ibplSharedFocus = null;
+    var previous = host.querySelector(".ibpl-ribbon-shared-lineups");
+    if (previous) previous.remove();
+    host.ibplSharedLineups = [];
+    if (players.length < 2 || !windows.length) return;
+    var lineups = JSON.parse(source.dataset.lineups || "[]");
+    var hit = source.querySelector(".ibpl-ribbon-margin-hit");
+    var scores = hit ? JSON.parse(hit.dataset.scores) : [];
+    function marginAt(time) {
+      var margin = 0;
+      scores.forEach(function(score) { if (score.elapsed <= time) margin = score.own - score.opp; });
+      return margin;
+    }
+    var card = document.createElement("div");
+    card.className = "ibpl-ribbon-detail ibpl-ribbon-shared-lineups";
+    var heading = document.createElement("div");
+    heading.className = "ibpl-ribbon-detail-head";
+    heading.textContent = "Shared lineups · select a lineup to highlight its shared minutes";
+    card.appendChild(heading);
+    ["own", "opp"].forEach(function(side) {
+      var player = players.find(function(player) { return player.key.indexOf(side + ":") === 0; });
+      if (!player) return;
+      var segments = [];
+      source.querySelectorAll(".ibpl-ribbon-lane").forEach(function(lane) {
+        if (lane.dataset.playerKey !== player.key) return;
+        segmentsForLane(lane).forEach(function(segment) {
+          windows.forEach(function(window) {
+            var start = Math.max(segment.start, window.start), end = Math.min(segment.end, window.end);
+            if (end > start) segments.push({ start: start, end: end, dictIndex: segment.dictIndex,
+              pm: scores.length ? String((marginAt(end) - marginAt(start)) * (side === "own" ? 1 : -1)) : "" });
+          });
+        });
+      });
+      var groups = aggregateSegments(segments);
+      if (!groups.length) return;
+      var team = document.createElement("div");
+      team.className = "ibpl-ribbon-detail-head";
+      team.textContent = hit ? (side === "own" ? hit.dataset.ownTeam : hit.dataset.oppTeam) : side;
+      card.appendChild(team);
+      var list = document.createElement("div");
+      list.className = "ibpl-ribbon-detail-list";
+      groups.forEach(function(group) {
+        group.key = side + ":" + group.dictIndex;
+        host.ibplSharedLineups.push(group);
+        var row = document.createElement("button");
+        row.type = "button";
+        row.className = "ibpl-ribbon-detail-row ibpl-ribbon-shared-lineup";
+        row.dataset.groupKey = group.key;
+        row.ibplWindows = group.windows;
+        row.setAttribute("aria-pressed", "false");
+        var members = document.createElement("div");
+        members.className = "ibpl-ribbon-detail-members";
+        members.textContent = (lineups[group.dictIndex] || "Lineup unavailable").split(" | ").join(" · ");
+        row.appendChild(members);
+        var facts = document.createElement("div");
+        facts.className = "ibpl-ribbon-detail-meta";
+        facts.textContent = clockLabel(group.duration) + " shared" +
+          (group.hasPm ? " · +/- " + pmLabel(group.pm, true) : "") + " · " +
+          group.windows.map(function(window) { return clockLabel(window.start) + "–" + clockLabel(window.end); }).join(", ");
+        row.appendChild(facts);
+        list.appendChild(row);
+      });
+      card.appendChild(list);
+    });
+    host.appendChild(card);
+  }
+
+  document.addEventListener("click", function(event) {
+    var row = event.target.closest && event.target.closest(".ibpl-ribbon-shared-lineup");
+    if (!row) return;
+    var host = row.closest(".ibpl-ribbon-game");
+    host.ibplSharedFocus = host.ibplSharedFocus === row.dataset.groupKey ? null : row.dataset.groupKey;
+    host.querySelectorAll(".ibpl-ribbon-shared-lineup").forEach(function(candidate) {
+      var selected = candidate.dataset.groupKey === host.ibplSharedFocus;
+      candidate.classList.toggle("is-active", selected);
+      candidate.setAttribute("aria-pressed", String(selected));
+    });
+    renderPlayerOverlap(host);
+  });
+  document.addEventListener("mouseover", function(event) {
+    var row = event.target.closest && event.target.closest(".ibpl-ribbon-shared-lineup");
+    if (row) renderPlayerOverlap(row.closest(".ibpl-ribbon-game"), row.ibplWindows);
+  });
+  document.addEventListener("mouseout", function(event) {
+    var row = event.target.closest && event.target.closest(".ibpl-ribbon-shared-lineup");
+    if (row && (!event.relatedTarget || !row.contains(event.relatedTarget))) renderPlayerOverlap(row.closest(".ibpl-ribbon-game"));
+  });
+
+  function togglePlayer(svg, lane) {
+    var host = pairHost(svg);
+    var players = host.ibplPlayers || [];
+    var index = players.findIndex(function(p) { return p.key === lane.dataset.playerKey; });
+    if (index >= 0) players.splice(index, 1);
+    else players.push({ key: lane.dataset.playerKey, name: lane.dataset.player });
+    host.ibplPlayers = [];
+    host.querySelectorAll("svg.ibpl-ribbon").forEach(clearSelection);
+    // Keep the existing stint/lineup detail when only one player is selected.
+    if (players.length === 1) {
+      var remaining = lane.dataset.playerKey === players[0].key ? lane :
+        Array.from(svg.querySelectorAll(".ibpl-ribbon-lane"))
+          .find(function(candidate) { return candidate.dataset.playerKey === players[0].key; });
+      if (remaining) setSelection(svg, remaining);
+    }
+    host.ibplPlayers = players;
+    renderPlayerOverlap(host);
+  }
+
+  function clearPlayers(host) {
+    host.ibplPlayers = [];
+    host.querySelectorAll("svg.ibpl-ribbon").forEach(clearSelection);
+    renderPlayerOverlap(host);
+  }
+
+  document.addEventListener("click", function(event) {
+    var button = event.target.closest && event.target.closest(".ibpl-ribbon-pair-clear");
+    if (!button) return;
+    var host = button.closest(".ibpl-ribbon-game");
+    clearPlayers(host);
+  });
+
   function bandFor(svg) {
     var band = svg.querySelector(".ibpl-ribbon-hover-band");
     if (!band) {
@@ -933,6 +1147,16 @@
     var lineups = [];
     try { lineups = JSON.parse(svg.dataset.lineups || "[]"); } catch (e) {}
     lane.classList.add("is-selected");
+    markStintSegments(lane, segments);
+    appendInlineDetail(svg, lane, lineups, aggregateSegments(segments));
+    setFocus(svg, lane);
+  }
+
+  // Reuse the same dividers and +/- labels for each selected player's bars.
+  function markStintSegments(lane, segments) {
+    var previous = lane.querySelector(".ibpl-ribbon-selection-overlay");
+    if (previous) previous.remove();
+    if (!segments.length) return;
     var rect = lane.querySelector("rect");
     if (!rect) return;
     var overlay = document.createElementNS("http://www.w3.org/2000/svg", "g");
@@ -969,9 +1193,6 @@
       }
     });
     lane.appendChild(overlay);
-
-    appendInlineDetail(svg, lane, lineups, aggregateSegments(segments));
-    setFocus(svg, lane);
   }
 
   // mobile.js pins a copy of the compact gutter (svg.ibplPin); its names
@@ -986,6 +1207,7 @@
   }
 
   function setFocus(svg, lane) {
+    if (pairMode(svg)) { renderPlayerOverlap(pairHost(svg)); return; }
     // A clicked stint remains the focus when the pointer leaves the bars.
     // Hovering another player temporarily previews that player's minutes.
     lane = lane || svg.querySelector(".ibpl-ribbon-lane.is-selected");
@@ -1077,6 +1299,13 @@
   document.addEventListener("click", function(e) {
     // Selection is click-driven on every device.
     var lane = laneFrom(e.target);
+    if (lane && !isStint(lane)) {
+      var labelledSvg = lane.closest(".ibpl-ribbon");
+      if (labelledSvg && pairHost(labelledSvg)) {
+        lane = Array.from(labelledSvg.querySelectorAll(".ibpl-ribbon-lane"))
+          .find(function(candidate) { return candidate.dataset.clip === lane.dataset.clip; }) || lane;
+      }
+    }
     if (!isStint(lane)) {
       // A tap on the pinned gutter (mobile.js) picks that row's stint
       // nearest the pin's right edge -- the earliest time currently in view.
@@ -1092,6 +1321,7 @@
       e.preventDefault();
       var svg = lane.closest(".ibpl-ribbon");
       if (!svg) return;
+      if (pairHost(svg)) { togglePlayer(svg, lane); return; }
       var wasSelected = lane.classList.contains("is-selected");
       if (wasSelected) clearSelection(svg);
       else setSelection(svg, lane);
@@ -1108,6 +1338,8 @@
       return;
     }
     if (e.target.closest && e.target.closest(".ibpl-ribbon-detail")) return;
+    if (e.target.closest && e.target.closest(".ibpl-ribbon-game")) return;
+    document.querySelectorAll(".ibpl-ribbon-game").forEach(clearPlayers);
     var selected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
     for (var i = 0; i < selected.length; i++) {
       var selectedSvg = selected[i].closest(".ibpl-ribbon");
@@ -1117,16 +1349,23 @@
 
   document.addEventListener("keydown", function(e) {
     var lane = laneFrom(e.target);
+    if (lane && !isStint(lane)) {
+      var labelledSvg = lane.closest(".ibpl-ribbon");
+      if (labelledSvg && pairHost(labelledSvg)) lane = Array.from(labelledSvg.querySelectorAll(".ibpl-ribbon-lane"))
+        .find(function(candidate) { return candidate.dataset.clip === lane.dataset.clip; }) || lane;
+    }
     if (lane && isStint(lane) && (e.key === "Enter" || e.key === " ")) {
       e.preventDefault();
       var svg = lane.closest(".ibpl-ribbon");
       if (svg) {
-        if (lane.classList.contains("is-selected")) clearSelection(svg);
+        if (pairHost(svg)) togglePlayer(svg, lane);
+        else if (lane.classList.contains("is-selected")) clearSelection(svg);
         else setSelection(svg, lane);
       }
       return;
     }
     if (e.key === "Escape") {
+      document.querySelectorAll(".ibpl-ribbon-game").forEach(clearPlayers);
       var selected = document.querySelectorAll(".ibpl-ribbon-lane.is-selected");
       for (var i = 0; i < selected.length; i++) {
         var selectedSvg = selected[i].closest(".ibpl-ribbon");

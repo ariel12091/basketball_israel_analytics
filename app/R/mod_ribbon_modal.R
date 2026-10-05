@@ -56,6 +56,14 @@ ribbon_mobile_overview_ui <- function(margin, bounds, steps = NULL, meta = list(
   )
 }
 
+ribbon_pair_controls <- function() {
+  div(class = "ibpl-ribbon-pair-controls",
+      tags$button(type = "button", class = "ibpl-ribbon-pair-clear",
+                  "Clear players"),
+      div(class = "ibpl-ribbon-pair-status", role = "status", `aria-live` = "polite",
+          "Select players by clicking or tapping their bars or names."))
+}
+
 # Game 406's Q4 clock is reconstructed from wall-entry time because the
 # provider froze every real-Q4 action at 00:00/00:01. Put that qualification
 # in the chart's warning area, where there is room to explain its scope.
@@ -138,7 +146,9 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
                                   layout = ribbon_layout(compact = inline))
 
     if (!inline) {
-      output[[paste0(prefix, "_ribbon_svg")]] <- renderUI({ tagList(health_ui, svg) })
+      output[[paste0(prefix, "_ribbon_svg")]] <- renderUI({
+        div(class = "ibpl-ribbon-game", health_ui, ribbon_pair_controls(), svg)
+      })
       showModal(modalDialog(title = title_ui,
                             uiOutput(paste0(prefix, "_ribbon_svg")),
                             size = "xl", easyClose = TRUE))
@@ -147,10 +157,11 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
 
     bounds <- ribbon_period_bounds(meta$n_periods)
     output[[paste0(prefix, "_ribbon_inline")]] <- renderUI({
-      div(class = "ibpl-ribbon-inline-result",
+      div(class = "ibpl-ribbon-inline-result ibpl-ribbon-game",
           `data-game-id` = as.character(click$game_id),
         div(class = "ibpl-ribbon-inline-title", title_ui),
         health_ui,
+        ribbon_pair_controls(),
         div(class = "ibpl-ribbon-inline-hint",
             "Scroll through the quarters. Select a player's row for that stint and its lineups."),
         ribbon_mobile_overview_ui(ribbon$margin, bounds, ribbon$steps, meta),
