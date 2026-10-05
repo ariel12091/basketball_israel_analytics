@@ -182,7 +182,10 @@ ui_tab1_onoff <- function() {
           minposs_slider("min_on_poss", "Min ON Poss", "min_on_poss",
                          max = 3000, value = onoff_cfg$initial_min_on),
           ff_ranges_toggle("onoff_view_mode"),
-          onoff_luck_explainer_ui("onoff_view_mode")
+          onoff_luck_explainer_ui("onoff_view_mode", paste(
+            "Example: Yovel Zoosman, Hapoel Jerusalem, 25-26: +10.6. 3PT shooting",
+            "added +11.6, mostly opponents shooting threes better with him off the",
+            "court; without 3-point luck he is at -1.0, so it is marked 3PT luck."))
         ),
         DTOutput("onoff_dt"),
         conditionalPanel(

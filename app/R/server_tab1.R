@@ -489,7 +489,7 @@ server_tab1 <- function(input, output, session, shared) {
     mode <- input$onoff_view_mode
 
     if (identical(mode, "Summary")) {
-      return(onoff_summary_datatable(df, onoff_filters, pivot = pivot_targets))
+      return(onoff_summary_datatable(df, onoff_filters, pivot = pivot_targets, league_3p = onoff_league_3p(mv_result_df())))
 
     } else if (identical(mode, "Four Factors")) {
       return(onoff_four_factors_datatable(df, onoff_filters,

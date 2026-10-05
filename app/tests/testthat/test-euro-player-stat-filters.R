@@ -215,7 +215,7 @@ test_that("a Player Stats chip reads the euro season MV once, filters by team an
 test_that("Player Stats and On/Off chips compose with AND in the table data", {
   # The renderer hands exactly these two inputs to onoff_summary_datatable().
   expect_match(read_repo_txt("R", "server_tab8_euro.R"),
-               "onoff_summary_datatable(df, onoff_filters, pivot = pivot_targets)", fixed = TRUE)
+               "onoff_summary_datatable(df, onoff_filters, pivot = pivot_targets,", fixed = TRUE)
   shiny::testServer(tab8_app(), {
     set_euro_context(session)
     tab8 <- session$userData$tab8

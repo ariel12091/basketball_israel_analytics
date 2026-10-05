@@ -2660,38 +2660,53 @@ ff_diff_cell_js <- function(on_val_idx, off_val_idx, on_rank_idx, off_rank_idx,
   ))
 }
 
-# Half-width of the range, per 100 possessions, that 3-point shooting luck
-# alone could put a player's Net RTG Diff in: 1.96 binomial SDs if every 3
-# taken with him on and off (both teams) went in at the league rate. The
-# 25-26 analysis found opponent 3P% on/off indistinguishable from chance and
-# our own nearly so, so a Net RTG Diff inside this range can't be told from
-# luck. The league rate comes from team totals -- on + off is the team's whole
-# 3PM/3PA for every player of a team, so take it once per team; summing rows
-# would weight each team by its player count. NULL when the 3PA columns are
-# missing; NA where a possession count is not positive.
-onoff_3pt_luck_range <- function(df, z = 1.96) {
-  need <- c("ON Poss", "OFF Poss",
-            "off_on_fg3_made", "off_on_fg3_att", "off_off_fg3_made", "off_off_fg3_att",
-            "def_on_fg3_att", "def_off_fg3_att")
-  if (!all(need %in% names(df)) || !nrow(df)) return(NULL)
+# 3PT luck on the on/off Net RTG Diff. 3P% is treated as luck and 2P% as real
+# (decided 2026-10-05: the 25-26 analysis found opponent 3P% on/off
+# indistinguishable from chance, our own nearly so). Luck = points per 100 from
+# 3PM above the league rate on the 3PA actually taken, with the player on minus
+# off; "ours" is his team's shooting, "theirs" the opponents' (counted against
+# him). Every make counts 3 points, a slight overstatement (a miss can still
+# become an offensive rebound).
+#
+# onoff_league_3p(): league 3P% from team totals. A player's on + off covers
+# only the games he appeared in, so each team's total is its row with the most
+# 3PA (someone who played every game); summing rows would weight a team by its
+# player count. NA without the columns.
+onoff_league_3p <- function(df) {
+  need <- c("off_on_fg3_made", "off_on_fg3_att", "off_off_fg3_made", "off_off_fg3_att")
+  if (is.null(df) || !all(need %in% names(df)) || !nrow(df)) return(NA_real_)
   team <- if ("team_id" %in% names(df)) df$team_id else df$Team
   tm_m <- df$off_on_fg3_made + df$off_off_fg3_made
   tm_a <- df$off_on_fg3_att + df$off_off_fg3_att
-  first <- !duplicated(team) & !is.na(tm_a)
-  p <- sum(tm_m[first]) / sum(tm_a[first])
-  pon <- df$`ON Poss`; poff <- df$`OFF Poss`
-  pon[!(pon > 0)] <- NA; poff[!(poff > 0)] <- NA
-  z * 300 * sqrt(p * (1 - p) *
-    ((df$off_on_fg3_att + df$def_on_fg3_att) / pon^2 +
-     (df$off_off_fg3_att + df$def_off_fg3_att) / poff^2))
+  idx <- which(!is.na(tm_m) & !is.na(tm_a))
+  idx <- idx[order(-tm_a[idx])]
+  idx <- idx[!duplicated(team[idx])]
+  if (!length(idx) || sum(tm_a[idx]) <= 0) return(NA_real_)
+  sum(tm_m[idx]) / sum(tm_a[idx])
 }
 
-# Plain-language explainer for the "too close to call" tag, opened from a
-# Summary-only link in the chips row (mirrors ff_ranges_toggle()). The worked
-# example is fixed -- 25-26 Ligat Winner, from onoff_3pt_luck_range() -- so the
-# text never depends on what the table currently shows. Israeli Tab 1 only:
-# the EuroLeague on/off data has no 3PA splits, so Tab 8 never shows the tag.
-onoff_luck_explainer_ui <- function(view_mode_input_id) {
+# onoff_3pt_luck(): per row, list(ours, theirs) in Net RTG Diff units. NULL
+# without the columns or a league rate; NA where a possession count is not
+# positive.
+onoff_3pt_luck <- function(df, league_3p = onoff_league_3p(df)) {
+  sides <- c("off_on", "off_off", "def_on", "def_off")
+  need <- c("ON Poss", "OFF Poss",
+            paste0(rep(sides, each = 2), c("_fg3_made", "_fg3_att")))
+  if (is.null(df) || !all(need %in% names(df)) || !nrow(df) ||
+      length(league_3p) != 1L || is.na(league_3p)) return(NULL)
+  pon <- df$`ON Poss`; poff <- df$`OFF Poss`
+  pon[!(pon > 0)] <- NA; poff[!(poff > 0)] <- NA
+  extra <- function(side, poss) {
+    300 * (df[[paste0(side, "_fg3_made")]] - league_3p * df[[paste0(side, "_fg3_att")]]) / poss
+  }
+  list(ours = extra("off_on", pon) - extra("off_off", poff),
+       theirs = -(extra("def_on", pon) - extra("def_off", poff)))
+}
+
+# Plain-language explainer for the "3PT luck" tag, opened from a Summary-only
+# link in the chips row (mirrors ff_ranges_toggle()). `example` is a fixed,
+# league-specific worked case, so the text never depends on the current table.
+onoff_luck_explainer_ui <- function(view_mode_input_id, example) {
   tags <- htmltools::tags
   shiny::conditionalPanel(
     condition = sprintf("input.%s == 'Summary'", view_mode_input_id),
@@ -2699,25 +2714,25 @@ onoff_luck_explainer_ui <- function(view_mode_input_id) {
       trigger = tags$button(
         type = "button", class = "chips-ranges-toggle",
         tags$i(class = "bi bi-question-circle", `aria-hidden` = "true"),
-        " What does 'too close to call' mean?"
+        " What does '3PT luck' mean?"
       ),
-      title = "Too close to call",
+      title = "3PT luck",
       placement = "bottom",
       tags$div(
         style = "max-width: 340px; font-size: 0.9em;",
-        tags$p("Three-point shooting is streaky: the same shooters can go 5-for-10",
-               "one week and 2-for-10 the next. Every Net number gets a range showing",
-               "how far that streakiness alone could move it, given how many threes",
-               "both teams took with the player on and off the court. Hover the",
-               "number to see it."),
-        tags$p("If the number sits inside its range, we can't tell it apart from a",
-               "hot or cold shooting stretch, so it's marked", tags$em("too close to call.")),
-        tags$p(tags$em("Example: Gur Lavy, 25-26: +7.3, range -11.2 to +11.2,",
-                       "so too close to call.")),
+        tags$p("Three-point accuracy swings a lot from game to game. Whether",
+               "opponents hit their threes while a player is on the court is",
+               "mostly out of his hands, and so is much of his own team's hot or",
+               "cold shooting."),
+        tags$p("Hover any Net number to see what it would be if every three, by",
+               "both teams, had gone in at the league average. When three-point",
+               "luck accounts for more than the whole number (removing it flips",
+               "the sign), it's marked", tags$em("3PT luck.")),
+        tags$p(tags$em(example)),
         tags$p(style = "margin-bottom: 0; color: var(--ibpl-text-muted);",
-               "The range assumes every three goes in at the league average",
-               "(34.8% in 25-26) and covers 95% of what luck alone would produce.",
-               "It shrinks as a player logs more possessions.")
+               "Only three-point accuracy is adjusted: two-pointers, free throws,",
+               "turnovers and rebounds count as they happened. Each three counts",
+               "as 3 points, so the effect is slightly overstated.")
       )
     )
   )
@@ -2738,7 +2753,7 @@ onoff_luck_explainer_ui <- function(view_mode_input_id) {
 # Indentation is left exactly as it was in the server files. make_shot_render()
 # builds its JS with a multi-line sprintf template, so re-indenting the body
 # would change the emitted JavaScript and stop this being a provable move.
-onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
+onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = NULL) {
       # Shooting split column names (16 raw + 4 display)
       shot_raw_cols <- c(
         "off_on_fg2_made", "off_on_fg2_att", "off_on_fg3_made", "off_on_fg3_att",
@@ -2772,9 +2787,20 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
         ))
       }
 
-      # "Too close to call": the range 3-point shooting luck alone could
-      # produce on this player's 3s. NULL (no column) without the 3PA splits.
-      df$luck_3pt_range <- onoff_3pt_luck_range(df)
+      # 3PT luck (onoff_3pt_luck()), as hidden columns the Net cell reads. The
+      # league rate comes from the caller's season-wide frame when given, so a
+      # Team filter or the possession bars can't turn it into a team average.
+      luck_rate <- if (is.null(league_3p) || is.na(league_3p)) onoff_league_3p(df) else league_3p
+      luck <- onoff_3pt_luck(df, luck_rate)
+      if (!is.null(luck)) {
+        df$luck_3pt_ours <- luck$ours
+        df$luck_3pt_theirs <- luck$theirs
+        net <- df$`Net RTG Diff`
+        adj <- net - luck$ours - luck$theirs
+        # Tagged when 3PT luck is more than the whole number: removing it
+        # flips the sign (or lands exactly on zero).
+        df$luck_3pt_flag <- !is.na(adj) & net != 0 & adj * net <= 0
+      }
 
       keep_cols <- c(
         "Team", "Player",
@@ -2789,7 +2815,7 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
         # putting these two at position 3 did -- "Net" and "Off" landed on
         # them and the whole row drifted. The Four Factors table appends
         # them after vis_cols for the same reason.
-        "team_id", "player_id", "luck_3pt_range",
+        "team_id", "player_id", "luck_3pt_ours", "luck_3pt_theirs", "luck_3pt_flag",
         shot_raw_cols,
         shot_filter_cols,
         "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
@@ -2807,35 +2833,44 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL) {
 
       pr_cols <- names(df)[grep("^pr_", names(df))]
       hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols,
-                                          "team_id", "player_id", "luck_3pt_range")) - 1
+                                          "team_id", "player_id", "luck_3pt_ours", "luck_3pt_theirs",
+                                          "luck_3pt_flag")) - 1
 
-      # Net RTG Diff reads its luck range from the hidden column: every cell
-      # gets a tooltip stating the range, and one inside it is tagged. The
-      # number keeps the cell text colour: grey failed contrast on every
-      # percentile colour (1.1:1 on the green end). Sorting still uses the raw
-      # number (type !== 'display').
-      idx_luck <- which(names(df) == "luck_3pt_range") - 1
-      luck_net_idx <- if (length(idx_luck)) idx_net else integer(0)
-      luck_col_defs <- if (length(idx_luck)) list(list(targets = idx_net, render = DT::JS(sprintf(paste0(
+      # Net RTG Diff reads the hidden luck columns: every cell's tooltip says
+      # what it would be without 3PT luck and the 3P% behind it, and a flagged
+      # one is tagged. The number keeps the cell text colour (grey failed
+      # contrast on every percentile colour). Sorting uses the raw number.
+      idx_luck <- which(names(df) %in% c("luck_3pt_ours", "luck_3pt_theirs", "luck_3pt_flag")) - 1
+      luck_net_idx <- if (length(idx_luck) == 3L) idx_net else integer(0)
+      col_idx <- function(nm) which(names(df) == nm) - 1
+      luck_col_defs <- if (length(luck_net_idx)) list(list(targets = idx_net, render = DT::JS(sprintf(paste0(
         "function(data, type, row, meta) {",
         "  if (type !== 'display' || data === null) return data;",
         "  var val = parseFloat(data);",
         "  if (isNaN(val)) return data;",
         "  var txt = (val > 0 ? '+' : '') + val.toFixed(2);",
-        "  var r = row ? parseFloat(row[%d]) : NaN;",
-        "  if (isNaN(r)) return txt;",
-        "  var rs = r.toFixed(1);",
-        "  var close = Math.abs(val) < r;",
-        "  var tip = '3-point shooting luck alone could put this anywhere between %s' + rs +",
-        "    ' and +' + rs + ', given the 3s taken with this player on and off the court. ' +",
-        "    txt + (close ? ' is inside that range, so it could be luck.' : ' is outside it.');",
-        "  if (!close) return '<span title=\"' + tip + '\" style=\"cursor:help;\">' + txt + '</span>';",
-        "  return '<span title=\"' + tip + '\" style=\"cursor:help;\">' +",
-        "    '<span>' + txt + '</span>' +",
-        "    '<span class=\"onoff-luck-tag\" style=\"display:block;font-size:10px;font-weight:600;' +",
-        "    'line-height:1.3;color:var(--ibpl-cell-text);white-space:nowrap;\">too close to call</span></span>';",
-        "}"), idx_luck, intToUtf8(8722L))))) else list()
-
+        "  if (!row) return txt;",
+        "  var o = parseFloat(row[%d]), t = parseFloat(row[%d]);",
+        "  if (isNaN(o) || isNaN(t)) return txt;",
+        "  var f = function(v) { return (v > 0 ? '+' : '') + v.toFixed(1); };",
+        "  var pc = function(mi, ai) { var m = parseFloat(row[mi]), a = parseFloat(row[ai]);",
+        "    return a > 0 ? (100 * m / a).toFixed(1) + '%%' : '-'; };",
+        "  var tip = 'Without 3-point luck: ' + f(val - o - t) + '. 3PT shooting added ' + f(o + t) +",
+        "    ' (team ' + f(o) + ', opponents ' + f(t) + '). 3P%% with this player on / off: team ' +",
+        "    pc(%d, %d) + ' / ' + pc(%d, %d) + ', opponents ' + pc(%d, %d) + ' / ' + pc(%d, %d) +",
+        "    '. League 3P%% %s.';",
+        "  var flag = row[%d] === true || row[%d] === 'true';",
+        "  var tag = flag ? '<span class=\"onoff-luck-tag\" style=\"display:block;font-size:10px;' +",
+        "    'font-weight:600;line-height:1.3;color:var(--ibpl-cell-text);white-space:nowrap;\">3PT luck</span>' : '';",
+        "  return '<span title=\"' + tip + '\" style=\"cursor:help;\">' + txt + tag + '</span>';",
+        "}"),
+        col_idx("luck_3pt_ours"), col_idx("luck_3pt_theirs"),
+        col_idx("off_on_fg3_made"), col_idx("off_on_fg3_att"),
+        col_idx("off_off_fg3_made"), col_idx("off_off_fg3_att"),
+        col_idx("def_on_fg3_made"), col_idx("def_on_fg3_att"),
+        col_idx("def_off_fg3_made"), col_idx("def_off_fg3_att"),
+        sprintf("%.1f%%", 100 * luck_rate),
+        col_idx("luck_3pt_flag"), col_idx("luck_3pt_flag"))))) else list()
       # Shooting column JS render function factory
       make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
                                    is_defense = FALSE, min_fga = 50, avg2 = 53, avg3 = 34) {

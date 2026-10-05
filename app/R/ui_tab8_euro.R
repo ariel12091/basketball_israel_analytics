@@ -95,7 +95,11 @@ ui_tab8_euro <- function() {
                          max = 2000, value = onoff_cfg$initial_min_all),
           minposs_slider("euro_min_on_poss", "Min ON Poss", "min_on_poss",
                          max = 3000, value = onoff_cfg$initial_min_on),
-          ff_ranges_toggle("euro_view_mode")
+          ff_ranges_toggle("euro_view_mode"),
+          onoff_luck_explainer_ui("euro_view_mode", paste(
+            "Example: Dwayne Bacon, Dubai, 25-26: +9.4. Dubai shot 37.5% from three",
+            "with him on vs 31.5% off, and opponents 35.4% vs 40.7%; together worth",
+            "+12.1, so without 3-point luck he is at -2.7 and it is marked 3PT luck."))
         ),
         DTOutput("euro_dt")
       )
