@@ -25,6 +25,9 @@ test('records frames and a timeline, waiting for a late element', () => {
   assert.ok(cell.t0 <= cell.tFocus && cell.tFocus < cell.t1);
   assert.ok(cell.t1 - cell.tFocus >= 1.95);
   assert.ok(late.t0 >= cell.t1);
+  // The app debounces inputs ~300 ms before it reloads; a read taken before
+  // the reload even starts records stale data.
+  assert.equal(tl.steps.find((s) => s.id === 'fx-slow').values.v, 'new');
   const team = tl.steps.find((s) => s.id === 'fx-team');
   assert.match(team.values.teams, /MACCABI TEL AVIV/);
   assert.doesNotMatch(team.values.teams, /KIRYAT ATA/, 'clear:true must replace, not add to, the selection');

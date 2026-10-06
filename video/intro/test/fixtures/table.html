@@ -14,6 +14,7 @@
 <div id="dt2"><table id="t2" class="display"><thead><tr><th>Team</th><th>Net</th></tr></thead>
 <tbody><tr><td>MACCABI TEL AVIV</td><td>20.9<br>#1</td></tr></tbody></table></div>
 <select id="teams" multiple><option value="2">MACCABI TEL AVIV</option><option value="12" selected>KIRYAT ATA</option></select>
+<button id="slow">Slow</button> <span id="val">old</span>
 <button id="late" style="display:none">Late</button>
 <script>
 $(function () {
@@ -22,6 +23,13 @@ $(function () {
   $('#t2').DataTable({ paging: false, searching: false, info: false, scrollX: true });
   // Like the app's team filter: a multi-select that may already hold a team.
   $('#teams').selectize({ plugins: ['remove_button'] });
+  // Like the app's debounced inputs: the reload only starts 400 ms after the click.
+  $('#slow').on('click', function () {
+    setTimeout(function () {
+      $('#val').addClass('recalculating');
+      setTimeout(function () { $('#val').text('new').removeClass('recalculating'); }, 800);
+    }, 400);
+  });
   setTimeout(function () { $('#late').show(); }, 1200);
 });
 </script>

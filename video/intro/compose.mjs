@@ -9,7 +9,7 @@ import { parseArgs } from 'node:util';
 import { validateScript } from './lib/script.mjs';
 import { focusPlan, squareCropX } from './lib/geometry.mjs';
 import { readTimeline, relSteps, holdOverruns } from './lib/timeline.mjs';
-import { ff, probeDuration, concatList, cleanGraph, captionGraph, captionInputs, writeGraph, ENC, FPS } from './lib/ffmpeg.mjs';
+import { ff, probeDuration, concatList, cleanGraph, cleanIsFresh, captionGraph, captionInputs, writeGraph, ENC, FPS } from './lib/ffmpeg.mjs';
 import { CARD, shortPlan, captionWindows } from './lib/plan.mjs';
 import { mergeShortChapters, youtubeChapters } from './lib/chapters.mjs';
 
@@ -31,21 +31,30 @@ const LANGS = ['en', 'he'];
 function cleanVideo(ch, tl) {
   const out = join(B, 'clean', `${ch.id}.mp4`);
   const recDir = join(OUT, 'rec', ch.id, 'frames');
-  // The zoom pass is the slow one; reuse it unless the chapter was re-recorded.
-  const timeline = join(OUT, 'rec', ch.id, 'timeline.json');
-  if (existsSync(out) && statSync(out).mtimeMs > statSync(timeline).mtimeMs) return out;
-  const list = join(B, 'lists', `${ch.id}.ffconcat`);
-  writeGraph(list, concatList(tl.frames.map((f) => ({ file: fwd(join(recDir, f.file)), ts: f.ts })), tl.tEnd));
   const rel = relSteps(tl);
   const zooms = ch.steps.flatMap((st) => {
     const r = rel.find((x) => x.id === st.id);
     const { zoom } = focusPlan(r.bbox, tl.viewport, st.zoom);
     return zoom ? [{ a: r.focus, b: r.b, scale: zoom.scale, xf: zoom.xf, yf: zoom.yf }] : [];
   });
+  const graph = cleanGraph(zooms, !!tl.viewport.mobile);
+  // The graph of the last *successful* encode, so a failed run never vouches
+  // for an old file.
+  const done = join(B, 'graphs', `clean-${ch.id}.done.txt`);
+  const fresh = cleanIsFresh({
+    outMtime: existsSync(out) ? statSync(out).mtimeMs : null,
+    timelineMtime: statSync(join(OUT, 'rec', ch.id, 'timeline.json')).mtimeMs,
+    prevGraph: existsSync(done) ? readFileSync(done, 'utf8') : null,
+    graph,
+  });
+  if (fresh) return out;
+  const list = join(B, 'lists', `${ch.id}.ffconcat`);
+  writeGraph(list, concatList(tl.frames.map((f) => ({ file: fwd(join(recDir, f.file)), ts: f.ts })), tl.tEnd));
   const g = join(B, 'graphs', `clean-${ch.id}.txt`);
-  writeGraph(g, cleanGraph(zooms, !!tl.viewport.mobile));
+  writeGraph(g, graph);
   mkdirSync(dirname(out), { recursive: true });
   ff(['-f', 'concat', '-safe', '0', '-i', list, '-/filter_complex', g, '-map', '[out]', ...ENC, out]);
+  writeGraph(done, graph);
   return out;
 }
 

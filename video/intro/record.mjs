@@ -27,9 +27,10 @@ const now = () => Date.now() / 1000;
 const pause = (page, s) => page.waitForTimeout(Math.round(s * 1000));
 let tagSeq = 0;
 
+// The app debounces inputs ~300 ms before reloading, so the page reads idle
+// for a moment after a change; wait past that before trusting busy().
 async function settle(page) {
-  if (opt['no-shiny']) return pause(page, 0.2);
-  await pause(page, 0.25);
+  await pause(page, 0.6);
   await page.waitForFunction(() => !window.__dir.busy(), null, { timeout: 60000, polling: 100 });
   await pause(page, 0.35);
 }
@@ -105,7 +106,10 @@ async function perform(page, s, fast) {
       await option.waitFor({ state: 'visible', timeout: 15000 });
       if (!fast) await pause(page, 0.3);
       await option.click();
-      return page.keyboard.press('Escape');
+      await page.keyboard.press('Escape');
+      // Escape does not close a multi-select's dropdown; left open it covers
+      // the next target and sits in the frame.
+      return page.evaluate((sel) => document.querySelector(sel).selectize.blur(), s.target);
     }
     default: throw new Error(`unknown action ${s.do}`);
   }

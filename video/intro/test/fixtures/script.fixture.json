@@ -80,6 +80,19 @@
           "hold": 1.5,
           "en": "Teams: {teams}",
           "he": "קבוצות: {teams}"
+        },
+        {
+          "id": "fx-slow",
+          "do": "click",
+          "target": "#slow",
+          "read": {
+            "v": {
+              "target": "#val"
+            }
+          },
+          "hold": 1.5,
+          "en": "Value {v}",
+          "he": "ערך {v}"
         }
       ]
     },

@@ -59,6 +59,13 @@ export function zoompanFilter(zooms) {
   return `zoompan=z='1/(1-(${k}))':x='(iw/1920)*(${x})':y='(ih/1080)*(${y})':${tail}`;
 }
 
+// The zoom pass is the slow step. Reuse it only when the recording is older
+// than it AND the zoom graph is byte-identical (a script.json zoom edit
+// changes the graph without touching the recording).
+export function cleanIsFresh({ outMtime, timelineMtime, prevGraph, graph }) {
+  return outMtime != null && outMtime > timelineMtime && prevGraph != null && prevGraph === graph;
+}
+
 export function cleanGraph(zooms, mobile) {
   if (mobile) {
     if (zooms.length) throw new Error('mobile chapters cannot zoom');

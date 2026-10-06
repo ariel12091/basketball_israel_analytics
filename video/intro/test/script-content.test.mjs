@@ -29,3 +29,13 @@ test('captions never hard-code a stat', () => {
     assert.doesNotMatch(st.en, /[+\-−]\d|\d+\.\d/, `${st.id} has a typed number; use read`);
   }
 });
+
+test('"he is still {noluck}" can only be filled with a positive number', async () => {
+  // If removing 3PT luck ever flips the sign, the caption would be false;
+  // the read must then fail the recording instead.
+  const { extractValue } = await import('../lib/text.mjs');
+  const luck = script.chapters.flatMap((c) => c.steps).find((s) => s.id === 'onoff-luck');
+  const p = luck.read.noluck.pattern;
+  assert.equal(extractValue('Without 3PT luck +8.5 SAMPLE SIZE', p), '+8.5');
+  assert.throws(() => extractValue('Without 3PT luck -2.1 SAMPLE SIZE', p), /not found/);
+});

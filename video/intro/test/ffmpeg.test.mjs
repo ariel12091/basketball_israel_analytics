@@ -4,7 +4,7 @@ import { mkdirSync, rmSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { concatList, zoompanFilter, cleanGraph, captionGraph, captionInputs, ff, probeDuration, writeGraph, ENC } from '../lib/ffmpeg.mjs';
+import { concatList, zoompanFilter, cleanGraph, captionGraph, captionInputs, cleanIsFresh, ff, probeDuration, writeGraph, ENC } from '../lib/ffmpeg.mjs';
 
 const TMP = join(dirname(fileURLToPath(import.meta.url)), 'tmp', 'ffmpeg');
 
@@ -74,4 +74,13 @@ test('each caption input lasts only its own window and shows only inside it', ()
 test('mobile chapters are padded, not zoomed', () => {
   assert.match(cleanGraph([], true), /pad=1920:1080/);
   assert.throws(() => cleanGraph([{ a: 0, b: 2, scale: 1.2, xf: 0, yf: 0 }], true), /mobile/);
+});
+
+test('a cached zoom pass is reused only if the recording and the zoom graph are both unchanged', () => {
+  const base = { outMtime: 200, timelineMtime: 100, prevGraph: 'g1', graph: 'g1' };
+  assert.equal(cleanIsFresh(base), true);
+  assert.equal(cleanIsFresh({ ...base, outMtime: null }), false, 'no cached file');
+  assert.equal(cleanIsFresh({ ...base, timelineMtime: 300 }), false, 're-recorded');
+  assert.equal(cleanIsFresh({ ...base, graph: 'g2' }), false, 'script.json zoom edited');
+  assert.equal(cleanIsFresh({ ...base, prevGraph: null }), false, 'no graph on record');
 });
