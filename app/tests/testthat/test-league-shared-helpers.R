@@ -91,6 +91,75 @@ test_that("auto minimums initialize when an On/Off tab first becomes active", {
   })
 })
 
+test_that("auto minimums climb back when the season switches to a fuller one", {
+  shiny::testServer(function(input, output, session) {
+    state <- shiny::reactiveValues(last_auto = NA_integer_, last_auto_all = NA_integer_, updating = FALSE)
+    auto_enabled <- shiny::reactiveVal(TRUE)
+    resetting <- shiny::reactiveVal(FALSE)
+    # A near-empty opening season and a completed one.
+    seasons <- list(
+      "2027" = data.frame(`ON Poss` = c(100, 90, 80, 70, 60, 50, 40, 30, 20, 10),
+                          `OFF Poss` = c(50, 40, 30, 20, 60, 50, 40, 30, 20, 10),
+                          check.names = FALSE),
+      "2026" = data.frame(`ON Poss` = seq(2000, 200, by = -200),
+                          `OFF Poss` = seq(1500, 150, by = -150),
+                          check.names = FALSE)
+    )
+    sources <- list(
+      fallback = function() FALSE,
+      ff = function() seasons[[input$season]],
+      mv = function() seasons[[input$season]],
+      live = function() stop("live source should not be used"),
+      team_ids = function() NULL
+    )
+    setup_onoff_auto_min(
+      input, session, "min_on", "min_all", state, auto_enabled, resetting,
+      mode_r = function() input$view_mode,
+      triggers = function() list(input$main_tabs, input$season),
+      sources = sources,
+      active = function() identical(input$main_tabs, "onoff")
+    )
+    session$userData$auto_state <- state
+  }, {
+    st <- session$userData$auto_state
+    # testServer does not apply updateSliderInput(), so echo each auto value
+    # back the way the browser would.
+    echo <- function() {
+      session$setInputs(min_on = st$last_auto, min_all = st$last_auto_all)
+      session$flushReact()
+    }
+
+    session$setInputs(main_tabs = "onoff", view_mode = "Summary", season = "2027",
+                      min_on = 300, min_all = 100)
+    session$flushReact()
+    expect_identical(st$last_auto, 70L)
+    expect_identical(st$last_auto_all, 20L)
+    echo()
+
+    # Full season: both bars return to the defaults they lowered, no higher.
+    session$setInputs(season = "2026")
+    session$flushReact()
+    expect_identical(st$last_auto, 300L)
+    expect_identical(st$last_auto_all, 100L)
+    echo()
+
+    # And back down again for the near-empty season.
+    session$setInputs(season = "2027")
+    session$flushReact()
+    expect_identical(st$last_auto, 70L)
+    expect_identical(st$last_auto_all, 20L)
+    echo()
+
+    # A deliberately loose hand-set value is never raised.
+    session$setInputs(min_on = 40)
+    session$flushReact()
+    session$setInputs(season = "2026")
+    session$flushReact()
+    expect_identical(input$min_on, 40)
+    expect_identical(st$last_auto, 70L)
+  })
+})
+
 test_that("resolve_poss_cols picks the columns for the active view mode", {
   summary_df <- data.frame(`ON Poss` = 1, `OFF Poss` = 1, check.names = FALSE)
   expect_identical(resolve_poss_cols(summary_df, "Summary"),

@@ -416,7 +416,8 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
 
   # Register this before the calculation observer, matching Tab 2: a dataset-
   # shaping filter first returns the control to auto mode, then recalculates it.
-  observeEvent(list(input$euro_ld_group_size, ld_filter$team(),
+  observeEvent(list(euro_competition(), euro_season(),
+                    input$euro_ld_group_size, ld_filter$team(),
                     ld_filter$players_on(), ld_filter$players_on_any(), ld_filter$players_off(),
                     ld_filter$players_on_any_min(), ld_filter$players_on_any_exact(),
                     debounced_dates(), input$euro_ld_opponents,

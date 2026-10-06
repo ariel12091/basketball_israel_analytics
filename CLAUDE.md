@@ -201,7 +201,7 @@ Available in Tabs 2 and 3 only. 4 SQL params: `p_max_margin`, `p_margin_status`,
 
 ## Auto Min Possessions
 
-- **Tab 1:** Top 35% by ON Poss (client-side in React via `autoMinPoss()`, server-side in Shiny). Only lowers threshold.
+- **Tab 1:** Top 35% by ON Poss (client-side in React via `autoMinPoss()`, server-side in Shiny). Lowers the default/hand-set bar; in Shiny it raises only to undo its own lowering, capped at that bar (so a season switch from a near-empty season recalibrates).
 - **Tab 2:** 150-row target cap on `totalPoss` (server-side `auto_minposs_target_r()`). Raises AND lowers. Computed on team/player-filtered data BEFORE min_poss filter.
 - **Auto/Manual:** Manual slider → `autoEnabled = false`. Filter change → `autoEnabled = true`. `autoUpdating` ref prevents auto-triggered changes from being treated as manual.
 

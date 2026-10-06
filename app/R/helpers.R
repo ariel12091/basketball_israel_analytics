@@ -1686,9 +1686,10 @@ onoff_filter_ff_rows <- function(df, team_ids, min_all, min_on) {
 #   4-5. the bars themselves, each triggered by the OTHER slider so setting one
 #        can relax the other without the two chasing each other.
 #
-# Both bars only ever LOWER the slider (cur_val <= min_needed returns early):
-# auto-min exists to stop a stale high threshold emptying the table, not to
-# overrule a deliberately loose one.
+# Both bars LOWER the slider below its default or hand-set value, and raise it
+# only to undo their own lowering, capped at that value: auto-min exists to stop
+# a stale high threshold emptying the table, not to overrule a deliberately
+# loose one.
 #
 # `sources` supplies the data each league fetches its own way -- see
 # onoff_auto_min_base_df(). Every element is a function so the server body can
@@ -1754,12 +1755,28 @@ setup_onoff_auto_min <- function(input, session, min_on_id, min_all_id,
         min_needed <- spec$compute(df_base, cols)
         cur_val <- as.integer(input[[spec$id]])
         if (is.na(min_needed) || is.na(cur_val)) return(invisible(NULL))
-        if (cur_val <= min_needed) return(invisible(NULL))
+
+        # The bar the slider held before auto first lowered it (the default or
+        # a hand-set value). A value auto itself wrote may climb back toward it
+        # once the population allows -- e.g. a near-empty new season lowered
+        # it, then the user switched to a full one -- but never past it.
+        base_slot <- paste0(spec$slot, "_base")
+        last_auto <- as.integer(state[[spec$slot]])
+        own_value <- !is.na(last_auto) && cur_val == last_auto
+        if (cur_val > min_needed) {
+          if (!own_value || is.na(state[[base_slot]] %||% NA)) state[[base_slot]] <- cur_val
+          target <- min_needed
+        } else {
+          base <- as.integer(state[[base_slot]] %||% NA)
+          if (!own_value || is.na(base)) return(invisible(NULL))
+          target <- min(min_needed, base)
+          if (target <= cur_val) return(invisible(NULL))
+        }
 
         state$updating <- TRUE
-        updateSliderInput(session, spec$id, value = min_needed)
+        updateSliderInput(session, spec$id, value = target)
         state$updating <- FALSE
-        state[[spec$slot]] <- min_needed
+        state[[spec$slot]] <- target
       }, ignoreInit = FALSE)
     })
   }

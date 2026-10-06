@@ -81,6 +81,8 @@ server_tab1 <- function(input, output, session, shared) {
     reset_stat_filters(on_stat_filter_state)
     auto_min_state$last_auto <- as.integer(DEFAULT_MIN_ON)
     auto_min_state$last_auto_all <- as.integer(DEFAULT_MIN_ALL)
+    auto_min_state$last_auto_base <- NA_integer_
+    auto_min_state$last_auto_all_base <- NA_integer_
     auto_enabled(FALSE)
     # Clear teams
     updateSelectizeInput(session, "teams", selected = character(0))
