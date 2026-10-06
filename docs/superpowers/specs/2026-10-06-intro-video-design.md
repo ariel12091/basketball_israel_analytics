@@ -114,6 +114,22 @@ PowerShell, not the Bash tool).
    skeleton or empty dropdown, Hebrew reads RTL.
 5. `ffprobe` durations: tutorial ~4.5 min, short <= 60 s.
 
+## Amendments (2026-10-06, while planning)
+
+- **Capture:** Chrome DevTools screencast (JPEG q92, 1600x900 viewport at
+  device scale 1.2 = 1920x1080 frames), not Playwright `recordVideo`, whose
+  VP8 output is visibly soft.
+- **Ring and cursor are drawn in-page** during recording (they are language
+  independent); only captions and cards are per-language overlays.
+- **Zoom is done in ffmpeg** (`zoompan`, eased in/out), not with a CSS
+  transform, which would break the app's position-fixed DataTables headers.
+- **Hebrew font:** Heebo (DM Sans has no Hebrew glyphs).
+- **Live URL:** `https://arieltaieb-basketball-israel-analytics.share.connect.posit.cloud/`
+  (returns 200). The URL in CLAUDE.md (`arieltaieb-onoff-shiny...`) returns
+  404 as of 2026-10-06.
+- **Verified on `main`:** the Compare preset "Starters vs Bench" exists, and
+  Game Logs has a "View" game-flow column (`ribbon_inline_ui("gl")`).
+
 ## Out of scope
 
 - A "Watch the tour" link on Home -- a separate small change once the video is
