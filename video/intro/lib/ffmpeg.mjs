@@ -67,15 +67,22 @@ export function cleanGraph(zooms, mobile) {
   return `[0:v]fps=${FPS},scale=3840:2160:flags=lanczos,${zoompanFilter(zooms)},setsar=1[out]`;
 }
 
+// Each caption PNG is an input only as long as its own window, shifted to its
+// start with setpts. Looping every PNG for the whole chapter instead cost
+// N x chapter-length 1080p decodes and ran ffmpeg out of memory (ENOMEM).
+export function captionInputs(caps, pngFor) {
+  return caps.flatMap((c) => ['-loop', '1', '-framerate', String(FPS), '-t', (c.b - c.a).toFixed(3), '-i', pngFor(c.id)]);
+}
+
 export function captionGraph(caps) {
   const parts = ['[0:v]null[v0]'];
   caps.forEach((c, i) => {
     const n = i + 1;
     const a = c.a.toFixed(3);
     const b = c.b.toFixed(3);
-    const fo = Math.max(c.a, c.b - 0.25).toFixed(3);
-    parts.push(`[${n}:v]format=rgba,fade=t=in:st=${a}:d=0.25:alpha=1,fade=t=out:st=${fo}:d=0.25:alpha=1[c${n}]`);
-    parts.push(`[v${i}][c${n}]overlay=0:0:enable='between(t,${a},${b})'[v${n}]`);
+    const fo = Math.max(0, c.b - c.a - 0.25).toFixed(3);
+    parts.push(`[${n}:v]format=rgba,fade=t=in:st=0:d=0.25:alpha=1,fade=t=out:st=${fo}:d=0.25:alpha=1,setpts=PTS+${a}/TB[c${n}]`);
+    parts.push(`[v${i}][c${n}]overlay=0:0:eof_action=pass:enable='between(t,${a},${b})'[v${n}]`);
   });
   return { graph: parts.join(';\n'), out: `[v${caps.length}]` };
 }

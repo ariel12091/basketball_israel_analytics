@@ -1,9 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdirSync, rmSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { concatList, zoompanFilter, cleanGraph, captionGraph, ff, probeDuration, writeGraph, ENC } from '../lib/ffmpeg.mjs';
+import { concatList, zoompanFilter, cleanGraph, captionGraph, captionInputs, ff, probeDuration, writeGraph, ENC } from '../lib/ffmpeg.mjs';
 
 const TMP = join(dirname(fileURLToPath(import.meta.url)), 'tmp', 'ffmpeg');
 
@@ -34,12 +35,40 @@ test('ffmpeg accepts the clean graph with a zoom and the caption graph', () => {
 
   const png = join(TMP, 'cap.png');
   ff(['-f', 'lavfi', '-i', 'color=c=red@0.5:s=1920x1080,format=rgba', '-frames:v', '1', png]);
-  const { graph, out } = captionGraph([{ a: 0.2, b: 2.5 }]);
+  const caps = [{ id: 'c', a: 0.2, b: 2.5 }];
+  const { graph, out } = captionGraph(caps);
   const cg = join(TMP, 'cap.txt');
   writeGraph(cg, graph);
   const final = join(TMP, 'final.mp4');
-  ff(['-i', clean, '-loop', '1', '-framerate', '30', '-t', '3', '-i', png, '-/filter_complex', cg, '-map', out, ...ENC, final]);
+  ff(['-i', clean, ...captionInputs(caps, () => png), '-/filter_complex', cg, '-map', out, ...ENC, final]);
   assert.ok(Math.abs(probeDuration(final) - 3) < 0.15);
+});
+
+// Average colour of the frame at time t, as [r, g, b].
+const colourAt = (file, t) => {
+  const r = spawnSync('ffmpeg', ['-v', 'error', '-ss', String(t), '-i', file, '-frames:v', '1', '-vf', 'scale=1:1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-'], { maxBuffer: 1024 });
+  return [...r.stdout];
+};
+
+test('each caption input lasts only its own window and shows only inside it', () => {
+  const caps = [{ id: 'x', a: 1.0, b: 2.0 }];
+  const args = captionInputs(caps, (id) => `C:/o/${id}.png`);
+  assert.deepEqual(args, ['-loop', '1', '-framerate', '30', '-t', '1.000', '-i', 'C:/o/x.png']);
+
+  mkdirSync(TMP, { recursive: true });
+  const black = join(TMP, 'black.mp4');
+  ff(['-f', 'lavfi', '-i', 'color=c=black:s=1920x1080:r=30:d=3', ...ENC, black]);
+  const png = join(TMP, 'red.png');
+  ff(['-f', 'lavfi', '-i', 'color=c=red:s=1920x1080,format=rgba', '-frames:v', '1', png]);
+  const { graph, out } = captionGraph(caps);
+  const cg = join(TMP, 'win.txt');
+  writeGraph(cg, graph);
+  const final = join(TMP, 'win.mp4');
+  ff(['-i', black, ...captionInputs(caps, () => png), '-/filter_complex', cg, '-map', out, ...ENC, final]);
+  assert.ok(Math.abs(probeDuration(final) - 3) < 0.15);
+  assert.ok(colourAt(final, 1.5)[0] > 150, `inside window: ${colourAt(final, 1.5)}`);
+  assert.ok(colourAt(final, 0.5)[0] < 30, `before window: ${colourAt(final, 0.5)}`);
+  assert.ok(colourAt(final, 2.6)[0] < 30, `after window: ${colourAt(final, 2.6)}`);
 });
 
 test('mobile chapters are padded, not zoomed', () => {

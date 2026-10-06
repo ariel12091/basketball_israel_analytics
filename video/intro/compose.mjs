@@ -9,7 +9,7 @@ import { parseArgs } from 'node:util';
 import { validateScript } from './lib/script.mjs';
 import { focusPlan, squareCropX } from './lib/geometry.mjs';
 import { readTimeline, relSteps, holdOverruns } from './lib/timeline.mjs';
-import { ff, probeDuration, concatList, cleanGraph, captionGraph, writeGraph, ENC, FPS } from './lib/ffmpeg.mjs';
+import { ff, probeDuration, concatList, cleanGraph, captionGraph, captionInputs, writeGraph, ENC, FPS } from './lib/ffmpeg.mjs';
 import { CARD, shortPlan, captionWindows } from './lib/plan.mjs';
 import { mergeShortChapters, youtubeChapters } from './lib/chapters.mjs';
 
@@ -48,9 +48,8 @@ function cleanVideo(ch, tl) {
 
 function captioned(ch, tl, clean, lang) {
   const out = join(B, lang, `${ch.id}.mp4`);
-  const dur = probeDuration(clean);
   const caps = captionWindows(tl);
-  const inputs = caps.flatMap((c) => ['-loop', '1', '-framerate', String(FPS), '-t', dur.toFixed(3), '-i', join(OUT, 'overlays', lang, 'wide', `${c.id}.png`)]);
+  const inputs = captionInputs(caps, (id) => join(OUT, 'overlays', lang, 'wide', `${id}.png`));
   const { graph, out: label } = captionGraph(caps);
   const g = join(B, 'graphs', `cap-${lang}-${ch.id}.txt`);
   writeGraph(g, graph);
