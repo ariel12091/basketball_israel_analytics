@@ -75,7 +75,10 @@
       return true;
     },
     busy() {
-      return document.documentElement.classList.contains('shiny-busy') || !!document.querySelector('.recalculating');
+      // Outputs on hidden tabs stay .recalculating while suspended; only a
+      // visible one means the page the viewer sees is still loading.
+      if (document.documentElement.classList.contains('shiny-busy')) return true;
+      return [...document.querySelectorAll('.recalculating')].some((e) => e.getClientRects().length > 0);
     },
   };
 })();

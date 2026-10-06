@@ -28,6 +28,19 @@ test('director finds cells, draws the ring and reports busy', async () => {
     assert.ok(await page.locator('#__dir_cursor').isVisible());
 
     assert.equal(await page.evaluate(() => window.__dir.busy()), false);
+    // Shiny leaves outputs on hidden tabs .recalculating for as long as they
+    // stay suspended; only a visible one means the page is still loading.
+    await page.evaluate(() => {
+      const hidden = document.createElement('div');
+      hidden.className = 'recalculating';
+      hidden.style.display = 'none';
+      hidden.textContent = 'x';
+      document.body.appendChild(hidden);
+    });
+    assert.equal(await page.evaluate(() => window.__dir.busy()), false);
+    await page.evaluate(() => document.querySelector('#t').classList.add('recalculating'));
+    assert.equal(await page.evaluate(() => window.__dir.busy()), true);
+    await page.evaluate(() => document.querySelector('#t').classList.remove('recalculating'));
     await page.evaluate(() => document.documentElement.classList.add('shiny-busy'));
     assert.equal(await page.evaluate(() => window.__dir.busy()), true);
   } finally {
