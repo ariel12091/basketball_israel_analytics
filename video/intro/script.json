@@ -540,7 +540,7 @@
           "target": "#ts_clutch_enabled",
           "hold": 3,
           "en": "Clutch filter: who delivers when the game is close.",
-          "he": "מסנן קלאץ': מי מספק כשהמשחק צמוד."
+          "he": "מסנן קלאץ': מי לוקח אחריות כשהמשחק צמוד."
         }
       ]
     },
