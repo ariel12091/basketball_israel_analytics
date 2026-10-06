@@ -137,7 +137,7 @@ test_that("the luck explainer is a Summary-only popover with the given example",
   html <- as.character(onoff_luck_explainer_ui("onoff_view_mode", "EXAMPLE TEXT"))
   # htmltools escapes ' inside attributes but not in text.
   expect_match(html, "input.onoff_view_mode == &#39;Summary&#39;", fixed = TRUE)
-  expect_match(html, "What does '3PT luck' mean?", fixed = TRUE)
+  expect_match(html, "What do '3PT luck' and 'small sample' mean?", fixed = TRUE)
   expect_match(html, "bslib-popover", fixed = TRUE)
   expect_match(html, "EXAMPLE TEXT", fixed = TRUE)
 })

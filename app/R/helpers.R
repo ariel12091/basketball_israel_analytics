@@ -2703,6 +2703,41 @@ onoff_3pt_luck <- function(df, league_3p = onoff_league_3p(df)) {
        theirs = -(extra("def_on", pon) - extra("def_off", poff)))
 }
 
+# Sample size on the on/off Net RTG Diff (decided 2026-10-06). One season of
+# on/off barely predicts itself: odd vs even games correlate at ~0.05, and
+# about 75% of the column's spread is what chance alone produces. Each side
+# (on, off) is padded with ONOFF_PAD_POSS possessions at the team's own net
+# rating; the padding was fitted on 2025-2026 Israeli data to predict
+# rest-of-season on/off (bootstrap range ~1,900 to unbounded; 2025 alone
+# 8,585, 2026 alone 2,768). Refit once 2027 completes. Algebraically the
+# padded diff is the raw one times neff * (1/(pon+X) + 1/(poff+X)), where
+# neff = pon*poff/(pon+poff) is the effective sample, set by the smaller side.
+ONOFF_PAD_POSS <- 4000
+
+# onoff_padded_net(): per row, the padded Net RTG Diff. NULL without the
+# columns; NA where a possession count is not positive.
+onoff_padded_net <- function(df, pad = ONOFF_PAD_POSS) {
+  need <- c("Net RTG Diff", "ON Poss", "OFF Poss")
+  if (is.null(df) || !all(need %in% names(df)) || !nrow(df)) return(NULL)
+  pon <- df$`ON Poss`; poff <- df$`OFF Poss`
+  pon[!(pon > 0)] <- NA; poff[!(poff > 0)] <- NA
+  df$`Net RTG Diff` * (pon * poff / (pon + poff)) * (1 / (pon + pad) + 1 / (poff + pad))
+}
+
+# onoff_sample_flag(): TRUE where the raw number is in the table's top (or
+# bottom) `q` but the padded one is not -- the sample, not the play, put it
+# there. Never tags a table with fewer than `min_rows` rankable rows.
+onoff_sample_flag <- function(net, padded, q = 0.10, min_rows = 10L) {
+  ok <- is.finite(net) & is.finite(padded)
+  flag <- rep(FALSE, length(net))
+  if (sum(ok) < min_rows) return(flag)
+  n <- net[ok]; p <- padded[ok]
+  hi <- n >= stats::quantile(n, 1 - q) & p < stats::quantile(p, 1 - q)
+  lo <- n <= stats::quantile(n, q) & p > stats::quantile(p, q)
+  flag[ok] <- hi | lo
+  flag
+}
+
 # Plain-language explainer for the "3PT luck" tag, opened from a Summary-only
 # link in the chips row (mirrors ff_ranges_toggle()). `example` is a fixed,
 # league-specific worked case, so the text never depends on the current table.
@@ -2714,9 +2749,9 @@ onoff_luck_explainer_ui <- function(view_mode_input_id, example) {
       trigger = tags$button(
         type = "button", class = "chips-ranges-toggle",
         tags$i(class = "bi bi-question-circle", `aria-hidden` = "true"),
-        " What does '3PT luck' mean?"
+        " What do '3PT luck' and 'small sample' mean?"
       ),
-      title = "3PT luck",
+      title = "3PT luck and small sample",
       placement = "bottom",
       tags$div(
         style = "max-width: 340px; font-size: 0.9em;",
@@ -2732,7 +2767,17 @@ onoff_luck_explainer_ui <- function(view_mode_input_id, example) {
         tags$p(style = "margin-bottom: 0; color: var(--ibpl-text-muted);",
                "Only three-point accuracy is adjusted: two-pointers, free throws,",
                "turnovers and rebounds count as they happened. Each three counts",
-               "as 3 points, so the effect is slightly overstated.")
+               "as 3 points, so the effect is slightly overstated."),
+        tags$hr(),
+        tags$p("On/off numbers are noisy: over one season, most of the gap",
+               "between players is chance. The hover also shows each number",
+               tags$em("Adjusted for sample size"), "-- our best estimate once",
+               "it is pulled toward the team's own rating, more so the fewer",
+               "possessions it rests on, especially off the court."),
+        tags$p(style = "margin-bottom: 0;",
+               "When a number is among the table's top or bottom 10% but its",
+               "adjusted value is not, the sample put it there, and it's marked",
+               tags$em("small sample."))
       )
     )
   )
@@ -2801,6 +2846,13 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
         # flips the sign (or lands exactly on zero).
         df$luck_3pt_flag <- !is.na(adj) & net != 0 & adj * net <= 0
       }
+      # Sample-size adjustment (onoff_padded_net()), ranked against the rows
+      # handed in -- before the stat filters, like the luck flag.
+      padded <- onoff_padded_net(df)
+      if (!is.null(padded)) {
+        df$net_padded <- padded
+        df$sample_flag <- onoff_sample_flag(df$`Net RTG Diff`, padded)
+      }
 
       keep_cols <- c(
         "Team", "Player",
@@ -2816,6 +2868,7 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
         # them and the whole row drifted. The Four Factors table appends
         # them after vis_cols for the same reason.
         "team_id", "player_id", "luck_3pt_ours", "luck_3pt_theirs", "luck_3pt_flag",
+        "net_padded", "sample_flag",
         shot_raw_cols,
         shot_filter_cols,
         "pr_net", "pr_off_on_d", "pr_def_on_d", "pr_off_on", "pr_def_on_inv", "pr_on_net", "pr_off_off", "pr_def_off_inv", "pr_off_net", "pr_def_on_d_inv"
@@ -2834,16 +2887,20 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
       pr_cols <- names(df)[grep("^pr_", names(df))]
       hide_idx <- which(names(df) %in% c(pr_cols, shot_raw_cols, shot_filter_cols,
                                           "team_id", "player_id", "luck_3pt_ours", "luck_3pt_theirs",
-                                          "luck_3pt_flag")) - 1
+                                          "luck_3pt_flag", "net_padded", "sample_flag")) - 1
 
       # Net RTG Diff reads the hidden luck columns: every cell's tooltip says
       # what it would be without 3PT luck and how the luck splits (the 3P%
       # themselves are already in the shot columns), and a flagged
-      # one is tagged. The number keeps the cell text colour (grey failed
-      # contrast on every percentile colour). Sorting uses the raw number.
+      # one is tagged. The padded number (onoff_padded_net()) joins the
+      # tooltip and a sample-flagged one is tagged "small sample"; either part
+      # is skipped when its columns are absent (index -1 reads undefined).
+      # The number keeps the cell text colour (grey failed contrast on every
+      # percentile colour). Sorting uses the raw number.
       idx_luck <- which(names(df) %in% c("luck_3pt_ours", "luck_3pt_theirs", "luck_3pt_flag")) - 1
-      luck_net_idx <- if (length(idx_luck) == 3L) idx_net else integer(0)
-      col_idx <- function(nm) which(names(df) == nm) - 1
+      idx_pad <- which(names(df) %in% c("net_padded", "sample_flag")) - 1
+      luck_net_idx <- if (length(idx_luck) == 3L || length(idx_pad) == 2L) idx_net else integer(0)
+      col_idx <- function(nm) { i <- which(names(df) == nm) - 1; if (length(i)) i else -1L }
       luck_col_defs <- if (length(luck_net_idx)) list(list(targets = idx_net, render = DT::JS(sprintf(paste0(
         "function(data, type, row, meta) {",
         "  if (type !== 'display' || data === null) return data;",
@@ -2851,18 +2908,27 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
         "  if (isNaN(val)) return data;",
         "  var txt = (val > 0 ? '+' : '') + val.toFixed(2);",
         "  if (!row) return txt;",
-        "  var o = parseFloat(row[%d]), t = parseFloat(row[%d]);",
-        "  if (isNaN(o) || isNaN(t)) return txt;",
         "  var f = function(v) { return (v > 0 ? '+' : '') + v.toFixed(1); };",
-        "  var tip = 'Without 3-point luck: ' + f(val - o - t) + '. 3PT shooting added ' + f(o + t) +",
-        "    ' (team ' + f(o) + ', opponents ' + f(t) + ').';",
-        "  var flag = row[%d] === true || row[%d] === 'true';",
-        "  var tag = flag ? '<span class=\"onoff-luck-tag\" style=\"display:block;font-size:10px;' +",
-        "    'font-weight:600;line-height:1.3;color:var(--ibpl-cell-text);white-space:nowrap;\">3PT luck</span>' : '';",
-        "  return '<span title=\"' + tip + '\" style=\"cursor:help;\">' + txt + tag + '</span>';",
+        "  var isTrue = function(v) { return v === true || v === 'true'; };",
+        "  var tagHtml = function(label) { return '<span class=\"onoff-luck-tag\" style=\"display:block;font-size:10px;' +",
+        "    'font-weight:600;line-height:1.3;color:var(--ibpl-cell-text);white-space:nowrap;\">' + label + '</span>'; };",
+        "  var tips = [], tag = '';",
+        "  var o = parseFloat(row[%d]), t = parseFloat(row[%d]);",
+        "  if (!isNaN(o) && !isNaN(t)) {",
+        "    tips.push('Without 3-point luck: ' + f(val - o - t) + '. 3PT shooting added ' + f(o + t) +",
+        "      ' (team ' + f(o) + ', opponents ' + f(t) + ').');",
+        "    if (isTrue(row[%d])) tag += tagHtml('3PT luck');",
+        "  }",
+        "  var p = parseFloat(row[%d]);",
+        "  if (!isNaN(p)) {",
+        "    tips.push('Adjusted for sample size: ' + f(p) + '.');",
+        "    if (isTrue(row[%d])) tag += tagHtml('small sample');",
+        "  }",
+        "  if (!tips.length) return txt;",
+        "  return '<span title=\"' + tips.join(' ') + '\" style=\"cursor:help;\">' + txt + tag + '</span>';",
         "}"),
-        col_idx("luck_3pt_ours"), col_idx("luck_3pt_theirs"),
-        col_idx("luck_3pt_flag"), col_idx("luck_3pt_flag"))))) else list()
+        col_idx("luck_3pt_ours"), col_idx("luck_3pt_theirs"), col_idx("luck_3pt_flag"),
+        col_idx("net_padded"), col_idx("sample_flag"))))) else list()
       # Shooting column JS render function factory
       make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
                                    is_defense = FALSE, min_fga = 50, avg2 = 53, avg3 = 34) {
