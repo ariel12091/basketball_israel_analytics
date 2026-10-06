@@ -519,8 +519,16 @@
       current = cell;
     }
     tip.hidden = false;
-    tip.style.left = Math.max(8, Math.min(event.clientX + 14, window.innerWidth - tip.offsetWidth - 8)) + "px";
-    tip.style.top = Math.max(8, Math.min(event.clientY + 14, window.innerHeight - tip.offsetHeight - 8)) + "px";
+    var w = tip.offsetWidth, h = tip.offsetHeight, x = event.clientX + 14, y = event.clientY + 14;
+    // A tap has no hover to follow, and a tip clamped up from the bottom edge
+    // would cover the row just tapped: sit below the cell, else above it.
+    if (event.type === "click" || event.pointerType === "touch") {
+      var r = cell.getBoundingClientRect();
+      x = r.left;
+      y = r.bottom + h + 8 <= window.innerHeight ? r.bottom + 6 : r.top - h - 6;
+    }
+    tip.style.left = Math.max(8, Math.min(x, window.innerWidth - w - 8)) + "px";
+    tip.style.top = Math.max(8, Math.min(y, window.innerHeight - h - 8)) + "px";
   }
   function targetOf(event) {
     return event.target.closest && event.target.closest(".onoff-net-tip") ? event.target : null;
