@@ -84,6 +84,11 @@ test_that("onoff_summary_datatable carries the padded net and the tag", {
   expect_match(js, "small sample", fixed = TRUE)
   expect_match(js, sprintf("row[%d]", which(names(d) == "net_padded") - 1), fixed = TRUE)
   expect_match(js, sprintf("row[%d]", which(names(d) == "sample_flag") - 1), fixed = TRUE)
+  # The tag carries its own hover, not the cell's 3PT-luck text.
+  expect_match(js, "tagHtml('small sample', 'Small sample: '", fixed = TRUE)
+  for (col in c("ON Poss", "OFF Poss")) {
+    expect_match(js, sprintf("row[%d]", which(names(d) == col) - 1), fixed = TRUE, info = col)
+  }
 })
 
 test_that("the Net cell keeps both luck and sample-size parts when 3P data exists", {
