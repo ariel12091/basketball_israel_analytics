@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@500;600;700&family=Heebo:wght@500;600;700&family=JetBrains+Mono:wght@600&display=block">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+<style>
+  html, body { margin: 0; background: transparent; }
+  #stage { position: relative; overflow: hidden; }
+  .cap { position: absolute; left: 50%; transform: translateX(-50%); max-width: 78%; width: max-content;
+         padding: 22px 34px; background: rgba(20,16,12,.9); border-left: 6px solid #e8a435; border-radius: 10px;
+         color: #f4ede4; font: 600 40px/1.3 'DM Sans', sans-serif; box-shadow: 0 8px 30px rgba(0,0,0,.45); }
+  .cap.bottom { bottom: 64px; }
+  .cap.top { top: 64px; }
+  .cap[dir=rtl] { border-left: none; border-right: 6px solid #e8a435; font-family: 'Heebo', 'DM Sans', sans-serif; }
+  .square .cap { max-width: 88%; font-size: 42px; }
+  .card { position: absolute; inset: 0; background: #14100C; display: flex; flex-direction: column; align-items: center;
+          justify-content: center; color: #f4ede4; font-family: 'DM Sans', sans-serif; text-align: center; padding: 0 8%; }
+  .card[dir=rtl] { font-family: 'Heebo', 'DM Sans', sans-serif; }
+  .card i { font-size: 96px; color: #e8a435; line-height: 1; }
+  .card h1 { font-size: 84px; margin: 28px 0 0; font-weight: 700; line-height: 1.15; }
+  .card p { font-size: 40px; color: #b9ab98; margin: 22px 0 0; }
+  .card .n { position: absolute; top: 56px; right: 72px; font: 600 30px 'JetBrains Mono', monospace; color: #e8a435; }
+  .card[dir=rtl] .n { right: auto; left: 72px; }
+  .card .bar { width: 120px; height: 6px; background: #e8a435; border-radius: 3px; margin-top: 36px; }
+  .square .card h1 { font-size: 68px; }
+  .square .card p { font-size: 34px; }
+</style></head>
+<body><div id="stage"></div>
+<script>
+  window.__render = async (o) => {
+    const st = document.getElementById('stage');
+    st.style.width = o.w + 'px';
+    st.style.height = o.h + 'px';
+    st.className = o.w === o.h ? 'square' : '';
+    const dir = o.lang === 'he' ? 'rtl' : 'ltr';
+    if (o.kind === 'caption') {
+      st.innerHTML = `<div class="cap ${o.position || 'bottom'}" dir="${dir}" lang="${o.lang}">${o.html}</div>`;
+    } else {
+      st.innerHTML = `<div class="card" dir="${dir}" lang="${o.lang}">`
+        + (o.icon ? `<i class="bi ${o.icon}"></i>` : '')
+        + `<h1>${o.html}</h1>`
+        + (o.sub ? `<p>${o.sub}</p>` : '')
+        + '<div class="bar"></div>'
+        + (o.n ? `<div class="n">${o.n}</div>` : '')
+        + '</div>';
+    }
+    await document.fonts.ready;
+    return true;
+  };
+</script></body></html>
