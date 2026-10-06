@@ -2,8 +2,8 @@
 # Each side (on, off) is padded with ONOFF_PAD_POSS possessions at the team's
 # own net rating -- the padding approach, with the padding fitted on 2025-2026
 # Israeli data to predict rest-of-season on/off. A row is tagged "small
-# sample" when its raw number is in the table's top or bottom 10% but its
-# padded number is not.
+# sample" when its raw number is in the table's top or bottom 20% and it rests
+# on far less evidence (shrink under 0.6x the table median) than most rows.
 
 test_that("onoff_padded_net matches padding each side toward the team net", {
   # On +10 over 1500 poss, off -10 over 500: team net = +5. Padded on =
@@ -35,21 +35,33 @@ test_that("onoff_padded_net is NA without possessions and NULL without columns",
   expect_null(onoff_padded_net(df))
 })
 
-test_that("onoff_sample_flag tags extremes that padding pulls back in", {
-  net <- seq(-45, 45, by = 10)          # 10 rows
-  padded <- net / 10
-  expect_false(any(onoff_sample_flag(net, padded)))
-  padded[10] <- 0                       # top raw, middling once padded
-  padded[1] <- 0.5                      # bottom raw, middling once padded
-  expect_identical(which(onoff_sample_flag(net, padded)), c(1L, 10L))
+test_that("onoff_pad_shrink is the share of the raw number padding keeps", {
+  df <- data.frame(`Net RTG Diff` = c(20, 50), `ON Poss` = c(1000, 1000),
+                   `OFF Poss` = c(1000, 0), check.names = FALSE)
+  s <- onoff_pad_shrink(df)
+  expect_equal(s[1], 0.2)
+  expect_true(is.na(s[2]))
+  expect_equal(onoff_padded_net(df), df$`Net RTG Diff` * s)
+  expect_null(onoff_pad_shrink(df[, "Net RTG Diff", drop = FALSE]))
+})
+
+test_that("onoff_sample_flag tags standouts that rest on thin evidence", {
+  net <- seq(-45, 45, by = 10)          # 10 rows; top/bottom 20% = 2 each end
+  shrink <- rep(0.2, 10)
+  expect_false(any(onoff_sample_flag(net, shrink)))
+  shrink[c(1, 10)] <- 0.05              # standouts on thin evidence
+  shrink[5] <- 0.05                     # thin, but middling: not tagged
+  expect_identical(which(onoff_sample_flag(net, shrink)), c(1L, 10L))
+  # Rank alone never tags: a standout on typical evidence stays untagged.
+  shrink[10] <- 0.15
+  expect_identical(which(onoff_sample_flag(net, shrink)), 1L)
 })
 
 test_that("onoff_sample_flag never tags small tables and skips NA rows", {
-  expect_false(any(onoff_sample_flag(1:9 * 10, c(1:8, 0))))
+  expect_false(any(onoff_sample_flag(1:9 * 10, c(rep(0.2, 8), 0.01))))
   net <- c(seq(-45, 45, by = 10), NA)
-  padded <- c(net[1:10] / 10, NA)
-  padded[10] <- 0
-  f <- onoff_sample_flag(net, padded)
+  shrink <- c(rep(0.2, 9), 0.05, 0.01)
+  f <- onoff_sample_flag(net, shrink)
   expect_identical(which(f), 10L)
   expect_false(f[11])
 })
@@ -117,7 +129,8 @@ test_that("the Net cell keeps both luck and sample-size parts when 3P data exist
 test_that("app.js draws the Net cell tooltip from the renderer's data attributes", {
   js <- paste(readLines(test_path("..", "..", "www", "app.js"), warn = FALSE), collapse = "\n")
   for (s in c(".onoff-net-tip", "d.luckOurs", "d.padded", "d.possOn", "d.sampleFlag",
-              "Without 3PT luck", "Adjusted for sample size")) {
+              "Without 3PT luck", "Adjusted for sample size",
+              "far fewer than most rows in this table")) {
     expect_match(js, s, fixed = TRUE, info = s)
   }
 })

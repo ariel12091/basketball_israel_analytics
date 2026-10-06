@@ -494,8 +494,12 @@
       }
       body += row("Adjusted for sample size", val(Number(d.padded)));
       if (d.sampleFlag === "1") {
-        body += '<div class="onoff-tip-note">Once adjusted, no longer in the ' +
-          (net > 0 ? "top" : "bottom") + " 10% of this table.</div>";
+        // Tagged by onoff_sample_flag(): a standout number on far less data
+        // than the table's typical row. The smaller side is what thins it.
+        var on = Number(d.possOn), off = Number(d.possOff);
+        body += '<div class="onoff-tip-note">' + (d.possOn !== undefined
+          ? "Only " + Math.min(on, off) + " possessions " + (on < off ? "on" : "off") + " court, far fewer than most rows in this table."
+          : "Rests on far fewer possessions than most rows in this table.") + "</div>";
       }
       html += section("is-sample", d.sampleFlag === "1" ? "Small sample" : "Sample size", body);
     }

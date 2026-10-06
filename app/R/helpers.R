@@ -2714,27 +2714,40 @@ onoff_3pt_luck <- function(df, league_3p = onoff_league_3p(df)) {
 # neff = pon*poff/(pon+poff) is the effective sample, set by the smaller side.
 ONOFF_PAD_POSS <- 4000
 
-# onoff_padded_net(): per row, the padded Net RTG Diff. NULL without the
-# columns; NA where a possession count is not positive.
-onoff_padded_net <- function(df, pad = ONOFF_PAD_POSS) {
-  need <- c("Net RTG Diff", "ON Poss", "OFF Poss")
+# onoff_pad_shrink(): per row, the share of the raw Net RTG Diff that survives
+# padding. It depends on the possession counts alone, so it measures how much
+# evidence sits behind the number. NULL without the columns; NA where a
+# possession count is not positive.
+onoff_pad_shrink <- function(df, pad = ONOFF_PAD_POSS) {
+  need <- c("ON Poss", "OFF Poss")
   if (is.null(df) || !all(need %in% names(df)) || !nrow(df)) return(NULL)
   pon <- df$`ON Poss`; poff <- df$`OFF Poss`
   pon[!(pon > 0)] <- NA; poff[!(poff > 0)] <- NA
-  df$`Net RTG Diff` * (pon * poff / (pon + poff)) * (1 / (pon + pad) + 1 / (poff + pad))
+  (pon * poff / (pon + poff)) * (1 / (pon + pad) + 1 / (poff + pad))
 }
 
-# onoff_sample_flag(): TRUE where the raw number is in the table's top (or
-# bottom) `q` but the padded one is not -- the sample, not the play, put it
-# there. Never tags a table with fewer than `min_rows` rankable rows.
-onoff_sample_flag <- function(net, padded, q = 0.10, min_rows = 10L) {
-  ok <- is.finite(net) & is.finite(padded)
+# onoff_padded_net(): per row, the padded Net RTG Diff. NULL without the
+# columns; NA where a possession count is not positive.
+onoff_padded_net <- function(df, pad = ONOFF_PAD_POSS) {
+  if (is.null(df) || !"Net RTG Diff" %in% names(df)) return(NULL)
+  shrink <- onoff_pad_shrink(df, pad)
+  if (is.null(shrink)) return(NULL)
+  df$`Net RTG Diff` * shrink
+}
+
+# onoff_sample_flag(): TRUE where the raw number stands out -- the table's top
+# or bottom `q` -- but rests on far less evidence than the table's typical row
+# (its shrink is under `thin` times the median). Not a rank test: padding
+# barely reorders a table of regulars (rank correlation ~0.99 in 2025-2026), so
+# "fell out of the top 10%" tagged players drifting from the 90th percentile to
+# the 85th. Never tags a table with fewer than `min_rows` rankable rows.
+onoff_sample_flag <- function(net, shrink, q = 0.20, thin = 0.6, min_rows = 10L) {
+  ok <- is.finite(net) & is.finite(shrink)
   flag <- rep(FALSE, length(net))
   if (sum(ok) < min_rows) return(flag)
-  n <- net[ok]; p <- padded[ok]
-  hi <- n >= stats::quantile(n, 1 - q) & p < stats::quantile(p, 1 - q)
-  lo <- n <= stats::quantile(n, q) & p > stats::quantile(p, q)
-  flag[ok] <- hi | lo
+  n <- net[ok]; s <- shrink[ok]
+  notable <- n >= stats::quantile(n, 1 - q) | n <= stats::quantile(n, q)
+  flag[ok] <- notable & s < thin * stats::median(s)
   flag
 }
 
@@ -2775,8 +2788,8 @@ onoff_luck_explainer_ui <- function(view_mode_input_id, example) {
                "it is pulled toward the team's own rating, more so the fewer",
                "possessions it rests on, especially off the court."),
         tags$p(style = "margin-bottom: 0;",
-               "When a number is among the table's top or bottom 10% but its",
-               "adjusted value is not, the sample put it there, and it's marked",
+               "When a number stands out (the table's top or bottom 20%) but",
+               "rests on far fewer possessions than most rows here, it's marked",
                tags$em("small sample."))
       )
     )
@@ -2851,7 +2864,7 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
       padded <- onoff_padded_net(df)
       if (!is.null(padded)) {
         df$net_padded <- padded
-        df$sample_flag <- onoff_sample_flag(df$`Net RTG Diff`, padded)
+        df$sample_flag <- onoff_sample_flag(df$`Net RTG Diff`, onoff_pad_shrink(df))
       }
 
       keep_cols <- c(
