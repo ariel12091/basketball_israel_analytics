@@ -31,3 +31,16 @@ test('Hebrew captions isolate Latin runs, keeping signs and sentence punctuation
   assert.equal(captionHtml('ל־100 פוזשנים', 'he'), 'ל־<bdi dir="ltr">100</bdi> פוזשנים');
   assert.equal(captionHtml('A & B', 'he'), '<bdi dir="ltr">A</bdi> &amp; <bdi dir="ltr">B</bdi>');
 });
+
+test('a quoted English label is one isolate, quotes and inner punctuation included', () => {
+  // Seen in the render: the closing ?" of a quoted card title jumped to the
+  // far side of the label.
+  assert.equal(
+    captionHtml('פותחים את "How is my team performing?"', 'he'),
+    'פותחים את <bdi dir="ltr">&quot;How is my team performing?&quot;</bdi>',
+  );
+  assert.equal(
+    captionHtml('לוחצים על "at least" כדי לעבור ל־"exactly".', 'he'),
+    'לוחצים על <bdi dir="ltr">&quot;at least&quot;</bdi> כדי לעבור ל־<bdi dir="ltr">&quot;exactly&quot;</bdi>.',
+  );
+});

@@ -3,7 +3,9 @@ const PLACEHOLDER = /\{([a-z_][a-z0-9_]*)\}/gi;
 // A Latin run starts with a letter, digit, sign or "(", may contain spaces and
 // inner punctuation, and ends on a letter, digit, "%" or ")" -- so a sentence's
 // final "." or ":" stays in the Hebrew flow.
-const LATIN_RUN = /[A-Za-z0-9+\-−±(][A-Za-z0-9+\-−±.,%/:'()_ ]*[A-Za-z0-9%)]|[A-Za-z0-9]/g;
+// A quoted English label ("How is my team performing?") is isolated whole,
+// quotes and punctuation included, or its closing ?" flips to the far side.
+const LATIN_RUN = /"[^"֐-׿]*[A-Za-z][^"֐-׿]*"|[A-Za-z0-9+\-−±(][A-Za-z0-9+\-−±.,%/:'()_ ]*[A-Za-z0-9%)]|[A-Za-z0-9]/g;
 
 export function fillTemplate(tpl, values) {
   return String(tpl).replace(PLACEHOLDER, (_, k) => {

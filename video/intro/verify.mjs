@@ -2,7 +2,7 @@
 // Extracts a frame per step from the finished videos for inspection and checks
 // durations. --still <stepId> grabs one captioned frame per language from the
 // chapter build instead (the look-and-feel approval checkpoint).
-import { readFileSync, mkdirSync, existsSync } from 'node:fs';
+import { readFileSync, mkdirSync, existsSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -39,6 +39,8 @@ for (const lang of ['en', 'he']) {
   if (di < 210 || di > 360) { console.error(`${lang}: intro ${di.toFixed(1)}s outside 210-360s`); bad++; }
   if (ds > 60) { console.error(`${lang}: short ${ds.toFixed(1)}s over 60s`); bad++; }
   const index = JSON.parse(readFileSync(join(OUT, `index_${lang}.json`), 'utf8'));
+  // Step numbers shift when the script changes; stale frames would be inspected as current.
+  rmSync(join(OUT, 'verify', lang), { recursive: true, force: true });
   Object.entries(index).forEach(([id, w], i) => grab(intro, (w.focus + w.t1) / 2, join(OUT, 'verify', lang, `${String(i).padStart(2, '0')}-${id}.jpg`)));
 }
 console.log(`frames in ${join(OUT, 'verify')} -- inspect every one`);

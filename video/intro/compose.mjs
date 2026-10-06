@@ -2,7 +2,7 @@
 // Builds clean (zoomed) chapter video from frames, overlays captions per
 // language, and concatenates the tutorial and the short.
 // Usage: node compose.mjs [--out d] [--script p] [--chapter id]
-import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, mkdirSync, existsSync, statSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -31,6 +31,9 @@ const LANGS = ['en', 'he'];
 function cleanVideo(ch, tl) {
   const out = join(B, 'clean', `${ch.id}.mp4`);
   const recDir = join(OUT, 'rec', ch.id, 'frames');
+  // The zoom pass is the slow one; reuse it unless the chapter was re-recorded.
+  const timeline = join(OUT, 'rec', ch.id, 'timeline.json');
+  if (existsSync(out) && statSync(out).mtimeMs > statSync(timeline).mtimeMs) return out;
   const list = join(B, 'lists', `${ch.id}.ffconcat`);
   writeGraph(list, concatList(tl.frames.map((f) => ({ file: fwd(join(recDir, f.file)), ts: f.ts })), tl.tEnd));
   const rel = relSteps(tl);
