@@ -101,15 +101,8 @@ test_that("mobile rules live only in mobile.css", {
   expect_true(grepl("prefers-reduced-motion", app_css, fixed = TRUE))
 })
 
-# ---- R1 (2026-09-13 rework): every column visible, identity column pinned
-# ----------------------------------------------------------------------------
-# Replaces the caret/child-row/priority-column tests above: real-device
-# testing rejected that design ("doesn't offer any advantage of the table,
-# which is literally compare the teams/players"). The replacement is CSS-only
-# (all 41 datatable() calls already set scrollX = TRUE, so no R change), so
-# what's testable here is the ABSENCE of the deleted machinery and the
-# PRESENCE of the sticky-column rule -- the scroll/pin/alignment behaviour
-# itself needs a real browser and is verified there, not here.
+# All stats stay available; full names use a small line above each row on all devices.
+# Scroll alignment, wrapping, menus, and exports are verified in a browser.
 
 test_that("the caret/child-row/priority-column machinery is gone, not disabled", {
   js <- read_repo_txt("www", "mobile.js")
@@ -123,18 +116,14 @@ test_that("the caret/child-row/priority-column machinery is gone, not disabled",
   expect_false(grepl("ibpl-m-detail", css, fixed = TRUE))
 })
 
-test_that("the identity column is pinned with CSS, covering both scrollHead and scrollBody", {
+test_that("names have their own line while scrolling on every device, keeping initial columns", {
   css <- read_repo_txt("www", "mobile.css")
 
-  # DT's scrollX splits the header and body into separate tables; both need
-  # the sticky rule or the pinned header drifts from the pinned body.
-  expect_true(grepl(".dataTables_wrapper table.dataTable > thead > tr > th:first-child", css, fixed = TRUE))
-  expect_true(grepl(".dataTables_wrapper table.dataTable > tbody > tr > td:first-child", css, fixed = TRUE))
-  expect_true(grepl("position: sticky", css, fixed = TRUE))
-  expect_true(grepl("left: 0", css, fixed = TRUE))
-  # An opaque background is the whole point -- a transparent sticky column
-  # lets scrolled cells show through underneath it.
-  expect_true(grepl("background: var(--ibpl-surface) !important", css, fixed = TRUE))
+  expect_false(grepl(".ibpl-name-table .ibpl-name-source", css, fixed = TRUE))
+  expect_true(grepl("--ibpl-name-height", css, fixed = TRUE))
+  expect_true(grepl(".ibpl-name-table.ibpl-names-scrolled .ibpl-row-name", css, fixed = TRUE))
+  expect_false(grepl("body.ibpl-mobile .ibpl-name-table", css, fixed = TRUE))
+  expect_true(grepl(".dataTables_wrapper:not(.ibpl-name-table)", css, fixed = TRUE))
 })
 
 test_that("the navbar collapses into a burger", {
@@ -361,10 +350,11 @@ test_that("the table header strip anchors outside .dataTables_scrollBody", {
   # table with no scroll split) so it never ends up a scrollBody child that
   # would slide out of view when the table scrolls horizontally.
   expect_true(grepl('wrapper.querySelector(".dataTables_scrollHead")', js, fixed = TRUE))
-  # Mentioning scrollBody in a comment (explaining what to avoid) is fine;
-  # querying or inserting into it is not.
-  expect_false(grepl('querySelector(".dataTables_scrollBody")', js, fixed = TRUE))
-  expect_false(grepl("dataTables_scrollBody\"); anchor.appendChild", js, fixed = TRUE))
+  # Scope this assertion to the strip; row names legitimately use the body.
+  strip_js <- strsplit(js, "function headerStripFor(th)", fixed = TRUE)[[1]][2]
+  strip_js <- strsplit(strip_js, "function closeHeaderStrip", fixed = TRUE)[[1]][1]
+  expect_false(grepl('querySelector(".dataTables_scrollBody")', strip_js, fixed = TRUE))
+  expect_false(grepl("dataTables_scrollBody\"); anchor.appendChild", strip_js, fixed = TRUE))
 })
 
 test_that("tapping the same header dot again dismisses the strip", {

@@ -2727,8 +2727,9 @@ document.addEventListener("keydown", function(e) {
   document.addEventListener("click", function(e) {
     if (menu && !e.target.closest(".ibpl-pivot-menu")) { close(); return; }
 
-    var cell = e.target.closest("td");
-    if (!cell || cell.cellIndex > 1) return;
+    var nameLabel = e.target.closest(".ibpl-row-name[data-pivot-trigger]");
+    var cell = nameLabel || e.target.closest("td");
+    if (!cell || (!nameLabel && cell.cellIndex > 1)) return;
     var row = cell.closest("tr[data-pivot-team], tr[data-pivot-player]");
     if (!row) return;
 
@@ -2741,8 +2742,9 @@ document.addEventListener("keydown", function(e) {
     if (e.key === "Escape") { close(true); return; }
     if (e.key !== "Enter" && e.key !== " ") return;
 
-    var cell = e.target.closest("td[data-pivot-trigger]");
-    if (!cell || cell.cellIndex > 1) return;
+    var nameLabel = e.target.closest(".ibpl-row-name[data-pivot-trigger]");
+    var cell = nameLabel || e.target.closest("td[data-pivot-trigger]");
+    if (!cell || (!nameLabel && cell.cellIndex > 1)) return;
     var row = cell.closest("tr[data-pivot-team], tr[data-pivot-player]");
     if (!row) return;
 
