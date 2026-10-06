@@ -56,6 +56,134 @@ window.ibplDeviceKind = function () {
   }
 })();
 
+/* ---- Full names above horizontally scrolling rows ---------------------- */
+(function () {
+  function headerName(th) {
+    return th ? th.textContent.trim().toLowerCase() : "";
+  }
+
+  function isName(th) {
+    return /^(player|team|player name|team name)$/.test(headerName(th));
+  }
+
+  function layout(body) {
+    if (!body.isConnected) return;
+    var scrolled = body.scrollLeft > 0;
+    body.closest(".dataTables_wrapper").classList.toggle("ibpl-names-scrolled", scrolled);
+    if (!scrolled) return;
+    var bounds = body.getBoundingClientRect();
+    body.querySelectorAll(".ibpl-row-name").forEach(function (label) {
+      var cell = label.parentNode;
+      var width = Math.max(80, body.clientWidth - 14) + "px";
+      if (label.style.width !== width) label.style.width = width;
+      // The label stays inside its original row, retaining delegated menus.
+      // Its offset compensates horizontal scrolling; vertical scrolling is
+      // native, so names and stats cannot drift apart.
+      label.style.left = (bounds.left + body.clientLeft + 6 -
+                          cell.getBoundingClientRect().left) + "px";
+      var height = (label.offsetHeight + 10) + "px";
+      if (cell.parentNode.style.getPropertyValue("--ibpl-name-height") !== height) {
+        cell.parentNode.style.setProperty("--ibpl-name-height", height);
+      }
+    });
+  }
+
+  function refresh(table) {
+    var $ = window.jQuery;
+    if (!$ || !$.fn.dataTable || !$.fn.dataTable.isDataTable(table)) return;
+    var api = $(table).DataTable();
+    var wrapper = api.table().container();
+    var body = wrapper.querySelector(".dataTables_scrollBody");
+    if (!body || wrapper.ibplNaming) return;
+    wrapper.ibplNaming = true;
+    try {
+      var names = [];
+      api.columns().every(function (index) {
+        var kind = headerName(this.header());
+        if (this.visible() && isName(this.header())) {
+          names.push({ index: index, player: kind.indexOf("player") === 0 });
+        }
+      });
+      names.sort(function (a, b) { return Number(b.player) - Number(a.player); });
+      var active = names.length > 0;
+      wrapper.classList.toggle("ibpl-name-table", active);
+      if (!active) wrapper.classList.remove("ibpl-names-scrolled");
+      wrapper.querySelectorAll("tbody .ibpl-name-source").forEach(function (node) {
+        node.classList.remove("ibpl-name-source");
+      });
+      api.rows({ page: "current" }).every(function () {
+        var row = this.node();
+        if (!row) return;
+        row.querySelectorAll(".ibpl-row-name").forEach(function (label) { label.remove(); });
+        row.querySelectorAll(".ibpl-name-anchor").forEach(function (cell) {
+          cell.classList.remove("ibpl-name-anchor");
+        });
+        row.classList.toggle("ibpl-named-row", active);
+        row.style.removeProperty("--ibpl-name-height");
+        if (!active) return;
+        var label = document.createElement("span");
+        label.className = "ibpl-row-name";
+        var trigger = false;
+        names.forEach(function (name, i) {
+          var source = api.cell(row, name.index).node();
+          if (!source) return;
+          source.classList.add("ibpl-name-source");
+          trigger = trigger || source.hasAttribute("data-pivot-trigger");
+          var part = document.createElement("span");
+          if (i) {
+            label.appendChild(document.createTextNode(" · "));
+            part.className = "ibpl-row-name-team";
+          }
+          part.textContent = source.textContent.trim();
+          label.appendChild(part);
+        });
+        var anchor = Array.prototype.find.call(row.cells, function (cell) {
+          return !cell.classList.contains("ibpl-name-source") && getComputedStyle(cell).display !== "none";
+        });
+        if (!anchor) return;
+        if (trigger) {
+          label.setAttribute("data-pivot-trigger", "");
+          label.setAttribute("tabindex", "0");
+          label.setAttribute("role", "button");
+          label.setAttribute("aria-haspopup", "menu");
+        }
+        anchor.classList.add("ibpl-name-anchor");
+        anchor.appendChild(label);
+      });
+      if (active) {
+        if (!body.ibplNamesBound) {
+          body.ibplNamesBound = true;
+          body.addEventListener("scroll", function () { layout(body); }, { passive: true });
+          if (window.ResizeObserver) {
+            var observer = new ResizeObserver(function () { layout(body); });
+            observer.observe(body);
+            $(table).one("destroy.dt", function () { observer.disconnect(); });
+          }
+        }
+        layout(body);
+      }
+    } finally {
+      wrapper.ibplNaming = false;
+    }
+  }
+
+  function refreshAll() {
+    document.querySelectorAll(".dataTables_scrollBody table.dataTable").forEach(refresh);
+  }
+  function bind() {
+    if (!window.jQuery) return;
+    window.jQuery(document).on("init.dt draw.dt column-reorder.dt column-visibility.dt", function (e, settings) {
+      if (settings && settings.nTable) refresh(settings.nTable);
+    });
+    window.jQuery(document).on("shown.bs.tab", refreshAll);
+    document.addEventListener("ibpl:mobilechange", refreshAll);
+    window.addEventListener("resize", refreshAll);
+    refreshAll();
+  }
+  if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", bind);
+  else bind();
+})();
+
 /* ---- Mobile navigation relocation ---------------------------------------
    The fixed cluster is supplied through navbarPage(header = ...) outside the
    collapsed menu. Positioning it statically does not put it under the burger,
