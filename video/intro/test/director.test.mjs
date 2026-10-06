@@ -18,6 +18,8 @@ test('director finds cells, draws the ring and reports busy', async () => {
     assert.equal(await page.locator('[data-dir-target="a"]').innerText(), '+17.0');
     assert.equal(await page.evaluate(() => window.__dir.tag({ header: { table: '#dt', col: 'Net RTG Diff' } }, 'h')), true);
     assert.equal(await page.locator('[data-dir-target="h"]').innerText(), 'Net RTG Diff');
+    assert.equal(await page.evaluate(() => window.__dir.tag({ cell: { table: '#dt2', row: 'maccabi tel aviv', col: 'Net' } }, 's')), true);
+    assert.equal(await page.locator('[data-dir-target="s"]').innerText(), '20.9\n#1');
     assert.equal(await page.evaluate(() => window.__dir.tag({ cell: { table: '#dt', row: 'nobody', col: 'Net' } }, 'n')), false);
     assert.equal(await page.evaluate(() => window.__dir.tag({ cell: { table: '#dt', row: 'clark', col: 'Hidden' } }, 'x')), false);
 

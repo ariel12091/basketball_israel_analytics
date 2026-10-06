@@ -33,8 +33,10 @@
     const host = document.querySelector(sel);
     const $ = window.jQuery;
     if (!host || !$ || !$.fn.dataTable) return null;
-    const tbl = host.matches('table') ? host : host.querySelector('table.dataTable');
-    return tbl && $.fn.dataTable.isDataTable(tbl) ? $(tbl).DataTable() : null;
+    // With scrollX the first table.dataTable is a header-only clone (and
+    // isDataTable() says yes to it too); take the original registered table.
+    const tbl = $.fn.dataTable.tables().find((t) => host === t || host.contains(t));
+    return tbl ? $(tbl).DataTable() : null;
   }
 
   function find(target) {
