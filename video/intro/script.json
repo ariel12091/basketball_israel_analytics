@@ -40,14 +40,14 @@
         {
           "id": "open-hook",
           "do": "none",
-          "hold": 3.5,
+          "hold": 3,
           "en": "What really happens when your best player sits?",
           "he": "מה באמת קורה כשהשחקן הכי טוב שלכם יושב על הספסל?"
         },
         {
           "id": "open-promise",
           "do": "none",
-          "hold": 3.5,
+          "hold": 3,
           "en": "This site answers questions like that, in a few clicks.",
           "he": "האתר הזה עונה על שאלות כאלה, בכמה קליקים."
         }
@@ -72,7 +72,7 @@
           "id": "home-season",
           "do": "hover",
           "target": "#game_year + .selectize-control",
-          "hold": 3,
+          "hold": 2.5,
           "en": "The season picker at the top drives every page.",
           "he": "בחירת העונה למעלה קובעת את כל העמודים."
         },
@@ -92,7 +92,7 @@
           "do": "hover",
           "target": "#home_set_default",
           "ringTarget": ".home-team-default",
-          "hold": 3,
+          "hold": 2.5,
           "en": "Tick “Set as default” and it opens next time too.",
           "he": "סמנו \"Set as default\" והיא תיפתח גם בפעם הבאה."
         },
@@ -197,33 +197,20 @@
           "target": {
             "header": {
               "table": "#onoff_dt",
-              "col": "Min"
+              "col": "Net"
             }
           },
-          "hold": 2,
-          "en": "Click any column to sort by it...",
-          "he": "לוחצים על עמודה כדי למיין לפיה..."
-        },
-        {
-          "id": "onoff-sort-desc",
-          "do": "click",
-          "target": {
-            "header": {
-              "table": "#onoff_dt",
-              "col": "Min"
-            }
-          },
-          "ringTarget": "#onoff_dt",
-          "hold": 4.5,
-          "en": "...most minutes first. Heavy minutes don’t guarantee big impact.",
-          "he": "...הכי הרבה דקות למעלה. הרבה דקות זה לא בהכרח השפעה."
+          "hold": 4,
+          "en": "Click a column to sort it. Here: who hurts his team most.",
+          "he": "לוחצים על עמודה כדי למיין. כאן: מי הכי פוגע בקבוצה שלו.",
+          "ringTarget": "#onoff_dt"
         },
         {
           "id": "onoff-views",
           "do": "hover",
           "target": ".navbar a[data-value=\"onoff\"]",
           "ringTarget": "li.tab-has-dropdown:has(a[data-value=\"onoff\"]) .tab-hover-menu",
-          "hold": 3,
+          "hold": 2.5,
           "en": "Hover a tab to switch views: Summary, Four Factors, Shot Profile.",
           "he": "מעבירים עכבר על הלשונית ומחליפים תצוגה: Summary, Four Factors, Shot Profile."
         },
@@ -249,7 +236,7 @@
           "id": "onoff-filters",
           "do": "hover",
           "target": "#date_range",
-          "hold": 3.5,
+          "hold": 3,
           "en": "Narrow it by dates, last games or opponent in the sidebar.",
           "he": "אפשר לצמצם לפי תאריכים, משחקים אחרונים או יריבה בסרגל הצד."
         }
@@ -295,7 +282,7 @@
           "do": "click",
           "target": "label:has(input[name=\"ld_num\"][value=\"5\"])",
           "ringTarget": "#ld_num",
-          "hold": 3,
+          "hold": 2.5,
           "en": "Group size: full five-man units, or pairs and trios.",
           "he": "גודל קבוצה: חמישיות מלאות, או זוגות ושלישיות."
         },
@@ -348,7 +335,7 @@
           "do": "click",
           "target": ".lineup-chips-quant",
           "ringTarget": ".lineup-chips-summary",
-          "hold": 3.5,
+          "hold": 3,
           "en": "Tap “at least” to switch to “exactly”.",
           "he": "לוחצים על \"at least\" כדי לעבור ל־\"exactly\"."
         },
@@ -415,21 +402,6 @@
           "he": "הנט רייטינג של מכבי: {net}. התקפה, הגנה ונטו מול הליגה."
         },
         {
-          "id": "tr-ranks",
-          "do": "none",
-          "ringTarget": {
-            "cell": {
-              "table": "#tr_table",
-              "row": "MACCABI TEL AVIV",
-              "col": "Net Rtg"
-            }
-          },
-          "zoom": 1.4,
-          "hold": 3.5,
-          "en": "Each cell shows the value and its rank in the league.",
-          "he": "כל תא מציג את הערך ואת הדירוג בליגה."
-        },
-        {
           "id": "tr-views",
           "do": "hover",
           "target": ".navbar a[data-value=\"team_ratings\"]",
@@ -465,9 +437,19 @@
           "he": "פותחים את \"What happened in last night's game?\""
         },
         {
+          "id": "gl-team",
+          "do": "selectize",
+          "target": "#gl_team",
+          "value": "MACCABI TEL AVIV",
+          "clear": true,
+          "hold": 2.5,
+          "en": "Pick a team to list every game it played.",
+          "he": "בוחרים קבוצה ורואים את כל המשחקים שלה."
+        },
+        {
           "id": "gl-row",
           "do": "hover",
-          "target": "#gl_table tbody tr",
+          "target": "#gl_table tbody tr:nth-child(3)",
           "zoom": 1.3,
           "hold": 3.5,
           "en": "Each row: result, score, and how its lineups performed.",
@@ -594,7 +576,7 @@
           "id": "cmp-more",
           "do": "hover",
           "target": "#cmp_preset + .selectize-control",
-          "hold": 3.5,
+          "hold": 3,
           "en": "More presets: home vs away, clutch, wins vs losses.",
           "he": "עוד מצבים מוכנים: בית מול חוץ, קלאץ', ניצחונות מול הפסדים."
         }
@@ -617,6 +599,15 @@
           "he": "עוברים ליורוליג: אותן שאלות, אותם עמודים."
         },
         {
+          "id": "el-season",
+          "do": "selectize",
+          "target": "#euro_game_year",
+          "value": "25-26",
+          "hold": 2.5,
+          "en": "Pick the EuroLeague season the same way.",
+          "he": "בוחרים עונת יורוליג באותה דרך."
+        },
+        {
           "id": "el-onoff",
           "do": "click",
           "target": ".league-only-el .home-nav-card:has-text(\"Who is helping my team?\")",
@@ -628,7 +619,7 @@
         {
           "id": "el-note",
           "do": "none",
-          "hold": 3.5,
+          "hold": 3,
           "en": "Leagues are never ranked against each other.",
           "he": "הליגות אף פעם לא מדורגות זו מול זו."
         }
@@ -670,7 +661,7 @@
               "col": "Off"
             }
           },
-          "hold": 3.5,
+          "hold": 3,
           "en": "Hover a column header to see what it means.",
           "he": "מעבירים עכבר על כותרת עמודה ורואים מה היא אומרת."
         },
