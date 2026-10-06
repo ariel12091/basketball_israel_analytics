@@ -1,0 +1,741 @@
+{
+  "url": "https://arieltaieb-basketball-israel-analytics.share.connect.posit.cloud/",
+  "setup": [
+    {
+      "do": "selectize",
+      "target": "#game_year",
+      "value": "25-26"
+    }
+  ],
+  "title_card": {
+    "en": {
+      "title": "IBPL Analytics",
+      "sub": "A 4-minute tour"
+    },
+    "he": {
+      "title": "IBPL Analytics",
+      "sub": "סיור של 4 דקות"
+    }
+  },
+  "outro_card": {
+    "en": {
+      "title": "Try it now"
+    },
+    "he": {
+      "title": "נסו עכשיו"
+    }
+  },
+  "short": {
+    "hook_en": "What really happens when your best player sits?",
+    "hook_he": "מה באמת קורה כשהשחקן הכי טוב שלכם יושב?"
+  },
+  "chapters": [
+    {
+      "id": "cold-open",
+      "icon": "bi-activity",
+      "card": false,
+      "title_en": "Intro",
+      "title_he": "פתיחה",
+      "steps": [
+        {
+          "id": "open-hook",
+          "do": "none",
+          "hold": 3.5,
+          "en": "What really happens when your best player sits?",
+          "he": "מה באמת קורה כשהשחקן הכי טוב שלכם יושב על הספסל?"
+        },
+        {
+          "id": "open-promise",
+          "do": "none",
+          "hold": 3.5,
+          "en": "This site answers questions like that, in a few clicks.",
+          "he": "האתר הזה עונה על שאלות כאלה, בכמה קליקים."
+        }
+      ]
+    },
+    {
+      "id": "home",
+      "icon": "bi-house-fill",
+      "title_en": "Finding your way",
+      "title_he": "איך מתמצאים",
+      "steps": [
+        {
+          "id": "home-league",
+          "do": "hover",
+          "target": "button[data-league-btn=\"il\"]",
+          "ringTarget": ".league-chooser",
+          "hold": 3,
+          "en": "First, pick a league: Israeli League, EuroLeague or EuroCup.",
+          "he": "קודם בוחרים ליגה: ליגת העל, יורוליג או יורוקאפ."
+        },
+        {
+          "id": "home-season",
+          "do": "hover",
+          "target": "#game_year + .selectize-control",
+          "hold": 3,
+          "en": "The season picker at the top drives every page.",
+          "he": "בחירת העונה למעלה קובעת את כל העמודים."
+        },
+        {
+          "id": "home-team",
+          "do": "selectize",
+          "target": "#home_team",
+          "value": "MACCABI TEL AVIV",
+          "zoom": 1.3,
+          "hold": 3.5,
+          "en": "Choose your team to see its story right here.",
+          "he": "בחרו קבוצה כדי לראות את הסיפור שלה כאן."
+        },
+        {
+          "id": "home-default",
+          "do": "hover",
+          "target": "#home_set_default",
+          "ringTarget": ".home-team-default",
+          "hold": 3,
+          "en": "Tick “Set as default” and it opens next time too.",
+          "he": "סמנו \"Set as default\" והיא תיפתח גם בפעם הבאה."
+        },
+        {
+          "id": "home-cards",
+          "do": "hover",
+          "target": ".league-only-il .home-nav-card:has-text(\"Who is helping my team?\")",
+          "hold": 3.5,
+          "en": "Each card is a question. Tap one to get the answer.",
+          "he": "כל כרטיס הוא שאלה. לוחצים עליו ומקבלים תשובה."
+        },
+        {
+          "id": "home-glossary",
+          "do": "hover",
+          "target": "#open_glossary",
+          "hold": 3,
+          "en": "Unsure what a stat means? The glossary explains every term.",
+          "he": "לא בטוחים מה מדד אומר? המילון מסביר כל מונח."
+        }
+      ]
+    },
+    {
+      "id": "onoff",
+      "icon": "bi-person-fill",
+      "title_en": "Who is helping my team?",
+      "title_he": "מי עוזר לקבוצה שלי?",
+      "steps": [
+        {
+          "id": "onoff-open",
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"Who is helping my team?\")",
+          "ring": false,
+          "hold": 2,
+          "en": "Open “Who is helping my team?”",
+          "he": "פותחים את \"Who is helping my team?\""
+        },
+        {
+          "id": "onoff-header",
+          "do": "hover",
+          "target": {
+            "header": {
+              "table": "#onoff_dt",
+              "col": "Net"
+            }
+          },
+          "zoom": 1.4,
+          "hold": 4,
+          "en": "Net: how much better the team is with him on the floor.",
+          "he": "Net: בכמה הקבוצה טובה יותר כשהוא על המגרש."
+        },
+        {
+          "id": "onoff-tag",
+          "do": "hover",
+          "target": "#onoff_dt .onoff-net-tip:has(.onoff-luck-tag)",
+          "zoom": 1.3,
+          "hold": 4.5,
+          "short": 2,
+          "en": "A tag like “3PT luck” warns when a number may mislead.",
+          "he": "תגית כמו \"3PT luck\" מזהירה כשמספר עלול להטעות."
+        },
+        {
+          "id": "onoff-team",
+          "do": "selectize",
+          "target": "#teams",
+          "value": "MACCABI TEL AVIV",
+          "hold": 2.5,
+          "en": "Filter to Maccabi Tel Aviv.",
+          "he": "מסננים למכבי תל אביב."
+        },
+        {
+          "id": "onoff-clark",
+          "do": "hover",
+          "target": {
+            "cell": {
+              "table": "#onoff_dt",
+              "row": "CLARK III",
+              "col": "Net"
+            }
+          },
+          "read": {
+            "net": {
+              "target": {
+                "cell": {
+                  "table": "#onoff_dt",
+                  "row": "CLARK III",
+                  "col": "Net"
+                }
+              },
+              "pattern": "[+\\-−]?\\d+(\\.\\d+)?"
+            }
+          },
+          "zoom": 1.5,
+          "hold": 4.5,
+          "short": 1,
+          "en": "Jimmy Clark III: {net} points per 100 possessions.",
+          "he": "ג'ימי קלארק: {net} נקודות ל־100 פוזשנים."
+        },
+        {
+          "id": "onoff-colors",
+          "do": "none",
+          "ringTarget": {
+            "cell": {
+              "table": "#onoff_dt",
+              "row": "CLARK III",
+              "col": "Net"
+            }
+          },
+          "hold": 3.5,
+          "en": "Green helps, red hurts. The brighter, the bigger.",
+          "he": "ירוק עוזר, אדום מזיק. ככל שהצבע חזק יותר, ההשפעה גדולה יותר."
+        },
+        {
+          "id": "onoff-sorkin",
+          "do": "hover",
+          "target": {
+            "cell": {
+              "table": "#onoff_dt",
+              "row": "SORKIN",
+              "col": "Net"
+            }
+          },
+          "read": {
+            "sorkin": {
+              "target": {
+                "cell": {
+                  "table": "#onoff_dt",
+                  "row": "SORKIN",
+                  "col": "Net"
+                }
+              },
+              "pattern": "[+\\-−]?\\d+(\\.\\d+)?"
+            }
+          },
+          "zoom": 1.5,
+          "hold": 4.5,
+          "en": "Roman Sorkin plays more, yet sits at {sorkin}.",
+          "he": "רומן סורקין משחק יותר, ובכל זאת עומד על {sorkin}."
+        },
+        {
+          "id": "onoff-lesson",
+          "do": "none",
+          "hold": 4,
+          "en": "On a dominant team even the bench wins. Minutes aren't impact.",
+          "he": "בקבוצה דומיננטית גם הספסל מנצח. דקות הן לא השפעה."
+        },
+        {
+          "id": "onoff-views",
+          "do": "hover",
+          "target": ".navbar a[data-value=\"onoff\"]",
+          "ringTarget": "li.tab-has-dropdown:has(a[data-value=\"onoff\"]) .tab-hover-menu",
+          "hold": 3,
+          "en": "Hover a tab to switch views: Summary, Four Factors, Shot Profile.",
+          "he": "מעבירים עכבר על הלשונית ומחליפים תצוגה: Summary, Four Factors, Shot Profile."
+        },
+        {
+          "id": "onoff-ff",
+          "do": "click",
+          "target": "li.tab-has-dropdown:has(a[data-value=\"onoff\"]) .thm-item[data-value=\"Four Factors\"]",
+          "hold": 4,
+          "en": "Four Factors shows why: shooting, turnovers, rebounds, free throws.",
+          "he": "Four Factors מראה למה: קליעה, איבודים, ריבאונדים וזריקות עונשין.",
+          "ringTarget": "#onoff_dt"
+        },
+        {
+          "id": "onoff-est",
+          "do": "hover",
+          "target": "#onoff_dt td:has-text(\"est.\")",
+          "zoom": 1.5,
+          "hold": 4,
+          "en": "“est. ±X pts” turns each edge into points per 100.",
+          "he": "\"est. ±X pts\" מתרגם כל יתרון לנקודות ל־100 פוזשנים."
+        },
+        {
+          "id": "onoff-filters",
+          "do": "hover",
+          "target": "#date_range",
+          "hold": 3.5,
+          "en": "Narrow it by dates, last games or opponent in the sidebar.",
+          "he": "אפשר לצמצם לפי תאריכים, משחקים אחרונים או יריבה בסרגל הצד."
+        }
+      ]
+    },
+    {
+      "id": "lineups",
+      "icon": "bi-people-fill",
+      "title_en": "Which lineups are working?",
+      "title_he": "אילו חמישיות עובדות?",
+      "steps": [
+        {
+          "id": "ld-open",
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"Which lineups are working?\")",
+          "ring": false,
+          "hold": 2,
+          "en": "Open “Which lineups are working?”",
+          "he": "פותחים את \"Which lineups are working?\""
+        },
+        {
+          "id": "ld-team",
+          "do": "selectize",
+          "target": "#ld_lineup_filter-team",
+          "value": "MACCABI TEL AVIV",
+          "hold": 3,
+          "en": "Pick Maccabi and its players appear as chips.",
+          "he": "בוחרים מכבי והשחקנים שלה מופיעים כצ'יפים."
+        },
+        {
+          "id": "ld-size",
+          "do": "click",
+          "target": "label:has(input[name=\"ld_num\"][value=\"5\"])",
+          "ringTarget": "#ld_num",
+          "hold": 3,
+          "en": "Group size: full five-man units, or pairs and trios.",
+          "he": "גודל קבוצה: חמישיות מלאות, או זוגות ושלישיות."
+        },
+        {
+          "id": "ld-on",
+          "do": "click",
+          "target": ".lineup-chip:text-matches(\"clark\", \"i\")",
+          "zoom": 1.3,
+          "hold": 3.5,
+          "en": "Tap a player to see only lineups with him on.",
+          "he": "לוחצים על שחקן ורואים רק חמישיות שהוא בהן."
+        },
+        {
+          "id": "ld-anyof-mode",
+          "do": "click",
+          "target": ".lineup-chips-mode[data-mode=\"any\"]",
+          "hold": 3,
+          "en": "Switch to “Any of” to build a group.",
+          "he": "עוברים ל־\"Any of\" כדי לבנות קבוצה."
+        },
+        {
+          "id": "ld-anyof-1",
+          "do": "click",
+          "target": ".lineup-chip:text-matches(\"hoard\", \"i\")",
+          "hold": 1.5,
+          "en": "Add players to the group...",
+          "he": "מוסיפים שחקנים לקבוצה..."
+        },
+        {
+          "id": "ld-anyof-2",
+          "do": "click",
+          "target": ".lineup-chip:text-matches(\"sorkin\", \"i\")",
+          "hold": 1.5,
+          "en": "...one at a time...",
+          "he": "...אחד אחרי השני..."
+        },
+        {
+          "id": "ld-anyof-3",
+          "do": "click",
+          "target": ".lineup-chip:text-matches(\"brissett\", \"i\")",
+          "ringTarget": ".lineup-chips-summary",
+          "zoom": 1.3,
+          "hold": 4,
+          "short": 3,
+          "en": "...and the sentence reads your filter back in plain words.",
+          "he": "...והמשפט מקריא את הסינון במילים פשוטות."
+        },
+        {
+          "id": "ld-count",
+          "do": "click",
+          "target": ".lineup-chips-quant",
+          "ringTarget": ".lineup-chips-summary",
+          "hold": 3.5,
+          "en": "Tap “at least” to switch to “exactly”.",
+          "he": "לוחצים על \"at least\" כדי לעבור ל־\"exactly\"."
+        },
+        {
+          "id": "ld-clutch",
+          "do": "hover",
+          "target": "#ld_clutch_enabled",
+          "hold": 3,
+          "en": "Clutch filter: only close games, late in the fourth.",
+          "he": "מסנן קלאץ': רק משחקים צמודים, בסוף הרבע הרביעי."
+        },
+        {
+          "id": "ld-row",
+          "do": "click",
+          "target": "#ld_table a.ld-lineup-link",
+          "ringTarget": ".modal-content",
+          "hold": 4.5,
+          "en": "Click any lineup to see it game by game.",
+          "he": "לוחצים על חמישייה ורואים אותה משחק אחרי משחק."
+        }
+      ]
+    },
+    {
+      "id": "team",
+      "icon": "bi-bar-chart-fill",
+      "title_en": "How is my team performing?",
+      "title_he": "איך הקבוצה שלי מתפקדת?",
+      "steps": [
+        {
+          "id": "tr-open",
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"How is my team performing?\")",
+          "ring": false,
+          "hold": 2,
+          "en": "Open “How is my team performing?”",
+          "he": "פותחים את \"How is my team performing?\""
+        },
+        {
+          "id": "tr-maccabi",
+          "do": "hover",
+          "target": {
+            "cell": {
+              "table": "#tr_table",
+              "row": "MACCABI TEL AVIV",
+              "col": "Net Rtg"
+            }
+          },
+          "read": {
+            "net": {
+              "target": {
+                "cell": {
+                  "table": "#tr_table",
+                  "row": "MACCABI TEL AVIV",
+                  "col": "Net Rtg"
+                }
+              },
+              "pattern": "[+\\-−]?\\d+(\\.\\d+)?"
+            }
+          },
+          "zoom": 1.4,
+          "hold": 4.5,
+          "short": 4,
+          "en": "Maccabi's net rating: {net}. Offense, defense and net vs the league.",
+          "he": "הנט רייטינג של מכבי: {net}. התקפה, הגנה ונטו מול הליגה."
+        },
+        {
+          "id": "tr-ranks",
+          "do": "none",
+          "ringTarget": {
+            "cell": {
+              "table": "#tr_table",
+              "row": "MACCABI TEL AVIV",
+              "col": "Net Rtg"
+            }
+          },
+          "zoom": 1.4,
+          "hold": 3.5,
+          "en": "Each cell shows the value and its rank in the league.",
+          "he": "כל תא מציג את הערך ואת הדירוג בליגה."
+        },
+        {
+          "id": "tr-views",
+          "do": "hover",
+          "target": ".navbar a[data-value=\"team_ratings\"]",
+          "hold": 3.5,
+          "en": "Switch views: Four Factors, Shot Profile, Traditional.",
+          "he": "מחליפים תצוגה: Four Factors, Shot Profile, Traditional.",
+          "ringTarget": "li.tab-has-dropdown:has(a[data-value=\"team_ratings\"]) .tab-hover-menu"
+        },
+        {
+          "id": "tr-shot",
+          "do": "click",
+          "target": "li.tab-has-dropdown:has(a[data-value=\"team_ratings\"]) .thm-item[data-value=\"Shot Profile\"]",
+          "ringTarget": "#tr_table",
+          "hold": 4,
+          "en": "Shot Profile: where the team shoots from, and how well.",
+          "he": "Shot Profile: מאיפה הקבוצה זורקת, ובאיזו הצלחה."
+        }
+      ]
+    },
+    {
+      "id": "gamelogs",
+      "icon": "bi-calendar-day-fill",
+      "title_en": "What happened last night?",
+      "title_he": "מה קרה אתמול במשחק?",
+      "steps": [
+        {
+          "id": "gl-open",
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"What happened in last night\")",
+          "ring": false,
+          "hold": 2,
+          "en": "Open “What happened in last night's game?”",
+          "he": "פותחים את \"What happened in last night's game?\""
+        },
+        {
+          "id": "gl-team",
+          "do": "selectize",
+          "target": "#gl_team",
+          "value": "MACCABI TEL AVIV",
+          "hold": 3,
+          "en": "Pick a team to list every game it played.",
+          "he": "בוחרים קבוצה ורואים את כל המשחקים שלה."
+        },
+        {
+          "id": "gl-row",
+          "do": "hover",
+          "target": "#gl_table tbody tr",
+          "zoom": 1.3,
+          "hold": 3.5,
+          "en": "Each row: result, score, and how its lineups performed.",
+          "he": "כל שורה: ניצחון או הפסד, התוצאה, ואיך החמישיות תפקדו."
+        },
+        {
+          "id": "gl-csv",
+          "do": "hover",
+          "target": "#gl_table .buttons-csv",
+          "hold": 3,
+          "en": "Download any table as CSV for your own analysis.",
+          "he": "אפשר להוריד טבלה כ־CSV לניתוח משלכם."
+        },
+        {
+          "id": "gl-flow",
+          "do": "click",
+          "target": "#gl_table a:has-text(\"View\")",
+          "ringTarget": ".modal-content",
+          "hold": 5,
+          "short": 5,
+          "en": "“View” opens the game flow: who was on court, minute by minute.",
+          "he": "\"View\" פותח את מהלך המשחק: מי היה על המגרש, דקה אחרי דקה."
+        }
+      ]
+    },
+    {
+      "id": "players",
+      "icon": "bi-bar-chart-line",
+      "title_en": "How are individual players doing?",
+      "title_he": "איך כל שחקן מתפקד?",
+      "steps": [
+        {
+          "id": "ts-open",
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"How are individual players performing?\")",
+          "ring": false,
+          "hold": 2,
+          "en": "Open “How are individual players performing?”",
+          "he": "פותחים את \"How are individual players performing?\""
+        },
+        {
+          "id": "ts-team",
+          "do": "selectize",
+          "target": "#ts_teams",
+          "value": "MACCABI TEL AVIV",
+          "ringTarget": "#ts_table",
+          "hold": 3,
+          "en": "Per-player stats: points, rebounds, assists, shooting.",
+          "he": "סטטיסטיקה לכל שחקן: נקודות, ריבאונדים, אסיסטים, קליעה."
+        },
+        {
+          "id": "ts-modes",
+          "do": "hover",
+          "target": ".navbar a[data-value=\"traditional_stats\"]",
+          "ringTarget": "li.tab-has-dropdown:has(a[data-value=\"traditional_stats\"]) .tab-hover-menu",
+          "hold": 4,
+          "en": "Hover the tab to switch: Totals, Per Game, Per 60 Possessions.",
+          "he": "מעבירים עכבר על הלשונית ומחליפים: סה״כ, למשחק, ל־60 פוזשנים."
+        },
+        {
+          "id": "ts-per60",
+          "do": "click",
+          "target": "li.tab-has-dropdown:has(a[data-value=\"traditional_stats\"]) .thm-item[data-value=\"Per 60 Possessions\"]",
+          "ringTarget": "#ts_table",
+          "hold": 4.5,
+          "en": "Per-possession numbers are fairest: fast and slow games count the same.",
+          "he": "המספרים לפי פוזשן הכי הוגנים: משחק מהיר ואיטי נספרים אותו דבר."
+        },
+        {
+          "id": "ts-clutch",
+          "do": "hover",
+          "target": "#ts_clutch_enabled",
+          "hold": 3,
+          "en": "Clutch filter: who delivers when the game is close.",
+          "he": "מסנן קלאץ': מי מספק כשהמשחק צמוד."
+        }
+      ]
+    },
+    {
+      "id": "compare",
+      "icon": "bi-arrow-left-right",
+      "title_en": "Starters vs bench",
+      "title_he": "פותחים מול ספסל",
+      "setup": [
+        {
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"How do starters compare to the bench?\")"
+        },
+        {
+          "do": "selectize",
+          "target": "#cmp_a_teams",
+          "value": "MACCABI TEL AVIV"
+        }
+      ],
+      "steps": [
+        {
+          "id": "cmp-mode",
+          "do": "hover",
+          "target": ".navbar a[data-value=\"compare\"]",
+          "hold": 3,
+          "en": "Compare any two situations: teams, lineups or players.",
+          "he": "משווים כל שני מצבים: קבוצות, חמישיות או שחקנים.",
+          "ringTarget": "li.tab-has-dropdown:has(a[data-value=\"compare\"]) .tab-hover-menu"
+        },
+        {
+          "id": "cmp-preset",
+          "do": "selectize",
+          "target": "#cmp_preset",
+          "value": "Starters vs Bench",
+          "hold": 3.5,
+          "en": "Quick preset: Starters vs Bench.",
+          "he": "בחירה מהירה: Starters vs Bench."
+        },
+        {
+          "id": "cmp-result",
+          "do": "hover",
+          "target": "#cmp_summary_a",
+          "zoom": 1.3,
+          "hold": 5,
+          "short": 6,
+          "en": "Side A vs side B: the gap shows who carries the team.",
+          "he": "צד A מול צד B: הפער מראה מי סוחב את הקבוצה."
+        },
+        {
+          "id": "cmp-more",
+          "do": "hover",
+          "target": "#cmp_preset + .selectize-control",
+          "hold": 3.5,
+          "en": "More presets: home vs away, clutch, wins vs losses.",
+          "he": "עוד מצבים מוכנים: בית מול חוץ, קלאץ', ניצחונות מול הפסדים."
+        }
+      ]
+    },
+    {
+      "id": "euro",
+      "icon": "bi-globe",
+      "title_en": "EuroLeague & EuroCup",
+      "title_he": "יורוליג ויורוקאפ",
+      "steps": [
+        {
+          "id": "el-pick",
+          "do": "click",
+          "target": "button[data-league-btn=\"E\"]",
+          "ringTarget": ".league-chooser",
+          "hold": 3.5,
+          "short": 7,
+          "en": "Switch to EuroLeague: the same questions, the same pages.",
+          "he": "עוברים ליורוליג: אותן שאלות, אותם עמודים."
+        },
+        {
+          "id": "el-onoff",
+          "do": "click",
+          "target": ".league-only-el .home-nav-card:has-text(\"Who is helping my team?\")",
+          "ring": false,
+          "hold": 4,
+          "en": "On/off, lineups, team ratings and game logs, for every club.",
+          "he": "און/אוף, חמישיות, דירוג קבוצות ויומני משחק, לכל קבוצה."
+        },
+        {
+          "id": "el-note",
+          "do": "none",
+          "hold": 3.5,
+          "en": "Leagues are never ranked against each other.",
+          "he": "הליגות אף פעם לא מדורגות זו מול זו."
+        }
+      ]
+    },
+    {
+      "id": "tips",
+      "icon": "bi-lightbulb",
+      "title_en": "Pro tips",
+      "title_he": "טיפים",
+      "setup": [
+        {
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"Who is helping my team?\")"
+        },
+        {
+          "do": "selectize",
+          "target": "#teams",
+          "value": "MACCABI TEL AVIV"
+        }
+      ],
+      "steps": [
+        {
+          "id": "tip-chip",
+          "do": "hover",
+          "target": ".filter-chips .filter-chip.chip-focusable",
+          "ringTarget": ".filter-chips",
+          "hold": 4,
+          "en": "Every active filter shows as a chip. Tap it to clear.",
+          "he": "כל סינון פעיל מופיע כצ'יפ. לוחצים עליו כדי לנקות."
+        },
+        {
+          "id": "tip-header",
+          "do": "hover",
+          "target": {
+            "header": {
+              "table": "#onoff_dt",
+              "col": "Off"
+            }
+          },
+          "hold": 3.5,
+          "en": "Hover a column header to see what it means.",
+          "he": "מעבירים עכבר על כותרת עמודה ורואים מה היא אומרת."
+        },
+        {
+          "id": "tip-pivot",
+          "do": "hover",
+          "target": {
+            "cell": {
+              "table": "#onoff_dt",
+              "row": "CLARK III",
+              "col": "Player"
+            }
+          },
+          "hold": 3.5,
+          "en": "Tap a player to jump to his lineups or game logs.",
+          "he": "לוחצים על שחקן וקופצים לחמישיות או למשחקים שלו."
+        }
+      ]
+    },
+    {
+      "id": "tips-mobile",
+      "icon": "bi-phone",
+      "card": false,
+      "title_en": "On your phone",
+      "title_he": "בטלפון",
+      "viewport": {
+        "width": 390,
+        "height": 844,
+        "dsf": 2.5,
+        "mobile": true
+      },
+      "setup": [
+        {
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"Who is helping my team?\")"
+        }
+      ],
+      "steps": [
+        {
+          "id": "tip-mobile",
+          "do": "click",
+          "target": "button:has-text(\"Show Filters\") >> visible=true",
+          "hold": 4,
+          "en": "On a phone, tap “Show Filters” to open the sidebar.",
+          "he": "בטלפון, לוחצים \"Show Filters\" כדי לפתוח את סרגל הצד."
+        }
+      ],
+      "global_setup": false
+    }
+  ]
+}

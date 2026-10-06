@@ -145,7 +145,10 @@ async function openChapter(script, ch) {
     await page.waitForFunction(() => window.Shiny?.shinyapp?.isConnected?.(), null, { timeout: 120000 });
   }
   await settle(page);
-  for (const s of [...(script.setup ?? []), ...(ch.setup ?? [])]) {
+  // A chapter can opt out of the global setup (the phone layout hides the
+  // navbar season picker it drives).
+  const global = ch.global_setup === false ? [] : (script.setup ?? []);
+  for (const s of [...global, ...(ch.setup ?? [])]) {
     await perform(page, s, true);
     await settle(page);
   }
