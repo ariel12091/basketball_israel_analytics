@@ -1,0 +1,19 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>fixture</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/jquery.dataTables.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js"></script>
+</head><body style="background:#14100C;color:#eee;font:16px sans-serif">
+<div id="dt"><table id="t" class="display"><thead><tr><th>Player</th><th>Hidden</th><th>Net RTG Diff</th></tr></thead>
+<tbody>
+<tr><td>JIMMY CLARK III</td><td>x</td><td>+17.0</td></tr>
+<tr><td>ROMAN SORKIN</td><td>y</td><td>-3.1</td></tr>
+</tbody></table></div>
+<button id="late" style="display:none">Late</button>
+<script>
+$(function () {
+  $('#t').DataTable({ paging: false, searching: false, info: false, columnDefs: [{ targets: 1, visible: false }] });
+  setTimeout(function () { $('#late').show(); }, 1200);
+});
+</script>
+</body></html>
