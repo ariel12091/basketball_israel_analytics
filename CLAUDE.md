@@ -177,6 +177,12 @@ Computed in MVs, aggregated by SQL functions. All rates × 100 in final output.
 
 **Estimated point impact:** FF deltas in Tabs 1/7 carry an italic `est. ±X pts` annotation = delta × `FF_IMPACT_WEIGHTS` (helpers.R: efg 1.45, tov −1.36, oreb 0.63, ftr 0.13 pts/100 per pp; league-fit, refit via `scripts/fit_ff_impact_weights.R`). Defense wording: "pts allowed". No summed impact column — it would duplicate the rating diff.
 
+**On/Off Net RTG Diff tags (Tabs 1 and 8):** full history and the data behind every threshold in PROJECT.md § "Session Update (2026-10-05/06)".
+- `3PT luck` -- `onoff_3pt_luck()` recounts every 3PA both teams took at the season league 3P% (`onoff_league_3p()`); tagged when removing that luck flips the sign. The user's model: 3P% is luck, 2P% is not.
+- `small sample` -- padded diff = raw x `onoff_pad_shrink()` (`ONOFF_PAD_POSS = 4000` per side; the team term cancels, so shrink depends on possessions only). `onoff_sample_flag()` tags raw top/bottom 20% with shrink < 0.6x the table median. **Do not go back to a rank-crossing rule** ("top 10% raw, not padded"): padding barely reorders a table of regulars (Spearman 0.99), so it tagged 90th -> 85th percentile drift.
+- The hover is not a `title`: the renderer writes `data-*` on `.onoff-net-tip` and `www/app.js` ("On/Off Net cell tooltip") draws `.onoff-tip`. That renderer is a `sprintf(paste0(...))` template -- a literal `%` must be `%%`, and a `//` comment kills the whole function (one pasted line; a test forbids it).
+- Refit `ONOFF_PAD_POSS` once 2026-27 completes; the fit script was never committed. EuroLeague uses the Israeli X.
+
 ## Shooting Splits (2PT/3PT)
 
 Available in Tabs 1, 2, 4 Summary views. Not in FF views or Tab 3.

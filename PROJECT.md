@@ -2864,3 +2864,121 @@ reactive dependency on `players_ref` changing.
   Cloud console cascade; a lead, not a proof. See CLAUDE.md.
 - React/Plumber was deliberately left out of scope (dormant since 2026-05-18,
   and its filter copy is a separate function).
+
+## Session Update (2026-10-05/06): On/Off Net RTG Diff -- "3PT luck" and "small sample"
+
+Two tags on the Net RTG Diff cell of the On/Off Summary table, shared by Tab 1
+(Israeli) and Tab 8 (EuroLeague) through `onoff_summary_datatable()`
+(`helpers.R`). Both answer one question: how much of this player's on/off
+number should you believe? Everything below is live on `main`.
+
+### The question and the user's model
+
+One season of on/off is mostly noise. Measured on 2025-26 Israeli data: odd
+vs even games correlate at ~0.05, and ~75% of the Net RTG Diff column's
+spread is what chance alone produces. The user's model of where that noise
+comes from: **3P% is luck, 2P% is not** -- the 25-26 analysis found opponent
+3P% on/off indistinguishable from chance and our own nearly so.
+
+### Part 1: "3PT luck" (2026-10-05)
+
+1. **First attempt, rejected** (cbcf1eb, 10271b2): "too close to call" when
+   |Net| sat inside a 1.96-SD binomial range. It ignored the makes, so it was
+   a sample-size test in disguise: it tagged 118 of 157 qualifying 25-26
+   players, and tagged Dwayne Bacon's +33.6 (EL, 70 off poss) although threes
+   added only +1.5 -- his gap is 2P%.
+2. **Shipped rule** (2247d67, 341c68a): measure the luck the threes actually
+   produced. `onoff_3pt_luck()` recounts every 3PA both teams took, on and
+   off, at the league 3P%; "ours" is the team's shooting, "theirs" the
+   opponents' (counted against him). Tag when removing that luck flips the
+   sign of Net RTG Diff (30 of 157). Every make counts 3 points, a slight
+   overstatement (a miss can still be an offensive rebound).
+3. **League rate** (`onoff_league_3p()`) comes from the season-wide MV frame
+   (passed as `league_3p`), so a Team filter cannot turn it into a team
+   average. Per team it takes the row with the most 3PA: a player's on + off
+   covers only games he played, so the first row per team was wrong.
+4. Kept: percentile shading, no extra column, the number stays white (grey
+   failed contrast on the colour ramp). The 3P% recap was dropped from the
+   tooltip because the shot columns already show it.
+
+### Part 2: "small sample" (2026-10-06)
+
+1. **Padding, not a cutoff.** The user rejected a fixed possession cutoff
+   (e.g. 300) as arbitrary and pointed at the padding approach: add X
+   possessions at the team's own net rating to each side. Fit on 2025-26 to
+   predict rest-of-season on/off: X ~4,200 (bootstrap ~1,900 to unbounded;
+   2025 alone 8,585, 2026 alone 2,768); on-court Net RTG fits X = 378 as a
+   positive control. Shipped as `ONOFF_PAD_POSS = 4000`. **The fit script was
+   not committed** -- the refit due once 2026-27 completes has to rebuild it.
+   EuroLeague uses the Israeli X (unmeasured there).
+2. **What padding actually does.** The team term cancels in the on-minus-off
+   difference, so the padded diff is the raw diff times a shrink factor that
+   depends on the possession counts alone (`onoff_pad_shrink()`):
+   `neff * (1/(on+X) + 1/(off+X))`, neff = on*off/(on+off). It is *not* a
+   pull toward the team's rating. A 2025-26 regular keeps ~20% of his raw
+   number; early 2026-27 everyone keeps ~3% (Bryant +52.4 -> +0.9).
+3. **First tag rule, replaced the same day** (861e72d): tag when the raw
+   number is in the table's top/bottom 10% but the padded one is not. The
+   user asked where those players actually go. Measured on the default table
+   (top 35% by ON poss, OFF >= 40):
+   - padding barely reorders a table of regulars: Spearman raw vs padded
+     0.99 (2025-26) and 0.98 (2026-27);
+   - 6 of 7 tagged players stayed in the padded top 20% (Ahmad 96th -> 85th,
+     Atkins 90th -> 82nd, Bryant 98th -> 80th); only Kevion Taylor moved far
+     (6th -> 28th);
+   - the padded top-10% vs top-20% cutoffs differ by 0.8 pts (2025-26) and 0.4
+     (2026-27), against a posterior SD of ~4 pts/100 -- a distinction the data
+     cannot make.
+   So padding matters for **magnitude**, not order. Order only changes once
+   the table mixes regulars with bench players: Spearman falls to 0.96 at
+   ON >= 130 and 0.86 with no minimum.
+4. **Shipped rule** (3f11e5b): tag on thin *evidence*, not a rank line.
+   `onoff_sample_flag(net, shrink, q = 0.20, thin = 0.6)`: raw in the table's
+   top/bottom 20% AND shrink under 0.6x the table median; tables under 10 rows
+   never tag. The hover note gives the reason ("Only 43 possessions off court,
+   far fewer than most rows in this table"). Who it tags by default: 2025-26
+   Kevion Taylor (197 off) and Khalil Ahmad (367 off); 2026-27 Bryant (43 off)
+   and Robert Turner (50 off). `thin = 0.5` was rejected because it untags
+   Turner -- early in a season everyone is thin, so the relative bar needs
+   slack. **Reversal:** Bryant's 2025-26 row (+65.5, 145 off) was
+   deliberately untagged under the first rule; it is tagged now.
+5. **Tab 8 tags more, correctly.** Its default table is effectively
+   unfiltered (~255 rows), so the top of it is full of part-season players
+   (e.g. Dinwiddie, 339 off, keeps 9% vs ~21% typical) -- ~8 of the top 30.
+   Lowering the possession sliders on Tab 1 does the same.
+
+### Part 3: the tooltip (2026-10-06)
+
+1. a232e44: the tag had shown the whole cell's `title`, so "small sample"
+   opened with the 3PT luck numbers. Each tag got its own hover.
+2. 9838d3d: native `title` replaced with a styled, larger tooltip. The
+   renderer writes `data-net`, `data-luck-ours/theirs`, `data-padded`,
+   `data-sample-flag`, `data-poss-on/off` and `data-tip-kind` (all | luck |
+   sample) on `.onoff-net-tip`; `www/app.js` ("On/Off Net cell tooltip") draws
+   `.onoff-tip` (`app.css`). Luck section in the 3PT orange (`--ibpl-fg3`),
+   sample section in info blue (`--ibpl-info`), signed values green/red in
+   mono. Hovering the number shows both sections, a tag only its own.
+3. f183568: on touch the tooltip anchors below the tapped cell (above when
+   there is no room) -- following the finger, a tap near the bottom of the
+   screen covered the tapped row. Verified at 390px with an iPhone UA.
+
+### Traps hit
+
+- The Net renderer is a `sprintf(paste0(...))` JS template: a literal `%`
+  must be `%%` ("10%" broke `sprintf` with "too few arguments"), and a `//`
+  comment comments out the rest of the function, because the strings are
+  pasted onto one line (the table silently failed with "Unexpected end of
+  input"; a test now forbids `//` there).
+- `helpers.R` has mixed line endings; the Edit tool rewrote all of them twice.
+  Fixed each time by splicing the changed region into `git show HEAD:` line by
+  line and checking the CR arithmetic. Git Bash `sed -n` strips CR, so an
+  extracted "old block" will not match the raw file.
+- Playwright phone checks need an iPhone `userAgent`: `ibplDeviceKind()` is
+  UA-based, so a touch context with the default desktop UA is classed
+  "tablet", the phone CSS never applies, and the On/Off chips row overflows
+  the page to 678px -- a test artifact, not an app bug.
+
+### Open
+
+- Refit `ONOFF_PAD_POSS` once 2026-27 completes, and commit the fit script.
+- EuroLeague padding is the Israeli fit, never measured on EuroLeague data.
