@@ -80,12 +80,14 @@ test_that("onoff_summary_datatable carries the padded net and the tag", {
                        w$x$options$columnDefs)
   expect_length(net_render, 1L)
   js <- as.character(net_render[[1]]$render)
-  expect_match(js, "Adjusted for sample size", fixed = TRUE)
+  expect_match(js, "attr('padded', p)", fixed = TRUE)
   expect_match(js, "small sample", fixed = TRUE)
   expect_match(js, sprintf("row[%d]", which(names(d) == "net_padded") - 1), fixed = TRUE)
   expect_match(js, sprintf("row[%d]", which(names(d) == "sample_flag") - 1), fixed = TRUE)
-  # The tag carries its own hover, not the cell's 3PT-luck text.
-  expect_match(js, "tagHtml('small sample', 'Small sample: '", fixed = TRUE)
+  # The tag carries its own hover kind, so it shows only the sample section.
+  expect_match(js, "tagHtml('small sample', 'sample')", fixed = TRUE)
+  # The template is pasted onto one line, so a // comment would eat the rest.
+  expect_false(grepl("//", js, fixed = TRUE))
   for (col in c("ON Poss", "OFF Poss")) {
     expect_match(js, sprintf("row[%d]", which(names(d) == col) - 1), fixed = TRUE, info = col)
   }
@@ -106,10 +108,18 @@ test_that("the Net cell keeps both luck and sample-size parts when 3P data exist
   js <- as.character(Filter(function(cd) !is.null(cd$render) &&
                               (which(names(w$x$data) == "Net RTG Diff") - 1) %in% cd$targets,
                             w$x$options$columnDefs)[[1]]$render)
-  expect_match(js, "Without 3-point luck", fixed = TRUE)
-  expect_match(js, "Adjusted for sample size", fixed = TRUE)
+  expect_match(js, "attr('luck-ours', o)", fixed = TRUE)
+  expect_match(js, "attr('padded', p)", fixed = TRUE)
   # Three rows: too few to rank, so nothing is tagged.
   expect_false(any(w$x$data$sample_flag))
+})
+
+test_that("app.js draws the Net cell tooltip from the renderer's data attributes", {
+  js <- paste(readLines(test_path("..", "..", "www", "app.js"), warn = FALSE), collapse = "\n")
+  for (s in c(".onoff-net-tip", "d.luckOurs", "d.padded", "d.possOn", "d.sampleFlag",
+              "Without 3PT luck", "Adjusted for sample size")) {
+    expect_match(js, s, fixed = TRUE, info = s)
+  }
 })
 
 test_that("the explainer covers the small-sample tag", {

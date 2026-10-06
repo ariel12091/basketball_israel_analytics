@@ -463,6 +463,80 @@
   document.addEventListener("scroll", hide, true);
 })();
 
+// On/Off Net cell tooltip. The Net RTG Diff renderer (onoff_summary_datatable()
+// in helpers.R) writes the numbers as data-* attributes on .onoff-net-tip; this
+// draws them. The number shows every section; a tag (data-tip-kind) only its own.
+(function () {
+  var tip, current;
+  function sgn(v) { return (v > 0 ? "+" : "") + v.toFixed(1); }
+  function val(v) {
+    return '<b class="onoff-tip-val ' + (v > 0 ? "is-pos" : v < 0 ? "is-neg" : "") + '">' + sgn(v) + "</b>";
+  }
+  function row(label, value) {
+    return '<div class="onoff-tip-row"><span>' + label + "</span>" + value + "</div>";
+  }
+  function section(cls, title, body) {
+    return '<div class="onoff-tip-section ' + cls + '"><div class="onoff-tip-title">' + title + "</div>" + body + "</div>";
+  }
+  function build(d, kind) {
+    var net = Number(d.net), html = "";
+    if (kind !== "sample" && d.luckOurs !== undefined) {
+      var o = Number(d.luckOurs), t = Number(d.luckTheirs);
+      html += section("is-luck", "3PT luck",
+        row("3PT shooting added", val(o + t)) +
+        '<div class="onoff-tip-sub">team ' + val(o) + " &middot; opponents " + val(t) + "</div>" +
+        row("Without 3PT luck", val(net - o - t)));
+    }
+    if (kind !== "luck" && d.padded !== undefined) {
+      var body = "";
+      if (d.possOn !== undefined) {
+        body += row("Possessions", '<b class="onoff-tip-val">' + d.possOn + " on &middot; " + d.possOff + " off</b>");
+      }
+      body += row("Adjusted for sample size", val(Number(d.padded)));
+      if (d.sampleFlag === "1") {
+        body += '<div class="onoff-tip-note">Once adjusted, no longer in the ' +
+          (net > 0 ? "top" : "bottom") + " 10% of this table.</div>";
+      }
+      html += section("is-sample", d.sampleFlag === "1" ? "Small sample" : "Sample size", body);
+    }
+    return html;
+  }
+  function hide() { if (tip) tip.hidden = true; current = null; }
+  function show(event, target) {
+    var cell = target.closest(".onoff-net-tip");
+    var kind = target.closest("[data-tip-kind]").dataset.tipKind;
+    if (!tip) {
+      tip = document.createElement("div");
+      tip.className = "onoff-tip";
+      tip.setAttribute("role", "tooltip");
+      document.body.appendChild(tip);
+    }
+    if (current !== cell || tip.dataset.kind !== kind) {
+      var html = build(cell.dataset, kind);
+      if (!html) return hide();
+      tip.innerHTML = html;
+      tip.dataset.kind = kind;
+      current = cell;
+    }
+    tip.hidden = false;
+    tip.style.left = Math.max(8, Math.min(event.clientX + 14, window.innerWidth - tip.offsetWidth - 8)) + "px";
+    tip.style.top = Math.max(8, Math.min(event.clientY + 14, window.innerHeight - tip.offsetHeight - 8)) + "px";
+  }
+  function targetOf(event) {
+    return event.target.closest && event.target.closest(".onoff-net-tip") ? event.target : null;
+  }
+  document.addEventListener("pointermove", function (event) {
+    var target = targetOf(event);
+    if (target) show(event, target);
+    else if (event.pointerType !== "touch" && current) hide();
+  });
+  document.addEventListener("click", function (event) {
+    var target = targetOf(event);
+    if (target) show(event, target); else if (current) hide();
+  });
+  document.addEventListener("scroll", hide, true);
+})();
+
 // ---------------- Stint ribbon hover ----------------
 (function() {
   // laneFrom() deliberately also matches the gutter <text> labels, which

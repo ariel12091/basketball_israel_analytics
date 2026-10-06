@@ -2895,6 +2895,8 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
       # one is tagged. The padded number (onoff_padded_net()) joins the
       # tooltip and a sample-flagged one is tagged "small sample"; either part
       # is skipped when its columns are absent (index -1 reads undefined).
+      # The cell only carries the numbers as data-* attributes; the styled
+      # tooltip is drawn by www/app.js. Hovering a tag shows only its section.
       # The number keeps the cell text colour (grey failed contrast on every
       # percentile colour). Sorting uses the raw number.
       idx_luck <- which(names(df) %in% c("luck_3pt_ours", "luck_3pt_theirs", "luck_3pt_flag")) - 1
@@ -2908,33 +2910,28 @@ onoff_summary_datatable <- function(df, stat_filters, pivot = NULL, league_3p = 
         "  if (isNaN(val)) return data;",
         "  var txt = (val > 0 ? '+' : '') + val.toFixed(2);",
         "  if (!row) return txt;",
-        "  var f = function(v) { return (v > 0 ? '+' : '') + v.toFixed(1); };",
         "  var isTrue = function(v) { return v === true || v === 'true'; };",
-        "  var tagHtml = function(label, tip) { return '<span class=\"onoff-luck-tag\" title=\"' + tip + '\" style=\"display:block;font-size:10px;' +",
+        "  var attr = function(k, v) { return ' data-' + k + '=\"' + v + '\"'; };",
+        "  var tagHtml = function(label, kind) { return '<span class=\"onoff-luck-tag\"' + attr('tip-kind', kind) + ' style=\"display:block;font-size:10px;' +",
         "    'font-weight:600;line-height:1.3;color:var(--ibpl-cell-text);white-space:nowrap;\">' + label + '</span>'; };",
-        "  var tips = [], tag = '';",
+        "  var attrs = attr('net', val), tag = '';",
         "  var o = parseFloat(row[%d]), t = parseFloat(row[%d]);",
-        "  if (!isNaN(o) && !isNaN(t)) {",
-        "    var luckTip = 'Without 3-point luck: ' + f(val - o - t) + '. 3PT shooting added ' + f(o + t) +",
-        "      ' (team ' + f(o) + ', opponents ' + f(t) + ').';",
-        "    tips.push(luckTip);",
-        "    if (isTrue(row[%d])) tag += tagHtml('3PT luck', luckTip);",
+        "  var hasLuck = !isNaN(o) && !isNaN(t);",
+        "  if (hasLuck) {",
+        "    attrs += attr('luck-ours', o) + attr('luck-theirs', t);",
+        "    if (isTrue(row[%d])) tag += tagHtml('3PT luck', 'luck');",
         "  }",
         "  var p = parseFloat(row[%d]);",
         "  if (!isNaN(p)) {",
-        "    tips.push('Adjusted for sample size: ' + f(p) + '.');",
-        "    if (isTrue(row[%d])) {",
-        "      var pOn = parseFloat(row[%d]), pOff = parseFloat(row[%d]);",
-        "      var poss = (!isNaN(pOn) && !isNaN(pOff)) ? ' rests on ' + Math.round(pOn) + ' possessions on court and ' + Math.round(pOff) + ' off' : ' rests on too few possessions';",
-        "      tag += tagHtml('small sample', 'Small sample: ' + f(val) + poss + '. Adjusted for sample size it is ' + f(p) +",
-        "        ', no longer in the ' + (val > 0 ? 'top' : 'bottom') + ' 10%% of this table.');",
-        "    }",
-        "  }",
-        "  if (!tips.length) return txt;",
-        "  return '<span title=\"' + tips.join(' ') + '\" style=\"cursor:help;\">' + txt + tag + '</span>';",
+        "    var pOn = parseFloat(row[%d]), pOff = parseFloat(row[%d]), flagged = isTrue(row[%d]);",
+        "    attrs += attr('padded', p) + attr('sample-flag', flagged ? 1 : 0);",
+        "    if (!isNaN(pOn) && !isNaN(pOff)) attrs += attr('poss-on', Math.round(pOn)) + attr('poss-off', Math.round(pOff));",
+        "    if (flagged) tag += tagHtml('small sample', 'sample');",
+        "  } else if (!hasLuck) return txt;",
+        "  return '<span class=\"onoff-net-tip\"' + attr('tip-kind', 'all') + attrs + '>' + txt + tag + '</span>';",
         "}"),
         col_idx("luck_3pt_ours"), col_idx("luck_3pt_theirs"), col_idx("luck_3pt_flag"),
-        col_idx("net_padded"), col_idx("sample_flag"), col_idx("ON Poss"), col_idx("OFF Poss"))))) else list()
+        col_idx("net_padded"), col_idx("ON Poss"), col_idx("OFF Poss"), col_idx("sample_flag"))))) else list()
       # Shooting column JS render function factory
       make_shot_render <- function(fg2m_col, fg2a_col, fg3m_col, fg3a_col,
                                    is_defense = FALSE, min_fga = 50, avg2 = 53, avg3 = 34) {

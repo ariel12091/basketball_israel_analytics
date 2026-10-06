@@ -104,8 +104,8 @@ test_that("onoff_summary_datatable tags a Net RTG Diff that 3PT luck flips", {
                        w$x$options$columnDefs)
   expect_length(net_render, 1L)
   js <- as.character(net_render[[1]]$render)
-  expect_match(js, "3PT luck", fixed = TRUE)
-  expect_match(js, "Without 3-point luck", fixed = TRUE)
+  expect_match(js, "tagHtml('3PT luck', 'luck')", fixed = TRUE)
+  expect_match(js, "attr('luck-ours', o) + attr('luck-theirs', t)", fixed = TRUE)
   # The on/off 3P% are already in the shot columns; the tooltip doesn't repeat them.
   expect_false(grepl("3P% with this player", js, fixed = TRUE))
   expect_false(grepl("League 3P%", js, fixed = TRUE))
