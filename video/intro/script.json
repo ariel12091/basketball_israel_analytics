@@ -121,15 +121,6 @@
       "title_he": "מי עוזר לקבוצה שלי?",
       "steps": [
         {
-          "id": "onoff-open",
-          "do": "click",
-          "target": ".league-only-il .home-nav-card:has-text(\"Who is helping my team?\")",
-          "ring": false,
-          "hold": 2,
-          "en": "Open “Who is helping my team?”",
-          "he": "פותחים את \"Who is helping my team?\""
-        },
-        {
           "id": "onoff-header",
           "do": "hover",
           "target": {
@@ -142,26 +133,6 @@
           "hold": 4,
           "en": "Net: how much better the team is with him on the floor.",
           "he": "Net: בכמה הקבוצה טובה יותר כשהוא על המגרש."
-        },
-        {
-          "id": "onoff-tag",
-          "do": "hover",
-          "target": "#onoff_dt .onoff-net-tip:has(.onoff-luck-tag)",
-          "zoom": 1.3,
-          "hold": 4.5,
-          "short": 2,
-          "en": "A tag like “3PT luck” warns when a number may mislead.",
-          "he": "תגית כמו \"3PT luck\" מזהירה כשמספר עלול להטעות."
-        },
-        {
-          "id": "onoff-team",
-          "do": "selectize",
-          "target": "#teams",
-          "value": "MACCABI TEL AVIV",
-          "hold": 2.5,
-          "en": "Filter to Maccabi Tel Aviv.",
-          "he": "מסננים למכבי תל אביב.",
-          "clear": true
         },
         {
           "id": "onoff-clark",
@@ -188,8 +159,23 @@
           "zoom": 1.5,
           "hold": 4.5,
           "short": 1,
-          "en": "Jimmy Clark III: {net} points per 100 possessions.",
-          "he": "ג'ימי קלארק: {net} נקודות ל־100 פוזשנים."
+          "en": "Jimmy Clark III, Maccabi: {net} points per 100 possessions.",
+          "he": "ג׳ימי קלארק, מכבי: {net} נקודות ל־100 פוזשנים."
+        },
+        {
+          "id": "onoff-luck",
+          "do": "none",
+          "ringTarget": ".onoff-tip",
+          "hold": 4.5,
+          "short": 2,
+          "read": {
+            "noluck": {
+              "target": ".onoff-tip",
+              "pattern": "(?<=Without 3PT luck )[+\\-−]?\\d+(\\.\\d+)?"
+            }
+          },
+          "en": "The fine print: without 3PT luck, he is still {noluck}.",
+          "he": "האותיות הקטנות: גם בלי מזל בשלשות, הוא עדיין {noluck}."
         },
         {
           "id": "onoff-colors",
@@ -206,38 +192,31 @@
           "he": "ירוק עוזר, אדום מזיק. ככל שהצבע חזק יותר, ההשפעה גדולה יותר."
         },
         {
-          "id": "onoff-sorkin",
-          "do": "hover",
+          "id": "onoff-sort",
+          "do": "click",
           "target": {
-            "cell": {
+            "header": {
               "table": "#onoff_dt",
-              "row": "SORKIN",
-              "col": "Net"
+              "col": "Min"
             }
           },
-          "read": {
-            "sorkin": {
-              "target": {
-                "cell": {
-                  "table": "#onoff_dt",
-                  "row": "SORKIN",
-                  "col": "Net"
-                }
-              },
-              "pattern": "[+\\-−]?\\d+(\\.\\d+)?"
-            }
-          },
-          "zoom": 1.5,
-          "hold": 4.5,
-          "en": "Roman Sorkin plays more, yet sits at {sorkin}.",
-          "he": "רומן סורקין משחק יותר, ובכל זאת עומד על {sorkin}."
+          "hold": 2,
+          "en": "Click any column to sort by it...",
+          "he": "לוחצים על עמודה כדי למיין לפיה..."
         },
         {
-          "id": "onoff-lesson",
-          "do": "none",
-          "hold": 4,
-          "en": "On a dominant team even the bench wins. Minutes aren't impact.",
-          "he": "בקבוצה דומיננטית גם הספסל מנצח. דקות הן לא השפעה."
+          "id": "onoff-sort-desc",
+          "do": "click",
+          "target": {
+            "header": {
+              "table": "#onoff_dt",
+              "col": "Min"
+            }
+          },
+          "ringTarget": "#onoff_dt",
+          "hold": 4.5,
+          "en": "...most minutes first. Heavy minutes don’t guarantee big impact.",
+          "he": "...הכי הרבה דקות למעלה. הרבה דקות זה לא בהכרח השפעה."
         },
         {
           "id": "onoff-views",
@@ -273,6 +252,16 @@
           "hold": 3.5,
           "en": "Narrow it by dates, last games or opponent in the sidebar.",
           "he": "אפשר לצמצם לפי תאריכים, משחקים אחרונים או יריבה בסרגל הצד."
+        }
+      ],
+      "setup": [
+        {
+          "do": "click",
+          "target": ".league-only-il .home-nav-card:has-text(\"Who is helping my team?\")"
+        },
+        {
+          "do": "clear",
+          "target": "#teams"
         }
       ]
     },
@@ -476,16 +465,6 @@
           "he": "פותחים את \"What happened in last night's game?\""
         },
         {
-          "id": "gl-team",
-          "do": "selectize",
-          "target": "#gl_team",
-          "value": "MACCABI TEL AVIV",
-          "hold": 3,
-          "en": "Pick a team to list every game it played.",
-          "he": "בוחרים קבוצה ורואים את כל המשחקים שלה.",
-          "clear": true
-        },
-        {
           "id": "gl-row",
           "do": "hover",
           "target": "#gl_table tbody tr",
@@ -531,14 +510,11 @@
         },
         {
           "id": "ts-team",
-          "do": "selectize",
-          "target": "#ts_teams",
-          "value": "MACCABI TEL AVIV",
+          "do": "none",
           "ringTarget": "#ts_table",
           "hold": 3,
           "en": "Per-player stats: points, rebounds, assists, shooting.",
-          "he": "סטטיסטיקה לכל שחקן: נקודות, ריבאונדים, אסיסטים, קליעה.",
-          "clear": true
+          "he": "סטטיסטיקה לכל שחקן: נקודות, ריבאונדים, אסיסטים, קליעה."
         },
         {
           "id": "ts-modes",

@@ -35,6 +35,13 @@ test('records frames and a timeline, waiting for a late element', () => {
   assert.ok(w === 1920 && Math.abs(h - 1080) <= 1, `frames are ${w}x${h}, want 1920x1080 (device scale 1.2)`);
 });
 
+test('a clear action empties a selectize before the chapter starts', () => {
+  const r = run('--chapter', 'fx-clear');
+  assert.equal(r.status, 0, r.stderr + r.stdout);
+  const tl = JSON.parse(readFileSync(join(OUT, 'rec', 'fx-clear', 'timeline.json'), 'utf8'));
+  assert.equal(tl.steps[0].values.teams, 'MACCABI TEL AVIV ×');
+});
+
 test('a missing target fails the run with the step id', () => {
   const r = run('--chapter', 'fx-missing');
   assert.notEqual(r.status, 0);

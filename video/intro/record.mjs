@@ -40,13 +40,20 @@ async function locate(page, target) {
     await loc.waitFor({ state: 'visible', timeout: 15000 });
     return loc;
   }
-  const id = `t${tagSeq++}`;
+  // A DataTables redraw can replace the tagged node just after tagging, which
+  // leaves the tag on a detached element; re-tag until it survives a beat.
   const deadline = Date.now() + 15000;
-  while (!(await page.evaluate(([t, i]) => window.__dir.tag(t, i), [target, id]))) {
+  for (;;) {
+    const id = `t${tagSeq++}`;
+    const tagged = await page.evaluate(([t, i]) => window.__dir.tag(t, i), [target, id]);
+    if (tagged) {
+      await pause(page, 0.3);
+      const alive = await page.evaluate((i) => !!document.querySelector(`[data-dir-target="${i}"]`)?.isConnected, id);
+      if (alive) return page.locator(`[data-dir-target="${id}"]`).first();
+    }
     if (Date.now() > deadline) throw new Error(`target not found: ${JSON.stringify(target)}`);
     await pause(page, 0.25);
   }
-  return page.locator(`[data-dir-target="${id}"]`).first();
 }
 
 async function moveTo(page, loc, fast) {
@@ -77,6 +84,11 @@ async function perform(page, s, fast) {
       if (s.do === 'click') return loc.click();
       if (s.do === 'hover') return loc.hover();
       return page.mouse.wheel(0, s.value ?? 400);
+    }
+    case 'clear': {
+      // Empty a selectize (e.g. the on/off team box, which defaults to a team).
+      await locate(page, `${s.target} + .selectize-control`);
+      return page.evaluate((sel) => document.querySelector(sel).selectize.clear(), s.target);
     }
     case 'selectize': {
       const ctl = await locate(page, `${s.target} + .selectize-control .selectize-input`);

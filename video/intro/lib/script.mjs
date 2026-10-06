@@ -1,5 +1,5 @@
 // Validates script.json, the single source of truth for the film.
-export const ACTIONS = new Set(['none', 'wait', 'click', 'hover', 'selectize', 'scroll', 'tab']);
+export const ACTIONS = new Set(['none', 'wait', 'click', 'hover', 'selectize', 'clear', 'scroll', 'tab']);
 export const MAX_WORDS = 14;
 export const MIN_HOLD = 1.5;
 export const MAX_ZOOM = 1.6;

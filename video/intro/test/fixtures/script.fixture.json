@@ -84,6 +84,34 @@
       ]
     },
     {
+      "id": "fx-clear",
+      "icon": "bi-x",
+      "title_en": "Clear?",
+      "title_he": "ניקוי?",
+      "setup": [
+        {
+          "do": "clear",
+          "target": "#teams"
+        }
+      ],
+      "steps": [
+        {
+          "id": "fx-pick",
+          "do": "selectize",
+          "target": "#teams",
+          "value": "MACCABI TEL AVIV",
+          "read": {
+            "teams": {
+              "target": "#teams + .selectize-control .selectize-input"
+            }
+          },
+          "hold": 1.5,
+          "en": "Teams: {teams}",
+          "he": "קבוצות: {teams}"
+        }
+      ]
+    },
+    {
       "id": "fx-missing",
       "icon": "bi-x",
       "title_en": "Missing?",
