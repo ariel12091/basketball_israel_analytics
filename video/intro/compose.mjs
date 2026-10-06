@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { validateScript } from './lib/script.mjs';
 import { focusPlan, squareCropX } from './lib/geometry.mjs';
-import { readTimeline, relSteps } from './lib/timeline.mjs';
+import { readTimeline, relSteps, holdOverruns } from './lib/timeline.mjs';
 import { ff, probeDuration, concatList, cleanGraph, captionGraph, writeGraph, ENC, FPS } from './lib/ffmpeg.mjs';
 import { CARD, shortPlan, captionWindows } from './lib/plan.mjs';
 import { mergeShortChapters, youtubeChapters } from './lib/chapters.mjs';
@@ -74,6 +74,8 @@ function concat(files, out) {
 
 const chapters = script.chapters.filter((ch) => !opt.chapter || ch.id === opt.chapter);
 const timelines = Object.fromEntries(chapters.map((ch) => [ch.id, readTimeline(OUT, ch.id)]));
+const stalls = chapters.flatMap((ch) => holdOverruns(ch, timelines[ch.id]));
+if (stalls.length) { console.error(stalls.join('\n')); process.exit(1); }
 const clean = Object.fromEntries(chapters.map((ch) => [ch.id, cleanVideo(ch, timelines[ch.id])]));
 for (const lang of LANGS) for (const ch of chapters) captioned(ch, timelines[ch.id], clean[ch.id], lang);
 

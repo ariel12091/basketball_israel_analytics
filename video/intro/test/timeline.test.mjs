@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { relSteps, stepRecord } from '../lib/timeline.mjs';
+import { relSteps, stepRecord, holdOverruns } from '../lib/timeline.mjs';
 import { fmtTime, mergeShortChapters, youtubeChapters } from '../lib/chapters.mjs';
 import { captionsReviewMarkdown } from '../lib/review.mjs';
 
@@ -16,6 +16,13 @@ test('relSteps is relative to the first frame', () => {
   assert.throws(() => relSteps({ ...tl, frames: [] }), /no frames/);
   assert.equal(stepRecord(tl, 's1').values.net, '+17.0');
   assert.throws(() => stepRecord(tl, 'zz'), /step zz missing from timeline c1/);
+});
+
+test('a hold that overran (a stalled page) is reported', () => {
+  const ch = { id: 'c1', steps: [{ id: 's1', hold: 4.5 }] };
+  assert.deepEqual(holdOverruns(ch, { ...tl, steps: [{ ...tl.steps[0], tFocus: 1000, t1: 1006 }] }), []);
+  assert.deepEqual(holdOverruns(ch, { ...tl, steps: [{ ...tl.steps[0], tFocus: 1000, t1: 1069 }] }),
+    ['c1/s1: hold ran 69.0s, planned 4.5s (page stalled?) -- re-record this chapter']);
 });
 
 test('chapter times and YouTube rules', () => {
