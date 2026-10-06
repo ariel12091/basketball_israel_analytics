@@ -81,6 +81,12 @@ async function perform(page, s, fast) {
     case 'selectize': {
       const ctl = await locate(page, `${s.target} + .selectize-control .selectize-input`);
       await moveTo(page, ctl, fast);
+      // A multi-select may already hold a team (e.g. a remembered default);
+      // clear:true makes the pick replace it instead of adding to it.
+      if (s.clear) {
+        await page.evaluate((sel) => document.querySelector(sel).selectize.clear(), s.target);
+        await settle(page);
+      }
       await ctl.click();
       await page.keyboard.type(s.value, { delay: fast ? 0 : 70 });
       const option = page.locator(`${s.target} + .selectize-control .selectize-dropdown .option`, { hasText: s.value }).first();

@@ -3,6 +3,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"></script>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/css/jquery.dataTables.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/datatables/1.10.21/js/jquery.dataTables.min.js"></script>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/selectize.js/0.15.2/css/selectize.default.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/selectize.js/0.15.2/js/selectize.min.js"></script>
 </head><body style="background:#14100C;color:#eee;font:16px sans-serif">
 <div id="dt"><table id="t" class="display"><thead><tr><th>Player</th><th>Hidden</th><th>Net RTG Diff</th></tr></thead>
 <tbody>
@@ -11,12 +13,15 @@
 </tbody></table></div>
 <div id="dt2"><table id="t2" class="display"><thead><tr><th>Team</th><th>Net</th></tr></thead>
 <tbody><tr><td>MACCABI TEL AVIV</td><td>20.9<br>#1</td></tr></tbody></table></div>
+<select id="teams" multiple><option value="2">MACCABI TEL AVIV</option><option value="12" selected>KIRYAT ATA</option></select>
 <button id="late" style="display:none">Late</button>
 <script>
 $(function () {
   $('#t').DataTable({ paging: false, searching: false, info: false, columnDefs: [{ targets: 1, visible: false }] });
   // Like the app's tables: scrollX splits the header into a cloned table.
   $('#t2').DataTable({ paging: false, searching: false, info: false, scrollX: true });
+  // Like the app's team filter: a multi-select that may already hold a team.
+  $('#teams').selectize({ plugins: ['remove_button'] });
   setTimeout(function () { $('#late').show(); }, 1200);
 });
 </script>

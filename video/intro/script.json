@@ -84,7 +84,8 @@
           "zoom": 1.3,
           "hold": 3.5,
           "en": "Choose your team to see its story right here.",
-          "he": "בחרו קבוצה כדי לראות את הסיפור שלה כאן."
+          "he": "בחרו קבוצה כדי לראות את הסיפור שלה כאן.",
+          "clear": true
         },
         {
           "id": "home-default",
@@ -159,7 +160,8 @@
           "value": "MACCABI TEL AVIV",
           "hold": 2.5,
           "en": "Filter to Maccabi Tel Aviv.",
-          "he": "מסננים למכבי תל אביב."
+          "he": "מסננים למכבי תל אביב.",
+          "clear": true
         },
         {
           "id": "onoff-clark",
@@ -296,7 +298,8 @@
           "value": "MACCABI TEL AVIV",
           "hold": 3,
           "en": "Pick Maccabi and its players appear as chips.",
-          "he": "בוחרים מכבי והשחקנים שלה מופיעים כצ'יפים."
+          "he": "בוחרים מכבי והשחקנים שלה מופיעים כצ'יפים.",
+          "clear": true
         },
         {
           "id": "ld-size",
@@ -479,7 +482,8 @@
           "value": "MACCABI TEL AVIV",
           "hold": 3,
           "en": "Pick a team to list every game it played.",
-          "he": "בוחרים קבוצה ורואים את כל המשחקים שלה."
+          "he": "בוחרים קבוצה ורואים את כל המשחקים שלה.",
+          "clear": true
         },
         {
           "id": "gl-row",
@@ -533,7 +537,8 @@
           "ringTarget": "#ts_table",
           "hold": 3,
           "en": "Per-player stats: points, rebounds, assists, shooting.",
-          "he": "סטטיסטיקה לכל שחקן: נקודות, ריבאונדים, אסיסטים, קליעה."
+          "he": "סטטיסטיקה לכל שחקן: נקודות, ריבאונדים, אסיסטים, קליעה.",
+          "clear": true
         },
         {
           "id": "ts-modes",
@@ -576,7 +581,8 @@
         {
           "do": "selectize",
           "target": "#cmp_a_teams",
-          "value": "MACCABI TEL AVIV"
+          "value": "MACCABI TEL AVIV",
+          "clear": true
         }
       ],
       "steps": [
@@ -665,7 +671,8 @@
         {
           "do": "selectize",
           "target": "#teams",
-          "value": "MACCABI TEL AVIV"
+          "value": "MACCABI TEL AVIV",
+          "clear": true
         }
       ],
       "steps": [

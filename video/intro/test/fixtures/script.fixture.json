@@ -1,22 +1,103 @@
 {
   "url": "https://example.test/",
-  "title_card": { "en": { "title": "T", "sub": "S" }, "he": { "title": "כותרת", "sub": "משנה" } },
-  "outro_card": { "en": { "title": "Try it" }, "he": { "title": "נסו" } },
-  "short": { "hook_en": "Hook", "hook_he": "פתיח" },
+  "title_card": {
+    "en": {
+      "title": "T",
+      "sub": "S"
+    },
+    "he": {
+      "title": "כותרת",
+      "sub": "משנה"
+    }
+  },
+  "outro_card": {
+    "en": {
+      "title": "Try it"
+    },
+    "he": {
+      "title": "נסו"
+    }
+  },
+  "short": {
+    "hook_en": "Hook",
+    "hook_he": "פתיח"
+  },
   "setup": [],
   "chapters": [
     {
-      "id": "fx", "icon": "bi-person-fill", "title_en": "Fixture?", "title_he": "בדיקה?",
+      "id": "fx",
+      "icon": "bi-person-fill",
+      "title_en": "Fixture?",
+      "title_he": "בדיקה?",
       "steps": [
-        { "id": "fx-cell", "do": "hover", "target": { "cell": { "table": "#dt", "row": "CLARK III", "col": "Net RTG Diff" } },
-          "read": { "net": { "target": { "cell": { "table": "#dt", "row": "CLARK III", "col": "Net RTG Diff" } }, "pattern": "[+\\-−]?\\d+(\\.\\d+)?" } },
-          "zoom": 1.4, "hold": 2, "short": 1, "en": "Clark III: {net}", "he": "קלארק: {net}" },
-        { "id": "fx-late", "do": "click", "target": "#late", "hold": 1.5, "en": "Late button", "he": "כפתור מאוחר" }
+        {
+          "id": "fx-cell",
+          "do": "hover",
+          "target": {
+            "cell": {
+              "table": "#dt",
+              "row": "CLARK III",
+              "col": "Net RTG Diff"
+            }
+          },
+          "read": {
+            "net": {
+              "target": {
+                "cell": {
+                  "table": "#dt",
+                  "row": "CLARK III",
+                  "col": "Net RTG Diff"
+                }
+              },
+              "pattern": "[+\\-−]?\\d+(\\.\\d+)?"
+            }
+          },
+          "zoom": 1.4,
+          "hold": 2,
+          "short": 1,
+          "en": "Clark III: {net}",
+          "he": "קלארק: {net}"
+        },
+        {
+          "id": "fx-late",
+          "do": "click",
+          "target": "#late",
+          "hold": 1.5,
+          "en": "Late button",
+          "he": "כפתור מאוחר"
+        },
+        {
+          "id": "fx-team",
+          "do": "selectize",
+          "target": "#teams",
+          "value": "MACCABI TEL AVIV",
+          "clear": true,
+          "read": {
+            "teams": {
+              "target": "#teams + .selectize-control .selectize-input"
+            }
+          },
+          "hold": 1.5,
+          "en": "Teams: {teams}",
+          "he": "קבוצות: {teams}"
+        }
       ]
     },
     {
-      "id": "fx-missing", "icon": "bi-x", "title_en": "Missing?", "title_he": "חסר?",
-      "steps": [ { "id": "fx-gone", "do": "click", "target": "#does-not-exist", "hold": 1.5, "en": "Gone", "he": "נעלם" } ]
+      "id": "fx-missing",
+      "icon": "bi-x",
+      "title_en": "Missing?",
+      "title_he": "חסר?",
+      "steps": [
+        {
+          "id": "fx-gone",
+          "do": "click",
+          "target": "#does-not-exist",
+          "hold": 1.5,
+          "en": "Gone",
+          "he": "נעלם"
+        }
+      ]
     }
   ]
 }

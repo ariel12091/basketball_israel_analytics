@@ -25,6 +25,9 @@ test('records frames and a timeline, waiting for a late element', () => {
   assert.ok(cell.t0 <= cell.tFocus && cell.tFocus < cell.t1);
   assert.ok(cell.t1 - cell.tFocus >= 1.95);
   assert.ok(late.t0 >= cell.t1);
+  const team = tl.steps.find((s) => s.id === 'fx-team');
+  assert.match(team.values.teams, /MACCABI TEL AVIV/);
+  assert.doesNotMatch(team.values.teams, /KIRYAT ATA/, 'clear:true must replace, not add to, the selection');
   assert.ok(tl.frames[0].ts <= cell.t0 + 1, 'frame clock and step clock disagree');
   const probe = spawnSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=width,height', '-of', 'csv=p=0',
     join(OUT, 'rec', 'fx', 'frames', tl.frames[0].file)], { encoding: 'utf8' });
