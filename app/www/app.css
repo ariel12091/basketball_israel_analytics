@@ -1977,3 +1977,41 @@ body.ibpl-mobile .lineup-chips-mode { padding: 5px 11px; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) {
   .lineup-chip, .lineup-chips-mode { transition: none; }
 }
+
+/* ---- Clickable cues ---------------------------------------------------------
+   One meaning per cue, visible at rest:
+     Open    amber text + trailing chevron   opens a modal, detail view or tab
+     Menu    trailing caret                  opens a menu (and nothing else)
+     Edit    small pencil                    goes to the control that owns a value
+     Explain dotted underline                explains on hover (pointer devices)
+     Hint    one muted line by a table       says what it responds to
+   Glyphs live in ::after so they never reach exports, sort values or copied
+   text.
+   -------------------------------------------------------------------------- */
+
+/* Menu cue: navbar tabs with view modes. */
+.nav-item.tab-has-dropdown > .nav-link::after,
+td[data-pivot-trigger]:first-child::after,
+.ibpl-row-name[data-pivot-trigger]::after {
+  content: "";
+  display: inline-block;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  vertical-align: middle;
+  opacity: 0.75;
+}
+/* The navbar has about 30px to spare at 1440px before it wraps (measured
+   2026-10-11), so the tab caret takes no width: it sits in the 16px gap
+   between tabs, just past the link's edge. */
+.nav-item.tab-has-dropdown > .nav-link::after {
+  position: absolute;
+  right: -11px;
+  top: calc(50% - 2px);
+}
+/* The active tab also names its mode, where there is room for it. */
+.tab-mode-label { display: none; font-weight: 500; }
+.tab-mode-label::before { content: "\00B7"; margin: 0 5px; opacity: 0.7; }
+@media (min-width: 1600px) {
+  .nav-link.active > .tab-mode-label { display: inline; }
+}

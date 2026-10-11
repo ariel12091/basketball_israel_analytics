@@ -2053,7 +2053,11 @@
   function updateInput(inputId, value, type) {
     if (type === "select") {
       var sel = document.getElementById(inputId);
-      if (sel) {
+      if (sel && sel.selectize) {
+        // A selectize <select> only holds the option it is showing, so
+        // assigning .value to any other choice leaves it blank.
+        sel.selectize.setValue(value);
+      } else if (sel) {
         sel.value = value;
         sel.dispatchEvent(new Event("change", { bubbles: true }));
       }
@@ -2070,7 +2074,8 @@
   function currentInputValue(config) {
     if (config.type === "select") {
       var sel = document.getElementById(config.inputId);
-      return sel ? sel.value : config.def;
+      if (!sel) return config.def;
+      return (sel.selectize ? sel.selectize.getValue() : sel.value) || config.def;
     }
 
     var checked = document.querySelector("input[name=\"" + config.inputId + "\"]:checked");
@@ -2085,6 +2090,10 @@
     if (!li || li.querySelector(".tab-hover-menu")) return;
 
     li.classList.add("tab-has-dropdown");
+
+    var modeLabel = document.createElement("span");
+    modeLabel.className = "tab-mode-label";
+    link.appendChild(modeLabel);
 
     var menu = document.createElement("div");
     menu.className = "tab-hover-menu";
@@ -2115,6 +2124,7 @@
         menu.querySelectorAll(".thm-item").forEach(function(r) {
           setRowActive(r, r.dataset.value === val);
         });
+        modeLabel.textContent = val;
 
         menu.style.display = "none";
         setTimeout(function() {
@@ -2129,15 +2139,24 @@
 
     function syncMenu() {
       var current = currentInputValue(config);
+      modeLabel.textContent = current;
       menu.querySelectorAll(".thm-item").forEach(function(row) {
         setRowActive(row, row.dataset.value === current);
       });
     }
 
+    syncMenu();
     link.addEventListener("shown.bs.tab", syncMenu);
     link.addEventListener("click", function() {
       setTimeout(syncMenu, 100);
     });
+    // The server can change the mode too (Reset, bookmark restore). Shiny
+    // announces every input change as a jQuery event on document.
+    if (window.jQuery) {
+      window.jQuery(document).on("shiny:inputchanged", function(e) {
+        if (e.name === config.inputId) setTimeout(syncMenu, 0);
+      });
+    }
   }
 
   function init() {
