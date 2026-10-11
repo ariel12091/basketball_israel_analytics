@@ -191,6 +191,10 @@ ui_tab3_team <- function() tabPanel(
           )
         ),
         filter_chips_row("tr_filter_chips"),
+        conditionalPanel(
+          condition = "input.tr_view_mode == 'Traditional'",
+          table_hint("sort", "explain", "reorder")
+        ),
         DTOutput("tr_table")
       )
     )

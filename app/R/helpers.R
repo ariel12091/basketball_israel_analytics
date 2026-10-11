@@ -117,6 +117,71 @@ dt_col_order_init_callback <- function(input_id, storage_key) {
   ))
 }
 
+# "Oct 10" from a Date. month.abb, not format("%b"): month names must not
+# follow the server locale.
+short_month_day <- function(d) {
+  if (length(d) != 1L || is.na(d)) return(NA_character_)
+  paste(month.abb[as.integer(format(d, "%m"))], as.integer(format(d, "%d")))
+}
+
+# ---- Home hub: the selected team's last game ----
+# `last_games_df` holds one row per team (hub_fetch_last_games()).
+hub_last_game <- function(last_games_df, team_id) {
+  tid <- suppressWarnings(as.integer(team_id))
+  if (is.null(last_games_df) || !nrow(last_games_df) ||
+      length(tid) != 1L || !is.finite(tid)) {
+    return(NULL)
+  }
+  row <- last_games_df[as.integer(last_games_df$team_id) == tid, , drop = FALSE]
+  if (!nrow(row)) return(NULL)
+  as.list(row[1, , drop = FALSE])
+}
+
+hub_last_game_result <- function(g) {
+  sprintf("%s %d-%d", if (isTRUE(g$has_won)) "W" else "L",
+          as.integer(g$team_score), as.integer(g$opp_score))
+}
+
+hub_last_game_context <- function(g) {
+  paste(if (isTRUE(g$is_home)) "vs" else "at", as.character(g$opp_team_name),
+        intToUtf8(183L), short_month_day(as.Date(g$game_date)))
+}
+
+# The link is offered only for a game known to have Gameflow data, so it
+# never opens an empty chart. It uses the hub's own opener ("hub" prefix), so
+# a touch device draws the chart inline on Home rather than in Game Logs.
+hub_last_game_ui <- function(g) {
+  if (is.null(g)) return(NULL)
+  div(
+    class = "card bg-dark border-secondary mb-4 hub-card-static hub-last-game",
+    div(
+      class = "card-body",
+      tags$span(class = "hub-block-title", "Last game"),
+      tags$span(class = if (isTRUE(g$has_won)) "hub-pos" else "hub-neg",
+                hub_last_game_result(g)),
+      tags$span(class = "hub-last-game-context", hub_last_game_context(g)),
+      if (isTRUE(g$has_gameflow)) {
+        HTML(ribbon_link_cell(g$game_id, g$team_id, "View Gameflow",
+                              input_id = "hub_ribbon_click",
+                              own_team = as.character(g$team_name),
+                              opp_team = as.character(g$opp_team_name)))
+      }
+    )
+  )
+}
+
+# The navbar's data-freshness label, short. The tab row has about 55px to
+# spare for it at 1440px (measured 2026-10-11): "Oct 10" fits, anything that
+# carries the time costs a second navbar row, and second-row tabs then cover
+# the first row's mode menus. The full stamp stays available as the tooltip.
+# month.abb, not format("%b"): month names must not follow the server locale.
+last_updated_short <- function(txt) {
+  m <- regmatches(txt %||% "", regexpr("[0-9]{4}-[0-9]{2}-[0-9]{2}", txt %||% ""))
+  d <- if (length(m)) suppressWarnings(as.Date(m, format = "%Y-%m-%d")) else as.Date(NA)
+  if (length(d) != 1L || is.na(d)) return("n/a")
+  short_month_day(d)
+}
+
 csv_export_stamp <- function(now = Sys.time()) {
   format(now, "%Y%m%d_%H%M%S")
 }
@@ -564,7 +629,7 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
     trigger = tags$span(
       class = "filter-chip filter-chip-add",
       id = paste0(prefix, "_stat_filter_add_btn"),
-      tags$i(class = "bi bi-plus"), " Filter"
+      tags$i(class = "bi bi-plus"), " Stat filter"
     ),
     title = "Add stat filter",
     placement = "bottom",
@@ -2217,7 +2282,7 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
 }
 
 # ---- Player Stats filter chips on the On/Off tab ----
-# The On/Off `+ Filter` chip can narrow rows by a player's traditional stats
+# The On/Off `+ Stat filter` chip can narrow rows by a player's traditional stats
 # over the same selected games. These columns never render: they are joined
 # onto the ranked On/Off population and filtered BEFORE the table is built, so
 # they stay out of the grouped-header column contract and cannot move a
@@ -4401,6 +4466,12 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     # `<text class="ibpl-ribbon-name"[^>]*data-clip=...` regex.
     common <- list(`data-clip` = lanes$clip[i], `text-anchor` = "end")
     list(
+      # A button behind the whole gutter row. app.js keys clicks, hover and
+      # is-pair-selected on data-clip, so this needs no handler of its own;
+      # it is first in the list because SVG paints in document order.
+      tags$rect(class = "ibpl-ribbon-row-btn", `data-clip` = lanes$clip[i],
+                x = 2, y = lanes$abs_y[i], width = L$gutter - 6,
+                height = lanes$h[i], rx = 3),
       do.call(tags$text, c(list(class = "ibpl-ribbon-name", x = L$name_x, y = y),
         common, list(tabindex = "0", `aria-label` = label, gutter_label[i]))),
       if (!isTRUE(L$compact)) do.call(tags$text, c(list(class = "ibpl-ribbon-min", x = L$min_x, y = y),
@@ -4641,6 +4712,47 @@ ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_clic
     htmltools::htmlEscape(opp_team, attribute = TRUE),
     htmltools::htmlEscape(label)
   )
+}
+
+# One line above a table saying what it responds to. Each interaction is
+# worded once here, for both leagues, as a pointer sentence and a touch
+# sentence. They are written out in full because the action differs and not
+# only the verb: a tap on a header sorts, so its definition is reached through
+# the info button. NA means the interaction does not exist on touch.
+TABLE_HINT_PHRASES <- list(
+  pivot          = c(pointer = "Click a team or player for lineups and game logs",
+                     touch   = "Tap a team or player for lineups and game logs"),
+  lineup         = c(pointer = "Click a lineup for its game log",
+                     touch   = "Tap a lineup for its game log"),
+  gameflow       = c(pointer = "Click View under Gameflow for a game's lineup timeline",
+                     touch   = "Tap View under Gameflow for a game's lineup timeline"),
+  compare_player = c(pointer = "Click a player to compare them across the two sides",
+                     touch   = "Tap a player to compare them across the two sides"),
+  sort           = c(pointer = "Click a column header to sort",
+                     touch   = "Tap a column header to sort"),
+  explain        = c(pointer = "Hover over a column header for its definition",
+                     touch   = "Tap a header's info button for its definition"),
+  reorder        = c(pointer = "Drag a column header to reorder",
+                     touch   = NA_character_)
+)
+
+table_hint <- function(...) {
+  keys <- c(...)
+  if (!length(keys)) stop("table_hint() needs at least one interaction key")
+  unknown <- setdiff(keys, names(TABLE_HINT_PHRASES))
+  if (length(unknown)) {
+    stop("table_hint(): no wording for ", paste(unknown, collapse = ", "))
+  }
+
+  line <- function(device) {
+    phrases <- vapply(TABLE_HINT_PHRASES[keys], function(p) p[[device]], character(1))
+    phrases <- phrases[!is.na(phrases)]
+    if (!length(phrases)) return(NULL)
+    tags$span(class = paste0("hint-", device),
+              paste(phrases, collapse = paste0(" ", intToUtf8(183L), " ")))
+  }
+
+  tags$div(class = "table-hint", line("pointer"), line("touch"))
 }
 
 # Call on the source frame before its identifiers are dropped for display.

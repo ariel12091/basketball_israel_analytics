@@ -1194,6 +1194,7 @@ make_chip <- function(label, clear_id, css_class = "", focus_id = NULL) {
     tabindex = if (focusable) "0" else NULL,
     role = if (focusable) "button" else NULL,
     label,
+    if (focusable) tags$i(class = "bi bi-pencil chip-edit", `aria-hidden` = "true"),
     tags$button(
       class = "chip-x",
       type = "button",

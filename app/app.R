@@ -8,6 +8,7 @@ source("R/global.R", local = TRUE)
 source("R/logger.R", local = TRUE)
 source("R/mod_lineup_player_filter.R", local = TRUE)
 source("R/mod_team_hub.R", local = TRUE)
+source("R/mod_team_insights.R", local = TRUE, encoding = "UTF-8")
 source("R/mod_ribbon_modal.R", local = TRUE)
 source("R/ui_tab0_home.R", local = TRUE)
 source("R/ui_tab1_onoff.R", local = TRUE)
@@ -116,9 +117,9 @@ build_ui <- function() {
                    class = "btn btn-sm btn-outline-secondary nav-help-btn"),
       tags$span(
         style = "display: inline-flex; align-items: center; gap: 4px; min-width: 0;",
-        tags$span(style = "width: 6px; height: 6px; background: var(--ibpl-pos); border-radius: 50%; display: inline-block;"),
+        tags$span(class = "nav-updated-dot", style = "width: 6px; height: 6px; background: var(--ibpl-pos); border-radius: 50%; display: inline-block;"),
         tags$span(style = "display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
-                  textOutput("last_updated", inline = TRUE))
+                  uiOutput("last_updated", inline = TRUE))
       )
     )
   ),
@@ -451,8 +452,9 @@ server <- function(input, output, session) {
     refresh_last_updated()
   })
 
-  output$last_updated <- renderText({
-    last_updated_cache() %||% "Last updated: unavailable"
+  output$last_updated <- renderUI({
+    txt <- last_updated_cache() %||% "Last updated: unavailable"
+    tags$span(title = txt, last_updated_short(txt))
   })
 
   # Storylines own the first expensive startup query batch. A restored session
@@ -582,6 +584,7 @@ server <- function(input, output, session) {
   server_tab10_euro_lineups(input, output, session, shared)
   server_tab11_euro_gamelogs(input, output, session, shared)
   server_team_hub(input, output, session, shared)
+  server_team_insights(input, output, session, shared)
 
   # Card navigation: Who is helping my team? -> Tab 1
   observeEvent(input$go_onoff, {

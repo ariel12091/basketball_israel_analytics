@@ -25,24 +25,33 @@ Those are fixed and reconcile exactly. The games where attribution is **wrong**
 are a different, overlapping-but-not-identical population, and they were never
 selected.
 
-**Concrete, verified examples not in the 19-game set:**
+**Correction after a strict-inside re-audit:** only game 62452 is a verified
+omitted real case. The first reconstruction also named game 100, but that was
+an endpoint false positive: both teams' first Q2 substitutions occur exactly
+at elapsed 700, the endpoint of the 600-700 carry-forward window. The previous
+five is therefore valid for the entire window. The reproducible query is now
+`scripts/audit_period_anchor_reprocess_population.R`; it deliberately uses
+`sub.elapsed < segment_end`, not `<=`.
 
-| Game | Team | Period | Earliest lineup state | False window |
+The remaining omitted case is:
+
+| Game | Team | Period | Opening evidence | False window |
 |---|---|---|---|---|
-| 100 | 3 | Q2 | `rem = 500` | 100s |
-| 100 | 8 | Q2 | `rem = 500` | 100s |
-| 62452 | 11 | Q3 | `rem = 600`* | 72s |
+| 62452 | 11 | Q4 | five OUT substitutions at `10:00`, no matching IN declaration | 72s |
 
-*62452's Q3 has a state at the boundary but the straddle still carries 4
-substitutions in its overhang; it needs a closer look than this pass gave it.
+This is not repairable by the additive anchor rule. The provider rows take the
+team from five players to zero at Q4 `10:00`; subsequent states remain malformed
+(`n_on` 2/3). Reprocessing would not supply the missing incoming five. Keep it
+as a residual for Workstream C or a future regulation recovery path.
 
 Neither game appears in `66, 68, 88, 156, 177, 184, 223, 360, 406, 62449,
 62506, 62512, 62526, 62530, 62534, 62537, 62540, 62581, 64902`.
 
-**Implication.** Reprocessing is not finished. The correct selection criterion
-for the ribbon defect is the straddle measure below, not the period-opening
-gap. Re-running the offline reprocess over a straddle-selected population is
-the next substantive task.
+**Implication.** The original population selection was still wrong and must be
+recorded as such, but there is no additional anchor-compatible game to
+reprocess. The only real omission is a provider reset that anchors deliberately
+cannot infer. Workstream C now exposes that residue to the reader; a future
+regulation recovery path would be needed to repair it.
 
 ---
 
@@ -66,12 +75,12 @@ comparable. More importantly the 17 are not one population:
 |---|---|---|
 | 668s | 406 (2 teams) | The mislabelled game; excluded from the anchors by decision |
 | 277s | 211 (2 teams) | `PERIOD_ANCHOR_EXCLUDED_GAMES`; excluded by design |
-| 100s | 100 (2 teams) | **Real, and never reprocessed** — see section 1 |
-| 72s | 62452 | **Real, and never reprocessed** |
+| 100s | 100 (2 teams) | Endpoint false positives; substitutions occur exactly at the segment end |
+| 72s | 62452 | **Real, never reprocessed, and not anchor-repairable** |
 | 1-3s | 10 cases | Boundary substitution flurries. The false window is under 3 seconds; cosmetically invisible |
 
-So the substantive residue is 4 straddles across 2 games plus the 2 games
-excluded by decision — not 17.
+With the strict-inside predicate, the substantive non-excluded residue is game
+62452. The 17-case reconstruction should not be used as a baseline.
 
 **Game 404, the headline case, is clean.** Its Q4 first-attributed clock is
 `600`, the true period start. The 1:57 false lineup that motivated the whole
@@ -150,14 +159,16 @@ ede381e docs: qualify the additive-only claim and make the game count auditable
 
 Next, in the order I would take them:
 
-1. **Re-select the reprocessing population by the straddle measure** and run
-   the offline reprocess over it. Games 100 and 62452 are known members.
-   Section 1 is the reason this is first.
-2. **Recover the baseline straddle query** or accept the reconstructed one and
-   restate the plan's "6 of 51" against it, reporting overhang duration so
-   sub-second artifacts stop counting as defects.
-3. **Workstream C** — now unblocked; add the second health signal joining
-   `subs`.
+1. ~~**Re-select the reprocessing population by the straddle measure.**~~ Done
+   with the strict-inside audit. Game 100 was an endpoint false positive and
+   game 62452 is the sole omitted real case, but is not anchor-repairable.
+2. ~~**Workstream C**~~ — done. The Israeli ribbon joins the hot `subs` table,
+   warns only on strictly-inside substitutions, and reports total overhang
+   duration. Live checks: game 100 = 0/0s, 62452 = 1/72s, 406 = 2/736s, and
+   62534 = 2/6s; see `scripts/verify_ribbon_false_straddle_health.R`.
+3. **Recover the baseline straddle query** or accept the reconstructed one and
+   restate the plan's "6 of 51" against it. The new health query is the durable
+   strict-inside measure going forward.
 4. **D** (excluded segments) and **F** (mid-quarter holes) against post-anchor
    data.
 5. Still open from the anchors work: game 406's relabel, the 62526 boundary

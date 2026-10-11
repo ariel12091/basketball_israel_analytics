@@ -24,7 +24,7 @@ lands.
 | A | Period-opening attribution gap draws the **wrong five** across a boundary | 6 straddles, 5 games; **not present in EL** | High — asserts a false lineup | **Prerequisite — separate plan** (anchors design) |
 | B | Margin curve padded flat across periods with no data | 2 games (IL); no-op in EL | Medium — 20 min of false line | **Done** |
 | C | Ribbon cannot warn about an absent segment | All games | Medium — fault is silent | Code path identified; blocked on H database migration |
-| D | Excluded segments leave undrawn holes | 19 team-games, 4675s | Medium | Investigate |
+| D | Excluded segments leave undrawn holes | 36 segs / 2352s (2008s feed defects, 344s alias) | Medium | **Partly fixed 2026-09-20** — 23 games reprocessed; aliases 2052 + 2046 closed, 1982 blocked on 3 unfetchable cup games |
 | E | Upstream feed defects (whole periods missing) | 3 games | High but **not ours** | Tracked, out of scope |
 | F | Mid-quarter attribution holes | 10 games | Medium | Undiagnosed |
 | G | Final lineup's bar stops short of the buzzer | 1 game | Low, cosmetic | Backlog |
@@ -93,6 +93,23 @@ the anchors land, lanes begin at the period boundary with no reader change.
 **What this plan does when A lands:** re-measure the faulty-straddle count
 (expected 6 -> 0), then C, D and F against the post-anchor data.
 
+**Rollout correction, 2026-09-20: A is not finished.** The anchor rule and
+its gates landed, but the historical reprocessing population was selected by
+the period-opening *missing-attribution* measure. That measure cannot see a
+straddle whose opening actions are present but carry the previous period's
+five, so it omitted game 62452. Do not treat the merge or the first 18-game
+reprocess as completion of A. Re-select the population using the
+faulty-straddle predicate (a boundary-crossing segment plus a substitution for
+that team inside the overhang), re-run the offline reprocess for that set, and
+only then perform the post-A re-measurement and continue to C, D and F. See
+`docs/ribbon_straddles_and_subs_handoff_2026-09-20.md` for the evidence and
+known exclusions. A strict-inside re-audit corrected another preliminary
+claim: game 100 is benign because its first Q2 substitutions occur exactly at
+the previous segment's endpoint, so the carried five is valid throughout the
+100-second window. Game 62452 is a real residual, but its Q4 opening is a
+provider five-OUT/no-IN reset that the additive anchor rule cannot repair; it
+must remain visible to C or be handled by a separate recovery path.
+
 ## B. Margin padded across periods with no data — DONE
 
 The axis is correctly a constant 2400s, so a truncated game shows empty
@@ -117,7 +134,7 @@ preserves the old behaviour, so existing callers and tests are untouched.
 and were spliced on raw bytes with CR counts verified unchanged (2767 and
 1034).
 
-## C. The ribbon cannot warn about an absent segment
+## C. The ribbon cannot warn about an absent segment — DONE
 
 `ribbon_health_message()` (`helpers.R:4256`) is driven solely by
 `excluded_segments`, which counts segments whose `lineup_hash` does not resolve
@@ -128,43 +145,262 @@ This is structural: the bad interval is not an *excluded* segment but an
 *absent* one that the neighbouring segment swallows. The reader cannot see what
 the MV already filtered out.
 
-**Proposed.** Add a second health signal computed from what the ribbon can now
+**Implemented 2026-09-20.** A second health signal is computed from what the ribbon can now
 see: for each period from Q2 on, a segment that starts before the boundary and
 extends past it, **while that team has a substitution inside the overhang**, is
-a false lineup.
+a false lineup. `RIBBON_SQL_ISRAEL` reads the hot `subs` table for the requested
+game, applies the strict-inside predicate (`sub.elapsed < segment_end`), and
+returns both the number of intervals and their total overhang seconds.
+`ribbon_health_message()` combines that signal with the existing excluded-
+segment warning. EuroLeague returns zeroes for the same reader contract because
+its period-opening lineups are already explicit.
 
-**Code-unblocked 2026-09-19; operationally still blocked.** The substitution
-evidence lives in `basketball_test.subs`, which used to be a cold-storage table — empty between
-ETL runs, so the reader could never use it. The code now treats it as hot (see
-CLAUDE.md "Cold Storage"), but the database promotion and historical backfill
-have not run. Once those are complete, the ~79k-row table and its existing
-`app_readonly` SELECT/RLS policy let the reader join `subs` directly. Until
-then, C remains blocked in production.
+**UNBLOCKED 2026-09-20.** The substitution evidence lives in
+`basketball_test.subs`, which used to be a cold-storage table — empty between
+ETL runs, so the reader could never use it. Both halves are now done: the code
+treats it as hot, and the database promotion and historical backfill ran on
+2026-09-20 (section H). The table holds 79,416 rows across 448 games and its
+existing `app_readonly` SELECT/RLS policy lets the reader join `subs` directly.
+C is implemented and verified now.
 
-Still sequenced after A, because A removes most of what there is to warn about;
-the warning then covers the residue (game 211 and anything new).
+Sequence it after the re-selected reprocess (sequencing step 1), not merely
+after "A", because A's first pass left a residue — the warning should cover
+what remains rather than the bulk. Measure the overhang duration in the signal:
+the 2026-09-20 straddle pass found 10 of 17 flagged cases with overhangs under
+3 seconds, which are boundary substitution flurries, not visible false lineups.
+Live behavioral checks return game 100 = 0 intervals / 0s, game 62452 = 1 / 72s,
+game 406 = 2 / 736s, and game 62534 = 2 / 6s. The representative game-62452
+query executed in 58 ms. See `scripts/verify_ribbon_false_straddle_health.R`.
 
-## D. Excluded segments leave undrawn holes
+## D. Excluded segments leave undrawn holes — PARTLY FIXED 2026-09-20
 
-The fault class the ribbon **does** warn about, but the volume is larger than
-the warning implies: **19 team-games, 4675 seconds of lane time not drawn.**
+The fault class the ribbon **does** warn about. Measured after Workstream A
+with `scripts/audit_ribbon_excluded_segments.R`, which reproduces the reader's
+own valid-five guard and reconciles against the reader's verbatim predicate
+game by game.
 
-| Game | Excluded segments | Seconds not drawn |
-|---|---:|---:|
-| 178 | 25 | 1460 |
-| 370 | 13 | 1243 |
-| 368 | 10 | 789 |
-| 366 | 9 | 402 |
-| 62452 | 6 | 524 |
-| 363 | 3 | 154 |
-| 62479 | 1 | 24 |
+| | Segments | Team-games | Games | Seconds |
+|---|---:|---:|---:|---:|
+| Measured 2026-09-20 (pre-fix) | 67 | 8 | 7 | 4596 |
+| **After the D1 reprocess** | **36** | **6** | **5** | **2159** |
 
-Game 178 loses over 24 minutes of lane coverage. There is an existing
-investigation for it: `docs/game_178_invalid_q2_reset_2026-05-30.md`.
+The pre-fix per-game table was byte-for-byte the one recorded on 2026-09-19, so
+the anchor work neither fixed nor widened this class. The reduction below came
+from canonicalising four games (see D1), not from the ribbon code.
 
-**Next step:** determine whether these hashes resolve to 4 or 6 players, and
-whether the cause is the same lineup-state defect as A or something else. Do
-this **after** A, since A changes which states exist.
+| Game | Excluded segments | Seconds not drawn | State |
+|---|---:|---:|---|
+| 178 | 25 | 1460 | feed defect, see D2 |
+| 62452 | 6 | 524 | feed defect, see D3 |
+| 172 | 3 | 90 | alias residue, see D1 |
+| 187 | 1 | 61 | alias residue, see D1 |
+| 62479 | 1 | 24 | feed defect, see D2 |
+| ~~370~~ | ~~13~~ | ~~1243~~ | **fixed** |
+| ~~368~~ | ~~10~~ | ~~789~~ | **fixed** |
+| ~~366~~ | ~~9~~ | ~~402~~ | **fixed** |
+| ~~363~~ | ~~3~~ | ~~154~~ | **fixed** |
+
+
+> **Update 2026-09-20, after a second reprocess.** Alias 2052 is now fully
+> closed (0 games), and the holes in 172/187 are gone — but reprocessing game
+> 210 orphaned game **206** (team 6, alias 1982) for 4 segments / 344s, so the
+> ribbon total moved from 2159s to **2352s**: net 193 seconds worse. A partial
+> scope relocates the defect rather than shrinking it. Closing 1982 (18 games)
+> and 2046 (10 games) should leave only the three feed defects, 32 segs /
+> 2008s. Full record in `docs/ribbon_workstream_d_handoff_2026-09-20.md` § 9.
+>
+> **Update 2: 23 games reprocessed in total.** Aliases **2052** and **2046**
+> are now fully closed (0 games each). Alias **1982** is **blocked**: 3 of its
+> 18 games (294, 304, 309) are State Cup games with an empty `pbp_link` and
+> cannot be re-fetched, and reprocessing only the 15 fetchable ones was
+> measured to orphan 15 segments / 1204s in games 304 and 309 against 344s
+> fixed — net 860s worse, so it was not run. Seasons 2025 and 2027 carry no
+> alias residue at all. Details and the exposure-gate query:
+> `docs/ribbon_workstream_d_handoff_2026-09-20.md` §10-12.
+### The headline baseline was a different measure, not a regression
+
+"19 team-games, 4675s" never agreed with this section's own per-game table,
+which sums to 8 team-games and 4596s. The audit's variant section reproduces
+both; the difference is the `has_gameplay` filter:
+
+| Variant | Segments | Team-games | Seconds |
+|---|---:|---:|---:|
+| reader (gameplay, seconds > 0) | 67 | 8 | 4596 |
+| gameplay, any seconds | 68 | 8 | 4596 |
+| any segment, seconds > 0 | 104 | 19 | 4675 |
+| any segment, any seconds | 129 | 20 | 4675 |
+
+The extra segments are substitution-only. The ribbon draws no lane time for
+them, so they are not holes. **Quote 67 / 8 / 4596**; the old headline counted
+a population the reader never had to draw.
+
+### Cause classes — the question this workstream asked
+
+`lineups_lookup_on` is derived: ETL Phase 3 copies the `is_on_verdict = 1`
+rows out of `lineups_lookup`. Reading both counts separates a feed defect from
+a join that cannot resolve.
+
+| Cause | Segments | Seconds | Where |
+|---|---:|---:|---|
+| Alias id-space mismatch — nothing lost, join cannot resolve | 35 | 2588 | 363, 366, 368, 370, all team 9 |
+| Source over-attribution — 6 or 7 on the floor | 26 | 1484 | 178 (25 segs), 62479 (1) |
+| Source under-attribution — 2 or 3 on the floor | 6 | 524 | 62452, team 11 |
+
+**No hash resolves to four players.** Outside the alias class the derived count
+equals the source count exactly, so `lineups_lookup_on` is a faithful copy
+everywhere it copied anything.
+
+### D1. Alias id-space mismatch — FIXED for four games 2026-09-20
+
+**Applied.** Canonicalisation is part of ETL, but only at *ingest*: Phase 2
+loads the active aliases (`etl/etl_full.R:320`) and applies them per game via
+`canonicalize_actions_player_ids()` / `canonicalize_roster_player_ids()` /
+`canonicalize_starter_player_ids()`. ETL never revisits a processed game, so a
+game ingested before its alias existed stays raw forever. These four were
+ingested 2026-06-02 to 06-17; the 2052 alias was created **2026-06-18**. Game
+372 (06-22) came out canonical, which is the whole difference.
+
+The repo already owns the retroactive fix, so no new script was written:
+
+```r
+Sys.setenv(APP_ENV = "test")
+source("etl/backfill_player_id_aliases.R")
+backfill_player_id_aliases(dry_run = FALSE, seed_defaults = FALSE,
+                           game_ids = c(363L, 366L, 368L, 370L))
+```
+
+It re-runs `etl_full()` for exactly those games — a transactional per-game
+snapshot replace (DELETE + reinsert of `pws`, `stints`, `lineups_lookup`,
+`possessions`, `subs`, `actions_clean`, `full_rosters`), so there is no
+raw/canonical duplication. Ran 455.6s, `pipeline_ok = TRUE`, all four
+validated and published, no phase failures.
+
+**Verified before and after:**
+
+| Invariant | Result |
+|---|---|
+| Final scores (96-70, 91-84, 88-102, 65-76) | unchanged |
+| Team minutes from segments | unchanged (39.40 / 39.92 / 39.78 / 39.43) |
+| Distinct players per team-game | unchanged (23 / 19 / 22 / 21) |
+| Alias ids 1982/2046/2052 in `lineups_lookup` + `full_rosters` | 105 rows -> **0** |
+| Ribbon excluded segments in these games | 35 / 2588s -> **0** |
+
+Two deliberate changes, both benign and both worth knowing:
+
+- **Segments fell by 3 per team-game** (MV rows by ~114 per game). Those are
+  exactly the zero-second segments sitting on the Q1/Q2, Q2/Q3, Q3/Q4
+  boundaries: every reprocessed game now has **0** of them, every
+  non-reprocessed game in the season still has **6** (3 boundaries x 2 teams).
+  They carried no seconds, which is why minutes are unchanged. This is current
+  pipeline semantics (the 2026-09-12 monotonic-clock migration and the
+  period-anchor work) landing on games last processed in June.
+- **`etl_processed_games.processed_at` is NOT bumped by a reprocess** (363
+  still reads 2026-06-02). It marks first ingest, not last processing. That is
+  why game 365 looked June-processed yet held canonical ids — it had been
+  reprocessed too.
+
+**Residue: the scoped fix orphaned two neighbours.**
+`cleanup_player_alias_lineup_derivatives()` deletes raw-hash rows from
+`lineups_lookup_on` / `sub_lineups` at **season** scope `(team_id, game_year,
+lineup_hash)`, not per game. Games 172 and 187 share two of the raw hashes and
+were not reprocessed, so their MV now points at `_on` rows that no longer
+exist: **4 new excluded segments, 151s**, same alias class. The audit's own
+classifier catches them.
+
+That is also the mechanism behind the original defect: an earlier partial run
+cleaned the derivatives for 363/366/368/370 without reprocessing them, which is
+why the source stayed raw while the derived side went canonical.
+
+**A partial scope is therefore not a stable state.** To close 2052 entirely,
+reprocess its remaining games: **166, 172, 182, 187, 197, 203, 210, 218, 225**.
+Two other aliases are untouched and have the same latent behaviour: **1982**
+(team 6, 19 games) and **2046** (team 13, 11 games) — 37 distinct games in all.
+
+---
+
+#### Why it happened (retained for reference)
+
+The 2588 seconds lost in games 363/366/368/370 are neither a feed defect nor
+lost data. Player id **2052 is not canonical**: `player_identity_map` row 493
+(provider `segev`, season scope, game_year 2026, team 9, active, created
+2026-06-18) maps source id 2052 to **canonical 1110**, NOAM AVIVI — "cross-team
+season re-mint: id 2052 (Bnei Herzliya) is the same person as canonical 1110
+(Galil Elion)".
+
+A `lineup_hash` is computed from the player-id list, so the same five people
+hash differently in the two id spaces, and the alias was applied to the two
+sides at different times:
+
+| Relation | id carried for games 363-370 | Consequence |
+|---|---|---|
+| `lineups_lookup` | raw `2052` | hash `b3f70bca…` |
+| `full_rosters` | raw `2052` | — |
+| `df_pts_poss_lineups_longer_mv` | raw `2052` hash, 35 segments | what the ribbon reads |
+| `lineups_lookup_on` | canonical `1110` | hash `ead530af…` |
+| `sub_lineups` | canonical `1110` | 250 rows, 10 hashes |
+
+The ribbon joins the MV's raw hash to `lineups_lookup_on`'s canonical hash, and
+misses. Nothing is absent.
+
+Established, read-only:
+
+- **All 10** missing hashes have an exact twin in `lineups_lookup_on` once 2052
+  is rewritten to 1110 — same five people, different hash. A first pass
+  compared the raw player sets only and wrongly reported "no set appears under
+  another hash"; comparing *canonicalised* sets finds all ten.
+- Those 10 canonical hashes hold **250 rows in `sub_lineups`**. An earlier note
+  in this plan said they reach `sub_lineups` as 0 rows and that Tab 2 is
+  therefore missing these lineups. **That was wrong and is retracted** — it
+  queried the raw hashes. Tab 2 has them, under the canonical hash.
+- The MV carries the raw hash for the 4 affected games (35 segments) and the
+  **canonical** hash for games 365 and 372 (28 segments, which resolve fine).
+  `full_rosters` splits the same way: 2052 up to game 370, 1110 for 365 and
+  372. So the alias applies forward from roughly its 2026-06-18 creation.
+- Games 172, 187 and 225 also carry raw 2052 and are **not** affected, because
+  their `lineups_lookup_on` rows are raw too. The retroactive backfill
+  (`etl/backfill_player_id_aliases.R`, scoped by
+  `affected_player_alias_game_ids()`) canonicalised `lineups_lookup_on` and
+  `sub_lineups` for some games and left the source side alone. The 35 excluded
+  segments are exactly where the two sides disagree.
+- Those 10 remain the only five-player `is_on_verdict = 1` hashes anywhere in
+  the database with no `lineups_lookup_on` row, so today this mismatch is
+  bounded to one player in one season.
+
+**Do NOT "repair" this by inserting the raw hashes into `lineups_lookup_on`.**
+An earlier draft of this section proposed exactly that (10 x 5 = 50 rows). It
+would register the same five people twice under two hashes and corrupt every
+lineup count Tab 2 derives. The fix is to make the two id spaces agree —
+either extend the alias rewrite to `lineups_lookup` (and the MVs built from it)
+for games 363/366/368/370, or roll `lineups_lookup_on` and `sub_lineups` back
+to raw for those games. Both are writes, neither is in this workstream.
+
+**Latent scope.** 2026 alone has 392 active identity maps over 350 source ids
+(2025: 296, 2027: 209). Any future scoped alias backfill that rewrites the
+derived side without the source side reproduces this exactly. A standing check
+belongs in the data-quality report: count MV hashes that fail to resolve in
+`lineups_lookup_on` but do resolve after applying the active alias map.
+
+### D2. Source over-attribution — 6 or 7 players on the floor
+
+Game 178 (25 segments, 1460s, both teams) and game 62479 team 7 (1 segment,
+24s). `lineups_lookup` itself records six or seven players as on, so there is
+nothing to propagate correctly. Game 178 has an existing investigation:
+`docs/game_178_invalid_q2_reset_2026-05-30.md`. Not anchor-fixable; the ribbon
+warning is behaving correctly by refusing to draw a six-player five.
+
+### D3. Source under-attribution — 2 or 3 players on the floor
+
+Game 62452 team 11, 6 segments, 524s. This is the Q4 defect already recorded in
+`docs/ribbon_straddles_and_subs_handoff_2026-09-20.md`: the feed declares five
+OUT substitutions at 10:00 with no matching incoming five, and later states
+carry only two or three players. Confirmed here from the source side — the
+derived count matches the source count, so again nothing was lost in
+propagation.
+
+**Next step:** D1 is an alias-consistency decision, not a ribbon fix, and it
+belongs with the player-identity work rather than here. D2 and D3 are feed
+defects and stay with workstream E's tracking. Nothing in D now blocks the
+ribbon beyond the warning it already emits.
 
 ## E. Upstream feed defects — tracked, not in scope
 
@@ -204,6 +440,29 @@ Low priority. If fixed, extend the final segment to the axis end for the last
 period **that has data** — the same rule workstream B applies to the margin.
 
 ## H. `subs` promoted out of cold storage — prerequisite for C
+
+> **APPLIED 2026-09-20.** `basketball_test.subs` now holds **79,416 rows across
+> 448 games** (was 418 rows / 3 games). `subs_pkey` valid,
+> `subs_actions_clean_fk` present and NOT VALID as designed, `app_readonly`
+> SELECT verified. **This unblocks C.**
+>
+> `scripts/promote_subs_to_hot.R` needed three fixes before it would run, and
+> was itself untracked until `f72ebd2`:
+> 1. It refused outright — `if (hot_now > 0) stop(...)`. Written when `subs`
+>    was empty, but `subs` stopped being truncated at promotion, so Phase 2 had
+>    been writing rows ever since.
+> 2. A blanket restore would have failed anyway: `subs` has
+>    `PRIMARY KEY (game_id, id)` and 240 of the 418 rows were already in the
+>    archive, so `restore_cold_table()`'s unconditional append hits key
+>    violations. It now loads only the missing keys.
+> 3. The key comparison matched nothing, because the frame above it is a
+>    `col_select = "game_id"` projection — `pq$id` was NULL and every key
+>    became `"401|"`. Fixed by re-reading the full frame.
+>
+> The first apply also died on a `dbWriteTable` dispatch error; the transaction
+> rolled back cleanly and the FK and row count were verified intact before
+> retrying. **Still to verify:** that Phase 7 leaves `subs` populated after the
+> next nightly run.
 
 Workstream C needs to know whether a team substituted inside a straddle's
 overhang. That evidence is `basketball_test.subs`, which was a cold-storage
@@ -299,22 +558,30 @@ robust of the two.
 
 ## Sequencing
 
-0. **Prerequisite — A** (anchors plan, its own sequence). Everything below
-   that reads lineup states waits for it to land in production.
-1. **Re-measure** the faulty-straddle count (expected 6 -> 0) against the
-   post-anchor data.
-2. **D**: re-measure excluded segments after A; investigate the residue.
-3. **F**: investigate mid-quarter holes on the post-A data.
-4. **H (database half)**: run `scripts/promote_subs_to_hot.R` with
-   `CONFIRM_SUBS_PROMOTION=1`. Must precede C — C reads `subs` at request time.
-   Verify after the next ETL run that Phase 7 left it populated.
-5. **C**: add the second health signal once A has removed most of its subject
-   and H has made `subs` readable.
+**Updated 2026-09-20.** Two steps are done and the remaining order changed,
+because the anchors' reprocessing turned out to be incomplete.
+
+0. ~~**Prerequisite — A**~~ — the anchor rule, its six gates and the 401/404
+   acceptance **merged 2026-09-20** (`3894bbc`). **But A is NOT finished:** the
+   games it reprocessed were selected by the period-opening gap, which cannot
+   see the wrong-five class. The strict-inside re-audit found one omitted real
+   case, game 62452, which the anchor rule cannot repair. See section A.
+1. **Re-select the reprocessing population by the straddle measure** and re-run
+   the audit over it. This is done: game 100 was an endpoint false positive;
+   game 62452 is the only omitted real case and is not repairable by anchors.
+   It passes to C/the future recovery path rather than being reprocessed.
+2. ~~**H (database half)**~~ — **done 2026-09-20**: `subs` holds 79,416 rows
+   across 448 games, constraints intact, `app_readonly` SELECT verified.
+   **Still to check:** that Phase 7 leaves it populated after the next nightly.
+3. ~~**C**~~ — **done 2026-09-20**: the second health signal reports strict-
+   inside substitution straddles and total overhang duration. Live verification
+   covers games 100, 406, 62452 and 62534.
+4. **D**: re-measure excluded segments; investigate the residue.
+5. **F**: investigate mid-quarter holes on the post-anchor data.
 6. **G**: cosmetic, any time.
 7. **E**: raise separately — these are feed defects, not ribbon defects.
 
-B and H's code half are done and independent of the rest. G and H's database
-half do not depend on A and could be done while it is in progress.
+B and H are done. G depends on nothing here.
 
 ## Regression baselines
 
@@ -325,11 +592,26 @@ mismatched team-games, 0 Q1 gaps) belong to the anchors plan and live in its
 enumeration matters here too: grouping `BY (game_id, quarter)` silently skips a
 quarter with zero rows, which is how E was missed on the first pass.
 
-| Measure | Baseline 2026-09-19 |
-|---|---|
-| Faulty straddles | 6 of 51 |
-| Excluded segments | 67 segments, 19 team-games, 4675s |
-| Games whose margin is padded across an unplayed period | 2 (now 0) |
+| Measure | Baseline 2026-09-19 | Re-measured 2026-09-20 (post-anchor) |
+|---|---|---|
+| Faulty straddles | 6 of 51 | 17 of 49 flagged — **not comparable**, see note |
+| Excluded segments | 67 segments, 19 team-games, 4675s (a looser measure — see D) | 67/8/4596 -> **36/5/2352** after 23 games were reprocessed (see handoff §8-11) |
+| Games whose margin is padded across an unplayed period | 2 (now 0) | unchanged |
+
+**On the straddle re-measure.** The 2026-09-19 query is not recorded here, so
+the 2026-09-20 figure was reconstructed from workstream C's prose and is not
+proven to be the same measure. The 17 are also not one population: 10 have
+overhangs under 3 seconds (boundary substitution flurries, an invisible false
+window), 4 belong to games excluded by decision (406's relabelling, 211's
+action-id overlap), and the substantive residue was initially reported as two
+games. That reconstruction used an inclusive endpoint and was not the intended
+measure: a substitution exactly at the segment endpoint ends that segment; it
+does not make the carried lineup wrong beforehand. The reproducible
+strict-inside audit now lives in
+`scripts/audit_period_anchor_reprocess_population.R`. It finds five regulation
+cases: two in excluded game 406, two three-second cases in already-reprocessed
+game 62534, and one substantive omitted residual in game 62452. Game 100 drops
+out because both Q2 substitutions occur exactly at the 100-second endpoint.
 
 ## Test inventory
 
@@ -337,7 +619,7 @@ quarter with zero rows, which is how E was missed on the first pass.
 |---|---:|---:|---|
 | `test-cold-storage-fks.R` | 9 | 19 | H (registry, guards, SQL builders) |
 | `test-stint-ribbon.R` | 151 | 442 | B and the ribbon's pure transforms |
-| `test-stint-ribbon-readers.R` | 27 | 51 | reader contract |
+| `test-stint-ribbon-readers.R` | 31 | 67 | reader contract and C health signal |
 
 Pre-existing suite failures, unrelated and unchanged by this work:
 `test-companion-query-counts.R:293`, `test-idle-restore-bookmarking.R:169`,

@@ -138,6 +138,7 @@ ui_tab10_euro_lineups <- function() tabPanel(
           minposs_slider("euro_ld_minposs", "Min Poss", "min_poss_lineup",
                          max = 500, value = 0)
         ),
+        table_hint("lineup", "sort", "explain"),
         DTOutput("euro_ld_dt")
       )
     )

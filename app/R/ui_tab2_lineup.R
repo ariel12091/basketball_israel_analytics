@@ -176,6 +176,7 @@ ui_tab2_lineup <- function() tabPanel(
           minposs_slider("ld_minposs", "Min Poss", "min_poss_lineup",
                          max = 2000, value = LD_DEFAULT_MIN_POSS)
         ),
+        table_hint("lineup", "sort", "explain"),
         DTOutput("ld_table")
       )
     )

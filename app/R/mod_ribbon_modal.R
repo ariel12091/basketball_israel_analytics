@@ -61,7 +61,7 @@ ribbon_pair_controls <- function() {
       tags$button(type = "button", class = "ibpl-ribbon-pair-clear",
                   "Clear players"),
       div(class = "ibpl-ribbon-pair-status", role = "status", `aria-live` = "polite",
-          "Select players by clicking or tapping their bars or names."))
+          "Select two or more players, by their names or bars, to see their shared court time and lineups."))
 }
 
 # Game 406's Q4 clock is reconstructed from wall-entry time because the

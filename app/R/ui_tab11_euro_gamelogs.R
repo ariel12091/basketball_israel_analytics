@@ -71,6 +71,7 @@ ui_tab11_euro_gamelogs <- function() tabPanel(
         ),
         filter_chips_row("eurogl_filter_chips"),
         ribbon_inline_ui("eurogl"),
+        table_hint("gameflow", "sort", "explain"),
         DTOutput("eurogl_table")
       )
     )
