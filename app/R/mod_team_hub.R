@@ -1012,9 +1012,8 @@ server_team_hub <- function(input, output, session, shared) {
         if (!is.null(scorer)) {
           tags$p(
             class = "hub-footnote",
-            sprintf(
-              "Top scorer: %s -- %.1f ppg",
-              as.character(scorer$player_name %||% scorer$Player),
+            hub_top_scorer_label(
+              scorer$player_name %||% scorer$Player,
               scorer$ppg
             )
           )

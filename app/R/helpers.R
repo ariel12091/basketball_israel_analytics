@@ -1261,7 +1261,17 @@ hub_key_players <- function(onoff_df, team_id, min_on_poss = 100, top_n = 5) {
   utils::head(df, top_n)
 }
 
-hub_top_scorer <- function(ts_df, team_id, min_gp = 3) {
+# Games a player needs before they can be the hub's top scorer. The label
+# states it, because early in a season it decides the answer: when a team has
+# played three games, only players who appeared in all of them qualify.
+HUB_TOP_SCORER_MIN_GP <- 3L
+
+hub_top_scorer_label <- function(player_name, ppg, min_gp = HUB_TOP_SCORER_MIN_GP) {
+  sprintf("Top scorer (min %d games): %s -- %.1f ppg",
+          as.integer(min_gp), as.character(player_name), as.numeric(ppg))
+}
+
+hub_top_scorer <- function(ts_df, team_id, min_gp = HUB_TOP_SCORER_MIN_GP) {
   need <- c("team_id", "pts", "gp")
   if (is.null(ts_df) || !nrow(ts_df) || !all(need %in% names(ts_df))) {
     return(NULL)

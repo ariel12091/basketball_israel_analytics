@@ -350,3 +350,25 @@ test_that("v1 storyline sentences read correctly in both directions", {
   expect_match(top_bottom, "+6.0", fixed = TRUE)
   expect_match(top_bottom, "+1.9", fixed = TRUE)
 })
+
+# The qualifier is part of the claim. Early in a season a team has played only
+# three games, so "min 3 games" means "played every game": Hapoel Tel Aviv's
+# line read "Top scorer: KHADEEN CARRINGTON -- 10.7 ppg" while four teammates
+# averaged more in one or two games (2026-10-11).
+test_that("the top scorer line states its games minimum", {
+  expect_identical(
+    hub_top_scorer_label("KHADEEN CARRINGTON", 10.6667),
+    "Top scorer (min 3 games): KHADEEN CARRINGTON -- 10.7 ppg"
+  )
+  expect_identical(hub_top_scorer_label("A B", 20, min_gp = 5),
+                   "Top scorer (min 5 games): A B -- 20.0 ppg")
+})
+
+test_that("the label and the rule share one minimum", {
+  expect_identical(HUB_TOP_SCORER_MIN_GP, 3L)
+  expect_identical(formals(hub_top_scorer)$min_gp, quote(HUB_TOP_SCORER_MIN_GP))
+  expect_identical(formals(hub_top_scorer_label)$min_gp, quote(HUB_TOP_SCORER_MIN_GP))
+  hub <- read_repo_txt("R", "mod_team_hub.R")
+  expect_true(grepl("hub_top_scorer_label(", hub, fixed = TRUE))
+  expect_false(grepl('"Top scorer: %s', hub, fixed = TRUE))
+})
