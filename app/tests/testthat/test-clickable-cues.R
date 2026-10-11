@@ -80,6 +80,21 @@ test_that("Gameflow tells the user what selecting players reveals, in R and in J
                      read_repo_txt("www", "app.js"), fixed = TRUE))
 })
 
+test_that("the navbar shows the update date short, keeping the full stamp for the tooltip", {
+  # Measured 2026-10-11: at 1440px the tab row has ~55px to spare for this
+  # text. "Oct 10" (38px) fits; anything carrying the time (74px+) costs a
+  # second navbar row, whose tabs then cover the first row's mode menus.
+  expect_identical(last_updated_short("Last updated: 2026-10-10 22:33:06"), "Oct 10")
+  expect_identical(last_updated_short("Last updated: 2026-01-05 00:00:00"), "Jan 5")
+  expect_identical(last_updated_short("Last updated: unavailable"), "n/a")
+  expect_identical(last_updated_short(NULL), "n/a")
+  expect_identical(last_updated_short("Last updated: 2026-13-40 00:00:00"), "n/a")
+
+  app_txt <- read_repo_txt("app.R")
+  expect_true(grepl("last_updated_short(", app_txt, fixed = TRUE))
+  expect_true(grepl('uiOutput("last_updated", inline = TRUE)', app_txt, fixed = TRUE))
+})
+
 test_that("selectable Gameflow names are underlined at rest", {
   expect_match(cues_css(), "\\.ibpl-ribbon-name\\s*\\{[^}]*text-decoration:\\s*underline")
 })

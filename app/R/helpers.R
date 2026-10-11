@@ -117,6 +117,18 @@ dt_col_order_init_callback <- function(input_id, storage_key) {
   ))
 }
 
+# The navbar's data-freshness label, short. The tab row has about 55px to
+# spare for it at 1440px (measured 2026-10-11): "Oct 10" fits, anything that
+# carries the time costs a second navbar row, and second-row tabs then cover
+# the first row's mode menus. The full stamp stays available as the tooltip.
+# month.abb, not format("%b"): month names must not follow the server locale.
+last_updated_short <- function(txt) {
+  m <- regmatches(txt %||% "", regexpr("[0-9]{4}-[0-9]{2}-[0-9]{2}", txt %||% ""))
+  d <- if (length(m)) suppressWarnings(as.Date(m, format = "%Y-%m-%d")) else as.Date(NA)
+  if (length(d) != 1L || is.na(d)) return("n/a")
+  paste(month.abb[as.integer(format(d, "%m"))], as.integer(format(d, "%d")))
+}
+
 csv_export_stamp <- function(now = Sys.time()) {
   format(now, "%Y%m%d_%H%M%S")
 }

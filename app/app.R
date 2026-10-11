@@ -119,7 +119,7 @@ build_ui <- function() {
         style = "display: inline-flex; align-items: center; gap: 4px; min-width: 0;",
         tags$span(style = "width: 6px; height: 6px; background: var(--ibpl-pos); border-radius: 50%; display: inline-block;"),
         tags$span(style = "display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
-                  textOutput("last_updated", inline = TRUE))
+                  uiOutput("last_updated", inline = TRUE))
       )
     )
   ),
@@ -452,8 +452,9 @@ server <- function(input, output, session) {
     refresh_last_updated()
   })
 
-  output$last_updated <- renderText({
-    last_updated_cache() %||% "Last updated: unavailable"
+  output$last_updated <- renderUI({
+    txt <- last_updated_cache() %||% "Last updated: unavailable"
+    tags$span(title = txt, last_updated_short(txt))
   })
 
   # Storylines own the first expensive startup query batch. A restored session
