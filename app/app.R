@@ -8,6 +8,7 @@ source("R/global.R", local = TRUE)
 source("R/logger.R", local = TRUE)
 source("R/mod_lineup_player_filter.R", local = TRUE)
 source("R/mod_team_hub.R", local = TRUE)
+source("R/mod_team_insights.R", local = TRUE, encoding = "UTF-8")
 source("R/mod_ribbon_modal.R", local = TRUE)
 source("R/ui_tab0_home.R", local = TRUE)
 source("R/ui_tab1_onoff.R", local = TRUE)
@@ -582,6 +583,7 @@ server <- function(input, output, session) {
   server_tab10_euro_lineups(input, output, session, shared)
   server_tab11_euro_gamelogs(input, output, session, shared)
   server_team_hub(input, output, session, shared)
+  server_team_insights(input, output, session, shared)
 
   # Card navigation: Who is helping my team? -> Tab 1
   observeEvent(input$go_onoff, {
