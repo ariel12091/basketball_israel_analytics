@@ -924,7 +924,8 @@ server_team_hub <- function(input, output, session, shared) {
             ff_row("Offense", mini_off),
             ff_row("Defense", mini_def)
           )
-        }
+        },
+        div(class = "hub-card-go", "Open team ratings")
       )
     )
   })
@@ -972,7 +973,8 @@ server_team_hub <- function(input, output, session, shared) {
               scorer$ppg
             )
           )
-        }
+        },
+        div(class = "hub-card-go", "Open on/off impact")
       )
     )
   })
@@ -1008,7 +1010,8 @@ server_team_hub <- function(input, output, session, shared) {
         class = "card-body",
         tags$h6(class = "hub-block-title", "Lineups (min 100 poss)"),
         lineup_row("Best", best_worst$best, "hub-pos"),
-        lineup_row("Worst", best_worst$worst, "hub-neg")
+        lineup_row("Worst", best_worst$worst, "hub-neg"),
+        div(class = "hub-card-go", "Open lineups")
       )
     )
   })

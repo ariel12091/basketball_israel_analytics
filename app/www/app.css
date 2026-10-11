@@ -1160,7 +1160,9 @@ th[data-tooltip]::after { display: none; }
   display: none !important;
 }
 
-.ld-lineup-link {
+.ld-lineup-link,
+.euro-ld-unit,
+.ribbon-link {
   color: var(--ibpl-accent);
   text-decoration: underline;
   cursor: pointer;
@@ -2029,3 +2031,39 @@ td[data-pivot-trigger]:hover,
 td[data-pivot-trigger]:focus-visible { color: var(--ibpl-accent); }
 td[data-pivot-trigger]:hover::after,
 td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity: 1; }
+
+/* Open cue. */
+.ld-lineup-link::after,
+.euro-ld-unit::after,
+.ribbon-link::after,
+.hub-story-line::after,
+.hub-card-go::after {
+  content: "\203A";
+  display: inline-block;
+  margin-left: 4px;
+  color: var(--ibpl-accent);
+  font-weight: 700;
+  text-decoration: none;
+}
+.hub-card-go {
+  margin-top: 10px;
+  color: var(--ibpl-accent);
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+.hub-card:hover,
+.hub-card:focus-visible { border-color: var(--ibpl-accent) !important; }
+
+/* Open cue: Compare rows open a detail view, at both levels. */
+#cmp_table tbody tr,
+#cmp_team_players_table tbody tr { cursor: pointer; }
+#cmp_table tbody tr:hover > td,
+#cmp_team_players_table tbody tr:hover > td { background-color: var(--ibpl-surface-2); }
+/* Both tables show a rank first; the name they open is the second cell. */
+#cmp_table tbody tr > td:nth-child(2)::after,
+#cmp_team_players_table tbody tr > td:nth-child(2)::after {
+  content: "\203A";
+  margin-left: 4px;
+  color: var(--ibpl-accent);
+  font-weight: 700;
+}

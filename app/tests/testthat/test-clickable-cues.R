@@ -28,3 +28,21 @@ test_that("pivot cells are styled as menu triggers", {
   expect_true(grepl(".ibpl-row-name[data-pivot-trigger]::after", css, fixed = TRUE))
   expect_true(grepl("td[data-pivot-trigger]:hover", css, fixed = TRUE))
 })
+
+test_that("everything that opens something shares one Open cue", {
+  css <- cues_css()
+  open_targets <- c(".ld-lineup-link", ".euro-ld-unit", ".ribbon-link",
+                    ".hub-story-line", ".hub-card-go")
+
+  for (sel in open_targets) {
+    expect_true(grepl(paste0(sel, "::after"), css, fixed = TRUE), info = sel)
+  }
+  expect_true(grepl("#cmp_table tbody tr", css, fixed = TRUE))
+  expect_true(grepl("#cmp_team_players_table tbody tr", css, fixed = TRUE))
+})
+
+test_that("each hub card names where it goes", {
+  hub <- read_repo_txt("R", "mod_team_hub.R")
+
+  expect_equal(lengths(regmatches(hub, gregexpr('class = "hub-card-go"', hub, fixed = TRUE))), 3L)
+})
