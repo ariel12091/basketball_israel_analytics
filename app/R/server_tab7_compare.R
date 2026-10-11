@@ -3317,6 +3317,7 @@ server_tab7_compare <- function(input, output, session, shared) {
         tags$div(class = "cmp-team-header", team$team_name),
         tags$div(class = "cmp-team-subheader",
           paste0(full_a, " vs ", full_b, " | ", input$cmp_team_player_rate_mode %||% "Per Game")),
+        table_hint("compare_player", "sort"),
         DT::dataTableOutput("cmp_team_players_table")
       ))
     }

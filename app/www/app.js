@@ -605,7 +605,7 @@
     if (status) status.textContent = players.length ?
       players.map(function(p) { return p.name; }).join(" + ") + " · " +
       (seconds ? clockLabel(seconds) + (players.length > 1 ? " on court together" : " on court") : "No shared court time") +
-      ". Select a player again to remove them." : "Select players by clicking or tapping their bars or names.";
+      ". Select a player again to remove them." : "Select two or more players, by their names or bars, to see their shared court time and lineups.";
     host.querySelectorAll("svg.ibpl-ribbon").forEach(function(svg) {
       svg.querySelectorAll(".ibpl-ribbon-player-overlap-clip").forEach(function(clip) { clip.remove(); });
       svg.querySelectorAll("[data-clip]").forEach(function(element) {

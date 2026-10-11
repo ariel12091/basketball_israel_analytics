@@ -1278,7 +1278,7 @@ server_tab5_traditional <- function(input, output, session, shared) {
       trigger = tags$span(
         class = "filter-chip filter-chip-add",
         id = "ts_stat_filter_add_btn",
-        tags$i(class = "bi bi-plus"), " Filter"
+        tags$i(class = "bi bi-plus"), " Stat filter"
       ),
       title = "Add stat filter",
       placement = "bottom",

@@ -896,7 +896,7 @@ window.ibplDeviceKind = function () {
 })();
 
 /* ---- Stat filter add: inline, not a sheet -------------------------------
-   R3 in the 2026-09-13 rework brief: render the "+ Filter" controls inline
+   R3 in the 2026-09-13 rework brief: render the "+ Stat filter" controls inline
    with the other filter chips instead of relocating them into the bottom
    sheet.
 

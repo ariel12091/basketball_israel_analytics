@@ -187,6 +187,7 @@ ui_tab1_onoff <- function() {
             "added +11.6, mostly opponents shooting threes better with him off the",
             "court; without 3-point luck he is at -1.0, so it is marked 3PT luck."))
         ),
+        table_hint("pivot", "sort", "explain"),
         DTOutput("onoff_dt"),
         conditionalPanel(
           condition = "input.onoff_view_mode == 'Four Factors'",

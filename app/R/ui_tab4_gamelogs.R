@@ -149,6 +149,7 @@ ui_tab4_gamelogs <- function() tabPanel(
         ),
         filter_chips_row("gl_filter_chips"),
         ribbon_inline_ui("gl"),
+        table_hint("gameflow", "sort", "explain"),
         DTOutput("gl_table")
       )
     )

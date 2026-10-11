@@ -101,6 +101,7 @@ ui_tab8_euro <- function() {
             "with him on vs 31.5% off, and opponents 35.4% vs 40.7%; together worth",
             "+12.1, so without 3-point luck he is at -2.7 and it is marked 3PT luck."))
         ),
+        table_hint("pivot", "sort", "explain"),
         DTOutput("euro_dt")
       )
     )

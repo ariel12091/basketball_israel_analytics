@@ -46,3 +46,40 @@ test_that("each hub card names where it goes", {
 
   expect_equal(lengths(regmatches(hub, gregexpr('class = "hub-card-go"', hub, fixed = TRUE))), 3L)
 })
+
+test_that("a chip that opens its control says so; one that does not stays plain", {
+  global_txt <- read_repo_txt("R", "global.R")
+
+  expect_true(grepl('if (focusable) tags$i(class = "bi bi-pencil chip-edit"',
+                    global_txt, fixed = TRUE))
+})
+
+test_that("the stat-filter entry point is named, everywhere it is built", {
+  for (f in c("helpers.R", "server_tab5_traditional.R")) {
+    txt <- read_repo_txt("R", f)
+    expect_true(grepl('tags$i(class = "bi bi-plus"), " Stat filter"', txt, fixed = TRUE), info = f)
+    expect_false(grepl('tags$i(class = "bi bi-plus"), " Filter"', txt, fixed = TRUE), info = f)
+  }
+})
+
+test_that("explained headers and the Net cell are marked at rest, on pointer devices only", {
+  css <- cues_css()
+
+  # Headers carry their explanation in title, not data-tooltip.
+  expect_match(css, "body:not\\(\\.ibpl-touch-tips\\) th\\[title\\]\\s*\\{[^}]*text-decoration:\\s*underline dotted")
+  expect_match(css, "body:not\\(\\.ibpl-touch-tips\\) \\.onoff-net-tip\\s*\\{[^}]*text-decoration:\\s*underline dotted")
+  expect_false(grepl("th[data-tooltip] {", css, fixed = TRUE))
+})
+
+test_that("Gameflow tells the user what selecting players reveals, in R and in JS", {
+  wording <- "Select two or more players, by their names or bars, to see their shared court time and lineups."
+
+  expect_true(grepl(wording, read_repo_txt("R", "mod_ribbon_modal.R"), fixed = TRUE))
+  expect_true(grepl(wording, read_repo_txt("www", "app.js"), fixed = TRUE))
+  expect_false(grepl("Select players by clicking or tapping their bars or names.",
+                     read_repo_txt("www", "app.js"), fixed = TRUE))
+})
+
+test_that("selectable Gameflow names are underlined at rest", {
+  expect_match(cues_css(), "\\.ibpl-ribbon-name\\s*\\{[^}]*text-decoration:\\s*underline")
+})

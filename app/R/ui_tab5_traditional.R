@@ -96,6 +96,7 @@ ui_tab5_traditional <- function() tabPanel(
         ),
         filter_chips_row("ts_filter_chips"),
         uiOutput("ts_mode_warning"),
+        table_hint("sort", "explain", "reorder"),
         DTOutput("ts_table")
       )
     )

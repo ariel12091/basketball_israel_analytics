@@ -564,7 +564,7 @@ stat_filter_chips_ui <- function(prefix, state, filterable_cols, percent_hint = 
     trigger = tags$span(
       class = "filter-chip filter-chip-add",
       id = paste0(prefix, "_stat_filter_add_btn"),
-      tags$i(class = "bi bi-plus"), " Filter"
+      tags$i(class = "bi bi-plus"), " Stat filter"
     ),
     title = "Add stat filter",
     placement = "bottom",
@@ -2217,7 +2217,7 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
 }
 
 # ---- Player Stats filter chips on the On/Off tab ----
-# The On/Off `+ Filter` chip can narrow rows by a player's traditional stats
+# The On/Off `+ Stat filter` chip can narrow rows by a player's traditional stats
 # over the same selected games. These columns never render: they are joined
 # onto the ranked On/Off population and filtered BEFORE the table is built, so
 # they stay out of the grouped-header column contract and cannot move a
@@ -4641,6 +4641,47 @@ ribbon_link_cell <- function(game_id, team_id, label, input_id = "gl_ribbon_clic
     htmltools::htmlEscape(opp_team, attribute = TRUE),
     htmltools::htmlEscape(label)
   )
+}
+
+# One line above a table saying what it responds to. Each interaction is
+# worded once here, for both leagues, as a pointer sentence and a touch
+# sentence. They are written out in full because the action differs and not
+# only the verb: a tap on a header sorts, so its definition is reached through
+# the info button. NA means the interaction does not exist on touch.
+TABLE_HINT_PHRASES <- list(
+  pivot          = c(pointer = "Click a team or player for lineups and game logs",
+                     touch   = "Tap a team or player for lineups and game logs"),
+  lineup         = c(pointer = "Click a lineup for its game log",
+                     touch   = "Tap a lineup for its game log"),
+  gameflow       = c(pointer = "Click View under Gameflow for a game's lineup timeline",
+                     touch   = "Tap View under Gameflow for a game's lineup timeline"),
+  compare_player = c(pointer = "Click a player to compare them across the two sides",
+                     touch   = "Tap a player to compare them across the two sides"),
+  sort           = c(pointer = "Click a column header to sort",
+                     touch   = "Tap a column header to sort"),
+  explain        = c(pointer = "Hover over a column header for its definition",
+                     touch   = "Tap a header's info button for its definition"),
+  reorder        = c(pointer = "Drag a column header to reorder",
+                     touch   = NA_character_)
+)
+
+table_hint <- function(...) {
+  keys <- c(...)
+  if (!length(keys)) stop("table_hint() needs at least one interaction key")
+  unknown <- setdiff(keys, names(TABLE_HINT_PHRASES))
+  if (length(unknown)) {
+    stop("table_hint(): no wording for ", paste(unknown, collapse = ", "))
+  }
+
+  line <- function(device) {
+    phrases <- vapply(TABLE_HINT_PHRASES[keys], function(p) p[[device]], character(1))
+    phrases <- phrases[!is.na(phrases)]
+    if (!length(phrases)) return(NULL)
+    tags$span(class = paste0("hint-", device),
+              paste(phrases, collapse = paste0(" ", intToUtf8(183L), " ")))
+  }
+
+  tags$div(class = "table-hint", line("pointer"), line("touch"))
 }
 
 # Call on the source frame before its identifiers are dropped for display.

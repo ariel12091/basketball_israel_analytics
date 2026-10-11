@@ -2067,3 +2067,37 @@ td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity
   color: var(--ibpl-accent);
   font-weight: 700;
 }
+
+/* Edit cue: a chip that jumps to its control. */
+.filter-chip .chip-edit { margin-left: 5px; font-size: 0.8em; opacity: 0.65; }
+.filter-chip.chip-focusable:hover .chip-edit,
+.filter-chip.chip-focusable:focus-visible .chip-edit { opacity: 1; }
+
+/* Explain cue, pointer devices. On touch (body.ibpl-touch-tips) mobile.js
+   puts an info button in each th[title]; that button is the cue there, and an
+   underline would run under it. The Net span wraps the number and its tags,
+   so this is one underline for the whole target. */
+body:not(.ibpl-touch-tips) th[title] {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--ibpl-text-dim);
+  text-underline-offset: 3px;
+}
+body:not(.ibpl-touch-tips) .onoff-net-tip {
+  text-decoration: underline dotted;
+  text-decoration-color: var(--ibpl-text-dim);
+  text-underline-offset: 3px;
+}
+
+/* Hint line. The touch line is chosen by the app's own touch class, which
+   mobile.js sets for phones and for touch tablets at any width. */
+.table-hint {
+  margin: 2px 0 8px;
+  color: var(--ibpl-text-muted);
+  font-size: 0.76rem;
+}
+.table-hint .hint-touch { display: none; }
+body.ibpl-touch-tips .table-hint .hint-pointer { display: none; }
+body.ibpl-touch-tips .table-hint .hint-touch { display: inline; }
+
+/* Gameflow: a player name is the handle for selecting that player. */
+.ibpl-ribbon-name { text-decoration: underline; }
