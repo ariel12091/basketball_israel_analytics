@@ -100,7 +100,13 @@ test_that("on wide screens the hub lays its boxes side by side", {
   wide <- regmatches(css, regexpr("@media \\(min-width: 1200px\\) \\{\\s*/\\* Home hub: wide layout[\\s\\S]*?\\n\\}\\r?\\n", css, perl = TRUE))
 
   expect_length(wide, 1L)
-  expect_match(wide, "#team_hub_section\\s*\\{[^}]*display:\\s*grid")
+  # The grid is the wrapper that holds the hub AND the question links, so the
+  # links can sit in the hub's own row; the hub section dissolves into it.
+  expect_match(wide, "\\.home-hub-layout\\s*\\{[^}]*display:\\s*grid")
+  expect_match(wide, "#team_hub_section\\s*\\{[^}]*display:\\s*contents")
+  # Key players and lineups, then the question links beside them.
+  expect_match(wide, "#team_hub_section > \\.row\\s*\\{[^}]*grid-column:\\s*1 / span 8")
+  expect_match(wide, "\\.home-nav-group\\s*\\{[^}]*grid-column:\\s*9 / -1")
   # Team card and last game on the left, storylines beside them.
   expect_match(wide, "#hub_identity\\s*\\{[^}]*grid-column:\\s*1 / span 7")
   expect_match(wide, "#hub_last_game\\s*\\{[^}]*grid-column:\\s*1 / span 7")
@@ -109,6 +115,31 @@ test_that("on wide screens the hub lays its boxes side by side", {
   # never be display:none or it would never receive its first value.
   expect_false(grepl("hub-storylines-output:empty\\s*\\{[^}]*display:\\s*none", css))
   expect_false(grepl("#hub_[a-z_]+:empty\\s*\\{[^}]*display:\\s*none", css))
+})
+
+test_that("the Israeli question cards are one titled group inside the hub layout", {
+  home <- read_repo_txt("R", "ui_tab0_home.R")
+
+  expect_true(grepl('class = "league-only-il home-hub-layout"', home, fixed = TRUE))
+  expect_true(grepl('class = "home-nav-group"', home, fixed = TRUE))
+  expect_true(grepl('"Investigate further"', home, fixed = TRUE))
+  # Still the shared card builder: the group wraps it, it does not replace it.
+  layout_at <- regexpr('class = "league-only-il home-hub-layout"', home, fixed = TRUE)
+  group_at <- regexpr('class = "home-nav-group"', home, fixed = TRUE)
+  cards_at <- regexpr("home_nav_cards(list(", substr(home, group_at, nchar(home)), fixed = TRUE)
+  expect_gt(group_at, layout_at)
+  expect_gt(cards_at, 0)
+  expect_lt(cards_at, 400)
+})
+
+test_that("the question links stay cards with their answers below 1200px", {
+  css <- read_repo_txt("www", "app.css")
+  wide_at <- regexpr("/* Home hub: wide layout", css, fixed = TRUE)
+
+  # The compact, answer-less look exists only inside the wide-layout block.
+  first_hide <- regexpr("\\.home-nav-group \\.home-nav-card-sub\\s*\\{[^}]*display:\\s*none", css)
+  expect_gt(first_hide, wide_at)
+  expect_match(css, "\\.home-nav-group-title\\s*\\{[^}]*display:\\s*none")
 })
 
 test_that("the Gameflow link sits outside the clickable identity card", {

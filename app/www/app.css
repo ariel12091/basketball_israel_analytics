@@ -2122,25 +2122,34 @@ td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity
 .hub-last-game-context { color: var(--ibpl-text-body); font-size: 0.88rem; }
 .hub-last-game .ribbon-link { margin-left: auto; font-size: 0.82rem; font-weight: 600; }
 
+/* The question cards' group title only shows in the wide layout below, where
+   the group becomes a box of its own. */
+.home-nav-group-title { display: none; }
+
 @media (min-width: 1200px) {
   /* Home hub: wide layout. The rest of Home stays in its 760px column; the
      hub and its team picker break out of it (centred with margins, not a
      transform, so text stays on whole pixels) and lay the boxes side by side:
        team card   | storylines
        last game   |
-       key players | lineups
-     Below 1200px nothing here applies and the boxes stack as before. */
-  #team_hub_section,
+       key players | lineups | investigate further
+     The grid is the wrapper around the hub and the question links, and the
+     hub section dissolves into it (display: contents), so the links can sit
+     in the hub's own row. Below 1200px nothing here applies: the boxes stack
+     and the links are the full question cards, as before. */
+  .home-hub-layout,
   .home-team-controls {
     width: min(1180px, calc(100vw - 80px));
     margin-left: calc(50% - min(590px, 50vw - 40px));
   }
   .home-team-select { flex: 0 1 420px; }
-  #team_hub_section {
+  /* Scoped to the league so it cannot undo .league-only-il's display: none. */
+  body.league-il .home-hub-layout {
     display: grid;
     grid-template-columns: repeat(12, minmax(0, 1fr));
     column-gap: 24px;
   }
+  #team_hub_section { display: contents; }
   #team_hub_section > * { grid-column: 1 / -1; }
   #team_hub_section > #hub_identity { grid-column: 1 / span 7; grid-row: 1; }
   #team_hub_section > #hub_last_game { grid-column: 1 / span 7; grid-row: 2; }
@@ -2149,6 +2158,57 @@ td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity
     grid-row: 1 / span 2;
     display: flex;
     flex-direction: column;
+  }
+  #team_hub_section > #hub_ribbon_inline_panel { grid-row: 3; }
+  #team_hub_section > .row { grid-column: 1 / span 8; grid-row: 4; }
+
+  /* The question links, as a compact box in the hub's last row: one line
+     each, the question only. */
+  .home-nav-group {
+    grid-column: 9 / -1;
+    grid-row: 4;
+    align-self: start;
+    margin-bottom: 1.5rem;
+    padding: 16px;
+    border: 1px solid var(--ibpl-border);
+    border-radius: 8px;
+    background: var(--ibpl-surface);
+  }
+  .home-nav-group-title { display: block; }
+  .home-nav-group .home-nav-row { display: block; margin: 0; }
+  .home-nav-group .home-nav-row > [class*="col-"] { width: 100%; padding: 0; }
+  .home-nav-group .home-nav-card {
+    height: auto;
+    margin-bottom: 2px;
+    padding: 6px 8px;
+    border-color: transparent;
+    background: transparent;
+  }
+  .home-nav-group .home-nav-card:hover {
+    border-color: var(--ibpl-accent);
+    background: var(--ibpl-surface-2);
+    transform: none;
+  }
+  .home-nav-group .home-nav-card-title { font-size: 0.85rem; font-weight: 500; }
+  .home-nav-group .home-nav-card-sub { display: none; }
+  .home-nav-group .home-nav-card-head::after {
+    content: "\203A";
+    margin-left: auto;
+    color: var(--ibpl-accent);
+    font-weight: 700;
+  }
+  /* Until the hub has loaded there is nothing beside the links, so they take
+     the full row, three across, rather than sitting alone on the right. */
+  .home-hub-layout:has(#hub_players:empty):has(#hub_lineups:empty) .home-nav-group {
+    grid-column: 1 / -1;
+    column-count: 3;
+    column-gap: 16px;
+  }
+  .home-hub-layout:has(#hub_players:empty):has(#hub_lineups:empty) .home-nav-group-title {
+    column-span: all;
+  }
+  .home-hub-layout:has(#hub_players:empty):has(#hub_lineups:empty) .home-nav-row {
+    break-inside: avoid;
   }
   /* Storylines fill the height of the two boxes beside them. */
   .hub-storylines-shell > .hub-storylines-output:not(:empty) { flex: 1; display: flex; }

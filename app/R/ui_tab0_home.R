@@ -153,11 +153,18 @@ ui_tab0_home <- function() tabPanel(
       ),
 
       div(
-        class = "league-only-il",
+        class = "league-only-il home-hub-layout",
 
         team_hub_ui(),
 
-        home_nav_cards(list(
+        # The question cards, as one titled group. Below 1200px it is the
+        # same card grid as ever; on wide screens the hub's layout places it
+        # beside key players and lineups as a compact box (app.css, "Home
+        # hub: wide layout").
+        div(
+          class = "home-nav-group",
+          tags$div(class = "hub-block-title home-nav-group-title", "Investigate further"),
+          home_nav_cards(list(
           list(input_id = "go_onoff",       icon = "bi-person-fill",
                title = "Who is helping my team?",
                sub   = "Player impact when on vs. off the court"),
@@ -176,7 +183,8 @@ ui_tab0_home <- function() tabPanel(
           list(input_id = "go_compare",     icon = "bi-arrow-left-right",
                title = "How do starters compare to the bench?",
                sub   = "Compare any two situations side-by-side")
-        ))
+          ))
+        )
       )
     )
   )
