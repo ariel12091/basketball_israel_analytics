@@ -18,3 +18,13 @@ test_that("a selectize-backed mode is read and written through selectize", {
   expect_true(grepl("sel.selectize.setValue(value)", js, fixed = TRUE))
   expect_true(grepl("sel.selectize.getValue()", js, fixed = TRUE))
 })
+
+test_that("pivot cells are styled as menu triggers", {
+  css <- cues_css()
+
+  # Team and player cells both open the menu, so the caret is not first-child only.
+  expect_true(grepl("td[data-pivot-trigger]::after", css, fixed = TRUE))
+  expect_false(grepl("td[data-pivot-trigger]:first-child::after", css, fixed = TRUE))
+  expect_true(grepl(".ibpl-row-name[data-pivot-trigger]::after", css, fixed = TRUE))
+  expect_true(grepl("td[data-pivot-trigger]:hover", css, fixed = TRUE))
+})

@@ -1991,7 +1991,7 @@ body.ibpl-mobile .lineup-chips-mode { padding: 5px 11px; font-size: 13px; }
 
 /* Menu cue: navbar tabs with view modes. */
 .nav-item.tab-has-dropdown > .nav-link::after,
-td[data-pivot-trigger]:first-child::after,
+td[data-pivot-trigger]::after,
 .ibpl-row-name[data-pivot-trigger]::after {
   content: "";
   display: inline-block;
@@ -2015,3 +2015,17 @@ td[data-pivot-trigger]:first-child::after,
 @media (min-width: 1600px) {
   .nav-link.active > .tab-mode-label { display: inline; }
 }
+
+/* Menu cue: on/off team and player cells that open the pivot menu. Both open
+   the same menu, so both carry the caret. The attribute is set only on rows
+   that have a menu, so the cue cannot appear without one. (The context-menu
+   cursor for these cells is set with the pivot menu styles above.) */
+td[data-pivot-trigger]::after,
+.ibpl-row-name[data-pivot-trigger]::after {
+  margin-left: 6px;
+  color: var(--ibpl-text-dim);
+}
+td[data-pivot-trigger]:hover,
+td[data-pivot-trigger]:focus-visible { color: var(--ibpl-accent); }
+td[data-pivot-trigger]:hover::after,
+td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity: 1; }
