@@ -681,6 +681,34 @@ than adding a special case:
    timeout, and whether production logs it too. The query is
    `euro_fetch_phases()` (`global_euro.R:119`), cached per competition+season.
 
+**Shiny (added 2026-10-11):**
+1. **EuroLeague Lineups takes ~3.5s from tab click to first row** (local, warm
+   caches, n=3: 3.5 / 3.5 / 5.1s). Not broken down. The tab pulls every unit
+   for the season at no possession minimum (1,965 units for 26-27), ranks the
+   full set in R, then filters and renders. Profile the SQL, the ranking and
+   the DT render separately before changing anything, and read production's
+   log for the same tab -- local timings are not production numbers.
+2. **No loading indicator on EuroLeague Lineups.** The table area is blank
+   while it works. Other tabs have skeletons.
+3. **Clicks in the first seconds of a session wait behind startup.** One local
+   session logged `server modules initialized (9.360s)` and `prewarm complete
+   for season 2027 (10.420s)`; a tab clicked 1.5s after connecting waited for
+   both (that is where a "13-15s" first visit came from -- not the query).
+   The same process's first session initialised in 2.4s, and local runs have
+   the UI cache off, so measure this in production before treating it as real.
+   Note the prewarm is the ISRAELI season's even when the visitor is on
+   EuroLeague.
+4. **Gameflow row buttons do not show in the touch quarter cards.** The pinned
+   gutter copy has no `data-clip`; tapping a row still selects.
+5. **Navbar is two rows at 1280px** for every update text, including none.
+   Menus work (stacking fix); it is only tall.
+6. **Top scorer qualifier is a fixed 3 games.** The user chose to label it
+   ("Top scorer (min 3 games)") rather than scale it. If it comes up again:
+   scale `HUB_TOP_SCORER_MIN_GP` with the team's games played (e.g. half).
+7. **Team Insights** is unfinished, on the local branch `shiny/team-insights`
+   only. It fails six tests as-is (literal colours; `team_insights_entry_ui`
+   missing from the Home UI test). Do not merge until the user says so.
+
 **Architecture (accepted, trigger-gated):** when a tab goes React+Plumber-only, retire its mega-signature SQL function(s) and let the route build the SQL — see `docs/adr_api_owns_query_construction.md` for trigger, migration order, and the DB-role tightening that follows. Until then the stored functions are the shared source of truth for both frontends; do NOT duplicate their logic into R query builders.
 
 ## Session Update (2026-09-21): Period Anchors, Game 406, and Gameflow
