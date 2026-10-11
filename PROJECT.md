@@ -3425,7 +3425,10 @@ was checked against the code before being taken.
 ### Open
 
 - EuroLeague Lineups: "No units match" after a season switch, with a stale
-  date range. A fresh load was fine.
+  date range. Seen once, before the default season was derived; not
+  reproducible after that fix (four switches re-tested, dates and rows
+  follow). Probably a symptom of that bug; unproven. First arrival on the
+  tab took ~13-15s locally with a blank table meanwhile.
 - Gameflow row buttons do not show in the touch quarter cards.
 - The navbar is two rows at 1280px.
 - Team Insights: finish it, fix its six tests, then merge

@@ -973,6 +973,9 @@ Measured at 1440px (Israeli league, scrollbar present). The right cluster
 ### Open
 
 - EuroLeague Lineups showed "No units match" after a season switch, with a
-  date range that had not followed the season; a fresh load was fine. Not
-  investigated.
+  date range that had not followed the season. Seen once, BEFORE the default
+  season was derived; not reproducible after (re-tested 2026-10-11: 26-27 ->
+  25-26 -> 26-27 -> 25-26, dates and rows follow each time). Probably a
+  symptom of the date inputs being built on 25-26 bounds; unproven. First
+  arrival on that tab took ~13-15s locally with a blank table meanwhile.
 - At 1280px the navbar still wraps to two rows (menus work, it is just tall).
