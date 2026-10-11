@@ -117,7 +117,7 @@ build_ui <- function() {
                    class = "btn btn-sm btn-outline-secondary nav-help-btn"),
       tags$span(
         style = "display: inline-flex; align-items: center; gap: 4px; min-width: 0;",
-        tags$span(style = "width: 6px; height: 6px; background: var(--ibpl-pos); border-radius: 50%; display: inline-block;"),
+        tags$span(class = "nav-updated-dot", style = "width: 6px; height: 6px; background: var(--ibpl-pos); border-radius: 50%; display: inline-block;"),
         tags$span(style = "display: inline-block; max-width: 210px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;",
                   uiOutput("last_updated", inline = TRUE))
       )

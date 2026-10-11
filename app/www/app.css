@@ -2014,11 +2014,43 @@ td[data-pivot-trigger]::after,
 /* The active tab also names its mode, where there is room for it. */
 .tab-mode-label { display: none; font-weight: 500; }
 .tab-mode-label::before { content: "\00B7"; margin: 0 5px; opacity: 0.7; }
+/* The data-freshness date is always labelled. The tab row has no width to
+   spare for the word below 1600px (see last_updated_short()), so there it is
+   a small caption stacked above the date: that costs height, not width. */
+#last_updated > span {
+  display: inline-block;
+  font-size: 12px;
+  line-height: 1.15;
+  vertical-align: middle;
+}
+#last_updated > span::before {
+  content: "Updated";
+  display: block;
+  color: var(--ibpl-text-dim);
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+/* Measured 2026-10-11 at 1440px: with the status dot beside it, this block
+   may be 38px wide before the tab row wraps, and dates run to 43px
+   ("May 28"). The dot and its gap are 10px, and the caption says what the
+   dot implied, so the dot gives way below 1600px. */
+.nav-updated-dot { display: none !important; }
 @media (min-width: 1600px) {
   .nav-link.active > .tab-mode-label { display: inline; }
-  /* The data-freshness date is bare below this width to keep the tab row
-     from wrapping (see last_updated_short()); here there is room to label it. */
-  #last_updated > span::before { content: "Updated "; }
+  .nav-updated-dot { display: inline-block !important; }
+  #last_updated > span { font-size: inherit; }
+  #last_updated > span::before {
+    content: "Updated ";
+    display: inline;
+    color: inherit;
+    font-size: inherit;
+    font-weight: inherit;
+    letter-spacing: normal;
+    text-transform: none;
+  }
 }
 
 /* Menu cue: on/off team and player cells that open the pivot menu. Both open

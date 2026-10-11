@@ -90,6 +90,19 @@ test_that("the navbar shows the update date short, keeping the full stamp for th
   expect_identical(last_updated_short(NULL), "n/a")
   expect_identical(last_updated_short("Last updated: 2026-13-40 00:00:00"), "n/a")
 
+  # A bare date has no context, so it is always labelled: stacked above the
+  # date where width is short (a caption adds height, not width), inline from
+  # 1600px.
+  css <- cues_css()
+  expect_match(css, "#last_updated > span::before\\s*\\{[^}]*content:\\s*\"Updated\"[^}]*display:\\s*block")
+  expect_match(css, "min-width:\\s*1600px[^@]*#last_updated > span::before\\s*\\{[^}]*display:\\s*inline")
+
+  # Measured 2026-10-11 at 1440px: the row wraps once this text block passes
+  # 38px WITH the status dot beside it. Dates run to 43px ("May 28"), so the
+  # dot (10px with its gap) gives way below 1600px to leave real slack.
+  expect_match(css, "\\.nav-updated-dot\\s*\\{[^}]*display:\\s*none")
+  expect_true(grepl('class = "nav-updated-dot"', read_repo_txt("app.R"), fixed = TRUE))
+
   app_txt <- read_repo_txt("app.R")
   expect_true(grepl("last_updated_short(", app_txt, fixed = TRUE))
   expect_true(grepl('uiOutput("last_updated", inline = TRUE)', app_txt, fixed = TRUE))
