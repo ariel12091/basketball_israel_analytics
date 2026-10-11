@@ -8,7 +8,7 @@
 
 Basketball Israel Analytics — R/Shiny dashboard + React frontend for player on/off impact, lineup combos, team ratings. Data: play-by-play JSON → ETL → PostgreSQL (Supabase) → Shiny app / Plumber API.
 
-**Live app:** https://arieltaieb-onoff-shiny.share.connect.posit.cloud/ (Posit Connect Cloud since 2026-09. The old https://ibpl-stats.shinyapps.io/onoff-shiny/ is now a 308 redirect into Connect Cloud, so there is no shinyapps.io deployment left to compare against.)
+**Live app:** https://arieltaieb-basketball-israel-analytics.share.connect.posit.cloud/ (Posit Connect Cloud since 2026-09. The old https://ibpl-stats.shinyapps.io/onoff-shiny/ is now a 308 redirect into Connect Cloud, so there is no shinyapps.io deployment left to compare against.)
 
 **Tech:** R 4.4.2, Shiny (bslib/BS5), DBI/RPostgres (no dbplyr), PostgreSQL on Supabase (port 6543), schema `basketball_test`. React 19 + TypeScript + Vite in `frontend-v2/` with Plumber/R API (Phase 2 — Tabs 1-2 complete, Tabs 3-4 stubs, Tab 5 Shiny only).
 
@@ -80,7 +80,7 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **DB security:** app connects as `app_readonly` (SELECT-only, EXECUTE on an explicit function allowlist, RLS enabled). Apply/audit via `scripts/apply_db_security.R` (dry-run by default) + `sql/security/*.sql`; contract tests in `test-db-security-contracts.R`.
 
-**Global season selector:** Single `input$game_year` in navbar header. All tabs read from this — no per-tab season inputs.
+**Global season selector:** Single `input$game_year` in navbar header. All tabs read from this — no per-tab season inputs. The EuroLeague section has its own navbar select (`input$euro_game_year`, provider season = starting year); its default is derived from `DEFAULT_GAME_YEAR`, so one bump rolls both leagues.
 
 **Direct SQL (no dbplyr):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with `$1, $2` params. `bigint = "numeric"` in `dbPool()`. The pool is `minSize = 0`. Measured 2026-08-18: `minSize` makes no difference to *steady-state* query latency (0.250s after a 22s idle gap either way) — don't "fix" it for that. But a *first* checkout on a booted worker costs ~1,700-2,200ms (TCP + TLS + auth + the `onCreate` SET), and with `minSize = 0` that always lands on a user request. Measured 2026-09-01: `minSize = 1` moves it to boot but costs +2.7s there against -1.7s on the request, so it loses whenever the worker is booted by the request it must then serve. `global.R` instead schedules a `later::later()` checkout right after the pool is created, connecting once R goes idle: boot time is unchanged and the connection is ready before the first session queries. Set `POOL_PREWARM=false` to disable.
 
@@ -820,3 +820,159 @@ Full findings: `docs/shot_chart_court_dimensions_2026-10-01.md` (buggy-shot list
 - basket.co.il's chart (`courtLines()` in its `game.js`) hand-fitted only the 3pt line (ellipse 900x600, width stretch 1.12); **paint, restricted area and circles are FIBA-true and never adjusted**, so lay-ups/dunks plot outside them. Our script adjusted the 3pt line and RA (145) but not the paint.
 - Interior zones have **no ground truth**: box-score `Points_in_the_paint` is not reproducible from coordinates or shot type (131/438 team-games exact). Don't retry it.
 - 2026-27 games 393/397/399/400 have no in-house shot coordinates (cold-storage gap); 621/626/648/651 exist only in the GitHub release parquet.
+
+## Clickable Cues, Navbar Width, Home Hub (2026-10-11)
+
+Full history and measurements: PROJECT.md § "Session Update (2026-10-11)".
+Spec and plan: `docs/superpowers/specs/2026-10-11-clickable-cues-design.md`,
+`docs/superpowers/plans/2026-10-11-clickable-cues.md`.
+
+### The cue vocabulary -- one meaning each, visible at rest
+
+All in one "Clickable cues" block at the end of `www/app.css`. A new
+interactive element takes one of these; do not invent a sixth.
+
+| Cue | Means | Where |
+|---|---|---|
+| Amber underlined text + `›` | opens a modal, detail view or tab | `.ld-lineup-link`, `.euro-ld-unit`, `.ribbon-link`, Compare rows (`td:nth-child(2)`, the first cell is a rank), `.hub-story-line`, `.hub-card-go` |
+| Small triangle caret | opens a **menu**, nothing else | navbar tabs with a view-mode menu, on/off team and player cells (`td[data-pivot-trigger]`) |
+| Pencil (`.chip-edit`) | goes to the control that owns the value | `make_chip()` when `focus_id` is set |
+| Dotted underline | explains on hover -- pointer devices only | `th[title]`, `.onoff-net-tip` |
+| `table_hint(...)` line | says in words what the table responds to | above interactive tables, both leagues |
+
+- Sorting keeps its sort arrows and the lineup tokens keep their button look.
+  A caret on anything that is not a menu breaks the vocabulary.
+- **Table-header explanations live on `th[title]`** (written by
+  `HEADER_TOOLTIP_JS`). `data-tooltip` is `tt()`'s label mechanism and never
+  appears on a DT header -- the first version of the header cue targeted
+  `th[data-tooltip]` and would have matched nothing.
+- **Touch is `body.ibpl-touch-tips`** (set in `mobile.js`; phones and touch
+  tablets at any width), never a viewport width or a bare media query. On
+  touch the existing `.ibpl-m-th-info` button is the Explain cue; adding an
+  underline there runs under the button.
+- `table_hint()` (`helpers.R`) holds a pointer sentence and a touch sentence
+  per interaction, written out in full, because the action differs and not
+  only the verb: a tap on a header sorts, so its definition is reached through
+  the info button. `NA` for touch = pointer-only (column drag).
+- Glyphs go in `::after`, so they never reach CSV exports, sort values or
+  copied text. The on/off renderer (`sprintf(paste0(...))`) was not edited;
+  every cue on its cells is CSS.
+- The font's `▾` renders as a faint dash in DM Sans. The carets are CSS
+  triangles (`border-top: 5px solid currentColor`).
+
+### The navbar has almost no spare width
+
+Measured at 1440px (Israeli league, scrollbar present). The right cluster
+(`#navbar_right_cluster`) is `position: fixed`; `app.js` measures it into
+`--navbar-cluster-w` and `#main_tabs` reserves that as padding.
+
+- The tab row fits with **~38px** left for the update text beside the status
+  dot. "Oct 10" is 38.2px; "May 28" is 43px. Anything wider wraps the row.
+- So: the tab caret is absolutely positioned in the 16px gap between tabs and
+  takes **no width**; the active tab's mode label shows only from 1600px; the
+  update date is `last_updated_short()` ("Oct 10", full stamp in `title`)
+  with a stacked "UPDATED" caption below 1600px, where the status dot
+  (`.nav-updated-dot`) is hidden to buy 10px. Widest date leaves 8px.
+- At 1366px the row wraps but nothing is covered; at 1280px it wraps for
+  every text, including none.
+- **A wrapped row used to make menu items unclickable.** Tab links are stacked
+  above closed menus on purpose (`.navbar .navbar-nav .nav-link`, z 10001, so
+  a closed menu never covers a neighbour), which also put second-row tabs on
+  top of an OPEN first-row menu. `.nav-item.tab-has-dropdown:hover` is now
+  z 10002, and the menu opens after 140ms (`ibpl-tab-menu-in`) so crossing a
+  tab on the way to one below does not pop a menu over the destination.
+  Keep both halves: the raise without the delay brings back the pointer trap.
+- Adding anything to the navbar means re-measuring row count at 1280, 1366,
+  1440 and 1600, **after** "Last updated" has loaded -- before it loads the
+  cluster is 220px narrower and everything appears to fit.
+- The view-mode radios are `display: none !important`
+  (`.view-mode-container`); the navbar menu is the only way to change mode on
+  desktop. `ts_display_mode` is a selectize: the menu must go through
+  `sel.selectize.setValue()` / `getValue()`, since a selectize `<select>` only
+  holds the option it is showing and `.value =` leaves it blank.
+
+### Gameflow
+
+- **`data-clip` is the contract.** `app.js` keys clicks, hover and the
+  `is-pair-selected` class on every element that carries it. The player-row
+  button (`.ibpl-ribbon-row-btn`, a `<rect>` drawn first in the gutter row)
+  needed no JS for that reason. Anything you add to the SVG with a
+  `data-clip` becomes clickable and selectable.
+- Underlined names read as decoration, not as "selectable" (user, 2026-10-11).
+  Rows are buttons; bars are outlined with a drop shadow.
+- **A third surface can open Gameflow with three lines:**
+  `ribbon_inline_ui("<prefix>")` in the UI,
+  `ribbon_modal_server(input, output, session, "<prefix>", league, ver_fn,
+  svg_id_prefix = "<prefix>")` in the server, and the prefix in
+  `INLINE_PREFIXES` in `mobile.js`. Links come from `ribbon_link_cell(...,
+  input_id = "<prefix>_ribbon_click")`. Home uses `"hub"`. Desktop gets the
+  modal, touch gets the inline quarter cards in that surface's own panel.
+- Not done: the touch quarter cards pin a copy of the gutter that has no
+  `data-clip`, so the row button does not show there. Tapping a row still
+  selects.
+
+### Home hub
+
+- Layout, from 1200px: `.home-hub-layout` is a 12-column grid and
+  `#team_hub_section` is `display: contents`, so the question links
+  (`.home-nav-group`, "Investigate further") sit in the hub's own row. The
+  hub breaks out of Home's 760px column with margins, not a transform.
+  Below 1200px nothing applies and the links are the full question cards.
+- The grid rule is scoped `body.league-il .home-hub-layout`; unscoped it
+  would undo `.league-only-il { display: none }`.
+- **Never `display: none` an empty Shiny output.** Shiny treats it as hidden
+  and stops sending it values, so it would stay empty for good. A hub box
+  with nothing to show (no 100-possession lineup early in a season) collapses
+  to zero width instead: `flex: 0 0 0; padding: 0`.
+- **A link inside a `js-shiny-event` card fires both.** The team card is one
+  big button; the "Last game ... View Gameflow" line is a row of its own for
+  that reason.
+- `hub_fetch_last_games(gy, ver)`: one cached season-level query, one row per
+  team, with `has_gameflow` (the game has rows in `mv_lineup_totals_by_day`).
+  The link is offered only when that is TRUE.
+
+### Seasons
+
+- `EURO_DEFAULT_SEASON` is **derived** from `DEFAULT_GAME_YEAR`
+  (`euro_default_season()`: season-ending year minus one). It was a literal
+  `"2025"` that nobody bumped when 26-27 loaded, so EuroLeague/EuroCup were
+  served on 25-26 and switched only after a database round trip. Rolling to a
+  new season is one bump of `DEFAULT_GAME_YEAR`; a test fails on a literal.
+- The static default is not cosmetic. Until `euro_init_season_inputs()` hears
+  from the database, the navbar select, every EuroLeague date input and every
+  EuroLeague query run on it.
+
+### Traps hit this session
+
+- **`printf` and heredocs in the Bash tool collapse backslashes.** A CSS
+  escape `"\25BE"` arrived as byte 0x15 + `BE`, and `"\00B7"` as a NUL + `B7`.
+  The NUL made git treat `app.css` as binary, which also switched off
+  line-ending conversion: a 24-line append showed as a 3,982-line diff.
+  Write anything containing a backslash with the Edit/Write tools, or from a
+  script file passed to `python -I`.
+- **Verify the live site in a browser, not with curl.** Connect Cloud answers
+  curl with its JS interstitial (200, ~5 KB), so a grep for a marker never
+  matches however long you poll.
+- **A deploy lands in well under a minute**; the manifest's `files` list is
+  not enforced (`www/mobile.js` and `www/mobile.css` are live and absent from
+  it), so a new `R/*.R` file deploys without touching `manifest.json`.
+- **Playwright CDP emulation outlives the script.** Touch / `hover: none`
+  set through `newCDPSession` kept applying to the page after a fresh session
+  tried to clear it. Open a new page for emulation and close it.
+- Chromium touch emulation is classified `tablet`, never `phone`, by
+  `ibplDeviceKind()`: the phone-only floating row name cannot be exercised
+  that way.
+- The league choice persists in `localStorage` (`ibpl_league_select`). A
+  profile that last used the Israeli league never runs the EuroLeague season
+  observer, so "works on my machine" says nothing about a first-time visitor.
+- Committing a dirty working tree "under the branch" carries everything in
+  it. Team Insights reached production that way for an hour. It is unfinished
+  and lives only on the local branch `shiny/team-insights`; keep it off
+  `main` until the user says it is ready (it also fails six tests as-is).
+
+### Open
+
+- EuroLeague Lineups showed "No units match" after a season switch, with a
+  date range that had not followed the season; a fresh load was fine. Not
+  investigated.
+- At 1280px the navbar still wraps to two rows (menus work, it is just tall).

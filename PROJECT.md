@@ -3296,3 +3296,137 @@ app's character. Mockup artifacts, feedback, and the separate local/deployed
 feature status are recorded in
 `docs/stats_layout_handoff_2026-10-07.md`. Desktop filter-toggle improvements
 remain local and uncommitted; the earlier full-name scrolling feature is deployed.
+
+## Session Update (2026-10-11): Clickable Cues, Navbar Fixes, Home Hub, EuroLeague Default Season
+
+Pre-launch pass. The brief: visitors do not know what is clickable or how
+much the app does, so every interaction should be visible. All of it is on
+`main` and live. Spec, external review and plan:
+`docs/superpowers/specs/2026-10-11-clickable-cues-design.md`,
+`docs/superpowers/specs/2026-10-11-clickable-cues-review.md` (untracked),
+`docs/superpowers/plans/2026-10-11-clickable-cues.md`.
+
+### What was hidden
+
+| Interaction | Signal before |
+|---|---|
+| Navbar tabs open a view-mode menu (the in-page radios are `display: none`, so this is the only route on desktop) | hover only |
+| On/off team and player cells open the pivot menu | a `context-menu` cursor |
+| EuroLeague lineup link, Gameflow "View" link | no CSS rule at all |
+| Compare rows, filter chips, Gameflow lanes and names, hub cards | pointer cursor |
+| Column headers and the Net cell explain themselves | `cursor: help` |
+
+### What shipped
+
+| Commit | Change |
+|---|---|
+| af067bd | Navbar caret on tabs with a menu; active mode in the label from 1600px; Player Stats mode menu fixed (selectize) |
+| 889de1e | Caret on on/off team and player cells |
+| 9cde8d6 | One Open cue for lineup, Gameflow, Compare and hub links; hub cards name their destination |
+| 7ca5c1c | `table_hint()` lines, pencil on editable chips, "+ Stat filter", dotted underline on explained headers, Gameflow status wording |
+| 1910ed7, 4161893 | Short, labelled update date so the tab row stays on one line at 1440px |
+| 3fdf126 | Gameflow: player rows are buttons, bars outlined (replaced underlined names) |
+| 2776e72 | An open mode menu sits above second-row tabs, with a 140ms open delay |
+| 4a1d54b | Home: "Last game" line with a Gameflow link |
+| 232fa6c, 0250ac2, fba21bc | Home hub wide layout; question links become the "Investigate further" box; an empty box gives up its width |
+| 365a878 | EuroLeague/EuroCup default season derived from `DEFAULT_GAME_YEAR` |
+| 217b66a | Team Insights reverted off `main` |
+
+### The external review changed the plan
+
+A separate code-based review of the spec was right on all seven points; each
+was checked against the code before being taken.
+
+- Header explanations are on `th[title]`, not `th[data-tooltip]`. The planned
+  header cue would have matched nothing.
+- A tap on a header sorts, so the touch hint cannot say "Tap a header for its
+  definition"; it points at the info button.
+- Touch must follow `body.ibpl-touch-tips`, which includes tablets.
+- A caret had been assigned to menus, cycling and sorting at once. It now
+  means a menu only.
+- Missing from the inventory: the stat-filter entry point, column reorder
+  (Tab 5, and Tab 3 in Traditional view), Compare's second level, Gameflow.
+
+### Navbar measurements (1440px viewport, Israeli league)
+
+| Thing | Width |
+|---|---|
+| Tabs plus gaps | 839px |
+| Right cluster without update text | 351px |
+| Update text that still fits beside the status dot | 38px |
+| "Oct 10" / "May 28" at 12.8px | 38.2px / 43px |
+| "Last updated: 2026-10-10 22:33:06" (capped) | 210px |
+| "UPDATED" caption at 9px with 0.06em tracking / 8px with 0.04em | 44.1px / 38.1px |
+
+- With the original 210px text the row wrapped at 1440px, with or without
+  any cue. Before the text loads the row fits, which is why an early
+  measurement said the caret was safe and a later one said it was not.
+- Menu reachability before the stacking fix, at a wrapped width: On/Off's
+  "Summary" and "Four Factors" were fully covered by Player Stats and
+  Compare; only "Shot Profile" could be clicked.
+- After: every item on every tab reachable at 1024, 1100, 1280 and 1440px
+  (one, two and three rows).
+
+### Decisions and why
+
+- **Caret takes no width** (absolutely positioned in the inter-tab gap), and
+  the mode label is active-tab-only from 1600px. Any added width costs a row.
+- **Date without the time of day.** The time does not fit; it is in the
+  tooltip.
+- **Gameflow names are not underlined.** The user: it does not look good and
+  does not read as more clickable. Rows became buttons instead.
+- **"Last game" is its own row**, outside the team card, because that card
+  is one big button.
+- **The question cards stay cards below 1200px** (question plus answer,
+  readable before the hub loads). Only the wide layout compacts them into
+  "Investigate further", at the user's request, to stop the report being a
+  wide band over a narrow block.
+- **No hint line on the main Compare table**; it already says "Click a row
+  for a detailed team or lineup breakdown."
+- **No info glyph on headers**: no room, and the dotted underline carries it.
+
+### Incidents
+
+- **Team Insights reached production.** The working tree held unrelated
+  uncommitted work; it was committed onto the feature branch at the user's
+  request and went out with the merge. Removed an hour later (217b66a) on
+  the user's word that it is not ready. It is kept on the local, unpushed
+  branch `shiny/team-insights` (main plus a revert of the revert, so a later
+  merge is not treated as already reverted). While it was on `main` it
+  failed six tests: two design-token checks (literal colours in
+  `mod_team_insights.R`) and four Home UI tests (`team_insights_entry_ui`
+  not found).
+- **Filter-toggle edits** ("Hide filters / Show filters", toggle on Compare
+  and Team Stats) were in the same working tree, made by mistake per the
+  user, and were reverted before any of this work (a529b8b).
+- **The first date fix fit by luck.** "Oct 10" was exactly at the limit; a
+  wider date would have wrapped the bar again. Found only when adding the
+  caption made the block 6px wider.
+
+### EuroLeague default season
+
+- Both competitions have 26-27 loaded (EuroLeague 40 games, EuroCup 32, as
+  of 2026-10-11).
+- The served page had a season select holding only 25-26, date inputs on
+  25-26 bounds, and EuroLeague queries on 25-26, until the server's season
+  lookup returned and switched it. On a cold start that is many seconds.
+- Fix: derive the default; serve the select with the previous season too;
+  keep a season the user picks before the loaded list arrives.
+
+### Verified, and not
+
+- Full suite at the end: 3,369 passing, none failing.
+- Checked in the running app at desktop widths and with touch emulation;
+  the live site was checked in a browser after each push.
+- Not verified: a real phone (emulation is classified as a tablet), a real
+  CSV export (glyphs are CSS-only and the hint is outside the table), and no
+  independent reviewer looked at the branch.
+
+### Open
+
+- EuroLeague Lineups: "No units match" after a season switch, with a stale
+  date range. A fresh load was fine.
+- Gameflow row buttons do not show in the touch quarter cards.
+- The navbar is two rows at 1280px.
+- Team Insights: finish it, fix its six tests, then merge
+  `shiny/team-insights`.
