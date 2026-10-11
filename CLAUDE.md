@@ -84,7 +84,7 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **Direct SQL (no dbplyr):** All DB access uses `DBI::dbGetQuery(pg_pool, ...)` with `$1, $2` params. `bigint = "numeric"` in `dbPool()`. The pool is `minSize = 0`. Measured 2026-08-18: `minSize` makes no difference to *steady-state* query latency (0.250s after a 22s idle gap either way) — don't "fix" it for that. But a *first* checkout on a booted worker costs ~1,700-2,200ms (TCP + TLS + auth + the `onCreate` SET), and with `minSize = 0` that always lands on a user request. Measured 2026-09-01: `minSize = 1` moves it to boot but costs +2.7s there against -1.7s on the request, so it loses whenever the worker is booted by the request it must then serve. `global.R` instead schedules a `later::later()` checkout right after the pool is created, connecting once R goes idle: boot time is unchanged and the connection is ready before the first session queries. Set `POOL_PREWARM=false` to disable.
 
-**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and renders it synchronously before `startServer` (it used to use `later::later(delay = 0)`, which runs ahead of the already-queued first request). Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). **On Connect Cloud that gap never exists** — the process is started *because* a request is waiting, so both `later()` warmups always lost that race. Both now run synchronously before `startServer` instead, which moved 5.6-5.8s off the first request; see § Posit Connect Cloud. See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` whenever you drive the local app in a browser** -- with it on, selectize's assets 404 and every player/team dropdown looks broken for reasons unrelated to your change (see the lead in section Posit Connect Cloud). Likewise **Set `IBPL_CACHE_UI=false` while editing `www/app.css`, `www/app.js`, `www/mobile.css`, or `www/mobile.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain 11 `nav-link` occurrences. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
+**UI is built once per worker.** `enableBookmarking()` needs a function UI, so Shiny rebuilt all twelve tabs on every page load — ~3s for ~1MB of byte-identical HTML. `app.R` now builds it once (`build_ui()` → `.UI_CACHED`); `ui()` returns the cached value. Cold start 7.7s → 3.3s. **That cached the tag tree, not its HTML** — Shiny still re-serialised ~1MB on every request. Measured 2026-09-01: `renderTags` on the cached tree cost 6.59s on the first call (originally attributed to Sass compilation — that was wrong, see below) and ~1.2s on every call after, so a cold `GET /` took 10.5s and a warm one ~1.1s — the largest single item in a 22s cold Home load. `shiny:::uiHttpHandler` returns an `httpResponse` verbatim, so `app.R` now also caches the rendered page (`.UI_RESPONSE` / `ui_response()`) and renders it synchronously before `startServer` (it used to use `later::later(delay = 0)`, which runs ahead of the already-queued first request). Steady-state `GET /` 1.24s → 3.5ms (~300x, repeatedly measured — trust this one). **Re-measured 2026-09-02 (n=4/arm, fresh worker per run): cold Home cards ~8.4s, warm worker ~4.0s.** The original "22.2s → 9.6s" was taken while `C:` was 100% full — do not quote it. The first-render cost is `bs_theme_dependencies()` at 2.3-3.5s on its first call per process (~87% native file I/O — WALL 2,190ms vs Rprof SAMPLED 282ms), **not** Sass: the sass cache is verified *hit* (key count 205 → 205), and `sass` 0.4.9 already caches outside `tempdir()`, so a persistent sass cache is not an available win. Note the pre-render only helps a worker that has been idle long enough to finish it: start the app and load it immediately and the first request races it and loses (reproduced at ~41s launch-to-usable). **On Connect Cloud that gap never exists** — the process is started *because* a request is waiting, so both `later()` warmups always lost that race. Both now run synchronously before `startServer` instead, which moved 5.6-5.8s off the first request; see § Posit Connect Cloud. See `docs/home_cold_start_handoff_2026-09-01.md` § Corrections and § Session 2026-09-02. Output is byte-identical (verified: two *uncached* workers differ from each other in exactly the same per-worker random ids). `IBPL_CACHE_UI_HTML=false` drops just this layer. Safe here only because restore is server-side (`session$restoreContext` / `restored_input_value()`), never Shiny's UI-level `restoreInput()`. **Set `IBPL_CACHE_UI=false` whenever you drive the local app in a browser** -- with it on, selectize's assets 404 and every player/team dropdown looks broken for reasons unrelated to your change (see the lead in section Posit Connect Cloud). Likewise **Set `IBPL_CACHE_UI=false` while editing `www/app.css`, `www/app.js`, `www/mobile.css`, or `www/mobile.js`** — they're read by `includeCSS()`/`includeScript()` at build time, so otherwise an edit needs an app restart, not a browser reload. **Launch with Run App / `runApp()`, never select-all + Ctrl+Enter** — the latter builds the UI with no app context, so Shiny emits a BS3-style navbar (no `nav-link`/`nav-item`, so `app.js` never builds the tab hover menus) with an incomplete theme dependency (`bootstrap-5.3.1/font.css` 404s, so the fonts never load), and that broken build is then cached for the life of the process. Health check: the served page should contain a non-zero number of `nav-link` and `nav-item` occurrences (24 and 19 as of 2026-09-24 -- the count grows with tabs, so never test a fixed number) and every local JS/CSS asset it references should return 200; the `run-shiny-local` project skill (`.claude/skills/`) runs this check. Startup timing is instrumented client-side and lands in the app log as `[startup] ... client timing: nav->dom Xms | dom->connected Yms`.
 
 **UI theme:** Dark editorial (bslib BS5), DM Sans + JetBrains Mono, amber accent `#e8a435`. Filter chips bar, loading skeletons, tab icons with active amber underline.
 
@@ -201,20 +201,42 @@ Available in Tabs 2 and 3 only. 4 SQL params: `p_max_margin`, `p_margin_status`,
 
 ## Auto Min Possessions
 
-- **Tab 1:** Top 35% by ON Poss (client-side in React via `autoMinPoss()`, server-side in Shiny). Lowers the default/hand-set bar; in Shiny it raises only to undo its own lowering, capped at that bar (so a season switch from a near-empty season recalibrates).
-- **Tab 2:** 150-row target cap on `totalPoss` (server-side `auto_minposs_target_r()`). Raises AND lowers. Computed on team/player-filtered data BEFORE min_poss filter.
-- **Auto/Manual:** Manual slider → `autoEnabled = false`. Filter change → `autoEnabled = true`. `autoUpdating` ref prevents auto-triggered changes from being treated as manual.
+- **Tabs 1/8 (Shiny):** top 35% by ON Poss, `setup_onoff_auto_min()` in `helpers.R`. Lowers the default/hand-set bar; raises only to undo its own lowering, capped at the value it lowered from (`state$<slot>_base`). React `autoMinPoss()` is still lower-only.
+- **Tab 2:** 150-row target on `total_poss` -- `auto_minposs_from_df()` in Shiny (shared with Tab 10), `auto_minposs_target_r()` in Plumber. Raises AND lowers. Computed on team/player-filtered data BEFORE the min_poss filter.
+- **Auto/Manual:** Manual slider -> auto off. Filter change -> auto back on. An `updating` flag / `last_auto` value tells an auto-written slider value from a hand-set one.
+- **Season switch must re-arm and recalibrate -- in both directions.** Fixed ea2feaa (2026-10-06). `DEFAULT_GAME_YEAR` is the current season, which is near-empty for its first months, so EVERY first visit lowers the bar (Tab 1: 300 -> ~70). Tabs 1/8 used to be lower-only ("never overrule a deliberately loose value"), which also stopped auto undoing *its own* lowering: switching to a full season kept the near-empty season's bar. A lower-only/raise-only guard must tell "auto wrote this" (`cur_val == last_auto`) from "user set this", and a raise must be capped at the pre-auto baseline so it never exceeds what a direct load shows. Reset clears the baseline. Test: `test-league-shared-helpers.R` "climb back when the season switches".
+- **Re-arm on the season/competition reactive itself, not on the dates it moves.** EuroLeague date bounds depend on season only, so a date-driven re-arm missed EuroLeague <-> EuroCup switches (Tab 10, fixed ea2feaa). Tabs 2 and 7 re-arm on `input$game_year`.
+- **Season switch runs auto twice.** The observer fires on `game_year` before `updateDateRangeInput()` reaches the browser, so the first pass queries new year + OLD dates. `fetch_lineups_all` filters on both, returns nothing, auto no-ops, and the date echo recalibrates. Correct, but one wasted lineup query per switch (Tab 2; not fixed).
+- **`testServer()` does not apply `updateSliderInput()`.** An auto-min test must echo each auto value back with `session$setInputs()`, or the "is this auto's own value" check sees the stale input.
 
 ## Tab 2: Lineup Details
 
-**Players On is TWO selectors, plus Players Off (2026-09-21).** The sidebar
-reads as a sentence -- "Lineups must include / every one of [box] / and at
-least one of [box]", then "Lineups must exclude [box]" -- so a selection
-expresses `A AND (B OR C)`. Filling only the first box is the historical
-all-of filter; only the second is a plain any-of. **Marking a player optional
-ADDS an "at least one of" clause, it does not relax one.** The boxes are
-mutually exclusive and narrow each other's OPTION POOLS (`lineup_box_pool()`),
-so a player one box holds is never offered by the others.
+**Tabs 2 and 10 filter players with a chip roster (2026-09-22).**
+`lineup_player_filter_ui(layout = "chips")` shows the team's players as surname
+chips (ordered by season minutes, top 12 plus "+N more") under an
+**On / Any of / Off** switch that sets what a tap does; tapping a chip already
+in that mode clears it. The summary line spells the filter out and carries two
+clickable tokens -- "with [at least|exactly] [k] of A, B, C" -- the quantifier
+from 2 any-of players up, the count from 3 up (capped at n-1: all n is just
+On). One selection can therefore say `A AND (exactly 2 of B, C, D) AND NOT E`.
+**Marking a player "Any of" ADDS a clause, it does not relax one.** Tab 7
+Compare keeps the three dropdowns (`layout = "inline"`) and always means "at
+least one of".
+
+**The three selectizes are still the model.** In the chip layout they stay in
+the DOM, hidden (`.lineup-chips-model`), and the chips (`www/app.js`, "Lineup
+player chips") read and write them, so bookmark restore, row pivots, the
+filter-chip bar's clears and every server-side reader are unchanged. The roster
+reaches the widget as the `lineup-chips-roster` custom message. The count and
+quantifier are the only inputs the widget sets itself --
+`<ns>players_on_any_min` and `<ns>players_on_any_exact`, parsed as untrusted by
+`parse_any_min()` / `parse_any_exact()` and applied by
+`lineup_on_predicate(any_min =, any_exact =)` through `p$player_any_min` /
+`p$player_any_exact`. `lineup_player_filter_server(chips = TRUE)` turns off box
+pooling (`lineup_box_pool()`), which only serves visible dropdowns and would
+race a player moving between boxes. A new trigger or reader of the player
+filter must list `players_on_any_min()` and `players_on_any_exact()` as well;
+`test-lineup-player-chips.R` pins the call-site counts.
 
 **Where the lineup player filter actually runs.** Get this wrong and a UI tweak
 gets scoped as a `sql/` branch with a grant re-apply, which is what happened
@@ -224,7 +246,7 @@ once. The SQL params exist, but Tab 2 passes `NA` for both:
 |---|---|
 | Tab 2, Tab 10 | **R** -- `apply_local_lineup_filters()` (`helpers.R`) |
 | Tab 7 Compare | **SQL** -- the only surface that sends player ids |
-| React/Plumber | its OWN copy `apply_lineup_local_filters()` (`plumber.R:205`), a different function that `helpers.R` cannot reach |
+| React/Plumber | its OWN copy `apply_lineup_local_filters()` (`plumber.R:205`), a different function that `helpers.R` cannot reach -- and it has no count / "exactly" support |
 
 Tabs 2/10 fetch every lineup at `min_poss = 0`, rank the full population, then
 narrow in R. `fetch_lineups_csv_v2` has no "at least one of" predicate, so when
@@ -233,12 +255,14 @@ re-applies the shared helper to the result -- sound because `p_min_poss` filters
 `total_poss`, which does not depend on which lineups survive.
 
 **Adding a fourth box to `mod_lineup_player_filter.R`:** add it to the
-`PLAYER_BOXES` vector (which drives clearing, pooling and the exclusion
-observers -- do not add pairwise observers), and add `<name>_label = NULL` to
-`ui_tab7_compare.R`, whose inline layout supplies its own labels; a box whose
-label argument defaults to non-NULL renders a stray label and wraps that row.
-The observers need `ignoreNULL = FALSE` or clearing a box never returns its
-players to the other pools.
+`PLAYER_BOXES` vector (which drives clearing, the dropdown layouts' pooling and
+the exclusion observers -- do not add pairwise observers), and add
+`<name>_label = NULL` to `ui_tab7_compare.R`, whose inline layout supplies its
+own labels; a box whose label argument defaults to non-NULL renders a stray
+label and wraps that row. The observers need `ignoreNULL = FALSE` or clearing a
+box never returns its players to the other pools. In the chip layout it also
+needs a mode button, an entry in the JS `BOX` / `STATES` maps, and a chip-state
+style in `app.css`.
 
 - **Server-side ranking:** Plumber fetches ALL lineups (min_poss=0), computes PR ranks on full population, caches in `RANKED_CACHE` (game-level key), applies local filters (team/player/minPoss) via `apply_lineup_local_filters()`. Two-layer cache: `RANKED_CACHE` + `RESP_CACHE`.
 - **TOTAL row:** Sum raw counts → derive rates (client-side). Pinned at top, not clickable, PR fields null.
@@ -406,7 +430,7 @@ The disconnect nodes the client hides (`#ss-connect-dialog`, `#ss-overlay`,
 
 ## ETL Scheduler
 
-Production ETL is scheduled nightly in GitHub Actions via `.github/workflows/etl-full.yml` at `21:15 UTC` (00:15 Israel daylight time, 23:15 standard time). The former Windows Task Scheduler task was absent in the 2026-09-11 investigation, so do not rely on it as a fallback. Successful ETL writes `app_meta.etl_full_last_success`, which also versions Shiny's season caches; after a manual database aggregate refresh, advance that marker to invalidate cached results. See `docs/etl_clock_incident_handoff_2026-09-13.md`.
+Production ETL is scheduled nightly in GitHub Actions via `.github/workflows/etl-full.yml` at `19:15 UTC` (22:15 Israel daylight time, 21:15 standard time). GitHub delays the scheduled trigger by ~2.5h, so runs actually start around 00:45 IDT. The former Windows Task Scheduler task was absent in the 2026-09-11 investigation, so do not rely on it as a fallback. Successful ETL writes `app_meta.etl_full_last_success`, which also versions Shiny's season caches; after a manual database aggregate refresh, advance that marker to invalidate cached results. See `docs/etl_clock_incident_handoff_2026-09-13.md`.
 
 `workflow_dispatch` accepts an optional `game_ids` input (comma-separated, e.g. `398,399`) to force specific games through the pipeline regardless of `etl_processed_games`, bypassing the normal new-games-only diff -- e.g. `gh workflow run etl-full.yml -f game_ids=398,399`. Dormant for the `schedule` trigger (inputs are only read on `workflow_dispatch`), so nightly runs are unaffected. Threaded through `scripts/run_etl_full.ps1`'s `-GameIds` param into `etl_full(game_ids=c(...))`.
 
@@ -570,6 +594,14 @@ than adding a special case:
   The real click order (Compare -> Lineups -> team) avoids it, so it is latent,
   not user-visible. **Unfixed as of 2026-09-21.** It also makes Compare
   impossible to drive from a script unless you wait for the roster first.
+- **A custom message outruns the input updates sent in the same flush.**
+  Observed 2026-09-22: the chip widget's `lineup-chips-roster` message
+  (`session$sendCustomMessage()`) reached the browser before the restored
+  selections that `updateSelectizeInput()` had queued in the same call, so the
+  first render saw an empty group -- and clamping stored client state on that
+  render silently turned a restored "at least 2" into 1. Keep what was asked
+  for and clamp only what is shown or sent; never derive persistent client
+  state from inputs updated in the same flush as the message.
 
 
 ### Deploy Scripts
@@ -578,6 +610,7 @@ than adding a special case:
 - MV DDL: `readLines()` + `paste(collapse="\n")`, strip comment header, execute as single string
 - `$function$` boundary: find end with `grep("^\\$function\\$;$")`
 - Editing a file (`Edit` or similar tools) can silently normalize its WHOLE line-ending convention (mixed CRLF/LF files in this repo -- `app.R`, `global.R`, `etl_onoff.R`, `run_etl_full.ps1`, `CLAUDE.md` all mix them), turning a small real change into a 100+ line spurious diff. `cat -A` in Git Bash is not a reliable detector -- it can display no `^M` even where `xxd`/`tr -cd '\r'|wc -c` prove CRLF is actually present (Git Bash's own `cat` silently translates on display). Fix: extract the pristine committed blob (`git show HEAD:<file>`), splice the change in via `perl -0777` on raw bytes (`\Q...\E` literal match), and verify with `tr -cd '\r'|wc -c` arithmetic (orig CR + added-block CR - removed-block CR = spliced CR) before installing and `git diff --stat`.
+- Two more line-ending traps (2026-10-06): (1) `awk '/\r$/'` in Git Bash also reports CRLF lines as LF -- `patch` then fails hunks with "different line endings". Splice with a `\r?\n`-tolerant perl pattern that reuses the matched EOL. (2) To commit ONE hunk of a file that also holds the user's uncommitted edits, build the blob from `git show HEAD:<file>` + the splice and stage it with `git hash-object -w --no-filters` + `git update-index --cacheinfo`. Without `--no-filters`, autocrlf rewrites every line (a 1-line change became 1,268). A dirty file also blocks `git checkout main`; when the merge is a fast-forward, `git branch -f main HEAD && git checkout main` moves the ref without touching the working tree.
 
 ### React / Plumber
 - PR column naming: `prOffOn` (PPP rank) ≠ `prOffOnD` (Diff rank) — use correct one per column
@@ -631,6 +664,22 @@ than adding a special case:
 **Performance (React+Plumber):**
 1. Profile SQL functions with `EXPLAIN (ANALYZE, BUFFERS)` for filtered cases
 2. Audit indexes only after query-plan evidence
+
+**Shiny (added 2026-09-22):**
+1. **Tab 7 Compare lineup filter: add the count and "exactly".** Tabs 2/10 have
+   "at least / exactly [k] of" (see the Tab 2 section); Compare still shows three
+   dropdowns and always means "at least one of". The filter half is cheap: when
+   the any-of box is non-empty Compare already withholds the on-filter from SQL
+   and re-applies `apply_local_lineup_filters()`, so it only has to pass
+   `player_any_min` / `player_any_exact` through. The open question is the UI --
+   the inline layout has no summary line to put the tokens in.
+2. **EuroLeague phase-list query errors at startup.** A local run on 2026-09-22
+   logged `[WARN] [db_perf] ... SELECT DISTINCT phase FROM
+   euroleague.final_schedule_mv WHERE competition = $1::text AND game_year = ...
+   status=error` (`sql_ms=NA`) during session start. Not investigated: unknown
+   whether it is a bad parameter (e.g. a season not yet resolved), a grant, or a
+   timeout, and whether production logs it too. The query is
+   `euro_fetch_phases()` (`global_euro.R:119`), cached per competition+season.
 
 **Architecture (accepted, trigger-gated):** when a tab goes React+Plumber-only, retire its mega-signature SQL function(s) and let the route build the SQL — see `docs/adr_api_owns_query_construction.md` for trigger, migration order, and the DB-role tightening that follows. Until then the stored functions are the shared source of truth for both frontends; do NOT duplicate their logic into R query builders.
 
@@ -692,3 +741,82 @@ than adding a special case:
 - These Gameflow UI changes were not deployed in this session. Deploy from a
   clean `main` checkout and verify game 406 on desktop and mobile; do not deploy
   the dirty shared workspace wholesale.
+
+## Session Update (2026-09-22): R Tests CI Repair and Test Cleanup
+
+This supersedes the earlier note that the current `main` failures were merely
+pre-existing. GitHub Actions run `35699466280` (fast) and scheduled run
+`35579247046` (DB-backed) were inspected and their failures were addressed in
+the working tree. Nothing from this session was committed or pushed, so Actions
+has not yet rerun these changes.
+
+### Failures fixed
+
+- `test-companion-query-counts.R`: the EuroLeague Game Logs mock had fallen
+  behind the reader contract and omitted `minutes`; the fixture now includes
+  it while retaining the season-rank and one-query assertions.
+- `test-period-opening-anchors.R`: both CI jobs used `dbplyr` but the workflow
+  did not install it. `any::dbplyr` is now listed in both dependency sets.
+- `test-source-encoding.R`: the test caught a real Connect-safety regression.
+  The visible ellipsis is preserved with `intToUtf8(8230L)`, avoiding raw
+  non-ASCII source and parse-time `\u` escapes.
+- `test-idle-restore-bookmarking.R`: removed the redundant exact-call-text
+  assertion. The same test still checks use of the restore-aware helper, and
+  the suite separately exercises restored behavior.
+- `test-server-tabs-smoke.R`: replaced five literal `expect_true(TRUE)` calls
+  with explicit assertions that the reset reactive flush does not error. No
+  literal no-op `expect_true(TRUE)` / `expect_false(FALSE)` assertions remain
+  under `app/tests` or `etl/tests`.
+- Live ribbon tests now interpolate their trusted numeric fixture values before
+  execution. This keeps the real production SQL and reconciliation assertions,
+  while avoiding intermittent unnamed-prepared-statement failures through the
+  Supabase transaction pooler.
+
+### Nightly data-parity repair
+
+- The useful minute-parity test found game `62506` stale in
+  `team_metrics_by_game_mv`: both team rows published `40.0` minutes while the
+  rebuilt canonical lineup fact held `39.9`.
+- The existing scoped refresh function was run for game `62506`; exactly two
+  derived rows were replaced and the parity query then returned zero rows.
+  No base play-by-play data changed.
+- `etl_full.R` now compares published team minutes with the fully rebuilt
+  `lineup_four_factors_by_game` fact and unions only stale historical game IDs
+  into the normal incremental team-metrics refresh. This prevents offline
+  historical corrections from leaving downstream rows stale without forcing a
+  full team-metrics rebuild every night.
+
+### Verification
+
+- Full fast suite: passed.
+- DB parity and shape checks: passed after the scoped repair.
+- PostgreSQL period-anchor tests: passed once `dbplyr` was available.
+- Corrected live ribbon reader file: `1,065` assertions passed across both
+  leagues.
+- Changed files pass `git diff --check`; local Windows runs still emit the
+  pre-existing `LC_ALL=C.UTF-8` warning flood.
+
+## Shipped Features Not Covered Above
+
+One line each; details and code pointers in PROJECT.md § "Shipped Work From
+Merged Branches". Home Team Hub (`mod_team_hub.R`) with an opt-in saved team
+(`localStorage` -> `hub_default_team()`); CSV export with timestamped names and
+persisted column order (`csv_export_button()`, `dt_col_order_init_callback()`);
+lineup filters re-applied after reconnect once choices load; DataTables escape
+all but named HTML columns (`dt_escape_except()` -- use it, never
+`escape = FALSE`); shared filter helpers (`game_context_filters_ui()`,
+`resolve_gn_last_n_params()`, `resolve_clutch_params()`,
+`update_single_team_selectize()`); Compare Defensive Shooting and opponent-rank
+filter; Tab 5 multi-team TOTAL row (`is_multi_team_total`); `COLUMN_TOOLTIPS`;
+ETL player identity dictionary, scoped cold export (`cold_export_scope()`),
+leading-OT lineup recovery, roster/action integrity checks.
+
+## Shot Chart Coordinates vs Court Drawing (2026-10-01)
+
+Full findings: `docs/shot_chart_court_dimensions_2026-10-01.md` (buggy-shot list: `docs/shot_chart_buggy_shots_2027.csv`).
+
+- Shot `coord_x`/`coord_y` are a **tracker grid, not cm**: x 0-1500 in steps of 15 (centre 750), y = depth from baseline 0-1400 in steps of 28. Rim at y ~112-140.
+- **The 2/3 label is derived from position** (3 of 29,763 shots in 2026 disagree within a grid cell), so the 2/3 boundary IS the tracker's three-point line: straight sides at |x-750| ~495-510 up to depth ~800, apex at y ~1071-1078. Best fit: ellipse around rim (126, 750), 945 deep x 680 wide, corner lines at 495 -- 13 wrong-side shots in 2026 vs 178 for basket.co.il's line, 668 for `fiba_court_zones.R`, 3,168 for FIBA.
+- basket.co.il's chart (`courtLines()` in its `game.js`) hand-fitted only the 3pt line (ellipse 900x600, width stretch 1.12); **paint, restricted area and circles are FIBA-true and never adjusted**, so lay-ups/dunks plot outside them. Our script adjusted the 3pt line and RA (145) but not the paint.
+- Interior zones have **no ground truth**: box-score `Points_in_the_paint` is not reproducible from coordinates or shot type (131/438 team-games exact). Don't retry it.
+- 2026-27 games 393/397/399/400 have no in-house shot coordinates (cold-storage gap); 621/626/648/651 exist only in the GitHub release parquet.
