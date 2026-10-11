@@ -2565,7 +2565,9 @@
   function tagColumns() {
     var wells = document.querySelectorAll(".tab-pane .well");
     for (var i = 0; i < wells.length; i++) {
-      // Only tag sidebars with a local toggle so they can always be reopened.
+      // Only tabs that render the shared toggle participate. Compare has a
+      // sidebar too, but no toggle; tagging it would let another tab's saved
+      // collapse state hide Compare's filters with no way to reopen them.
       var pane = wells[i].closest(".tab-pane");
       if (!pane || !pane.querySelector(".js-filters-toggle")) continue;
       var col = wells[i].closest("div[class*='col-sm-']");
@@ -2586,8 +2588,6 @@
         "aria-label",
         collapsed ? "Show the filter panel" : "Hide the filter panel"
       );
-      var label = buttons[i].querySelector(".chips-filters-toggle-label");
-      if (label) label.textContent = collapsed ? "Show filters" : "Hide filters";
     }
   }
 

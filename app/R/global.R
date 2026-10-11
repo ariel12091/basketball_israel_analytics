@@ -1480,7 +1480,7 @@ filter_chips_row <- function(chips_output_id, ...) {
       `aria-expanded` = "true",
       `aria-label` = "Hide the filter panel",
       tags$i(class = "bi bi-sliders", `aria-hidden` = "true"),
-      tags$span(class = "chips-filters-toggle-label", "Hide filters")
+      tags$span(class = "chips-filters-toggle-label", "Filters")
     ),
     tags$div(class = "chips-row-chips", uiOutput(chips_output_id)),
     if (length(controls)) tags$div(class = "chips-row-controls", controls)
