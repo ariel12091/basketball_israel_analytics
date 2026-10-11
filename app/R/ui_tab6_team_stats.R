@@ -119,7 +119,7 @@ ui_tab6_team_stats <- tabPanel(
               "Heat colors follow Team Ratings polarity -- green is better, red is worse."
           )
         ),
-        uiOutput("tst_filter_chips"),
+        filter_chips_row("tst_filter_chips"),
         DTOutput("tst_table")
       )
     )

@@ -270,6 +270,7 @@ ui_tab7_compare <- function() tabPanel(
 
       mainPanel(
         width = 9,
+        filter_chips_row("cmp_filter_chips"),
         tab_explainer(
           id = "compare_explainer",
           title = "What This Tab Answers",
@@ -444,10 +445,7 @@ ui_tab7_compare <- function() tabPanel(
             )
           ),
           uiOutput("cmp_pvp_ui")
-        ),
-
-        # Filter chips (always)
-        uiOutput("cmp_filter_chips")
+        )
       )
     )
   )
