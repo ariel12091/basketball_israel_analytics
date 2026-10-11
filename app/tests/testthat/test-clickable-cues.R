@@ -95,6 +95,29 @@ test_that("the navbar shows the update date short, keeping the full stamp for th
   expect_true(grepl('uiOutput("last_updated", inline = TRUE)', app_txt, fixed = TRUE))
 })
 
-test_that("selectable Gameflow names are underlined at rest", {
-  expect_match(cues_css(), "\\.ibpl-ribbon-name\\s*\\{[^}]*text-decoration:\\s*underline")
+test_that("each Gameflow player row is a button, not an underlined name", {
+  css <- cues_css()
+  helpers_txt <- read_repo_txt("R", "helpers.R")
+
+  # The underline read as decoration, not as "selectable" (user feedback
+  # 2026-10-11). The row button carries data-clip, which is what app.js keys
+  # clicks, hover and the is-pair-selected class on, so it needs no JS.
+  expect_false(grepl("\\.ibpl-ribbon-name\\s*\\{[^}]*text-decoration:\\s*underline", css))
+  expect_true(grepl('tags$rect(class = "ibpl-ribbon-row-btn"', helpers_txt, fixed = TRUE))
+  expect_match(css, "\\.ibpl-ribbon-row-btn\\s*\\{[^}]*stroke:")
+  expect_true(grepl(".ibpl-ribbon-row-btn:hover", css, fixed = TRUE))
+  expect_true(grepl(".ibpl-ribbon-row-btn.is-pair-selected", css, fixed = TRUE))
+})
+
+test_that("Gameflow bars are outlined at rest so they read as pressable", {
+  expect_match(cues_css(), "\\.ibpl-ribbon-lane rect\\s*\\{[^}]*stroke:[^}]*filter:\\s*drop-shadow")
+})
+
+test_that("the row button is drawn once per player, behind that player's labels", {
+  src <- read_repo_txt("R", "helpers.R")
+  btn_at <- regexpr('tags$rect(class = "ibpl-ribbon-row-btn"', src, fixed = TRUE)
+  name_at <- regexpr('list(class = "ibpl-ribbon-name"', src, fixed = TRUE)
+  expect_gt(btn_at, 0)
+  # SVG paints in document order: the button must come before the name text.
+  expect_lt(btn_at, name_at)
 })

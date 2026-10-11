@@ -4413,6 +4413,12 @@ build_stint_ribbon_svg <- function(lanes, margin, meta, id_prefix = "ribbon",
     # `<text class="ibpl-ribbon-name"[^>]*data-clip=...` regex.
     common <- list(`data-clip` = lanes$clip[i], `text-anchor` = "end")
     list(
+      # A button behind the whole gutter row. app.js keys clicks, hover and
+      # is-pair-selected on data-clip, so this needs no handler of its own;
+      # it is first in the list because SVG paints in document order.
+      tags$rect(class = "ibpl-ribbon-row-btn", `data-clip` = lanes$clip[i],
+                x = 2, y = lanes$abs_y[i], width = L$gutter - 6,
+                height = lanes$h[i], rx = 3),
       do.call(tags$text, c(list(class = "ibpl-ribbon-name", x = L$name_x, y = y),
         common, list(tabindex = "0", `aria-label` = label, gutter_label[i]))),
       if (!isTRUE(L$compact)) do.call(tags$text, c(list(class = "ibpl-ribbon-min", x = L$min_x, y = y),

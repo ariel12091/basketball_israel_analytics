@@ -2102,5 +2102,31 @@ body:not(.ibpl-touch-tips) .onoff-net-tip {
 body.ibpl-touch-tips .table-hint .hint-pointer { display: none; }
 body.ibpl-touch-tips .table-hint .hint-touch { display: inline; }
 
-/* Gameflow: a player name is the handle for selecting that player. */
-.ibpl-ribbon-name { text-decoration: underline; }
+/* Gameflow: each player's gutter row (name, minutes, +/-) is a button, and
+   the stint bars are outlined and lifted so they read as pressable too. Both
+   select the player; the row button lights up with its player's selection
+   because app.js toggles is-pair-selected on everything carrying data-clip. */
+.ibpl-ribbon-row-btn {
+  fill: rgba(255, 255, 255, 0.045);
+  stroke: var(--ibpl-border);
+  stroke-width: 1;
+  cursor: pointer;
+  transition: fill 120ms ease, stroke 120ms ease;
+}
+.ibpl-ribbon-row-btn:hover {
+  fill: rgba(var(--ibpl-accent-rgb), 0.14);
+  stroke: var(--ibpl-accent);
+}
+.ibpl-ribbon-row-btn.is-pair-selected {
+  fill: rgba(var(--ibpl-accent-rgb), 0.22);
+  stroke: var(--ibpl-accent);
+}
+.ibpl-ribbon-lane rect {
+  stroke: rgba(255, 255, 255, 0.32);
+  stroke-width: 1;
+  filter: drop-shadow(0 1px 0 rgba(0, 0, 0, 0.55));
+}
+.ibpl-ribbon-lane:hover rect {
+  opacity: 1;
+  stroke: var(--ibpl-text);
+}
