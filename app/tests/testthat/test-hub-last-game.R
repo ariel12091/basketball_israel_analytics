@@ -117,6 +117,20 @@ test_that("on wide screens the hub lays its boxes side by side", {
   expect_false(grepl("#hub_[a-z_]+:empty\\s*\\{[^}]*display:\\s*none", css))
 })
 
+test_that("a hub box with nothing to show gives its width to its neighbour", {
+  css <- read_repo_txt("www", "app.css")
+
+  # Early in a season a team has no 100-possession lineup, so the Lineups box
+  # is empty; Key players must then fill the row instead of leaving a hole.
+  expect_match(css, "#team_hub_section > \\.row > \\[class\\*=\"col-\"\\]\\s*\\{[^}]*flex:\\s*1 1 0")
+  empty_rule <- regmatches(css, regexpr(
+    "#team_hub_section > \\.row > \\[class\\*=\"col-\"\\]:has\\(> \\.shiny-html-output:empty\\)\\s*\\{[^}]*\\}", css))
+  expect_length(empty_rule, 1L)
+  expect_match(empty_rule, "flex:\\s*0 0 0")
+  # Collapsed to zero width, never display:none -- Shiny would suspend it.
+  expect_false(grepl("display:\\s*none", empty_rule))
+})
+
 test_that("the Israeli question cards are one titled group inside the hub layout", {
   home <- read_repo_txt("R", "ui_tab0_home.R")
 

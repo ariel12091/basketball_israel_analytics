@@ -2122,6 +2122,24 @@ td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity
 .hub-last-game-context { color: var(--ibpl-text-body); font-size: 0.88rem; }
 .hub-last-game .ribbon-link { margin-left: auto; font-size: 0.82rem; font-weight: 600; }
 
+/* Key players | Lineups share a row. Either box can have nothing to show
+   (early in a season no lineup has 100 possessions), and a fixed half-width
+   column then leaves a hole. Let the columns share the row, and collapse an
+   empty one to zero width -- not display: none, which would make Shiny treat
+   the output as hidden and stop sending it values. */
+@media (min-width: 576px) {
+  #team_hub_section > .row > [class*="col-"] {
+    flex: 1 1 0;
+    width: auto;
+    max-width: none;
+  }
+  #team_hub_section > .row > [class*="col-"]:has(> .shiny-html-output:empty) {
+    flex: 0 0 0;
+    padding: 0;
+    overflow: hidden;
+  }
+}
+
 /* The question cards' group title only shows in the wide layout below, where
    the group becomes a box of its own. */
 .home-nav-group-title { display: none; }
