@@ -14,7 +14,21 @@
 #   * Phase is provider text ('RS', 'PLAYOFFS', ...), not an integer code.
 
 EURO_DEFAULT_COMPETITION <- "E"
-EURO_DEFAULT_SEASON      <- "2025"
+
+# The newest season, derived from the app-wide DEFAULT_GAME_YEAR (global.R) so
+# that one bump rolls both leagues. Israeli game_year is the season-ENDING
+# year and a provider season is the STARTING year, hence the -1. This was a
+# literal "2025" that nobody bumped when 26-27 was loaded: the navbar select,
+# the date inputs and every EuroLeague query run on this value until the
+# loaded seasons arrive, so the page was served on 25-26 and switched late.
+euro_default_season <- function(game_year = DEFAULT_GAME_YEAR) {
+  as.character(as.integer(game_year) - 1L)
+}
+EURO_DEFAULT_SEASON <- euro_default_season()
+
+# Seasons offered from the first paint, newest first, before the database has
+# answered. euro_init_season_inputs() replaces them with what is loaded.
+EURO_STATIC_SEASONS <- as.character(as.integer(EURO_DEFAULT_SEASON) - 0:1)
 
 EURO_COMPETITION_LABELS <- c("E" = "EuroLeague", "U" = "EuroCup")
 
@@ -222,8 +236,8 @@ euro_navbar_season_ui <- function() {
   tags$div(
     class = "navbar-season-select league-nav-el",
     selectInput("euro_game_year", NULL,
-                choices = stats::setNames(EURO_DEFAULT_SEASON,
-                                          euro_season_label(EURO_DEFAULT_SEASON)),
+                choices = stats::setNames(EURO_STATIC_SEASONS,
+                                          euro_season_label(EURO_STATIC_SEASONS)),
                 selected = EURO_DEFAULT_SEASON)
   )
 }
@@ -233,8 +247,9 @@ euro_navbar_season_ui <- function() {
 euro_init_season_inputs <- function(input, session, euro_context) {
   # The navbar select is built with the static EURO_DEFAULT_SEASON, so on the
   # first population that placeholder must not count as a choice -- otherwise a
-  # newly loaded season never becomes the default. Later calls keep whatever
-  # season the user picked.
+  # newly loaded season never becomes the default. Any OTHER value at that
+  # point is a season the user picked from the static list before the loaded
+  # one arrived, and is kept. Later calls keep whatever season the user picked.
   populated <- FALSE
   observeEvent(input$league_select, {
     # Under the Israeli league the EuroLeague season select is hidden and its
@@ -246,7 +261,8 @@ euro_init_season_inputs <- function(input, session, euro_context) {
     restored <- restore_once_selection(
       session, "euro_game_year", character(0), choices
     )
-    current <- if (populated) as.character(isolate(input$euro_game_year) %||% "") else ""
+    live <- as.character(isolate(input$euro_game_year) %||% "")
+    current <- if (populated || !identical(live, EURO_DEFAULT_SEASON)) live else ""
     populated <<- TRUE
     sel <- if (length(restored)) restored[[1]] else if (current %in% vals) current else vals[[1]]
     updateSelectInput(session, "euro_game_year",
