@@ -85,8 +85,6 @@ ui_tab0_home <- function() tabPanel(
       ),
 
       # ---- EuroLeague ----
-      team_insights_entry_ui(),
-
       # Same cards, same order, same icons and wording as the Israeli block
       # below -- only the tabs each one opens differ, and Player Stats does not
       # even differ there: it is one shared tab reading the league from
