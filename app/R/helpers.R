@@ -117,6 +117,59 @@ dt_col_order_init_callback <- function(input_id, storage_key) {
   ))
 }
 
+# "Oct 10" from a Date. month.abb, not format("%b"): month names must not
+# follow the server locale.
+short_month_day <- function(d) {
+  if (length(d) != 1L || is.na(d)) return(NA_character_)
+  paste(month.abb[as.integer(format(d, "%m"))], as.integer(format(d, "%d")))
+}
+
+# ---- Home hub: the selected team's last game ----
+# `last_games_df` holds one row per team (hub_fetch_last_games()).
+hub_last_game <- function(last_games_df, team_id) {
+  tid <- suppressWarnings(as.integer(team_id))
+  if (is.null(last_games_df) || !nrow(last_games_df) ||
+      length(tid) != 1L || !is.finite(tid)) {
+    return(NULL)
+  }
+  row <- last_games_df[as.integer(last_games_df$team_id) == tid, , drop = FALSE]
+  if (!nrow(row)) return(NULL)
+  as.list(row[1, , drop = FALSE])
+}
+
+hub_last_game_result <- function(g) {
+  sprintf("%s %d-%d", if (isTRUE(g$has_won)) "W" else "L",
+          as.integer(g$team_score), as.integer(g$opp_score))
+}
+
+hub_last_game_context <- function(g) {
+  paste(if (isTRUE(g$is_home)) "vs" else "at", as.character(g$opp_team_name),
+        intToUtf8(183L), short_month_day(as.Date(g$game_date)))
+}
+
+# The link is offered only for a game known to have Gameflow data, so it
+# never opens an empty chart. It uses the hub's own opener ("hub" prefix), so
+# a touch device draws the chart inline on Home rather than in Game Logs.
+hub_last_game_ui <- function(g) {
+  if (is.null(g)) return(NULL)
+  div(
+    class = "card bg-dark border-secondary mb-4 hub-card-static hub-last-game",
+    div(
+      class = "card-body",
+      tags$span(class = "hub-block-title", "Last game"),
+      tags$span(class = if (isTRUE(g$has_won)) "hub-pos" else "hub-neg",
+                hub_last_game_result(g)),
+      tags$span(class = "hub-last-game-context", hub_last_game_context(g)),
+      if (isTRUE(g$has_gameflow)) {
+        HTML(ribbon_link_cell(g$game_id, g$team_id, "View Gameflow",
+                              input_id = "hub_ribbon_click",
+                              own_team = as.character(g$team_name),
+                              opp_team = as.character(g$opp_team_name)))
+      }
+    )
+  )
+}
+
 # The navbar's data-freshness label, short. The tab row has about 55px to
 # spare for it at 1440px (measured 2026-10-11): "Oct 10" fits, anything that
 # carries the time costs a second navbar row, and second-row tabs then cover
@@ -126,7 +179,7 @@ last_updated_short <- function(txt) {
   m <- regmatches(txt %||% "", regexpr("[0-9]{4}-[0-9]{2}-[0-9]{2}", txt %||% ""))
   d <- if (length(m)) suppressWarnings(as.Date(m, format = "%Y-%m-%d")) else as.Date(NA)
   if (length(d) != 1L || is.na(d)) return("n/a")
-  paste(month.abb[as.integer(format(d, "%m"))], as.integer(format(d, "%d")))
+  short_month_day(d)
 }
 
 csv_export_stamp <- function(now = Sys.time()) {

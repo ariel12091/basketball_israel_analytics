@@ -80,6 +80,37 @@ hub_fetch_team_ratings <- function(gy, ver) {
   )
 }
 
+# Each team's most recent played game of the season, and whether Gameflow can
+# be drawn for it (the game has lineup data). One row per team; one query per
+# season, shared across sessions. Verified against the DB 2026-10-11: 14 rows
+# per season in ~0.3s.
+hub_fetch_last_games <- function(gy, ver) {
+  cached_season_df(
+    list("hub_last_games", as.integer(gy), ver),
+    function() {
+      tryCatch(
+        db_get_query(
+          pg_pool,
+          "SELECT DISTINCT ON (s.team_id)
+                  s.game_id, s.game_date, s.team_id, s.team_name, s.opp_team_name,
+                  s.team_score, s.opp_score, s.has_won, s.is_home,
+                  EXISTS (SELECT 1
+                            FROM basketball_test.mv_lineup_totals_by_day d
+                           WHERE d.game_id = s.game_id
+                             AND d.team_id = s.team_id) AS has_gameflow
+             FROM basketball_test.final_schedule_mv s
+            WHERE s.game_year = $1::int4
+              AND s.team_score IS NOT NULL AND s.opp_score IS NOT NULL
+              AND s.team_score + s.opp_score > 0
+            ORDER BY s.team_id, s.game_date DESC, s.game_id DESC",
+          params = list(as.integer(gy))
+        ),
+        error = function(e) NULL
+      )
+    }
+  )
+}
+
 hub_fetch_team_ff <- function(gy, ver) {
   cached_season_df(
     list("team_four_factors_mv", as.integer(gy), ver),
@@ -415,6 +446,8 @@ team_hub_ui <- function() {
   div(
     id = "team_hub_section",
     uiOutput("hub_identity"),
+    uiOutput("hub_last_game"),
+    ribbon_inline_ui("hub"),
     fluidRow(
       style = "align-items: stretch;",
       column(width = 6, uiOutput("hub_players")),
@@ -846,6 +879,18 @@ server_team_hub <- function(input, output, session, shared) {
   }
 
   # ---- Identity card ----
+  # ---- Last game ----
+  output$hub_last_game <- renderUI({
+    req(hub_storylines_ready())
+    hub_last_game_ui(hub_last_game(
+      hub_fetch_last_games(hub_gy(), hub_ver()),
+      hub_team_id()
+    ))
+  })
+  ribbon_modal_server(input, output, session, "hub", "israel",
+                      function() shared_data_version(shared),
+                      svg_id_prefix = "hub")
+
   output$hub_identity <- renderUI({
     req(hub_storylines_ready())
     info <- hub_identity_data(hub_ratings_df(), hub_ff_df(), hub_team_id())

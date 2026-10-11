@@ -149,11 +149,14 @@ window.ibplDeviceKind = function () {
 /* ---- Gameflow: inline quarter cards on phones and tablets -------------- */
 (function () {
   var quarterObservers = {};
+  // Every surface that can draw Gameflow inline owns a <prefix>_ribbon_inline
+  // output inside a <prefix>_ribbon_inline_panel.
+  var INLINE_PREFIXES = ["gl", "eurogl", "hub"];
 
   function panelFor(link) {
     var inputId = link && link.dataset.inputId || "gl_ribbon_click";
     var prefix = inputId.replace(/_ribbon_click$/, "");
-    if (prefix !== "gl" && prefix !== "eurogl") return null;
+    if (INLINE_PREFIXES.indexOf(prefix) < 0) return null;
     return document.getElementById(prefix + "_ribbon_inline_panel");
   }
 
@@ -581,7 +584,8 @@ window.ibplDeviceKind = function () {
   if (window.jQuery) {
     window.jQuery(document).on("shiny:value", function (e) {
       var id = e.target && e.target.id || "";
-      if (id !== "gl_ribbon_inline" && id !== "eurogl_ribbon_inline") return;
+      var inlinePrefix = id.replace(/_ribbon_inline$/, "");
+      if (inlinePrefix === id || INLINE_PREFIXES.indexOf(inlinePrefix) < 0) return;
       var panel = document.getElementById(id + "_panel");
       if (panel && quarterObservers[panel.id]) {
         quarterObservers[panel.id].disconnect();

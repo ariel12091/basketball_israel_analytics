@@ -2106,6 +2106,22 @@ td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity
 .hub-card:hover,
 .hub-card:focus-visible { border-color: var(--ibpl-accent) !important; }
 
+/* Home hub: the selected team's last game, with its Gameflow link. A row of
+   its own, outside the identity card -- that card is one big button. */
+.hub-last-game .card-body {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 14px;
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.hub-last-game .hub-block-title { margin-bottom: 0; }
+.hub-last-game .hub-pos,
+.hub-last-game .hub-neg { font-weight: 700; }
+.hub-last-game-context { color: var(--ibpl-text-body); font-size: 0.88rem; }
+.hub-last-game .ribbon-link { margin-left: auto; font-size: 0.82rem; font-weight: 600; }
+
 /* Open cue: Compare rows open a detail view, at both levels. */
 #cmp_table tbody tr,
 #cmp_team_players_table tbody tr { cursor: pointer; }
