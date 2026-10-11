@@ -10,6 +10,25 @@ test_that("tabs with a view-mode menu carry a caret and a mode label", {
   expect_true(grepl(".tab-mode-label", css, fixed = TRUE))
 })
 
+test_that("an open mode menu sits above the tabs of a wrapped second navbar row", {
+  css <- cues_css()
+  z_of <- function(pattern) {
+    m <- regmatches(css, regexec(pattern, css, perl = TRUE))[[1L]]
+    if (length(m) < 2L) NA_integer_ else as.integer(m[[2L]])
+  }
+  link_z <- z_of("\\.navbar \\.navbar-nav \\.nav-link\\s*\\{[^}]*z-index:\\s*([0-9]+)")
+  open_z <- z_of("\\.nav-item\\.tab-has-dropdown:hover\\s*\\{[^}]*z-index:\\s*([0-9]+)")
+
+  # Measured 2026-10-11 at 1280px: the bar wraps, and second-row tabs covered
+  # On/Off's "Summary" and "Four Factors". Only the item being hovered is
+  # raised, so every other tab keeps its place above closed menus.
+  expect_false(is.na(link_z))
+  expect_false(is.na(open_z))
+  expect_gt(open_z, link_z)
+  # Passing over a tab on the way to one below must not open its menu at once.
+  expect_match(css, "\\.tab-has-dropdown:hover \\.tab-hover-menu\\s*\\{[^}]*animation:[^}]*ms")
+})
+
 test_that("a selectize-backed mode is read and written through selectize", {
   js <- read_repo_txt("www", "app.js")
 

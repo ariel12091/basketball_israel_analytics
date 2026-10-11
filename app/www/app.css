@@ -2011,6 +2011,23 @@ td[data-pivot-trigger]::after,
   right: -11px;
   top: calc(50% - 2px);
 }
+/* When the navbar wraps, a first-row tab's menu drops onto the second row.
+   Tab links are stacked above menus so a CLOSED menu's tab neighbours stay
+   clickable (see .navbar .navbar-nav .nav-link), but that also put second-row
+   tabs on top of an OPEN menu: at 1280px On/Off's "Summary" and "Four
+   Factors" could not be clicked (measured 2026-10-11). Raise only the item
+   being hovered. Its menu then covers the tabs beneath it while open, so it
+   opens after a short delay: crossing a tab on the way to one below does not
+   pop a menu over the destination. */
+.nav-item.tab-has-dropdown:hover { z-index: 10002; }
+@keyframes ibpl-tab-menu-in {
+  from { visibility: hidden; }
+  to { visibility: visible; }
+}
+body:not(.ibpl-collapsed-nav) .nav-item.tab-has-dropdown:hover .tab-hover-menu {
+  animation: ibpl-tab-menu-in 0s linear 140ms both;
+}
+
 /* The active tab also names its mode, where there is room for it. */
 .tab-mode-label { display: none; font-weight: 500; }
 .tab-mode-label::before { content: "\00B7"; margin: 0 5px; opacity: 0.7; }
