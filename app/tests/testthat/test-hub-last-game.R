@@ -95,6 +95,22 @@ test_that("the hub is wired for Gameflow on desktop and on touch", {
   expect_true(grepl("DISTINCT ON (s.team_id)", hub, fixed = TRUE))
 })
 
+test_that("on wide screens the hub lays its boxes side by side", {
+  css <- read_repo_txt("www", "app.css")
+  wide <- regmatches(css, regexpr("@media \\(min-width: 1200px\\) \\{\\s*/\\* Home hub: wide layout[\\s\\S]*?\\n\\}\\r?\\n", css, perl = TRUE))
+
+  expect_length(wide, 1L)
+  expect_match(wide, "#team_hub_section\\s*\\{[^}]*display:\\s*grid")
+  # Team card and last game on the left, storylines beside them.
+  expect_match(wide, "#hub_identity\\s*\\{[^}]*grid-column:\\s*1 / span 7")
+  expect_match(wide, "#hub_last_game\\s*\\{[^}]*grid-column:\\s*1 / span 7")
+  expect_match(wide, "\\.hub-storylines-shell\\s*\\{[^}]*grid-row:\\s*1 / span 2")
+  # Shiny suspends an output it believes is hidden, so an empty output must
+  # never be display:none or it would never receive its first value.
+  expect_false(grepl("hub-storylines-output:empty\\s*\\{[^}]*display:\\s*none", css))
+  expect_false(grepl("#hub_[a-z_]+:empty\\s*\\{[^}]*display:\\s*none", css))
+})
+
 test_that("the Gameflow link sits outside the clickable identity card", {
   # The identity card is one big js-shiny-event button that opens Team
   # Ratings; a link inside it would fire both.

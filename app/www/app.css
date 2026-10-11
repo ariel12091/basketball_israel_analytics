@@ -2122,6 +2122,40 @@ td[data-pivot-trigger]:focus-visible::after { color: var(--ibpl-accent); opacity
 .hub-last-game-context { color: var(--ibpl-text-body); font-size: 0.88rem; }
 .hub-last-game .ribbon-link { margin-left: auto; font-size: 0.82rem; font-weight: 600; }
 
+@media (min-width: 1200px) {
+  /* Home hub: wide layout. The rest of Home stays in its 760px column; the
+     hub and its team picker break out of it (centred with margins, not a
+     transform, so text stays on whole pixels) and lay the boxes side by side:
+       team card   | storylines
+       last game   |
+       key players | lineups
+     Below 1200px nothing here applies and the boxes stack as before. */
+  #team_hub_section,
+  .home-team-controls {
+    width: min(1180px, calc(100vw - 80px));
+    margin-left: calc(50% - min(590px, 50vw - 40px));
+  }
+  .home-team-select { flex: 0 1 420px; }
+  #team_hub_section {
+    display: grid;
+    grid-template-columns: repeat(12, minmax(0, 1fr));
+    column-gap: 24px;
+  }
+  #team_hub_section > * { grid-column: 1 / -1; }
+  #team_hub_section > #hub_identity { grid-column: 1 / span 7; grid-row: 1; }
+  #team_hub_section > #hub_last_game { grid-column: 1 / span 7; grid-row: 2; }
+  #team_hub_section > .hub-storylines-shell {
+    grid-column: 8 / -1;
+    grid-row: 1 / span 2;
+    display: flex;
+    flex-direction: column;
+  }
+  /* Storylines fill the height of the two boxes beside them. */
+  .hub-storylines-shell > .hub-storylines-output:not(:empty) { flex: 1; display: flex; }
+  .hub-storylines-shell > .hub-storylines-output > .card,
+  .hub-storylines-shell > .hub-storylines-loading { flex: 1; }
+}
+
 /* Open cue: Compare rows open a detail view, at both levels. */
 #cmp_table tbody tr,
 #cmp_team_players_table tbody tr { cursor: pointer; }
