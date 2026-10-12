@@ -1,0 +1,531 @@
+{
+  "source": "https://stats.segevstats.com/realtimestat_heb/get_team_action.php?game_id=417",
+  "captured_at": "2026-10-12",
+  "note": "Made baskets absent from offensive fact rows in Q2/Q3, plus two covered late-Q3 events. PWS hashes reconstructed from the persisted offense/defense perspectives; missing perspectives remain null.",
+  "actions": [
+    {
+      "game_id": 417,
+      "id": 4170276,
+      "quarter": 2,
+      "quarter_time": "09:26",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170280,
+      "quarter": 2,
+      "quarter_time": "09:18",
+      "type": "freeThrow",
+      "team_id": 12
+    },
+    {
+      "game_id": 417,
+      "id": 4170287,
+      "quarter": 2,
+      "quarter_time": "08:51",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170289,
+      "quarter": 2,
+      "quarter_time": "08:39",
+      "type": "shot",
+      "team_id": 12
+    },
+    {
+      "game_id": 417,
+      "id": 4170559,
+      "quarter": 3,
+      "quarter_time": "09:59",
+      "type": "shot",
+      "team_id": 12
+    },
+    {
+      "game_id": 417,
+      "id": 4170566,
+      "quarter": 3,
+      "quarter_time": "09:19",
+      "type": "shot",
+      "team_id": 12
+    },
+    {
+      "game_id": 417,
+      "id": 4170569,
+      "quarter": 3,
+      "quarter_time": "09:08",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170574,
+      "quarter": 3,
+      "quarter_time": "08:54",
+      "type": "freeThrow",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170579,
+      "quarter": 3,
+      "quarter_time": "08:36",
+      "type": "freeThrow",
+      "team_id": 12
+    },
+    {
+      "game_id": 417,
+      "id": 4170580,
+      "quarter": 3,
+      "quarter_time": "08:36",
+      "type": "freeThrow",
+      "team_id": 12
+    },
+    {
+      "game_id": 417,
+      "id": 4170594,
+      "quarter": 3,
+      "quarter_time": "07:40",
+      "type": "freeThrow",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170597,
+      "quarter": 3,
+      "quarter_time": "07:33",
+      "type": "freeThrow",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170613,
+      "quarter": 3,
+      "quarter_time": "06:46",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170623,
+      "quarter": 3,
+      "quarter_time": "06:20",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170631,
+      "quarter": 3,
+      "quarter_time": "05:45",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170650,
+      "quarter": 3,
+      "quarter_time": "04:51",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170667,
+      "quarter": 3,
+      "quarter_time": "03:50",
+      "type": "shot",
+      "team_id": 8
+    },
+    {
+      "game_id": 417,
+      "id": 4170669,
+      "quarter": 3,
+      "quarter_time": "03:43",
+      "type": "shot",
+      "team_id": 12
+    }
+  ],
+  "pws": [
+    {
+      "game_id": 417,
+      "id": 4170276,
+      "quarter": 2,
+      "quarter_time": "09:26",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": null,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170280,
+      "quarter": 2,
+      "quarter_time": "09:18",
+      "type": "freeThrow",
+      "team_id": 12,
+      "segment_id": null,
+      "team_id_defense": 8,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170287,
+      "quarter": 2,
+      "quarter_time": "08:51",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": null,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170289,
+      "quarter": 2,
+      "quarter_time": "08:39",
+      "type": "shot",
+      "team_id": 12,
+      "segment_id": null,
+      "team_id_defense": 8,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170559,
+      "quarter": 3,
+      "quarter_time": "09:59",
+      "type": "shot",
+      "team_id": 12,
+      "segment_id": null,
+      "team_id_defense": 8,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170566,
+      "quarter": 3,
+      "quarter_time": "09:19",
+      "type": "shot",
+      "team_id": 12,
+      "segment_id": null,
+      "team_id_defense": 8,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170569,
+      "quarter": 3,
+      "quarter_time": "09:08",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": null,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170574,
+      "quarter": 3,
+      "quarter_time": "08:54",
+      "type": "freeThrow",
+      "team_id": 8,
+      "segment_id": null,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170579,
+      "quarter": 3,
+      "quarter_time": "08:36",
+      "type": "freeThrow",
+      "team_id": 12,
+      "segment_id": null,
+      "team_id_defense": 8,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170580,
+      "quarter": 3,
+      "quarter_time": "08:36",
+      "type": "freeThrow",
+      "team_id": 12,
+      "segment_id": null,
+      "team_id_defense": 8,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170594,
+      "quarter": 3,
+      "quarter_time": "07:40",
+      "type": "freeThrow",
+      "team_id": 8,
+      "segment_id": null,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": null
+    },
+    {
+      "game_id": 417,
+      "id": 4170597,
+      "quarter": 3,
+      "quarter_time": "07:33",
+      "type": "freeThrow",
+      "team_id": 8,
+      "segment_id": 36,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": "58d3566a354f4048b388a94e783eead1"
+    },
+    {
+      "game_id": 417,
+      "id": 4170613,
+      "quarter": 3,
+      "quarter_time": "06:46",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": 37,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "id": 4170623,
+      "quarter": 3,
+      "quarter_time": "06:20",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": 37,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "id": 4170631,
+      "quarter": 3,
+      "quarter_time": "05:45",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": 37,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "id": 4170650,
+      "quarter": 3,
+      "quarter_time": "04:51",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": 38,
+      "team_id_defense": 12,
+      "lineup_hash_offense": null,
+      "lineup_hash_defense": "5ec436cf89cd4fc66f6520aa16a87bf6"
+    },
+    {
+      "game_id": 417,
+      "id": 4170667,
+      "quarter": 3,
+      "quarter_time": "03:50",
+      "type": "shot",
+      "team_id": 8,
+      "segment_id": 39,
+      "team_id_defense": 12,
+      "lineup_hash_offense": "f069ddc67ac44b385df968587b7b7398",
+      "lineup_hash_defense": "5ec436cf89cd4fc66f6520aa16a87bf6"
+    },
+    {
+      "game_id": 417,
+      "id": 4170669,
+      "quarter": 3,
+      "quarter_time": "03:43",
+      "type": "shot",
+      "team_id": 12,
+      "segment_id": 39,
+      "team_id_defense": 8,
+      "lineup_hash_offense": "5ec436cf89cd4fc66f6520aa16a87bf6",
+      "lineup_hash_defense": "f069ddc67ac44b385df968587b7b7398"
+    }
+  ],
+  "lineups": [
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1122,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "58d3566a354f4048b388a94e783eead1"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1134,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "58d3566a354f4048b388a94e783eead1"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1450,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "58d3566a354f4048b388a94e783eead1"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 2062,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "58d3566a354f4048b388a94e783eead1"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 2295,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "58d3566a354f4048b388a94e783eead1"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1122,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1134,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1193,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1267,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 2295,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "3c2f49275195a95d64188c5972d16905"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1193,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "5ec436cf89cd4fc66f6520aa16a87bf6"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1267,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "5ec436cf89cd4fc66f6520aa16a87bf6"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 1450,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "5ec436cf89cd4fc66f6520aa16a87bf6"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 2062,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "5ec436cf89cd4fc66f6520aa16a87bf6"
+    },
+    {
+      "game_id": 417,
+      "team_id": 12,
+      "player_id": 2295,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "5ec436cf89cd4fc66f6520aa16a87bf6"
+    },
+    {
+      "game_id": 417,
+      "team_id": 8,
+      "player_id": 1093,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "f069ddc67ac44b385df968587b7b7398"
+    },
+    {
+      "game_id": 417,
+      "team_id": 8,
+      "player_id": 1094,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "f069ddc67ac44b385df968587b7b7398"
+    },
+    {
+      "game_id": 417,
+      "team_id": 8,
+      "player_id": 1115,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "f069ddc67ac44b385df968587b7b7398"
+    },
+    {
+      "game_id": 417,
+      "team_id": 8,
+      "player_id": 1126,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "f069ddc67ac44b385df968587b7b7398"
+    },
+    {
+      "game_id": 417,
+      "team_id": 8,
+      "player_id": 1145,
+      "is_on_verdict": 1,
+      "n_on": 5,
+      "lineup_hash": "f069ddc67ac44b385df968587b7b7398"
+    }
+  ]
+}

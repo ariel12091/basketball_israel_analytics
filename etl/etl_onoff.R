@@ -7,6 +7,7 @@ library(purrr); library(jsonlite); library(lubridate)
 library(janitor); library(digest); library(stringr)
 library(pool)
 source("etl/period_opening_anchors.R")
+source("etl/lineup_coverage.R")
 
 APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
 PROD_SCHEMA <- "basketball"
@@ -1319,6 +1320,11 @@ etl_update <- function() {
     )
   
   
+  assert_gameplay_lineup_coverage(
+    actions_df, pws_stage, df_lineups_df,
+    log_msg = function(msg, level = "ERROR") message(msg),
+    diagnostic_dir = file.path("etl", "logs", "data_quality", "details")
+  )
   upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
 
   DBI::dbExecute(pg, "ANALYZE;")
