@@ -665,19 +665,6 @@ server_tab7_compare <- function(input, output, session, shared) {
     )
   }
 
-  cmp_player_query_params <- function(p, team_ids_csv) {
-    list(
-      p$game_year,
-      if (!is.na(p$start_d)) as.Date(p$start_d) else NA,
-      if (!is.na(p$end_d)) as.Date(p$end_d) else NA,
-      team_ids_csv,
-      p$game_type_csv, p$opp_ids_csv, p$home_away, p$outcome,
-      p$opp_rank_side, p$opp_rank_n, p$opp_rank_metric,
-      p$max_margin, p$margin_status, p$max_time_remaining, p$ot_margin_filter,
-      p$min_gn, p$max_gn, p$last_n_games
-    )
-  }
-
   cmp_team_csv_or_na <- function(team_ids_csv) {
     if (is.null(team_ids_csv) || is.na(team_ids_csv) || !nzchar(team_ids_csv)) NA_character_ else team_ids_csv
   }
@@ -925,16 +912,24 @@ server_tab7_compare <- function(input, output, session, shared) {
 
   run_player_traditional <- function(p, team_ids_csv) {
     tryCatch({
-      out <- run_compare_query(
-        key = "cmp_player_traditional",
-        p = p,
-        sql = paste0(
-          "SELECT * FROM basketball_test.get_player_traditional_dynamic(",
-          "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
-          "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
-          ")"
+      # The reader Player Stats uses, chosen the same way (per-game facts
+      # outside a clutch window, action rows inside one), so the two tabs
+      # cannot show different minutes for the same filters.
+      out <- cmp_profile_time(
+        "run_compare_query:cmp_player_traditional",
+        fetch_player_traditional_filtered(
+          pg_pool, session, guard_key = "cmp_player_traditional",
+          league = "israel", competition = NULL, game_year = p$game_year,
+          start_d = p$start_d, end_d = p$end_d,
+          team_ids_csv = team_ids_csv, game_type_csv = p$game_type_csv, opp_ids_csv = p$opp_ids_csv,
+          home_away = p$home_away, outcome = p$outcome,
+          opp_rank_side = p$opp_rank_side, opp_rank_n = p$opp_rank_n, opp_rank_metric = p$opp_rank_metric,
+          max_margin = p$max_margin, margin_status = p$margin_status,
+          max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter,
+          min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games,
+          max_calls = 50L
         ),
-        params = cmp_player_query_params(p, team_ids_csv)
+        extra = function(res) sprintf("rows=%d", NROW(res))
       )
       add_cmp_player_usage_pct(out)
     }, error = function(e) {
@@ -1624,7 +1619,7 @@ server_tab7_compare <- function(input, output, session, shared) {
     scorer_df <- cached_ref_query(
       key = sprintf("cmp_default_scorers_%d", gy_int),
       query_fun = function() db_get_query(pg_pool, paste0(
-        "SELECT player_id, gp, pts FROM basketball_test.get_player_traditional_dynamic(",
+        "SELECT player_id, gp, pts FROM basketball_test.get_player_traditional_from_games(",
         "$1::int4, NULL::date, NULL::date, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, ",
         "NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::bool, NULL::int4, NULL::int4, NULL::int4",
         ")"

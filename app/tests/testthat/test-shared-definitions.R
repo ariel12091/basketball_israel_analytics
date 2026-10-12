@@ -51,3 +51,13 @@ test_that("Tab 3 rank arrows have one source: the stored readers with an end dat
     expect_true(grepl(paste0(fn, "()"), src, fixed = TRUE), info = fn)
   }
 })
+
+test_that("player Traditional rows have one route: the shared reader chooser", {
+  # get_player_traditional_dynamic measures minutes as an event span even with
+  # no clutch window; Compare called it and showed other minutes than Player
+  # Stats for 190 of 312 players. No app file may name it.
+  files <- list.files(repo_file("R"), pattern = "[.]R$")
+  named <- files[vapply(files, function(f) grepl("get_player_traditional_dynamic", read_repo_txt("R", f), fixed = TRUE), logical(1))]
+  expect_identical(named, character(0))
+  expect_true(grepl("fetch_player_traditional_filtered(", read_repo_txt("R", "server_tab7_compare.R"), fixed = TRUE))
+})

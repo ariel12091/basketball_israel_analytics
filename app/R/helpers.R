@@ -2230,7 +2230,8 @@ fetch_player_traditional_season <- function(pool, league, competition, game_year
 # that name (a different SQL function) -- the two never collided at runtime
 # since Tab 7's local binding shadows this one, but the identical name made
 # git grep ambiguous. The caller names its own rate-limit bucket (guard_key)
-# so tabs do not share a budget. A guard refusal returns a column-less
+# so tabs do not share a budget (and its size, max_calls: Compare asks for
+# two sides per view). A guard refusal returns a column-less
 # data.frame(). Each league keeps its own reader-name map, schema and
 # parameter list exactly as before this function grew a league argument:
 # Israel always sends the full 18-slot signature; EuroLeague sends 15 or 19
@@ -2239,7 +2240,7 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
                                    start_d, end_d, team_ids_csv, game_type_csv, opp_ids_csv,
                                    home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
                                    max_margin, margin_status, max_time_remaining, ot_margin_filter,
-                                   min_gn, max_gn, last_n_games) {
+                                   min_gn, max_gn, last_n_games, max_calls = 35L) {
   if (!identical(league, "israel") && !identical(league, "euroleague")) {
     stop(sprintf("fetch_player_traditional_filtered: unknown league %s", league))
   }
@@ -2247,7 +2248,7 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
     session, key = guard_key,
     start_d = start_d, end_d = end_d,
     min_gn = min_gn, max_gn = max_gn, last_n = last_n_games,
-    max_calls = 35L, window_sec = 60L
+    max_calls = max_calls, window_sec = 60L
   )
   if (!isTRUE(allowed)) return(data.frame())
   reader_kind <- clutch_reader_kind(list(
