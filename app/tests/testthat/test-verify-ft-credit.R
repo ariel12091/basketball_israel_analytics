@@ -76,6 +76,17 @@ test_that("a frozen column shown only when another column exists is compared whe
   expect_match(fn_result_failures(old, moved, key = "team_id", spec = typo), "nett")
 })
 
+test_that("a conserved column may move between rows but its total may not change", {
+  spec <- list(allowed = "*", rows = "any", conserved = "pts")
+  expect_length(fn_result_failures(teams(), teams(pts = c(12, 18)), key = "team_id", spec = spec), 0L)
+  out <- fn_result_failures(teams(), teams(pts = c(12, 17)), key = "team_id", spec = spec)
+  expect_match(out, "pts")
+  expect_match(out, "30")
+  expect_match(out, "29")
+  # a dropped row takes its points with it
+  expect_match(fn_result_failures(teams(), teams()[1, , drop = FALSE], key = "team_id", spec = spec), "pts")
+})
+
 test_that("a case with no snapshot is a failure unless it is declared unsupported", {
   expect_match(missing_case_failures(c("none", "clutch"), available = "none", unsupported = character(0)),
                "clutch")

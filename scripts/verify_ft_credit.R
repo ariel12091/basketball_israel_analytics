@@ -330,6 +330,13 @@ snapshot <- function(force) {
 ts_only <- list(allowed = "ts")
 player_trad <- list(allowed = c("poss_on_floor", "ts", "usg_pct"))
 any_but_minutes <- list(allowed = "*", frozen = "minutes")
+# The clutch path reads the base table directly. Re-crediting moves events
+# between a team's lineups, so no point or possession may appear or vanish
+# (the readers are called with no possession minimum), and floor time is
+# physical, so no lineup's minutes may move. A lineup can gain a row: one that
+# drew a foul just before the window is credited the free throws inside it.
+lineup_clutch <- list(allowed = "*", frozen = "minutes", rows = "any",
+                      conserved = c("off_pts", "def_pts", "off_poss", "def_poss"))
 starters_moves <- list(allowed = "*")  # a starters filter now follows the credited lineup
 # on/off readers sit on player_four_factors_by_game, whose non-roster rows come
 # and go when old games are refreshed, so their row set is not stable.
@@ -355,9 +362,9 @@ fn_specs <- list(
   get_player_traditional_custom_clutch = list(key = c("team_id", "player_id"),
     unsupported = c("none", "home", "last5", "starters5"), cases = list(default = player_trad)),
   fetch_lineups_csv_v2 = list(key = c("team_id", "sub_lineup_hash"),
-    cases = list(default = any_but_minutes, clutch = list(allowed = "*"))),
+    cases = list(default = any_but_minutes, clutch = lineup_clutch)),
   fetch_lineups_four_factors_csv = list(key = c("team_id", "sub_lineup_hash"),
-    cases = list(default = any_but_minutes, clutch = list(allowed = "*", rows = "any"))),
+    cases = list(default = any_but_minutes, clutch = lineup_clutch)),
   onoff_compute = list(key = c("team_id", "player_id"), unsupported = "clutch",
     cases = list(default = onoff_reader)),
   four_factors_compute = list(key = c("team_id", "player_id"), unsupported = "clutch",

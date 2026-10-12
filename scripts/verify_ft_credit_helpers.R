@@ -7,6 +7,7 @@
 #   spec$allowed  columns that may change ("*" = any column)
 #   spec$frozen   columns that may never change, even under "*"
 #   spec$frozen_where  named: frozen column -> the column it is reported with
+#   spec$conserved  columns whose total over all rows may not change
 #   spec$rows     "same" (default) or "any" when the reader's row set is not stable
 fn_result_failures <- function(old, new, key, spec) {
   allowed <- spec$allowed
@@ -19,6 +20,16 @@ fn_result_failures <- function(old, new, key, spec) {
   if (length(gone)) fails <- c(fails, paste("columns no longer returned:", paste(gone, collapse = ", ")))
   if (length(added)) fails <- c(fails, paste("columns newly returned:", paste(added, collapse = ", ")))
   cols <- setdiff(intersect(names(old), names(new)), key)
+
+  # Totals over the whole result, before any row matching: a conserved column
+  # may be redistributed between rows but never created or lost.
+  for (cc in intersect(spec$conserved, cols)) {
+    before <- sum(as.numeric(old[[cc]]), na.rm = TRUE)
+    after <- sum(as.numeric(new[[cc]]), na.rm = TRUE)
+    if (!isTRUE(all.equal(before, after))) {
+      fails <- c(fails, sprintf("total %s not conserved: %s before, %s after", cc, format(before), format(after)))
+    }
+  }
 
   same_rows <- nrow(old) == nrow(new)
   if (!same_rows && !rows_any) {
