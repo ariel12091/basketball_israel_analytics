@@ -4,9 +4,13 @@
 # those. This keeps UI-builder tests asserting on rendered output instead of
 # dropping to string-matching the source, which is all reading the file as text
 # allows.
+#
+# catalogues_generated.R holds the constants generated from the catalogue
+# tables; app.R sources it ahead of global.R, so it is read first here too.
 global_defs <- function(...) {
   wanted <- c(...)
-  exprs <- parse(repo_file("R", "global.R"))
+  exprs <- c(parse(repo_file("R", "catalogues_generated.R")),
+             parse(repo_file("R", "global.R")))
   env <- new.env(parent = globalenv())
 
   for (e in exprs) {
@@ -17,7 +21,8 @@ global_defs <- function(...) {
 
   missing <- setdiff(wanted, ls(env))
   if (length(missing)) {
-    stop("not defined at top level in global.R: ", paste(missing, collapse = ", "))
+    stop("not defined at top level in global.R or catalogues_generated.R: ",
+         paste(missing, collapse = ", "))
   }
   env
 }

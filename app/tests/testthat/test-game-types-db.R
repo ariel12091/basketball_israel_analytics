@@ -1,8 +1,9 @@
 library(testthat)
 
 # basketball_test.game_types is the source of truth for game-type labels. The
-# Shiny constants are a copy, kept because the filter dropdowns are built
-# before any database connection exists; this pins the copy to the table.
+# Shiny constants are a copy generated from it by scripts/sync_catalogues.R,
+# kept because the filter dropdowns are built before any database connection
+# exists. This fails when the nightly sync stopped landing.
 
 skip_if_not(Sys.getenv("RUN_DB_TESTS", "0") == "1")
 skip_if_not_installed("DBI")
