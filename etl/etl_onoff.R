@@ -7,6 +7,7 @@ library(purrr); library(jsonlite); library(lubridate)
 library(janitor); library(digest); library(stringr)
 library(pool)
 source("etl/period_opening_anchors.R")
+source("etl/lineup_coverage.R")
 
 APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
 PROD_SCHEMA <- "basketball"
@@ -349,7 +350,8 @@ KNOWN_PERIOD_LABEL_CORRECTIONS <- tibble::tribble(
   ~game_id, ~min_id,   ~max_id,   ~wrong_quarter, ~corrected_quarter, ~reason,
   402L,     4020627L, 4020822L, 3L,             4L,                 "Q4 rows mislabeled as Q3 in archived Basket payload",
   406L,     4060239L, 4060417L, 3L,             2L,                 "Provider Q3 is the complete Q2 action stream",
-  406L,     4060419L, 4060590L, 4L,             3L,                 "Clocked first half of provider Q4 is the complete Q3 action stream"
+  406L,     4060419L, 4060590L, 4L,             3L,                 "Clocked first half of provider Q4 is the complete Q3 action stream",
+  417L,     4170541L, 4170550L, 2L,             3L,                 "Q3 opening five-player IN declarations mislabeled as Q2"
 )
 
 apply_known_period_label_corrections <- function(df, game_id_val) {
@@ -1319,6 +1321,11 @@ etl_update <- function() {
     )
   
   
+  assert_gameplay_lineup_coverage(
+    actions_df, pws_stage, df_lineups_df,
+    log_msg = function(msg, level = "ERROR") message(msg),
+    diagnostic_dir = file.path("etl", "logs", "data_quality", "details")
+  )
   upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
 
   DBI::dbExecute(pg, "ANALYZE;")

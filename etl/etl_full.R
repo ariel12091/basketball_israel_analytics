@@ -803,6 +803,12 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         ))
       }
 
+      # Reject missing/duplicate gameplay mappings before pws is written.
+      # An error follows the per-game rollback path and leaves the game retryable.
+      assert_gameplay_lineup_coverage(
+        actions_df, pws_stage, df_lineups_df, log_msg = log_msg,
+        diagnostic_dir = file.path("etl", "logs", "data_quality", "details")
+      )
       upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
       log_msg(sprintf("  pws staged: %d rows", nrow(pws_stage)))
 
