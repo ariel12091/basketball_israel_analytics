@@ -17,6 +17,9 @@ DEFAULT_GAME_YEAR <- "2027"   # 26-27
 # Season-aware team rosters used before the first database connection. Team IDs
 # are provider IDs and can be recycled between seasons, so each season needs an
 # explicit mapping.
+# Pinned copy of basketball_test.season_teams, which is the source of truth.
+# Change a team in the table AND here; test-season-teams-db.R fails when the
+# two differ.
 STATIC_TEAM_ROSTERS <- list(
   `2027` = data.frame(
     # App-facing IDs come from the PBP roster feed; the public schedule uses
@@ -869,6 +872,9 @@ navbar_league_select_ui <- function() {
 }
 
 # ---------------- Filter Chips Builder ----------------
+# Pinned copy of basketball_test.game_types, which is the source of truth: the
+# dropdowns are built before any database connection exists. Change a label in
+# the table AND here; test-game-types-db.R fails when the two differ.
 GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
                        "17" = "PO Finals", "33" = "Play-in", "10" = "Winner Cup",
                        "34" = "Winner Cup", "10,34" = "Winner Cup", "35" = "State Cup")
