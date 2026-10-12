@@ -601,331 +601,6 @@ server_tab3 <- function(input, output, session, shared) {
     )
   })
 
-  tr_prev_summary_ranks_from_mv <- reactive({
-    if (isTRUE(tr_fallback_needed())) return(NULL)
-    if (!isTRUE(tr_delta_enabled())) return(NULL)
-    p <- tr_params()
-    bounds <- shared$season_date_bounds(as.character(p$game_year))
-    start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
-    end_d <- if (!is.na(p$end_d)) as.Date(p$end_d) else as.Date(bounds$end)
-    roll <- tryCatch(
-      db_get_query(
-        pg_pool,
-        "WITH scoped AS (
-           SELECT tm.*
-           FROM basketball_test.team_metrics_by_game_mv tm
-           WHERE tm.game_year = $1::int4
-             AND tm.game_date >= $2::date
-             AND tm.game_date <= $3::date
-         ),
-         team_games AS (
-           SELECT
-             g.team_id, g.game_id, g.game_date,
-             ROW_NUMBER() OVER (PARTITION BY g.team_id ORDER BY g.game_date DESC, g.game_id DESC) AS rn
-           FROM (SELECT DISTINCT team_id, game_id, game_date FROM scoped) g
-         ),
-         cuts AS (
-           SELECT
-             tg.team_id,
-             MAX(tg.game_date) FILTER (WHERE tg.rn = 2) AS prev_game_date,
-             MAX(tg.game_id)   FILTER (WHERE tg.rn = 2) AS prev_game_id
-           FROM team_games tg
-           GROUP BY tg.team_id
-           HAVING MAX(CASE WHEN tg.rn = 2 THEN 1 ELSE 0 END) = 1
-         )
-         SELECT
-           s.team_id,
-           COUNT(DISTINCT s.game_id)::int AS gp,
-           COALESCE(SUM(s.off_poss), 0)::numeric AS poss_on_floor,
-           COALESCE(SUM(s.off_minutes), 0)::numeric AS minutes,
-           COALESCE(SUM(s.off_points_raw), 0)::numeric AS off_points_raw,
-           COALESCE(SUM(s.def_points_raw), 0)::numeric AS def_points_raw,
-           COALESCE(SUM(s.off_poss_raw), 0)::numeric AS off_poss_raw,
-           COALESCE(SUM(s.def_poss_raw), 0)::numeric AS def_poss_raw,
-           COALESCE(SUM(s.off_ts_poss_raw), 0)::numeric AS off_ts_poss_raw,
-           COALESCE(SUM(s.def_ts_poss_raw), 0)::numeric AS def_ts_poss_raw,
-           COALESCE(SUM(s.off_oreb_count_raw), 0)::numeric AS off_oreb_count_raw,
-           COALESCE(SUM(s.def_oreb_count_raw), 0)::numeric AS def_oreb_count_raw,
-           COALESCE(SUM(s.off_oreb_opp_raw), 0)::numeric AS off_oreb_opp_raw,
-           COALESCE(SUM(s.def_oreb_opp_raw), 0)::numeric AS def_oreb_opp_raw,
-           COALESCE(SUM(s.off_tov_raw), 0)::numeric AS off_tov_raw,
-           COALESCE(SUM(s.def_tov_raw), 0)::numeric AS def_tov_raw,
-           COALESCE(SUM(s.off_fta_raw), 0)::numeric AS off_fta_raw,
-           COALESCE(SUM(s.def_fta_raw), 0)::numeric AS def_fta_raw,
-           COALESCE(SUM(s.off_fga_raw), 0)::numeric AS off_fga_raw,
-           COALESCE(SUM(s.def_fga_raw), 0)::numeric AS def_fga_raw,
-           COALESCE(SUM(s.pts), 0)::numeric AS pts,
-           COALESCE(SUM(s.reb), 0)::numeric AS reb,
-           COALESCE(SUM(s.ast), 0)::numeric AS ast,
-           COALESCE(SUM(s.stl), 0)::numeric AS stl,
-           COALESCE(SUM(s.blk), 0)::numeric AS blk,
-           COALESCE(SUM(s.tov), 0)::numeric AS tov,
-           COALESCE(SUM(s.fgm), 0)::numeric AS fgm,
-           COALESCE(SUM(s.fga), 0)::numeric AS fga,
-           COALESCE(SUM(s.\"3pm\"), 0)::numeric AS \"3pm\",
-           COALESCE(SUM(s.\"3pa\"), 0)::numeric AS \"3pa\",
-           COALESCE(SUM(s.ftm), 0)::numeric AS ftm,
-           COALESCE(SUM(s.fta), 0)::numeric AS fta,
-           COALESCE(SUM(s.off_ts_poss_raw), 0)::numeric AS ts_poss
-         FROM scoped s
-         JOIN cuts c
-           ON c.team_id = s.team_id
-          AND (s.game_date < c.prev_game_date OR (s.game_date = c.prev_game_date AND s.game_id <= c.prev_game_id))
-         GROUP BY s.team_id",
-        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(end_d))
-      ),
-      error = function(e) NULL
-    )
-    if (is.null(roll) || !nrow(roll)) return(NULL)
-    roll$off_ppp <- ifelse(roll$off_poss_raw > 0, round((roll$off_points_raw / roll$off_poss_raw) * 100, 1), NA_real_)
-    roll$def_ppp <- ifelse(roll$def_poss_raw > 0, round((roll$def_points_raw / roll$def_poss_raw) * 100, 1), NA_real_)
-    roll$net_rtg <- round(roll$off_ppp - roll$def_ppp, 1)
-    list(
-      off = setNames(dplyr::min_rank(dplyr::desc(roll$off_ppp)), as.character(roll$team_id)),
-      def = setNames(dplyr::min_rank(roll$def_ppp), as.character(roll$team_id)),
-      net = setNames(dplyr::min_rank(dplyr::desc(roll$net_rtg)), as.character(roll$team_id))
-    )
-  })
-
-  tr_prev_ff_ranks_from_mv <- reactive({
-    if (isTRUE(tr_fallback_needed())) return(NULL)
-    if (!isTRUE(tr_delta_enabled())) return(NULL)
-    p <- tr_params()
-    bounds <- shared$season_date_bounds(as.character(p$game_year))
-    start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
-    end_d <- if (!is.na(p$end_d)) as.Date(p$end_d) else as.Date(bounds$end)
-    roll <- tryCatch(
-      db_get_query(
-        pg_pool,
-        "WITH scoped AS (
-           SELECT tm.*
-           FROM basketball_test.team_metrics_by_game_mv tm
-           WHERE tm.game_year = $1::int4
-             AND tm.game_date >= $2::date
-             AND tm.game_date <= $3::date
-         ),
-         team_games AS (
-           SELECT
-             g.team_id, g.game_id, g.game_date,
-             ROW_NUMBER() OVER (PARTITION BY g.team_id ORDER BY g.game_date DESC, g.game_id DESC) AS rn
-           FROM (SELECT DISTINCT team_id, game_id, game_date FROM scoped) g
-         ),
-         cuts AS (
-           SELECT
-             tg.team_id,
-             MAX(tg.game_date) FILTER (WHERE tg.rn = 2) AS prev_game_date,
-             MAX(tg.game_id)   FILTER (WHERE tg.rn = 2) AS prev_game_id
-           FROM team_games tg
-           GROUP BY tg.team_id
-           HAVING MAX(CASE WHEN tg.rn = 2 THEN 1 ELSE 0 END) = 1
-         )
-         SELECT
-           s.team_id,
-           COALESCE(SUM(s.off_points_raw), 0)::numeric AS off_points_raw,
-           COALESCE(SUM(s.def_points_raw), 0)::numeric AS def_points_raw,
-           COALESCE(SUM(s.off_poss_raw), 0)::numeric AS off_poss_raw,
-           COALESCE(SUM(s.def_poss_raw), 0)::numeric AS def_poss_raw,
-           COALESCE(SUM(s.off_ts_poss_raw), 0)::numeric AS off_ts_poss_raw,
-           COALESCE(SUM(s.def_ts_poss_raw), 0)::numeric AS def_ts_poss_raw,
-           COALESCE(SUM(s.off_oreb_count_raw), 0)::numeric AS off_oreb_count_raw,
-           COALESCE(SUM(s.def_oreb_count_raw), 0)::numeric AS def_oreb_count_raw,
-           COALESCE(SUM(s.off_oreb_opp_raw), 0)::numeric AS off_oreb_opp_raw,
-           COALESCE(SUM(s.def_oreb_opp_raw), 0)::numeric AS def_oreb_opp_raw,
-           COALESCE(SUM(s.off_tov_raw), 0)::numeric AS off_tov_raw,
-           COALESCE(SUM(s.def_tov_raw), 0)::numeric AS def_tov_raw,
-           COALESCE(SUM(s.off_fta_raw), 0)::numeric AS off_fta_raw,
-           COALESCE(SUM(s.def_fta_raw), 0)::numeric AS def_fta_raw,
-           COALESCE(SUM(s.off_fga_raw), 0)::numeric AS off_fga_raw,
-           COALESCE(SUM(s.def_fga_raw), 0)::numeric AS def_fga_raw,
-           COALESCE(SUM(s.off_fgm_raw), 0)::numeric AS off_fgm_raw,
-           COALESCE(SUM(s.def_fgm_raw), 0)::numeric AS def_fgm_raw,
-           COALESCE(SUM(s.off_fg3m_raw), 0)::numeric AS off_fg3m_raw,
-           COALESCE(SUM(s.def_fg3m_raw), 0)::numeric AS def_fg3m_raw
-         FROM scoped s
-         JOIN cuts c
-           ON c.team_id = s.team_id
-          AND (s.game_date < c.prev_game_date OR (s.game_date = c.prev_game_date AND s.game_id <= c.prev_game_id))
-         GROUP BY s.team_id",
-        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(end_d))
-      ),
-      error = function(e) NULL
-    )
-    if (is.null(roll) || !nrow(roll)) return(NULL)
-    ff <- data.frame(team_id = roll$team_id)
-    ff$off_ppp  <- ifelse(roll$off_poss_raw > 0, round((roll$off_points_raw / roll$off_poss_raw) * 100, 1), NA_real_)
-    ff$def_ppp  <- ifelse(roll$def_poss_raw > 0, round((roll$def_points_raw / roll$def_poss_raw) * 100, 1), NA_real_)
-    ff$net_rtg  <- round(ff$off_ppp - ff$def_ppp, 1)
-    ff$off_efg  <- ifelse(roll$off_fga_raw > 0, round((roll$off_fgm_raw + 0.5 * roll$off_fg3m_raw) / roll$off_fga_raw * 100, 1), NA_real_)
-    ff$off_oreb <- ifelse(roll$off_oreb_opp_raw > 0, round((roll$off_oreb_count_raw / roll$off_oreb_opp_raw) * 100, 1), NA_real_)
-    ff$off_tov  <- ifelse(roll$off_poss_raw > 0, round((roll$off_tov_raw / roll$off_poss_raw) * 100, 1), NA_real_)
-    ff$off_ftr  <- ifelse(roll$off_fga_raw > 0, round((roll$off_fta_raw / roll$off_fga_raw) * 100, 1), NA_real_)
-    ff$def_efg  <- ifelse(roll$def_fga_raw > 0, round((roll$def_fgm_raw + 0.5 * roll$def_fg3m_raw) / roll$def_fga_raw * 100, 1), NA_real_)
-    ff$def_oreb <- ifelse(roll$def_oreb_opp_raw > 0, round((roll$def_oreb_count_raw / roll$def_oreb_opp_raw) * 100, 1), NA_real_)
-    ff$def_tov  <- ifelse(roll$def_poss_raw > 0, round((roll$def_tov_raw / roll$def_poss_raw) * 100, 1), NA_real_)
-    ff$def_ftr  <- ifelse(roll$def_fga_raw > 0, round((roll$def_fta_raw / roll$def_fga_raw) * 100, 1), NA_real_)
-
-    list(
-      off = setNames(dplyr::min_rank(dplyr::desc(ff$off_ppp)), as.character(ff$team_id)),
-      def = setNames(dplyr::min_rank(ff$def_ppp), as.character(ff$team_id)),
-      net = setNames(dplyr::min_rank(dplyr::desc(ff$net_rtg)), as.character(ff$team_id)),
-      off_efg = setNames(dplyr::min_rank(dplyr::desc(ff$off_efg)), as.character(ff$team_id)),
-      off_oreb = setNames(dplyr::min_rank(dplyr::desc(ff$off_oreb)), as.character(ff$team_id)),
-      off_tov = setNames(dplyr::min_rank(ff$off_tov), as.character(ff$team_id)),
-      off_ftr = setNames(dplyr::min_rank(dplyr::desc(ff$off_ftr)), as.character(ff$team_id)),
-      def_efg = setNames(dplyr::min_rank(ff$def_efg), as.character(ff$team_id)),
-      def_oreb = setNames(dplyr::min_rank(ff$def_oreb), as.character(ff$team_id)),
-      def_tov = setNames(dplyr::min_rank(dplyr::desc(ff$def_tov)), as.character(ff$team_id)),
-      def_ftr = setNames(dplyr::min_rank(ff$def_ftr), as.character(ff$team_id))
-    )
-  })
-
-  tr_prev_traditional_ranks_from_mv <- reactive({
-    p <- tr_params()
-    if (identical(p$trad_side, "defense")) return(NULL)
-    if (isTRUE(tr_fallback_needed())) return(NULL)
-    if (!isTRUE(tr_delta_enabled())) return(NULL)
-    bounds <- shared$season_date_bounds(as.character(p$game_year))
-    start_d <- if (!is.na(p$start_d)) as.Date(p$start_d) else as.Date(bounds$start)
-    end_d <- if (!is.na(p$end_d)) as.Date(p$end_d) else as.Date(bounds$end)
-    mode <- input$tr_trad_display_mode %||% "Per Game"
-    q <- tryCatch(
-      db_get_query(
-        pg_pool,
-        "WITH scoped AS (
-           SELECT tm.*
-           FROM basketball_test.team_metrics_by_game_mv tm
-           WHERE tm.game_year = $1::int4
-             AND tm.game_date >= $2::date
-             AND tm.game_date <= $3::date
-         ),
-         team_games AS (
-           SELECT
-             g.team_id, g.game_id, g.game_date,
-             ROW_NUMBER() OVER (PARTITION BY g.team_id ORDER BY g.game_date DESC, g.game_id DESC) AS rn
-           FROM (SELECT DISTINCT team_id, game_id, game_date FROM scoped) g
-         ),
-         cuts AS (
-           SELECT
-             tg.team_id,
-             MAX(tg.game_date) FILTER (WHERE tg.rn = 2) AS prev_game_date,
-             MAX(tg.game_id)   FILTER (WHERE tg.rn = 2) AS prev_game_id
-           FROM team_games tg
-           GROUP BY tg.team_id
-           HAVING MAX(CASE WHEN tg.rn = 2 THEN 1 ELSE 0 END) = 1
-         )
-         SELECT
-           s.team_id,
-           COUNT(DISTINCT s.game_id)::int AS gp,
-           COALESCE(SUM(s.off_poss), 0)::numeric AS poss_on_floor,
-           COALESCE(SUM(s.off_minutes), 0)::numeric AS minutes,
-           COALESCE(SUM(s.pts), 0)::numeric AS pts,
-           COALESCE(SUM(s.reb), 0)::numeric AS reb,
-           COALESCE(SUM(s.ast), 0)::numeric AS ast,
-           COALESCE(SUM(s.stl), 0)::numeric AS stl,
-           COALESCE(SUM(s.blk), 0)::numeric AS blk,
-           COALESCE(SUM(s.dfl), 0)::numeric AS dfl,
-           COALESCE(SUM(s.tov), 0)::numeric AS tov,
-           COALESCE(SUM(s.fgm), 0)::numeric AS fgm,
-           COALESCE(SUM(s.fga), 0)::numeric AS fga,
-           COALESCE(SUM(s.\"3pm\"), 0)::numeric AS \"3pm\",
-           COALESCE(SUM(s.\"3pa\"), 0)::numeric AS \"3pa\",
-           COALESCE(SUM(s.ftm), 0)::numeric AS ftm,
-           COALESCE(SUM(s.fta), 0)::numeric AS fta,
-           COALESCE(SUM(s.off_ts_poss_raw), 0)::numeric AS ts_poss
-         FROM scoped s
-         JOIN cuts c
-           ON c.team_id = s.team_id
-          AND (s.game_date < c.prev_game_date OR (s.game_date = c.prev_game_date AND s.game_id <= c.prev_game_id))
-         GROUP BY s.team_id",
-        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(end_d))
-      ),
-      error = function(e) NULL
-    )
-    if (is.null(q) || !nrow(q)) return(NULL)
-    minutes_q <- tryCatch(
-      db_get_query(
-        pg_pool,
-        "WITH acts AS (
-           WITH scoped AS (
-             SELECT tm.team_id, tm.game_id, tm.game_date
-             FROM basketball_test.team_metrics_by_game_mv tm
-             WHERE tm.game_year = $1::int4
-               AND tm.game_date >= $2::date
-               AND tm.game_date <= $3::date
-           ),
-           team_games AS (
-             SELECT
-               g.team_id, g.game_id, g.game_date,
-               ROW_NUMBER() OVER (PARTITION BY g.team_id ORDER BY g.game_date DESC, g.game_id DESC) AS rn
-             FROM (SELECT DISTINCT team_id, game_id, game_date FROM scoped) g
-           ),
-           cuts AS (
-             SELECT
-               tg.team_id,
-               MAX(tg.game_date) FILTER (WHERE tg.rn = 2) AS prev_game_date,
-               MAX(tg.game_id)   FILTER (WHERE tg.rn = 2) AS prev_game_id
-             FROM team_games tg
-             GROUP BY tg.team_id
-             HAVING MAX(CASE WHEN tg.rn = 2 THEN 1 ELSE 0 END) = 1
-           )
-           SELECT d.team_id, d.game_id, d.lineup_hash, d.segment_id, d.segment_seconds
-           FROM basketball_test.df_pts_poss_lineups_longer_mv d
-           JOIN scoped s
-             ON s.game_id = d.game_id
-            AND s.team_id = d.team_id
-           JOIN cuts c
-             ON c.team_id = s.team_id
-            AND (s.game_date < c.prev_game_date OR (s.game_date = c.prev_game_date AND s.game_id <= c.prev_game_id))
-         ),
-         seg_times AS (
-           SELECT
-             a.team_id, a.game_id, a.lineup_hash, a.segment_id,
-             MAX(a.segment_seconds) AS seg_seconds
-           FROM acts a
-           WHERE a.lineup_hash IS NOT NULL
-             AND a.segment_id IS NOT NULL
-             AND a.segment_seconds IS NOT NULL
-           GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id
-         )
-         SELECT
-           st.team_id,
-           ROUND(SUM(COALESCE(st.seg_seconds, 0))::numeric / 60.0, 1) AS minutes
-         FROM seg_times st
-         GROUP BY st.team_id",
-        params = list(as.integer(p$game_year), as.Date(start_d), as.Date(end_d))
-      ),
-      error = function(e) NULL
-    )
-    if (!is.null(minutes_q) && nrow(minutes_q)) {
-      min_map <- setNames(as.numeric(minutes_q$minutes), as.character(minutes_q$team_id))
-      q$minutes <- as.numeric(min_map[as.character(q$team_id)])
-      q$minutes[is.na(q$minutes)] <- 0
-    }
-    q$`2pm` <- q$fgm - q$`3pm`
-    q$`2pa` <- q$fga - q$`3pa`
-    q$fg_pct <- ifelse(q$fga > 0, round((q$fgm / q$fga) * 100, 1), NA_real_)
-    q$two_pct <- ifelse(q$`2pa` > 0, round((q$`2pm` / q$`2pa`) * 100, 1), NA_real_)
-    q$tp_pct <- ifelse(q$`3pa` > 0, round((q$`3pm` / q$`3pa`) * 100, 1), NA_real_)
-    q$ft_pct <- ifelse(q$fta > 0, round((q$ftm / q$fta) * 100, 1), NA_real_)
-    q$efg <- ifelse(q$fga > 0, round(((q$fgm + 0.5 * q$`3pm`) / q$fga) * 100, 1), NA_real_)
-    q$ts <- ts_pct_from_trips(q$pts, q$ts_poss)
-    q <- apply_tr_trad_mode(q, mode)
-
-    metric_cfg <- c(
-      pts = FALSE, reb = FALSE, ast = FALSE, stl = FALSE, blk = FALSE, dfl = FALSE, tov = TRUE,
-      fgm = FALSE, fga = FALSE, `2pm` = FALSE, `2pa` = FALSE, `3pm` = FALSE, `3pa` = FALSE, ftm = FALSE, fta = FALSE,
-      fg_pct = FALSE, two_pct = FALSE, tp_pct = FALSE, ft_pct = FALSE, efg = FALSE, ts = FALSE
-    )
-    ranks <- list()
-    for (m in names(metric_cfg)) {
-      if (!m %in% names(q)) next
-      inv <- isTRUE(metric_cfg[[m]])
-      rk <- if (inv) dplyr::min_rank(q[[m]]) else dplyr::min_rank(dplyr::desc(q[[m]]))
-      ranks[[m]] <- setNames(rk, as.character(q$team_id))
-    }
-    ranks
-  })
-
   tr_prev_ff_data <- reactive({
     prev_end <- tr_prev_match_end()
     if (is.na(prev_end)) return(NULL)
@@ -1031,17 +706,14 @@ server_tab3 <- function(input, output, session, shared) {
         df[[paste0("pr_", m)]] <- pr_vec(df[[m]], invert = inv)
       }
 
-      prev_rank_map <- tr_prev_traditional_ranks_from_mv()
-      if (is.null(prev_rank_map)) {
-        prev <- if (isTRUE(tr_delta_enabled())) tr_prev_traditional_data() else NULL
-        prev_rank_map <- list()
-        if (!is.null(prev) && nrow(prev)) {
-          for (m in names(metric_cfg)) {
-            if (!m %in% names(prev)) next
-            inv <- isTRUE(metric_cfg[[m]])
-            rk <- rank_vec_local(prev[[m]], invert = inv)
-            prev_rank_map[[m]] <- setNames(rk, as.character(prev$team_id))
-          }
+      prev <- if (isTRUE(tr_delta_enabled())) tr_prev_traditional_data() else NULL
+      prev_rank_map <- list()
+      if (!is.null(prev) && nrow(prev)) {
+        for (m in names(metric_cfg)) {
+          if (!m %in% names(prev)) next
+          inv <- isTRUE(metric_cfg[[m]])
+          rk <- rank_vec_local(prev[[m]], invert = inv)
+          prev_rank_map[[m]] <- setNames(rk, as.character(prev$team_id))
         }
       }
       make_cell <- function(vals, ranks_now, metric_name) {
@@ -1213,45 +885,30 @@ server_tab3 <- function(input, output, session, shared) {
 
       if (show_delta) {
         key <- as.character(df$team_id)
-        mv_prev <- tr_prev_ff_ranks_from_mv()
-        if (!is.null(mv_prev)) {
-          d_off <- as.integer(mv_prev$off[key]) - as.integer(rk_off_now)
-          d_def <- as.integer(mv_prev$def[key]) - as.integer(rk_def_now)
-          d_net <- as.integer(mv_prev$net[key]) - as.integer(rk_net_now)
-          d_off_efg <- as.integer(mv_prev$off_efg[key]) - as.integer(rk_off_efg_now)
-          d_off_oreb <- as.integer(mv_prev$off_oreb[key]) - as.integer(rk_off_oreb_now)
-          d_off_tov <- as.integer(mv_prev$off_tov[key]) - as.integer(rk_off_tov_now)
-          d_off_ftr <- as.integer(mv_prev$off_ftr[key]) - as.integer(rk_off_ftr_now)
-          d_def_efg <- as.integer(mv_prev$def_efg[key]) - as.integer(rk_def_efg_now)
-          d_def_oreb <- as.integer(mv_prev$def_oreb[key]) - as.integer(rk_def_oreb_now)
-          d_def_tov <- as.integer(mv_prev$def_tov[key]) - as.integer(rk_def_tov_now)
-          d_def_ftr <- as.integer(mv_prev$def_ftr[key]) - as.integer(rk_def_ftr_now)
-        } else {
-          prev <- tr_prev_ff_data()
-          if (!is.null(prev) && nrow(prev)) {
-            rk_off_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ppp)), as.character(prev$team_id))
-            rk_def_prev <- setNames(dplyr::min_rank(prev$def_ppp), as.character(prev$team_id))
-            rk_net_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$net_rtg)), as.character(prev$team_id))
-            rk_off_efg_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_efg)), as.character(prev$team_id))
-            rk_off_oreb_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_oreb)), as.character(prev$team_id))
-            rk_off_tov_prev <- setNames(dplyr::min_rank(prev$off_tov), as.character(prev$team_id))
-            rk_off_ftr_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ftr)), as.character(prev$team_id))
-            rk_def_efg_prev <- setNames(dplyr::min_rank(prev$def_efg), as.character(prev$team_id))
-            rk_def_oreb_prev <- setNames(dplyr::min_rank(prev$def_oreb), as.character(prev$team_id))
-            rk_def_tov_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$def_tov)), as.character(prev$team_id))
-            rk_def_ftr_prev <- setNames(dplyr::min_rank(prev$def_ftr), as.character(prev$team_id))
-            d_off <- as.integer(rk_off_prev[key]) - as.integer(rk_off_now)
-            d_def <- as.integer(rk_def_prev[key]) - as.integer(rk_def_now)
-            d_net <- as.integer(rk_net_prev[key]) - as.integer(rk_net_now)
-            d_off_efg <- as.integer(rk_off_efg_prev[key]) - as.integer(rk_off_efg_now)
-            d_off_oreb <- as.integer(rk_off_oreb_prev[key]) - as.integer(rk_off_oreb_now)
-            d_off_tov <- as.integer(rk_off_tov_prev[key]) - as.integer(rk_off_tov_now)
-            d_off_ftr <- as.integer(rk_off_ftr_prev[key]) - as.integer(rk_off_ftr_now)
-            d_def_efg <- as.integer(rk_def_efg_prev[key]) - as.integer(rk_def_efg_now)
-            d_def_oreb <- as.integer(rk_def_oreb_prev[key]) - as.integer(rk_def_oreb_now)
-            d_def_tov <- as.integer(rk_def_tov_prev[key]) - as.integer(rk_def_tov_now)
-            d_def_ftr <- as.integer(rk_def_ftr_prev[key]) - as.integer(rk_def_ftr_now)
-          }
+        prev <- tr_prev_ff_data()
+        if (!is.null(prev) && nrow(prev)) {
+          rk_off_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ppp)), as.character(prev$team_id))
+          rk_def_prev <- setNames(dplyr::min_rank(prev$def_ppp), as.character(prev$team_id))
+          rk_net_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$net_rtg)), as.character(prev$team_id))
+          rk_off_efg_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_efg)), as.character(prev$team_id))
+          rk_off_oreb_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_oreb)), as.character(prev$team_id))
+          rk_off_tov_prev <- setNames(dplyr::min_rank(prev$off_tov), as.character(prev$team_id))
+          rk_off_ftr_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ftr)), as.character(prev$team_id))
+          rk_def_efg_prev <- setNames(dplyr::min_rank(prev$def_efg), as.character(prev$team_id))
+          rk_def_oreb_prev <- setNames(dplyr::min_rank(prev$def_oreb), as.character(prev$team_id))
+          rk_def_tov_prev <- setNames(dplyr::min_rank(dplyr::desc(prev$def_tov)), as.character(prev$team_id))
+          rk_def_ftr_prev <- setNames(dplyr::min_rank(prev$def_ftr), as.character(prev$team_id))
+          d_off <- as.integer(rk_off_prev[key]) - as.integer(rk_off_now)
+          d_def <- as.integer(rk_def_prev[key]) - as.integer(rk_def_now)
+          d_net <- as.integer(rk_net_prev[key]) - as.integer(rk_net_now)
+          d_off_efg <- as.integer(rk_off_efg_prev[key]) - as.integer(rk_off_efg_now)
+          d_off_oreb <- as.integer(rk_off_oreb_prev[key]) - as.integer(rk_off_oreb_now)
+          d_off_tov <- as.integer(rk_off_tov_prev[key]) - as.integer(rk_off_tov_now)
+          d_off_ftr <- as.integer(rk_off_ftr_prev[key]) - as.integer(rk_off_ftr_now)
+          d_def_efg <- as.integer(rk_def_efg_prev[key]) - as.integer(rk_def_efg_now)
+          d_def_oreb <- as.integer(rk_def_oreb_prev[key]) - as.integer(rk_def_oreb_now)
+          d_def_tov <- as.integer(rk_def_tov_prev[key]) - as.integer(rk_def_tov_now)
+          d_def_ftr <- as.integer(rk_def_ftr_prev[key]) - as.integer(rk_def_ftr_now)
         }
       }
 
@@ -1556,23 +1213,16 @@ server_tab3 <- function(input, output, session, shared) {
       d_def <- rep(NA_integer_, nrow(df))
       if (show_delta) {
         key <- as.character(df$team_id)
-        mv_prev <- tr_prev_summary_ranks_from_mv()
-        if (!is.null(mv_prev)) {
-          d_net <- as.integer(mv_prev$net[key]) - as.integer(rk_net_now)
-          d_off <- as.integer(mv_prev$off[key]) - as.integer(rk_off_now)
-          d_def <- as.integer(mv_prev$def[key]) - as.integer(rk_def_now)
-        } else {
-          prev <- tr_prev_data()
-          if (!is.null(prev) && nrow(prev)) {
-            pkey <- if ("team_id" %in% names(prev)) as.character(prev$team_id) else as.character(prev$team_name)
-            key <- if ("team_id" %in% names(df) && "team_id" %in% names(prev)) as.character(df$team_id) else as.character(df$team_name)
-            prv_net <- setNames(dplyr::min_rank(dplyr::desc(prev$net_rtg)), pkey)
-            prv_off <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ppp)), pkey)
-            prv_def <- setNames(dplyr::min_rank(prev$def_ppp), pkey)
-            d_net <- as.integer(prv_net[key]) - as.integer(rk_net_now)
-            d_off <- as.integer(prv_off[key]) - as.integer(rk_off_now)
-            d_def <- as.integer(prv_def[key]) - as.integer(rk_def_now)
-          }
+        prev <- tr_prev_data()
+        if (!is.null(prev) && nrow(prev)) {
+          pkey <- if ("team_id" %in% names(prev)) as.character(prev$team_id) else as.character(prev$team_name)
+          key <- if ("team_id" %in% names(df) && "team_id" %in% names(prev)) as.character(df$team_id) else as.character(df$team_name)
+          prv_net <- setNames(dplyr::min_rank(dplyr::desc(prev$net_rtg)), pkey)
+          prv_off <- setNames(dplyr::min_rank(dplyr::desc(prev$off_ppp)), pkey)
+          prv_def <- setNames(dplyr::min_rank(prev$def_ppp), pkey)
+          d_net <- as.integer(prv_net[key]) - as.integer(rk_net_now)
+          d_off <- as.integer(prv_off[key]) - as.integer(rk_off_now)
+          d_def <- as.integer(prv_def[key]) - as.integer(rk_def_now)
         }
       }
       df$off_ppp_lbl <- fmt_rank_cell(df$off_ppp, rk_off_now, d_off, 1, show_delta)

@@ -6,7 +6,8 @@
 -- summed over every segment. Inside one: last minus first canonical event time
 -- among the segment's in-window rows, substitution and timeout rows included.
 -- A starters filter tests the PHYSICAL starters: floor time never follows
--- credit. Same parameters, in the same order, as get_team_ratings_dynamic.
+-- credit. Same parameters, in the same order, as get_team_ratings_dynamic,
+-- plus p_use_game_totals (testing only).
 --
 -- Moved 2026-10-12 from an inline query in app/R/server_tab3.R
 -- (fetch_team_game_minutes), which outside a clutch or starters filter did not
@@ -38,7 +39,8 @@ CREATE OR REPLACE FUNCTION basketball_test.get_team_minutes_dynamic(
     p_num_starters_off_min INT DEFAULT NULL,
     p_num_starters_off_max INT DEFAULT NULL,
     p_num_starters_def_min INT DEFAULT NULL,
-    p_num_starters_def_max INT DEFAULT NULL
+    p_num_starters_def_max INT DEFAULT NULL,
+    p_use_game_totals      BOOLEAN DEFAULT TRUE
 )
 RETURNS TABLE (
     team_id INT,
@@ -124,7 +126,15 @@ AS $$
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
     CROSS JOIN params p0
-    WHERE d.lineup_hash IS NOT NULL
+    -- Read action rows only for a clutch window or a starters filter (see
+    -- game_minutes below). The test holds no column, so the planner turns it
+    -- into a one-time filter and skips the scan.
+    WHERE (p_max_margin IS NOT NULL OR p_max_time_remaining IS NOT NULL
+           OR COALESCE(NULLIF(btrim(p_margin_status), ''), 'all') <> 'all'
+           OR COALESCE(p_num_starters_off, p_num_starters_def, p_num_starters_off_min, p_num_starters_off_max,
+                       p_num_starters_def_min, p_num_starters_def_max) IS NOT NULL
+           OR NOT COALESCE(p_use_game_totals, TRUE))
+      AND d.lineup_hash IS NOT NULL
       AND d.segment_id IS NOT NULL
       AND (p_max_margin IS NULL
            OR ABS(CASE WHEN d.type_lineup = 'offense'
@@ -167,8 +177,29 @@ AS $$
     FROM rows_in_scope r
     CROSS JOIN params p0
     GROUP BY r.team_id, r.game_id, r.lineup_hash, r.segment_id, p0.clutch_active
+  ),
+  raw_minutes AS (
+    SELECT st.team_id, ROUND(SUM(COALESCE(st.seg_seconds, 0)) / 60.0, 3) AS minutes
+    FROM seg_times st
+    GROUP BY st.team_id
+  ),
+  -- Fast path. With no clutch window and no starters filter the answer is a
+  -- sum over whole games, and lineup_four_factors_by_game already holds each
+  -- lineup's exact floor time per game. p_use_game_totals := FALSE forces the
+  -- action-row path; test-team-minutes-db.R requires the two to agree.
+  game_minutes AS (
+    SELECT lf.team_id, ROUND(SUM(ROUND(lf.minutes * 60, 5)) / 60.0, 3) AS minutes
+    FROM basketball_test.lineup_four_factors_by_game lf
+    JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
+    WHERE NOT (p_max_margin IS NOT NULL OR p_max_time_remaining IS NOT NULL
+           OR COALESCE(NULLIF(btrim(p_margin_status), ''), 'all') <> 'all'
+           OR COALESCE(p_num_starters_off, p_num_starters_def, p_num_starters_off_min, p_num_starters_off_max,
+                       p_num_starters_def_min, p_num_starters_def_max) IS NOT NULL
+           OR NOT COALESCE(p_use_game_totals, TRUE))
+      AND lf.minutes IS NOT NULL
+    GROUP BY lf.team_id
   )
-  SELECT st.team_id, ROUND(SUM(COALESCE(st.seg_seconds, 0)) / 60.0, 3) AS minutes
-  FROM seg_times st
-  GROUP BY st.team_id
+  SELECT r.team_id, r.minutes FROM raw_minutes r
+  UNION ALL
+  SELECT g.team_id, g.minutes FROM game_minutes g
 $$;

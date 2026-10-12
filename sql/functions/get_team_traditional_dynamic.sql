@@ -25,7 +25,8 @@ CREATE OR REPLACE FUNCTION basketball_test.get_team_traditional_dynamic(
     p_min_gn             INT  DEFAULT NULL,
     p_max_gn             INT  DEFAULT NULL,
     p_last_n_games       INT  DEFAULT NULL,
-    p_side               TEXT DEFAULT 'offense'
+    p_side               TEXT DEFAULT 'offense',
+    p_use_game_totals    BOOLEAN DEFAULT TRUE
 )
 RETURNS TABLE (
     team_id       INT,
@@ -101,7 +102,7 @@ AS $$
   ),
   games_ranked AS (
     SELECT
-      gb.game_id, gb.team_id, gb.game_year,
+      gb.game_id, gb.team_id, gb.game_year, gb.opp_team_id,
       CASE
         WHEN p_opp_rank_side::text IN ('top','bottom') THEN
           CASE COALESCE(p_opp_rank_metric::text, 'net')
@@ -129,7 +130,7 @@ AS $$
      AND p_opp_rank_side::text IN ('top','bottom')
   ),
   games_filtered AS (
-    SELECT gr.game_id, gr.team_id
+    SELECT gr.game_id, gr.team_id, gr.opp_team_id
     FROM games_ranked gr
     WHERE p_opp_rank_side::text IS NULL OR p_opp_rank_side::text = '' OR p_opp_rank_n::int4 IS NULL
        OR (p_opp_rank_side::text = 'top' AND gr.opp_rank <= p_opp_rank_n::int4)
@@ -145,7 +146,14 @@ AS $$
     -- Pre-shot margin, as in get_team_ratings_dynamic: the points scored on
     -- this row are taken back out of the scoring side's total, so a shot is
     -- judged by the score it was taken at, not the score it produced.
-    WHERE (
+    -- Read action rows only when the answer cannot come from the per-game
+    -- totals (see game_totals below). The test holds no column, so the
+    -- planner turns it into a one-time filter and skips the scan.
+    WHERE (p_max_margin IS NOT NULL OR p_max_time_remaining IS NOT NULL
+           OR COALESCE(NULLIF(btrim(p_margin_status), ''), 'all') <> 'all'
+           OR NOT COALESCE(p_use_game_totals, TRUE)
+           OR p_side IS NULL OR p_side NOT IN ('offense', 'defense'))
+    AND (
       p_max_margin::int4 IS NULL
       OR ABS(CASE WHEN d.type_lineup = 'offense'
                   THEN (d.own_team_score - COALESCE(d.team_score, 0)) - d.opp_team_score
@@ -174,7 +182,7 @@ AS $$
     )
     AND (p_max_time_remaining::int4 IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining::int4 OR d.quarter > 4)
   ),
-  team_stats AS (
+  team_stats AS MATERIALIZED (
     SELECT
       a.team_id,
       (
@@ -242,7 +250,7 @@ AS $$
     FROM acts a
     GROUP BY a.team_id
   ),
-  ft_trips AS (
+  ft_trips AS MATERIALIZED (
     SELECT a.team_id, COUNT(DISTINCT (a.game_id, a.parent_action_id))::int AS trips
     FROM acts a
     JOIN basketball_test.df_pts_poss_lineups_longer_mv parent
@@ -257,7 +265,7 @@ AS $$
     FROM acts a
     WHERE a.type_lineup = p_side::text AND a.final_end_poss AND a.id IS NOT NULL
   ),
-  team_usage AS (
+  team_usage AS MATERIALIZED (
     SELECT
       pe.team_id,
       COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::int AS poss_on_floor
@@ -268,7 +276,7 @@ AS $$
   -- in get_team_ratings_dynamic. Counting only games with a completed
   -- possession dropped games where the team merely defended inside a clutch
   -- window, while their stats stayed in the totals.
-  team_games AS (
+  team_games AS MATERIALIZED (
     SELECT a.team_id, COUNT(DISTINCT a.game_id)::int AS gp
     FROM acts a
     GROUP BY a.team_id
@@ -297,7 +305,7 @@ AS $$
                ELSE a.segment_seconds::numeric END IS NOT NULL
     GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id, p0.clutch_active
   ),
-  team_minutes AS (
+  team_minutes AS MATERIALIZED (
     SELECT st.team_id, ROUND(SUM(COALESCE(st.seg_seconds, 0))::numeric / 60.0, 1) AS minutes
     FROM seg_times st
     GROUP BY st.team_id
@@ -307,7 +315,8 @@ AS $$
     FROM basketball_test.full_rosters fr
     WHERE fr.game_year = p_game_year::int4
     GROUP BY fr.team_id
-  )
+  ),
+  raw_out AS (
   SELECT
     ts.team_id, tn.team_name,
     COALESCE(tg.gp, 0)::int AS gp,
@@ -329,5 +338,79 @@ AS $$
   LEFT JOIN ft_trips ft ON ft.team_id = ts.team_id
   LEFT JOIN team_names tn ON tn.team_id = ts.team_id
   WHERE tn.team_name IS NOT NULL
-  ORDER BY ts.pts DESC, tm.minutes DESC, tn.team_name
+  ),
+  -- Fast path, the same table from per-game totals. Outside a clutch window
+  -- every filter is a choice of whole games, so a team's line is the sum of
+  -- its game lines: box totals and possessions from team_metrics_by_game_mv
+  -- (the opponent's row gives the defence side), floor time from
+  -- lineup_four_factors_by_game, whose per-game minutes are exact -- the
+  -- view's own minutes are rounded per game and must not be summed.
+  -- p_use_game_totals := FALSE forces the action-row path; a nightly test
+  -- calls both and requires the same table (test-team-traditional-paths-db.R).
+  game_totals AS (
+    SELECT
+      gf.team_id,
+      COUNT(*)::int AS gp,
+      SUM(CASE WHEN p_side = 'offense' THEN own.off_poss_raw ELSE own.def_poss_raw END)::int AS poss_on_floor,
+      SUM(CASE WHEN p_side = 'offense' THEN own.off_oreb_count_raw ELSE own.def_oreb_count_raw END)::int AS oreb,
+      SUM(CASE WHEN p_side = 'offense' THEN own.off_ts_poss_raw ELSE own.def_ts_poss_raw END)::numeric AS ts_att,
+      SUM(CASE WHEN p_side = 'offense' THEN own.pts ELSE opp.pts END)::int AS pts,
+      SUM(CASE WHEN p_side = 'offense' THEN own.reb ELSE opp.reb END)::int AS reb,
+      SUM(CASE WHEN p_side = 'offense' THEN own.ast ELSE opp.ast END)::int AS ast,
+      SUM(CASE WHEN p_side = 'offense' THEN own.stl ELSE opp.stl END)::int AS stl,
+      SUM(CASE WHEN p_side = 'offense' THEN own.blk ELSE opp.blk END)::int AS blk,
+      SUM(CASE WHEN p_side = 'offense' THEN own.dfl ELSE opp.dfl END)::int AS dfl,
+      SUM(CASE WHEN p_side = 'offense' THEN own.tov ELSE opp.tov END)::int AS tov,
+      SUM(CASE WHEN p_side = 'offense' THEN own.fgm ELSE opp.fgm END)::int AS fgm,
+      SUM(CASE WHEN p_side = 'offense' THEN own.fga ELSE opp.fga END)::int AS fga,
+      SUM(CASE WHEN p_side = 'offense' THEN own."3pm" ELSE opp."3pm" END)::int AS "3pm",
+      SUM(CASE WHEN p_side = 'offense' THEN own."3pa" ELSE opp."3pa" END)::int AS "3pa",
+      SUM(CASE WHEN p_side = 'offense' THEN own.ftm ELSE opp.ftm END)::int AS ftm,
+      SUM(CASE WHEN p_side = 'offense' THEN own.fta ELSE opp.fta END)::int AS fta
+    FROM games_filtered gf
+    JOIN basketball_test.team_metrics_by_game_mv own
+      ON own.game_id = gf.game_id AND own.team_id = gf.team_id
+    JOIN basketball_test.team_metrics_by_game_mv opp
+      ON opp.game_id = gf.game_id AND opp.team_id = gf.opp_team_id
+    WHERE NOT (p_max_margin IS NOT NULL OR p_max_time_remaining IS NOT NULL
+           OR COALESCE(NULLIF(btrim(p_margin_status), ''), 'all') <> 'all'
+           OR NOT COALESCE(p_use_game_totals, TRUE)
+           OR p_side IS NULL OR p_side NOT IN ('offense', 'defense'))
+      AND own.pts IS NOT NULL
+    GROUP BY gf.team_id
+  ),
+  game_minutes AS (
+    SELECT lf.team_id, ROUND(SUM(ROUND(lf.minutes * 60, 5)) / 60.0, 1) AS minutes
+    FROM basketball_test.lineup_four_factors_by_game lf
+    JOIN games_filtered gf ON gf.game_id = lf.game_id AND gf.team_id = lf.team_id
+    WHERE NOT (p_max_margin IS NOT NULL OR p_max_time_remaining IS NOT NULL
+           OR COALESCE(NULLIF(btrim(p_margin_status), ''), 'all') <> 'all'
+           OR NOT COALESCE(p_use_game_totals, TRUE)
+           OR p_side IS NULL OR p_side NOT IN ('offense', 'defense'))
+      AND lf.minutes IS NOT NULL
+    GROUP BY lf.team_id
+  ),
+  fast_out AS (
+  SELECT
+    g.team_id, tn.team_name,
+    g.gp,
+    COALESCE(g.poss_on_floor, 0)::int AS poss_on_floor,
+    COALESCE(gm.minutes, 0)::numeric AS minutes,
+    g.pts, g.reb, g.oreb, (g.reb - g.oreb)::int AS dreb, g.ast, g.stl, g.blk, g.dfl, g.tov,
+    g.fgm, g.fga, (g.fgm - g."3pm")::int AS "2pm", (g.fga - g."3pa")::int AS "2pa",
+    g."3pm", g."3pa", g.ftm, g.fta,
+    CASE WHEN g.fga > 0 THEN ROUND((g.fgm::numeric / g.fga::numeric) * 100, 1) ELSE NULL END AS fg_pct,
+    CASE WHEN (g.fga - g."3pa") > 0 THEN ROUND(((g.fgm - g."3pm")::numeric / (g.fga - g."3pa")::numeric) * 100, 1) ELSE NULL END AS two_pct,
+    CASE WHEN g."3pa" > 0 THEN ROUND((g."3pm"::numeric / g."3pa"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
+    CASE WHEN g.fta > 0 THEN ROUND((g.ftm::numeric / g.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
+    CASE WHEN g.fga > 0 THEN ROUND(((g.fgm::numeric + 0.5 * g."3pm"::numeric) / g.fga::numeric) * 100, 1) ELSE NULL END AS efg,
+    CASE WHEN g.ts_att > 0 THEN ROUND((g.pts::numeric / (2.0 * g.ts_att)) * 100, 1) ELSE NULL END AS ts
+  FROM game_totals g
+  LEFT JOIN game_minutes gm ON gm.team_id = g.team_id
+  LEFT JOIN team_names tn ON tn.team_id = g.team_id
+  WHERE tn.team_name IS NOT NULL
+  )
+  SELECT u.*
+  FROM (SELECT * FROM raw_out UNION ALL SELECT * FROM fast_out) u
+  ORDER BY u.pts DESC, u.minutes DESC, u.team_name
 $$;

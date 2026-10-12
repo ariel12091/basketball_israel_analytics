@@ -21,7 +21,7 @@ disagree, this one wins and the other is stale.
 
 ## 1. What went wrong, and why
 
-Ten differences were found and fixed in one session, and an eleventh the day's audit turned up afterwards (Tab 3 pace on nominal game length). None was a typo. Each was
+Ten differences were found and fixed in one session, and an eleventh the day's audit turned up afterwards (Tab 3 pace on nominal game length), and a twelfth after that: Tab 3's rank arrows meant "since each team's own last game" in the default state and "since the last league game day" under any filter or on the defence side. None was a typo. Each was
 a second copy of something that already existed.
 
 | # | What differed | Where the two copies lived | Root cause |
@@ -213,6 +213,7 @@ possessions) is NULL, not 0 or 50.
 | Min possessions (lineups) | Threshold on `off_poss + def_poss`, applied **after** ranking the full population |
 | Min possessions (on/off) | Threshold on ON possessions |
 | Players on / any of / off | `A AND (at least or exactly k of B, C, D) AND NOT E`. "Any of" adds a clause; it never relaxes one |
+| Rank-change arrows (team tabs) | Today's rank against the rank on the **last league game day before the latest one**, under the same filters: the stored reader called again with that end date. Never a per-team cut (each team rolled back to before its own latest game), which compares a table that never existed |
 | Blank | `""` for every single-select |
 
 Percentile ranks are computed on the full population before any local
@@ -238,10 +239,9 @@ found; remove it the day it is closed.
 | D8 | `player_four_factors_by_game` holds partial rows for players not on a game's roster | data | Open |
 | D9 | A side with possessions and no points returns a NULL rating, not 0 (`four_factors_dashboard_compute`), which also hides the row's minutes | R3 | Found 2026-10-12, open |
 | D10 | `refresh_sub_lineups_stats()` writes all-zero rows for lineups with no base rows; the Four Factors reader never returns them | R4, R10 | 4 rows deleted 2026-10-12; a full refresh recreates them |
-| D11b | `tr_prev_traditional_ranks_from_mv` (`server_tab3.R`) rebuilds the whole Traditional table for the rank arrows -- box totals from `team_metrics_by_game_mv`, minutes from the base table, percentages in R -- beside `get_team_traditional_dynamic`. Its cut is each team's own previous game, which the function's single end date cannot express | R1, R4 | Audited 2026-10-12, open. Not compared number for number |
-| D11c | `global.R`: the Gameflow readers (physical segments and margins for one game) and `fetch_scoreless_games()` read the base table. These read detail rows; they do not re-derive a metric | R1 | Audited 2026-10-12: allowed |
-| D11d | The Traditional reader rounds team minutes to one decimal; the owner returns three. Same time, coarser figure (up to 0.05 min per team) | R5 | Explained 2026-10-12; harmless while nothing recombines them |
-| D11e | `server_tab6_team_stats.R` is unwired and still holds inline SQL over the base table | R1 | Dead code; delete or ignore |
+| D11 | `global.R`: the Gameflow readers (physical segments and margins for one game) and `fetch_scoreless_games()` read the base table. These read detail rows; they do not re-derive a metric | R1 | Audited 2026-10-12: allowed |
+| D16 | The Traditional reader rounds team minutes to one decimal; the owner returns three. Same time, coarser figure (up to 0.05 min per team) | R5 | Explained 2026-10-12; harmless while nothing recombines them |
+| D17 | `server_tab6_team_stats.R` is unwired and still holds inline SQL over the base table | R1 | Dead code; delete or ignore |
 | D15 | A team's five-man lineup minutes do not add up to its floor time: per team, the lineup readers' sum is up to about 10 minutes away from `get_team_minutes_dynamic` over a season (2026), more than row rounding explains. Likely lineups the readers do not list as five known players | data | Seen 2026-10-12, not traced |
 | D12 | The React Shot Profile port differs from Shiny | R3 | Intentional, recorded |
 | D13 | EuroLeague clutch, last-N, minutes and starters rules have not been re-verified against sections 3 and 4 | R7 | Not re-verified |
@@ -283,15 +283,16 @@ Not deviations, though they look like one:
 | `test-game-types-db.R`, `test-season-teams-db.R` (nightly) | The generated catalogue copy equals the tables |
 | `test-data-shape-db.R` (nightly) | The feed assumption behind "2PT Jumper" |
 | `test-league-shared-helpers.R`, `test-lineup-player-chips.R` | Shared helpers behave the same for both leagues; every reader of the player filter lists its inputs |
-| `test-team-minutes-db.R` (nightly) | Team floor time: the owner equals the Traditional reader (to its one decimal), the clutch dashboard reader (exactly), and measured segment time |
-| `test-shared-definitions.R` | R1 as a ratchet: the R files that query the base action table directly are frozen at the D11 list, which may only shrink; Tab 3 takes pace minutes from the stored function; both `CLAUDE.md` files point here |
+| `test-team-minutes-db.R` (nightly) | Team floor time: the owner equals the Traditional reader (to its one decimal), the clutch dashboard reader (exactly) and measured segment time; its per-game path equals its action-row path |
+| `test-team-reader-paths-db.R` (nightly) | R10: the Traditional reader's per-game path equals its action-row path on every column, both sides, six filter sets; the two team views behind Tab 3's default state equal their dynamic readers |
+| `test-shared-definitions.R` | R1 as a ratchet: the R files that query the base action table directly are frozen at the D11/D17 list, which may only shrink; Tab 3 takes pace minutes and rank arrows from stored readers only; both `CLAUDE.md` files point here |
 | `scripts/verify_ft_credit.R` | Migration gates that fail on an unexpected change |
 | `.github/workflows/catalogue-sync.yml` | Fails when the schedule holds a game type with no label |
 
 Pins that do not exist yet. Each is a twin without a test (R4):
 
-- Fast path equals filtered path, for the team readers and the player readers.
-  Only the lineup readers are pinned.
+- Fast path equals filtered path for the **player** readers. The lineup and
+  team readers are pinned.
 - Israeli and EuroLeague readers return the same number for the same metric on
   a constructed game.
 - `apply_local_lineup_filters()` (R) and `apply_lineup_local_filters()`
