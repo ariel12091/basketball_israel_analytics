@@ -66,7 +66,9 @@ AS $$
       CASE WHEN p_game_type_csv::text IS NULL OR btrim(p_game_type_csv::text) = '' THEN NULL::int4[]
            ELSE string_to_array(regexp_replace(p_game_type_csv::text, '\s+', '', 'g'), ',')::int4[] END AS game_types,
       CASE WHEN p_opp_team_ids_csv::text IS NULL OR btrim(p_opp_team_ids_csv::text) = '' THEN NULL::int4[]
-           ELSE string_to_array(regexp_replace(p_opp_team_ids_csv::text, '\s+', '', 'g'), ',')::int4[] END AS opp_ids
+           ELSE string_to_array(regexp_replace(p_opp_team_ids_csv::text, '\s+', '', 'g'), ',')::int4[] END AS opp_ids,
+      (p_max_margin IS NOT NULL OR p_max_time_remaining IS NOT NULL
+       OR COALESCE(NULLIF(btrim(p_margin_status), ''), 'all') <> 'all') AS clutch_active
   ),
   season_recency AS (
     SELECT
@@ -135,6 +137,7 @@ AS $$
   ),
   acts AS (
      SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining, d.event_elapsed_seconds,
+            d.segment_seconds,
             d.type, d.parameters_type, d.parameters_made, d.parameters_points, d.event_owner_side, d.type_lineup, d.final_end_poss, d.quarter,
             d.own_team_score, d.opp_team_score
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
@@ -234,17 +237,29 @@ AS $$
     FROM poss_end pe
     GROUP BY pe.team_id
   ),
+  -- Floor time. With no clutch window the canonical segment clock applies: one
+  -- MAX(segment_seconds) per segment, with type_lineup absent from the GROUP
+  -- BY (CLAUDE.md, "Floor time"). A clutch window covers only part of a
+  -- segment, so there the measure is the time between the first and last
+  -- surviving event, as in get_player_traditional_custom_clutch.
   seg_times AS (
     SELECT
       a.team_id, a.game_id, a.lineup_hash, a.segment_id,
-      GREATEST(
-        (array_agg(a.event_elapsed_seconds ORDER BY a.id DESC))[1] -
-        (array_agg(a.event_elapsed_seconds ORDER BY a.id))[1],
-        0
-      )::numeric AS seg_seconds
+      CASE
+        WHEN p0.clutch_active THEN
+          GREATEST(
+            (array_agg(a.event_elapsed_seconds ORDER BY a.id DESC))[1] -
+            (array_agg(a.event_elapsed_seconds ORDER BY a.id))[1],
+            0
+          )::numeric
+        ELSE MAX(a.segment_seconds)::numeric
+      END AS seg_seconds
     FROM acts a
-    WHERE a.lineup_hash IS NOT NULL AND a.segment_id IS NOT NULL AND a.event_elapsed_seconds IS NOT NULL
-    GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id
+    CROSS JOIN params p0
+    WHERE a.lineup_hash IS NOT NULL AND a.segment_id IS NOT NULL
+      AND CASE WHEN p0.clutch_active THEN a.event_elapsed_seconds::numeric
+               ELSE a.segment_seconds::numeric END IS NOT NULL
+    GROUP BY a.team_id, a.game_id, a.lineup_hash, a.segment_id, p0.clutch_active
   ),
   team_minutes AS (
     SELECT st.team_id, ROUND(SUM(COALESCE(st.seg_seconds, 0))::numeric / 60.0, 1) AS minutes
