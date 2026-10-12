@@ -10,60 +10,15 @@ library(bslib)
 library(htmltools)
 
 # ---------------- Defaults ----------------
-# Default season shown on load. To roll to a new season, add its static roster,
-# bump this value, and add the matching navbar label in app.R.
+# Default season shown on load. To roll to a new season, bump this value and
+# add the matching navbar label in app.R. Its teams must already be in
+# R/catalogues_generated.R, which the nightly catalogue sync fills from
+# full_rosters once the season's first rosters load.
 DEFAULT_GAME_YEAR <- "2027"   # 26-27
 
-# Season-aware team rosters used before the first database connection. Team IDs
-# are provider IDs and can be recycled between seasons, so each season needs an
-# explicit mapping.
-# Pinned copy of basketball_test.season_teams, which is the source of truth.
-# Change a team in the table AND here; test-season-teams-db.R fails when the
-# two differ.
-STATIC_TEAM_ROSTERS <- list(
-  `2027` = data.frame(
-    # App-facing IDs come from the PBP roster feed; the public schedule uses
-    # separate 2111-2124 IDs mapped in schedule_team_dict.
-    team_id = c(2L, 3L, 7L, 4L, 5L, 12L, 8L, 9L, 11L, 6L, 10L, 14L, 33L, 17L),
-    team_name = c(
-      "MACCABI TEL AVIV",
-      "HAPOEL TEL AVIV",
-      "MACCABI RAMAT GAN",
-      "HAPOEL JERUSALEM",
-      "HAPOEL HOLON",
-      "IRONI KIRYAT ATA",
-      "HAPOEL HAEMEK",
-      "NESS ZIONA",
-      "BEER SHEVA/DIMONA",
-      "BNEI HERZLIYA",
-      "HAPOEL GALIL ELION",
-      "M. RISHON",
-      "MACCABI ASHDOD",
-      "HAPOEL EILAT"
-    ),
-    stringsAsFactors = FALSE
-  ),
-  `2026` = data.frame(
-    team_id = 2:15,
-    team_name = c(
-      "MACCABI TEL AVIV",
-      "HAPOEL TEL AVIV",
-      "HAPOEL JERUSALEM",
-      "HAPOEL HOLON",
-      "BNEI HERZLIYA",
-      "MACCABI RAMAT GAN",
-      "HAPOEL HAEMEK",
-      "NESS ZIONA",
-      "GALIL ELION",
-      "BEER SHEVA",
-      "KIRYAT ATA",
-      "MACCABI RAANANA",
-      "RISHON LEZION",
-      "ELIZUR NETANYA"
-    ),
-    stringsAsFactors = FALSE
-  )
-)
+# STATIC_TEAM_ROSTERS (season-aware team rosters used before the first
+# database connection) is generated from basketball_test.season_teams into
+# R/catalogues_generated.R, which app.R sources ahead of this file.
 
 static_team_roster <- function(gy) {
   roster <- STATIC_TEAM_ROSTERS[[as.character(as.integer(gy))]]
@@ -872,22 +827,8 @@ navbar_league_select_ui <- function() {
 }
 
 # ---------------- Filter Chips Builder ----------------
-# Pinned copy of basketball_test.game_types, which is the source of truth: the
-# dropdowns are built before any database connection exists. Change a label in
-# the table AND here; test-game-types-db.R fails when the two differ.
-GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
-                       "17" = "PO Finals", "33" = "Play-in", "10" = "Winner Cup",
-                       "34" = "Winner Cup", "10,34" = "Winner Cup", "35" = "State Cup")
-GAME_TYPE_CHOICES_UI <- c(
-  "All" = "",
-  "Regular season" = "5",
-  "Playoffs - Quarterfinals" = "16",
-  "Playoffs - Finals" = "17",
-  "Playoffs - Semifinals" = "26",
-  "Play-in" = "33",
-  "Winner Cup" = "10,34",
-  "State Cup" = "35"
-)
+# GAME_TYPE_LABELS and GAME_TYPE_CHOICES_UI are generated from
+# basketball_test.game_types into R/catalogues_generated.R.
 
 game_type_filter_values <- function(x) {
   if (is.null(x) || !length(x)) return(integer(0))

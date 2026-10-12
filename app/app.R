@@ -4,6 +4,7 @@
 
 # Source all modules
 source("R/helpers.R", local = TRUE)
+source("R/catalogues_generated.R", local = TRUE)
 source("R/global.R", local = TRUE)
 source("R/logger.R", local = TRUE)
 source("R/mod_lineup_player_filter.R", local = TRUE)

@@ -1,8 +1,9 @@
 library(testthat)
 
 # basketball_test.season_teams is the source of truth for the team names the
-# dropdowns show. STATIC_TEAM_ROSTERS is a copy, kept because the Home page is
-# built before any database connection exists; this pins the copy to the table.
+# dropdowns show. STATIC_TEAM_ROSTERS is a copy generated from it by
+# scripts/sync_catalogues.R, kept because the Home page is built before any
+# database connection exists. This fails when the nightly sync stopped landing.
 
 skip_if_not(Sys.getenv("RUN_DB_TESTS", "0") == "1")
 skip_if_not_installed("DBI")
@@ -44,24 +45,21 @@ season_teams <- DBI::dbGetQuery(con, "
 catalogued <- lapply(split(season_teams, season_teams$game_year), by_team_id)
 pinned <- lapply(.season_team_defs$STATIC_TEAM_ROSTERS, by_team_id)
 
-test_that("every pinned season roster matches the season_teams table", {
-  expect_true(all(names(pinned) %in% names(catalogued)))
+test_that("the generated season rosters match the season_teams table", {
+  expect_setequal(names(pinned), names(catalogued))
   for (gy in names(pinned)) {
     expect_identical(pinned[[gy]], catalogued[[gy]], info = gy)
   }
 })
 
-test_that("seasons without a pinned roster match what full_rosters serves", {
-  # fetch_teams_distinct() falls back to full_rosters for these seasons.
-  unpinned <- setdiff(names(catalogued), names(pinned))
-  skip_if(!length(unpinned), "every catalogued season has a pinned roster")
-
-  rosters <- DBI::dbGetQuery(con, "
-    SELECT DISTINCT game_year, team_id, team_name
-    FROM basketball_test.full_rosters")
-  served <- lapply(split(rosters, rosters$game_year), by_team_id)
-
-  for (gy in unpinned) {
-    expect_identical(catalogued[[gy]], served[[gy]], info = gy)
-  }
+test_that("season_teams covers every team in full_rosters", {
+  uncovered <- DBI::dbGetQuery(con, "
+    SELECT fr.game_year, fr.team_id, MIN(fr.team_name) AS roster_name
+    FROM basketball_test.full_rosters fr
+    LEFT JOIN basketball_test.season_teams st
+      ON st.game_year = fr.game_year AND st.team_id = fr.team_id
+    WHERE st.team_id IS NULL
+    GROUP BY fr.game_year, fr.team_id")
+  expect_equal(nrow(uncovered), 0,
+               info = paste(capture.output(print(uncovered)), collapse = "\n"))
 })
