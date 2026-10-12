@@ -224,7 +224,12 @@ apply_object <- function(name) {
     staged <- staged_matview_sql(name, spec$file)
     say("  stage %s__ftc_next from %s (%d indexes)", name, spec$file, length(staged$indexes))
     if (!apply) return(invisible())
-    if (!is.na(relkind(paste0(name, "__ftc_old")))) stop(name, "__ftc_old already exists: run --cleanup or resolve by hand")
+    if (!is.na(relkind(paste0(name, "__ftc_old")))) {
+      # --replace-old: this view was already swapped once in this migration and
+      # is being swapped again; the copy kept from the first swap is dropped.
+      if (!"--replace-old" %in% args) stop(name, "__ftc_old already exists: pass --replace-old to drop it")
+      x(sprintf("DROP MATERIALIZED VIEW %s.%s__ftc_old", SCHEMA, name))
+    }
     # --reuse-staged: a long build can outlive the pooler's connection. The
     # build still finishes on the server (one implicit transaction, so the
     # staged view is either complete with its indexes or absent); this resumes

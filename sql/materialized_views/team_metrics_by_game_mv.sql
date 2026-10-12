@@ -241,7 +241,7 @@ SELECT
   CASE WHEN tg."3pa" > 0 THEN ROUND(tg."3pm"::numeric / tg."3pa"::numeric * 100, 1) ELSE NULL END AS tp_pct,
   CASE WHEN tg.fta > 0 THEN ROUND(tg.ftm::numeric / tg.fta::numeric * 100, 1) ELSE NULL END AS ft_pct,
   CASE WHEN tg.fga > 0 THEN ROUND((tg.fgm + 0.5 * tg."3pm")::numeric / tg.fga::numeric * 100, 1) ELSE NULL END AS efg,
-  CASE WHEN (tg.fga + 0.44 * tg.fta) > 0 THEN ROUND(tg.pts::numeric / (2.0 * (tg.fga + 0.44 * tg.fta)::numeric) * 100, 1) ELSE NULL END AS ts
+  CASE WHEN ff.off_ts_poss_raw > 0 THEN ROUND(tg.pts::numeric / (2.0 * ff.off_ts_poss_raw)::numeric * 100, 1) ELSE NULL END AS ts
 FROM basketball_test.final_schedule_mv fs
 LEFT JOIN pivot_ff ff
   ON ff.game_year = fs.game_year

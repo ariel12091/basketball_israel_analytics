@@ -23,6 +23,7 @@ actions_with_year AS (
     d.game_id,
     d.team_id,
     d.lineup_hash,
+    d.credit_lineup_hash,
     d.segment_id,
     d.end_game_seconds_remaining,
     d.segment_seconds,
@@ -119,27 +120,34 @@ poss_end AS (
     awy.game_year,
     awy.game_id,
     awy.team_id,
-    awy.lineup_hash,
+    awy.lineup_hash AS floor_lineup_hash,
+    awy.credit_lineup_hash AS lineup_hash,
     awy.id AS poss_end_id
   FROM actions_with_year awy
   WHERE awy.type_lineup = 'offense'
     AND awy.final_end_poss
     AND awy.id IS NOT NULL
-    AND awy.lineup_hash IS NOT NULL
+    AND awy.credit_lineup_hash IS NOT NULL
 ),
 usage_totals AS (
-  SELECT
-    pe.game_year,
-    lm.team_id,
-    lm.player_id,
-    COUNT(DISTINCT pe.game_id) AS gp,
-    COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id)) AS poss_on_floor
-  FROM poss_end pe
-  JOIN lineup_map lm
-    ON lm.game_id = pe.game_id
-   AND lm.team_id = pe.team_id
-   AND lm.lineup_hash = pe.lineup_hash
-  GROUP BY pe.game_year, lm.team_id, lm.player_id
+  SELECT game_year, team_id, player_id,
+         COALESCE(f.gp, 0) AS gp,
+         COALESCE(c.poss_on_floor, 0) AS poss_on_floor
+  FROM (
+    SELECT pe.game_year, lm.team_id, lm.player_id,
+           COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id)) AS poss_on_floor
+    FROM poss_end pe
+    JOIN lineup_map lm
+      ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.lineup_hash
+    GROUP BY pe.game_year, lm.team_id, lm.player_id
+  ) c
+  FULL JOIN (
+    SELECT pe.game_year, lm.team_id, lm.player_id, COUNT(DISTINCT pe.game_id) AS gp
+    FROM poss_end pe
+    JOIN lineup_map lm
+      ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.floor_lineup_hash
+    GROUP BY pe.game_year, lm.team_id, lm.player_id
+  ) f USING (game_year, team_id, player_id)
 ),
 team_possession_totals AS (
   SELECT
@@ -237,7 +245,7 @@ SELECT
     ELSE NULL
   END AS efg,
   CASE
-    WHEN (bt.fga + 0.44 * bt.fta) > 0 THEN ROUND(bt.pts::numeric / (2 * (bt.fga + 0.44 * bt.fta)::numeric) * 100, 1)
+    WHEN bt.ts_poss_count > 0 THEN ROUND(bt.pts::numeric / (2 * bt.ts_poss_count)::numeric * 100, 1)
     ELSE NULL
   END AS ts,
   CASE

@@ -189,6 +189,7 @@ BEGIN
       d.game_id,
       d.team_id,
       d.lineup_hash,
+      d.credit_lineup_hash,
       d.segment_id,
       d.end_game_seconds_remaining,
       d.event_elapsed_seconds,
@@ -299,26 +300,35 @@ BEGIN
     SELECT DISTINCT
       a.game_id,
       a.team_id,
-      a.lineup_hash,
+      a.lineup_hash AS floor_lineup_hash,
+      a.credit_lineup_hash AS lineup_hash,
       a.id AS poss_end_id
     FROM acts a
     WHERE a.type_lineup = 'offense'
       AND a.final_end_poss
       AND a.id IS NOT NULL
-      AND a.lineup_hash IS NOT NULL
+      AND a.credit_lineup_hash IS NOT NULL
   ),
   player_usage AS (
-    SELECT
-      lm.player_id,
-      pe.team_id,
-      COUNT(DISTINCT pe.game_id)::int AS gp,
-      COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::int AS poss_on_floor
-    FROM poss_end pe
-    JOIN lineup_map lm
-      ON lm.game_id = pe.game_id
-     AND lm.team_id = pe.team_id
-     AND lm.lineup_hash = pe.lineup_hash
-    GROUP BY lm.player_id, pe.team_id
+    SELECT COALESCE(c.player_id, f.player_id) AS player_id,
+           COALESCE(c.team_id, f.team_id) AS team_id,
+           COALESCE(f.gp, 0)::int AS gp,
+           COALESCE(c.poss_on_floor, 0)::int AS poss_on_floor
+    FROM (
+      SELECT lm.player_id, pe.team_id,
+             COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::int AS poss_on_floor
+      FROM poss_end pe
+      JOIN lineup_map lm
+        ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.lineup_hash
+      GROUP BY lm.player_id, pe.team_id
+    ) c
+    FULL JOIN (
+      SELECT lm.player_id, pe.team_id, COUNT(DISTINCT pe.game_id)::int AS gp
+      FROM poss_end pe
+      JOIN lineup_map lm
+        ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.floor_lineup_hash
+      GROUP BY lm.player_id, pe.team_id
+    ) f ON f.player_id = c.player_id AND f.team_id = c.team_id
   ),
   team_possession_totals AS (
     SELECT
@@ -449,7 +459,7 @@ BEGIN
       CASE WHEN s."3pa" > 0 THEN ROUND((s."3pm"::numeric / s."3pa"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
       CASE WHEN s.fta > 0 THEN ROUND((s.ftm::numeric / s.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
       CASE WHEN s.fga > 0 THEN ROUND(((s.fgm::numeric + 0.5 * s."3pm"::numeric) / s.fga::numeric) * 100, 1) ELSE NULL END AS efg,
-      CASE WHEN (s.fga + 0.44 * s.fta) > 0 THEN ROUND((s.pts::numeric / (2.0 * (s.fga::numeric + 0.44 * s.fta::numeric))) * 100, 1) ELSE NULL END AS ts,
+      CASE WHEN s.ts_poss_count > 0 THEN ROUND((s.pts::numeric / (2.0 * s.ts_poss_count::numeric)) * 100, 1) ELSE NULL END AS ts,
       CASE
         WHEN (s.ts_poss_count + s.tov) > 0
          AND (tut.team_ts_poss_count + tut.team_tov) > 0

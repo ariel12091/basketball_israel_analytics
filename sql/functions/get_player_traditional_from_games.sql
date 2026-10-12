@@ -198,8 +198,8 @@ BEGIN
     CASE WHEN p."3pa" > 0 THEN ROUND(100.0 * p."3pm" / p."3pa", 1) END,
     CASE WHEN p.fta > 0 THEN ROUND(100.0 * p.ftm / p.fta, 1) END,
     CASE WHEN p.fga > 0 THEN ROUND(100.0 * (p.fgm + 0.5 * p."3pm") / p.fga, 1) END,
-    CASE WHEN p.fga + 0.44 * p.fta > 0
-         THEN ROUND(100.0 * p.pts / (2.0 * (p.fga + 0.44 * p.fta)), 1) END,
+    CASE WHEN p.player_ts_poss_count > 0
+         THEN ROUND(100.0 * p.pts / (2.0 * p.player_ts_poss_count), 1) END,
     CASE WHEN p.player_ts_poss_count + p.tov > 0
            AND t.team_ts_poss_count + t.team_tov > 0
            AND p.poss_on_floor > 0 AND t.team_poss > 0

@@ -139,7 +139,7 @@ AS $$
      SELECT d.id, d.game_id, d.team_id, d.lineup_hash, d.segment_id, d.end_game_seconds_remaining, d.event_elapsed_seconds,
             d.segment_seconds,
             d.type, d.parameters_type, d.parameters_made, d.parameters_points, d.event_owner_side, d.type_lineup, d.final_end_poss, d.quarter,
-            d.own_team_score, d.opp_team_score
+            d.own_team_score, d.opp_team_score, d.parent_action_id
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
     -- Pre-shot margin, as in get_team_ratings_dynamic: the points scored on
@@ -242,6 +242,16 @@ AS $$
     FROM acts a
     GROUP BY a.team_id
   ),
+  ft_trips AS (
+    SELECT a.team_id, COUNT(DISTINCT (a.game_id, a.parent_action_id))::int AS trips
+    FROM acts a
+    JOIN basketball_test.df_pts_poss_lineups_longer_mv parent
+      ON parent.game_id = a.game_id AND parent.id = a.parent_action_id
+     AND parent.team_id = a.team_id AND parent.type_lineup = a.type_lineup
+     AND parent.type = 'foul' AND parent.parameters_type = 'personal'
+    WHERE a.type = 'freeThrow' AND a.type_lineup = p_side::text
+    GROUP BY a.team_id
+  ),
   poss_end AS (
     SELECT DISTINCT a.game_id, a.team_id, a.id AS poss_end_id
     FROM acts a
@@ -311,11 +321,12 @@ AS $$
     CASE WHEN ts."3pa" > 0 THEN ROUND((ts."3pm"::numeric / ts."3pa"::numeric) * 100, 1) ELSE NULL END AS tp_pct,
     CASE WHEN ts.fta > 0 THEN ROUND((ts.ftm::numeric / ts.fta::numeric) * 100, 1) ELSE NULL END AS ft_pct,
     CASE WHEN ts.fga > 0 THEN ROUND(((ts.fgm::numeric + 0.5 * ts."3pm"::numeric) / ts.fga::numeric) * 100, 1) ELSE NULL END AS efg,
-    CASE WHEN (ts.fga + 0.44 * ts.fta) > 0 THEN ROUND((ts.pts::numeric / (2.0 * (ts.fga::numeric + 0.44 * ts.fta::numeric))) * 100, 1) ELSE NULL END AS ts
+    CASE WHEN (ts.fga + COALESCE(ft.trips, 0)) > 0 THEN ROUND((ts.pts::numeric / (2.0 * (ts.fga + COALESCE(ft.trips, 0))::numeric)) * 100, 1) ELSE NULL END AS ts
   FROM team_stats ts
   LEFT JOIN team_usage tu ON tu.team_id = ts.team_id
   LEFT JOIN team_games tg ON tg.team_id = ts.team_id
   LEFT JOIN team_minutes tm ON tm.team_id = ts.team_id
+  LEFT JOIN ft_trips ft ON ft.team_id = ts.team_id
   LEFT JOIN team_names tn ON tn.team_id = ts.team_id
   WHERE tn.team_name IS NOT NULL
   ORDER BY ts.pts DESC, tm.minutes DESC, tn.team_name

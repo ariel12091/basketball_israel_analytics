@@ -132,3 +132,28 @@ test_that("a starters filter on team readers follows the credited lineup", {
   expect_equal(as.numeric(both$off_pts), as.numeric(both$pts))
   expect_equal(as.numeric(both$off_poss), as.numeric(both$poss))
 })
+
+test_that("no Israeli traditional reader still uses the 0.44 TS% estimate", {
+  files <- c(
+    "functions/get_player_traditional_from_games.sql",
+    "functions/get_player_traditional_custom_clutch.sql",
+    "functions/get_player_traditional_dynamic.sql",
+    "functions/get_team_traditional_dynamic.sql",
+    "functions/refresh_team_metrics_by_game_for_games.sql",
+    "materialized_views/player_traditional_stats_mv.sql",
+    "materialized_views/team_metrics_by_game_mv.sql")
+  for (f in files) {
+    expect_false(grepl("0.44", read_repo_txt("..", "sql", f), fixed = TRUE), info = f)
+  }
+})
+
+test_that("team Traditional TS% equals team Four Factors TS%", {
+  trad <- DBI::dbGetQuery(con, "
+    SELECT team_id, ts FROM basketball_test.get_team_traditional_dynamic(2026)")
+  ff <- DBI::dbGetQuery(con, "
+    SELECT team_id, 100.0 * SUM(off_points_raw) / NULLIF(2.0 * SUM(off_ts_poss_raw), 0) AS ff_ts
+    FROM basketball_test.team_metrics_by_game_mv WHERE game_year = 2026 GROUP BY team_id")
+  both <- merge(trad, ff, by = "team_id")
+  expect_equal(nrow(both), 14)
+  expect_true(all(abs(as.numeric(both$ts) - as.numeric(both$ff_ts)) < 0.06))
+})
