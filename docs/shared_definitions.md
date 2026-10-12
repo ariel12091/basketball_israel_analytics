@@ -21,7 +21,7 @@ disagree, this one wins and the other is stale.
 
 ## 1. What went wrong, and why
 
-Ten differences were found and fixed in one session, and an eleventh the day's audit turned up afterwards (Tab 3 pace on nominal game length), and a twelfth after that: Tab 3's rank arrows meant "since each team's own last game" in the default state and "since the last league game day" under any filter or on the defence side. None was a typo. Each was
+Ten differences were found and fixed in one session, and an eleventh the day's audit turned up afterwards (Tab 3 pace on nominal game length), and a twelfth after that: Tab 3's rank arrows meant "since each team's own last game" in the default state and "since the last league game day" under any filter or on the defence side. Pinning the player fast paths the same evening found four more (D18, D19, D21, D22). None was a typo. Each was
 a second copy of something that already existed.
 
 | # | What differed | Where the two copies lived | Root cause |
@@ -242,6 +242,11 @@ found; remove it the day it is closed.
 | D11 | `global.R`: the Gameflow readers (physical segments and margins for one game) and `fetch_scoreless_games()` read the base table. These read detail rows; they do not re-derive a metric | R1 | Audited 2026-10-12: allowed |
 | D16 | The Traditional reader rounds team minutes to one decimal; the owner returns three. Same time, coarser figure (up to 0.05 min per team) | R5 | Explained 2026-10-12; harmless while nothing recombines them |
 | D17 | `server_tab6_team_stats.R` is unwired and still holds inline SQL over the base table | R1 | Dead code; delete or ignore |
+| D18 | **On/Off Summary, default state: the "On Net RTG" colour never reaches the top shades.** `onoff_default_mv` ranks `pr_on_net` over every row, NULLs included, so it tops out near 0.84 (2026: 0.842, 2027: 0.804); `onoff_compute` ranks the non-NULL rows and reaches 0.98. Same player, up to 0.18 of a percentile apart between the unfiltered and any filtered view. Every other percentile column agrees within 0.03 | R10 | Found by the pin 2026-10-12, open. Fix is in `onoff_mv.sql` (a view rebuild) |
+| D19 | On/Off Summary view and reader differ at the edge of the sample: the view keeps players with no ON or no OFF bucket (54 in 2026, at most 3 ON possessions), which the reader drops; a side with possessions and no points is NULL in the view and 0 in the reader (one player, 2026). Same quirk as D9 | R10 | Open; never visible above the possession minimum |
+| D20 | On/off minutes: the view rounds the season's second total to one decimal; `onoff_compute` sums per-game values already cut to three decimals. Up to 0.06 min apart | R5 | Open, display only |
+| D21 | **Compare shows different player minutes from Player Stats.** Tab 7 calls `get_player_traditional_dynamic`, which measures the span between a segment's first and last event even with no clutch window; Tab 5's view and `get_player_traditional_from_games` use segment time. 190 of 312 players differ for 2026, by up to 6 minutes. Every other column is equal. `fetch_player_traditional_filtered()` in `helpers.R` already routes to the right readers and takes the same 18 parameters | R1, R3 | Found 2026-10-12, open |
+| D22 | **A season's date window is defined three ways.** Shiny: 1 September to 1 July (`season_date_bounds_for_year()`). React and Plumber: 1 October to 1 July, and they always send it, so games played in September are left out -- 1 of 221 in 2025-26, **23 of 30 so far in 2026-27**. The two lineup readers' full-season sentinel is also 1 October, so Shiny's window takes their slower path (same numbers) | R3 | Found 2026-10-12, open |
 | D15 | A team's five-man lineup minutes do not add up to its floor time: per team, the lineup readers' sum is up to about 10 minutes away from `get_team_minutes_dynamic` over a season (2026), more than row rounding explains. Likely lineups the readers do not list as five known players | data | Seen 2026-10-12, not traced |
 | D12 | The React Shot Profile port differs from Shiny | R3 | Intentional, recorded |
 | D13 | EuroLeague clutch, last-N, minutes and starters rules have not been re-verified against sections 3 and 4 | R7 | Not re-verified |
@@ -285,14 +290,13 @@ Not deviations, though they look like one:
 | `test-league-shared-helpers.R`, `test-lineup-player-chips.R` | Shared helpers behave the same for both leagues; every reader of the player filter lists its inputs |
 | `test-team-minutes-db.R` (nightly) | Team floor time: the owner equals the Traditional reader (to its one decimal), the clutch dashboard reader (exactly) and measured segment time; its per-game path equals its action-row path |
 | `test-team-reader-paths-db.R` (nightly) | R10: the Traditional reader's per-game path equals its action-row path on every column, both sides, six filter sets; the two team views behind Tab 3's default state equal their dynamic readers |
+| `test-player-reader-paths-db.R` (nightly) | R10 for the player tabs: `player_traditional_stats_mv` equals `get_player_traditional_from_games` on all 24 shared columns; `player_advanced_stats_mv` equals `four_factors_compute` and `four_factors_dashboard_compute` on all 37; `onoff_default_mv` equals `onoff_compute` on every value column for players with a real sample, with D18-D20 declared |
 | `test-shared-definitions.R` | R1 as a ratchet: the R files that query the base action table directly are frozen at the D11/D17 list, which may only shrink; Tab 3 takes pace minutes and rank arrows from stored readers only; both `CLAUDE.md` files point here |
 | `scripts/verify_ft_credit.R` | Migration gates that fail on an unexpected change |
 | `.github/workflows/catalogue-sync.yml` | Fails when the schedule holds a game type with no label |
 
 Pins that do not exist yet. Each is a twin without a test (R4):
 
-- Fast path equals filtered path for the **player** readers. The lineup and
-  team readers are pinned.
 - Israeli and EuroLeague readers return the same number for the same metric on
   a constructed game.
 - `apply_local_lineup_filters()` (R) and `apply_lineup_local_filters()`
