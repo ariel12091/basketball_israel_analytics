@@ -25,8 +25,13 @@ con <- DBI::dbConnect(
 )
 on.exit(DBI::dbDisconnect(con), add = TRUE)
 
+# Fixed SQL, no parameters, sent in immediate mode: the transaction pooler
+# can cross prepared statements between clients (CLAUDE.md, port 6543), and
+# these files must not fail because the app happens to be in use.
+dbq <- function(sql) DBI::dbGetQuery(con, sql, immediate = TRUE)
+
 minutes_of <- function(fn, args) {
-  DBI::dbGetQuery(con, sprintf("SELECT team_id, minutes FROM basketball_test.%s(2026%s)", fn, args))
+  dbq(sprintf("SELECT team_id, minutes FROM basketball_test.%s(2026%s)", fn, args))
 }
 largest_gap <- function(a, b) {
   m <- merge(a, b, by = "team_id", all = TRUE)
@@ -53,7 +58,7 @@ test_that("team minutes equal the clutch dashboard reader's exactly, with and wi
 })
 
 test_that("unfiltered team minutes are measured floor time, not nominal game length", {
-  measured <- DBI::dbGetQuery(con, "
+  measured <- dbq("
     SELECT team_id, SUM(secs) / 60.0 AS minutes FROM (
       SELECT d.team_id, d.game_id, d.lineup_hash, d.segment_id, MAX(d.segment_seconds) AS secs
       FROM basketball_test.df_pts_poss_lineups_longer_mv d
