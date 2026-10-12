@@ -250,10 +250,18 @@ AS $$
   team_usage AS (
     SELECT
       pe.team_id,
-      COUNT(DISTINCT pe.game_id)::int AS gp,
       COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::int AS poss_on_floor
     FROM poss_end pe
     GROUP BY pe.team_id
+  ),
+  -- A game counts when any action survives the filters, as games_played does
+  -- in get_team_ratings_dynamic. Counting only games with a completed
+  -- possession dropped games where the team merely defended inside a clutch
+  -- window, while their stats stayed in the totals.
+  team_games AS (
+    SELECT a.team_id, COUNT(DISTINCT a.game_id)::int AS gp
+    FROM acts a
+    GROUP BY a.team_id
   ),
   -- Floor time. With no clutch window the canonical segment clock applies: one
   -- MAX(segment_seconds) per segment, with type_lineup absent from the GROUP
@@ -292,7 +300,7 @@ AS $$
   )
   SELECT
     ts.team_id, tn.team_name,
-    COALESCE(tu.gp, 0)::int AS gp,
+    COALESCE(tg.gp, 0)::int AS gp,
     COALESCE(tu.poss_on_floor, 0)::int AS poss_on_floor,
     COALESCE(tm.minutes, 0)::numeric AS minutes,
     ts.pts, (ts.oreb + ts.dreb)::int AS reb, ts.oreb, ts.dreb, ts.ast, ts.stl, ts.blk, ts.dfl, ts.tov,
@@ -306,6 +314,7 @@ AS $$
     CASE WHEN (ts.fga + 0.44 * ts.fta) > 0 THEN ROUND((ts.pts::numeric / (2.0 * (ts.fga::numeric + 0.44 * ts.fta::numeric))) * 100, 1) ELSE NULL END AS ts
   FROM team_stats ts
   LEFT JOIN team_usage tu ON tu.team_id = ts.team_id
+  LEFT JOIN team_games tg ON tg.team_id = ts.team_id
   LEFT JOIN team_minutes tm ON tm.team_id = ts.team_id
   LEFT JOIN team_names tn ON tn.team_id = ts.team_id
   WHERE tn.team_name IS NOT NULL
