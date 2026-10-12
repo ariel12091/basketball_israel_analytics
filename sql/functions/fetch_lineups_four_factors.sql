@@ -260,6 +260,20 @@ BEGIN
       d.parameters_type, d.parameters_made, d.parameters_points, d.pct_ft,
       d.parent_action_id, d.type_lineup, d.num_starters,
       d.segment_id, d.end_game_seconds_remaining, d.event_elapsed_seconds,
+      d.credit_lineup_hash, d.credit_segment_id,
+      -- The starters filter is two filters: events follow the credited
+      -- lineup, floor time the physical one. Same predicate as
+      -- fetch_lineups_all (own/opp starters on every row): a per-side form
+      -- drops substitution and timeout rows, which have no type_lineup, and
+      -- with them the ends of the stint span.
+      (    (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.credit_own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+       AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.credit_own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+       AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+       AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))) AS event_ok,
+      (    (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+       AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+       AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+       AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))) AS time_ok,
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
@@ -288,15 +302,6 @@ BEGIN
                END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
-      AND (
-        (d.type_lineup = 'offense'
-          AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-          AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
-        OR
-        (d.type_lineup = 'defense'
-          AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-          AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
-      )
   ),
   -- complex_flags: resolve parent foul only for already filtered clutch rows
   complex_flags AS (
@@ -319,6 +324,10 @@ BEGIN
       cs.game_id,
       cs.type_lineup,
       cs.segment_id,
+      cs.credit_lineup_hash,
+      cs.credit_segment_id,
+      cs.event_ok,
+      cs.time_ok,
       cs.end_game_seconds_remaining,
       cs.id,
       cs.event_elapsed_seconds,
@@ -335,7 +344,8 @@ BEGIN
     FROM clean_stats cs
     LEFT JOIN complex_flags cf ON cs.id = cf.main_id
   ),
-  -- Stint duration per segment (no type_lineup - captures full floor time)
+  -- Stint duration per PHYSICAL segment (no type_lineup - captures full floor
+  -- time). Never keyed on credit: a lineup's time is the time it was on the floor.
   segment_times AS (
     SELECT
       cd.team_id,
@@ -343,22 +353,22 @@ BEGIN
       cd.game_id,
       cd.segment_id,
       greatest(
-        (array_agg(cd.event_elapsed_seconds ORDER BY cd.id DESC))[1] -
-        (array_agg(cd.event_elapsed_seconds ORDER BY cd.id))[1],
+        (array_agg(cd.event_elapsed_seconds ORDER BY cd.id DESC) FILTER (WHERE cd.event_elapsed_seconds IS NOT NULL))[1] -
+        (array_agg(cd.event_elapsed_seconds ORDER BY cd.id) FILTER (WHERE cd.event_elapsed_seconds IS NOT NULL))[1],
         0
       )::numeric AS stint_seconds
     FROM combined_data cd
-    WHERE cd.event_elapsed_seconds IS NOT NULL
+    WHERE cd.time_ok
     GROUP BY cd.team_id, cd.lineup_hash, cd.game_id, cd.segment_id
   ),
   -- Four-factor stats per segment per type_lineup
   segment_stats AS (
     SELECT
       cd.team_id,
-      cd.lineup_hash::text AS lineup_hash,
+      cd.credit_lineup_hash::text AS lineup_hash,
       cd.game_id,
       cd.type_lineup,
-      cd.segment_id,
+      cd.credit_segment_id AS segment_id,
       SUM(cd.team_score)       AS total_points,
       SUM(cd.final_end_flag)   AS total_poss,
       COUNT(CASE WHEN cd.type = 'shot' THEN 1 END)
@@ -381,7 +391,8 @@ BEGIN
       COUNT(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
       COUNT(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' AND cd.parameters_points = 3 THEN 1 END) AS total_fg3_made
     FROM combined_data cd
-    GROUP BY cd.team_id, cd.lineup_hash, cd.game_id, cd.type_lineup, cd.segment_id
+    WHERE cd.event_ok
+    GROUP BY cd.team_id, cd.credit_lineup_hash, cd.game_id, cd.type_lineup, cd.credit_segment_id
   ),
   lineup_ff AS (
     SELECT
@@ -398,15 +409,19 @@ BEGIN
       SUM(ss.total_fga)          AS total_fga,
       SUM(ss.total_fgm)          AS total_fgm,
       SUM(ss.total_fg3_made)     AS total_fg3_made,
-      -- Minutes from segment_times, count once per segment (use offense filter)
-      SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+      NULL::numeric              AS minutes
     FROM segment_stats ss
-    JOIN segment_times st
-      ON st.team_id = ss.team_id
-      AND st.lineup_hash = ss.lineup_hash
-      AND st.game_id = ss.game_id
-      AND st.segment_id = ss.segment_id
     GROUP BY ss.team_id, ss.lineup_hash, ss.type_lineup
+    -- Events and floor time are aggregated independently and stacked, never
+    -- joined: a free throw credited to a lineup that has left the floor has no
+    -- time row to match, and a joined read dropped it.
+    UNION ALL
+    SELECT st.team_id, st.lineup_hash, 'time',
+      NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
+      SUM(st.stint_seconds) / 60.0
+    -- Every segment counts, with or without an offensive action in it.
+    FROM segment_times st
+    GROUP BY st.team_id, st.lineup_hash
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -430,7 +445,7 @@ BEGIN
       (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
       (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
     , 1) AS net_rtg,
-    ROUND(COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+    ROUND(COALESCE(SUM(cr.minutes), 0)::numeric, 1) AS minutes,
     COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
     COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
     COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
@@ -558,16 +573,13 @@ BEGIN
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
       , 1) AS net_rtg,
-      CASE
-        WHEN v_starters_active THEN ROUND(
-          COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
-          1
-        )
-        ELSE ROUND(
-          COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric,
-          1
-        )
-      END AS minutes,
+      -- Always from whole seconds. Summing per-game minutes (seconds / 60,
+      -- cut to numeric's scale) lands a hair under a half-tenth boundary and
+      -- rounds 0.1 below fetch_lineups_all for the same lineup.
+      ROUND(
+        COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
+        1
+      ) AS minutes,
       COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
       COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
       COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
@@ -751,16 +763,13 @@ BEGIN
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
       , 1) AS net_rtg,
-      CASE
-        WHEN v_starters_active THEN ROUND(
-          COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
-          1
-        )
-        ELSE ROUND(
-          COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric,
-          1
-        )
-      END AS minutes,
+      -- Always from whole seconds. Summing per-game minutes (seconds / 60,
+      -- cut to numeric's scale) lands a hair under a half-tenth boundary and
+      -- rounds 0.1 below fetch_lineups_all for the same lineup.
+      ROUND(
+        COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
+        1
+      ) AS minutes,
       COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
       COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
       COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,

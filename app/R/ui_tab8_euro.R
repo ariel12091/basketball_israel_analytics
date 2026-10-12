@@ -83,7 +83,7 @@ ui_tab8_euro <- function() {
               "Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider.",
               "Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other.",
               "Gray (unranked) cells mean a small on-court possession sample; factor diffs from small samples are unreliable.",
-              "TS% uses the same denominator as the Israeli tabs (FGA plus the last free throw of a shooting-foul trip), not the 0.44 x FTA estimate."
+              "TS% uses the same denominator as the Israeli tabs (FGA plus one per shooting-foul trip), not the 0.44 x FTA estimate."
             )
           )
         ),

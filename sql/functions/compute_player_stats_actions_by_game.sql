@@ -1,3 +1,7 @@
+-- The return type gained credit_lineup_hash on 2026-10-12, so the function
+-- has to be dropped before it can be re-created.
+DROP FUNCTION IF EXISTS basketball_test.compute_player_stats_actions_by_game(int4[]);
+
 CREATE OR REPLACE FUNCTION basketball_test.compute_player_stats_actions_by_game(
   p_game_ids int4[] DEFAULT NULL
 )
@@ -32,7 +36,8 @@ RETURNS TABLE (
   regulation_seconds_remaining numeric,
   pre_margin int4,
   pre_abs_margin int4,
-  pre_status int2
+  pre_status int2,
+  credit_lineup_hash text
 )
 LANGUAGE sql
 STABLE
@@ -127,7 +132,8 @@ SELECT
       ELSE COALESCE(a.own_team_score, 0)
            - (COALESCE(a.opp_team_score, 0) - COALESCE(a.team_score, 0))
     END
-  )::int2
+  )::int2,
+  a.credit_lineup_hash
 FROM source_actions a
 LEFT JOIN personal_foul_parents pfp
   ON pfp.game_id = a.game_id

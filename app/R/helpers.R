@@ -2031,6 +2031,45 @@ clean_ts_rows <- function(df) {
     )
 }
 
+# True shooting from real attempts: FGA plus one per free-throw trip.
+ts_pct_from_trips <- function(pts, ts_poss) {
+  pts <- suppressWarnings(as.numeric(pts))
+  ts_poss <- suppressWarnings(as.numeric(ts_poss))
+  out <- rep(NA_real_, length(ts_poss))
+  ok <- is.finite(ts_poss) & ts_poss > 0 & is.finite(pts)
+  out[ok] <- round(100 * pts[ok] / (2 * ts_poss[ok]), 1)
+  out
+}
+
+# The true-shooting attempts behind a row, recovered from its own TS%. Only a
+# fallback for a reader that does not return the count (see ts_attempts()):
+# a row with no points has no TS% to recover from, so its field-goal attempts
+# stand in and its missed free-throw trips are lost.
+ts_implied_attempts <- function(pts, ts, fga) {
+  num <- function(x) suppressWarnings(as.numeric(x))
+  pts <- num(pts); ts <- num(ts)
+  out <- num(fga)
+  out[!is.finite(out)] <- 0
+  ok <- is.finite(pts) & pts > 0 & is.finite(ts) & ts > 0
+  out[ok] <- pts[ok] / (2 * (ts[ok] / 100))
+  out
+}
+
+# True-shooting attempts per row: the count the reader returned (`ts_att`,
+# field-goal attempts plus personal-foul free-throw trips), and the implied
+# count only where a reader returns none. Additive, so rows are recombined by
+# summing it.
+ts_attempts <- function(rows) {
+  col <- function(name) {
+    if (name %in% names(rows)) suppressWarnings(as.numeric(rows[[name]])) else rep(NA_real_, nrow(rows))
+  }
+  out <- ts_implied_attempts(col("pts"), col("ts"), col("fga"))
+  returned <- col("ts_att")
+  has <- is.finite(returned)
+  out[has] <- returned[has]
+  out
+}
+
 add_ts_usage_pct <- function(df) {
   if (is.null(df) || !nrow(df)) return(df)
   if (!("usg_pct" %in% names(df))) df$usg_pct <- NA_real_
@@ -2050,10 +2089,7 @@ add_ts_usage_pct <- function(df) {
   pts <- if ("pts" %in% names(df)) as_num("pts") else rep(NA_real_, nrow(df))
   ts <- if ("ts" %in% names(df)) as_num("ts") else rep(NA_real_, nrow(df))
 
-  shot_term <- fga + 0.44 * fta
-  can_imply_ts_term <- is.finite(pts) & pts > 0 & is.finite(ts) & ts > 0
-  shot_term[can_imply_ts_term] <- pts[can_imply_ts_term] / (2 * (ts[can_imply_ts_term] / 100))
-  player_term <- shot_term + tov
+  player_term <- ts_attempts(df) + tov
 
   out <- suppressWarnings(as.numeric(df$usg_pct))
   team_key <- if ("team_id" %in% names(df)) as.character(df$team_id) else rep("all", nrow(df))

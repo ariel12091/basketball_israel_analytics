@@ -31,6 +31,10 @@ clean_stats AS (
     d.own_starters,
     d.opp_starters,
     d.segment_id,
+    d.credit_lineup_hash,
+    d.credit_own_starters,
+    d.credit_opp_starters,
+    d.credit_segment_id,
     d.end_game_seconds_remaining,
     d.segment_seconds,
     CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
@@ -163,9 +167,9 @@ combined_data AS (
     s.game_year,
     cs.game_id,
     cs.type_lineup,
-    cs.own_starters AS num_starters,
-    cs.own_starters,
-    cs.opp_starters,
+    cs.credit_own_starters AS num_starters,
+    cs.credit_own_starters AS own_starters,
+    cs.credit_opp_starters AS opp_starters,
     cs.team_score,
     cs.final_end_flag,
     cs.type,
@@ -177,13 +181,29 @@ combined_data AS (
     cs.parent_action_id,
     cf.parent_type,
     cf.parent_param,
-    cs.segment_id,
+    cs.credit_segment_id AS segment_id,
     cs.end_game_seconds_remaining,
+    cs.segment_seconds
+  FROM base0 b0
+  JOIN clean_stats cs ON b0.lineup_hash = cs.credit_lineup_hash AND b0.team_id = cs.team_id
+  JOIN basketball_test.schedule s ON cs.game_id = s.game_id
+  LEFT JOIN complex_flags cf ON cs.id = cf.main_id
+),
+floor_data AS (
+  SELECT
+    b0.player_id,
+    b0.team_id,
+    b0.is_on_key,
+    s.game_year,
+    cs.game_id,
+    cs.own_starters AS num_starters,
+    cs.own_starters,
+    cs.opp_starters,
+    cs.segment_id,
     cs.segment_seconds
   FROM base0 b0
   JOIN clean_stats cs ON b0.lineup_hash = cs.lineup_hash AND b0.team_id = cs.team_id
   JOIN basketball_test.schedule s ON cs.game_id = s.game_id
-  LEFT JOIN complex_flags cf ON cs.id = cf.main_id
 ),
 segment_times AS (
   SELECT
@@ -197,7 +217,7 @@ segment_times AS (
     cd.opp_starters,
     cd.segment_id,
     MAX(cd.segment_seconds) AS stint_seconds
-  FROM combined_data cd
+  FROM floor_data cd
   WHERE cd.segment_id IS NOT NULL
     AND cd.segment_seconds IS NOT NULL
   GROUP BY cd.player_id, cd.team_id, cd.game_id, cd.game_year,

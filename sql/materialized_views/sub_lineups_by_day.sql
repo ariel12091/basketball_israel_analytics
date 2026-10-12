@@ -18,6 +18,9 @@ base AS (
         d.segment_id,
         d.opp_starters,
         d.num_starters,
+        d.credit_lineup_hash,
+        d.credit_opp_starters,
+        d.credit_num_starters,
         d.id,
         d.event_elapsed_seconds,
         d.segment_start_elapsed_seconds,
@@ -141,13 +144,13 @@ window_minutes AS (
 day_stats AS (
     SELECT
         b.team_id,
-        b.lineup_hash,
+        b.credit_lineup_hash AS lineup_hash,
         b.type_lineup,
         s.game_date AS g_date,
         b.game_id,
         s.game_year,
-        b.opp_starters,
-        MAX(b.num_starters) AS num_starters,
+        b.credit_opp_starters AS opp_starters,
+        MAX(b.credit_num_starters) AS num_starters,
         SUM(CASE WHEN COALESCE(b.final_end_poss, false) THEN 1 ELSE 0 END) AS total_poss,
         COALESCE(SUM(b.team_score), 0) AS total_pts,
         SUM(CASE WHEN b.type = 'shot' AND b.parameters_points = 2 AND b.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
@@ -158,12 +161,12 @@ day_stats AS (
     JOIN schedule s USING (game_id)
     GROUP BY
         b.team_id,
-        b.lineup_hash,
+        b.credit_lineup_hash,
         b.type_lineup,
         s.game_date,
         b.game_id,
         s.game_year,
-        b.opp_starters
+        b.credit_opp_starters
 ),
 -- Slices with floor time but no offense-perspective row.
 --

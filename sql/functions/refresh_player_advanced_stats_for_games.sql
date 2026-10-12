@@ -46,7 +46,7 @@ BEGIN
         ), clean_stats AS (
          SELECT d.id,
             d.game_id,
-            d.lineup_hash,
+            d.credit_lineup_hash AS lineup_hash,
             d.team_score,
             d.type,
             d.parameters_type,

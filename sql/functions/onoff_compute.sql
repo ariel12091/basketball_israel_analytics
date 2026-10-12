@@ -122,10 +122,10 @@ BEGIN
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN sched_base_for_ranks sb
       ON sb.game_id = d.game_id
-    WHERE (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
-      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
+    WHERE (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.credit_own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.credit_own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
     GROUP BY d.game_id, d.team_id, d.type_lineup
   ),
   team_game_ppp AS (

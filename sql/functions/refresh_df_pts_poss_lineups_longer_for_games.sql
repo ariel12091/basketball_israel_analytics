@@ -172,6 +172,7 @@ BEGIN
 
   GET DIAGNOSTICS inserted_count = ROW_COUNT;
   PERFORM basketball_test.refresh_segment_clock_fields_for_games(game_ids);
+  PERFORM basketball_test.refresh_ft_credit_fields_for_games(game_ids);
   RETURN inserted_count;
 END;
 $$;

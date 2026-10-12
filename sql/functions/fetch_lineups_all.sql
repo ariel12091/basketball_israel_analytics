@@ -229,6 +229,19 @@ BEGIN
            CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag,
            d.team_score,
            d.num_starters,
+           d.credit_lineup_hash::text AS credit_lineup_hash,
+           d.credit_segment_id,
+           d.credit_num_starters,
+           -- The starters filter is two filters: events follow the credited
+           -- lineup, floor time the physical one.
+           (    (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.credit_own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+            AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.credit_own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+            AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+            AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))) AS event_ok,
+           (    (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+            AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+            AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+            AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))) AS time_ok,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg2_made,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 THEN 1 ELSE 0 END AS fg2_att,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg3_made,
@@ -260,33 +273,33 @@ BEGIN
                END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
-      AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
-      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
   ),
-  -- Stint duration per segment (no type_lineup - captures full floor time)
+  -- Stint duration per PHYSICAL segment (no type_lineup - captures full floor
+  -- time). Never keyed on credit: a lineup's time is the time it was on the floor.
   segment_times AS (
     SELECT ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.segment_id,
            greatest(
-             (array_agg(ca.event_elapsed_seconds ORDER BY ca.id DESC))[1] -
-             (array_agg(ca.event_elapsed_seconds ORDER BY ca.id))[1],
+             (array_agg(ca.event_elapsed_seconds ORDER BY ca.id DESC) FILTER (WHERE ca.event_elapsed_seconds IS NOT NULL))[1] -
+             (array_agg(ca.event_elapsed_seconds ORDER BY ca.id) FILTER (WHERE ca.event_elapsed_seconds IS NOT NULL))[1],
              0
            )::numeric AS stint_seconds
     FROM clutch_actions ca
-    WHERE ca.event_elapsed_seconds IS NOT NULL
+    WHERE ca.time_ok
     GROUP BY ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.segment_id
   ),
   -- Poss/pts per segment per type_lineup
   segment_stats AS (
-    SELECT ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.type_lineup, ca.segment_id,
-           ca.num_starters,
+    SELECT ca.team_id, ca.game_year, ca.credit_lineup_hash AS lineup_hash, ca.game_id, ca.type_lineup,
+           ca.credit_segment_id AS segment_id,
+           ca.credit_num_starters AS num_starters,
            SUM(ca.final_end_flag) AS total_poss,
            SUM(ca.team_score) AS total_pts,
            SUM(ca.fg2_made) AS fg2_made, SUM(ca.fg2_att) AS fg2_att,
            SUM(ca.fg3_made) AS fg3_made, SUM(ca.fg3_att) AS fg3_att
     FROM clutch_actions ca
-    GROUP BY ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.type_lineup, ca.segment_id, ca.num_starters
+    WHERE ca.event_ok
+    GROUP BY ca.team_id, ca.game_year, ca.credit_lineup_hash, ca.game_id, ca.type_lineup, ca.credit_segment_id,
+             ca.credit_num_starters
   ),
   lineup_totals AS (
     SELECT ss.team_id, ss.game_year, ss.lineup_hash, ss.type_lineup, ss.num_starters,
@@ -294,16 +307,19 @@ BEGIN
            SUM(ss.total_pts) AS total_pts,
            SUM(ss.fg2_made) AS fg2_made, SUM(ss.fg2_att) AS fg2_att,
            SUM(ss.fg3_made) AS fg3_made, SUM(ss.fg3_att) AS fg3_att,
-           -- Minutes from segment_times, count once per segment (use offense filter)
-           SUM(st.stint_seconds) FILTER (WHERE ss.type_lineup = 'offense') / 60.0 AS minutes
+           NULL::numeric AS minutes
     FROM segment_stats ss
-    JOIN segment_times st
-      ON st.team_id = ss.team_id
-      AND st.game_year = ss.game_year
-      AND st.lineup_hash = ss.lineup_hash
-      AND st.game_id = ss.game_id
-      AND st.segment_id = ss.segment_id
     GROUP BY ss.team_id, ss.game_year, ss.lineup_hash, ss.type_lineup, ss.num_starters
+    -- Events and floor time are aggregated independently and stacked, never
+    -- joined: a free throw credited to a lineup that has left the floor has no
+    -- time row to match, and a joined read dropped it.
+    UNION ALL
+    SELECT st.team_id, st.game_year, st.lineup_hash, 'time', NULL,
+           NULL, NULL, NULL, NULL, NULL, NULL,
+           SUM(st.stint_seconds) / 60.0
+    -- Every segment counts, with or without an offensive action in it.
+    FROM segment_times st
+    GROUP BY st.team_id, st.game_year, st.lineup_hash
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -317,7 +333,7 @@ BEGIN
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='offense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='offense'),0)*100) -
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='defense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='defense'),0)*100), 1
     ) AS net_rtg,
-    ROUND(COALESCE(SUM(lt.minutes) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric, 1) AS minutes,
+    ROUND(COALESCE(SUM(lt.minutes), 0)::numeric, 1) AS minutes,
     ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,
@@ -478,16 +494,13 @@ BEGIN
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='offense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='offense'),0)*100) -
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='defense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='defense'),0)*100), 1
     ) AS net_rtg,
-    CASE
-      WHEN v_starters_active THEN ROUND(
-        COALESCE(SUM(lt.total_seconds) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric / 60.0,
-        1
-      )
-      ELSE ROUND(
-        COALESCE(SUM(lt.minutes) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric,
-        1
-      )
-    END AS minutes,
+    -- Always from whole seconds. Summing per-game minutes (seconds / 60,
+    -- cut to numeric's scale) lands a hair under a half-tenth boundary and
+    -- rounds 0.1 below the unfiltered path for the same lineup.
+    ROUND(
+      COALESCE(SUM(lt.total_seconds) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric / 60.0,
+      1
+    ) AS minutes,
     ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,

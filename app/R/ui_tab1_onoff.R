@@ -105,6 +105,7 @@ ui_tab1_onoff <- function() {
               "Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider.",
               "Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other.",
               "Gray (unranked) cells mean fewer than 100 on-court possessions; factor diffs from small samples are unreliable.",
+              "Free throws, their points and their possession are credited to the lineup on the floor when the foul was drawn, including free throws shot after a substitution.",
               "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
             )
           ),

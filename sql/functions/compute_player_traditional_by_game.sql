@@ -117,19 +117,32 @@ actor_game AS (
   GROUP BY d.game_year, d.game_id, d.team_id, d.player_id
 ),
 poss_end AS (
-  SELECT DISTINCT d.game_year, d.game_id, d.team_id, d.lineup_hash, d.id AS poss_end_id
+  SELECT DISTINCT d.game_year, d.game_id, d.team_id, d.lineup_hash AS floor_lineup_hash,
+         d.credit_lineup_hash AS lineup_hash, d.id AS poss_end_id
   FROM actions_base d
   WHERE d.type_lineup = 'offense' AND d.final_end_poss
-    AND d.id IS NOT NULL AND d.lineup_hash IS NOT NULL
+    AND d.id IS NOT NULL AND d.credit_lineup_hash IS NOT NULL
 ),
-usage_totals AS (
+usage_credit AS (
   SELECT pe.game_year, pe.game_id, lm.team_id, lm.player_id,
-         1::int4 AS gp,
          COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::int4 AS poss_on_floor
   FROM poss_end pe
   JOIN lineup_map lm
     ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.lineup_hash
   GROUP BY pe.game_year, pe.game_id, lm.team_id, lm.player_id
+),
+usage_floor AS (
+  SELECT DISTINCT pe.game_year, pe.game_id, lm.team_id, lm.player_id
+  FROM poss_end pe
+  JOIN lineup_map lm
+    ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.floor_lineup_hash
+),
+usage_totals AS (
+  SELECT game_year, game_id, team_id, player_id,
+         (CASE WHEN f.player_id IS NOT NULL THEN 1 ELSE 0 END)::int4 AS gp,
+         COALESCE(c.poss_on_floor, 0)::int4 AS poss_on_floor
+  FROM usage_credit c
+  FULL JOIN usage_floor f USING (game_year, game_id, team_id, player_id)
 ),
 team_possession_totals AS (
   SELECT pe.game_year, pe.game_id, pe.team_id,

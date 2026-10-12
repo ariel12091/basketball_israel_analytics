@@ -38,7 +38,9 @@ test_that("build_ts_total_row sums counts and recomputes rates from totals", {
   expect_equal(out$two_pct, 64.4)              # 38 / 59
   expect_equal(out$ft_pct, 79.2)               # 19 / 24
   expect_equal(out$efg, 62.0)                  # (54 + 0.5*16) / 100
-  expect_equal(out$ts, 63.3)                   # 140 / (2 * (100 + 0.44*24))
+  # Attempts are recovered from each row's own TS%: 100/(2*0.60) + 40/(2*0.58)
+  # = 117.8, so 140 / (2 * 117.8). The total lies between its rows' 60 and 58.
+  expect_equal(out$ts, 59.4)
   # USG% is possession-weighted: (25*300 + 20*150) / 450
   expect_equal(out$usg_pct, 23.3)
 })

@@ -1,0 +1,189 @@
+library(testthat)
+
+# Free throws are credited to the lineup that drew the foul. The base table
+# records that in credit_* columns next to the physical lineup columns; every
+# aggregation of events groups on the credit columns, floor time on the
+# physical ones. See docs/superpowers/plans/2026-10-12-free-throw-foul-lineup-attribution.md.
+
+skip_if_not(Sys.getenv("RUN_DB_TESTS", "0") == "1")
+skip_if_not_installed("DBI")
+skip_if_not_installed("RPostgres")
+
+pg_env <- c("PG_HOST", "PG_PORT", "PG_DB", "PG_USER", "PG_PASS")
+missing_env <- pg_env[!nzchar(Sys.getenv(pg_env))]
+if (length(missing_env)) {
+  skip(paste("Missing DB env:", paste(missing_env, collapse = ", ")))
+}
+
+con <- DBI::dbConnect(
+  RPostgres::Postgres(),
+  host = Sys.getenv("PG_HOST"),
+  port = as.integer(Sys.getenv("PG_PORT")),
+  dbname = Sys.getenv("PG_DB"),
+  user = Sys.getenv("PG_USER"),
+  password = Sys.getenv("PG_PASS"),
+  sslmode = Sys.getenv("PG_SSLMODE", unset = "require")
+)
+on.exit(DBI::dbDisconnect(con), add = TRUE)
+
+test_that("every base-table row carries credit columns", {
+  bad <- DBI::dbGetQuery(con, "
+    SELECT COUNT(*) AS n FROM basketball_test.df_pts_poss_lineups_longer_mv
+    WHERE credit_lineup_hash IS NULL OR credit_segment_id IS NULL")
+  expect_equal(as.numeric(bad$n), 0)
+})
+
+test_that("all free throws of one trip are credited to one segment", {
+  split <- DBI::dbGetQuery(con, "
+    SELECT COUNT(*) AS n FROM (
+      SELECT 1 FROM basketball_test.df_pts_poss_lineups_longer_mv
+      WHERE type = 'freeThrow'
+      GROUP BY game_id, team_id, type_lineup, parent_action_id
+      HAVING COUNT(DISTINCT (credit_lineup_hash, credit_segment_id)) > 1) x")
+  expect_equal(as.numeric(split$n), 0)
+})
+
+test_that("team Four Factors counts each free-throw trip once", {
+  bad <- DBI::dbGetQuery(con, "
+    WITH expected AS (
+      SELECT a.game_id, a.team_id,
+             COUNT(*) FILTER (WHERE a.type = 'shot')
+             + COUNT(DISTINCT a.parent_action_id) FILTER (
+                 WHERE a.type = 'freeThrow' AND p.id IS NOT NULL) AS ts_poss
+      FROM basketball_test.df_pts_poss_lineups_longer_mv a
+      LEFT JOIN basketball_test.df_pts_poss_lineups_longer_mv p
+        ON p.game_id = a.game_id AND p.id = a.parent_action_id
+       AND p.type = 'foul' AND p.parameters_type = 'personal'
+       AND p.team_id = a.team_id AND p.type_lineup = a.type_lineup
+      WHERE a.type_lineup = 'offense'
+      GROUP BY a.game_id, a.team_id
+    )
+    SELECT COUNT(*) AS n
+    FROM basketball_test.team_metrics_by_game_mv tm
+    JOIN expected e ON e.game_id = tm.game_id AND e.team_id = tm.team_id
+    WHERE tm.off_ts_poss_raw <> e.ts_poss")
+  expect_equal(as.numeric(bad$n), 0)
+})
+
+test_that("a player's ON and OFF Four Factors rows add up to the team's", {
+  # Compared through the best-covered player of each team-game: lineups_lookup
+  # also carries partial rows for players who were not on that game's roster,
+  # and their ON+OFF sums never reach the team's.
+  bad <- DBI::dbGetQuery(con, "
+    WITH split AS (
+      SELECT game_id, team_id, player_id, type_lineup,
+             SUM(ts_poss_count) AS ts_poss, SUM(total_points) AS pts, SUM(total_poss) AS poss
+      FROM basketball_test.player_four_factors_by_game
+      GROUP BY game_id, team_id, player_id, type_lineup
+    ),
+    best AS (
+      SELECT game_id, team_id, type_lineup,
+             MAX(ts_poss) AS ts_poss, MAX(pts) AS pts, MAX(poss) AS poss
+      FROM split GROUP BY game_id, team_id, type_lineup
+    ),
+    team AS (
+      SELECT game_id, team_id, type_lineup,
+             SUM(ts_poss_count) AS ts_poss, SUM(total_points) AS pts, SUM(total_poss) AS poss
+      FROM basketball_test.lineup_four_factors_by_game
+      GROUP BY game_id, team_id, type_lineup
+    )
+    SELECT COUNT(*) AS n FROM best b JOIN team t USING (game_id, team_id, type_lineup)
+    WHERE b.ts_poss <> t.ts_poss OR b.pts <> t.pts OR b.poss <> t.poss")
+  expect_equal(as.numeric(bad$n), 0)
+})
+
+test_that("lineup day totals add up to the team's points and possessions", {
+  bad <- DBI::dbGetQuery(con, "
+    WITH lineups AS (
+      SELECT game_id, team_id, type_lineup,
+             SUM(total_pts) AS pts, SUM(total_poss) AS poss
+      FROM basketball_test.mv_lineup_totals_by_day
+      GROUP BY game_id, team_id, type_lineup
+    ),
+    base AS (
+      SELECT game_id, team_id, type_lineup,
+             SUM(COALESCE(team_score, 0)) AS pts,
+             COUNT(*) FILTER (WHERE final_end_poss) AS poss
+      FROM basketball_test.df_pts_poss_lineups_longer_mv
+      GROUP BY game_id, team_id, type_lineup
+    )
+    SELECT COUNT(*) AS n FROM lineups l JOIN base b USING (game_id, team_id, type_lineup)
+    WHERE l.pts <> b.pts OR l.poss <> b.poss")
+  expect_equal(as.numeric(bad$n), 0)
+})
+
+test_that("a starters filter on team readers follows the credited lineup", {
+  # A free throw shot after a substitution belongs to the lineup that drew the
+  # foul, so it must pass or fail "5 own starters on" by that lineup's count.
+  got <- DBI::dbGetQuery(con, "
+    SELECT team_id, off_pts, off_poss
+    FROM basketball_test.get_team_four_factors_dynamic(2026, p_num_starters_off := 5)")
+  expected <- DBI::dbGetQuery(con, "
+    SELECT d.team_id,
+           SUM(COALESCE(d.team_score, 0)) AS pts,
+           COUNT(*) FILTER (WHERE d.final_end_poss) AS poss
+    FROM basketball_test.df_pts_poss_lineups_longer_mv d
+    JOIN basketball_test.final_schedule_mv fs
+      ON fs.game_id = d.game_id AND fs.team_id = d.team_id AND fs.game_year = 2026
+    WHERE d.type_lineup = 'offense' AND d.credit_own_starters = 5
+    GROUP BY d.team_id")
+  both <- merge(got, expected, by = "team_id")
+  expect_equal(nrow(both), 14)
+  expect_equal(as.numeric(both$off_pts), as.numeric(both$pts))
+  expect_equal(as.numeric(both$off_poss), as.numeric(both$poss))
+})
+
+test_that("no Israeli traditional reader still uses the 0.44 TS% estimate", {
+  files <- c(
+    "functions/get_player_traditional_from_games.sql",
+    "functions/get_player_traditional_custom_clutch.sql",
+    "functions/get_player_traditional_dynamic.sql",
+    "functions/get_team_traditional_dynamic.sql",
+    "functions/refresh_team_metrics_by_game_for_games.sql",
+    "materialized_views/player_traditional_stats_mv.sql",
+    "materialized_views/team_metrics_by_game_mv.sql")
+  for (f in files) {
+    expect_false(grepl("0.44", read_repo_txt("..", "sql", f), fixed = TRUE), info = f)
+  }
+})
+
+test_that("team Traditional TS% equals team Four Factors TS%", {
+  trad <- DBI::dbGetQuery(con, "
+    SELECT team_id, ts FROM basketball_test.get_team_traditional_dynamic(2026)")
+  ff <- DBI::dbGetQuery(con, "
+    SELECT team_id, 100.0 * SUM(off_points_raw) / NULLIF(2.0 * SUM(off_ts_poss_raw), 0) AS ff_ts
+    FROM basketball_test.team_metrics_by_game_mv WHERE game_year = 2026 GROUP BY team_id")
+  both <- merge(trad, ff, by = "team_id")
+  expect_equal(nrow(both), 14)
+  expect_true(all(abs(as.numeric(both$ts) - as.numeric(both$ff_ts)) < 0.06))
+})
+
+# The Summary and Four Factors lineup readers are two functions over the same
+# lineups. They drifted apart three ways before 2026-10-12 (clutch stint span,
+# the starters filter's meaning under clutch, rounding of minutes); this pins
+# them together on every column they share.
+test_that("the two lineup readers agree on possessions, points and minutes", {
+  cases <- c(
+    unfiltered = "",
+    home = ", p_home_away := 'home'",
+    starters = ", p_num_starters_off := 5",
+    clutch = ", p_max_margin := 5, p_max_time_remaining := 300",
+    clutch_starters = ", p_max_margin := 5, p_max_time_remaining := 300, p_num_starters_off := 5")
+  lead <- "5, NULL::text, NULL::text, NULL::text, FALSE, NULL::date, NULL::date, 0, 2026"
+  for (case in names(cases)) {
+    res <- DBI::dbGetQuery(con, sprintf("
+      SELECT COUNT(*) AS lineups,
+             COUNT(*) FILTER (WHERE f.team_id IS NULL AND s.off_poss + s.def_poss > 0) AS only_summary,
+             COUNT(*) FILTER (WHERE s.team_id IS NULL) AS only_four_factors,
+             COUNT(*) FILTER (WHERE s.off_poss <> f.off_poss OR s.def_poss <> f.def_poss
+                                 OR s.off_pts <> f.off_pts OR s.def_pts <> f.def_pts
+                                 OR s.minutes <> f.minutes) AS differ
+      FROM basketball_test.fetch_lineups_csv_v2(%1$s%2$s) s
+      FULL JOIN basketball_test.fetch_lineups_four_factors_csv(%1$s%2$s) f
+        USING (team_id, sub_lineup_hash)", lead, cases[[case]]))
+    expect_gt(as.numeric(res$lineups), 0, label = paste(case, "lineups"))
+    expect_equal(as.numeric(res$only_summary), 0, label = paste(case, "lineups only in Summary"))
+    expect_equal(as.numeric(res$only_four_factors), 0, label = paste(case, "lineups only in Four Factors"))
+    expect_equal(as.numeric(res$differ), 0, label = paste(case, "lineups that differ"))
+  }
+})
