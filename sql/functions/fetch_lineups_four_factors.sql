@@ -260,6 +260,7 @@ BEGIN
       d.parameters_type, d.parameters_made, d.parameters_points, d.pct_ft,
       d.parent_action_id, d.type_lineup, d.num_starters,
       d.segment_id, d.end_game_seconds_remaining, d.event_elapsed_seconds,
+      d.credit_lineup_hash, d.credit_segment_id,
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
@@ -290,12 +291,12 @@ BEGIN
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
       AND (
         (d.type_lineup = 'offense'
-          AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-          AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
+          AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.credit_num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+          AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.credit_num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
         OR
         (d.type_lineup = 'defense'
-          AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-          AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
+          AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+          AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))
       )
   ),
   -- complex_flags: resolve parent foul only for already filtered clutch rows
@@ -319,6 +320,8 @@ BEGIN
       cs.game_id,
       cs.type_lineup,
       cs.segment_id,
+      cs.credit_lineup_hash,
+      cs.credit_segment_id,
       cs.end_game_seconds_remaining,
       cs.id,
       cs.event_elapsed_seconds,
@@ -355,10 +358,10 @@ BEGIN
   segment_stats AS (
     SELECT
       cd.team_id,
-      cd.lineup_hash::text AS lineup_hash,
+      cd.credit_lineup_hash::text AS lineup_hash,
       cd.game_id,
       cd.type_lineup,
-      cd.segment_id,
+      cd.credit_segment_id AS segment_id,
       SUM(cd.team_score)       AS total_points,
       SUM(cd.final_end_flag)   AS total_poss,
       COUNT(CASE WHEN cd.type = 'shot' THEN 1 END)
@@ -381,7 +384,7 @@ BEGIN
       COUNT(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' THEN 1 END) AS total_fgm,
       COUNT(CASE WHEN cd.type = 'shot' AND cd.parameters_made = 'made' AND cd.parameters_points = 3 THEN 1 END) AS total_fg3_made
     FROM combined_data cd
-    GROUP BY cd.team_id, cd.lineup_hash, cd.game_id, cd.type_lineup, cd.segment_id
+    GROUP BY cd.team_id, cd.credit_lineup_hash, cd.game_id, cd.type_lineup, cd.credit_segment_id
   ),
   lineup_ff AS (
     SELECT

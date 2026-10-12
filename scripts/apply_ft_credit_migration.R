@@ -44,6 +44,8 @@ say <- function(...) message(sprintf(...))
 x("SET client_min_messages = warning")
 x("SET statement_timeout = '30min'")
 x("SET lock_timeout = '10s'")
+# Some definition files name their source tables without the schema.
+x(sprintf("SET search_path TO %s, public", SCHEMA))
 if (apply && !isTRUE(q("SELECT pg_try_advisory_lock(hashtext('basketball_test.ft_credit.2026_10_12')) AS ok")$ok)) {
   stop("another apply_ft_credit_migration run holds the lock")
 }
@@ -115,6 +117,10 @@ objects <- list(
     refresh = "refresh_player_advanced_stats_for_games"),
   mv_lineup_totals_by_day = list(kind = "matview",
     file = "sql/materialized_views/sub_lineups_by_day.sql"),
+  sub_lineups_stats = list(kind = "table",
+    functions = c("sql/functions/refresh_sub_lineups.sql",
+                  "sql/functions/refresh_sub_lineups_incremental.sql"),
+    refresh = "refresh_sub_lineups_stats_for_games"),
   team_ppp_ratings_mv = list(kind = "matview",
     file = "sql/materialized_views/team_ppp_ratings_mv.sql"),
   player_traditional_by_game = list(kind = "table",
@@ -219,8 +225,20 @@ apply_object <- function(name) {
     say("  stage %s__ftc_next from %s (%d indexes)", name, spec$file, length(staged$indexes))
     if (!apply) return(invisible())
     if (!is.na(relkind(paste0(name, "__ftc_old")))) stop(name, "__ftc_old already exists: run --cleanup or resolve by hand")
-    x(sprintf("DROP MATERIALIZED VIEW IF EXISTS %s.%s__ftc_next", SCHEMA, name))
-    x(staged$sql)
+    # --reuse-staged: a long build can outlive the pooler's connection. The
+    # build still finishes on the server (one implicit transaction, so the
+    # staged view is either complete with its indexes or absent); this resumes
+    # from it instead of building again.
+    reuse <- "--reuse-staged" %in% args && identical(relkind(paste0(name, "__ftc_next")), "m")
+    if (reuse) {
+      have <- q(sprintf("SELECT indexname FROM pg_indexes WHERE schemaname = '%s' AND tablename = '%s__ftc_next'",
+                        SCHEMA, name))$indexname
+      if (!setequal(have, paste0(staged$indexes, "__ftc_next"))) stop("staged view's indexes are incomplete: rebuild it")
+      say("  reusing the staged view already on the server")
+    } else {
+      x(sprintf("DROP MATERIALIZED VIEW IF EXISTS %s.%s__ftc_next", SCHEMA, name))
+      x(staged$sql)
+    }
     counts <- q(sprintf("SELECT (SELECT COUNT(*) FROM %1$s.%2$s) AS old_rows,
                                 (SELECT COUNT(*) FROM %1$s.%2$s__ftc_next) AS new_rows", SCHEMA, name))
     say("  rows: %s live, %s staged", counts$old_rows, counts$new_rows)

@@ -229,6 +229,9 @@ BEGIN
            CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag,
            d.team_score,
            d.num_starters,
+           d.credit_lineup_hash::text AS credit_lineup_hash,
+           d.credit_segment_id,
+           d.credit_num_starters,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg2_made,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 2 THEN 1 ELSE 0 END AS fg2_att,
            CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND d.parameters_made = 'made' THEN 1 ELSE 0 END AS fg3_made,
@@ -260,10 +263,10 @@ BEGIN
                END)
            OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
       AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining OR d.quarter > 4)
-      AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
-      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
+      AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.credit_own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+      AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.credit_own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+      AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+      AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
   ),
   -- Stint duration per segment (no type_lineup - captures full floor time)
   segment_times AS (
@@ -279,14 +282,16 @@ BEGIN
   ),
   -- Poss/pts per segment per type_lineup
   segment_stats AS (
-    SELECT ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.type_lineup, ca.segment_id,
-           ca.num_starters,
+    SELECT ca.team_id, ca.game_year, ca.credit_lineup_hash AS lineup_hash, ca.game_id, ca.type_lineup,
+           ca.credit_segment_id AS segment_id,
+           ca.credit_num_starters AS num_starters,
            SUM(ca.final_end_flag) AS total_poss,
            SUM(ca.team_score) AS total_pts,
            SUM(ca.fg2_made) AS fg2_made, SUM(ca.fg2_att) AS fg2_att,
            SUM(ca.fg3_made) AS fg3_made, SUM(ca.fg3_att) AS fg3_att
     FROM clutch_actions ca
-    GROUP BY ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.type_lineup, ca.segment_id, ca.num_starters
+    GROUP BY ca.team_id, ca.game_year, ca.credit_lineup_hash, ca.game_id, ca.type_lineup, ca.credit_segment_id,
+             ca.credit_num_starters
   ),
   lineup_totals AS (
     SELECT ss.team_id, ss.game_year, ss.lineup_hash, ss.type_lineup, ss.num_starters,

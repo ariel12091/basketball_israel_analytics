@@ -91,3 +91,23 @@ test_that("a player's ON and OFF Four Factors rows add up to the team's", {
     WHERE b.ts_poss <> t.ts_poss OR b.pts <> t.pts OR b.poss <> t.poss")
   expect_equal(as.numeric(bad$n), 0)
 })
+
+test_that("lineup day totals add up to the team's points and possessions", {
+  bad <- DBI::dbGetQuery(con, "
+    WITH lineups AS (
+      SELECT game_id, team_id, type_lineup,
+             SUM(total_pts) AS pts, SUM(total_poss) AS poss
+      FROM basketball_test.mv_lineup_totals_by_day
+      GROUP BY game_id, team_id, type_lineup
+    ),
+    base AS (
+      SELECT game_id, team_id, type_lineup,
+             SUM(COALESCE(team_score, 0)) AS pts,
+             COUNT(*) FILTER (WHERE final_end_poss) AS poss
+      FROM basketball_test.df_pts_poss_lineups_longer_mv
+      GROUP BY game_id, team_id, type_lineup
+    )
+    SELECT COUNT(*) AS n FROM lineups l JOIN base b USING (game_id, team_id, type_lineup)
+    WHERE l.pts <> b.pts OR l.poss <> b.poss")
+  expect_equal(as.numeric(bad$n), 0)
+})

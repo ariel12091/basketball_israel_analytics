@@ -152,11 +152,11 @@ segment_times AS (
 
 segment_stats AS (
   SELECT
-    f.lineup_hash,
+    f.credit_lineup_hash AS lineup_hash,
     f.game_id,
     sc.game_year,
     f.type_lineup,
-    f.segment_id,
+    f.credit_segment_id AS segment_id,
     SUM(CASE WHEN COALESCE(f.final_end_poss, FALSE) THEN 1 ELSE 0 END) AS total_poss,
     COALESCE(SUM(f.team_score), 0) AS total_pts,
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 2 AND f.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
@@ -165,14 +165,14 @@ segment_stats AS (
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
     -- Numerator for the possession-weighted own-starters average; see the same
     -- expression and rationale in refresh_sub_lineups.sql.
-    SUM(CASE WHEN COALESCE(f.final_end_poss, FALSE) THEN COALESCE(f.num_starters, 0) ELSE 0 END) AS starters_poss_num
+    SUM(CASE WHEN COALESCE(f.final_end_poss, FALSE) THEN COALESCE(f.credit_num_starters, 0) ELSE 0 END) AS starters_poss_num
   FROM basketball_test.df_pts_poss_lineups_longer_mv f
   JOIN sched sc
     ON sc.game_id = f.game_id
   JOIN needed_lineups nl
-    ON nl.lineup_hash = f.lineup_hash
+    ON nl.lineup_hash = f.credit_lineup_hash
    AND nl.game_year = sc.game_year
-  GROUP BY f.lineup_hash, f.game_id, sc.game_year, f.type_lineup, f.segment_id
+  GROUP BY f.credit_lineup_hash, f.game_id, sc.game_year, f.type_lineup, f.credit_segment_id
 ),
 
 lineup_totals AS (
