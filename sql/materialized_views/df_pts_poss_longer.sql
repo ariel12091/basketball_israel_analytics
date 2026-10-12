@@ -49,6 +49,11 @@ SELECT quarter,
     ,NULL::numeric AS segment_start_elapsed_seconds
     ,NULL::numeric AS segment_end_elapsed_seconds
     ,NULL::numeric AS segment_seconds
+    ,NULL::text AS credit_lineup_hash
+    ,NULL::bigint AS credit_segment_id
+    ,NULL::integer AS credit_num_starters
+    ,NULL::integer AS credit_own_starters
+    ,NULL::integer AS credit_opp_starters
    FROM ( -- Base row: keep the original event team perspective from pws.team_id.
           -- type_lineup is assigned dynamically by event type/parameters_type ownership.
           -- Mirrored row duplicates the same event for the opposite team (pws.team_id_defense)
@@ -253,6 +258,9 @@ WHERE d.game_id = oa.game_id
   AND d.id = oa.id
   AND d.lineup_hash = oa.lineup_hash
   AND d.segment_id = oa.segment_id;
+
+-- Populate credit attribution. See refresh_ft_credit_fields_for_games.
+SELECT basketball_test.refresh_ft_credit_fields_for_games(NULL::int4[]);
 
 -- Table indexes:
 CREATE INDEX dfppl_game_id_idx ON basketball_test.df_pts_poss_lineups_longer_mv USING btree (game_id);

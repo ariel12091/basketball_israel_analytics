@@ -150,19 +150,26 @@ sum_list <- function(exprs) {
                 expr_alias(seq_along(exprs))), collapse = ", ")
 }
 
-# Sums of `exprs` per `key` in two relations, full-joined; returns keys that differ.
+# Sums of `exprs` per `key` in two relations; returns how many keys differ.
+# Live rows count positive and baseline rows negative, then GROUP BY nets them
+# out. GROUP BY treats NULL keys (e.g. opp_starters) as equal, which a join
+# would not.
 compare_sums <- function(live, base, key, exprs, tol = 1e-6) {
   al <- expr_alias(seq_along(exprs))
+  signed <- function(sign) paste(sprintf("%s SUM((%s)::numeric) AS %s", sign,
+    ifelse(grepl("[ +]", exprs), exprs, sprintf('"%s"', exprs)), al), collapse = ", ")
   sql <- sprintf("
-    WITH l AS (SELECT %1$s, %2$s FROM %3$s GROUP BY %1$s),
-         b AS (SELECT %1$s, %2$s FROM %4$s GROUP BY %1$s)
-    SELECT COUNT(*) AS keys_total,
-           COUNT(*) FILTER (WHERE %5$s) AS keys_differ, %6$s
-    FROM l FULL JOIN b USING (%1$s)",
-    ident(key), sum_list(exprs), live, base,
-    paste(sprintf("ABS(COALESCE(l.%1$s, 0) - COALESCE(b.%1$s, 0)) > %2$g", al, tol), collapse = " OR "),
-    paste(sprintf("COUNT(*) FILTER (WHERE ABS(COALESCE(l.%1$s, 0) - COALESCE(b.%1$s, 0)) > %2$g) AS d_%1$s",
-                  al, tol), collapse = ", "))
+    WITH u AS (
+      SELECT %1$s, %2$s FROM %3$s GROUP BY %1$s
+      UNION ALL
+      SELECT %1$s, %4$s FROM %5$s GROUP BY %1$s
+    ),
+    net AS (SELECT %1$s, %6$s FROM u GROUP BY %1$s)
+    SELECT COUNT(*) AS keys_total, COUNT(*) FILTER (WHERE %7$s) AS keys_differ, %8$s FROM net",
+    ident(key), signed(""), live, signed("-"), base,
+    paste(sprintf("SUM(COALESCE(%1$s, 0)) AS %1$s", al), collapse = ", "),
+    paste(sprintf("ABS(%s) > %g", al, tol), collapse = " OR "),
+    paste(sprintf("COUNT(*) FILTER (WHERE ABS(%1$s) > %2$g) AS d_%1$s", al, tol), collapse = ", "))
   res <- q(sql)
   per_col <- as.numeric(unlist(res[, paste0("d_", al), drop = FALSE]))
   list(total = as.numeric(res$keys_total), differ = as.numeric(res$keys_differ),
