@@ -567,6 +567,7 @@ than adding a special case:
 ### PostgreSQL / Supabase
 - `REFRESH MATERIALIZED VIEW` re-runs stored definition — must DROP+CREATE to change query
 - `DROP ... CASCADE` propagates — rebuild dependents in L2→L3→L4 order
+- **Port 6543 breaks RPostgres when two clients query at once.** RPostgres sends every `dbGetQuery()` as prepare then execute, even with no params, and the transaction pooler can put another client's query between the two. Root cause of `bind message supplies N parameters, but prepared statement "" requires M`, `unnamed prepared statement does not exist` and `Multiple queries must use the same column names`. Measured 2026-10-12 with four clients as `app_readonly` (`scripts/pooler_concurrency_repro.R`): different statements on 6543 were 80-95% bad, about a quarter returning ANOTHER client's columns with no error; the same statement with different params was 983/1000 ok with no crossed values; port 5432 was clean in both; one client alone was clean in 720 queries (the single exception, 7 errors in 120 right after the transaction-wrapper experiment, is unexplained). `immediate = TRUE` avoids it but takes no params. `db_get_query()` is exposed. **The live-DB tests are not flaky: never run them while a local app, another DB script or a second test run is querying as `app_readonly`.** Not fixed -- see Backlogs.
 - `ANALYZE;` without table fails on Supabase — scope to specific tables
 - `score` column from raw JSON is unreliable — use `own_team_score`/`opp_team_score`
 - `segment_id` repeats across games — always include `game_id` in GROUP BY
@@ -718,6 +719,11 @@ than adding a special case:
 7. **Team Insights** is unfinished, on the local branch `shiny/team-insights`
    only. It fails six tests as-is (literal colours; `team_insights_entry_ui`
    missing from the Home UI test). Do not merge until the user says so.
+
+**Reliability / scaling (added 2026-10-12) -- do these in order, after the schema/code drift tasks:**
+1. **Move the app and the DB-backed tests off port 6543.** See the port-6543 pitfall above. Plan: read Pool Size in the Supabase dashboard (session mode on 5432 caps clients at Pool Size per role; default believed 15, never read; Postgres `max_connections` is 60), then switch `PG_PORT` to 5432 for the tests and a local app first, then in the Connect Cloud dashboard and the GitHub secret. Consider `POOL_MAX=1`: an R process runs one query at a time. A BEGIN/COMMIT wrapper around each query did NOT cleanly fix it in one (confounded) run -- do not assume it does. Client-side parameter interpolation is the fallback and conflicts with the parameterised-SQL rule.
+2. **Re-run the 20-user stress test** (`docs/launch_stress_test_2026-09-10.md`) on the new port. It ran through 6543; whether its four stuck-busy sessions were this defect is unknown.
+3. **Extend the stress test to 50 users** and only then decide on architecture. The 20-user run showed query latency flat (median 5.4-5.6s) and startup degrading (nav p90 9-11s at 5 users, 35-42s at 20). Capacity comes from the number of R processes, which Connect Cloud does not document; the already-listed `ExtendedTask` step is the incremental answer if one slow query blocking a process is the limiter.
 
 **Architecture (accepted, trigger-gated):** when a tab goes React+Plumber-only, retire its mega-signature SQL function(s) and let the route build the SQL — see `docs/adr_api_owns_query_construction.md` for trigger, migration order, and the DB-role tightening that follows. Until then the stored functions are the shared source of truth for both frontends; do NOT duplicate their logic into R query builders.
 
