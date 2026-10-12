@@ -136,7 +136,7 @@ objects <- list(
     refresh = "refresh_player_stats_actions_for_games"),
   player_traditional_stats_mv = list(kind = "matview",
     file = "sql/materialized_views/player_traditional_stats_mv.sql"),
-  team_ratings_preset_cache = list(kind = "table", functions = character(0),
+  team_ratings_preset_cache = list(kind = "season_table", functions = character(0),
     refresh = "refresh_team_ratings_preset_cache_for_games")
 )
 

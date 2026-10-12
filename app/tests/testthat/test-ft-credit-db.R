@@ -111,3 +111,24 @@ test_that("lineup day totals add up to the team's points and possessions", {
     WHERE l.pts <> b.pts OR l.poss <> b.poss")
   expect_equal(as.numeric(bad$n), 0)
 })
+
+test_that("a starters filter on team readers follows the credited lineup", {
+  # A free throw shot after a substitution belongs to the lineup that drew the
+  # foul, so it must pass or fail "5 own starters on" by that lineup's count.
+  got <- DBI::dbGetQuery(con, "
+    SELECT team_id, off_pts, off_poss
+    FROM basketball_test.get_team_four_factors_dynamic(2026, p_num_starters_off := 5)")
+  expected <- DBI::dbGetQuery(con, "
+    SELECT d.team_id,
+           SUM(COALESCE(d.team_score, 0)) AS pts,
+           COUNT(*) FILTER (WHERE d.final_end_poss) AS poss
+    FROM basketball_test.df_pts_poss_lineups_longer_mv d
+    JOIN basketball_test.final_schedule_mv fs
+      ON fs.game_id = d.game_id AND fs.team_id = d.team_id AND fs.game_year = 2026
+    WHERE d.type_lineup = 'offense' AND d.credit_own_starters = 5
+    GROUP BY d.team_id")
+  both <- merge(got, expected, by = "team_id")
+  expect_equal(nrow(both), 14)
+  expect_equal(as.numeric(both$off_pts), as.numeric(both$pts))
+  expect_equal(as.numeric(both$off_poss), as.numeric(both$poss))
+})

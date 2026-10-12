@@ -111,10 +111,10 @@ WITH params AS (
         ELSE d.own_team_score=(d.opp_team_score-coalesce(d.team_score,0)) END)
       OR (d.quarter>4 AND NOT coalesce(p_ot_margin_filter,false)))
     AND (p_max_time_remaining IS NULL OR d.end_game_seconds_remaining<=p_max_time_remaining OR d.quarter>4)
-    AND (coalesce(p_num_starters_off_min,p_num_starters_off) IS NULL OR d.own_starters>=coalesce(p_num_starters_off_min,p_num_starters_off))
-    AND (coalesce(p_num_starters_off_max,p_num_starters_off) IS NULL OR d.own_starters<=coalesce(p_num_starters_off_max,p_num_starters_off))
-    AND (coalesce(p_num_starters_def_min,p_num_starters_def) IS NULL OR d.opp_starters>=coalesce(p_num_starters_def_min,p_num_starters_def))
-    AND (coalesce(p_num_starters_def_max,p_num_starters_def) IS NULL OR d.opp_starters<=coalesce(p_num_starters_def_max,p_num_starters_def))
+    AND (coalesce(p_num_starters_off_min,p_num_starters_off) IS NULL OR d.credit_own_starters>=coalesce(p_num_starters_off_min,p_num_starters_off))
+    AND (coalesce(p_num_starters_off_max,p_num_starters_off) IS NULL OR d.credit_own_starters<=coalesce(p_num_starters_off_max,p_num_starters_off))
+    AND (coalesce(p_num_starters_def_min,p_num_starters_def) IS NULL OR d.credit_opp_starters>=coalesce(p_num_starters_def_min,p_num_starters_def))
+    AND (coalesce(p_num_starters_def_max,p_num_starters_def) IS NULL OR d.credit_opp_starters<=coalesce(p_num_starters_def_max,p_num_starters_def))
 ), team_agg AS (
   SELECT f.team_id,max(f.game_year)::int game_year,f.type_lineup,
     sum(f.team_score)::int total_points,

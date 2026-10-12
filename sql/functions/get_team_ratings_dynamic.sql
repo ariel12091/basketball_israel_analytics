@@ -198,10 +198,10 @@ BEGIN
                  END)
              OR (dppllm.quarter > 4 AND NOT COALESCE(p_ot_margin_filter, FALSE)))
         AND (p_max_time_remaining IS NULL OR dppllm.end_game_seconds_remaining <= p_max_time_remaining OR dppllm.quarter > 4)
-        AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR dppllm.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-        AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR dppllm.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
-        AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR dppllm.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-        AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR dppllm.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
+        AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR dppllm.credit_own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+        AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR dppllm.credit_own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+        AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR dppllm.credit_opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+        AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR dppllm.credit_opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))
       GROUP BY gf.game_year, gf.team_id, gf.game_id, gf.has_won, dppllm.type_lineup
   ),
 
