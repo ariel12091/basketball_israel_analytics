@@ -494,16 +494,13 @@ BEGIN
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='offense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='offense'),0)*100) -
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='defense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='defense'),0)*100), 1
     ) AS net_rtg,
-    CASE
-      WHEN v_starters_active THEN ROUND(
-        COALESCE(SUM(lt.total_seconds) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric / 60.0,
-        1
-      )
-      ELSE ROUND(
-        COALESCE(SUM(lt.minutes) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric,
-        1
-      )
-    END AS minutes,
+    -- Always from whole seconds. Summing per-game minutes (seconds / 60,
+    -- cut to numeric's scale) lands a hair under a half-tenth boundary and
+    -- rounds 0.1 below the unfiltered path for the same lineup.
+    ROUND(
+      COALESCE(SUM(lt.total_seconds) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric / 60.0,
+      1
+    ) AS minutes,
     ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,

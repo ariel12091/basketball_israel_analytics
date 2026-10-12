@@ -76,6 +76,13 @@ test_that("a frozen column shown only when another column exists is compared whe
   expect_match(fn_result_failures(old, moved, key = "team_id", spec = typo), "nett")
 })
 
+test_that("a frozen column with a tolerance may move within it and no further", {
+  spec <- list(allowed = "*", frozen = "minutes", tolerance = c(minutes = 0.1))
+  expect_length(fn_result_failures(teams(), teams(minutes = c(40.1, 39.9)), key = "team_id", spec = spec), 0L)
+  expect_match(fn_result_failures(teams(), teams(minutes = c(40.2, 40)), key = "team_id", spec = spec), "minutes")
+  expect_match(fn_result_failures(teams(), teams(minutes = c(NA, 40)), key = "team_id", spec = spec), "minutes")
+})
+
 test_that("a conserved column may move between rows but its total may not change", {
   spec <- list(allowed = "*", rows = "any", conserved = "pts")
   expect_length(fn_result_failures(teams(), teams(pts = c(12, 18)), key = "team_id", spec = spec), 0L)

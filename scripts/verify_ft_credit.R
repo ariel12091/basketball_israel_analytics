@@ -330,6 +330,10 @@ snapshot <- function(force) {
 ts_only <- list(allowed = "ts")
 player_trad <- list(allowed = c("poss_on_floor", "ts", "usg_pct"))
 any_but_minutes <- list(allowed = "*", frozen = "minutes")
+# Lineup minutes are shown to one decimal. Both readers now round the exact
+# second total; the snapshot rounded a sum of per-game minutes, which sits a
+# hair under a half-tenth boundary for some lineups. One display step, no more.
+lineup_minutes <- c(any_but_minutes, list(tolerance = c(minutes = 0.1)))
 # The clutch path reads the base table directly. Re-crediting moves events
 # between a team's lineups, so no point or possession may appear or vanish
 # (the readers are called with no possession minimum). A lineup can gain a
@@ -365,9 +369,9 @@ fn_specs <- list(
   get_player_traditional_custom_clutch = list(key = c("team_id", "player_id"),
     unsupported = c("none", "home", "last5", "starters5"), cases = list(default = player_trad)),
   fetch_lineups_csv_v2 = list(key = c("team_id", "sub_lineup_hash"),
-    cases = list(default = any_but_minutes, clutch = lineup_clutch)),
+    cases = list(default = lineup_minutes, clutch = lineup_clutch)),
   fetch_lineups_four_factors_csv = list(key = c("team_id", "sub_lineup_hash"),
-    cases = list(default = any_but_minutes, clutch = lineup_clutch)),
+    cases = list(default = lineup_minutes, clutch = lineup_clutch)),
   onoff_compute = list(key = c("team_id", "player_id"), unsupported = "clutch",
     cases = list(default = onoff_reader)),
   four_factors_compute = list(key = c("team_id", "player_id"), unsupported = "clutch",

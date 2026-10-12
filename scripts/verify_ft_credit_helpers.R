@@ -7,6 +7,7 @@
 #   spec$allowed  columns that may change ("*" = any column)
 #   spec$frozen   columns that may never change, even under "*"
 #   spec$frozen_where  named: frozen column -> the column it is reported with
+#   spec$tolerance  named: column -> how far a value may move and count as unchanged
 #   spec$conserved  columns whose total over all rows may not change
 #   spec$rows     "same" (default) or "any" when the reader's row set is not stable
 fn_result_failures <- function(old, new, key, spec) {
@@ -57,7 +58,11 @@ fn_result_failures <- function(old, new, key, spec) {
   }
   differs <- function(cc) {
     keep <- comparable(cc)
-    !isTRUE(all.equal(o[[cc]][keep], n[[cc]][keep], check.attributes = FALSE))
+    a <- o[[cc]][keep]; b <- n[[cc]][keep]
+    tol <- spec$tolerance[cc]
+    if (is.null(tol) || is.na(tol)) return(!isTRUE(all.equal(a, b, check.attributes = FALSE)))
+    # Within `tol` of each other; a value appearing or vanishing is a change.
+    any(is.na(a) != is.na(b)) || any(abs(as.numeric(a) - as.numeric(b)) > tol + 1e-9, na.rm = TRUE)
   }
   no_gate <- setdiff(spec$frozen_where, cols)
   if (length(no_gate)) return(c(fails, paste("frozen_where names a column not returned:", paste(no_gate, collapse = ", "))))

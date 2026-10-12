@@ -573,16 +573,13 @@ BEGIN
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
       , 1) AS net_rtg,
-      CASE
-        WHEN v_starters_active THEN ROUND(
-          COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
-          1
-        )
-        ELSE ROUND(
-          COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric,
-          1
-        )
-      END AS minutes,
+      -- Always from whole seconds. Summing per-game minutes (seconds / 60,
+      -- cut to numeric's scale) lands a hair under a half-tenth boundary and
+      -- rounds 0.1 below fetch_lineups_all for the same lineup.
+      ROUND(
+        COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
+        1
+      ) AS minutes,
       COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
       COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
       COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,
@@ -766,16 +763,13 @@ BEGIN
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'offense'), 0) * 100) -
         (NULLIF(SUM(cr.total_points) FILTER (WHERE cr.type_lineup = 'defense'), 0)::numeric / NULLIF(SUM(cr.total_poss) FILTER (WHERE cr.type_lineup = 'defense'), 0) * 100)
       , 1) AS net_rtg,
-      CASE
-        WHEN v_starters_active THEN ROUND(
-          COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
-          1
-        )
-        ELSE ROUND(
-          COALESCE(SUM(cr.minutes) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric,
-          1
-        )
-      END AS minutes,
+      -- Always from whole seconds. Summing per-game minutes (seconds / 60,
+      -- cut to numeric's scale) lands a hair under a half-tenth boundary and
+      -- rounds 0.1 below fetch_lineups_all for the same lineup.
+      ROUND(
+        COALESCE(SUM(cr.total_seconds) FILTER (WHERE cr.type_lineup = 'offense'), 0)::numeric / 60.0,
+        1
+      ) AS minutes,
       COALESCE(SUM(cr.ts_poss_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_ts_poss,
       COALESCE(SUM(cr.oreb_count) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_cnt,
       COALESCE(SUM(cr.oreb_opportunities) FILTER (WHERE cr.type_lineup = 'offense'), 0)::int4 AS off_oreb_opps,

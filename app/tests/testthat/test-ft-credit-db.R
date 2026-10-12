@@ -157,3 +157,33 @@ test_that("team Traditional TS% equals team Four Factors TS%", {
   expect_equal(nrow(both), 14)
   expect_true(all(abs(as.numeric(both$ts) - as.numeric(both$ff_ts)) < 0.06))
 })
+
+# The Summary and Four Factors lineup readers are two functions over the same
+# lineups. They drifted apart three ways before 2026-10-12 (clutch stint span,
+# the starters filter's meaning under clutch, rounding of minutes); this pins
+# them together on every column they share.
+test_that("the two lineup readers agree on possessions, points and minutes", {
+  cases <- c(
+    unfiltered = "",
+    home = ", p_home_away := 'home'",
+    starters = ", p_num_starters_off := 5",
+    clutch = ", p_max_margin := 5, p_max_time_remaining := 300",
+    clutch_starters = ", p_max_margin := 5, p_max_time_remaining := 300, p_num_starters_off := 5")
+  lead <- "5, NULL::text, NULL::text, NULL::text, FALSE, NULL::date, NULL::date, 0, 2026"
+  for (case in names(cases)) {
+    res <- DBI::dbGetQuery(con, sprintf("
+      SELECT COUNT(*) AS lineups,
+             COUNT(*) FILTER (WHERE f.team_id IS NULL AND s.off_poss + s.def_poss > 0) AS only_summary,
+             COUNT(*) FILTER (WHERE s.team_id IS NULL) AS only_four_factors,
+             COUNT(*) FILTER (WHERE s.off_poss <> f.off_poss OR s.def_poss <> f.def_poss
+                                 OR s.off_pts <> f.off_pts OR s.def_pts <> f.def_pts
+                                 OR s.minutes <> f.minutes) AS differ
+      FROM basketball_test.fetch_lineups_csv_v2(%1$s%2$s) s
+      FULL JOIN basketball_test.fetch_lineups_four_factors_csv(%1$s%2$s) f
+        USING (team_id, sub_lineup_hash)", lead, cases[[case]]))
+    expect_gt(as.numeric(res$lineups), 0, label = paste(case, "lineups"))
+    expect_equal(as.numeric(res$only_summary), 0, label = paste(case, "lineups only in Summary"))
+    expect_equal(as.numeric(res$only_four_factors), 0, label = paste(case, "lineups only in Four Factors"))
+    expect_equal(as.numeric(res$differ), 0, label = paste(case, "lineups that differ"))
+  }
+})
