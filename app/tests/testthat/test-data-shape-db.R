@@ -153,6 +153,9 @@ test_that("live DB functions used by render paths return app-required columns", 
 
   team_ratings <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_team_ratings_dynamic($1::int4) LIMIT 0", params = list(2026L))
   expect_true(all(c("game_year", "team_id", "team_name", "off_ppp", "def_ppp", "net_rtg", "games_played", "off_poss", "def_poss") %in% names(team_ratings)))
+
+  team_trad <- DBI::dbGetQuery(con, "SELECT * FROM basketball_test.get_team_traditional_dynamic($1::int4) LIMIT 0", params = list(2026L))
+  expect_true(all(c("team_id", "team_name", "gp", "poss_on_floor", "minutes", "pts", "reb", "oreb", "dreb", "ast", "stl", "blk", "dfl", "tov", "fgm", "fga", "2pm", "2pa", "3pm", "3pa", "ftm", "fta", "fg_pct", "two_pct", "tp_pct", "ft_pct", "efg", "ts") %in% names(team_trad)))
 })
 
 test_that("live DB has data behind the main app tabs for current season", {
