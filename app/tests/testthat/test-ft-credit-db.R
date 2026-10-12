@@ -64,3 +64,30 @@ test_that("team Four Factors counts each free-throw trip once", {
     WHERE tm.off_ts_poss_raw <> e.ts_poss")
   expect_equal(as.numeric(bad$n), 0)
 })
+
+test_that("a player's ON and OFF Four Factors rows add up to the team's", {
+  # Compared through the best-covered player of each team-game: lineups_lookup
+  # also carries partial rows for players who were not on that game's roster,
+  # and their ON+OFF sums never reach the team's.
+  bad <- DBI::dbGetQuery(con, "
+    WITH split AS (
+      SELECT game_id, team_id, player_id, type_lineup,
+             SUM(ts_poss_count) AS ts_poss, SUM(total_points) AS pts, SUM(total_poss) AS poss
+      FROM basketball_test.player_four_factors_by_game
+      GROUP BY game_id, team_id, player_id, type_lineup
+    ),
+    best AS (
+      SELECT game_id, team_id, type_lineup,
+             MAX(ts_poss) AS ts_poss, MAX(pts) AS pts, MAX(poss) AS poss
+      FROM split GROUP BY game_id, team_id, type_lineup
+    ),
+    team AS (
+      SELECT game_id, team_id, type_lineup,
+             SUM(ts_poss_count) AS ts_poss, SUM(total_points) AS pts, SUM(total_poss) AS poss
+      FROM basketball_test.lineup_four_factors_by_game
+      GROUP BY game_id, team_id, type_lineup
+    )
+    SELECT COUNT(*) AS n FROM best b JOIN team t USING (game_id, team_id, type_lineup)
+    WHERE b.ts_poss <> t.ts_poss OR b.pts <> t.pts OR b.poss <> t.poss")
+  expect_equal(as.numeric(bad$n), 0)
+})

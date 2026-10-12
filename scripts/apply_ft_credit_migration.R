@@ -49,7 +49,15 @@ if (apply && !isTRUE(q("SELECT pg_try_advisory_lock(hashtext('basketball_test.ft
 }
 say("Mode: %s", if (apply) "APPLY" else "DRY RUN (nothing is changed)")
 
-all_game_ids <- function() sort(as.integer(q(sprintf("SELECT DISTINCT game_id FROM %s", BASE))$game_id))
+# --game-min / --game-max restrict a batched refresh to a range of game ids, so
+# an interrupted run can be resumed, or a long one split into shorter calls.
+all_game_ids <- function() {
+  ids <- sort(as.integer(q(sprintf("SELECT DISTINCT game_id FROM %s", BASE))$game_id))
+  lo <- arg_value("--game-min"); hi <- arg_value("--game-max")
+  if (!is.null(lo)) ids <- ids[ids >= as.integer(lo)]
+  if (!is.null(hi)) ids <- ids[ids <= as.integer(hi)]
+  ids
+}
 
 # Call fn(int4[]) for every game in batches, one committed statement each.
 call_game_batches <- function(fn, label) {
@@ -99,10 +107,10 @@ objects <- list(
   player_four_factors_by_game = list(kind = "table",
     functions = "sql/functions/refresh_player_four_factors_by_game_for_games.sql",
     refresh = "refresh_player_four_factors_by_game_for_games"),
-  onoff_default_mv = list(kind = "table",
+  onoff_default_mv = list(kind = "season_table",
     functions = "sql/functions/refresh_onoff_default_for_games.sql",
     refresh = "refresh_onoff_default_for_games"),
-  player_advanced_stats_mv = list(kind = "table",
+  player_advanced_stats_mv = list(kind = "season_table",
     functions = "sql/functions/refresh_player_advanced_stats_for_games.sql",
     refresh = "refresh_player_advanced_stats_for_games"),
   mv_lineup_totals_by_day = list(kind = "matview",
@@ -178,6 +186,21 @@ apply_object <- function(name) {
   if (identical(spec$kind, "table")) {
     for (f in spec$functions) deploy_file(f)
     call_game_batches(spec$refresh, sprintf("refresh %s", name))
+  } else if (identical(spec$kind, "season_table")) {
+    # The refresh function recomputes the whole season of every game it is
+    # given, so one game per season refreshes everything.
+    for (f in spec$functions) deploy_file(f)
+    reps <- q(sprintf("SELECT s.game_year, MIN(d.game_id) AS game_id
+                       FROM (SELECT DISTINCT game_id FROM %s) d
+                       JOIN %s.schedule s ON s.game_id = d.game_id
+                       GROUP BY s.game_year ORDER BY s.game_year", BASE, SCHEMA))
+    for (i in seq_len(nrow(reps))) {
+      say("  refresh %s for season %s (via game %s)", name, reps$game_year[i], reps$game_id[i])
+      if (apply) {
+        n <- q(sprintf("SELECT %s.%s(ARRAY[%d]::int4[]) AS n", SCHEMA, spec$refresh, as.integer(reps$game_id[i])))$n
+        say("    %s rows", n)
+      }
+    }
   } else if (identical(spec$kind, "refresh_only")) {
     say("  REFRESH MATERIALIZED VIEW %s", name)
     if (apply) x(sprintf("REFRESH MATERIALIZED VIEW %s.%s", SCHEMA, name))

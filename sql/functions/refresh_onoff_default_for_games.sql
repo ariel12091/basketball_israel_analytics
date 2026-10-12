@@ -70,7 +70,7 @@ BEGIN
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS TRUE THEN 1 ELSE 0 END AS c3_att_flag,
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END AS c3_known_att_flag
            FROM base0 b0
-             JOIN basketball_test.df_pts_poss_lineups_longer_mv d USING (lineup_hash)
+             JOIN basketball_test.df_pts_poss_lineups_longer_mv d ON d.credit_lineup_hash = b0.lineup_hash
              JOIN sched s USING (game_id)
              LEFT JOIN basketball_test.shot_zones z ON z.game_id = d.game_id AND z.id = d.id
         ), agg AS (
