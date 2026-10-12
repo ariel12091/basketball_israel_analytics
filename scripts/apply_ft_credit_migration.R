@@ -39,6 +39,7 @@ con <- dbConnect(
 q <- function(sql) dbGetQuery(con, sql, immediate = TRUE)
 x <- function(sql) invisible(dbExecute(con, sql, immediate = TRUE))
 read_sql <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
+source(file.path("scripts", "apply_ft_credit_migration_helpers.R"))
 say <- function(...) message(sprintf(...))
 
 x("SET client_min_messages = warning")
@@ -143,22 +144,9 @@ objects <- list(
 # Rewrite a matview definition file so it builds <name>__ftc_next with its own
 # index names. Exact substitutions only; stops if the file is not what it expects.
 staged_matview_sql <- function(name, path) {
-  sql <- read_sql(path)
-  qualified <- sprintf("%s.%s", SCHEMA, name)
-  create_stmt <- sprintf("CREATE MATERIALIZED VIEW %s", qualified)
-  n_create <- lengths(regmatches(sql, gregexpr(create_stmt, sql, fixed = TRUE)))
-  if (n_create != 1L) stop(path, ": expected exactly one '", create_stmt, "'")
-  # Drop statements in the file target the live object: remove them.
-  lines <- strsplit(sql, "\n", fixed = TRUE)[[1]]
-  lines <- lines[!grepl("^\\s*DROP (MATERIALIZED VIEW|TABLE|INDEX)", lines)]
-  sql <- paste(lines, collapse = "\n")
   idx <- q(sprintf("SELECT indexname FROM pg_indexes WHERE schemaname = '%s' AND tablename = '%s'", SCHEMA, name))$indexname
-  for (i in idx) {
-    if (!grepl(i, sql, fixed = TRUE)) stop(path, ": live index ", i, " is not created by the file")
-    sql <- gsub(paste0(" ", i, "\n"), paste0(" ", i, "__ftc_next\n"), sql, fixed = TRUE)
-    sql <- gsub(paste0(" ", i, " "), paste0(" ", i, "__ftc_next "), sql, fixed = TRUE)
-  }
-  sql <- gsub(qualified, paste0(qualified, "__ftc_next"), sql, fixed = TRUE)
+  sql <- tryCatch(stage_matview_sql(read_sql(path), SCHEMA, name, idx),
+                  error = function(e) stop(path, ": ", conditionMessage(e), call. = FALSE))
   list(sql = sql, indexes = idx)
 }
 
