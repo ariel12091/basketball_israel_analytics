@@ -62,3 +62,12 @@ test_that("unfiltered team minutes are measured floor time, not nominal game len
       GROUP BY 1, 2, 3, 4) x GROUP BY 1")
   expect_lte(largest_gap(minutes_of("get_team_minutes_dynamic", ""), measured), 0.001)
 })
+
+test_that("team minutes: the per-game path equals the action-row path", {
+  for (args in c("", ", p_home_away := 'home'", ", p_last_n_games := 5", ", p_end_date := '2026-03-20'",
+                 ", p_opp_rank_side := 'top', p_opp_rank_n := 4")) {
+    expect_lte(largest_gap(minutes_of("get_team_minutes_dynamic", args),
+                           minutes_of("get_team_minutes_dynamic", paste0(args, ", p_use_game_totals := FALSE"))),
+               1e-9, label = args)
+  }
+})

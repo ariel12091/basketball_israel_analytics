@@ -10,7 +10,7 @@ library(testthat)
 # something a stored function owns.
 
 BASE_TABLE <- "df_pts_poss_lineups_longer_mv"
-KNOWN_DIRECT_READERS <- c("global.R", "server_tab3.R", "server_tab6_team_stats.R")
+KNOWN_DIRECT_READERS <- c("global.R", "server_tab6_team_stats.R")
 
 test_that("no new R file queries the base action table directly", {
   files <- list.files(repo_file("R"), pattern = "[.]R$")
@@ -39,4 +39,15 @@ test_that("Tab 3 takes pace minutes from the stored function, not from its own S
   expect_true(grepl("get_team_minutes_dynamic(", src, fixed = TRUE))
   expect_false(grepl("40 + 5 *", src, fixed = TRUE))
   expect_false(grepl("filtered_segments", src, fixed = TRUE))
+})
+
+test_that("Tab 3 rank arrows have one source: the stored readers with an end date", {
+  src <- read_repo_txt("R", "server_tab3.R")
+  # The removed blocks cut each team at its own previous game, from inline SQL.
+  expect_false(grepl("_from_mv", src, fixed = TRUE))
+  expect_false(grepl("team_metrics_by_game_mv", src, fixed = TRUE))
+  expect_false(grepl("rn = 2", src, fixed = TRUE))
+  for (fn in c("tr_prev_data", "tr_prev_ff_data", "tr_prev_traditional_data")) {
+    expect_true(grepl(paste0(fn, "()"), src, fixed = TRUE), info = fn)
+  }
 })
