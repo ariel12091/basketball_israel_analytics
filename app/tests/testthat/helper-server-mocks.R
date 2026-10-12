@@ -470,7 +470,10 @@ db_get_query <- function(pool, query, params = NULL) {
     ))
   }
 
-  if (grepl("team_stats AS", q, fixed = TRUE) && grepl("poss_on_floor", q, fixed = TRUE)) {
+  # Tab 3 reads the stored function; the unwired Tab 6 still carries the
+  # inline query the function was moved out of.
+  if (grepl("get_team_traditional_dynamic", q, fixed = TRUE) ||
+      (grepl("team_stats AS", q, fixed = TRUE) && grepl("poss_on_floor", q, fixed = TRUE))) {
     return(data.frame(
       team_id = c(1L, 2L),
       team_name = c("Team A", "Team B"),

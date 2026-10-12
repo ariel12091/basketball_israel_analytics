@@ -37,6 +37,7 @@ israeli_app_routines(routine_name) AS (
     ('get_team_ratings_dynamic'),
     ('get_team_four_factors_dynamic'),
     ('get_team_four_factors_dashboard_dynamic'),
+    ('get_team_traditional_dynamic'),
     ('get_player_traditional_dynamic'),
     ('get_player_traditional_from_games'),
     ('get_player_traditional_custom_clutch')
