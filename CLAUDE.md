@@ -4,6 +4,25 @@
 
 **Trust this context** — avoid re-reading files or spawning exploration agents when the answer is documented here. Use `replace_all=true` for repetitive edits, read files in large chunks (limit=300+), and batch similar operations.
 
+## Shared definitions -- the contract (read before changing a metric, filter or label)
+
+**`docs/shared_definitions.md` is normative for every surface: SQL, R/Shiny, Plumber/React, R and Python ETL, both leagues, every tab.** It holds the canonical definition of each number and each control with its single owner, the ten rules derived from the 2026-10-12 drift audit, and the register of known deviations. Where code disagrees with it, the code is wrong unless the difference is in that register.
+
+The rules in one line each (the document has the reasons and the checks):
+
+1. **One definition, one implementation.** The database computes; R, Plumber and React present. Never re-derive a metric in an R SQL string or a second SQL file -- add a parameter to the owner.
+2. **Catalogues live in tables.** Never type a label or a team name into code.
+3. **One control, one meaning** on every tab, on the fast and filtered paths, in both leagues.
+4. **No twin without a pin.** Two implementations that must agree get a test that calls both; an edit to one is not done until the other is edited or shown not to need it.
+5. **Counts cross boundaries; rates are derived last.** Never rebuild a count from a rounded rate; round once, from the exact total (seconds, for time).
+6. **Events follow credit; time follows the floor.** Aggregate each on its own key and stack them; never join events to time.
+7. **EuroLeague reuses the Israeli implementation.** A difference in what a number means is never a league difference.
+8. **Every layer that is not SQL is a consumer** -- ETL writes facts, Plumber renames, React displays.
+9. **A check must be able to fail.**
+10. **The fast path is an optimisation, not a second definition.**
+
+Before changing anything: find the term in the document (add it first if missing), change its owner, list and update the twins, run the pins, and record any difference that must remain in the deviation register the same day.
+
 ## Project Overview
 
 Basketball Israel Analytics — R/Shiny dashboard + React frontend for player on/off impact, lineup combos, team ratings. Data: play-by-play JSON → ETL → PostgreSQL (Supabase) → Shiny app / Plumber API.
@@ -169,6 +188,7 @@ rebuild_all_mvs(from_level = 2)          # skip L1
 | `get_team_ratings_dynamic` | 14 | Team PPP ratings + wins/losses + clutch |
 | `get_team_four_factors_dynamic` | 14 | Team four-factor rates + clutch |
 | `get_team_traditional_dynamic` | 18 | Team box-score totals for Tab 3 Traditional, counted from raw actions; `p_side` = offense (own) or defense (opponents'). Canonical segment minutes outside a clutch window, event span inside one. Same pre-shot clutch margin as `get_team_ratings_dynamic` (FGA and possessions match it exactly under a clutch filter). `gp` counts a game when any action survives the filters, the same as that function's `games_played` |
+| `get_team_minutes_dynamic` | 23 | Team floor time under the shared game, clutch and starters filters; the single owner of the minutes behind Tab 3's pace. Measured segment time outside a clutch window, event span inside one, physical starters. Tab 3 used inline R SQL for this until 2026-10-12, which outside a clutch or starters filter returned the nominal game length (40 + 5 per overtime): pace was 73.89 for team 3 against 76.04 on measured time, because three 2026 games have truncated play-by-play. Pinned nightly by `test-team-minutes-db.R` |
 
 **Fast-path gate rule:** SQL functions checking `p_start_date IS NULL` must also accept explicit full-season window (`make_date(year-1,10,1)` to `make_date(year,7,1)`) since React always sends dates.
 
