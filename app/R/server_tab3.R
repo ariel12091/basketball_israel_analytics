@@ -935,7 +935,8 @@ server_tab3 <- function(input, output, session, shared) {
            COALESCE(SUM(s.\"3pm\"), 0)::numeric AS \"3pm\",
            COALESCE(SUM(s.\"3pa\"), 0)::numeric AS \"3pa\",
            COALESCE(SUM(s.ftm), 0)::numeric AS ftm,
-           COALESCE(SUM(s.fta), 0)::numeric AS fta
+           COALESCE(SUM(s.fta), 0)::numeric AS fta,
+           COALESCE(SUM(s.off_ts_poss_raw), 0)::numeric AS ts_poss
          FROM scoped s
          JOIN cuts c
            ON c.team_id = s.team_id
@@ -1099,7 +1100,8 @@ server_tab3 <- function(input, output, session, shared) {
            COALESCE(SUM(s.\"3pm\"), 0)::numeric AS \"3pm\",
            COALESCE(SUM(s.\"3pa\"), 0)::numeric AS \"3pa\",
            COALESCE(SUM(s.ftm), 0)::numeric AS ftm,
-           COALESCE(SUM(s.fta), 0)::numeric AS fta
+           COALESCE(SUM(s.fta), 0)::numeric AS fta,
+           COALESCE(SUM(s.off_ts_poss_raw), 0)::numeric AS ts_poss
          FROM scoped s
          JOIN cuts c
            ON c.team_id = s.team_id
@@ -1176,7 +1178,7 @@ server_tab3 <- function(input, output, session, shared) {
     q$tp_pct <- ifelse(q$`3pa` > 0, round((q$`3pm` / q$`3pa`) * 100, 1), NA_real_)
     q$ft_pct <- ifelse(q$fta > 0, round((q$ftm / q$fta) * 100, 1), NA_real_)
     q$efg <- ifelse(q$fga > 0, round(((q$fgm + 0.5 * q$`3pm`) / q$fga) * 100, 1), NA_real_)
-    q$ts <- ifelse((q$fga + 0.44 * q$fta) > 0, round((q$pts / (2 * (q$fga + 0.44 * q$fta))) * 100, 1), NA_real_)
+    q$ts <- ts_pct_from_trips(q$pts, q$ts_poss)
     q <- apply_tr_trad_mode(q, mode)
 
     metric_cfg <- c(

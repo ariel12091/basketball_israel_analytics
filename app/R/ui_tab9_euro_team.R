@@ -74,7 +74,7 @@ ui_tab9_euro_team <- function() tabPanel(
             bullets = c(
               "Offence green-high on every factor except TOV%, where fewer is better; defence flips -- green means the team suppresses that factor.",
               "Rates are computed once from summed raw counts, never averaged across games.",
-              "TS% uses the Israeli denominator (FGA plus the last free throw of a shooting-foul trip), not the 0.44 x FTA estimate.",
+              "TS% uses the Israeli denominator (FGA plus one per shooting-foul trip), not the 0.44 x FTA estimate.",
               "These counts are derived independently of the Israeli league's possession engine. Do not compare the two leagues' numbers directly."
             )
           )

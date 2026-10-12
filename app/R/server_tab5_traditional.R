@@ -271,7 +271,7 @@ build_ts_total_row <- function(rows, identity_id, display_name = NULL) {
     tp_pct  = pct(sums[["3pm"]], sums[["3pa"]]),
     ft_pct  = pct(sums[["ftm"]], sums[["fta"]]),
     efg     = pct(sums[["fgm"]] + 0.5 * sums[["3pm"]], sums[["fga"]]),
-    ts      = pct(sums[["pts"]], 2 * (sums[["fga"]] + 0.44 * sums[["fta"]])),
+    ts      = ts_pct_from_trips(sums[["pts"]], sum(ts_implied_attempts(rows$pts, rows$ts, rows$fga))),
     usg_pct = ts_weighted_usg(rows)
   )
 

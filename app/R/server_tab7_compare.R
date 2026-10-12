@@ -920,51 +920,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     add_shooting_rates(out)
   }
 
-  add_cmp_player_usage_pct <- function(df) {
-    if (is.null(df) || !nrow(df)) return(df)
-    if (!("usg_pct" %in% names(df))) df$usg_pct <- NA_real_
-    needed <- c("fga", "fta", "tov", "poss_on_floor")
-    if (!all(needed %in% names(df))) return(df)
-
-    as_num <- function(col) suppressWarnings(as.numeric(df[[col]]))
-    zero_na <- function(x) {
-      x[!is.finite(x)] <- 0
-      x
-    }
-
-    fga <- zero_na(as_num("fga"))
-    fta <- zero_na(as_num("fta"))
-    tov <- zero_na(as_num("tov"))
-    poss_on_floor <- as_num("poss_on_floor")
-    pts <- if ("pts" %in% names(df)) as_num("pts") else rep(NA_real_, nrow(df))
-    ts <- if ("ts" %in% names(df)) as_num("ts") else rep(NA_real_, nrow(df))
-
-    shot_term <- fga + 0.44 * fta
-    can_imply_ts_term <- is.finite(pts) & pts > 0 & is.finite(ts) & ts > 0
-    shot_term[can_imply_ts_term] <- pts[can_imply_ts_term] / (2 * (ts[can_imply_ts_term] / 100))
-    player_term <- shot_term + tov
-
-    out <- suppressWarnings(as.numeric(df$usg_pct))
-    team_key <- if ("team_id" %in% names(df)) as.character(df$team_id) else rep("all", nrow(df))
-    team_key[is.na(team_key) | !nzchar(team_key)] <- "all"
-
-    for (key in unique(team_key)) {
-      idx <- which(team_key == key)
-      team_term <- sum(player_term[idx], na.rm = TRUE)
-      team_poss <- sum(poss_on_floor[idx], na.rm = TRUE) / 5
-      ok <- !is.finite(out[idx]) &
-        is.finite(player_term[idx]) & player_term[idx] >= 0 &
-        is.finite(poss_on_floor[idx]) & poss_on_floor[idx] > 0 &
-        is.finite(team_term) & team_term > 0 &
-        is.finite(team_poss) & team_poss > 0
-      if (any(ok)) {
-        out[idx[ok]] <- 100 * player_term[idx][ok] * team_poss / (team_term * poss_on_floor[idx][ok])
-      }
-    }
-
-    df$usg_pct <- round(out, 1)
-    df
-  }
+  # Was a copy of add_ts_usage_pct() (helpers.R); now it is that function.
+  add_cmp_player_usage_pct <- add_ts_usage_pct
 
   run_player_traditional <- function(p, team_ids_csv) {
     tryCatch({

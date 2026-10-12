@@ -97,7 +97,7 @@ COLUMN_TOOLTIPS <- c(
   # On/Off FF total diff
   "Diff"        = "Net PPP impact: On-court minus Off-court",
   # Four Factors
-  "TS%"         = "True Shooting: pts / (2 x (FGA + FT trips))",
+  "TS%"         = "True Shooting: pts / (2 x (FGA + FT trips)). A trip is one visit to the line for a personal foul, credited to the lineup that drew it.",
   "USG%"        = "Usage rate: share of team shot, free-throw, and turnover possessions while on court",
   "OREB%"       = "Offense: offensive rebounds / available misses. Defense: opponent offensive rebounds allowed / available misses",
   "TOV%"        = "Turnover rate: turnovers / possessions",
