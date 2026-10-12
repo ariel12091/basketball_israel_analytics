@@ -33,3 +33,10 @@ test_that("the contract is where every instruction file says it is", {
     expect_true(grepl("docs/shared_definitions.md", txt, fixed = TRUE), info = paste(f, collapse = "/"))
   }
 })
+
+test_that("Tab 3 takes pace minutes from the stored function, not from its own SQL", {
+  src <- read_repo_txt("R", "server_tab3.R")
+  expect_true(grepl("get_team_minutes_dynamic(", src, fixed = TRUE))
+  expect_false(grepl("40 + 5 *", src, fixed = TRUE))
+  expect_false(grepl("filtered_segments", src, fixed = TRUE))
+})

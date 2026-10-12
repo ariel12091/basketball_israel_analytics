@@ -21,7 +21,7 @@ disagree, this one wins and the other is stale.
 
 ## 1. What went wrong, and why
 
-Ten differences were found and fixed in one session. None was a typo. Each was
+Ten differences were found and fixed in one session, and an eleventh the day's audit turned up afterwards (Tab 3 pace on nominal game length). None was a typo. Each was
 a second copy of something that already existed.
 
 | # | What differed | Where the two copies lived | Root cause |
@@ -176,6 +176,7 @@ All are computed from summed counts and shown as percentages to one decimal.
 | TOV% | `turnovers / possessions` |
 | FTR | `all free throws / FGA`, technical and flagrant included on purpose |
 | Usage | `(TS attempts + turnovers) x team possessions / ((team TS attempts + team turnovers) x possessions on floor)` |
+| Pace | `40 x possessions / minutes`, minutes as defined below (measured floor time) |
 
 A rate with a zero denominator is NULL, not 0. Unranked (under 100
 possessions) is NULL, not 0 or 50.
@@ -185,8 +186,8 @@ possessions) is NULL, not 0 or 50.
 | Term | Definition | Owner |
 |---|---|---|
 | Segment | `(game_id, team_id, lineup_hash, segment_id)`. `segment_id` repeats across games | base table |
-| Minutes | `MAX(segment_seconds)` once per segment, summed over **every** segment, physical lineup. No offence filter, no grouping by quarter | reference: `player_traditional_stats_mv.segment_times` |
-| Minutes inside a clutch window | Last minus first canonical event time among the segment's in-window rows, **including** substitution and timeout rows, over every segment | `fetch_lineups_all` clutch path |
+| Minutes | `MAX(segment_seconds)` once per segment, summed over **every** segment, physical lineup. No offence filter, no grouping by quarter. Never the nominal game length (`40 + 5 per overtime`): a game with truncated play-by-play has partial possessions and must have partial time | team totals: `get_team_minutes_dynamic`; per-player reference: `player_traditional_stats_mv.segment_times` |
+| Minutes inside a clutch window | Last minus first canonical event time among the segment's in-window rows, **including** substitution and timeout rows, over every segment | team totals: `get_team_minutes_dynamic`; lineups: `fetch_lineups_all` clutch path |
 | Minutes rounding | Round the second total once | R5 |
 | Games played, team | A game counts when at least one action survives the filters | `get_team_ratings_dynamic` |
 | Games played, player | Physical floor presence in the game, never a credited join | `floor_lineup_hash` in the player traditional sources |
@@ -237,11 +238,11 @@ found; remove it the day it is closed.
 | D8 | `player_four_factors_by_game` holds partial rows for players not on a game's roster | data | Open |
 | D9 | A side with possessions and no points returns a NULL rating, not 0 (`four_factors_dashboard_compute`), which also hides the row's minutes | R3 | Found 2026-10-12, open |
 | D10 | `refresh_sub_lineups_stats()` writes all-zero rows for lineups with no base rows; the Four Factors reader never returns them | R4, R10 | 4 rows deleted 2026-10-12; a full refresh recreates them |
-| D11a | Tab 3 Summary and Four Factors take the **pace** denominator from inline R SQL (`fetch_team_game_minutes`, `server_tab3.R`). With no clutch or starters filter it is the nominal game length, `40 + 5 per overtime` -- a fourth definition of minutes. Three 2026 games have truncated play-by-play (184: 16.0 of 40 min, 380: 29.2, 160: 36.8), so their possessions are partial while the denominator is full: pace reads 73.89 for team 3 against 76.04 on measured time, 80.55 against 82.43 for team 6. League-wide the two differ by 0.8% (17,790 vs 17,641 min). With a clutch or starters filter the same function uses the event span and matches the stored readers exactly (722.6 and 91.7 min) -- but through its own copy of the schedule, last-N and pre-shot margin predicates | R1, R3 | Audited 2026-10-12, open. Fix: the team readers return minutes; delete the inline query |
 | D11b | `tr_prev_traditional_ranks_from_mv` (`server_tab3.R`) rebuilds the whole Traditional table for the rank arrows -- box totals from `team_metrics_by_game_mv`, minutes from the base table, percentages in R -- beside `get_team_traditional_dynamic`. Its cut is each team's own previous game, which the function's single end date cannot express | R1, R4 | Audited 2026-10-12, open. Not compared number for number |
 | D11c | `global.R`: the Gameflow readers (physical segments and margins for one game) and `fetch_scoreless_games()` read the base table. These read detail rows; they do not re-derive a metric | R1 | Audited 2026-10-12: allowed |
-| D11d | The Traditional reader's clutch minutes differ from the other readers' by 0.1 min for one team (722.8 vs 722.6 league-wide) | R4 | Found 2026-10-12, cause not traced |
+| D11d | The Traditional reader rounds team minutes to one decimal; the owner returns three. Same time, coarser figure (up to 0.05 min per team) | R5 | Explained 2026-10-12; harmless while nothing recombines them |
 | D11e | `server_tab6_team_stats.R` is unwired and still holds inline SQL over the base table | R1 | Dead code; delete or ignore |
+| D15 | A team's five-man lineup minutes do not add up to its floor time: per team, the lineup readers' sum is up to about 10 minutes away from `get_team_minutes_dynamic` over a season (2026), more than row rounding explains. Likely lineups the readers do not list as five known players | data | Seen 2026-10-12, not traced |
 | D12 | The React Shot Profile port differs from Shiny | R3 | Intentional, recorded |
 | D13 | EuroLeague clutch, last-N, minutes and starters rules have not been re-verified against sections 3 and 4 | R7 | Not re-verified |
 | D14 | `docs/database_context.md` still describes Traditional TS% as `0.44 x FTA` | -- | Stale text |
@@ -282,7 +283,8 @@ Not deviations, though they look like one:
 | `test-game-types-db.R`, `test-season-teams-db.R` (nightly) | The generated catalogue copy equals the tables |
 | `test-data-shape-db.R` (nightly) | The feed assumption behind "2PT Jumper" |
 | `test-league-shared-helpers.R`, `test-lineup-player-chips.R` | Shared helpers behave the same for both leagues; every reader of the player filter lists its inputs |
-| `test-shared-definitions.R` | R1 as a ratchet: the R files that query the base action table directly are frozen at the D11 list, which may only shrink; both `CLAUDE.md` files point here |
+| `test-team-minutes-db.R` (nightly) | Team floor time: the owner equals the Traditional reader (to its one decimal), the clutch dashboard reader (exactly), and measured segment time |
+| `test-shared-definitions.R` | R1 as a ratchet: the R files that query the base action table directly are frozen at the D11 list, which may only shrink; Tab 3 takes pace minutes from the stored function; both `CLAUDE.md` files point here |
 | `scripts/verify_ft_credit.R` | Migration gates that fail on an unexpected change |
 | `.github/workflows/catalogue-sync.yml` | Fails when the schedule holds a game type with no label |
 

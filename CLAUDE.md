@@ -188,6 +188,7 @@ rebuild_all_mvs(from_level = 2)          # skip L1
 | `get_team_ratings_dynamic` | 14 | Team PPP ratings + wins/losses + clutch |
 | `get_team_four_factors_dynamic` | 14 | Team four-factor rates + clutch |
 | `get_team_traditional_dynamic` | 18 | Team box-score totals for Tab 3 Traditional, counted from raw actions; `p_side` = offense (own) or defense (opponents'). Canonical segment minutes outside a clutch window, event span inside one. Same pre-shot clutch margin as `get_team_ratings_dynamic` (FGA and possessions match it exactly under a clutch filter). `gp` counts a game when any action survives the filters, the same as that function's `games_played` |
+| `get_team_minutes_dynamic` | 23 | Team floor time under the shared game, clutch and starters filters; the single owner of the minutes behind Tab 3's pace. Measured segment time outside a clutch window, event span inside one, physical starters. Tab 3 used inline R SQL for this until 2026-10-12, which outside a clutch or starters filter returned the nominal game length (40 + 5 per overtime): pace was 73.89 for team 3 against 76.04 on measured time, because three 2026 games have truncated play-by-play. Pinned nightly by `test-team-minutes-db.R` |
 
 **Fast-path gate rule:** SQL functions checking `p_start_date IS NULL` must also accept explicit full-season window (`make_date(year-1,10,1)` to `make_date(year,7,1)`) since React always sends dates.
 
