@@ -167,6 +167,7 @@ rebuild_all_mvs(from_level = 2)          # skip L1
 | `fetch_lineups_four_factors_csv` | 20 | Lineup combos (Four Factors) + clutch |
 | `get_team_ratings_dynamic` | 14 | Team PPP ratings + wins/losses + clutch |
 | `get_team_four_factors_dynamic` | 14 | Team four-factor rates + clutch |
+| `get_team_traditional_dynamic` | 18 | Team box-score totals for Tab 3 Traditional, counted from raw actions; `p_side` = offense (own) or defense (opponents'). Canonical segment minutes outside a clutch window, event span inside one. Same pre-shot clutch margin as `get_team_ratings_dynamic` (FGA and possessions match it exactly under a clutch filter). `gp` counts games with a completed possession in the window, which is NOT `get_team_ratings_dynamic`'s `games_played` |
 
 **Fast-path gate rule:** SQL functions checking `p_start_date IS NULL` must also accept explicit full-season window (`make_date(year-1,10,1)` to `make_date(year,7,1)`) since React always sends dates.
 

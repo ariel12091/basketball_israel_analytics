@@ -142,16 +142,34 @@ AS $$
             d.own_team_score, d.opp_team_score
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
+    -- Pre-shot margin, as in get_team_ratings_dynamic: the points scored on
+    -- this row are taken back out of the scoring side's total, so a shot is
+    -- judged by the score it was taken at, not the score it produced.
     WHERE (
       p_max_margin::int4 IS NULL
-      OR ABS(COALESCE(d.own_team_score, 0) - COALESCE(d.opp_team_score, 0)) <= p_max_margin::int4
+      OR ABS(CASE WHEN d.type_lineup = 'offense'
+                  THEN (d.own_team_score - COALESCE(d.team_score, 0)) - d.opp_team_score
+                  ELSE d.own_team_score - (d.opp_team_score - COALESCE(d.team_score, 0))
+             END) <= p_max_margin::int4
       OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter::bool, FALSE))
     )
     AND (
       p_margin_status::text IS NULL OR p_margin_status::text = '' OR p_margin_status::text = 'all'
-      OR (p_margin_status::text = 'leading' AND COALESCE(d.own_team_score, 0) > COALESCE(d.opp_team_score, 0))
-      OR (p_margin_status::text = 'trailing' AND COALESCE(d.own_team_score, 0) < COALESCE(d.opp_team_score, 0))
-      OR (p_margin_status::text = 'tied' AND COALESCE(d.own_team_score, 0) = COALESCE(d.opp_team_score, 0))
+      OR (p_margin_status::text = 'leading' AND
+          CASE WHEN d.type_lineup = 'offense'
+               THEN (d.own_team_score - COALESCE(d.team_score, 0)) > d.opp_team_score
+               ELSE d.own_team_score > (d.opp_team_score - COALESCE(d.team_score, 0))
+          END)
+      OR (p_margin_status::text = 'trailing' AND
+          CASE WHEN d.type_lineup = 'offense'
+               THEN (d.own_team_score - COALESCE(d.team_score, 0)) < d.opp_team_score
+               ELSE d.own_team_score < (d.opp_team_score - COALESCE(d.team_score, 0))
+          END)
+      OR (p_margin_status::text = 'tied' AND
+          CASE WHEN d.type_lineup = 'offense'
+               THEN (d.own_team_score - COALESCE(d.team_score, 0)) = d.opp_team_score
+               ELSE d.own_team_score = (d.opp_team_score - COALESCE(d.team_score, 0))
+          END)
       OR (d.quarter > 4 AND NOT COALESCE(p_ot_margin_filter::bool, FALSE))
     )
     AND (p_max_time_remaining::int4 IS NULL OR d.end_game_seconds_remaining <= p_max_time_remaining::int4 OR d.quarter > 4)
