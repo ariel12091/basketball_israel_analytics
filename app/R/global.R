@@ -17,6 +17,9 @@ DEFAULT_GAME_YEAR <- "2027"   # 26-27
 # Season-aware team rosters used before the first database connection. Team IDs
 # are provider IDs and can be recycled between seasons, so each season needs an
 # explicit mapping.
+# Pinned copy of basketball_test.season_teams, which is the source of truth.
+# Change a team in the table AND here; test-season-teams-db.R fails when the
+# two differ.
 STATIC_TEAM_ROSTERS <- list(
   `2027` = data.frame(
     # App-facing IDs come from the PBP roster feed; the public schedule uses
