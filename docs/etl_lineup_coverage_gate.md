@@ -39,10 +39,18 @@ Q3 five-player IN declarations (4170541–4170550) are labelled Q2, 10:00;
 this both overwrites Q2 opening states and leaves Q3's initial states empty.
 
 The guard prevents future incomplete games from being committed. It does not
-repair game 417's existing published data. Repair still requires a reviewed
-period-label correction and an explicit game_ids=417 reprocess.
+repair game 417's existing published data. The scoped
+period-label correction is now in KNOWN_PERIOD_LABEL_CORRECTIONS: only
+4170541–4170550 move from Q2 to Q3. An explicit game_ids=417 reprocess is
+still required to replace the existing published data.
 
 Tests: app/tests/testthat/test-lineup-coverage-gate.R. They cover the real
 incident, healthy regulation/OT coverage, missing and duplicate mappings,
 malformed lineups, source-period/type drift, administrative events, diagnostics,
 and placement before pws insertion and transaction commit.
+
+The game 417 correction tests also replay the unchanged production lineup and
+stint SQL against frozen CTE inputs using a read-only database connection. They
+check the original failure, restored five-player Q2/Q3 openings, complete
+gameplay coverage and the 85–86 scoring totals without changing application
+tables. This integration test runs when RUN_DB_TESTS=1.
