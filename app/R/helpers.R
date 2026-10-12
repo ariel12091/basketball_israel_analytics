@@ -487,6 +487,10 @@ add_shot_split_metrics <- function(df, specs) {
 # ---- Shot Profile (shot-diet) share metrics ---------------------------------
 # Descriptive shares of total FGA (Plan C). Corner-3 share is of KNOWN-location
 # 3PA (c3_known_att), never of all 3PA -- unknown fails open to NA, not 0.
+# The 2PT Jumper share is a remainder (FGA - lay-up - dunk - 3PA), not a
+# count of jump-shot tags. The two are equal only while lay-up, dunk,
+# allyhoop and jump-shot are the only two-point tags; test-data-shape-db.R
+# fails when the feed adds another.
 
 SHOT_PROFILE_METRIC_SUFFIXES <- c(
   "_layup_share", "_dunk_share", "_rim_share", "_fg3_share", "_c3_pct3", "_mid_share"

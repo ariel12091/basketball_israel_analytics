@@ -164,3 +164,21 @@ test_that("live DB has data behind the main app tabs for current season", {
   expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.team_metrics_by_game_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
   expect_has_rows("SELECT EXISTS(SELECT 1 FROM basketball_test.final_schedule_mv WHERE game_year = $1::int4 LIMIT 1) AS has_rows", list(2026L))
 })
+
+test_that("every two-point shot carries a shot tag the shot profile knows", {
+  # The SQL counts lay-ups and dunks by tag; add_shot_profile_metrics()
+  # (helpers.R) takes the "2PT Jumper" share as the remainder,
+  # FGA - lay-up - dunk - 3PA. That is exactly the jump-shot count only while
+  # these four are the only two-point tags. A new provider tag (a hook, a
+  # tip-in) would otherwise be counted as a jumper without anyone noticing.
+  known <- c("lay-up", "dunk", "allyhoop", "jump-shot")
+  tags <- DBI::dbGetQuery(con, "
+    SELECT COALESCE(parameters_type, '<NULL>') AS shot_tag, COUNT(*) AS shots
+    FROM basketball_test.df_pts_poss_lineups_longer_mv
+    WHERE type = 'shot' AND type_lineup = 'offense' AND parameters_points = 2
+    GROUP BY parameters_type")
+  expect_gt(nrow(tags), 0)
+  unknown <- tags[!tags$shot_tag %in% known, , drop = FALSE]
+  expect_equal(nrow(unknown), 0,
+               info = paste(capture.output(print(unknown)), collapse = "\n"))
+})
