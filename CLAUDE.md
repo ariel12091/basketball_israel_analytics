@@ -122,6 +122,8 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader, mobile collapse behind "Show 
 
 (*) **Cold storage tables** — truncated after each ETL run. See Cold Storage section below.
 
+**`game_types`** (since 2026-10-12) is the catalogue of provider `game_type` codes: `game_type` PK, `label` (dropdown), `short_label` (chips, Game Logs), `sort_order`. It is the source of truth; `GAME_TYPE_LABELS` / `GAME_TYPE_CHOICES_UI` in `global.R` are a pinned copy, kept because the dropdowns are built before any database connection exists. Change a label in both places -- `test-game-types-db.R` (DB-backed, nightly) fails when they differ. Codes sharing a label are one UI choice (Winner Cup = 10 and 34). Nothing rejects an uncatalogued code: a new provider code still shows as a bare number until a row is added. Migration: `scripts/apply_game_types_migration.R` (dry-run by default, `CONFIRM_GAME_TYPES_MIGRATION=1`), then re-apply DB security.
+
 **MV dependency tree** (refresh in this order):
 ```
 L1: final_schedule_mv, df_pts_poss_lineups_longer_mv

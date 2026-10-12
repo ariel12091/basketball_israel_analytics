@@ -869,6 +869,9 @@ navbar_league_select_ui <- function() {
 }
 
 # ---------------- Filter Chips Builder ----------------
+# Pinned copy of basketball_test.game_types, which is the source of truth: the
+# dropdowns are built before any database connection exists. Change a label in
+# the table AND here; test-game-types-db.R fails when the two differ.
 GAME_TYPE_LABELS <- c("5" = "Regular season", "16" = "PO QF", "26" = "PO SF",
                        "17" = "PO Finals", "33" = "Play-in", "10" = "Winner Cup",
                        "34" = "Winner Cup", "10,34" = "Winner Cup", "35" = "State Cup")
