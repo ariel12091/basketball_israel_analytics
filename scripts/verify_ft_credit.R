@@ -332,10 +332,13 @@ player_trad <- list(allowed = c("poss_on_floor", "ts", "usg_pct"))
 any_but_minutes <- list(allowed = "*", frozen = "minutes")
 # The clutch path reads the base table directly. Re-crediting moves events
 # between a team's lineups, so no point or possession may appear or vanish
-# (the readers are called with no possession minimum), and floor time is
-# physical, so no lineup's minutes may move. A lineup can gain a row: one that
-# drew a foul just before the window is credited the free throws inside it.
-lineup_clutch <- list(allowed = "*", frozen = "minutes", rows = "any",
+# (the readers are called with no possession minimum). A lineup can gain a
+# row: one that drew a foul just before the window is credited the free throws
+# inside it. Minutes are not frozen here: the snapshot predates two fixes to
+# the clutch time rule (every segment counts, not only those with an offensive
+# action; the Four Factors reader no longer drops substitution and timeout
+# rows from the stint span), which raise them by design.
+lineup_clutch <- list(allowed = "*", rows = "any",
                       conserved = c("off_pts", "def_pts", "off_poss", "def_poss"))
 starters_moves <- list(allowed = "*")  # a starters filter now follows the credited lineup
 # on/off readers sit on player_four_factors_by_game, whose non-roster rows come

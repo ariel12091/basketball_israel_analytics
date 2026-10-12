@@ -262,19 +262,18 @@ BEGIN
       d.segment_id, d.end_game_seconds_remaining, d.event_elapsed_seconds,
       d.credit_lineup_hash, d.credit_segment_id,
       -- The starters filter is two filters: events follow the credited
-      -- lineup, floor time the physical one.
-      (   (d.type_lineup = 'offense'
-            AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.credit_num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-            AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.credit_num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
-       OR (d.type_lineup = 'defense'
-            AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-            AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))) AS event_ok,
-      (   (d.type_lineup = 'offense'
-            AND (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.num_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
-            AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.num_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off)))
-       OR (d.type_lineup = 'defense'
-            AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.num_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
-            AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.num_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def)))) AS time_ok,
+      -- lineup, floor time the physical one. Same predicate as
+      -- fetch_lineups_all (own/opp starters on every row): a per-side form
+      -- drops substitution and timeout rows, which have no type_lineup, and
+      -- with them the ends of the stint span.
+      (    (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.credit_own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+       AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.credit_own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+       AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.credit_opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+       AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.credit_opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))) AS event_ok,
+      (    (COALESCE(p_num_starters_off_min, p_num_starters_off) IS NULL OR d.own_starters >= COALESCE(p_num_starters_off_min, p_num_starters_off))
+       AND (COALESCE(p_num_starters_off_max, p_num_starters_off) IS NULL OR d.own_starters <= COALESCE(p_num_starters_off_max, p_num_starters_off))
+       AND (COALESCE(p_num_starters_def_min, p_num_starters_def) IS NULL OR d.opp_starters >= COALESCE(p_num_starters_def_min, p_num_starters_def))
+       AND (COALESCE(p_num_starters_def_max, p_num_starters_def) IS NULL OR d.opp_starters <= COALESCE(p_num_starters_def_max, p_num_starters_def))) AS time_ok,
       CASE WHEN d.final_end_poss IS TRUE THEN 1 ELSE 0 END AS final_end_flag
     FROM basketball_test.df_pts_poss_lineups_longer_mv d
     JOIN games_filtered gf ON gf.game_id = d.game_id AND gf.team_id = d.team_id
@@ -357,9 +356,7 @@ BEGIN
         (array_agg(cd.event_elapsed_seconds ORDER BY cd.id DESC) FILTER (WHERE cd.event_elapsed_seconds IS NOT NULL))[1] -
         (array_agg(cd.event_elapsed_seconds ORDER BY cd.id) FILTER (WHERE cd.event_elapsed_seconds IS NOT NULL))[1],
         0
-      )::numeric AS stint_seconds,
-      -- Unchanged rule: a segment's time counts when it holds an offensive action.
-      bool_or(cd.type_lineup = 'offense') AS has_offense
+      )::numeric AS stint_seconds
     FROM combined_data cd
     WHERE cd.time_ok
     GROUP BY cd.team_id, cd.lineup_hash, cd.game_id, cd.segment_id
@@ -422,8 +419,8 @@ BEGIN
     SELECT st.team_id, st.lineup_hash, 'time',
       NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL,
       SUM(st.stint_seconds) / 60.0
+    -- Every segment counts, with or without an offensive action in it.
     FROM segment_times st
-    WHERE st.has_offense
     GROUP BY st.team_id, st.lineup_hash
   )
   SELECT

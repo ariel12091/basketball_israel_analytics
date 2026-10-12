@@ -282,9 +282,7 @@ BEGIN
              (array_agg(ca.event_elapsed_seconds ORDER BY ca.id DESC) FILTER (WHERE ca.event_elapsed_seconds IS NOT NULL))[1] -
              (array_agg(ca.event_elapsed_seconds ORDER BY ca.id) FILTER (WHERE ca.event_elapsed_seconds IS NOT NULL))[1],
              0
-           )::numeric AS stint_seconds,
-           -- Unchanged rule: a segment's time counts when it holds an offensive action.
-           bool_or(ca.type_lineup = 'offense') AS has_offense
+           )::numeric AS stint_seconds
     FROM clutch_actions ca
     WHERE ca.time_ok
     GROUP BY ca.team_id, ca.game_year, ca.lineup_hash, ca.game_id, ca.segment_id
@@ -319,8 +317,8 @@ BEGIN
     SELECT st.team_id, st.game_year, st.lineup_hash, 'time', NULL,
            NULL, NULL, NULL, NULL, NULL, NULL,
            SUM(st.stint_seconds) / 60.0
+    -- Every segment counts, with or without an offensive action in it.
     FROM segment_times st
-    WHERE st.has_offense
     GROUP BY st.team_id, st.game_year, st.lineup_hash
   )
   SELECT
