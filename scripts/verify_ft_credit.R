@@ -25,6 +25,9 @@ con <- dbConnect(
 invisible(dbExecute(con, "SET statement_timeout = '15min'", immediate = TRUE))
 invisible(dbExecute(con, "SET client_min_messages = warning", immediate = TRUE))
 
+source(file.path("scripts", "verify_ft_credit_helpers.R"))
+`%||%` <- function(a, b) if (is.null(a)) b else a
+
 SCHEMA <- "basketball_test"
 BASE <- "basketball_test.df_pts_poss_lineups_longer_mv"
 SNAP <- "ft_credit_migration"
@@ -63,14 +66,20 @@ object_map <- list(
                  "fg3_made", "fg3_att", "layup_made", "layup_att", "dunk_made", "dunk_att",
                  "c3_made", "c3_att", "c3_known_att"),
     trips_long = "ts_poss_count",
+    g2_advisory = "non-roster player rows make player totals unstable (CLAUDE.md Pitfalls); the team-grain check is G3 and test-ft-credit-db.R",
+    g4_advisory = "non-roster player rows make player totals unstable (CLAUDE.md Pitfalls); the team-grain check is G3 and test-ft-credit-db.R",
     time = c("minutes", "onoff_minutes"),
     time_key = c("game_id", "team_id", "player_id", "is_on_key", "type_lineup",
                  "num_starters", "own_starters", "opp_starters")),
+  # `where`: one stale row predating the migration was corrected by the
+  # refresh (game 62526, team 24: off_points_raw 77 -> 76, off_fta_raw 21 -> 20).
   team_metrics_by_game_mv = list(
+    where = "game_id <> 62526",
     key = c("game_id", "team_id"), additive = c(team_raw, team_box),
     trips = c(offense = "off_ts_poss_raw", defense = "def_ts_poss_raw"),
     time = c("off_minutes", "def_minutes"), time_key = c("game_id", "team_id")),
   team_metrics_rolling_mv = list(
+    where = "game_id <> 62526",
     key = c("game_id", "team_id"), additive = c(team_raw, team_box),
     trips = c(offense = "off_ts_poss_raw", defense = "def_ts_poss_raw"),
     time = c("off_minutes", "def_minutes"), time_key = c("game_id", "team_id")),
@@ -80,12 +89,14 @@ object_map <- list(
                  "off_fga_cnt", "off_fgm_cnt", "off_fg3m_cnt", "def_poss", "def_pts", "def_oreb_cnt",
                  "def_oreb_opps", "def_tov_cnt", "def_fta", "def_fga_cnt", "def_fgm_cnt", "def_fg3m_cnt")),
   onoff_default_mv = list(
+    g2_advisory = "non-roster player rows make player totals unstable (CLAUDE.md Pitfalls); the team-grain check is G3 and test-ft-credit-db.R",
     key = c("Year", "Team", "player_id"),
     additive = c('"ON Poss" + "OFF Poss"', "off_on_fg2_att + off_off_fg2_att",
                  "off_on_fg3_att + off_off_fg3_att", "def_on_fg2_att + def_off_fg2_att",
                  "def_on_fg3_att + def_off_fg3_att", "off_on_layup_att + off_off_layup_att"),
     time = "minutes", time_key = c("Year", "Team", "player_id")),
   player_advanced_stats_mv = list(
+    g2_advisory = "non-roster player rows make player totals unstable (CLAUDE.md Pitfalls); the team-grain check is G3 and test-ft-credit-db.R",
     key = c("game_year", "team_id", "player_id"),
     additive = c("off_on_poss + off_off_poss", "def_on_poss + def_off_poss")),
   mv_lineup_totals_by_day = list(
@@ -94,12 +105,14 @@ object_map <- list(
     time = "minutes",
     time_key = c("game_id", "team_id", "lineup_hash", "type_lineup", "opp_starters", "num_starters")),
   sub_lineups_stats = list(
+    g2_advisory = "the table excludes possessions in segments with no time; re-crediting moved one across that line for two teams",
     key = c("game_year", "team_id", "num_lineup"),
     additive = c("off_poss", "off_pts", "def_poss", "def_pts", "off_fg2_made", "off_fg2_att",
                  "off_fg3_made", "off_fg3_att", "def_fg2_made", "def_fg2_att", "def_fg3_made", "def_fg3_att"),
     time = "minutes", time_key = c("game_year", "team_id", "sub_lineup_hash")),
   team_ppp_ratings_mv = list(key = c("game_year", "team_id"), additive = ratings_counts),
-  team_ratings_preset_cache = list(key = c("preset_variant", "game_year", "team_id"), additive = ratings_counts),
+  team_ratings_preset_cache = list(key = c("preset_variant", "game_year", "team_id"), additive = ratings_counts,
+    g2_advisory = "the starters presets follow the credited lineup by design"),
   player_traditional_by_game = list(
     key = c("game_id", "team_id"), additive = c(player_box, "player_ts_poss_count", "poss_on_floor"),
     time = "seconds_on_floor", time_key = c("game_id", "team_id", "player_id")),
@@ -190,9 +203,13 @@ expected_trips_sql <- function(side) sprintf("
   GROUP BY a.game_id, a.team_id", BASE, side)
 
 failures <- character(0)
-report <- function(gate, ok, detail) {
-  cat(sprintf("  %-4s %s  %s\n", gate, if (ok) "ok  " else "FAIL", detail))
-  if (!ok) failures <<- c(failures, gate)
+# `advisory` is the reason a difference is expected for this object. An
+# advisory gate is still computed and printed, but does not fail the run.
+report <- function(gate, ok, detail, advisory = NULL) {
+  status <- if (ok) "ok  " else if (is.null(advisory)) "FAIL" else "info"
+  cat(sprintf("  %-4s %s  %s%s\n", gate, status, detail,
+              if (!ok && !is.null(advisory)) paste0("  [expected: ", advisory, "]") else ""))
+  if (!ok && is.null(advisory)) failures <<- c(failures, gate)
 }
 
 check_object <- function(name) {
@@ -202,34 +219,47 @@ check_object <- function(name) {
   base <- sprintf('%s."baseline_%s"', SNAP, name)
   cat("== ", name, "\n", sep = "")
 
+  # `where` drops rows with a documented, accepted difference from both sides
+  # of the totals and time comparisons. The trip check reads the whole object.
+  whole <- live
+  if (!is.null(spec$where)) {
+    live <- sprintf("(SELECT * FROM %s WHERE %s) live_rows", live, spec$where)
+    base <- sprintf("(SELECT * FROM %s WHERE %s) base_rows", base, spec$where)
+  }
+
   g2 <- compare_sums(live, base, spec$key, spec$additive)
   report("G2", g2$differ == 0, sprintf("%d of %d keys differ in an additive total%s", g2$differ, g2$total,
-         if (length(g2$cols)) paste0(" [", paste(names(g2$cols), g2$cols, sep = "=", collapse = ", "), "]") else ""))
+         if (length(g2$cols)) paste0(" [", paste(names(g2$cols), g2$cols, sep = "=", collapse = ", "), "]") else ""),
+         advisory = spec$g2_advisory)
 
   trip_specs <- list()
   if (!is.null(spec$trips)) for (side in names(spec$trips)) {
     trip_specs[[side]] <- sprintf('SELECT game_id, team_id, SUM("%s")::numeric AS got FROM %s GROUP BY 1, 2',
-                                  spec$trips[[side]], live)
+                                  spec$trips[[side]], whole)
   }
   if (!is.null(spec$trips_long)) for (side in c("offense", "defense")) {
     grain <- if ("player_id" %in% spec$key) "game_id, team_id, player_id" else "game_id, team_id"
+    # At player grain the team's count is read off its best-covered player:
+    # player_four_factors_by_game also holds partial rows for players who were
+    # not on the game's roster, and their ON+OFF sums never reach the team's.
     trip_specs[[side]] <- sprintf(
-      "SELECT game_id, team_id, MIN(got) AS got, MAX(got) AS got_max FROM (
+      "SELECT game_id, team_id, MAX(got) AS got FROM (
          SELECT %s, SUM(\"%s\")::numeric AS got FROM %s WHERE type_lineup = '%s' GROUP BY %s) z GROUP BY 1, 2",
-      grain, spec$trips_long, live, side, grain)
+      grain, spec$trips_long, whole, side, grain)
   }
+  # Both sides are fetched and compared in R, so a team-game missing from the
+  # object, an extra one, or an empty comparison all fail (an inner join in SQL
+  # would silently drop the first and pass on the last).
   for (side in names(trip_specs)) {
-    res <- q(sprintf("
-      WITH got AS (%s), exp AS (%s)
-      SELECT COUNT(*) AS n, COUNT(*) FILTER (WHERE g.got IS DISTINCT FROM e.expected) AS bad
-      FROM got g JOIN exp e USING (game_id, team_id)", trip_specs[[side]], expected_trips_sql(side)))
-    report("G3", as.numeric(res$bad) == 0,
-           sprintf("%s: %s of %s team-games do not count each trip once", side, res$bad, res$n))
+    fails <- trip_coverage_failures(q(trip_specs[[side]]), q(expected_trips_sql(side)))
+    report("G3", !length(fails),
+           sprintf("%s: %s", side, if (length(fails)) paste(fails, collapse = "; ") else "every team-game counts each trip once"))
   }
 
   if (!is.null(spec$time)) {
     g4 <- compare_sums(live, base, spec$time_key, spec$time, tol = 1e-9)
-    report("G4", g4$differ == 0, sprintf("%d of %d keys differ in floor time", g4$differ, g4$total))
+    report("G4", g4$differ == 0, sprintf("%d of %d keys differ in floor time", g4$differ, g4$total),
+           advisory = spec$g4_advisory)
   }
 }
 
@@ -292,26 +322,70 @@ snapshot <- function(force) {
   }
 }
 
-# G6: every column of the function's result, case by case, against the snapshot.
-check_fn <- function(fn, ignore = character(0)) {
+# ---- G6: what each reader is permitted to change ----------------------------
+# Per reader: its row key, the cases it does not support, and per case which
+# columns may differ from the pre-migration snapshot. `default` applies to any
+# case without its own entry. allowed = "*" means any column; `frozen` columns
+# may never change; rows = "any" marks a reader whose row set is not stable.
+ts_only <- list(allowed = "ts")
+player_trad <- list(allowed = c("poss_on_floor", "ts", "usg_pct"))
+any_but_minutes <- list(allowed = "*", frozen = "minutes")
+starters_moves <- list(allowed = "*")  # a starters filter now follows the credited lineup
+# on/off readers sit on player_four_factors_by_game, whose non-roster rows come
+# and go when old games are refreshed, so their row set is not stable.
+onoff_reader <- list(allowed = "*", frozen = "minutes", rows = "any")
+# The dashboard reader reports minutes only for a player with a Net RTG Diff.
+# Re-crediting can leave a player with one scoreless possession on a side, so
+# no rating and no diff; the stored floor time is unchanged (2 players, 2026).
+onoff_dashboard <- c(onoff_reader, list(frozen_where = c(minutes = "Net RTG Diff")))
+fn_specs <- list(
+  get_team_ratings_dynamic = list(key = "team_id",
+    cases = list(default = list(), starters5 = starters_moves)),
+  get_team_four_factors_dynamic = list(key = "team_id",
+    cases = list(default = list(allowed = c("off_ts", "off_ts_poss", "def_ts", "def_ts_poss")),
+                 clutch = list(), starters5 = starters_moves)),
+  get_team_four_factors_dashboard_dynamic = list(key = "team_id",
+    cases = list(default = list(), starters5 = starters_moves)),
+  get_team_traditional_dynamic = list(key = "team_id", unsupported = "starters5",
+    cases = list(default = ts_only)),
+  get_player_traditional_from_games = list(key = c("team_id", "player_id"), unsupported = "starters5",
+    cases = list(default = player_trad)),
+  get_player_traditional_dynamic = list(key = c("team_id", "player_id"), unsupported = "starters5",
+    cases = list(default = player_trad)),
+  get_player_traditional_custom_clutch = list(key = c("team_id", "player_id"),
+    unsupported = c("none", "home", "last5", "starters5"), cases = list(default = player_trad)),
+  fetch_lineups_csv_v2 = list(key = c("team_id", "sub_lineup_hash"),
+    cases = list(default = any_but_minutes, clutch = list(allowed = "*"))),
+  fetch_lineups_four_factors_csv = list(key = c("team_id", "sub_lineup_hash"),
+    cases = list(default = any_but_minutes, clutch = list(allowed = "*", rows = "any"))),
+  onoff_compute = list(key = c("team_id", "player_id"), unsupported = "clutch",
+    cases = list(default = onoff_reader)),
+  four_factors_compute = list(key = c("team_id", "player_id"), unsupported = "clutch",
+    cases = list(default = onoff_reader)),
+  four_factors_dashboard_compute = list(key = c("team_id", "player_id"), unsupported = "clutch",
+    cases = list(default = onoff_dashboard))
+)
+
+# G6: every column of the reader's result, case by case, against the snapshot.
+# Fails on an unpermitted change, a schema difference, an unexpected row
+# count, or a case with no snapshot.
+check_fn <- function(fn) {
   cat("== ", fn, "\n", sep = "")
-  for (case in names(fn_cases)) {
-    tbl <- sprintf("fn_%s__%s", fn, case)
-    if (!nrow(q(sprintf("SELECT 1 FROM pg_tables WHERE schemaname = '%s' AND tablename = '%s'", SNAP, tbl)))) next
+  spec <- fn_specs[[fn]]
+  if (is.null(spec)) { report("G6", FALSE, "no expectations declared for this reader"); return(invisible()) }
+  has_snapshot <- function(case) nrow(q(sprintf(
+    "SELECT 1 FROM pg_tables WHERE schemaname = '%s' AND tablename = 'fn_%s__%s'", SNAP, fn, case))) > 0
+  available <- Filter(has_snapshot, names(fn_cases))
+  missing <- missing_case_failures(names(fn_cases), available, spec$unsupported %||% character(0))
+  if (length(missing)) report("G6", FALSE, missing)
+  for (case in setdiff(available, spec$unsupported)) {
     old <- q(sprintf("SELECT * FROM %s", fn_table(fn, case)))
     new <- q(fn_call(fn, case))
-    key <- intersect(c("game_year", "team_id", "player_id", "sub_lineup_hash", "lineup_hash",
-                       "player_ids_str", "player_names_str"), names(old))
-    if (!length(key) || anyDuplicated(old[key])) key <- names(old)[vapply(old, function(v) !is.numeric(v), logical(1))]
-    ord <- function(d) d[do.call(order, lapply(key, function(k) as.character(d[[k]]))), , drop = FALSE]
-    old <- ord(old); new <- ord(new)
-    if (nrow(old) != nrow(new)) {
-      report("G6", FALSE, sprintf("%s: %d rows before, %d after", case, nrow(old), nrow(new))); next
-    }
-    cols <- setdiff(intersect(names(old), names(new)), ignore)
-    changed <- Filter(function(cc) !isTRUE(all.equal(old[[cc]], new[[cc]], check.attributes = FALSE)), cols)
-    cat(sprintf("  G6   %-9s %d rows; %d of %d columns changed%s\n", case, nrow(new), length(changed),
-                length(cols), if (length(changed)) paste0(": ", paste(utils::head(changed, 14), collapse = ", ")) else ""))
+    case_spec <- spec$cases[[case]] %||% spec$cases$default
+    case_spec$frozen <- intersect(case_spec$frozen, names(old))
+    fails <- fn_result_failures(old, new, spec$key, case_spec)
+    report("G6", !length(fails), sprintf("%-9s %d rows before, %d after%s", case, nrow(old), nrow(new),
+           if (length(fails)) paste0(" -- ", paste(fails, collapse = "; ")) else ""))
   }
 }
 
