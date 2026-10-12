@@ -135,6 +135,12 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     df <- season_rows()
     if (is.null(df) || !nrow(df)) return(df)
     f <- game_context_filter_values(input, "eurogl", game_type_id = "eurogl_phase")
+    # Last N counts each team's whole season, as the SQL readers'
+    # schedule_ranked CTE does, so it runs before every other filter.
+    gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
+    if (!is.na(gn$last_n)) df <- df %>% group_by(team_id) %>%
+      arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
+      slice_head(n = gn$last_n) %>% ungroup()
     rng <- input$eurogl_dates
     if (length(rng) == 2L) df <- df %>% filter(game_date >= as.Date(rng[1]), game_date <= as.Date(rng[2]))
     ids <- selected_team_ids()
@@ -149,12 +155,8 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
       input$eurogl_num_starters_off_mode, input$eurogl_num_starters_off,
       input$eurogl_num_starters_def_mode, input$eurogl_num_starters_def
     )
-    gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
     if (!is.na(gn$min_gn)) df <- df %>% filter(round_number >= gn$min_gn)
     if (!is.na(gn$max_gn)) df <- df %>% filter(round_number <= gn$max_gn)
-    if (!is.na(gn$last_n)) df <- df %>% group_by(team_id) %>%
-      arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-      slice_head(n = gn$last_n) %>% ungroup()
 
     games <- build_games(df, starters_bounds = list(
       off_min = starter_bounds$num_starters_off_min,

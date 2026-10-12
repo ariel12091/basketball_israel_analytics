@@ -155,15 +155,23 @@ server_tab3 <- function(input, output, session, shared) {
              CASE WHEN $5::text IS NULL OR btrim($5::text) = '' THEN NULL::int4[]
                   ELSE string_to_array(regexp_replace($5::text, '\\s+', '', 'g'), ',')::int4[] END AS opp_ids
          ),
+         season_recency AS (
+           SELECT
+             fsr.game_id, fsr.team_id, fsr.game_year,
+             ROW_NUMBER() OVER (
+               PARTITION BY fsr.team_id, fsr.game_year
+               ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+             ) AS rn_recent
+           FROM basketball_test.final_schedule_mv fsr
+           WHERE fsr.game_year = $1::int4
+         ),
          sched_base AS (
            SELECT
              fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.game_date, fs.gn,
-             fs.is_home, fs.has_won,
-             ROW_NUMBER() OVER (
-               PARTITION BY fs.team_id, fs.game_year
-               ORDER BY fs.game_date DESC NULLS LAST, fs.game_id DESC
-             ) AS rn_recent
+             fs.is_home, fs.has_won, sr.rn_recent
            FROM basketball_test.final_schedule_mv fs
+           JOIN season_recency sr
+             ON sr.game_id = fs.game_id AND sr.team_id = fs.team_id AND sr.game_year = fs.game_year
            CROSS JOIN params p0
            WHERE fs.game_year = $1::int4
              AND ($2::date IS NULL OR fs.game_date >= $2::date)
@@ -259,15 +267,23 @@ server_tab3 <- function(input, output, session, shared) {
            CASE WHEN $5::text IS NULL OR btrim($5::text) = '' THEN NULL::int4[]
                 ELSE string_to_array(regexp_replace($5::text, '\\s+', '', 'g'), ',')::int4[] END AS opp_ids
        ),
+       season_recency AS (
+         SELECT
+           fsr.game_id, fsr.team_id, fsr.game_year,
+           ROW_NUMBER() OVER (
+             PARTITION BY fsr.team_id, fsr.game_year
+             ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC
+           ) AS rn_recent
+         FROM basketball_test.final_schedule_mv fsr
+         WHERE fsr.game_year = $1::int4
+       ),
        sched_base AS (
          SELECT
            fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.game_date, fs.gn,
-           fs.is_home, fs.has_won,
-           ROW_NUMBER() OVER (
-             PARTITION BY fs.team_id, fs.game_year
-             ORDER BY fs.game_date DESC NULLS LAST, fs.game_id DESC
-           ) AS rn_recent
+           fs.is_home, fs.has_won, sr.rn_recent
          FROM basketball_test.final_schedule_mv fs
+         JOIN season_recency sr
+           ON sr.game_id = fs.game_id AND sr.team_id = fs.team_id AND sr.game_year = fs.game_year
          CROSS JOIN params p0
          WHERE fs.game_year = $1::int4
            AND ($2::date IS NULL OR fs.game_date >= $2::date)
@@ -553,11 +569,19 @@ server_tab3 <- function(input, output, session, shared) {
            CASE WHEN $5::text IS NULL OR btrim($5::text) = '' THEN NULL::int4[]
                 ELSE string_to_array(regexp_replace($5::text, '\\s+', '', 'g'), ',')::int4[] END AS opp_ids
        ),
+       season_recency AS (
+         SELECT
+           fsr.game_id, fsr.team_id, fsr.game_year,
+           ROW_NUMBER() OVER (PARTITION BY fsr.team_id, fsr.game_year ORDER BY fsr.game_date DESC NULLS LAST, fsr.game_id DESC) AS rn_recent
+         FROM basketball_test.final_schedule_mv fsr
+         WHERE fsr.game_year = $1::int4
+       ),
        games_base AS (
          SELECT
-           fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.game_date,
-           ROW_NUMBER() OVER (PARTITION BY fs.team_id, fs.game_year ORDER BY fs.game_date DESC NULLS LAST, fs.game_id DESC) AS rn_recent
+           fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id, fs.game_date, sr.rn_recent
          FROM basketball_test.final_schedule_mv fs
+         JOIN season_recency sr
+           ON sr.game_id = fs.game_id AND sr.team_id = fs.team_id AND sr.game_year = fs.game_year
          CROSS JOIN params p0
          WHERE fs.game_year = $1::int4
            AND ($2::date IS NULL OR fs.game_date >= $2::date)

@@ -365,6 +365,20 @@ server_tab4 <- function(input, output, session, shared) {
 
     df <- sched
 
+    # Last N counts each team's whole season, as the SQL readers'
+    # schedule_ranked CTE does, so it runs before every other filter: "home +
+    # last 5" is the home games among a team's last 5, not its last 5 home games.
+    gp <- gl_gn_params()
+    if (!is.na(gp$last_n)) {
+      df <- df %>%
+        group_by(team_id) %>%
+        arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
+        mutate(rn_recent = row_number()) %>%
+        ungroup() %>%
+        filter(rn_recent <= gp$last_n) %>%
+        select(-rn_recent)
+    }
+
     # Team filter (optional)
     team_id_str <- input$gl_team
     if (!is.null(team_id_str) && nzchar(team_id_str)) {
@@ -407,18 +421,8 @@ server_tab4 <- function(input, output, session, shared) {
     }
 
     # GN filter
-    gp <- gl_gn_params()
     if (!is.na(gp$min_gn)) df <- df %>% filter(gn >= !!gp$min_gn)
     if (!is.na(gp$max_gn)) df <- df %>% filter(gn <= !!gp$max_gn)
-    if (!is.na(gp$last_n)) {
-      df <- df %>%
-        group_by(team_id) %>%
-        arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-        mutate(rn_recent = row_number()) %>%
-        ungroup() %>%
-        filter(rn_recent <= gp$last_n) %>%
-        select(-rn_recent)
-    }
 
     df
   })
