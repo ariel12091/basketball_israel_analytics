@@ -42,3 +42,25 @@ test_that("all free throws of one trip are credited to one segment", {
       HAVING COUNT(DISTINCT (credit_lineup_hash, credit_segment_id)) > 1) x")
   expect_equal(as.numeric(split$n), 0)
 })
+
+test_that("team Four Factors counts each free-throw trip once", {
+  bad <- DBI::dbGetQuery(con, "
+    WITH expected AS (
+      SELECT a.game_id, a.team_id,
+             COUNT(*) FILTER (WHERE a.type = 'shot')
+             + COUNT(DISTINCT a.parent_action_id) FILTER (
+                 WHERE a.type = 'freeThrow' AND p.id IS NOT NULL) AS ts_poss
+      FROM basketball_test.df_pts_poss_lineups_longer_mv a
+      LEFT JOIN basketball_test.df_pts_poss_lineups_longer_mv p
+        ON p.game_id = a.game_id AND p.id = a.parent_action_id
+       AND p.type = 'foul' AND p.parameters_type = 'personal'
+       AND p.team_id = a.team_id AND p.type_lineup = a.type_lineup
+      WHERE a.type_lineup = 'offense'
+      GROUP BY a.game_id, a.team_id
+    )
+    SELECT COUNT(*) AS n
+    FROM basketball_test.team_metrics_by_game_mv tm
+    JOIN expected e ON e.game_id = tm.game_id AND e.team_id = tm.team_id
+    WHERE tm.off_ts_poss_raw <> e.ts_poss")
+  expect_equal(as.numeric(bad$n), 0)
+})

@@ -91,7 +91,10 @@ objects <- list(
   team_metrics_by_game_mv = list(kind = "table",
     functions = "sql/functions/refresh_team_metrics_by_game_for_games.sql",
     refresh = "refresh_team_metrics_by_game_for_games"),
-  team_four_factors_mv = list(kind = "refresh_only"),
+  # Reads lineup_four_factors_by_game by OID, so it must be re-created after
+  # that view is swapped; its definition itself does not change.
+  team_four_factors_mv = list(kind = "matview",
+    file = "sql/materialized_views/team_four_factors_mv.sql"),
   team_metrics_rolling_mv = list(kind = "refresh_only"),
   player_four_factors_by_game = list(kind = "table",
     functions = "sql/functions/refresh_player_four_factors_by_game_for_games.sql",
@@ -128,8 +131,9 @@ objects <- list(
 staged_matview_sql <- function(name, path) {
   sql <- read_sql(path)
   qualified <- sprintf("%s.%s", SCHEMA, name)
-  n_create <- lengths(regmatches(sql, gregexpr(sprintf("CREATE MATERIALIZED VIEW %s AS", qualified), sql, fixed = TRUE)))
-  if (n_create != 1L) stop(path, ": expected exactly one 'CREATE MATERIALIZED VIEW ", qualified, " AS'")
+  create_stmt <- sprintf("CREATE MATERIALIZED VIEW %s", qualified)
+  n_create <- lengths(regmatches(sql, gregexpr(create_stmt, sql, fixed = TRUE)))
+  if (n_create != 1L) stop(path, ": expected exactly one '", create_stmt, "'")
   # Drop statements in the file target the live object: remove them.
   lines <- strsplit(sql, "\n", fixed = TRUE)[[1]]
   lines <- lines[!grepl("^\\s*DROP (MATERIALIZED VIEW|TABLE|INDEX)", lines)]
@@ -197,6 +201,10 @@ apply_object <- function(name) {
     counts <- q(sprintf("SELECT (SELECT COUNT(*) FROM %1$s.%2$s) AS old_rows,
                                 (SELECT COUNT(*) FROM %1$s.%2$s__ftc_next) AS new_rows", SCHEMA, name))
     say("  rows: %s live, %s staged", counts$old_rows, counts$new_rows)
+    # A new view has no grants. Give the app its read grant before the swap so
+    # there is no window in which the live name is unreadable; the full
+    # hardening script still has to run afterwards.
+    x(sprintf("GRANT SELECT ON %s.%s__ftc_next TO app_readonly", SCHEMA, name))
     swap_matview(name, staged$indexes)
     say("  swapped; previous definition kept as %s__ftc_old", name)
   }
