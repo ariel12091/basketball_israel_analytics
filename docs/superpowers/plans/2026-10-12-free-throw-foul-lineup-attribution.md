@@ -1192,3 +1192,87 @@ Factors TS% is corrected while player on/off still uses the old
 attribution; after Task 7 the database is complete and only the app's own
 arithmetic and wording remain. Between Task 3 and Task 7 different tabs
 are on different attributions, so plan to run Tasks 3-7 in one sitting.
+
+---
+
+## As executed (2026-10-12)
+
+All nine tasks were executed the day the plan was written. The database is on
+credit attribution; the code is on local branches `sql/ft-credit` (Tasks 1-7)
+and `shiny/ft-credit-ts` (Tasks 8-9, on top of it). The task text above is the
+plan as written and is kept for the record. **Where it differs from what was
+done, this section is the truth.**
+
+### Where the plan was wrong
+
+| The plan said | What is actually the case |
+|---|---|
+| Task 8 Step 9: compare TS% between Tab 3's Four Factors and Traditional views | Shiny's Four Factors tables show eFG%, OREB%, TOV% and FTR, not TS%. The double-counted TS% was stored and served to React/Plumber, not displayed in Shiny. The equality is asserted by a DB test instead. |
+| Task 6: the team readers count trips per segment and need their group keys switched | They already counted trips distinct per team. Only their starters filters depended on the lineup. The plan's Step 1 test would have passed before any change; a starters-filter test replaced it. |
+| Task 3: `team_four_factors_mv` only needs a `REFRESH` | It reads `lineup_four_factors_by_game` by internal id and had to be re-created after that view was swapped. |
+| Task 4: one CTE can carry both attributions; do not split it | In the player Four Factors function the join to `lineups_lookup` is what decides ON/OFF, so time needed its own CTE (`floor_data`). |
+| Tasks 4 and 5: G2 holds at player grain and at sub-lineup grain | Player-grain totals are not conserved, because `player_four_factors_by_game` carries partial rows for players who were not on a game's roster (pre-existing; see CLAUDE.md Pitfalls). Checked through the best-covered player per team-game instead. |
+| Task 7: possessions on floor follow credit (nothing said about games played) | Games played was derived from the same lookup and dropped for five players. `poss_end` now carries the floor lineup (for `gp`) and the credited lineup (for `poss_on_floor`). |
+| Task 7: the per-action player fact needs no schema change | `player_stats_actions_by_game` gained `credit_lineup_hash` as its last column, and its compute function is dropped and re-created. |
+| Task 5: refresh `sub_lineups_stats` with the full refresh | Refreshed per game in batches with `refresh_sub_lineups_stats_for_games`. |
+| Design: `credit_segment_id integer` | `bigint`, matching `segment_id`. |
+| Task 9 Step 3: add a finding to the data-quality report | Not done. The nightly `test-ft-credit-db.R` covers NULL credit columns. In CLAUDE.md Backlogs. |
+| Task 9 Steps 2, 5, 6: post-ETL check, cleanup, production check | Deferred until one nightly ETL has run and the branches are pushed. In CLAUDE.md Backlogs. |
+
+### Accepted deviations from the reader rule
+
+- **Clutch lineup readers** (`fetch_lineups_all`, `fetch_lineups_four_factors`)
+  join stats to time per credited segment. Measured on 2026 at margin 5 in the
+  last five minutes: one free-throw point dropped for one team (its foul's
+  segment has no rows inside the window), and 2.4 minutes of stint time
+  league-wide missing (segments that held only re-credited free throws).
+  Review Focus item 5 is therefore not fully met for these two functions.
+- **Starters filters in the clutch lineup readers and the team readers** apply
+  the credited starters to the whole row set, including the rows used for
+  event-span time. Only re-credited free throws are affected.
+- **`lineup_stats` in the player Four Factors function** stays on physical
+  keys: it counts shots only, which are never re-credited.
+
+### Gate results at the end
+
+- G1 (credit columns well formed): all four checks 0. 8,608 rows re-credited,
+  carrying 6,372 points (both perspectives).
+- G2 (team totals) and G4 (floor time): 0 differences on
+  `lineup_four_factors_by_game`, `mv_lineup_totals_by_day`,
+  `team_four_factors_mv`, `team_ppp_ratings_mv`, `player_traditional_by_game`,
+  `default_clutch_player_totals_by_game`, `player_stats_actions_by_game`,
+  `player_traditional_stats_mv`.
+- G3 (each trip once): 0 of 938 team-games on both sides for lineup Four
+  Factors, team metrics and rolling metrics.
+- `team_metrics_by_game_mv` G2: 2 keys differ, both in game 62526, where the
+  refresh corrected a stale row that predated this work.
+- `sub_lineups_stats` G2: defensive possessions differ by 1 for two teams; the
+  table already excludes possessions in segments with no time.
+- Best-covered player ON+OFF equals the team's totals in 938 of 938 team-games
+  for points, possessions, FGA and trips.
+- Full test suite with database tests: 812 tests, 4,543 assertions, 0
+  failures, 0 errors.
+
+### Incidents during execution
+
+- `get_player_traditional_custom_clutch` and `get_player_traditional_dynamic`
+  failed on every call for about five minutes (an ambiguous column reference
+  inside a plpgsql `RETURNS TABLE` function, which errors at run time, not at
+  CREATE). Fixed and redeployed.
+- The first view swap left the live name unreadable to the app for about a
+  minute, until the hardening script ran. The apply script now grants the
+  staged view before swapping.
+- A backgrounded refresh was killed by the host's low-memory guard and resumed
+  with `--game-min`. The lineup-totals build outlived the pooler's connection
+  and was resumed with `--reuse-staged`.
+
+### For a reviewer
+
+In order of risk: the `floor_data` split in
+`refresh_player_four_factors_by_game_for_games.sql`; the clutch paths of the
+two lineup readers; the four copies of the games-played / possessions-on-floor
+pattern; the nightly path through `refresh_df_pts_poss_lineups_longer_for_games`,
+which could not be exercised because its sources are cold; the string
+substitution in `apply_ft_credit_migration.R`'s view swap; and
+`ts_implied_attempts()` in `app/R/helpers.R`, which recovers attempts from a
+rounded TS%.
