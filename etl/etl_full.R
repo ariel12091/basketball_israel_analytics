@@ -329,6 +329,13 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       ids
     } else {
       t0 <- proc.time()
+      # Read the small canonical team dictionary once for this write run.
+      # The schedule and PBP providers use different team-ID namespaces.
+      pbp_team_dictionary <- DBI::dbGetQuery(pg, sprintf(
+        'SELECT game_year, team_id_schedule, team_id_rosters FROM "%s".schedule_team_dict',
+        SCHEMA
+      ))
+      sched_subset <- map_pbp_schedule_teams(sched_subset, pbp_team_dictionary)
       successful_ids <- integer(0)
       for (gid in ids) {
         game_sched <- sched_subset |>

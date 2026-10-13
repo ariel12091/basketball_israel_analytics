@@ -17,7 +17,8 @@ pbp_source_fixture <- function(game_id = 414L) {
 }
 
 pbp_expected_fixture <- function() {
-  data.frame(team1 = 14L, team2 = 17L, score_team1 = 80L, score_team2 = 89L)
+  data.frame(game_year = 2027L, team1 = 2122L, team2 = 2124L,
+             pbp_team1 = 14L, pbp_team2 = 17L, score_team1 = 80L, score_team2 = 89L)
 }
 
 pbp_mock_clean <- function(raw) {
@@ -119,4 +120,22 @@ test_that('archive selection retains its matching embedded box score', {
   raw$result$boxscore$gameInfo$homeTeamId <- '18'
   expect_error(env$embedded_pbp_box(raw, 414), 'do not match')
   expect_null(env$embedded_pbp_box(pbp_source_fixture(), 414))
+})
+
+test_that('real schedule IDs are mapped by season before validating game 414', {
+  env <- pbp_fallback_env()
+  schedule <- pbp_expected_fixture()[, c('game_year', 'team1', 'team2', 'score_team1', 'score_team2')]
+  dictionary <- data.frame(game_year = c(2026L, 2027L, 2027L),
+                           team_id_schedule = c(2122L, 2122L, 2124L),
+                           team_id_rosters = c(99L, 14L, 17L))
+  mapped <- env$map_pbp_schedule_teams(schedule, dictionary)
+  expect_identical(mapped$pbp_team1, 14L)
+  expect_identical(mapped$pbp_team2, 17L)
+  expect_identical(mapped$team1, 2122L)
+  expect_identical(mapped$team2, 2124L)
+  expect_no_error(env$validate_pbp_source(pbp_source_fixture(), 414L, pbp_mock_clean, mapped))
+  expect_error(env$map_pbp_schedule_teams(schedule, dictionary[-3, ]), 'Missing schedule-to-PBP')
+  expect_error(env$map_pbp_schedule_teams(schedule, rbind(dictionary, dictionary[2, ])), 'duplicate season/team')
+  text <- paste(readLines(file.path('..', '..', '..', 'etl', 'etl_full.R'), warn = FALSE), collapse = '\n')
+  expect_match(text, 'map_pbp_schedule_teams(sched_subset, pbp_team_dictionary)', fixed = TRUE)
 })

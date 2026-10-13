@@ -1,3 +1,28 @@
+# Schedule IDs belong to a different provider namespace from PBP IDs.
+# Match by season as well as ID, using the existing canonical dictionary.
+map_pbp_schedule_teams <- function(schedule_rows, team_dictionary) {
+  required <- c('game_year', 'team1', 'team2')
+  if (!all(required %in% names(schedule_rows))) {
+    stop('PBP schedule is missing season/team IDs', call. = FALSE)
+  }
+  map_cols <- c('game_year', 'team_id_schedule', 'team_id_rosters')
+  if (!all(map_cols %in% names(team_dictionary))) {
+    stop('PBP team dictionary is missing mapping columns', call. = FALSE)
+  }
+  keys <- paste(as.integer(team_dictionary$game_year), as.integer(team_dictionary$team_id_schedule), sep = ':')
+  if (anyDuplicated(keys)) stop('PBP team dictionary has duplicate season/team keys', call. = FALSE)
+  for (side in 1:2) {
+    schedule_key <- paste(as.integer(schedule_rows$game_year), as.integer(schedule_rows[[paste0('team', side)]]), sep = ':')
+    mapped <- as.integer(team_dictionary$team_id_rosters[match(schedule_key, keys)])
+    if (anyNA(mapped) || any(mapped <= 0L)) {
+      stop(sprintf('Missing schedule-to-PBP team mapping for %s',
+                   paste(schedule_key[is.na(mapped) | mapped <= 0L], collapse = ', ')), call. = FALSE)
+    }
+    schedule_rows[[paste0('pbp_team', side)]] <- mapped
+  }
+  schedule_rows
+}
+
 # PBP source selection has no database side effects. The same cleaner and
 # schedule checks run before accepting either the primary feed or its archive.
 normalize_pbp_payload <- function(raw) {
@@ -43,11 +68,11 @@ validate_pbp_source <- function(raw, game_id, clean_fn, expected = NULL) {
     stop('PBP is missing a regulation quarter after known corrections', call. = FALSE)
   }
   if (!is.null(expected)) {
-    cols <- c('team1', 'team2', 'score_team1', 'score_team2')
+    cols <- c('pbp_team1', 'pbp_team2', 'score_team1', 'score_team2')
     if (!all(cols %in% names(expected)) || nrow(expected) != 1L) {
       stop('Expected PBP schedule must contain one team/score row', call. = FALSE)
     }
-    ids <- as.integer(c(expected$team1, expected$team2))
+    ids <- as.integer(c(expected$pbp_team1, expected$pbp_team2))
     scores <- as.numeric(c(expected$score_team1, expected$score_team2))
     if (anyNA(ids) || anyNA(scores) || any(scores < 0) || !setequal(ids, team_ids)) {
       stop('PBP teams do not match a usable schedule row', call. = FALSE)
