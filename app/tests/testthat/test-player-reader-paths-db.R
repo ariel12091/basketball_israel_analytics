@@ -76,17 +76,15 @@ test_that("On/Off Four Factors: the season view equals both stored readers", {
   }
 })
 
-# The On/Off Summary pair is equal except in three documented ways
+# The On/Off Summary pair is equal except in two documented ways
 # (docs/shared_definitions.md, deviation register): the view keeps players with
 # no ON or no OFF bucket, which the reader drops; a side with possessions and no
 # points is NULL in the view and 0 in the reader; and minutes are rounded
 # differently (the view rounds the season's second total to one decimal, the
 # reader sums per-game values already cut to three). Percentiles are ranks within each source's own player set, so
 # they are compared on the players both rank, with room for that difference.
-# One percentile is a known defect and is excluded until it is fixed: the view
-# ranks pr_on_net over every row, NULLs included, so it tops out near 0.84
-# instead of 1 (register entry D18). The last expectation fails the day that
-# is fixed, as a reminder to pin the column.
+# A side with no rating has no percentile: until 2026-10-13 the view ranked
+# pr_on_net over every row, NULLs last, so real values topped out near 0.84.
 test_that("On/Off Summary: the season view equals the reader for every player with a real sample", {
   for (gy in names(SEASONS)) {
     d <- SEASONS[[gy]]
@@ -101,8 +99,12 @@ test_that("On/Off Summary: the season view equals the reader for every player wi
     exact <- g$gap[!is_pr & names(g$gap) != "minutes"]
     expect_identical(names(exact)[exact > 1e-9], character(0), label = paste(gy, "value columns that differ"))
     expect_lte(g$gap[["minutes"]], 0.1, label = paste(gy, "minutes gap"))
-    known <- names(g$gap) == "pr_on_net"
-    expect_lte(max(g$gap[is_pr & !known]), 0.03, label = paste(gy, "largest percentile gap"))
-    expect_gt(g$gap[["pr_on_net"]], 0.03, label = paste(gy, "pr_on_net gap (D18 fixed? pin it and drop this line)"))
+    expect_lte(max(g$gap[is_pr]), 0.03, label = paste(gy, "largest percentile gap"))
+    for (side in c("On", "Off")) {
+      pr <- view[[paste0("pr_", tolower(side), "_net")]]; val <- view[[paste(side, "Net RTG")]]
+      expect_identical(is.na(pr), is.na(val), label = paste(gy, side, "Net RTG percentile present exactly where the rating is"))
+      # Just under 1 only when players tie for the best rating.
+      expect_gt(max(pr, na.rm = TRUE), 0.98, label = paste(gy, "best", side, "Net RTG percentile"))
+    }
   }
 })

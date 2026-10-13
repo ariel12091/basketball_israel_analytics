@@ -428,8 +428,12 @@ BEGIN
             fr.def_off_c3_made, fr.def_off_c3_att, fr.def_off_c3_known_att,
             fr.offense_on_ppp - fr.defense_on_ppp AS on_net_rtg,
             fr.offense_off_ppp - fr.defense_off_ppp AS off_net_rtg,
-            percent_rank() OVER (PARTITION BY fr.game_year ORDER BY (fr.offense_on_ppp - fr.defense_on_ppp)) AS pr_on_net,
-            percent_rank() OVER (PARTITION BY fr.game_year ORDER BY (fr.offense_off_ppp - fr.defense_off_ppp)) AS pr_off_net
+            CASE WHEN (fr.offense_on_ppp - fr.defense_on_ppp) IS NOT NULL THEN
+              percent_rank() OVER (PARTITION BY fr.game_year, ((fr.offense_on_ppp - fr.defense_on_ppp) IS NOT NULL) ORDER BY (fr.offense_on_ppp - fr.defense_on_ppp))
+            END AS pr_on_net,
+            CASE WHEN (fr.offense_off_ppp - fr.defense_off_ppp) IS NOT NULL THEN
+              percent_rank() OVER (PARTITION BY fr.game_year, ((fr.offense_off_ppp - fr.defense_off_ppp) IS NOT NULL) ORDER BY (fr.offense_off_ppp - fr.defense_off_ppp))
+            END AS pr_off_net
            FROM final_rows fr
            LEFT JOIN player_minutes pm
              ON pm.player_id = fr.player_id
