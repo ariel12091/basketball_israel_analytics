@@ -180,30 +180,42 @@ day_stats AS (
 -- These are emitted as offense rows with zero counts and their real minutes.
 -- The row is true: the lineup played, and took no shot. The defence row of
 -- the same slice supplies the date, season and starter count.
+--
+-- Both are read off ONE join of day_stats to window_minutes (`slices`), with
+-- a window count telling whether the slice has an offense row. Until
+-- 2026-10-13 this was a second join plus NOT EXISTS over day_stats. The
+-- planner estimated that join at 2 rows and ran the NOT EXISTS as a nested
+-- loop over the whole CTE (about 170k x 85k comparisons): the definition
+-- stopped finishing and the nightly REFRESH hit its 2-minute timeout. Do not
+-- reintroduce a join between two of these CTEs here.
+slices AS (
+    SELECT
+        ds.*,
+        wm.minutes AS slice_minutes,
+        (wm.team_id IS NOT NULL) AS has_window,
+        COUNT(*) FILTER (WHERE ds.type_lineup = 'offense') OVER (
+            PARTITION BY ds.team_id, ds.lineup_hash, ds.game_id, ds.opp_starters
+        ) AS offense_rows
+    FROM day_stats ds
+    LEFT JOIN window_minutes wm
+      ON wm.team_id = ds.team_id
+     AND wm.lineup_hash = ds.lineup_hash
+     AND wm.game_id = ds.game_id
+     AND wm.opp_starters IS NOT DISTINCT FROM ds.opp_starters
+),
 slices_without_offense AS (
     SELECT
-        wm.team_id,
-        wm.lineup_hash,
-        wm.game_id,
-        wm.opp_starters,
-        wm.minutes,
-        MAX(ds.g_date)       AS g_date,
-        MAX(ds.game_year)    AS game_year,
-        MAX(ds.num_starters) AS num_starters
-    FROM window_minutes wm
-    JOIN day_stats ds
-      ON ds.team_id = wm.team_id
-     AND ds.lineup_hash = wm.lineup_hash
-     AND ds.game_id = wm.game_id
-     AND ds.opp_starters IS NOT DISTINCT FROM wm.opp_starters
-    WHERE NOT EXISTS (
-        SELECT 1 FROM day_stats d
-         WHERE d.team_id = wm.team_id
-           AND d.lineup_hash = wm.lineup_hash
-           AND d.game_id = wm.game_id
-           AND d.opp_starters IS NOT DISTINCT FROM wm.opp_starters
-           AND d.type_lineup = 'offense')
-    GROUP BY wm.team_id, wm.lineup_hash, wm.game_id, wm.opp_starters, wm.minutes
+        sl.team_id,
+        sl.lineup_hash,
+        sl.game_id,
+        sl.opp_starters,
+        sl.slice_minutes     AS minutes,
+        MAX(sl.g_date)       AS g_date,
+        MAX(sl.game_year)    AS game_year,
+        MAX(sl.num_starters) AS num_starters
+    FROM slices sl
+    WHERE sl.has_window AND sl.offense_rows = 0
+    GROUP BY sl.team_id, sl.lineup_hash, sl.game_id, sl.opp_starters, sl.slice_minutes
 )
 SELECT
     ds.team_id,
@@ -220,13 +232,8 @@ SELECT
     ds.fg3_made,
     ds.fg3_att,
     ds.num_starters,
-    CASE WHEN ds.type_lineup = 'offense' THEN wm.minutes END AS minutes
-FROM day_stats ds
-LEFT JOIN window_minutes wm
-  ON wm.team_id = ds.team_id
- AND wm.lineup_hash = ds.lineup_hash
- AND wm.game_id = ds.game_id
- AND wm.opp_starters IS NOT DISTINCT FROM ds.opp_starters
+    CASE WHEN ds.type_lineup = 'offense' THEN ds.slice_minutes END AS minutes
+FROM slices ds
 UNION ALL
 SELECT
     swo.team_id,

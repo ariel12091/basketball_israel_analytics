@@ -453,7 +453,9 @@ test_that("tab7 self player compare uses one player and side-specific time filte
   original_db_get_query <- get("db_get_query", envir = server_env)
   assign("db_get_query", function(pool, query, params = NULL) {
     q <- paste(query, collapse = " ")
-    if (grepl("get_player_traditional_dynamic", q, fixed = TRUE) &&
+    # Compare reads players through the same reader Player Stats uses
+    # (fetch_player_traditional_filtered), so their minutes cannot differ.
+    if (grepl("get_player_traditional_from_games", q, fixed = TRUE) &&
         !is.null(params) && length(params) >= 18L) {
       query_calls[[length(query_calls) + 1L]] <<- params
     }
