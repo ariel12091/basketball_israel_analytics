@@ -366,7 +366,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         ,
         drop = FALSE
       ]
-      pbps <- purrr::map2(fetchable_sched$game_id, fetchable_sched$pbp_url, fetch_game_pbp)
+      pbps <- purrr::map(seq_len(nrow(fetchable_sched)), function(i) {
+        fetch_game_pbp(fetchable_sched$game_id[[i]], fetchable_sched$pbp_url[[i]],
+                       expected = fetchable_sched[i, , drop = FALSE], log_msg = log_msg)
+      })
       log_msg(sprintf("Fetched PBP for %d games", length(pbps)))
 
       # actions_clean
@@ -404,7 +407,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             box_url
           )
         )
-      boxes <- purrr::map2(box_sched$game_id, box_sched$box_url, fetch_game_box)
+      boxes <- purrr::map(seq_len(nrow(box_sched)), function(i) {
+        fetch_game_box(box_sched$game_id[[i]], box_sched$box_url[[i]], pbp = pbps[[i]])
+      })
       roster_df <- purrr::map(pbps, extract_roster) |>
         purrr::list_rbind() |>
         dplyr::rename_with(tolower) |>

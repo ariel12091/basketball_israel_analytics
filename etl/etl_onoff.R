@@ -8,6 +8,7 @@ library(janitor); library(digest); library(stringr)
 library(pool)
 source("etl/period_opening_anchors.R")
 source("etl/lineup_coverage.R")
+source("etl/pbp_source_fallback.R")
 
 APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
 PROD_SCHEMA <- "basketball"
@@ -233,28 +234,13 @@ fetch_israel_schedule <- function() {
       box_url   = paste0("https://stats.segevstats.com/realtimestat_heb/get_team_score.php?game_id=", ExternalID)
     )
 }
-fetch_game_pbp <- function(game_id, pbp_url) {
-  # Allow a one-game provider fallback without changing the normal source.
-  # Basket's archived game endpoint contains the same gameInfo/actions payload
-  # under `actions`, rather than the Segevstats JSON-RPC `result` envelope.
-  fallback_url <- Sys.getenv("PBP_GAME_402_FALLBACK_URL", unset = "")
-  if (as.integer(game_id) == 402L && nzchar(fallback_url)) {
-    pbp_url <- fallback_url
-  }
-
-  raw <- jsonlite::read_json(pbp_url, simplifyVector = TRUE)
-  if (is.null(raw$result) && !is.null(raw$actions$actions)) {
-    raw <- list(
-      result = list(
-        gameInfo = raw$actions$gameInfo,
-        actions = raw$actions$actions,
-        success = raw$actions$success
-      )
-    )
-  }
-  raw
+fetch_game_pbp <- function(game_id, pbp_url, expected = NULL, log_msg = message) {
+  fetch_pbp_from_sources(game_id, pbp_url, clean_actions,
+                         expected = expected, log_msg = log_msg)
 }
-fetch_game_box <- function(game_id, box_url) {
+fetch_game_box <- function(game_id, box_url, pbp = NULL) {
+  embedded <- embedded_pbp_box(pbp, game_id)
+  if (!is.null(embedded)) return(embedded)
   url <- as.character(box_url)[1]
   if (is.na(url) || !nzchar(url)) {
     url <- paste0("https://stats.segevstats.com/realtimestat_heb/get_team_score.php?game_id=", as.integer(game_id))
