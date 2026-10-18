@@ -1,16 +1,20 @@
 # Dynamic PBP source fallback
 
-The Israeli ETL tries its scheduled PBP URL first. If fetching or source validation fails, it tries:
+**Since 2026-10-18 basket.co.il is the main source.** The Israeli ETL first tries:
 
 `https://basket.co.il/livestats/data/game-{game_id}.json`
 
-This works for every game ID, without adding a game-specific branch. The accepted source URL and primary rejection reason are written to the ETL log.
+If fetching or source validation fails, it falls back to its scheduled Segev PBP URL (`stats.segevstats.com`). Segev was the primary until the 2026-10-18 box-score comparison (`scripts/compare_official_boxscores.R`) found Segev's own box score failing to reconcile with the official final score for games 402 and 414, while basket.co.il's matched it and the app exactly.
+
+This works for every game ID, without adding a game-specific branch. The accepted source URL and every rejection reason are written to the ETL log. basket.co.il's archive returns 404 for many older games, so any historical reload still depends on the Segev fallback.
 
 Both candidates must identify the requested game and two distinct teams, mark the game finished, provide at least five roster entries per side, and pass the existing action cleaner and known corrections. Cleaned actions must have unique, non-missing IDs and cover all four regulation quarters. The nightly caller reads schedule_team_dict once per write run and maps schedule team IDs to PBP IDs by season. The original schedule IDs remain unchanged. The mapped PBP IDs and scoring-event totals must match the selected source. If neither candidate passes, the game remains failed and retryable; no arbitrary duplicate-collapse rule is added.
 
-Basket's archive envelope is normalized to the existing result/gameInfo/actions shape. Its embedded box score supplies starters when an archive is selected. The embedded box score must identify the same game and home/away teams and contain both player lists. Existing downstream roster, lineup, and publication checks still apply.
+Basket's archive envelope is normalized to the existing result/gameInfo/actions shape. Its embedded box score supplies starters when the archive is selected; when Segev is selected, starters come from Segev's box-score endpoint as before. The embedded box score must identify the same game and home/away teams and contain both player lists. Existing downstream roster, lineup, and publication checks still apply.
 
-An explicit override remains available as `PBP_GAME_<game_id>_FALLBACK_URL`, including the existing game-402 variable. An override is tried first, with the derived Basket URL available if it fails validation.
+An explicit override remains available as `PBP_GAME_<game_id>_FALLBACK_URL`, including the existing game-402 variable. An override is tried first, then the derived Basket URL, then Segev.
+
+Verification on 2026-10-18 (commit `0e6dd8b`): a read-only replay of the 33 processed 2026-27 games through the new order with main's real cleaner accepted 29 from the archive, each with its embedded box score. Game 648's archive is flagged not finished and fell back to Segev; 405, 417 and 651 are flagged not finished by both sources today (they were loaded earlier and are not re-fetched by the nightly run).
 
 Implementation:
 
