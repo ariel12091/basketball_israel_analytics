@@ -94,12 +94,15 @@ fetch_pbp_from_sources <- function(game_id, pbp_url, clean_fn, expected = NULL,
   if (length(game_id) != 1L || is.na(game_id) || game_id <= 0L) {
     stop('A positive game ID is required', call. = FALSE)
   }
-  # Preserve existing explicit overrides (including game 402), but derive the
-  # normal archive URL for every game without a game-specific code branch.
+  # basket.co.il's archive is the main source (2026-10-18): Segev's own feed
+  # and box score proved unreliable (games 402, 414). Order: a reviewed
+  # per-game override, then the archive, then the Segev feed in pbp_url as
+  # the fallback. The archive URL is derived for every game, with no
+  # game-specific code branch.
   override <- Sys.getenv(sprintf('PBP_GAME_%d_FALLBACK_URL', game_id), unset = '')
-  primary <- if (nzchar(override)) override else as.character(pbp_url)[1]
   archive <- sprintf('https://basket.co.il/livestats/data/game-%d.json', game_id)
-  urls <- unique(c(primary, archive))
+  segev <- as.character(pbp_url)[1]
+  urls <- unique(c(if (nzchar(override)) override, archive, segev))
   urls <- urls[!is.na(urls) & nzchar(urls)]
   errors <- character()
   for (url in urls) {

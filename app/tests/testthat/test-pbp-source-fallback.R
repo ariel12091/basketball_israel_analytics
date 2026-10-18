@@ -27,65 +27,67 @@ pbp_mock_clean <- function(raw) {
   actions
 }
 
-test_that('a valid primary feed is used without requesting the archive', {
+ARCHIVE_414 <- 'https://basket.co.il/livestats/data/game-414.json'
+
+test_that('a valid basket.co.il archive is used without requesting Segev', {
   env <- pbp_fallback_env(); urls <- character()
-  read <- function(url) { urls <<- c(urls, url); pbp_source_fixture() }
-  result <- env$fetch_pbp_from_sources(414, 'primary', pbp_mock_clean,
+  read <- function(url) { urls <<- c(urls, url); list(actions = pbp_source_fixture()$result) }
+  result <- env$fetch_pbp_from_sources(414, 'segev', pbp_mock_clean,
     expected = pbp_expected_fixture(), read_fn = read, log_msg = function(...) NULL)
-  expect_identical(urls, 'primary')
-  expect_identical(attr(result, 'pbp_source_url'), 'primary')
+  expect_identical(urls, ARCHIVE_414)
+  expect_identical(attr(result, 'pbp_source_url'), ARCHIVE_414)
 })
 
-test_that('fetch failures dynamically use the archive for any game ID', {
+test_that('archive fetch failures fall back to Segev for any game ID', {
   env <- pbp_fallback_env(); urls <- character(); logs <- character()
   read <- function(url) {
     urls <<- c(urls, url)
-    if (url == 'primary') stop('HTTP 503')
-    list(actions = pbp_source_fixture(415)$result)
+    if (grepl('basket.co.il', url, fixed = TRUE)) stop('HTTP 404')
+    pbp_source_fixture(415)
   }
-  result <- env$fetch_pbp_from_sources(415, 'primary', pbp_mock_clean,
+  result <- env$fetch_pbp_from_sources(415, 'segev', pbp_mock_clean,
     expected = pbp_expected_fixture(), read_fn = read, log_msg = function(x) logs <<- c(logs, x))
-  expect_identical(urls, c('primary', 'https://basket.co.il/livestats/data/game-415.json'))
+  expect_identical(urls, c('https://basket.co.il/livestats/data/game-415.json', 'segev'))
   expect_identical(result$result$gameInfo$gameId, 415L)
-  expect_match(paste(logs, collapse = ' '), 'HTTP 503')
+  expect_match(paste(logs, collapse = ' '), 'HTTP 404')
   expect_match(tail(logs, 1), 'fallback accepted')
 })
 
-test_that('game 414 duplicate IDs trigger fallback before database writes', {
-  env <- pbp_fallback_env(); primary <- pbp_source_fixture()
-  primary$result$actions$id[2] <- primary$result$actions$id[1]
-  read <- function(url) if (url == 'primary') primary else list(actions = pbp_source_fixture()$result)
-  result <- env$fetch_pbp_from_sources(414, 'primary', pbp_mock_clean,
+test_that('duplicate action IDs in the archive fall back to Segev before database writes', {
+  env <- pbp_fallback_env(); archive <- pbp_source_fixture()
+  archive$result$actions$id[2] <- archive$result$actions$id[1]
+  read <- function(url) if (url == ARCHIVE_414) list(actions = archive$result) else pbp_source_fixture()
+  result <- env$fetch_pbp_from_sources(414, 'segev', pbp_mock_clean,
     expected = pbp_expected_fixture(), read_fn = read, log_msg = function(...) NULL)
-  expect_identical(attr(result, 'pbp_source_url'), 'https://basket.co.il/livestats/data/game-414.json')
+  expect_identical(attr(result, 'pbp_source_url'), 'segev')
   expect_identical(anyDuplicated(result$result$actions$id), 0L)
 })
 
-test_that('incorrect primary scoring triggers fallback even without duplicate IDs', {
-  env <- pbp_fallback_env(); primary <- pbp_source_fixture()
-  primary$result$actions$team_score[c(1, 5)] <- c(75, 92)
-  read <- function(url) if (url == 'primary') primary else pbp_source_fixture()
-  result <- env$fetch_pbp_from_sources(414, 'primary', pbp_mock_clean,
+test_that('incorrect archive scoring falls back to Segev even without duplicate IDs', {
+  env <- pbp_fallback_env(); archive <- pbp_source_fixture()
+  archive$result$actions$team_score[c(1, 5)] <- c(75, 92)
+  read <- function(url) if (url == ARCHIVE_414) archive else pbp_source_fixture()
+  result <- env$fetch_pbp_from_sources(414, 'segev', pbp_mock_clean,
     expected = pbp_expected_fixture(), read_fn = read, log_msg = function(...) NULL)
-  expect_identical(attr(result, 'pbp_source_url'), 'https://basket.co.il/livestats/data/game-414.json')
+  expect_identical(attr(result, 'pbp_source_url'), 'segev')
 })
 
-test_that('bad archives are rejected and both source errors remain visible', {
+test_that('bad Segev fallbacks are rejected and both source errors remain visible', {
   env <- pbp_fallback_env()
   for (defect in c('identity', 'unfinished', 'roster', 'quarter', 'score', 'duplicates', 'empty', 'teams')) {
-    archive <- pbp_source_fixture()
-    if (defect == 'identity') archive$result$gameInfo$gameId <- 999L
-    if (defect == 'unfinished') archive$result$gameInfo$gameFinished <- FALSE
-    if (defect == 'roster') archive$result$gameInfo$awayTeam$players <- data.frame(id = 1:4)
-    if (defect == 'quarter') archive$result$actions$quarter[3] <- 2L
-    if (defect == 'score') archive$result$actions$team_score[1] <- 79
-    if (defect == 'duplicates') archive$result$actions$id[2] <- 1L
-    if (defect == 'empty') archive$result$actions <- archive$result$actions[FALSE, ]
-    if (defect == 'teams') archive$result$gameInfo$awayTeam$id <- 18L
-    read <- function(url) { if (url == 'primary') stop('primary unavailable'); archive }
-    expect_error(env$fetch_pbp_from_sources(414, 'primary', pbp_mock_clean,
+    segev <- pbp_source_fixture()
+    if (defect == 'identity') segev$result$gameInfo$gameId <- 999L
+    if (defect == 'unfinished') segev$result$gameInfo$gameFinished <- FALSE
+    if (defect == 'roster') segev$result$gameInfo$awayTeam$players <- data.frame(id = 1:4)
+    if (defect == 'quarter') segev$result$actions$quarter[3] <- 2L
+    if (defect == 'score') segev$result$actions$team_score[1] <- 79
+    if (defect == 'duplicates') segev$result$actions$id[2] <- 1L
+    if (defect == 'empty') segev$result$actions <- segev$result$actions[FALSE, ]
+    if (defect == 'teams') segev$result$gameInfo$awayTeam$id <- 18L
+    read <- function(url) { if (url == ARCHIVE_414) stop('archive unavailable'); segev }
+    expect_error(env$fetch_pbp_from_sources(414, 'segev', pbp_mock_clean,
       expected = pbp_expected_fixture(), read_fn = read, log_msg = function(...) NULL),
-      'No valid PBP source for game 414.*primary unavailable.*game-414.json', info = defect)
+      'No valid PBP source for game 414.*game-414.json: archive unavailable.*segev', info = defect)
   }
 })
 
