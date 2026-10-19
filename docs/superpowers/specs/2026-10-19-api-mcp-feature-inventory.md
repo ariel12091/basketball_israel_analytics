@@ -103,13 +103,13 @@ reuse it:
 
 | ID | Feature | Where it runs |
 |---|---|---|
-| GL-01 | Views Summary / Four Factors; team optional (IL single, EL multi) | -- |
-| GL-02 | Filters: dates, game type / phase, opponents, home/away, outcome, starters own/opp, GN/round min-max, last N (each team's last N whole-season games, applied before the others). No opponent rank, no clutch | **R-closure** (all filtering in R over season pulls) |
-| GL-03 | Data: IL `final_schedule_mv` + `mv_lineup_totals_by_day` + `lineup_four_factors_by_game` season pulls; EL `team_four_factors_by_game` x `final_schedule_mv` + minutes (inline SQL) | SQL / inline SQL |
-| GL-04 | Per team-game metrics: Summary PPP, net, minutes, shot split metrics + shot cells (avg from shown rows); FF TS/eFG/OREB/TOV/FTR | R-pure (`gl_build_summary_metrics`, `gl_build_ff_metrics`, `add_shot_split_metrics`) |
-| GL-05 | Percentiles against the whole season population, so a game keeps its colour under any filter | R-pure (`gl_attach_percentiles`) |
-| GL-06 | Gameflow link per row when the game has scores (`attach_has_scores`, `fetch_scoreless_games`) | R-pure |
-| GL-07 | Default sort date desc then GN/round desc (numeric date key); game-id tiebreak | Client + R |
+| GL-01 | Views Summary / Four Factors; team optional (IL single, EL multi) | `svc_game_logs.R` (`svc_game_logs`, `gl_il_view`) |
+| GL-02 | Filters: dates, game type / phase, opponents, home/away, outcome, starters own/opp, GN/round min-max, last N (each team's last N whole-season games, applied before the others). No opponent rank, no clutch | `svc_game_logs.R` (`gl_filter_games`, `gl_filter_starters`, `svc_game_logs_params`) |
+| GL-03 | Data: IL `final_schedule_mv` + `mv_lineup_totals_by_day` + `lineup_four_factors_by_game` season pulls; EL `team_four_factors_by_game` x `final_schedule_mv` + minutes (inline SQL) | `svc_game_logs.R` readers (`gl_default_readers`, `gl_query_*`, `euro_fetch_game_log_rows()`): SQL / inline SQL |
+| GL-04 | Per team-game metrics: Summary PPP, net, minutes, shot split metrics + shot cells (avg from shown rows); FF TS/eFG/OREB/TOV/FTR | `svc_game_logs.R` (`gl_build_summary_metrics`, `gl_build_ff_metrics`, `gl_build_euro_games`) |
+| GL-05 | Percentiles against the whole season population, so a game keeps its colour under any filter | `svc_game_logs.R` (`gl_attach_percentiles`) |
+| GL-06 | Gameflow link per row when the game has scores (`attach_has_scores`, `fetch_scoreless_games`) | `svc_game_logs.R` (`svc_game_logs`, scoreless-game flag) |
+| GL-07 | Default sort date desc then GN/round desc (numeric date key); game-id tiebreak | Client + `svc_game_logs.R` (sort key) |
 | GL-08 | CSV per view | Client |
 
 ## PS. Player Stats -- Tab 5 (one tab, both leagues)

@@ -29,7 +29,7 @@ Basketball Israel Analytics — R/Shiny dashboard + React frontend for player on
 
 **Live app:** https://arieltaieb-basketball-israel-analytics.share.connect.posit.cloud/ (Posit Connect Cloud since 2026-09. The old https://ibpl-stats.shinyapps.io/onoff-shiny/ is now a 308 redirect into Connect Cloud, so there is no shinyapps.io deployment left to compare against.)
 
-**Tech:** R 4.4.2, Shiny (bslib/BS5), DBI/RPostgres (no dbplyr), PostgreSQL on Supabase (port 6543), schema `basketball_test`. React 19 + TypeScript + Vite in `frontend-v2/` with Plumber/R API (Phase 2 — Tabs 1-2 complete, Tabs 3-4 stubs, Tab 5 Shiny only).
+**Tech:** R 4.4.2, Shiny (bslib/BS5), DBI/RPostgres (no dbplyr), PostgreSQL on Supabase (port 6543), schema `basketball_test`. React 19 + TypeScript + Vite in `frontend-v2/` with a Plumber/R API in `frontend-v2/server` (**deprecated**; the new API is `api/`, see Service layer and API). Phase 2 there: Tabs 1-2 complete, Tabs 3-4 stubs, Tab 5 Shiny only.
 
 ## Git Branching
 
@@ -107,6 +107,13 @@ R/server_tab{1-5,7}*.R Tab server logic (receive shared list)
 
 **UI theme:** Dark editorial (bslib BS5), DM Sans + JetBrains Mono, amber accent `#e8a435`. Filter chips bar, loading skeletons, tab icons with active amber underline.
 
+### Service layer and API (Game Logs is the first slice)
+
+- `app/R/svc_*.R` is the shared service layer: pure functions that Shiny reactives and the API both call. `svc_game_logs.R` owns Game Logs for both leagues (`svc_game_logs()`, params via `svc_game_logs_params()`; league differences in the `GL_LEAGUE` descriptor); `svc_params.R` holds `api_error()` and the generic parsers. Tab 4 and Tab 11 are consumers. `etl_last_success_db()` (`global.R`) is the one data-version read.
+- `api/` is the new Plumber API (`plumber.R`, `R/handlers_*.R`, `README.md`). Run: `PG_PORT=5432 ... "$RSCRIPT" api/run.R` (port 3010, 127.0.0.1; never 6543). Tests: `api/tests/testthat`. Feature ids are tracked by `api/coverage.R` (`API_DONE_PREFIXES`, now `GL`) against `docs/superpowers/specs/2026-10-19-api-mcp-feature-inventory.md`; a done section's ids must each be named in a `covers()` call.
+- `options(ibpl.pg_pool = <pool>)` injects the pool into `global.R` (skips `dbPool`, `onStop`, prewarm); the API and tests use it.
+- **Goldens:** `app/tests/goldens/` (`harness.R`, `presets/`, recorded `fixtures/`, `out/`) hold what the real Shiny server rendered per preset; `scripts/capture_goldens.R --tab game_logs` replays offline, `--record` re-records from the live DB (port 5432, nothing else querying). Replay also replays unrelated startup queries, so **a `DEFAULT_GAME_YEAR` bump or a catalogue-sync bot commit of `catalogues_generated.R` requires `--record` again.** Tests: `test-golden-*.R`, `test-svc-game-logs.R`; nightly `test-api-parity-live-db.R`. Known Game Logs deviations: `docs/shared_definitions.md` D24, D25.
+
 ### Shiny Tabs — Fast/Filtered Paths
 
 All tabs: sidebar 3-col / main 9-col, FixedHeader, mobile collapse behind "Show Filters". Summary/Four Factors toggle per tab.
@@ -125,7 +132,7 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader, mobile collapse behind "Show 
 
 **Status:** Tab 1 + Tab 2 complete with live data. Tabs 3-4 placeholder stubs. Tab 5 Shiny only.
 
-**Stack:** React 19 + TypeScript + Vite + TanStack Query + react-select. Plumber/R API on port 3002 mirrors Shiny server logic exactly.
+**Stack:** React 19 + TypeScript + Vite + TanStack Query + react-select. The `frontend-v2/server` Plumber API (port 3002) is **deprecated** and mirrors Shiny logic by copy; the new `api/` calls the shared service layer instead.
 
 **Key components:** `OnOffPage.tsx` (Tab 1), `LineupsPage.tsx` (Tab 2), `DataTable.tsx` (sortable + CSV export), `HeatCell`/`ShotCell`/`FFCell` (visualization cells), `FilterDrawer.tsx` + `FilterChips.tsx` + `store.ts` (filter state via useReducer), `LineupModal.tsx` (lineup game log).
 

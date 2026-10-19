@@ -6,8 +6,8 @@
 # c(...). Ids must therefore appear as string literals inside covers(...) in a
 # test-*.R file; ids passed through a variable are invisible to it.
 
-# Prefixes of inventory sections that are implemented; empty until Task 11 ("GL").
-API_DONE_PREFIXES <- character()
+# Prefixes of inventory sections that are implemented.
+API_DONE_PREFIXES <- "GL"
 
 # No-op marker; safe to source repeatedly.
 covers <- function(...) invisible(NULL)
