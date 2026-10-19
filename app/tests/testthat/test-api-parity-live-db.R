@@ -13,7 +13,12 @@ skip_if_not(Sys.getenv("RUN_DB_TESTS", "0") == "1")
 skip_if_not_installed("DBI")
 skip_if_not_installed("RPostgres")
 skip_if_not_installed("pool")
-skip_if_not_installed("plumber")
+# Fails, not skips: CI installs plumber for this test, and a nightly parity
+# check that silently never runs proves nothing.
+if (!requireNamespace("plumber", quietly = TRUE)) {
+  stop("test-api-parity-live-db: RUN_DB_TESTS=1 but plumber is not installed ",
+       "(.github/workflows/r-tests.yml installs it)", call. = FALSE)
+}
 
 pg_env <- c("PG_HOST", "PG_DB", "PG_USER", "PG_PASS")
 missing_env <- pg_env[!nzchar(Sys.getenv(pg_env))]

@@ -53,6 +53,8 @@ jobs:
             any::DBI
             any::pool
             any::RPostgres
+            any::plumber
+            any::callr
 
       - name: Run fast suite
         env:
@@ -107,6 +109,8 @@ jobs:
             any::DBI
             any::pool
             any::RPostgres
+            any::plumber
+            any::callr
 
       - name: Run full suite
         env:
