@@ -229,18 +229,29 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
 # values, and has_shots / has_stat_filters say what the league's display
 # frame offers. date_na is what a blank end of the date range does: "open"
 # lifts that bound, "match_none" shows no games -- a kept difference,
-# deviation register D25. Nothing else about a game log differs between the
-# leagues.
+# deviation register D25. header_labels are the round and stage labels the
+# table headers (gamelog_summary_header() / gamelog_ff_header()) are drawn
+# with: none for Israeli, which takes the builders' defaults (GN, Game Type).
+# Nothing else about a game log differs between the leagues.
 GL_LEAGUE <- list(
   il = list(round_col = "gn", type_col = "game_type", team_multi = FALSE,
             has_shots = TRUE, has_stat_filters = TRUE,
             type_values = function(x) game_type_filter_values(x),
-            date_na = "open"),
+            date_na = "open",
+            header_labels = list()),
   euroleague = list(round_col = "round_number", type_col = "phase", team_multi = TRUE,
                     has_shots = FALSE, has_stat_filters = FALSE,
                     type_values = function(x) x[nzchar(x)],
-                    date_na = "match_none")
+                    date_na = "match_none",
+                    header_labels = list(first_label = "Rd", second_label = "Phase"))
 )
+
+# One league's table header for a view, as Tab 4 / Tab 11 draw it and the
+# API reads its labels: `...` are the builder's other arguments.
+gl_header <- function(league, view, ...) {
+  builder <- if (identical(view, "summary")) gamelog_summary_header else gamelog_ff_header
+  do.call(builder, c(GL_LEAGUE[[league]]$header_labels, list(...)))
+}
 
 # Game rows that pass the Game Logs filters, for either league: the Israeli
 # schedule (one row per team-game) or EuroLeague's game-log rows. `p` is the
@@ -375,6 +386,15 @@ GL_HEAT_REVERSE_FF <- c(
   def_oreb_pct = TRUE,
   def_tov_pct = FALSE,
   def_ftr_pct = TRUE
+)
+
+# Columns each view shows to one decimal (DT::formatRound(..., 1)) in both
+# leagues' tables, besides the minutes column, which both round on its own.
+GL_ROUND_1 <- list(
+  summary = c("off_ppp", "def_ppp", "net_rtg"),
+  four_factors = c("off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+                   "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct",
+                   "off_ppp", "def_ppp", "net_rtg")
 )
 
 # League 2PT/3PT accuracy (whole percent) over the displayed rows, per side;

@@ -12,6 +12,8 @@ gl_golden <- function(name) {
 
 # A golden column's API key: the shot cells' display names become snake_case
 # and the Gameflow link becomes the has_scores flag it was drawn from.
+# Deliberately restates the rename contract (GL_API_KEYS in
+# handlers_game_logs.R) instead of reading it, so a changed key fails here.
 gl_api_key <- function(cols) {
   renames <- c("Off Shot" = "off_shot_fga", "Def Shot" = "def_shot_fga", gameflow = "has_scores")
   out <- renames[cols]
@@ -126,7 +128,55 @@ test_that("column labels and definitions come from Shiny's table headers", {
   expect_identical(ff_key("def_efg_pct", "definition"), gl_api_env$COLUMN_TOOLTIPS[["eFG%"]])
 
   el <- gl_json(gl_get("euroleague", "season=2025"))$meta$columns
-  expect_identical(el$label[match(c("round_number", "phase_label"), el$key)], c("Rd", "Phase"))
+  expect_identical(el$label[match(c("round_number", "phase_label"), el$key)],
+                   unname(unlist(gl_api_env$GL_LEAGUE$euroleague$header_labels)))
+})
+
+# The header cells' text as the browser receives it: the builder's HTML, with
+# the last header row's <th> texts read off by a regex -- independent of the
+# API's own tag walker (api_header_cells()).
+gl_rendered_labels <- function(header, n) {
+  html <- as.character(header)
+  cells <- regmatches(html, gregexpr("<th[^>]*>[^<]*</th>", html))[[1]]
+  texts <- sub("^<th[^>]*>([^<]*)</th>$", "\\1", cells)
+  texts <- vapply(texts, function(x) as.character(htmltools::HTML(x)), character(1), USE.NAMES = FALSE)
+  utils::tail(texts, n)
+}
+
+test_that("visible labels equal what Shiny's header draws, per league and view", {
+  covers("X-16", "GL-01")
+  cases <- list(
+    list("il", "season=2026", "summary", list(has_shots = TRUE)),
+    list("il", "season=2026&view=four_factors", "four_factors", list()),
+    list("euroleague", "season=2025", "summary", list(has_shots = FALSE)),
+    list("euroleague", "season=2025&view=four_factors", "four_factors", list())
+  )
+  for (cs in cases) {
+    cols <- gl_json(gl_get(cs[[1]], cs[[2]]))$meta$columns
+    vis <- cols[!cols$hidden, ]
+    header <- do.call(gl_api_env$gl_header, c(list(cs[[1]], cs[[3]]), cs[[4]], list(show_gameflow = TRUE)))
+    expect_identical(vis$label, gl_rendered_labels(header, nrow(vis)), info = paste(cs[[1]], cs[[3]]))
+    # One decimal exactly where the tables round to one decimal.
+    dec <- intersect(c(gl_api_env$GL_ROUND_1[[cs[[3]]]], "minutes"), cols$key)
+    expect_setequal(cols$key[cols$format == "decimal_1"], dec)
+  }
+})
+
+test_that("Tab 4 and Tab 11 draw their headers, rounding and heat from the shared constants", {
+  covers("GL-01")
+  # The API reads labels, rounding and polarity from GL_LEAGUE, GL_ROUND_1 and
+  # GL_HEAT_REVERSE_*; this pins the renderers to the same constants, so a
+  # label or rounding typed back into a renderer fails here.
+  for (f in c("server_tab4.R", "server_tab11_euro_gamelogs.R")) {
+    src <- paste(readLines(file.path(api_test_root, "app", "R", f), warn = FALSE), collapse = "\n")
+    expect_false(grepl("gamelog_(summary|ff)_header\\(", src), info = f)
+    expect_identical(lengths(regmatches(src, gregexpr("gl_header\\(", src))), 2L, info = f)
+    expect_true(grepl("GL_ROUND_1$summary", src, fixed = TRUE), info = f)
+    expect_true(grepl("GL_ROUND_1$four_factors", src, fixed = TRUE), info = f)
+    expect_true(grepl("GL_HEAT_REVERSE_SUMMARY", src, fixed = TRUE), info = f)
+    expect_true(grepl("GL_HEAT_REVERSE_FF", src, fixed = TRUE), info = f)
+    expect_false(grepl("formatRound\\([^)]*c\\(\"", src), info = f)
+  }
 })
 
 test_that("an empty result is a 200 with no rows and the resolved filters echoed", {

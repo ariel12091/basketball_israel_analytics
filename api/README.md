@@ -38,7 +38,7 @@ PG_HOST=... PG_DB=postgres PG_USER=... PG_PASS=... PG_PORT=5432 "$RSCRIPT" api/r
 | `GET /v1/il/game-types` | `GAME_TYPE_CHOICES_UI`; `game_type=` takes any code of a `value` |
 | `GET /v1/{euroleague,eurocup}/phases?season=` | `euro_fetch_phases()` with labels |
 | `GET /v1/{euroleague,eurocup}/rounds?season=` | `euro_fetch_round_values()` |
-| `GET /v1/{league}/game-logs` | Tab 4 / Tab 11: one row per team-game (`svc_game_logs()`); `view=summary\|four_factors`, the Game Logs filters (`svc_game_logs_params()`), `sort=<col>:<asc\|desc>[,...]` (default date then GN / round, descending; NAs last), `format=csv` (visible columns only, as Shiny exports) |
+| `GET /v1/{league}/game-logs` | Tab 4 / Tab 11: one row per team-game (`svc_game_logs()`); `view=summary\|four_factors`, the Game Logs filters (`svc_game_logs_params()`), `sort=<col>:<asc\|desc>[,...]` (default date then GN / round, descending; NAs last; text columns order byte-wise, C locale, unlike the browser table's case-insensitive sort), `format=csv` (visible columns only, as Shiny exports) |
 
 Data endpoints (`game-logs`) answer the design's response contract: `{rows, totals, meta}`, with `meta.columns` giving each key's label, definition, format, polarity, percentile key and whether Shiny hides it.
 

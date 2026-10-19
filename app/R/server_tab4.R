@@ -343,7 +343,7 @@ server_tab4 <- function(input, output, session, shared) {
         shot_col_defs
       )
 
-      sketch <- gamelog_summary_header(has_shots = has_shots, show_gameflow = TRUE)
+      sketch <- gl_header("il", "summary", has_shots = has_shots, show_gameflow = TRUE)
 
       off_ppp_idx <- which(names(disp) == "off_ppp") - 1L
       off_poss_idx <- which(names(disp) == "off_poss") - 1L
@@ -366,7 +366,7 @@ server_tab4 <- function(input, output, session, shared) {
                             columnDefs = col_defs
                           ))
 
-      dt <- DT::formatRound(dt, c("off_ppp", "def_ppp", "net_rtg"), 1)
+      dt <- DT::formatRound(dt, GL_ROUND_1$summary, 1)
       if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
       dt <- gl_apply_heat_styles(
@@ -417,7 +417,7 @@ server_tab4 <- function(input, output, session, shared) {
       if (length(def_ppp_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = def_ppp_idx, className = "section-left-border dt-center")
       if (length(off_poss_idx)) col_defs[[length(col_defs) + 1]] <- list(targets = off_poss_idx, className = "section-left-border dt-center")
 
-      sketch <- gamelog_ff_header(show_gameflow = TRUE)
+      sketch <- gl_header("il", "four_factors", show_gameflow = TRUE)
 
       dt <- DT::datatable(disp, container = sketch, rownames = FALSE,
                           escape = dt_escape_except(disp, "gameflow"),
@@ -432,11 +432,7 @@ server_tab4 <- function(input, output, session, shared) {
                             columnDefs = col_defs
                           ))
 
-      rate_cols <- c("off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
-                     "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct")
-      ppp_cols <- c("off_ppp", "def_ppp", "net_rtg")
-
-      dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols), names(disp)), 1)
+      dt <- DT::formatRound(dt, intersect(GL_ROUND_1$four_factors, names(disp)), 1)
       if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
       heat_reverse <- GL_HEAT_REVERSE_FF

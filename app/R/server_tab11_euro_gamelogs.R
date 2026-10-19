@@ -87,15 +87,15 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
                 "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct",
                 "off_poss", "def_poss")
       heat_reverse <- GL_HEAT_REVERSE_FF
-      round_cols <- c(names(heat_reverse), "net_rtg")
-      sketch <- gamelog_ff_header("Rd", "Phase", show_gameflow = TRUE)
+      round_cols <- GL_ROUND_1$four_factors
+      sketch <- gl_header("euroleague", "four_factors", show_gameflow = TRUE)
     } else {
       cols <- c("round_number", "phase_label", "game_date", "gameflow", "team_name", "opp_team_name",
                 "result", "score", "minutes",
                 "off_ppp", "def_ppp", "net_rtg", "off_poss", "def_poss")
       heat_reverse <- GL_HEAT_REVERSE_SUMMARY
-      round_cols <- c("off_ppp", "def_ppp", "net_rtg")
-      sketch <- gamelog_summary_header("Rd", "Phase", has_shots = FALSE, show_gameflow = TRUE)
+      round_cols <- GL_ROUND_1$summary
+      sketch <- gl_header("euroleague", "summary", has_shots = FALSE, show_gameflow = TRUE)
     }
 
     pr_cols <- intersect(

@@ -5,12 +5,12 @@
 # the renderer shows (and the hidden ones it carries), under stable
 # snake_case keys, sorted, with meta$columns describing each.
 
-# What the two leagues' tables call their stage and score columns, and the
-# labels their header builders are given (Tab 11 passes "Rd" / "Phase"; Tab 4
-# takes the builders' defaults). The round column is GL_LEAGUE's round_col.
+# What the two leagues' tables call their stage and score columns. The round
+# column is GL_LEAGUE's round_col; the header labels are GL_LEAGUE's
+# header_labels, drawn by gl_header() as Tab 4 / Tab 11 draw them.
 GL_API_LEAGUE <- list(
-  il = list(stage = "game_type_label", score = "score_display", header_args = list()),
-  euroleague = list(stage = "phase_label", score = "score", header_args = list("Rd", "Phase"))
+  il = list(stage = "game_type_label", score = "score_display"),
+  euroleague = list(stage = "phase_label", score = "score")
 )
 
 # Row keys for the renderer's display names: the shot cells get snake_case
@@ -18,14 +18,13 @@ GL_API_LEAGUE <- list(
 # from (a link is offered exactly where has_scores is TRUE).
 GL_API_KEYS <- c("Off Shot" = "off_shot_fga", "Def Shot" = "def_shot_fga", gameflow = "has_scores")
 
-# Formats: Tab 4 / Tab 11 round the heat-coloured rates, net and minutes to
-# one decimal (formatRound); pr_* are 0-1 percentiles; the text, date and
-# flag columns are named; every other column is a whole count or an id.
-GL_API_DECIMAL_1 <- c(names(GL_HEAT_REVERSE_FF), "net_rtg", "minutes")
-
-gl_api_format <- function(key, lgx) {
+# Formats: one decimal for the columns Tab 4 / Tab 11 round to one decimal
+# (GL_ROUND_1 for the view, and minutes, which both round on its own); pr_*
+# are 0-1 percentiles; the text, date and flag columns are named; every other
+# column is a whole count or an id.
+gl_api_format <- function(key, lgx, view) {
   if (startsWith(key, "pr_")) return("percentile")
-  if (key %in% GL_API_DECIMAL_1) return("decimal_1")
+  if (key %in% c(GL_ROUND_1[[view]], "minutes")) return("decimal_1")
   if (identical(key, "game_date")) return("date")
   if (identical(key, "has_scores")) return("boolean")
   if (key %in% c(lgx$stage, lgx$score, "team_name", "opp_team_name", "result")) return("text")
@@ -49,17 +48,22 @@ gl_api_specs <- function(league, view) {
   metrics <- if (summary) {
     c("off_ppp", "def_ppp", "net_rtg", if (has_shots) c("Off Shot", "Def Shot"), "off_poss", "def_poss")
   } else {
-    c("net_rtg", names(GL_HEAT_REVERSE_FF)[startsWith(names(GL_HEAT_REVERSE_FF), "off_")],
-      names(GL_HEAT_REVERSE_FF)[startsWith(names(GL_HEAT_REVERSE_FF), "def_")], "off_poss", "def_poss")
+    c("net_rtg",
+      "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+      "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct",
+      "off_poss", "def_poss")
   }
   visible <- c(context, metrics)
   hidden <- c(if (has_shots) c(GL_SHOT_COLS$off, GL_SHOT_COLS$def),
               vapply(names(heat), gl_pr_col_name, character(1), USE.NAMES = FALSE),
               "game_id", "team_id")
 
-  header_fn <- if (summary) gamelog_summary_header else gamelog_ff_header
-  header_args <- c(lgx$header_args, list(show_gameflow = TRUE), if (summary) list(has_shots = has_shots))
-  cells <- api_header_cells(do.call(header_fn, header_args))
+  header <- if (summary) {
+    gl_header(league, view, has_shots = has_shots, show_gameflow = TRUE)
+  } else {
+    gl_header(league, view, show_gameflow = TRUE)
+  }
+  cells <- api_header_cells(header)
   if (length(cells) != length(visible)) {
     stop(sprintf("gl_api_specs: %d header cells for %d visible columns (%s %s)",
                  length(cells), length(visible), league, view), call. = FALSE)
@@ -70,7 +74,7 @@ gl_api_specs <- function(league, view) {
     key <- key_of(src)
     list(source = if (identical(src, "gameflow")) "has_scores" else src, key = key,
          label = cell$label, definition = if (!is.null(cell)) api_definition(cell$label, cell$title),
-         group = cell$group, format = gl_api_format(key, lgx), hidden = is.null(cell))
+         group = cell$group, format = gl_api_format(key, lgx, view), hidden = is.null(cell))
   }
   c(unname(Map(spec, visible, cells)), lapply(hidden, spec))
 }
