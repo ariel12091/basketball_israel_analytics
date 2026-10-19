@@ -38,6 +38,9 @@ PG_HOST=... PG_DB=postgres PG_USER=... PG_PASS=... PG_PORT=5432 "$RSCRIPT" api/r
 | `GET /v1/il/game-types` | `GAME_TYPE_CHOICES_UI`; `game_type=` takes any code of a `value` |
 | `GET /v1/{euroleague,eurocup}/phases?season=` | `euro_fetch_phases()` with labels |
 | `GET /v1/{euroleague,eurocup}/rounds?season=` | `euro_fetch_round_values()` |
+| `GET /v1/{league}/game-logs` | Tab 4 / Tab 11: one row per team-game (`svc_game_logs()`); `view=summary\|four_factors`, the Game Logs filters (`svc_game_logs_params()`), `sort=<col>:<asc\|desc>[,...]` (default date then GN / round, descending; NAs last), `format=csv` (visible columns only, as Shiny exports) |
+
+Data endpoints (`game-logs`) answer the design's response contract: `{rows, totals, meta}`, with `meta.columns` giving each key's label, definition, format, polarity, percentile key and whether Shiny hides it.
 
 Every list endpoint answers `{rows: [...], meta: {league, competition, season}}`,
 or the rows alone as CSV with `format=csv`. `season` defaults to the app's
@@ -52,7 +55,7 @@ default season for the league.
 | 504 | the database statement timeout | `{error}` |
 | 500 | anything else (no query text in the body; the detail is logged) | `{error}` |
 
-Plumber is given no parsed query (`api_query_filter`, run.R): handlers read the raw
+Plumber is given no parsed query (`api_query_filter`, `api_router()` in `R/bootstrap.R`): handlers read the raw
 query string through `api_query()`, so `%00` or `%FF` is a 400, not a 500.
 Parameters are validated by the service layer (`app/R/svc_params.R`,
 `svc_game_logs_params()`), fail closed: nothing is coerced or dropped.

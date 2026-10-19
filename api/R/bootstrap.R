@@ -20,7 +20,7 @@ api_repo_root <- function(start = getwd()) {
 # The app's files in app.R's order (helpers, catalogues, global, logger),
 # then global_euro.R, then every service file; the API's own files last.
 API_APP_FILES <- c("helpers.R", "catalogues_generated.R", "global.R", "logger.R", "global_euro.R")
-API_OWN_FILES <- c("respond.R", "params.R", "handlers_reference.R")
+API_OWN_FILES <- c("respond.R", "params.R", "columns.R", "handlers_reference.R", "handlers_game_logs.R")
 
 # A pool for the API's own process. Port 5432 unless PG_PORT says otherwise:
 # the transaction pooler on 6543 crosses concurrent prepared statements
@@ -82,4 +82,20 @@ api_bootstrap <- function(conn = NULL, envir = globalenv(), root = api_repo_root
   }
   envir$API_ROOT <- root
   invisible(envir)
+}
+
+# The Plumber router over api/plumber.R, its handlers resolved in `envir` (an
+# api_bootstrap() environment). Plumber's default filters are replaced by
+# api_query_filter (params.R): its own query parser answers a 500 on bytes
+# such as %00 before any route runs. run.R serves this router; the tests call
+# it in-process, so they exercise the same filters and error handlers.
+api_router <- function(envir = globalenv(), root = envir$API_ROOT %||% api_repo_root()) {
+  router <- plumber::pr(file.path(root, "api", "plumber.R"),
+                        filters = list(api_query = envir$api_query_filter),
+                        envir = new.env(parent = envir))
+  if (inherits(envir$pg_pool, "Pool")) {
+    pool <- envir$pg_pool
+    router <- plumber::pr_hook(router, "exit", function() pool::poolClose(pool))
+  }
+  router
 }

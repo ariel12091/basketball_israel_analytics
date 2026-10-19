@@ -86,19 +86,14 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
                 "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
                 "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct",
                 "off_poss", "def_poss")
-      heat_reverse <- c(
-        off_ppp = FALSE, off_efg_pct = FALSE, off_oreb_pct = FALSE,
-        off_tov_pct = TRUE, off_ftr_pct = FALSE,
-        def_ppp = TRUE, def_efg_pct = TRUE, def_oreb_pct = TRUE,
-        def_tov_pct = FALSE, def_ftr_pct = TRUE
-      )
+      heat_reverse <- GL_HEAT_REVERSE_FF
       round_cols <- c(names(heat_reverse), "net_rtg")
       sketch <- gamelog_ff_header("Rd", "Phase", show_gameflow = TRUE)
     } else {
       cols <- c("round_number", "phase_label", "game_date", "gameflow", "team_name", "opp_team_name",
                 "result", "score", "minutes",
                 "off_ppp", "def_ppp", "net_rtg", "off_poss", "def_poss")
-      heat_reverse <- c(off_ppp = FALSE, def_ppp = TRUE)
+      heat_reverse <- GL_HEAT_REVERSE_SUMMARY
       round_cols <- c("off_ppp", "def_ppp", "net_rtg")
       sketch <- gamelog_summary_header("Rd", "Phase", has_shots = FALSE, show_gameflow = TRUE)
     }

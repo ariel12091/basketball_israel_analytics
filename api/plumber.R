@@ -36,3 +36,6 @@ function(req, res, league) handle_phases(req, res, league)
 
 #* @get /v1/<league>/rounds
 function(req, res, league) handle_rounds(req, res, league)
+
+#* @get /v1/<league>/game-logs
+function(req, res, league) handle_game_logs(req, res, league)

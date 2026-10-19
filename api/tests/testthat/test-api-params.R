@@ -109,30 +109,14 @@ test_that("EuroLeague rejects Israeli-only names and checks its own values", {
 
 test_that("a valid query gives exactly the p Shiny builds for the same filters", {
   covers("GL-01", "GL-02", "X-03", "X-05", "X-09")
-  queries <- c(
-    il_summary_default = "season=2026",
-    il_ff_default = "season=2026&view=four_factors",
-    il_ff_away_loss_last10 = "season=2026&view=four_factors&home_away=away&outcome=loss&last_n=10",
-    il_summary_empty = "season=2026&team=2&gn_min=30&gn_max=31",
-    el_summary_default = "season=2025",
-    el_ff_default = "season=2025&view=four_factors",
-    il_summary_opps_statfilter =
-      "season=2026&view=summary&opponents=2,3&date_from=2025-09-01&date_to=2026-07-01&stat=net_rtg:ge:0",
-    il_ff_starters = "season=2026&view=four_factors&own_starters=gte:4&opp_starters=lte:2",
-    il_summary_dates_type = "season=2026&game_type=5&date_from=2025-12-01&date_to=2026-01-31",
-    il_ff_gn_win = "season=2026&view=four_factors&gn_min=5&gn_max=15&outcome=win",
-    il_summary_last5_home = "season=2026&last_n=5&home_away=home",
-    il_summary_team = "season=2026&team=2",
-    el_ff_teams_phase = "season=2025&view=four_factors&teams=1,2&phase=RS",
-    el_summary_round_starters = "season=2025&round_min=10&round_max=20&own_starters=gte:4",
-    el_summary_last5_home = "season=2025&last_n=5&home_away=home"
-  )
+  # The preset -> query table lives in helper-presets.R (preset_to_query()).
+  queries <- GL_PRESET_QUERIES
   # Every preset, so a new preset without a query here fails.
   expect_setequal(names(queries), names(GAME_LOGS_PRESETS))
   for (name in names(queries)) {
     preset <- GAME_LOGS_PRESETS[[name]]
-    league <- if (identical(preset$league, "il")) "il" else "euroleague"
-    expect_identical(gl_params(queries[[name]], league), preset_to_p(preset, params_env), info = name)
+    expect_identical(gl_params(preset_to_query(name), preset_api_league(preset)),
+                     preset_to_p(preset, params_env), info = name)
   }
 })
 

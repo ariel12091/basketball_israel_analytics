@@ -360,6 +360,23 @@ GL_SHOT_COLS <- list(
   def = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
 )
 
+# Heat polarity of each view's percentile-coloured columns, both leagues:
+# TRUE colours a high value as bad (the reversed scale). Tab 4 and Tab 11
+# colour from these, and the API reports them as each column's polarity.
+GL_HEAT_REVERSE_SUMMARY <- c(off_ppp = FALSE, def_ppp = TRUE)
+GL_HEAT_REVERSE_FF <- c(
+  off_ppp = FALSE,
+  off_efg_pct = FALSE,
+  off_oreb_pct = FALSE,
+  off_tov_pct = TRUE,
+  off_ftr_pct = FALSE,
+  def_ppp = TRUE,
+  def_efg_pct = TRUE,
+  def_oreb_pct = TRUE,
+  def_tov_pct = FALSE,
+  def_ftr_pct = TRUE
+)
+
 # League 2PT/3PT accuracy (whole percent) over the displayed rows, per side;
 # the shot cells colour against it. 53/34 when a side has no attempts.
 gl_shot_averages <- function(disp) {

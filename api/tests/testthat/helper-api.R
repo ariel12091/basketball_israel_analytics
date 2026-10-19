@@ -66,3 +66,23 @@ api_fixture_key_of <- function(call) {
   if (!length(key)) stop("api_fixture_key_of: the call ran no unrecorded query: ", msg)
   sub("^key=", "", key)
 }
+
+# A GET through a real router built by api_router() -- Plumber's filters,
+# route matching and error handlers included -- in-process, as httpuv would
+# hand it a request. Returns list(status, headers, body).
+api_http <- function(router, path, qs = "") {
+  qs <- sub("^[?]", "", qs)
+  req <- new.env()
+  req$REQUEST_METHOD <- "GET"
+  req$PATH_INFO <- path
+  req$QUERY_STRING <- if (nzchar(qs)) paste0("?", qs) else ""
+  req$SCRIPT_NAME <- ""
+  req$SERVER_NAME <- "127.0.0.1"
+  req$SERVER_PORT <- "3010"
+  req$HTTP_HOST <- "127.0.0.1:3010"
+  req$rook.input <- list(read = function(...) raw(0), rewind = function() invisible(0L))
+  out <- router$call(req)
+  out$body <- if (is.raw(out$body)) rawToChar(out$body) else as.character(out$body)
+  out$status <- as.integer(out$status)
+  out
+}

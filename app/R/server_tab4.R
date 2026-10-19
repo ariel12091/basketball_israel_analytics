@@ -371,8 +371,8 @@ server_tab4 <- function(input, output, session, shared) {
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
       dt <- gl_apply_heat_styles(
         dt, disp,
-        c(off_ppp = "off_ppp", def_ppp = "def_ppp"),
-        c(off_ppp = FALSE, def_ppp = TRUE)
+        stats::setNames(names(GL_HEAT_REVERSE_SUMMARY), names(GL_HEAT_REVERSE_SUMMARY)),
+        GL_HEAT_REVERSE_SUMMARY
       )
 
       return(dt)
@@ -439,18 +439,7 @@ server_tab4 <- function(input, output, session, shared) {
       dt <- DT::formatRound(dt, intersect(c(rate_cols, ppp_cols), names(disp)), 1)
       if ("minutes" %in% names(disp)) dt <- DT::formatRound(dt, "minutes", 1)
       dt <- DT::formatCurrency(dt, c("off_poss", "def_poss"), currency = "", interval = 3, mark = ",", digits = 0)
-      heat_reverse <- c(
-        off_ppp = FALSE,
-        off_efg_pct = FALSE,
-        off_oreb_pct = FALSE,
-        off_tov_pct = TRUE,
-        off_ftr_pct = FALSE,
-        def_ppp = TRUE,
-        def_efg_pct = TRUE,
-        def_oreb_pct = TRUE,
-        def_tov_pct = FALSE,
-        def_ftr_pct = TRUE
-      )
+      heat_reverse <- GL_HEAT_REVERSE_FF
       dt <- gl_apply_heat_styles(
         dt, disp,
         stats::setNames(names(heat_reverse), names(heat_reverse)),
