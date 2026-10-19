@@ -7,6 +7,8 @@ library(purrr); library(jsonlite); library(lubridate)
 library(janitor); library(digest); library(stringr)
 library(pool)
 source("etl/period_opening_anchors.R")
+source("etl/lineup_coverage.R")
+source("etl/pbp_source_fallback.R")
 
 APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
 PROD_SCHEMA <- "basketball"
@@ -232,28 +234,13 @@ fetch_israel_schedule <- function() {
       box_url   = paste0("https://stats.segevstats.com/realtimestat_heb/get_team_score.php?game_id=", ExternalID)
     )
 }
-fetch_game_pbp <- function(game_id, pbp_url) {
-  # Allow a one-game provider fallback without changing the normal source.
-  # Basket's archived game endpoint contains the same gameInfo/actions payload
-  # under `actions`, rather than the Segevstats JSON-RPC `result` envelope.
-  fallback_url <- Sys.getenv("PBP_GAME_402_FALLBACK_URL", unset = "")
-  if (as.integer(game_id) == 402L && nzchar(fallback_url)) {
-    pbp_url <- fallback_url
-  }
-
-  raw <- jsonlite::read_json(pbp_url, simplifyVector = TRUE)
-  if (is.null(raw$result) && !is.null(raw$actions$actions)) {
-    raw <- list(
-      result = list(
-        gameInfo = raw$actions$gameInfo,
-        actions = raw$actions$actions,
-        success = raw$actions$success
-      )
-    )
-  }
-  raw
+fetch_game_pbp <- function(game_id, pbp_url, expected = NULL, log_msg = message) {
+  fetch_pbp_from_sources(game_id, pbp_url, clean_actions,
+                         expected = expected, log_msg = log_msg)
 }
-fetch_game_box <- function(game_id, box_url) {
+fetch_game_box <- function(game_id, box_url, pbp = NULL) {
+  embedded <- embedded_pbp_box(pbp, game_id)
+  if (!is.null(embedded)) return(embedded)
   url <- as.character(box_url)[1]
   if (is.na(url) || !nzchar(url)) {
     url <- paste0("https://stats.segevstats.com/realtimestat_heb/get_team_score.php?game_id=", as.integer(game_id))
@@ -349,7 +336,8 @@ KNOWN_PERIOD_LABEL_CORRECTIONS <- tibble::tribble(
   ~game_id, ~min_id,   ~max_id,   ~wrong_quarter, ~corrected_quarter, ~reason,
   402L,     4020627L, 4020822L, 3L,             4L,                 "Q4 rows mislabeled as Q3 in archived Basket payload",
   406L,     4060239L, 4060417L, 3L,             2L,                 "Provider Q3 is the complete Q2 action stream",
-  406L,     4060419L, 4060590L, 4L,             3L,                 "Clocked first half of provider Q4 is the complete Q3 action stream"
+  406L,     4060419L, 4060590L, 4L,             3L,                 "Clocked first half of provider Q4 is the complete Q3 action stream",
+  417L,     4170541L, 4170550L, 2L,             3L,                 "Q3 opening five-player IN declarations mislabeled as Q2"
 )
 
 apply_known_period_label_corrections <- function(df, game_id_val) {
@@ -1319,6 +1307,11 @@ etl_update <- function() {
     )
   
   
+  assert_gameplay_lineup_coverage(
+    actions_df, pws_stage, df_lineups_df,
+    log_msg = function(msg, level = "ERROR") message(msg),
+    diagnostic_dir = file.path("etl", "logs", "data_quality", "details")
+  )
   upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
 
   DBI::dbExecute(pg, "ANALYZE;")

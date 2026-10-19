@@ -329,6 +329,13 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       ids
     } else {
       t0 <- proc.time()
+      # Read the small canonical team dictionary once for this write run.
+      # The schedule and PBP providers use different team-ID namespaces.
+      pbp_team_dictionary <- DBI::dbGetQuery(pg, sprintf(
+        'SELECT game_year, team_id_schedule, team_id_rosters FROM "%s".schedule_team_dict',
+        SCHEMA
+      ))
+      sched_subset <- map_pbp_schedule_teams(sched_subset, pbp_team_dictionary)
       successful_ids <- integer(0)
       for (gid in ids) {
         game_sched <- sched_subset |>
@@ -366,7 +373,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         ,
         drop = FALSE
       ]
-      pbps <- purrr::map2(fetchable_sched$game_id, fetchable_sched$pbp_url, fetch_game_pbp)
+      pbps <- purrr::map(seq_len(nrow(fetchable_sched)), function(i) {
+        fetch_game_pbp(fetchable_sched$game_id[[i]], fetchable_sched$pbp_url[[i]],
+                       expected = fetchable_sched[i, , drop = FALSE], log_msg = log_msg)
+      })
       log_msg(sprintf("Fetched PBP for %d games", length(pbps)))
 
       # actions_clean
@@ -404,7 +414,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             box_url
           )
         )
-      boxes <- purrr::map2(box_sched$game_id, box_sched$box_url, fetch_game_box)
+      boxes <- purrr::map(seq_len(nrow(box_sched)), function(i) {
+        fetch_game_box(box_sched$game_id[[i]], box_sched$box_url[[i]], pbp = pbps[[i]])
+      })
       roster_df <- purrr::map(pbps, extract_roster) |>
         purrr::list_rbind() |>
         dplyr::rename_with(tolower) |>
@@ -803,6 +815,12 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         ))
       }
 
+      # Reject missing/duplicate gameplay mappings before pws is written.
+      # An error follows the per-game rollback path and leaves the game retryable.
+      assert_gameplay_lineup_coverage(
+        actions_df, pws_stage, df_lineups_df, log_msg = log_msg,
+        diagnostic_dir = file.path("etl", "logs", "data_quality", "details")
+      )
       upsert_by_like(pg, SCHEMA, "pws", pws_stage, manage_transaction = FALSE)
       log_msg(sprintf("  pws staged: %d rows", nrow(pws_stage)))
 

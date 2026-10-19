@@ -22,9 +22,9 @@ on:
         required: false
         default: ""
   schedule:
-    # Run once nightly: 22:15 in Israel daylight time, 21:15 in standard time.
-    # GitHub delays scheduled runs ~2.5h here, so actual starts land ~00:45 IDT.
-    - cron: '15 19 * * *'
+    # Run once nightly: 21:15 in Israel daylight time, 20:15 in standard time.
+    # GitHub scheduled runs can be delayed; prior delays here were ~2.5h.
+    - cron: '15 18 * * *'
 
 jobs:
   etl:
@@ -219,6 +219,54 @@ jobs:
             "## Nightly ETL data quality`n`nNo data-quality summary was written: the write phase did not reach the report. See the ETL logs artifact." |
               Out-File -FilePath $env:GITHUB_STEP_SUMMARY -Append -Encoding utf8
           }
+
+      # Mail the findings page as a PDF, so the report arrives without opening
+      # the artifact zip. Sent when a report was written or the job failed;
+      # a quiet night with no new games sends nothing. Skipped (with a warning)
+      # until the three DQ_MAIL_* secrets exist. A mail failure never fails
+      # the ETL job.
+      - name: Email data quality report
+        if: ${{ always() }}
+        continue-on-error: true
+        shell: powershell
+        env:
+          MAIL_USER: ${{ secrets.DQ_MAIL_USER }}
+          MAIL_PASS: ${{ secrets.DQ_MAIL_APP_PASSWORD }}
+          MAIL_TO: ${{ secrets.DQ_MAIL_TO }}
+          JOB_STATUS: ${{ job.status }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if (-not $env:MAIL_USER -or -not $env:MAIL_PASS -or -not $env:MAIL_TO) {
+            Write-Host "::warning::DQ_MAIL_USER / DQ_MAIL_APP_PASSWORD / DQ_MAIL_TO not set; report not emailed."
+            exit 0
+          }
+          $dir = Join-Path $env:GITHUB_WORKSPACE 'etl/logs/data_quality'
+          $html = Join-Path $dir 'findings.html'
+          $hasReport = Test-Path $html
+          if (-not $hasReport -and $env:JOB_STATUS -eq 'success') {
+            Write-Host 'No new games and no failure; nothing to email.'
+            exit 0
+          }
+          $attachments = @()
+          if ($hasReport) {
+            $pdf = Join-Path $dir ("data_quality_{0}.pdf" -f (Get-Date -Format 'yyyy-MM-dd'))
+            $chrome = 'C:\Program Files\Google\Chrome\Application\chrome.exe'
+            $url = 'file:///' + ($html -replace '\\', '/')
+            & $chrome --headless=new --disable-gpu --no-pdf-header-footer --virtual-time-budget=10000 "--print-to-pdf=$pdf" $url 2>$null | Out-Null
+            if (Test-Path $pdf) { $attachments += $pdf } else { $attachments += $html }
+          }
+          $summary = Join-Path $dir 'findings_summary.md'
+          $body = if (Test-Path $summary) { Get-Content $summary -Raw -Encoding utf8 } else { 'No data-quality report was written this run.' }
+          $body = "ETL status: $($env:JOB_STATUS)`nRun: $($env:RUN_URL)`n`n$body"
+          $subject = "IBPL nightly ETL: $($env:JOB_STATUS) - data quality $(Get-Date -Format 'yyyy-MM-dd')"
+          $cred = New-Object System.Management.Automation.PSCredential($env:MAIL_USER, (ConvertTo-SecureString $env:MAIL_PASS -AsPlainText -Force))
+          $mail = @{
+            From = $env:MAIL_USER; To = $env:MAIL_TO; Subject = $subject; Body = $body
+            SmtpServer = 'smtp.gmail.com'; Port = 587; UseSsl = $true; Credential = $cred; Encoding = [System.Text.Encoding]::UTF8
+          }
+          if ($attachments.Count) { $mail.Attachments = $attachments }
+          Send-MailMessage @mail
+          Write-Host "Emailed data quality report to the configured address."
 
       - name: Show ETL process log tail
         if: ${{ always() }}
