@@ -1,0 +1,15 @@
+{
+  "mcbyte_commit": "be1bbc03f18e33e93e0a359bbcbfdfc4dc4ab6b9",
+  "source_range_seconds": [
+    154,
+    174
+  ],
+  "tracked_clip_seconds": 19.436541,
+  "input_frames": 486,
+  "process_fps": 25,
+  "wall_seconds": 649.6744380160003,
+  "effective_input_fps": 0.748066987958099,
+  "peak_sampled_gpu_memory_mib": 14357,
+  "status": "completed",
+  "error": null
+}

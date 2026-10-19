@@ -1,0 +1,27 @@
+{
+  "input": "video_analysis\\tracks_mot.txt",
+  "coordinate_space": {
+    "width": 1920,
+    "height": 1080
+  },
+  "fps": 25.0,
+  "source_start_seconds": 154.0,
+  "source_time_status": "estimated_from_requested_offset",
+  "observation_rows": 4052,
+  "frames": 486,
+  "unique_track_ids": 13,
+  "tracked_objects_per_frame": {
+    "min": 3,
+    "median": 10.0,
+    "mean": 8.337,
+    "max": 10
+  },
+  "tracks_present_at_least_half_clip": 10,
+  "limitations": [
+    "Track IDs are anonymous and may fragment or switch identities.",
+    "Objects include detected people; team/player/referee labels are unavailable.",
+    "Pixel and normalized image positions are not calibrated court coordinates.",
+    "Foot points are bottom-center bounding-box approximations.",
+    "Source seconds are estimated from the requested download offset."
+  ]
+}

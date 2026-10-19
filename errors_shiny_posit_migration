@@ -1,0 +1,90 @@
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/jquery-3.6.0/jquery.min.js
+NS_ERROR_CORRUPTED_CONTENT
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.css
+NS_ERROR_CORRUPTED_CONTENT
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.min.js
+NS_ERROR_CORRUPTED_CONTENT
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize-plugin-a11y.min.js
+NS_ERROR_CORRUPTED_CONTENT
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bslib-component-css-0.9.0/bslib-component-css.min.css
+NS_ERROR_CORRUPTED_CONTENT
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.css” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize-plugin-a11y.min.js” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.min.js” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bslib-component-css-0.9.0/bslib-component-css.min.css” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/jquery-3.6.0/jquery.min.js” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+Uncaught TypeError: hr.default is not a function
+    <anonymous> actionbutton.ts:130
+    <anonymous> index.ts:3
+ shiny.min.js:2:88821
+Uncaught ReferenceError: jQuery is not defined
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bs3compat-0.9.0/transition.js:59
+ transition.js:59:3
+Uncaught ReferenceError: $ is not defined
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bs3compat-0.9.0/tabs.js:12
+ tabs.js:12:1
+Uncaught ReferenceError: $ is not defined
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bs3compat-0.9.0/bs3compat.js:8
+ bs3compat.js:8:1
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.css
+NS_ERROR_CORRUPTED_CONTENT
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.min.js
+NS_ERROR_CORRUPTED_CONTENT
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.min.js” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.css” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize-plugin-a11y.min.js
+NS_ERROR_CORRUPTED_CONTENT
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize-plugin-a11y.min.js” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+Uncaught TypeError: can't access property "fn", t is undefined
+    G https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bootstrap-datepicker-js-1.9.0/js/bootstrap-datepicker.min.js:1
+    G https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bootstrap-datepicker-js-1.9.0/js/bootstrap-datepicker.min.js:1
+    G https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bootstrap-datepicker-js-1.9.0/js/bootstrap-datepicker.min.js:1
+    s https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bootstrap-datepicker-js-1.9.0/js/bootstrap-datepicker.min.js:1
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bootstrap-datepicker-js-1.9.0/js/bootstrap-datepicker.min.js:1
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bootstrap-datepicker-js-1.9.0/js/bootstrap-datepicker.min.js:1
+ bootstrap-datepicker.min.js:1:27279
+Uncaught ReferenceError: $ is not defined
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/:39
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/:41
+ arieltaieb-onoff-shiny.share.connect.posit.cloud:39:26
+GET
+https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bslib-component-css-0.9.0/bslib-component-css.min.css
+NS_ERROR_CORRUPTED_CONTENT
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bslib-component-css-0.9.0/bslib-component-css.min.css” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+Uncaught ReferenceError: jQuery is not defined
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/ionrangeslider-javascript-2.3.1/js/ion.rangeSlider.min.js:1
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/ionrangeslider-javascript-2.3.1/js/ion.rangeSlider.min.js:1
+ ion.rangeSlider.min.js:1:274
+Uncaught TypeError: o is not a function
+    register input.js:8
+    [8]</< input_selectize.js:7
+    [8]< input_selectize.js:57
+    s _prelude.js:1
+    s _prelude.js:1
+    [5]</< index.js:5
+    [5]< index.js:42
+    s _prelude.js:1
+    o _prelude.js:1
+    <anonymous> _prelude.js:1
+ crosstalk.min.js:1:8070
+Uncaught TypeError: $ is not a function
+    ReconnectUI https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/__assets__/shiny-server-client.min.js:1
+    [16]</< https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/__assets__/shiny-server-client.min.js:1
+    [16]< https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/__assets__/shiny-server-client.min.js:1
+    o https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/__assets__/shiny-server-client.min.js:1
+    r https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/__assets__/shiny-server-client.min.js:1
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/__assets__/shiny-server-client.min.js:1
+ shiny-server-client.min.js:1:37118
+Uncaught ReferenceError: preShinyInit is not defined
+    <anonymous> https://arieltaieb-onoff-shiny.share.connect.posit.cloud/:83
+ arieltaieb-onoff-shiny.share.connect.posit.cloud:83:9
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/selectize-0.15.2/selectize.css” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud
+The resource from “https://arieltaieb-onoff-shiny.share.connect.posit.cloud/_w_fca0d85274f9457cb5f6a232205566f0/bslib-component-css-0.9.0/bslib-component-css.min.css” was blocked due to MIME type (“”) mismatch (X-Content-Type-Options: nosniff). arieltaieb-onoff-shiny.share.connect.posit.cloud

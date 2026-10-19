@@ -1,0 +1,25 @@
+{
+  "schema_version": 1,
+  "clip_id": "urrtcQUzwmo_154_174",
+  "source": {
+    "provider": "youtube",
+    "video_id": "urrtcQUzwmo",
+    "url": "https://www.youtube.com/watch?v=urrtcQUzwmo",
+    "title_translation": "Winner Cup, Group C, full game: Hapoel Eilat - Bnei Herzliya",
+    "upload_date": "2026-09-10",
+    "game_id": null,
+    "game_match_status": "pending_review"
+  },
+  "range": {
+    "start_seconds": 154.0,
+    "end_seconds": 174.0,
+    "duration_seconds": 20.0,
+    "semantics": "half_open"
+  },
+  "profile": "mcbyte_sportsmot_baseline",
+  "identity_mode": "anonymous",
+  "live_play_status": "sampled_live_play_with_final_closeup",
+  "candidate_shot_boundaries_clip_seconds": [19.436541],
+  "shot_boundary_method": "ffmpeg_scene_score_gt_0.3_at_width_320",
+  "output_directory": "output/video_analysis/urrtcQUzwmo_154_174"
+}
