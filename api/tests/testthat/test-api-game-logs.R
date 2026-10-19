@@ -10,16 +10,6 @@ gl_golden <- function(name) {
   readRDS(file.path(api_test_root, "app", "tests", "goldens", "out", "game_logs", paste0(name, ".rds")))
 }
 
-# A golden column's API key: the shot cells' display names become snake_case
-# and the Gameflow link becomes the has_scores flag it was drawn from.
-# Deliberately restates the rename contract (GL_API_KEYS in
-# handlers_game_logs.R) instead of reading it, so a changed key fails here.
-gl_api_key <- function(cols) {
-  renames <- c("Off Shot" = "off_shot_fga", "Def Shot" = "def_shot_fga", gameflow = "has_scores")
-  out <- renames[cols]
-  unname(ifelse(is.na(out), cols, out))
-}
-
 gl_get <- function(league, qs = "") api_http(gl_router, sprintf("/v1/%s/game-logs", league), qs)
 gl_json <- function(resp) jsonlite::fromJSON(resp$body, simplifyVector = TRUE)
 
@@ -61,19 +51,12 @@ for (gl_preset_name in names(GAME_LOGS_PRESETS)) {
         return(invisible())
       }
 
-      # Exact values, before serialisation.
-      rows <- gl_payload(qs, league)$rows
-      expect_identical(nrow(rows), nrow(golden$data))
-      cols <- setdiff(names(golden$data), "gameflow")
-      for (col in cols) {
-        expect_identical(rows[[gl_api_key(col)]], golden$data[[col]], info = paste(name, col))
-      }
-      expect_true(is.logical(rows$has_scores))
-      expect_false(anyNA(rows$has_scores))
-      # A Gameflow link is drawn exactly where has_scores is TRUE.
-      expect_identical(rows$has_scores, grepl("ribbon-link", golden$data$gameflow, fixed = TRUE), info = name)
+      # Exact values, before serialisation (helper-game-logs-compare.R).
+      expect_gt(nrow(golden$data), 0L)
+      gl_expect_rows_match(gl_payload(qs, league)$rows, golden, name)
 
       # The JSON carries the same values (numbers unrounded, dates ISO).
+      cols <- setdiff(names(golden$data), "gameflow")
       expect_identical(nrow(body$rows), nrow(golden$data))
       for (col in cols) {
         g <- golden$data[[col]]
