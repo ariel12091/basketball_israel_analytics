@@ -28,6 +28,10 @@ golden_repo_root <- function(start = getwd()) {
 
 golden_app_dir <- function() file.path(golden_repo_root(), "app")
 
+# Every source of the app and every server run uses this seed, so anything the
+# app draws at random is the same in recording and in replay.
+GOLDEN_SEED <- 20261019L
+
 # Task-level feature coverage markers (`covers(...)`) live in the API tree.
 # Sourced here when present so app-side golden tests can call covers().
 golden_coverage_file <- file.path(golden_repo_root(), "api", "coverage.R")
@@ -71,7 +75,7 @@ golden_fixture_path <- function(dir, key) file.path(dir, paste0(key, ".rds"))
 methods::setClass("GoldenReplayConnection", contains = "DBIConnection",
                   slots = c(dir = "character", misses = "environment"))
 methods::setClass("GoldenRecordConnection", contains = "DBIConnection",
-                  slots = c(dir = "character", real = "ANY"))
+                  slots = c(dir = "character", real = "ANY", log = "environment"))
 
 golden_replay_conn <- function(fixture_dir) {
   if (!dir.exists(fixture_dir)) stop("golden replay: no fixture directory ", fixture_dir)
@@ -91,8 +95,42 @@ golden_replay_misses <- function(conn) {
 
 golden_record_conn <- function(real_con, fixture_dir) {
   dir.create(fixture_dir, recursive = TRUE, showWarnings = FALSE)
+  log <- new.env(parent = emptyenv())
+  log$errors <- character(0)
+  log$index <- data.frame(key = character(0), label = character(0),
+                          statement = character(0), params = character(0),
+                          stringsAsFactors = FALSE)
   methods::new("GoldenRecordConnection",
-               dir = normalizePath(fixture_dir, winslash = "/"), real = real_con)
+               dir = normalizePath(fixture_dir, winslash = "/"), real = real_con, log = log)
+}
+
+# Query errors since the last call, cleared on read. A recording must never
+# capture a golden from a state the app reached by swallowing an error.
+golden_record_errors <- function(conn) {
+  out <- conn@log$errors
+  conn@log$errors <- character(0)
+  out
+}
+
+# One readable line per params list for the fixture index.
+golden_params_text <- function(params) {
+  if (is.null(params)) return("")
+  paste(vapply(params, function(p) paste(as.character(p), collapse = ","), character(1)),
+        collapse = " | ")
+}
+
+# index.csv beside the fixtures says which query each <key>.rds answers.
+golden_record_index <- function(conn, key, statement, params) {
+  idx <- conn@log$index
+  if (key %in% idx$key) return(invisible(NULL))
+  conn@log$index <- rbind(idx, data.frame(
+    key = key, label = golden_query_label(statement),
+    statement = gsub("[[:space:]]+", " ", trimws(statement)),
+    params = golden_params_text(params), stringsAsFactors = FALSE
+  ))
+  utils::write.csv(conn@log$index[order(conn@log$index$key), , drop = FALSE],
+                   file.path(conn@dir, "index.csv"), row.names = FALSE)
+  invisible(NULL)
 }
 
 methods::setMethod("dbGetQuery", c("GoldenReplayConnection", "character"),
@@ -109,13 +147,21 @@ methods::setMethod("dbGetQuery", c("GoldenReplayConnection", "character"),
 
 methods::setMethod("dbGetQuery", c("GoldenRecordConnection", "character"),
   function(conn, statement, params = NULL, ...) {
-    out <- if (is.null(params)) {
-      DBI::dbGetQuery(conn@real, statement)
-    } else {
-      DBI::dbGetQuery(conn@real, statement, params = params)
-    }
-    saveRDS(out, golden_fixture_path(conn@dir, golden_query_key(statement, params)),
-            compress = "xz")
+    out <- tryCatch(
+      if (is.null(params)) {
+        DBI::dbGetQuery(conn@real, statement)
+      } else {
+        DBI::dbGetQuery(conn@real, statement, params = params)
+      },
+      error = function(e) {
+        conn@log$errors <- c(conn@log$errors, sprintf(
+          "%s: %s", golden_query_label(statement), conditionMessage(e)))
+        stop(e)
+      }
+    )
+    key <- golden_query_key(statement, params)
+    saveRDS(out, golden_fixture_path(conn@dir, key), compress = "xz")
+    golden_record_index(conn, key, statement, params)
     out
   })
 
@@ -162,7 +208,9 @@ golden_app_env <- function(conn) {
     captured$server <- server
     invisible(NULL)
   }
-  source(file.path(app_dir, "app.R"), local = env, chdir = TRUE)
+  # Seeded: global.R draws the default Home team at random when sourced, and
+  # that team decides which Home queries every session runs.
+  withr::with_seed(GOLDEN_SEED, source(file.path(app_dir, "app.R"), local = env, chdir = TRUE))
   rm("shinyApp", envir = env)
   if (!is.function(captured$server)) stop("golden harness: app.R did not call shinyApp(ui, server)")
   env$server <- captured$server
@@ -188,15 +236,26 @@ golden_app_env <- function(conn) {
   env
 }
 
-# Runs env$server under shiny::testServer, applies `inputs` (a named list) in
-# one setInputs() call, flushes, and returns capture(session, output). A
+# Inputs are one named list (one setInputs() call) or an unnamed list of named
+# lists, applied as successive steps.
+golden_input_steps <- function(inputs) {
+  if (!length(inputs)) return(list())
+  if (!is.null(names(inputs))) return(list(inputs))
+  inputs
+}
+
+# Runs env$server under shiny::testServer, applies each input step in one
+# setInputs() call, flushes after each, and returns capture(session, output). A
 # capture function may carry "golden_setup" / "golden_teardown" attributes,
 # called before the server starts and after it finishes (even on error).
 # When env$pg_pool replays, any query it could not answer fails the run, even
-# one the app caught and logged.
+# one the app caught and logged; when it records, so does any query error.
 golden_run_server <- function(env, inputs, capture) {
   replay <- if (methods::is(env$pg_pool, "GoldenReplayConnection")) env$pg_pool
+  record <- if (methods::is(env$pg_pool, "GoldenRecordConnection")) env$pg_pool
   if (!is.null(replay)) golden_replay_misses(replay)
+  if (!is.null(record)) golden_record_errors(record)
+  steps <- golden_input_steps(inputs)
   setup <- attr(capture, "golden_setup")
   teardown <- attr(capture, "golden_teardown")
   if (is.function(teardown)) on.exit(teardown(), add = TRUE)
@@ -208,27 +267,42 @@ golden_run_server <- function(env, inputs, capture) {
   }
 
   result <- new.env(parent = emptyenv())
-  shiny::testServer(env$server, {
-    if (length(!!inputs)) do.call(session$setInputs, !!inputs)
-    session$flushReact()
-    assign("value", (!!capture)(session, output), envir = !!result)
-  })
-  if (!is.null(replay)) {
-    misses <- unique(golden_replay_misses(replay))
-    if (length(misses)) {
-      stop(sprintf("golden replay: %d unrecorded quer%s:\n%s", length(misses),
-                   if (length(misses) == 1L) "y" else "ies",
-                   paste(misses, collapse = "\n")), call. = FALSE)
-    }
-  }
+  withr::local_seed(GOLDEN_SEED)
+  # A failed query usually surfaces later as some other error (an empty table,
+  # a capture miss), so the connection's log is reported first either way.
+  run_error <- tryCatch({
+    shiny::testServer(env$server, {
+      for (step in !!steps) {
+        do.call(session$setInputs, step)
+        session$flushReact()
+      }
+      session$flushReact()
+      assign("value", (!!capture)(session, output), envir = !!result)
+    })
+    NULL
+  }, error = function(e) e)
+  golden_stop_on_log("golden record", "failed",
+                     if (!is.null(record)) golden_record_errors(record))
+  golden_stop_on_log("golden replay", "unrecorded",
+                     if (!is.null(replay)) golden_replay_misses(replay))
+  if (!is.null(run_error)) stop(run_error)
   result$value
+}
+
+golden_stop_on_log <- function(what, adjective, entries) {
+  entries <- unique(entries)
+  if (!length(entries)) return(invisible(NULL))
+  stop(sprintf("%s: %d %s quer%s:\n%s", what, length(entries), adjective,
+               if (length(entries) == 1L) "y" else "ies",
+               paste(entries, collapse = "\n")), call. = FALSE)
 }
 
 # Capture for a DT table: traces DT::datatable for the run and returns the last
 # table whose CSV button filename starts with `slug_prefix` (the app stamps the
 # slug with a time, see csv_export_button()), as its data, its initial order
-# and the names of the columns columnDefs hide.
-golden_capture_dt <- function(slug_prefix) {
+# and the names of the columns columnDefs hide. With allow_none, a run that
+# rendered no such table (the app's renderer returned NULL) captures NULL.
+golden_capture_dt <- function(slug_prefix, allow_none = FALSE) {
   sink <- new.env(parent = emptyenv())
   sink$items <- list()
   push <- function(entry) sink$items[[length(sink$items) + 1L]] <- entry
@@ -245,7 +319,10 @@ golden_capture_dt <- function(slug_prefix) {
       fn <- entry$options$buttons[[1]]$filename
       is.character(fn) && length(fn) == 1L && startsWith(fn, slug_prefix)
     }, sink$items)
-    if (!length(matches)) stop("no datatable rendered for ", slug_prefix, call. = FALSE)
+    if (!length(matches)) {
+      if (isTRUE(allow_none)) return(NULL)
+      stop("no datatable rendered for ", slug_prefix, call. = FALSE)
+    }
     hit <- matches[[length(matches)]]
     data <- as.data.frame(hit$data)
     list(

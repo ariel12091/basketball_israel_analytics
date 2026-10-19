@@ -174,3 +174,86 @@ test_that("golden_capture_dt errors when no datatable matched", {
   )
   expect_false(inherits(DT::datatable, "functionWithTrace"))
 })
+
+# A connection whose every query fails, standing in for a live database error.
+methods::setClass("GoldenFailingConnection", contains = "DBIConnection")
+methods::setMethod("dbGetQuery", c("GoldenFailingConnection", "character"),
+  function(conn, statement, params = NULL, ...) stop("relation does not exist"))
+
+test_that("a recording query error is logged and fails the run", {
+  # The app catches query errors and blanks the table, so without this a
+  # golden could be captured from an errored state.
+  rec <- golden_record_conn(methods::new("GoldenFailingConnection"), golden_tmp_dir())
+  expect_error(DBI::dbGetQuery(rec, "SELECT 3"), "relation does not exist")
+  expect_length(golden_record_errors(rec), 1L)
+  expect_identical(golden_record_errors(rec), character(0))
+
+  env <- new.env()
+  env$pg_pool <- rec
+  env$server <- function(input, output, session) {
+    observe(try(DBI::dbGetQuery(rec, "SELECT 4"), silent = TRUE))
+  }
+  expect_error(
+    golden_run_server(env, list(), function(session, output) "ran"),
+    "golden record: 1 failed quer.*SELECT 4.*relation does not exist"
+  )
+  # Reported first even when the run then fails for a knock-on reason.
+  expect_error(
+    golden_run_server(env, list(), function(session, output) stop("no table")),
+    "golden record: 1 failed quer.*SELECT 4"
+  )
+  # No fixture is written for a failed query.
+  expect_length(list.files(rec@dir, pattern = "[.]rds$"), 0L)
+})
+
+test_that("recording writes an index of key, label, statement and params", {
+  src <- golden_tmp_dir()
+  write_fixture(src, recorded_sql, list(1L), data.frame(x = 1L))
+  write_fixture(src, "SELECT 5", NULL, data.frame(y = 5L))
+  out <- golden_tmp_dir()
+  rec <- golden_record_conn(golden_replay_conn(src), out)
+  DBI::dbGetQuery(rec, recorded_sql, params = list(1L))
+  DBI::dbGetQuery(rec, recorded_sql, params = list(1L))
+  DBI::dbGetQuery(rec, "SELECT 5")
+  idx <- utils::read.csv(file.path(out, "index.csv"), colClasses = "character")
+  expect_identical(names(idx), c("key", "label", "statement", "params"))
+  expect_identical(nrow(idx), 2L)
+  expect_setequal(idx$key, c(golden_query_key(recorded_sql, list(1L)),
+                             golden_query_key("SELECT 5", NULL)))
+  expect_identical(idx$params[idx$statement == recorded_sql], "1")
+  expect_true(all(file.exists(file.path(out, paste0(idx$key, ".rds")))))
+})
+
+test_that("inputs given as steps are applied in order, flushing between", {
+  env <- new.env()
+  env$server <- function(input, output, session) {
+    seen <- reactiveVal(character(0))
+    observeEvent(input$a, seen(c(seen(), paste0("a", input$a))))
+    observeEvent(input$b, seen(c(seen(), paste0("b", input$b, "/a", input$a))))
+    session$userData$seen <- seen
+  }
+  got <- golden_run_server(env, list(list(a = 1), list(b = 2)),
+                           function(session, output) isolate(session$userData$seen()))
+  expect_identical(got, c("a1", "b2/a1"))
+  expect_identical(golden_input_steps(list(a = 1)), list(list(a = 1)))
+  expect_identical(golden_input_steps(list()), list())
+})
+
+test_that("golden_capture_dt returns NULL for no table only when allowed", {
+  env <- new.env()
+  env$server <- toy_dt_server
+  expect_null(golden_run_server(env, list(mult = 1L),
+                                golden_capture_dt("missing_slug", allow_none = TRUE)))
+})
+
+test_that("the app's random defaults repeat across loads and leave the caller's RNG alone", {
+  # global.R draws the default Home team at random; unseeded, each load ran a
+  # different team's Home queries and replay missed them.
+  set.seed(1)
+  before <- .Random.seed
+  dir <- golden_tmp_dir()
+  ids <- vapply(1:3, function(i) golden_app_env(golden_replay_conn(dir))$DEFAULT_HOME_TEAM_ID,
+                character(1))
+  expect_length(unique(ids), 1L)
+  expect_identical(.Random.seed, before)
+})
