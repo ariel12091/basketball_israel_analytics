@@ -41,18 +41,35 @@ limits_expect_400 <- function(expr, param, info = NULL) {
 
 test_that("the caps are named constants with the agreed values", {
   covers("X-20")
-  expect_identical(limits_env$GL_MAX_STAT, 10L)
+  # Ruling R11: one `ge` and one `le` per filterable column of the view.
+  expect_identical(limits_env$GL_STAT_PER_COLUMN, 2L)
+  expect_identical(limits_env$gl_max_stat("summary"), 2L * length(limits_env$GL_SUMMARY_FILTERABLE_COLS))
+  expect_identical(limits_env$gl_max_stat("four_factors"), 2L * length(limits_env$GL_FF_FILTERABLE_COLS))
+  expect_identical(limits_env$gl_max_stat("summary"), 34L)
+  expect_identical(limits_env$gl_max_stat("four_factors"), 28L)
   expect_identical(limits_env$SVC_MAX_SORT, 5L)
   expect_identical(limits_env$SVC_MAX_IDS, 50L)
   expect_identical(limits_env$API_MAX_QUERY_BYTES, 4096L)
 })
 
-test_that("stat: the cap is accepted, one more is a 400 on 'stat'", {
+test_that("stat: ge + le on every column is accepted and fits the byte cap; one more is a 400 on 'stat'", {
   covers("X-20")
-  one <- "stat=off_ppp:ge:-1"
-  at <- paste(rep(one, limits_env$GL_MAX_STAT), collapse = "&")
-  expect_length(limits_params(at)$stat_filters, limits_env$GL_MAX_STAT)
-  limits_expect_400(limits_params(paste(at, one, sep = "&")), "stat")
+  for (view in c("summary", "four_factors")) {
+    cols <- limits_env$gl_stat_filterable(view)
+    # The largest state Shiny's chips build without repeating a column/operator
+    # pair, with a long realistic value.
+    entries <- unlist(lapply(cols, function(col) {
+      paste0("stat=", utils::URLencode(col, reserved = TRUE), ":", c("ge", "le"), ":-123.45")
+    }))
+    cap <- limits_env$gl_max_stat(view)
+    expect_length(entries, cap)
+    qs <- paste(c("season=2026", paste0("view=", view), entries), collapse = "&")
+    expect_lte(nchar(qs, type = "bytes"), limits_env$API_MAX_QUERY_BYTES)
+    expect_length(limits_params(qs)$stat_filters, cap)
+    resp <- api_http(limits_router, "/v1/il/game-logs", qs)
+    expect_identical(resp$status, 200L, info = view)
+    limits_expect_400(limits_params(paste(qs, entries[[1]], sep = "&")), "stat", info = view)
+  }
 })
 
 test_that("sort: the cap is accepted, one more key is a 400 on 'sort'", {

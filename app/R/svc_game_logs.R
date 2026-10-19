@@ -750,13 +750,19 @@ gl_params_gn <- function(query, league) {
   resolve_gn_last_n_values(txt(lo), txt(hi), txt(last_n))
 }
 
-# stat=<col>:<ge|le>:<value>, repeatable up to GL_MAX_STAT times; <col> a
-# value of the view's filterable columns. Israeli only.
-GL_MAX_STAT <- 10L
+# stat=<col>:<ge|le>:<value>, repeatable; <col> a value of the view's
+# filterable columns. Israeli only. At most gl_max_stat(view) entries: one
+# `ge` and one `le` per filterable column (GL_STAT_PER_COLUMN), so every
+# meaningful state Shiny's stat-filter chips can build fits (ruling R11).
+GL_STAT_PER_COLUMN <- 2L
+gl_stat_filterable <- function(view) {
+  unname(if (identical(view, "four_factors")) GL_FF_FILTERABLE_COLS else GL_SUMMARY_FILTERABLE_COLS)
+}
+gl_max_stat <- function(view) GL_STAT_PER_COLUMN * length(gl_stat_filterable(view))
 gl_params_stat <- function(query, view) {
   vals <- svc_values(query, "stat")
-  svc_cap(vals, "stat", GL_MAX_STAT)
-  filterable <- unname(if (identical(view, "four_factors")) GL_FF_FILTERABLE_COLS else GL_SUMMARY_FILTERABLE_COLS)
+  svc_cap(vals, "stat", gl_max_stat(view))
+  filterable <- gl_stat_filterable(view)
   lapply(vals, function(v) {
     m <- regmatches(v, regexec("^(.+):([^:]+):([^:]+)$", v))[[1]]
     if (!length(m)) svc_reject("stat", "'stat' must be <column>:<ge|le>:<value>, got '%s'.", svc_show(v))

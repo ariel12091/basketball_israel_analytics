@@ -55,6 +55,7 @@ jobs:
             any::RPostgres
             any::plumber
             any::callr
+            any::V8
 
       - name: Run fast suite
         env:
@@ -111,6 +112,7 @@ jobs:
             any::RPostgres
             any::plumber
             any::callr
+            any::V8
 
       - name: Run full suite
         env:
