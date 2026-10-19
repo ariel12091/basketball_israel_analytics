@@ -425,20 +425,7 @@ server_tab3 <- function(input, output, session, shared) {
       button_text <- if (identical(side_slug, "opponent")) "Download Opponent CSV" else "Download Team CSV"
     }
 
-    list(
-      list(
-        extend = "csv",
-        text = button_text,
-        filename = sprintf("team_ratings_%s_%s", mode_slug, csv_export_stamp()),
-        exportOptions = list(
-          columns = ":visible",
-          stripHtml = TRUE,
-          stripNewlines = TRUE,
-          trim = TRUE,
-          modifier = list(search = "applied", order = "applied")
-        )
-      )
-    )
+    csv_export_button(paste0("team_ratings_", mode_slug), text = button_text)
   }
 
   tr_effective_anchor <- reactive({

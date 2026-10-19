@@ -55,10 +55,21 @@ default season for the league.
 | 504 | the database statement timeout | `{error}` |
 | 500 | anything else (no query text in the body; the detail is logged) | `{error}` |
 
-Plumber is given no parsed query (`api_query_filter`, `api_router()` in `R/bootstrap.R`): handlers read the raw
+Plumber is given no parsed query (`api_query_filter` in `R/params.R`, `api_router()` in `R/bootstrap.R`): handlers read the raw
 query string through `api_query()`, so `%00` or `%FF` is a 400, not a 500.
 Parameters are validated by the service layer (`app/R/svc_params.R`,
 `svc_game_logs_params()`), fail closed: nothing is coerced or dropped.
+
+Limits, each a 400 naming the parameter: the raw query string at most 4096 bytes (`API_MAX_QUERY_BYTES`,
+param `"query"`), at most 10 `stat` filters (`GL_MAX_STAT`), 5 `sort` keys (`SVC_MAX_SORT`) and 50 ids in
+`teams`, `opponents`, `game_type` or `phase` (`SVC_MAX_IDS`).
+
+Shared secret: when the `plumber.sharedSecret` option or `PLUMBER_SHAREDSECRET` / `PLUMBER_SHARED_SECRET`
+is set, a request without a matching `Plumber-Shared-Secret` header is a 400 `{error, param}`
+(`api_shared_secret_filter`), as under Plumber's default filters.
+
+CSV: text cells that would start a spreadsheet formula get a leading `'` (`csv_defuse_formula()`, the rule
+Shiny's CSV buttons apply; `docs/shared_definitions.md`, Exports).
 
 ## Tests
 

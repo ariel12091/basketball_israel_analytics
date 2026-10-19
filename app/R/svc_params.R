@@ -93,11 +93,26 @@ svc_one <- function(query, name) {
   vals
 }
 
-# One comma-separated list: NULL when absent; an empty element is an error.
-svc_list <- function(query, name) {
+# Caps on how many entries one request may carry (security audit M-1: each
+# entry costs R time and is echoed back in meta). Any list of ids -- teams,
+# opponents, game types, phases -- holds at most SVC_MAX_IDS (a season has
+# about 20 teams); sort at most SVC_MAX_SORT keys.
+SVC_MAX_IDS <- 50L
+SVC_MAX_SORT <- 5L
+
+# Rejects more than `max` entries for `param`, before any entry is parsed.
+svc_cap <- function(x, param, max) {
+  if (length(x) > max) svc_reject(param, "'%s' takes at most %d entries; got %d.", param, max, length(x))
+  invisible(x)
+}
+
+# One comma-separated list: NULL when absent; an empty element is an error;
+# more than `max` entries is an error.
+svc_list <- function(query, name, max = SVC_MAX_IDS) {
   val <- svc_one(query, name)
   if (is.null(val)) return(NULL)
   parts <- trimws(strsplit(val, ",", fixed = TRUE)[[1]])
+  svc_cap(parts, name, max)
   if (!length(parts) || any(!nzchar(parts)) || grepl(",\\s*$", val)) {
     svc_reject(name, "'%s' must be a comma-separated list without empty entries.", name)
   }
@@ -213,7 +228,7 @@ svc_format <- function(query) {
 # sort=<column>:<asc|desc>[,...] -- syntax only here; the endpoint checks
 # the columns against its own.
 svc_sort <- function(query) {
-  parts <- svc_list(query, "sort")
+  parts <- svc_list(query, "sort", max = SVC_MAX_SORT)
   if (is.null(parts)) return(NULL)
   ok <- grepl("^[A-Za-z0-9_%. ]+:(asc|desc)$", parts)
   if (!all(ok)) svc_reject("sort", "'sort' entries must be <column>:asc or <column>:desc, got '%s'.", svc_show(parts[!ok][[1]]))

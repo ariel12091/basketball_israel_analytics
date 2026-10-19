@@ -9,13 +9,17 @@ API_STATUS_TIMEOUT <- 504L
 # response object as it is, bypassing its serializers). JSON: rows as an
 # array of objects, NA as null, numbers unrounded. CSV (format = "csv"): the
 # rows only, as an attachment named <slug>_<csv_export_stamp()>.csv, the
-# stamp Shiny's CSV buttons use.
+# stamp Shiny's CSV buttons use; text cells that would start a spreadsheet
+# formula are defused by csv_defuse_formula() (helpers.R), the rule Shiny's
+# CSV buttons apply. Numeric columns are written as they are.
 api_respond <- function(res, payload, format = "json", slug = "export", status = 200L) {
   res$status <- as.integer(status)
   if (identical(format, "csv")) {
     rows <- payload$rows
     if (is.null(rows)) rows <- data.frame()
-    out <- utils::capture.output(utils::write.csv(as.data.frame(rows), row.names = FALSE, na = ""))
+    rows <- as.data.frame(rows)
+    rows[] <- lapply(rows, csv_defuse_formula)
+    out <- utils::capture.output(utils::write.csv(rows, row.names = FALSE, na = ""))
     res$setHeader("Content-Type", "text/csv; charset=utf-8")
     res$setHeader("Content-Disposition",
                   sprintf("attachment; filename=\"%s_%s.csv\"", slug, csv_export_stamp()))

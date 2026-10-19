@@ -12,10 +12,18 @@
 # Every name and value must decode to UTF-8 text without NUL (`%00`, `%FF`
 # are rejected here, never echoed): a bad value is a 400 naming its
 # parameter, a bad name a 400 on param "query".
+#
+# The raw (still percent-encoded) query string is capped at
+# API_MAX_QUERY_BYTES before anything is decoded (security audit M-1): every
+# Game Logs filter Shiny can set fits in well under 1 KB.
+API_MAX_QUERY_BYTES <- 4096L
 api_query <- function(req) {
   qs <- req$QUERY_STRING %||% ""
   qs <- sub("^[?]", "", qs)
   if (!nzchar(qs)) return(list())
+  if (nchar(qs, type = "bytes") > API_MAX_QUERY_BYTES) {
+    stop(api_error(400L, "query", sprintf("The query string is longer than %d bytes.", API_MAX_QUERY_BYTES)))
+  }
   pieces <- strsplit(qs, "&", fixed = TRUE)[[1]]
   pieces <- pieces[nzchar(pieces)]
   decode <- function(x) {
@@ -46,6 +54,31 @@ api_query <- function(req) {
 api_query_filter <- function(req) {
   req$argsQuery <- list()
   req$.internal$queryStringHandled <- TRUE
+  plumber::forward()
+}
+
+# Plumber's sharedSecret filter, kept when its default filters are replaced
+# (security audit M-2). The secret is the plumber.sharedSecret option, else
+# the environment variable plumber 1.3.3 derives from that name
+# (PLUMBER_SHAREDSECRET), else PLUMBER_SHARED_SECRET. When one is set, a
+# request whose Plumber-Shared-Secret header does not match it exactly is a
+# 400, as under plumber's own filter, but with the API's JSON error body.
+# Unset, every request passes. It runs first, before any parameter is read.
+api_shared_secret <- function() {
+  secret <- getOption("plumber.sharedSecret")
+  if (!is.null(secret)) return(as.character(secret))
+  for (var in c("PLUMBER_SHAREDSECRET", "PLUMBER_SHARED_SECRET")) {
+    val <- Sys.getenv(var)
+    if (nzchar(val)) return(val)
+  }
+  NULL
+}
+
+api_shared_secret_filter <- function(req, res) {
+  secret <- api_shared_secret()
+  if (!is.null(secret) && !identical(req$HTTP_PLUMBER_SHARED_SECRET, secret)) {
+    return(api_respond(res, list(error = "Bad request.", param = NA), status = 400L))
+  }
   plumber::forward()
 }
 

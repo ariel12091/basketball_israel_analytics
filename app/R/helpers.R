@@ -267,6 +267,42 @@ gamelog_ff_header <- function(first_label = "GN", second_label = "Game Type",
   )))
 }
 
+# CSV export: formula cells defused (docs/shared_definitions.md, section 3,
+# "Exports"; security audit L-1). A text cell whose first character is one of
+# CSV_FORMULA_PREFIXES and which is not numeric text (CSV_NUMERIC_TEXT_PATTERN:
+# "-5", "+1.5", "-3.2%") is written with a leading single quote, so Excel or
+# Sheets shows it as text instead of running it as a formula. One rule, two
+# surfaces: csv_defuse_formula() for the API's CSV (api_respond()) and
+# csv_body_formatter_js() for every Shiny CSV button, generated from the same
+# two constants. Pinned by test-csv-formula-defuse.R (both, through V8).
+CSV_FORMULA_PREFIXES <- c("=", "+", "-", "@", "\t", "\r")
+CSV_NUMERIC_TEXT_PATTERN <- "^[-+]?([0-9]+([.][0-9]*)?|[.][0-9]+)([eE][-+]?[0-9]+)?%?$"
+
+csv_defuse_formula <- function(x) {
+  if (is.factor(x)) x <- as.character(x)
+  if (!is.character(x)) return(x)
+  hit <- !is.na(x) & substr(x, 1L, 1L) %in% CSV_FORMULA_PREFIXES &
+    !grepl(CSV_NUMERIC_TEXT_PATTERN, x)
+  x[hit] <- paste0("'", x[hit])
+  x
+}
+
+# DataTables Buttons' exportOptions$format$body. Supplying it replaces the
+# default formatter, which is $.fn.dataTable.Buttons.stripData(), so this one
+# calls it first (with no options it strips HTML and newlines, trims and
+# decodes entities -- what the buttons' exportOptions ask for) and then applies
+# the rule to the text a reader would see. A number passes through untouched.
+csv_body_formatter_js <- function() {
+  DT::JS(sprintf(r"(function(data, row, column, node) {
+  var text = $.fn.dataTable.Buttons.stripData(data);
+  if (typeof text !== 'string' || !text.length) return text;
+  if (%s.indexOf(text.charAt(0)) < 0) return text;
+  if (new RegExp(%s).test(text)) return text;
+  return "'" + text;
+})", jsonlite::toJSON(CSV_FORMULA_PREFIXES),
+    jsonlite::toJSON(CSV_NUMERIC_TEXT_PATTERN, auto_unbox = TRUE)))
+}
+
 csv_export_button <- function(slug, text = "Download CSV", now = Sys.time()) {
   list(list(
     extend = "csv",
@@ -277,7 +313,8 @@ csv_export_button <- function(slug, text = "Download CSV", now = Sys.time()) {
       stripHtml = TRUE,
       stripNewlines = TRUE,
       trim = TRUE,
-      modifier = list(search = "applied", order = "applied")
+      modifier = list(search = "applied", order = "applied"),
+      format = list(body = csv_body_formatter_js())
     )
   ))
 }

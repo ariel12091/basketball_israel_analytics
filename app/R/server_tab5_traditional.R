@@ -1162,17 +1162,8 @@ server_tab5_traditional <- function(input, output, session, shared) {
         ),
         colReorder = TRUE,
         dom = "Btip",
-        buttons = list(
-          list(
-            extend = "csv",
-            text = "Download CSV",
-            filename = sprintf(
-              "%s_player_stats_%s",
-              if (ts_is_euro()) "euroleague" else "israeli_league",
-              csv_export_stamp()
-            ),
-            exportOptions = list(columns = ":visible", stripHtml = TRUE)
-          )
+        buttons = csv_export_button(
+          paste0(if (ts_is_euro()) "euroleague" else "israeli_league", "_player_stats")
         ),
         pageLength = 50,
         deferRender = TRUE,

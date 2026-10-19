@@ -200,6 +200,12 @@ possessions) is NULL, not 0 or 50.
 | League differences in Game Logs | Shot columns, header labels, date-range handling, round vs GN | descriptor `GL_LEAGUE` (and `GL_IL_VIEWS`, `GL_SHOT_COLS`, `GL_ROUND_1`) | -- |
 | ETL data version | The league's last successful load stamp that every season-level cache is keyed on: Israeli `app_meta.etl_full_last_success`; EuroLeague and EuroCup the latest completed `euroleague.load_runs` run. Caches never cross leagues (inventory id X-08 in `docs/superpowers/specs/2026-10-19-api-mcp-feature-inventory.md`) | Israeli: `etl_last_success_db()`, `global.R`, normalised by `shared_data_version()`. EuroLeague / EuroCup: `euro_data_version()`, `global_euro.R` | Shiny's cache keys and the API (`svc_data_version()` in `svc_params.R`, behind `GET /v1/meta/data-version`) read the same function per league |
 
+### Exports
+
+| Term | Definition | Owner | Twins |
+|---|---|---|---|
+| CSV export: formula cells defused | A text cell whose first character is `=`, `+`, `-`, `@`, tab or carriage return (`CSV_FORMULA_PREFIXES`), and which is not numeric text (`CSV_NUMERIC_TEXT_PATTERN`: `-5`, `+1.5`, `-3.2%`), is written with a leading `'` so a spreadsheet shows it as text instead of running it as a formula. Numeric columns are never touched: a negative rating stays a number. Security audit L-1 | `CSV_FORMULA_PREFIXES`, `CSV_NUMERIC_TEXT_PATTERN` and `csv_defuse_formula()`, `app/R/helpers.R` | API: `api_respond()` (`api/R/respond.R`) applies `csv_defuse_formula()` to every column. Shiny: every CSV button is `csv_export_button()`, whose `exportOptions$format$body` is `csv_body_formatter_js()`, generated from the same two constants. Pinned by `app/tests/testthat/test-csv-formula-defuse.R` (the JS against the R function, through V8) and `api/tests/testthat/test-api-limits.R` |
+
 ---
 
 ## 4. Controls

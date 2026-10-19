@@ -86,12 +86,15 @@ api_bootstrap <- function(conn = NULL, envir = globalenv(), root = api_repo_root
 
 # The Plumber router over api/plumber.R, its handlers resolved in `envir` (an
 # api_bootstrap() environment). Plumber's default filters are replaced by
-# api_query_filter (params.R): its own query parser answers a 500 on bytes
-# such as %00 before any route runs. run.R serves this router; the tests call
-# it in-process, so they exercise the same filters and error handlers.
+# api_shared_secret_filter and api_query_filter (both params.R): plumber's
+# own query parser answers a 500 on bytes such as %00 before any route runs,
+# and its body and cookie parsers serve nothing on GET-only routes. run.R
+# serves this router; the tests call it in-process, so they exercise the same
+# filters and error handlers.
 api_router <- function(envir = globalenv(), root = envir$API_ROOT %||% api_repo_root()) {
   router <- plumber::pr(file.path(root, "api", "plumber.R"),
-                        filters = list(api_query = envir$api_query_filter),
+                        filters = list(shared_secret = envir$api_shared_secret_filter,
+                                       api_query = envir$api_query_filter),
                         envir = new.env(parent = envir))
   if (inherits(envir$pg_pool, "Pool")) {
     pool <- envir$pg_pool
