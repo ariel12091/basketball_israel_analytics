@@ -35,6 +35,27 @@ normalize_pbp_payload <- function(raw) {
   raw
 }
 
+# Both providers often leave gameFinished FALSE on a game that is over: in
+# 2026-27, games 405, 417, 424 and 651 end with the fourth period's
+# end-of-quarter and no end-of-game marker. Such a feed counts as finished
+# when its last period marker closes the fourth period or an overtime and the
+# schedule's final score is not a tie (a tie after a period means overtime
+# follows). validate_pbp_source() then still requires the feed's scoring to
+# equal that schedule score.
+pbp_feed_closed <- function(actions, expected) {
+  if (is.null(expected) || !all(c('score_team1', 'score_team2') %in% names(expected)) ||
+      !isTRUE(expected$score_team1[1] != expected$score_team2[1])) {
+    return(FALSE)
+  }
+  kind <- tryCatch(actions$parameters$type, error = function(e) NULL)
+  if (!is.data.frame(actions) || is.null(kind) || length(kind) != nrow(actions)) return(FALSE)
+  marker <- which(actions$type %in% c('quarter', 'game'))
+  if (!length(marker)) return(FALSE)
+  last <- max(marker)
+  identical(kind[last], 'end-of-game') ||
+    (identical(kind[last], 'end-of-quarter') && isTRUE(as.integer(actions$quarter[last]) >= 4L))
+}
+
 validate_pbp_source <- function(raw, game_id, clean_fn, expected = NULL) {
   raw <- normalize_pbp_payload(raw)
   gi <- raw$result$gameInfo
@@ -45,7 +66,7 @@ validate_pbp_source <- function(raw, game_id, clean_fn, expected = NULL) {
   if (identical(raw$result$success, FALSE)) {
     stop('PBP provider reported an unsuccessful response', call. = FALSE)
   }
-  if (!isTRUE(as.logical(gi$gameFinished))) {
+  if (!isTRUE(as.logical(gi$gameFinished)) && !pbp_feed_closed(raw$result$actions, expected)) {
     stop('PBP game is not marked finished', call. = FALSE)
   }
   team_ids <- suppressWarnings(as.integer(c(gi$homeTeam$id, gi$awayTeam$id)))

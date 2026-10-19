@@ -141,3 +141,39 @@ test_that('real schedule IDs are mapped by season before validating game 414', {
   text <- paste(readLines(file.path('..', '..', '..', 'etl', 'etl_full.R'), warn = FALSE), collapse = '\n')
   expect_match(text, 'map_pbp_schedule_teams(sched_subset, pbp_team_dictionary)', fixed = TRUE)
 })
+
+# The provider's own shape for a game it never closed (405, 417, 424, 651):
+# gameFinished FALSE, period markers in the actions, the last one Q4's end.
+pbp_unclosed_fixture <- function(last_marker = 'end-of-quarter', last_quarter = 4L) {
+  raw <- pbp_source_fixture()
+  raw$result$gameInfo$gameFinished <- FALSE
+  actions <- raw$result$actions
+  actions$type <- c('shot', 'shot', 'shot', 'quarter', 'quarter')
+  actions$quarter[5] <- last_quarter
+  actions$parameters <- data.frame(type = c('jump-shot', 'lay-up', 'dunk', 'start-of-quarter', last_marker))
+  raw$result$actions <- actions
+  raw
+}
+
+test_that('a feed closed at the end of the fourth period counts as finished without the flag', {
+  env <- pbp_fallback_env()
+  expect_no_error(env$validate_pbp_source(pbp_unclosed_fixture(), 414L, pbp_mock_clean, pbp_expected_fixture()))
+  expect_no_error(env$validate_pbp_source(pbp_unclosed_fixture('end-of-game'), 414L, pbp_mock_clean, pbp_expected_fixture()))
+  expect_no_error(env$validate_pbp_source(pbp_unclosed_fixture(last_quarter = 5L), 414L, pbp_mock_clean, pbp_expected_fixture()))
+})
+
+test_that('an unflagged feed is still refused unless its last period is closed and the score settled', {
+  env <- pbp_fallback_env()
+  check <- function(raw, expected = pbp_expected_fixture()) {
+    expect_error(env$validate_pbp_source(raw, 414L, pbp_mock_clean, expected), 'not marked finished')
+  }
+  check(pbp_unclosed_fixture('start-of-quarter', 5L))        # overtime under way
+  check(pbp_unclosed_fixture(last_quarter = 3L))             # stopped after Q3
+  check(pbp_unclosed_fixture(), expected = NULL)             # no schedule row
+  tied <- pbp_expected_fixture(); tied$score_team1 <- 89L
+  check(pbp_unclosed_fixture(), expected = tied)             # tie: overtime follows
+  check(pbp_source_fixture() |> (\(r) { r$result$gameInfo$gameFinished <- FALSE; r })())  # no markers
+  late <- pbp_unclosed_fixture(); late$result$actions$team_score[1] <- 78
+  expect_error(env$validate_pbp_source(late, 414L, pbp_mock_clean, pbp_expected_fixture()),
+               'do not match schedule')                     # score still checked
+})
