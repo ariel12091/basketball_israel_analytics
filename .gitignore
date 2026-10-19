@@ -44,3 +44,12 @@ frontend-v2/server/tmp_*.R
 
 # Isolated video prototype environment
 .venv-video/
+
+# Generated / local-only (2026-10-19)
+video/intro/out/
+*.stackdump
+app/tests/testthat/_problems/
+app/tests/testthat/testthat-problems.rds
+*.egg-info/
+*.tsbuildinfo
+video_analysis/*.mp4
