@@ -113,7 +113,7 @@ test_that("Tab 11 tiebreaks its sort on game_id, like Tab 4", {
   euro <- paste(readLines(repo_file("R", "server_tab11_euro_gamelogs.R"), warn = FALSE),
                 collapse = "
 ")
-  isr <- paste(readLines(repo_file("R", "server_tab4.R"), warn = FALSE), collapse = "
+  isr <- paste(readLines(repo_file("R", "svc_game_logs.R"), warn = FALSE), collapse = "
 ")
 
   expect_true(grepl("arrange(desc(game_date), desc(round_number), game_id, team_name)",

@@ -6,6 +6,7 @@ library(DT)
 # Real pure helpers — single source of truth shared with the app (R/helpers.R).
 # Only the impure pieces (DB, caches, guards, chip builders) are stubbed below.
 source(repo_file("R", "helpers.R"), local = TRUE)
+source(repo_file("R", "svc_game_logs.R"), local = TRUE)
 
 DEFAULT_START <- as.Date("2024-10-01")
 DEFAULT_END <- as.Date("2025-07-01")
