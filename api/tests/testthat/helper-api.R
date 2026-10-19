@@ -19,10 +19,12 @@ source(file.path(api_test_root, "api", "R", "bootstrap.R"), local = TRUE)
 
 API_GL_FIXTURES <- file.path(api_test_root, "app", "tests", "goldens", "fixtures", "game_logs")
 
-# A fresh API environment on a replay connection.
-api_test_env <- function(dir = API_GL_FIXTURES) {
+# A fresh API environment on a replay connection (`strict` as in
+# golden_replay_conn()).
+api_test_env <- function(dir = API_GL_FIXTURES, strict = GOLDEN_STRICT_READERS) {
   env <- new.env(parent = globalenv())
-  suppressMessages(api_bootstrap(golden_replay_conn(dir), envir = env, root = api_test_root))
+  suppressMessages(api_bootstrap(golden_replay_conn(dir, strict = strict), envir = env,
+                                 root = api_test_root))
   env
 }
 
@@ -57,7 +59,7 @@ api_copy_fixtures <- function(from = API_GL_FIXTURES) {
 api_fixture_key_of <- function(call) {
   empty <- tempfile("api_empty_")
   dir.create(empty)
-  env <- api_test_env(empty)
+  env <- api_test_env(empty, strict = TRUE)
   msg <- tryCatch({
     call(env)
     ""

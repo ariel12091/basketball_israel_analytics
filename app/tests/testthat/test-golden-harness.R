@@ -34,7 +34,7 @@ test_that("replay returns a recorded frame", {
 test_that("replay miss is an error naming the query", {
   dir <- golden_tmp_dir()
   write_fixture(dir, recorded_sql, list(1L), data.frame(x = 1L))
-  con <- golden_replay_conn(dir)
+  con <- golden_replay_conn(dir, strict = TRUE)
   expect_error(
     DBI::dbGetQuery(con, recorded_sql, params = list(2L)),
     "golden replay miss: SELECT 1 AS x WHERE \\$1 = 1 key=[0-9a-f]{40}"
@@ -89,7 +89,7 @@ test_that("db_get_query goes through the replay connection", {
 test_that("a replay miss inside the server fails the run", {
   # The app catches query errors in observers and logs them, so a miss would
   # otherwise only blank a table. golden_run_server() fails on any miss.
-  con <- golden_replay_conn(golden_tmp_dir())
+  con <- golden_replay_conn(golden_tmp_dir(), strict = TRUE)
   env <- new.env()
   env$pg_pool <- con
   env$server <- function(input, output, session) {
@@ -256,4 +256,117 @@ test_that("the app's random defaults repeat across loads and leave the caller's 
                 character(1))
   expect_length(unique(ids), 1L)
   expect_identical(.Random.seed, before)
+})
+
+# ---------------- Strict replay is scoped to Game Logs ----------------
+# Ruling R9: only the queries Game Logs depends on must be recorded; any other
+# start-up query that misses answers with zero rows and a note.
+
+test_that("Home's default team is pinned, whatever the catalogue draws", {
+  env <- golden_app_env(golden_replay_conn(golden_tmp_dir()))
+  expect_identical(env$DEFAULT_HOME_TEAM_ID, GOLDEN_HOME_TEAM_ID)
+})
+
+test_that("strictness follows the issuing function and, for lookups, the season", {
+  strict <- GOLDEN_STRICT_READERS
+  expect_true(golden_query_is_strict(strict, list(2026L), stack = c("f", "gl_query_schedule")))
+  expect_true(golden_query_is_strict(strict, list(2031L), stack = "gl_query_lineup_ff"))
+  expect_true(golden_query_is_strict(strict, NULL, stack = "etl_last_success_db"))
+  expect_true(golden_query_is_strict(strict, list(2026L), stack = "fetch_gn_values"))
+  expect_true(golden_query_is_strict(strict, list("E", 2025L), stack = "euro_fetch_teams"))
+  # The same lookup for another season (the default season at start-up,
+  # which moves with DEFAULT_GAME_YEAR) is not a Game Logs query.
+  expect_false(golden_query_is_strict(strict, list(2027L), stack = "fetch_gn_values"))
+  expect_false(golden_query_is_strict(strict, list("E", 2026L), stack = "euro_fetch_teams"))
+  expect_false(golden_query_is_strict(strict, list(2026L), stack = c("hub_fetch", "db_get_query")))
+  expect_true(golden_query_is_strict(TRUE, NULL, stack = character(0)))
+  # Called as env$f() or pkg::f(), the function is still found.
+  f <- function() golden_stack_functions()
+  holder <- new.env()
+  holder$gl_query_schedule <- function() f()
+  expect_true("gl_query_schedule" %in% holder$gl_query_schedule())
+  expect_error(golden_replay_conn(golden_tmp_dir(), strict = FALSE), "strict must be")
+})
+
+test_that("a miss outside the strict set answers zero rows and is noted once", {
+  con <- golden_replay_conn(golden_tmp_dir())
+  expect_message(got <- DBI::dbGetQuery(con, "SELECT 6"), "golden replay note: .*SELECT 6")
+  expect_identical(got, data.frame())
+  expect_message(DBI::dbGetQuery(con, "SELECT 6"), NA)
+  expect_identical(golden_replay_notes(con), "SELECT 6")
+  expect_identical(golden_replay_misses(con), character(0))
+  # Inside the server it is not a failure either.
+  env <- new.env()
+  env$pg_pool <- con
+  env$server <- function(input, output, session) observe(DBI::dbGetQuery(con, "SELECT 7"))
+  expect_identical(
+    suppressMessages(golden_run_server(env, list(), function(session, output) "ran")), "ran"
+  )
+})
+
+test_that("a strict miss fails and names the re-record command", {
+  con <- golden_replay_conn(golden_tmp_dir())
+  gl_query_schedule <- function(gy) DBI::dbGetQuery(con, "SELECT 8 WHERE $1 = 1", params = list(gy))
+  expect_error(
+    gl_query_schedule(2026L),
+    "golden replay miss: SELECT 8 .*scripts/capture_goldens.R --tab game_logs --record"
+  )
+})
+
+# The committed Game Logs fixtures, copied so a test can delete some.
+gl_fixture_copy <- function() {
+  from <- repo_file("tests", "goldens", "fixtures", "game_logs")
+  to <- golden_tmp_dir()
+  file.copy(list.files(from, full.names = TRUE), to)
+  to
+}
+
+gl_replay_preset <- function(dir, name) {
+  source(repo_file("tests", "goldens", "presets", "game_logs.R"), local = TRUE)
+  preset <- GAME_LOGS_PRESETS[[name]]
+  env <- golden_app_env(golden_replay_conn(dir))
+  got <- suppressMessages(golden_run_server(
+    env, preset$inputs, golden_capture_dt(preset$slug, allow_none = isTRUE(preset$empty))
+  ))
+  list(got = got, golden = readRDS(repo_file("tests", "goldens", "out", "game_logs",
+                                             paste0(name, ".rds"))),
+       notes = golden_replay_notes(env$pg_pool))
+}
+
+test_that("goldens do not depend on start-up queries outside Game Logs", {
+  dir <- gl_fixture_copy()
+  idx <- utils::read.csv(file.path(dir, "index.csv"), colClasses = "character")
+  # Home, Tab 3, on/off, EuroLeague team ratings and lineups: start-up only.
+  other <- grepl(paste(
+    "home_dashboard_combined", "get_team_ratings_dynamic", "get_team_minutes_",
+    "onoff_default_mv", "team_game_ratings_mv", "get_team_ratings_pergame",
+    "unit_key", "DISTINCT ON \\(s\\.team_id\\)", "^WITH params AS",
+    "MAX\\(game_date\\)::date", "net_rtg",
+    sep = "|"), idx$statement)
+  # The shared lookups for the default season (2027 / EuroLeague 2026), which
+  # move with DEFAULT_GAME_YEAR.
+  other <- other |
+    (grepl("^SELECT DISTINCT gn FROM|full_rosters", idx$statement) & idx$params == "2027") |
+    (grepl("euroleague\\.final_schedule_mv", idx$statement) & idx$params == "E | 2026")
+  expect_gte(sum(other), 18L)
+  expect_true(all(file.remove(file.path(dir, paste0(idx$key[other], ".rds")))))
+  source(repo_file("tests", "goldens", "presets", "game_logs.R"), local = TRUE)
+  for (name in names(GAME_LOGS_PRESETS)) {
+    r <- gl_replay_preset(dir, name)
+    expect_identical(r$got, r$golden, info = name)
+    expect_gt(length(r$notes), 0L)
+  }
+})
+
+test_that("a missing Game Logs fixture still fails the golden", {
+  dir <- gl_fixture_copy()
+  idx <- utils::read.csv(file.path(dir, "index.csv"), colClasses = "character")
+  sched <- idx$key[idx$statement == "SELECT * FROM basketball_test.final_schedule_mv WHERE game_year = $1" &
+                     idx$params == "2026"]
+  expect_length(sched, 1L)
+  file.remove(file.path(dir, paste0(sched, ".rds")))
+  expect_error(
+    gl_replay_preset(dir, "il_summary_default"),
+    "golden replay: .*golden replay miss: .*final_schedule_mv.*--tab game_logs --record"
+  )
 })

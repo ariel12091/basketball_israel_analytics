@@ -5,8 +5,16 @@
 # Recording runs the app against the live database through
 # golden_record_conn(), which saves every query answer as a fixture; replay
 # runs the same app through golden_replay_conn(), which answers from those
-# fixtures only, so the app server runs offline and deterministically. A query
-# that was never recorded is an error, never an empty frame.
+# fixtures only, so the app server runs offline and deterministically.
+#
+# Strict replay covers only the queries Game Logs depends on
+# (GOLDEN_STRICT_READERS): one of those that was never recorded is an error.
+# Every golden replays the whole session start-up too -- Home, Tab 3, the
+# EuroLeague section -- and those queries change with DEFAULT_GAME_YEAR, the
+# team catalogue or any unrelated SQL edit. A miss outside the strict set is
+# answered with a zero-row frame and printed as a note, so such a change
+# needs no re-record. If a Game Logs dependency were wrongly left out, its
+# empty answer would change a golden, so the suite still fails closed.
 #
 # Sourced by golden tests and the capture script, deliberately not a
 # helper-*.R file, so the mock-based test suite never loads the real app.
@@ -31,6 +39,68 @@ golden_app_dir <- function() file.path(golden_repo_root(), "app")
 # Every source of the app and every server run uses this seed, so anything the
 # app draws at random is the same in recording and in replay.
 GOLDEN_SEED <- 20261019L
+
+# Home's default team, pinned: global.R draws it from the season's team
+# catalogue, so a catalogue sync would otherwise change which team Home asks
+# about. mod_team_hub.R reads DEFAULT_HOME_TEAM_ID when the server runs, so
+# setting it after sourcing is enough. "5" is the team the seeded draw gave
+# when the fixtures were recorded.
+GOLDEN_HOME_TEAM_ID <- "5"
+
+GOLDEN_RERECORD_HINT <- "re-record with: Rscript scripts/capture_goldens.R --tab game_logs --record"
+
+# The queries Game Logs depends on, named by the app function that issues
+# them (found on the call stack, so an edit to their SQL is a strict miss,
+# never a silent one). NULL: every call is strict. A character vector: only
+# calls whose params read as one of these strings (golden_params_text()) are
+# strict -- the shared reference lookups also run at start-up for the default
+# season, and only the seasons the Game Logs presets and API tests use
+# (Israeli 2026, EuroLeague "E" 2025) belong to Game Logs.
+GOLDEN_STRICT_READERS <- list(
+  # Season pulls (svc_game_logs.R, global_euro.R) and the scoreless-game list.
+  gl_query_schedule = NULL,
+  gl_query_lineup_totals = NULL,
+  gl_query_lineup_ff = NULL,
+  euro_fetch_game_log_rows = NULL,
+  fetch_scoreless_games = NULL,
+  # Data versions: cache keys of every season pull.
+  etl_last_success_db = NULL,
+  euro_data_version = NULL,
+  # Reference lookups the Game Logs tabs and the API reference endpoints call.
+  fetch_teams_min = "2026",
+  fetch_teams_distinct = "2026",
+  fetch_gn_values = "2026",
+  fetch_players_basic = "2026",
+  euro_fetch_seasons = "E",
+  euro_fetch_teams = "E | 2025",
+  euro_fetch_players_basic = "E | 2025",
+  euro_fetch_phases = "E | 2025",
+  euro_fetch_round_values = "E | 2025"
+)
+
+# Names of the functions on the current call stack (`f(...)`, `env$f(...)`
+# and `pkg::f(...)` all give "f").
+golden_stack_functions <- function() {
+  vapply(sys.calls(), function(cl) {
+    f <- cl[[1]]
+    if (is.symbol(f)) return(as.character(f))
+    if (is.call(f) && length(f) == 3L && is.symbol(f[[3]]) &&
+        as.character(f[[1]]) %in% c("$", "::", ":::")) {
+      return(as.character(f[[3]]))
+    }
+    ""
+  }, character(1))
+}
+
+# Whether a replay miss of this query must fail. `strict` is TRUE (every
+# query) or a GOLDEN_STRICT_READERS-shaped list.
+golden_query_is_strict <- function(strict, params, stack = golden_stack_functions()) {
+  if (isTRUE(strict)) return(TRUE)
+  hits <- intersect(stack, names(strict))
+  if (!length(hits)) return(FALSE)
+  ptxt <- golden_params_text(params)
+  any(vapply(hits, function(h) is.null(strict[[h]]) || ptxt %in% strict[[h]], logical(1)))
+}
 
 # Task-level feature coverage markers (`covers(...)`) live in the API tree.
 # Sourced here when present so app-side golden tests can call covers().
@@ -73,25 +143,37 @@ golden_fixture_path <- function(dir, key) file.path(dir, paste0(key, ".rds"))
 # pool::poolCheckout/poolReturn, which mod_team_hub.R calls on pg_pool directly.
 
 methods::setClass("GoldenReplayConnection", contains = "DBIConnection",
-                  slots = c(dir = "character", misses = "environment"))
+                  slots = c(dir = "character", misses = "environment", strict = "ANY"))
 methods::setClass("GoldenRecordConnection", contains = "DBIConnection",
                   slots = c(dir = "character", real = "ANY", log = "environment"))
 
-golden_replay_conn <- function(fixture_dir) {
+# `strict`: GOLDEN_STRICT_READERS (the default: only Game Logs queries must be
+# recorded) or TRUE (every query must be).
+golden_replay_conn <- function(fixture_dir, strict = GOLDEN_STRICT_READERS) {
   if (!dir.exists(fixture_dir)) stop("golden replay: no fixture directory ", fixture_dir)
+  if (!isTRUE(strict) && !(is.list(strict) && length(strict) && !is.null(names(strict)))) {
+    stop("golden replay: strict must be TRUE or a named list like GOLDEN_STRICT_READERS")
+  }
   misses <- new.env(parent = emptyenv())
   misses$labels <- character(0)
+  misses$notes <- character(0)
   methods::new("GoldenReplayConnection",
-               dir = normalizePath(fixture_dir, winslash = "/"), misses = misses)
+               dir = normalizePath(fixture_dir, winslash = "/"), misses = misses,
+               strict = strict)
 }
 
-# Misses since the last call, cleared on read. The app catches query errors in
-# observers and only logs them, so golden_run_server() checks this log too.
+# Strict misses since the last call, cleared on read. The app catches query
+# errors in observers and only logs them, so golden_run_server() checks this
+# log too.
 golden_replay_misses <- function(conn) {
   out <- conn@misses$labels
   conn@misses$labels <- character(0)
   out
 }
+
+# Misses outside the strict set, answered with zero rows; each distinct one is
+# printed once per connection when it first happens. Not cleared on read.
+golden_replay_notes <- function(conn) conn@misses$notes
 
 golden_record_conn <- function(real_con, fixture_dir) {
   dir.create(fixture_dir, recursive = TRUE, showWarnings = FALSE)
@@ -138,7 +220,16 @@ methods::setMethod("dbGetQuery", c("GoldenReplayConnection", "character"),
     key <- golden_query_key(statement, params)
     path <- golden_fixture_path(conn@dir, key)
     if (!file.exists(path)) {
-      msg <- sprintf("golden replay miss: %s key=%s", golden_query_label(statement), key)
+      label <- golden_query_label(statement)
+      if (!golden_query_is_strict(conn@strict, params)) {
+        if (!label %in% conn@misses$notes) {
+          conn@misses$notes <- c(conn@misses$notes, label)
+          message("golden replay note: unrecorded query outside the Game Logs set, ",
+                  "answered with zero rows: ", label)
+        }
+        return(data.frame())
+      }
+      msg <- sprintf("golden replay miss: %s key=%s (%s)", label, key, GOLDEN_RERECORD_HINT)
       conn@misses$labels <- c(conn@misses$labels, msg)
       stop(msg, call. = FALSE)
     }
@@ -214,6 +305,7 @@ golden_app_env <- function(conn) {
   rm("shinyApp", envir = env)
   if (!is.function(captured$server)) stop("golden harness: app.R did not call shinyApp(ui, server)")
   env$server <- captured$server
+  env$DEFAULT_HOME_TEAM_ID <- GOLDEN_HOME_TEAM_ID
 
   # Service-layer files app.R does not source yet.
   app_src <- paste(readLines(file.path(app_dir, "app.R"), warn = FALSE), collapse = "\n")
