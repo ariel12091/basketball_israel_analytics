@@ -123,4 +123,23 @@ test_that("the Shiny defaults match the descriptor", {
                c("schedule", "lineup_totals", "lineup_ff", "euro_rows", "scoreless"))
 })
 
+test_that("a blank end of the date range: open in Israel, no games in EuroLeague (D25)", {
+  covers("GL-02")
+  three <- data.frame(
+    game_id = 1:3, team_id = 1L,
+    game_date = as.Date(c("2025-10-01", "2025-11-01", "2025-12-01"))
+  )
+  base <- list(gn = svc_gl_env$resolve_gn_last_n_values("", "", ""))
+  half_open <- utils::modifyList(base, list(dates = as.Date(c("2025-10-15", NA))))
+  closed <- utils::modifyList(base, list(dates = as.Date(c("2025-10-15", "2025-11-15"))))
+
+  expect_identical(svc_gl_env$gl_filter_games(three, half_open, "il")$game_id, 2:3)
+  expect_identical(nrow(svc_gl_env$gl_filter_games(three, half_open, "euroleague")), 0L)
+  for (league in c("il", "euroleague")) {
+    expect_identical(svc_gl_env$gl_filter_games(three, closed, league)$game_id, 2L, info = league)
+    expect_identical(svc_gl_env$gl_filter_games(three, base, league)$game_id, 1:3, info = league)
+  }
+  expect_error(svc_gl_env$gl_filter_games(three, base, "nba"), "unknown league")
+})
+
 rm(svc_gl_env)

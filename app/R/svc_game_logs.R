@@ -227,14 +227,19 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
 # round and phase text), team_multi says whether the team filter is `p$teams`
 # (several) or `p$team` (one), type_values turns the stage filter into column
 # values, and has_shots / has_stat_filters say what the league's display
-# frame offers. Nothing else about a game log differs between the leagues.
+# frame offers. date_na is what a blank end of the date range does: "open"
+# lifts that bound, "match_none" shows no games -- a kept difference,
+# deviation register D25. Nothing else about a game log differs between the
+# leagues.
 GL_LEAGUE <- list(
   il = list(round_col = "gn", type_col = "game_type", team_multi = FALSE,
             has_shots = TRUE, has_stat_filters = TRUE,
-            type_values = function(x) game_type_filter_values(x)),
+            type_values = function(x) game_type_filter_values(x),
+            date_na = "open"),
   euroleague = list(round_col = "round_number", type_col = "phase", team_multi = TRUE,
                     has_shots = FALSE, has_stat_filters = FALSE,
-                    type_values = function(x) x[nzchar(x)])
+                    type_values = function(x) x[nzchar(x)],
+                    date_na = "match_none")
 )
 
 # Game rows that pass the Game Logs filters, for either league: the Israeli
@@ -242,8 +247,9 @@ GL_LEAGUE <- list(
 # svc_game_logs() parameter list; this reads team / teams, dates, game_type /
 # phase, opponents, home_away, outcome and gn (resolve_gn_last_n_values()).
 gl_filter_games <- function(df, p, league) {
+  lg <- GL_LEAGUE[[league %||% ""]]
+  if (is.null(lg)) stop("gl_filter_games: unknown league ", league, call. = FALSE)
   if (is.null(df) || !nrow(df)) return(df)
-  lg <- GL_LEAGUE[[league]]
   gp <- p$gn
 
   # Last N counts each team's whole season, as the SQL readers'
@@ -271,11 +277,18 @@ gl_filter_games <- function(df, p, league) {
     df <- df %>% filter(team_id %in% !!team_ids)
   }
 
-  # Date filter; either end may be open.
-  start_d <- p$dates[1]
-  end_d <- p$dates[2]
-  if (!is.null(start_d) && !is.na(start_d)) df <- df %>% filter(game_date >= !!as.Date(start_d))
-  if (!is.null(end_d) && !is.na(end_d)) df <- df %>% filter(game_date <= !!as.Date(end_d))
+  # Date filter. "open": a blank (NA) end lifts that bound. "match_none": a
+  # two-ended range is applied as given, so a blank end matches no game (D25).
+  if (identical(lg$date_na, "match_none")) {
+    if (length(p$dates) == 2L) {
+      df <- df %>% filter(game_date >= !!as.Date(p$dates[1]), game_date <= !!as.Date(p$dates[2]))
+    }
+  } else {
+    start_d <- p$dates[1]
+    end_d <- p$dates[2]
+    if (!is.null(start_d) && !is.na(start_d)) df <- df %>% filter(game_date >= !!as.Date(start_d))
+    if (!is.null(end_d) && !is.na(end_d)) df <- df %>% filter(game_date <= !!as.Date(end_d))
+  }
 
   # Game type (Israeli) / phase (EuroLeague) filter
   type_sel <- p[[lg$type_col]]
@@ -571,7 +584,9 @@ gl_el_rows <- function(p, readers) {
 # Game Logs for either league: one row per team-game that passes the filters,
 # percentiles ranked against the season's whole population.
 #
-# `p` -- the shape svc_game_logs_params() (Task 8) must return:
+# `p` -- the shape svc_game_logs_params() (Task 8) must return. That function
+# validates every field (league, view, ids, dates, ...); the service does not,
+# beyond stopping on an unknown league or view.
 #   league        "il" | "euroleague" (a GL_LEAGUE name)
 #   competition   EuroLeague competition code ("E", "U"); NULL for il
 #   season        il: game_year (season-ending year, integer); euroleague:
@@ -591,6 +606,11 @@ gl_el_rows <- function(p, readers) {
 #                 (round_number bounds for euroleague)
 #   stat_filters  list of list(col, op = "ge" | "le", value); il only
 #   data_version  the league's ETL version, a cache key only
+#
+# `readers` -- a list of season pulls, each called as:
+#   schedule(season, data_version), lineup_totals(season, data_version),
+#   lineup_ff(season, data_version), euro_rows(competition, season,
+#   data_version), scoreless(data_version).
 #
 # Returns list(rows, meta). `rows` is the frame Shiny's renderer selects its
 # columns from (NULL when nothing matches); `meta` echoes `p` and gives the
