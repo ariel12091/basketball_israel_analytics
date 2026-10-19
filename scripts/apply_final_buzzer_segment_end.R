@@ -4,7 +4,7 @@
 setwd("C:/Users/ariel/documents/on_off_israel_pbp")
 suppressPackageStartupMessages({library(DBI); library(RPostgres)})
 readRenviron("etl/.Renviron")
-S <- "C:/Users/ariel/AppData/Local/Temp/claude/C--Users-ariel-documents-on-off-israel-pbp/01e97782-7366-4d11-bca0-80d328f436bc/scratchpad"
+S <- tempdir()  # before/after snapshots
 con <- dbConnect(Postgres(), host = Sys.getenv("PG_HOST"), port = 5432L, dbname = Sys.getenv("PG_DB"),
   user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"), sslmode = "require",
   bigint = "numeric", connect_timeout = 15L)
