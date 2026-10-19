@@ -44,3 +44,7 @@ frontend-v2/server/tmp_*.R
 
 # Isolated video prototype environment
 .venv-video/
+
+# testthat failure snapshots
+app/tests/testthat/_problems/
+app/tests/testthat/testthat-problems.rds
