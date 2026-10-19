@@ -216,22 +216,9 @@ res$ok <- res$match == "both" & !is.na(res$diff) &
   abs(res$diff) <= ifelse(res$stat == "minutes", 0.06, 0) + 1e-9
 res$scope <- ifelse(res$match != "both", "player", ifelse(res$stat == "minutes", "minutes", "counts"))
 
-# Known finding (2026-10-18): the last period's floor time ends at the game's
-# last recorded event, not at the final buzzer, so the seconds that run off
-# after it are not counted. A player on the floor at the end can therefore be
-# short by up to that many seconds, never over.
-buzzer <- dbGetQuery(con, "
-  SELECT game_id, 2400 + 300 * GREATEST(MAX(quarter) - 4, 0) - MAX(segment_end_elapsed_seconds) AS lost_s
-  FROM basketball_test.df_pts_poss_lineups_longer_mv
-  WHERE game_id = ANY($1::int4[]) GROUP BY game_id",
-  params = list(paste0("{", paste(unique(games$game_id), collapse = ","), "}")))
-res$buzzer_lost_s <- buzzer$lost_s[match(res$game_id, buzzer$game_id)]
-res$buzzer <- !res$ok & res$stat == "minutes" & res$match == "both" & !is.na(res$diff) &
-  res$diff <= 0.06 & res$diff >= -(pmax(res$buzzer_lost_s, 0) / 60 + 0.06)
-
 exc_key <- paste(KNOWN_EXCEPTIONS$game_id, KNOWN_EXCEPTIONS$scope)
 res$feed_gap <- !res$ok & res$scope == "counts" & res$game_id %in% feed_gap_games
-res$known <- !res$ok & (res$buzzer | res$feed_gap | paste(res$game_id, res$scope) %in% exc_key)
+res$known <- !res$ok & (res$feed_gap | paste(res$game_id, res$scope) %in% exc_key)
 games_df <- do.call(rbind, game_log)
 
 out_csv <- file.path(out_dir, sprintf("boxscore_compare_%d.csv", game_year))
@@ -253,8 +240,7 @@ cat(sprintf("\nSeason %d: %d games. Box source: %s. No reconciling box: %d game(
 ids <- unique(res[, c("game_id", "team_id", "player_id", "match")])
 cat(sprintf("Player-games: %d in both, %d only in the box score, %d only in the app\n",
             sum(ids$match == "both"), sum(ids$match == "box_only"), sum(ids$match == "app_only")))
-cat(sprintf("(minutes: within 0.06 min = exact; short by no more than the game's uncounted final-buzzer seconds = known, %d player-games; every other stat exact)\n\n",
-            sum(res$buzzer)))
+cat("(minutes: within 0.06 min = exact; every other stat exact)\n\n")
 print(summary_df, row.names = FALSE)
 
 bad <- res[!res$ok & !res$known, ]

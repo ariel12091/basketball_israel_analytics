@@ -29,6 +29,18 @@ test_that("canonical segment timing preserves raw clocks and uses lineup boundar
   expect_true(grepl("max(ao.event_elapsed_seconds) OVER", migration_sql, fixed = TRUE))
   expect_true(grepl("lead(ss.segment_start_elapsed_seconds)", helper_sql, fixed = TRUE))
   expect_true(grepl("segment_seconds", base_sql, fixed = TRUE))
+  # The last segment runs to the final period's buzzer, not to the last
+  # event, in the incremental function and the full rebuild alike.
+  buzzer <- paste(
+    "WHEN max(quarter) >= 4 THEN greatest(",
+    "          max(timeline_elapsed_seconds),",
+    "          2400 + 300 * (max(quarter) - 4)",
+    sep = "\n"
+  )
+  expect_true(grepl(buzzer, helper_sql, fixed = TRUE))
+  expect_true(grepl(buzzer, base_sql, fixed = TRUE))
+  expect_true(grepl("max(d.quarter)::int AS quarter", helper_sql, fixed = TRUE))
+  expect_true(grepl("max(d.quarter)::int AS quarter", base_sql, fixed = TRUE))
   expect_false(grepl("UPDATE basketball_test.actions_clean", helper_sql, fixed = TRUE))
   expect_false(grepl("UPDATE basketball_test.possessions", helper_sql, fixed = TRUE))
 })
@@ -62,6 +74,7 @@ test_that("data-quality report covers source clocks and canonical durations", {
   expect_true(grepl("AA_material_clock_order_anomalies", dq_r, fixed = TRUE))
   expect_true(grepl("AD_clutch_clock_exposure", dq_r, fixed = TRUE))
   expect_true(grepl("AH_canonical_segment_timing", dq_r, fixed = TRUE))
+  expect_true(grepl("2400 + 300 * (max(quarter) - 4)", dq_r, fixed = TRUE))
   expect_true(grepl("AI_team_game_minute_mirror", dq_r, fixed = TRUE))
 })
 

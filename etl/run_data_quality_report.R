@@ -2672,7 +2672,7 @@ build_checks <- function(con, schema) {
       id = "AH_canonical_segment_timing",
       title = "Canonical segment timing is complete and conserves game coverage",
       severity = "error",
-      purpose = "Requires canonical event/segment clocks on every persisted segment row, one nonnegative duration per segment, and team segment totals within five seconds of the retained game timeline.",
+      purpose = "Requires canonical event/segment clocks on every persisted segment row, one nonnegative duration per segment, and team segment totals within five seconds of the game timeline (the final period's buzzer once the feed reaches the fourth period, otherwise the last event).",
       required_tables = c("df_pts_poss_lineups_longer_mv"),
       problem_count_col = "affected_rows",
       sql = sprintf(
@@ -2690,7 +2690,15 @@ build_checks <- function(con, schema) {
                    OR segment_seconds IS NULL
                  )
              )::bigint AS missing_timing_rows,
-             max(event_elapsed_seconds)::numeric AS game_end_elapsed_seconds
+             -- Same end as refresh_segment_clock_fields_for_games(): a feed
+             -- that reaches the fourth period or an overtime ends at its buzzer.
+             CASE
+               WHEN max(quarter) >= 4 THEN greatest(
+                 max(event_elapsed_seconds),
+                 2400 + 300 * (max(quarter) - 4)
+               )
+               ELSE max(event_elapsed_seconds)
+             END::numeric AS game_end_elapsed_seconds
            FROM %s
            GROUP BY game_id, team_id
          ),

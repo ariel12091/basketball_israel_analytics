@@ -141,6 +141,7 @@ WITH action_grain AS (
       d.id,
       max(d.lineup_hash) AS lineup_hash,
       max(d.segment_id)::int AS segment_id,
+      max(d.quarter)::int AS quarter,
       max(
         CASE
           WHEN d.quarter BETWEEN 1 AND 4
@@ -205,7 +206,17 @@ game_ends AS (
     SELECT
       game_id,
       team_id,
-      max(timeline_elapsed_seconds)::numeric AS game_end_elapsed_seconds
+      -- A feed that reaches the fourth period or an overtime ends at that
+      -- period's buzzer: the clock runs out with the last lineup on the
+      -- floor, so the final segment keeps the seconds after the last event.
+      -- A feed that stops earlier keeps its last event as the end.
+      CASE
+        WHEN max(quarter) >= 4 THEN greatest(
+          max(timeline_elapsed_seconds),
+          2400 + 300 * (max(quarter) - 4)
+        )
+        ELSE max(timeline_elapsed_seconds)
+      END::numeric AS game_end_elapsed_seconds
     FROM ordered_actions
     GROUP BY game_id, team_id
 ),

@@ -40,7 +40,7 @@ For each `(game_id, team_id, lineup_hash, segment_id)`:
 
 1. The segment starts at the monotonic elapsed time of its lowest action ID.
 2. It ends at the next segment's start.
-3. The final segment ends at the maximum monotonic elapsed time for that game/team.
+3. The final segment ends at the buzzer of the final period -- `2400 + 300 * (max(quarter) - 4)`, or the maximum monotonic elapsed time if that is later -- when the feed reaches the fourth period or an overtime. The clock runs out with that lineup on the floor, and a substitution would have been an event. When the feed stops before the fourth period (games 184 and 380), the final segment ends at the maximum monotonic elapsed time: that game is truncated and keeps partial time.
 4. `segment_seconds` is `GREATEST(end - start, 0)`.
 
 Consumers deduplicate at the full segment key and count the duration once. Possession, point, and shot statistics remain split by `type_lineup`.
@@ -54,6 +54,7 @@ Do not restore minute formulas based on raw clock extrema, `first()`/`last()` so
 - Normal ETL entry point: `refresh_df_pts_poss_lineups_longer_for_games()` calls the canonical refresh for touched games.
 - Existing-schema migration record: `sql/migrations/2026-07-21_canonical_segment_clock_minutes.sql`
 - Backward-clock correction migration: `sql/migrations/2026-09-12_monotonic_segment_clock_minutes.sql`
+- Final-buzzer correction (2026-10-19): the function above plus a recompute of every game; see the section below
 - Minute consumers: lineup, on/off, player traditional, team, and sub-lineup SQL definitions under `sql/functions/` and `sql/materialized_views/`
 - Data-quality checks: `etl/run_data_quality_report.R`, especially checks AA through AH
 - Contract tests: `app/tests/testthat/test-clock-minute-contracts.R`
@@ -72,3 +73,11 @@ The production `basketball_test` schema was backfilled and validated on 2026-07-
 - Impossible derived shot-clock values and source clock regressions are source-quality signals; they do not automatically imply missing possessions.
 - Clutch filters still use action-level source timing, so the data-quality report flags cases where bad ordering can change clutch membership.
 - Team metric offense/defense minute allocation semantics are separate from canonical total floor-time conservation.
+
+## Final-buzzer seconds (2026-10-19)
+
+Until 2026-10-19 the last segment ended at the game's last recorded event. When the clock ran out with nothing happening, those seconds were dropped: 864 of 950 team-games were short, about 10 s on average and 195 s in game 160 (its feed shows only clock ticks over the last 3:15, then `end-of-game`). Team and player minutes came out about 0.4% low and pace about 0.4% high. Found by `scripts/compare_official_boxscores.R` against the official box scores.
+
+After the change every one of the 946 team-games whose feed reaches the fourth period totals exactly 2400 s (+ 300 per overtime). Game 62511 moved from 2402 s to 2400 s. Games 184 and 380 stop in Q2 and Q3 and are unchanged.
+
+Games 140 and 143 were stored from a feed that stopped about 50 s early with points missing; the provider's feed now has those events. Their final ~50 s now go to the last stored lineup. Reloading them (`etl_full(game_ids = c(140, 143))`) replaces that with the real lineups.
