@@ -143,68 +143,15 @@ server_tab4 <- function(input, output, session, shared) {
     sched <- gl_schedule()
     req(nrow(sched) > 0)
 
-    df <- sched
-
-    # Last N counts each team's whole season, as the SQL readers'
-    # schedule_ranked CTE does, so it runs before every other filter: "home +
-    # last 5" is the home games among a team's last 5, not its last 5 home games.
-    gp <- gl_gn_params()
-    if (!is.na(gp$last_n)) {
-      df <- df %>%
-        group_by(team_id) %>%
-        arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-        mutate(rn_recent = row_number()) %>%
-        ungroup() %>%
-        filter(rn_recent <= gp$last_n) %>%
-        select(-rn_recent)
-    }
-
-    # Team filter (optional)
-    team_id_str <- input$gl_team
-    if (!is.null(team_id_str) && nzchar(team_id_str)) {
-      team_id_val <- as.integer(team_id_str)
-      df <- df %>% filter(team_id == !!team_id_val)
-    }
-
-    # Date filter
-    start_d <- input$gl_dates[1]
-    end_d <- input$gl_dates[2]
-    if (!is.null(start_d) && !is.na(start_d)) df <- df %>% filter(game_date >= !!as.Date(start_d))
-    if (!is.null(end_d) && !is.na(end_d)) df <- df %>% filter(game_date <= !!as.Date(end_d))
-
-    # Game type filter
-    gt <- input$gl_game_type
-    if (!is.null(gt) && length(gt) > 0 && any(nzchar(gt))) {
-      gt_vals <- game_type_filter_values(gt)
-      df <- df %>% filter(game_type %in% !!gt_vals)
-    }
-
-    # Opponent filter
-    opp_ids <- suppressWarnings(as.integer(input$gl_opponents))
-    opp_ids <- opp_ids[is.finite(opp_ids)]
-    if (length(opp_ids) > 0) {
-      df <- df %>% filter(opp_team_id %in% !!opp_ids)
-    }
-
-    # Home/Away filter
-    ha <- input$gl_home_away
-    if (!is.null(ha) && nzchar(ha)) {
-      if (ha == "home") df <- df %>% filter(is_home == TRUE)
-      else df <- df %>% filter(is_home == FALSE)
-    }
-
-    # Outcome filter
-    outcome <- input$gl_outcome
-    if (!is.null(outcome) && nzchar(outcome)) {
-      if (outcome == "win") df <- df %>% filter(has_won == TRUE)
-      else df <- df %>% filter(has_won == FALSE)
-    }
-
-    # GN filter
-    if (!is.na(gp$min_gn)) df <- df %>% filter(gn >= !!gp$min_gn)
-    if (!is.na(gp$max_gn)) df <- df %>% filter(gn <= !!gp$max_gn)
-
-    df
+    gl_filter_schedule(sched, list(
+      team = input$gl_team,
+      dates = input$gl_dates,
+      game_type = input$gl_game_type,
+      opponents = input$gl_opponents,
+      home_away = input$gl_home_away,
+      outcome = input$gl_outcome,
+      gn = gl_gn_params()
+    ))
   })
 
   # Percentile baseline: the season's whole game population, deliberately
@@ -219,15 +166,9 @@ server_tab4 <- function(input, output, session, shared) {
   })
 
   gl_starters_filter <- reactive({
-    off_mode <- input$gl_num_starters_off_mode %||% ""
-    def_mode <- input$gl_num_starters_def_mode %||% ""
-    off_val <- if (nzchar(off_mode) && nzchar(input$gl_num_starters_off %||% "")) as.integer(input$gl_num_starters_off) else NA_integer_
-    def_val <- if (nzchar(def_mode) && nzchar(input$gl_num_starters_def %||% "")) as.integer(input$gl_num_starters_def) else NA_integer_
-    list(
-      off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
-      off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
-      def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
-      def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+    gl_starters_bounds(
+      input$gl_num_starters_off_mode, input$gl_num_starters_off,
+      input$gl_num_starters_def_mode, input$gl_num_starters_def
     )
   })
 
@@ -344,18 +285,8 @@ server_tab4 <- function(input, output, session, shared) {
       shot_raw_cols <- c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a",
                          "def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
       has_shots <- all(c("off_fg2a", "off_fg3a") %in% names(df))
-      if (has_shots) {
-        df[["Off Shot"]] <- coalesce(df$off_fg2a, 0) + coalesce(df$off_fg3a, 0)
-        df[["Def Shot"]] <- coalesce(df$def_fg2a, 0) + coalesce(df$def_fg3a, 0)
-        df <- add_shot_split_metrics(df, list(
-          off = c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a"),
-          def = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
-        ))
-      }
-      df <- apply_stat_filters(df, gl_stat_filter_state$filters())
-      if (is.null(df) || nrow(df) == 0) return(NULL)
-
-      df <- attach_has_scores(df, fetch_scoreless_games(gl_data_version()))
+      df <- gl_summary_display(df, gl_stat_filter_state$filters(), fetch_scoreless_games(gl_data_version()))
+      if (is.null(df)) return(NULL)
       df <- add_ribbon_link_column(df, output_col = "gameflow", link_label = "View")
       disp <- df %>% select(
         gn, game_type_label, game_date, gameflow, team_name, opp_team_name, result, score_display,
@@ -430,14 +361,13 @@ server_tab4 <- function(input, output, session, shared) {
           "Def Shot" = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
         )
         SHOT_MIN_FGA <- 10L
+        shot_avgs <- gl_shot_averages(disp)
         for (disp_name in names(shot_col_map)) {
           cols <- shot_col_map[[disp_name]]
           target_idx <- which(names(disp) == disp_name) - 1
           is_def <- grepl("^Def", disp_name)
-          fg2a_sum <- sum(disp[[cols[2]]], na.rm = TRUE)
-          fg3a_sum <- sum(disp[[cols[4]]], na.rm = TRUE)
-          a2 <- if (fg2a_sum > 0) as.integer(round(sum(disp[[cols[1]]], na.rm = TRUE) / fg2a_sum * 100)) else 53L
-          a3 <- if (fg3a_sum > 0) as.integer(round(sum(disp[[cols[3]]], na.rm = TRUE) / fg3a_sum * 100)) else 34L
+          a2 <- shot_avgs[[if (is_def) "def" else "off"]][["fg2"]]
+          a3 <- shot_avgs[[if (is_def) "def" else "off"]][["fg3"]]
           if (length(target_idx) && all(cols %in% names(disp))) {
             shot_col_defs[[length(shot_col_defs) + 1]] <- list(
               targets = target_idx,
@@ -501,10 +431,8 @@ server_tab4 <- function(input, output, session, shared) {
       # ------- TEAMS FOUR FACTORS -------
       df <- gl_teams_ff()
       if (is.null(df) || nrow(df) == 0) return(NULL)
-      df <- apply_stat_filters(df, gl_stat_filter_state$filters())
-      if (is.null(df) || nrow(df) == 0) return(NULL)
-
-      df <- attach_has_scores(df, fetch_scoreless_games(gl_data_version()))
+      df <- gl_ff_display(df, gl_stat_filter_state$filters(), fetch_scoreless_games(gl_data_version()))
+      if (is.null(df)) return(NULL)
       df <- add_ribbon_link_column(df, output_col = "gameflow", link_label = "View")
       disp <- df %>% select(
         gn, game_type_label, game_date, gameflow, team_name, opp_team_name, result, score_display,

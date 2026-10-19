@@ -1168,12 +1168,16 @@ test_that("both Tab 4 modes attach has_scores immediately before building the li
   # Regression guard for Ruling 2: a gate wired into only one of the two Tab 4
   # view modes leaves a live path that still links a scoreless game.
   src <- readLines(testthat::test_path("..", "..", "R", "server_tab4.R"), warn = FALSE)
-  attach_lines <- grep("attach_has_scores(df, fetch_scoreless_games(gl_data_version()))",
+  # The attach itself lives in gl_summary_display() / gl_ff_display()
+  # (svc_game_logs.R); each Tab 4 mode must call it right before the link.
+  attach_lines <- grep("_display(df, gl_stat_filter_state$filters(), fetch_scoreless_games(gl_data_version()))",
                        src, fixed = TRUE)
   add_lines <- grep("^[[:space:]]*df <- add_ribbon_link_column", src)
   expect_length(attach_lines, 2)
   expect_length(add_lines, 2)
   for (al in add_lines) expect_true(any(attach_lines < al & attach_lines >= al - 5))
+  svc <- readLines(testthat::test_path("..", "..", "R", "svc_game_logs.R"), warn = FALSE)
+  expect_length(grep("attach_has_scores(df, scoreless)", svc, fixed = TRUE), 2)
 })
 
 test_that("Tab 11 passes an empty scoreless set instead of a second query", {

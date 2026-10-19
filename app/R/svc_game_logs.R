@@ -221,3 +221,127 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
   display_df %>% left_join(rank_df %>% select(game_id, team_id, all_of(pr_cols)), by = c("game_id", "team_id"))
 }
 
+
+# Schedule rows that pass the Game Logs filters. `f` carries the filter values:
+# team (character or ""), dates (length-2 Date or NULL), game_type, opponents,
+# home_away, outcome, and gn (the resolve_gn_last_n_params() list).
+gl_filter_schedule <- function(sched, f) {
+  df <- sched
+
+  # Last N counts each team's whole season, as the SQL readers'
+  # schedule_ranked CTE does, so it runs before every other filter: "home +
+  # last 5" is the home games among a team's last 5, not its last 5 home games.
+  gp <- f$gn
+  if (!is.na(gp$last_n)) {
+    df <- df %>%
+      group_by(team_id) %>%
+      arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
+      mutate(rn_recent = row_number()) %>%
+      ungroup() %>%
+      filter(rn_recent <= gp$last_n) %>%
+      select(-rn_recent)
+  }
+
+  # Team filter (optional)
+  team_id_str <- f$team
+  if (!is.null(team_id_str) && nzchar(team_id_str)) {
+    team_id_val <- as.integer(team_id_str)
+    df <- df %>% filter(team_id == !!team_id_val)
+  }
+
+  # Date filter
+  start_d <- f$dates[1]
+  end_d <- f$dates[2]
+  if (!is.null(start_d) && !is.na(start_d)) df <- df %>% filter(game_date >= !!as.Date(start_d))
+  if (!is.null(end_d) && !is.na(end_d)) df <- df %>% filter(game_date <= !!as.Date(end_d))
+
+  # Game type filter
+  gt <- f$game_type
+  if (!is.null(gt) && length(gt) > 0 && any(nzchar(gt))) {
+    gt_vals <- game_type_filter_values(gt)
+    df <- df %>% filter(game_type %in% !!gt_vals)
+  }
+
+  # Opponent filter
+  opp_ids <- suppressWarnings(as.integer(f$opponents))
+  opp_ids <- opp_ids[is.finite(opp_ids)]
+  if (length(opp_ids) > 0) {
+    df <- df %>% filter(opp_team_id %in% !!opp_ids)
+  }
+
+  # Home/Away filter
+  ha <- f$home_away
+  if (!is.null(ha) && nzchar(ha)) {
+    if (ha == "home") df <- df %>% filter(is_home == TRUE)
+    else df <- df %>% filter(is_home == FALSE)
+  }
+
+  # Outcome filter
+  outcome <- f$outcome
+  if (!is.null(outcome) && nzchar(outcome)) {
+    if (outcome == "win") df <- df %>% filter(has_won == TRUE)
+    else df <- df %>% filter(has_won == FALSE)
+  }
+
+  # GN filter
+  if (!is.na(gp$min_gn)) df <- df %>% filter(gn >= !!gp$min_gn)
+  if (!is.na(gp$max_gn)) df <- df %>% filter(gn <= !!gp$max_gn)
+
+  df
+}
+
+# "At least / at most N starters" bounds for each side, from the raw control values.
+gl_starters_bounds <- function(off_mode, off_val, def_mode, def_val) {
+  off_mode <- off_mode %||% ""
+  def_mode <- def_mode %||% ""
+  off_val <- if (nzchar(off_mode) && nzchar(off_val %||% "")) as.integer(off_val) else NA_integer_
+  def_val <- if (nzchar(def_mode) && nzchar(def_val %||% "")) as.integer(def_val) else NA_integer_
+  list(
+    off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
+    off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
+    def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
+    def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+  )
+}
+
+# Summary display frame: shot totals and splits, the user's stat filters, and
+# the scoreless-game flag. `scoreless` is only evaluated when rows survive.
+gl_summary_display <- function(df, stat_filters, scoreless) {
+  has_shots <- all(c("off_fg2a", "off_fg3a") %in% names(df))
+  if (has_shots) {
+    df[["Off Shot"]] <- coalesce(df$off_fg2a, 0) + coalesce(df$off_fg3a, 0)
+    df[["Def Shot"]] <- coalesce(df$def_fg2a, 0) + coalesce(df$def_fg3a, 0)
+    df <- add_shot_split_metrics(df, list(
+      off = c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a"),
+      def = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
+    ))
+  }
+  df <- apply_stat_filters(df, stat_filters)
+  if (is.null(df) || nrow(df) == 0) return(NULL)
+
+  attach_has_scores(df, scoreless)
+}
+
+gl_ff_display <- function(df, stat_filters, scoreless) {
+  df <- apply_stat_filters(df, stat_filters)
+  if (is.null(df) || nrow(df) == 0) return(NULL)
+
+  attach_has_scores(df, scoreless)
+}
+
+# League 2PT/3PT accuracy (whole percent) over the displayed rows, per side;
+# the shot cells colour against it. 53/34 when a side has no attempts.
+gl_shot_averages <- function(disp) {
+  one_side <- function(cols) {
+    fg2a_sum <- sum(disp[[cols[2]]], na.rm = TRUE)
+    fg3a_sum <- sum(disp[[cols[4]]], na.rm = TRUE)
+    c(
+      fg2 = if (fg2a_sum > 0) as.integer(round(sum(disp[[cols[1]]], na.rm = TRUE) / fg2a_sum * 100)) else 53L,
+      fg3 = if (fg3a_sum > 0) as.integer(round(sum(disp[[cols[3]]], na.rm = TRUE) / fg3a_sum * 100)) else 34L
+    )
+  }
+  list(
+    off = one_side(c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a")),
+    def = one_side(c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a"))
+  )
+}
