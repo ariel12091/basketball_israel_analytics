@@ -33,10 +33,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
 
   season_rows <- reactive({
     req(identical(input$main_tabs, "euro_game_logs"))
-    cached_season_df(
-      list("euro_game_logs", competition(), season(), euro_data_version()),
-      function() euro_fetch_game_log_rows(competition(), season())
-    )
+    gl_default_readers()$euro_rows(competition(), season(), euro_data_version())
   })
 
   selected_team_ids <- reactive({
@@ -48,37 +45,28 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
   # but their percentiles stay anchored to the season's whole game population.
   # Team, date, opponent, phase, result, round, last-N, and starter filters
   # therefore cannot rescale the heat cells.
-  percentile_games <- reactive({
-    df <- season_rows()
-    if (is.null(df) || !nrow(df)) return(df)
-    gl_build_euro_games(df, apply_starters = FALSE)
-  })
+  percentile_games <- reactive(gl_el_baseline(season_rows()))
 
   filtered_games <- reactive({
     df <- season_rows()
     if (is.null(df) || !nrow(df)) return(df)
     f <- game_context_filter_values(input, "eurogl", game_type_id = "eurogl_phase")
-    # Last N counts each team's whole season, as the SQL readers'
-    # schedule_ranked CTE does, so it runs before every other filter.
-    gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
-    df <- gl_filter_euro_rows(df, list(
-      teams = selected_team_ids(), dates = input$eurogl_dates, phase = f$game_type,
-      opponents = f$opp_ids, home_away = f$home_away, outcome = f$outcome, gn = gn
-    ))
-
     starter_bounds <- resolve_starters_bounds(
       input$eurogl_num_starters_off_mode, input$eurogl_num_starters_off,
       input$eurogl_num_starters_def_mode, input$eurogl_num_starters_def
     )
-    games <- gl_build_euro_games(df, starters_bounds = list(
-      off_min = starter_bounds$num_starters_off_min,
-      off_max = starter_bounds$num_starters_off_max,
-      def_min = starter_bounds$num_starters_def_min,
-      def_max = starter_bounds$num_starters_def_max
-    ))
-    if (is.null(games) || !nrow(games)) return(games)
-
-    gl_attach_percentiles(games, percentile_games(), GL_EURO_PERCENTILE_METRICS)
+    # The filter and starters fields of svc_game_logs()'s `p`.
+    gl_el_games(df, list(
+      teams = selected_team_ids(), dates = input$eurogl_dates, phase = f$game_type,
+      opponents = f$opp_ids, home_away = f$home_away, outcome = f$outcome,
+      gn = resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n),
+      starters = list(
+        off_min = starter_bounds$num_starters_off_min,
+        off_max = starter_bounds$num_starters_off_max,
+        def_min = starter_bounds$num_starters_def_min,
+        def_max = starter_bounds$num_starters_def_max
+      )
+    ), percentile_games)
   })
 
   output$eurogl_table <- renderDT({

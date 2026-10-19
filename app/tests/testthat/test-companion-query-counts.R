@@ -194,9 +194,12 @@ make_euro_query_test_env <- function() {
     identical(e[[2]], as.name("euro_fetch_game_log_rows")),
     parse(repo_file("R", "global_euro.R"), keep.source = FALSE))
   for (e in reader_defs) eval(e, envir = env)
-  # gl_build_euro_games calls euro_phase_label(): rebind it to see this env's stub.
-  env$gl_build_euro_games <- get("gl_build_euro_games", envir = env)
-  environment(env$gl_build_euro_games) <- env
+  # The Game Logs service's EuroLeague path calls euro_phase_label() and
+  # euro_fetch_game_log_rows(): rebind them to see this env's copies.
+  for (fn in c("gl_build_euro_games", "gl_el_games", "gl_el_baseline", "gl_default_readers")) {
+    env[[fn]] <- get(fn, envir = env)
+    environment(env[[fn]]) <- env
+  }
   sys.source(repo_file("R", "server_tab11_euro_gamelogs.R"), envir = env)
   env
 }

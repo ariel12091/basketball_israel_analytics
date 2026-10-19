@@ -133,9 +133,7 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$game_year)
     req(gy_int)
-    db_get_query(pg_pool,
-      "SELECT * FROM basketball_test.final_schedule_mv WHERE game_year = $1",
-      params = list(gy_int))
+    gl_query_schedule(gy_int)
   }) %>% bindEvent(input$game_year, input$main_tabs)
 
   # --- Filtered schedule rows (team is optional) ---
@@ -143,7 +141,8 @@ server_tab4 <- function(input, output, session, shared) {
     sched <- gl_schedule()
     req(nrow(sched) > 0)
 
-    gl_filter_schedule(sched, list(
+    # The filter fields of svc_game_logs()'s `p`.
+    gl_filter_games(sched, list(
       team = input$gl_team,
       dates = input$gl_dates,
       game_type = input$gl_game_type,
@@ -151,7 +150,7 @@ server_tab4 <- function(input, output, session, shared) {
       home_away = input$gl_home_away,
       outcome = input$gl_outcome,
       gn = gl_gn_params()
-    ))
+    ), "il")
   })
 
   # Percentile baseline: the season's whole game population, deliberately
@@ -177,14 +176,7 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$game_year)
     req(gy_int)
-    db_get_query(
-      pg_pool,
-      "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
-              total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, minutes, num_starters
-       FROM basketball_test.mv_lineup_totals_by_day
-       WHERE game_year = $1",
-      params = list(gy_int)
-    )
+    gl_query_lineup_totals(gy_int)
   }) %>%
     bindCache(as.integer(input$game_year), gl_data_version(), cache = GL_DATA_CACHE) %>%
     bindEvent(input$game_year, input$main_tabs, gl_data_version())
@@ -194,16 +186,7 @@ server_tab4 <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "game_logs"))
     gy_int <- as.integer(input$game_year)
     req(gy_int)
-    db_get_query(
-      pg_pool,
-      "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
-              total_points, total_poss, ts_poss_count, oreb_count,
-              oreb_opportunities, tov_count, total_ft_attempts, total_fga,
-              total_fgm, total_fg3_made, minutes, num_starters
-       FROM basketball_test.lineup_four_factors_by_game
-       WHERE game_year = $1",
-      params = list(gy_int)
-    )
+    gl_query_lineup_ff(gy_int)
   }) %>%
     bindCache(as.integer(input$game_year), gl_data_version(), cache = GL_DATA_CACHE) %>%
     bindEvent(input$game_year, input$main_tabs, gl_data_version())
@@ -212,61 +195,28 @@ server_tab4 <- function(input, output, session, shared) {
   # TEAMS SUMMARY
   # ============================================================
   gl_teams_summary_baseline <- reactive({
-    gl_build_summary_metrics(
-      lineup_totals_df = gl_lineup_totals(),
-      schedule_df = gl_percentile_schedule(),
-      apply_starters = FALSE
-    )
+    gl_il_baseline("summary", gl_lineup_totals(), gl_percentile_schedule())
   })
 
   gl_teams_summary <- reactive({
     sched <- gl_filtered_schedule()
     req(nrow(sched) > 0)
-    display_metrics <- gl_build_summary_metrics(
-      lineup_totals_df = gl_lineup_totals(),
-      schedule_df = sched,
-      starters_bounds = gl_starters_filter()
-    )
-    if (is.null(display_metrics) || !nrow(display_metrics)) return(NULL)
-
-    gl_join_schedule_info(
-      gl_attach_percentiles(display_metrics, gl_teams_summary_baseline(), c("off_ppp", "def_ppp")),
-      sched
-    )
+    gl_il_games("summary", gl_lineup_totals(), sched, gl_starters_filter(),
+                gl_teams_summary_baseline)
   })
 
   # ============================================================
   # TEAMS FOUR FACTORS
   # ============================================================
   gl_teams_ff_baseline <- reactive({
-    gl_build_ff_metrics(
-      lineup_ff_df = gl_lineup_ff(),
-      schedule_df = gl_percentile_schedule(),
-      apply_starters = FALSE
-    )
+    gl_il_baseline("four_factors", gl_lineup_ff(), gl_percentile_schedule())
   })
 
   gl_teams_ff <- reactive({
     sched <- gl_filtered_schedule()
     req(nrow(sched) > 0)
-    display_metrics <- gl_build_ff_metrics(
-      lineup_ff_df = gl_lineup_ff(),
-      schedule_df = sched,
-      starters_bounds = gl_starters_filter()
-    )
-    if (is.null(display_metrics) || !nrow(display_metrics)) return(NULL)
-
-    gl_join_schedule_info(
-      gl_attach_percentiles(
-        display_metrics,
-        gl_teams_ff_baseline(),
-        c(
-          "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
-          "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
-        )
-      ),
-      sched
-    )
+    gl_il_games("four_factors", gl_lineup_ff(), sched, gl_starters_filter(),
+                gl_teams_ff_baseline)
   })
 
   # ============================================================

@@ -222,70 +222,82 @@ gl_attach_percentiles <- function(display_df, baseline_df, metric_names) {
 }
 
 
-# Schedule rows that pass the Game Logs filters. `f` carries the filter values:
-# team (character or ""), dates (length-2 Date or NULL), game_type, opponents,
-# home_away, outcome, and gn (the resolve_gn_last_n_params() list).
-gl_filter_schedule <- function(sched, f) {
-  df <- sched
+# The league dimension of Game Logs. round_col and type_col name the round and
+# stage columns (Israeli schedule game number and game-type code, EuroLeague
+# round and phase text), team_multi says whether the team filter is `p$teams`
+# (several) or `p$team` (one), type_values turns the stage filter into column
+# values, and has_shots / has_stat_filters say what the league's display
+# frame offers. Nothing else about a game log differs between the leagues.
+GL_LEAGUE <- list(
+  il = list(round_col = "gn", type_col = "game_type", team_multi = FALSE,
+            has_shots = TRUE, has_stat_filters = TRUE,
+            type_values = function(x) game_type_filter_values(x)),
+  euroleague = list(round_col = "round_number", type_col = "phase", team_multi = TRUE,
+                    has_shots = FALSE, has_stat_filters = FALSE,
+                    type_values = function(x) x[nzchar(x)])
+)
+
+# Game rows that pass the Game Logs filters, for either league: the Israeli
+# schedule (one row per team-game) or EuroLeague's game-log rows. `p` is the
+# svc_game_logs() parameter list; this reads team / teams, dates, game_type /
+# phase, opponents, home_away, outcome and gn (resolve_gn_last_n_values()).
+gl_filter_games <- function(df, p, league) {
+  if (is.null(df) || !nrow(df)) return(df)
+  lg <- GL_LEAGUE[[league]]
+  gp <- p$gn
 
   # Last N counts each team's whole season, as the SQL readers'
   # schedule_ranked CTE does, so it runs before every other filter: "home +
   # last 5" is the home games among a team's last 5, not its last 5 home games.
-  gp <- f$gn
+  # Known defect, deviation register D24: it counts ROWS. EuroLeague's rows
+  # are split by starters, so there it keeps a team's last N starter-split
+  # rows of team_four_factors_by_game, not its last N games.
   if (!is.na(gp$last_n)) {
     df <- df %>%
       group_by(team_id) %>%
       arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
       mutate(rn_recent = row_number()) %>%
       ungroup() %>%
-      filter(rn_recent <= gp$last_n) %>%
+      filter(rn_recent <= !!gp$last_n) %>%
       select(-rn_recent)
   }
 
-  # Team filter (optional)
-  team_id_str <- f$team
-  if (!is.null(team_id_str) && nzchar(team_id_str)) {
-    team_id_val <- as.integer(team_id_str)
-    df <- df %>% filter(team_id == !!team_id_val)
+  # Team filter (optional). A non-blank value that is not an id matches
+  # nothing rather than lifting the filter.
+  teams <- as.character(if (isTRUE(lg$team_multi)) p$teams else p$team)
+  teams <- teams[nzchar(teams)]
+  if (length(teams)) {
+    team_ids <- suppressWarnings(as.numeric(teams))
+    df <- df %>% filter(team_id %in% !!team_ids)
   }
 
-  # Date filter
-  start_d <- f$dates[1]
-  end_d <- f$dates[2]
+  # Date filter; either end may be open.
+  start_d <- p$dates[1]
+  end_d <- p$dates[2]
   if (!is.null(start_d) && !is.na(start_d)) df <- df %>% filter(game_date >= !!as.Date(start_d))
   if (!is.null(end_d) && !is.na(end_d)) df <- df %>% filter(game_date <= !!as.Date(end_d))
 
-  # Game type filter
-  gt <- f$game_type
-  if (!is.null(gt) && length(gt) > 0 && any(nzchar(gt))) {
-    gt_vals <- game_type_filter_values(gt)
-    df <- df %>% filter(game_type %in% !!gt_vals)
+  # Game type (Israeli) / phase (EuroLeague) filter
+  type_sel <- p[[lg$type_col]]
+  if (!is.null(type_sel) && length(type_sel) > 0 && any(nzchar(type_sel))) {
+    type_vals <- lg$type_values(type_sel)
+    df <- df %>% filter(.data[[lg$type_col]] %in% !!type_vals)
   }
 
   # Opponent filter
-  opp_ids <- suppressWarnings(as.integer(f$opponents))
+  opp_ids <- suppressWarnings(as.numeric(p$opponents))
   opp_ids <- opp_ids[is.finite(opp_ids)]
-  if (length(opp_ids) > 0) {
-    df <- df %>% filter(opp_team_id %in% !!opp_ids)
-  }
+  if (length(opp_ids) > 0) df <- df %>% filter(opp_team_id %in% !!opp_ids)
 
-  # Home/Away filter
-  ha <- f$home_away
-  if (!is.null(ha) && nzchar(ha)) {
-    if (ha == "home") df <- df %>% filter(is_home == TRUE)
-    else df <- df %>% filter(is_home == FALSE)
-  }
+  # Home/Away and outcome filters
+  ha <- p$home_away %||% ""
+  if (nzchar(ha)) df <- df %>% filter(is_home == !!identical(ha, "home"))
+  outcome <- p$outcome %||% ""
+  if (nzchar(outcome)) df <- df %>% filter(has_won == !!identical(outcome, "win"))
 
-  # Outcome filter
-  outcome <- f$outcome
-  if (!is.null(outcome) && nzchar(outcome)) {
-    if (outcome == "win") df <- df %>% filter(has_won == TRUE)
-    else df <- df %>% filter(has_won == FALSE)
-  }
-
-  # GN filter
-  if (!is.na(gp$min_gn)) df <- df %>% filter(gn >= !!gp$min_gn)
-  if (!is.na(gp$max_gn)) df <- df %>% filter(gn <= !!gp$max_gn)
+  # Round filter (Israeli GN, EuroLeague round)
+  if (!is.na(gp$min_gn)) df <- df %>% filter(.data[[lg$round_col]] >= !!gp$min_gn)
+  if (!is.na(gp$max_gn)) df <- df %>% filter(.data[[lg$round_col]] <= !!gp$max_gn)
 
   df
 }
@@ -406,23 +418,202 @@ gl_build_euro_games <- function(df, starters_bounds = NULL, apply_starters = TRU
     arrange(desc(game_date), desc(round_number), game_id, team_name)
 }
 
-gl_filter_euro_rows <- function(df, f) {
-  if (is.null(df) || !nrow(df)) return(df)
-  gn <- f$gn
-  # Known defect: slices starter-split rows, not games -- see the deviation register.
-  if (!is.na(gn$last_n)) df <- df %>% group_by(team_id) %>%
-    arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-    slice_head(n = gn$last_n) %>% ungroup()
-  rng <- f$dates
-  if (length(rng) == 2L) df <- df %>% filter(game_date >= as.Date(rng[1]), game_date <= as.Date(rng[2]))
-  ids <- f$teams
-  if (length(ids)) df <- df %>% filter(team_id %in% ids)
-  opp <- suppressWarnings(as.numeric(f$opponents)); opp <- opp[is.finite(opp)]
-  if (length(opp)) df <- df %>% filter(opp_team_id %in% opp)
-  if (length(f$phase) && any(nzchar(f$phase))) df <- df %>% filter(phase %in% f$phase[nzchar(f$phase)])
-  if (nzchar(f$home_away %||% "")) df <- df %>% filter(is_home == (f$home_away == "home"))
-  if (nzchar(f$outcome %||% "")) df <- df %>% filter(has_won == (f$outcome == "win"))
-  if (!is.na(gn$min_gn)) df <- df %>% filter(round_number >= gn$min_gn)
-  if (!is.na(gn$max_gn)) df <- df %>% filter(round_number <= gn$max_gn)
-  df
+# ---------------- Composition: one view's game rows ----------------
+# Shiny's reactives and svc_game_logs() both call these, so the steps between
+# a season pull and a game-log row exist once.
+
+# Israeli views: the season pull each reads, its metric builder, the columns
+# ranked against the season, and its display step. Wrappers, not references,
+# so the builders resolve when called.
+GL_IL_VIEWS <- list(
+  summary = list(
+    reader = "lineup_totals",
+    build = function(...) gl_build_summary_metrics(...),
+    percentiles = c("off_ppp", "def_ppp"),
+    display = function(...) gl_summary_display(...)
+  ),
+  four_factors = list(
+    reader = "lineup_ff",
+    build = function(...) gl_build_ff_metrics(...),
+    percentiles = c(
+      "off_ppp", "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+      "def_ppp", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
+    ),
+    display = function(...) gl_ff_display(...)
+  )
+)
+
+gl_il_view <- function(view) {
+  spec <- GL_IL_VIEWS[[view %||% ""]]
+  if (is.null(spec)) stop("Game Logs: unknown view ", view, call. = FALSE)
+  spec
+}
+
+# Percentile baseline: the season's whole game population, deliberately
+# unfiltered, so a game keeps its colour whatever the filters show.
+gl_il_baseline <- function(view, lineup_df, sched) {
+  gl_il_view(view)$build(lineup_df, sched, apply_starters = FALSE)
+}
+
+# One view's rows for the filtered schedule, ranked against the season.
+# `baseline` is a function returning gl_il_baseline()'s frame (Shiny passes
+# its cached reactive); it is called only when rows survive.
+gl_il_games <- function(view, lineup_df, sched, starters, baseline) {
+  spec <- gl_il_view(view)
+  display_metrics <- spec$build(lineup_df, sched, starters_bounds = starters)
+  if (is.null(display_metrics) || !nrow(display_metrics)) return(NULL)
+
+  gl_join_schedule_info(
+    gl_attach_percentiles(display_metrics, baseline(), spec$percentiles),
+    sched
+  )
+}
+
+# EuroLeague's season population, the baseline of its percentiles.
+gl_el_baseline <- function(rows) {
+  if (is.null(rows) || !nrow(rows)) return(rows)
+  gl_build_euro_games(rows, apply_starters = FALSE)
+}
+
+# EuroLeague's rows for `p`, ranked against the season; `baseline` as in
+# gl_il_games().
+gl_el_games <- function(rows, p, baseline) {
+  if (is.null(rows) || !nrow(rows)) return(rows)
+  df <- gl_filter_games(rows, p, "euroleague")
+  games <- gl_build_euro_games(df, starters_bounds = p$starters)
+  if (is.null(games) || !nrow(games)) return(games)
+
+  gl_attach_percentiles(games, baseline(), GL_EURO_PERCENTILE_METRICS)
+}
+
+# ---------------- Season pulls ----------------
+# The queries Shiny's Game Logs reactives run, uncached: Shiny wraps the
+# Israeli ones in its own bindCache, so they must not cache a second copy.
+
+gl_query_schedule <- function(gy) {
+  db_get_query(pg_pool,
+    "SELECT * FROM basketball_test.final_schedule_mv WHERE game_year = $1",
+    params = list(as.integer(gy)))
+}
+
+gl_query_lineup_totals <- function(gy) {
+  db_get_query(
+    pg_pool,
+    "SELECT team_id, lineup_hash, type_lineup, g_date, game_id, game_year,
+            total_poss, total_pts, fg2_made, fg2_att, fg3_made, fg3_att, minutes, num_starters
+     FROM basketball_test.mv_lineup_totals_by_day
+     WHERE game_year = $1",
+    params = list(as.integer(gy))
+  )
+}
+
+gl_query_lineup_ff <- function(gy) {
+  db_get_query(
+    pg_pool,
+    "SELECT lineup_hash, team_id, game_id, game_year, type_lineup,
+            total_points, total_poss, ts_poss_count, oreb_count,
+            oreb_opportunities, tov_count, total_ft_attempts, total_fga,
+            total_fgm, total_fg3_made, minutes, num_starters
+     FROM basketball_test.lineup_four_factors_by_game
+     WHERE game_year = $1",
+    params = list(as.integer(gy))
+  )
+}
+
+# The service's readers: each season pull cached process-wide by league,
+# season and data version. EuroLeague's key also carries the competition,
+# because EuroLeague and EuroCup share a season number.
+gl_default_readers <- function() list(
+  schedule = function(season, data_version) cached_season_df(
+    list("gl_schedule", "il", season, data_version),
+    function() gl_query_schedule(season)
+  ),
+  lineup_totals = function(season, data_version) cached_season_df(
+    list("gl_lineup_totals", "il", season, data_version),
+    function() gl_query_lineup_totals(season)
+  ),
+  lineup_ff = function(season, data_version) cached_season_df(
+    list("gl_lineup_ff", "il", season, data_version),
+    function() gl_query_lineup_ff(season)
+  ),
+  euro_rows = function(competition, season, data_version) cached_season_df(
+    list("gl_euro_rows", "euroleague", competition, season, data_version),
+    function() euro_fetch_game_log_rows(competition, season)
+  ),
+  scoreless = function(data_version) fetch_scoreless_games(data_version)
+)
+
+# ---------------- The service ----------------
+
+gl_il_rows <- function(p, readers) {
+  view <- p$view
+  spec <- gl_il_view(view)
+  sched <- readers$schedule(p$season, p$data_version)
+  if (is.null(sched) || !nrow(sched)) return(NULL)
+  filtered <- gl_filter_games(sched, p, "il")
+  if (!nrow(filtered)) return(NULL)
+
+  lineup <- readers[[spec$reader]](p$season, p$data_version)
+  games <- gl_il_games(view, lineup, filtered, p$starters,
+                       function() gl_il_baseline(view, lineup, sched))
+  if (is.null(games) || !nrow(games)) return(NULL)
+  spec$display(games, p$stat_filters, readers$scoreless(p$data_version))
+}
+
+gl_el_rows <- function(p, readers) {
+  rows <- readers$euro_rows(p$competition, p$season, p$data_version)
+  games <- gl_el_games(rows, p, function() gl_el_baseline(rows))
+  if (is.null(games) || !nrow(games)) return(NULL)
+  # EuroLeague has no scoreless games to gate (see Tab 11's renderer).
+  attach_has_scores(games, NULL)
+}
+
+# Game Logs for either league: one row per team-game that passes the filters,
+# percentiles ranked against the season's whole population.
+#
+# `p` -- the shape svc_game_logs_params() (Task 8) must return:
+#   league        "il" | "euroleague" (a GL_LEAGUE name)
+#   competition   EuroLeague competition code ("E", "U"); NULL for il
+#   season        il: game_year (season-ending year, integer); euroleague:
+#                 provider season (starting year)
+#   view          "summary" | "four_factors" (il rows differ by view;
+#                 EuroLeague returns one frame that carries both)
+#   team          il: one team id as character, "" for all
+#   teams         euroleague: numeric team ids, empty for all
+#   dates         length-2 Date (either end may be NA) or NULL
+#   game_type     il: game-type codes (character); NULL for euroleague
+#   phase         euroleague: phase text; NULL for il
+#   opponents     opponent team ids (character or numeric), empty for all
+#   home_away     "" | "home" | "away"
+#   outcome       "" | "win" | "loss"
+#   starters      list(off_min, off_max, def_min, def_max), integer or NA
+#   gn            list(min_gn, max_gn, last_n) from resolve_gn_last_n_values()
+#                 (round_number bounds for euroleague)
+#   stat_filters  list of list(col, op = "ge" | "le", value); il only
+#   data_version  the league's ETL version, a cache key only
+#
+# Returns list(rows, meta). `rows` is the frame Shiny's renderer selects its
+# columns from (NULL when nothing matches); `meta` echoes `p` and gives the
+# default order, the Summary shot averages (il only) and the percentile
+# population.
+svc_game_logs <- function(p, readers = gl_default_readers()) {
+  lg <- GL_LEAGUE[[p$league %||% ""]]
+  if (is.null(lg)) stop("svc_game_logs: unknown league ", p$league, call. = FALSE)
+
+  rows <- if (identical(p$league, "il")) gl_il_rows(p, readers) else gl_el_rows(p, readers)
+  list(
+    rows = rows,
+    meta = list(
+      path = "fast",
+      filters = p,
+      default_sort = list(
+        list(column = "game_date", direction = "desc"),
+        list(column = lg$round_col, direction = "desc")
+      ),
+      shot_averages = if (isTRUE(lg$has_shots) && identical(p$view, "summary") && !is.null(rows)) {
+        gl_shot_averages(rows)
+      },
+      percentile_population = "season"
+    )
+  )
 }
