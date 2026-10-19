@@ -6,12 +6,26 @@ DROP TABLE IF EXISTS basketball_test.player_four_factors_by_game;
 
 CREATE TABLE basketball_test.player_four_factors_by_game AS
 WITH base0 AS (
-  SELECT DISTINCT
-    ll.player_id,
-    ll.team_id,
-    ll.lineup_hash,
-    COALESCE(ll.is_on_verdict, 0::numeric)::integer AS is_on_key
-  FROM basketball_test.lineups_lookup ll
+  -- ON/OFF by season (docs/shared_definitions.md, 'OFF side'): every player the
+  -- team's rosters listed that season, against every five-man unit the team
+  -- used that season. He is ON for the units he is in and OFF for all the
+  -- others, so his OFF side is the team without him in every game of the
+  -- season, including games before he joined or after he left. Until
+  -- 2026-10-13 this read lineups_lookup directly, which lists a unit for a
+  -- player only in games whose roster had him and was matched without the
+  -- game: his OFF side then held an arbitrary part of the other games.
+  SELECT pl.player_id,
+         pl.team_id,
+         pl.game_year,
+         u.lineup_hash,
+         CASE WHEN o.player_id IS NULL THEN 0 ELSE 1 END AS is_on_key
+  FROM (SELECT DISTINCT player_id, team_id, game_year FROM basketball_test.lineups_lookup) pl
+  JOIN (SELECT DISTINCT team_id, game_year, lineup_hash FROM basketball_test.lineups_lookup
+        WHERE lineup_hash IS NOT NULL) u
+    ON u.team_id = pl.team_id AND u.game_year = pl.game_year
+  LEFT JOIN (SELECT DISTINCT player_id, team_id, lineup_hash FROM basketball_test.lineups_lookup
+             WHERE is_on_verdict = 1) o
+    ON o.player_id = pl.player_id AND o.team_id = pl.team_id AND o.lineup_hash = u.lineup_hash
 ),
 clean_stats AS (
   SELECT
@@ -150,6 +164,7 @@ onoff_player AS (
   JOIN lineup_totals lt
     ON lt.lineup_hash = b0.lineup_hash
    AND lt.team_id = b0.team_id
+   AND lt.game_year = b0.game_year
   LEFT JOIN onoff_lineup_minutes lm
     ON lm.game_id = lt.game_id
    AND lm.team_id = lt.team_id
@@ -186,7 +201,7 @@ combined_data AS (
     cs.segment_seconds
   FROM base0 b0
   JOIN clean_stats cs ON b0.lineup_hash = cs.credit_lineup_hash AND b0.team_id = cs.team_id
-  JOIN basketball_test.schedule s ON cs.game_id = s.game_id
+  JOIN basketball_test.schedule s ON cs.game_id = s.game_id AND s.game_year = b0.game_year
   LEFT JOIN complex_flags cf ON cs.id = cf.main_id
 ),
 floor_data AS (
@@ -203,7 +218,7 @@ floor_data AS (
     cs.segment_seconds
   FROM base0 b0
   JOIN clean_stats cs ON b0.lineup_hash = cs.lineup_hash AND b0.team_id = cs.team_id
-  JOIN basketball_test.schedule s ON cs.game_id = s.game_id
+  JOIN basketball_test.schedule s ON cs.game_id = s.game_id AND s.game_year = b0.game_year
 ),
 segment_times AS (
   SELECT

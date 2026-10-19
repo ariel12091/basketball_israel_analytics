@@ -1,10 +1,52 @@
 CREATE OR REPLACE FUNCTION basketball_test.refresh_player_four_factors_by_game_for_games(game_ids int4[])
 RETURNS bigint
 LANGUAGE plpgsql
+-- Every join below is between CTEs, which have no statistics and no index.
+-- Once the planner under-estimates one of them it joins everything after it
+-- with nested loops over whole CTEs (measured: 12 games in 137 s against
+-- 3 s). Hash and merge joins do not depend on that estimate.
+SET enable_nestloop = off
 AS $$
 DECLARE
   inserted_count bigint := 0;
 BEGIN
+  -- A player's OFF side covers every game his team played that season. When a
+  -- team's roster gains a player, the team's earlier games each owe him an OFF
+  -- row, so those games are refreshed with the ones asked for. A team-game is
+  -- stale when it holds rows for fewer players than the team's season has.
+  IF game_ids IS NOT NULL THEN
+    game_ids := ARRAY(
+      WITH asked AS (
+        SELECT DISTINCT ll.team_id, ll.game_year
+        FROM basketball_test.lineups_lookup ll
+        WHERE ll.game_id = ANY(game_ids)
+      ),
+      season_rows AS (
+        SELECT ll.team_id, ll.game_year, ll.game_id, ll.player_id
+        FROM basketball_test.lineups_lookup ll
+        JOIN asked a ON a.team_id = ll.team_id AND a.game_year = ll.game_year
+        GROUP BY ll.team_id, ll.game_year, ll.game_id, ll.player_id
+      ),
+      roster AS (
+        SELECT sr.team_id, sr.game_year, COUNT(DISTINCT sr.player_id) AS players
+        FROM season_rows sr GROUP BY sr.team_id, sr.game_year
+      ),
+      held AS (
+        SELECT f.team_id, f.game_id, COUNT(DISTINCT f.player_id) AS players
+        FROM basketball_test.player_four_factors_by_game f
+        JOIN asked a ON a.team_id = f.team_id AND a.game_year = f.game_year
+        GROUP BY f.team_id, f.game_id
+      )
+      SELECT unnest(game_ids)
+      UNION
+      SELECT tg.game_id
+      FROM (SELECT DISTINCT sr.team_id, sr.game_year, sr.game_id FROM season_rows sr) tg
+      JOIN roster r ON r.team_id = tg.team_id AND r.game_year = tg.game_year
+      LEFT JOIN held h ON h.team_id = tg.team_id AND h.game_id = tg.game_id
+      WHERE COALESCE(h.players, 0) < r.players
+    );
+  END IF;
+
   IF game_ids IS NULL THEN
     DELETE FROM basketball_test.player_four_factors_by_game;
   ELSE
@@ -23,12 +65,34 @@ BEGIN
     onoff_minutes
   )
   WITH base0 AS (
-    SELECT DISTINCT
-      ll.player_id,
-      ll.team_id,
-      ll.lineup_hash,
-      COALESCE(ll.is_on_verdict, 0::numeric)::integer AS is_on_key
-    FROM basketball_test.lineups_lookup ll
+    -- ON/OFF by season (docs/shared_definitions.md, 'OFF side'): every player the
+    -- team's rosters listed that season, against every five-man unit the team
+    -- used that season. He is ON for the units he is in and OFF for all the
+    -- others, so his OFF side is the team without him in every game of the
+    -- season, including games before he joined or after he left. Until
+    -- 2026-10-13 this read lineups_lookup directly, which lists a unit for a
+    -- player only in games whose roster had him and was matched without the
+    -- game: his OFF side then held an arbitrary part of the other games.
+    SELECT pl.player_id,
+           pl.team_id,
+           pl.game_year,
+           u.lineup_hash,
+           CASE WHEN o.player_id IS NULL THEN 0 ELSE 1 END AS is_on_key
+    FROM (SELECT DISTINCT player_id, team_id, game_year FROM basketball_test.lineups_lookup WHERE game_year IN (SELECT s0.game_year FROM basketball_test.schedule s0
+                              WHERE game_ids IS NULL OR s0.game_id = ANY(game_ids))
+                 AND (game_ids IS NULL OR team_id IN (SELECT t0.team_id FROM basketball_test.lineups_lookup t0
+                                                      WHERE t0.game_id = ANY(game_ids)))) pl
+    JOIN (SELECT DISTINCT team_id, game_year, lineup_hash FROM basketball_test.lineups_lookup
+          WHERE lineup_hash IS NOT NULL AND game_year IN (SELECT s0.game_year FROM basketball_test.schedule s0
+                              WHERE game_ids IS NULL OR s0.game_id = ANY(game_ids))
+                 AND (game_ids IS NULL OR team_id IN (SELECT t0.team_id FROM basketball_test.lineups_lookup t0
+                                                      WHERE t0.game_id = ANY(game_ids)))) u
+      ON u.team_id = pl.team_id AND u.game_year = pl.game_year
+    LEFT JOIN (SELECT DISTINCT player_id, team_id, lineup_hash FROM basketball_test.lineups_lookup
+               WHERE is_on_verdict = 1
+                 AND (game_ids IS NULL OR team_id IN (SELECT t0.team_id FROM basketball_test.lineups_lookup t0
+                                                      WHERE t0.game_id = ANY(game_ids)))) o
+      ON o.player_id = pl.player_id AND o.team_id = pl.team_id AND o.lineup_hash = u.lineup_hash
   ),
   clean_stats AS (
     SELECT
@@ -169,6 +233,7 @@ BEGIN
     JOIN lineup_totals lt
       ON lt.lineup_hash = b0.lineup_hash
      AND lt.team_id = b0.team_id
+     AND lt.game_year = b0.game_year
     LEFT JOIN onoff_lineup_minutes lm
       ON lm.game_id = lt.game_id
      AND lm.team_id = lt.team_id
@@ -205,7 +270,7 @@ BEGIN
       cs.segment_seconds
     FROM base0 b0
     JOIN clean_stats cs ON b0.lineup_hash = cs.credit_lineup_hash AND b0.team_id = cs.team_id
-    JOIN basketball_test.schedule s ON cs.game_id = s.game_id
+    JOIN basketball_test.schedule s ON cs.game_id = s.game_id AND s.game_year = b0.game_year
     LEFT JOIN complex_flags cf ON cs.id = cf.main_id
   ),
   floor_data AS (
@@ -222,7 +287,7 @@ BEGIN
       cs.segment_seconds
     FROM base0 b0
     JOIN clean_stats cs ON b0.lineup_hash = cs.lineup_hash AND b0.team_id = cs.team_id
-    JOIN basketball_test.schedule s ON cs.game_id = s.game_id
+    JOIN basketball_test.schedule s ON cs.game_id = s.game_id AND s.game_year = b0.game_year
   ),
   segment_times AS (
     SELECT

@@ -38,11 +38,26 @@ BEGIN
            FROM basketball_test.schedule s
            JOIN affected_years ay ON ay.game_year = s.game_year
         ), base0 AS (
-         SELECT DISTINCT ll.player_id,
-            ll.team_id,
-            ll.lineup_hash,
-            COALESCE(ll.is_on_verdict, 0::numeric)::integer AS is_on_key
-           FROM basketball_test.lineups_lookup ll
+         -- ON/OFF by season (docs/shared_definitions.md, 'OFF side'): every player the
+         -- team's rosters listed that season, against every five-man unit the team
+         -- used that season. He is ON for the units he is in and OFF for all the
+         -- others, so his OFF side is the team without him in every game of the
+         -- season, including games before he joined or after he left. Until
+         -- 2026-10-13 this read lineups_lookup directly, which lists a unit for a
+         -- player only in games whose roster had him and was matched without the
+         -- game: his OFF side then held an arbitrary part of the other games.
+         SELECT pl.player_id,
+                pl.team_id,
+                pl.game_year,
+                u.lineup_hash,
+                CASE WHEN o.player_id IS NULL THEN 0 ELSE 1 END AS is_on_key
+         FROM (SELECT DISTINCT player_id, team_id, game_year FROM basketball_test.lineups_lookup WHERE game_year IN (SELECT ay.game_year FROM affected_years ay)) pl
+         JOIN (SELECT DISTINCT team_id, game_year, lineup_hash FROM basketball_test.lineups_lookup
+               WHERE lineup_hash IS NOT NULL AND game_year IN (SELECT ay.game_year FROM affected_years ay)) u
+           ON u.team_id = pl.team_id AND u.game_year = pl.game_year
+         LEFT JOIN (SELECT DISTINCT player_id, team_id, lineup_hash FROM basketball_test.lineups_lookup
+                    WHERE is_on_verdict = 1) o
+           ON o.player_id = pl.player_id AND o.team_id = pl.team_id AND o.lineup_hash = u.lineup_hash
         ), clean_stats AS (
          SELECT d.id,
             d.game_id,
@@ -88,7 +103,7 @@ BEGIN
             cf.parent_param
            FROM base0 b0
              JOIN clean_stats cs ON b0.lineup_hash = cs.lineup_hash
-             JOIN sched s ON cs.game_id = s.game_id
+             JOIN sched s ON cs.game_id = s.game_id AND s.game_year = b0.game_year
              LEFT JOIN complex_flags cf ON cs.id = cf.main_id
         ), agg AS (
          SELECT cd.player_id,

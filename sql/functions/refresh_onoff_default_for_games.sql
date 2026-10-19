@@ -40,11 +40,26 @@ BEGIN
            FROM basketball_test.schedule
            JOIN affected_years ay ON ay.game_year = schedule.game_year
         ), base0 AS (
-         SELECT DISTINCT lineups_lookup.player_id,
-            lineups_lookup.team_id,
-            lineups_lookup.lineup_hash,
-            COALESCE(lineups_lookup.is_on_verdict, 0::numeric)::integer AS is_on_key
-           FROM basketball_test.lineups_lookup
+         -- ON/OFF by season (docs/shared_definitions.md, 'OFF side'): every player the
+         -- team's rosters listed that season, against every five-man unit the team
+         -- used that season. He is ON for the units he is in and OFF for all the
+         -- others, so his OFF side is the team without him in every game of the
+         -- season, including games before he joined or after he left. Until
+         -- 2026-10-13 this read lineups_lookup directly, which lists a unit for a
+         -- player only in games whose roster had him and was matched without the
+         -- game: his OFF side then held an arbitrary part of the other games.
+         SELECT pl.player_id,
+                pl.team_id,
+                pl.game_year,
+                u.lineup_hash,
+                CASE WHEN o.player_id IS NULL THEN 0 ELSE 1 END AS is_on_key
+         FROM (SELECT DISTINCT player_id, team_id, game_year FROM basketball_test.lineups_lookup WHERE game_year IN (SELECT ay.game_year FROM affected_years ay)) pl
+         JOIN (SELECT DISTINCT team_id, game_year, lineup_hash FROM basketball_test.lineups_lookup
+               WHERE lineup_hash IS NOT NULL AND game_year IN (SELECT ay.game_year FROM affected_years ay)) u
+           ON u.team_id = pl.team_id AND u.game_year = pl.game_year
+         LEFT JOIN (SELECT DISTINCT player_id, team_id, lineup_hash FROM basketball_test.lineups_lookup
+                    WHERE is_on_verdict = 1) o
+           ON o.player_id = pl.player_id AND o.team_id = pl.team_id AND o.lineup_hash = u.lineup_hash
         ), base AS (
          SELECT b0.player_id,
             b0.team_id,
@@ -71,7 +86,7 @@ BEGIN
             CASE WHEN d.type = 'shot' AND d.parameters_points = 3 AND z.is_corner3 IS NOT NULL THEN 1 ELSE 0 END AS c3_known_att_flag
            FROM base0 b0
              JOIN basketball_test.df_pts_poss_lineups_longer_mv d ON d.credit_lineup_hash = b0.lineup_hash
-             JOIN sched s USING (game_id)
+             JOIN sched s ON s.game_id = d.game_id AND s.game_year = b0.game_year
              LEFT JOIN basketball_test.shot_zones z ON z.game_id = d.game_id AND z.id = d.id
         ), agg AS (
          SELECT base.player_id,
@@ -116,8 +131,11 @@ BEGIN
              JOIN basketball_test.df_pts_poss_lineups_longer_mv d
                ON d.lineup_hash = b0.lineup_hash
               AND d.team_id = b0.team_id
-             JOIN sched s USING (game_id)
-          WHERE d.segment_id IS NOT NULL
+             JOIN sched s ON s.game_id = d.game_id AND s.game_year = b0.game_year
+          -- Minutes are ON-floor time only (player_minutes sums is_on_key = 1), so the
+          -- OFF units, four in five of the rows, never need to be joined here.
+          WHERE b0.is_on_key = 1
+            AND d.segment_id IS NOT NULL
             AND d.segment_seconds IS NOT NULL
           GROUP BY b0.player_id, b0.team_id, b0.is_on_key, s.game_year, d.game_id, d.lineup_hash, d.segment_id
         ), player_minutes AS (
