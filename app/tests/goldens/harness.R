@@ -1,0 +1,295 @@
+# Golden harness: record/replay database connections and a loader for the
+# real Shiny app.
+#
+# A golden is a recording of what today's app renders for one set of inputs.
+# Recording runs the app against the live database through
+# golden_record_conn(), which saves every query answer as a fixture; replay
+# runs the same app through golden_replay_conn(), which answers from those
+# fixtures only, so the app server runs offline and deterministically. A query
+# that was never recorded is an error, never an empty frame.
+#
+# Sourced by golden tests and the capture script, deliberately not a
+# helper-*.R file, so the mock-based test suite never loads the real app.
+
+library(DBI)
+library(pool)
+
+# Repo root: the directory holding app/app.R, found by walking up from the
+# working directory (tests run from app/tests/testthat, scripts from the root).
+golden_repo_root <- function(start = getwd()) {
+  dir <- normalizePath(start, winslash = "/", mustWork = FALSE)
+  repeat {
+    if (file.exists(file.path(dir, "app", "app.R"))) return(dir)
+    parent <- dirname(dir)
+    if (identical(parent, dir)) stop("golden harness: cannot find app/app.R above ", start)
+    dir <- parent
+  }
+}
+
+golden_app_dir <- function() file.path(golden_repo_root(), "app")
+
+# Task-level feature coverage markers (`covers(...)`) live in the API tree.
+# Sourced here when present so app-side golden tests can call covers().
+golden_coverage_file <- file.path(golden_repo_root(), "api", "coverage.R")
+if (file.exists(golden_coverage_file)) source(golden_coverage_file, local = TRUE)
+rm(golden_coverage_file)
+
+# The app's own query label, lifted from global.R rather than retyped, so a
+# replay miss names a query the same way the app's slow-query log does.
+golden_query_label <- local({
+  exprs <- parse(file.path(golden_app_dir(), "R", "global.R"), keep.source = FALSE)
+  env <- new.env(parent = globalenv())
+  for (e in exprs) {
+    if (is.call(e) && identical(as.character(e[[1]]), "<-") &&
+        identical(as.character(e[[2]]), "db_query_label")) {
+      eval(e, envir = env)
+    }
+  }
+  if (!exists("db_query_label", envir = env, inherits = FALSE)) {
+    stop("golden harness: db_query_label not found in global.R")
+  }
+  env$db_query_label
+})
+
+golden_query_key <- function(statement, params) {
+  digest::digest(
+    list(
+      gsub("[[:space:]]+", " ", trimws(statement)),
+      unname(lapply(params, as.character))
+    ),
+    algo = "sha1"
+  )
+}
+
+golden_fixture_path <- function(dir, key) file.path(dir, paste0(key, ".rds"))
+
+# ---------------- Connection classes ----------------
+# Each implements what the app needs from a connection: dbGetQuery (with or
+# without params, as db_get_query() calls it), dbExecute, dbIsValid, and
+# pool::poolCheckout/poolReturn, which mod_team_hub.R calls on pg_pool directly.
+
+methods::setClass("GoldenReplayConnection", contains = "DBIConnection",
+                  slots = c(dir = "character", misses = "environment"))
+methods::setClass("GoldenRecordConnection", contains = "DBIConnection",
+                  slots = c(dir = "character", real = "ANY"))
+
+golden_replay_conn <- function(fixture_dir) {
+  if (!dir.exists(fixture_dir)) stop("golden replay: no fixture directory ", fixture_dir)
+  misses <- new.env(parent = emptyenv())
+  misses$labels <- character(0)
+  methods::new("GoldenReplayConnection",
+               dir = normalizePath(fixture_dir, winslash = "/"), misses = misses)
+}
+
+# Misses since the last call, cleared on read. The app catches query errors in
+# observers and only logs them, so golden_run_server() checks this log too.
+golden_replay_misses <- function(conn) {
+  out <- conn@misses$labels
+  conn@misses$labels <- character(0)
+  out
+}
+
+golden_record_conn <- function(real_con, fixture_dir) {
+  dir.create(fixture_dir, recursive = TRUE, showWarnings = FALSE)
+  methods::new("GoldenRecordConnection",
+               dir = normalizePath(fixture_dir, winslash = "/"), real = real_con)
+}
+
+methods::setMethod("dbGetQuery", c("GoldenReplayConnection", "character"),
+  function(conn, statement, params = NULL, ...) {
+    key <- golden_query_key(statement, params)
+    path <- golden_fixture_path(conn@dir, key)
+    if (!file.exists(path)) {
+      msg <- sprintf("golden replay miss: %s key=%s", golden_query_label(statement), key)
+      conn@misses$labels <- c(conn@misses$labels, msg)
+      stop(msg, call. = FALSE)
+    }
+    readRDS(path)
+  })
+
+methods::setMethod("dbGetQuery", c("GoldenRecordConnection", "character"),
+  function(conn, statement, params = NULL, ...) {
+    out <- if (is.null(params)) {
+      DBI::dbGetQuery(conn@real, statement)
+    } else {
+      DBI::dbGetQuery(conn@real, statement, params = params)
+    }
+    saveRDS(out, golden_fixture_path(conn@dir, golden_query_key(statement, params)),
+            compress = "xz")
+    out
+  })
+
+methods::setMethod("dbExecute", c("GoldenReplayConnection", "character"),
+  function(conn, statement, ...) 0L)
+
+# Recording is read-only: session SETs are forwarded, nothing is stored.
+methods::setMethod("dbExecute", c("GoldenRecordConnection", "character"),
+  function(conn, statement, ...) DBI::dbExecute(conn@real, statement, ...))
+
+methods::setMethod("dbIsValid", "GoldenReplayConnection", function(dbObj, ...) TRUE)
+methods::setMethod("dbIsValid", "GoldenRecordConnection",
+  function(dbObj, ...) DBI::dbIsValid(dbObj@real))
+
+for (golden_cls in c("GoldenReplayConnection", "GoldenRecordConnection")) {
+  methods::setMethod("poolCheckout", golden_cls, function(pool) pool)
+  methods::setMethod("poolReturn", golden_cls, function(object) invisible(NULL))
+}
+rm(golden_cls)
+
+# ---------------- The real app ----------------
+
+# Sources app/app.R itself into a fresh environment, so the files load in
+# exactly app.R's order and `server` is app.R's own function, not a copy.
+# shinyApp() is stubbed in that environment to capture its server argument
+# instead of building an app object. The injected connection replaces the pool
+# (global.R then skips dbPool, onStop and the prewarm); the UI caches are off so
+# nothing is built or rendered at source time.
+golden_app_env <- function(conn) {
+  app_dir <- golden_app_dir()
+  old_opt <- options(ibpl.pg_pool = conn)
+  old_env <- Sys.getenv(c("IBPL_CACHE_UI", "IBPL_CACHE_UI_HTML"), unset = NA)
+  Sys.setenv(IBPL_CACHE_UI = "false", IBPL_CACHE_UI_HTML = "false")
+  on.exit({
+    options(old_opt)
+    for (nm in names(old_env)) {
+      if (is.na(old_env[[nm]])) Sys.unsetenv(nm) else do.call(Sys.setenv, as.list(old_env[nm]))
+    }
+  }, add = TRUE)
+
+  env <- new.env(parent = globalenv())
+  captured <- new.env(parent = emptyenv())
+  env$shinyApp <- function(ui, server, ...) {
+    captured$server <- server
+    invisible(NULL)
+  }
+  source(file.path(app_dir, "app.R"), local = env, chdir = TRUE)
+  rm("shinyApp", envir = env)
+  if (!is.function(captured$server)) stop("golden harness: app.R did not call shinyApp(ui, server)")
+  env$server <- captured$server
+
+  # Service-layer files app.R does not source yet.
+  app_src <- paste(readLines(file.path(app_dir, "app.R"), warn = FALSE), collapse = "\n")
+  svc_files <- sort(list.files(file.path(app_dir, "R"), pattern = "^svc_.*\\.R$"))
+  for (f in svc_files) {
+    if (!grepl(paste0("R/", f), app_src, fixed = TRUE)) {
+      source(file.path(app_dir, "R", f), local = env, chdir = TRUE)
+    }
+  }
+
+  # Each call sources afresh, so these start empty already; reset explicitly
+  # so independence does not hang on that.
+  if (exists("GL_DATA_CACHE", envir = env, inherits = FALSE)) env$GL_DATA_CACHE$reset()
+  if (exists("RANKED_CACHE", envir = env, inherits = FALSE)) {
+    rm(list = ls(env$RANKED_CACHE, all.names = TRUE), envir = env$RANKED_CACHE)
+  }
+  rm(list = ls(env$.ref_cache_env, all.names = TRUE), envir = env$.ref_cache_env)
+
+  env$.golden_app_dir <- app_dir
+  env
+}
+
+# Runs env$server under shiny::testServer, applies `inputs` (a named list) in
+# one setInputs() call, flushes, and returns capture(session, output). A
+# capture function may carry "golden_setup" / "golden_teardown" attributes,
+# called before the server starts and after it finishes (even on error).
+# When env$pg_pool replays, any query it could not answer fails the run, even
+# one the app caught and logged.
+golden_run_server <- function(env, inputs, capture) {
+  replay <- if (methods::is(env$pg_pool, "GoldenReplayConnection")) env$pg_pool
+  if (!is.null(replay)) golden_replay_misses(replay)
+  setup <- attr(capture, "golden_setup")
+  teardown <- attr(capture, "golden_teardown")
+  if (is.function(teardown)) on.exit(teardown(), add = TRUE)
+  if (is.function(setup)) setup()
+
+  if (!is.null(env$.golden_app_dir)) {
+    old_wd <- setwd(env$.golden_app_dir)
+    on.exit(setwd(old_wd), add = TRUE)
+  }
+
+  result <- new.env(parent = emptyenv())
+  shiny::testServer(env$server, {
+    if (length(!!inputs)) do.call(session$setInputs, !!inputs)
+    session$flushReact()
+    assign("value", (!!capture)(session, output), envir = !!result)
+  })
+  if (!is.null(replay)) {
+    misses <- unique(golden_replay_misses(replay))
+    if (length(misses)) {
+      stop(sprintf("golden replay: %d unrecorded quer%s:\n%s", length(misses),
+                   if (length(misses) == 1L) "y" else "ies",
+                   paste(misses, collapse = "\n")), call. = FALSE)
+    }
+  }
+  result$value
+}
+
+# Capture for a DT table: traces DT::datatable for the run and returns the last
+# table whose CSV button filename starts with `slug_prefix` (the app stamps the
+# slug with a time, see csv_export_button()), as its data, its initial order
+# and the names of the columns columnDefs hide.
+golden_capture_dt <- function(slug_prefix) {
+  sink <- new.env(parent = emptyenv())
+  sink$items <- list()
+  push <- function(entry) sink$items[[length(sink$items) + 1L]] <- entry
+  traced <- list()
+  untrace_dt <- function() {
+    for (where in traced) suppressMessages(untrace("datatable", where = where))
+    traced <<- list()
+  }
+
+  capture <- function(session, output) {
+    on.exit(untrace_dt(), add = TRUE)
+    session$flushReact()
+    matches <- Filter(function(entry) {
+      fn <- entry$options$buttons[[1]]$filename
+      is.character(fn) && length(fn) == 1L && startsWith(fn, slug_prefix)
+    }, sink$items)
+    if (!length(matches)) stop("no datatable rendered for ", slug_prefix, call. = FALSE)
+    hit <- matches[[length(matches)]]
+    data <- as.data.frame(hit$data)
+    list(
+      data = data,
+      order = hit$options$order,
+      hidden = golden_dt_hidden_cols(data, hit$options$columnDefs, hit$rownames)
+    )
+  }
+  # The app calls both DT::datatable() (the namespace copy) and a bare
+  # datatable() (the attached package:DT copy); trace() edits one copy per
+  # call, so trace each.
+  attr(capture, "golden_setup") <- function() {
+    wheres <- list(asNamespace("DT"))
+    if ("package:DT" %in% search()) wheres <- c(wheres, list(as.environment("package:DT")))
+    for (where in wheres) {
+      suppressMessages(trace(
+        "datatable",
+        tracer = bquote(.(push)(list(
+          data = data, options = options,
+          # datatable() gives rownames no default; missing means shown.
+          rownames = if (missing(rownames)) NULL else rownames
+        ))),
+        where = where,
+        print = FALSE
+      ))
+      traced[[length(traced) + 1L]] <<- where
+    }
+  }
+  attr(capture, "golden_teardown") <- untrace_dt
+  capture
+}
+
+# Column names hidden by `visible = FALSE` columnDefs. Numeric targets are
+# DataTables' 0-based indices, which count the rownames column when shown.
+golden_dt_hidden_cols <- function(data, column_defs, rownames) {
+  offset <- if (isFALSE(rownames)) 0L else 1L
+  cols <- names(data)
+  hidden <- unlist(lapply(column_defs, function(def) {
+    if (!isFALSE(def$visible)) return(NULL)
+    t <- def$targets
+    if (is.character(t)) return(if ("_all" %in% t) cols else intersect(t, cols))
+    idx <- as.integer(t)
+    idx <- ifelse(idx < 0L, length(cols) + offset + idx, idx) + 1L - offset
+    cols[idx[idx >= 1L & idx <= length(cols)]]
+  }))
+  unique(as.character(hidden))
+}
