@@ -704,56 +704,61 @@ guard_heavy_request <- function(session, key,
 }
 
 # ---------------- PostgreSQL pool ----------------
-pg_pool <- dbPool(
-  drv      = Postgres(),
-  bigint   = "numeric",
-  host     = Sys.getenv("PG_HOST"),
-  port     = as.integer(Sys.getenv("PG_PORT", "6543")),
-  dbname   = Sys.getenv("PG_DB"),
-  user     = Sys.getenv("PG_USER"),
-  password = Sys.getenv("PG_PASS"),
-  sslmode  = Sys.getenv("PG_SSLMODE", "require"),
-  # The pooler discards the startup `options` string, so a timeout set there
-  # never took effect -- `SHOW statement_timeout` returned the 2min server
-  # default. Issue it as an ordinary statement once per connection instead;
-  # verified 2026-08-19 to hold across checkouts and to cancel for real.
-  onCreate = function(con) {
-    DBI::dbExecute(con, sprintf("SET statement_timeout = %d", PG_STATEMENT_TIMEOUT_MS))
-  },
-  minSize  = 0,
-  maxSize  = as.integer(Sys.getenv("POOL_MAX", "3")),
-  idleTimeout = 15000
-)
-onStop(function() poolClose(pg_pool))
+if (is.null(getOption("ibpl.pg_pool"))) {
+  pg_pool <- dbPool(
+    drv      = Postgres(),
+    bigint   = "numeric",
+    host     = Sys.getenv("PG_HOST"),
+    port     = as.integer(Sys.getenv("PG_PORT", "6543")),
+    dbname   = Sys.getenv("PG_DB"),
+    user     = Sys.getenv("PG_USER"),
+    password = Sys.getenv("PG_PASS"),
+    sslmode  = Sys.getenv("PG_SSLMODE", "require"),
+    # The pooler discards the startup `options` string, so a timeout set there
+    # never took effect -- `SHOW statement_timeout` returned the 2min server
+    # default. Issue it as an ordinary statement once per connection instead;
+    # verified 2026-08-19 to hold across checkouts and to cancel for real.
+    onCreate = function(con) {
+      DBI::dbExecute(con, sprintf("SET statement_timeout = %d", PG_STATEMENT_TIMEOUT_MS))
+    },
+    minSize  = 0,
+    maxSize  = as.integer(Sys.getenv("POOL_MAX", "3")),
+    idleTimeout = 15000
+  )
+  onStop(function() poolClose(pg_pool))
 
-# Warm one pooled connection BEFORE the server starts listening.
-#
-# A first checkout costs ~1,700-2,200ms (TCP + TLS + auth + the onCreate SET),
-# so with minSize = 0 it has to happen somewhere. It used to run from a
-# later::later(delay = 0), on the theory that R would be idle while the browser
-# parsed the page. That theory came from shinyapps.io, where a worker usually
-# had an idle gap before its first request. It is wrong on Posit Connect Cloud:
-# the worker idle timeout is 5s (the platform minimum), so the process is nearly
-# always started *because* a request is waiting -- and a delay = 0 callback
-# scheduled during sourcing runs on the first event-loop pass, ahead of that
-# queued request. Measured: "Listening on" to first GET / answered was 5.6-5.8s
-# (n = 3) with both warmups on later(); warm GET / is 3-30ms.
-#
-# Running it here instead moves the cost behind Connect Cloud's loading page,
-# which is held open by server heartbeats, and off the 7s reload watchdog that
-# the browser applies once it is actually waiting on GET /. Boot grows by about
-# the checkout cost against a 60s Startup timeout, so there is ample headroom.
-#
-# The trade is that an unreachable database now stalls boot rather than serving
-# a page whose queries then fail. That is acceptable -- the app is unusable
-# either way -- but it is why this stays best-effort and wrapped: a failure is
-# retried by the normal checkout path. Set POOL_PREWARM=false to disable.
-if (!tolower(trimws(Sys.getenv("POOL_PREWARM", "true"))) %in%
-      c("0", "false", "no", "off")) {
-  tryCatch({
-    con <- pool::poolCheckout(pg_pool)
-    pool::poolReturn(con)
-  }, error = function(e) NULL)
+  # Warm one pooled connection BEFORE the server starts listening.
+  #
+  # A first checkout costs ~1,700-2,200ms (TCP + TLS + auth + the onCreate SET),
+  # so with minSize = 0 it has to happen somewhere. It used to run from a
+  # later::later(delay = 0), on the theory that R would be idle while the browser
+  # parsed the page. That theory came from shinyapps.io, where a worker usually
+  # had an idle gap before its first request. It is wrong on Posit Connect Cloud:
+  # the worker idle timeout is 5s (the platform minimum), so the process is nearly
+  # always started *because* a request is waiting -- and a delay = 0 callback
+  # scheduled during sourcing runs on the first event-loop pass, ahead of that
+  # queued request. Measured: "Listening on" to first GET / answered was 5.6-5.8s
+  # (n = 3) with both warmups on later(); warm GET / is 3-30ms.
+  #
+  # Running it here instead moves the cost behind Connect Cloud's loading page,
+  # which is held open by server heartbeats, and off the 7s reload watchdog that
+  # the browser applies once it is actually waiting on GET /. Boot grows by about
+  # the checkout cost against a 60s Startup timeout, so there is ample headroom.
+  #
+  # The trade is that an unreachable database now stalls boot rather than serving
+  # a page whose queries then fail. That is acceptable -- the app is unusable
+  # either way -- but it is why this stays best-effort and wrapped: a failure is
+  # retried by the normal checkout path. Set POOL_PREWARM=false to disable.
+  if (!tolower(trimws(Sys.getenv("POOL_PREWARM", "true"))) %in%
+        c("0", "false", "no", "off")) {
+    tryCatch({
+      con <- pool::poolCheckout(pg_pool)
+      pool::poolReturn(con)
+    }, error = function(e) NULL)
+  }
+} else {
+  # Injected by the API / golden harness: no pool, onStop or prewarm here.
+  pg_pool <- getOption("ibpl.pg_pool")
 }
 
 # Shared head tags
