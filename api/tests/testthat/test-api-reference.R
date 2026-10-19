@@ -82,6 +82,10 @@ test_that("reference endpoints reject bad parameters and the wrong league", {
   check("handle_seasons", "season=2026", "il", 400L, "season")
   dv <- call_handler(ref_env, "handle_data_version", "format=csv")
   expect_identical(c(dv$status, api_body(dv)$param), c(400L, "format"))
+  expect_match(api_body(dv)$error, "accepts no parameters")
+  bad <- call_handler(ref_env, "handle_teams", "season=%FF", "il")
+  expect_identical(c(bad$status, api_body(bad)$param), c(400L, "season"))
+  expect_true(validUTF8(bad$body))
   check("handle_teams", "season=2025", "nba", 404L, "league")
 
   for (case in list(c("handle_game_numbers", "euroleague"), c("handle_game_types", "eurocup"),
@@ -180,4 +184,10 @@ test_that("JSON and CSV bodies; errors never leak query text", {
 
   na_body <- ref_env$api_respond(api_res(), list(rows = data.frame(a = c(1.25, NA)), x = NULL))
   expect_identical(na_body$body, "{\"rows\":[{\"a\":1.25},{\"a\":null}],\"x\":null}")
+})
+
+test_that("a PG_PORT that is not a port number fails closed", {
+  for (port in c("abc", "70000", "0", "54 32")) {
+    withr::with_envvar(c(PG_PORT = port), expect_error(api_create_pool(), "PG_PORT must be a port number"))
+  }
 })

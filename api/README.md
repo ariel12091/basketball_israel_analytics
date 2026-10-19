@@ -47,11 +47,13 @@ default season for the league.
 
 | Status | When | Body |
 |---|---|---|
-| 400 | an unknown parameter, or a malformed / out-of-range value | `{error, param}` naming the parameter |
+| 400 | an unknown parameter, a malformed / out-of-range value, or bytes that do not decode to UTF-8 text (`param` is `"query"` when the name itself is empty or undecodable) | `{error, param}` naming the parameter |
 | 404 | unknown league, or an endpoint the league does not have | `{error, param}` |
 | 504 | the database statement timeout | `{error}` |
 | 500 | anything else (no query text in the body; the detail is logged) | `{error}` |
 
+Plumber is given no parsed query (`api_query_filter`, run.R): handlers read the raw
+query string through `api_query()`, so `%00` or `%FF` is a 400, not a 500.
 Parameters are validated by the service layer (`app/R/svc_params.R`,
 `svc_game_logs_params()`), fail closed: nothing is coerced or dropped.
 

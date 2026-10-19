@@ -29,7 +29,8 @@ if (nzchar(replay_dir)) {
 }
 api_bootstrap(conn, envir = globalenv(), root = api_root)
 
-api_router <- plumber::pr(file.path(api_script_dir, "plumber.R"))
+api_router <- plumber::pr(file.path(api_script_dir, "plumber.R"),
+                          filters = list(api_query = api_query_filter))
 if (inherits(pg_pool, "Pool")) {
   api_router <- plumber::pr_hook(api_router, "exit", function() pool::poolClose(pg_pool))
 }

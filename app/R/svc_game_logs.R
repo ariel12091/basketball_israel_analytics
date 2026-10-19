@@ -684,7 +684,7 @@ gl_starters_value <- function(query, name) {
   val <- svc_one(query, name)
   if (is.null(val)) return(list(mode = NULL, value = NULL))
   m <- regmatches(val, regexec("^(gte|lte):([0-5])$", val))[[1]]
-  if (!length(m)) svc_reject(name, "'%s' must be gte:<0-5> or lte:<0-5>, got '%s'.", name, val)
+  if (!length(m)) svc_reject(name, "'%s' must be gte:<0-5> or lte:<0-5>, got '%s'.", name, svc_show(val))
   list(mode = m[[2]], value = m[[3]])
 }
 
@@ -715,7 +715,7 @@ gl_params_stat <- function(query, view) {
   filterable <- unname(if (identical(view, "four_factors")) GL_FF_FILTERABLE_COLS else GL_SUMMARY_FILTERABLE_COLS)
   lapply(vals, function(v) {
     m <- regmatches(v, regexec("^(.+):([^:]+):([^:]+)$", v))[[1]]
-    if (!length(m)) svc_reject("stat", "'stat' must be <column>:<ge|le>:<value>, got '%s'.", v)
+    if (!length(m)) svc_reject("stat", "'stat' must be <column>:<ge|le>:<value>, got '%s'.", svc_show(v))
     svc_choice(m[[2]], "stat", filterable)
     svc_choice(m[[3]], "stat", c("ge", "le"))
     list(col = m[[2]], op = m[[3]], value = svc_number(m[[4]], "stat"))

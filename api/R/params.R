@@ -8,17 +8,45 @@
 # order. Read from the raw string rather than Plumber's parsed args, which
 # drop a name with an empty value (`team=`) and merge repeated names -- both
 # must reach the validators so that they can reject or collect them.
+#
+# Every name and value must decode to UTF-8 text without NUL (`%00`, `%FF`
+# are rejected here, never echoed): a bad value is a 400 naming its
+# parameter, a bad name a 400 on param "query".
 api_query <- function(req) {
   qs <- req$QUERY_STRING %||% ""
   qs <- sub("^[?]", "", qs)
   if (!nzchar(qs)) return(list())
   pieces <- strsplit(qs, "&", fixed = TRUE)[[1]]
   pieces <- pieces[nzchar(pieces)]
-  decode <- function(x) httpuv::decodeURIComponent(chartr("+", " ", x))
-  keys <- vapply(pieces, function(p) decode(sub("=.*$", "", p)), character(1), USE.NAMES = FALSE)
-  vals <- vapply(pieces, function(p) if (grepl("=", p, fixed = TRUE)) decode(sub("^[^=]*=", "", p)) else "",
-                 character(1), USE.NAMES = FALSE)
-  stats::setNames(as.list(vals), keys)
+  decode <- function(x) {
+    out <- tryCatch(httpuv::decodeURIComponent(chartr("+", " ", x)), error = function(e) NA_character_)
+    if (is.na(out) || !validUTF8(out)) NA_character_ else enc2utf8(out)
+  }
+  out <- lapply(pieces, function(p) {
+    has_value <- grepl("=", p, fixed = TRUE)
+    key <- decode(sub("=.*$", "", p))
+    if (is.na(key)) {
+      stop(api_error(400L, "query", "A parameter name could not be decoded as UTF-8 text."))
+    }
+    val <- if (has_value) decode(sub("^[^=]*=", "", p)) else ""
+    if (is.na(val)) {
+      stop(api_error(400L, key, sprintf("'%s' could not be decoded as UTF-8 text.", svc_show(key))))
+    }
+    stats::setNames(list(val), key)
+  })
+  if (!length(out)) return(list())
+  do.call(c, out)
+}
+
+# Plumber filter used in place of Plumber's default ones (run.R). Plumber's own
+# queryString filter decodes the query before any route runs and answers a
+# 500 on bytes such as %00; the handlers read req$QUERY_STRING through
+# api_query() instead, so Plumber is given no parsed query arguments at all.
+# The API has only GET routes, so the default body parsers are not needed.
+api_query_filter <- function(req) {
+  req$argsQuery <- list()
+  req$.internal$queryStringHandled <- TRUE
+  plumber::forward()
 }
 
 # Reference endpoints: `allowed` names only; a season (validated against the

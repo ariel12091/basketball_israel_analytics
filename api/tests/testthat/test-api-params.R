@@ -53,6 +53,38 @@ test_that("malformed or unsupported values are 400s naming the parameter", {
   }
 })
 
+test_that("undecodable or oversized input is a 400 naming the parameter, never echoed raw", {
+  covers("X-20")
+  cases <- list(
+    list("season=%00", "season"),
+    list("season=%FF", "season"),
+    list("opponents=%FF", "opponents"),
+    list("game_type=%FF", "game_type"),
+    list("stat=%FF", "stat"),
+    list("sort=%FF", "sort"),
+    list("date_from=%FF", "date_from"),
+    list("home_away=%FF", "home_away"),
+    list("own_starters=%FF", "own_starters"),
+    list("foo%FF=1", "query"),
+    list("%FF=1", "query"),
+    list("%00=1", "query"),
+    list("=1", "query"),
+    list(paste0("stat=net_rtg:ge:", strrep("9", 400)), "stat"),
+    list(paste0("home_away=", strrep("x", 500)), "home_away"),
+    list(paste0(strrep("y", 500), "=1"), strrep("y", 500))
+  )
+  for (case in cases) {
+    label <- substr(case[[1]], 1, 40)
+    err <- api_error_of(gl_params(case[[1]]))
+    expect_identical(err$status, 400L, info = label)
+    expect_identical(err$param, case[[2]], info = label)
+    expect_true(nchar(conditionMessage(err)) < 400L, info = label)
+    body <- params_env$api_respond_error(api_res(), err)$body
+    expect_true(validUTF8(body), info = label)
+    expect_false(grepl(strrep("x", 65), body, fixed = TRUE), info = label)
+  }
+})
+
 test_that("EuroLeague rejects Israeli-only names and checks its own values", {
   covers("X-01", "X-05")
   cases <- list(
@@ -78,6 +110,12 @@ test_that("EuroLeague rejects Israeli-only names and checks its own values", {
 test_that("a valid query gives exactly the p Shiny builds for the same filters", {
   covers("GL-01", "GL-02", "X-03", "X-05", "X-09")
   queries <- c(
+    il_summary_default = "season=2026",
+    il_ff_default = "season=2026&view=four_factors",
+    il_ff_away_loss_last10 = "season=2026&view=four_factors&home_away=away&outcome=loss&last_n=10",
+    il_summary_empty = "season=2026&team=2&gn_min=30&gn_max=31",
+    el_summary_default = "season=2025",
+    el_ff_default = "season=2025&view=four_factors",
     il_summary_opps_statfilter =
       "season=2026&view=summary&opponents=2,3&date_from=2025-09-01&date_to=2026-07-01&stat=net_rtg:ge:0",
     il_ff_starters = "season=2026&view=four_factors&own_starters=gte:4&opp_starters=lte:2",
@@ -89,6 +127,8 @@ test_that("a valid query gives exactly the p Shiny builds for the same filters",
     el_summary_round_starters = "season=2025&round_min=10&round_max=20&own_starters=gte:4",
     el_summary_last5_home = "season=2025&last_n=5&home_away=home"
   )
+  # Every preset, so a new preset without a query here fails.
+  expect_setequal(names(queries), names(GAME_LOGS_PRESETS))
   for (name in names(queries)) {
     preset <- GAME_LOGS_PRESETS[[name]]
     league <- if (identical(preset$league, "il")) "il" else "euroleague"
@@ -136,4 +176,14 @@ test_that("the raw query string keeps empty values and repeated names", {
   expect_identical(unname(unlist(q)), c("1", "", "", "2", "x,y", "two words"))
   expect_identical(params_env$api_query(api_req("")), list())
   expect_length(gl_params("stat=net_rtg:ge:0&stat=off_ppp:le:110")$stat_filters, 2L)
+})
+
+test_that("the router's query filter leaves the raw query to api_query()", {
+  covers("X-20")
+  req <- new.env()
+  req$QUERY_STRING <- "?season=%00"
+  req$.internal <- new.env()
+  params_env$api_query_filter(req)
+  expect_identical(req$argsQuery, list())
+  expect_true(req$.internal$queryStringHandled)
 })

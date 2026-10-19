@@ -26,6 +26,16 @@ svc_reject <- function(param, fmt, ..., status = 400L) {
   stop(api_error(status, param, sprintf(fmt, ...)))
 }
 
+# A caller's value as echoed in an error message: at most 64 characters, and
+# never bytes that are not UTF-8 text.
+SVC_ECHO_MAX <- 64L
+svc_show <- function(x) {
+  x <- as.character(x %||% "")[1]
+  if (is.na(x)) return("NA")
+  if (!validUTF8(x)) return("<not UTF-8 text>")
+  if (nchar(x) > SVC_ECHO_MAX) paste0(substr(x, 1L, SVC_ECHO_MAX), "...") else x
+}
+
 # API league ids -> the services' league and EuroLeague competition code.
 # EuroLeague and EuroCup are one league to the services (R7): the competition
 # is a parameter.
@@ -39,7 +49,7 @@ svc_league <- function(league) {
   lg <- if (is.character(league) && length(league) == 1L) SVC_LEAGUES[[league]]
   if (is.null(lg)) {
     svc_reject("league", "Unknown league '%s'; expected one of: %s.",
-               paste(league, collapse = ","), paste(names(SVC_LEAGUES), collapse = ", "),
+               svc_show(paste(league, collapse = ",")), paste(names(SVC_LEAGUES), collapse = ", "),
                status = 404L)
   }
   lg
@@ -47,21 +57,31 @@ svc_league <- function(league) {
 
 # ---------------- The query ----------------
 
-# Any name outside `allowed` is rejected, naming the first one given.
+# Any name outside `allowed` is rejected, naming the first one given. A name
+# that is empty or not UTF-8 text cannot be named, so it is reported as
+# param "query".
 svc_check_names <- function(query, allowed) {
   nms <- names(query) %||% rep("", length(query))
+  unnamable <- !nzchar(nms) | !validUTF8(nms)
+  if (any(unnamable)) {
+    svc_reject("query", "The query holds a parameter with an empty or undecodable name.")
+  }
   bad <- nms[!nms %in% allowed]
   if (length(bad)) {
+    if (!length(allowed)) {
+      svc_reject(bad[[1]], "This endpoint accepts no parameters; got '%s'.", svc_show(bad[[1]]))
+    }
     svc_reject(bad[[1]], "Unknown parameter '%s'; accepted here: %s.",
-               bad[[1]], paste(allowed, collapse = ", "))
+               svc_show(bad[[1]]), paste(allowed, collapse = ", "))
   }
   invisible(TRUE)
 }
 
 # All values given for `name`, in order (character(0) when absent).
 svc_values <- function(query, name) {
-  vals <- unlist(query[names(query) %in% name], use.names = FALSE)
-  as.character(vals %||% character(0))
+  vals <- as.character(unlist(query[names(query) %in% name], use.names = FALSE) %||% character(0))
+  if (!all(validUTF8(vals))) svc_reject(name, "'%s' must be UTF-8 text.", name)
+  vals
 }
 
 # One value: NULL when absent; given twice or empty is an error.
@@ -89,7 +109,7 @@ svc_list <- function(query, name) {
 svc_int <- function(x, param, min = -Inf, max = Inf) {
   if (is.null(x)) return(NULL)
   ok <- grepl("^-?[0-9]{1,9}$", x)
-  if (!all(ok)) svc_reject(param, "'%s' must be a whole number, got '%s'.", param, x[!ok][[1]])
+  if (!all(ok)) svc_reject(param, "'%s' must be a whole number, got '%s'.", param, svc_show(x[!ok][[1]]))
   v <- as.integer(x)
   out <- v < min | v > max
   if (any(out)) {
@@ -101,8 +121,9 @@ svc_int <- function(x, param, min = -Inf, max = Inf) {
 
 svc_number <- function(x, param) {
   ok <- grepl("^-?([0-9]+([.][0-9]*)?|[.][0-9]+)$", x)
-  if (!ok) svc_reject(param, "'%s' needs a number, got '%s'.", param, x)
-  as.numeric(x)
+  v <- if (ok) as.numeric(x) else NA_real_
+  if (!is.finite(v)) svc_reject(param, "'%s' needs a finite number, got '%s'.", param, svc_show(x))
+  v
 }
 
 svc_date <- function(x, param) {
@@ -113,7 +134,7 @@ svc_date <- function(x, param) {
     as.Date(NA)
   }
   if (is.na(d) || !identical(format(d, "%Y-%m-%d"), x)) {
-    svc_reject(param, "'%s' must be a date as YYYY-MM-DD, got '%s'.", param, x)
+    svc_reject(param, "'%s' must be a date as YYYY-MM-DD, got '%s'.", param, svc_show(x))
   }
   d
 }
@@ -123,7 +144,7 @@ svc_choice <- function(x, param, choices) {
   bad <- x[!x %in% choices]
   if (length(bad)) {
     svc_reject(param, "'%s' must be one of: %s; got '%s'.",
-               param, paste(choices, collapse = ", "), bad[[1]])
+               param, paste(choices, collapse = ", "), svc_show(bad[[1]]))
   }
   x
 }
@@ -195,7 +216,7 @@ svc_sort <- function(query) {
   parts <- svc_list(query, "sort")
   if (is.null(parts)) return(NULL)
   ok <- grepl("^[A-Za-z0-9_%. ]+:(asc|desc)$", parts)
-  if (!all(ok)) svc_reject("sort", "'sort' entries must be <column>:asc or <column>:desc, got '%s'.", parts[!ok][[1]])
+  if (!all(ok)) svc_reject("sort", "'sort' entries must be <column>:asc or <column>:desc, got '%s'.", svc_show(parts[!ok][[1]]))
   lapply(strsplit(parts, ":", fixed = TRUE), function(x) list(column = x[[1]], direction = x[[2]]))
 }
 

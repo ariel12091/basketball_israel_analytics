@@ -26,7 +26,11 @@ API_OWN_FILES <- c("respond.R", "params.R", "handlers_reference.R")
 # the transaction pooler on 6543 crosses concurrent prepared statements
 # (CLAUDE.md, port-6543 pitfall), and the API serves concurrent requests.
 api_create_pool <- function() {
-  port <- as.integer(Sys.getenv("PG_PORT", "5432"))
+  port_txt <- trimws(Sys.getenv("PG_PORT", "5432"))
+  if (!grepl("^[0-9]{1,5}$", port_txt) || as.integer(port_txt) < 1L || as.integer(port_txt) > 65535L) {
+    stop("api_create_pool: PG_PORT must be a port number (1-65535), got '", port_txt, "'.", call. = FALSE)
+  }
+  port <- as.integer(port_txt)
   if (identical(port, 6543L)) {
     warning("api_create_pool: PG_PORT=6543 is the transaction pooler, which crosses ",
             "concurrent prepared statements; use 5432.", call. = FALSE)
