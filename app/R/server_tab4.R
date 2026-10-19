@@ -357,8 +357,8 @@ server_tab4 <- function(input, output, session, shared) {
       shot_col_defs <- list()
       if (has_shots) {
         shot_col_map <- list(
-          "Off Shot" = c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a"),
-          "Def Shot" = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
+          "Off Shot" = GL_SHOT_COLS$off,
+          "Def Shot" = GL_SHOT_COLS$def
         )
         SHOT_MIN_FGA <- 10L
         shot_avgs <- gl_shot_averages(disp)

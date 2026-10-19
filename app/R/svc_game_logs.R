@@ -329,6 +329,12 @@ gl_ff_display <- function(df, stat_filters, scoreless) {
   attach_has_scores(df, scoreless)
 }
 
+# Raw shot columns (2PT made/att, 3PT made/att) behind each side's shot cell.
+GL_SHOT_COLS <- list(
+  off = c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a"),
+  def = c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a")
+)
+
 # League 2PT/3PT accuracy (whole percent) over the displayed rows, per side;
 # the shot cells colour against it. 53/34 when a side has no attempts.
 gl_shot_averages <- function(disp) {
@@ -340,8 +346,5 @@ gl_shot_averages <- function(disp) {
       fg3 = if (fg3a_sum > 0) as.integer(round(sum(disp[[cols[3]]], na.rm = TRUE) / fg3a_sum * 100)) else 34L
     )
   }
-  list(
-    off = one_side(c("off_fg2m", "off_fg2a", "off_fg3m", "off_fg3a")),
-    def = one_side(c("def_fg2m", "def_fg2a", "def_fg3m", "def_fg3a"))
-  )
+  lapply(GL_SHOT_COLS, one_side)
 }
