@@ -198,7 +198,7 @@ possessions) is NULL, not 0 or 50.
 |---|---|---|---|
 | Game Logs table (both leagues, both views) | Filters, per-team-game metrics, percentiles against the whole-season population, shot cells, header labels, rounding, scoreless-game flag | `svc_game_logs()` and its `gl_*` helpers, `app/R/svc_game_logs.R`; parameters parsed by `svc_game_logs_params()` over `svc_params.R` | Shiny Tab 4 (`server_tab4.R`) and Tab 11 (`server_tab11_euro_gamelogs.R`) reactives and the API handler `api/R/handlers_game_logs.R` are consumers of it, not copies. Deviations D24, D25 |
 | League differences in Game Logs | Shot columns, header labels, date-range handling, round vs GN | descriptor `GL_LEAGUE` (and `GL_IL_VIEWS`, `GL_SHOT_COLS`, `GL_ROUND_1`) | -- |
-| ETL data version (X-08) | The last successful ETL stamp, `app_meta.etl_full_last_success`, that every season-level cache is keyed on | `etl_last_success_db()`, `global.R`, normalised by `shared_data_version()` | Shiny cache keys and the API's `GET /v1/meta/data-version` read the same function |
+| ETL data version | The league's last successful load stamp that every season-level cache is keyed on: Israeli `app_meta.etl_full_last_success`; EuroLeague and EuroCup the latest completed `euroleague.load_runs` run. Caches never cross leagues (inventory id X-08 in `docs/superpowers/specs/2026-10-19-api-mcp-feature-inventory.md`) | Israeli: `etl_last_success_db()`, `global.R`, normalised by `shared_data_version()`. EuroLeague / EuroCup: `euro_data_version()`, `global_euro.R` | Shiny's cache keys and the API (`svc_data_version()` in `svc_params.R`, behind `GET /v1/meta/data-version`) read the same function per league |
 
 ---
 
