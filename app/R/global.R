@@ -629,6 +629,25 @@ fetch_scoreless_games <- function(ver = NULL) {
   )
 }
 
+# The Israeli ETL data version (app_meta.etl_full_last_success), or NA when
+# the database cannot say. Shiny's navbar poll (app.R) and the API both read
+# it here, so both key their caches on the same version.
+etl_last_success_db <- function() {
+  tryCatch({
+    # Cached process-wide (TTL just under the 60s poll) so concurrent
+    # sessions share a single app_meta query per minute.
+    q <- cached_ref_query(
+      key = "app_meta_last_success",
+      ttl_sec = 55,
+      query_fun = function() db_get_query(
+        pg_pool,
+        "SELECT value FROM basketball_test.app_meta WHERE key = 'etl_full_last_success' LIMIT 1"
+      )
+    )
+    if (nrow(q) && nzchar(q$value[1])) q$value[1] else NA_character_
+  }, error = function(e) NA_character_)
+}
+
 # app_log() lives in R/logger.R (sourced from app.R after global.R).
 
 # ---------------- Session safety guards ----------------

@@ -637,3 +637,155 @@ svc_game_logs <- function(p, readers = gl_default_readers()) {
     )
   )
 }
+
+# ---------------- Parameters from a query ----------------
+# svc_game_logs_params() builds svc_game_logs()'s `p` from an untrusted query
+# (svc_params.R has the parsers and the query shape). Shiny builds the same
+# list from its inputs; for an equivalent query the two are identical, pinned
+# by api/tests/testthat/test-api-params.R against preset_to_p().
+
+# Parameter names per league. `sort` and `format` shape the response and are
+# not part of `p`. The league-specific names are the GL_LEAGUE dimensions:
+# one team or several, game type or phase, GN or round, stat filters or none.
+GL_PARAMS_COMMON <- c(
+  "season", "view", "date_from", "date_to", "opponents", "home_away",
+  "outcome", "own_starters", "opp_starters", "last_n", "sort", "format"
+)
+GL_PARAMS_LEAGUE <- list(
+  il = c("team", "game_type", "gn_min", "gn_max", "stat"),
+  euroleague = c("teams", "phase", "round_min", "round_max")
+)
+GL_PARAMS_ROUND <- list(il = c("gn_min", "gn_max"), euroleague = c("round_min", "round_max"))
+
+# The request guard's caps (guard_query_window()), which Shiny applies to its
+# heavy readers: Last N up to 80, a GN range of at most 80 games.
+GL_MAX_LAST_N <- 80L
+GL_MAX_ROUND_SPAN <- 80L
+
+# Israeli game-type codes -> the UI choice that carries them. One choice can
+# carry several codes (Winner Cup is "10,34"), so either code selects it.
+gl_game_type_choice <- function(codes) {
+  choices <- unname(GAME_TYPE_CHOICES_UI[nzchar(GAME_TYPE_CHOICES_UI)])
+  by_code <- unlist(lapply(choices, function(ch) {
+    stats::setNames(rep(ch, length(game_type_filter_values(ch))), game_type_filter_values(ch))
+  }))
+  ints <- svc_int(codes, "game_type")
+  hit <- by_code[as.character(ints)]
+  if (anyNA(hit)) {
+    svc_reject("game_type", "Unknown game type %d; known codes: %s.",
+               ints[is.na(hit)][[1]], paste(names(by_code), collapse = ", "))
+  }
+  unique(unname(hit))
+}
+
+# own_starters / opp_starters = <gte|lte>:<0-5>, the starters filter's mode
+# and value as Shiny's two inputs hold them.
+gl_starters_value <- function(query, name) {
+  val <- svc_one(query, name)
+  if (is.null(val)) return(list(mode = NULL, value = NULL))
+  m <- regmatches(val, regexec("^(gte|lte):([0-5])$", val))[[1]]
+  if (!length(m)) svc_reject(name, "'%s' must be gte:<0-5> or lte:<0-5>, got '%s'.", name, val)
+  list(mode = m[[2]], value = m[[3]])
+}
+
+# GN (Israeli) or round (EuroLeague) bounds and Last N, which exclude each
+# other (X-05); then Shiny's own resolver, so the triple has its shape.
+gl_params_gn <- function(query, league) {
+  ids <- GL_PARAMS_ROUND[[league]]
+  lo <- svc_int(svc_one(query, ids[[1]]), ids[[1]], min = 1L)
+  hi <- svc_int(svc_one(query, ids[[2]]), ids[[2]], min = 1L)
+  last_n <- svc_int(svc_one(query, "last_n"), "last_n", min = 1L, max = GL_MAX_LAST_N)
+  if (!is.null(last_n) && (!is.null(lo) || !is.null(hi))) {
+    svc_reject("last_n", "'last_n' cannot be combined with '%s' / '%s'.", ids[[1]], ids[[2]])
+  }
+  if (!is.null(lo) && !is.null(hi)) {
+    if (lo > hi) svc_reject(ids[[1]], "'%s' (%d) is greater than '%s' (%d).", ids[[1]], lo, ids[[2]], hi)
+    if (hi - lo + 1L > GL_MAX_ROUND_SPAN) {
+      svc_reject(ids[[1]], "A '%s'-'%s' range spans at most %d games.", ids[[1]], ids[[2]], GL_MAX_ROUND_SPAN)
+    }
+  }
+  txt <- function(x) if (is.null(x)) NULL else as.character(x)
+  resolve_gn_last_n_values(txt(lo), txt(hi), txt(last_n))
+}
+
+# stat=<col>:<ge|le>:<value>, repeatable; <col> a value of the view's
+# filterable columns. Israeli only.
+gl_params_stat <- function(query, view) {
+  vals <- svc_values(query, "stat")
+  filterable <- unname(if (identical(view, "four_factors")) GL_FF_FILTERABLE_COLS else GL_SUMMARY_FILTERABLE_COLS)
+  lapply(vals, function(v) {
+    m <- regmatches(v, regexec("^(.+):([^:]+):([^:]+)$", v))[[1]]
+    if (!length(m)) svc_reject("stat", "'stat' must be <column>:<ge|le>:<value>, got '%s'.", v)
+    svc_choice(m[[2]], "stat", filterable)
+    svc_choice(m[[3]], "stat", c("ge", "le"))
+    list(col = m[[2]], op = m[[3]], value = svc_number(m[[4]], "stat"))
+  })
+}
+
+# Team ids as given (validated as ids, not looked up): an id the league does
+# not have filters to nothing, as a stale Shiny selection would.
+gl_param_ids <- function(query, name) {
+  ids <- svc_int(svc_list(query, name), name, min = 1L)
+  if (is.null(ids)) NULL else ids
+}
+
+# `query` -- see svc_params.R; `league` -- an API league id ("il",
+# "euroleague", "eurocup"); `data_version` -- the league's ETL version, read
+# with svc_data_version() unless given. Returns svc_game_logs()'s `p`, or
+# signals an api_error() naming the first bad parameter.
+svc_game_logs_params <- function(query, league, data_version = NULL) {
+  lg <- svc_league(league)
+  is_il <- identical(lg$league, "il")
+  query <- query %||% list()
+  svc_check_names(query, c(GL_PARAMS_COMMON, GL_PARAMS_LEAGUE[[lg$league]]))
+
+  season <- svc_season(query, league)
+  view <- svc_choice(svc_one(query, "view"), "view", names(GL_IL_VIEWS)) %||% "summary"
+  dates <- svc_dates(query, svc_season_bounds(league, season))
+  svc_format(query)
+  svc_sort(query)
+
+  team <- gl_param_ids(query, "team")
+  teams <- gl_param_ids(query, "teams")
+  if (!is.null(team) && length(team) > 1L) svc_reject("team", "'team' takes one team id; got %d.", length(team))
+  game_type <- if (is_il) {
+    codes <- svc_list(query, "game_type")
+    if (!is.null(codes)) gl_game_type_choice(codes)
+  }
+  phase <- if (!is_il) {
+    phases <- svc_list(query, "phase")
+    if (!is.null(phases)) {
+      svc_choice(phases, "phase", as.character(euro_fetch_phases(lg$competition, season)$phase))
+    }
+  }
+  opponents <- gl_param_ids(query, "opponents")
+
+  own <- gl_starters_value(query, "own_starters")
+  opp <- gl_starters_value(query, "opp_starters")
+  starters <- if (is_il) {
+    gl_starters_bounds(own$mode, own$value, opp$mode, opp$value)
+  } else {
+    sb <- resolve_starters_bounds(own$mode, own$value, opp$mode, opp$value)
+    list(off_min = sb$num_starters_off_min, off_max = sb$num_starters_off_max,
+         def_min = sb$num_starters_def_min, def_max = sb$num_starters_def_max)
+  }
+
+  list(
+    league = lg$league,
+    competition = lg$competition,
+    season = if (is_il) season else as.character(season),
+    view = view,
+    team = if (is_il) (if (is.null(team)) "" else as.character(team)),
+    teams = if (!is_il) as.numeric(teams %||% numeric(0)),
+    dates = dates,
+    game_type = game_type,
+    phase = phase,
+    opponents = if (!is.null(opponents)) as.character(opponents),
+    home_away = svc_choice(svc_one(query, "home_away"), "home_away", c("home", "away")) %||% "",
+    outcome = svc_choice(svc_one(query, "outcome"), "outcome", c("win", "loss")) %||% "",
+    starters = starters,
+    gn = gl_params_gn(query, lg$league),
+    stat_filters = if (is_il) gl_params_stat(query, view) else list(),
+    data_version = data_version %||% svc_data_version(league)
+  )
+}

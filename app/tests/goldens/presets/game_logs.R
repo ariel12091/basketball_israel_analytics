@@ -124,3 +124,47 @@ GAME_LOGS_PRESETS <- list(
     slug = GL_EL_SUMMARY_SLUG
   )
 )
+
+# The preset's Shiny inputs, all steps merged, as one named list.
+preset_inputs <- function(preset) {
+  Reduce(function(acc, step) utils::modifyList(acc, step), golden_input_steps(preset$inputs), list())
+}
+
+# The service's `p` for a preset, read off the same inputs Shiny reads. `env`
+# is the app environment, so the resolvers are the app's own.
+preset_to_p <- function(preset, env) {
+  inp <- preset_inputs(preset)
+  view <- if (identical(inp[[if (preset$league == "il") "gl_view_mode" else "eurogl_view_mode"]],
+                        "Four Factors")) "four_factors" else "summary"
+  if (identical(preset$league, "il")) {
+    filterable <- if (view == "four_factors") env$GL_FF_FILTERABLE_COLS else env$GL_SUMMARY_FILTERABLE_COLS
+    stat_filters <- if (!is.null(inp$gl_add_stat_filter)) {
+      list(list(col = unname(filterable[[inp$gl_stat_filter_col]]),
+                op = inp$gl_stat_filter_op, value = inp$gl_stat_filter_value))
+    } else list()
+    list(
+      league = "il", competition = NULL, season = as.integer(inp$game_year), view = view,
+      team = inp$gl_team %||% "", teams = NULL, dates = inp$gl_dates,
+      game_type = inp$gl_game_type, phase = NULL, opponents = inp$gl_opponents,
+      home_away = inp$gl_home_away %||% "", outcome = inp$gl_outcome %||% "",
+      starters = env$gl_starters_bounds(inp$gl_num_starters_off_mode, inp$gl_num_starters_off,
+                                        inp$gl_num_starters_def_mode, inp$gl_num_starters_def),
+      gn = env$resolve_gn_last_n_values(inp$gl_gn_min, inp$gl_gn_max, inp$gl_last_n),
+      stat_filters = stat_filters, data_version = "golden"
+    )
+  } else {
+    sb <- env$resolve_starters_bounds(inp$eurogl_num_starters_off_mode, inp$eurogl_num_starters_off,
+                                      inp$eurogl_num_starters_def_mode, inp$eurogl_num_starters_def)
+    teams <- suppressWarnings(as.numeric(inp$eurogl_teams))
+    list(
+      league = "euroleague", competition = inp$league_select, season = inp$euro_game_year,
+      view = view, team = NULL, teams = teams[is.finite(teams)], dates = inp$eurogl_dates,
+      game_type = NULL, phase = inp$eurogl_phase, opponents = inp$eurogl_opponents,
+      home_away = inp$eurogl_home_away %||% "", outcome = inp$eurogl_outcome %||% "",
+      starters = list(off_min = sb$num_starters_off_min, off_max = sb$num_starters_off_max,
+                      def_min = sb$num_starters_def_min, def_max = sb$num_starters_def_max),
+      gn = env$resolve_gn_last_n_values(inp$eurogl_gn_min, inp$eurogl_gn_max, inp$eurogl_last_n),
+      stat_filters = list(), data_version = "golden"
+    )
+  }
+}

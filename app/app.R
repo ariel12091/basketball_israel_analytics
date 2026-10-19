@@ -383,22 +383,6 @@ server <- function(input, output, session) {
     if (length(existing)) existing[[1]] else NA_character_
   }
 
-  last_success_db <- function() {
-    tryCatch({
-      # Cached process-wide (TTL just under the 60s poll) so concurrent
-      # sessions share a single app_meta query per minute.
-      q <- cached_ref_query(
-        key = "app_meta_last_success",
-        ttl_sec = 55,
-        query_fun = function() db_get_query(
-          pg_pool,
-          "SELECT value FROM basketball_test.app_meta WHERE key = 'etl_full_last_success' LIMIT 1"
-        )
-      )
-      if (nrow(q) && nzchar(q$value[1])) q$value[1] else NA_character_
-    }, error = function(e) NA_character_)
-  }
-
   accept_data_version <- function(version) {
     version <- trimws(as.character(version %||% ""))
     if (!length(version) || is.na(version[[1]]) || !nzchar(version[[1]])) {
@@ -413,7 +397,7 @@ server <- function(input, output, session) {
   }
 
   refresh_last_updated <- function() {
-    ts <- last_success_db()
+    ts <- etl_last_success_db()
     if (is.na(ts)) {
       p <- last_success_path()
       if (is.na(p)) {
