@@ -35,91 +35,14 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     req(identical(input$main_tabs, "euro_game_logs"))
     cached_season_df(
       list("euro_game_logs", competition(), season(), euro_data_version()),
-      function() db_get_query(pg_pool,
-        "SELECT f.*, s.round_number, s.phase, s.game_date, s.opp_team_id,
-                s.is_home, s.has_won, s.team_points, s.opp_points,
-                s.team_name, s.opp_team_name,
-                m.seconds / 60.0 AS minutes
-           FROM euroleague.team_four_factors_by_game f
-           JOIN euroleague.final_schedule_mv s
-             ON s.game_id = f.game_id AND s.team_id = f.team_id
-           LEFT JOIN (
-             SELECT game_id, team_id, own_starters, opp_starters,
-                    SUM(seconds) AS seconds
-               FROM euroleague.lineup_totals_by_game
-              WHERE type_lineup = 'offense'
-                AND competition = $1::text AND game_year = $2::int4
-              GROUP BY game_id, team_id, own_starters, opp_starters
-           ) m
-             ON m.game_id = f.game_id AND m.team_id = f.team_id
-            AND m.own_starters = f.own_starters
-            AND m.opp_starters = f.opp_starters
-          WHERE s.competition = $1::text AND s.game_year = $2::int4",
-        params = list(competition(), as.integer(season())))
+      function() euro_fetch_game_log_rows(competition(), season())
     )
   })
-
-  percentile_metrics <- c(
-    "off_ppp", "def_ppp", "net_rtg",
-    "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
-    "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
-  )
 
   selected_team_ids <- reactive({
     ids <- suppressWarnings(as.numeric(input$eurogl_teams))
     ids[is.finite(ids)]
   })
-
-  build_games <- function(df, starters_bounds = NULL, apply_starters = TRUE) {
-    if (is.null(df) || !nrow(df)) return(NULL)
-
-    schedule_rows <- df %>%
-      distinct(game_id, team_id, round_number, phase, game_date, opp_team_id,
-               is_home, has_won, team_points, opp_points, team_name, opp_team_name)
-
-    # Schema adapter only: Tab 4's shared calculator consumes one offense or
-    # defense row at a time, while the EuroLeague fact stores both perspectives
-    # on one row. All aggregation and basketball formulas remain in
-    # gl_build_ff_metrics().
-    metric_rows <- bind_rows(
-      df %>% transmute(
-        game_id, team_id, type_lineup = "offense", num_starters = own_starters,
-        total_points = off_pts, total_poss = off_poss,
-        ts_poss_count = off_ts_poss, oreb_count = off_oreb,
-        oreb_opportunities = off_oreb_opp, tov_count = off_tov,
-        total_ft_attempts = off_fta, total_fga = off_fga,
-        total_fgm = off_fgm, total_fg3_made = off_fg3m, minutes
-      ),
-      df %>% transmute(
-        game_id, team_id, type_lineup = "defense", num_starters = opp_starters,
-        total_points = def_pts, total_poss = def_poss,
-        ts_poss_count = def_ts_poss, oreb_count = def_oreb,
-        oreb_opportunities = def_oreb_opp, tov_count = def_tov,
-        total_ft_attempts = def_fta, total_fga = def_fga,
-        total_fgm = def_fgm, total_fg3_made = def_fg3m, minutes = NA_real_
-      )
-    )
-
-    games <- gl_build_ff_metrics(
-      metric_rows, schedule_rows,
-      starters_bounds = starters_bounds,
-      apply_starters = apply_starters
-    )
-    if (is.null(games) || !nrow(games)) return(NULL)
-
-    games %>%
-      inner_join(schedule_rows, by = c("game_id", "team_id")) %>%
-      mutate(result = ifelse(has_won, "W", "L"),
-             score = paste0(team_points, "-", opp_points),
-             phase_label = euro_phase_label(phase)) %>%
-      # game_id before team_name, matching tab 4. DataTables sorts on Date
-      # then Rd and its sort is stable, so every row of every game played on
-      # the same date in the same round ties on both keys and falls back to
-      # this order. Without the game_id tiebreak a game's two rows scatter
-      # alphabetically across the whole date block -- 79 of 100 date+round
-      # buckets hold more than one game.
-      arrange(desc(game_date), desc(round_number), game_id, team_name)
-  }
 
   # Match the Israeli companion: filters decide which games are displayed,
   # but their percentiles stay anchored to the season's whole game population.
@@ -128,7 +51,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
   percentile_games <- reactive({
     df <- season_rows()
     if (is.null(df) || !nrow(df)) return(df)
-    build_games(df, apply_starters = FALSE)
+    gl_build_euro_games(df, apply_starters = FALSE)
   })
 
   filtered_games <- reactive({
@@ -138,27 +61,16 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     # Last N counts each team's whole season, as the SQL readers'
     # schedule_ranked CTE does, so it runs before every other filter.
     gn <- resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n)
-    if (!is.na(gn$last_n)) df <- df %>% group_by(team_id) %>%
-      arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-      slice_head(n = gn$last_n) %>% ungroup()
-    rng <- input$eurogl_dates
-    if (length(rng) == 2L) df <- df %>% filter(game_date >= as.Date(rng[1]), game_date <= as.Date(rng[2]))
-    ids <- selected_team_ids()
-    if (length(ids)) df <- df %>% filter(team_id %in% ids)
-    opp <- suppressWarnings(as.numeric(f$opp_ids)); opp <- opp[is.finite(opp)]
-    if (length(opp)) df <- df %>% filter(opp_team_id %in% opp)
-    if (length(f$game_type) && any(nzchar(f$game_type))) df <- df %>% filter(phase %in% f$game_type[nzchar(f$game_type)])
-    if (nzchar(f$home_away %||% "")) df <- df %>% filter(is_home == (f$home_away == "home"))
-    if (nzchar(f$outcome %||% "")) df <- df %>% filter(has_won == (f$outcome == "win"))
+    df <- gl_filter_euro_rows(df, list(
+      teams = selected_team_ids(), dates = input$eurogl_dates, phase = f$game_type,
+      opponents = f$opp_ids, home_away = f$home_away, outcome = f$outcome, gn = gn
+    ))
 
     starter_bounds <- resolve_starters_bounds(
       input$eurogl_num_starters_off_mode, input$eurogl_num_starters_off,
       input$eurogl_num_starters_def_mode, input$eurogl_num_starters_def
     )
-    if (!is.na(gn$min_gn)) df <- df %>% filter(round_number >= gn$min_gn)
-    if (!is.na(gn$max_gn)) df <- df %>% filter(round_number <= gn$max_gn)
-
-    games <- build_games(df, starters_bounds = list(
+    games <- gl_build_euro_games(df, starters_bounds = list(
       off_min = starter_bounds$num_starters_off_min,
       off_max = starter_bounds$num_starters_off_max,
       def_min = starter_bounds$num_starters_def_min,
@@ -166,7 +78,7 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     ))
     if (is.null(games) || !nrow(games)) return(games)
 
-    gl_attach_percentiles(games, percentile_games(), percentile_metrics)
+    gl_attach_percentiles(games, percentile_games(), GL_EURO_PERCENTILE_METRICS)
   })
 
   output$eurogl_table <- renderDT({

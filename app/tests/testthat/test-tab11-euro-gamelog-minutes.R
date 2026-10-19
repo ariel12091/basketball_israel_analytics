@@ -84,7 +84,7 @@ test_that("an offense starters filter narrows EuroLeague minutes", {
 
 test_that("Tab 11 reads canonical offense seconds from lineup_totals_by_game", {
   src <- paste(
-    readLines(repo_file("R", "server_tab11_euro_gamelogs.R"), warn = FALSE),
+    readLines(repo_file("R", "global_euro.R"), warn = FALSE),
     collapse = "\n"
   )
 
@@ -110,7 +110,7 @@ test_that("Tab 11 preserves its newest-first server order", {
 # DataTables preserves build_games()'s incoming order. The game_id tiebreak
 # keeps both team rows for each game together within a date/round block.
 test_that("Tab 11 tiebreaks its sort on game_id, like Tab 4", {
-  euro <- paste(readLines(repo_file("R", "server_tab11_euro_gamelogs.R"), warn = FALSE),
+  euro <- paste(readLines(repo_file("R", "svc_game_logs.R"), warn = FALSE),
                 collapse = "
 ")
   isr <- paste(readLines(repo_file("R", "svc_game_logs.R"), warn = FALSE), collapse = "

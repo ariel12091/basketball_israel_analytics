@@ -348,3 +348,81 @@ gl_shot_averages <- function(disp) {
   }
   lapply(GL_SHOT_COLS, one_side)
 }
+
+GL_EURO_PERCENTILE_METRICS <- c(
+  "off_ppp", "def_ppp", "net_rtg",
+  "off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct",
+  "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct"
+)
+
+gl_build_euro_games <- function(df, starters_bounds = NULL, apply_starters = TRUE) {
+  if (is.null(df) || !nrow(df)) return(NULL)
+
+  schedule_rows <- df %>%
+    distinct(game_id, team_id, round_number, phase, game_date, opp_team_id,
+             is_home, has_won, team_points, opp_points, team_name, opp_team_name)
+
+  # Schema adapter only: Tab 4's shared calculator consumes one offense or
+  # defense row at a time, while the EuroLeague fact stores both perspectives
+  # on one row. All aggregation and basketball formulas remain in
+  # gl_build_ff_metrics().
+  metric_rows <- bind_rows(
+    df %>% transmute(
+      game_id, team_id, type_lineup = "offense", num_starters = own_starters,
+      total_points = off_pts, total_poss = off_poss,
+      ts_poss_count = off_ts_poss, oreb_count = off_oreb,
+      oreb_opportunities = off_oreb_opp, tov_count = off_tov,
+      total_ft_attempts = off_fta, total_fga = off_fga,
+      total_fgm = off_fgm, total_fg3_made = off_fg3m, minutes
+    ),
+    df %>% transmute(
+      game_id, team_id, type_lineup = "defense", num_starters = opp_starters,
+      total_points = def_pts, total_poss = def_poss,
+      ts_poss_count = def_ts_poss, oreb_count = def_oreb,
+      oreb_opportunities = def_oreb_opp, tov_count = def_tov,
+      total_ft_attempts = def_fta, total_fga = def_fga,
+      total_fgm = def_fgm, total_fg3_made = def_fg3m, minutes = NA_real_
+    )
+  )
+
+  games <- gl_build_ff_metrics(
+    metric_rows, schedule_rows,
+    starters_bounds = starters_bounds,
+    apply_starters = apply_starters
+  )
+  if (is.null(games) || !nrow(games)) return(NULL)
+
+  games %>%
+    inner_join(schedule_rows, by = c("game_id", "team_id")) %>%
+    mutate(result = ifelse(has_won, "W", "L"),
+           score = paste0(team_points, "-", opp_points),
+           phase_label = euro_phase_label(phase)) %>%
+    # game_id before team_name, matching tab 4. DataTables sorts on Date
+    # then Rd and its sort is stable, so every row of every game played on
+    # the same date in the same round ties on both keys and falls back to
+    # this order. Without the game_id tiebreak a game's two rows scatter
+    # alphabetically across the whole date block -- 79 of 100 date+round
+    # buckets hold more than one game.
+    arrange(desc(game_date), desc(round_number), game_id, team_name)
+}
+
+gl_filter_euro_rows <- function(df, f) {
+  if (is.null(df) || !nrow(df)) return(df)
+  gn <- f$gn
+  # Known defect: slices starter-split rows, not games -- see the deviation register.
+  if (!is.na(gn$last_n)) df <- df %>% group_by(team_id) %>%
+    arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
+    slice_head(n = gn$last_n) %>% ungroup()
+  rng <- f$dates
+  if (length(rng) == 2L) df <- df %>% filter(game_date >= as.Date(rng[1]), game_date <= as.Date(rng[2]))
+  ids <- f$teams
+  if (length(ids)) df <- df %>% filter(team_id %in% ids)
+  opp <- suppressWarnings(as.numeric(f$opponents)); opp <- opp[is.finite(opp)]
+  if (length(opp)) df <- df %>% filter(opp_team_id %in% opp)
+  if (length(f$phase) && any(nzchar(f$phase))) df <- df %>% filter(phase %in% f$phase[nzchar(f$phase)])
+  if (nzchar(f$home_away %||% "")) df <- df %>% filter(is_home == (f$home_away == "home"))
+  if (nzchar(f$outcome %||% "")) df <- df %>% filter(has_won == (f$outcome == "win"))
+  if (!is.na(gn$min_gn)) df <- df %>% filter(round_number >= gn$min_gn)
+  if (!is.na(gn$max_gn)) df <- df %>% filter(round_number <= gn$max_gn)
+  df
+}

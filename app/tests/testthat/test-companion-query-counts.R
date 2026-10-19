@@ -189,6 +189,14 @@ make_euro_query_test_env <- function() {
 
   sys.source(repo_file("R", "server_tab9_euro_team.R"), envir = env)
   sys.source(repo_file("R", "server_tab10_euro_lineups.R"), envir = env)
+  # The season reader lives in global_euro.R (not sourceable here): lift just it.
+  reader_defs <- Filter(function(e) is.call(e) && identical(e[[1]], as.name("<-")) &&
+    identical(e[[2]], as.name("euro_fetch_game_log_rows")),
+    parse(repo_file("R", "global_euro.R"), keep.source = FALSE))
+  for (e in reader_defs) eval(e, envir = env)
+  # gl_build_euro_games calls euro_phase_label(): rebind it to see this env's stub.
+  env$gl_build_euro_games <- get("gl_build_euro_games", envir = env)
+  environment(env$gl_build_euro_games) <- env
   sys.source(repo_file("R", "server_tab11_euro_gamelogs.R"), envir = env)
   env
 }

@@ -127,6 +127,30 @@ euro_fetch_round_values <- function(competition, season) {
   )
 }
 
+euro_fetch_game_log_rows <- function(competition, season) {
+  db_get_query(pg_pool,
+        "SELECT f.*, s.round_number, s.phase, s.game_date, s.opp_team_id,
+                s.is_home, s.has_won, s.team_points, s.opp_points,
+                s.team_name, s.opp_team_name,
+                m.seconds / 60.0 AS minutes
+           FROM euroleague.team_four_factors_by_game f
+           JOIN euroleague.final_schedule_mv s
+             ON s.game_id = f.game_id AND s.team_id = f.team_id
+           LEFT JOIN (
+             SELECT game_id, team_id, own_starters, opp_starters,
+                    SUM(seconds) AS seconds
+               FROM euroleague.lineup_totals_by_game
+              WHERE type_lineup = 'offense'
+                AND competition = $1::text AND game_year = $2::int4
+              GROUP BY game_id, team_id, own_starters, opp_starters
+           ) m
+             ON m.game_id = f.game_id AND m.team_id = f.team_id
+            AND m.own_starters = f.own_starters
+            AND m.opp_starters = f.opp_starters
+          WHERE s.competition = $1::text AND s.game_year = $2::int4",
+    params = list(competition, as.integer(season)))
+}
+
 euro_fetch_phases <- function(competition, season) {
   competition <- as.character(competition)
   season <- as.integer(season)
