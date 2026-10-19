@@ -326,17 +326,22 @@ gl_filter_games <- function(df, p, league) {
   df
 }
 
-# "At least / at most N starters" bounds for each side, from the raw control values.
-gl_starters_bounds <- function(off_mode, off_val, def_mode, def_val) {
-  off_mode <- off_mode %||% ""
-  def_mode <- def_mode %||% ""
-  off_val <- if (nzchar(off_mode) && nzchar(off_val %||% "")) as.integer(off_val) else NA_integer_
-  def_val <- if (nzchar(def_mode) && nzchar(def_val %||% "")) as.integer(def_val) else NA_integer_
+# "At least / at most N starters" bounds for each side, from the raw control
+# values, as svc_game_logs()'s `p$starters`. The mode/value reading is
+# resolve_starters_bounds() (helpers.R), shared with every other tab. One
+# league difference survives, for a mode with a NULL value, which neither a
+# selectInput (it always holds "" or a number) nor the API
+# (gl_starters_value() gives both or neither) can send: Israeli Game Logs
+# reads it as no bound (NA); EuroLeague keeps resolve_starters_bounds()'s
+# integer(0) (`keep_empty = TRUE`). Pinned in test-svc-game-logs.R.
+gl_starters_bounds <- function(off_mode, off_val, def_mode, def_val, keep_empty = FALSE) {
+  sb <- resolve_starters_bounds(off_mode, off_val, def_mode, def_val)
+  bound <- function(x) if (length(x) || keep_empty) x else NA_integer_
   list(
-    off_min = if (identical(off_mode, "gte")) off_val else NA_integer_,
-    off_max = if (identical(off_mode, "lte")) off_val else NA_integer_,
-    def_min = if (identical(def_mode, "gte")) def_val else NA_integer_,
-    def_max = if (identical(def_mode, "lte")) def_val else NA_integer_
+    off_min = bound(sb$num_starters_off_min),
+    off_max = bound(sb$num_starters_off_max),
+    def_min = bound(sb$num_starters_def_min),
+    def_max = bound(sb$num_starters_def_max)
   )
 }
 
@@ -799,13 +804,7 @@ svc_game_logs_params <- function(query, league, data_version = NULL) {
 
   own <- gl_starters_value(query, "own_starters")
   opp <- gl_starters_value(query, "opp_starters")
-  starters <- if (is_il) {
-    gl_starters_bounds(own$mode, own$value, opp$mode, opp$value)
-  } else {
-    sb <- resolve_starters_bounds(own$mode, own$value, opp$mode, opp$value)
-    list(off_min = sb$num_starters_off_min, off_max = sb$num_starters_off_max,
-         def_min = sb$num_starters_def_min, def_max = sb$num_starters_def_max)
-  }
+  starters <- gl_starters_bounds(own$mode, own$value, opp$mode, opp$value, keep_empty = !is_il)
 
   list(
     league = lg$league,

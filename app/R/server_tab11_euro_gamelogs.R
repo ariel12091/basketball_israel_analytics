@@ -51,20 +51,15 @@ server_tab11_euro_gamelogs <- function(input, output, session, shared) {
     df <- season_rows()
     if (is.null(df) || !nrow(df)) return(df)
     f <- game_context_filter_values(input, "eurogl", game_type_id = "eurogl_phase")
-    starter_bounds <- resolve_starters_bounds(
-      input$eurogl_num_starters_off_mode, input$eurogl_num_starters_off,
-      input$eurogl_num_starters_def_mode, input$eurogl_num_starters_def
-    )
     # The filter and starters fields of svc_game_logs()'s `p`.
     gl_el_games(df, list(
       teams = selected_team_ids(), dates = input$eurogl_dates, phase = f$game_type,
       opponents = f$opp_ids, home_away = f$home_away, outcome = f$outcome,
       gn = resolve_gn_last_n_values(f$gn_min, f$gn_max, f$last_n),
-      starters = list(
-        off_min = starter_bounds$num_starters_off_min,
-        off_max = starter_bounds$num_starters_off_max,
-        def_min = starter_bounds$num_starters_def_min,
-        def_max = starter_bounds$num_starters_def_max
+      starters = gl_starters_bounds(
+        input$eurogl_num_starters_off_mode, input$eurogl_num_starters_off,
+        input$eurogl_num_starters_def_mode, input$eurogl_num_starters_def,
+        keep_empty = TRUE
       )
     ), percentile_games)
   })

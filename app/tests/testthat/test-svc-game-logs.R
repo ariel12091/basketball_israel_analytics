@@ -98,4 +98,29 @@ test_that("a blank end of the date range: open in Israel, no games in EuroLeague
   expect_error(svc_gl_env$gl_filter_games(three, base, "nba"), "unknown league")
 })
 
+test_that("starters bounds: one reading for both leagues, one pinned NULL difference", {
+  e <- svc_gl_env
+  # Every value a mode/value pair of selectInputs (or the API) can hold.
+  for (mode in list(NULL, "", "gte", "lte")) {
+    for (val in list(NULL, "", "0", "3", "5")) {
+      if (!is.null(val) || is.null(mode) || !nzchar(mode)) {
+        il <- e$gl_starters_bounds(mode, val, mode, val)
+        el <- e$gl_starters_bounds(mode, val, mode, val, keep_empty = TRUE)
+        sb <- e$resolve_starters_bounds(mode, val, mode, val)
+        info <- paste(mode %||% "NULL", val %||% "NULL")
+        expect_identical(il, el, info = info)
+        expect_identical(unname(il), unname(sb[c("num_starters_off_min", "num_starters_off_max",
+                                                 "num_starters_def_min", "num_starters_def_max")]),
+                         info = info)
+      }
+    }
+  }
+  expect_identical(e$gl_starters_bounds("gte", "4", "lte", "2"),
+                   list(off_min = 4L, off_max = NA_integer_, def_min = NA_integer_, def_max = 2L))
+  # A mode with a NULL value, which no control sends: Israeli Game Logs reads
+  # no bound, EuroLeague keeps resolve_starters_bounds()'s integer(0).
+  expect_identical(e$gl_starters_bounds("gte", NULL, "", NULL)$off_min, NA_integer_)
+  expect_identical(e$gl_starters_bounds("gte", NULL, "", NULL, keep_empty = TRUE)$off_min, integer(0))
+})
+
 rm(svc_gl_env)

@@ -153,16 +153,15 @@ preset_to_p <- function(preset, env) {
       stat_filters = stat_filters, data_version = "golden"
     )
   } else {
-    sb <- env$resolve_starters_bounds(inp$eurogl_num_starters_off_mode, inp$eurogl_num_starters_off,
-                                      inp$eurogl_num_starters_def_mode, inp$eurogl_num_starters_def)
     teams <- suppressWarnings(as.numeric(inp$eurogl_teams))
     list(
       league = "euroleague", competition = inp$league_select, season = inp$euro_game_year,
       view = view, team = NULL, teams = teams[is.finite(teams)], dates = inp$eurogl_dates,
       game_type = NULL, phase = inp$eurogl_phase, opponents = inp$eurogl_opponents,
       home_away = inp$eurogl_home_away %||% "", outcome = inp$eurogl_outcome %||% "",
-      starters = list(off_min = sb$num_starters_off_min, off_max = sb$num_starters_off_max,
-                      def_min = sb$num_starters_def_min, def_max = sb$num_starters_def_max),
+      starters = env$gl_starters_bounds(inp$eurogl_num_starters_off_mode, inp$eurogl_num_starters_off,
+                                        inp$eurogl_num_starters_def_mode, inp$eurogl_num_starters_def,
+                                        keep_empty = TRUE),
       gn = env$resolve_gn_last_n_values(inp$eurogl_gn_min, inp$eurogl_gn_max, inp$eurogl_last_n),
       stat_filters = list(), data_version = "golden"
     )
