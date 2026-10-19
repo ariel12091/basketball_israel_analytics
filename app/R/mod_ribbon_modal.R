@@ -61,7 +61,7 @@ ribbon_pair_controls <- function() {
       tags$button(type = "button", class = "ibpl-ribbon-pair-clear",
                   "Clear players"),
       div(class = "ibpl-ribbon-pair-status", role = "status", `aria-live` = "polite",
-          "Select two or more players, by their names or bars, to see their shared court time and lineups."))
+          "Select a player by name or bar to see all their lineups. Add players to see only the lineups and court time they shared."))
 }
 
 # Game 406's Q4 clock is reconstructed from wall-entry time because the
@@ -163,7 +163,7 @@ ribbon_modal_server <- function(input, output, session, prefix, league,
         health_ui,
         ribbon_pair_controls(),
         div(class = "ibpl-ribbon-inline-hint",
-            "Scroll through the quarters. Select a player's row for that stint and its lineups."),
+            "Scroll through the quarters. Select a player's name or bar to see their lineups across the whole game."),
         ribbon_mobile_overview_ui(ribbon$margin, bounds, ribbon$steps, meta),
         div(class = "ibpl-ribbon-inline-scroll",
             `aria-label` = paste("Gameflow for", meta$game_label), svg)

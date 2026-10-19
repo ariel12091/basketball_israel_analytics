@@ -605,7 +605,7 @@
     if (status) status.textContent = players.length ?
       players.map(function(p) { return p.name; }).join(" + ") + " · " +
       (seconds ? clockLabel(seconds) + (players.length > 1 ? " on court together" : " on court") : "No shared court time") +
-      ". Select a player again to remove them." : "Select two or more players, by their names or bars, to see their shared court time and lineups.";
+      ". Select a player again to remove them." : "Select a player by name or bar to see all their lineups. Add players to see only the lineups and court time they shared.";
     host.querySelectorAll("svg.ibpl-ribbon").forEach(function(svg) {
       svg.querySelectorAll(".ibpl-ribbon-player-overlap-clip").forEach(function(clip) { clip.remove(); });
       svg.querySelectorAll("[data-clip]").forEach(function(element) {
@@ -659,7 +659,7 @@
     var previous = host.querySelector(".ibpl-ribbon-shared-lineups");
     if (previous) previous.remove();
     host.ibplSharedLineups = [];
-    if (players.length < 2 || !windows.length) return;
+    if (!players.length || !windows.length) return;
     var lineups = JSON.parse(source.dataset.lineups || "[]");
     var hit = source.querySelector(".ibpl-ribbon-margin-hit");
     var scores = hit ? JSON.parse(hit.dataset.scores) : [];
@@ -672,7 +672,8 @@
     card.className = "ibpl-ribbon-detail ibpl-ribbon-shared-lineups";
     var heading = document.createElement("div");
     heading.className = "ibpl-ribbon-detail-head";
-    heading.textContent = "Shared lineups · select a lineup to highlight its shared minutes";
+    heading.textContent = (players.length === 1 ? "Player lineups" : "Shared lineups") +
+      " · whole-game totals across all stints. Select a lineup to highlight its minutes.";
     card.appendChild(heading);
     ["own", "opp"].forEach(function(side) {
       var player = players.find(function(player) { return player.key.indexOf(side + ":") === 0; });
@@ -711,7 +712,7 @@
         row.appendChild(members);
         var facts = document.createElement("div");
         facts.className = "ibpl-ribbon-detail-meta";
-        facts.textContent = clockLabel(group.duration) + " shared" +
+        facts.textContent = clockLabel(group.duration) + (players.length > 1 ? " together" : " on court") +
           (group.hasPm ? " · +/- " + pmLabel(group.pm, true) : "") + " · " +
           group.windows.map(function(window) { return clockLabel(window.start) + "–" + clockLabel(window.end); }).join(", ");
         row.appendChild(facts);
@@ -751,13 +752,6 @@
     else players.push({ key: lane.dataset.playerKey, name: lane.dataset.player });
     host.ibplPlayers = [];
     host.querySelectorAll("svg.ibpl-ribbon").forEach(clearSelection);
-    // Keep the existing stint/lineup detail when only one player is selected.
-    if (players.length === 1) {
-      var remaining = lane.dataset.playerKey === players[0].key ? lane :
-        Array.from(svg.querySelectorAll(".ibpl-ribbon-lane"))
-          .find(function(candidate) { return candidate.dataset.playerKey === players[0].key; });
-      if (remaining) setSelection(svg, remaining);
-    }
     host.ibplPlayers = players;
     renderPlayerOverlap(host);
   }
