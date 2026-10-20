@@ -83,7 +83,8 @@ Anti-goals (a working result that is still a failure):
 | 19 | Our own API (Next.js routes) is the single front door for React, a future MCP server and other callers; behind it, a direct Postgres connection with `app_readonly`'s permissions, as Shiny has (login role `app_web`, decision 22) | User + Claude |
 | 20 | Reuse what is proven; change only for a named, measured or documented reason | User |
 | 21 | ETL exception: both loaders write a publication state (publishing / published / failed; stale = crashed) and a version | User |
-| 22 | The web app connects as its own login role `app_web`, a member of `app_readonly`, with its own connection limit | Claude |
+| 22 | The web app connects as its own login role `app_web`, a member of `app_readonly`, with its own connection limit and role-default timeouts | Claude |
+| 23 | Every writer of served data claims and finalizes publication through `begin_publication` / `finish_publication`, one run at a time | Claude |
 
 ## Guiding rule: reuse what is proven
 
@@ -193,8 +194,17 @@ The gain over Shiny is structural: Node.js handles I/O asynchronously, so one fu
 instance serves many requests while their queries wait on the database, and Vercel's Fluid
 compute reuses warm instances for concurrent requests
 ([Vercel Function limits](https://vercel.com/docs/functions/limitations)). In practice:
-- every database call is `async`; independent queries for one response run in parallel
-  (`Promise.all`), e.g. the two Compare sides or the rank-arrow baseline;
+- every database call is `async`; **one response is read from one database snapshot**
+  (closes review gap G11): all frames a response combines -- the two Compare sides, current
+  ranks and their rank-arrow baseline -- come from one SQL statement or one repeatable-read
+  transaction on a single checked-out client
+  ([node-postgres transactions](https://node-postgres.com/features/transactions)), so
+  parallelism happens inside the database, not across connections. Separate parallel calls
+  are allowed only when every frame reports `published` and the same version (with
+  single-writer ownership, G12, no run can then be in progress); otherwise all frames are
+  re-read in one transaction. Frames are never combined on matching markers alone. Phase 0
+  tests a publication landing between the two Compare-side reads and between the current and
+  baseline reads;
 - nothing in a request handler blocks the event loop with heavy CPU work; the shared TS
   module's per-row work is linear and small, and anything heavier moves to SQL;
 - in the browser, data loads are async with loading states (the skeletons Shiny shows today),
@@ -216,6 +226,21 @@ A request still queued when its deadline passes is dropped and never starts. The
 deadline (answer 503 with `Retry-After` at 5 s) is separate from the bound on database work
 already running (its statement timeout); superseded queries are not cancelled mid-flight, so a
 cancellation can never hit a later query reusing the connection.
+
+*Waiting inside the pooler (G8).* In transaction mode the pooler assigns a database backend
+only when a transaction's first statement arrives, so time waiting there is invisible to a
+timeout that statement would set. Two bounds cover it:
+- **role defaults enforced by the database**: `app_web` gets `statement_timeout = 3s` and a
+  short `idle_in_transaction_session_timeout` (`ALTER ROLE ... SET`), so every statement is
+  bounded even if no per-request setting arrives, and an abandoned transaction cannot hold a
+  backend;
+- **a client-side timer over the whole first exchange** (`BEGIN` and the timeout setup,
+  including any wait in the pooler): if it is not answered within the connection budget, the
+  client connection is destroyed, not returned to the pool, so nothing queued behind it can
+  start later without its budget.
+Pooler waiting is measured separately from the local queue and from connection establishment.
+Phase 0 tests with all of `app_web`'s backend slots busy: a new request must meet its deadline
+and leave no delayed or orphaned work.
 
 *Across instances (G10).* Vercel scales out instances, each with its own pool, so local caps do
 not bound the total. The global bound is enforced by the database: the `app_web` role's
@@ -261,6 +286,19 @@ publication **state** and **version** (e.g. `app_meta` keys `publication_state_<
    longest normal run (measured from its logs) is read as `stale`, i.e. a crashed run.
 A run that commits nothing changes neither. The next successful run sets `published` again.
 The Israeli ETL (`etl/etl_full.R`) and the EuroLeague loader (`euroleague/`) both do this.
+
+**One writer at a time (closes review gap G12).** Every run carries a run identity. A
+`begin_publication(league, run_id)` function claims the league atomically and is refused while
+another run holds it -- unless that holder is `stale`, in which case the claim is taken over and
+the old run is marked `failed`. `finish_publication(league, run_id, ok)` sets the final state
+and advances the version in one atomic, conditional update that succeeds only if that run
+still owns the claim, so an abandoned writer that resumes later cannot finalize over its
+replacement. This covers **every writer of served data**: the scheduled ETL, manual
+`game_ids=` runs and retries, the EuroLeague loader, and manual repair procedures
+(`scripts/restage_matview.R`, the apply and migration scripts that rebuild served views or
+tables). The ETL workflows also get a GitHub Actions concurrency group so two runs of the same
+loader cannot start together. Phase 0 tests overlapping starts, finalization by the wrong run,
+and recovery followed by a late finalization attempt.
 
 **The contract.**
 - Every data function returns `(state, version)` read in the **same database snapshot** as its
@@ -358,7 +396,7 @@ decision.
 
 | Phase | Content | Done when |
 |---|---|---|
-| 0 | Foundation: Next.js project; `app_api` schema under `app_readonly` with the security scripts extended; direct Postgres access with `pg`, both ports tested for row ownership under concurrency (G6); the ETL publication markers and the freshness contract (G2); the `app_web` role and the written connection budget (G10); end-to-end request deadlines with queue, connection and SQL budgets (G8); the four-state publication markers and paging rules (G2, G9); completeness metadata from the same execution (G7); preview deployment; Game Logs end to end (both leagues); payload and completeness checks; **a load test of the expensive database paths too** (closes G1): filtered On/Off, starters and custom clutch, both leagues -- cold caches, distinct filter combinations and simultaneous identical requests, with duration, request rate, cache-hit mix and the latency measurement point written down first; errors and timeouts count as failures | Game Logs matches its 15 goldens through the preview URL; the identity proof (G3), the commit-boundary freshness tests (G2), the concurrency row-ownership tests (G6), the work-bounding and multi-instance tests (G8, G10) and the paged-download test (G9) pass; the load test meets criterion 3, or the measured capacity limits and the changes needed are recorded before Phases 2-7 start |
+| 0 | Foundation: Next.js project; `app_api` schema under `app_readonly` with the security scripts extended; direct Postgres access with `pg`, both ports tested for row ownership under concurrency (G6); the ETL publication markers and the freshness contract (G2); the `app_web` role and the written connection budget (G10); end-to-end request deadlines with queue, connection and SQL budgets (G8); the four-state publication markers, single-writer ownership for every writer and paging rules (G2, G9, G12); one snapshot per combined response (G11); `app_web` role-default timeouts and the pooler-wait bound (G8); completeness metadata from the same execution (G7); preview deployment; Game Logs end to end (both leagues); payload and completeness checks; **a load test of the expensive database paths too** (closes G1): filtered On/Off, starters and custom clutch, both leagues -- cold caches, distinct filter combinations and simultaneous identical requests, with duration, request rate, cache-hit mix and the latency measurement point written down first; errors and timeouts count as failures | Game Logs matches its 15 goldens through the preview URL; the identity proof (G3), the commit-boundary freshness tests (G2), the concurrency row-ownership tests (G6), the work-bounding and multi-instance tests (G8, G10) and the paged-download test (G9), the writer-ownership tests (G12), the cross-read publication tests (G11) and the full-pool test (G8) pass; the load test meets criterion 3, or the measured capacity limits and the changes needed are recorded before Phases 2-7 start |
 | 1 | Goldens for every remaining tab, from Shiny | Every inventory ID named by a golden or a browser-test spec |
 | 2-7 | One tab family per phase: Player Stats, Team Ratings, On/Off, Lineups, Gameflow + Home, Compare (logic to SQL first, then route, then UI) | That family's goldens and browser tests pass; coverage gate shows its IDs |
 | 8 | Full-app load test, performance work on slow functions | Criterion 3 holds for every tab |
@@ -401,12 +439,14 @@ expensive queries, caching and freshness, the 2 s target) so a wrong call costs 
 
 ## Review record (2026-10-20)
 
-Three reviews found ten gaps: G1 expensive paths untested in Phase 0; G2 version freshness
+Four reviews found twelve gaps: G1 expensive paths untested in Phase 0; G2 version freshness
 and the publication boundary (reopened twice: failed runs, crashed runs); G3 the Data API
 identity; G4 payload limits and population completeness; G5 coverage from source instead of
 test runs; G6 driver pipelining on the transaction pooler; G7 completeness checks repeating an
 expensive scan; G8 bounding the whole request, not only each statement; G9 paged downloads
-mixing populations during publication; G10 deployment-wide connection limits. Each has a
+mixing populations during publication; G10 deployment-wide connection limits; G11 one
+consistent snapshot per combined response; G12 exclusive writer ownership of the publication
+state. G8 was also reopened for waits inside the transaction pooler. Each has a
 design response in the section marked "closes review gap Gn"; each is closed only when the
 Phase 0 (or, for G5, the switch) tests named there pass.
 
