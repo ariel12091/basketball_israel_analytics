@@ -143,9 +143,9 @@ Rules:
   `docs/shared_definitions.md` § 3), Gameflow pair selection and shared-lineup recomputation
   (GF-06 is client-side today too; its existing `app.js` logic is ported).
 - A new database surface: one schema (e.g. `app_api`) holding the functions the web app may
-  call, each a thin wrapper over the owning function, granted to one read-only role. Only that
-  schema is exposed through the Data API. The existing `app_readonly` grants and the
-  security apply/audit scripts (`scripts/apply_db_security.R`) cover it.
+  call, each a thin wrapper over the owning function, executable by `app_readonly` only. The
+  existing grants and the security apply/audit scripts (`scripts/apply_db_security.R`) are
+  extended to cover it.
 
 ### Data access
 
@@ -291,8 +291,8 @@ decision.
 | 9 | Switch: new address live for everyone; Shiny's old address points users to the new app's home page (old deep links are not translated, decision 18); Shiny kept reachable as fallback | Users on the new app |
 | 10 | Retire Shiny, the Plumber API (`api/`) and the shared R layer's Shiny side after the fallback weeks | Shiny off; docs updated |
 
-Phase 0 deliberately puts the riskiest assumptions first (Data API under load, edge caching,
-the 2 s target) so a wrong call costs one phase, not seven.
+Phase 0 deliberately puts the riskiest assumptions first (database access under load, the
+expensive queries, caching and freshness, the 2 s target) so a wrong call costs one phase, not seven.
 
 ## What happens to existing work
 
