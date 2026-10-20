@@ -4,8 +4,8 @@
 #
 # Run as a script: Rscript scripts/apply_db_security.R (from the repo root).
 # Sourced by scripts/apply_web_foundation.R, which calls
-# run_db_security_hardening() inside its own transaction so the web role,
-# the app_api schema and their grants are audited before anything commits.
+# run_db_security_hardening() inside its own transaction so the app_api
+# schema and its grants are audited before anything commits.
 # Sourcing defines the function only; the block at the bottom runs only
 # when this file is the script being executed.
 

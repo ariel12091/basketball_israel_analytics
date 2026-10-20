@@ -28,9 +28,8 @@
 -- curated and private like euroleague, with an empty relation list, and its
 -- functions are granted from app_api_function_names exactly as the other
 -- schemas' are -- so a re-apply keeps them, and a new app_api function is one
--- entry here plus one in audit_app_access.sql. The web login role app_web is
--- a member of app_readonly (sql/security/web_role.sql), so every grant below
--- reaches it with no grant of its own.
+-- entry here plus one in audit_app_access.sql. The web app logs in as
+-- app_readonly itself (execution amendment, 2026-10-20).
 
 DO $$
 DECLARE

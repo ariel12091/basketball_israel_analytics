@@ -203,51 +203,13 @@ test_that("sourcing the security script defines the shared step and runs nothing
   expect_false(exists("con", envir = env, inherits = FALSE))
 })
 
-# ---- Web foundation: app_web login role and app_api schema ------------------
+# ---- Web foundation: app_api schema under the existing app_readonly login ----
 
 # Quoted identifiers in one list block, in order.
 sql_quoted_names <- function(block) {
   hits <- regmatches(block, gregexpr("'[A-Za-z0-9_]+'", block))[[1]]
   gsub("'", "", hits, fixed = TRUE)
 }
-
-test_that("web_role.sql creates app_web inside app_readonly with role-default timeouts", {
-  sql <- read_repo_txt("..", "sql", "security", "web_role.sql")
-
-  expect_match(sql, "CREATE ROLE app_web", fixed = TRUE)
-  expect_match(sql, "IN ROLE app_readonly;", fixed = TRUE)
-  # An existing role is pulled back into app_readonly, not left as found.
-  expect_match(sql, "GRANT app_readonly TO app_web;", fixed = TRUE)
-  expect_match(sql, "ALTER ROLE app_web SET statement_timeout = '3s';", fixed = TRUE)
-  expect_match(
-    sql,
-    "ALTER ROLE app_web SET idle_in_transaction_session_timeout = '5s';",
-    fixed = TRUE
-  )
-  for (attr in c("LOGIN", "INHERIT", "NOSUPERUSER", "NOCREATEDB", "NOCREATEROLE",
-                 "NOREPLICATION", "NOBYPASSRLS")) {
-    # Both branches: the CREATE and the ALTER of an existing role.
-    expect_length(gregexpr(sprintf("\n      %s\n", attr), sql, fixed = TRUE)[[1]], 2L)
-  }
-  expect_length(
-    gregexpr("CONNECTION LIMIT __APP_WEB_CONNECTION_LIMIT__", sql, fixed = TRUE)[[1]],
-    2L
-  )
-
-  # No credential in the file, and no route to any other role.
-  expect_false(grepl("PASSWORD\\s+'", sql, ignore.case = TRUE))
-  expect_false(grepl("\\bENCRYPTED\\b", sql, ignore.case = TRUE))
-  expect_false(grepl(
-    "IN ROLE\\s+[^;]*\\b(anon|authenticated|service_role|postgres|authenticator)\\b",
-    sql,
-    ignore.case = TRUE
-  ))
-  expect_false(grepl(
-    "GRANT\\s+(anon|authenticated|service_role|postgres|authenticator)\\b",
-    sql,
-    ignore.case = TRUE
-  ))
-})
 
 test_that("hardening covers app_api through its own enumerated allowlist", {
   sql <- read_repo_txt("..", "sql", "security", "enable_readonly_rls.sql")
@@ -368,10 +330,10 @@ test_that("no SQL file grants anything on app_api to anon, authenticated or PUBL
   sql_files <- list.files(repo_file("..", "sql"), pattern = "\\.sql$",
                           recursive = TRUE, full.names = TRUE)
   expect_true(any(grepl("/app_api/", sql_files, fixed = TRUE)))
-  expect_true(any(grepl("/security/web_role.sql", sql_files, fixed = TRUE)))
 
   offenders <- unlist(lapply(sql_files, function(path) {
-    text <- paste(readLines(path, warn = FALSE), collapse = "\n")
+    # Statements only: prose in a comment ("a grant ... to PUBLIC") is not one.
+    text <- paste(sub("--.*$", "", readLines(path, warn = FALSE)), collapse = "\n")
     statements <- strsplit(text, ";", fixed = TRUE)[[1]]
     hits <- Filter(grants_app_api_to_untrusted, statements)
     if (length(hits)) paste0(basename(path), ": ", trimws(hits)) else NULL
@@ -389,32 +351,17 @@ test_that("no SQL file grants anything on app_api to anon, authenticated or PUBL
   }
 })
 
-test_that("audit holds app_web to app_readonly's reach and its role defaults", {
-  sql <- read_repo_txt("..", "sql", "security", "audit_app_access.sql")
-  role_sql <- read_repo_txt("..", "sql", "security", "web_role.sql")
-
-  for (violation in c("web_role_privileged_attribute",
-                      "web_role_connection_limit_missing",
-                      "web_role_app_readonly_missing",
-                      "web_role_unexpected_membership",
-                      "web_role_setting_missing")) {
-    expect_match(sql, sprintf("'%s'", violation), fixed = TRUE)
-  }
-
-  # The settings the audit requires are the ones web_role.sql sets (twin pin).
-  set_lines <- regmatches(
-    role_sql,
-    gregexpr("ALTER ROLE app_web SET [a-z_]+ = '[^']+';", role_sql)
-  )[[1]]
-  from_role <- sub("ALTER ROLE app_web SET ([a-z_]+) = '([^']+)';", "\\1=\\2", set_lines)
-  expect_length(from_role, 2L)
-  settings_block <- sql_block_between(sql, "web_role_required_settings(setting) AS (", "\n),")
-  from_audit <- gsub(
-    "'", "",
-    regmatches(settings_block, gregexpr("'[a-z_]+=[0-9a-z]+'", settings_block))[[1]],
-    fixed = TRUE
+test_that("no SQL file or script references the abandoned app_web role", {
+  # Execution amendment (2026-10-20): the web app logs in as app_readonly.
+  expect_false(file.exists(repo_file("..", "sql", "security", "web_role.sql")))
+  paths <- c(
+    list.files(repo_file("..", "sql"), pattern = "\\.sql$", recursive = TRUE, full.names = TRUE),
+    list.files(repo_file("..", "scripts"), pattern = "\\.R$", full.names = TRUE)
   )
-  expect_setequal(from_audit, from_role)
+  offenders <- Filter(function(path) {
+    any(grepl("app_web|APP_WEB|web_role", readLines(path, warn = FALSE)))
+  }, paths)
+  expect_identical(basename(offenders), character(0))
 })
 
 test_that("web API deploy reuses current roles without password or role changes", {
