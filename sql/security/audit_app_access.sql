@@ -8,14 +8,24 @@
 -- and load bookkeeping closed. `curated_relations` selects that mode, and
 -- `allow_service_role` records that euroleague is deliberately outside
 -- Supabase's managed surface.
+--
+-- app_api (the web app's function-only schema) is curated and private like
+-- euroleague, with its own routine allowlist and no relations. `allowlist`
+-- picks each schema's lists. The web login role app_web, when it exists, must
+-- reach nothing beyond app_readonly and keep its role-default bounds.
 
-WITH target_schemas(schema_name, curated_relations, allow_service_role) AS (
+WITH target_schemas(schema_name, curated_relations, allow_service_role, allowlist) AS (
   SELECT
     nspname,
-    nspname = 'euroleague',
-    nspname <> 'euroleague'
+    nspname IN ('euroleague', 'app_api'),
+    nspname NOT IN ('euroleague', 'app_api'),
+    CASE nspname
+      WHEN 'euroleague' THEN 'euroleague'
+      WHEN 'app_api' THEN 'app_api'
+      ELSE 'israeli'
+    END
   FROM pg_namespace
-  WHERE nspname IN ('basketball_test', 'basketball', 'euroleague')
+  WHERE nspname IN ('basketball_test', 'basketball', 'euroleague', 'app_api')
 ),
 untrusted_roles(role_name) AS (
   VALUES ('anon'), ('authenticated')
@@ -71,14 +81,23 @@ euro_app_routines(routine_name) AS (
     ('effective_period'),
     ('person_display_name')
 ),
+-- Mirrors app_api_function_names in enable_readonly_rls.sql, one entry each.
+app_api_routines(routine_name) AS (
+  SELECT unnest(ARRAY[
+  ]::text[])
+),
 allowed_app_routines(schema_name, routine_name) AS (
   SELECT s.schema_name, r.routine_name
   FROM target_schemas s
-  JOIN israeli_app_routines r ON NOT s.curated_relations
+  JOIN israeli_app_routines r ON s.allowlist = 'israeli'
   UNION ALL
   SELECT s.schema_name, r.routine_name
   FROM target_schemas s
-  JOIN euro_app_routines r ON s.curated_relations
+  JOIN euro_app_routines r ON s.allowlist = 'euroleague'
+  UNION ALL
+  SELECT s.schema_name, r.routine_name
+  FROM target_schemas s
+  JOIN app_api_routines r ON s.allowlist = 'app_api'
 ),
 israeli_app_relations(relation_name) AS (
   VALUES
@@ -125,14 +144,35 @@ euro_app_relations(relation_name) AS (
     ('ribbon_segments_v'),
     ('ribbon_margin_v')
 ),
+-- Mirrors app_api_relations in enable_readonly_rls.sql: functions only.
+app_api_app_relations(relation_name) AS (
+  SELECT unnest(ARRAY[
+  ]::text[])
+),
 required_app_relations(schema_name, relation_name) AS (
   SELECT s.schema_name, r.relation_name
   FROM target_schemas s
-  JOIN israeli_app_relations r ON NOT s.curated_relations
+  JOIN israeli_app_relations r ON s.allowlist = 'israeli'
   UNION ALL
   SELECT s.schema_name, r.relation_name
   FROM target_schemas s
-  JOIN euro_app_relations r ON s.curated_relations
+  JOIN euro_app_relations r ON s.allowlist = 'euroleague'
+  UNION ALL
+  SELECT s.schema_name, r.relation_name
+  FROM target_schemas s
+  JOIN app_api_app_relations r ON s.allowlist = 'app_api'
+),
+-- The web login role. Zero rows until sql/security/web_role.sql is applied.
+web_role AS (
+  SELECT oid, rolsuper, rolcreaterole, rolcreatedb, rolreplication,
+         rolbypassrls, rolconnlimit
+  FROM pg_roles
+  WHERE rolname = 'app_web'
+),
+web_role_required_settings(setting) AS (
+  VALUES
+    ('statement_timeout=3s'),
+    ('idle_in_transaction_session_timeout=5s')
 ),
 relations AS (
   SELECT
@@ -346,6 +386,72 @@ violations AS (
   FROM pg_policy pol
   JOIN base_tables x ON x.oid = pol.polrelid
   WHERE pol.polname <> 'app_readonly_select_all'
+
+  UNION ALL
+
+  -- app_web must hold app_readonly's privileges and nothing more: no
+  -- privileged attribute, no role reachable that app_readonly cannot reach
+  -- itself (SET ROLE anon / service_role must fail), a finite connection
+  -- limit and both role-default timeouts.
+  SELECT
+    'web_role_privileged_attribute',
+    'app_web',
+    'app_web'
+  FROM web_role w
+  WHERE w.rolsuper
+     OR w.rolcreaterole
+     OR w.rolcreatedb
+     OR w.rolreplication
+     OR w.rolbypassrls
+
+  UNION ALL
+
+  SELECT
+    'web_role_connection_limit_missing',
+    'app_web',
+    'app_web'
+  FROM web_role w
+  WHERE w.rolconnlimit < 0
+
+  UNION ALL
+
+  SELECT
+    'web_role_app_readonly_missing',
+    'app_web',
+    'app_readonly'
+  FROM web_role w
+  WHERE EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'app_readonly')
+    AND NOT pg_has_role(w.oid, 'app_readonly', 'USAGE')
+
+  UNION ALL
+
+  SELECT
+    'web_role_unexpected_membership',
+    'app_web',
+    r.rolname::text
+  FROM web_role w
+  CROSS JOIN pg_roles r
+  JOIN pg_roles ro ON ro.rolname = 'app_readonly'
+  WHERE r.oid <> w.oid
+    AND r.oid <> ro.oid
+    AND pg_has_role(w.oid, r.oid, 'MEMBER')
+    AND NOT pg_has_role(ro.oid, r.oid, 'MEMBER')
+
+  UNION ALL
+
+  SELECT
+    'web_role_setting_missing',
+    'app_web',
+    req.setting
+  FROM web_role w
+  CROSS JOIN web_role_required_settings req
+  WHERE NOT EXISTS (
+    SELECT 1
+    FROM pg_db_role_setting s
+    WHERE s.setrole = w.oid
+      AND s.setdatabase = 0
+      AND req.setting = ANY(s.setconfig)
+  )
 )
 SELECT violation, role_name, object_name
 FROM violations

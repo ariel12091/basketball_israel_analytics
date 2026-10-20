@@ -23,6 +23,14 @@
 -- euroleague is a private shadow schema that is deliberately absent from
 -- Supabase's Data-API exposed schemas, so it gets no browser-facing or
 -- Supabase-managed role access at all.
+--
+-- app_api is the web app's function-only surface (sql/app_api/). It is
+-- curated and private like euroleague, with an empty relation list, and its
+-- functions are granted from app_api_function_names exactly as the other
+-- schemas' are -- so a re-apply keeps them, and a new app_api function is one
+-- entry here plus one in audit_app_access.sql. The web login role app_web is
+-- a member of app_readonly (sql/security/web_role.sql), so every grant below
+-- reaches it with no grant of its own.
 
 DO $$
 DECLARE
@@ -34,12 +42,24 @@ DECLARE
   v_curated_relations boolean;
   v_grant_service_role boolean;
   v_function_names text[];
+  v_relation_names text[];
   has_service_role boolean;
   has_app_readonly boolean;
   target_schemas constant text[] := ARRAY[
     'basketball_test',
     'basketball',
-    'euroleague'
+    'euroleague',
+    'app_api'
+  ];
+  -- Relations granted from an enumerated list rather than blanket SELECT.
+  curated_schemas constant text[] := ARRAY[
+    'euroleague',
+    'app_api'
+  ];
+  -- Outside Supabase's managed surface: no service_role access.
+  private_schemas constant text[] := ARRAY[
+    'euroleague',
+    'app_api'
   ];
   app_function_names constant text[] := ARRAY[
     'onoff_compute',
@@ -114,6 +134,13 @@ DECLARE
     'ribbon_segments_v',
     'ribbon_margin_v'
   ];
+  -- Web app API (sql/app_api/). One entry per app-callable function; a
+  -- writer (publication machinery, refresh) never goes here.
+  app_api_function_names constant text[] := ARRAY[
+  ]::text[];
+  -- app_api holds functions only, so app_readonly reads no relation in it.
+  app_api_relations constant text[] := ARRAY[
+  ]::text[];
 BEGIN
   SELECT EXISTS (
     SELECT 1 FROM pg_roles WHERE rolname = 'service_role'
@@ -132,11 +159,16 @@ BEGIN
     FROM pg_namespace
     WHERE nspname = ANY(target_schemas)
   LOOP
-    v_curated_relations := v_schema = 'euroleague';
-    v_grant_service_role := has_service_role AND v_schema <> 'euroleague';
-    v_function_names := CASE
-      WHEN v_schema = 'euroleague' THEN euro_function_names
+    v_curated_relations := v_schema = ANY(curated_schemas);
+    v_grant_service_role := has_service_role AND v_schema <> ALL(private_schemas);
+    v_function_names := CASE v_schema
+      WHEN 'euroleague' THEN euro_function_names
+      WHEN 'app_api' THEN app_api_function_names
       ELSE app_function_names
+    END;
+    v_relation_names := CASE v_schema
+      WHEN 'euroleague' THEN euro_app_relations
+      WHEN 'app_api' THEN app_api_relations
     END;
 
     -- PUBLIC privileges are inherited by every role. Remove them first.
@@ -244,7 +276,7 @@ BEGIN
         v_schema
       );
 
-      FOREACH v_relation IN ARRAY euro_app_relations
+      FOREACH v_relation IN ARRAY v_relation_names
       LOOP
         IF EXISTS (
           SELECT 1
