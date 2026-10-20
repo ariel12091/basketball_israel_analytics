@@ -74,11 +74,12 @@ def run(label: str, cmd: list[str]) -> None:
 # Verification
 # ---------------------------------------------------------------------------
 
-def verify(competition: str, season: int, gamecodes: list[int]) -> int:
+def verify(competition: str, season: int, gamecodes: list[int],
+           *, env_file: Path | None = None) -> int:
     """Check a published load. Returns the number of FAILED checks."""
     from euroleague_possessions.postgres_backend import connect_from_env_file
 
-    conn = connect_from_env_file(REPO.parent / "etl" / ".Renviron")
+    conn = connect_from_env_file(env_file or REPO.parent / "etl" / ".Renviron")
     cur = conn.cursor()
 
     def q(sql, params=None):

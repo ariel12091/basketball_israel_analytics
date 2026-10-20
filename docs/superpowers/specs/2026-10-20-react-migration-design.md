@@ -1,5 +1,12 @@
 # Migration from R/Shiny to React/Next.js -- design (2026-10-20)
 
+**Execution amendment (user, 2026-10-20):** Phase 0 uses the existing `app_readonly`
+login/password and existing ETL owner. The separate `app_web` login, password,
+role-default timeouts and connection-limit changes proposed below are deferred. No role
+attributes or credentials are changed. Web deadlines are enforced per request; the shared
+connection budget must be measured with Shiny still running. This amendment takes precedence
+over conflicting identity/default-setting details below.
+
 Companion documents: `2026-10-19-api-mcp-feature-inventory.md` (the 109 features, with IDs,
 checked against the live app) and `docs/shared_definitions.md` (the contract every number
 follows). This design replaces Plans 2-7 of `2026-10-19-api-mcp-design.md`; that design's

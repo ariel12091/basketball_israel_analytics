@@ -417,26 +417,11 @@ test_that("audit holds app_web to app_readonly's reach and its role defaults", {
   expect_setequal(from_audit, from_role)
 })
 
-test_that("web foundation apply script is dry-run by default and keeps the password out", {
+test_that("web API deploy reuses current roles without password or role changes", {
   src <- read_repo_txt("..", "scripts", "apply_web_foundation.R")
-
-  expect_match(src, 'Sys.getenv("CONFIRM_WEB_FOUNDATION_APPLY", "0")', fixed = TRUE)
-  expect_match(src, "if (confirm_apply) {", fixed = TRUE)
-  expect_match(src, "dbRollback(con)", fixed = TRUE)
-  expect_match(src, "dbCommit(con)", fixed = TRUE)
-
-  # Fails closed without a password; the password is only ever a bound value.
-  expect_match(src, 'Sys.getenv("APP_WEB_PASSWORD", "")', fixed = TRUE)
-  expect_match(src, "if (confirm_apply && !nzchar(app_web_password)) {", fixed = TRUE)
-  expect_match(src, "params = list(app_web_password)", fixed = TRUE)
-  expect_match(src, "format('ALTER ROLE app_web PASSWORD %L',", fixed = TRUE)
-  uses <- regmatches(src, gregexpr("[A-Za-z_.]+\\([^()]*app_web_password", src))[[1]]
-  expect_false(any(grepl("^(paste|paste0|sprintf|cat|message|print|gsub|sub)\\(", uses)))
-
-  # Same transaction ends with the shared security re-apply and audit.
-  expect_match(src, 'file.path("scripts", "apply_db_security.R")', fixed = TRUE)
-  expect_match(src, "source(security_script, local = TRUE)", fixed = TRUE)
-  expect_match(src, "run_db_security_hardening(con)", fixed = TRUE)
-  expect_match(src, "__APP_WEB_CONNECTION_LIMIT__", fixed = TRUE)
-  expect_match(src, 'Sys.getenv("APP_WEB_CONNECTION_LIMIT", "10")', fixed = TRUE)
+  expect_match(src, 'Sys.getenv("CONFIRM_WEB_FOUNDATION_APPLY", "0")', fixed=TRUE)
+  expect_match(src, "dbRollback(con)", fixed=TRUE)
+  expect_match(src, "dbCommit(con)", fixed=TRUE)
+  expect_match(src, "run_db_security_hardening(con)", fixed=TRUE)
+  expect_false(grepl("APP_WEB_PASSWORD|web_role.sql|ALTER ROLE|CREATE ROLE", src))
 })

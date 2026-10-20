@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
+from .publication import fence_active
 from .staging import GameBootstrap
 from .transaction_writer import DELETE_ORDER, INSERT_ORDER, NaturalGameKey
 
@@ -446,6 +447,7 @@ def start_load_run(
     cursor = connection.cursor()
     try:
         cursor.execute("BEGIN")
+        fence_active(cursor)
         load_run_id = _insert_load_run(
             cursor,
             bootstrap,
@@ -474,6 +476,7 @@ def bootstrap_game(
     cursor = connection.cursor()
     try:
         cursor.execute("BEGIN")
+        fence_active(cursor)
         cursor.execute("SET LOCAL search_path TO euroleague, public")
         if load_run_id is None:
             load_run_id = _insert_load_run(
@@ -635,6 +638,7 @@ def refresh_derived_for_games(connection: Any, game_ids: Sequence[int]) -> None:
     cursor = connection.cursor()
     try:
         cursor.execute("BEGIN")
+        fence_active(cursor)
         for function_name in (
             "refresh_actions_consumer_candidates",
             "refresh_player_stats_actions_for_games",
@@ -686,6 +690,7 @@ def finish_load_run(
     cursor = connection.cursor()
     try:
         cursor.execute("BEGIN")
+        fence_active(cursor)
         # refresh_app_materialized_views() rebuilds eight MVs non-concurrently
         # over the WHOLE schema, so its cost grows with total games loaded, not
         # with the size of this run. It crossed the 2-minute Supabase default
@@ -735,6 +740,7 @@ class PostgresTransactionBackend:
         cursor = self.connection.cursor()
         try:
             cursor.execute("BEGIN")
+            fence_active(cursor)
             cursor.execute("SET LOCAL search_path TO euroleague, public")
             cursor.execute(
                 "SELECT game_id FROM euroleague.schedule "

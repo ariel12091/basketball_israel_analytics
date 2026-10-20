@@ -387,6 +387,47 @@ def publish_staged_games(
     *,
     env_file: Path,
 ) -> list[PublicationRecord]:
+    """Own publication through committed writes AND the existing verifier."""
+    from .publication import publishing_europe
+
+    if not any(record.staged is not None for record in records):
+        return []
+    factory = lambda: connect_from_env_file(env_file, direct_port=5432)
+    with publishing_europe(factory):
+        results = _publish_staged_games(records, env_file=env_file)
+        if any(record.status == "failed" for record in records) or any(
+            result.status != "published" for result in results
+        ):
+            raise RuntimeError("partial load: publication remains failed")
+        _verify_publication(records, env_file)
+        return results
+
+
+def _verify_publication(records: Sequence[StageRecord], env_file: Path) -> None:
+    # Reuse the sanctioned loader's full verification rather than duplicating
+    # its score progression, lineup coverage and box-score reconciliation.
+    import importlib.util
+
+    path = Path(__file__).resolve().parents[2] / "scripts" / "load_games.py"
+    spec = importlib.util.spec_from_file_location("euroleague_load_verifier", path)
+    assert spec is not None and spec.loader is not None
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    groups: dict[tuple[str, int], list[int]] = {}
+    for record in records:
+        if record.staged is not None:
+            key = record.staged.bootstrap.key
+            groups.setdefault((key.competition, key.season), []).append(key.gamecode)
+    for (competition, season), gamecodes in sorted(groups.items()):
+        if module.verify(competition, season, sorted(gamecodes), env_file=env_file):
+            raise RuntimeError("post-load verification failed")
+
+
+def _publish_staged_games(
+    records: Sequence[StageRecord],
+    *,
+    env_file: Path,
+) -> list[PublicationRecord]:
     """Publish successful checkpoints in deterministic order, one at a time."""
 
     publishable = sorted(
@@ -520,6 +561,8 @@ def publish_staged_games(
                 failed_games=failed_games,
                 errors=batch_errors,
             )
+            if failed_games:
+                raise RuntimeError("partial load or derived refresh failure")
     finally:
         connection.close()
     return results

@@ -10,6 +10,17 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-20-react-migration-design.md` (approved 2026-10-20). Feature IDs: `docs/superpowers/specs/2026-10-19-api-mcp-feature-inventory.md`. Contract: `docs/shared_definitions.md`.
 
+**Execution amendment (user, 2026-10-20):** execute Phase 0 using the current roles.
+The web app uses the existing `app_readonly` login/password; DDL and publication use
+the existing ETL owner. Do not deploy `sql/security/web_role.sql`, create `app_web`,
+rotate passwords, change memberships/connection limits, or change role-default settings.
+References below to the proposed `app_web` identity and its role defaults are superseded
+by this amendment. Enforce shorter web timeouts inside each transaction and bound the
+client's connection/queue waits. Shared connection capacity with Shiny remains a measured
+constraint, not a claimed isolation guarantee. Add only grants needed for the additive
+API/publication objects. Execution evidence and the five-hour handoff are recorded in
+`docs/phase0_execution_status.md`.
+
 ## Global Constraints
 
 - Shiny keeps working unchanged (decision 16). New SQL is additive in `app_api`; no function or view Shiny calls is altered.

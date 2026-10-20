@@ -37,6 +37,8 @@ existing_untrusted_roles AS (
 ),
 israeli_app_routines(routine_name) AS (
   VALUES
+    ('publication_status'),
+    ('publication_lock_key'),
     ('onoff_compute'),
     ('four_factors_compute'),
     ('four_factors_dashboard_compute'),
@@ -83,8 +85,7 @@ euro_app_routines(routine_name) AS (
 ),
 -- Mirrors app_api_function_names in enable_readonly_rls.sql, one entry each.
 app_api_routines(routine_name) AS (
-  SELECT unnest(ARRAY[
-  ]::text[])
+  VALUES ('version'),('game_logs_il'),('game_logs_euro'),('scoreless_games_il')
 ),
 allowed_app_routines(schema_name, routine_name) AS (
   SELECT s.schema_name, r.routine_name

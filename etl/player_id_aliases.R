@@ -285,15 +285,15 @@ seed_default_player_id_game_overrides <- function(pg, schema = SCHEMA, overrides
   invisible(nrow(overrides))
 }
 
-load_player_id_aliases <- function(pg, schema = SCHEMA, game_years = NULL, team_ids = NULL) {
-  ensure_player_id_corrections_tables(pg, schema)
+load_player_id_aliases <- function(pg, schema = SCHEMA, game_years = NULL, team_ids = NULL, ensure = TRUE) {
+  if (ensure) ensure_player_id_corrections_tables(pg, schema)
   if (!exists("ensure_player_identity_dictionary", mode = "function")) {
     stop(
       "player_identity_dictionary.R must be sourced before loading player ID corrections",
       call. = FALSE
     )
   }
-  ensure_player_identity_dictionary(pg, schema)
+  if (ensure) ensure_player_identity_dictionary(pg, schema)
 
   sql <- sprintf(
     'SELECT

@@ -26,6 +26,10 @@ on:
     # GitHub scheduled runs can be delayed; prior delays here were ~2.5h.
     - cron: '15 18 * * *'
 
+concurrency:
+  group: etl-full
+  cancel-in-progress: false
+
 jobs:
   etl:
     permissions:

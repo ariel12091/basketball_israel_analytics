@@ -62,6 +62,8 @@ DECLARE
     'app_api'
   ];
   app_function_names constant text[] := ARRAY[
+    'publication_status',
+    'publication_lock_key',
     'onoff_compute',
     'four_factors_compute',
     'four_factors_dashboard_compute',
@@ -137,6 +139,10 @@ DECLARE
   -- Web app API (sql/app_api/). One entry per app-callable function; a
   -- writer (publication machinery, refresh) never goes here.
   app_api_function_names constant text[] := ARRAY[
+    'version',
+    'game_logs_il',
+    'game_logs_euro',
+    'scoreless_games_il'
   ]::text[];
   -- app_api holds functions only, so app_readonly reads no relation in it.
   app_api_relations constant text[] := ARRAY[

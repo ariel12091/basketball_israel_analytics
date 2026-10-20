@@ -9,6 +9,7 @@ library(pool)
 source("etl/period_opening_anchors.R")
 source("etl/lineup_coverage.R")
 source("etl/pbp_source_fallback.R")
+source("etl/publication.R")
 
 APP_ENV     <- Sys.getenv("APP_ENV", "test")     # "prod" or "test"
 PROD_SCHEMA <- "basketball"
@@ -174,6 +175,13 @@ ensure_table_like_from_prod <- function(pg, schema, prod_schema, table, clone_in
 # Stage-and-upsert (schema-driven; needs PK)
 # =========================
 upsert_by_like <- function(pg, schema = SCHEMA, table, df, manage_transaction = TRUE) {
+  # Standalone upserts also participate; etl_full passes FALSE inside its fence.
+  if (isTRUE(manage_transaction)) {
+    return(with_publication("il", function(pub) {
+      publication_fenced_tx(pub, pg,
+        upsert_by_like(pg, schema, table, df, manage_transaction = FALSE))
+    }))
+  }
   stopifnot(is.data.frame(df))
   # With manage_transaction = FALSE, the caller must own a surrounding transaction.
   # auto-create missing test table (and constraints + indexes) from prod
@@ -1166,11 +1174,14 @@ add_terminal_stint_join_end <- function(stints_df) {
 # Orchestrator
 # =========================
 etl_update <- function() {
+  pub <- publication_open("il")
+  on.exit(if (!pub$closed) publication_close(pub, FALSE), add = TRUE)
   # schedule (with optional season / competition)
   sched_df <- fetch_israel_schedule() %>%
     filter(score_team1 > 0)
   
-  upsert_by_like(pg, SCHEMA, "schedule", sched_subset)
+  publication_fenced_tx(pub, pg,
+    upsert_by_like(pg, SCHEMA, "schedule", sched_subset, manage_transaction = FALSE))
   
   # which games to process
   if (is.null(game_ids)) {
@@ -1179,11 +1190,12 @@ etl_update <- function() {
   } else {
     ids <- sort(unique(as.integer(game_id)))
   }
-  if (!length(ids)) { message("Nothing to do."); return(invisible()) }
-  ensure_pws_num_starters_cols(pg, SCHEMA)
+  if (!length(ids)) { publication_close(pub, TRUE); message("Nothing to do."); return(invisible()) }
+  publication_fenced_tx(pub, pg, ensure_pws_num_starters_cols(pg, SCHEMA))
   
   DBI::dbExecute(pg, "BEGIN;")
   on.exit(try(DBI::dbExecute(pg, "ROLLBACK;"), silent = TRUE), add = TRUE)
+  publication_fence(pub, pg)
   
   
   # fetch PBP JSON
@@ -1316,6 +1328,7 @@ etl_update <- function() {
 
   DBI::dbExecute(pg, "ANALYZE;")
   DBI::dbExecute(pg, "COMMIT;")
+  publication_close(pub, TRUE)
   on.exit(NULL, add = FALSE)
   message(sprintf("✅ %s ETL done for games: %s", toupper(APP_ENV), paste(ids, collapse = ", ")))
 }

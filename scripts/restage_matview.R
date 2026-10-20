@@ -52,6 +52,8 @@ if (!identical_rows || !apply) {
   say("DRY RUN: staged copy dropped, nothing changed")
   quit(save = "no")
 }
+source("etl/publication.R")
+with_publication("il", function(pub) {
 x(sprintf("GRANT SELECT ON %s TO app_readonly", nxt))
 stmts <- c(
   sprintf("ALTER MATERIALIZED VIEW %s RENAME TO %s", live, retired),
@@ -63,7 +65,9 @@ stmts <- c(
 swapped <- FALSE
 for (attempt in 1:12) {
   swapped <- tryCatch({
-    dbBegin(con); x("SET LOCAL lock_timeout = '5s'")
+    dbBegin(con)
+    publication_fence(pub, con)
+    x("SET LOCAL lock_timeout = '5s'")
     for (s in stmts) x(s)
     dbCommit(con); TRUE
   }, error = function(e) {
@@ -76,3 +80,4 @@ for (attempt in 1:12) {
 }
 if (!swapped) stop("could not swap ", name, "; the staged copy ", nxt, " is still on the server")
 say("swapped: %s now runs the definition in %s; the replaced copy is dropped", live, path)
+})

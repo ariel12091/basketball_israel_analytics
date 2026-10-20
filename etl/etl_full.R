@@ -207,7 +207,14 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     cut_at <- usage_marker[1] - 2
     etl_lines <- etl_lines[seq_len(cut_at)]
   }
+  # Definitions-only loading must not clone schema objects during a dry run.
+  etl_lines <- etl_lines[!startsWith(etl_lines, "if (APP_ENV != ")]
   eval(parse(text = etl_lines), envir = .GlobalEnv)
+  source("etl/publication.R")
+  pub <- NULL
+  on.exit(if (!is.null(pub) && !pub$closed) publication_close(pub, FALSE), add = TRUE)
+  if (!dry_run) pub <- publication_open("il")
+  if (dry_run) log_msg("[DRY RUN] No publication opened; setup writes skipped")
   source("etl/cold_reconcile.R")
   source("etl/cold_storage.R")
   log_msg("Sourced etl/cold_storage.R")
@@ -219,16 +226,20 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   log_msg("Sourced etl/ot_lineup_recovery.R")
   log_msg(sprintf("Schema: %s (APP_ENV = %s)", SCHEMA, APP_ENV))
 
-  ensure_etl_processed_games(pg, SCHEMA)
-  backfill_etl_processed_games(pg, SCHEMA, log_msg)
-  ensure_player_id_corrections_tables(pg, SCHEMA)
-  identity_counts <- sync_player_identity_dictionary(pg, SCHEMA)
-  log_msg(sprintf(
-    "Player identity dictionary synced: %d identities, %d active mappings, %d active corrections",
-    identity_counts$identities[[1]],
-    identity_counts$active_mappings[[1]],
-    identity_counts$active_corrections[[1]]
-  ))
+  if (!dry_run) {
+    publication_fenced_tx(pub, pg, {
+      if (APP_ENV != "prod") bootstrap_test_schema(pg, PROD_SCHEMA, TEST_SCHEMA, copy_indexes = TRUE)
+      ensure_etl_processed_games(pg, SCHEMA)
+      backfill_etl_processed_games(pg, SCHEMA, log_msg)
+      ensure_player_id_corrections_tables(pg, SCHEMA)
+    })
+    identity_counts <- sync_player_identity_dictionary(pg, SCHEMA, publication = pub)
+    log_msg(sprintf(
+      "Player identity dictionary synced: %d identities, %d active mappings, %d active corrections",
+      identity_counts$identities[[1]], identity_counts$active_mappings[[1]],
+      identity_counts$active_corrections[[1]]
+    ))
+  }
 
   # Ensure cleanup on exit
   on.exit({
@@ -316,12 +327,11 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     } else {
 
     log_msg(sprintf("Games to process: %d (%s)", length(ids), paste(ids, collapse = ", ")))
-    ensure_pws_num_starters_cols(pg, SCHEMA)
-    player_aliases <- load_player_id_aliases(
-      pg,
-      SCHEMA,
-      game_years = unique(sched_subset$game_year)
-    )
+    if (!dry_run) publication_fenced_tx(pub, pg, ensure_pws_num_starters_cols(pg, SCHEMA))
+    player_aliases <- if (dry_run) {
+      load_player_id_aliases(pg, SCHEMA, game_years = unique(sched_subset$game_year), ensure = FALSE)
+    } else publication_fenced_tx(pub, pg,
+      load_player_id_aliases(pg, SCHEMA, game_years = unique(sched_subset$game_year)))
     log_msg(sprintf("Loaded %d active player_id correction mapping(s)", nrow(player_aliases)))
 
     if (dry_run) {
@@ -490,6 +500,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       assert_action_players_in_roster(actions_df, roster_df, log_msg)
       DBI::dbBegin(pg)
       transaction_open <- TRUE
+      publication_fence(pub, pg)
       if (nrow(player_aliases_for_game)) {
         cleanup_player_alias_lineup_derivatives(pg, SCHEMA, gid, log_msg)
       }
@@ -860,9 +871,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     stop("Base ETL failed â€” aborting pipeline.", call. = FALSE)
   })
 
-  if (length(processed_ids)) {
+  if (length(processed_ids) && !dry_run) {
     tryCatch({
-      identity_counts <- sync_player_identity_dictionary(pg, SCHEMA)
+      identity_counts <- sync_player_identity_dictionary(pg, SCHEMA, publication = pub)
       log_msg(sprintf(
         "Player identity dictionary updated after base load: %d identities, %d active mappings, %d active corrections",
         identity_counts$identities[[1]],
@@ -881,10 +892,10 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   # Shot zones: persist coordinate-derived corner-3 flags for this run's
   # games BEFORE Phase 7 purges actions_clean. Corner rule = v2 cut
   # (y <= 285 raw units = 2.85 court units). 3PT shots with coords only.
-  if (length(processed_ids)) {
+  if (length(processed_ids) && !dry_run) {
     tryCatch({
       ids_csv <- paste(sort(unique(as.integer(processed_ids))), collapse = ",")
-      zn <- DBI::dbExecute(pg, sprintf(
+      zn <- publication_fenced_tx(pub, pg, DBI::dbExecute(pg, sprintf(
         'INSERT INTO "%s"."shot_zones" (game_id, id, is_corner3)
          SELECT game_id, id, (parameters_coord_y::numeric <= 285)
          FROM "%s"."actions_clean"
@@ -893,7 +904,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
            AND game_id IN (%s)
          ON CONFLICT (game_id, id) DO UPDATE SET is_corner3 = EXCLUDED.is_corner3',
         SCHEMA, SCHEMA, ids_csv
-      ))
+      )))
       log_msg(sprintf("  shot_zones: %d 3PT rows upserted for %d game(s)",
                       zn, length(processed_ids)))
     }, error = function(e) {
@@ -970,7 +981,8 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         sub_lineups_table <- build_sub_lineups_all(new_rows_on, ks = c(2, 3, 4))
         log_msg(sprintf("[DRY RUN] Would generate %d sub-lineup rows", nrow(sub_lineups_table)))
       } else {
-        # Insert into lineups_lookup_on
+        # Both lookup and sub-lineup inserts share one fenced transaction.
+        publication_fenced_tx(pub, pg, {
         DBI::dbWriteTable(
           pg,
           DBI::Id(schema = SCHEMA, table = "lineups_lookup_on"),
@@ -1000,6 +1012,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
           )
           log_msg(sprintf("  Inserted %d rows into sub_lineups", nrow(sub_line)))
         }
+        })
       }
     }
 
@@ -1075,6 +1088,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       t0 <- proc.time()
 
       DBI::dbBegin(pg)
+      publication_fence(pub, pg)
       DBI::dbExecute(pg, sprintf("SET LOCAL search_path TO %s, public;", SCHEMA))
       log_msg(sprintf("  search_path set to %s, public (within transaction)", SCHEMA))
 
@@ -1436,6 +1450,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       refresh_tx <- function(stmt) {
         DBI::dbBegin(pg)
         tryCatch({
+          publication_fence(pub, pg)
           DBI::dbExecute(pg, "SET LOCAL statement_timeout = 0;")
           res <- DBI::dbGetQuery(pg, stmt)
           DBI::dbCommit(pg)
@@ -1796,6 +1811,13 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   }
 
 
+  # A forced refresh is meaningful even when the base-game diff is empty.
+  if (!length(processed_ids) && isTRUE(force_full_sub_lineup_stats) && !dry_run) {
+    tryCatch(publication_refresh_sub_lineups(pub, pg, SCHEMA), error = function(e) {
+      mark_phase_failed("Phase 5 forced refresh", conditionMessage(e))
+    })
+  }
+
   # Publish only games whose base data and downstream refreshes completed.
   if (!dry_run && isTRUE(pipeline_ok) && length(processed_ids) > 0) {
     tryCatch({
@@ -1810,7 +1832,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
         sprintf("(%d, %d, now())", as.integer(processed_ids), as.integer(track_years)),
         collapse = ", "
       )
-      DBI::dbExecute(
+      publication_fenced_tx(pub, pg, DBI::dbExecute(
         pg,
         sprintf(
           'INSERT INTO "%s"."etl_processed_games" (game_id, game_year, processed_at)
@@ -1818,7 +1840,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
            ON CONFLICT (game_id) DO NOTHING',
           SCHEMA, vals
         )
-      )
+      ))
       published_ids <- processed_ids
       log_msg(sprintf("Published %d game(s) in etl_processed_games: %s",
                       length(published_ids), paste(published_ids, collapse = ", ")))
@@ -1831,6 +1853,11 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
   }
 
   # =========================================================================
+  # Publication is finalized only after all validation and marker writes.
+  # Any rolled-back game or downstream validation failure means degraded data.
+  run_success <- isTRUE(pipeline_ok) && length(unique(failed_base_ids)) == 0
+  if (!is.null(pub)) publication_close(pub, ok = run_success)
+
   # Phase 7: Cold Storage Purge
   # =========================================================================
 

@@ -230,11 +230,13 @@ ensure_player_identity_dictionary <- function(pg, schema = SCHEMA) {
   invisible(TRUE)
 }
 
-sync_player_identity_dictionary <- function(pg, schema = SCHEMA) {
+sync_player_identity_dictionary <- function(pg, schema = SCHEMA, publication = NULL) {
   schema <- assert_identity_schema_name(schema)
-  ensure_player_identity_dictionary(pg, schema)
+  if (is.null(publication)) ensure_player_identity_dictionary(pg, schema)
+  else publication_fenced_tx(publication, pg, ensure_player_identity_dictionary(pg, schema))
 
   DBI::dbWithTransaction(pg, {
+    if (!is.null(publication)) publication_fence(publication, pg)
     # Create/update identities only from unambiguous roster contexts. The key
     # includes provider ID and normalized name so reused provider IDs do not
     # silently merge different people.
