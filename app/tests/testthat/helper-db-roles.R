@@ -89,3 +89,27 @@ db_web_foundation_applied <- function(con) {
     "SELECT to_regnamespace('app_api') IS NOT NULL
         AND to_regclass('basketball_test.publication') IS NOT NULL AS ok")$ok[[1]])
 }
+
+# Runs `sql` as a probe and returns its SQLSTATE ("ok" when it succeeded).
+# The statement runs inside a DO block that always raises afterwards, so even
+# a statement that should have been refused is rolled back; the whole probe
+# also runs in a transaction that is rolled back. read_only = TRUE wraps it in
+# a READ ONLY transaction instead -- only for function-call probes: for a
+# write, Postgres reports the read-only refusal (25006) before checking
+# privileges, so the probe would prove nothing.
+db_probe_sqlstate <- function(con, sql, read_only = FALSE) {
+  DBI::dbExecute(con, if (read_only) "BEGIN READ ONLY" else "BEGIN")
+  on.exit(try(DBI::dbExecute(con, "ROLLBACK"), silent = TRUE), add = TRUE)
+  probe <- paste0(
+    "DO $probe$ DECLARE st text; BEGIN ",
+    "BEGIN EXECUTE ", as.character(DBI::dbQuoteString(con, sql)), "; st := 'ok'; ",
+    "EXCEPTION WHEN OTHERS THEN st := SQLSTATE; END; ",
+    "RAISE EXCEPTION 'probe_sqlstate=%', st; END $probe$")
+  msg <- tryCatch({
+    DBI::dbExecute(con, probe)
+    ""
+  }, error = function(e) conditionMessage(e))
+  state <- regmatches(msg, regexpr("probe_sqlstate=[0-9A-Za-z]+", msg))
+  if (!length(state)) stop("probe did not report a SQLSTATE: ", msg)
+  sub("probe_sqlstate=", "", state, fixed = TRUE)
+}
