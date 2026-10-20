@@ -266,17 +266,20 @@ gl_filter_games <- function(df, p, league) {
   # Last N counts each team's whole season, as the SQL readers'
   # schedule_ranked CTE does, so it runs before every other filter: "home +
   # last 5" is the home games among a team's last 5, not its last 5 home games.
-  # Known defect, deviation register D24: it counts ROWS. EuroLeague's rows
-  # are split by starters, so there it keeps a team's last N starter-split
-  # rows of team_four_factors_by_game, not its last N games.
+  # It counts GAMES, not rows: EuroLeague's rows are split by starters, so a
+  # team's last N games are picked from its distinct games and every row of
+  # those games is kept (D24, fixed 2026-10-20).
   if (!is.na(gp$last_n)) {
-    df <- df %>%
+    recent <- df %>%
+      distinct(team_id, game_id, game_date) %>%
       group_by(team_id) %>%
       arrange(desc(game_date), desc(game_id), .by_group = TRUE) %>%
-      mutate(rn_recent = row_number()) %>%
+      slice_head(n = gp$last_n) %>%
       ungroup() %>%
-      filter(rn_recent <= !!gp$last_n) %>%
-      select(-rn_recent)
+      select(team_id, game_id)
+    df <- df %>%
+      arrange(team_id, desc(game_date), desc(game_id)) %>%
+      semi_join(recent, by = c("team_id", "game_id"))
   }
 
   # Team filter (optional). A non-blank value that is not an id matches

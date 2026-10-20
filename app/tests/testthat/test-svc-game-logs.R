@@ -98,6 +98,27 @@ test_that("a blank end of the date range: open in Israel, no games in EuroLeague
   expect_error(svc_gl_env$gl_filter_games(three, base, "nba"), "unknown league")
 })
 
+test_that("last N counts games, not starter-split rows (D24 fixed)", {
+  covers("GL-02")
+  # Team 1: game 3 (newest) has three starter-split rows, game 2 two, game 1 one.
+  rows <- data.frame(
+    game_id = c(3L, 3L, 3L, 2L, 2L, 1L, 9L),
+    team_id = c(1L, 1L, 1L, 1L, 1L, 1L, 2L),
+    game_date = as.Date(c(rep("2025-12-01", 3), rep("2025-11-01", 2), "2025-10-01", "2025-12-05")),
+    own_starters = c(5L, 4L, 3L, 5L, 2L, 5L, 5L)
+  )
+  p <- function(n) list(gn = svc_gl_env$resolve_gn_last_n_values("", "", as.character(n)))
+  for (league in c("euroleague", "il")) {
+    one <- svc_gl_env$gl_filter_games(rows, p(1), league)
+    expect_setequal(one$game_id[one$team_id == 1L], 3L)
+    expect_identical(sum(one$team_id == 1L), 3L, info = league)
+    two <- svc_gl_env$gl_filter_games(rows, p(2), league)
+    expect_setequal(two$game_id[two$team_id == 1L], c(3L, 2L))
+    expect_identical(sum(two$team_id == 1L), 5L, info = league)
+    expect_identical(sum(two$team_id == 2L), 1L, info = league)
+  }
+})
+
 test_that("starters bounds: one reading for both leagues, one pinned NULL difference", {
   e <- svc_gl_env
   # Every value a mode/value pair of selectInputs (or the API) can hold.
