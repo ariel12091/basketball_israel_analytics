@@ -8,9 +8,16 @@ test_that("publication lock, stale takeover and row fences serialize writers", {
   call <- function(con, fn, args, params = list()) {
     DBI::dbGetQuery(con, publication_sql(con, f$schema, fn, args), params = params)
   }
+  initial <- f$status()
+  expect_identical(initial$state, "published")
+  expect_equal(as.numeric(initial$version), 1)
   expect_error(call(a, "begin_publication", "$1, $2::uuid", list("il", arun)), "advisory lock required")
   call(a, "publication_lock_key", "$1", list("il"))
   lock <- paste0("SELECT pg_advisory_lock(", f$qs, ".publication_lock_key('il'))")
+  # (h) A run that takes the lock but never begins changes nothing.
+  DBI::dbGetQuery(a, lock)
+  DBI::dbGetQuery(a, paste0("SELECT pg_advisory_unlock(", f$qs, ".publication_lock_key('il'))"))
+  expect_identical(f$status(), initial)
   DBI::dbGetQuery(a, lock)
   call(a, "begin_publication", "$1, $2::uuid", list("il", arun))
   expect_false(DBI::dbGetQuery(b, paste0("SELECT pg_try_advisory_lock(", f$qs,
@@ -36,4 +43,13 @@ test_that("publication lock, stale takeover and row fences serialize writers", {
   expect_equal(f$status()$state, "published")
   expect_equal(as.numeric(f$status()$version), 3)
   expect_equal(DBI::dbGetQuery(w, paste0("SELECT n FROM ", f$qs, ".fixture"))$n, 1L)
+  # (g) A run that finishes not-ok ends failed and still advances the version.
+  crun <- "00000000-0000-0000-0000-000000000003"
+  call(b, "begin_publication", "$1, $2::uuid", list("il", crun))
+  expect_equal(call(b, "finish_publication", "$1, $2::uuid, false", list("il", crun))[[1]], 4)
+  expect_equal(f$status()$state, "failed")
+  expect_equal(as.numeric(f$status()$version), 4)
+  # Leagues are independent rows and locks.
+  expect_identical(f$status("euroleague")$state, "published")
+  expect_equal(as.numeric(f$status("euroleague")$version), 1)
 })

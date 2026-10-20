@@ -1,4 +1,23 @@
--- Substitute __SCHEMA__ with a quoted identifier, including in function bodies.
+-- Publication markers and single-writer ownership (plan Task 2; spec
+-- "Caching and freshness", "One writer at a time").
+--
+-- Deploy order: THIS FILE FIRST (scripts/apply_publication.R), then
+-- sql/app_api/*.sql (scripts/apply_web_foundation.R), whose readers call
+-- publication_status(). __SCHEMA__ is substituted with a quoted identifier,
+-- function bodies included: basketball_test live, or an isolated pubtest_*
+-- schema for the DB tests (review R3). The schema name is part of the
+-- advisory-lock key, so a test schema can never contend with the live lock.
+--
+-- States: 'published' / 'publishing' / 'failed' are stored; 'stale' is only
+-- reported by publication_status(), for a 'publishing' row whose run no
+-- longer holds the league's session-level advisory lock (a crashed run).
+-- Writers: take pg_advisory_lock(publication_lock_key(league)) on a session
+-- connection (never the transaction pooler), begin_publication(), call
+-- fence_publication() first in every write transaction, finish_publication().
+-- Grants (review R9): only publication_status and publication_lock_key are
+-- readable by app_readonly, via the allowlist in
+-- sql/security/enable_readonly_rls.sql (a grant here alone would not survive
+-- the next security re-apply). begin/fence/finish stay owner-only.
 CREATE TABLE IF NOT EXISTS __SCHEMA__.publication (
   league text PRIMARY KEY CHECK (league IN ('il', 'euroleague', 'eurocup')),
   state text NOT NULL CHECK (state IN ('publishing', 'published', 'failed')),
@@ -24,6 +43,8 @@ BEGIN
   IF p_run IS NULL OR NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_locks
     WHERE locktype = 'advisory' AND pid = pg_catalog.pg_backend_pid() AND granted
+      AND database = (SELECT d.oid FROM pg_catalog.pg_database d
+                      WHERE d.datname = pg_catalog.current_database())
       AND classid = (k >> 32)::oid AND objid = (k & 4294967295)::oid AND objsubid = 1
   ) THEN
     RAISE EXCEPTION 'publication advisory lock required';
@@ -65,6 +86,8 @@ RETURNS TABLE(state text, version bigint) LANGUAGE sql STABLE SET search_path = 
   SELECT CASE WHEN p.state = 'publishing' AND NOT EXISTS (
     SELECT 1 FROM pg_catalog.pg_locks l
     WHERE l.locktype = 'advisory' AND l.granted
+      AND l.database = (SELECT d.oid FROM pg_catalog.pg_database d
+                        WHERE d.datname = pg_catalog.current_database())
       AND l.classid = (__SCHEMA__.publication_lock_key(p.league) >> 32)::oid
       AND l.objid = (__SCHEMA__.publication_lock_key(p.league) & 4294967295)::oid
       AND l.objsubid = 1
