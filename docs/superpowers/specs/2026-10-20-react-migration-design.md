@@ -80,7 +80,7 @@ Anti-goals (a working result that is still a failure):
 | 16 | Shiny keeps its R logic until retired (temporary, registered exception to R1; nightly parity guards it) | User (on Claude's recommendation) |
 | 17 | Load target: 95% of filter changes within 2 s, none over 5 s; the first thing to give is up to ~$15 more compute | User (on Claude's recommendation) |
 | 18 | Old Shiny links may break: the old address forwards to the new app's home page | User |
-| 19 | Our own API (Next.js routes) is the single front door for React, a future MCP server and other callers; behind it, a direct Postgres connection as `app_readonly`, as Shiny does | User + Claude |
+| 19 | Our own API (Next.js routes) is the single front door for React, a future MCP server and other callers; behind it, a direct Postgres connection with `app_readonly`'s permissions, as Shiny has (login role `app_web`, decision 22) | User + Claude |
 | 20 | Reuse what is proven; change only for a named, measured or documented reason | User |
 | 21 | ETL exception: both loaders write a publication state (publishing / published / failed; stale = crashed) and a version | User |
 | 22 | The web app connects as its own login role `app_web`, a member of `app_readonly`, with its own connection limit | Claude |
