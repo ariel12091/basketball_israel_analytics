@@ -131,7 +131,7 @@ Rules:
   the R source. The R function's existing tests are ported with it. The existing SQL owners
   are called as they are; new SQL is written only for the R-closure logic that has no SQL or
   pure-R home yet (the inventory's R-closure rows, and the five inline-SQL places). A known
-  defect is ported as-is and stays in the deviation register (e.g. D24, D25) -- fixing it is a
+  defect is ported as-is and stays in the deviation register (e.g. D25; D24 was fixed in Shiny before Phase 0) -- fixing it is a
   separate, deliberate change with re-recorded goldens.
 - **No rule has two owners**: a number the TypeScript module derives is never also derived in
   SQL, and the reverse. Each moved rule's owner is updated in `docs/shared_definitions.md` the
