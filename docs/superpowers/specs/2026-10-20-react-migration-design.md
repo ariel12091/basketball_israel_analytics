@@ -145,10 +145,17 @@ pooler with prepared statements disabled.
 
 ### Caching (decision 13)
 
-Data changes once a night. Every API response is cached at Vercel's edge with the data version
-in the cache key (Israeli `app_meta.etl_full_last_success`; EuroLeague `euro_data_version()`).
-When the ETL publishes, the version advances and new requests miss the old entries. The
-default views most visitors open (season, all teams) are therefore served from the edge.
+Data changes once a night. Every data request from the browser goes to a Next.js **GET route
+handler whose URL carries the data version** (Israeli `app_meta.etl_full_last_success`;
+EuroLeague `euro_data_version()`) and which answers with
+`Vercel-CDN-Cache-Control: s-maxage=<long>` -- Vercel's CDN caches GET responses by URL on every
+plan, up to 10 MB per response. When the ETL publishes, the version changes, so new URLs miss
+the old entries; nothing has to be purged. The default views most visitors open are therefore
+served from the CDN.
+
+Next.js 16's `'use cache'` (Cache Components) is **not** relied on for this: its default
+in-memory cache does not persist across requests on serverless hosts (Next.js docs), and its
+remote variant carries platform fees. It may still be used for build-time/static parts.
 
 ### Filtering (decision 14)
 
@@ -251,10 +258,40 @@ the 2 s target) so a wrong call costs one phase, not seven.
 1. The new app's web address (custom domain or the host's default) -- needed by the switch.
 2. Whether the app will become commercial (moves hosting to Vercel Pro).
 
+## How the Next.js app is built (Claude's calls, checked against current docs 2026-10-20)
+
+- **Next.js 16, App Router.** Pages and layouts are Server Components by default; data is read
+  on the server, close to the database, and passed to Client Components as props. Client
+  Components only where there is interaction (tables, filter controls, Gameflow), marked
+  `'use client'` at the smallest boundary. Modules holding secrets import `server-only`, so
+  they cannot end up in the browser bundle (Next.js "Server and Client Components").
+- **Rules as plain typed functions**, not R-style pipelines or reactive chains: the shared
+  module (decision 12) is pure TypeScript functions over typed row arrays, each with unit tests
+  (Vitest) seeded from the R tests and the goldens. Behaviour is ported; R's shape is not.
+- **Filter state in the URL** with `nuqs` (type-safe search-params state for the App Router),
+  so every view is shareable and the server can read the same state.
+- **Tables** with TanStack Table (sorting, column order) and TanStack Virtual for long tables;
+  client-side sorting when the full row set is present, server-side otherwise (TanStack docs).
+- **Input validation** with one schema per route (`zod`), mirroring the fail-closed validators
+  of `app/R/svc_params.R` and the request caps from the 2026-10-20 security audit.
+- **Database access** with `supabase-js` `.schema('app_api').rpc(fn, args, { get: true })` for
+  read-only functions, from server code only. Exposing `app_api` follows Supabase's custom-schema
+  steps **except the default grants**: Supabase's example grants `ALL` to `anon`; here only
+  `EXECUTE` on `app_api` functions is granted, to one dedicated read-only role, and the
+  `anon`/`authenticated` roles get nothing.
+
+Sources: [Next.js `use cache`](https://nextjs.org/docs/app/api-reference/directives/use-cache),
+[Next.js Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components),
+[Vercel CDN Cache](https://vercel.com/docs/caching/cdn-cache),
+[Supabase `rpc()`](https://supabase.com/docs/reference/javascript/rpc),
+[Supabase custom schemas](https://supabase.com/docs/guides/api/using-custom-schemas),
+[nuqs](https://blog.logrocket.com/managing-search-parameters-next-js-nuqs),
+[TanStack Table virtualization](https://tanstack.com/table/latest/docs/framework/react/guide/virtualization).
+
 ## Left to the builder (Claude's calls, overrulable)
 
-- Next.js routing style (App Router), component and state libraries, table library, CSS
-  approach, test tooling (Vitest, Playwright, a load-test tool).
+- CSS approach, component library (if any), the load-test tool; library versions at build time
+  (e.g. TanStack Table v8 vs the newer v9 API).
 - Exact `app_api` function signatures and the JSON contract per route (the 2026-10-19 design's
   response contract is the starting point: rows, totals, meta with columns, polarity,
   default sort, auto min-poss inputs, data version, warnings).
