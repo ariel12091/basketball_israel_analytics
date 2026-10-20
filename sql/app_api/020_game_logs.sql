@@ -21,6 +21,14 @@
 --   game_logs_euro     euro_fetch_game_log_rows (app/R/global_euro.R)
 --
 -- R / TypeScript own derived rates and percentiles; nothing is derived here.
+--
+-- CONSUMERS of game_logs_il: its rows FULL JOIN the Summary and Four Factors
+-- facts, so a row can carry only one view's columns (the other side all
+-- NULL) where a key exists in one fact and not the other. Shiny reads each
+-- view's fact on its own, so a consumer must keep only the rows that carry
+-- the active view's side (Summary: total_poss .. minutes; Four Factors:
+-- ff_total_poss .. ff_minutes) and treat a NULL sum within that side as 0
+-- (SQL sum() of an all-NULL group is NULL where Shiny's na.rm sum is 0).
 
 -- The (game, team) pairs whose lineup rows hold no score at all, which Game
 -- Logs shows without a score. Shiny's query is the same aggregate without a

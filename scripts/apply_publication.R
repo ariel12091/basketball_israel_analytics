@@ -56,14 +56,11 @@ main <- function() {
   message("publication table before: ", if (already) "present (idempotent re-run)" else "absent")
   dbExecute(con, paste("CREATE SCHEMA IF NOT EXISTS", qs))
   dbExecute(con, sql, immediate = TRUE)
-  if (live) {
-    message("Running security hardening + audit in the same transaction")
-    run_db_security_hardening(con)
-    message("Security audit: 0 violations")
-  }
-
   # Check the deployed objects by calling them (plpgsql bodies are only
-  # validated when they run). Read-only calls; the writers are exercised by
+  # validated when they run) BEFORE the hardening: from the hardening on, this
+  # transaction holds ACCESS EXCLUSIVE locks on every base table in the schema
+  # (RLS re-enable, policies), which blocks Shiny's reads until commit or
+  # rollback, so nothing slow may run after it. The writers are exercised by
   # test-publication-db.R against a pubtest_* schema.
   status <- dbGetQuery(con, paste0(
     "SELECT p.league, p.state AS stored_state, s.state, s.version,
@@ -75,20 +72,32 @@ main <- function() {
   if (!setequal(status$league, c("il", "euroleague", "eurocup"))) {
     stop("publication rows missing after deploy")
   }
+
+  # From here: hardening + audit, catalogue-only grant check, then end the
+  # transaction. The lock hold is timed and reported.
+  hardening_started <- Sys.time()
+  if (live) {
+    message("Running security hardening + audit in the same transaction")
+    run_db_security_hardening(con)
+    message("Security audit: 0 violations")
+  }
   grants <- dbGetQuery(con, paste0(
     "SELECT p.proname,
             has_function_privilege('app_readonly', p.oid, 'EXECUTE') AS app_readonly_execute
        FROM pg_proc p WHERE p.pronamespace = $1::regnamespace
-        AND p.proname IN ('publication_lock_key', 'publication_status', 'begin_publication',
-                          'fence_publication', 'finish_publication')
+        AND p.proname IN ('publication_lock_key', 'publication_owner_live', 'publication_status',
+                          'begin_publication', 'fence_publication', 'finish_publication')
       ORDER BY p.proname"), params = list(schema))
   print(grants)
-  writers_open <- grants$app_readonly_execute[grants$proname %in%
-    c("begin_publication", "fence_publication", "finish_publication")]
-  if (any(writers_open)) stop("app_readonly can execute a publication writer")
+  closed <- grants$app_readonly_execute[grants$proname %in%
+    c("begin_publication", "fence_publication", "finish_publication", "publication_owner_live")]
+  if (any(closed)) stop("app_readonly can execute a publication writer or internal helper")
 
   if (confirm) dbCommit(con) else dbRollback(con)
   open <- FALSE
+  message(sprintf("Hardening transaction held its locks for %.2fs (hardening start -> %s)",
+                  as.numeric(difftime(Sys.time(), hardening_started, units = "secs")),
+                  if (confirm) "commit" else "rollback"))
   message(if (confirm) paste("Publication migration committed to", schema)
           else paste("DRY RUN: publication migration validated and rolled back for", schema))
 }

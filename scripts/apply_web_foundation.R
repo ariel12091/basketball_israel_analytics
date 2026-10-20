@@ -143,6 +143,12 @@ main <- function() {
     message("Deploying: ", path)
     dbExecute(con, paste(readLines(path, warn = FALSE), collapse = "\n"), immediate = TRUE)
   }
+  # Smoke calls run as the owner BEFORE the hardening: from the hardening on,
+  # this transaction holds ACCESS EXCLUSIVE locks on every base table it
+  # touches (RLS re-enable, policies), which blocks Shiny's reads until commit
+  # or rollback. After it: the audit, a catalogue-only grant check, the end.
+  smoke_call_readers(con)
+  hardening_started <- Sys.time()
   message("Running security hardening + audit in the same transaction")
   run_db_security_hardening(con)
   message("Security audit: 0 violations")
@@ -151,9 +157,14 @@ main <- function() {
             has_function_privilege('anon', p.oid, 'EXECUTE') AS anon
        FROM pg_proc p WHERE p.pronamespace = 'app_api'::regnamespace ORDER BY p.proname")
   print(grants)
-  smoke_call_readers(con)
+  if (!all(grants$app_readonly) || any(grants$anon)) {
+    stop("app_api grants are not exactly the allowlist")
+  }
   if (confirm) dbCommit(con) else dbRollback(con)
   open <- FALSE
+  message(sprintf("Hardening transaction held its locks for %.2fs (hardening start -> %s)",
+                  as.numeric(difftime(Sys.time(), hardening_started, units = "secs")),
+                  if (confirm) "commit" else "rollback"))
   message(if (confirm) "Web API committed; existing roles unchanged."
           else "DRY RUN: web API validated and rolled back; existing roles unchanged.")
 }

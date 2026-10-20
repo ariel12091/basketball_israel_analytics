@@ -69,13 +69,14 @@ test_that("the publication readers and only they are on the Israeli allowlist", 
   pub <- read_sql("publication", "001_publication.sql")
   defined <- vapply(sql_function_blocks(gsub("__SCHEMA__", "s", pub, fixed = TRUE)),
                     `[[`, "", "name")
-  expect_setequal(defined, c("publication_lock_key", "begin_publication", "fence_publication",
+  expect_setequal(defined, c("publication_lock_key", "publication_owner_live",
+                             "begin_publication", "fence_publication",
                              "finish_publication", "publication_status"))
   hardening <- read_sql("security", "enable_readonly_rls.sql")
   allowlisted <- sql_list_between(hardening, "  app_function_names constant text[] := ARRAY[", "];")
   expect_true(all(c("publication_status", "publication_lock_key") %in% allowlisted))
-  expect_false(any(c("begin_publication", "fence_publication", "finish_publication") %in%
-                     allowlisted))
+  expect_false(any(c("begin_publication", "fence_publication", "finish_publication",
+                     "publication_owner_live") %in% allowlisted))
 })
 
 test_that("the app_api files and apply script state the deploy order", {
@@ -92,6 +93,12 @@ test_that("the app_api files and apply script state the deploy order", {
   expect_match(web, "stage_publication <- !confirm &&", fixed = TRUE)
   expect_lt(regexpr("assert_publication_applied(con)", web, fixed = TRUE)[[1]],
             regexpr("dbBegin(con)", web, fixed = TRUE)[[1]])
+  # Nothing slow runs while the hardening holds its table locks: the smoke
+  # calls come before it.
+  expect_lt(regexpr("  smoke_call_readers(con)", web, fixed = TRUE)[[1]],
+            regexpr("  run_db_security_hardening(con)", web, fixed = TRUE)[[1]])
+  expect_lt(regexpr("publication_status(p.league) s", pub, fixed = TRUE)[[1]],
+            regexpr("run_db_security_hardening(con)\n", pub, fixed = TRUE)[[1]])
 })
 
 test_that("apply_web_foundation refuses without the publication objects", {

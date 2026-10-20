@@ -8,6 +8,16 @@ test_that("publication lock, stale takeover and row fences serialize writers", {
   call <- function(con, fn, args, params = list()) {
     DBI::dbGetQuery(con, publication_sql(con, f$schema, fn, args), params = params)
   }
+  # A closed connection's lock is released by the server shortly after the
+  # client goes away; poll with a short deadline rather than assume it is instant.
+  wait_for_state <- function(want, league = "il", timeout = 5) {
+    deadline <- Sys.time() + timeout
+    repeat {
+      state <- f$status(league)$state
+      if (identical(state, want) || Sys.time() > deadline) return(state)
+      Sys.sleep(0.1)
+    }
+  }
   initial <- f$status()
   expect_identical(initial$state, "published")
   expect_equal(as.numeric(initial$version), 1)
@@ -28,8 +38,14 @@ test_that("publication lock, stale takeover and row fences serialize writers", {
   DBI::dbExecute(w, paste0("INSERT INTO ", f$qs, ".fixture VALUES (1)"))
   # Losing only the session lock leaves the in-flight fenced writer alive.
   DBI::dbDisconnect(a)
-  expect_equal(f$status()$state, "stale")
+  expect_equal(wait_for_state("stale"), "stale")
+  # Another session holding the key cannot mask the dead owner.
   DBI::dbGetQuery(b, lock)
+  expect_equal(f$status()$state, "stale")
+  # Dead owner, no takeover yet: nobody can finish A's publication.
+  expect_error(call(b, "finish_publication", "$1, $2::uuid, true", list("il", arun)), "fenced_out")
+  expect_equal(f$status()$state, "stale")
+  expect_equal(as.numeric(f$status()$version), 1)
   DBI::dbExecute(b, "SET lock_timeout = '100ms'")
   expect_error(call(b, "begin_publication", "$1, $2::uuid", list("il", brun)), "lock timeout")
   DBI::dbCommit(w)
@@ -49,6 +65,32 @@ test_that("publication lock, stale takeover and row fences serialize writers", {
   expect_equal(call(b, "finish_publication", "$1, $2::uuid, false", list("il", crun))[[1]], 4)
   expect_equal(f$status()$state, "failed")
   expect_equal(as.numeric(f$status()$version), 4)
+  # Begin refuses a transaction-level lock and a shared lock (eurocup).
+  c <- publication_connect()
+  on.exit(if (DBI::dbIsValid(c)) DBI::dbDisconnect(c), add = TRUE)
+  key <- paste0(f$qs, ".publication_lock_key('eurocup')")
+  drun <- "00000000-0000-0000-0000-000000000004"
+  DBI::dbBegin(c)
+  DBI::dbGetQuery(c, paste0("SELECT pg_advisory_xact_lock(", key, ")"))
+  expect_error(call(c, "begin_publication", "$1, $2::uuid", list("eurocup", drun)),
+               "advisory lock required")
+  DBI::dbRollback(c)
+  DBI::dbGetQuery(c, paste0("SELECT pg_advisory_lock_shared(", key, ")"))
+  expect_error(call(c, "begin_publication", "$1, $2::uuid", list("eurocup", drun)),
+               "advisory lock required")
+  DBI::dbGetQuery(c, paste0("SELECT pg_advisory_unlock_shared(", key, ")"))
+  expect_identical(f$status("eurocup")$state, "published")
+  expect_equal(as.numeric(f$status("eurocup")$version), 1)
+  # The owner's lock no longer live (released; connection still open), no
+  # takeover: the row reads stale and even the owner cannot finish it.
+  DBI::dbGetQuery(c, paste0("SELECT pg_advisory_lock(", key, ")"))
+  call(c, "begin_publication", "$1, $2::uuid", list("eurocup", drun))
+  expect_identical(f$status("eurocup")$state, "publishing")
+  DBI::dbGetQuery(c, paste0("SELECT pg_advisory_unlock(", key, ")"))
+  expect_identical(f$status("eurocup")$state, "stale")
+  expect_error(call(c, "finish_publication", "$1, $2::uuid, true", list("eurocup", drun)),
+               "fenced_out")
+  expect_equal(as.numeric(f$status("eurocup")$version), 1)
   # Leagues are independent rows and locks.
   expect_identical(f$status("euroleague")$state, "published")
   expect_equal(as.numeric(f$status("euroleague")$version), 1)
