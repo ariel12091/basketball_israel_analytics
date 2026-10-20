@@ -72,7 +72,7 @@ Anti-goals (a working result that is still a failure):
 | 9 | **One responsive design for every device** -- no separate mobile layer | User |
 | 10 | As soon as possible; no fixed date | User |
 | 11 | Hosting: Vercel Hobby (free, allowed while non-commercial); Vercel Pro ($20) if it becomes commercial; Cloudflare Workers (~$5) as fallback if Vercel limits bind | Claude |
-| 12 | Every number computed in Postgres; TypeScript does presentation only | Claude |
+| 12 | One owner per rule: Postgres for anything needing raw play-by-play; one shared TypeScript module for everything derived from returned rows; existing R logic is ported faithfully where sound | Claude, revised with the user |
 | 13 | Answers cached at the edge, keyed by the data version | Claude |
 | 14 | Filtering split three ways by data size (below) | Claude |
 | 15 | Build order: foundation + Game Logs first, Compare last | Claude |
@@ -85,7 +85,7 @@ Anti-goals (a working result that is still a failure):
 ```
 Browser (Next.js pages, React, one responsive design)
    |  fetch /api/v1/...            (filters in the URL; responses cached at the edge)
-Next.js route handlers on Vercel   (thin: validate params, call one SQL function, shape JSON)
+Next.js route handlers on Vercel   (thin: validate params, call SQL owners, apply the shared TS module, shape JSON)
    |  Supabase Data API (PostgREST) RPC, server-side only
 Postgres on Supabase               (schemas basketball_test, euroleague; stored functions own every number)
    ^
@@ -94,29 +94,45 @@ ETL (R) and EuroLeague loader (Python), unchanged -- advance the data version wh
 
 ### Where the logic goes (decision 12)
 
-`docs/shared_definitions.md` already says "the database computes; R, Plumber and React
-present" (R1, R8). The migration completes that rule:
+The principle is rule R1 of `docs/shared_definitions.md`: **one implementation per rule**,
+with its owner listed in that document. Each rule gets exactly one of two owners, chosen by
+what it needs:
 
-- **Postgres owns every number**: metrics, rates, totals and TOTAL rows, percentile ranks on
-  the full population (`percent_rank()` matches dplyr's `percent_rank` definition), rank
-  arrows, the On/Off 3PT-luck and small-sample tags, Four Factors impact estimates, Compare's
-  per-side splits, gaps and winners, Player Stats rate modes and eligibility, Gameflow stints
-  and per-window totals, Home hub cards and storylines. Each R-side rule in the inventory
-  (marked R-pure / R-closure, about 80 of the 109) becomes a stored function or view, or a new
-  parameter on an existing owner -- never a TypeScript re-derivation.
-- **TypeScript owns presentation and interaction only**: URL/filter state, auto min-possessions
-  (it chooses a bar from rows the database returned; the rule moves verbatim from
-  `auto_minposs_from_df` / `setup_onoff_auto_min`), sorting with each column's best direction,
-  heat colours from `pr_*` and polarity, CSV export (with the formula-defusing rule already in
-  `docs/shared_definitions.md` § 3), Gameflow pair selection and shared-lineup
-  recomputation (GF-06 is client-side today too).
+| Owner | Computes | Why there |
+|---|---|---|
+| **Postgres** (stored functions and views -- mostly the existing ones) | Everything that needs raw play-by-play: points, possessions, minutes, shot counts, clutch and starters splits, opponent rank, per-game and per-lineup aggregates, Gameflow stints | The data is only there, and too large to ship to a browser |
+| **One shared TypeScript module** (pure functions, no UI code; used by route handlers and the browser alike) | Everything derived from rows the database returned: rates from counts (R5, "rates are derived last"), percentile ranks over a returned population, TOTAL and multi-team TOTAL rows, Player Stats rate modes and eligibility, Compare gaps/winners/labels, On/Off 3PT-luck and small-sample tags, Four Factors impact estimates, shot league averages, auto min-possessions, rank-change arrows from two returned frames | Pure arithmetic on rows; instant in the browser (no server round trip on re-rank, rate-mode switch or stat filter), which also protects the 2 s target |
+
+Rules:
+
+- **Reuse what the app already does (user, 2026-10-20).** Where the R logic is sound, it is
+  ported, not redesigned: each TypeScript function is a faithful translation of a named R
+  function (`helpers.R`, `svc_game_logs.R`, the server files' pure helpers -- e.g.
+  `pr_vec`, `adaptive_baseline`, `auto_minposs_from_df`, `setup_onoff_auto_min`'s rule,
+  `onoff_3pt_luck`, `onoff_sample_flag`, `apply_ts_mode`, `ts_rate_threshold`,
+  `add_ts_multi_team_totals`, `gl_build_*`, `gl_attach_percentiles`) and its doc comment names
+  the R source. The R function's existing tests are ported with it. The existing SQL owners
+  are called as they are; new SQL is written only for the R-closure logic that has no SQL or
+  pure-R home yet (the inventory's R-closure rows, and the five inline-SQL places). A known
+  defect is ported as-is and stays in the deviation register (e.g. D24, D25) -- fixing it is a
+  separate, deliberate change with re-recorded goldens.
+- **No rule has two owners**: a number the TypeScript module derives is never also derived in
+  SQL, and the reverse. Each moved rule's owner is updated in `docs/shared_definitions.md` the
+  same day.
+- **A ranking is computed only where the population it ranks against is present.** When that
+  population is too large to return (e.g. a full lineup population under filters), the rank is
+  computed in SQL instead.
+- **Rounding is one shared function** in the TypeScript module that reproduces R's `round()`
+  (halves to even, IEC 60559); Postgres `round(numeric)` (halves away from zero) is never used
+  for a displayed value without checking it against the goldens.
+- **The UI only presents**: URL/filter state, sorting with each column's best direction,
+  heat colours from `pr_*` and polarity, CSV export (with the formula-defusing rule in
+  `docs/shared_definitions.md` § 3), Gameflow pair selection and shared-lineup recomputation
+  (GF-06 is client-side today too; its existing `app.js` logic is ported).
 - A new database surface: one schema (e.g. `app_api`) holding the functions the web app may
   call, each a thin wrapper over the owning function, granted to one read-only role. Only that
   schema is exposed through the Data API. The existing `app_readonly` grants and the
   security apply/audit scripts (`scripts/apply_db_security.R`) cover it.
-- **Rounding is a contract item.** R's `round()` rounds halves to even (IEC 60559); Postgres
-  `round(numeric)` rounds halves away from zero. Wherever Shiny rounded in R, the SQL owner must
-  reproduce R's result or the difference is registered. The goldens catch every case.
 
 ### Data access
 
@@ -167,8 +183,8 @@ behaviours (GF-04, X-15 and the rest) must still work on a phone.
 
 **Which values must match (Claude's call):** what Shiny hands its table -- the golden frame
 captured at the `DT::datatable()` call, after Shiny's own R rounding -- plus the hidden
-columns (`pr_*`, raw counts) in that frame. Rounding is therefore a contract item owned by
-the SQL function (it reproduces R's half-to-even result where Shiny rounded in R), not
+columns (`pr_*`, raw counts) in that frame. Rounding is therefore a contract item, owned by
+the shared TypeScript rounding function (or by the SQL owner where SQL rounds today), not
 presentation.
 
 **Where new SQL is developed and tested (Claude's call):** in the production database, as
