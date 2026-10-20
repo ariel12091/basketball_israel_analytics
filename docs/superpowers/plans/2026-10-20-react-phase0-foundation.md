@@ -53,7 +53,7 @@
 - [ ] **Step 1: Write the failing contract tests** in `test-db-security-contracts.R` (static, no DB): `web_role.sql` creates `app_web` with `IN ROLE app_readonly` and both role-default timeouts; the audit SQL lists `app_api` among checked schemas; no SQL file grants anything on `app_api` to `anon`, `authenticated` or `PUBLIC`.
 - [ ] **Step 2: Write the failing DB test** `test-web-role-db.R` (`RUN_DB_TESTS=1`, connects as `app_web` with `APP_WEB_PASSWORD`, port from `PG_PORT` forced to 5432): `SHOW statement_timeout` is `3s`; `SELECT` on `basketball_test.final_schedule_mv` succeeds; `INSERT INTO basketball_test.app_meta` fails with permission denied; calling a function in `basketball_test` that is not on the allowlist fails; `SET ROLE anon` / `SET ROLE service_role` fail.
 - [ ] **Step 3: Run both** -- FAIL (files and role missing).
-- [ ] **Step 4: Implement** the SQL files and apply script; extend `apply_db_security.R` and the audit to cover `app_api`.
+- [ ] **Step 4: Implement** the SQL files and apply script; extend `apply_db_security.R`, the hardening SQL and the audit to cover `app_api` -- its functions are granted through the same enumerated allowlist mechanism as `basketball_test` (review R9), so a re-apply keeps them.
 - [ ] **Step 5: Apply** -- dry run, show the user, then `CONFIRM_WEB_FOUNDATION_APPLY=1` with the user's go-ahead. Run both tests -- PASS. (This is the identity proof, gap G3.)
 - [ ] **Step 6: Commit** `sql: app_web login role and app_api schema under the security scripts`.
 
@@ -71,7 +71,13 @@
   - `fence_publication(league text, run_id uuid) RETURNS void` -- `SELECT ... FROM publication WHERE league = $1 AND owner_run = $2 AND state = 'publishing' FOR SHARE`; raises `fenced_out` if no row. Called first in every write transaction.
   - `finish_publication(league text, run_id uuid, ok boolean) RETURNS bigint` -- one `UPDATE ... WHERE league = $1 AND owner_run = $2 AND state = 'publishing'` setting `state = CASE WHEN ok THEN 'published' ELSE 'failed' END, version = version + 1, finished_at = now()`; raises if 0 rows; returns the new version.
   - `publication_status(league text) RETURNS TABLE(state text, version bigint)` -- reports `stale` when `state = 'publishing'` and no session holds the league's advisory lock.
-- Grants: `publication_status` EXECUTE to `app_readonly`; the others only to the ETL/loader role(s).
+- Grants (review R9): the security hardening revokes every function grant in `basketball_test`
+  and restores only its enumerated allowlist (`sql/security/enable_readonly_rls.sql`), so a grant
+  made by this migration alone would be removed by the next re-apply. `publication_status` and
+  every read-only helper it calls as invoker (`publication_lock_key`) are therefore added to the
+  `app_readonly` allowlist **and** to the independent audit allowlist
+  (`sql/security/audit_app_access.sql`). `begin_publication`, `fence_publication` and
+  `finish_publication` stay off both allowlists -- EXECUTE only for the ETL/loader role(s).
 - **Test isolation (review R3):** the SQL file is written with a `__SCHEMA__` placeholder;
   `scripts/apply_publication.R` deploys it to `basketball_test` (live) and, for tests, to a
   schema `pubtest_<random>` created and dropped by the test (`DROP SCHEMA ... CASCADE` in
@@ -96,11 +102,11 @@
 - Consumes: Task 2 functions.
 - Produces (`etl/publication.R`): `publication_open(league = "il", port = Sys.getenv("PUBLICATION_LOCK_PORT", "5432"), schema = "basketball_test") -> list(con, run_id, league, schema)` opens a dedicated session connection, takes `pg_advisory_lock`, calls `begin_publication`; `publication_fence(pub, con)` runs `fence_publication` on the given write connection (must be inside its open transaction); `publication_fenced_tx(pub, con, expr)` wraps `expr` in `dbBegin` + fence + `dbCommit` (rollback on error); `publication_close(pub, ok)` calls `finish_publication` and disconnects; `with_publication(league, fn)` for scripts.
 - **Write inventory first (review R1):** list every statement in `etl/etl_full.R`, `etl/etl_onoff.R` and the helpers they call that writes a relation the app serves -- explicit transactions, autocommit `dbExecute`/`dbWriteTable` (e.g. Phase 3's sub-lineup `dbWriteTable` calls, the shot-zone writes), and refresh paths that run with no new games (e.g. `force_full_sub_lineup_stats`). Record it in `docs/etl_publication_writes.md`. Every autocommit write of served data is wrapped in a fenced transaction (`publication_fenced_tx(pub, con, expr)`).
-- `etl_full()`: opens the publication **whenever any inventoried write is about to run** -- including a no-new-game refresh -- and not on dry runs or runs that make no relevant change; every write transaction calls `publication_fence` first; ends with `publication_close(pub, ok = pipeline_ok)` after Phase 6 validation and before Phase 7. A crash leaves the lock released by connection loss (stale).
+- `etl_full()`: opens the publication **whenever any inventoried write is about to run** -- including a no-new-game refresh -- and not on dry runs or runs that make no relevant change; every write transaction calls `publication_fence` first; ends with `publication_close(pub, ok = run_success)` after Phase 6 validation and before Phase 7, where `run_success <- isTRUE(pipeline_ok) && length(unique(failed_base_ids)) == 0` -- the same condition the run already uses for `etl_full_last_success` (review R8); every downstream validation failure that sets `pipeline_ok` therefore also prevents `published`. A crash leaves the lock released by connection loss (stale).
 - Workflow: `concurrency: { group: etl-full, cancel-in-progress: false }`.
 
 - [ ] **Step 1: Write failing static tests** (`test-etl-publication.R`): every write in `docs/etl_publication_writes.md` sits inside `publication_fenced_tx(` or a block whose `dbBegin` is followed by `publication_fence(`; no autocommit write of a served relation remains; `publication_close(` appears after the Phase 6 block and before Phase 7; the workflow has the concurrency group; each listed repair script wraps its write in `with_publication(`. Static checks are supporting evidence only (review R1).
-- [ ] **Step 2: Write the failing DB tests** (`test-etl-publication-db.R`, `pubtest_<random>` schema): `with_publication` where `fn` commits a fenced write -> `published`, version + 1; `fn` errors after a fenced commit -> `failed`, version + 1; closing the lock connection -> `stale`; **an autocommit-style write converted to `publication_fenced_tx` is rejected after takeover**; **the no-new-game refresh path opens and finalizes a publication** (run `etl_full`'s refresh branch against the test schema with `force_full_sub_lineup_stats = TRUE` on a fixture, or the extracted refresh function); **removing the fence from one wrapper makes a test fail** (mutation check, reverted).
+- [ ] **Step 2: Write the failing DB tests** (`test-etl-publication-db.R`, `pubtest_<random>` schema): `with_publication` where `fn` commits a fenced write -> `published`, version + 1; `fn` errors after a fenced commit -> `failed`, version + 1; closing the lock connection -> `stale`; **an autocommit-style write converted to `publication_fenced_tx` is rejected after takeover**; **a mixed run -- one game committed, one base-game load failed and rolled back -- advances the version and ends `failed`, never `published`** (review R8); an all-success run ends `published`; a run with no relevant write leaves state and version untouched; a downstream (Phase 6) validation failure ends `failed`; **the no-new-game refresh path opens and finalizes a publication** (run `etl_full`'s refresh branch against the test schema with `force_full_sub_lineup_stats = TRUE` on a fixture, or the extracted refresh function); **removing the fence from one wrapper makes a test fail** (mutation check, reverted).
 - [ ] **Step 3: Run** -- FAIL.
 - [ ] **Step 4: Implement**; for `etl_full.R`, splice on raw bytes (mixed line endings) and confirm `git diff --stat` shows only the intended lines.
 - [ ] **Step 5: Run both tests and the fast suite** -- PASS. Run one `etl_full(dry_run = TRUE)` locally: no publication opened (logged).
@@ -137,7 +143,7 @@
 - **Envelope for empty results (review R6):** each reader returns **one JSON value** -- `jsonb_build_object('state', ..., 'version', ..., 'row_count', ..., 'ctl_poss', ..., 'rows', coalesce(jsonb_agg(...), '[]'))` -- built in the same statement from one CTE over the filtered fact, so metadata and controls exist even with zero rows and no second scan is added. Column lists above describe the objects inside `rows`.
 
 - [ ] **Step 1: Write failing DB tests** (`RUN_DB_TESTS=1`, as `app_web`): a season with no games returns `rows = []`, `row_count = 0` and a `(state, version)`; for season 2026, `sum` of each count column per `(game_id, team_id, type_lineup)` from `game_logs_il` equals the same sums over the raw `mv_lineup_totals_by_day` / `lineup_four_factors_by_game` season pull (the Shiny inputs); `row_count` equals `nrow`; the starters split loses nothing (sum over `num_starters` equals the unsplit sum); same for EuroLeague 2025; `version()` returns three rows; calls as `app_web` succeed, as `anon` fail.
-- [ ] **Step 2: Run** -- FAIL. **Step 3: Implement and deploy with the user's go-ahead.** **Step 4: Run** -- PASS. Record the payload size of each season result serialized as JSON (`length(jsonlite::toJSON(...))`) in the test output.
+- [ ] **Step 2: Run** -- FAIL. **Step 3: Implement and deploy with the user's go-ahead**, then run the security re-apply (`CONFIRM_DB_SECURITY_APPLY=1`). **Step 4: Run** -- PASS; then **run the hardening once more and re-run** (review R9): `app_api.version()` and a Game Logs reader still succeed as `app_web`, and `begin_publication` / `fence_publication` / `finish_publication` still fail as `app_web`. Record the payload size of each season result serialized as JSON (`length(jsonlite::toJSON(...))`) in the test output.
 - [ ] **Step 5: Commit** `sql: app_api Game Logs readers and version with same-snapshot completeness`.
 
 ## Part B -- Web foundation and Game Logs (`react/foundation`)
@@ -313,3 +319,7 @@ An implementation review raised R1-R7 (unfenced autocommit and no-new-game ETL w
 deadlines; isolated DB tests; routable bench path; GL-06 deferred, not covered; metadata for
 empty results; overload vs correctness tests). Each is folded into the affected task, marked
 "review Rn".
+
+A second review raised R8 (finalize with the run's full success condition, including failed
+base games) and R9 (publication-reader grants survive the security re-apply; write functions
+stay denied to the web role). Both are folded into Tasks 1, 2, 3 and 5, marked "review Rn".
