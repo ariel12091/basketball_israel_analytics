@@ -16,8 +16,7 @@ for (id in names(GAME_LOGS_PRESETS)) {
     scoreless = readers$scoreless('golden')
   ) else list(rows = readers$euro_rows(p$competition, p$season, 'golden'), scoreless = NULL)
   expected <- readRDS(file.path('app/tests/goldens/out/game_logs', paste0(id, '.rds')))
-  service <- env$svc_game_logs(p, readers)
-  jsonlite::write_json(list(preset=id, params=p, input=input, expected=expected, service=service),
+  jsonlite::write_json(list(preset=id, params=p, input=input, expected=expected),
     file.path(out, paste0(id,'.json')), dataframe='rows', auto_unbox=TRUE, digits=17, na='null', null='null')
   cat(id, '\n')
 }

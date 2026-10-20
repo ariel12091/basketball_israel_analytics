@@ -8,3 +8,6 @@ playwright-report/
 
 # Generated from app/tests/goldens by scripts/export_goldens_json.R (large)
 test/goldens/
+
+.vercel
+.env*
