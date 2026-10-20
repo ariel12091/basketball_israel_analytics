@@ -84,7 +84,7 @@ Anti-goals (a working result that is still a failure):
 | 20 | Reuse what is proven; change only for a named, measured or documented reason | User |
 | 21 | ETL exception: both loaders write a publication state (publishing / published / failed; stale = crashed) and a version | User |
 | 22 | The web app connects as its own login role `app_web`, a member of `app_readonly`, with its own connection limit and role-default timeouts | Claude |
-| 23 | Every writer of served data claims and finalizes publication through `begin_publication` / `finish_publication`, one run at a time | Claude |
+| 23 | Every writer of served data holds an advisory lock for its run, fences each write transaction on ownership, and finalizes through `finish_publication` | Claude |
 
 ## Guiding rule: reuse what is proven
 
@@ -282,23 +282,40 @@ publication **state** and **version** (e.g. `app_meta` keys `publication_state_<
    (Phase 6 for the Israeli ETL); the version is incremented;
 3. `failed` -- set when a run that committed data then fails or fails validation; the version
    is still incremented (the data did change), but the state is not `published`;
-4. `stale` -- not written by a loader: a `publishing` state older than twice the loader's
-   longest normal run (measured from its logs) is read as `stale`, i.e. a crashed run.
+4. `stale` -- not written by a loader: a `publishing` state whose owning run no longer holds
+   its advisory lock (see "One writer at a time"), i.e. a crashed run.
 A run that commits nothing changes neither. The next successful run sets `published` again.
 The Israeli ETL (`etl/etl_full.R`) and the EuroLeague loader (`euroleague/`) both do this.
 
-**One writer at a time (closes review gap G12).** Every run carries a run identity. A
-`begin_publication(league, run_id)` function claims the league atomically and is refused while
-another run holds it -- unless that holder is `stale`, in which case the claim is taken over and
-the old run is marked `failed`. `finish_publication(league, run_id, ok)` sets the final state
-and advances the version in one atomic, conditional update that succeeds only if that run
-still owns the claim, so an abandoned writer that resumes later cannot finalize over its
-replacement. This covers **every writer of served data**: the scheduled ETL, manual
-`game_ids=` runs and retries, the EuroLeague loader, and manual repair procedures
-(`scripts/restage_matview.R`, the apply and migration scripts that rebuild served views or
-tables). The ETL workflows also get a GitHub Actions concurrency group so two runs of the same
-loader cannot start together. Phase 0 tests overlapping starts, finalization by the wrong run,
-and recovery followed by a late finalization attempt.
+**One writer at a time (closes review gap G12).** Ownership is enforced on every data write,
+not only at finalization, and a writer is only replaced once it is provably stopped.
+
+- **Liveness by lock, not by elapsed time.** A run holds a session-level advisory lock
+  (`pg_advisory_lock`) for its league on one dedicated connection for its whole life. A
+  session lock needs a session -- the direct connection or the session pooler (5432), never the
+  transaction pooler. If the process dies, its connection closes and Postgres releases the
+  lock; a slow or paused run keeps it. `begin_publication(league, run_id)` must acquire that
+  lock, so takeover is possible **only after the previous writer is verified gone**. The
+  `stale` state of the four-state list is therefore no longer a time threshold: it means "a
+  `publishing` state whose owner no longer holds the lock".
+- **Fencing every write transaction.** Every transaction that writes served data -- on any of
+  the run's connections -- starts by locking the publication row for its league
+  (`SELECT ... FOR SHARE ... WHERE owner = run_id`) and aborts if the run is no longer the
+  owner. A takeover updates that row, so it waits for any in-flight write transaction holding
+  the row lock to finish, and every later write by the old run fails the owner check. A check
+  that is not held until commit is not used.
+- **Finalization** (`finish_publication(league, run_id, ok)`) sets the final state and advances
+  the version in one atomic update that succeeds only for the current owner.
+- **Coverage:** every writer of served data -- the scheduled ETL, manual `game_ids=` runs and
+  retries, the EuroLeague loader, and manual repair procedures (`scripts/restage_matview.R`,
+  the apply and migration scripts that rebuild served views or tables) -- claims, fences its
+  write transactions and finalizes this way. The ETL workflows also get a GitHub Actions
+  concurrency group so two runs of the same loader cannot start together.
+
+Phase 0 tests: overlapping starts; finalization by the wrong run; a paused run A, takeover and
+successful publication by B, then A resuming both a fresh write and a write transaction that
+was already in flight -- neither may commit changes after B publishes; and a killed process
+releasing its claim.
 
 **The contract.**
 - Every data function returns `(state, version)` read in the **same database snapshot** as its
@@ -396,7 +413,7 @@ decision.
 
 | Phase | Content | Done when |
 |---|---|---|
-| 0 | Foundation: Next.js project; `app_api` schema under `app_readonly` with the security scripts extended; direct Postgres access with `pg`, both ports tested for row ownership under concurrency (G6); the ETL publication markers and the freshness contract (G2); the `app_web` role and the written connection budget (G10); end-to-end request deadlines with queue, connection and SQL budgets (G8); the four-state publication markers, single-writer ownership for every writer and paging rules (G2, G9, G12); one snapshot per combined response (G11); `app_web` role-default timeouts and the pooler-wait bound (G8); completeness metadata from the same execution (G7); preview deployment; Game Logs end to end (both leagues); payload and completeness checks; **a load test of the expensive database paths too** (closes G1): filtered On/Off, starters and custom clutch, both leagues -- cold caches, distinct filter combinations and simultaneous identical requests, with duration, request rate, cache-hit mix and the latency measurement point written down first; errors and timeouts count as failures | Game Logs matches its 15 goldens through the preview URL; the identity proof (G3), the commit-boundary freshness tests (G2), the concurrency row-ownership tests (G6), the work-bounding and multi-instance tests (G8, G10) and the paged-download test (G9), the writer-ownership tests (G12), the cross-read publication tests (G11) and the full-pool test (G8) pass; the load test meets criterion 3, or the measured capacity limits and the changes needed are recorded before Phases 2-7 start |
+| 0 | Foundation: Next.js project; `app_api` schema under `app_readonly` with the security scripts extended; direct Postgres access with `pg`, both ports tested for row ownership under concurrency (G6); the ETL publication markers and the freshness contract (G2); the `app_web` role and the written connection budget (G10); end-to-end request deadlines with queue, connection and SQL budgets (G8); the four-state publication markers, single-writer ownership for every writer and paging rules (G2, G9, G12); one snapshot per combined response (G11); `app_web` role-default timeouts and the pooler-wait bound (G8); completeness metadata from the same execution (G7); preview deployment; Game Logs end to end (both leagues); payload and completeness checks; **a load test of the expensive database paths too** (closes G1): filtered On/Off, starters and custom clutch, both leagues -- cold caches, distinct filter combinations and simultaneous identical requests, with duration, request rate, cache-hit mix and the latency measurement point written down first; errors and timeouts count as failures | Game Logs matches its 15 goldens through the preview URL; the identity proof (G3), the commit-boundary freshness tests (G2), the concurrency row-ownership tests (G6), the work-bounding and multi-instance tests (G8, G10) and the paged-download test (G9), the writer-ownership and write-fencing tests (G12), the cross-read publication tests (G11) and the full-pool test (G8) pass; the load test meets criterion 3, or the measured capacity limits and the changes needed are recorded before Phases 2-7 start |
 | 1 | Goldens for every remaining tab, from Shiny | Every inventory ID named by a golden or a browser-test spec |
 | 2-7 | One tab family per phase: Player Stats, Team Ratings, On/Off, Lineups, Gameflow + Home, Compare (logic to SQL first, then route, then UI) | That family's goldens and browser tests pass; coverage gate shows its IDs |
 | 8 | Full-app load test, performance work on slow functions | Criterion 3 holds for every tab |
@@ -439,14 +456,15 @@ expensive queries, caching and freshness, the 2 s target) so a wrong call costs 
 
 ## Review record (2026-10-20)
 
-Four reviews found twelve gaps: G1 expensive paths untested in Phase 0; G2 version freshness
+Five reviews found twelve gaps: G1 expensive paths untested in Phase 0; G2 version freshness
 and the publication boundary (reopened twice: failed runs, crashed runs); G3 the Data API
 identity; G4 payload limits and population completeness; G5 coverage from source instead of
 test runs; G6 driver pipelining on the transaction pooler; G7 completeness checks repeating an
 expensive scan; G8 bounding the whole request, not only each statement; G9 paged downloads
 mixing populations during publication; G10 deployment-wide connection limits; G11 one
 consistent snapshot per combined response; G12 exclusive writer ownership of the publication
-state. G8 was also reopened for waits inside the transaction pooler. Each has a
+state (reopened by the fifth review: fencing data writes, not only finalization). G8 was also
+reopened for waits inside the transaction pooler. Each has a
 design response in the section marked "closes review gap Gn"; each is closed only when the
 Phase 0 (or, for G5, the switch) tests named there pass.
 
