@@ -14,6 +14,7 @@ import { toCsv } from "@/server/csv";
 import type { League, Row, StatFilter } from "@/rules/gameLogs";
 import { HEAT_REVERSE } from "@/rules/gameLogs";
 import catalogues from "@/data/catalogues.json";
+import TeamPicker from "./TeamPicker";
 
 type Payload = {
   rows: Row[];
@@ -330,27 +331,36 @@ export default function GameLogsClient({ league }: { league: League }) {
     ([k, v]) => v && !["season", "view", "stats"].includes(k),
   );
   const multi = (key: "teams" | "opponents", label: string) => (
-    <label>
-      {label}
-      <select
-        multiple
-        value={query[key].split(",").filter(Boolean)}
-        onChange={(e) =>
-          update(
-            key,
-            Array.from(e.target.selectedOptions, (o) => o.value).join(","),
-          )
-        }
-      >
-        {data?.meta.teams.map((team) => (
-          <option key={team.id} value={team.id}>
-            {team.name}
-          </option>
-        ))}
-      </select>
-      <small>Ctrl / ⌘ to select several; clear selection for all.</small>
-    </label>
+    <TeamPicker
+      label={label}
+      teams={data?.meta.teams ?? []}
+      values={query[key].split(",").filter(Boolean)}
+      multiple
+      onChange={(values) => update(key, values.join(","))}
+    />
   );
+  const chipValue = (key: string, value: string) => {
+    if (["team", "teams", "opponents"].includes(key))
+      return value
+        .split(",")
+        .map(
+          (id) =>
+            data?.meta.teams.find((team) => String(team.id) === id)?.name ??
+            (loading ? "Loading team…" : "Unknown team"),
+        )
+        .join(", ");
+    if (key === "game_type")
+      return value
+        .split(",")
+        .map((id) => (catalogues.gameTypes as Record<string, string>)[id] ?? id)
+        .join(", ");
+    if (key === "phase")
+      return value
+        .split(",")
+        .map((id) => (catalogues.phases as Record<string, string>)[id] ?? id)
+        .join(", ");
+    return value;
+  };
   const starter = (key: "own_starters" | "opp_starters", label: string) => {
     const [mode = "", value = ""] = query[key].split(":");
     return (
@@ -492,20 +502,12 @@ export default function GameLogsClient({ league }: { league: League }) {
               {euro ? (
                 multi("teams", "Teams")
               ) : (
-                <label>
-                  Team
-                  <select
-                    value={query.team}
-                    onChange={(e) => update("team", e.target.value)}
-                  >
-                    <option value="">All teams</option>
-                    {data?.meta.teams.map((team) => (
-                      <option key={team.id} value={team.id}>
-                        {team.name}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                <TeamPicker
+                  label="Team"
+                  teams={data?.meta.teams ?? []}
+                  values={query.team ? [query.team] : []}
+                  onChange={(values) => update("team", values[0] ?? "")}
+                />
               )}
               <fieldset>
                 <legend>Date range</legend>
@@ -696,7 +698,7 @@ export default function GameLogsClient({ league }: { league: League }) {
                   onClick={() => update(key as keyof typeof query, "")}
                   aria-label={`Clear ${key}`}
                 >
-                  {key.replace(/_/g, " ")}: {value}
+                  {key.replace(/_/g, " ")}: {chipValue(key, value)}
                   <span>×</span>
                 </button>
               ))}
@@ -734,20 +736,57 @@ export default function GameLogsClient({ league }: { league: League }) {
               </div>
             ) : (
               <div className="table-scroll" aria-busy={loading}>
-                <table>
+                <table aria-label="Game logs">
+                  {view === "four_factors" && (
+                    <>
+                      <colgroup
+                        span={columnPairs.findIndex(([id]) => id === "off_ppp")}
+                      />
+                      <colgroup span={5} />
+                      <colgroup span={5} />
+                      <colgroup span={2} />
+                    </>
+                  )}
                   <thead>
+                    {view === "four_factors" && (
+                      <tr className="column-groups">
+                        <th
+                          scope="colgroup"
+                          colSpan={columnPairs.findIndex(
+                            ([id]) => id === "off_ppp",
+                          )}
+                          aria-label="Game context"
+                        />
+                        <th scope="colgroup" colSpan={5}>
+                          Offense
+                        </th>
+                        <th scope="colgroup" colSpan={5}>
+                          Defense
+                        </th>
+                        <th scope="colgroup" colSpan={2}>
+                          Usage
+                        </th>
+                      </tr>
+                    )}
                     {table.getHeaderGroups().map((group) => (
                       <tr key={group.id}>
                         {group.headers.map((header) => (
-                          <th key={header.id}>
+                          <th key={header.id} scope="col">
                             <button
+                              aria-label={`${header.column.columnDef.header} column`}
                               onClick={header.column.getToggleSortingHandler()}
                               title={`Sort by ${header.column.columnDef.header}`}
                             >
-                              {flexRender(
-                                header.column.columnDef.header,
-                                header.getContext(),
-                              )}
+                              {view === "four_factors" &&
+                              /^(off|def)_/.test(header.column.id) &&
+                              !header.column.id.endsWith("_poss")
+                                ? String(
+                                    header.column.columnDef.header,
+                                  ).replace(/^(Off|Def) /, "")
+                                : flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext(),
+                                  )}
                               <span>
                                 {header.column.getIsSorted() === "desc"
                                   ? " ↓"

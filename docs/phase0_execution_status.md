@@ -32,15 +32,41 @@
 
 ## Lean slice execution update (2026-10-21)
 
-**Lean Game Logs slice complete.** Implemented on `sql/web-foundation`; not pushed
-or merged. The broader original Phase 0/Part C remains outside this narrowed slice.
+**Numeric/API baseline verified; UI acceptance reopened by user feedback.**
+Implemented on `sql/web-foundation`; not pushed or merged. The previous "slice
+complete" statement overstated UI parity: numeric golden tests did not verify
+searchable selectors, readable team/opponent chips, or grouped Four Factors headers.
+The broader original Phase 0/Part C remains outside this narrowed slice.
+
+### UI correction review (2026-10-21)
+
+The spec's "No redesign. Same screens, same controls, same behaviour" and plan
+Task 11 remain applicable under the lean backend amendment. Checked directly against
+`ui_tab4_gamelogs.R`, `ui_tab11_euro_gamelogs.R`, `gamelog_ff_header()` in `helpers.R`,
+and inventory GL-01/GL-02. Israeli Team is intentionally single-select; Euro teams
+and opponents in all competitions support multiple selections. The missing type-to-
+search interaction, ID-based chips and absent Offense/Defense/Usage header groups
+were implementation omissions, not authorized UI changes.
+
+Reported gaps corrected: searchable keyboard-operable pickers with removable named
+selections, human-readable active chips, and the original 9/5/5/2 Four Factors
+header spans and PPP/eFG%/OREB%/TOV%/FTR subheaders (Gameflow remains deferred).
+Added six browser cases across all three competitions at both widths: typing,
+keyboard and pointer selection, multiple teams/opponents where supported, named
+chips, removal, URL persistence, Escape, no matches, and overflow checks. All 22
+browser tests (these six plus the previous 16 regressions) pass. Typecheck and
+local/Vercel builds pass; lint has the existing TanStack compatibility warning.
+React Doctor reports 69/100 with the earlier warnings and two additional bounded
+selection-list lookup advisories. Phone and desktop screenshots were inspected.
+This is a targeted correction, not a claim that every
+remaining Shiny presentation detail or the original full Phase 0 is complete.
 
 **Verified preview (READY, Preview environment):**
-https://ibpl-game-logs-dla2rmlxv-ariel12091-8759.vercel.app/il/game-logs?season=2026
+https://ibpl-game-logs-dpj400xsb-ariel12091-8759.vercel.app/il/game-logs?season=2026
 
 Use season 2025 on `/euroleague/game-logs` and `/eurocup/game-logs` for the tested
-Euro seasons. Deployment ID: `dpl_GcHp35xnJ4gzUnvGaDNnqNSyHmwi`. Next.js 16.4.2;
-final Vercel build completed in 10 seconds. Deployment protection uses Vercel login.
+Euro seasons. Deployment ID: `dpl_AFA5N4ngspSHco5ddByNnEk8twCE`. Next.js 16.4.2;
+updated Vercel build completed in 11 seconds. Deployment protection uses Vercel login.
 
 - Added the Next.js Game Logs screen, Summary/Four Factors, URL filters, starter
   bounds, game context, Israeli stat filters, sorting, heat colours, CSV, loading,
