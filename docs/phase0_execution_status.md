@@ -34,26 +34,19 @@ Branch: `sql/web-foundation` (not pushed, not merged). `main` is at `ae865b0` lo
    Review verdict: publication semantics, reader parity and grants sound; two Important
    findings sent back (fix round 1, below).
 
-## In flight at handoff
+## Last step completed before handoff
 
-**U1 fix round 1** -- an implementer was mid-way; its edits are UNCOMMITTED in the working
-tree (`helper-db-roles.R`, `test-app-api-sql-catalog-db.R`, `test-publication-db.R`,
-`test-web-role-db.R`, `apply_publication.R`, `apply_web_foundation.R`, `020_game_logs.sql`,
-`001_publication.sql`). Findings it is fixing:
-1. (Important) `test-web-role-db.R`: write/DDL probes ran inside `BEGIN READ ONLY`, so
-   Postgres answered "read-only transaction" before any privilege check. Probes must run in an
-   ordinary rolled-back transaction, assert SQLSTATE 42501, plus `has_table_privilege` /
-   `has_schema_privilege(...,'CREATE') = FALSE`.
-2. (Important) `apply_web_foundation.R`: smoke calls ran after the security hardening inside
-   the same transaction, holding ACCESS EXCLUSIVE on ~68 tables (Shiny's main views) for ~7 s,
-   in the dry run too. Move smoke calls before the hardening.
-3-7. (Minor) liveness must require a session `ExclusiveLock` held by the owner's recorded
-   pid/backend_start; `finish_publication` must require the live lock; poll for `stale`;
-   header comment on service_role; note that `game_logs_il`'s FULL JOIN emits one-sided rows
-   consumers must drop.
-Next step: check `git status`/`git log`; if the round's commits are missing, finish the
-fixes above, run the catalogue/parity test, `test-publication-db.R`, `test-etl-publication-db.R`
-(scratch `pubtest_*` schemas only) and both dry runs; then a scoped re-review.
+**U1 fix round 1 committed:** `aca4bc0` (identity proof asserts SQLSTATE 42501 in ordinary
+rolled-back transactions, plus privilege-function checks) and `14c1a2c` (smoke calls before
+the hardening in both apply scripts -- hardening locks now held 1.75 s / 1.62 s in the dry
+runs; begin records owner pid + backend_start and refuses shared/xact locks; status reports
+`stale` unless that exact owner holds the lock -- `publication_status` is now SECURITY
+DEFINER with an empty search_path because app_readonly cannot read other roles'
+`backend_start`; finish requires the live owner; poll for `stale`; header notes).
+Scratch-schema DB tests, catalogue test and security contracts pass; both dry runs pass.
+
+**Next:** a scoped re-review of `7768bf2..14c1a2c` (the seven findings, plus the new
+SECURITY DEFINER function), then the production apply below.
 
 ## Then, in order
 
