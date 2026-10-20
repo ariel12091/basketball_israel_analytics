@@ -82,7 +82,8 @@ Anti-goals (a working result that is still a failure):
 | 18 | Old Shiny links may break: the old address forwards to the new app's home page | User |
 | 19 | Our own API (Next.js routes) is the single front door for React, a future MCP server and other callers; behind it, a direct Postgres connection as `app_readonly`, as Shiny does | User + Claude |
 | 20 | Reuse what is proven; change only for a named, measured or documented reason | User |
-| 21 | ETL exception: both loaders write a publication state and version marker | User |
+| 21 | ETL exception: both loaders write a publication state (publishing / published / failed; stale = crashed) and a version | User |
+| 22 | The web app connects as its own login role `app_web`, a member of `app_readonly`, with its own connection limit | Claude |
 
 ## Guiding rule: reuse what is proven
 
@@ -101,7 +102,7 @@ Browser (Next.js pages, React, one responsive design)
 Our API: Next.js route handlers on Vercel  (/api/v1/...: the one front door for the React app,
    |                                          a future MCP server and other callers; validates params,
    |                                          calls SQL owners, applies the shared TS module, shapes JSON)
-   |  direct Postgres connection as app_readonly (pg via Supabase's pooler), server-side only
+   |  direct Postgres connection as app_web, a member of app_readonly (pg via Supabase's pooler), server-side only
 Postgres on Supabase               (schemas basketball_test, euroleague; stored functions own every number)
    ^
 ETL (R) and EuroLeague loader (Python), unchanged -- advance the data version when they publish
@@ -152,9 +153,12 @@ Rules:
 ### Data access
 
 Our API (the Next.js route handlers) is the only front door; nothing else talks to the
-database from the web. Behind it, the route handlers connect **directly to Postgres as the
-existing `app_readonly` role through Supabase's pooler** -- the same identity, grants and
-stored functions Shiny uses today -- with the `pg` (node-postgres) driver. The browser never sees a
+database from the web. Behind it, the route handlers connect **directly to Postgres through Supabase's pooler** with
+the `pg` (node-postgres) driver, as a login role `app_web` that is a member of the existing
+`app_readonly` role -- so it has exactly Shiny's permissions, grants and stored functions, with
+no new grants to maintain. The separate login is a documented deviation from "reuse what is
+proven" (review gap G10): it gives the web app its own pooler pool and its own
+`CONNECTION LIMIT`, so it can never take the ETL's or Shiny's capacity. The browser never sees a
 credential.
 
 Reasons for not using Supabase's auto-generated Data API (PostgREST) for this internal hop,
@@ -198,19 +202,39 @@ compute reuses warm instances for concurrent requests
   ignores any response that is not for its latest request, so stale results never replace
   newer state.
 
-**Bounding database work (closes review gap G8).** Aborting a browser request does not stop
-the server or the query ([Postgres.js cancellation](https://github.com/porsager/postgres#cancel)
-documents the races), so the design bounds work instead of relying on cancellation:
-- every query runs under a statement timeout of 5 s -- the maximum allowed latency (success
-  criterion 3);
-- each function instance has a small fixed pool with a short queue; when the queue is full the
-  API answers at once with 503 and `Retry-After` instead of piling up work;
-- a superseded query is allowed to finish within that 5 s bound; queries are not cancelled
-  mid-flight, so a cancellation can never hit a later query reusing the connection.
-Phase 0 tests rapid filter changes while watching `pg_stat_activity` and connection counts:
-abandoned work must drain within the bound.
+**Bounding work end to end (closes review gaps G8 and G10).** Aborting a browser request does
+not stop the server or the query
+([Postgres.js cancellation](https://github.com/porsager/postgres#cancel) documents the races),
+so the design bounds work instead of relying on cancellation.
 
-### Caching and freshness (decision 13; closes review gap G2)
+*Per request (G8).* One deadline for the whole request: **5 s** (success criterion 3), split
+into budgets -- about 0.5 s waiting in the instance's queue, 0.5 s acquiring a connection, at
+most 3 s of database time, and the remainder for processing and sending the response. The
+statement timeout is set per request from the budget left (`SET LOCAL statement_timeout`
+inside the request's transaction; [PostgreSQL client settings](https://www.postgresql.org/docs/current/runtime-config-client.html)).
+A request still queued when its deadline passes is dropped and never starts. The response
+deadline (answer 503 with `Retry-After` at 5 s) is separate from the bound on database work
+already running (its statement timeout); superseded queries are not cancelled mid-flight, so a
+cancellation can never hit a later query reusing the connection.
+
+*Across instances (G10).* Vercel scales out instances, each with its own pool, so local caps do
+not bound the total. The global bound is enforced by the database: the `app_web` role's
+`CONNECTION LIMIT` and its pooler pool size. A connection budget is written down in Phase 0
+for the chosen pooler mode -- the web app's share (preview traffic included), a reserve for the
+ETL, and Shiny's share while it runs -- inside the formula Supabase gives ("direct connections
++ Supavisor backend connections + PgBouncer backend connections < Postgres max connections";
+[Supabase pooling and limits](https://supabase.com/docs/guides/database/connecting-to-postgres/pooling-and-limits)).
+Each instance holds one or two connections, as Supabase recommends for serverless
+([Supabase connecting](https://supabase.com/docs/guides/database/connecting-to-postgres));
+a full pool appears as connection-wait time, capped by the 0.5 s acquisition budget and turned
+into 503.
+
+Phase 0 tests: queue saturation; requests running several queries; superseded queued requests;
+rapid filter changes while watching `pg_stat_activity`; several function instances and a burst
+of cache misses, observing connections on the client side and the database side. One warm
+instance is not sufficient proof.
+
+### Caching and freshness (decision 13; closes review gaps G2 and G9)
 
 Data changes once a night, so responses are cached on Vercel's CDN, which caches GET
 responses by URL on every plan when they carry `s-maxage`
@@ -225,13 +249,17 @@ serves: the Israeli ETL commits the refreshed views (Phase 4) and sub-lineup sta
 for minutes or indefinitely (`etl/etl_full.R`). Shiny's caches, keyed on the same stamp, share
 this gap today.
 
-**The ETL change (the one exception to the ETL non-goal).** Each loader keeps one row per
-league in a small table (e.g. `app_meta` keys `publication_state_<league>` and
-`data_version_<league>`):
-1. before its first data commit, it sets the state to `publishing`;
-2. as its very last step -- on every path that committed data, including a run that fails
-   after a commit -- it increments the version and sets the state to `published`;
-3. a run that commits nothing leaves both untouched.
+**The ETL change (the one exception to the ETL non-goal).** Each loader keeps, per league, a
+publication **state** and **version** (e.g. `app_meta` keys `publication_state_<league>`,
+`publication_started_<league>`, `data_version_<league>`), with four states:
+1. `publishing` -- set before the run's first data commit, with its start time;
+2. `published` -- set as the very last step, **only after the run's own validation passes**
+   (Phase 6 for the Israeli ETL); the version is incremented;
+3. `failed` -- set when a run that committed data then fails or fails validation; the version
+   is still incremented (the data did change), but the state is not `published`;
+4. `stale` -- not written by a loader: a `publishing` state older than twice the loader's
+   longest normal run (measured from its logs) is read as `stale`, i.e. a crashed run.
+A run that commits nothing changes neither. The next successful run sets `published` again.
 The Israeli ETL (`etl/etl_full.R`) and the EuroLeague loader (`euroleague/`) both do this.
 
 **The contract.**
@@ -239,19 +267,25 @@ The Israeli ETL (`etl/etl_full.R`) and the EuroLeague loader (`euroleague/`) bot
   rows (one statement, or one repeatable-read transaction), so nothing can change between
   checking the version and reading the data.
 - Data URLs carry `v=<version>`. The API caches an answer for a long time **only when** the
-  snapshot says `published` and its version equals the requested one. While `publishing`, or
-  if a run failed mid-way, answers are cached for about 60 seconds, so any mix of old and new
-  rows clears itself quickly. A request for a version that is not current is redirected to the
-  current one and never cached.
+  snapshot says `published` and its version equals the requested one. In any other state
+  (`publishing`, `failed`, `stale`) answers are cached for about 60 seconds. A request for a
+  version that is not current is redirected to the current one and never cached.
+- **Paged downloads (closes review gap G9)** are served only in the `published` state, where
+  the population cannot change between pages. In any other state the API returns the whole
+  population in one response if it fits the 4.5 MB budget, and otherwise answers 503 with
+  `Retry-After` ("data is updating"). The browser discards a download, and restarts it, if any
+  page carries a different `(state, version)`.
 - `GET /api/v1/version` returns `(state, version)` per league, cached about 60 seconds. An
   open page checks it periodically and on focus, refetches when it changes, and updates the
   "last updated" stamp.
 - Shiny may key its caches on the same marker; it is not required for the migration.
 
 Tested in Phase 0 at the real commit boundaries: a request between the Phase 4 and Phase 6
-commits; a failure after a refresh commit but before the final marker; a publication
-overlapping a request; an open browser across a version change; an old-version URL that misses
-the cache.
+commits; a failure after a refresh commit (must end `failed`, never `published`); a process
+killed before its final step (must read as `stale`); a publication overlapping a request; a
+multi-page download across real commits (no mixed population may reach ranking or totals,
+including while the markers still match); an open browser across a version change; an
+old-version URL that misses the cache.
 
 ### Filtering (decision 14)
 
@@ -324,7 +358,7 @@ decision.
 
 | Phase | Content | Done when |
 |---|---|---|
-| 0 | Foundation: Next.js project; `app_api` schema under `app_readonly` with the security scripts extended; direct Postgres access with `pg`, both ports tested for row ownership under concurrency (G6); the ETL publication markers and the freshness contract (G2); statement deadlines, bounded pools and stale-result handling (G8); completeness metadata from the same execution (G7); preview deployment; Game Logs end to end (both leagues); payload and completeness checks; **a load test of the expensive database paths too** (closes G1): filtered On/Off, starters and custom clutch, both leagues -- cold caches, distinct filter combinations and simultaneous identical requests, with duration, request rate, cache-hit mix and the latency measurement point written down first; errors and timeouts count as failures | Game Logs matches its 15 goldens through the preview URL; the identity proof (G3), the commit-boundary freshness tests (G2), the concurrency row-ownership tests (G6) and the work-bounding tests (G8) pass; the load test meets criterion 3, or the measured capacity limits and the changes needed are recorded before Phases 2-7 start |
+| 0 | Foundation: Next.js project; `app_api` schema under `app_readonly` with the security scripts extended; direct Postgres access with `pg`, both ports tested for row ownership under concurrency (G6); the ETL publication markers and the freshness contract (G2); the `app_web` role and the written connection budget (G10); end-to-end request deadlines with queue, connection and SQL budgets (G8); the four-state publication markers and paging rules (G2, G9); completeness metadata from the same execution (G7); preview deployment; Game Logs end to end (both leagues); payload and completeness checks; **a load test of the expensive database paths too** (closes G1): filtered On/Off, starters and custom clutch, both leagues -- cold caches, distinct filter combinations and simultaneous identical requests, with duration, request rate, cache-hit mix and the latency measurement point written down first; errors and timeouts count as failures | Game Logs matches its 15 goldens through the preview URL; the identity proof (G3), the commit-boundary freshness tests (G2), the concurrency row-ownership tests (G6), the work-bounding and multi-instance tests (G8, G10) and the paged-download test (G9) pass; the load test meets criterion 3, or the measured capacity limits and the changes needed are recorded before Phases 2-7 start |
 | 1 | Goldens for every remaining tab, from Shiny | Every inventory ID named by a golden or a browser-test spec |
 | 2-7 | One tab family per phase: Player Stats, Team Ratings, On/Off, Lineups, Gameflow + Home, Compare (logic to SQL first, then route, then UI) | That family's goldens and browser tests pass; coverage gate shows its IDs |
 | 8 | Full-app load test, performance work on slow functions | Criterion 3 holds for every tab |
@@ -367,13 +401,14 @@ expensive queries, caching and freshness, the 2 s target) so a wrong call costs 
 
 ## Review record (2026-10-20)
 
-Two reviews found eight gaps: G1 expensive paths untested in Phase 0; G2 version freshness
-and the publication boundary (reopened by the second review); G3 the Data API identity; G4
-payload limits and population completeness; G5 coverage from source instead of test runs;
-G6 driver pipelining on the transaction pooler; G7 completeness checks repeating an expensive
-scan; G8 browser cancellation not bounding database work. Each has a design response in the
-section marked "closes review gap Gn"; each is closed only when the Phase 0 (or, for G5, the
-switch) tests named there pass.
+Three reviews found ten gaps: G1 expensive paths untested in Phase 0; G2 version freshness
+and the publication boundary (reopened twice: failed runs, crashed runs); G3 the Data API
+identity; G4 payload limits and population completeness; G5 coverage from source instead of
+test runs; G6 driver pipelining on the transaction pooler; G7 completeness checks repeating an
+expensive scan; G8 bounding the whole request, not only each statement; G9 paged downloads
+mixing populations during publication; G10 deployment-wide connection limits. Each has a
+design response in the section marked "closes review gap Gn"; each is closed only when the
+Phase 0 (or, for G5, the switch) tests named there pass.
 
 ## Open
 
@@ -396,7 +431,7 @@ switch) tests named there pass.
   client-side sorting when the full row set is present, server-side otherwise (TanStack docs).
 - **Input validation** with one schema per route (`zod`), mirroring the fail-closed validators
   of `app/R/svc_params.R` and the request caps from the 2026-10-20 security audit.
-- **Database access** with `pg` (node-postgres) from server code only, as `app_readonly` (see Data
+- **Database access** with `pg` (node-postgres) from server code only, as `app_web` (see Data
   access). `app_api` is not exposed through Supabase's Data API.
 
 Sources: [Next.js `use cache`](https://nextjs.org/docs/app/api-reference/directives/use-cache),
