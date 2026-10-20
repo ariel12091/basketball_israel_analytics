@@ -20,6 +20,12 @@ COMMENT ON SCHEMA app_api IS
 
 REVOKE ALL PRIVILEGES ON SCHEMA app_api FROM PUBLIC;
 REVOKE ALL PRIVILEGES ON ALL FUNCTIONS IN SCHEMA app_api FROM PUBLIC;
+-- This per-schema revoke cannot remove PUBLIC's global (built-in) EXECUTE
+-- default: per-schema default privileges only add to the global ones. A
+-- function created here is therefore executable by PUBLIC until the next
+-- security re-apply revokes it. Safety does not rest on this line: PUBLIC,
+-- anon and authenticated have no USAGE on app_api, so they cannot reach the
+-- function, and every deploy of sql/app_api/*.sql ends with the re-apply.
 ALTER DEFAULT PRIVILEGES IN SCHEMA app_api REVOKE ALL PRIVILEGES ON FUNCTIONS FROM PUBLIC;
 
 DO $$
