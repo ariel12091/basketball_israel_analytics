@@ -73,20 +73,33 @@ Anti-goals (a working result that is still a failure):
 | 10 | As soon as possible; no fixed date | User |
 | 11 | Hosting: Vercel Hobby (free, allowed while non-commercial); Vercel Pro ($20) if it becomes commercial; Cloudflare Workers (~$5) as fallback if Vercel limits bind | Claude |
 | 12 | One owner per rule: Postgres for anything needing raw play-by-play; one shared TypeScript module for everything derived from returned rows; existing R logic is ported faithfully where sound | Claude, revised with the user |
-| 13 | Answers cached at the edge, keyed by the data version | Claude |
+| 13 | Answers cached on the CDN, keyed by a data version that changes on every publication | Claude (revised after review) |
 | 14 | Filtering split three ways by data size (below) | Claude |
 | 15 | Build order: foundation + Game Logs first, Compare last | Claude |
 | 16 | Shiny keeps its R logic until retired (temporary, registered exception to R1; nightly parity guards it) | User (on Claude's recommendation) |
 | 17 | Load target: 95% of filter changes within 2 s, none over 5 s; the first thing to give is up to ~$15 more compute | User (on Claude's recommendation) |
 | 18 | Old Shiny links may break: the old address forwards to the new app's home page | User |
+| 19 | Our own API (Next.js routes) is the single front door for React, a future MCP server and other callers; behind it, a direct Postgres connection as `app_readonly`, as Shiny does | User + Claude |
+| 20 | Reuse what is proven; change only for a named, measured or documented reason | User |
+
+## Guiding rule: reuse what is proven
+
+Reuse what already works in this project and change something only for a measured or
+documented reason, which this document names (user, 2026-10-20). Reused as-is: the read-only
+`app_readonly` role and its grants, the stored functions and views, the rule definitions in
+`docs/shared_definitions.md`, the security apply/audit scripts, the goldens-and-parity
+method, and the R logic's behaviour (ported, decision 12). Every deviation below carries its
+reason.
 
 ## Architecture
 
 ```
 Browser (Next.js pages, React, one responsive design)
    |  fetch /api/v1/...            (filters in the URL; responses cached at the edge)
-Next.js route handlers on Vercel   (thin: validate params, call SQL owners, apply the shared TS module, shape JSON)
-   |  Supabase Data API (PostgREST) RPC, server-side only
+Our API: Next.js route handlers on Vercel  (/api/v1/...: the one front door for the React app,
+   |                                          a future MCP server and other callers; validates params,
+   |                                          calls SQL owners, applies the shared TS module, shapes JSON)
+   |  direct Postgres connection as app_readonly (postgres.js via Supabase's pooler), server-side only
 Postgres on Supabase               (schemas basketball_test, euroleague; stored functions own every number)
    ^
 ETL (R) and EuroLeague loader (Python), unchanged -- advance the data version when they publish
@@ -136,26 +149,73 @@ Rules:
 
 ### Data access
 
-Next.js route handlers call the `app_api` functions through Supabase's Data API (PostgREST)
-from the server only, with a server-side key for the read-only role -- the browser never
-talks to the database or sees a key. This avoids holding Postgres connections in serverless
-functions and the transaction-pooler prepared-statement defect (CLAUDE.md, port 6543). Phase 0
-proves it under load; if PostgREST's limits bind, the fallback is `postgres.js` through the
-pooler with prepared statements disabled.
+Our API (the Next.js route handlers) is the only front door; nothing else talks to the
+database from the web. Behind it, the route handlers connect **directly to Postgres as the
+existing `app_readonly` role through Supabase's pooler** -- the same identity, grants and
+stored functions Shiny uses today -- with the `postgres.js` driver. The browser never sees a
+credential.
 
-### Caching (decision 13)
+Reasons for not using Supabase's auto-generated Data API (PostgREST) for this internal hop,
+from the 2026-10-20 review: its secret key runs as `service_role`, which bypasses row-level
+security, and a custom role needs JWT minting and authenticator grants
+([Supabase API keys](https://supabase.com/docs/guides/getting-started/api-keys),
+[PostgREST auth](https://docs.postgrest.org/en/stable/references/auth.html)); it caps rows per
+request, which could silently truncate a population; and it adds a second HTTP hop.
 
-Data changes once a night. Every data request from the browser goes to a Next.js **GET route
-handler whose URL carries the data version** (Israeli `app_meta.etl_full_last_success`;
-EuroLeague `euro_data_version()`) and which answers with
-`Vercel-CDN-Cache-Control: s-maxage=<long>` -- Vercel's CDN caches GET responses by URL on every
-plan, up to 10 MB per response. When the ETL publishes, the version changes, so new URLs miss
-the old entries; nothing has to be purged. The default views most visitors open are therefore
-served from the CDN.
+Port: the R app's defect on port 6543 comes from RPostgres sending every query as
+prepare-then-execute, which the transaction pooler interleaves across clients (CLAUDE.md).
+Phase 0 load-tests both candidates and keeps the one that passes: **session pooler (5432)**,
+the fix already planned in the project backlog, or **transaction pooler (6543) with prepared
+statements disabled** (`prepare: false`), the documented serverless setting. Connections per
+instance are capped so the total stays inside the database's connection limit.
 
-Next.js 16's `'use cache'` (Cache Components) is **not** relied on for this: its default
-in-memory cache does not persist across requests on serverless hosts (Next.js docs), and its
-remote variant carries platform fees. It may still be used for build-time/static parts.
+**Identity proof (closes review gap G3):** the security apply and audit scripts
+(`scripts/apply_db_security.R`, `sql/security/*.sql`) are extended to the `app_api` schema;
+Phase 0 shows, with the app's real credential, that permitted reads succeed, writes and
+functions outside the allowlist fail, and no other role is reachable with it. Credentials live
+only in Vercel's server environment variables; rotation is a documented step.
+
+### Concurrency (async)
+
+The gain over Shiny is structural: Node.js handles I/O asynchronously, so one function
+instance serves many requests while their queries wait on the database, and Vercel's Fluid
+compute reuses warm instances for concurrent requests
+([Vercel Function limits](https://vercel.com/docs/functions/limitations)). In practice:
+- every database call is `async`; independent queries for one response run in parallel
+  (`Promise.all`), e.g. the two Compare sides or the rank-arrow baseline;
+- nothing in a request handler blocks the event loop with heavy CPU work; the shared TS
+  module's per-row work is linear and small, and anything heavier moves to SQL;
+- in the browser, data loads are async with loading states (the skeletons Shiny shows today),
+  a filter change cancels the request it replaces (`AbortController`), and filter changes are
+  debounced, so a fast user does not queue stale queries.
+
+### Caching and freshness (decision 13; closes review gap G2)
+
+Data changes once a night, so responses are cached on Vercel's CDN, which caches GET
+responses by URL on every plan when they carry `s-maxage`
+([Vercel CDN Cache](https://vercel.com/docs/caching/cdn-cache)). Next.js 16's `'use cache'` is
+not relied on for this: its default in-memory cache does not persist across requests on
+serverless hosts ([Next.js use cache](https://nextjs.org/docs/app/api-reference/directives/use-cache)).
+
+**The data version must change on every publication.** `app_meta.etl_full_last_success` alone
+does not: a partial run can publish games and skip that stamp (`etl/etl_full.R`, last-success
+handling). So the version is derived, with no ETL change, from what every publication writes:
+the latest `etl_processed_games.processed_at` (Israeli), the EuroLeague load marker behind
+`euro_data_version()`, and the existing stamp. One small SQL owner returns it.
+
+Contract:
+- `GET /api/v1/version` returns the current version, cached for about 60 seconds.
+- Every data URL carries `v=<version>`. The handler compares it with the current version:
+  equal -> answer and cache for a long time (the response is immutable for that version);
+  different or unknown -> redirect to the same URL with the current version, never cached. An
+  old URL therefore never stores new rows under an old key.
+- An open page checks the version periodically and on focus; when it changes, it refetches its
+  data and updates the "last updated" stamp, as Shiny does.
+- A run that has not published yet changes nothing; a failed run that publishes nothing leaves
+  the version as it was.
+
+Tested in Phase 0: an open browser across a version change, an old-version URL that misses the
+cache, and a partial ETL failure (simulated by advancing only `etl_processed_games`).
 
 ### Filtering (decision 14)
 
@@ -166,6 +226,15 @@ remote variant carries platform fees. It may still be used for build-time/static
 | Slow stored functions | Measured and optimised until the 2 s target holds under load | e.g. `onoff_compute` (~4.6 s cold today), `get_team_four_factors_dynamic` under the starters presets (times out at 20 s today) |
 
 Filter state lives in the URL, so every view can be shared and bookmarked (X-18).
+
+**Payload and completeness (closes review gap G4).** A Vercel Function response is limited to
+4.5 MB, below the CDN's 10 MB
+([Vercel Function limits](https://vercel.com/docs/functions/limitations)). Phase 0 measures the
+serialized size of the largest season downloads (both leagues) against that budget and, where
+it is exceeded, returns only the needed columns, compresses, or splits into pages. Every
+population a rank or total is computed over is checked complete: its row count and a sum are
+compared with a count/sum query for the same filters, and a mismatch fails the request instead
+of returning a partial population.
 
 ### One responsive design (decision 9)
 
@@ -184,8 +253,11 @@ behaviours (GF-04, X-15 and the rest) must still work on a phone.
    is tested against the same goldens through HTTP.
 3. **Client behaviour** (sorting, auto min-poss, colours, CSV, Gameflow interactions, chips,
    reset, URL state) is pinned with browser tests (Playwright) against the inventory.
-4. **The coverage gate** (`api/coverage.R`, reading the inventory) is reused or ported: the
-   switch is blocked while any of the 109 IDs has no passing test.
+4. **The coverage gate reads test-run results, not source** (closes review gap G5). Every
+   inventory ID must map to executed, passing, non-skipped tests of the new app -- Israeli,
+   EuroLeague and EuroCup where they apply, at phone and desktop widths. A missing, skipped or
+   failed required case blocks the switch. The source scanner in `api/coverage.R` stays only
+   as a traceability aid.
 5. **Nightly live parity**, new app vs Shiny on the live database, runs until Shiny is retired.
 
 **Which values must match (Claude's call):** what Shiny hands its table -- the golden frame
@@ -212,7 +284,7 @@ decision.
 
 | Phase | Content | Done when |
 |---|---|---|
-| 0 | Foundation: Next.js project, `app_api` schema + read-only role, Data API access, edge caching by data version, preview deployment; Game Logs end to end (both leagues); first load test | Game Logs matches its 15 goldens through the preview URL; 150-user test on Game Logs meets 2 s |
+| 0 | Foundation: Next.js project; `app_api` schema under `app_readonly` with the security scripts extended; direct Postgres access with both ports load-tested; version endpoint, CDN caching and the freshness contract; preview deployment; Game Logs end to end (both leagues); payload and completeness checks; **a load test of the expensive database paths too** (closes G1): filtered On/Off, starters and custom clutch, both leagues -- cold caches, distinct filter combinations and simultaneous identical requests, with duration, request rate, cache-hit mix and the latency measurement point written down first; errors and timeouts count as failures | Game Logs matches its 15 goldens through the preview URL; the identity proof (G3) and freshness tests (G2) pass; the load test meets criterion 3, or the measured capacity limits and the changes needed are recorded before Phases 2-7 start |
 | 1 | Goldens for every remaining tab, from Shiny | Every inventory ID named by a golden or a browser-test spec |
 | 2-7 | One tab family per phase: Player Stats, Team Ratings, On/Off, Lineups, Gameflow + Home, Compare (logic to SQL first, then route, then UI) | That family's goldens and browser tests pass; coverage gate shows its IDs |
 | 8 | Full-app load test, performance work on slow functions | Criterion 3 holds for every tab |
@@ -253,6 +325,13 @@ the 2 s target) so a wrong call costs one phase, not seven.
 | Vercel Hobby limits (bandwidth, function time) or a move to commercial use | Pro at $20 fits the budget; Cloudflare as fallback |
 | Two systems live during the migration drift apart | Nightly live parity until Shiny is retired |
 
+## Review record (2026-10-20)
+
+A review found five gaps: G1 expensive paths untested in Phase 0; G2 version freshness and
+partial publication; G3 the Data API identity; G4 payload limits and population completeness;
+G5 coverage from source instead of test runs. Each is closed in the section marked
+"closes review gap Gn" above.
+
 ## Open
 
 1. The new app's web address (custom domain or the host's default) -- needed by the switch.
@@ -274,17 +353,12 @@ the 2 s target) so a wrong call costs one phase, not seven.
   client-side sorting when the full row set is present, server-side otherwise (TanStack docs).
 - **Input validation** with one schema per route (`zod`), mirroring the fail-closed validators
   of `app/R/svc_params.R` and the request caps from the 2026-10-20 security audit.
-- **Database access** with `supabase-js` `.schema('app_api').rpc(fn, args, { get: true })` for
-  read-only functions, from server code only. Exposing `app_api` follows Supabase's custom-schema
-  steps **except the default grants**: Supabase's example grants `ALL` to `anon`; here only
-  `EXECUTE` on `app_api` functions is granted, to one dedicated read-only role, and the
-  `anon`/`authenticated` roles get nothing.
+- **Database access** with `postgres.js` from server code only, as `app_readonly` (see Data
+  access). `app_api` is not exposed through Supabase's Data API.
 
 Sources: [Next.js `use cache`](https://nextjs.org/docs/app/api-reference/directives/use-cache),
 [Next.js Server and Client Components](https://nextjs.org/docs/app/getting-started/server-and-client-components),
 [Vercel CDN Cache](https://vercel.com/docs/caching/cdn-cache),
-[Supabase `rpc()`](https://supabase.com/docs/reference/javascript/rpc),
-[Supabase custom schemas](https://supabase.com/docs/guides/api/using-custom-schemas),
 [nuqs](https://blog.logrocket.com/managing-search-parameters-next-js-nuqs),
 [TanStack Table virtualization](https://tanstack.com/table/latest/docs/framework/react/guide/virtualization).
 
