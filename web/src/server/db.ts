@@ -17,7 +17,6 @@ import {
   BusyError,
   QUEUE_MS,
   CONNECT_MS,
-  SQL_MAX_MS,
 } from "./deadline";
 export { Deadline, DeadlineError, BusyError } from "./deadline";
 export type Query = <R = Record<string, unknown>>(
@@ -126,7 +125,10 @@ export class SnapshotDatabase {
             const q: Query = async <R>(sql: string, params: unknown[]) => {
               if (stopped || deadline.expired()) throw new DeadlineError();
               const budget = Math.floor(
-                Math.min(SQL_MAX_MS - sqlTime, deadline.remaining() - 500),
+                Math.min(
+                  deadline.sqlMaxMs - sqlTime,
+                  deadline.remaining() - 500,
+                ),
               );
               if (budget <= 0) throw new DeadlineError();
               const began = performance.now();

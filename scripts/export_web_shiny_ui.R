@@ -30,7 +30,8 @@ dir.create(out_img, recursive = TRUE, showWarnings = FALSE)
 env <- new.env(parent = globalenv())
 files <- c("app/R/catalogues_generated.R", "app/R/helpers.R", "app/R/global.R",
            "app/R/global_euro.R", "app/R/svc_game_logs.R", "app/R/mod_ribbon_modal.R",
-           "app/R/ui_tab4_gamelogs.R", "app/R/ui_tab11_euro_gamelogs.R")
+           "app/R/ui_tab4_gamelogs.R", "app/R/ui_tab11_euro_gamelogs.R",
+           "app/R/ui_tab1_onoff.R", "app/R/ui_tab8_euro.R", "app/R/server_tab1.R")
 for (f in files) for (e in parse(f)) {
   if (!is.call(e) || !identical(as.character(e[[1]]), "<-")) next
   if (!is.name(e[[2]])) next
@@ -69,6 +70,7 @@ for (f in list.files(glyph)) file.copy(file.path(glyph, f), file.path("..", out_
 # the theme as Shiny serves them (selectize-0.15.2/selectize.css,
 # bslib-component-css-0.9.0/bslib-component-css.min.css).
 themed <- list("selectize.css" = shiny:::selectizeDependencyFunc(theme),
+               "ion.rangeSlider.css" = shiny:::ionRangeSliderDependencyCSS(theme),
                "bslib-component-css.min.css" = bslib:::component_dependency_sass(theme))
 for (nm in names(themed)) {
   d <- themed[[nm]]
@@ -100,35 +102,60 @@ for (nm in names(pkg_css)) {
 }
 
 # ---- 3. Static UI fragments ----------------------------------------------
+# Example snippets are inlined as data URIs in Shiny; the web serves the files.
+# Map each www/*.png's data URI back to its file name.
+png_by_uri <- local({
+  files <- list.files("www", pattern = "[.]png$")
+  stats::setNames(files, vapply(files, function(f) base64enc::dataURI(file = file.path("www", f), mime = "image/png"), ""))
+})
 images <- character(0)
 fragment <- function(node) {
   html <- as.character(node)
-  # Example snippets are inlined as data URIs in Shiny; the web serves files.
   for (img in xml_find_all(node, ".//img")) {
-    alt <- xml_attr(img, "alt")
     src <- xml_attr(img, "src")
     if (startsWith(src, "data:")) {
-      file <- c("Game logs summary table snippet" = "gamelogs-row-snippet.png",
-                "Game logs four factors table snippet" = "gamelogs-ff-row-snippet.png")[[alt]]
+      file <- png_by_uri[[src]]
       images <<- c(images, file)
       html <- sub(src, paste0("/images/", file), html, fixed = TRUE)
     }
   }
   html
 }
-tab_fragments <- function(tab_ui, prefix) {
+VIEWS <- c(summary = "Summary", four_factors = "Four Factors", shot_profile = "Shot Profile")
+# The main column of a tab: the conditional panels above the chips row, per
+# view (explainers, examples, legends), those below the table, the table hint,
+# and the chips row's popovers (title, trigger text, body).
+tab_fragments <- function(tab_ui) {
   doc <- read_html(as.character(tab_ui))
   main <- xml_find_first(doc, "//div[@role='main']")
-  conds <- xml_find_all(main, "./div[contains(@class,'shiny-panel-conditional')]")
-  pick <- function(view) {
-    hits <- Filter(function(n) grepl(sprintf("'%s'", view), xml_attr(n, "data-display-if"), fixed = TRUE), conds)
-    paste(vapply(hits, function(n) paste(vapply(xml_children(n), fragment, ""), collapse = "\n"), ""), collapse = "\n")
+  kids <- xml_children(main)
+  chips_at <- which(vapply(kids, function(n) grepl("chips-row", xml_attr(n, "class") %||% ""), logical(1)))[1]
+  conds_in <- function(nodes) Filter(function(n) grepl("shiny-panel-conditional", xml_attr(n, "class") %||% ""), nodes)
+  pick <- function(nodes, view) {
+    hits <- Filter(function(n) grepl(sprintf("'%s'", view), xml_attr(n, "data-display-if"), fixed = TRUE), conds_in(nodes))
+    paste(vapply(hits, function(n) paste(vapply(xml_children(n), fragment, ""), collapse = "
+"), ""), collapse = "
+")
   }
-  list(
-    summary = pick("Summary"),
-    four_factors = pick("Four Factors"),
-    hint = as.character(xml_find_first(main, ".//div[@class='table-hint']"))
-  )
+  before <- kids[seq_len(chips_at - 1L)]
+  after <- if (chips_at < length(kids)) kids[(chips_at + 1L):length(kids)] else list()
+  out <- lapply(VIEWS, function(v) pick(before, v))
+  out$after <- lapply(VIEWS, function(v) pick(after, v))
+  out$hint <- as.character(xml_find_first(main, ".//div[@class='table-hint']"))
+  out$popovers <- lapply(xml_find_all(kids[[chips_at]], ".//bslib-popover"), function(p) {
+    parts <- xml_children(xml_child(p, 1))
+    list(
+      title = xml_text(parts[[length(parts)]]),
+      trigger = xml_text(xml_child(p, 2)),
+      body = paste(vapply(xml_children(parts[[1]]), as.character, ""), collapse = "
+"),
+      views = names(VIEWS)[vapply(VIEWS, function(v) {
+        cond <- xml_find_first(p, "ancestor::div[contains(@class,'shiny-panel-conditional')]")
+        !inherits(cond, "xml_missing") && grepl(sprintf("'%s'", v), xml_attr(cond, "data-display-if"), fixed = TRUE)
+      }, logical(1))]
+    )
+  })
+  out
 }
 
 ui_il <- env$ui_tab4_gamelogs()
@@ -148,8 +175,24 @@ glossary_body <- xml_find_first(read_html(as.character(glossary)), "//div[@class
 
 
 ui <- list(
-  il = tab_fragments(ui_il, "gl"),
-  euro = tab_fragments(ui_el, "eurogl"),
+  il = tab_fragments(ui_il),
+  euro = tab_fragments(ui_el),
+  onoff = list(il = tab_fragments(env$ui_tab1_onoff()), euro = tab_fragments(env$ui_tab8_euro())),
+  ffImpactLegend = env$ff_impact_legend(),
+  ffImpactWeights = as.list(env$FF_IMPACT_WEIGHTS),
+  onoffPadPoss = env$ONOFF_PAD_POSS,
+  autoTopPct = env$AUTO_TOP_PCT,
+  rankingBaseline = env$RANKING_BASELINE,
+  onoffDefaults = lapply(c(israel = "israel", euroleague = "euroleague"), function(l) {
+    d <- env$onoff_tab_descriptor(l)
+    list(minAll = d$initial_min_all, minOn = d$initial_min_on, showImpact = isTRUE(d$show_impact))
+  }),
+  onoffStatFilterCols = list(
+    summary = lapply(seq_along(env$ONOFF_SUMMARY_FILTERABLE_COLS), function(i) list(label = names(env$ONOFF_SUMMARY_FILTERABLE_COLS)[i], col = unname(env$ONOFF_SUMMARY_FILTERABLE_COLS[i]))),
+    four_factors = lapply(seq_along(env$ONOFF_FF_FILTERABLE_COLS), function(i) list(label = names(env$ONOFF_FF_FILTERABLE_COLS)[i], col = unname(env$ONOFF_FF_FILTERABLE_COLS[i]))),
+    shot_profile = lapply(seq_along(env$ON_SP_FILTERABLE_COLS), function(i) list(label = names(env$ON_SP_FILTERABLE_COLS)[i], col = unname(env$ON_SP_FILTERABLE_COLS[i]))),
+    player_stats = lapply(seq_along(env$PLAYER_STAT_FILTERABLE_COLS), function(i) list(label = names(env$PLAYER_STAT_FILTERABLE_COLS)[i], col = unname(env$PLAYER_STAT_FILTERABLE_COLS[i])))
+  ),
   glossaryHtml = paste(vapply(xml_children(glossary_body), as.character, ""), collapse = "\n"),
   columnTooltips = as.list(env$COLUMN_TOOLTIPS),
   filterTooltips = as.list(env$FILTER_TOOLTIPS),

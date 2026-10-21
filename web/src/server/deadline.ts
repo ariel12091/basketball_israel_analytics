@@ -16,7 +16,13 @@ export class BusyError extends Error {
 }
 export class Deadline {
   private readonly end: number;
-  constructor(totalMs = 5000) {
+  /** sqlMaxMs: database time this request may use. Heavy readers that Shiny
+   * runs under its 20 s statement timeout (onoff_compute, lineup readers) pass
+   * that budget until Phase 8 makes them fast; everything else keeps 3 s. */
+  constructor(
+    totalMs = 5000,
+    readonly sqlMaxMs = SQL_MAX_MS,
+  ) {
     this.end = performance.now() + totalMs;
   }
   remaining() {
