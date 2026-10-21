@@ -20,26 +20,10 @@ for (const [league, season] of [
         console.log("API RESPONSE", r.status(), r.url());
     });
     await page.goto(`/${league}/game-logs?season=${season}`);
-    if (info.project.name === "phone") {
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
-      await expect(
-        page.getByRole("button", { name: "Hide Filters", exact: true }),
-      ).toBeVisible();
-    }
-    await expect(page.locator("tbody tr[data-game-id]").first()).toBeVisible({
-      timeout: 30000,
-    });
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
+    await expect(page.locator(".dataTables_scrollBody tbody tr").first()).toBeVisible({ timeout: 30000 });
+    await expect(page.locator(".dataTables_info")).toContainText("entries");
     if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Hide Filters", exact: true })
-        .click();
+      await page.getByRole("button", { name: "Show Filters", exact: true }).click();
     await page.screenshot({
       path: `../output/playwright/live-${league}-${info.project.name}.png`,
       fullPage: true,

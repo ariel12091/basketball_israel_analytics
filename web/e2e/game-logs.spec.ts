@@ -1,16 +1,19 @@
-import { test, expect } from "@playwright/test";
-import { readFileSync } from "node:fs";
+// The Game Logs page against the stored Shiny goldens (app/tests/goldens,
+// exported by scripts/export_goldens_json.R): every preset, at the phone and
+// desktop widths of playwright.config.ts. The API is intercepted with the
+// shared rules' answer for the preset; the page must show Shiny's table:
+// DataTables paging (50 rows), default order date desc then GN/round desc,
+// DT formatting (one decimal, thousands marks), DataTables' ascending-first
+// header ordering, the CSV of csv_export_button(), and URL restoration.
+import { test, expect, type Page } from "@playwright/test";
+import { readdirSync, readFileSync } from "node:fs";
 import { gameLogs, type Row, type GameLogParams } from "../src/rules/gameLogs";
 
-const presets = [
-  "il_summary_team",
-  "il_ff_starters",
-  "il_summary_last5_home",
-  "il_summary_opps_statfilter",
-  "il_summary_empty",
-  "el_ff_teams_phase",
-  "el_summary_round_starters",
-];
+const DIR = "test/goldens/game_logs";
+const presets = readdirSync(DIR)
+  .filter((f) => f.endsWith(".json"))
+  .map((f) => f.replace(/\.json$/, ""));
+
 function urlParams(p: GameLogParams) {
   const q = new URLSearchParams({ season: String(p.season), view: p.view });
   for (const key of [
@@ -46,7 +49,8 @@ function urlParams(p: GameLogParams) {
   if (p.stat_filters?.length) q.set("stats", JSON.stringify(p.stat_filters));
   return q;
 }
-const decimal = new Set([
+
+const ROUND1 = new Set([
   "minutes",
   "off_ppp",
   "def_ppp",
@@ -60,131 +64,193 @@ const decimal = new Set([
   "def_tov_pct",
   "def_ftr_pct",
 ]);
+// DT::formatRound(1) / formatCurrency(digits 0): toFixed plus "," marks.
+function shiny(value: unknown, column: string): string {
+  if (value == null) return "";
+  if (typeof value !== "number") return String(value);
+  const fixed = value.toFixed(ROUND1.has(column) ? 1 : 0);
+  if (!ROUND1.has(column) && !column.endsWith("_poss")) return String(value);
+  const [i, d] = fixed.split(".");
+  return i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (d ? `.${d}` : "");
+}
+// DataTables' default order for this table, ties in the frame's order.
+function defaultOrder(rows: Row[], euro: boolean): Row[] {
+  const second = euro ? "round_number" : "gn";
+  return rows
+    .map((r, i) => ({ r, i }))
+    .sort((a, b) => {
+      const d = String(b.r.game_date).localeCompare(String(a.r.game_date));
+      if (d) return d;
+      const g =
+        Number(b.r[second] ?? -Infinity) - Number(a.r[second] ?? -Infinity);
+      return g || a.i - b.i;
+    })
+    .map((x) => x.r);
+}
+async function visibleCells(page: Page) {
+  return page.locator(".dataTables_scrollBody tbody tr").evaluateAll((rows) =>
+    rows.map((row) =>
+      Object.fromEntries(
+        Array.from(row.querySelectorAll("td")).map((td) => [
+          td.getAttribute("data-column")!,
+          // The phone name label is part of the first cell's DOM only.
+          Array.from(td.childNodes)
+            .filter(
+              (n) =>
+                !(
+                  n instanceof HTMLElement &&
+                  n.classList.contains("ibpl-row-name")
+                ),
+            )
+            .map((n) => n.textContent)
+            .join(""),
+        ]),
+      ),
+    ),
+  );
+}
+
 for (const preset of presets) {
-  test(`${preset}: stored Shiny cells, URL restoration, CSV and layout`, async ({
+  test(`[GL-01][GL-02][GL-04][GL-05][GL-07][GL-08] ${preset}: Shiny cells, order, paging, CSV, URL`, async ({
     page,
-  }, info) => {
-    const g = JSON.parse(
-      readFileSync(`test/goldens/game_logs/${preset}.json`, "utf8"),
-    );
+  }) => {
+    const g = JSON.parse(readFileSync(`${DIR}/${preset}.json`, "utf8"));
+    const euro = g.params.league !== "il";
     const result = gameLogs(g.input, g.input.scoreless ?? [], g.params);
-    const expected: Row[] = g.expected?.data ?? [];
-    await page.route("**/api/v1/**", async (route) => {
-      if (route.request().url().includes("/version"))
-        return route.fulfill({ json: { leagues: [] } });
-      await route.fulfill({
-        json: {
-          ...result,
-          meta: {
-            ...result.meta,
-            version: "golden",
-            teams: [],
-            rounds: [],
-            phases: [],
-          },
-        },
-      });
-    });
+    const expected = defaultOrder(g.expected?.data ?? [], euro);
+    await page.route("**/api/v1/**", (route) =>
+      route.request().url().includes("/version")
+        ? route.fulfill({
+            json: {
+              leagues: [{ league: "il", version: "2026-10-20 21:41:48" }],
+            },
+          })
+        : route.fulfill({
+            json: {
+              ...result,
+              meta: {
+                ...result.meta,
+                view: g.params.view,
+                version: "golden",
+                teams: [],
+                rounds: [],
+                phases: [],
+              },
+            },
+          }),
+    );
     const errors: string[] = [];
-    page.on("pageerror", (e) => {
-      errors.push(e.message);
-      console.error("Browser error:", e.message);
-    });
-    page.on("requestfailed", (r) =>
-      console.error("Failed request:", r.url(), r.failure()?.errorText),
-    );
+    page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(`/${g.params.league}/game-logs?${urlParams(g.params)}`);
-    await expect(page.getByRole("status")).toHaveText(
-      `${expected.length.toLocaleString()} team-games`,
+
+    if (!expected.length) {
+      // Tab 4 renders nothing; Tab 11 renders empty_game_log().
+      if (euro)
+        await expect(
+          page.getByText("No games match the current filters"),
+        ).toBeVisible();
+      else {
+        await expect(page.locator("#gl_table")).not.toHaveClass(
+          /recalculating/,
+        );
+        await expect(page.locator("#gl_table table")).toHaveCount(0);
+      }
+      expect(errors).toEqual([]);
+      return;
+    }
+    const total = expected.length;
+    const info = page.locator(".dataTables_info");
+    await expect(info).toHaveText(
+      `Showing 1 to ${Math.min(50, total)} of ${total.toLocaleString("en-US")} entries`,
     );
-    const cells = await page.locator("tbody tr").evaluateAll((rows) =>
-      rows.map((row) =>
-        Array.from(row.querySelectorAll("td")).map((td) => ({
-          column: td.getAttribute("data-column")!,
-          text: td.textContent,
-        })),
+
+    const checkPage = async (from: number) => {
+      const cells = await visibleCells(page);
+      expect(cells).toHaveLength(Math.min(50, total - from));
+      cells.forEach((row, i) => {
+        const want = expected[from + i];
+        for (const [column, text] of Object.entries(row)) {
+          if (column === "Off Shot" || column === "Def Shot") {
+            expect(text, `row ${from + i} ${column}`).toMatch(
+              /^(-|\d+% \| \d+%\d+%\d+%)$/,
+            );
+            continue;
+          }
+          if (column === "gameflow") {
+            expect(text).toBe("View");
+            continue;
+          }
+          expect(text, `row ${from + i} ${column}`).toBe(
+            shiny(want[column], column),
+          );
+        }
+      });
+    };
+    await checkPage(0);
+    if (total > 50) {
+      await page.locator(".paginate_button.next").click();
+      await expect(info).toHaveText(
+        `Showing 51 to ${Math.min(100, total)} of ${total.toLocaleString("en-US")} entries`,
+      );
+      await checkPage(50);
+      await page.locator(".paginate_button.previous").click();
+    }
+
+    // A first click orders ascending (no orderSequence on this table).
+    const metric = g.params.view === "four_factors" ? "def_efg_pct" : "def_ppp";
+    const values = expected
+      .map((r) => r[metric])
+      .filter((v): v is number => typeof v === "number");
+    // Click the label: on touch widths the header's "i" button explains instead.
+    await page
+      .locator(`.dataTables_scrollHead th[data-column="${metric}"]`)
+      .click({ position: { x: 6, y: 6 } });
+    await expect(
+      page
+        .locator(`.dataTables_scrollBody td[data-column="${metric}"]`)
+        .first(),
+    ).toHaveText(
+      // DataTables orders an empty numeric cell as -Infinity: first.
+      values.length < expected.length ? "" : Math.min(...values).toFixed(1),
+    );
+
+    // csv_export_button(): visible columns, header labels, every field quoted.
+    const download = page.waitForEvent("download");
+    await page.getByRole("button", { name: "Download CSV" }).click();
+    const file = await download;
+    expect(file.suggestedFilename()).toMatch(
+      new RegExp(
+        `^${euro ? "euroleague_game_logs" : "game_logs"}_${g.params.view}_\\d{8}_\\d{6}\\.csv$`,
       ),
     );
-    expect(cells).toHaveLength(expected.length);
-    for (const [i, row] of cells.entries())
-      for (const cell of row) {
-        if (["Off Shot", "Def Shot"].includes(cell.column)) {
-          expect(cell.text).toContain("2PT");
-          expect(cell.text).toContain("3PT");
-          continue;
-        }
-        const value = expected[i][cell.column];
-        expect(cell.text, `row ${i} ${cell.column}`).toBe(
-          value == null
-            ? "—"
-            : typeof value === "number"
-              ? value.toLocaleString("en-US", {
-                  minimumFractionDigits: decimal.has(cell.column) ? 1 : 0,
-                  maximumFractionDigits: decimal.has(cell.column) ? 1 : 0,
-                })
-              : String(value),
-        );
-      }
+    let csv = "";
+    for await (const chunk of (await file.createReadStream())!)
+      csv += chunk.toString();
+    const lines = csv.split("\r\n");
+    expect(lines).toHaveLength(total + 1);
+    expect(
+      lines[0].startsWith(
+        euro
+          ? '"Rd","Phase","Date","Gameflow"'
+          : '"GN","Game Type","Date","Gameflow"',
+      ),
+    ).toBe(true);
+    expect(lines[1]).toMatch(/^"[^"]*"(,"[^"]*")*$/);
+
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
       ),
     ).toBe(true);
-    if (info.project.name === "phone") {
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
-      await expect(
-        page.getByRole("button", { name: "Reset", exact: true }),
-      ).toBeVisible();
-      await page
-        .getByRole("button", { name: "Hide Filters", exact: true })
-        .click();
-    }
-    if (expected.length) {
-      const download = page.waitForEvent("download");
-      await page.getByRole("button", { name: /Download CSV/ }).click();
-      const stream = await (await download).createReadStream();
-      let csv = "";
-      for await (const chunk of stream!) csv += chunk.toString();
-      expect(csv.split("\r\n")).toHaveLength(expected.length + 2);
-      expect(csv).toContain(String(expected[0].team_name));
-    } else
-      await expect(
-        page.getByText("No games match these filters."),
-      ).toBeVisible();
-    if (expected.length) {
-      const metric =
-        g.params.view === "four_factors" ? "def_efg_pct" : "def_ppp";
-      const label = metric === "def_ppp" ? "Def PPP" : "Def eFG%";
-      const values = expected
-        .map((row) => row[metric])
-        .filter((v): v is number => typeof v === "number");
-      if (values.length) {
-        await page
-          .getByRole("button", {
-            name: new RegExp("^" + label.replace("%", "%") + " "),
-          })
-          .click();
-        await expect(
-          page.locator(`td[data-column="${metric}"]`).first(),
-        ).toHaveText(Math.min(...values).toFixed(1));
-      }
-    }
     await page.reload();
-    await expect(page.getByRole("status")).toHaveText(
-      `${expected.length.toLocaleString()} team-games`,
+    await expect(info).toHaveText(
+      `Showing 1 to ${Math.min(50, total)} of ${total.toLocaleString("en-US")} entries`,
     );
     expect(errors).toEqual([]);
-    if (preset === "il_summary_team")
-      await page.screenshot({
-        path: `../output/playwright/game-logs-${info.project.name}.png`,
-        fullPage: true,
-      });
   });
 }
 
-test("version refresh and retry recover without a navigation", async ({
+test("[X-08] version refresh and retry recover without a navigation", async ({
   page,
 }) => {
   let calls = 0;
@@ -213,11 +279,13 @@ test("version refresh and retry recover without a navigation", async ({
     });
   });
   await page.goto("/il/game-logs?season=2026");
-  await expect(
-    page.getByRole("alert").filter({ hasText: "Service busy" }),
-  ).toContainText("Service busy");
+  await expect(page.locator(".shiny-output-error")).toContainText(
+    "Service busy",
+  );
   await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(page.getByText("No games match these filters.")).toBeVisible();
+  await expect.poll(() => calls).toBe(2);
+  await expect(page.locator(".shiny-output-error")).toHaveCount(0);
+  await expect(page.locator("#gl_table")).not.toHaveClass(/recalculating/);
   await page.evaluate(() => window.dispatchEvent(new Event("focus")));
   await expect.poll(() => calls).toBe(3);
 });

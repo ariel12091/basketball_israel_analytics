@@ -31,13 +31,16 @@ export const QUERIES = {
  ON m.game_id=f.game_id AND m.team_id=f.team_id
  AND m.own_starters=f.own_starters AND m.opp_starters=f.opp_starters
  WHERE s.competition=$1::text AND s.game_year=$2::int4`,
+  // euro_fetch_seasons() in global_euro.R.
+  euroSeasons: `SELECT DISTINCT game_year FROM euroleague.final_schedule_mv
+ WHERE competition = $1::text ORDER BY game_year DESC`,
   scoreless: `SELECT game_id, team_id FROM basketball_test.df_pts_poss_lineups_longer_mv
  GROUP BY game_id, team_id HAVING COUNT(own_team_score)=0`,
   ilVersion: `SELECT value FROM basketball_test.app_meta WHERE key='etl_full_last_success'`,
   euroVersion: `SELECT COALESCE(MAX(completed_at),MAX(started_at))::text AS value
  FROM euroleague.load_runs WHERE status='completed'`,
 };
-export type Season = SeasonInput & { version: string };
+export type Season = SeasonInput & { version: string; seasons?: string[] };
 export async function readVersion(q: Query, league: League): Promise<string> {
   const result = await q<{ value: unknown }>(
     league === "il" ? QUERIES.ilVersion : QUERIES.euroVersion,
@@ -47,14 +50,14 @@ export async function readVersion(q: Query, league: League): Promise<string> {
 }
 export async function fetchSeason(q: Query, p: GameLogParams): Promise<Season> {
   const version = await readVersion(q, p.league);
-  if (p.league !== "il")
-    return {
-      rows: await q<Row>(QUERIES.euro, [
-        p.league === "euroleague" ? "E" : "U",
-        Number(p.season),
-      ]),
-      version,
-    };
+  if (p.league !== "il") {
+    const competition = p.league === "euroleague" ? "E" : "U";
+    const rows = await q<Row>(QUERIES.euro, [competition, Number(p.season)]);
+    const seasons = await q<{ game_year: unknown }>(QUERIES.euroSeasons, [
+      competition,
+    ]);
+    return { rows, version, seasons: seasons.map((r) => String(r.game_year)) };
+  }
   const schedule = await q<Row>(QUERIES.schedule, [Number(p.season)]);
   const rows = await q<Row>(
     p.view === "summary" ? QUERIES.summary : QUERIES.ff,

@@ -1,20 +1,28 @@
 "use client";
-import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { parseAsString, useQueryStates } from "nuqs";
+// The Game Logs tab as Shiny draws it: ui_tab4_gamelogs.R (Israeli League) and
+// ui_tab11_euro_gamelogs.R (EuroLeague, EuroCup), with the chip bar of
+// build_filter_chips() / stat_filter_chips_ui() and the clears of
+// setup_chip_clears(). Markup and classes follow the live page so app.css and
+// mobile.css style it; static text comes from scripts/export_web_shiny_ui.R.
+// Filter state lives in the URL; the API computes the table (gameLogs()).
 import {
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  useReactTable,
-  type ColumnDef,
-  type SortingState,
-} from "@tanstack/react-table";
-import { toCsv } from "@/server/csv";
-import type { League, Row, StatFilter } from "@/rules/gameLogs";
-import { HEAT_REVERSE } from "@/rules/gameLogs";
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
+import { parseAsString, useQueryStates } from "nuqs";
+import type { League, Row } from "@/rules/gameLogs";
 import catalogues from "@/data/catalogues.json";
-import TeamPicker from "./TeamPicker";
+import ui from "@/data/shinyUi.json";
+import Navbar, { seasonLabel } from "./shiny/Navbar";
+import Selectize, { type Choice } from "./shiny/Selectize";
+import DateRangeInput from "./shiny/DateRangeInput";
+import GameLogsTable from "./shiny/GameLogsTable";
+import { useShinyBody } from "./shiny/useShinyBody";
+import { Tip, TouchTipsContext } from "./shiny/TouchTips";
 
 type Payload = {
   rows: Row[];
@@ -23,76 +31,54 @@ type Payload = {
     teams: { id: number; name: string }[];
     rounds: number[];
     phases: string[];
+    seasons?: string[];
+    view?: View;
     shot_averages: Record<string, Record<string, number>> | null;
   };
 };
-const leagues: { id: League; name: string }[] = [
-  { id: "il", name: "Israeli League" },
-  { id: "euroleague", name: "EuroLeague" },
-  { id: "eurocup", name: "EuroCup" },
-];
-const EMPTY_ROWS: Row[] = [];
-const oneDecimal = new Set([
-  "minutes",
-  "off_ppp",
-  "def_ppp",
-  "net_rtg",
-  "off_efg_pct",
-  "off_oreb_pct",
-  "off_tov_pct",
-  "off_ftr_pct",
-  "def_efg_pct",
-  "def_oreb_pct",
-  "def_tov_pct",
-  "def_ftr_pct",
-]);
-const summaryColumns = [
-  ["minutes", "Min"],
-  ["off_ppp", "Off PPP"],
-  ["def_ppp", "Def PPP"],
-  ["net_rtg", "Net"],
-];
-const ffColumns = [
-  ["minutes", "Min"],
-  ["net_rtg", "Net"],
-  ["off_ppp", "Off PPP"],
-  ["off_efg_pct", "Off eFG%"],
-  ["off_oreb_pct", "Off OREB%"],
-  ["off_tov_pct", "Off TOV%"],
-  ["off_ftr_pct", "Off FTR"],
-  ["def_ppp", "Def PPP"],
-  ["def_efg_pct", "Def eFG%"],
-  ["def_oreb_pct", "Def OREB%"],
-  ["def_tov_pct", "Def TOV%"],
-  ["def_ftr_pct", "Def FTR"],
-];
-const statLabels = [
-  ...summaryColumns,
-  ...ffColumns,
-  ["off_poss", "Off Poss"],
-  ["def_poss", "Def Poss"],
-  ["Off Shot", "Off Shot"],
-  ["Def Shot", "Def Shot"],
-].filter((x, i, a) => a.findIndex((y) => y[0] === x[0]) === i);
-function formatted(value: unknown, id: string) {
-  return value == null
-    ? "—"
-    : typeof value === "number"
-      ? value.toLocaleString("en-US", {
-          minimumFractionDigits: oneDecimal.has(id) ? 1 : 0,
-          maximumFractionDigits: oneDecimal.has(id) ? 1 : 0,
-        })
-      : String(value);
+type View = "summary" | "four_factors";
+type Filter = { col: string; op: "ge" | "le"; value: number };
+const EMPTY: Row[] = [];
+const FILTER_TIPS = ui.filterTooltips as Record<string, string>;
+const PHASES = catalogues.phases as Record<string, string>;
+const GAME_TYPES = catalogues.gameTypes as Record<string, string>;
+const IL_TEAMS = ui.ilTeams as Record<string, { id: number; name: string }[]>;
+const BOUNDS = ui.seasonDateBounds as Record<
+  string,
+  { start: string; end: string }
+>;
+
+// tt(): a label carrying the FILTER_TOOLTIPS definition (Tip, TouchTips.tsx).
+const tt = (label: string, key: string) => (
+  <Tip label={label} tip={FILTER_TIPS[key]} />
+);
+
+// season_date_bounds_for_year() / euro_season_date_bounds().
+export function seasonBounds(league: League, season: string) {
+  const y = Number(season);
+  if (league === "il")
+    return BOUNDS[season] ?? { start: `${y - 1}-09-01`, end: `${y}-07-01` };
+  return { start: `${y}-09-01`, end: `${y + 1}-07-01` };
 }
-function shotText(row: Row, side: string) {
-  return [2, 3]
-    .map(
-      (fg) =>
-        `${fg}PT ${formatted(row[`${side}_fg${fg}_freq`], "")}% · ${row[`${side}_fg${fg}m`] ?? 0}/${row[`${side}_fg${fg}a`] ?? 0} (${formatted(row[`${side}_fg${fg}_pct`], "")}%)`,
-    )
-    .join("; ");
-}
-function parseStats(value: string): StatFilter[] {
+// format(start, "%b %d") in build_filter_chips().
+const MONTHS = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+];
+const chipDate = (iso: string) =>
+  `${MONTHS[Number(iso.slice(5, 7)) - 1]} ${iso.slice(8, 10)}`;
+
+function parseStats(value: string): Filter[] {
   try {
     const data = JSON.parse(value || "[]");
     return Array.isArray(data)
@@ -110,15 +96,160 @@ function parseStats(value: string): StatFilter[] {
   }
 }
 
+// Bootstrap's collapse and the explainer toggles of app.js, for the static
+// fragments: "Show/Hide" toggles the explainer body and the example box after
+// it; "Show/Hide Example" toggles the example box; "Open glossary" opens it.
+function useFragmentClicks(
+  ref: React.RefObject<HTMLDivElement | null>,
+  onGlossary: () => void,
+) {
+  useEffect(() => {
+    const root = ref.current;
+    if (!root) return;
+    const toggle = (el: Element | null) => el?.classList.toggle("show");
+    const onClick = (e: MouseEvent) => {
+      const t = e.target as HTMLElement;
+      const explainer = t.closest<HTMLElement>(".js-explainer-toggle");
+      if (explainer) {
+        e.preventDefault();
+        toggle(document.getElementById(explainer.dataset.targetId ?? ""));
+        let sib =
+          explainer.closest(".explainer-card")?.nextElementSibling ?? null;
+        while (sib) {
+          if (sib.classList.contains("collapse")) {
+            toggle(sib);
+            break;
+          }
+          const inner = sib.querySelector(".collapse");
+          if (inner) {
+            toggle(inner);
+            break;
+          }
+          sib = sib.nextElementSibling;
+        }
+        return;
+      }
+      const collapse = t.closest<HTMLElement>("[data-bs-toggle='collapse']");
+      if (collapse) {
+        e.preventDefault();
+        toggle(root.querySelector(collapse.dataset.bsTarget ?? ""));
+        return;
+      }
+      if (t.closest("[data-input-id='open_glossary']")) {
+        e.preventDefault();
+        onGlossary();
+      }
+    };
+    root.addEventListener("click", onClick);
+    return () => root.removeEventListener("click", onClick);
+  }, [ref, onGlossary]);
+}
+
+// make_chip(): label, optional pencil (focus_id), and the x.
+function Chip({
+  label,
+  focus,
+  onClear,
+  onFocus,
+}: {
+  label: string;
+  focus?: string;
+  onClear: () => void;
+  onFocus: (id: string) => void;
+}) {
+  return (
+    <span
+      className={`filter-chip chip-game${focus ? " chip-focusable" : ""}`}
+      data-chip-focus={focus}
+      tabIndex={focus ? 0 : undefined}
+      role={focus ? "button" : undefined}
+      onClick={(e) => {
+        if (focus && !(e.target as HTMLElement).closest(".chip-x"))
+          onFocus(focus);
+      }}
+      onKeyDown={(e) => {
+        if (
+          focus &&
+          (e.key === "Enter" || e.key === " ") &&
+          !(e.target as HTMLElement).closest(".chip-x")
+        ) {
+          e.preventDefault();
+          onFocus(focus);
+        }
+      }}
+    >
+      {label}
+      {focus && <i className="bi bi-pencil chip-edit" aria-hidden="true"></i>}
+      <button
+        className="chip-x"
+        type="button"
+        aria-label={`Clear ${label}`}
+        onClick={onClear}
+      >
+        ×
+      </button>
+    </span>
+  );
+}
+
+function Glossary({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    document.body.classList.add("modal-open");
+    const key = (e: KeyboardEvent) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", key);
+    return () => {
+      document.body.classList.remove("modal-open");
+      window.removeEventListener("keydown", key);
+    };
+  }, [onClose]);
+  return (
+    <div id="shiny-modal-wrapper">
+      <div
+        id="shiny-modal"
+        className="modal fade show"
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="glossary-title"
+        style={{ display: "block" }}
+        onClick={(e) => e.target === e.currentTarget && onClose()}
+      >
+        <div className="modal-dialog modal-lg" role="document">
+          <div className="modal-content">
+            <div className="modal-header">
+              <h4 className="modal-title" id="glossary-title">
+                Glossary
+              </h4>
+            </div>
+            <div
+              className="modal-body"
+              dangerouslySetInnerHTML={{ __html: ui.glossaryHtml }}
+            />
+            <div className="modal-footer">
+              <button
+                type="button"
+                className="btn btn-default"
+                onClick={onClose}
+                autoFocus
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="modal-backdrop fade show"></div>
+    </div>
+  );
+}
+
 export default function GameLogsClient({ league }: { league: League }) {
-  const now = new Date(),
-    current =
-      now.getFullYear() +
-      Number(now.getMonth() >= 8) -
-      (league === "il" ? 0 : 1);
+  const euro = league !== "il";
+  const p = euro ? "eurogl" : "gl";
+  const defaultSeason = euro ? ui.euroDefaultSeason : ui.defaultGameYear;
   const [query, setQuery] = useQueryStates(
     {
-      season: parseAsString.withDefault(String(current)),
+      season: parseAsString.withDefault(defaultSeason),
       view: parseAsString.withDefault("summary"),
       team: parseAsString.withDefault(""),
       teams: parseAsString.withDefault(""),
@@ -138,25 +269,49 @@ export default function GameLogsClient({ league }: { league: League }) {
     },
     { history: "replace", shallow: true },
   );
-  const [data, setData] = useState<Payload | null>(null),
-    [loading, setLoading] = useState(true),
-    [error, setError] = useState(""),
-    [filtersOpen, setFiltersOpen] = useState(false),
-    [revision, setRevision] = useState(0);
-  const [sorting, setSorting] = useState<SortingState>([
-    { id: "game_date", desc: true },
-    { id: league === "il" ? "gn" : "round_number", desc: true },
-  ]);
-  const [statCol, setStatCol] = useState("off_ppp"),
-    [statOp, setStatOp] = useState<"ge" | "le">("ge"),
-    [statValue, setStatValue] = useState("");
-  const currentVersion = useRef("");
+  const view: View = query.view === "four_factors" ? "four_factors" : "summary";
+  const stats = euro ? [] : parseStats(query.stats);
+  const bounds = seasonBounds(league, query.season);
+  const body = useShinyBody(euro);
+
+  const [data, setData] = useState<Payload | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [revision, setRevision] = useState(0);
+  // Each answer redraws the table from page 1 in its default order, as a new
+  // DT::datatable() does in Shiny.
+  const [draw, setDraw] = useState(0);
+  const [updated, setUpdated] = useState<string | null>(null);
+  const [glossary, setGlossary] = useState(false);
+  const [filtersShown, setFiltersShown] = useState(false);
+  const [accordionOpen, setAccordionOpen] = useState(true);
+  const [statOpen, setStatOpen] = useState(false);
+  const [statCol, setStatCol] = useState("");
+  const [statOp, setStatOp] = useState<"ge" | "le">("ge");
+  const [statValue, setStatValue] = useState("");
+  const version = useRef("");
+  const fragments = useRef<HTMLDivElement>(null);
+  const openGlossary = useCallback(() => setGlossary(true), [setGlossary]);
+  useFragmentClicks(fragments, openGlossary);
+
+  // The API request: only complete starter bounds, only a set date range.
   const params = useMemo(() => {
-    const p = new URLSearchParams();
-    for (const [key, value] of Object.entries(query))
-      if (value) p.set(key, value);
-    return p.toString();
-  }, [query]);
+    const q = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (!value) continue;
+      if (
+        (key === "own_starters" || key === "opp_starters") &&
+        !/^(gte|lte):[0-5]$/.test(value)
+      )
+        continue;
+      if (euro && (key === "team" || key === "stats" || key === "game_type"))
+        continue;
+      if (!euro && (key === "teams" || key === "phase")) continue;
+      q.set(key, value);
+    }
+    return q.toString();
+  }, [query, euro]);
+
   useEffect(() => {
     const controller = new AbortController();
     let active = true;
@@ -172,7 +327,8 @@ export default function GameLogsClient({ league }: { league: League }) {
             throw new Error(answer.error ?? "Unable to load games");
           if (active) {
             setData(answer);
-            currentVersion.current = answer.meta.version;
+            setDraw((d) => d + 1);
+            version.current = answer.meta.version;
           }
         })
         .catch((e) => {
@@ -188,25 +344,29 @@ export default function GameLogsClient({ league }: { league: League }) {
       controller.abort();
     };
   }, [league, params, revision]);
+
+  // The navbar stamp is the Israeli ETL's last success (output$last_updated);
+  // a new version of this league's data refetches the table.
   useEffect(() => {
     const check = () => {
       void fetch("/api/v1/version")
         .then((r) => (r.ok ? r.json() : null))
         .then((value) => {
-          const version = value?.leagues?.find(
-            (x: { league: string }) => x.league === league,
-          )?.version;
-          if (
-            version &&
-            currentVersion.current &&
-            version !== currentVersion.current
-          ) {
-            currentVersion.current = version;
+          const list = (value?.leagues ?? []) as {
+            league: string;
+            version: string;
+          }[];
+          const il = list.find((x) => x.league === "il")?.version;
+          if (il && il !== "unknown") setUpdated(il);
+          const v = list.find((x) => x.league === league)?.version;
+          if (v && version.current && v !== version.current) {
+            version.current = v;
             setRevision((r) => r + 1);
           }
         })
         .catch(() => {});
     };
+    check();
     const timer = setInterval(check, 60000);
     window.addEventListener("focus", check);
     return () => {
@@ -214,632 +374,874 @@ export default function GameLogsClient({ league }: { league: League }) {
       window.removeEventListener("focus", check);
     };
   }, [league]);
-  const euro = league !== "il",
-    view = query.view === "four_factors" ? "four_factors" : "summary",
-    stats = parseStats(query.stats);
-  const columnPairs = useMemo(
-    () => [
-      ...[
-        euro ? ["round_number", "Rd"] : ["gn", "GN"],
-        euro ? ["phase_label", "Phase"] : ["game_type_label", "Game Type"],
-        ["game_date", "Date"],
-        ["team_name", "Team"],
-        ["opp_team_name", "Opponent"],
-        ["result", "W/L"],
-        [euro ? "score" : "score_display", "Score"],
-      ],
-      ...(view === "four_factors" ? ffColumns : summaryColumns),
-      ...(!euro && view === "summary"
-        ? [
-            ["Off Shot", "Off Shot"],
-            ["Def Shot", "Def Shot"],
-          ]
-        : []),
-      ["off_poss", "Off Poss"],
-      ["def_poss", "Def Poss"],
-    ],
-    [euro, view],
-  );
-  const columns = useMemo<ColumnDef<Row>[]>(
-    () =>
-      columnPairs.map(([id, label]) => ({
-        id,
-        header: label,
-        accessorFn: (row) => row[id] ?? undefined,
-        sortUndefined: "last",
-        sortDescFirst: !HEAT_REVERSE[id],
-        cell: (info) => {
-          const row = info.row.original;
-          if (id === "Off Shot" || id === "Def Shot") {
-            const side = id === "Off Shot" ? "off" : "def";
-            return (
-              <div className="shots">
-                {[2, 3].map((fg) => {
-                  const freq = Number(row[`${side}_fg${fg}_freq`] ?? 0),
-                    pct = row[`${side}_fg${fg}_pct`],
-                    avg = data?.meta.shot_averages?.[side]?.[`fg${fg}`];
-                  return (
-                    <div key={fg} className="shot-line">
-                      <span>{fg}PT</span>
-                      <span
-                        className={`frequency fg${fg}`}
-                        style={{ width: `${Math.max(freq, 5)}%` }}
-                        title={`${freq}% of attempts`}
-                      />
-                      <span
-                        title={`${row[`${side}_fg${fg}m`] ?? 0} / ${row[`${side}_fg${fg}a`] ?? 0} made`}
-                        className={
-                          pct != null && avg != null
-                            ? Number(pct) >= avg
-                              ? "positive"
-                              : "negative"
-                            : ""
-                        }
-                      >
-                        {pct == null ? "—" : `${formatted(pct, "")}%`}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            );
-          }
-          const percentile = row["pr_" + id.replace(/[^A-Za-z0-9]+/g, "_")];
-          let style = {};
-          if (typeof percentile === "number") {
-            const good = HEAT_REVERSE[id] ? 1 - percentile : percentile;
-            style = {
-              backgroundColor: `hsl(${Math.round(good * 120)} 55% 89%)`,
-            };
-          }
-          return (
-            <span
-              className={typeof info.getValue() === "number" ? "metric" : ""}
-              style={style}
-            >
-              {formatted(info.getValue(), id)}
-            </span>
-          );
-        },
-      })),
-    [columnPairs, data?.meta.shot_averages],
-  );
-  const rows = data?.rows ?? EMPTY_ROWS;
-  const table = useReactTable({
-    data: rows,
-    columns,
-    state: { sorting },
-    onSortingChange: setSorting,
-    getCoreRowModel: getCoreRowModel(),
-    getSortedRowModel: getSortedRowModel(),
-  });
-  const update = (key: keyof typeof query, value: string) => {
-    void setQuery({
-      [key]: value,
-      ...(key === "last_n"
-        ? { min_gn: "", max_gn: "" }
-        : key === "min_gn" || key === "max_gn"
-          ? { last_n: "" }
-          : {}),
+
+  const teams: Choice[] = useMemo(() => {
+    const list = (!euro && IL_TEAMS[query.season]) || data?.meta.teams || [];
+    return list.map((t) => ({ value: String(t.id), label: t.name }));
+  }, [euro, query.season, data?.meta.teams]);
+  const teamName = (id: string) =>
+    teams.find((t) => t.value === id)?.label ?? id;
+  const rounds = data?.meta.rounds ?? [];
+  const roundChoices = rounds.map((r) => ({
+    value: String(r),
+    label: String(r),
+  }));
+  const lastChoices = rounds.length
+    ? Array.from({ length: Math.max(...rounds) }, (_, i) => ({
+        value: String(i + 1),
+        label: String(i + 1),
+      }))
+    : [];
+  const typeChoices = euro
+    ? (data?.meta.phases ?? []).map((ph) => ({
+        value: ph,
+        label: PHASES[ph] ?? ph,
+      }))
+    : catalogues.gameTypeChoices.filter((c) => c.value !== "");
+  const seasons = euro
+    ? (data?.meta.seasons ?? ui.euroStaticSeasons)
+    : ui.ilSeasons;
+  const statCols = ui.statFilterCols[view];
+
+  type Key = keyof typeof query;
+  const set = (patch: Partial<Record<Key, string | null>>) => {
+    // setup_gn_last_n_sync(): Last N and a GN range exclude each other.
+    const next: Partial<Record<Key, string | null>> = { ...patch };
+    if (patch.last_n) Object.assign(next, { min_gn: null, max_gn: null });
+    if (patch.min_gn || patch.max_gn) next.last_n = null;
+    for (const k of Object.keys(next) as Key[])
+      if (next[k] === "") next[k] = null;
+    void setQuery(next);
+  };
+  const list = (v: string) => v.split(",").filter(Boolean);
+  const typeKey: Key = euro ? "phase" : "game_type";
+  const teamKey: Key = euro ? "teams" : "team";
+
+  const reset = () =>
+    set({
+      view: null,
+      team: null,
+      teams: null,
+      start: null,
+      end: null,
+      own_starters: null,
+      opp_starters: null,
+      game_type: null,
+      phase: null,
+      opponents: null,
+      home_away: null,
+      outcome: null,
+      min_gn: null,
+      max_gn: null,
+      last_n: null,
+      stats: null,
     });
+  const changeSeason = (season: string) =>
+    set({
+      season,
+      start: null,
+      end: null,
+      min_gn: null,
+      max_gn: null,
+      last_n: null,
+      ...(euro ? {} : { team: null }),
+    });
+  const changeView = (v: "Summary" | "Four Factors") =>
+    set({ view: v === "Four Factors" ? "four_factors" : null, stats: null });
+
+  // app.js chip focus: open the panel, the accordion, scroll and highlight.
+  const reveal = (id: string) => {
+    if (body.filtersCollapsed) body.toggleFilters();
+    if (window.matchMedia("(max-width: 767.98px)").matches)
+      setFiltersShown(true);
+    setAccordionOpen(true);
+    window.setTimeout(() => {
+      const el =
+        document.getElementById(id) ??
+        document.querySelector<HTMLElement>(`[data-input-id="${id}"]`);
+      if (!el) return;
+      const group =
+        el.closest<HTMLElement>(".form-group, .shiny-input-container") ?? el;
+      group.scrollIntoView({ block: "center", behavior: "smooth" });
+      group.classList.add("ibpl-chip-revealed");
+      window.setTimeout(
+        () => group.classList.remove("ibpl-chip-revealed"),
+        2400,
+      );
+      const input = group.querySelector<HTMLInputElement>(
+        ".selectize-input input, input",
+      );
+      input?.focus({ preventScroll: true });
+    }, 80);
   };
-  const reset = () => {
-    const blank = Object.fromEntries(Object.keys(query).map((k) => [k, null]));
-    void setQuery({ ...blank, season: query.season, view: query.view });
+
+  const starters = (key: "own_starters" | "opp_starters") => {
+    const [mode = "", value = ""] = query[key].split(":");
+    return { mode, value };
   };
-  const selections = Object.entries(query).filter(
-    ([k, v]) => v && !["season", "view", "stats"].includes(k),
-  );
-  const multi = (key: "teams" | "opponents", label: string) => (
-    <TeamPicker
-      label={label}
-      teams={data?.meta.teams ?? []}
-      values={query[key].split(",").filter(Boolean)}
-      multiple
-      onChange={(values) => update(key, values.join(","))}
+  const starterRow = (
+    key: "own_starters" | "opp_starters",
+    side: "off" | "def",
+  ) => {
+    const { mode, value } = starters(key);
+    const own = side === "off";
+    return (
+      <div className="row">
+        <div className="col-sm-6">
+          <Selectize
+            id={`${p}_num_starters_${side}_mode`}
+            formControl={false}
+            label={tt(
+              own ? "Own lineup starters" : "Opponent lineup starters",
+              own ? "own_starters" : "opp_starters",
+            )}
+            placeholder="ALL"
+            choices={[
+              { value: "gte", label: "At least (>=)" },
+              { value: "lte", label: "At most (<=)" },
+            ]}
+            emptyLabel="ALL"
+            value={[mode]}
+            onChange={(v) =>
+              set({ [key]: v[0] || value ? `${v[0] ?? ""}:${value}` : null })
+            }
+          />
+        </div>
+        <div className="col-sm-6">
+          <Selectize
+            id={`${p}_num_starters_${side}`}
+            formControl={false}
+            label={own ? "Own value" : "Opp value"}
+            placeholder="--"
+            choices={["0", "1", "2", "3", "4", "5"].map((n) => ({
+              value: n,
+              label: n,
+            }))}
+            emptyLabel="--"
+            value={[value]}
+            onChange={(v) =>
+              set({ [key]: mode || v[0] ? `${mode}:${v[0] ?? ""}` : null })
+            }
+          />
+        </div>
+      </div>
+    );
+  };
+
+  // build_filter_chips(): the season chip, then each active filter.
+  const chips: ReactNode[] = [];
+  const start = query.start || bounds.start,
+    end = query.end || bounds.end;
+  const datesShown = euro ? start !== bounds.start || end !== bounds.end : true;
+  if (datesShown)
+    chips.push(
+      <Chip
+        key="dates"
+        label={`${chipDate(start)} - ${chipDate(end)}`}
+        focus={`${p}_dates`}
+        onClear={() => set({ start: null, end: null })}
+        onFocus={reveal}
+      />,
+    );
+  const types = list(query[typeKey]);
+  if (types.length)
+    chips.push(
+      <Chip
+        key="type"
+        focus={`${p}_${euro ? "phase" : "game_type"}`}
+        onFocus={reveal}
+        label={types
+          .map((t) => (euro ? (PHASES[t] ?? t) : (GAME_TYPES[t] ?? t)))
+          .join(", ")}
+        onClear={() => set({ [typeKey]: null })}
+      />,
+    );
+  const picked = list(query[teamKey]);
+  if (picked.length)
+    chips.push(
+      <Chip
+        key="teams"
+        focus={euro ? `${p}_teams` : `${p}_team`}
+        onFocus={reveal}
+        label={
+          picked.length === 1 ? teamName(picked[0]) : `${picked.length} teams`
+        }
+        onClear={() => set({ [teamKey]: null })}
+      />,
+    );
+  const opps = list(query.opponents);
+  if (opps.length)
+    chips.push(
+      <Chip
+        key="opps"
+        focus={`${p}_opponents`}
+        onFocus={reveal}
+        label={
+          opps.length === 1
+            ? `vs ${teamName(opps[0])}`
+            : `vs ${opps.length} opps`
+        }
+        onClear={() => set({ opponents: null })}
+      />,
+    );
+  if (query.home_away)
+    chips.push(
+      <Chip
+        key="ha"
+        focus={`${p}_home_away`}
+        onFocus={reveal}
+        label={query.home_away === "home" ? "Home" : "Away"}
+        onClear={() => set({ home_away: null })}
+      />,
+    );
+  if (query.outcome)
+    chips.push(
+      <Chip
+        key="out"
+        focus={`${p}_outcome`}
+        onFocus={reveal}
+        label={query.outcome === "win" ? "Wins" : "Losses"}
+        onClear={() => set({ outcome: null })}
+      />,
+    );
+  if (query.min_gn || query.max_gn) {
+    const gl = euro ? "Rd" : "GN";
+    const parts = [
+      query.min_gn && `${gl}>=${query.min_gn}`,
+      query.max_gn && `${gl}<=${query.max_gn}`,
+    ].filter(Boolean);
+    chips.push(
+      <Chip
+        key="gn"
+        focus={`${p}_gn_min`}
+        onFocus={reveal}
+        label={parts.join(" ")}
+        onClear={() => set({ min_gn: null, max_gn: null })}
+      />,
+    );
+  }
+  if (query.last_n)
+    chips.push(
+      <Chip
+        key="last"
+        focus={`${p}_last_n`}
+        onFocus={reveal}
+        label={`Last ${query.last_n} games`}
+        onClear={() => set({ last_n: null })}
+      />,
+    );
+  const sp = (["own_starters", "opp_starters"] as const)
+    .map((k) => {
+      const { mode, value } = starters(k);
+      return mode && value
+        ? `${k === "own_starters" ? "Own" : "Opp"} ${mode === "gte" ? ">=" : "<="}${value}`
+        : "";
+    })
+    .filter(Boolean);
+  if (sp.length)
+    chips.push(
+      <Chip
+        key="st"
+        label={`Starters: ${sp.join(", ")}`}
+        onFocus={reveal}
+        onClear={() => set({ own_starters: null, opp_starters: null })}
+      />,
+    );
+
+  // Popper (bslib popover) keeps the popover inside the viewport; the arrow
+  // stays over the chip.
+  const keepInViewport = (el: HTMLDivElement | null) => {
+    if (!el) return;
+    el.style.transform = "translateX(-50%)";
+    const r = el.getBoundingClientRect();
+    const shift =
+      r.right > innerWidth - 8
+        ? innerWidth - 8 - r.right
+        : r.left < 8
+          ? 8 - r.left
+          : 0;
+    el.style.transform = `translateX(calc(-50% + ${shift}px))`;
+    const arrow = el.querySelector<HTMLElement>(".popover-arrow");
+    if (arrow) arrow.style.transform = `translateX(calc(-50% - ${shift}px))`;
+  };
+  const addStat = () => {
+    const col = statCols.find((c) => c.label === statCol);
+    const value = Number(statValue);
+    if (!col || statValue.trim() === "" || !Number.isFinite(value)) return;
+    set({
+      stats: JSON.stringify([...stats, { col: col.col, op: statOp, value }]),
+    });
+    setStatCol("");
+    setStatOp("ge");
+    setStatValue("");
+  };
+  const statLabel = (col: string) =>
+    statCols.find((c) => c.col === col)?.label ?? col;
+
+  const rows = data?.rows ?? EMPTY;
+  const html = euro ? ui.euro : ui.il;
+  const dateLabel = euro ? "Game Date Range" : "Date range";
+  const teamPicker = (
+    <Selectize
+      id={euro ? `${p}_teams` : `${p}_team`}
+      label={euro ? "Teams" : "Team"}
+      multiple={euro}
+      placeholder={euro ? "All teams" : undefined}
+      emptyLabel={euro ? undefined : "-- All teams --"}
+      choices={teams}
+      value={picked}
+      onChange={(v) => set({ [teamKey]: v.join(",") })}
     />
   );
-  const chipValue = (key: string, value: string) => {
-    if (["team", "teams", "opponents"].includes(key))
-      return value
-        .split(",")
-        .map(
-          (id) =>
-            data?.meta.teams.find((team) => String(team.id) === id)?.name ??
-            (loading ? "Loading team…" : "Unknown team"),
-        )
-        .join(", ");
-    if (key === "game_type")
-      return value
-        .split(",")
-        .map((id) => (catalogues.gameTypes as Record<string, string>)[id] ?? id)
-        .join(", ");
-    if (key === "phase")
-      return value
-        .split(",")
-        .map((id) => (catalogues.phases as Record<string, string>)[id] ?? id)
-        .join(", ");
-    return value;
-  };
-  const starter = (key: "own_starters" | "opp_starters", label: string) => {
-    const [mode = "", value = ""] = query[key].split(":");
-    return (
-      <fieldset>
-        <legend>{label}</legend>
-        <div className="pair">
-          <select
-            aria-label={`${label} mode`}
-            value={mode}
-            onChange={(e) =>
-              update(
-                key,
-                e.target.value ? `${e.target.value}:${value || "3"}` : "",
-              )
-            }
-          >
-            <option value="">All</option>
-            <option value="gte">At least (≥)</option>
-            <option value="lte">At most (≤)</option>
-          </select>
-          <select
-            aria-label={`${label} value`}
-            disabled={!mode}
-            value={value || "3"}
-            onChange={(e) => update(key, `${mode}:${e.target.value}`)}
-          >
-            {[0, 1, 2, 3, 4, 5].map((n) => (
-              <option key={n}>{n}</option>
-            ))}
-          </select>
-        </div>
-      </fieldset>
-    );
-  };
-  const exportCsv = () => {
-    const ordered = table.getRowModel().rows.map((r) => ({
-      ...r.original,
-      ...(!euro && view === "summary"
-        ? {
-            "Off Shot": shotText(r.original, "off"),
-            "Def Shot": shotText(r.original, "def"),
-          }
-        : {}),
-    }));
-    const ids = columnPairs.map(([id]) => id);
-    const csv = toCsv(ordered, ids);
-    const url = URL.createObjectURL(
-      new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8" }),
-    );
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${league}_game_logs_${view}_${new Date().toISOString().replace(/[:.]/g, "-")}.csv`;
-    a.click();
-    URL.revokeObjectURL(url);
-  };
+  const dates = (
+    <DateRangeInput
+      id={`${p}_dates`}
+      label={dateLabel}
+      start={start}
+      end={end}
+      min={bounds.start}
+      max={bounds.end}
+      onChange={(s, e) =>
+        set({
+          start: s === bounds.start && e === bounds.end ? null : s,
+          end: s === bounds.start && e === bounds.end ? null : e,
+        })
+      }
+    />
+  );
+
   return (
-    <>
-      <header className="site-header">
-        <Link href="/il/game-logs" className="brand">
-          IBPL <span>Analytics</span>
-        </Link>
-        <nav aria-label="League">
-          {leagues.map((item) => (
-            <Link
-              key={item.id}
-              className={league === item.id ? "active" : ""}
-              href={`/${item.id}/game-logs`}
-            >
-              {item.name}
-            </Link>
-          ))}
-        </nav>
-        <div className="updated">
-          Last updated
-          <br />
-          <time>{data?.meta.version ?? "Loading…"}</time>
-        </div>
-      </header>
-      <main className="dashboard">
-        <div className="page-title">
-          <div>
-            <p className="eyebrow">
-              {leagues.find((l) => l.id === league)?.name}
-            </p>
-            <h1>Game Logs</h1>
-          </div>
-          <label className="season-picker">
-            Season
-            <select
-              aria-label="Season"
-              value={query.season}
-              onChange={(e) => update("season", e.target.value)}
-            >
-              {Array.from({ length: 6 }, (_, i) => current - i).map((year) => (
-                <option key={year} value={year}>
-                  {euro
-                    ? `${year}–${String(year + 1).slice(2)}`
-                    : `${year - 1}–${String(year).slice(2)}`}
-                </option>
-              ))}
-            </select>
-          </label>
-        </div>
-        <div className="workspace">
-          <aside className="sidebar">
-            <button
-              className="filter-toggle"
-              aria-expanded={filtersOpen}
-              onClick={() => setFiltersOpen(!filtersOpen)}
-            >
-              {filtersOpen ? "Hide Filters" : "Show Filters"}
-            </button>
-            <div className={`filters ${filtersOpen ? "open" : ""}`}>
-              <div className="filter-heading">
-                <h2>Filters</h2>
-                <button onClick={reset} className="text-button">
-                  Reset
-                </button>
-              </div>
-              <fieldset>
-                <legend>View</legend>
-                <div className="view-switch">
-                  {[
-                    ["summary", "Summary"],
-                    ["four_factors", "Four Factors"],
-                  ].map(([value, label]) => (
-                    <button
-                      key={value}
-                      className={view === value ? "selected" : ""}
-                      onClick={() => {
-                        void setQuery({ view: value, stats: "" });
-                      }}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </fieldset>
-              {euro ? (
-                multi("teams", "Teams")
-              ) : (
-                <TeamPicker
-                  label="Team"
-                  teams={data?.meta.teams ?? []}
-                  values={query.team ? [query.team] : []}
-                  onChange={(values) => update("team", values[0] ?? "")}
-                />
-              )}
-              <fieldset>
-                <legend>Date range</legend>
-                <div className="dates">
-                  <label>
-                    From
-                    <input
-                      aria-label="From date"
-                      type="date"
-                      value={query.start}
-                      onChange={(e) => update("start", e.target.value)}
-                    />
-                  </label>
-                  <label>
-                    To
-                    <input
-                      aria-label="To date"
-                      type="date"
-                      value={query.end}
-                      onChange={(e) => update("end", e.target.value)}
-                    />
-                  </label>
-                </div>
-              </fieldset>
-              {starter("own_starters", "Own lineup starters")}
-              {starter("opp_starters", "Opponent lineup starters")}
-              <details open>
-                <summary>Game context</summary>
-                {euro ? (
-                  <label>
-                    Phase
-                    <select
-                      value={query.phase}
-                      onChange={(e) => update("phase", e.target.value)}
-                    >
-                      <option value="">All phases</option>
-                      {data?.meta.phases.map((phase) => (
-                        <option key={phase} value={phase}>
-                          {(catalogues.phases as Record<string, string>)[
-                            phase
-                          ] ?? phase}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                ) : (
-                  <label>
-                    Game type
-                    <select
-                      value={query.game_type}
-                      onChange={(e) => update("game_type", e.target.value)}
-                    >
-                      {catalogues.gameTypeChoices.map((item) => (
-                        <option key={item.value} value={item.value}>
-                          {item.label}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                )}
-                {multi("opponents", "Opponents")}
-                <div className="pair">
-                  <label>
-                    Home / Away
-                    <select
-                      value={query.home_away}
-                      onChange={(e) => update("home_away", e.target.value)}
-                    >
-                      <option value="">All</option>
-                      <option value="home">Home</option>
-                      <option value="away">Away</option>
-                    </select>
-                  </label>
-                  <label>
-                    Outcome
-                    <select
-                      value={query.outcome}
-                      onChange={(e) => update("outcome", e.target.value)}
-                    >
-                      <option value="">All</option>
-                      <option value="win">Win</option>
-                      <option value="loss">Loss</option>
-                    </select>
-                  </label>
-                </div>
-                <div className="pair">
-                  {["min_gn", "max_gn"].map((key, i) => (
-                    <label key={key}>
-                      {i ? "To" : "From"} {euro ? "Round" : "GN"}
-                      <select
-                        value={query[key as "min_gn"]}
-                        onChange={(e) =>
-                          update(key as "min_gn", e.target.value)
-                        }
-                      >
-                        <option value="">All</option>
-                        {data?.meta.rounds.map((round) => (
-                          <option key={round}>{round}</option>
-                        ))}
-                      </select>
-                    </label>
-                  ))}
-                </div>
-                <label>
-                  Last N games
-                  <select
-                    value={query.last_n}
-                    onChange={(e) => update("last_n", e.target.value)}
+    <TouchTipsContext.Provider value={body.touchTips}>
+      <Navbar
+        league={league}
+        season={query.season}
+        seasons={seasons}
+        view={view === "four_factors" ? "Four Factors" : "Summary"}
+        onView={changeView}
+        onSeason={changeSeason}
+        onGlossary={openGlossary}
+        updated={updated}
+        collapsedNav={body.collapsedNav}
+      >
+        <div className="tab-content">
+          <div
+            className="tab-pane active show"
+            data-value={euro ? "euro_game_logs" : "game_logs"}
+            role="tabpanel"
+          >
+            <div className="container-fluid">
+              <div className="row">
+                <div className="col-sm-3 ibpl-filter-col">
+                  <form
+                    className="well"
+                    role="complementary"
+                    onSubmit={(e) => e.preventDefault()}
                   >
-                    <option value="">All games</option>
-                    {Array.from({ length: 40 }, (_, i) => i + 1).map((n) => (
-                      <option key={n}>{n}</option>
-                    ))}
-                  </select>
-                </label>
-              </details>
-            </div>
-          </aside>
-          <section className="results" aria-label="Game results">
-            <div className="explainer">
-              <h2>
-                {view === "summary"
-                  ? "How did each game look?"
-                  : "What drove each result?"}
-              </h2>
-              <p>
-                {view === "summary"
-                  ? "Each row is one team’s perspective on a game. Compare points per 100 possessions to see beyond the final score."
-                  : "Compare shooting, rebounding, turnovers and free throws on both sides. Percentile colours use the whole season, so a game keeps its colour when you narrow the filters."}
-              </p>
-            </div>
-            {!euro && (
-              <form
-                className="stat-form"
-                onSubmit={(e) => {
-                  e.preventDefault();
-                  const value = Number(statValue);
-                  if (statValue !== "" && Number.isFinite(value)) {
-                    void setQuery({
-                      stats: JSON.stringify([
-                        ...stats,
-                        { col: statCol, op: statOp, value },
-                      ]),
-                    });
-                    setStatValue("");
-                  }
-                }}
-              >
-                <label className="sr-only" htmlFor="stat-column">
-                  Stat
-                </label>
-                <select
-                  id="stat-column"
-                  value={statCol}
-                  onChange={(e) => setStatCol(e.target.value)}
-                >
-                  {statLabels
-                    .filter(([id]) => columnPairs.some(([col]) => col === id))
-                    .map(([id, label]) => (
-                      <option key={id} value={id}>
-                        {label}
-                      </option>
-                    ))}
-                </select>
-                <select
-                  aria-label="Stat comparison"
-                  value={statOp}
-                  onChange={(e) => setStatOp(e.target.value as "ge" | "le")}
-                >
-                  <option value="ge">≥</option>
-                  <option value="le">≤</option>
-                </select>
-                <input
-                  aria-label="Stat value"
-                  type="number"
-                  step="any"
-                  placeholder="Value"
-                  value={statValue}
-                  onChange={(e) => setStatValue(e.target.value)}
-                />
-                <button type="submit">Add stat filter</button>
-              </form>
-            )}
-            <div className="chips" aria-label="Active filters">
-              {selections.map(([key, value]) => (
-                <button
-                  key={key}
-                  onClick={() => update(key as keyof typeof query, "")}
-                  aria-label={`Clear ${key}`}
-                >
-                  {key.replace(/_/g, " ")}: {chipValue(key, value)}
-                  <span>×</span>
-                </button>
-              ))}
-              {stats.map((stat, i) => (
-                <button
-                  key={i}
-                  onClick={() => {
-                    void setQuery({
-                      stats: JSON.stringify(stats.filter((_, j) => j !== i)),
-                    });
-                  }}
-                >
-                  {stat.col} {stat.op === "ge" ? "≥" : "≤"} {stat.value}
-                  <span>×</span>
-                </button>
-              ))}
-            </div>
-            <div className="table-toolbar">
-              <span role="status">
-                {loading
-                  ? "Loading games…"
-                  : `${rows.length.toLocaleString()} team-games`}
-              </span>
-              <button
-                onClick={exportCsv}
-                disabled={loading || Boolean(error) || !rows.length}
-              >
-                Download CSV ↓
-              </button>
-            </div>
-            {error ? (
-              <div role="alert" className="error">
-                <p>{error}</p>
-                <button onClick={() => setRevision((r) => r + 1)}>Retry</button>
-              </div>
-            ) : (
-              <div className="table-scroll" aria-busy={loading}>
-                <table aria-label="Game logs">
-                  {view === "four_factors" && (
-                    <>
-                      <colgroup
-                        span={columnPairs.findIndex(([id]) => id === "off_ppp")}
-                      />
-                      <colgroup span={5} />
-                      <colgroup span={5} />
-                      <colgroup span={2} />
-                    </>
-                  )}
-                  <thead>
-                    {view === "four_factors" && (
-                      <tr className="column-groups">
-                        <th
-                          scope="colgroup"
-                          colSpan={columnPairs.findIndex(
-                            ([id]) => id === "off_ppp",
-                          )}
-                          aria-label="Game context"
-                        />
-                        <th scope="colgroup" colSpan={5}>
-                          Offense
-                        </th>
-                        <th scope="colgroup" colSpan={5}>
-                          Defense
-                        </th>
-                        <th scope="colgroup" colSpan={2}>
-                          Usage
-                        </th>
-                      </tr>
-                    )}
-                    {table.getHeaderGroups().map((group) => (
-                      <tr key={group.id}>
-                        {group.headers.map((header) => (
-                          <th key={header.id} scope="col">
-                            <button
-                              aria-label={`${header.column.columnDef.header} column`}
-                              onClick={header.column.getToggleSortingHandler()}
-                              title={`Sort by ${header.column.columnDef.header}`}
+                    <div className="view-mode-container">
+                      <div
+                        className="form-group shiny-input-radiogroup shiny-input-container shiny-input-container-inline"
+                        role="radiogroup"
+                        aria-label="View"
+                      >
+                        <label className="control-label">View:</label>
+                        <div className="shiny-options-group">
+                          {(["Summary", "Four Factors"] as const).map((v) => (
+                            <label
+                              key={v}
+                              className="radio-inline"
+                              data-tooltip={
+                                v === "Summary"
+                                  ? FILTER_TIPS.view_summary
+                                  : FILTER_TIPS.view_ff
+                              }
                             >
-                              {view === "four_factors" &&
-                              /^(off|def)_/.test(header.column.id) &&
-                              !header.column.id.endsWith("_poss")
-                                ? String(
-                                    header.column.columnDef.header,
-                                  ).replace(/^(Off|Def) /, "")
-                                : flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext(),
-                                  )}
-                              <span>
-                                {header.column.getIsSorted() === "desc"
-                                  ? " ↓"
-                                  : header.column.getIsSorted() === "asc"
-                                    ? " ↑"
-                                    : " ↕"}
-                              </span>
+                              <input
+                                type="radio"
+                                name={`${p}_view_mode`}
+                                value={v}
+                                checked={
+                                  (view === "four_factors") ===
+                                  (v === "Four Factors")
+                                }
+                                onChange={() => changeView(v)}
+                              />
+                              <span>{v}</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                    <hr />
+                    <button
+                      type="button"
+                      className="btn btn-outline-secondary d-md-none w-100 mb-2"
+                      aria-expanded={filtersShown}
+                      onClick={() => setFiltersShown((s) => !s)}
+                    >
+                      Show Filters
+                    </button>
+                    <div
+                      id={`${p}-filters`}
+                      className={`collapse d-md-block${filtersShown ? " show" : ""}`}
+                    >
+                      <button
+                        type="button"
+                        className="btn btn-default action-button"
+                        onClick={reset}
+                      >
+                        {euro ? "Reset to defaults" : "Reset Filters"}
+                      </button>
+                      <hr />
+                      {euro ? (
+                        <>
+                          {dates}
+                          {teamPicker}
+                        </>
+                      ) : (
+                        <>
+                          {teamPicker}
+                          {dates}
+                        </>
+                      )}
+                      {starterRow("own_starters", "off")}
+                      {starterRow("opp_starters", "def")}
+                      <hr />
+                      <div className="text-end mb-2">
+                        <a
+                          href="#"
+                          className="small text-muted fw-bold js-accordion-toggle-all"
+                          style={{ textDecoration: "none" }}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setAccordionOpen((o) => !o);
+                          }}
+                        >
+                          Collapse/Expand All
+                        </a>
+                      </div>
+                      <div className="accordion">
+                        <div
+                          className="accordion-item"
+                          data-value="Game Filters"
+                        >
+                          <div className="accordion-header">
+                            <button
+                              className={`accordion-button${accordionOpen ? "" : " collapsed"}`}
+                              type="button"
+                              aria-expanded={accordionOpen}
+                              aria-controls={`${p}-game-filters`}
+                              onClick={() => setAccordionOpen((o) => !o)}
+                            >
+                              <div className="accordion-icon"></div>
+                              <div className="accordion-title">
+                                Game Filters
+                              </div>
                             </button>
-                          </th>
-                        ))}
-                      </tr>
-                    ))}
-                  </thead>
-                  <tbody>
-                    {loading && !data
-                      ? Array.from({ length: 8 }, (_, i) => (
-                          <tr key={i} className="skeleton-row">
-                            <td colSpan={columnPairs.length}>
-                              <span />
-                            </td>
-                          </tr>
-                        ))
-                      : table.getRowModel().rows.map((row) => (
-                          <tr
-                            key={row.id}
-                            data-game-id={row.original.game_id}
-                            data-team-id={row.original.team_id}
+                          </div>
+                          <div
+                            id={`${p}-game-filters`}
+                            className={`accordion-collapse collapse${accordionOpen ? " show" : ""}`}
                           >
-                            {row.getVisibleCells().map((cell) => (
-                              <td key={cell.id} data-column={cell.column.id}>
-                                {flexRender(
-                                  cell.column.columnDef.cell,
-                                  cell.getContext(),
-                                )}
-                              </td>
+                            <div className="accordion-body">
+                              <Selectize
+                                id={`${p}_${euro ? "phase" : "game_type"}`}
+                                label={euro ? "Phase" : "Game type"}
+                                multiple
+                                placeholder={
+                                  euro ? "All phases" : "All game types"
+                                }
+                                choices={typeChoices}
+                                value={types}
+                                onChange={(v) =>
+                                  set({ [typeKey]: v.join(",") })
+                                }
+                              />
+                              <Selectize
+                                id={`${p}_opponents`}
+                                label="Opponents"
+                                multiple
+                                placeholder="All opponents"
+                                choices={teams}
+                                value={opps}
+                                onChange={(v) =>
+                                  set({ opponents: v.join(",") })
+                                }
+                              />
+                              <Selectize
+                                id={`${p}_home_away`}
+                                label="Home/Away"
+                                formControl={false}
+                                placeholder="All"
+                                emptyLabel="All"
+                                choices={[
+                                  { value: "home", label: "Home" },
+                                  { value: "away", label: "Away" },
+                                ]}
+                                value={[query.home_away]}
+                                onChange={(v) =>
+                                  set({ home_away: v[0] ?? null })
+                                }
+                              />
+                              <Selectize
+                                id={`${p}_outcome`}
+                                label="Outcome"
+                                formControl={false}
+                                placeholder="All"
+                                emptyLabel="All"
+                                choices={[
+                                  { value: "win", label: "Win" },
+                                  { value: "loss", label: "Loss" },
+                                ]}
+                                value={[query.outcome]}
+                                onChange={(v) => set({ outcome: v[0] ?? null })}
+                              />
+                              <hr />
+                              <div className="row">
+                                <div className="col-sm-6">
+                                  <Selectize
+                                    id={`${p}_gn_min`}
+                                    label={
+                                      euro
+                                        ? "From Round"
+                                        : tt("From Game Number (GN)", "gn")
+                                    }
+                                    placeholder="Any"
+                                    choices={roundChoices}
+                                    value={[query.min_gn]}
+                                    onChange={(v) =>
+                                      set({ min_gn: v[0] ?? null })
+                                    }
+                                  />
+                                </div>
+                                <div className="col-sm-6">
+                                  <Selectize
+                                    id={`${p}_gn_max`}
+                                    label={
+                                      euro
+                                        ? "To Round"
+                                        : tt("To Game Number (GN)", "gn")
+                                    }
+                                    placeholder="Any"
+                                    choices={roundChoices}
+                                    value={[query.max_gn]}
+                                    onChange={(v) =>
+                                      set({ max_gn: v[0] ?? null })
+                                    }
+                                  />
+                                </div>
+                              </div>
+                              <Selectize
+                                id={`${p}_last_n`}
+                                label={tt("Last N Team Games", "last_n")}
+                                placeholder="Any"
+                                choices={lastChoices}
+                                value={[query.last_n]}
+                                onChange={(v) => set({ last_n: v[0] ?? null })}
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </form>
+                </div>
+                <div className="col-sm-9 ibpl-main-col" role="main">
+                  <div ref={fragments}>
+                    <div
+                      className="shiny-panel-conditional"
+                      style={
+                        view === "summary" ? undefined : { display: "none" }
+                      }
+                      dangerouslySetInnerHTML={{ __html: html.summary }}
+                    />
+                    <div
+                      className="shiny-panel-conditional"
+                      style={
+                        view === "four_factors"
+                          ? undefined
+                          : { display: "none" }
+                      }
+                      dangerouslySetInnerHTML={{ __html: html.four_factors }}
+                    />
+                  </div>
+                  <div className="chips-row">
+                    <button
+                      type="button"
+                      className="chips-filters-toggle js-filters-toggle"
+                      aria-expanded={!body.filtersCollapsed}
+                      aria-label={
+                        body.filtersCollapsed
+                          ? "Show the filter panel"
+                          : "Hide the filter panel"
+                      }
+                      onClick={body.toggleFilters}
+                    >
+                      <i className="bi bi-sliders" aria-hidden="true"></i>
+                      <span className="chips-filters-toggle-label">
+                        Filters
+                      </span>
+                    </button>
+                    <div className="chips-row-chips">
+                      <div id={`${p}_filter_chips`} aria-live="polite">
+                        <div className="filter-chips">
+                          <span className="filter-chip chip-season">
+                            {euro
+                              ? `${ui.euroCompetitionLabels[league === "euroleague" ? "E" : "U"]} ${seasonLabel(query.season, false)}`
+                              : seasonLabel(query.season)}
+                          </span>
+                          {chips}
+                          {!euro &&
+                            stats.map((f, i) => (
+                              <span
+                                key={`${f.col}-${i}`}
+                                className="filter-chip chip-stat"
+                              >
+                                {`${statLabel(f.col)} ${f.op === "ge" ? ">=" : "<="} ${f.value.toLocaleString("en-US", { maximumFractionDigits: 7 })}`}{" "}
+                                <a
+                                  href="#"
+                                  style={{ marginLeft: 4, color: "inherit" }}
+                                  aria-label={`Remove ${statLabel(f.col)} filter`}
+                                  onClick={(e) => {
+                                    e.preventDefault();
+                                    const rest = stats.filter(
+                                      (_, j) => j !== i,
+                                    );
+                                    set({
+                                      stats: rest.length
+                                        ? JSON.stringify(rest)
+                                        : null,
+                                    });
+                                  }}
+                                >
+                                  ×
+                                </a>
+                              </span>
                             ))}
-                          </tr>
-                        ))}
-                  </tbody>
-                </table>
-                {!loading && !rows.length && (
-                  <p className="empty">No games match these filters.</p>
-                )}
+                          {!euro && (
+                            <span
+                              style={{
+                                position: "relative",
+                                display: "inline-block",
+                              }}
+                            >
+                              <span
+                                className="filter-chip filter-chip-add"
+                                id={`${p}_stat_filter_add_btn`}
+                                role="button"
+                                tabIndex={0}
+                                aria-pressed={statOpen}
+                                aria-expanded={statOpen}
+                                style={{ cursor: "pointer" }}
+                                onClick={() => setStatOpen((o) => !o)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setStatOpen((o) => !o);
+                                  }
+                                }}
+                              >
+                                <i className="bi bi-plus"></i> Stat filter
+                              </span>
+                              {statOpen && (
+                                <div
+                                  className="popover bs-popover-auto fade show"
+                                  role="dialog"
+                                  aria-label="Add stat filter"
+                                  data-popper-placement="bottom"
+                                  ref={keepInViewport}
+                                  style={{
+                                    position: "absolute",
+                                    top: "100%",
+                                    left: "50%",
+                                    transform: "translateX(-50%)",
+                                    marginTop: 8,
+                                  }}
+                                >
+                                  <div
+                                    className="popover-arrow"
+                                    style={{
+                                      position: "absolute",
+                                      left: "50%",
+                                      transform: "translateX(-50%)",
+                                    }}
+                                  ></div>
+                                  <h3 className="popover-header">
+                                    Add stat filter
+                                  </h3>
+                                  <div className="popover-body">
+                                    <div
+                                      className={`${p}-stat-popover`}
+                                      style={{ minWidth: 220 }}
+                                    >
+                                      <Selectize
+                                        id={`${p}_stat_filter_col`}
+                                        label="Column"
+                                        formControl={false}
+                                        placeholder="Choose..."
+                                        style={{ width: "100%" }}
+                                        choices={statCols.map((c) => ({
+                                          value: c.label,
+                                          label: c.label,
+                                        }))}
+                                        value={[statCol]}
+                                        onChange={(v) => setStatCol(v[0] ?? "")}
+                                      />
+                                      <div
+                                        className="form-group shiny-input-radiogroup shiny-input-container shiny-input-container-inline"
+                                        role="radiogroup"
+                                        aria-labelledby={`${p}_stat_filter_op-label`}
+                                      >
+                                        <label
+                                          className="control-label"
+                                          id={`${p}_stat_filter_op-label`}
+                                        >
+                                          Operator
+                                        </label>
+                                        <div className="shiny-options-group">
+                                          {(["ge", "le"] as const).map((op) => (
+                                            <label
+                                              key={op}
+                                              className="radio-inline"
+                                            >
+                                              <input
+                                                type="radio"
+                                                name={`${p}_stat_filter_op`}
+                                                value={op}
+                                                checked={statOp === op}
+                                                onChange={() => setStatOp(op)}
+                                              />
+                                              <span>
+                                                {op === "ge" ? ">=" : "<="}
+                                              </span>
+                                            </label>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div
+                                        className="form-group shiny-input-container"
+                                        style={{ width: "100%" }}
+                                      >
+                                        <label
+                                          className="control-label"
+                                          htmlFor={`${p}_stat_filter_value`}
+                                        >
+                                          Value
+                                        </label>
+                                        <input
+                                          id={`${p}_stat_filter_value`}
+                                          type="number"
+                                          className="shiny-input-number form-control"
+                                          value={statValue}
+                                          onChange={(e) =>
+                                            setStatValue(e.target.value)
+                                          }
+                                          onKeyDown={(e) =>
+                                            e.key === "Enter" && addStat()
+                                          }
+                                        />
+                                      </div>
+                                      {statCols.some((c) =>
+                                        c.label.includes("%"),
+                                      ) && (
+                                        <div className="small text-muted mb-2">
+                                          Percent columns: enter as 0-100.
+                                        </div>
+                                      )}
+                                      <button
+                                        className="btn btn-default action-button btn-sm btn-primary w-100"
+                                        type="button"
+                                        onClick={addStat}
+                                      >
+                                        Add
+                                      </button>
+                                    </div>
+                                    <button
+                                      type="button"
+                                      aria-label="Close"
+                                      className="btn-close"
+                                      onClick={() => setStatOpen(false)}
+                                      style={{
+                                        position: "absolute",
+                                        top: "0.6rem",
+                                        right: "0.25rem",
+                                        width: "0.55rem",
+                                        height: "0.55rem",
+                                        backgroundSize: "0.55rem",
+                                      }}
+                                    ></button>
+                                  </div>
+                                </div>
+                              )}
+                            </span>
+                          )}
+                          {(chips.length > 0 || stats.length > 0) && (
+                            <button
+                              className="chip-clear-all"
+                              type="button"
+                              onClick={reset}
+                            >
+                              Clear all
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <div dangerouslySetInnerHTML={{ __html: html.hint }} />
+                  <div
+                    id={`${p}_table`}
+                    className={`datatables html-widget html-widget-output${loading ? " recalculating" : ""}`}
+                    style={{ width: "100%", height: "auto" }}
+                    aria-busy={loading}
+                    aria-live="polite"
+                  >
+                    {error ? (
+                      <div className="shiny-output-error" role="alert">
+                        <span>{error}</span>{" "}
+                        <button
+                          type="button"
+                          className="btn btn-default btn-sm"
+                          onClick={() => setRevision((r) => r + 1)}
+                        >
+                          Retry
+                        </button>
+                      </div>
+                    ) : !data ? null : rows.length ? (
+                      <GameLogsTable
+                        key={draw}
+                        league={league}
+                        view={data.meta.view ?? view}
+                        rows={rows}
+                        shotAverages={data.meta.shot_averages}
+                      />
+                    ) : euro ? (
+                      // empty_game_log() in server_tab11_euro_gamelogs.R
+                      <div className="dataTables_wrapper no-footer">
+                        <table
+                          className="display dataTable no-footer"
+                          style={{ width: "100%" }}
+                        >
+                          <thead>
+                            <tr>
+                              <th className="sorting_disabled">Info</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <tr className="odd">
+                              <td>No games match the current filters</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
               </div>
-            )}
-            <p className="table-note">
-              PPP = points per 100 possessions. Green indicates a stronger
-              season percentile; red indicates a weaker one. Gameflow will be
-              available in a later migration phase.
-            </p>
-          </section>
+            </div>
+          </div>
         </div>
-      </main>
-    </>
+      </Navbar>
+      {glossary && <Glossary onClose={() => setGlossary(false)} />}
+    </TouchTipsContext.Provider>
   );
 }

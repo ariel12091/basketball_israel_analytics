@@ -1,4 +1,57 @@
-# Phase 0 execution status -- HANDOFF (2026-10-20)
+# React migration -- HANDOFF (updated 2026-10-21)
+
+## START HERE (current state, read this first)
+
+**Direction (user, 2026-10-21):** move EVERY Shiny feature -- including the
+table layouts -- to Next.js/React on Vercel, in the spirit of the Shiny app.
+Do not redesign and do not over-polish: a later redesign will put all devices
+under one design and declutter the stats pages. One layout per viewport width
+for every device, mobile first (no user-agent sniffing). Features first.
+
+**Game Logs: done for this transition** (branch `sql/web-foundation`, not
+pushed, not merged). The page now reuses Shiny's own presentation instead of
+the earlier light redesign:
+- Styles: `scripts/export_web_shiny_ui.R` compiles the bslib theme from
+  `app/app.R` (Bootstrap, selectize, bslib components, datepicker) and copies
+  the DataTables/Shiny CSS into `web/src/styles/shiny/vendor/`; it also writes
+  `web/src/data/shinyUi.json` (explainers, example boxes, legend, table hints,
+  glossary, tooltips, heat colours, stat-filter columns, seasons, Israeli team
+  catalogue). `npm run sync-styles` copies `app/www/app.css` + `mobile.css`
+  byte for byte; `src/styles/shiny.test.ts` pins them. Re-run both after
+  changing those Shiny sources. `.prettierignore` keeps prettier off them.
+- Components (`web/src/components/shiny/`): `Navbar` (tabs, view-mode hover
+  menu, league/season selects, Glossary, "Updated" stamp; non-migrated tabs are
+  shown but disabled), `Selectize`, `DateRangeInput` (bootstrap-datepicker
+  markup), `GameLogsTable` (DataTables markup: scrollHead/scrollBody split,
+  50-row paging, DT ordering, styleInterval heat, shot cells, Shiny CSV
+  format), `TouchTips` (header "i" + label strips), `useShinyBody` +
+  `layoutClasses` (width-based body classes, mobile first).
+- `GameLogsClient.tsx`: sidebar, explainer/example, chip bar with clears,
+  stat-filter popover, glossary modal, for Israeli League, EuroLeague, EuroCup.
+- API: default season = `DEFAULT_GAME_YEAR` / `EURO_DEFAULT_SEASON`; team
+  lists use MIN(team_name); EuroLeague seasons from `euro_fetch_seasons()`.
+  CSV defusing now matches `csv_defuse_formula()` (numeric text untouched).
+- Verified 2026-10-21: unit 37/37; browser 40/40 at 390 and 1440 px (all 15
+  stored Shiny presets: cells, default order, paging, ascending-first sort,
+  CSV, URL restore; controls for all three competitions); live read-only
+  smoke 6/6. Not yet redeployed to the Vercel preview.
+- Still deferred: GL-06 Gameflow (link shown, inert; the scoreless-game gate
+  is not wired in the route -- do it with Gameflow).
+
+**Next, in order (features first):**
+1. Deploy a new preview (`vercel.cmd deploy --environment preview` from
+   `web/`, then `node scripts/verify-preview.mjs <url>`).
+2. Next tab family, per spec phases 2-7: Player Stats, Team Ratings, On/Off,
+   Lineups, Gameflow + Home, Compare. For each: inventory IDs in
+   `docs/superpowers/specs/2026-10-19-api-mcp-feature-inventory.md`, goldens
+   from Shiny via the existing harness, API route calling the existing SQL
+   owners as `app_readonly`, page reusing the `components/shiny/` pieces.
+3. The Phase 0 proofs (load test, connection budget, publication markers)
+   stay parked until the features are across, unless load forces them.
+
+Everything below is the earlier record.
+
+# (Earlier) Phase 0 execution status -- HANDOFF (2026-10-20)
 
 ## START HERE: decision for the next session (user, 2026-10-20, end of session)
 

@@ -15,14 +15,18 @@ export async function GET(
     const season = await getSeason(p),
       result = gameLogs(season, [], p);
     const schedule = season.schedule ?? season.rows;
-    const teams = [
-      ...new Map(
-        schedule.map((row) => [
-          Number(row.team_id),
-          { id: Number(row.team_id), name: String(row.team_name) },
-        ]),
-      ).values(),
-    ].sort((a, b) => (a.name < b.name ? -1 : 1));
+    // fetch_teams_min() / euro_fetch_teams(): MIN(team_name) per team id,
+    // ordered by name (the Israeli pickers use the catalogue roster first).
+    const byId = new Map<number, string>();
+    for (const row of schedule) {
+      const id = Number(row.team_id),
+        name = String(row.team_name);
+      const seen = byId.get(id);
+      if (seen === undefined || name < seen) byId.set(id, name);
+    }
+    const teams = [...byId]
+      .map(([id, name]) => ({ id, name }))
+      .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
     return Response.json(
       {
         ...result,
@@ -32,6 +36,7 @@ export async function GET(
           season: p.season,
           view: p.view,
           version: season.version,
+          ...(season.seasons ? { seasons: season.seasons } : {}),
           teams,
           rounds: [
             ...new Set(

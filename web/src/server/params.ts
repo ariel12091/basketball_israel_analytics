@@ -5,6 +5,7 @@ import type {
   Bounds,
 } from "../rules/gameLogs";
 import { ParamError } from "./api";
+import ui from "../data/shinyUi.json";
 export function leagueParam(value: string): League {
   if (!["il", "euroleague", "eurocup"].includes(value))
     throw new ParamError("league", "Unknown league");
@@ -62,9 +63,8 @@ export function parseParams(
 ): GameLogParams {
   const season =
     integer(search.get("season"), "season", 2000, 2100) ??
-    (league === "il"
-      ? new Date().getUTCFullYear() + Number(new Date().getUTCMonth() >= 8)
-      : new Date().getUTCFullYear() - Number(new Date().getUTCMonth() < 8));
+    // DEFAULT_GAME_YEAR / EURO_DEFAULT_SEASON, as Shiny opens on them.
+    Number(league === "il" ? ui.defaultGameYear : ui.euroDefaultSeason);
   const view = search.get("view") ?? "summary";
   if (view !== "summary" && view !== "four_factors")
     throw new ParamError("view", "Invalid view");

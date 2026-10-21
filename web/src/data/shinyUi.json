@@ -1,0 +1,433 @@
+{
+  "il": {
+    "summary": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Summary)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"gamelogs_explainer_summary_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"gamelogs_explainer_summary_body\" class=\"explainer-body collapse\">\n              <p>How did each game look in outcomes and pace-adjusted efficiency terms?<\/p>\n              <ul>\n<li>Each row shows GN, Game Type, Date, Gameflow, Team, Opponent, W/L, Score, Off PPP, Def PPP, Net, Off Shot, Def Shot, Off Poss, and Def Poss.<\/li>\n                <li>Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.<\/li>\n                <li>Compare Off PPP and Def PPP across games to spot trends; the score alone can mislead when pace varies.<\/li>\n                <li>Switch to Four Factors view if you need the cause-level breakdown (eFG%, OREB%, TOV%, FTR).<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<a href=\"#gamelogs-example-box\" class=\"explainer-toggle\" data-bs-toggle=\"collapse\" data-bs-target=\"#gamelogs-example-box\">Show/Hide Example<\/a>\n<div id=\"gamelogs-example-box\" class=\"collapse example-wrapper\">\n            <div class=\"example-grid\">\n              <div class=\"example-card\">\n                <div class=\"example-card-title\">How to Read Game Logs (Real Example)<\/div>\n                <p style=\"margin-bottom: 6px;\">For GN 17, Bnei Herzliya vs Hapoel Galil Elion finished 105-89.<\/p>\n                <p style=\"margin-bottom: 6px;\">In that game, Off PPP was 128.0 and Def PPP was 107.2, so Net was +20.8.<\/p>\n                <p style=\"margin-bottom: 0;\">This single-game view helps you compare whether dominant results came from offense, defense, or both.<\/p>\n              <\/div>\n              <div class=\"example-snippet\">\n                <img src=\"/images/gamelogs-row-snippet.png\" alt=\"Game logs summary table snippet\"><div class=\"example-snippet-caption\">Real summary snippet (Game Logs)<\/div>\n              <\/div>\n            <\/div>\n          <\/div>\n<div class=\"legend-box\">\n            <span style=\"font-weight:700; margin-right:10px;\">Shot Splits:<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Frequency<\/span>\n                <div style=\"display:flex; align-items:center; gap:8px;\">\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg2); border-radius:3px;\"><\/div>\n                  <span>2PT<\/span>\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg3); border-radius:3px; margin-left:6px;\"><\/div>\n                  <span>3PT<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n            <span style=\"margin:0 12px; color:var(--ibpl-border);\">|<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Accuracy<\/span>\n                <div style=\"display:flex; align-items:center; gap:6px;\">\n                  <span style=\"color:var(--ibpl-neg); font-weight:600;\">FG%<\/span>\n                  <span style=\"color:var(--ibpl-text-dim); margin:0 2px;\">-&gt;<\/span>\n                  <span style=\"color:var(--ibpl-pos); font-weight:600;\">FG%<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n          <\/div>",
+    "four_factors": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Four Factors)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"gamelogs_explainer_ff_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"gamelogs_explainer_ff_body\" class=\"explainer-body collapse\">\n              <p>Which four-factor components drove each single-game result? Each row shows one game with GN, date, teams, W/L, score, and the full PPP + eFG% + OREB% + TOV% + FTR breakdown for both offense and defense.<\/p>\n              <ul>\n<li>Scan eFG%, OREB%, TOV%, and FTR together to diagnose why a game was won or lost.<\/li>\n                <li>Compare offense and defense factor columns side by side -- a win can mask poor defense if offense was exceptional.<\/li>\n                <li>Look for patterns across games: consistent factor profiles suggest sustainability, while one-off spikes may be variance.<\/li>\n                <li>Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% game was driven by sustainable shot selection or a hot-hand streak.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<a href=\"#gamelogs-ff-example-box\" class=\"explainer-toggle\" data-bs-toggle=\"collapse\" data-bs-target=\"#gamelogs-ff-example-box\">Show/Hide Example<\/a>\n<div id=\"gamelogs-ff-example-box\" class=\"collapse example-wrapper\">\n            <div class=\"example-grid\">\n              <div class=\"example-card\">\n                <div class=\"example-card-title\">How to Read Four Factors (Real Example)<\/div>\n                <p style=\"margin-bottom: 6px;\">GN 17 (Bnei Herzliya vs Hapoel Galil Elion, 105-89) shows strong offense: PPP 128.0 with eFG% 63.3.<\/p>\n                <p style=\"margin-bottom: 6px;\">Defense was solid too: PPP allowed 107.2 with opponent eFG% 57.8 and FTR 50.8 (opponents got to the line frequently).<\/p>\n                <p style=\"margin-bottom: 0;\">The split across eFG%, OREB%, TOV%, and FTR shows offense carried this win, despite allowing a high free-throw rate.<\/p>\n              <\/div>\n              <div class=\"example-snippet\">\n                <img src=\"/images/gamelogs-ff-row-snippet.png\" alt=\"Game logs four factors table snippet\"><div class=\"example-snippet-caption\">Real Four Factors snippet (Game Logs)<\/div>\n              <\/div>\n            <\/div>\n          <\/div>",
+    "hint": "<div class=\"table-hint\">\n          <span class=\"hint-pointer\">Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition<\/span>\n          <span class=\"hint-touch\">Tap View under Gameflow for a game's lineup timeline · Tap a column header to sort · Tap a header's info button for its definition<\/span>\n        <\/div>"
+  },
+  "euro": {
+    "summary": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Summary)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"eurogl_explainer_summary_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"eurogl_explainer_summary_body\" class=\"explainer-body collapse\">\n              <p>How did each EuroLeague game look in result and possession-adjusted efficiency terms?<\/p>\n              <ul>\n<li>Each row is one team's perspective on one game, with round, date, Gameflow, opponent, result, score, and ratings.<\/li>\n                <li>Off PPP is points scored per 100 possessions; Def PPP is points allowed per 100. Net is the gap.<\/li>\n                <li>Compare games by efficiency rather than score alone, because pace and possession counts vary.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>",
+    "four_factors": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Four Factors)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"eurogl_explainer_ff_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"eurogl_explainer_ff_body\" class=\"explainer-body collapse\">\n              <p>Which shooting, rebounding, turnover, and free-throw components drove each game?<\/p>\n              <ul>\n<li>Read offense and defense side by side to diagnose why a game was won or lost.<\/li>\n                <li>Rates are calculated from additive game counts, never by averaging stored percentages.<\/li>\n                <li>EuroLeague possessions and free-throw trips use the EuroLeague engine and source semantics.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>",
+    "hint": "<div class=\"table-hint\">\n          <span class=\"hint-pointer\">Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition<\/span>\n          <span class=\"hint-touch\">Tap View under Gameflow for a game's lineup timeline · Tap a column header to sort · Tap a header's info button for its definition<\/span>\n        <\/div>"
+  },
+  "glossaryHtml": "<h5 style=\"margin-top: 0; color: var(--ibpl-accent);\">Efficiency<\/h5>\n<ul>\n<li>\n            <b>PPP<\/b>\n            : Points per 100 possessions (points per possession x 100).\n          <\/li>\n          <li>\n            <b>Net Rating<\/b>\n            : Offensive PPP minus Defensive PPP. Positive = outscoring opponents.\n          <\/li>\n          <li>\n            <b>Possessions<\/b>\n            : Estimated offensive or defensive trips. More possessions = more reliable stats.\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Four Factors<\/h5>\n<ul>\n<li>\n            <b>TS%<\/b>\n            : True Shooting -- scoring efficiency accounting for 2PT, 3PT, and free throws. Formula: pts / (2 x (FGA + FT trips)).\n          <\/li>\n          <li>\n            <b>OREB%<\/b>\n            : Offensive rebound rate -- share of available misses grabbed. On defense, it measures opponent offensive rebounds allowed.\n          <\/li>\n          <li>\n            <b>TOV%<\/b>\n            : Turnover rate -- turnovers per possession. Lower is better on offense; higher is better on defense.\n          <\/li>\n          <li>\n            <b>FTR<\/b>\n            : Free throw rate -- FTA / FGA. Measures how often a team or player gets to the line relative to shot attempts.\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Shot Splits<\/h5>\n<ul>\n<li>\n            <b>Off Shot / Def Shot<\/b>\n            : Each cell shows 2PT and 3PT frequency (how often that shot type is taken) and accuracy (FG%).\n          <\/li>\n          <li>\n            The \n            <span style=\"color: var(--ibpl-fg2); font-weight: 600;\">blue<\/span>\n             bar is 2PT frequency, the \n            <span style=\"color: var(--ibpl-fg3); font-weight: 600;\">orange<\/span>\n             bar is 3PT frequency.\n          <\/li>\n          <li>\n            Accuracy is shown as FG% text, colored from \n            <span style=\"color: var(--ibpl-neg);\">red<\/span>\n             (below league average) to \n            <span style=\"color: var(--ibpl-pos);\">green<\/span>\n             (above league average).\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Colors &amp; Ranking<\/h5>\n<ul>\n<li>\n            <b>Heat colors<\/b>\n            : \n            <span style=\"color: var(--ibpl-pos);\">Green<\/span>\n             = good, \n            <span style=\"color: var(--ibpl-neg);\">red<\/span>\n             = bad. \n            <b>Polarity flips for defense<\/b>\n             -- lower Def PPP is better, so green means fewer points allowed.\n          <\/li>\n          <li>\n            <b>TOV% exception<\/b>\n            : On offense, lower TOV% is green (fewer turnovers). On defense, higher TOV% is green (more opponent turnovers).\n          <\/li>\n          <li>\n            <b>Gray / no color<\/b>\n            : The player, lineup, or team has too few possessions to rank reliably (below the minimum threshold).\n          <\/li>\n          <li>\n            <b>Percentile rank bars<\/b>\n             (Four Factors view): The slider shows where a player ranks from 0% to 100% among all players with enough possessions. 50% = league median. Only players above the minimum possession threshold are included in rankings.\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Filters<\/h5>\n<ul>\n<li>\n            <b>Game Number (GN)<\/b>\n            : Each team's sequential game number in the season. Useful for filtering to a stretch of games.\n          <\/li>\n          <li>\n            <b>Last N<\/b>\n            : Only include the most recent N games. Mutually exclusive with GN range.\n          <\/li>\n          <li>\n            <b>Opponent Strength<\/b>\n            : Filter games by the opponent's league ranking over the selected sample.\n          <\/li>\n          <li>\n            <b>Clutch<\/b>\n             (Tabs 2, 3): Limit to close-game possessions based on score margin, time remaining, and lead/trail status. Overtime qualifies by default.\n          <\/li>\n          <li>\n            <b>Min Possessions<\/b>\n            : Minimum possessions to appear in the table. Higher = more stable data but fewer rows.\n          <\/li>\n        <\/ul>",
+  "columnTooltips": {
+    "PPP": "Points per 100 possessions",
+    "Off PPP": "Offensive points per 100 possessions",
+    "Def PPP": "Defensive points per 100 possessions",
+    "Net": "Offensive PPP minus Defensive PPP",
+    "Net Rtg": "Offensive PPP minus Defensive PPP",
+    "Net RTG": "Offensive PPP minus Defensive PPP",
+    "Off": "Offensive PPP diff: On-court minus Off-court",
+    "Def": "Defensive PPP diff: On-court minus Off-court",
+    "Diff": "Net PPP impact: On-court minus Off-court",
+    "TS%": "True Shooting: pts / (2 x (FGA + FT trips)). A trip is one visit to the line for a personal foul, credited to the lineup that drew it.",
+    "USG%": "Usage rate: share of team shot, free-throw, and turnover possessions while on court",
+    "OREB%": "Offense: offensive rebounds / available misses. Defense: opponent offensive rebounds allowed / available misses",
+    "TOV%": "Turnover rate: turnovers / possessions",
+    "FTR": "Free throw rate: FTA / FGA",
+    "Off Shot": "Offensive 2PT/3PT frequency and accuracy split",
+    "Def Shot": "Defensive 2PT/3PT frequency and accuracy split",
+    "FG%": "Field goal percentage",
+    "2P%": "Two-point percentage",
+    "3P%": "Three-point percentage",
+    "FT%": "Free throw percentage",
+    "eFG%": "Effective FG%: (FGM + 0.5 x 3PM) / FGA",
+    "On Poss": "On-court possessions for this player or split",
+    "ON Poss": "On-court possessions for this player or split",
+    "Off Poss": "Offensive possessions",
+    "OFF Poss": "Off-court possessions for this player or split",
+    "Poss": "Number of possessions in this row or split",
+    "Total Poss": "Total offensive plus defensive possessions",
+    "Def Poss": "Defensive possessions",
+    "Min": "Minutes played",
+    "GP": "Games played",
+    "Poss On Floor": "Total possessions while this player was on the floor",
+    "# Starters": "Number of starters in this lineup",
+    "GN": "Team's sequential game number this season",
+    "W/L": "Win or Loss",
+    "+/-": "Point differential while lineup was on court",
+    "Off Pace": "Offensive possessions per 40 minutes",
+    "Def Pace": "Defensive possessions per 40 minutes",
+    "PTS": "Points",
+    "REB": "Rebounds",
+    "OREB": "Offensive rebounds",
+    "DREB": "Defensive rebounds",
+    "AST": "Assists",
+    "STL": "Steals",
+    "BLK": "Blocks",
+    "DFL": "Deflections",
+    "TOV": "Turnovers",
+    "FGM": "Field goals made",
+    "FGA": "Field goal attempts",
+    "2PM": "Two-pointers made",
+    "2PA": "Two-point attempts",
+    "3PM": "Three-pointers made",
+    "3PA": "Three-point attempts",
+    "FTM": "Free throws made",
+    "FTA": "Free throw attempts"
+  },
+  "filterTooltips": {
+    "min_poss_side": "Minimum OFF + DEF possessions to appear in table",
+    "min_on_poss": "Minimum ON-court possessions for percentile ranking",
+    "own_starters": "Filter by number of starters in the team's lineup",
+    "opp_starters": "Filter by number of starters in the opposing lineup",
+    "gn": "Sequential game number within a team's season; player and team views both use the team's GN",
+    "last_n": "Only include the most recent N games in the selected team context",
+    "opp_strength": "Filter games by the opponent's league ranking over the selected sample",
+    "clutch": "Limit results to close-game situations based on margin, time remaining, and score status",
+    "group_size": "Number of players in each lineup combination (2-5)",
+    "quick_preset": "Apply a prebuilt compare split like starters vs bench, clutch vs non-clutch, or date/GN split",
+    "players_on": "Every player selected here has to be on the floor",
+    "players_on_any": "At least one player selected here has to be on the floor, on top of the box above. Leave it empty to match on the first box alone",
+    "players_off": "Skip any lineup containing a player selected here",
+    "min_poss_lineup": "Minimum total possessions required for the lineup, team, or compare side to appear",
+    "view_summary": "PPP ratings and shooting splits",
+    "view_ff": "eFG%, OREB%, TOV%, FTR breakdown",
+    "view_traditional": "Box-score counting stats"
+  },
+  "offOrebTooltip": "Offensive rebound rate: offensive rebounds / available misses",
+  "defOrebTooltip": "Opponent offensive rebound rate allowed: opponent offensive rebounds / available misses",
+  "heat": {
+    "cuts": [0.05, 0.1, 0.15, 0.2, 0.25, 0.3, 0.35, 0.4, 0.45, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.85, 0.9, 0.95],
+    "grad": ["#6E2622", "#6C2B25", "#6B3028", "#69352B", "#683A2F", "#673F32", "#654435", "#644938", "#634E3C", "#61533F", "#5E5841", "#595C42", "#536044", "#4E6545", "#496946", "#446D47", "#3E7249", "#39764A", "#347A4B", "#2F7F4D"],
+    "rev": ["#2F7F4D", "#347A4B", "#39764A", "#3E7249", "#446D47", "#496946", "#4E6545", "#536044", "#595C42", "#5E5841", "#61533F", "#634E3C", "#644938", "#654435", "#673F32", "#683A2F", "#69352B", "#6B3028", "#6C2B25", "#6E2622"]
+  },
+  "euroCompetitionLabels": {
+    "E": "EuroLeague",
+    "U": "EuroCup"
+  },
+  "statFilterCols": {
+    "summary": [
+      {
+        "label": "GN",
+        "col": "gn"
+      },
+      {
+        "label": "Min",
+        "col": "minutes"
+      },
+      {
+        "label": "Off PPP",
+        "col": "off_ppp"
+      },
+      {
+        "label": "Def PPP",
+        "col": "def_ppp"
+      },
+      {
+        "label": "Net",
+        "col": "net_rtg"
+      },
+      {
+        "label": "Off Shot",
+        "col": "Off Shot"
+      },
+      {
+        "label": "Off 2PT%",
+        "col": "off_fg2_pct"
+      },
+      {
+        "label": "Off 2PT Freq",
+        "col": "off_fg2_freq"
+      },
+      {
+        "label": "Off 3PT%",
+        "col": "off_fg3_pct"
+      },
+      {
+        "label": "Off 3PT Freq",
+        "col": "off_fg3_freq"
+      },
+      {
+        "label": "Def Shot",
+        "col": "Def Shot"
+      },
+      {
+        "label": "Def 2PT%",
+        "col": "def_fg2_pct"
+      },
+      {
+        "label": "Def 2PT Freq",
+        "col": "def_fg2_freq"
+      },
+      {
+        "label": "Def 3PT%",
+        "col": "def_fg3_pct"
+      },
+      {
+        "label": "Def 3PT Freq",
+        "col": "def_fg3_freq"
+      },
+      {
+        "label": "Off Poss",
+        "col": "off_poss"
+      },
+      {
+        "label": "Def Poss",
+        "col": "def_poss"
+      }
+    ],
+    "four_factors": [
+      {
+        "label": "GN",
+        "col": "gn"
+      },
+      {
+        "label": "Min",
+        "col": "minutes"
+      },
+      {
+        "label": "Off PPP",
+        "col": "off_ppp"
+      },
+      {
+        "label": "Off eFG%",
+        "col": "off_efg_pct"
+      },
+      {
+        "label": "Off OREB%",
+        "col": "off_oreb_pct"
+      },
+      {
+        "label": "Off TOV%",
+        "col": "off_tov_pct"
+      },
+      {
+        "label": "Off FTR",
+        "col": "off_ftr_pct"
+      },
+      {
+        "label": "Def PPP",
+        "col": "def_ppp"
+      },
+      {
+        "label": "Def eFG%",
+        "col": "def_efg_pct"
+      },
+      {
+        "label": "Def OREB%",
+        "col": "def_oreb_pct"
+      },
+      {
+        "label": "Def TOV%",
+        "col": "def_tov_pct"
+      },
+      {
+        "label": "Def FTR",
+        "col": "def_ftr_pct"
+      },
+      {
+        "label": "Off Poss",
+        "col": "off_poss"
+      },
+      {
+        "label": "Def Poss",
+        "col": "def_poss"
+      }
+    ]
+  },
+  "round1": {
+    "summary": ["off_ppp", "def_ppp", "net_rtg"],
+    "four_factors": ["off_efg_pct", "off_oreb_pct", "off_tov_pct", "off_ftr_pct", "def_efg_pct", "def_oreb_pct", "def_tov_pct", "def_ftr_pct", "off_ppp", "def_ppp", "net_rtg"]
+  },
+  "ilTeams": {
+    "2025": [
+      {
+        "id": 173,
+        "name": "BEER SHEVA"
+      },
+      {
+        "id": 9,
+        "name": "BNEI HERZLIYA"
+      },
+      {
+        "id": 8,
+        "name": "ELITZUR NETANYA"
+      },
+      {
+        "id": 11,
+        "name": "GILBOA/GALIL"
+      },
+      {
+        "id": 28,
+        "name": "HAPOEL AFULA"
+      },
+      {
+        "id": 44,
+        "name": "HAPOEL GALIL ELION"
+      },
+      {
+        "id": 246,
+        "name": "HAPOEL HAIFA"
+      },
+      {
+        "id": 7,
+        "name": "HAPOEL HOLON"
+      },
+      {
+        "id": 4,
+        "name": "HAPOEL JERUSALEM"
+      },
+      {
+        "id": 3,
+        "name": "HAPOEL TEL AVIV"
+      },
+      {
+        "id": 24,
+        "name": "KIRYAT ATA"
+      },
+      {
+        "id": 30,
+        "name": "MACCABI RAMAT GAN"
+      },
+      {
+        "id": 2,
+        "name": "MACCABI TEL AVIV"
+      },
+      {
+        "id": 13,
+        "name": "NESS ZIONA"
+      }
+    ],
+    "2026": [
+      {
+        "id": 11,
+        "name": "BEER SHEVA"
+      },
+      {
+        "id": 6,
+        "name": "BNEI HERZLIYA"
+      },
+      {
+        "id": 15,
+        "name": "ELIZUR NETANYA"
+      },
+      {
+        "id": 10,
+        "name": "GALIL ELION"
+      },
+      {
+        "id": 8,
+        "name": "HAPOEL HAEMEK"
+      },
+      {
+        "id": 5,
+        "name": "HAPOEL HOLON"
+      },
+      {
+        "id": 4,
+        "name": "HAPOEL JERUSALEM"
+      },
+      {
+        "id": 3,
+        "name": "HAPOEL TEL AVIV"
+      },
+      {
+        "id": 12,
+        "name": "KIRYAT ATA"
+      },
+      {
+        "id": 13,
+        "name": "MACCABI RAANANA"
+      },
+      {
+        "id": 7,
+        "name": "MACCABI RAMAT GAN"
+      },
+      {
+        "id": 2,
+        "name": "MACCABI TEL AVIV"
+      },
+      {
+        "id": 9,
+        "name": "NESS ZIONA"
+      },
+      {
+        "id": 14,
+        "name": "RISHON LEZION"
+      }
+    ],
+    "2027": [
+      {
+        "id": 11,
+        "name": "BEER SHEVA/DIMONA"
+      },
+      {
+        "id": 6,
+        "name": "BNEI HERZLIYA"
+      },
+      {
+        "id": 17,
+        "name": "HAPOEL EILAT"
+      },
+      {
+        "id": 10,
+        "name": "HAPOEL GALIL ELION"
+      },
+      {
+        "id": 8,
+        "name": "HAPOEL HAEMEK"
+      },
+      {
+        "id": 5,
+        "name": "HAPOEL HOLON"
+      },
+      {
+        "id": 4,
+        "name": "HAPOEL JERUSALEM"
+      },
+      {
+        "id": 3,
+        "name": "HAPOEL TEL AVIV"
+      },
+      {
+        "id": 12,
+        "name": "IRONI KIRYAT ATA"
+      },
+      {
+        "id": 14,
+        "name": "M. RISHON"
+      },
+      {
+        "id": 33,
+        "name": "MACCABI ASHDOD"
+      },
+      {
+        "id": 7,
+        "name": "MACCABI RAMAT GAN"
+      },
+      {
+        "id": 2,
+        "name": "MACCABI TEL AVIV"
+      },
+      {
+        "id": 9,
+        "name": "NESS ZIONA"
+      }
+    ]
+  },
+  "defaultGameYear": "2027",
+  "ilSeasons": ["2027", "2026", "2025"],
+  "euroDefaultSeason": "2026",
+  "euroStaticSeasons": ["2026", "2025"],
+  "seasonDateBounds": {
+    "2027": {
+      "start": "2026-09-01",
+      "end": "2027-07-01"
+    }
+  },
+  "leagueChoices": [
+    {
+      "label": "EuroLeague",
+      "value": "E"
+    },
+    {
+      "label": "EuroCup",
+      "value": "U"
+    },
+    {
+      "label": "Israeli League",
+      "value": "il"
+    }
+  ]
+}
