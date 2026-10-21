@@ -7,18 +7,15 @@
 // the stat filters, and renders the table.
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { League, Row } from "@/rules/gameLogs";
-import { applyStatFilters } from "@/rules/statFilters";
 import {
   autoMinAll,
   autoMinOn,
-  ffDisplayRows,
-  filterFfRows,
-  filterSummaryRows,
+  onoffTableRows,
   possCols,
-  summaryDerive,
   type View,
 } from "@/rules/onoff";
-import { onoffPath } from "@/lib/tabQuery";
+import { contextParams, onoffPath } from "@/lib/tabQuery";
+import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
 import ui from "@/data/shinyUi.json";
 import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
@@ -236,29 +233,49 @@ export default function OnOffClient({
       ),
   });
 
-  const rows = useMemo(() => {
-    const filtered =
-      dataView === "four_factors"
-        ? filterFfRows(population, teamIds, minAll, minOn)
-        : filterSummaryRows(population, teamIds, minAll, minOn);
-    const shown =
-      dataView === "four_factors"
-        ? ffDisplayRows(filtered)
-        : dataView === "summary"
-          ? summaryDerive(filtered, data?.league3p ?? null)
-          : filtered;
-    const onoffFilters = allStats.filter((f) => !f.col.startsWith("ps_"));
-    return applyStatFilters(shown, onoffFilters);
+  // Player Stats chips (ps_*) read the Player Stats frame for the same game
+  // context, and only while such a chip is active (ps_filter_frame()).
+  const psFilters = allStats.filter((f) => f.col.startsWith("ps_"));
+  const psActive = psFilters.length > 0;
+  const psUrl = useMemo(() => {
+    if (!psActive) return null;
+    const q = contextParams(query, league);
+    for (const k of [
+      "view",
+      "teams",
+      "team",
+      "stats",
+      "own_starters",
+      "opp_starters",
+    ])
+      q.delete(k);
+    return `/api/v1/${league}/player-stat-filters?${q}`;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [
-    population,
-    dataView,
-    query.teams,
-    minAll,
-    minOn,
-    query.stats,
-    data?.league3p,
-  ]);
+  }, [psActive, url, league]);
+  const ps = useTabData<{ rows: PsRow[]; meta: { version: string } }>(psUrl);
+  const psError = psFilters.length > 0 && Boolean(ps.error);
+
+  const rows = useMemo(
+    () =>
+      onoffTableRows(
+        { rows: population, league3p: data?.league3p ?? null, view: dataView },
+        { teams: teamIds, minAll, minOn, filters: allStats },
+        psFilters.length
+          ? (r) => applyPlayerStatFilters(r, ps.data?.rows ?? [], psFilters)
+          : undefined,
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [
+      population,
+      dataView,
+      query.teams,
+      minAll,
+      minOn,
+      query.stats,
+      data?.league3p,
+      ps.data,
+    ],
+  );
 
   const statCols = [
     ...ui.onoffStatFilterCols[view],
@@ -582,19 +599,44 @@ export default function OnOffClient({
           <TableHint hint={frag.hint} />
           <OutputArea
             id={euro ? "euro_dt" : "onoff_dt"}
-            loading={loading}
+            loading={loading || (psFilters.length > 0 && ps.loading)}
             error={error}
             retry={retry}
           >
-            {data && (
-              <OnOffTable
-                key={`${draw}-${dataView}`}
-                league={league}
-                view={dataView}
-                rows={rows}
-                showImpact={defaults.showImpact}
-                exportRef={exporter}
-              />
+            {psError ? (
+              // PLAYER_STAT_FILTER_ERROR_TEXT, as an Info table.
+              <div className="dataTables_wrapper no-footer">
+                <table
+                  className="display dataTable no-footer"
+                  style={{ width: "100%" }}
+                >
+                  <thead>
+                    <tr>
+                      <th className="sorting_disabled">Info</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="odd">
+                      <td>
+                        Player Stats filters could not be evaluated. Remove them
+                        or try again.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              data &&
+              (!psFilters.length || ps.data) && (
+                <OnOffTable
+                  key={`${draw}-${dataView}`}
+                  league={league}
+                  view={dataView}
+                  rows={rows}
+                  showImpact={defaults.showImpact}
+                  exportRef={exporter}
+                />
+              )
             )}
           </OutputArea>
           {(frag.after[view] as Block[]).length > 0 && (

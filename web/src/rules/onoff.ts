@@ -5,6 +5,7 @@
 import type { Row } from "./gameLogs";
 import { percentRank } from "./gameLogs";
 import { rRound } from "./round";
+import { applyStatFilters } from "./statFilters";
 import ui from "../data/shinyUi.json";
 
 const RANKING_BASELINE = ui.rankingBaseline; // global.R
@@ -573,4 +574,37 @@ export function ffDisplayRows(input: Row[]): Row[] {
     if (out.minutes === undefined) out.minutes = null;
     return out;
   });
+}
+
+/** The table rows the page shows for one answer and the page's own inputs:
+ * server_tab1.R result_df() (teams and possession bars on the ranked
+ * population), apply_player_stat_filters() (`psFilter`), then the renderer's
+ * preparation and stat filters (onoff_summary_datatable /
+ * onoff_four_factors_datatable / the Shot Profile branch). */
+export function onoffTableRows(
+  answer: { rows: Row[]; league3p: number | null; view: View },
+  inputs: {
+    teams: number[];
+    minAll: number;
+    minOn: number;
+    filters: { col: string; op: "ge" | "le"; value: number }[];
+  },
+  psFilter: (rows: Row[]) => Row[] = (r) => r,
+): Row[] {
+  const { teams, minAll, minOn, filters } = inputs;
+  const filtered =
+    answer.view === "four_factors"
+      ? filterFfRows(answer.rows, teams, minAll, minOn)
+      : filterSummaryRows(answer.rows, teams, minAll, minOn);
+  const narrowed = psFilter(filtered);
+  const shown =
+    answer.view === "four_factors"
+      ? ffDisplayRows(narrowed)
+      : answer.view === "summary"
+        ? summaryDerive(narrowed, answer.league3p)
+        : narrowed;
+  return applyStatFilters(
+    shown,
+    filters.filter((f) => !f.col.startsWith("ps_")),
+  );
 }

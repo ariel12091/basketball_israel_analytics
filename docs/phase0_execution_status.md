@@ -7,41 +7,56 @@ first in the spirit of Shiny, no redesign or pixel polish (a redesign comes
 later); one layout per viewport width, mobile first; idiomatic React (TanStack
 Table, JSX content, server first render), with Shiny's CSS only for the look.
 
-**State (branch `sql/web-foundation`, not pushed, not merged; nothing
-applied to production):**
-- **Game Logs: done** for both leagues. Commits `784face` (Shiny look),
-  `7009ad0` (idiomatic React core: TanStack `DataTable`, `Blocks` content,
-  `TabKit`, server first render via `server/gameLogsApi.ts`). Verified: unit
-  37/37, browser 40/40 at 390/1440 px against the 15 stored Shiny presets,
-  live smoke 6/6. GL-06 Gameflow deferred (link inert; scoreless gate not
-  wired). The last preview deploy predates `7009ad0`:
-  https://ibpl-game-logs-2h647f300-ariel12091-8759.vercel.app/il/game-logs
-- **On/Off: API and rules done, page not built** (`07795cd`).
-  `GET /api/v1/{league}/onoff?view=summary|four_factors|shot_profile` calls
-  the Tab 1/Tab 8 readers with Shiny's arguments and fast/filtered gate
-  (`server/onoffRepo.ts`, `server/contextParams.ts`); `rules/onoff.ts` ports
-  the FF ranks, Shot Profile ranking, row filters, auto-min, 3PT luck,
-  sample padding/flag and shot averages. Live: all three views, both
-  leagues, 200s, payloads 0.25-1.5 MB; EuroLeague FF filtered path ~9.6 s
-  (same SQL as Shiny; Phase 8). The export script already carries the
-  On/Off explainers, legends, luck popover, impact legend and constants.
-- **Known Shiny defect to carry, not copy:** the On/Off sidebar
-  "Download CSV" (`downloadButton("download_csv")`) has no server handler in
-  Shiny and does nothing; the web version will export the visible table --
-  register it as a deliberate difference when shipped.
+**State (2026-10-21, end of session; branch `sql/web-foundation`, not pushed,
+not merged; nothing applied to production):**
+- **Game Logs: done**, both leagues (`784face`, `7009ad0`). Unit 37/37,
+  browser 40/40 (390/1440 px, 15 stored Shiny presets), live smoke 6/6.
+  GL-06 Gameflow deferred. Last preview predates `7009ad0`.
+- **On/Off: page built, both leagues** (`07795cd` API, `9f7075b` page, plus
+  the last commit). Summary / Four Factors / Shot Profile (Israeli only),
+  sidebar incl. Opponent Strength, min-poss sliders with auto-min, Net cell
+  3PT luck / small-sample tags + tooltip, pivot menu, FF detail toggle, luck
+  popover, stat filters, **Player Stats (ps_*) chips** via
+  `GET /api/v1/{league}/player-stat-filters` (`server/playerStatFilterRepo.ts`,
+  `rules/playerStats.ts`). Row pipeline is the pure `onoffTableRows()` in
+  `rules/onoff.ts` (page and future parity test share it).
+  **Checked by hand against production Shiny:** 2026-27 defaults in all three
+  views (row counts, auto-min 180/60, first-row cells identical) and
+  2025-26 "PTS/G >= 15" (27 rows both). EuroLeague FF filtered path ~9.6 s
+  (same SQL as Shiny; Phase 8).
+- **Not done for On/Off:** goldens, browser tests, live-smoke entries, the
+  sidebar CSV deviation entry (Shiny's `download_csv` has no handler; ours
+  exports the visible table -- register in `docs/shared_definitions.md`).
 
 **Next, in order:**
-1. On/Off page (`[league]/onoff`): sidebar (dates, teams multi, starters,
-   Game Filters + Opponent Strength), the two min-possession sliders with
-   auto-min (`setup_onoff_auto_min` rules), chips incl. Player Stats chips
-   (`ps_*`, needs the traditional reader), the Summary / Four Factors /
-   Shot Profile tables, luck/sample tags and tooltip, FF ranges toggle,
-   row pivots (X-17) to Lineups/Game Logs. Goldens for On/Off via the
-   harness (per-tab strict readers) before calling it done.
-2. Lineups (Tab 2 / Tab 10) the same way.
+1. **On/Off goldens** (plan worked out, harness NOT yet edited):
+   - `app/tests/goldens/harness.R`: add `GOLDEN_STRICT_READERS_BY_TAB`
+     (`game_logs` = current list; `onoff` = `cached_season_df`,
+     `run_onoff_compute_14`, `run_four_factors_compute`,
+     `fetch_player_traditional_season`, `fetch_player_traditional_filtered`,
+     `etl_last_success_db`, `euro_data_version`, ref lookups for "2026" and
+     "E | 2025"); `golden_capture_dt(..., has_col = NULL)` picks the table by
+     a column when it has no CSV slug ("Net RTG Diff" / "Net Diff" /
+     "Off Lay+Dunk Diff"). Probed: under testServer only the active tab's
+     table renders (one "Net RTG Diff" table, 190 rows for 2026 at 100/300).
+     Output JSON has no data (DT server = TRUE), so keep the trace approach.
+     The file has CRLF/LF; preserve its line endings.
+   - `scripts/capture_goldens.R`: strict list by `--tab`, pass `has_col`.
+   - `app/tests/goldens/presets/onoff.R`: presets MUST set `min_all_poss` /
+     `min_on_poss` (testServer does not apply `updateSliderInput`, so auto-min
+     never moves them); IL 2026 (date_range 2025-09-01..2026-07-01) and EL E
+     2025 (euro_date_range 2025-09-01..2026-07-01): each view default, home,
+     teams (fast) vs outcome+teams (SQL team path), last N, starters, opp
+     rank, an on/off stat filter, a ps chip (steps: on_stat_filter_col
+     "PTS/G", value 15, then on_add_stat_filter = 1).
+   - Record: `Rscript scripts/capture_goldens.R --tab onoff --record`
+     (read-only, port 5432, nothing else querying as app_readonly).
+   - Parity test: route answer (live, opt-in) -> `onoffTableRows()` with the
+     preset's min values, compare against the recorded frames.
+2. Lineups (Tab 2 / Tab 10) the same way; the pivot menu already links to
+   `/{league}/lineups?team=&players_on=`.
 3. Then Team Ratings, Player Stats, Gameflow + Home, Compare. Phase 0 proofs
-   (load, connection budget, publication markers) stay parked until the
-   features are across.
+   stay parked until the features are across.
 
 Everything below is the earlier record.
 
