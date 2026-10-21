@@ -1,22 +1,32 @@
 "use client";
 // Shiny's navbarPage header (app.R build_ui) with the tab view-mode menus that
 // app.js builds from its CFG list, and the fixed right cluster: league select,
-// season select, Glossary button, last-updated stamp. Only Game Logs is
-// migrated; the other tabs keep their place and look but are not links yet.
+// season select, Glossary button, last-updated stamp. Migrated tabs are links
+// (keeping the season); the others keep their place and look but are inert.
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import Selectize from "./Selectize";
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
 
+export type TabId =
+  | "home"
+  | "onoff"
+  | "lineup_data"
+  | "team_ratings"
+  | "game_logs"
+  | "traditional_stats"
+  | "compare";
 type Tab = {
-  value: string;
+  value: TabId;
   euroValue?: string;
   label: string;
   icon: string;
   modes?: string[];
   def?: string;
   ilOnly?: boolean;
+  path?: string;
 };
 // Tab order: app.R build_ui(); icons: the ui_tab*.R titles; modes: app.js CFG.
 const TABS: Tab[] = [
@@ -28,6 +38,7 @@ const TABS: Tab[] = [
     icon: "bi-toggles",
     modes: ["Summary", "Four Factors", "Shot Profile"],
     def: "Summary",
+    path: "onoff",
   },
   {
     value: "lineup_data",
@@ -52,6 +63,7 @@ const TABS: Tab[] = [
     icon: "bi-calendar-event",
     modes: ["Summary", "Four Factors"],
     def: "Summary",
+    path: "game-logs",
   },
   {
     value: "traditional_stats",
@@ -69,10 +81,15 @@ const TABS: Tab[] = [
     ilOnly: true,
   },
 ];
-// The euro tabs' On/Off menu has two modes (app.js CFG "euro").
+// app.js CFG for the EuroLeague tabs: On/Off and Team Ratings have two modes.
 const EURO_MODES: Record<string, string[]> = {
   euro: ["Summary", "Four Factors"],
   euro_team: ["Summary", "Four Factors"],
+};
+const VIEW_PARAM: Record<string, string> = {
+  Summary: "summary",
+  "Four Factors": "four_factors",
+  "Shot Profile": "shot_profile",
 };
 
 const LEAGUE_VALUE: Record<League, string> = {
@@ -113,8 +130,10 @@ export function lastUpdatedShort(txt: string) {
 
 export default function Navbar({
   league,
+  tab,
   season,
   seasons,
+  views,
   view,
   onView,
   onSeason,
@@ -124,10 +143,12 @@ export default function Navbar({
   children,
 }: {
   league: League;
+  tab: TabId;
   season: string;
   seasons: string[];
-  view: "Summary" | "Four Factors";
-  onView: (v: "Summary" | "Four Factors") => void;
+  views: string[];
+  view: string;
+  onView: (v: string) => void;
   onSeason: (s: string) => void;
   onGlossary: () => void;
   updated: string | null;
@@ -194,7 +215,8 @@ export default function Navbar({
             try {
               window.localStorage.setItem("ibpl_league_select", v[0] ?? "il");
             } catch {}
-            if (next !== league) router.push(`/${next}/game-logs`);
+            const path = TABS.find((t) => t.value === tab)?.path ?? "game-logs";
+            if (next !== league) router.push(`/${next}/${path}`);
           }}
         />
       </div>
@@ -298,73 +320,105 @@ export default function Navbar({
             >
               {TABS.filter((t) => !(euro && t.ilOnly)).map((t) => {
                 const value = euro ? (t.euroValue ?? t.value) : t.value;
-                const here = t.value === "game_logs";
+                const here = t.value === tab;
                 const modes = euro ? (EURO_MODES[value] ?? t.modes) : t.modes;
                 const current = here ? view : t.def;
+                const href = t.path
+                  ? `/${league}/${t.path}?season=${season}`
+                  : undefined;
+                const go = (mode?: string) => {
+                  if (!href) return;
+                  router.push(
+                    mode && VIEW_PARAM[mode] && mode !== t.def
+                      ? `${href}&view=${VIEW_PARAM[mode]}`
+                      : href,
+                  );
+                };
+                const linkProps = {
+                  "data-value": value,
+                  className: `nav-link${here ? " active" : ""}`,
+                  "aria-selected": here,
+                  role: "tab",
+                };
+                const inner = (
+                  <>
+                    <span>
+                      <i className={`bi ${t.icon}`}></i> {t.label}
+                    </span>
+                    {modes && <span className="tab-mode-label">{current}</span>}
+                  </>
+                );
                 return (
                   <li
                     key={t.value}
                     className={`nav-item${modes ? " tab-has-dropdown" : ""}`}
                     role="presentation"
                   >
-                    <a
-                      href={here ? undefined : "#"}
-                      data-value={value}
-                      className={`nav-link${here ? " active" : ""}`}
-                      aria-selected={here}
-                      aria-disabled={here ? undefined : true}
-                      title={
-                        here ? undefined : "Not yet available in the new app"
-                      }
-                      role="tab"
-                      tabIndex={here ? 0 : -1}
-                      onClick={(e) => e.preventDefault()}
-                    >
-                      <span>
-                        <i className={`bi ${t.icon}`}></i> {t.label}
-                      </span>
-                      {modes && (
-                        <span className="tab-mode-label">{current}</span>
-                      )}
-                    </a>
+                    {href && !here ? (
+                      <Link href={href} {...linkProps}>
+                        {inner}
+                      </Link>
+                    ) : (
+                      <a
+                        {...linkProps}
+                        href={here ? undefined : "#"}
+                        aria-disabled={here ? undefined : true}
+                        title={
+                          here ? undefined : "Not yet available in the new app"
+                        }
+                        tabIndex={here ? 0 : -1}
+                        onClick={(e) => e.preventDefault()}
+                      >
+                        {inner}
+                      </a>
+                    )}
                     {modes && (
                       <div className="tab-hover-menu">
-                        {modes.map((m) => (
-                          <div
-                            key={m}
-                            data-value={m}
-                            className={`thm-item${m === current ? " active" : ""}`}
-                            role="menuitemradio"
-                            aria-checked={m === current}
-                            aria-disabled={here ? undefined : true}
-                            tabIndex={here ? 0 : -1}
-                            onClick={(e) => {
-                              e.preventDefault();
-                              if (!here) return;
-                              onView(m as "Summary" | "Four Factors");
-                              setCollapsed(true);
-                              const menu = e.currentTarget.parentElement;
-                              if (menu) {
-                                menu.style.display = "none";
-                                setTimeout(() => (menu.style.display = ""), 50);
-                              }
-                            }}
-                            onKeyDown={(e) => {
-                              if (
-                                here &&
-                                (e.key === "Enter" || e.key === " ")
-                              ) {
+                        {modes.map((m) => {
+                          const usable = here
+                            ? views.includes(m)
+                            : Boolean(href);
+                          const choose = () => {
+                            if (!usable) return;
+                            if (here) onView(m);
+                            else go(m);
+                            setCollapsed(true);
+                          };
+                          return (
+                            <div
+                              key={m}
+                              data-value={m}
+                              className={`thm-item${m === current ? " active" : ""}`}
+                              role="menuitemradio"
+                              aria-checked={m === current}
+                              aria-disabled={usable ? undefined : true}
+                              tabIndex={usable ? 0 : -1}
+                              onClick={(e) => {
                                 e.preventDefault();
-                                onView(m as "Summary" | "Four Factors");
-                              }
-                            }}
-                          >
-                            <span className="thm-check">
-                              {m === current ? "✓" : ""}
-                            </span>
-                            {m}
-                          </div>
-                        ))}
+                                choose();
+                                const menu = e.currentTarget.parentElement;
+                                if (menu) {
+                                  menu.style.display = "none";
+                                  setTimeout(
+                                    () => (menu.style.display = ""),
+                                    50,
+                                  );
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter" || e.key === " ") {
+                                  e.preventDefault();
+                                  choose();
+                                }
+                              }}
+                            >
+                              <span className="thm-check">
+                                {m === current ? "✓" : ""}
+                              </span>
+                              {m}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </li>
@@ -376,7 +430,7 @@ export default function Navbar({
         </div>
       </nav>
       {/* Shiny puts the fixed cluster first inside the body container, so
-        bslib's ".navbar + div > .tab-content > .tab-pane" spacing applies. */}
+          bslib's ".navbar + div > .tab-content > .tab-pane" spacing applies. */}
       <div className="container-fluid">
         {!collapsedNav && cluster}
         {children}

@@ -1,63 +1,652 @@
 {
   "il": {
-    "summary": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Summary)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"gamelogs_explainer_summary_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"gamelogs_explainer_summary_body\" class=\"explainer-body collapse\">\n              <p>How did each game look in outcomes and pace-adjusted efficiency terms?<\/p>\n              <ul>\n<li>Each row shows GN, Game Type, Date, Gameflow, Team, Opponent, W/L, Score, Off PPP, Def PPP, Net, Off Shot, Def Shot, Off Poss, and Def Poss.<\/li>\n                <li>Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.<\/li>\n                <li>Compare Off PPP and Def PPP across games to spot trends; the score alone can mislead when pace varies.<\/li>\n                <li>Switch to Four Factors view if you need the cause-level breakdown (eFG%, OREB%, TOV%, FTR).<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<a href=\"#gamelogs-example-box\" class=\"explainer-toggle\" data-bs-toggle=\"collapse\" data-bs-target=\"#gamelogs-example-box\">Show/Hide Example<\/a>\n<div id=\"gamelogs-example-box\" class=\"collapse example-wrapper\">\n            <div class=\"example-grid\">\n              <div class=\"example-card\">\n                <div class=\"example-card-title\">How to Read Game Logs (Real Example)<\/div>\n                <p style=\"margin-bottom: 6px;\">For GN 17, Bnei Herzliya vs Hapoel Galil Elion finished 105-89.<\/p>\n                <p style=\"margin-bottom: 6px;\">In that game, Off PPP was 128.0 and Def PPP was 107.2, so Net was +20.8.<\/p>\n                <p style=\"margin-bottom: 0;\">This single-game view helps you compare whether dominant results came from offense, defense, or both.<\/p>\n              <\/div>\n              <div class=\"example-snippet\">\n                <img src=\"/images/gamelogs-row-snippet.png\" alt=\"Game logs summary table snippet\"><div class=\"example-snippet-caption\">Real summary snippet (Game Logs)<\/div>\n              <\/div>\n            <\/div>\n          <\/div>\n<div class=\"legend-box\">\n            <span style=\"font-weight:700; margin-right:10px;\">Shot Splits:<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Frequency<\/span>\n                <div style=\"display:flex; align-items:center; gap:8px;\">\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg2); border-radius:3px;\"><\/div>\n                  <span>2PT<\/span>\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg3); border-radius:3px; margin-left:6px;\"><\/div>\n                  <span>3PT<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n            <span style=\"margin:0 12px; color:var(--ibpl-border);\">|<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Accuracy<\/span>\n                <div style=\"display:flex; align-items:center; gap:6px;\">\n                  <span style=\"color:var(--ibpl-neg); font-weight:600;\">FG%<\/span>\n                  <span style=\"color:var(--ibpl-text-dim); margin:0 2px;\">-&gt;<\/span>\n                  <span style=\"color:var(--ibpl-pos); font-weight:600;\">FG%<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n          <\/div>",
-    "four_factors": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Four Factors)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"gamelogs_explainer_ff_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"gamelogs_explainer_ff_body\" class=\"explainer-body collapse\">\n              <p>Which four-factor components drove each single-game result? Each row shows one game with GN, date, teams, W/L, score, and the full PPP + eFG% + OREB% + TOV% + FTR breakdown for both offense and defense.<\/p>\n              <ul>\n<li>Scan eFG%, OREB%, TOV%, and FTR together to diagnose why a game was won or lost.<\/li>\n                <li>Compare offense and defense factor columns side by side -- a win can mask poor defense if offense was exceptional.<\/li>\n                <li>Look for patterns across games: consistent factor profiles suggest sustainability, while one-off spikes may be variance.<\/li>\n                <li>Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% game was driven by sustainable shot selection or a hot-hand streak.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<a href=\"#gamelogs-ff-example-box\" class=\"explainer-toggle\" data-bs-toggle=\"collapse\" data-bs-target=\"#gamelogs-ff-example-box\">Show/Hide Example<\/a>\n<div id=\"gamelogs-ff-example-box\" class=\"collapse example-wrapper\">\n            <div class=\"example-grid\">\n              <div class=\"example-card\">\n                <div class=\"example-card-title\">How to Read Four Factors (Real Example)<\/div>\n                <p style=\"margin-bottom: 6px;\">GN 17 (Bnei Herzliya vs Hapoel Galil Elion, 105-89) shows strong offense: PPP 128.0 with eFG% 63.3.<\/p>\n                <p style=\"margin-bottom: 6px;\">Defense was solid too: PPP allowed 107.2 with opponent eFG% 57.8 and FTR 50.8 (opponents got to the line frequently).<\/p>\n                <p style=\"margin-bottom: 0;\">The split across eFG%, OREB%, TOV%, and FTR shows offense carried this win, despite allowing a high free-throw rate.<\/p>\n              <\/div>\n              <div class=\"example-snippet\">\n                <img src=\"/images/gamelogs-ff-row-snippet.png\" alt=\"Game logs four factors table snippet\"><div class=\"example-snippet-caption\">Real Four Factors snippet (Game Logs)<\/div>\n              <\/div>\n            <\/div>\n          <\/div>",
-    "shot_profile": "",
-    "after": {
-      "summary": "",
-      "four_factors": "",
-      "shot_profile": ""
+    "views": {
+      "summary": [
+        {
+          "kind": "explainer",
+          "title": "What This Tab Answers (Summary)",
+          "intro": [
+            {
+              "t": "How did each game look in outcomes and pace-adjusted efficiency terms?"
+            }
+          ],
+          "bullets": [
+            [
+              {
+                "t": "Each row shows GN, Game Type, Date, Gameflow, Team, Opponent, W/L, Score, Off PPP, Def PPP, Net, Off Shot, Def Shot, Off Poss, and Def Poss."
+              }
+            ],
+            [
+              {
+                "t": "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak."
+              }
+            ],
+            [
+              {
+                "t": "Compare Off PPP and Def PPP across games to spot trends; the score alone can mislead when pace varies."
+              }
+            ],
+            [
+              {
+                "t": "Switch to Four Factors view if you need the cause-level breakdown (eFG%, OREB%, TOV%, FTR)."
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "example",
+          "id": "gamelogs-example-box",
+          "title": "How to Read Game Logs (Real Example)",
+          "paragraphs": [
+            [
+              {
+                "t": "For GN 17, Bnei Herzliya vs Hapoel Galil Elion finished 105-89."
+              }
+            ],
+            [
+              {
+                "t": "In that game, Off PPP was 128.0 and Def PPP was 107.2, so Net was +20.8."
+              }
+            ],
+            [
+              {
+                "t": "This single-game view helps you compare whether dominant results came from offense, defense, or both."
+              }
+            ]
+          ],
+          "image": "/images/gamelogs-row-snippet.png",
+          "alt": "Game logs summary table snippet",
+          "caption": "Real summary snippet (Game Logs)"
+        },
+        {
+          "kind": "legend",
+          "variant": "shot_splits",
+          "note": {}
+        }
+      ],
+      "four_factors": [
+        {
+          "kind": "explainer",
+          "title": "What This Tab Answers (Four Factors)",
+          "intro": [
+            {
+              "t": "Which four-factor components drove each single-game result? Each row shows one game with GN, date, teams, W/L, score, and the full PPP + eFG% + OREB% + TOV% + FTR breakdown for both offense and defense."
+            }
+          ],
+          "bullets": [
+            [
+              {
+                "t": "Scan eFG%, OREB%, TOV%, and FTR together to diagnose why a game was won or lost."
+              }
+            ],
+            [
+              {
+                "t": "Compare offense and defense factor columns side by side -- a win can mask poor defense if offense was exceptional."
+              }
+            ],
+            [
+              {
+                "t": "Look for patterns across games: consistent factor profiles suggest sustainability, while one-off spikes may be variance."
+              }
+            ],
+            [
+              {
+                "t": "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% game was driven by sustainable shot selection or a hot-hand streak."
+              }
+            ]
+          ]
+        },
+        {
+          "kind": "example",
+          "id": "gamelogs-ff-example-box",
+          "title": "How to Read Four Factors (Real Example)",
+          "paragraphs": [
+            [
+              {
+                "t": "GN 17 (Bnei Herzliya vs Hapoel Galil Elion, 105-89) shows strong offense: PPP 128.0 with eFG% 63.3."
+              }
+            ],
+            [
+              {
+                "t": "Defense was solid too: PPP allowed 107.2 with opponent eFG% 57.8 and FTR 50.8 (opponents got to the line frequently)."
+              }
+            ],
+            [
+              {
+                "t": "The split across eFG%, OREB%, TOV%, and FTR shows offense carried this win, despite allowing a high free-throw rate."
+              }
+            ]
+          ],
+          "image": "/images/gamelogs-ff-row-snippet.png",
+          "alt": "Game logs four factors table snippet",
+          "caption": "Real Four Factors snippet (Game Logs)"
+        }
+      ],
+      "shot_profile": []
     },
-    "hint": "<div class=\"table-hint\">\n          <span class=\"hint-pointer\">Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition<\/span>\n          <span class=\"hint-touch\">Tap View under Gameflow for a game's lineup timeline · Tap a column header to sort · Tap a header's info button for its definition<\/span>\n        <\/div>",
+    "after": {
+      "summary": [],
+      "four_factors": [],
+      "shot_profile": []
+    },
+    "hint": {
+      "pointer": "Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition",
+      "touch": "Tap View under Gameflow for a game's lineup timeline · Tap a column header to sort · Tap a header's info button for its definition"
+    },
     "popovers": []
   },
   "euro": {
-    "summary": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Summary)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"eurogl_explainer_summary_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"eurogl_explainer_summary_body\" class=\"explainer-body collapse\">\n              <p>How did each EuroLeague game look in result and possession-adjusted efficiency terms?<\/p>\n              <ul>\n<li>Each row is one team's perspective on one game, with round, date, Gameflow, opponent, result, score, and ratings.<\/li>\n                <li>Off PPP is points scored per 100 possessions; Def PPP is points allowed per 100. Net is the gap.<\/li>\n                <li>Compare games by efficiency rather than score alone, because pace and possession counts vary.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>",
-    "four_factors": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Four Factors)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"eurogl_explainer_ff_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"eurogl_explainer_ff_body\" class=\"explainer-body collapse\">\n              <p>Which shooting, rebounding, turnover, and free-throw components drove each game?<\/p>\n              <ul>\n<li>Read offense and defense side by side to diagnose why a game was won or lost.<\/li>\n                <li>Rates are calculated from additive game counts, never by averaging stored percentages.<\/li>\n                <li>EuroLeague possessions and free-throw trips use the EuroLeague engine and source semantics.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>",
-    "shot_profile": "",
-    "after": {
-      "summary": "",
-      "four_factors": "",
-      "shot_profile": ""
+    "views": {
+      "summary": [
+        {
+          "kind": "explainer",
+          "title": "What This Tab Answers (Summary)",
+          "intro": [
+            {
+              "t": "How did each EuroLeague game look in result and possession-adjusted efficiency terms?"
+            }
+          ],
+          "bullets": [
+            [
+              {
+                "t": "Each row is one team's perspective on one game, with round, date, Gameflow, opponent, result, score, and ratings."
+              }
+            ],
+            [
+              {
+                "t": "Off PPP is points scored per 100 possessions; Def PPP is points allowed per 100. Net is the gap."
+              }
+            ],
+            [
+              {
+                "t": "Compare games by efficiency rather than score alone, because pace and possession counts vary."
+              }
+            ]
+          ]
+        }
+      ],
+      "four_factors": [
+        {
+          "kind": "explainer",
+          "title": "What This Tab Answers (Four Factors)",
+          "intro": [
+            {
+              "t": "Which shooting, rebounding, turnover, and free-throw components drove each game?"
+            }
+          ],
+          "bullets": [
+            [
+              {
+                "t": "Read offense and defense side by side to diagnose why a game was won or lost."
+              }
+            ],
+            [
+              {
+                "t": "Rates are calculated from additive game counts, never by averaging stored percentages."
+              }
+            ],
+            [
+              {
+                "t": "EuroLeague possessions and free-throw trips use the EuroLeague engine and source semantics."
+              }
+            ]
+          ]
+        }
+      ],
+      "shot_profile": []
     },
-    "hint": "<div class=\"table-hint\">\n          <span class=\"hint-pointer\">Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition<\/span>\n          <span class=\"hint-touch\">Tap View under Gameflow for a game's lineup timeline · Tap a column header to sort · Tap a header's info button for its definition<\/span>\n        <\/div>",
+    "after": {
+      "summary": [],
+      "four_factors": [],
+      "shot_profile": []
+    },
+    "hint": {
+      "pointer": "Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition",
+      "touch": "Tap View under Gameflow for a game's lineup timeline · Tap a column header to sort · Tap a header's info button for its definition"
+    },
     "popovers": []
   },
   "onoff": {
     "il": {
-      "summary": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Summary)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"onoff_explainer_summary_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"onoff_explainer_summary_body\" class=\"explainer-body collapse\">\n              <p>Which players change team offense and defense most when they are on the floor?<\/p>\n              <ul>\n<li>Net Impact shows the on-minus-off PPP gap; Off and Def break it into which end the player affects.<\/li>\n                <li>On Court Stats (Off PPP, Def PPP, Net RTG) and Off Court Stats show the team's actual rates with and without the player.<\/li>\n                <li>Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.<\/li>\n                <li>ON Poss and OFF Poss (scrolled right) indicate sample size -- small samples produce noisy diffs.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<a href=\"#onoff-example-box\" class=\"explainer-toggle\" data-bs-toggle=\"collapse\" data-bs-target=\"#onoff-example-box\">Show/Hide Example<\/a>\n<div id=\"onoff-example-box\" class=\"collapse example-wrapper\">\n            <div class=\"example-grid\">\n              <div class=\"example-card\">\n                <div class=\"example-card-title\">How to Read On/Off (Real Example)<\/div>\n                <p style=\"margin-bottom: 6px;\">In this example, Maccabi Tel Aviv is better with Jimmy Clark III on the floor by +28.1 points per 100 possessions.<\/p>\n                <p style=\"margin-bottom: 6px;\">That comes from offense being +14.4 points better and defense being 13.7 points better (shown as Def -13.7, because lower defensive PPP allowed is better).<\/p>\n                <p style=\"margin-bottom: 0;\">With him on court, Maccabi scores 135.5 and allows 101.1. With him off court, they score 121.1 and allow 114.8.<\/p>\n              <\/div>\n              <div class=\"example-snippet\">\n                <img src=\"/images/onoff-row-snippet.png\" alt=\"On/Off summary table snippet\"><div class=\"example-snippet-caption\">Real summary snippet (On/Off Impact)<\/div>\n              <\/div>\n            <\/div>\n          <\/div>\n<div class=\"legend-box\">\n            <span style=\"font-weight:700; margin-right:10px;\">Shot Splits:<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Frequency<\/span>\n                <div style=\"display:flex; align-items:center; gap:8px;\">\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg2); border-radius:3px;\"><\/div>\n                  <span>2PT<\/span>\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg3); border-radius:3px; margin-left:6px;\"><\/div>\n                  <span>3PT<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n            <span style=\"margin:0 12px; color:var(--ibpl-border);\">|<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Accuracy<\/span>\n                <div style=\"display:flex; align-items:center; gap:6px;\">\n                  <span style=\"color:var(--ibpl-neg); font-weight:600;\">FG%<\/span>\n                  <span style=\"color:var(--ibpl-text-dim); margin:0 2px;\">-&gt;<\/span>\n                  <span style=\"color:var(--ibpl-pos); font-weight:600;\">FG%<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n          <\/div>",
-      "four_factors": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Four Factors)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"onoff_explainer_ff_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"onoff_explainer_ff_body\" class=\"explainer-body collapse\">\n              <p>Why is a player's on/off impact happening? Break down the Net diff into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends.<\/p>\n              <ul>\n<li>Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider.<\/li>\n                <li>Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other.<\/li>\n                <li>Gray (unranked) cells mean fewer than 100 on-court possessions; factor diffs from small samples are unreliable.<\/li>\n                <li>Free throws, their points and their possession are credited to the lineup on the floor when the foul was drawn, including free throws shot after a substitution.<\/li>\n                <li>Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<a href=\"#onoff-ff-example-box\" class=\"explainer-toggle\" data-bs-toggle=\"collapse\" data-bs-target=\"#onoff-ff-example-box\">Show/Hide Example<\/a>\n<div id=\"onoff-ff-example-box\" class=\"collapse example-wrapper\">\n            <div class=\"example-grid\">\n              <div class=\"example-card\">\n                <div class=\"example-card-title\">How to Read Four Factors (Real Example)<\/div>\n                <p style=\"margin-bottom: 6px;\">Jimmy Clark III (Maccabi Tel Aviv) shows Diff +28.1 with Off Diff +14.4 and Def Diff -13.7.<\/p>\n                <p style=\"margin-bottom: 6px;\">Offense factors: eFG% Diff +7.7 explains most of the offensive edge, while OREB% Diff -1.3 is slightly negative.<\/p>\n                <p style=\"margin-bottom: 0;\">Defense factors: OREB% Diff +2.2 and TOV% Diff +5.8 show opponents rebound and turn the ball over more with Clark on court.<\/p>\n              <\/div>\n              <div class=\"example-snippet\">\n                <img src=\"/images/onoff-ff-row-snippet.png\" alt=\"On/Off four factors table snippet\"><div class=\"example-snippet-caption\">Real Four Factors snippet (On/Off Impact)<\/div>\n              <\/div>\n            <\/div>\n          <\/div>\n<div class=\"legend-box\">\n            <span style=\"font-weight:700; margin-right:5px;\">Legend:<\/span>\n            <div class=\"legend-item\">\n              <div class=\"legend-icon-on\"><\/div>\n              <span>On-Court<\/span>\n            <\/div>\n            <div class=\"legend-item\">\n              <div class=\"legend-icon-off\"><\/div>\n              <span>Off-Court<\/span>\n            <\/div>\n            <div class=\"legend-item\">\n              <span>0%<\/span>\n              <div class=\"legend-bar\">\n                <div class=\"legend-tick\" style=\"left:0;\"><\/div>\n                <div class=\"legend-tick\" style=\"left:50%; height:12px; top:-2px; background:var(--ibpl-text-dim);\"><\/div>\n                <div class=\"legend-tick\" style=\"right:0;\"><\/div>\n              <\/div>\n              <span>100% Rank<\/span>\n            <\/div>\n            <span style=\"margin-left: 15px; font-size: 0.8em; color: var(--ibpl-text-dim);\">(Ranked Players: &gt; 100 poss)<\/span>\n          <\/div>",
-      "shot_profile": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Shot Profile)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"onoff_explainer_sp_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"onoff_explainer_sp_body\" class=\"explainer-body collapse\">\n              <p>How does the team's shot diet shift with the player on vs off the floor? Each cell shows the ON-minus-OFF change in share of team FGA, with ON | OFF values below. Each group leads with the team eFG% swing -- the efficiency context the diet shares feed into.<\/p>\n              <ul>\n<li>eFG% is the ON-minus-OFF change in team effective FG% (offense: higher is better; defense: lower is better). It is computed from the same shooting splits as the diet shares.<\/li>\n                <li>Colors follow the league value hierarchy (interior and 3s beat 2PT jumpers): green = shift toward higher-value shots, red = away; the 2PT Jumper column flips, like TOV% in Four Factors. No point-impact estimate is attached -- efficiency itself lives in the Summary and Four Factors views.<\/li>\n                <li>Each cell mirrors Four Factors: the Delta headline, on/off percentile dots on the rank bar, and ON | OFF share values below.<\/li>\n                <li>Columns follow the play-by-play shot-type tags: Lay+Dunk = attempts tagged lay-up or dunk (the tag describes execution, not court location -- a running floater can be tagged lay-up); 2PT Jumper = attempts tagged 2-point jump-shot. 3PA% is share of all FGA.<\/li>\n                <li>Corner 3 Share splits threes into corner vs above-break, using shots with known court location; -- means location unknown.<\/li>\n                <li>Cells gray out below 50 team FGA on the ON side -- small samples produce noisy shares.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<div class=\"legend-box\">\n            <span style=\"font-weight:700; margin-right:5px;\">Legend:<\/span>\n            <div class=\"legend-item\">\n              <div class=\"legend-icon-on\"><\/div>\n              <span>On-Court<\/span>\n            <\/div>\n            <div class=\"legend-item\">\n              <div class=\"legend-icon-off\"><\/div>\n              <span>Off-Court<\/span>\n            <\/div>\n            <div class=\"legend-item\">\n              <span>0%<\/span>\n              <div class=\"legend-bar\">\n                <div class=\"legend-tick\" style=\"left:0;\"><\/div>\n                <div class=\"legend-tick\" style=\"left:50%; height:12px; top:-2px; background:var(--ibpl-text-dim);\"><\/div>\n                <div class=\"legend-tick\" style=\"right:0;\"><\/div>\n              <\/div>\n              <span>100% Rank<\/span>\n            <\/div>\n            <span style=\"margin-left: 15px; font-size: 0.8em; color: var(--ibpl-text-dim);\">(Ranked: &gt;= 50 team FGA with player on | eFG% + shares of team FGA, Delta = ON - OFF pp | Corner 3 Share uses known-location 3PA, -- = unknown)<\/span>\n          <\/div>",
-      "after": {
-        "summary": "",
-        "four_factors": "<div class=\"ff-impact-legend\">Estimated factor impact (est.): each 1pp of a factor ~ eFG +1.45, TOV -1.36, OREB +0.63, FTR +0.13 pts per 100 poss. (league-calibrated regression weights -- an approximation, not a measured stat).<\/div>",
-        "shot_profile": ""
+      "views": {
+        "summary": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Summary)",
+            "intro": [
+              {
+                "t": "Which players change team offense and defense most when they are on the floor?"
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Net Impact shows the on-minus-off PPP gap; Off and Def break it into which end the player affects."
+                }
+              ],
+              [
+                {
+                  "t": "On Court Stats (Off PPP, Def PPP, Net RTG) and Off Court Stats show the team's actual rates with and without the player."
+                }
+              ],
+              [
+                {
+                  "t": "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy -- use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak."
+                }
+              ],
+              [
+                {
+                  "t": "ON Poss and OFF Poss (scrolled right) indicate sample size -- small samples produce noisy diffs."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "example",
+            "id": "onoff-example-box",
+            "title": "How to Read On/Off (Real Example)",
+            "paragraphs": [
+              [
+                {
+                  "t": "In this example, Maccabi Tel Aviv is better with Jimmy Clark III on the floor by +28.1 points per 100 possessions."
+                }
+              ],
+              [
+                {
+                  "t": "That comes from offense being +14.4 points better and defense being 13.7 points better (shown as Def -13.7, because lower defensive PPP allowed is better)."
+                }
+              ],
+              [
+                {
+                  "t": "With him on court, Maccabi scores 135.5 and allows 101.1. With him off court, they score 121.1 and allow 114.8."
+                }
+              ]
+            ],
+            "image": "/images/onoff-row-snippet.png",
+            "alt": "On/Off summary table snippet",
+            "caption": "Real summary snippet (On/Off Impact)"
+          },
+          {
+            "kind": "legend",
+            "variant": "shot_splits",
+            "note": {}
+          }
+        ],
+        "four_factors": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Four Factors)",
+            "intro": [
+              {
+                "t": "Why is a player's on/off impact happening? Break down the Net diff into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider."
+                }
+              ],
+              [
+                {
+                  "t": "Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other."
+                }
+              ],
+              [
+                {
+                  "t": "Gray (unranked) cells mean fewer than 100 on-court possessions; factor diffs from small samples are unreliable."
+                }
+              ],
+              [
+                {
+                  "t": "Free throws, their points and their possession are credited to the lineup on the floor when the foul was drawn, including free throws shot after a substitution."
+                }
+              ],
+              [
+                {
+                  "t": "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "example",
+            "id": "onoff-ff-example-box",
+            "title": "How to Read Four Factors (Real Example)",
+            "paragraphs": [
+              [
+                {
+                  "t": "Jimmy Clark III (Maccabi Tel Aviv) shows Diff +28.1 with Off Diff +14.4 and Def Diff -13.7."
+                }
+              ],
+              [
+                {
+                  "t": "Offense factors: eFG% Diff +7.7 explains most of the offensive edge, while OREB% Diff -1.3 is slightly negative."
+                }
+              ],
+              [
+                {
+                  "t": "Defense factors: OREB% Diff +2.2 and TOV% Diff +5.8 show opponents rebound and turn the ball over more with Clark on court."
+                }
+              ]
+            ],
+            "image": "/images/onoff-ff-row-snippet.png",
+            "alt": "On/Off four factors table snippet",
+            "caption": "Real Four Factors snippet (On/Off Impact)"
+          },
+          {
+            "kind": "legend",
+            "variant": "rank",
+            "note": "(Ranked Players: > 100 poss)"
+          }
+        ],
+        "shot_profile": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Shot Profile)",
+            "intro": [
+              {
+                "t": "How does the team's shot diet shift with the player on vs off the floor? Each cell shows the ON-minus-OFF change in share of team FGA, with ON | OFF values below. Each group leads with the team eFG% swing -- the efficiency context the diet shares feed into."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "eFG% is the ON-minus-OFF change in team effective FG% (offense: higher is better; defense: lower is better). It is computed from the same shooting splits as the diet shares."
+                }
+              ],
+              [
+                {
+                  "t": "Colors follow the league value hierarchy (interior and 3s beat 2PT jumpers): green = shift toward higher-value shots, red = away; the 2PT Jumper column flips, like TOV% in Four Factors. No point-impact estimate is attached -- efficiency itself lives in the Summary and Four Factors views."
+                }
+              ],
+              [
+                {
+                  "t": "Each cell mirrors Four Factors: the Delta headline, on/off percentile dots on the rank bar, and ON | OFF share values below."
+                }
+              ],
+              [
+                {
+                  "t": "Columns follow the play-by-play shot-type tags: Lay+Dunk = attempts tagged lay-up or dunk (the tag describes execution, not court location -- a running floater can be tagged lay-up); 2PT Jumper = attempts tagged 2-point jump-shot. 3PA% is share of all FGA."
+                }
+              ],
+              [
+                {
+                  "t": "Corner 3 Share splits threes into corner vs above-break, using shots with known court location; -- means location unknown."
+                }
+              ],
+              [
+                {
+                  "t": "Cells gray out below 50 team FGA on the ON side -- small samples produce noisy shares."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "legend",
+            "variant": "rank",
+            "note": "(Ranked: >= 50 team FGA with player on | eFG% + shares of team FGA, Delta = ON - OFF pp | Corner 3 Share uses known-location 3PA, -- = unknown)"
+          }
+        ]
       },
-      "hint": "<div class=\"table-hint\">\n          <span class=\"hint-pointer\">Click a team or player for lineups and game logs · Click a column header to sort · Hover over a column header for its definition<\/span>\n          <span class=\"hint-touch\">Tap a team or player for lineups and game logs · Tap a column header to sort · Tap a header's info button for its definition<\/span>\n        <\/div>",
+      "after": {
+        "summary": [],
+        "four_factors": [
+          {
+            "kind": "impact",
+            "text": "Estimated factor impact (est.): each 1pp of a factor ~ eFG +1.45, TOV -1.36, OREB +0.63, FTR +0.13 pts per 100 poss. (league-calibrated regression weights -- an approximation, not a measured stat)."
+          }
+        ],
+        "shot_profile": []
+      },
+      "hint": {
+        "pointer": "Click a team or player for lineups and game logs · Click a column header to sort · Hover over a column header for its definition",
+        "touch": "Tap a team or player for lineups and game logs · Tap a column header to sort · Tap a header's info button for its definition"
+      },
       "popovers": [
         {
           "title": "3PT luck and small sample",
-          "trigger": "\n                  \n                   What do '3PT luck' and 'small sample' mean?\n                ",
-          "body": "<div style=\"max-width: 340px; font-size: 0.9em;\">\n                      <p>\n                        Three-point accuracy swings a lot from game to game. Whether\n                        opponents hit their threes while a player is on the court is\n                        mostly out of his hands, and so is much of his own team's hot or\n                        cold shooting.\n                      <\/p>\n                      <p>\n                        Hover any Net number to see what it would be if every three, by\n                        both teams, had gone in at the league average. When three-point\n                        luck accounts for more than the whole number (removing it flips\n                        the sign), it's marked\n                        <em>3PT luck.<\/em>\n                      <\/p>\n                      <p>\n                        <em>Example: Yovel Zoosman, Hapoel Jerusalem, 25-26: +10.6. 3PT shooting added +11.6, mostly opponents shooting threes better with him off the court; without 3-point luck he is at -1.0, so it is marked 3PT luck.<\/em>\n                      <\/p>\n                      <p style=\"margin-bottom: 0; color: var(--ibpl-text-muted);\">\n                        Only three-point accuracy is adjusted: two-pointers, free throws,\n                        turnovers and rebounds count as they happened. Each three counts\n                        as 3 points, so the effect is slightly overstated.\n                      <\/p>\n                      <hr>\n<p>\n                        On/off numbers are noisy: over one season, most of the gap\n                        between players is chance. The hover also shows each number\n                        <em>Adjusted for sample size<\/em>\n                        -- our best estimate once\n                        it is pulled toward the team's own rating, more so the fewer\n                        possessions it rests on, especially off the court.\n                      <\/p>\n                      <p style=\"margin-bottom: 0;\">\n                        When a number stands out (the table's top or bottom 20%) but\n                        rests on far fewer possessions than most rows here, it's marked\n                        <em>small sample.<\/em>\n                      <\/p>\n                    <\/div>",
+          "trigger": "What do '3PT luck' and 'small sample' mean?",
+          "body": [
+            {
+              "p": [
+                {
+                  "t": "Three-point accuracy swings a lot from game to game. Whether opponents hit their threes while a player is on the court is mostly out of his hands, and so is much of his own team's hot or cold shooting."
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "Hover any Net number to see what it would be if every three, by both teams, had gone in at the league average. When three-point luck accounts for more than the whole number (removing it flips the sign), it's marked "
+                },
+                {
+                  "t": "3PT luck.",
+                  "em": true
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "Example: Yovel Zoosman, Hapoel Jerusalem, 25-26: +10.6. 3PT shooting added +11.6, mostly opponents shooting threes better with him off the court; without 3-point luck he is at -1.0, so it is marked 3PT luck.",
+                  "em": true
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "Only three-point accuracy is adjusted: two-pointers, free throws, turnovers and rebounds count as they happened. Each three counts as 3 points, so the effect is slightly overstated."
+                }
+              ],
+              "muted": true
+            },
+            {
+              "hr": true
+            },
+            {
+              "p": [
+                {
+                  "t": "On/off numbers are noisy: over one season, most of the gap between players is chance. The hover also shows each number "
+                },
+                {
+                  "t": "Adjusted for sample size",
+                  "em": true
+                },
+                {
+                  "t": " -- our best estimate once it is pulled toward the team's own rating, more so the fewer possessions it rests on, especially off the court."
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "When a number stands out (the table's top or bottom 20%) but rests on far fewer possessions than most rows here, it's marked "
+                },
+                {
+                  "t": "small sample.",
+                  "em": true
+                }
+              ],
+              "muted": false
+            }
+          ],
           "views": "summary"
         }
       ]
     },
     "euro": {
-      "summary": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Summary)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"euro_explainer_summary_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"euro_explainer_summary_body\" class=\"explainer-body collapse\">\n              <p>Which EuroLeague players change their team's offense and defense most when they are on the floor?<\/p>\n              <ul>\n<li>Net Impact shows the on-minus-off PPP gap; Off and Def break it into which end the player affects.<\/li>\n                <li>On Court Stats (Off PPP, Def PPP, Net RTG) and Off Court Stats show the team's actual rates with and without the player.<\/li>\n                <li>Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy.<\/li>\n                <li>ON Poss and OFF Poss (scrolled right) indicate sample size -- small samples produce noisy diffs.<\/li>\n                <li>Possessions and ratings come from an independent EuroLeague possession engine. Never compare these numbers against the Israeli-league tabs: different competitions, different derivations.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<div class=\"legend-box\">\n            <span style=\"font-weight:700; margin-right:10px;\">Shot Splits:<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Frequency<\/span>\n                <div style=\"display:flex; align-items:center; gap:8px;\">\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg2); border-radius:3px;\"><\/div>\n                  <span>2PT<\/span>\n                  <div style=\"width:14px; height:14px; background:var(--ibpl-fg3); border-radius:3px; margin-left:6px;\"><\/div>\n                  <span>3PT<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n            <span style=\"margin:0 12px; color:var(--ibpl-border);\">|<\/span>\n            <div class=\"legend-item\">\n              <div style=\"display:flex; flex-direction:column; align-items:center; gap:2px;\">\n                <span style=\"font-size:0.75em; color:var(--ibpl-text-dim); text-transform:uppercase; letter-spacing:0.5px;\">Accuracy<\/span>\n                <div style=\"display:flex; align-items:center; gap:6px;\">\n                  <span style=\"color:var(--ibpl-neg); font-weight:600;\">FG%<\/span>\n                  <span style=\"color:var(--ibpl-text-dim); margin:0 2px;\">-&gt;<\/span>\n                  <span style=\"color:var(--ibpl-pos); font-weight:600;\">FG%<\/span>\n                <\/div>\n              <\/div>\n            <\/div>\n          <\/div>",
-      "four_factors": "<div class=\"explainer-card\">\n            <div class=\"explainer-top\">\n              <h4 class=\"explainer-title\">What This Tab Answers (Four Factors)<\/h4>\n              <a href=\"#\" class=\"explainer-toggle js-explainer-toggle\" data-target-id=\"euro_explainer_ff_body\">Show/Hide<\/a>\n            <\/div>\n            <div id=\"euro_explainer_ff_body\" class=\"explainer-body collapse\">\n              <p>Why is a player's on/off impact happening? Break the Net diff into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends.<\/p>\n              <ul>\n<li>Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider.<\/li>\n                <li>Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other.<\/li>\n                <li>Gray (unranked) cells mean a small on-court possession sample; factor diffs from small samples are unreliable.<\/li>\n                <li>TS% uses the same denominator as the Israeli tabs (FGA plus one per shooting-foul trip), not the 0.44 x FTA estimate.<\/li>\n              <\/ul>\n<p style=\"margin-top: 8px; margin-bottom: 0;\">\n                <a href=\"#\" class=\"js-shiny-event\" data-input-id=\"open_glossary\">Open glossary<\/a>\n              <\/p>\n            <\/div>\n          <\/div>\n<div class=\"legend-box\">\n            <span style=\"font-weight:700; margin-right:5px;\">Legend:<\/span>\n            <div class=\"legend-item\">\n              <div class=\"legend-icon-on\"><\/div>\n              <span>On-Court<\/span>\n            <\/div>\n            <div class=\"legend-item\">\n              <div class=\"legend-icon-off\"><\/div>\n              <span>Off-Court<\/span>\n            <\/div>\n            <div class=\"legend-item\">\n              <span>0%<\/span>\n              <div class=\"legend-bar\">\n                <div class=\"legend-tick\" style=\"left:0;\"><\/div>\n                <div class=\"legend-tick\" style=\"left:50%; height:12px; top:-2px; background:var(--ibpl-text-dim);\"><\/div>\n                <div class=\"legend-tick\" style=\"right:0;\"><\/div>\n              <\/div>\n              <span>100% Rank<\/span>\n            <\/div>\n            <span style=\"margin-left: 15px; font-size: 0.8em; color: var(--ibpl-text-dim);\">(Ranked Players: &gt; 100 poss)<\/span>\n          <\/div>",
-      "shot_profile": "",
-      "after": {
-        "summary": "",
-        "four_factors": "",
-        "shot_profile": ""
+      "views": {
+        "summary": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Summary)",
+            "intro": [
+              {
+                "t": "Which EuroLeague players change their team's offense and defense most when they are on the floor?"
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Net Impact shows the on-minus-off PPP gap; Off and Def break it into which end the player affects."
+                }
+              ],
+              [
+                {
+                  "t": "On Court Stats (Off PPP, Def PPP, Net RTG) and Off Court Stats show the team's actual rates with and without the player."
+                }
+              ],
+              [
+                {
+                  "t": "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy."
+                }
+              ],
+              [
+                {
+                  "t": "ON Poss and OFF Poss (scrolled right) indicate sample size -- small samples produce noisy diffs."
+                }
+              ],
+              [
+                {
+                  "t": "Possessions and ratings come from an independent EuroLeague possession engine. Never compare these numbers against the Israeli-league tabs: different competitions, different derivations."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "legend",
+            "variant": "shot_splits",
+            "note": {}
+          }
+        ],
+        "four_factors": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Four Factors)",
+            "intro": [
+              {
+                "t": "Why is a player's on/off impact happening? Break the Net diff into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Each cell shows the ON minus OFF diff, with on-court and off-court values below and a percentile-rank slider."
+                }
+              ],
+              [
+                {
+                  "t": "Read Offense Impact and Defense Impact blocks separately -- a player can help on one end and hurt on the other."
+                }
+              ],
+              [
+                {
+                  "t": "Gray (unranked) cells mean a small on-court possession sample; factor diffs from small samples are unreliable."
+                }
+              ],
+              [
+                {
+                  "t": "TS% uses the same denominator as the Israeli tabs (FGA plus one per shooting-foul trip), not the 0.44 x FTA estimate."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "legend",
+            "variant": "rank",
+            "note": "(Ranked Players: > 100 poss)"
+          }
+        ],
+        "shot_profile": []
       },
-      "hint": "<div class=\"table-hint\">\n          <span class=\"hint-pointer\">Click a team or player for lineups and game logs · Click a column header to sort · Hover over a column header for its definition<\/span>\n          <span class=\"hint-touch\">Tap a team or player for lineups and game logs · Tap a column header to sort · Tap a header's info button for its definition<\/span>\n        <\/div>",
+      "after": {
+        "summary": [],
+        "four_factors": [],
+        "shot_profile": []
+      },
+      "hint": {
+        "pointer": "Click a team or player for lineups and game logs · Click a column header to sort · Hover over a column header for its definition",
+        "touch": "Tap a team or player for lineups and game logs · Tap a column header to sort · Tap a header's info button for its definition"
+      },
       "popovers": [
         {
           "title": "3PT luck and small sample",
-          "trigger": "\n                  \n                   What do '3PT luck' and 'small sample' mean?\n                ",
-          "body": "<div style=\"max-width: 340px; font-size: 0.9em;\">\n                      <p>\n                        Three-point accuracy swings a lot from game to game. Whether\n                        opponents hit their threes while a player is on the court is\n                        mostly out of his hands, and so is much of his own team's hot or\n                        cold shooting.\n                      <\/p>\n                      <p>\n                        Hover any Net number to see what it would be if every three, by\n                        both teams, had gone in at the league average. When three-point\n                        luck accounts for more than the whole number (removing it flips\n                        the sign), it's marked\n                        <em>3PT luck.<\/em>\n                      <\/p>\n                      <p>\n                        <em>Example: Dwayne Bacon, Dubai, 25-26: +9.4. Dubai shot 37.5% from three with him on vs 31.5% off, and opponents 35.4% vs 40.7%; together worth +12.1, so without 3-point luck he is at -2.7 and it is marked 3PT luck.<\/em>\n                      <\/p>\n                      <p style=\"margin-bottom: 0; color: var(--ibpl-text-muted);\">\n                        Only three-point accuracy is adjusted: two-pointers, free throws,\n                        turnovers and rebounds count as they happened. Each three counts\n                        as 3 points, so the effect is slightly overstated.\n                      <\/p>\n                      <hr>\n<p>\n                        On/off numbers are noisy: over one season, most of the gap\n                        between players is chance. The hover also shows each number\n                        <em>Adjusted for sample size<\/em>\n                        -- our best estimate once\n                        it is pulled toward the team's own rating, more so the fewer\n                        possessions it rests on, especially off the court.\n                      <\/p>\n                      <p style=\"margin-bottom: 0;\">\n                        When a number stands out (the table's top or bottom 20%) but\n                        rests on far fewer possessions than most rows here, it's marked\n                        <em>small sample.<\/em>\n                      <\/p>\n                    <\/div>",
+          "trigger": "What do '3PT luck' and 'small sample' mean?",
+          "body": [
+            {
+              "p": [
+                {
+                  "t": "Three-point accuracy swings a lot from game to game. Whether opponents hit their threes while a player is on the court is mostly out of his hands, and so is much of his own team's hot or cold shooting."
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "Hover any Net number to see what it would be if every three, by both teams, had gone in at the league average. When three-point luck accounts for more than the whole number (removing it flips the sign), it's marked "
+                },
+                {
+                  "t": "3PT luck.",
+                  "em": true
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "Example: Dwayne Bacon, Dubai, 25-26: +9.4. Dubai shot 37.5% from three with him on vs 31.5% off, and opponents 35.4% vs 40.7%; together worth +12.1, so without 3-point luck he is at -2.7 and it is marked 3PT luck.",
+                  "em": true
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "Only three-point accuracy is adjusted: two-pointers, free throws, turnovers and rebounds count as they happened. Each three counts as 3 points, so the effect is slightly overstated."
+                }
+              ],
+              "muted": true
+            },
+            {
+              "hr": true
+            },
+            {
+              "p": [
+                {
+                  "t": "On/off numbers are noisy: over one season, most of the gap between players is chance. The hover also shows each number "
+                },
+                {
+                  "t": "Adjusted for sample size",
+                  "em": true
+                },
+                {
+                  "t": " -- our best estimate once it is pulled toward the team's own rating, more so the fewer possessions it rests on, especially off the court."
+                }
+              ],
+              "muted": false
+            },
+            {
+              "p": [
+                {
+                  "t": "When a number stands out (the table's top or bottom 20%) but rests on far fewer possessions than most rows here, it's marked "
+                },
+                {
+                  "t": "small sample.",
+                  "em": true
+                }
+              ],
+              "muted": false
+            }
+          ],
           "views": "summary"
         }
       ]
@@ -391,7 +980,260 @@
       }
     ]
   },
-  "glossaryHtml": "<h5 style=\"margin-top: 0; color: var(--ibpl-accent);\">Efficiency<\/h5>\n<ul>\n<li>\n            <b>PPP<\/b>\n            : Points per 100 possessions (points per possession x 100).\n          <\/li>\n          <li>\n            <b>Net Rating<\/b>\n            : Offensive PPP minus Defensive PPP. Positive = outscoring opponents.\n          <\/li>\n          <li>\n            <b>Possessions<\/b>\n            : Estimated offensive or defensive trips. More possessions = more reliable stats.\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Four Factors<\/h5>\n<ul>\n<li>\n            <b>TS%<\/b>\n            : True Shooting -- scoring efficiency accounting for 2PT, 3PT, and free throws. Formula: pts / (2 x (FGA + FT trips)).\n          <\/li>\n          <li>\n            <b>OREB%<\/b>\n            : Offensive rebound rate -- share of available misses grabbed. On defense, it measures opponent offensive rebounds allowed.\n          <\/li>\n          <li>\n            <b>TOV%<\/b>\n            : Turnover rate -- turnovers per possession. Lower is better on offense; higher is better on defense.\n          <\/li>\n          <li>\n            <b>FTR<\/b>\n            : Free throw rate -- FTA / FGA. Measures how often a team or player gets to the line relative to shot attempts.\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Shot Splits<\/h5>\n<ul>\n<li>\n            <b>Off Shot / Def Shot<\/b>\n            : Each cell shows 2PT and 3PT frequency (how often that shot type is taken) and accuracy (FG%).\n          <\/li>\n          <li>\n            The \n            <span style=\"color: var(--ibpl-fg2); font-weight: 600;\">blue<\/span>\n             bar is 2PT frequency, the \n            <span style=\"color: var(--ibpl-fg3); font-weight: 600;\">orange<\/span>\n             bar is 3PT frequency.\n          <\/li>\n          <li>\n            Accuracy is shown as FG% text, colored from \n            <span style=\"color: var(--ibpl-neg);\">red<\/span>\n             (below league average) to \n            <span style=\"color: var(--ibpl-pos);\">green<\/span>\n             (above league average).\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Colors &amp; Ranking<\/h5>\n<ul>\n<li>\n            <b>Heat colors<\/b>\n            : \n            <span style=\"color: var(--ibpl-pos);\">Green<\/span>\n             = good, \n            <span style=\"color: var(--ibpl-neg);\">red<\/span>\n             = bad. \n            <b>Polarity flips for defense<\/b>\n             -- lower Def PPP is better, so green means fewer points allowed.\n          <\/li>\n          <li>\n            <b>TOV% exception<\/b>\n            : On offense, lower TOV% is green (fewer turnovers). On defense, higher TOV% is green (more opponent turnovers).\n          <\/li>\n          <li>\n            <b>Gray / no color<\/b>\n            : The player, lineup, or team has too few possessions to rank reliably (below the minimum threshold).\n          <\/li>\n          <li>\n            <b>Percentile rank bars<\/b>\n             (Four Factors view): The slider shows where a player ranks from 0% to 100% among all players with enough possessions. 50% = league median. Only players above the minimum possession threshold are included in rankings.\n          <\/li>\n        <\/ul>\n\n<h5 style=\"color: var(--ibpl-accent);\">Filters<\/h5>\n<ul>\n<li>\n            <b>Game Number (GN)<\/b>\n            : Each team's sequential game number in the season. Useful for filtering to a stretch of games.\n          <\/li>\n          <li>\n            <b>Last N<\/b>\n            : Only include the most recent N games. Mutually exclusive with GN range.\n          <\/li>\n          <li>\n            <b>Opponent Strength<\/b>\n            : Filter games by the opponent's league ranking over the selected sample.\n          <\/li>\n          <li>\n            <b>Clutch<\/b>\n             (Tabs 2, 3): Limit to close-game possessions based on score margin, time remaining, and lead/trail status. Overtime qualifies by default.\n          <\/li>\n          <li>\n            <b>Min Possessions<\/b>\n            : Minimum possessions to appear in the table. Higher = more stable data but fewer rows.\n          <\/li>\n        <\/ul>",
+  "glossary": [
+    {
+      "h": "Efficiency",
+      "color": "var(--ibpl-accent)"
+    },
+    {
+      "ul": [
+        [
+          {
+            "t": "PPP",
+            "b": true
+          },
+          {
+            "t": " : Points per 100 possessions (points per possession x 100)."
+          }
+        ],
+        [
+          {
+            "t": "Net Rating",
+            "b": true
+          },
+          {
+            "t": " : Offensive PPP minus Defensive PPP. Positive = outscoring opponents."
+          }
+        ],
+        [
+          {
+            "t": "Possessions",
+            "b": true
+          },
+          {
+            "t": " : Estimated offensive or defensive trips. More possessions = more reliable stats."
+          }
+        ]
+      ]
+    },
+    {
+      "h": "Four Factors",
+      "color": "var(--ibpl-accent)"
+    },
+    {
+      "ul": [
+        [
+          {
+            "t": "TS%",
+            "b": true
+          },
+          {
+            "t": " : True Shooting -- scoring efficiency accounting for 2PT, 3PT, and free throws. Formula: pts / (2 x (FGA + FT trips))."
+          }
+        ],
+        [
+          {
+            "t": "OREB%",
+            "b": true
+          },
+          {
+            "t": " : Offensive rebound rate -- share of available misses grabbed. On defense, it measures opponent offensive rebounds allowed."
+          }
+        ],
+        [
+          {
+            "t": "TOV%",
+            "b": true
+          },
+          {
+            "t": " : Turnover rate -- turnovers per possession. Lower is better on offense; higher is better on defense."
+          }
+        ],
+        [
+          {
+            "t": "FTR",
+            "b": true
+          },
+          {
+            "t": " : Free throw rate -- FTA / FGA. Measures how often a team or player gets to the line relative to shot attempts."
+          }
+        ]
+      ]
+    },
+    {
+      "h": "Shot Splits",
+      "color": "var(--ibpl-accent)"
+    },
+    {
+      "ul": [
+        [
+          {
+            "t": "Off Shot / Def Shot",
+            "b": true
+          },
+          {
+            "t": " : Each cell shows 2PT and 3PT frequency (how often that shot type is taken) and accuracy (FG%)."
+          }
+        ],
+        [
+          {
+            "t": "The "
+          },
+          {
+            "t": "blue",
+            "color": "var(--ibpl-fg2)"
+          },
+          {
+            "t": " bar is 2PT frequency, the "
+          },
+          {
+            "t": "orange",
+            "color": "var(--ibpl-fg3)"
+          },
+          {
+            "t": " bar is 3PT frequency."
+          }
+        ],
+        [
+          {
+            "t": "Accuracy is shown as FG% text, colored from "
+          },
+          {
+            "t": "red",
+            "color": "var(--ibpl-neg)"
+          },
+          {
+            "t": " (below league average) to "
+          },
+          {
+            "t": "green",
+            "color": "var(--ibpl-pos)"
+          },
+          {
+            "t": " (above league average)."
+          }
+        ]
+      ]
+    },
+    {
+      "h": "Colors & Ranking",
+      "color": "var(--ibpl-accent)"
+    },
+    {
+      "ul": [
+        [
+          {
+            "t": "Heat colors",
+            "b": true
+          },
+          {
+            "t": " : "
+          },
+          {
+            "t": "Green",
+            "color": "var(--ibpl-pos)"
+          },
+          {
+            "t": " = good, "
+          },
+          {
+            "t": "red",
+            "color": "var(--ibpl-neg)"
+          },
+          {
+            "t": " = bad. "
+          },
+          {
+            "t": "Polarity flips for defense",
+            "b": true
+          },
+          {
+            "t": " -- lower Def PPP is better, so green means fewer points allowed."
+          }
+        ],
+        [
+          {
+            "t": "TOV% exception",
+            "b": true
+          },
+          {
+            "t": " : On offense, lower TOV% is green (fewer turnovers). On defense, higher TOV% is green (more opponent turnovers)."
+          }
+        ],
+        [
+          {
+            "t": "Gray / no color",
+            "b": true
+          },
+          {
+            "t": " : The player, lineup, or team has too few possessions to rank reliably (below the minimum threshold)."
+          }
+        ],
+        [
+          {
+            "t": "Percentile rank bars",
+            "b": true
+          },
+          {
+            "t": " (Four Factors view): The slider shows where a player ranks from 0% to 100% among all players with enough possessions. 50% = league median. Only players above the minimum possession threshold are included in rankings."
+          }
+        ]
+      ]
+    },
+    {
+      "h": "Filters",
+      "color": "var(--ibpl-accent)"
+    },
+    {
+      "ul": [
+        [
+          {
+            "t": "Game Number (GN)",
+            "b": true
+          },
+          {
+            "t": " : Each team's sequential game number in the season. Useful for filtering to a stretch of games."
+          }
+        ],
+        [
+          {
+            "t": "Last N",
+            "b": true
+          },
+          {
+            "t": " : Only include the most recent N games. Mutually exclusive with GN range."
+          }
+        ],
+        [
+          {
+            "t": "Opponent Strength",
+            "b": true
+          },
+          {
+            "t": " : Filter games by the opponent's league ranking over the selected sample."
+          }
+        ],
+        [
+          {
+            "t": "Clutch",
+            "b": true
+          },
+          {
+            "t": " (Tabs 2, 3): Limit to close-game possessions based on score margin, time remaining, and lead/trail status. Overtime qualifies by default."
+          }
+        ],
+        [
+          {
+            "t": "Min Possessions",
+            "b": true
+          },
+          {
+            "t": " : Minimum possessions to appear in the table. Higher = more stable data but fewer rows."
+          }
+        ]
+      ]
+    }
+  ],
   "columnTooltips": {
     "PPP": "Points per 100 possessions",
     "Off PPP": "Offensive points per 100 possessions",

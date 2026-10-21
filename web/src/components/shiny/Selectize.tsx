@@ -5,9 +5,16 @@
 // highlighted), arrow keys move the active option, Enter picks, Escape closes;
 // a single select closes on pick, a multi select stays open, hides picked
 // options and drops the last item on Backspace.
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Fragment,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
-export type Choice = { value: string; label: string };
+export type Choice = { value: string; label: string; group?: string };
 
 type Props = {
   id: string;
@@ -199,22 +206,26 @@ export default function Selectize({
               aria-multiselectable={multiple || undefined}
             >
               {options.map((c, i) => (
-                <div
-                  key={c.value || "__empty"}
-                  id={`${listId}-${i}`}
-                  role="option"
-                  aria-selected={picked.includes(c.value)}
-                  className={`option${c.value === "" ? " selectize-dropdown-emptyoptionlabel" : ""}${i === active ? " active" : ""}${picked.includes(c.value) ? " selected" : ""}`}
-                  data-selectable=""
-                  data-value={c.value}
-                  onMouseEnter={() => setActive(i)}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    pick(c);
-                  }}
-                >
-                  {highlight(c.label, query)}
-                </div>
+                <Fragment key={c.value || "__empty"}>
+                  {c.group && c.group !== options[i - 1]?.group && (
+                    <div className="optgroup-header">{c.group}</div>
+                  )}
+                  <div
+                    id={`${listId}-${i}`}
+                    role="option"
+                    aria-selected={picked.includes(c.value)}
+                    className={`option${c.value === "" ? " selectize-dropdown-emptyoptionlabel" : ""}${i === active ? " active" : ""}${picked.includes(c.value) ? " selected" : ""}`}
+                    data-selectable=""
+                    data-value={c.value}
+                    onMouseEnter={() => setActive(i)}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pick(c);
+                    }}
+                  >
+                    {highlight(c.label, query)}
+                  </div>
+                </Fragment>
               ))}
             </div>
           </div>

@@ -1,21 +1,33 @@
 "use client";
-// A DT::datatable() as Shiny renders it, for every tab: DataTables' markup and
-// classes, the scrollX/scrollY split (header in .dataTables_scrollHead, a
-// zero-height sizing copy in the body -- DT's CSS hides sort arrows inside the
-// scroll body), DataTables ordering (click: the first ordered column toggles,
-// any other starts ascending unless the column sets its own sequence;
-// shift-click adds; empty numbers sort as -Infinity; ties keep row order),
-// paging_simple_numbers, the "i" header explanations on touch, the phone name
-// label above horizontally scrolled rows, and csv_export_button()'s CSV.
+// A DT::datatable() as Shiny shows it, built on TanStack Table: the library
+// owns sorting and paging; this file supplies DataTables' rules and markup.
+// - Ordering: a click on the first ordered column toggles it alone; any other
+//   column starts a fresh order, ascending unless the column's orderSequence
+//   starts with "desc" (descFirst); shift-click adds a column. Empty numbers
+//   order as -Infinity, text case-insensitively, ties in row order.
+// - paging_simple_numbers with DataTables' "Showing a to b of n entries".
+// - One table with a sticky header inside a scrolling box (scrollX + scrollY
+//   70vh), the "i" header explanations on touch, the phone name label above
+//   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
+// Shiny's class names are kept so app.css and DataTables' CSS style it.
 import {
   Fragment,
   useContext,
-  useLayoutEffect,
+  useEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import {
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  useReactTable,
+  type ColumnDef,
+  type SortingFn,
+  type SortingState,
+} from "@tanstack/react-table";
 import ui from "@/data/shinyUi.json";
 import type { Row } from "@/rules/gameLogs";
 import { defuseCsvCell } from "@/server/csv";
@@ -35,8 +47,8 @@ export type Column = {
   /** Display and CSV text; defaults to the value as text. */
   render?: (row: Row) => Cell;
   /** DataTables sort value; defaults to the row value. */
-  sortValue?: (row: Row) => number | string | null;
-  /** columnDefs orderSequence; ["desc","asc"] starts descending. */
+  sortValue?: (row: Row) => number | string | boolean | null;
+  /** columnDefs orderSequence c("desc", "asc"). */
   descFirst?: boolean;
 };
 export type Group = { label: string; span: number; cls?: string };
@@ -163,49 +175,23 @@ export function shotCell(
   };
 }
 
-function sortRows(rows: Row[], order: Order, cols: Map<string, Column>): Row[] {
-  const key = (r: Row, id: string): number | string => {
-    const c = cols.get(id);
-    const v = c?.sortValue ? c.sortValue(r) : r[id];
-    if (v == null || v === "") return -Infinity;
-    if (typeof v === "number") return v;
-    if (typeof v === "boolean") return Number(v);
-    return String(v).toLowerCase();
-  };
-  return rows
-    .map((r, i) => ({ r, i }))
-    .sort((a, b) => {
-      for (const o of order) {
-        const x = key(a.r, o.id),
-          y = key(b.r, o.id);
-        if (x < y) return o.desc ? 1 : -1;
-        if (x > y) return o.desc ? -1 : 1;
-      }
-      return a.i - b.i;
-    })
-    .map((x) => x.r);
-}
-function pageNumbers(page: number, pages: number): (number | "…")[] {
-  const range = (a: number, b: number) =>
-    Array.from({ length: b - a }, (_, i) => a + i);
-  if (pages <= 7) return range(0, pages);
-  if (page <= 3) return [...range(0, 5), "…", pages - 1];
-  if (page >= pages - 4) return [0, "…", ...range(pages - 5, pages)];
-  return [0, "…", page - 1, page, page + 1, "…", pages - 1];
-}
-export const csvStamp = () => {
+const csvStamp = () => {
   const d = new Date(),
     p = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}${p(d.getMonth() + 1)}${p(d.getDate())}_${p(d.getHours())}${p(d.getMinutes())}${p(d.getSeconds())}`;
 };
+const cellOf = (row: Row, c: Column): Cell => {
+  if (c.render) return c.render(row);
+  const v = row[c.id];
+  const text = v == null ? "" : String(v);
+  return { node: text, text };
+};
 /** csv_export_button(): visible columns, header labels, every field quoted. */
 export function downloadCsv(name: string, cols: Column[], rows: Row[]) {
   const q = (s: string) => `"${defuseCsvCell(s).replace(/"/g, '""')}"`;
-  const text = (r: Row, c: Column) =>
-    c.render ? c.render(r).text : r[c.id] == null ? "" : String(r[c.id]);
   const lines = [
     cols.map((c) => q(c.label)).join(","),
-    ...rows.map((r) => cols.map((c) => q(text(r, c))).join(",")),
+    ...rows.map((r) => cols.map((c) => q(cellOf(r, c).text)).join(",")),
   ];
   const a = document.createElement("a");
   a.href = URL.createObjectURL(
@@ -214,6 +200,27 @@ export function downloadCsv(name: string, cols: Column[], rows: Row[]) {
   a.download = `${name}_${csvStamp()}.csv`;
   a.click();
   URL.revokeObjectURL(a.href);
+}
+
+// DataTables' ordering of one value: empty -> -Infinity, text lowercased.
+const orderKey = (v: unknown): number | string => {
+  if (v == null || v === "") return -Infinity;
+  if (typeof v === "number") return v;
+  if (typeof v === "boolean") return Number(v);
+  return String(v).toLowerCase();
+};
+const dtSort: SortingFn<Row> = (a, b, id) => {
+  const x = a.getValue<number | string>(id),
+    y = b.getValue<number | string>(id);
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+function pageNumbers(page: number, pages: number): (number | "…")[] {
+  const range = (a: number, b: number) =>
+    Array.from({ length: b - a }, (_, i) => a + i);
+  if (pages <= 7) return range(0, pages);
+  if (page <= 3) return [...range(0, 5), "…", pages - 1];
+  if (page >= pages - 4) return [0, "…", ...range(pages - 5, pages)];
+  return [0, "…", page - 1, page, page + 1, "…", pages - 1];
 }
 
 export default function DataTable({
@@ -234,7 +241,7 @@ export default function DataTable({
   groups?: Group[];
   defaultOrder: Order;
   pageLength?: number;
-  /** dom without "p"/"i" (e.g. "t"): every row on one page, no info line. */
+  /** dom without "p"/"i" (e.g. "t"): every row, no info line. */
   paging?: boolean;
   /** dom "B...": the CSV button with this file-name slug. */
   csvName?: string;
@@ -246,74 +253,46 @@ export default function DataTable({
    * button outside the table (Tab 1's sidebar download). */
   exportRef?: { current: ((name: string) => void) | null };
 }) {
-  const colMap = useMemo(
-    () => new Map(columns.map((c) => [c.id, c])),
+  const [sorting, setSorting] = useState<SortingState>(defaultOrder);
+  const [pageIndex, setPageIndex] = useState(0);
+  const defs = useMemo<ColumnDef<Row>[]>(
+    () =>
+      columns.map((c) => ({
+        id: c.id,
+        accessorFn: (r: Row) =>
+          orderKey(c.sortValue ? c.sortValue(r) : r[c.id]),
+        sortingFn: dtSort,
+        sortDescFirst: Boolean(c.descFirst),
+      })),
     [columns],
   );
-  const [order, setOrder] = useState<Order>(defaultOrder);
-  const [page, setPage] = useState(0);
-  const body = useRef<HTMLDivElement>(null);
-  const head = useRef<HTMLDivElement>(null);
+  const size = paging ? pageLength : Math.max(1, rows.length);
+  const table = useReactTable({
+    data: rows,
+    columns: defs,
+    state: { sorting, pagination: { pageIndex, pageSize: size } },
+    getCoreRowModel: getCoreRowModel(),
+    getSortedRowModel: getSortedRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    autoResetPageIndex: false,
+  });
+  const sortedRows = table.getSortedRowModel().rows.map((r) => r.original);
+  const pageRows = table.getRowModel().rows.map((r) => r.original);
+  const pages = Math.max(1, table.getPageCount());
+  useEffect(() => {
+    if (exportRef)
+      exportRef.current = (name) => downloadCsv(name, columns, sortedRows);
+  }, [exportRef, columns, sortedRows]);
+
   const touchTips = useContext(TouchTipsContext);
   const [tip, setTip] = useState<{ label: string; text: string } | null>(null);
+  const scroller = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
-  useLayoutEffect(() => {
-    const sync = () => {
-      const b = body.current,
-        h = head.current;
-      if (!b || !h) return;
-      const bodyTable = b.querySelector("table"),
-        headTable = h.querySelector("table");
-      const inner = h.firstElementChild as HTMLElement | null;
-      if (!bodyTable || !headTable || !inner) return;
-      const sizing = bodyTable.querySelectorAll<HTMLElement>(
-        "thead tr:last-child th",
-      );
-      const visible = headTable.querySelectorAll<HTMLElement>(
-        "thead tr:last-child th",
-      );
-      sizing.forEach((th, i) => {
-        const w = getComputedStyle(th).width;
-        if (visible[i]) {
-          visible[i].style.width = w;
-          visible[i].style.minWidth = w;
-          visible[i].style.maxWidth = w;
-        }
-      });
-      const width = `${bodyTable.getBoundingClientRect().width}px`;
-      headTable.style.width = width;
-      inner.style.width = width;
-      inner.style.paddingRight = `${b.offsetWidth - b.clientWidth}px`;
-      h.scrollLeft = b.scrollLeft;
-    };
-    sync();
-    const ro = new ResizeObserver(sync);
-    if (body.current) ro.observe(body.current);
-    return () => ro.disconnect();
-  });
 
-  const sorted = useMemo(
-    () => sortRows(rows, order, colMap),
-    [rows, order, colMap],
-  );
-  const size = paging ? pageLength : Math.max(1, sorted.length);
-  const pages = Math.max(1, Math.ceil(sorted.length / size));
-  const shown = sorted.slice(page * size, page * size + size);
-  useLayoutEffect(() => {
-    if (exportRef)
-      exportRef.current = (name) => downloadCsv(name, columns, sorted);
-  }, [exportRef, columns, sorted]);
-
-  const render = (row: Row, c: Column): Cell => {
-    if (c.render) return c.render(row);
-    const v = row[c.id];
-    const text = v == null ? "" : String(v);
-    return { node: text, text };
-  };
-  const onHeader = (id: string, shift: boolean) => {
-    const first = !colMap.get(id)?.descFirst ? false : true;
-    setPage(0);
-    setOrder((current) => {
+  const order = (id: string, shift: boolean) => {
+    const first = Boolean(columns.find((c) => c.id === id)?.descFirst);
+    setPageIndex(0);
+    setSorting((current) => {
       const at = current.findIndex((o) => o.id === id);
       if (shift) {
         if (at < 0) return [...current, { id, desc: first }];
@@ -324,10 +303,10 @@ export default function DataTable({
         : [{ id, desc: first }];
     });
   };
+  // mobile.js: once the rows scroll sideways, each row shows its names above.
   const onScroll = () => {
-    const el = body.current;
+    const el = scroller.current;
     if (!el) return;
-    if (head.current) head.current.scrollLeft = el.scrollLeft;
     const now = el.scrollLeft > 0;
     if (now !== scrolled) setScrolled(now);
     if (!now) return;
@@ -344,82 +323,7 @@ export default function DataTable({
   };
   const names = columns.filter((c) => nameColumns.includes(c.id));
   const anchorIndex = columns.findIndex((c) => !nameColumns.includes(c.id));
-  const headRows = (sizing: boolean) => (
-    <>
-      {groups && !sizing && (
-        <tr>
-          {groups.map((g, i) => (
-            <th
-              key={i}
-              className={`group-head${g.cls ? ` ${g.cls}` : ""}`}
-              colSpan={g.span}
-            >
-              {g.label}
-            </th>
-          ))}
-        </tr>
-      )}
-      <tr style={sizing ? { height: 0 } : undefined}>
-        {columns.map((c) => {
-          const at = order.findIndex((o) => o.id === c.id);
-          const dir =
-            at >= 0 ? (order[at].desc ? "descending" : "ascending") : undefined;
-          const title = c.title ?? TIPS[c.label];
-          const cls = `sub-head${c.cls ? ` ${c.cls}` : ""} dt-center sorting${dir ? (dir === "descending" ? " sorting_desc" : " sorting_asc") : ""}`;
-          if (sizing)
-            return (
-              <th
-                key={c.id}
-                className={cls}
-                aria-hidden="true"
-                style={{
-                  paddingTop: 0,
-                  paddingBottom: 0,
-                  borderTopWidth: 0,
-                  borderBottomWidth: 0,
-                  height: 0,
-                }}
-              >
-                <div
-                  className="dataTables_sizing"
-                  style={{ height: 0, overflow: "hidden" }}
-                >
-                  {c.label}
-                </div>
-              </th>
-            );
-          return (
-            <th
-              key={c.id}
-              className={cls}
-              tabIndex={0}
-              aria-sort={dir}
-              title={title}
-              style={title ? { cursor: "help" } : undefined}
-              data-column={c.id}
-              onClick={(e) => onHeader(c.id, e.shiftKey)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") onHeader(c.id, e.shiftKey);
-              }}
-            >
-              {c.label}
-              {touchTips && title && (
-                <InfoButton
-                  onOpen={() =>
-                    setTip((t) =>
-                      t?.label === c.label
-                        ? null
-                        : { label: c.label, text: title },
-                    )
-                  }
-                />
-              )}
-            </th>
-          );
-        })}
-      </tr>
-    </>
-  );
+
   return (
     <div
       className={`dataTables_wrapper no-footer${names.length ? " ibpl-name-table" : ""}${scrolled ? " ibpl-names-scrolled" : ""}`}
@@ -430,7 +334,7 @@ export default function DataTable({
             className="dt-button buttons-csv buttons-html5"
             tabIndex={0}
             type="button"
-            onClick={() => downloadCsv(csvName, columns, sorted)}
+            onClick={() => downloadCsv(csvName, columns, sortedRows)}
           >
             <span>Download CSV</span>
           </button>{" "}
@@ -445,54 +349,75 @@ export default function DataTable({
             onClose={() => setTip(null)}
           />
         )}
-        <div
-          ref={head}
-          className="dataTables_scrollHead"
-          style={{
-            overflow: "hidden",
-            position: "relative",
-            border: 0,
-            width: "100%",
-          }}
-        >
-          <div
-            className="dataTables_scrollHeadInner"
-            style={{ boxSizing: "content-box" }}
-          >
-            <table
-              className={`display dataTable no-footer ${tableClass}`.trim()}
-              aria-label="Table header"
-            >
-              <thead>{headRows(false)}</thead>
-            </table>
-          </div>
-        </div>
-        <div
-          ref={body}
-          className="dataTables_scrollBody"
-          style={{
-            position: "relative",
-            overflow: "auto",
-            width: "100%",
-            maxHeight: "70vh",
-          }}
-          onScroll={onScroll}
-        >
+        <div ref={scroller} className="ibpl-dt-scroll" onScroll={onScroll}>
           <table
             className={`display dataTable no-footer ${tableClass}`.trim()}
-            style={{ width: "100%" }}
             aria-label="Table"
           >
-            <thead>{headRows(true)}</thead>
+            <thead>
+              {groups && (
+                <tr>
+                  {groups.map((g, i) => (
+                    <th
+                      key={i}
+                      className={`group-head${g.cls ? ` ${g.cls}` : ""}`}
+                      colSpan={g.span}
+                    >
+                      {g.label}
+                    </th>
+                  ))}
+                </tr>
+              )}
+              <tr>
+                {columns.map((c) => {
+                  const dir = table.getColumn(c.id)?.getIsSorted();
+                  const title = c.title ?? TIPS[c.label];
+                  return (
+                    <th
+                      key={c.id}
+                      className={`sub-head${c.cls ? ` ${c.cls}` : ""} dt-center sorting${dir === "desc" ? " sorting_desc" : dir === "asc" ? " sorting_asc" : ""}`}
+                      tabIndex={0}
+                      aria-sort={
+                        dir === "desc"
+                          ? "descending"
+                          : dir === "asc"
+                            ? "ascending"
+                            : undefined
+                      }
+                      title={title}
+                      style={title ? { cursor: "help" } : undefined}
+                      data-column={c.id}
+                      onClick={(e) => order(c.id, e.shiftKey)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") order(c.id, e.shiftKey);
+                      }}
+                    >
+                      {c.label}
+                      {touchTips && title && (
+                        <InfoButton
+                          onOpen={() =>
+                            setTip((t) =>
+                              t?.label === c.label
+                                ? null
+                                : { label: c.label, text: title },
+                            )
+                          }
+                        />
+                      )}
+                    </th>
+                  );
+                })}
+              </tr>
+            </thead>
             <tbody>
-              {shown.map((row, i) => (
+              {pageRows.map((row, i) => (
                 <tr
-                  key={i + page * size}
+                  key={i}
                   className={`${i % 2 ? "even" : "odd"}${names.length ? " ibpl-named-row" : ""}`}
                   {...(rowProps ? rowProps(row) : {})}
                 >
                   {columns.map((c, j) => {
-                    const cell = render(row, c);
+                    const cell = cellOf(row, c);
                     const cls = [
                       j === anchorIndex && names.length
                         ? "ibpl-name-anchor"
@@ -526,7 +451,7 @@ export default function DataTable({
                                     k ? "ibpl-row-name-team" : undefined
                                   }
                                 >
-                                  {render(row, n).text}
+                                  {cellOf(row, n).text}
                                 </span>
                               </Fragment>
                             ))}
@@ -544,22 +469,22 @@ export default function DataTable({
       {paging && (
         <>
           <div className="dataTables_info" role="status" aria-live="polite">
-            Showing {sorted.length ? page * size + 1 : 0} to{" "}
-            {Math.min(sorted.length, page * size + size)} of{" "}
-            {sorted.length.toLocaleString("en-US")} entries
+            Showing {sortedRows.length ? pageIndex * size + 1 : 0} to{" "}
+            {Math.min(sortedRows.length, pageIndex * size + size)} of{" "}
+            {sortedRows.length.toLocaleString("en-US")} entries
           </div>
           <div className="dataTables_paginate paging_simple_numbers">
             <a
-              className={`paginate_button previous${page === 0 ? " disabled" : ""}`}
+              className={`paginate_button previous${pageIndex === 0 ? " disabled" : ""}`}
               role="link"
-              aria-disabled={page === 0}
-              tabIndex={page === 0 ? -1 : 0}
-              onClick={() => page > 0 && setPage(page - 1)}
+              aria-disabled={pageIndex === 0}
+              tabIndex={pageIndex === 0 ? -1 : 0}
+              onClick={() => pageIndex > 0 && setPageIndex(pageIndex - 1)}
             >
               Previous
             </a>
             <span>
-              {pageNumbers(page, pages).map((n, i) =>
+              {pageNumbers(pageIndex, pages).map((n, i) =>
                 n === "…" ? (
                   <span key={`e${i}`} className="ellipsis">
                     …
@@ -567,11 +492,11 @@ export default function DataTable({
                 ) : (
                   <a
                     key={n}
-                    className={`paginate_button${n === page ? " current" : ""}`}
+                    className={`paginate_button${n === pageIndex ? " current" : ""}`}
                     role="link"
-                    aria-current={n === page ? "page" : undefined}
+                    aria-current={n === pageIndex ? "page" : undefined}
                     tabIndex={0}
-                    onClick={() => setPage(n)}
+                    onClick={() => setPageIndex(n)}
                   >
                     {n + 1}
                   </a>
@@ -579,11 +504,13 @@ export default function DataTable({
               )}
             </span>
             <a
-              className={`paginate_button next${page >= pages - 1 ? " disabled" : ""}`}
+              className={`paginate_button next${pageIndex >= pages - 1 ? " disabled" : ""}`}
               role="link"
-              aria-disabled={page >= pages - 1}
-              tabIndex={page >= pages - 1 ? -1 : 0}
-              onClick={() => page < pages - 1 && setPage(page + 1)}
+              aria-disabled={pageIndex >= pages - 1}
+              tabIndex={pageIndex >= pages - 1 ? -1 : 0}
+              onClick={() =>
+                pageIndex < pages - 1 && setPageIndex(pageIndex + 1)
+              }
             >
               Next
             </a>

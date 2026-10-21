@@ -109,22 +109,83 @@ png_by_uri <- local({
   stats::setNames(files, vapply(files, function(f) base64enc::dataURI(file = file.path("www", f), mime = "image/png"), ""))
 })
 images <- character(0)
-fragment <- function(node) {
-  html <- as.character(node)
-  for (img in xml_find_all(node, ".//img")) {
-    src <- xml_attr(img, "src")
-    if (startsWith(src, "data:")) {
-      file <- png_by_uri[[src]]
-      images <<- c(images, file)
-      html <- sub(src, paste0("/images/", file), html, fixed = TRUE)
+# Inline text as runs: text with its emphasis, colour and link role, so the
+# page renders it as React elements rather than injected HTML.
+style_color <- function(node) {
+  st <- xml_attr(node, "style")
+  if (is.na(st)) return(NULL)
+  m <- regmatches(st, regexpr("(?<![-a-z])color:[[:space:]]*[^;]+", st, perl = TRUE))
+  if (length(m)) trimws(sub("color:", "", m, fixed = TRUE)) else NULL
+}
+runs_of <- function(node, inherit = list()) {
+  out <- list()
+  for (k in xml_contents(node)) {
+    if (xml_type(k) == "text") {
+      t <- gsub("[[:space:]]+", " ", xml_text(k))
+      if (nzchar(t)) out[[length(out) + 1]] <- c(list(t = t), inherit)
+    } else {
+      tag <- xml_name(k); add <- inherit
+      if (tag == "b" || tag == "strong") add$b <- TRUE
+      if (tag == "em" || tag == "i") add$em <- TRUE
+      col <- style_color(k); if (!is.null(col)) add$color <- col
+      if (tag == "a" && identical(xml_attr(k, "data-input-id"), "open_glossary")) add$glossary <- TRUE
+      out <- c(out, runs_of(k, add))
     }
   }
-  html
+  # Collapse the whitespace the HTML indentation left at the edges.
+  if (length(out)) {
+    out[[1]]$t <- sub("^ ", "", out[[1]]$t)
+    out[[length(out)]]$t <- sub(" $", "", out[[length(out)]]$t)
+  }
+  Filter(function(r) nzchar(r$t), out)
+}
+blocks_of <- function(node) {
+  lapply(xml_children(node), function(k) {
+    tag <- xml_name(k)
+    if (tag == "ul") return(list(ul = lapply(xml_children(k), runs_of)))
+    if (tag == "hr") return(list(hr = TRUE))
+    if (grepl("^h[1-6]$", tag)) return(list(h = xml_text(k), color = style_color(k)))
+    list(p = runs_of(k), muted = !is.null(style_color(k)))
+  })
+}
+# One conditional panel's children as typed blocks: explainer, example,
+# legend (by variant), or the Four Factors impact legend.
+panel_blocks <- function(node) {
+  out <- list()
+  for (k in xml_children(node)) {
+    cls <- xml_attr(k, "class") %||% ""
+    if (grepl("explainer-card", cls)) {
+      body <- xml_find_first(k, ".//div[contains(@class,'explainer-body')]")
+      kids <- xml_children(body)
+      kids <- kids[!vapply(kids, function(x) length(xml_find_all(x, ".//a[@data-input-id='open_glossary']")) > 0, logical(1))]
+      out[[length(out) + 1]] <- list(kind = "explainer", title = xml_text(xml_find_first(k, ".//h4")),
+        intro = runs_of(kids[[1]]), bullets = lapply(xml_find_all(body, ".//li"), runs_of))
+    } else if (grepl("example-wrapper", cls)) {
+      card <- xml_find_first(k, ".//div[@class='example-card']")
+      img <- xml_find_first(k, ".//img")
+      src <- xml_attr(img, "src")
+      file <- png_by_uri[[src]]
+      images <<- c(images, file)
+      out[[length(out) + 1]] <- list(kind = "example", id = xml_attr(k, "id"),
+        title = xml_text(xml_find_first(card, ".//div[@class='example-card-title']")),
+        paragraphs = lapply(xml_find_all(card, ".//p"), runs_of),
+        image = paste0("/images/", file), alt = xml_attr(img, "alt"),
+        caption = xml_text(xml_find_first(k, ".//div[@class='example-snippet-caption']")))
+    } else if (grepl("legend-box", cls)) {
+      txt <- xml_text(k)
+      variant <- if (grepl("Shot Splits:", txt, fixed = TRUE)) "shot_splits" else "rank"
+      note <- xml_find_all(k, "./span")
+      out[[length(out) + 1]] <- list(kind = "legend", variant = variant,
+        note = if (variant == "rank") gsub("[[:space:]]+", " ", trimws(xml_text(note[[length(note)]]))) else NULL)
+    } else if (grepl("ff-impact-legend", cls)) {
+      out[[length(out) + 1]] <- list(kind = "impact", text = trimws(xml_text(k)))
+    }
+  }
+  out
 }
 VIEWS <- c(summary = "Summary", four_factors = "Four Factors", shot_profile = "Shot Profile")
-# The main column of a tab: the conditional panels above the chips row, per
-# view (explainers, examples, legends), those below the table, the table hint,
-# and the chips row's popovers (title, trigger text, body).
+# The main column of a tab: the blocks above the chips row per view, those
+# below the table, the table hint, and the chips row's popovers.
 tab_fragments <- function(tab_ui) {
   doc <- read_html(as.character(tab_ui))
   main <- xml_find_first(doc, "//div[@role='main']")
@@ -133,29 +194,29 @@ tab_fragments <- function(tab_ui) {
   conds_in <- function(nodes) Filter(function(n) grepl("shiny-panel-conditional", xml_attr(n, "class") %||% ""), nodes)
   pick <- function(nodes, view) {
     hits <- Filter(function(n) grepl(sprintf("'%s'", view), xml_attr(n, "data-display-if"), fixed = TRUE), conds_in(nodes))
-    paste(vapply(hits, function(n) paste(vapply(xml_children(n), fragment, ""), collapse = "
-"), ""), collapse = "
-")
+    do.call(c, c(list(list()), lapply(hits, panel_blocks)))
   }
   before <- kids[seq_len(chips_at - 1L)]
   after <- if (chips_at < length(kids)) kids[(chips_at + 1L):length(kids)] else list()
-  out <- lapply(VIEWS, function(v) pick(before, v))
-  out$after <- lapply(VIEWS, function(v) pick(after, v))
-  out$hint <- as.character(xml_find_first(main, ".//div[@class='table-hint']"))
-  out$popovers <- lapply(xml_find_all(kids[[chips_at]], ".//bslib-popover"), function(p) {
-    parts <- xml_children(xml_child(p, 1))
-    list(
-      title = xml_text(parts[[length(parts)]]),
-      trigger = xml_text(xml_child(p, 2)),
-      body = paste(vapply(xml_children(parts[[1]]), as.character, ""), collapse = "
-"),
-      views = names(VIEWS)[vapply(VIEWS, function(v) {
-        cond <- xml_find_first(p, "ancestor::div[contains(@class,'shiny-panel-conditional')]")
-        !inherits(cond, "xml_missing") && grepl(sprintf("'%s'", v), xml_attr(cond, "data-display-if"), fixed = TRUE)
-      }, logical(1))]
-    )
-  })
-  out
+  hint <- xml_find_first(main, ".//div[@class='table-hint']")
+  list(
+    views = lapply(VIEWS, function(v) pick(before, v)),
+    after = lapply(VIEWS, function(v) pick(after, v)),
+    hint = list(pointer = xml_text(xml_find_first(hint, ".//span[@class='hint-pointer']")),
+                touch = xml_text(xml_find_first(hint, ".//span[@class='hint-touch']"))),
+    popovers = lapply(xml_find_all(kids[[chips_at]], ".//bslib-popover"), function(p) {
+      parts <- xml_children(xml_child(p, 1))
+      list(
+        title = trimws(xml_text(parts[[length(parts)]])),
+        trigger = gsub("[[:space:]]+", " ", trimws(xml_text(xml_child(p, 2)))),
+        body = blocks_of(xml_child(parts[[1]], 1)),
+        views = names(VIEWS)[vapply(VIEWS, function(v) {
+          cond <- xml_find_first(p, "ancestor::div[contains(@class,'shiny-panel-conditional')]")
+          !inherits(cond, "xml_missing") && grepl(sprintf("'%s'", v), xml_attr(cond, "data-display-if"), fixed = TRUE)
+        }, logical(1))]
+      )
+    })
+  )
 }
 
 ui_il <- env$ui_tab4_gamelogs()
@@ -193,7 +254,7 @@ ui <- list(
     shot_profile = lapply(seq_along(env$ON_SP_FILTERABLE_COLS), function(i) list(label = names(env$ON_SP_FILTERABLE_COLS)[i], col = unname(env$ON_SP_FILTERABLE_COLS[i]))),
     player_stats = lapply(seq_along(env$PLAYER_STAT_FILTERABLE_COLS), function(i) list(label = names(env$PLAYER_STAT_FILTERABLE_COLS)[i], col = unname(env$PLAYER_STAT_FILTERABLE_COLS[i])))
   ),
-  glossaryHtml = paste(vapply(xml_children(glossary_body), as.character, ""), collapse = "\n"),
+  glossary = blocks_of(glossary_body),
   columnTooltips = as.list(env$COLUMN_TOOLTIPS),
   filterTooltips = as.list(env$FILTER_TOOLTIPS),
   offOrebTooltip = env$OFF_OREB_TOOLTIP,

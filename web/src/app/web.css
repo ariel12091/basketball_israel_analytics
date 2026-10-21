@@ -1,2 +1,20 @@
 /* Rules the web port needs beyond Shiny's own stylesheets. Keep this short:
    the look comes from app.css / mobile.css (spec: no redesign). */
+
+/* DataTables' scrollX + scrollY box, as one table with a sticky header
+   (DT splits header and body into two tables and syncs their widths). */
+.ibpl-dt-scroll {
+  position: relative;
+  overflow: auto;
+  width: 100%;
+  max-height: 70vh;
+}
+.ibpl-dt-scroll > table.dataTable {
+  width: 100%;
+  margin: 0;
+}
+.ibpl-dt-scroll > table.dataTable > thead {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}

@@ -198,24 +198,23 @@ for (const league of ["il", "euroleague", "eurocup"] as const) {
       .poll(() => new URL(page.url()).searchParams.get("view"))
       .toBe("four_factors");
     await expect(
-      page.locator(".dataTables_scrollHead th.group-head", {
+      page.locator(".ibpl-dt-scroll th.group-head", {
         hasText: "Offense",
       }),
     ).toHaveAttribute("colspan", "5");
     await expect(
-      page.locator(".dataTables_scrollHead th.group-head", {
+      page.locator(".ibpl-dt-scroll th.group-head", {
         hasText: "Usage",
       }),
     ).toHaveAttribute("colspan", "2");
 
     // Explainer and glossary.
-    const explainer = page
-      .locator(".shiny-panel-conditional:visible .js-explainer-toggle")
-      .first();
+    const explainer = page.locator(".js-explainer-toggle:visible").first();
     await explainer.click();
-    await expect(
-      page.locator(".shiny-panel-conditional:visible .explainer-body"),
-    ).toHaveClass(/show/);
+    await expect(page.locator(".explainer-body.show")).toBeVisible();
+    // The explainer's Show/Hide also opens the example box after it (app.js).
+    if (league === "il")
+      await expect(page.locator(".example-wrapper.show")).toBeVisible();
     if (phone && !(await page.locator("#open_glossary").isVisible()))
       await page.locator(".navbar-toggle").click();
     await page.locator("#open_glossary").click();

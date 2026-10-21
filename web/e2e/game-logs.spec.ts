@@ -88,7 +88,7 @@ function defaultOrder(rows: Row[], euro: boolean): Row[] {
     .map((x) => x.r);
 }
 async function visibleCells(page: Page) {
-  return page.locator(".dataTables_scrollBody tbody tr").evaluateAll((rows) =>
+  return page.locator(".ibpl-dt-scroll tbody tr").evaluateAll((rows) =>
     rows.map((row) =>
       Object.fromEntries(
         Array.from(row.querySelectorAll("td")).map((td) => [
@@ -203,12 +203,10 @@ for (const preset of presets) {
       .filter((v): v is number => typeof v === "number");
     // Click the label: on touch widths the header's "i" button explains instead.
     await page
-      .locator(`.dataTables_scrollHead th[data-column="${metric}"]`)
+      .locator(`.ibpl-dt-scroll thead th[data-column="${metric}"]`)
       .click({ position: { x: 6, y: 6 } });
     await expect(
-      page
-        .locator(`.dataTables_scrollBody td[data-column="${metric}"]`)
-        .first(),
+      page.locator(`.ibpl-dt-scroll td[data-column="${metric}"]`).first(),
     ).toHaveText(
       // DataTables orders an empty numeric cell as -Infinity: first.
       values.length < expected.length ? "" : Math.min(...values).toFixed(1),
