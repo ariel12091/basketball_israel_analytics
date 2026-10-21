@@ -1,8 +1,14 @@
-# Game Logs web slice
+# React migration web app
 
 Next.js screen for Israeli League, EuroLeague and EuroCup. Reads the existing
 Shiny database views with the existing `app_readonly` login. No database migrations
 or role changes are needed. Gameflow remains a later migration phase.
+
+Implemented pages: Game Logs, On/Off and Lineups (`/{league}/lineups`). Lineups
+uses the existing Israeli and Euro readers, league-wide ranks before local
+team/player/possession filters, roster chips, clutch, stat filters, pinned TOTAL
+rows, and the existing season game-log modals. EuroLeague's modal stays Summary
+in both parent views, matching `server_tab10_euro_lineups.R`.
 
 ## Local development (PowerShell)
 
@@ -76,6 +82,10 @@ node node_modules/@playwright/test/cli.js test onoff --workers=2
 ```
 
 Both JSON exports and captured route answers are ignored local test artifacts.
+Keep nuqs at 2.10.2 or newer with Next.js 16.4+: older releases can read stale
+search params after a URL flush and drop keyboard slider increments (upstream
+[fix #1613](https://github.com/47ng/nuqs/pull/1613)). The last-N presets exercise
+this path; do not work around it by retrying keypresses or weakening assertions.
 The numeric tests compare every stored numeric field (including percentile ranks
 and luck/sample fields), keyed by team and player name. Browser tests compare
 visible values, default ordering, row counts and interactions at 390 and 1440 px.
@@ -83,7 +93,38 @@ Shiny testServer does not apply auto-slider updates, so parity presets explicitl
 set 100 / 300; browser tests restore those bars after the initial auto adjustment.
 The opt-in live smoke suite also covers On/Off server rendering in EuroCup.
 
+## Lineups parity checks
+
+The real Shiny oracle has 36 presets covering both views and leagues, sizes
+2–5, home + last N, starters, clutch, required/any-of players and stat filters.
+The recorder matches each table's league-specific lineup renderer as well as
+its columns; startup can render another league's tables too.
+
+```powershell
+# Root: intentional live read-only recording only; no concurrent app reads
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/capture_goldens.R --tab lineups --record
+# Root: offline export of the committed RDS oracle
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/export_lineup_goldens_json.R
+# web/, with the shared dev server on 3100
+node scripts/capture-lineup-answers.mjs
+npm.cmd test
+node node_modules/@playwright/test/cli.js test lineups --workers=2
+# Opt-in server render + game-log modal for IL, EuroLeague and EuroCup
+$env:LIVE_DB_SMOKE='1'
+node node_modules/@playwright/test/cli.js test live-smoke --grep Lineups --workers=1
+```
+
+The browser suite exercises both 390/1440 px projects, roster modes, count and
+exactness, URL restore, manual/auto possession bars, reset, modal keyboard
+closure and On/Off-to-Lineups season preservation. Summary tables also support
+per-column filters and page sizes; these use the shared TanStack Table.
+
 ## Preview deployment
+
+Current Ready Preview (Lineups and nuqs fix):
+https://ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app/il/lineups?season=2026
+Deployment `dpl_7rmA7oZHFWP4sLGmU2UR3MWeFcth` explicitly targets Preview.
+All 24 protected read-only endpoint checks pass across the three competitions.
 
 The linked project is `ibpl-game-logs`. Use the Vercel CLI from `web/` and deploy
 with `vercel.cmd deploy --environment preview`. The credentials are configured

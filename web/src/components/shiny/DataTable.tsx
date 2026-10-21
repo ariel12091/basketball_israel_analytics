@@ -21,12 +21,14 @@ import {
 } from "react";
 import {
   getCoreRowModel,
+  getFilteredRowModel,
   getPaginationRowModel,
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
   type SortingFn,
   type SortingState,
+  type ColumnFiltersState,
 } from "@tanstack/react-table";
 import ui from "@/data/shinyUi.json";
 import type { Row } from "@/rules/gameLogs";
@@ -244,6 +246,9 @@ export default function DataTable({
   nameColumns = ["team_name"],
   rowProps,
   exportRef,
+  pinTotals = false,
+  lengthMenu,
+  columnFilters = false,
 }: {
   columns: Column[];
   rows: Row[];
@@ -263,26 +268,65 @@ export default function DataTable({
   /** Filled with a CSV export of the current rows and order, for a CSV
    * button outside the table (Tab 1's sidebar download). */
   exportRef?: { current: ((name: string) => void) | null };
+  pinTotals?: boolean;
+  lengthMenu?: number[];
+  columnFilters?: boolean;
 }) {
   const [sorting, setSorting] = useState<SortingState>(defaultOrder);
   const [pageIndex, setPageIndex] = useState(0);
+  const [pageSize, setPageSize] = useState(pageLength);
+  const [filters, setFilters] = useState<ColumnFiltersState>([]);
+  const [search, setSearch] = useState("");
   const defs = useMemo<ColumnDef<Row>[]>(
-    () =>
-      columns.map((c) => ({
-        id: c.id,
-        accessorFn: (r: Row) =>
-          orderKey(c.sortValue ? c.sortValue(r) : r[c.id]),
-        sortingFn: dtSort,
-        sortDescFirst: Boolean(c.descFirst),
-      })),
-    [columns],
+    () => [
+      ...(pinTotals
+        ? [
+            {
+              id: "__total",
+              accessorFn: (r: Row) => Number(r.is_total ?? 1),
+              sortingFn: dtSort,
+            },
+          ]
+        : []),
+      ...columns.map(
+        (c) =>
+          ({
+            id: c.id,
+            accessorFn: (r: Row) =>
+              orderKey(c.sortValue ? c.sortValue(r) : r[c.id]),
+            sortingFn: dtSort,
+            sortDescFirst: Boolean(c.descFirst),
+            filterFn: (row, id, value) => {
+              const raw = row.original[id];
+              if (Array.isArray(value))
+                return (
+                  raw != null &&
+                  (value[0] === "" || Number(raw) >= Number(value[0])) &&
+                  (value[1] === "" || Number(raw) <= Number(value[1]))
+                );
+              return String(raw ?? "")
+                .toLowerCase()
+                .includes(String(value).toLowerCase());
+            },
+          }) as ColumnDef<Row>,
+      ),
+    ],
+    [columns, pinTotals],
   );
-  const size = paging ? pageLength : Math.max(1, rows.length);
+  const size = paging ? pageSize : Math.max(1, rows.length);
   const table = useReactTable({
     data: rows,
     columns: defs,
-    state: { sorting, pagination: { pageIndex, pageSize: size } },
+    state: {
+      sorting: pinTotals
+        ? [{ id: "__total", desc: false }, ...sorting]
+        : sorting,
+      columnFilters: filters,
+      globalFilter: search,
+      pagination: { pageIndex, pageSize: size },
+    },
     getCoreRowModel: getCoreRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
     getSortedRowModel: getSortedRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     autoResetPageIndex: false,
@@ -342,6 +386,43 @@ export default function DataTable({
     <div
       className={`dataTables_wrapper no-footer${names.length ? " ibpl-name-table" : ""}${scrolled ? " ibpl-names-scrolled" : ""}`}
     >
+      {lengthMenu && (
+        <div className="dataTables_length">
+          <label>
+            Show{" "}
+            <select
+              aria-label="Entries per page"
+              value={pageSize}
+              onChange={(e) => {
+                setPageSize(Number(e.target.value));
+                setPageIndex(0);
+              }}
+            >
+              {lengthMenu.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>{" "}
+            entries
+          </label>
+        </div>
+      )}
+      {columnFilters && (
+        <div className="dataTables_filter">
+          <label>
+            Search:{" "}
+            <input
+              aria-label="Search table"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                setPageIndex(0);
+              }}
+            />
+          </label>
+        </div>
+      )}
       {csvName && (
         <div className="dt-buttons">
           <button
@@ -422,13 +503,76 @@ export default function DataTable({
                   );
                 })}
               </tr>
+              {columnFilters && (
+                <tr className="ibpl-column-filters">
+                  {columns.map((c) => {
+                    const numeric = rows.some(
+                      (r) => typeof r[c.id] === "number",
+                    );
+                    const value =
+                      filters.find((f) => f.id === c.id)?.value ??
+                      (numeric ? ["", ""] : "");
+                    const update = (v: unknown) => {
+                      setPageIndex(0);
+                      setFilters((fs) => [
+                        ...fs.filter((f) => f.id !== c.id),
+                        { id: c.id, value: v },
+                      ]);
+                    };
+                    return (
+                      <th key={c.id}>
+                        {numeric ? (
+                          <details>
+                            <summary>All</summary>
+                            <label>
+                              Min{" "}
+                              <input
+                                type="number"
+                                aria-label={`${c.label} minimum`}
+                                value={(value as string[])[0]}
+                                onChange={(e) =>
+                                  update([
+                                    e.target.value,
+                                    (value as string[])[1],
+                                  ])
+                                }
+                              />
+                            </label>
+                            <label>
+                              Max{" "}
+                              <input
+                                type="number"
+                                aria-label={`${c.label} maximum`}
+                                value={(value as string[])[1]}
+                                onChange={(e) =>
+                                  update([
+                                    (value as string[])[0],
+                                    e.target.value,
+                                  ])
+                                }
+                              />
+                            </label>
+                          </details>
+                        ) : (
+                          <input
+                            aria-label={`Filter ${c.label}`}
+                            placeholder="All"
+                            value={value as string}
+                            onChange={(e) => update(e.target.value)}
+                          />
+                        )}
+                      </th>
+                    );
+                  })}
+                </tr>
+              )}
             </thead>
             <tbody>
               {pageRows.map((row, i) => (
                 <tr
                   key={i}
-                  className={`${i % 2 ? "even" : "odd"}${names.length ? " ibpl-named-row" : ""}`}
                   {...(rowProps ? rowProps(row) : {})}
+                  className={`${i % 2 ? "even" : "odd"}${names.length ? " ibpl-named-row" : ""}${rowProps?.(row).className ? ` ${rowProps(row).className}` : ""}`}
                 >
                   {columns.map((c, j) => {
                     const cell = cellOf(row, c);

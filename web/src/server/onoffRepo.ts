@@ -179,7 +179,21 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
     // live_unfiltered_df); the fast path filters them on the page.
     rows = filtered ? await compute(c.teams) : mv;
   }
-  const meta = euro
+  const meta = await readTabReferences(q, c);
+  return {
+    rows: cleanDisplayNames(rows),
+    league3p: league3p(mv),
+    filtered,
+    version,
+    ...meta,
+  };
+}
+
+/** The existing Shiny reference readers, shared by the migrated tabs. */
+export async function readTabReferences(q: Query, c: Context) {
+  const euro = c.league !== "il";
+  const comp = c.league === "eurocup" ? "U" : "E";
+  return euro
     ? {
         teams: (
           await q<{ team_id: number; team_name: string }>(SQL.elTeams, [
@@ -204,13 +218,6 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
           .filter(Number.isFinite),
         phases: [],
       };
-  return {
-    rows: cleanDisplayNames(rows),
-    league3p: league3p(mv),
-    filtered,
-    version,
-    ...meta,
-  };
 }
 
 const cache = new Map<

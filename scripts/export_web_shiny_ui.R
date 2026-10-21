@@ -31,7 +31,9 @@ env <- new.env(parent = globalenv())
 files <- c("app/R/catalogues_generated.R", "app/R/helpers.R", "app/R/global.R",
            "app/R/global_euro.R", "app/R/svc_game_logs.R", "app/R/mod_ribbon_modal.R",
            "app/R/ui_tab4_gamelogs.R", "app/R/ui_tab11_euro_gamelogs.R",
-           "app/R/ui_tab1_onoff.R", "app/R/ui_tab8_euro.R", "app/R/server_tab1.R")
+           "app/R/ui_tab1_onoff.R", "app/R/ui_tab8_euro.R", "app/R/server_tab1.R",
+           "app/R/mod_lineup_player_filter.R", "app/R/ui_tab2_lineup.R",
+           "app/R/ui_tab10_euro_lineups.R", "app/R/server_tab2.R")
 for (f in files) for (e in parse(f)) {
   if (!is.call(e) || !identical(as.character(e[[1]]), "<-")) next
   if (!is.name(e[[2]])) next
@@ -239,6 +241,11 @@ ui <- list(
   il = tab_fragments(ui_il),
   euro = tab_fragments(ui_el),
   onoff = list(il = tab_fragments(env$ui_tab1_onoff()), euro = tab_fragments(env$ui_tab8_euro())),
+  lineups = list(il = tab_fragments(env$ui_tab2_lineup()), euro = tab_fragments(env$ui_tab10_euro_lineups())),
+  lineupDefaults = list(minPoss = env$LD_DEFAULT_MIN_POSS, size = env$LD_DEFAULT_NUM),
+  lineupStatFilterCols = lapply(list(summary = env$LD_SUMMARY_FILTERABLE_COLS,
+                                     four_factors = env$LD_FF_FILTERABLE_COLS),
+    function(cols) lapply(seq_along(cols), function(i) list(label = names(cols)[i], col = unname(cols[i])))),
   ffImpactLegend = env$ff_impact_legend(),
   ffImpactWeights = as.list(env$FF_IMPACT_WEIGHTS),
   ffImpactEstTitle = env$FF_IMPACT_EST_TITLE,

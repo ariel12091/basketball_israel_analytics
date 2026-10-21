@@ -18,3 +18,17 @@
   top: 0;
   z-index: 2;
 }
+
+.ibpl-lineup-link { border: 0; padding: 0; background: transparent; color: var(--bs-link-color); text-decoration: underline; cursor: pointer; font: inherit; }
+table.dataTable tr.ibpl-lineup-total { background: var(--ibpl-surface-alt); font-weight: bold; }
+.ibpl-column-filters input { width: 100%; min-width: 48px; }
+.ibpl-column-filters details { min-width: 70px; }
+.ibpl-column-filters label { display: block; }
+.ibpl-lineup-modal .modal-dialog { margin: 1.75rem auto; }
+.ibpl-lineup-modal .modal-content {
+  max-height: calc(100vh - 3.5rem);
+  max-height: calc(100dvh - 3.5rem);
+}
+.ibpl-lineup-modal .modal-body { min-height: 0; overflow-y: auto; }
+.ibpl-lineup-modal .modal-header, .ibpl-lineup-modal .modal-footer { flex-shrink: 0; }
+body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-height: 100dvh; }

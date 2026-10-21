@@ -1,4 +1,24 @@
-# Restart memory -- 2026-10-21
+# Restart memory -- 2026-10-22
+
+Current continuation: **Lineups is implemented** for IL, EuroLeague and EuroCup
+at `/{league}/lineups`, with Summary/Four Factors, groups 2–5, roster selections,
+all Shiny filters, TOTAL and season game-log modals. Included in the Lineups
+migration checkpoint on `sql/web-foundation`; use `git log` for its commit.
+Preview is Ready: https://ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app/il/lineups?season=2026
+Deployment `dpl_7rmA7oZHFWP4sLGmU2UR3MWeFcth`, target Preview; no production promotion.
+Passed: 36 Shiny replay presets (72 assertions), 125 unit tests, 92 Lineups
+browser checks, plus the earlier 142 On/Off/Game Logs regression checks.
+Phone/desktop layouts verified. Build/typecheck pass; lint has two existing warnings.
+Final modal audit found null-type MV rows overwrote defense; explicit offense/
+defense filtering now matches R, with a regression test. See the handoff for
+final post-deploy checks and React Doctor findings. **Next: Team Ratings.**
+All 24 protected Preview endpoint checks pass. Latest local live reruns hit
+service-busy responses on cold loads and were stopped; see handoff/logs before
+claiming a clean live rerun. The 92 acceptance checks and eight final modal
+layout checks pass. One restarted dev server remains on 3100, PG_PORT=5432.
+
+The older restart record below documents the preceding On/Off work; its old
+Preview and "Lineups next" statements are historical.
 
 The user is restarting to recover disk space and wants to continue the React
 migration. Start with `docs/phase0_execution_status.md` (START HERE), then
@@ -8,22 +28,31 @@ migration. Start with `docs/phase0_execution_status.md` (START HERE), then
   `web/src/components/shiny/DataTable.tsx`. Features first; preserve Shiny's
   controls/numbers/look; mobile first; one layout per width. No redesign.
 - Code checkpoint: **`d361610`**, branch `sql/web-foundation`, not pushed/merged.
-  The later restart-doc commit contains only these notes.
+  The restart continuation's nuqs dependency fix and notes are uncommitted.
 - Game Logs is across; Gameflow remains deferred. On/Off is implemented for IL,
-  EuroLeague and EuroCup; Shot Profile is IL only. **On/Off acceptance is OPEN.**
+  EuroLeague and EuroCup; Shot Profile is IL only. **On/Off browser acceptance
+  now passes locally** (see verification below).
 - Passed: 45 stored Shiny golden replays, 82 web unit tests, six live On/Off
   browser checks (390/1440 px), 16 protected Preview endpoint checks, builds,
   typecheck and lint (two existing warnings).
-- Last full On/Off browser run: **97/102 passed**. Remaining failures involve
-  last-N possession sliders under keyboard input and one stale-row interaction.
-  Targeted reruns are inconsistent. Do not dismiss this as a test-only issue,
-  weaken assertions, or mark the family complete. Investigate before Lineups.
+- Slider failure reproduced after restart (9/10 last-N checks passed).
+  Diagnostics showed correct keyboard/setter values followed by stale URL state.
+  Updated **nuqs 2.7.2 -> 2.10.2**, which includes upstream fix #1613 for
+  Next.js 16.4+ URL/adapter lag. Temporary diagnostics removed; assertions unchanged.
+- New verification: **102/102 On/Off**, **28/28 repeated last-N/interactions**,
+  **40/40 Game Logs/selector regressions**, 82 unit tests, typecheck, build,
+  lint (two existing warnings). Phone/desktop screenshots inspected.
+  Logs: `tmp_onoff_resume_full.log`, `tmp_onoff_resume_repeat.log`,
+  `tmp_onoff_resume_regression.log`. React Doctor changed-file scan covers zero
+  React source files; do not treat its score as a full-branch review.
 - Preview (Vercel login required):
   https://ibpl-game-logs-n69n42tt5-ariel12091-8759.vercel.app/il/onoff?season=2026
-  EuroLeague/EuroCup use season 2025. This is Preview, not a production promotion.
+  EuroLeague/EuroCup use season 2025. This Preview still has the old nuqs version;
+  the new fix has not been deployed. No production promotion.
 - npm cache and disposable `_npx` cache were cleared for **disk pressure**,
-  recovering roughly 550 MB; last measured C: free space was **0.71 GB**.
-  This is not evidence that slider failures are fixed. Recheck after restart.
+  recovering roughly 550 MB. After restart free space was about **12 GiB**.
+  One dev server is running on port 3100 with read-only DB access; check before
+  starting another server. Cache cleanup did not fix the slider race.
 - Keep existing roles/passwords and `app_readonly` server-side credentials.
   No DB/schema/ETL changes. Never merge this whole branch: older `87c3de2`
   publication/loader changes depend on absent production functions.
@@ -31,9 +60,8 @@ migration. Start with `docs/phase0_execution_status.md` (START HERE), then
   `euroleague/src/euroleague_possessions.egg-info/`, `frontend/`, `video/`,
   `video_analysis/`.
 
-Next: check space and port 3100; start one dev server if needed; reproduce and
-fix On/Off keyboard behavior on phone and desktop; complete that family's browser
-acceptance; then Lineups, Team Ratings, Player Stats, Gameflow + Home, Compare.
+Next: Lineups, then Team Ratings, Player Stats, Gameflow + Home, Compare.
+The dependency fix is ready for review/checkpoint and a later Preview deployment.
 Broad Phase 0/load/publication proofs remain parked under the user's amendment.
 
 Logs and generated JSON are ignored local artifacts, expected to survive a

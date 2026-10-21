@@ -1,6 +1,12 @@
 # CLAUDE.md
 
-## Restart context -- React migration (2026-10-21)
+## Restart context -- React migration (2026-10-22)
+
+Lineups is implemented across all three competitions and deployed to Preview
+`ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app` (Ready, Preview only).
+125 unit tests and 92 Lineups browser checks pass; 36 Shiny presets replay
+identically. Included in the Lineups migration checkpoint. Next: Team Ratings. Read MEMORY.md and
+the handoff's newest entry; the preceding On/Off checkpoint below is historical.
 
 Read `MEMORY.md`, then the START HERE section of
 `docs/phase0_execution_status.md` and `web/CLAUDE.md`. The active frontend is
@@ -8,9 +14,9 @@ Next.js/React in `web/`, using TanStack Table through
 `src/components/shiny/DataTable.tsx`; do not resume the deprecated Vite frontend.
 
 Checkpoint: `d361610` on `sql/web-foundation`, local only. Game Logs is across;
-On/Off is implemented but browser acceptance remains OPEN (last full run
-97/102). Resolve possession-slider keyboard failures before starting Lineups.
-Numeric/API verification passed; do not confuse that with complete UI parity.
+On/Off browser acceptance now passes locally after an uncommitted nuqs 2.10.2
+dependency fix (102/102, plus 28/28 repeated last-N/interactions; Game Logs
+regressions 40/40). Lineups is next. The old Preview has not been redeployed.
 
 User direction: features first, Shiny's features/numbers/look, mobile first,
 one layout per width, idiomatic React and shared TabKit/TanStack components.

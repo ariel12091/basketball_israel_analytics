@@ -1,6 +1,95 @@
-# React migration -- HANDOFF (updated 2026-10-21)
+# React migration -- HANDOFF (updated 2026-10-22)
 
 ## START HERE (current state, read this first)
+
+**Lineups continuation (checkpointed 2026-10-22):** new shared React Lineups
+page at `/{league}/lineups` for IL, EuroLeague and EuroCup, Summary/Four Factors,
+group sizes 2–5, roster chips (On / Any of / Off, at least/exactly k), clutch,
+game context, stat filters, auto/manual minimum possessions, pinned TOTAL and
+season game-log modals. Existing SQL readers and roles unchanged. The shared
+TanStack table now supports fixed TOTAL ordering, Summary column/global filters
+and page sizes. On/Off pivots now preserve season when navigating to Lineups
+or Game Logs. EuroLeague's modal is Summary in either parent view, matching
+the actual Shiny code (the inventory's FF-modal wording overstates that tab).
+
+Verification: 36 real Shiny presets recorded and replay identically
+offline (72 assertions); all 125 web tests pass, including every numeric cell
+and percentile/TOTAL field in those presets. Production build/typecheck pass.
+Six live server-render + modal checks pass (all competitions, both widths).
+All 92 Lineups browser checks pass (72 numeric tables, controls/pagination,
+actual On/Off pivots and eight modal viewport/focus checks). The same broad
+run passed all 142 existing On/Off/Game Logs checks; four new pivot-test
+assertions were corrected to click menu buttons, then the final 92 passed.
+The modal uses a body portal and a scoped fixed margin/scroll area, keeping
+its header and dismiss controls inside the viewport at 390/1440 px.
+Final read-only SQL audit found null-type MV rows were overwriting defensive
+modal totals. The pivot now ignores unclassified rows exactly as R does;
+the 125th unit test covers the observed game (20/33 offense, 18/17 defense).
+No database changes. Formal R goldens cover IL/EuroLeague; live checks also
+cover EuroCup. Next migration feature: **Team Ratings**.
+Temporary logs: `tmp_lineups_record.log`, `tmp_lineups_replay.log`,
+`tmp_lineups_answers.log`, `tmp_lineups_units.log`, `tmp_lineups_browser_full.log`,
+`tmp_lineups_live.log`, `tmp_lineups_build_final.log`.
+
+Oracle: `app/tests/goldens/{presets,fixtures,out}/lineups`; offline JSON export
+is `scripts/export_lineup_goldens_json.R`, read-only route capture is
+`web/scripts/capture-lineup-answers.mjs`. The capture harness now accepts a
+renderer pattern: both leagues render tables during startup, so column names
+alone picked the wrong league. The first invalid recording was stopped and
+replaced; all 36 final frames require a nonempty matching table.
+
+React Doctor full scan includes the new files: no new functional errors;
+complexity/large-component and bounded collection-lookup advisories remain.
+The existing On/Off PivotMenu subscription warning is a false positive: its
+timer and every listener have matching cleanup. Do not claim the whole app
+is clean (full scan 47/100, 121 warnings + that existing cleanup finding).
+Vercel MCP lacks the team's grant; the existing authenticated CLI deployed
+and inspected the project successfully. New deployment is **Ready, Preview**:
+https://ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app/il/lineups?season=2026
+ID `dpl_7rmA7oZHFWP4sLGmU2UR3MWeFcth`. No production promotion.
+All **24 protected Preview endpoint checks pass**: both Lineups views and
+their game logs, rosters, clutch, On/Off and Game Logs for IL/EuroLeague/EuroCup.
+The deployed Israeli Summary modal has positive defensive possessions.
+Vercel CLI's Node entry point was used because Windows `.cmd` forwarding
+split ampersands in query strings. No bypass tokens or credentials were logged.
+All eight final modal viewport/focus checks pass after the defensive pivot fix.
+One concurrent live rerun failed with service-busy responses and missed modal
+opens; the initial six live checks passed. An isolated rerun after restarting
+the dev server is tracked separately below; do not hide the failed rerun.
+The isolated restart run also returned service-busy responses on cold loads;
+it was stopped after IL and EuroLeague failures (`tmp_lineups_live_restart.log`,
+`tmp_lineups_dev_restart.log`). Some SSR pages recovered through a client fetch;
+the simultaneous version/roster/data requests can hit the existing admission
+queue. This remains a local live-test limitation, not a clean six-test rerun.
+Do not change shared queue/deadline policy without a separate measured fix.
+The earlier full acceptance and Preview endpoint results above remain valid.
+Only one restarted dev server remains on 3100, with PG_PORT=5432.
+The scoped final lint (`src` and `e2e`) passes with the same two warnings.
+An earlier whole-directory lint crossed deletion of a temporary diagnostic
+script and failed ENOENT; `tmp_lineups_lint_final_clean.log` is the clean retry.
+Post-deploy checks: `tmp_lineups_preview_smoke.log`; final units/types/build:
+`tmp_lineups_units_final.log`, `tmp_lineups_types_final.log`,
+`tmp_lineups_build_deploy.log`. The entries below are historical.
+
+**Restart continuation (2026-10-21):** the slider failure was reproduced after
+restart (9/10 last-N checks passed). Temporary event/state diagnostics showed
+the correct keypress and setter value followed by a stale URL-state commit;
+this was not a missing keyboard event. Updated `web/package.json` and lockfile
+from nuqs 2.7.2 to **2.10.2**. Upstream
+[fix #1613](https://github.com/47ng/nuqs/pull/1613) specifically addresses
+flushed values being discarded before Next.js 16.4+ search params catch up.
+All temporary diagnostics were removed and browser assertions are unchanged.
+The complete On/Off browser run now passes **102/102** at 390/1440 px
+(`tmp_onoff_resume_full.log`), including the earlier stale-row interaction.
+All 82 unit tests, typecheck, build and lint pass (two existing lint warnings).
+Repeated last-N/interactions pass **28/28** (`tmp_onoff_resume_repeat.log`);
+shared Game Logs/selector regressions pass **40/40**
+(`tmp_onoff_resume_regression.log`), including EuroCup. Phone and desktop
+screenshots were inspected. On/Off browser acceptance now passes locally;
+**Lineups is next**. React Doctor's changed-file scan covers zero React files,
+not the full migration. Free disk space after restart was about 12 GiB;
+one development server is running on 3100. The fix is local and uncommitted;
+the Vercel Preview below still has the old dependency.
 
 **Restart checkpoint (user, 2026-10-21):** implementation and verification work
 is saved in `d361610`. Restart notes are also in root `MEMORY.md`, `CLAUDE.md`,

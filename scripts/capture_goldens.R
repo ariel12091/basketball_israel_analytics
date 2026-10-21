@@ -68,7 +68,8 @@ for (name in names(presets)) {
   p <- presets[[name]]
   env <- golden_app_env(conn_for_run())
   got <- golden_run_server(env, p$inputs,
-                           golden_capture_dt(p$slug, allow_none = isTRUE(p$empty), has_col = p$has_col))
+                           golden_capture_dt(p$slug, allow_none = isTRUE(p$empty), has_col = p$has_col,
+                                             render_pattern = p$render_pattern))
   if (is.null(got) && !isTRUE(p$empty)) stop(name, ": no table rendered", call. = FALSE)
   if (!is.null(got) && !nrow(got$data) && !isTRUE(p$allow_empty)) stop(name, ": table has no rows", call. = FALSE)
   saveRDS(got, file.path(out_dir, paste0(name, ".rds")), compress = "xz")

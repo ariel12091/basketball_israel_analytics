@@ -80,6 +80,18 @@ GOLDEN_STRICT_READERS <- list(
 
 # Each tab owns its strict dependencies; unrelated startup queries remain notes.
 GOLDEN_STRICT_READERS_BY_TAB <- list(
+  lineups = c(list(
+    run_fetch_lineups_20 = NULL,
+    run_fetch_lineups_ff_20 = NULL,
+    cached_season_df = NULL,
+    fetch_player_traditional_season = NULL,
+    server_tab10_euro_lineups = NULL
+  ), GOLDEN_STRICT_READERS[c(
+    "etl_last_success_db", "euro_data_version", "fetch_teams_min",
+    "fetch_teams_distinct", "fetch_gn_values", "fetch_players_basic",
+    "euro_fetch_seasons", "euro_fetch_teams", "euro_fetch_players_basic",
+    "euro_fetch_phases", "euro_fetch_round_values"
+  )]),
   game_logs = GOLDEN_STRICT_READERS,
   onoff = c(list(
     cached_season_df = NULL,
@@ -413,7 +425,8 @@ golden_stop_on_log <- function(what, adjective, entries) {
 # slug with a time, see csv_export_button()), as its data, its initial order
 # and the names of the columns columnDefs hide. With allow_none, a run that
 # rendered no such table (the app's renderer returned NULL) captures NULL.
-golden_capture_dt <- function(slug_prefix = NULL, allow_none = FALSE, has_col = NULL) {
+golden_capture_dt <- function(slug_prefix = NULL, allow_none = FALSE, has_col = NULL,
+                              render_pattern = NULL) {
   sink <- new.env(parent = emptyenv())
   sink$items <- list()
   push <- function(entry) sink$items[[length(sink$items) + 1L]] <- entry
@@ -427,6 +440,8 @@ golden_capture_dt <- function(slug_prefix = NULL, allow_none = FALSE, has_col = 
     on.exit(untrace_dt(), add = TRUE)
     session$flushReact()
     matches <- Filter(function(entry) {
+      if (!is.null(render_pattern) && !grepl(render_pattern,
+          paste(unlist(entry$options$columnDefs), collapse = " "), fixed = TRUE)) return(FALSE)
       if (!is.null(has_col)) return(has_col %in% names(entry$data))
       fn <- entry$options$buttons[[1]]$filename
       is.character(fn) && length(fn) == 1L && startsWith(fn, slug_prefix)

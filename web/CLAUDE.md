@@ -4,11 +4,18 @@ Read `docs/phase0_execution_status.md` (START HERE section) for the current
 state, and `docs/superpowers/specs/2026-10-20-react-migration-design.md` for
 the design. The root `CLAUDE.md` and `docs/shared_definitions.md` still apply.
 
-## Current resume point (2026-10-21)
+## Current resume point (2026-10-22)
 
-Checkpoint `d361610`: On/Off goldens and numeric/API checks pass, but the browser
-suite is not green (last full run 97/102). Resolve intermittent possession-slider
-keyboard failures before Lineups. See `../MEMORY.md` and the handoff for logs,
+Lineups is implemented for all three competitions, with 92 browser checks,
+125 unit tests and 36 Shiny replay presets passing. Ready Preview:
+https://ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app/il/lineups?season=2026
+Included in the Lineups migration checkpoint. Next: Team Ratings. The newest handoff entry
+supersedes the historical On/Off continuation below.
+
+Checkpoint `d361610` plus an uncommitted nuqs 2.10.2 dependency fix: On/Off
+browser acceptance now passes locally (102/102, plus 28/28 repeated last-N and
+interaction checks). Shared Game Logs regressions pass 40/40. Lineups is next.
+The old Preview does not yet include the fix. See `../MEMORY.md` and the handoff for logs,
 Preview, fixture generation and disk cleanup. After restart, check disk space
 and whether port 3100 is listening before starting the one shared dev server.
 

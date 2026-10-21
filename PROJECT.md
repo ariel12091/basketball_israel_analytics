@@ -2,13 +2,20 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## Active React migration -- restart here (2026-10-21)
+## Active React migration -- restart here (2026-10-22)
+
+Lineups is implemented for IL/EuroLeague/EuroCup and deployed to the Ready Preview
+`ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app`. 125 unit tests, 92 Lineups
+browser checks and 36 Shiny replay presets pass. Included in the Lineups checkpoint;
+Team Ratings is next. The newest handoff entry supersedes the historical
+On/Off-only checkpoint below. No production promotion or database changes.
 
 The current migration is the Next.js/React app in `web/` with shared TanStack
 Table and TabKit components. Read `MEMORY.md`, the START HERE section of
 `docs/phase0_execution_status.md`, and `web/CLAUDE.md` before continuing.
-Checkpoint `d361610` is local on `sql/web-foundation`. On/Off's remaining slider
-keyboard/browser failures come before Lineups; it is not accepted as complete.
+Checkpoint `d361610` is local on `sql/web-foundation`. An uncommitted nuqs 2.10.2
+fix resolves On/Off's slider/browser failures: 102/102 browser checks and 28/28
+repeated last-N/interactions pass locally. Lineups is next; Preview is unchanged.
 Follow the user's features-first, mobile-first, one-layout-per-width rules.
 Use existing `app_readonly` credentials server-side, with no role/password or
 production database changes. Do not merge the historical publication/loader

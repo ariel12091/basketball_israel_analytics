@@ -285,10 +285,12 @@ type Pivot = { row: Row; x: number; y: number; opener: HTMLElement };
 function PivotMenu({
   pivot,
   league,
+  season,
   onClose,
 }: {
   pivot: Pivot;
   league: League;
+  season: string;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -299,15 +301,15 @@ function PivotMenu({
   const items = [
     player && {
       label: "Lineups with this player",
-      href: `/${league}/lineups?team=${team}&players_on=${player}`,
+      href: `/${league}/lineups?season=${season}&team=${team}&players_on=${player}`,
     },
     team && {
       label: "Lineups for this team",
-      href: `/${league}/lineups?team=${team}`,
+      href: `/${league}/lineups?season=${season}&team=${team}`,
     },
     team && {
       label: "Game log for this team",
-      href: `/${league}/game-logs?${teamKey}=${team}`,
+      href: `/${league}/game-logs?season=${season}&${teamKey}=${team}`,
     },
   ].filter(Boolean) as { label: string; href: string }[];
   useEffect(() => {
@@ -722,6 +724,7 @@ export const SP_GROUPS: Group[] = [
 /** The table for one view, with the tooltip and pivot menu it hosts. */
 export default function OnOffTable({
   league,
+  season,
   view,
   rows,
   showImpact,
@@ -729,6 +732,7 @@ export default function OnOffTable({
   exportRef,
 }: {
   league: League;
+  season: string;
   view: "summary" | "four_factors" | "shot_profile";
   rows: Row[];
   showImpact: boolean;
@@ -802,6 +806,7 @@ export default function OnOffTable({
         <PivotMenu
           pivot={pivot}
           league={league}
+          season={season}
           onClose={() => setPivot(null)}
         />
       )}

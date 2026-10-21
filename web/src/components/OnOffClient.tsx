@@ -627,6 +627,7 @@ export default function OnOffClient({
                 <OnOffTable
                   key={`${draw}-${dataView}`}
                   league={league}
+                  season={query.season}
                   view={dataView}
                   rows={rows}
                   showImpact={defaults.showImpact}

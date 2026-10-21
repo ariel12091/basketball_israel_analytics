@@ -652,6 +652,394 @@
       ]
     }
   },
+  "lineups": {
+    "il": {
+      "views": {
+        "summary": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Summary)",
+            "intro": [
+              {
+                "t": "Which player combinations perform best, and how reliable is the sample?"
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Each row shows a lineup's MIN, Total Poss, Off PPP, Def PPP, Net RTG, and +/- (point differential)."
+                }
+              ],
+              [
+                {
+                  "t": "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy - use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak."
+                }
+              ],
+              [
+                {
+                  "t": "Off Poss, Off Pts, Def Poss, Def Pts, and # Starters round out the row for sample-size and context."
+                }
+              ],
+              [
+                {
+                  "t": "The TOTAL row at the top aggregates all lineups matching your filters - use it as a baseline for comparison."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "example",
+            "id": "lineup-example-box",
+            "title": "How to Read Lineup Data (Real Example)",
+            "paragraphs": [
+              [
+                {
+                  "t": "This Rishon Lezion lineup has Off PPP 109.6 and Def PPP 111.8, so Net RTG is -2.2."
+                }
+              ],
+              [
+                {
+                  "t": "That means this five-man unit is outscored by 2.2 points per 100 possessions while on court."
+                }
+              ],
+              [
+                {
+                  "t": "Sample size here is meaningful: 153.8 minutes and 560 total possessions."
+                }
+              ]
+            ],
+            "image": "/images/lineup-row-snippet.png",
+            "alt": "Lineup summary table snippet",
+            "caption": "Real summary snippet (Lineup Data)"
+          },
+          {
+            "kind": "legend",
+            "variant": "shot_splits",
+            "note": {}
+          }
+        ],
+        "four_factors": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Four Factors)",
+            "intro": [
+              {
+                "t": "Which lineup-level factors drive good or bad results? See each lineup's PPP, eFG%, OREB%, TOV%, and FTR on offense and defense, plus minutes, possessions, and net rating."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "The TOTAL row at the top aggregates all lineups matching your filters - use it as a baseline."
+                }
+              ],
+              [
+                {
+                  "t": "Compare eFG%, OREB%, TOV%, and FTR together; a single dominant factor often explains the PPP gap."
+                }
+              ],
+              [
+                {
+                  "t": "Check MIN and POSS columns before concluding - small-sample lineups can show extreme rates."
+                }
+              ],
+              [
+                {
+                  "t": "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "example",
+            "id": "lineup-ff-example-box",
+            "title": "How to Read Four Factors (Real Example)",
+            "paragraphs": [
+              [
+                {
+                  "t": "This Rishon Lezion lineup has Off PPP 109.6 vs Def PPP 111.8, giving Net -2.2."
+                }
+              ],
+              [
+                {
+                  "t": "Offense profile: eFG% 50.5 and OREB% 33.8. Defense allows 111.8 PPP with opponents shooting 57.6 eFG%."
+                }
+              ],
+              [
+                {
+                  "t": "Workload is substantial (153.8 minutes, 560 total possessions), so factor-level interpretation is reliable."
+                }
+              ]
+            ],
+            "image": "/images/lineup-ff-row-snippet.png",
+            "alt": "Lineup four factors table snippet",
+            "caption": "Real Four Factors snippet (Lineup Data)"
+          }
+        ],
+        "shot_profile": []
+      },
+      "after": {
+        "summary": [],
+        "four_factors": [],
+        "shot_profile": []
+      },
+      "hint": {
+        "pointer": "Click a lineup for its game log · Click a column header to sort · Hover over a column header for its definition",
+        "touch": "Tap a lineup for its game log · Tap a column header to sort · Tap a header's info button for its definition"
+      },
+      "popovers": []
+    },
+    "euro": {
+      "views": {
+        "summary": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Summary)",
+            "intro": [
+              {
+                "t": "Which EuroLeague 2-, 3-, 4-, or 5-player combinations outscore their opponents while sharing the floor?"
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "A unit's row covers every possession where all of its players were on court together, across any five-man lineup containing them."
+                }
+              ],
+              [
+                {
+                  "t": "Off PPP and Def PPP are the team's points per 100 possessions with that unit on the floor; Net is the gap."
+                }
+              ],
+              [
+                {
+                  "t": "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy - use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak."
+                }
+              ],
+              [
+                {
+                  "t": "Units overlap by design: a pair's possessions include every lineup that contained the pair, so unit rows do not sum to a team total."
+                }
+              ],
+              [
+                {
+                  "t": "Minutes and possessions indicate sample size. Small samples produce noisy rates."
+                }
+              ],
+              [
+                {
+                  "t": "Possessions come from an independent EuroLeague possession engine. Never compare these numbers against the Israeli-league tabs."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "legend",
+            "variant": "shot_splits",
+            "note": {}
+          }
+        ],
+        "four_factors": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Four Factors)",
+            "intro": [
+              {
+                "t": "Why does a unit outscore or get outscored? Break its Net into shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Offense columns are what the unit's team did; Defense columns are what opponents did against it."
+                }
+              ],
+              [
+                {
+                  "t": "Lower is better for defensive eFG%, OREB%, and FTR; higher is better for defensive TOV%."
+                }
+              ],
+              [
+                {
+                  "t": "eFG% credits a made three as 1.5 field goals: (FGM + 0.5 x 3PM) / FGA."
+                }
+              ],
+              [
+                {
+                  "t": "Rates are computed after aggregating the selected games, never averaged from per-game ratios."
+                }
+              ]
+            ]
+          }
+        ],
+        "shot_profile": []
+      },
+      "after": {
+        "summary": [],
+        "four_factors": [],
+        "shot_profile": []
+      },
+      "hint": {
+        "pointer": "Click a lineup for its game log · Click a column header to sort · Hover over a column header for its definition",
+        "touch": "Tap a lineup for its game log · Tap a column header to sort · Tap a header's info button for its definition"
+      },
+      "popovers": []
+    }
+  },
+  "lineupDefaults": {
+    "minPoss": 20,
+    "size": "5"
+  },
+  "lineupStatFilterCols": {
+    "summary": [
+      {
+        "label": "Min",
+        "col": "minutes"
+      },
+      {
+        "label": "Total Poss",
+        "col": "total_poss"
+      },
+      {
+        "label": "+/-",
+        "col": "plus_minus"
+      },
+      {
+        "label": "Off PPP",
+        "col": "off_ppp"
+      },
+      {
+        "label": "Def PPP",
+        "col": "def_ppp"
+      },
+      {
+        "label": "Net RTG",
+        "col": "net_rtg"
+      },
+      {
+        "label": "Off Shot",
+        "col": "Off Shot"
+      },
+      {
+        "label": "Off 2PT%",
+        "col": "off_fg2_pct"
+      },
+      {
+        "label": "Off 2PT Freq",
+        "col": "off_fg2_freq"
+      },
+      {
+        "label": "Off 3PT%",
+        "col": "off_fg3_pct"
+      },
+      {
+        "label": "Off 3PT Freq",
+        "col": "off_fg3_freq"
+      },
+      {
+        "label": "Def Shot",
+        "col": "Def Shot"
+      },
+      {
+        "label": "Def 2PT%",
+        "col": "def_fg2_pct"
+      },
+      {
+        "label": "Def 2PT Freq",
+        "col": "def_fg2_freq"
+      },
+      {
+        "label": "Def 3PT%",
+        "col": "def_fg3_pct"
+      },
+      {
+        "label": "Def 3PT Freq",
+        "col": "def_fg3_freq"
+      },
+      {
+        "label": "Off Poss",
+        "col": "off_poss"
+      },
+      {
+        "label": "Off Pts",
+        "col": "off_pts"
+      },
+      {
+        "label": "Def Poss",
+        "col": "def_poss"
+      },
+      {
+        "label": "Def Pts",
+        "col": "def_pts"
+      },
+      {
+        "label": "# Starters",
+        "col": "num_starters"
+      }
+    ],
+    "four_factors": [
+      {
+        "label": "Off PPP",
+        "col": "off_ppp"
+      },
+      {
+        "label": "Off eFG%",
+        "col": "off_efg"
+      },
+      {
+        "label": "Off OREB%",
+        "col": "off_oreb"
+      },
+      {
+        "label": "Off TOV%",
+        "col": "off_tov"
+      },
+      {
+        "label": "Off FTR",
+        "col": "off_ftr"
+      },
+      {
+        "label": "Off Poss",
+        "col": "off_poss"
+      },
+      {
+        "label": "Def PPP",
+        "col": "def_ppp"
+      },
+      {
+        "label": "Def eFG%",
+        "col": "def_efg"
+      },
+      {
+        "label": "Def OREB%",
+        "col": "def_oreb"
+      },
+      {
+        "label": "Def TOV%",
+        "col": "def_tov"
+      },
+      {
+        "label": "Def FTR",
+        "col": "def_ftr"
+      },
+      {
+        "label": "Def Poss",
+        "col": "def_poss"
+      },
+      {
+        "label": "Min",
+        "col": "minutes"
+      },
+      {
+        "label": "Total Poss",
+        "col": "total_poss"
+      },
+      {
+        "label": "Net",
+        "col": "net_rtg"
+      }
+    ]
+  },
   "ffImpactLegend": "Estimated factor impact (est.): each 1pp of a factor ~ eFG +1.45, TOV -1.36, OREB +0.63, FTR +0.13 pts per 100 poss. (league-calibrated regression weights -- an approximation, not a measured stat).",
   "ffImpactWeights": {
     "efg": 1.45,

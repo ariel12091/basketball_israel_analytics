@@ -6,6 +6,49 @@ for (const [league, season] of [
   ["il", 2026],
   ["euroleague", 2025],
   ["eurocup", 2025],
+] as const)
+  test(`live ${league}: Lineups server render and modal`, async ({
+    page,
+  }, info) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const rosterReady = page.waitForResponse(
+      (r) => r.url().includes("/lineup-roster") && r.ok(),
+    );
+    await page.goto(`/${league}/lineups?season=${season}`);
+    await rosterReady;
+    await expect(
+      page.locator(".ibpl-dt-scroll tbody tr").first(),
+    ).toContainText("TOTAL", { timeout: 30000 });
+    const lineup = page.locator("button.ibpl-lineup-link").first();
+    await lineup.scrollIntoViewIfNeeded();
+    await expect(lineup).toBeInViewport();
+    await lineup.evaluate(
+      () =>
+        new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        ),
+    );
+    await lineup.click();
+    await expect(
+      page.getByRole("dialog").locator("tbody tr").first(),
+    ).toBeVisible({ timeout: 30000 });
+    await page.screenshot({
+      path: `../output/playwright/live-lineups-${league}-${info.project.name}.png`,
+      fullPage: true,
+    });
+    await page.keyboard.press("Escape");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    expect(errors).toEqual([]);
+  });
+for (const [league, season] of [
+  ["il", 2026],
+  ["euroleague", 2025],
+  ["eurocup", 2025],
 ]) {
   test(`live ${league}: data and phone/desktop interactions`, async ({
     page,

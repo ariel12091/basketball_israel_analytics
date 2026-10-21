@@ -47,6 +47,7 @@ const TABS: Tab[] = [
     icon: "bi-people-fill",
     modes: ["Summary", "Four Factors"],
     def: "Summary",
+    path: "lineups",
   },
   {
     value: "team_ratings",

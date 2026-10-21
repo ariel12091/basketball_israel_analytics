@@ -135,3 +135,33 @@ export function onoffPath(league: League, query: Query): string {
   else q.delete("view");
   return `/api/v1/${league}/onoff?${q}`;
 }
+
+export const LINEUP_QUERY_DEFAULTS = {
+  size: "5",
+  min_poss: "20",
+  players_on: "",
+  players_any: "",
+  players_off: "",
+  any_count: "1",
+  any_exact: "false",
+  clutch: "false",
+  clutch_margin: "5",
+  clutch_status: "all",
+  clutch_minutes: "5",
+  ot_margin: "false",
+};
+/** Team/player/possession/stat filters stay local, after league-wide ranks. */
+export function lineupsPath(league: League, query: Query): string {
+  const q = contextParams(query, league);
+  for (const k of ["team", "teams", "stats"]) q.delete(k);
+  for (const k of [
+    "size",
+    "clutch",
+    "clutch_margin",
+    "clutch_status",
+    "clutch_minutes",
+    "ot_margin",
+  ])
+    if (query[k]) q.set(k, query[k]);
+  return `/api/v1/${league}/lineups?${q}`;
+}
