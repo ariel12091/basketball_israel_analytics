@@ -34,19 +34,20 @@ the earlier light redesign:
 - Verified 2026-10-21: unit 37/37; browser 40/40 at 390 and 1440 px (all 15
   stored Shiny presets: cells, default order, paging, ascending-first sort,
   CSV, URL restore; controls for all three competitions); live read-only
-  smoke 6/6. Not yet redeployed to the Vercel preview.
+  smoke 6/6. Preview (Vercel login):
+  https://ibpl-game-logs-2h647f300-ariel12091-8759.vercel.app/il/game-logs
+  -- `verify-preview.mjs` passed all six endpoints (IL 442 rows, EuroLeague
+  802, EuroCup 384, version 3 leagues).
 - Still deferred: GL-06 Gameflow (link shown, inert; the scoreless-game gate
   is not wired in the route -- do it with Gameflow).
 
 **Next, in order (features first):**
-1. Deploy a new preview (`vercel.cmd deploy --environment preview` from
-   `web/`, then `node scripts/verify-preview.mjs <url>`).
-2. Next tab family, per spec phases 2-7: Player Stats, Team Ratings, On/Off,
+1. Next tab family, per spec phases 2-7: Player Stats, Team Ratings, On/Off,
    Lineups, Gameflow + Home, Compare. For each: inventory IDs in
    `docs/superpowers/specs/2026-10-19-api-mcp-feature-inventory.md`, goldens
    from Shiny via the existing harness, API route calling the existing SQL
    owners as `app_readonly`, page reusing the `components/shiny/` pieces.
-3. The Phase 0 proofs (load test, connection budget, publication markers)
+2. The Phase 0 proofs (load test, connection budget, publication markers)
    stay parked until the features are across, unless load forces them.
 
 Everything below is the earlier record.
