@@ -64,6 +64,8 @@ export default function Slider({
           if (drag != null && drag !== value) onChange(drag);
           setDrag(null);
         }}
+        onPointerCancel={() => setDrag(null)}
+        onLostPointerCapture={() => setDrag(null)}
       >
         <span className="irs">
           <span

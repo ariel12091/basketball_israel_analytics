@@ -43,6 +43,7 @@ function RangeCell({
   onPct,
   offPct,
   extra,
+  details = true,
 }: {
   value: string;
   on: string;
@@ -50,7 +51,14 @@ function RangeCell({
   onPct: number | null;
   offPct: number | null;
   extra?: ReactNode;
+  details?: boolean;
 }) {
+  if (!details)
+    return (
+      <div className="diff-val" style={{ marginBottom: 0 }}>
+        {value}
+      </div>
+    );
   if (onPct == null)
     return (
       <>
@@ -359,6 +367,7 @@ type Ctx = {
   onTip: (t: Tip | null) => void;
   onPivot: (p: Pivot) => void;
   showImpact: boolean;
+  showRanges: boolean;
 };
 const plain =
   (
@@ -541,6 +550,7 @@ function ffCell(
   off: string,
   unit: string,
   impact: boolean,
+  showRanges: boolean,
 ): Column["render"] {
   const js = (v: unknown) =>
     v == null || v === "" || Number(v) === 0 ? "-" : String(Number(v));
@@ -570,6 +580,7 @@ function ffCell(
           onPct={num(row[`${on}_rank`])}
           offPct={num(row[`${off}_rank`])}
           extra={est}
+          details={showRanges}
         />
       ),
       text: value,
@@ -595,13 +606,21 @@ export function ffColumns(ctx: Ctx): Column[] {
       FF_METRIC_MAP[id][1],
       "%",
       ctx.showImpact,
+      ctx.showRanges,
     ),
   });
   const rating = (id: string): Column => ({
     id,
     label: "Diff",
     cls: SEP,
-    render: ffCell(id, FF_RTG_MAP[id][0], FF_RTG_MAP[id][1], "", false),
+    render: ffCell(
+      id,
+      FF_RTG_MAP[id][0],
+      FF_RTG_MAP[id][1],
+      "",
+      false,
+      ctx.showRanges,
+    ),
   });
   return [
     ...nameCols(ctx),
@@ -706,12 +725,14 @@ export default function OnOffTable({
   view,
   rows,
   showImpact,
+  showRanges = true,
   exportRef,
 }: {
   league: League;
   view: "summary" | "four_factors" | "shot_profile";
   rows: Row[];
   showImpact: boolean;
+  showRanges?: boolean;
   exportRef?: { current: ((name: string) => void) | null };
 }) {
   const [tip, setTip] = useState<Tip | null>(null);
@@ -723,8 +744,8 @@ export default function OnOffTable({
     return () => window.removeEventListener("scroll", hide, true);
   }, [tip]);
   const ctx = useMemo<Ctx>(
-    () => ({ onTip: setTip, onPivot: setPivot, showImpact }),
-    [showImpact],
+    () => ({ onTip: setTip, onPivot: setPivot, showImpact, showRanges }),
+    [showImpact, showRanges],
   );
   const columns = useMemo(
     () =>

@@ -7,56 +7,135 @@ first in the spirit of Shiny, no redesign or pixel polish (a redesign comes
 later); one layout per viewport width, mobile first; idiomatic React (TanStack
 Table, JSX content, server first render), with Shiny's CSS only for the look.
 
-**State (2026-10-21, end of session; branch `sql/web-foundation`, not pushed,
+**State (2026-10-21, current execution; branch `sql/web-foundation`, not pushed,
 not merged; nothing applied to production):**
 - **Game Logs: done**, both leagues (`784face`, `7009ad0`). Unit 37/37,
   browser 40/40 (390/1440 px, 15 stored Shiny presets), live smoke 6/6.
-  GL-06 Gameflow deferred. Last preview predates `7009ad0`.
+  GL-06 Gameflow deferred. The latest preview below includes `7009ad0`.
 - **On/Off: page built, both leagues** (`07795cd` API, `9f7075b` page, plus
-  the last commit). Summary / Four Factors / Shot Profile (Israeli only),
+  `ac76683`). Summary / Four Factors / Shot Profile (Israeli only),
   sidebar incl. Opponent Strength, min-poss sliders with auto-min, Net cell
   3PT luck / small-sample tags + tooltip, pivot menu, FF detail toggle, luck
   popover, stat filters, **Player Stats (ps_*) chips** via
   `GET /api/v1/{league}/player-stat-filters` (`server/playerStatFilterRepo.ts`,
   `rules/playerStats.ts`). Row pipeline is the pure `onoffTableRows()` in
-  `rules/onoff.ts` (page and future parity test share it).
+  `rules/onoff.ts` (page and parity tests share it).
   **Checked by hand against production Shiny:** 2026-27 defaults in all three
   views (row counts, auto-min 180/60, first-row cells identical) and
   2025-26 "PTS/G >= 15" (27 rows both). EuroLeague FF filtered path ~9.6 s
   (same SQL as Shiny; Phase 8).
-- **Not done for On/Off:** goldens, browser tests, live-smoke entries, the
-  sidebar CSV deviation entry (Shiny's `download_csv` has no handler; ours
-  exports the visible table -- register in `docs/shared_definitions.md`).
+- **On/Off verification added:** 45 stored Shiny presets across IL Summary /
+  Four Factors / Shot Profile and EuroLeague Summary / Four Factors. Every
+  view covers default, home, teams on the fast path, teams + outcome on the
+  filtered path, last N, starters, opponent rank, an On/Off stat filter and a
+  Player Stats chip. The harness chooses the strict readers by tab and captures
+  tables without CSV slugs by column name. All 45 goldens replay identically
+  offline. All 82 web unit tests pass, including comparison of the separately
+  captured live API rows against every stored numeric/boolean field, ranks,
+  luck and sample flags. Fixed testServer possession bars are 100 / 300.
+- **UI continuation:** Four Factors detail visibility is now React state
+  passed to the cells, replacing the imperative body-class effect. Sliders
+  cancel an interrupted pointer drag without committing its draft value.
+  TanStack Table and the shared tab kit remain in place; no new layout or
+  user-agent rules. CSV repair registered as D26 in
+  `docs/shared_definitions.md` (Israeli sidebar only; Euro has no such button).
+- **Browser acceptance is OPEN:** last complete run passed 97/102 tests;
+  five cases failed (four slider-keyboard cases under last-N presets and one
+  stale-row interaction). A narrower rerun passed 10/14; slider failures remain
+  intermittent despite waiting for auto values and URL commits. Do not mark
+  On/Off done or assume this is only a test issue. Investigate the keyboard
+  event / controlled-value / nuqs path before Lineups. Six live
+  On/Off server-render smoke checks already pass (IL / EuroLeague / EuroCup,
+  390 and 1440 px). Phone and desktop screenshots were inspected in
+  `output/playwright/onoff-*` and `live-onoff-*`.
+
+**Latest Vercel Preview:**
+https://ibpl-game-logs-n69n42tt5-ariel12091-8759.vercel.app/il/onoff?season=2026
+
+Deployment `dpl_BgYVJwgQb2L7H4r4ho1x2ogB77WR` is READY, Preview
+(`target: null`, `productionUrl: null`), protected by Vercel login. Euro paths
+use season 2025. All 16 authenticated endpoint checks pass on their first
+attempt: Game Logs, all supported On/Off views in all three competitions,
+filtered IL Summary / EuroLeague FF, the IL Player Stats frame, and version.
+Typecheck, lint (zero errors; two existing warnings) and production builds pass.
 
 **Next, in order:**
-1. **On/Off goldens** (plan worked out, harness NOT yet edited):
-   - `app/tests/goldens/harness.R`: add `GOLDEN_STRICT_READERS_BY_TAB`
-     (`game_logs` = current list; `onoff` = `cached_season_df`,
-     `run_onoff_compute_14`, `run_four_factors_compute`,
-     `fetch_player_traditional_season`, `fetch_player_traditional_filtered`,
-     `etl_last_success_db`, `euro_data_version`, ref lookups for "2026" and
-     "E | 2025"); `golden_capture_dt(..., has_col = NULL)` picks the table by
-     a column when it has no CSV slug ("Net RTG Diff" / "Net Diff" /
-     "Off Lay+Dunk Diff"). Probed: under testServer only the active tab's
-     table renders (one "Net RTG Diff" table, 190 rows for 2026 at 100/300).
-     Output JSON has no data (DT server = TRUE), so keep the trace approach.
-     The file has CRLF/LF; preserve its line endings.
-   - `scripts/capture_goldens.R`: strict list by `--tab`, pass `has_col`.
-   - `app/tests/goldens/presets/onoff.R`: presets MUST set `min_all_poss` /
-     `min_on_poss` (testServer does not apply `updateSliderInput`, so auto-min
-     never moves them); IL 2026 (date_range 2025-09-01..2026-07-01) and EL E
-     2025 (euro_date_range 2025-09-01..2026-07-01): each view default, home,
-     teams (fast) vs outcome+teams (SQL team path), last N, starters, opp
-     rank, an on/off stat filter, a ps chip (steps: on_stat_filter_col
-     "PTS/G", value 15, then on_add_stat_filter = 1).
-   - Record: `Rscript scripts/capture_goldens.R --tab onoff --record`
-     (read-only, port 5432, nothing else querying as app_readonly).
-   - Parity test: route answer (live, opt-in) -> `onoffTableRows()` with the
-     preset's min values, compare against the recorded frames.
+1. Resolve the On/Off slider/browser failures before declaring that family
+   accepted. User reports disk pressure. `npm.cmd cache clean --force` completed;
+   the remaining disposable `_npx` cache (about 522 MB) was also removed.
+   C: has only 0.69 GB free after cleanup (was 0.14 GB after npm's own clean).
+   Recheck free space and dev-server health before rerunning tests. Last debug
+   run: `tmp_onoff_key_debug.log` (5/10 passed); keydown targets the correct
+   slider, but some increments never appear. `ONOFF_DEBUG=1` enables event logs
+   in the test. A later isolated attempt (`tmp_onoff_slider_debug.log`) has not
+   produced results; do not start more dev servers. Port 3100 is shared.
 2. Lineups (Tab 2 / Tab 10) the same way; the pivot menu already links to
    `/{league}/lineups?team=&players_on=`.
 3. Then Team Ratings, Player Stats, Gameflow + Home, Compare. Phase 0 proofs
    stay parked until the features are across.
+
+### Reproduce the On/Off checks
+
+`web/README.md` has the commands. Export stored R frames with
+`scripts/export_onoff_goldens_json.R`; with the shared server on 3100, explicitly
+capture read-only route inputs using `web/scripts/capture-onoff-answers.mjs`.
+Those generated JSON files are ignored; the stored RDS oracle and database-query
+fixtures are versioned. Run `npm.cmd test` and the On/Off Playwright tests from
+`web/`. The live smoke suite is opt-in with `LIVE_DB_SMOKE=1`.
+
+Do not re-record R goldens just to regenerate JSON. A fresh live recording uses
+`scripts/capture_goldens.R --tab onoff --record`, alone as `app_readonly` on
+5432. `--resume` preserves completed outputs and the fixture index after an
+interruption; use it only for the same capture, not after changing presets or SQL.
+The script now asserts the existing login and sets session read-only mode.
+
+### Hiccups and lessons for the next executor
+
+- The earlier Game Logs shortcuts (plain selectors, ID chips, missing grouped
+  headers) were implementation mistakes. Numeric goldens did not prove control
+  behaviour. The user identified them; the later corrections and
+  `web/CLAUDE.md` are the authority. Compare controls and interactions as well
+  as numbers; do not treat backend scope reductions as UI redesign permission.
+- EuroLeague last 5 has zero rows at fixed 100 / 300 possession limits. The
+  first recorder rejected that legitimate result. Presets now explicitly allow
+  those two empty frames; they are not silently skipped.
+- The capture script was edited while R was still executing it. All 45 outputs
+  and the fixture index were written and the connection closed, but the process
+  then reported a trailing parse error. The saved scripts parse, and all 45
+  outputs were verified by a separate full offline replay. Freeze the executable
+  files before the next long capture; restart rather than edit a running script.
+- Browser setup initially raced auto-min updates and nuqs URL commits. It also
+  clicked rows while the table was being replaced after Reset. Tests now wait
+  for the initial auto values, each URL update, the reset answer and stable
+  scrolling, but remaining keyboard failures are unresolved. Assertions still
+  compare against the original fixed-bar R frames. The cache cleanup was
+  requested because the disk lacks space, not as a proposed fix for React.
+- One attempted duplicate dev server hit EADDRINUSE. Reuse the existing 3100
+  server; do not start another Next process in this directory.
+- Windows R emits C.UTF-8 / package-build warnings on stderr, which PowerShell
+  may present as NativeCommandError even after successful assertions. Capture
+  the log and propagate `$LASTEXITCODE`; do not classify locale warnings as
+  numeric failures. Use npm/npx `.cmd` and preserve UTF-8 when editing.
+- Sandbox registry / PostgreSQL access initially returned EACCES; approved
+  escalated read-only commands worked. This was not a credential or role issue.
+- Disk pressure became explicit during the last debug attempt. Cache cleanup
+  completed, but free space remains low. Do not conflate npm-cache cleanup with
+  a verified fix for the slider failures. No data directories, installed project
+  dependencies, source files or golden fixtures were deleted for this cleanup.
+- React Doctor's changed-file scan reports no diagnostics (five files; displayed
+  score 53/100). The broader branch scan still reports existing complexity and
+  accessibility work. Its subscription-cleanup error in `PivotMenu` was checked:
+  the timeout and every listener have matching cleanup. The real slider
+  cancellation finding was fixed. Do not describe the whole migration as clean
+  based on this scan.
+- The older Vercel first-deployment production classification and optional
+  GitHub/MCP setup gaps remain in the historical record below. The new deployment
+  is explicitly verified as Preview. No production promotion is authorized.
+
+**Integration constraint:** do not merge this entire branch. The older
+`87c3de2` publication/loader edits call functions absent from production. Keep
+them unapplied; integrate the web work separately. Existing roles/passwords,
+Shiny, schemas and ETL remain unchanged.
 
 Everything below is the earlier record.
 

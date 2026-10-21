@@ -19,6 +19,16 @@ const endpoints = [
   "/api/v1/euroleague/game-logs?season=2025",
   "/api/v1/euroleague/game-logs?season=2025&view=four_factors",
   "/api/v1/eurocup/game-logs?season=2025",
+  "/api/v1/il/onoff?season=2026",
+  "/api/v1/il/onoff?season=2026&view=four_factors",
+  "/api/v1/il/onoff?season=2026&view=shot_profile",
+  "/api/v1/euroleague/onoff?season=2025",
+  "/api/v1/euroleague/onoff?season=2025&view=four_factors",
+  "/api/v1/eurocup/onoff?season=2025",
+  "/api/v1/eurocup/onoff?season=2025&view=four_factors",
+  "/api/v1/il/onoff?season=2026&home_away=home",
+  "/api/v1/euroleague/onoff?season=2025&view=four_factors&home_away=home",
+  "/api/v1/il/player-stat-filters?season=2026",
   "/api/v1/version",
 ];
 for (const endpoint of endpoints) {

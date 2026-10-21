@@ -36,3 +36,29 @@ for (const [league, season] of [
     });
   });
 }
+
+for (const [league, season] of [
+  ["il", 2026],
+  ["euroleague", 2025],
+  ["eurocup", 2025],
+]) {
+  test(`live ${league}: On/Off server render`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    await page.goto(`/${league}/onoff?season=${season}`);
+    await expect(
+      page.locator('.ibpl-dt-scroll tbody td[data-column="Player"]').first(),
+    ).toBeVisible({ timeout: 30000 });
+    await expect(page.locator(".dataTables_info")).toContainText("entries");
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `../output/playwright/live-onoff-${league}-${info.project.name}.png`,
+      fullPage: true,
+    });
+    expect(errors).toEqual([]);
+  });
+}

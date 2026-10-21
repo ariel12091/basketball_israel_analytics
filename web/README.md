@@ -52,6 +52,37 @@ npm.cmd run e2e -- live-smoke --workers=1
 Remove-Item Env:LIVE_DB_SMOKE
 ```
 
+## On/Off parity checks
+
+On/Off uses the same tab kit and TanStack Table at phone and desktop widths.
+Stored R fixtures live in `app/tests/goldens/{fixtures,out}/onoff`; recording
+them is an explicit live, read-only operation (do not run another app query as
+`app_readonly` while recording):
+
+```powershell
+# Repository root: only when intentionally refreshing the Shiny oracle
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/capture_goldens.R --tab onoff --record
+# Offline export of those stored expected frames
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/export_onoff_goldens_json.R
+```
+
+With the shared development server running on port 3100, from `web/`:
+
+```powershell
+# Opt-in live reads of the route answers, saved separately from expected frames
+node scripts/capture-onoff-answers.mjs
+npm.cmd test
+node node_modules/@playwright/test/cli.js test onoff --workers=2
+```
+
+Both JSON exports and captured route answers are ignored local test artifacts.
+The numeric tests compare every stored numeric field (including percentile ranks
+and luck/sample fields), keyed by team and player name. Browser tests compare
+visible values, default ordering, row counts and interactions at 390 and 1440 px.
+Shiny testServer does not apply auto-slider updates, so parity presets explicitly
+set 100 / 300; browser tests restore those bars after the initial auto adjustment.
+The opt-in live smoke suite also covers On/Off server rendering in EuroCup.
+
 ## Preview deployment
 
 The linked project is `ibpl-game-logs`. Use the Vercel CLI from `web/` and deploy

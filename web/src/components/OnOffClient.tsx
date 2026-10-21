@@ -355,10 +355,6 @@ export default function OnOffClient({
   const luck = frag.popovers[0];
   const [luckOpen, setLuckOpen] = useState(false);
   const [rangesOn, setRangesOn] = useState(true);
-  useEffect(() => {
-    document.body.classList.toggle("ff-ranges-off", !rangesOn);
-    return () => document.body.classList.remove("ff-ranges-off");
-  }, [rangesOn]);
   const exporter = useRef<((name: string) => void) | null>(null);
   const seasons = euro
     ? (data?.meta.seasons ?? ui.euroStaticSeasons)
@@ -634,6 +630,7 @@ export default function OnOffClient({
                   view={dataView}
                   rows={rows}
                   showImpact={defaults.showImpact}
+                  showRanges={rangesOn}
                   exportRef={exporter}
                 />
               )

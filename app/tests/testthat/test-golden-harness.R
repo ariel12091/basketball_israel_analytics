@@ -175,6 +175,28 @@ test_that("golden_capture_dt errors when no datatable matched", {
   expect_false(inherits(DT::datatable, "functionWithTrace"))
 })
 
+test_that("a table without a CSV slug can be identified by its column", {
+  env <- new.env()
+  env$server <- function(input, output, session) {
+    output$wrong <- DT::renderDT(DT::datatable(data.frame(other = 9)))
+    output$right <- DT::renderDT(DT::datatable(data.frame(`Net Diff` = 3, check.names = FALSE)))
+  }
+  got <- golden_run_server(env, list(), golden_capture_dt(has_col = "Net Diff"))
+  expect_identical(names(got$data), "Net Diff")
+  expect_equal(got$data[[1]], 3)
+  expect_false(inherits(DT::datatable, "functionWithTrace"))
+})
+
+test_that("On/Off strict readers fail closed without widening Game Logs", {
+  strict <- GOLDEN_STRICT_READERS_BY_TAB$onoff
+  expect_true(golden_query_is_strict(strict, NULL, "run_onoff_compute_14"))
+  expect_true(golden_query_is_strict(strict, NULL, "run_four_factors_compute"))
+  expect_true(golden_query_is_strict(strict, NULL, "cached_season_df"))
+  expect_true(golden_query_is_strict(strict, NULL, "fetch_player_traditional_filtered"))
+  expect_false(golden_query_is_strict(strict, NULL, "home_dashboard_combined"))
+  expect_identical(GOLDEN_STRICT_READERS_BY_TAB$game_logs, GOLDEN_STRICT_READERS)
+})
+
 # A connection whose every query fails, standing in for a live database error.
 methods::setClass("GoldenFailingConnection", contains = "DBIConnection")
 methods::setMethod("dbGetQuery", c("GoldenFailingConnection", "character"),

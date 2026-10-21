@@ -21,6 +21,8 @@ arg_value <- function(flag) {
 }
 tab <- arg_value("--tab")
 record <- "--record" %in% args
+resume <- "--resume" %in% args
+if (resume && !record) stop("--resume requires --record", call. = FALSE)
 if (!grepl("^[a-z_]+$", tab)) stop("bad --tab: ", tab, call. = FALSE)
 if (!file.exists(file.path("app", "app.R"))) stop("run from the repo root", call. = FALSE)
 
@@ -44,20 +46,31 @@ if (record) {
     user = Sys.getenv("PG_USER"), password = Sys.getenv("PG_PASS"),
     sslmode = Sys.getenv("PG_SSLMODE", "require"), connect_timeout = 15L
   )
+  identity <- DBI::dbGetQuery(real, "SELECT current_user AS role")$role[[1]]
+  if (!identical(identity, "app_readonly")) stop("golden recording requires app_readonly")
+  DBI::dbExecute(real, "SET default_transaction_read_only = on")
   DBI::dbExecute(real, "SET statement_timeout = 120000")
-  unlink(fixture_dir, recursive = TRUE)
+  if (!startsWith(normalizePath(fixture_dir, winslash = "/", mustWork = FALSE),
+                  paste0(goldens_dir, "/fixtures/"))) stop("fixture directory outside goldens")
+  if (!resume) unlink(fixture_dir, recursive = TRUE)
   record_con <- golden_record_conn(real, fixture_dir)
+  index_path <- file.path(fixture_dir, "index.csv")
+  if (resume && file.exists(index_path))
+    record_con@log$index <- utils::read.csv(index_path, colClasses = "character")
 }
 
-conn_for_run <- function() if (record) record_con else golden_replay_conn(fixture_dir)
+strict <- GOLDEN_STRICT_READERS_BY_TAB[[tab]]
+if (is.null(strict)) stop("no strict reader set for tab: ", tab)
+conn_for_run <- function() if (record) record_con else golden_replay_conn(fixture_dir, strict)
 
 for (name in names(presets)) {
+  if (resume && file.exists(file.path(out_dir, paste0(name, ".rds")))) next
   p <- presets[[name]]
   env <- golden_app_env(conn_for_run())
   got <- golden_run_server(env, p$inputs,
-                           golden_capture_dt(p$slug, allow_none = isTRUE(p$empty)))
+                           golden_capture_dt(p$slug, allow_none = isTRUE(p$empty), has_col = p$has_col))
   if (is.null(got) && !isTRUE(p$empty)) stop(name, ": no table rendered", call. = FALSE)
-  if (!is.null(got) && !nrow(got$data)) stop(name, ": table has no rows", call. = FALSE)
+  if (!is.null(got) && !nrow(got$data) && !isTRUE(p$allow_empty)) stop(name, ": table has no rows", call. = FALSE)
   saveRDS(got, file.path(out_dir, paste0(name, ".rds")), compress = "xz")
   cat(sprintf("%-28s %s rows\n", name, if (is.null(got)) "0 (NULL)" else nrow(got$data)))
 }
