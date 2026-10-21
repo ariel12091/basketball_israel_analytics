@@ -2,53 +2,46 @@
 
 ## START HERE (current state, read this first)
 
-**Direction (user, 2026-10-21):** move EVERY Shiny feature -- including the
-table layouts -- to Next.js/React on Vercel, in the spirit of the Shiny app.
-Do not redesign and do not over-polish: a later redesign will put all devices
-under one design and declutter the stats pages. One layout per viewport width
-for every device, mobile first (no user-agent sniffing). Features first.
+**Rules for this work are in `web/CLAUDE.md`** (user, 2026-10-21): features
+first in the spirit of Shiny, no redesign or pixel polish (a redesign comes
+later); one layout per viewport width, mobile first; idiomatic React (TanStack
+Table, JSX content, server first render), with Shiny's CSS only for the look.
 
-**Game Logs: done for this transition** (branch `sql/web-foundation`, not
-pushed, not merged). The page now reuses Shiny's own presentation instead of
-the earlier light redesign:
-- Styles: `scripts/export_web_shiny_ui.R` compiles the bslib theme from
-  `app/app.R` (Bootstrap, selectize, bslib components, datepicker) and copies
-  the DataTables/Shiny CSS into `web/src/styles/shiny/vendor/`; it also writes
-  `web/src/data/shinyUi.json` (explainers, example boxes, legend, table hints,
-  glossary, tooltips, heat colours, stat-filter columns, seasons, Israeli team
-  catalogue). `npm run sync-styles` copies `app/www/app.css` + `mobile.css`
-  byte for byte; `src/styles/shiny.test.ts` pins them. Re-run both after
-  changing those Shiny sources. `.prettierignore` keeps prettier off them.
-- Components (`web/src/components/shiny/`): `Navbar` (tabs, view-mode hover
-  menu, league/season selects, Glossary, "Updated" stamp; non-migrated tabs are
-  shown but disabled), `Selectize`, `DateRangeInput` (bootstrap-datepicker
-  markup), `GameLogsTable` (DataTables markup: scrollHead/scrollBody split,
-  50-row paging, DT ordering, styleInterval heat, shot cells, Shiny CSV
-  format), `TouchTips` (header "i" + label strips), `useShinyBody` +
-  `layoutClasses` (width-based body classes, mobile first).
-- `GameLogsClient.tsx`: sidebar, explainer/example, chip bar with clears,
-  stat-filter popover, glossary modal, for Israeli League, EuroLeague, EuroCup.
-- API: default season = `DEFAULT_GAME_YEAR` / `EURO_DEFAULT_SEASON`; team
-  lists use MIN(team_name); EuroLeague seasons from `euro_fetch_seasons()`.
-  CSV defusing now matches `csv_defuse_formula()` (numeric text untouched).
-- Verified 2026-10-21: unit 37/37; browser 40/40 at 390 and 1440 px (all 15
-  stored Shiny presets: cells, default order, paging, ascending-first sort,
-  CSV, URL restore; controls for all three competitions); live read-only
-  smoke 6/6. Preview (Vercel login):
+**State (branch `sql/web-foundation`, not pushed, not merged; nothing
+applied to production):**
+- **Game Logs: done** for both leagues. Commits `784face` (Shiny look),
+  `7009ad0` (idiomatic React core: TanStack `DataTable`, `Blocks` content,
+  `TabKit`, server first render via `server/gameLogsApi.ts`). Verified: unit
+  37/37, browser 40/40 at 390/1440 px against the 15 stored Shiny presets,
+  live smoke 6/6. GL-06 Gameflow deferred (link inert; scoreless gate not
+  wired). The last preview deploy predates `7009ad0`:
   https://ibpl-game-logs-2h647f300-ariel12091-8759.vercel.app/il/game-logs
-  -- `verify-preview.mjs` passed all six endpoints (IL 442 rows, EuroLeague
-  802, EuroCup 384, version 3 leagues).
-- Still deferred: GL-06 Gameflow (link shown, inert; the scoreless-game gate
-  is not wired in the route -- do it with Gameflow).
+- **On/Off: API and rules done, page not built** (`07795cd`).
+  `GET /api/v1/{league}/onoff?view=summary|four_factors|shot_profile` calls
+  the Tab 1/Tab 8 readers with Shiny's arguments and fast/filtered gate
+  (`server/onoffRepo.ts`, `server/contextParams.ts`); `rules/onoff.ts` ports
+  the FF ranks, Shot Profile ranking, row filters, auto-min, 3PT luck,
+  sample padding/flag and shot averages. Live: all three views, both
+  leagues, 200s, payloads 0.25-1.5 MB; EuroLeague FF filtered path ~9.6 s
+  (same SQL as Shiny; Phase 8). The export script already carries the
+  On/Off explainers, legends, luck popover, impact legend and constants.
+- **Known Shiny defect to carry, not copy:** the On/Off sidebar
+  "Download CSV" (`downloadButton("download_csv")`) has no server handler in
+  Shiny and does nothing; the web version will export the visible table --
+  register it as a deliberate difference when shipped.
 
-**Next, in order (features first):**
-1. Next tab family, per spec phases 2-7: Player Stats, Team Ratings, On/Off,
-   Lineups, Gameflow + Home, Compare. For each: inventory IDs in
-   `docs/superpowers/specs/2026-10-19-api-mcp-feature-inventory.md`, goldens
-   from Shiny via the existing harness, API route calling the existing SQL
-   owners as `app_readonly`, page reusing the `components/shiny/` pieces.
-2. The Phase 0 proofs (load test, connection budget, publication markers)
-   stay parked until the features are across, unless load forces them.
+**Next, in order:**
+1. On/Off page (`[league]/onoff`): sidebar (dates, teams multi, starters,
+   Game Filters + Opponent Strength), the two min-possession sliders with
+   auto-min (`setup_onoff_auto_min` rules), chips incl. Player Stats chips
+   (`ps_*`, needs the traditional reader), the Summary / Four Factors /
+   Shot Profile tables, luck/sample tags and tooltip, FF ranges toggle,
+   row pivots (X-17) to Lineups/Game Logs. Goldens for On/Off via the
+   harness (per-tab strict readers) before calling it done.
+2. Lineups (Tab 2 / Tab 10) the same way.
+3. Then Team Ratings, Player Stats, Gameflow + Home, Compare. Phase 0 proofs
+   (load, connection budget, publication markers) stay parked until the
+   features are across.
 
 Everything below is the earlier record.
 
