@@ -2,6 +2,18 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Active React migration -- restart here (2026-10-21)
+
+The current migration is the Next.js/React app in `web/` with shared TanStack
+Table and TabKit components. Read `MEMORY.md`, the START HERE section of
+`docs/phase0_execution_status.md`, and `web/CLAUDE.md` before continuing.
+Checkpoint `d361610` is local on `sql/web-foundation`. On/Off's remaining slider
+keyboard/browser failures come before Lineups; it is not accepted as complete.
+Follow the user's features-first, mobile-first, one-layout-per-width rules.
+Use existing `app_readonly` credentials server-side, with no role/password or
+production database changes. Do not merge the historical publication/loader
+work on this branch. The handoff is authoritative for verification and next steps.
+
 ## Token Efficiency
 
 This file is updated after every session. **Trust this context** — avoid re-reading files or spawning exploration agents when the answer is documented here. Use `replace_all=true` for repetitive edits, read files in large chunks (limit=300+), and batch similar operations.

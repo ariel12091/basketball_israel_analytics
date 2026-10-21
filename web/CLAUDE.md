@@ -4,6 +4,14 @@ Read `docs/phase0_execution_status.md` (START HERE section) for the current
 state, and `docs/superpowers/specs/2026-10-20-react-migration-design.md` for
 the design. The root `CLAUDE.md` and `docs/shared_definitions.md` still apply.
 
+## Current resume point (2026-10-21)
+
+Checkpoint `d361610`: On/Off goldens and numeric/API checks pass, but the browser
+suite is not green (last full run 97/102). Resolve intermittent possession-slider
+keyboard failures before Lineups. See `../MEMORY.md` and the handoff for logs,
+Preview, fixture generation and disk cleanup. After restart, check disk space
+and whether port 3100 is listening before starting the one shared dev server.
+
 ## Direction (user, 2026-10-21)
 
 1. **Features first.** Move every Shiny feature -- filters, behaviours and the

@@ -2,6 +2,13 @@
 
 ## START HERE (current state, read this first)
 
+**Restart checkpoint (user, 2026-10-21):** implementation and verification work
+is saved in `d361610`. Restart notes are also in root `MEMORY.md`, `CLAUDE.md`,
+`PROJECT.md` and `web/CLAUDE.md`. After restarting, recheck free disk space and
+whether port 3100 is listening; do not assume a previous dev process survived.
+Start only one server (`cd web; npm.cmd run dev -- --port 3100`) if needed.
+No application debugging or new feature work was done in the restart-notes turn.
+
 **Rules for this work are in `web/CLAUDE.md`** (user, 2026-10-21): features
 first in the spirit of Shiny, no redesign or pixel polish (a redesign comes
 later); one layout per viewport width, mobile first; idiomatic React (TanStack
@@ -63,12 +70,13 @@ Typecheck, lint (zero errors; two existing warnings) and production builds pass.
 1. Resolve the On/Off slider/browser failures before declaring that family
    accepted. User reports disk pressure. `npm.cmd cache clean --force` completed;
    the remaining disposable `_npx` cache (about 522 MB) was also removed.
-   C: has only 0.69 GB free after cleanup (was 0.14 GB after npm's own clean).
+   C: last measured 0.71 GB free after cleanup (was 0.14 GB after npm's own clean).
    Recheck free space and dev-server health before rerunning tests. Last debug
    run: `tmp_onoff_key_debug.log` (5/10 passed); keydown targets the correct
    slider, but some increments never appear. `ONOFF_DEBUG=1` enables event logs
-   in the test. A later isolated attempt (`tmp_onoff_slider_debug.log`) has not
-   produced results; do not start more dev servers. Port 3100 is shared.
+   in the test. A later isolated attempt (`tmp_onoff_slider_debug.log`) produced
+   no usable output and is not counted as a passing check. Temporary application
+   console logging was removed before the checkpoint. Port 3100 is shared.
 2. Lineups (Tab 2 / Tab 10) the same way; the pivot menu already links to
    `/{league}/lineups?team=&players_on=`.
 3. Then Team Ratings, Player Stats, Gameflow + Home, Compare. Phase 0 proofs

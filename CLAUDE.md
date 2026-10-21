@@ -1,5 +1,23 @@
 # CLAUDE.md
 
+## Restart context -- React migration (2026-10-21)
+
+Read `MEMORY.md`, then the START HERE section of
+`docs/phase0_execution_status.md` and `web/CLAUDE.md`. The active frontend is
+Next.js/React in `web/`, using TanStack Table through
+`src/components/shiny/DataTable.tsx`; do not resume the deprecated Vite frontend.
+
+Checkpoint: `d361610` on `sql/web-foundation`, local only. Game Logs is across;
+On/Off is implemented but browser acceptance remains OPEN (last full run
+97/102). Resolve possession-slider keyboard failures before starting Lineups.
+Numeric/API verification passed; do not confuse that with complete UI parity.
+
+User direction: features first, Shiny's features/numbers/look, mobile first,
+one layout per width, idiomatic React and shared TabKit/TanStack components.
+Keep existing roles/passwords and read-only queries; no production DB changes.
+Do not merge this entire branch: older publication/loader edits are unapplied.
+The handoff has the Preview URL, exact tests, debug logs, hiccups and restart steps.
+
 ## Token Efficiency
 
 **Trust this context** — avoid re-reading files or spawning exploration agents when the answer is documented here. Use `replace_all=true` for repetitive edits, read files in large chunks (limit=300+), and batch similar operations.
