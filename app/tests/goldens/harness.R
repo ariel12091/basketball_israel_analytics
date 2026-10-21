@@ -80,6 +80,16 @@ GOLDEN_STRICT_READERS <- list(
 
 # Each tab owns its strict dependencies; unrelated startup queries remain notes.
 GOLDEN_STRICT_READERS_BY_TAB <- list(
+  team_ratings = c(list(
+    run_team_ratings_dynamic = NULL, run_team_ff_dynamic = NULL,
+    run_team_ff_dashboard_dynamic = NULL, run_team_traditional_dynamic = NULL,
+    fetch_team_game_minutes = NULL, tr_effective_anchor = NULL, tr_prev_match_end = NULL,
+    run_team_ratings = NULL, run_team_ff = NULL, run_team_dashboard = NULL,
+    run_team_minutes = NULL, et_prev_end = NULL, tr_data = NULL, tr_ff_data = NULL,
+    cached_season_df = NULL
+  ), GOLDEN_STRICT_READERS[c('etl_last_success_db','euro_data_version',
+    'fetch_teams_distinct','fetch_gn_values','euro_fetch_seasons','euro_fetch_teams',
+    'euro_fetch_phases','euro_fetch_round_values')]),
   lineups = c(list(
     run_fetch_lineups_20 = NULL,
     run_fetch_lineups_ff_20 = NULL,
@@ -269,6 +279,16 @@ methods::setMethod("dbGetQuery", c("GoldenReplayConnection", "character"),
 
 methods::setMethod("dbGetQuery", c("GoldenRecordConnection", "character"),
   function(conn, statement, params = NULL, ...) {
+    # Team Ratings recording may reuse already captured, byte-identical
+    # auxiliary startup queries (On/Off, lineups, player rosters). The team
+    # readers, measured minutes and rank-arrow schedule queries always run live.
+    key <- golden_query_key(statement, params)
+    path <- golden_fixture_path(conn@dir, key)
+    team_query <- grepl('(basketball_test|euroleague)[.](get_team_|team_|final_schedule_mv)', statement)
+    if (isTRUE(getOption('ibpl.golden.reuse_team_auxiliary')) && !team_query && file.exists(path)) {
+      cached <- tryCatch(suppressWarnings(readRDS(path)), error = function(e) NULL)
+      if (!is.null(cached)) return(cached)
+    }
     out <- tryCatch(
       if (is.null(params)) {
         DBI::dbGetQuery(conn@real, statement)
@@ -442,7 +462,8 @@ golden_capture_dt <- function(slug_prefix = NULL, allow_none = FALSE, has_col = 
     matches <- Filter(function(entry) {
       if (!is.null(render_pattern) && !grepl(render_pattern,
           paste(unlist(entry$options$columnDefs), collapse = " "), fixed = TRUE)) return(FALSE)
-      if (!is.null(has_col)) return(has_col %in% names(entry$data))
+      if (!is.null(has_col) && !has_col %in% names(entry$data)) return(FALSE)
+      if (is.null(slug_prefix)) return(TRUE)
       fn <- entry$options$buttons[[1]]$filename
       is.character(fn) && length(fn) == 1L && startsWith(fn, slug_prefix)
     }, sink$items)

@@ -22,6 +22,9 @@ arg_value <- function(flag) {
 tab <- arg_value("--tab")
 record <- "--record" %in% args
 resume <- "--resume" %in% args
+reuse_auxiliary <- '--reuse-auxiliary' %in% args
+if (reuse_auxiliary && (!record || tab != 'team_ratings')) stop('--reuse-auxiliary is only for Team Ratings recording')
+options(ibpl.golden.reuse_team_auxiliary = reuse_auxiliary)
 if (resume && !record) stop("--resume requires --record", call. = FALSE)
 if (!grepl("^[a-z_]+$", tab)) stop("bad --tab: ", tab, call. = FALSE)
 if (!file.exists(file.path("app", "app.R"))) stop("run from the repo root", call. = FALSE)

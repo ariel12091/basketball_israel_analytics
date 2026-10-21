@@ -7,6 +7,40 @@ for (const [league, season] of [
   ["euroleague", 2025],
   ["eurocup", 2025],
 ] as const)
+  test(`live ${league}: Team Ratings server render`, async ({ page }, info) => {
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const response = await page.goto(
+      `/${league}/team-ratings?season=${season}`,
+    );
+    expect(await response!.text()).toContain('data-column="team_name"');
+    await expect(
+      page.locator('tbody td[data-column="team_name"]').first(),
+    ).toBeVisible({ timeout: 30000 });
+    if (info.project.name === "phone") {
+      await page
+        .getByRole("button", { name: "Show Filters", exact: true })
+        .click();
+      await expect(
+        page.locator(`#${league === "il" ? "tr" : "euroteam"}-filters`),
+      ).toBeVisible();
+    }
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `../output/playwright/live-team-${league}-${info.project.name}.png`,
+      fullPage: true,
+    });
+    expect(errors).toEqual([]);
+  });
+for (const [league, season] of [
+  ["il", 2026],
+  ["euroleague", 2025],
+  ["eurocup", 2025],
+] as const)
   test(`live ${league}: Lineups server render and modal`, async ({
     page,
   }, info) => {

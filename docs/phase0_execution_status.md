@@ -2,6 +2,74 @@
 
 ## START HERE (current state, read this first)
 
+**Team Ratings continuation (2026-10-22):** shared React page at
+`/{league}/team-ratings`, Summary/Four Factors for IL/EuroLeague/EuroCup,
+Israeli Shot Profile and Traditional. Existing read-only SQL owners unchanged:
+season MVs, filtered ratings/FF/dashboard/minutes readers, Traditional side,
+and Euro pergame/dynamic/direct routing. Pace uses measured minutes; rank
+arrows rerun the matching reader at the previous league matchday. Local stat
+filters retain R's ordering relative to percentiles/ranks. Traditional preserves
+R's three display modes (Per 40 Minutes leaves the Min column aggregate),
+side polarity, CSV names and persisted column order. Headers drag on desktop;
+the column-order control works by touch/keyboard too, using React's
+`useSyncExternalStore` for storage and the shared TanStack table.
+
+Verification: **45 Shiny tables** (IL 30, EuroLeague 13, EuroCup 2), **89 query
+fixtures**, replay identical offline (**90 assertions**); **177 unit tests**
+pass, including every recorded value/rank/delta/percentile. **98 browser checks**
+pass at 390/1440 px, covering all frames, sorting, reset, side/scaling, reorder
+persistence/dragging and CSV. **Six live server-render checks** also pass for
+all competitions and widths, verifying data is in the initial HTML. Production
+build/typecheck pass, lint has two existing warnings. All **48 shared-table
+regressions** pass (Game Logs, selectors and Lineups modal layout/focus).
+The unit suite requires all 45 oracle frames, so missing generated fixtures
+cannot silently skip the family. Screenshot review fixed
+comma formatting on Season, contrast on the column-order control and switch
+styling. An initial load now waits for data before exposing table controls,
+preventing an open reorder panel from being replaced by the first answer.
+
+Unit runs competing with R/build/browser work exceeded the old Lineups tests'
+5-second timeout (no numeric mismatches). The final isolated complete run
+passes **177/177**; assertions/timeouts were not weakened. One phone sort test
+was targeting the separate info button; it now taps the header's sorting area.
+The first browser run was stopped after diagnosing the initial-loading race;
+the complete final run is clean, **98/98**.
+
+Recording resumed with `--reuse-auxiliary`: only identical already-recorded
+startup queries for other tabs are reused; team facts/minutes/schedule anchors
+always run live. An interrupted auxiliary RDS was recovered with a fresh read;
+all 89 fixture files are readable and all 45 replays match. Locale/package
+warnings remain in the R run. Offline JSON export:
+`scripts/export_team_goldens_json.R`; separate read-only API capture:
+`web/scripts/capture-team-answers.mjs`. No expected results are synthesized.
+
+React Doctor full scan: 90 files, initially 48/100; final branch-diff scan
+49/100, 125 warnings and the existing OnOff
+PivotMenu cleanup false positive. Its timer/listeners have matching cleanup;
+new advisories concern complexity and small bounded collection lookups. No
+new functional error; no broad cleanup was attempted.
+Final scan: `tmp_team_doctor_final.log` (`--diff` compares this branch with
+origin/main, so it includes the earlier migration work too).
+
+Ready **Preview only**, deployment `dpl_3g1BP3XZfPXGm1J5bMkBGsdkxxfK`:
+https://ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app/il/team-ratings?season=2026
+The Vercel CLI works; MCP still lacks the team's grant. Protected checks use
+the CLI's Node entry point to preserve ampersands on Windows, without logging
+credentials or bypass tokens. No production promotion or DB/ETL/role changes.
+All **31 protected Preview checks pass**: all Team Ratings views, both
+Traditional sides in all three display modes, clutch/last-N, prior migrated
+tabs and initial server-rendered HTML for each competition.
+
+Logs: `tmp_team_record*.log`, `tmp_team_integrity_final.log`,
+`tmp_team_replay.log`, `tmp_team_answers.log`, `tmp_team_units_commit.log`,
+`tmp_team_browser_final.log`, `tmp_team_live.log`, `tmp_team_regressions.log`,
+`tmp_team_build_final2.log`, `tmp_team_types_last.log`, `tmp_team_lint_last.log`,
+`tmp_team_doctor.log`, `tmp_team_preview_{inspect,smoke}.log`.
+One local production server remains on 3100 (PID 21796, PG_PORT=5432).
+Next: **Player Stats**, then Gameflow + Home, Compare. User requested committing
+and pushing checkpoints on `sql/web-foundation`; do not merge the old historical
+publication work into main. The Lineups/OnOff entries below are historical.
+
 **Lineups continuation (checkpointed 2026-10-22):** new shared React Lineups
 page at `/{league}/lineups` for IL, EuroLeague and EuroCup, Summary/Four Factors,
 group sizes 2–5, roster chips (On / Any of / Off, at least/exactly k), clutch,

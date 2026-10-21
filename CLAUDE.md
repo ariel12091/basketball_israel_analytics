@@ -2,6 +2,14 @@
 
 ## Restart context -- React migration (2026-10-22)
 
+Latest: Team Ratings is implemented across all three competitions (IL also has
+Shot Profile/Traditional). Ready Preview: `ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app`.
+45 Shiny replays, 177 unit tests, 98 browser checks, six live SSR checks and
+48 shared-table regressions pass.
+Next: Player Stats. The user wants checkpoints committed and pushed to
+`sql/web-foundation`. Read the newest MEMORY/handoff entry; older notes below
+are historical. Existing read-only roles; no production promotion.
+
 Lineups is implemented across all three competitions and deployed to Preview
 `ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app` (Ready, Preview only).
 125 unit tests and 92 Lineups browser checks pass; 36 Shiny presets replay

@@ -249,6 +249,8 @@ export default function DataTable({
   pinTotals = false,
   lengthMenu,
   columnFilters = false,
+  csvLabel = "Download CSV",
+  onColumnMove,
 }: {
   columns: Column[];
   rows: Row[];
@@ -271,6 +273,8 @@ export default function DataTable({
   pinTotals?: boolean;
   lengthMenu?: number[];
   columnFilters?: boolean;
+  csvLabel?: string;
+  onColumnMove?: (from: string, to: string) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>(defaultOrder);
   const [pageIndex, setPageIndex] = useState(0);
@@ -431,7 +435,7 @@ export default function DataTable({
             type="button"
             onClick={() => downloadCsv(csvName, columns, sortedRows)}
           >
-            <span>Download CSV</span>
+            <span>{csvLabel}</span>
           </button>{" "}
         </div>
       )}
@@ -482,6 +486,28 @@ export default function DataTable({
                       title={title}
                       style={title ? { cursor: "help" } : undefined}
                       data-column={c.id}
+                      draggable={Boolean(onColumnMove)}
+                      onDragStart={
+                        onColumnMove
+                          ? (e) => {
+                              e.dataTransfer.setData("text/plain", c.id);
+                              e.dataTransfer.effectAllowed = "move";
+                            }
+                          : undefined
+                      }
+                      onDragOver={
+                        onColumnMove ? (e) => e.preventDefault() : undefined
+                      }
+                      onDrop={
+                        onColumnMove
+                          ? (e) => {
+                              e.preventDefault();
+                              const from = e.dataTransfer.getData("text/plain");
+                              if (columns.some((col) => col.id === from))
+                                onColumnMove(from, c.id);
+                            }
+                          : undefined
+                      }
                       onClick={(e) => order(c.id, e.shiftKey)}
                       onKeyDown={(e) => {
                         if (e.key === "Enter") order(c.id, e.shiftKey);

@@ -150,6 +150,26 @@ export const LINEUP_QUERY_DEFAULTS = {
   clutch_minutes: "5",
   ot_margin: "false",
 };
+export const TEAM_QUERY_DEFAULTS = {
+  clutch: "false",
+  clutch_margin: "5",
+  clutch_status: "all",
+  clutch_minutes: "5",
+  ot_margin: "false",
+  side: "offense",
+  display: "per_game",
+};
+export function teamRatingsPath(league: League, query: Query): string {
+  const q = contextParams(query, league);
+  q.delete("stats");
+  if (league === "il") {
+    q.delete("teams");
+    q.delete("team");
+  } else if (query.teams) q.set("teams", query.teams);
+  for (const k of Object.keys(TEAM_QUERY_DEFAULTS))
+    if (query[k]) q.set(k, query[k]);
+  return `/api/v1/${league}/team-ratings?${q}`;
+}
 /** Team/player/possession/stat filters stay local, after league-wide ranks. */
 export function lineupsPath(league: League, query: Query): string {
   const q = contextParams(query, league);

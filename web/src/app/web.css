@@ -32,3 +32,6 @@ table.dataTable tr.ibpl-lineup-total { background: var(--ibpl-surface-alt); font
 .ibpl-lineup-modal .modal-body { min-height: 0; overflow-y: auto; }
 .ibpl-lineup-modal .modal-header, .ibpl-lineup-modal .modal-footer { flex-shrink: 0; }
 body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-height: 100dvh; }
+.ibpl-column-order { color: var(--ibpl-text); margin-bottom: 8px; }
+.ibpl-column-order summary { color: var(--ibpl-text-muted); cursor: pointer; }
+.ibpl-column-order select { display: inline-block; width: auto; max-width: 100%; }

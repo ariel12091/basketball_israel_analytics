@@ -122,12 +122,14 @@
           "caption": "Real Four Factors snippet (Game Logs)"
         }
       ],
-      "shot_profile": []
+      "shot_profile": [],
+      "traditional": []
     },
     "after": {
       "summary": [],
       "four_factors": [],
-      "shot_profile": []
+      "shot_profile": [],
+      "traditional": []
     },
     "hint": {
       "pointer": "Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition",
@@ -193,12 +195,14 @@
           ]
         }
       ],
-      "shot_profile": []
+      "shot_profile": [],
+      "traditional": []
     },
     "after": {
       "summary": [],
       "four_factors": [],
-      "shot_profile": []
+      "shot_profile": [],
+      "traditional": []
     },
     "hint": {
       "pointer": "Click View under Gameflow for a game's lineup timeline · Click a column header to sort · Hover over a column header for its definition",
@@ -387,7 +391,8 @@
             "variant": "rank",
             "note": "(Ranked: >= 50 team FGA with player on | eFG% + shares of team FGA, Delta = ON - OFF pp | Corner 3 Share uses known-location 3PA, -- = unknown)"
           }
-        ]
+        ],
+        "traditional": []
       },
       "after": {
         "summary": [],
@@ -397,7 +402,8 @@
             "text": "Estimated factor impact (est.): each 1pp of a factor ~ eFG +1.45, TOV -1.36, OREB +0.63, FTR +0.13 pts per 100 poss. (league-calibrated regression weights -- an approximation, not a measured stat)."
           }
         ],
-        "shot_profile": []
+        "shot_profile": [],
+        "traditional": []
       },
       "hint": {
         "pointer": "Click a team or player for lineups and game logs · Click a column header to sort · Hover over a column header for its definition",
@@ -563,12 +569,14 @@
             "note": "(Ranked Players: > 100 poss)"
           }
         ],
-        "shot_profile": []
+        "shot_profile": [],
+        "traditional": []
       },
       "after": {
         "summary": [],
         "four_factors": [],
-        "shot_profile": []
+        "shot_profile": [],
+        "traditional": []
       },
       "hint": {
         "pointer": "Click a team or player for lineups and game logs · Click a column header to sort · Hover over a column header for its definition",
@@ -776,12 +784,14 @@
             "caption": "Real Four Factors snippet (Lineup Data)"
           }
         ],
-        "shot_profile": []
+        "shot_profile": [],
+        "traditional": []
       },
       "after": {
         "summary": [],
         "four_factors": [],
-        "shot_profile": []
+        "shot_profile": [],
+        "traditional": []
       },
       "hint": {
         "pointer": "Click a lineup for its game log · Click a column header to sort · Hover over a column header for its definition",
@@ -872,12 +882,14 @@
             ]
           }
         ],
-        "shot_profile": []
+        "shot_profile": [],
+        "traditional": []
       },
       "after": {
         "summary": [],
         "four_factors": [],
-        "shot_profile": []
+        "shot_profile": [],
+        "traditional": []
       },
       "hint": {
         "pointer": "Click a lineup for its game log · Click a column header to sort · Hover over a column header for its definition",
@@ -885,6 +897,680 @@
       },
       "popovers": []
     }
+  },
+  "teamRatings": {
+    "il": {
+      "views": {
+        "summary": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Summary)",
+            "intro": [
+              {
+                "t": "How strong are teams overall in offense, defense, and net rating?"
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Each row shows Season, Team, GP, W, L, Off PPP, Def PPP, Net RTG (with league rank and rank delta), Off Pace, Def Pace, Off Poss, and Def Poss."
+                }
+              ],
+              [
+                {
+                  "t": "Start with Net RTG to rank teams quickly, then inspect Off PPP and Def PPP to see which end drives the edge."
+                }
+              ],
+              [
+                {
+                  "t": "Pace columns show possessions per 40 minutes - they help compare fast vs slow teams fairly."
+                }
+              ],
+              [
+                {
+                  "t": "GP, W, and L provide context, but possession-based rates are more reliable than win-loss record for evaluating strength."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "example",
+            "id": "team-example-box",
+            "title": "How to Read Team Ratings (Real Example)",
+            "paragraphs": [
+              [
+                {
+                  "t": "Maccabi Tel Aviv shows Off PPP 128.3 and Def PPP 108.0, which gives Net RTG +20.4."
+                }
+              ],
+              [
+                {
+                  "t": "So over 100 possessions, they outperform opponents by 20.4 points."
+                }
+              ],
+              [
+                {
+                  "t": "The same row also shows context: 21 games and a 19-2 record."
+                }
+              ]
+            ],
+            "image": "/images/team-row-snippet.png",
+            "alt": "Team summary table snippet",
+            "caption": "Real summary snippet (Team Ratings)"
+          }
+        ],
+        "four_factors": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Four Factors)",
+            "intro": [
+              {
+                "t": "Which team-level factors are driving strong or weak performance? See each team's PPP, eFG%, OREB%, TOV%, FTR, and possessions on offense and defense, plus league rank, rank delta, and net rating."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Read offense and defense factor profiles side by side - ranks (#1-#14) and rank deltas (up/down) help spot movement."
+                }
+              ],
+              [
+                {
+                  "t": "Interpret TOV% with opposite polarity: lower is better on offense, higher is better on defense."
+                }
+              ],
+              [
+                {
+                  "t": "Use Poss columns to judge sample reliability, especially after applying date or clutch filters."
+                }
+              ],
+              [
+                {
+                  "t": "Cross-reference with the Summary view's 2PT/3PT frequency and accuracy splits to check whether a high eFG% is driven by sustainable shot selection or a hot-hand streak."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "example",
+            "id": "team-ff-example-box",
+            "title": "How to Read Four Factors (Real Example)",
+            "paragraphs": [
+              [
+                {
+                  "t": "Maccabi Tel Aviv combines elite offense (PPP 128.3 #1, eFG% 59.5 #2, OREB% 38.6 #1) with strong defense (PPP allowed 108.0 #3)."
+                }
+              ],
+              [
+                {
+                  "t": "Their factor profile supports Net +20.4: efficient scoring, dominant offensive rebounding, and league-best turnover rate (14.4%)."
+                }
+              ],
+              [
+                {
+                  "t": "Possession volume is high (Off 1,592, Def 1,596), which strengthens confidence in this profile."
+                }
+              ]
+            ],
+            "image": "/images/team-ff-row-snippet.png",
+            "alt": "Team four factors table snippet",
+            "caption": "Real Four Factors snippet (Team Ratings)"
+          }
+        ],
+        "shot_profile": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Shot Profile)",
+            "intro": [
+              {
+                "t": "What does each team's shot diet look like, on offense and defense? Shares of FGA by play-by-play shot-type tag: lay-up, dunk, lay+dunk combined, 3PA, corner-3 share of 3PA, and 2PT jump-shots. Tags describe execution, not court location."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Shares are descriptive -- they describe the mix, not its quality. #1 means most of that shot type, not best."
+                }
+              ],
+              [
+                {
+                  "t": "Defense columns are the shot diet teams allow their opponents."
+                }
+              ],
+              [
+                {
+                  "t": "Corner 3 Share uses shots with known court location; -- means location unknown."
+                }
+              ],
+              [
+                {
+                  "t": "The same date/clutch-free filters apply as in Summary; use Poss columns to judge sample size."
+                }
+              ]
+            ]
+          }
+        ],
+        "traditional": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Traditional)",
+            "intro": [
+              {
+                "t": "How do teams produce in traditional box-score terms under your selected filters?"
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Shows team-level counting, assist rate, and shooting stats using the same game/clutch filters."
+                }
+              ],
+              [
+                {
+                  "t": "Ranks are season-contextual inside the filtered sample."
+                }
+              ],
+              [
+                {
+                  "t": "Rank delta is vs previous matchday only, and shown only on baseline date/GN scope."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "example",
+            "id": "team-traditional-example-box",
+            "title": "How to Read Traditional Stats (Real Example)",
+            "paragraphs": [
+              [
+                {
+                  "t": "Maccabi Tel Aviv leads the league in PTS (41.6 #1), REB (27.1 #5), and AST (23.6 #2) per game."
+                }
+              ],
+              [
+                {
+                  "t": "Each cell shows the value, league rank, and rank movement arrows compared to the previous matchday."
+                }
+              ],
+              [
+                {
+                  "t": "Heat colors follow the same polarity as Team Ratings: green is better, red is worse."
+                }
+              ]
+            ],
+            "image": "/images/team-traditional-row-snippet.png",
+            "alt": "Team traditional stats table snippet",
+            "caption": "Real Traditional snippet (Team Ratings)"
+          }
+        ]
+      },
+      "after": {
+        "summary": [],
+        "four_factors": [],
+        "shot_profile": [],
+        "traditional": []
+      },
+      "hint": {
+        "pointer": "Click a column header to sort · Hover over a column header for its definition · Drag a column header to reorder",
+        "touch": "Tap a column header to sort · Tap a header's info button for its definition"
+      },
+      "popovers": []
+    },
+    "euro": {
+      "views": {
+        "summary": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Summary)",
+            "intro": [
+              {
+                "t": "How good is each EuroLeague team, per possession, on each end?"
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Off PPP is points scored per 100 possessions; Def PPP is points allowed per 100. Net Rtg is the gap."
+                }
+              ],
+              [
+                {
+                  "t": "Minutes are summed from each selected game's canonical lineup segments; pace is possessions per 40 minutes."
+                }
+              ],
+              [
+                {
+                  "t": "Each cell shows the value, the team's rank in it, and the rank change versus the previous matchday."
+                }
+              ],
+              [
+                {
+                  "t": "Colour runs by rank, green best to red worst, so Def PPP colours in reverse -- allowing fewer points is better."
+                }
+              ],
+              [
+                {
+                  "t": "Opponent-strength filters rank opponents over the whole season, so they do not shift as you narrow the date range."
+                }
+              ]
+            ]
+          }
+        ],
+        "four_factors": [
+          {
+            "kind": "explainer",
+            "title": "What This Tab Answers (Four Factors)",
+            "intro": [
+              {
+                "t": "What drives each team's rating? Shooting (eFG%), rebounding (OREB%), turnovers (TOV%), and free-throw pressure (FTR) on both ends."
+              }
+            ],
+            "bullets": [
+              [
+                {
+                  "t": "Offence green-high on every factor except TOV%, where fewer is better; defence flips -- green means the team suppresses that factor."
+                }
+              ],
+              [
+                {
+                  "t": "Rates are computed once from summed raw counts, never averaged across games."
+                }
+              ],
+              [
+                {
+                  "t": "TS% uses the Israeli denominator (FGA plus one per shooting-foul trip), not the 0.44 x FTA estimate."
+                }
+              ],
+              [
+                {
+                  "t": "These counts are derived independently of the Israeli league's possession engine. Do not compare the two leagues' numbers directly."
+                }
+              ]
+            ]
+          },
+          {
+            "kind": "legend",
+            "variant": "rank",
+            "note": "Green = better for that team. Offence: higher eFG%/OREB%/FTR, lower TOV%. Defence: lower eFG%/OREB%/FTR allowed, higher opponent TOV%."
+          }
+        ],
+        "shot_profile": [],
+        "traditional": []
+      },
+      "after": {
+        "summary": [],
+        "four_factors": [],
+        "shot_profile": [],
+        "traditional": []
+      },
+      "hint": {
+        "pointer": null,
+        "touch": null
+      },
+      "popovers": []
+    }
+  },
+  "teamRatingMetrics": [
+    {
+      "metric": "off_ppp",
+      "percentile": "pr_off_ppp",
+      "best_direction": "desc"
+    },
+    {
+      "metric": "off_efg",
+      "percentile": "pr_off_efg",
+      "best_direction": "desc"
+    },
+    {
+      "metric": "off_oreb",
+      "percentile": "pr_off_oreb",
+      "best_direction": "desc"
+    },
+    {
+      "metric": "off_tov",
+      "percentile": "pr_off_tov",
+      "best_direction": "asc"
+    },
+    {
+      "metric": "off_ftr",
+      "percentile": "pr_off_ftr",
+      "best_direction": "desc"
+    },
+    {
+      "metric": "def_ppp",
+      "percentile": "pr_def_ppp",
+      "best_direction": "asc"
+    },
+    {
+      "metric": "def_efg",
+      "percentile": "pr_def_efg",
+      "best_direction": "asc"
+    },
+    {
+      "metric": "def_oreb",
+      "percentile": "pr_def_oreb",
+      "best_direction": "asc"
+    },
+    {
+      "metric": "def_tov",
+      "percentile": "pr_def_tov",
+      "best_direction": "desc"
+    },
+    {
+      "metric": "def_ftr",
+      "percentile": "pr_def_ftr",
+      "best_direction": "asc"
+    },
+    {
+      "metric": "net_rtg",
+      "percentile": "pr_net",
+      "best_direction": "desc"
+    }
+  ],
+  "teamRankColors": {
+    "2": ["#2F7F4D", "#6E2622"],
+    "3": ["#2F7F4D", "#615641", "#6E2622"],
+    "4": ["#2F7F4D", "#506345", "#654636", "#6E2622"],
+    "5": ["#2F7F4D", "#486A47", "#615641", "#673E31", "#6E2622"],
+    "6": ["#2F7F4D", "#436E48", "#575E43", "#634C3A", "#68392E", "#6E2622"],
+    "7": ["#2F7F4D", "#3F7149", "#506345", "#615641", "#654636", "#69362C", "#6E2622"],
+    "8": ["#2F7F4D", "#3D7349", "#4B6746", "#595B42", "#624F3C", "#664133", "#6A332A", "#6E2622"],
+    "9": ["#2F7F4D", "#3B7449", "#486A47", "#546044", "#615641", "#644A39", "#673E31", "#6A3229", "#6E2622"],
+    "10": ["#2F7F4D", "#3A754A", "#456C47", "#506345", "#5B5A42", "#62503D", "#654636", "#683B2F", "#6B3028", "#6E2622"],
+    "11": ["#2F7F4D", "#39764A", "#436E48", "#4D6645", "#575E43", "#615641", "#634C3A", "#664234", "#68392E", "#6B2F28", "#6E2622"],
+    "12": ["#2F7F4D", "#38774A", "#417048", "#4A6846", "#536144", "#5C5942", "#62513E", "#644838", "#664032", "#69372D", "#6B2E27", "#6E2622"],
+    "13": ["#2F7F4D", "#37784A", "#3F7149", "#486A47", "#506345", "#585C43", "#615641", "#634E3B", "#654636", "#673E31", "#69362C", "#6B2E27", "#6E2622"],
+    "14": ["#2F7F4D", "#36784B", "#3E7249", "#466C47", "#4D6545", "#555F43", "#5D5941", "#61523E", "#644A39", "#664335", "#683C30", "#6A342B", "#6C2D26", "#6E2622"],
+    "15": ["#2F7F4D", "#36794B", "#3D7349", "#446D47", "#4B6746", "#526144", "#595B42", "#615641", "#624F3C", "#644838", "#664133", "#683A2F", "#6A332A", "#6C2C26", "#6E2622"],
+    "16": ["#2F7F4D", "#35794B", "#3C7449", "#436E48", "#496946", "#506345", "#575E43", "#5D5841", "#61523E", "#634C3A", "#654636", "#673F32", "#68392E", "#6A322A", "#6C2C26", "#6E2622"],
+    "17": ["#2F7F4D", "#35794B", "#3B7449", "#416F48", "#486A47", "#4E6545", "#546044", "#5A5B42", "#615641", "#62503D", "#644A39", "#654435", "#673E31", "#69382D", "#6A3229", "#6C2C25", "#6E2622"],
+    "18": ["#2F7F4D", "#347A4B", "#3A754A", "#407048", "#466B47", "#4C6645", "#526244", "#585D43", "#5E5841", "#61533F", "#634D3B", "#644737", "#664234", "#673C30", "#69362C", "#6A3129", "#6C2B25", "#6E2622"],
+    "19": ["#2F7F4D", "#347A4B", "#3A754A", "#3F7149", "#456C47", "#4A6846", "#506345", "#555F43", "#5B5A42", "#615641", "#62503D", "#634B3A", "#654636", "#664033", "#683B2F", "#69362C", "#6B3028", "#6C2B25", "#6E2622"],
+    "20": ["#2F7F4D", "#347A4B", "#39764A", "#3E7249", "#446D47", "#496946", "#4E6545", "#536044", "#595C42", "#5E5841", "#61533F", "#634E3C", "#644938", "#654435", "#673F32", "#683A2F", "#69352B", "#6B3028", "#6C2B25", "#6E2622"],
+    "21": ["#2F7F4D", "#347A4B", "#39764A", "#3E7249", "#436E48", "#486A47", "#4D6645", "#516244", "#575E43", "#5C5A42", "#615641", "#62513D", "#634C3A", "#644737", "#664234", "#673E31", "#68392E", "#6A342B", "#6B2F28", "#6C2A25", "#6E2622"],
+    "22": ["#2F7F4D", "#337B4B", "#38774A", "#3D7349", "#426F48", "#466B47", "#4B6746", "#506345", "#555F43", "#595B42", "#5E5741", "#61533F", "#624F3C", "#644A39", "#654636", "#664133", "#673C30", "#69382D", "#6A332A", "#6B2F27", "#6C2A24", "#6E2622"],
+    "23": ["#2F7F4D", "#337B4B", "#38774A", "#3C7349", "#417048", "#456C47", "#4A6846", "#4E6445", "#536144", "#575D43", "#5C5942", "#615641", "#62513E", "#634D3B", "#644838", "#654435", "#664032", "#683B30", "#69372D", "#6A332A", "#6B2E27", "#6C2A24", "#6E2622"],
+    "24": ["#2F7F4D", "#337B4B", "#37774A", "#3C7449", "#407048", "#446D47", "#496946", "#4D6645", "#516244", "#565E43", "#5A5B42", "#5E5741", "#61533F", "#624F3C", "#634B3A", "#644737", "#664334", "#673F32", "#683A2F", "#69362C", "#6A322A", "#6B2E27", "#6C2A24", "#6E2622"],
+    "25": ["#2F7F4D", "#337B4C", "#37784A", "#3B7449", "#3F7149", "#436D48", "#486A47", "#4C6745", "#506345", "#546044", "#585C43", "#5C5941", "#615641", "#62523E", "#634E3B", "#644A39", "#654636", "#664234", "#673E31", "#683A2E", "#69362C", "#6A3229", "#6B2E27", "#6C2A24", "#6E2622"],
+    "26": ["#2F7F4D", "#337B4C", "#37784B", "#3B754A", "#3F7149", "#436E48", "#476B47", "#4B6846", "#4F6445", "#526144", "#575E43", "#5A5A42", "#5F5741", "#61543F", "#62503D", "#634C3A", "#644838", "#654435", "#664033", "#673D30", "#68392E", "#69352B", "#6A3129", "#6B2D26", "#6C2924", "#6E2622"],
+    "27": ["#2F7F4D", "#327B4C", "#36784B", "#3A754A", "#3E7249", "#426F48", "#466C47", "#496846", "#4D6545", "#516244", "#555F43", "#595C42", "#5D5941", "#615641", "#61523E", "#634E3C", "#644A39", "#654737", "#664335", "#673F32", "#683C30", "#69382D", "#6A342B", "#6B3129", "#6C2D26", "#6D2924", "#6E2622"],
+    "28": ["#2F7F4D", "#327B4C", "#36784B", "#3A754A", "#3D7249", "#416F48", "#456C47", "#486946", "#4C6645", "#506345", "#546044", "#575D43", "#5B5A42", "#5F5741", "#61543F", "#62503D", "#634D3B", "#644938", "#654636", "#664234", "#673E32", "#683B2F", "#69372D", "#6A342B", "#6B3028", "#6C2D26", "#6D2924", "#6E2622"],
+    "29": ["#2F7F4D", "#327C4C", "#36794B", "#39764A", "#3D7349", "#407048", "#446D47", "#486A47", "#4B6746", "#4F6445", "#526144", "#565E43", "#595B42", "#5D5841", "#615641", "#61523E", "#624F3C", "#634B3A", "#644838", "#654435", "#664133", "#673E31", "#683A2F", "#69372D", "#6A332A", "#6B3028", "#6C2C26", "#6D2924", "#6E2622"],
+    "30": ["#2F7F4D", "#327C4C", "#35794B", "#39764A", "#3C7349", "#407048", "#436E48", "#476B47", "#4A6846", "#4E6545", "#516244", "#545F43", "#585D43", "#5B5A42", "#5F5741", "#61543F", "#62513D", "#634D3B", "#644A39", "#654737", "#654335", "#664033", "#673D30", "#68392E", "#69362C", "#6A332A", "#6B2F28", "#6C2C26", "#6D2924", "#6E2622"]
+  },
+  "teamStatFilterCols": {
+    "summary": [
+      {
+        "label": "GP",
+        "col": "games_played"
+      },
+      {
+        "label": "Min",
+        "col": "minutes"
+      },
+      {
+        "label": "W",
+        "col": "wins"
+      },
+      {
+        "label": "L",
+        "col": "losses"
+      },
+      {
+        "label": "Off PPP",
+        "col": "off_ppp"
+      },
+      {
+        "label": "Def PPP",
+        "col": "def_ppp"
+      },
+      {
+        "label": "Net Rtg",
+        "col": "net_rtg"
+      },
+      {
+        "label": "Off Pace",
+        "col": "off_pace"
+      },
+      {
+        "label": "Def Pace",
+        "col": "def_pace"
+      },
+      {
+        "label": "Off Poss",
+        "col": "off_poss"
+      },
+      {
+        "label": "Def Poss",
+        "col": "def_poss"
+      }
+    ],
+    "four_factors": [
+      {
+        "label": "Off PPP",
+        "col": "off_ppp"
+      },
+      {
+        "label": "Off eFG%",
+        "col": "off_efg"
+      },
+      {
+        "label": "Off OREB%",
+        "col": "off_oreb"
+      },
+      {
+        "label": "Off TOV%",
+        "col": "off_tov"
+      },
+      {
+        "label": "Off FTR",
+        "col": "off_ftr"
+      },
+      {
+        "label": "Off Poss",
+        "col": "off_poss"
+      },
+      {
+        "label": "Def PPP",
+        "col": "def_ppp"
+      },
+      {
+        "label": "Def eFG%",
+        "col": "def_efg"
+      },
+      {
+        "label": "Def OREB%",
+        "col": "def_oreb"
+      },
+      {
+        "label": "Def TOV%",
+        "col": "def_tov"
+      },
+      {
+        "label": "Def FTR",
+        "col": "def_ftr"
+      },
+      {
+        "label": "Def Poss",
+        "col": "def_poss"
+      },
+      {
+        "label": "Min",
+        "col": "minutes"
+      },
+      {
+        "label": "Net",
+        "col": "net_rtg"
+      }
+    ],
+    "shot_profile": [
+      {
+        "label": "Off Lay-up%",
+        "col": "off_layup_share"
+      },
+      {
+        "label": "Off Dunk%",
+        "col": "off_dunk_share"
+      },
+      {
+        "label": "Off Lay+Dunk%",
+        "col": "off_rim_share"
+      },
+      {
+        "label": "Off 3PA%",
+        "col": "off_fg3_share"
+      },
+      {
+        "label": "Off Corner 3 Share",
+        "col": "off_c3_pct3"
+      },
+      {
+        "label": "Off 2PT Jumper%",
+        "col": "off_mid_share"
+      },
+      {
+        "label": "Off Poss",
+        "col": "off_poss"
+      },
+      {
+        "label": "Def Lay-up%",
+        "col": "def_layup_share"
+      },
+      {
+        "label": "Def Dunk%",
+        "col": "def_dunk_share"
+      },
+      {
+        "label": "Def Lay+Dunk%",
+        "col": "def_rim_share"
+      },
+      {
+        "label": "Def 3PA%",
+        "col": "def_fg3_share"
+      },
+      {
+        "label": "Def Corner 3 Share",
+        "col": "def_c3_pct3"
+      },
+      {
+        "label": "Def 2PT Jumper%",
+        "col": "def_mid_share"
+      },
+      {
+        "label": "Def Poss",
+        "col": "def_poss"
+      },
+      {
+        "label": "Min",
+        "col": "minutes"
+      }
+    ],
+    "traditional": [
+      {
+        "label": "GP",
+        "col": "gp"
+      },
+      {
+        "label": "Poss On Floor",
+        "col": "poss_on_floor"
+      },
+      {
+        "label": "Min",
+        "col": "minutes"
+      },
+      {
+        "label": "PTS",
+        "col": "pts"
+      },
+      {
+        "label": "REB",
+        "col": "reb"
+      },
+      {
+        "label": "OREB",
+        "col": "oreb"
+      },
+      {
+        "label": "DREB",
+        "col": "dreb"
+      },
+      {
+        "label": "AST",
+        "col": "ast"
+      },
+      {
+        "label": "STL",
+        "col": "stl"
+      },
+      {
+        "label": "BLK",
+        "col": "blk"
+      },
+      {
+        "label": "DFL",
+        "col": "dfl"
+      },
+      {
+        "label": "TOV",
+        "col": "tov"
+      },
+      {
+        "label": "FGM",
+        "col": "fgm"
+      },
+      {
+        "label": "FGA",
+        "col": "fga"
+      },
+      {
+        "label": "FG%",
+        "col": "fg_pct"
+      },
+      {
+        "label": "2PM",
+        "col": "2pm"
+      },
+      {
+        "label": "2PA",
+        "col": "2pa"
+      },
+      {
+        "label": "2P%",
+        "col": "two_pct"
+      },
+      {
+        "label": "3PM",
+        "col": "3pm"
+      },
+      {
+        "label": "3PA",
+        "col": "3pa"
+      },
+      {
+        "label": "3P%",
+        "col": "tp_pct"
+      },
+      {
+        "label": "FTM",
+        "col": "ftm"
+      },
+      {
+        "label": "FTA",
+        "col": "fta"
+      },
+      {
+        "label": "FT%",
+        "col": "ft_pct"
+      },
+      {
+        "label": "eFG%",
+        "col": "efg"
+      },
+      {
+        "label": "TS%",
+        "col": "ts"
+      }
+    ]
   },
   "lineupDefaults": {
     "minPoss": 20,

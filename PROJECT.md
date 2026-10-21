@@ -4,6 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Active React migration -- restart here (2026-10-22)
 
+Latest checkpoint: Team Ratings (`/{league}/team-ratings`) covers all three
+competitions; IL also has Shot Profile and Traditional. Preview is Ready at
+`ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app`. 45 Shiny replays, 177 unit
+tests, 98 browser checks, six live SSR checks and 48 shared-table regressions
+pass. Next: Player Stats.
+The user requested checkpoint commits and pushes on `sql/web-foundation`.
+Read the newest MEMORY/handoff entry; the Lineups record below is historical.
+
 Lineups is implemented for IL/EuroLeague/EuroCup and deployed to the Ready Preview
 `ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app`. 125 unit tests, 92 Lineups
 browser checks and 36 Shiny replay presets pass. Included in the Lineups checkpoint;

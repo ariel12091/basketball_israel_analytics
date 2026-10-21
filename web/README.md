@@ -4,7 +4,7 @@ Next.js screen for Israeli League, EuroLeague and EuroCup. Reads the existing
 Shiny database views with the existing `app_readonly` login. No database migrations
 or role changes are needed. Gameflow remains a later migration phase.
 
-Implemented pages: Game Logs, On/Off and Lineups (`/{league}/lineups`). Lineups
+Implemented pages: Game Logs, On/Off, Lineups and Team Ratings (`/{league}/team-ratings`). Lineups
 uses the existing Israeli and Euro readers, league-wide ranks before local
 team/player/possession filters, roster chips, clutch, stat filters, pinned TOTAL
 rows, and the existing season game-log modals. EuroLeague's modal stays Summary
@@ -119,12 +119,38 @@ exactness, URL restore, manual/auto possession bars, reset, modal keyboard
 closure and On/Off-to-Lineups season preservation. Summary tables also support
 per-column filters and page sizes; these use the shared TanStack Table.
 
+## Team Ratings parity checks
+
+`/{league}/team-ratings` ports Summary/Four Factors for every competition and
+Israeli Shot Profile/Traditional. It uses the existing Shiny readers, measured
+minutes for pace, previous league matchday for rank movement, and the original
+Traditional per-game/per-75/per-40 transforms. Traditional column order persists;
+headers support dragging and the column-order control also works on phones.
+
+```powershell
+# Root: live read-only oracle recording, or --resume after interruption
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/capture_goldens.R --tab team_ratings --record --reuse-auxiliary
+# Root: offline export of stored Shiny RDS outputs
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/export_team_goldens_json.R
+# web/: run after recording has finished
+node scripts/capture-team-answers.mjs
+npm.cmd test
+node node_modules/@playwright/test/cli.js test team-ratings --workers=2
+```
+
+`--reuse-auxiliary` reuses identical captured startup queries for other tabs.
+Team Ratings facts, measured minutes, and schedule anchors always run live.
+An unreadable auxiliary fixture is fetched again; no expected table is synthesized.
+
 ## Preview deployment
 
-Current Ready Preview (Lineups and nuqs fix):
-https://ibpl-game-logs-db5d7rnxc-ariel12091-8759.vercel.app/il/lineups?season=2026
-Deployment `dpl_7rmA7oZHFWP4sLGmU2UR3MWeFcth` explicitly targets Preview.
-All 24 protected read-only endpoint checks pass across the three competitions.
+Current Ready Preview (Team Ratings and earlier migrated tabs):
+https://ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app/il/team-ratings?season=2026
+Deployment `dpl_3g1BP3XZfPXGm1J5bMkBGsdkxxfK` explicitly targets Preview.
+Team Ratings: 45 Shiny replays, 177 unit tests, 98 browser checks, six live
+server-render checks and 48 shared-table regressions pass. See the handoff for
+protected endpoint verification.
+All 31 protected Preview checks pass across the three competitions.
 
 The linked project is `ibpl-game-logs`. Use the Vercel CLI from `web/` and deploy
 with `vercel.cmd deploy --environment preview`. The credentials are configured

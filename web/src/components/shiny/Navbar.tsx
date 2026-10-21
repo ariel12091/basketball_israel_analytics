@@ -56,6 +56,7 @@ const TABS: Tab[] = [
     icon: "bi-trophy-fill",
     modes: ["Summary", "Four Factors", "Shot Profile", "Traditional"],
     def: "Summary",
+    path: "team-ratings",
   },
   {
     value: "game_logs",
@@ -88,6 +89,7 @@ const EURO_MODES: Record<string, string[]> = {
   euro_team: ["Summary", "Four Factors"],
 };
 const VIEW_PARAM: Record<string, string> = {
+  Traditional: 'traditional',
   Summary: "summary",
   "Four Factors": "four_factors",
   "Shot Profile": "shot_profile",

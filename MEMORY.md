@@ -1,5 +1,24 @@
 # Restart memory -- 2026-10-22
 
+Latest continuation: **Team Ratings is implemented** at `/{league}/team-ratings`.
+Summary/Four Factors cover IL, EuroLeague and EuroCup; Shot Profile/Traditional
+are IL only. Measured-minutes pace, previous-matchday rank arrows, stat filters,
+Traditional side/scaling, saved column order and CSV match Shiny.
+Ready Preview: https://ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app/il/team-ratings?season=2026
+Deployment `dpl_3g1BP3XZfPXGm1J5bMkBGsdkxxfK`, target Preview only.
+Passed: 45 Shiny replays (90 assertions), 177 web unit tests, 98 Team Ratings
+browser checks, six real server-render checks and 48 shared-table regressions,
+at 390/1440 px. The unit suite requires all 45 oracle frames to be present.
+All 31 protected Preview checks pass (views, filters, migrated tabs and SSR).
+Build/typecheck pass; lint has the two existing warnings. See the newest handoff
+entry for Preview checks, regressions, logs and React Doctor findings.
+The user requested committing and pushing migration checkpoints; branch is
+`sql/web-foundation` (Lineups checkpoint `609bf49` is already pushed).
+One **production-mode** Next server runs on 3100 (PID 21796), with PG_PORT=5432
+and existing read-only credentials. Check before starting another server.
+**Next: Player Stats**, then Gameflow + Home, Compare. No DB/ETL/role changes.
+The Lineups and earlier entries below are historical.
+
 Current continuation: **Lineups is implemented** for IL, EuroLeague and EuroCup
 at `/{league}/lineups`, with Summary/Four Factors, groups 2–5, roster selections,
 all Shiny filters, TOTAL and season game-log modals. Included in the Lineups

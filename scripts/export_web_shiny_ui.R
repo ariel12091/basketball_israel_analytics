@@ -33,7 +33,8 @@ files <- c("app/R/catalogues_generated.R", "app/R/helpers.R", "app/R/global.R",
            "app/R/ui_tab4_gamelogs.R", "app/R/ui_tab11_euro_gamelogs.R",
            "app/R/ui_tab1_onoff.R", "app/R/ui_tab8_euro.R", "app/R/server_tab1.R",
            "app/R/mod_lineup_player_filter.R", "app/R/ui_tab2_lineup.R",
-           "app/R/ui_tab10_euro_lineups.R", "app/R/server_tab2.R")
+           "app/R/ui_tab10_euro_lineups.R", "app/R/server_tab2.R",
+           "app/R/ui_tab3_team.R", "app/R/ui_tab9_euro_team.R", "app/R/server_tab3.R")
 for (f in files) for (e in parse(f)) {
   if (!is.call(e) || !identical(as.character(e[[1]]), "<-")) next
   if (!is.name(e[[2]])) next
@@ -185,7 +186,7 @@ panel_blocks <- function(node) {
   }
   out
 }
-VIEWS <- c(summary = "Summary", four_factors = "Four Factors", shot_profile = "Shot Profile")
+VIEWS <- c(summary = "Summary", four_factors = "Four Factors", shot_profile = "Shot Profile", traditional = "Traditional")
 # The main column of a tab: the blocks above the chips row per view, those
 # below the table, the table hint, and the chips row's popovers.
 tab_fragments <- function(tab_ui) {
@@ -242,6 +243,11 @@ ui <- list(
   euro = tab_fragments(ui_el),
   onoff = list(il = tab_fragments(env$ui_tab1_onoff()), euro = tab_fragments(env$ui_tab8_euro())),
   lineups = list(il = tab_fragments(env$ui_tab2_lineup()), euro = tab_fragments(env$ui_tab10_euro_lineups())),
+  teamRatings = list(il = tab_fragments(env$ui_tab3_team()), euro = tab_fragments(env$ui_tab9_euro_team())),
+  teamRatingMetrics = env$TEAM_RATING_METRICS,
+  teamRankColors = lapply(stats::setNames(2:30,2:30), function(n) grDevices::colorRampPalette(rev(env$RAMP_ANCHORS))(n)),
+  teamStatFilterCols = lapply(list(summary=env$TR_SUMMARY_FILTERABLE_COLS,four_factors=env$TR_FF_FILTERABLE_COLS,shot_profile=env$TR_SP_FILTERABLE_COLS,traditional=env$TR_TRAD_FILTERABLE_COLS),
+    function(cols) lapply(seq_along(cols), function(i) list(label=names(cols)[i],col=unname(cols[i])))),
   lineupDefaults = list(minPoss = env$LD_DEFAULT_MIN_POSS, size = env$LD_DEFAULT_NUM),
   lineupStatFilterCols = lapply(list(summary = env$LD_SUMMARY_FILTERABLE_COLS,
                                      four_factors = env$LD_FF_FILTERABLE_COLS),
