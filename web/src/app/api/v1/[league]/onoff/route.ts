@@ -1,8 +1,6 @@
-import { handleError, rawQueryGuard, ParamError } from "@/server/api";
+import { handleError, rawQueryGuard } from "@/server/api";
 import { leagueParam } from "@/server/params";
-import { parseContext } from "@/server/contextParams";
-import { getOnOff } from "@/server/onoffRepo";
-import type { View } from "@/rules/onoff";
+import { onoffAnswer } from "@/server/onoffApi";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 
@@ -18,37 +16,12 @@ export async function GET(
     const url = new URL(request.url);
     rawQueryGuard(url);
     const league = leagueParam((await context.params).league);
-    const view = (url.searchParams.get("view") ?? "summary") as View;
-    if (
-      !["summary", "four_factors", "shot_profile"].includes(view) ||
-      (view === "shot_profile" && league !== "il")
-    )
-      throw new ParamError("view", "Invalid view");
-    const c = parseContext(url.searchParams, league);
-    const answer = await getOnOff(c, view);
-    return Response.json(
-      {
-        rows: answer.rows,
-        league3p: answer.league3p,
-        meta: {
-          league,
-          season: c.season,
-          view,
-          filtered: answer.filtered,
-          version: answer.version,
-          teams: answer.teams,
-          rounds: answer.rounds,
-          phases: answer.phases,
-          ...(answer.seasons ? { seasons: answer.seasons } : {}),
-        },
+    return Response.json(await onoffAnswer(league, url.searchParams), {
+      headers: {
+        "Cache-Control": "public, max-age=0",
+        "Vercel-CDN-Cache-Control": "s-maxage=60",
       },
-      {
-        headers: {
-          "Cache-Control": "public, max-age=0",
-          "Vercel-CDN-Cache-Control": "s-maxage=60",
-        },
-      },
-    );
+    });
   } catch (error) {
     return handleError(error);
   }

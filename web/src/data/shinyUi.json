@@ -659,6 +659,7 @@
     "oreb": 0.63,
     "ftr": 0.13
   },
+  "ffImpactEstTitle": "Estimated points per 100 possessions",
   "onoffPadPoss": 4000,
   "autoTopPct": 0.35,
   "rankingBaseline": 100,

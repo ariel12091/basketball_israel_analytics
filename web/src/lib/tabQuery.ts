@@ -124,3 +124,14 @@ export function gameLogsPath(league: League, query: Query): string {
   else q.delete("stats");
   return `/api/v1/${league}/game-logs?${q}`;
 }
+
+/** The On/Off request: the game context and the view (inventory ON-02/ON-03).
+ * Teams travel too: the filtered Summary path filters them in SQL. */
+export function onoffPath(league: League, query: Query): string {
+  const q = contextParams(query, league);
+  q.delete("team");
+  q.delete("stats");
+  if (query.view && query.view !== "summary") q.set("view", query.view);
+  else q.delete("view");
+  return `/api/v1/${league}/onoff?${q}`;
+}

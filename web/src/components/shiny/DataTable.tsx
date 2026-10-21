@@ -50,6 +50,14 @@ export type Column = {
   sortValue?: (row: Row) => number | string | boolean | null;
   /** columnDefs orderSequence c("desc", "asc"). */
   descFirst?: boolean;
+  /** Extra attributes on the column's cells (createdRow in Shiny). */
+  tdProps?: (row: Row) => Record<string, string | number>;
+  /** Click, Enter or Space on the cell (the On/Off pivot menu). */
+  onActivate?: (
+    row: Row,
+    cell: HTMLElement,
+    at: { x: number; y: number },
+  ) => void;
 };
 export type Group = { label: string; span: number; cls?: string };
 export type Order = { id: string; desc: boolean }[];
@@ -230,6 +238,7 @@ export default function DataTable({
   defaultOrder,
   pageLength = 50,
   paging = true,
+  controls = true,
   csvName,
   tableClass = "",
   nameColumns = ["team_name"],
@@ -241,8 +250,10 @@ export default function DataTable({
   groups?: Group[];
   defaultOrder: Order;
   pageLength?: number;
-  /** dom without "p"/"i" (e.g. "t"): every row, no info line. */
+  /** false: every row on one page. */
   paging?: boolean;
+  /** dom "t": pages of pageLength with no info line or pager. */
+  controls?: boolean;
   /** dom "B...": the CSV button with this file-name slug. */
   csvName?: string;
   tableClass?: string;
@@ -321,7 +332,10 @@ export default function DataTable({
       );
     });
   };
-  const names = columns.filter((c) => nameColumns.includes(c.id));
+  // mobile.js puts the player before the team in the label.
+  const names = nameColumns
+    .map((id) => columns.find((c) => c.id === id))
+    .filter((c): c is Column => Boolean(c));
   const anchorIndex = columns.findIndex((c) => !nameColumns.includes(c.id));
 
   return (
@@ -439,6 +453,30 @@ export default function DataTable({
                         style={
                           cell.bg ? { backgroundColor: cell.bg } : undefined
                         }
+                        {...(c.tdProps ? c.tdProps(row) : {})}
+                        onClick={
+                          c.onActivate
+                            ? (e) =>
+                                c.onActivate!(row, e.currentTarget, {
+                                  x: e.clientX,
+                                  y: e.clientY,
+                                })
+                            : undefined
+                        }
+                        onKeyDown={
+                          c.onActivate
+                            ? (e) => {
+                                if (e.key !== "Enter" && e.key !== " ") return;
+                                e.preventDefault();
+                                const r =
+                                  e.currentTarget.getBoundingClientRect();
+                                c.onActivate!(row, e.currentTarget, {
+                                  x: r.left,
+                                  y: r.bottom,
+                                });
+                              }
+                            : undefined
+                        }
                       >
                         {cell.node}
                         {j === anchorIndex && names.length > 0 && (
@@ -466,7 +504,7 @@ export default function DataTable({
           </table>
         </div>
       </div>
-      {paging && (
+      {paging && controls && (
         <>
           <div className="dataTables_info" role="status" aria-live="polite">
             Showing {sortedRows.length ? pageIndex * size + 1 : 0} to{" "}

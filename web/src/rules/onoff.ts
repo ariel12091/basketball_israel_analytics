@@ -540,3 +540,37 @@ export function summaryShotAverages(
   }
   return out;
 }
+
+export const FF_METRIC_MAP: Record<string, [string, string]> = {
+  "Off eFG% Diff": ["off_on_efg", "off_off_efg"],
+  "Off OREB% Diff": ["off_on_oreb", "off_off_oreb"],
+  "Off TOV% Diff": ["off_on_tov", "off_off_tov"],
+  "Off FTR Diff": ["off_on_ftr", "off_off_ftr"],
+  "Def eFG% Diff": ["def_on_efg", "def_off_efg"],
+  "Def OREB% Diff": ["def_on_oreb", "def_off_oreb"],
+  "Def TOV% Diff": ["def_on_tov", "def_off_tov"],
+  "Def FTR Diff": ["def_on_ftr", "def_off_ftr"],
+};
+export const FF_RTG_MAP: Record<string, [string, string]> = {
+  "Off Rtg Diff": ["off_on_ppp", "off_off_ppp"],
+  "Def Rtg Diff": ["def_on_ppp", "def_off_ppp"],
+};
+/** helpers.R onoff_four_factors_datatable, before the stat filters: the
+ * on/off rates x100 to one decimal, the diffs to one decimal, the
+ * possession columns renamed for display. */
+export function ffDisplayRows(input: Row[]): Row[] {
+  const raw = Object.values(FF_METRIC_MAP).flat();
+  return input.map((r) => {
+    const out: Row = { ...r };
+    for (const c of raw)
+      if (c in out)
+        out[c] = num(out[c]) == null ? null : rRound(Number(out[c]) * 100, 1);
+    for (const c of Object.keys(FF_METRIC_MAP))
+      if (c in out)
+        out[c] = num(out[c]) == null ? null : rRound(Number(out[c]), 1);
+    out["ON Poss"] = r.off_on_poss ?? null;
+    out["OFF Poss"] = r.off_off_poss ?? null;
+    if (out.minutes === undefined) out.minutes = null;
+    return out;
+  });
+}

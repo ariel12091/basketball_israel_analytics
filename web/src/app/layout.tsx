@@ -9,6 +9,7 @@ import "@/styles/shiny/vendor/bootstrap.min.css";
 import "@/styles/shiny/vendor/selectize.css";
 import "@/styles/shiny/vendor/bootstrap-datepicker3.min.css";
 import "@/styles/shiny/vendor/bslib-component-css.min.css";
+import "@/styles/shiny/vendor/ion.rangeSlider.css";
 import "@/styles/shiny/vendor/bootstrap-datepicker.css";
 import "@/styles/shiny/app.css";
 import "@/styles/shiny/mobile.css";

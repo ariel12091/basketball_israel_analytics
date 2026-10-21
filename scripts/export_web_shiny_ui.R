@@ -241,6 +241,7 @@ ui <- list(
   onoff = list(il = tab_fragments(env$ui_tab1_onoff()), euro = tab_fragments(env$ui_tab8_euro())),
   ffImpactLegend = env$ff_impact_legend(),
   ffImpactWeights = as.list(env$FF_IMPACT_WEIGHTS),
+  ffImpactEstTitle = env$FF_IMPACT_EST_TITLE,
   onoffPadPoss = env$ONOFF_PAD_POSS,
   autoTopPct = env$AUTO_TOP_PCT,
   rankingBaseline = env$RANKING_BASELINE,
