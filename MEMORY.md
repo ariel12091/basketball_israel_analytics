@@ -1,5 +1,18 @@
 # Restart memory -- 2026-10-22
 
+User priority change: **prove scalability before continuing Home**. Home has
+not been started (only source reads). Audit verdict: greater end-to-end capacity
+than Shiny is NOT proved. See `docs/react_scalability_evidence_2026-10-22.md`.
+A bounded local production API probe passed 1,200 warm Gameflow requests;
+at 150 concurrent HTTP requests, 300/300 succeeded, p95 506.6 ms, max 525.2 ms.
+This is a short cached-only burst, NOT 150 browser users or a Shiny comparison.
+Script: `web/scripts/benchmark-cache.mjs`; raw output is ignored under
+`output/scalability/warm-cache.json`. No public stress test was performed.
+The existing 150-user mixed cold/warm criterion remains unproved, and shared
+SQL bottlenecks remain. Full shared-production-DB load testing must respect the
+design's quiet, non-game-day scheduling constraint. Resume with this evidence
+gate, not Home features. Gameflow checkpoint `a424af5` is committed and pushed.
+
 Latest checkpoint: **Gameflow is implemented** for IL, EuroLeague and EuroCup,
 from Game Logs in both views and at `/{league}/gameflow?game_id=…&team_id=…`.
 Desktop uses a native dialog; phone/tablet widths use quarter/OT cards, with
