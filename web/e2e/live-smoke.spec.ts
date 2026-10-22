@@ -1,4 +1,36 @@
 import { test, expect } from "@playwright/test";
+for (const [league, season] of [
+  ["il", 2026],
+  ["euroleague", 2025],
+  ["eurocup", 2025],
+] as const) {
+  test(`live ${league}: Player Stats server render`, async ({ page }, info) => {
+    test.skip(
+      process.env.LIVE_DB_SMOKE !== "1",
+      "Read-only database smoke is opt-in",
+    );
+    await page.setExtraHTTPHeaders({});
+    const errors: string[] = [];
+    page.on("pageerror", (e) => errors.push(e.message));
+    const response = await page.goto(
+      `/${league}/player-stats?season=${season}`,
+    );
+    expect(await response!.text()).toContain('data-column="Player"');
+    await expect(
+      page.locator('.ibpl-dt-scroll tbody td[data-column="Player"]').first(),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= innerWidth + 1,
+      ),
+    ).toBe(true);
+    await page.screenshot({
+      path: `test-results/live-player-${league}-${info.project.name}.png`,
+      fullPage: true,
+    });
+    expect(errors).toEqual([]);
+  });
+}
 test.skip(!process.env.LIVE_DB_SMOKE, "Opt-in read-only live database checks");
 // The server renders the first table from the database here.
 test.use({ extraHTTPHeaders: {} });

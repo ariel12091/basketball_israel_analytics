@@ -69,6 +69,7 @@ const TABS: Tab[] = [
   },
   {
     value: "traditional_stats",
+    path: "player-stats",
     label: "Player Stats",
     icon: "bi-bar-chart-line",
     modes: ["Totals", "Per Game", "Per 60 Possessions", "Per 30 Minutes"],
@@ -89,7 +90,11 @@ const EURO_MODES: Record<string, string[]> = {
   euro_team: ["Summary", "Four Factors"],
 };
 const VIEW_PARAM: Record<string, string> = {
-  Traditional: 'traditional',
+  Totals: "Totals",
+  "Per Game": "Per Game",
+  "Per 60 Possessions": "Per 60 Possessions",
+  "Per 30 Minutes": "Per 30 Minutes",
+  Traditional: "traditional",
   Summary: "summary",
   "Four Factors": "four_factors",
   "Shot Profile": "shot_profile",

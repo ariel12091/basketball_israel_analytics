@@ -80,6 +80,13 @@ GOLDEN_STRICT_READERS <- list(
 
 # Each tab owns its strict dependencies; unrelated startup queries remain notes.
 GOLDEN_STRICT_READERS_BY_TAB <- list(
+  player_stats = c(list(
+    cached_season_df = NULL, fetch_player_traditional_season = NULL,
+    fetch_player_traditional_filtered = NULL, load_ts_identity_lookup = NULL,
+    server_tab5_traditional = NULL
+  ), GOLDEN_STRICT_READERS[c('etl_last_success_db','euro_data_version',
+    'fetch_teams_distinct','fetch_gn_values','euro_fetch_seasons','euro_fetch_teams',
+    'euro_fetch_players_basic','euro_fetch_phases','euro_fetch_round_values')]),
   team_ratings = c(list(
     run_team_ratings_dynamic = NULL, run_team_ff_dynamic = NULL,
     run_team_ff_dashboard_dynamic = NULL, run_team_traditional_dynamic = NULL,

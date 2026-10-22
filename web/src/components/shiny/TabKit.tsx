@@ -958,6 +958,7 @@ type StatCol = { label: string; col: string };
 export function StatFilters({
   p,
   cols,
+  labels,
   groups,
   filters,
   onChange,
@@ -966,6 +967,8 @@ export function StatFilters({
 }: {
   p: string;
   cols: StatCol[];
+  /** Keep labels for active filters whose column is hidden in this mode. */
+  labels?: StatCol[];
   groups?: { label: string; cols: string[] }[];
   filters: StatFilter[];
   onChange: (f: StatFilter[]) => void;
@@ -977,7 +980,8 @@ export function StatFilters({
   const [op, setOp] = useState<"ge" | "le">("ge");
   const [value, setValue] = useState("");
   const all = useMemo(() => cols, [cols]);
-  const label = (c: string) => all.find((x) => x.col === c)?.label ?? c;
+  const label = (c: string) =>
+    (labels ?? all).find((x) => x.col === c)?.label ?? c;
   const add = () => {
     const picked = all.find((x) => x.label === col);
     const v = Number(value);

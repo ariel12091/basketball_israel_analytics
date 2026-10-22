@@ -1210,6 +1210,192 @@
       "popovers": []
     }
   },
+  "playerStats": {
+    "views": {
+      "summary": [],
+      "four_factors": [],
+      "shot_profile": [],
+      "traditional": []
+    },
+    "after": {
+      "summary": [],
+      "four_factors": [],
+      "shot_profile": [],
+      "traditional": []
+    },
+    "hint": {
+      "pointer": "Click a column header to sort · Hover over a column header for its definition · Drag a column header to reorder",
+      "touch": "Tap a column header to sort · Tap a header's info button for its definition"
+    },
+    "popovers": [],
+    "blocks": [
+      {
+        "kind": "explainer",
+        "title": "What This Tab Answers",
+        "intro": [
+          {
+            "t": "How do players produce in traditional box-score terms under your selected game filters?"
+          }
+        ],
+        "bullets": [
+          [
+            {
+              "t": "Each row shows Team, Player, GP, Poss on Floor, MIN, scoring, rebounding, playmaking, defensive events, shooting splits, eFG%, TS%, and USG%. Non-total modes also show Total Poss from the totals-mode possession count."
+            }
+          ],
+          [
+            {
+              "t": "Use MIN, Poss on Floor, and Total Poss where shown as context -- high counting stats on low minutes may signal efficiency, while low stats on high minutes may signal a role player."
+            }
+          ],
+          [
+            {
+              "t": "FG%, 2P%, 3P%, FT%, eFG%, TS%, and USG% let you compare scoring efficiency and role alongside volume -- heat colors show where each stat ranks league-wide."
+            }
+          ]
+        ]
+      },
+      {
+        "kind": "example",
+        "id": "traditional-example-box",
+        "title": "How to Read Player Stats (Real Example)",
+        "paragraphs": [
+          [
+            {
+              "t": "Kyler Edwards (Hapoel Haemek) averages 19.4 PTS on 14.3 FGA with 43.4 FG% and 36.2 3P% across 19 games."
+            }
+          ],
+          [
+            {
+              "t": "Heat colors show where each stat ranks league-wide: green means above average, red means below."
+            }
+          ],
+          [
+            {
+              "t": "Use Poss on Floor (58.8) and MIN (30.6) as context to judge whether production comes from high usage or efficiency."
+            }
+          ]
+        ],
+        "image": "/images/player-stats-row-snippet.png",
+        "alt": "Player traditional stats table snippet",
+        "caption": "Real Player Stats snippet"
+      }
+    ]
+  },
+  "playerStatFilterCols": [
+    {
+      "label": "GP",
+      "col": "gp"
+    },
+    {
+      "label": "MIN",
+      "col": "minutes"
+    },
+    {
+      "label": "Poss",
+      "col": "poss_on_floor"
+    },
+    {
+      "label": "Total Poss",
+      "col": "total_poss"
+    },
+    {
+      "label": "PTS",
+      "col": "pts"
+    },
+    {
+      "label": "REB",
+      "col": "reb"
+    },
+    {
+      "label": "OREB",
+      "col": "oreb"
+    },
+    {
+      "label": "DREB",
+      "col": "dreb"
+    },
+    {
+      "label": "AST",
+      "col": "ast"
+    },
+    {
+      "label": "STL",
+      "col": "stl"
+    },
+    {
+      "label": "BLK",
+      "col": "blk"
+    },
+    {
+      "label": "DFL",
+      "col": "dfl"
+    },
+    {
+      "label": "TOV",
+      "col": "tov"
+    },
+    {
+      "label": "FGM",
+      "col": "fgm"
+    },
+    {
+      "label": "FGA",
+      "col": "fga"
+    },
+    {
+      "label": "FG%",
+      "col": "fg_pct"
+    },
+    {
+      "label": "2PM",
+      "col": "2pm"
+    },
+    {
+      "label": "2PA",
+      "col": "2pa"
+    },
+    {
+      "label": "2P%",
+      "col": "two_pct"
+    },
+    {
+      "label": "3PM",
+      "col": "3pm"
+    },
+    {
+      "label": "3PA",
+      "col": "3pa"
+    },
+    {
+      "label": "3P%",
+      "col": "tp_pct"
+    },
+    {
+      "label": "FTM",
+      "col": "ftm"
+    },
+    {
+      "label": "FTA",
+      "col": "fta"
+    },
+    {
+      "label": "FT%",
+      "col": "ft_pct"
+    },
+    {
+      "label": "eFG%",
+      "col": "efg"
+    },
+    {
+      "label": "TS%",
+      "col": "ts"
+    },
+    {
+      "label": "USG%",
+      "col": "usg_pct"
+    }
+  ],
   "teamRatingMetrics": [
     {
       "metric": "off_ppp",

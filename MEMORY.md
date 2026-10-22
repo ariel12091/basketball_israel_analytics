@@ -1,5 +1,25 @@
 # Restart memory -- 2026-10-22
 
+Player Stats continuation: implementation is at `/{league}/player-stats` for IL,
+EuroLeague and EuroCup, with all four display modes, canonical selectors,
+multi-team TOTAL rows, context/clutch filters, Min GP, stat chips, eligibility,
+saved column order and CSV. 27 Shiny frames / 47 query fixtures are recorded and
+replay identically offline (54 assertions). All 222 unit tests pass with two
+workers; an earlier concurrent run hit one existing Lineups 5-second timeout.
+All 114 browser checks pass (66 Player Stats + 48 shared regressions), with
+phone/desktop screenshots inspected. Build/typecheck pass; lint has the two
+existing warnings. Six live production-mode SSR checks pass. Ready Preview:
+https://ibpl-game-logs-91aourr8p-ariel12091-8759.vercel.app/il/player-stats?season=2026
+Deployment `dpl_8kpxTK9zf12i99LbqD66faBLUVbz`, target Preview only. All 37
+protected Preview checks pass (migrated tabs, Player Stats context/clutch and
+initial server-rendered HTML for every competition). The Player Stats checkpoint
+belongs on `sql/web-foundation`, committed/pushed as requested by the user.
+The original production server PID 21796 was stopped; one new production-mode
+server now runs on 3100 with PG_PORT=5432. Check before starting another.
+The rate cutoff must retain R's `1 - .85` and 1-based type-7 interpolation:
+rounding it admits an extra boundary player. Next after this checkpoint:
+Gameflow + Home, then Compare. The Team Ratings entry below is historical.
+
 Latest continuation: **Team Ratings is implemented** at `/{league}/team-ratings`.
 Summary/Four Factors cover IL, EuroLeague and EuroCup; Shot Profile/Traditional
 are IL only. Measured-minutes pace, previous-matchday rank arrows, stat filters,

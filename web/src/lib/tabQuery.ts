@@ -159,6 +159,27 @@ export const TEAM_QUERY_DEFAULTS = {
   side: "offense",
   display: "per_game",
 };
+export const PLAYER_QUERY_DEFAULTS = {
+  ...TEAM_QUERY_DEFAULTS,
+  view: "Per Game",
+  players: "",
+  min_gp: "1",
+  show_ineligible: "false",
+};
+export function playerStatsPath(league: League, query: Query): string {
+  const q = contextParams(query, league);
+  for (const k of ["view", "team", "stats", "own_starters", "opp_starters"])
+    q.delete(k);
+  for (const k of [
+    "clutch",
+    "clutch_margin",
+    "clutch_status",
+    "clutch_minutes",
+    "ot_margin",
+  ])
+    if (query[k]) q.set(k, query[k]);
+  return `/api/v1/${league}/player-stats?${q}`;
+}
 export function teamRatingsPath(league: League, query: Query): string {
   const q = contextParams(query, league);
   q.delete("stats");

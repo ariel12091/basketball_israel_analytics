@@ -34,7 +34,8 @@ files <- c("app/R/catalogues_generated.R", "app/R/helpers.R", "app/R/global.R",
            "app/R/ui_tab1_onoff.R", "app/R/ui_tab8_euro.R", "app/R/server_tab1.R",
            "app/R/mod_lineup_player_filter.R", "app/R/ui_tab2_lineup.R",
            "app/R/ui_tab10_euro_lineups.R", "app/R/server_tab2.R",
-           "app/R/ui_tab3_team.R", "app/R/ui_tab9_euro_team.R", "app/R/server_tab3.R")
+           "app/R/ui_tab3_team.R", "app/R/ui_tab9_euro_team.R", "app/R/server_tab3.R",
+           "app/R/ui_tab5_traditional.R", "app/R/server_tab5_traditional.R")
 for (f in files) for (e in parse(f)) {
   if (!is.call(e) || !identical(as.character(e[[1]]), "<-")) next
   if (!is.name(e[[2]])) next
@@ -244,6 +245,14 @@ ui <- list(
   onoff = list(il = tab_fragments(env$ui_tab1_onoff()), euro = tab_fragments(env$ui_tab8_euro())),
   lineups = list(il = tab_fragments(env$ui_tab2_lineup()), euro = tab_fragments(env$ui_tab10_euro_lineups())),
   teamRatings = list(il = tab_fragments(env$ui_tab3_team()), euro = tab_fragments(env$ui_tab9_euro_team())),
+  playerStats = local({
+    tab <- env$ui_tab5_traditional()
+    result <- tab_fragments(tab)
+    doc <- read_html(as.character(tab))
+    result$blocks <- panel_blocks(xml_find_first(doc, "//div[@role='main']"))
+    result
+  }),
+  playerStatFilterCols = lapply(seq_along(env$TS_FILTERABLE_COLS), function(i) list(label=names(env$TS_FILTERABLE_COLS)[i],col=unname(env$TS_FILTERABLE_COLS[[i]]))),
   teamRatingMetrics = env$TEAM_RATING_METRICS,
   teamRankColors = lapply(stats::setNames(2:30,2:30), function(n) grDevices::colorRampPalette(rev(env$RAMP_ANCHORS))(n)),
   teamStatFilterCols = lapply(list(summary=env$TR_SUMMARY_FILTERABLE_COLS,four_factors=env$TR_FF_FILTERABLE_COLS,shot_profile=env$TR_SP_FILTERABLE_COLS,traditional=env$TR_TRAD_FILTERABLE_COLS),

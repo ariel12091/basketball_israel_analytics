@@ -2,11 +2,14 @@
 
 ## Restart context -- React migration (2026-10-22)
 
-Latest: Team Ratings is implemented across all three competitions (IL also has
-Shot Profile/Traditional). Ready Preview: `ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app`.
-45 Shiny replays, 177 unit tests, 98 browser checks, six live SSR checks and
-48 shared-table regressions pass.
-Next: Player Stats. The user wants checkpoints committed and pushed to
+Latest: Player Stats is implemented across all three competitions, with all
+four display modes, canonical selectors, multi-team TOTAL rows, rate eligibility,
+full-population heat ranks, context/clutch controls, saved columns and CSV.
+Ready Preview: `ibpl-game-logs-91aourr8p-ariel12091-8759.vercel.app`.
+27 Shiny replays, 222 unit tests, 114 browser checks (including 48 shared
+regressions) and six live SSR checks pass. Build/typecheck pass; lint has the
+two existing warnings. Next: Gameflow + Home, then Compare.
+The user wants checkpoints committed and pushed to
 `sql/web-foundation`. Read the newest MEMORY/handoff entry; older notes below
 are historical. Existing read-only roles; no production promotion.
 

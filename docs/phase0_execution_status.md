@@ -2,6 +2,58 @@
 
 ## START HERE (current state, read this first)
 
+**Player Stats continuation (2026-10-22):**
+`/{league}/player-stats` uses the existing Tab 5 readers for all competitions.
+All four display modes, full-context heat ranks before display narrowing,
+canonical roster choices, multi-team TOTAL rows, clutch/context controls,
+Min GP, stat filters, rate eligibility, saved column order and CSV are across.
+27 real Shiny tables and 47 read-only query fixtures are committed with this
+checkpoint; offline replay matches (54 assertions). All 222 unit tests pass
+with two workers. The rate threshold reproduces R's floating arithmetic;
+rounding an integer-boundary cutoff changed one player's eligibility. A focused
+regression and the complete recorded cell comparison cover it.
+
+All **114 browser checks** pass: 66 Player Stats checks and 48 shared Game Logs,
+selector and Lineups modal regressions, at 390/1440 px. Screenshots inspected
+for both leagues and widths. Six live production-mode SSR checks pass and
+assert that table data is in the initial HTML, all three competitions and both
+widths. Build/typecheck pass; lint has the two existing warnings.
+
+The first browser run passed its 54 numeric tables, then was stopped to target
+the visible navbar menu instead of intentionally hidden sidebar radios. A
+subsequent selector matched both the PTS popover option and the native column
+order option; it is now scoped to the popover. Final complete run: 114/114.
+An initial concurrent unit run hit one existing Lineups 5-second timeout;
+the final isolated run with two workers passes 222/222 in 21.6 seconds, with
+assertions and timeouts unchanged. R replay emits locale/package warnings.
+
+React Doctor includes the new files: 50/100, 134 warnings and the existing
+OnOff PivotMenu cleanup false positive, with no new functional error. The new
+advisories concern component size, bounded lookups and sequential snapshot
+queries; broad cleanup remains deferred. Final scan: `tmp_player_doctor_final.log`.
+
+Ready **Preview only**, deployment `dpl_8kpxTK9zf12i99LbqD66faBLUVbz`:
+https://ibpl-game-logs-91aourr8p-ariel12091-8759.vercel.app/il/player-stats?season=2026
+All **37 protected Preview checks pass**: migrated tab endpoints, Player Stats
+default/last-N-home/standard-clutch/custom-clutch for all competitions, and
+the initial Player Stats HTML for each competition. The verification helper
+now resolves the installed Vercel CLI entry point and allows 32 MiB responses
+for the existing large Lineups payloads; logs retain metadata rather than
+dumping response bodies on CLI errors. Target is confirmed Preview, status Ready.
+The checkpoint is on `sql/web-foundation`; do not merge the historical publication
+work into main. One production server is on 3100
+(the older production PID 21796 and the intervening dev server were stopped).
+No DB/ETL/role changes. Next: Gameflow + Home, then Compare.
+The Team Ratings and earlier entries below are historical.
+
+Logs: `tmp_player_record_resume.log`, `tmp_player_replay.log`,
+`tmp_player_parity.log`, `tmp_player_units_final.log`,
+`tmp_player_browser_final.log`, `tmp_player_live.log`, `tmp_player_build.log`,
+`tmp_player_lint_final2.log`, `tmp_player_doctor_final.log`,
+`tmp_player_deploy.log`, `tmp_player_preview_{final,inspect}.log`.
+Rebuild ignored JSON with `scripts/export_player_goldens_json.R`, then capture
+the independent route answers with `web/scripts/capture-player-answers.mjs`.
+
 **Team Ratings continuation (2026-10-22):** shared React page at
 `/{league}/team-ratings`, Summary/Four Factors for IL/EuroLeague/EuroCup,
 Israeli Shot Profile and Traditional. Existing read-only SQL owners unchanged:

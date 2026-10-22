@@ -6,11 +6,12 @@ the design. The root `CLAUDE.md` and `docs/shared_definitions.md` still apply.
 
 ## Current resume point (2026-10-22)
 
-Team Ratings is implemented: all competitions have Summary/Four Factors; IL
-also has Shot Profile/Traditional. 45 Shiny replays, 177 unit tests, 98 browser
-checks, six live SSR checks and 48 shared-table regressions pass. Ready Preview:
-https://ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app/il/team-ratings?season=2026
-Next: Player Stats. Commit and push checkpoints as requested by the user.
+Player Stats is implemented for all three competitions, all four display modes,
+canonical selectors, TOTAL rows, rate eligibility and full-population heat ranks.
+27 Shiny replays, 222 unit tests, 114 browser checks (including 48 shared
+regressions) and six live SSR checks pass. Ready Preview:
+https://ibpl-game-logs-91aourr8p-ariel12091-8759.vercel.app/il/player-stats?season=2026
+Next: Gameflow + Home, then Compare. Commit and push checkpoints as requested.
 Port 3100 currently runs the production build (not `next dev`); stop/check it
 before changing server mode. The handoff has final verification details.
 The Lineups/OnOff entries below are historical.

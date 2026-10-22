@@ -4,11 +4,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Active React migration -- restart here (2026-10-22)
 
-Latest checkpoint: Team Ratings (`/{league}/team-ratings`) covers all three
-competitions; IL also has Shot Profile and Traditional. Preview is Ready at
-`ibpl-game-logs-nh0jyt5it-ariel12091-8759.vercel.app`. 45 Shiny replays, 177 unit
-tests, 98 browser checks, six live SSR checks and 48 shared-table regressions
-pass. Next: Player Stats.
+Latest: Player Stats (`/{league}/player-stats`) covers all three competitions
+and all four display modes, canonical selectors, multi-team TOTAL rows, rate
+eligibility, full-population heat ranks, context/clutch controls and saved columns.
+Preview is Ready at `ibpl-game-logs-91aourr8p-ariel12091-8759.vercel.app`.
+27 Shiny replays, 222 unit tests, 114 browser checks (48 shared regressions)
+and six live SSR checks pass. Build/typecheck pass; lint has two existing
+warnings. Next: Gameflow + Home, then Compare.
 The user requested checkpoint commits and pushes on `sql/web-foundation`.
 Read the newest MEMORY/handoff entry; the Lineups record below is historical.
 

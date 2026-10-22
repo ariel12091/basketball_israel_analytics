@@ -4,11 +4,34 @@ Next.js screen for Israeli League, EuroLeague and EuroCup. Reads the existing
 Shiny database views with the existing `app_readonly` login. No database migrations
 or role changes are needed. Gameflow remains a later migration phase.
 
-Implemented pages: Game Logs, On/Off, Lineups and Team Ratings (`/{league}/team-ratings`). Lineups
+Implemented pages: Game Logs, On/Off, Lineups, Team Ratings and Player Stats
+(`/{league}/player-stats`). Lineups
 uses the existing Israeli and Euro readers, league-wide ranks before local
 team/player/possession filters, roster chips, clutch, stat filters, pinned TOTAL
 rows, and the existing season game-log modals. EuroLeague's modal stays Summary
 in both parent views, matching `server_tab10_euro_lineups.R`.
+
+Player Stats shares Tab 5's four display modes, context/clutch readers, canonical
+player selectors, multi-team TOTAL rows, full-population heat ranks, rate
+eligibility, Min GP, stat chips, saved column order and CSV across all three
+competitions. Deflections remain Israeli-only. The cutoff deliberately preserves
+R's floating type-7 arithmetic: rounding it can change eligibility at an integer
+possession boundary. Next: Gameflow + Home, then Compare.
+
+Player Stats parity uses 27 recorded Shiny tables and 47 query fixtures:
+
+```powershell
+# Repository root: recording is an explicit live read-only operation
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/capture_goldens.R --tab player_stats --record
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/export_player_goldens_json.R
+# From web/, with the shared local server running on 3100
+node scripts/capture-player-answers.mjs
+npm.cmd test
+node node_modules/@playwright/test/cli.js test player-stats --workers=2
+```
+
+The oracle and query fixtures are committed; generated JSON/API answers are
+ignored. The unit suite requires all 27 tables to prevent a silent parity skip.
 
 ## Local development (PowerShell)
 

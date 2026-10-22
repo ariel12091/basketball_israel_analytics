@@ -39,7 +39,7 @@ export function cleanTsRows(rows: Row[]): Row[] {
   );
 }
 /** helpers.R ts_attempts (with ts_implied_attempts as the fallback). */
-function tsAttempts(r: Row): number {
+export function tsAttempts(r: Row): number {
   const returned = num(r.ts_att);
   if (fin(returned)) return returned;
   const pts = num(r.pts),

@@ -35,3 +35,6 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-column-order { color: var(--ibpl-text); margin-bottom: 8px; }
 .ibpl-column-order summary { color: var(--ibpl-text-muted); cursor: pointer; }
 .ibpl-column-order select { display: inline-block; width: auto; max-width: 100%; }
+/* Tab 5 formatStyle: totals stay colored; small rate samples are muted. */
+.ibpl-player-total td { font-weight: bold; }
+.ibpl-player-ineligible td { color: var(--ibpl-text-dim); }
