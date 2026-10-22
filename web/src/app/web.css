@@ -38,3 +38,22 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 /* Tab 5 formatStyle: totals stay colored; small rate samples are muted. */
 .ibpl-player-total td { font-weight: bold; }
 .ibpl-player-ineligible td { color: var(--ibpl-text-dim); }
+
+/* Gameflow uses the existing ribbon look with React-owned SVG and state. */
+.ibpl-gameflow-dialog { width: min(1220px, calc(100vw - 32px)); max-width: none; max-height: calc(100dvh - 32px); margin: auto; padding: 0; border: 1px solid var(--ibpl-border); border-radius: 8px; color: var(--ibpl-text); background: var(--ibpl-surface); }
+.ibpl-gameflow-dialog::backdrop { background: rgba(0,0,0,.55); }
+.ibpl-gameflow-dialog .modal-header { position: sticky; top: 0; z-index: 3; background: var(--ibpl-surface); gap: 12px; }
+.ibpl-gameflow-dialog .modal-title { margin: 0; }
+.ibpl-react-gameflow-panel { display: block; margin: 16px 0; }
+.ibpl-react-gameflow .ibpl-ribbon-quarter-frame > svg { width: 100%; max-width: 100%; height: auto; }
+.ibpl-react-gameflow .ibpl-gameflow-full { max-width: 100%; overflow-x: auto; }
+.ibpl-react-gameflow .ibpl-gameflow-full:has(.ibpl-gameflow-gutter) { display: flex; align-items: flex-start; }
+.ibpl-react-gameflow .ibpl-gameflow-full > svg { flex-shrink: 0; }
+.ibpl-react-gameflow .ibpl-gameflow-full > svg.ibpl-gameflow-gutter { position: sticky; left: 0; z-index: 2; width: 104px; max-width: 104px; margin-right: -104px; }
+.ibpl-react-gameflow .ibpl-ribbon-pin-bg { fill: var(--ibpl-surface); }
+.ibpl-react-gameflow .ibpl-gameflow-full > svg.is-compact { width: 954px; max-width: none; }
+.ibpl-react-gameflow .ibpl-ribbon-detail-members { text-align: left; }
+.ibpl-react-gameflow .ibpl-ribbon-detail-meta { text-align: left; }
+.ibpl-react-gameflow .ibpl-ribbon-score-tooltip { white-space: pre-line; }
+.ibpl-react-gameflow .ibpl-ribbon-quarter-card:focus-within { outline: 1px solid var(--ibpl-accent); }
+.ibpl-react-gameflow .ibpl-ribbon-lane[role="button"]:focus rect { stroke: var(--ibpl-accent); stroke-width: 2; }

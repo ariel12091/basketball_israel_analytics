@@ -177,7 +177,10 @@ for (const preset of presets) {
             continue;
           }
           if (column === "gameflow") {
-            expect(text).toBe("View");
+            // Shiny suppresses the opener when a game has no scoring feed.
+            expect(text).toBe(
+              String(want[column] ?? "").replace(/<[^>]*>/g, ""),
+            );
             continue;
           }
           expect(text, `row ${from + i} ${column}`).toBe(

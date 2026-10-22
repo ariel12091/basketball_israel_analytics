@@ -2,9 +2,9 @@
 
 Next.js screen for Israeli League, EuroLeague and EuroCup. Reads the existing
 Shiny database views with the existing `app_readonly` login. No database migrations
-or role changes are needed. Gameflow remains a later migration phase.
+or role changes are needed.
 
-Implemented pages: Game Logs, On/Off, Lineups, Team Ratings and Player Stats
+Implemented pages: Game Logs, Gameflow, On/Off, Lineups, Team Ratings and Player Stats
 (`/{league}/player-stats`). Lineups
 uses the existing Israeli and Euro readers, league-wide ranks before local
 team/player/possession filters, roster chips, clutch, stat filters, pinned TOTAL
@@ -16,7 +16,22 @@ player selectors, multi-team TOTAL rows, full-population heat ranks, rate
 eligibility, Min GP, stat chips, saved column order and CSV across all three
 competitions. Deflections remain Israeli-only. The cutoff deliberately preserves
 R's floating type-7 arithmetic: rounding it can change eligibility at an integer
-possession boundary. Next: Gameflow + Home, then Compare.
+possession boundary. Next: Home, then Compare.
+
+Gameflow opens from Game Logs or `/{league}/gameflow?game_id=…&team_id=…`.
+It preserves the Shiny reader and stint/score rules, with a desktop dialog,
+phone quarter/OT cards, pinned names in the full timeline, player overlap,
+shared lineups, stint details and score inspection. Ten real Shiny fixtures
+cover regulation, overtime, truncated feeds and reconstructed Q4 timing.
+Replay/export them offline from the repository root with:
+
+```powershell
+& 'C:/Program Files/R/R-4.4.2/bin/Rscript.exe' scripts/capture_gameflow_goldens.R
+```
+
+From `web/`, run `npm.cmd run e2e -- gameflow.spec.ts gameflow-opener.spec.ts`.
+`LIVE_DB_SMOKE=1` enables `gameflow-live.spec.ts`; while the server is running,
+`npx.cmd tsx scripts/check-gameflow-live.mts` compares real reader answers to R.
 
 Player Stats parity uses 27 recorded Shiny tables and 47 query fixtures:
 

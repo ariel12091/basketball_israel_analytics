@@ -6,6 +6,16 @@ the design. The root `CLAUDE.md` and `docs/shared_definitions.md` still apply.
 
 ## Current resume point (2026-10-22)
 
+Gameflow is implemented for all competitions: Game Logs links and direct SSR
+pages, native desktop dialog, width-based quarter/OT cards, full mobile timeline
+with pinned names, player/shared-lineup selection, details, score inspection and
+warnings. Ten Shiny replays/live comparisons, 237 unit tests, 92 browser checks
+and six live SSR checks pass. Ready Preview:
+https://ibpl-game-logs-11drkc5az-ariel12091-8759.vercel.app/il/gameflow?game_id=390&team_id=2
+Next: Home, then Compare. Home has been surveyed but not implemented.
+One production-mode server runs on 3100 with PG_PORT=5432; check first.
+The Player Stats and earlier entries below are historical.
+
 Player Stats is implemented for all three competitions, all four display modes,
 canonical selectors, TOTAL rows, rate eligibility and full-population heat ranks.
 27 Shiny replays, 222 unit tests, 114 browser checks (including 48 shared

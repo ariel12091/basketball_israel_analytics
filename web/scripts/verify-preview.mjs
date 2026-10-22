@@ -102,3 +102,42 @@ for (const [league, season] of [
     throw new Error(`Missing initial Player Stats table: ${league}`);
   console.log(JSON.stringify({ endpoint, serverRendered: true }));
 }
+for (const [league, game, team] of [
+  ["il", 390, 2],
+  ["il", 216, 8],
+  ["il", 184, 3],
+  ["il", 406, 6],
+  ["euroleague", 781, 8],
+  ["euroleague", 734, 1],
+  ["eurocup", 671, 966],
+  ["eurocup", 660, 957],
+]) {
+  const query = `game_id=${game}&team_id=${team}`;
+  const endpoint = `/api/v1/${league}/gameflow?${query}`;
+  const answer = JSON.parse(await request(endpoint));
+  if (
+    answer.error ||
+    !answer.bars?.length ||
+    !answer.margin?.length ||
+    answer.meta?.game !== game ||
+    answer.meta?.team !== team
+  )
+    throw new Error(`Gameflow Preview verification failed: ${endpoint}`);
+  console.log(
+    JSON.stringify({
+      endpoint,
+      bars: answer.bars.length,
+      periods: answer.bounds.length,
+    }),
+  );
+  if ([390, 781, 671].includes(game)) {
+    const page = `/${league}/gameflow?${query}`,
+      html = await request(page);
+    if (
+      !html.includes('class="ibpl-ribbon') ||
+      !html.includes(answer.meta.ownTeam)
+    )
+      throw new Error(`Missing initial Gameflow SVG: ${league}`);
+    console.log(JSON.stringify({ endpoint: page, serverRendered: true }));
+  }
+}

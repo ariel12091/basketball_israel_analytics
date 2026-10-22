@@ -1,5 +1,29 @@
 # Restart memory -- 2026-10-22
 
+Latest checkpoint: **Gameflow is implemented** for IL, EuroLeague and EuroCup,
+from Game Logs in both views and at `/{league}/gameflow?game_id=…&team_id=…`.
+Desktop uses a native dialog; phone/tablet widths use quarter/OT cards, with
+an optional full timeline and pinned names. Player overlap, shared lineups,
+lineup highlighting, stint detail, score inspection and health warnings are across.
+Ten recorded Shiny input/output fixtures replay exactly, including per-period
+details; ten live API comparisons match. All 237 unit tests pass, 92 unique
+browser acceptance/regression checks pass, and six live SSR checks pass.
+The first shared run passed 86/92: six old Game Logs checks assumed every
+Gameflow cell read View. They now compare the recorded R cell (empty for a
+missing scoring feed); the complete 32-check Game Logs rerun passes.
+Build/typecheck pass; lint has two existing warnings. React Doctor's full scan
+leaves only the existing OnOff cleanup error; new advisories are documented in
+the handoff. Its remote score service was unavailable; the local scan finished.
+Ready Preview: https://ibpl-game-logs-11drkc5az-ariel12091-8759.vercel.app/il/gameflow?game_id=390&team_id=2
+Deployment `dpl_6ffRcJ8DZuqzcVAk6KJPU7TKbvZm`, Preview only. All 48 distinct
+protected Preview checks pass (one transient old endpoint retried successfully).
+Commit/push this checkpoint on `sql/web-foundation`, as the user requested.
+Next: **Home, then Compare**. Home was surveyed but has no React implementation
+yet. Default seasons remain 26–27. One production-mode server runs on 3100
+through `node --env-file=../app/.Renviron … next start`, PG_PORT=5432;
+check before starting another. No database/schema/ETL/role changes.
+The Player Stats and older entries below are historical.
+
 Player Stats continuation: implementation is at `/{league}/player-stats` for IL,
 EuroLeague and EuroCup, with all four display modes, canonical selectors,
 multi-team TOTAL rows, context/clutch filters, Min GP, stat chips, eligibility,

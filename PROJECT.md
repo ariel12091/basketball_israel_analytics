@@ -4,6 +4,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Active React migration -- restart here (2026-10-22)
 
+Latest: Gameflow is implemented for IL/EuroLeague/EuroCup, with Game Logs
+openers, direct SSR pages, desktop dialog, phone quarter/OT cards, player/shared
+lineup selection and score inspection. Ready Preview:
+`ibpl-game-logs-11drkc5az-ariel12091-8759.vercel.app`.
+Ten Shiny fixtures and live comparisons match; 237 unit tests, 92 browser
+acceptance/regression checks and six live SSR checks pass. Build/typecheck pass.
+All 48 distinct protected Preview checks pass. Next: Home, then Compare.
+Read the newest MEMORY/handoff entry; the Player Stats entry below is historical.
+
 Latest: Player Stats (`/{league}/player-stats`) covers all three competitions
 and all four display modes, canonical selectors, multi-team TOTAL rows, rate
 eligibility, full-population heat ranks, context/clutch controls and saved columns.

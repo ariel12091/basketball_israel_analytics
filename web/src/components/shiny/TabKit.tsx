@@ -289,6 +289,7 @@ export function TabFrame({
   sidebarTop,
   sidebar,
   main,
+  mainOnly = false,
 }: {
   league: League;
   tab: TabId;
@@ -304,6 +305,7 @@ export function TabFrame({
   sidebarTop?: ReactNode;
   sidebar: ReactNode;
   main: ReactNode;
+  mainOnly?: boolean;
 }) {
   const body = useShinyBody(league !== "il");
   const [glossary, setGlossary] = useState(false);
@@ -369,31 +371,36 @@ export function TabFrame({
             >
               <div className="container-fluid">
                 <div className="row">
-                  <div className="col-sm-3 ibpl-filter-col">
-                    <form
-                      className="well"
-                      role="complementary"
-                      onSubmit={(e) => e.preventDefault()}
-                    >
-                      {sidebarTop}
-                      <hr />
-                      <button
-                        type="button"
-                        className="btn btn-outline-secondary d-md-none w-100 mb-2"
-                        aria-expanded={filtersShown}
-                        onClick={() => setFiltersShown((s) => !s)}
+                  {!mainOnly && (
+                    <div className="col-sm-3 ibpl-filter-col">
+                      <form
+                        className="well"
+                        role="complementary"
+                        onSubmit={(e) => e.preventDefault()}
                       >
-                        Show Filters
-                      </button>
-                      <div
-                        id={filtersId}
-                        className={`collapse d-md-block${filtersShown ? " show" : ""}`}
-                      >
-                        {sidebar}
-                      </div>
-                    </form>
-                  </div>
-                  <div className="col-sm-9 ibpl-main-col" role="main">
+                        {sidebarTop}
+                        <hr />
+                        <button
+                          type="button"
+                          className="btn btn-outline-secondary d-md-none w-100 mb-2"
+                          aria-expanded={filtersShown}
+                          onClick={() => setFiltersShown((s) => !s)}
+                        >
+                          Show Filters
+                        </button>
+                        <div
+                          id={filtersId}
+                          className={`collapse d-md-block${filtersShown ? " show" : ""}`}
+                        >
+                          {sidebar}
+                        </div>
+                      </form>
+                    </div>
+                  )}
+                  <div
+                    className={mainOnly ? "col-12" : "col-sm-9 ibpl-main-col"}
+                    role="main"
+                  >
                     {main}
                   </div>
                 </div>

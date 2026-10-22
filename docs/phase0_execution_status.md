@@ -2,6 +2,56 @@
 
 ## START HERE (current state, read this first)
 
+**Gameflow continuation (2026-10-22):** implemented for all three competitions,
+in both Game Logs views and at `/{league}/gameflow?game_id=…&team_id=…`.
+Original R SQL owners/arguments, raw-score as-of rules, mirrored opponent +/-
+and lineup membership are preserved. Desktop uses native `<dialog>` with Escape,
+focus trapping/restoration and close controls. Phone/tablet widths use quarter/OT
+cards, full-game overview, quarter jumps and an optional full timeline with pinned
+names. Selection works across quarters and sides; shared lineups, lineup focus,
+stint/quarter details, score inspection, empty/error/retry states and warnings work.
+The UI uses exported R geometry/text and the existing Shiny styles.
+
+Verification: ten committed raw Shiny queries and transform outputs, including
+per-period details, replay identically offline. All ten live API comparisons match.
+All **237 unit tests**, **92 unique browser checks** (44 Gameflow + 48 shared)
+and **six live SSR checks** pass. The full shared run initially passed 86/92;
+six old Game Logs assertions assumed View even for missing scoring feeds. They
+now compare the recorded R cell; the complete 32-case Game Logs rerun passes.
+Desktop close initially lost opener focus because restoration happened while
+the dialog still made the page inert; restoration now follows dialog removal.
+Phone/desktop IL and EuroLeague screenshots inspected, including two overtimes.
+Local and Vercel builds pass; typecheck passes; lint has two existing warnings.
+
+React Doctor full scan includes Gameflow. The new browser-global diagnostic was
+resolved with an explicit server guard. The only remaining error is the existing
+OnOff PivotMenu cleanup false positive. New warnings about component size,
+bounded lookups, SVG interaction and dialog backdrop handling were reviewed;
+the SVG lane groups have no nested focusable controls, and the native dialog
+handles Escape/focus while its backdrop handler only closes outside the bounds.
+The JSON round trip in the live checker intentionally normalizes R negative zero
+to JSON's wire representation. Remote scoring was unavailable; local scan completed.
+No suppressions or broad cleanup were added. Log: `tmp_gameflow_doctor_final.log`.
+
+Ready **Preview only**, deployment `dpl_6ffRcJ8DZuqzcVAk6KJPU7TKbvZm`:
+https://ibpl-game-logs-11drkc5az-ariel12091-8759.vercel.app/il/gameflow?game_id=390&team_id=2
+All **48 distinct protected Preview checks pass**, including eight Gameflow
+games (regulation/OT/truncated/reconstructed clock) and initial Gameflow SVG HTML
+for each competition. One existing endpoint transiently retried successfully.
+Default seasons remain 26–27; historical validation links explicitly use 25–26.
+Checkpoint belongs on `sql/web-foundation`, committed/pushed per user request.
+One production server remains on 3100, PG_PORT=5432, existing read-only settings.
+Next: **Home, then Compare**. Home was surveyed in `ui_tab0_home.R`,
+`mod_team_hub.R` and `helpers.R`; no Home React code was written. Reuse the combined
+hub SQL with its legacy fallback, remembered team, card links and this Gameflow.
+No DB/ETL/role changes or production promotion. Do not merge old publication work.
+
+Logs: `tmp_gameflow_{record,refresh,replay,rules,units_final,build,types_final,lint_final}.log`,
+`tmp_gameflow_browser_production.log`, `tmp_gameflow_gamelogs_final.log`,
+`tmp_gameflow_{focus2,ssr,live_final,visual,deploy,preview,doctor_final}.log`.
+Rebuild ignored JSON with `scripts/capture_gameflow_goldens.R` (offline).
+The Player Stats and earlier entries below are historical.
+
 **Player Stats continuation (2026-10-22):**
 `/{league}/player-stats` uses the existing Tab 5 readers for all competitions.
 All four display modes, full-context heat ranks before display narrowing,

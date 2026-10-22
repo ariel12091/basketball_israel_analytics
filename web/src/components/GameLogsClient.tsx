@@ -1,4 +1,6 @@
 "use client";
+import { useState } from "react";
+import GameflowPanel from "./shiny/GameflowPanel";
 // The Game Logs tab as Shiny draws it: ui_tab4_gamelogs.R (Israeli League) and
 // ui_tab11_euro_gamelogs.R (EuroLeague, EuroCup), with build_filter_chips(),
 // stat_filter_chips_ui() and setup_chip_clears(). The API computes the table
@@ -55,6 +57,7 @@ export default function GameLogsClient({
   initial?: { url: string; data: Payload | null };
 }) {
   const euro = league !== "il";
+  const [gameflow, setGameflow] = useState<Row | null>(null);
   const p = euro ? "eurogl" : "gl";
   const { query, set } = useTabQuery(league);
   const view = query.view === "four_factors" ? "four_factors" : "summary";
@@ -250,6 +253,7 @@ export default function GameLogsClient({
                 view={data.meta.view ?? view}
                 rows={rows}
                 shotAverages={data.meta.shot_averages}
+                onGameflow={setGameflow}
               />
             ) : euro ? (
               // empty_game_log() in server_tab11_euro_gamelogs.R
@@ -272,6 +276,14 @@ export default function GameLogsClient({
               </div>
             ) : null}
           </OutputArea>
+          {gameflow && (
+            <GameflowPanel
+              league={league}
+              game={Number(gameflow.game_id)}
+              team={Number(gameflow.team_id)}
+              onClose={() => setGameflow(null)}
+            />
+          )}
         </>
       }
     />

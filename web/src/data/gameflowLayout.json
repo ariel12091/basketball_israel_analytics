@@ -1,0 +1,41 @@
+{
+  "desktop": {
+    "compact": false,
+    "width": 1070,
+    "gutter": 220,
+    "name_x": 142,
+    "min_x": 185,
+    "pm_x": 212,
+    "lane_height": 14,
+    "lane_gap": 3,
+    "margin_height": 90
+  },
+  "compact": {
+    "compact": true,
+    "width": 954,
+    "gutter": 104,
+    "name_x": 76,
+    "min_x": null,
+    "pm_x": 98,
+    "lane_height": 18,
+    "lane_gap": 6,
+    "margin_height": 90
+  },
+  "bandGap": 28,
+  "header": 20,
+  "padTop": 14,
+  "padBottom": 16,
+  "numberFont": 9,
+  "numberAdvance": 0.6,
+  "numberPad": 6,
+  "text": {
+    "clear": "Clear players",
+    "prompt": "Select two or more players, by their names or bars, to see their shared court time and lineups.",
+    "hint": "Scroll through the quarters. Select a player's row for that stint and its lineups.",
+    "empty": "This game has no segment data to draw.",
+    "overview": "Score margin across the game",
+    "overviewAria": "Full-game score margin; positive values favor the first team",
+    "full": "View full timeline",
+    "quarters": "Show quarter cards"
+  }
+}

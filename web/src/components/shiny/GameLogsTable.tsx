@@ -41,6 +41,7 @@ export function columnsFor(
   league: League,
   view: View,
   shotAverages: Record<string, Record<string, number>> | null,
+  onGameflow?: (row: Row) => void,
 ): Column[] {
   const euro = league !== "il";
   const reverse = HEAT_REVERSE[view];
@@ -105,22 +106,34 @@ export function columnsFor(
       id: "gameflow",
       label: "Gameflow",
       sortValue: dateKey,
-      // GL-06 (Gameflow) is a later migration phase: the link is shown, inert.
       render: (row) => ({
-        node: (
-          <a
-            href="#"
-            className="ribbon-link"
-            aria-disabled="true"
-            title="Gameflow is not yet available in the new app"
-            data-game-id={String(row.game_id ?? "")}
-            data-team-id={String(row.team_id ?? "")}
-            onClick={(e) => e.preventDefault()}
-          >
-            View
-          </a>
-        ),
-        text: "View",
+        node:
+          row.has_scores === false ? (
+            ""
+          ) : (
+            <a
+              href={`/${league}/gameflow?game_id=${row.game_id}&team_id=${row.team_id}`}
+              className="ribbon-link"
+              title="View gameflow"
+              data-game-id={String(row.game_id ?? "")}
+              data-team-id={String(row.team_id ?? "")}
+              onClick={(e) => {
+                if (
+                  onGameflow &&
+                  !e.ctrlKey &&
+                  !e.metaKey &&
+                  !e.altKey &&
+                  !e.shiftKey
+                ) {
+                  e.preventDefault();
+                  onGameflow(row);
+                }
+              }}
+            >
+              View
+            </a>
+          ),
+        text: row.has_scores === false ? "" : "View",
       }),
     },
     col("team_name", "Team"),
@@ -201,15 +214,17 @@ export default function GameLogsTable({
   view,
   rows,
   shotAverages,
+  onGameflow,
 }: {
   league: League;
   view: View;
   rows: Row[];
   shotAverages: Record<string, Record<string, number>> | null;
+  onGameflow?: (row: Row) => void;
 }) {
   const columns = useMemo(
-    () => columnsFor(league, view, shotAverages),
-    [league, view, shotAverages],
+    () => columnsFor(league, view, shotAverages, onGameflow),
+    [league, view, shotAverages, onGameflow],
   );
   const order = useMemo(
     () => [
