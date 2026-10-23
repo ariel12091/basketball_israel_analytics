@@ -144,8 +144,7 @@ export default function TeamRatingsTable({
             : id === "def_oreb"
               ? ui.defOrebTooltip
               : undefined,
-        sortValue: (r) =>
-          r[id] == null ? (asc ? Infinity : -Infinity) : Number(r[id]),
+        sortValue: (r) => (r[id] == null ? null : Number(r[id])),
         render: (r) => {
           const v = r[id],
             rk = r[`rank_${id}`],

@@ -3,8 +3,8 @@
 // owns sorting and paging; this file supplies DataTables' rules and markup.
 // - Ordering: a click on the first ordered column toggles it alone; any other
 //   column starts a fresh order, ascending unless the column's orderSequence
-//   starts with "desc" (descFirst); shift-click adds a column. Empty numbers
-//   order as -Infinity, text case-insensitively, ties in row order.
+//   starts with "desc" (descFirst); shift-click adds a column. Missing values
+//   stay last in either direction (X-13), text case-insensitively, ties in row order.
 // - paging_simple_numbers with DataTables' "Showing a to b of n entries".
 // - One table with a sticky header inside a scrolling box (scrollX + scrollY
 //   70vh), the "i" header explanations on touch, the phone name label above
@@ -214,9 +214,10 @@ export function downloadCsv(name: string, cols: Column[], rows: Row[]) {
   URL.revokeObjectURL(a.href);
 }
 
-// DataTables' ordering of one value: empty -> -Infinity, text lowercased.
-const orderKey = (v: unknown): number | string => {
-  if (v == null || v === "") return -Infinity;
+// TanStack handles missing values separately so descending cannot reverse them.
+const orderKey = (v: unknown): number | string | undefined => {
+  if (v == null || v === "" || (typeof v === "number" && Number.isNaN(v)))
+    return undefined;
   if (typeof v === "number") return v;
   if (typeof v === "boolean") return Number(v);
   return String(v).toLowerCase();
@@ -304,6 +305,7 @@ export default function DataTable({
             accessorFn: (r: Row) =>
               orderKey(c.sortValue ? c.sortValue(r) : r[c.id]),
             sortingFn: dtSort,
+            sortUndefined: "last",
             sortDescFirst: Boolean(c.descFirst),
             filterFn: (row, id, value) => {
               const raw = row.original[id];

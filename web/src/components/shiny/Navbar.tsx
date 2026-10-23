@@ -224,7 +224,13 @@ export default function Navbar({
             try {
               window.localStorage.setItem("ibpl_league_select", v[0] ?? "il");
             } catch {}
-            const path = TABS.find((t) => t.value === tab)?.path ?? "game-logs";
+            const currentTab = TABS.find((t) => t.value === tab);
+            // app.js applyValue(): a league-only tab must fall back to Home
+            // when switching away from its league. Euro has no Compare route.
+            const path =
+              next !== "il" && currentTab?.ilOnly
+                ? "home"
+                : (currentTab?.path ?? "home");
             if (next !== league) router.push(`/${next}/${path}`);
           }}
         />

@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import HomeEntry from "@/components/HomeEntry";
 export default function Home() {
-  redirect("/il/home");
+  return <HomeEntry />;
 }

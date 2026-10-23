@@ -28,7 +28,12 @@ export function homeTabHref(
   const q = new URLSearchParams({ season });
   // app.R go_*: team scoping only for On/Off, Lineups and Game Logs.
   if (team && ["onoff", "lineups", "game-logs"].includes(path))
-    q.set(path === "game-logs" && league === "il" ? "team" : "teams", team);
+    q.set(
+      path === "lineups" || (path === "game-logs" && league === "il")
+        ? "team"
+        : "teams",
+      team,
+    );
   if (path === "lineups") q.set("size", "5");
   if (path === "compare") q.set("preset", "starters_bench");
   return `/${league}/${path}?${q}`;
