@@ -30,7 +30,7 @@ type Tab = {
 };
 // Tab order: app.R build_ui(); icons: the ui_tab*.R titles; modes: app.js CFG.
 const TABS: Tab[] = [
-  { value: "home", label: "Home", icon: "bi-house-fill" },
+  { value: "home", label: "Home", icon: "bi-house-fill", path: "home" },
   {
     value: "onoff",
     euroValue: "euro",
@@ -82,6 +82,7 @@ const TABS: Tab[] = [
     modes: ["Teams", "Lineups", "Players"],
     def: "Teams",
     ilOnly: true,
+    path: "compare",
   },
 ];
 // app.js CFG for the EuroLeague tabs: On/Off and Team Ratings have two modes.

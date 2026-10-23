@@ -1,4 +1,64 @@
 {
+  "compare": {
+    "blocks": [
+      {
+        "kind": "explainer",
+        "title": "What This Tab Answers",
+        "intro": [
+          {
+            "t": "How do two situations compare side-by-side: starters vs bench, home vs away, clutch vs non-clutch, or any custom split?"
+          }
+        ],
+        "bullets": [
+          [
+            {
+              "t": "Metric chips at the top (Net Rtg, Offense, Defense, eFG%, TOV%, OREB%, FTR) control which stat is shown in the table and summary cards."
+            }
+          ],
+          [
+            {
+              "t": "Summary cards show Side A value, Side B value, delta, and possessions. The table shows #, Team, Side A metric, Total Poss A, Side B metric, Total Poss B, and Gap."
+            }
+          ],
+          [
+            {
+              "t": "Teams and Lineups modes compare the same team/lineup to itself under two different conditions (e.g. home vs away, clutch vs non-clutch). Players mode compares either two players under the same time filters or one player across separate A/B time filters."
+            }
+          ],
+          [
+            {
+              "t": "Click any row in League view for a detailed breakdown of that team or lineup."
+            }
+          ]
+        ]
+      },
+      {
+        "kind": "example",
+        "id": "compare-example-box",
+        "title": "How to Read Compare (Real Example)",
+        "paragraphs": [
+          [
+            {
+              "t": "Using the Starters vs Bench preset: Side A (3+ starters) averages -0.2 Net Rtg across 1,048 possessions, while Side B (2 or fewer starters) averages +1.2 across 375 possessions."
+            }
+          ],
+          [
+            {
+              "t": "The table breaks this down per team. Maccabi Tel Aviv's starters lead the league with a +17.6 gap over their bench."
+            }
+          ],
+          [
+            {
+              "t": "Use metric chips (Offense, Defense, eFG%, etc.) to switch which stat drives the comparison. Click any row for a full detail breakdown."
+            }
+          ]
+        ],
+        "image": "/images/compare-row-snippet.png",
+        "alt": "Compare tab table snippet",
+        "caption": "Real Compare snippet (Starters vs Bench)"
+      }
+    ]
+  },
   "il": {
     "views": {
       "summary": [

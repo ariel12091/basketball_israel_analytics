@@ -52,6 +52,8 @@ export type Column = {
   sortValue?: (row: Row) => number | string | boolean | null;
   /** columnDefs orderSequence c("desc", "asc"). */
   descFirst?: boolean;
+  /** Shiny orderSequence c("desc"): repeated activation stays descending. */
+  descOnly?: boolean;
   /** Extra attributes on the column's cells (createdRow in Shiny). */
   tdProps?: (row: Row) => Record<string, string | number>;
   /** Click, Enter or Space on the cell (the On/Off pivot menu). */
@@ -251,6 +253,7 @@ export default function DataTable({
   columnFilters = false,
   csvLabel = "Download CSV",
   onColumnMove,
+  onRowActivate,
 }: {
   columns: Column[];
   rows: Row[];
@@ -275,6 +278,8 @@ export default function DataTable({
   columnFilters?: boolean;
   csvLabel?: string;
   onColumnMove?: (from: string, to: string) => void;
+  /** Whole-row pointer action; provide an onActivate cell for keyboard use. */
+  onRowActivate?: (row: Row) => void;
 }) {
   const [sorting, setSorting] = useState<SortingState>(defaultOrder);
   const [pageIndex, setPageIndex] = useState(0);
@@ -350,16 +355,19 @@ export default function DataTable({
 
   const order = (id: string, shift: boolean) => {
     const first = Boolean(columns.find((c) => c.id === id)?.descFirst);
+    const onlyDesc = Boolean(columns.find((c) => c.id === id)?.descOnly);
     setPageIndex(0);
     setSorting((current) => {
       const at = current.findIndex((o) => o.id === id);
       if (shift) {
-        if (at < 0) return [...current, { id, desc: first }];
-        return current.map((o, i) => (i === at ? { ...o, desc: !o.desc } : o));
+        if (at < 0) return [...current, { id, desc: onlyDesc || first }];
+        return current.map((o, i) =>
+          i === at ? { ...o, desc: onlyDesc || !o.desc } : o,
+        );
       }
       return at === 0
-        ? [{ id, desc: !current[0].desc }]
-        : [{ id, desc: first }];
+        ? [{ id, desc: onlyDesc || !current[0].desc }]
+        : [{ id, desc: onlyDesc || first }];
     });
   };
   // mobile.js: once the rows scroll sideways, each row shows its names above.
@@ -598,6 +606,20 @@ export default function DataTable({
                 <tr
                   key={i}
                   {...(rowProps ? rowProps(row) : {})}
+                  onClick={
+                    onRowActivate
+                      ? (e) => {
+                          if (
+                            !(e.target instanceof Element) ||
+                            e.target.closest(
+                              'button, a, input, select, textarea, [role="button"]',
+                            )
+                          )
+                            return;
+                          onRowActivate(row);
+                        }
+                      : undefined
+                  }
                   className={`${i % 2 ? "even" : "odd"}${names.length ? " ibpl-named-row" : ""}${rowProps?.(row).className ? ` ${rowProps(row).className}` : ""}`}
                 >
                   {columns.map((c, j) => {

@@ -35,7 +35,8 @@ files <- c("app/R/catalogues_generated.R", "app/R/helpers.R", "app/R/global.R",
            "app/R/mod_lineup_player_filter.R", "app/R/ui_tab2_lineup.R",
            "app/R/ui_tab10_euro_lineups.R", "app/R/server_tab2.R",
            "app/R/ui_tab3_team.R", "app/R/ui_tab9_euro_team.R", "app/R/server_tab3.R",
-           "app/R/ui_tab5_traditional.R", "app/R/server_tab5_traditional.R")
+           "app/R/ui_tab5_traditional.R", "app/R/server_tab5_traditional.R",
+           "app/R/ui_tab7_compare.R", "app/R/server_tab7_compare.R")
 for (f in files) for (e in parse(f)) {
   if (!is.call(e) || !identical(as.character(e[[1]]), "<-")) next
   if (!is.name(e[[2]])) next
@@ -240,6 +241,10 @@ glossary_body <- xml_find_first(read_html(as.character(glossary)), "//div[@class
 
 
 ui <- list(
+  compare = local({
+    doc <- read_html(as.character(env$ui_tab7_compare()))
+    list(blocks=panel_blocks(xml_find_first(doc,"//div[@role='main']")))
+  }),
   il = tab_fragments(ui_il),
   euro = tab_fragments(ui_el),
   onoff = list(il = tab_fragments(env$ui_tab1_onoff()), euro = tab_fragments(env$ui_tab8_euro())),
