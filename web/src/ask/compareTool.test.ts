@@ -31,6 +31,8 @@ describe("compareTable: the Compare page's paired table", () => {
       { team_id: 2, metric_a: 8, metric_b: -2, gap: 10, rank: 1 },
     ]);
     expect(t.meta).toMatchObject({ version: "v1", view: "Teams" });
+    // The page's own side headings, for the answer's wording.
+    expect(t.meta.sides).toEqual({ a: "vs Top 4", b: "vs Bottom 4" });
   });
 
   it("team_id pins the team on both sides", async () => {

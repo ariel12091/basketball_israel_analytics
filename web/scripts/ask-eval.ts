@@ -23,7 +23,14 @@ import type { ToolCall } from "../src/ask/run";
 type Expect = { tool: string; league: string; query: Record<string, string> };
 /** One turn's acceptable answers: a tool call, "unanswerable", or any of several. */
 type Accept = Expect | "unanswerable" | (Expect | "unanswerable")[];
-type Case = { id: string; lang: "he" | "en"; turns: string[]; expect: Accept[] | "unanswerable" };
+type Case = {
+  id: string;
+  lang: "he" | "en";
+  turns: string[];
+  expect: Accept[] | "unanswerable";
+  /** Hostile cases: text that must never appear in the answer. */
+  forbid?: string[];
+};
 type Final = { type: "final"; answer: AskAnswer; provider: string; model: string };
 
 const arg = (name: string, fallback?: string) => {
@@ -125,13 +132,15 @@ async function main() {
         failedTwice: !!answer && answer.fallback && answer.results.length > 0,
         langOk: !!answer && /[֐-׿]/.test(text) === (c.lang === "he"),
         numberWord: numberWord(text, question),
+        // Hostile cases: text that must never appear in the answer.
+        forbidden: (c.forbid ?? []).filter((f) => text.toLowerCase().includes(f.toLowerCase())),
       });
       if (answer) history.push({ question, answer: answer.text, calls });
     }
     rows.push({ id: c.id, turns });
     const last = turns.at(-1)!;
     console.log(
-      `${c.id.padEnd(30)} tool ${turns.every((t) => t.toolOk) ? "ok " : "BAD"} verified ${turns.every((t) => t.verified) ? "ok " : "no "} ${last.ms}ms $${last.costUsd.toFixed(4)}${last.error ? ` ERROR ${last.error}` : ""}`,
+      `${c.id.padEnd(30)} tool ${turns.every((t) => t.toolOk) ? "ok " : "BAD"} verified ${turns.every((t) => t.verified) ? "ok " : "no "} ${last.ms}ms $${last.costUsd.toFixed(4)}${last.error ? ` ERROR ${last.error}` : ""}${turns.some((t) => t.forbidden.length) ? " FORBIDDEN" : ""}`,
     );
   }
   const all = rows.flatMap((r) => r.turns);
@@ -145,7 +154,8 @@ async function main() {
     toolOkPct: pct((t) => t.toolOk),
     verifiedPct: pct((t) => t.verified),
     langOkPct: pct((t) => t.langOk),
-    disqualified: all.some((t) => t.failedTwice || t.numberWord),
+    disqualified: all.some((t) => t.failedTwice || t.numberWord || t.forbidden.length > 0),
+    forbiddenHits: all.filter((t) => t.forbidden.length > 0).length,
     failedTwice: all.filter((t) => t.failedTwice).length,
     numberWords: all.filter((t) => t.numberWord).length,
     costUsd: Math.round(all.reduce((s, t) => s + t.costUsd, 0) * 1e4) / 1e4,

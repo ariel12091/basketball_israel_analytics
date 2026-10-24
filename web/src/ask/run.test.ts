@@ -164,7 +164,7 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect(asc.rows.map((r) => r.cells.net_rtg)).toEqual([3, 7, null]);
     expect(desc.rows.map((r) => r.id)).toEqual(["row1", "row2", "row3"]);
     expect(desc.total).toMatchObject({ id: "total", cells: { Players: "- All Lineups -" } });
-    expect(desc).toMatchObject({ view: "summary", version: "v1", rowCount: 3 });
+    expect(desc).toMatchObject({ view: "summary", version: "v1", rowCount: 3, extras: { count: "3" } });
   });
 
   it("unknown sort key is a tool error", async () => {

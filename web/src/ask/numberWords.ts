@@ -4,7 +4,7 @@
 const EN_WORDS =
   "two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|hundred|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|half";
 const HE_WORDS =
-  "שניים|שתיים|שני|שתי|שלוש|שלושה|שלושת|ארבע|ארבעה|ארבעת|חמש|חמישה|חמשת|שש|שישה|ששת|שבע|שבעה|שבעת|שמונה|תשע|תשעה|עשר|עשרה|עשרים|ראשון|ראשונה|שנייה|שלישי|שלישית|רביעי|רביעית|חמישי|חמישית|חצי";
+  "שניים|שתיים|שני|שתי|שלוש|שלושה|שלושת|ארבע|ארבעה|ארבעת|חמש|חמישה|חמשת|שש|שישה|ששת|שבע|שבעה|שבעת|שמונה|תשע|תשעה|עשר|עשרה|עשרים|שנייה|שלישי|שלישית|רביעי|רביעית|חמישי|חמישית|חצי";
 // Hebrew attaches prefixes (ה, ב, ל, ו, מ, ש, כ) to the word itself.
 export const NUMBER_WORD = new RegExp(
   `(?<!\\p{L})(?:(?:${EN_WORDS})|[ובהלמשכ]{0,2}(?:${HE_WORDS}))(?!\\p{L})`,
@@ -18,5 +18,19 @@ export const bare = (w: string) =>
 export function withoutTerms(text: string): string {
   return text
     .replace(/^[ \t]*\d{1,2}[.)][ \t]+/gm, " ")
-    .replace(/\b(?:four factors?|(?:two|three)[- ]point(?:ers?)?|(?:two|three|four|five)[- ]man)\b/gi, " ");
+    .replace(/\b(?:four[- ]factors?|(?:two|three)[- ]point(?:ers?)?|(?:two|three|four|five)[- ]man)\b/gi, " ");
 }
+
+/** The visitor's digits as words too: "top 5" lets the answer say "top five". */
+const AS_WORDS: Record<string, string[]> = {
+  "2": ["two", "שניים", "שתיים", "שני", "שתי"],
+  "3": ["three", "שלוש", "שלושה", "שלושת"],
+  "4": ["four", "ארבע", "ארבעה", "ארבעת"],
+  "5": ["five", "חמש", "חמישה", "חמשת"],
+  "6": ["six", "שש", "שישה", "ששת"],
+  "7": ["seven", "שבע", "שבעה", "שבעת"],
+  "8": ["eight", "שמונה"],
+  "9": ["nine", "תשע", "תשעה"],
+  "10": ["ten", "עשר", "עשרה"],
+};
+export const digitWords = (digits: string): string[] => AS_WORDS[digits] ?? [];

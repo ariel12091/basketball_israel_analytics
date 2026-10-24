@@ -6,6 +6,7 @@ import {
   compareDefaults,
   compareSideParams,
   resolveCompareQuery,
+  shortSideLabel,
 } from "@/lib/compareQuery";
 import { parseStats, type Query } from "@/lib/tabQuery";
 import type { Row } from "@/rules/gameLogs";
@@ -62,6 +63,8 @@ export async function compareTable(side: Side, s: URLSearchParams) {
     Math.max(0, Number(q.min_poss) || 0),
     parseStats(q.stats),
   );
-  return { rows, meta: { version: a.meta.version, view: q.view } };
+  // The page's own side headings (Home / Away, vs Top 4 ...), for the wording.
+  const sides = { a: shortSideLabel(q, "a"), b: shortSideLabel(q, "b") };
+  return { rows, meta: { version: a.meta.version, view: q.view, sides } };
 }
 type Answer = { rows: Row[]; meta: { version: string } };

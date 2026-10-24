@@ -27,6 +27,8 @@ export type ToolResult = {
   rows: AskRow[];
   total: AskRow | null;
   rowCount: number;
+  /** Result-level values: the row count, and Compare's side headings. */
+  extras?: Record<string, string>;
   version: string | null;
 };
 export type ToolError = {
@@ -168,8 +170,11 @@ export async function runTool(
     entry.name === "list_teams"
       ? rows.length
       : Math.min(Math.max(1, Math.trunc(call.limit ?? 5)), 10);
-  const meta = ((payload ?? {}) as { meta?: { view?: unknown; version?: unknown } })
-    .meta;
+  const meta = (
+    (payload ?? {}) as {
+      meta?: { view?: unknown; version?: unknown; sides?: { a: string; b: string } };
+    }
+  ).meta;
   return {
     id,
     call,
@@ -181,6 +186,11 @@ export async function runTool(
     total: flat.total ? { id: "total", cells: flat.total } : null,
     rowCount: rows.length,
     version: meta?.version == null ? null : String(meta.version),
+    // Result-level values a marker may quote: {{r1.count}}, {{r1.side_a}}.
+    extras: {
+      count: String(rows.length),
+      ...(meta?.sides ? { side_a: meta.sides.a, side_b: meta.sides.b } : {}),
+    },
   };
 }
 

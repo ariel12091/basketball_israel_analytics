@@ -2,7 +2,7 @@
 // the page's text for that cell and rejects any digit it did not supply
 // (spec: "Numbers are filled in by the app, never typed by the model").
 import { cellText, columnDefinition, displaySpec } from "./display";
-import { NUMBER_WORD, bare, withoutTerms } from "./numberWords";
+import { NUMBER_WORD, bare, digitWords, withoutTerms } from "./numberWords";
 import { TOOLS } from "./registry";
 import type { ToolResult } from "./run";
 
@@ -39,6 +39,12 @@ export function fillAndVerify(
     const [rid, rowId, ...rest] = body.split(".");
     const key = rest.join(".");
     const result = byId.get(rid);
+    // {{r1.count}}, {{r1.side_a}}: values of the whole result, not a row.
+    if (result && !rest.length && result.extras?.[rowId] !== undefined) {
+      filled.push(result.extras[rowId]);
+      used.push({ result: rid, row: "", key: rowId });
+      return `\u0000${at}\u0000`;
+    }
     const row =
       result &&
       (rowId === "total" ? result.total : result.rows.find((r) => r.id === rowId));
@@ -62,7 +68,11 @@ export function fillAndVerify(
   if (/\{\{|\}\}/.test(words)) problems.push("Unmatched marker braces");
   // Whole numbers the visitor typed may be repeated ("top 5"), and so may the
   // constants in the quoted columns' own definitions ("per 100 possessions").
-  const allowed = new Set(question.match(NUMBER) ?? []);
+  // Only small whole counts from the question ("top 5", "last 10"): a figure
+  // the visitor plants ("scored 200", "net 7.3") must come from the data.
+  const allowed = new Set(
+    (question.match(NUMBER) ?? []).filter((n) => /^\d+$/.test(n) && Number(n) >= 1 && Number(n) <= 20),
+  );
   for (const r of results)
     if (TOOLS[r.call.tool].numbers)
       for (const c of Object.values(displaySpec(r.call.tool, r.call.league, r.view)))
@@ -72,7 +82,10 @@ export function fillAndVerify(
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
   for (const c of own.match(/\p{No}/gu) ?? [])
     problems.push(`Numeric character "${c}"`);
-  const asked = new Set((question.match(NUMBER_WORD) ?? []).map(bare));
+  const asked = new Set([
+    ...(question.match(NUMBER_WORD) ?? []).map(bare),
+    ...(question.match(NUMBER) ?? []).flatMap(digitWords),
+  ]);
   for (const w of own.match(NUMBER_WORD) ?? [])
     if (!asked.has(bare(w)))
       problems.push(`Number written as a word "${w}": use a marker for counts and ranks`);

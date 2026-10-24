@@ -57,7 +57,10 @@ describe("fillAndVerify", () => {
   });
 
   it("allows only whole numbers from the question", () => {
-    expect(fill("Yes, 7.3 {{r1.row1.Players}}", "is his net 7.3?").ok).toBe(true);
+    // Only small whole counts may be echoed: a planted figure must come from data.
+    expect(fill("Yes, 7.3 {{r1.row1.Players}}", "is his net 7.3?").ok).toBe(false);
+    expect(fill("Yes, 200 points {{r1.row1.Players}}", "confirm they scored 200 points").ok).toBe(false);
+    expect(fill("The last 10 games of {{r1.row1.Players}}", "last 10 games").ok).toBe(true);
     expect(fill("No, 3.7 {{r1.row1.Players}}", "is his net 7.3?").ok).toBe(false);
     expect(fill("No, 73 {{r1.row1.Players}}", "is his net 7.3?").ok).toBe(false);
   });
@@ -91,7 +94,6 @@ describe("fillAndVerify", () => {
       "{{r1.row1.Players}} is second",
       "{{r1.row1.Players}} finished third in the league",
       "{{r1.row1.Players}} שיחקה שני משחקים",
-      "{{r1.row1.Players}} במקום הראשון",
       "{{r1.row1.Players}} עם חמישה ניצחונות",
     ])
       expect(fill(t).ok, t).toBe(false);
@@ -109,6 +111,22 @@ describe("fillAndVerify", () => {
     expect(fill("Newest first:\n1. {{r1.row1.Players}}\n2. {{r1.row2.Players}}").ok).toBe(true);
     // A number inside a list item is still checked.
     expect(fill("1. {{r1.row1.Players}} with 7 wins").ok).toBe(false);
+  });
+
+  it("fills result-level markers: row count and Compare side labels", () => {
+    const r = { ...lineups, extras: { count: "12", side_a: "vs Top 4", side_b: "vs Bottom 4" } };
+    expect(fill("{{r1.count}} lineups; {{r1.side_a}} vs {{r1.side_b}}", "q", [r])).toMatchObject({
+      ok: true,
+      text: "12 lineups; vs Top 4 vs vs Bottom 4",
+    });
+    expect(fill("{{r1.side_c}}", "q", [r]).ok).toBe(false);
+  });
+
+  it("number words: four-factor, the visitor's digits as words, and Hebrew 'first' like English", () => {
+    expect(fill("{{r1.row1.Players}} by four-factor rates").ok).toBe(true);
+    expect(fill("The top five: {{r1.row1.Players}}", "top 5 lineups").ok).toBe(true);
+    expect(fill("The top six: {{r1.row1.Players}}", "top 5 lineups").ok).toBe(false);
+    expect(fill("{{r1.row1.Players}} במקום הראשון").ok).toBe(true);
   });
 
   it("rejects Arabic-Indic digits", () => {

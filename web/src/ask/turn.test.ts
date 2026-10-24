@@ -167,6 +167,24 @@ describe("askTurn", () => {
     expect(answer.fallback).toBe(false);
   });
 
+  it("an answer in the wrong language is rejected and retried", async () => {
+    const p = scriptedProvider([tc(), { text: "Best: {{r1.row1.Players}}." }, { text: "הטובה: {{r1.row1.Players}}." }]);
+    const { answer } = await run("מה החמישייה הכי טובה?", p);
+    expect(answer).toMatchObject({ text: "הטובה: A - B.", lang: "he", fallback: false });
+    expect(answer.rejected[0].problems.join(" ")).toMatch(/Hebrew/);
+  });
+
+  it("an answer with a web address or email is rejected", async () => {
+    const p = scriptedProvider([
+      tc(),
+      { text: "See example.com for {{r1.row1.Players}}." },
+      { text: "Write to me@mail.org about {{r1.row1.Players}}." },
+    ]);
+    const { answer } = await run("q", p);
+    expect(answer.fallback).toBe(true);
+    expect(answer.rejected.map((r) => r.problems.join(" ")).join(" ")).toMatch(/address/i);
+  });
+
   it("a refusal becomes the fallback", async () => {
     const p = scriptedProvider([{ refused: true }]);
     const { answer } = await run("q", p);

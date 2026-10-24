@@ -50,6 +50,12 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const isResult = (r: ToolResult | ToolError): r is ToolResult => "rows" in r;
+/** Result-level markers ({{r1.count}}, {{r1.side_a}}) as the model sees them. */
+const EXTRA_LABELS: Record<string, string> = {
+  count: "Rows the page lists",
+  side_a: "Compare side A heading",
+  side_b: "Compare side B heading",
+};
 
 /** What the model sees of a result: ids, quotable columns and their raw values. */
 function forModel(r: ToolResult | ToolError) {
@@ -70,6 +76,10 @@ function forModel(r: ToolResult | ToolError) {
       : {},
     rows: r.rows.map((row) => ({ id: row.id, ...pick(row.cells) })),
     ...(r.total ? { total: { id: "total", ...pick(r.total.cells) } } : {}),
+    // Quote these as {{<id>.<key>}}, e.g. {{r1.count}} or {{r1.side_a}}.
+    resultValues: Object.fromEntries(
+      Object.entries(r.extras ?? {}).map(([k, v]) => [k, `${EXTRA_LABELS[k] ?? k}: ${v}`]),
+    ),
   };
 }
 
@@ -199,13 +209,26 @@ export async function* askTurn(
     }
     const text = reply.text ?? "";
     const results = all.filter(isResult);
-    const filled = fillAndVerify(text, results, input.question, seasonLabel(input.league, results.map((r) => r.call)));
+    let filled = fillAndVerify(text, results, input.question, seasonLabel(input.league, results.map((r) => r.call)));
     // A turn whose every tool failed has nothing to stand on: show the page.
     if (all.length && !results.length) break;
+    // The answer's own words (markers removed) must be in the visitor's language.
+    const words = text.replace(/\{\{[^{}]*\}\}/g, " ");
+    const hebrew = /[֐-׿]/.test(words);
+    if (filled.ok && hebrew !== (lang === "he"))
+      filled = {
+        ok: false,
+        problems: [`Answer in ${lang === "he" ? "Hebrew" : "English"}, the language of the question`],
+      };
+    // Links come from the app only; the answer text never carries an address.
+    if (filled.ok && /https?:\/\/|www\.|[\w.-]+@[\w-]+\.\w|\b[\w-]+\.(?:com|org|net|io|co|il|app|dev|me|ly)\b/i.test(words))
+      filled = { ok: false, problems: ["Remove the web address or email; the app adds the page link"] };
     if (filled.ok) {
       const byId = new Map(results.map((r) => [r.id, r]));
       const evidence = filled.used.map((u) => {
         const r = byId.get(u.result)!;
+        if (u.row === "")
+          return { ...u, label: EXTRA_LABELS[u.key] ?? u.key, text: r.extras![u.key] };
         const row = u.row === "total" ? r.total! : r.rows.find((x) => x.id === u.row)!;
         return {
           ...u,
