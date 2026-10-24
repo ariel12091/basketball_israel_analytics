@@ -267,6 +267,17 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect(el).toMatchObject({ rows: [{ cells: { team_id: 5, name: "Real Madrid" } }] });
   });
 
+  it("team_overview returns every hub section, not the default 5 rows", async () => {
+    const { emptyHomeFrames } = await vi.importActual<typeof import("@/server/homeRepo")>("@/server/homeRepo");
+    const ratings = [{ team_id: 2, team_name: "A", off_ppp: 110, def_ppp: 100, net_rtg: 10, rank_net_rtg: 1 }];
+    const four_factors = [{ team_id: 2, off_efg: 55, off_tov: 12, off_oreb: 30, off_ftr: 25, def_efg: 50, def_tov: 14, def_oreb: 28, def_ftr: 22 }];
+    home.mockResolvedValue({ frames: { ...emptyHomeFrames(), ratings, four_factors }, meta: {} });
+    const r = await runTool("r1", { tool: "team_overview", league: "il", query: { season: "2026", team_id: "2" } }, later);
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.rows.length).toBe(r.rowCount);
+    expect(r.rowCount).toBeGreaterThan(5);
+  });
+
   it("team_overview rows come from the hub's own rules", async () => {
     const { flatten } = await import("./flatten");
     const { emptyHomeFrames } = await vi.importActual<typeof import("@/server/homeRepo")>("@/server/homeRepo");

@@ -203,9 +203,10 @@ export async function runTool(
       )
       .map((x) => x.r);
   }
-  // A reference list must be complete for name matching; tables are capped.
+  // The team list (for name matching) and the Home hub (a fixed set of
+  // sections) are always complete; tables are capped.
   const limit =
-    entry.name === "list_teams"
+    entry.name === "list_teams" || entry.name === "team_overview"
       ? rows.length
       : Math.min(Math.max(1, Math.trunc(call.limit ?? 5)), 10);
   const meta = (
