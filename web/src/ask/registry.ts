@@ -12,6 +12,7 @@ import { lineupRosterAnswer, lineupsAnswer } from "@/server/lineupsApi";
 import { onoffAnswer } from "@/server/onoffApi";
 import { playerStatsAnswer } from "@/server/playerStatsRepo";
 import { teamRatingsAnswer } from "@/server/teamRatingsRepo";
+import { compareTable } from "./compareTool";
 
 export type ToolName =
   | "onoff"
@@ -123,7 +124,8 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
     "compare",
     "compare",
     "compareAnswer",
-    async (_l, s) => compareAnswer(s),
+    // The route answers one side; the tool is the page's paired table.
+    async (_l, s) => compareTable((side) => compareAnswer(side), s),
     "compare",
     ids("CMP", 1, 17),
     { leagues: ["il"] },
