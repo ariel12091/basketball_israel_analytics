@@ -1,10 +1,6 @@
 // Each answer function's payload as plain rows for the ask tools. No values
 // are derived here except through the pages' own rules (rules/home.ts).
-import {
-  homeDashboard,
-  homeRank,
-  type HomeFrames,
-} from "@/rules/home";
+import { homeDashboard, type HomeFrames } from "@/rules/home";
 import type { League } from "@/rules/gameLogs";
 import { pageRows } from "./pageRows";
 import type { ToolName } from "./registry";
@@ -36,14 +32,12 @@ function overview(frames: HomeFrames | undefined, team: string): Cells[] {
   if (!frames || !team) return [];
   const d = homeDashboard(frames, team);
   const out: Cells[] = [];
+  // HomeHub shows the frame's own rank_off_ppp / rank_def_ppp / rank_net_rtg.
   if (d.identity)
     out.push({
       section: "identity",
       ...d.identity.row,
       n_teams: d.identity.n_teams,
-      off_rank: homeRank(frames.ratings, team, "off_ppp", true),
-      def_rank: homeRank(frames.ratings, team, "def_ppp", false),
-      net_rank: homeRank(frames.ratings, team, "net_rtg", true),
     });
   for (const [side, list] of [
     ["offense", d.offense],
