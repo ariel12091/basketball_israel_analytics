@@ -19,6 +19,7 @@ export function logTurn(entry: {
       model: entry.model,
       tools: a?.results.map((r) => ({ tool: r.call.tool, league: r.call.league, query: r.call.query })) ?? [],
       toolErrors: a?.errors ?? [],
+      rejected: a?.rejected ?? [],
       fallback: a?.fallback ?? null,
       lang: a?.lang ?? null,
       inputTokens: a?.usage.inputTokens ?? 0,

@@ -89,6 +89,7 @@ async function main() {
         error,
         costUsd: answer?.usage.costUsd ?? 0,
         toolErrors: answer?.errors ?? [],
+        rejected: answer?.rejected ?? [],
         toolOk: !!answer && (expect ? calls.some((call) => matches(call, expect)) : answer.evidence.length === 0),
         verified: !!answer && !answer.fallback,
         // Two failed verifications with data in hand: the disqualifying case.

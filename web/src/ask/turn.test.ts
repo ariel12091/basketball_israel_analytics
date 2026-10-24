@@ -68,6 +68,9 @@ describe("askTurn", () => {
     const { answer } = await run("q", p);
     expect(answer).toMatchObject({ fallback: true, links: ["/il/lineups?team=2"] });
     expect(answer.text).toMatch(/page that answers/);
+    // Why the check rejected each attempt, for the log and the eval.
+    expect(answer.rejected).toHaveLength(2);
+    expect(answer.rejected[1]).toEqual({ text: "Still 7.3", problems: [expect.stringContaining("7.3")] });
   });
 
   it("fifth tool call is refused with a tool error", async () => {

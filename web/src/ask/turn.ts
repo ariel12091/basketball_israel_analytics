@@ -23,6 +23,8 @@ export type AskAnswer = {
   usage: Usage;
   /** Tool calls the app rejected this turn (for the log and the eval). */
   errors: ToolProblem[];
+  /** Answers the number check rejected, with its reasons. */
+  rejected: { text: string; problems: string[] }[];
 };
 export type TurnEvent = { type: "status"; text: string } | { type: "final"; answer: AskAnswer };
 
@@ -150,6 +152,7 @@ export async function* askTurn(
     tools = toolSchemas();
   const ctrl = new AbortController();
   let retried = false;
+  const rejected: { text: string; problems: string[] }[] = [];
   const finish = (text: string | null, used: Evidence[], fallback: boolean): TurnEvent => {
     const results = all.filter(isResult);
     const usedIds = new Set(used.map((u) => u.result));
@@ -174,6 +177,7 @@ export async function* askTurn(
         errors: all
           .filter((r): r is ToolError => !isResult(r))
           .map((r) => ({ tool: r.call.tool, param: r.param, error: r.error })),
+        rejected,
       },
     };
   };
@@ -218,6 +222,7 @@ export async function* askTurn(
       yield finish(filled.text, evidence, false);
       return;
     }
+    rejected.push({ text, problems: filled.problems });
     if (retried) break;
     retried = true;
     messages.push({ role: "assistant", text, raw: reply.raw });
