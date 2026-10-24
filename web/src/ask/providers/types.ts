@@ -14,6 +14,9 @@ export type ProviderMessage = {
   text?: string;
   toolCalls?: ProviderToolCall[];
   toolResults?: { id: string; content: unknown }[];
+  /** The provider's own assistant content, sent back unchanged (thinking and
+   * tool-use blocks must survive the round trip). */
+  raw?: unknown;
 };
 export type Usage = { inputTokens: number; outputTokens: number; costUsd: number };
 export type ProviderReply = {
@@ -22,6 +25,8 @@ export type ProviderReply = {
   usage: Usage;
   /** The provider declined (e.g. a refusal stop reason). */
   refused?: boolean;
+  /** Provider-native assistant content for ProviderMessage.raw. */
+  raw?: unknown;
 };
 export interface Provider {
   name: string;

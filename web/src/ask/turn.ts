@@ -165,7 +165,12 @@ export async function* askTurn(
     usage.costUsd += reply.usage.costUsd;
     if (reply.refused) break;
     if (reply.toolCalls.length) {
-      messages.push({ role: "assistant", text: reply.text ?? undefined, toolCalls: reply.toolCalls });
+      messages.push({
+        role: "assistant",
+        text: reply.text ?? undefined,
+        toolCalls: reply.toolCalls,
+        raw: reply.raw,
+      });
       const out: { id: string; content: unknown }[] = [];
       for (const tc of reply.toolCalls) {
         const r = yield* execute(`r${all.length + 1}`, tc.call);
@@ -195,7 +200,7 @@ export async function* askTurn(
     }
     if (retried) break;
     retried = true;
-    messages.push({ role: "assistant", text });
+    messages.push({ role: "assistant", text, raw: reply.raw });
     messages.push({
       role: "user",
       text: `Your answer was rejected: ${filled.problems.join("; ")}. Rewrite it with markers for every number, and nothing computed.`,
