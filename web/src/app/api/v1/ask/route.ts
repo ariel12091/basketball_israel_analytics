@@ -67,7 +67,9 @@ export async function POST(request: Request) {
           { now: Date.now, followups: process.env.ASK_FOLLOWUPS === "true" },
         )) {
           if (e.type === "final") answer = e.answer;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(e)}\n\n`));
+          // The final event names the model, so an eval run records what it measured.
+          const event = e.type === "final" ? { ...e, provider: provider.name, model: provider.model } : e;
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
         }
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);

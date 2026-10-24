@@ -96,6 +96,27 @@ describe("POST /api/v1/ask", () => {
     expect(line).not.toContain("7.7.7.7");
   });
 
+  it("ASK_RATE_LIMIT sets the hourly limit (raised for the eval)", async () => {
+    vi.stubEnv("ASK_RATE_LIMIT", "2");
+    const codes = [];
+    for (let i = 0; i < 3; i++) {
+      const r = await post(body({ clientId: "small-limit" }), `6.6.6.${i}`);
+      codes.push(r.status);
+      if (r.status === 200) await r.text();
+    }
+    expect(codes).toEqual([200, 200, 429]);
+  });
+
+  it("the final answer names the model that wrote it", async () => {
+    const r = await post(body({ clientId: "model-check" }), "8.8.8.8");
+    const final = (await r.text())
+      .split("\n\n")
+      .filter(Boolean)
+      .map((e) => JSON.parse(e.replace(/^data: /, "")))
+      .at(-1);
+    expect(final).toMatchObject({ type: "final", provider: "fake", model: "scripted" });
+  });
+
   it("21st question in an hour from one browser -> 429 with Retry-After", async () => {
     let last: Response | undefined;
     for (let i = 0; i < 21; i++) {

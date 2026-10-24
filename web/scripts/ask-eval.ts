@@ -1,49 +1,68 @@
-// The ask box's model comparison (spec section 6). Runs every case in
-// test/ask/cases.json through the real loop and readers, one question after
-// another (the same load profile as the live smoke checks), and scores it.
+// The ask box's model comparison (spec section 6), run against the DEPLOYED
+// chat: every case in test/ask/cases.json goes through POST /api/v1/ask on a
+// Vercel deployment, one question after another, and is scored from the
+// streamed final answer.
 //
-//   node --conditions=react-server --import tsx scripts/ask-eval.ts \
-//     --provider anthropic --model claude-haiku-5-5
-// (tsx as a loader in this process, so "server-only" resolves for the server.)
+//   node --import tsx scripts/ask-eval.ts --base https://<preview-url>
 //
-// Needs ../app/.Renviron (read-only DB role, PG_PORT=5432) and the provider's
-// key in the environment. Spends real money: Haiku about $0.003 per question.
+// VERCEL_AUTOMATION_BYPASS_SECRET (Vercel: Deployment Protection, Protection
+// Bypass for Automation) comes from the environment or app/.Renviron.
+//
+// The deployment chooses the model (ASK_PROVIDER / ASK_MODEL in Vercel); to
+// compare models, change ASK_MODEL, redeploy, run again. Set ASK_RATE_LIMIT on
+// that deployment above the number of questions (about 50). Spends real money.
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { performance } from "node:perf_hooks";
-import { askTurn, type AskAnswer, type HistoryTurn } from "../src/ask/turn";
-import { anthropicProvider } from "../src/ask/providers/anthropic";
-import type { Provider } from "../src/ask/providers/types";
+import type { AskAnswer, HistoryTurn } from "../src/ask/turn";
 import type { ToolCall } from "../src/ask/run";
 
 type Expect = { tool: string; league: string; query: Record<string, string> };
 type Case = { id: string; lang: "he" | "en"; turns: string[]; expect: Expect[] | "unanswerable" };
+type Final = { type: "final"; answer: AskAnswer; provider: string; model: string };
 
 const arg = (name: string, fallback?: string) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : fallback;
 };
-// Spelled-out numbers and ordinals the digit check cannot see (Task 10 scores them).
+// Spelled-out numbers and ordinals the digit check cannot see.
 const NUMBER_WORDS =
   /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|hundred|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|half)\b|(?:^|[\s,.])(אחד|אחת|שתיים|שניים|שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה|ראשון|ראשונה|שני|שנייה|שלישי|שלישית|רביעי|רביעית|חמישי|חמישית|חצי)(?=$|[\s,.])/iu;
 
-function provider(): Provider {
-  const name = arg("provider", "anthropic"),
-    model = arg("model", "claude-haiku-5-5")!;
-  if (name === "anthropic") return anthropicProvider(model);
-  throw new Error(`Provider ${name} has no adapter yet`);
-}
 const matches = (c: ToolCall, e: Expect) =>
   c.tool === e.tool &&
   c.league === e.league &&
   Object.entries(e.query).every(([k, v]) => String(c.query[k] ?? "") === v);
 
+async function ask(base: string, question: string, history: HistoryTurn[], clientId: string) {
+  const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
+  const res = await fetch(new URL("/api/v1/ask", base), {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...(bypass ? { "x-vercel-protection-bypass": bypass } : {}),
+    },
+    body: JSON.stringify({ league: "il", question, history, clientId }),
+  });
+  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+  const events = (await res.text())
+    .split("\n\n")
+    .filter(Boolean)
+    .map((e) => JSON.parse(e.replace(/^data: /, "")));
+  const final = events.find((e) => e.type === "final") as Final | undefined;
+  if (!final) throw new Error(events.find((e) => e.type === "error")?.error ?? "No final answer");
+  return final;
+}
+
 async function main() {
+  // The bypass secret may live in app/.Renviron (gitignored credentials file).
   const env = new URL("../../app/.Renviron", import.meta.url);
   if (existsSync(env)) process.loadEnvFile(env);
-  process.env.PG_PORT = "5432";
-  const p = provider();
+  const base = arg("base");
+  if (!base) throw new Error("Give --base https://<deployment>");
   const cases = JSON.parse(readFileSync(arg("cases", "test/ask/cases.json")!, "utf8")) as Case[];
+  const clientId = `eval-${Date.now()}`;
   const rows = [];
+  let model = "?";
   for (const c of cases) {
     const history: HistoryTurn[] = [];
     const turns = [];
@@ -52,8 +71,9 @@ async function main() {
       let answer: AskAnswer | null = null,
         error: string | null = null;
       try {
-        for await (const e of askTurn({ league: "il", question, history }, p, { now: Date.now, followups: true }))
-          if (e.type === "final") answer = e.answer;
+        const final = await ask(base, question, history, clientId);
+        answer = final.answer;
+        model = `${final.provider}/${final.model}`;
       } catch (e) {
         error = e instanceof Error ? e.message : String(e);
       }
@@ -68,28 +88,32 @@ async function main() {
         ms,
         error,
         costUsd: answer?.usage.costUsd ?? 0,
-        toolOk: expect ? calls.some((call) => matches(call, expect)) : (answer?.evidence.length ?? 0) === 0,
+        toolOk: !!answer && (expect ? calls.some((call) => matches(call, expect)) : answer.evidence.length === 0),
         verified: !!answer && !answer.fallback,
         // Two failed verifications with data in hand: the disqualifying case.
         failedTwice: !!answer && answer.fallback && answer.results.length > 0,
-        langOk: /[֐-׿]/.test(text) === (c.lang === "he"),
+        langOk: !!answer && /[֐-׿]/.test(text) === (c.lang === "he"),
         numberWord: NUMBER_WORDS.test(text),
       });
       if (answer) history.push({ question, answer: answer.text, calls });
     }
     rows.push({ id: c.id, turns });
     const last = turns.at(-1)!;
-    console.log(`${c.id.padEnd(30)} tool ${turns.every((t) => t.toolOk) ? "ok " : "BAD"} verified ${turns.every((t) => t.verified) ? "ok " : "no "} ${last.ms}ms $${last.costUsd.toFixed(4)}`);
+    console.log(
+      `${c.id.padEnd(30)} tool ${turns.every((t) => t.toolOk) ? "ok " : "BAD"} verified ${turns.every((t) => t.verified) ? "ok " : "no "} ${last.ms}ms $${last.costUsd.toFixed(4)}${last.error ? ` ERROR ${last.error}` : ""}`,
+    );
   }
   const all = rows.flatMap((r) => r.turns);
+  const pct = (f: (t: (typeof all)[number]) => boolean) => Math.round((100 * all.filter(f).length) / all.length);
   const summary = {
-    provider: p.name,
-    model: p.model,
+    base,
+    model,
     cases: rows.length,
     turns: all.length,
-    toolOkPct: Math.round((100 * all.filter((t) => t.toolOk).length) / all.length),
-    verifiedPct: Math.round((100 * all.filter((t) => t.verified).length) / all.length),
-    langOkPct: Math.round((100 * all.filter((t) => t.langOk).length) / all.length),
+    errors: all.filter((t) => t.error).length,
+    toolOkPct: pct((t) => t.toolOk),
+    verifiedPct: pct((t) => t.verified),
+    langOkPct: pct((t) => t.langOk),
     disqualified: all.some((t) => t.failedTwice || t.numberWord),
     failedTwice: all.filter((t) => t.failedTwice).length,
     numberWords: all.filter((t) => t.numberWord).length,
@@ -98,7 +122,7 @@ async function main() {
   };
   console.log(JSON.stringify(summary, null, 2));
   mkdirSync("../output/ask", { recursive: true });
-  const file = `../output/ask/eval-${new Date().toISOString().slice(0, 10)}-${p.model}.json`;
+  const file = `../output/ask/eval-${new Date().toISOString().slice(0, 10)}-${model.replace(/\W+/g, "_")}.json`;
   writeFileSync(file, JSON.stringify({ summary, rows }, null, 2));
   console.log(`wrote ${file}`);
 }

@@ -35,7 +35,8 @@ the page.
 | `ASK_FOLLOWUPS` | `true` sends earlier turns; off until Task 10's multi-turn cases pass |
 | `ASK_PROVIDER` | `anthropic`, `fake` (replays `ASK_FAKE_SCRIPT`, a JSON array of replies) |
 | `ASK_MODEL` | defaults to `claude-haiku-5-5` |
-| `ANTHROPIC_API_KEY` | needed for `anthropic`; set a monthly spend cap in the console |
+| `ANTHROPIC_API_KEY` | needed for `anthropic`; a Vercel **Sensitive** variable; set a monthly spend cap in the console |
+| `ASK_RATE_LIMIT` | questions per hour per browser and per IP (default 20); raise on the eval deployment |
 
 ## Code map (`web/src/`)
 
@@ -71,9 +72,12 @@ the page.
   maps every route and bans DB access from `ask/` (mutation-checked).
 - Browser: `e2e/ask.spec.ts` — needs a server with `ASK_ENABLED=true`
   (it mocks `/api/v1/ask` in the browser). 40/40 on 2026-10-24.
-- Eval: `test/ask/cases.json` (44 cases, 21 Hebrew) and `scripts/ask-eval.ts`:
-  `node --conditions=react-server --import tsx scripts/ask-eval.ts --provider anthropic --model claude-haiku-5-5`
-  from `web/`. Real readers, sequential, `PG_PORT=5432`. Spends money.
+- Eval: `test/ask/cases.json` (44 cases, 21 Hebrew) and `scripts/ask-eval.ts`, run
+  against the **deployed** chat (user, 2026-10-24: the chat only ever runs remotely):
+  `node --import tsx scripts/ask-eval.ts --base https://<preview-url>` from `web/`.
+  The deployment picks the model (`ASK_MODEL`); compare models by changing it and
+  redeploying. Needs `ASK_RATE_LIMIT` above ~50 on that deployment and
+  `VERCEL_AUTOMATION_BYPASS_SECRET` (env or `app/.Renviron`). Spends money.
 
 ## Rulings worth knowing
 
@@ -95,8 +99,10 @@ the page.
 
 ## Next steps
 
-1. With an Anthropic key: run the eval for Haiku 5.5, Sonnet 5.5 (Opus 5.5 as the
-   ceiling); the user skims the Hebrew cases first.
+1. In Vercel (Preview): `ANTHROPIC_API_KEY` (Sensitive), `ASK_ENABLED=true`,
+   `ASK_PROVIDER=anthropic`, `ASK_MODEL=claude-haiku-5-5`, `ASK_RATE_LIMIT=100`, plus a
+   Protection Bypass for Automation secret; run the eval for Haiku 5.5, then
+   Sonnet 5.5 and Opus 5.5 (the ceiling); the user skims the Hebrew cases first.
 2. With an OpenAI key: write `providers/openai.ts` from its current docs, run the eval.
 3. Pick the model (any failed-twice answer or number word disqualifies; then the
    cheapest with at least 90% right tool and parameters), set the default, turn on
