@@ -12,6 +12,7 @@ import type { Provider, ProviderMessage, Usage } from "./providers/types";
 
 export type HistoryTurn = { question: string; answer: string; calls: ToolCall[] };
 export type Evidence = { result: string; row: string; key: string; label: string; text: string };
+export type ToolProblem = { tool: string; param: string | null; error: string };
 export type AskAnswer = {
   text: string;
   lang: "he" | "en";
@@ -20,6 +21,8 @@ export type AskAnswer = {
   links: string[];
   fallback: boolean;
   usage: Usage;
+  /** Tool calls the app rejected this turn (for the log and the eval). */
+  errors: ToolProblem[];
 };
 export type TurnEvent = { type: "status"; text: string } | { type: "final"; answer: AskAnswer };
 
@@ -45,6 +48,12 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const isResult = (r: ToolResult | ToolError): r is ToolResult => "rows" in r;
+const TOOLTIPS = ui.columnTooltips as Record<string, string>;
+/** A quotable column as the model sees it: its label and the app's definition. */
+function describe(label: string): string {
+  const def = TOOLTIPS[label] ?? TOOLTIPS[label.replace(/^(Off|Def) /, "")];
+  return def ? `${label}: ${def}` : label;
+}
 
 /** What the model sees of a result: ids, quotable columns and their raw values. */
 function forModel(r: ToolResult | ToolError) {
@@ -61,7 +70,7 @@ function forModel(r: ToolResult | ToolError) {
     view: r.view,
     rowCount: r.rowCount,
     quotable: TOOLS[r.call.tool].numbers
-      ? Object.fromEntries(Object.entries(spec).map(([k, c]) => [k, c.label]))
+      ? Object.fromEntries(Object.entries(spec).map(([k, c]) => [k, describe(c.label)]))
       : {},
     rows: r.rows.map((row) => ({ id: row.id, ...pick(row.cells) })),
     ...(r.total ? { total: { id: "total", ...pick(r.total.cells) } } : {}),
@@ -154,7 +163,18 @@ export async function* askTurn(
     ];
     return {
       type: "final",
-      answer: { text: text ?? FALLBACK[lang], lang, results, evidence: used, links, fallback, usage },
+      answer: {
+        text: text ?? FALLBACK[lang],
+        lang,
+        results,
+        evidence: used,
+        links,
+        fallback,
+        usage,
+        errors: all
+          .filter((r): r is ToolError => !isResult(r))
+          .map((r) => ({ tool: r.call.tool, param: r.param, error: r.error })),
+      },
     };
   };
 

@@ -142,6 +142,26 @@ describe("askTurn", () => {
     expect(answer.text).toMatch(/[֐-׿]/);
   });
 
+  it("the model sees each quotable column's definition", async () => {
+    const p = scriptedProvider([tc(), { text: "{{r1.row1.Players}}" }]);
+    await run("q", p);
+    const content = p.seen[1].at(-1)!.toolResults![0].content as { quotable: Record<string, string> };
+    expect(content.quotable.net_rtg).toBe("Net RTG: Offensive PPP minus Defensive PPP");
+    expect(content.quotable.off_ppp).toBe("Off PPP: Offensive points per 100 possessions");
+  });
+
+  it("rejected tool calls are reported in the answer", async () => {
+    runTool
+      .mockImplementationOnce(
+        async (id: string, c: ToolCall): Promise<ToolError> => ({ id, call: c, error: "Give sort", param: "sort" }),
+      )
+      .mockImplementationOnce(async (id: string, c: ToolCall) => ok(id, c));
+    const p = scriptedProvider([tc("c1"), tc("c2"), { text: "{{r2.row1.Players}}" }]);
+    const { answer } = await run("q", p);
+    expect(answer.errors).toEqual([{ tool: "lineups", param: "sort", error: "Give sort" }]);
+    expect(answer.fallback).toBe(false);
+  });
+
   it("a refusal becomes the fallback", async () => {
     const p = scriptedProvider([{ refused: true }]);
     const { answer } = await run("q", p);
