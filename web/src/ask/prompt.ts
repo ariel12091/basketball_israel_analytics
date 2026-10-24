@@ -1,0 +1,77 @@
+// The fixed instructions and tool descriptions sent with every question. Keep
+// this text stable (no dates or ids) so providers can cache it.
+import ui from "@/data/shinyUi.json";
+import type { League } from "@/rules/gameLogs";
+import { TOOLS, type ToolName } from "./registry";
+import type { ToolSchema } from "./providers/types";
+
+const CONTEXT =
+  "Shared game filters (any of these tools except list_teams, gameflow and team_overview): start, end (YYYY-MM-DD), game_type (Israeli game type code), phase (EuroLeague phase), home_away (home|away), outcome (win|loss), min_gn, max_gn (Israeli game numbers) or last_n, opp_rank_side (top|bottom), opp_rank_n, opp_rank_metric (net_rtg|off_ppp|def_ppp).";
+
+const DESCRIPTIONS: Record<ToolName, string> = {
+  list_teams:
+    "The season's teams with their ids. Call it first whenever the question names a team, including Hebrew names and nicknames, then use the id. query: season.",
+  team_ratings:
+    "Team Ratings page: every team's offense, defense and net rating with league ranks. query: season, view (summary|four_factors|shot_profile|traditional; shot_profile and traditional Israeli only), side (offense|defense, traditional only), display (per_game|per75|per40, traditional only), plus the shared game filters. Ranks are columns named rank_<column>.",
+  team_overview:
+    "Israeli Home hub for one team: record, ratings with league ranks, four-factor ranks, key players, top scorer, best and worst five-man lineups (100+ possessions), storylines, last game. Best for 'what is team X good at'. query: season, team_id.",
+  lineups:
+    "Lineups page: player combinations of a team with possessions, offensive, defensive and net rating. query: season, team (team id), size (2-5, default 5), view (summary|four_factors), players_on, players_off (player ids, comma separated), plus the shared game filters and clutch (true) with clutch_status. The page sets its own minimum possessions; check total_poss before calling a lineup best.",
+  lineup_games:
+    "Game-by-game log of one lineup. query: season, team, hash (the lineup's sub_lineup_hash from the lineups tool), view.",
+  lineup_roster:
+    "A season's players per team with minutes, for picking player ids. query: season.",
+  onoff:
+    "On/Off page: how each player's team performs with him on and off the floor. query: season, teams (comma separated ids), view (summary|four_factors|shot_profile), plus the shared game filters. The page sets its own possession minimums.",
+  player_stats:
+    "Player Stats page: box-score stats per player. query: season, teams, players, view (Totals|Per Game|Per 60 Possessions|Per 30 Minutes; default Per Game), min_gp, plus the shared game filters.",
+  game_logs:
+    "Game Logs page: one row per team game with ratings. query: season, team (Israeli, one id) or teams (EuroLeague/EuroCup), opponents, view (summary|four_factors), plus home_away, outcome, min_gn, max_gn, last_n.",
+  compare:
+    "Israeli Compare page: the same teams under two conditions, side A vs side B, with the gap. query: season, view (Teams|Lineups), metric (net_rtg|off_ppp|def_ppp|off_efg|off_tov|off_oreb|off_ftr), preset (starters_bench|vs_starters_bench|clutch|home_away|win_loss|top_bottom_rank|date_split|gn_split), team_id (pins one team on both sides), split_date, split_gn, min_poss. Use preset top_bottom_rank for 'against the top 4'.",
+  gameflow:
+    "Gameflow of one game for one team (link only; no numbers to quote). query: game_id, team_id.",
+};
+
+export function toolSchemas(): ToolSchema[] {
+  return Object.values(TOOLS).map((t) => ({
+    name: t.name,
+    description: `${DESCRIPTIONS[t.name]}${
+      ["list_teams", "gameflow", "team_overview", "lineup_games", "lineup_roster"].includes(t.name)
+        ? ""
+        : ` ${CONTEXT}`
+    } Leagues: ${t.leagues.join(", ")}.`,
+    parameters: {
+      type: "object",
+      properties: {
+        league: { type: "string", enum: t.leagues },
+        query: {
+          type: "object",
+          description: "The page's URL parameters, as strings.",
+          additionalProperties: { type: "string" },
+        },
+        sort: {
+          type: "object",
+          properties: { key: { type: "string" }, desc: { type: "boolean" } },
+          required: ["key", "desc"],
+        },
+        limit: { type: "integer", minimum: 1, maximum: 10 },
+      },
+      required: ["league", "query"],
+    },
+  }));
+}
+
+export function systemPrompt(league: League): string {
+  return [
+    "You answer questions about Israeli League, EuroLeague and EuroCup basketball statistics using only the tools, which are the pages of this app.",
+    `The visitor is on the ${league === "il" ? "Israeli League" : league === "euroleague" ? "EuroLeague" : "EuroCup"} section; use that league unless the question names another.`,
+    `Default seasons: Israeli season=${ui.defaultGameYear} (the season-ending year), EuroLeague/EuroCup season=${ui.euroDefaultSeason} (the starting year). Use another season only when the question names it.`,
+    "Every tool result has an id (r1, r2, ...), rows with ids (row1, row2, ..., or total) and the columns you may quote.",
+    "NUMBERS: never type a number, digit, number word, rank or date yourself. Write a marker instead: {{<result id>.<row id>.<column>}}, for example {{r1.row1.net_rtg}}, and {{season}} for the season. The app fills each marker with the page's exact text. Digits that appear in the visitor's own question may be repeated.",
+    "Never compute anything: no differences, averages, sums or ranks of your own. If the question needs a gap, use a tool that returns one (compare). For 'best' or 'worst', quote the rank column or sort the tool by the column; a superlative needs a rank marker or a sorted result.",
+    "Ask for rows sorted by a returned column with sort (key, desc) and up to 10 rows with limit.",
+    "If no tool can answer (injuries, schedules, news, predictions), say so briefly and suggest the closest page. Compare is Israeli League only.",
+    "Answer in the language of the question (Hebrew or English), in two to four short sentences. Mention possessions when a sample is small.",
+  ].join("\n");
+}
