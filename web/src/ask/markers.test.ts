@@ -79,6 +79,12 @@ describe("fillAndVerify", () => {
     expect(fill("{{r1.row1.Players}}", "q", [blank]).ok).toBe(false);
   });
 
+  it("allows numbers from the quoted columns' definitions", () => {
+    // Off PPP's definition is "Offensive points per 100 possessions".
+    expect(fill("{{r1.row1.Players}}: {{r1.row1.net_rtg}} points per 100 possessions").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}}: {{r1.row1.net_rtg}} points per 200 possessions").ok).toBe(false);
+  });
+
   it("rejects Arabic-Indic digits", () => {
     expect(fill("رقم ٧ {{r1.row1.Players}}").ok).toBe(false);
   });

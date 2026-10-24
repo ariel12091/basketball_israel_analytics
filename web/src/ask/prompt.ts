@@ -2,6 +2,7 @@
 // this text stable (no dates or ids) so providers can cache it.
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
+import { displaySpec } from "./display";
 import { TOOLS, type ToolName } from "./registry";
 import type { ToolSchema } from "./providers/types";
 
@@ -33,10 +34,24 @@ const DESCRIPTIONS: Record<ToolName, string> = {
     "Gameflow of one game for one team (link only; no numbers to quote). query: game_id, team_id.",
 };
 
+/** Table tools: sort is required; list the default view's sortable columns. */
+const DEFAULT_VIEW: Partial<Record<ToolName, string | null>> = {
+  lineups: "summary",
+  team_ratings: "summary",
+  player_stats: null,
+  game_logs: "summary",
+  onoff: "summary",
+};
+function sortHint(t: (typeof TOOLS)[ToolName]): string {
+  if (!t.request) return "";
+  const keys = Object.keys(displaySpec(t.name, "il", DEFAULT_VIEW[t.name] ?? null));
+  return ` sort is required ({key, desc}); sort columns in the default view: ${keys.join(", ")}. Other views list theirs in each result's "quotable".`;
+}
+
 export function toolSchemas(): ToolSchema[] {
   return Object.values(TOOLS).map((t) => ({
     name: t.name,
-    description: `${DESCRIPTIONS[t.name]}${
+    description: `${DESCRIPTIONS[t.name]}${sortHint(t)}${
       ["list_teams", "gameflow", "team_overview", "lineup_games", "lineup_roster"].includes(t.name)
         ? ""
         : ` ${CONTEXT}`

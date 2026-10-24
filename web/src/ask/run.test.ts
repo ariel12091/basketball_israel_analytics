@@ -170,6 +170,9 @@ describe("runTool: errors, sorting, limits, links", () => {
   it("unknown sort key is a tool error", async () => {
     const r = await runTool("r1", { tool: "lineups", league: "il", query: {}, sort: { key: "nope", desc: true } }, later);
     expect(r).toMatchObject({ error: expect.stringMatching(/nope/) });
+    // The error names the columns that can be sorted, so the model can retry.
+    expect((r as { error: string }).error).toMatch(/net_rtg/);
+    expect((r as { error: string }).error).toMatch(/total_poss/);
   });
 
   it("limit defaults to 5 and caps at 10; rowCount is pre-limit", async () => {

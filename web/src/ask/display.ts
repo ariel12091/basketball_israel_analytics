@@ -233,6 +233,14 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
   }
 }
 
+const TOOLTIPS = ui.columnTooltips as Record<string, string>;
+/** A quotable column as the model sees it: its label and the app's own
+ * definition (COLUMN_TOOLTIPS), e.g. "Off PPP: Offensive points per 100 possessions". */
+export function columnDefinition(label: string): string {
+  const def = TOOLTIPS[label] ?? TOOLTIPS[label.replace(/^(Off|Def) /, "")];
+  return def ? `${label}: ${def}` : label;
+}
+
 const cache = new Map<string, Record<string, ColumnSpec>>();
 export function displaySpec(
   tool: ToolName,

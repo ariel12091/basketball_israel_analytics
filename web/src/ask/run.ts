@@ -7,6 +7,7 @@ import type { League } from "@/rules/gameLogs";
 import { orderKey } from "@/rules/order";
 import { ParamError, rawQueryGuard } from "@/server/api";
 import { BusyError, DeadlineError } from "@/server/deadline";
+import { displaySpec } from "./display";
 import { flatten } from "./flatten";
 import { TOOLS, type ToolName } from "./registry";
 
@@ -141,7 +142,10 @@ export async function runTool(
   if (call.sort) {
     const { key, desc } = call.sort;
     if (rows.length && !rows.some((r) => key in r))
-      return fail(`Unknown sort column ${key}`, "sort");
+      return fail(
+        `Unknown sort column ${key}; sort by one of: ${sortKeys(entry.name, call.league, payload, rows).join(", ")}`,
+        "sort",
+      );
     rows = rows
       .map((r, i) => ({ r, i, k: orderKey(r[key]) }))
       .sort((a, b) =>
@@ -178,6 +182,13 @@ export async function runTool(
     rowCount: rows.length,
     version: meta?.version == null ? null : String(meta.version),
   };
+}
+
+/** Columns a table tool can sort by: the quotable ones its rows carry. */
+function sortKeys(tool: ToolName, league: League, payload: unknown, rows: Record<string, unknown>[]) {
+  const view = (payload as { meta?: { view?: unknown } } | null)?.meta?.view;
+  const keys = Object.keys(displaySpec(tool, league, view == null ? null : String(view)));
+  return keys.filter((k) => rows.some((r) => k in r));
 }
 
 /** The pages' own team lists: the generated IL catalogue, or the Euro readers'. */

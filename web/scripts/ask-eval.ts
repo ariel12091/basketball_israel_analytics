@@ -11,7 +11,10 @@
 // The deployment chooses the model (ASK_PROVIDER / ASK_MODEL in Vercel); to
 // compare models, change ASK_MODEL, redeploy, run again. Set ASK_RATE_LIMIT on
 // that deployment above the number of questions (about 50). Spends real money.
+import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import path from "node:path";
 import { performance } from "node:perf_hooks";
 import type { AskAnswer, HistoryTurn } from "../src/ask/turn";
 import type { ToolCall } from "../src/ask/run";
@@ -33,21 +36,37 @@ const matches = (c: ToolCall, e: Expect) =>
   c.league === e.league &&
   Object.entries(e.query).every(([k, v]) => String(c.query[k] ?? "") === v);
 
-async function ask(base: string, question: string, history: HistoryTurn[], clientId: string) {
+/** POST through the bypass secret when there is one, else through `vercel curl`
+ * (the logged-in Vercel CLI passes Deployment Protection). */
+async function post(base: string, body: string): Promise<string> {
   const bypass = process.env.VERCEL_AUTOMATION_BYPASS_SECRET;
-  const res = await fetch(new URL("/api/v1/ask", base), {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...(bypass ? { "x-vercel-protection-bypass": bypass } : {}),
-    },
-    body: JSON.stringify({ league: "il", question, history, clientId }),
-  });
-  if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
-  const events = (await res.text())
-    .split("\n\n")
-    .filter(Boolean)
-    .map((e) => JSON.parse(e.replace(/^data: /, "")));
+  if (bypass) {
+    const res = await fetch(new URL("/api/v1/ask", base), {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-vercel-protection-bypass": bypass },
+      body,
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+    return res.text();
+  }
+  const file = path.join(tmpdir(), `ask-eval-${process.pid}.json`);
+  writeFileSync(file, body);
+  const r = spawnSync(
+    "vercel.cmd",
+    ["curl", "/api/v1/ask", "--deployment", base, "--", "-sS", "-X", "POST", "-H", '"content-type: application/json"', "--data-binary", `@${file}`, "-m", "120"],
+    { shell: true, encoding: "utf8", maxBuffer: 64 * 1024 * 1024 },
+  );
+  if (r.status !== 0 && !r.stdout) throw new Error(r.stderr.slice(-300));
+  return r.stdout;
+}
+
+async function ask(base: string, question: string, history: HistoryTurn[], clientId: string) {
+  const text = await post(base, JSON.stringify({ league: "il", question, history, clientId }));
+  if (!text.includes("data: ")) throw new Error(text.slice(0, 200));
+  const events = text
+    .split(/\r?\n/)
+    .filter((l) => l.startsWith("data: "))
+    .map((l) => JSON.parse(l.slice(6)));
   const final = events.find((e) => e.type === "final") as Final | undefined;
   if (!final) throw new Error(events.find((e) => e.type === "error")?.error ?? "No final answer");
   return final;

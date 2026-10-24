@@ -3,7 +3,7 @@ import "server-only";
 // shown only after its markers are filled and checked (spec sections 2 and 4).
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
-import { cellText, displaySpec } from "./display";
+import { cellText, columnDefinition, displaySpec } from "./display";
 import { fillAndVerify } from "./markers";
 import { systemPrompt, toolSchemas } from "./prompt";
 import { TOOLS } from "./registry";
@@ -50,12 +50,6 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const isResult = (r: ToolResult | ToolError): r is ToolResult => "rows" in r;
-const TOOLTIPS = ui.columnTooltips as Record<string, string>;
-/** A quotable column as the model sees it: its label and the app's definition. */
-function describe(label: string): string {
-  const def = TOOLTIPS[label] ?? TOOLTIPS[label.replace(/^(Off|Def) /, "")];
-  return def ? `${label}: ${def}` : label;
-}
 
 /** What the model sees of a result: ids, quotable columns and their raw values. */
 function forModel(r: ToolResult | ToolError) {
@@ -72,7 +66,7 @@ function forModel(r: ToolResult | ToolError) {
     view: r.view,
     rowCount: r.rowCount,
     quotable: TOOLS[r.call.tool].numbers
-      ? Object.fromEntries(Object.entries(spec).map(([k, c]) => [k, describe(c.label)]))
+      ? Object.fromEntries(Object.entries(spec).map(([k, c]) => [k, columnDefinition(c.label)]))
       : {},
     rows: r.rows.map((row) => ({ id: row.id, ...pick(row.cells) })),
     ...(r.total ? { total: { id: "total", ...pick(r.total.cells) } } : {}),

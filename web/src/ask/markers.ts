@@ -1,7 +1,7 @@
 // The model writes {{r1.row2.net_rtg}} where a number goes; the app fills in
 // the page's text for that cell and rejects any digit it did not supply
 // (spec: "Numbers are filled in by the app, never typed by the model").
-import { cellText } from "./display";
+import { cellText, columnDefinition, displaySpec } from "./display";
 import { TOOLS } from "./registry";
 import type { ToolResult } from "./run";
 
@@ -59,8 +59,13 @@ export function fillAndVerify(
     return `\u0000${at}\u0000`;
   });
   if (/\{\{|\}\}/.test(words)) problems.push("Unmatched marker braces");
-  // Only whole numbers the visitor typed may be repeated ("top 5").
+  // Whole numbers the visitor typed may be repeated ("top 5"), and so may the
+  // constants in the quoted columns' own definitions ("per 100 possessions").
   const allowed = new Set(question.match(NUMBER) ?? []);
+  for (const r of results)
+    if (TOOLS[r.call.tool].numbers)
+      for (const c of Object.values(displaySpec(r.call.tool, r.call.league, r.view)))
+        for (const n of columnDefinition(c.label).match(NUMBER) ?? []) allowed.add(n);
   const own = words.replace(/\u0000\d+\u0000/g, " ");
   for (const d of own.match(NUMBER) ?? [])
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
