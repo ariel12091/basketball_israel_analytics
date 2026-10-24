@@ -256,7 +256,7 @@ export default function Navbar({
         onClick={onGlossary}
       >
         <span>
-          <i className="bi bi-book"></i> Glossary
+          <i className="bi bi-book" aria-hidden="true"></i> Glossary
         </span>
       </button>
       <span
@@ -318,7 +318,7 @@ export default function Navbar({
             </button>
             <span className="navbar-brand">
               <span>
-                <i className="bi bi-activity" style={{ marginRight: 6 }}></i>
+                <i className="bi bi-activity" style={{ marginRight: 6 }} aria-hidden="true"></i>
                 IBPL Analytics
               </span>
             </span>
@@ -358,7 +358,7 @@ export default function Navbar({
                 const inner = (
                   <>
                     <span>
-                      <i className={`bi ${t.icon}`}></i> {t.label}
+                      <i className={`bi ${t.icon}`} aria-hidden="true"></i> {t.label}
                     </span>
                     {modes && <span className="tab-mode-label">{current}</span>}
                   </>
