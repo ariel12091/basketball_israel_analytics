@@ -32,6 +32,8 @@ import {
 } from "@tanstack/react-table";
 import ui from "@/data/shinyUi.json";
 import type { Row } from "@/rules/gameLogs";
+import { formatNumber } from "@/rules/format";
+import { orderKey } from "@/rules/order";
 import { defuseCsvCell } from "@/server/csv";
 import { InfoButton, Strip, TouchTipsContext } from "./TouchTips";
 
@@ -77,15 +79,7 @@ export function heat(pr: unknown, reverse: boolean): string | undefined {
   const i = HEAT.cuts.findIndex((c) => v <= c);
   return cols[i < 0 ? cols.length - 1 : i];
 }
-/** DTWidget.formatRound / formatCurrency: toFixed, then "," every 3 digits. */
-export function formatNumber(v: unknown, digits: number): string {
-  if (v == null || v === "") return "";
-  const n = Number(v);
-  if (!Number.isFinite(n)) return String(v);
-  const [int, dec] = n.toFixed(digits).split(".");
-  const s = int.replace(/\B(?=(\d{3})+(?!\d))/g, ",");
-  return dec != null ? `${s}.${dec}` : s;
-}
+export { formatNumber };
 /** The make_shot_render() cell shared by the Game Logs and On/Off tables:
  * 2PT|3PT accuracy coloured against a league average, frequency bars, muted
  * below minFga. `palette` is the colour formula each renderer uses. */
@@ -214,14 +208,6 @@ export function downloadCsv(name: string, cols: Column[], rows: Row[]) {
   URL.revokeObjectURL(a.href);
 }
 
-// TanStack handles missing values separately so descending cannot reverse them.
-const orderKey = (v: unknown): number | string | undefined => {
-  if (v == null || v === "" || (typeof v === "number" && Number.isNaN(v)))
-    return undefined;
-  if (typeof v === "number") return v;
-  if (typeof v === "boolean") return Number(v);
-  return String(v).toLowerCase();
-};
 const dtSort: SortingFn<Row> = (a, b, id) => {
   const x = a.getValue<number | string>(id),
     y = b.getValue<number | string>(id);
