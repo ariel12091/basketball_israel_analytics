@@ -203,6 +203,8 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["poss_a", "Total Poss A", (v) => String(Math.trunc(Number(num(v))))],
         ["poss_b", "Total Poss B", (v) => String(Math.trunc(Number(num(v))))],
       ]);
+    case "list_teams":
+      return spec([["name", "Team", text]]);
     case "team_overview":
       return spec([
         ["section", "Section", text],

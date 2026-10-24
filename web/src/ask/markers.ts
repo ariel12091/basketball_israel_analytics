@@ -39,10 +39,13 @@ export function fillAndVerify(
     const [rid, rowId, ...rest] = body.split(".");
     const key = rest.join(".");
     const result = byId.get(rid);
-    // {{r1.count}}, {{r1.side_a}}: values of the whole result, not a row.
-    if (result && !rest.length && result.extras?.[rowId] !== undefined) {
-      filled.push(result.extras[rowId]);
-      used.push({ result: rid, row: "", key: rowId });
+    // {{r1.count}}, {{r1.side_a}}: values of the whole result, not a row. The
+    // model sometimes writes the field name it was shown ({{r1.values.count}}).
+    const extraKey =
+      !rest.length ? rowId : ["values", "resultValues"].includes(rowId) && rest.length === 1 ? key : null;
+    if (result && extraKey && result.extras?.[extraKey] !== undefined) {
+      filled.push(result.extras[extraKey]);
+      used.push({ result: rid, row: "", key: extraKey });
       return `\u0000${at}\u0000`;
     }
     const row =
@@ -92,7 +95,11 @@ export function fillAndVerify(
   if (problems.length) return { ok: false, problems };
   return {
     ok: true,
-    text: words.replace(/\u0000(\d+)\u0000/g, (_, i: string) => filled[Number(i)]),
+    // A "#" or "%" typed next to a value that already carries it is dropped.
+    text: words.replace(/(#?)\u0000(\d+)\u0000(%?)/g, (_, hash: string, i: string, pct: string) => {
+      const v = filled[Number(i)];
+      return (hash && !v.startsWith("#") ? hash : "") + v + (pct && !v.endsWith("%") ? pct : "");
+    }),
     used,
   };
 }

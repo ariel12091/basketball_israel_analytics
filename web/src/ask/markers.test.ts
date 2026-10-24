@@ -91,8 +91,6 @@ describe("fillAndVerify", () => {
   it("rejects numbers written as words, English and Hebrew", () => {
     for (const t of [
       "{{r1.row1.Players}} played five games",
-      "{{r1.row1.Players}} is second",
-      "{{r1.row1.Players}} finished third in the league",
       "{{r1.row1.Players}} שיחקה שני משחקים",
       "{{r1.row1.Players}} עם חמישה ניצחונות",
     ])
@@ -127,6 +125,39 @@ describe("fillAndVerify", () => {
     expect(fill("The top five: {{r1.row1.Players}}", "top 5 lineups").ok).toBe(true);
     expect(fill("The top six: {{r1.row1.Players}}", "top 5 lineups").ok).toBe(false);
     expect(fill("{{r1.row1.Players}} במקום הראשון").ok).toBe(true);
+  });
+
+  it("result values also work under the field name the model sees", () => {
+    const r = { ...lineups, extras: { count: "12", min_poss: "25" } };
+    expect(fill("min {{r1.resultValues.min_poss}}", "q", [r])).toMatchObject({ ok: true, text: "min 25" });
+  });
+
+  it("a unit typed next to a value that already has it is not doubled", () => {
+    const tr: ToolResult = {
+      ...lineups,
+      call: { tool: "team_ratings", league: "il", query: {} },
+      rows: [{ id: "row1", cells: { team_name: "A", rank_off_ppp: 1 } }],
+    };
+    expect(fill("{{r1.row1.team_name}} #{{r1.row1.rank_off_ppp}}", "q", [tr])).toMatchObject({
+      ok: true,
+      text: "A #1",
+    });
+  });
+
+  it("ordinals describing list position are allowed; counts are not", () => {
+    expect(fill("{{r1.row1.Players}} is second, {{r1.row2.Players}} is third").ok).toBe(true);
+    expect(fill("הליינאפ השני הוא {{r1.row2.Players}}").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} שיחקו ששה משחקים").ok).toBe(false);
+  });
+
+  it("the team list's names are quotable", () => {
+    const teams: ToolResult = {
+      ...lineups,
+      call: { tool: "list_teams", league: "il", query: {} },
+      view: null,
+      rows: [{ id: "row1", cells: { id: 2, name: "MACCABI TEL AVIV" } }],
+    };
+    expect(fill("{{r1.row1.name}}", "q", [teams])).toMatchObject({ ok: true, text: "MACCABI TEL AVIV" });
   });
 
   it("rejects Arabic-Indic digits", () => {

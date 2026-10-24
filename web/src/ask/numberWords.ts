@@ -1,10 +1,11 @@
 // Counts and ranks written as words, shared by the answer check (markers.ts)
 // and the eval, so both use one list. The digit check cannot see these.
-// "one" and "first" are left out: "one of the best" and "at first" are too common.
+// Counts only: "one" ("one of the best") is too common, and ordinals ("second",
+// "השלישי") mostly describe a position in a sorted list, so they are allowed.
 const EN_WORDS =
-  "two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|hundred|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|half";
+  "two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|hundred|half";
 const HE_WORDS =
-  "שניים|שתיים|שני|שתי|שלוש|שלושה|שלושת|ארבע|ארבעה|ארבעת|חמש|חמישה|חמשת|שש|שישה|ששת|שבע|שבעה|שבעת|שמונה|תשע|תשעה|עשר|עשרה|עשרים|שנייה|שלישי|שלישית|רביעי|רביעית|חמישי|חמישית|חצי";
+  "שניים|שתיים|שני|שתי|שלוש|שלושה|שלושת|ארבע|ארבעה|ארבעת|חמש|חמישה|חמשת|שש|שישה|ששה|ששת|שבע|שבעה|שבעת|שמונה|תשע|תשעה|עשר|עשרה|עשרים|חצי";
 // Hebrew attaches prefixes (ה, ב, ל, ו, מ, ש, כ) to the word itself.
 export const NUMBER_WORD = new RegExp(
   `(?<!\\p{L})(?:(?:${EN_WORDS})|[ובהלמשכ]{0,2}(?:${HE_WORDS}))(?!\\p{L})`,
@@ -18,7 +19,9 @@ export const bare = (w: string) =>
 export function withoutTerms(text: string): string {
   return text
     .replace(/^[ \t]*\d{1,2}[.)][ \t]+/gm, " ")
-    .replace(/\b(?:four[- ]factors?|(?:two|three)[- ]point(?:ers?)?|(?:two|three|four|five)[- ]man)\b/gi, " ");
+    .replace(/\b(?:four[- ]factors?|(?:two|three)[- ]point(?:ers?)?|(?:two|three|four|five)[- ]man)\b/gi, " ")
+    // "השני" / "השנייה" (with the article) is only ever "the second": a position.
+    .replace(/(?<!\p{L})[ובלמשכ]?השני(?:יה)?(?!\p{L})/gu, " ");
 }
 
 /** The visitor's digits as words too: "top 5" lets the answer say "top five". */

@@ -80,8 +80,11 @@ function forModel(r: ToolResult | ToolError) {
     rows: r.rows.map((row) => ({ id: row.id, ...pick(row.cells) })),
     ...(r.total ? { total: { id: "total", ...pick(r.total.cells) } } : {}),
     // Quote these as {{<id>.<key>}}, e.g. {{r1.count}} or {{r1.side_a}}.
-    resultValues: Object.fromEntries(
-      Object.entries(r.extras ?? {}).map(([k, v]) => [k, `${EXTRA_LABELS[k] ?? k}: ${v}`]),
+    values: Object.fromEntries(
+      Object.entries(r.extras ?? {}).map(([k, v]) => [
+        k,
+        `${EXTRA_LABELS[k] ?? k}: ${v} (quote as {{${r.id}.${k}}})`,
+      ]),
     ),
   };
 }
