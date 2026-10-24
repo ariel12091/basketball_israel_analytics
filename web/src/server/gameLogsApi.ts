@@ -8,7 +8,7 @@ import { parseParams } from "./params";
 export async function gameLogsAnswer(league: League, search: URLSearchParams) {
   const p = parseParams(search, league);
   const season = await getSeason(p),
-    result = gameLogs(season, [], p);
+    result = gameLogs(season, season.scoreless ?? [], p);
   const schedule = season.schedule ?? season.rows;
   // fetch_teams_min() / euro_fetch_teams(): MIN(team_name) per team id,
   // ordered by name (the Israeli pickers use the catalogue roster first).

@@ -35,6 +35,7 @@ export const QUERIES = {
   euroSeasons: `SELECT DISTINCT game_year FROM euroleague.final_schedule_mv
  WHERE competition = $1::text ORDER BY game_year DESC`,
   scoreless: `SELECT game_id, team_id FROM basketball_test.df_pts_poss_lineups_longer_mv
+ WHERE game_id = ANY($1::integer[])
  GROUP BY game_id, team_id HAVING COUNT(own_team_score)=0`,
   ilVersion: `SELECT value FROM basketball_test.app_meta WHERE key='etl_full_last_success'`,
   euroVersion: `SELECT COALESCE(MAX(completed_at),MAX(started_at))::text AS value
@@ -63,9 +64,19 @@ export async function fetchSeason(q: Query, p: GameLogParams): Promise<Season> {
     p.view === "summary" ? QUERIES.summary : QUERIES.ff,
     [Number(p.season)],
   );
+  // svc_game_logs.R gl_il_rows(): the scoring feed gates each Gameflow link.
+  // Restrict the original scoreless reader to this season's games; the flag
+  // still uses all feed rows for each game/team, independently of display filters.
+  const gameIds = [...new Set(schedule.map((r) => Number(r.game_id)))].filter(
+    (id) => Number.isInteger(id) && id > 0,
+  );
+  const scoreless = gameIds.length
+    ? await q<Row>(QUERIES.scoreless, [gameIds])
+    : [];
   return {
     rows,
     schedule,
+    scoreless,
     ...(p.view === "four_factors" ? { ff: rows } : {}),
     version,
   };
