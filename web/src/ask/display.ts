@@ -26,7 +26,8 @@ const rated =
   (shot: boolean): Fmt =>
   (v) =>
     v == null ? (shot ? "--" : "NA") : rRound(Number(v), 1).toFixed(1) + (shot ? "%" : "");
-const rank: Fmt = (v) => (v == null ? "NA" : String(v));
+/** The page's "#3" (or "#NA") line under a Team Ratings value. */
+const rank: Fmt = (v) => `#${v ?? "NA"}`;
 /** OnOffTables signed(v, 2). */
 const signed2: Fmt = (v) => {
   const n = num(v);

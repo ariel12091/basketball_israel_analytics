@@ -2,6 +2,7 @@ import "server-only";
 // One ask tool call: the route's answer function, its own parser and guards,
 // then presentation only (row ids, sort by a returned column, limit, link).
 import ui from "@/data/shinyUi.json";
+import { queryFromSearch } from "@/lib/tabQuery";
 import type { League } from "@/rules/gameLogs";
 import { orderKey } from "@/rules/order";
 import { ParamError, rawQueryGuard } from "@/server/api";
@@ -40,45 +41,65 @@ const LEAGUE_NAMES: Record<League, string> = {
   eurocup: "EuroCup",
 };
 
-/** URLSearchParams that remembers which names the parser asked for. */
+/** URLSearchParams that remembers which names the page's table rules read. */
 class RecordingParams extends URLSearchParams {
   read = new Set<string>();
-  all = false;
   override get(name: string) {
     this.read.add(name);
     return super.get(name);
   }
-  override getAll(name: string) {
-    this.read.add(name);
-    return super.getAll(name);
-  }
-  override has(name: string, value?: string) {
-    this.read.add(name);
-    return value === undefined ? super.has(name) : super.has(name, value);
-  }
-  override entries() {
-    this.all = true;
-    return super.entries();
-  }
-  override keys() {
-    this.all = true;
-    return super.keys();
-  }
-  override forEach(...a: Parameters<URLSearchParams["forEach"]>) {
-    this.all = true;
-    return super.forEach(...a);
-  }
-  override [Symbol.iterator]() {
-    this.all = true;
-    return super[Symbol.iterator]();
-  }
+}
+const BASE = "http://ask.local";
+
+/** The page link for a call (the query exactly as given). */
+export function linkFor(call: ToolCall): string | null {
+  const page = TOOLS[call.tool]?.page;
+  if (!page) return null;
+  const s = new URLSearchParams();
+  for (const [k, v] of Object.entries(call.query))
+    for (const x of Array.isArray(v) ? v : [v]) s.append(k, String(x));
+  return `/${call.league}/${page}?${s}`;
 }
 
-function toParams(query: ToolCall["query"]): RecordingParams {
-  const s = new RecordingParams();
-  for (const [k, v] of Object.entries(query))
-    for (const x of Array.isArray(v) ? v : [v]) s.append(k, String(x));
-  return s;
+type Prepared =
+  | { error: string; param: string }
+  | { api: URLSearchParams; page: URLSearchParams };
+
+/** The request a page would make for this query, or why the query is not one
+ * the page understands (app/[league]/<page>/page.tsx). */
+function prepare(entry: (typeof TOOLS)[ToolName], call: ToolCall): Prepared {
+  const values: Record<string, string> = {};
+  for (const [k, v] of Object.entries(call.query)) {
+    if (Array.isArray(v) && v.length !== 1)
+      return { error: `Give ${k} once, comma separated if it takes several values`, param: k };
+    values[k] = String(Array.isArray(v) ? v[0] : v);
+  }
+  if (!entry.request) {
+    const unknown = Object.keys(values).find((k) => !entry.keys?.includes(k));
+    if (entry.keys && unknown)
+      return { error: `Unknown parameter ${unknown}`, param: unknown };
+    return { api: new URLSearchParams(values), page: new URLSearchParams(values) };
+  }
+  if (!call.sort)
+    return { error: "Give sort (a returned column and direction) for this table", param: "sort" };
+  const defaults = entry.request.defaults(call.league);
+  const q = queryFromSearch(call.league, values, defaults),
+    fresh = queryFromSearch(call.league, {}, defaults);
+  const unknown = Object.keys(values).find((k) => !(k in q));
+  if (unknown) return { error: `Unknown parameter ${unknown}`, param: unknown };
+  const api = new URL(entry.request.path(call.league, q), BASE).searchParams;
+  const page = new RecordingParams();
+  for (const [k, v] of Object.entries(q)) if (v) page.append(k, v);
+  // A dry run of the page's table rules shows which keys they read.
+  flatten(entry.name, call.league, { rows: [], meta: {} }, page);
+  // A key that neither reaches the request nor the table rules is one the
+  // page ignores (e.g. teams on Lineups): the answer would not be filtered.
+  const ignored = Object.keys(values).find(
+    (k) => !api.has(k) && !page.read.has(k) && values[k] !== fresh[k],
+  );
+  if (ignored)
+    return { error: `${entry.name} does not use ${ignored}; check the tool description`, param: ignored };
+  return { api, page };
 }
 
 export async function runTool(
@@ -100,29 +121,20 @@ export async function runTool(
       `\`${entry.name}\` is available for ${entry.leagues.map((l) => LEAGUE_NAMES[l]).join(", ")} only`,
       "league",
     );
-  const params = toParams(call.query);
-  let payload: unknown;
+  let flat, payload: unknown;
   try {
-    rawQueryGuard(new URL(`http://ask.local/?${params}`));
+    const prep = prepare(entry, call);
+    if ("error" in prep) return fail(prep.error, prep.param);
+    rawQueryGuard(new URL(`${BASE}/?${prep.api}`));
     payload =
       entry.name === "list_teams"
-        ? await listTeams(call.league, params)
-        : await entry.answer!(call.league, params);
+        ? await listTeams(call.league, prep.api)
+        : await entry.answer!(call.league, prep.api);
+    flat = flatten(entry.name, call.league, payload, prep.page);
   } catch (e) {
     if (e instanceof ParamError) return fail(e.message, e.param);
     if (e instanceof DeadlineError || e instanceof BusyError)
       return fail("The data took too long to load");
-    throw e;
-  }
-  if (!params.all) {
-    const unknown = [...new Set(params.keys())].find((k) => !params.read.has(k));
-    if (unknown) return fail(`Unknown parameter ${unknown}`, unknown);
-  }
-  let flat;
-  try {
-    flat = flatten(entry.name, call.league, payload, params);
-  } catch (e) {
-    if (e instanceof ParamError) return fail(e.message, e.param);
     throw e;
   }
   let rows = flat.rows;
@@ -157,7 +169,7 @@ export async function runTool(
   return {
     id,
     call,
-    link: entry.page ? `/${call.league}/${entry.page}?${params}` : null,
+    link: linkFor(call),
     view: meta?.view == null ? null : String(meta.view),
     rows: rows
       .slice(0, limit)

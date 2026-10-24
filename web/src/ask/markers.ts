@@ -11,7 +11,8 @@ export type Filled =
   | { ok: false; problems: string[] };
 
 const MARKER = /\{\{\s*([^{}]+?)\s*\}\}/g;
-const DIGITS = /\p{Nd}+/gu;
+/** A whole number as written: 7, 7.3, 1,234, 12:30. */
+const NUMBER = /\p{Nd}+(?:[.,:]\p{Nd}+)*/gu;
 
 export function fillAndVerify(
   template: string,
@@ -21,6 +22,9 @@ export function fillAndVerify(
 ): Filled {
   const problems: string[] = [],
     used: Used[] = [];
+  // The placeholder below uses NUL; a template carrying one could forge it.
+  if (template.includes("\u0000"))
+    return { ok: false, problems: ["The answer contains a control character"] };
   const byId = new Map(results.map((r) => [r.id, r]));
   const filled: string[] = [];
   // Markers become placeholders first, so the digit check sees only the
@@ -41,8 +45,12 @@ export function fillAndVerify(
       result && row && TOOLS[result.call.tool].numbers
         ? cellText(result.call.tool, result.call.league, result.view, key, row)
         : null;
-    if (text == null) {
-      problems.push(`Marker {{${body}}} does not point at a quotable cell`);
+    if (!text) {
+      problems.push(
+        text === ""
+          ? `Marker {{${body}}} points at an empty cell`
+          : `Marker {{${body}}} does not point at a quotable cell`,
+      );
       filled.push("");
     } else {
       filled.push(text);
@@ -51,9 +59,13 @@ export function fillAndVerify(
     return `\u0000${at}\u0000`;
   });
   if (/\{\{|\}\}/.test(words)) problems.push("Unmatched marker braces");
-  const allowed = new Set(question.match(DIGITS) ?? []);
-  for (const d of words.replace(/\u0000\d+\u0000/g, " ").match(DIGITS) ?? [])
+  // Only whole numbers the visitor typed may be repeated ("top 5").
+  const allowed = new Set(question.match(NUMBER) ?? []);
+  const own = words.replace(/\u0000\d+\u0000/g, " ");
+  for (const d of own.match(NUMBER) ?? [])
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
+  for (const c of own.match(/\p{No}/gu) ?? [])
+    problems.push(`Numeric character "${c}"`);
   if (problems.length) return { ok: false, problems };
   return {
     ok: true,

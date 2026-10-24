@@ -17,8 +17,15 @@ const SHARED = ["season", "start", "end", "min_gn", "max_gn", "stats"];
 
 export async function compareTable(side: Side, s: URLSearchParams) {
   for (const k of s.keys())
-    if (!(k in compareDefaults) && !SHARED.includes(k))
+    if (!Object.hasOwn(compareDefaults, k) && !SHARED.includes(k))
       throw new ParamError(k, `Unknown parameter ${k}`);
+  // The tool quotes the league table; a link to another view would disagree.
+  if ((s.get("cmp_view") ?? "league") !== "league")
+    throw new ParamError("cmp_view", "Only the league table is available in the chat");
+  if (s.get("open_detail") === "true")
+    throw new ParamError("open_detail", "The detail view is not available in the chat");
+  if (s.get("drill_player"))
+    throw new ParamError("drill_player", "Player drill-down is not available in the chat");
   const q = resolveCompareQuery({
     ...compareDefaults,
     season: ui.defaultGameYear,
