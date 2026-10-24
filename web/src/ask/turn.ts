@@ -185,7 +185,11 @@ export async function* askTurn(
       messages.push({ role: "assistant", text: h.answer });
     }
   }
-  messages.push({ role: "user", text: input.question });
+  // The visitor's question, with its language spelled out for the model.
+  messages.push({
+    role: "user",
+    text: `${input.question}\n\n(Answer in ${lang === "he" ? "Hebrew" : "English"}.)`,
+  });
 
   const system = systemPrompt(input.league),
     tools = toolSchemas();
@@ -242,22 +246,23 @@ export async function* askTurn(
       messages.push({ role: "user", toolResults: out });
       continue;
     }
-    const text = reply.text ?? "";
+    // The panel shows plain text: markdown emphasis would appear as asterisks.
+    const text = (reply.text ?? "").replace(/\*\*|__/g, "");
     const results = all.filter(isResult);
     let filled = fillAndVerify(text, results, input.question, seasonLabel(input.league, results.map((r) => r.call)));
     // A turn whose every tool failed has nothing to stand on: show the page.
     if (all.length && !results.length) break;
-    // The answer's own words (markers removed) must be in the visitor's language.
+    // Checks on the answer's own words (markers removed), reported together with
+    // the number check so one retry can fix everything.
     const words = text.replace(/\{\{[^{}]*\}\}/g, " ");
-    const hebrew = /[֐-׿]/.test(words);
-    if (filled.ok && hebrew !== (lang === "he"))
-      filled = {
-        ok: false,
-        problems: [`Answer in ${lang === "he" ? "Hebrew" : "English"}, the language of the question`],
-      };
+    const extra: string[] = [];
+    if (/[֐-׿]/.test(words) !== (lang === "he"))
+      extra.push(`Answer in ${lang === "he" ? "Hebrew" : "English"}, the language of the question`);
     // Links come from the app only; the answer text never carries an address.
-    if (filled.ok && /https?:\/\/|www\.|[\w.-]+@[\w-]+\.\w|\b[\w-]+\.(?:com|org|net|io|co|il|app|dev|me|ly)\b/i.test(words))
-      filled = { ok: false, problems: ["Remove the web address or email; the app adds the page link"] };
+    if (/https?:\/\/|www\.|[\w.-]+@[\w-]+\.\w|\b[\w-]+\.(?:com|org|net|io|co|il|app|dev|me|ly)\b/i.test(words))
+      extra.push("Remove the web address or email; the app adds the page link");
+    if (extra.length)
+      filled = { ok: false, problems: [...(filled.ok ? [] : filled.problems), ...extra] };
     if (filled.ok) {
       const byId = new Map(results.map((r) => [r.id, r]));
       const evidence = filled.used.map((u) => {

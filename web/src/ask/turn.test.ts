@@ -236,6 +236,27 @@ describe("askTurn", () => {
     expect(answer.rejected.map((r) => r.problems.join(" ")).join(" ")).toMatch(/address/i);
   });
 
+  it("the retry names every problem at once, language included", async () => {
+    const p = scriptedProvider([tc(), { text: "Min 25 for {{r1.row1.Players}}" }, { text: "הטובה: {{r1.row1.Players}}" }]);
+    const { answer } = await run("מה החמישייה הכי טובה?", p);
+    const retry = p.seen[2].at(-1)!.text!;
+    expect(retry).toMatch(/Typed number/);
+    expect(retry).toMatch(/Hebrew/);
+    expect(answer.fallback).toBe(false);
+  });
+
+  it("the question sent to the model asks for its language", async () => {
+    const p = scriptedProvider([{ text: "בסדר" }]);
+    await run("מה המצב?", p);
+    expect(p.seen[0].at(-1)!.text).toMatch(/Answer in Hebrew/);
+  });
+
+  it("markdown emphasis is removed from the answer", async () => {
+    const p = scriptedProvider([tc(), { text: "**Best:** {{r1.row1.Players}}" }]);
+    const { answer } = await run("q", p);
+    expect(answer.text).toBe("Best: A - B");
+  });
+
   it("a refusal becomes the fallback", async () => {
     const p = scriptedProvider([{ refused: true }]);
     const { answer } = await run("q", p);
