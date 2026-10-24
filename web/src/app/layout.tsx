@@ -17,6 +17,7 @@ import "@/styles/shiny/vendor/jquery.dataTables.min.css";
 import "@/styles/shiny/vendor/jquery.dataTables.extra.css";
 import "@/styles/shiny/vendor/buttons.dataTables.min.css";
 import "./web.css";
+import AskProvider from "@/components/AskProvider";
 import {
   BODY_CLASS_SCRIPT,
   PHONE_BODY_CLASSES,
@@ -50,7 +51,14 @@ export default function RootLayout({
           from the viewport before first paint (one design for every device). */}
       <body className={PHONE_BODY_CLASSES} suppressHydrationWarning>
         <script dangerouslySetInnerHTML={{ __html: BODY_CLASS_SCRIPT }} />
-        <NuqsAdapter>{children}</NuqsAdapter>
+        <NuqsAdapter>
+          <AskProvider
+            enabled={process.env.ASK_ENABLED === "true"}
+            followups={process.env.ASK_FOLLOWUPS === "true"}
+          >
+            {children}
+          </AskProvider>
+        </NuqsAdapter>
       </body>
     </html>
   );
