@@ -5,6 +5,8 @@ import {
   homeRank,
   type HomeFrames,
 } from "@/rules/home";
+import type { League } from "@/rules/gameLogs";
+import { pageRows } from "./pageRows";
 import type { ToolName } from "./registry";
 
 type Cells = Record<string, unknown>;
@@ -12,6 +14,7 @@ export type Flat = { rows: Cells[]; total: Cells | null };
 
 export function flatten(
   tool: ToolName,
+  league: League,
   payload: unknown,
   query: URLSearchParams,
 ): Flat {
@@ -19,7 +22,7 @@ export function flatten(
   if (tool === "gameflow") return { rows: [], total: null };
   if (tool === "team_overview")
     return { rows: overview(p.frames, query.get("team_id") ?? ""), total: null };
-  const rows = p.rows ?? [];
+  const rows: Cells[] = pageRows(tool, league, payload, query);
   if (tool === "lineups") {
     // LineupTable: the is_total === 0 row is the pinned "- All Lineups -" TOTAL.
     const total = rows.find((r) => r.is_total === 0) ?? null;

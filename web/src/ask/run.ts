@@ -118,7 +118,13 @@ export async function runTool(
     const unknown = [...new Set(params.keys())].find((k) => !params.read.has(k));
     if (unknown) return fail(`Unknown parameter ${unknown}`, unknown);
   }
-  const flat = flatten(entry.name, payload, params);
+  let flat;
+  try {
+    flat = flatten(entry.name, call.league, payload, params);
+  } catch (e) {
+    if (e instanceof ParamError) return fail(e.message, e.param);
+    throw e;
+  }
   let rows = flat.rows;
   if (call.sort) {
     const { key, desc } = call.sort;
