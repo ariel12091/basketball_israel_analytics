@@ -61,6 +61,8 @@ describe("askTurn", () => {
     expect(answer).toMatchObject({ text: "Net 7.3", fallback: false });
     const retry = p.seen[2].at(-1)!;
     expect(retry.text).toMatch(/rejected/i);
+    // The rewrite must be the answer itself, not commentary about the rewrite.
+    expect(retry.text).toMatch(/reply with the corrected answer only/i);
   });
 
   it("two failures -> fallback with link and evidence", async () => {

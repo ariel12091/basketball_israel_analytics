@@ -103,6 +103,14 @@ describe("fillAndVerify", () => {
     expect(fill("החמישייה הטובה: {{r1.row1.Players}}").ok).toBe(true);
   });
 
+  it("allows basketball terms and list numbering that are not data", () => {
+    expect(fill("On the Four Factors page, {{r1.row1.Players}} leads.").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} takes the most three-point shots; a five-man unit.").ok).toBe(true);
+    expect(fill("Newest first:\n1. {{r1.row1.Players}}\n2. {{r1.row2.Players}}").ok).toBe(true);
+    // A number inside a list item is still checked.
+    expect(fill("1. {{r1.row1.Players}} with 7 wins").ok).toBe(false);
+  });
+
   it("rejects Arabic-Indic digits", () => {
     expect(fill("رقم ٧ {{r1.row1.Players}}").ok).toBe(false);
   });

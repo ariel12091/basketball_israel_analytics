@@ -2,6 +2,7 @@
 // the page's text for that cell and rejects any digit it did not supply
 // (spec: "Numbers are filled in by the app, never typed by the model").
 import { cellText, columnDefinition, displaySpec } from "./display";
+import { NUMBER_WORD, bare, withoutTerms } from "./numberWords";
 import { TOOLS } from "./registry";
 import type { ToolResult } from "./run";
 
@@ -13,18 +14,6 @@ export type Filled =
 const MARKER = /\{\{\s*([^{}]+?)\s*\}\}/g;
 /** A whole number as written: 7, 7.3, 1,234, 12:30. */
 const NUMBER = /\p{Nd}+(?:[.,:]\p{Nd}+)*/gu;
-/** Counts and ranks written as words, which the digit check cannot see. "one"
- * and "first" are left out: "one of the best" and "at first" are too common. */
-const EN_WORDS =
-  "two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|hundred|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|half";
-const HE_WORDS =
-  "שניים|שתיים|שני|שתי|שלוש|שלושה|שלושת|ארבע|ארבעה|ארבעת|חמש|חמישה|חמשת|שש|שישה|ששת|שבע|שבעה|שבעת|שמונה|תשע|תשעה|עשר|עשרה|עשרים|ראשון|ראשונה|שנייה|שלישי|שלישית|רביעי|רביעית|חמישי|חמישית|חצי";
-// Hebrew attaches prefixes (ה, ב, ל, ו, מ, ש, כ) to the word itself.
-const NUMBER_WORD = new RegExp(
-  `(?<!\\p{L})(?:(?:${EN_WORDS})|[ובהלמשכ]{0,2}(?:${HE_WORDS}))(?!\\p{L})`,
-  "giu",
-);
-const bare = (w: string) => w.toLowerCase().replace(/^[ובהלמשכ]{1,2}(?=[֐-׿])/, "");
 
 export function fillAndVerify(
   template: string,
@@ -78,7 +67,7 @@ export function fillAndVerify(
     if (TOOLS[r.call.tool].numbers)
       for (const c of Object.values(displaySpec(r.call.tool, r.call.league, r.view)))
         for (const n of columnDefinition(c.label).match(NUMBER) ?? []) allowed.add(n);
-  const own = words.replace(/\u0000\d+\u0000/g, " ");
+  const own = withoutTerms(words.replace(/\u0000\d+\u0000/g, " "));
   for (const d of own.match(NUMBER) ?? [])
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
   for (const c of own.match(/\p{No}/gu) ?? [])

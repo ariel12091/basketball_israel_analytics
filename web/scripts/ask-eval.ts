@@ -16,6 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
+import { NUMBER_WORD, bare, withoutTerms } from "../src/ask/numberWords";
 import type { AskAnswer, HistoryTurn } from "../src/ask/turn";
 import type { ToolCall } from "../src/ask/run";
 
@@ -29,9 +30,12 @@ const arg = (name: string, fallback?: string) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : fallback;
 };
-// Spelled-out numbers and ordinals the digit check cannot see.
-const NUMBER_WORDS =
-  /\b(one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|twenty|thirty|hundred|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|half)\b|(?:^|[\s,.])(אחד|אחת|שתיים|שניים|שלוש|שלושה|ארבע|ארבעה|חמש|חמישה|שש|שישה|שבע|שבעה|שמונה|תשע|תשעה|עשר|עשרה|ראשון|ראשונה|שני|שנייה|שלישי|שלישית|רביעי|רביעית|חמישי|חמישית|חצי)(?=$|[\s,.])/iu;
+/** A count or rank written as a word that the visitor did not use: the same
+ * list the answer check applies (src/ask/numberWords.ts). */
+const numberWord = (text: string, question: string) => {
+  const asked = new Set((question.match(NUMBER_WORD) ?? []).map(bare));
+  return (withoutTerms(text).match(NUMBER_WORD) ?? []).some((w) => !asked.has(bare(w)));
+};
 
 const matches = (c: ToolCall, e: Expect) =>
   c.tool === e.tool &&
@@ -120,7 +124,7 @@ async function main() {
         // Two failed verifications with data in hand: the disqualifying case.
         failedTwice: !!answer && answer.fallback && answer.results.length > 0,
         langOk: !!answer && /[֐-׿]/.test(text) === (c.lang === "he"),
-        numberWord: NUMBER_WORDS.test(text),
+        numberWord: numberWord(text, question),
       });
       if (answer) history.push({ question, answer: answer.text, calls });
     }

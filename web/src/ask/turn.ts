@@ -222,7 +222,7 @@ export async function* askTurn(
     messages.push({ role: "assistant", text, raw: reply.raw });
     messages.push({
       role: "user",
-      text: `Your answer was rejected: ${filled.problems.join("; ")}. Rewrite it with markers for every number, and nothing computed.`,
+      text: `Your answer was rejected: ${filled.problems.join("; ")}. Rewrite it with markers for every number and name, and nothing computed. Reply with the corrected answer only, with no comment about the rewrite.`,
     });
   }
   yield finish(null, [], true);
