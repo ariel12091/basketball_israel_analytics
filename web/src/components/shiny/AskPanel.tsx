@@ -16,17 +16,19 @@ export default function AskPanel() {
   const full = ask.turns.length >= MAX_TURNS;
   const answered = ask.turns.length > 0;
 
+  // Focus moves into the panel on open and back to the Ask button on close
+  // (the button is not rendered while the panel is open).
+  const wasOpen = useRef(false);
   useEffect(() => {
     if (ask.open) input.current?.focus();
+    else if (wasOpen.current) button.current?.focus();
+    wasOpen.current = ask.open;
   }, [ask.open]);
   useEffect(() => {
     end.current?.scrollIntoView?.({ block: "end" });
   }, [ask.turns]);
 
-  const close = () => {
-    ask.setOpen(false);
-    button.current?.focus();
-  };
+  const close = () => ask.setOpen(false);
   const submit = () => {
     const q = draft.trim();
     if (!q || pending || full) return;
@@ -60,11 +62,13 @@ export default function AskPanel() {
             <strong>Ask</strong>
             <span className="ibpl-ask-hint">Answers use only this app&apos;s pages.</span>
             {answered && (
-              <button type="button" className="btn btn-sm btn-outline-secondary" onClick={ask.reset} disabled={pending}>
+              <button type="button" className="btn btn-sm ibpl-ask-new" onClick={ask.reset} disabled={pending}>
                 New question
               </button>
             )}
-            <button type="button" className="btn-close" aria-label="Close" onClick={close}></button>
+            <button type="button" className="btn btn-sm ibpl-ask-close" aria-label="Close" onClick={close}>
+              <i className="bi bi-x-lg" aria-hidden="true"></i>
+            </button>
           </header>
           <div className="ibpl-ask-body" aria-live="polite">
             {ask.turns.map((t, i) => (
@@ -97,7 +101,7 @@ export default function AskPanel() {
                 placeholder={
                   answered && ask.followups
                     ? "Ask a follow-up…"
-                    : "e.g. top 5 lineups of Maccabi · מה הקבוצה טובה בו?"
+                    : "e.g. top 5 lineups of Maccabi Tel Aviv"
                 }
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
