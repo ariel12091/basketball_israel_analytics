@@ -13,6 +13,18 @@ export type Filled =
 const MARKER = /\{\{\s*([^{}]+?)\s*\}\}/g;
 /** A whole number as written: 7, 7.3, 1,234, 12:30. */
 const NUMBER = /\p{Nd}+(?:[.,:]\p{Nd}+)*/gu;
+/** Counts and ranks written as words, which the digit check cannot see. "one"
+ * and "first" are left out: "one of the best" and "at first" are too common. */
+const EN_WORDS =
+  "two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|fifty|hundred|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth|half";
+const HE_WORDS =
+  "שניים|שתיים|שני|שתי|שלוש|שלושה|שלושת|ארבע|ארבעה|ארבעת|חמש|חמישה|חמשת|שש|שישה|ששת|שבע|שבעה|שבעת|שמונה|תשע|תשעה|עשר|עשרה|עשרים|ראשון|ראשונה|שנייה|שלישי|שלישית|רביעי|רביעית|חמישי|חמישית|חצי";
+// Hebrew attaches prefixes (ה, ב, ל, ו, מ, ש, כ) to the word itself.
+const NUMBER_WORD = new RegExp(
+  `(?<!\\p{L})(?:(?:${EN_WORDS})|[ובהלמשכ]{0,2}(?:${HE_WORDS}))(?!\\p{L})`,
+  "giu",
+);
+const bare = (w: string) => w.toLowerCase().replace(/^[ובהלמשכ]{1,2}(?=[֐-׿])/, "");
 
 export function fillAndVerify(
   template: string,
@@ -71,6 +83,10 @@ export function fillAndVerify(
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
   for (const c of own.match(/\p{No}/gu) ?? [])
     problems.push(`Numeric character "${c}"`);
+  const asked = new Set((question.match(NUMBER_WORD) ?? []).map(bare));
+  for (const w of own.match(NUMBER_WORD) ?? [])
+    if (!asked.has(bare(w)))
+      problems.push(`Number written as a word "${w}": use a marker for counts and ranks`);
   if (problems.length) return { ok: false, problems };
   return {
     ok: true,

@@ -1,5 +1,18 @@
 import { describe, expect, it } from "vitest";
-import { toolSchemas } from "./prompt";
+import { systemPrompt, toolSchemas } from "./prompt";
+
+describe("system prompt", () => {
+  const p = systemPrompt("il");
+  it("gives worked season examples for both conventions", () => {
+    expect(p).toContain("Israeli 2025-26 is season=2026");
+    expect(p).toContain("EuroLeague or EuroCup 2025-26 is season=2025");
+  });
+  it("makes names markers too, and keeps internals out of the answer", () => {
+    expect(p).toMatch(/names of teams, players and lineups.*markers/i);
+    expect(p).toMatch(/already include their unit/i);
+    expect(p).toMatch(/never mention tool, parameter or preset names/i);
+  });
+});
 
 describe("tool descriptions", () => {
   const byName = Object.fromEntries(toolSchemas().map((t) => [t.name, t.description]));

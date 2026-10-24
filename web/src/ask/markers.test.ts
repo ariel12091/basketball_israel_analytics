@@ -85,6 +85,24 @@ describe("fillAndVerify", () => {
     expect(fill("{{r1.row1.Players}}: {{r1.row1.net_rtg}} points per 200 possessions").ok).toBe(false);
   });
 
+  it("rejects numbers written as words, English and Hebrew", () => {
+    for (const t of [
+      "{{r1.row1.Players}} played five games",
+      "{{r1.row1.Players}} is second",
+      "{{r1.row1.Players}} finished third in the league",
+      "{{r1.row1.Players}} שיחקה שני משחקים",
+      "{{r1.row1.Players}} במקום הראשון",
+      "{{r1.row1.Players}} עם חמישה ניצחונות",
+    ])
+      expect(fill(t).ok, t).toBe(false);
+  });
+
+  it("allows number words the visitor used, and ordinary phrases", () => {
+    expect(fill("The top five start with {{r1.row1.Players}}.", "top five lineups").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} is one of the best units.").ok).toBe(true);
+    expect(fill("החמישייה הטובה: {{r1.row1.Players}}").ok).toBe(true);
+  });
+
   it("rejects Arabic-Indic digits", () => {
     expect(fill("رقم ٧ {{r1.row1.Players}}").ok).toBe(false);
   });

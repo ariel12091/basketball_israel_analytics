@@ -20,7 +20,9 @@ import type { AskAnswer, HistoryTurn } from "../src/ask/turn";
 import type { ToolCall } from "../src/ask/run";
 
 type Expect = { tool: string; league: string; query: Record<string, string> };
-type Case = { id: string; lang: "he" | "en"; turns: string[]; expect: Expect[] | "unanswerable" };
+/** One turn's acceptable answers: a tool call, "unanswerable", or any of several. */
+type Accept = Expect | "unanswerable" | (Expect | "unanswerable")[];
+type Case = { id: string; lang: "he" | "en"; turns: string[]; expect: Accept[] | "unanswerable" };
 type Final = { type: "final"; answer: AskAnswer; provider: string; model: string };
 
 const arg = (name: string, fallback?: string) => {
@@ -98,7 +100,7 @@ async function main() {
       }
       const ms = Math.round(performance.now() - t0);
       const calls = answer?.results.map((r) => r.call) ?? [];
-      const expect = c.expect === "unanswerable" ? null : c.expect[i];
+      const accept = c.expect === "unanswerable" ? ["unanswerable" as const] : [c.expect[i]].flat();
       const text = answer?.text ?? "";
       turns.push({
         question,
@@ -109,7 +111,11 @@ async function main() {
         costUsd: answer?.usage.costUsd ?? 0,
         toolErrors: answer?.errors ?? [],
         rejected: answer?.rejected ?? [],
-        toolOk: !!answer && (expect ? calls.some((call) => matches(call, expect)) : answer.evidence.length === 0),
+        toolOk:
+          !!answer &&
+          accept.some((e) =>
+            e === "unanswerable" ? answer!.evidence.length === 0 : calls.some((call) => matches(call, e)),
+          ),
         verified: !!answer && !answer.fallback,
         // Two failed verifications with data in hand: the disqualifying case.
         failedTwice: !!answer && answer.fallback && answer.results.length > 0,
