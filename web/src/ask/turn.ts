@@ -51,6 +51,8 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const isResult = (r: ToolResult | ToolError): r is ToolResult => "rows" in r;
+/** Columns the model needs to make its next lookup, shown even when not quotable. */
+const ID_KEYS = ["team_id", "player_id", "game_id", "sub_lineup_hash", "identity_id"];
 /** Result-level markers ({{r1.count}}, {{r1.side_a}}) as the model sees them. */
 const EXTRA_LABELS: Record<string, string> = {
   count: "Rows the page lists",
@@ -64,9 +66,11 @@ function forModel(r: ToolResult | ToolError) {
   if (!isResult(r)) return { id: r.id, error: r.error, param: r.param };
   const spec = displaySpec(r.call.tool, r.call.league, r.view);
   const keys = Object.keys(spec);
+  // The quotable columns, plus the identifiers the next lookup needs.
+  const shown = keys.length ? [...ID_KEYS, ...keys] : null;
   const pick = (cells: Record<string, unknown>) =>
     Object.fromEntries(
-      (keys.length ? keys : Object.keys(cells)).filter((k) => k in cells).map((k) => [k, cells[k]]),
+      (shown ?? Object.keys(cells)).filter((k) => k in cells).map((k) => [k, cells[k]]),
     );
   return {
     id: r.id,

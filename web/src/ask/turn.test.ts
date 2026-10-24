@@ -172,6 +172,16 @@ describe("askTurn", () => {
     expect(answer.text).toMatch(/[֐-׿]/);
   });
 
+  it("the model sees identifier columns, quotable or not, to make the next lookup", async () => {
+    runTool.mockImplementation(async (id: string, c: ToolCall) =>
+      ok(id, c, [{ id: "row1", cells: { team_id: 2, Players: "A - B", sub_lineup_hash: "h1", hidden: "x" } }] as never),
+    );
+    const p = scriptedProvider([tc(), { text: "{{r1.row1.Players}}" }]);
+    await run("q", p);
+    const content = p.seen[1].at(-1)!.toolResults![0].content as { rows: Record<string, unknown>[] };
+    expect(content.rows[0]).toEqual({ id: "row1", team_id: 2, Players: "A - B", sub_lineup_hash: "h1" });
+  });
+
   it("the model sees each quotable column's definition", async () => {
     const p = scriptedProvider([tc(), { text: "{{r1.row1.Players}}" }]);
     await run("q", p);

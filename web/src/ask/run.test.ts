@@ -258,10 +258,13 @@ describe("runTool: errors, sorting, limits, links", () => {
     if (!("rows" in il)) throw new Error("tool error");
     expect(il.rows.length).toBeGreaterThan(10);
     expect(il.rows[0].cells).toHaveProperty("name");
+    // Named team_id like every other tool, so it never collides with the row id.
+    expect(il.rows[0].cells).toHaveProperty("team_id");
+    expect(il.rows[0].cells).not.toHaveProperty("id");
     expect(il.link).toBeNull();
     teamRatings.mockResolvedValue({ rows: [], meta: { teams: [{ id: 5, name: "Real Madrid" }] } });
     const el = await runTool("r1", { tool: "list_teams", league: "euroleague", query: { season: "2026" } }, later);
-    expect(el).toMatchObject({ rows: [{ cells: { id: 5, name: "Real Madrid" } }] });
+    expect(el).toMatchObject({ rows: [{ cells: { team_id: 5, name: "Real Madrid" } }] });
   });
 
   it("team_overview rows come from the hub's own rules", async () => {

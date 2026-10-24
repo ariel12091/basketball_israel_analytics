@@ -248,10 +248,12 @@ async function listTeams(league: League, s: URLSearchParams) {
       season
     ];
     if (!teams) throw new ParamError("season", "Invalid season");
-    return { rows: teams };
+    return { rows: teams.map((t) => ({ team_id: t.id, name: t.name })) };
   }
   const p = (await TOOLS.team_ratings.answer!(league, s)) as {
     meta?: { teams?: unknown[] };
   };
-  return { rows: p.meta?.teams ?? [] };
+  return {
+    rows: ((p.meta?.teams ?? []) as { id: number; name: string }[]).map((t) => ({ team_id: t.id, name: t.name })),
+  };
 }
