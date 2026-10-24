@@ -118,10 +118,17 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .ibpl-ask-question { font-weight: 600; margin-bottom: 4px; overflow-wrap: anywhere; }
 .ibpl-ask-status { color: var(--ibpl-text-muted); font-size: 0.85rem; margin: 0; }
 .ibpl-ask-error { color: var(--ibpl-neg, #e06c5a); margin: 4px 0; }
-.ibpl-ask-answer p { margin-bottom: 6px; overflow-wrap: anywhere; }
-.ibpl-ask-evidence { width: 100%; margin: 4px 0 8px; font-size: 0.85rem; }
-.ibpl-ask-evidence th { font-weight: 500; color: var(--ibpl-text-muted); text-align: start; padding: 2px 8px 2px 0; }
-.ibpl-ask-evidence td { font-family: "JetBrains Mono", monospace; text-align: end; padding: 2px 0; }
+/* Readable text: a Hebrew-capable face, larger size and line height, and the
+   answer's own line breaks (lists) kept. */
+.ibpl-ask-panel { font-family: "Heebo", "Inter", "DM Sans", system-ui, sans-serif; font-size: 15px; }
+.ibpl-ask-answer p { margin-bottom: 8px; overflow-wrap: anywhere; white-space: pre-line; line-height: 1.6; font-size: 15px; }
+.ibpl-ask-answer p[lang="he"] { font-size: 16px; line-height: 1.7; }
+.ibpl-ask-question { font-size: 15px; }
+.ibpl-ask-evidence-wrap { overflow-x: auto; margin: 6px 0 10px; }
+.ibpl-ask-evidence { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.ibpl-ask-evidence th { font-weight: 600; color: var(--ibpl-text-muted); text-align: start; padding: 4px 8px; border-block-end: 1px solid var(--ibpl-border); white-space: nowrap; }
+.ibpl-ask-evidence td { text-align: start; padding: 6px 8px; border-block-end: 1px solid var(--ibpl-border); vertical-align: top; }
+.ibpl-ask-evidence td.num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; unicode-bidi: isolate; }
 .ibpl-ask-answer .btn { margin: 0 6px 4px 0; }
 .ibpl-ask-form { display: flex; gap: 8px; align-items: flex-end; padding: 10px 16px; border-top: 1px solid var(--ibpl-border); }
 .ibpl-ask-form textarea { resize: none; min-width: 0; }

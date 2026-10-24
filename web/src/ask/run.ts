@@ -105,11 +105,40 @@ function prepare(entry: (typeof TOOLS)[ToolName], call: ToolCall): Prepared {
   return { api, page };
 }
 
+/** Lineups ranked by a rating need a sample: the Home hub's 100 possessions,
+ * applied through the Lineups page's own stat filter so the link shows the same
+ * list. Not when the model set `stats` itself or ranks by volume. */
+const LINEUP_MIN_POSS = 100;
+const VOLUME = new Set(["total_poss", "minutes", "off_poss", "def_poss", "off_pts", "def_pts"]);
+function withSampleMinimum(call: ToolCall): ToolCall {
+  if (call.tool !== "lineups" || !call.sort || "stats" in call.query || VOLUME.has(call.sort.key))
+    return call;
+  return {
+    ...call,
+    query: {
+      ...call.query,
+      stats: JSON.stringify([{ col: "total_poss", op: "ge", value: LINEUP_MIN_POSS }]),
+    },
+  };
+}
+
+/** {{rN.min_poss}}: a possession minimum the rows were filtered by. */
+function minPossExtra(call: ToolCall): Record<string, string> {
+  try {
+    const stats = JSON.parse(String(call.query.stats ?? "[]")) as { col: string; op: string; value: number }[];
+    const f = stats.find((s) => s.col === "total_poss" && s.op === "ge");
+    return f ? { min_poss: String(f.value) } : {};
+  } catch {
+    return {};
+  }
+}
+
 export async function runTool(
   id: string,
-  call: ToolCall,
+  requested: ToolCall,
   deadlineAt: number,
 ): Promise<ToolResult | ToolError> {
+  const call = withSampleMinimum(requested);
   const fail = (error: string, param: string | null = null): ToolError => ({
     id,
     call,
@@ -190,6 +219,7 @@ export async function runTool(
     extras: {
       count: String(rows.length),
       ...(meta?.sides ? { side_a: meta.sides.a, side_b: meta.sides.b } : {}),
+      ...minPossExtra(call),
     },
   };
 }

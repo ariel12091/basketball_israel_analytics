@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MAX_TURNS, useAsk, type AskTurnView } from "../AskProvider";
+import type { Evidence as EvidenceRow } from "@/ask/turn";
 
 export default function AskPanel() {
   const ask = useAsk()!;
@@ -123,6 +124,51 @@ export default function AskPanel() {
   );
 }
 
+
+/** The quoted values as a small table: one row per team, player or lineup the
+ * answer quotes, one column per stat; numbers aligned and kept left-to-right. */
+function Evidence({ items, lang }: { items: EvidenceRow[]; lang: string }) {
+  const tableItems = items.filter((e) => e.row !== "");
+  if (!tableItems.length) return null;
+  const columns = [...new Set(tableItems.map((e) => e.label))];
+  const rows = new Map<string, Map<string, string>>();
+  for (const e of tableItems) {
+    const key = `${e.result}|${e.row}`;
+    if (!rows.has(key)) rows.set(key, new Map());
+    rows.get(key)!.set(e.label, e.text);
+  }
+  const numeric = (t: string) => /^[-+#]?\d/.test(t);
+  return (
+    <div className="ibpl-ask-evidence-wrap" dir={lang === "he" ? "rtl" : "ltr"}>
+      <table className="ibpl-ask-evidence">
+        <thead>
+          <tr>
+            {columns.map((c) => (
+              <th key={c} scope="col">
+                {c}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {[...rows].map(([key, cells]) => (
+            <tr key={key}>
+              {columns.map((c) => {
+                const t = cells.get(c) ?? "";
+                return (
+                  <td key={c} className={numeric(t) ? "num" : undefined} dir={numeric(t) ? "ltr" : undefined}>
+                    {t}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function Turn({ turn }: { turn: AskTurnView }) {
   const a = turn.answer;
   return (
@@ -146,18 +192,7 @@ function Turn({ turn }: { turn: AskTurnView }) {
           <p dir={a.lang === "he" ? "rtl" : "ltr"} lang={a.lang}>
             {a.text}
           </p>
-          {a.evidence.length > 0 && (
-            <table className="dataTable compact ibpl-ask-evidence">
-              <tbody>
-                {a.evidence.map((e, i) => (
-                  <tr key={i}>
-                    <th scope="row">{e.label}</th>
-                    <td>{e.text}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
+          <Evidence items={a.evidence} lang={a.lang} />
           {a.links.map((href, i) => (
             <Link key={href} href={href} className={i === 0 ? "btn btn-sm btn-primary" : "btn btn-sm btn-link"}>
               {i === 0 ? "Open the page" : "Related page"}

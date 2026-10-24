@@ -55,6 +55,7 @@ const EXTRA_LABELS: Record<string, string> = {
   count: "Rows the page lists",
   side_a: "Compare side A heading",
   side_b: "Compare side B heading",
+  min_poss: "Minimum possessions the rows were filtered by",
 };
 
 /** What the model sees of a result: ids, quotable columns and their raw values. */
@@ -68,6 +69,7 @@ function forModel(r: ToolResult | ToolError) {
     );
   return {
     id: r.id,
+    query: r.call.query,
     link: r.link,
     view: r.view,
     rowCount: r.rowCount,

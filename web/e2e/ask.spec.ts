@@ -78,7 +78,8 @@ for (const width of [390, 1440]) {
       const panel = await open(page);
       await send(page, "top lineups of Maccabi");
       await expect(panel.getByText("Best: A - B (7.3 net).")).toBeVisible();
-      await expect(panel.getByRole("row", { name: /Net RTG 7\.3/ })).toBeVisible();
+      await expect(panel.getByRole("columnheader", { name: "Net RTG" })).toBeVisible();
+      await expect(panel.getByRole("cell", { name: "7.3" })).toBeVisible();
       await expect(panel.getByRole("link", { name: "Open the page" })).toHaveAttribute("href", "/il/lineups?team=2");
     });
 

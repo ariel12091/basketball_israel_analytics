@@ -185,10 +185,40 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect([d.rows.length, big.rows.length, big.rowCount]).toEqual([5, 10, 12]);
   });
 
+  it("lineups ranked by a rating use a 100-possession minimum, also in the link", async () => {
+    lineups.mockResolvedValue(
+      payload([
+        { team_id: 2, Players: "tiny", net_rtg: 233.3, total_poss: 5 },
+        { team_id: 2, Players: "real", net_rtg: 12.1, total_poss: 140 },
+      ]),
+    );
+    const r = await runTool("r1", { tool: "lineups", league: "il", query: { team: "2" }, sort: byNet }, later);
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.rows.map((x) => x.cells.Players)).toEqual(["real"]);
+    const stats = JSON.parse(new URL(r.link!, "http://x").searchParams.get("stats")!);
+    expect(stats).toEqual([{ col: "total_poss", op: "ge", value: 100 }]);
+    expect(r.extras).toMatchObject({ min_poss: "100" });
+  });
+
+  it("an explicit stats filter, or a volume sort, gets no automatic minimum", async () => {
+    lineups.mockResolvedValue(payload([{ team_id: 2, Players: "tiny", net_rtg: 233.3, total_poss: 5 }]));
+    const all = await runTool(
+      "r1",
+      { tool: "lineups", league: "il", query: { team: "2", stats: "[]" }, sort: byNet },
+      later,
+    );
+    const byPoss = await runTool(
+      "r1",
+      { tool: "lineups", league: "il", query: { team: "2" }, sort: { key: "total_poss", desc: true } },
+      later,
+    );
+    expect([all, byPoss].map((r) => ("rows" in r ? r.rows.length : -1))).toEqual([1, 1]);
+  });
+
   it("link carries the query and page", async () => {
     const r = await runTool(
       "r1",
-      { tool: "lineups", league: "il", query: { season: "2027", team: "2", size: "5" }, sort: byNet },
+      { tool: "lineups", league: "il", query: { season: "2027", team: "2", size: "5" }, sort: { key: "total_poss", desc: true } },
       later,
     );
     expect(r).toMatchObject({ link: "/il/lineups?season=2027&team=2&size=5" });

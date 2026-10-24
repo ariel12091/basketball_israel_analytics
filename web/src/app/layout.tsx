@@ -40,7 +40,7 @@ export default function RootLayout({
         {/* The same font and icon sources as shared_head_tags() in global.R. */}
         <link
           rel="stylesheet"
-          href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..112,500..800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap"
+          href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@75..112,500..800&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600;700&family=Heebo:wght@400;500;600;700&display=swap"
         />
         <link
           rel="stylesheet"
