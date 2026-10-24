@@ -120,7 +120,9 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 .ibpl-ask-error { color: var(--ibpl-neg, #e06c5a); margin: 4px 0; }
 /* Readable text: a Hebrew-capable face, larger size and line height, and the
    answer's own line breaks (lists) kept. */
-.ibpl-ask-panel { font-family: "Heebo", "Inter", "DM Sans", system-ui, sans-serif; font-size: 15px; }
+/* The app's DM Sans for Latin text; DM Sans has no Hebrew letters, so the
+   browser takes those from Heebo. */
+.ibpl-ask-panel { font-family: "DM Sans", "Heebo", system-ui, sans-serif; font-size: 15px; }
 .ibpl-ask-answer p { margin-bottom: 8px; overflow-wrap: anywhere; white-space: pre-line; line-height: 1.6; font-size: 15px; }
 .ibpl-ask-answer p[lang="he"] { font-size: 16px; line-height: 1.7; }
 .ibpl-ask-question { font-size: 15px; }

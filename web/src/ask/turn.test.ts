@@ -119,6 +119,22 @@ describe("askTurn", () => {
     expect(answer.fallback).toBe(false);
   });
 
+  it("a repeat that differs only in limit or filter order is still a duplicate", async () => {
+    const overview: ToolCall = { tool: "team_overview", league: "il", query: { season: "2027", team_id: "2" } };
+    const again: ToolCall = { tool: "team_overview", league: "il", query: { team_id: "2", season: "2027" }, limit: 5 };
+    const p = scriptedProvider([tc("c1", overview), tc("c2", again), { text: "{{r1.row1.Players}}" }]);
+    await run("q", p);
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("a repeat asking for more rows than the first is run again", async () => {
+    const few: ToolCall = { ...call, sort: { key: "net_rtg", desc: true }, limit: 3 };
+    const more: ToolCall = { ...few, limit: 10 };
+    const p = scriptedProvider([tc("c1", few), tc("c2", more), { text: "{{r1.row1.Players}}" }]);
+    await run("q", p);
+    expect(runTool).toHaveBeenCalledTimes(2);
+  });
+
   it("only the most recent earlier lookups are re-run", async () => {
     const many = Array.from({ length: 3 }, (_, i) => ({ question: `q${i}`, answer: "a", calls: [call, call, call, call] }));
     const p = scriptedProvider([{ text: "ok" }]);

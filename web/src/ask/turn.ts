@@ -132,10 +132,19 @@ export async function* askTurn(
   // keeps its MAX_CALLS lookups (it used to inherit the earlier turn's four).
   // The same lookup twice in one question returns the first result (same id)
   // instead of spending another of the question's lookups.
-  const done = new Map<string, ToolResult | ToolError>();
+  const done = new Map<string, { result: ToolResult; limit: number }>();
   async function* execute(id: string, call: ToolCall, rerun = false) {
-    const key = JSON.stringify(call);
-    if (!rerun && done.has(key)) return done.get(key)!;
+    // Same tool, league, filters (in any order) and sort; the limit only
+    // matters when this call asks for more rows than the earlier one got.
+    const key = JSON.stringify([
+      call.tool,
+      call.league,
+      Object.entries(call.query).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      call.sort ?? null,
+    ]);
+    const limit = call.limit ?? 5;
+    const prior = done.get(key);
+    if (!rerun && prior && prior.limit >= limit) return prior.result;
     if (!rerun && calls >= MAX_CALLS) {
       const err: ToolError = { id, call, error: "Tool call limit reached for this question", param: null };
       all.push(err);
@@ -146,7 +155,7 @@ export async function* askTurn(
     const r = await runTool(id, call, deadline);
     all.push(r);
     // Only successes are reused: a failed lookup (a timeout) may be retried.
-    if (!rerun && isResult(r)) done.set(key, r);
+    if (!rerun && isResult(r)) done.set(key, { result: r, limit });
     return r;
   }
 
