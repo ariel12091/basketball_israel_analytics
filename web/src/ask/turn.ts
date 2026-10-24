@@ -29,6 +29,7 @@ export type AskAnswer = {
 export type TurnEvent = { type: "status"; text: string } | { type: "final"; answer: AskAnswer };
 
 const MAX_CALLS = 4;
+const MAX_RERUNS = 6;
 const TOOL_BUDGET_MS = 40_000;
 const MAX_STEPS = 8;
 const FALLBACK = {
@@ -120,29 +121,44 @@ export async function* askTurn(
   const messages: ProviderMessage[] = [];
   let calls = 0;
 
-  async function* execute(id: string, call: ToolCall) {
-    if (calls >= MAX_CALLS) {
+  // Re-running earlier turns' lookups has its own budget, so a follow-up always
+  // keeps its MAX_CALLS lookups (it used to inherit the earlier turn's four).
+  // The same lookup twice in one question returns the first result (same id)
+  // instead of spending another of the question's lookups.
+  const done = new Map<string, ToolResult | ToolError>();
+  async function* execute(id: string, call: ToolCall, rerun = false) {
+    const key = JSON.stringify(call);
+    if (!rerun && done.has(key)) return done.get(key)!;
+    if (!rerun && calls >= MAX_CALLS) {
       const err: ToolError = { id, call, error: "Tool call limit reached for this question", param: null };
       all.push(err);
       return err;
     }
-    calls++;
+    if (!rerun) calls++;
     yield { type: "status" as const, text: `Reading ${TOOL_LABELS[call.tool] ?? call.tool}…` };
     const r = await runTool(id, call, deadline);
     all.push(r);
+    // Only successes are reused: a failed lookup (a timeout) may be retried.
+    if (!rerun && isResult(r)) done.set(key, r);
     return r;
   }
 
   // Earlier turns: their questions and answers, and their tool calls re-run
   // here so every number comes from this server, never from the browser.
-  if (opts.followups)
-    for (const h of cleanHistory(input.history)) {
+  if (opts.followups) {
+    const history = cleanHistory(input.history);
+    // Only the most recent MAX_RERUNS earlier lookups are re-run; older turns
+    // keep their question and answer text.
+    const total = history.reduce((n, h) => n + h.calls.length, 0);
+    let seen = 0;
+    for (const h of history) {
       messages.push({ role: "user", text: h.question });
       const reran: { id: string; content: unknown }[] = [];
       const toolCalls = [];
       for (const call of h.calls) {
+        if (seen++ < total - MAX_RERUNS) continue;
         const id = `r${all.length + 1}`;
-        const r = yield* execute(id, call);
+        const r = yield* execute(id, call, true);
         toolCalls.push({ id, call });
         reran.push({ id, content: forModel(r) });
       }
@@ -152,6 +168,7 @@ export async function* askTurn(
       }
       messages.push({ role: "assistant", text: h.answer });
     }
+  }
   messages.push({ role: "user", text: input.question });
 
   const system = systemPrompt(input.league),

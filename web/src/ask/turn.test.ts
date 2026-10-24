@@ -76,7 +76,9 @@ describe("askTurn", () => {
   });
 
   it("fifth tool call is refused with a tool error", async () => {
-    const five = { toolCalls: [1, 2, 3, 4, 5].map((i) => ({ id: `c${i}`, call })) };
+    const five = {
+      toolCalls: [1, 2, 3, 4, 5].map((i) => ({ id: `c${i}`, call: { ...call, query: { team: String(i) } } })),
+    };
     const p = scriptedProvider([five, { text: "{{r1.row1.Players}}" }]);
     await run("q", p);
     expect(runTool).toHaveBeenCalledTimes(4);
@@ -99,6 +101,29 @@ describe("askTurn", () => {
     expect(runTool).toHaveBeenCalledWith("r1", call, 40_000);
     expect(answer.text).toBe("Again A - B");
     expect(JSON.stringify(p.seen[0])).not.toContain("99");
+  });
+
+  it("re-running earlier lookups does not use up the follow-up's own lookups", async () => {
+    // The first question used all four lookups; the follow-up still gets four.
+    const earlier = { question: "how are they doing?", answer: "x", calls: [call, call, call, call] };
+    const p = scriptedProvider([tc("c1"), { text: "Best: {{r5.row1.Players}}." }]);
+    const { answer } = await run("and their top lineups?", p, [earlier] as never);
+    expect(answer.errors).toEqual([]);
+    expect(answer).toMatchObject({ text: "Best: A - B.", fallback: false });
+  });
+
+  it("an identical lookup in the same question reuses the first result", async () => {
+    const p = scriptedProvider([tc("c1"), tc("c2"), { text: "Best: {{r1.row1.Players}}." }]);
+    const { answer } = await run("q", p);
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(answer.fallback).toBe(false);
+  });
+
+  it("only the most recent earlier lookups are re-run", async () => {
+    const many = Array.from({ length: 3 }, (_, i) => ({ question: `q${i}`, answer: "a", calls: [call, call, call, call] }));
+    const p = scriptedProvider([{ text: "ok" }]);
+    await run("next?", p, many as never);
+    expect(runTool).toHaveBeenCalledTimes(6);
   });
 
   it("followups disabled ignores history", async () => {

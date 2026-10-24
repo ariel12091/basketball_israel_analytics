@@ -106,20 +106,19 @@ function prepare(entry: (typeof TOOLS)[ToolName], call: ToolCall): Prepared {
 }
 
 /** Lineups ranked by a rating need a sample: the Home hub's 100 possessions,
- * applied through the Lineups page's own stat filter so the link shows the same
- * list. Not when the model set `stats` itself or ranks by volume. */
-const LINEUP_MIN_POSS = 100;
+ * stepping down to 50 and 25 early in a season until LINEUP_MIN_ROWS qualify.
+ * Applied through the Lineups page's own stat filter, so the link shows the
+ * same list. Not when the model set `stats` itself or ranks by volume. */
+const LINEUP_MIN_POSS = [100, 50, 25];
+const LINEUP_MIN_ROWS = 3;
 const VOLUME = new Set(["total_poss", "minutes", "off_poss", "def_poss", "off_pts", "def_pts"]);
-function withSampleMinimum(call: ToolCall): ToolCall {
+function sampleMinimums(call: ToolCall): ToolCall[] {
   if (call.tool !== "lineups" || !call.sort || "stats" in call.query || VOLUME.has(call.sort.key))
-    return call;
-  return {
+    return [call];
+  return LINEUP_MIN_POSS.map((value) => ({
     ...call,
-    query: {
-      ...call.query,
-      stats: JSON.stringify([{ col: "total_poss", op: "ge", value: LINEUP_MIN_POSS }]),
-    },
-  };
+    query: { ...call.query, stats: JSON.stringify([{ col: "total_poss", op: "ge", value }]) },
+  }));
 }
 
 /** {{rN.min_poss}}: a possession minimum the rows were filtered by. */
@@ -138,7 +137,8 @@ export async function runTool(
   requested: ToolCall,
   deadlineAt: number,
 ): Promise<ToolResult | ToolError> {
-  const call = withSampleMinimum(requested);
+  const candidates = sampleMinimums(requested);
+  let call = candidates[0];
   const fail = (error: string, param: string | null = null): ToolError => ({
     id,
     call,
@@ -163,6 +163,15 @@ export async function runTool(
         ? await listTeams(call.league, prep.api)
         : await entry.answer!(call.league, prep.api);
     flat = flatten(entry.name, call.league, payload, prep.page);
+    // A lower minimum changes only the page's own filter, not the request, so
+    // the same payload is re-filtered; the first that leaves enough rows wins.
+    for (const next of candidates.slice(1)) {
+      if (flat.rows.length >= LINEUP_MIN_ROWS) break;
+      const p = prepare(entry, next);
+      if ("error" in p) break;
+      call = next;
+      flat = flatten(entry.name, call.league, payload, p.page);
+    }
   } catch (e) {
     if (e instanceof ParamError) return fail(e.message, e.param);
     if (e instanceof DeadlineError || e instanceof BusyError)

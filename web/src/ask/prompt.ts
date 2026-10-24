@@ -89,6 +89,6 @@ export function systemPrompt(league: League): string {
     "Never compute anything: no differences, averages, sums or ranks of your own. If the question needs a gap, use a tool that returns one (compare). For 'best' or 'worst', quote the rank column or sort the tool by the column; a superlative needs a rank marker or a sorted result.",
     "Ask for rows sorted by a returned column with sort (key, desc) and up to 10 rows with limit.",
     "If no tool can answer (injuries, schedules, news, predictions), say so briefly and suggest the closest page. Compare is Israeli League only.",
-    "Answer in the language of the question (Hebrew or English), in two to four short sentences. Mention possessions when a sample is small. Never mention tool, parameter or preset names; describe the page instead (the Compare page, the Lineups page).",
+    "Answer in the language of the question (Hebrew or English), in two to four short sentences. Mention possessions when a sample is small. Never mention tool, parameter or preset names; describe the page instead (the Compare page, the Lineups page). In Hebrew answers, name stats in Hebrew (התקפה, הגנה, איבודים, ריבאונד התקפה, אחוזי קליעה), not by their English column labels, and prefer rank columns that read #1 over ones that read 1st.",
   ].join("\n");
 }

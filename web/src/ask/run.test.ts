@@ -190,14 +190,33 @@ describe("runTool: errors, sorting, limits, links", () => {
       payload([
         { team_id: 2, Players: "tiny", net_rtg: 233.3, total_poss: 5 },
         { team_id: 2, Players: "real", net_rtg: 12.1, total_poss: 140 },
+        { team_id: 2, Players: "real2", net_rtg: 8.4, total_poss: 120 },
+        { team_id: 2, Players: "real3", net_rtg: 3.2, total_poss: 101 },
       ]),
     );
     const r = await runTool("r1", { tool: "lineups", league: "il", query: { team: "2" }, sort: byNet }, later);
     if (!("rows" in r)) throw new Error(r.error);
-    expect(r.rows.map((x) => x.cells.Players)).toEqual(["real"]);
+    expect(r.rows.map((x) => x.cells.Players)).toEqual(["real", "real2", "real3"]);
     const stats = JSON.parse(new URL(r.link!, "http://x").searchParams.get("stats")!);
     expect(stats).toEqual([{ col: "total_poss", op: "ge", value: 100 }]);
     expect(r.extras).toMatchObject({ min_poss: "100" });
+  });
+
+  it("early in a season the minimum steps down (100, 50, 25) until 3 lineups qualify", async () => {
+    lineups.mockResolvedValue(
+      payload([
+        { team_id: 2, Players: "a", net_rtg: 30, total_poss: 120 },
+        { team_id: 2, Players: "b", net_rtg: 20, total_poss: 60 },
+        { team_id: 2, Players: "c", net_rtg: 10, total_poss: 55 },
+        { team_id: 2, Players: "tiny", net_rtg: 99, total_poss: 8 },
+      ]),
+    );
+    const r = await runTool("r1", { tool: "lineups", league: "il", query: { team: "2" }, sort: byNet }, later);
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.rows.map((x) => x.cells.Players)).toEqual(["a", "b", "c"]);
+    expect(r.extras).toMatchObject({ min_poss: "50" });
+    expect(r.link).toContain(encodeURIComponent('"value":50'));
+    expect(lineups).toHaveBeenCalledTimes(1);
   });
 
   it("an explicit stats filter, or a volume sort, gets no automatic minimum", async () => {
