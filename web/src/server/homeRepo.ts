@@ -8,6 +8,7 @@ import type { Row } from "../rules/gameLogs";
 import type { HomeFrames } from "../rules/home";
 import ui from "../data/shinyUi.json";
 import home from "../data/homeUi.json";
+import { applyPlayerNames, readPlayerNames } from "./playerNames";
 export function parseHome(s: URLSearchParams) {
   const season = s.get("season") ?? ui.defaultGameYear,
     team = s.get("team_id") ?? "";
@@ -126,6 +127,10 @@ export async function readHome(q: Query, p: ReturnType<typeof parseHome>) {
       (await safe("storylines", sql.storylines_dynamic, [p.season])) ??
       [];
   }
+  const names = await readPlayerNames(q, "il", p.season);
+  frames.onoff = applyPlayerNames(frames.onoff, names);
+  frames.traditional = applyPlayerNames(frames.traditional, names);
+  frames.lineups = applyPlayerNames(frames.lineups, names);
   frames.last_games =
     (await safe("last_games", home.sql.hub_fetch_last_games, [p.season])) ?? [];
   // A recovered reader is not a missing section; expose only unavailable data.

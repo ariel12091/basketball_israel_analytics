@@ -6,6 +6,7 @@ import { readTabReferences } from "./onoffRepo";
 import { readVersion } from "./gameLogsRepo";
 import { playerPopulation, type Identity } from "../rules/playerStatsTable";
 import type { League, Row } from "../rules/gameLogs";
+import { namedPicker, readPlayerNames } from "./playerNames";
 const call = (name: string, types: string[]) =>
   `SELECT * FROM ${name}(${types.map((t, i) => `$${i + 1}::${t}`).join(",")})`;
 export function parsePlayerStats(s: URLSearchParams, league: League) {
@@ -126,7 +127,11 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
   return {
     rows: playerPopulation(raw, identities, c.teams),
     identities,
-    players,
+    players: namedPicker(
+      players,
+      await readPlayerNames(q, c.league, c.season),
+      "player_name",
+    ),
     meta: {
       ...(await readTabReferences(q, c)),
       version: await readVersion(q, c.league),

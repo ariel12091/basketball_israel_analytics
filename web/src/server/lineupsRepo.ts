@@ -3,6 +3,7 @@ import { withSnapshot, Deadline, type Query } from "./db";
 import { dbArgs, needsFilteredPath } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
 import { readTabReferences } from "./onoffRepo";
+import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
 import type { LineupParams } from "./lineupParams";
 import type { Row } from "../rules/gameLogs";
 import { euroLineupRates, rankLineups } from "../rules/lineups";
@@ -151,6 +152,7 @@ async function read(q: Query, p: LineupParams) {
   // The Euro filtered reader returns player_ids as a PostgreSQL array; preserve
   // it for the same local membership predicate as the season view.
   rows = rankLineups(euro ? euroLineupRates(rows) : rows, euro);
+  rows = applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season));
   const meta = await readTabReferences(q, c);
   const teams = euro
     ? meta.teams
@@ -216,8 +218,13 @@ export function getLineupRoster(p: LineupParams) {
       const k = `${r.team_id}|${r.player_id}`;
       sums.set(k, (sums.get(k) ?? 0) + Number(r.minutes ?? 0));
     }
+    const named = namedPicker(
+      players,
+      await readPlayerNames(q, c.league, c.season),
+      "name",
+    );
     return {
-      rows: players.map((r) => ({
+      rows: named.map((r) => ({
         ...r,
         minutes: sums.get(`${r.team_id}|${r.player_id}`) ?? null,
       })),

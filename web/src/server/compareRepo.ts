@@ -5,6 +5,7 @@ import { parseLineups } from "./lineupParams";
 import { dbArgs, seasonBounds } from "./contextParams";
 import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
+import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
 import { addUsagePct, normalizeTsRows } from "../rules/playerStats";
 import { playerIds } from "../rules/lineups";
 import data from "../data/compareUi.json";
@@ -297,7 +298,10 @@ async function read(s: URLSearchParams, p: Params) {
       };
     if (p.kind !== "refs")
       return {
-        rows: await readCompareFacts(q, p),
+        rows: applyPlayerNames(
+          await readCompareFacts(q, p),
+          await readPlayerNames(q, "il", p.c.season),
+        ),
         meta: { version, key: s.toString() },
       };
     const catalogue = (
@@ -313,6 +317,11 @@ async function read(s: URLSearchParams, p: Params) {
       "SELECT team_id,player_id,MIN(btrim(firstname)||' '||btrim(lastname)) AS name FROM basketball_test.full_rosters WHERE game_year=$1 GROUP BY team_id,player_id ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
       [p.c.season],
     );
+    const named = namedPicker(
+      players,
+      await readPlayerNames(q, "il", p.c.season),
+      "name",
+    );
     const rounds = await q<Row>(
       "SELECT DISTINCT gn FROM basketball_test.final_schedule_mv WHERE game_year=$1 AND gn IS NOT NULL ORDER BY gn",
       [p.c.season],
@@ -320,7 +329,7 @@ async function read(s: URLSearchParams, p: Params) {
     return {
       rows: [],
       teams,
-      players,
+      players: named,
       rounds: rounds.map((r) => Number(r.gn)),
       meta: { version, key: s.toString() },
     };

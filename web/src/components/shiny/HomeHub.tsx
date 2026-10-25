@@ -101,7 +101,7 @@ export default function HomeHub({
                           key={`${p.team_id}:${p.player_id ?? `${p["First Name"]}:${p["Last Name"]}`}`}
                         >
                           <span className="hub-player-name">
-                            {p["First Name"]} {p["Last Name"]}
+                            {p.Player ?? `${p["First Name"]} ${p["Last Name"]}`}
                           </span>
                           <span
                             className={

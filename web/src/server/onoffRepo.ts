@@ -3,6 +3,7 @@ import { withSnapshot, Deadline, type Query } from "./db";
 import type { Row } from "../rules/gameLogs";
 import { dbArgs, needsFilteredPath, type Context } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
+import { applyPlayerNames, readPlayerNames } from "./playerNames";
 import {
   addFfRanks,
   cleanDisplayNames,
@@ -181,7 +182,9 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   }
   const meta = await readTabReferences(q, c);
   return {
-    rows: cleanDisplayNames(rows),
+    rows: cleanDisplayNames(
+      applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season)),
+    ),
     league3p: league3p(mv),
     filtered,
     version,
