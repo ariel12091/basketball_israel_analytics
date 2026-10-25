@@ -30,6 +30,7 @@ export type TurnEvent = { type: "status"; text: string } | { type: "final"; answ
 
 const MAX_CALLS = 4;
 const MAX_RERUNS = 6;
+const MAX_RETRIES = 2;
 const TOOL_BUDGET_MS = 40_000;
 const MAX_STEPS = 8;
 const FALLBACK = {
@@ -202,7 +203,7 @@ export async function* askTurn(
   const system = systemPrompt(input.league),
     tools = toolSchemas();
   const ctrl = new AbortController();
-  let retried = false;
+  let retries = 0;
   const rejected: { text: string; problems: string[] }[] = [];
   const finish = (text: string | null, used: Evidence[], fallback: boolean): TurnEvent => {
     const results = all.filter(isResult);
@@ -260,7 +261,9 @@ export async function* askTurn(
     let filled = fillAndVerify(
       text,
       results,
-      input.question,
+      // Numbers the visitor used anywhere in the conversation ("top 5" two
+      // questions ago) may be repeated.
+      [...(opts.followups ? input.history.map((h) => String(h.question ?? "")) : []), input.question].join("\n"),
       seasonLabel(input.league, results.map((r) => r.call)),
       lang,
     );
@@ -294,8 +297,8 @@ export async function* askTurn(
       return;
     }
     rejected.push({ text, problems: filled.problems });
-    if (retried) break;
-    retried = true;
+    if (retries >= MAX_RETRIES) break;
+    retries++;
     messages.push({ role: "assistant", text, raw: reply.raw });
     messages.push({
       role: "user",

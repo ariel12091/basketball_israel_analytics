@@ -71,7 +71,7 @@ describe("askTurn", () => {
     expect(answer).toMatchObject({ fallback: true, links: ["/il/lineups?team=2"] });
     expect(answer.text).toMatch(/page that answers/);
     // Why the check rejected each attempt, for the log and the eval.
-    expect(answer.rejected).toHaveLength(2);
+    expect(answer.rejected).toHaveLength(3);
     expect(answer.rejected[1]).toEqual({ text: "Still 7.3", problems: [expect.stringContaining("7.3")] });
   });
 
@@ -261,6 +261,27 @@ describe("askTurn", () => {
     const p = scriptedProvider([tc(), { text: "{{r1.row1.Players}}: מינימום החזקות, החזקה אחת, ב-חזקות" }]);
     const { answer } = await run("מה החמישייה?", p);
     expect(answer.text).toBe("A - B: מינימום פוזשנים, פוזשן אחת, ב-פוזשנים");
+  });
+
+  it("numbers from earlier questions in the conversation may be repeated", async () => {
+    const earlier = { question: "top 5 2-man lineups of Maccabi", answer: "x", calls: [] };
+    const p = scriptedProvider([tc(), { text: "Of those five, {{r1.row1.Players}} stands out." }]);
+    const { answer } = await run("what are they good at?", p, [earlier] as never);
+    expect(answer.fallback).toBe(false);
+  });
+
+  it("an incomplete marker gets a retry message showing the full form", async () => {
+    const p = scriptedProvider([tc(), { text: "{{r1.row1}} leads" }, { text: "{{r1.row1.Players}} leads" }]);
+    const { answer } = await run("q", p);
+    expect(p.seen[2].at(-1)!.text).toMatch(/\{\{r1\.row1\.<column>\}\}/);
+    expect(answer.fallback).toBe(false);
+  });
+
+  it("two retries before the fallback", async () => {
+    const p = scriptedProvider([tc(), { text: "7" }, { text: "8" }, { text: "{{r1.row1.Players}}" }]);
+    const { answer } = await run("q", p);
+    expect(answer).toMatchObject({ fallback: false, text: "A - B" });
+    expect(answer.rejected).toHaveLength(2);
   });
 
   it("a refusal becomes the fallback", async () => {

@@ -17,7 +17,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   team_overview:
     "Israeli Home hub for one team: record, ratings with league ranks, four-factor ranks, key players, top scorer, best and worst five-man lineups (100+ possessions), storylines, last game. Best for 'what is team X good at'. query: season, team_id.",
   lineups:
-    "Lineups page: player combinations of a team with possessions, offensive, defensive and net rating. query: season, team (team id), size (2-5, default 5), view (summary|four_factors), players_on, players_off (player ids, comma separated), plus the shared game filters and clutch (true) with clutch_status. The page sets its own minimum possessions; check total_poss before calling a lineup best.",
+    "Lineups page: player combinations of a team with possessions, offensive, defensive and net rating. query: season, team (team id), size (2-5, default 5), view (summary|four_factors), players_on, players_off (player ids, comma separated), plus the shared game filters and clutch (true) with clutch_status. The page sets its own minimum possessions; check total_poss before calling a lineup best. For what lineups are good or bad at, use view four_factors (shooting eFG%, turnovers TOV%, offensive rebounds OREB%, free throws FTR, each for offense and defense).",
   lineup_games:
     "Game-by-game log of one lineup. query: season, team, hash (the lineup's sub_lineup_hash from the lineups tool), view.",
   lineup_roster:

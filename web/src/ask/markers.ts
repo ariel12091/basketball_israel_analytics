@@ -60,7 +60,9 @@ export function fillAndVerify(
       problems.push(
         text === ""
           ? `Marker {{${body}}} points at an empty cell`
-          : `Marker {{${body}}} does not point at a quotable cell`,
+          : !rest.length && rowId
+            ? `Marker {{${body}}} is missing its column: write {{${body}.<column>}} with a column from "quotable"`
+            : `Marker {{${body}}} does not point at a quotable cell`,
       );
       filled.push("");
     } else {
