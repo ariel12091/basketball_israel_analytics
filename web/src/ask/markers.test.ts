@@ -103,6 +103,23 @@ describe("fillAndVerify", () => {
     expect(fill("{{r1.row1.Players}} עלתה לשלוש נקודות").ok).toBe(false);
   });
 
+  it("Hebrew 'both' (שני/שתי + the article, השניים) is allowed; counts stay rejected", () => {
+    // 2026-10-25: a correct Madar/Colson answer was rejected for "לשני המצבים".
+    for (const t of [
+      "כשבונזי קולסון ויים מדר יחד, לשני המצבים {{r1.row1.net_rtg}}",
+      "שני השחקנים יחד: {{r1.row1.net_rtg}}",
+      "שילוב השניים: {{r1.row1.net_rtg}}",
+      "בשתי הקבוצות {{r1.row1.net_rtg}}",
+    ])
+      expect(fill(t).ok, t).toBe(true);
+    for (const t of [
+      "{{r1.row1.Players}} ספגה שני הפסדים",
+      "{{r1.row1.Players}} שיחקה שתי הארכות",
+      "{{r1.row1.Players}} שני משחקים",
+    ])
+      expect(fill(t).ok, t).toBe(false);
+  });
+
   it("a number word's problem says how to fix a count of the answer's own points", () => {
     // "in three areas" counts the answer's list, which no marker can quote.
     const r = fill("{{r1.row1.Players}} טובה בשלושה תחומים");

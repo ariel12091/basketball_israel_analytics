@@ -28,7 +28,15 @@ export function withoutTerms(text: string): string {
       " ",
     )
     // "השני" / "השנייה" (with the article) is only ever "the second": a position.
-    .replace(/(?<!\p{L})[ובלמשכ]?השני(?:יה)?(?!\p{L})/gu, " ");
+    .replace(/(?<!\p{L})[ובלמשכ]?השני(?:יה)?(?!\p{L})/gu, " ")
+    // "שני השחקנים", "לשני המצבים", "השניים": "both", not a count from the data.
+    // A noun whose own root starts with ה is still a count ("שני הפסדים",
+    // "שתי הארכות").
+    .replace(
+      /(?<!\p{L})[ובלמשכ]?(?:שני|שתי)(?=\s+ה(?!פסד|ארכ|חטא|גנ|כרע|ופע)\p{L})/gu,
+      " ",
+    )
+    .replace(/(?<!\p{L})[ובלמשכ]?ה(?:שניים|שתיים)(?!\p{L})/gu, " ");
 }
 
 /** The visitor's digits as words too: "top 5" lets the answer say "top five". */
