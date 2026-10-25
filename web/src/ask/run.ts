@@ -191,7 +191,9 @@ export async function runTool(
       ? displaySpec(entry.name, call.league, view)[key]
       : null;
     const value = (r: Record<string, unknown>) => {
-      if (!derived) return r[key];
+      // Tags (3PT luck, small sample) sort tagged rows first when desc.
+      if (typeof r[key] === "boolean") return r[key] ? 1 : 0;
+      if (!derived || key in r) return r[key];
       const n = parseFloat(derived.format(undefined, r).replace(/^\+/, ""));
       return Number.isFinite(n) ? n : null;
     };

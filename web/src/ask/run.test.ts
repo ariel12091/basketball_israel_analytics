@@ -71,6 +71,27 @@ describe("runTool: derived On/Off values", () => {
     if (!("rows" in r)) throw new Error(JSON.stringify(r));
     expect(r.rows.map((x) => x.cells.Player)).toEqual(["P2", "P3", "P1"]);
   });
+
+  it("sorts tagged rows first by a tag", async () => {
+    // The page rules set sample_flag themselves: P10 has few possessions and
+    // the top net impact, so it is the one tagged.
+    const row = (id: number) => ({
+      team_id: 2, player_id: id, Team: "M", Player: `P${id}`,
+      "ON Poss": id === 10 ? 20 : 800, "OFF Poss": 800, "Net RTG Diff": id === 10 ? 40 : id,
+    });
+    onoff.mockResolvedValue({
+      rows: Array.from({ length: 10 }, (_, i) => row(i + 1)),
+      league3p: null,
+      meta: { view: "summary", version: "v1" },
+    });
+    const r = await runTool(
+      "r1",
+      { tool: "onoff", league: "il", query: { teams: "2", min_all: "0", min_on: "0" }, sort: { key: "sample_flag", desc: true } },
+      later,
+    );
+    if (!("rows" in r)) throw new Error(JSON.stringify(r));
+    expect(r.rows[0].cells).toMatchObject({ Player: "P10", sample_flag: true });
+  });
 });
 
 describe("runTool: page tools build their request as the page does", () => {
