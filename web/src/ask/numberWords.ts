@@ -20,6 +20,11 @@ export function withoutTerms(text: string): string {
   return text
     .replace(/^[ \t]*\d{1,2}[.)][ \t]+/gm, " ")
     .replace(/\b(?:four[- ]factors?|(?:two|three)[- ]point(?:ers?)?|(?:two|three|four|five)[- ]man)\b/gi, " ")
+    // Hebrew "for two/three" after a shooting word is the shot type: "קליעה לשלוש".
+    .replace(
+      /(?<=(?:קליע|קלע|קול|זריק|זורק|ניסיונ|ניסיון|אחוז|מטווח)\p{L}*\s+)ל(?:שלוש|שתיים)(?!\p{L})/gu,
+      " ",
+    )
     // "השני" / "השנייה" (with the article) is only ever "the second": a position.
     .replace(/(?<!\p{L})[ובלמשכ]?השני(?:יה)?(?!\p{L})/gu, " ");
 }

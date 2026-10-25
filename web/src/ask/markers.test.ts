@@ -97,6 +97,12 @@ describe("fillAndVerify", () => {
       expect(fill(t).ok, t).toBe(false);
   });
 
+  it("the Hebrew shot terms 'לשלוש' / 'לשתיים' are terms, a bare count is not", () => {
+    expect(fill("אחוז הקליעה לשלוש {{r1.row1.net_rtg}}").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} זורקת הרבה ניסיונות לשתיים").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} עלתה לשלוש נקודות").ok).toBe(false);
+  });
+
   it("a number word's problem says how to fix a count of the answer's own points", () => {
     // "in three areas" counts the answer's list, which no marker can quote.
     const r = fill("{{r1.row1.Players}} טובה בשלושה תחומים");
