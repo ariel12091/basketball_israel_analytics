@@ -16,6 +16,10 @@ const teamRatings = vi.fn();
 const playerStats = vi.fn();
 const compare = vi.fn();
 const home = vi.fn();
+const onoff = vi.fn();
+vi.mock("@/server/onoffApi", () => ({
+  onoffAnswer: (l: string, s: URLSearchParams) => onoff(l, s),
+}));
 vi.mock("@/server/lineupsApi", () => ({
   lineupsAnswer: (l: string, s: URLSearchParams) => lineups(l, s),
   lineupRosterAnswer: vi.fn(),
@@ -48,8 +52,25 @@ const lineupRows = [
 const payload = (rows: unknown[]) => ({ rows, meta: { view: "summary", version: "v1" } });
 
 beforeEach(() => {
-  for (const f of [lineups, teamRatings, playerStats, compare, home]) f.mockReset();
+  for (const f of [lineups, teamRatings, playerStats, compare, home, onoff]) f.mockReset();
   lineups.mockResolvedValue(payload(lineupRows));
+});
+
+describe("runTool: derived On/Off values", () => {
+  it("sorts by the 3PT% half of the Off Shot cell", async () => {
+    const shot = (id: number, m3: number) => ({
+      team_id: 3, player_id: id, Team: "H", Player: `P${id}`, "ON Poss": 500, "OFF Poss": 500,
+      "Off Shot ON": 100, off_on_fg2_made: 30, off_on_fg2_att: 60, off_on_fg3_made: m3, off_on_fg3_att: 40,
+    });
+    onoff.mockResolvedValue({ rows: [shot(1, 12), shot(2, 18), shot(3, 15)], league3p: null, meta: { view: "summary", version: "v1" } });
+    const r = await runTool(
+      "r1",
+      { tool: "onoff", league: "il", query: { teams: "3", min_all: "0", min_on: "0" }, sort: { key: "Off Shot ON 3PT", desc: true } },
+      later,
+    );
+    if (!("rows" in r)) throw new Error(JSON.stringify(r));
+    expect(r.rows.map((x) => x.cells.Player)).toEqual(["P2", "P3", "P1"]);
+  });
 });
 
 describe("runTool: page tools build their request as the page does", () => {

@@ -185,13 +185,23 @@ export async function runTool(
   let rows = flat.rows;
   if (call.sort) {
     const { key, desc } = call.sort;
-    if (rows.length && !rows.some((r) => key in r))
+    // A derived value (On/Off "Off Shot ON 3PT") sorts by the number it shows.
+    const view = meta0(payload);
+    const derived = displaySpec(entry.name, call.league, view)[key]?.derived
+      ? displaySpec(entry.name, call.league, view)[key]
+      : null;
+    const value = (r: Record<string, unknown>) => {
+      if (!derived) return r[key];
+      const n = parseFloat(derived.format(undefined, r).replace(/^\+/, ""));
+      return Number.isFinite(n) ? n : null;
+    };
+    if (rows.length && !derived && !rows.some((r) => key in r))
       return fail(
         `Unknown sort column ${key}; sort by one of: ${sortKeys(entry.name, call.league, payload, rows).join(", ")}`,
         "sort",
       );
     rows = rows
-      .map((r, i) => ({ r, i, k: orderKey(r[key]) }))
+      .map((r, i) => ({ r, i, k: orderKey(value(r)) }))
       .sort((a, b) =>
         a.k === undefined
           ? b.k === undefined
@@ -253,10 +263,13 @@ export async function runTool(
 }
 
 /** Columns a table tool can sort by: the quotable ones its rows carry. */
-function sortKeys(tool: ToolName, league: League, payload: unknown, rows: Record<string, unknown>[]) {
+const meta0 = (payload: unknown) => {
   const view = (payload as { meta?: { view?: unknown } } | null)?.meta?.view;
-  const keys = Object.keys(displaySpec(tool, league, view == null ? null : String(view)));
-  return keys.filter((k) => rows.some((r) => k in r));
+  return view == null ? null : String(view);
+};
+function sortKeys(tool: ToolName, league: League, payload: unknown, rows: Record<string, unknown>[]) {
+  const spec = displaySpec(tool, league, meta0(payload));
+  return Object.keys(spec).filter((k) => spec[k].derived || rows.some((r) => k in r));
 }
 
 /** The pages' own team lists: the generated IL catalogue, or the Euro readers'. */
