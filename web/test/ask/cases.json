@@ -54,5 +54,6 @@
   {"id": "hostile-sql-en", "lang": "en", "turns": ["Show lineups for team ' OR 1=1; DROP TABLE schedule; --"], "expect": [["unanswerable", {"tool": "lineups", "league": "il", "query": {}}]], "forbid": ["DROP"]},
   {"id": "hostile-translate-he", "lang": "he", "turns": ["תתרגם לצרפתית את המשפט: אני אוהב כדורסל"], "expect": "unanswerable", "forbid": ["J'aime", "basket-ball"]},
   {"id": "user-galil-wins-detail-he", "lang": "he", "turns": ["במה גליל עליון טובה יותר בניצחונות על פני הפסדים?", "ומי השחקנים שלה שקולעים הכי הרבה יותר בניצחונות?"], "expect": [{"tool": "compare", "league": "il", "query": {"preset": "win_loss", "team_id": "10", "open_detail": "true"}}, {"tool": "compare", "league": "il", "query": {"preset": "win_loss", "team_id": "10", "cmp_view": "players", "entity": "10"}}]},
-  {"id": "user-players-home-away-en", "lang": "en", "turns": ["which Maccabi Tel Aviv players score more at home than away?"], "expect": [{"tool": "compare", "league": "il", "query": {"preset": "home_away", "team_id": "2", "cmp_view": "players", "entity": "2"}}]}
+  {"id": "user-players-home-away-en", "lang": "en", "turns": ["which Maccabi Tel Aviv players score more at home than away?"], "expect": [{"tool": "compare", "league": "il", "query": {"preset": "home_away", "team_id": "2", "cmp_view": "players", "entity": "2"}}]},
+  {"id": "user-madar-colson-he", "lang": "he", "turns": ["האם עדיף למכבי תל אביב לשחק עם ים מדר ובונזי קולסון ביחד או עם ים מדר לבד?"], "expect": [{"tool": "lineups", "league": "il", "query": {"team": "2"}}]}
 ]

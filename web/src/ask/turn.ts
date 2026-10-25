@@ -184,6 +184,9 @@ async function* turnEvents(
     yield { type: "status" as const, text: `Reading ${TOOL_LABELS[call.tool] ?? call.tool}…` };
     const r = await lifetime.wait(() => runTool(id, call, deadline));
     all.push(r);
+    // A call rejected for a bad parameter read nothing, so it does not use up
+    // one of the question's lookups (MAX_STEPS still bounds the retries).
+    if (!rerun && !isResult(r) && r.param != null) calls--;
     // Only successes are reused: a failed lookup (a timeout) may be retried.
     if (!rerun && isResult(r)) done.set(key, { result: r, limit });
     return r;

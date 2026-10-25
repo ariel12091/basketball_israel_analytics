@@ -21,7 +21,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   lineup_games:
     "Game-by-game log of one lineup. query: season, team, hash (the lineup's sub_lineup_hash from the lineups tool), view.",
   lineup_roster:
-    "A season's players per team with minutes, for picking player ids. query: season.",
+    "A season's players for every team, with team_id and minutes, for picking player ids. query: season only (no team filter; pick the team's rows by team_id).",
   onoff:
     "On/Off page: how each player's team performs with him on and off the floor. query: season, teams (comma separated ids), view (summary|four_factors|shot_profile), plus the shared game filters. The page sets its own possession minimums.",
   player_stats:

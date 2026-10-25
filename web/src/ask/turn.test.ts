@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { scriptedProvider } from "./providers/fake";
 import type { ToolCall, ToolError, ToolResult } from "./run";
+import type { Provider, ProviderReply } from "./providers/types";
 
 const runTool = vi.fn();
 vi.mock("./run", () => ({
@@ -39,6 +40,92 @@ beforeEach(() => {
 });
 
 describe("askTurn", () => {
+  it("clears the turn timer and detaches the request listener on success", async () => {
+    vi.useFakeTimers();
+    const parent = new AbortController();
+    const remove = vi.spyOn(parent.signal, "removeEventListener");
+    try {
+      const provider = scriptedProvider([{ text: "Hello" }]);
+      for await (const event of askTurn({ league: "il", question: "q", history: [] }, provider, { ...opts, signal: parent.signal })) {
+        expect(event.type).toBe("final");
+      }
+      expect(vi.getTimerCount()).toBe(0);
+      expect(remove).toHaveBeenCalledWith("abort", expect.any(Function));
+    } finally { remove.mockRestore(); vi.useRealTimers(); }
+  });
+
+  it("bounds a provider that ignores abort and ignores its late rejection", async () => {
+    vi.useFakeTimers();
+    let signal!: AbortSignal;
+    let reject!: (e: Error) => void;
+    const provider: Provider = {
+      name: "hung", model: "test",
+      reply: vi.fn((_system, _tools, _messages, s) => {
+        signal = s;
+        return new Promise<ProviderReply>((_resolve, no) => { reject = no; });
+      }),
+    };
+    try {
+      const turn = askTurn({ league: "il", question: "q", history: [] }, provider, opts);
+      const pending = expect(turn.next()).rejects.toMatchObject({ name: "TimeoutError" });
+      await vi.advanceTimersByTimeAsync(40_000);
+      await pending;
+      expect(signal.aborted).toBe(true);
+      reject(new Error("late provider failure"));
+      await Promise.resolve();
+      expect(vi.getTimerCount()).toBe(0);
+      expect(await turn.next()).toEqual({ done: true, value: undefined });
+    } finally { vi.useRealTimers(); }
+  });
+
+  it("aborts pending model work when the request disconnects", async () => {
+    const parent = new AbortController();
+    let signal!: AbortSignal;
+    let started!: () => void;
+    const ready = new Promise<void>((yes) => { started = yes; });
+    const provider: Provider = {
+      name: "hung", model: "test",
+      reply: vi.fn((_system, _tools, _messages, s) => {
+        signal = s; started();
+        return new Promise<ProviderReply>(() => {});
+      }),
+    };
+    const turn = askTurn({ league: "il", question: "q", history: [] }, provider, { ...opts, signal: parent.signal });
+    const pending = expect(turn.next()).rejects.toMatchObject({ name: "AbortError" });
+    await ready;
+    parent.abort();
+    await pending;
+    expect(signal.aborted).toBe(true);
+    expect(provider.reply).toHaveBeenCalledTimes(1);
+  });
+
+  it("does not start provider or history lookups for an already aborted request", async () => {
+    const parent = new AbortController(); parent.abort();
+    const provider = scriptedProvider([tc()]);
+    const turn = askTurn({ league: "il", question: "q", history: [{ question: "old", answer: "old", calls: [call] }] }, provider, { ...opts, signal: parent.signal });
+    await expect(turn.next()).rejects.toMatchObject({ name: "AbortError" });
+    expect(provider.seen).toHaveLength(0);
+    expect(runTool).not.toHaveBeenCalled();
+  });
+
+  it("does not run further model steps after cancellation during a shared tool read", async () => {
+    const parent = new AbortController();
+    let started!: () => void;
+    const ready = new Promise<void>((yes) => { started = yes; });
+    let finish!: (r: ToolResult) => void;
+    runTool.mockImplementation(() => { started(); return new Promise<ToolResult>((yes) => { finish = yes; }); });
+    const provider = scriptedProvider([tc(), { text: "late answer" }]);
+    const turn = askTurn({ league: "il", question: "q", history: [] }, provider, { ...opts, signal: parent.signal });
+    expect((await turn.next()).value).toMatchObject({ type: "status" });
+    const pending = expect(turn.next()).rejects.toMatchObject({ name: "AbortError" });
+    await ready;
+    parent.abort();
+    await pending;
+    finish(ok("r1"));
+    await Promise.resolve();
+    expect(provider.seen).toHaveLength(1);
+  });
+
   it("one tool call, then marker text -> final answer with link and evidence", async () => {
     const p = scriptedProvider([tc(), { text: "Best: {{r1.row1.Players}}, net {{r1.row1.net_rtg}}." }]);
     const { events, answer } = await run("top lineups of Maccabi", p);
@@ -85,6 +172,37 @@ describe("askTurn", () => {
     const results = p.seen[1].at(-1)!.toolResults!;
     expect(results).toHaveLength(5);
     expect(JSON.stringify(results[4].content)).toMatch(/limit/i);
+  });
+
+  it("a call rejected for a bad parameter does not use up a lookup", async () => {
+    // 2026-10-25: two `team=` guesses on lineup_roster left no lookups for the
+    // two Lineups reads the question needed.
+    runTool
+      .mockImplementationOnce(
+        async (id: string, c: ToolCall): Promise<ToolError> => ({ id, call: c, error: "Unknown parameter team", param: "team" }),
+      )
+      .mockImplementationOnce(
+        async (id: string, c: ToolCall): Promise<ToolError> => ({ id, call: c, error: "Unknown parameter teams", param: "teams" }),
+      );
+    const four = {
+      toolCalls: [1, 2, 3, 4].map((i) => ({ id: `d${i}`, call: { ...call, query: { team: String(i + 10) } } })),
+    };
+    const p = scriptedProvider([tc("c1"), tc("c2", { ...call, query: { team: "9" } }), four, { text: "{{r3.row1.Players}}" }]);
+    await run("q", p);
+    expect(runTool).toHaveBeenCalledTimes(6);
+    expect(JSON.stringify(p.seen[3].at(-1)!.toolResults)).not.toMatch(/limit/i);
+  });
+
+  it("a timed-out call still uses up a lookup", async () => {
+    runTool.mockImplementationOnce(
+      async (id: string, c: ToolCall): Promise<ToolError> => ({ id, call: c, error: "Timed out", param: null }),
+    );
+    const four = {
+      toolCalls: [1, 2, 3, 4].map((i) => ({ id: `d${i}`, call: { ...call, query: { team: String(i + 10) } } })),
+    };
+    const p = scriptedProvider([tc("c1"), four, { text: "{{r2.row1.Players}}" }]);
+    await run("q", p);
+    expect(runTool).toHaveBeenCalledTimes(4);
   });
 
   it("tool calls get the turn's 40 s deadline (runTool refuses after it)", async () => {
