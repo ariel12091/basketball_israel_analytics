@@ -97,6 +97,13 @@ describe("fillAndVerify", () => {
       expect(fill(t).ok, t).toBe(false);
   });
 
+  it("a number word's problem says how to fix a count of the answer's own points", () => {
+    // "in three areas" counts the answer's list, which no marker can quote.
+    const r = fill("{{r1.row1.Players}} טובה בשלושה תחומים");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problems.join(" ")).toMatch(/without counting/);
+  });
+
   it("allows number words the visitor used, and ordinary phrases", () => {
     expect(fill("The top five start with {{r1.row1.Players}}.", "top five lineups").ok).toBe(true);
     expect(fill("{{r1.row1.Players}} is one of the best units.").ok).toBe(true);

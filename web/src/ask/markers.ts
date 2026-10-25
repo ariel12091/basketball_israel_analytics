@@ -94,7 +94,9 @@ export function fillAndVerify(
   ]);
   for (const w of own.match(NUMBER_WORD) ?? [])
     if (!asked.has(bare(w)))
-      problems.push(`Number written as a word "${w}": use a marker for counts and ranks`);
+      problems.push(
+        `Number written as a word "${w}": quote a data count or rank with a marker; if it counts your own points or items ("in three areas"), rewrite the sentence without counting them`,
+      );
   if (problems.length) return { ok: false, problems };
   return {
     ok: true,
