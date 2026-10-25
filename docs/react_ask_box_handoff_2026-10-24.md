@@ -21,8 +21,36 @@ the page.
 |---|---|
 | 1-8, 11 | Done, committed and pushed on `sql/web-foundation` (da5c2b4..aee8576) |
 | 9 OpenAI adapter | Not started: user has no OpenAI account yet |
-| 10 Model comparison | Cases and script written; not run (needs API keys) |
+| 10 Model comparison | Anthropic key is in Vercel (Production + Preview); several eval runs done on Haiku 5.5, see "Update 2026-10-25" |
 | Final whole-branch review | Not done; run after Tasks 9-10 |
+
+## Update 2026-10-25 (latest; supersedes older lines below where they disagree)
+
+- Pushed through `97c7ae6`. Ready Preview with the latest code:
+  `https://ibpl-game-logs-64rwctf1f-ariel12091-8759.vercel.app` (Deployment
+  Protection on; reach it with `vercel curl /api/v1/ask --deployment <url>`).
+- **Compare now has three views in the chat** (`cmp_view`): `league` (the table),
+  `detail` (one team's or lineup's Detail grid: `preset` + `team_id` +
+  `open_detail=true`, the same link Home uses) and `players` (one team's players
+  under both sides: `preset` + `team_id` + `cmp_view=players` + `entity=<team id>`,
+  options `team_metric`, `team_rate`). Code: `src/ask/compareTool.ts`; the page and
+  the tool share `detailSections`, `gridGapText`, `contextText` in
+  `src/rules/compare.ts`. Compare's Players *mode* is still not in the chat.
+- Verified live: "במה גליל עליון טובה יותר בניצחונות על פני הפסדים?" opens Galil
+  Elion's Detail page, and the follow-up "ומי השחקנים שלה שקולעים הכי הרבה יותר
+  בניצחונות?" answers from Compare Players (wins vs losses per player, with gap).
+- Number words: the model used to count its own list items in words ("בשלושה
+  תחומים") and fall back after two retries. Fixed by the retry message (rewrite
+  without counting), a NUMBERS prompt line, and exempting Hebrew shot terms
+  (`קליעה לשלוש`) in `numberWords.ts`.
+- `test/ask/cases.json`: 56 cases (incl. hostile ones and the two new Compare
+  cases). A full eval run on 64rwctf1f was started 2026-10-25 and was 36/56, all
+  right tool and verified, when the session ended for a restart; rerun it:
+  `node --import tsx scripts/ask-eval.ts --base <preview url>` from PowerShell in `web/`.
+- Known rough edges (not requested): Hebrew phrasing is clumsy; Compare's context
+  string ("3 GP | 3-0 | 234 Poss") is English inside Hebrew answers; the model
+  sometimes calls the league table before Detail (one extra lookup); the players
+  routing is prompt-only, so a differently worded question may still pick Player Stats.
 
 **Off by default.** The panel and `POST /api/v1/ask` exist only when
 `ASK_ENABLED=true`. With it on and no key, a real question fails with an error.
@@ -87,8 +115,8 @@ the page.
 - The Lineups page's automatic minimum is 0 possessions for a single team, so
   the page itself ranks tiny samples first; the tool mirrors it. Use
   `team_overview` for best/worst lineup with 100+ possessions.
-- Compare in the chat is the league table only (no detail or players views);
-  Players mode is not in v1. `gameflow` is link-only.
+- Compare in the chat: league table, Detail and team players views (since
+  2026-10-25); Players mode is not in v1. `gameflow` is link-only.
 - Hebrew-letter numerals and number words are not machine-checked (ת״א is an
   abbreviation); the eval flags number words.
 - The Ask button floats bottom-right instead of in the navbar (no spare navbar
