@@ -44,8 +44,9 @@ the page.
   without counting), a NUMBERS prompt line, and exempting Hebrew shot terms
   (`קליעה לשלוש`) in `numberWords.ts`.
 - `test/ask/cases.json`: 56 cases (incl. hostile ones and the two new Compare
-  cases). A full eval run on 64rwctf1f was started 2026-10-25 and was 36/56, all
-  right tool and verified, when the session ended for a restart; rerun it:
+  cases). Eval 2026-10-25 on 64rwctf1f (Haiku 5.5): 62 turns, 0 errors, 100%
+  verified, 98% right tool, $0.10; the two flags were eval-scoring bugs (fixed
+  b55f8f6), so by the app's own rules it was clean. Rerun with:
   `node --import tsx scripts/ask-eval.ts --base <preview url>` from PowerShell in `web/`.
 - Known rough edges (not requested): Hebrew phrasing is clumsy; Compare's context
   string ("3 GP | 3-0 | 234 Poss") is English inside Hebrew answers; the model
