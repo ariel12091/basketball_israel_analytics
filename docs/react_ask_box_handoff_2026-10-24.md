@@ -42,6 +42,15 @@ the page.
 - Eval on `loe3yof7u` with follow-ups on (before the prompt line): 62 turns,
   0 errors, 97% right tool, 100% verified, 100% language, $0.10, median 9.6 s;
   the only flag was the echoed `DROP`. Results: `output/ask/eval-2026-10-25-*.json`.
+- "With X and Y together or X alone" (user's Madar/Colson question, now case
+  `user-madar-colson-he`) did not answer: rejected calls used up the lookups,
+  the roster listed every team capped at ten rows, and Hebrew "both" (לשני
+  המצבים) was rejected as a number word. Fixed: parameter-rejected calls are free,
+  six lookups, `lineup_roster` takes `team` and quotes `name`, prompt explains the
+  two size-5 Lineups reads and their total rows (a size-2 total counts each
+  possession once per pair: 1,164 instead of 150). Answer now: 188 possessions
+  together (net 47.0) vs 150 without Colson (net 24.0); one of six probes gave
+  no numbers.
 - Still open: glossary tool (user deciding), the "luna" provider, final
   whole-branch review, Hebrew phrasing.
 
