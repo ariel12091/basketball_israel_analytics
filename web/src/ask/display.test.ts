@@ -9,7 +9,7 @@ import LineupTable from "@/components/shiny/LineupTable";
 import PlayerStatsTable from "@/components/shiny/PlayerStatsTable";
 import TeamRatingsTable from "@/components/shiny/TeamRatingsTable";
 import { columnsFor } from "@/components/shiny/GameLogsTable";
-import { ffColumns, spColumns, summaryColumns } from "@/components/shiny/OnOffTables";
+import { TipBody, ffColumns, spColumns, summaryColumns } from "@/components/shiny/OnOffTables";
 import { FF_METRIC_MAP, FF_RTG_MAP, SP_SUFFIX } from "@/rules/onoff";
 import type { Row } from "@/rules/gameLogs";
 import { cellText, displaySpec } from "./display";
@@ -149,6 +149,30 @@ describe("cellText equals the page column text", () => {
     expect(page["Off Shot ON"].startsWith(`${two} | ${three}`)).toBe(true);
     expect(cellText("onoff", "il", "summary", "Def Shot OFF 2PT", row(r))).toBe(page["Def Shot OFF"]);
     expect(displaySpec("onoff", "il", "summary")["Off Shot ON 3PT"].label).toBe("Off 3PT% on court");
+  });
+
+  it("onoff summary 3PT luck and small sample: the Net cell's tags and tooltip", () => {
+    const r: Row = {
+      ...sample,
+      "Net RTG Diff": 4.26, "ON Poss": 180, "OFF Poss": 1200,
+      luck_3pt_ours: 3.04, luck_3pt_theirs: 2.51, luck_3pt_flag: true,
+      net_padded: 1.97, sample_flag: true,
+    };
+    const tip = renderToStaticMarkup(createElement(TipBody, { row: r, kind: "all" }));
+    const cell = renderToStaticMarkup(
+      createElement("div", null, summaryColumns([r], onoffCtx).find((c) => c.id === "Net RTG Diff")!.render!(r).node),
+    );
+    const t = (k: string) => cellText("onoff", "il", "summary", k, row(r))!;
+    expect([t("luck_3pt_added"), t("luck_3pt_ours"), t("luck_3pt_theirs"), t("net_without_3pt_luck"), t("net_padded")]).toEqual(
+      ["+5.5", "+3.0", "+2.5", "-1.3", "+2.0"],
+    );
+    for (const k of ["luck_3pt_added", "luck_3pt_ours", "luck_3pt_theirs", "net_without_3pt_luck", "net_padded"])
+      expect(tip, k).toContain(t(k));
+    expect(cell).toContain(t("luck_3pt_flag"));
+    expect(cell).toContain(t("sample_flag"));
+    const plain = { ...r, luck_3pt_flag: false, sample_flag: false };
+    expect(cellText("onoff", "il", "summary", "luck_3pt_flag", row(plain))).toBe("none");
+    expect(cellText("onoff", "il", "summary", "sample_flag", row(plain))).toBe("none");
   });
 
   for (const [view, columns] of [

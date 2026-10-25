@@ -122,7 +122,7 @@ function TipVal({ v }: { v: number }) {
     </b>
   );
 }
-function TipBody({ row, kind }: { row: Row; kind: "all" | "luck" | "sample" }) {
+export function TipBody({ row, kind }: { row: Row; kind: "all" | "luck" | "sample" }) {
   const net = Number(row["Net RTG Diff"]);
   const o = num(row.luck_3pt_ours),
     t = num(row.luck_3pt_theirs),

@@ -14,8 +14,9 @@ import type { ToolName } from "./registry";
 import type { AskRow } from "./run";
 
 type Fmt = (v: unknown, cells: Record<string, unknown>) => string;
-/** `derived`: the row does not store this key; its text comes from other
- * cells (one half of a page cell), and the model is shown that text. */
+/** `derived`: text the page shows inside or beside a cell rather than as a
+ * column (one half of a cell, a tag, the Net tooltip); the model is shown
+ * the formatted text, and display.test.ts pins each against its own render. */
 export type ColumnSpec = { label: string; format: Fmt; derived?: boolean };
 
 const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
@@ -61,6 +62,34 @@ const shotPct =
     const [m, a] = kind === "2PT" ? [m2, a2] : [m3, a3];
     return `${a ? Math.round((m / a) * 100) : 0}%`;
   };
+/** OnOffTables TipVal: "+" when positive, one decimal; empty when missing. */
+const tip1 = (v: unknown) => {
+  const n = num(v);
+  return n == null || Number.isNaN(n) ? "" : (n > 0 ? "+" : "") + n.toFixed(1);
+};
+/** The Net cell's 3PT luck and sample tooltip (OnOffTables TipBody, NetCell). */
+const LUCK_SAMPLE: ([string, string, Fmt] | [string, string, Fmt, true])[] = [
+  ["luck_3pt_flag", "3PT luck tag (the net impact changes sign without 3PT luck)", (v) => (v === true ? "3PT luck" : "none"), true],
+  [
+    "luck_3pt_added",
+    "3PT shooting added to the net impact",
+    (_v, c) => (num(c.luck_3pt_ours) == null || num(c.luck_3pt_theirs) == null ? "" : tip1(Number(c.luck_3pt_ours) + Number(c.luck_3pt_theirs))),
+    true,
+  ],
+  ["luck_3pt_ours", "3PT shooting added by the team", tip1, true],
+  ["luck_3pt_theirs", "3PT shooting added by the opponents", tip1, true],
+  [
+    "net_without_3pt_luck",
+    "Net impact without 3PT luck",
+    (_v, c) =>
+      num(c.luck_3pt_ours) == null || num(c.luck_3pt_theirs) == null
+        ? ""
+        : tip1(Number(c["Net RTG Diff"]) - Number(c.luck_3pt_ours) - Number(c.luck_3pt_theirs)),
+    true,
+  ],
+  ["sample_flag", "Small sample tag (far fewer possessions than most rows)", (v) => (v === true ? "small sample" : "none"), true],
+  ["net_padded", "Net impact adjusted for sample size", tip1, true],
+];
 /** Summary's Off/Def Shot cells as quotable values: `<cell> 2PT`, `<cell> 3PT`. */
 const SHOT_CELLS: [string, string][] = [
   ["Off Shot ON", "Off %s on court"],
@@ -280,6 +309,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["Off OFF PPP", "Off PPP off court", fixed(1)],
         ["Def OFF PPP", "Def PPP off court", fixed(1)],
         ["Off Net RTG", "Net off court", signed2],
+        ...LUCK_SAMPLE,
         ...SHOT_CELLS.flatMap(([id, label]) =>
           (["2PT", "3PT"] as const).map(
             (k): [string, string, Fmt, true] => [`${id} ${k}`, label.replace("%s", `${k}%`), shotPct(id, k), true],
