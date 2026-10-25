@@ -88,13 +88,28 @@ describe("fillAndVerify", () => {
     expect(fill("{{r1.row1.Players}}: {{r1.row1.net_rtg}} points per 200 possessions").ok).toBe(false);
   });
 
-  it("rejects numbers written as words, English and Hebrew", () => {
+  it("rejects a number word that counts a stat, English and Hebrew", () => {
     for (const t of [
-      "{{r1.row1.Players}} played five games",
-      "{{r1.row1.Players}} שיחקה שני משחקים",
+      "{{r1.row1.Players}} scored five points",
+      "{{r1.row1.Players}} has three wins and two losses",
       "{{r1.row1.Players}} עם חמישה ניצחונות",
+      "{{r1.row1.Players}} קלע שלוש נקודות",
+      "{{r1.row1.Players}} ב-עשרים פוזשנים",
+      "{{r1.row1.Players}} ספגה שני הפסדים",
     ])
       expect(fill(t).ok, t).toBe(false);
+  });
+
+  it("allows number words that describe the answer, not a stat (2026-10-25)", () => {
+    for (const t of [
+      "Most of the top ten have played only a few games: {{r1.row1.Players}}",
+      "There are three Maccabi teams; {{r1.row1.Players}} leads",
+      "החמישייה עם הכי הרבה פוזשנים בין שלוש הראשונות היא {{r1.row1.Players}}",
+      "הנה חמשת המשחקים האחרונים של {{r1.row1.Players}}",
+      "{{r1.row1.Players}} טובה בשלושה תחומים",
+      "{{r1.row1.Players}} שיחקה שני משחקים",
+    ])
+      expect(fill(t).ok, t).toBe(true);
   });
 
   it("the Hebrew shot terms 'לשלוש' / 'לשתיים' are terms, a bare count is not", () => {
@@ -114,17 +129,15 @@ describe("fillAndVerify", () => {
       expect(fill(t).ok, t).toBe(true);
     for (const t of [
       "{{r1.row1.Players}} ספגה שני הפסדים",
-      "{{r1.row1.Players}} שיחקה שתי הארכות",
-      "{{r1.row1.Players}} שני משחקים",
+      "{{r1.row1.Players}} עם שתי נקודות",
     ])
       expect(fill(t).ok, t).toBe(false);
   });
 
-  it("a number word's problem says how to fix a count of the answer's own points", () => {
-    // "in three areas" counts the answer's list, which no marker can quote.
-    const r = fill("{{r1.row1.Players}} טובה בשלושה תחומים");
+  it("a number word's problem says to quote the count with a marker", () => {
+    const r = fill("{{r1.row1.Players}} has four assists");
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.problems.join(" ")).toMatch(/without counting/);
+    if (!r.ok) expect(r.problems.join(" ")).toMatch(/counting a stat.*marker/);
   });
 
   it("allows number words the visitor used, and ordinary phrases", () => {
@@ -153,7 +166,8 @@ describe("fillAndVerify", () => {
   it("number words: four-factor, the visitor's digits as words, and Hebrew 'first' like English", () => {
     expect(fill("{{r1.row1.Players}} by four-factor rates").ok).toBe(true);
     expect(fill("The top five: {{r1.row1.Players}}", "top 5 lineups").ok).toBe(true);
-    expect(fill("The top six: {{r1.row1.Players}}", "top 5 lineups").ok).toBe(false);
+    expect(fill("{{r1.row1.Players}} has five wins", "top 5 lineups").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} has six wins", "top 5 lineups").ok).toBe(false);
     expect(fill("{{r1.row1.Players}} במקום הראשון").ok).toBe(true);
   });
 
@@ -177,7 +191,7 @@ describe("fillAndVerify", () => {
   it("ordinals describing list position are allowed; counts are not", () => {
     expect(fill("{{r1.row1.Players}} is second, {{r1.row2.Players}} is third").ok).toBe(true);
     expect(fill("הליינאפ השני הוא {{r1.row2.Players}}").ok).toBe(true);
-    expect(fill("{{r1.row1.Players}} שיחקו ששה משחקים").ok).toBe(false);
+    expect(fill("{{r1.row1.Players}} עם ששה ניצחונות").ok).toBe(false);
   });
 
   it("the team list's names are quotable", () => {

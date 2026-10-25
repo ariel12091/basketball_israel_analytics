@@ -2,7 +2,7 @@
 // the page's text for that cell and rejects any digit it did not supply
 // (spec: "Numbers are filled in by the app, never typed by the model").
 import { cellText, columnDefinition, displaySpec } from "./display";
-import { NUMBER, NUMBER_WORD, bare, digitWords, withoutTerms } from "./numberWords";
+import { NUMBER, NUMBER_WORD, bare, digitWords, statCountWords, withoutTerms } from "./numberWords";
 import { TOOLS } from "./registry";
 import type { ToolResult } from "./run";
 
@@ -90,10 +90,10 @@ export function fillAndVerify(
     ...(question.match(NUMBER_WORD) ?? []).map(bare),
     ...(question.match(NUMBER) ?? []).flatMap(digitWords),
   ]);
-  for (const w of own.match(NUMBER_WORD) ?? [])
+  for (const w of statCountWords(own))
     if (!asked.has(bare(w)))
       problems.push(
-        `Number written as a word "${w}": quote a data count or rank with a marker; if it counts your own points or items ("in three areas"), rewrite the sentence without counting them`,
+        `Number written as a word "${w}" counting a stat: quote the count with a marker instead`,
       );
   if (problems.length) return { ok: false, problems };
   return {

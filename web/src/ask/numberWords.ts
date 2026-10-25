@@ -11,6 +11,21 @@ export const NUMBER_WORD = new RegExp(
   `(?<!\\p{L})(?:(?:${EN_WORDS})|[ובהלמשכ]{0,2}(?:${HE_WORDS}))(?!\\p{L})`,
   "giu",
 );
+// Only a number word counting a stat is rejected ("שלושה ניצחונות", "five
+// points"): that is a figure the data owns. "top ten", "three Maccabi teams"
+// and "שני המצבים" describe the answer and only flag in the eval (user,
+// 2026-10-25: eleven rejections in two runs, none a wrong number).
+const STAT_EN =
+  "points?|possessions?|rebounds?|assists?|minutes?|percent|wins?|losses|turnovers?|steals?|blocks?";
+const STAT_HE = "נקוד|פוזש|ריבאונד|אסיסט|דקה|דקות|אחוז|ניצחו|הפסד|איבוד|חטיפ|חסימ";
+const STAT_COUNT = new RegExp(
+  `(${NUMBER_WORD.source})\\s+(?:(?:${STAT_EN})(?!\\p{L})|[ובהלמשכ]{0,2}(?:${STAT_HE}))`,
+  "giu",
+);
+/** The number words in the text that count a stat. */
+export const statCountWords = (text: string): string[] =>
+  [...text.matchAll(STAT_COUNT)].map((m) => m[1]);
+
 /** A whole number as written: 7, 7.3, 1,234, 12:30. */
 export const NUMBER = /\p{Nd}+(?:[.,:]\p{Nd}+)*/gu;
 /** The word without a Hebrew prefix, lower-cased, for comparing with the question. */

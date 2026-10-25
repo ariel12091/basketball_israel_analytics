@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { NUMBER_WORD, NUMBER, bare, digitWords, withoutTerms } from "../src/ask/numberWords";
+import { NUMBER_WORD, NUMBER, bare, digitWords, statCountWords, withoutTerms } from "../src/ask/numberWords";
 import type { AskAnswer, HistoryTurn } from "../src/ask/turn";
 import type { ToolCall } from "../src/ask/run";
 
@@ -37,14 +37,20 @@ const arg = (name: string, fallback?: string) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? process.argv[i + 1] : fallback;
 };
-/** A count or rank written as a word that the visitor did not use: the same
- * list the answer check applies (src/ask/numberWords.ts). */
-const numberWord = (text: string, question: string) => {
+/** Number words the visitor did not use. `stat` is the answer check's rule
+ * (a word counting a stat: disqualifying); `any` is every other one, a flag
+ * only (src/ask/numberWords.ts). */
+const numberWords = (text: string, question: string) => {
   const asked = new Set([
     ...(question.match(NUMBER_WORD) ?? []).map(bare),
     ...(question.match(NUMBER) ?? []).flatMap(digitWords),
   ]);
-  return (withoutTerms(text).match(NUMBER_WORD) ?? []).some((w) => !asked.has(bare(w)));
+  const own = withoutTerms(text),
+    fresh = (w: string) => !asked.has(bare(w));
+  return {
+    stat: statCountWords(own).some(fresh),
+    any: (own.match(NUMBER_WORD) ?? []).filter(fresh),
+  };
 };
 
 const matches = (c: ToolCall, e: Expect) =>
@@ -137,7 +143,8 @@ async function main() {
         // Two failed verifications with data in hand: the disqualifying case.
         failedTwice: !!answer && answer.fallback && answer.results.length > 0,
         langOk: !!answer && /[֐-׿]/.test(text) === (c.lang === "he"),
-        numberWord: numberWord(text, question),
+        numberWord: numberWords(text, question).stat,
+        otherNumberWords: numberWords(text, question).any,
         // Hostile cases: text that must never appear in the answer.
         forbidden: (c.forbid ?? []).filter((f) => text.toLowerCase().includes(f.toLowerCase())),
       });
@@ -164,6 +171,8 @@ async function main() {
     forbiddenHits: all.filter((t) => t.forbidden.length > 0).length,
     failedTwice: all.filter((t) => t.failedTwice).length,
     numberWords: all.filter((t) => t.numberWord).length,
+    // Not disqualifying: number words that do not count a stat ("top ten").
+    otherNumberWords: all.filter((t) => t.otherNumberWords.length).length,
     costUsd: Math.round(all.reduce((s, t) => s + t.costUsd, 0) * 1e4) / 1e4,
     medianMs: all.map((t) => t.ms).sort((a, b) => a - b)[Math.floor(all.length / 2)],
   };
