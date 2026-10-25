@@ -110,6 +110,7 @@ function prepare(entry: (typeof TOOLS)[ToolName], call: ToolCall): Prepared {
  * Applied through the Lineups page's own stat filter, so the link shows the
  * same list. Not when the model set `stats` itself or ranks by volume. */
 const LINEUP_MIN_POSS = [100, 50, 25];
+const TOTAL_LABELS = new Set(["Players", "player_names_str", "Team", "team_name"]);
 const LINEUP_MIN_ROWS = 3;
 const VOLUME = new Set(["total_poss", "minutes", "off_poss", "def_poss", "off_pts", "def_pts"]);
 function sampleMinimums(call: ToolCall): ToolCall[] {
@@ -231,7 +232,14 @@ export async function runTool(
     rows: rows
       .slice(0, limit)
       .map((cells, i) => ({ id: `row${i + 1}`, cells })),
-    total: flat.total ? { id: "total", cells: flat.total } : null,
+    // The TOTAL row's name cells hold the label "- All Lineups -": without
+    // them a {{rN.total.Players}} marker fails the check and is retried.
+    total: flat.total
+      ? {
+          id: "total",
+          cells: Object.fromEntries(Object.entries(flat.total).filter(([k]) => !TOTAL_LABELS.has(k))),
+        }
+      : null,
     rowCount: rows.length,
     version: meta?.version == null ? null : String(meta.version),
     // Result-level values a marker may quote: {{r1.count}}, {{r1.side_a}}.

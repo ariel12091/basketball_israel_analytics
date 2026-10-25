@@ -163,7 +163,9 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect(desc.rows.map((r) => r.cells.net_rtg)).toEqual([7, 3, null]);
     expect(asc.rows.map((r) => r.cells.net_rtg)).toEqual([3, 7, null]);
     expect(desc.rows.map((r) => r.id)).toEqual(["row1", "row2", "row3"]);
-    expect(desc.total).toMatchObject({ id: "total", cells: { Players: "- All Lineups -" } });
+    expect(desc.total).toMatchObject({ id: "total" });
+    // 2026-10-25: the model quoted the "- All Lineups -" label as player names.
+    expect(desc.total!.cells).not.toHaveProperty("Players");
     expect(desc).toMatchObject({ view: "summary", version: "v1", rowCount: 3, extras: { count: "3" } });
   });
 
