@@ -14,7 +14,9 @@ import type { ToolName } from "./registry";
 import type { AskRow } from "./run";
 
 type Fmt = (v: unknown, cells: Record<string, unknown>) => string;
-export type ColumnSpec = { label: string; format: Fmt };
+/** `derived`: the row does not store this key; its text comes from other
+ * cells (one half of a page cell), and the model is shown that text. */
+export type ColumnSpec = { label: string; format: Fmt; derived?: boolean };
 
 const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
 const fixed =
@@ -49,15 +51,23 @@ const gameLog =
           ? formatNumber(v, 0)
           : String(v);
 
-/** OnOffTables shotCell's top line: 2PT% | 3PT%, "-" with no attempts. */
-const shotLine =
-  (id: string): Fmt =>
+/** One half of OnOffTables shotCell's "2PT% | 3PT%" line, so each number
+ * carries its own label; "-" when the cell has no attempts at all. */
+const shotPct =
+  (id: string, kind: "2PT" | "3PT"): Fmt =>
   (_v, c) => {
     const [m2, a2, m3, a3] = SUMMARY_SHOT_MAP[id].map((k) => Number(c[k] ?? 0) || 0);
     if (!(a2 + a3)) return "-";
-    const pct = (m: number, a: number) => (a ? Math.round((m / a) * 100) : 0);
-    return `${pct(m2, a2)}% | ${pct(m3, a3)}%`;
+    const [m, a] = kind === "2PT" ? [m2, a2] : [m3, a3];
+    return `${a ? Math.round((m / a) * 100) : 0}%`;
   };
+/** Summary's Off/Def Shot cells as quotable values: `<cell> 2PT`, `<cell> 3PT`. */
+const SHOT_CELLS: [string, string][] = [
+  ["Off Shot ON", "Off %s on court"],
+  ["Def Shot ON", "Def %s allowed on court"],
+  ["Off Shot OFF", "Off %s off court"],
+  ["Def Shot OFF", "Def %s allowed off court"],
+];
 /** OnOffTables ffCell's value: "+n" / "n" as JavaScript prints it, the unit,
  * "-" when empty; `on`/`off` lines print 0 as "-" too. */
 const ffValue =
@@ -90,8 +100,10 @@ const USAGE: [string, string, Fmt][] = [
   ["OFF Poss", "Off Poss", fixed(0)],
 ];
 
-const spec = (entries: [string, string, Fmt][]) =>
-  Object.fromEntries(entries.map(([k, label, format]) => [k, { label, format }]));
+const spec = (entries: ([string, string, Fmt] | [string, string, Fmt, true])[]) =>
+  Object.fromEntries(
+    entries.map(([k, label, format, derived]) => [k, derived ? { label, format, derived } : { label, format }]),
+  );
 const FF = [
   ["ppp", "PPP"],
   ["efg", "eFG%"],
@@ -268,10 +280,11 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["Off OFF PPP", "Off PPP off court", fixed(1)],
         ["Def OFF PPP", "Def PPP off court", fixed(1)],
         ["Off Net RTG", "Net off court", signed2],
-        ["Off Shot ON", "Off 2PT% | 3PT% on court", shotLine("Off Shot ON")],
-        ["Def Shot ON", "Def 2PT% | 3PT% allowed on court", shotLine("Def Shot ON")],
-        ["Off Shot OFF", "Off 2PT% | 3PT% off court", shotLine("Off Shot OFF")],
-        ["Def Shot OFF", "Def 2PT% | 3PT% allowed off court", shotLine("Def Shot OFF")],
+        ...SHOT_CELLS.flatMap(([id, label]) =>
+          (["2PT", "3PT"] as const).map(
+            (k): [string, string, Fmt, true] => [`${id} ${k}`, label.replace("%s", `${k}%`), shotPct(id, k), true],
+          ),
+        ),
         ["minutes", "Min", fixed(1)],
         ["ON Poss", "On Poss", fixed(0)],
         ["OFF Poss", "Off Poss", fixed(0)],

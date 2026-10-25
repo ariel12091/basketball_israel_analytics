@@ -92,9 +92,17 @@ function forModel(r: ToolResult | ToolError) {
   const keys = Object.keys(spec);
   // The quotable columns, plus the identifiers the next lookup needs.
   const shown = keys.length ? [...ID_KEYS, ...keys] : null;
+  // A quotable value the row does not store (On/Off "Off Shot ON 3PT", one
+  // half of a page cell) is shown as the text the marker would fill.
   const pick = (cells: Record<string, unknown>) =>
     Object.fromEntries(
-      (shown ?? Object.keys(cells)).filter((k) => k in cells).map((k) => [k, cells[k]]),
+      (shown ?? Object.keys(cells)).flatMap((k) =>
+        k in cells
+          ? [[k, cells[k]]]
+          : spec[k]?.derived
+            ? [[k, spec[k].format(undefined, cells)]]
+            : [],
+      ),
     );
   return {
     id: r.id,

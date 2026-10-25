@@ -60,6 +60,8 @@ function expectSame(
   const spec = displaySpec(tool, league, view);
   expect(Object.keys(spec).length, `${tool}/${view}`).toBeGreaterThan(3);
   for (const key of Object.keys(spec)) {
+    // Derived halves of a page cell are pinned by their own tests.
+    if (spec[key].derived) continue;
     const base = key.startsWith("rank_") ? key.slice(5) : key;
     expect(page, `${tool}/${view}: page has ${base}`).toHaveProperty([base]);
     const text = page[base].split("\n");
@@ -140,10 +142,13 @@ describe("cellText equals the page column text", () => {
       "Def Shot OFF": 0, def_off_fg2_made: 0, def_off_fg2_att: 0, def_off_fg3_made: 0, def_off_fg3_att: 0,
     };
     const page = Object.fromEntries(summaryColumns([r], onoffCtx).map((c) => [c.id, c.render?.(r).text ?? ""]));
-    const on = cellText("onoff", "il", "summary", "Off Shot ON", row(r))!;
-    expect(on).toBe("52% | 35%");
-    expect(page["Off Shot ON"].startsWith(on)).toBe(true);
-    expect(cellText("onoff", "il", "summary", "Def Shot OFF", row(r))).toBe(page["Def Shot OFF"]);
+    const two = cellText("onoff", "il", "summary", "Off Shot ON 2PT", row(r))!,
+      three = cellText("onoff", "il", "summary", "Off Shot ON 3PT", row(r))!;
+    expect([two, three]).toEqual(["52%", "35%"]);
+    // The page cell's top line is "2PT% | 3PT%", left then right.
+    expect(page["Off Shot ON"].startsWith(`${two} | ${three}`)).toBe(true);
+    expect(cellText("onoff", "il", "summary", "Def Shot OFF 2PT", row(r))).toBe(page["Def Shot OFF"]);
+    expect(displaySpec("onoff", "il", "summary")["Off Shot ON 3PT"].label).toBe("Off 3PT% on court");
   });
 
   for (const [view, columns] of [
