@@ -136,6 +136,13 @@ describe("fillAndVerify", () => {
       expect(fill(t).ok, t).toBe(false);
   });
 
+  it("Hebrew number words from the question pass, prefixed or not (review 2026-10-25)", () => {
+    // bare() used to strip the ש of שלוש itself, so "3" never matched.
+    expect(fill("{{r1.row1.Players}} קלע שלוש נקודות", "מי קלע 3 נקודות?").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} עם שבעה ניצחונות", "מי עם 7 ניצחונות?").ok).toBe(true);
+    expect(fill("{{r1.row1.Players}} עם שבעה ניצחונות", "מי עם 8 ניצחונות?").ok).toBe(false);
+  });
+
   it("a number word's problem says to quote the count with a marker", () => {
     const r = fill("{{r1.row1.Players}} has four assists");
     expect(r.ok).toBe(false);

@@ -63,6 +63,28 @@ describe("pageRows: the rows a freshly opened link shows", () => {
     expect(got.every((r) => Number(r[cols.on]) >= lowerOnly(300, needed))).toBe(true);
   });
 
+  it("onoff: Player Stats chips filter by the player's own stats, as the page does", () => {
+    const rows = [1, 2, 3].map((i) => ({
+      team_id: 2,
+      player_id: i,
+      "ON Poss": 900,
+      "OFF Poss": 900,
+    }));
+    const psRows = [
+      { team_id: 2, player_id: 1, ps_min_pg: 30 },
+      { team_id: 2, player_id: 2, ps_min_pg: 12 },
+    ];
+    const stats = encodeURIComponent(JSON.stringify([{ col: "ps_min_pg", op: "ge", value: 20 }]));
+    const got = pageRows(
+      "onoff",
+      "il",
+      { rows, psRows, league3p: null, meta: { view: "summary", filtered: false } },
+      q(`teams=2&min_all=0&min_on=0&stats=${stats}`),
+    );
+    // Player 3 has no Player Stats row: NA, which an active chip excludes.
+    expect(got.map((r) => r.player_id)).toEqual([1]);
+  });
+
   it("player stats: Per Game by default, Totals when asked", () => {
     const rows = [
       { team_id: 2, player_id: 1, Player: "A", gp: 4, pts: 80, poss_on_floor: 400, minutes: 120 },

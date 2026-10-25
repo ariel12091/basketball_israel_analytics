@@ -54,7 +54,7 @@ describe("askTurn", () => {
     } finally { remove.mockRestore(); vi.useRealTimers(); }
   });
 
-  it("bounds a provider that ignores abort and ignores its late rejection", async () => {
+  it("bounds a provider that ignores abort; out of time shows the page fallback", async () => {
     vi.useFakeTimers();
     let signal!: AbortSignal;
     let reject!: (e: Error) => void;
@@ -67,9 +67,10 @@ describe("askTurn", () => {
     };
     try {
       const turn = askTurn({ league: "il", question: "q", history: [] }, provider, opts);
-      const pending = expect(turn.next()).rejects.toMatchObject({ name: "TimeoutError" });
+      const pending = turn.next();
       await vi.advanceTimersByTimeAsync(40_000);
-      await pending;
+      // Review 2026-10-25: a slow turn used to end in an error with no link.
+      expect(await pending).toMatchObject({ value: { type: "final", answer: { fallback: true } } });
       expect(signal.aborted).toBe(true);
       reject(new Error("late provider failure"));
       await Promise.resolve();
@@ -172,6 +173,40 @@ describe("askTurn", () => {
     const results = p.seen[1].at(-1)!.toolResults!;
     expect(results).toHaveLength(7);
     expect(JSON.stringify(results[6].content)).toMatch(/limit/i);
+  });
+
+  it("answer.calls holds this turn's own lookups, not the re-run history", async () => {
+    // Review 2026-10-25: the browser sent results (history included) as the
+    // turn's calls, so the list grew each turn past the route's limit.
+    const earlier = { question: "how are they doing?", answer: "x", calls: [{ ...call, query: { team: "7" } }] };
+    const p = scriptedProvider([tc("c1"), { text: "{{r2.row1.Players}}" }]);
+    const { answer } = await run("and their lineups?", p, [earlier] as never);
+    expect(answer.results).toHaveLength(2);
+    expect(answer.calls).toEqual([call]);
+  });
+
+  it("a malformed tool call becomes a fixable tool error, not a failed turn", async () => {
+    const bad = {
+      toolCalls: [{ id: "c1", call: { tool: "lineups", league: "il", query: "team 2" } as unknown as ToolCall }],
+    };
+    const typed = {
+      toolCalls: [
+        { id: "c2", call: { tool: "lineups", league: "il", query: { team: 2 }, limit: 50 } as unknown as ToolCall },
+      ],
+    };
+    const p = scriptedProvider([bad, typed, { text: "{{r2.row1.Players}}" }]);
+    const { answer } = await run("q", p);
+    expect(answer.fallback).toBe(false);
+    // Stored as the route's schema accepts it: string values, limit within 1-10.
+    expect(answer.calls).toEqual([{ tool: "lineups", league: "il", query: { team: "2" }, limit: 10 }]);
+    expect(runTool).toHaveBeenCalledTimes(1);
+  });
+
+  it("{{season}} follows the league the lookups used", async () => {
+    const euro: ToolCall = { ...call, league: "euroleague", query: { team: "2", season: "2023" } };
+    const p = scriptedProvider([tc("c1", euro), { text: "In {{season}}: {{r1.row1.Players}}" }]);
+    const { answer } = await run("EuroLeague 2023-24 best offense", p);
+    expect(answer.text).toBe("In 2023-24: A - B");
   });
 
   it("a call rejected for a bad parameter does not use up a lookup", async () => {
@@ -375,10 +410,13 @@ describe("askTurn", () => {
     expect(answer.text).toBe("Best: A - B");
   });
 
-  it("Hebrew answers say פוזשנים for possessions", async () => {
-    const p = scriptedProvider([tc(), { text: "{{r1.row1.Players}}: מינימום החזקות, החזקה אחת, ב-חזקות" }]);
+  it("Hebrew answers say פוזשנים for possessions, but 'strong' stays", async () => {
+    const p = scriptedProvider([
+      tc(),
+      { text: "{{r1.row1.Players}}: הגנה חזקה ושורה חזקות, מספר החזקות, ב-{{r1.row1.net_rtg}} החזקות, ההחזקות" },
+    ]);
     const { answer } = await run("מה החמישייה?", p);
-    expect(answer.text).toBe("A - B: מינימום פוזשנים, פוזשן אחת, ב-פוזשנים");
+    expect(answer.text).toBe("A - B: הגנה חזקה ושורה חזקות, מספר פוזשנים, ב-7.3 פוזשנים, הפוזשנים");
   });
 
   it("numbers from earlier questions in the conversation may be repeated", async () => {

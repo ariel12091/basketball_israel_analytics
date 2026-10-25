@@ -127,7 +127,9 @@ export default function AskProvider({
       const history: HistoryTurn[] = previous.map((t) => ({
         question: t.question,
         answer: t.answer!.text,
-        calls: t.answer!.results.map((r) => r.call),
+        // This turn's own lookups; answers saved before `calls` existed fall
+        // back to their results.
+        calls: t.answer!.calls ?? t.answer!.results.map((r) => r.call),
       }));
       const start: AskTurnView = {
         id: request.id,

@@ -89,7 +89,7 @@ export function anthropicProvider(model: string, client: Client = new Anthropic(
       if (res.stop_reason === "refusal") return { text: null, toolCalls: [], usage, refused: true };
       const toolCalls = res.content.flatMap((b) =>
         b.type === "tool_use"
-          ? [{ id: b.id, call: { tool: b.name as ToolName, ...(b.input as Omit<ToolCall, "tool">) } }]
+          ? [{ id: b.id, call: { ...(b.input as Omit<ToolCall, "tool">), tool: b.name as ToolName } }]
           : [],
       );
       const text = res.content.flatMap((b) => (b.type === "text" ? [b.text] : [])).join("");

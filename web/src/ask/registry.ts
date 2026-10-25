@@ -22,6 +22,8 @@ import { homeAnswer } from "@/server/homeRepo";
 import { lineupGames } from "@/server/lineupGamesRepo";
 import { lineupRosterAnswer, lineupsAnswer } from "@/server/lineupsApi";
 import { onoffAnswer } from "@/server/onoffApi";
+import { parseContext } from "@/server/contextParams";
+import { playerStatFrame } from "@/server/playerStatFilterRepo";
 import { playerStatsAnswer } from "@/server/playerStatsRepo";
 import { teamRatingsAnswer } from "@/server/teamRatingsRepo";
 import { compareTable } from "./compareTool";
@@ -62,6 +64,10 @@ export type ToolEntry = {
   };
   /** Other tools: the only query keys they take. */
   keys?: string[];
+  /** On/Off's Player Stats chips (ps_*): the page's second read, the
+   * per-game Player Stats of every team-player for the same game context
+   * (OnOffClient psUrl -> /player-stat-filters). */
+  playerStats?: (league: League, api: URLSearchParams) => Promise<unknown[]>;
 };
 
 const ALL: League[] = ["il", "euroleague", "eurocup"];
@@ -107,6 +113,12 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
         },
         path: onoffPath,
         pathName: "onoffPath",
+      },
+      playerStats: (l, api) => {
+        const q = new URLSearchParams(api);
+        for (const k of ["view", "teams", "team", "stats", "own_starters", "opp_starters"])
+          q.delete(k);
+        return playerStatFrame(parseContext(q, l));
       },
     },
   ),

@@ -2,6 +2,8 @@ import { mkdtempSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import * as providers from "@/ask/provider";
+import type { ProviderReply } from "@/ask/providers/types";
 
 vi.mock("@/ask/run", async (orig) => ({
   ...(await orig<typeof import("@/ask/run")>()),
@@ -56,6 +58,38 @@ afterEach(() => {
 });
 
 describe("POST /api/v1/ask", () => {
+  for (const mode of ["request", "consumer"] as const)
+    it(`${mode} cancellation aborts a pending provider and logs once without writing to a closed stream`, async () => {
+      const parent = new AbortController();
+      let started!: () => void;
+      const ready = new Promise<void>((yes) => { started = yes; });
+      let signal!: AbortSignal;
+      let finish!: (r: ProviderReply) => void;
+      vi.spyOn(providers, "currentProvider").mockReturnValue({
+        name: "delayed", model: "test",
+        reply: async (_system, _tools, _messages, s) => {
+          signal = s; started();
+          return new Promise<ProviderReply>((yes) => { finish = yes; });
+        },
+      });
+      const response = await POST(new Request("http://x/api/v1/ask", {
+        method: "POST", signal: parent.signal,
+        headers: { "content-type": "application/json", "x-forwarded-for": `cancel-${mode}` },
+        body: JSON.stringify(body({ clientId: `cancel-${mode}` })),
+      }));
+      await ready;
+      const reader = response.body!.getReader();
+      if (mode === "consumer") await reader.cancel();
+      else parent.abort();
+      await expect(reader.read()).resolves.toEqual({ done: true, value: undefined });
+      expect(signal.aborted).toBe(true);
+      await vi.waitFor(() => expect(logs.filter((l) => l.includes("ask_turn"))).toHaveLength(1));
+      finish({ text: "late", toolCalls: [], usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 } });
+      await Promise.resolve();
+      expect(logs.filter((l) => l.includes("ask_turn"))).toHaveLength(1);
+      reader.releaseLock();
+    });
+
   it("ASK_ENABLED unset or false -> 404", async () => {
     vi.stubEnv("ASK_ENABLED", "false");
     expect((await post(body())).status).toBe(404);
@@ -72,6 +106,15 @@ describe("POST /api/v1/ask", () => {
     const r = await post(body({ history: Array(6).fill(h) }));
     expect(r.status).toBe(400);
     expect(await r.json()).toMatchObject({ error: expect.stringMatching(/new question/i) });
+  });
+
+  it("a follow-up to a turn that used all six lookups is accepted", async () => {
+    // Review 2026-10-25: the schema allowed 4 calls per earlier turn.
+    const c = { tool: "lineups", league: "il", query: { team: "2" } };
+    const h = { question: "q", answer: "a", calls: Array(6).fill(c) };
+    expect((await post(body({ history: [h] }), "9.9.9.7")).status).toBe(200);
+    const seven = { ...h, calls: Array(7).fill(c) };
+    expect((await post(body({ history: [seven] }), "9.9.9.8")).status).toBe(400);
   });
 
   it("streams status then final with the scripted provider", async () => {

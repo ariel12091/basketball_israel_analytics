@@ -138,6 +138,8 @@ const SOURCE: Record<string, string> = {
   ps_ts_pct: "ts",
   ps_usg_pct: "usg_pct",
 };
+/** The Player Stats chips' column ids (ps_gp, ps_min_pg, ...). */
+export const PLAYER_STAT_FILTER_COLS = Object.keys(SOURCE);
 export type PsRow = { team_id: number; player_id: number } & Record<
   string,
   number | null

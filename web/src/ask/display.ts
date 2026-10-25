@@ -7,7 +7,7 @@ import type { League } from "@/rules/gameLogs";
 import { formatNumber } from "@/rules/format";
 import { formatCompare, gridGapText } from "@/rules/compare";
 import { homeFixed, homeOrdinal } from "@/rules/home";
-import { SP_LABELS, SP_SUFFIX } from "@/rules/onoff";
+import { FF_METRIC_MAP, FF_RTG_MAP, SP_LABELS, SP_SUFFIX, SUMMARY_SHOT_MAP } from "@/rules/onoff";
 import { PLAYER_LABELS } from "@/rules/playerStatsTable";
 import { rRound } from "@/rules/round";
 import type { ToolName } from "./registry";
@@ -48,6 +48,47 @@ const gameLog =
         : id === "off_poss" || id === "def_poss"
           ? formatNumber(v, 0)
           : String(v);
+
+/** OnOffTables shotCell's top line: 2PT% | 3PT%, "-" with no attempts. */
+const shotLine =
+  (id: string): Fmt =>
+  (_v, c) => {
+    const [m2, a2, m3, a3] = SUMMARY_SHOT_MAP[id].map((k) => Number(c[k] ?? 0) || 0);
+    if (!(a2 + a3)) return "-";
+    const pct = (m: number, a: number) => (a ? Math.round((m / a) * 100) : 0);
+    return `${pct(m2, a2)}% | ${pct(m3, a3)}%`;
+  };
+/** OnOffTables ffCell's value: "+n" / "n" as JavaScript prints it, the unit,
+ * "-" when empty; `on`/`off` lines print 0 as "-" too. */
+const ffValue =
+  (unit: string): Fmt =>
+  (v) => {
+    if (v == null) return "-";
+    const n = Number(v);
+    return (n > 0 ? `+${n}` : String(n)) + unit;
+  };
+const ffSide =
+  (unit: string): Fmt =>
+  (v) =>
+    v == null || v === "" || Number(v) === 0 ? "-" : String(Number(v)) + unit;
+/** OnOffTables spColumns: one decimal, "+" when positive, "--" when any part is missing. */
+const spValue =
+  (on: string, off: string, signed: boolean): Fmt =>
+  (v, c) => {
+    const d = num(v);
+    if (num(c[on]) == null || num(c[off]) == null || d == null) return "--";
+    return (signed && d > 0 ? "+" : "") + d.toFixed(1);
+  };
+/** The on/off line under a Shot Profile diff; the cell shows none when it is "--". */
+const spPart =
+  (id: string, on: string, off: string): Fmt =>
+  (v, c) =>
+    num(c[id]) == null || num(c[on]) == null || num(c[off]) == null ? "--" : Number(v).toFixed(1);
+const USAGE: [string, string, Fmt][] = [
+  ["minutes", "Min", fixed(1)],
+  ["ON Poss", "On Poss", fixed(0)],
+  ["OFF Poss", "Off Poss", fixed(0)],
+];
 
 const spec = (entries: [string, string, Fmt][]) =>
   Object.fromEntries(entries.map(([k, label, format]) => [k, { label, format }]));
@@ -176,6 +217,44 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
       ]);
     }
     case "onoff":
+      if (view === "four_factors")
+        return spec([
+          ["Team", "Team", text],
+          ["Player", "Player", text],
+          ["Net Diff", "Net impact (on-off)", (v) => (v == null ? "" : ffValue("")(v, {}))],
+          ...Object.entries({ ...FF_RTG_MAP, ...FF_METRIC_MAP }).flatMap(
+            ([id, [on, off]]): [string, string, Fmt][] => {
+              const unit = id.includes("Rtg") ? "" : "%",
+                name = id.replace(/ Diff$/, "").replace("Rtg", "PPP");
+              return [
+                [id, `${name} impact (on-off)`, ffValue(unit)],
+                [on, `${name} on court`, ffSide(unit)],
+                [off, `${name} off court`, ffSide(unit)],
+              ];
+            },
+          ),
+          ...USAGE,
+        ]);
+      if (view === "shot_profile")
+        return spec([
+          ["Team", "Team", text],
+          ["Player", "Player", text],
+          ...(["off", "def"] as const).flatMap((s) =>
+            SP_SUFFIX.flatMap((m, i): [string, string, Fmt][] => {
+              const side = s === "off" ? "Off" : "Def",
+                label = SP_LABELS[i] === "C3" ? "Corner 3 share of 3PA" : SP_LABELS[i],
+                id = `${side} ${SP_LABELS[i]} Diff`,
+                on = `${s}_on_${m}`,
+                off = `${s}_off_${m}`;
+              return [
+                [id, `${side} ${label} impact (on-off)`, spValue(on, off, true)],
+                [on, `${side} ${label} on court`, spPart(id, on, off)],
+                [off, `${side} ${label} off court`, spPart(id, on, off)],
+              ];
+            }),
+          ),
+          ...USAGE,
+        ]);
       if (view !== "summary" && view !== null) return {};
       return spec([
         ["Team", "Team", text],
@@ -189,6 +268,10 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["Off OFF PPP", "Off PPP off court", fixed(1)],
         ["Def OFF PPP", "Def PPP off court", fixed(1)],
         ["Off Net RTG", "Net off court", signed2],
+        ["Off Shot ON", "Off 2PT% | 3PT% on court", shotLine("Off Shot ON")],
+        ["Def Shot ON", "Def 2PT% | 3PT% allowed on court", shotLine("Def Shot ON")],
+        ["Off Shot OFF", "Off 2PT% | 3PT% off court", shotLine("Off Shot OFF")],
+        ["Def Shot OFF", "Def 2PT% | 3PT% allowed off court", shotLine("Def Shot OFF")],
         ["minutes", "Min", fixed(1)],
         ["ON Poss", "On Poss", fixed(0)],
         ["OFF Poss", "Off Poss", fixed(0)],

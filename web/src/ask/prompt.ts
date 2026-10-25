@@ -5,6 +5,7 @@ import type { League } from "@/rules/gameLogs";
 import { displaySpec } from "./display";
 import { TOOLS, type ToolName } from "./registry";
 import type { ToolSchema } from "./providers/types";
+import { PLAYER_STAT_FILTER_COLS } from "@/rules/playerStats";
 
 const CONTEXT =
   "Shared game filters (any of these tools except list_teams, gameflow and team_overview): start, end (YYYY-MM-DD), game_type (Israeli game type code), phase (EuroLeague phase), home_away (home|away), outcome (win|loss), min_gn, max_gn (Israeli game numbers) or last_n, opp_rank_side (top|bottom), opp_rank_n, opp_rank_metric (net_rtg|off_ppp|def_ppp).";
@@ -23,7 +24,7 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   lineup_roster:
     "A team's players with their ids, names and minutes, for picking player ids and quoting player names. query: season, team (team id).",
   onoff:
-    "On/Off page: how each player's team performs with him on and off the floor. query: season, teams (comma separated ids), view (summary|four_factors|shot_profile), plus the shared game filters. The page sets its own possession minimums.",
+    `On/Off page: how each player's team performs with him on and off the floor. query: season, teams (comma separated ids), view (summary: ratings and 2PT%|3PT% for and against, on and off court; four_factors: eFG%, OREB%, TOV%, FTR on, off and on-off, offense and defense; shot_profile: eFG% and shot shares (lay-ups, dunks, 3PA, corner 3s, 2PT jumpers) on, off and on-off, offense and defense), stats (the page's stat filter, a JSON list such as [{"col":"ps_min_pg","op":"ge","value":20}]; columns: any returned column, or the player's own per-game Player Stats ${PLAYER_STAT_FILTER_COLS.join(", ")}), plus the shared game filters. The page sets its own possession minimums.`,
   player_stats:
     "Player Stats page: box-score stats per player. query: season, teams, players, view (Totals|Per Game|Per 60 Possessions|Per 30 Minutes; default Per Game), min_gp, plus the shared game filters. One condition at a time: for how players differ between two conditions (wins vs losses, home vs away), use compare with cmp_view=players instead.",
   game_logs:

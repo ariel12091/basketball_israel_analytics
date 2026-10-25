@@ -24,8 +24,8 @@ import {
 } from "@/rules/playerStatsTable";
 import { teamTableRows, type TeamView } from "@/rules/teamRatings";
 import { parseStats } from "@/lib/tabQuery";
-import { ParamError } from "@/server/api";
 import type { ToolName } from "./registry";
+import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
 
 const list = (v: string | null) => (v ?? "").split(",").filter(Boolean);
 
@@ -39,6 +39,8 @@ type Payload = {
   previous?: Row[];
   identities?: unknown[];
   league3p?: number | null;
+  /** On/Off Player Stats chips: the player-stat-filters frame (run.ts). */
+  psRows?: unknown[];
   meta?: { view?: string; filtered?: boolean; showDelta?: boolean };
 };
 
@@ -95,8 +97,7 @@ export function pageRows(
       q.get("side") === "defense",
     );
   if (tool === "onoff") {
-    if (stats.some((f) => f.col.startsWith("ps_")))
-      throw new ParamError("stats", "Player Stats chips are not supported here");
+    const psFilters = stats.filter((f) => f.col.startsWith("ps_"));
     const view = (p.meta?.view ?? "summary") as View;
     const defaults =
       league === "il" ? ui.onoffDefaults.israel : ui.onoffDefaults.euroleague;
@@ -123,6 +124,9 @@ export function pageRows(
     return onoffTableRows(
       { rows, league3p: p.league3p ?? null, view },
       { teams, minAll, minOn, filters: stats },
+      psFilters.length
+        ? (r) => applyPlayerStatFilters(r, (p.psRows ?? []) as PsRow[], psFilters)
+        : undefined,
     );
   }
   return rows;

@@ -9,7 +9,8 @@ import LineupTable from "@/components/shiny/LineupTable";
 import PlayerStatsTable from "@/components/shiny/PlayerStatsTable";
 import TeamRatingsTable from "@/components/shiny/TeamRatingsTable";
 import { columnsFor } from "@/components/shiny/GameLogsTable";
-import { summaryColumns } from "@/components/shiny/OnOffTables";
+import { ffColumns, spColumns, summaryColumns } from "@/components/shiny/OnOffTables";
+import { FF_METRIC_MAP, FF_RTG_MAP, SP_SUFFIX } from "@/rules/onoff";
 import type { Row } from "@/rules/gameLogs";
 import { cellText, displaySpec } from "./display";
 
@@ -128,6 +129,56 @@ describe("cellText equals the page column text", () => {
     );
     expectSame("onoff", "il", "summary", r, page);
   });
+
+  // Review 2026-10-25: On/Off Four Factors and Shot Profile had no quotable
+  // columns, and Summary's Off/Def Shot were not quotable.
+  const onoffCtx = { onTip: () => {}, onPivot: () => {}, showImpact: false, showRanges: true };
+  it("onoff summary Off/Def Shot: the cell's 2PT% | 3PT% line", () => {
+    const r: Row = {
+      ...sample,
+      "Off Shot ON": 120, off_on_fg2_made: 40, off_on_fg2_att: 77, off_on_fg3_made: 15, off_on_fg3_att: 43,
+      "Def Shot OFF": 0, def_off_fg2_made: 0, def_off_fg2_att: 0, def_off_fg3_made: 0, def_off_fg3_att: 0,
+    };
+    const page = Object.fromEntries(summaryColumns([r], onoffCtx).map((c) => [c.id, c.render?.(r).text ?? ""]));
+    const on = cellText("onoff", "il", "summary", "Off Shot ON", row(r))!;
+    expect(on).toBe("52% | 35%");
+    expect(page["Off Shot ON"].startsWith(on)).toBe(true);
+    expect(cellText("onoff", "il", "summary", "Def Shot OFF", row(r))).toBe(page["Def Shot OFF"]);
+  });
+
+  for (const [view, columns] of [
+    ["four_factors", ffColumns],
+    ["shot_profile", spColumns],
+  ] as const)
+    it(`onoff ${view}: diffs equal the cell, on/off equal the lines inside it`, () => {
+      const keys = Object.keys(displaySpec("onoff", "il", view));
+      expect(keys.length).toBeGreaterThan(20);
+      const r = fill(keys);
+      // A Shot Profile diff with a missing part shows "--" and no lines.
+      if (view === "shot_profile") r[`off_on_${SP_SUFFIX[0]}`] = null;
+      const cols = columns(onoffCtx);
+      const parents = view === "four_factors" ? { ...FF_RTG_MAP, ...FF_METRIC_MAP } : null;
+      for (const c of cols) {
+        if (!keys.includes(c.id)) continue;
+        const cell = c.render ? c.render(r) : { text: String(r[c.id] ?? ""), node: null };
+        expect(cellText("onoff", "il", view, c.id, row(r)), `${view}/${c.id}`).toBe(cell.text);
+        const html = renderToStaticMarkup(createElement("div", null, cell.node));
+        const lines =
+          view === "four_factors"
+            ? (parents![c.id] ?? [])
+            : c.id.endsWith(" Diff") && c.id !== "Net Diff"
+              ? (() => {
+                  const s = c.id.startsWith("Off") ? "off" : "def",
+                    m = SP_SUFFIX[cols.filter((x) => x.id.startsWith(c.id.slice(0, 3)) && x.id.endsWith(" Diff")).findIndex((x) => x.id === c.id)];
+                  return [`${s}_on_${m}`, `${s}_off_${m}`];
+                })()
+              : [];
+        for (const k of lines) {
+          const t = cellText("onoff", "il", view, k, row(r))!;
+          if (t !== "--" && t !== "-") expect(html, `${view}/${c.id} shows ${k}=${t}`).toContain(t);
+        }
+      }
+    });
 
   it("compare and team_overview use the formatters their pages call", () => {
     const cmp = readFileSync(path.resolve("src/components/CompareClient.tsx"), "utf8");

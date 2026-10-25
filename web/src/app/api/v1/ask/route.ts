@@ -5,7 +5,7 @@ import { checkLimit } from "@/ask/limits";
 import { logTurn } from "@/ask/log";
 import { currentProvider } from "@/ask/provider";
 import { TOOLS, type ToolName } from "@/ask/registry";
-import { askTurn, type AskAnswer } from "@/ask/turn";
+import { MAX_CALLS, askTurn, type AskAnswer } from "@/ask/turn";
 export const runtime = "nodejs";
 export const maxDuration = 60;
 
@@ -28,7 +28,7 @@ const Body = z.object({
       z.object({
         question: z.string().max(500),
         answer: z.string().max(4000),
-        calls: z.array(call).max(4),
+        calls: z.array(call).max(MAX_CALLS),
       }),
     )
     .max(6),

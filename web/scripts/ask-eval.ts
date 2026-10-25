@@ -119,7 +119,8 @@ async function main() {
         error = e instanceof Error ? e.message : String(e);
       }
       const ms = Math.round(performance.now() - t0);
-      const calls = answer?.results.map((r) => r.call) ?? [];
+      // This turn's own lookups (results also hold the re-run history calls).
+      const calls = answer?.calls ?? answer?.results.map((r) => r.call) ?? [];
       const accept = c.expect === "unanswerable" ? ["unanswerable" as const] : [c.expect[i]].flat();
       const text = answer?.text ?? "";
       turns.push({

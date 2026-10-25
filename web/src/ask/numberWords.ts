@@ -28,9 +28,19 @@ export const statCountWords = (text: string): string[] =>
 
 /** A whole number as written: 7, 7.3, 1,234, 12:30. */
 export const NUMBER = /\p{Nd}+(?:[.,:]\p{Nd}+)*/gu;
-/** The word without a Hebrew prefix, lower-cased, for comparing with the question. */
-export const bare = (w: string) =>
-  w.toLowerCase().replace(/^[ובהלמשכ]{1,2}(?=[֐-׿])/u, "");
+const BASE = new Set([...EN_WORDS.split("|"), ...HE_WORDS.split("|")]);
+/** The word without a Hebrew prefix, lower-cased, for comparing with the
+ * question. Many number words start with a prefix letter themselves (שלוש,
+ * שני, שבע), so a prefix is stripped only when what remains is a number word:
+ * "לשלוש" -> "שלוש", "שלוש" stays "שלוש". */
+export const bare = (w: string) => {
+  const l = w.toLowerCase();
+  for (const n of [0, 1, 2]) {
+    if (n && !/^[ובהלמשכ]+$/u.test(l.slice(0, n))) break;
+    if (BASE.has(l.slice(n))) return l.slice(n);
+  }
+  return l;
+};
 
 /** Basketball terms and list numbering that contain numbers but are not data. */
 export function withoutTerms(text: string): string {

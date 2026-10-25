@@ -2,7 +2,7 @@ import "server-only";
 // One ask tool call: the route's answer function, its own parser and guards,
 // then presentation only (row ids, sort by a returned column, limit, link).
 import ui from "@/data/shinyUi.json";
-import { queryFromSearch } from "@/lib/tabQuery";
+import { parseStats, queryFromSearch } from "@/lib/tabQuery";
 import type { League } from "@/rules/gameLogs";
 import { orderKey } from "@/rules/order";
 import { ParamError, rawQueryGuard } from "@/server/api";
@@ -162,6 +162,9 @@ export async function runTool(
       entry.name === "list_teams"
         ? await listTeams(call.league, prep.api)
         : await entry.answer!(call.league, prep.api);
+    // On/Off's Player Stats chips need the page's second read.
+    if (entry.playerStats && parseStats(prep.page.get("stats") ?? "").some((f) => f.col.startsWith("ps_")))
+      payload = { ...(payload as object), psRows: await entry.playerStats(call.league, prep.api) };
     flat = flatten(entry.name, call.league, payload, prep.page);
     // A lower minimum changes only the page's own filter, not the request, so
     // the same payload is re-filtered; the first that leaves enough rows wins.
