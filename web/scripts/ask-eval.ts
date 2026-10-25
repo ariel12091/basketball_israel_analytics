@@ -138,7 +138,8 @@ async function main() {
             // A refusal may still name teams from the team list it looked up.
             e === "unanswerable"
               ? answer!.evidence.length === 0 || calls.every((call) => call.tool === "list_teams")
-              : calls.some((call) => matches(call, e)),
+              // A follow-up may answer from an earlier turn's re-run lookup.
+              : [...calls, ...(answer!.results ?? []).map((r) => r.call)].some((call) => matches(call, e)),
           ),
         verified: !!answer && !answer.fallback,
         // Two failed verifications with data in hand: the disqualifying case.
