@@ -11,6 +11,8 @@ export const NUMBER_WORD = new RegExp(
   `(?<!\\p{L})(?:(?:${EN_WORDS})|[ובהלמשכ]{0,2}(?:${HE_WORDS}))(?!\\p{L})`,
   "giu",
 );
+/** A whole number as written: 7, 7.3, 1,234, 12:30. */
+export const NUMBER = /\p{Nd}+(?:[.,:]\p{Nd}+)*/gu;
 /** The word without a Hebrew prefix, lower-cased, for comparing with the question. */
 export const bare = (w: string) =>
   w.toLowerCase().replace(/^[ובהלמשכ]{1,2}(?=[֐-׿])/u, "");

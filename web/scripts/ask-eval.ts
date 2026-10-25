@@ -16,7 +16,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { performance } from "node:perf_hooks";
-import { NUMBER_WORD, bare, withoutTerms } from "../src/ask/numberWords";
+import { NUMBER_WORD, NUMBER, bare, digitWords, withoutTerms } from "../src/ask/numberWords";
 import type { AskAnswer, HistoryTurn } from "../src/ask/turn";
 import type { ToolCall } from "../src/ask/run";
 
@@ -40,7 +40,10 @@ const arg = (name: string, fallback?: string) => {
 /** A count or rank written as a word that the visitor did not use: the same
  * list the answer check applies (src/ask/numberWords.ts). */
 const numberWord = (text: string, question: string) => {
-  const asked = new Set((question.match(NUMBER_WORD) ?? []).map(bare));
+  const asked = new Set([
+    ...(question.match(NUMBER_WORD) ?? []).map(bare),
+    ...(question.match(NUMBER) ?? []).flatMap(digitWords),
+  ]);
   return (withoutTerms(text).match(NUMBER_WORD) ?? []).some((w) => !asked.has(bare(w)));
 };
 
@@ -125,7 +128,10 @@ async function main() {
         toolOk:
           !!answer &&
           accept.some((e) =>
-            e === "unanswerable" ? answer!.evidence.length === 0 : calls.some((call) => matches(call, e)),
+            // A refusal may still name teams from the team list it looked up.
+            e === "unanswerable"
+              ? answer!.evidence.length === 0 || calls.every((call) => call.tool === "list_teams")
+              : calls.some((call) => matches(call, e)),
           ),
         verified: !!answer && !answer.fallback,
         // Two failed verifications with data in hand: the disqualifying case.

@@ -2,7 +2,7 @@
 // the page's text for that cell and rejects any digit it did not supply
 // (spec: "Numbers are filled in by the app, never typed by the model").
 import { cellText, columnDefinition, displaySpec } from "./display";
-import { NUMBER_WORD, bare, digitWords, withoutTerms } from "./numberWords";
+import { NUMBER, NUMBER_WORD, bare, digitWords, withoutTerms } from "./numberWords";
 import { TOOLS } from "./registry";
 import type { ToolResult } from "./run";
 
@@ -12,8 +12,6 @@ export type Filled =
   | { ok: false; problems: string[] };
 
 const MARKER = /\{\{\s*([^{}]+?)\s*\}\}/g;
-/** A whole number as written: 7, 7.3, 1,234, 12:30. */
-const NUMBER = /\p{Nd}+(?:[.,:]\p{Nd}+)*/gu;
 
 export function fillAndVerify(
   template: string,
