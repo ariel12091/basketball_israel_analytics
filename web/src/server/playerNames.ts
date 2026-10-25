@@ -2,6 +2,8 @@ import "server-only";
 import type { Query } from "./db";
 import type { Row } from "../rules/gameLogs";
 import { playerIds } from "../rules/lineups";
+import { readVersion } from "./dataVersion";
+import { VersionedCache } from "./versionedCache";
 
 /** The "Player display name" owner (docs/shared_definitions.md, D27):
  * `display_name` from `resolved_player_identity_v` per (team, player). The view
@@ -16,35 +18,33 @@ const key = (team: unknown, player: unknown) =>
 // as Player Stats drops it from its identity join.
 const SQL =
   "SELECT team_id,source_player_id AS player_id,MIN(display_name) AS name FROM basketball_test.resolved_player_identity_v WHERE game_year=$1 AND source_player_id IS NOT NULL GROUP BY team_id,source_player_id HAVING COUNT(DISTINCT display_name)=1";
-// Names change only with the nightly ETL; ten minutes keeps the ~0.3 s view
-// read off most requests.
-const cache = new Map<
-  number,
-  { expires: number; promise: Promise<PlayerNames> }
->();
+const cache = new VersionedCache<{
+  version: string;
+  names: [string, string][];
+}>(4, (value) => value.version);
 
-export function readPlayerNames(
+export async function readPlayerNames(
   q: Query,
   league: string,
   season: number,
 ): Promise<PlayerNames> {
   if (league !== "il") return Promise.resolve(new Map());
-  const now = Date.now(),
-    hit = cache.get(season);
-  if (hit && hit.expires > now) return hit.promise;
-  const promise = q<Row>(SQL, [season]).then(
-    (rows) =>
-      new Map(
-        rows
-          .filter((r) => r.name != null && String(r.name).trim() !== "")
-          .map((r) => [key(r.team_id, r.player_id), String(r.name)]),
-      ),
+  const version = await readVersion(q, "il");
+  const data = await cache.getAtVersion(
+    "il",
+    version,
+    String(season),
+    async () => ({
+      version,
+      names: (await q<Row>(SQL, [season]))
+        .filter((r) => r.name != null && String(r.name).trim() !== "")
+        .map((r): [string, string] => [
+          key(r.team_id, r.player_id),
+          String(r.name),
+        ]),
+    }),
   );
-  cache.set(season, { expires: now + 600000, promise });
-  void promise.catch(() => {
-    if (cache.get(season)?.promise === promise) cache.delete(season);
-  });
-  return promise;
+  return new Map(data.names);
 }
 
 /** A picker list: rename, then restore the SQL's name order. Untouched

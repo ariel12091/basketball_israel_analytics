@@ -4,6 +4,7 @@ import { parseLineups } from "./lineupParams";
 import { dbArgs, needsFilteredPath } from "./contextParams";
 import { readTabReferences } from "./onoffRepo";
 import { readVersion } from "./gameLogsRepo";
+import { VersionedCache } from "./versionedCache";
 import { playerPopulation, type Identity } from "../rules/playerStatsTable";
 import type { League, Row } from "../rules/gameLogs";
 import { namedPicker, readPlayerNames } from "./playerNames";
@@ -139,22 +140,14 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
   };
 }
 export type PlayerStatsPayload = Awaited<ReturnType<typeof read>>;
-const cache = new Map<
-  string,
-  { expires: number; promise: Promise<PlayerStatsPayload> }
->();
+const cache = new VersionedCache<PlayerStatsPayload>(
+  16,
+  (value) => value.meta.version,
+);
 export function playerStatsAnswer(league: League, s: URLSearchParams) {
   const p = parsePlayerStats(s, league),
-    key = JSON.stringify(p),
-    now = Date.now(),
-    hit = cache.get(key);
-  if (hit && hit.expires > now) return hit.promise;
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  if (cache.size >= 16) cache.delete(cache.keys().next().value!);
-  const promise = withSnapshot(new Deadline(25000, 20000), (q) => read(q, p));
-  cache.set(key, { expires: now + 60000, promise });
-  void promise.catch(() => {
-    if (cache.get(key)?.promise === promise) cache.delete(key);
-  });
-  return promise;
+    key = JSON.stringify(p);
+  return cache.get(league, key, () =>
+    withSnapshot(new Deadline(25000, 20000), (q) => read(q, p)),
+  );
 }

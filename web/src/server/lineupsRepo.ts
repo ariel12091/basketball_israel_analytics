@@ -2,6 +2,7 @@ import "server-only";
 import { withSnapshot, Deadline, type Query } from "./db";
 import { dbArgs, needsFilteredPath } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
+import { VersionedCache } from "./versionedCache";
 import { readTabReferences } from "./onoffRepo";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
 import type { LineupParams } from "./lineupParams";
@@ -177,23 +178,15 @@ async function read(q: Query, p: LineupParams) {
     },
   };
 }
-const cache = new Map<
-  string,
-  { expires: number; promise: ReturnType<typeof read> }
->();
+const cache = new VersionedCache<Awaited<ReturnType<typeof read>>>(
+  16,
+  (value) => value.meta.version,
+);
 export function getLineups(p: LineupParams) {
-  const key = JSON.stringify({ ...p, c: { ...p.c, teams: [] } }),
-    now = Date.now(),
-    hit = cache.get(key);
-  if (hit && hit.expires > now) return hit.promise;
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  if (cache.size >= 16) cache.delete(cache.keys().next().value!);
-  const promise = withSnapshot(new Deadline(25000, 20000), (q) => read(q, p));
-  cache.set(key, { expires: now + 60000, promise });
-  void promise.catch(() => {
-    if (cache.get(key)?.promise === promise) cache.delete(key);
-  });
-  return promise;
+  const key = JSON.stringify({ ...p, c: { ...p.c, teams: [] } });
+  return cache.get(p.c.league, key, () =>
+    withSnapshot(new Deadline(25000, 20000), (q) => read(q, p)),
+  );
 }
 /** fetch_players_basic/euro_fetch_players_basic + with_season_minutes. */
 export function getLineupRoster(p: LineupParams) {

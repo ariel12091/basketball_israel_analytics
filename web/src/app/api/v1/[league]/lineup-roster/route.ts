@@ -15,7 +15,7 @@ export async function GET(
         leagueParam((await context.params).league),
         url.searchParams,
       ),
-      { headers: { "Vercel-CDN-Cache-Control": "s-maxage=60" } },
+      { headers: { "Cache-Control": "no-store", "Vercel-CDN-Cache-Control": "no-store" } },
     );
   } catch (e) {
     return handleError(e);

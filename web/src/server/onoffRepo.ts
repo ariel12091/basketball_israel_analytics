@@ -3,6 +3,7 @@ import { withSnapshot, Deadline, type Query } from "./db";
 import type { Row } from "../rules/gameLogs";
 import { dbArgs, needsFilteredPath, type Context } from "./contextParams";
 import { readVersion } from "./gameLogsRepo";
+import { VersionedCache } from "./versionedCache";
 import { applyPlayerNames, readPlayerNames } from "./playerNames";
 import {
   addFfRanks,
@@ -223,11 +224,8 @@ export async function readTabReferences(q: Query, c: Context) {
       };
 }
 
-const cache = new Map<
-  string,
-  { expires: number; promise: Promise<OnOffAnswer> }
->();
-/** A bounded warm-instance cache (60 s), plus the CDN cache on the route. */
+const cache = new VersionedCache<OnOffAnswer>(16, (value) => value.version);
+/** Bounded warm-instance answers, isolated by current publication version. */
 export function getOnOff(c: Context, view: View): Promise<OnOffAnswer> {
   const filtered = needsFilteredPath(c);
   const key = JSON.stringify({
@@ -235,17 +233,7 @@ export function getOnOff(c: Context, view: View): Promise<OnOffAnswer> {
     view,
     teams: filtered && view === "summary" ? c.teams : [],
   });
-  const now = Date.now();
-  const hit = cache.get(key);
-  if (hit && hit.expires > now) return hit.promise;
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  if (cache.size >= 16) cache.delete(cache.keys().next().value!);
-  const promise = withSnapshot(new Deadline(25000, 20000), (q) =>
-    read(q, c, view),
+  return cache.get(c.league, key, () =>
+    withSnapshot(new Deadline(25000, 20000), (q) => read(q, c, view)),
   );
-  cache.set(key, { expires: now + 60000, promise });
-  void promise.catch(() => {
-    if (cache.get(key)?.promise === promise) cache.delete(key);
-  });
-  return promise;
 }

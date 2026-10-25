@@ -29,6 +29,22 @@ type Waiting = {
   deadline: Deadline;
   timer: ReturnType<typeof setTimeout>;
 };
+function validateLimits(max: number, queueMax: number) {
+  if (!Number.isInteger(max) || max < 1 || max > 20)
+    throw new Error("Invalid DB_POOL_MAX");
+  if (!Number.isInteger(queueMax) || queueMax < 0 || queueMax > 1000)
+    throw new Error("Invalid DB_QUEUE_MAX");
+}
+export function snapshotLimits(
+  env: Record<string, string | undefined> = process.env,
+) {
+  const max = Number(env.DB_POOL_MAX ?? 2),
+    queueMax = Number(env.DB_QUEUE_MAX ?? 20);
+  if (env.DB_POOL_MAX?.trim() === "" || env.DB_QUEUE_MAX?.trim() === "")
+    throw new Error("Empty database limit");
+  validateLimits(max, queueMax);
+  return { max, queueMax };
+}
 /** FIFO bounds admitted work before pg's internal queue, so expired work cannot execute later. */
 export class SnapshotDatabase {
   private active = 0;
@@ -37,7 +53,9 @@ export class SnapshotDatabase {
     private pool: Pick<Pool, "connect">,
     private max = 2,
     private queueMax = 20,
-  ) {}
+  ) {
+    validateLimits(max, queueMax);
+  }
   private async enter(deadline: Deadline) {
     if (deadline.expired()) throw new DeadlineError();
     if (this.active < this.max) {
@@ -174,9 +192,7 @@ export function withSnapshot<T>(
     const connectionString =
       process.env.DATABASE_URL_WEB || process.env.DATABASE_URL;
     if (!connectionString && !process.env.PG_HOST) throw new BusyError();
-    const max = Number(process.env.DB_POOL_MAX ?? 2);
-    if (!Number.isInteger(max) || max < 1 || max > 20)
-      throw new Error("Invalid DB_POOL_MAX");
+    const { max, queueMax } = snapshotLimits();
     const pool = new Pool({
       ...(connectionString
         ? { connectionString }
@@ -203,12 +219,10 @@ export function withSnapshot<T>(
       idleTimeoutMillis: 10000,
       application_name: "ibpl-web",
     });
-    pool.on("error", () => {});
-    database = new SnapshotDatabase(
-      pool,
-      max,
-      Number(process.env.DB_QUEUE_MAX ?? 20),
-    );
+    pool.on("error", (error: Error & { code?: string }) => {
+      console.error("Database idle client failed", error.code ?? error.name);
+    });
+    database = new SnapshotDatabase(pool, max, queueMax);
   }
   return database.withSnapshot(deadline, fn);
 }

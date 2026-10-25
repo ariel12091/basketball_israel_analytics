@@ -16,8 +16,8 @@ export async function GET(
     rawQueryGuard(url);
     return Response.json(await compareAnswer(url.searchParams), {
       headers: {
-        "Cache-Control": "public, max-age=0",
-        "Vercel-CDN-Cache-Control": "s-maxage=60",
+        "Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
       },
     });
   } catch (e) {

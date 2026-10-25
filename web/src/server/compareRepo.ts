@@ -5,6 +5,7 @@ import { parseLineups } from "./lineupParams";
 import { dbArgs, seasonBounds } from "./contextParams";
 import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
+import { VersionedCache } from "./versionedCache";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
 import { addUsagePct, normalizeTsRows } from "../rules/playerStats";
 import { playerIds } from "../rules/lineups";
@@ -336,22 +337,12 @@ async function read(s: URLSearchParams, p: Params) {
   });
 }
 export type ComparePayload = Awaited<ReturnType<typeof read>>;
-const cache = new Map<
-  string,
-  { expires: number; promise: Promise<ComparePayload> }
->();
+const cache = new VersionedCache<ComparePayload>(
+  64,
+  (value) => value.meta.version,
+);
 export function compareAnswer(s: URLSearchParams) {
   const p = parseCompare(s),
-    key = s.toString(),
-    now = Date.now(),
-    hit = cache.get(key);
-  if (hit && hit.expires > now) return hit.promise;
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  if (cache.size >= 64) cache.delete(cache.keys().next().value!);
-  const promise = read(s, p);
-  cache.set(key, { expires: now + 60000, promise });
-  void promise.catch(() => {
-    if (cache.get(key)?.promise === promise) cache.delete(key);
-  });
-  return promise;
+    key = s.toString();
+  return cache.get("il", key, () => read(s, p));
 }

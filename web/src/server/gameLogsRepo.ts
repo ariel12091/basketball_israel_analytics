@@ -1,11 +1,9 @@
 import "server-only";
 import { withSnapshot, Deadline, type Query } from "./db";
-import type {
-  GameLogParams,
-  League,
-  Row,
-  SeasonInput,
-} from "../rules/gameLogs";
+import { readVersion, VERSION_SQL } from "./dataVersion";
+import { VersionedCache } from "./versionedCache";
+export { readVersion } from "./dataVersion";
+import type { GameLogParams, Row, SeasonInput } from "../rules/gameLogs";
 
 // The existing Shiny readers, unchanged: gl_query_* in svc_game_logs.R,
 // euro_fetch_game_log_rows in global_euro.R, fetch_scoreless_games in global.R.
@@ -37,18 +35,10 @@ export const QUERIES = {
   scoreless: `SELECT game_id, team_id FROM basketball_test.df_pts_poss_lineups_longer_mv
  WHERE game_id = ANY($1::integer[])
  GROUP BY game_id, team_id HAVING COUNT(own_team_score)=0`,
-  ilVersion: `SELECT value FROM basketball_test.app_meta WHERE key='etl_full_last_success'`,
-  euroVersion: `SELECT COALESCE(MAX(completed_at),MAX(started_at))::text AS value
- FROM euroleague.load_runs WHERE status='completed'`,
+  ilVersion: VERSION_SQL.il,
+  euroVersion: VERSION_SQL.euro,
 };
 export type Season = SeasonInput & { version: string; seasons?: string[] };
-export async function readVersion(q: Query, league: League): Promise<string> {
-  const result = await q<{ value: unknown }>(
-    league === "il" ? QUERIES.ilVersion : QUERIES.euroVersion,
-    [],
-  );
-  return result[0]?.value == null ? "unknown" : String(result[0].value);
-}
 export async function fetchSeason(q: Query, p: GameLogParams): Promise<Season> {
   const version = await readVersion(q, p.league);
   if (p.league !== "il") {
@@ -81,19 +71,11 @@ export async function fetchSeason(q: Query, p: GameLogParams): Promise<Season> {
     version,
   };
 }
-const cache = new Map<string, { expires: number; promise: Promise<Season> }>();
-/** A bounded warm-instance cache, plus the 60 s CDN cache. No publication claims. */
+const cache = new VersionedCache<Season>(4, (value) => value.version);
+/** Verify the publication version before reusing a warm-instance answer. */
 export function getSeason(p: GameLogParams): Promise<Season> {
-  const key = `${p.league}/${p.season}/${p.league === "il" ? p.view : "both"}`,
-    now = Date.now();
-  const found = cache.get(key);
-  if (found && found.expires > now) return found.promise;
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  if (cache.size >= 4) cache.delete(cache.keys().next().value!);
-  const promise = withSnapshot(new Deadline(), (q) => fetchSeason(q, p));
-  cache.set(key, { expires: now + 60000, promise });
-  void promise.catch(() => {
-    if (cache.get(key)?.promise === promise) cache.delete(key);
-  });
-  return promise;
+  const key = `${p.league}/${p.season}/${p.league === "il" ? p.view : "both"}`;
+  return cache.get(p.league, key, () =>
+    withSnapshot(new Deadline(), (q) => fetchSeason(q, p)),
+  );
 }

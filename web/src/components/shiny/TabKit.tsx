@@ -21,6 +21,7 @@ import {
   type ReactNode,
 } from "react";
 import { parseAsString, useQueryStates } from "nuqs";
+import { pollVersions } from "@/lib/versionPolling";
 import {
   contextParams,
   parseStats,
@@ -168,33 +169,23 @@ export function useVersion(
   refetch: () => void,
 ) {
   const [updated, setUpdated] = useState<string | null>(null);
-  useEffect(() => {
-    const check = () => {
-      void fetch("/api/v1/version")
-        .then((r) => (r.ok ? r.json() : null))
-        .then((value) => {
-          const versions = (value?.leagues ?? []) as {
-            league: string;
-            version: string;
-          }[];
-          const il = versions.find((x) => x.league === "il")?.version;
-          if (il && il !== "unknown") setUpdated(il);
-          const v = versions.find((x) => x.league === league)?.version;
-          if (v && version.current && v !== version.current) {
-            version.current = v;
-            refetch();
-          }
-        })
-        .catch(() => {});
-    };
-    check();
-    const timer = setInterval(check, 60000);
-    window.addEventListener("focus", check);
-    return () => {
-      clearInterval(timer);
-      window.removeEventListener("focus", check);
-    };
-  }, [league, version, refetch]);
+  useEffect(
+    () =>
+      pollVersions((value) => {
+        const versions = (value?.leagues ?? []) as {
+          league: string;
+          version: string;
+        }[];
+        const il = versions.find((x) => x.league === "il")?.version;
+        if (il && il !== "unknown") setUpdated(il);
+        const v = versions.find((x) => x.league === league)?.version;
+        if (v && version.current && v !== version.current) {
+          version.current = v;
+          refetch();
+        }
+      }),
+    [league, version, refetch],
+  );
   return updated;
 }
 

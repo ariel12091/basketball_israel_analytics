@@ -1,6 +1,7 @@
 import "server-only";
 import { withSnapshot, Deadline, type Query } from "./db";
 import { readVersion } from "./gameLogsRepo";
+import { VersionedCache } from "./versionedCache";
 import { ParamError } from "./api";
 import { seasonBounds } from "./contextParams";
 import { homeTeams } from "../lib/homeQuery";
@@ -149,30 +150,15 @@ export async function readHome(q: Query, p: ReturnType<typeof parseHome>) {
   };
 }
 export type HomePayload = Awaited<ReturnType<typeof readHome>>;
-const cache = new Map<
-  string,
-  { expires: number; promise: Promise<HomePayload> }
->();
+const cache = new VersionedCache<HomePayload>(
+  64,
+  (value) => value.meta.version,
+  (value) => !value.meta.errors.length,
+);
 export function homeAnswer(s: URLSearchParams) {
   const p = parseHome(s),
-    key = `${p.season}:${p.team}`,
-    now = Date.now(),
-    hit = cache.get(key);
-  if (hit && hit.expires > now) return hit.promise;
-  for (const [k, v] of cache) if (v.expires <= now) cache.delete(k);
-  if (cache.size >= 64) cache.delete(cache.keys().next().value!);
-  const promise = withSnapshot(new Deadline(25000, 20000), (q) =>
-    readHome(q, p),
+    key = `${p.season}:${p.team}`;
+  return cache.get("il", key, () =>
+    withSnapshot(new Deadline(25000, 20000), (q) => readHome(q, p)),
   );
-  cache.set(key, { expires: now + 60000, promise });
-  void promise.then(
-    (data) => {
-      if (data.meta.errors.length && cache.get(key)?.promise === promise)
-        cache.delete(key);
-    },
-    () => {
-      if (cache.get(key)?.promise === promise) cache.delete(key);
-    },
-  );
-  return promise;
 }

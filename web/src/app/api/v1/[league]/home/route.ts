@@ -14,12 +14,8 @@ export async function GET(
     const answer = await homeAnswer(url.searchParams);
     return Response.json(answer, {
       headers: {
-        "Cache-Control": answer.meta.errors.length
-          ? "no-store"
-          : "public, max-age=0",
-        "Vercel-CDN-Cache-Control": answer.meta.errors.length
-          ? "no-store"
-          : "s-maxage=60",
+        "Cache-Control": "no-store",
+        "Vercel-CDN-Cache-Control": "no-store",
       },
     });
   } catch (e) {
