@@ -88,6 +88,18 @@ describe("fillAndVerify", () => {
     expect(fill("{{r1.row1.Players}}: {{r1.row1.net_rtg}} points per 200 possessions").ok).toBe(false);
   });
 
+  it("allows the numbers and number words of a guide result's own text", () => {
+    const guide: ToolResult = {
+      ...flow,
+      id: "r3",
+      call: { tool: "guide", league: "il", query: { topic: "glossary" } },
+      rows: [{ id: "row1", cells: { title: "Efficiency", text: "PPP : Points per 100 possessions. Each three counts as 3 points." } }],
+    };
+    const g = (t: string) => fillAndVerify(t, [guide], "what is PPP?", "2025-26");
+    expect(g("PPP is points per 100 possessions; a three is worth 3 points.").ok).toBe(true);
+    expect(g("PPP is points per 120 possessions.").ok).toBe(false);
+  });
+
   it("rejects a number word that counts a stat, English and Hebrew", () => {
     for (const t of [
       "{{r1.row1.Players}} scored five points",

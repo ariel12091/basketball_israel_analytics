@@ -81,6 +81,9 @@ export function fillAndVerify(
     if (TOOLS[r.call.tool].numbers)
       for (const c of Object.values(displaySpec(r.call.tool, r.call.league, r.view)))
         for (const n of columnDefinition(c.label).match(NUMBER) ?? []) allowed.add(n);
+  // The page's own explanations (guide) are text, not data: their numbers
+  // ("per 100 possessions", an example's figures) may be repeated.
+  for (const t of guideText(results)) for (const n of t.match(NUMBER) ?? []) allowed.add(n);
   const own = withoutTerms(words.replace(/\u0000\d+\u0000/g, " "));
   for (const d of own.match(NUMBER) ?? [])
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
@@ -89,6 +92,10 @@ export function fillAndVerify(
   const asked = new Set([
     ...(question.match(NUMBER_WORD) ?? []).map(bare),
     ...(question.match(NUMBER) ?? []).flatMap(digitWords),
+    ...guideText(results).flatMap((t) => [
+      ...(t.match(NUMBER_WORD) ?? []).map(bare),
+      ...(t.match(NUMBER) ?? []).flatMap(digitWords),
+    ]),
   ]);
   for (const w of statCountWords(own))
     if (!asked.has(bare(w)))
@@ -105,6 +112,13 @@ export function fillAndVerify(
     }),
     used,
   };
+}
+
+/** The text of every guide row (the page's own explanations). */
+function guideText(results: ToolResult[]): string[] {
+  return results
+    .filter((r) => r.call.tool === "guide")
+    .flatMap((r) => r.rows.map((row) => `${row.cells.title ?? ""}\n${row.cells.text ?? ""}`));
 }
 
 /** The typed number with its neighbouring characters, for the retry message. */

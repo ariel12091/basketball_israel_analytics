@@ -18,6 +18,7 @@ import type { League } from "@/rules/gameLogs";
 import { compareAnswer } from "@/server/compareRepo";
 import { gameLogsAnswer } from "@/server/gameLogsApi";
 import { gameflowAnswer } from "@/server/gameflowRepo";
+import { GUIDE_TOPICS, guideAnswer } from "@/server/guideApi";
 import { homeAnswer } from "@/server/homeRepo";
 import { lineupGames } from "@/server/lineupGamesRepo";
 import { lineupRosterAnswer, lineupsAnswer } from "@/server/lineupsApi";
@@ -39,6 +40,7 @@ export type ToolName =
   | "compare"
   | "team_overview"
   | "gameflow"
+  | "guide"
   | "list_teams";
 
 export type ToolEntry = {
@@ -53,8 +55,11 @@ export type ToolEntry = {
   leagues: League[];
   /** Feature inventory IDs (2026-10-19-api-mcp-feature-inventory.md). */
   inventory: string[];
-  /** false: link-only, no numbers in the answer text (gameflow in v1). */
+  /** false: no markers to quote (gameflow is link-only; guide is text whose
+   * own numbers may be repeated, see markers.ts). */
   numbers: boolean;
+  /** The page link when it depends on the query (guide: the topic's tab). */
+  link?: (league: League, query: Record<string, string>) => string | null;
   /** Table pages: how page.tsx turns its URL into the API request
    * (queryFromSearch with these defaults, then this builder). */
   request?: {
@@ -222,9 +227,37 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
     ids("GF", 1, 6),
     { numbers: false, keys: ["game_id", "team_id"] },
   ),
+  guide: tool(
+    "guide",
+    "guide",
+    "guideAnswer",
+    async (l, s) => guideAnswer(l, s),
+    null,
+    ["X-16"],
+    {
+      numbers: false,
+      keys: ["topic", "view"],
+      link: (l, q) => {
+        const page = GUIDE_PAGES[q.topic];
+        return page ? `/${l}/${page}${q.view ? `?view=${encodeURIComponent(q.view)}` : ""}` : null;
+      },
+    },
+  ),
   list_teams: tool("list_teams", null, null, null, null, ["X-04"], {
     keys: ["season"],
   }),
+};
+
+export { GUIDE_TOPICS };
+
+/** guide topics that are a tab, and that tab's page. */
+const GUIDE_PAGES: Record<string, string> = {
+  onoff: "onoff",
+  lineups: "lineups",
+  team_ratings: "team-ratings",
+  game_logs: "game-logs",
+  player_stats: "player-stats",
+  compare: "compare",
 };
 
 /** Routes that are not tools, with the reason (spec: API mapping). */

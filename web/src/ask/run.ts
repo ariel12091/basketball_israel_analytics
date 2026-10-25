@@ -56,6 +56,12 @@ const BASE = "http://ask.local";
 
 /** The page link for a call (the query exactly as given). */
 export function linkFor(call: ToolCall): string | null {
+  const own = TOOLS[call.tool]?.link;
+  if (own)
+    return own(
+      call.league,
+      Object.fromEntries(Object.entries(call.query).map(([k, v]) => [k, String(Array.isArray(v) ? v[0] : v)])),
+    );
   const page = TOOLS[call.tool]?.page;
   if (!page) return null;
   const s = new URLSearchParams();
@@ -219,8 +225,8 @@ export async function runTool(
       )
       .map((x) => x.r);
   }
-  // The team list (for name matching) and the Home hub (a fixed set of
-  // sections) are always complete; tables are capped.
+  // The team list (for name matching), the Home hub (a fixed set of
+  // sections) and a guide topic are always complete; tables are capped.
   const meta = (
     (payload ?? {}) as {
       meta?: {
@@ -233,7 +239,7 @@ export async function runTool(
   ).meta;
   // Compare's Detail grid is one fixed set of metrics, like the hub.
   const limit =
-    entry.name === "list_teams" || entry.name === "team_overview" || meta?.view === "detail"
+    entry.name === "list_teams" || entry.name === "team_overview" || entry.name === "guide" || meta?.view === "detail"
       ? rows.length
       : Math.min(Math.max(1, Math.trunc(call.limit ?? 5)), 10);
   return {

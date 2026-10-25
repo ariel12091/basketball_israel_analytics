@@ -54,6 +54,7 @@ const TOOL_LABELS: Record<string, string> = {
   compare: "Compare",
   team_overview: "the team overview",
   gameflow: "Gameflow",
+  guide: "the page guides",
   list_teams: "the team list",
 };
 

@@ -339,3 +339,17 @@ describe("runTool: errors, sorting, limits, links", () => {
     expect(flatten("team_overview", "il", { frames }, new URLSearchParams()).rows).toEqual([]);
   });
 });
+
+describe("runTool: guide", () => {
+  it("returns the whole topic, links to its tab, and reports a bad topic as a parameter", async () => {
+    const r = await runTool("r1", { tool: "guide", league: "il", query: { topic: "onoff", view: "summary" } }, later);
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.link).toBe("/il/onoff?view=summary");
+    expect(r.rows.length).toBe(r.rowCount);
+    expect(r.rows[0].cells).toMatchObject({ kind: "explainer", view: "summary" });
+    const g = await runTool("r2", { tool: "guide", league: "il", query: { topic: "glossary" } }, later);
+    expect("rows" in g && g.link).toBe(null);
+    const bad = await runTool("r3", { tool: "guide", league: "il", query: { topic: "news" } }, later);
+    expect(bad).toMatchObject({ param: "topic" });
+  });
+});
