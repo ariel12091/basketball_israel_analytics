@@ -24,7 +24,28 @@ the page.
 | 10 Model comparison | Anthropic key is in Vercel (Production + Preview); several eval runs done on Haiku 5.5, see "Update 2026-10-25" |
 | Final whole-branch review | Not done; run after Tasks 9-10 |
 
-## Update 2026-10-25, afternoon (latest)
+## Update 2026-10-25, evening (latest)
+
+- **On/Off is fully quotable:** Off/Def Shot as separate 2PT% / 3PT% values
+  (`358ccc1`), the 3PT luck and small sample tags with every value of the Net
+  tooltip (`1be26b2`), sorting by derived values and tags (`e8bbc24`, `e37807f`),
+  and the Player Stats (`ps_`) chips inside On/Off.
+- **`guide` tool + `/api/v1/[league]/guide`** (`1153fe3`, inventory X-16): the
+  glossary, filter tooltips, and each tab's explainer cards, "How to Read"
+  examples, popovers (3PT luck / small sample) and FF impact line, read from
+  `shinyUi.json` by `src/server/guideApi.ts`. query: `topic` (glossary, filters,
+  onoff, lineups, team_ratings, game_logs, player_stats, compare), optional
+  `view`. Numbers and number words in the returned text may be repeated
+  (`markers.ts` `guideText`); the prompt says worked examples are past examples.
+  Text is English; the model translates in Hebrew answers.
+- Eval on `oid70atj6` (66 cases / 75 turns, two halves): 0 errors, 97-98% right
+  tool, 100% verified, 100% language, $0.14. All five new guide cases pass. The
+  two tool flags are not regressions: Holon's top scorer was answered from the
+  team overview (a valid source), and "spell the number out" asked which Maccabi.
+- `src/server/playerNames.test.ts` fails against an uncommitted
+  `playerNames.ts` edit (versioned cache) made outside this work; not touched.
+
+## Update 2026-10-25, afternoon
 
 - **Model decision (user): no paid upgrade.** The chat stays on Haiku 5.5, or a
   cheaper non-Claude model the user calls "luna" (vendor not yet named; it would
