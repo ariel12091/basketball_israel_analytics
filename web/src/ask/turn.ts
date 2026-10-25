@@ -51,6 +51,14 @@ const TOOL_LABELS: Record<string, string> = {
 };
 
 const isResult = (r: ToolResult | ToolError): r is ToolResult => "rows" in r;
+/** The app's Hebrew basketball terms: possessions are פוזשנים, not החזקות.
+ * Applied to the final text so it holds whatever the model wrote. */
+function hebrewTerms(text: string): string {
+  return text
+    .replace(/(?<!\p{L})([ובלמשכ]?)ה?חזקות(?!\p{L})/gu, "$1פוזשנים")
+    .replace(/(?<!\p{L})([ובלמשכ]?)ה?חזקה(?!\p{L})/gu, "$1פוזשן");
+}
+
 /** Columns the model needs to make its next lookup, shown even when not quotable. */
 const ID_KEYS = ["team_id", "player_id", "game_id", "sub_lineup_hash", "identity_id"];
 /** Result-level markers ({{r1.count}}, {{r1.side_a}}) as the model sees them. */
@@ -249,7 +257,13 @@ export async function* askTurn(
     // The panel shows plain text: markdown emphasis would appear as asterisks.
     const text = (reply.text ?? "").replace(/\*\*|__/g, "");
     const results = all.filter(isResult);
-    let filled = fillAndVerify(text, results, input.question, seasonLabel(input.league, results.map((r) => r.call)));
+    let filled = fillAndVerify(
+      text,
+      results,
+      input.question,
+      seasonLabel(input.league, results.map((r) => r.call)),
+      lang,
+    );
     // A turn whose every tool failed has nothing to stand on: show the page.
     if (all.length && !results.length) break;
     // Checks on the answer's own words (markers removed), reported together with
@@ -273,10 +287,10 @@ export async function* askTurn(
         return {
           ...u,
           label: displaySpec(r.call.tool, r.call.league, r.view)[u.key].label,
-          text: cellText(r.call.tool, r.call.league, r.view, u.key, row)!,
+          text: cellText(r.call.tool, r.call.league, r.view, u.key, row, lang)!,
         };
       });
-      yield finish(filled.text, evidence, false);
+      yield finish(lang === "he" ? hebrewTerms(filled.text) : filled.text, evidence, false);
       return;
     }
     rejected.push({ text, problems: filled.problems });

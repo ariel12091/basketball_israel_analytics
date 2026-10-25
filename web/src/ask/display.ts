@@ -262,7 +262,19 @@ export function cellText(
   view: string | null,
   key: string,
   row: AskRow,
+  lang: "he" | "en" = "en",
 ): string | null {
   const c = displaySpec(tool, league, view)[key];
-  return c ? c.format(row.cells[key], row.cells) : null;
+  if (!c) return null;
+  const text = c.format(row.cells[key], row.cells);
+  return lang === "he" ? inHebrew(tool, key, text) : text;
+}
+
+/** The Home hub's English-only pieces in a Hebrew answer: the same rank as
+ * "#1" instead of "1st", and the last game's "W"/"L" as ניצחון/הפסד. */
+function inHebrew(tool: ToolName, key: string, text: string): string {
+  if (tool !== "team_overview") return text;
+  if (/^rank/.test(key)) return text.replace(/^(\d+)(?:st|nd|rd|th)$/, "#$1");
+  if (key === "result") return text.replace(/^W /, "ניצחון ").replace(/^L /, "הפסד ");
+  return text;
 }

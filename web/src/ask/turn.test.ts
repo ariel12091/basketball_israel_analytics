@@ -257,6 +257,12 @@ describe("askTurn", () => {
     expect(answer.text).toBe("Best: A - B");
   });
 
+  it("Hebrew answers say פוזשנים for possessions", async () => {
+    const p = scriptedProvider([tc(), { text: "{{r1.row1.Players}}: מינימום החזקות, החזקה אחת, ב-חזקות" }]);
+    const { answer } = await run("מה החמישייה?", p);
+    expect(answer.text).toBe("A - B: מינימום פוזשנים, פוזשן אחת, ב-פוזשנים");
+  });
+
   it("a refusal becomes the fallback", async () => {
     const p = scriptedProvider([{ refused: true }]);
     const { answer } = await run("q", p);

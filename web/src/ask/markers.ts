@@ -20,6 +20,7 @@ export function fillAndVerify(
   results: ToolResult[],
   question: string,
   season: string,
+  lang: "he" | "en" = "en",
 ): Filled {
   const problems: string[] = [],
     used: Used[] = [];
@@ -53,7 +54,7 @@ export function fillAndVerify(
       (rowId === "total" ? result.total : result.rows.find((r) => r.id === rowId));
     const text =
       result && row && TOOLS[result.call.tool].numbers
-        ? cellText(result.call.tool, result.call.league, result.view, key, row)
+        ? cellText(result.call.tool, result.call.league, result.view, key, row, lang)
         : null;
     if (!text) {
       problems.push(

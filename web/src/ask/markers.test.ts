@@ -160,6 +160,22 @@ describe("fillAndVerify", () => {
     expect(fill("{{r1.row1.name}}", "q", [teams])).toMatchObject({ ok: true, text: "MACCABI TEL AVIV" });
   });
 
+  it("Hebrew answers show the overview's ranks as #n and its result in Hebrew", () => {
+    const hub: ToolResult = {
+      ...lineups,
+      call: { tool: "team_overview", league: "il", query: {} },
+      view: null,
+      rows: [
+        { id: "row1", cells: { section: "identity", rank_net_rtg: 1 } },
+        { id: "row2", cells: { section: "last_game", result: "L 90-93" } },
+      ],
+    };
+    const he = fillAndVerify("במקום {{r1.row1.rank_net_rtg}}, {{r1.row2.result}}", [hub], "q", "2026-27", "he");
+    expect(he).toMatchObject({ ok: true, text: "במקום #1, הפסד 90-93" });
+    const en = fillAndVerify("ranked {{r1.row1.rank_net_rtg}}, {{r1.row2.result}}", [hub], "q", "2026-27", "en");
+    expect(en).toMatchObject({ ok: true, text: "ranked 1st, L 90-93" });
+  });
+
   it("rejects Arabic-Indic digits", () => {
     expect(fill("رقم ٧ {{r1.row1.Players}}").ok).toBe(false);
   });
