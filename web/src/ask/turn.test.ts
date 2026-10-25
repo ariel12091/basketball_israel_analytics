@@ -162,16 +162,16 @@ describe("askTurn", () => {
     expect(answer.rejected[1]).toEqual({ text: "Still 7.3", problems: [expect.stringContaining("7.3")] });
   });
 
-  it("fifth tool call is refused with a tool error", async () => {
-    const five = {
-      toolCalls: [1, 2, 3, 4, 5].map((i) => ({ id: `c${i}`, call: { ...call, query: { team: String(i) } } })),
+  it("seventh tool call is refused with a tool error", async () => {
+    const seven = {
+      toolCalls: [1, 2, 3, 4, 5, 6, 7].map((i) => ({ id: `c${i}`, call: { ...call, query: { team: String(i) } } })),
     };
-    const p = scriptedProvider([five, { text: "{{r1.row1.Players}}" }]);
+    const p = scriptedProvider([seven, { text: "{{r1.row1.Players}}" }]);
     await run("q", p);
-    expect(runTool).toHaveBeenCalledTimes(4);
+    expect(runTool).toHaveBeenCalledTimes(6);
     const results = p.seen[1].at(-1)!.toolResults!;
-    expect(results).toHaveLength(5);
-    expect(JSON.stringify(results[4].content)).toMatch(/limit/i);
+    expect(results).toHaveLength(7);
+    expect(JSON.stringify(results[6].content)).toMatch(/limit/i);
   });
 
   it("a call rejected for a bad parameter does not use up a lookup", async () => {
@@ -184,12 +184,12 @@ describe("askTurn", () => {
       .mockImplementationOnce(
         async (id: string, c: ToolCall): Promise<ToolError> => ({ id, call: c, error: "Unknown parameter teams", param: "teams" }),
       );
-    const four = {
-      toolCalls: [1, 2, 3, 4].map((i) => ({ id: `d${i}`, call: { ...call, query: { team: String(i + 10) } } })),
+    const six = {
+      toolCalls: [1, 2, 3, 4, 5, 6].map((i) => ({ id: `d${i}`, call: { ...call, query: { team: String(i + 10) } } })),
     };
-    const p = scriptedProvider([tc("c1"), tc("c2", { ...call, query: { team: "9" } }), four, { text: "{{r3.row1.Players}}" }]);
+    const p = scriptedProvider([tc("c1"), tc("c2", { ...call, query: { team: "9" } }), six, { text: "{{r3.row1.Players}}" }]);
     await run("q", p);
-    expect(runTool).toHaveBeenCalledTimes(6);
+    expect(runTool).toHaveBeenCalledTimes(8);
     expect(JSON.stringify(p.seen[3].at(-1)!.toolResults)).not.toMatch(/limit/i);
   });
 
@@ -197,12 +197,12 @@ describe("askTurn", () => {
     runTool.mockImplementationOnce(
       async (id: string, c: ToolCall): Promise<ToolError> => ({ id, call: c, error: "Timed out", param: null }),
     );
-    const four = {
-      toolCalls: [1, 2, 3, 4].map((i) => ({ id: `d${i}`, call: { ...call, query: { team: String(i + 10) } } })),
+    const six = {
+      toolCalls: [1, 2, 3, 4, 5, 6].map((i) => ({ id: `d${i}`, call: { ...call, query: { team: String(i + 10) } } })),
     };
-    const p = scriptedProvider([tc("c1"), four, { text: "{{r2.row1.Players}}" }]);
+    const p = scriptedProvider([tc("c1"), six, { text: "{{r2.row1.Players}}" }]);
     await run("q", p);
-    expect(runTool).toHaveBeenCalledTimes(4);
+    expect(runTool).toHaveBeenCalledTimes(6);
   });
 
   it("tool calls get the turn's 40 s deadline (runTool refuses after it)", async () => {

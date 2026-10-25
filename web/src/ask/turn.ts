@@ -29,7 +29,9 @@ export type AskAnswer = {
 };
 export type TurnEvent = { type: "status"; text: string } | { type: "final"; answer: AskAnswer };
 
-const MAX_CALLS = 4;
+// A two-player Lineups comparison needs four (teams, roster, two reads);
+// six leaves room for one detour.
+const MAX_CALLS = 6;
 const MAX_RERUNS = 6;
 const MAX_RETRIES = 2;
 const TOOL_BUDGET_MS = 40_000;
