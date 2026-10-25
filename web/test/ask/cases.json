@@ -9,7 +9,7 @@
   {"id": "he-nickname-hapoel-ta", "lang": "he", "turns": ["החמישייה הכי טובה של הפועל ת״א"], "expect": [{"tool": "lineups", "league": "il", "query": {"team": "3"}}]},
   {"id": "he-nickname-jerusalem", "lang": "he", "turns": ["מי השחקן עם ההשפעה הכי גדולה בירושלים?"], "expect": [{"tool": "onoff", "league": "il", "query": {"teams": "4"}}]},
   {"id": "he-nickname-holon", "lang": "he", "turns": ["כמה נקודות למשחק קולע הקלע המוביל של חולון?"], "expect": [{"tool": "player_stats", "league": "il", "query": {"teams": "5"}}]},
-  {"id": "he-nickname-galil", "lang": "he", "turns": ["איך הגליל בהגנה?"], "expect": [{"tool": "team_overview", "league": "il", "query": {"team_id": "10"}}]},
+  {"id": "he-nickname-galil", "lang": "he", "turns": ["איך הגליל בהגנה?"], "expect": [{"tool": "team_overview", "league": "il", "query": {"team_id": "10"}}, {"tool": "team_ratings", "league": "il", "query": {}}]},
   {"id": "he-nickname-ramat-gan", "lang": "he", "turns": ["משחקים אחרונים של מכבי רמת גן"], "expect": [{"tool": "game_logs", "league": "il", "query": {"team": "7"}}]},
   {"id": "he-nickname-herzliya", "lang": "he", "turns": ["בני הרצליה בבית מול חוץ"], "expect": [[{"tool": "compare", "league": "il", "query": {"preset": "home_away", "team_id": "6"}}, {"tool": "team_ratings", "league": "il", "query": {"home_away": "home"}}]]},
   {"id": "he-nickname-emek", "lang": "he", "turns": ["החמישייה הפותחת של העמק כמה טובה?"], "expect": [[{"tool": "team_overview", "league": "il", "query": {"team_id": "8"}}, {"tool": "lineups", "league": "il", "query": {"team": "8"}}]]},

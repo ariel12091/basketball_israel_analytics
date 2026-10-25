@@ -116,6 +116,8 @@ describe("fillAndVerify", () => {
     expect(fill("אחוז הקליעה לשלוש {{r1.row1.net_rtg}}").ok).toBe(true);
     expect(fill("{{r1.row1.Players}} זורקת הרבה ניסיונות לשתיים").ok).toBe(true);
     expect(fill("{{r1.row1.Players}} עלתה לשלוש נקודות").ok).toBe(false);
+    // 2026-10-25 eval: the opponents' two-point percentage.
+    expect(fill("ההגנה טובה יותר באחוז הקליעה של היריבה לשתי נקודות ({{r1.row1.net_rtg}})").ok).toBe(true);
   });
 
   it("Hebrew 'both' (שני/שתי + the article, השניים) is allowed; counts stay rejected", () => {

@@ -37,9 +37,10 @@ export function withoutTerms(text: string): string {
   return text
     .replace(/^[ \t]*\d{1,2}[.)][ \t]+/gm, " ")
     .replace(/\b(?:four[- ]factors?|(?:two|three)[- ]point(?:ers?)?|(?:two|three|four|five)[- ]man)\b/gi, " ")
-    // Hebrew "for two/three" after a shooting word is the shot type: "קליעה לשלוש".
+    // Hebrew "for two/three" after a shooting word is the shot type: "קליעה
+    // לשלוש", "אחוז הקליעה של היריבה לשתי נקודות" (up to three words between).
     .replace(
-      /(?<=(?:קליע|קלע|קול|זריק|זורק|ניסיונ|ניסיון|אחוז|מטווח)\p{L}*\s+)ל(?:שלוש|שתיים)(?!\p{L})/gu,
+      /(?<=(?:קליע|קלע|קול|זריק|זורק|ניסיונ|ניסיון|אחוז|מטווח)\p{L}*(?:\s+[\p{L}'"״-]+){0,3}\s+)ל(?:שלוש|שתיים|שתי)(?:\s+נקודות)?(?!\p{L})/gu,
       " ",
     )
     // "השני" / "השנייה" (with the article) is only ever "the second": a position.
