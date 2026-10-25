@@ -233,6 +233,9 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
       ]);
     case "list_teams":
       return spec([["name", "Team", text]]);
+    // The lineup filter's player picker shows the name only.
+    case "lineup_roster":
+      return spec([["name", "Player", text]]);
     case "team_overview":
       return spec([
         ["section", "Section", text],

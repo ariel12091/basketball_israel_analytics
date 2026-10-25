@@ -141,7 +141,7 @@ export const TOOLS: Record<ToolName, ToolEntry> = {
     async (l, s) => lineupRosterAnswer(l, s),
     "lineups",
     ["LD-03"],
-    { keys: ["season"] },
+    { keys: ["season", "team"] },
   ),
   team_ratings: tool(
     "team_ratings",

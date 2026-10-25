@@ -17,11 +17,11 @@ const DESCRIPTIONS: Record<ToolName, string> = {
   team_overview:
     "Israeli Home hub for one team: record, ratings with league ranks, four-factor ranks, key players, top scorer, best and worst five-man lineups (100+ possessions), storylines, last game. Best for 'what is team X good at'. query: season, team_id.",
   lineups:
-    "Lineups page: player combinations of a team with possessions, offensive, defensive and net rating. query: season, team (team id), size (2-5, default 5), view (summary|four_factors), players_on, players_off (player ids, comma separated), plus the shared game filters and clutch (true) with clutch_status. The page sets its own minimum possessions; check total_poss before calling a lineup best. For a team with X and Y together versus X without Y, make two calls (players_on X,Y; then players_on X with players_off Y) and quote each result's total row, the sum of all matching lineups; take the ids from lineup_roster. For what lineups are good or bad at, use view four_factors (shooting eFG%, turnovers TOV%, offensive rebounds OREB%, free throws FTR, each for offense and defense).",
+    "Lineups page: player combinations of a team with possessions, offensive, defensive and net rating. query: season, team (team id), size (2-5, default 5), view (summary|four_factors), players_on, players_off (player ids, comma separated), plus the shared game filters and clutch (true) with clutch_status. The page sets its own minimum possessions; check total_poss before calling a lineup best. For a team with X and Y together versus X without Y, make two calls (players_on X,Y; then players_on X with players_off Y) sorted by total_poss, and quote each result's total row (the sum of all matching lineups); take the ids and the player names from lineup_roster for that team. The total row's Players cell is the label '- All Lineups -', never a name. For what lineups are good or bad at, use view four_factors (shooting eFG%, turnovers TOV%, offensive rebounds OREB%, free throws FTR, each for offense and defense).",
   lineup_games:
     "Game-by-game log of one lineup. query: season, team, hash (the lineup's sub_lineup_hash from the lineups tool), view.",
   lineup_roster:
-    "A season's players for every team, with team_id and minutes, for picking player ids. query: season only (no team filter; pick the team's rows by team_id).",
+    "A team's players with their ids, names and minutes, for picking player ids and quoting player names. query: season, team (team id).",
   onoff:
     "On/Off page: how each player's team performs with him on and off the floor. query: season, teams (comma separated ids), view (summary|four_factors|shot_profile), plus the shared game filters. The page sets its own possession minimums.",
   player_stats:

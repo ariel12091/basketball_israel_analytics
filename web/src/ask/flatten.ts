@@ -24,6 +24,12 @@ export function flatten(
     const total = rows.find((r) => r.is_total === 0) ?? null;
     return { rows: rows.filter((r) => r !== total), total };
   }
+  if (tool === "lineup_roster" && query.get("team")) {
+    // The route lists every team (the lineup filter's pool); the picker on
+    // the page shows one team's players.
+    const team = query.get("team");
+    return { rows: rows.filter((r) => String(r.team_id) === team), total: null };
+  }
   return { rows, total: null };
 }
 
