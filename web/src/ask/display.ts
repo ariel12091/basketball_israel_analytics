@@ -1,6 +1,7 @@
 // The columns the ask box may quote, each with the formatter its page uses.
 // A copy of the pages' column choices, pinned by display.test.ts: every key's
 // text equals the page's own rendered cell for the same row.
+import homeUi from "@/data/homeUi.json";
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
 import { formatNumber } from "@/rules/format";
@@ -276,5 +277,11 @@ function inHebrew(tool: ToolName, key: string, text: string): string {
   if (tool !== "team_overview") return text;
   if (/^rank/.test(key)) return text.replace(/^(\d+)(?:st|nd|rd|th)$/, "#$1");
   if (key === "result") return text.replace(/^W /, "ניצחון ").replace(/^L /, "הפסד ");
+  // homeLastGame(): "vs|at <team> · <Mon> <day>" -> "בבית|בחוץ מול <team> · <day>/<month>".
+  if (key === "context") {
+    const m = text.match(/^(vs|at) (.+) · (\w{3}) (\d{1,2})$/);
+    const month = m ? (homeUi.months as string[]).indexOf(m[3]) + 1 : 0;
+    if (m && month > 0) return `${m[1] === "vs" ? "בבית מול" : "בחוץ מול"} ${m[2]} · ${m[4]}/${month}`;
+  }
   return text;
 }

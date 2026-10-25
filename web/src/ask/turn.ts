@@ -57,7 +57,9 @@ const isResult = (r: ToolResult | ToolError): r is ToolResult => "rows" in r;
 function hebrewTerms(text: string): string {
   return text
     .replace(/(?<!\p{L})([ובלמשכ]?)ה?חזקות(?!\p{L})/gu, "$1פוזשנים")
-    .replace(/(?<!\p{L})([ובלמשכ]?)ה?חזקה(?!\p{L})/gu, "$1פוזשן");
+    .replace(/(?<!\p{L})([ובלמשכ]?)ה?חזקה(?!\p{L})/gu, "$1פוזשן")
+    // "בהפסד הפסד 90-93": the filled result already says ניצחון/הפסד.
+    .replace(/(ב?)(הפסד|ניצחון)\s+\2(?!\p{L})/gu, "$1$2");
 }
 
 /** Columns the model needs to make its next lookup, shown even when not quotable. */

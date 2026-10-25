@@ -284,6 +284,13 @@ describe("askTurn", () => {
     expect(answer.rejected).toHaveLength(2);
   });
 
+  it("a doubled result word in Hebrew is collapsed", async () => {
+    const p = scriptedProvider([tc(), { text: "{{r1.row1.Players}} הסתיים בהפסד הפסד" }]);
+    const { answer } = await run("איך היה המשחק?", p);
+    expect(answer.text).toContain("בהפסד");
+    expect(answer.text).not.toContain("הפסד הפסד");
+  });
+
   it("a refusal becomes the fallback", async () => {
     const p = scriptedProvider([{ refused: true }]);
     const { answer } = await run("q", p);

@@ -176,6 +176,20 @@ describe("fillAndVerify", () => {
     expect(en).toMatchObject({ ok: true, text: "ranked 1st, L 90-93" });
   });
 
+  it("Hebrew answers show the last game's details in Hebrew", () => {
+    const hub: ToolResult = {
+      ...lineups,
+      call: { tool: "team_overview", league: "il", query: {} },
+      view: null,
+      rows: [
+        { id: "row1", cells: { section: "last_game", context: "at M. Rishon · Oct 24" } },
+        { id: "row2", cells: { section: "last_game", context: "vs Hapoel Holon · Mar 3" } },
+      ],
+    };
+    const he = fillAndVerify("{{r1.row1.context}}; {{r1.row2.context}}", [hub], "q", "2026-27", "he");
+    expect(he).toMatchObject({ ok: true, text: "בחוץ מול M. Rishon · 24/10; בבית מול Hapoel Holon · 3/3" });
+  });
+
   it("rejects Arabic-Indic digits", () => {
     expect(fill("رقم ٧ {{r1.row1.Players}}").ok).toBe(false);
   });
