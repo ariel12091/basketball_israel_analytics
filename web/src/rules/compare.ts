@@ -237,6 +237,42 @@ export function detailMetric(
 export function withTeamShots(r: Row | null) {
   return r ? teamShotProfile([r], [])[0] : null;
 }
+/** The Detail view's sections for one team or lineup (EntityDetails). */
+export function detailSections(
+  teams: boolean,
+  [a, b]: [Row | null, Row | null],
+  [aff, bff]: [Row | null, Row | null],
+  [shootingA, shootingB]: [Row | null, Row | null],
+) {
+  return Object.entries(detailSpecs)
+    .filter(
+      ([key]) =>
+        teams ||
+        !["def_shooting", "off_shot_profile", "def_shot_profile"].includes(key),
+    )
+    .map(([, section]) => ({
+      title: section.title,
+      metrics: section.metrics
+        .filter((m) => teams || m.label !== "Win%")
+        .map((m) => ({
+          definition: m,
+          a: detailMetric(withTeamShots(a), aff, shootingA, m),
+          b: detailMetric(withTeamShots(b), bff, shootingB, m),
+        })),
+    }));
+}
+/** CompareGrid's gap cell. */
+export function gridGapText(gap: number | null, fmt?: string, player = false) {
+  const suffix = fmt === "pct" ? "%" : "";
+  if (gap == null) return "--";
+  if (Math.abs(gap) < 1e-9) return `${player ? "+" : "+/-"}0.0${suffix}`;
+  return `${formatCompare(gap, "num", true)}${suffix}`;
+}
+/** CompareContext's line for one side. */
+export function contextText(r: Row | null, teams = false, player = false) {
+  if (!r) return null;
+  return `${teams ? `${formatCompare(r.games_played, "int")} GP | ${r.wins}-${r.losses} | ` : player ? `${formatCompare(r.gp, "int")} GP | ` : ""}${formatCompare(r.off_poss ?? r.total_poss ?? r.poss_on_floor, "int")} Poss`;
+}
 export function playerMetric(
   r: Row | null,
   metric: string,

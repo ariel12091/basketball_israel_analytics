@@ -152,6 +152,22 @@ describe("cellText equals the page column text", () => {
     expect(hub).toContain("stat(t.net, row.net_rtg, row.rank_net_rtg, true)");
   });
 
+  it("compare detail and team players show the page's text", () => {
+    const d = (key: string, r: Row) => cellText("compare", "il", "detail", key, row(r));
+    expect(d("a", { a: 12.04, fmt: "net" })).toBe("+12.0");
+    expect(d("b", { b: 55.26, fmt: "pct" })).toBe("55.3%");
+    expect(d("gap", { gap: 4.26, fmt: "pct" })).toBe("+4.3%");
+    expect(d("gap", { gap: 0, fmt: "rtg" })).toBe("+/-0.0");
+    expect(d("gap", { gap: null, fmt: "pct" })).toBe("--");
+    expect(d("label", { label: "eFG%" })).toBe("eFG%");
+    const p = (key: string, r: Row) => cellText("compare", "il", "players", key, row(r));
+    expect(p("metric_a", { metric_a: 20, played_a: true, pct: false })).toBe("20.0");
+    expect(p("metric_b", { metric_b: 0, played_b: false, pct: false })).toBe("0.0 (didn't play)");
+    expect(p("gap", { gap: 4.26, pct: true })).toBe("+4.3%");
+    expect(p("gp_b", { gp_b: 5, played_b: false })).toBe("0");
+    expect(p("player_name", { player_name: "P. One" })).toBe("P. One");
+  });
+
   it("columns outside the spec are not quotable", () => {
     expect(cellText("lineups", "il", "summary", "Off Shot", row(sample))).toBeNull();
     expect(cellText("gameflow", "il", null, "anything", row(sample))).toBeNull();

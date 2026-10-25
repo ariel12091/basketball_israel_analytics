@@ -205,15 +205,21 @@ export async function runTool(
   }
   // The team list (for name matching) and the Home hub (a fixed set of
   // sections) are always complete; tables are capped.
-  const limit =
-    entry.name === "list_teams" || entry.name === "team_overview"
-      ? rows.length
-      : Math.min(Math.max(1, Math.trunc(call.limit ?? 5)), 10);
   const meta = (
     (payload ?? {}) as {
-      meta?: { view?: unknown; version?: unknown; sides?: { a: string; b: string } };
+      meta?: {
+        view?: unknown;
+        version?: unknown;
+        sides?: { a: string; b: string };
+        values?: Record<string, string>;
+      };
     }
   ).meta;
+  // Compare's Detail grid is one fixed set of metrics, like the hub.
+  const limit =
+    entry.name === "list_teams" || entry.name === "team_overview" || meta?.view === "detail"
+      ? rows.length
+      : Math.min(Math.max(1, Math.trunc(call.limit ?? 5)), 10);
   return {
     id,
     call,
@@ -229,6 +235,7 @@ export async function runTool(
     extras: {
       count: String(rows.length),
       ...(meta?.sides ? { side_a: meta.sides.a, side_b: meta.sides.b } : {}),
+      ...(meta?.values ?? {}),
       ...minPossExtra(call),
     },
   };

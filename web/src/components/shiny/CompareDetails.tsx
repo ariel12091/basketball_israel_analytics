@@ -4,9 +4,9 @@ import type { Row } from "@/rules/gameLogs";
 import type { Query } from "@/lib/tabQuery";
 import { compareSideParams } from "@/lib/compareQuery";
 import {
-  detailSpecs,
-  detailMetric,
-  withTeamShots,
+  detailSections,
+  gridGapText,
+  contextText,
   shootingRates,
   gapInfo,
   num,
@@ -85,9 +85,7 @@ export function CompareGrid({
                     : r.gap.a_wins
                       ? "a"
                       : "b",
-                suffix = m.fmt === "pct" ? "%" : "",
-                gap = r.gap.gap,
-                zero = gap != null && Math.abs(gap) < 1e-9;
+                gap = r.gap.gap;
               const cls =
                 si === sections.length - 1 && j === rows.length - 1
                   ? " cmp-last-row"
@@ -120,11 +118,7 @@ export function CompareGrid({
                     <span
                       className={`cmp-gap-num ${leader === "none" ? "" : leader + "-color"}`}
                     >
-                      {gap == null
-                        ? "--"
-                        : zero
-                          ? `${player ? "+" : "+/-"}0.0${suffix}`
-                          : `${formatCompare(gap, "num", true)}${suffix}`}
+                      {gridGapText(gap, m.fmt, player)}
                     </span>
                     {estimate != null && (
                       <span
@@ -180,9 +174,7 @@ export function CompareContext({
             {i ? "B" : "A"}
           </span>
           <span className="cmp-context-info">
-            {r
-              ? `${teams ? `${formatCompare(r.games_played, "int")} GP | ${r.wins}-${r.losses} | ` : player ? `${formatCompare(r.gp, "int")} GP | ` : ""}${formatCompare(r.off_poss ?? r.total_poss ?? r.poss_on_floor, "int")} Poss`
-              : "didn't play"}
+            {contextText(r, teams, player) ?? "didn't play"}
           </span>
         </div>
       ))}
@@ -263,22 +255,12 @@ export function EntityDetails({
       .filter(([, read]) => read.isSuccess && !read.isFetching)
       .map(([, read]) => read.data!.meta.version),
   );
-  const sections = Object.entries(detailSpecs)
-    .filter(
-      ([key]) =>
-        teams ||
-        !["def_shooting", "off_shot_profile", "def_shot_profile"].includes(key),
-    )
-    .map(([, section]) => ({
-      title: section.title,
-      metrics: section.metrics
-        .filter((m) => teams || m.label !== "Win%")
-        .map((m) => ({
-          definition: m,
-          a: detailMetric(withTeamShots(a), aff, shootingA, m),
-          b: detailMetric(withTeamShots(b), bff, shootingB, m),
-        })),
-    }));
+  const sections = detailSections(
+    teams,
+    [a, b],
+    [aff, bff],
+    [shootingA, shootingB],
+  );
   return (
     <section className="detail-container" aria-label="Entity comparison detail">
       <h3 className="cmp-team-header">{name}</h3>

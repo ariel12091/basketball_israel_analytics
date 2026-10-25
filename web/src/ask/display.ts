@@ -5,7 +5,7 @@ import homeUi from "@/data/homeUi.json";
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
 import { formatNumber } from "@/rules/format";
-import { formatCompare } from "@/rules/compare";
+import { formatCompare, gridGapText } from "@/rules/compare";
 import { homeFixed, homeOrdinal } from "@/rules/home";
 import { SP_LABELS, SP_SUFFIX } from "@/rules/onoff";
 import { PLAYER_LABELS } from "@/rules/playerStatsTable";
@@ -194,6 +194,33 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["OFF Poss", "Off Poss", fixed(0)],
       ]);
     case "compare":
+      // CompareGrid's cells (EntityDetails), per row's own format.
+      if (view === "detail")
+        return spec([
+          ["section", "Section", text],
+          ["label", "Metric", text],
+          ["a", "Side A", (v, r) => formatCompare(v, String(r.fmt), r.fmt === "net")],
+          ["b", "Side B", (v, r) => formatCompare(v, String(r.fmt), r.fmt === "net")],
+          ["gap", "Gap", (v, r) => gridGapText(v == null ? null : Number(v), String(r.fmt))],
+          ["better", "Ahead", text],
+        ]);
+      // CompareClient's team players table.
+      if (view === "players") {
+        const fmt = (r: Record<string, unknown>) => (r.pct ? "pct" : "num");
+        const played = (side: "a" | "b"): Fmt => (v, r) =>
+          `${formatCompare(v, fmt(r))}${r[`played_${side}`] ? "" : " (didn't play)"}`;
+        return spec([
+          ["rank", "#", text],
+          ["player_name", "Player", text],
+          ["gp_a", "GP A", (v, r) => String(r.played_a ? v : 0)],
+          ["gp_b", "GP B", (v, r) => String(r.played_b ? v : 0)],
+          ["metric_a", "Side A", played("a")],
+          ["metric_b", "Side B", played("b")],
+          ["poss_a", "Total Poss A", text],
+          ["poss_b", "Total Poss B", text],
+          ["gap", "Gap", (v, r) => formatCompare(v, fmt(r), true)],
+        ]);
+      }
       return spec([
         ["rank", "#", text],
         ["entity_name", "Team or lineup", text],

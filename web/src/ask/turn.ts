@@ -70,6 +70,9 @@ const EXTRA_LABELS: Record<string, string> = {
   side_a: "Compare side A heading",
   side_b: "Compare side B heading",
   min_poss: "Minimum possessions the rows were filtered by",
+  entity: "The team or lineup the Compare detail is about",
+  context_a: "Side A games, record and possessions",
+  context_b: "Side B games, record and possessions",
 };
 
 /** What the model sees of a result: ids, quotable columns and their raw values. */
