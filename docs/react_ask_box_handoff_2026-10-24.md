@@ -24,7 +24,28 @@ the page.
 | 10 Model comparison | Anthropic key is in Vercel (Production + Preview); several eval runs done on Haiku 5.5, see "Update 2026-10-25" |
 | Final whole-branch review | Not done; run after Tasks 9-10 |
 
-## Update 2026-10-25 (latest; supersedes older lines below where they disagree)
+## Update 2026-10-25, afternoon (latest)
+
+- **Model decision (user): no paid upgrade.** The chat stays on Haiku 5.5, or a
+  cheaper non-Claude model the user calls "luna" (vendor not yet named; it would
+  need its own provider adapter). The OpenAI adapter is dropped. Sonnet 5.5
+  ($2/$10 per MTok) and Opus 5.5 ($4/$20) were priced at about 20x and 40x.
+- **Follow-ups are on** in the branch Preview (`ASK_FOLLOWUPS=true`). Set it with
+  `vercel env add ... --value true`: piping `"true"` from PowerShell stores a
+  trailing newline, the check `=== "true"` fails, and follow-ups silently stay
+  off (one eval run lost two multi-turn cases that way).
+- **Player names follow the owner (D27), React/API only**: `src/server/playerNames.ts`,
+  used by Lineups, On/Off, Compare, Home and the Player Stats picker, so chat
+  answers too. Ambiguous (team, player) pairs keep the row's spelling.
+- Prompt: an unknown team name is not echoed back (the SQL-injection case
+  quoted `DROP TABLE` twice).
+- Eval on `loe3yof7u` with follow-ups on (before the prompt line): 62 turns,
+  0 errors, 97% right tool, 100% verified, 100% language, $0.10, median 9.6 s;
+  the only flag was the echoed `DROP`. Results: `output/ask/eval-2026-10-25-*.json`.
+- Still open: glossary tool (user deciding), the "luna" provider, final
+  whole-branch review, Hebrew phrasing.
+
+## Update 2026-10-25, morning
 
 - Pushed through `97c7ae6`. Ready Preview with the latest code:
   `https://ibpl-game-logs-64rwctf1f-ariel12091-8759.vercel.app` (Deployment
