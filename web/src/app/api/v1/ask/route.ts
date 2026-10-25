@@ -13,7 +13,10 @@ const league = z.enum(["il", "euroleague", "eurocup"]);
 const call = z.object({
   tool: z.enum(Object.keys(TOOLS) as [ToolName, ...ToolName[]]),
   league,
-  query: z.record(z.string().max(64), z.union([z.string().max(500), z.array(z.string().max(500)).max(4)])),
+  query: z.record(
+    z.string().max(64),
+    z.union([z.string().max(500), z.array(z.string().max(500)).max(4)]),
+  ),
   sort: z.object({ key: z.string().max(64), desc: z.boolean() }).optional(),
   limit: z.number().int().min(1).max(10).optional(),
 });
@@ -33,11 +36,19 @@ const Body = z.object({
 });
 const MAX_TURNS = 6;
 
-const json = (status: number, body: unknown, headers: Record<string, string> = {}) =>
-  Response.json(body, { status, headers: { "Cache-Control": "no-store", ...headers } });
+const json = (
+  status: number,
+  body: unknown,
+  headers: Record<string, string> = {},
+) =>
+  Response.json(body, {
+    status,
+    headers: { "Cache-Control": "no-store", ...headers },
+  });
 
 export async function POST(request: Request) {
-  if (process.env.ASK_ENABLED !== "true") return json(404, { error: "Not found" });
+  if (process.env.ASK_ENABLED !== "true")
+    return json(404, { error: "Not found" });
   let body: z.infer<typeof Body>;
   try {
     body = Body.parse(await request.json());
@@ -45,44 +56,107 @@ export async function POST(request: Request) {
     return json(400, { error: "Invalid question" });
   }
   if (body.history.length >= MAX_TURNS)
-    return json(400, { error: "This conversation is full; start a new question" });
-  const ip = (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() || "unknown";
+    return json(400, {
+      error: "This conversation is full; start a new question",
+    });
+  const ip =
+    (request.headers.get("x-forwarded-for") ?? "").split(",")[0].trim() ||
+    "unknown";
   const limit = checkLimit([`client:${body.clientId}`, `ip:${ip}`], Date.now());
   if (!limit.ok)
-    return json(429, { error: "Too many questions; try again later", retryAfterSec: limit.retryAfterSec }, {
-      "Retry-After": String(limit.retryAfterSec),
-    });
+    return json(
+      429,
+      {
+        error: "Too many questions; try again later",
+        retryAfterSec: limit.retryAfterSec,
+      },
+      {
+        "Retry-After": String(limit.retryAfterSec),
+      },
+    );
 
   const provider = currentProvider();
   const started = Date.now();
   const encoder = new TextEncoder();
+  const abort = new AbortController();
+  let ended = false;
+  let output: ReadableStreamDefaultController<Uint8Array>;
+  const disconnected = () => {
+    abort.abort(request.signal.reason);
+    if (!ended) {
+      ended = true;
+      output.close();
+    }
+  };
   const stream = new ReadableStream<Uint8Array>({
-    async start(controller) {
-      let answer: AskAnswer | null = null,
-        error: string | undefined;
-      try {
-        for await (const e of askTurn(
-          { league: body.league, question: body.question, history: body.history },
-          provider,
-          { now: Date.now, followups: process.env.ASK_FOLLOWUPS === "true" },
-        )) {
-          if (e.type === "final") answer = e.answer;
-          // The final event names the model, so an eval run records what it measured.
-          const event = e.type === "final" ? { ...e, provider: provider.name, model: provider.model } : e;
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
+    start(controller) {
+      output = controller;
+      request.signal.addEventListener("abort", disconnected, { once: true });
+      if (request.signal.aborted) disconnected();
+      // Keep start synchronous so consumer cancellation can abort pending work.
+      void (async () => {
+        let answer: AskAnswer | null = null,
+          error: string | undefined;
+        try {
+          for await (const e of askTurn(
+            {
+              league: body.league,
+              question: body.question,
+              history: body.history,
+            },
+            provider,
+            {
+              now: Date.now,
+              followups: process.env.ASK_FOLLOWUPS === "true",
+              signal: abort.signal,
+            },
+          )) {
+            if (ended) break;
+            if (e.type === "final") answer = e.answer;
+            // The final event names the model, so an eval run records what it measured.
+            const event =
+              e.type === "final"
+                ? { ...e, provider: provider.name, model: provider.model }
+                : e;
+            controller.enqueue(
+              encoder.encode(`data: ${JSON.stringify(event)}\n\n`),
+            );
+          }
+        } catch (e) {
+          error = e instanceof Error ? e.message : String(e);
+          if (!ended)
+            controller.enqueue(
+              encoder.encode(
+                `data: ${JSON.stringify({ type: "error", error: "The answer failed; try again" })}\n\n`,
+              ),
+            );
+        } finally {
+          request.signal.removeEventListener("abort", disconnected);
+          if (!ended) {
+            ended = true;
+            controller.close();
+          }
+          logTurn({
+            question: body.question,
+            provider: provider.name,
+            model: provider.model,
+            answer,
+            ms: Date.now() - started,
+            error,
+          });
         }
-      } catch (e) {
-        error = e instanceof Error ? e.message : String(e);
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ type: "error", error: "The answer failed; try again" })}\n\n`),
-        );
-      } finally {
-        logTurn({ question: body.question, provider: provider.name, model: provider.model, answer, ms: Date.now() - started, error });
-        controller.close();
-      }
+      })();
+    },
+    cancel(reason) {
+      ended = true;
+      request.signal.removeEventListener("abort", disconnected);
+      abort.abort(reason);
     },
   });
   return new Response(stream, {
-    headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-store" },
+    headers: {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-store",
+    },
   });
 }

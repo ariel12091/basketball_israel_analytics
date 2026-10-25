@@ -9,6 +9,7 @@ import { systemPrompt, toolSchemas } from "./prompt";
 import { TOOLS } from "./registry";
 import { linkFor, runTool, type ToolCall, type ToolError, type ToolResult } from "./run";
 import type { Provider, ProviderMessage, Usage } from "./providers/types";
+import { turnLifetime } from "./lifetime";
 
 export type HistoryTurn = { question: string; answer: string; calls: ToolCall[] };
 export type Evidence = { result: string; row: string; key: string; label: string; text: string };
@@ -133,8 +134,23 @@ function cleanHistory(history: HistoryTurn[]): HistoryTurn[] {
 export async function* askTurn(
   input: { league: League; question: string; history: HistoryTurn[] },
   provider: Provider,
-  opts: { now: () => number; followups: boolean },
+  opts: { now: () => number; followups: boolean; signal?: AbortSignal },
 ): AsyncGenerator<TurnEvent> {
+  const lifetime = turnLifetime(TOOL_BUDGET_MS, opts.signal);
+  try {
+    yield* turnEvents(input, provider, opts, lifetime);
+  } finally {
+    lifetime.dispose();
+  }
+}
+
+async function* turnEvents(
+  input: { league: League; question: string; history: HistoryTurn[] },
+  provider: Provider,
+  opts: { now: () => number; followups: boolean },
+  lifetime: ReturnType<typeof turnLifetime>,
+): AsyncGenerator<TurnEvent> {
+  lifetime.signal.throwIfAborted();
   const deadline = opts.now() + TOOL_BUDGET_MS;
   const lang = /[֐-׿]/.test(input.question) ? "he" : "en";
   const usage: Usage = { inputTokens: 0, outputTokens: 0, costUsd: 0 };
@@ -166,7 +182,7 @@ export async function* askTurn(
     }
     if (!rerun) calls++;
     yield { type: "status" as const, text: `Reading ${TOOL_LABELS[call.tool] ?? call.tool}…` };
-    const r = await runTool(id, call, deadline);
+    const r = await lifetime.wait(() => runTool(id, call, deadline));
     all.push(r);
     // Only successes are reused: a failed lookup (a timeout) may be retried.
     if (!rerun && isResult(r)) done.set(key, { result: r, limit });
@@ -207,7 +223,6 @@ export async function* askTurn(
 
   const system = systemPrompt(input.league),
     tools = toolSchemas();
-  const ctrl = new AbortController();
   let retries = 0;
   const rejected: { text: string; problems: string[] }[] = [];
   const finish = (text: string | null, used: Evidence[], fallback: boolean): TurnEvent => {
@@ -240,7 +255,7 @@ export async function* askTurn(
   };
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    const reply = await provider.reply(system, tools, messages, ctrl.signal);
+    const reply = await lifetime.wait(() => provider.reply(system, tools, messages, lifetime.signal));
     usage.inputTokens += reply.usage.inputTokens;
     usage.outputTokens += reply.usage.outputTokens;
     usage.costUsd += reply.usage.costUsd;
