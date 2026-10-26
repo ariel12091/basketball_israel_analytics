@@ -1,14 +1,23 @@
-import { test, expect } from "@playwright/test";
-import { loadGameflow } from "../test/gameflowGoldens";
+import { test, expect } from "./preview";
 test.skip(
   process.env.LIVE_DB_SMOKE !== "1",
   "Opt-in live read-only SSR checks",
 );
 test.use({ extraHTTPHeaders: {} });
+// The `<league>_regular.json` Gameflow golden cases, written out so the live
+// check runs without the (gitignored) goldens, e.g. in CI.
+const CASES = {
+  il: { game: 390, team: 2, ownTeam: "Maccabi Tel-Aviv", season: "2026" },
+  euroleague: { game: 781, team: 8, ownTeam: "Olympiacos Piraeus", season: "2025" },
+  eurocup: { game: 671, team: 966, ownTeam: "Cosea JL Bourg-en-Bresse", season: "2025" },
+} as const;
 for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Gameflow initial server HTML ${league}`, async ({ page }) => {
-    const { url, answer } = loadGameflow(`${league}_regular.json`);
-    const response = await page.goto(url);
+    const c = CASES[league];
+    const answer = { meta: { ownTeam: c.ownTeam, season: c.season } };
+    const response = await page.goto(
+      `/${league}/gameflow?game_id=${c.game}&team_id=${c.team}`,
+    );
     const html = await response!.text();
     expect(html).toContain('class="ibpl-ribbon');
     expect(html).toContain(answer.meta.ownTeam);

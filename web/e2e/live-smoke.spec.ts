@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect } from "./preview";
 for (const [league, season] of [
   ["il", 2026],
   ["euroleague", 2025],

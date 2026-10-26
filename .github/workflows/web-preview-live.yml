@@ -1,0 +1,65 @@
+name: Web Preview live checks
+
+# Runs the opt-in live browser checks (web/e2e/live-smoke.spec.ts,
+# gameflow-live.spec.ts) against each Vercel Preview of the Next.js app once
+# Vercel reports it ready, so the exact release deployment is checked on the
+# real database. Read-only: pages and API reads as app_readonly, one page at a
+# time. The Preview is protected; the bypass secret is sent to its origin only.
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: "Preview URL (https://<deployment>.vercel.app)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-preview-live-${{ github.event.deployment_status.target_url || inputs.preview_url }}
+  cancel-in-progress: true
+
+jobs:
+  live:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       contains(github.event.deployment_status.target_url, 'ibpl-game-logs-') &&
+       !contains(github.event.deployment.environment, 'Production'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: web
+    env:
+      PREVIEW_URL: ${{ github.event.deployment_status.target_url || inputs.preview_url }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      LIVE_DB_SMOKE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Live checks against ${{ env.PREVIEW_URL }}
+        run: >-
+          npx playwright test --config=playwright.preview.config.ts
+          e2e/live-smoke.spec.ts e2e/gameflow-live.spec.ts
+          --reporter=list,html
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-live-${{ github.run_id }}
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 30
