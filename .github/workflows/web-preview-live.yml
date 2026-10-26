@@ -1,43 +1,40 @@
 name: Web Preview live checks
 
 # Runs the opt-in live browser checks (web/e2e/live-smoke.spec.ts,
-# gameflow-live.spec.ts) against each Vercel Preview of the Next.js app once
-# Vercel reports it ready, so the exact release deployment is checked on the
-# real database. Read-only: pages and API reads as app_readonly, one page at a
-# time. The Preview is protected; the bypass secret is sent to its origin only.
+# gameflow-live.spec.ts) against the Vercel Preview of each pushed web
+# commit once Vercel reports it ready, so the release deployment is checked
+# on the real database. Read-only: pages and API reads as app_readonly, one
+# page at a time. The Preview is protected; the bypass secret is sent to its
+# origin only.
 on:
-  deployment_status:
-  workflow_dispatch:
-    inputs:
-      preview_url:
-        description: "Preview URL (https://<deployment>.vercel.app)"
-        required: true
+  push:
+    branches: [sql/web-foundation, "load-test/**"]
+    paths: ["web/**", ".github/workflows/web-preview-live.yml", ".github/scripts/vercel-preview-url.sh"]
 
 permissions:
   contents: read
+  statuses: read
 
 concurrency:
-  group: web-preview-live-${{ github.event.deployment_status.target_url || inputs.preview_url }}
+  group: web-preview-live-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   live:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.deployment_status.state == 'success' &&
-       contains(github.event.deployment_status.target_url, 'ibpl-game-logs-') &&
-       !contains(github.event.deployment.environment, 'Production'))
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     defaults:
       run:
         working-directory: web
     env:
-      PREVIEW_URL: ${{ github.event.deployment_status.target_url || inputs.preview_url }}
+      GH_TOKEN: ${{ github.token }}
       VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
       LIVE_DB_SMOKE: "1"
     steps:
       - uses: actions/checkout@v4
+
+      - name: Wait for the Vercel Preview
+        run: bash ../.github/scripts/vercel-preview-url.sh
 
       - uses: actions/setup-node@v4
         with:

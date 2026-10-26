@@ -6,25 +6,16 @@ name: Web Preview load test
 # game days and EuroLeague load hours. Stops itself at the first stage over
 # >5% failed actions or p95 > 5 s.
 #
-# Start it by pushing the commit under test to a `load-test/<name>` branch:
-# Vercel builds that branch's Preview and this runs when it is ready (a
-# hand-started workflow_dispatch works only once this file is on main).
+# Start it by pushing the commit under test to a short `load-test/<name>`
+# branch: Vercel builds that branch's Preview and this waits for it. (A
+# hand-started workflow_dispatch would need this file on main.)
 on:
-  deployment_status:
-  workflow_dispatch:
-    inputs:
-      preview_url:
-        description: "Preview URL (https://<deployment>.vercel.app)"
-        required: true
-      stages:
-        description: "Concurrent users per stage"
-        default: "1,10,20,50,100,150"
-      stage_seconds:
-        description: "Seconds per stage"
-        default: "60"
+  push:
+    branches: ["load-test/**"]
 
 permissions:
   contents: read
+  statuses: read
 
 concurrency:
   group: web-preview-load
@@ -32,26 +23,25 @@ concurrency:
 
 jobs:
   load:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.deployment_status.state == 'success' &&
-       contains(github.event.deployment_status.target_url, 'ibpl-game-logs-') &&
-       startsWith(github.event.deployment.ref, 'load-test/'))
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: web
     env:
-      PREVIEW_URL: ${{ github.event.deployment_status.target_url || inputs.preview_url }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v4
+      - name: Wait for the Vercel Preview
+        run: bash ../.github/scripts/vercel-preview-url.sh
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Load ${{ env.PREVIEW_URL }}
-        working-directory: web
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          STAGES: ${{ inputs.stages || '1,10,20,50,100,150' }}
-          STAGE_SECONDS: ${{ inputs.stage_seconds || '60' }}
+          STAGES: "1,10,20,50,100,150"
+          STAGE_SECONDS: "60"
           OUT: load-results.json
         run: node scripts/load-preview.mjs
       - uses: actions/upload-artifact@v4
