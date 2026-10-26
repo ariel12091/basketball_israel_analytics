@@ -23,8 +23,16 @@ const TAIL = Number(process.env.TAIL ?? 0.3);
 const DEADLINE_MS = 30000, THINK_MS = 1000;
 
 // Seeded (protocol seed 20261023), so every run asks the same sequence.
+// mulberry32: 32-bit integer arithmetic throughout. (An LCG written with plain
+// multiplication loses precision past 2^53 and cycled every 10,466 draws,
+// repeating most "never asked" date windows.)
 let seed = 20261023;
-const rand = () => ((seed = (seed * 1103515245 + 12345) % 2147483648) / 2147483648);
+const rand = () => {
+  seed = (seed + 0x6d2b79f5) | 0;
+  let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+  t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+};
 const pick = (xs) => xs[Math.floor(rand() * xs.length)];
 
 const LEAGUES = { il: [2026, 2027], euroleague: [2025, 2026], eurocup: [2025, 2026] };
