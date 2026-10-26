@@ -65,8 +65,14 @@ async function request(vu, a, stage) {
       ok = !j.error && (Array.isArray(j.rows) || Array.isArray(j.leagues) || typeof j === "object");
       if (!ok) error = `answer error ${JSON.stringify(j.error).slice(0, 80)}`;
     } else {
+      // A page whose server read failed still renders (empty, the browser
+      // fetches later), so a table page counts only if its table arrived.
       ok = body.includes("</html>") && !body.includes("Log in to Vercel");
       if (!ok) error = "page incomplete";
+      else if (a.kind !== "page home" && !body.includes('data-column="')) {
+        ok = false;
+        error = "page without server data";
+      }
     }
   } catch (e) {
     error = e.name === "TimeoutError" ? "timeout 30s" : `${e.name}: ${e.message}`.slice(0, 120);
