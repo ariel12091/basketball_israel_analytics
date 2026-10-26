@@ -1,3 +1,4 @@
+import { noteVersion } from "./dataVersion";
 type VersionPayload = { leagues?: { league: string; version: string }[] };
 /** Latest poll owns its result; cleanup also invalidates already-started JSON. */
 export function pollVersions(onValue: (value: VersionPayload | null) => void) {
@@ -13,6 +14,7 @@ export function pollVersions(onValue: (value: VersionPayload | null) => void) {
     })
       .then((r) => (r.ok ? (r.json() as Promise<VersionPayload>) : null))
       .then((value) => {
+        for (const x of value?.leagues ?? []) noteVersion(x.league, x.version);
         if (alive && active === controller && !controller.signal.aborted)
           onValue(value);
       })

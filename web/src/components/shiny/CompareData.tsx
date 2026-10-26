@@ -1,6 +1,7 @@
 "use client";
 import { useQuery } from "@tanstack/react-query";
 import { comparePath } from "@/lib/compareQuery";
+import { noteVersion, withVersion } from "@/lib/dataVersion";
 import type { ComparePayload } from "@/server/compareRepo";
 export type CompareSeed = Record<string, ComparePayload>;
 export function useCompareData(
@@ -17,8 +18,9 @@ export function useCompareData(
     retry: false,
     refetchOnWindowFocus: false,
     queryFn: async ({ signal }) => {
-      const response = await fetch(url, { signal });
+      const response = await fetch(withVersion(url), { signal });
       const data = await response.json();
+      noteVersion("il", data.meta?.version);
       if (!response.ok)
         throw new Error(data.error ?? "Unable to load comparison");
       if (data.meta?.key !== params.toString())

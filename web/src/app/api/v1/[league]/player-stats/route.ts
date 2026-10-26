@@ -1,4 +1,9 @@
-import { handleError, rawQueryGuard } from "@/server/api";
+import {
+  handleError,
+  rawQueryGuard,
+  answerJson,
+  answerParams,
+} from "@/server/api";
 import { leagueParam } from "@/server/params";
 import { playerStatsAnswer } from "@/server/playerStatsRepo";
 export const runtime = "nodejs";
@@ -10,17 +15,12 @@ export async function GET(
   try {
     const url = new URL(request.url);
     rawQueryGuard(url);
-    return Response.json(
+    return answerJson(
       await playerStatsAnswer(
         leagueParam((await context.params).league),
-        url.searchParams,
+        answerParams(url),
       ),
-      {
-        headers: {
-        "Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "no-store",
-        },
-      },
+      url,
     );
   } catch (e) {
     return handleError(e);

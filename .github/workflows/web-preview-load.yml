@@ -44,6 +44,7 @@ jobs:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
           STAGES: "1,10,20,50,100,150"
           STAGE_SECONDS: "60"
+          TAIL: "0.3"
           OUT: load-results.json
         run: node scripts/load-preview.mjs
       - uses: actions/upload-artifact@v4

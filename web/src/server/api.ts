@@ -1,20 +1,29 @@
 import { BusyError, DeadlineError } from "./deadline";
-export function cacheHeaders(
-  snapshot: { state: string; version: number },
-  requestedV: number | null,
-): Headers {
-  return new Headers({
-    "Vercel-CDN-Cache-Control": `s-maxage=${snapshot.state === "published" && snapshot.version === requestedV ? 31536000 : 60}`,
-    "Cache-Control": "public, max-age=0",
-  });
+/** A route's query without the client's `v` (lib/dataVersion.ts), which only
+ * names the cache entry and never changes the answer. */
+export function answerParams(url: URL): URLSearchParams {
+  const search = new URLSearchParams(url.searchParams);
+  search.delete("v");
+  return search;
 }
-export function versionRedirect(url: URL, current: number): Response | null {
-  if (url.searchParams.get("v") === String(current)) return null;
-  const target = new URL(url);
-  target.searchParams.set("v", String(current));
-  return new Response(null, {
-    status: 307,
-    headers: { Location: target.toString(), "Cache-Control": "no-store" },
+/** Vercel's CDN keeps an answer for a year only when the address names the
+ * version the answer was read at: a new publication changes every address,
+ * so a cached answer is never served for newer data. Anything else (no `v`,
+ * a stale `v`, an unversioned answer) is not stored anywhere. */
+export function answerJson(
+  answer: { meta?: { version?: string } },
+  url: URL,
+): Response {
+  const v = url.searchParams.get("v");
+  const version = answer.meta?.version;
+  const pinned = !!v && !!version && version !== "unknown" && v === version;
+  return Response.json(answer, {
+    headers: pinned
+      ? {
+          "Cache-Control": "public, max-age=0, must-revalidate",
+          "Vercel-CDN-Cache-Control": "public, s-maxage=31536000, immutable",
+        }
+      : { "Cache-Control": "no-store", "Vercel-CDN-Cache-Control": "no-store" },
   });
 }
 export function apiError(

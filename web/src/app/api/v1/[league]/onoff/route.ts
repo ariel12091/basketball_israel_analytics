@@ -1,4 +1,9 @@
-import { handleError, rawQueryGuard } from "@/server/api";
+import {
+  handleError,
+  rawQueryGuard,
+  answerJson,
+  answerParams,
+} from "@/server/api";
 import { leagueParam } from "@/server/params";
 import { onoffAnswer } from "@/server/onoffApi";
 export const runtime = "nodejs";
@@ -16,12 +21,7 @@ export async function GET(
     const url = new URL(request.url);
     rawQueryGuard(url);
     const league = leagueParam((await context.params).league);
-    return Response.json(await onoffAnswer(league, url.searchParams), {
-      headers: {
-        "Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "no-store",
-      },
-    });
+    return answerJson(await onoffAnswer(league, answerParams(url)), url);
   } catch (error) {
     return handleError(error);
   }

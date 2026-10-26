@@ -19,7 +19,9 @@ export async function GET() {
       {
         headers: {
           "Cache-Control": "no-store",
-          "Vercel-CDN-Cache-Control": "no-store",
+          // Shared by every visitor: the CDN answers polls for 10 s at a time,
+          // so a publication is seen at most 10 s later than the database has it.
+          "Vercel-CDN-Cache-Control": "public, s-maxage=10",
         },
       },
     );

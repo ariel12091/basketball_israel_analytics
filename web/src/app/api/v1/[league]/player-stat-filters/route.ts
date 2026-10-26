@@ -21,8 +21,8 @@ export async function GET(
       { rows, meta: { version: "" } },
       {
         headers: {
-        "Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "no-store",
+          "Cache-Control": "no-store",
+          "Vercel-CDN-Cache-Control": "no-store",
         },
       },
     );

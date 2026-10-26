@@ -1,4 +1,10 @@
-import { handleError, rawQueryGuard, ParamError } from "@/server/api";
+import {
+  handleError,
+  rawQueryGuard,
+  ParamError,
+  answerJson,
+  answerParams,
+} from "@/server/api";
 import { compareAnswer } from "@/server/compareRepo";
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -14,12 +20,7 @@ export async function GET(
       );
     const url = new URL(request.url);
     rawQueryGuard(url);
-    return Response.json(await compareAnswer(url.searchParams), {
-      headers: {
-        "Cache-Control": "no-store",
-        "Vercel-CDN-Cache-Control": "no-store",
-      },
-    });
+    return answerJson(await compareAnswer(answerParams(url)), url);
   } catch (e) {
     return handleError(e);
   }

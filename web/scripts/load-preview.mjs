@@ -4,7 +4,12 @@
 // them; stages ramp 1 -> 150 users for STAGE_SECONDS each and stop at the
 // first stage over the limits (docs/matched_local_load_protocol.md: >5% failed
 // or p95 > 5 s). Read-only: GET pages and API reads, as a visitor would.
-//   PREVIEW_URL, VERCEL_AUTOMATION_BYPASS_SECRET, [STAGES, STAGE_SECONDS, OUT]
+// API reads carry the data version as `v`, as the browser does
+// (src/lib/dataVersion.ts), so shared filter states can come from Vercel's
+// CDN; TAIL (default 0.3) of them ask a date window nobody asked before, which
+// the CDN cannot have and the database must answer.
+//   PREVIEW_URL, VERCEL_AUTOMATION_BYPASS_SECRET,
+//   [STAGES, STAGE_SECONDS, OUT, TAIL]
 import { appendFileSync, writeFileSync } from "node:fs";
 
 const base = process.env.PREVIEW_URL;
@@ -14,6 +19,7 @@ if (!secret) throw new Error("VERCEL_AUTOMATION_BYPASS_SECRET");
 const STAGES = (process.env.STAGES ?? "1,10,20,50,100,150").split(",").map(Number);
 const STAGE_MS = Number(process.env.STAGE_SECONDS ?? 60) * 1000;
 const OUT = process.env.OUT ?? "load-results.json";
+const TAIL = Number(process.env.TAIL ?? 0.3);
 const DEADLINE_MS = 30000, THINK_MS = 1000;
 
 // Seeded (protocol seed 20261023), so every run asks the same sequence.
@@ -35,8 +41,16 @@ function action() {
   const reader = pick(READERS);
   let view = pick(VIEWS[reader] ?? [""]);
   if (view === "&view=shot_profile" && league !== "il") view = "";
-  const ctx = reader === "player-stats" && rand() < 0.25 ? "&clutch=true" : pick(CONTEXTS);
-  return { kind: `api ${reader}`, path: `/api/v1/${league}/${reader}?season=${season}${view}${ctx}` };
+  let ctx = reader === "player-stats" && rand() < 0.25 ? "&clutch=true" : pick(CONTEXTS);
+  // A long-tail state: a date window inside the season, unique per request.
+  const tail = rand() < TAIL;
+  if (tail) {
+    const y = league === "il" ? season - 1 : season;
+    const day = (n) => new Date(Date.UTC(y, 9, 1) + n * 86400000).toISOString().slice(0, 10);
+    const from = Math.floor(rand() * 150);
+    ctx = `&start=${day(from)}&end=${day(from + 30 + Math.floor(rand() * 90))}`;
+  }
+  return { kind: `api ${reader}${tail ? " (tail)" : ""}`, league, path: `/api/v1/${league}/${reader}?season=${season}${view}${ctx}` };
 }
 function pathOf(a) {
   if (a.path) return a.path;
@@ -47,14 +61,18 @@ function pathOf(a) {
 
 const samples = [];
 async function request(vu, a, stage) {
-  const path = pathOf(a), t0 = performance.now();
-  let status = 0, ok = false, bytes = 0, error = null;
+  let path = pathOf(a);
+  const v = a.league && a.path && vu.versions[a.league === "il" ? "il" : "euro"];
+  if (v) path += `&v=${encodeURIComponent(v)}`;
+  const t0 = performance.now();
+  let status = 0, ok = false, bytes = 0, error = null, cache = null;
   try {
     const res = await fetch(base + path, {
       headers: { "x-vercel-protection-bypass": secret, ...(vu.cookie ? { cookie: vu.cookie } : {}) },
       signal: AbortSignal.timeout(DEADLINE_MS),
     });
     status = res.status;
+    cache = res.headers.get("x-vercel-cache");
     const sc = res.headers.getSetCookie?.().find((c) => c.startsWith("ibpl_session="));
     if (sc) vu.cookie = sc.split(";")[0];
     const body = await res.text();
@@ -64,6 +82,7 @@ async function request(vu, a, stage) {
       const j = JSON.parse(body);
       ok = !j.error && (Array.isArray(j.rows) || Array.isArray(j.leagues) || typeof j === "object");
       if (!ok) error = `answer error ${JSON.stringify(j.error).slice(0, 80)}`;
+      else if (a.league && j.meta?.version) vu.versions[a.league === "il" ? "il" : "euro"] = j.meta.version;
     } else {
       // A page whose server read failed still renders (empty, the browser
       // fetches later), so a table page counts only if its table arrived.
@@ -77,25 +96,29 @@ async function request(vu, a, stage) {
   } catch (e) {
     error = e.name === "TimeoutError" ? "timeout 30s" : `${e.name}: ${e.message}`.slice(0, 120);
   }
-  samples.push({ stage, kind: a.kind, path, status, ok, bytes, ms: Math.round(performance.now() - t0), error, at: Date.now() });
+  samples.push({ stage, kind: a.kind, path, status, ok, bytes, cache, ms: Math.round(performance.now() - t0), error, at: Date.now() });
 }
 
 const q = (xs, p) => (xs.length ? xs[Math.min(xs.length - 1, Math.ceil(p * xs.length) - 1)] : null);
 function summarize(rows) {
   const ms = rows.map((r) => r.ms).sort((a, b) => a - b);
   const failed = rows.filter((r) => !r.ok).length;
-  return { n: rows.length, failed, failedPct: rows.length ? +(100 * failed / rows.length).toFixed(2) : 0, p50: q(ms, 0.5), p95: q(ms, 0.95), max: ms.at(-1) ?? null, over5s: ms.filter((m) => m > 5000).length };
+  const hits = rows.filter((r) => r.cache === "HIT").length;
+  return { n: rows.length, failed, failedPct: rows.length ? +(100 * failed / rows.length).toFixed(2) : 0, p50: q(ms, 0.5), p95: q(ms, 0.95), max: ms.at(-1) ?? null, over5s: ms.filter((m) => m > 5000).length, cdnHits: hits };
 }
 
 // The target must answer before any load is put on it.
+// Its versions are what a visitor's first page tells the browser.
 const probe = await fetch(`${base}/api/v1/version`, { headers: { "x-vercel-protection-bypass": secret } });
-if (probe.status !== 200 || !Array.isArray((await probe.json().catch(() => ({}))).leagues))
+const probed = await probe.json().catch(() => ({}));
+if (probe.status !== 200 || !Array.isArray(probed.leagues))
   throw new Error(`${base}/api/v1/version answered HTTP ${probe.status}; not loading it`);
+const firstVersions = { il: probed.leagues.find((x) => x.league === "il")?.version, euro: probed.leagues.find((x) => x.league === "euroleague")?.version };
 
 const stages = [];
 for (const users of STAGES) {
   const start = Date.now(), end = start + STAGE_MS;
-  const vus = Array.from({ length: users }, () => ({ cookie: null }));
+  const vus = Array.from({ length: users }, () => ({ cookie: null, versions: { ...firstVersions } }));
   // Stagger arrivals over the first think time, then loop until the stage ends;
   // in-flight requests drain before the next stage starts.
   await Promise.all(vus.map(async (vu, i) => {
@@ -119,14 +142,14 @@ for (const st of stages)
     (byKind[st.users] ??= {})[kind] = summarize(samples.filter((r) => r.stage === st.users && r.kind === kind));
 const errors = {};
 for (const r of samples.filter((r) => r.error)) errors[r.error] = (errors[r.error] ?? 0) + 1;
-writeFileSync(OUT, JSON.stringify({ base, seed: 20261023, stages, byKind, errors, samples }, null, 1));
+writeFileSync(OUT, JSON.stringify({ base, seed: 20261023, tail: TAIL, stages, byKind, errors, samples }, null, 1));
 
 if (process.env.GITHUB_STEP_SUMMARY) {
-  const md = [`## Load test: ${base}`, "", "| users | actions | actions/s | failed % | p50 ms | p95 ms | max ms | >5 s |", "|--:|--:|--:|--:|--:|--:|--:|--:|",
-    ...stages.map((s) => `| ${s.users} | ${s.n} | ${s.actionsPerSec} | ${s.failedPct} | ${s.p50} | ${s.p95} | ${s.max} | ${s.over5s} |`),
+  const md = [`## Load test: ${base} (tail ${TAIL})`, "", "| users | actions | actions/s | failed % | p50 ms | p95 ms | max ms | >5 s | CDN hits |", "|--:|--:|--:|--:|--:|--:|--:|--:|--:|",
+    ...stages.map((s) => `| ${s.users} | ${s.n} | ${s.actionsPerSec} | ${s.failedPct} | ${s.p50} | ${s.p95} | ${s.max} | ${s.over5s} | ${s.cdnHits} |`),
     "", "### Errors", "", ...Object.entries(errors).map(([e, n]) => `- ${e}: ${n}`)];
   const last = stages.at(-1);
-  if (last) md.push("", `### By action at ${last.users} users`, "", "| action | n | failed | p50 | p95 | max |", "|--|--:|--:|--:|--:|--:|",
-    ...Object.entries(byKind[last.users] ?? {}).map(([k, s]) => `| ${k} | ${s.n} | ${s.failed} | ${s.p50} | ${s.p95} | ${s.max} |`));
+  if (last) md.push("", `### By action at ${last.users} users`, "", "| action | n | failed | p50 | p95 | max | CDN hits |", "|--|--:|--:|--:|--:|--:|--:|",
+    ...Object.entries(byKind[last.users] ?? {}).map(([k, s]) => `| ${k} | ${s.n} | ${s.failed} | ${s.p50} | ${s.p95} | ${s.max} | ${s.cdnHits} |`));
   appendFileSync(process.env.GITHUB_STEP_SUMMARY, md.join("\n") + "\n");
 }

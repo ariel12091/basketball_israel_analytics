@@ -25,6 +25,7 @@ import {
 import { TabFrame, useTabQuery, useVersion } from "./shiny/TabKit";
 import Selectize from "./shiny/Selectize";
 import HomeHub from "./shiny/HomeHub";
+import { noteVersion, withVersion } from "@/lib/dataVersion";
 type Props = {
   league: League;
   initialSeason: string;
@@ -93,8 +94,9 @@ function HomeContent({ league, initialSeason, initialTeam, initial }: Props) {
     queryKey: ["home", url],
     enabled: !!url,
     queryFn: async ({ signal }) => {
-      const res = await fetch(url!, { signal });
+      const res = await fetch(withVersion(url!), { signal });
       const data = await res.json();
+      noteVersion("il", data.meta?.version);
       if (!res.ok) throw Error(data.error ?? "Unable to load Home");
       if (data.meta?.season !== q.season || data.meta?.teamId !== team)
         throw Error("Home response does not match the selected team");

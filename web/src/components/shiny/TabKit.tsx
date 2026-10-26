@@ -22,6 +22,7 @@ import {
 } from "react";
 import { parseAsString, useQueryStates } from "nuqs";
 import { pollVersions } from "@/lib/versionPolling";
+import { leagueOf, noteVersion, withVersion } from "@/lib/dataVersion";
 import {
   contextParams,
   parseStats,
@@ -122,6 +123,7 @@ export function useTabData<T extends { meta: { version: string } }>(
   // DT::datatable() does in Shiny.
   const [draw, setDraw] = useState(0);
   const version = useRef(seeded ? initial!.data!.meta.version : "");
+  if (seeded && url) noteVersion(leagueOf(url), initial!.data!.meta.version);
   useEffect(() => {
     if (!url) return;
     if (skip.current) {
@@ -133,7 +135,7 @@ export function useTabData<T extends { meta: { version: string } }>(
     const timer = setTimeout(() => {
       setLoading(true);
       setError("");
-      void fetch(url, { signal: controller.signal })
+      void fetch(withVersion(url), { signal: controller.signal })
         .then(async (response) => {
           const answer = await response.json();
           if (!response.ok)
@@ -142,6 +144,7 @@ export function useTabData<T extends { meta: { version: string } }>(
             setData(answer);
             setDraw((d) => d + 1);
             version.current = answer.meta.version;
+            noteVersion(leagueOf(url), answer.meta.version);
           }
         })
         .catch((e) => {
