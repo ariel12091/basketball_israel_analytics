@@ -1,0 +1,62 @@
+name: Web Preview load test
+
+# A closed-loop load test of a Vercel Preview of the Next.js app
+# (web/scripts/load-preview.mjs). The Preview reads the PRODUCTION database,
+# so run it only in an agreed quiet window: after the nightly ETL, outside
+# game days and EuroLeague load hours. Stops itself at the first stage over
+# >5% failed actions or p95 > 5 s.
+#
+# Start it by pushing the commit under test to a `load-test/<name>` branch:
+# Vercel builds that branch's Preview and this runs when it is ready (a
+# hand-started workflow_dispatch works only once this file is on main).
+on:
+  deployment_status:
+  workflow_dispatch:
+    inputs:
+      preview_url:
+        description: "Preview URL (https://<deployment>.vercel.app)"
+        required: true
+      stages:
+        description: "Concurrent users per stage"
+        default: "1,10,20,50,100,150"
+      stage_seconds:
+        description: "Seconds per stage"
+        default: "60"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: web-preview-load
+  cancel-in-progress: false
+
+jobs:
+  load:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.deployment_status.state == 'success' &&
+       contains(github.event.deployment_status.target_url, 'ibpl-game-logs-') &&
+       startsWith(github.event.deployment.ref, 'load-test/'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      PREVIEW_URL: ${{ github.event.deployment_status.target_url || inputs.preview_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Load ${{ env.PREVIEW_URL }}
+        working-directory: web
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          STAGES: ${{ inputs.stages || '1,10,20,50,100,150' }}
+          STAGE_SECONDS: ${{ inputs.stage_seconds || '60' }}
+          OUT: load-results.json
+        run: node scripts/load-preview.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-load-${{ github.run_id }}
+          path: web/load-results.json
+          retention-days: 30
