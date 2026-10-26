@@ -2,5 +2,29 @@ import type { NextConfig } from "next";
 const config: NextConfig = {
   poweredByHeader: false,
   turbopack: { root: process.cwd() },
+  // Vercel's CDN shares a tab's first HTML for up to a minute (plus a minute
+  // served while it re-renders). Safe because each of these pages polls
+  // /api/v1/version on load and refetches when its table is older (TabKit
+  // useVersion); Compare and Gameflow do not, so they stay uncached. Client
+  // navigations (RSC payloads) and the tests' client-data mode are left out.
+  async headers() {
+    return [
+      {
+        source:
+          "/:league(il|euroleague|eurocup)/:tab(home|game-logs|onoff|lineups|team-ratings|player-stats)",
+        missing: [
+          { type: "header", key: "rsc" },
+          { type: "header", key: "next-router-prefetch" },
+          { type: "header", key: "x-ibpl-client-data" },
+        ],
+        headers: [
+          {
+            key: "Vercel-CDN-Cache-Control",
+            value: "public, s-maxage=60, stale-while-revalidate=60",
+          },
+        ],
+      },
+    ];
+  },
 };
 export default config;

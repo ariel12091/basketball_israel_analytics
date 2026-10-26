@@ -45,32 +45,35 @@ function action() {
   const league = pick(Object.keys(LEAGUES)), season = pick(LEAGUES[league]);
   const r = rand();
   if (r < 0.1) return { kind: "version", path: "/api/v1/version" };
-  if (r < 0.3) return { kind: `page ${pick(PAGES)}`, path: null, league, season };
+  // A long-tail state: a date window inside the season, unique per request.
+  const window = () => {
+    const y = league === "il" ? season - 1 : season;
+    const day = (n) => new Date(Date.UTC(y, 9, 1) + n * 86400000).toISOString().slice(0, 10);
+    const from = Math.floor(rand() * 150);
+    return `&start=${day(from)}&end=${day(from + 30 + Math.floor(rand() * 90))}`;
+  };
+  if (r < 0.3) {
+    const page = pick(PAGES), tail = page !== "home" && rand() < TAIL;
+    return { kind: `page ${page}${tail ? " (tail)" : ""}`, path: null, page, league, season, ctx: tail ? window() : "" };
+  }
   const reader = pick(READERS);
   let view = pick(VIEWS[reader] ?? [""]);
   if (view === "&view=shot_profile" && league !== "il") view = "";
   let ctx = reader === "player-stats" && rand() < 0.25 ? "&clutch=true" : pick(CONTEXTS);
-  // A long-tail state: a date window inside the season, unique per request.
   const tail = rand() < TAIL;
-  if (tail) {
-    const y = league === "il" ? season - 1 : season;
-    const day = (n) => new Date(Date.UTC(y, 9, 1) + n * 86400000).toISOString().slice(0, 10);
-    const from = Math.floor(rand() * 150);
-    ctx = `&start=${day(from)}&end=${day(from + 30 + Math.floor(rand() * 90))}`;
-  }
+  if (tail) ctx = window();
   return { kind: `api ${reader}${tail ? " (tail)" : ""}`, league, path: `/api/v1/${league}/${reader}?season=${season}${view}${ctx}` };
 }
 function pathOf(a) {
   if (a.path) return a.path;
-  const page = a.kind.slice(5);
-  if (page === "home" && a.league === "il") return `/il/home?team_id=all`;
-  return `/${a.league}/${page}?season=${a.season}`;
+  if (a.page === "home" && a.league === "il") return `/il/home?team_id=all`;
+  return `/${a.league}/${a.page}?season=${a.season}${a.ctx}`;
 }
 
 const samples = [];
 async function request(vu, a, stage) {
   let path = pathOf(a);
-  const v = a.league && a.path && vu.versions[a.league === "il" ? "il" : "euro"];
+  const v = a.path && a.league && vu.versions[a.league === "il" ? "il" : "euro"];
   if (v) path += `&v=${encodeURIComponent(v)}`;
   const t0 = performance.now();
   let status = 0, ok = false, bytes = 0, error = null, cache = null;
@@ -96,7 +99,7 @@ async function request(vu, a, stage) {
       // fetches later), so a table page counts only if its table arrived.
       ok = body.includes("</html>") && !body.includes("Log in to Vercel");
       if (!ok) error = "page incomplete";
-      else if (a.kind !== "page home" && !body.includes('data-column="')) {
+      else if (a.page !== "home" && !body.includes('data-column="')) {
         ok = false;
         error = "page without server data";
       }
