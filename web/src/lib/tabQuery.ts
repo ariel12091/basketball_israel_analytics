@@ -206,3 +206,26 @@ export function lineupsPath(league: League, query: Query): string {
     if (query[k]) q.set(k, query[k]);
   return `/api/v1/${league}/lineups?${q}`;
 }
+/** The Lineups page's own state on top of the population address: the server
+ * filters by team/players, applies the auto (`auto`) or slider minimum and
+ * the stat filters, and returns only the table (server/lineupsApi.ts). */
+export function lineupsPagePath(
+  league: League,
+  query: Query,
+  auto: boolean,
+): string {
+  const q = new URLSearchParams(lineupsPath(league, query).split("?")[1]);
+  for (const k of [
+    "team",
+    "players_on",
+    "players_any",
+    "players_off",
+    "any_count",
+    "any_exact",
+    "stats",
+  ])
+    if (query[k]) q.set(k, query[k]);
+  if (auto) q.set("auto", "true");
+  else q.set("min_poss", query.min_poss);
+  return `/api/v1/${league}/lineups?${q}`;
+}

@@ -291,8 +291,11 @@ describe("runTool: errors, sorting, limits, links", () => {
     for (const t of Object.values(TOOLS)) {
       if (!t.request) continue;
       const src = readFileSync(path.resolve("src/app/[league]", t.page!, "page.tsx"), "utf8");
-      expect(src, t.name).toMatch(new RegExp(`\\b${t.answerName}\\(`));
-      expect(src, t.name).toMatch(new RegExp(`\\b${t.request.pathName}\\(`));
+      // Lineups: the page reads lineupsPageAnswer (lineupsAnswer + lineupPage)
+      // at lineupsPagePath (lineupsPath + the table's state).
+      const wraps = t.answerName === "lineupsAnswer";
+      expect(src, t.name).toMatch(new RegExp(`\\b${wraps ? "lineupsPageAnswer" : t.answerName}\\(`));
+      expect(src, t.name).toMatch(new RegExp(`\\b${wraps ? "lineupsPagePath" : t.request.pathName}\\(`));
       expect(src, t.name).toContain("queryFromSearch(");
     }
   });

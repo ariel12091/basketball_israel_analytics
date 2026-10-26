@@ -2,10 +2,12 @@ import { readdirSync, readFileSync, existsSync } from "node:fs";
 import type { Row, League } from "../src/rules/gameLogs";
 import {
   localLineups,
+  lineupPage,
   lineupTableRows,
   playerIds,
   type LineupView,
 } from "../src/rules/lineups";
+import { lineupPageOptions } from "../src/lib/lineupPageState";
 export const DIR = "test/goldens/lineups";
 export const presets = existsSync(DIR)
   ? readdirSync(DIR).filter(
@@ -43,5 +45,33 @@ export function loadLineup(file: string) {
     games,
     local,
     rows: lineupTableRows(local, g.view, Number(q.min_poss), g.filters),
+  };
+}
+/** A substituted /lineups answer as lineupsPageAnswer builds it: the stored
+ * population through lineupPage for the page state the request names. Other
+ * addresses get `answer` unchanged. */
+export function pageAnswer(
+  answer: { rows: Row[]; meta: Record<string, unknown> },
+  requestUrl: string,
+) {
+  const url = new URL(requestUrl);
+  const m = /\/api\/v1\/([a-z]+)\/lineups$/.exec(url.pathname);
+  if (!m) return answer;
+  const view =
+    url.searchParams.get("view") === "four_factors" ? "four_factors" : "summary";
+  const page = lineupPage(
+    answer.rows,
+    lineupPageOptions(url.searchParams, m[1] as League, view),
+  );
+  return {
+    ...answer,
+    rows: page.rows,
+    meta: {
+      ...answer.meta,
+      autoMin: page.autoMin,
+      minPoss: page.min,
+      shown: page.shown,
+      maxPoss: page.maxPoss,
+    },
   };
 }

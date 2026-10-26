@@ -1,5 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
-import { loadLineup, presets } from "../test/lineupGoldens";
+import { loadLineup, pageAnswer, presets } from "../test/lineupGoldens";
 import { lineupAutoMin } from "../src/rules/lineups";
 import { loadGolden } from "../test/onoffGoldens";
 
@@ -18,7 +18,7 @@ for (const league of ["il", "euroleague"] as const)
             ? onoff.answer
             : path.endsWith("/lineup-roster")
               ? lineups.roster
-              : lineups.answer,
+              : pageAnswer(lineups.answer, route.request().url()),
       });
     });
     const season = league === "il" ? "2026" : "2025";
@@ -71,7 +71,7 @@ for (const file of presets)
             ? roster
             : path.endsWith("/lineup-games")
               ? games
-              : answer,
+              : pageAnswer(answer, route.request().url()),
       });
     });
     const errors: string[] = [];
@@ -152,7 +152,7 @@ for (const league of ["il", "euroleague"] as const)
             ? roster
             : url.pathname.endsWith("/lineup-games")
               ? games
-              : answer,
+              : pageAnswer(answer, url.toString()),
       });
     });
     await page.goto(

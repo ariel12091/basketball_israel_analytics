@@ -3,15 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { League, Row } from "@/rules/gameLogs";
 import {
-  localLineups,
-  lineupAutoMin,
-  lineupTableRows,
   playerIds,
   type PlayerSelection,
   type LineupView,
 } from "@/rules/lineups";
 import {
   LINEUP_QUERY_DEFAULTS,
+  lineupsPagePath,
   lineupsPath,
   queryDefaults,
 } from "@/lib/tabQuery";
@@ -52,6 +50,11 @@ type Payload = {
     rounds: number[];
     phases: string[];
     seasons?: string[];
+    // The table's page state, applied on the server (lineupsPageAnswer).
+    autoMin: number | null;
+    minPoss: number;
+    shown: number;
+    maxPoss: number;
   };
 };
 const EMPTY: Row[] = [];
@@ -71,7 +74,11 @@ export default function LineupsClient({
   });
   const view: LineupView =
     query.view === "four_factors" ? "four_factors" : "summary";
-  const url = lineupsPath(league, query);
+  // The population's address (re-arms auto) and the table's (what is fetched:
+  // team/player filters, the minimum and stat filters run on the server).
+  const populationUrl = lineupsPath(league, query);
+  const [auto, setAuto] = useState(true);
+  const url = lineupsPagePath(league, query, auto);
   const { data, loading, error, draw, retry, version } = useTabData<Payload>(
     url,
     initial,
@@ -117,14 +124,8 @@ export default function LineupsClient({
       any_count: String(s.count),
       any_exact: String(s.exact),
     });
-  const population = data?.rows ?? EMPTY;
-  const local = useMemo(
-    () => localLineups(population, query.team, selection),
-    [population, query.team, selection],
-  );
-  const [auto, setAuto] = useState(true);
   const autoKey = JSON.stringify([
-    url,
+    populationUrl,
     query.team,
     query.players_on,
     query.players_any,
@@ -137,17 +138,17 @@ export default function LineupsClient({
     setArmed(autoKey);
     setAuto(true);
   }
-  const target = lineupAutoMin(local),
+  // Auto's value comes with the answer for this page state; written to the
+  // slider it does not change the auto address, so it costs no request.
+  const target =
+      auto && data?.meta.autoMin !== undefined ? data.meta.autoMin : null,
     min = Number(query.min_poss) || 0;
   useEffect(() => {
     if (auto && target != null && target !== min)
       set({ min_poss: String(target) });
   }, [auto, target, min, set]);
   const filters = parseStats(query.stats);
-  const rows = useMemo(
-    () => lineupTableRows(local, view, min, parseStats(query.stats)),
-    [local, view, min, query.stats],
-  );
+  const rows = data?.rows ?? EMPTY;
   const [clicked, setClicked] = useState<Row | null>(null);
   const bounds = seasonBounds(league, query.season);
   const frag = euro ? ui.lineups.euro : ui.lineups.il;
@@ -439,9 +440,7 @@ export default function LineupsClient({
                 />
                 {euro && (
                   <span className="filter-chip">
-                    {query.size}-player units /{" "}
-                    {local.filter((r) => Number(r.total_poss) >= min).length}{" "}
-                    shown
+                    {query.size}-player units / {data?.meta.shown ?? 0} shown
                     {min > 0
                       ? ` / min ${min} poss${auto ? " (auto)" : ""}`
                       : ""}
@@ -454,16 +453,7 @@ export default function LineupsClient({
                 id={`${p}_minposs`}
                 label={tt("Min Poss", "min_poss_lineup")}
                 min={0}
-                max={
-                  euro
-                    ? Math.max(
-                        10,
-                        ...local.map(
-                          (r) => Math.ceil(Number(r.total_poss) / 10) * 10,
-                        ),
-                      )
-                    : 2000
-                }
+                max={euro ? (data?.meta.maxPoss ?? 10) : 2000}
                 step={10}
                 value={min}
                 onChange={(v) => {

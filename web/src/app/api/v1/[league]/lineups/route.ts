@@ -5,7 +5,7 @@ import {
   answerParams,
 } from "@/server/api";
 import { leagueParam } from "@/server/params";
-import { lineupsAnswer } from "@/server/lineupsApi";
+import { lineupsPageAnswer } from "@/server/lineupsApi";
 export const runtime = "nodejs";
 export const maxDuration = 30;
 export async function GET(
@@ -16,7 +16,7 @@ export async function GET(
     const url = new URL(request.url);
     rawQueryGuard(url);
     return answerJson(
-      await lineupsAnswer(
+      await lineupsPageAnswer(
         leagueParam((await context.params).league),
         answerParams(url),
       ),

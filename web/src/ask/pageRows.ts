@@ -4,12 +4,7 @@
 // PlayerStatsClient, TeamRatingsClient, OnOffClient). Keep the two in step.
 import ui from "@/data/shinyUi.json";
 import type { League, Row } from "@/rules/gameLogs";
-import {
-  lineupAutoMin,
-  lineupTableRows,
-  localLineups,
-  playerIds,
-} from "@/rules/lineups";
+import { lineupPage, playerIds } from "@/rules/lineups";
 import {
   autoMinAll,
   autoMinOn,
@@ -54,19 +49,21 @@ export function pageRows(
   const rows = p.rows ?? [];
   const stats = parseStats(q.get("stats") ?? "");
   if (tool === "lineups") {
-    const view = q.get("view") === "four_factors" ? "four_factors" : "summary";
-    const local = localLineups(rows, q.get("team") ?? "", {
-      on: playerIds(q.get("players_on")),
-      any: playerIds(q.get("players_any")),
-      off: playerIds(q.get("players_off")),
-      count: Number(q.get("any_count")) || 1,
-      exact: q.get("any_exact") === "true",
-    });
-    // LineupsClient: auto starts on and replaces the link's min_poss.
-    const fallback = Number(
-      q.get("min_poss") ?? (league === "il" ? ui.lineupDefaults.minPoss : 0),
-    );
-    return lineupTableRows(local, view, lineupAutoMin(local) ?? fallback, stats);
+    // lineupsPageAnswer's composition; a link opens with auto on, which
+    // replaces the link's min_poss.
+    return lineupPage(rows, {
+      team: q.get("team") ?? "",
+      selection: {
+        on: playerIds(q.get("players_on")),
+        any: playerIds(q.get("players_any")),
+        off: playerIds(q.get("players_off")),
+        count: Number(q.get("any_count")) || 1,
+        exact: q.get("any_exact") === "true",
+      },
+      view: q.get("view") === "four_factors" ? "four_factors" : "summary",
+      min: null,
+      stats,
+    }).rows;
   }
   if (tool === "player_stats") {
     const mode = (
@@ -125,7 +122,8 @@ export function pageRows(
       { rows, league3p: p.league3p ?? null, view },
       { teams, minAll, minOn, filters: stats },
       psFilters.length
-        ? (r) => applyPlayerStatFilters(r, (p.psRows ?? []) as PsRow[], psFilters)
+        ? (r) =>
+            applyPlayerStatFilters(r, (p.psRows ?? []) as PsRow[], psFilters)
         : undefined,
     );
   }

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadLineup } from "../test/lineupGoldens";
+import { loadLineup, pageAnswer } from "../test/lineupGoldens";
 for (const league of ["il", "euroleague"] as const)
   test(`Lineup Summary ${league}: table search, column ranges and page size`, async ({
     page,
@@ -12,7 +12,7 @@ for (const league of ["il", "euroleague"] as const)
           ? { leagues: [{ league, version: answer.meta.version }] }
           : path.endsWith("/lineup-roster")
             ? roster
-            : answer,
+            : pageAnswer(answer, route.request().url()),
       });
     });
     await page.goto(`/${league}/lineups?season=${g.query.season}`);

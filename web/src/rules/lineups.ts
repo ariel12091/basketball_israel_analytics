@@ -148,6 +148,35 @@ export function rankLineups(rows: Row[], euro: boolean): Row[] {
   }
   return result.sort((a, b) => zero(b.total_poss) - zero(a.total_poss));
 }
+/** Tabs 2/10's table for one page state: the local team/player filters on the
+ * ranked population, the auto minimum (`min` null) or the slider's, then the
+ * table rows. Returns what the page shows beside the table: the auto value,
+ * the minimum applied, units at or above it (Tab 10's chip) and the slider's
+ * top (Tab 10 sizes it to the data). */
+export function lineupPage(
+  population: Row[],
+  o: {
+    team: string;
+    selection: PlayerSelection;
+    view: LineupView;
+    min: number | null;
+    stats: StatFilter[];
+  },
+) {
+  const local = localLineups(population, o.team, o.selection);
+  const autoMin = lineupAutoMin(local);
+  const min = o.min ?? autoMin ?? 0;
+  let maxPoss = 10;
+  for (const r of local)
+    maxPoss = Math.max(maxPoss, Math.ceil(zero(r.total_poss) / 10) * 10);
+  return {
+    rows: lineupTableRows(local, o.view, min, o.stats),
+    autoMin,
+    min,
+    shown: local.filter((r) => zero(r.total_poss) >= min).length,
+    maxPoss,
+  };
+}
 /** helpers.R lineup_*_datatable: stat filters precede totals; rates from counts. */
 export function lineupTableRows(
   rows: Row[],

@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { loadLineup } from "../test/lineupGoldens";
+import { loadLineup, pageAnswer } from "../test/lineupGoldens";
 for (const league of ["il", "euroleague"] as const)
   for (const view of ["summary", "four_factors"] as const)
     test(`Lineup modal ${league} ${view}: viewport and keyboard focus`, async ({
@@ -17,7 +17,7 @@ for (const league of ["il", "euroleague"] as const)
               ? roster
               : path.endsWith("/lineup-games")
                 ? games
-                : answer,
+                : pageAnswer(answer, route.request().url()),
         });
       });
       await page.goto(

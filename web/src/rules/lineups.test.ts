@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   localLineups,
+  lineupPage,
   lineupAutoMin,
   lineupTableRows,
   rankLineups,
@@ -120,4 +121,28 @@ describe("stored Shiny Lineups frames (all numeric fields, rates, ranks, TOTAL)"
             );
       }
     });
+});
+
+describe("lineupPage: Tabs 2/10's table for one page state", () => {
+  const sel = { on: [], any: [], off: [], count: 1, exact: false };
+  const many = Array.from({ length: 200 }, (_, i) => ({
+    team_id: i % 2 ? 2 : 3,
+    total_poss: i * 5,
+    net_rtg: i,
+    is_total: 1,
+  }));
+  it("filters the team first, then takes auto's minimum from that team's units", () => {
+    const page = lineupPage(many, { team: "2", selection: sel, view: "summary", min: null, stats: [] });
+    const local = localLineups(many, "2", sel);
+    expect(page.autoMin).toBe(lineupAutoMin(local));
+    expect(page.rows).toEqual(lineupTableRows(local, "summary", page.autoMin ?? 0));
+    expect(page.shown).toBe(local.filter((r) => Number(r.total_poss) >= page.min).length);
+    expect(page.maxPoss).toBe(1000);
+  });
+  it("a slider minimum replaces auto; auto over the whole population raises the bar", () => {
+    expect(lineupPage(many, { team: "", selection: sel, view: "summary", min: 40, stats: [] }).min).toBe(40);
+    const auto = lineupPage(many, { team: "", selection: sel, view: "summary", min: null, stats: [] });
+    expect(auto.min).toBe(lineupAutoMin(many));
+    expect(auto.min).toBeGreaterThan(0);
+  });
 });

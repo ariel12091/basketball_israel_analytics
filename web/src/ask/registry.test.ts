@@ -29,8 +29,12 @@ describe("ask tool registry (spec: API mapping)", () => {
         path.join(api, "[league]", t.route!, "route.ts"),
         "utf8",
       );
+      // Lineups: the route serves the page's table, lineupsPageAnswer, which
+      // is the tool's lineupsAnswer plus the lineupPage that pageRows applies.
+      const name =
+        t.answerName === "lineupsAnswer" ? "lineupsPageAnswer" : t.answerName;
       expect(src, t.name).toMatch(
-        new RegExp(`import \\{[^}]*\\b${t.answerName}\\b[^}]*\\}`),
+        new RegExp(`import \\{[^}]*\\b${name}\\b[^}]*\\}`),
       );
       expect(typeof t.answer, t.name).toBe("function");
     }
