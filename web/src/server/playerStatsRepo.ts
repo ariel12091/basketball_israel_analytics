@@ -125,6 +125,7 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
       : `SELECT fr.team_id,fr.player_id,MIN(btrim(fr.team_name)) AS team_name,MIN(NULLIF(btrim(CONCAT_WS(' ',fr.firstname,fr.lastname)),'')) AS player_name FROM basketball_test.full_rosters fr WHERE fr.game_year=$1 AND fr.player_id IS NOT NULL AND fr.player_id>0 GROUP BY fr.team_id,fr.player_id HAVING MIN(NULLIF(btrim(CONCAT_WS(' ',fr.firstname,fr.lastname)),'')) IS NOT NULL ORDER BY player_name,team_name`,
     euro ? [comp, c.season] : [c.season],
   );
+  const version = await readVersion(q, c.league);
   return {
     rows: playerPopulation(raw, identities, c.teams),
     identities,
@@ -134,8 +135,8 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
       "player_name",
     ),
     meta: {
-      ...(await readTabReferences(q, c)),
-      version: await readVersion(q, c.league),
+      ...(await readTabReferences(q, c, version)),
+      version,
     },
   };
 }

@@ -1,7 +1,11 @@
 import { BusyError, DeadlineError } from "./deadline";
+import { enterRequestedVersion } from "./dataVersion";
 /** A route's query without the client's `v` (lib/dataVersion.ts), which only
- * names the cache entry and never changes the answer. */
+ * names the cache entry and never changes the answer; `v` becomes this
+ * request's version hint (dataVersion.ts requestedVersion). */
 export function answerParams(url: URL): URLSearchParams {
+  const league = /^\/api\/v1\/([a-z]+)\//.exec(url.pathname)?.[1];
+  if (league) enterRequestedVersion(league, url.searchParams.get("v"));
   const search = new URLSearchParams(url.searchParams);
   search.delete("v");
   return search;

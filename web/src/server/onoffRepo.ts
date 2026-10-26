@@ -181,7 +181,7 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
     // live_unfiltered_df); the fast path filters them on the page.
     rows = filtered ? await compute(c.teams) : mv;
   }
-  const meta = await readTabReferences(q, c);
+  const meta = await readTabReferences(q, c, version);
   return {
     rows: cleanDisplayNames(
       applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season)),
@@ -193,8 +193,33 @@ async function read(q: Query, c: Context, view: View): Promise<OnOffAnswer> {
   };
 }
 
-/** The existing Shiny reference readers, shared by the migrated tabs. */
-export async function readTabReferences(q: Query, c: Context) {
+type References = {
+  teams: { id: number; name: string }[];
+  rounds: number[];
+  phases: string[];
+  seasons?: string[];
+};
+const references = new VersionedCache<{ version: string; value: References }>(
+  16,
+  (entry) => entry.version,
+);
+/** The existing Shiny reference readers, shared by the migrated tabs: one
+ * season's lists, read once per publication per warm instance. `version` is
+ * the one this snapshot read. */
+export async function readTabReferences(
+  q: Query,
+  c: Context,
+  version: string,
+): Promise<References> {
+  const entry = await references.getAtVersion(
+    c.league,
+    version,
+    `${c.league}/${c.season}`,
+    async () => ({ version, value: await readReferences(q, c) }),
+  );
+  return entry.value;
+}
+async function readReferences(q: Query, c: Context): Promise<References> {
   const euro = c.league !== "il";
   const comp = c.league === "eurocup" ? "U" : "E";
   return euro

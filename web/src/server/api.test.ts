@@ -21,3 +21,16 @@ describe("answerJson", () => {
     );
   });
 });
+describe("the requested version", () => {
+  it("is visible only to the request that named it, and only for its league", async () => {
+    const { requestedVersion } = await import("./dataVersion");
+    const seen = await Promise.all([
+      Promise.resolve().then(() => {
+        answerParams(new URL("https://x.test/api/v1/eurocup/onoff?v=e1"));
+        return [requestedVersion("euroleague"), requestedVersion("il")];
+      }),
+      Promise.resolve().then(() => requestedVersion("euroleague")),
+    ]);
+    expect(seen).toEqual([["e1", undefined], undefined]);
+  });
+});

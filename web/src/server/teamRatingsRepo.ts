@@ -264,7 +264,7 @@ async function read(q: Query, p: Params) {
     rows,
     previous,
     meta: {
-      ...(await readTabReferences(q, c)),
+      ...(await readTabReferences(q, c, version)),
       version,
       view: p.view,
       side: p.side,

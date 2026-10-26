@@ -1,6 +1,6 @@
 import "server-only";
 import type { League } from "../rules/gameLogs";
-import { currentDataVersion } from "./dataVersion";
+import { currentDataVersion, requestedVersion } from "./dataVersion";
 
 type Entry<T> = { promise: Promise<T>; expires: number; bytes: number };
 /** Version namespaces, bounded serialized retention and ownership-safe single flight.
@@ -23,7 +23,9 @@ export class VersionedCache<T> {
         throw new Error("Invalid cache budget");
   }
   async get(scope: League, key: string, load: () => Promise<T>): Promise<T> {
-    return this.getAtVersion(scope, await currentDataVersion(scope), key, load);
+    const version =
+      requestedVersion(scope) ?? (await currentDataVersion(scope));
+    return this.getAtVersion(scope, version, key, load);
   }
   getAtVersion(
     scope: League,

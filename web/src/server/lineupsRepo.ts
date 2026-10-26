@@ -154,7 +154,7 @@ async function read(q: Query, p: LineupParams) {
   // it for the same local membership predicate as the season view.
   rows = rankLineups(euro ? euroLineupRates(rows) : rows, euro);
   rows = applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season));
-  const meta = await readTabReferences(q, c);
+  const meta = await readTabReferences(q, c, version);
   const teams = euro
     ? meta.teams
     : ((ui.ilTeams as Record<string, { id: number; name: string }[]>)[

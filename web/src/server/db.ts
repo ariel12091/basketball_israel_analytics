@@ -134,27 +134,25 @@ export class SnapshotDatabase {
               destroy();
               return;
             }
+            // The timeouts ride the BEGIN round trip (a computed integer, not
+            // a user value): every statement may use the request's SQL budget,
+            // the total is checked before each one, and the overall deadline
+            // destroys the connection whatever is running.
+            const budget = Math.floor(
+              Math.min(deadline.sqlMaxMs, deadline.remaining() - 500),
+            );
+            if (budget <= 0) throw new DeadlineError();
             await client.query(
-              "BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY",
+              `BEGIN ISOLATION LEVEL REPEATABLE READ READ ONLY; SET LOCAL statement_timeout = '${budget}ms'; SET LOCAL idle_in_transaction_session_timeout = '5s'`,
             );
             if (stopped) return;
             clearTimeout(first);
             let sqlTime = 0;
             const q: Query = async <R>(sql: string, params: unknown[]) => {
               if (stopped || deadline.expired()) throw new DeadlineError();
-              const budget = Math.floor(
-                Math.min(
-                  deadline.sqlMaxMs - sqlTime,
-                  deadline.remaining() - 500,
-                ),
-              );
-              if (budget <= 0) throw new DeadlineError();
+              if (sqlTime >= deadline.sqlMaxMs || deadline.remaining() <= 500)
+                throw new DeadlineError();
               const began = performance.now();
-              await client!.query(
-                "SELECT set_config('statement_timeout', $1, true), set_config('idle_in_transaction_session_timeout','5s',true)",
-                [budget + "ms"],
-              );
-              if (stopped) throw new DeadlineError();
               try {
                 const answer = await client!.query(sql, params);
                 if (stopped) throw new DeadlineError();

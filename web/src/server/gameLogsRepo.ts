@@ -71,7 +71,15 @@ export async function fetchSeason(q: Query, p: GameLogParams): Promise<Season> {
     version,
   };
 }
-const cache = new VersionedCache<Season>(4, (value) => value.version);
+// One entry per league x season x view the tab offers (8); a season frame
+// serialises to a few MB, so the default 16 MB budget kept evicting them and
+// every Game Logs date window re-read its whole season.
+const cache = new VersionedCache<Season>(
+  8,
+  (value) => value.version,
+  () => true,
+  96 * 1024 * 1024,
+);
 /** Verify the publication version before reusing a warm-instance answer. */
 export function getSeason(p: GameLogParams): Promise<Season> {
   const key = `${p.league}/${p.season}/${p.league === "il" ? p.view : "both"}`;
