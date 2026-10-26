@@ -62,6 +62,8 @@ function action() {
   let ctx = reader === "player-stats" && rand() < 0.25 ? "&clutch=true" : pick(CONTEXTS);
   const tail = rand() < TAIL;
   if (tail) ctx = window();
+  // The Lineups page opens with its auto minimum on (lib/tabQuery lineupsPagePath).
+  if (reader === "lineups") ctx += "&auto=true";
   return { kind: `api ${reader}${tail ? " (tail)" : ""}`, league, path: `/api/v1/${league}/${reader}?season=${season}${view}${ctx}` };
 }
 function pathOf(a) {
