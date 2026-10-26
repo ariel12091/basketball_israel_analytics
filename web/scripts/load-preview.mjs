@@ -97,11 +97,15 @@ async function request(vu, a, stage) {
       if (!ok) error = `answer error ${JSON.stringify(j.error).slice(0, 80)}`;
       else if (a.league && j.meta?.version) vu.versions[a.league === "il" ? "il" : "euro"] = j.meta.version;
     } else {
-      // A page whose server read failed still renders (empty, the browser
-      // fetches later), so a table page counts only if its table arrived.
+      // A page whose server read failed renders without its first answer
+      // (the browser fetches later), so a table page counts only if that
+      // answer arrived: its client props carry `"data":{...}`, not null. An
+      // empty answer (e.g. a Game Logs window with no games yet) is a success,
+      // though the Israeli table then draws no cells.
       ok = body.includes("</html>") && !body.includes("Log in to Vercel");
+      const seeded = /\\"initial\\":\{\\"url\\":\\"[^"]*\\",\\"data\\":(null|\{)/.exec(body);
       if (!ok) error = "page incomplete";
-      else if (a.page !== "home" && !body.includes('data-column="')) {
+      else if (a.page !== "home" && (seeded ? seeded[1] === "null" : !body.includes('data-column="'))) {
         ok = false;
         error = "page without server data";
       }
