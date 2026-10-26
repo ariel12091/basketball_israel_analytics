@@ -6,8 +6,10 @@ name: Web Preview load test
 # game days and EuroLeague load hours. Stops itself at the first stage over
 # >5% failed actions or p95 > 5 s.
 #
-# Start it by pushing the commit under test to a short `load-test/<name>`
-# branch: Vercel builds that branch's Preview and this waits for it. (A
+# Start it by pushing the sql/web-foundation head to a `load-test/<name>`
+# branch (git push origin HEAD:refs/heads/load-test/<name>). That push is
+# only the start button: Vercel builds a commit once, so the test targets the
+# sql/web-foundation Preview and first checks it is at this same commit. (A
 # hand-started workflow_dispatch would need this file on main.)
 on:
   push:
@@ -33,7 +35,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Wait for the Vercel Preview
-        run: bash ../.github/scripts/vercel-preview-url.sh
+        run: bash ../.github/scripts/vercel-preview-url.sh sql/web-foundation
       - uses: actions/setup-node@v4
         with:
           node-version: 22

@@ -8,7 +8,7 @@ name: Web Preview live checks
 # origin only.
 on:
   push:
-    branches: [sql/web-foundation, "load-test/**"]
+    branches: [sql/web-foundation]
     paths: ["web/**", ".github/workflows/web-preview-live.yml", ".github/scripts/vercel-preview-url.sh"]
 
 permissions:

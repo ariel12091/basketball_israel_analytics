@@ -81,6 +81,11 @@ function summarize(rows) {
   return { n: rows.length, failed, failedPct: rows.length ? +(100 * failed / rows.length).toFixed(2) : 0, p50: q(ms, 0.5), p95: q(ms, 0.95), max: ms.at(-1) ?? null, over5s: ms.filter((m) => m > 5000).length };
 }
 
+// The target must answer before any load is put on it.
+const probe = await fetch(`${base}/api/v1/version`, { headers: { "x-vercel-protection-bypass": secret } });
+if (probe.status !== 200 || !Array.isArray((await probe.json().catch(() => ({}))).leagues))
+  throw new Error(`${base}/api/v1/version answered HTTP ${probe.status}; not loading it`);
+
 const stages = [];
 for (const users of STAGES) {
   const start = Date.now(), end = start + STAGE_MS;
