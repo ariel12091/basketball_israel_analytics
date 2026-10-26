@@ -1,4 +1,6 @@
-// Copies only the existing read-only connection settings to the linked preview.
+// Copies only the existing read-only connection settings to the linked
+// project's preview (default) or production environment:
+//   node scripts/configure-preview.mjs [preview|production]
 // Secret values travel on stdin, never command arguments or logs.
 import { spawn } from "node:child_process";
 import { fileURLToPath } from "node:url";
@@ -14,6 +16,9 @@ const cli = path.join(
   path.dirname(command),
   "node_modules/vercel/dist/index.js",
 );
+const environment = process.argv[2] ?? "preview";
+if (!["preview", "production"].includes(environment))
+  throw new Error("Environment must be preview or production");
 if (!process.env.PG_USER?.startsWith("app_readonly"))
   throw new Error("Expected existing app_readonly login");
 for (const key of [
@@ -37,7 +42,7 @@ for (const key of [
         "add",
         key,
         "--environment",
-        "preview",
+        environment,
         "--sensitive",
         "--yes",
       ],
@@ -51,5 +56,5 @@ for (const key of [
     );
     child.stdin.end(value);
   });
-  console.log("Configured preview " + key);
+  console.log(`Configured ${environment} ${key}`);
 }
