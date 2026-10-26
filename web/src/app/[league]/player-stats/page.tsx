@@ -1,15 +1,11 @@
 import { Suspense } from "react";
 import { headers } from "next/headers";
 import { notFound } from "next/navigation";
-import type { League } from "@/rules/gameLogs";
-import {
-  PLAYER_QUERY_DEFAULTS,
-  playerStatsPath,
-  queryFromSearch,
-  type SearchParams,
-} from "@/lib/tabQuery";
-import { playerStatsAnswer } from "@/server/playerStatsRepo";
 import PlayerStatsClient from "@/components/PlayerStatsClient";
+import type { League } from "@/rules/gameLogs";
+import type { SearchParams } from "@/lib/tabQuery";
+import { FirstReadFailed, TAB_FIRST_PATH } from "@/lib/tabPages";
+import { playerStatsAnswer } from "@/server/playerStatsRepo";
 export default async function PlayerStatsPage({
   params,
   searchParams,
@@ -19,18 +15,17 @@ export default async function PlayerStatsPage({
 }) {
   const { league } = await params;
   if (!["il", "euroleague", "eurocup"].includes(league)) notFound();
-  const l = league as League,
-    path = playerStatsPath(
-      l,
-      queryFromSearch(l, await searchParams, PLAYER_QUERY_DEFAULTS),
-    );
+  const l = league as League;
+  const path = TAB_FIRST_PATH["player-stats"](l, await searchParams);
   const data =
     (await headers()).get("x-ibpl-client-data") === "1"
       ? null
       : await playerStatsAnswer(
           l,
           new URL(path, "http://local").searchParams,
-        ).catch(() => null);
+        ).catch(() => {
+          throw new FirstReadFailed();
+        });
   return (
     <Suspense fallback={null}>
       <PlayerStatsClient

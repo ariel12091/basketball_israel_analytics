@@ -7,6 +7,8 @@ const config: NextConfig = {
   // /api/v1/version on load and refetches when its table is older (TabKit
   // useVersion); Compare and Gameflow do not, so they stay uncached. Client
   // navigations (RSC payloads) and the tests' client-data mode are left out.
+  // A page whose first read failed answers 500 (lib/tabPages FirstReadFailed),
+  // which the CDN does not keep.
   async headers() {
     return [
       {

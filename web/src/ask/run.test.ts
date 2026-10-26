@@ -295,8 +295,12 @@ describe("runTool: errors, sorting, limits, links", () => {
       // at lineupsPagePath (lineupsPath + the table's state).
       const wraps = t.answerName === "lineupsAnswer";
       expect(src, t.name).toMatch(new RegExp(`\\b${wraps ? "lineupsPageAnswer" : t.answerName}\\(`));
-      expect(src, t.name).toMatch(new RegExp(`\\b${wraps ? "lineupsPagePath" : t.request.pathName}\\(`));
-      expect(src, t.name).toContain("queryFromSearch(");
+      // The page's request URL comes from its entry in lib/tabPages.ts.
+      expect(src, t.name).toContain(`TAB_FIRST_PATH["${t.page}"](`);
+      const first = readFileSync(path.resolve("src/lib/tabPages.ts"), "utf8");
+      const entry = first.match(new RegExp(`(?:"${t.page}"|\\b${t.page}):[^]*?\\),\\n`))?.[0] ?? "";
+      expect(entry, t.name).toMatch(new RegExp(`\\b${wraps ? "lineupsPagePath" : t.request.pathName}\\(`));
+      expect(entry, t.name).toContain("queryFromSearch(");
     }
   });
 
