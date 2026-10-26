@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
 import { SnapshotDatabase, Deadline, DeadlineError, BusyError, snapshotLimits } from "./db";
+import { QUEUE_MS } from "./deadline";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -96,7 +97,7 @@ describe("SnapshotDatabase lifecycle (fake pool, real admission/cleanup code)", 
     const expiredCallback = vi.fn(async () => 2);
     const waiting = expect(db.withSnapshot(new Deadline(), expiredCallback)).rejects.toBeInstanceOf(BusyError);
     await expect(db.withSnapshot(new Deadline(), async () => 3)).rejects.toBeInstanceOf(BusyError);
-    await vi.advanceTimersByTimeAsync(500);
+    await vi.advanceTimersByTimeAsync(QUEUE_MS);
     await waiting;
     hold.resolve(); await first;
     expect(expiredCallback).not.toHaveBeenCalled();
