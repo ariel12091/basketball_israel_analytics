@@ -1,0 +1,9 @@
+node_modules
+.next
+test/goldens
+test-results
+playwright-report
+.env*
+*.tsbuildinfo
+e2e
+scripts/configure-preview.mjs

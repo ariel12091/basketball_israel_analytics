@@ -1,0 +1,63 @@
+name: Web Preview load test
+
+# A closed-loop load test of a Vercel Preview of the Next.js app
+# (web/scripts/load-preview.mjs). The Preview reads the PRODUCTION database,
+# so run it only in an agreed quiet window: after the nightly ETL, outside
+# game days and EuroLeague load hours. Stops itself at the first stage over
+# >5% failed actions or p95 > 5 s.
+#
+# Start it by pushing a feature branch's head (never main: main is
+# Production) to a `load-test/<name>` branch
+# (git push origin HEAD:refs/heads/load-test/<name>). That push is only the
+# start button: Vercel builds a commit once, so the test targets the Preview
+# of the feature branch whose head is this same commit.
+on:
+  push:
+    branches: ["load-test/**"]
+
+permissions:
+  contents: read
+  statuses: read
+
+concurrency:
+  group: web-preview-load
+  cancel-in-progress: false
+
+jobs:
+  load:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: web
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Find the feature branch at this commit
+        run: |
+          src=$(gh api "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/branches-where-head" \
+            -q '[.[].name | select(startswith("load-test/") | not)][0] // ""')
+          if [ -z "$src" ] || [ "$src" = main ]; then
+            echo "Push a feature branch head (not main) to load-test/<name>" >&2; exit 1
+          fi
+          echo "SOURCE_BRANCH=$src" >> "$GITHUB_ENV"
+      - name: Wait for the Vercel Preview
+        run: bash ../.github/scripts/vercel-preview-url.sh "$SOURCE_BRANCH"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Load ${{ env.PREVIEW_URL }}
+        env:
+          VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+          STAGES: "1,10,20,50,100,150"
+          STAGE_SECONDS: "60"
+          TAIL: "0.3"
+          OUT: load-results.json
+        run: node scripts/load-preview.mjs
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-load-${{ github.run_id }}
+          path: web/load-results.json
+          retention-days: 30

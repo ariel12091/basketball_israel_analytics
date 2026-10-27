@@ -1,0 +1,62 @@
+name: Web Preview live checks
+
+# Runs the opt-in live browser checks (web/e2e/live-smoke.spec.ts,
+# gameflow-live.spec.ts) against the Vercel Preview of each web commit pushed
+# to a feature branch, once Vercel reports it ready. Production follows main,
+# so merge a branch only after this passed on its head commit. Read-only:
+# pages and API reads as app_readonly, one page at a time. The Preview is
+# protected; the bypass secret is sent to its origin only.
+on:
+  push:
+    branches-ignore: [main, "load-test/**"]
+    paths: ["web/**", ".github/workflows/web-preview-live.yml", ".github/scripts/vercel-preview-url.sh"]
+
+permissions:
+  contents: read
+  statuses: read
+
+concurrency:
+  group: web-preview-live-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    defaults:
+      run:
+        working-directory: web
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
+      LIVE_DB_SMOKE: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Wait for the Vercel Preview
+        run: bash ../.github/scripts/vercel-preview-url.sh
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - run: npm ci
+
+      - run: npx playwright install --with-deps chromium
+
+      - name: Live checks against ${{ env.PREVIEW_URL }}
+        run: >-
+          npx playwright test --config=playwright.preview.config.ts
+          e2e/live-smoke.spec.ts e2e/gameflow-live.spec.ts
+          --reporter=list,html
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: preview-live-${{ github.run_id }}
+          path: |
+            web/playwright-report/
+            web/test-results/
+          retention-days: 30

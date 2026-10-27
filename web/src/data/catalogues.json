@@ -1,0 +1,53 @@
+{
+  "gameTypes": {
+    "5": "Regular season",
+    "16": "PO QF",
+    "17": "PO Finals",
+    "26": "PO SF",
+    "33": "Play-in",
+    "10": "Winner Cup",
+    "34": "Winner Cup",
+    "35": "State Cup",
+    "10,34": "Winner Cup"
+  },
+  "gameTypeChoices": [
+    {
+      "label": "All",
+      "value": ""
+    },
+    {
+      "label": "Regular season",
+      "value": "5"
+    },
+    {
+      "label": "Playoffs - Quarterfinals",
+      "value": "16"
+    },
+    {
+      "label": "Playoffs - Finals",
+      "value": "17"
+    },
+    {
+      "label": "Playoffs - Semifinals",
+      "value": "26"
+    },
+    {
+      "label": "Play-in",
+      "value": "33"
+    },
+    {
+      "label": "Winner Cup",
+      "value": "10,34"
+    },
+    {
+      "label": "State Cup",
+      "value": "35"
+    }
+  ],
+  "phases": {
+    "RS": "Regular Season",
+    "PLAYOFFS": "Playoffs",
+    "FF": "Final Four",
+    "TS": "Top 16"
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "required": ["GL-01", "GL-02", "GL-03", "GL-04", "GL-05", "GL-07", "GL-08"],
+  "deferred": {"GL-06": "Gameflow is implemented in Phase 6; required before switch"},
+  "leagues": ["il", "euroleague", "eurocup"],
+  "widths": ["phone", "desktop"]
+}

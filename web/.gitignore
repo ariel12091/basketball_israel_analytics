@@ -1,0 +1,13 @@
+node_modules/
+.next/
+test-results/
+playwright-report/
+*.tsbuildinfo
+.env*
+!.env.example
+
+# Generated from app/tests/goldens by scripts/export_goldens_json.R (large)
+test/goldens/
+
+.vercel
+.env*

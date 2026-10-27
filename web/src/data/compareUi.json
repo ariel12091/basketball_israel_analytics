@@ -1,0 +1,636 @@
+{
+  "DETAIL_METRICS": {
+    "ratings": {
+      "title": "Ratings",
+      "metrics": [
+        {
+          "label": "Win%",
+          "col_ratings": "win_pct",
+          "col_ff": null,
+          "polarity": "higher",
+          "fmt": "pct"
+        },
+        {
+          "label": "Net Rtg",
+          "col_ratings": "net_rtg",
+          "col_ff": null,
+          "polarity": "higher",
+          "fmt": "net"
+        },
+        {
+          "label": "Off Rtg",
+          "col_ratings": "off_ppp",
+          "col_ff": null,
+          "polarity": "higher",
+          "fmt": "rtg"
+        },
+        {
+          "label": "Def Rtg",
+          "col_ratings": "def_ppp",
+          "col_ff": null,
+          "polarity": "lower",
+          "fmt": "rtg"
+        }
+      ]
+    },
+    "off_ff": {
+      "title": "Offensive Four Factors",
+      "metrics": [
+        {
+          "label": "eFG%",
+          "col_ratings": null,
+          "col_ff": "off_efg",
+          "polarity": "higher",
+          "fmt": "pct",
+          "factor": "efg"
+        },
+        {
+          "label": "TOV%",
+          "col_ratings": null,
+          "col_ff": "off_tov",
+          "polarity": "lower",
+          "fmt": "pct",
+          "factor": "tov"
+        },
+        {
+          "label": "OREB%",
+          "col_ratings": null,
+          "col_ff": "off_oreb",
+          "polarity": "higher",
+          "fmt": "pct",
+          "factor": "oreb"
+        },
+        {
+          "label": "FTR",
+          "col_ratings": null,
+          "col_ff": "off_ftr",
+          "polarity": "higher",
+          "fmt": "pct",
+          "factor": "ftr"
+        }
+      ]
+    },
+    "def_ff": {
+      "title": "Defensive Four Factors",
+      "metrics": [
+        {
+          "label": "Opp eFG%",
+          "col_ratings": null,
+          "col_ff": "def_efg",
+          "polarity": "lower",
+          "fmt": "pct",
+          "factor": "efg"
+        },
+        {
+          "label": "Opp TOV%",
+          "col_ratings": null,
+          "col_ff": "def_tov",
+          "polarity": "higher",
+          "fmt": "pct",
+          "factor": "tov"
+        },
+        {
+          "label": "Opp OREB%",
+          "col_ratings": null,
+          "col_ff": "def_oreb",
+          "polarity": "lower",
+          "fmt": "pct",
+          "factor": "oreb"
+        },
+        {
+          "label": "Opp FTR",
+          "col_ratings": null,
+          "col_ff": "def_ftr",
+          "polarity": "lower",
+          "fmt": "pct",
+          "factor": "ftr"
+        }
+      ]
+    },
+    "shooting": {
+      "title": "Offensive Shooting",
+      "metrics": [
+        {
+          "label": "2PT Acc",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "off_fg2_acc",
+          "polarity": "higher",
+          "fmt": "pct"
+        },
+        {
+          "label": "2PT Freq",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "off_fg2_freq",
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "3PT Acc",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "off_fg3_acc",
+          "polarity": "higher",
+          "fmt": "pct"
+        },
+        {
+          "label": "3PT Freq",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "off_fg3_freq",
+          "polarity": "neutral",
+          "fmt": "pct"
+        }
+      ]
+    },
+    "def_shooting": {
+      "title": "Defensive Shooting",
+      "metrics": [
+        {
+          "label": "Opp 2PT Acc",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "def_fg2_acc",
+          "polarity": "lower",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp 2PT Freq",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "def_fg2_freq",
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp 3PT Acc",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "def_fg3_acc",
+          "polarity": "lower",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp 3PT Freq",
+          "col_ratings": null,
+          "col_ff": null,
+          "col_shooting": "def_fg3_freq",
+          "polarity": "neutral",
+          "fmt": "pct"
+        }
+      ]
+    },
+    "off_shot_profile": {
+      "title": "Offensive Shot Profile",
+      "metrics": [
+        {
+          "label": "Lay-up%",
+          "col_ratings": "off_layup_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Dunk%",
+          "col_ratings": "off_dunk_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Lay+Dunk%",
+          "col_ratings": "off_rim_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "3PA%",
+          "col_ratings": "off_fg3_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Corner 3 Share",
+          "col_ratings": "off_c3_pct3",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "2PT Jumper%",
+          "col_ratings": "off_mid_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        }
+      ]
+    },
+    "def_shot_profile": {
+      "title": "Defensive Shot Profile",
+      "metrics": [
+        {
+          "label": "Opp Lay-up%",
+          "col_ratings": "def_layup_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp Dunk%",
+          "col_ratings": "def_dunk_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp Lay+Dunk%",
+          "col_ratings": "def_rim_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp 3PA%",
+          "col_ratings": "def_fg3_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp Corner 3 Share",
+          "col_ratings": "def_c3_pct3",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        },
+        {
+          "label": "Opp 2PT Jumper%",
+          "col_ratings": "def_mid_share",
+          "col_ff": null,
+          "polarity": "neutral",
+          "fmt": "pct"
+        }
+      ]
+    }
+  },
+  "TEAM_METRICS": {
+    "Net Rtg": "net_rtg",
+    "Offense": "off_ppp",
+    "Defense": "def_ppp",
+    "eFG%": "off_efg",
+    "TOV%": "off_tov",
+    "OREB%": "off_oreb",
+    "FTR": "off_ftr"
+  },
+  "PLAYER_METRICS": {
+    "PPG": "ppg",
+    "RPG": "rpg",
+    "APG": "apg",
+    "SPG": "spg",
+    "FG%": "fg_pct",
+    "3P%": "fg3_pct",
+    "FT%": "ft_pct",
+    "TS%": "ts_pct",
+    "USG%": "usg_pct"
+  },
+  "PLAYER_VIEWS": {
+    "Overall": "overall",
+    "Four Factors": "ff_swing",
+    "Shot Profile": "shot_profile"
+  },
+  "TEAM_PLAYER_METRICS": {
+    "PTS": "pts",
+    "REB": "reb",
+    "AST": "ast",
+    "STL": "stl",
+    "BLK": "blk",
+    "TOV": "tov",
+    "FG%": "fg_pct",
+    "3P%": "tp_pct",
+    "FT%": "ft_pct",
+    "eFG%": "efg",
+    "TS%": "ts",
+    "USG%": "usg_pct"
+  },
+  "TEAM_PLAYER_PCT_COLS": ["fg_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct"],
+  "TEAM_PLAYER_LOWER_BETTER": "tov",
+  "TEAM_PLAYER_RAW_COLS": ["gp", "poss_on_floor", "minutes", "pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta", "fg_pct", "tp_pct", "ft_pct", "efg", "ts", "usg_pct"],
+  "PVP_STATS": [
+    {
+      "label": "Points",
+      "col": "pts",
+      "type": "count"
+    },
+    {
+      "label": "Rebounds",
+      "col": "reb",
+      "type": "count"
+    },
+    {
+      "label": "Assists",
+      "col": "ast",
+      "type": "count"
+    },
+    {
+      "label": "Steals",
+      "col": "stl",
+      "type": "count"
+    },
+    {
+      "label": "Deflections",
+      "col": "dfl",
+      "type": "count"
+    },
+    {
+      "label": "Disruptions",
+      "col": "disruptions",
+      "type": "count"
+    },
+    {
+      "label": "FG%",
+      "col": "fg_pct",
+      "type": "pct"
+    },
+    {
+      "label": "3P%",
+      "col": "tp_pct",
+      "type": "pct"
+    },
+    {
+      "label": "FT%",
+      "col": "ft_pct",
+      "type": "pct"
+    },
+    {
+      "label": "TS%",
+      "col": "ts",
+      "type": "pct"
+    },
+    {
+      "label": "USG%",
+      "col": "usg_pct",
+      "type": "pct"
+    }
+  ],
+  "FF_SWING_STATS": [
+    {
+      "label": "Off Diff",
+      "col": "Off ON Diff",
+      "side": "off"
+    },
+    {
+      "label": "eFG%",
+      "col": "Off eFG% Diff",
+      "side": "off",
+      "factor": "efg"
+    },
+    {
+      "label": "OREB%",
+      "col": "Off OREB% Diff",
+      "side": "off",
+      "factor": "oreb"
+    },
+    {
+      "label": "TOV%",
+      "col": "Off TOV% Diff",
+      "side": "off",
+      "invert": true,
+      "factor": "tov"
+    },
+    {
+      "label": "FTR",
+      "col": "Off FTR Diff",
+      "side": "off",
+      "factor": "ftr"
+    },
+    {
+      "label": "Def Diff",
+      "col": "Def ON Diff",
+      "side": "def",
+      "invert": true
+    },
+    {
+      "label": "eFG%",
+      "col": "Def eFG% Diff",
+      "side": "def",
+      "invert": true,
+      "factor": "efg"
+    },
+    {
+      "label": "OREB%",
+      "col": "Def OREB% Diff",
+      "side": "def",
+      "invert": true,
+      "factor": "oreb"
+    },
+    {
+      "label": "TOV%",
+      "col": "Def TOV% Diff",
+      "side": "def",
+      "factor": "tov"
+    },
+    {
+      "label": "FTR",
+      "col": "Def FTR Diff",
+      "side": "def",
+      "invert": true,
+      "factor": "ftr"
+    },
+    {
+      "label": "Disruptions/100",
+      "col": "Def Disruptions/100 Diff",
+      "side": "activity",
+      "requires_def_poss": true
+    }
+  ],
+  "PRESET_MIRROR_BLOCKS": {
+    "home_away": "home_away",
+    "win_loss": "outcome",
+    "starters_bench": ["starters_mode", "starters_val"],
+    "opp_starters_bench": ["opp_starters_mode", "opp_starters_val"],
+    "clutch": ["clutch", "clutch_margin", "clutch_minutes"],
+    "top_bottom_rank": "opp_rank_side"
+  },
+  "detail_specs": {
+    "usage": {
+      "title": "Usage",
+      "metrics": [
+        {
+          "label": "GP",
+          "col": "gp",
+          "fmt": "num",
+          "polarity": "neutral",
+          "raw": true
+        },
+        {
+          "label": "Min",
+          "col": "minutes",
+          "fmt": "num",
+          "polarity": "neutral",
+          "raw": true
+        },
+        {
+          "label": "Poss",
+          "col": "poss_on_floor",
+          "fmt": "num",
+          "polarity": "neutral",
+          "raw": true
+        },
+        {
+          "label": "USG%",
+          "col": "usg_pct",
+          "fmt": "pct",
+          "polarity": "higher",
+          "pct": true
+        }
+      ]
+    },
+    "production": {
+      "title": "Production",
+      "metrics": [
+        {
+          "label": "PTS",
+          "col": "pts",
+          "fmt": "num",
+          "polarity": "higher"
+        },
+        {
+          "label": "REB",
+          "col": "reb",
+          "fmt": "num",
+          "polarity": "higher"
+        },
+        {
+          "label": "AST",
+          "col": "ast",
+          "fmt": "num",
+          "polarity": "higher"
+        },
+        {
+          "label": "STL",
+          "col": "stl",
+          "fmt": "num",
+          "polarity": "higher"
+        },
+        {
+          "label": "BLK",
+          "col": "blk",
+          "fmt": "num",
+          "polarity": "higher"
+        },
+        {
+          "label": "TOV",
+          "col": "tov",
+          "fmt": "num",
+          "polarity": "lower"
+        }
+      ]
+    },
+    "shooting": {
+      "title": "Shooting",
+      "metrics": [
+        {
+          "label": "FG%",
+          "col": "fg_pct",
+          "fmt": "pct",
+          "polarity": "higher",
+          "pct": true
+        },
+        {
+          "label": "3P%",
+          "col": "tp_pct",
+          "fmt": "pct",
+          "polarity": "higher",
+          "pct": true
+        },
+        {
+          "label": "FT%",
+          "col": "ft_pct",
+          "fmt": "pct",
+          "polarity": "higher",
+          "pct": true
+        },
+        {
+          "label": "eFG%",
+          "col": "efg",
+          "fmt": "pct",
+          "polarity": "higher",
+          "pct": true
+        },
+        {
+          "label": "TS%",
+          "col": "ts",
+          "fmt": "pct",
+          "polarity": "higher",
+          "pct": true
+        }
+      ]
+    }
+  },
+  "gt_labels": {
+    "5": "Regular",
+    "16": "QF",
+    "17": "Finals",
+    "26": "SF",
+    "33": "Play-in",
+    "34": "W.Cup",
+    "35": "S.Cup"
+  },
+  "text": ["net_rtg", "league", "cmp", "CMP_PROFILE", "1", "/", ".codex_debug", "tab7_profile.log", "%s-%s", "%Y%m%d-%H%M%S", "session", "ts=%s", "%Y-%m-%d %H:%M:%OS3", "run=%s", "label=%s", "ms=%.1f", "extra=%s", "[\r\n]+", " ", " | ", "\n", "elapsed", "error=", "Ratings", "Win%", "win_pct", "higher", "pct", "Net Rtg", "net", "Off Rtg", "off_ppp", "rtg", "Def Rtg", "def_ppp", "lower", "Offensive Four Factors", "eFG%", "off_efg", "efg", "TOV%", "off_tov", "tov", "OREB%", "off_oreb", "oreb", "FTR", "off_ftr", "ftr", "Defensive Four Factors", "Opp eFG%", "def_efg", "Opp TOV%", "def_tov", "Opp OREB%", "def_oreb", "Opp FTR", "def_ftr", "Offensive Shooting", "2PT Acc", "off_fg2_acc", "2PT Freq", "off_fg2_freq", "neutral", "3PT Acc", "off_fg3_acc", "3PT Freq", "off_fg3_freq", "Defensive Shooting", "Opp 2PT Acc", "def_fg2_acc", "Opp 2PT Freq", "def_fg2_freq", "Opp 3PT Acc", "def_fg3_acc", "Opp 3PT Freq", "def_fg3_freq", "Offensive Shot Profile", "Lay-up%", "off_layup_share", "Dunk%", "off_dunk_share", "Lay+Dunk%", "off_rim_share", "3PA%", "off_fg3_share", "Corner 3 Share", "off_c3_pct3", "2PT Jumper%", "off_mid_share", "Defensive Shot Profile", "Opp Lay-up%", "def_layup_share", "Opp Dunk%", "def_dunk_share", "Opp Lay+Dunk%", "def_rim_share", "Opp 3PA%", "def_fg3_share", "Opp Corner 3 Share", "def_c3_pct3", "Opp 2PT Jumper%", "def_mid_share", "other", "self", "", "cmp_", "_", "Players", "cmp_player_", "_dates", "_gn_min", "_gn_max", "date_split", "gn_split", "a", "starters_mode", "starters_val", "opp_starters_mode", "opp_starters_val", "gte", "lte", "clutch", "clutch_margin", null, "clutch_minutes", "teams", "opponents", "game_type", "home_away", "outcome", "opp_rank_side", "opp_rank_n", "opp_rank_metric", "Starters", "Bench", "vs Starters", "vs Bench", "Clutch", "Non-Clutch", "Home", "Away", "Win", "Loss", "_opp_rank_n", "vs Top ", "vs Bottom ", "%b %d", "Before ", "From ", "GN 1-", "GN ", "+", ">=", "<=", "Own starters ", "Opp starters ", "Off", "Def", "Net", "vs ", " (", ")", ", ", " opps", " teams", "Regular", "QF", "Finals", "SF", "Play-in", "W.Cup", "S.Cup", "%Y-%m-%d", "After ", "Before GN ", "After GN ", "Side ", "b_minus_a", "a_minus_b", "none", "b", "winner", "loser", ",", "team_id", "poss_a", "poss_b", "run_compare_query:", "rows=%d", "overall", "cmp_team_ratings", "SELECT * FROM basketball_test.get_team_ratings_dynamic(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,", "$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,", "$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", "cmp_team_ff", "SELECT * FROM basketball_test.get_team_four_factors_dynamic(", "5", "cmp_lineups_summary", "SELECT * FROM basketball_test.fetch_lineups_csv_v2(", "$1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,", "$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,", "$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4", "cmp_lineups_ff", "SELECT * FROM basketball_test.fetch_lineups_four_factors_csv(", "off_fg2_att", "off_fg3_att", "def_fg2_att", "def_fg3_att", "off_fg2_made", "off_fg3_made", "def_fg2_made", "def_fg3_made", "off_layup_att", "off_dunk_att", "off_fga", "off_c3_att", "off_c3_known_att", "def_layup_att", "def_dunk_att", "def_fga", "def_c3_att", "def_c3_known_att", "cmp_team_shooting", "team_name", "run_compare_query:cmp_player_traditional", "cmp_player_traditional", "israel", "statement timeout", "Player compare query timed out. Narrow filters or date range.", "warning", "tab7", "player_compare query failed: %s", "ERROR", "Player compare query failed. Try narrowing filters or retry.", "error", "cmp_four_factors", "SELECT * FROM basketball_test.four_factors_compute(", "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,", "$7::text,$8::text,$9::text,$10::int4,$11::text,", "$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4", "cmp_onoff_impact", "SELECT * FROM basketball_test.onoff_compute(", "$1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,", "$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,", "$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4", "ppg", "rpg", "apg", "spg", "fg_pct", "fg3_pct", "ft_pct", "ts_pct", "usg_pct", "pts", "reb", "ast", "stl", "blk", "tp_pct", "ts", "ff_swing", "shot_profile", "name", "team", "player_id", "firstname", "lastname", "first_name", "last_name", "player_name", "load_cmp_teams_ref", "game_year=%s;rows=%d", "load_cmp_players_ref", "load_cmp_gn_ref", "refresh_compare_ref_inputs", "cmp_a_teams", "cmp_b_teams", "cmp_a_opponents", "cmp_b_opponents", "cmp_player_a_list_team_filter", "cmp_player_b_list_team_filter", "cmp_gn_min", "cmp_gn_max", "cmp_players_gn_min", "cmp_players_gn_max", "cmp_player_a_gn_min", "cmp_player_a_gn_max", "cmp_player_b_gn_min", "cmp_player_b_gn_max", "cmp_split_gn", "cmp_dates", "cmp_players_dates", "cmp_player_a_dates", "cmp_player_b_dates", "cmp_split_date", "game_year=%s", "cmp_lu_filter", "cmp_player_a", "cmp_player_b", "compare", "btn btn-sm btn-warning", "btn btn-sm btn-outline-secondary", "button", "js-shiny-event", "border-radius: 20px; padding: 2px 12px; font-size: .76rem;", "cmp_metric", "cmp_player_view", "Teams", "cmp_team_player_metric", "players", "cmp_view_players_btn", "cmp-view-toggle-btn js-shiny-event", "cmp_detail_toggle", "MockShinySession", "detail", "toggle_cmp_view", "_starters_mode", "_starters_val", "_opp_starters_mode", "_opp_starters_val", "_home_away", "_outcome", "_clutch", "_clutch_margin", "_clutch_minutes", "_teams", "_opponents", "_game_type", "_opp_rank_side", "_opp_rank_metric", "starters_bench", "cmp_a_starters_mode", "cmp_a_starters_val", "3", "cmp_b_starters_mode", "cmp_b_starters_val", "2", "opp_starters_bench", "cmp_a_opp_starters_mode", "cmp_a_opp_starters_val", "cmp_b_opp_starters_mode", "cmp_b_opp_starters_val", "cmp_a_clutch", "cmp_a_clutch_margin", "cmp_a_clutch_minutes", "cmp_a_home_away", "home", "cmp_b_home_away", "away", "win_loss", "cmp_a_outcome", "win", "cmp_b_outcome", "loss", "top_bottom_rank", "cmp_a_opp_rank_side", "top", "cmp_b_opp_rank_side", "bottom", "cmp_a_opp_rank_n", "4", "cmp_b_opp_rank_n", "cmp_a_opp_rank_metric", "cmp_b_opp_rank_metric", "cmp_preset", "cmp_min_poss", "cmp_player_a_team", "cmp_player_b_team", "cmp_lu_num", "_list_team_filter", "cmp_default_scorers_%d", "SELECT player_id, gp, pts FROM basketball_test.get_player_traditional_from_games(", "$1::int4, NULL::date, NULL::date, NULL::text, NULL::text, NULL::text, NULL::text, NULL::text, ", "NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::text, NULL::int4, NULL::bool, NULL::int4, NULL::int4, NULL::int4", "Lineups", "cmp_mode", "Date split preset needs a Split date. Please pick a date to continue.", "cmp_split_date_missing", "Team (optional)", "Points", "count", "Rebounds", "Assists", "Steals", "Deflections", "dfl", "Disruptions", "disruptions", "FG%", "3P%", "FT%", "TS%", "USG%", "idle", "cmp_player_pending", "ready", "pending", "stale", "background: rgba(var(--ibpl-accent-rgb),.15); color: var(--ibpl-accent); border: 1px solid rgba(var(--ibpl-accent-rgb),.35); border-radius: 4px; padding: 1px 8px; font-size: .78rem; font-weight: 600; white-space: nowrap;", "font-size: 1.05rem; font-weight: 600; color: var(--ibpl-text);", "font-size: 1.05rem; font-weight: 600; color: var(--ibpl-text-muted);", "display: flex; align-items: center; justify-content: center; margin-bottom: 20px; padding: 16px 0; border-bottom: 1px solid rgba(255,255,255,.08);", "flex: 1; text-align: center;", "font-size: 1.25rem; font-weight: 700; color: var(--ibpl-side-a);", "font-size: .82rem; color: var(--ibpl-text-muted); margin-top: 2px;", "font-size: .78rem; color: var(--ibpl-text-dim); margin-top: 2px;", "font-size: .9rem; font-weight: 700; color: var(--ibpl-text-faint); padding: 0 20px;", "vs", "font-size: 1.25rem; font-weight: 700; color: var(--ibpl-accent);", "+%.1f", "display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid rgba(255,255,255,.06);", "flex: 1; display: flex; align-items: center; justify-content: flex-end; gap: 10px;", "text-align: right;", "width: 130px; text-align: center; font-size: .85rem; font-weight: 600; color: var(--ibpl-text-muted);", "flex: 1; display: flex; align-items: center; justify-content: flex-start; gap: 10px;", "text-align: left;", "text-align: center; padding: 14px 0 6px; font-size: .75rem; font-weight: 700; text-transform: uppercase; letter-spacing: .08em; color: var(--ibpl-text-dim);", "card bg-dark border-secondary p-3", "small text-muted", "to", "Any", "-", "Off Diff", "Off ON Diff", "off", "Off eFG% Diff", "Off OREB% Diff", "Off TOV% Diff", "Off FTR Diff", "Def Diff", "Def ON Diff", "def", "Def eFG% Diff", "Def OREB% Diff", "Def TOV% Diff", "Def FTR Diff", "Disruptions/100", "Def Disruptions/100 Diff", "activity", "Preparing player compare...", "No player data for current filters.", "gp", "off_on_poss", " GP", " ON Poss", "--", "%+.1f", " pts allowed", " pts", "ff-impact-est", "est. %+.1f%s", "Diff$", "def_on_poss", "def_off_poss", "max-width: 520px; margin: 0 auto;", "text-align: center; font-size: .72rem; color: var(--ibpl-text-dim); margin-bottom: 8px;", "Swing values use the same diffs as Tab 1 Four Factors (plus Off/Def Diff).", "Defensive Activity", "off_on", "off_off", "def_on", "def_off", "_layup_att", "_dunk_att", "_fg2_att", "_fg3_att", "_c3_att", "_c3_known_att", "_fg2_made", "_fg3_made", "_fga_in", "_efg", "Shot Profile columns unavailable for current filters.", "ON Poss", "layup_share", "dunk_share", "rim_share", "fg3_share", "c3_pct3", "mid_share", "_on_", "_off_", "font-size:.72rem; color:var(--ibpl-text-dim);", "on %.1f | off %.1f", "Team shot-diet shift with the player ON vs OFF the floor (share of team FGA, percentage points), led by the team eFG% swing. Diet rows are descriptive -- no point-impact estimate. Corner 3 Share is the share of known-location 3PA taken from the corners; -- = unknown.", "Offensive Shot Profile (ON - OFF)", "Defensive Shot Profile (ON - OFF)", "Select a player to run Players compare.", "Select Player A and Player B to run Players compare.", "Per Game", "Totals", "Per 75 Possessions", "poss_on_floor", "%.1f", "%.0f", "minutes", " MPG", "off_poss", "total_poss", "metric_", "poss_", ".b", "sub_lineup_hash", "player_names_str", "def_poss", " vs ", "cmp_joined_base", "mode=%s;rows=%d;min_poss=%s", "cmp_auto_min_bootstrap", "value=%s", "cmp_auto_min_update", "from=%s;to=%s", "cmp_joined", "fgm", "fga", "3pm", "3pa", "ftm", "fta", "team_name_", "player_name_", "Player", "Per 60 Possessions", "poss_on_floor_", "Per 30 Minutes", "minutes_", "gp_", "%.1f%%", " (didn't play)", "%", "+0.0", "+%.1f%s", "-%.1f%s", "detail-container", "text-muted text-center mt-4", "Select a team in Detail view before opening Players.", "cmp-back-btn js-shiny-event", "cmp_team_players_back_players", "<- Back to players", "A", "A | ", "B", "B | ", "Usage", "GP", "num", "Min", "Poss", "Production", "PTS", "REB", "AST", "STL", "BLK", "TOV", "Shooting", "played_", "cmp-col-header cmp-col-a cmp-cell cmp-first-row", "cmp-col-header cmp-col-gap cmp-cell cmp-first-row", "Gap", "cmp-col-header cmp-col-b cmp-cell cmp-first-row", "cmp-section-title", " cmp-last-row", "a-color", "b-color", "toward-a", "toward-b", "cmp-stat-row cmp-col-a cmp-cell", "cmp-stat-label", "cmp-stat-value", "cmp-gap-row cmp-col-gap cmp-cell", "cmp-gap-num", "cmp-bar-container", "cmp-bar-center", "cmp-bar", "width: %.1f%%;", "cmp-stat-row cmp-col-b cmp-cell", "<strong>%s<\/strong> GP | <strong>%s<\/strong> Poss", "didn't play", "cmp-context-bar", "cmp-context-side", "cmp-context-badge a", "cmp-context-info", "cmp-context-sep", "|", "cmp-context-badge b", "cmp-team-header", "cmp-team-subheader", "cmp-compare-grid", "cmp_team_players_back_teams", "<- Back to team detail", "compare_player", "sort", "cmp_team_players_table", "\n        table.on('click', 'tbody tr', function() {\n          var data = table.row(this).data();\n          if (!data || !window.Shiny) return;\n          window.Shiny.setInputValue('cmp_team_players_player_click', {\n            team_id: data[0],\n            player_id: data[1],\n            player_name: data[3],\n            rand: Math.random()\n          }, { priority: 'event' });\n        });\n      ", "t", "desc", "dt-left", "dt-right", "function(row, data) { $(row).css('cursor', 'pointer'); }", "games_played", "wins", "losses", "<strong>", "<\/strong> GP", "<\/strong>-<strong>", "<\/strong>", "<\/strong> Poss", "cmp-context-badge", "Select a team or lineup from the dropdown to view detailed comparison.", "cmp_detail_back", "<- Back to league view", "No data for this entity with current filters.", "cmp-col-header cmp-col-gap cmp-cell cmp-first-row js-cmp-detail-sort", "Gap ", "cmp-sort-icon", "up/down", "def_shooting", "off_shot_profile", "def_shot_profile", "ratings", "+/-0.0%s", "est. %.1f pts", "text-align: center; font-size: .72rem; color: var(--ibpl-text-dim); margin-top: 8px;", "asc", "tie", "is-tie", "is-winner", "is-loser", "cmp-side-value", "Delta vs B: --", "Delta vs B: ", "Delta vs A: --", "Delta vs A: ", "Poss A: --", "Poss A: ", "Poss B: --", "Poss B: ", "min-width: 200px;", "cmp_detail_entity_select", "Select entity...", "100%", "output_cmp_table", "Lineup", "Team", "\n        table.on('click', 'tbody tr', function() {\n          window.handleCompareTableRowClick(table, this, %d);\n        });\n      ", "\n          function(thead, data, start, end, display) {\n            var cells = $(thead).find('th');\n            var tips = %s;\n            var badgeStyle = 'display:inline-block;border-radius:50%%;padding:2px 8px;font-size:.7rem;font-weight:600;';\n            var aStyle = badgeStyle + 'background:rgba(var(--ibpl-side-a-rgb),.2);color:var(--ibpl-side-a);border:1px solid rgba(var(--ibpl-side-a-rgb),.4);';\n            var bStyle = badgeStyle + 'background:rgba(var(--ibpl-accent-rgb),.15);color:var(--ibpl-accent);border:1px solid rgba(var(--ibpl-accent-rgb),.35);';\n            cells.each(function() {\n              var cell = $(this);\n              var txt = cell.text().trim();\n              if (tips[txt]) {\n                cell.attr('title', tips[txt]);\n                cell.css('cursor', 'help');\n              } else {\n                cell.removeAttr('title');\n              }\n            });\n            var aText = $(cells[%d]).text().trim();\n            var bText = $(cells[%d]).text().trim();\n            if (aText === 'A') $(cells[%d]).html('<span style=\"' + aStyle + '\">A<\/span>');\n            if (bText === 'B') $(cells[%d]).html('<span style=\"' + bStyle + '\">B<\/span>');\n          }\n        ", "compact stripe nowrap", "mode=%s;rows=%d", "cmp_reset"],
+  "filterColumns": {
+    "A": "metric_a",
+    "Total Poss A": "poss_a",
+    "B": "metric_b",
+    "Total Poss B": "poss_b",
+    "Gap": "gap"
+  },
+  "presetChoices": [
+    {
+      "value": "",
+      "label": "-- Custom --"
+    },
+    {
+      "value": "starters_bench",
+      "label": "Starters vs Bench"
+    },
+    {
+      "value": "opp_starters_bench",
+      "label": "Vs Starters vs Vs Bench"
+    },
+    {
+      "value": "clutch",
+      "label": "Clutch vs Non-Clutch"
+    },
+    {
+      "value": "home_away",
+      "label": "Home vs Away"
+    },
+    {
+      "value": "win_loss",
+      "label": "Win vs Loss"
+    },
+    {
+      "value": "top_bottom_rank",
+      "label": "Top vs Bottom (Opp Rank)"
+    },
+    {
+      "value": "date_split",
+      "label": "Date split"
+    },
+    {
+      "value": "gn_split",
+      "label": "GN split"
+    }
+  ],
+  "sql": {
+    "ratings": "SELECT * FROM basketball_test.get_team_ratings_dynamic($1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)",
+    "four_factors": "SELECT * FROM basketball_test.get_team_four_factors_dynamic($1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::int4,$10::text,$11::int4,$12::text,$13::int4,$14::bool,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)",
+    "lineups": "SELECT * FROM basketball_test.fetch_lineups_csv_v2($1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4)",
+    "lineup_ff": "SELECT * FROM basketball_test.fetch_lineups_four_factors_csv($1::int4,$2::text,$3::text,$4::text,$5::bool,$6::date,$7::date,$8::int4,$9::int4,$10::text,$11::text,$12::text,$13::text,$14::text,$15::int4,$16::text,$17::int4,$18::text,$19::int4,$20::bool,$21::int4,$22::int4,$23::int4,$24::int4,$25::int4,$26::int4,$27::int4,$28::int4,$29::int4)",
+    "player_ff": "SELECT * FROM basketball_test.four_factors_compute($1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,$12::int4,$13::int4,$14::int4,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4)",
+    "onoff": "SELECT * FROM basketball_test.onoff_compute($1::date,$2::date,$3::text,$4::int4,$5::int4,$6::numeric,$7::text,$8::text,$9::text,$10::text,$11::text,$12::text,$13::int4,$14::text,$15::int4,$16::int4,$17::int4,$18::int4,$19::int4,$20::int4,$21::int4,$22::int4,$23::int4)"
+  }
+}
