@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 // Shiny's stylesheets, in the order the live app loads them (spec: no
 // redesign). Vendor files come from scripts/export_web_shiny_ui.R; app.css and
@@ -59,6 +60,7 @@ export default function RootLayout({
             {children}
           </AskProvider>
         </NuqsAdapter>
+        <Analytics />
       </body>
     </html>
   );
