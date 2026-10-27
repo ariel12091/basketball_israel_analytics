@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from "next";
+import { Analytics } from "@vercel/analytics/next";
 import { NuqsAdapter } from "nuqs/adapters/next/app";
 // Shiny's stylesheets, in the order the live app loads them (spec: no
 // redesign). Vendor files come from scripts/export_web_shiny_ui.R; app.css and
@@ -59,6 +60,9 @@ export default function RootLayout({
             {children}
           </AskProvider>
         </NuqsAdapter>
+        {/* Vercel Web Analytics (cookieless page views). Only on Vercel:
+            elsewhere its /_vercel/insights script does not exist. */}
+        {process.env.VERCEL === "1" && <Analytics />}
       </body>
     </html>
   );
