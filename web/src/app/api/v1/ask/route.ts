@@ -49,6 +49,18 @@ const json = (
 export async function POST(request: Request) {
   if (process.env.ASK_ENABLED !== "true")
     return json(404, { error: "Not found" });
+  // Browsers send Origin on every POST: refuse questions another site's page
+  // sends on a visitor's behalf (they would spend this site's tokens).
+  const origin = request.headers.get("origin");
+  const host =
+    request.headers.get("x-forwarded-host") ??
+    request.headers.get("host") ??
+    new URL(request.url).host;
+  let sameSite = false;
+  try {
+    sameSite = !origin || new URL(origin).host === host;
+  } catch {}
+  if (!sameSite) return json(403, { error: "Forbidden" });
   let body: z.infer<typeof Body>;
   try {
     body = Body.parse(await request.json());

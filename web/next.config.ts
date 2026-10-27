@@ -14,6 +14,17 @@ const config: NextConfig = {
   // which the CDN does not keep.
   async headers() {
     return [
+      // No other site may frame the app (clickjacking), browsers must not
+      // guess content types, and other sites see only the origin we link from.
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "X-Frame-Options", value: "DENY" },
+          { key: "Content-Security-Policy", value: "frame-ancestors 'none'" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+        ],
+      },
       {
         source:
           "/:league(il|euroleague|eurocup)/:tab(home|game-logs|onoff|lineups|team-ratings|player-stats)",

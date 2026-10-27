@@ -73,7 +73,13 @@ export function proxy(request: NextRequest) {
         },
         {
           key: `ip:${ip}:${reader}`,
-          limit: limit("DASHBOARD_IP_RATE_LIMIT", 5000),
+          // A script gets a new session cookie per request, so in Production
+          // this is the limit that holds. Previews keep a high one: the load
+          // test runs every simulated user from one GitHub runner IP.
+          limit: limit(
+            "DASHBOARD_IP_RATE_LIMIT",
+            process.env.VERCEL_ENV === "production" ? 300 : 5000,
+          ),
         },
       ],
       Date.now(),
