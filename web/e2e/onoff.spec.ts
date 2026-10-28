@@ -193,7 +193,7 @@ for (const file of presets)
           expect(file.suggestedFilename()).toMatch(/^onoff_summary_.*\.csv$/);
           const csv = readFileSync((await file.path())!, "utf8");
           expect(csv.split("\r\n")).toHaveLength(expected.length + 1);
-          expect(csv).toMatch(/^"Team","Player","Net",/);
+          expect(csv).toMatch(/^"Team","Player","Min","On Poss","Off Poss","Net",/);
         }
       }
     }

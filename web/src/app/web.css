@@ -259,3 +259,6 @@ body.ibpl-collapsed-nav .filter-drawer-done { display: block; position: fixed; l
 body .chips-row .chips-drawer-toggle { display: inline-flex; }
 .ibpl-drawer-layout .chips-row-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .ibpl-drawer-layout .chips-row-controls .shiny-download-link { padding: 4px 10px; font-size: .8rem; line-height: 1.4; }
+/* On/Off: the Usage columns (Min, On Poss, Off Poss) come right after the
+   names; at phone width they are kept narrow so all three show on load. */
+body.ibpl-collapsed-nav .onoff-usage-col { min-width: 0 !important; width: 52px; max-width: 58px; padding-left: 4px !important; padding-right: 4px !important; }

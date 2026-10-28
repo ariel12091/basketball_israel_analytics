@@ -150,3 +150,33 @@ test("a stepper tap turns auto min-poss off; a filter change turns it back on", 
   await pickTeam(page, String(team.Team));
   await expect(input).toHaveValue(String(expected));
 });
+
+test("possession columns are on screen without scrolling sideways", async ({
+  page,
+}) => {
+  await stub(page);
+  for (const view of ["Summary", "Four Factors", "Shot Profile"]) {
+    await page.getByRole("tab", { name: view }).click();
+    await expect(
+      page.locator(".ibpl-dt-scroll tbody tr").first(),
+    ).toBeVisible();
+    for (const label of ["On Poss", "Off Poss"])
+      await expect
+        .poll(
+          () =>
+            page.evaluate((label) => {
+              const scroll = document.querySelector(".ibpl-dt-scroll");
+              const th = [
+                ...document.querySelectorAll(".ibpl-dt-scroll thead th"),
+              ].find((t) => t.textContent?.trim() === label);
+              if (!scroll || !th) return Infinity;
+              return (
+                th.getBoundingClientRect().right -
+                scroll.getBoundingClientRect().right
+              );
+            }, label),
+          { message: `${view}: ${label}` },
+        )
+        .toBeLessThanOrEqual(1);
+  }
+});

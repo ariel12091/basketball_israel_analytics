@@ -422,10 +422,21 @@ function nameCols(ctx: Ctx): Column[] {
     { id: "Player", label: "Player", ...pivot },
   ];
 }
+const USAGE = "onoff-usage-col";
 const usage = (first = SEP): Column[] => [
-  { id: "minutes", label: "Min", cls: first, render: plain("minutes", 1) },
-  { id: "ON Poss", label: "On Poss", render: plain("ON Poss", 0) },
-  { id: "OFF Poss", label: "Off Poss", render: plain("OFF Poss", 0) },
+  {
+    id: "minutes",
+    label: "Min",
+    cls: `${first} ${USAGE}`,
+    render: plain("minutes", 1),
+  },
+  { id: "ON Poss", label: "On Poss", cls: USAGE, render: plain("ON Poss", 0) },
+  {
+    id: "OFF Poss",
+    label: "Off Poss",
+    cls: USAGE,
+    render: plain("OFF Poss", 0),
+  },
 ];
 
 export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
@@ -455,6 +466,8 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
   };
   return [
     ...nameCols(ctx),
+    // How much data stands behind the row, right after the names.
+    ...usage(),
     {
       id: "Net RTG Diff",
       label: "Net",
@@ -516,15 +529,14 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
     },
     shot("Off Shot OFF"),
     shot("Def Shot OFF"),
-    ...usage(),
   ];
 }
 export const SUMMARY_GROUPS: Group[] = [
   { label: "", span: 2 },
+  { label: "Usage", span: 3, cls: SEP },
   { label: "Net Impact", span: 3, cls: SEP },
   { label: "On Court Stats", span: 5, cls: SEP },
   { label: "Off Court Stats", span: 5, cls: SEP },
-  { label: "Usage", span: 3, cls: SEP },
 ];
 
 const FACTOR: Record<string, "efg" | "oreb" | "tov" | "ftr"> = {
@@ -632,6 +644,8 @@ export function ffColumns(ctx: Ctx): Column[] {
   });
   return [
     ...nameCols(ctx),
+    // How much data stands behind the row, right after the names.
+    ...usage(),
     {
       id: "Net Diff",
       label: "Diff",
@@ -660,15 +674,14 @@ export function ffColumns(ctx: Ctx): Column[] {
     factor("Def OREB% Diff", "OREB%", undefined, ui.defOrebTooltip),
     factor("Def TOV% Diff", "TOV%"),
     factor("Def FTR Diff", "FTR"),
-    ...usage(),
   ];
 }
 export const FF_GROUPS: Group[] = [
   { label: "", span: 2 },
+  { label: "Usage", span: 3, cls: SEP },
   { label: "Total", span: 1 },
   { label: "Offense Impact (On-Off)", span: 5, cls: SEP },
   { label: "Defense Impact (On-Off)", span: 5, cls: SEP },
-  { label: "Usage", span: 3, cls: SEP },
 ];
 
 const C3_TITLE =
@@ -710,10 +723,11 @@ export function spColumns(ctx: Ctx): Column[] {
         },
       };
     });
-  return [...nameCols(ctx), ...side("off"), ...side("def"), ...usage()];
+  return [...nameCols(ctx), ...usage(), ...side("off"), ...side("def")];
 }
 export const SP_GROUPS: Group[] = [
   { label: "", span: 2 },
+  { label: "Usage", span: 3, cls: SEP },
   {
     label: "Offense Shot Profile (ON - OFF; eFG% + shares of FGA)",
     span: 7,
@@ -724,7 +738,6 @@ export const SP_GROUPS: Group[] = [
     span: 7,
     cls: SEP,
   },
-  { label: "Usage", span: 3, cls: SEP },
 ];
 
 /** The table for one view, with the tooltip and pivot menu it hosts. */
