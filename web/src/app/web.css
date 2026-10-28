@@ -387,3 +387,11 @@ body.ibpl-collapsed-nav .lineup-bar .lineup-chips-mode { flex: 1; justify-conten
 .tr-trad-controls .form-group, .tr-trad-controls .shiny-input-container { margin: 0; min-width: 180px; }
 .ps-bar { grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr); }
 body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
+
+/* Gameflow: the whole gutter row (name, minutes, +/-) is one target, so the
+   row button lights up wherever the pointer is in it (user 2026-10-28). */
+.ibpl-ribbon-row { cursor: pointer; }
+.ibpl-ribbon-row:hover .ibpl-ribbon-row-btn:not(.is-pair-selected) {
+  fill: rgba(var(--ibpl-accent-rgb), 0.14);
+  stroke: var(--ibpl-accent);
+}

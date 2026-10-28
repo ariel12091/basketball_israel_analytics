@@ -111,10 +111,12 @@ export function GameflowView({
     if (next.length === 1) {
       const bar =
         next[0] === key ? b : data.bars.find((b) => laneKey(b) === next[0])!;
+      // A name selects the player's whole game (every lineup he was part
+      // of); a bar selects just that stint (user 2026-10-28).
       setActive(
         next[0] === key && window
           ? window
-          : { bar, start: bar.start_elapsed, end: bar.end_elapsed },
+          : { bar, start: 0, end: data.bounds[data.bounds.length - 1] },
       );
     } else setActive(null);
   };
@@ -140,6 +142,25 @@ export function GameflowView({
     ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
     : labels.prompt;
   const activeWindow = hover ?? active;
+  // Which team the selection belongs to: details sit next to its lanes.
+  const sideOf = (key: string) =>
+    data.bars.find((b) => laneKey(b) === key)?.side;
+  const upper = selected.length
+    ? selected.every((k) => sideOf(k) === "own")
+    : activeWindow?.bar.side === "own";
+  const details = (
+    <GameflowDetails
+      data={data}
+      activeWindow={activeWindow}
+      selected={selected}
+      groups={groups}
+      groupKey={groupKey}
+      focus={focus}
+      setFocus={setFocus}
+      setPreview={setPreview}
+      detail={detail}
+    />
+  );
   return (
     <div className="ibpl-ribbon-game ibpl-react-gameflow">
       {data.health && (
@@ -258,35 +279,86 @@ export function GameflowView({
         </>
       )}
       {!compact || full ? (
-        <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
-          <GameflowChart {...common} />
-        </div>
+        upper ? (
+          // Top team selected: its lanes, then the lineups, then the margin
+          // chart and the other team.
+          <>
+            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+              <GameflowChart {...common} crop="top" />
+            </div>
+            {details}
+            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+              <GameflowChart {...common} crop="bottom" />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+              <GameflowChart {...common} />
+            </div>
+            {details}
+          </>
+        )
       ) : (
-        <div className="ibpl-ribbon-quarters">
-          {data.bounds.map((end, i) => (
-            <section
-              key={end}
-              className="ibpl-ribbon-quarter-card"
-              data-quarter={i + 1}
-              ref={(el) => {
-                if (el) cards.current.set(i + 1, el);
-                else cards.current.delete(i + 1);
-              }}
-            >
-              <h4 className="ibpl-ribbon-quarter-heading">
-                {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
-              </h4>
-              <div className="ibpl-ribbon-quarter-frame">
-                <GameflowChart
-                  {...common}
-                  range={{ start: i ? data.bounds[i - 1] : 0, end }}
-                />
-              </div>
-            </section>
-          ))}
-        </div>
+        <>
+          {/* Quarter cards (phones): the lineups sit right above them. */}
+          {details}
+          <div className="ibpl-ribbon-quarters">
+            {data.bounds.map((end, i) => (
+              <section
+                key={end}
+                className="ibpl-ribbon-quarter-card"
+                data-quarter={i + 1}
+                ref={(el) => {
+                  if (el) cards.current.set(i + 1, el);
+                  else cards.current.delete(i + 1);
+                }}
+              >
+                <h4 className="ibpl-ribbon-quarter-heading">
+                  {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
+                </h4>
+                <div className="ibpl-ribbon-quarter-frame">
+                  <GameflowChart
+                    {...common}
+                    range={{ start: i ? data.bounds[i - 1] : 0, end }}
+                  />
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
       )}
-      {activeWindow && selected.length < 2 && (
+    </div>
+  );
+}
+function GameflowDetails({
+  data,
+  activeWindow,
+  selected,
+  groups,
+  groupKey,
+  focus,
+  setFocus,
+  setPreview,
+  detail,
+}: {
+  data: GameflowPayload;
+  activeWindow: BarWindow | null;
+  selected: string[];
+  groups: ReturnType<typeof aggregateSegments>;
+  groupKey: (g: ReturnType<typeof aggregateSegments>[number]) => string;
+  focus: string | null;
+  setFocus: (k: string | null) => void;
+  setPreview: (w: Window[] | null) => void;
+  detail: React.RefObject<HTMLElement | null>;
+}) {
+  const whole =
+    !!activeWindow &&
+    activeWindow.start === 0 &&
+    activeWindow.end === data.bounds[data.bounds.length - 1];
+  return (
+    <>
+      {activeWindow && selected.length < 2 && !whole && (
         <section
           className="ibpl-ribbon-detail is-card"
           aria-label="Stint detail"
@@ -362,7 +434,7 @@ export function GameflowView({
           )}
         </section>
       )}
-    </div>
+    </>
   );
 }
 function FragmentSide({
