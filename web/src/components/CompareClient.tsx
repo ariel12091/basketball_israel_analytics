@@ -1,4 +1,7 @@
 "use client";
+import ViewTabs from "./shiny/ViewTabs";
+import { ViewIntro } from "./shiny/TableKey";
+import layout from "@/data/layoutUi.json";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Row } from "@/rules/gameLogs";
@@ -22,7 +25,6 @@ import {
   contextChips,
   ChipsRow,
   Chip,
-  ViewContent,
 } from "./shiny/TabKit";
 import type { Patch } from "@/lib/tabQuery";
 import {
@@ -580,7 +582,17 @@ function CompareTab({
   );
   const main = (
     <>
-      <ViewContent blocks={ui.compare.blocks as Block[]} />
+      <ViewTabs
+        views={["Teams", "Lineups", "Players"]}
+        view={q.view}
+        onView={mode}
+      />
+      <div className="table-top">
+        <ViewIntro
+          blocks={ui.compare.blocks as Block[]}
+          summary={layout.intro.compare}
+        />
+      </div>
       {!playerMode && q.preset === "date_split" && !q.split_date && (
         <p role="alert">
           {data.text.find(
@@ -751,6 +763,7 @@ function CompareTab({
                 paging={false}
                 controls={false}
                 nameColumns={["player_name"]}
+                moreInfo
                 onRowActivate={(r) =>
                   set({ drill_player: String(r.player_id) })
                 }
@@ -858,6 +871,7 @@ function CompareTab({
                 defaultOrder={[]}
                 paging={false}
                 controls={false}
+                moreInfo
                 nameColumns={
                   lineup ? ["entity_name", "team_name"] : ["entity_name"]
                 }

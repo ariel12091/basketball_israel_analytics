@@ -40,7 +40,8 @@
       "shot_profile": "Where do teams take their shots, and how well do they make them?",
       "traditional": "What do teams produce in the box score?"
     },
-    "playerStats": "How productive is each player?"
+    "playerStats": "How productive is each player?",
+    "compare": "How do two sets of games, lineups or players compare?"
   },
   "tags": {
     "luck": {
