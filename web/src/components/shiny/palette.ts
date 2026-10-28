@@ -7,12 +7,15 @@ const BANDS = 20;
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const round = (x: number) => Math.round(x * 1000) / 1000;
 
-/** 20 backgrounds, worst to best: muted red fading to clear, then clear
- * deepening to muted green. Index-aligned with heat()'s band index. */
+/** 20 backgrounds, worst to best: red fading to clear, then clear deepening
+ * to green. Index-aligned with heat()'s band index. The hues are kept pure
+ * (not salmon/sage): over the dark surface a desaturated tint reads as brown
+ * when faint and as washed-out pink when strong, so a worse cell looked
+ * less red than a milder one (user, 2026-10-28). */
 export const MUTED_HEAT: string[] = Array.from({ length: BANDS }, (_, i) =>
   i < BANDS / 2
-    ? `rgba(210,120,105,${round(lerp(0.3, 0.04, i / (BANDS / 2 - 1)))})`
-    : `rgba(110,180,130,${round(lerp(0.04, 0.38, (i - BANDS / 2) / (BANDS / 2 - 1)))})`,
+    ? `rgba(214,64,52,${round(lerp(0.42, 0.04, i / (BANDS / 2 - 1)))})`
+    : `rgba(64,176,104,${round(lerp(0.04, 0.42, (i - BANDS / 2) / (BANDS / 2 - 1)))})`,
 );
 
 const NEUTRAL = [0xcf, 0xc8, 0xbb],
