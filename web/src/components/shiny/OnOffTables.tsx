@@ -338,7 +338,7 @@ const plain =
     return {
       node: text,
       text,
-      bg: heatCol ? heat(row[heatCol[0]], heatCol[1], "muted") : undefined,
+      bg: heatCol ? heat(row[heatCol[0]], heatCol[1]) : undefined,
     };
   };
 const diff2 =
@@ -348,7 +348,7 @@ const diff2 =
     return {
       node: text,
       text,
-      bg: heatCol ? heat(row[heatCol[0]], heatCol[1], "muted") : undefined,
+      bg: heatCol ? heat(row[heatCol[0]], heatCol[1]) : undefined,
     };
   };
 function nameCols(ctx: Ctx): Column[] {
@@ -425,7 +425,7 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
             <NetCell row={row} luck={ctx.luck} />
           ),
         text: signed(row["Net RTG Diff"], 2),
-        bg: heat(row.pr_net, false, "muted"),
+        bg: heat(row.pr_net, false),
       }),
     },
     {
@@ -549,7 +549,7 @@ function ffCell(
         />
       ),
       text: value,
-      bg: heat(row[FF_HEAT[id][0]], FF_HEAT[id][1], "muted"),
+      bg: heat(row[FF_HEAT[id][0]], FF_HEAT[id][1]),
       className: unit ? "onoff-factor-cell" : "onoff-rtg-cell",
     };
   };
@@ -605,7 +605,7 @@ export function ffColumns(ctx: Ctx): Column[] {
         return {
           node: <div style={{ fontWeight: 800, fontSize: "1.05em" }}>{v}</div>,
           text: v,
-          bg: heat(row.pr_net_diff, false, "muted"),
+          bg: heat(row.pr_net_diff, false),
         };
       },
     },
@@ -663,7 +663,7 @@ export function spColumns(ctx: Ctx): Column[] {
               />
             ),
             text: head,
-            bg: heat(row[`pr_sp_${s}_${m}`], reverse, "muted"),
+            bg: heat(row[`pr_sp_${s}_${m}`], reverse),
           };
         },
       };

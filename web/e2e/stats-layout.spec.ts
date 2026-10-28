@@ -97,27 +97,52 @@ test("a chip's edit pencil opens the drawer at its control", async ({
   ).toBeFocused();
 });
 
-test("the key shows only what applies, next to the table", async ({ page }) => {
+test("the legend sits just above the table and shows only what applies", async ({
+  page,
+}) => {
   await stub(page);
-  const key = page.locator(".table-key");
-  await expect(key).toContainText("Shading = league rank");
-  await expect(key).toContainText("Shot cells:");
+  const legend = page.locator(".table-legend");
+  const above = async () => {
+    const l = (await legend.boundingBox())!;
+    const t = (await page.locator(".ibpl-dt-scroll").boundingBox())!;
+    return t.y - (l.y + l.height);
+  };
+  await expect.poll(above).toBeGreaterThanOrEqual(0);
+  await expect.poll(above).toBeLessThan(40);
+  await expect(legend).toContainText("worse");
+  await expect(legend).toContainText("better");
+  await expect(legend).toContainText("2P% | 3P% accuracy");
+  await expect(legend).toContainText("bar: shot frequency");
   await expect(page.locator(".legend-box")).toHaveCount(0);
-  await expect(page.locator(".explainer-card")).toHaveCount(0);
   await page.getByRole("tab", { name: "Four Factors" }).click();
   await expect(page).toHaveURL(/view=four_factors/);
-  await expect(key).toContainText("Shading = league rank");
-  await expect(key).not.toContainText("Shot cells:");
+  await expect(legend).toContainText("worse");
+  await expect(legend).not.toContainText("2P% | 3P%");
 });
 
-test("About this view holds the view's explainer", async ({ page }) => {
+test("the view intro is visible, with More and the 3PT luck explanation", async ({
+  page,
+}) => {
   await stub(page);
-  const explainer = (
-    ui.onoff.il.views.summary as { kind: string; intro?: { t?: string }[] }[]
-  ).find((b) => b.kind === "explainer")!;
-  const first = String(explainer.intro![0].t ?? "").slice(0, 30);
-  await page.getByRole("button", { name: "About this view" }).click();
-  await expect(page.locator(".ibpl-more-pop")).toContainText(first);
+  const blocks = ui.onoff.il.views.summary as {
+    kind: string;
+    intro?: { t?: string }[];
+    bullets?: { t?: string }[][];
+  }[];
+  const explainer = blocks.find((b) => b.kind === "explainer")!;
+  const intro = page.locator(".view-intro");
+  await expect(intro).toContainText(
+    String(explainer.intro![0].t ?? "").slice(0, 30),
+  );
+  await intro.getByRole("button", { name: "More" }).click();
+  await expect(intro).toContainText(
+    String(explainer.bullets![0][0].t ?? "").slice(0, 20),
+  );
+  const luck = ui.onoff.il.popovers[0];
+  await page.getByRole("button", { name: luck.trigger }).click();
+  await expect(page.locator(".ibpl-more-pop")).toContainText(
+    "Three-point accuracy swings",
+  );
 });
 
 test("a stepper tap turns auto min-poss off; a filter change turns it back on", async ({

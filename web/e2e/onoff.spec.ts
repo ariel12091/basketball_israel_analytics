@@ -181,7 +181,8 @@ for (const file of presets)
       }
       if (g.view === "summary") {
         const net = page.locator('.onoff-net-tip[data-tip-kind="all"]').first();
-        await net.click();
+        // A mouse opens the details on hover (a tap opens them on touch).
+        await net.hover();
         await expect(page.locator(".ibpl-more-pop")).toContainText("3PT luck");
         await page.mouse.move(0, 0);
         if (g.league === "il") {

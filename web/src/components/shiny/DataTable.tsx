@@ -10,7 +10,7 @@
 //   70vh), the "i" header explanations on touch, the phone name label above
 //   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
 // Shiny's class names are kept so app.css and DataTables' CSS style it.
-import { MUTED_HEAT, mutedAccuracy } from "./palette";
+import { mutedAccuracy } from "./palette";
 import MoreInfo from "./MoreInfo";
 import {
   Fragment,
@@ -73,25 +73,11 @@ export type Order = { id: string; desc: boolean }[];
 const TIPS = ui.columnTooltips as Record<string, string>;
 const HEAT = ui.heat;
 
-export type HeatPalette = "shiny" | "muted";
-const MUTED_REV = [...MUTED_HEAT].reverse();
-/** DT::styleInterval(CUTS, cols) on a pr_* value: '' when not a number.
- * "muted" keeps the cut points and swaps in the stats-tab palette. */
-export function heat(
-  pr: unknown,
-  reverse: boolean,
-  palette: HeatPalette = "shiny",
-): string | undefined {
+/** DT::styleInterval(CUTS, cols) on a pr_* value: '' when not a number. */
+export function heat(pr: unknown, reverse: boolean): string | undefined {
   const v = typeof pr === "number" ? pr : parseFloat(String(pr));
   if (pr == null || Number.isNaN(v)) return undefined;
-  const cols =
-    palette === "muted"
-      ? reverse
-        ? MUTED_REV
-        : MUTED_HEAT
-      : reverse
-        ? HEAT.rev
-        : HEAT.grad;
+  const cols = reverse ? HEAT.rev : HEAT.grad;
   const i = HEAT.cuts.findIndex((c) => v <= c);
   return cols[i < 0 ? cols.length - 1 : i];
 }
@@ -312,6 +298,7 @@ export default function DataTable({
   /** Header definitions as MoreInfo (tap on touch, hover with a mouse)
    * instead of title + the touch info button (design 2026-10-28 § 6). */
   moreInfo?: boolean;
+
   /** Whole-row pointer action; provide an onActivate cell for keyboard use. */
   onRowActivate?: (row: Row) => void;
 }) {

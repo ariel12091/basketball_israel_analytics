@@ -1,112 +1,129 @@
 "use client";
-// One short key line directly above a stats table (design 2026-10-28 § 4),
-// replacing the big legend boxes: only the parts that apply to the columns on
-// screen, swatches drawn in the real colours, and "About this view" for the
-// explainer and example that used to sit above the table.
-import type { ReactNode } from "react";
+// The stats tabs' legend, terse, just above the table's top-left corner
+// (user 2026-10-28), and the view's intro as a compact visible panel.
+import { useState, type ReactNode } from "react";
+import ui from "@/data/shinyUi.json";
 import text from "@/data/layoutUi.json";
-import { MUTED_HEAT } from "./palette";
-import MoreInfo from "./MoreInfo";
-import { ViewAbout, type Block } from "./Blocks";
+import { Runs, type Block } from "./Blocks";
 import { useFrame } from "./TabKit";
 
-const SWATCHES = [0, 5, 10, 15, 19].map((i) => MUTED_HEAT[i]);
+const SWATCHES = [0, 5, 10, 15, 19].map((i) => ui.heat.grad[i]);
 
-export default function TableKey({
-  shading,
+/** Shading scale, plus the shot-cell and on/off-detail keys when they apply. */
+export default function TableLegend({
   shots = false,
   rank = false,
-  rankNote = "",
-  extra,
-  about,
 }: {
-  shading: boolean;
-  /** Off/Def Shot cells are on screen. */
   shots?: boolean;
-  /** Four Factors on/off detail is on (On/Off rank bars). */
   rank?: boolean;
-  /** Who is ranked, e.g. "(Ranked Players: > 100 poss)". */
-  rankNote?: string;
-  extra?: ReactNode;
-  about?: Block[];
 }) {
-  const t = text.key;
-  const { openGlossary } = useFrame();
-  const parts: ReactNode[] = [];
-  if (shading)
-    parts.push(
-      <span key="shading" className="table-key-part">
-        <b>{t.shading}</b> {t.low}
-        <span className="table-key-scale" aria-hidden="true">
+  const t = text.legend;
+  return (
+    <div className="table-legend">
+      <span className="table-legend-row">
+        {t.low}
+        <span className="table-legend-scale" aria-hidden="true">
           {SWATCHES.map((c) => (
             <i key={c} style={{ background: c }} />
           ))}
         </span>
         {t.high}
-      </span>,
-    );
-  if (shots)
-    parts.push(
-      <span key="shots" className="table-key-part">
-        <b>{t.shots}</b> {t.accuracy} · {t.frequency}{" "}
-        <i className="table-key-bar table-key-2pt" aria-hidden="true" />
-        {t.two} <i className="table-key-bar table-key-3pt" aria-hidden="true" />
-        {t.three}
-      </span>,
-    );
-  if (rank)
-    parts.push(
-      <span key="rank" className="table-key-part">
-        <b>{t.rank}</b> <i className="legend-icon-on" aria-hidden="true" />{" "}
-        {t.on} <i className="legend-icon-off" aria-hidden="true" /> {t.off} ·{" "}
-        {t.rankBar}
-        {rankNote && <span className="table-key-note"> {rankNote}</span>}
-      </span>,
-    );
-  if (extra)
-    parts.push(
-      <span key="extra" className="table-key-part">
-        {extra}
-      </span>,
-    );
-  if (about?.length)
-    parts.push(
-      <MoreInfo key="about" label={t.about} className="table-key-about">
-        <ViewAbout blocks={about} onGlossary={openGlossary} />
-      </MoreInfo>,
-    );
-  if (!parts.length) return null;
-  return (
-    <div className="table-key">
-      {parts.map((p, i) => (
-        <span key={i} className="table-key-item">
-          {i > 0 && (
-            <span className="table-key-sep" aria-hidden="true">
-              ·
-            </span>
-          )}
-          {p}
+      </span>
+      {shots && (
+        <span className="table-legend-row">
+          {t.accuracy} · {t.frequency}
+          <i className="table-legend-bar table-legend-2pt" aria-hidden="true" />
+          {t.two}
+          <i className="table-legend-bar table-legend-3pt" aria-hidden="true" />
+          {t.three}
         </span>
-      ))}
+      )}
+      {rank && (
+        <span className="table-legend-row">
+          <i className="legend-icon-on" aria-hidden="true" /> {t.on}{" "}
+          <i className="legend-icon-off" aria-hidden="true" /> {t.off}
+        </span>
+      )}
     </div>
   );
 }
 
-/** The key's parts from a view's exported blocks (the legends they replace):
- * shot_splits -> shots, rank -> rank (+ its note), explainer/example -> about. */
+/** The view's "What this tab answers" explainer as one visible line (title
+ * and question); More opens the bullets, the worked example and the
+ * glossary link in place. `extra` sits at the end of the line. */
+export function ViewIntro({
+  blocks,
+  extra,
+}: {
+  blocks: Block[];
+  extra?: ReactNode;
+}) {
+  const { openGlossary } = useFrame();
+  const [open, setOpen] = useState(false);
+  const explainer = blocks.find(
+    (b): b is Extract<Block, { kind: "explainer" }> => b.kind === "explainer",
+  );
+  const example = blocks.find(
+    (b): b is Extract<Block, { kind: "example" }> => b.kind === "example",
+  );
+  if (!explainer)
+    return extra ? <div className="view-intro">{extra}</div> : null;
+  return (
+    <div className="view-intro">
+      <div className="view-intro-line">
+        <b>{explainer.title}:</b>{" "}
+        <Runs runs={explainer.intro} onGlossary={openGlossary} />{" "}
+        <button
+          type="button"
+          className="view-intro-more"
+          aria-expanded={open}
+          onClick={() => setOpen((o) => !o)}
+        >
+          {open ? text.intro.less : text.intro.more}
+        </button>
+        {extra}
+      </div>
+      {open && (
+        <div className="view-intro-body">
+          <ul>
+            {explainer.bullets.map((r, i) => (
+              <li key={i}>
+                <Runs runs={r} onGlossary={openGlossary} />
+              </li>
+            ))}
+          </ul>
+          {example && (
+            <div className="view-intro-example">
+              <div className="view-intro-example-text">
+                <b>{example.title}</b>
+                {example.paragraphs.map((p, i) => (
+                  <p key={i}>
+                    <Runs runs={p} onGlossary={openGlossary} />
+                  </p>
+                ))}
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element -- a static snippet, as in Shiny */}
+              <img src={example.image} alt={example.alt} />
+            </div>
+          )}
+          <button
+            type="button"
+            className="btn btn-link p-0 view-intro-glossary"
+            onClick={openGlossary}
+          >
+            Open glossary
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Which legend parts a view needs, from its exported legend blocks. */
 export function keyFromBlocks(blocks: Block[]) {
   const legend = (v: string) =>
-    blocks.find(
-      (b): b is Extract<Block, { kind: "legend" }> =>
-        b.kind === "legend" && b.variant === v,
-    );
-  const rank = legend("rank");
-  return {
-    shots: !!legend("shot_splits"),
-    rank: !!rank,
-    rankNote: typeof rank?.note === "string" ? rank.note : "",
-    about: blocks.filter((b) => b.kind === "explainer" || b.kind === "example"),
-  };
+    blocks.some((b) => b.kind === "legend" && b.variant === v);
+  return { shots: legend("shot_splits"), rank: legend("rank") };
 }
 
 /** table_hint()'s sentences for a MoreInfo table: on touch, definitions open
