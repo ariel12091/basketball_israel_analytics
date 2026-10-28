@@ -26,7 +26,7 @@ import DataTable, {
   type Group,
 } from "./DataTable";
 import MoreInfo from "./MoreInfo";
-import { TextBlocks, type TextBlock } from "./Blocks";
+import layout from "@/data/layoutUi.json";
 
 const SEP = "section-left-border";
 const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
@@ -188,26 +188,18 @@ export function TipBody({
 /** The Net RTG Diff cell: the number (+2 decimals) and tags for 3PT luck and
  * small sample, each a MoreInfo (design 2026-10-28 § 6): the number shows
  * every section, a tag its own section plus what the tag means. */
-function NetCell({ row, luck = [] }: { row: Row; luck?: TextBlock[] }) {
+function NetCell({ row }: { row: Row }) {
   const val = Number(row["Net RTG Diff"]);
   const txt = (val > 0 ? "+" : "") + val.toFixed(2);
   const hasLuck =
     num(row.luck_3pt_ours) != null && num(row.luck_3pt_theirs) != null;
   const hasPad = num(row.net_padded) != null;
   if (!hasLuck && !hasPad) return <>{txt}</>;
-  // The explanation's two halves, split at its rule: 3PT luck, then sample.
-  const rule = luck.findIndex((b) => "hr" in b);
-  const why = {
-    luck: rule < 0 ? luck : luck.slice(0, rule),
-    sample: rule < 0 ? [] : luck.slice(rule + 1),
-  };
   const pop = (kind: "all" | "luck" | "sample") => (
     <div className="onoff-tip-pop" data-kind={kind}>
       <TipBody row={row} kind={kind} />
-      {kind !== "all" && why[kind].length > 0 && (
-        <div className="onoff-tip-why">
-          <TextBlocks blocks={why[kind]} />
-        </div>
+      {kind !== "all" && (
+        <div className="onoff-tip-why">{layout.tags[kind].text}</div>
       )}
     </div>
   );
@@ -217,12 +209,12 @@ function NetCell({ row, luck = [] }: { row: Row; luck?: TextBlock[] }) {
         {pop("all")}
       </MoreInfo>
       {hasLuck && row.luck_3pt_flag === true && (
-        <MoreInfo label="3PT luck" className="onoff-luck-tag">
+        <MoreInfo label={layout.tags.luck.label} className="onoff-luck-tag">
           {pop("luck")}
         </MoreInfo>
       )}
       {hasPad && row.sample_flag === true && (
-        <MoreInfo label="small sample" className="onoff-luck-tag">
+        <MoreInfo label={layout.tags.sample.label} className="onoff-luck-tag">
           {pop("sample")}
         </MoreInfo>
       )}
@@ -317,8 +309,6 @@ function PivotMenu({
 // ---- Column builders --------------------------------------------------------
 type Ctx = {
   onPivot: (p: Pivot) => void;
-  /** The 3PT luck / small sample explanation (shinyUi onoff popovers). */
-  luck?: TextBlock[];
   showImpact: boolean;
   showRanges: boolean;
 };
@@ -418,12 +408,7 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
       label: "Net",
       cls: SEP,
       render: (row): Cell => ({
-        node:
-          row["Net RTG Diff"] == null ? (
-            ""
-          ) : (
-            <NetCell row={row} luck={ctx.luck} />
-          ),
+        node: row["Net RTG Diff"] == null ? "" : <NetCell row={row} />,
         text: signed(row["Net RTG Diff"], 2),
         bg: heat(row.pr_net, false),
       }),
@@ -704,11 +689,9 @@ export default function OnOffTable({
   exportRef?: { current: ((name: string) => void) | null };
 }) {
   const [pivot, setPivot] = useState<Pivot | null>(null);
-  const luck = (league === "il" ? ui.onoff.il : ui.onoff.euro).popovers[0]
-    ?.body as TextBlock[] | undefined;
   const ctx = useMemo<Ctx>(
-    () => ({ onPivot: setPivot, showImpact, showRanges, luck }),
-    [showImpact, showRanges, luck],
+    () => ({ onPivot: setPivot, showImpact, showRanges }),
+    [showImpact, showRanges],
   );
   const columns = useMemo(
     () =>

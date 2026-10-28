@@ -1,49 +1,70 @@
 "use client";
-// The stats tabs' legend, terse, just above the table's top-left corner
+// The stats tabs' legend, a compact visual key at the table's top right
 // (user 2026-10-28), and the view's intro as a compact visible panel.
 import { useState, type ReactNode } from "react";
 import ui from "@/data/shinyUi.json";
 import text from "@/data/layoutUi.json";
 import { Runs, type Block } from "./Blocks";
+import MoreInfo from "./MoreInfo";
 import { useFrame } from "./TabKit";
 
 const SWATCHES = [0, 5, 10, 15, 19].map((i) => ui.heat.grad[i]);
 
-/** Shading scale, plus the shot-cell and on/off-detail keys when they apply. */
+/** A compact visual key for the table's top right: the shading scale, a
+ * miniature shot cell, the on/off markers and the row tags, each only when
+ * the view has them. Captions are one or two words; tags explain themselves
+ * in one sentence on hover or tap. */
 export default function TableLegend({
   shots = false,
   rank = false,
+  tags = false,
 }: {
   shots?: boolean;
   rank?: boolean;
+  tags?: boolean;
 }) {
   const t = text.legend;
   return (
-    <div className="table-legend">
-      <span className="table-legend-row">
-        {t.low}
-        <span className="table-legend-scale" aria-hidden="true">
+    <div className="table-legend" aria-label="Legend" role="group">
+      <span className="tl-item">
+        <span className="tl-scale" aria-hidden="true">
           {SWATCHES.map((c) => (
             <i key={c} style={{ background: c }} />
           ))}
         </span>
-        {t.high}
+        <span className="tl-ends">
+          <span>{t.worse}</span>
+          <span>{t.better}</span>
+        </span>
       </span>
       {shots && (
-        <span className="table-legend-row">
-          {t.accuracy} · {t.frequency}
-          <i className="table-legend-bar table-legend-2pt" aria-hidden="true" />
-          {t.two}
-          <i className="table-legend-bar table-legend-3pt" aria-hidden="true" />
-          {t.three}
+        <span className="tl-item tl-shot">
+          <span className="tl-acc">
+            {t.two} <span aria-hidden="true">|</span> {t.three}
+          </span>
+          <span className="tl-bar" aria-hidden="true">
+            <i className="tl-2pt" />
+            <i className="tl-3pt" />
+          </span>
+          <span className="tl-cap">{t.mix}</span>
         </span>
       )}
       {rank && (
-        <span className="table-legend-row">
-          <i className="legend-icon-on" aria-hidden="true" /> {t.on}{" "}
+        <span className="tl-item tl-rank">
+          <i className="legend-icon-on" aria-hidden="true" /> {t.on}
           <i className="legend-icon-off" aria-hidden="true" /> {t.off}
         </span>
       )}
+      {tags &&
+        (["luck", "sample"] as const).map((k) => (
+          <MoreInfo
+            key={k}
+            label={text.tags[k].label}
+            className="onoff-luck-tag tl-tag"
+          >
+            {text.tags[k].text}
+          </MoreInfo>
+        ))}
     </div>
   );
 }

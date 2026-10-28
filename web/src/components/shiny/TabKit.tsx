@@ -361,9 +361,15 @@ export function TabFrame({
           () => group.classList.remove("ibpl-chip-revealed"),
           2400,
         );
-        group
-          .querySelector<HTMLInputElement>(".selectize-input input, input")
-          ?.focus({ preventScroll: true });
+        const input = group.querySelector<HTMLInputElement>(
+          ".selectize-input input, input",
+        );
+        input?.focus({ preventScroll: true });
+        // The drawer may still be laying out its controls on the first try.
+        window.setTimeout(() => {
+          if (input && document.activeElement !== input)
+            input.focus({ preventScroll: true });
+        }, 200);
       }, 80);
     },
     [body, drawerLayout],

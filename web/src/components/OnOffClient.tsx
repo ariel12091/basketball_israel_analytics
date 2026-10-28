@@ -26,14 +26,8 @@ import TableLegend, {
   moreInfoHint,
   ViewIntro,
 } from "./shiny/TableKey";
-import MoreInfo from "./shiny/MoreInfo";
 import OnOffTable from "./shiny/OnOffTables";
-import {
-  TableHint,
-  TextBlocks,
-  type Block,
-  type TextBlock,
-} from "./shiny/Blocks";
+import { TableHint, type Block } from "./shiny/Blocks";
 import {
   ChipsRow,
   contextChips,
@@ -440,7 +434,6 @@ export default function OnOffClient({
     },
   ];
   const viewKey = keyFromBlocks(frag.views[view] as Block[]);
-  const luck = frag.popovers[0];
 
   return (
     <TabFrame
@@ -558,23 +551,15 @@ export default function OnOffClient({
             view={VIEW_LABEL[view]}
             onView={changeView}
           />
-          <ViewIntro
-            blocks={frag.views[view] as Block[]}
-            extra={
-              view === "summary" && luck ? (
-                <MoreInfo label={luck.trigger} className="view-intro-luck">
-                  <div className="view-intro-luck-body">
-                    <TextBlocks blocks={luck.body as TextBlock[]} />
-                  </div>
-                </MoreInfo>
-              ) : null
-            }
-          />
-          <TableHint hint={moreInfoHint(frag.hint)} />
-          <TableLegend
-            shots={viewKey.shots}
-            rank={viewKey.rank && (view !== "four_factors" || rangesOn)}
-          />
+          <ViewIntro blocks={frag.views[view] as Block[]} />
+          <div className="table-top">
+            <TableHint hint={moreInfoHint(frag.hint)} />
+            <TableLegend
+              shots={viewKey.shots}
+              rank={viewKey.rank && (view !== "four_factors" || rangesOn)}
+              tags={view === "summary"}
+            />
+          </div>
           <OutputArea
             id={euro ? "euro_dt" : "onoff_dt"}
             loading={loading || (psFilters.length > 0 && ps.loading)}

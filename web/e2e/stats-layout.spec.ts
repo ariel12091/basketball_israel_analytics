@@ -102,31 +102,39 @@ test("a chip's edit pencil opens the drawer at its control", async ({
   ).toBeFocused();
 });
 
-test("the legend sits just above the table and shows only what applies", async ({
+test("the legend is a compact key at the table's top right", async ({
   page,
 }) => {
   await stub(page);
   const legend = page.locator(".table-legend");
-  const above = async () => {
-    const l = (await legend.boundingBox())!;
-    const t = (await page.locator(".ibpl-dt-scroll").boundingBox())!;
-    return t.y - (l.y + l.height);
-  };
-  await expect.poll(above).toBeGreaterThanOrEqual(0);
-  await expect.poll(above).toBeLessThan(40);
-  await expect(legend).toContainText("worse");
-  await expect(legend).toContainText("better");
-  await expect(legend).toContainText("2PT accuracy (left)");
-  await expect(legend).toContainText("3PT accuracy (right)");
-  await expect(legend).toContainText("bar: shot frequency");
+  const table = page.locator(".ibpl-dt-scroll");
+  // Above the table, right-aligned with it.
+  await expect
+    .poll(async () => {
+      const l = (await legend.boundingBox())!;
+      const t = (await table.boundingBox())!;
+      return (
+        l.y + l.height <= t.y && Math.abs(l.x + l.width - (t.x + t.width)) < 4
+      );
+    })
+    .toBe(true);
+  for (const word of ["worse", "better", "2P%", "3P%", "shot mix"])
+    await expect(legend).toContainText(word);
   await expect(page.locator(".legend-box")).toHaveCount(0);
+  // A tag pill explains itself in one sentence.
+  await legend.getByRole("button", { name: "3PT luck" }).click();
+  await expect(page.locator(".ibpl-more-pop")).toHaveText(
+    "With every three at the league average, this number flips sign.",
+  );
+  await page.keyboard.press("Escape");
   await page.getByRole("tab", { name: "Four Factors" }).click();
   await expect(page).toHaveURL(/view=four_factors/);
   await expect(legend).toContainText("worse");
-  await expect(legend).not.toContainText("2P% | 3P%");
+  await expect(legend).not.toContainText("shot mix");
+  await expect(legend.getByRole("button", { name: "3PT luck" })).toHaveCount(0);
 });
 
-test("the view intro is visible, with More and the 3PT luck explanation", async ({
+test("the view intro is one visible line; More opens the rest", async ({
   page,
 }) => {
   await stub(page);
@@ -140,14 +148,10 @@ test("the view intro is visible, with More and the 3PT luck explanation", async 
   await expect(intro).toContainText(
     String(explainer.intro![0].t ?? "").slice(0, 30),
   );
+  await expect(intro).not.toContainText("3PT luck");
   await intro.getByRole("button", { name: "More" }).click();
   await expect(intro).toContainText(
     String(explainer.bullets![0][0].t ?? "").slice(0, 20),
-  );
-  const luck = ui.onoff.il.popovers[0];
-  await page.getByRole("button", { name: luck.trigger }).click();
-  await expect(page.locator(".ibpl-more-pop")).toContainText(
-    "Three-point accuracy swings",
   );
 });
 
@@ -242,7 +246,7 @@ test.describe("on touch, every marker opens with a tap", () => {
           .textContent(),
       )
       .not.toBe(before);
-    const tag = page.locator(".onoff-luck-tag").first();
+    const tag = page.locator(".ibpl-dt-scroll .onoff-luck-tag").first();
     await tag.tap();
     await expect(pop).toContainText(/3PT luck|Small sample/);
     await expect(pop.locator(".onoff-tip-why")).toBeVisible();

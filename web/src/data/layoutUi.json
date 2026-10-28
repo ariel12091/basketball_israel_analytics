@@ -9,17 +9,26 @@
     "touchDefinition": "Tap a dashed-underlined header for its definition"
   },
   "legend": {
-    "low": "worse",
-    "high": "better",
-    "accuracy": "top: 2PT accuracy (left) | 3PT accuracy (right)",
-    "frequency": "bar: shot frequency",
-    "two": "2PT",
-    "three": "3PT",
-    "on": "on court",
-    "off": "off court"
+    "worse": "worse",
+    "better": "better",
+    "two": "2P%",
+    "three": "3P%",
+    "mix": "shot mix",
+    "on": "on",
+    "off": "off"
   },
   "intro": {
     "more": "More",
     "less": "Less"
+  },
+  "tags": {
+    "luck": {
+      "label": "3PT luck",
+      "text": "With every three at the league average, this number flips sign."
+    },
+    "sample": {
+      "label": "small sample",
+      "text": "Few possessions behind it: likely to move."
+    }
   }
 }
