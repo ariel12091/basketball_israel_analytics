@@ -414,7 +414,8 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
             minFga: 50,
             avg2: avgs[dn].fg2,
             avg3: avgs[dn].fg3,
-            palette: "muted",
+            palette: "onoff",
+            layout: true,
           },
         ),
     };

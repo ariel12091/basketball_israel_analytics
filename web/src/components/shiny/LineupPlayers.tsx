@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Row } from "@/rules/gameLogs";
 import type { PlayerSelection } from "@/rules/lineups";
 import { rRound } from "@/rules/round";
+const MODE = { on: "On", any: "Any of", off: "Off" } as const;
 export default function LineupPlayers({
   roster,
   selection,
@@ -73,9 +74,11 @@ export default function LineupPlayers({
       className={`lineup-chips${roster.length ? "" : " is-empty"}`}
       data-mode={mode}
     >
+      {/* The mode reads as the start of a sentence right above the players:
+          "Tap a player to mark them: On / Any of / Off" (user 2026-10-28). */}
       <div className="lineup-chips-head">
         <span className="lineup-chips-eyebrow" id="lineup-player-label">
-          Players
+          Tap a player to mark them:
         </span>
         <div
           className="lineup-chips-modes"
@@ -92,7 +95,7 @@ export default function LineupPlayers({
               onClick={() => setMode(m)}
             >
               <i className={`lineup-chips-mark ${m}`} aria-hidden="true" />
-              {m === "on" ? "On" : m === "any" ? "Any of" : "Off"}
+              {MODE[m]}
             </button>
           ))}
         </div>
@@ -113,11 +116,14 @@ export default function LineupPlayers({
               className="lineup-chip"
               data-id={id}
               data-state={s}
-              aria-label={`${full(r)}, ${s === "none" ? "not selected" : s === "on" ? "must be on" : s === "any" ? "any of" : "must be off"}`}
+              aria-label={`${full(r)}, ${s === "none" ? "not selected" : s === "on" ? "on" : s === "any" ? "any of" : "off"}`}
               title={`${full(r)}${r.minutes == null ? "" : ` · ${rRound(Number(r.minutes), 0)} min this season`}`}
               onClick={() => tap(id)}
             >
-              {labels[i]}
+              {s !== "none" && (
+                <i className={`lineup-chips-mark ${s}`} aria-hidden="true" />
+              )}
+              <span className="lineup-chip-name">{full(r)}</span>
             </button>
           );
         })}
@@ -138,7 +144,7 @@ export default function LineupPlayers({
           </span>
         ) : !selected ? (
           <span className="lineup-chips-hint">
-            All lineups. Pick a mode, then tap players.
+            All lineups. Pick On, Any of or Off, then tap players.
           </span>
         ) : (
           <>

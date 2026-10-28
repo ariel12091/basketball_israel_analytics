@@ -25,6 +25,10 @@
       "summary": "Who helps the team most when on the floor?",
       "four_factors": "Why: shooting, rebounding, turnovers or free throws?",
       "shot_profile": "How does the shot mix change with the player on?"
+    },
+    "lineups": {
+      "summary": "Which lineups win their minutes?",
+      "four_factors": "Why: shooting, rebounding, turnovers or free throws?"
     }
   },
   "tags": {
