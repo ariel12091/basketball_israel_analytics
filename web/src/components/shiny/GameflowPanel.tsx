@@ -1,14 +1,12 @@
 "use client";
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import type { League } from "@/rules/gameLogs";
 import type { GameflowPayload } from "@/server/gameflowRepo";
 import {
@@ -43,72 +41,6 @@ export function useNarrow() {
 }
 export function gameflowPath(league: League, game: number, team: number) {
   return `/api/v1/${league}/gameflow?game_id=${game}&team_id=${team}`;
-}
-function GameflowDialog({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const el = dialog.current;
-    el?.showModal();
-    document.body.classList.add("modal-open");
-    return () => {
-      el?.close();
-      document.body.classList.remove("modal-open");
-    };
-  }, []);
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <dialog
-      className="ibpl-gameflow-dialog"
-      ref={dialog}
-      aria-label={title}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          const r = e.currentTarget.getBoundingClientRect();
-          if (
-            e.clientX < r.left ||
-            e.clientX > r.right ||
-            e.clientY < r.top ||
-            e.clientY > r.bottom
-          )
-            onClose();
-        }
-      }}
-    >
-      <div className="modal-content">
-        <div className="modal-header">
-          <h4 className="modal-title">{title}</h4>
-          <button
-            type="button"
-            className="btn btn-default"
-            onClick={onClose}
-            autoFocus
-            aria-label="Close gameflow"
-          >
-            Close
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-default" onClick={onClose}>
-            Dismiss
-          </button>
-        </div>
-      </div>
-    </dialog>,
-    document.body,
-  );
 }
 export function GameflowView({
   data,
@@ -454,6 +386,8 @@ type PanelProps = {
   onClose: () => void;
   initial?: { url: string; data: GameflowPayload | null };
   standalone?: boolean;
+  /** The Back bar's text, e.g. "Back to games". */
+  backLabel?: string;
 };
 export default function GameflowPanel(props: PanelProps) {
   const state = useTabData<GameflowPayload>(
@@ -465,24 +399,27 @@ export default function GameflowPanel(props: PanelProps) {
 export function GameflowSurface({
   onClose,
   standalone = false,
+  backLabel = "Back",
   data,
   loading,
   error,
   retry,
-}: Pick<PanelProps, "onClose" | "standalone"> &
+}: Pick<PanelProps, "onClose" | "standalone" | "backLabel"> &
   Pick<
     ReturnType<typeof useTabData<GameflowPayload>>,
     "data" | "loading" | "error" | "retry"
   >) {
   const narrow = useNarrow(),
-    panel = useRef<HTMLElement>(null);
+    panel = useRef<HTMLElement>(null),
+    back = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => onClose(), [onClose]);
   useLayoutEffect(() => {
     if (standalone) return;
+    // Note the link that opened Gameflow before moving focus to Back.
     const opener = document.activeElement as HTMLElement | null;
+    back.current?.focus({ preventScroll: true });
     panel.current?.scrollIntoView({ block: "start" });
-    // A modal still makes the page inert during layout-effect cleanup.
-    // Restore after React removes the dialog and its focus trap.
+    // Closing returns focus to the link that opened it.
     return () => queueMicrotask(() => opener?.focus({ preventScroll: true }));
   }, [standalone]);
   const title = data
@@ -502,30 +439,30 @@ export function GameflowSurface({
   ) : (
     <GameflowView data={data} compact={narrow} />
   );
-  if (!narrow && !standalone)
-    return (
-      <GameflowDialog title={title} onClose={close}>
-        {content}
-      </GameflowDialog>
-    );
+  // Always in the page, never a dialog (user 2026-10-28): the opener shows
+  // it in place of its own content, with a Back bar on top.
   return (
     <section
       className="ibpl-ribbon-inline-panel ibpl-react-gameflow-panel"
       ref={panel}
       aria-label="Gameflow"
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && !standalone) close();
+      }}
     >
       <div className="ibpl-ribbon-inline-head">
-        <strong>{title}</strong>
         {!standalone && (
           <button
             type="button"
-            className="ibpl-ribbon-inline-close"
+            className="ibpl-gameflow-back"
             aria-label="Close gameflow"
             onClick={close}
+            ref={back}
           >
-            Close
+            <span aria-hidden="true">←</span> {backLabel}
           </button>
         )}
+        <strong>{title}</strong>
       </div>
       <div className="ibpl-ribbon-inline-result">{content}</div>
     </section>

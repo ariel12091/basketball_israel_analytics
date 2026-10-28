@@ -28,10 +28,12 @@ import {
   useTabData,
   useTabQuery,
   useVersion,
-  ViewContent,
-  ViewRadios,
+  type DrawerSection,
 } from "./shiny/TabKit";
-import { TableHint, type Block } from "./shiny/Blocks";
+import { type Block } from "./shiny/Blocks";
+import ViewTabs from "./shiny/ViewTabs";
+import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import layout from "@/data/layoutUi.json";
 
 export { seasonBounds };
 type Payload = {
@@ -139,6 +141,53 @@ export default function GameLogsClient({
       }}
     />
   );
+  const viewBlocks = (
+    view === "four_factors" ? html.views.four_factors : html.views.summary
+  ) as Block[];
+  const viewKey = keyFromBlocks(viewBlocks);
+  // The Israeli tab always shows its date chip (Shiny); it is not a filter
+  // until the dates move off the season's bounds.
+  const activeCount =
+    chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+  const drawerSections: DrawerSection[] = [
+    {
+      id: "teams",
+      title: euro ? "Dates and teams" : "Team and dates",
+      body: euro ? (
+        <>
+          {dates}
+          {teamPicker}
+        </>
+      ) : (
+        <>
+          {teamPicker}
+          {dates}
+        </>
+      ),
+    },
+    {
+      id: "starters",
+      title: "Lineup starters",
+      body: <StarterRows p={p} query={query} set={set} />,
+    },
+    {
+      id: "game",
+      title: "Game filters",
+      body: (
+        <GameFiltersAccordion
+          p={p}
+          league={league}
+          query={query}
+          set={set}
+          teams={teams}
+          rounds={data?.meta.rounds ?? []}
+          phases={data?.meta.phases ?? []}
+          oppRank={false}
+          bare
+        />
+      ),
+    },
+  ];
   return (
     <TabFrame
       league={league}
@@ -162,68 +211,22 @@ export default function GameLogsClient({
       onView={changeView}
       updated={updated}
       filtersId={`${p}-filters`}
-      sidebarTop={
-        <ViewRadios
-          name={`${p}_view_mode`}
-          label="View:"
-          views={VIEWS}
-          view={view === "four_factors" ? "Four Factors" : "Summary"}
-          tips={{
-            Summary: FILTER_TIPS.view_summary,
-            "Four Factors": FILTER_TIPS.view_ff,
-          }}
-          onView={changeView}
-        />
-      }
-      sidebar={
-        <>
-          <button
-            type="button"
-            className="btn btn-default action-button"
-            onClick={reset}
-          >
-            {euro ? "Reset to defaults" : "Reset Filters"}
-          </button>
-          <hr />
-          {euro ? (
-            <>
-              {dates}
-              {teamPicker}
-            </>
-          ) : (
-            <>
-              {teamPicker}
-              {dates}
-            </>
-          )}
-          <StarterRows p={p} query={query} set={set} />
-          <hr />
-          <GameFiltersAccordion
-            p={p}
-            league={league}
-            query={query}
-            set={set}
-            teams={teams}
-            rounds={data?.meta.rounds ?? []}
-            phases={data?.meta.phases ?? []}
-            oppRank={false}
-          />
-        </>
-      }
+      layout="drawer"
+      sidebar={null}
+      drawer={{
+        sections: drawerSections,
+        activeCount,
+        resettable: stats.length > 0,
+        onClearAll: reset,
+        resultLabel: `Show ${rows.length} games`,
+      }}
       main={
         <>
-          <div style={view === "summary" ? undefined : { display: "none" }}>
-            <ViewContent blocks={html.views.summary as Block[]} />
-          </div>
-          <div
-            style={view === "four_factors" ? undefined : { display: "none" }}
-          >
-            <ViewContent blocks={html.views.four_factors as Block[]} />
-          </div>
           <ChipsRow
             p={p}
             seasonChip={seasonChipLabel(league, query.season)}
             chips={chips}
+            activeCount={activeCount}
             extra={
               !euro && (
                 <StatFilters
@@ -236,54 +239,79 @@ export default function GameLogsClient({
                 />
               )
             }
-            active={chips.length > 0 || stats.length > 0}
+            active={activeCount > 0 || stats.length > 0}
             onClearAll={reset}
           />
-          <TableHint hint={html.hint} />
-          <OutputArea
-            id={`${p}_table`}
-            loading={loading}
-            error={error}
-            retry={retry}
-          >
-            {!data ? null : rows.length ? (
-              <GameLogsTable
-                key={draw}
-                league={league}
-                view={data.meta.view ?? view}
-                rows={rows}
-                shotAverages={data.meta.shot_averages}
-                onGameflow={setGameflow}
-              />
-            ) : euro ? (
-              // empty_game_log() in server_tab11_euro_gamelogs.R
-              <div className="dataTables_wrapper no-footer">
-                <table
-                  className="display dataTable no-footer"
-                  style={{ width: "100%" }}
-                >
-                  <thead>
-                    <tr>
-                      <th className="sorting_disabled">Info</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="odd">
-                      <td>No games match the current filters</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            ) : null}
-          </OutputArea>
+          <ViewTabs
+            views={VIEWS}
+            view={view === "four_factors" ? "Four Factors" : "Summary"}
+            onView={changeView}
+            tips={{
+              Summary: FILTER_TIPS.view_summary,
+              "Four Factors": FILTER_TIPS.view_ff,
+            }}
+          />
+          {/* Gameflow takes over the table's area (user 2026-10-28: no modal
+              windows); the table stays mounted beneath, so Back returns to
+              the same sort, page and scroll. */}
           {gameflow && (
             <GameflowPanel
               league={league}
               game={Number(gameflow.game_id)}
               team={Number(gameflow.team_id)}
+              backLabel="Back to games"
               onClose={() => setGameflow(null)}
             />
           )}
+          <div hidden={!!gameflow}>
+            <div className="table-top">
+              <ViewIntro
+                blocks={viewBlocks}
+                summary={layout.intro.gameLogs[view]}
+              />
+              <TableLegend
+                league={league}
+                shots={viewKey.shots}
+                rank={viewKey.rank}
+              />
+            </div>
+            <OutputArea
+              id={`${p}_table`}
+              loading={loading}
+              error={error}
+              retry={retry}
+            >
+              {!data ? null : rows.length ? (
+                <GameLogsTable
+                  key={draw}
+                  league={league}
+                  view={data.meta.view ?? view}
+                  rows={rows}
+                  shotAverages={data.meta.shot_averages}
+                  onGameflow={setGameflow}
+                />
+              ) : euro ? (
+                // empty_game_log() in server_tab11_euro_gamelogs.R
+                <div className="dataTables_wrapper no-footer">
+                  <table
+                    className="display dataTable no-footer"
+                    style={{ width: "100%" }}
+                  >
+                    <thead>
+                      <tr>
+                        <th className="sorting_disabled">Info</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr className="odd">
+                        <td>No games match the current filters</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
+            </OutputArea>
+          </div>
         </>
       }
     />

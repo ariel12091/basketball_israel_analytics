@@ -17,7 +17,11 @@ import PlayerStatsTable from "./shiny/PlayerStatsTable";
 import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
 import ClutchFilters from "./shiny/ClutchFilters";
-import { TableHint, type Block } from "./shiny/Blocks";
+import { type Block } from "./shiny/Blocks";
+import ViewTabs from "./shiny/ViewTabs";
+import PossStepper from "./shiny/PossStepper";
+import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import layout from "@/data/layoutUi.json";
 import {
   TabFrame,
   useTabQuery,
@@ -25,9 +29,8 @@ import {
   useVersion,
   teamChoices,
   seasonBounds,
-  ViewRadios,
   GameFiltersAccordion,
-  ViewContent,
+  type DrawerSection,
   ChipsRow,
   Chip,
   contextChips,
@@ -130,6 +133,54 @@ export default function PlayerStatsClient({
       />,
     );
   const onMode = (view: string) => set({ view });
+  const introBlocks = (ui.playerStats.blocks as Block[]).filter(
+    (b) => !euro || b.kind !== "example",
+  );
+  const viewKey = keyFromBlocks(introBlocks);
+  // The date chip is always shown (Shiny); it is not a filter until the
+  // dates move off the season's bounds.
+  const activeCount = chips.length - (!query.start && !query.end ? 1 : 0);
+  const drawerSections: DrawerSection[] = [
+    {
+      id: "dates",
+      title: "Dates",
+      body: (
+        <>
+          <DateRangeInput
+            id="ts_dates"
+            label="Date range"
+            start={query.start || bounds.start}
+            end={query.end || bounds.end}
+            min={bounds.start}
+            max={bounds.end}
+            onChange={(start, end) => set({ start, end })}
+          />
+        </>
+      ),
+    },
+    {
+      id: "clutch",
+      title: "Clutch",
+      body: <ClutchFilters p="ts" query={query} set={set} />,
+    },
+    {
+      id: "game",
+      title: "Game filters",
+      body: (
+        <GameFiltersAccordion
+          p="ts"
+          league={league}
+          query={query}
+          set={set}
+          teams={teams}
+          rounds={data?.meta.rounds ?? []}
+          phases={data?.meta.phases ?? []}
+          oppRank
+          bare
+        />
+      ),
+    },
+  ];
   return (
     <TabFrame
       league={league}
@@ -158,133 +209,23 @@ export default function PlayerStatsClient({
       onView={onMode}
       updated={updated}
       filtersId="ts-filters"
-      sidebarTop={
-        <ViewRadios
-          name="ts_display_mode"
-          label="Display mode"
-          views={[...PLAYER_MODES]}
-          view={mode}
-          onView={onMode}
-        />
-      }
-      sidebar={
-        <>
-          <button
-            type="button"
-            className="btn btn-default action-button"
-            onClick={reset}
-          >
-            Reset Filters
-          </button>
-          <hr />
-          <DateRangeInput
-            id="ts_dates"
-            label="Date range"
-            start={query.start || bounds.start}
-            end={query.end || bounds.end}
-            min={bounds.start}
-            max={bounds.end}
-            onChange={(start, end) => set({ start, end })}
-          />
-          <Selectize
-            id="ts_teams"
-            label="Teams"
-            multiple
-            choices={teams}
-            value={list(query.teams)}
-            onChange={(v) =>
-              set({
-                teams: v.join(","),
-                players: choices
-                  .filter(
-                    (c) =>
-                      list(query.players).includes(c.value) &&
-                      (!v.length || v.includes(c.value.split(":")[0])),
-                  )
-                  .map((c) => c.value)
-                  .join(","),
-              })
-            }
-            placeholder="All teams"
-          />
-          <Selectize
-            id="ts_players"
-            label="Players"
-            multiple
-            choices={choices}
-            value={list(query.players)}
-            onChange={(v) => set({ players: v.join(",") })}
-            placeholder="All players"
-          />
-          <div className="row">
-            <div className="col-7">
-              <label htmlFor="ts_min_gp_slider">Min GP</label>
-              <input
-                id="ts_min_gp_slider"
-                aria-label="Min GP"
-                className="w-100"
-                type="range"
-                min={1}
-                max={maxGp}
-                value={minGp}
-                onChange={(e) => set({ min_gp: e.target.value })}
-              />
-            </div>
-            <div className="col-5">
-              <label htmlFor="ts_min_gp">Min GP (type)</label>
-              <input
-                className="form-control"
-                id="ts_min_gp"
-                type="number"
-                min={1}
-                max={maxGp}
-                value={minGp}
-                onChange={(e) =>
-                  set({
-                    min_gp: String(
-                      Math.min(maxGp, Math.max(1, Number(e.target.value) || 1)),
-                    ),
-                  })
-                }
-              />
-            </div>
-          </div>
-          <label className="checkbox">
-            <input
-              type="checkbox"
-              checked={query.show_ineligible === "true"}
-              onChange={(e) =>
-                set({ show_ineligible: String(e.target.checked) })
-              }
-            />{" "}
-            Show non-eligible players in rate modes
-          </label>
-          <ClutchFilters p="ts" query={query} set={set} />
-          <hr />
-          <GameFiltersAccordion
-            p="ts"
-            league={league}
-            query={query}
-            set={set}
-            teams={teams}
-            rounds={data?.meta.rounds ?? []}
-            phases={data?.meta.phases ?? []}
-            oppRank
-          />
-        </>
-      }
+      layout="drawer"
+      sidebar={null}
+      drawer={{
+        sections: drawerSections,
+        activeCount,
+        resettable: filters.length > 0,
+        onClearAll: reset,
+        resultLabel: `Show ${result.rows.length} players`,
+      }}
       main={
         <>
-          <ViewContent
-            blocks={(ui.playerStats.blocks as Block[]).filter(
-              (b) => !euro || b.kind !== "example",
-            )}
-          />
           <ChipsRow
             p="ts"
             seasonChip={seasonChipLabel(league, query.season)}
             chips={chips}
-            active={chips.length > 0 || filters.length > 0}
+            activeCount={activeCount}
+            active={activeCount > 0 || filters.length > 0}
             onClearAll={reset}
             extra={
               <StatFilters
@@ -301,7 +242,77 @@ export default function PlayerStatsClient({
                 }
               />
             }
+            controls={
+              <>
+                <PossStepper
+                  id="ts_min_gp"
+                  label="Min GP"
+                  name="Min GP"
+                  min={1}
+                  max={maxGp}
+                  step={1}
+                  value={minGp}
+                  onChange={(v) => set({ min_gp: String(v) })}
+                />
+                <label className="checkbox">
+                  <input
+                    type="checkbox"
+                    checked={query.show_ineligible === "true"}
+                    onChange={(e) =>
+                      set({ show_ineligible: String(e.target.checked) })
+                    }
+                  />{" "}
+                  Show non-eligible players in rate modes
+                </label>
+              </>
+            }
           />
+          {/* Teams and players sit above the table, always in reach, as on
+              Lineups (user 2026-10-28). */}
+          <div className="lineup-bar ps-bar">
+            <Selectize
+              id="ts_teams"
+              label="Teams"
+              multiple
+              choices={teams}
+              value={list(query.teams)}
+              onChange={(v) =>
+                set({
+                  teams: v.join(","),
+                  players: choices
+                    .filter(
+                      (c) =>
+                        list(query.players).includes(c.value) &&
+                        (!v.length || v.includes(c.value.split(":")[0])),
+                    )
+                    .map((c) => c.value)
+                    .join(","),
+                })
+              }
+              placeholder="All teams"
+            />
+            <Selectize
+              id="ts_players"
+              label="Players"
+              multiple
+              choices={choices}
+              value={list(query.players)}
+              onChange={(v) => set({ players: v.join(",") })}
+              placeholder="All players"
+            />
+          </div>
+          <ViewTabs views={[...PLAYER_MODES]} view={mode} onView={onMode} />
+          <div className="table-top">
+            <ViewIntro
+              blocks={introBlocks}
+              summary={layout.intro.playerStats}
+            />
+            <TableLegend
+              league={league}
+              shots={viewKey.shots}
+              rank={viewKey.rank}
+            />
+          </div>
           {result.ineligible > 0 && (
             <div
               className={`alert ${query.show_ineligible === "true" ? "alert-info" : "alert-warning"} py-2 mb-2`}
@@ -314,7 +325,6 @@ export default function PlayerStatsClient({
               total possessions).
             </div>
           )}
-          <TableHint hint={ui.playerStats.hint} />
           <OutputArea
             id="ts_table"
             loading={loading}

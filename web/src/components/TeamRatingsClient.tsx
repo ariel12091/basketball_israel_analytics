@@ -12,7 +12,10 @@ import TeamRatingsTable from "./shiny/TeamRatingsTable";
 import ClutchFilters from "./shiny/ClutchFilters";
 import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
-import { TableHint, type Block } from "./shiny/Blocks";
+import { type Block } from "./shiny/Blocks";
+import ViewTabs from "./shiny/ViewTabs";
+import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
+import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
   Chip,
@@ -29,8 +32,7 @@ import {
   useTabData,
   useTabQuery,
   useVersion,
-  ViewContent,
-  ViewRadios,
+  type DrawerSection,
 } from "./shiny/TabKit";
 type Payload = {
   rows: Row[];
@@ -119,6 +121,75 @@ export default function TeamRatingsClient({
         onClear={() => set({ clutch: null })}
       />,
     );
+  const changeView = (label: string) =>
+    set({
+      view:
+        Object.keys(LABELS).find((k) => LABELS[k as TeamView] === label) ??
+        "summary",
+      stats: null,
+    });
+  const viewKey = keyFromBlocks(frag.views[view] as Block[]);
+  // The Israeli tab's date chip is always shown (Shiny); it is not a filter
+  // until the dates move off the season's bounds.
+  const activeCount =
+    chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+  const drawerSections: DrawerSection[] = [
+    {
+      id: "dates",
+      title: euro ? "Dates and teams" : "Dates",
+      body: (
+        <>
+          <DateRangeInput
+            id={`${p}_dates`}
+            label={euro ? "Game Date Range" : "Date range"}
+            start={query.start || bounds.start}
+            end={query.end || bounds.end}
+            min={bounds.start}
+            max={bounds.end}
+            onChange={(start, end) => set({ start, end })}
+          />
+          {euro && (
+            <Selectize
+              id={`${p}_teams`}
+              label="Teams"
+              choices={teams}
+              multiple
+              value={query.teams.split(",").filter(Boolean)}
+              onChange={(v) => set({ teams: v.join(",") })}
+              placeholder="All teams"
+            />
+          )}
+        </>
+      ),
+    },
+    {
+      id: "clutch",
+      title: "Clutch",
+      body: <ClutchFilters p={p} query={query} set={set} />,
+    },
+    {
+      id: "starters",
+      title: "Lineup starters",
+      body: <StarterRows p={p} query={query} set={set} />,
+    },
+    {
+      id: "game",
+      title: "Game filters",
+      body: (
+        <GameFiltersAccordion
+          p={p}
+          league={league}
+          query={query}
+          set={set}
+          teams={teams}
+          rounds={data?.meta.rounds ?? []}
+          phases={data?.meta.phases ?? []}
+          oppRank
+          bare
+        />
+      ),
+    },
+  ];
   return (
     <TabFrame
       league={league}
@@ -143,119 +214,26 @@ export default function TeamRatingsClient({
       }
       views={views.map((v) => LABELS[v])}
       view={LABELS[view]}
-      onView={(label) =>
-        set({
-          view:
-            Object.keys(LABELS).find((k) => LABELS[k as TeamView] === label) ??
-            "summary",
-          stats: null,
-        })
-      }
+      onView={changeView}
       updated={updated}
       filtersId={`${p}-filters`}
-      sidebarTop={
-        <>
-          <ViewRadios
-            name={`${p}_view_mode`}
-            label={euro ? "Select View:" : "View:"}
-            views={views.map((v) => LABELS[v])}
-            view={LABELS[view]}
-            onView={(label) =>
-              set({
-                view:
-                  Object.keys(LABELS).find(
-                    (k) => LABELS[k as TeamView] === label,
-                  ) ?? "summary",
-                stats: null,
-              })
-            }
-          />
-          {view === "traditional" && (
-            <>
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <span>Team</span>
-                <div className="form-check form-switch mb-0">
-                  <input
-                    type="checkbox"
-                    className="form-check-input"
-                    role="switch"
-                    aria-label="Opponent statistics"
-                    checked={query.side === "defense"}
-                    onChange={(e) =>
-                      set({ side: e.target.checked ? "defense" : "offense" })
-                    }
-                  />
-                </div>
-                <span>Opponent</span>
-              </div>
-              <Selectize
-                id="tr_trad_display_mode"
-                label="Traditional display mode"
-                choices={[
-                  { value: "per_game", label: "Per Game" },
-                  { value: "per75", label: "Per 75 Possessions" },
-                  { value: "per40", label: "Per 40 Minutes" },
-                ]}
-                value={[query.display]}
-                onChange={(v) => set({ display: v[0] ?? "per_game" })}
-              />
-            </>
-          )}
-        </>
-      }
-      sidebar={
-        <>
-          <button
-            type="button"
-            className="btn btn-default action-button"
-            onClick={reset}
-          >
-            {euro ? "Reset to defaults" : "Reset Filters"}
-          </button>
-          <hr />
-          <DateRangeInput
-            id={`${p}_dates`}
-            label={euro ? "Game Date Range" : "Date range"}
-            start={query.start || bounds.start}
-            end={query.end || bounds.end}
-            min={bounds.start}
-            max={bounds.end}
-            onChange={(start, end) => set({ start, end })}
-          />
-          {euro && (
-            <Selectize
-              id={`${p}_teams`}
-              label="Teams"
-              choices={teams}
-              multiple
-              value={query.teams.split(",").filter(Boolean)}
-              onChange={(v) => set({ teams: v.join(",") })}
-              placeholder="All teams"
-            />
-          )}
-          <ClutchFilters p={p} query={query} set={set} />
-          <StarterRows p={p} query={query} set={set} />
-          <hr />
-          <GameFiltersAccordion
-            p={p}
-            league={league}
-            query={query}
-            set={set}
-            teams={teams}
-            rounds={data?.meta.rounds ?? []}
-            phases={data?.meta.phases ?? []}
-            oppRank
-          />
-        </>
-      }
+      layout="drawer"
+      sidebar={null}
+      drawer={{
+        sections: drawerSections,
+        activeCount,
+        resettable: filters.length > 0,
+        onClearAll: reset,
+        resultLabel: `Show ${rows.length} teams`,
+      }}
       main={
         <>
-          <ViewContent blocks={frag.views[view] as Block[]} />
           <ChipsRow
             p={p}
             seasonChip={seasonChipLabel(league, query.season)}
             chips={chips}
-            active={chips.length > 0 || filters.length > 0}
+            activeCount={activeCount}
+            active={activeCount > 0 || filters.length > 0}
             onClearAll={reset}
             extra={
               !euro && (
@@ -269,10 +247,65 @@ export default function TeamRatingsClient({
                 />
               )
             }
+            controls={
+              // The Traditional view's own switches stay on the page.
+              <div className="tr-trad-controls">
+                {view === "traditional" && (
+                  <>
+                    <div className="d-flex align-items-center gap-2 mb-2">
+                      <span>Team</span>
+                      <div className="form-check form-switch mb-0">
+                        <input
+                          type="checkbox"
+                          className="form-check-input"
+                          role="switch"
+                          aria-label="Opponent statistics"
+                          checked={query.side === "defense"}
+                          onChange={(e) =>
+                            set({
+                              side: e.target.checked ? "defense" : "offense",
+                            })
+                          }
+                        />
+                      </div>
+                      <span>Opponent</span>
+                    </div>
+                    <Selectize
+                      id="tr_trad_display_mode"
+                      label="Traditional display mode"
+                      choices={[
+                        { value: "per_game", label: "Per Game" },
+                        { value: "per75", label: "Per 75 Possessions" },
+                        { value: "per40", label: "Per 40 Minutes" },
+                      ]}
+                      value={[query.display]}
+                      onChange={(v) => set({ display: v[0] ?? "per_game" })}
+                    />
+                  </>
+                )}
+              </div>
+            }
           />
-          {view === "traditional" && (
-            <TableHint hint={ui.teamRatings.il.hint} />
-          )}
+          <ViewTabs
+            views={views.map((v) => LABELS[v])}
+            view={LABELS[view]}
+            onView={changeView}
+          />
+          <div className="table-top">
+            <ViewIntro
+              blocks={frag.views[view] as Block[]}
+              summary={
+                layout.intro.teamRatings[
+                  view as keyof typeof layout.intro.teamRatings
+                ]
+              }
+            />
+            <TableLegend
+              league={league}
+              shots={viewKey.shots}
+              rank={viewKey.rank}
+            />
+          </div>
           <OutputArea
             id={euro ? "euroteam_table" : "tr_table"}
             loading={loading}

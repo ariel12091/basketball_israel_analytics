@@ -387,6 +387,9 @@ export function TabFrame({
             trigger={trigger}
             open={drawerOpen}
             onOpenChange={(open) => {
+              // The panel is always mounted, so it also hears an Escape meant
+              // for something else while closed: ignore that one.
+              if (!open && !drawerOpen) return;
               setDrawerOpen(open);
               // Closed from inside (Escape, x, Show N): focus goes back to
               // the Filters button that opened it.

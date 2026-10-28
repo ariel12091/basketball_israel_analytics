@@ -378,3 +378,12 @@ body.ibpl-collapsed-nav .lineup-bar .lineup-chips-modes { display: flex; width: 
 body.ibpl-collapsed-nav .lineup-bar .lineup-chips-mode { flex: 1; justify-content: center; }
 .lineup-size .control-label { color: var(--ibpl-text-body); font-size: .8rem; font-weight: 700; }
 .lineup-bar .lineup-chips-eyebrow { font-family: var(--ibpl-font-body); }
+/* Gameflow in the page (no dialog): a Back bar on top. */
+.ibpl-gameflow-back { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; padding: 5px 12px; border: 2px solid var(--ibpl-accent); border-radius: 8px; background: transparent; color: var(--ibpl-accent); font-size: .85rem; font-weight: 700; }
+.ibpl-gameflow-back:hover { background: var(--ibpl-accent); color: var(--ibpl-bg); }
+.ibpl-react-gameflow-panel .ibpl-ribbon-inline-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* Team Ratings Traditional controls in the toolbar; Player Stats bar. */
+.tr-trad-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.tr-trad-controls .form-group, .tr-trad-controls .shiny-input-container { margin: 0; min-width: 180px; }
+.ps-bar { grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr); }
+body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
