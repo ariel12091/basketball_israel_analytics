@@ -10,7 +10,6 @@
 //   70vh), the "i" header explanations on touch, the phone name label above
 //   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
 // Shiny's class names are kept so app.css and DataTables' CSS style it.
-import { mutedAccuracy } from "./palette";
 import MoreInfo from "./MoreInfo";
 import {
   Fragment,
@@ -92,6 +91,8 @@ export function shotCell(
     minFga: number;
     avg2: number;
     avg3: number;
+    /** "muted": On/Off's colours for the accuracy text, with the stats
+     * layout's grey/amber frequency bar and one MoreInfo for the details. */
     palette: "gamelogs" | "onoff" | "muted";
   },
 ): Cell {
@@ -114,7 +115,6 @@ export function shotCell(
   const acc = (pct: number, a: number) => {
     let d = (sign * (pct - a)) / a;
     d = Math.max(-1, Math.min(1, d * 3));
-    if (opts.palette === "muted") return mutedAccuracy(d);
     if (opts.palette === "gamelogs") {
       const [r, g] =
         d < 0

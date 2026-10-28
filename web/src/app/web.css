@@ -332,3 +332,8 @@ body.ibpl-collapsed-nav .filter-drawer-done { z-index: 3; }
 .home-title { margin-bottom: 14px; text-align: center; }
 .home-title h2 { margin: 0 0 4px; font-weight: 700; color: var(--ibpl-text); }
 .home-title p { margin: 0; color: var(--ibpl-text-muted); font-size: .92rem; }
+/* Inside shaded cells the dim underline vanishes on Shiny's green/red:
+   draw it light and a little thicker there. */
+.ibpl-dt-scroll tbody .ibpl-more { text-decoration-color: rgba(255, 255, 255, .8); text-decoration-thickness: 1.5px; }
+.ibpl-dt-scroll tbody .ibpl-more:hover, .ibpl-dt-scroll tbody .ibpl-more[data-state="open"] { text-decoration-color: var(--ibpl-accent); }
+.ibpl-dt-scroll tbody .onoff-luck-tag.ibpl-more { text-decoration: none; }
