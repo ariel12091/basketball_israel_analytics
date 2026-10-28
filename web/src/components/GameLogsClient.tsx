@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import GameflowPanel from "./shiny/GameflowPanel";
 // The Game Logs tab as Shiny draws it: ui_tab4_gamelogs.R (Israeli League) and
 // ui_tab11_euro_gamelogs.R (EuroLeague, EuroCup), with build_filter_chips(),
@@ -60,6 +60,19 @@ export default function GameLogsClient({
 }) {
   const euro = league !== "il";
   const [gameflow, setGameflow] = useState<Row | null>(null);
+  // The "View" link that opened Gameflow, kept at click time: the table is
+  // hidden in the same render that mounts the panel, so the panel cannot
+  // read it from document.activeElement. Back returns focus to it.
+  const opener = useRef<HTMLElement | null>(null);
+  const openGameflow = (row: Row) => {
+    opener.current = document.activeElement as HTMLElement | null;
+    setGameflow(row);
+  };
+  useEffect(() => {
+    if (gameflow || !opener.current) return;
+    opener.current.focus({ preventScroll: true });
+    opener.current = null;
+  }, [gameflow]);
   const p = euro ? "eurogl" : "gl";
   const { query, set } = useTabQuery(league);
   const view = query.view === "four_factors" ? "four_factors" : "summary";
@@ -288,7 +301,7 @@ export default function GameLogsClient({
                   view={data.meta.view ?? view}
                   rows={rows}
                   shotAverages={data.meta.shot_averages}
-                  onGameflow={setGameflow}
+                  onGameflow={openGameflow}
                 />
               ) : euro ? (
                 // empty_game_log() in server_tab11_euro_gamelogs.R

@@ -1,7 +1,19 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 import { loadPlayer, playerPresets } from "../test/playerGoldens";
 import { formatNumber } from "../src/components/shiny/DataTable";
 import { playerDisplay } from "../src/rules/playerStatsTable";
+/** Clears every filter from the filters panel (Filters button, toolbar end). */
+async function clearAll(page: Page) {
+  const button = page.locator(".chips-drawer-toggle");
+  if ((await button.getAttribute("aria-expanded")) !== "true")
+    await button.click();
+  const panel = page.getByRole("dialog", { name: "Filters" });
+  await panel
+    .getByRole("button", { name: "Clear all filters", exact: true })
+    .click();
+  await page.keyboard.press("Escape");
+  await expect(panel).toBeHidden();
+}
 for (const file of playerPresets)
   test(`Player Stats ${file}`, async ({ page }, info) => {
     const { g, answer, rows } = loadPlayer(file),
@@ -56,9 +68,7 @@ for (const file of playerPresets)
   });
 
 for (const league of ["il", "euroleague", "eurocup"] as const)
-  test(`Player Stats selection and stat chips ${league}`, async ({
-    page,
-  }, info) => {
+  test(`Player Stats selection and stat chips ${league}`, async ({ page }) => {
     const { answer } = loadPlayer(`${league}_per_game.json`);
     await page.route("**/api/v1/**", (route) =>
       route.fulfill({
@@ -71,10 +81,6 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       `/${league}/player-stats?season=${league === "il" ? 2026 : 2025}`,
     );
     await expect(page.locator(".dataTables_info")).toContainText("entries");
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
     const player = answer.players.find((p) =>
       answer.rows.some(
         (r) => r.team_id === p.team_id && r.player_id === p.player_id,
@@ -98,9 +104,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await expect(page.locator(".dataTables_info")).toHaveText(
       `Showing ${narrowed.length ? 1 : 0} to ${Math.min(50, narrowed.length)} of ${narrowed.length} entries`,
     );
-    await page
-      .getByRole("button", { name: "Reset Filters", exact: true })
-      .click();
+    await clearAll(page);
     await page.locator("#ts_stat_filter_add_btn").click();
     await page.locator("#ts_stat_filter_col-selectized").fill("PTS");
     await page
@@ -144,10 +148,6 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       `/${league}/player-stats?season=${league === "il" ? 2026 : 2025}`,
     );
     await expect(page.locator(".dataTables_info")).toContainText("entries");
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
     // Mode and display narrowing are local: no repeat SQL request.
     const count = requests.length;
     if (info.project.name === "phone")
@@ -161,8 +161,10 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       .click();
     await expect(page.locator('th[data-column="base_min_pg"]')).toBeVisible();
     expect(requests.length).toBe(count);
+    // Min GP is a stepper: typed values are kept on Enter.
     await page.locator("#ts_min_gp").fill("10");
-    await expect(page.locator("#ts_min_gp_slider")).toHaveValue("10");
+    await page.locator("#ts_min_gp").press("Enter");
+    await expect(page.locator("#ts_min_gp")).toHaveValue("10");
     const ids = () =>
       page
         .locator(".ibpl-dt-scroll thead th")
@@ -183,13 +185,14 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       .getByRole("button", { name: "Download CSV", exact: true })
       .click();
     expect((await download).suggestedFilename()).toContain("player_stats");
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
+    // Clear all shows once a panel filter is set, and resets the whole tab
+    // (Min GP and display mode too), as Shiny's Reset Filters did.
+    await page.locator(".chips-drawer-toggle").click();
     await page
-      .getByRole("button", { name: "Reset Filters", exact: true })
-      .click();
+      .getByRole("dialog", { name: "Filters" })
+      .getByRole("checkbox", { name: "Clutch", exact: true })
+      .check();
+    await clearAll(page);
     await expect(page.locator("#ts_min_gp")).toHaveValue("1");
     await expect(page.locator('th[data-column="base_min_pg"]')).toHaveCount(0);
   });

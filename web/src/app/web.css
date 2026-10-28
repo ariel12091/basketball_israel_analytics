@@ -52,7 +52,7 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-react-gameflow .ibpl-gameflow-full > svg { flex-shrink: 0; }
 .ibpl-react-gameflow .ibpl-gameflow-full > svg.ibpl-gameflow-gutter { position: sticky; left: 0; z-index: 2; width: 104px; max-width: 104px; margin-right: -104px; }
 .ibpl-react-gameflow .ibpl-ribbon-pin-bg { fill: var(--ibpl-surface); }
-.ibpl-react-gameflow .ibpl-gameflow-full > svg.is-compact { width: 954px; max-width: none; }
+.ibpl-react-gameflow .ibpl-gameflow-full > svg.is-compact:not(.ibpl-gameflow-gutter) { width: 954px; max-width: none; }
 .ibpl-react-gameflow .ibpl-ribbon-detail-members { text-align: left; }
 .ibpl-react-gameflow .ibpl-ribbon-detail-meta { text-align: left; }
 .ibpl-react-gameflow .ibpl-ribbon-score-tooltip { white-space: pre-line; }

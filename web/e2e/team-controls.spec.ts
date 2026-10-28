@@ -1,9 +1,9 @@
 import { test, expect } from "@playwright/test";
 import { loadTeam } from "../test/teamGoldens";
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Team Ratings ${league}: filters reset with league-specific view behavior`, async ({
     page,
-  }, info) => {
+  }) => {
     const base = loadTeam(`${league}_four_factors_default.json`),
       summary = loadTeam(`${league}_summary_default.json`);
     await page.route("**/api/v1/**", (route) => {
@@ -22,17 +22,14 @@ for (const league of ["il", "euroleague"] as const)
     await expect(
       page.locator(".ibpl-dt-scroll tbody tr").first(),
     ).toBeVisible();
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
-    await page.getByRole("checkbox", { name: "Clutch", exact: true }).check();
+    // Filters live in the panel under the Filters button; its Clear all
+    // runs the tab's reset (Israeli: back to Summary; EuroLeague keeps view).
+    await page.locator(".chips-drawer-toggle").click();
+    const panel = page.getByRole("dialog", { name: "Filters" });
+    await panel.getByRole("checkbox", { name: "Clutch", exact: true }).check();
     await expect(page).toHaveURL(/clutch=true/);
-    await page
-      .getByRole("button", {
-        name: league === "il" ? "Reset Filters" : "Reset to defaults",
-        exact: true,
-      })
+    await panel
+      .getByRole("button", { name: "Clear all filters", exact: true })
       .click();
     await expect(page).not.toHaveURL(/last_n=|clutch=true/);
     if (league === "il") {
