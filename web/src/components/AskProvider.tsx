@@ -30,7 +30,8 @@ type Ask = {
   open: boolean;
   setOpen: (v: boolean) => void;
   turns: AskTurnView[];
-  ask: (question: string) => Promise<void>;
+  /** `fresh` starts a new conversation (the Home search box). */
+  ask: (question: string, opts?: { fresh?: boolean }) => Promise<void>;
   reset: () => void;
   league: League;
 };
@@ -101,8 +102,9 @@ export default function AskProvider({
   }, [turns]);
 
   const ask = useCallback(
-    async (question: string) => {
+    async (question: string, opts?: { fresh?: boolean }) => {
       cancelActive();
+      const keep = followups && !opts?.fresh;
       const request: NonNullable<typeof active.current> = {
         id: crypto.randomUUID(),
         controller: new AbortController(),
@@ -123,7 +125,7 @@ export default function AskProvider({
         request.controller.abort();
         void request.reader?.cancel().catch(() => {});
       }, 45_000);
-      const previous = followups ? turns.filter((t) => t.answer) : [];
+      const previous = keep ? turns.filter((t) => t.answer) : [];
       const history: HistoryTurn[] = previous.map((t) => ({
         question: t.question,
         answer: t.answer!.text,
@@ -140,7 +142,7 @@ export default function AskProvider({
         pending: true,
       };
       setTurns((ts) => [
-        ...(followups
+        ...(keep
           ? ts.map((t) =>
               t.pending
                 ? { ...t, pending: false, error: "Interrupted; ask again" }

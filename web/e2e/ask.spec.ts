@@ -73,6 +73,25 @@ for (const width of [390, 1440]) {
       }
     });
 
+    test("Home search box starts a new conversation in the panel", async ({ page }) => {
+      const sent: { question?: string; history?: unknown[] }[] = [];
+      await mockAsk(page, sse(answer()), 200, sent);
+      const panel = await open(page);
+      await send(page, "an earlier question");
+      await expect(panel.getByText("Best: A - B (7.3 net).")).toBeVisible();
+      await page.getByRole("button", { name: "Close" }).click();
+      await page.getByRole("searchbox", { name: "Ask a question about the stats" }).fill("best lineups of Hapoel");
+      await page.getByRole("searchbox", { name: "Ask a question about the stats" }).press("Enter");
+      await expect(panel).toBeVisible();
+      await expect(panel.getByText("best lineups of Hapoel")).toBeVisible();
+      await expect(panel.getByText("an earlier question")).toHaveCount(0);
+      expect(sent.at(-1)).toMatchObject({ question: "best lineups of Hapoel", history: [] });
+      // The example under the box sends itself.
+      await page.getByRole("button", { name: "Close" }).click();
+      await page.getByRole("button", { name: "top 5 lineups of Maccabi Tel Aviv", exact: true }).click();
+      await expect(panel.getByText("top 5 lineups of Maccabi Tel Aviv")).toBeVisible();
+    });
+
     test("asks and shows answer, evidence and link", async ({ page }) => {
       await mockAsk(page, sse({ type: "status", text: "Reading Lineups…" }, answer()));
       const panel = await open(page);

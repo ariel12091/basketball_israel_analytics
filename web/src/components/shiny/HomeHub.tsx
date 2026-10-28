@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import type { HomePayload } from "@/server/homeRepo";
 import {
   homeDashboard,
   homeFixed,
@@ -11,27 +10,27 @@ import {
 import { homeTabHref, homeStoryHref } from "@/lib/homeQuery";
 import ui from "@/data/homeUi.json";
 import GameflowPanel from "./GameflowPanel";
-export default function HomeHub({
+type Dashboard = ReturnType<typeof homeDashboard>;
+
+/** The always-visible part of the hub: load errors and the team ratings card. */
+export function HubIdentity({
   season,
-  team,
-  data,
+  dashboard,
+  partial,
   loading,
   error,
   retry,
 }: {
   season: string;
-  team: string;
-  data: HomePayload | null;
+  dashboard: Dashboard | null;
+  partial: boolean;
   loading: boolean;
   error: string;
   retry: () => void;
 }) {
-  const [gameflow, openGameflow] = useState(false),
-    dashboard = data ? homeDashboard(data.frames, team) : null,
-    t = ui.text;
-  const g = dashboard?.lastGame;
+  const t = ui.text;
   return (
-    <div id="team_hub_section" aria-busy={loading}>
+    <div className="home-identity" aria-busy={loading}>
       {error && (
         <div role="alert">
           {error}{" "}
@@ -40,17 +39,44 @@ export default function HomeHub({
           </button>
         </div>
       )}
-      {data?.meta.errors.length ? (
+      {partial && (
         <div role="alert">
           Some Home sections are unavailable.{" "}
           <button type="button" className="btn btn-default" onClick={retry}>
             Retry
           </button>
         </div>
-      ) : null}
+      )}
       <div id="hub_identity">
-        {dashboard?.identity && <Identity data={dashboard} season={season} />}
+        {dashboard?.identity ? (
+          <Identity data={dashboard} season={season} />
+        ) : (
+          loading && <p role="status">{t.loading}</p>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** The rest of the hub, shown under "See more". */
+export default function HomeHub({
+  season,
+  team,
+  dashboard,
+  loading,
+  error,
+}: {
+  season: string;
+  team: string;
+  dashboard: Dashboard | null;
+  loading: boolean;
+  error: string;
+}) {
+  const [gameflow, openGameflow] = useState(false),
+    t = ui.text;
+  const g = dashboard?.lastGame;
+  return (
+    <div id="team_hub_section" aria-busy={loading}>
       <div id="hub_last_game">
         {g && (
           <div className="card bg-dark border-secondary mb-4 hub-card-static hub-last-game">

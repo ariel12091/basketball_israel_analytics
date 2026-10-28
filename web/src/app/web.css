@@ -87,13 +87,47 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 /* Home uses native links in place of Shiny click-event buttons. */
 .ibpl-home a.home-nav-card, .ibpl-home a.hub-card, .ibpl-home a.hub-story-line { text-decoration: none; }
 .ibpl-home a.hub-card { color: inherit; }
-.ibpl-home .league-chooser > a { flex: 1 1 0; min-width: 0; max-width: 300px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 10px; color: var(--ibpl-text); padding: 18px 16px; text-align: left; text-decoration: none; transition: border-color .15s ease, transform .15s ease; }
-.ibpl-home .league-chooser > a:hover { border-color: var(--ibpl-accent); transform: translateY(-2px); }
-.ibpl-home .league-chooser > a.active { border-color: var(--ibpl-accent); box-shadow: 0 0 0 1px var(--ibpl-accent) inset; }
 .ibpl-home .hub-player-name, .ibpl-home .hub-lineup-players, .ibpl-home .hub-story-line { overflow-wrap: anywhere; }
-.ibpl-home #team_hub_section > *, .ibpl-home .home-nav-group { min-width: 0; }
+.ibpl-home #team_hub_section > *, .ibpl-home .home-boxes > * { min-width: 0; }
 .ibpl-home .ibpl-home-gameflow { padding: 0; font-size: inherit; }
-@media (max-width: 575px) { .ibpl-home .league-chooser > a { max-width: none; } }
+/* Home: one compact block, 640px at most at every width. The boxes sit side
+   by side from 576px and stack below. */
+.home-compact { max-width: 640px; margin: 24px auto 0; padding: 0 16px; }
+.home-ask-form { display: flex; align-items: center; gap: 8px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-accent); border-radius: 999px; padding: 4px 4px 4px 14px; color: var(--ibpl-text-dim); }
+.home-ask-form:focus-within { box-shadow: 0 0 0 2px rgba(var(--ibpl-accent-rgb), .25); }
+.home-ask-input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--ibpl-text); font-size: .95rem; padding: 6px 0; }
+.home-ask-input::placeholder { color: var(--ibpl-text-dim); }
+.home-ask-submit { border-radius: 999px; padding: 4px 14px; background: var(--ibpl-accent); border-color: var(--ibpl-accent); color: var(--ibpl-bg); font-weight: 700; }
+.home-ask-submit:disabled { opacity: .55; }
+.home-ask-example { text-align: center; font-size: .8rem; color: var(--ibpl-text-dim); margin: 6px 0 16px; }
+.home-ask-example-btn { padding: 0; font-size: inherit; vertical-align: baseline; text-align: start; }
+.home-team-row { display: flex; align-items: center; gap: 12px; margin-bottom: 12px; }
+.home-team-row .home-team-select { flex: 1 1 auto; min-width: 0; }
+.home-boxes { display: grid; gap: 12px; }
+@media (min-width: 576px) { .home-boxes-pair { grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr); align-items: start; } }
+.home-boxes .mb-4 { margin-bottom: 0 !important; }
+.home-links { padding: 12px; border: 1px solid var(--ibpl-border); border-radius: 8px; background: var(--ibpl-surface); }
+.home-links-list { list-style: none; margin: 0; padding: 0; }
+.home-links .home-nav-card { height: auto; margin-bottom: 2px; padding: 6px 8px; border-color: transparent; background: transparent; }
+.home-links .home-nav-card:hover { border-color: var(--ibpl-accent); background: var(--ibpl-surface-2); transform: none; }
+.home-links .home-nav-card-title { font-size: .85rem; font-weight: 500; }
+.home-links .home-nav-card-head::after { content: "\203A"; margin-left: auto; color: var(--ibpl-accent); font-weight: 700; }
+.home-boxes-pair .home-links .home-nav-card-sub { display: none; }
+.home-more-toggle { display: block; width: 100%; margin: 12px 0; padding: 8px; border: 1px dashed var(--ibpl-border); border-radius: 8px; background: transparent; color: var(--ibpl-accent); font-weight: 600; }
+.home-more-toggle:hover { border-color: var(--ibpl-accent); color: var(--ibpl-accent); }
+.home-more-sub { display: block; font-size: .75rem; font-weight: 400; color: var(--ibpl-text-dim); }
+.home-euro-note { color: var(--ibpl-text-dim); font-size: .8rem; text-align: center; margin-top: 12px; }
+/* Navbar league toggle: short codes in the bar, full names in the collapsed
+   menu, where there is room. */
+.navbar-league-toggle { display: inline-flex; gap: 2px; padding: 2px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 999px; }
+.navbar-league-toggle a { padding: 2px 9px; border-radius: 999px; color: var(--ibpl-text-dim); font-size: .78rem; font-weight: 700; line-height: 22px; text-decoration: none; }
+.navbar-league-toggle a:hover { color: var(--ibpl-accent); }
+.navbar-league-toggle a.active { background: var(--ibpl-accent); color: var(--ibpl-bg); }
+.navbar-league-name { display: none; }
+body.ibpl-collapsed-nav .navbar-league-toggle { display: flex; grid-column: 1 / -1; width: 100%; }
+body.ibpl-collapsed-nav .navbar-league-toggle a { flex: 1; text-align: center; }
+body.ibpl-collapsed-nav .navbar-league-short { display: none; }
+body.ibpl-collapsed-nav .navbar-league-name { display: inline; }
 @media (max-width: 767.98px) {
   .cmp-compare-grid { grid-template-columns: minmax(0, 1fr) minmax(64px, .8fr) minmax(0, 1fr); column-gap: 4px; }
   .cmp-stat-row { min-width: 0; padding: 8px 6px; flex-wrap: wrap; gap: 3px; }

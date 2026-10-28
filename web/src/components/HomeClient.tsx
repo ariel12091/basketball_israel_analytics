@@ -2,6 +2,7 @@
 import {
   useCallback,
   useEffect,
+  useMemo,
   useRef,
   useState,
   useSyncExternalStore,
@@ -20,11 +21,12 @@ import {
   homeTeams,
   homePath,
   homeTabHref,
-  homeLeagueHref,
 } from "@/lib/homeQuery";
 import { TabFrame, useTabQuery, useVersion } from "./shiny/TabKit";
 import Selectize from "./shiny/Selectize";
-import HomeHub from "./shiny/HomeHub";
+import HomeHub, { HubIdentity } from "./shiny/HomeHub";
+import HomeAsk from "./shiny/HomeAsk";
+import { homeDashboard } from "@/rules/home";
 import { noteVersion, withVersion } from "@/lib/dataVersion";
 type Props = {
   league: League;
@@ -135,6 +137,11 @@ function HomeContent({ league, initialSeason, initialTeam, initial }: Props) {
       storeTeam("");
     }
   };
+  const dashboard = useMemo(
+    () => (data ? homeDashboard(data.frames, team) : null),
+    [data, team],
+  );
+  const [more, showMore] = useState(false);
   const euro = league !== "il",
     t = ui.text;
   const cards = <HomeCards league={league} season={q.season} team={team} />;
@@ -161,122 +168,88 @@ function HomeContent({ league, initialSeason, initialTeam, initial }: Props) {
       sidebar={null}
       mainOnly
       main={
-        <div
-          className="ibpl-home"
-          style={{ maxWidth: 760, margin: "40px auto 0", padding: "0 16px" }}
-        >
-          <div className="text-center mb-4">
-            <h2
-              style={{
-                fontWeight: 700,
-                color: "var(--ibpl-text)",
-                marginBottom: 4,
-              }}
-            >
-              {t.title}
-            </h2>
-            <p
-              style={{
-                color: "var(--ibpl-text-muted)",
-                fontSize: ".92rem",
-                margin: 0,
-              }}
-            >
-              {euro ? t.euroSubtitle : t.ilSubtitle}
-            </p>
-          </div>
-          <div className="league-chooser">
-            {ui.chooser.map((c) => {
-              const next = (
-                { il: "il", E: "euroleague", U: "eurocup" } as Record<
-                  string,
-                  League
-                >
-              )[c.value];
-              return (
-                <Link
-                  prefetch={false}
-                  key={c.value}
-                  href={homeLeagueHref(next, league, q.season)}
-                  onClick={() => {
-                    try {
-                      localStorage.setItem("ibpl_league_select", c.value);
-                    } catch {}
-                  }}
-                  className={league === next ? "active" : ""}
-                  aria-current={league === next ? "page" : undefined}
-                >
-                  <span className="league-chooser-name">{c.name}</span>
-                  <span className="league-chooser-sub">{c.sub}</span>
-                </Link>
-              );
-            })}
-          </div>
-          {euro ? (
-            <>
-              {cards}
-              <p
-                style={{
-                  color: "var(--ibpl-text-dim)",
-                  fontSize: ".8rem",
-                  textAlign: "center",
-                  marginTop: 4,
-                }}
-              >
-                {t.euroNote}
-                {t.euroNoteEnd}
-              </p>
-            </>
-          ) : (
-            <>
-              <div className="mb-4 home-team-controls">
-                <div className="home-team-select">
-                  <Selectize
-                    id="home_team"
-                    label={<span className="visually-hidden">Team</span>}
-                    choices={teams.map((t) => ({
-                      value: String(t.id),
-                      label: t.name,
-                    }))}
-                    value={team ? [team] : []}
-                    onChange={(v) => choose(v[0] ?? "")}
-                    emptyLabel={t.allTeams}
-                    placeholder={t.allTeams}
-                  />
-                </div>
-                <div className="home-team-default" title={t.defaultTitle}>
-                  <label className="form-check">
-                    <input
-                      className="form-check-input"
-                      type="checkbox"
-                      disabled={!team}
-                      checked={!!team && setThisSession && remembered === team}
-                      onChange={(e) => remember(e.target.checked)}
-                    />
-                    <span className="form-check-label">{t.defaultLabel}</span>
-                  </label>
-                </div>
+        <div className="ibpl-home home-compact">
+          <HomeAsk league={league} />
+          {!euro && (
+            <div className="home-team-row">
+              <div className="home-team-select">
+                <Selectize
+                  id="home_team"
+                  label={<span className="visually-hidden">Team</span>}
+                  choices={teams.map((t) => ({
+                    value: String(t.id),
+                    label: t.name,
+                  }))}
+                  value={team ? [team] : []}
+                  onChange={(v) => choose(v[0] ?? "")}
+                  emptyLabel={t.allTeams}
+                  placeholder={t.allTeams}
+                />
               </div>
-              <div className="home-hub-layout">
-                {team && (
+              <div className="home-team-default" title={t.defaultTitle}>
+                <label className="form-check">
+                  <input
+                    className="form-check-input"
+                    type="checkbox"
+                    disabled={!team}
+                    checked={!!team && setThisSession && remembered === team}
+                    onChange={(e) => remember(e.target.checked)}
+                  />
+                  <span className="form-check-label">{t.defaultLabel}</span>
+                </label>
+              </div>
+            </div>
+          )}
+          <div className={`home-boxes${!euro && team ? " home-boxes-pair" : ""}`}>
+            {!euro && team && (
+              <HubIdentity
+                key={`${q.season}:${team}`}
+                season={q.season}
+                dashboard={dashboard}
+                partial={!!data?.meta.errors.length}
+                loading={state.isFetching}
+                error={state.error?.message ?? ""}
+                retry={refresh}
+              />
+            )}
+            <nav className="home-links" aria-labelledby="home-links-title">
+              <div className="hub-block-title" id="home-links-title">
+                {t.investigate}
+              </div>
+              {cards}
+            </nav>
+          </div>
+          {!euro && team && (
+            <>
+              <button
+                type="button"
+                className="btn home-more-toggle"
+                aria-expanded={more}
+                aria-controls="home-more"
+                onClick={() => showMore((v) => !v)}
+              >
+                {more ? t.seeLess : t.seeMore}
+                {!more && <span className="home-more-sub">{t.seeMoreSub}</span>}
+              </button>
+              {more && (
+                <div id="home-more">
                   <HomeHub
                     key={`${q.season}:${team}`}
                     season={q.season}
                     team={team}
-                    data={data}
+                    dashboard={dashboard}
                     loading={state.isFetching}
                     error={state.error?.message ?? ""}
-                    retry={refresh}
                   />
-                )}
-                <div className="home-nav-group">
-                  <div className="hub-block-title home-nav-group-title">
-                    {t.investigate}
-                  </div>
-                  {cards}
                 </div>
-              </div>
+              )}
             </>
+          )}
+          {euro && (
+            <p className="home-euro-note">
+              {t.euroNote}
+              {t.euroNoteEnd}
+            </p>
           )}
         </div>
       }
@@ -293,10 +266,10 @@ function HomeCards({
   team: string;
 }) {
   const cards = league === "il" ? ui.cards.il : ui.cards.euro;
-  return Array.from({ length: Math.ceil(cards.length / 2) }, (_, i) => (
-    <div className="row home-nav-row" key={cards[i * 2].input_id}>
-      {cards.slice(i * 2, i * 2 + 2).map((c) => (
-        <div className="col-sm-6" key={c.input_id}>
+  return (
+    <ul className="home-links-list">
+      {cards.map((c) => (
+        <li key={c.input_id}>
           <Link
             prefetch={false}
             className="home-nav-card"
@@ -308,8 +281,8 @@ function HomeCards({
             </span>
             <span className="home-nav-card-sub">{c.sub}</span>
           </Link>
-        </div>
+        </li>
       ))}
-    </div>
-  ));
+    </ul>
+  );
 }

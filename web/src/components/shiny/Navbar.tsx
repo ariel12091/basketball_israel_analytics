@@ -106,11 +106,21 @@ const LEAGUE_VALUE: Record<League, string> = {
   euroleague: "E",
   eurocup: "U",
 };
-const VALUE_LEAGUE: Record<string, League> = {
-  il: "il",
-  E: "euroleague",
-  U: "eurocup",
-};
+// Israel first; the full name shows in the collapsed (phone) menu, where
+// there is room, and as the tooltip and accessible name elsewhere.
+const LEAGUE_TOGGLE = (
+  [
+    ["il", "IL"],
+    ["euroleague", "EL"],
+    ["eurocup", "EC"],
+  ] as const
+).map(([league, short]) => ({
+  league: league as League,
+  short,
+  name:
+    ui.leagueChoices.find((c) => c.value === LEAGUE_VALUE[league])?.label ??
+    short,
+}));
 
 export function seasonLabel(year: string | number, endingYear = true) {
   const y = Number(year) + (endingYear ? 0 : 1);
@@ -213,28 +223,44 @@ export default function Navbar({
         whiteSpace: "nowrap",
       }}
     >
-      <div className="navbar-league-select">
-        <Selectize
-          id="league_select"
-          formControl={false}
-          choices={ui.leagueChoices}
-          value={[LEAGUE_VALUE[league]]}
-          onChange={(v) => {
-            const next = VALUE_LEAGUE[v[0] ?? "il"] ?? "il";
-            try {
-              window.localStorage.setItem("ibpl_league_select", v[0] ?? "il");
-            } catch {}
-            const currentTab = TABS.find((t) => t.value === tab);
-            // app.js applyValue(): a league-only tab must fall back to Home
-            // when switching away from its league. Euro has no Compare route.
-            const path =
-              next !== "il" && currentTab?.ilOnly
-                ? "home"
-                : (currentTab?.path ?? "home");
-            if (next !== league) router.push(`/${next}/${path}`);
-          }}
-        />
-      </div>
+      <nav className="navbar-league-toggle" aria-label="League">
+        {LEAGUE_TOGGLE.map((l) => {
+          const currentTab = TABS.find((t) => t.value === tab);
+          // app.js applyValue(): a league-only tab must fall back to Home
+          // when switching away from its league. Euro has no Compare route.
+          const path =
+            l.league !== "il" && currentTab?.ilOnly
+              ? "home"
+              : (currentTab?.path ?? "home");
+          const active = l.league === league;
+          return (
+            <Link
+              key={l.league}
+              prefetch={false}
+              // EuroLeague and EuroCup share a season convention, so a switch
+              // between them keeps the season (the former Home chooser did).
+              href={`/${l.league}/${path}${euro && l.league !== "il" ? `?season=${season}` : ""}`}
+              className={active ? "active" : undefined}
+              aria-current={active ? "page" : undefined}
+              title={l.name}
+              aria-label={l.name}
+              onClick={() => {
+                try {
+                  window.localStorage.setItem(
+                    "ibpl_league_select",
+                    LEAGUE_VALUE[l.league],
+                  );
+                } catch {}
+              }}
+            >
+              <span className="navbar-league-short">
+                {l.short}
+              </span>
+              <span className="navbar-league-name">{l.name}</span>
+            </Link>
+          );
+        })}
+      </nav>
       <div
         className={`navbar-season-select ${euro ? "league-nav-el" : "league-nav-il"}`}
       >
