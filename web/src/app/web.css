@@ -195,3 +195,19 @@ body.ibpl-collapsed-nav .navbar-showing { grid-column: 1 / -1; }
 /* Stats-tab muted palette (palette.ts): shot frequency bar, 2PT grey, 3PT amber. */
 .shot-bar-muted .shot-bar-2pt { background: #4a453d; color: #e6e2da; }
 .shot-bar-muted .shot-bar-3pt { background: rgba(232, 164, 53, .6); color: #14110d; }
+/* Stats-tab kit (design 2026-10-28): possession stepper, view tabs, more-info marker. */
+.poss-stepper { display: inline-flex; align-items: center; gap: 6px; }
+.poss-stepper-label { margin: 0; font-size: .75rem; font-weight: 600; color: var(--ibpl-text-dim); white-space: nowrap; }
+.poss-stepper-box { display: inline-flex; align-items: stretch; height: 32px; border: 1px solid var(--ibpl-border); border-radius: 999px; background: var(--ibpl-surface); overflow: hidden; }
+.poss-stepper-box button { width: 32px; border: 0; background: transparent; color: var(--ibpl-accent); font-size: 1rem; font-weight: 700; line-height: 1; }
+.poss-stepper-box button:hover:not(:disabled) { background: var(--ibpl-surface-2); }
+.poss-stepper-box button:disabled { color: var(--ibpl-text-dim); opacity: .5; }
+.poss-stepper-box input { width: 52px; border: 0; border-inline: 1px solid var(--ibpl-border); background: transparent; color: var(--ibpl-text); font-size: .85rem; font-weight: 600; text-align: center; font-variant-numeric: tabular-nums; outline: none; }
+.poss-stepper-box input:focus { background: var(--ibpl-surface-2); }
+.view-tabs-list { display: flex; gap: 2px; margin: 8px 0; border-bottom: 1px solid var(--ibpl-border); overflow-x: auto; }
+.view-tabs-tab { padding: 8px 14px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--ibpl-text-dim); font-size: .88rem; font-weight: 600; white-space: nowrap; }
+.view-tabs-tab:hover { color: var(--ibpl-text); }
+.view-tabs-tab[data-state="active"] { color: var(--ibpl-accent); border-bottom-color: var(--ibpl-accent); }
+.ibpl-more { padding: 0; border: 0; background: transparent; color: inherit; font: inherit; text-align: inherit; text-decoration: underline dashed; text-decoration-color: var(--ibpl-text-dim); text-underline-offset: 3px; cursor: help; }
+.ibpl-more:hover, .ibpl-more[data-state="open"] { text-decoration-color: var(--ibpl-accent); }
+.ibpl-more-pop { z-index: 10050; max-width: min(340px, calc(100vw - 24px)); padding: 10px 12px; border: 1px solid var(--ibpl-border); border-radius: 8px; background: var(--ibpl-surface); color: var(--ibpl-text); font-size: .82rem; line-height: 1.4; box-shadow: 0 8px 24px rgba(0, 0, 0, .45); }
