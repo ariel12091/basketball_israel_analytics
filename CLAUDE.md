@@ -1,5 +1,24 @@
 # CLAUDE.md
 
+## Web app (Next.js, `web/`) -- LIVE, deploys from main
+
+The Next.js/React app replacing Shiny is live at https://ibpl-game-logs.vercel.app
+(Vercel, Hobby plan). **A push to `main` that changes `web/` deploys Vercel
+Production**; a push to `main` also redeploys Shiny on Connect Cloud, which
+stays live as the fallback. Read `web/CLAUDE.md` first: rules for the app,
+how to deploy (feature branch -> Preview + live checks -> merge), load tests
+and rollback.
+
+- Work on `react/<name>` branches off `main`; merge only after the Preview
+  live checks (`.github/workflows/web-preview-live.yml`) passed on the head.
+- `sql/web-foundation` holds the migration history, the golden harness and
+  unapplied SQL/loader edits. **Never merge it whole.**
+- Parity fixtures (`web/test/goldens/`, ~750 MB) are gitignored and generated
+  from the R goldens by `scripts/export_goldens_json.R` (on
+  `sql/web-foundation`); without them the parity tests fail by design.
+- Budget: Fast Origin Transfer is 10 GB/month; tab pages are CDN-cached for
+  an hour, and each Preview load test costs ~0.35 GB.
+
 ## Token Efficiency
 
 **Trust this context** — avoid re-reading files or spawning exploration agents when the answer is documented here. Use `replace_all=true` for repetitive edits, read files in large chunks (limit=300+), and batch similar operations.
@@ -37,7 +56,7 @@ Basketball Israel Analytics — R/Shiny dashboard + React frontend for player on
 
 Branch naming convention — prefix signals the area of change:
 - `shiny/<name>` — Shiny UI/server (`app/`)
-- `react/<name>` — React frontend (`frontend-v2/`)
+- `react/<name>` — Next.js app (`web/`); merging to `main` deploys Vercel Production
 - `sql/<name>` — Materialized views / SQL functions (high-risk — verify MV rebuild order before merging)
 - `etl/<name>` — ETL pipeline
 - `infra/<name>` — CI workflows, scripts, deploy config
@@ -128,7 +147,7 @@ All tabs: sidebar 3-col / main 9-col, FixedHeader, mobile collapse behind "Show 
 | 5: Player Stats | `player_traditional_stats_mv` | `fetch_player_traditional_filtered()` -> `get_player_traditional_from_games()`, or `get_player_traditional_custom_clutch()` inside a clutch window (Compare's player modes use the same helper) |
 | 7: Compare | reuses tab 1/2/3/5 paths per compare mode | same, two-sided (A/B splits) |
 
-### React Frontend (`frontend-v2/`)
+### React Frontend (`frontend-v2/`) -- deprecated, superseded by `web/`
 
 **Status:** Tab 1 + Tab 2 complete with live data. Tabs 3-4 placeholder stubs. Tab 5 Shiny only.
 
