@@ -40,5 +40,20 @@
         "euro": "Example: Spencer Dinwiddie, FC Bayern Munich, 25-26: +19.5 on only 339 off-court possessions. Adjusted for sample size it is +1.7."
       }
     }
+  },
+  "shotProfile": {
+    "groupOff": "Offense shot mix: % of shots (on − off)",
+    "groupDef": "Defense shot mix: % of shots (on − off)",
+    "efg": "eFG% (accuracy)",
+    "labels": {
+      "Lay-up": "Lay-up share",
+      "Dunk": "Dunk share",
+      "Lay+Dunk": "Lay+Dunk share",
+      "3PA": "3PA share",
+      "C3": "Corner 3 share",
+      "2PT Jumper": "2PT Jumper share"
+    },
+    "shareTitle": "Share of the team's shots that are {kind}: on court, off court and the difference (percentage points).",
+    "legend": "cells: % of shots, on − off (eFG% is accuracy)"
   }
 }

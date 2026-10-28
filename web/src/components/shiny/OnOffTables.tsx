@@ -649,9 +649,24 @@ export function spColumns(ctx: Ctx): Column[] {
       const reverse = !((s === "off") === !jumper);
       return {
         id,
-        label: SP_LABELS[i] === "C3" ? "Corner 3 Share" : SP_LABELS[i],
+        // Every column but eFG% is a share of shots (user 2026-10-28: make
+        // the frequency obvious); labels and values say so.
+        label:
+          m === "efg"
+            ? layout.shotProfile.efg
+            : layout.shotProfile.labels[
+                SP_LABELS[i] as keyof typeof layout.shotProfile.labels
+              ],
         cls: i === 0 ? SEP : undefined,
-        title: SP_LABELS[i] === "C3" ? C3_TITLE : undefined,
+        title:
+          m === "efg"
+            ? ui.columnTooltips["eFG%"]
+            : SP_LABELS[i] === "C3"
+              ? C3_TITLE
+              : layout.shotProfile.shareTitle.replace(
+                  "{kind}",
+                  SP_LABELS[i].toLowerCase(),
+                ),
         render: (row): Cell => {
           const d = num(row[id]),
             on = num(row[`${s}_on_${m}`]),
@@ -665,9 +680,9 @@ export function spColumns(ctx: Ctx): Column[] {
           return {
             node: (
               <RangeCell
-                value={head}
-                on={on.toFixed(1)}
-                off={off.toFixed(1)}
+                value={`${head}%`}
+                on={`${on.toFixed(1)}%`}
+                off={`${off.toFixed(1)}%`}
                 onPct={num(row[`${s}_on_${m}_rank`])}
                 offPct={num(row[`${s}_off_${m}_rank`])}
               />
@@ -684,12 +699,12 @@ export const SP_GROUPS: Group[] = [
   { label: "", span: 2 },
   { label: "Usage", span: 3, cls: SEP },
   {
-    label: "Offense Shot Profile (ON - OFF; eFG% + shares of FGA)",
+    label: layout.shotProfile.groupOff,
     span: 7,
     cls: SEP,
   },
   {
-    label: "Defense Shot Profile (ON - OFF; eFG% + shares of FGA)",
+    label: layout.shotProfile.groupDef,
     span: 7,
     cls: SEP,
   },

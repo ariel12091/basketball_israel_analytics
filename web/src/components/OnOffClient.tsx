@@ -557,6 +557,7 @@ export default function OnOffClient({
             />
             <TableLegend
               league={league}
+              mix={view === "shot_profile"}
               shots={viewKey.shots}
               rank={viewKey.rank && (view !== "four_factors" || rangesOn)}
               tags={view === "summary"}
