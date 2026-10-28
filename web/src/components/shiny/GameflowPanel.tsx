@@ -331,6 +331,29 @@ export function GameflowView({
     </div>
   );
 }
+function StintStats({ d }: { d: ReturnType<typeof windowDetail> }) {
+  return (
+    <dl className="gf-stint-stats">
+      <div>
+        <dt>On the floor</dt>
+        <dd>{clock(d.end - d.start)}</dd>
+      </div>
+      <div>
+        <dt>+/-</dt>
+        <dd>{d.pm}</dd>
+      </div>
+      {d.pf !== "" && (
+        <div>
+          <dt>Points</dt>
+          <dd>
+            {d.pf} for, {d.pa} against
+          </dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
 function GameflowDetails({
   data,
   activeWindow,
@@ -367,18 +390,18 @@ function GameflowDetails({
             {activeWindow.bar.player_label} · {clock(activeWindow.start)}–
             {clock(activeWindow.end)}
           </div>
-          <div>
-            {
-              windowDetail(
-                data.lanes,
-                data.steps,
-                data.dict,
-                activeWindow.bar,
-                activeWindow.start,
-                activeWindow.end,
-              ).label
-            }
-          </div>
+          {/* Numbers only: the stint's lineups are listed, one per row, just
+              below (user 2026-10-28: the one-paragraph list was unreadable). */}
+          <StintStats
+            d={windowDetail(
+              data.lanes,
+              data.steps,
+              data.dict,
+              activeWindow.bar,
+              activeWindow.start,
+              activeWindow.end,
+            )}
+          />
         </section>
       )}
       {groups.length > 0 && (

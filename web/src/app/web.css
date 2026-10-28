@@ -395,3 +395,8 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
   fill: rgba(var(--ibpl-accent-rgb), 0.14);
   stroke: var(--ibpl-accent);
 }
+
+/* Gameflow stint card: three numbers in a row, labels above values. */
+.gf-stint-stats { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 6px 0 0; }
+.gf-stint-stats dt { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ibpl-text-muted, #9a9389); }
+.gf-stint-stats dd { margin: 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
