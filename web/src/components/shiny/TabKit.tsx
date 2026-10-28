@@ -336,11 +336,12 @@ export function TabFrame({
   const reveal = useCallback(
     (id: string) => {
       if (drawerLayout) {
-        // The drawer is always mounted: open it and the section holding id.
-        setDrawerOpen(true);
+        // The drawer is always mounted: open it (only if the control is in
+        // it -- some, like Lineups' team, sit on the page) and its section.
         const el =
           document.getElementById(id) ??
           document.querySelector<HTMLElement>(`[data-input-id="${id}"]`);
+        if (el?.closest(".filter-drawer")) setDrawerOpen(true);
         const section = el
           ?.closest<HTMLElement>("[data-section]")
           ?.getAttribute("data-section");

@@ -170,7 +170,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await expect(
       page.locator(".ibpl-dt-scroll tbody tr").first(),
     ).toContainText("TOTAL");
-    await openFilters(page);
+    // Team and players sit in the bar above the table (no panel).
     const picker = page.getByRole("combobox", { name: "Team", exact: true });
     const teamName = loaded.answer.rows[0].Team as string;
     await picker.fill(teamName.slice(0, 6));
@@ -204,7 +204,7 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       fullPage: true,
     });
     await page.reload();
-    await openFilters(page);
+    // Team and players sit in the bar above the table (no panel).
     await expect(page.locator(`.lineup-chip[data-id="${id}"]`)).toHaveAttribute(
       "data-state",
       "off",
@@ -220,9 +220,10 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       await page.getByRole("button", { name: "Increase Min Poss" }).click();
       await expect(stepper).toHaveValue(String(target + 10), { timeout: 1500 });
     }).toPass();
-    await openFilters(page);
+    // Group size sits in the bar above the table, outside the panel.
     await page.getByRole("radio", { name: "2", exact: true }).click();
     await expect(page).toHaveURL(/size=2/);
+    await openFilters(page);
     await page.getByRole("checkbox", { name: "Clutch", exact: true }).check();
     await expect(page.locator(`#${prefix}_clutch_margin`)).toBeVisible();
     await clearAll(page);

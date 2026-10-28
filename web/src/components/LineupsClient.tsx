@@ -248,61 +248,6 @@ export default function LineupsClient({
     chips.length - (!euro && !query.start && !query.end ? 1 : 0);
   const drawerSections: DrawerSection[] = [
     {
-      id: "lineup",
-      title: "Lineup",
-      body: (
-        <>
-          <div
-            className="form-group shiny-input-radiogroup shiny-input-container shiny-input-container-inline"
-            role="radiogroup"
-            aria-label="Group size"
-          >
-            <label className="control-label">
-              {tt("Group size", "group_size")}
-            </label>
-            <div className="shiny-options-group">
-              {["2", "3", "4", "5"].map((n) => (
-                <label key={n} className="radio-inline">
-                  <input
-                    type="radio"
-                    name={`${p}_num`}
-                    value={n}
-                    checked={query.size === n}
-                    onChange={() => set({ size: n })}
-                  />
-                  <span>{n}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <Selectize
-            id={`${p}_team`}
-            label="Team"
-            choices={teams}
-            value={query.team ? [query.team] : []}
-            onChange={(v) => set({ team: v[0] ?? null, ...clearPlayers })}
-            emptyLabel="- All teams -"
-            placeholder="All teams"
-          />
-          {rosterData.error ? (
-            <div role="alert">
-              Player roster unavailable.{" "}
-              <button type="button" onClick={rosterData.retry}>
-                Retry
-              </button>
-            </div>
-          ) : (
-            <LineupPlayers
-              key={`${league}-${query.season}-${query.team}`}
-              roster={roster}
-              selection={selection}
-              onChange={setPlayers}
-            />
-          )}
-        </>
-      ),
-    },
-    {
       id: "starters",
       title: "Lineup starters",
       body: <StarterRows p={p} query={query} set={set} />,
@@ -493,6 +438,57 @@ export default function LineupsClient({
               />
             }
           />
+          {/* Team and players sit above the table, always in reach (user
+              2026-10-28); the rest of the filters are in the panel. */}
+          <div className="lineup-bar">
+            <div
+              className="lineup-size"
+              role="radiogroup"
+              aria-label="Group size"
+            >
+              <label className="control-label">
+                {tt("Group size", "group_size")}
+              </label>
+              <div className="shiny-options-group">
+                {["2", "3", "4", "5"].map((n) => (
+                  <label key={n} className="radio-inline">
+                    <input
+                      type="radio"
+                      name={`${p}_num`}
+                      value={n}
+                      checked={query.size === n}
+                      onChange={() => set({ size: n })}
+                    />
+                    <span>{n}</span>
+                  </label>
+                ))}
+              </div>
+            </div>
+            <Selectize
+              id={`${p}_team`}
+              label="Team"
+              choices={teams}
+              value={query.team ? [query.team] : []}
+              onChange={(v) => set({ team: v[0] ?? null, ...clearPlayers })}
+              emptyLabel="- All teams -"
+              placeholder="All teams"
+            />
+            {rosterData.error ? (
+              <div role="alert">
+                Player roster unavailable.{" "}
+                <button type="button" onClick={rosterData.retry}>
+                  Retry
+                </button>
+              </div>
+            ) : (
+              <LineupPlayers
+                key={`${league}-${query.season}-${query.team}`}
+                roster={roster}
+                selection={selection}
+                onChange={setPlayers}
+              />
+            )}
+          </div>
           <ViewTabs
             views={Object.values(LABELS)}
             view={LABELS[view]}

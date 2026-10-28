@@ -140,7 +140,6 @@ export default function LineupTable({
       defaultOrder={[]}
       pinTotals
       nameColumns={["Players", "Team"]}
-      columnFilters={!ff}
       lengthMenu={ff ? undefined : [25, 50, 100, 200, 1000]}
       groups={
         ff

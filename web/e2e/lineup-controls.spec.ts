@@ -14,7 +14,7 @@ const clearAll = (page: Page) =>
     .click();
 
 for (const league of ["il", "euroleague", "eurocup"] as const)
-  test(`Lineup Summary ${league}: table search, column ranges and page size`, async ({
+  test(`Lineup Summary ${league}: page size, no search or column filters`, async ({
     page,
   }, info) => {
     const { g, answer, roster } = loadLineup(`${league}_summary_default.json`);
@@ -56,33 +56,12 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
         await page.locator(".ibpl-dt-scroll tbody tr").count(),
       ).toBeGreaterThan(50);
     }).toPass();
-    const search = page.getByRole("textbox", {
-      name: "Search table",
-      exact: true,
-    });
-    await search.fill("no-such-lineup-xyz");
-    await expect(page.locator(".dataTables_info")).toContainText(
-      "0 of 0 entries",
-    );
-    await search.fill("TOTAL");
-    await expect(page.locator(".ibpl-dt-scroll tbody tr")).toHaveCount(1);
-    await search.fill("");
-    const column = page.locator(
-      'thead th:has(input[aria-label="Min minimum"])',
-    );
-    await column.locator("summary").click();
-    await page
-      .getByRole("spinbutton", { name: "Min minimum", exact: true })
-      .fill("100");
-    await expect(page.locator(".dataTables_info")).not.toContainText(
-      "0 of 0 entries",
-    );
-    const values = await page
-      .locator('tbody td[data-column="minutes"]')
-      .evaluateAll((tds) =>
-        tds.map((td) => parseFloat(td.textContent!.replaceAll(",", ""))),
-      );
-    expect(values.every((v) => v >= 100)).toBe(true);
+    // No search box and no per-column filter row (user 2026-10-28).
+    await expect(
+      page.getByRole("textbox", { name: "Search table" }),
+    ).toHaveCount(0);
+    // No per-column filter row (user 2026-10-28: it adds nothing).
+    await expect(page.locator("tr.ibpl-column-filters")).toHaveCount(0);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,

@@ -444,10 +444,7 @@ test("[HOME-08][LD-13] Home opens Lineups with its selected team", async ({
     })
     .click();
   await expect(page).toHaveURL(/\/il\/lineups\?season=2026&team=2&size=5/);
-  if (page.viewportSize()!.width < 1000)
-    await page
-      .getByRole("button", { name: "Show Filters", exact: true })
-      .click();
+  // The team and players sit in the bar above the table (no panel needed).
   await expect(page.locator('[data-input-id="ld_team"] .item')).toHaveText(
     shiny.ilTeams["2026"].find((t) => t.id === 2)!.name,
   );
