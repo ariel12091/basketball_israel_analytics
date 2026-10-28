@@ -298,3 +298,10 @@ th.sub-head:has(.th-sort-target) { position: relative; }
 .view-intro-example-text { flex: 1 1 260px; }
 .view-intro-example-text p { margin: 2px 0 0; }
 .view-intro-example img { max-width: min(320px, 100%); border-radius: 4px; }
+/* The Filters button is the one way to the filters: amber and solid, so it
+   reads as a primary control (user 2026-10-28). */
+.chips-row .chips-drawer-toggle { padding: 6px 14px; border: 1px solid var(--ibpl-accent); border-radius: 8px; background: var(--ibpl-accent); color: var(--ibpl-bg); font-size: .85rem; font-weight: 700; box-shadow: 0 2px 8px rgba(232, 164, 53, .25); }
+.chips-row .chips-drawer-toggle:hover { background: var(--ibpl-accent-hover); border-color: var(--ibpl-accent-hover); color: var(--ibpl-bg); }
+.chips-row .chips-drawer-toggle[aria-expanded="true"] { background: var(--ibpl-surface-2); color: var(--ibpl-accent); box-shadow: inset 0 0 0 1px var(--ibpl-accent); }
+.chips-row .chips-drawer-toggle .bi { font-size: 1rem; }
+.table-legend-row { flex-wrap: wrap; white-space: normal; }

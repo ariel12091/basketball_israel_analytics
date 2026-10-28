@@ -42,6 +42,11 @@ test("drawer opens, pushes content on desktop, closes on Escape", async ({
   await expect(drawer(page)).toBeHidden();
   await filtersButton(page).click();
   await expect(drawer(page)).toBeVisible();
+  // Every section opens expanded.
+  for (const title of ["Dates and teams", "Lineup starters", "Game filters"])
+    await expect(
+      drawer(page).getByRole("button", { name: title }),
+    ).toHaveAttribute("aria-expanded", "true");
   if (info.project.name === "desktop") {
     // Wait for the slide-in to settle, then nothing of the page is covered.
     await expect
@@ -111,7 +116,8 @@ test("the legend sits just above the table and shows only what applies", async (
   await expect.poll(above).toBeLessThan(40);
   await expect(legend).toContainText("worse");
   await expect(legend).toContainText("better");
-  await expect(legend).toContainText("2P% | 3P% accuracy");
+  await expect(legend).toContainText("2PT accuracy (left)");
+  await expect(legend).toContainText("3PT accuracy (right)");
   await expect(legend).toContainText("bar: shot frequency");
   await expect(page.locator(".legend-box")).toHaveCount(0);
   await page.getByRole("tab", { name: "Four Factors" }).click();

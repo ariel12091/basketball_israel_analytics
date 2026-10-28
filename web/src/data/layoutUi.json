@@ -11,7 +11,7 @@
   "legend": {
     "low": "worse",
     "high": "better",
-    "accuracy": "top: 2P% | 3P% accuracy",
+    "accuracy": "top: 2PT accuracy (left) | 3PT accuracy (right)",
     "frequency": "bar: shot frequency",
     "two": "2PT",
     "three": "3PT",

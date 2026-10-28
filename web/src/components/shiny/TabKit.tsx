@@ -322,8 +322,9 @@ export function TabFrame({
   const body = useShinyBody(league !== "il");
   const drawerLayout = layout === "drawer" && !!drawer;
   const [drawerOpen, setDrawerOpen] = useState(false);
+  // Every section starts open (user 2026-10-28): the drawer shows all filters.
   const [openSections, setOpenSections] = useState<string[]>(() =>
-    drawer?.sections[0] ? [drawer.sections[0].id] : [],
+    (drawer?.sections ?? []).map((s) => s.id),
   );
   const [glossary, setGlossary] = useState(false);
   const [filtersShown, setFiltersShown] = useState(false);
