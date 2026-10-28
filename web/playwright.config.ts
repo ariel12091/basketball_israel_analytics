@@ -16,7 +16,8 @@ export default defineConfig({
   ],
   webServer: {
     command: "npm run dev -- --port 3100",
-    url: "http://localhost:3100",
+    // Check readiness without issuing real dashboard reads in offline suites.
+    url: "http://localhost:3100/il/home?team_id=all",
     reuseExistingServer: !process.env.CI,
   },
 });

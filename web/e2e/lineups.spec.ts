@@ -3,7 +3,7 @@ import { loadLineup, pageAnswer, presets } from "../test/lineupGoldens";
 import { lineupAutoMin } from "../src/rules/lineups";
 import { loadGolden } from "../test/onoffGoldens";
 
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Lineups ${league} On/Off player pivot retains season`, async ({
     page,
   }) => {
@@ -135,7 +135,7 @@ for (const file of presets)
       });
   });
 
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Lineups ${league} interactions`, async ({ page }, info) => {
     const loaded = loadLineup(`${league}_summary_default.json`);
     await page.route("**/api/v1/**", (route) => {

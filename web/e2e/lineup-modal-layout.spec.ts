@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loadLineup, pageAnswer } from "../test/lineupGoldens";
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   for (const view of ["summary", "four_factors"] as const)
     test(`Lineup modal ${league} ${view}: viewport and keyboard focus`, async ({
       page,

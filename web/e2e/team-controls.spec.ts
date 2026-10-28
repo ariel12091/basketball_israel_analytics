@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loadTeam } from "../test/teamGoldens";
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Team Ratings ${league}: filters reset with league-specific view behavior`, async ({
     page,
   }, info) => {

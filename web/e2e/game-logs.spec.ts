@@ -211,8 +211,8 @@ for (const preset of presets) {
     await expect(
       page.locator(`.ibpl-dt-scroll td[data-column="${metric}"]`).first(),
     ).toHaveText(
-      // DataTables orders an empty numeric cell as -Infinity: first.
-      values.length < expected.length ? "" : Math.min(...values).toFixed(1),
+      // X-13 keeps missing values last in either direction.
+      values.length ? Math.min(...values).toFixed(1) : "",
     );
 
     // csv_export_button(): visible columns, header labels, every field quoted.

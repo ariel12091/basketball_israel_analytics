@@ -200,7 +200,7 @@ for (const file of presets)
     }
   });
 
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`On/Off ${league} interactions`, async ({ page }, info) => {
     const pick = (view: string) => loadGolden(`${league}_${view}_default.json`);
     await page.route("**/api/v1/**", (route) => {
@@ -225,13 +225,14 @@ for (const league of ["il", "euroleague"] as const)
       name: "Teams",
       exact: true,
     });
-    await teams.fill("Maccabi");
+    const teamName = String(g.expected.data[0].Team);
+    await teams.fill(teamName);
     await teams.press("ArrowDown");
     await teams.press("Enter");
     await teams.press("Escape");
     await expect(page).toHaveURL(/teams=/);
     await expect(table.locator('td[data-column="Team"]').first()).toContainText(
-      /Maccabi/i,
+      teamName,
     );
     const resetAnswer = page.waitForResponse((response) => {
       const url = new URL(response.url());

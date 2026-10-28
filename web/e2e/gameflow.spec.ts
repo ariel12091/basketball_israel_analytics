@@ -99,6 +99,18 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
     await expect(page.locator(".ibpl-ribbon-pair-status")).toContainText(
       `${clock(secs)} on court together`,
     );
+    const third = starters.find(
+      (p) => laneKey(p) !== laneKey(a) && laneKey(p) !== laneKey(b),
+    )!;
+    await pick(laneKey(third));
+    const triple = sharedWindows(answer.bars, [
+      laneKey(a),
+      laneKey(b),
+      laneKey(third),
+    ]);
+    await expect(page.locator(".ibpl-ribbon-pair-status")).toContainText(
+      `${clock(triple.reduce((sum, w) => sum + w.end - w.start, 0))} on court together`,
+    );
     const groups = page.getByRole("region", {
       name: "Shared lineups",
       exact: true,

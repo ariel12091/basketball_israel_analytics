@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { loadLineup, pageAnswer } from "../test/lineupGoldens";
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Lineup Summary ${league}: table search, column ranges and page size`, async ({
     page,
   }, info) => {

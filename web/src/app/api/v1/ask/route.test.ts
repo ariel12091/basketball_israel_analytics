@@ -58,6 +58,21 @@ afterEach(() => {
 });
 
 describe("POST /api/v1/ask", () => {
+  it("refuses a question another site's page sends; allows its own and non-browser ones", async () => {
+    const ask = (headers: Record<string, string>) =>
+      POST(
+        new Request("http://x/api/v1/ask", {
+          method: "POST",
+          headers: { "content-type": "text/plain", "x-forwarded-for": "9.9.9.9", host: "ibpl.example", ...headers },
+          body: JSON.stringify(body({ clientId: "origin-check" })),
+        }),
+      );
+    expect((await ask({ origin: "https://evil.example" })).status).toBe(403);
+    expect((await ask({ origin: "null" })).status).toBe(403);
+    expect((await ask({ origin: "https://ibpl.example" })).status).toBe(200);
+    expect((await ask({})).status).toBe(200);
+  });
+
   for (const mode of ["request", "consumer"] as const)
     it(`${mode} cancellation aborts a pending provider and logs once without writing to a closed stream`, async () => {
       const parent = new AbortController();

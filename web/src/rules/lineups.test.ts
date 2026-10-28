@@ -99,28 +99,37 @@ describe("Lineups: helpers.R membership and totals", () => {
   });
 });
 describe("stored Shiny Lineups frames (all numeric fields, rates, ranks, TOTAL)", () => {
-  it("has the full oracle", () => expect(presets.length).toBe(36));
+  it("has the full oracle, including EuroCup", () =>
+    expect(presets.length).toBe(38));
   for (const file of presets)
-    it(file, () => {
-      const { g, rows } = loadLineup(file);
-      // A missing render is never a passing empty frame.
-      expect(g.expected, `${g.id}: Shiny table missing`).not.toBeNull();
-      const expected = g.expected!.data;
-      const key = (r: Row) =>
-        r.is_total === 0 ? "TOTAL" : `${r.team_id}|${r.sub_lineup_hash}`;
-      const actual = new Map(rows.map((r) => [key(r), r]));
-      expect(rows.length).toBe(expected.length);
-      for (const want of expected) {
-        const got = actual.get(key(want));
-        expect(got, `${g.id} ${key(want)}`).toBeDefined();
-        for (const [k, v] of Object.entries(want))
-          if (typeof v === "number")
-            expect(Number(got![k]), `${g.id} ${key(want)} ${k}`).toBeCloseTo(
-              v,
-              7,
-            );
-      }
-    });
+    it(
+      file,
+      () => {
+        const { g, rows } = loadLineup(file);
+        // A missing render is never a passing empty frame.
+        expect(g.expected, `${g.id}: Shiny table missing`).not.toBeNull();
+        const expected = g.expected!.data;
+        const key = (r: Row) =>
+          r.is_total === 0 ? "TOTAL" : `${r.team_id}|${r.sub_lineup_hash}`;
+        const actual = new Map(rows.map((r) => [key(r), r]));
+        expect(actual.size, `${g.id}: duplicate actual row keys`).toBe(
+          rows.length,
+        );
+        expect(rows.length).toBe(expected.length);
+        for (const want of expected) {
+          const got = actual.get(key(want));
+          expect(got, `${g.id} ${key(want)}`).toBeDefined();
+          for (const [k, v] of Object.entries(want))
+            if (typeof v === "number") {
+              // The numeric matcher rejects null/strings; do not coerce them.
+              expect(got![k], `${g.id} ${key(want)} ${k}`).toBeCloseTo(v, 7);
+            }
+        }
+        // Triple/quad recordings include tens of MiB and every numeric cell.
+        // This is correctness replay; browser/load tests own latency acceptance.
+      },
+      /_(triple|quad)\.json$/.test(file) ? 15000 : 5000,
+    );
 });
 
 describe("lineupPage: Tabs 2/10's table for one page state", () => {

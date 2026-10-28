@@ -11,20 +11,21 @@ const names = new Map([
 
 describe("Player display name owner (D27)", () => {
   it("reads resolved_player_identity_v for the Israeli league only", async () => {
-    const q = vi.fn(async () => [
+    const q = vi.fn(async (sql: string) => sql.includes("etl_full_last_success") ? [{ value: "v1" }] : [
       { team_id: 1, player_id: 10, name: "Owner Ten" },
       { team_id: 1, player_id: 12, name: null },
     ]) as unknown as Query & ReturnType<typeof vi.fn>;
     const m = await readPlayerNames(q as Query, "il", 2026);
-    expect(q.mock.calls[0][0]).toContain("resolved_player_identity_v");
-    expect(q.mock.calls[0][0]).toContain(
+    const nameCall = q.mock.calls.find((c) => String(c[0]).includes("resolved_player_identity_v"))!;
+    expect(nameCall[0]).toContain("resolved_player_identity_v");
+    expect(nameCall[0]).toContain(
       "HAVING COUNT(DISTINCT display_name)=1",
     );
-    expect(q.mock.calls[0][1]).toEqual([2026]);
+    expect(nameCall[1]).toEqual([2026]);
     expect([...m]).toEqual([["1:10", "Owner Ten"]]);
     // Cached per season: a second request does not re-read the view.
     await readPlayerNames(q as Query, "il", 2026);
-    expect(q).toHaveBeenCalledTimes(1);
+    expect(q.mock.calls.filter((c) => String(c[0]).includes("resolved_player_identity_v"))).toHaveLength(1);
     const e = vi.fn<Query>(async () => []);
     expect((await readPlayerNames(e as Query, "euroleague", 2025)).size).toBe(
       0,

@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import { loadGolden } from "../test/onoffGoldens";
 
-for (const league of ["il", "euroleague"] as const) {
+for (const league of ["il", "euroleague", "eurocup"] as const) {
   test(`On/Off ${league}: Player Stats failure and removal`, async ({
     page,
   }) => {
