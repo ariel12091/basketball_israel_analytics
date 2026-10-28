@@ -21,11 +21,8 @@ export default function TableLegend({
   shots = false,
   rank = false,
   tags = false,
-  mix = false,
 }: {
   league: League;
-  /** Shot Profile: the cells are shares of shots. */
-  mix?: boolean;
   shots?: boolean;
   rank?: boolean;
   tags?: boolean;
@@ -44,7 +41,6 @@ export default function TableLegend({
           <span>{t.better}</span>
         </span>
       </span>
-      {mix && <span className="tl-item tl-mix">{text.shotProfile.legend}</span>}
       {shots && (
         <span className="tl-item tl-shot">
           <span className="tl-acc">

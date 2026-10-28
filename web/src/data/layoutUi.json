@@ -53,7 +53,6 @@
       "C3": "Corner 3 share",
       "2PT Jumper": "2PT Jumper share"
     },
-    "shareTitle": "Share of the team's shots that are {kind}: on court, off court and the difference (percentage points).",
-    "legend": "cells: % of shots, on − off (eFG% is accuracy)"
+    "shareTitle": "Share of the team's shots that are {kind}: on court, off court and the difference (percentage points)."
   }
 }
