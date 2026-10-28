@@ -69,23 +69,26 @@ export default function FilterDrawer({
         }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
-        <div className="filter-drawer-head">
-          <h2 className="filter-drawer-title" id="filter-drawer-title">
-            {t.title}
-          </h2>
-          <Popover.Close className="filter-drawer-close" aria-label={t.close}>
-            <span aria-hidden="true">×</span> {t.closeLabel}
-          </Popover.Close>
+        {/* Pinned while the filters scroll (user 2026-10-28). */}
+        <div className="filter-drawer-top">
+          <div className="filter-drawer-head">
+            <h2 className="filter-drawer-title" id="filter-drawer-title">
+              {t.title}
+            </h2>
+            <Popover.Close className="filter-drawer-close" aria-label={t.close}>
+              <span aria-hidden="true">×</span> {t.closeLabel}
+            </Popover.Close>
+          </div>
+          {(activeCount > 0 || resettable) && (
+            <button
+              type="button"
+              className="filter-drawer-clear"
+              onClick={onClearAll}
+            >
+              {t.clearAll}
+            </button>
+          )}
         </div>
-        {(activeCount > 0 || resettable) && (
-          <button
-            type="button"
-            className="filter-drawer-clear"
-            onClick={onClearAll}
-          >
-            {t.clearAll}
-          </button>
-        )}
         <Accordion.Root
           type="multiple"
           value={openSections}

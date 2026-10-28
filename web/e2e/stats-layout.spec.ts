@@ -311,3 +311,23 @@ test.describe("review fixes", () => {
     await expect(page).not.toHaveURL(/min_on=900/);
   });
 });
+
+test("the panel's Close and Clear all stay pinned while it scrolls", async ({
+  page,
+}) => {
+  const { g } = await stub(page);
+  await filtersButton(page).click();
+  await pickTeam(page, String(g.expected.data[0].Team));
+  const panel = drawer(page);
+  const close = panel.getByRole("button", { name: "Close filters" });
+  const clear = panel.getByRole("button", { name: "Clear all filters" });
+  const top = (await panel.boundingBox())!.y;
+  await panel.evaluate((el) => (el.scrollTop = el.scrollHeight));
+  await expect
+    .poll(async () => (await close.boundingBox())!.y - top)
+    .toBeLessThan(40);
+  await expect(clear).toBeInViewport();
+  await expect
+    .poll(async () => (await clear.boundingBox())!.y - top)
+    .toBeLessThan(110);
+});
