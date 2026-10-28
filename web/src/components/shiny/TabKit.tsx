@@ -42,6 +42,8 @@ import Selectize, { type Choice } from "./Selectize";
 import { Tip, TouchTipsContext } from "./TouchTips";
 import { useShinyBody } from "./useShinyBody";
 import { TextBlocks, ViewBlocks, type Block, type TextBlock } from "./Blocks";
+import FilterDrawer, { type DrawerSection } from "./FilterDrawer";
+export type { DrawerSection } from "./FilterDrawer";
 
 export const FILTER_TIPS = ui.filterTooltips as Record<string, string>;
 export const PHASES = catalogues.phases as Record<string, string>;
@@ -205,6 +207,11 @@ export function teamChoices(
 
 // ---- Frame ---------------------------------------------------------------
 type Frame = {
+  layout: "sidebar" | "drawer";
+  drawerOpen: boolean;
+  setDrawerOpen: (open: boolean) => void;
+  /** Drawer layout: wraps the Filters button with its panel. */
+  filters?: (trigger: ReactNode) => ReactNode;
   reveal: (id: string) => void;
   openGlossary: () => void;
   accordionOpen: boolean;
@@ -284,6 +291,8 @@ export function TabFrame({
   sidebar,
   main,
   mainOnly = false,
+  layout = "sidebar",
+  drawer,
 }: {
   league: League;
   tab: TabId;
@@ -300,8 +309,25 @@ export function TabFrame({
   sidebar: ReactNode;
   main: ReactNode;
   mainOnly?: boolean;
+  /** "drawer": no sidebar; the filters live in a right-side drawer opened
+   * from the chips row's Filters button (design 2026-10-28 § 2). */
+  layout?: "sidebar" | "drawer";
+  drawer?: {
+    sections: DrawerSection[];
+    footer?: ReactNode;
+    activeCount: number;
+    resettable?: boolean;
+    onClearAll: () => void;
+    resultLabel?: string;
+  };
 }) {
   const body = useShinyBody(league !== "il");
+  const drawerLayout = layout === "drawer" && !!drawer;
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  // Every section starts open (user 2026-10-28): the drawer shows all filters.
+  const [openSections, setOpenSections] = useState<string[]>(() =>
+    (drawer?.sections ?? []).map((s) => s.id),
+  );
   const [glossary, setGlossary] = useState(false);
   const [filtersShown, setFiltersShown] = useState(false);
   const [accordionOpen, setAccordionOpen] = useState(true);
@@ -309,7 +335,18 @@ export function TabFrame({
   // app.js chip focus: open the panel and the accordion, scroll, highlight.
   const reveal = useCallback(
     (id: string) => {
-      if (body.filtersCollapsed) body.toggleFilters();
+      if (drawerLayout) {
+        // The drawer is always mounted: open it and the section holding id.
+        setDrawerOpen(true);
+        const el =
+          document.getElementById(id) ??
+          document.querySelector<HTMLElement>(`[data-input-id="${id}"]`);
+        const section = el
+          ?.closest<HTMLElement>("[data-section]")
+          ?.getAttribute("data-section");
+        if (section)
+          setOpenSections((s) => (s.includes(section) ? s : [...s, section]));
+      } else if (body.filtersCollapsed) body.toggleFilters();
       if (window.matchMedia("(max-width: 767.98px)").matches)
         setFiltersShown(true);
       setAccordionOpen(true);
@@ -326,14 +363,50 @@ export function TabFrame({
           () => group.classList.remove("ibpl-chip-revealed"),
           2400,
         );
-        group
-          .querySelector<HTMLInputElement>(".selectize-input input, input")
-          ?.focus({ preventScroll: true });
+        const input = group.querySelector<HTMLInputElement>(
+          ".selectize-input input, input",
+        );
+        input?.focus({ preventScroll: true });
+        // The drawer may still be laying out its controls on the first try.
+        window.setTimeout(() => {
+          if (input && document.activeElement !== input)
+            input.focus({ preventScroll: true });
+        }, 200);
       }, 80);
     },
-    [body],
+    [body, drawerLayout],
   );
   const frame: Frame = {
+    layout: drawerLayout ? "drawer" : "sidebar",
+    drawerOpen,
+    setDrawerOpen,
+    filters: drawerLayout
+      ? (trigger: ReactNode) => (
+          <FilterDrawer
+            trigger={trigger}
+            open={drawerOpen}
+            onOpenChange={(open) => {
+              setDrawerOpen(open);
+              // Closed from inside (Escape, x, Show N): focus goes back to
+              // the Filters button that opened it.
+              if (!open)
+                requestAnimationFrame(() =>
+                  document
+                    .querySelector<HTMLElement>(".chips-drawer-toggle")
+                    ?.focus(),
+                );
+            }}
+            sections={drawer.sections}
+            openSections={openSections}
+            onSections={setOpenSections}
+            footer={drawer.footer}
+            activeCount={drawer.activeCount}
+            resettable={drawer.resettable}
+            onClearAll={drawer.onClearAll}
+            resultLabel={drawer.resultLabel}
+          />
+        )
+      : undefined,
     reveal,
     openGlossary,
     accordionOpen,
@@ -363,9 +436,11 @@ export function TabFrame({
               data-value={paneValue}
               role="tabpanel"
             >
-              <div className="container-fluid">
+              <div
+                className={`container-fluid${drawerLayout ? " ibpl-drawer-layout" : ""}`}
+              >
                 <div className="row">
-                  {!mainOnly && (
+                  {!mainOnly && !drawerLayout && (
                     <div className="col-sm-3 ibpl-filter-col">
                       <form
                         className="well"
@@ -392,7 +467,11 @@ export function TabFrame({
                     </div>
                   )}
                   <div
-                    className={mainOnly ? "col-12" : "col-sm-9 ibpl-main-col"}
+                    className={
+                      mainOnly || drawerLayout
+                        ? "col-12"
+                        : "col-sm-9 ibpl-main-col"
+                    }
                     role="main"
                   >
                     {main}
@@ -535,6 +614,7 @@ export function GameFiltersAccordion({
   phases,
   oppRank,
   oppRankMetricDefault = "",
+  bare = false,
 }: {
   p: string;
   league: League;
@@ -545,6 +625,9 @@ export function GameFiltersAccordion({
   phases: string[];
   oppRank: boolean;
   oppRankMetricDefault?: string;
+  /** Inside the filters drawer: the groups as plain titled blocks (the
+   * drawer section is the collapsible wrapper). */
+  bare?: boolean;
 }) {
   const euro = league !== "il";
   const { accordionOpen, setAccordionOpen } = useFrame();
@@ -571,47 +654,55 @@ export function GameFiltersAccordion({
     id: string,
     children: ReactNode,
     value: string,
-  ) => (
-    <div className="accordion-item" data-value={value}>
-      <div className="accordion-header">
-        <button
-          className={`accordion-button${open ? "" : " collapsed"}`}
-          type="button"
-          aria-expanded={open}
-          aria-controls={id}
-          onClick={toggle}
+  ) =>
+    bare ? (
+      <div className="drawer-subgroup" data-value={value}>
+        <div className="drawer-subtitle">{title}</div>
+        {children}
+      </div>
+    ) : (
+      <div className="accordion-item" data-value={value}>
+        <div className="accordion-header">
+          <button
+            className={`accordion-button${open ? "" : " collapsed"}`}
+            type="button"
+            aria-expanded={open}
+            aria-controls={id}
+            onClick={toggle}
+          >
+            <div className="accordion-icon"></div>
+            <div className="accordion-title">{title}</div>
+          </button>
+        </div>
+        <div
+          id={id}
+          className={`accordion-collapse collapse${open ? " show" : ""}`}
         >
-          <div className="accordion-icon"></div>
-          <div className="accordion-title">{title}</div>
-        </button>
+          <div className="accordion-body">{children}</div>
+        </div>
       </div>
-      <div
-        id={id}
-        className={`accordion-collapse collapse${open ? " show" : ""}`}
-      >
-        <div className="accordion-body">{children}</div>
-      </div>
-    </div>
-  );
+    );
   return (
     <>
-      <div className="text-end mb-2">
-        <a
-          href="#"
-          className="small text-muted fw-bold js-accordion-toggle-all"
-          style={{ textDecoration: "none" }}
-          onClick={(e) => {
-            e.preventDefault();
-            // app.js: any open -> close all, else open all.
-            const any = accordionOpen || (oppRank && strengthOpen);
-            setAccordionOpen(() => !any);
-            setStrengthOpen(!any);
-          }}
-        >
-          Collapse/Expand All
-        </a>
-      </div>
-      <div className="accordion">
+      {!bare && (
+        <div className="text-end mb-2">
+          <a
+            href="#"
+            className="small text-muted fw-bold js-accordion-toggle-all"
+            style={{ textDecoration: "none" }}
+            onClick={(e) => {
+              e.preventDefault();
+              // app.js: any open -> close all, else open all.
+              const any = accordionOpen || (oppRank && strengthOpen);
+              setAccordionOpen(() => !any);
+              setStrengthOpen(!any);
+            }}
+          >
+            Collapse/Expand All
+          </a>
+        </div>
+      )}
+      <div className={bare ? "drawer-subgroups" : "accordion"}>
         {item(
           "Game Filters",
           accordionOpen,
@@ -1179,6 +1270,7 @@ export function ChipsRow({
   active,
   onClearAll,
   controls,
+  activeCount = 0,
 }: {
   p: string;
   seasonChip: string;
@@ -1187,22 +1279,27 @@ export function ChipsRow({
   active: boolean;
   onClearAll: () => void;
   controls?: ReactNode;
+  /** Drawer layout: the number shown on the Filters button. */
+  activeCount?: number;
 }) {
-  const { filtersCollapsed, toggleFilters } = useFrame();
+  const { filtersCollapsed, toggleFilters, layout, filters } = useFrame();
+  const drawer = layout === "drawer";
   return (
     <div className="chips-row">
-      <button
-        type="button"
-        className="chips-filters-toggle js-filters-toggle"
-        aria-expanded={!filtersCollapsed}
-        aria-label={
-          filtersCollapsed ? "Show the filter panel" : "Hide the filter panel"
-        }
-        onClick={toggleFilters}
-      >
-        <i className="bi bi-sliders" aria-hidden="true"></i>
-        <span className="chips-filters-toggle-label">Filters</span>
-      </button>
+      {!drawer && (
+        <button
+          type="button"
+          className="chips-filters-toggle js-filters-toggle"
+          aria-expanded={!filtersCollapsed}
+          aria-label={
+            filtersCollapsed ? "Show the filter panel" : "Hide the filter panel"
+          }
+          onClick={toggleFilters}
+        >
+          <i className="bi bi-sliders" aria-hidden="true"></i>
+          <span className="chips-filters-toggle-label">Filters</span>
+        </button>
+      )}
       <div className="chips-row-chips">
         <div id={`${p}_filter_chips`} aria-live="polite">
           <div className="filter-chips">
@@ -1222,6 +1319,18 @@ export function ChipsRow({
         </div>
       </div>
       {controls && <div className="chips-row-controls">{controls}</div>}
+      {drawer &&
+        filters?.(
+          <button
+            type="button"
+            className="chips-filters-toggle chips-drawer-toggle"
+          >
+            <i className="bi bi-sliders" aria-hidden="true"></i>
+            <span className="chips-filters-toggle-label">
+              Filters{activeCount ? ` · ${activeCount}` : ""}
+            </span>
+          </button>,
+        )}
     </div>
   );
 }

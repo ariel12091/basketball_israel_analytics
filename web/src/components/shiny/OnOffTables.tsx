@@ -25,6 +25,20 @@ import DataTable, {
   type Column,
   type Group,
 } from "./DataTable";
+import MoreInfo from "./MoreInfo";
+import layout from "@/data/layoutUi.json";
+import { tagText, type TagKind } from "./tagText";
+
+/** A row tag's meaning and its worked example. */
+export function TagWhy({ league, kind }: { league: League; kind: TagKind }) {
+  const t = tagText(league, kind);
+  return (
+    <div className="onoff-tip-why">
+      <p>{t.text}</p>
+      {t.example && <p className="onoff-tip-example">{t.example}</p>}
+    </div>
+  );
+}
 
 const SEP = "section-left-border";
 const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
@@ -122,7 +136,13 @@ function TipVal({ v }: { v: number }) {
     </b>
   );
 }
-export function TipBody({ row, kind }: { row: Row; kind: "all" | "luck" | "sample" }) {
+export function TipBody({
+  row,
+  kind,
+}: {
+  row: Row;
+  kind: "all" | "luck" | "sample";
+}) {
   const net = Number(row["Net RTG Diff"]);
   const o = num(row.luck_3pt_ours),
     t = num(row.luck_3pt_theirs),
@@ -177,105 +197,37 @@ export function TipBody({ row, kind }: { row: Row; kind: "all" | "luck" | "sampl
     </>
   );
 }
-type Tip = {
-  row: Row;
-  kind: "all" | "luck" | "sample";
-  x: number;
-  y: number;
-  below?: DOMRect;
-};
-function NetTooltip({ tip }: { tip: Tip }) {
-  const [box, setBox] = useState<{ w: number; h: number } | null>(null);
-  const ref = (el: HTMLDivElement | null) => {
-    if (el && (!box || box.w !== el.offsetWidth || box.h !== el.offsetHeight))
-      setBox({ w: el.offsetWidth, h: el.offsetHeight });
-  };
-  let x = tip.x + 14,
-    y = tip.y + 14;
-  if (tip.below && box) {
-    x = tip.below.left;
-    y =
-      tip.below.bottom + box.h + 8 <= innerHeight
-        ? tip.below.bottom + 6
-        : tip.below.top - box.h - 6;
-  }
-  const w = box?.w ?? 0,
-    h = box?.h ?? 0;
-  return (
-    <div
-      ref={ref}
-      className="onoff-tip"
-      role="tooltip"
-      data-kind={tip.kind}
-      style={{
-        left: Math.max(8, Math.min(x, innerWidth - w - 8)),
-        top: Math.max(8, Math.min(y, innerHeight - h - 8)),
-      }}
-    >
-      <TipBody row={tip.row} kind={tip.kind} />
-    </div>
-  );
-}
-/** The Net RTG Diff cell: the number (+2 decimals), tags for 3PT luck and
- * small sample; hovering the number shows every section, a tag only its own. */
-function NetCell({ row, onTip }: { row: Row; onTip: (t: Tip | null) => void }) {
+/** The Net RTG Diff cell: the number (+2 decimals) and tags for 3PT luck and
+ * small sample, each a MoreInfo (design 2026-10-28 § 6): the number shows
+ * every section, a tag its own section plus what the tag means. */
+function NetCell({ row, league = "il" }: { row: Row; league?: League }) {
   const val = Number(row["Net RTG Diff"]);
   const txt = (val > 0 ? "+" : "") + val.toFixed(2);
   const hasLuck =
     num(row.luck_3pt_ours) != null && num(row.luck_3pt_theirs) != null;
   const hasPad = num(row.net_padded) != null;
   if (!hasLuck && !hasPad) return <>{txt}</>;
-  const show =
-    (kind: Tip["kind"]) => (e: React.PointerEvent | React.MouseEvent) => {
-      const touch =
-        e.type === "click" || ("pointerType" in e && e.pointerType === "touch");
-      onTip({
-        row,
-        kind,
-        x: e.clientX,
-        y: e.clientY,
-        below: touch
-          ? (e.currentTarget as HTMLElement)
-              .closest(".onoff-net-tip")!
-              .getBoundingClientRect()
-          : undefined,
-      });
-    };
-  const tag = (label: string, kind: "luck" | "sample") => (
-    <span
-      className="onoff-luck-tag"
-      data-tip-kind={kind}
-      onPointerMove={(e) => {
-        e.stopPropagation();
-        show(kind)(e);
-      }}
-      onClick={(e) => {
-        e.stopPropagation();
-        show(kind)(e);
-      }}
-      style={{
-        display: "block",
-        fontSize: 10,
-        fontWeight: 600,
-        lineHeight: 1.3,
-        color: "var(--ibpl-cell-text)",
-        whiteSpace: "nowrap",
-      }}
-    >
-      {label}
-    </span>
+  const pop = (kind: "all" | "luck" | "sample") => (
+    <div className="onoff-tip-pop" data-kind={kind}>
+      <TipBody row={row} kind={kind} />
+      {kind !== "all" && <TagWhy league={league} kind={kind} />}
+    </div>
   );
   return (
-    <span
-      className="onoff-net-tip"
-      data-tip-kind="all"
-      onPointerMove={show("all")}
-      onClick={show("all")}
-      onPointerLeave={(e) => e.pointerType !== "touch" && onTip(null)}
-    >
-      {txt}
-      {hasLuck && row.luck_3pt_flag === true && tag("3PT luck", "luck")}
-      {hasPad && row.sample_flag === true && tag("small sample", "sample")}
+    <span className="onoff-net-tip" data-tip-kind="all">
+      <MoreInfo label={txt} ariaLabel={`Net ${txt}: 3PT luck and sample size`}>
+        {pop("all")}
+      </MoreInfo>
+      {hasLuck && row.luck_3pt_flag === true && (
+        <MoreInfo label={layout.tags.luck.label} className="onoff-luck-tag">
+          {pop("luck")}
+        </MoreInfo>
+      )}
+      {hasPad && row.sample_flag === true && (
+        <MoreInfo label={layout.tags.sample.label} className="onoff-luck-tag">
+          {pop("sample")}
+        </MoreInfo>
+      )}
     </span>
   );
 }
@@ -366,8 +318,9 @@ function PivotMenu({
 
 // ---- Column builders --------------------------------------------------------
 type Ctx = {
-  onTip: (t: Tip | null) => void;
   onPivot: (p: Pivot) => void;
+  /** For the tags' worked examples; the Ask display omits it (Israeli). */
+  league?: League;
   showImpact: boolean;
   showRanges: boolean;
 };
@@ -416,10 +369,29 @@ function nameCols(ctx: Ctx): Column[] {
     { id: "Player", label: "Player", ...pivot },
   ];
 }
+const USAGE = "onoff-usage-col";
 const usage = (first = SEP): Column[] => [
-  { id: "minutes", label: "Min", cls: first, render: plain("minutes", 1) },
-  { id: "ON Poss", label: "On Poss", render: plain("ON Poss", 0) },
-  { id: "OFF Poss", label: "Off Poss", render: plain("OFF Poss", 0) },
+  {
+    id: "minutes",
+    label: "Min",
+    cls: `${first} ${USAGE}`,
+    render: plain("minutes", 1),
+  },
+  {
+    id: "ON Poss",
+    label: "On-court Poss",
+    title: ui.columnTooltips["ON Poss"],
+    cls: USAGE,
+    render: plain("ON Poss", 0),
+  },
+  {
+    id: "OFF Poss",
+    // Off-court, not offensive: Shiny's "Off Poss" tooltip says offensive.
+    label: "Off-court Poss",
+    title: ui.columnTooltips["OFF Poss"],
+    cls: USAGE,
+    render: plain("OFF Poss", 0),
+  },
 ];
 
 export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
@@ -442,13 +414,15 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
             minFga: 50,
             avg2: avgs[dn].fg2,
             avg3: avgs[dn].fg3,
-            palette: "onoff",
+            palette: "muted",
           },
         ),
     };
   };
   return [
     ...nameCols(ctx),
+    // How much data stands behind the row, right after the names.
+    ...usage(),
     {
       id: "Net RTG Diff",
       label: "Net",
@@ -458,7 +432,7 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
           row["Net RTG Diff"] == null ? (
             ""
           ) : (
-            <NetCell row={row} onTip={ctx.onTip} />
+            <NetCell row={row} league={ctx.league} />
           ),
         text: signed(row["Net RTG Diff"], 2),
         bg: heat(row.pr_net, false),
@@ -510,15 +484,14 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
     },
     shot("Off Shot OFF"),
     shot("Def Shot OFF"),
-    ...usage(),
   ];
 }
 export const SUMMARY_GROUPS: Group[] = [
   { label: "", span: 2 },
+  { label: "Usage", span: 3, cls: SEP },
   { label: "Net Impact", span: 3, cls: SEP },
   { label: "On Court Stats", span: 5, cls: SEP },
   { label: "Off Court Stats", span: 5, cls: SEP },
-  { label: "Usage", span: 3, cls: SEP },
 ];
 
 const FACTOR: Record<string, "efg" | "oreb" | "tov" | "ftr"> = {
@@ -626,6 +599,8 @@ export function ffColumns(ctx: Ctx): Column[] {
   });
   return [
     ...nameCols(ctx),
+    // How much data stands behind the row, right after the names.
+    ...usage(),
     {
       id: "Net Diff",
       label: "Diff",
@@ -654,15 +629,14 @@ export function ffColumns(ctx: Ctx): Column[] {
     factor("Def OREB% Diff", "OREB%", undefined, ui.defOrebTooltip),
     factor("Def TOV% Diff", "TOV%"),
     factor("Def FTR Diff", "FTR"),
-    ...usage(),
   ];
 }
 export const FF_GROUPS: Group[] = [
   { label: "", span: 2 },
+  { label: "Usage", span: 3, cls: SEP },
   { label: "Total", span: 1 },
   { label: "Offense Impact (On-Off)", span: 5, cls: SEP },
   { label: "Defense Impact (On-Off)", span: 5, cls: SEP },
-  { label: "Usage", span: 3, cls: SEP },
 ];
 
 const C3_TITLE =
@@ -675,9 +649,24 @@ export function spColumns(ctx: Ctx): Column[] {
       const reverse = !((s === "off") === !jumper);
       return {
         id,
-        label: SP_LABELS[i] === "C3" ? "Corner 3 Share" : SP_LABELS[i],
+        // Every column but eFG% is a share of shots (user 2026-10-28: make
+        // the frequency obvious); labels and values say so.
+        label:
+          m === "efg"
+            ? layout.shotProfile.efg
+            : layout.shotProfile.labels[
+                SP_LABELS[i] as keyof typeof layout.shotProfile.labels
+              ],
         cls: i === 0 ? SEP : undefined,
-        title: SP_LABELS[i] === "C3" ? C3_TITLE : undefined,
+        title:
+          m === "efg"
+            ? ui.columnTooltips["eFG%"]
+            : SP_LABELS[i] === "C3"
+              ? C3_TITLE
+              : layout.shotProfile.shareTitle.replace(
+                  "{kind}",
+                  SP_LABELS[i].toLowerCase(),
+                ),
         render: (row): Cell => {
           const d = num(row[id]),
             on = num(row[`${s}_on_${m}`]),
@@ -691,9 +680,9 @@ export function spColumns(ctx: Ctx): Column[] {
           return {
             node: (
               <RangeCell
-                value={head}
-                on={on.toFixed(1)}
-                off={off.toFixed(1)}
+                value={`${head}%`}
+                on={`${on.toFixed(1)}%`}
+                off={`${off.toFixed(1)}%`}
                 onPct={num(row[`${s}_on_${m}_rank`])}
                 offPct={num(row[`${s}_off_${m}_rank`])}
               />
@@ -704,21 +693,21 @@ export function spColumns(ctx: Ctx): Column[] {
         },
       };
     });
-  return [...nameCols(ctx), ...side("off"), ...side("def"), ...usage()];
+  return [...nameCols(ctx), ...usage(), ...side("off"), ...side("def")];
 }
 export const SP_GROUPS: Group[] = [
   { label: "", span: 2 },
-  {
-    label: "Offense Shot Profile (ON - OFF; eFG% + shares of FGA)",
-    span: 7,
-    cls: SEP,
-  },
-  {
-    label: "Defense Shot Profile (ON - OFF; eFG% + shares of FGA)",
-    span: 7,
-    cls: SEP,
-  },
   { label: "Usage", span: 3, cls: SEP },
+  {
+    label: layout.shotProfile.groupOff,
+    span: 7,
+    cls: SEP,
+  },
+  {
+    label: layout.shotProfile.groupDef,
+    span: 7,
+    cls: SEP,
+  },
 ];
 
 /** The table for one view, with the tooltip and pivot menu it hosts. */
@@ -739,17 +728,10 @@ export default function OnOffTable({
   showRanges?: boolean;
   exportRef?: { current: ((name: string) => void) | null };
 }) {
-  const [tip, setTip] = useState<Tip | null>(null);
   const [pivot, setPivot] = useState<Pivot | null>(null);
-  useEffect(() => {
-    if (!tip) return;
-    const hide = () => setTip(null);
-    window.addEventListener("scroll", hide, true);
-    return () => window.removeEventListener("scroll", hide, true);
-  }, [tip]);
   const ctx = useMemo<Ctx>(
-    () => ({ onTip: setTip, onPivot: setPivot, showImpact, showRanges }),
-    [showImpact, showRanges],
+    () => ({ onPivot: setPivot, league, showImpact, showRanges }),
+    [league, showImpact, showRanges],
   );
   const columns = useMemo(
     () =>
@@ -791,6 +773,7 @@ export default function OnOffTable({
         controls={spec.controls}
         tableClass="ibpl-flip"
         nameColumns={["Player", "Team"]}
+        moreInfo
         exportRef={exportRef}
         rowProps={(row) => ({
           ...(row.team_id != null
@@ -801,7 +784,6 @@ export default function OnOffTable({
             : {}),
         })}
       />
-      {tip && <NetTooltip tip={tip} />}
       {pivot && (
         <PivotMenu
           pivot={pivot}

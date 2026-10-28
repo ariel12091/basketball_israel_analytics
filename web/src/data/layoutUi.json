@@ -1,0 +1,58 @@
+{
+  "drawer": {
+    "title": "Filters",
+    "clearAll": "Clear all filters",
+    "close": "Close filters",
+    "open": "Open filters",
+    "closeLabel": "Close"
+  },
+  "legend": {
+    "worse": "worse",
+    "better": "better",
+    "two": "2P%",
+    "three": "3P%",
+    "mix": "shot mix",
+    "on": "on court",
+    "off": "off court",
+    "pctLow": "0th",
+    "pctHigh": "100th",
+    "pctMid": "percentile"
+  },
+  "intro": {
+    "more": "More",
+    "less": "Less",
+    "onoff": {
+      "summary": "Who helps the team most when on the floor?",
+      "four_factors": "Why: shooting, rebounding, turnovers or free throws?",
+      "shot_profile": "How does the shot mix change with the player on?"
+    }
+  },
+  "tags": {
+    "luck": {
+      "label": "3PT luck",
+      "text": "Threes go in and out by chance. We re-scored every three, by both teams, at the league's 3P%. If that flips this number from plus to minus (or back), it is marked: it rests mostly on shooting luck."
+    },
+    "sample": {
+      "label": "small sample",
+      "text": "This number stands out (top or bottom of the table) but rests on far fewer possessions than most rows, often off court. With so few, it may not hold up.",
+      "example": {
+        "il": "Example: Zack Bryant, Bnei Herzliya, 25-26: +64.8, but only 146 possessions with him off the court. Adjusted for sample size it is +3.5.",
+        "euro": "Example: Spencer Dinwiddie, FC Bayern Munich, 25-26: +19.5 on only 339 off-court possessions. Adjusted for sample size it is +1.7."
+      }
+    }
+  },
+  "shotProfile": {
+    "groupOff": "Offense shot mix: % of shots (on − off)",
+    "groupDef": "Defense shot mix: % of shots (on − off)",
+    "efg": "eFG% (accuracy)",
+    "labels": {
+      "Lay-up": "Lay-up share",
+      "Dunk": "Dunk share",
+      "Lay+Dunk": "Lay+Dunk share",
+      "3PA": "3PA share",
+      "C3": "Corner 3 share",
+      "2PT Jumper": "2PT Jumper share"
+    },
+    "shareTitle": "Share of the team's shots that are {kind}: on court, off court and the difference (percentage points)."
+  }
+}

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { test, expect, type Page, type Route } from "@playwright/test";
+import { openNavMenu } from "./navMenu";
 import type { HomeFrames } from "../src/rules/home";
 import type { Row } from "../src/rules/gameLogs";
 import type { HomePayload } from "../src/server/homeRepo";
@@ -38,6 +39,17 @@ function payload(
       errors: [],
     },
   };
+}
+/** "See more" holds every hub block but the team ratings card. */
+async function openMore(page: Page) {
+  const toggle = page.getByRole("button", {
+    name: new RegExp(ui.text.seeMore),
+  });
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(
+    page.getByRole("button", { name: ui.text.seeLess, exact: true }),
+  ).toHaveAttribute("aria-expanded", "true");
 }
 async function routes(
   page: Page,
@@ -91,10 +103,12 @@ for (const name of [
     page.on("pageerror", (e) => errors.push(e.message));
     await routes(page, (route) => route.fulfill({ json: payload(g) }));
     await page.goto(`/il/home?season=${g.season}&team_id=${g.team}`);
-    await expect(page.locator("#team_hub_section")).toHaveAttribute(
+    await expect(page.locator(".home-identity")).toHaveAttribute(
       "aria-busy",
       "false",
     );
+    await expect(page.locator("#team_hub_section")).toHaveCount(0);
+    await openMore(page);
     if (g.expected.identity) {
       const r = g.expected.identity.row;
       await expect(page.locator("#hub_identity .card-title")).toHaveText(
@@ -157,6 +171,10 @@ for (const name of [
         () => document.documentElement.scrollWidth <= innerWidth + 1,
       ),
     ).toBe(true);
+    // One compact block, 640px at most, at every width.
+    expect(
+      (await page.locator(".home-compact").boundingBox())!.width,
+    ).toBeLessThanOrEqual(640);
     if (name === "2026_2")
       await page.screenshot({
         path: `../output/playwright/home-${info.project.name}.png`,
@@ -178,15 +196,25 @@ for (const league of ["euroleague", "eurocup"])
     await expect(page.locator("#team_hub_section")).toHaveCount(0);
     await expect(page.locator("#home_team")).toHaveCount(0);
     expect(calls).toEqual([]);
-    await expect(
-      page.getByRole("link", {
-        name: "EuroCup On/off, lineups, team ratings, game logs, player stats",
-        exact: true,
-      }),
-    ).toHaveAttribute("href", "/eurocup/home?season=2025");
+    await expect(page.locator(".league-chooser")).toHaveCount(0);
+    await expect(page.locator(".home-more-toggle")).toHaveCount(0);
     const next = league === "euroleague" ? "eurocup" : "euroleague";
-    await page
-      .locator(`.league-chooser a[href="/${next}/home?season=2025"]`)
+    if (page.viewportSize()!.width < 1000)
+      await page.getByRole("button", { name: "Toggle navigation" }).click();
+    const current = page.getByRole("button", { name: /^League:/ });
+    await expect(current).toHaveText(
+      `League: ${league === "eurocup" ? "EuroCup" : "EuroLeague"}`,
+    );
+    await openNavMenu(page, /^League:/);
+    const toggle = page.locator("#league_menu");
+    await expect(
+      toggle.getByRole("link", { name: "Israeli League", exact: true }),
+    ).toHaveAttribute("href", "/il/home");
+    await toggle
+      .getByRole("link", {
+        name: next === "eurocup" ? "EuroCup" : "EuroLeague",
+        exact: true,
+      })
       .click();
     await expect(page).toHaveURL(new RegExp(`/${next}/home\\?season=2025`));
     expect(
@@ -267,7 +295,8 @@ test("Home All teams clears the hub and team-scoped navigation", async ({
   await page.goto("/il/home?season=2026&team_id=2");
   await expect(page.locator("#hub_identity .card-title")).toBeVisible();
   await pick(page, "home_team", ui.text.allTeams);
-  await expect(page.locator("#team_hub_section")).toHaveCount(0);
+  await expect(page.locator(".home-identity")).toHaveCount(0);
+  await expect(page.locator(".home-more-toggle")).toHaveCount(0);
   await expect(
     page.getByRole("checkbox", { name: ui.text.defaultLabel }),
   ).toBeDisabled();
@@ -314,13 +343,14 @@ test("Home reports partial failure, retains healthy sections and retries", async
     return route.fulfill({ json: data });
   });
   await page.goto("/il/home?season=2026&team_id=2");
-  await expect(page.locator('#team_hub_section [role="alert"]')).toContainText(
+  await expect(page.locator('.home-identity [role="alert"]')).toContainText(
     "Some Home sections",
   );
   await expect(page.locator("#hub_identity .card-title")).toBeVisible();
   failed = false;
   await page.getByRole("button", { name: "Retry", exact: true }).click();
-  await expect(page.locator('#team_hub_section [role="alert"]')).toHaveCount(0);
+  await expect(page.locator('.home-identity [role="alert"]')).toHaveCount(0);
+  await openMore(page);
   await expect(page.locator("#hub_players .hub-player-name")).toHaveCount(5);
 });
 test("Home retries a failed request without losing navigation", async ({
@@ -333,20 +363,21 @@ test("Home retries a failed request without losing navigation", async ({
       : route.fulfill({ json: payload(cases["2026_2"]) }),
   );
   await page.goto("/il/home?season=2026&team_id=2");
-  await expect(page.locator('#team_hub_section [role="alert"]')).toContainText(
+  await expect(page.locator('.home-identity [role="alert"]')).toContainText(
     "Home unavailable",
   );
   await expect(page.locator(".home-nav-card")).toHaveCount(6);
   failed = false;
   await page.getByRole("button", { name: "Retry", exact: true }).click();
   await expect(page.locator("#hub_identity .card-title")).toBeVisible();
-  await expect(page.locator('#team_hub_section [role="alert"]')).toHaveCount(0);
+  await expect(page.locator('.home-identity [role="alert"]')).toHaveCount(0);
 });
 test("Home opens and closes the existing Gameflow surface", async ({
   page,
 }, info) => {
   await routes(page);
   await page.goto("/il/home?season=2026&team_id=2");
+  await openMore(page);
   await page
     .getByRole("button", { name: "View Gameflow", exact: true })
     .click();
@@ -370,7 +401,11 @@ test("Home season changes preserve a valid selected team", async ({ page }) => {
   await expect(page.locator("#hub_identity .card-title")).toBeVisible();
   if (page.viewportSize()!.width < 1000)
     await page.getByRole("button", { name: "Toggle navigation" }).click();
-  await pick(page, "game_year", "26-27");
+  await openNavMenu(page, /^Season:/);
+  await page
+    .locator("#game_year_menu")
+    .getByRole("button", { name: "26-27", exact: true })
+    .click();
   await expect
     .poll(
       () =>
@@ -378,10 +413,10 @@ test("Home season changes preserve a valid selected team", async ({ page }) => {
     )
     .toBe("2027");
   await expect(page).toHaveURL(/team_id=5/);
-  await expect(page.locator('[data-input-id="game_year"] .item')).toHaveText(
-    "26-27",
+  await expect(page.getByRole("button", { name: /^Season:/ })).toHaveText(
+    "Season: 26-27",
   );
-  await expect(page.locator("#team_hub_section")).toHaveAttribute(
+  await expect(page.locator(".home-identity")).toHaveAttribute(
     "aria-busy",
     "false",
   );
@@ -418,4 +453,26 @@ test("[HOME-08][LD-13] Home opens Lineups with its selected team", async ({
   );
   await expect(page.locator(".lineup-chip").first()).toBeVisible();
   await expect(page.locator("tbody tr").first()).toBeVisible();
+});
+test("Home See more opens the rest of the hub in place and closes it", async ({
+  page,
+}) => {
+  await routes(page);
+  await page.goto("/il/home?season=2026&team_id=2");
+  await expect(page.locator("#hub_identity .card-title")).toBeVisible();
+  await expect(page.locator(".home-links .home-nav-card")).toHaveCount(6);
+  await openMore(page);
+  await expect(page.locator("#home-more #hub_storylines")).toBeVisible();
+  const box = (s: string) => page.locator(s).boundingBox();
+  // Inside the same 640px block, below the two boxes.
+  expect((await box("#home-more"))!.y).toBeGreaterThan(
+    (await box(".home-boxes"))!.y,
+  );
+  expect((await box("#home-more"))!.width).toBeLessThanOrEqual(640);
+  if (page.viewportSize()!.width >= 576)
+    expect((await box("#hub_identity"))!.y).toBe((await box(".home-links"))!.y);
+  await page
+    .getByRole("button", { name: ui.text.seeLess, exact: true })
+    .click();
+  await expect(page.locator("#team_hub_section")).toHaveCount(0);
 });

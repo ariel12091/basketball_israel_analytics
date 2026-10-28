@@ -1,7 +1,6 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import type { HomePayload } from "@/server/homeRepo";
 import {
   homeDashboard,
   homeFixed,
@@ -11,27 +10,27 @@ import {
 import { homeTabHref, homeStoryHref } from "@/lib/homeQuery";
 import ui from "@/data/homeUi.json";
 import GameflowPanel from "./GameflowPanel";
-export default function HomeHub({
+type Dashboard = ReturnType<typeof homeDashboard>;
+
+/** The always-visible part of the hub: load errors and the team ratings card. */
+export function HubIdentity({
   season,
-  team,
-  data,
+  dashboard,
+  partial,
   loading,
   error,
   retry,
 }: {
   season: string;
-  team: string;
-  data: HomePayload | null;
+  dashboard: Dashboard | null;
+  partial: boolean;
   loading: boolean;
   error: string;
   retry: () => void;
 }) {
-  const [gameflow, openGameflow] = useState(false),
-    dashboard = data ? homeDashboard(data.frames, team) : null,
-    t = ui.text;
-  const g = dashboard?.lastGame;
+  const t = ui.text;
   return (
-    <div id="team_hub_section" aria-busy={loading}>
+    <div className="home-identity" aria-busy={loading}>
       {error && (
         <div role="alert">
           {error}{" "}
@@ -40,17 +39,44 @@ export default function HomeHub({
           </button>
         </div>
       )}
-      {data?.meta.errors.length ? (
+      {partial && (
         <div role="alert">
           Some Home sections are unavailable.{" "}
           <button type="button" className="btn btn-default" onClick={retry}>
             Retry
           </button>
         </div>
-      ) : null}
+      )}
       <div id="hub_identity">
-        {dashboard?.identity && <Identity data={dashboard} season={season} />}
+        {dashboard?.identity ? (
+          <Identity data={dashboard} season={season} />
+        ) : (
+          loading && <p role="status">{t.loading}</p>
+        )}
       </div>
+    </div>
+  );
+}
+
+/** The rest of the hub, shown under "See more". */
+export default function HomeHub({
+  season,
+  team,
+  dashboard,
+  loading,
+  error,
+}: {
+  season: string;
+  team: string;
+  dashboard: Dashboard | null;
+  loading: boolean;
+  error: string;
+}) {
+  const [gameflow, openGameflow] = useState(false),
+    t = ui.text;
+  const g = dashboard?.lastGame;
+  return (
+    <div id="team_hub_section" aria-busy={loading}>
       <div id="hub_last_game">
         {g && (
           <div className="card bg-dark border-secondary mb-4 hub-card-static hub-last-game">
@@ -242,23 +268,42 @@ function Identity({
           {stat(t.net, row.net_rtg, row.rank_net_rtg, true)}
         </div>
         {(data.offense || data.defense) && (
-          <div className="hub-ff-groups">
-            {(["offense", "defense"] as const).map(
-              (side) =>
-                data[side] && (
-                  <div className="hub-ff-row" key={side}>
-                    <span className="hub-ff-label">{t[side]}</span>
-                    <div className="hub-ff-chips">
+          // Four factors as a table: a column per factor, a row per side,
+          // each value with its league rank under it.
+          <table className="hub-ff-table">
+            <thead>
+              <tr>
+                <th scope="col">
+                  <span className="visually-hidden">Side</span>
+                </th>
+                {ui.ffLabels.map((label) => (
+                  <th scope="col" key={label}>
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(["offense", "defense"] as const).map(
+                (side) =>
+                  data[side] && (
+                    <tr key={side}>
+                      <th scope="row">{t[side]}</th>
                       {data[side]!.map((v) => (
-                        <span className="hub-ff-chip" key={v.label}>
-                          {v.label} {homeFixed(v.value)} ({homeOrdinal(v.rank)})
-                        </span>
+                        <td key={v.label}>
+                          <span className="hub-ff-value">
+                            {homeFixed(v.value)}
+                          </span>
+                          <span className="hub-ff-rank">
+                            {homeOrdinal(v.rank)}
+                          </span>
+                        </td>
                       ))}
-                    </div>
-                  </div>
-                ),
-            )}
-          </div>
+                    </tr>
+                  ),
+              )}
+            </tbody>
+          </table>
         )}
         <div className="hub-card-go">{t.teamLink}</div>
       </div>

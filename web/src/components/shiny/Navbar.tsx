@@ -6,7 +6,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import Selectize from "./Selectize";
 import ui from "@/data/shinyUi.json";
 import type { League } from "@/rules/gameLogs";
 
@@ -106,11 +105,15 @@ const LEAGUE_VALUE: Record<League, string> = {
   euroleague: "E",
   eurocup: "U",
 };
-const VALUE_LEAGUE: Record<string, League> = {
-  il: "il",
-  E: "euroleague",
-  U: "eurocup",
-};
+// Israel first, each under its full name.
+const LEAGUE_TOGGLE = (["il", "euroleague", "eurocup"] as const).map(
+  (league) => ({
+    league: league as League,
+    name:
+      ui.leagueChoices.find((c) => c.value === LEAGUE_VALUE[league])?.label ??
+      league,
+  }),
+);
 
 export function seasonLabel(year: string | number, endingYear = true) {
   const y = Number(year) + (endingYear ? 0 : 1);
@@ -213,41 +216,57 @@ export default function Navbar({
         whiteSpace: "nowrap",
       }}
     >
-      <div className="navbar-league-select">
-        <Selectize
-          id="league_select"
-          formControl={false}
-          choices={ui.leagueChoices}
-          value={[LEAGUE_VALUE[league]]}
-          onChange={(v) => {
-            const next = VALUE_LEAGUE[v[0] ?? "il"] ?? "il";
-            try {
-              window.localStorage.setItem("ibpl_league_select", v[0] ?? "il");
-            } catch {}
+      {/* "Showing <league> . <season>": both plain-text menus. */}
+      <div className="navbar-showing">
+        <span className="navbar-showing-label">Showing</span>
+        <NavMenu
+          id="league"
+          name="League"
+          current={LEAGUE_TOGGLE.find((l) => l.league === league)!.name}
+          items={LEAGUE_TOGGLE.map((l) => {
             const currentTab = TABS.find((t) => t.value === tab);
             // app.js applyValue(): a league-only tab must fall back to Home
             // when switching away from its league. Euro has no Compare route.
             const path =
-              next !== "il" && currentTab?.ilOnly
+              l.league !== "il" && currentTab?.ilOnly
                 ? "home"
                 : (currentTab?.path ?? "home");
-            if (next !== league) router.push(`/${next}/${path}`);
-          }}
+            return {
+              key: l.league,
+              label: l.name,
+              active: l.league === league,
+              // EuroLeague and EuroCup share a season convention, so a
+              // switch between them keeps the season.
+              href: `/${l.league}/${path}${euro && l.league !== "il" ? `?season=${season}` : ""}`,
+              onSelect: () => {
+                try {
+                  window.localStorage.setItem(
+                    "ibpl_league_select",
+                    LEAGUE_VALUE[l.league],
+                  );
+                } catch {}
+              },
+            };
+          })}
         />
-      </div>
-      <div
-        className={`navbar-season-select ${euro ? "league-nav-el" : "league-nav-il"}`}
-      >
-        <Selectize
-          id={euro ? "euro_game_year" : "game_year"}
-          formControl={false}
-          choices={seasons.map((s) => ({
-            value: s,
-            label: seasonLabel(s, !euro),
-          }))}
-          value={[season]}
-          onChange={(v) => v[0] && onSeason(v[0])}
-        />
+        <span className="navbar-showing-sep" aria-hidden="true">
+          &middot;
+        </span>
+        <span
+          className={`navbar-season-menu ${euro ? "league-nav-el" : "league-nav-il"}`}
+        >
+          <NavMenu
+            id={euro ? "euro_game_year" : "game_year"}
+            name="Season"
+            current={seasonLabel(season, !euro)}
+            items={seasons.map((s) => ({
+              key: s,
+              label: seasonLabel(s, !euro),
+              active: s === season,
+              onSelect: () => s !== season && onSeason(s),
+            }))}
+          />
+        </span>
       </div>
       <button
         className="btn btn-default action-button btn btn-sm btn-outline-secondary nav-help-btn"
@@ -318,7 +337,11 @@ export default function Navbar({
             </button>
             <span className="navbar-brand">
               <span>
-                <i className="bi bi-activity" style={{ marginRight: 6 }} aria-hidden="true"></i>
+                <i
+                  className="bi bi-activity"
+                  style={{ marginRight: 6 }}
+                  aria-hidden="true"
+                ></i>
                 IBPL Analytics
               </span>
             </span>
@@ -358,7 +381,8 @@ export default function Navbar({
                 const inner = (
                   <>
                     <span>
-                      <i className={`bi ${t.icon}`} aria-hidden="true"></i> {t.label}
+                      <i className={`bi ${t.icon}`} aria-hidden="true"></i>{" "}
+                      {t.label}
                     </span>
                     {modes && <span className="tab-mode-label">{current}</span>}
                   </>
@@ -451,5 +475,96 @@ export default function Navbar({
         {children}
       </div>
     </>
+  );
+}
+
+type NavMenuItem = {
+  key: string;
+  label: string;
+  active: boolean;
+  /** A link when set, a button otherwise; onSelect runs either way. */
+  href?: string;
+  onSelect?: () => void;
+};
+/** A navbar control shown as plain text with a caret (the current value),
+ * opening a small menu of the choices. */
+function NavMenu({
+  id,
+  name,
+  current,
+  items,
+}: {
+  id: string;
+  name: string;
+  current: string;
+  items: NavMenuItem[];
+}) {
+  const [open, setOpen] = useState(false);
+  const root = useRef<HTMLDivElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => {
+      if (!root.current?.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("pointerdown", away);
+    return () => document.removeEventListener("pointerdown", away);
+  }, [open]);
+  const choose = (item: NavMenuItem) => {
+    setOpen(false);
+    item.onSelect?.();
+  };
+  return (
+    <div
+      className="navbar-text-menu"
+      ref={root}
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && open) {
+          setOpen(false);
+          button.current?.focus();
+        }
+      }}
+    >
+      <button
+        ref={button}
+        type="button"
+        className="navbar-text-menu-current"
+        aria-haspopup="true"
+        aria-expanded={open}
+        aria-controls={`${id}_menu`}
+        onClick={() => setOpen((v) => !v)}
+      >
+        <span className="visually-hidden">{name}: </span>
+        {current}
+      </button>
+      {open && (
+        <ul id={`${id}_menu`} className="navbar-text-menu-options">
+          {items.map((item) => (
+            <li key={item.key}>
+              {item.href ? (
+                <Link
+                  prefetch={false}
+                  href={item.href}
+                  className={item.active ? "active" : undefined}
+                  aria-current={item.active ? "page" : undefined}
+                  onClick={() => choose(item)}
+                >
+                  {item.label}
+                </Link>
+              ) : (
+                <button
+                  type="button"
+                  className={item.active ? "active" : undefined}
+                  aria-pressed={item.active}
+                  onClick={() => choose(item)}
+                >
+                  {item.label}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

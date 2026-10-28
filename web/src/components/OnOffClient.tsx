@@ -19,14 +19,12 @@ import { applyPlayerStatFilters, type PsRow } from "@/rules/playerStats";
 import ui from "@/data/shinyUi.json";
 import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
-import Slider from "./shiny/Slider";
+import PossStepper from "./shiny/PossStepper";
+import ViewTabs from "./shiny/ViewTabs";
+import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
 import OnOffTable from "./shiny/OnOffTables";
-import {
-  TableHint,
-  TextBlocks,
-  type Block,
-  type TextBlock,
-} from "./shiny/Blocks";
+import { type Block } from "./shiny/Blocks";
+import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
   contextChips,
@@ -45,7 +43,7 @@ import {
   useTabQuery,
   useVersion,
   ViewContent,
-  ViewRadios,
+  type DrawerSection,
   type StatFilter,
 } from "./shiny/TabKit";
 
@@ -352,8 +350,6 @@ export default function OnOffClient({
     /^(gte|lte):[0-5]$/.test(query.opp_starters);
   const psNote = `Player Stats use the selected games. Percentages use 0-100.${startersActive ? " Starter-count filters affect On/Off possessions, not Player Stats." : ""}`;
   const frag = euro ? ui.onoff.euro : ui.onoff.il;
-  const luck = frag.popovers[0];
-  const [luckOpen, setLuckOpen] = useState(false);
   const [rangesOn, setRangesOn] = useState(true);
   const exporter = useRef<((name: string) => void) | null>(null);
   const seasons = euro
@@ -361,6 +357,80 @@ export default function OnOffClient({
     : ui.ilSeasons;
   const start = query.start || bounds.start,
     end = query.end || bounds.end;
+
+  const statFilters = (
+    <StatFilters
+      p={p}
+      cols={statCols}
+      groups={statGroups(statCols)}
+      filters={allStats}
+      hint={psNote}
+      onChange={(f: StatFilter[]) =>
+        set({ stats: f.length ? JSON.stringify(f) : null })
+      }
+      extraNote={
+        startersActive && allStats.some((f) => f.col.startsWith("ps_")) ? (
+          <span className="filter-chip-note text-muted small">
+            Player Stats ignore starter-count filters
+          </span>
+        ) : null
+      }
+    />
+  );
+  const drawerSections: DrawerSection[] = [
+    {
+      id: "dates",
+      title: "Dates and teams",
+      body: (
+        <>
+          <DateRangeInput
+            id={euro ? "euro_date_range" : "date_range"}
+            label="Game Date Range"
+            start={start}
+            end={end}
+            min={bounds.start}
+            max={bounds.end}
+            onChange={(s, e) => {
+              const full = s === bounds.start && e === bounds.end;
+              set({ start: full ? null : s, end: full ? null : e });
+            }}
+          />
+          <Selectize
+            id={euro ? "euro_teams" : "teams"}
+            label="Teams"
+            multiple
+            placeholder="All teams"
+            choices={teams}
+            value={list(query.teams)}
+            onChange={(v) => set({ teams: v.join(",") })}
+          />
+        </>
+      ),
+    },
+    {
+      id: "starters",
+      title: "Lineup starters",
+      body: <StarterRows p={p} query={query} set={set} />,
+    },
+    {
+      id: "game",
+      title: "Game filters",
+      body: (
+        <GameFiltersAccordion
+          p={p}
+          league={league}
+          query={query}
+          set={set}
+          teams={teams}
+          rounds={data?.meta.rounds ?? []}
+          phases={data?.meta.phases ?? []}
+          oppRank
+          bare
+        />
+      ),
+    },
+  ];
+  const viewKey = keyFromBlocks(frag.views[view] as Block[]);
 
   return (
     <TabFrame
@@ -384,143 +454,62 @@ export default function OnOffClient({
       onView={changeView}
       updated={updated}
       filtersId={`${p === "on" ? "onoff" : "euro"}-filters`}
-      sidebarTop={
-        <ViewRadios
-          name={`${p === "on" ? "onoff" : "euro"}_view_mode`}
-          label="Select View:"
-          views={views.map((v) => VIEW_LABEL[v])}
-          view={VIEW_LABEL[view]}
-          onView={changeView}
-        />
-      }
-      sidebar={
-        <>
-          <button
-            type="button"
-            className="btn btn-default action-button"
-            onClick={reset}
-          >
-            Reset to defaults
-          </button>
-          <hr />
-          <DateRangeInput
-            id={euro ? "euro_date_range" : "date_range"}
-            label="Game Date Range"
-            start={start}
-            end={end}
-            min={bounds.start}
-            max={bounds.end}
-            onChange={(s, e) => {
-              const full = s === bounds.start && e === bounds.end;
-              set({ start: full ? null : s, end: full ? null : e });
-            }}
-          />
-          <Selectize
-            id={euro ? "euro_teams" : "teams"}
-            label="Teams"
-            multiple
-            placeholder="All teams"
-            choices={teams}
-            value={list(query.teams)}
-            onChange={(v) => set({ teams: v.join(",") })}
-          />
-          <StarterRows p={p} query={query} set={set} />
-          <hr />
-          <GameFiltersAccordion
-            p={p}
-            league={league}
-            query={query}
-            set={set}
-            teams={teams}
-            rounds={data?.meta.rounds ?? []}
-            phases={data?.meta.phases ?? []}
-            oppRank
-          />
-          <hr />
+      layout="drawer"
+      sidebar={null}
+      drawer={{
+        sections: drawerSections,
+        activeCount: chips.length,
+        // Shiny's always-visible Reset also restored hand-set minimums.
+        resettable:
+          allStats.length > 0 ||
+          (!autoOn && (minAll !== defaults.minAll || minOn !== defaults.minOn)),
+        onClearAll: reset,
+        resultLabel: `Show ${rows.length} players`,
+        footer: (
           <span className="help-block">
             If rows disappear, reduce the possession minimums above the table or
             widen the date range.
           </span>
-          {!euro && (
-            // downloadButton("download_csv"): Shiny registers no handler for it;
-            // here it exports the visible table (a deliberate difference).
-            <a
-              className="btn btn-default shiny-download-link"
-              href="#"
-              role="button"
-              onClick={(e) => {
-                e.preventDefault();
-                exporter.current?.(`onoff_${view}`);
-              }}
-            >
-              <i className="bi bi-download" aria-hidden="true"></i> Download CSV
-            </a>
-          )}
-        </>
-      }
+        ),
+      }}
       main={
         <>
-          {views.map((v) => (
-            <div key={v} style={view === v ? undefined : { display: "none" }}>
-              <ViewContent blocks={frag.views[v] as Block[]} />
-            </div>
-          ))}
           <ChipsRow
             p={p === "on" ? "on" : "euro"}
             seasonChip={seasonChipLabel(league, query.season)}
             chips={chips}
-            extra={
-              <StatFilters
-                p={p}
-                cols={statCols}
-                groups={statGroups(statCols)}
-                filters={allStats}
-                hint={psNote}
-                onChange={(f: StatFilter[]) =>
-                  set({ stats: f.length ? JSON.stringify(f) : null })
-                }
-                extraNote={
-                  startersActive &&
-                  allStats.some((f) => f.col.startsWith("ps_")) ? (
-                    <span className="filter-chip-note text-muted small">
-                      Player Stats ignore starter-count filters
-                    </span>
-                  ) : null
-                }
-              />
-            }
+            activeCount={chips.length}
+            extra={statFilters}
             active={chips.length > 0 || allStats.length > 0}
             onClearAll={reset}
             controls={
               <>
-                <div className="minposs-compact">
-                  <Slider
-                    id={euro ? "euro_min_all_poss" : "min_all_poss"}
-                    label={tt("Min Poss / side", "min_poss_side")}
-                    min={0}
-                    max={2000}
-                    step={10}
-                    value={minAll}
-                    onChange={(v) => {
-                      if (!auto.isOwn("all", v)) setAutoOn(false);
-                      set({ min_all: String(v) });
-                    }}
-                  />
-                </div>
-                <div className="minposs-compact">
-                  <Slider
-                    id={euro ? "euro_min_on_poss" : "min_on_poss"}
-                    label={tt("Min ON Poss", "min_on_poss")}
-                    min={0}
-                    max={3000}
-                    step={10}
-                    value={minOn}
-                    onChange={(v) => {
-                      if (!auto.isOwn("on", v)) setAutoOn(false);
-                      set({ min_on: String(v) });
-                    }}
-                  />
-                </div>
+                <PossStepper
+                  id={euro ? "euro_min_all_poss" : "min_all_poss"}
+                  label={tt("Min Poss / side", "min_poss_side")}
+                  name="Min Poss / side"
+                  min={0}
+                  max={2000}
+                  step={10}
+                  value={minAll}
+                  onChange={(v) => {
+                    if (!auto.isOwn("all", v)) setAutoOn(false);
+                    set({ min_all: String(v) });
+                  }}
+                />
+                <PossStepper
+                  id={euro ? "euro_min_on_poss" : "min_on_poss"}
+                  label={tt("Min ON Poss", "min_on_poss")}
+                  name="Min ON Poss"
+                  min={0}
+                  max={3000}
+                  step={10}
+                  value={minOn}
+                  onChange={(v) => {
+                    if (!auto.isOwn("on", v)) setAutoOn(false);
+                    set({ min_on: String(v) });
+                  }}
+                />
                 {view === "four_factors" && (
                   <button
                     type="button"
@@ -535,64 +524,44 @@ export default function OnOffClient({
                     </span>
                   </button>
                 )}
-                {view === "summary" && luck && (
-                  <span
-                    style={{ position: "relative", display: "inline-block" }}
+                {!euro && (
+                  // downloadButton("download_csv"): Shiny registers no handler
+                  // for it; here it exports the visible table.
+                  <a
+                    className="btn btn-default shiny-download-link"
+                    href="#"
+                    role="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      exporter.current?.(`onoff_${view}`);
+                    }}
                   >
-                    <button
-                      type="button"
-                      className="chips-ranges-toggle"
-                      aria-expanded={luckOpen}
-                      onClick={() => setLuckOpen((o) => !o)}
-                    >
-                      <i
-                        className="bi bi-question-circle"
-                        aria-hidden="true"
-                      ></i>{" "}
-                      {luck.trigger}
-                    </button>
-                    {luckOpen && (
-                      <div
-                        className="popover bs-popover-auto fade show"
-                        role="dialog"
-                        aria-label={luck.title}
-                        data-popper-placement="bottom"
-                        style={{
-                          position: "absolute",
-                          top: "100%",
-                          right: 0,
-                          marginTop: 8,
-                          maxWidth: 360,
-                        }}
-                      >
-                        <h3 className="popover-header">{luck.title}</h3>
-                        <div className="popover-body">
-                          <div style={{ maxWidth: 340, fontSize: "0.9em" }}>
-                            <TextBlocks blocks={luck.body as TextBlock[]} />
-                          </div>
-                          <button
-                            type="button"
-                            aria-label="Close"
-                            className="btn-close"
-                            onClick={() => setLuckOpen(false)}
-                            style={{
-                              position: "absolute",
-                              top: "0.6rem",
-                              right: "0.25rem",
-                              width: "0.55rem",
-                              height: "0.55rem",
-                              backgroundSize: "0.55rem",
-                            }}
-                          ></button>
-                        </div>
-                      </div>
-                    )}
-                  </span>
+                    <i className="bi bi-download" aria-hidden="true"></i>{" "}
+                    Download CSV
+                  </a>
                 )}
               </>
             }
           />
-          <TableHint hint={frag.hint} />
+          <ViewTabs
+            views={views.map((v) => VIEW_LABEL[v])}
+            view={VIEW_LABEL[view]}
+            onView={changeView}
+          />
+          <div className="table-top">
+            <ViewIntro
+              blocks={frag.views[view] as Block[]}
+              summary={
+                layout.intro.onoff[view as keyof typeof layout.intro.onoff]
+              }
+            />
+            <TableLegend
+              league={league}
+              shots={viewKey.shots}
+              rank={viewKey.rank && (view !== "four_factors" || rangesOn)}
+              tags={view === "summary"}
+            />
+          </div>
           <OutputArea
             id={euro ? "euro_dt" : "onoff_dt"}
             loading={loading || (psFilters.length > 0 && ps.loading)}

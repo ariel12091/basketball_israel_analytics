@@ -44,7 +44,8 @@ async function open(page: Page, league: string) {
       json: { leagues: [], rows: [], teams: [], meta: { version: "test" } },
     }),
   );
-  await page.goto(`/${league}/home?team_id=all`);
+  // Home has its own Ask box and no floating button.
+  await page.goto(`/${league}/team-ratings`);
   await page.getByRole("button", { name: "Ask", exact: true }).click();
   return page.getByRole("dialog", { name: "Ask a question" });
 }

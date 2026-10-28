@@ -10,6 +10,8 @@
 //   70vh), the "i" header explanations on touch, the phone name label above
 //   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
 // Shiny's class names are kept so app.css and DataTables' CSS style it.
+import { mutedAccuracy } from "./palette";
+import MoreInfo from "./MoreInfo";
 import {
   Fragment,
   useContext,
@@ -90,7 +92,7 @@ export function shotCell(
     minFga: number;
     avg2: number;
     avg3: number;
-    palette: "gamelogs" | "onoff";
+    palette: "gamelogs" | "onoff" | "muted";
   },
 ): Cell {
   const { fg2m, fg2a, fg3m, fg3a } = m;
@@ -112,6 +114,7 @@ export function shotCell(
   const acc = (pct: number, a: number) => {
     let d = (sign * (pct - a)) / a;
     d = Math.max(-1, Math.min(1, d * 3));
+    if (opts.palette === "muted") return mutedAccuracy(d);
     if (opts.palette === "gamelogs") {
       const [r, g] =
         d < 0
@@ -137,44 +140,70 @@ export function shotCell(
   const c2 = muted ? "#bbb" : acc(fg2pct, opts.avg2);
   const c3 = muted ? "#bbb" : acc(fg3pct, opts.avg3);
   const weight = muted ? 400 : 700;
-  return {
-    node: (
-      <>
-        <div className="shot-acc-label">
-          <span
-            title={`2PT accuracy: ${fg2pct}% (${fg2m}/${fg2a})`}
-            style={{ color: c2, fontWeight: weight, cursor: "help" }}
-          >
-            {fg2pct}%
-          </span>{" "}
-          <span style={{ opacity: 0.3 }}>|</span>{" "}
-          <span
-            title={`3PT accuracy: ${fg3pct}% (${fg3m}/${fg3a})`}
-            style={{ color: c3, fontWeight: weight, cursor: "help" }}
-          >
-            {fg3pct}%
-          </span>
+  // The stats-tab palette shows the four details in one MoreInfo
+  // (design 2026-10-28 § 6) instead of four hover-only titles.
+  const more = opts.palette === "muted";
+  const tip = (t: string) => (more ? undefined : t);
+  const body = (
+    <>
+      <div className="shot-acc-label">
+        <span
+          title={tip(`2PT accuracy: ${fg2pct}% (${fg2m}/${fg2a})`)}
+          style={{ color: c2, fontWeight: weight, cursor: "help" }}
+        >
+          {fg2pct}%
+        </span>{" "}
+        <span style={{ opacity: 0.3 }}>|</span>{" "}
+        <span
+          title={tip(`3PT accuracy: ${fg3pct}% (${fg3m}/${fg3a})`)}
+          style={{ color: c3, fontWeight: weight, cursor: "help" }}
+        >
+          {fg3pct}%
+        </span>
+      </div>
+      <div
+        className={`shot-bar-container${opts.palette === "muted" ? " shot-bar-muted" : ""}`}
+        style={muted ? { opacity: 0.3 } : undefined}
+      >
+        <div
+          className="shot-bar-2pt"
+          title={tip(`2PT frequency: ${fg2freq}% of FGA (${fg2a}/${total})`)}
+          style={{ width: `${fg2freq}%`, cursor: "help" }}
+        >
+          {fg2freq}%
         </div>
         <div
-          className="shot-bar-container"
-          style={muted ? { opacity: 0.3 } : undefined}
+          className="shot-bar-3pt"
+          title={tip(`3PT frequency: ${fg3freq}% of FGA (${fg3a}/${total})`)}
+          style={{ width: `${fg3freq}%`, cursor: "help" }}
         >
-          <div
-            className="shot-bar-2pt"
-            title={`2PT frequency: ${fg2freq}% of FGA (${fg2a}/${total})`}
-            style={{ width: `${fg2freq}%`, cursor: "help" }}
-          >
-            {fg2freq}%
-          </div>
-          <div
-            className="shot-bar-3pt"
-            title={`3PT frequency: ${fg3freq}% of FGA (${fg3a}/${total})`}
-            style={{ width: `${fg3freq}%`, cursor: "help" }}
-          >
-            {fg3freq}%
-          </div>
+          {fg3freq}%
         </div>
-      </>
+      </div>
+    </>
+  );
+  return {
+    node: more ? (
+      <MoreInfo
+        label={body}
+        ariaLabel={`2PT ${fg2pct}%, 3PT ${fg3pct}% accuracy; ${fg2freq}% / ${fg3freq}% of shots`}
+        className="shot-cell-more"
+      >
+        <div>
+          2PT accuracy: {fg2pct}% ({fg2m}/{fg2a})
+        </div>
+        <div>
+          3PT accuracy: {fg3pct}% ({fg3m}/{fg3a})
+        </div>
+        <div>
+          2PT frequency: {fg2freq}% of FGA ({fg2a}/{total})
+        </div>
+        <div>
+          3PT frequency: {fg3freq}% of FGA ({fg3a}/{total})
+        </div>
+      </MoreInfo>
+    ) : (
+      body
     ),
     // Buttons.stripData() of the rendered cell, as the Shiny CSV holds it.
     text: `${fg2pct}% | ${fg3pct}%${fg2freq}%${fg3freq}%`,
@@ -240,6 +269,7 @@ export default function DataTable({
   columnFilters = false,
   csvLabel = "Download CSV",
   onColumnMove,
+  moreInfo = false,
   onRowActivate,
 }: {
   columns: Column[];
@@ -265,6 +295,10 @@ export default function DataTable({
   columnFilters?: boolean;
   csvLabel?: string;
   onColumnMove?: (from: string, to: string) => void;
+  /** Header definitions as MoreInfo (tap on touch, hover with a mouse)
+   * instead of title + the touch info button (design 2026-10-28 § 6). */
+  moreInfo?: boolean;
+
   /** Whole-row pointer action; provide an onActivate cell for keyboard use. */
   onRowActivate?: (row: Row) => void;
 }) {
@@ -479,8 +513,10 @@ export default function DataTable({
                             ? "ascending"
                             : undefined
                       }
-                      title={title}
-                      style={title ? { cursor: "help" } : undefined}
+                      title={moreInfo ? undefined : title}
+                      style={
+                        title && !moreInfo ? { cursor: "help" } : undefined
+                      }
                       data-column={c.id}
                       draggable={Boolean(onColumnMove)}
                       onDragStart={
@@ -509,8 +545,17 @@ export default function DataTable({
                         if (e.key === "Enter") order(c.id, e.shiftKey);
                       }}
                     >
-                      {c.label}
-                      {touchTips && title && (
+                      {moreInfo && title ? (
+                        <>
+                          <MoreInfo label={c.label}>{title}</MoreInfo>
+                          {/* On touch the label opens its definition; this
+                              edge strip (over the sort arrows) sorts. */}
+                          <span className="th-sort-target" aria-hidden="true" />
+                        </>
+                      ) : (
+                        c.label
+                      )}
+                      {touchTips && title && !moreInfo && (
                         <InfoButton
                           onOpen={() =>
                             setTip((t) =>
