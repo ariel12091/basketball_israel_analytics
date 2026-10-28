@@ -239,3 +239,18 @@ body.ibpl-collapsed-nav .navbar-showing { grid-column: 1 / -1; }
 }
 body.ibpl-collapsed-nav .filter-drawer { width: 100vw; padding-bottom: 72px; }
 body.ibpl-collapsed-nav .filter-drawer-done { display: block; position: fixed; left: 16px; right: 16px; bottom: 16px; padding: 12px; border: 0; border-radius: 8px; background: var(--ibpl-accent); color: var(--ibpl-bg); font-weight: 700; }
+/* One-line table key (TableKey.tsx). */
+.table-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 0; margin: 4px 0 6px; font-size: .75rem; color: var(--ibpl-text-dim); }
+.table-key b { color: var(--ibpl-text-body); font-weight: 600; }
+.table-key-sep { margin: 0 8px; }
+.table-key-scale { display: inline-flex; margin: 0 4px; vertical-align: middle; border: 1px solid var(--ibpl-border); border-radius: 2px; overflow: hidden; }
+.table-key-scale i { width: 12px; height: 10px; }
+.table-key-bar { display: inline-block; width: 16px; height: 8px; margin: 0 3px 0 4px; border-radius: 2px; vertical-align: middle; }
+.table-key-2pt { background: #4a453d; }
+.table-key-3pt { background: rgba(232, 164, 53, .6); }
+.table-key .legend-icon-on, .table-key .legend-icon-off { display: inline-block; vertical-align: middle; }
+.table-key-about { color: var(--ibpl-accent); font-weight: 600; }
+.view-about { max-width: 320px; }
+.view-about-title { margin-bottom: 4px; font-weight: 700; color: var(--ibpl-text); }
+.view-about ul { padding-left: 18px; margin-bottom: 8px; }
+.view-about-example img { max-width: 100%; margin: 4px 0; border-radius: 4px; }

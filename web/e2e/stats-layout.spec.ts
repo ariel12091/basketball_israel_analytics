@@ -2,6 +2,7 @@
 // stored Shiny answers: filters drawer, steppers, view tabs, key, columns.
 import { test, expect, type Page } from "@playwright/test";
 import { loadGolden } from "../test/onoffGoldens";
+import ui from "../src/data/shinyUi.json";
 
 async function stub(page: Page, league = "il") {
   const requests: URL[] = [];
@@ -89,4 +90,27 @@ test("a chip's edit pencil opens the drawer at its control", async ({
   await expect(
     page.getByRole("combobox", { name: "Teams", exact: true }),
   ).toBeFocused();
+});
+
+test("the key shows only what applies, next to the table", async ({ page }) => {
+  await stub(page);
+  const key = page.locator(".table-key");
+  await expect(key).toContainText("Shading = league rank");
+  await expect(key).toContainText("Shot cells:");
+  await expect(page.locator(".legend-box")).toHaveCount(0);
+  await expect(page.locator(".explainer-card")).toHaveCount(0);
+  await page.getByRole("tab", { name: "Four Factors" }).click();
+  await expect(page).toHaveURL(/view=four_factors/);
+  await expect(key).toContainText("Shading = league rank");
+  await expect(key).not.toContainText("Shot cells:");
+});
+
+test("About this view holds the view's explainer", async ({ page }) => {
+  await stub(page);
+  const explainer = (
+    ui.onoff.il.views.summary as { kind: string; intro?: { t?: string }[] }[]
+  ).find((b) => b.kind === "explainer")!;
+  const first = String(explainer.intro![0].t ?? "").slice(0, 30);
+  await page.getByRole("button", { name: "About this view" }).click();
+  await expect(page.locator(".ibpl-more-pop")).toContainText(first);
 });

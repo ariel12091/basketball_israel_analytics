@@ -4,5 +4,20 @@
     "clearAll": "Clear all filters",
     "close": "Close filters",
     "open": "Open filters"
+  },
+  "key": {
+    "shading": "Shading = league rank:",
+    "low": "bottom",
+    "high": "top",
+    "shots": "Shot cells:",
+    "accuracy": "top = accuracy 2P% | 3P% (green good, red poor)",
+    "frequency": "bar = shot frequency",
+    "two": "2PT",
+    "three": "3PT",
+    "rank": "On/off detail:",
+    "on": "on court",
+    "off": "off court",
+    "rankBar": "bar = league rank, 0-100%",
+    "about": "About this view"
   }
 }
