@@ -362,3 +362,19 @@ body.ibpl-collapsed-nav .lineup-bar { grid-template-columns: 1fr; }
 .lineup-size .radio-inline input:checked + span { background: var(--ibpl-accent); color: var(--ibpl-bg); }
 .lineup-size .radio-inline input:focus-visible + span { outline: 2px solid var(--ibpl-accent); outline-offset: 1px; }
 body.ibpl-collapsed-nav .lineup-bar { grid-template-columns: 1fr; }
+/* Lineups player picker (user 2026-10-28): the mode sits right above the
+   players and reads as a sentence; full names in an even grid, the mark
+   (with / any of / without) shown on each marked player. */
+.lineup-bar .lineup-chips-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-start; gap: 8px 12px; margin-bottom: 8px; }
+.lineup-bar .lineup-chips-eyebrow { margin: 0; color: var(--ibpl-text-body); font-size: .8rem; font-weight: 600; letter-spacing: 0; text-transform: none; }
+.lineup-bar .lineup-chips-modes { display: inline-flex; flex: 0 0 auto; }
+.lineup-bar .lineup-chips-mode { flex: 0 0 auto; gap: 6px; padding: 5px 12px; font-size: .82rem; }
+.lineup-bar .lineup-chips-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 4px; }
+.lineup-bar .lineup-chip { display: inline-flex; align-items: center; gap: 6px; justify-content: flex-start; width: 100%; min-height: 32px; text-align: left; }
+.lineup-bar .lineup-chip-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lineup-bar .lineup-chip .lineup-chips-mark { flex: 0 0 auto; }
+body.ibpl-collapsed-nav .lineup-bar .lineup-chips-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+body.ibpl-collapsed-nav .lineup-bar .lineup-chips-modes { display: flex; width: 100%; }
+body.ibpl-collapsed-nav .lineup-bar .lineup-chips-mode { flex: 1; justify-content: center; }
+.lineup-size .control-label { color: var(--ibpl-text-body); font-size: .8rem; font-weight: 700; }
+.lineup-bar .lineup-chips-eyebrow { font-family: var(--ibpl-font-body); }
