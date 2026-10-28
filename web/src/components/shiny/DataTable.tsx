@@ -116,7 +116,10 @@ export function shotCell(
   const acc = (pct: number, a: number) => {
     let d = (sign * (pct - a)) / a;
     d = Math.max(-1, Math.min(1, d * 3));
-    if (opts.palette === "gamelogs") {
+    // The stats-tab layout uses On/Off's red / neutral / green everywhere:
+    // Shiny's Game Logs formula is yellow around the average (user
+    // 2026-10-28: "why is the 2pt% yellow").
+    if (opts.palette === "gamelogs" && !opts.layout) {
       const [r, g] =
         d < 0
           ? [200, Math.round(200 + d * 120)]

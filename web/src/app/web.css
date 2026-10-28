@@ -344,3 +344,6 @@ table.dataTable tr.ibpl-row-detail > td { padding: 0 !important; background: var
 /* Lineups: a lineup's game log, in place under its row. */
 .ibpl-lineup-games-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 8px; }
 .ibpl-lineup-games-head h4 { margin: 0; font-size: .95rem; font-weight: 700; color: var(--ibpl-accent); }
+/* Room under the page so the floating Ask button never covers a table's
+   last controls (pagination), at any width. */
+body { padding-bottom: 76px; }

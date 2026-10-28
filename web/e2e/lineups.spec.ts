@@ -3,7 +3,7 @@ import { loadLineup, pageAnswer, presets } from "../test/lineupGoldens";
 import { lineupAutoMin } from "../src/rules/lineups";
 import { loadGolden } from "../test/onoffGoldens";
 
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Lineups ${league} On/Off player pivot retains season`, async ({
     page,
   }) => {
@@ -48,17 +48,26 @@ for (const league of ["il", "euroleague"] as const)
       page.locator(`.lineup-chip[data-id="${selectedPlayer}"]`),
     ).toHaveAttribute("data-state", "on");
   });
-async function fixedBar(page: Page, id: string, value: number) {
-  const slider = page.locator(`#${id}`),
-    track = page.locator(".irs--shiny").filter({ has: slider });
-  const box = (await track.boundingBox())!,
-    max = Number(await slider.getAttribute("aria-valuemax"));
-  const x = box.x + 11 + (value / max) * (box.width - 22);
-  await page.mouse.move(x, box.y + 12);
-  await page.mouse.down();
-  await page.mouse.up();
-  await expect(slider).toHaveAttribute("aria-valuenow", String(value));
+/** Sets the possession stepper by typing the value, as a user would. */
+async function fixedStep(page: Page, id: string, value: number) {
+  const input = page.locator(`#${id}`);
+  await input.fill(String(value));
+  await input.press("Enter");
+  await expect(input).toHaveValue(String(value));
 }
+/** Opens the filters panel (the Filters button at the toolbar's right end). */
+async function openFilters(page: Page) {
+  const button = page.locator(".chips-drawer-toggle");
+  if ((await button.getAttribute("aria-expanded")) !== "true")
+    await button.click();
+  await expect(page.getByRole("dialog", { name: "Filters" })).toBeVisible();
+}
+const clearAll = (page: Page) =>
+  page
+    .getByRole("dialog", { name: "Filters" })
+    .getByRole("button", { name: "Clear all filters", exact: true })
+    .click();
+
 for (const file of presets)
   test(`Lineups ${file}`, async ({ page }, info) => {
     const { g, answer, roster, games, local, rows } = loadLineup(file);
@@ -78,11 +87,10 @@ for (const file of presets)
     page.on("pageerror", (e) => errors.push(e.message));
     await page.goto(`/${g.league}/lineups?${new URLSearchParams(g.query)}`);
     const id = g.league === "il" ? "ld_minposs" : "euro_ld_minposs";
-    await expect(page.locator(`#${id}`)).toHaveAttribute(
-      "aria-valuenow",
+    await expect(page.locator(`#${id}`)).toHaveValue(
       String(lineupAutoMin(local) ?? 20),
     );
-    await fixedBar(page, id, 20);
+    await fixedStep(page, id, 20);
     const table = page.locator(".ibpl-dt-scroll table");
     if (g.league !== "il")
       await expect(
@@ -135,7 +143,7 @@ for (const file of presets)
       });
   });
 
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`Lineups ${league} interactions`, async ({ page }, info) => {
     const loaded = loadLineup(`${league}_summary_default.json`);
     await page.route("**/api/v1/**", (route) => {
@@ -162,10 +170,7 @@ for (const league of ["il", "euroleague"] as const)
     await expect(
       page.locator(".ibpl-dt-scroll tbody tr").first(),
     ).toContainText("TOTAL");
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
+    await openFilters(page);
     const picker = page.getByRole("combobox", { name: "Team", exact: true });
     const teamName = loaded.answer.rows[0].Team as string;
     await picker.fill(teamName.slice(0, 6));
@@ -199,42 +204,41 @@ for (const league of ["il", "euroleague"] as const)
       fullPage: true,
     });
     await page.reload();
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
+    await openFilters(page);
     await expect(page.locator(`.lineup-chip[data-id="${id}"]`)).toHaveAttribute(
       "data-state",
       "off",
     );
     await page.getByRole("button", { name: "Clear", exact: true }).click();
     await expect(page).not.toHaveURL(/players_on=|players_any=|players_off=/);
-    const slider = page.locator(`#${prefix}_minposs`),
-      target = Number(await slider.getAttribute("aria-valuenow"));
-    await slider.press("ArrowRight");
-    await expect(slider).toHaveAttribute("aria-valuenow", String(target + 10));
+    // The stepper sits in the toolbar, which the open panel can cover on a
+    // phone; clearing players re-arms the auto minimum, so let it settle.
+    await page.keyboard.press("Escape");
+    const stepper = page.locator(`#${prefix}_minposs`);
+    await expect(async () => {
+      const target = Number(await stepper.inputValue());
+      await page.getByRole("button", { name: "Increase Min Poss" }).click();
+      await expect(stepper).toHaveValue(String(target + 10), { timeout: 1500 });
+    }).toPass();
+    await openFilters(page);
     await page.getByRole("radio", { name: "2", exact: true }).click();
     await expect(page).toHaveURL(/size=2/);
     await page.getByRole("checkbox", { name: "Clutch", exact: true }).check();
-    await expect(
-      page.getByRole("slider", { name: "Max point margin" }),
-    ).toBeVisible();
-    await page
-      .getByRole("button", { name: "Reset Lineup Filters", exact: true })
-      .click();
+    await expect(page.locator(`#${prefix}_clutch_margin`)).toBeVisible();
+    await clearAll(page);
     await expect(page).not.toHaveURL(/size=2|clutch=true|team=/);
+    await page.keyboard.press("Escape");
     await expect(page.locator("button.ibpl-lineup-link").first()).toBeVisible();
     await page.locator("button.ibpl-lineup-link").first().click();
-    await expect(page.getByRole("dialog")).toBeVisible();
-    await expect(
-      page.getByRole("dialog").locator("tbody tr").first(),
-    ).toBeVisible();
+    // The game log opens in place beneath its lineup (no modal).
+    const log = page.locator(".ibpl-row-detail .ibpl-lineup-games");
+    await expect(log.locator("tbody tr").first()).toBeVisible();
     await page.screenshot({
       path: `../output/playwright/lineups-modal-${league}-${info.project.name}.png`,
       fullPage: true,
     });
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("dialog")).toHaveCount(0);
+    await log.getByRole("button", { name: "Close game log" }).click();
+    await expect(log).toHaveCount(0);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
