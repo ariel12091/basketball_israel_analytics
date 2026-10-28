@@ -39,7 +39,7 @@ export default function AskPanel() {
 
   return (
     <>
-      {!ask.open && (
+      {!ask.open && !ask.fabHidden && (
         <button
           ref={button}
           type="button"

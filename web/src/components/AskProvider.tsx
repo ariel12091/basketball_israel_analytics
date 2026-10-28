@@ -34,6 +34,9 @@ type Ask = {
   ask: (question: string, opts?: { fresh?: boolean }) => Promise<void>;
   reset: () => void;
   league: League;
+  /** An inline Ask box calls this on mount; the returned cleanup undoes it. */
+  hideFab: () => () => void;
+  fabHidden: boolean;
 };
 const Context = createContext<Ask | null>(null);
 export const useAsk = () => useContext(Context);
@@ -74,6 +77,11 @@ export default function AskProvider({
     ),
   );
   const [open, setOpen] = useState(false);
+  const [inlineBoxes, setInlineBoxes] = useState(0);
+  const hideFab = useCallback(() => {
+    setInlineBoxes((n) => n + 1);
+    return () => setInlineBoxes((n) => n - 1);
+  }, []);
   const clientId = useRef(saved?.clientId || "");
   const active = useRef<{
     id: string;
@@ -235,8 +243,19 @@ export default function AskProvider({
   }, [cancelActive]);
 
   const value = useMemo<Ask>(
-    () => ({ enabled, followups, open, setOpen, turns, ask, reset, league }),
-    [enabled, followups, open, turns, ask, reset, league],
+    () => ({
+      enabled,
+      followups,
+      open,
+      setOpen,
+      turns,
+      ask,
+      reset,
+      league,
+      hideFab,
+      fabHidden: inlineBoxes > 0,
+    }),
+    [enabled, followups, open, turns, ask, reset, league, hideFab, inlineBoxes],
   );
   return (
     <Context.Provider value={value}>

@@ -268,23 +268,42 @@ function Identity({
           {stat(t.net, row.net_rtg, row.rank_net_rtg, true)}
         </div>
         {(data.offense || data.defense) && (
-          <div className="hub-ff-groups">
-            {(["offense", "defense"] as const).map(
-              (side) =>
-                data[side] && (
-                  <div className="hub-ff-row" key={side}>
-                    <span className="hub-ff-label">{t[side]}</span>
-                    <div className="hub-ff-chips">
+          // Four factors as a table: a column per factor, a row per side,
+          // each value with its league rank under it.
+          <table className="hub-ff-table">
+            <thead>
+              <tr>
+                <th scope="col">
+                  <span className="visually-hidden">Side</span>
+                </th>
+                {ui.ffLabels.map((label) => (
+                  <th scope="col" key={label}>
+                    {label}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {(["offense", "defense"] as const).map(
+                (side) =>
+                  data[side] && (
+                    <tr key={side}>
+                      <th scope="row">{t[side]}</th>
                       {data[side]!.map((v) => (
-                        <span className="hub-ff-chip" key={v.label}>
-                          {v.label} {homeFixed(v.value)} ({homeOrdinal(v.rank)})
-                        </span>
+                        <td key={v.label}>
+                          <span className="hub-ff-value">
+                            {homeFixed(v.value)}
+                          </span>
+                          <span className="hub-ff-rank">
+                            {homeOrdinal(v.rank)}
+                          </span>
+                        </td>
                       ))}
-                    </div>
-                  </div>
-                ),
-            )}
-          </div>
+                    </tr>
+                  ),
+              )}
+            </tbody>
+          </table>
         )}
         <div className="hub-card-go">{t.teamLink}</div>
       </div>

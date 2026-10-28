@@ -17,11 +17,7 @@ import type { League } from "@/rules/gameLogs";
 import type { HomePayload } from "@/server/homeRepo";
 import ui from "@/data/homeUi.json";
 import shiny from "@/data/shinyUi.json";
-import {
-  homeTeams,
-  homePath,
-  homeTabHref,
-} from "@/lib/homeQuery";
+import { homeTeams, homePath, homeTabHref } from "@/lib/homeQuery";
 import { TabFrame, useTabQuery, useVersion } from "./shiny/TabKit";
 import Selectize from "./shiny/Selectize";
 import HomeHub, { HubIdentity } from "./shiny/HomeHub";
@@ -200,7 +196,9 @@ function HomeContent({ league, initialSeason, initialTeam, initial }: Props) {
               </div>
             </div>
           )}
-          <div className={`home-boxes${!euro && team ? " home-boxes-pair" : ""}`}>
+          <div
+            className={`home-boxes${!euro && team ? " home-boxes-pair" : ""}`}
+          >
             {!euro && team && (
               <HubIdentity
                 key={`${q.season}:${team}`}

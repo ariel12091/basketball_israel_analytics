@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { test, expect, type Page, type Route } from "@playwright/test";
+import { openNavMenu } from "./navMenu";
 import type { HomeFrames } from "../src/rules/home";
 import type { Row } from "../src/rules/gameLogs";
 import type { HomePayload } from "../src/server/homeRepo";
@@ -41,7 +42,9 @@ function payload(
 }
 /** "See more" holds every hub block but the team ratings card. */
 async function openMore(page: Page) {
-  const toggle = page.getByRole("button", { name: new RegExp(ui.text.seeMore) });
+  const toggle = page.getByRole("button", {
+    name: new RegExp(ui.text.seeMore),
+  });
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
   await toggle.click();
   await expect(
@@ -198,7 +201,12 @@ for (const league of ["euroleague", "eurocup"])
     const next = league === "euroleague" ? "eurocup" : "euroleague";
     if (page.viewportSize()!.width < 1000)
       await page.getByRole("button", { name: "Toggle navigation" }).click();
-    const toggle = page.locator(".navbar-league-toggle");
+    const current = page.getByRole("button", { name: /^League:/ });
+    await expect(current).toHaveText(
+      `League: ${league === "eurocup" ? "EuroCup" : "EuroLeague"}`,
+    );
+    await openNavMenu(page, /^League:/);
+    const toggle = page.locator("#league_menu");
     await expect(
       toggle.getByRole("link", { name: "Israeli League", exact: true }),
     ).toHaveAttribute("href", "/il/home");
@@ -393,7 +401,11 @@ test("Home season changes preserve a valid selected team", async ({ page }) => {
   await expect(page.locator("#hub_identity .card-title")).toBeVisible();
   if (page.viewportSize()!.width < 1000)
     await page.getByRole("button", { name: "Toggle navigation" }).click();
-  await pick(page, "game_year", "26-27");
+  await openNavMenu(page, /^Season:/);
+  await page
+    .locator("#game_year_menu")
+    .getByRole("button", { name: "26-27", exact: true })
+    .click();
   await expect
     .poll(
       () =>
@@ -401,8 +413,8 @@ test("Home season changes preserve a valid selected team", async ({ page }) => {
     )
     .toBe("2027");
   await expect(page).toHaveURL(/team_id=5/);
-  await expect(page.locator('[data-input-id="game_year"] .item')).toHaveText(
-    "26-27",
+  await expect(page.getByRole("button", { name: /^Season:/ })).toHaveText(
+    "Season: 26-27",
   );
   await expect(page.locator(".home-identity")).toHaveAttribute(
     "aria-busy",
@@ -459,6 +471,8 @@ test("Home See more opens the rest of the hub in place and closes it", async ({
   expect((await box("#home-more"))!.width).toBeLessThanOrEqual(640);
   if (page.viewportSize()!.width >= 576)
     expect((await box("#hub_identity"))!.y).toBe((await box(".home-links"))!.y);
-  await page.getByRole("button", { name: ui.text.seeLess, exact: true }).click();
+  await page
+    .getByRole("button", { name: ui.text.seeLess, exact: true })
+    .click();
   await expect(page.locator("#team_hub_section")).toHaveCount(0);
 });

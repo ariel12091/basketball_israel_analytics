@@ -1,4 +1,5 @@
 import { test, expect } from "@playwright/test";
+import { openNavMenu } from "./navMenu";
 for (const [saved, league] of [
   ["E", "euroleague"],
   ["U", "eurocup"],
@@ -56,8 +57,9 @@ for (const next of ["euroleague", "eurocup"] as const)
     ).toBeVisible();
     if (page.viewportSize()!.width < 1000)
       await page.getByRole("button", { name: "Toggle navigation" }).click();
+    await openNavMenu(page, /^League:/);
     await page
-      .locator(".navbar-league-toggle")
+      .locator("#league_menu")
       .getByRole("link", {
         name: next === "euroleague" ? "EuroLeague" : "EuroCup",
         exact: true,
