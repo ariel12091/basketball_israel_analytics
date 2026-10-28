@@ -198,7 +198,11 @@ export function shotCell(
   );
   return {
     node: more ? (
-      <MoreInfo label={body} ariaLabel="Shot detail" className="shot-cell-more">
+      <MoreInfo
+        label={body}
+        ariaLabel={`2PT ${fg2pct}%, 3PT ${fg3pct}% accuracy; ${fg2freq}% / ${fg3freq}% of shots`}
+        className="shot-cell-more"
+      >
         <div>
           2PT accuracy: {fg2pct}% ({fg2m}/{fg2a})
         </div>
@@ -555,7 +559,12 @@ export default function DataTable({
                       }}
                     >
                       {moreInfo && title ? (
-                        <MoreInfo label={c.label}>{title}</MoreInfo>
+                        <>
+                          <MoreInfo label={c.label}>{title}</MoreInfo>
+                          {/* On touch the label opens its definition; this
+                              edge strip (over the sort arrows) sorts. */}
+                          <span className="th-sort-target" aria-hidden="true" />
+                        </>
                       ) : (
                         c.label
                       )}

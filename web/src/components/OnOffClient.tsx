@@ -458,6 +458,10 @@ export default function OnOffClient({
       drawer={{
         sections: drawerSections,
         activeCount: chips.length,
+        // Shiny's always-visible Reset also restored hand-set minimums.
+        resettable:
+          allStats.length > 0 ||
+          (!autoOn && (minAll !== defaults.minAll || minOn !== defaults.minOn)),
         onClearAll: reset,
         resultLabel: `Show ${rows.length} players`,
         footer: (

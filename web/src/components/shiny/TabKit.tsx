@@ -314,6 +314,7 @@ export function TabFrame({
     sections: DrawerSection[];
     footer?: ReactNode;
     activeCount: number;
+    resettable?: boolean;
     onClearAll: () => void;
     resultLabel?: string;
   };
@@ -463,6 +464,7 @@ export function TabFrame({
             onSections={setOpenSections}
             footer={drawer.footer}
             activeCount={drawer.activeCount}
+            resettable={drawer.resettable}
             onClearAll={drawer.onClearAll}
             resultLabel={drawer.resultLabel}
           />

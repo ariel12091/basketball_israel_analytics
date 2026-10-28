@@ -24,6 +24,7 @@ export default function FilterDrawer({
   onSections,
   footer,
   activeCount,
+  resettable = false,
   onClearAll,
   resultLabel,
 }: {
@@ -34,6 +35,8 @@ export default function FilterDrawer({
   onSections: (ids: string[]) => void;
   footer?: ReactNode;
   activeCount: number;
+  /** Something besides the counted filters can be reset (hand-set minimums). */
+  resettable?: boolean;
   onClearAll: () => void;
   resultLabel?: string;
 }) {
@@ -60,7 +63,7 @@ export default function FilterDrawer({
             ×
           </Dialog.Close>
         </div>
-        {activeCount > 0 && (
+        {(activeCount > 0 || resettable) && (
           <button
             type="button"
             className="filter-drawer-clear"

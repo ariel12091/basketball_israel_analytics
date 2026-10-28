@@ -273,3 +273,6 @@ body.ibpl-collapsed-nav .onoff-usage-col { min-width: 0 !important; width: 52px;
 /* The open filters drawer owns the bottom-right corner (its phone "Show N"
    button sits there); the floating Ask button steps aside until it closes. */
 body:has(.filter-drawer[data-state="open"]) .ibpl-ask-fab { display: none; }
+/* MoreInfo headers: a 24px strip over the sort arrows is the touch sort target. */
+th.sub-head:has(.th-sort-target) { position: relative; }
+.th-sort-target { position: absolute; top: 0; right: 0; bottom: 0; z-index: 1; width: 24px; pointer-events: auto; }

@@ -19,6 +19,7 @@ export default function MoreInfo({
 }) {
   const [open, setOpen] = useState(false);
   const closing = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointer = useRef<string>("");
   const hover = (next: boolean) => (e: React.PointerEvent) => {
     if (e.pointerType !== "mouse") return;
     if (closing.current) clearTimeout(closing.current);
@@ -32,8 +33,18 @@ export default function MoreInfo({
         aria-label={ariaLabel}
         onPointerEnter={hover(true)}
         onPointerLeave={hover(false)}
-        // A tap inside a clickable cell must not also trigger the cell.
-        onClick={(e) => e.stopPropagation()}
+        onPointerDown={(e) => (pointer.current = e.pointerType)}
+        onClick={(e) => {
+          // A mouse already has the popover on hover: its click belongs to
+          // the parent (a header sorts). A tap opens the popover instead of
+          // triggering the parent.
+          if (pointer.current === "mouse") e.preventDefault();
+          else e.stopPropagation();
+          pointer.current = "";
+        }}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") e.stopPropagation();
+        }}
       >
         {label}
       </Popover.Trigger>

@@ -202,8 +202,7 @@ test.describe("on touch, every marker opens with a tap", () => {
       .locator('.ibpl-dt-scroll tbody td[data-column="Player"]')
       .first()
       .textContent();
-    const box = (await netHead.boundingBox())!;
-    await page.touchscreen.tap(box.x + box.width - 6, box.y + box.height / 2);
+    await netHead.locator(".th-sort-target").tap();
     await expect
       .poll(() =>
         page
@@ -216,9 +215,59 @@ test.describe("on touch, every marker opens with a tap", () => {
     await tag.tap();
     await expect(pop).toContainText(/3PT luck|Small sample/);
     await expect(pop.locator(".onoff-tip-why")).toBeVisible();
-    await page.locator(".table-key").tap();
+    // A second tap on the same tag closes it.
+    await tag.tap();
     await expect(pop).toHaveCount(0);
     await page.locator(".shot-cell-more").first().tap();
     await expect(pop).toContainText("2PT accuracy:");
+  });
+});
+
+test.describe("review fixes", () => {
+  test("clicking a header's label sorts (mouse)", async ({ page }, info) => {
+    test.skip(info.project.name !== "desktop", "mouse at desktop width");
+    await stub(page);
+    const first = () =>
+      page
+        .locator('.ibpl-dt-scroll tbody td[data-column="Player"]')
+        .first()
+        .textContent();
+    const before = await first();
+    await page
+      .locator(".ibpl-dt-scroll thead th .ibpl-more", { hasText: /^On Poss$/ })
+      .click();
+    await expect.poll(first).not.toBe(before);
+  });
+
+  test("Escape in a stepper with the drawer closed keeps focus there", async ({
+    page,
+  }) => {
+    await stub(page);
+    const input = page.locator("#min_on_poss");
+    await input.fill("555");
+    await input.press("Escape");
+    await expect(input).toBeFocused();
+    await expect(input).toHaveValue(/^(?!555$)/);
+  });
+
+  test("shot cells name their numbers to assistive tech", async ({ page }) => {
+    await stub(page);
+    const shot = page.locator(".shot-cell-more").first();
+    await expect(shot).toHaveAccessibleName(/2PT \d+%.*3PT \d+%/);
+  });
+
+  test("a hand-set minimum can be reset with no filter chips", async ({
+    page,
+  }) => {
+    await stub(page);
+    const input = page.locator("#min_on_poss");
+    await input.fill("900");
+    await input.press("Enter");
+    await expect(page).toHaveURL(/min_on=900/);
+    await filtersButton(page).click();
+    await drawer(page)
+      .getByRole("button", { name: "Clear all filters" })
+      .click();
+    await expect(page).not.toHaveURL(/min_on=900/);
   });
 });
