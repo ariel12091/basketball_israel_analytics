@@ -548,13 +548,13 @@ export default function OnOffClient({
             view={VIEW_LABEL[view]}
             onView={changeView}
           />
-          <ViewIntro
-            blocks={frag.views[view] as Block[]}
-            summary={
-              layout.intro.onoff[view as keyof typeof layout.intro.onoff]
-            }
-          />
           <div className="table-top">
+            <ViewIntro
+              blocks={frag.views[view] as Block[]}
+              summary={
+                layout.intro.onoff[view as keyof typeof layout.intro.onoff]
+              }
+            />
             <TableLegend
               league={league}
               shots={viewKey.shots}

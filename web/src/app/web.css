@@ -320,3 +320,6 @@ body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .onoff-tip-why p { margin: 0 0 6px; }
 .onoff-tip-example { font-style: italic; color: var(--ibpl-text-muted); }
 .ibpl-more-pop > .onoff-tip-why:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+/* The view's question shares the legend's row: question left, key right. */
+.table-top { align-items: flex-start; }
+.table-top .view-intro { flex: 1 1 320px; margin: 0; align-self: center; }
