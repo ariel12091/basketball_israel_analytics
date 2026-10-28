@@ -400,3 +400,31 @@ body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
 .gf-stint-stats { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 6px 0 0; }
 .gf-stint-stats dt { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ibpl-text-muted, #9a9389); }
 .gf-stint-stats dd { margin: 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Compare: the A and B sides stay on the page (user 2026-10-28), beside the
+   results from 992px and above them on narrower screens. */
+.cmp-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.cmp-sides {
+  background: var(--ibpl-surface, #1c1814);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.cmp-results { min-width: 0; }
+@media (min-width: 992px) {
+  .cmp-layout { grid-template-columns: 300px minmax(0, 1fr); }
+}
+/* Below 992px one side at a time, chosen with the A | B switch. */
+.cmp-side-switch { display: flex; gap: 6px; margin-bottom: 10px; }
+.cmp-side-switch button {
+  flex: 1; padding: 6px 10px; border-radius: 6px; font-weight: 600;
+  background: transparent; color: var(--ibpl-text-muted); border: 1px solid var(--ibpl-border);
+}
+.cmp-side-switch button.is-active { background: var(--ibpl-accent); color: #1a1409; border-color: var(--ibpl-accent); }
+@media (max-width: 991.98px) {
+  .cmp-side:not(.is-shown) { display: none; }
+  .cmp-vs { display: none; }
+}
+@media (min-width: 992px) {
+  .cmp-side-switch { display: none; }
+}
