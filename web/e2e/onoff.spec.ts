@@ -182,7 +182,7 @@ for (const file of presets)
       if (g.view === "summary") {
         const net = page.locator('.onoff-net-tip[data-tip-kind="all"]').first();
         await net.click();
-        await expect(page.locator(".onoff-tip")).toContainText("3PT luck");
+        await expect(page.locator(".ibpl-more-pop")).toContainText("3PT luck");
         await page.mouse.move(0, 0);
         if (g.league === "il") {
           const download = page.waitForEvent("download");
@@ -193,7 +193,9 @@ for (const file of presets)
           expect(file.suggestedFilename()).toMatch(/^onoff_summary_.*\.csv$/);
           const csv = readFileSync((await file.path())!, "utf8");
           expect(csv.split("\r\n")).toHaveLength(expected.length + 1);
-          expect(csv).toMatch(/^"Team","Player","Min","On Poss","Off Poss","Net",/);
+          expect(csv).toMatch(
+            /^"Team","Player","Min","On Poss","Off Poss","Net",/,
+          );
         }
       }
     }

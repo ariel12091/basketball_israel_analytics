@@ -180,3 +180,45 @@ test("possession columns are on screen without scrolling sideways", async ({
         .toBeLessThanOrEqual(1);
   }
 });
+
+test.describe("on touch, every marker opens with a tap", () => {
+  test.use({ hasTouch: true, isMobile: true });
+  test("header, tag and shot cell open by tap; header arrows still sort", async ({
+    page,
+  }, info) => {
+    test.skip(info.project.name !== "phone", "touch at phone width");
+    await stub(page);
+    const pop = page.locator(".ibpl-more-pop");
+    const netHead = page
+      .locator(".ibpl-dt-scroll thead th")
+      .filter({ has: page.locator(".ibpl-more", { hasText: /^Net$/ }) })
+      .first();
+    await netHead.locator(".ibpl-more").tap();
+    await expect(pop).toBeVisible();
+    await netHead.locator(".ibpl-more").tap();
+    await expect(pop).toHaveCount(0);
+    // A tap on the header outside its label sorts.
+    const before = await page
+      .locator('.ibpl-dt-scroll tbody td[data-column="Player"]')
+      .first()
+      .textContent();
+    const box = (await netHead.boundingBox())!;
+    await page.touchscreen.tap(box.x + box.width - 6, box.y + box.height / 2);
+    await expect
+      .poll(() =>
+        page
+          .locator('.ibpl-dt-scroll tbody td[data-column="Player"]')
+          .first()
+          .textContent(),
+      )
+      .not.toBe(before);
+    const tag = page.locator(".onoff-luck-tag").first();
+    await tag.tap();
+    await expect(pop).toContainText(/3PT luck|Small sample/);
+    await expect(pop.locator(".onoff-tip-why")).toBeVisible();
+    await page.locator(".table-key").tap();
+    await expect(pop).toHaveCount(0);
+    await page.locator(".shot-cell-more").first().tap();
+    await expect(pop).toContainText("2PT accuracy:");
+  });
+});
