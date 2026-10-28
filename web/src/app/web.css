@@ -93,8 +93,12 @@ button.cmp-back-btn { background: transparent; border: 0; padding: 0; }
 /* Home: one compact block, 640px at most at every width. The boxes sit side
    by side from 576px and stack below. */
 .home-compact { max-width: 640px; margin: 24px auto 0; padding: 0 16px; }
-/* Wider screens: start lower, so the block sits nearer the middle. */
-@media (min-width: 768px) { .home-compact { margin-top: clamp(24px, 14vh, 160px); } }
+/* Wider screens: centred in the window below the navbar; with "See more"
+   open it moves up to the top so the extra blocks have room. */
+@media (min-width: 768px) {
+  .home-compact { margin-top: 0; min-height: calc(100dvh - 110px); display: flex; flex-direction: column; justify-content: center; padding-bottom: 48px; }
+  .home-compact.home-more-open { justify-content: flex-start; padding-top: 24px; }
+}
 .home-ask-form { display: flex; align-items: center; gap: 8px; background: var(--ibpl-surface); border: 1px solid var(--ibpl-accent); border-radius: 999px; padding: 4px 4px 4px 14px; color: var(--ibpl-text-dim); }
 .home-ask-form:focus-within { box-shadow: 0 0 0 2px rgba(var(--ibpl-accent-rgb), .25); }
 .home-ask-input { flex: 1; min-width: 0; background: transparent; border: 0; outline: none; color: var(--ibpl-text); font-size: .95rem; padding: 6px 0; }

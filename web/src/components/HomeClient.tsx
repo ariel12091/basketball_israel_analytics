@@ -164,7 +164,9 @@ function HomeContent({ league, initialSeason, initialTeam, initial }: Props) {
       sidebar={null}
       mainOnly
       main={
-        <div className="ibpl-home home-compact">
+        <div
+          className={`ibpl-home home-compact${more && !euro && team ? " home-more-open" : ""}`}
+        >
           <HomeAsk league={league} />
           {!euro && (
             <div className="home-team-row">
