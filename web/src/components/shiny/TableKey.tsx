@@ -108,3 +108,15 @@ export function keyFromBlocks(blocks: Block[]) {
     about: blocks.filter((b) => b.kind === "explainer" || b.kind === "example"),
   };
 }
+
+/** table_hint()'s sentences for a MoreInfo table: on touch, definitions open
+ * from the dashed-underlined header itself, not from an info button. */
+export function moreInfoHint(hint: { pointer: string; touch: string }) {
+  const touch = hint.touch
+    .split(" · ")
+    .map((part) =>
+      /info button/i.test(part) ? text.hint.touchDefinition : part,
+    )
+    .join(" · ");
+  return { ...hint, touch };
+}

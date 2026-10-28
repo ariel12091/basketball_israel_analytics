@@ -21,12 +21,9 @@ import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
 import PossStepper from "./shiny/PossStepper";
 import ViewTabs from "./shiny/ViewTabs";
-import TableKey, { keyFromBlocks } from "./shiny/TableKey";
+import TableKey, { keyFromBlocks, moreInfoHint } from "./shiny/TableKey";
 import OnOffTable from "./shiny/OnOffTables";
-import {
-  TableHint,
-  type Block,
-} from "./shiny/Blocks";
+import { TableHint, type Block } from "./shiny/Blocks";
 import {
   ChipsRow,
   contextChips,
@@ -553,7 +550,7 @@ export default function OnOffClient({
             rankNote={viewKey.rankNote}
             about={viewKey.about}
           />
-          <TableHint hint={frag.hint} />
+          <TableHint hint={moreInfoHint(frag.hint)} />
           <OutputArea
             id={euro ? "euro_dt" : "onoff_dt"}
             loading={loading || (psFilters.length > 0 && ps.loading)}

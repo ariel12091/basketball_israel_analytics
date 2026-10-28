@@ -19,5 +19,8 @@
     "off": "off court",
     "rankBar": "bar = league rank, 0-100%",
     "about": "About this view"
+  },
+  "hint": {
+    "touchDefinition": "Tap a dashed-underlined header for its definition"
   }
 }

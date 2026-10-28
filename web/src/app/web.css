@@ -270,3 +270,6 @@ body.ibpl-collapsed-nav .onoff-usage-col { min-width: 0 !important; width: 52px;
 .onoff-tip-pop { min-width: 220px; }
 .onoff-tip-why { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--ibpl-border); color: var(--ibpl-text-dim); font-size: .78rem; }
 .onoff-tip-why p { margin-bottom: 4px; }
+/* The open filters drawer owns the bottom-right corner (its phone "Show N"
+   button sits there); the floating Ask button steps aside until it closes. */
+body:has(.filter-drawer[data-state="open"]) .ibpl-ask-fab { display: none; }
