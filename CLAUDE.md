@@ -806,6 +806,9 @@ than adding a special case:
 5. **No data-quality-report finding for NULL credit columns.** The nightly `test-ft-credit-db.R` covers it; a finding in `etl/run_data_quality_report.R` would surface it in the report as well.
 6. **The non-roster rows in `player_four_factors_by_game`** (see Pitfalls) predate this work and are a separate fix: join `lineups_lookup` on `game_id` in its refresh function, as `compute_player_traditional_by_game` already does.
 
+**Web (added 2026-10-28):**
+1. **Lineups "# Starters" is wrong for 2/3/4-man groups** (user report: 4 starters in a 3-man lineup; 5-man looks right). Not inspected. Check Shiny Tab 2 for the same numbers first: if it shows them too, the bug is in the shared SQL owner of `num_starters` (fix there, per `docs/shared_definitions.md`), not in the web port. Unverified guess: the count is taken from the full 5-man lineup the sub-lineup was cut from.
+
 **Architecture (accepted, trigger-gated):** when a tab goes React+Plumber-only, retire its mega-signature SQL function(s) and let the route build the SQL — see `docs/adr_api_owns_query_construction.md` for trigger, migration order, and the DB-role tightening that follows. Until then the stored functions are the shared source of truth for both frontends; do NOT duplicate their logic into R query builders.
 
 ## Session Update (2026-09-21): Period Anchors, Game 406, and Gameflow
