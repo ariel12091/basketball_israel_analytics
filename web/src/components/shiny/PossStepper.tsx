@@ -2,7 +2,7 @@
 // A possession minimum as − / value / + (design 2026-10-28 § 1): thumb-sized
 // on a phone, and the value can be typed. Same id, range and step as the
 // slider it replaces, so callers keep their onChange (auto min-poss) logic.
-import { useEffect, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { stepValue } from "@/lib/stepValue";
 
 export default function PossStepper({
@@ -26,12 +26,16 @@ export default function PossStepper({
   value: number;
   onChange: (v: number) => void;
 }) {
-  const [draft, setDraft] = useState(String(value));
-  useEffect(() => setDraft(String(value)), [value]);
+  // What the user is typing; null shows the current value.
+  const [draft, setDraft] = useState<string | null>(null);
+  // − / + move by exactly one step (the auto value need not sit on a step,
+  // as with the slider's arrow keys); typed values snap to the step.
+  const nudge = (delta: number) =>
+    onChange(Math.min(max, Math.max(min, value + delta)));
   const commit = (raw: string | number) => {
     const v = stepValue(raw, min, max, step);
-    if (v === null || v === value) setDraft(String(value));
-    else onChange(v);
+    setDraft(null);
+    if (v !== null && v !== value) onChange(v);
   };
   return (
     <div className="poss-stepper">
@@ -43,7 +47,7 @@ export default function PossStepper({
           type="button"
           aria-label={`Decrease ${name}`}
           disabled={value <= min}
-          onClick={() => commit(value - step)}
+          onClick={() => nudge(-step)}
         >
           −
         </button>
@@ -51,19 +55,19 @@ export default function PossStepper({
           id={id}
           type="text"
           inputMode="numeric"
-          value={draft}
+          value={draft ?? String(value)}
           onChange={(e) => setDraft(e.target.value)}
-          onBlur={() => commit(draft)}
+          onBlur={() => draft !== null && commit(draft)}
           onKeyDown={(e) => {
-            if (e.key === "Enter") commit(draft);
-            if (e.key === "Escape") setDraft(String(value));
+            if (e.key === "Enter" && draft !== null) commit(draft);
+            if (e.key === "Escape") setDraft(null);
           }}
         />
         <button
           type="button"
           aria-label={`Increase ${name}`}
           disabled={value >= max}
-          onClick={() => commit(value + step)}
+          onClick={() => nudge(step)}
         >
           +
         </button>

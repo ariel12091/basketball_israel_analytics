@@ -447,7 +447,17 @@ export function TabFrame({
         {drawerLayout && (
           <FilterDrawer
             open={drawerOpen}
-            onOpenChange={setDrawerOpen}
+            onOpenChange={(open) => {
+              setDrawerOpen(open);
+              // Closed from inside (Escape, x, Show N): focus goes back to
+              // the Filters button that opened it.
+              if (!open)
+                requestAnimationFrame(() =>
+                  document
+                    .querySelector<HTMLElement>(".chips-drawer-toggle")
+                    ?.focus(),
+                );
+            }}
             sections={drawer.sections}
             openSections={openSections}
             onSections={setOpenSections}
@@ -637,46 +647,46 @@ export function GameFiltersAccordion({
         {children}
       </div>
     ) : (
-    <div className="accordion-item" data-value={value}>
-      <div className="accordion-header">
-        <button
-          className={`accordion-button${open ? "" : " collapsed"}`}
-          type="button"
-          aria-expanded={open}
-          aria-controls={id}
-          onClick={toggle}
+      <div className="accordion-item" data-value={value}>
+        <div className="accordion-header">
+          <button
+            className={`accordion-button${open ? "" : " collapsed"}`}
+            type="button"
+            aria-expanded={open}
+            aria-controls={id}
+            onClick={toggle}
+          >
+            <div className="accordion-icon"></div>
+            <div className="accordion-title">{title}</div>
+          </button>
+        </div>
+        <div
+          id={id}
+          className={`accordion-collapse collapse${open ? " show" : ""}`}
         >
-          <div className="accordion-icon"></div>
-          <div className="accordion-title">{title}</div>
-        </button>
+          <div className="accordion-body">{children}</div>
+        </div>
       </div>
-      <div
-        id={id}
-        className={`accordion-collapse collapse${open ? " show" : ""}`}
-      >
-        <div className="accordion-body">{children}</div>
-      </div>
-    </div>
     );
   return (
     <>
       {!bare && (
-      <div className="text-end mb-2">
-        <a
-          href="#"
-          className="small text-muted fw-bold js-accordion-toggle-all"
-          style={{ textDecoration: "none" }}
-          onClick={(e) => {
-            e.preventDefault();
-            // app.js: any open -> close all, else open all.
-            const any = accordionOpen || (oppRank && strengthOpen);
-            setAccordionOpen(() => !any);
-            setStrengthOpen(!any);
-          }}
-        >
-          Collapse/Expand All
-        </a>
-      </div>
+        <div className="text-end mb-2">
+          <a
+            href="#"
+            className="small text-muted fw-bold js-accordion-toggle-all"
+            style={{ textDecoration: "none" }}
+            onClick={(e) => {
+              e.preventDefault();
+              // app.js: any open -> close all, else open all.
+              const any = accordionOpen || (oppRank && strengthOpen);
+              setAccordionOpen(() => !any);
+              setStrengthOpen(!any);
+            }}
+          >
+            Collapse/Expand All
+          </a>
+        </div>
       )}
       <div className={bare ? "drawer-subgroups" : "accordion"}>
         {item(

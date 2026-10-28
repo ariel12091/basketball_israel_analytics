@@ -16,6 +16,7 @@ export default function TableKey({
   shading,
   shots = false,
   rank = false,
+  rankNote = "",
   extra,
   about,
 }: {
@@ -24,6 +25,8 @@ export default function TableKey({
   shots?: boolean;
   /** Four Factors on/off detail is on (On/Off rank bars). */
   rank?: boolean;
+  /** Who is ranked, e.g. "(Ranked Players: > 100 poss)". */
+  rankNote?: string;
   extra?: ReactNode;
   about?: Block[];
 }) {
@@ -57,9 +60,15 @@ export default function TableKey({
         <b>{t.rank}</b> <i className="legend-icon-on" aria-hidden="true" />{" "}
         {t.on} <i className="legend-icon-off" aria-hidden="true" /> {t.off} ·{" "}
         {t.rankBar}
+        {rankNote && <span className="table-key-note"> {rankNote}</span>}
       </span>,
     );
-  if (extra) parts.push(<span key="extra" className="table-key-part">{extra}</span>);
+  if (extra)
+    parts.push(
+      <span key="extra" className="table-key-part">
+        {extra}
+      </span>,
+    );
   if (about?.length)
     parts.push(
       <MoreInfo key="about" label={t.about} className="table-key-about">
@@ -71,10 +80,31 @@ export default function TableKey({
     <div className="table-key">
       {parts.map((p, i) => (
         <span key={i} className="table-key-item">
-          {i > 0 && <span className="table-key-sep" aria-hidden="true">·</span>}
+          {i > 0 && (
+            <span className="table-key-sep" aria-hidden="true">
+              ·
+            </span>
+          )}
           {p}
         </span>
       ))}
     </div>
   );
+}
+
+/** The key's parts from a view's exported blocks (the legends they replace):
+ * shot_splits -> shots, rank -> rank (+ its note), explainer/example -> about. */
+export function keyFromBlocks(blocks: Block[]) {
+  const legend = (v: string) =>
+    blocks.find(
+      (b): b is Extract<Block, { kind: "legend" }> =>
+        b.kind === "legend" && b.variant === v,
+    );
+  const rank = legend("rank");
+  return {
+    shots: !!legend("shot_splits"),
+    rank: !!rank,
+    rankNote: typeof rank?.note === "string" ? rank.note : "",
+    about: blocks.filter((b) => b.kind === "explainer" || b.kind === "example"),
+  };
 }

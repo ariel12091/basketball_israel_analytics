@@ -122,7 +122,13 @@ function TipVal({ v }: { v: number }) {
     </b>
   );
 }
-export function TipBody({ row, kind }: { row: Row; kind: "all" | "luck" | "sample" }) {
+export function TipBody({
+  row,
+  kind,
+}: {
+  row: Row;
+  kind: "all" | "luck" | "sample";
+}) {
   const net = Number(row["Net RTG Diff"]);
   const o = num(row.luck_3pt_ours),
     t = num(row.luck_3pt_theirs),
@@ -387,7 +393,7 @@ const plain =
     return {
       node: text,
       text,
-      bg: heatCol ? heat(row[heatCol[0]], heatCol[1]) : undefined,
+      bg: heatCol ? heat(row[heatCol[0]], heatCol[1], "muted") : undefined,
     };
   };
 const diff2 =
@@ -397,7 +403,7 @@ const diff2 =
     return {
       node: text,
       text,
-      bg: heatCol ? heat(row[heatCol[0]], heatCol[1]) : undefined,
+      bg: heatCol ? heat(row[heatCol[0]], heatCol[1], "muted") : undefined,
     };
   };
 function nameCols(ctx: Ctx): Column[] {
@@ -442,7 +448,7 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
             minFga: 50,
             avg2: avgs[dn].fg2,
             avg3: avgs[dn].fg3,
-            palette: "onoff",
+            palette: "muted",
           },
         ),
     };
@@ -461,7 +467,7 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
             <NetCell row={row} onTip={ctx.onTip} />
           ),
         text: signed(row["Net RTG Diff"], 2),
-        bg: heat(row.pr_net, false),
+        bg: heat(row.pr_net, false, "muted"),
       }),
     },
     {
@@ -586,7 +592,7 @@ function ffCell(
         />
       ),
       text: value,
-      bg: heat(row[FF_HEAT[id][0]], FF_HEAT[id][1]),
+      bg: heat(row[FF_HEAT[id][0]], FF_HEAT[id][1], "muted"),
       className: unit ? "onoff-factor-cell" : "onoff-rtg-cell",
     };
   };
@@ -640,7 +646,7 @@ export function ffColumns(ctx: Ctx): Column[] {
         return {
           node: <div style={{ fontWeight: 800, fontSize: "1.05em" }}>{v}</div>,
           text: v,
-          bg: heat(row.pr_net_diff, false),
+          bg: heat(row.pr_net_diff, false, "muted"),
         };
       },
     },
@@ -699,7 +705,7 @@ export function spColumns(ctx: Ctx): Column[] {
               />
             ),
             text: head,
-            bg: heat(row[`pr_sp_${s}_${m}`], reverse),
+            bg: heat(row[`pr_sp_${s}_${m}`], reverse, "muted"),
           };
         },
       };

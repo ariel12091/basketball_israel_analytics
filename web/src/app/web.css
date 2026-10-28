@@ -254,3 +254,8 @@ body.ibpl-collapsed-nav .filter-drawer-done { display: block; position: fixed; l
 .view-about-title { margin-bottom: 4px; font-weight: 700; color: var(--ibpl-text); }
 .view-about ul { padding-left: 18px; margin-bottom: 8px; }
 .view-about-example img { max-width: 100%; margin: 4px 0; border-radius: 4px; }
+/* Drawer layout: the Filters button is the only way to the filters at every
+   width (mobile.css hides the sidebar toggle on phones). */
+body .chips-row .chips-drawer-toggle { display: inline-flex; }
+.ibpl-drawer-layout .chips-row-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.ibpl-drawer-layout .chips-row-controls .shiny-download-link { padding: 4px 10px; font-size: .8rem; line-height: 1.4; }

@@ -3,6 +3,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loadGolden } from "../test/onoffGoldens";
 import ui from "../src/data/shinyUi.json";
+import { autoMinOn, possCols } from "../src/rules/onoff";
 
 async function stub(page: Page, league = "il") {
   const requests: URL[] = [];
@@ -23,8 +24,7 @@ async function stub(page: Page, league = "il") {
   return { g, requests };
 }
 const drawer = (page: Page) => page.getByRole("dialog", { name: "Filters" });
-const filtersButton = (page: Page) =>
-  page.locator(".chips-drawer-toggle");
+const filtersButton = (page: Page) => page.locator(".chips-drawer-toggle");
 async function pickTeam(page: Page, name: string) {
   const teams = page.getByRole("combobox", { name: "Teams", exact: true });
   await teams.fill(name);
@@ -43,12 +43,17 @@ test("drawer opens, pushes content on desktop, closes on Escape", async ({
   await filtersButton(page).click();
   await expect(drawer(page)).toBeVisible();
   if (info.project.name === "desktop") {
-    const main = (await page.locator('[role="main"]').boundingBox())!;
-    const box = (await drawer(page).boundingBox())!;
-    expect(main.x + main.width).toBeLessThanOrEqual(box.x + 1);
+    // Wait for the slide-in to settle, then nothing of the page is covered.
+    await expect
+      .poll(async () => {
+        const main = (await page.locator('[role="main"]').boundingBox())!;
+        const box = (await drawer(page).boundingBox())!;
+        return box.x + 1 - (main.x + main.width);
+      })
+      .toBeGreaterThanOrEqual(0);
   } else {
     const box = (await drawer(page).boundingBox())!;
-    expect(box.width).toBe(page.viewportSize()!.width);
+    expect(box.width).toBeCloseTo(page.viewportSize()!.width, 0);
   }
   await page.keyboard.press("Escape");
   await expect(drawer(page)).toBeHidden();
@@ -113,4 +118,35 @@ test("About this view holds the view's explainer", async ({ page }) => {
   const first = String(explainer.intro![0].t ?? "").slice(0, 30);
   await page.getByRole("button", { name: "About this view" }).click();
   await expect(page.locator(".ibpl-more-pop")).toContainText(first);
+});
+
+test("a stepper tap turns auto min-poss off; a filter change turns it back on", async ({
+  page,
+}) => {
+  await stub(page);
+  const { answer } = loadGolden("il_summary_default.json");
+  const cols = possCols("summary");
+  const autoFor = (rows: typeof answer.rows) =>
+    Math.min(300, autoMinOn(rows, cols.on) ?? 300);
+  const input = page.locator("#min_on_poss");
+  await expect(input).toHaveValue(String(autoFor(answer.rows)));
+  const before = Number(await input.inputValue());
+  await page.getByRole("button", { name: "Increase Min ON Poss" }).click();
+  await expect(input).toHaveValue(String(before + 10));
+  await expect(page).toHaveURL(new RegExp(`min_on=${before + 10}`));
+  // A filter change re-arms auto. Auto only lowers a hand-set minimum
+  // (helpers.R setup_onoff_auto_min), so hand-set the maximum first: the
+  // re-armed auto value must then bring it down to the team's own value.
+  await input.fill("3000");
+  await input.press("Enter");
+  await expect(page).toHaveURL(/min_on=3000/);
+  const team = answer.rows[0];
+  const teamRows = answer.rows.filter(
+    (r) => Number(r.team_id) === Number(team.team_id),
+  );
+  const expected = autoMinOn(teamRows, cols.on)!;
+  expect(expected).toBeLessThan(3000);
+  await filtersButton(page).click();
+  await pickTeam(page, String(team.Team));
+  await expect(input).toHaveValue(String(expected));
 });

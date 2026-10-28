@@ -5,37 +5,42 @@ import { readFileSync } from "node:fs";
 import { loadGolden, presets } from "../test/onoffGoldens";
 import { autoMinAll, autoMinOn, possCols } from "../src/rules/onoff";
 
-async function fixedBar(page: Page, id: string, target: number) {
-  const slider = page.locator(`#${id}`);
-  const current = Number(await slider.getAttribute("aria-valuenow"));
-  const key = current < target ? "ArrowRight" : "ArrowLeft";
-  for (let i = 0; i < Math.abs(current - target) / 10; i++) {
-    await slider.press(key);
-    await expect(slider).toHaveAttribute(
-      "aria-valuenow",
-      String(current + (key === "ArrowRight" ? 10 : -10) * (i + 1)),
-    );
-    const param = id.includes("min_on") ? "min_on" : "min_all";
-    await expect
-      .poll(() =>
-        Number(
-          new URL(page.url()).searchParams.get(param) ??
-            (param === "min_on" ? 300 : 100),
-        ),
-      )
-      .toBe(current + (key === "ArrowRight" ? 10 : -10) * (i + 1));
-  }
-  await expect(slider).toHaveAttribute("aria-valuenow", String(target));
+/** Sets a possession stepper to `target` by typing it, as a user would. */
+async function fixedStep(page: Page, id: string, target: number) {
+  const input = page.locator(`#${id}`);
+  await input.fill(String(target));
+  await input.press("Enter");
+  await expect(input).toHaveValue(String(target));
+  const param = id.includes("min_on") ? "min_on" : "min_all";
+  await expect
+    .poll(() =>
+      Number(
+        new URL(page.url()).searchParams.get(param) ??
+          (param === "min_on" ? 300 : 100),
+      ),
+    )
+    .toBe(target);
 }
 
 for (const file of presets)
   test(`On/Off ${file}`, async ({ page }, info) => {
     if (process.env.ONOFF_DEBUG) {
-      page.on("console", message => console.log(message.text()));
-      await page.addInitScript(() => document.addEventListener("keydown", event => {
-        const el = event.target as HTMLElement;
-        console.log("KEY", event.key, el.id, el.getAttribute("aria-valuenow"));
-      }, true));
+      page.on("console", (message) => console.log(message.text()));
+      await page.addInitScript(() =>
+        document.addEventListener(
+          "keydown",
+          (event) => {
+            const el = event.target as HTMLElement;
+            console.log(
+              "KEY",
+              event.key,
+              el.id,
+              el.getAttribute("aria-valuenow"),
+            );
+          },
+          true,
+        ),
+      );
     }
     const { g, answer, ps } = loadGolden(file);
     await page.route("**/api/v1/**", (route) => {
@@ -72,17 +77,15 @@ for (const file of presets)
       100,
       autoMinAll(allBase, cols.on, cols.on, cols.off) ?? 100,
     );
-    await expect(page.locator(`#${prefix}min_on_poss`)).toHaveAttribute(
-      "aria-valuenow",
+    await expect(page.locator(`#${prefix}min_on_poss`)).toHaveValue(
       String(initialOn),
     );
-    await expect(page.locator(`#${prefix}min_all_poss`)).toHaveAttribute(
-      "aria-valuenow",
+    await expect(page.locator(`#${prefix}min_all_poss`)).toHaveValue(
       String(initialAll),
     );
-    // testServer fixes these bars; the browser initially applies auto-min.
-    await fixedBar(page, `${prefix}min_on_poss`, 300);
-    await fixedBar(page, `${prefix}min_all_poss`, 100);
+    // testServer fixes these minimums; the browser initially applies auto-min.
+    await fixedStep(page, `${prefix}min_on_poss`, 300);
+    await fixedStep(page, `${prefix}min_all_poss`, 100);
     const expected = [...g.expected.data].sort((a, b) => {
       const metric =
         g.view === "summary"
@@ -182,10 +185,6 @@ for (const file of presets)
         await expect(page.locator(".onoff-tip")).toContainText("3PT luck");
         await page.mouse.move(0, 0);
         if (g.league === "il") {
-          if (info.project.name === "phone")
-            await page
-              .getByRole("button", { name: "Show Filters", exact: true })
-              .click();
           const download = page.waitForEvent("download");
           await page
             .getByRole("button", { name: "Download CSV", exact: true })
@@ -200,7 +199,7 @@ for (const file of presets)
     }
   });
 
-for (const league of ["il", "euroleague"] as const)
+for (const league of ["il", "euroleague", "eurocup"] as const)
   test(`On/Off ${league} interactions`, async ({ page }, info) => {
     const pick = (view: string) => loadGolden(`${league}_${view}_default.json`);
     await page.route("**/api/v1/**", (route) => {
@@ -217,28 +216,27 @@ for (const league of ["il", "euroleague"] as const)
     await page.goto(`/${league}/onoff?${new URLSearchParams(g.query)}`);
     const table = page.locator(".ibpl-dt-scroll");
     await expect(table.locator("tbody tr").first()).toBeVisible();
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
+    await page.locator(".chips-drawer-toggle").click();
     const teams = page.getByRole("combobox", {
       name: "Teams",
       exact: true,
     });
-    await teams.fill("Maccabi");
+    const teamName = String(g.expected.data[0].Team);
+    await teams.fill(teamName);
     await teams.press("ArrowDown");
     await teams.press("Enter");
     await teams.press("Escape");
     await expect(page).toHaveURL(/teams=/);
     await expect(table.locator('td[data-column="Team"]').first()).toContainText(
-      /Maccabi/i,
+      teamName,
     );
     const resetAnswer = page.waitForResponse((response) => {
       const url = new URL(response.url());
       return url.pathname.endsWith("/onoff") && !url.searchParams.has("teams");
     });
     await page
-      .getByRole("button", { name: "Reset to defaults", exact: true })
+      .getByRole("dialog", { name: "Filters" })
+      .getByRole("button", { name: "Clear all filters", exact: true })
       .click();
     await (await resetAnswer).finished();
     await page.evaluate(
@@ -252,18 +250,18 @@ for (const league of ["il", "euroleague"] as const)
     ).toHaveAttribute("aria-busy", "false");
     await expect(page).not.toHaveURL(/teams=/);
     const prefix = league === "il" ? "" : "euro_";
-    const slider = page.locator(`#${prefix}min_on_poss`);
-    const before = Number(await slider.getAttribute("aria-valuenow"));
-    await slider.press("ArrowLeft");
-    await expect(slider).toHaveAttribute("aria-valuenow", String(before - 10));
-    const track = page.locator(".irs--shiny").filter({ has: slider });
-    const bounds = (await track.boundingBox())!;
-    await page.mouse.move(bounds.x + bounds.width / 2, bounds.y + 12);
-    await page.mouse.down();
-    await page.mouse.move(bounds.x + bounds.width - 12, bounds.y + 12);
-    await track.dispatchEvent("pointercancel", { pointerId: 1 });
-    await page.mouse.up();
-    await expect(slider).toHaveAttribute("aria-valuenow", String(before - 10));
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Filters" })).toBeHidden();
+    const stepper = page.locator(`#${prefix}min_on_poss`);
+    const before = Number(await stepper.inputValue());
+    await page.getByRole("button", { name: "Decrease Min ON Poss" }).click();
+    await expect(stepper).toHaveValue(String(before - 10));
+    // A typed value off the step rounds to it.
+    await stepper.fill(String(before - 17));
+    await stepper.press("Enter");
+    await expect(stepper).toHaveValue(
+      String(Math.round((before - 17) / 10) * 10),
+    );
     const player = table.locator('td[data-column="Player"]').first();
     await expect(async () => {
       await player.scrollIntoViewIfNeeded();

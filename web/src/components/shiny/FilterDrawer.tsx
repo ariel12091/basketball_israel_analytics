@@ -47,6 +47,11 @@ export default function FilterDrawer({
         // Pushed layout: the table beside the drawer must stay usable, so an
         // outside click does not close it. Escape and the x still do.
         onInteractOutside={(e) => e.preventDefault()}
+        // Escape inside a dropdown closes the dropdown, not the drawer.
+        onEscapeKeyDown={(e) => {
+          if ((e.target as HTMLElement | null)?.closest(".selectize-control"))
+            e.preventDefault();
+        }}
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="filter-drawer-head">
@@ -95,7 +100,9 @@ export default function FilterDrawer({
         </Accordion.Root>
         {footer && <div className="filter-drawer-footer">{footer}</div>}
         {resultLabel && (
-          <Dialog.Close className="filter-drawer-done">{resultLabel}</Dialog.Close>
+          <Dialog.Close className="filter-drawer-done">
+            {resultLabel}
+          </Dialog.Close>
         )}
       </Dialog.Content>
     </Dialog.Root>
