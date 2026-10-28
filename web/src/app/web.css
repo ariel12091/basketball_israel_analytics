@@ -192,3 +192,6 @@ body.ibpl-collapsed-nav .navbar-showing { grid-column: 1 / -1; }
 @media (min-width: 1200px) {
   .ibpl-ask-panel { left: auto; top: 0; width: 420px; max-height: none; border-top: 0; border-left: 1px solid var(--ibpl-border); box-shadow: -6px 0 24px rgba(0, 0, 0, 0.5); }
 }
+/* Stats-tab muted palette (palette.ts): shot frequency bar, 2PT grey, 3PT amber. */
+.shot-bar-muted .shot-bar-2pt { background: #4a453d; color: #e6e2da; }
+.shot-bar-muted .shot-bar-3pt { background: rgba(232, 164, 53, .6); color: #14110d; }

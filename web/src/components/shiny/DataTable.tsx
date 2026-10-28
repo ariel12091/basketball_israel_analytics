@@ -10,6 +10,7 @@
 //   70vh), the "i" header explanations on touch, the phone name label above
 //   horizontally scrolled rows (mobile.js), csv_export_button()'s CSV.
 // Shiny's class names are kept so app.css and DataTables' CSS style it.
+import { MUTED_HEAT, mutedAccuracy } from "./palette";
 import {
   Fragment,
   useContext,
@@ -71,11 +72,25 @@ export type Order = { id: string; desc: boolean }[];
 const TIPS = ui.columnTooltips as Record<string, string>;
 const HEAT = ui.heat;
 
-/** DT::styleInterval(CUTS, cols) on a pr_* value: '' when not a number. */
-export function heat(pr: unknown, reverse: boolean): string | undefined {
+export type HeatPalette = "shiny" | "muted";
+const MUTED_REV = [...MUTED_HEAT].reverse();
+/** DT::styleInterval(CUTS, cols) on a pr_* value: '' when not a number.
+ * "muted" keeps the cut points and swaps in the stats-tab palette. */
+export function heat(
+  pr: unknown,
+  reverse: boolean,
+  palette: HeatPalette = "shiny",
+): string | undefined {
   const v = typeof pr === "number" ? pr : parseFloat(String(pr));
   if (pr == null || Number.isNaN(v)) return undefined;
-  const cols = reverse ? HEAT.rev : HEAT.grad;
+  const cols =
+    palette === "muted"
+      ? reverse
+        ? MUTED_REV
+        : MUTED_HEAT
+      : reverse
+        ? HEAT.rev
+        : HEAT.grad;
   const i = HEAT.cuts.findIndex((c) => v <= c);
   return cols[i < 0 ? cols.length - 1 : i];
 }
@@ -90,7 +105,7 @@ export function shotCell(
     minFga: number;
     avg2: number;
     avg3: number;
-    palette: "gamelogs" | "onoff";
+    palette: "gamelogs" | "onoff" | "muted";
   },
 ): Cell {
   const { fg2m, fg2a, fg3m, fg3a } = m;
@@ -112,6 +127,7 @@ export function shotCell(
   const acc = (pct: number, a: number) => {
     let d = (sign * (pct - a)) / a;
     d = Math.max(-1, Math.min(1, d * 3));
+    if (opts.palette === "muted") return mutedAccuracy(d);
     if (opts.palette === "gamelogs") {
       const [r, g] =
         d < 0
@@ -156,7 +172,7 @@ export function shotCell(
           </span>
         </div>
         <div
-          className="shot-bar-container"
+          className={`shot-bar-container${opts.palette === "muted" ? " shot-bar-muted" : ""}`}
           style={muted ? { opacity: 0.3 } : undefined}
         >
           <div
