@@ -25,7 +25,6 @@ import {
   contextChips,
   ChipsRow,
   Chip,
-  type DrawerSection,
 } from "./shiny/TabKit";
 import PossStepper from "./shiny/PossStepper";
 import type { Patch } from "@/lib/tabQuery";
@@ -470,20 +469,23 @@ function CompareTab({
     teamFocus: "cmp_a_teams",
     datesFocus: "cmp_dates",
   });
-  // The settings both sides share go in the Filters panel; the A and B sides
-  // stay on the page (user 2026-10-28: keep the A/B builder visible).
+  // The settings both sides share sit in a bar under the view tabs, the quick
+  // preset first and largest: it is this page's most used control (user
+  // 2026-10-28). No Filters panel: dates and game numbers are too few for one.
   const shared = (
     <>
       {!playerMode ? (
         <>
-          <CompareSelect
-            id="cmp_preset"
-            label="Quick preset"
-            value={q.preset}
-            choices={data.presetChoices}
-            placeholder="-- Custom --"
-            onChange={(v) => set(applyPreset(q, v))}
-          />
+          <div className="cmp-preset">
+            <CompareSelect
+              id="cmp_preset"
+              label="Quick preset"
+              value={q.preset}
+              choices={data.presetChoices}
+              placeholder="-- Custom --"
+              onChange={(v) => set(applyPreset(q, v))}
+            />
+          </div>
           {q.preset === "date_split" ? (
             <label>
               Split date
@@ -641,6 +643,9 @@ function CompareTab({
         view={q.view}
         onView={mode}
       />
+      <div className="cmp-settings" role="group" aria-label="Compare settings">
+        {shared}
+      </div>
       <div className="table-top">
         <ViewIntro
           blocks={ui.compare.blocks as Block[]}
@@ -954,13 +959,6 @@ function CompareTab({
       </div>
     </>
   );
-  const drawerSections: DrawerSection[] = [
-    {
-      id: "shared",
-      title: playerMode ? "Players and dates" : "Preset and dates",
-      body: shared,
-    },
-  ];
   return (
     <TabFrame
       league="il"
@@ -978,16 +976,9 @@ function CompareTab({
       onView={mode}
       updated={refs.data?.meta.version ?? null}
       filtersId="cmp-filters"
-      layout="drawer"
+      mainOnly
       sidebarTop={null}
       sidebar={null}
-      drawer={{
-        sections: drawerSections,
-        activeCount: playerMode ? 0 : chips.length,
-        resettable: !!q.stats || chips.length > 0,
-        onClearAll: reset,
-        resultLabel: "Show comparison",
-      }}
       main={main}
     />
   );

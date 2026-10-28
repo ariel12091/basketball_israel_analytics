@@ -207,7 +207,8 @@ export function teamChoices(
 
 // ---- Frame ---------------------------------------------------------------
 type Frame = {
-  layout: "sidebar" | "drawer";
+  /** "none": a page with no filter column at all (mainOnly). */
+  layout: "sidebar" | "drawer" | "none";
   drawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
   /** Drawer layout: wraps the Filters button with its panel. */
@@ -378,7 +379,7 @@ export function TabFrame({
     [body, drawerLayout],
   );
   const frame: Frame = {
-    layout: drawerLayout ? "drawer" : "sidebar",
+    layout: drawerLayout ? "drawer" : mainOnly ? "none" : "sidebar",
     drawerOpen,
     setDrawerOpen,
     filters: drawerLayout
@@ -1290,7 +1291,7 @@ export function ChipsRow({
   const drawer = layout === "drawer";
   return (
     <div className="chips-row">
-      {!drawer && (
+      {layout === "sidebar" && (
         <button
           type="button"
           className="chips-filters-toggle js-filters-toggle"
