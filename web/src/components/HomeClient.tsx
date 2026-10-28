@@ -167,6 +167,10 @@ function HomeContent({ league, initialSeason, initialTeam, initial }: Props) {
         <div
           className={`ibpl-home home-compact${more && !euro && team ? " home-more-open" : ""}`}
         >
+          <div className="home-title">
+            <h2>{t.title}</h2>
+            <p>{euro ? t.euroSubtitle : t.ilSubtitle}</p>
+          </div>
           <HomeAsk league={league} />
           {!euro && (
             <div className="home-team-row">

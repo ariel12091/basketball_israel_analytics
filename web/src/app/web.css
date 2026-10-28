@@ -328,3 +328,7 @@ body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .filter-drawer-top { position: sticky; top: 0; z-index: 2; margin: 0 -16px 4px; padding: 16px 16px 2px; background: var(--ibpl-surface); border-bottom: 1px solid var(--ibpl-border); }
 .filter-drawer-top .filter-drawer-clear { margin-bottom: 12px; }
 body.ibpl-collapsed-nav .filter-drawer-done { z-index: 3; }
+/* Home: the site title above the Ask box (as before the 2026-10-28 overhaul). */
+.home-title { margin-bottom: 14px; text-align: center; }
+.home-title h2 { margin: 0 0 4px; font-weight: 700; color: var(--ibpl-text); }
+.home-title p { margin: 0; color: var(--ibpl-text-muted); font-size: .92rem; }
