@@ -1,4 +1,5 @@
 "use client";
+import type { ReactNode } from "react";
 import DataTable, {
   formatNumber,
   heat,
@@ -14,10 +15,13 @@ export default function LineupTable({
   rows,
   view,
   onLineup,
+  detail,
 }: {
   rows: Row[];
   view: LineupView;
   onLineup: (r: Row) => void;
+  /** The open lineup's game log, shown in place beneath its row. */
+  detail?: (r: Row) => ReactNode;
 }) {
   const ff = view === "four_factors";
   const cols: Column[] = [
@@ -84,11 +88,22 @@ export default function LineupTable({
             fg3m: zero(r[`${side}_fg3_made`]),
             fg3a: zero(r[`${side}_fg3_att`]),
           },
-          { defense: side === "def", minFga: 50, avg2, avg3, palette: "onoff" },
+          {
+            defense: side === "def",
+            minFga: 50,
+            avg2,
+            avg3,
+            palette: "onoff",
+            layout: true,
+          },
         ),
     });
   };
   if (ff) {
+    // How much data stands behind the row, right after the names.
+    number("minutes", "Min", 1, undefined, true);
+    number("total_poss", "Poss", 0);
+    number("net_rtg", "Net", 1, "pr_net");
     for (const side of ["off", "def"]) {
       for (const [m, l] of [
         ["ppp", "PPP"],
@@ -100,9 +115,6 @@ export default function LineupTable({
         number(`${side}_${m}`, l, 1, `pr_${side}_${m}`, m === "ppp");
       number(`${side}_poss`, "Poss", 0);
     }
-    number("minutes", "Min", 1, undefined, true);
-    number("total_poss", "Poss", 0);
-    number("net_rtg", "Net", 1, "pr_net");
   } else {
     number("minutes", "Min", 1);
     number("total_poss", "Total Poss", 0);
@@ -134,15 +146,17 @@ export default function LineupTable({
         ff
           ? [
               { label: "", span: 2 },
+              { label: "Usage", span: 3, cls: "section-left-border" },
               { label: "Offense", span: 6, cls: "section-left-border" },
               { label: "Defense", span: 6, cls: "section-left-border" },
-              { label: "Usage", span: 3, cls: "section-left-border" },
             ]
           : undefined
       }
       rowProps={(r) => ({
         className: r.is_total === 0 ? "ibpl-lineup-total" : "",
       })}
+      moreInfo
+      detail={detail}
     />
   );
 }

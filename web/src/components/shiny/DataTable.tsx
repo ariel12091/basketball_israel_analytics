@@ -91,9 +91,10 @@ export function shotCell(
     minFga: number;
     avg2: number;
     avg3: number;
-    /** "muted": On/Off's colours for the accuracy text, with the stats
-     * layout's grey/amber frequency bar and one MoreInfo for the details. */
-    palette: "gamelogs" | "onoff" | "muted";
+    palette: "gamelogs" | "onoff";
+    /** Stats-tab layout: grey/amber frequency bar and one MoreInfo for the
+     * four details, instead of four hover-only titles. */
+    layout?: boolean;
   },
 ): Cell {
   const { fg2m, fg2a, fg3m, fg3a } = m;
@@ -142,7 +143,7 @@ export function shotCell(
   const weight = muted ? 400 : 700;
   // The stats-tab palette shows the four details in one MoreInfo
   // (design 2026-10-28 § 6) instead of four hover-only titles.
-  const more = opts.palette === "muted";
+  const more = opts.layout === true;
   const tip = (t: string) => (more ? undefined : t);
   const body = (
     <>
@@ -162,7 +163,7 @@ export function shotCell(
         </span>
       </div>
       <div
-        className={`shot-bar-container${opts.palette === "muted" ? " shot-bar-muted" : ""}`}
+        className={`shot-bar-container${more ? " shot-bar-muted" : ""}`}
         style={muted ? { opacity: 0.3 } : undefined}
       >
         <div
@@ -271,6 +272,7 @@ export default function DataTable({
   onColumnMove,
   moreInfo = false,
   onRowActivate,
+  detail,
 }: {
   columns: Column[];
   rows: Row[];
@@ -301,6 +303,8 @@ export default function DataTable({
 
   /** Whole-row pointer action; provide an onActivate cell for keyboard use. */
   onRowActivate?: (row: Row) => void;
+  /** Content to show in a full-width row beneath this row (null: none). */
+  detail?: (row: Row) => ReactNode;
 }) {
   const [sorting, setSorting] = useState<SortingState>(defaultOrder);
   const [pageIndex, setPageIndex] = useState(0);
@@ -636,94 +640,108 @@ export default function DataTable({
             </thead>
             <tbody>
               {pageRows.map((row, i) => (
-                <tr
-                  key={i}
-                  {...(rowProps ? rowProps(row) : {})}
-                  onClick={
-                    onRowActivate
-                      ? (e) => {
-                          if (
-                            !(e.target instanceof Element) ||
-                            e.target.closest(
-                              'button, a, input, select, textarea, [role="button"]',
+                <Fragment key={i}>
+                  <tr
+                    {...(rowProps ? rowProps(row) : {})}
+                    onClick={
+                      onRowActivate
+                        ? (e) => {
+                            if (
+                              !(e.target instanceof Element) ||
+                              e.target.closest(
+                                'button, a, input, select, textarea, [role="button"]',
+                              )
                             )
-                          )
-                            return;
-                          onRowActivate(row);
-                        }
-                      : undefined
-                  }
-                  className={`${i % 2 ? "even" : "odd"}${names.length ? " ibpl-named-row" : ""}${rowProps?.(row).className ? ` ${rowProps(row).className}` : ""}`}
-                >
-                  {columns.map((c, j) => {
-                    const cell = cellOf(row, c);
-                    const cls = [
-                      j === anchorIndex && names.length
-                        ? "ibpl-name-anchor"
-                        : "",
-                      names.some((n) => n.id === c.id)
-                        ? "ibpl-name-source"
-                        : "",
-                      c.cls ?? "",
-                      cell.className ?? "",
-                      "dt-center",
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
-                    return (
-                      <td
-                        key={c.id}
-                        className={cls}
-                        data-column={c.id}
-                        style={
-                          cell.bg ? { backgroundColor: cell.bg } : undefined
-                        }
-                        {...(c.tdProps ? c.tdProps(row) : {})}
-                        onClick={
-                          c.onActivate
-                            ? (e) =>
-                                c.onActivate!(row, e.currentTarget, {
-                                  x: e.clientX,
-                                  y: e.clientY,
-                                })
-                            : undefined
-                        }
-                        onKeyDown={
-                          c.onActivate
-                            ? (e) => {
-                                if (e.key !== "Enter" && e.key !== " ") return;
-                                e.preventDefault();
-                                const r =
-                                  e.currentTarget.getBoundingClientRect();
-                                c.onActivate!(row, e.currentTarget, {
-                                  x: r.left,
-                                  y: r.bottom,
-                                });
-                              }
-                            : undefined
-                        }
-                      >
-                        {cell.node}
-                        {j === anchorIndex && names.length > 0 && (
-                          <span className="ibpl-row-name">
-                            {names.map((n, k) => (
-                              <Fragment key={n.id}>
-                                {k > 0 && " · "}
-                                <span
-                                  className={
-                                    k ? "ibpl-row-name-team" : undefined
-                                  }
-                                >
-                                  {cellOf(row, n).text}
-                                </span>
-                              </Fragment>
-                            ))}
-                          </span>
-                        )}
-                      </td>
-                    );
-                  })}
-                </tr>
+                              return;
+                            onRowActivate(row);
+                          }
+                        : undefined
+                    }
+                    className={`${i % 2 ? "even" : "odd"}${names.length ? " ibpl-named-row" : ""}${rowProps?.(row).className ? ` ${rowProps(row).className}` : ""}`}
+                  >
+                    {columns.map((c, j) => {
+                      const cell = cellOf(row, c);
+                      const cls = [
+                        j === anchorIndex && names.length
+                          ? "ibpl-name-anchor"
+                          : "",
+                        names.some((n) => n.id === c.id)
+                          ? "ibpl-name-source"
+                          : "",
+                        c.cls ?? "",
+                        cell.className ?? "",
+                        "dt-center",
+                      ]
+                        .filter(Boolean)
+                        .join(" ");
+                      return (
+                        <td
+                          key={c.id}
+                          className={cls}
+                          data-column={c.id}
+                          style={
+                            cell.bg ? { backgroundColor: cell.bg } : undefined
+                          }
+                          {...(c.tdProps ? c.tdProps(row) : {})}
+                          onClick={
+                            c.onActivate
+                              ? (e) =>
+                                  c.onActivate!(row, e.currentTarget, {
+                                    x: e.clientX,
+                                    y: e.clientY,
+                                  })
+                              : undefined
+                          }
+                          onKeyDown={
+                            c.onActivate
+                              ? (e) => {
+                                  if (e.key !== "Enter" && e.key !== " ")
+                                    return;
+                                  e.preventDefault();
+                                  const r =
+                                    e.currentTarget.getBoundingClientRect();
+                                  c.onActivate!(row, e.currentTarget, {
+                                    x: r.left,
+                                    y: r.bottom,
+                                  });
+                                }
+                              : undefined
+                          }
+                        >
+                          {cell.node}
+                          {j === anchorIndex && names.length > 0 && (
+                            <span className="ibpl-row-name">
+                              {names.map((n, k) => (
+                                <Fragment key={n.id}>
+                                  {k > 0 && " · "}
+                                  <span
+                                    className={
+                                      k ? "ibpl-row-name-team" : undefined
+                                    }
+                                  >
+                                    {cellOf(row, n).text}
+                                  </span>
+                                </Fragment>
+                              ))}
+                            </span>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                  {(() => {
+                    // A row's details open in place beneath it (user
+                    // 2026-10-28: no modal windows), one cell across the table.
+                    const d = detail?.(row);
+                    return d ? (
+                      <tr className="ibpl-row-detail">
+                        <td colSpan={columns.length}>
+                          <div className="ibpl-row-detail-body">{d}</div>
+                        </td>
+                      </tr>
+                    ) : null;
+                  })()}
+                </Fragment>
               ))}
             </tbody>
           </table>

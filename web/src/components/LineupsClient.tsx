@@ -14,13 +14,16 @@ import {
   queryDefaults,
 } from "@/lib/tabQuery";
 import ui from "@/data/shinyUi.json";
-import { TableHint, type Block } from "./shiny/Blocks";
+import { type Block } from "./shiny/Blocks";
+import layout from "@/data/layoutUi.json";
 import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
-import Slider from "./shiny/Slider";
+import PossStepper from "./shiny/PossStepper";
+import ViewTabs from "./shiny/ViewTabs";
+import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
 import LineupPlayers from "./shiny/LineupPlayers";
 import LineupTable from "./shiny/LineupTable";
-import LineupModal from "./shiny/LineupModal";
+import LineupGameLog from "./shiny/LineupGameLog";
 import {
   ChipsRow,
   Chip,
@@ -38,8 +41,7 @@ import {
   useTabData,
   useTabQuery,
   useVersion,
-  ViewContent,
-  ViewRadios,
+  type DrawerSection,
 } from "./shiny/TabKit";
 
 type Payload = {
@@ -57,6 +59,9 @@ type Payload = {
     maxPoss: number;
   };
 };
+/** The same lineup row (team and lineup hash). */
+const same = (x: Row, y: Row) =>
+  x.team_id === y.team_id && x.sub_lineup_hash === y.sub_lineup_hash;
 const EMPTY: Row[] = [];
 const LABELS = { summary: "Summary", four_factors: "Four Factors" };
 export default function LineupsClient({
@@ -236,6 +241,170 @@ export default function LineupsClient({
         onClear={() => set({ clutch: null })}
       />,
     );
+  const viewKey = keyFromBlocks(frag.views[view] as Block[]);
+  // The Israeli tab always shows its date chip (Shiny); it is not a filter
+  // until the dates move off the season's bounds.
+  const activeCount =
+    chips.length - (!euro && !query.start && !query.end ? 1 : 0);
+  const drawerSections: DrawerSection[] = [
+    {
+      id: "lineup",
+      title: "Lineup",
+      body: (
+        <>
+          <div
+            className="form-group shiny-input-radiogroup shiny-input-container shiny-input-container-inline"
+            role="radiogroup"
+            aria-label="Group size"
+          >
+            <label className="control-label">
+              {tt("Group size", "group_size")}
+            </label>
+            <div className="shiny-options-group">
+              {["2", "3", "4", "5"].map((n) => (
+                <label key={n} className="radio-inline">
+                  <input
+                    type="radio"
+                    name={`${p}_num`}
+                    value={n}
+                    checked={query.size === n}
+                    onChange={() => set({ size: n })}
+                  />
+                  <span>{n}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <Selectize
+            id={`${p}_team`}
+            label="Team"
+            choices={teams}
+            value={query.team ? [query.team] : []}
+            onChange={(v) => set({ team: v[0] ?? null, ...clearPlayers })}
+            emptyLabel="- All teams -"
+            placeholder="All teams"
+          />
+          {rosterData.error ? (
+            <div role="alert">
+              Player roster unavailable.{" "}
+              <button type="button" onClick={rosterData.retry}>
+                Retry
+              </button>
+            </div>
+          ) : (
+            <LineupPlayers
+              key={`${league}-${query.season}-${query.team}`}
+              roster={roster}
+              selection={selection}
+              onChange={setPlayers}
+            />
+          )}
+        </>
+      ),
+    },
+    {
+      id: "starters",
+      title: "Lineup starters",
+      body: <StarterRows p={p} query={query} set={set} />,
+    },
+    {
+      id: "dates",
+      title: "Dates and clutch",
+      body: (
+        <>
+          <DateRangeInput
+            id={`${p}_dates`}
+            label="Date range"
+            start={query.start || bounds.start}
+            end={query.end || bounds.end}
+            min={bounds.start}
+            max={bounds.end}
+            onChange={(start, end) => set({ start, end })}
+          />
+          <div className="checkbox">
+            <label>
+              <input
+                type="checkbox"
+                aria-label="Clutch"
+                checked={query.clutch === "true"}
+                onChange={(e) => set({ clutch: String(e.target.checked) })}
+              />
+              {tt("Clutch", "clutch")}
+            </label>
+          </div>
+          {query.clutch === "true" && (
+            <>
+              <PossStepper
+                id={`${p}_clutch_margin`}
+                label="Max point margin"
+                name="Max point margin"
+                min={0}
+                max={10}
+                step={1}
+                value={Number(query.clutch_margin)}
+                onChange={(v) => set({ clutch_margin: String(v) })}
+              />
+              <Selectize
+                id={`${p}_clutch_status`}
+                label="Score status"
+                choices={[
+                  { value: "all", label: "All" },
+                  { value: "leading", label: "Leading" },
+                  { value: "trailing", label: "Trailing" },
+                  { value: "tied", label: "Tied" },
+                ]}
+                value={[query.clutch_status]}
+                onChange={(v) => set({ clutch_status: v[0] ?? "all" })}
+              />
+              <PossStepper
+                id={`${p}_clutch_minutes`}
+                label="Max minutes remaining"
+                name="Max minutes remaining"
+                min={1}
+                max={5}
+                step={1}
+                value={Number(query.clutch_minutes)}
+                onChange={(v) => set({ clutch_minutes: String(v) })}
+              />
+              <div className="checkbox">
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={query.ot_margin === "true"}
+                    onChange={(e) =>
+                      set({ ot_margin: String(e.target.checked) })
+                    }
+                  />
+                  Exclude OT if margin exceeded
+                </label>
+              </div>
+              <span className="help-block">
+                By default, overtime always qualifies. Check above to apply
+                margin filter to OT.
+              </span>
+            </>
+          )}
+        </>
+      ),
+    },
+    {
+      id: "game",
+      title: "Game filters",
+      body: (
+        <GameFiltersAccordion
+          p={p}
+          league={league}
+          query={query}
+          set={set}
+          teams={teams}
+          rounds={data?.meta.rounds ?? []}
+          phases={data?.meta.phases ?? []}
+          oppRank
+          bare
+        />
+      ),
+    },
+  ];
   return (
     <TabFrame
       league={league}
@@ -263,169 +432,29 @@ export default function LineupsClient({
       onView={changeView}
       updated={updated}
       filtersId={`${p}-filters`}
-      sidebarTop={
-        <ViewRadios
-          name={`${p}_view_mode`}
-          label="View:"
-          views={Object.values(LABELS)}
-          view={LABELS[view]}
-          onView={changeView}
-        />
-      }
-      sidebar={
-        <>
-          <button
-            type="button"
-            className="btn btn-default action-button"
-            onClick={reset}
-          >
-            Reset Lineup Filters
-          </button>
-          <hr />
+      layout="drawer"
+      sidebar={null}
+      drawer={{
+        sections: drawerSections,
+        activeCount: activeCount,
+        // Shiny's always-visible Reset also restored a hand-set minimum.
+        resettable: filters.length > 0 || !auto,
+        onClearAll: reset,
+        resultLabel: `Show ${rows.filter((r) => r.is_total !== 0).length} lineups`,
+        footer: (
           <span className="help-block">
             The possession minimum sits above the table. Higher minimums improve
             stability but remove smaller-sample lineups.
           </span>
-          <div
-            className="form-group shiny-input-radiogroup shiny-input-container shiny-input-container-inline"
-            role="radiogroup"
-            aria-label="Group size"
-          >
-            <label className="control-label">
-              {tt("Group size", "group_size")}
-            </label>
-            <div className="shiny-options-group">
-              {["2", "3", "4", "5"].map((n) => (
-                <label key={n} className="radio-inline">
-                  <input
-                    type="radio"
-                    name={`${p}_num`}
-                    value={n}
-                    checked={query.size === n}
-                    onChange={() => set({ size: n })}
-                  />
-                  <span>{n}</span>
-                </label>
-              ))}
-            </div>
-          </div>
-          <hr />
-          <Selectize
-            id={`${p}_team`}
-            label="Team"
-            choices={teams}
-            value={query.team ? [query.team] : []}
-            onChange={(v) => set({ team: v[0] ?? null, ...clearPlayers })}
-            emptyLabel="- All teams -"
-            placeholder="All teams"
-          />
-          {rosterData.error ? (
-            <div role="alert">
-              Player roster unavailable.{" "}
-              <button type="button" onClick={rosterData.retry}>
-                Retry
-              </button>
-            </div>
-          ) : (
-            <LineupPlayers
-              key={`${league}-${query.season}-${query.team}`}
-              roster={roster}
-              selection={selection}
-              onChange={setPlayers}
-            />
-          )}
-          <StarterRows p={p} query={query} set={set} />
-          <hr />
-          <DateRangeInput
-            id={`${p}_dates`}
-            label="Date range"
-            start={query.start || bounds.start}
-            end={query.end || bounds.end}
-            min={bounds.start}
-            max={bounds.end}
-            onChange={(start, end) => set({ start, end })}
-          />
-          <div className="checkbox">
-            <label>
-              <input
-                type="checkbox"
-                aria-label="Clutch"
-                checked={query.clutch === "true"}
-                onChange={(e) => set({ clutch: String(e.target.checked) })}
-              />
-              {tt("Clutch", "clutch")}
-            </label>
-          </div>
-          {query.clutch === "true" && (
-            <>
-              <Slider
-                id={`${p}_clutch_margin`}
-                label="Max point margin"
-                min={0}
-                max={10}
-                step={1}
-                value={Number(query.clutch_margin)}
-                onChange={(v) => set({ clutch_margin: String(v) })}
-              />
-              <Selectize
-                id={`${p}_clutch_status`}
-                label="Score status"
-                choices={[
-                  { value: "all", label: "All" },
-                  { value: "leading", label: "Leading" },
-                  { value: "trailing", label: "Trailing" },
-                  { value: "tied", label: "Tied" },
-                ]}
-                value={[query.clutch_status]}
-                onChange={(v) => set({ clutch_status: v[0] ?? "all" })}
-              />
-              <Slider
-                id={`${p}_clutch_minutes`}
-                label="Max minutes remaining"
-                min={1}
-                max={5}
-                step={1}
-                value={Number(query.clutch_minutes)}
-                onChange={(v) => set({ clutch_minutes: String(v) })}
-              />
-              <div className="checkbox">
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={query.ot_margin === "true"}
-                    onChange={(e) =>
-                      set({ ot_margin: String(e.target.checked) })
-                    }
-                  />
-                  Exclude OT if margin exceeded
-                </label>
-              </div>
-              <span className="help-block">
-                By default, overtime always qualifies. Check above to apply
-                margin filter to OT.
-              </span>
-            </>
-          )}
-          <hr />
-          <GameFiltersAccordion
-            p={p}
-            league={league}
-            query={query}
-            set={set}
-            teams={teams}
-            rounds={data?.meta.rounds ?? []}
-            phases={data?.meta.phases ?? []}
-            oppRank
-          />
-        </>
-      }
+        ),
+      }}
       main={
         <>
-          <ViewContent blocks={frag.views[view] as Block[]} />
           <ChipsRow
             p={p}
             seasonChip={seasonChipLabel(league, query.season)}
             chips={chips}
+            activeCount={activeCount}
             active={chips.length > 0 || filters.length > 0}
             onClearAll={reset}
             extra={
@@ -449,9 +478,10 @@ export default function LineupsClient({
               </>
             }
             controls={
-              <Slider
+              <PossStepper
                 id={`${p}_minposs`}
                 label={tt("Min Poss", "min_poss_lineup")}
+                name="Min Poss"
                 min={0}
                 max={euro ? (data?.meta.maxPoss ?? 10) : 2000}
                 step={10}
@@ -463,7 +493,22 @@ export default function LineupsClient({
               />
             }
           />
-          <TableHint hint={frag.hint} />
+          <ViewTabs
+            views={Object.values(LABELS)}
+            view={LABELS[view]}
+            onView={changeView}
+          />
+          <div className="table-top">
+            <ViewIntro
+              blocks={frag.views[view] as Block[]}
+              summary={layout.intro.lineups[view]}
+            />
+            <TableLegend
+              league={league}
+              shots={viewKey.shots}
+              rank={viewKey.rank}
+            />
+          </div>
           <OutputArea
             id={euro ? "euro_ld_dt" : "ld_table"}
             loading={loading}
@@ -481,18 +526,22 @@ export default function LineupsClient({
               ])}
               rows={rows}
               view={view}
-              onLineup={setClicked}
+              // A lineup's game log opens in place beneath its row; a second
+              // click on the same lineup folds it away.
+              onLineup={(r) => setClicked((c) => (c && same(c, r) ? null : r))}
+              detail={(r) =>
+                clicked && same(clicked, r) ? (
+                  <LineupGameLog
+                    league={league}
+                    season={query.season}
+                    row={clicked}
+                    view={view}
+                    onClose={() => setClicked(null)}
+                  />
+                ) : null
+              }
             />
           </OutputArea>
-          {clicked && (
-            <LineupModal
-              league={league}
-              season={query.season}
-              row={clicked}
-              view={view}
-              onClose={() => setClicked(null)}
-            />
-          )}
         </>
       }
     />
