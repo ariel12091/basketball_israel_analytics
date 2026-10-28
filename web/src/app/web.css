@@ -278,7 +278,7 @@ th.sub-head:has(.th-sort-target) { position: relative; }
 /* Table top row: the hint on the left, a compact visual legend on the right. */
 .table-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 16px; margin: 4px 0 6px; }
 .table-top .table-hint { flex: 1 1 280px; margin: 0; }
-.table-legend { display: grid; grid-auto-flow: row; justify-items: end; gap: 5px; margin-left: auto; font-size: .66rem; line-height: 1.15; color: var(--ibpl-text-dim); }
+.table-legend { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; gap: 6px 14px; margin-left: auto; font-size: .66rem; line-height: 1.15; color: var(--ibpl-text-dim); }
 .tl-tags { display: flex; gap: 6px; }
 .tl-item { display: inline-flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .tl-scale { display: inline-flex; border-radius: 2px; overflow: hidden; }
