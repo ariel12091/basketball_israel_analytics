@@ -6,6 +6,8 @@ import ui from "@/data/shinyUi.json";
 import text from "@/data/layoutUi.json";
 import { Runs, type Block } from "./Blocks";
 import MoreInfo from "./MoreInfo";
+import { TagWhy } from "./OnOffTables";
+import type { League } from "@/rules/gameLogs";
 import { useFrame } from "./TabKit";
 
 const SWATCHES = [0, 5, 10, 15, 19].map((i) => ui.heat.grad[i]);
@@ -15,10 +17,12 @@ const SWATCHES = [0, 5, 10, 15, 19].map((i) => ui.heat.grad[i]);
  * the view has them. Captions are one or two words; tags explain themselves
  * in one sentence on hover or tap. */
 export default function TableLegend({
+  league,
   shots = false,
   rank = false,
   tags = false,
 }: {
+  league: League;
   shots?: boolean;
   rank?: boolean;
   tags?: boolean;
@@ -64,10 +68,10 @@ export default function TableLegend({
           <span className="rank-bar-container tl-rank-bar" aria-hidden="true">
             <span
               className="range-connect"
-              style={{ left: "30%", width: "45%" }}
+              style={{ left: "25%", width: "35%" }}
             />
-            <span className="dot-off" style={{ left: "30%" }} />
-            <span className="dot-on" style={{ left: "75%" }} />
+            <span className="dot-off" style={{ left: "25%" }} />
+            <span className="dot-on" style={{ left: "60%" }} />
           </span>
           <span className="tl-ends tl-pct">
             <span>{t.pctLow}</span>
@@ -76,16 +80,19 @@ export default function TableLegend({
           </span>
         </span>
       )}
-      {tags &&
-        (["luck", "sample"] as const).map((k) => (
-          <MoreInfo
-            key={k}
-            label={text.tags[k].label}
-            className="onoff-luck-tag tl-tag"
-          >
-            {text.tags[k].text}
-          </MoreInfo>
-        ))}
+      {tags && (
+        <span className="tl-tags">
+          {(["luck", "sample"] as const).map((k) => (
+            <MoreInfo
+              key={k}
+              label={text.tags[k].label}
+              className="onoff-luck-tag tl-tag"
+            >
+              <TagWhy league={league} kind={k} />
+            </MoreInfo>
+          ))}
+        </span>
+      )}
     </div>
   );
 }

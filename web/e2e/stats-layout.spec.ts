@@ -120,9 +120,11 @@ test("the legend is a compact key at the table's top right", async ({
   await expect(page.locator(".legend-box")).toHaveCount(0);
   // A tag pill explains itself in one sentence.
   await legend.getByRole("button", { name: "3PT luck" }).click();
-  await expect(page.locator(".ibpl-more-pop")).toHaveText(
+  await expect(page.locator(".ibpl-more-pop")).toContainText(
     layout.tags.luck.text,
   );
+  // With Shiny's worked example.
+  await expect(page.locator(".ibpl-more-pop")).toContainText("Example:");
   await page.keyboard.press("Escape");
   await page.getByRole("tab", { name: "Four Factors" }).click();
   await expect(page).toHaveURL(/view=four_factors/);

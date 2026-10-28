@@ -278,7 +278,8 @@ th.sub-head:has(.th-sort-target) { position: relative; }
 /* Table top row: the hint on the left, a compact visual legend on the right. */
 .table-top { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 6px 16px; margin: 4px 0 6px; }
 .table-top .table-hint { flex: 1 1 280px; margin: 0; }
-.table-legend { display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: flex-end; gap: 6px 14px; margin-left: auto; font-size: .66rem; line-height: 1.15; color: var(--ibpl-text-dim); }
+.table-legend { display: grid; grid-auto-flow: row; justify-items: end; gap: 5px; margin-left: auto; font-size: .66rem; line-height: 1.15; color: var(--ibpl-text-dim); }
+.tl-tags { display: flex; gap: 6px; }
 .tl-item { display: inline-flex; flex-direction: column; align-items: stretch; gap: 2px; }
 .tl-scale { display: inline-flex; border-radius: 2px; overflow: hidden; }
 .tl-scale i { width: 14px; height: 10px; }
@@ -290,7 +291,7 @@ th.sub-head:has(.th-sort-target) { position: relative; }
 .tl-pct > span:nth-child(2) { color: var(--ibpl-text-muted); }
 .tl-2pt { flex: 6; background: #4a453d; }
 .tl-3pt { flex: 4; background: rgba(232, 164, 53, .6); }
-.tl-rank { min-width: 130px; padding: 3px 6px; border: 1px solid var(--ibpl-border); border-radius: 4px; }
+.tl-rank { min-width: 190px; padding: 4px 8px; border: 1px solid var(--ibpl-border); border-radius: 4px; }
 .tl-rank-marks { display: flex; justify-content: space-between; gap: 8px; color: var(--ibpl-text-body); }
 .tl-rank-marks span { display: inline-flex; align-items: center; gap: 3px; }
 .tl-dot-on { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--ibpl-accent); }
@@ -316,3 +317,6 @@ th.sub-head:has(.th-sort-target) { position: relative; }
 /* Phone: the toolbar wraps, so Filters comes first rather than last. */
 body.ibpl-collapsed-nav .chips-row .chips-drawer-toggle { order: -1; }
 .ibpl-more-pop { max-width: min(300px, calc(100vw - 24px)); }
+.onoff-tip-why p { margin: 0 0 6px; }
+.onoff-tip-example { font-style: italic; color: var(--ibpl-text-muted); }
+.ibpl-more-pop > .onoff-tip-why:first-child { margin-top: 0; padding-top: 0; border-top: 0; }

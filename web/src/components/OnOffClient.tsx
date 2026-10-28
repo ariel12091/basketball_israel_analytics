@@ -556,6 +556,7 @@ export default function OnOffClient({
           />
           <div className="table-top">
             <TableLegend
+              league={league}
               shots={viewKey.shots}
               rank={viewKey.rank && (view !== "four_factors" || rangesOn)}
               tags={view === "summary"}

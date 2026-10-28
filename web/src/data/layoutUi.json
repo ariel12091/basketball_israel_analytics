@@ -34,7 +34,11 @@
     },
     "sample": {
       "label": "small sample",
-      "text": "This number stands out (top or bottom of the table) but rests on far fewer possessions than most rows, often off court. With so few, it may not hold up."
+      "text": "This number stands out (top or bottom of the table) but rests on far fewer possessions than most rows, often off court. With so few, it may not hold up.",
+      "example": {
+        "il": "Example: Zack Bryant, Bnei Herzliya, 25-26: +64.8, but only 146 possessions with him off the court. Adjusted for sample size it is +3.5.",
+        "euro": "Example: Spencer Dinwiddie, FC Bayern Munich, 25-26: +19.5 on only 339 off-court possessions. Adjusted for sample size it is +1.7."
+      }
     }
   }
 }

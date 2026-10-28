@@ -27,6 +27,18 @@ import DataTable, {
 } from "./DataTable";
 import MoreInfo from "./MoreInfo";
 import layout from "@/data/layoutUi.json";
+import { tagText, type TagKind } from "./tagText";
+
+/** A row tag's meaning and its worked example. */
+export function TagWhy({ league, kind }: { league: League; kind: TagKind }) {
+  const t = tagText(league, kind);
+  return (
+    <div className="onoff-tip-why">
+      <p>{t.text}</p>
+      {t.example && <p className="onoff-tip-example">{t.example}</p>}
+    </div>
+  );
+}
 
 const SEP = "section-left-border";
 const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
@@ -188,7 +200,7 @@ export function TipBody({
 /** The Net RTG Diff cell: the number (+2 decimals) and tags for 3PT luck and
  * small sample, each a MoreInfo (design 2026-10-28 § 6): the number shows
  * every section, a tag its own section plus what the tag means. */
-function NetCell({ row }: { row: Row }) {
+function NetCell({ row, league = "il" }: { row: Row; league?: League }) {
   const val = Number(row["Net RTG Diff"]);
   const txt = (val > 0 ? "+" : "") + val.toFixed(2);
   const hasLuck =
@@ -198,9 +210,7 @@ function NetCell({ row }: { row: Row }) {
   const pop = (kind: "all" | "luck" | "sample") => (
     <div className="onoff-tip-pop" data-kind={kind}>
       <TipBody row={row} kind={kind} />
-      {kind !== "all" && (
-        <div className="onoff-tip-why">{layout.tags[kind].text}</div>
-      )}
+      {kind !== "all" && <TagWhy league={league} kind={kind} />}
     </div>
   );
   return (
@@ -309,6 +319,8 @@ function PivotMenu({
 // ---- Column builders --------------------------------------------------------
 type Ctx = {
   onPivot: (p: Pivot) => void;
+  /** For the tags' worked examples; the Ask display omits it (Israeli). */
+  league?: League;
   showImpact: boolean;
   showRanges: boolean;
 };
@@ -416,7 +428,12 @@ export function summaryColumns(rows: Row[], ctx: Ctx): Column[] {
       label: "Net",
       cls: SEP,
       render: (row): Cell => ({
-        node: row["Net RTG Diff"] == null ? "" : <NetCell row={row} />,
+        node:
+          row["Net RTG Diff"] == null ? (
+            ""
+          ) : (
+            <NetCell row={row} league={ctx.league} />
+          ),
         text: signed(row["Net RTG Diff"], 2),
         bg: heat(row.pr_net, false),
       }),
@@ -698,8 +715,8 @@ export default function OnOffTable({
 }) {
   const [pivot, setPivot] = useState<Pivot | null>(null);
   const ctx = useMemo<Ctx>(
-    () => ({ onPivot: setPivot, showImpact, showRanges }),
-    [showImpact, showRanges],
+    () => ({ onPivot: setPivot, league, showImpact, showRanges }),
+    [league, showImpact, showRanges],
   );
   const columns = useMemo(
     () =>
