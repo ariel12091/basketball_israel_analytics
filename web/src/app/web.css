@@ -60,7 +60,43 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-react-gameflow .ibpl-ribbon-lane[role="button"]:focus rect { stroke: var(--ibpl-accent); stroke-width: 2; }
 
 .ibpl-compare-side { min-width: 0; border: 0; }
+/* Open cue on Compare rows (Shiny's "amber text + chevron", made stronger,
+   user 2026-10-29): the name is amber and underlined with a chevron, and the
+   whole row lights up under the pointer or keyboard focus. */
 .ibpl-compare-row { cursor: pointer; }
+.ibpl-compare-row td[data-column="entity_name"],
+.ibpl-compare-row td[data-column="player_name"] {
+  /* Shiny's table rules set the name colour with !important. */
+  color: var(--ibpl-accent) !important;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.45);
+  text-underline-offset: 3px;
+}
+.ibpl-compare-row td[data-column="entity_name"]::after,
+.ibpl-compare-row td[data-column="player_name"]::after {
+  content: "\203A";
+  display: inline-block;
+  margin-left: 6px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 120ms ease;
+}
+.ibpl-compare-row:hover > td,
+.ibpl-compare-row:focus-visible > td {
+  background-color: rgba(var(--ibpl-accent-rgb), 0.1) !important;
+}
+.ibpl-compare-row:hover > td:first-child,
+.ibpl-compare-row:focus-visible > td:first-child {
+  box-shadow: inset 3px 0 0 var(--ibpl-accent);
+}
+.ibpl-compare-row:hover td[data-column="entity_name"]::after,
+.ibpl-compare-row:hover td[data-column="player_name"]::after,
+.ibpl-compare-row:focus-visible td[data-column="entity_name"]::after,
+.ibpl-compare-row:focus-visible td[data-column="player_name"]::after {
+  transform: translateX(3px);
+}
+.ibpl-compare-row:focus-visible { outline: none; }
 .ibpl-compare-side legend { float: none; font-size: 1rem; }
 .ibpl-compare-side input[type="range"], #cmp_min_poss { display: block; width: 100%; }
 .ibpl-compare-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 16px; }

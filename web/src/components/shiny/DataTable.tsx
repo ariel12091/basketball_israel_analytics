@@ -18,6 +18,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type HTMLAttributes,
   type ReactNode,
 } from "react";
 import {
@@ -291,7 +292,9 @@ export default function DataTable({
   tableClass?: string;
   /** Columns whose text becomes the phone name label (mobile.js isName). */
   nameColumns?: string[];
-  rowProps?: (row: Row) => Record<string, string>;
+  rowProps?: (row: Row) => HTMLAttributes<HTMLTableRowElement> & {
+    [data: `data-${string}`]: string;
+  };
   /** Filled with a CSV export of the current rows and order, for a CSV
    * button outside the table (Tab 1's sidebar download). */
   exportRef?: { current: ((name: string) => void) | null };

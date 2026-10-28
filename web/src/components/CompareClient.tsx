@@ -2,7 +2,13 @@
 import ViewTabs from "./shiny/ViewTabs";
 import { ViewIntro } from "./shiny/TableKey";
 import layout from "@/data/layoutUi.json";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type KeyboardEvent,
+} from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Row } from "@/rules/gameLogs";
 import {
@@ -72,6 +78,23 @@ export default function CompareClient({
       <CompareTab initial={initial} selection={selection} />
     </QueryClientProvider>
   );
+}
+/** A Compare row opens its detail: reachable by keyboard too (Tab, then
+ * Enter or Space), and named for screen readers. The look is CSS. */
+function openRow(row: Row, open: () => void) {
+  const name = String(row.player_name ?? row.entity_name ?? "row");
+  return {
+    className: "ibpl-compare-row",
+    tabIndex: 0,
+    "aria-label": `${name}: open details`,
+    onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => {
+      if (e.target !== e.currentTarget) return;
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        open();
+      }
+    },
+  };
 }
 function CompareTab({
   initial,
@@ -834,7 +857,11 @@ function CompareTab({
                     onRowActivate={(r) =>
                       set({ drill_player: String(r.player_id) })
                     }
-                    rowProps={() => ({ className: "ibpl-compare-row" })}
+                    rowProps={(r) =>
+                      openRow(r, () =>
+                        set({ drill_player: String(r.player_id) }),
+                      )
+                    }
                   />
                 )
               )}
@@ -948,7 +975,7 @@ function CompareTab({
                     }
                     tableClass="compact stripe nowrap"
                     onRowActivate={open}
-                    rowProps={() => ({ className: "ibpl-compare-row" })}
+                    rowProps={(r) => openRow(r, () => open(r))}
                   />
                 ) : (
                   <p>No comparisons match the current filters.</p>
