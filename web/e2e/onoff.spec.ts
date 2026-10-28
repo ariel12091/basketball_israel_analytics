@@ -195,7 +195,7 @@ for (const file of presets)
           const csv = readFileSync((await file.path())!, "utf8");
           expect(csv.split("\r\n")).toHaveLength(expected.length + 1);
           expect(csv).toMatch(
-            /^"Team","Player","Min","On Poss","Off Poss","Net",/,
+            /^"Team","Player","Min","On-court Poss","Off-court Poss","Net",/,
           );
         }
       }

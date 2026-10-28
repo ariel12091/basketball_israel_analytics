@@ -3,6 +3,7 @@
 import { test, expect, type Page } from "@playwright/test";
 import { loadGolden } from "../test/onoffGoldens";
 import ui from "../src/data/shinyUi.json";
+import layout from "../src/data/layoutUi.json";
 import { autoMinOn, possCols } from "../src/rules/onoff";
 
 async function stub(page: Page, league = "il") {
@@ -34,7 +35,7 @@ async function pickTeam(page: Page, name: string) {
   await expect(page).toHaveURL(/teams=/);
 }
 
-test("drawer opens, pushes content on desktop, closes on Escape", async ({
+test("filters open right under the Filters button and close on Escape", async ({
   page,
 }, info) => {
   await stub(page);
@@ -47,19 +48,15 @@ test("drawer opens, pushes content on desktop, closes on Escape", async ({
     await expect(
       drawer(page).getByRole("button", { name: title }),
     ).toHaveAttribute("aria-expanded", "true");
-  if (info.project.name === "desktop") {
-    // Wait for the slide-in to settle, then nothing of the page is covered.
-    await expect
-      .poll(async () => {
-        const main = (await page.locator('[role="main"]').boundingBox())!;
-        const box = (await drawer(page).boundingBox())!;
-        return box.x + 1 - (main.x + main.width);
-      })
-      .toBeGreaterThanOrEqual(0);
-  } else {
-    const box = (await drawer(page).boundingBox())!;
-    expect(box.width).toBeCloseTo(page.viewportSize()!.width, 0);
-  }
+  const button = (await filtersButton(page).boundingBox())!;
+  const panel = (await drawer(page).boundingBox())!;
+  expect(panel.y).toBeGreaterThanOrEqual(button.y + button.height);
+  expect(panel.y - (button.y + button.height)).toBeLessThan(20);
+  if (info.project.name === "desktop")
+    expect(
+      Math.abs(panel.x + panel.width - (button.x + button.width)),
+    ).toBeLessThan(4);
+  else expect(panel.width).toBeGreaterThan(page.viewportSize()!.width - 40);
   await page.keyboard.press("Escape");
   await expect(drawer(page)).toBeHidden();
   await expect(filtersButton(page)).toBeFocused();
@@ -124,7 +121,7 @@ test("the legend is a compact key at the table's top right", async ({
   // A tag pill explains itself in one sentence.
   await legend.getByRole("button", { name: "3PT luck" }).click();
   await expect(page.locator(".ibpl-more-pop")).toHaveText(
-    "With every three at the league average, this number flips sign.",
+    layout.tags.luck.text,
   );
   await page.keyboard.press("Escape");
   await page.getByRole("tab", { name: "Four Factors" }).click();
@@ -145,11 +142,15 @@ test("the view intro is one visible line; More opens the rest", async ({
   }[];
   const explainer = blocks.find((b) => b.kind === "explainer")!;
   const intro = page.locator(".view-intro");
-  await expect(intro).toContainText(
+  await expect(intro).toContainText(layout.intro.onoff.summary);
+  await expect(intro).not.toContainText(
     String(explainer.intro![0].t ?? "").slice(0, 30),
   );
   await expect(intro).not.toContainText("3PT luck");
   await intro.getByRole("button", { name: "More" }).click();
+  await expect(intro).toContainText(
+    String(explainer.intro![0].t ?? "").slice(0, 30),
+  );
   await expect(intro).toContainText(
     String(explainer.bullets![0][0].t ?? "").slice(0, 20),
   );
@@ -195,7 +196,7 @@ test("possession columns are on screen without scrolling sideways", async ({
     await expect(
       page.locator(".ibpl-dt-scroll tbody tr").first(),
     ).toBeVisible();
-    for (const label of ["On Poss", "Off Poss"])
+    for (const label of ["On-court Poss", "Off-court Poss"])
       await expect
         .poll(
           () =>
@@ -269,7 +270,9 @@ test.describe("review fixes", () => {
         .textContent();
     const before = await first();
     await page
-      .locator(".ibpl-dt-scroll thead th .ibpl-more", { hasText: /^On Poss$/ })
+      .locator(".ibpl-dt-scroll thead th .ibpl-more", {
+        hasText: /^On-court Poss$/,
+      })
       .click();
     await expect.poll(first).not.toBe(before);
   });

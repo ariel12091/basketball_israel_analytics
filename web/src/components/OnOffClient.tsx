@@ -21,13 +21,10 @@ import Selectize from "./shiny/Selectize";
 import DateRangeInput from "./shiny/DateRangeInput";
 import PossStepper from "./shiny/PossStepper";
 import ViewTabs from "./shiny/ViewTabs";
-import TableLegend, {
-  keyFromBlocks,
-  moreInfoHint,
-  ViewIntro,
-} from "./shiny/TableKey";
+import TableLegend, { keyFromBlocks, ViewIntro } from "./shiny/TableKey";
 import OnOffTable from "./shiny/OnOffTables";
-import { TableHint, type Block } from "./shiny/Blocks";
+import { type Block } from "./shiny/Blocks";
+import layout from "@/data/layoutUi.json";
 import {
   ChipsRow,
   contextChips,
@@ -551,9 +548,13 @@ export default function OnOffClient({
             view={VIEW_LABEL[view]}
             onView={changeView}
           />
-          <ViewIntro blocks={frag.views[view] as Block[]} />
+          <ViewIntro
+            blocks={frag.views[view] as Block[]}
+            summary={
+              layout.intro.onoff[view as keyof typeof layout.intro.onoff]
+            }
+          />
           <div className="table-top">
-            <TableHint hint={moreInfoHint(frag.hint)} />
             <TableLegend
               shots={viewKey.shots}
               rank={viewKey.rank && (view !== "four_factors" || rangesOn)}

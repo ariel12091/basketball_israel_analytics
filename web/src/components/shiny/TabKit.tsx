@@ -210,6 +210,8 @@ type Frame = {
   layout: "sidebar" | "drawer";
   drawerOpen: boolean;
   setDrawerOpen: (open: boolean) => void;
+  /** Drawer layout: wraps the Filters button with its panel. */
+  filters?: (trigger: ReactNode) => ReactNode;
   reveal: (id: string) => void;
   openGlossary: () => void;
   accordionOpen: boolean;
@@ -378,6 +380,33 @@ export function TabFrame({
     layout: drawerLayout ? "drawer" : "sidebar",
     drawerOpen,
     setDrawerOpen,
+    filters: drawerLayout
+      ? (trigger: ReactNode) => (
+          <FilterDrawer
+            trigger={trigger}
+            open={drawerOpen}
+            onOpenChange={(open) => {
+              setDrawerOpen(open);
+              // Closed from inside (Escape, x, Show N): focus goes back to
+              // the Filters button that opened it.
+              if (!open)
+                requestAnimationFrame(() =>
+                  document
+                    .querySelector<HTMLElement>(".chips-drawer-toggle")
+                    ?.focus(),
+                );
+            }}
+            sections={drawer.sections}
+            openSections={openSections}
+            onSections={setOpenSections}
+            footer={drawer.footer}
+            activeCount={drawer.activeCount}
+            resettable={drawer.resettable}
+            onClearAll={drawer.onClearAll}
+            resultLabel={drawer.resultLabel}
+          />
+        )
+      : undefined,
     reveal,
     openGlossary,
     accordionOpen,
@@ -408,7 +437,7 @@ export function TabFrame({
               role="tabpanel"
             >
               <div
-                className={`container-fluid${drawerLayout ? ` ibpl-drawer-layout${drawerOpen ? " ibpl-drawer-open" : ""}` : ""}`}
+                className={`container-fluid${drawerLayout ? " ibpl-drawer-layout" : ""}`}
               >
                 <div className="row">
                   {!mainOnly && !drawerLayout && (
@@ -452,30 +481,6 @@ export function TabFrame({
             </div>
           </div>
         </Navbar>
-        {drawerLayout && (
-          <FilterDrawer
-            open={drawerOpen}
-            onOpenChange={(open) => {
-              setDrawerOpen(open);
-              // Closed from inside (Escape, x, Show N): focus goes back to
-              // the Filters button that opened it.
-              if (!open)
-                requestAnimationFrame(() =>
-                  document
-                    .querySelector<HTMLElement>(".chips-drawer-toggle")
-                    ?.focus(),
-                );
-            }}
-            sections={drawer.sections}
-            openSections={openSections}
-            onSections={setOpenSections}
-            footer={drawer.footer}
-            activeCount={drawer.activeCount}
-            resettable={drawer.resettable}
-            onClearAll={drawer.onClearAll}
-            resultLabel={drawer.resultLabel}
-          />
-        )}
         {glossary && <Glossary onClose={() => setGlossary(false)} />}
       </FrameContext.Provider>
     </TouchTipsContext.Provider>
@@ -1277,24 +1282,11 @@ export function ChipsRow({
   /** Drawer layout: the number shown on the Filters button. */
   activeCount?: number;
 }) {
-  const { filtersCollapsed, toggleFilters, layout, drawerOpen, setDrawerOpen } =
-    useFrame();
+  const { filtersCollapsed, toggleFilters, layout, filters } = useFrame();
   const drawer = layout === "drawer";
   return (
     <div className="chips-row">
-      {drawer ? (
-        <button
-          type="button"
-          className="chips-filters-toggle chips-drawer-toggle"
-          aria-expanded={drawerOpen}
-          onClick={() => setDrawerOpen(!drawerOpen)}
-        >
-          <i className="bi bi-sliders" aria-hidden="true"></i>
-          <span className="chips-filters-toggle-label">
-            Filters{activeCount ? ` · ${activeCount}` : ""}
-          </span>
-        </button>
-      ) : (
+      {!drawer && (
         <button
           type="button"
           className="chips-filters-toggle js-filters-toggle"
@@ -1327,6 +1319,18 @@ export function ChipsRow({
         </div>
       </div>
       {controls && <div className="chips-row-controls">{controls}</div>}
+      {drawer &&
+        filters?.(
+          <button
+            type="button"
+            className="chips-filters-toggle chips-drawer-toggle"
+          >
+            <i className="bi bi-sliders" aria-hidden="true"></i>
+            <span className="chips-filters-toggle-label">
+              Filters{activeCount ? ` · ${activeCount}` : ""}
+            </span>
+          </button>,
+        )}
     </div>
   );
 }

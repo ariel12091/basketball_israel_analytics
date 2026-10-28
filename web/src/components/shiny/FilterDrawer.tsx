@@ -1,12 +1,12 @@
 "use client";
-// The stats tabs' filters drawer (design 2026-10-28 § 2), modelled on
-// frontend-v2's FilterDrawer: slides in from the right, pushes the page from
-// 1200px (web.css), overlays below that, full screen at phone width.
-// Non-modal so the pushed table stays usable; Radix gives Escape, focus
-// return and labelling. Always mounted (forceMount) so a chip's edit pencil
-// can find and focus its control, and each control keeps its local state.
+// The stats tabs' filters panel (design 2026-10-28 § 2, user 2026-10-28):
+// opens right under the Filters button at the toolbar's right end, in the
+// frontend-v2 drawer's look (uppercase sections, red Clear all). Radix
+// Popover anchors it to the button and handles Escape, outside clicks and
+// focus. Always mounted (forceMount) so a chip's edit pencil can find and
+// focus its control, and each control keeps its local state.
 import type { ReactNode } from "react";
-import * as Dialog from "@radix-ui/react-dialog";
+import * as Popover from "@radix-ui/react-popover";
 import * as Accordion from "@radix-ui/react-accordion";
 import text from "@/data/layoutUi.json";
 
@@ -17,6 +17,7 @@ export type DrawerSection = {
 };
 
 export default function FilterDrawer({
+  trigger,
   open,
   onOpenChange,
   sections,
@@ -28,6 +29,8 @@ export default function FilterDrawer({
   onClearAll,
   resultLabel,
 }: {
+  /** The Filters button the panel opens under. */
+  trigger: ReactNode;
   open: boolean;
   onOpenChange: (open: boolean) => void;
   sections: DrawerSection[];
@@ -42,15 +45,24 @@ export default function FilterDrawer({
 }) {
   const t = text.drawer;
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange} modal={false}>
-      <Dialog.Content
+    <Popover.Root open={open} onOpenChange={onOpenChange}>
+      <Popover.Trigger asChild>{trigger}</Popover.Trigger>
+      <Popover.Content
         forceMount
         className="filter-drawer"
-        aria-describedby={undefined}
-        // Pushed layout: the table beside the drawer must stay usable, so an
-        // outside click does not close it. Escape and the x still do.
-        onInteractOutside={(e) => e.preventDefault()}
-        // Escape inside a dropdown closes the dropdown, not the drawer.
+        aria-labelledby="filter-drawer-title"
+        side="bottom"
+        align="end"
+        sideOffset={8}
+        collisionPadding={8}
+        // Dropdown menus and date pickers may render outside the panel; a
+        // click in them is not a click away from the filters.
+        onInteractOutside={(e) => {
+          const t = e.target as HTMLElement | null;
+          if (t?.closest(".selectize-dropdown, .datepicker, .dropdown-menu"))
+            e.preventDefault();
+        }}
+        // Escape inside a dropdown closes the dropdown, not the panel.
         onEscapeKeyDown={(e) => {
           if ((e.target as HTMLElement | null)?.closest(".selectize-control"))
             e.preventDefault();
@@ -58,10 +70,12 @@ export default function FilterDrawer({
         onOpenAutoFocus={(e) => e.preventDefault()}
       >
         <div className="filter-drawer-head">
-          <Dialog.Title className="filter-drawer-title">{t.title}</Dialog.Title>
-          <Dialog.Close className="filter-drawer-close" aria-label={t.close}>
-            ×
-          </Dialog.Close>
+          <h2 className="filter-drawer-title" id="filter-drawer-title">
+            {t.title}
+          </h2>
+          <Popover.Close className="filter-drawer-close" aria-label={t.close}>
+            <span aria-hidden="true">×</span> {t.closeLabel}
+          </Popover.Close>
         </div>
         {(activeCount > 0 || resettable) && (
           <button
@@ -103,11 +117,11 @@ export default function FilterDrawer({
         </Accordion.Root>
         {footer && <div className="filter-drawer-footer">{footer}</div>}
         {resultLabel && (
-          <Dialog.Close className="filter-drawer-done">
+          <Popover.Close className="filter-drawer-done">
             {resultLabel}
-          </Dialog.Close>
+          </Popover.Close>
         )}
-      </Dialog.Content>
-    </Dialog.Root>
+      </Popover.Content>
+    </Popover.Root>
   );
 }

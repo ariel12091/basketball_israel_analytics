@@ -365,10 +365,18 @@ const usage = (first = SEP): Column[] => [
     cls: `${first} ${USAGE}`,
     render: plain("minutes", 1),
   },
-  { id: "ON Poss", label: "On Poss", cls: USAGE, render: plain("ON Poss", 0) },
+  {
+    id: "ON Poss",
+    label: "On-court Poss",
+    title: ui.columnTooltips["ON Poss"],
+    cls: USAGE,
+    render: plain("ON Poss", 0),
+  },
   {
     id: "OFF Poss",
-    label: "Off Poss",
+    // Off-court, not offensive: Shiny's "Off Poss" tooltip says offensive.
+    label: "Off-court Poss",
+    title: ui.columnTooltips["OFF Poss"],
     cls: USAGE,
     render: plain("OFF Poss", 0),
   },

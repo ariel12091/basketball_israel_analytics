@@ -42,17 +42,38 @@ export default function TableLegend({
           <span className="tl-acc">
             {t.two} <span aria-hidden="true">|</span> {t.three}
           </span>
-          <span className="tl-bar" aria-hidden="true">
-            <i className="tl-2pt" />
-            <i className="tl-3pt" />
+          <span className="tl-bar">
+            <i className="tl-2pt" aria-hidden="true" />
+            <i className="tl-3pt" aria-hidden="true" />
+            <span className="tl-bar-label">{t.mix}</span>
           </span>
-          <span className="tl-cap">{t.mix}</span>
         </span>
       )}
       {rank && (
+        // A miniature of the cells' rank bar: the whole league from the 0th
+        // to the 100th percentile, with the on- and off-court dots on it.
         <span className="tl-item tl-rank">
-          <i className="legend-icon-on" aria-hidden="true" /> {t.on}
-          <i className="legend-icon-off" aria-hidden="true" /> {t.off}
+          <span className="tl-rank-marks">
+            <span>
+              <i className="tl-dot-on" aria-hidden="true" /> {t.on}
+            </span>
+            <span>
+              <i className="tl-dot-off" aria-hidden="true" /> {t.off}
+            </span>
+          </span>
+          <span className="rank-bar-container tl-rank-bar" aria-hidden="true">
+            <span
+              className="range-connect"
+              style={{ left: "30%", width: "45%" }}
+            />
+            <span className="dot-off" style={{ left: "30%" }} />
+            <span className="dot-on" style={{ left: "75%" }} />
+          </span>
+          <span className="tl-ends tl-pct">
+            <span>{t.pctLow}</span>
+            <span>{t.pctMid}</span>
+            <span>{t.pctHigh}</span>
+          </span>
         </span>
       )}
       {tags &&
@@ -74,9 +95,13 @@ export default function TableLegend({
  * glossary link in place. `extra` sits at the end of the line. */
 export function ViewIntro({
   blocks,
+  summary,
   extra,
 }: {
   blocks: Block[];
+  /** The short question shown on the line (user 2026-10-28: nobody reads
+   * the long one); the explainer's own intro moves under More. */
+  summary?: string;
   extra?: ReactNode;
 }) {
   const { openGlossary } = useFrame();
@@ -92,8 +117,14 @@ export function ViewIntro({
   return (
     <div className="view-intro">
       <div className="view-intro-line">
-        <b>{explainer.title}:</b>{" "}
-        <Runs runs={explainer.intro} onGlossary={openGlossary} />{" "}
+        {summary ? (
+          <b>{summary}</b>
+        ) : (
+          <>
+            <b>{explainer.title}:</b>{" "}
+            <Runs runs={explainer.intro} onGlossary={openGlossary} />
+          </>
+        )}{" "}
         <button
           type="button"
           className="view-intro-more"
@@ -106,6 +137,11 @@ export function ViewIntro({
       </div>
       {open && (
         <div className="view-intro-body">
+          {summary && (
+            <p>
+              <Runs runs={explainer.intro} onGlossary={openGlossary} />
+            </p>
+          )}
           <ul>
             {explainer.bullets.map((r, i) => (
               <li key={i}>
@@ -145,16 +181,4 @@ export function keyFromBlocks(blocks: Block[]) {
   const legend = (v: string) =>
     blocks.some((b) => b.kind === "legend" && b.variant === v);
   return { shots: legend("shot_splits"), rank: legend("rank") };
-}
-
-/** table_hint()'s sentences for a MoreInfo table: on touch, definitions open
- * from the dashed-underlined header itself, not from an info button. */
-export function moreInfoHint(hint: { pointer: string; touch: string }) {
-  const touch = hint.touch
-    .split(" · ")
-    .map((part) =>
-      /info button/i.test(part) ? text.hint.touchDefinition : part,
-    )
-    .join(" · ");
-  return { ...hint, touch };
 }
