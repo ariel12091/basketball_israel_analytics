@@ -40,7 +40,7 @@ for(kind in c('ratings','four_factors','lineups','lineup_ff','players','player_f
  if(kind!='ratings'||is.na(variant)) switch(kind,
   ratings=compare_r$run_team_ratings(p),four_factors=compare_r$run_team_ff(p),
   lineups=compare_r$run_lineups_summary(p,0L),lineup_ff=compare_r$run_lineups_ff(p,0L),
-  players=compare_r$run_player_traditional(p,p$team_ids_csv),player_ff=compare_r$run_four_factors(p,p$team_ids_csv),onoff=compare_r$run_onoff_impact(p,p$team_ids_csv))
+  players=compare_r$run_player_traditional(p,p$team_ids_csv,starters=TRUE),player_ff=compare_r$run_four_factors(p,p$team_ids_csv),onoff=compare_r$run_onoff_impact(p,p$team_ids_csv))
  if((kind!='ratings'||is.na(variant))&&!length(calls))stop('Reader did not execute: ',kind,'/',name)
  cases[[paste(kind,name,sep='_')]]<-list(query=q,variant=variant,calls=calls)
 }

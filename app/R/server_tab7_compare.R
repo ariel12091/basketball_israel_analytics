@@ -910,11 +910,15 @@ server_tab7_compare <- function(input, output, session, shared) {
   # Was a copy of add_ts_usage_pct() (helpers.R); now it is that function.
   add_cmp_player_usage_pct <- add_ts_usage_pct
 
-  run_player_traditional <- function(p, team_ids_csv) {
+  # starters = TRUE applies the side's own/opponent starters bounds: the
+  # team -> players view under Starters vs Bench. Players mode hides those
+  # controls, so its calls leave it off.
+  run_player_traditional <- function(p, team_ids_csv, starters = FALSE) {
     tryCatch({
       # The reader Player Stats uses, chosen the same way (per-game facts
       # outside a clutch window, action rows inside one), so the two tabs
       # cannot show different minutes for the same filters.
+      st <- if (isTRUE(starters)) p else list()
       out <- cmp_profile_time(
         "run_compare_query:cmp_player_traditional",
         fetch_player_traditional_filtered(
@@ -927,7 +931,11 @@ server_tab7_compare <- function(input, output, session, shared) {
           max_margin = p$max_margin, margin_status = p$margin_status,
           max_time_remaining = p$max_time_remaining, ot_margin_filter = p$ot_margin_filter,
           min_gn = p$min_gn, max_gn = p$max_gn, last_n_games = p$last_n_games,
-          max_calls = 50L
+          max_calls = 50L,
+          num_starters_off_min = st$num_starters_off_min %||% NA_integer_,
+          num_starters_off_max = st$num_starters_off_max %||% NA_integer_,
+          num_starters_def_min = st$num_starters_def_min %||% NA_integer_,
+          num_starters_def_max = st$num_starters_def_max %||% NA_integer_
         ),
         extra = function(res) sprintf("rows=%d", NROW(res))
       )
@@ -2974,8 +2982,8 @@ server_tab7_compare <- function(input, output, session, shared) {
     pa <- side_state$a
     pb <- side_state$b
 
-    res_a <- prep_team_player_side(run_player_traditional(pa, team_csv), "a")
-    res_b <- prep_team_player_side(run_player_traditional(pb, team_csv), "b")
+    res_a <- prep_team_player_side(run_player_traditional(pa, team_csv, starters = TRUE), "a")
+    res_b <- prep_team_player_side(run_player_traditional(pb, team_csv, starters = TRUE), "b")
     if (!nrow(res_a) && !nrow(res_b)) return(NULL)
 
     joined <- dplyr::full_join(res_a, res_b, by = c("team_id", "player_id"))

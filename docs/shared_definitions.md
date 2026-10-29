@@ -225,6 +225,7 @@ possessions) is NULL, not 0 or 50.
 | Starters (offence) | Number of the row team's own starters on the floor |
 | Starters (defence) | Number of the opponent's starters on the floor |
 | Starters, how applied | To every row of the team's perspective, never per side. Events test the credited starters, time tests the physical starters |
+| Starters, player box scores | Only the action-row reader `get_player_traditional_custom_clutch` takes starters bounds (`p_num_starters_{off,def}_{min,max}`, since 2026-10-29); the per-game facts cannot. A starters request goes there with or without a clutch window. Outside a clutch window its minutes are measured segment time, as in `get_player_traditional_from_games`. Callers: `fetch_player_traditional_filtered()` (Shiny Compare team -> players) and `compareRepo.ts` (web). Pinned nightly by `test-player-reader-paths-db.R`: starters 0-5 equals the per-game reader, and each split adds back up to the season |
 | Min possessions (lineups) | Threshold on `off_poss + def_poss`, applied **after** ranking the full population |
 | Min possessions (on/off) | Threshold on ON possessions |
 | Players on / any of / off | `A AND (at least or exactly k of B, C, D) AND NOT E`. "Any of" adds a clause; it never relaxes one |

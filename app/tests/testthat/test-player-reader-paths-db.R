@@ -64,6 +64,31 @@ test_that("Player Stats: the season view equals the per-game reader", {
   }
 })
 
+# Compare's Starters vs Bench presets read player box scores from the
+# action-row reader. Starters 0-5 on both sides must be the unfiltered season,
+# and the two halves of a split must add back up to it: events by the credited
+# lineup, minutes by the physical one (minutes to rounding, since each half
+# rounds its own second total).
+test_that("Player Stats: the starters filter of the action-row reader is a partition of the season", {
+  ctx <- "NULL,NULL,NULL,NULL,NULL,'all','all','all',NULL,'net',NULL,'all',NULL,FALSE,NULL,NULL,NULL"
+  rdr <- function(gy, st) dbq(sprintf("SELECT * FROM basketball_test.get_player_traditional_custom_clutch(%s,%s,%s)", gy, ctx, st))
+  for (gy in names(SEASONS)) {
+    season <- dbq(sprintf("SELECT * FROM basketball_test.get_player_traditional_from_games(%s)", gy))
+    g <- gaps(season, rdr(gy, "0,5,0,5"))
+    expect_equal(c(g$only_a, g$only_b), c(0, 0), label = paste(gy, "players on one side only"))
+    expect_gte(length(g$gap), 24, label = paste(gy, "shared columns"))
+    expect_no_gap(g, paste(gy, "starters 0-5"))
+    for (split in list(c("3,5,NULL,NULL", "0,2,NULL,NULL"), c("NULL,NULL,3,5", "NULL,NULL,0,2"))) {
+      hi <- rdr(gy, split[1]); lo <- rdr(gy, split[2])
+      for (cc in c("pts", "reb", "ast", "stl", "blk", "tov", "fgm", "fga", "3pm", "3pa", "ftm", "fta")) {
+        expect_identical(sum(hi[[cc]]) + sum(lo[[cc]]), sum(season[[cc]]), label = paste(gy, split[1], cc))
+      }
+      expect_lte(abs(sum(hi$minutes) + sum(lo$minutes) - sum(season$minutes)), 0.05 * nrow(season),
+                 label = paste(gy, split[1], "minutes"))
+    }
+  }
+})
+
 test_that("On/Off Four Factors: the season view equals both stored readers", {
   for (gy in names(SEASONS)) {
     view <- dbq(sprintf("SELECT * FROM basketball_test.player_advanced_stats_mv WHERE game_year = %s", gy))

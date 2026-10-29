@@ -2277,9 +2277,21 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
                                    start_d, end_d, team_ids_csv, game_type_csv, opp_ids_csv,
                                    home_away, outcome, opp_rank_side, opp_rank_n, opp_rank_metric,
                                    max_margin, margin_status, max_time_remaining, ot_margin_filter,
-                                   min_gn, max_gn, last_n_games, max_calls = 35L) {
+                                   min_gn, max_gn, last_n_games, max_calls = 35L,
+                                   num_starters_off_min = NA_integer_, num_starters_off_max = NA_integer_,
+                                   num_starters_def_min = NA_integer_, num_starters_def_max = NA_integer_) {
   if (!identical(league, "israel") && !identical(league, "euroleague")) {
     stop(sprintf("fetch_player_traditional_filtered: unknown league %s", league))
+  }
+  # Own/opponent starters bounds (Compare's Starters vs Bench presets). Only
+  # the Israeli action-row reader takes them; the per-game facts cannot.
+  starters <- lapply(
+    list(num_starters_off_min, num_starters_off_max, num_starters_def_min, num_starters_def_max),
+    function(x) suppressWarnings(as.integer(x %||% NA_integer_))[1]
+  )
+  has_starters <- any(vapply(starters, is.finite, logical(1)))
+  if (has_starters && !identical(league, "israel")) {
+    stop("fetch_player_traditional_filtered: the starters filter is Israeli only")
   }
   allowed <- guard_heavy_request(
     session, key = guard_key,
@@ -2296,7 +2308,7 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
   ))
 
   if (identical(league, "israel")) {
-    reader <- switch(
+    reader <- if (has_starters) "get_player_traditional_custom_clutch" else switch(
       reader_kind,
       pergame = "get_player_traditional_from_games",
       dynamic = "get_player_traditional_from_games",
@@ -2308,9 +2320,10 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
         "SELECT * FROM basketball_test.", reader, "(",
         "$1::int4,$2::date,$3::date,$4::text,$5::text,$6::text,$7::text,$8::text,$9::text,$10::int4,$11::text,",
         "$12::int4,$13::text,$14::int4,$15::bool,$16::int4,$17::int4,$18::int4",
+        if (has_starters) ",$19::int4,$20::int4,$21::int4,$22::int4",
         ")"
       ),
-      params = list(
+      params = c(list(
         as.integer(game_year),
         if (!is.na(start_d)) as.Date(start_d) else NA,
         if (!is.na(end_d)) as.Date(end_d) else NA,
@@ -2329,7 +2342,7 @@ fetch_player_traditional_filtered <- function(pool, session, guard_key, league, 
         min_gn,
         max_gn,
         last_n_games
-      )
+      ), if (has_starters) starters)
     ))
   }
 
