@@ -249,6 +249,9 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
     }
   }, add = TRUE)
 
+  source("etl/onoff_roster_refresh.R")
+  onoff_roster_before <- onoff_roster_snapshot(pg, SCHEMA)
+
   overall_start <- proc.time()
 
   # =========================================================================
@@ -1184,19 +1187,23 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
             stop("Missing function basketball_test.refresh_player_advanced_stats_for_games(int4[])")
           }
 
+          pff_ids <- onoff_refresh_games(pg, SCHEMA, processed_ids, onoff_roster_before)
+          pff_ids_csv <- paste(pff_ids, collapse = ",")
+          log_msg(sprintf("  [D23] Including %d historical game(s) for current-roster OFF coverage",
+                          length(setdiff(pff_ids, processed_ids))))
           pff_t0 <- proc.time()
           pff_touch <- DBI::dbGetQuery(
             pg,
             sprintf(
               "SELECT refresh_player_four_factors_by_game_for_games(ARRAY[%s]::int4[]) AS n",
-              ids_csv
+              pff_ids_csv
             )
           )$n[[1]]
           pff_cnt <- DBI::dbGetQuery(pg, "SELECT count(*) AS n FROM player_four_factors_by_game")$n[[1]]
           pff_elapsed <- (proc.time() - pff_t0)["elapsed"]
           log_msg(sprintf(
             "  [INC] player_four_factors_by_game refreshed for %d game(s) - touched %s rows, total %s (%.1fs)",
-            length(processed_ids),
+            length(pff_ids),
             format(as.integer(pff_touch), big.mark = ","),
             format(as.integer(pff_cnt), big.mark = ","),
             pff_elapsed
