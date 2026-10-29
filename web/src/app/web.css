@@ -97,6 +97,30 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
   transform: translateX(3px);
 }
 .ibpl-compare-row:focus-visible { outline: none; }
+
+/* Team detail: Back on the left, the team's players as a clear call to
+   action on the right (stacked on phones). */
+.cmp-detail-top {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px 16px; margin-bottom: 12px;
+}
+.cmp-players-cta {
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-radius: 8px; text-align: left;
+  background: rgba(var(--ibpl-accent-rgb), 0.12);
+  border: 2px solid var(--ibpl-accent); color: var(--ibpl-text);
+  cursor: pointer; transition: background-color 120ms ease;
+}
+.cmp-players-cta > i { font-size: 22px; color: var(--ibpl-accent); }
+.cmp-players-cta > span { display: flex; flex-direction: column; line-height: 1.25; }
+.cmp-players-cta strong { color: var(--ibpl-accent); font-size: 15px; }
+.cmp-players-cta strong::after { content: " \203A"; font-weight: 700; }
+.cmp-players-cta small { color: var(--ibpl-text-muted); font-size: 12px; }
+.cmp-players-cta:hover,
+.cmp-players-cta:focus-visible { background: rgba(var(--ibpl-accent-rgb), 0.22); }
+@media (max-width: 575.98px) {
+  .cmp-players-cta { width: 100%; }
+}
 .ibpl-compare-side legend { float: none; font-size: 1rem; }
 .ibpl-compare-side input[type="range"], #cmp_min_poss { display: block; width: 100%; }
 .ibpl-compare-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 16px; }

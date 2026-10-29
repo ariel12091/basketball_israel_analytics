@@ -796,13 +796,30 @@ function CompareTab({
           ) : q.cmp_view === "detail" ? (
             q.entity ? (
               <>
-                <button
-                  type="button"
-                  className="cmp-back-btn"
-                  onClick={() => set({ cmp_view: "league", entity: null })}
-                >
-                  &lt;- Back to league view
-                </button>
+                <div className="cmp-detail-top">
+                  <button
+                    type="button"
+                    className="cmp-back-btn"
+                    onClick={() => set({ cmp_view: "league", entity: null })}
+                  >
+                    &lt;- Back to league view
+                  </button>
+                  {/* The team's players, A vs B: easy to miss as a third pill
+                      beside League and Detail (user 2026-10-29). */}
+                  {q.view === "Teams" && (
+                    <button
+                      type="button"
+                      className="cmp-players-cta"
+                      onClick={() => set({ cmp_view: "players" })}
+                    >
+                      <i className="bi bi-people-fill" aria-hidden="true"></i>
+                      <span>
+                        <strong>{entityName}&rsquo;s players</strong>
+                        <small>How each player did, side A vs side B</small>
+                      </span>
+                    </button>
+                  )}
+                </div>
                 <EntityDetails
                   q={q}
                   seed={initial}
