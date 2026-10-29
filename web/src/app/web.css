@@ -98,6 +98,17 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 }
 .ibpl-compare-row:focus-visible { outline: none; }
 
+/* League table: each team's players, one click away. */
+.cmp-row-players {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.1);
+  border: 1px solid var(--ibpl-accent); cursor: pointer; white-space: nowrap;
+}
+.cmp-row-players::after { content: "\203A"; font-weight: 700; }
+.cmp-row-players:hover,
+.cmp-row-players:focus-visible { background: var(--ibpl-accent); color: #1a1409; }
+
 /* Team detail: Back on the left, the team's players as a clear call to
    action on the right (stacked on phones). */
 .cmp-detail-top {

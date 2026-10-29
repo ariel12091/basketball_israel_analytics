@@ -2,13 +2,7 @@
 import ViewTabs from "./shiny/ViewTabs";
 import { ViewIntro } from "./shiny/TableKey";
 import layout from "@/data/layoutUi.json";
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type KeyboardEvent,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Row } from "@/rules/gameLogs";
 import {
@@ -78,23 +72,6 @@ export default function CompareClient({
       <CompareTab initial={initial} selection={selection} />
     </QueryClientProvider>
   );
-}
-/** A Compare row opens its detail: reachable by keyboard too (Tab, then
- * Enter or Space), and named for screen readers. The look is CSS. */
-function openRow(row: Row, open: () => void) {
-  const name = String(row.player_name ?? row.entity_name ?? "row");
-  return {
-    className: "ibpl-compare-row",
-    tabIndex: 0,
-    "aria-label": `${name}: open details`,
-    onKeyDown: (e: KeyboardEvent<HTMLTableRowElement>) => {
-      if (e.target !== e.currentTarget) return;
-      if (e.key === "Enter" || e.key === " ") {
-        e.preventDefault();
-        open();
-      }
-    },
-  };
 }
 function CompareTab({
   initial,
@@ -340,6 +317,37 @@ function CompareTab({
       tdProps: () => ({ role: "button", tabIndex: 0 }),
     },
     ...(lineup ? [{ id: "team_name", label: "Team" }] : []),
+    // Straight to a team's players, A vs B, without the team detail first
+    // (user 2026-10-29). A button, so the row's own click does not fire.
+    ...(q.view === "Teams"
+      ? [
+          {
+            id: "players",
+            label: "Players",
+            sortValue: (r: Row) => String(r.entity_name ?? ""),
+            render: (r: Row) => ({
+              node: (
+                <button
+                  type="button"
+                  className="cmp-row-players"
+                  aria-label={`${r.entity_name} players, side A vs side B`}
+                  onClick={() =>
+                    set({
+                      entity: String(r.team_id),
+                      cmp_view: "players",
+                      drill_player: null,
+                    })
+                  }
+                >
+                  <i className="bi bi-people-fill" aria-hidden="true"></i>{" "}
+                  Players
+                </button>
+              ),
+              text: "",
+            }),
+          },
+        ]
+      : []),
     numeric("metric_a", labels[0]),
     {
       id: "poss_a",
@@ -874,11 +882,7 @@ function CompareTab({
                     onRowActivate={(r) =>
                       set({ drill_player: String(r.player_id) })
                     }
-                    rowProps={(r) =>
-                      openRow(r, () =>
-                        set({ drill_player: String(r.player_id) }),
-                      )
-                    }
+                    rowProps={() => ({ className: "ibpl-compare-row" })}
                   />
                 )
               )}
@@ -992,7 +996,7 @@ function CompareTab({
                     }
                     tableClass="compact stripe nowrap"
                     onRowActivate={open}
-                    rowProps={(r) => openRow(r, () => open(r))}
+                    rowProps={() => ({ className: "ibpl-compare-row" })}
                   />
                 ) : (
                   <p>No comparisons match the current filters.</p>
