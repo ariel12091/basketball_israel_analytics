@@ -17,7 +17,13 @@ type Fmt = (v: unknown, cells: Record<string, unknown>) => string;
 /** `derived`: text the page shows inside or beside a cell rather than as a
  * column (one half of a cell, a tag, the Net tooltip); the model is shown
  * the formatted text, and display.test.ts pins each against its own render. */
-export type ColumnSpec = { label: string; format: Fmt; derived?: boolean };
+export type ColumnSpec = {
+  label: string;
+  format: Fmt;
+  derived?: boolean;
+  /** Computed for the chat, not shown on the page (pageRows.ts). */
+  chatOnly?: boolean;
+};
 
 const num = (v: unknown) => (v == null || v === "" ? null : Number(v));
 const fixed =
@@ -123,15 +129,23 @@ const spPart =
   (id: string, on: string, off: string): Fmt =>
   (v, c) =>
     num(c[id]) == null || num(c[on]) == null || num(c[off]) == null ? "--" : Number(v).toFixed(1);
+/** pageRows.withTeamNetRank: the net impact's rank on the player's team. */
+const TEAM_RANK: [string, string, Fmt, "chat"][] = [
+  ["team_rank_net", "Net impact rank on his team (#1 is the team's best)", rank, "chat"],
+  ["team_ranked", "Players ranked on his team", fixed(0), "chat"],
+];
 const USAGE: [string, string, Fmt][] = [
   ["minutes", "Min", fixed(1)],
   ["ON Poss", "On Poss", fixed(0)],
   ["OFF Poss", "Off Poss", fixed(0)],
 ];
 
-const spec = (entries: ([string, string, Fmt] | [string, string, Fmt, true])[]) =>
+const spec = (entries: ([string, string, Fmt] | [string, string, Fmt, true | "chat"])[]) =>
   Object.fromEntries(
-    entries.map(([k, label, format, derived]) => [k, derived ? { label, format, derived } : { label, format }]),
+    entries.map(([k, label, format, extra]) => [
+      k,
+      extra === "chat" ? { label, format, chatOnly: true } : extra ? { label, format, derived: extra } : { label, format },
+    ]),
   );
 const FF = [
   ["ppp", "PPP"],
@@ -263,6 +277,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
           ["Team", "Team", text],
           ["Player", "Player", text],
           ["Net Diff", "Net impact (on-off)", (v) => (v == null ? "" : ffValue("")(v, {}))],
+          ...TEAM_RANK,
           ...Object.entries({ ...FF_RTG_MAP, ...FF_METRIC_MAP }).flatMap(
             ([id, [on, off]]): [string, string, Fmt][] => {
               const unit = id.includes("Rtg") ? "" : "%",
@@ -301,6 +316,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["Team", "Team", text],
         ["Player", "Player", text],
         ["Net RTG Diff", "Net impact (on-off)", signed2],
+        ...TEAM_RANK,
         ["Off ON Diff", "Off impact", signed2],
         ["Def ON Diff", "Def impact", signed2],
         ["Off ON PPP", "Off PPP on court", fixed(1)],

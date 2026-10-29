@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import ui from "@/data/shinyUi.json";
 import { lineupAutoMin, lineupTableRows, localLineups } from "@/rules/lineups";
 import { autoMinOn, possCols } from "@/rules/onoff";
-import { pageRows, lowerOnly } from "./pageRows";
+import { pageRows, lowerOnly, withTeamNetRank } from "./pageRows";
 
 const q = (s: string) => new URLSearchParams(s);
 
@@ -97,5 +97,27 @@ describe("pageRows: the rows a freshly opened link shows", () => {
 
   it("other tools pass their rows through", () => {
     expect(pageRows("game_logs", "il", { rows: [{ a: 1 }] }, q(""))).toEqual([{ a: 1 }]);
+  });
+});
+
+describe("withTeamNetRank: the chat's on-team net impact rank", () => {
+  it("ranks within each team, ties share the better rank, blanks are unranked", () => {
+    const got = withTeamNetRank(
+      [
+        { team_id: 2, "Net RTG Diff": 3 },
+        { team_id: 2, "Net RTG Diff": 9 },
+        { team_id: 3, "Net RTG Diff": -1 },
+        { team_id: 2, "Net RTG Diff": 3 },
+        { team_id: 2, "Net RTG Diff": null },
+      ],
+      "Net RTG Diff",
+    );
+    expect(got.map((r) => [r.team_rank_net, r.team_ranked])).toEqual([
+      [2, 3],
+      [1, 3],
+      [1, 1],
+      [2, 3],
+      [undefined, undefined],
+    ]);
   });
 });
