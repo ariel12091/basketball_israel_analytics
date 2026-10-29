@@ -61,7 +61,7 @@ function expectSame(
   expect(Object.keys(spec).length, `${tool}/${view}`).toBeGreaterThan(3);
   for (const key of Object.keys(spec)) {
     // Derived halves of a page cell are pinned by their own tests.
-    if (spec[key].derived) continue;
+    if (spec[key].derived || spec[key].chatOnly) continue;
     const base = key.startsWith("rank_") ? key.slice(5) : key;
     expect(page, `${tool}/${view}: page has ${base}`).toHaveProperty([base]);
     const text = page[base].split("\n");

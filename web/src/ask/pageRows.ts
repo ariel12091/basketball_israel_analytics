@@ -118,7 +118,7 @@ export function pageRows(
       Number(q.get("min_all") ?? defaults.minAll) || 0,
       autoMinAll(allBase, cols.on, cols.on, cols.off),
     );
-    return onoffTableRows(
+    const shown = onoffTableRows(
       { rows, league3p: p.league3p ?? null, view },
       { teams, minAll, minOn, filters: stats },
       psFilters.length
@@ -126,6 +126,29 @@ export function pageRows(
             applyPlayerStatFilters(r, (p.psRows ?? []) as PsRow[], psFilters)
         : undefined,
     );
+    return withTeamNetRank(shown, view === "four_factors" ? "Net Diff" : "Net RTG Diff");
   }
   return rows;
+}
+
+/** For the chat only ("his net impact is #5 on the team"): each row's net
+ * impact rank among its team's rows in the table the page shows, ties
+ * sharing the better rank, and how many of the team's rows are ranked. The
+ * model may not count rows itself, so the app supplies the rank. */
+export function withTeamNetRank(rows: Row[], col: string): Row[] {
+  const value = (r: Row) => (r[col] == null || r[col] === "" ? NaN : Number(r[col]));
+  const byTeam = new Map<string, number[]>();
+  for (const r of rows) {
+    const v = value(r);
+    if (!Number.isFinite(v)) continue;
+    const k = String(r.team_id);
+    byTeam.set(k, [...(byTeam.get(k) ?? []), v]);
+  }
+  return rows.map((r) => {
+    const v = value(r),
+      team = byTeam.get(String(r.team_id)) ?? [];
+    return Number.isFinite(v)
+      ? { ...r, team_rank_net: 1 + team.filter((x) => x > v).length, team_ranked: team.length }
+      : r;
+  });
 }

@@ -30,6 +30,8 @@ type Case = {
   expect: Accept[] | "unanswerable";
   /** Hostile cases: text that must never appear in the answer. */
   forbid?: string[];
+  /** Lookups every turn must make as well as one of its accepted answers. */
+  also?: Expect[];
 };
 type Final = { type: "final"; answer: AskAnswer; provider: string; model: string };
 
@@ -140,7 +142,8 @@ async function main() {
               ? answer!.evidence.length === 0 || calls.every((call) => call.tool === "list_teams")
               // A follow-up may answer from an earlier turn's re-run lookup.
               : [...calls, ...(answer!.results ?? []).map((r) => r.call)].some((call) => matches(call, e)),
-          ),
+          ) &&
+          (c.also ?? []).every((e) => calls.some((call) => matches(call, e))),
         verified: !!answer && !answer.fallback,
         // Two failed verifications with data in hand: the disqualifying case.
         failedTwice: !!answer && answer.fallback && answer.results.length > 0,
