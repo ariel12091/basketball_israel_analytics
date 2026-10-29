@@ -335,7 +335,11 @@ export default function Navbar({
               <span className="icon-bar"></span>
               <span className="icon-bar"></span>
             </button>
-            <span className="navbar-brand">
+            <Link
+              className="navbar-brand"
+              href={`/${league}/home?season=${season}`}
+              prefetch={false}
+            >
               <span>
                 <i
                   className="bi bi-activity"
@@ -344,7 +348,7 @@ export default function Navbar({
                 ></i>
                 IBPL Analytics
               </span>
-            </span>
+            </Link>
           </div>
           <div
             className={`navbar-collapse collapse${collapsed ? "" : " show"}`}
