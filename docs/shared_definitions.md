@@ -177,6 +177,8 @@ All are computed from summed counts and shown as percentages to one decimal.
 | FTR | `all free throws / FGA`, technical and flagrant included on purpose |
 | Usage | `(TS attempts + turnovers) x team possessions / ((team TS attempts + team turnovers) x possessions on floor)` |
 | Pace | `40 x possessions / minutes`, minutes as defined below (measured floor time) |
+| 3PT luck (On/Off) | Points per 100 from 3PM above the league rate on the 3PA actually taken (`300 x (3PM - league 3P% x 3PA) / possessions`), the team's own shooting minus the opponents', on minus off. League 3P% from each team's best-covered row. Tagged when the Net RTG Diff changes sign without it. Owner `onoff_3pt_luck()` / `onoff_league_3p()` (`helpers.R`); twin `threePtLuck()` / `league3p()` (`web/src/rules/onoff.ts`) |
+| 3PT luck (Lineups, since 2026-10-29) | The same quantity for one unit: own 3PT shooting minus the opponents', against the 3P% of the whole population of the group size under the game filters, before team or player narrowing. Tagged when the unit's Net RTG changes sign without it. Summary view only, both leagues. No sample-size tag: fitted padding is ~900 possessions per side (2025-2026, odd/even games) against a median unit of a few dozen, so it would tag nearly every row; the explainer says so in words. Owner `lineup_3pt_luck()` / `lineup_league_3p()` (`helpers.R`); twin `lineupThreePtLuck()` (`web/src/rules/lineups.ts`), pinned case for case by `test-lineup-3pt-luck.R` and `lineupLuck.test.ts` |
 
 A rate with a zero denominator is NULL, not 0. Unranked (under 100
 possessions) is NULL, not 0 or 50.

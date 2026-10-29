@@ -66,7 +66,9 @@ ui_tab2_lineup <- function() tabPanel(
               "Each row shows a lineup's MIN, Total Poss, Off PPP, Def PPP, Net RTG, and +/- (point differential).",
               "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy - use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
               "Off Poss, Off Pts, Def Poss, Def Pts, and # Starters round out the row for sample-size and context.",
-              "The TOTAL row at the top aggregates all lineups matching your filters - use it as a baseline for comparison."
+              "The TOTAL row at the top aggregates all lineups matching your filters - use it as a baseline for comparison.",
+              "A 3PT luck tag on Net RTG means the sign of the lineup's net flips once its own and its opponents' three-point shooting are recounted at the league 3P% (hover the tag for the net without it). 3P% is treated as luck, 2P% as real.",
+              "Lineup numbers are noisy: a typical lineup plays only a few dozen possessions a season and even the most-used ones a few hundred, so a strong or weak Net RTG is a lead to check, not a verdict."
             )
           ),
           tags$a(

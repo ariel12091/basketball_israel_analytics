@@ -2934,6 +2934,47 @@ onoff_sample_flag <- function(net, shrink, q = 0.20, thin = 0.6, min_rows = 10L)
   flag
 }
 
+# 3PT luck on a lineup's Net RTG (Lineups Summary, both leagues; added
+# 2026-10-29). The On/Off rule (onoff_3pt_luck) applied to one unit: points
+# per 100 from 3PM above the league rate on the 3PA actually taken, "ours" the
+# lineup's own shooting and "theirs" its opponents' (counted against it). The
+# tag marks a lineup whose Net RTG changes sign without that luck. There is no
+# sample-size tag: one season of a lineup's net rating is mostly noise (a
+# typical five-man unit plays a few dozen possessions), so padding would mark
+# nearly every row; the page says so in words instead.
+#
+# lineup_league_3p(): league 3P% from the table's whole population (every
+# unit of the group size, before any team or player narrowing). At sizes 2-4
+# every possession is counted once per group it holds, the same number of
+# times for every possession, so the rate equals the five-man one. NA without
+# the columns.
+lineup_league_3p <- function(df) {
+  need <- c("off_fg3_made", "off_fg3_att")
+  if (is.null(df) || !all(need %in% names(df)) || !nrow(df)) return(NA_real_)
+  att <- sum(df$off_fg3_att, na.rm = TRUE)
+  if (att <= 0) return(NA_real_)
+  sum(df$off_fg3_made, na.rm = TRUE) / att
+}
+
+# lineup_3pt_luck(): adds luck_3pt_ours, luck_3pt_theirs, net_without_3pt_luck
+# and luck_3pt_flag. Returns df unchanged without the columns or a league
+# rate; NA luck where a possession count is not positive.
+lineup_3pt_luck <- function(df, league_3p = lineup_league_3p(df)) {
+  need <- c("net_rtg", "off_poss", "def_poss",
+            "off_fg3_made", "off_fg3_att", "def_fg3_made", "def_fg3_att")
+  if (is.null(df) || !all(need %in% names(df)) || !nrow(df) ||
+      length(league_3p) != 1L || is.na(league_3p)) return(df)
+  po <- as.numeric(df$off_poss); pd <- as.numeric(df$def_poss)
+  po[!(po > 0)] <- NA; pd[!(pd > 0)] <- NA
+  df$luck_3pt_ours <- 300 * (df$off_fg3_made - league_3p * df$off_fg3_att) / po
+  df$luck_3pt_theirs <- -300 * (df$def_fg3_made - league_3p * df$def_fg3_att) / pd
+  net <- as.numeric(df$net_rtg)
+  df$net_without_3pt_luck <- net - df$luck_3pt_ours - df$luck_3pt_theirs
+  df$luck_3pt_flag <- !is.na(df$net_without_3pt_luck) & !is.na(net) & net != 0 &
+    df$net_without_3pt_luck * net <= 0
+  df
+}
+
 # Plain-language explainer for the "3PT luck" tag, opened from a Summary-only
 # link in the chips row (mirrors ff_ranges_toggle()). `example` is a fixed,
 # league-specific worked case, so the text never depends on the current table.
@@ -3833,6 +3874,8 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
       # ============================================================
 
       pr_cols <- c("pr_ld_net", "pr_ld_off_ppp", "pr_ld_def_ppp_i")
+      # Hidden inputs of the Net RTG cell's 3PT luck tag (lineup_3pt_luck()).
+      luck_cols <- c("luck_3pt_flag", "net_without_3pt_luck", "luck_3pt_ours", "luck_3pt_theirs")
       shot_raw_cols <- c("off_fg2_made", "off_fg2_att", "off_fg3_made", "off_fg3_att",
                          "def_fg2_made", "def_fg2_att", "def_fg3_made", "def_fg3_att")
       shot_filter_cols <- unname(c(
@@ -3857,7 +3900,7 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
       keep_cols <- c("Team", "Players", "minutes", "total_poss", "plus_minus",
                      if (has_shots) c("Off Shot", "Def Shot"),
                      "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_starters", "sub_lineup_hash", "team_id")
-      df <- df %>% select(any_of(c(keep_cols, shot_raw_cols, shot_filter_cols, pr_cols)))
+      df <- df %>% select(any_of(c(keep_cols, shot_raw_cols, shot_filter_cols, pr_cols, luck_cols)))
       if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
       df <- apply_stat_filters(df, stat_filters)
       df$is_total <- rep(1, nrow(df))
@@ -3885,7 +3928,8 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
                      "off_poss", "off_pts", "def_poss", "def_pts", "num_starters", "sub_lineup_hash", "team_id")
 
       keep <- intersect(show_cols, names(df))
-      df <- df[, unique(c("is_total", keep, shot_raw_cols[shot_raw_cols %in% names(df)], pr_cols[pr_cols %in% names(df)])), drop = FALSE]
+      df <- df[, unique(c("is_total", keep, shot_raw_cols[shot_raw_cols %in% names(df)], pr_cols[pr_cols %in% names(df)],
+                          luck_cols[luck_cols %in% names(df)])), drop = FALSE]
       pretty_labels <- c(Team = "Team", Players = "Players", minutes = "Min", num_starters = "# Starters", total_poss = "Total Poss", net_rtg = "Net RTG", `plus_minus` = "+/-", off_ppp = "Off PPP", def_ppp = "Def PPP", off_poss = "Off Poss", off_pts = "Off Pts", def_poss = "Def Poss", def_pts = "Def Pts", sub_lineup_hash = "Lineup ID", team_id = "team_id", `Off Shot` = "Off Shot", `Def Shot` = "Def Shot")
 
       # Shooting column JS render function factory (same pattern as Tab 1)
@@ -3987,14 +4031,33 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
       }
 
       data_col_names <- colnames(df)[-1]
-      data_col_names <- setdiff(data_col_names, c(pr_cols, shot_raw_cols))
+      data_col_names <- setdiff(data_col_names, c(pr_cols, shot_raw_cols, luck_cols))
       col_labels <- unname(pretty_labels[data_col_names])
       final_labels <- c("", col_labels)
       pr_indices <- which(colnames(df) %in% pr_cols) - 1L
       shot_raw_indices <- which(colnames(df) %in% shot_raw_cols) - 1L
       sum_hash_idx <- which(names(df) == "sub_lineup_hash") - 1L
       sum_tid_idx <- which(names(df) == "team_id") - 1L
-      hidden_indices <- c(0, pr_indices, shot_raw_indices, sum_hash_idx, sum_tid_idx)
+      luck_indices <- which(colnames(df) %in% luck_cols) - 1L
+      hidden_indices <- c(0, pr_indices, shot_raw_indices, luck_indices, sum_hash_idx, sum_tid_idx)
+
+      # Net RTG to one decimal, plus the 3PT luck tag where the lineup's net
+      # changes sign without it; the hover gives the net without the luck.
+      net_col_defs <- list()
+      if (all(c("net_rtg", luck_cols) %in% names(df))) {
+        idx <- function(col) which(names(df) == col) - 1L
+        net_col_defs <- list(list(targets = idx("net_rtg"), render = DT::JS(sprintf(
+          "function(data, type, row, meta) {
+             if (type !== 'display' || !row) return data;
+             if (data === null || data === undefined || data === '') return '';
+             var v = Number(data).toFixed(1);
+             if (row[0] === 0 || row[%d] !== true) return v;
+             var f = function(x) { return (Number(x) > 0 ? '+' : '') + Number(x).toFixed(1); };
+             var tip = 'Without 3PT luck: ' + f(row[%d]) + '. 3PT shooting against the league 3P%%, per 100 possessions: lineup ' +
+               f(row[%d]) + ', opponents ' + f(row[%d]) + '.';
+             return v + ' <span class=\"onoff-luck-tag\" title=\"' + tip + '\">3PT luck</span>';
+           }", idx("luck_3pt_flag"), idx("net_without_3pt_luck"), idx("luck_3pt_ours"), idx("luck_3pt_theirs")))))
+      }
 
       # Clickable Players column
       sum_players_idx <- which(names(df) == "Players") - 1L
@@ -4010,7 +4073,7 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
 
       all_col_defs <- c(list(list(targets = hidden_indices, visible = FALSE),
                              list(targets = sum_players_idx, render = sum_players_render)),
-                        shot_col_defs)
+                        shot_col_defs, net_col_defs)
 
       dt <- DT::datatable(
         df,
@@ -4026,7 +4089,9 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
         ),
         options = list(headerCallback = HEADER_TOOLTIP_JS, pageLength = 50, lengthMenu = c(25, 50, 100, 200, 1000), orderFixed = list(list(0, 'asc')), deferRender = TRUE, scrollX = TRUE, scrollY = "70vh", scrollCollapse = TRUE, processing = TRUE, columnDefs = all_col_defs)
       ) |>
-        DT::formatRound(c("off_ppp", "def_ppp", "net_rtg", "minutes")[c("off_ppp", "def_ppp", "net_rtg", "minutes") %in% names(df)], 1) |>
+        # net_rtg is rounded by its own render (net_col_defs) when the luck
+        # columns are present; formatRound would replace that render.
+        DT::formatRound(intersect(c("off_ppp", "def_ppp", if (!length(net_col_defs)) "net_rtg", "minutes"), names(df)), 1) |>
         # Displayed as a whole number: it counts people on the floor, and a
         # decimal invites reading a possession-weighted mean as a headcount.
         # Display only -- filtering and sorting still use the exact value.

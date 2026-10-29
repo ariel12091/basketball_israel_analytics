@@ -11,6 +11,7 @@ import type { LineupView } from "@/rules/lineups";
 import { rate, zero } from "@/rules/lineups";
 import { rRound } from "@/rules/round";
 import ui from "@/data/shinyUi.json";
+import MoreInfo from "./MoreInfo";
 export default function LineupTable({
   rows,
   view,
@@ -121,6 +122,15 @@ export default function LineupTable({
     number("off_ppp", "Off PPP", 1, "pr_ld_off_ppp");
     number("def_ppp", "Def PPP", 1, "pr_ld_def_ppp_i");
     number("net_rtg", "Net RTG", 1, "pr_ld_net");
+    // helpers.R lineup_summary_datatable: the 3PT luck tag beside Net RTG.
+    const net = cols[cols.length - 1],
+      plain = net.render!;
+    net.render = (r) => {
+      const cell = plain(r);
+      return r.is_total === 0 || r.luck_3pt_flag !== true
+        ? cell
+        : { ...cell, node: <LuckNet row={r} value={cell.node} /> };
+    };
     number("plus_minus", "+/-", 0);
     shot("off");
     shot("def");
@@ -157,5 +167,37 @@ export default function LineupTable({
       moreInfo
       detail={detail}
     />
+  );
+}
+
+const signed = (v: number) => (v > 0 ? "+" : "") + v.toFixed(1);
+/** Net RTG with its 3PT luck tag; the tag opens what the luck added and the
+ * net without it (the On/Off tag's popover sections). */
+function LuckNet({ row, value }: { row: Row; value: ReactNode }) {
+  const o = Number(row.luck_3pt_ours),
+    t = Number(row.luck_3pt_theirs),
+    adj = Number(row.net_without_3pt_luck);
+  return (
+    <span className="onoff-net-tip">
+      {value}{" "}
+      <MoreInfo label="3PT luck" className="onoff-luck-tag">
+        <div className="onoff-tip-pop" data-kind="luck">
+          <div className="onoff-tip-section is-luck">
+            <div className="onoff-tip-title">3PT luck</div>
+            <div className="onoff-tip-row">
+              <span>3PT shooting added</span>
+              <b className="onoff-tip-val">{signed(o + t)}</b>
+            </div>
+            <div className="onoff-tip-sub">
+              lineup {signed(o)} · opponents {signed(t)}
+            </div>
+            <div className="onoff-tip-row">
+              <span>Without 3PT luck</span>
+              <b className="onoff-tip-val">{signed(adj)}</b>
+            </div>
+          </div>
+        </div>
+      </MoreInfo>
+    </span>
   );
 }

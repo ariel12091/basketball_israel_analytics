@@ -7,7 +7,11 @@ import { readTabReferences } from "./onoffRepo";
 import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
 import type { LineupParams } from "./lineupParams";
 import type { Row } from "../rules/gameLogs";
-import { euroLineupRates, rankLineups } from "../rules/lineups";
+import {
+  euroLineupRates,
+  lineupThreePtLuck,
+  rankLineups,
+} from "../rules/lineups";
 import ui from "../data/shinyUi.json";
 
 const call = (name: string, types: string[]) =>
@@ -152,7 +156,9 @@ async function read(q: Query, p: LineupParams) {
   }
   // The Euro filtered reader returns player_ids as a PostgreSQL array; preserve
   // it for the same local membership predicate as the season view.
-  rows = rankLineups(euro ? euroLineupRates(rows) : rows, euro);
+  rows = lineupThreePtLuck(
+    rankLineups(euro ? euroLineupRates(rows) : rows, euro),
+  );
   rows = applyPlayerNames(rows, await readPlayerNames(q, c.league, c.season));
   const meta = await readTabReferences(q, c, version);
   const teams = euro

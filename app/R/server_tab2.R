@@ -320,6 +320,8 @@ server_tab2 <- function(input, output, session, shared) {
     if ("net_rtg" %in% names(df)) df$pr_ld_net       <- pr_vec(df$net_rtg)
     if ("off_ppp" %in% names(df)) df$pr_ld_off_ppp   <- pr_vec(df$off_ppp)
     if ("def_ppp" %in% names(df)) df$pr_ld_def_ppp_i <- pr_vec(df$def_ppp, invert = TRUE)
+    # 3PT luck against the league rate of this whole population (helpers.R).
+    df <- lineup_3pt_luck(df)
 
     df
   }) %>% bindEvent(input$ld_num, input$ld_dates, input$game_year,
