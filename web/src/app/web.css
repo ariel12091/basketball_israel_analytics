@@ -1,6 +1,14 @@
 /* Rules the web port needs beyond Shiny's own stylesheets. Keep this short:
    the look comes from app.css / mobile.css (spec: no redesign). */
 
+.ibpl-site-credits {
+  padding: 16px;
+  text-align: center;
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+.ibpl-site-credits a { color: var(--ibpl-text-muted); }
+
 /* DataTables' scrollX + scrollY box, as one table with a sticky header
    (DT splits header and body into two tables and syncs their widths). */
 .ibpl-dt-scroll {

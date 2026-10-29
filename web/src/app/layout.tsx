@@ -58,6 +58,14 @@ export default function RootLayout({
             {children}
           </AskProvider>
         </NuqsAdapter>
+        <footer className="ibpl-site-credits">
+          <a
+            href="https://www.flaticon.com/free-icons/basketball"
+            title="basketball icons"
+          >
+            Basketball icons created by imaginationlol - Flaticon
+          </a>
+        </footer>
         {/* Vercel Web Analytics (cookieless page views). Only on Vercel:
             elsewhere its /_vercel/insights script does not exist. */}
         {process.env.VERCEL === "1" && <Analytics />}
