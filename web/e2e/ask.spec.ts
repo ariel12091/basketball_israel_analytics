@@ -2,6 +2,7 @@
 // ASK_ENABLED=true; /api/v1/ask is answered in the browser (page.route), so no
 // model or key is involved. Pages get x-ibpl-client-data so no tab reads the DB.
 import { test, expect, type Page } from "@playwright/test";
+import { askExamples } from "../src/ask/examples";
 
 const answer = (over: Record<string, unknown> = {}) => ({
   type: "final",
@@ -108,19 +109,21 @@ for (const width of [390, 1440]) {
       }[] = [];
       await mockAsk(page, sse(answer()), 200, sent);
       await page.setExtraHTTPHeaders({ "x-ibpl-client-data": "1" });
-      for (const [path, league, example] of [
-        ["/il/home?team_id=all", "il", "top 5 lineups of Maccabi Tel Aviv"],
-        [
-          "/euroleague/home",
-          "euroleague",
-          "which team has the best net rating?",
-        ],
-      ]) {
+      for (const [path, league] of [
+        ["/il/home?team_id=all", "il"],
+        ["/euroleague/home", "euroleague"],
+      ] as const) {
+        // The placeholder rotates through the league's example questions.
+        const examples = askExamples(league).map((e) => `e.g. ${e.text}`);
         await page.goto(path);
         const box = page.getByRole("searchbox", {
           name: "Ask a question about the stats",
         });
-        await expect(box).toHaveAttribute("placeholder", `e.g. ${example}`);
+        await expect
+          .poll(async () =>
+            examples.includes((await box.getAttribute("placeholder")) ?? ""),
+          )
+          .toBe(true);
         await expect(page.locator(".ibpl-ask-fab")).toHaveCount(0);
         await box.fill("best lineups of Hapoel");
         await box.press("Enter");

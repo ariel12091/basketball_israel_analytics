@@ -5,6 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { MAX_TURNS, useAsk, type AskTurnView } from "../AskProvider";
+import { useAskExample } from "../useAskExample";
 import type { Evidence as EvidenceRow } from "@/ask/turn";
 
 export default function AskPanel() {
@@ -16,6 +17,7 @@ export default function AskPanel() {
   const pending = ask.turns.some((t) => t.pending);
   const full = ask.turns.length >= MAX_TURNS;
   const answered = ask.turns.length > 0;
+  const example = useAskExample(ask.league, ask.open && !answered && !draft);
 
   // Focus moves into the panel on open and back to the Ask button on close
   // (the button is not rendered while the panel is open).
@@ -102,7 +104,7 @@ export default function AskPanel() {
                 placeholder={
                   answered && ask.followups
                     ? "Ask a follow-up…"
-                    : "e.g. top 5 lineups of Maccabi Tel Aviv"
+                    : `e.g. ${example}`
                 }
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
