@@ -164,6 +164,7 @@ export default function PlayerStatsTable({
         pageLength={50}
         csvName={`${league === "il" ? "israeli_league" : "euroleague"}_player_stats`}
         nameColumns={["Player", "team_name"]}
+        moreInfo
         rowProps={(r) => ({
           className: `${r.is_multi_team_total === true ? "ibpl-player-total " : ""}${r.rate_eligible === false ? "ibpl-player-ineligible" : ""}`,
         })}

@@ -29,7 +29,19 @@
     "lineups": {
       "summary": "Which lineups win their minutes?",
       "four_factors": "Why: shooting, rebounding, turnovers or free throws?"
-    }
+    },
+    "gameLogs": {
+      "summary": "How did each game go, and who controlled it?",
+      "four_factors": "Why: shooting, rebounding, turnovers or free throws?"
+    },
+    "teamRatings": {
+      "summary": "Which teams score and stop scoring best?",
+      "four_factors": "Why: shooting, rebounding, turnovers or free throws?",
+      "shot_profile": "Where do teams take their shots, and how well do they make them?",
+      "traditional": "What do teams produce in the box score?"
+    },
+    "playerStats": "How productive is each player?",
+    "compare": "How do two sets of games, lineups or players compare?"
   },
   "tags": {
     "luck": {

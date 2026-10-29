@@ -27,7 +27,11 @@ export default function GameflowChart({
   onHover,
   active,
   lineupIndex,
+  crop,
 }: {
+  /** Draw only the top team's lanes ("top") or the rest ("bottom"), so the
+   * lineup details can sit between them (user 2026-10-28). */
+  crop?: "top" | "bottom";
   data: GameflowPayload;
   compact?: boolean;
   range?: Window;
@@ -62,7 +66,10 @@ export default function GameflowChart({
     marginTop = geometry.padTop + geometry.header + ownH + geometry.bandGap,
     oppTop = marginTop + L.margin_height + geometry.bandGap,
     totalH = oppTop + Math.max(0, opp.length * pitch - L.lane_gap),
-    height = totalH + 12 + geometry.padBottom;
+    fullH = totalH + 12 + geometry.padBottom,
+    cut = marginTop - geometry.bandGap / 2,
+    y0 = crop === "bottom" ? cut : 0,
+    height = crop === "top" ? cut : crop === "bottom" ? fullH - cut : fullH;
   const y = (b: Bar) =>
     (b.side === "own" ? geometry.padTop + geometry.header : oppTop) +
     (b.side === "own" ? own : opp).findIndex(
@@ -132,7 +139,11 @@ export default function GameflowChart({
           label = compact ? labels[i] : b.player_label,
           chosen = selected.includes(key);
         return (
-          <g key={key} className={chosen ? "is-pair-selected" : ""}>
+          <g
+            key={key}
+            className={`ibpl-ribbon-row${chosen ? " is-pair-selected" : ""}`}
+            onClick={() => onPlayer(b)}
+          >
             <rect
               className={`ibpl-ribbon-row-btn${chosen ? " is-pair-selected" : ""}`}
               x={2}
@@ -140,7 +151,6 @@ export default function GameflowChart({
               width={L.gutter - 6}
               height={L.lane_height}
               rx={3}
-              onClick={() => onPlayer(b)}
             />
             <text
               className={`ibpl-ribbon-name${chosen ? " is-pair-selected" : ""}`}
@@ -151,7 +161,6 @@ export default function GameflowChart({
               tabIndex={0}
               aria-pressed={chosen}
               aria-label={`${b.player_label}${b.is_starter ? ", starter" : ""}, ${clock(stats?.secs ?? 0)} on the floor, plus-minus ${pmLabel(stats?.pm ?? null)}`}
-              onClick={() => onPlayer(b)}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
@@ -242,13 +251,16 @@ export default function GameflowChart({
       {pinned && (
         <svg
           className="ibpl-gameflow-gutter ibpl-ribbon is-compact"
-          viewBox={`0 0 ${L.gutter} ${height}`}
+          viewBox={`0 ${y0} ${L.gutter} ${height}`}
+          // A cropped half must not paint (or take clicks) outside its box.
+          overflow="hidden"
           width={L.gutter}
           height={height}
           aria-label="Players and margin scale"
         >
           <rect
             className="ibpl-ribbon-pin-bg"
+            y={y0}
             width={L.gutter}
             height={height}
           />
@@ -257,7 +269,9 @@ export default function GameflowChart({
       )}
       <svg
         className={`ibpl-ribbon${compact ? " is-compact" : ""}${selected.length ? " is-pair-focused" : active ? " is-focused" : ""}${lineupIndex != null ? " is-lineup-focused" : ""}`}
-        viewBox={`0 0 ${width} ${height}`}
+        viewBox={`0 ${y0} ${width} ${height}`}
+        // A cropped half must not paint (or take clicks) outside its box.
+        overflow="hidden"
         width={compact ? width : undefined}
         role="img"
         aria-label={`${data.meta.ownTeam} vs ${data.meta.oppTeam}${range ? `, ${start < 2400 ? "Q" + (Math.floor(start / 600) + 1) : "OT" + (Math.floor((start - 2400) / 300) + 1)}` : ""}`}

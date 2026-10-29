@@ -1,4 +1,7 @@
 "use client";
+import ViewTabs from "./shiny/ViewTabs";
+import { ViewIntro } from "./shiny/TableKey";
+import layout from "@/data/layoutUi.json";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import type { Row } from "@/rules/gameLogs";
@@ -22,8 +25,8 @@ import {
   contextChips,
   ChipsRow,
   Chip,
-  ViewContent,
 } from "./shiny/TabKit";
+import PossStepper from "./shiny/PossStepper";
 import type { Patch } from "@/lib/tabQuery";
 import {
   useCompareData,
@@ -79,6 +82,9 @@ function CompareTab({
 }) {
   const { query: raw, set: patch } = useTabQuery("il", compareDefaults),
     q = withCompareSelection(resolveCompareQuery(raw), selection);
+  // Narrow screens show one side at a time (the A | B switch); wide screens
+  // show both. Page-local state: it is not a filter.
+  const [side, setSide] = useState<"a" | "b">("a");
   const set = (p: Patch) => {
     const changedContext = Object.keys(p).some(
       (k) =>
@@ -311,6 +317,37 @@ function CompareTab({
       tdProps: () => ({ role: "button", tabIndex: 0 }),
     },
     ...(lineup ? [{ id: "team_name", label: "Team" }] : []),
+    // Straight to a team's players, A vs B, without the team detail first
+    // (user 2026-10-29). A button, so the row's own click does not fire.
+    ...(q.view === "Teams"
+      ? [
+          {
+            id: "players",
+            label: "Players",
+            sortValue: (r: Row) => String(r.entity_name ?? ""),
+            render: (r: Row) => ({
+              node: (
+                <button
+                  type="button"
+                  className="cmp-row-players"
+                  aria-label={`${r.entity_name} players, side A vs side B`}
+                  onClick={() =>
+                    set({
+                      entity: String(r.team_id),
+                      cmp_view: "players",
+                      drill_player: null,
+                    })
+                  }
+                >
+                  <i className="bi bi-people-fill" aria-hidden="true"></i>{" "}
+                  Players
+                </button>
+              ),
+              text: "",
+            }),
+          },
+        ]
+      : []),
     numeric("metric_a", labels[0]),
     {
       id: "poss_a",
@@ -463,39 +500,23 @@ function CompareTab({
     teamFocus: "cmp_a_teams",
     datesFocus: "cmp_dates",
   });
-  const sidebar = (
+  // The settings both sides share sit in a bar under the view tabs, the quick
+  // preset first and largest: it is this page's most used control (user
+  // 2026-10-28). No Filters panel: dates and game numbers are too few for one.
+  const shared = (
     <>
-      <button
-        type="button"
-        className="btn btn-outline-secondary"
-        onClick={reset}
-      >
-        Reset Filters
-      </button>
       {!playerMode ? (
         <>
-          <CompareSelect
-            id="cmp_preset"
-            label="Quick preset"
-            value={q.preset}
-            choices={data.presetChoices}
-            placeholder="-- Custom --"
-            onChange={(v) => set(applyPreset(q, v))}
-          />
-          <label className="form-group" htmlFor="cmp_min_poss">
-            Min possessions: {minimum}
-            <input
-              id="cmp_min_poss"
-              type="range"
-              min={0}
-              max={Math.max(2000, minimum)}
-              step={10}
-              value={minimum}
-              onChange={(e) =>
-                set({ min_poss: e.target.value, auto_min: "false" })
-              }
+          <div className="cmp-preset">
+            <CompareSelect
+              id="cmp_preset"
+              label="Quick preset"
+              value={q.preset}
+              choices={data.presetChoices}
+              placeholder="-- Custom --"
+              onChange={(v) => set(applyPreset(q, v))}
             />
-          </label>
+          </div>
           {q.preset === "date_split" ? (
             <label>
               Split date
@@ -558,334 +579,77 @@ function CompareTab({
           )}
         </>
       )}
-      <hr />
-      <CompareSideFilters
-        q={q}
-        set={set}
-        side="a"
-        teams={teams}
-        players={players}
-        rounds={rounds}
-      />
-      <div className="text-center text-muted fw-bold my-2">-- vs --</div>
-      <CompareSideFilters
-        q={q}
-        set={set}
-        side="b"
-        teams={teams}
-        players={players}
-        rounds={rounds}
-      />
+    </>
+  );
+  const sides = (
+    <>
+      <div className="cmp-side-switch" role="group" aria-label="Show side">
+        {(["a", "b"] as const).map((s) => (
+          <button
+            key={s}
+            type="button"
+            aria-pressed={side === s}
+            className={side === s ? "is-active" : ""}
+            onClick={() => setSide(s)}
+          >
+            Side {s.toUpperCase()}
+          </button>
+        ))}
+      </div>
+      {(["a", "b"] as const).map((s) => (
+        <div key={s} className={`cmp-side${side === s ? " is-shown" : ""}`}>
+          {s === "b" && (
+            <div className="cmp-vs text-center text-muted fw-bold my-2">
+              -- vs --
+            </div>
+          )}
+          <CompareSideFilters
+            q={q}
+            set={set}
+            side={s}
+            teams={teams}
+            players={players}
+            rounds={rounds}
+          />
+        </div>
+      ))}
     </>
   );
   const main = (
     <>
-      <ViewContent blocks={ui.compare.blocks as Block[]} />
-      {!playerMode && q.preset === "date_split" && !q.split_date && (
-        <p role="alert">
-          {data.text.find(
-            (t) =>
-              typeof t === "string" && t.startsWith("Date split preset needs"),
-          )}
-        </p>
-      )}
-      <CompareStatus label="Reference data" query={refs} />
-      {playerMode && <CompareStatus label="Default players" query={defaults} />}
-      {!playerMode && (
-        <div
-          className="ibpl-compare-metrics"
-          role="group"
-          aria-label="Comparison view"
-        >
-          {[
-            "league",
-            "detail",
-            ...(q.entity && q.view === "Teams" ? ["players"] : []),
-          ].map((v) => (
-            <button
-              key={v}
-              type="button"
-              className={`btn btn-sm ${q.cmp_view === v ? "btn-warning" : "btn-outline-secondary"}`}
-              onClick={() =>
-                set({
-                  cmp_view: v,
-                  ...(v === "league"
-                    ? { entity: null, drill_player: null }
-                    : {}),
-                })
-              }
-            >
-              {v[0].toUpperCase() + v.slice(1)}
-            </button>
-          ))}
-          {q.cmp_view === "detail" && (
-            <CompareSelect
-              id="cmp_detail_entity_select"
-              label="Entity"
-              placeholder="Select entity..."
-              value={q.entity}
-              choices={rows.map((r) => ({
-                value: String(lineup ? r.sub_lineup_hash : r.team_id),
-                label: r.entity_name,
-              }))}
-              onChange={(v) => set({ entity: v })}
-            />
-          )}
-        </div>
-      )}
-      <div className="ibpl-compare-side-status">
-        <CompareStatus label="Side A" query={a} />
-        <CompareStatus label="Side B" query={b} />
-      </div>
-      {a.data && b.data && !sameVersion && (
-        <div role="alert">
-          The data changed between sides.{" "}
-          <button
-            type="button"
-            onClick={() => {
-              void a.refetch();
-              void b.refetch();
-            }}
-          >
-            Refresh both sides
-          </button>
-        </div>
-      )}
-      {playerMode ? (
-        <>
-          {metricButtons(
-            data.PLAYER_VIEWS as Record<string, string>,
-            q.player_view,
-            (v) => set({ player_view: v }),
-          )}
-          {q.player_view !== "ff_swing" &&
-            rateButtons(
-              ["Per Game", "Per 75 Possessions", "Totals"],
-              q.rate,
-              "rate",
-            )}
-          {!enabled ? (
-            <p>
-              Select{" "}
-              {q.player_compare === "self"
-                ? "a player"
-                : "Player A and Player B"}{" "}
-              to run Players compare.
-            </p>
-          ) : (
-            ready && (
-              <PlayerVersus
-                q={q}
-                seed={initial}
-                a={playerRow("a")}
-                b={playerRow("b")}
-                names={playerNames}
-                teams={playerTeams}
-                teamIds={[
-                  sideParams("a").get("teams") ?? "",
-                  sideParams("b").get("teams") ?? "",
-                ]}
-                version={a.data!.meta.version}
-                refresh={() => Promise.all([a.refetch(), b.refetch()])}
-              />
-            )
-          )}
-        </>
-      ) : q.cmp_view === "detail" ? (
-        q.entity ? (
-          <>
-            <button
-              type="button"
-              className="cmp-back-btn"
-              onClick={() => set({ cmp_view: "league", entity: null })}
-            >
-              &lt;- Back to league view
-            </button>
-            <EntityDetails
-              q={q}
-              seed={initial}
-              name={entityName}
-              labels={labels}
-              descriptions={fullLabels}
-            />
-          </>
-        ) : (
-          <p>
-            Select a team or lineup from the dropdown to view detailed
-            comparison.
-          </p>
-        )
-      ) : teamPlayers ? (
-        <>
-          {metricButtons(
-            data.TEAM_PLAYER_METRICS as Record<string, string>,
-            q.team_metric,
-            (v) => set({ team_metric: v }),
-          )}
-          {rateButtons(
-            ["Per Game", "Per 60 Possessions", "Per 30 Minutes", "Totals"],
-            q.team_rate,
-            "team_rate",
-          )}
-          <button
-            type="button"
-            className="cmp-back-btn"
-            onClick={() =>
-              set(
-                selectedPlayer
-                  ? { drill_player: null }
-                  : { cmp_view: "detail" },
-              )
-            }
-          >
-            &lt;- Back to {selectedPlayer ? "players" : "team detail"}
-          </button>
-          {selectedPlayer ? (
-            <TeamPlayerDetail row={selectedPlayer} q={q} labels={labels} />
-          ) : (
-            ready && (
-              <DataTable
-                columns={playerColumns}
-                rows={playerRows}
-                defaultOrder={[{ id: "gap", desc: true }]}
-                paging={false}
-                controls={false}
-                nameColumns={["player_name"]}
-                onRowActivate={(r) =>
-                  set({ drill_player: String(r.player_id) })
-                }
-                rowProps={() => ({ className: "ibpl-compare-row" })}
-              />
-            )
-          )}
-        </>
-      ) : (
-        <>
-          {metricButtons(title, metric, (v) => set({ metric: v }))}
-          <div className="row cmp-summary-row">
-            {(["a", "b"] as const).map((side, i) => (
-              <div className="col-sm-4" key={side}>
-                <div className="card bg-dark border-secondary p-3 mb-3">
-                  <div className="small text-uppercase">{fullLabels[i]}</div>
-                  <span
-                    className={`cmp-side-value ${summaries.winner === "tie" ? "is-tie" : summaries.winner === side ? "is-winner" : "is-loser"}`}
-                  >
-                    {ready ? formatCompare(summaries[side]) : "--"}
-                  </span>
-                  <div className="small text-muted">{metricLabel}</div>
-                  <div className="small text-muted">
-                    Delta vs {side === "a" ? "B" : "A"}:{" "}
-                    {ready
-                      ? formatCompare(
-                          num(summaries.delta) * (i ? -1 : 1),
-                          "num",
-                          true,
-                        )
-                      : "--"}
-                  </div>
-                  <div className="small text-muted">
-                    Poss {side.toUpperCase()}:{" "}
-                    {ready
-                      ? formatCompare(summaries[`poss_${side}`], "int")
-                      : "--"}
-                  </div>
-                </div>
-              </div>
-            ))}
-            <div className="col-sm-4">
-              <div className="card bg-dark border-secondary p-3 mb-3">
-                <div>Avg Gap</div>
-                <div className="fs-4 fw-bold">
-                  {ready ? formatCompare(summaries.gap_abs) : "--"}
-                </div>
-                <div className="small text-muted">league-wide</div>
-              </div>
-            </div>
-          </div>
-          {lineup && (
-            <div className="ibpl-compare-lineup-controls">
-              <CompareSelect
-                id="cmp_lu_num"
-                label="Size"
-                value={q.size}
-                choices={[2, 3, 4, 5].map((n) => ({
-                  value: String(n),
-                  label: String(n),
-                }))}
-                onChange={(v) => set({ size: v, auto_min: "true" })}
-              />
-              <CompareSelect
-                id="cmp_lu_filter_team"
-                label="Team"
-                value={q.lu_team}
-                choices={teams}
+      <ChipsRow
+        p="cmp"
+        seasonChip={seasonLabel(q.season)}
+        active={!!q.stats || chips.length > 0}
+        onClearAll={reset}
+        chips={playerMode ? [] : chips}
+        activeCount={playerMode ? 0 : chips.length}
+        controls={
+          !playerMode && (
+            <>
+              <PossStepper
+                id="cmp_min_poss"
+                label="Min Poss"
+                name="Min possessions"
+                min={0}
+                max={Math.max(2000, minimum)}
+                step={10}
+                value={minimum}
                 onChange={(v) =>
-                  set({
-                    lu_team: v,
-                    lu_on: null,
-                    lu_any: null,
-                    lu_off: null,
-                    auto_min: "true",
-                  })
+                  set({ min_poss: String(v), auto_min: "false" })
                 }
               />
-              {q.lu_team &&
-                ["on", "any", "off"].map((k) => (
-                  <CompareSelect
-                    key={k}
-                    id={`cmp_lu_filter_${k}`}
-                    label={
-                      k === "on" ? "All of" : k === "any" ? "Any of" : "Off"
-                    }
-                    value={q[`lu_${k}`]}
-                    choices={players
-                      .filter((r) => String(r.team_id) === q.lu_team)
-                      .map((r) => ({
-                        value: String(r.player_id),
-                        label: String(r.name),
-                      }))}
-                    multiple
-                    onChange={(v) => set({ [`lu_${k}`]: v, auto_min: "true" })}
-                  />
-                ))}
-            </div>
-          )}
-          {ready &&
-            (rows.length ? (
-              <DataTable
-                columns={columns}
-                rows={rows}
-                defaultOrder={[]}
-                paging={false}
-                controls={false}
-                nameColumns={
-                  lineup ? ["entity_name", "team_name"] : ["entity_name"]
-                }
-                tableClass="compact stripe nowrap"
-                onRowActivate={open}
-                rowProps={() => ({ className: "ibpl-compare-row" })}
+              <StatFilters
+                p="cmp"
+                cols={stats}
+                filters={parseStats(q.stats)}
+                onChange={(v) => set({ stats: JSON.stringify(v) })}
               />
-            ) : (
-              <p>No comparisons match the current filters.</p>
-            ))}
-        </>
-      )}
-      {!playerMode && (
-        <ChipsRow
-          p="cmp"
-          seasonChip={seasonLabel(q.season)}
-          active={!!q.stats || chips.length > 0}
-          onClearAll={reset}
-          chips={chips}
-          controls={
-            <StatFilters
-              p="cmp"
-              cols={stats}
-              filters={parseStats(q.stats)}
-              onChange={(v) => set({ stats: JSON.stringify(v) })}
-            />
-          }
-          extra={
+            </>
+          )
+        }
+        extra={
+          !playerMode && (
             <>
               {q.stats &&
                 parseStats(q.stats).map((f, i) => (
@@ -902,9 +666,345 @@ function CompareTab({
                   />
                 ))}
             </>
-          }
+          )
+        }
+      />
+      <ViewTabs
+        views={["Teams", "Lineups", "Players"]}
+        view={q.view}
+        onView={mode}
+      />
+      <div className="cmp-settings" role="group" aria-label="Compare settings">
+        {shared}
+      </div>
+      <div className="table-top">
+        <ViewIntro
+          blocks={ui.compare.blocks as Block[]}
+          summary={layout.intro.compare}
         />
-      )}
+      </div>
+      <div className="cmp-layout">
+        <section className="cmp-sides" aria-label="Sides A and B">
+          {sides}
+        </section>
+        <div className="cmp-results">
+          {!playerMode && q.preset === "date_split" && !q.split_date && (
+            <p role="alert">
+              {data.text.find(
+                (t) =>
+                  typeof t === "string" &&
+                  t.startsWith("Date split preset needs"),
+              )}
+            </p>
+          )}
+          <CompareStatus label="Reference data" query={refs} />
+          {playerMode && (
+            <CompareStatus label="Default players" query={defaults} />
+          )}
+          {!playerMode && (
+            <div
+              className="ibpl-compare-metrics"
+              role="group"
+              aria-label="Comparison view"
+            >
+              {[
+                "league",
+                "detail",
+                ...(q.entity && q.view === "Teams" ? ["players"] : []),
+              ].map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  className={`btn btn-sm ${q.cmp_view === v ? "btn-warning" : "btn-outline-secondary"}`}
+                  onClick={() =>
+                    set({
+                      cmp_view: v,
+                      ...(v === "league"
+                        ? { entity: null, drill_player: null }
+                        : {}),
+                    })
+                  }
+                >
+                  {v[0].toUpperCase() + v.slice(1)}
+                </button>
+              ))}
+              {q.cmp_view === "detail" && (
+                <CompareSelect
+                  id="cmp_detail_entity_select"
+                  label="Entity"
+                  placeholder="Select entity..."
+                  value={q.entity}
+                  choices={rows.map((r) => ({
+                    value: String(lineup ? r.sub_lineup_hash : r.team_id),
+                    label: r.entity_name,
+                  }))}
+                  onChange={(v) => set({ entity: v })}
+                />
+              )}
+            </div>
+          )}
+          <div className="ibpl-compare-side-status">
+            <CompareStatus label="Side A" query={a} />
+            <CompareStatus label="Side B" query={b} />
+          </div>
+          {a.data && b.data && !sameVersion && (
+            <div role="alert">
+              The data changed between sides.{" "}
+              <button
+                type="button"
+                onClick={() => {
+                  void a.refetch();
+                  void b.refetch();
+                }}
+              >
+                Refresh both sides
+              </button>
+            </div>
+          )}
+          {playerMode ? (
+            <>
+              {metricButtons(
+                data.PLAYER_VIEWS as Record<string, string>,
+                q.player_view,
+                (v) => set({ player_view: v }),
+              )}
+              {q.player_view !== "ff_swing" &&
+                rateButtons(
+                  ["Per Game", "Per 75 Possessions", "Totals"],
+                  q.rate,
+                  "rate",
+                )}
+              {!enabled ? (
+                <p>
+                  Select{" "}
+                  {q.player_compare === "self"
+                    ? "a player"
+                    : "Player A and Player B"}{" "}
+                  to run Players compare.
+                </p>
+              ) : (
+                ready && (
+                  <PlayerVersus
+                    q={q}
+                    seed={initial}
+                    a={playerRow("a")}
+                    b={playerRow("b")}
+                    names={playerNames}
+                    teams={playerTeams}
+                    teamIds={[
+                      sideParams("a").get("teams") ?? "",
+                      sideParams("b").get("teams") ?? "",
+                    ]}
+                    version={a.data!.meta.version}
+                    refresh={() => Promise.all([a.refetch(), b.refetch()])}
+                  />
+                )
+              )}
+            </>
+          ) : q.cmp_view === "detail" ? (
+            q.entity ? (
+              <>
+                <div className="cmp-detail-top">
+                  <button
+                    type="button"
+                    className="cmp-back-btn"
+                    onClick={() => set({ cmp_view: "league", entity: null })}
+                  >
+                    &lt;- Back to league view
+                  </button>
+                  {/* The team's players, A vs B: easy to miss as a third pill
+                      beside League and Detail (user 2026-10-29). */}
+                  {q.view === "Teams" && (
+                    <button
+                      type="button"
+                      className="cmp-players-cta"
+                      onClick={() => set({ cmp_view: "players" })}
+                    >
+                      <i className="bi bi-people-fill" aria-hidden="true"></i>
+                      <span>
+                        <strong>{entityName}&rsquo;s players</strong>
+                        <small>How each player did, side A vs side B</small>
+                      </span>
+                    </button>
+                  )}
+                </div>
+                <EntityDetails
+                  q={q}
+                  seed={initial}
+                  name={entityName}
+                  labels={labels}
+                  descriptions={fullLabels}
+                />
+              </>
+            ) : (
+              <p>
+                Select a team or lineup from the dropdown to view detailed
+                comparison.
+              </p>
+            )
+          ) : teamPlayers ? (
+            <>
+              {metricButtons(
+                data.TEAM_PLAYER_METRICS as Record<string, string>,
+                q.team_metric,
+                (v) => set({ team_metric: v }),
+              )}
+              {rateButtons(
+                ["Per Game", "Per 60 Possessions", "Per 30 Minutes", "Totals"],
+                q.team_rate,
+                "team_rate",
+              )}
+              <button
+                type="button"
+                className="cmp-back-btn"
+                onClick={() =>
+                  set(
+                    selectedPlayer
+                      ? { drill_player: null }
+                      : { cmp_view: "detail" },
+                  )
+                }
+              >
+                &lt;- Back to {selectedPlayer ? "players" : "team detail"}
+              </button>
+              {selectedPlayer ? (
+                <TeamPlayerDetail row={selectedPlayer} q={q} labels={labels} />
+              ) : (
+                ready && (
+                  <DataTable
+                    columns={playerColumns}
+                    rows={playerRows}
+                    defaultOrder={[{ id: "gap", desc: true }]}
+                    paging={false}
+                    controls={false}
+                    nameColumns={["player_name"]}
+                    moreInfo
+                    onRowActivate={(r) =>
+                      set({ drill_player: String(r.player_id) })
+                    }
+                    rowProps={() => ({ className: "ibpl-compare-row" })}
+                  />
+                )
+              )}
+            </>
+          ) : (
+            <>
+              {metricButtons(title, metric, (v) => set({ metric: v }))}
+              <div className="row cmp-summary-row">
+                {(["a", "b"] as const).map((side, i) => (
+                  <div className="col-sm-4" key={side}>
+                    <div className="card bg-dark border-secondary p-3 mb-3">
+                      <div className="small text-uppercase">
+                        {fullLabels[i]}
+                      </div>
+                      <span
+                        className={`cmp-side-value ${summaries.winner === "tie" ? "is-tie" : summaries.winner === side ? "is-winner" : "is-loser"}`}
+                      >
+                        {ready ? formatCompare(summaries[side]) : "--"}
+                      </span>
+                      <div className="small text-muted">{metricLabel}</div>
+                      <div className="small text-muted">
+                        Delta vs {side === "a" ? "B" : "A"}:{" "}
+                        {ready
+                          ? formatCompare(
+                              num(summaries.delta) * (i ? -1 : 1),
+                              "num",
+                              true,
+                            )
+                          : "--"}
+                      </div>
+                      <div className="small text-muted">
+                        Poss {side.toUpperCase()}:{" "}
+                        {ready
+                          ? formatCompare(summaries[`poss_${side}`], "int")
+                          : "--"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                <div className="col-sm-4">
+                  <div className="card bg-dark border-secondary p-3 mb-3">
+                    <div>Avg Gap</div>
+                    <div className="fs-4 fw-bold">
+                      {ready ? formatCompare(summaries.gap_abs) : "--"}
+                    </div>
+                    <div className="small text-muted">league-wide</div>
+                  </div>
+                </div>
+              </div>
+              {lineup && (
+                <div className="ibpl-compare-lineup-controls">
+                  <CompareSelect
+                    id="cmp_lu_num"
+                    label="Size"
+                    value={q.size}
+                    choices={[2, 3, 4, 5].map((n) => ({
+                      value: String(n),
+                      label: String(n),
+                    }))}
+                    onChange={(v) => set({ size: v, auto_min: "true" })}
+                  />
+                  <CompareSelect
+                    id="cmp_lu_filter_team"
+                    label="Team"
+                    value={q.lu_team}
+                    choices={teams}
+                    onChange={(v) =>
+                      set({
+                        lu_team: v,
+                        lu_on: null,
+                        lu_any: null,
+                        lu_off: null,
+                        auto_min: "true",
+                      })
+                    }
+                  />
+                  {q.lu_team &&
+                    ["on", "any", "off"].map((k) => (
+                      <CompareSelect
+                        key={k}
+                        id={`cmp_lu_filter_${k}`}
+                        label={
+                          k === "on" ? "All of" : k === "any" ? "Any of" : "Off"
+                        }
+                        value={q[`lu_${k}`]}
+                        choices={players
+                          .filter((r) => String(r.team_id) === q.lu_team)
+                          .map((r) => ({
+                            value: String(r.player_id),
+                            label: String(r.name),
+                          }))}
+                        multiple
+                        onChange={(v) =>
+                          set({ [`lu_${k}`]: v, auto_min: "true" })
+                        }
+                      />
+                    ))}
+                </div>
+              )}
+              {ready &&
+                (rows.length ? (
+                  <DataTable
+                    columns={columns}
+                    rows={rows}
+                    defaultOrder={[]}
+                    paging={false}
+                    controls={false}
+                    moreInfo
+                    nameColumns={
+                      lineup ? ["entity_name", "team_name"] : ["entity_name"]
+                    }
+                    tableClass="compact stripe nowrap"
+                    onRowActivate={open}
+                    rowProps={() => ({ className: "ibpl-compare-row" })}
+                  />
+                ) : (
+                  <p>No comparisons match the current filters.</p>
+                ))}
+            </>
+          )}
+        </div>
+      </div>
     </>
   );
   return (
@@ -924,8 +1024,9 @@ function CompareTab({
       onView={mode}
       updated={refs.data?.meta.version ?? null}
       filtersId="cmp-filters"
+      mainOnly
       sidebarTop={null}
-      sidebar={sidebar}
+      sidebar={null}
       main={main}
     />
   );

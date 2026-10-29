@@ -1,14 +1,12 @@
 "use client";
 import {
   useCallback,
-  useEffect,
   useLayoutEffect,
   useRef,
   useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import type { League } from "@/rules/gameLogs";
 import type { GameflowPayload } from "@/server/gameflowRepo";
 import {
@@ -43,72 +41,6 @@ export function useNarrow() {
 }
 export function gameflowPath(league: League, game: number, team: number) {
   return `/api/v1/${league}/gameflow?game_id=${game}&team_id=${team}`;
-}
-function GameflowDialog({
-  title,
-  children,
-  onClose,
-}: {
-  title: string;
-  children: ReactNode;
-  onClose: () => void;
-}) {
-  const dialog = useRef<HTMLDialogElement>(null);
-  useEffect(() => {
-    const el = dialog.current;
-    el?.showModal();
-    document.body.classList.add("modal-open");
-    return () => {
-      el?.close();
-      document.body.classList.remove("modal-open");
-    };
-  }, []);
-  if (typeof document === "undefined") return null;
-  return createPortal(
-    <dialog
-      className="ibpl-gameflow-dialog"
-      ref={dialog}
-      aria-label={title}
-      onCancel={(e) => {
-        e.preventDefault();
-        onClose();
-      }}
-      onClick={(e) => {
-        if (e.target === e.currentTarget) {
-          const r = e.currentTarget.getBoundingClientRect();
-          if (
-            e.clientX < r.left ||
-            e.clientX > r.right ||
-            e.clientY < r.top ||
-            e.clientY > r.bottom
-          )
-            onClose();
-        }
-      }}
-    >
-      <div className="modal-content">
-        <div className="modal-header">
-          <h4 className="modal-title">{title}</h4>
-          <button
-            type="button"
-            className="btn btn-default"
-            onClick={onClose}
-            autoFocus
-            aria-label="Close gameflow"
-          >
-            Close
-          </button>
-        </div>
-        <div className="modal-body">{children}</div>
-        <div className="modal-footer">
-          <button type="button" className="btn btn-default" onClick={onClose}>
-            Dismiss
-          </button>
-        </div>
-      </div>
-    </dialog>,
-    document.body,
-  );
 }
 export function GameflowView({
   data,
@@ -179,10 +111,12 @@ export function GameflowView({
     if (next.length === 1) {
       const bar =
         next[0] === key ? b : data.bars.find((b) => laneKey(b) === next[0])!;
+      // A name selects the player's whole game (every lineup he was part
+      // of); a bar selects just that stint (user 2026-10-28).
       setActive(
         next[0] === key && window
           ? window
-          : { bar, start: bar.start_elapsed, end: bar.end_elapsed },
+          : { bar, start: 0, end: data.bounds[data.bounds.length - 1] },
       );
     } else setActive(null);
   };
@@ -208,6 +142,25 @@ export function GameflowView({
     ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
     : labels.prompt;
   const activeWindow = hover ?? active;
+  // Which team the selection belongs to: details sit next to its lanes.
+  const sideOf = (key: string) =>
+    data.bars.find((b) => laneKey(b) === key)?.side;
+  const upper = selected.length
+    ? selected.every((k) => sideOf(k) === "own")
+    : activeWindow?.bar.side === "own";
+  const details = (
+    <GameflowDetails
+      data={data}
+      activeWindow={activeWindow}
+      selected={selected}
+      groups={groups}
+      groupKey={groupKey}
+      focus={focus}
+      setFocus={setFocus}
+      setPreview={setPreview}
+      detail={detail}
+    />
+  );
   return (
     <div className="ibpl-ribbon-game ibpl-react-gameflow">
       {data.health && (
@@ -326,35 +279,109 @@ export function GameflowView({
         </>
       )}
       {!compact || full ? (
-        <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
-          <GameflowChart {...common} />
-        </div>
+        upper ? (
+          // Top team selected: its lanes, then the lineups, then the margin
+          // chart and the other team.
+          <>
+            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+              <GameflowChart {...common} crop="top" />
+            </div>
+            {details}
+            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+              <GameflowChart {...common} crop="bottom" />
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+              <GameflowChart {...common} />
+            </div>
+            {details}
+          </>
+        )
       ) : (
-        <div className="ibpl-ribbon-quarters">
-          {data.bounds.map((end, i) => (
-            <section
-              key={end}
-              className="ibpl-ribbon-quarter-card"
-              data-quarter={i + 1}
-              ref={(el) => {
-                if (el) cards.current.set(i + 1, el);
-                else cards.current.delete(i + 1);
-              }}
-            >
-              <h4 className="ibpl-ribbon-quarter-heading">
-                {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
-              </h4>
-              <div className="ibpl-ribbon-quarter-frame">
-                <GameflowChart
-                  {...common}
-                  range={{ start: i ? data.bounds[i - 1] : 0, end }}
-                />
-              </div>
-            </section>
-          ))}
+        <>
+          {/* Quarter cards (phones): the lineups sit right above them. */}
+          {details}
+          <div className="ibpl-ribbon-quarters">
+            {data.bounds.map((end, i) => (
+              <section
+                key={end}
+                className="ibpl-ribbon-quarter-card"
+                data-quarter={i + 1}
+                ref={(el) => {
+                  if (el) cards.current.set(i + 1, el);
+                  else cards.current.delete(i + 1);
+                }}
+              >
+                <h4 className="ibpl-ribbon-quarter-heading">
+                  {i < 4 ? `Q${i + 1}` : `OT${i - 3}`}
+                </h4>
+                <div className="ibpl-ribbon-quarter-frame">
+                  <GameflowChart
+                    {...common}
+                    range={{ start: i ? data.bounds[i - 1] : 0, end }}
+                  />
+                </div>
+              </section>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+function StintStats({ d }: { d: ReturnType<typeof windowDetail> }) {
+  return (
+    <dl className="gf-stint-stats">
+      <div>
+        <dt>On the floor</dt>
+        <dd>{clock(d.end - d.start)}</dd>
+      </div>
+      <div>
+        <dt>+/-</dt>
+        <dd>{d.pm}</dd>
+      </div>
+      {d.pf !== "" && (
+        <div>
+          <dt>Points</dt>
+          <dd>
+            {d.pf} for, {d.pa} against
+          </dd>
         </div>
       )}
-      {activeWindow && selected.length < 2 && (
+    </dl>
+  );
+}
+
+function GameflowDetails({
+  data,
+  activeWindow,
+  selected,
+  groups,
+  groupKey,
+  focus,
+  setFocus,
+  setPreview,
+  detail,
+}: {
+  data: GameflowPayload;
+  activeWindow: BarWindow | null;
+  selected: string[];
+  groups: ReturnType<typeof aggregateSegments>;
+  groupKey: (g: ReturnType<typeof aggregateSegments>[number]) => string;
+  focus: string | null;
+  setFocus: (k: string | null) => void;
+  setPreview: (w: Window[] | null) => void;
+  detail: React.RefObject<HTMLElement | null>;
+}) {
+  const whole =
+    !!activeWindow &&
+    activeWindow.start === 0 &&
+    activeWindow.end === data.bounds[data.bounds.length - 1];
+  return (
+    <>
+      {activeWindow && selected.length < 2 && !whole && (
         <section
           className="ibpl-ribbon-detail is-card"
           aria-label="Stint detail"
@@ -363,18 +390,18 @@ export function GameflowView({
             {activeWindow.bar.player_label} · {clock(activeWindow.start)}–
             {clock(activeWindow.end)}
           </div>
-          <div>
-            {
-              windowDetail(
-                data.lanes,
-                data.steps,
-                data.dict,
-                activeWindow.bar,
-                activeWindow.start,
-                activeWindow.end,
-              ).label
-            }
-          </div>
+          {/* Numbers only: the stint's lineups are listed, one per row, just
+              below (user 2026-10-28: the one-paragraph list was unreadable). */}
+          <StintStats
+            d={windowDetail(
+              data.lanes,
+              data.steps,
+              data.dict,
+              activeWindow.bar,
+              activeWindow.start,
+              activeWindow.end,
+            )}
+          />
         </section>
       )}
       {groups.length > 0 && (
@@ -430,7 +457,7 @@ export function GameflowView({
           )}
         </section>
       )}
-    </div>
+    </>
   );
 }
 function FragmentSide({
@@ -454,6 +481,8 @@ type PanelProps = {
   onClose: () => void;
   initial?: { url: string; data: GameflowPayload | null };
   standalone?: boolean;
+  /** The Back bar's text, e.g. "Back to games". */
+  backLabel?: string;
 };
 export default function GameflowPanel(props: PanelProps) {
   const state = useTabData<GameflowPayload>(
@@ -465,24 +494,27 @@ export default function GameflowPanel(props: PanelProps) {
 export function GameflowSurface({
   onClose,
   standalone = false,
+  backLabel = "Back",
   data,
   loading,
   error,
   retry,
-}: Pick<PanelProps, "onClose" | "standalone"> &
+}: Pick<PanelProps, "onClose" | "standalone" | "backLabel"> &
   Pick<
     ReturnType<typeof useTabData<GameflowPayload>>,
     "data" | "loading" | "error" | "retry"
   >) {
   const narrow = useNarrow(),
-    panel = useRef<HTMLElement>(null);
+    panel = useRef<HTMLElement>(null),
+    back = useRef<HTMLButtonElement>(null);
   const close = useCallback(() => onClose(), [onClose]);
   useLayoutEffect(() => {
     if (standalone) return;
+    // Note the link that opened Gameflow before moving focus to Back.
     const opener = document.activeElement as HTMLElement | null;
+    back.current?.focus({ preventScroll: true });
     panel.current?.scrollIntoView({ block: "start" });
-    // A modal still makes the page inert during layout-effect cleanup.
-    // Restore after React removes the dialog and its focus trap.
+    // Closing returns focus to the link that opened it.
     return () => queueMicrotask(() => opener?.focus({ preventScroll: true }));
   }, [standalone]);
   const title = data
@@ -502,30 +534,30 @@ export function GameflowSurface({
   ) : (
     <GameflowView data={data} compact={narrow} />
   );
-  if (!narrow && !standalone)
-    return (
-      <GameflowDialog title={title} onClose={close}>
-        {content}
-      </GameflowDialog>
-    );
+  // Always in the page, never a dialog (user 2026-10-28): the opener shows
+  // it in place of its own content, with a Back bar on top.
   return (
     <section
       className="ibpl-ribbon-inline-panel ibpl-react-gameflow-panel"
       ref={panel}
       aria-label="Gameflow"
+      onKeyDown={(e) => {
+        if (e.key === "Escape" && !standalone) close();
+      }}
     >
       <div className="ibpl-ribbon-inline-head">
-        <strong>{title}</strong>
         {!standalone && (
           <button
             type="button"
-            className="ibpl-ribbon-inline-close"
+            className="ibpl-gameflow-back"
             aria-label="Close gameflow"
             onClick={close}
+            ref={back}
           >
-            Close
+            <span aria-hidden="true">←</span> {backLabel}
           </button>
         )}
+        <strong>{title}</strong>
       </div>
       <div className="ibpl-ribbon-inline-result">{content}</div>
     </section>

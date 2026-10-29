@@ -400,7 +400,7 @@ export default function LineupsClient({
             seasonChip={seasonChipLabel(league, query.season)}
             chips={chips}
             activeCount={activeCount}
-            active={chips.length > 0 || filters.length > 0}
+            active={activeCount > 0 || filters.length > 0}
             onClearAll={reset}
             extra={
               <>

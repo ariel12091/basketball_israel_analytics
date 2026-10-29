@@ -1,4 +1,5 @@
 "use client";
+import layout from "@/data/layoutUi.json";
 import { useMemo, useState, useSyncExternalStore } from "react";
 import DataTable, {
   formatNumber,
@@ -224,12 +225,20 @@ export default function TeamRatingsTable({
       plain("def_poss", "Def Poss");
     } else {
       plain("minutes", "Min", 1);
+      // How much data stands behind the row, right after the team.
+      plain("off_poss", "Off Poss");
+      plain("def_poss", "Def Poss");
       for (const s of ["off", "def"]) {
         if (view === "shot_profile")
           SP_SUFFIX.forEach((m, i) =>
             metric(
               `${s}_${m}`,
-              i === 5 ? "Corner 3 Share" : SP_LABELS[i],
+              // Every column but eFG% is a share of shots (user 2026-10-28).
+              i === 0
+                ? layout.shotProfile.efg
+                : layout.shotProfile.labels[
+                    SP_LABELS[i] as keyof typeof layout.shotProfile.labels
+                  ],
               false,
               i === 0,
             ),
@@ -242,7 +251,6 @@ export default function TeamRatingsTable({
               s === "off" ? m === "tov" : m !== "tov",
               i === 0,
             );
-        plain(`${s}_poss`, "Poss");
       }
       if (view === "four_factors") metric("net_rtg", "Net", false, true);
     }
@@ -278,15 +286,17 @@ export default function TeamRatingsTable({
     view === "four_factors"
       ? [
           { label: "", span: 2 },
-          { label: "Offense", span: 6 },
-          { label: "Defense", span: 6 },
+          { label: "Usage", span: 2 },
+          { label: "Offense", span: 5 },
+          { label: "Defense", span: 5 },
           { label: "", span: 1 },
         ]
       : view === "shot_profile"
         ? [
             { label: "", span: 2 },
-            { label: "Offense Shot Profile (eFG% + shares of FGA)", span: 8 },
-            { label: "Defense Shot Profile (eFG% + shares of FGA)", span: 8 },
+            { label: "Usage", span: 2 },
+            { label: layout.shotProfile.groupOff, span: 7 },
+            { label: layout.shotProfile.groupDef, span: 7 },
           ]
         : undefined;
   const csv =
@@ -351,6 +361,7 @@ export default function TeamRatingsTable({
             : "Download CSV"
         }
         nameColumns={["team_name"]}
+        moreInfo
       />
     </>
   );

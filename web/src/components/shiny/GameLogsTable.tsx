@@ -96,6 +96,7 @@ export function columnsFor(
           avg2: shotAverages?.[side]?.fg2 ?? 53,
           avg3: shotAverages?.[side]?.fg3 ?? 34,
           palette: "gamelogs",
+          layout: true,
         },
       );
   const lead: Column[] = [
@@ -168,6 +169,8 @@ export function columnsFor(
   if (view === "summary")
     return [
       ...lead,
+      // How much data stands behind the row, right after the game.
+      ...usage,
       col("off_ppp", "Off PPP", { cls: SEP }),
       col("def_ppp", "Def PPP"),
       col("net_rtg", "Net"),
@@ -182,7 +185,6 @@ export function columnsFor(
             },
             { id: "Def Shot", label: "Def Shot", render: shot("def") },
           ]),
-      ...usage,
     ];
   const side = (s: "off" | "def"): Column[] => [
     col(`${s}_ppp`, "PPP", { cls: SEP }),
@@ -195,18 +197,19 @@ export function columnsFor(
   ];
   return [
     ...lead,
+    ...usage,
     col("net_rtg", "Net"),
     ...side("off"),
     ...side("def"),
-    ...usage,
   ];
 }
 
 const FF_GROUPS: Group[] = [
-  { label: "", span: 10 },
+  { label: "", span: 9 },
+  { label: "Usage", span: 2, cls: SEP },
+  { label: "", span: 1 },
   { label: "Offense", span: 5, cls: SEP },
   { label: "Defense", span: 5, cls: SEP },
-  { label: "Usage", span: 2, cls: SEP },
 ];
 
 export default function GameLogsTable({
@@ -242,6 +245,7 @@ export default function GameLogsTable({
       pageLength={50}
       csvName={`${league === "il" ? "game_logs" : "euroleague_game_logs"}_${view}`}
       nameColumns={["team_name"]}
+      moreInfo
       rowProps={(row) => ({
         "data-game-id": String(row.game_id ?? ""),
         "data-team-id": String(row.team_id ?? ""),

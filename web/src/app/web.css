@@ -52,7 +52,7 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-react-gameflow .ibpl-gameflow-full > svg { flex-shrink: 0; }
 .ibpl-react-gameflow .ibpl-gameflow-full > svg.ibpl-gameflow-gutter { position: sticky; left: 0; z-index: 2; width: 104px; max-width: 104px; margin-right: -104px; }
 .ibpl-react-gameflow .ibpl-ribbon-pin-bg { fill: var(--ibpl-surface); }
-.ibpl-react-gameflow .ibpl-gameflow-full > svg.is-compact { width: 954px; max-width: none; }
+.ibpl-react-gameflow .ibpl-gameflow-full > svg.is-compact:not(.ibpl-gameflow-gutter) { width: 954px; max-width: none; }
 .ibpl-react-gameflow .ibpl-ribbon-detail-members { text-align: left; }
 .ibpl-react-gameflow .ibpl-ribbon-detail-meta { text-align: left; }
 .ibpl-react-gameflow .ibpl-ribbon-score-tooltip { white-space: pre-line; }
@@ -60,7 +60,78 @@ body.ibpl-mobile .ibpl-lineup-modal .modal-content { max-height: 100vh; max-heig
 .ibpl-react-gameflow .ibpl-ribbon-lane[role="button"]:focus rect { stroke: var(--ibpl-accent); stroke-width: 2; }
 
 .ibpl-compare-side { min-width: 0; border: 0; }
+/* Open cue on Compare rows (Shiny's "amber text + chevron", made stronger,
+   user 2026-10-29): the name is amber and underlined with a chevron, and the
+   whole row lights up under the pointer or keyboard focus. */
 .ibpl-compare-row { cursor: pointer; }
+.ibpl-compare-row td[data-column="entity_name"],
+.ibpl-compare-row td[data-column="player_name"] {
+  /* Shiny's table rules set the name colour with !important. */
+  color: var(--ibpl-accent) !important;
+  font-weight: 700;
+  text-decoration: underline;
+  text-decoration-color: rgba(var(--ibpl-accent-rgb), 0.45);
+  text-underline-offset: 3px;
+}
+.ibpl-compare-row td[data-column="entity_name"]::after,
+.ibpl-compare-row td[data-column="player_name"]::after {
+  content: "\203A";
+  display: inline-block;
+  margin-left: 6px;
+  font-weight: 700;
+  text-decoration: none;
+  transition: transform 120ms ease;
+}
+.ibpl-compare-row:hover > td,
+.ibpl-compare-row:focus-visible > td {
+  background-color: rgba(var(--ibpl-accent-rgb), 0.1) !important;
+}
+.ibpl-compare-row:hover > td:first-child,
+.ibpl-compare-row:focus-visible > td:first-child {
+  box-shadow: inset 3px 0 0 var(--ibpl-accent);
+}
+.ibpl-compare-row:hover td[data-column="entity_name"]::after,
+.ibpl-compare-row:hover td[data-column="player_name"]::after,
+.ibpl-compare-row:focus-visible td[data-column="entity_name"]::after,
+.ibpl-compare-row:focus-visible td[data-column="player_name"]::after {
+  transform: translateX(3px);
+}
+.ibpl-compare-row:focus-visible { outline: none; }
+
+/* League table: each team's players, one click away. */
+.cmp-row-players {
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  color: var(--ibpl-accent); background: rgba(var(--ibpl-accent-rgb), 0.1);
+  border: 1px solid var(--ibpl-accent); cursor: pointer; white-space: nowrap;
+}
+.cmp-row-players::after { content: "\203A"; font-weight: 700; }
+.cmp-row-players:hover,
+.cmp-row-players:focus-visible { background: var(--ibpl-accent); color: #1a1409; }
+
+/* Team detail: Back on the left, the team's players as a clear call to
+   action on the right (stacked on phones). */
+.cmp-detail-top {
+  display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between;
+  gap: 10px 16px; margin-bottom: 12px;
+}
+.cmp-players-cta {
+  display: inline-flex; align-items: center; gap: 12px;
+  padding: 10px 16px; border-radius: 8px; text-align: left;
+  background: rgba(var(--ibpl-accent-rgb), 0.12);
+  border: 2px solid var(--ibpl-accent); color: var(--ibpl-text);
+  cursor: pointer; transition: background-color 120ms ease;
+}
+.cmp-players-cta > i { font-size: 22px; color: var(--ibpl-accent); }
+.cmp-players-cta > span { display: flex; flex-direction: column; line-height: 1.25; }
+.cmp-players-cta strong { color: var(--ibpl-accent); font-size: 15px; }
+.cmp-players-cta strong::after { content: " \203A"; font-weight: 700; }
+.cmp-players-cta small { color: var(--ibpl-text-muted); font-size: 12px; }
+.cmp-players-cta:hover,
+.cmp-players-cta:focus-visible { background: rgba(var(--ibpl-accent-rgb), 0.22); }
+@media (max-width: 575.98px) {
+  .cmp-players-cta { width: 100%; }
+}
 .ibpl-compare-side legend { float: none; font-size: 1rem; }
 .ibpl-compare-side input[type="range"], #cmp_min_poss { display: block; width: 100%; }
 .ibpl-compare-metrics { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 16px; }
@@ -378,3 +449,75 @@ body.ibpl-collapsed-nav .lineup-bar .lineup-chips-modes { display: flex; width: 
 body.ibpl-collapsed-nav .lineup-bar .lineup-chips-mode { flex: 1; justify-content: center; }
 .lineup-size .control-label { color: var(--ibpl-text-body); font-size: .8rem; font-weight: 700; }
 .lineup-bar .lineup-chips-eyebrow { font-family: var(--ibpl-font-body); }
+/* Gameflow in the page (no dialog): a Back bar on top. */
+.ibpl-gameflow-back { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; padding: 5px 12px; border: 2px solid var(--ibpl-accent); border-radius: 8px; background: transparent; color: var(--ibpl-accent); font-size: .85rem; font-weight: 700; }
+.ibpl-gameflow-back:hover { background: var(--ibpl-accent); color: var(--ibpl-bg); }
+.ibpl-react-gameflow-panel .ibpl-ribbon-inline-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+/* Team Ratings Traditional controls in the toolbar; Player Stats bar. */
+.tr-trad-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
+.tr-trad-controls .form-group, .tr-trad-controls .shiny-input-container { margin: 0; min-width: 180px; }
+.ps-bar { grid-template-columns: minmax(180px, 1fr) minmax(220px, 2fr); }
+body.ibpl-collapsed-nav .ps-bar { grid-template-columns: 1fr; }
+
+/* Gameflow: the whole gutter row (name, minutes, +/-) is one target, so the
+   row button lights up wherever the pointer is in it (user 2026-10-28). */
+.ibpl-ribbon-row { cursor: pointer; }
+.ibpl-ribbon-row:hover .ibpl-ribbon-row-btn:not(.is-pair-selected) {
+  fill: rgba(var(--ibpl-accent-rgb), 0.14);
+  stroke: var(--ibpl-accent);
+}
+
+/* Gameflow stint card: three numbers in a row, labels above values. */
+.gf-stint-stats { display: flex; flex-wrap: wrap; gap: 6px 24px; margin: 6px 0 0; }
+.gf-stint-stats dt { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; color: var(--ibpl-text-muted, #9a9389); }
+.gf-stint-stats dd { margin: 0; font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* Compare: the A and B sides stay on the page (user 2026-10-28), beside the
+   results from 992px and above them on narrower screens. */
+.cmp-layout { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); align-items: start; }
+.cmp-sides {
+  background: var(--ibpl-surface, #1c1814);
+  border: 1px solid var(--ibpl-border);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.cmp-results { min-width: 0; }
+@media (min-width: 992px) {
+  .cmp-layout { grid-template-columns: 300px minmax(0, 1fr); }
+}
+/* Below 992px one side at a time, chosen with the A | B switch. */
+.cmp-side-switch { display: flex; gap: 6px; margin-bottom: 10px; }
+.cmp-side-switch button {
+  flex: 1; padding: 6px 10px; border-radius: 6px; font-weight: 600;
+  background: transparent; color: var(--ibpl-text-muted); border: 1px solid var(--ibpl-border);
+}
+.cmp-side-switch button.is-active { background: var(--ibpl-accent); color: #1a1409; border-color: var(--ibpl-accent); }
+@media (max-width: 991.98px) {
+  .cmp-side:not(.is-shown) { display: none; }
+  .cmp-vs { display: none; }
+}
+@media (min-width: 992px) {
+  .cmp-side-switch { display: none; }
+}
+
+/* Compare settings bar, under the view tabs: the quick preset first and
+   largest (the page's most used control), then dates and game numbers. */
+.cmp-settings {
+  display: flex; flex-wrap: wrap; align-items: flex-end; gap: 10px 20px;
+  margin: 4px 0 12px; padding: 12px 14px;
+  background: var(--ibpl-surface); border: 1px solid var(--ibpl-border); border-radius: 8px;
+}
+.cmp-settings > * { margin-bottom: 0; }
+.cmp-settings .form-group, .cmp-settings label { margin-bottom: 0; }
+.cmp-preset { flex: 1 1 260px; max-width: 420px; }
+.cmp-preset label, .cmp-preset .control-label {
+  font-size: 15px; font-weight: 700; color: var(--ibpl-accent);
+}
+.cmp-preset .selectize-input {
+  min-height: 42px; font-size: 15px; font-weight: 600;
+  border: 2px solid var(--ibpl-accent) !important;
+}
+@media (max-width: 575.98px) {
+  .cmp-settings { flex-direction: column; align-items: stretch; }
+  .cmp-preset { flex: none; max-width: none; }
+}

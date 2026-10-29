@@ -19,10 +19,8 @@ import "@/styles/shiny/vendor/jquery.dataTables.extra.css";
 import "@/styles/shiny/vendor/buttons.dataTables.min.css";
 import "./web.css";
 import AskProvider from "@/components/AskProvider";
-import {
-  BODY_CLASS_SCRIPT,
-  PHONE_BODY_CLASSES,
-} from "@/components/shiny/layoutClasses";
+import BodyClassScript from "@/components/shiny/BodyClassScript";
+import { PHONE_BODY_CLASSES } from "@/components/shiny/layoutClasses";
 
 export const metadata: Metadata = {
   title: "IBPL Analytics",
@@ -51,7 +49,7 @@ export default function RootLayout({
       {/* Mobile first: the phone layout is the default; the script widens it
           from the viewport before first paint (one design for every device). */}
       <body className={PHONE_BODY_CLASSES} suppressHydrationWarning>
-        <script dangerouslySetInnerHTML={{ __html: BODY_CLASS_SCRIPT }} />
+        <BodyClassScript />
         <NuqsAdapter>
           <AskProvider
             enabled={process.env.ASK_ENABLED === "true"}

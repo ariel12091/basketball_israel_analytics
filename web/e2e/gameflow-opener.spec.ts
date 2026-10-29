@@ -85,13 +85,9 @@ for (const league of ["il", "euroleague", "eurocup"] as const)
       );
       const href = await link.getAttribute("href");
       await link.click();
-      const panel =
-        info.project.name === "phone"
-          ? page.getByRole("region", { name: "Gameflow", exact: true })
-          : page.getByRole("dialog", {
-              name: `${answer.meta.ownTeam} vs ${answer.meta.oppTeam}`,
-              exact: true,
-            });
+      // In the page at every width, never a dialog (user 2026-10-28).
+      const panel = page.getByRole("region", { name: "Gameflow", exact: true });
+      await expect(page.getByRole("dialog")).toHaveCount(0);
       await expect(panel.locator("svg.ibpl-ribbon").first()).toBeVisible();
       if (info.project.name === "desktop") {
         await expect(

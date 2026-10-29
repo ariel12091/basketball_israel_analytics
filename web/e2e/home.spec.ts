@@ -384,9 +384,8 @@ test("Home opens and closes the existing Gameflow surface", async ({
   await expect(
     page.locator("svg.ibpl-ribbon:not(.ibpl-gameflow-gutter)").first(),
   ).toBeVisible();
-  if (info.project.name === "desktop")
-    await expect(page.getByRole("dialog")).toBeVisible();
-  else await expect(page.getByRole("dialog")).toHaveCount(0);
+  // In the page at every width, never a dialog (user 2026-10-28).
+  await expect(page.getByRole("dialog")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Close gameflow", exact: true })
     .click();
