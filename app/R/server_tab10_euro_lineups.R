@@ -390,6 +390,8 @@ server_tab10_euro_lineups <- function(input, output, session, shared) {
       df$team_name <- as.character(df$team_id)
     }
     df <- add_pct_ranks(df, c(SUMMARY_RANKS, FF_RANKS))
+    # 3PT luck against the league rate of this whole population (helpers.R).
+    df <- lineup_3pt_luck(df)
     df[order(-df$total_poss), , drop = FALSE]
   })
 

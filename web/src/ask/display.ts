@@ -191,6 +191,14 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
             ["off_ppp", "Off PPP", fixed(1)],
             ["def_ppp", "Def PPP", fixed(1)],
             ["net_rtg", "Net RTG", fixed(1)],
+            // rules/lineups lineupThreePtLuck: the tag beside Net RTG.
+            [
+              "luck_3pt_flag",
+              "3PT luck tag (the Net RTG changes sign without 3PT luck)",
+              (v) => (v === true ? "3PT luck" : "none"),
+              "chat",
+            ],
+            ["net_without_3pt_luck", "Net RTG without 3PT luck", fixed(1), "chat"],
             ["plus_minus", "+/-", fixed(0)],
             ["off_poss", "Off Poss", fixed(0)],
             ["off_pts", "Off Pts", fixed(0)],

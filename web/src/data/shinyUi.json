@@ -752,6 +752,16 @@
                 {
                   "t": "The TOTAL row at the top aggregates all lineups matching your filters - use it as a baseline for comparison."
                 }
+              ],
+              [
+                {
+                  "t": "A 3PT luck tag on Net RTG means the sign of the lineup's net flips once its own and its opponents' three-point shooting are recounted at the league 3P% (hover the tag for the net without it). 3P% is treated as luck, 2P% as real."
+                }
+              ],
+              [
+                {
+                  "t": "Lineup numbers are noisy: a typical lineup plays only a few dozen possessions a season and even the most-used ones a few hundred, so a strong or weak Net RTG is a lead to check, not a verdict."
+                }
               ]
             ]
           },
@@ -894,6 +904,16 @@
               [
                 {
                   "t": "Minutes and possessions indicate sample size. Small samples produce noisy rates."
+                }
+              ],
+              [
+                {
+                  "t": "A 3PT luck tag on Net means the sign of the unit's net flips once its own and its opponents' three-point shooting are recounted at the league 3P% (hover the tag for the net without it). 3P% is treated as luck, 2P% as real."
+                }
+              ],
+              [
+                {
+                  "t": "Unit numbers are noisy: a typical unit plays only a few dozen possessions a season and even the most-used ones a few hundred, so a strong or weak Net is a lead to check, not a verdict."
                 }
               ],
               [

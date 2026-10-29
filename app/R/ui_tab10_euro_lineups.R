@@ -80,6 +80,8 @@ ui_tab10_euro_lineups <- function() tabPanel(
               "Off Shot and Def Shot cells show 2PT/3PT frequency and accuracy - use them to check whether efficiency is driven by sustainable shot selection or a hot-hand streak.",
               "Units overlap by design: a pair's possessions include every lineup that contained the pair, so unit rows do not sum to a team total.",
               "Minutes and possessions indicate sample size. Small samples produce noisy rates.",
+              "A 3PT luck tag on Net means the sign of the unit's net flips once its own and its opponents' three-point shooting are recounted at the league 3P% (hover the tag for the net without it). 3P% is treated as luck, 2P% as real.",
+              "Unit numbers are noisy: a typical unit plays only a few dozen possessions a season and even the most-used ones a few hundred, so a strong or weak Net is a lead to check, not a verdict.",
               "Possessions come from an independent EuroLeague possession engine. Never compare these numbers against the Israeli-league tabs."
             )
           )

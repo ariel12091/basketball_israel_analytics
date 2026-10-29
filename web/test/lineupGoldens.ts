@@ -4,6 +4,7 @@ import {
   localLineups,
   lineupPage,
   lineupTableRows,
+  lineupThreePtLuck,
   playerIds,
   type LineupView,
 } from "../src/rules/lineups";
@@ -31,6 +32,10 @@ export function loadLineup(file: string) {
     games: { rows: Row[] };
   };
   const q = g.query;
+  // Answers captured before 2026-10-29 predate lineupsRepo's 3PT luck step,
+  // a pure function of the ranked population: apply it as the server now does.
+  if (answer.rows.length && !("luck_3pt_flag" in answer.rows[0]))
+    answer.rows = lineupThreePtLuck(answer.rows);
   const local = localLineups(answer.rows, q.team ?? "", {
     on: playerIds(q.players_on),
     any: playerIds(q.players_any),

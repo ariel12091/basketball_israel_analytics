@@ -273,3 +273,44 @@ export function pivotLineupGames(raw: Row[]): Row[] {
   }
   return [...games.values()];
 }
+
+/** helpers.R lineup_3pt_luck / lineup_league_3p: 3PT luck on a lineup's Net
+ * RTG against the league 3P% of the whole population (both leagues). Adds
+ * luck_3pt_ours, luck_3pt_theirs, net_without_3pt_luck and luck_3pt_flag;
+ * rows without the shooting columns come back unchanged. */
+export function lineupThreePtLuck(rows: Row[]): Row[] {
+  const need = [
+    "net_rtg",
+    "off_poss",
+    "def_poss",
+    "off_fg3_made",
+    "off_fg3_att",
+    "def_fg3_made",
+    "def_fg3_att",
+  ];
+  if (!rows.length || !need.every((c) => c in rows[0])) return rows;
+  const att = rows.reduce((s, r) => s + zero(r.off_fg3_att), 0);
+  if (!(att > 0)) return rows;
+  const rate = rows.reduce((s, r) => s + zero(r.off_fg3_made), 0) / att;
+  const per100 = (made: unknown, a: unknown, poss: unknown) =>
+    poss == null || !(Number(poss) > 0) || made == null || a == null
+      ? null
+      : (300 * (Number(made) - rate * Number(a))) / Number(poss);
+  return rows.map((r) => {
+    const ours = per100(r.off_fg3_made, r.off_fg3_att, r.off_poss),
+      opp = per100(r.def_fg3_made, r.def_fg3_att, r.def_poss),
+      theirs = opp == null ? null : -opp,
+      net = r.net_rtg == null ? null : Number(r.net_rtg),
+      adj =
+        net == null || ours == null || theirs == null
+          ? null
+          : net - ours - theirs;
+    return {
+      ...r,
+      luck_3pt_ours: ours,
+      luck_3pt_theirs: theirs,
+      net_without_3pt_luck: adj,
+      luck_3pt_flag: adj != null && net !== 0 && adj * (net as number) <= 0,
+    };
+  });
+}
