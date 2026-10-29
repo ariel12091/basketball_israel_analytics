@@ -33,6 +33,44 @@ test_that("the Israeli filtered reader issues one per-game read when no clutch w
   expect_identical(nrow(out), 3L)
 })
 
+test_that("a starters bound sends the Israeli request to the action-row reader with four more arguments", {
+  seen <- list()
+  env <- environment(fetch_player_traditional_filtered)
+  real <- get("db_get_query", envir = env)
+  assign("db_get_query", function(pool, sql, params = list(), ...) {
+    seen[[length(seen) + 1L]] <<- list(sql = sql, params = params)
+    data.frame()
+  }, envir = env)
+  withr::defer(assign("db_get_query", real, envir = env))
+  call_reader <- function(league = "israel", ...) fetch_player_traditional_filtered(
+    pg_pool, session = NULL, guard_key = "test_reader_starters",
+    league = league, competition = NA_character_,
+    game_year = 2026L, start_d = as.Date("2025-10-01"), end_d = as.Date("2026-07-01"),
+    team_ids_csv = "3", game_type_csv = NA_character_, opp_ids_csv = NA_character_,
+    home_away = NA_character_, outcome = NA_character_,
+    opp_rank_side = NA_character_, opp_rank_n = NA_integer_, opp_rank_metric = NA_character_,
+    max_margin = NA_integer_, margin_status = NA_character_,
+    max_time_remaining = NA_integer_, ot_margin_filter = FALSE,
+    min_gn = NA_integer_, max_gn = NA_integer_, last_n_games = NA_integer_, ...
+  )
+  call_reader()
+  call_reader(num_starters_off_min = 3L, num_starters_off_max = 5L)
+  call_reader(num_starters_def_min = 0L, num_starters_def_max = 2L)
+  expect_match(seen[[1]]$sql, "get_player_traditional_from_games(", fixed = TRUE)
+  expect_length(seen[[1]]$params, 18L)
+  expect_match(seen[[2]]$sql, "get_player_traditional_custom_clutch(", fixed = TRUE)
+  expect_match(seen[[2]]$sql, "$22::int4)", fixed = TRUE)
+  expect_identical(seen[[2]]$params[19:22], list(3L, 5L, NA_integer_, NA_integer_))
+  expect_identical(seen[[3]]$params[19:22], list(NA_integer_, NA_integer_, 0L, 2L))
+  expect_error(call_reader("euroleague", num_starters_off_min = 3L), "Israeli only")
+})
+
+test_that("Compare applies starters bounds only to its team -> players view", {
+  txt <- read_repo_txt("R", "server_tab7_compare.R")
+  expect_identical(lengths(regmatches(txt, gregexpr("starters = TRUE)", txt, fixed = TRUE))), 2L)
+  expect_match(txt, "run_player_traditional(pa, team_csv, starters = TRUE)", fixed = TRUE)
+})
+
 test_that("the Israeli cache key carries no competition dimension", {
   # cached_season_df() is a query_fun() passthrough in this mock (no real
   # caching, so two calls can't be told apart by query count here) -- assert

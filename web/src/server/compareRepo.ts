@@ -219,8 +219,13 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
       a.maxGn,
       null,
     ];
+    // Starters bounds (the team -> players view under Starters vs Bench) are
+    // answered only by the action-row reader, as in fetch_player_traditional_filtered().
+    const starters = [a.offMin, a.offMax, a.defMin, a.defMax],
+      hasStarters = starters.some((x) => x != null);
     const custom =
-      p.maxMargin != null && (p.maxMargin !== 5 || p.maxTime !== 300);
+      hasStarters ||
+      (p.maxMargin != null && (p.maxMargin !== 5 || p.maxTime !== 300));
     return addUsagePct(
       normalizeTsRows(
         await q<Row>(
@@ -228,9 +233,11 @@ export async function readCompareFacts(q: Query, p: Params): Promise<Row[]> {
             custom
               ? "get_player_traditional_custom_clutch"
               : "get_player_traditional_from_games",
-            playerTypes,
+            hasStarters
+              ? [...playerTypes, ...Array(4).fill("int4")]
+              : playerTypes,
           ),
-          args,
+          hasStarters ? [...args, ...starters] : args,
         ),
       ),
     );

@@ -2,7 +2,18 @@ DROP FUNCTION IF EXISTS basketball_test.get_player_traditional_custom_clutch(
   INT, DATE, DATE, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, TEXT,
   INT, TEXT, INT, BOOLEAN, INT, INT, INT
 );
+DROP FUNCTION IF EXISTS basketball_test.get_player_traditional_custom_clutch(
+  INT, DATE, DATE, TEXT, TEXT, TEXT, TEXT, TEXT, TEXT, INT, TEXT,
+  INT, TEXT, INT, BOOLEAN, INT, INT, INT, INT, INT, INT, INT
+);
 
+-- The action-row player reader. It answers every request the per-game facts
+-- cannot: a custom clutch window, a starters filter (added 2026-10-29 for
+-- Compare's Starters vs Bench presets), or both. Starters follow
+-- docs/shared_definitions.md: events test the credited lineup's starters,
+-- time tests the physical lineup's. Outside a clutch window minutes are
+-- measured segment time, as in get_player_traditional_from_games; inside one
+-- they are the event span.
 CREATE OR REPLACE FUNCTION basketball_test.get_player_traditional_custom_clutch(
   p_game_year int,
   p_start_date date DEFAULT NULL,
@@ -21,7 +32,11 @@ CREATE OR REPLACE FUNCTION basketball_test.get_player_traditional_custom_clutch(
   p_ot_margin_filter boolean DEFAULT FALSE,
   p_min_gn int DEFAULT NULL,
   p_max_gn int DEFAULT NULL,
-  p_last_n_games int DEFAULT NULL
+  p_last_n_games int DEFAULT NULL,
+  p_num_starters_off_min int DEFAULT NULL,
+  p_num_starters_off_max int DEFAULT NULL,
+  p_num_starters_def_min int DEFAULT NULL,
+  p_num_starters_def_max int DEFAULT NULL
 )
 RETURNS TABLE (
   player_id int, team_id int, team_name text, player_name text,
@@ -43,10 +58,15 @@ DECLARE
   v_opp_rank_side text := COALESCE(NULLIF(btrim(p_opp_rank_side), ''), 'all');
   v_opp_rank_metric text := COALESCE(NULLIF(btrim(p_opp_rank_metric), ''), 'net');
   v_margin_status text := COALESCE(NULLIF(btrim(p_margin_status), ''), 'all');
+  v_no_clutch boolean := p_max_margin IS NULL AND p_max_time_remaining IS NULL
+     AND v_margin_status = 'all';
+  v_starters boolean := p_num_starters_off_min IS NOT NULL
+     OR p_num_starters_off_max IS NOT NULL
+     OR p_num_starters_def_min IS NOT NULL
+     OR p_num_starters_def_max IS NOT NULL;
 BEGIN
-  IF p_max_margin IS NULL AND p_max_time_remaining IS NULL
-     AND v_margin_status = 'all' THEN
-    RAISE EXCEPTION 'get_player_traditional_custom_clutch requires a clutch predicate';
+  IF v_no_clutch AND NOT v_starters THEN
+    RAISE EXCEPTION 'get_player_traditional_custom_clutch requires a clutch or starters predicate';
   END IF;
 
   IF p_team_ids_csv IS NOT NULL AND length(btrim(p_team_ids_csv)) > 0 THEN
@@ -72,8 +92,12 @@ BEGIN
   END IF;
 
   RETURN QUERY
+  -- The last-N rank is taken over the whole season before any filter, in the
+  -- same scan: joining the schedule back to a ranked copy of itself made the
+  -- planner expect one game, and every action CTE below then ran as nested
+  -- loops over CTE scans (24 s for a 2027 starters request).
   WITH schedule_ranked AS (
-    SELECT fs.game_id, fs.team_id, fs.game_year,
+    SELECT fs.*,
            ROW_NUMBER() OVER (
              PARTITION BY fs.team_id, fs.game_year
              ORDER BY fs.game_date DESC NULLS LAST, fs.game_id DESC
@@ -83,9 +107,7 @@ BEGIN
   ),
   games_base AS (
     SELECT fs.game_id, fs.team_id, fs.game_year, fs.opp_team_id
-    FROM basketball_test.final_schedule_mv fs
-    JOIN schedule_ranked sr
-      ON sr.game_id = fs.game_id AND sr.team_id = fs.team_id AND sr.game_year = fs.game_year
+    FROM schedule_ranked fs
     WHERE fs.game_year = p_game_year
       AND (p_start_date IS NULL OR fs.game_date >= p_start_date)
       AND (p_end_date IS NULL OR fs.game_date <= p_end_date)
@@ -98,7 +120,7 @@ BEGIN
            OR (v_outcome = 'loss' AND fs.has_won IS FALSE))
       AND (p_min_gn IS NULL OR fs.gn >= p_min_gn)
       AND (p_max_gn IS NULL OR fs.gn <= p_max_gn)
-      AND (p_last_n_games IS NULL OR sr.rn_recent <= p_last_n_games)
+      AND (p_last_n_games IS NULL OR fs.rn_recent <= p_last_n_games)
   ),
   games_ranked AS (
     SELECT gb.*,
@@ -124,10 +146,27 @@ BEGIN
        OR (v_opp_rank_side = 'bottom' AND gr.opp_rank >= gr.max_rank - p_opp_rank_n + 1)
   ),
   acts AS MATERIALIZED (
-    SELECT a.*
+    SELECT a.*, d.segment_seconds,
+      NOT v_starters OR (
+            (p_num_starters_off_min IS NULL OR d.credit_own_starters >= p_num_starters_off_min)
+        AND (p_num_starters_off_max IS NULL OR d.credit_own_starters <= p_num_starters_off_max)
+        AND (p_num_starters_def_min IS NULL OR d.credit_opp_starters >= p_num_starters_def_min)
+        AND (p_num_starters_def_max IS NULL OR d.credit_opp_starters <= p_num_starters_def_max)
+      ) AS event_ok,
+      NOT v_starters OR (
+            (p_num_starters_off_min IS NULL OR d.own_starters >= p_num_starters_off_min)
+        AND (p_num_starters_off_max IS NULL OR d.own_starters <= p_num_starters_off_max)
+        AND (p_num_starters_def_min IS NULL OR d.opp_starters >= p_num_starters_def_min)
+        AND (p_num_starters_def_max IS NULL OR d.opp_starters <= p_num_starters_def_max)
+      ) AS time_ok
     FROM basketball_test.player_stats_actions_by_game a
     JOIN games_filtered gf
       ON gf.game_year = a.game_year AND gf.game_id = a.game_id AND gf.team_id = a.team_id
+    -- The action facts carry no starters or segment time; read them off the
+    -- source row (one per game, team and action) only when they are needed.
+    LEFT JOIN basketball_test.df_pts_poss_lineups_longer_mv d
+      ON (v_starters OR v_no_clutch)
+     AND d.game_id = a.game_id AND d.team_id = a.team_id AND d.id = a.action_id
     WHERE (a.is_overtime OR p_max_time_remaining IS NULL
            OR a.regulation_seconds_remaining <= p_max_time_remaining)
       AND (
@@ -149,10 +188,12 @@ BEGIN
   ),
   poss_end AS MATERIALIZED (
     SELECT DISTINCT a.game_id, a.team_id, a.lineup_hash AS floor_lineup_hash,
-           a.credit_lineup_hash AS lineup_hash, a.action_id AS poss_end_id
+           a.credit_lineup_hash AS lineup_hash, a.action_id AS poss_end_id,
+           a.event_ok, a.time_ok
     FROM acts a
     WHERE a.type_lineup = 'offense' AND a.possession_flag = 1
       AND a.credit_lineup_hash IS NOT NULL
+      AND (a.event_ok OR a.time_ok)
   ),
   player_usage AS MATERIALIZED (
     SELECT COALESCE(c.player_id, f.player_id) AS player_id,
@@ -165,6 +206,7 @@ BEGIN
       FROM poss_end pe
       JOIN lineup_map lm
         ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.lineup_hash
+      WHERE pe.event_ok
       GROUP BY lm.player_id, pe.team_id
     ) c
     FULL JOIN (
@@ -172,6 +214,7 @@ BEGIN
       FROM poss_end pe
       JOIN lineup_map lm
         ON lm.game_id = pe.game_id AND lm.team_id = pe.team_id AND lm.lineup_hash = pe.floor_lineup_hash
+      WHERE pe.time_ok
       GROUP BY lm.player_id, pe.team_id
     ) f ON f.player_id = c.player_id AND f.team_id = c.team_id
   ),
@@ -179,17 +222,21 @@ BEGIN
     SELECT pe.team_id,
            COUNT(DISTINCT (pe.game_id, pe.team_id, pe.poss_end_id))::numeric AS team_poss
     FROM poss_end pe
+    WHERE pe.event_ok
     GROUP BY pe.team_id
   ),
   seg_times AS MATERIALIZED (
     SELECT a.game_id, a.team_id, a.lineup_hash, a.segment_id,
-           GREATEST(
+           CASE WHEN v_no_clutch THEN MAX(a.segment_seconds)
+           ELSE GREATEST(
              (array_agg(a.event_elapsed_seconds ORDER BY a.action_id DESC))[1] -
              (array_agg(a.event_elapsed_seconds ORDER BY a.action_id))[1], 0
-           )::numeric AS seg_seconds
+           ) END::numeric AS seg_seconds
     FROM acts a
     WHERE a.lineup_hash IS NOT NULL AND a.segment_id IS NOT NULL
-      AND a.event_elapsed_seconds IS NOT NULL
+      AND (CASE WHEN v_no_clutch THEN a.segment_seconds
+                ELSE a.event_elapsed_seconds END) IS NOT NULL
+      AND a.time_ok
     GROUP BY a.game_id, a.team_id, a.lineup_hash, a.segment_id
   ),
   player_minutes AS MATERIALIZED (
@@ -220,6 +267,7 @@ BEGIN
        + COUNT(DISTINCT a.personal_ft_trip_id))::int AS ts_poss_count
     FROM acts a
     WHERE a.action_player_id IS NOT NULL AND a.action_player_id > 0
+      AND a.event_ok
     GROUP BY a.action_player_id, a.team_id
   ),
   team_usage_totals AS MATERIALIZED (
@@ -228,6 +276,7 @@ BEGIN
        + COUNT(DISTINCT a.personal_ft_trip_id))::numeric AS team_ts_poss_count,
       SUM(a.turnovers)::numeric AS team_tov
     FROM acts a
+    WHERE a.event_ok
     GROUP BY a.team_id
   ),
   names_df AS MATERIALIZED (
