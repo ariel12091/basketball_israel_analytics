@@ -532,6 +532,32 @@ DQ_FINDING_CATALOG <- list(
     effect = "Offline audits and cold-storage restores only; the live app is unaffected.",
     fix = "Re-export the affected cold-storage tables."
   ),
+  AM_player_id_display_name_gaps = list(
+    headline = "Player id problems: names not backed by an identity",
+    tier = "low", entity = "player",
+    # A reused id or a player with no identity is a real id defect; a missing
+    # Basket link only waits for the next Basket refresh.
+    tier_fn = function(r) {
+      if (r$problem %in% c("reused_provider_id", "no_identity_roster_spelling")) "medium" else "low"
+    },
+    describe = function(r, ctx) {
+      who <- sprintf("%s (%s, %s)", r$display_name, dq_team(ctx, r$team_id), r$game_year)
+      switch(r$problem,
+        reused_provider_id = sprintf(
+          "%s: provider ID %s is two people on this team this season (%s).", who, r$player_id, r$detail),
+        no_identity_roster_spelling = sprintf(
+          "%s: ID %s has no identity entry, so the name is the most common roster spelling (%s).",
+          who, r$player_id, r$detail),
+        played_without_basket_link = sprintf(
+          "%s: %s, but no basket.co.il registration is linked.", who, r$detail),
+        basket_registration_unlinked = sprintf(
+          "%s: basket.co.il registration not linked to a player (%s).", who, r$detail),
+        sprintf("%s: %s.", who, r$problem)
+      )
+    },
+    effect = "The player is shown with a weaker name (identity dictionary or roster spelling instead of basket.co.il's), or, for a reused ID, each page keeps its own spelling.",
+    fix = "Missing Basket links: rerun the Basket refresh (scripts/backfill_basket_shooting_history.R --refresh-cache --write) and etl/basket_identity_match.R --write for that season, or add a manual match. A reused ID or a roster typo: add a correction to the identity dictionary."
+  ),
   AL_reader_lineup_hash_unresolved_in_on_table = list(
     headline = "Lineup segments the app cannot draw",
     tier = "critical", entity = "game",

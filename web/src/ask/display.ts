@@ -175,6 +175,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ? spec([
             ["Team", "Team", text],
             ["Players", "Players", text],
+            ["player_names_he_str", "Players (Hebrew)", text, "chat"],
             ...sides.flatMap((s) => [
               ...FF.map(([m, l]) => [`${s}_${m}`, `${SIDE[s]} ${l}`, fixed(1)] as [string, string, Fmt]),
               [`${s}_poss`, `${SIDE[s]} Poss`, fixed(0)] as [string, string, Fmt],
@@ -186,6 +187,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         : spec([
             ["Team", "Team", text],
             ["Players", "Players", text],
+            ["player_names_he_str", "Players (Hebrew)", text, "chat"],
             ["minutes", "Min", fixed(1)],
             ["total_poss", "Total Poss", fixed(0)],
             ["off_ppp", "Off PPP", fixed(1)],
@@ -255,6 +257,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
       return spec([
         ["team_name", "Team", text],
         ["Player", "Player", text],
+        ["name_he", "Player (Hebrew)", text, "chat"],
         ...Object.entries(PLAYER_LABELS)
           .filter(([id]) => league === "il" || id !== "dfl")
           .map(([id, l]) => [id, l, fixed(id === "gp" ? 0 : 1)] as [string, string, Fmt]),
@@ -284,6 +287,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         return spec([
           ["Team", "Team", text],
           ["Player", "Player", text],
+          ["name_he", "Player (Hebrew)", text, "chat"],
           ["Net Diff", "Net impact (on-off)", (v) => (v == null ? "" : ffValue("")(v, {}))],
           ...TEAM_RANK,
           ...Object.entries({ ...FF_RTG_MAP, ...FF_METRIC_MAP }).flatMap(
@@ -303,6 +307,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         return spec([
           ["Team", "Team", text],
           ["Player", "Player", text],
+          ["name_he", "Player (Hebrew)", text, "chat"],
           ...(["off", "def"] as const).flatMap((s) =>
             SP_SUFFIX.flatMap((m, i): [string, string, Fmt][] => {
               const side = s === "off" ? "Off" : "Def",
@@ -323,6 +328,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
       return spec([
         ["Team", "Team", text],
         ["Player", "Player", text],
+        ["name_he", "Player (Hebrew)", text, "chat"],
         ["Net RTG Diff", "Net impact (on-off)", signed2],
         ...TEAM_RANK,
         ["Off ON Diff", "Off impact", signed2],
@@ -362,6 +368,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         return spec([
           ["rank", "#", text],
           ["player_name", "Player", text],
+          ["name_he", "Player (Hebrew)", text, "chat"],
           ["gp_a", "GP A", (v, r) => String(r.played_a ? v : 0)],
           ["gp_b", "GP B", (v, r) => String(r.played_b ? v : 0)],
           ["metric_a", "Side A", played("a")],
@@ -385,7 +392,7 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
       return spec([["name", "Team", text]]);
     // The lineup filter's player picker shows the name only.
     case "lineup_roster":
-      return spec([["name", "Player", text]]);
+      return spec([["name", "Player", text], ["name_he", "Player (Hebrew)", text, "chat"]]);
     case "team_overview":
       return spec([
         ["section", "Section", text],
@@ -404,9 +411,11 @@ function build(tool: ToolName, league: League, view: string | null): Record<stri
         ["rank", "Rank", (v) => homeOrdinal(v)],
         ["Player", "Player", text],
         ["player_name", "Player", text],
+        ["name_he", "Player (Hebrew)", text, "chat"],
         ["Net RTG Diff", "Net impact", (v) => homeFixed(v, true)],
         ["ppg", "PPG", (v) => homeFixed(v)],
         ["player_names_str", "Lineup", text],
+        ["player_names_he_str", "Lineup (Hebrew)", text, "chat"],
         ["text", "Storyline", text],
         ["result", "Result", text],
         ["context", "Game", text],

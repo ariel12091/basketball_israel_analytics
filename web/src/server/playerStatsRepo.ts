@@ -7,7 +7,7 @@ import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
 import { playerPopulation, type Identity } from "../rules/playerStatsTable";
 import type { League, Row } from "../rules/gameLogs";
-import { namedPicker, readPlayerNames } from "./playerNames";
+import { applyPlayerNames, namedPicker, readPlayerNames } from "./playerNames";
 const call = (name: string, types: string[]) =>
   `SELECT * FROM ${name}(${types.map((t, i) => `$${i + 1}::${t}`).join(",")})`;
 export function parsePlayerStats(s: URLSearchParams, league: League) {
@@ -119,6 +119,15 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
       (r) => counts.get(`${r.team_id}:${r.player_id}`) === 1,
     );
   }
+  // Names follow the display-name owner; identities (TOTAL rows) do not change.
+  // Twin: load_ts_identity_lookup() in server_tab5_traditional.R.
+  const names = await readPlayerNames(q, c.league, c.season);
+  identities = identities.map((r) => ({
+    ...r,
+    display_name:
+      names.get(`${Number(r.team_id)}:${Number(r.player_id)}`)?.en ??
+      r.display_name,
+  }));
   const players = await q<Row>(
     euro
       ? `SELECT DISTINCT fr.team_id,fr.player_id,euroleague.person_display_name(p.display_name) AS player_name FROM euroleague.full_rosters fr JOIN euroleague.players p ON p.player_id=fr.player_id JOIN euroleague.schedule s ON s.game_id=fr.game_id WHERE s.competition=$1::text AND s.season=$2::int4 AND lower(p.provider_player_id) NOT IN ('team','total') ORDER BY player_name`
@@ -127,13 +136,10 @@ async function read(q: Query, p: ReturnType<typeof parsePlayerStats>) {
   );
   const version = await readVersion(q, c.league);
   return {
-    rows: playerPopulation(raw, identities, c.teams),
+    // applyPlayerNames adds the Hebrew name the Ask chat quotes.
+    rows: applyPlayerNames(playerPopulation(raw, identities, c.teams), names),
     identities,
-    players: namedPicker(
-      players,
-      await readPlayerNames(q, c.league, c.season),
-      "player_name",
-    ),
+    players: namedPicker(players, names, "player_name"),
     meta: {
       ...(await readTabReferences(q, c, version)),
       version,

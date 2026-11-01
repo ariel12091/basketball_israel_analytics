@@ -12,7 +12,7 @@
 # any two seasons). Matching is therefore strictly per season, and a person
 # appearing in several seasons is several unrelated registrations here.
 
-BASKET_IDENTITY_SEASONS <- 2025:2026
+BASKET_IDENTITY_SEASONS <- 2025:2027
 
 # Punctuation that separates or decorates name parts on one side but not the
 # other: "T.J Leaf" vs "TJ LEAF", "Justin Edler-Davis" vs "EDLER DAVIS",
@@ -80,7 +80,7 @@ assert_seasons_matchable <- function(seasons) {
   if (length(outside)) {
     stop("No play-by-play data to match against for season(s): ",
          paste(sort(outside), collapse = ", "),
-         ". Basket covers 2022-2026 and the play-by-play side 2025 onward.")
+         ". Basket covers 2022-2027 and the play-by-play side 2025 onward.")
   }
   invisible(seasons)
 }
@@ -256,11 +256,12 @@ match_basket_identities <- function(registrations, identities) {
 # them, in the same spirit as default_player_id_aliases().
 manual_basket_identity_matches <- function() {
   data.frame(
-    game_year = c(2025L, 2025L, 2025L, 2026L, 2026L, 2026L, 2026L, 2026L, 2026L),
+    game_year = c(2025L, 2025L, 2025L, 2026L, 2026L, 2026L, 2026L, 2026L, 2026L,
+                  2027L),
     basket_player_id = c(17479L, 17528L, 17578L, 21840L, 21923L, 24865L,
-                         24876L, 25974L, 25990L),
+                         24876L, 25974L, 25990L, 26089L),
     canonical_player_id = c(1780L, 2669L, 14359L, 1060L, 1121L, 1640L,
-                            1887L, 2147L, 2172L),
+                            1887L, 2147L, 2172L, 2284L),
     note = c(
       "John/Jon Dibartolomeo; only Dibartolomeo in the league",
       "Ben/Meron Ruina; only Ruina in the league, confirmed by the user",
@@ -270,7 +271,8 @@ manual_basket_identity_matches <- function() {
       "Gabriel 'Iffe' Lundberg is stored under the nickname",
       "Isaiah/ISAHIAH Mobley, a typo in the roster",
       "Ishmael 'Ish' El-Amin, nickname plus hyphen",
-      "Hen/Chen Halfon, the same heth"
+      "Hen/Chen Halfon, the same heth",
+      "Ran Solomon/SALOMON (HaEmek), both spellings differ; confirmed by the user 2026-11-01"
     ),
     stringsAsFactors = FALSE
   )
@@ -299,6 +301,9 @@ apply_manual_matches <- function(matches, identities) {
   manual <- rbind(manual_basket_identity_matches(),
                   manual_basket_identity_matches_ambiguous())
   manual <- manual[!is.na(manual$canonical_player_id), , drop = FALSE]
+  # Only the seasons being matched: a one-season run must not fail on the
+  # manual matches of another season. Inside them, a stale entry still stops.
+  manual <- manual[manual$game_year %in% matches$game_year, , drop = FALSE]
   for (i in seq_len(nrow(manual))) {
     m <- manual[i, ]
     rows <- matches$game_year == m$game_year &

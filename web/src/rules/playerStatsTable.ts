@@ -125,8 +125,11 @@ export function playerPopulation(
       String(a.Player).localeCompare(String(b.Player)),
   );
   const byKey = new Map(lookup.map((r) => [playerKey(r), r]));
+  // Every per-team row shows the lookup's name, which follows the display-name
+  // owner. Twin: add_ts_multi_team_totals() in server_tab5_traditional.R.
   rows = rows.map((r) => ({
     ...r,
+    Player: byKey.get(playerKey(r))?.display_name || r.Player,
     is_multi_team_total: false,
     ".identity_id": byKey.get(playerKey(r))?.identity_id ?? null,
   }));

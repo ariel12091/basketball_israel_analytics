@@ -1087,7 +1087,7 @@ server_tab7_compare <- function(input, output, session, shared) {
   load_cmp_players_ref <- function(game_year) {
     cmp_profile_time(
       "load_cmp_players_ref",
-      normalize_players_ref(fetch_players_basic(game_year)),
+      normalize_players_ref(fetch_players_named(game_year)),
       extra = function(res) sprintf("game_year=%s;rows=%d", as.integer(game_year), NROW(res))
     )
   }

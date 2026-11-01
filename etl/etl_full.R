@@ -1787,6 +1787,46 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       ), "WARN")
     }
 
+    # Additional or changed players in the seasons just processed whose names
+    # fall back below Basket (data quality check AM). A warning, not a failure:
+    # the fix is a Basket refresh and the identity matcher, which the ETL does
+    # not run.
+    name_gaps <- tryCatch({
+      years <- DBI::dbGetQuery(pg, sprintf(
+        'SELECT DISTINCT game_year FROM "%s"."schedule" WHERE game_id = ANY($1::int[])', SCHEMA
+      ), params = list(sprintf("{%s}", paste(as.integer(processed_ids), collapse = ","))))$game_year
+      if (length(years)) player_display_name_gaps(pg, SCHEMA, years) else NULL
+    },
+      error = function(e) {
+        log_msg(sprintf("  Player name check skipped: %s", conditionMessage(e)), "WARN")
+        NULL
+      }
+    )
+    if (!is.null(name_gaps) && nrow(name_gaps)) {
+      log_msg(sprintf(
+        "  Player id warning: %d player(s) without an identity-backed name in season(s) %s (%s)",
+        nrow(name_gaps),
+        paste(sort(unique(name_gaps$game_year)), collapse = ","),
+        paste(sprintf("%s=%d", names(table(name_gaps$problem)), as.integer(table(name_gaps$problem))),
+              collapse = ", ")
+      ), "WARN")
+      for (i in seq_len(min(nrow(name_gaps), 25L))) {
+        log_msg(sprintf(
+          "    %s game_year=%s team_id=%s player_id=%s %s: %s",
+          name_gaps$problem[[i]], name_gaps$game_year[[i]], name_gaps$team_id[[i]],
+          ifelse(is.na(name_gaps$player_id[[i]]), "-", name_gaps$player_id[[i]]),
+          name_gaps$display_name[[i]],
+          ifelse(is.na(name_gaps$detail[[i]]), "", name_gaps$detail[[i]])
+        ), "WARN")
+      }
+      if (any(name_gaps$problem %in% c("played_without_basket_link", "basket_registration_unlinked"))) {
+        log_msg(paste(
+          "    Fix: scripts/backfill_basket_shooting_history.R --seasons=<year> --with-profiles",
+          "--refresh-cache --write, then etl/basket_identity_match.R --seasons=<year> --write"
+        ), "WARN")
+      }
+    }
+
     if (warn_count == 0) {
       log_msg(sprintf("  All %d games passed validation checks", length(processed_ids)))
     } else {

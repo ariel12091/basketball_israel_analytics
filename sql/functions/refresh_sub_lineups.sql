@@ -63,23 +63,29 @@ sub_dedup AS (
   SELECT * FROM sub_dedup_5
 ),
 
--- build ordered names once per (team, sub_lineup_hash, game_year)
+-- build ordered names once per (team, sub_lineup_hash, game_year).
+-- The "Player display name" owner first (docs/shared_definitions.md); its name
+-- is NULL only for a reused provider id, which keeps the roster spelling.
 names_by_sub AS (
   SELECT
     d.team_id,
     d.sub_lineup_hash,
     d.game_year,
     ARRAY_AGG(
-      COALESCE(fr.name, '#' || u.player_id::text)
+      COALESCE(dn.display_name, fr.name, '#' || u.player_id::text)
       ORDER BY u.ord
     ) AS player_names,
     STRING_AGG(
-      COALESCE(fr.name, '#' || u.player_id::text),
+      COALESCE(dn.display_name, fr.name, '#' || u.player_id::text),
       ', '
       ORDER BY u.ord
     ) AS player_names_str
   FROM sub_dedup d
   JOIN LATERAL UNNEST(d.player_ids) WITH ORDINALITY AS u(player_id, ord) ON TRUE
+  LEFT JOIN basketball_test.player_display_names_v dn
+    ON dn.team_id   = d.team_id
+   AND dn.player_id = u.player_id
+   AND dn.game_year = d.game_year
   LEFT JOIN fr_latest fr
     ON fr.team_id   = d.team_id
    AND fr.player_id = u.player_id

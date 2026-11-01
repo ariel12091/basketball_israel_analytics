@@ -22,6 +22,25 @@ test_that("accumulated-stat rows preserve exact shooting totals", {
   expect_equal(out$points[2], 20.5)
 })
 
+test_that("leader boxes are skipped, any other short player row still fails", {
+  full_row <- paste0(
+    "<tr><td>1</td><td><a href='player.asp?PlayerId=21797'>ים מדר</a></td>",
+    "<td>28</td><td>741</td><td>427</td><td>92/176</td><td>52.3%</td>",
+    "<td>60/138</td><td>43.5%</td><td>63/74</td><td>85.1%</td></tr>"
+  )
+  leader_box <- paste0(
+    "<table><tr><th>points</th><th>name</th><th>#</th></tr>",
+    "<tr><td>24.0</td><td><a href='player.asp?PlayerId=26053'>זאק בראיינט</a></td>",
+    "<td>1</td></tr></table>"
+  )
+  out <- parse_basket_accumulate_html(paste0(leader_box, "<table>", full_row, "</table>"))
+  expect_equal(out$basket_player_id, 21797L)
+
+  short_row <- "<tr><td>1</td><td><a href='player.asp?PlayerId=5'>x</a></td><td>2</td><td>3</td></tr>"
+  expect_error(parse_basket_accumulate_html(paste0("<table>", short_row, "</table>")),
+               "has 4 cells")
+})
+
 test_that("profile labels produce season attributes", {
   html <- paste0(
     "<section><div>אזרחות:&nbsp; <a> ישראל (ISR)</a></div>",

@@ -71,6 +71,9 @@ fetch_players_basic <- function(gy) {
     name = c("Player A", "Player C", "Player B")
   )
 }
+# No owner names by default, so every page keeps its own spelling; a test of
+# the renaming overrides this stub.
+fetch_player_display_names <- function(gy) data.frame()
 # Empty by default (fail-open shape): no test game is scoreless unless a
 # specific test overrides this stub.
 fetch_scoreless_games <- function(ver = NULL) {

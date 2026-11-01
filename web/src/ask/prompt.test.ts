@@ -19,6 +19,9 @@ describe("system prompt", () => {
 
   it("makes names markers too, and keeps internals out of the answer", () => {
     expect(p).toMatch(/names of teams, players and lineups.*markers/i);
+    // Hebrew answers quote the Hebrew name marker; the model never types one.
+    expect(p).toMatch(/\{\{r1\.row1\.name_he\}\}/);
+    expect(p).toMatch(/never type a player or team name in Hebrew letters yourself/i);
     expect(p).toMatch(/already include their unit/i);
     expect(p).toMatch(/never mention tool, parameter or preset names/i);
   });

@@ -319,6 +319,14 @@ add_ts_multi_team_totals <- function(df, lookup, min_teams = 2L) {
     return(df)
   }
 
+  # Every per-team row shows the lookup's name, which follows the display-name
+  # owner (load_ts_identity_lookup). Twin: playerPopulation() in the web app.
+  if ("display_name" %in% names(lookup) && "Player" %in% names(df)) {
+    per_team <- !vapply(df$is_multi_team_total, isTRUE, logical(1))
+    df$Player[per_team] <- owner_player_names(df$team_id[per_team], df$player_id[per_team],
+                                              lookup, df$Player[per_team])
+  }
+
   lkmap <- stats::setNames(as.character(lookup$identity_id),
                            paste0(lookup$team_id, ":", lookup$player_id))
   dispmap <- NULL
@@ -887,7 +895,14 @@ server_tab5_traditional <- function(input, output, session, shared) {
     if (!nrow(raw)) return(raw)
     tp <- paste0(raw$team_id, ":", raw$player_id)
     ambiguous <- unique(tp[duplicated(tp)])
-    raw[!(tp %in% ambiguous), , drop = FALSE]
+    raw <- raw[!(tp %in% ambiguous), , drop = FALSE]
+    # Names follow the display-name owner; identities (TOTAL rows) do not change.
+    if (nrow(raw) && "display_name" %in% names(raw)) {
+      raw$display_name <- owner_player_names(raw$team_id, raw$player_id,
+                                             fetch_player_display_names(gy_int),
+                                             raw$display_name)
+    }
+    raw
   }
 
   # Full ranking population for the current data scope (season + team/date/game
