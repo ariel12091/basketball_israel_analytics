@@ -83,6 +83,10 @@ RETURNS TABLE (
 LANGUAGE plpgsql
 STABLE
 SET plan_cache_mode = force_custom_plan
+-- Its clutch path joins CTEs the planner estimates at one row; nested loops
+-- made the recorded clutch call 5.0 s, 1.5 s without (2026-11-01, as
+-- fetch_lineups_all, its twin).
+SET enable_nestloop = off
 AS $function$
 DECLARE
   v_ids_norm  int4[];
