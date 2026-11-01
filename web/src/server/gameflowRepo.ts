@@ -6,6 +6,7 @@ import { Deadline, withSnapshot } from "./db";
 import { ParamError } from "./api";
 import { readVersion } from "./gameLogsRepo";
 import { VersionedCache } from "./versionedCache";
+import { ownerName, readPlayerNames } from "./playerNames";
 export function parseGameflow(search: URLSearchParams) {
   const id = (key: string) => {
     const value = search.get(key) ?? "";
@@ -32,6 +33,17 @@ async function read(league: League, game: number, team: number) {
     const raw = (
       await q<RawRibbon>(euro ? sql.euro : sql.il, [game, team])
     )[0] ?? { lanes: [], margin: [], n_periods: 4 };
+    // Names follow the display-name owner (D27); where it has none (a reused
+    // provider id) the lane keeps this game's roster spelling. Twin:
+    // fetch_stint_ribbon() in global.R.
+    if (!euro && raw.lanes?.length) {
+      const names = await readPlayerNames(q, league, Number(meta.game_year));
+      raw.lanes = raw.lanes.map((l) => ({
+        ...l,
+        player_label:
+          ownerName(names, l.team_id, l.player_id)?.en ?? l.player_label,
+      }));
+    }
     // pg decodes the reader's jsonb arrays, unlike RPostgres's JSON strings.
     return {
       ...ribbonModel(raw, team, league, game),

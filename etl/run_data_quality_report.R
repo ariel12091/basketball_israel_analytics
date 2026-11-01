@@ -2827,6 +2827,25 @@ build_checks <- function(con, schema) {
       }
     ),
     list(
+      id = "AM_player_id_display_name_gaps",
+      title = "Player id problems leave players without an identity-backed name",
+      severity = "warning",
+      purpose = paste(
+        "Player id dysfunction as the pages see it: a provider id that is two people in a",
+        "team-season, a player with no identity entry (named from roster spellings, often a",
+        "one-game typo), a player who has played regular-season games but has no linked",
+        "Basket registration (rerun the Basket refresh and matcher), and Basket",
+        "registrations the matcher could not link. Each falls back to a weaker name in",
+        "player_display_names_v."
+      ),
+      required_tables = c("player_display_names_v", "basket_player_season", "player_traditional_by_game"),
+      problem_count_col = "problems",
+      runner = function(con, schema, root) {
+        source(file.path(root, "etl", "player_identity_dictionary.R"), local = TRUE)
+        player_display_name_gaps(con, schema = schema)
+      }
+    ),
+    list(
       id = "AL_reader_lineup_hash_unresolved_in_on_table",
       title = "Reader lineup hashes do not resolve in lineups_lookup_on",
       severity = "error",

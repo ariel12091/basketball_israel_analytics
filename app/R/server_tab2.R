@@ -99,7 +99,7 @@ server_tab2 <- function(input, output, session, shared) {
       selected = selected_team
     )
 
-    players_map <- fetch_players_basic(gy_int)
+    players_map <- fetch_players_named(gy_int)
     # Season minutes let the chip roster lead with the rotation. The pull is
     # the cross-session season cache Tab 5 and Tab 1 already share.
     ld_ref$players <- with_season_minutes(players_map, tryCatch(

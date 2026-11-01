@@ -422,6 +422,9 @@ parse_basket_accumulate_html <- function(html) {
 
     raw_cells <- extract_matches("(?is)<t[dh]\\b[^>]*>.*?</t[dh]>", row)
     cells <- vapply(raw_cells, html_text, character(1))
+    # Since the 2026-27 season the page also carries leader boxes (value,
+    # player, rank: three cells). Any other short row still stops the parse.
+    if (length(cells) == 3L) next
     if (length(cells) < 11L) {
       stop("Player row ", row_number, " has ", length(cells), " cells; expected at least 11")
     }

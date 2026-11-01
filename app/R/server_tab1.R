@@ -487,6 +487,10 @@ server_tab1 <- function(input, output, session, shared) {
       ))
     }
     df <- onoff_clean_display_names(ps_result$df)
+    if ("Player" %in% names(df) && all(c("team_id", "player_id") %in% names(df))) {
+      df$Player <- owner_player_names(df$team_id, df$player_id,
+                                      fetch_player_display_names(input$game_year), df$Player)
+    }
     onoff_filters <- on_filter_split()$onoff
     mode <- input$onoff_view_mode
 

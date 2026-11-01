@@ -910,3 +910,99 @@ player_identity_unresolved_summary <- function(pg, schema = SCHEMA, game_ids = N
     DBI::dbGetQuery(pg, sql)
   }
 }
+
+# Player id problems that leave a player without an identity-backed display
+# name (the "Player display name" owner, player_display_names_v). One row per
+# player and problem, with `problems` = 1 for counting:
+#   reused_provider_id           one (season, team, player id) is two identities
+#                                in its games; every page keeps its own spelling
+#   no_identity_roster_spelling  no identity dictionary entry, so the name is the
+#                                roster spelling of most games (`detail` lists
+#                                the spellings, e.g. a one-game typo)
+#   played_without_basket_link   has played a regular-season game in a season
+#                                with Basket data but no Basket registration is
+#                                linked: the Basket refresh has not picked him
+#                                up yet. Basket's season pages count only
+#                                regular-season games (game_type 5): on
+#                                2026-11-01 its game count equalled that for 662
+#                                of 697 linked players, all games for 299.
+#   basket_registration_unlinked a Basket registration the matcher could not
+#                                link (player_id is NA; the name is Basket's)
+# `game_years` limits the seasons (NULL = all). Shared by the nightly ETL
+# (Phase 6 warning) and the data quality report (check AM).
+player_display_name_gaps <- function(pg, schema = SCHEMA, game_years = NULL) {
+  schema <- assert_identity_schema_name(schema)
+  years <- if (is.null(game_years)) integer(0) else as.integer(game_years)
+  years <- sort(unique(years[is.finite(years)]))
+  filter <- if (length(years)) "WHERE game_year = ANY($1::int[])" else ""
+  sql <- sprintf(
+    'WITH v AS (
+       SELECT * FROM "%1$s"."player_display_names_v" %2$s
+     ),
+     spellings AS (
+       SELECT game_year, team_id, player_id,
+              string_agg(name || \' x\' || games, \' | \' ORDER BY games DESC, name) AS spellings
+       FROM (
+         SELECT game_year, team_id, player_id,
+                btrim(concat_ws(\' \', firstname, lastname)) AS name,
+                count(DISTINCT game_id)::int AS games
+         FROM "%1$s"."full_rosters"
+         WHERE player_id IS NOT NULL
+         GROUP BY 1, 2, 3, 4
+       ) s
+       GROUP BY game_year, team_id, player_id
+     ),
+     played AS (
+       SELECT t.game_year, t.team_id, t.player_id,
+              count(*)::int AS games_played, max(t.game_id) AS last_game_id
+       FROM "%1$s"."player_traditional_by_game" t
+       JOIN "%1$s"."schedule" s ON s.game_id = t.game_id
+       WHERE t.seconds_on_floor > 0 AND s.game_type = 5
+       GROUP BY t.game_year, t.team_id, t.player_id
+     ),
+     basket_seasons AS (
+       SELECT DISTINCT game_year FROM "%1$s"."basket_player_season"
+     ),
+     unlinked AS (
+       SELECT b.* FROM "%1$s"."basket_player_season" b
+       WHERE b.identity_match_status IN (\'unmatched\', \'ambiguous\')
+     )
+     SELECT v.game_year, v.team_id, v.player_id, v.display_name,
+            \'reused_provider_id\'::text AS problem, s.spellings AS detail
+     FROM v LEFT JOIN spellings s USING (game_year, team_id, player_id)
+     WHERE v.name_source = \'reused_id\'
+     UNION ALL
+     SELECT v.game_year, v.team_id, v.player_id, v.display_name,
+            \'no_identity_roster_spelling\', s.spellings
+     FROM v LEFT JOIN spellings s USING (game_year, team_id, player_id)
+     WHERE v.name_source = \'roster\'
+     UNION ALL
+     SELECT v.game_year, v.team_id, v.player_id, v.display_name,
+            \'played_without_basket_link\',
+            p.games_played || \' regular-season game(s) played, last game \' || p.last_game_id
+     FROM v
+     JOIN played p USING (game_year, team_id, player_id)
+     WHERE v.name_source = \'dictionary\'
+       AND p.games_played > 0
+       AND v.game_year IN (SELECT game_year FROM basket_seasons)
+     UNION ALL
+     SELECT u.game_year, d.team_id_rosters, NULL::int, upper(u.player_name_en),
+            \'basket_registration_unlinked\',
+            u.identity_match_status || \': Basket \' || u.basket_player_id || \' \' ||
+              u.player_name || \' (\' || u.basket_team_name || \')\'
+     FROM unlinked u
+     LEFT JOIN "%1$s"."schedule_team_dict" d
+       ON d.game_year = u.game_year AND d.team_name_basket = u.basket_team_name
+     %3$s
+     ORDER BY 1 DESC, 2, 5, 3',
+    schema, filter,
+    if (length(years)) "WHERE u.game_year = ANY($1::int[])" else ""
+  )
+  out <- if (length(years)) {
+    DBI::dbGetQuery(pg, sql, params = list(sprintf("{%s}", paste(years, collapse = ","))))
+  } else {
+    DBI::dbGetQuery(pg, sql)
+  }
+  out$problems <- rep(1L, nrow(out))
+  out
+}

@@ -420,6 +420,22 @@ fetch_stint_ribbon <- function(pool, league, game_id, team_id, data_version = NU
     marg_raw <- if (is.na(row$margin[1])) NULL else
       jsonlite::fromJSON(row$margin[1], simplifyDataFrame = TRUE)
     if (is.null(lanes_raw) || !NROW(lanes_raw)) return(NULL)
+    # Names follow the display-name owner (D27); where it has none (a reused
+    # provider id) the lane keeps this game's roster spelling. Twin: the
+    # web's gameflowRepo.ts.
+    if (identical(league, "israel")) {
+      gy <- db_get_query(
+        pool,
+        "SELECT game_year FROM basketball_test.final_schedule_mv WHERE game_id = $1 LIMIT 1",
+        params = list(game_id)
+      )
+      if (NROW(gy)) {
+        lanes_raw$player_label <- owner_player_names(
+          lanes_raw$team_id, lanes_raw$player_id,
+          fetch_player_display_names(gy$game_year[[1]]), lanes_raw$player_label
+        )
+      }
+    }
 
     # Both leagues now return an already-signed, team-perspective margin
     # (elapsed, margin, order_key) -- no per-league branch needed.
@@ -600,6 +616,28 @@ fetch_players_basic <- function(gy) {
         ORDER BY MIN(btrim(firstname)||' '||btrim(lastname))",
       params = list(gy)
     )
+  )
+}
+
+# The "Player display name" owner (docs/shared_definitions.md, D27): one name
+# per (team_id, player_id) for the season, from player_display_names_v. Pages
+# apply it with owner_player_names(); the shared lookups keep their own SQL,
+# so a failed read leaves every name as the page's own spelling.
+fetch_player_display_names <- function(gy) {
+  gy <- suppressWarnings(as.integer(gy))
+  if (length(gy) != 1L || is.na(gy)) return(data.frame())
+  tryCatch(
+    cached_ref_query(
+      key = sprintf("player_display_names_%d", gy),
+      query_fun = function() db_get_query(
+        pg_pool,
+        "SELECT team_id, player_id, display_name
+           FROM basketball_test.player_display_names_v
+          WHERE game_year = $1::int4 AND display_name IS NOT NULL",
+        params = list(gy)
+      )
+    ),
+    error = function(e) data.frame()
   )
 }
 

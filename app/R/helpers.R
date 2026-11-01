@@ -3662,6 +3662,34 @@ onoff_clean_display_names <- function(df) {
   df
 }
 
+# The "Player display name" owner (docs/shared_definitions.md, D27) for each
+# (team_id, player_id): the name from player_display_names_v (`names`, as
+# fetch_player_display_names() returns it), or `fallback` where the owner has
+# none -- a reused provider id, a player missing from the view, or a failed read.
+owner_player_names <- function(team_id, player_id, names, fallback) {
+  fallback <- as.character(fallback)
+  if (is.null(names) || !NROW(names) || !length(fallback) ||
+      !all(c("team_id", "player_id", "display_name") %in% names(names))) {
+    return(fallback)
+  }
+  key <- function(t, p) paste0(suppressWarnings(as.integer(t)), ":",
+                               suppressWarnings(as.integer(p)))
+  lookup <- stats::setNames(as.character(names$display_name),
+                            key(names$team_id, names$player_id))
+  hit <- unname(lookup[key(team_id, player_id)])
+  ifelse(is.na(hit) | !nzchar(trimws(hit)), fallback, hit)
+}
+
+# fetch_players_basic() named by the owner (the tab 2 and tab 7 pickers). Both
+# lookups live in global.R; this only composes them.
+fetch_players_named <- function(gy) {
+  players <- fetch_players_basic(gy)
+  if (!NROW(players)) return(players)
+  players$name <- owner_player_names(players$team_id, players$player_id,
+                                     fetch_player_display_names(gy), players$name)
+  players
+}
+
 # Four-factors and summary DataTables for the lineup tabs, shared by Tab 2
 # (Israeli) and Tab 10 (EuroLeague). Both tabs held this verbatim; the only
 # difference between leagues is the clickable-Players-column anchor class and

@@ -979,6 +979,13 @@ server_team_hub <- function(input, output, session, shared) {
   output$hub_players <- renderUI({
     req(hub_storylines_ready())
     key_players <- hub_key_players(hub_onoff_df(), hub_team_id())
+    if (!is.null(key_players)) {
+      roster_name <- paste(key_players[["First Name"]], key_players[["Last Name"]])
+      key_players$.name <- if (all(c("team_id", "player_id") %in% names(key_players))) {
+        owner_player_names(key_players$team_id, key_players$player_id,
+                           fetch_player_display_names(hub_gy()), roster_name)
+      } else roster_name
+    }
     scorer <- hub_top_scorer(hub_ts_df(), hub_team_id())
     if (is.null(key_players) && is.null(scorer)) return(NULL)
     div(
@@ -996,10 +1003,7 @@ server_team_hub <- function(input, output, session, shared) {
               tags$li(
                 tags$span(
                   class = "hub-player-name",
-                  paste(
-                    key_players[["First Name"]][[i]],
-                    key_players[["Last Name"]][[i]]
-                  )
+                  key_players$.name[[i]]
                 ),
                 tags$span(
                   class = if (delta >= 0) "hub-pos" else "hub-neg",
