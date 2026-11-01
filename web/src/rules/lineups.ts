@@ -146,7 +146,15 @@ export function rankLineups(rows: Row[], euro: boolean): Row[] {
       r[dest] = pr == null ? null : invert ? 1 - pr : pr;
     }
   }
-  return result.sort((a, b) => zero(b.total_poss) - zero(a.total_poss));
+  // sub_lineup_hash breaks possession ties in code-point order (dplyr's C
+  // locale), so the order never depends on the reader's plan. Twin:
+  // lineup_*_datatable() in app/R/helpers.R.
+  const hash = (r: Row) => String(r.sub_lineup_hash ?? "");
+  return result.sort(
+    (a, b) =>
+      zero(b.total_poss) - zero(a.total_poss) ||
+      (hash(a) < hash(b) ? -1 : hash(a) > hash(b) ? 1 : 0),
+  );
 }
 /** Tabs 2/10's table for one page state: the local team/player filters on the
  * ranked population, the auto minimum (`min` null) or the slider's, then the
