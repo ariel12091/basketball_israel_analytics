@@ -5,6 +5,10 @@ CREATE OR REPLACE FUNCTION basketball_test.fetch_lineups_all(p_num_lineup smalli
  LANGUAGE plpgsql
  STABLE
  SET plan_cache_mode = force_custom_plan
+ -- sub_starters joins CTEs the planner estimates at one row; with nested loops
+ -- the size-3 filtered path ran past 90 s (1.3 s without), as
+ -- refresh_sub_lineups_stats already guards against.
+ SET enable_nestloop = off
 AS $function$
 DECLARE
   v_ids_norm  int4[];
@@ -99,8 +103,8 @@ BEGIN
       s.team_id, s.sub_lineup_hash::text, s.num_lineup, s.player_ids, s.player_names, s.player_names_str,
       s.off_poss, s.off_pts, s.off_ppp, s.def_poss, s.def_pts, s.def_ppp,
       ROUND(s.off_ppp - s.def_ppp, 1) AS net_rtg, s.minutes,
-      -- Possession-weighted own-starters average, identical in expression and
-      -- rounding to the two filtered branches below (lines ~315 and ~485). This
+      -- Possession-weighted average of the group's own starters per game, the
+      -- same quantity and rounding as the two filtered branches' sub_starters. This
       -- previously returned s.num_lineup::numeric -- the group size -- so the
       -- column silently meant one thing on the fast path and another whenever a
       -- filter forced a dynamic path.
@@ -320,6 +324,30 @@ BEGIN
     -- Every segment counts, with or without an offensive action in it.
     FROM segment_times st
     GROUP BY st.team_id, st.game_year, st.lineup_hash
+  ),
+  -- The group's OWN starters per game (full_rosters.starter) times its
+  -- possessions in that game, as refresh_sub_lineups_stats stores them for the
+  -- fast path. Counting the starters among all five on the floor let a 3-man
+  -- group show 4.
+  game_starters AS (
+    SELECT fr.game_id, fr.team_id, ARRAY_AGG(DISTINCT fr.player_id) AS starter_ids
+    FROM basketball_test.full_rosters fr
+    WHERE fr.starter AND (p_game_year IS NULL OR fr.game_year = p_game_year)
+    GROUP BY fr.game_id, fr.team_id
+  ),
+  sub_starters AS (
+    SELECT si.team_id, si.game_year, si.sub_lineup_hash,
+           SUM(ss.total_poss * (
+             SELECT count(*) FROM unnest(si.player_ids) AS u(player_id)
+             WHERE u.player_id = ANY(gs.starter_ids)
+           )) AS starters_poss_num
+    FROM sub_identity si
+    JOIN segment_stats ss
+      ON ss.team_id = si.team_id AND ss.game_year = si.game_year
+     AND ss.lineup_hash = si.lineup_hash::text
+    LEFT JOIN game_starters gs
+      ON gs.game_id = ss.game_id AND gs.team_id = si.team_id
+    GROUP BY si.team_id, si.game_year, si.sub_lineup_hash
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -334,7 +362,7 @@ BEGIN
       (NULLIF(SUM(lt.total_pts) FILTER (WHERE lt.type_lineup='defense'),0)::numeric / NULLIF(SUM(lt.total_poss) FILTER (WHERE lt.type_lineup='defense'),0)*100), 1
     ) AS net_rtg,
     ROUND(COALESCE(SUM(lt.minutes), 0)::numeric, 1) AS minutes,
-    ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
+    ROUND(COALESCE(MAX(sst.starters_poss_num), 0)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,
     COALESCE(SUM(lt.fg2_att)  FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_att,
@@ -348,6 +376,9 @@ BEGIN
   JOIN lineup_totals lt
     ON lt.team_id = si.team_id AND lt.game_year = si.game_year
     AND lt.lineup_hash = si.lineup_hash::text
+  LEFT JOIN sub_starters sst
+    ON sst.team_id = si.team_id AND sst.game_year = si.game_year
+    AND sst.sub_lineup_hash = si.sub_lineup_hash
   LEFT JOIN basketball_test.sub_lineups_stats sls
     ON sls.team_id = si.team_id AND sls.sub_lineup_hash::text = si.sub_lineup_hash::text AND sls.game_year = si.game_year
   GROUP BY si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str, si.game_year
@@ -481,6 +512,30 @@ BEGIN
       SUM(lgt.minutes) AS minutes
     FROM lineup_game_totals lgt
     GROUP BY lgt.team_id, lgt.game_year, lgt.lineup_hash, lgt.type_lineup, lgt.num_starters
+  ),
+  -- The group's OWN starters per game (full_rosters.starter) times its
+  -- possessions in that game, as refresh_sub_lineups_stats stores them for the
+  -- fast path. Counting the starters among all five on the floor let a 3-man
+  -- group show 4.
+  game_starters AS (
+    SELECT fr.game_id, fr.team_id, ARRAY_AGG(DISTINCT fr.player_id) AS starter_ids
+    FROM basketball_test.full_rosters fr
+    WHERE fr.starter AND (p_game_year IS NULL OR fr.game_year = p_game_year)
+    GROUP BY fr.game_id, fr.team_id
+  ),
+  sub_starters AS (
+    SELECT si.team_id, si.game_year, si.sub_lineup_hash,
+           SUM(lg.total_poss * (
+             SELECT count(*) FROM unnest(si.player_ids) AS u(player_id)
+             WHERE u.player_id = ANY(gs.starter_ids)
+           )) AS starters_poss_num
+    FROM sub_identity si
+    JOIN lineup_game_totals lg
+      ON lg.team_id = si.team_id AND lg.game_year = si.game_year
+     AND lg.lineup_hash = si.lineup_hash::text
+    LEFT JOIN game_starters gs
+      ON gs.game_id = lg.game_id AND gs.team_id = si.team_id
+    GROUP BY si.team_id, si.game_year, si.sub_lineup_hash
   )
   SELECT
     si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str,
@@ -501,7 +556,7 @@ BEGIN
       COALESCE(SUM(lt.total_seconds) FILTER (WHERE lt.type_lineup = 'offense'), 0)::numeric / 60.0,
       1
     ) AS minutes,
-    ROUND(SUM(lt.num_starters * lt.total_poss)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
+    ROUND(COALESCE(MAX(sst.starters_poss_num), 0)::numeric / NULLIF(SUM(lt.total_poss), 0), 2) AS num_starters,
     si.game_year,
     COALESCE(SUM(lt.fg2_made) FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_made,
     COALESCE(SUM(lt.fg2_att)  FILTER (WHERE lt.type_lineup='offense'), 0)::int4 AS off_fg2_att,
@@ -515,6 +570,9 @@ BEGIN
   JOIN lineup_totals lt
     ON lt.team_id = si.team_id AND lt.game_year = si.game_year
     AND lt.lineup_hash = si.lineup_hash::text
+  LEFT JOIN sub_starters sst
+    ON sst.team_id = si.team_id AND sst.game_year = si.game_year
+    AND sst.sub_lineup_hash = si.sub_lineup_hash
   LEFT JOIN basketball_test.sub_lineups_stats sls
     ON sls.team_id = si.team_id AND sls.sub_lineup_hash::text = si.sub_lineup_hash::text AND sls.game_year = si.game_year
   GROUP BY si.team_id, si.sub_lineup_hash, si.num_lineup, si.player_ids, sls.player_names, sls.player_names_str, si.game_year
