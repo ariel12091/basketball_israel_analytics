@@ -429,7 +429,8 @@ const TOOLTIPS = ui.columnTooltips as Record<string, string>;
 /** A quotable column as the model sees it: its label and the app's own
  * definition (COLUMN_TOOLTIPS), e.g. "Off PPP: Offensive points per 100 possessions". */
 export function columnDefinition(label: string): string {
-  const def = TOOLTIPS[label] ?? TOOLTIPS[label.replace(/^(Off|Def) /, "")];
+  const base = label.replace(/ (?:on|off) court$/, "");
+  const def = TOOLTIPS[label] ?? TOOLTIPS[base] ?? TOOLTIPS[base.replace(/^(Off|Def) /, "")];
   return def ? `${label}: ${def}` : label;
 }
 

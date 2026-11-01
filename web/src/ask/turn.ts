@@ -10,6 +10,7 @@ import { TOOLS } from "./registry";
 import { linkFor, runTool, type ToolCall, type ToolError, type ToolResult } from "./run";
 import type { Provider, ProviderMessage, Usage } from "./providers/types";
 import { turnLifetime } from "./lifetime";
+import { protectSeason } from "./semantics";
 
 export type HistoryTurn = { question: string; answer: string; calls: ToolCall[] };
 export type Evidence = { result: string; row: string; key: string; label: string; text: string };
@@ -77,6 +78,9 @@ function hebrewTerms(text: string): string {
 const ID_KEYS = ["team_id", "player_id", "game_id", "sub_lineup_hash", "identity_id"];
 /** Result-level markers ({{r1.count}}, {{r1.side_a}}) as the model sees them. */
 const EXTRA_LABELS: Record<string, string> = {
+  season_label: "Applied data season",
+  rating_basis: "Rating unit (fixed scale, not a measured count)",
+  rate_basis: "Player production normalization (fixed scale)",
   count: "Rows the page lists",
   side_a: "Compare side A heading",
   side_b: "Compare side B heading",
@@ -231,7 +235,13 @@ async function* turnEvents(
       all.push(err);
       return err;
     }
-    const call = normal;
+    const scoped = rerun ? normal : protectSeason(normal, input.question, opts.followups ? input.history : []);
+    if ("error" in scoped) {
+      const err: ToolError = { id, call: normal, error: scoped.error, param: scoped.param };
+      all.push(err);
+      return err;
+    }
+    const call = scoped;
     // Same tool, league, filters (in any order) and sort; the limit only
     // matters when this call asks for more rows than the earlier one got.
     const key = JSON.stringify([

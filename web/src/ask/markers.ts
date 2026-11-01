@@ -5,6 +5,7 @@ import { cellText, columnDefinition, displaySpec } from "./display";
 import { NUMBER, NUMBER_WORD, bare, digitWords, statCountWords, withoutTerms } from "./numberWords";
 import { TOOLS } from "./registry";
 import type { ToolResult } from "./run";
+import { metricUnitProblems, withoutUnitPhrases } from "./semantics";
 
 export type Used = { result: string; row: string; key: string };
 export type Filled =
@@ -20,7 +21,7 @@ export function fillAndVerify(
   season: string,
   lang: "he" | "en" = "en",
 ): Filled {
-  const problems: string[] = [],
+  const problems: string[] = metricUnitProblems(template, results),
     used: Used[] = [];
   // The placeholder below uses NUL; a template carrying one could forge it.
   if (template.includes("\u0000"))
@@ -80,11 +81,14 @@ export function fillAndVerify(
   for (const r of results)
     if (TOOLS[r.call.tool].numbers)
       for (const c of Object.values(displaySpec(r.call.tool, r.call.league, r.view)))
-        for (const n of columnDefinition(c.label).match(NUMBER) ?? []) allowed.add(n);
+        for (const n of columnDefinition(c.label).match(NUMBER) ?? [])
+          // Unit constants are allowed only inside an actual unit phrase below,
+          // not as an invented scoring total elsewhere in the sentence.
+          if (!["30", "60", "100"].includes(n)) allowed.add(n);
   // The page's own explanations (guide) are text, not data: their numbers
   // ("per 100 possessions", an example's figures) may be repeated.
   for (const t of guideText(results)) for (const n of t.match(NUMBER) ?? []) allowed.add(n);
-  const own = withoutTerms(words.replace(/\u0000\d+\u0000/g, " "));
+  const own = withoutUnitPhrases(withoutTerms(words.replace(/\u0000\d+\u0000/g, " ")), results);
   for (const d of own.match(NUMBER) ?? [])
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
   for (const c of own.match(/\p{No}/gu) ?? [])
