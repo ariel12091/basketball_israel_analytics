@@ -44,7 +44,8 @@ jobs:
         env:
           CONFIRM_CATALOGUE_SYNC: '1'
           PG_HOST: ${{ secrets.PG_HOST }}
-          PG_PORT: ${{ secrets.PG_PORT }}
+          # Writes go through the direct port (see etl-full.yml).
+          PG_PORT: "5432"
           PG_DB: ${{ secrets.PG_DB }}
           PG_USER: ${{ secrets.PG_USER }}
           PG_PASS: ${{ secrets.PG_PASS }}

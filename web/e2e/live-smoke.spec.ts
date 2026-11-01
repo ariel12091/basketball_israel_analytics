@@ -1,4 +1,13 @@
+import type { Page } from "@playwright/test";
 import { test, expect } from "./preview";
+/** Opens the filters panel: every tab is on the drawer layout (Filters
+ * button at the toolbar's right end), as lineup-controls.spec.ts does. */
+async function openFilters(page: Page) {
+  const button = page.locator(".chips-drawer-toggle");
+  if ((await button.getAttribute("aria-expanded")) !== "true")
+    await button.click();
+  await expect(page.getByRole("dialog", { name: "Filters" })).toBeVisible();
+}
 for (const [league, season] of [
   ["il", 2026],
   ["euroleague", 2025],
@@ -50,12 +59,8 @@ for (const [league, season] of [
       page.locator('tbody td[data-column="team_name"]').first(),
     ).toBeVisible({ timeout: 30000 });
     if (info.project.name === "phone") {
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
-      await expect(
-        page.locator(`#${league === "il" ? "tr" : "euroteam"}-filters`),
-      ).toBeVisible();
+      await openFilters(page);
+      await page.keyboard.press("Escape");
     }
     expect(
       await page.evaluate(
@@ -96,14 +101,17 @@ for (const [league, season] of [
         ),
     );
     await lineup.click();
-    await expect(
-      page.getByRole("dialog").locator("tbody tr").first(),
-    ).toBeVisible({ timeout: 30000 });
+    // The game log opens in place beneath its lineup (no modal).
+    const log = page.locator(".ibpl-row-detail .ibpl-lineup-games");
+    await expect(log.locator("tbody tr").first()).toBeVisible({
+      timeout: 30000,
+    });
     await page.screenshot({
       path: `../output/playwright/live-lineups-${league}-${info.project.name}.png`,
       fullPage: true,
     });
-    await page.keyboard.press("Escape");
+    await log.getByRole("button", { name: "Close game log" }).click();
+    await expect(log).toHaveCount(0);
     expect(
       await page.evaluate(
         () => document.documentElement.scrollWidth <= innerWidth,
@@ -135,10 +143,7 @@ for (const [league, season] of [
       timeout: 30000,
     });
     await expect(page.locator(".dataTables_info")).toContainText("entries");
-    if (info.project.name === "phone")
-      await page
-        .getByRole("button", { name: "Show Filters", exact: true })
-        .click();
+    if (info.project.name === "phone") await openFilters(page);
     await page.screenshot({
       path: `../output/playwright/live-${league}-${info.project.name}.png`,
       fullPage: true,

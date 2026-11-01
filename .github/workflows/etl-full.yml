@@ -70,7 +70,11 @@ jobs:
         env:
           APP_ENV: test
           PG_HOST: ${{ secrets.PG_HOST }}
-          PG_PORT: ${{ secrets.PG_PORT }}
+          # Writes go through the direct port, as the EuroLeague loader's do:
+          # the 6543 transaction pooler crosses prepared statements between
+          # clients and, on 2026-11-01, handed the ETL role a read-only
+          # transaction that refused an INSERT (CLAUDE.md, Reliability backlog).
+          PG_PORT: "5432"
           PG_DB: ${{ secrets.PG_DB }}
           PG_USER: ${{ secrets.PG_USER }}
           PG_PASS: ${{ secrets.PG_PASS }}
