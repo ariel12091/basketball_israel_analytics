@@ -9,6 +9,7 @@ import { ParamError, rawQueryGuard } from "@/server/api";
 import { BusyError, DeadlineError } from "@/server/deadline";
 import { displaySpec } from "./display";
 import { flatten } from "./flatten";
+import { rateBasis } from "./semantics";
 import { TOOLS, type ToolName } from "./registry";
 
 export type ToolCall = {
@@ -263,6 +264,16 @@ export async function runTool(
     // Result-level values a marker may quote: {{r1.count}}, {{r1.side_a}}.
     extras: {
       count: String(rows.length),
+      ...(!["guide", "gameflow"].includes(call.tool) ? {
+        season_label: (() => {
+          const y = Number(call.query.season ?? (call.league === "il" ? ui.defaultGameYear : ui.euroDefaultSeason));
+          const start = call.league === "il" ? y - 1 : y;
+          return `${start}-${String(start + 1).slice(-2)}`;
+        })(),
+      } : {}),
+      ...(["onoff", "lineups", "game_logs", "team_ratings", "compare"].includes(call.tool) && !["traditional", "players"].includes(String(meta?.view))
+        ? { rating_basis: "points per 100 possessions" } : {}),
+      ...(rateBasis(call) ? { rate_basis: rateBasis(call)! } : {}),
       ...(meta?.sides ? { side_a: meta.sides.a, side_b: meta.sides.b } : {}),
       ...(meta?.values ?? {}),
       ...minPossExtra(call),

@@ -57,6 +57,26 @@ beforeEach(() => {
 });
 
 describe("runTool: derived On/Off values", () => {
+  it("gives normalized Compare players their rate basis without a misleading rating basis", async () => {
+    compare.mockResolvedValue({ rows: [{ team_id: 10, team_name: "T", player_id: 1, player_name: "P", gp: 3, minutes: 60, poss_on_floor: 200, pts: 30 }], meta: { version: "v1" } });
+    const r = await runTool("r1", { tool: "compare", league: "il", query: { season: "2027", preset: "win_loss", team_id: "10", cmp_view: "players", entity: "10", team_metric: "pts", team_rate: "Per 30 Minutes" } }, later);
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.extras?.rate_basis).toBe("per 30 minutes");
+    expect(r.extras).not.toHaveProperty("rating_basis");
+    const { fillAndVerify } = await import("./markers");
+    const filled = fillAndVerify("{{r1.row1.metric_a}} points {{r1.rate_basis}}", [r], "compare scoring", "2026-27");
+    if (!filled.ok) throw new Error(JSON.stringify({ problems: filled.problems, rows: r.rows, view: r.view }));
+    expect(filled.ok).toBe(true);
+    expect(fillAndVerify("{{r1.row1.metric_a}} points {{r1.rating_basis}}", [r], "compare scoring", "2026-27").ok).toBe(false);
+  });
+
+  it.each(["il", "euroleague", "eurocup"] as const)("returns quotable unit and applied-season metadata in %s", async league => {
+    onoff.mockResolvedValue(payload([{ team_id: 2, player_id: 1, Player: "P", "ON Poss": 500, "OFF Poss": 500, "Off ON PPP": 108.8 }]));
+    const r = await runTool("r1", { tool: "onoff", league, query: { season: league === "il" ? "2027" : "2026", min_on: "0", min_all: "0" }, sort: { key: "Off ON PPP", desc: true } }, later);
+    if (!("rows" in r)) throw new Error(r.error);
+    expect(r.extras).toMatchObject({ season_label: "2026-27", rating_basis: "points per 100 possessions" });
+  });
+
   it("sorts by the 3PT% half of the Off Shot cell", async () => {
     const shot = (id: number, m3: number) => ({
       team_id: 3, player_id: id, Team: "H", Player: `P${id}`, "ON Poss": 500, "OFF Poss": 500,

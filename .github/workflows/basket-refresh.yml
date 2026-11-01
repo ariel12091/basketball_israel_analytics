@@ -1,0 +1,79 @@
+name: Basket refresh
+
+# Keeps player display names on basket.co.il's spellings (docs/shared_definitions.md,
+# "Player display name"): re-scrapes the season's Basket registrations, links
+# them to play-by-play identities, and rewrites the stored lineup names. New
+# players reach the view player_display_names_v here; data quality check AM
+# lists the ones still waiting (played_without_basket_link).
+
+on:
+  workflow_dispatch:
+    inputs:
+      season:
+        description: "Israeli game_year (season-ending year). Empty = the app's DEFAULT_GAME_YEAR."
+        required: false
+        default: ""
+  schedule:
+    # Tuesday and Friday 05:00 UTC, after the Israeli league's game days.
+    - cron: '0 5 * * 2,5'
+
+# Shares the nightly ETL's group: both write basketball_test, never at once.
+concurrency:
+  group: etl-full
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    env:
+      APP_ENV: test
+      PG_HOST: ${{ secrets.PG_HOST }}
+      # The direct port: on 2026-11-01 the 6543 transaction pooler returned
+      # read-only transactions to the ETL role and refused these writes.
+      PG_PORT: "5432"
+      PG_DB: ${{ secrets.PG_DB }}
+      PG_USER: ${{ secrets.PG_USER }}
+      PG_PASS: ${{ secrets.PG_PASS }}
+      PG_SSLMODE: ${{ secrets.PG_SSLMODE }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.4.2'
+
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          packages: |
+            any::DBI
+            any::RPostgres
+
+      - name: Season
+        id: season
+        run: |
+          season="${{ inputs.season }}"
+          if [ -z "$season" ]; then
+            season=$(grep -oP '^DEFAULT_GAME_YEAR <- "\K[0-9]{4}' app/R/global.R)
+          fi
+          [[ "$season" =~ ^20[0-9]{2}$ ]] || { echo "No valid season: '$season'"; exit 1; }
+          echo "season=$season" >> "$GITHUB_OUTPUT"
+
+      # Validates every page and profile before writing, then reconciles the
+      # written rows against what was parsed; any failure stops the job here.
+      - name: Scrape and write Basket registrations
+        run: >
+          Rscript scripts/backfill_basket_shooting_history.R
+          --seasons=${{ steps.season.outputs.season }} --with-profiles --refresh-cache
+          --profile-pause-seconds=3 --initial-backoff=15 --write
+
+      - name: Link registrations to identities
+        run: Rscript etl/basket_identity_match.R --seasons=${{ steps.season.outputs.season }} --write
+
+      # The same rewrite as the one-time migration: idempotent, touches only
+      # rows whose names change.
+      - name: Rewrite stored lineup names
+        run: >
+          Rscript scripts/apply_basket_shooting_history_migration.R
+          --file=sql/migrations/2026-11-01_sub_lineups_stats_display_names.sql --commit

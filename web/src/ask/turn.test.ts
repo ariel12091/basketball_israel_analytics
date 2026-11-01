@@ -209,6 +209,27 @@ describe("askTurn", () => {
     expect(answer.text).toBe("In 2023-24: A - B");
   });
 
+  it("rejects a contradictory season before retrieval, without spending a lookup", async () => {
+    const wrong: ToolCall = { ...call, league: "euroleague", query: { season: "2026" } };
+    const right: ToolCall = { ...wrong, query: { season: "2025" } };
+    const p = scriptedProvider([tc("bad", wrong), tc("correct", right), { text: "In {{season}}: {{r2.row1.Players}}" }]);
+    const { answer } = await run("EuroLeague 2025-26 best offense", p);
+    expect(runTool).toHaveBeenCalledTimes(1);
+    expect(runTool.mock.calls[0][1]).toEqual(right);
+    expect(answer.text).toBe("In 2025-26: A - B");
+    expect(answer.errors).toContainEqual(expect.objectContaining({ param: "season" }));
+    expect(answer.calls).toEqual([right]);
+  });
+
+  it("returns a semantic unit error and accepts a corrected rating on retry", async () => {
+    runTool.mockImplementation(async (id: string, c: ToolCall) => ({ ...ok(id, c), rows: [{ id: "row1", cells: { off_ppp: 108.8 } }] }));
+    const p = scriptedProvider([tc(), { text: "{{r1.row1.off_ppp}} points per possession" }, { text: "Offensive rating {{r1.row1.off_ppp}}" }]);
+    const { answer } = await run("offense this season", p);
+    expect(answer.rejected[0].problems.join(" ")).toMatch(/Rating unit mismatch/);
+    expect(answer.fallback).toBe(false);
+    expect(answer.text).toBe("Offensive rating 108.8");
+  });
+
   it("a call rejected for a bad parameter does not use up a lookup", async () => {
     // 2026-10-25: two `team=` guesses on lineup_roster left no lookups for the
     // two Lineups reads the question needed.
