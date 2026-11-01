@@ -168,10 +168,7 @@ segment_stats AS (
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 2 AND f.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg2_made,
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 2 THEN 1 ELSE 0 END) AS fg2_att,
     SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 AND f.parameters_made = 'made' THEN 1 ELSE 0 END) AS fg3_made,
-    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att,
-    -- Numerator for the possession-weighted own-starters average; see the same
-    -- expression and rationale in refresh_sub_lineups.sql.
-    SUM(CASE WHEN COALESCE(f.final_end_poss, FALSE) THEN COALESCE(f.credit_num_starters, 0) ELSE 0 END) AS starters_poss_num
+    SUM(CASE WHEN f.type = 'shot' AND f.parameters_points = 3 THEN 1 ELSE 0 END) AS fg3_att
   FROM basketball_test.df_pts_poss_lineups_longer_mv f
   JOIN sched sc
     ON sc.game_id = f.game_id
@@ -191,8 +188,7 @@ lineup_totals AS (
     SUM(ss.fg2_made) AS fg2_made,
     SUM(ss.fg2_att) AS fg2_att,
     SUM(ss.fg3_made) AS fg3_made,
-    SUM(ss.fg3_att) AS fg3_att,
-    SUM(ss.starters_poss_num) AS starters_poss_num
+    SUM(ss.fg3_att) AS fg3_att
   FROM segment_stats ss
   JOIN segment_times st
     ON st.lineup_hash = ss.lineup_hash
@@ -213,8 +209,7 @@ per_type AS (
     SUM(lt.fg2_made) AS fg2_made,
     SUM(lt.fg2_att) AS fg2_att,
     SUM(lt.fg3_made) AS fg3_made,
-    SUM(lt.fg3_att) AS fg3_att,
-    SUM(lt.starters_poss_num) AS starters_poss_num
+    SUM(lt.fg3_att) AS fg3_att
   FROM sub_map sm
   JOIN lineup_totals lt
     ON lt.lineup_hash = sm.lineup_hash
@@ -228,6 +223,48 @@ sub_minutes AS (
   FROM sub_map sm
   JOIN segment_times st
     ON st.lineup_hash = sm.lineup_hash AND st.game_year = sm.game_year
+  GROUP BY sm.team_id, sm.sub_lineup_hash, sm.game_year
+),
+
+-- The group's OWN starters, per game: how many of its players started that
+-- game (full_rosters.starter), times the group's possessions in it. Counting
+-- the starters among all five on the floor instead (credit_num_starters) let a
+-- 3-man group show 4. The possessions come from the same segment_stats x
+-- segment_times join as lineup_totals, so the denominator is unchanged, and a
+-- game with no starters recorded contributes nothing to the numerator.
+lineup_game_poss AS (
+  SELECT ss.lineup_hash, ss.game_year, ss.game_id, SUM(ss.total_poss) AS total_poss
+  FROM segment_stats ss
+  JOIN segment_times st
+    ON st.lineup_hash = ss.lineup_hash
+   AND st.game_id = ss.game_id
+   AND st.game_year = ss.game_year
+   AND st.segment_id = ss.segment_id
+  GROUP BY ss.lineup_hash, ss.game_year, ss.game_id
+),
+game_starters AS (
+  SELECT fr.game_id, fr.team_id, ARRAY_AGG(DISTINCT fr.player_id) AS starter_ids
+  FROM basketball_test.full_rosters fr
+  WHERE fr.starter
+  GROUP BY fr.game_id, fr.team_id
+),
+sub_starters AS (
+  SELECT sm.team_id, sm.sub_lineup_hash, sm.game_year,
+         SUM(lgp.total_poss * (
+           SELECT count(*) FROM unnest(d.player_ids) AS u(player_id)
+           WHERE u.player_id = ANY(gs.starter_ids)
+         )) AS starters_poss_num
+  FROM sub_map sm
+  JOIN sub_dedup d
+    ON d.team_id = sm.team_id
+   AND d.sub_lineup_hash = sm.sub_lineup_hash
+   AND d.game_year = sm.game_year
+  JOIN lineup_game_poss lgp
+    ON lgp.lineup_hash = sm.lineup_hash
+   AND lgp.game_year = sm.game_year
+  LEFT JOIN game_starters gs
+    ON gs.game_id = lgp.game_id
+   AND gs.team_id = sm.team_id
   GROUP BY sm.team_id, sm.sub_lineup_hash, sm.game_year
 ),
 
@@ -263,9 +300,10 @@ final_rows AS (
     COALESCE(SUM(p.fg2_att)  FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg2_att,
     COALESCE(SUM(p.fg3_made) FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg3_made,
     COALESCE(SUM(p.fg3_att)  FILTER (WHERE p.type_lineup = 'defense'), 0) AS def_fg3_att,
-    -- Unfiltered by type_lineup on purpose: weighted by offensive AND defensive
-    -- possessions, matching fetch_lineups_all lines 315/485.
-    COALESCE(SUM(p.starters_poss_num), 0) AS starters_poss_num
+    -- The group's own starters per game (sub_starters), weighted by offensive
+    -- AND defensive possessions: the denominator is the stored off_poss +
+    -- def_poss, as in fetch_lineups_all.
+    COALESCE(MAX(sst.starters_poss_num), 0) AS starters_poss_num
   FROM sub_dedup d
   JOIN names_by_sub n
     ON n.team_id = d.team_id
@@ -278,6 +316,10 @@ final_rows AS (
     ON p.team_id = d.team_id
    AND p.sub_lineup_hash = d.sub_lineup_hash
    AND p.game_year = d.game_year
+  LEFT JOIN sub_starters sst
+    ON sst.team_id = d.team_id
+   AND sst.sub_lineup_hash = d.sub_lineup_hash
+   AND sst.game_year = d.game_year
   GROUP BY
     d.team_id,
     d.sub_lineup_hash,
