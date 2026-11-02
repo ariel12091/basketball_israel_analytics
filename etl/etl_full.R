@@ -556,7 +556,7 @@ etl_full <- function(game_ids = NULL, dry_run = FALSE, force_full_sub_lineup_sta
       # possessions
       actions_tbl <- dplyr::tbl(pg, dbplyr::in_schema(SCHEMA, "actions_clean")) |>
         dplyr::filter(game_id %in% fetchable_sched$game_id)
-      poss_stage <- compute_possessions(actions_tbl) |>
+      poss_stage <- compute_possessions(actions_tbl, unique(fetchable_sched$game_year)) |>
         dplyr::collect() |>
         dplyr::rename(quarter = quarter.x) |>
         dplyr::select(-quarter.y)
