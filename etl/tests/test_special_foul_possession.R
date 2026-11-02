@@ -1,6 +1,6 @@
 # compute_possessions(): a free throw awarded for a technical, unsportsmanlike or
-# disqualifying foul does not end the possession from 2026-27 (game_year 2027);
-# earlier seasons derive exactly what is stored (docs/shared_definitions.md D29).
+# disqualifying foul does not end the possession; the shooting team keeps the ball
+# (docs/shared_definitions.md, Possession).
 # Run: Rscript -e "testthat::test_file('etl/tests/test_special_foul_possession.R')"
 library(testthat)
 suppressPackageStartupMessages({ library(dplyr); library(dbplyr) })
@@ -27,51 +27,45 @@ shot <- function(id, parent = id, made = "made", ptype = "lay-up", team = 1L)
 foul <- function(id, kind, parent = id, team = 2L) act(id, "foul", parent, ptype = kind, team = team)
 
 # Ids whose final_end_poss is TRUE (NA and FALSE are both "not an end").
-ends <- function(rows, game_year) {
+ends <- function(rows) {
   name <- paste0("a", sample.int(1e9, 1))
   dplyr::copy_to(con, rows, name, overwrite = TRUE)
-  out <- compute_possessions(dplyr::tbl(con, name), game_year) |> dplyr::collect()
+  out <- compute_possessions(dplyr::tbl(con, name)) |> dplyr::collect()
   sort(out$id[out$final_end_poss %in% TRUE])
 }
 
 # Team 2 fouls team 1, two made free throws, then team 1 scores.
 trip <- function(kind) dplyr::bind_rows(foul(1, kind), ft(2, 1, 1, 2), ft(3, 1, 2, 2), shot(4))
 
-test_that("an unsportsmanlike trip keeps the possession from 2027, not before", {
-  expect_equal(ends(trip("unsportsmanlike-flagrant"), 2027L), 4L)
-  expect_equal(ends(trip("unsportsmanlike-flagrant"), 2026L), c(3L, 4L))
-  expect_equal(ends(trip("unsportsmanlike"), 2026L), c(3L, 4L))
-})
-
-test_that("every 2026-27 special-foul label keeps the possession", {
-  for (kind in c("technical-behavioral", "technical-administrative",
-                 "unsportsmanlike-disruptive", "unsportsmanlike", "disqualifying")) {
-    expect_equal(ends(trip(kind), 2027L), 4L, info = kind)
+test_that("every special-foul label keeps the possession, in every season's spelling", {
+  for (kind in c("technical", "technical-behavioral", "technical-administrative",
+                 "unsportsmanlike", "unsportsmanlike-flagrant", "unsportsmanlike-disruptive",
+                 "OffensiveFoulUnsportsmanlike", "disqualifying")) {
+    expect_equal(ends(trip(kind)), 4L, info = kind)
   }
 })
 
 test_that("a personal-foul trip still ends the possession", {
-  expect_equal(ends(trip("personal"), 2027L), c(3L, 4L))
-})
-
-test_that("a plain technical never ended the possession", {
-  expect_equal(ends(trip("technical"), 2026L), 4L)
-  expect_equal(ends(trip("technical"), 2027L), 4L)
+  expect_equal(ends(trip("personal")), c(3L, 4L))
 })
 
 test_that("a special trip that is the last event of a period still ends it", {
   rows <- dplyr::bind_rows(foul(1, "unsportsmanlike-flagrant"), ft(2, 1, 1, 2), ft(3, 1, 2, 2),
                            act(4, "period", ptype = "end-of-quarter"))
-  expect_equal(ends(rows, 2027L), 3L)
+  expect_equal(ends(rows), 3L)
 })
 
 test_that("an unsportsmanlike foul on a made basket: neither the basket nor the free throw ends it", {
   rows <- dplyr::bind_rows(shot(1), foul(2, "unsportsmanlike-flagrant", parent = 1),
                            ft(3, 1, 1, 1), shot(4, ptype = "jump-shot"))
-  expect_equal(ends(rows, 2027L), 4L)
+  expect_equal(ends(rows), 4L)
 })
 
-test_that("one season per call", {
-  expect_error(ends(trip("personal"), c(2026L, 2027L)))
-  expect_error(ends(trip("personal"), NA_integer_))
+test_that("the turnover of an offensive unsportsmanlike foul still ends the offense's possession", {
+  # Team 1 has the ball and commits the foul; team 2 shoots, keeps the ball and scores.
+  rows <- dplyr::bind_rows(foul(1, "OffensiveFoulUnsportsmanlike", team = 1L),
+                           act(2, "turnover", parent = 1, ptype = "offensive-foul", team = 1L),
+                           ft(3, 1, 1, 2, team = 2L), ft(4, 1, 2, 2, team = 2L),
+                           shot(5, team = 2L))
+  expect_equal(ends(rows), c(2L, 5L))
 })

@@ -1189,7 +1189,7 @@ etl_update <- function() {
   
   # possessions
   actions_tbl <- tbl(pg, dbplyr::in_schema(SCHEMA, "actions_clean")) |> filter(game_id %in% sched_subset$game_id)
-  poss_stage  <- compute_possessions(actions_tbl, unique(sched_subset$game_year)) |> collect() |> rename(quarter = quarter.x) |> 
+  poss_stage  <- compute_possessions(actions_tbl) |> collect() |> rename(quarter = quarter.x) |> 
     select(-quarter.y) 
   
   upsert_by_like(pg, SCHEMA, "possessions", poss_stage, manage_transaction = FALSE)

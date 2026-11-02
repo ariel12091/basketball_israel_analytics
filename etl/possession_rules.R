@@ -1,26 +1,19 @@
 # Possession-end derivation for the Israeli ETL (moved out of etl_onoff.R so it can be
 # tested without a database connection; etl_onoff.R sources it).
 
-# Fouls whose free throws do not end the possession (the shooting team keeps the
-# ball), from 2026-27. The provider labels them by family from that season
-# (technical-behavioral, unsportsmanlike-flagrant, ...); earlier seasons keep the
-# exact rule they were derived with, which exempted only "technical" (D29).
-SPECIAL_FOUL_FIRST_GAME_YEAR <- 2027L
-SPECIAL_FOUL_PREFIXES <- c("technical", "unsportsmanlike", "disqualif")
+# Fouls whose free throws do not end the possession: the shooting team keeps the
+# ball. Matched by word, because the provider's labels vary (unsportsmanlike,
+# OffensiveFoulUnsportsmanlike, technical-behavioral, unsportsmanlike-flagrant).
+SPECIAL_FOUL_WORDS <- c("technical", "unsportsmanlike", "disqualif")
 
-special_foul_predicate <- function(game_year) {
-  if (game_year < SPECIAL_FOUL_FIRST_GAME_YEAR) return(rlang::expr(parameters_type == "technical"))
+special_foul_predicate <- function() {
   Reduce(function(a, b) rlang::expr(!!a | !!b),
-         lapply(paste0(SPECIAL_FOUL_PREFIXES, "%"),
+         lapply(paste0("%", SPECIAL_FOUL_WORDS, "%"),
                 function(p) rlang::expr(tolower(parameters_type) %LIKE% !!p)))
 }
 
-compute_possessions <- function(actions_tbl, game_year) {
-  if (length(game_year) != 1L || is.na(game_year)) {
-    stop("compute_possessions() takes the season of one game (one game_year)", call. = FALSE)
-  }
-  new_rule <- game_year >= SPECIAL_FOUL_FIRST_GAME_YEAR
-  special_foul <- special_foul_predicate(game_year)
+compute_possessions <- function(actions_tbl) {
+  special_foul <- special_foul_predicate()
   poss0 <- actions_tbl |>
     mutate(
       # The provider occasionally reports an awarded total below the current
@@ -64,7 +57,7 @@ compute_possessions <- function(actions_tbl, game_year) {
       final_end_poss_base = case_when(
         sum_poss_poss >= 2 & id == parent_action_id ~ NULL,
         sum_block >= 1                               ~ lead(end_poss),
-        sum_tech  >= 1                               ~ NULL,
+        sum_tech  >= 1 & type != "turnover"          ~ NULL,
         TRUE ~ end_poss
       )
     ) |>
@@ -90,16 +83,6 @@ compute_possessions <- function(actions_tbl, game_year) {
     mutate(eoq_override = TRUE) |>
     ungroup()
   
-  out <- base |>
-    left_join(eoq_targets, by = c("game_id", "id"))
-  if (!new_rule) {
-    return(out |>
-      mutate(final_end_poss = case_when(
-        eoq_override ~ TRUE,
-        TRUE         ~ final_end_poss_base
-      )) |>
-      select(-eoq_override, -final_end_poss_base, -.effective_ft_awarded))
-  }
   # A special-foul trip keeps the ball, but when it is the last event of the
   # period the possession ends there all the same.
   eoq_ft <- poss0 |>
@@ -110,7 +93,8 @@ compute_possessions <- function(actions_tbl, game_year) {
     ungroup() |>
     distinct(game_id, id) |>
     mutate(eoq_special_ft = TRUE)
-  out |>
+  base |>
+    left_join(eoq_targets, by = c("game_id", "id")) |>
     left_join(eoq_ft, by = c("game_id", "id")) |>
     mutate(final_end_poss = case_when(
       eoq_override                     ~ TRUE,

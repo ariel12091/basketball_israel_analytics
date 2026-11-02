@@ -10,6 +10,8 @@
 
 **Spec:** this plan's evidence section, below; the investigation of 2026-11-02 (conversation record) and `docs/shared_definitions.md` § Possession.
 
+> **Amended 2026-11-02 (user):** the Israeli fix now covers past seasons too, so the season gate in Task 2 is gone, D29 is closed, and 2025 and 2026 are fixed by `scripts/apply_special_foul_backfill.R` on the stored rows. EuroLeague stays as planned (season 2026 only; earlier seasons were never affected). Where the text below says "not retroactive", it applies to EuroLeague only.
+
 ## Evidence (measured 2026-11-02)
 
 A possession end followed by the **same** team's next possession end in the same period ("same-team repeat") is the signature: the opponent never had the ball in between.
