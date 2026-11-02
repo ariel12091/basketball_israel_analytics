@@ -1,6 +1,9 @@
 // Wait up to 2 s for a pool slot: under a burst a short wait succeeds well
 // inside the 5 s deadline, where 500 ms turned it into a 503 (r10, 100 users).
 export const QUEUE_MS = 2000,
+  // A heavy read (filtered 2-4 player Lineups) already takes seconds, so it
+  // may wait longer for its own lane than a quick read waits for any slot.
+  HEAVY_QUEUE_MS = 8000,
   // A measured cold TLS/login + BEGIN took 853 ms from this workstation.
   CONNECT_MS = 1500,
   SQL_MAX_MS = 3000;

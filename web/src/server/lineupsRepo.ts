@@ -188,10 +188,18 @@ const cache = new VersionedCache<Awaited<ReturnType<typeof read>>>(
   16,
   (value) => value.meta.version,
 );
+/** A 2-4 player request off the stored season table builds its groups from
+ * every lineup-game on each call (seconds of database time; up to 385k rows
+ * for a EuroLeague pair): the snapshot gate's heavy lane. */
+export function isHeavyLineups(p: LineupParams) {
+  return p.size < 5 && (needsFilteredPath(p.c) || p.maxMargin != null);
+}
 export function getLineups(p: LineupParams) {
   const key = JSON.stringify({ ...p, c: { ...p.c, teams: [] } });
   return cache.get(p.c.league, key, () =>
-    withSnapshot(new Deadline(25000, 20000), (q) => read(q, p)),
+    withSnapshot(new Deadline(25000, 20000), (q) => read(q, p), {
+      heavy: isHeavyLineups(p),
+    }),
   );
 }
 /** fetch_players_basic/euro_fetch_players_basic + with_season_minutes. */
