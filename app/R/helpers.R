@@ -3727,7 +3727,9 @@ lineup_ff_datatable <- function(df, stat_filters, spec, raw = NULL) {
                      "minutes", "total_poss", "net_rtg", "team_id", "sub_lineup_hash")
       df <- df %>% select(any_of(c(keep_cols, pr_cols)))
       df$is_total <- rep(1, nrow(df))
-      df <- df %>% arrange(desc(total_poss))
+      # sub_lineup_hash breaks possession ties, so the order never depends on
+      # the reader's plan. Twin: rankLineups() in web/src/rules/lineups.ts.
+      df <- df %>% arrange(desc(total_poss), across(any_of("sub_lineup_hash")))
       df <- apply_stat_filters(df, stat_filters)
 
       # --- TOTAL row (rates from summed raw counts) ---
@@ -3929,7 +3931,8 @@ lineup_summary_datatable <- function(df, stat_filters, spec) {
                      if (has_shots) c("Off Shot", "Def Shot"),
                      "off_poss", "def_poss", "off_pts", "def_pts", "off_ppp", "def_ppp", "net_rtg", "num_starters", "sub_lineup_hash", "team_id")
       df <- df %>% select(any_of(c(keep_cols, shot_raw_cols, shot_filter_cols, pr_cols, luck_cols)))
-      if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss))
+      # sub_lineup_hash breaks possession ties (see the Four Factors table above).
+      if ("net_rtg" %in% names(df)) df <- df %>% arrange(desc(total_poss), across(any_of("sub_lineup_hash")))
       df <- apply_stat_filters(df, stat_filters)
       df$is_total <- rep(1, nrow(df))
       if (nrow(df) > 0) {
