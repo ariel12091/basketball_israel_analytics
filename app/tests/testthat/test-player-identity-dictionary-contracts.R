@@ -43,7 +43,8 @@ test_that("full ETL synchronizes identity mappings before and after base loading
   expect_true(grepl('source("etl/player_identity_dictionary.R")', txt, fixed = TRUE))
   sync_calls <- lengths(regmatches(
     txt,
-    gregexpr("sync_player_identity_dictionary\\(pg, SCHEMA\\)", txt)
+    # The call may pass further arguments (publication = pub since 2026-10).
+    gregexpr("sync_player_identity_dictionary\\(pg, SCHEMA[,)]", txt)
   ))
   expect_true(sync_calls >= 2L)
   expect_true(grepl("player_identity_ambiguity_summary(pg, SCHEMA)", txt, fixed = TRUE))

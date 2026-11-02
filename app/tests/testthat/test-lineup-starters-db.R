@@ -62,3 +62,59 @@ test_that("the clutch path stays within the group size", {
   expect_gt(nrow(clutch), 0)
   expect_true(all(clutch$num_starters <= 3 + 1e-9, na.rm = TRUE))
 })
+
+# --- EuroLeague / EuroCup twin (migrations 057, 058) ---------------------------
+# The same definition in the euroleague readers, which return the numerator.
+
+euro_season <- 2025L
+
+test_that("no EuroLeague or EuroCup unit shows more starters than players", {
+  over <- DBI::dbGetQuery(con, "
+    SELECT COUNT(*) AS n FROM euroleague.sub_lineups_stats_mv
+    WHERE starters_poss_num / NULLIF(off_poss + def_poss, 0) > unit_size + 1e-9")
+  expect_equal(as.numeric(over$n), 0)
+})
+
+test_that("the EuroLeague MV and the unfiltered per-game reader agree", {
+  for (comp in c("E", "U")) {
+    mv <- DBI::dbGetQuery(con, sprintf(
+      "SELECT team_id, unit_key, round(starters_poss_num / NULLIF(off_poss + def_poss, 0), 6) AS ns
+       FROM euroleague.sub_lineups_stats_mv
+       WHERE competition = '%s' AND game_year = %d AND unit_size = 2", comp, euro_season))
+    rd <- DBI::dbGetQuery(con, sprintf(
+      "SELECT team_id, unit_key, round(starters_poss_num / NULLIF(off_poss + def_poss, 0), 6) AS ns
+       FROM euroleague.fetch_lineups_pergame('%s', %d, p_unit_size => 2)", comp, euro_season))
+    j <- merge(mv, rd, by = c("team_id", "unit_key"), suffixes = c("_mv", "_rd"))
+    expect_equal(nrow(j), nrow(mv), info = comp)
+    expect_equal(j$ns_mv, j$ns_rd, info = comp)
+  }
+})
+
+# --- Timing ceilings, both leagues ---------------------------------------------
+# A full completed season, 2- and 3-player groups, filtered: the paths where a
+# mis-estimated CTE join made requests take 34 s (EuroLeague 057) and 90 s+
+# (Israeli fetch_lineups_all) on 2026-11-01. The ceiling is the web app's 20 s
+# request budget, so ordinary noise never trips it; a plan regression does.
+
+ceiling_s <- 20
+timed_rows <- function(sql) {
+  t <- system.time(n <- nrow(DBI::dbGetQuery(con, sql)))[["elapsed"]]
+  list(t = t, n = n)
+}
+
+test_that("full-season 2/3-player filtered lineups answer within the request budget", {
+  calls <- c(
+    il_away_2 = sprintf("SELECT * FROM basketball_test.fetch_lineups_all(p_num_lineup := 2::int2, p_game_year := %d, p_min_poss := 0, p_home_away := 'away')", season),
+    il_clutch_3 = sprintf("SELECT * FROM basketball_test.fetch_lineups_all(p_num_lineup := 3::int2, p_game_year := %d, p_min_poss := 0, p_max_margin := 5, p_max_time_remaining := 300)", season),
+    il_ff_last5_3 = sprintf("SELECT * FROM basketball_test.fetch_lineups_four_factors(p_num_lineup := 3::int2, p_game_year := %d, p_min_poss := 0, p_last_n_games := 5)", season),
+    el_away_2 = sprintf("SELECT * FROM euroleague.fetch_lineups_pergame('E', %d, p_unit_size => 2, p_home_away => 'away')", euro_season),
+    el_away_3 = sprintf("SELECT * FROM euroleague.fetch_lineups_pergame('E', %d, p_unit_size => 3, p_home_away => 'away')", euro_season),
+    el_clutch_3 = sprintf("SELECT * FROM euroleague.fetch_lineups_dynamic('E', %d, p_unit_size => 3, p_max_margin => 5, p_max_time_remaining => 300)", euro_season)
+  )
+  for (nm in names(calls)) {
+    timed_rows(calls[[nm]])  # warm-up: a cold first call is not a plan regression
+    r <- timed_rows(calls[[nm]])
+    expect_gt(r$n, 0, label = nm)
+    expect_lt(r$t, ceiling_s, label = sprintf("%s took %.1f s", nm, r$t))
+  }
+})

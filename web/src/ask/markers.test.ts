@@ -45,6 +45,12 @@ describe("fillAndVerify", () => {
     expect(r).toMatchObject({ ok: true, text: "In 2025-26 all lineups: 1.0." });
   });
 
+  it("rejects an internal column key in the model's own words, not in a marker", () => {
+    const r = fill("{{r1.row1.Players}} ahead on net_without_3pt_luck");
+    expect(r.ok).toBe(false);
+    if (!r.ok) expect(r.problems.join(" ")).toContain("net_without_3pt_luck");
+    expect(fill("{{r1.row1.Players}} lead with {{r1.row1.net_rtg}} net.").ok).toBe(true);
+  });
   it("rejects a typed digit", () => {
     const r = fill("Net 7.3 for {{r1.row1.Players}}");
     expect(r.ok).toBe(false);
