@@ -8,6 +8,7 @@
 #
 #   Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026,2027                 dry run
 #   CONFIRM_SPECIAL_FOUL_BACKFILL=1 Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026,2027
+#   ... --resume-at sub-lineups    skip steps 1-2 up to the sub-lineup refresh after a failure there
 #
 # Each step commits on its own, so no long transaction holds a view lock; the cache marker
 # advances last, so the apps switch to the new numbers once everything is in place.
@@ -47,6 +48,7 @@ if (!resuming) {
   dir.create(backup, recursive = TRUE, showWarnings = FALSE)
   utils::write.csv(targets, targets_file, row.names = FALSE)
 }
+resume_sub <- identical(args[match("--resume-at", args) + 1L], "sub-lineups")
 arr <- function(v) sprintf("{%s}", paste(as.integer(v), collapse = ","))
 batches <- split(games, ceiling(seq_along(games) / 25L))
 each_batch <- function(fn) {
@@ -55,6 +57,7 @@ each_batch <- function(fn) {
   say("  %-62s %6.1fs", fn, proc.time()[["elapsed"]] - t0)
 }
 
+if (!resume_sub) {
 say("Step 1: base rows")
 n <- dbExecute(con, "
   UPDATE basketball_test.df_pts_poss_lineups_longer_mv d SET final_end_poss = FALSE
@@ -75,7 +78,13 @@ for (fn in c("refresh_player_four_factors_by_game_for_games", "refresh_team_metr
 for (mv in c("player_traditional_stats_mv", "team_metrics_rolling_mv", "team_four_factors_mv"))
   x(sprintf("REFRESH MATERIALIZED VIEW %s", mv))
 each_batch("refresh_team_ratings_preset_cache_for_games")
-each_batch("refresh_sub_lineups_stats_for_games")
+}
+
+# The full refresh, not the per-game one: refresh_sub_lineups_stats_for_games() recomputes the whole
+# season of every sub-lineup a game touches, about 480 MB of temp files for a single 2025 game, and
+# batches of 10-25 games filled the database server's disk on 2026-11-02. The full one takes 21 s.
+say("Step 2b: sub-lineup stats")
+x("SELECT basketball_test.refresh_sub_lineups_stats()")
 
 say("Step 3: cold archive")
 for (t in c("possessions", "pws")) {
@@ -90,7 +99,7 @@ for (t in c("possessions", "pws")) {
 
 say("Step 4: cache marker")
 stamp <- dbGetQuery(con, "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS') AS s")$s
-dbExecute(con, "UPDATE app_meta SET value = $1 WHERE key = 'etl_full_last_success'", params = list(stamp))
+dbExecute(con, "UPDATE basketball_test.app_meta SET value = $1 WHERE key = 'etl_full_last_success'", params = list(stamp))
 say("  advanced to %s", stamp)
 dbDisconnect(con)
 say("Done. Run scripts/verify_special_foul_possessions.R --season <year> --compare <baseline> for each season.")
