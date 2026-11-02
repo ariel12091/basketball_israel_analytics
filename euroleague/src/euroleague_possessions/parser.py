@@ -7,6 +7,7 @@ network or database I/O.
 
 from __future__ import annotations
 
+import re
 from collections import defaultdict
 from collections.abc import Iterable, Sequence
 from typing import Any, Optional
@@ -26,8 +27,33 @@ MADE_SHOTS = frozenset({"2FGM", "3FGM"})
 MISSED_SHOTS = frozenset({"2FGA", "3FGA"})
 SHOTS = MADE_SHOTS | MISSED_SHOTS
 REBOUNDS = frozenset({"D", "O"})
-COMMITTED_FOULS = frozenset({"CM", "CMT", "CMU", "B", "C", "CMTI", "OF"})
-SPECIAL_FOULS = frozenset({"CMT", "CMU", "B", "C", "CMTI"})
+# Foul families, matched by code family because the provider renamed them for
+# 2026-27 (CMT -> CMT1/CMT2, CMU -> CMU_DI/CMU_FL). A renamed code is treated
+# exactly as its old code, so earlier seasons derive what they always did.
+_PLAYER_TECHNICAL = re.compile(r"CMT\d?")
+_UNSPORTSMANLIKE = re.compile(r"CMU(_[A-Z]+)?")
+
+
+def is_player_technical(code: Optional[str]) -> bool:
+    return bool(code) and _PLAYER_TECHNICAL.fullmatch(code) is not None
+
+
+def is_unsportsmanlike(code: Optional[str]) -> bool:
+    return bool(code) and _UNSPORTSMANLIKE.fullmatch(code) is not None
+
+
+def is_special_foul(code: Optional[str]) -> bool:
+    """Technical, unsportsmanlike, bench and coach fouls: their free throws keep the ball."""
+    return is_player_technical(code) or is_unsportsmanlike(code) or code in {"B", "C", "CMTI"}
+
+
+def is_committed_foul(code: Optional[str]) -> bool:
+    return code in {"CM", "OF"} or is_special_foul(code)
+
+
+def is_committed_non_offensive_foul(code: Optional[str]) -> bool:
+    return code != "OF" and is_committed_foul(code)
+
 FT_TYPES = frozenset({"FTA", "FTM"})
 ADMINISTRATIVE = frozenset(
     {"IN", "OUT", "CCH", "TOUT", "TOUT_TV", "TIMEOUT", "TV", "BP"}
@@ -289,7 +315,7 @@ class PeriodParser:
 
     def _bundle_unsportsmanlike_fouls(self) -> None:
         for index, event in enumerate(self.events):
-            if event.play_type != "CMU":
+            if not is_unsportsmanlike(event.play_type):
                 continue
             root = event.source_order
             for child_index in self._after(index):
@@ -338,7 +364,7 @@ class PeriodParser:
 
     def _pair_committed_and_drawn_fouls(self) -> None:
         for index, event in enumerate(self.events):
-            if event.play_type not in COMMITTED_FOULS - {"OF"}:
+            if not is_committed_non_offensive_foul(event.play_type):
                 continue
             if self.decisions[index].parent_order != event.source_order:
                 continue
@@ -355,8 +381,8 @@ class PeriodParser:
                     break
                 if child.play_type in ADMINISTRATIVE:
                     continue
-                if child.play_type in (
-                    COMMITTED_FOULS | SHOTS | REBOUNDS | {"TO"} | FT_TYPES | PERIOD_END
+                if is_committed_foul(child.play_type) or child.play_type in (
+                    SHOTS | REBOUNDS | {"TO"} | FT_TYPES | PERIOD_END
                 ):
                     break
 
@@ -383,7 +409,7 @@ class PeriodParser:
     def _find_offsetting_technicals(self) -> set[int]:
         by_clock: dict[str, list[int]] = defaultdict(list)
         for index, event in enumerate(self.events):
-            if event.play_type == "CMT":
+            if is_player_technical(event.play_type):
                 key = event.clock or f"order_{event.source_order}"
                 by_clock[key].append(index)
 
@@ -445,7 +471,7 @@ class PeriodParser:
             candidate_indices = [
                 index
                 for index in range(lower + 1, ft_index)
-                if self.events[index].play_type in COMMITTED_FOULS - {"OF"}
+                if is_committed_non_offensive_foul(self.events[index].play_type)
             ]
 
             best_penalty: Optional[PendingPenalty] = None
@@ -467,7 +493,7 @@ class PeriodParser:
                     if not _same(self.events[last_ft].team, ft_event.team):
                         continue
                     intervening_foul = any(
-                        self.events[index].play_type in COMMITTED_FOULS
+                        is_committed_foul(self.events[index].play_type)
                         and self.decisions[index].parent_order != penalty.parent_order
                         for index in range(last_ft + 1, ft_index)
                     )
@@ -482,7 +508,7 @@ class PeriodParser:
                 score = 1000 - (ft_index - candidate_index)
                 if exact_player:
                     score += 500
-                if penalty.foul_type in SPECIAL_FOULS:
+                if is_special_foul(penalty.foul_type):
                     score += 600
                 if (
                     ft_event.clock is not None
@@ -713,14 +739,14 @@ class PeriodParser:
             group_indices = self._indices_with_parent(root)
             group_types = {self.events[index].play_type for index in group_indices}
             is_and_one = bool(group_types & MADE_SHOTS)
-            is_special = bool(group_types & SPECIAL_FOULS)
+            is_special = any(is_special_foul(code) for code in group_types)
             if is_special:
                 continue
 
             if self.events[final].play_type == "FTM":
                 lower = min(group_indices)
                 is_compound = any(
-                    self.events[index].play_type in SPECIAL_FOULS
+                    is_special_foul(self.events[index].play_type)
                     and self.decisions[index].parent_order != root
                     for index in range(lower, final + 1)
                 )
@@ -801,7 +827,7 @@ class PeriodParser:
         special_indices = [
             index
             for index, event in enumerate(self.events)
-            if event.play_type in SPECIAL_FOULS
+            if is_special_foul(event.play_type)
         ]
         for special_index in special_indices:
             cluster_indices = [special_index]

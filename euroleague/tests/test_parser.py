@@ -215,5 +215,108 @@ class ParserFixtureTest(unittest.TestCase):
         self.assertNotIn("qa.same_penalty_cluster_as_special", free_throw.decision_trace)
 
 
+class RenamedFoulCodesTest(unittest.TestCase):
+    """2026-27 renamed the special fouls (CMT -> CMT1/CMT2, CMU -> CMU_DI/CMU_FL).
+
+    A renamed code must group and end possessions exactly as its old code did, so
+    2025-26 and earlier are unchanged (not retroactive; shared_definitions D29).
+    Sequences follow the provider's shape (game 1 of 2025, games 782 and 785 of 2026).
+    """
+
+    COLUMNS = ["final_end_poss", "end_reason", "synthetic_parent_order", "synthetic_ft_trip_id"]
+
+    @staticmethod
+    def _events(rows):
+        """rows: (play_type, team, player, play_info)."""
+        return pd.DataFrame(
+            {
+                "season": 2026,
+                "gamecode": 950,
+                "source_event_order": range(1, len(rows) + 1),
+                "period": 2,
+                "clock": "05:00",
+                "play_type": [r[0] for r in rows],
+                "team_code": [r[1] for r in rows],
+                "player_id": [r[2] for r in rows],
+                "play_info": [r[3] for r in rows],
+            }
+        )
+
+    def _same_as(self, old, new, rows):
+        swap = lambda code: [(code if r[0] == "X" else r[0],) + tuple(r[1:]) for r in rows]
+        old_rows = group_events(self._events(swap(old)))
+        new_rows = group_events(self._events(swap(new)))
+        assert_frame_equal(
+            new_rows[self.COLUMNS].reset_index(drop=True),
+            old_rows[self.COLUMNS].reset_index(drop=True),
+            obj=f"{new} vs {old}",
+        )
+        return new_rows
+
+    # T scores, then commits the special foul; I shoots two and keeps the ball.
+    TRIP = [
+        ("2FGM", "T", "t1", None),
+        ("AS", "T", "t2", None),
+        ("X", "T", "t3", None),
+        ("RV", "I", "i1", None),
+        ("IN", "I", "i2", None),
+        ("OUT", "I", "i3", None),
+        ("FTM", "I", "i1", "Free Throw In (1/2 -  5 pt)"),
+        ("FTM", "I", "i1", "Free Throw In (2/2 -  6 pt)"),
+        ("2FGM", "I", "i4", None),
+    ]
+
+    def test_renamed_unsportsmanlike_trip_keeps_the_possession(self) -> None:
+        for new in ("CMU_DI", "CMU_FL"):
+            rows = self._same_as("CMU", new, self.TRIP)
+            self.assertFalse(rows.loc[rows["play_type"].eq("FTM"), "final_end_poss"].any(), new)
+            self.assertTrue(rows["final_end_poss"].iloc[-1], new)
+
+    def test_renamed_trip_at_the_end_of_a_period(self) -> None:
+        rows = self.TRIP[:8] + [("EP", None, None, None)]
+        for new in ("CMU_DI", "CMU_FL"):
+            # Same as CMU, which ends no possession here (kept: not retroactive).
+            self._same_as("CMU", new, rows)
+
+    def test_renamed_technical_matches_the_old_code(self) -> None:
+        rows = [
+            ("2FGA", "R", "r1", None),
+            ("D", "Z", "z1", None),
+            ("X", "R", "r2", None),
+            ("FTM", "Z", "z2", "Free Throw In (1/1 -  1 pt)"),
+            ("2FGA", "Z", "z3", None),
+            ("O", "Z", "z4", None),
+            ("3FGA", "Z", "z3", None),
+            ("D", "R", "r1", None),
+        ]
+        for new in ("CMT1", "CMT2"):
+            out = self._same_as("CMT", new, rows)
+            self.assertFalse(out.loc[out["play_type"].eq("FTM"), "final_end_poss"].any(), new)
+
+    def test_renamed_unsportsmanlike_on_a_made_basket(self) -> None:
+        rows = [
+            ("2FGM", "A", "a1", None),
+            ("X", "B", "b1", None),
+            ("RV", "A", "a1", None),
+            ("FTM", "A", "a1", "Free Throw In (1/1 -  3 pt)"),
+            ("3FGA", "A", "a2", None),
+            ("D", "B", "b2", None),
+        ]
+        for new in ("CMU_DI", "CMU_FL"):
+            self._same_as("CMU", new, rows)
+
+    def test_foul_family_predicates(self) -> None:
+        from euroleague_possessions.parser import is_committed_foul, is_special_foul
+
+        for code in ("CMT", "CMT1", "CMT2", "CMTI", "CMU", "CMU_DI", "CMU_FL", "B", "C"):
+            self.assertTrue(is_special_foul(code), code)
+        for code in ("CM", "CMD", "CCH", "OF", "RV", "CMTX", "CMUX", "", None):
+            self.assertFalse(is_special_foul(code), code)
+        for code in ("CM", "OF", "CMT2", "CMU_FL"):
+            self.assertTrue(is_committed_foul(code), code)
+        for code in ("CMD", "RV", "CCH"):
+            self.assertFalse(is_committed_foul(code), code)
+
+
 if __name__ == "__main__":
     unittest.main()
