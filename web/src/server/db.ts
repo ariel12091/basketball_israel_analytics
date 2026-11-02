@@ -16,6 +16,7 @@ import {
   DeadlineError,
   BusyError,
   QUEUE_MS,
+  HEAVY_QUEUE_MS,
   CONNECT_MS,
 } from "./deadline";
 export { Deadline, DeadlineError, BusyError } from "./deadline";
@@ -27,39 +28,64 @@ type Waiting = {
   resolve: () => void;
   reject: (e: Error) => void;
   deadline: Deadline;
+  heavy: boolean;
   timer: ReturnType<typeof setTimeout>;
 };
-function validateLimits(max: number, queueMax: number) {
+/** A heavy read is one that holds a connection for seconds (filtered 2-4
+ * player Lineups); at most `heavyMax` run at once per instance, so they can
+ * never take every slot from the quick reads (load test 2026-11-02). */
+export type SnapshotOptions = { heavy?: boolean };
+function validateLimits(max: number, queueMax: number, heavyMax = max) {
   if (!Number.isInteger(max) || max < 1 || max > 20)
     throw new Error("Invalid DB_POOL_MAX");
   if (!Number.isInteger(queueMax) || queueMax < 0 || queueMax > 1000)
     throw new Error("Invalid DB_QUEUE_MAX");
+  if (!Number.isInteger(heavyMax) || heavyMax < 1 || heavyMax > max)
+    throw new Error("Invalid DB_HEAVY_MAX");
 }
 export function snapshotLimits(
   env: Record<string, string | undefined> = process.env,
 ) {
   const max = Number(env.DB_POOL_MAX ?? 2),
-    queueMax = Number(env.DB_QUEUE_MAX ?? 20);
-  if (env.DB_POOL_MAX?.trim() === "" || env.DB_QUEUE_MAX?.trim() === "")
+    queueMax = Number(env.DB_QUEUE_MAX ?? 20),
+    // Two heavy reads per instance leave the rest of the pool to quick reads;
+    // a pool of 1 or 2 keeps one slot for them.
+    heavyMax = Number(env.DB_HEAVY_MAX ?? Math.max(1, Math.min(2, max - 1)));
+  if (
+    env.DB_POOL_MAX?.trim() === "" ||
+    env.DB_QUEUE_MAX?.trim() === "" ||
+    env.DB_HEAVY_MAX?.trim() === ""
+  )
     throw new Error("Empty database limit");
-  validateLimits(max, queueMax);
-  return { max, queueMax };
+  validateLimits(max, queueMax, heavyMax);
+  return { max, queueMax, heavyMax };
 }
-/** FIFO bounds admitted work before pg's internal queue, so expired work cannot execute later. */
+/** FIFO bounds admitted work before pg's internal queue, so expired work
+ * cannot execute later. Heavy reads have their own cap within the pool; a
+ * waiting heavy read is passed over while that cap is reached. */
 export class SnapshotDatabase {
   private active = 0;
+  private heavyActive = 0;
   private waiting: Waiting[] = [];
   constructor(
     private pool: Pick<Pool, "connect">,
     private max = 2,
     private queueMax = 20,
+    private heavyMax = max,
   ) {
-    validateLimits(max, queueMax);
+    validateLimits(max, queueMax, heavyMax);
   }
-  private async enter(deadline: Deadline) {
+  private admits(heavy: boolean) {
+    return this.active < this.max && (!heavy || this.heavyActive < this.heavyMax);
+  }
+  private take(heavy: boolean) {
+    this.active++;
+    if (heavy) this.heavyActive++;
+  }
+  private async enter(deadline: Deadline, heavy: boolean) {
     if (deadline.expired()) throw new DeadlineError();
-    if (this.active < this.max) {
-      this.active++;
+    if (this.admits(heavy)) {
+      this.take(heavy);
       return;
     }
     if (this.waiting.length >= this.queueMax) throw new BusyError();
@@ -69,27 +95,38 @@ export class SnapshotDatabase {
         resolve,
         reject,
         deadline,
+        heavy,
         timer: setTimeout(
           () => {
             this.waiting = this.waiting.filter((e) => e !== entry);
             reject(deadline.expired() ? new DeadlineError() : new BusyError());
           },
-          Math.min(QUEUE_MS, deadline.remaining()),
+          Math.min(heavy ? HEAVY_QUEUE_MS : QUEUE_MS, deadline.remaining()),
         ),
       });
       this.waiting.push(entry);
     });
   }
-  private leave() {
+  private leave(heavy: boolean) {
     this.active--;
-    while (this.waiting.length) {
-      const next = this.waiting.shift()!;
-      clearTimeout(next.timer);
+    if (heavy) this.heavyActive--;
+    // One slot freed: admit the first waiter that may use it, in arrival
+    // order, rejecting expired ones on the way.
+    for (let i = 0; i < this.waiting.length; ) {
+      const next = this.waiting[i];
       if (next.deadline.expired()) {
+        this.waiting.splice(i, 1);
+        clearTimeout(next.timer);
         next.reject(new DeadlineError());
         continue;
       }
-      this.active++;
+      if (!this.admits(next.heavy)) {
+        i++;
+        continue;
+      }
+      this.waiting.splice(i, 1);
+      clearTimeout(next.timer);
+      this.take(next.heavy);
       next.resolve();
       break;
     }
@@ -97,8 +134,10 @@ export class SnapshotDatabase {
   async withSnapshot<T>(
     deadline: Deadline,
     fn: (q: Query) => Promise<T>,
+    options: SnapshotOptions = {},
   ): Promise<T> {
-    await this.enter(deadline);
+    const heavy = options.heavy === true;
+    await this.enter(deadline, heavy);
     let client: PoolClient | undefined,
       released = false,
       stopped = false;
@@ -177,7 +216,7 @@ export class SnapshotDatabase {
     } finally {
       clearTimeout(overall);
       clearTimeout(first);
-      this.leave();
+      this.leave(heavy);
     }
   }
 }
@@ -185,12 +224,13 @@ let database: SnapshotDatabase | undefined;
 export function withSnapshot<T>(
   deadline: Deadline,
   fn: (q: Query) => Promise<T>,
+  options: SnapshotOptions = {},
 ): Promise<T> {
   if (!database) {
     const connectionString =
       process.env.DATABASE_URL_WEB || process.env.DATABASE_URL;
     if (!connectionString && !process.env.PG_HOST) throw new BusyError();
-    const { max, queueMax } = snapshotLimits();
+    const { max, queueMax, heavyMax } = snapshotLimits();
     const pool = new Pool({
       ...(connectionString
         ? { connectionString }
@@ -220,7 +260,7 @@ export function withSnapshot<T>(
     pool.on("error", (error: Error & { code?: string }) => {
       console.error("Database idle client failed", error.code ?? error.name);
     });
-    database = new SnapshotDatabase(pool, max, queueMax);
+    database = new SnapshotDatabase(pool, max, queueMax, heavyMax);
   }
-  return database.withSnapshot(deadline, fn);
+  return database.withSnapshot(deadline, fn, options);
 }

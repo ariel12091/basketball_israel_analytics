@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PoolClient } from "pg";
 import { SnapshotDatabase, Deadline, DeadlineError, BusyError, snapshotLimits } from "./db";
-import { QUEUE_MS } from "./deadline";
+import { QUEUE_MS, HEAVY_QUEUE_MS } from "./deadline";
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -19,8 +19,8 @@ afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
 
 describe("SnapshotDatabase lifecycle (fake pool, real admission/cleanup code)", () => {
   it("validates pool and queue limits before any pool can be constructed", () => {
-    expect(snapshotLimits({})).toEqual({ max: 2, queueMax: 20 });
-    expect(snapshotLimits({ DB_QUEUE_MAX: "0" })).toEqual({ max: 2, queueMax: 0 });
+    expect(snapshotLimits({})).toEqual({ max: 2, queueMax: 20, heavyMax: 1 });
+    expect(snapshotLimits({ DB_QUEUE_MAX: "0" })).toEqual({ max: 2, queueMax: 0, heavyMax: 1 });
     for (const value of ["NaN", "Infinity", "-1", "1.5", "1001", "", " "])
       expect(() => snapshotLimits({ DB_QUEUE_MAX: value })).toThrow();
     expect(() => new SnapshotDatabase({ connect: vi.fn() }, 1, NaN)).toThrow("DB_QUEUE_MAX");
@@ -147,5 +147,66 @@ describe("SnapshotDatabase lifecycle (fake pool, real admission/cleanup code)", 
     }
     // Explicit ownership/timer invariant, not a claim about process heap or pg internals.
     expect(c.release.mock.calls.filter(args => args[0] === true)).toHaveLength(50);
+  });
+});
+
+describe("SnapshotDatabase heavy lane (load test 2026-11-02)", () => {
+  it("defaults the heavy cap to 2, keeping a slot for quick reads in small pools", () => {
+    expect(snapshotLimits({ DB_POOL_MAX: "6" }).heavyMax).toBe(2);
+    expect(snapshotLimits({ DB_POOL_MAX: "2" }).heavyMax).toBe(1);
+    expect(snapshotLimits({ DB_POOL_MAX: "1" }).heavyMax).toBe(1);
+    expect(snapshotLimits({ DB_POOL_MAX: "6", DB_HEAVY_MAX: "3" }).heavyMax).toBe(3);
+    expect(() => snapshotLimits({ DB_POOL_MAX: "6", DB_HEAVY_MAX: "7" })).toThrow("DB_HEAVY_MAX");
+    expect(() => snapshotLimits({ DB_POOL_MAX: "6", DB_HEAVY_MAX: "" })).toThrow("Empty");
+  });
+
+  it("holds a second heavy read while its lane is full, and still runs quick reads", async () => {
+    const c = client(), hold = deferred<void>(), ran: string[] = [];
+    const db = new SnapshotDatabase({ connect: vi.fn(async () => c.value) }, 3, 5, 1);
+    const heavyA = db.withSnapshot(new Deadline(25000, 20000), async () => { ran.push("heavyA"); await hold.promise; }, { heavy: true });
+    await vi.advanceTimersByTimeAsync(0);
+    const heavyB = db.withSnapshot(new Deadline(25000, 20000), async () => { ran.push("heavyB"); }, { heavy: true });
+    const quick = db.withSnapshot(new Deadline(), async () => { ran.push("quick"); });
+    await quick;
+    expect(ran).toEqual(["heavyA", "quick"]);
+    hold.resolve();
+    await Promise.all([heavyA, heavyB]);
+    expect(ran).toEqual(["heavyA", "quick", "heavyB"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("passes over a waiting heavy read to admit the quick read queued behind it", async () => {
+    const c = client(), holdHeavy = deferred<void>(), holdQuick = deferred<void>(), ran: string[] = [];
+    const db = new SnapshotDatabase({ connect: vi.fn(async () => c.value) }, 2, 5, 1);
+    const heavyA = db.withSnapshot(new Deadline(25000, 20000), async () => { ran.push("heavyA"); await holdHeavy.promise; }, { heavy: true });
+    const quickB = db.withSnapshot(new Deadline(), async () => { ran.push("quickB"); await holdQuick.promise; });
+    await vi.advanceTimersByTimeAsync(0);
+    const heavyC = db.withSnapshot(new Deadline(25000, 20000), async () => { ran.push("heavyC"); }, { heavy: true });
+    const quickD = db.withSnapshot(new Deadline(), async () => { ran.push("quickD"); });
+    holdQuick.resolve();
+    await Promise.all([quickB, quickD]);
+    expect(ran).toEqual(["heavyA", "quickB", "quickD"]);
+    holdHeavy.resolve();
+    await Promise.all([heavyA, heavyC]);
+    expect(ran).toEqual(["heavyA", "quickB", "quickD", "heavyC"]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it("lets a heavy read wait longer than a quick read before refusing it", async () => {
+    const c = client(), hold = deferred<void>();
+    const db = new SnapshotDatabase({ connect: vi.fn(async () => c.value) }, 1, 5, 1);
+    const running = db.withSnapshot(new Deadline(25000, 20000), async () => { await hold.promise; });
+    await vi.advanceTimersByTimeAsync(0);
+    const quick = db.withSnapshot(new Deadline(), async () => 1);
+    const heavy = db.withSnapshot(new Deadline(25000, 20000), async () => 2, { heavy: true });
+    const quickResult = quick.catch((e) => e);
+    const heavyResult = heavy.then((v) => v, (e) => e);
+    await vi.advanceTimersByTimeAsync(QUEUE_MS + 1);
+    expect(await quickResult).toBeInstanceOf(BusyError);
+    await vi.advanceTimersByTimeAsync(HEAVY_QUEUE_MS - QUEUE_MS - 500);
+    hold.resolve();
+    expect(await heavyResult).toBe(2);
+    await running;
+    expect(vi.getTimerCount()).toBe(0);
   });
 });
