@@ -86,6 +86,7 @@ compute_possessions <- function(actions_tbl) {
   # A special-foul trip keeps the ball, but when it is the last event of the
   # period the possession ends there all the same.
   eoq_ft <- poss0 |>
+    filter(!type %in% c("substitution", "timeout")) |>
     group_by(game_id, quarter) |>
     dbplyr::window_order(id) |>
     mutate(next_paramtype = lead(parameters_type)) |>

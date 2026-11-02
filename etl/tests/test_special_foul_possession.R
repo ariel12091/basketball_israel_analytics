@@ -69,3 +69,17 @@ test_that("the turnover of an offensive unsportsmanlike foul still ends the offe
                            shot(5, team = 2L))
   expect_equal(ends(rows), c(2L, 5L))
 })
+
+test_that("substitutions and timeouts between the trip and the period end do not hide the period end", {
+  rows <- dplyr::bind_rows(foul(1, "unsportsmanlike-flagrant"), ft(2, 1, 1, 2), ft(3, 1, 2, 2),
+                           act(4, "substitution"), act(5, "timeout"),
+                           act(6, "quarter", ptype = "end-of-quarter"))
+  expect_equal(ends(rows), 3L)
+})
+
+test_that("a technical free throw shot by the team without the ball is not an end", {
+  # Team 1 has the ball; team 1 commits a technical, team 2 shoots, then team 1 scores.
+  rows <- dplyr::bind_rows(foul(1, "technical-behavioral", team = 1L),
+                           ft(2, 1, 1, 1, team = 2L), shot(3, team = 1L))
+  expect_equal(ends(rows), 3L)
+})

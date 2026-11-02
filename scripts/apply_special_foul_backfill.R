@@ -26,14 +26,25 @@ invisible(dbExecute(con, "SET statement_timeout = '15min'"))
 say <- function(...) cat(sprintf(...), "\n", sep = "")
 x <- function(sql) { t0 <- proc.time()[["elapsed"]]; dbExecute(con, sql); say("  %-62s %6.1fs", substr(sql, 1, 62), proc.time()[["elapsed"]] - t0) }
 
+# Step 1 removes the rows the query selects, so a rerun could not find them again: the targets are
+# saved before the first write and a rerun after a failure resumes from that file.
+backup <- "exports/cold/backup-2026-11-02-special-foul"
+targets_file <- file.path(backup, "targets.csv")
 SQL <- paste(readLines("sql/migrations/2026-11-02_special_foul_possession_targets.sql"), collapse = "\n")
-targets <- dbGetQuery(con, SQL, params = list(sprintf("{%s}", paste(seasons, collapse = ","))))
+resuming <- file.exists(targets_file)
+targets <- if (resuming) utils::read.csv(targets_file) else
+  dbGetQuery(con, SQL, params = list(sprintf("{%s}", paste(seasons, collapse = ","))))
+if (resuming) say("Resuming from %s", targets_file)
 games <- sort(unique(as.integer(targets$game_id)))
 say("%s: %d possession ends to remove in %d games (seasons %s)", if (apply) "APPLY" else "DRY RUN",
     nrow(targets), length(games), paste(seasons, collapse = ", "))
 print(table(targets$type))
 if (!apply) { dbDisconnect(con); say("Nothing changed. Set CONFIRM_SPECIAL_FOUL_BACKFILL=1 to apply."); quit(status = 0L) }
 
+if (!resuming) {
+  dir.create(backup, recursive = TRUE, showWarnings = FALSE)
+  utils::write.csv(targets, targets_file, row.names = FALSE)
+}
 arr <- function(v) sprintf("{%s}", paste(as.integer(v), collapse = ","))
 batches <- split(games, ceiling(seq_along(games) / 25L))
 each_batch <- function(fn) {
@@ -65,16 +76,14 @@ each_batch("refresh_team_ratings_preset_cache_for_games")
 each_batch("refresh_sub_lineups_stats_for_games")
 
 say("Step 3: cold archive")
-backup <- "exports/cold/backup-2026-11-02-special-foul"
-dir.create(backup, showWarnings = FALSE)
 for (t in c("possessions", "pws")) {
   f <- sprintf("exports/cold/%s.parquet", t)
   file.copy(f, file.path(backup, basename(f)), overwrite = FALSE)
-  d <- as.data.frame(arrow::read_parquet(f))
+  d <- as.data.frame(arrow::read_parquet(f, mmap = FALSE))
   hit <- paste(d$game_id, d$id) %in% paste(targets$game_id, targets$id) & d$final_end_poss %in% TRUE
   d$final_end_poss[hit] <- FALSE
   arrow::write_parquet(d, f)
-  say("  %s: %d rows flipped, %d rows kept", t, sum(hit), nrow(arrow::read_parquet(f, col_select = "id")))
+  say("  %s: %d rows flipped, %d rows kept", t, sum(hit), nrow(arrow::read_parquet(f, col_select = "id", mmap = FALSE)))
 }
 
 say("Step 4: cache marker")

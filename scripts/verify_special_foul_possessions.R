@@ -93,7 +93,9 @@ if (!is.null(compare)) {
   if (any(bad)) failures <- c(failures, sprintf("off_poss_raw drop differs from the special ends in %d team-games: %s",
     sum(bad), paste(unique(m$game_id[bad]), collapse = ",")))
   if (nrow(m) != nrow(b)) failures <- c(failures, sprintf("%d baseline team-games missing now", nrow(b) - nrow(m)))
-  if (mirror_bad > 0) failures <- c(failures, "mirror check fails")
+  # A season may start with a few (2025 has 2); the change must not add any.
+  mirror_before <- sum(b$off_poss_raw != b$opp_def_poss_raw, na.rm = TRUE)
+  if (mirror_bad > mirror_before) failures <- c(failures, sprintf("mirror check: %d team-games differ, %d before", mirror_bad, mirror_before))
   if (nrow(special)) failures <- c(failures, sprintf("%d special ends remain in %d games", nrow(special), length(affected)))
   cat(sprintf("compare against %s: %d team-games, %d possessions removed in total\n", compare, nrow(m), sum(drop)))
   if (length(failures)) cat("GATE FAILURES:\n", paste0("  - ", failures, "\n"), sep = "") else cat("all gates pass\n")
