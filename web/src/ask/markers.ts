@@ -93,6 +93,10 @@ export function fillAndVerify(
     if (!allowed.has(d)) problems.push(`Typed number "${context(words, d)}"`);
   for (const c of own.match(/\p{No}/gu) ?? [])
     problems.push(`Numeric character "${c}"`);
+  // An internal column key (net_without_3pt_luck) is not for the visitor; the
+  // page shows the column's label.
+  for (const k of new Set(own.match(/\b[a-z][a-z0-9]*(?:_[a-z0-9]+)+\b/g) ?? []))
+    problems.push(`Internal column name "${k}": describe the column by its label instead`);
   const asked = new Set([
     ...(question.match(NUMBER_WORD) ?? []).map(bare),
     ...(question.match(NUMBER) ?? []).flatMap(digitWords),
