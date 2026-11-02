@@ -80,10 +80,13 @@ const cache = new VersionedCache<Season>(
   () => true,
   96 * 1024 * 1024,
 );
-/** Verify the publication version before reusing a warm-instance answer. */
+/** Verify the publication version before reusing a warm-instance answer.
+ * The season pull runs in ~20 ms of database time but moves ~40k rows
+ * (4-5 MB), about 1 s uncontended; under load the transfer passed the 3 s
+ * default and 504'd (load test 2026-11-02), so it takes the tabs' budget. */
 export function getSeason(p: GameLogParams): Promise<Season> {
   const key = `${p.league}/${p.season}/${p.league === "il" ? p.view : "both"}`;
   return cache.get(p.league, key, () =>
-    withSnapshot(new Deadline(), (q) => fetchSeason(q, p)),
+    withSnapshot(new Deadline(25000, 20000), (q) => fetchSeason(q, p)),
   );
 }
