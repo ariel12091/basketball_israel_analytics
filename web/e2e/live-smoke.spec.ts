@@ -176,3 +176,29 @@ for (const [league, season] of [
     expect(errors).toEqual([]);
   });
 }
+
+// Lineups "# Starters" and speed, both leagues, through the deployed API: full
+// completed seasons, 2- and 3-player groups, the filters whose plans regressed
+// on 2026-11-01 (EuroLeague migration 057: 34 s; Israeli fetch_lineups_all:
+// 90 s+). Every request must answer within the 20 s budget, and no group may
+// show more starters than players. Twin of app/tests/testthat/test-lineup-starters-db.R.
+for (const [league, season, filter] of [
+  ["il", 2026, "&home_away=away"],
+  ["il", 2026, "&clutch=true"],
+  ["il", 2026, "&view=four_factors&last_n=5"],
+  ["euroleague", 2025, "&home_away=away"],
+  ["eurocup", 2025, "&last_n=10"],
+] as const)
+  for (const size of [2, 3])
+    test(`live ${league}: ${size}-player lineups${filter} within budget`, async ({ page }, info) => {
+      test.skip(info.project.name !== "desktop", "API check, once per run");
+      const t0 = Date.now();
+      const response = await page.goto(`/api/v1/${league}/lineups?season=${season}&size=${size}${filter}`);
+      const ms = Date.now() - t0;
+      expect(response!.status(), `${ms} ms`).toBe(200);
+      expect(ms).toBeLessThan(20000);
+      const { rows } = (await response!.json()) as { rows: { num_starters: number | null }[] };
+      expect(rows.length).toBeGreaterThan(0);
+      const over = rows.filter((r) => r.num_starters != null && r.num_starters > size + 1e-9);
+      expect(over, "groups showing more starters than players").toEqual([]);
+    });
