@@ -344,7 +344,7 @@ incremental cost before forecasting large-load throughput.
 - `round_number`, `phase` and `scheduled_at` are non-NULL — **these drive every
   date, round and phase filter, and NULLs silently empty those filters instead
   of erroring**
-- one `parser_version` across the schema, so aggregates do not mix derivations
+- one `parser_version` per competition and season, so a season's aggregates do not mix derivations (seasons may differ: a parser change is not retroactive; since 2026-11-02 season 2026 is 0.2.2 and earlier seasons 0.2.1)
 - team points match the official box score exactly
 - possessions are symmetric between opponents
 - team four factors match the independently-derived player fact ÷ 5
