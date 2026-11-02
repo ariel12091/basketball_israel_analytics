@@ -1,11 +1,13 @@
-# Applies the special-foul possession rule to the stored rows of 2024-25 and 2025-26, whose
-# play-by-play is not re-fetched: flips final_end_poss on the rows that
-# sql/migrations/2026-11-02_special_foul_possession_targets.sql selects, then refreshes what
-# reads them in the ETL's Phase 4 order, and carries the same flip into the cold Parquet archive
-# so a restore cannot bring the old ends back. (2026-27 goes through etl_full(game_ids = ...).)
+# Applies the special-foul possession rule to stored rows, without re-fetching play-by-play: flips
+# final_end_poss on the rows that sql/migrations/2026-11-02_special_foul_possession_targets.sql
+# selects, then refreshes what reads them in the ETL's Phase 4 order, and carries the same flip
+# into the cold Parquet archive so a restore cannot bring the old ends back.
+# Used for 2026-27 too: etl_full(game_ids = <42 games>) failed the 2-minute Phase 4 limit and
+# today's lineup gate rejected games 401 and 649 on re-fetch. Its cold rows did pin this SQL: the
+# real rule removed the same 90 ends in the 40 games it re-ran, and added none.
 #
-#   Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026                 dry run
-#   CONFIRM_SPECIAL_FOUL_BACKFILL=1 Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026
+#   Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026,2027                 dry run
+#   CONFIRM_SPECIAL_FOUL_BACKFILL=1 Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026,2027
 #
 # Each step commits on its own, so no long transaction holds a view lock; the cache marker
 # advances last, so the apps switch to the new numbers once everything is in place.
@@ -14,7 +16,7 @@ args <- commandArgs(trailingOnly = TRUE)
 i <- match("--seasons", args)
 stopifnot(!is.na(i), i < length(args))
 seasons <- as.integer(strsplit(args[[i + 1L]], ",")[[1]])
-stopifnot(length(seasons) > 0L, !anyNA(seasons), all(seasons %in% c(2025L, 2026L)))
+stopifnot(length(seasons) > 0L, !anyNA(seasons), all(seasons %in% c(2025L, 2026L, 2027L)))
 apply <- identical(Sys.getenv("CONFIRM_SPECIAL_FOUL_BACKFILL"), "1")
 
 readRenviron("etl/.Renviron")

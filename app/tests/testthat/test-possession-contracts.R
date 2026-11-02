@@ -1,5 +1,5 @@
 test_that("free-throw progress repairs impossible provider denominators", {
-  etl_r <- read_repo_txt("..", "etl", "etl_onoff.R")
+  etl_r <- read_repo_txt("..", "etl", "possession_rules.R")
 
   expect_true(grepl(".effective_ft_awarded = case_when(", etl_r, fixed = TRUE))
   expect_true(grepl(
