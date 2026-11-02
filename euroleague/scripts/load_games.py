@@ -36,6 +36,15 @@ import time
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
+
+
+def mixed_parser_versions(rows):
+    """(competition, season, parser_version) rows -> {(competition, season): versions} where a season mixes."""
+    by_season: dict[tuple[str, int], set[str]] = {}
+    for competition, season, version in rows:
+        by_season.setdefault((competition, int(season)), set()).add(version)
+    return {key: sorted(v) for key, v in sorted(by_season.items()) if len(v) > 1}
+
 sys.path.insert(0, str(REPO / "src"))
 
 
@@ -137,9 +146,14 @@ def verify(competition: str, season: int, gamecodes: list[int]) -> int:
     )[0][0]
     check("schedule metadata populated", nulls == 0, f"{nulls} rows missing round/phase/tipoff")
 
-    # One derivation version across the schema, or aggregates mix logic.
-    versions = [r[0] for r in q("SELECT DISTINCT parser_version FROM euroleague.actions")]
-    check("single parser version", len(versions) <= 1, f"versions={versions}")
+    # One derivation version per competition and season, or that season's
+    # aggregates mix logic. Seasons may differ: a parser change is not
+    # retroactive (2026-27 is 0.2.2, earlier seasons keep 0.2.1).
+    mixed = mixed_parser_versions(q(
+        "SELECT DISTINCT s.competition, a.season, a.parser_version "
+        "FROM euroleague.actions a JOIN euroleague.schedule s ON s.game_id = a.game_id"
+    ))
+    check("one parser version per season", not mixed, f"mixed={mixed}")
 
     # Points and possessions must match the official box score.
     bad_pts = q(

@@ -10,7 +10,7 @@ from typing import Any
 
 import pandas as pd
 
-from .parser import normalize_events
+from .parser import is_committed_foul, normalize_events
 
 
 METRIC_TO_BOXSCORE = {
@@ -83,9 +83,11 @@ def _event_counts(events: pd.DataFrame) -> pd.DataFrame:
                 "turnovers": count("TO"),
                 "blocks_favour": count("FV"),
                 "blocks_against": count("AG"),
-                # Official FoulsCommited includes player technicals (CMT/CMTI)
+                # Official FoulsCommited includes player technicals (CMT*/CMTI)
                 # but excludes bench/coach technical rows (B/C).
-                "fouls_committed": count("CM", "CMU", "OF", "CMT", "CMTI"),
+                "fouls_committed": count(
+                    *(code for code in counts.index if is_committed_foul(code) and code not in {"B", "C"})
+                ),
                 "fouls_received": count("RV"),
             }
         )

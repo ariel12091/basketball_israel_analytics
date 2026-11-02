@@ -159,5 +159,26 @@ class ReconciliationTest(unittest.TestCase):
         self.assertEqual(len(result.missing_boxscores), 0)
 
 
+class RenamedFoulCountTest(unittest.TestCase):
+    def test_renamed_2026_27_fouls_count_as_committed(self) -> None:
+        from euroleague_possessions.reconciliation import _event_counts
+
+        codes = ["CM", "CMU_FL", "CMU_DI", "CMT1", "CMT2", "CMTI", "OF", "B", "C", "CMD"]
+        events = pd.DataFrame(
+            {
+                "season": 2026,
+                "gamecode": 960,
+                "source_event_order": range(1, len(codes) + 1),
+                "period": 1,
+                "play_type": codes,
+                "team_code": "A",
+                "player_id": [f"a{i}" for i in range(len(codes))],
+            }
+        )
+        counts = _event_counts(events)
+        # Bench/coach (B, C) are excluded, as is CMD, exactly as before the rename.
+        self.assertEqual(int(counts["fouls_committed"].iloc[0]), 7)
+
+
 if __name__ == "__main__":
     unittest.main()
