@@ -9,8 +9,8 @@
 # `# EUROLEAGUE:` differ. Do not edit the copied block for any other reason --
 # fix the Israeli original and re-copy.
 #
-# Check IDs A..AJ mirror the Israeli catalogue so the two reports can be read
-# side by side. Checks with no EuroLeague analogue stay in the catalogue as
+# Check IDs A..AJ and AN mirror the Israeli catalogue so the two reports can be
+# read side by side. Checks with no EuroLeague analogue stay in the catalogue as
 # `not_automated` rather than being dropped. N1..N9 are EuroLeague-native.
 #
 # Usage:
@@ -1375,6 +1375,25 @@ build_checks <- function(con, schema) {
           ORDER BY 1, 3",
         atc
       )
+    ),
+
+    list(
+      id = "AN_consecutive_same_team_possessions",
+      title = "A team ends two possessions in a row with no opponent possession between",
+      severity = "warning",
+      purpose = paste(
+        "One row per repeat within a period, with the game and both time stamps.",
+        "Possessions alternate, so each repeat puts the two teams' possession counts",
+        "one apart. Causes seen: the feed never records how the opponent's possession",
+        "ended (most); a real repeat, such as a foul right after a score or a special",
+        "foul. A rising count after a parser or rule change points at the rule.",
+        "Same check in the Israeli report."
+      ),
+      required_tables = c("actions", "action_team_context_actions", "schedule", "teams"),
+      runner = function(con, schema, root) {
+        source(file.path(root, "..", "etl", "dq_consecutive_possessions.R"), local = TRUE)
+        consecutive_possession_details(con, "euroleague", schema = schema)
+      }
     ),
 
     list(
