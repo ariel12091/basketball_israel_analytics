@@ -42,7 +42,8 @@ jobs:
       - name: Load ${{ env.PREVIEW_URL }}
         env:
           VERCEL_AUTOMATION_BYPASS_SECRET: ${{ secrets.VERCEL_AUTOMATION_BYPASS_SECRET }}
-          STAGES: "1,10,20,50,100,150"
+          # A load-test/<name> branch whose name contains "cap50" stops at 50 users.
+          STAGES: ${{ contains(github.ref_name, 'cap50') && '1,10,20,50' || '1,10,20,50,100,150' }}
           STAGE_SECONDS: "60"
           TAIL: "0.3"
           OUT: load-results.json

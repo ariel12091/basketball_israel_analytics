@@ -39,7 +39,9 @@ const LEAGUES = { il: [2026, 2027], euroleague: [2025, 2026], eurocup: [2025, 20
 const READERS = ["game-logs", "onoff", "lineups", "team-ratings", "player-stats"];
 const PAGES = ["home", "game-logs", "onoff", "lineups", "team-ratings", "player-stats"];
 const CONTEXTS = ["", "&home_away=home", "&home_away=away", "&last_n=5", "&last_n=10", "&outcome=win"];
-const VIEWS = { onoff: ["", "&view=four_factors", "&view=shot_profile"], "team-ratings": ["", "&view=four_factors"], "game-logs": ["", "&view=four_factors"] };
+const VIEWS = { onoff: ["", "&view=four_factors", "&view=shot_profile"], "team-ratings": ["", "&view=four_factors"], "game-logs": ["", "&view=four_factors"], lineups: ["", "&view=four_factors"] };
+// Lineups group sizes: 2 and 3 take the reader's heaviest paths (2026-11-01).
+const SIZES = ["", "&size=2", "&size=3"];
 
 function action() {
   const league = pick(Object.keys(LEAGUES)), season = pick(LEAGUES[league]);
@@ -63,8 +65,16 @@ function action() {
   const tail = rand() < TAIL;
   if (tail) ctx = window();
   // The Lineups page opens with its auto minimum on (lib/tabQuery lineupsPagePath).
-  if (reader === "lineups") ctx += "&auto=true";
-  return { kind: `api ${reader}${tail ? " (tail)" : ""}`, league, path: `/api/v1/${league}/${reader}?season=${season}${view}${ctx}` };
+  // Clutch is Israeli-only on that tab.
+  let detail = "";
+  if (reader === "lineups") {
+    const size = pick(SIZES);
+    ctx += size + "&auto=true";
+    const clutch = league === "il" && !tail && rand() < 0.25;
+    if (clutch) ctx += "&clutch=true";
+    detail = `${view ? " ff" : ""}${size ? ` ${size.slice(6)}-man` : ""}${clutch ? " clutch" : ""}`;
+  }
+  return { kind: `api ${reader}${detail}${tail ? " (tail)" : ""}`, league, path: `/api/v1/${league}/${reader}?season=${season}${view}${ctx}` };
 }
 function pathOf(a) {
   if (a.path) return a.path;
