@@ -24,7 +24,7 @@ test_that("the findings page names the game, the team and both time stamps", {
   env <- new.env()
   sys.source(repo_file("..", "etl", "dq_findings_html.R"), envir = env)
   entry <- env$DQ_FINDING_CATALOG$AN_consecutive_same_team_possessions
-  expect_identical(entry$tier, "medium")
+  expect_identical(entry$tier, "low")
   expect_identical(entry$entity, "game")
   ctx <- list(teams = data.frame(team_id = 33L, team_name = "MACCABI ASHDOD"))
   row <- data.frame(

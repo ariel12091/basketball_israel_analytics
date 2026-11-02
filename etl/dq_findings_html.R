@@ -534,7 +534,7 @@ DQ_FINDING_CATALOG <- list(
   ),
   AN_consecutive_same_team_possessions = list(
     headline = "Same team ends two possessions in a row",
-    tier = "medium", entity = "game",
+    tier = "low", entity = "game",
     describe = function(r, ctx) sprintf(
       "%s ended two possessions in a row in game %s, %s: %s at %s, then %s at %s, with no opponent possession between.",
       r$team_name, r$game_id, dq_period_name(r$period),
@@ -542,7 +542,7 @@ DQ_FINDING_CATALOG <- list(
     ),
     events = function(r) sprintf("%s -> %s", r$first_end_event_id, r$second_end_event_id),
     effect = "The two teams' possession counts for this game end up one apart, so their ratings for the game move slightly.",
-    fix = "Read the play-by-play between the two time stamps. A missing opponent event is a feed gap and stays as it is; a possession wrongly ended by us is a fix in compute_possessions()."
+    fix = "Read the play-by-play between the two time stamps. A missing opponent event is a feed gap and stays as it is; a foul right after a score or a special foul can be a real repeat; a made and-one whose missed free throw the team rebounds is the known rule difference D30."
   ),
   AM_player_id_display_name_gaps = list(
     headline = "Player id problems: names not backed by an identity",
