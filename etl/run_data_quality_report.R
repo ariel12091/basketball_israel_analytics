@@ -2835,9 +2835,8 @@ build_checks <- function(con, schema) {
         "Possessions alternate, so each repeat puts the two teams' possession counts",
         "one apart. Causes seen: the feed never records how the opponent's possession",
         "ended (most); a real repeat, such as a foul right after a score or a special",
-        "foul; a made and-one whose missed free throw the team rebounds, which this",
-        "rule counts as two possessions (D30). A rising count after a parser or rule",
-        "change points at the rule. Same check in the EuroLeague report."
+        "foul. A rising count after a parser or rule change points at the rule. Same",
+        "check in the EuroLeague report."
       ),
       required_tables = c("df_pts_poss_lineups_longer_mv", "schedule", "season_teams"),
       runner = function(con, schema, root) {
