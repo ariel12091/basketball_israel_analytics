@@ -128,7 +128,7 @@ compute_possessions <- function(actions_tbl) {
     filter(.own_rebound_candidate) |>
     select(game_id, id, .next_end_team)
 
-  with_ends |>
+  finished <- with_ends |>
     # This runs last, on the finished ends: the end-of-quarter overrides above decide
     # which ends exist, and the made shot gives its end up only when the next end after
     # it (same game and quarter) is the same team's. A rebound that closes the period
@@ -137,7 +137,97 @@ compute_possessions <- function(actions_tbl) {
     mutate(final_end_poss = case_when(
       .own_rebound_candidate & .next_end_team == team_id ~ FALSE,
       TRUE                                              ~ final_end_poss
+    ))
+
+  # Phantom ends. This runs after the and-one step because the tests below read the
+  # finished ends: the previous end of a row is the one the and-one step left, and the
+  # rows removed here never change whether another row is removed. One pass over
+  # `finished`: every neighbour (previous end, previous foul turnover, last live play,
+  # last shot or offensive rebound of the team) comes from a window function, not a join.
+  #  (1) A put-back's rebound: the rebound of a missed shot is logged after the made
+  #      put-back, so the same team's made shot is the previous end and the rebound
+  #      (an end only by the end-of-quarter override) would count a possession twice.
+  #  (2) A foul turnover (OffensiveFoulUnsportsmanlike) is a phantom when the fouling
+  #      team did not have the ball: its own previous end with no shot or offensive
+  #      rebound of its own since, or a second foul turnover in the same second as the
+  #      previous foul turnover with no live play between (a brawl logged as one burst).
+  #      Live play: shot, rebound, freeThrow, steal, block, assist, deflection.
+  finished |>
+    mutate(
+      .is_end = coalesce(final_end_poss, FALSE),
+      .ofu = case_when(type == "foul" & parameters_type == "OffensiveFoulUnsportsmanlike" ~ 1L,
+                       TRUE ~ 0L)
+    ) |>
+    # A turnover belongs to the foul when its parent is the foul's id or the foul's parent.
+    group_by(game_id, parent_action_id) |>
+    mutate(.ofu_same_parent = max(.ofu, na.rm = TRUE)) |>
+    ungroup() |>
+    mutate(.foul_key = case_when(.ofu == 1L ~ id,
+                                 type == "turnover" ~ parent_action_id,
+                                 TRUE ~ NA_integer_)) |>
+    group_by(game_id, .foul_key) |>
+    mutate(.ofu_same_id = max(.ofu, na.rm = TRUE)) |>
+    ungroup() |>
+    mutate(
+      .foul_turnover = case_when(type == "turnover" & (.ofu_same_parent > 0L | .ofu_same_id > 0L) ~ TRUE,
+                                 TRUE ~ FALSE),
+      .live_id = case_when(
+        type %in% c("shot", "rebound", "freeThrow", "steal", "block", "assist", "deflection") ~ id,
+        TRUE ~ NA_integer_
+      )
+    ) |>
+    group_by(game_id, quarter.x) |>
+    dbplyr::window_order(id) |>
+    mutate(.live_cum = cummax(.live_id)) |>
+    mutate(.live_before = lag(.live_cum)) |>
+    ungroup() |>
+    group_by(game_id, quarter.x, .is_end) |>
+    dbplyr::window_order(id) |>
+    mutate(.prev_end_id = lag(id), .prev_end_team = lag(team_id), .prev_end_type = lag(type),
+           .prev_end_made = lag(parameters_made)) |>
+    ungroup() |>
+    group_by(game_id, quarter.x, .foul_turnover) |>
+    dbplyr::window_order(id) |>
+    mutate(.prev_ftt_id = lag(id), .prev_ftt_secs = lag(end_game_seconds_remaining)) |>
+    ungroup() |>
+    mutate(.own_id = case_when(
+      type == "shot"                                     ~ id,
+      type == "rebound" & parameters_type == "offensive" ~ id,
+      TRUE                                               ~ NA_integer_
     )) |>
+    group_by(game_id, quarter.x, team_id) |>
+    dbplyr::window_order(id) |>
+    mutate(.own_cum = cummax(.own_id)) |>
+    mutate(.own_before = lag(.own_cum)) |>
+    ungroup() |>
+    mutate(
+      .same_team_prev = case_when(.prev_end_team == team_id ~ TRUE, TRUE ~ FALSE),
+      .putback_rebound = case_when(
+        .is_end & type == "rebound" & parameters_type == "offensive" & .same_team_prev &
+          .prev_end_type == "shot" & .prev_end_made == "made" &
+          parent_action_id < .prev_end_id ~ TRUE,
+        TRUE ~ FALSE
+      ),
+      .foul_no_ball = case_when(
+        .is_end & .foul_turnover & .same_team_prev &
+          (is.na(.own_before) | .own_before <= .prev_end_id) ~ TRUE,
+        TRUE ~ FALSE
+      ),
+      .foul_same_second = case_when(
+        .is_end & .foul_turnover & !is.na(.prev_ftt_id) &
+          .prev_ftt_secs == end_game_seconds_remaining &
+          (is.na(.live_before) | .live_before < .prev_ftt_id) ~ TRUE,
+        TRUE ~ FALSE
+      ),
+      final_end_poss = case_when(
+        .putback_rebound | .foul_no_ball | .foul_same_second ~ FALSE,
+        TRUE                                                 ~ final_end_poss
+      )
+    ) |>
     select(-eoq_override, -eoq_special_ft, -final_end_poss_base, -.effective_ft_awarded,
-           -.own_rebound_candidate, -.next_end_team)
+           -.own_rebound_candidate, -.next_end_team, -.is_end, -.ofu, -.ofu_same_parent,
+           -.foul_key, -.ofu_same_id, -.foul_turnover, -.live_id, -.live_cum, -.live_before,
+           -.prev_end_id, -.prev_end_team, -.prev_end_type, -.prev_end_made, -.prev_ftt_id,
+           -.prev_ftt_secs, -.own_id, -.own_cum, -.own_before, -.same_team_prev,
+           -.putback_rebound, -.foul_no_ball, -.foul_same_second)
 }
