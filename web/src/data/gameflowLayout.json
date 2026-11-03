@@ -1,4 +1,6 @@
 {
+  "tight": { "lane_height": 12, "lane_gap": 2, "margin_height": 60 },
+  "minScale": 0.8,
   "desktop": {
     "compact": false,
     "width": 1070,

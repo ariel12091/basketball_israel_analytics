@@ -461,6 +461,15 @@ body.ibpl-collapsed-nav .lineup-bar .lineup-chips-mode { flex: 1; justify-conten
 .ibpl-gameflow-back { display: inline-flex; align-items: center; gap: 6px; margin-right: 12px; padding: 5px 12px; border: 2px solid var(--ibpl-accent); border-radius: 8px; background: transparent; color: var(--ibpl-accent); font-size: .85rem; font-weight: 700; }
 .ibpl-gameflow-back:hover { background: var(--ibpl-accent); color: var(--ibpl-bg); }
 .ibpl-react-gameflow-panel .ibpl-ribbon-inline-head { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+a.ibpl-gameflow-back { text-decoration: none; }
+/* Wide screens: the chart fits the window (useFittedLayout), so the controls
+   above it share one short row. */
+@media (min-width: 992px) {
+  .ibpl-react-gameflow-panel { margin: 8px 0; }
+  .ibpl-react-gameflow .ibpl-ribbon-pair-controls { flex-wrap: nowrap; margin-bottom: 6px; }
+  .ibpl-react-gameflow .ibpl-ribbon-pair-controls button { min-height: 30px; padding: 3px 10px; flex-shrink: 0; font-size: .8rem; }
+  .ibpl-react-gameflow .ibpl-ribbon-pair-status { flex: 1 1 0; min-width: 0; }
+}
 /* Team Ratings Traditional controls in the toolbar; Player Stats bar. */
 .tr-trad-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px; }
 .tr-trad-controls .form-group, .tr-trad-controls .shiny-input-container { margin: 0; min-width: 180px; }

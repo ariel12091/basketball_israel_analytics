@@ -6,12 +6,14 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from "react";
 import type { League } from "@/rules/gameLogs";
 import type { GameflowPayload } from "@/server/gameflowRepo";
 import {
   aggregateSegments,
   clock,
+  fitGameflowLayout,
   laneKey,
   marginPath,
   pmLabel,
@@ -42,6 +44,44 @@ export function useNarrow() {
 export function gameflowPath(league: League, game: number, team: number) {
   return `/api/v1/${league}/gameflow?game_id=${game}&team_id=${team}`;
 }
+/** Room left under the chart: the panel's padding and a little air. */
+const BELOW_CHART = 21;
+/**
+ * The wide chart's layout for this window. Measured once and on resize, never
+ * on selection: the chart must not change size while the user is reading it.
+ */
+function useFittedLayout(
+  data: GameflowPayload,
+  compact: boolean,
+  box: RefObject<HTMLDivElement | null>,
+) {
+  const [size, setSize] = useState<{ width: number; height: number } | null>(
+      null,
+    ),
+    lanes = new Set(data.bars.map(laneKey)).size;
+  useLayoutEffect(() => {
+    if (compact) return;
+    const measure = () => {
+      const el = box.current;
+      if (!el) return;
+      // Position in the page, not the window: where the chart sits unscrolled.
+      const top = el.getBoundingClientRect().top + scrollY,
+        next = {
+          width: el.clientWidth,
+          height: Math.max(0, innerHeight - top - BELOW_CHART),
+        };
+      setSize((s) =>
+        s?.width === next.width && s.height === next.height ? s : next,
+      );
+    };
+    measure();
+    // A web font arriving late can rewrap the navbar and move the chart.
+    void document.fonts?.ready.then(measure);
+    addEventListener("resize", measure);
+    return () => removeEventListener("resize", measure);
+  }, [compact, box]);
+  return !compact && size ? fitGameflowLayout(lanes, size) : undefined;
+}
 export function GameflowView({
   data,
   compact,
@@ -58,7 +98,12 @@ export function GameflowView({
     [quarter, setQuarter] = useState(1),
     [score, setScore] = useState("");
   const cards = useRef(new Map<number, HTMLElement>()),
-    detail = useRef<HTMLElement>(null);
+    detail = useRef<HTMLElement>(null),
+    chartBox = useRef<HTMLDivElement>(null),
+    layout = useFittedLayout(data, compact, chartBox),
+    // The click that opened the chart leaves the pointer resting on a bar. That
+    // is not a hover: acting on it would split the chart before the first look.
+    pointerMoved = useRef(false);
   const windows = sharedWindows(data.bars, selected),
     total = windows.reduce((sum, w) => sum + w.end - w.start, 0);
   const groups =
@@ -134,9 +179,12 @@ export function GameflowView({
     highlight,
     onPlayer: (bar: Bar) => toggle(bar),
     onBar: (window: BarWindow) => toggle(window.bar, window),
-    onHover: setHover,
+    onHover: (window: BarWindow | null) => {
+      if (!window || pointerMoved.current) setHover(window);
+    },
     active: hover ?? active,
     lineupIndex: focused?.dictIndex,
+    layout,
   };
   const prompt = selected.length
     ? `${selected.map((key) => data.bars.find((b) => laneKey(b) === key)?.player_label ?? key).join(" + ")} · ${total ? clock(total) + (selected.length > 1 ? " on court together" : " on court") : "No shared court time"}. Select a player again to remove them.`
@@ -162,7 +210,12 @@ export function GameflowView({
     />
   );
   return (
-    <div className="ibpl-ribbon-game ibpl-react-gameflow">
+    <div
+      className="ibpl-ribbon-game ibpl-react-gameflow"
+      onPointerMove={(e) => {
+        if (e.movementX || e.movementY) pointerMoved.current = true;
+      }}
+    >
       {data.health && (
         <div className="alert alert-warning py-2 px-3 mb-2" role="note">
           {data.health}
@@ -283,7 +336,10 @@ export function GameflowView({
           // Top team selected: its lanes, then the lineups, then the margin
           // chart and the other team.
           <>
-            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+            <div
+              className="ibpl-ribbon-inline-scroll ibpl-gameflow-full"
+              ref={chartBox}
+            >
               <GameflowChart {...common} crop="top" />
             </div>
             {details}
@@ -293,7 +349,10 @@ export function GameflowView({
           </>
         ) : (
           <>
-            <div className="ibpl-ribbon-inline-scroll ibpl-gameflow-full">
+            <div
+              className="ibpl-ribbon-inline-scroll ibpl-gameflow-full"
+              ref={chartBox}
+            >
               <GameflowChart {...common} />
             </div>
             {details}
@@ -495,12 +554,15 @@ export function GameflowSurface({
   onClose,
   standalone = false,
   backLabel = "Back",
+  backLink,
   data,
   loading,
   error,
   retry,
-}: Pick<PanelProps, "onClose" | "standalone" | "backLabel"> &
-  Pick<
+}: Pick<PanelProps, "onClose" | "standalone" | "backLabel"> & {
+  /** The direct page's way back, on the title's row. */
+  backLink?: ReactNode;
+} & Pick<
     ReturnType<typeof useTabData<GameflowPayload>>,
     "data" | "loading" | "error" | "retry"
   >) {
@@ -557,6 +619,7 @@ export function GameflowSurface({
             <span aria-hidden="true">←</span> {backLabel}
           </button>
         )}
+        {backLink}
         <strong>{title}</strong>
       </div>
       <div className="ibpl-ribbon-inline-result">{content}</div>

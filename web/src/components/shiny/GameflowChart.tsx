@@ -12,6 +12,7 @@ import {
   windowDetail,
   windowSegments,
   type Bar,
+  type GameflowLayout,
   type Window,
 } from "@/rules/gameflow";
 import geometry from "@/data/gameflowLayout.json";
@@ -28,10 +29,13 @@ export default function GameflowChart({
   active,
   lineupIndex,
   crop,
+  layout,
 }: {
   /** Draw only the top team's lanes ("top") or the rest ("bottom"), so the
    * lineup details can sit between them (user 2026-10-28). */
   crop?: "top" | "bottom";
+  /** The layout fitted to the screen; the plain layout when absent. */
+  layout?: GameflowLayout;
   data: GameflowPayload;
   compact?: boolean;
   range?: Window;
@@ -44,7 +48,7 @@ export default function GameflowChart({
   lineupIndex?: number;
 }) {
   const id = useId().replace(/:/g, ""),
-    L = compact ? geometry.compact : geometry.desktop,
+    L = compact ? geometry.compact : (layout ?? geometry.desktop),
     total = data.bounds[data.bounds.length - 1],
     start = range?.start ?? 0,
     end = range?.end ?? total,

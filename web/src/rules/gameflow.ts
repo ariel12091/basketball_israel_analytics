@@ -1,6 +1,7 @@
 // app/R/helpers.R ribbon_* / merge_adjacent_stints and app.js overlap rules.
 // Raw scoring events drive as-of values; completed margin is drawing-only.
 import { rRound } from "./round";
+import geometry from "../data/gameflowLayout.json";
 export type Side = "own" | "opp";
 export type Window = { start: number; end: number };
 export type Lane = {
@@ -47,6 +48,47 @@ const finite = (v: number) => (Number.isFinite(v) ? v : null);
 const cmp = (a: string, b: string) => a.localeCompare(b);
 export const laneKey = (r: Pick<Lane, "side" | "player_key">) =>
   `${r.side}:${r.player_key}`;
+export type GameflowLayout = {
+  width: number;
+  gutter: number;
+  name_x: number;
+  min_x: number;
+  pm_x: number;
+  lane_height: number;
+  lane_gap: number;
+  margin_height: number;
+};
+/** Height of the whole chart in drawing units, both teams in the picture. */
+export const chartHeight =(L: GameflowLayout, lanes: number) =>
+  geometry.padTop +
+  geometry.header +
+  2 * geometry.bandGap +
+  L.margin_height +
+  lanes * (L.lane_height + L.lane_gap) -
+  2 * L.lane_gap +
+  12 + // the period labels under the last lane
+  geometry.padBottom;
+/**
+ * Fits the wide chart to the space under its header so the first look needs no
+ * scrolling (user 2026-11-04). Text and bars grow with the drawing scale, so
+ * the chart is drawn wider rather than squeezed: time takes the spare width and
+ * nothing distorts. Tighter rows are used only when the plain ones would shrink
+ * text below its natural size, and `minScale` keeps names legible: below it the
+ * page scrolls. A narrower column (Home's) is already short: it is left alone.
+ */
+export function fitGameflowLayout(
+  lanes: number,
+  box: { width: number; height: number },
+): GameflowLayout {
+  const plain = geometry.desktop,
+    natural = box.width / plain.width;
+  if (natural <= geometry.minScale) return plain;
+  const roomy = box.height / chartHeight(plain, lanes),
+    L = roomy >= Math.min(1, natural) ? plain : { ...plain, ...geometry.tight },
+    fitted = box.height / chartHeight(L, lanes),
+    scale = Math.min(natural, Math.max(geometry.minScale, fitted));
+  return { ...L, width: box.width / scale };
+}
 export const periodBounds = (periods: number | null) =>
   Array.from({ length: Math.max(4, Math.trunc(periods || 4)) }, (_, i) =>
     i < 4 ? (i + 1) * 600 : 2400 + (i - 3) * 300,
