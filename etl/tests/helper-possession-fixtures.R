@@ -93,5 +93,20 @@ POSSESSION_FIXTURES <- list(
   no_made_shot_in_group = .fx(dplyr::bind_rows(foul(1, "personal", team = 2L), ft(2, 1, 1, 2),
                                                ft(3, 1, 2, 2, made = "missed"),
                                                reb(4, 1, "offensive"), shot(5)),
-                              5, base = NULL)
+                              5, base = NULL),
+  next_quarter_end_is_same_team = .fx(dplyr::bind_rows(reb(4, 1, "offensive"),
+                                                       shot(5, made = "missed"),
+                                                       act(6, "turnover", ptype = "bad-pass", q = 2L)),
+                                      c(1, 6)),
+  rebound_before_made_last_ft = .fx(dplyr::bind_rows(shot(1),
+                                                     foul(2, "personal", parent = 1, team = 2L),
+                                                     ft(3, 1, 1, 2, made = "missed"),
+                                                     reb(4, 1, "offensive"), ft(5, 1, 2, 2)),
+                                    5, base = NULL),
+  rebound_before_missed_last_ft = .fx(dplyr::bind_rows(shot(1),
+                                                       foul(2, "personal", parent = 1, team = 2L),
+                                                       reb(3, 1, "offensive"),
+                                                       ft(4, 1, 1, 1, made = "missed"),
+                                                       shot(5, team = 2L)),
+                                      c(1, 5), base = NULL)
 )

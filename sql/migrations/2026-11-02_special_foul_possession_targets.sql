@@ -6,7 +6,7 @@
 --   * except a turnover (the offense did lose the ball) and an offensive rebound marked as a period end,
 --   * except the last possession end of its period when nothing but substitutions and period
 --     markers follows it (the period ended the possession).
--- Read-only. scripts/apply_special_foul_backfill.R applies the result.
+-- Read-only. scripts/apply_possession_end_backfill.R --rule special-foul applies the result.
 WITH games AS (
   SELECT DISTINCT game_id FROM basketball_test.final_schedule_mv WHERE game_year = ANY($1::int4[])
 ),

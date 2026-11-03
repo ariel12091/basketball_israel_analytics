@@ -1,22 +1,32 @@
-# Possession-end checks for the special-foul rule
-# (docs/superpowers/plans/2026-11-02-special-foul-possession-ends.md). Read-only.
+# Possession-end checks for a possession-end rule (--rule special-foul: D29, plan
+# docs/superpowers/plans/2026-11-02-special-foul-possession-ends.md; --rule and-one: D30, plan
+# docs/superpowers/plans/2026-11-03-and-one-own-rebound-possession.md). Read-only.
 #
-#   Rscript scripts/verify_special_foul_possessions.R --season 2027
+#   Rscript scripts/verify_possession_rule.R --rule and-one --season 2027
 #       report: same-team repeats, off - def histogram, mirror check, affected games
-#   Rscript scripts/verify_special_foul_possessions.R --season 2027 --baseline <file.csv>
+#   Rscript scripts/verify_possession_rule.R --rule and-one --season 2027 --baseline <file.csv>
 #       also write the per team-game table
-#   Rscript scripts/verify_special_foul_possessions.R --season 2027 --compare <file.csv>
+#   Rscript scripts/verify_possession_rule.R --rule and-one --season 2027 --compare <file.csv>
 #       also diff the per team-game table against an earlier baseline; exits 1 on a gate failure
 #
 # A "same-team repeat" is a possession end followed by the same team's next end in the
-# same period: the opponent never had the ball in between. "Special ends" are the rows
-# sql/migrations/2026-11-02_special_foul_possession_targets.sql selects.
+# same period (by id): the opponent never had the ball in between. "Target ends" are the rows
+# the rule's targets SQL selects (the table RULES below): ends the rule removes, still present
+# before the backfill and gone after it.
+
+# One table per rule: its targets SQL, as in scripts/apply_possession_end_backfill.R.
+RULES <- list(
+  `special-foul` = list(sql = "sql/migrations/2026-11-02_special_foul_possession_targets.sql"),
+  `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql")
+)
 
 args <- commandArgs(trailingOnly = TRUE)
 arg_value <- function(flag) {
   i <- match(flag, args)
   if (is.na(i) || i == length(args)) NULL else args[[i + 1L]]
 }
+rule_name <- arg_value("--rule")
+stopifnot("--rule special-foul|and-one is required" = !is.null(rule_name), rule_name %in% names(RULES))
 season <- as.integer(arg_value("--season"))
 stopifnot(length(season) == 1L, !is.na(season))
 baseline <- arg_value("--baseline")
@@ -35,19 +45,19 @@ ends <- q("
          lag(p.team_id) OVER w AS prev_team, lag(p.id) OVER w AS prev_id
   FROM basketball_test.df_pts_poss_lineups_longer_mv p JOIN g USING (game_id)
   WHERE p.final_end_poss AND p.type_lineup = 'offense'
-  WINDOW w AS (PARTITION BY p.game_id, p.quarter ORDER BY p.event_elapsed_seconds, p.id)")
-targets_sql <- paste(readLines("sql/migrations/2026-11-02_special_foul_possession_targets.sql"), collapse = "\n")
-special <- dbGetQuery(con, targets_sql, params = list(sprintf("{%d}", season)))
+  WINDOW w AS (PARTITION BY p.game_id, p.quarter ORDER BY p.id)")
+targets_sql <- paste(readLines(RULES[[rule_name]]$sql), collapse = "\n")
+target_rows <- dbGetQuery(con, targets_sql, params = list(sprintf("{%d}", season)))
 
 key <- function(g, i) paste(g, i)
 ends$rep <- !is.na(ends$prev_team) & ends$prev_team == ends$team_id
-ends$after_special <- ends$rep & key(ends$game_id, ends$prev_id) %in% key(special$game_id, special$id)
+ends$after_target <- ends$rep & key(ends$game_id, ends$prev_id) %in% key(target_rows$game_id, target_rows$id)
 n_games <- length(unique(ends$game_id))
-cat(sprintf("season %d: %d games, %d possession ends\n", season, n_games, nrow(ends)))
-cat(sprintf("  same-team repeats: %d (%.2f per game); after a special end: %d; other: %d (%.2f per game)\n",
-  sum(ends$rep), sum(ends$rep) / n_games, sum(ends$after_special),
-  sum(ends$rep & !ends$after_special), sum(ends$rep & !ends$after_special) / n_games))
-cat(sprintf("  special ends: %d\n", nrow(special)))
+cat(sprintf("rule %s, season %d: %d games, %d possession ends\n", rule_name, season, n_games, nrow(ends)))
+cat(sprintf("  same-team repeats: %d (%.2f per game); after a target end: %d; other: %d (%.2f per game)\n",
+  sum(ends$rep), sum(ends$rep) / n_games, sum(ends$after_target),
+  sum(ends$rep & !ends$after_target), sum(ends$rep & !ends$after_target) / n_games))
+cat(sprintf("  target ends: %d\n", nrow(target_rows)))
 
 tg <- q("
   SELECT m.game_id, m.team_id, m.off_poss_raw, m.def_poss_raw, m.off_points_raw, m.def_points_raw,
@@ -63,11 +73,11 @@ print(table(cut(d, c(-Inf, -4.5, -2.5, -1.5, -0.5, 0.5, 1.5, 2.5, 4.5, Inf),
 mirror_bad <- sum(tg$off_poss_raw != tg$opp_def_poss_raw, na.rm = TRUE)
 cat(sprintf("  mirror (off = opponent's def): %d team-games differ, %d without an opponent row\n",
   mirror_bad, sum(is.na(tg$opp_def_poss_raw))))
-affected <- sort(unique(special$game_id))
+affected <- sort(unique(target_rows$game_id))
 cat(sprintf("  affected games: %d\n  %s\n", length(affected), paste(affected, collapse = ",")))
 
-# Ends each team-game holds on special rows: the expected drop in its off_poss_raw.
-drawn <- merge(special[c("game_id", "id")], ends[c("game_id", "id", "team_id")], by = c("game_id", "id"))
+# Ends each team-game holds on target rows: the expected drop in its off_poss_raw.
+drawn <- merge(target_rows[c("game_id", "id")], ends[c("game_id", "id", "team_id")], by = c("game_id", "id"))
 drawn$trips <- rep(1L, nrow(drawn))
 drawn <- if (nrow(drawn)) aggregate(trips ~ game_id + team_id, drawn, sum) else
   data.frame(game_id = integer(0), team_id = integer(0), trips = integer(0))
@@ -87,16 +97,16 @@ if (!is.null(compare)) {
     if (any(changed(col))) failures <- c(failures, sprintf("%s changed in %d team-games: %s", col, sum(changed(col)),
       paste(unique(m$game_id[changed(col)]), collapse = ",")))
   }
-  # Each team-game loses exactly the special ends it held before the change.
+  # Each team-game loses exactly the target ends it held before the change.
   drop <- m$off_poss_raw.before - m$off_poss_raw.after
   bad <- drop != m$trips.before
-  if (any(bad)) failures <- c(failures, sprintf("off_poss_raw drop differs from the special ends in %d team-games: %s",
+  if (any(bad)) failures <- c(failures, sprintf("off_poss_raw drop differs from the target ends in %d team-games: %s",
     sum(bad), paste(unique(m$game_id[bad]), collapse = ",")))
   if (nrow(m) != nrow(b)) failures <- c(failures, sprintf("%d baseline team-games missing now", nrow(b) - nrow(m)))
   # A season may start with a few (2025 has 2); the change must not add any.
   mirror_before <- sum(b$off_poss_raw != b$opp_def_poss_raw, na.rm = TRUE)
   if (mirror_bad > mirror_before) failures <- c(failures, sprintf("mirror check: %d team-games differ, %d before", mirror_bad, mirror_before))
-  if (nrow(special)) failures <- c(failures, sprintf("%d special ends remain in %d games", nrow(special), length(affected)))
+  if (nrow(target_rows)) failures <- c(failures, sprintf("%d target ends remain in %d games", nrow(target_rows), length(affected)))
   cat(sprintf("compare against %s: %d team-games, %d possessions removed in total\n", compare, nrow(m), sum(drop)))
   if (length(failures)) cat("GATE FAILURES:\n", paste0("  - ", failures, "\n"), sep = "") else cat("all gates pass\n")
 }

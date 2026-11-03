@@ -1,24 +1,36 @@
-# Applies the special-foul possession rule to stored rows, without re-fetching play-by-play: flips
-# final_end_poss on the rows that sql/migrations/2026-11-02_special_foul_possession_targets.sql
-# selects, then refreshes what reads them in the ETL's Phase 4 order, and carries the same flip
+# Applies a possession-end rule to stored rows, without re-fetching play-by-play: flips
+# final_end_poss on the rows that the rule's targets SQL selects (the table RULES below), then refreshes what reads them in the ETL's Phase 4 order, and carries the same flip
 # into the cold Parquet archive so a restore cannot bring the old ends back.
+# --rule special-foul: the technical/unsportsmanlike/disqualifying free-throw rule (D29).
+# --rule and-one: a made and-one the team rebounds itself keeps the possession open (D30).
 # Used for 2026-27 too: etl_full(game_ids = <42 games>) failed the 2-minute Phase 4 limit and
 # today's lineup gate rejected games 401 and 649 on re-fetch. Its cold rows did pin this SQL: the
 # real rule removed the same 90 ends in the 40 games it re-ran, and added none.
 #
-#   Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026,2027                 dry run
-#   CONFIRM_SPECIAL_FOUL_BACKFILL=1 Rscript scripts/apply_special_foul_backfill.R --seasons 2025,2026,2027
+#   Rscript scripts/apply_possession_end_backfill.R --rule and-one --seasons 2025,2026,2027       dry run
+#   CONFIRM_POSSESSION_BACKFILL=1 Rscript scripts/apply_possession_end_backfill.R --rule and-one --seasons 2025,2026,2027
 #   ... --resume-at sub-lineups    skip steps 1-2 up to the sub-lineup refresh after a failure there
 #
 # Each step commits on its own, so no long transaction holds a view lock; the cache marker
 # advances last, so the apps switch to the new numbers once everything is in place.
 
+# One table per rule: its targets SQL (takes $1::int4[] of seasons) and where its backup goes.
+RULES <- list(
+  `special-foul` = list(sql = "sql/migrations/2026-11-02_special_foul_possession_targets.sql",
+                        backup = "exports/cold/backup-2026-11-02-special-foul"),
+  `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql",
+                        backup = "exports/cold/backup-2026-11-03-and-one")
+)
+
 args <- commandArgs(trailingOnly = TRUE)
+j <- match("--rule", args)
+stopifnot("--rule special-foul|and-one is required" = !is.na(j), j < length(args), args[[j + 1L]] %in% names(RULES))
+rule <- RULES[[args[[j + 1L]]]]
 i <- match("--seasons", args)
 stopifnot(!is.na(i), i < length(args))
 seasons <- as.integer(strsplit(args[[i + 1L]], ",")[[1]])
 stopifnot(length(seasons) > 0L, !anyNA(seasons), all(seasons %in% c(2025L, 2026L, 2027L)))
-apply <- identical(Sys.getenv("CONFIRM_SPECIAL_FOUL_BACKFILL"), "1")
+apply <- identical(Sys.getenv("CONFIRM_POSSESSION_BACKFILL"), "1")
 
 readRenviron("etl/.Renviron")
 suppressPackageStartupMessages({ library(DBI); library(RPostgres) })
@@ -31,9 +43,9 @@ x <- function(sql) { t0 <- proc.time()[["elapsed"]]; dbExecute(con, sql); say(" 
 
 # Step 1 removes the rows the query selects, so a rerun could not find them again: the targets are
 # saved before the first write and a rerun after a failure resumes from that file.
-backup <- "exports/cold/backup-2026-11-02-special-foul"
+backup <- rule$backup
 targets_file <- file.path(backup, "targets.csv")
-SQL <- paste(readLines("sql/migrations/2026-11-02_special_foul_possession_targets.sql"), collapse = "\n")
+SQL <- paste(readLines(rule$sql), collapse = "\n")
 resuming <- file.exists(targets_file)
 targets <- if (resuming) utils::read.csv(targets_file) else
   dbGetQuery(con, SQL, params = list(sprintf("{%s}", paste(seasons, collapse = ","))))
@@ -42,7 +54,7 @@ games <- sort(unique(as.integer(targets$game_id)))
 say("%s: %d possession ends to remove in %d games (seasons %s)", if (apply) "APPLY" else "DRY RUN",
     nrow(targets), length(games), paste(seasons, collapse = ", "))
 print(table(targets$type))
-if (!apply) { dbDisconnect(con); say("Nothing changed. Set CONFIRM_SPECIAL_FOUL_BACKFILL=1 to apply."); quit(status = 0L) }
+if (!apply) { dbDisconnect(con); say("Nothing changed. Set CONFIRM_POSSESSION_BACKFILL=1 to apply."); quit(status = 0L) }
 
 if (!resuming) {
   dir.create(backup, recursive = TRUE, showWarnings = FALSE)
@@ -102,4 +114,4 @@ stamp <- dbGetQuery(con, "SELECT to_char(now() AT TIME ZONE 'UTC', 'YYYY-MM-DD H
 dbExecute(con, "UPDATE basketball_test.app_meta SET value = $1 WHERE key = 'etl_full_last_success'", params = list(stamp))
 say("  advanced to %s", stamp)
 dbDisconnect(con)
-say("Done. Run scripts/verify_special_foul_possessions.R --season <year> --compare <baseline> for each season.")
+say("Done. Run scripts/verify_possession_rule.R --rule <rule> --season <year> --compare <baseline> for each season.")
