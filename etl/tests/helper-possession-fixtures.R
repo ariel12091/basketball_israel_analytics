@@ -107,6 +107,6 @@ POSSESSION_FIXTURES <- list(
                                                        foul(2, "personal", parent = 1, team = 2L),
                                                        reb(3, 1, "offensive"),
                                                        ft(4, 1, 1, 1, made = "missed"),
-                                                       shot(5, team = 2L)),
+                                                       shot(5)),
                                       c(1, 5), base = NULL)
 )
