@@ -60,3 +60,10 @@ test_that("a made and-one the team rebounds keeps the possession open", {
     expect_equal(ends(fx$rows), fx$ends, info = nm)
   }
 })
+
+test_that("a put-back's own rebound and a mislabelled foul turnover are not possession ends", {
+  for (nm in names(PHANTOM_END_FIXTURES)) {
+    fx <- PHANTOM_END_FIXTURES[[nm]]
+    expect_equal(ends(fx$rows), fx$ends, info = nm)
+  }
+})
