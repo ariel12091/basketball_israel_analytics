@@ -1,6 +1,6 @@
 # Possession-end checks for a possession-end rule (--rule special-foul: D29, plan
 # docs/superpowers/plans/2026-11-02-special-foul-possession-ends.md; --rule and-one: D30, plan
-# docs/superpowers/plans/2026-11-03-and-one-own-rebound-possession.md; --rule phantom-ends: D30, plan
+# docs/superpowers/plans/2026-11-03-and-one-own-rebound-possession.md; --rule phantom-ends: D31, plan
 # docs/superpowers/plans/2026-11-03-phantom-possession-ends.md). Read-only.
 #
 #   Rscript scripts/verify_possession_rule.R --rule and-one|phantom-ends --season 2027

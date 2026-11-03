@@ -18,7 +18,7 @@
 # ONE-SHOT, PRE-BACKFILL: passes 2 and 3 pick their targets from the stored view, and the and-one
 # backfill of 2026-11-03 emptied that selection, so for --rule and-one only pass 1 runs (passes 2 and
 # 3 would fail by design and the failure would say nothing). The same holds for --rule phantom-ends
-# once its backfill has run: its passes 2 and 3 are valid only before it. Stored rows are watched
+# once its backfill has run: its passes 2 and 3 are spent as of the 2026-11-03 backfill (archive_passes = FALSE) and only pass 1 runs. Stored rows are watched
 # nightly by app/tests/testthat/test-and-one-targets-db.R and test-phantom-end-targets-db.R.
 
 # One table per rule: the targets SQL, the commit of the previous rule, the fixture list (a name in
@@ -27,7 +27,7 @@ PIN_RULES <- list(
   `and-one`      = list(sql = "sql/migrations/2026-11-03_and_one_possession_targets.sql",
                         old_sha = "dfd4667", fixtures = "POSSESSION_FIXTURES", archive_passes = FALSE, view_perspective = FALSE),
   `phantom-ends` = list(sql = "sql/migrations/2026-11-03_phantom_possession_end_targets.sql",
-                        old_sha = "413fd0f", fixtures = "PHANTOM_END_FIXTURES", archive_passes = TRUE, view_perspective = TRUE)
+                        old_sha = "413fd0f", fixtures = "PHANTOM_END_FIXTURES", archive_passes = FALSE, view_perspective = TRUE)
 )
 args <- commandArgs(trailingOnly = TRUE)
 j <- match("--rule", args)

@@ -13,7 +13,9 @@
 --           assist, deflection, by either team) between them.
 -- In the offense rows of the view a foul's, steal's, block's and defensive rebound's team_id is the
 -- other team's (the perspective); only turnovers, shots and offensive rebounds name the team itself,
--- and only those are compared with a team here.
+-- Team ids are compared on the previous end whatever its type; stored ends are shots, turnovers,
+-- free throws, assists, rebounds and one foul-drawn row on 2026-11-03, with no foul, block,
+-- deflection or steal row.
 -- Window functions only: a correlated subquery over a CTE on this view ran over 2 minutes.
 -- Read-only. scripts/apply_possession_end_backfill.R --rule phantom-ends applies the result.
 -- $1 is the int4[] of seasons; scripts/pin_possession_rule_targets.R swaps the text between the

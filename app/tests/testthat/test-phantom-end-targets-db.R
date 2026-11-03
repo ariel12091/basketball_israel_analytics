@@ -1,11 +1,15 @@
 library(testthat)
 
-# Two implementations must agree on phantom possession ends (D30): the rebound of a put-back and
+# Two implementations must agree on phantom possession ends (D31): the rebound of a put-back and
 # the foul turnovers the fouling team did not have the ball for. compute_possessions() writes each
 # new game's ends, and the targets SQL selects the same shape from stored rows. Once the ETL rule
-# has run, the SQL must find nothing in the current season. A target here means the two disagree
-# on a new game, or that a game was stored without the rule. Past seasons were backfilled and do
-# not change. Fails until scripts/apply_possession_end_backfill.R --rule phantom-ends has run.
+# has run, the SQL must find nothing in the current season. A target here means the rule failed to
+# remove an end on a new game, or that a game was stored without the rule. Past seasons were
+# backfilled (scripts/apply_possession_end_backfill.R --rule phantom-ends) and do not change.
+# A removal can expose a further target in a rare shape (a brawl removal followed by the same team's
+# later foul turnover, or a removed foul turnover before a put-back's rebound); none exists today,
+# and the nightly test then fails until someone rules on it. The test sees ends the rule failed to
+# remove, not ends it removed wrongly.
 
 skip_if_not(Sys.getenv("RUN_DB_TESTS", "0") == "1")
 skip_if_not_installed("DBI")

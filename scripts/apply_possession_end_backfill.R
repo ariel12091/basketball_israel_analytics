@@ -5,7 +5,7 @@
 # --rule special-foul: the technical/unsportsmanlike/disqualifying free-throw rule (D29).
 # --rule and-one: a made and-one the team rebounds itself keeps the possession open (D30).
 # --rule phantom-ends: the rebound of a put-back and foul turnovers the fouling team did not have the
-#   ball for (D30, plan docs/superpowers/plans/2026-11-03-phantom-possession-ends.md).
+#   ball for (D31, plan docs/superpowers/plans/2026-11-03-phantom-possession-ends.md).
 # Used for 2026-27 too: etl_full(game_ids = <42 games>) failed the 2-minute Phase 4 limit and
 # today's lineup gate rejected games 401 and 649 on re-fetch. Its cold rows did pin this SQL: the
 # real rule removed the same 90 ends in the 40 games it re-ran, and added none.
