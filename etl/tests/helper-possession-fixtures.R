@@ -174,5 +174,10 @@ PHANTOM_END_FIXTURES <- list(
   and_one_then_foul_turnover = .px(c(5, 9), shot(1),
                                    foul(2, "personal", parent = 1, team = 2L),
                                    ft(3, 1, 1, 1, made = "missed"), reb(4, 1, "offensive"),
-                                   shot(5), .F(6), shot(9, team = 2L))
+                                   shot(5), .F(6), shot(9, team = 2L)),
+  live_deflection_between_same_second = .px(c(1, 5, 9, 12),
+              at_second(dplyr::bind_rows(
+                shot(1, made = "missed", team = 2L), reb(2, 1, "defensive"),
+                .F(3), act(6, "deflection", team = 2L), .F2(7), shot(12, team = 2L)),
+                3:9, 1500))
 )

@@ -139,62 +139,67 @@ compute_possessions <- function(actions_tbl) {
       TRUE                                              ~ final_end_poss
     ))
 
-  # Phantom ends. This runs after the and-one step because both tests below read the
+  # Phantom ends. This runs after the and-one step because the tests below read the
   # finished ends: the previous end of a row is the one the and-one step left, and the
-  # rows removed here never change whether another row is removed.
+  # rows removed here never change whether another row is removed. One pass over
+  # `finished`: every neighbour (previous end, previous foul turnover, last live play,
+  # last shot or offensive rebound of the team) comes from a window function, not a join.
   #  (1) A put-back's rebound: the rebound of a missed shot is logged after the made
   #      put-back, so the same team's made shot is the previous end and the rebound
   #      (an end only by the end-of-quarter override) would count a possession twice.
   #  (2) A foul turnover (OffensiveFoulUnsportsmanlike) is a phantom when the fouling
   #      team did not have the ball: its own previous end with no shot or offensive
-  #      rebound of its own since, or a second foul turnover in the same second with
-  #      no live play between (a brawl logged as one burst).
-  foul_ids <- finished |>
-    filter(type == "foul", parameters_type == "OffensiveFoulUnsportsmanlike")
-  foul_keys <- union_all(
-    foul_ids |> transmute(game_id, parent_action_id = id),
-    foul_ids |> transmute(game_id, parent_action_id = parent_action_id)
-  ) |>
-    distinct() |>
-    mutate(.foul_key = 1L)
-  end_lookup <- finished |>
-    transmute(game_id, .prev_end_id = id, .prev_end_team = team_id,
-              .prev_end_type = type, .prev_end_made = parameters_made)
-  ftt_lookup <- finished |>
-    transmute(game_id, .prev_ftt_id = id, .prev_ftt_secs = end_game_seconds_remaining)
-
+  #      rebound of its own since, or a second foul turnover in the same second as the
+  #      previous foul turnover with no live play between (a brawl logged as one burst).
+  #      Live play: shot, rebound, freeThrow, steal, block, assist, deflection.
   finished |>
-    left_join(foul_keys, by = c("game_id", "parent_action_id")) |>
     mutate(
       .is_end = coalesce(final_end_poss, FALSE),
-      .foul_turnover = case_when(type == "turnover" & !is.na(.foul_key) ~ TRUE, TRUE ~ FALSE),
-      .end_id = if_else(.is_end, id, NA_integer_),
-      .ftt_end_id = if_else(.is_end & .foul_turnover, id, NA_integer_),
+      .ofu = case_when(type == "foul" & parameters_type == "OffensiveFoulUnsportsmanlike" ~ 1L,
+                       TRUE ~ 0L)
+    ) |>
+    # A turnover belongs to the foul when its parent is the foul's id or the foul's parent.
+    group_by(game_id, parent_action_id) |>
+    mutate(.ofu_same_parent = max(.ofu, na.rm = TRUE)) |>
+    ungroup() |>
+    mutate(.foul_key = case_when(.ofu == 1L ~ id,
+                                 type == "turnover" ~ parent_action_id,
+                                 TRUE ~ NA_integer_)) |>
+    group_by(game_id, .foul_key) |>
+    mutate(.ofu_same_id = max(.ofu, na.rm = TRUE)) |>
+    ungroup() |>
+    mutate(
+      .foul_turnover = case_when(type == "turnover" & (.ofu_same_parent > 0L | .ofu_same_id > 0L) ~ TRUE,
+                                 TRUE ~ FALSE),
       .live_id = case_when(
-        type %in% c("shot", "freeThrow", "rebound") ~ id,
-        type == "turnover" & !.foul_turnover        ~ id,
-        TRUE                                        ~ NA_integer_
-      ),
-      .own_id = case_when(
-        type == "shot"                                     ~ id,
-        type == "rebound" & parameters_type == "offensive" ~ id,
-        TRUE                                               ~ NA_integer_
+        type %in% c("shot", "rebound", "freeThrow", "steal", "block", "assist", "deflection") ~ id,
+        TRUE ~ NA_integer_
       )
     ) |>
     group_by(game_id, quarter.x) |>
     dbplyr::window_order(id) |>
-    mutate(.end_cum = cummax(.end_id), .ftt_cum = cummax(.ftt_end_id),
-           .live_cum = cummax(.live_id)) |>
-    mutate(.prev_end_id = lag(.end_cum), .prev_ftt_id = lag(.ftt_cum),
-           .live_before = lag(.live_cum)) |>
+    mutate(.live_cum = cummax(.live_id)) |>
+    mutate(.live_before = lag(.live_cum)) |>
     ungroup() |>
+    group_by(game_id, quarter.x, .is_end) |>
+    dbplyr::window_order(id) |>
+    mutate(.prev_end_id = lag(id), .prev_end_team = lag(team_id), .prev_end_type = lag(type),
+           .prev_end_made = lag(parameters_made)) |>
+    ungroup() |>
+    group_by(game_id, quarter.x, .foul_turnover) |>
+    dbplyr::window_order(id) |>
+    mutate(.prev_ftt_id = lag(id), .prev_ftt_secs = lag(end_game_seconds_remaining)) |>
+    ungroup() |>
+    mutate(.own_id = case_when(
+      type == "shot"                                     ~ id,
+      type == "rebound" & parameters_type == "offensive" ~ id,
+      TRUE                                               ~ NA_integer_
+    )) |>
     group_by(game_id, quarter.x, team_id) |>
     dbplyr::window_order(id) |>
     mutate(.own_cum = cummax(.own_id)) |>
     mutate(.own_before = lag(.own_cum)) |>
     ungroup() |>
-    left_join(end_lookup, by = c("game_id", ".prev_end_id")) |>
-    left_join(ftt_lookup, by = c("game_id", ".prev_ftt_id")) |>
     mutate(
       .same_team_prev = case_when(.prev_end_team == team_id ~ TRUE, TRUE ~ FALSE),
       .putback_rebound = case_when(
@@ -220,9 +225,9 @@ compute_possessions <- function(actions_tbl) {
       )
     ) |>
     select(-eoq_override, -eoq_special_ft, -final_end_poss_base, -.effective_ft_awarded,
-           -.own_rebound_candidate, -.next_end_team, -.foul_key, -.is_end, -.foul_turnover,
-           -.end_id, -.ftt_end_id, -.live_id, -.own_id, -.end_cum, -.ftt_cum, -.live_cum,
-           -.prev_end_id, -.prev_ftt_id, -.live_before, -.own_cum, -.own_before,
-           -.prev_end_team, -.prev_end_type, -.prev_end_made, -.prev_ftt_secs,
-           -.same_team_prev, -.putback_rebound, -.foul_no_ball, -.foul_same_second)
+           -.own_rebound_candidate, -.next_end_team, -.is_end, -.ofu, -.ofu_same_parent,
+           -.foul_key, -.ofu_same_id, -.foul_turnover, -.live_id, -.live_cum, -.live_before,
+           -.prev_end_id, -.prev_end_team, -.prev_end_type, -.prev_end_made, -.prev_ftt_id,
+           -.prev_ftt_secs, -.own_id, -.own_cum, -.own_before, -.same_team_prev,
+           -.putback_rebound, -.foul_no_ball, -.foul_same_second)
 }
